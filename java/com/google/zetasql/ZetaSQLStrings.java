@@ -18,6 +18,9 @@
 package com.google.zetasql;
 
 import com.google.common.base.Preconditions;
+import com.google.common.escape.Escaper;
+import com.google.common.escape.Escapers;
+import com.google.common.io.BaseEncoding;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import org.joda.time.DateTime;
@@ -27,6 +30,15 @@ import org.joda.time.DateTime;
 public class ZetaSQLStrings {
   private static final DateTime EPOCH = new DateTime(1970, 1, 1, 0, 0);
   private static final Charset UTF_8 = StandardCharsets.UTF_8;
+  private static final Escaper BACKTICK_ESCAPER = Escapers.builder()
+      .addEscape('`', "\\`")
+      .build();
+  private static final Escaper DOUBLE_QUOTE_ESCAPER = Escapers.builder()
+      .addEscape('"', "\\\"")
+      .build();
+  private static final Escaper SINGLE_QUOTE_ESCAPER = Escapers.builder()
+      .addEscape('\'', "\\'")
+      .build();
 
   /**
    * Convert a string to a ZetaSQL identifier literal. The output will be quoted (with backticks)
@@ -36,7 +48,7 @@ public class ZetaSQLStrings {
    * @return Legal ZetaSQL identifier converted from the string.
    */
   public static String toIdentifierLiteral(String str) {
-    throw new UnsupportedOperationException();
+    return '`' + BACKTICK_ESCAPER.escape(str) + '`';
   }
 
   /**
@@ -47,7 +59,7 @@ public class ZetaSQLStrings {
    * @return Quoted and escaped ZetaSQL bytes literal.
    */
   public static String toBytesLiteral(byte[] bytes) {
-    throw new UnsupportedOperationException();
+    return toSingleQuotedBytesLiteral(bytes);
   }
 
   /**
@@ -69,7 +81,7 @@ public class ZetaSQLStrings {
    * @return Quoted and escaped ZetaSQL bytes literal.
    */
   public static String toSingleQuotedBytesLiteral(byte[] bytes) {
-    throw new UnsupportedOperationException();
+    return "b'" + BaseEncoding.base16().encode(bytes) + '\'';
   }
 
   /**
@@ -91,7 +103,7 @@ public class ZetaSQLStrings {
    * @return Quoted and escaped ZetaSQL bytes literal.
    */
   public static String toDoubleQuotedBytesLiteral(byte[] bytes) {
-    throw new UnsupportedOperationException();
+    return "b\"" + BaseEncoding.base16().encode(bytes) + '"';
   }
 
   /**
@@ -113,7 +125,7 @@ public class ZetaSQLStrings {
    * @return Quoted and escaped ZetaSQL string literal.
    */
   public static String toStringLiteral(String str) {
-    throw new UnsupportedOperationException();
+    return toSingleQuotedStringLiteral(str);
   }
 
   /**
@@ -124,7 +136,7 @@ public class ZetaSQLStrings {
    * @return Quoted and escaped ZetaSQL string literal.
    */
   public static String toSingleQuotedStringLiteral(String str) {
-    throw new UnsupportedOperationException();
+    return '\'' + SINGLE_QUOTE_ESCAPER.escape(str) + '\'';
   }
 
   /**
@@ -135,7 +147,7 @@ public class ZetaSQLStrings {
    * @return Quoted and escaped ZetaSQL string literal.
    */
   public static String toDoubleQuotedStringLiteral(String str) {
-    throw new UnsupportedOperationException();
+    return '"' + DOUBLE_QUOTE_ESCAPER.escape(str) + '"';
   }
 
   /**
@@ -151,7 +163,7 @@ public class ZetaSQLStrings {
   public static String convertSimpleValueToString(Value value, boolean verbose) {
     Type type = value.getType();
     Preconditions.checkArgument(type.isSimpleType());
-    throw new UnsupportedOperationException();
+    return value.getProto().toString().trim();
   }
 
   /**
