@@ -1,0 +1,213 @@
+# This tests a combination of aggregate functions selected from
+# (COUNT, SUM, AVG) that each either return all results, no results, or some
+# results.
+[prepare_database]
+CREATE TABLE TestExamTableWithRowId AS
+SELECT cast(1 as int64) as row_id,
+       cast("Hansen" as string) as last_name,
+       cast("P91" as string) as test_id,
+       cast(510 as double) as test_score UNION ALL
+SELECT 2, "Wang", "U25", 500 UNION ALL
+SELECT 3, "Wang", "C83", 520 UNION ALL
+SELECT 4, "Wang", "U25", 460 UNION ALL
+SELECT 5, "Hansen", "C83", 420 UNION ALL
+SELECT 6, "Hansen", "C83", 560 UNION ALL
+SELECT 7, "Devi", "U25", 580 UNION ALL
+SELECT 8, "Devi", "P91", 480 UNION ALL
+SELECT 9, "Ivanov", "U25", 490 UNION ALL
+SELECT 10, "Ivanov", "P91", 540 UNION ALL
+SELECT 11, "Silva", "U25", 550
+--
+ARRAY<STRUCT<row_id INT64, last_name STRING, test_id STRING, test_score DOUBLE>>[
+  {1, "Hansen", "P91", 510},
+  {2, "Wang", "U25", 500},
+  {3, "Wang", "C83", 520},
+  {4, "Wang", "U25", 460},
+  {5, "Hansen", "C83", 420},
+  {6, "Hansen", "C83", 560},
+  {7, "Devi", "U25", 580},
+  {8, "Devi", "P91", 480},
+  {9, "Ivanov", "U25", 490},
+  {10, "Ivanov", "P91", 540},
+  {11, "Silva", "U25", 550}
+]
+==
+# Simple aggregation_threshold count query keeps all results because the
+# threshold is lower than the privacy unit count.
+[default required_features=AGGREGATION_THRESHOLD]
+[name=count_aggregation_threshold_query_keep_all_results]
+[labels=aggregation_threshold]
+SELECT WITH AGGREGATION_THRESHOLD
+  OPTIONS(threshold=2, privacy_unit_column=last_name)
+  test_id,
+  COUNT(DISTINCT last_name) AS student_count,
+FROM TestExamTableWithRowId
+GROUP BY test_id;
+--
+ARRAY<STRUCT<test_id STRING, student_count INT64>>[unknown order:
+  {"P91", 3},
+  {"C83", 2},
+  {"U25", 4}
+]
+==
+# Simple aggregation_threshold count query removes all unique student count
+# results because the privacy unit counts are all below the threshold.
+[default required_features=AGGREGATION_THRESHOLD]
+[name=count_aggregation_threshold_query_remove_all_results]
+[labels=aggregation_threshold]
+SELECT WITH AGGREGATION_THRESHOLD
+  OPTIONS(threshold=10, privacy_unit_column=last_name)
+  test_id,
+  COUNT(DISTINCT last_name) AS student_count,
+FROM TestExamTableWithRowId
+GROUP BY test_id;
+--
+ARRAY<STRUCT<test_id STRING, student_count INT64>>[]
+==
+# Simple aggregation_threshold count query removes the unique student count
+# result for C83 because it is below the threshold.
+[default required_features=AGGREGATION_THRESHOLD]
+[name=count_aggregation_threshold_query_remove_some_results]
+[labels=aggregation_threshold]
+SELECT WITH AGGREGATION_THRESHOLD
+  OPTIONS(threshold=3, privacy_unit_column=last_name)
+  test_id,
+  COUNT(DISTINCT last_name) AS student_count,
+FROM TestExamTableWithRowId
+GROUP BY test_id;
+--
+ARRAY<STRUCT<test_id STRING, student_count INT64>>[unknown order:
+  {"P91", 3},
+  {"U25", 4}
+]
+==
+# Simple aggregation_threshold sum query keeps all results because the threshold
+# is lower than all the privacy unit counts.
+[default required_features=AGGREGATION_THRESHOLD]
+[name=sum_aggregation_threshold_query_keep_all_results]
+[labels=aggregation_threshold]
+SELECT WITH AGGREGATION_THRESHOLD
+  OPTIONS(threshold=2, privacy_unit_column=last_name)
+  test_id,
+  SUM(test_score) AS student_sum,
+FROM TestExamTableWithRowId
+GROUP BY test_id;
+--
+ARRAY<STRUCT<test_id STRING, student_sum DOUBLE>>[unknown order:
+  {"P91", 1530},
+  {"C83", 1500},
+  {"U25", 2580}
+]
+==
+# Simple aggregation_threshold sum query removes all results because the
+# threshold is higher than all the privacy unit counts.
+[default required_features=AGGREGATION_THRESHOLD]
+[name=sum_aggregation_threshold_query_remove_all_results]
+[labels=aggregation_threshold]
+SELECT WITH AGGREGATION_THRESHOLD
+  OPTIONS(threshold=10, privacy_unit_column=last_name)
+  test_id,
+  SUM(test_score) AS student_sum,
+FROM TestExamTableWithRowId
+GROUP BY test_id;
+--
+ARRAY<STRUCT<test_id STRING, student_sum DOUBLE>>[]
+==
+# Simple aggregation_threshold sum query removes the result for C83 because its
+# privacy unit count is below the threshold.
+[default required_features=AGGREGATION_THRESHOLD]
+[name=sum_aggregation_threshold_query_remove_some_results]
+[labels=aggregation_threshold]
+SELECT WITH AGGREGATION_THRESHOLD
+  OPTIONS(threshold=3, privacy_unit_column=last_name)
+  test_id,
+  SUM(test_score) AS student_sum,
+FROM TestExamTableWithRowId
+GROUP BY test_id;
+--
+ARRAY<STRUCT<test_id STRING, student_sum DOUBLE>>[unknown order:
+  {"P91", 1530},
+  {"U25", 2580}
+]
+==
+# Simple aggregation_threshold average query keeps all results because the
+# threshold is lower than all the privacy unit counts.
+[default required_features=AGGREGATION_THRESHOLD]
+[name=avg_aggregation_threshold_query_keep_all_results]
+[labels=aggregation_threshold]
+SELECT WITH AGGREGATION_THRESHOLD
+  OPTIONS(threshold=2, privacy_unit_column=last_name)
+  test_id,
+  AVG(test_score) AS student_avg,
+FROM TestExamTableWithRowId
+GROUP BY test_id;
+--
+ARRAY<STRUCT<test_id STRING, student_avg DOUBLE>>[unknown order:
+  {"P91", 510},
+  {"C83", 500},
+  {"U25", 516}
+]
+==
+# Simple aggregation_threshold average query removes all results because the
+# threshold is higher than all the privacy unit counts.
+[default required_features=AGGREGATION_THRESHOLD]
+[name=avg_aggregation_threshold_query_remove_all_results]
+[labels=aggregation_threshold]
+SELECT WITH AGGREGATION_THRESHOLD
+  OPTIONS(threshold=10, privacy_unit_column=last_name)
+  test_id,
+  AVG(test_score) AS student_avg,
+FROM TestExamTableWithRowId
+GROUP BY test_id;
+--
+ARRAY<STRUCT<test_id STRING, student_avg DOUBLE>>[]
+==
+# Simple aggregation_threshold average query removes the result for C83 because
+# its privacy unit count is below the threshold.
+[default required_features=AGGREGATION_THRESHOLD]
+[name=avg_aggregation_threshold_query_remove_some_results]
+[labels=aggregation_threshold]
+SELECT WITH AGGREGATION_THRESHOLD
+  OPTIONS(threshold=3, privacy_unit_column=last_name)
+  test_id,
+  AVG(test_score) AS student_avg,
+FROM TestExamTableWithRowId
+GROUP BY test_id;
+--
+ARRAY<STRUCT<test_id STRING, student_avg DOUBLE>>[unknown order:
+  {"P91", 510},
+  {"U25", 516}
+]
+==
+# Nested aggregation_threshold query returns all count results.
+[default required_features=AGGREGATION_THRESHOLD]
+[name=nested_aggregation_threshold_query_keep_all_results]
+[labels=aggregation_threshold]
+SELECT ARRAY(SELECT WITH AGGREGATION_THRESHOLD
+  OPTIONS(threshold=2, privacy_unit_column=last_name)
+  COUNT(DISTINCT last_name) FROM TestExamTableWithRowId GROUP BY test_id)
+  AS student_count;
+--
+ARRAY<STRUCT<student_count ARRAY<>>>[{ARRAY<INT64>[unknown order:3, 2, 4]}]
+==
+# Nested aggregation_threshold query returns no sum results.
+[default required_features=AGGREGATION_THRESHOLD]
+[name=nested_aggregation_threshold_query_remove_no_results]
+[labels=aggregation_threshold]
+SELECT ARRAY(SELECT WITH AGGREGATION_THRESHOLD
+  OPTIONS(threshold=10, privacy_unit_column=last_name)
+  SUM(test_score) FROM TestExamTableWithRowId GROUP BY test_id)
+  AS student_sum;
+--
+ARRAY<STRUCT<student_sum ARRAY<>>>[{ARRAY<DOUBLE>[]}]
+==
+# Nested aggregation_threshold query returns some avg results.
+[default required_features=AGGREGATION_THRESHOLD]
+[name=nested_aggregation_threshold_query_remove_some_results]
+[labels=aggregation_threshold]
+SELECT ARRAY(SELECT WITH AGGREGATION_THRESHOLD
+  OPTIONS(threshold=3, privacy_unit_column=last_name)
+  AVG(test_score) FROM TestExamTableWithRowId GROUP BY test_id)
+  AS student_avg;
+--
+ARRAY<STRUCT<student_avg ARRAY<>>>[{ARRAY<DOUBLE>[unknown order:510, 516]}]

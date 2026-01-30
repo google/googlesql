@@ -1,0 +1,423 @@
+[default language_features=NONE,+DIFFERENTIAL_PRIVACY,+ANALYTIC_FUNCTIONS,+NAMED_ARGUMENTS,+NUMERIC_TYPE,+PIPE_AGGREGATE_WITH_DIFFERENTIAL_PRIVACY]
+
+# Tests empty OPTIONS clause.
+select with differential_privacy options()
+       count(*, contribution_bounds_per_group => (0,100))
+from SimpleTypesWithAnonymizationUid;
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-TableScan(table=SimpleTypesWithAnonymizationUid)
+        +-aggregate_list=
+          +-$agg1#13 :=
+            +-AggregateFunctionCall(GoogleSQL:$differential_privacy_count_star(optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+              +-Literal(type=STRUCT<INT64, INT64>, value={0, 100})
+==
+
+# Presence of optional OPTIONS clause does not affect the rewritten AST.
+[enabled_ast_rewrites=DEFAULTS,+ANONYMIZATION]
+select {{with differential_privacy|with differential_privacy options ()}} count(*)
+from SimpleTypesWithAnonymizationUid;
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-TableScan(table=SimpleTypesWithAnonymizationUid)
+        +-aggregate_list=
+          +-$agg1#13 :=
+            +-AggregateFunctionCall(GoogleSQL:$differential_privacy_count_star(optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+              +-Literal(type=STRUCT<INT64, INT64>, value=NULL)
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-AggregateScan
+        |   +-column_list=[$aggregate.$agg1_partial#16, $group_by.$uid#17]
+        |   +-input_scan=
+        |   | +-TableScan(column_list=[SimpleTypesWithAnonymizationUid.uid#14], table=SimpleTypesWithAnonymizationUid, column_index_list=[10])
+        |   +-group_by_list=
+        |   | +-$uid#17 := ColumnRef(type=INT64, column=SimpleTypesWithAnonymizationUid.uid#14)
+        |   +-aggregate_list=
+        |     +-$agg1_partial#16 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+        +-aggregate_list=
+        | +-$agg1#13 :=
+        | | +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+        | |   +-ColumnRef(type=INT64, column=$aggregate.$agg1_partial#16)
+        | |   +-Literal(type=STRUCT<INT64, INT64>, value=NULL)
+        | +-$group_selection_threshold_col#20 :=
+        |   +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+        |     +-Literal(type=INT64, value=1)
+        |     +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+        +-group_selection_threshold_expr=
+          +-ColumnRef(type=INT64, column=$differential_privacy.$group_selection_threshold_col#20)
+==
+
+select with differential_privacy options(delta=0)
+       count(*, contribution_bounds_per_group => (0,100))
+from SimpleTypesWithAnonymizationUid;
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-TableScan(table=SimpleTypesWithAnonymizationUid)
+        +-aggregate_list=
+        | +-$agg1#13 :=
+        |   +-AggregateFunctionCall(GoogleSQL:$differential_privacy_count_star(optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+        |     +-Literal(type=STRUCT<INT64, INT64>, value={0, 100})
+        +-option_list=
+          +-delta := Literal(type=DOUBLE, value=0)
+==
+
+[enabled_ast_rewrites=DEFAULTS,+ANONYMIZATION]
+select with differential_privacy options(delta=0, epsilon=0, max_groups_contributed=0, k_threshold=0)
+       count(*, contribution_bounds_per_group => (0,100))
+from SimpleTypesWithAnonymizationUid;
+--
+ERROR: Unknown differential privacy option: k_threshold [at 1:88]
+...delta=0, epsilon=0, max_groups_contributed=0, k_threshold=0)
+                                                 ^
+==
+
+# Invalid option name
+select with differential_privacy options(foo=0)
+       count(*, contribution_bounds_per_group => (0,100))
+from SimpleTypesWithAnonymizationUid;
+--
+ERROR: Unknown differential privacy option: foo [at 1:42]
+select with differential_privacy options(foo=0)
+                                         ^
+==
+
+# Invalid option name (qualified option names not allowed)
+select with differential_privacy options(f1.epsilon=0)
+       count(*, contribution_bounds_per_group => (0,100))
+from SimpleTypesWithAnonymizationUid;
+--
+ERROR: Syntax error: Expected "=" but got "." [at 1:44]
+select with differential_privacy options(f1.epsilon=0)
+                                           ^
+==
+
+# Invalid option name, along with a valid option
+select with differential_privacy options(delta=0, foo=0)
+       count(*, contribution_bounds_per_group => (0,100))
+from SimpleTypesWithAnonymizationUid;
+--
+ERROR: Unknown differential privacy option: foo [at 1:51]
+select with differential_privacy options(delta=0, foo=0)
+                                                  ^
+==
+
+# Invalid option type (options must be numerical)
+select with differential_privacy options({{delta|epsilon|max_groups_contributed|k_threshold}}='0')
+       count(*, contribution_bounds_per_group => (0,100))
+from SimpleTypesWithAnonymizationUid;
+--
+ALTERNATION GROUP: delta
+--
+ERROR: Differential privacy option delta value has type STRING which cannot be coerced to expected type DOUBLE [at 1:48]
+select with differential_privacy options(delta='0')
+                                               ^
+--
+ALTERNATION GROUP: epsilon
+--
+ERROR: Differential privacy option epsilon value has type STRING which cannot be coerced to expected type DOUBLE [at 1:50]
+select with differential_privacy options(epsilon='0')
+                                                 ^
+--
+ALTERNATION GROUP: max_groups_contributed
+--
+ERROR: Differential privacy option max_groups_contributed value has type STRING which cannot be coerced to expected type INT64 [at 1:65]
+select with differential_privacy options(max_groups_contributed='0')
+                                                                ^
+--
+ALTERNATION GROUP: k_threshold
+--
+ERROR: Unknown differential privacy option: k_threshold [at 1:42]
+select with differential_privacy options(k_threshold='0')
+                                         ^
+==
+
+select with differential_privacy options(
+    {{delta|epsilon|max_groups_contributed|k_threshold}}=@test_param_int64)
+       count(*, contribution_bounds_per_group => (0,100))
+from SimpleTypesWithAnonymizationUid;
+--
+ALTERNATION GROUP: delta
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-TableScan(table=SimpleTypesWithAnonymizationUid)
+        +-aggregate_list=
+        | +-$agg1#13 :=
+        |   +-AggregateFunctionCall(GoogleSQL:$differential_privacy_count_star(optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+        |     +-Literal(type=STRUCT<INT64, INT64>, value={0, 100})
+        +-option_list=
+          +-delta :=
+            +-Cast(INT64 -> DOUBLE)
+              +-Parameter(type=INT64, name="test_param_int64")
+--
+ALTERNATION GROUP: epsilon
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-TableScan(table=SimpleTypesWithAnonymizationUid)
+        +-aggregate_list=
+        | +-$agg1#13 :=
+        |   +-AggregateFunctionCall(GoogleSQL:$differential_privacy_count_star(optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+        |     +-Literal(type=STRUCT<INT64, INT64>, value={0, 100})
+        +-option_list=
+          +-epsilon :=
+            +-Cast(INT64 -> DOUBLE)
+              +-Parameter(type=INT64, name="test_param_int64")
+--
+ALTERNATION GROUP: max_groups_contributed
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-TableScan(table=SimpleTypesWithAnonymizationUid)
+        +-aggregate_list=
+        | +-$agg1#13 :=
+        |   +-AggregateFunctionCall(GoogleSQL:$differential_privacy_count_star(optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+        |     +-Literal(type=STRUCT<INT64, INT64>, value={0, 100})
+        +-option_list=
+          +-max_groups_contributed := Parameter(type=INT64, name="test_param_int64")
+--
+ALTERNATION GROUP: k_threshold
+--
+ERROR: Unknown differential privacy option: k_threshold [at 2:5]
+    k_threshold=@test_param_int64)
+    ^
+==
+
+select with differential_privacy options(
+    {{delta|epsilon|max_groups_contributed|k_threshold}}=@test_param_double)
+       count(*, contribution_bounds_per_group => (0,100))
+from SimpleTypesWithAnonymizationUid;
+--
+ALTERNATION GROUP: delta
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-TableScan(table=SimpleTypesWithAnonymizationUid)
+        +-aggregate_list=
+        | +-$agg1#13 :=
+        |   +-AggregateFunctionCall(GoogleSQL:$differential_privacy_count_star(optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+        |     +-Literal(type=STRUCT<INT64, INT64>, value={0, 100})
+        +-option_list=
+          +-delta := Parameter(type=DOUBLE, name="test_param_double")
+--
+ALTERNATION GROUP: epsilon
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-TableScan(table=SimpleTypesWithAnonymizationUid)
+        +-aggregate_list=
+        | +-$agg1#13 :=
+        |   +-AggregateFunctionCall(GoogleSQL:$differential_privacy_count_star(optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+        |     +-Literal(type=STRUCT<INT64, INT64>, value={0, 100})
+        +-option_list=
+          +-epsilon := Parameter(type=DOUBLE, name="test_param_double")
+--
+ALTERNATION GROUP: max_groups_contributed
+--
+ERROR: Differential privacy option max_groups_contributed value has type DOUBLE which cannot be coerced to expected type INT64 [at 2:28]
+    max_groups_contributed=@test_param_double)
+                           ^
+--
+ALTERNATION GROUP: k_threshold
+--
+ERROR: Unknown differential privacy option: k_threshold [at 2:5]
+    k_threshold=@test_param_double)
+    ^
+==
+
+select with differential_privacy options({{delta|epsilon|max_groups_contributed|k_threshold}}=1+2)
+       count(*, contribution_bounds_per_group => (0,100))
+from SimpleTypesWithAnonymizationUid;
+--
+ALTERNATION GROUP: delta
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-TableScan(table=SimpleTypesWithAnonymizationUid)
+        +-aggregate_list=
+        | +-$agg1#13 :=
+        |   +-AggregateFunctionCall(GoogleSQL:$differential_privacy_count_star(optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+        |     +-Literal(type=STRUCT<INT64, INT64>, value={0, 100})
+        +-option_list=
+          +-delta :=
+            +-Cast(INT64 -> DOUBLE)
+              +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+                +-Literal(type=INT64, value=1)
+                +-Literal(type=INT64, value=2)
+--
+ALTERNATION GROUP: epsilon
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-TableScan(table=SimpleTypesWithAnonymizationUid)
+        +-aggregate_list=
+        | +-$agg1#13 :=
+        |   +-AggregateFunctionCall(GoogleSQL:$differential_privacy_count_star(optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+        |     +-Literal(type=STRUCT<INT64, INT64>, value={0, 100})
+        +-option_list=
+          +-epsilon :=
+            +-Cast(INT64 -> DOUBLE)
+              +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+                +-Literal(type=INT64, value=1)
+                +-Literal(type=INT64, value=2)
+--
+ALTERNATION GROUP: max_groups_contributed
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-TableScan(table=SimpleTypesWithAnonymizationUid)
+        +-aggregate_list=
+        | +-$agg1#13 :=
+        |   +-AggregateFunctionCall(GoogleSQL:$differential_privacy_count_star(optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+        |     +-Literal(type=STRUCT<INT64, INT64>, value={0, 100})
+        +-option_list=
+          +-max_groups_contributed :=
+            +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+              +-Literal(type=INT64, value=1)
+              +-Literal(type=INT64, value=2)
+--
+ALTERNATION GROUP: k_threshold
+--
+ERROR: Unknown differential privacy option: k_threshold [at 1:42]
+select with differential_privacy options(k_threshold=1+2)
+                                         ^
+==
+
+# TODO: b/444687052 - Improve error message to accurately describe the error.
+# OPTIONS clause does not support non-constant expressions.
+# This is an attempt to reference column SimpleTypesWithAnonyizationUid.int64.
+# However, this (correctly) fails because epsilon (and other privacy parameters
+# in the OPTIONS clause) are expected to be a constant value. Thus, the 'int64'
+# is interpreted as a STRING that cannot be coerced to a DOUBLE for epsilon.
+select with differential_privacy options(epsilon={{int64|`int64`}})
+       count(*, contribution_bounds_per_group => (0,100))
+from SimpleTypesWithAnonymizationUid;
+--
+ALTERNATION GROUP: int64
+--
+ERROR: Differential privacy option epsilon value has type STRING which cannot be coerced to expected type DOUBLE [at 1:50]
+select with differential_privacy options(epsilon=int64)
+                                                 ^
+--
+ALTERNATION GROUP: `int64`
+--
+ERROR: Differential privacy option epsilon value has type STRING which cannot be coerced to expected type DOUBLE [at 1:50]
+select with differential_privacy options(epsilon=`int64`)
+                                                 ^
+==
+
+# TODO: b/444687052 - Improve error message to accurately describe the error.
+# OPTIONS clause does not support non-constant expressions.
+# The parentheses around 'int64' force it to be treated as an expression
+# (instead of be interpreted as a STRING, as illustrated in the previous test).
+# In this case, analysis still (correctly) fails because resolving a expression
+# in the OPTIONS clause results in an empty NameScope.
+select with differential_privacy options(epsilon=(int64))
+       count(*, contribution_bounds_per_group => (0,100))
+from SimpleTypesWithAnonymizationUid;
+--
+ERROR: Unrecognized name: int64 [at 1:51]
+select with differential_privacy options(epsilon=(int64))
+                                                  ^
+==

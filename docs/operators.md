@@ -4,7 +4,7 @@
 
 # Operators
 
-ZetaSQL supports operators.
+GoogleSQL supports operators.
 Operators are represented by special characters or keywords; they don't use
 function call syntax. An operator manipulates any number of data inputs, also
 called operands, and returns a result.
@@ -20,7 +20,7 @@ Common conventions:
 
 ### Operator precedence
 
-The following table lists all ZetaSQL operators from highest to
+The following table lists all GoogleSQL operators from highest to
 lowest precedence, i.e., the order in which they will be evaluated within a
 statement.
 
@@ -59,7 +59,7 @@ statement.
       <td>Array subscript operator</td>
       <td><code>ARRAY</code></td>
       <td>Array position. Must be used with <code>OFFSET</code> or <code>ORDINAL</code>&mdash;see
-      <a href="https://github.com/google/zetasql/blob/master/docs/array_functions.md">Array Functions</a>
+      <a href="https://github.com/google/googlesql/blob/master/docs/array_functions.md">Array Functions</a>
 .</td>
       <td>Binary</td>
     </tr>
@@ -177,7 +177,7 @@ statement.
       <td>9 (Comparison Operators)</td>
       <td><code>=</code></td>
       <td>Any comparable type. See
-      <a href="https://github.com/google/zetasql/blob/master/docs/data-types.md">Data Types</a>
+      <a href="https://github.com/google/googlesql/blob/master/docs/data-types.md">Data Types</a>
 
       for a complete list.</td>
       <td>Equal</td>
@@ -187,7 +187,7 @@ statement.
       <td>&nbsp;</td>
       <td><code>&lt;</code></td>
       <td>Any comparable type. See
-      <a href="https://github.com/google/zetasql/blob/master/docs/data-types.md">Data Types</a>
+      <a href="https://github.com/google/googlesql/blob/master/docs/data-types.md">Data Types</a>
 
       for a complete list.</td>
       <td>Less than</td>
@@ -197,7 +197,7 @@ statement.
       <td>&nbsp;</td>
       <td><code>&gt;</code></td>
       <td>Any comparable type. See
-      <a href="https://github.com/google/zetasql/blob/master/docs/data-types.md">Data Types</a>
+      <a href="https://github.com/google/googlesql/blob/master/docs/data-types.md">Data Types</a>
 
       for a complete list.</td>
       <td>Greater than</td>
@@ -207,7 +207,7 @@ statement.
       <td>&nbsp;</td>
       <td><code>&lt;=</code></td>
       <td>Any comparable type. See
-      <a href="https://github.com/google/zetasql/blob/master/docs/data-types.md">Data Types</a>
+      <a href="https://github.com/google/googlesql/blob/master/docs/data-types.md">Data Types</a>
 
       for a complete list.</td>
       <td>Less than or equal to</td>
@@ -217,7 +217,7 @@ statement.
       <td>&nbsp;</td>
       <td><code>&gt;=</code></td>
       <td>Any comparable type. See
-      <a href="https://github.com/google/zetasql/blob/master/docs/data-types.md">Data Types</a>
+      <a href="https://github.com/google/googlesql/blob/master/docs/data-types.md">Data Types</a>
 
       for a complete list.</td>
       <td>Greater than or equal to</td>
@@ -227,7 +227,7 @@ statement.
       <td>&nbsp;</td>
       <td><code>!=</code>, <code>&lt;&gt;</code></td>
       <td>Any comparable type. See
-      <a href="https://github.com/google/zetasql/blob/master/docs/data-types.md">Data Types</a>
+      <a href="https://github.com/google/googlesql/blob/master/docs/data-types.md">Data Types</a>
 
       for a complete list.</td>
       <td>Not equal</td>
@@ -255,7 +255,7 @@ statement.
       <td>&nbsp;</td>
       <td><code>[NOT] BETWEEN</code></td>
       <td>Any comparable types. See
-      <a href="https://github.com/google/zetasql/blob/master/docs/data-types.md">Data Types</a>
+      <a href="https://github.com/google/googlesql/blob/master/docs/data-types.md">Data Types</a>
 
       for a complete list.</td>
       <td>Value is [not] within the range specified</td>
@@ -265,7 +265,7 @@ statement.
       <td>&nbsp;</td>
       <td><code>[NOT] IN</code></td>
       <td>Any comparable types. See
-      <a href="https://github.com/google/zetasql/blob/master/docs/data-types.md">Data Types</a>
+      <a href="https://github.com/google/googlesql/blob/master/docs/data-types.md">Data Types</a>
 
       for a complete list.</td>
       <td>Value is [not] in the set of values specified</td>
@@ -605,7 +605,7 @@ a field by position is useful when fields are un-named or have ambiguous names.
 In the following example, the field access operations are `.address` and
 `.country`.
 
-```zetasql
+```googlesql
 SELECT
   STRUCT(
     STRUCT('Yonge Street' AS street, 'Canada' AS country)
@@ -620,7 +620,7 @@ SELECT
 
 [struct-subscript-operator]: #struct_subscript_operator
 
-[graph-element-type]: https://github.com/google/zetasql/blob/master/docs/graph-data-types.md#graph_element_type
+[graph-element-type]: https://github.com/google/googlesql/blob/master/docs/graph-data-types.md#graph_element_type
 
 ### Array subscript operator 
 <a id="array_subscript_operator"></a>
@@ -675,7 +675,7 @@ specific position in `item_array`. This query also shows what happens when you
 reference an index (`6`) in an array that's out of range. If the `SAFE` prefix
 is included, `NULL` is returned, otherwise an error is produced.
 
-```zetasql
+```googlesql
 SELECT
   ["coffee", "tea", "milk"] AS item_array,
   ["coffee", "tea", "milk"][0] AS item_index,
@@ -694,12 +694,12 @@ When you reference an index that's out of range in an array, and a positional
 keyword that begins with `SAFE` isn't included, an error is produced.
 For example:
 
-```zetasql
+```googlesql
 -- Error. Array index 6 is out of bounds.
 SELECT ["coffee", "tea", "milk"][6] AS item_offset
 ```
 
-```zetasql
+```googlesql
 -- Error. Array index 6 is out of bounds.
 SELECT ["coffee", "tea", "milk"][OFFSET(6)] AS item_offset
 ```
@@ -749,7 +749,7 @@ specific locations in `item_struct` using position keywords. This query also
 shows what happens when you reference an index (`6`) in an struct that's out of
 range.
 
-```zetasql
+```googlesql
 SELECT
   STRUCT<INT64, STRING, BOOL>(23, "tea", FALSE)[0] AS field_index,
   STRUCT<INT64, STRING, BOOL>(23, "tea", FALSE)[OFFSET(0)] AS field_offset,
@@ -765,12 +765,12 @@ SELECT
 When you reference an index that's out of range in a struct, an error is
 produced. For example:
 
-```zetasql
+```googlesql
 -- Error: Field ordinal 6 is out of bounds in STRUCT
 SELECT STRUCT<INT64, STRING, BOOL>(23, "tea", FALSE)[6] AS field_offset
 ```
 
-```zetasql
+```googlesql
 -- Error: Field ordinal 6 is out of bounds in STRUCT
 SELECT STRUCT<INT64, STRING, BOOL>(23, "tea", FALSE)[OFFSET(6)] AS field_offset
 ```
@@ -822,7 +822,7 @@ In the following example:
 + `['name']` is a JSON subscript expression with a field name that
   accesses a field.
 
-```zetasql
+```googlesql
 SELECT json_value.class.students[0]['name'] AS first_student
 FROM
   UNNEST(
@@ -844,7 +844,7 @@ FROM
 ### Protocol buffer map subscript operator 
 <a id="proto_subscript_operator"></a>
 
-```zetasql
+```googlesql
 proto_map_field_expression[proto_subscript_specifier]
 
 proto_subscript_specifier:
@@ -891,7 +891,7 @@ message Item {
 In the following example, the subscript operator returns the value when the key
 is present.
 
-```zetasql
+```googlesql
 SELECT
   m.purchased[KEY('A')] AS map_value
 FROM
@@ -907,7 +907,7 @@ FROM
 When the key doesn't exist in the map field and you use `KEY`, an error is
 produced. For example:
 
-```zetasql
+```googlesql
 -- ERROR: Key not found in map: 2
 SELECT
   m.purchased[KEY('B')] AS value
@@ -918,7 +918,7 @@ FROM
 When the key doesn't exist in the map field and you use `SAFE_KEY`,
 the subscript operator returns `NULL`. For example:
 
-```zetasql
+```googlesql
 SELECT
   CAST(m.purchased[SAFE_KEY('B')] AS safe_key_missing
 FROM
@@ -934,7 +934,7 @@ FROM
 The subscript operator returns `NULL` when the map field or key is `NULL`.
 For example:
 
-```zetasql
+```googlesql
 SELECT
   CAST(NULL AS Item).purchased[KEY('A')] AS null_map,
   m.purchased[KEY(NULL)] AS null_key
@@ -951,7 +951,7 @@ FROM
 When a key is used without `KEY()` or `SAFE_KEY()`, it has the same behavior
 as if `KEY()` had been used. For example:
 
-```zetasql
+```googlesql
 SELECT
   m.purchased['A'] AS map_value
 FROM
@@ -997,7 +997,7 @@ Input values:
   For example, this query returns all values for the `items` field inside of the
   `my_array` array expression:
 
-  ```zetasql
+  ```googlesql
   WITH MyTable AS ( SELECT [STRUCT(['foo', 'bar'] AS items)] AS my_array )
   SELECT FLATTEN(my_array.items)
   FROM MyTable
@@ -1022,7 +1022,7 @@ Input values:
   For example, this query only returns values at position 0 in the `items`
   array field:
 
-  ```zetasql
+  ```googlesql
   WITH MyTable AS ( SELECT [STRUCT(['foo', 'bar'] AS items)] AS my_array )
   SELECT FLATTEN(my_array.items[OFFSET(0)])
   FROM MyTable
@@ -1036,7 +1036,7 @@ and can only be interpreted by the following operations:
 
 +  [`FLATTEN` operation][flatten-operation]: Returns an array. For example:
 
-   ```zetasql
+   ```googlesql
    FLATTEN(my_array.sales.prices)
    ```
 +  [`UNNEST` operation][operators-link-to-unnest]: Returns a table.
@@ -1044,11 +1044,11 @@ and can only be interpreted by the following operations:
    Implicitly implements the `FLATTEN` operator.
    For example, these do the same thing:
 
-   ```zetasql
+   ```googlesql
    UNNEST(my_array.sales.prices)
    ```
 
-   ```zetasql
+   ```googlesql
    UNNEST(FLATTEN(my_array.sales.prices))
    ```
 +  [`FROM` clause][operators-link-to-from-clause]: Returns a table.
@@ -1057,15 +1057,15 @@ and can only be interpreted by the following operations:
    For example, these unnesting operations produce the same values for
    `results`:
 
-   ```zetasql
+   ```googlesql
    SELECT results FROM SalesTable, SalesTable.my_array.sales.prices AS results;
    ```
 
-   ```zetasql
+   ```googlesql
    SELECT results FROM SalesTable, UNNEST(my_array.sales.prices) AS results;
    ```
 
-   ```zetasql
+   ```googlesql
    SELECT results FROM SalesTable, UNNEST(FLATTEN(my_array.sales.prices)) AS results;
    ```
 
@@ -1112,7 +1112,7 @@ to the resulting array.
 The next examples in this section reference a table called `SalesTable`, that
 contains a nested struct in an array called `my_array`:
 
-```zetasql
+```googlesql
 WITH
   SalesTable AS (
     SELECT
@@ -1137,7 +1137,7 @@ SELECT * FROM SalesTable;
 This is what the array elements field access operator looks like in the
 `FLATTEN` operator:
 
-```zetasql
+```googlesql
 SELECT FLATTEN(my_array.sales.prices) AS all_prices FROM SalesTable;
 
 /*--------------+
@@ -1150,7 +1150,7 @@ SELECT FLATTEN(my_array.sales.prices) AS all_prices FROM SalesTable;
 This is how you use the array subscript operator to only return values at a
 specific index in the `prices` array:
 
-```zetasql
+```googlesql
 SELECT FLATTEN(my_array.sales.prices[OFFSET(0)]) AS first_prices FROM SalesTable;
 
 /*--------------+
@@ -1163,7 +1163,7 @@ SELECT FLATTEN(my_array.sales.prices[OFFSET(0)]) AS first_prices FROM SalesTable
 This is an example of an explicit `UNNEST` operation that includes the
 array elements field access operator:
 
-```zetasql
+```googlesql
 SELECT all_prices FROM SalesTable, UNNEST(my_array.sales.prices) AS all_prices
 
 /*------------+
@@ -1178,7 +1178,7 @@ SELECT all_prices FROM SalesTable, UNNEST(my_array.sales.prices) AS all_prices
 This is an example of an implicit `UNNEST` operation that includes the
 array elements field access operator:
 
-```zetasql
+```googlesql
 SELECT all_prices FROM SalesTable, SalesTable.my_array.sales.prices AS all_prices
 
 /*------------+
@@ -1193,7 +1193,7 @@ SELECT all_prices FROM SalesTable, SalesTable.my_array.sales.prices AS all_price
 This query produces an error because one of the `prices` arrays doesn't have
 an element at index `1` and `OFFSET` is used:
 
-```zetasql
+```googlesql
 SELECT FLATTEN(my_array.sales.prices[OFFSET(1)]) AS second_prices FROM SalesTable;
 
 -- Error
@@ -1202,7 +1202,7 @@ SELECT FLATTEN(my_array.sales.prices[OFFSET(1)]) AS second_prices FROM SalesTabl
 This query is like the previous query, but `SAFE_OFFSET` is used. This
 produces a `NULL` value instead of an error.
 
-```zetasql
+```googlesql
 SELECT FLATTEN(my_array.sales.prices[SAFE_OFFSET(1)]) AS second_prices FROM SalesTable;
 
 /*---------------+
@@ -1215,7 +1215,7 @@ SELECT FLATTEN(my_array.sales.prices[SAFE_OFFSET(1)]) AS second_prices FROM Sale
 In this next example, an empty array and a `NULL` field value have been added to
 the query. These contribute no elements to the result.
 
-```zetasql
+```googlesql
 WITH
   SalesTable AS (
     SELECT
@@ -1258,7 +1258,7 @@ Nested data is common in protocol buffers that have data within repeated
 messages. The following example extracts a flattened array of songs from a
 table called `AlbumList` that contains a column called `Album` of type `PROTO`.
 
-```zetasql
+```googlesql
 WITH
   AlbumList AS (
     SELECT
@@ -1286,7 +1286,7 @@ The following example extracts a flattened array of album names, one album name
 per row. The data comes from a table called `AlbumList` that contains a
 proto-typed column called `Album`.
 
-```zetasql
+```googlesql
 WITH
   AlbumList AS (
     SELECT
@@ -1319,11 +1319,11 @@ SELECT names FROM AlbumList, UNNEST(albums_array.album_name) AS names
 
 [array-subscript-operator]: #array_subscript_operator
 
-[flatten-operation]: https://github.com/google/zetasql/blob/master/docs/array_functions.md#flatten
+[flatten-operation]: https://github.com/google/googlesql/blob/master/docs/array_functions.md#flatten
 
-[operators-link-to-unnest]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#unnest_operator
+[operators-link-to-unnest]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#unnest_operator
 
-[operators-link-to-from-clause]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#from_clause
+[operators-link-to-from-clause]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#from_clause
 
 ### Arithmetic operators 
 <a id="arithmetic_operators"></a>
@@ -1470,7 +1470,7 @@ Result types for Unary Minus:
 
 Operators '+' and '-' can be used for arithmetic operations on dates.
 
-```zetasql
+```googlesql
 date_expression + int64_expression
 int64_expression + date_expression
 date_expression - int64_expression
@@ -1488,7 +1488,7 @@ days.
 
 **Example**
 
-```zetasql
+```googlesql
 SELECT DATE "2020-09-22" + 1 AS day_later, DATE "2020-09-22" - 7 AS week_ago
 
 /*------------+------------+
@@ -1501,7 +1501,7 @@ SELECT DATE "2020-09-22" + 1 AS day_later, DATE "2020-09-22" - 7 AS week_ago
 ### Datetime subtraction 
 <a id="datetime_subtraction"></a>
 
-```zetasql
+```googlesql
 date_expression - date_expression
 timestamp_expression - timestamp_expression
 datetime_expression - datetime_expression
@@ -1517,7 +1517,7 @@ Computes the difference between two datetime values as an interval.
 
 **Example**
 
-```zetasql
+```googlesql
 SELECT
   DATE "2021-05-20" - DATE "2020-04-19" AS date_diff,
   TIMESTAMP "2021-06-01 12:34:56.789" - TIMESTAMP "2021-05-31 00:00:00" AS time_diff
@@ -1534,7 +1534,7 @@ SELECT
 
 **Addition and subtraction**
 
-```zetasql
+```googlesql
 date_expression + interval_expression = DATETIME
 date_expression - interval_expression = DATETIME
 timestamp_expression + interval_expression = TIMESTAMP
@@ -1551,7 +1551,7 @@ value.
 
 **Example**
 
-```zetasql
+```googlesql
 SELECT
   DATE "2021-04-20" + INTERVAL 25 HOUR AS date_plus,
   TIMESTAMP "2021-05-02 00:01:02.345+00" - INTERVAL 10 SECOND AS time_minus;
@@ -1565,7 +1565,7 @@ SELECT
 
 **Multiplication and division**
 
-```zetasql
+```googlesql
 interval_expression * integer_expression = INTERVAL
 interval_expression / integer_expression = INTERVAL
 
@@ -1577,7 +1577,7 @@ Multiplies or divides an interval value by an integer.
 
 **Example**
 
-```zetasql
+```googlesql
 SELECT
   INTERVAL '1:2:3' HOUR TO SECOND * 10 AS mul1,
   INTERVAL 35 SECOND * 4 AS mul2,
@@ -1702,7 +1702,7 @@ This operator throws an error if <code>Y</code> is negative.</td>
 ### Logical operators 
 <a id="logical_operators"></a>
 
-ZetaSQL supports the `AND`, `OR`, and `NOT` logical operators.
+GoogleSQL supports the `AND`, `OR`, and `NOT` logical operators.
 Logical operators allow only `BOOL` or `NULL` input
 and use [three-valued logic][three-valued-logic]
 to produce a result. The result can be `TRUE`, `FALSE`, or `NULL`:
@@ -1732,7 +1732,7 @@ can be skipped if unnecessary.
 
 The examples in this section reference a table called `entry_table`:
 
-```zetasql
+```googlesql
 /*-------+
  | entry |
  +-------+
@@ -1743,7 +1743,7 @@ The examples in this section reference a table called `entry_table`:
  +-------*/
 ```
 
-```zetasql
+```googlesql
 SELECT 'a' FROM entry_table WHERE entry = 'a'
 
 -- a => 'a' = 'a' => TRUE
@@ -1757,7 +1757,7 @@ SELECT 'a' FROM entry_table WHERE entry = 'a'
  +-------*/
 ```
 
-```zetasql
+```googlesql
 SELECT entry FROM entry_table WHERE NOT (entry = 'a')
 
 -- a => NOT('a' = 'a') => NOT(TRUE) => FALSE
@@ -1772,7 +1772,7 @@ SELECT entry FROM entry_table WHERE NOT (entry = 'a')
  +-------*/
 ```
 
-```zetasql
+```googlesql
 SELECT entry FROM entry_table WHERE entry IS NULL
 
 -- a => 'a' IS NULL => FALSE
@@ -1791,7 +1791,7 @@ SELECT entry FROM entry_table WHERE entry IS NULL
 ### Graph concatenation operator 
 <a id="graph_concatenation_operator"></a>
 
-```zetasql
+```googlesql
 graph_path || graph_path [ || ... ]
 ```
 
@@ -1810,7 +1810,7 @@ Arguments:
 This operator produces an error if the last node in the first path isn't the
 same as the first node in the second path.
 
-```zetasql
+```googlesql
 -- This successfully produces the concatenated path called `full_path`.
 MATCH
   p=(src:Account)-[t1:Transfers]->(mid:Account),
@@ -1818,7 +1818,7 @@ MATCH
 LET full_path = p || q
 ```
 
-```zetasql
+```googlesql
 -- This produces an error because the first node of the path to be concatenated
 -- (mid2) isn't equal to the last node of the previous path (mid1).
 MATCH
@@ -1830,7 +1830,7 @@ LET full_path = p || q
 The first node in each subsequent path is removed from the
 concatenated path.
 
-```zetasql
+```googlesql
 -- The concatenated path called `full_path` contains these elements:
 -- src, t1, mid, t2, dst.
 MATCH
@@ -1848,7 +1848,7 @@ In the following query, a path called `p` and `q` are concatenated. Notice that
 second path. Also notice that the duplicate `mid` is removed from the
 concatenated path called `full_path`:
 
-```zetasql
+```googlesql
 GRAPH FinGraph
 MATCH
   p=(src:Account)-[t1:Transfers]->(mid:Account),
@@ -1873,7 +1873,7 @@ RETURN
 The following query produces an error because the last node for `p` must
 be the first node for `q`:
 
-```zetasql
+```googlesql
 -- Error: `mid1` and `mid2` aren't equal.
 GRAPH FinGraph
 MATCH
@@ -1885,7 +1885,7 @@ RETURN TO_JSON(full_path) AS results
 
 The following query produces an error because the path called `p` is `NULL`:
 
-```zetasql
+```googlesql
 -- Error: a graph path is NULL.
 GRAPH FinGraph
 MATCH
@@ -1898,7 +1898,7 @@ RETURN TO_JSON(full_path) AS results
 ### Graph logical operators 
 <a id="graph_logical_operators"></a>
 
-ZetaSQL supports the following logical operators in
+GoogleSQL supports the following logical operators in
 [element pattern label expressions][element-pattern-definition]:
 
 <table>
@@ -1937,12 +1937,12 @@ ZetaSQL supports the following logical operators in
   </tbody>
 </table>
 
-[element-pattern-definition]: https://github.com/google/zetasql/blob/master/docs/graph-patterns.md#element_pattern_definition
+[element-pattern-definition]: https://github.com/google/googlesql/blob/master/docs/graph-patterns.md#element_pattern_definition
 
 ### Graph predicates 
 <a id="graph_predicates"></a>
 
-ZetaSQL supports the following graph-specific predicates in
+GoogleSQL supports the following graph-specific predicates in
 graph expressions. A predicate can produce `TRUE`, `FALSE`, or `NULL`.
 
 +   [`PROPERTY_EXISTS` predicate][property-exists-predicate]
@@ -1966,7 +1966,7 @@ graph expressions. A predicate can produce `TRUE`, `FALSE`, or `NULL`.
 ### `IS DESTINATION` predicate 
 <a id="is_destination_predicate"></a>
 
-```zetasql
+```googlesql
 node IS [ NOT ] DESTINATION [ OF ] edge
 ```
 
@@ -1982,7 +1982,7 @@ Arguments:
 
 **Examples**
 
-```zetasql
+```googlesql
 GRAPH FinGraph
 MATCH (a:Account)-[transfer:Transfers]-(b:Account)
 WHERE a IS DESTINATION of transfer
@@ -1999,7 +1999,7 @@ RETURN a.id AS a_id, b.id AS b_id
  +-------------*/
 ```
 
-```zetasql
+```googlesql
 GRAPH FinGraph
 MATCH (a:Account)-[transfer:Transfers]-(b:Account)
 WHERE b IS DESTINATION of transfer
@@ -2019,7 +2019,7 @@ RETURN a.id AS a_id, b.id AS b_id
 ### `IS LABELED` predicate 
 <a id="is_labeled_predicate"></a>
 
-```zetasql
+```googlesql
 element IS [ NOT ] LABELED label_expression
 ```
 
@@ -2036,7 +2036,7 @@ Arguments:
 
 **Examples**
 
-```zetasql
+```googlesql
 GRAPH FinGraph
 MATCH (a)
 WHERE a IS LABELED Account | Person
@@ -2054,7 +2054,7 @@ RETURN a.id AS a_id, LABELS(a) AS labels
  +----------------*/
 ```
 
-```zetasql
+```googlesql
 GRAPH FinGraph
 MATCH (a)-[e]-(b:Account)
 WHERE e IS LABELED Transfers | Owns
@@ -2080,7 +2080,7 @@ ORDER BY a_id, b_id
  +------+-----------------------+------*/
 ```
 
-```zetasql
+```googlesql
 GRAPH FinGraph
 MATCH (a:Account {Id: 7})
 OPTIONAL MATCH (a)-[:OWNS]->(b)
@@ -2093,12 +2093,12 @@ RETURN a.Id AS a_id, b.Id AS b_id, b IS LABELED Account AS b_is_account
  +------+-----------------------+*/
 ```
 
-[label-expression-definition]: https://github.com/google/zetasql/blob/master/docs/graph-patterns.md#label_expression_definition
+[label-expression-definition]: https://github.com/google/googlesql/blob/master/docs/graph-patterns.md#label_expression_definition
 
 ### `IS SOURCE` predicate 
 <a id="is_source_predicate"></a>
 
-```zetasql
+```googlesql
 node IS [ NOT ] SOURCE [ OF ] edge
 ```
 
@@ -2114,7 +2114,7 @@ Arguments:
 
 **Examples**
 
-```zetasql
+```googlesql
 GRAPH FinGraph
 MATCH (a:Account)-[transfer:Transfers]-(b:Account)
 WHERE a IS SOURCE of transfer
@@ -2131,7 +2131,7 @@ RETURN a.id AS a_id, b.id AS b_id
  +-------------*/
 ```
 
-```zetasql
+```googlesql
 GRAPH FinGraph
 MATCH (a:Account)-[transfer:Transfers]-(b:Account)
 WHERE b IS SOURCE of transfer
@@ -2151,7 +2151,7 @@ RETURN a.id AS a_id, b.id AS b_id
 ### `PROPERTY_EXISTS` predicate 
 <a id="property_exists_predicate"></a>
 
-```zetasql
+```googlesql
 PROPERTY_EXISTS(element, element_property)
 ```
 
@@ -2170,7 +2170,7 @@ Arguments:
 
 **Example**
 
-```zetasql
+```googlesql
 GRAPH FinGraph
 MATCH (n:Person|Account WHERE PROPERTY_EXISTS(n, name))
 RETURN n.name
@@ -2187,7 +2187,7 @@ RETURN n.name
 ### `SAME` predicate 
 <a id="same_predicate"></a>
 
-```zetasql
+```googlesql
 SAME (element, element[, ...])
 ```
 
@@ -2209,7 +2209,7 @@ Produces an error if `element` is `NULL`.
 
 The following query checks to see if `a` and `b` aren't the same person.
 
-```zetasql
+```googlesql
 GRAPH FinGraph
 MATCH (src:Account)<-[transfer:Transfers]-(dest:Account)
 WHERE NOT SAME(src, dest)
@@ -2248,7 +2248,7 @@ value. These comparison operators are available:
         Returns <code>TRUE</code> if <code>X</code> is less than <code>Y</code>.
         
 
-This operator supports specifying <a href="https://github.com/google/zetasql/blob/master/docs/collation-concepts.md">collation</a>.
+This operator supports specifying <a href="https://github.com/google/googlesql/blob/master/docs/collation-concepts.md">collation</a>.
 
       </td>
     </tr>
@@ -2260,7 +2260,7 @@ This operator supports specifying <a href="https://github.com/google/zetasql/blo
         <code>Y</code>.
         
 
-This operator supports specifying <a href="https://github.com/google/zetasql/blob/master/docs/collation-concepts.md">collation</a>.
+This operator supports specifying <a href="https://github.com/google/googlesql/blob/master/docs/collation-concepts.md">collation</a>.
 
       </td>
     </tr>
@@ -2272,7 +2272,7 @@ This operator supports specifying <a href="https://github.com/google/zetasql/blo
         <code>Y</code>.
         
 
-This operator supports specifying <a href="https://github.com/google/zetasql/blob/master/docs/collation-concepts.md">collation</a>.
+This operator supports specifying <a href="https://github.com/google/googlesql/blob/master/docs/collation-concepts.md">collation</a>.
 
       </td>
     </tr>
@@ -2284,7 +2284,7 @@ This operator supports specifying <a href="https://github.com/google/zetasql/blo
         <code>Y</code>.
         
 
-This operator supports specifying <a href="https://github.com/google/zetasql/blob/master/docs/collation-concepts.md">collation</a>.
+This operator supports specifying <a href="https://github.com/google/googlesql/blob/master/docs/collation-concepts.md">collation</a>.
 
       </td>
     </tr>
@@ -2295,7 +2295,7 @@ This operator supports specifying <a href="https://github.com/google/zetasql/blo
         Returns <code>TRUE</code> if <code>X</code> is equal to <code>Y</code>.
         
 
-This operator supports specifying <a href="https://github.com/google/zetasql/blob/master/docs/collation-concepts.md">collation</a>.
+This operator supports specifying <a href="https://github.com/google/googlesql/blob/master/docs/collation-concepts.md">collation</a>.
 
       </td>
     </tr>
@@ -2307,7 +2307,7 @@ This operator supports specifying <a href="https://github.com/google/zetasql/blo
         <code>Y</code>.
         
 
-This operator supports specifying <a href="https://github.com/google/zetasql/blob/master/docs/collation-concepts.md">collation</a>.
+This operator supports specifying <a href="https://github.com/google/googlesql/blob/master/docs/collation-concepts.md">collation</a>.
 
       </td>
     </tr>
@@ -2322,7 +2322,7 @@ This operator supports specifying <a href="https://github.com/google/zetasql/blo
           evaluated only once in the former.
           
 
-This operator supports specifying <a href="https://github.com/google/zetasql/blob/master/docs/collation-concepts.md">collation</a>.
+This operator supports specifying <a href="https://github.com/google/googlesql/blob/master/docs/collation-concepts.md">collation</a>.
 
         </p>
       </td>
@@ -2414,14 +2414,14 @@ The following rules apply when comparing these data types:
       </tbody>
     </table>
 
-[data-type-comparable]: https://github.com/google/zetasql/blob/master/docs/data-types.md#comparable_data_types
+[data-type-comparable]: https://github.com/google/googlesql/blob/master/docs/data-types.md#comparable_data_types
 
-[json-functions]: https://github.com/google/zetasql/blob/master/docs/json_functions.md
+[json-functions]: https://github.com/google/googlesql/blob/master/docs/json_functions.md
 
 ### `EXISTS` operator 
 <a id="exists_operator"></a>
 
-```zetasql
+```googlesql
 EXISTS( subquery )
 ```
 
@@ -2437,7 +2437,7 @@ see [`EXISTS` subqueries][exists-subqueries].
 In this example, the `EXISTS` operator returns `FALSE` because there are no
 rows in `Words` where the direction is `south`:
 
-```zetasql
+```googlesql
 WITH Words AS (
   SELECT 'Intend' as value, 'east' as direction UNION ALL
   SELECT 'Secure', 'north' UNION ALL
@@ -2452,14 +2452,14 @@ SELECT EXISTS( SELECT value FROM Words WHERE direction = 'south' ) as result;
  +--------*/
 ```
 
-[exists-subqueries]: https://github.com/google/zetasql/blob/master/docs/subqueries.md#exists_subquery_concepts
+[exists-subqueries]: https://github.com/google/googlesql/blob/master/docs/subqueries.md#exists_subquery_concepts
 
 ### `IN` operator 
 <a id="in_operators"></a>
 
 The `IN` operator supports the following syntax:
 
-```zetasql
+```googlesql
 search_value [NOT] IN value_set
 
 value_set:
@@ -2488,7 +2488,7 @@ equal value is excluded, otherwise `NULL`.
       that returns a column of values from an array expression. This is
       equivalent to:
 
-      ```zetasql
+      ```googlesql
       IN (SELECT element FROM UNNEST(array_expression) AS element)
       ```
 
@@ -2577,7 +2577,7 @@ See the [Struct Type][operators-link-to-struct-type] topic for more information.
 You can use these `WITH` clauses to emulate temporary tables for
 `Words` and `Items` in the following examples:
 
-```zetasql
+```googlesql
 WITH Words AS (
   SELECT 'Intend' as value UNION ALL
   SELECT 'Secure' UNION ALL
@@ -2598,7 +2598,7 @@ SELECT * FROM Words;
  +----------*/
 ```
 
-```zetasql
+```googlesql
 WITH
   Items AS (
     SELECT STRUCT('blue' AS color, 'round' AS shape) AS info UNION ALL
@@ -2618,7 +2618,7 @@ SELECT * FROM Items;
 
 Example with `IN` and an expression:
 
-```zetasql
+```googlesql
 SELECT * FROM Words WHERE value IN ('Intend', 'Secure');
 
 /*----------+
@@ -2632,7 +2632,7 @@ SELECT * FROM Words WHERE value IN ('Intend', 'Secure');
 
 Example with `NOT IN` and an expression:
 
-```zetasql
+```googlesql
 SELECT * FROM Words WHERE value NOT IN ('Intend');
 
 /*----------+
@@ -2646,7 +2646,7 @@ SELECT * FROM Words WHERE value NOT IN ('Intend');
 
 Example with `IN`, a scalar subquery, and an expression:
 
-```zetasql
+```googlesql
 SELECT * FROM Words WHERE value IN ((SELECT 'Intend'), 'Clarity');
 
 /*----------+
@@ -2660,7 +2660,7 @@ SELECT * FROM Words WHERE value IN ((SELECT 'Intend'), 'Clarity');
 
 Example with `IN` and an `UNNEST` operation:
 
-```zetasql
+```googlesql
 SELECT * FROM Words WHERE value IN UNNEST(['Secure', 'Clarity']);
 
 /*----------+
@@ -2673,7 +2673,7 @@ SELECT * FROM Words WHERE value IN UNNEST(['Secure', 'Clarity']);
 
 Example with `IN` and a struct:
 
-```zetasql
+```googlesql
 SELECT
   (SELECT AS STRUCT Items.info) as item
 FROM
@@ -2689,17 +2689,17 @@ WHERE (info.shape, info.color) IN (('round', 'blue'));
 
 [semantic-rules-in]: #semantic_rules_in
 
-[operators-subqueries]: https://github.com/google/zetasql/blob/master/docs/subqueries.md#about_subqueries
+[operators-subqueries]: https://github.com/google/googlesql/blob/master/docs/subqueries.md#about_subqueries
 
-[operators-link-to-unnest]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#unnest_operator
+[operators-link-to-unnest]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#unnest_operator
 
-[collation]: https://github.com/google/zetasql/blob/master/docs/collation-concepts.md#collate_funcs
+[collation]: https://github.com/google/googlesql/blob/master/docs/collation-concepts.md#collate_funcs
 
-[operators-link-to-from-clause]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#from_clause
+[operators-link-to-from-clause]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#from_clause
 
-[operators-link-to-filtering-arrays]: https://github.com/google/zetasql/blob/master/docs/arrays.md#filtering_arrays
+[operators-link-to-filtering-arrays]: https://github.com/google/googlesql/blob/master/docs/arrays.md#filtering_arrays
 
-[operators-link-to-struct-type]: https://github.com/google/zetasql/blob/master/docs/data-types.md#struct_type
+[operators-link-to-struct-type]: https://github.com/google/googlesql/blob/master/docs/data-types.md#struct_type
 
 ### `IS` operators 
 <a id="is_operators"></a>
@@ -2803,12 +2803,12 @@ inverted.
   </tbody>
 </table>
 
-[operators-link-to-math-functions]: https://github.com/google/zetasql/blob/master/docs/mathematical_functions.md
+[operators-link-to-math-functions]: https://github.com/google/googlesql/blob/master/docs/mathematical_functions.md
 
 ### `IS DISTINCT FROM` operator 
 <a id="is_distinct"></a>
 
-```zetasql
+```googlesql
 expression_1 IS [NOT] DISTINCT FROM expression_2
 ```
 
@@ -2847,48 +2847,48 @@ Input values:
 
 These return `TRUE`:
 
-```zetasql
+```googlesql
 SELECT 1 IS DISTINCT FROM 2
 ```
 
-```zetasql
+```googlesql
 SELECT 1 IS DISTINCT FROM NULL
 ```
 
-```zetasql
+```googlesql
 SELECT 1 IS NOT DISTINCT FROM 1
 ```
 
-```zetasql
+```googlesql
 SELECT NULL IS NOT DISTINCT FROM NULL
 ```
 
 These return `FALSE`:
 
-```zetasql
+```googlesql
 SELECT NULL IS DISTINCT FROM NULL
 ```
 
-```zetasql
+```googlesql
 SELECT 1 IS DISTINCT FROM 1
 ```
 
-```zetasql
+```googlesql
 SELECT 1 IS NOT DISTINCT FROM 2
 ```
 
-```zetasql
+```googlesql
 SELECT 1 IS NOT DISTINCT FROM NULL
 ```
 
-[operators-distinct]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#select_distinct
+[operators-distinct]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#select_distinct
 
-[operators-group-by]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#group_by_clause
+[operators-group-by]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#group_by_clause
 
 ### `LIKE` operator 
 <a id="like_operator"></a>
 
-```zetasql
+```googlesql
 expression_1 [NOT] LIKE expression_2
 ```
 
@@ -2974,32 +2974,32 @@ This operator supports [collation][collation], but caveats apply:
 The following examples illustrate how you can check to see if the string in the
 first operand matches a pattern specified by the second operand.
 
-```zetasql
+```googlesql
 -- Returns TRUE
 SELECT 'apple' LIKE 'a%';
 ```
 
-```zetasql
+```googlesql
 -- Returns FALSE
 SELECT '%a' LIKE 'apple';
 ```
 
-```zetasql
+```googlesql
 -- Returns FALSE
 SELECT 'apple' NOT LIKE 'a%';
 ```
 
-```zetasql
+```googlesql
 -- Returns TRUE
 SELECT '%a' NOT LIKE 'apple';
 ```
 
-```zetasql
+```googlesql
 -- Produces an error
 SELECT NULL LIKE 'a%';
 ```
 
-```zetasql
+```googlesql
 -- Produces an error
 SELECT 'apple' LIKE NULL;
 ```
@@ -3007,7 +3007,7 @@ SELECT 'apple' LIKE NULL;
 The following example illustrates how to search multiple patterns in an array
 to find a match with the `LIKE` operator:
 
-```zetasql
+```googlesql
 WITH Words AS
  (SELECT 'Intend with clarity.' as value UNION ALL
   SELECT 'Secure with intention.' UNION ALL
@@ -3027,32 +3027,32 @@ WHERE ARRAY_INCLUDES(['%ity%', '%and%'], pattern->(Words.value LIKE pattern));
 The following examples illustrate how collation can be used with the `LIKE`
 operator.
 
-```zetasql
+```googlesql
 -- Returns FALSE
 'Foo' LIKE '%foo%'
 ```
 
-```zetasql
+```googlesql
 -- Returns TRUE
 COLLATE('Foo', 'und:ci') LIKE COLLATE('%foo%', 'und:ci');
 ```
 
-```zetasql
+```googlesql
 -- Returns TRUE
 COLLATE('Foo', 'und:ci') = COLLATE('foo', 'und:ci');
 ```
 
-```zetasql
+```googlesql
 -- Produces an error
 COLLATE('Foo', 'und:ci') LIKE COLLATE('%foo%', 'binary');
 ```
 
-```zetasql
+```googlesql
 -- Produces an error
 COLLATE('Foo', 'und:ci') LIKE COLLATE('%f_o%', 'und:ci');
 ```
 
-```zetasql
+```googlesql
 -- Returns TRUE
 COLLATE('Foo_', 'und:ci') LIKE COLLATE('%foo\\_%', 'und:ci');
 ```
@@ -3062,17 +3062,17 @@ case. While the difference between `ß` and `ẞ` is case difference (tertiary
 difference), the difference between sharp `s` and `ss` is secondary and
 considered not equal using the `und:ci` collator. For example:
 
-```zetasql
+```googlesql
 -- Returns FALSE
 'MASSE' LIKE 'Maße';
 ```
 
-```zetasql
+```googlesql
 -- Returns FALSE
 COLLATE('MASSE', 'und:ci') LIKE '%Maße%';
 ```
 
-```zetasql
+```googlesql
 -- Returns FALSE
 COLLATE('MASSE', 'und:ci') = COLLATE('Maße', 'und:ci');
 ```
@@ -3086,17 +3086,17 @@ secondary strength.
 
 For example:
 
-```zetasql
+```googlesql
 -- Returns FALSE
 '\u3042' LIKE '%\u30A2%';
 ```
 
-```zetasql
+```googlesql
 -- Returns TRUE
 COLLATE('\u3042', 'und:ci') LIKE COLLATE('%\u30A2%', 'und:ci');
 ```
 
-```zetasql
+```googlesql
 -- Returns TRUE
 COLLATE('\u3042', 'und:ci') = COLLATE('\u30A2', 'und:ci');
 ```
@@ -3113,17 +3113,17 @@ collation units are considered the same.
 In the following examples, the difference between `'\u0061\u030A'` and
 `'\u00C5'` is tertiary.
 
-```zetasql
+```googlesql
 -- Returns FALSE
 '\u0061\u030A' LIKE '%\u00C5%';
 ```
 
-```zetasql
+```googlesql
 -- Returns TRUE
 COLLATE('\u0061\u030A', 'und:ci') LIKE '%\u00C5%';
 ```
 
-```zetasql
+```googlesql
 -- Returns TRUE
 COLLATE('\u0061\u030A', 'und:ci') = COLLATE('\u00C5', 'und:ci');
 ```
@@ -3131,19 +3131,19 @@ COLLATE('\u0061\u030A', 'und:ci') = COLLATE('\u00C5', 'und:ci');
 In the following example, `'\u0083'` is a `NO BREAK HERE` character and
 is ignored.
 
-```zetasql
+```googlesql
 -- Returns FALSE
 '\u0083' LIKE '';
 ```
 
-```zetasql
+```googlesql
 -- Returns TRUE
 COLLATE('\u0083', 'und:ci') LIKE '';
 ```
 
 [ignorable-chars]: https://www.unicode.org/charts/collation/chart_Ignored.html
 
-[collation]: https://github.com/google/zetasql/blob/master/docs/collation-concepts.md#collate_funcs
+[collation]: https://github.com/google/googlesql/blob/master/docs/collation-concepts.md#collate_funcs
 
 [grapheme-cluster]: https://www.unicode.org/reports/tr29/#Grapheme_Cluster_Boundaries
 
@@ -3152,7 +3152,7 @@ COLLATE('\u0083', 'und:ci') LIKE '';
 
 The quantified `LIKE` operator supports the following syntax:
 
-```zetasql
+```googlesql
 search_value [NOT] LIKE quantifier patterns
 
 quantifier:
@@ -3266,7 +3266,7 @@ semantics apply in this order:
 You can use these `WITH` clauses to emulate temporary tables for
 `Words` in the following examples:
 
-```zetasql
+```googlesql
 WITH Words AS
  (SELECT 'Intend with clarity.' as value UNION ALL
   SELECT 'Secure with intention.' UNION ALL
@@ -3284,7 +3284,7 @@ WITH Words AS
 The following example checks to see if the `Intend%` or `%intention%`
 pattern exists in a value and produces that value if either pattern is found:
 
-```zetasql
+```googlesql
 SELECT * FROM Words WHERE value LIKE ANY ('Intend%', '%intention%');
 
 /*------------------------+
@@ -3300,7 +3300,7 @@ pattern exists in a value and produces that value if the pattern is found.
 
 Example with `LIKE ALL`:
 
-```zetasql
+```googlesql
 SELECT * FROM Words WHERE value LIKE ALL ('%ity%');
 
 /*-----------------------+
@@ -3315,7 +3315,7 @@ The following example checks to see if the `%ity%`
 pattern exists in a value produces that value if the pattern
 isn't found:
 
-```zetasql
+```googlesql
 SELECT * FROM Words WHERE value NOT LIKE ('%ity%');
 
 /*------------------------+
@@ -3327,7 +3327,7 @@ SELECT * FROM Words WHERE value NOT LIKE ('%ity%');
 
 You can use a subquery as an expression in `patterns`. For example:
 
-```zetasql
+```googlesql
 SELECT * FROM Words WHERE value LIKE ANY ((SELECT '%ion%'), '%and%');
 
 /*------------------------+
@@ -3340,7 +3340,7 @@ SELECT * FROM Words WHERE value LIKE ANY ((SELECT '%ion%'), '%and%');
 
 You can pass in a subquery for `patterns`. For example:
 
-```zetasql
+```googlesql
 SELECT * FROM Words WHERE value LIKE ANY (SELECT '%with%');
 
 /*------------------------+
@@ -3353,7 +3353,7 @@ SELECT * FROM Words WHERE value LIKE ANY (SELECT '%with%');
 
 You can pass in an array for `patterns`. For example:
 
-```zetasql
+```googlesql
 SELECT * FROM Words WHERE value LIKE ANY UNNEST(['%ion%', '%and%']);
 
 /*------------------------+
@@ -3366,7 +3366,7 @@ SELECT * FROM Words WHERE value LIKE ANY UNNEST(['%ion%', '%and%']);
 
 You can pass in an array and subquery for `patterns`. For example:
 
-```zetasql
+```googlesql
 SELECT *
 FROM Words
 WHERE
@@ -3383,7 +3383,7 @@ WHERE
 The following queries illustrate some of the semantic rules for the
 quantified `LIKE` operator:
 
-```zetasql
+```googlesql
 SELECT
   NULL LIKE ANY ('a', 'b'), -- NULL
   'a' LIKE ANY ('a', 'c'), -- TRUE
@@ -3397,7 +3397,7 @@ SELECT
   'a' NOT LIKE ANY ('b', NULL); -- TRUE
 ```
 
-```zetasql
+```googlesql
 SELECT
   NULL LIKE SOME ('a', 'b'), -- NULL
   'a' LIKE SOME ('a', 'c'), -- TRUE
@@ -3411,7 +3411,7 @@ SELECT
   'a' NOT LIKE SOME ('b', NULL); -- TRUE
 ```
 
-```zetasql
+```googlesql
 SELECT
   NULL LIKE ALL ('a', 'b'), -- NULL
   'a' LIKE ALL ('a', '%a%'), -- TRUE
@@ -3428,14 +3428,14 @@ SELECT
 The following queries illustrate some of the semantic rules for the
 quantified `LIKE` operator and collation:
 
-```zetasql
+```googlesql
 SELECT
   COLLATE('a', 'und:ci') LIKE ALL ('a', 'A'), -- TRUE
   'a' LIKE ALL (COLLATE('a', 'und:ci'), 'A'), -- TRUE
   'a' LIKE ALL ('%A%', COLLATE('a', 'und:ci')); -- TRUE
 ```
 
-```zetasql
+```googlesql
 -- ERROR: BYTES and STRING values can't be used together.
 SELECT b'a' LIKE ALL (COLLATE('a', 'und:ci'), 'A');
 ```
@@ -3446,11 +3446,11 @@ SELECT b'a' LIKE ALL (COLLATE('a', 'und:ci'), 'A');
 
 [reg-expressions-quant-like]: #reg_expressions_quant_like
 
-[operators-subqueries]: https://github.com/google/zetasql/blob/master/docs/subqueries.md#about_subqueries
+[operators-subqueries]: https://github.com/google/googlesql/blob/master/docs/subqueries.md#about_subqueries
 
-[operators-link-to-unnest]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#unnest_operator
+[operators-link-to-unnest]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#unnest_operator
 
-[collation]: https://github.com/google/zetasql/blob/master/docs/collation-concepts.md#collate_funcs
+[collation]: https://github.com/google/googlesql/blob/master/docs/collation-concepts.md#collate_funcs
 
 ### `NEW` operator 
 <a id="new_operator"></a>
@@ -3460,7 +3460,7 @@ The `NEW` operator only supports protocol buffers and uses the following syntax:
  + `NEW protocol_buffer {...}`: Creates a
 protocol buffer using a map constructor.
 
-  ```zetasql
+  ```googlesql
   NEW protocol_buffer {
     field_name: literal_or_expression
     field_name { ... }
@@ -3470,7 +3470,7 @@ protocol buffer using a map constructor.
 +   `NEW protocol_buffer (...)`: Creates a protocol buffer using a parenthesized
     list of arguments.
 
-    ```zetasql
+    ```googlesql
     NEW protocol_buffer(field [AS alias], ...field [AS alias])
     ```
 
@@ -3478,7 +3478,7 @@ protocol buffer using a map constructor.
 
 The following example uses the `NEW` operator with a map constructor:
 
-```zetasql
+```googlesql
 NEW Universe {
   name: "Sol"
   closest_planets: ["Mercury", "Venus", "Earth" ]
@@ -3500,19 +3500,19 @@ NEW Universe {
 The following example uses the `NEW` operator with a parenthesized list of
 arguments:
 
-```zetasql
+```googlesql
 SELECT
   key,
   name,
-  NEW zetasql.examples.music.Chart(key AS rank, name AS chart_name)
+  NEW googlesql.examples.music.Chart(key AS rank, name AS chart_name)
 FROM
   (SELECT 1 AS key, "2" AS name);
 ```
 
-To learn more about protocol buffers in ZetaSQL, see [Work with
+To learn more about protocol buffers in GoogleSQL, see [Work with
 protocol buffers][protocol-buffers].
 
-[protocol-buffers]: https://github.com/google/zetasql/blob/master/docs/protocol-buffers.md
+[protocol-buffers]: https://github.com/google/googlesql/blob/master/docs/protocol-buffers.md
 
 ### Concatenation operator 
 <a id="concatenation_operator"></a>
@@ -3550,12 +3550,12 @@ Note: The concatenation operator is translated into a nested
 [`CONCAT`][concat] function call. For example, `'A' || 'B' || 'C'` becomes
 `CONCAT('A', CONCAT('B', 'C'))`.
 
-[concat]: https://github.com/google/zetasql/blob/master/docs/string_functions.md#concat
+[concat]: https://github.com/google/googlesql/blob/master/docs/string_functions.md#concat
 
 ### `WITH` expression 
 <a id="with_expression"></a>
 
-```zetasql
+```googlesql
 WITH(variable_assignment[, ...], result_expression)
 
 variable_assignment:
@@ -3599,7 +3599,7 @@ expressions within the `WITH` expression. Returns the value of
 The following example first concatenates variable `a` with `b`, then variable
 `b` with `c`:
 
-```zetasql
+```googlesql
 SELECT WITH(a AS '123',               -- a is '123'
             b AS CONCAT(a, '456'),    -- b is '123456'
             c AS '789',               -- c is '789'
@@ -3615,7 +3615,7 @@ SELECT WITH(a AS '123',               -- a is '123'
 In the following example, the volatile expression `RAND()` is evaluated once.
 The value of the result expression is always `0.0`:
 
-```zetasql
+```googlesql
 SELECT WITH(a AS RAND(), a - a);
 
 /*---------+
@@ -3628,7 +3628,7 @@ SELECT WITH(a AS RAND(), a - a);
 Aggregate or analytic function
 results can be stored in variables.
 
-```zetasql
+```googlesql
 SELECT WITH(s AS SUM(input), c AS COUNT(input), s/c)
 FROM UNNEST([1.0, 2.0, 3.0]) AS input;
 
@@ -3642,7 +3642,7 @@ FROM UNNEST([1.0, 2.0, 3.0]) AS input;
 Variables can't be used in aggregate or
 analytic function call arguments.
 
-```zetasql
+```googlesql
 SELECT WITH(diff AS a - b, AVG(diff))
 FROM UNNEST([
               STRUCT(1 AS a, 2 AS b),
@@ -3657,7 +3657,7 @@ FROM UNNEST([
 A `WITH` expression is different from a `WITH` clause. The following example
 shows a query that uses both:
 
-```zetasql
+```googlesql
 WITH my_table AS (
   SELECT 1 AS x, 2 AS y
   UNION ALL

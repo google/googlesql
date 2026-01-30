@@ -4,7 +4,7 @@
 
 # Date functions
 
-ZetaSQL supports the following date functions.
+GoogleSQL supports the following date functions.
 
 ## Function list
 
@@ -18,7 +18,7 @@ ZetaSQL supports the following date functions.
   <tbody>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/date_functions.md#current_date"><code>CURRENT_DATE</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/date_functions.md#current_date"><code>CURRENT_DATE</code></a>
 </td>
   <td>
     Returns the current date as a <code>DATE</code> value.
@@ -26,7 +26,7 @@ ZetaSQL supports the following date functions.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/date_functions.md#date"><code>DATE</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/date_functions.md#date"><code>DATE</code></a>
 </td>
   <td>
     Constructs a <code>DATE</code> value.
@@ -34,7 +34,7 @@ ZetaSQL supports the following date functions.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/date_functions.md#date_add"><code>DATE_ADD</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/date_functions.md#date_add"><code>DATE_ADD</code></a>
 </td>
   <td>
     Adds a specified time interval to a <code>DATE</code> value.
@@ -42,7 +42,7 @@ ZetaSQL supports the following date functions.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/date_functions.md#date_diff"><code>DATE_DIFF</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/date_functions.md#date_diff"><code>DATE_DIFF</code></a>
 </td>
   <td>
     Gets the number of unit boundaries between two <code>DATE</code> values
@@ -51,7 +51,7 @@ ZetaSQL supports the following date functions.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/date_functions.md#date_from_unix_date"><code>DATE_FROM_UNIX_DATE</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/date_functions.md#date_from_unix_date"><code>DATE_FROM_UNIX_DATE</code></a>
 </td>
   <td>
     Interprets an <code>INT64</code> expression as the number of days
@@ -61,7 +61,7 @@ ZetaSQL supports the following date functions.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/date_functions.md#date_sub"><code>DATE_SUB</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/date_functions.md#date_sub"><code>DATE_SUB</code></a>
 </td>
   <td>
     Subtracts a specified time interval from a <code>DATE</code> value.
@@ -69,7 +69,7 @@ ZetaSQL supports the following date functions.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/date_functions.md#date_trunc"><code>DATE_TRUNC</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/date_functions.md#date_trunc"><code>DATE_TRUNC</code></a>
 </td>
   <td>
     
@@ -81,7 +81,7 @@ ZetaSQL supports the following date functions.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/date_functions.md#extract"><code>EXTRACT</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/date_functions.md#extract"><code>EXTRACT</code></a>
 </td>
   <td>
     Extracts part of a date from a <code>DATE</code> value.
@@ -89,7 +89,7 @@ ZetaSQL supports the following date functions.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/date_functions.md#format_date"><code>FORMAT_DATE</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/date_functions.md#format_date"><code>FORMAT_DATE</code></a>
 </td>
   <td>
     Formats a <code>DATE</code> value according to a specified format string.
@@ -97,17 +97,17 @@ ZetaSQL supports the following date functions.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/array_functions.md#generate_date_array"><code>GENERATE_DATE_ARRAY</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/array_functions.md#generate_date_array"><code>GENERATE_DATE_ARRAY</code></a>
 </td>
   <td>
     Generates an array of dates in a range.
-    <br>For more information, see <a href="https://github.com/google/zetasql/blob/master/docs/array_functions.md">Array functions</a>.
+    <br>For more information, see <a href="https://github.com/google/googlesql/blob/master/docs/array_functions.md">Array functions</a>.
 
   </td>
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/date_functions.md#last_day"><code>LAST_DAY</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/date_functions.md#last_day"><code>LAST_DAY</code></a>
 </td>
   <td>
     Gets the last day in a specified time period that contains a
@@ -116,7 +116,7 @@ ZetaSQL supports the following date functions.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/date_functions.md#parse_date"><code>PARSE_DATE</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/date_functions.md#parse_date"><code>PARSE_DATE</code></a>
 </td>
   <td>
     Converts a <code>STRING</code> value to a <code>DATE</code> value.
@@ -125,7 +125,7 @@ ZetaSQL supports the following date functions.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/date_functions.md#unix_date"><code>UNIX_DATE</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/date_functions.md#unix_date"><code>UNIX_DATE</code></a>
 </td>
   <td>
     Converts a <code>DATE</code> value to the number of days since 1970-01-01.
@@ -138,15 +138,15 @@ ZetaSQL supports the following date functions.
 
 ## `CURRENT_DATE`
 
-```zetasql
+```googlesql
 CURRENT_DATE()
 ```
 
-```zetasql
+```googlesql
 CURRENT_DATE(time_zone_expression)
 ```
 
-```zetasql
+```googlesql
 CURRENT_DATE
 ```
 
@@ -174,7 +174,7 @@ yield the same value.
 
 The following query produces the current date in the default time zone:
 
-```zetasql
+```googlesql
 SELECT CURRENT_DATE() AS the_date;
 
 /*--------------+
@@ -186,7 +186,7 @@ SELECT CURRENT_DATE() AS the_date;
 
 The following queries produce the current date in a specified time zone:
 
-```zetasql
+```googlesql
 SELECT CURRENT_DATE('America/Los_Angeles') AS the_date;
 
 /*--------------+
@@ -196,7 +196,7 @@ SELECT CURRENT_DATE('America/Los_Angeles') AS the_date;
  +--------------*/
 ```
 
-```zetasql
+```googlesql
 SELECT CURRENT_DATE('-08') AS the_date;
 
 /*--------------+
@@ -209,7 +209,7 @@ SELECT CURRENT_DATE('-08') AS the_date;
 The following query produces the current date in the default time zone.
 Parentheses aren't needed if the function has no arguments.
 
-```zetasql
+```googlesql
 SELECT CURRENT_DATE AS the_date;
 
 /*--------------+
@@ -219,19 +219,19 @@ SELECT CURRENT_DATE AS the_date;
  +--------------*/
 ```
 
-[date-timezone-definitions]: https://github.com/google/zetasql/blob/master/docs/data-types.md#time_zones
+[date-timezone-definitions]: https://github.com/google/googlesql/blob/master/docs/data-types.md#time_zones
 
 ## `DATE`
 
-```zetasql
+```googlesql
 DATE(year, month, day)
 ```
 
-```zetasql
+```googlesql
 DATE(timestamp_expression)
 ```
 
-```zetasql
+```googlesql
 DATE(timestamp_expression, time_zone_expression)
 ```
 
@@ -261,7 +261,7 @@ This function supports the following arguments:
 
 **Example**
 
-```zetasql
+```googlesql
 SELECT
   DATE(2016, 12, 25) AS date_ymd,
   DATE(DATETIME '2016-12-25 23:59:59') AS date_dt,
@@ -274,11 +274,11 @@ SELECT
  +------------+------------+------------*/
 ```
 
-[date-timezone-definitions]: https://github.com/google/zetasql/blob/master/docs/timestamp_functions.md#timezone_definitions
+[date-timezone-definitions]: https://github.com/google/googlesql/blob/master/docs/timestamp_functions.md#timezone_definitions
 
 ## `DATE_ADD`
 
-```zetasql
+```googlesql
 DATE_ADD(date_expression, INTERVAL int64_expression date_part)
 ```
 
@@ -305,7 +305,7 @@ DATE
 
 **Example**
 
-```zetasql
+```googlesql
 SELECT DATE_ADD(DATE '2008-12-25', INTERVAL 5 DAY) AS five_days_later;
 
 /*--------------------+
@@ -317,7 +317,7 @@ SELECT DATE_ADD(DATE '2008-12-25', INTERVAL 5 DAY) AS five_days_later;
 
 ## `DATE_DIFF`
 
-```zetasql
+```googlesql
 DATE_DIFF(end_date, start_date, granularity)
 ```
 
@@ -362,7 +362,7 @@ behaves like `TIMESTAMP_DIFF(TIMESTAMP, TIMESTAMP, PART)`.
 
 **Example**
 
-```zetasql
+```googlesql
 SELECT DATE_DIFF(DATE '2010-07-07', DATE '2008-12-25', DAY) AS days_diff;
 
 /*-----------+
@@ -372,7 +372,7 @@ SELECT DATE_DIFF(DATE '2010-07-07', DATE '2008-12-25', DAY) AS days_diff;
  +-----------*/
 ```
 
-```zetasql
+```googlesql
 SELECT
   DATE_DIFF(DATE '2017-10-15', DATE '2017-10-14', DAY) AS days_diff,
   DATE_DIFF(DATE '2017-10-15', DATE '2017-10-14', WEEK) AS weeks_diff;
@@ -397,7 +397,7 @@ with the date part `ISOYEAR` returns 2 because the second date belongs to the
 ISO year 2015. The first Thursday of the 2015 calendar year was 2015-01-01, so
 the ISO year 2015 begins on the preceding Monday, 2014-12-29.
 
-```zetasql
+```googlesql
 SELECT
   DATE_DIFF('2017-12-30', '2014-12-30', YEAR) AS year_diff,
   DATE_DIFF('2017-12-30', '2014-12-30', ISOYEAR) AS isoyear_diff;
@@ -416,7 +416,7 @@ uses weeks that begin on Sunday. `DATE_DIFF` with the date part `WEEK(MONDAY)`
 returns 1. `DATE_DIFF` with the date part `ISOWEEK` also returns 1 because
 ISO weeks begin on Monday.
 
-```zetasql
+```googlesql
 SELECT
   DATE_DIFF('2017-12-18', '2017-12-17', WEEK) AS week_diff,
   DATE_DIFF('2017-12-18', '2017-12-17', WEEK(MONDAY)) AS week_weekday_diff,
@@ -435,7 +435,7 @@ SELECT
 
 ## `DATE_FROM_UNIX_DATE`
 
-```zetasql
+```googlesql
 DATE_FROM_UNIX_DATE(int64_expression)
 ```
 
@@ -449,7 +449,7 @@ DATE
 
 **Example**
 
-```zetasql
+```googlesql
 SELECT DATE_FROM_UNIX_DATE(14238) AS date_from_epoch;
 
 /*-----------------+
@@ -461,7 +461,7 @@ SELECT DATE_FROM_UNIX_DATE(14238) AS date_from_epoch;
 
 ## `DATE_SUB`
 
-```zetasql
+```googlesql
 DATE_SUB(date_expression, INTERVAL int64_expression date_part)
 ```
 
@@ -488,7 +488,7 @@ DATE
 
 **Example**
 
-```zetasql
+```googlesql
 SELECT DATE_SUB(DATE '2008-12-25', INTERVAL 5 DAY) AS five_days_ago;
 
 /*---------------+
@@ -500,15 +500,15 @@ SELECT DATE_SUB(DATE '2008-12-25', INTERVAL 5 DAY) AS five_days_ago;
 
 ## `DATE_TRUNC`
 
-```zetasql
+```googlesql
 DATE_TRUNC(date_value, date_granularity)
 ```
 
-```zetasql
+```googlesql
 DATE_TRUNC(datetime_value, datetime_granularity)
 ```
 
-```zetasql
+```googlesql
 DATE_TRUNC(timestamp_value, timestamp_granularity[, time_zone])
 ```
 
@@ -628,7 +628,7 @@ The same data type as the first argument passed into this function.
 
 **Examples**
 
-```zetasql
+```googlesql
 SELECT DATE_TRUNC(DATE '2008-12-25', MONTH) AS month;
 
 /*------------+
@@ -642,7 +642,7 @@ In the following example, the original date falls on a Sunday. Because
 the `date_part` is `WEEK(MONDAY)`, `DATE_TRUNC` returns the `DATE` for the
 preceding Monday.
 
-```zetasql
+```googlesql
 SELECT date AS original, DATE_TRUNC(date, WEEK(MONDAY)) AS truncated
 FROM (SELECT DATE('2017-11-05') AS date);
 
@@ -661,7 +661,7 @@ Gregorian calendar year. The first Thursday of the 2015 calendar year was
 Therefore the ISO year boundary preceding the `date_expression` 2015-06-15 is
 2014-12-29.
 
-```zetasql
+```googlesql
 SELECT
   DATE_TRUNC('2015-06-15', ISOYEAR) AS isoyear_boundary,
   EXTRACT(ISOYEAR FROM DATE '2015-06-15') AS isoyear_number;
@@ -681,7 +681,7 @@ SELECT
 
 ## `EXTRACT`
 
-```zetasql
+```googlesql
 EXTRACT(part FROM date_expression)
 ```
 
@@ -722,7 +722,7 @@ INT64
 In the following example, `EXTRACT` returns a value corresponding to the `DAY`
 date part.
 
-```zetasql
+```googlesql
 SELECT EXTRACT(DAY FROM DATE '2013-12-25') AS the_day;
 
 /*---------+
@@ -735,7 +735,7 @@ SELECT EXTRACT(DAY FROM DATE '2013-12-25') AS the_day;
 In the following example, `EXTRACT` returns values corresponding to different
 date parts from a column of dates near the end of the year.
 
-```zetasql
+```googlesql
 SELECT
   date,
   EXTRACT(ISOYEAR FROM date) AS isoyear,
@@ -773,7 +773,7 @@ In the following example, `date_expression` falls on a Sunday. `EXTRACT`
 calculates the first column using weeks that begin on Sunday, and it calculates
 the second column using weeks that begin on Monday.
 
-```zetasql
+```googlesql
 WITH table AS (SELECT DATE('2017-11-05') AS date)
 SELECT
   date,
@@ -793,7 +793,7 @@ SELECT
 
 ## `FORMAT_DATE`
 
-```zetasql
+```googlesql
 FORMAT_DATE(format_string, date_expr)
 ```
 
@@ -813,7 +813,7 @@ Formats a `DATE` value according to a specified format string.
 
 **Examples**
 
-```zetasql
+```googlesql
 SELECT FORMAT_DATE('%x', DATE '2008-12-25') AS US_format;
 
 /*------------+
@@ -823,7 +823,7 @@ SELECT FORMAT_DATE('%x', DATE '2008-12-25') AS US_format;
  +------------*/
 ```
 
-```zetasql
+```googlesql
 SELECT FORMAT_DATE('%b-%d-%Y', DATE '2008-12-25') AS formatted;
 
 /*-------------+
@@ -833,7 +833,7 @@ SELECT FORMAT_DATE('%b-%d-%Y', DATE '2008-12-25') AS formatted;
  +-------------*/
 ```
 
-```zetasql
+```googlesql
 SELECT FORMAT_DATE('%b %Y', DATE '2008-12-25') AS formatted;
 
 /*-------------+
@@ -843,11 +843,11 @@ SELECT FORMAT_DATE('%b %Y', DATE '2008-12-25') AS formatted;
  +-------------*/
 ```
 
-[date-format-elements]: https://github.com/google/zetasql/blob/master/docs/format-elements.md#format_elements_date_time
+[date-format-elements]: https://github.com/google/googlesql/blob/master/docs/format-elements.md#format_elements_date_time
 
 ## `LAST_DAY`
 
-```zetasql
+```googlesql
 LAST_DAY(date_expression[, date_part])
 ```
 
@@ -881,7 +881,7 @@ If this parameter isn't used, the default value is `MONTH`.
 
 These both return the last day of the month:
 
-```zetasql
+```googlesql
 SELECT LAST_DAY(DATE '2008-11-25', MONTH) AS last_day
 
 /*------------+
@@ -891,7 +891,7 @@ SELECT LAST_DAY(DATE '2008-11-25', MONTH) AS last_day
  +------------*/
 ```
 
-```zetasql
+```googlesql
 SELECT LAST_DAY(DATE '2008-11-25') AS last_day
 
 /*------------+
@@ -903,7 +903,7 @@ SELECT LAST_DAY(DATE '2008-11-25') AS last_day
 
 This returns the last day of the year:
 
-```zetasql
+```googlesql
 SELECT LAST_DAY(DATE '2008-11-25', YEAR) AS last_day
 
 /*------------+
@@ -915,7 +915,7 @@ SELECT LAST_DAY(DATE '2008-11-25', YEAR) AS last_day
 
 This returns the last day of the week for a week that starts on a Sunday:
 
-```zetasql
+```googlesql
 SELECT LAST_DAY(DATE '2008-11-10', WEEK(SUNDAY)) AS last_day
 
 /*------------+
@@ -927,7 +927,7 @@ SELECT LAST_DAY(DATE '2008-11-10', WEEK(SUNDAY)) AS last_day
 
 This returns the last day of the week for a week that starts on a Monday:
 
-```zetasql
+```googlesql
 SELECT LAST_DAY(DATE '2008-11-10', WEEK(MONDAY)) AS last_day
 
 /*------------+
@@ -943,7 +943,7 @@ SELECT LAST_DAY(DATE '2008-11-10', WEEK(MONDAY)) AS last_day
 
 ## `PARSE_DATE`
 
-```zetasql
+```googlesql
 PARSE_DATE(format_string, date_string)
 ```
 
@@ -963,7 +963,7 @@ Each element in `date_string` must have a corresponding element in
 `format_string`. The location of each element in `format_string` must match the
 location of each element in `date_string`.
 
-```zetasql
+```googlesql
 -- This works because elements on both sides match.
 SELECT PARSE_DATE('%A %b %e %Y', 'Thursday Dec 25 2008');
 
@@ -999,7 +999,7 @@ function:
 +   Numeric values after `%G` input values. Any input string value that
     corresponds to the `%G` format element requires a whitespace or non-digit
     character as a separator from numeric values that follow. This is a known
-    issue in ZetaSQL. For example, the function arguments `('%G
+    issue in GoogleSQL. For example, the function arguments `('%G
     %V','2020 50')` or `('%G-%V','2020-50')` work, but not `('%G%V','202050')`.
     For input values before the corresponding `%G` value, no separator is
     needed. For example, the arguments `('%V%G','502020')` work. The separator
@@ -1014,7 +1014,7 @@ function:
 
 This example converts a `MM/DD/YY` formatted string to a `DATE` object:
 
-```zetasql
+```googlesql
 SELECT PARSE_DATE('%x', '12/25/08') AS parsed;
 
 /*------------+
@@ -1026,7 +1026,7 @@ SELECT PARSE_DATE('%x', '12/25/08') AS parsed;
 
 This example converts a `YYYYMMDD` formatted string to a `DATE` object:
 
-```zetasql
+```googlesql
 SELECT PARSE_DATE('%Y%m%d', '20081225') AS parsed;
 
 /*------------+
@@ -1036,11 +1036,11 @@ SELECT PARSE_DATE('%Y%m%d', '20081225') AS parsed;
  +------------*/
 ```
 
-[date-format-elements]: https://github.com/google/zetasql/blob/master/docs/format-elements.md#format_elements_date_time
+[date-format-elements]: https://github.com/google/googlesql/blob/master/docs/format-elements.md#format_elements_date_time
 
 ## `UNIX_DATE`
 
-```zetasql
+```googlesql
 UNIX_DATE(date_expression)
 ```
 
@@ -1054,7 +1054,7 @@ INT64
 
 **Example**
 
-```zetasql
+```googlesql
 SELECT UNIX_DATE(DATE '2008-12-25') AS days_from_epoch;
 
 /*-----------------+

@@ -4,7 +4,7 @@
 
 # User-defined functions
 
-ZetaSQL supports user-defined functions (UDFs).
+GoogleSQL supports user-defined functions (UDFs).
 
 A UDF lets you create a function using another SQL expression or another
 programming language, such as JavaScript or Lua. These functions accept columns
@@ -23,7 +23,7 @@ single row.
 
 You can create a SQL UDF using the following syntax:
 
-```zetasql
+```googlesql
 CREATE
   [ OR REPLACE ]
   [ { TEMPORARY | TEMP } ] FUNCTION
@@ -57,7 +57,7 @@ This syntax consists of the following components:
 
     + `parameter_name`: The name of the function parameter.
 
-    + `data_type`: A ZetaSQL [data type][data-types].
+    + `data_type`: A GoogleSQL [data type][data-types].
 
     
     + `ANY TYPE`: The function will accept an argument of any type for this
@@ -79,12 +79,12 @@ This syntax consists of the following components:
 
     
 + `RETURNS data_type`: Optional clause that specifies the data type
-  that the function returns. ZetaSQL infers the result type
+  that the function returns. GoogleSQL infers the result type
   of the function from the SQL function body when the `RETURN` clause is
   omitted.
 + `function_body`: The SQL expression that defines the function body.
 
-[quoted-literals]: https://github.com/google/zetasql/blob/master/docs/lexical.md#quoted_literals
+[quoted-literals]: https://github.com/google/googlesql/blob/master/docs/lexical.md#quoted_literals
 
 ### Call a SQL UDF
 
@@ -95,7 +95,7 @@ For details, see [Function calls][function-calls].
 
 The following example shows a UDF that employs a SQL function.
 
-```zetasql
+```googlesql
 CREATE TEMP FUNCTION AddFourAndDivide(x INT64, y INT64)
 RETURNS DOUBLE
 AS (
@@ -126,7 +126,7 @@ The following example shows a SQL UDF that uses the
 templated function parameter, `ANY TYPE`. The resulting function accepts
 arguments of various types.
 
-```zetasql
+```googlesql
 CREATE TEMP FUNCTION AddFourAndDivideAny(x ANY TYPE, y ANY TYPE)
 AS (
   (x + 4) / y
@@ -147,7 +147,7 @@ The following example shows a SQL UDF that uses the
 templated function parameter, `ANY TYPE`, to return the last element of an
 array of any type.
 
-```zetasql
+```googlesql
 CREATE TEMP FUNCTION LastArrayElement(arr ANY TYPE)
 AS (
   arr[ORDINAL(ARRAY_LENGTH(arr))]
@@ -180,7 +180,7 @@ result as a single value.
 
 You can create a JavaScript UDF using the following syntax:
 
-```zetasql
+```googlesql
 CREATE
   [ { TEMPORARY | TEMP } ] FUNCTION
   function_name ( [ function_parameter [, ...] ] )
@@ -212,9 +212,9 @@ This syntax consists of the following components:
 
     + `parameter_name`: The name of the function parameter.
 
-    + `data_type`: A ZetaSQL [data type][data-types].
+    + `data_type`: A GoogleSQL [data type][data-types].
       See [SQL type encodings in JavaScript][javascript-data-types] to learn
-      how ZetaSQL represents JavaScript types.
+      how GoogleSQL represents JavaScript types.
 
     
     + `ANY TYPE`: The function will accept an argument of any type for this
@@ -259,14 +259,14 @@ This syntax consists of the following components:
       `CURRENT_TIMESTAMP` multiple times within a single statement, it will
       return the same result, but it may return different results in
       subsequent statement executions.
-+ `RETURNS data_type`: Specifies the ZetaSQL data type that the
++ `RETURNS data_type`: Specifies the GoogleSQL data type that the
   function returns.
 + `function_body`: Quoted string literal that represents
   the JavaScript code that defines the function body.
   To learn more about the different types of quoted string literals you can
   use, see [Formats for quoted literals][quoted-literals].
 
-[quoted-literals]: https://github.com/google/zetasql/blob/master/docs/lexical.md#quoted_literals
+[quoted-literals]: https://github.com/google/googlesql/blob/master/docs/lexical.md#quoted_literals
 
 ### Call a JavaScript UDF
 
@@ -276,13 +276,13 @@ function. For details, see [Function calls][function-calls].
 ### SQL type encodings in JavaScript 
 <a id="javascript_udf_data_types"></a>
 
-[ZetaSQL data types][data-types] represent
+[GoogleSQL data types][data-types] represent
 [JavaScript data types][javascript-types] as follows:
 
 <table>
   <thead>
     <tr>
-    <th>ZetaSQL<br/> data type</th>
+    <th>GoogleSQL<br/> data type</th>
     <th>JavaScript<br/> data type</th>
     <th>Notes</th>
     </tr>
@@ -296,7 +296,7 @@ function. For details, see [Function calls][function-calls].
         An array of arrays isn't supported. To get around this
         limitation, use
         JavaScript <code>Array&lt;Object&lt;Array&gt;&gt;</code> and
-        ZetaSQL <code>ARRAY&lt;STRUCT&lt;ARRAY&gt;&gt;</code>.
+        GoogleSQL <code>ARRAY&lt;STRUCT&lt;ARRAY&gt;&gt;</code>.
       </td>
     </tr>
     
@@ -435,7 +435,7 @@ function. For details, see [Function calls][function-calls].
   </tbody>
 </table>
 
-Some ZetaSQL types have a direct mapping to JavaScript types, but
+Some GoogleSQL types have a direct mapping to JavaScript types, but
 others don't.
 
 For example, because JavaScript doesn't support a 64-bit integer type,
@@ -443,16 +443,16 @@ For example, because JavaScript doesn't support a 64-bit integer type,
 use `DOUBLE` to represent integer values as a number,
 or `STRING` to represent integer values as a string.
 
-ZetaSQL does support `INT64` as a return type in JavaScript UDFs.
+GoogleSQL does support `INT64` as a return type in JavaScript UDFs.
 In this case, the JavaScript function body can return either a JavaScript
-`Number` or a `String`. ZetaSQL then converts either of
+`Number` or a `String`. GoogleSQL then converts either of
 these types to `INT64`.
 
-In addition, some ZetaSQL and JavaScript data types have different
+In addition, some GoogleSQL and JavaScript data types have different
 rules. For example, in JavaScript, you can have an array of arrays
-(`Array<Array>`), whereas in ZetaSQL, you can't. Before using
-encodings, ensure they are compatible. To learn more about ZetaSQL
-data types, see [ZetaSQL data types][data-types]. To learn more about
+(`Array<Array>`), whereas in GoogleSQL, you can't. Before using
+encodings, ensure they are compatible. To learn more about GoogleSQL
+data types, see [GoogleSQL data types][data-types]. To learn more about
 JavaScript data types, see [JavaScript data types][javascript-types].
 
 ### JavaScript UDF examples
@@ -464,7 +464,7 @@ function body, the function body needs to be a [raw string][quoted-literals].
 Note: If you aren't sure which quoting style to use for the function body,
 a raw string provides the most consistent results.
 
-```zetasql
+```googlesql
 CREATE TEMP FUNCTION ExtractLetters(x STRING)
 RETURNS STRING
 LANGUAGE js
@@ -490,7 +490,7 @@ Because the function body doesn't contain
 [escape sequences][escape-sequences] or [regular expressions][quoted-literals],
 it can be a quoted or triple-quoted string literal.
 
-```zetasql
+```googlesql
 CREATE TEMP FUNCTION PlusOne(x DOUBLE)
 RETURNS DOUBLE
 LANGUAGE js
@@ -510,7 +510,7 @@ FROM UNNEST([1, 2, 3]) AS val;
 
 The following example illustrates a more complex multi-statement JavaScript UDF.
 
-```zetasql
+```googlesql
 CREATE TEMP FUNCTION CustomGreeting(a STRING)
 RETURNS STRING
 LANGUAGE js
@@ -537,7 +537,7 @@ FROM UNNEST(["Hannah", "Max", "Jakob"]) AS names;
 
 The following example creates a persistent JavaScript UDF.
 
-```zetasql
+```googlesql
 CREATE FUNCTION MultiplyInputs(x DOUBLE, y DOUBLE)
 RETURNS DOUBLE
 LANGUAGE js
@@ -565,7 +565,7 @@ FROM numbers;
 
 The following example creates a temporary JavaScript UDF.
 
-```zetasql
+```googlesql
 CREATE TEMP FUNCTION MultiplyInputs(x DOUBLE, y DOUBLE)
 RETURNS DOUBLE
 LANGUAGE js
@@ -593,7 +593,7 @@ FROM numbers;
 
 You can create multiple JavaScript UDFs before a query. For example:
 
-```zetasql
+```googlesql
 CREATE TEMP FUNCTION MultiplyInputs(x DOUBLE, y DOUBLE)
 RETURNS DOUBLE
 LANGUAGE js
@@ -633,7 +633,7 @@ FROM numbers;
 You can pass the result of a JavaScript UDF as input to another UDF.
 For example:
 
-```zetasql
+```googlesql
 CREATE TEMP FUNCTION MultiplyInputs(x DOUBLE, y DOUBLE)
 RETURNS DOUBLE
 LANGUAGE js
@@ -671,7 +671,7 @@ FROM numbers;
 The following example shows how you can use a JavaScript UDF with
 default values.
 
-```zetasql
+```googlesql
 CREATE TEMP FUNCTION AddValues(x INT64, y INT64 DEFAULT 50, z INT64 DEFAULT 100)
 RETURNS INT64
 LANGUAGE js
@@ -688,12 +688,12 @@ SELECT AddValues(1, 2) AS result;
  +--------*/
 ```
 
-[quoted-literals]: https://github.com/google/zetasql/blob/master/docs/lexical.md#string_and_bytes_literals
+[quoted-literals]: https://github.com/google/googlesql/blob/master/docs/lexical.md#string_and_bytes_literals
 
 The following example sums the values of all
 fields named `foo` in the given JSON string.
 
-```zetasql
+```googlesql
 CREATE TEMP FUNCTION SumFieldsNamedFoo(json_row STRING)
 RETURNS FLOAT64
 LANGUAGE js
@@ -751,7 +751,7 @@ single value.
 
 You can create a Lua UDF using the following syntax:
 
-```zetasql
+```googlesql
 CREATE
   [ { TEMPORARY | TEMP } ] FUNCTION
   function_name ( [ function_parameter [, ...] ] )
@@ -783,7 +783,7 @@ This syntax consists of the following components:
 
     + `parameter_name`: The name of the function parameter.
 
-    + `data_type`: A ZetaSQL [data type][data-types].
+    + `data_type`: A GoogleSQL [data type][data-types].
 
     
     + `ANY TYPE`: The function will accept an argument of any type for this
@@ -828,14 +828,14 @@ This syntax consists of the following components:
       `CURRENT_TIMESTAMP` multiple times within a single statement, it will
       return the same result, but it may return different results in
       subsequent statement executions.
-+ `RETURNS data_type`: Specifies the ZetaSQL data type that the
++ `RETURNS data_type`: Specifies the GoogleSQL data type that the
   function returns.
 + `function_body`: Quoted string literal that represents
   the Lua code that defines the function body.
   To learn more about the different types of quoted string literals you can
   use, see [Formats for quoted literals][quoted-literals].
 
-[quoted-literals]: https://github.com/google/zetasql/blob/master/docs/lexical.md#quoted_literals
+[quoted-literals]: https://github.com/google/googlesql/blob/master/docs/lexical.md#quoted_literals
 
 ### Call a Lua UDF
 
@@ -854,7 +854,7 @@ function body, the function body needs to be a [raw string][quoted-literals].
 Note: If you aren't sure which quoting style to use for the function body,
 a raw string provides the most consistent results.
 
-```zetasql
+```googlesql
 CREATE TEMP FUNCTION Alphabet()
 RETURNS STRING
 LANGUAGE lua
@@ -878,7 +878,7 @@ Because the function body doesn't contain
 [escape sequences][escape-sequences] or [regular expressions][quoted-literals],
 it can be a quoted or triple-quoted string literal.
 
-```zetasql
+```googlesql
 CREATE TEMP FUNCTION PlusOne(x DOUBLE)
 RETURNS DOUBLE
 LANGUAGE lua
@@ -898,7 +898,7 @@ FROM UNNEST([1, 2, 3]) AS val;
 
 The following example illustrates a multi-statement Lua UDF.
 
-```zetasql
+```googlesql
 CREATE TEMP FUNCTION CustomGreeting(i INT32)
 RETURNS STRING
 LANGUAGE lua
@@ -921,7 +921,7 @@ SELECT CustomGreeting(13) AS message;
 
 The following example creates a persistent Lua UDF.
 
-```zetasql
+```googlesql
 CREATE FUNCTION MultiplyInputs(x DOUBLE, y DOUBLE)
 RETURNS DOUBLE
 LANGUAGE lua
@@ -949,7 +949,7 @@ FROM numbers;
 
 The following example creates a temporary Lua UDF.
 
-```zetasql
+```googlesql
 CREATE TEMP FUNCTION MultiplyInputs(x DOUBLE, y DOUBLE)
 RETURNS DOUBLE
 LANGUAGE lua
@@ -977,7 +977,7 @@ FROM numbers;
 
 You can create multiple Lua UDFs before a query. For example:
 
-```zetasql
+```googlesql
 CREATE TEMP FUNCTION MultiplyInputs(x DOUBLE, y DOUBLE)
 RETURNS DOUBLE
 LANGUAGE lua
@@ -1017,7 +1017,7 @@ FROM numbers;
 You can pass the result of a Lua UDF as input to another UDF.
 For example:
 
-```zetasql
+```googlesql
 CREATE TEMP FUNCTION MultiplyInputs(x DOUBLE, y DOUBLE)
 RETURNS DOUBLE
 LANGUAGE lua
@@ -1055,7 +1055,7 @@ FROM numbers;
 The following example shows how you can use a Lua UDF with
 default values.
 
-```zetasql
+```googlesql
 CREATE TEMP FUNCTION AddValues(x INT64, y INT64 DEFAULT 50, z INT64 DEFAULT 100)
 RETURNS INT64
 LANGUAGE lua
@@ -1072,13 +1072,13 @@ SELECT AddValues(1, 2) AS result;
  +--------*/
 ```
 
-[quoted-literals]: https://github.com/google/zetasql/blob/master/docs/lexical.md#string_and_bytes_literals
+[quoted-literals]: https://github.com/google/googlesql/blob/master/docs/lexical.md#string_and_bytes_literals
 
 ## Templated function parameters
 
 A templated function parameter can match more than one argument type at
 function call time. If a function signature includes a
-templated function parameter, ZetaSQL allows function calls
+templated function parameter, GoogleSQL allows function calls
 to pass to the function any argument type as long as the function body is
 valid for that argument type.
 
@@ -1090,13 +1090,13 @@ valid for that argument type.
 
 [javascript-data-types]: #javascript_udf_data_types
 
-[data-types]: https://github.com/google/zetasql/blob/master/docs/data-types.md
+[data-types]: https://github.com/google/googlesql/blob/master/docs/data-types.md
 
-[function-calls]: https://github.com/google/zetasql/blob/master/docs/functions-reference.md
+[function-calls]: https://github.com/google/googlesql/blob/master/docs/functions-reference.md
 
-[quoted-literals]: https://github.com/google/zetasql/blob/master/docs/lexical.md#quoted_literals
+[quoted-literals]: https://github.com/google/googlesql/blob/master/docs/lexical.md#quoted_literals
 
-[escape-sequences]: https://github.com/google/zetasql/blob/master/docs/lexical.md#escape_sequences
+[escape-sequences]: https://github.com/google/googlesql/blob/master/docs/lexical.md#escape_sequences
 
 <!-- mdlint on -->
 

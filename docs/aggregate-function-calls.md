@@ -11,7 +11,7 @@ group of rows and then returns a single result for each row.
 
 ## Aggregate function call syntax
 
-```zetasql
+```googlesql
 function_name(
   [ DISTINCT ]
   function_arguments
@@ -115,7 +115,7 @@ specifically grouped output.
 ### HAVING MAX clause 
 <a id="having_max"></a>
 
-```zetasql
+```googlesql
 HAVING MAX having_expression
 ```
 
@@ -135,7 +135,7 @@ In the following query, rows with the most inches of precipitation, `4`, are
 added to a group, and then the `year` for one of these rows is produced.
 Which row is produced is nondeterministic, not random.
 
-```zetasql
+```googlesql
 WITH
   Precipitation AS (
     SELECT 2009 AS year, 'spring' AS season, 3 AS inches
@@ -162,7 +162,7 @@ recent year specified in the query. First, the query gets the rows with the
 maximum value in the `year` column. Finally, the query averages the values in
 the `inches` column (`9` and `1`):
 
-```zetasql
+```googlesql
 WITH
   Precipitation AS (
     SELECT 2001 AS year, 'spring' AS season, 9 AS inches
@@ -189,7 +189,7 @@ SELECT AVG(inches HAVING MAX year) AS average FROM Precipitation;
 ### HAVING MIN clause 
 <a id="having_min"></a>
 
-```zetasql
+```googlesql
 HAVING MIN having_expression
 ```
 
@@ -209,7 +209,7 @@ In the following query, rows with the fewest inches of precipitation, `1`,
 are added to a group, and then the `year` for one of these rows is produced.
 Which row is produced is nondeterministic, not random.
 
-```zetasql
+```googlesql
 WITH
   Precipitation AS (
     SELECT 2009 AS year, 'spring' AS season, 3 AS inches
@@ -236,7 +236,7 @@ earliest year specified in the query. First, the query gets the rows with
 the minimum value in the `year` column, and finally, the query averages the
 values in the `inches` column:
 
-```zetasql
+```googlesql
 WITH
   Precipitation AS (
     SELECT 2001 AS year, 'spring' AS season, 9 AS inches
@@ -264,7 +264,7 @@ SELECT AVG(inches HAVING MIN year) AS average FROM Precipitation;
 
 A simple aggregate function call for `COUNT`, `MIN`, and `MAX` looks like this:
 
-```zetasql
+```googlesql
 SELECT
   COUNT(*) AS total_count,
   COUNT(fruit) AS non_null_count,
@@ -292,7 +292,7 @@ In the following example, the average of `x` over a specified window is returned
 for each row. To learn more about windows and how to use them, see
 [Window function calls][window-function-calls].
 
-```zetasql
+```googlesql
 SELECT
   x,
   AVG(x) OVER (ORDER BY x ROWS BETWEEN 1 PRECEDING AND CURRENT ROW) AS avg
@@ -312,7 +312,7 @@ FROM UNNEST([0, 2, 4, 4, 5]) AS x;
 The following example uses a `WHERE` clause to filter the `AVG` aggregate input
 for average inches of precipitation in wet seasons compared to dry seasons.
 
-```zetasql
+```googlesql
 WITH
   Precipitation AS (
     SELECT 2001 AS year, 'spring' AS season, 9 AS inches
@@ -341,19 +341,19 @@ FROM Precipitation;
 
 <!-- mdlint off(WHITESPACE_LINE_LENGTH) -->
 
-[pivot-operator]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#pivot_operator
+[pivot-operator]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#pivot_operator
 
 [max_min_clause]: #max_min_clause
 
-[agg-data-type-properties]: https://github.com/google/zetasql/blob/master/docs/data-types.md#data_type_properties
+[agg-data-type-properties]: https://github.com/google/googlesql/blob/master/docs/data-types.md#data_type_properties
 
-[window-function-calls]: https://github.com/google/zetasql/blob/master/docs/window-function-calls.md
+[window-function-calls]: https://github.com/google/googlesql/blob/master/docs/window-function-calls.md
 
-[floating-point-semantics]: https://github.com/google/zetasql/blob/master/docs/data-types.md#floating_point_semantics
+[floating-point-semantics]: https://github.com/google/googlesql/blob/master/docs/data-types.md#floating_point_semantics
 
-[dp-clause]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#dp_clause
+[dp-clause]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#dp_clause
 
-[aggregation-threshold]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#agg_threshold_clause
+[aggregation-threshold]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#agg_threshold_clause
 
 <!-- mdlint on -->
 

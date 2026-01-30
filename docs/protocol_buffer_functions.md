@@ -4,7 +4,7 @@
 
 # Protocol buffer functions
 
-ZetaSQL supports the following protocol buffer functions.
+GoogleSQL supports the following protocol buffer functions.
 
 ## Function list
 
@@ -18,7 +18,7 @@ ZetaSQL supports the following protocol buffer functions.
   <tbody>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/protocol_buffer_functions.md#enum_value_descriptor_proto"><code>ENUM_VALUE_DESCRIPTOR_PROTO</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/protocol_buffer_functions.md#enum_value_descriptor_proto"><code>ENUM_VALUE_DESCRIPTOR_PROTO</code></a>
 </td>
   <td>
     Gets the enum value descriptor proto
@@ -27,7 +27,7 @@ ZetaSQL supports the following protocol buffer functions.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/protocol_buffer_functions.md#proto_extract"><code>EXTRACT</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/protocol_buffer_functions.md#proto_extract"><code>EXTRACT</code></a>
 </td>
   <td>
     Extracts a value or metadata from a protocol buffer.
@@ -35,7 +35,7 @@ ZetaSQL supports the following protocol buffer functions.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/protocol_buffer_functions.md#filter_fields"><code>FILTER_FIELDS</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/protocol_buffer_functions.md#filter_fields"><code>FILTER_FIELDS</code></a>
 </td>
   <td>
     Removed unwanted fields from a protocol buffer.
@@ -43,16 +43,16 @@ ZetaSQL supports the following protocol buffer functions.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/protocol_buffer_functions.md#from_proto"><code>FROM_PROTO</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/protocol_buffer_functions.md#from_proto"><code>FROM_PROTO</code></a>
 </td>
   <td>
-    Converts a protocol buffer value into ZetaSQL value.
+    Converts a protocol buffer value into GoogleSQL value.
     
   </td>
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/protocol_buffer_functions.md#proto_default_if_null"><code>PROTO_DEFAULT_IF_NULL</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/protocol_buffer_functions.md#proto_default_if_null"><code>PROTO_DEFAULT_IF_NULL</code></a>
 </td>
   <td>
     Produces the default protocol buffer field value if the
@@ -62,7 +62,7 @@ ZetaSQL supports the following protocol buffer functions.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/protocol_buffer_functions.md#proto_map_contains_key"><code>PROTO_MAP_CONTAINS_KEY</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/protocol_buffer_functions.md#proto_map_contains_key"><code>PROTO_MAP_CONTAINS_KEY</code></a>
 </td>
   <td>
     Checks if a protocol buffer map field contains a given key.
@@ -70,7 +70,7 @@ ZetaSQL supports the following protocol buffer functions.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/protocol_buffer_functions.md#proto_modify_map"><code>PROTO_MODIFY_MAP</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/protocol_buffer_functions.md#proto_modify_map"><code>PROTO_MODIFY_MAP</code></a>
 </td>
   <td>
     Modifies a protocol buffer map field.
@@ -78,7 +78,7 @@ ZetaSQL supports the following protocol buffer functions.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/protocol_buffer_functions.md#replace_fields"><code>REPLACE_FIELDS</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/protocol_buffer_functions.md#replace_fields"><code>REPLACE_FIELDS</code></a>
 </td>
   <td>
     Replaces the values in one or more protocol buffer fields.
@@ -86,10 +86,10 @@ ZetaSQL supports the following protocol buffer functions.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/protocol_buffer_functions.md#to_proto"><code>TO_PROTO</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/protocol_buffer_functions.md#to_proto"><code>TO_PROTO</code></a>
 </td>
   <td>
-    Converts a ZetaSQL value into a protocol buffer value.
+    Converts a GoogleSQL value into a protocol buffer value.
     
   </td>
 </tr>
@@ -99,7 +99,7 @@ ZetaSQL supports the following protocol buffer functions.
 
 ## `ENUM_VALUE_DESCRIPTOR_PROTO`
 
-```zetasql
+```googlesql
 ENUM_VALUE_DESCRIPTOR_PROTO(proto_enum)
 ```
 
@@ -122,20 +122,20 @@ The following query gets the `ideally_enabled` and `in_development` options from
 the value descriptors in the `LanguageFeature` enum, and then produces query
 results that are based on these value descriptors.
 
-```zetasql
+```googlesql
 WITH
   EnabledFeatures AS (
-    SELECT CAST(999991 AS zetasql.LanguageFeature) AS feature UNION ALL
-    SELECT CAST(999992 AS zetasql.LanguageFeature) AS feature
+    SELECT CAST(999991 AS googlesql.LanguageFeature) AS feature UNION ALL
+    SELECT CAST(999992 AS googlesql.LanguageFeature) AS feature
   )
 SELECT
   CAST(feature AS STRING) AS feature_enum_name,
   CAST(feature AS INT64) AS feature_enum_id,
   IFNULL(
-    ENUM_VALUE_DESCRIPTOR_PROTO(feature).options.(zetasql.language_feature_options).ideally_enabled,
+    ENUM_VALUE_DESCRIPTOR_PROTO(feature).options.(googlesql.language_feature_options).ideally_enabled,
     TRUE) AS feature_is_ideally_enabled,
   IFNULL(
-    ENUM_VALUE_DESCRIPTOR_PROTO(feature).options.(zetasql.language_feature_options).in_development,
+    ENUM_VALUE_DESCRIPTOR_PROTO(feature).options.(googlesql.language_feature_options).in_development,
     FALSE) AS feature_is_in_development
 FROM
   EnabledFeatures;
@@ -151,7 +151,7 @@ FROM
 ## `EXTRACT` 
 <a id="proto_extract"></a>
 
-```zetasql
+```googlesql
 EXTRACT( extraction_type (proto_field) FROM proto_expression )
 
 extraction_type:
@@ -177,7 +177,7 @@ You can choose the type of information to get with `EXTRACT`. Your choices are:
 +  `FIELD`: Extract a value from a protocol buffer field.
 +  `RAW`: Extract an uninterpreted value from a
     protocol buffer field. Raw values
-    ignore any ZetaSQL type annotations.
+    ignore any GoogleSQL type annotations.
 +  `HAS`: Returns `TRUE` if a protocol buffer field is set in a proto message;
    otherwise, `FALSE`. Alternatively, use [`has_x`][has-value] to perform this
    task.
@@ -214,13 +214,13 @@ message Album {
 
 ```proto
 message Chart {
-  optional int64 date = 1 [(zetasql.format) = DATE];
+  optional int64 date = 1 [(googlesql.format) = DATE];
   optional string chart_name = 2;
   optional int64 rank = 3;
 }
 ```
 
-```zetasql
+```googlesql
 WITH AlbumList AS (
   SELECT
     NEW Album(
@@ -247,7 +247,7 @@ SELECT * FROM AlbumList
 The following example extracts the album names from a table called `AlbumList`
 that contains a proto-typed column called `Album`.
 
-```zetasql
+```googlesql
 SELECT EXTRACT(FIELD(album_name) FROM album_col) AS name_of_album
 FROM AlbumList
 
@@ -268,7 +268,7 @@ that when you extract the value in this field, it returns a `DATE`, not an
 If you would like to return the value for `date` as an `INT64`, not
 as a `DATE`, use the `RAW` extraction type in your query. For example:
 
-```zetasql
+```googlesql
 SELECT
   EXTRACT(RAW(date) FROM chart_col) AS raw_date,
   EXTRACT(FIELD(date) FROM chart_col) AS formatted_date
@@ -285,7 +285,7 @@ FROM AlbumList
 The following example checks to see if release dates exist in a table called
 `AlbumList` that contains a protocol buffer called `Chart`.
 
-```zetasql
+```googlesql
 SELECT EXTRACT(HAS(date) FROM chart_col) AS has_release_date
 FROM AlbumList
 
@@ -302,7 +302,7 @@ a table called `AlbumList`. The group name is set for exactly one
 protocol buffer field inside of the `group_name` Oneof. The `group_name` Oneof
 exists inside the `Album` protocol buffer.
 
-```zetasql
+```googlesql
 SELECT EXTRACT(ONEOF_CASE(group_name) FROM album_col) AS artist_type
 FROM AlbumList;
 
@@ -314,13 +314,13 @@ FROM AlbumList;
  +-------------*/
 ```
 
-[dot-operator]: https://github.com/google/zetasql/blob/master/docs/operators.md#field_access_operator
+[dot-operator]: https://github.com/google/googlesql/blob/master/docs/operators.md#field_access_operator
 
-[has-value]: https://github.com/google/zetasql/blob/master/docs/protocol-buffers.md#checking_if_a_field_has_a_value
+[has-value]: https://github.com/google/googlesql/blob/master/docs/protocol-buffers.md#checking_if_a_field_has_a_value
 
 ## `FILTER_FIELDS`
 
-```zetasql
+```googlesql
 FILTER_FIELDS(
   proto_expression,
   proto_field_list
@@ -407,7 +407,7 @@ message Award {
 }
 ```
 
-```zetasql
+```googlesql
 WITH
   MusicAwards AS (
     SELECT
@@ -418,7 +418,7 @@ WITH
         type { award_name: 'Best Artist' category: 'Artist' }
         type { award_name: 'Best Album' category: 'Album' }
         '''
-        AS zetasql.examples.music.Award) AS award_col
+        AS googlesql.examples.music.Award) AS award_col
     UNION ALL
     SELECT
       CAST(
@@ -427,7 +427,7 @@ WITH
         month: 12
         type { award_name: 'Best Song' category: 'Song' }
         '''
-        AS zetasql.examples.music.Award) AS award_col
+        AS googlesql.examples.music.Award) AS award_col
   )
 SELECT *
 FROM MusicAwards
@@ -452,7 +452,7 @@ FROM MusicAwards
 The following example returns protocol buffers that only include the `year`
 field.
 
-```zetasql
+```googlesql
 SELECT FILTER_FIELDS(award_col, +year) AS filtered_fields
 FROM MusicAwards
 
@@ -467,7 +467,7 @@ FROM MusicAwards
 The following example returns protocol buffers that include all but the `type`
 field.
 
-```zetasql
+```googlesql
 SELECT FILTER_FIELDS(award_col, -type) AS filtered_fields
 FROM MusicAwards
 
@@ -482,7 +482,7 @@ FROM MusicAwards
 The following example returns protocol buffers that only include the `year` and
 `type.award_name` fields.
 
-```zetasql
+```googlesql
 SELECT FILTER_FIELDS(award_col, +year, +type.award_name) AS filtered_fields
 FROM MusicAwards
 
@@ -504,7 +504,7 @@ FROM MusicAwards
 The following example returns the `year` and `type` fields, but excludes the
 `award_name` field in the `type` field.
 
-```zetasql
+```googlesql
 SELECT FILTER_FIELDS(award_col, +year, +type, -type.award_name) AS filtered_fields
 FROM MusicAwards
 
@@ -526,7 +526,7 @@ FROM MusicAwards
 The following example produces an error because `year` is a required field
 and can't be excluded explicitly or implicitly from the results.
 
-```zetasql
+```googlesql
 SELECT FILTER_FIELDS(award_col, -year) AS filtered_fields
 FROM MusicAwards
 
@@ -537,7 +537,7 @@ The following example produces an error because when `year` was included,
 `month` was implicitly excluded. You can't explicitly exclude a field that
 has already been implicitly excluded.
 
-```zetasql
+```googlesql
 SELECT FILTER_FIELDS(award_col, +year, -month) AS filtered_fields
 FROM MusicAwards
 
@@ -549,7 +549,7 @@ need to include required fields. In the example below, `MusicAwards` has a
 required field called `year`, but this isn't added as an argument for
 `FILTER_FIELDS`. `year` is added to the results with its default value, `0`.
 
-```zetasql
+```googlesql
 SELECT FILTER_FIELDS(
   award_col,
   +month,
@@ -570,17 +570,17 @@ FROM MusicAwards;
  +---------------------------------*/
 ```
 
-[querying-proto-extensions]: https://github.com/google/zetasql/blob/master/docs/protocol-buffers.md#extensions
+[querying-proto-extensions]: https://github.com/google/googlesql/blob/master/docs/protocol-buffers.md#extensions
 
 ## `FROM_PROTO`
 
-```zetasql
+```googlesql
 FROM_PROTO(expression)
 ```
 
 **Description**
 
-Returns a ZetaSQL value. The valid `expression` types are defined
+Returns a GoogleSQL value. The valid `expression` types are defined
 in the table below, along with the return types that they produce.
 Other input `expression` types are invalid. If `expression` can't be converted
 to a valid value, an error is returned.
@@ -734,7 +734,7 @@ in the table above.
 
 Convert a `google.type.Date` type into a `DATE` type.
 
-```zetasql
+```googlesql
 SELECT FROM_PROTO(
   new google.type.Date(
     2019 as year,
@@ -752,7 +752,7 @@ SELECT FROM_PROTO(
 
 Pass in and return a `DATE` type.
 
-```zetasql
+```googlesql
 SELECT FROM_PROTO(DATE '2019-10-30')
 
 /*------------+
@@ -764,7 +764,7 @@ SELECT FROM_PROTO(DATE '2019-10-30')
 
 ## `PROTO_DEFAULT_IF_NULL`
 
-```zetasql
+```googlesql
 PROTO_DEFAULT_IF_NULL(proto_field_expression)
 ```
 
@@ -781,7 +781,7 @@ Stipulations:
 + The expression must resolve to a regular proto field access, not
   a virtual field.
 + The expression can't access a field with
-  `zetasql.use_defaults=false`.
+  `googlesql.use_defaults=false`.
 
 **Return Type**
 
@@ -795,7 +795,7 @@ the country isn't set, the country defaults to unknown.
 In this statement, table `library_books` contains a column named `book`,
 whose type is `Book`.
 
-```zetasql
+```googlesql
 SELECT PROTO_DEFAULT_IF_NULL(book.country) AS origin FROM library_books;
 ```
 
@@ -809,7 +809,7 @@ message Book {
 
 This is the result if `book.country` evaluates to `Canada`.
 
-```zetasql
+```googlesql
 /*-----------------+
  | origin          |
  +-----------------+
@@ -821,7 +821,7 @@ This is the result if `book` is `NULL`. Since `book` is `NULL`,
 `book.country` evaluates to `NULL` and therefore the function result is the
 default value for `country`.
 
-```zetasql
+```googlesql
 /*-----------------+
  | origin          |
  +-----------------+
@@ -831,7 +831,7 @@ default value for `country`.
 
 ## `PROTO_MAP_CONTAINS_KEY`
 
-```zetasql
+```googlesql
 PROTO_MAP_CONTAINS_KEY(proto_map_field_expression, key)
 ```
 
@@ -867,7 +867,7 @@ message Item {
 In the following example, the function returns `TRUE` when the key is
 present, `FALSE` otherwise.
 
-```zetasql
+```googlesql
 SELECT
   PROTO_MAP_CONTAINS_KEY(m.purchased, 'A') AS contains_a,
   PROTO_MAP_CONTAINS_KEY(m.purchased, 'B') AS contains_b
@@ -885,7 +885,7 @@ FROM
 
 ## `PROTO_MODIFY_MAP`
 
-```zetasql
+```googlesql
 PROTO_MODIFY_MAP(proto_map_field_expression, key_value_pair[, ...])
 
 key_value_pair:
@@ -934,7 +934,7 @@ message Item {
 In the following example, the query deletes key `A`, replaces `B`, and adds
 `C` in a map field called `purchased`.
 
-```zetasql
+```googlesql
 SELECT
   PROTO_MODIFY_MAP(m.purchased, 'A', NULL, 'B', 4, 'C', 6) AS result_map
 FROM
@@ -951,7 +951,7 @@ FROM
 
 ## `REPLACE_FIELDS`
 
-```zetasql
+```googlesql
 REPLACE_FIELDS(proto_expression, value AS field_path [, ... ])
 ```
 
@@ -993,7 +993,7 @@ This statement replaces the values of the field `title` and subfield `chapters`
 of proto type `Book`. Note that field `details` must be set for the statement
 to succeed.
 
-```zetasql
+```googlesql
 SELECT REPLACE_FIELDS(
   NEW Book(
     "The Hummingbird" AS title,
@@ -1011,7 +1011,7 @@ AS proto;
 
 The function can replace value of repeated fields.
 
-```zetasql
+```googlesql
 SELECT REPLACE_FIELDS(
   NEW Book("The Hummingbird" AS title,
     NEW BookDetails(10 AS chapters) AS details),
@@ -1028,7 +1028,7 @@ AS proto;
 
 The function can also set a field to `NULL`.
 
-```zetasql
+```googlesql
 SELECT REPLACE_FIELDS(
   NEW Book("The Hummingbird" AS title,
     NEW BookDetails(10 AS chapters) AS details),
@@ -1182,7 +1182,7 @@ in the table above.
 
 Convert a `DATE` type into a `google.type.Date` type.
 
-```zetasql
+```googlesql
 SELECT TO_PROTO(DATE '2019-10-30')
 
 /*--------------------------------+
@@ -1194,7 +1194,7 @@ SELECT TO_PROTO(DATE '2019-10-30')
 
 Pass in and return a `google.type.Date` type.
 
-```zetasql
+```googlesql
 SELECT TO_PROTO(
   new google.type.Date(
     2019 as year,

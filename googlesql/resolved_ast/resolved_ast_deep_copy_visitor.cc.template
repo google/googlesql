@@ -1,0 +1,173 @@
+//
+// Copyright 2019 Google LLC
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+//
+
+// resolved_ast_deep_copy_visitor.cc GENERATED FROM resolved_ast_deep_copy_visitor.cc.template
+#include "googlesql/resolved_ast/resolved_ast_deep_copy_visitor.h"
+
+#include <string>
+
+#include "absl/memory/memory.h"
+#include "googlesql/base/source_location.h"
+
+namespace googlesql {
+
+// Default visit for the AST. This will throw an error, because we want to
+// ensure that the entire AST is copied.
+absl::Status ResolvedASTDeepCopyVisitor::DefaultVisit(
+    const ResolvedNode* node) {
+  return ::googlesql_base::InvalidArgumentErrorBuilder(googlesql_base::SourceLocation::current())
+         << "Unhandled node type in deep copy:\n"
+         << node->DebugString();
+}
+
+// The individual visit methods for each of the node types. We will always
+// return CopyVisitX, where X is the node kind. This will deep copy the tree
+// recursively.
+# for node in nodes if not node.is_abstract
+absl::Status ResolvedASTDeepCopyVisitor::Visit{{node.name}}(
+    const {{node.name}}* node) {
+  return CopyVisit{{node.name}}(node);
+}
+
+# endfor
+
+{# Generate a CopyVisit for each node kind that exists. This will visit the #}
+{# node and create a deep copy of it. #}
+# for node in nodes if not node.is_abstract
+absl::Status
+ResolvedASTDeepCopyVisitor::CopyVisit{{node.name}}(
+    const {{node.name}}* node) {
+{# We need to make a deep copy of any fields that this node contains that #}
+{# are constructor arguments and are pointers or vector of node pointers. #}
+ # for field in (node.fields + node.inherited_fields) | is_constructor_arg
+  # if field.is_node_ptr:
+{# If we found a node pointer, do a deep copy of the node. #}
+  // Get deep copy of {{field.name}} field.
+  GOOGLESQL_ASSIGN_OR_RETURN(
+      std::unique_ptr<{{field.ctype}}> {{field.name}},
+      ProcessNode(node->{{field.name}}()));
+
+  # elif field.is_node_vector:
+{# If we found a vector of node pointers, deep copy each node in the vector. #}
+  // Get a deep copy of {{field.name}} vector.
+  GOOGLESQL_ASSIGN_OR_RETURN(
+      std::vector<std::unique_ptr<{{field.ctype}}>> {{field.name}},
+      ProcessNodeList(node->{{field.name}}()));
+
+  # elif field.member_type == "ResolvedColumn":
+{# If we found a non-pointer field type that supports custom copying. #}
+  GOOGLESQL_ASSIGN_OR_RETURN(
+      {{field.member_type}} {{field.name}},
+      Copy{{field.member_type}}(node->{{field.name}}()));
+
+  # elif field.element_arg_type == "ResolvedColumn":
+{# If we found a non-pointer field type that supports custom copying. #}
+  {{field.member_type}} {{field.name}};
+  for (int i = 0; i < node->{{field.name}}().size(); ++i) {
+    GOOGLESQL_ASSIGN_OR_RETURN({{field.element_arg_type}} elem,
+                     Copy{{field.element_arg_type}}(node->{{field.name}}()[i]));
+    {{field.name}}.push_back(elem);
+  }
+
+  # endif
+ # endfor
+
+{# If the node is not abstract, then we need to create a deep copy of the #}
+{# node and push it to the stack. For each field that's a constructor arg, #}
+{# we will check it's kind. If it is a node pointer or node vector we must #}
+{# std::move it. Otherwise, it is a concrete value and we can just access it #}
+{# directly. #}
+ # if not node.is_abstract
+  // Create a mutable instance of {{node.name}}.
+  auto copy = Make{{node.name}}(
+ # for field in (node.inherited_fields + node.fields) | is_constructor_arg
+   # if field.is_move_only
+    std::move({{field.name}}){%if not loop.last%},{%endif%}
+
+   # elif field.member_type == "ResolvedColumn":
+    {{field.name}}{%if not loop.last%},{%endif%}
+
+   # elif field.element_arg_type == "ResolvedColumn":
+    {{field.name}}{%if not loop.last%},{%endif%}
+
+   # else
+    node->{{field.name}}(){%if not loop.last%},{%endif%}
+
+  # endif
+ # endfor
+  );
+
+{# It's impossible to copy some nodes exactly using only the constructor #}
+{# as some fields can be set but are not passed into the constructor. This #}
+{# code is for explicitly copying those values over for fields that have #}
+{# is_constructor_arg equal to False. If the generated file compiles, all #}
+{# fields are either handled here or by the constructor. #}
+
+ # for field in (node.inherited_fields + node.fields) if not field.is_constructor_arg
+
+  # if not field.is_move_only
+  // Copy the field explicitly because it is not a constructor arg.
+  copy->set_{{field.name}}(node->{{field.name}}());
+
+  # elif field.is_node_ptr
+  // Copy the field explicitly because it is not a constructor arg.
+  GOOGLESQL_ASSIGN_OR_RETURN(
+      std::unique_ptr<{{field.ctype}}> {{field.name}},
+      ProcessNode(node->{{field.name}}()));
+  copy->set_{{field.name}}(std::move({{field.name}}));
+
+  # elif field.is_node_vector
+  // Copy the field explicitly because it is not a constructor arg.
+  GOOGLESQL_ASSIGN_OR_RETURN(
+     std::vector<std::unique_ptr<{{field.ctype}}>> {{field.name}},
+     ProcessNodeList(node->{{field.name}}()));
+  copy->set_{{field.name}}({
+       std::make_move_iterator({{field.name}}.begin()),
+       std::make_move_iterator({{field.name}}.end())
+  });
+
+  # else
+  // Unhandled non-constructor argument not copied to new node explicitly.
+  static_assert(false, CopyField{{field.name}}Of{{node.name}}MustBeImplementedManually);
+  return absl::Status::CANCELLED;
+
+   # endif
+ # endfor
+
+  // Set parse location range if it was previously set, as this is not a
+  // constructor arg.
+  const auto parse_location = node->GetParseLocationRangeOrNULL();
+  if (parse_location != nullptr) {
+    copy.get()->SetParseLocationRange(*parse_location);
+  }
+  // Set keyword parse location range if it was previously set, as this is not a
+  // constructor arg.
+  const auto operator_keyword_parse_location =
+      node->GetOperatorKeywordLocationRangeOrNULL();
+  if (operator_keyword_parse_location != nullptr) {
+    copy.get()->SetOperatorKeywordLocationRange(
+        *operator_keyword_parse_location);
+  }
+
+  // Add the non-abstract node to the stack.
+  PushNodeToStack(std::move(copy));
+ # endif
+  return absl::OkStatus();
+}
+
+# endfor
+
+}  // namespace googlesql

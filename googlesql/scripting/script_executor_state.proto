@@ -1,0 +1,126 @@
+//
+// Copyright 2019 Google LLC
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+//
+
+syntax = "proto2";
+
+package googlesql;
+
+import "google/protobuf/any.proto";
+import "googlesql/proto/function.proto";
+import "googlesql/proto/script_exception.proto";
+import "googlesql/scripting/procedure_extension.proto";
+import "googlesql/scripting/variable.proto";
+
+// Next id: 8
+message ScriptExecutorStateProto {
+  message ProcedureDefinition {
+    // Procedure name.
+    optional string name = 1;
+
+    // Procedure signature.
+    optional FunctionSignatureProto signature = 2;
+
+    // Procedure argument name list.
+    repeated string argument_name_list = 3;
+
+    // Procedure body. It is the SQL text within:
+    //   CREATE PROCEDURE ... BEGIN <body> END.
+    optional string body = 4;
+
+    // Whether or not the procedure is dynamic SQL
+    optional bool is_dynamic_sql = 5;
+
+    // Engine specific proto message that needs to be retrieved from the stack
+    // frame later.
+    optional ProcedureExtension extension = 6;
+  }
+
+  message StackFrame {
+    // Definition of procedure of current stack frame. NULL if current stack
+    // frame is the main script.
+    optional ProcedureDefinition procedure_definition = 1;
+
+    // The names and values of variables. For main script frame, it also
+    // includes the predefined script variables.
+    repeated Variable variables = 2;
+
+    // Byte offset of the next statement or expression to be evaluated, relative
+    // to the body of procedure of this stack frame. This field is unset if the
+    // script is complete.
+    optional int32 current_location_byte_offset = 3;
+
+    // Control flow node kind of the current location, used to disambiguate when
+    // multiple control flow nodes map to the same byte offset.
+    optional int32 control_flow_node_kind = 5;
+
+    message Parameters {
+      // Possible parameter modes
+      enum ParameterMode {
+        NONE = 0;
+        NAMED = 1;
+        POSITIONAL = 2;
+      }
+
+      // Parameter mode of query parameters
+      optional ParameterMode mode = 4;
+
+      // Query parameters potentially set in the stack frame
+      repeated Variable variables = 5;
+    }
+
+    optional Parameters parameters = 4;
+
+    // Iterators of nested FOR loops, innermost loop is last.
+    repeated .google.protobuf.Any for_loop_stack = 6;
+  }
+
+  // Main script should always be the first frame of the stack. This field
+  // should never be empty.
+  repeated StackFrame callstack = 1;
+
+  // Stack of pending exceptions, with the innermost exception appearing last.
+  repeated ScriptException pending_exceptions = 2;
+
+  // Features used in the script.
+  enum ScriptFeature {
+    INVALID = 0;
+    EXCEPTION_CAUGHT = 1;
+    CALL_STATEMENT = 2;
+    EXECUTE_IMMEDIATE_STATEMENT = 3;
+  }
+
+  message ScriptFeatureUsage {
+    optional int32 exception = 1;
+    optional int32 call_stmt = 2;
+    optional int32 execute_immediate_stmt = 3;
+  }
+
+  // Script features triggered by current script so far. Every feature should
+  // appear only once.
+  repeated ScriptFeature triggered_features = 3;
+
+  // Value of @@time_zone.
+  optional string timezone = 4;
+
+  // Index of the current CASE statement's WHEN branch that should be entered.
+  // -1 if no WHEN branch meets condition.
+  optional int64 case_stmt_true_branch_index = 5;
+  // Tracker index of current WHEN branch being executed.
+  optional int64 case_stmt_current_branch_index = 6;
+
+  // Identifies script features are used in the script.
+  optional ScriptFeatureUsage sql_feature_usage = 7;
+}

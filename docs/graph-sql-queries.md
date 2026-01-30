@@ -4,7 +4,7 @@
 
 # GQL within SQL
 
-ZetaSQL supports the following syntax to use GQL
+GoogleSQL supports the following syntax to use GQL
 within SQL queries.
 
 ## Language list
@@ -19,7 +19,7 @@ within SQL queries.
   <tbody>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/graph-sql-queries.md#graph_table_operator"><code>GRAPH_TABLE</code> operator</a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/graph-sql-queries.md#graph_table_operator"><code>GRAPH_TABLE</code> operator</a>
 </td>
   <td>
     Performs an operation on a graph in the <code>FROM</code> clause of a SQL
@@ -62,12 +62,12 @@ you can use in the rest of the query.
 Note: The examples in this section reference a property graph called
 [`FinGraph`][fin-graph].
 
-[fin-graph]: https://github.com/google/zetasql/blob/master/docs/graph-schema-statements.md#fin_graph
+[fin-graph]: https://github.com/google/googlesql/blob/master/docs/graph-schema-statements.md#fin_graph
 
 You can use the `RETURN` statement to return specific node and edge properties.
 For example:
 
-```zetasql
+```googlesql
 SELECT name, id
 FROM GRAPH_TABLE(
   FinGraph
@@ -87,7 +87,7 @@ FROM GRAPH_TABLE(
 You can use the `RETURN` statement to produce output with graph pattern
 variables. These variables can be referenced outside `GRAPH_TABLE`. For example,
 
-```zetasql
+```googlesql
 SELECT n.name, n.id
 FROM GRAPH_TABLE(
   FinGraph
@@ -108,7 +108,7 @@ The following query produces an error because `id` isn't
 included in the `RETURN` statement, even though this property exists for
 element `n`:
 
-```zetasql {.bad}
+```googlesql {.bad}
 SELECT name, id
 FROM GRAPH_TABLE(
   FinGraph
@@ -121,7 +121,7 @@ The following query produces an error because directly outputting the graph
 element `n` is not supported. Convert `n` to its JSON representation using the
 `SAFE_TO_JSON` for successful output.
 
-```zetasql {.bad}
+```googlesql {.bad}
 -- Error
 SELECT n
 FROM GRAPH_TABLE(
@@ -131,7 +131,7 @@ FROM GRAPH_TABLE(
 );
 ```
 
-```zetasql
+```googlesql
 SELECT SAFE_TO_JSON(n) as json_node
 FROM GRAPH_TABLE(
   FinGraph
@@ -148,5 +148,5 @@ FROM GRAPH_TABLE(
  +--------------------------*/
 ```
 
-[graph-query-statements]: https://github.com/google/zetasql/blob/master/docs/graph-query-statements.md
+[graph-query-statements]: https://github.com/google/googlesql/blob/master/docs/graph-query-statements.md
 

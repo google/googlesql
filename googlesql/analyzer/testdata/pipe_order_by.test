@@ -1,0 +1,509 @@
+[default language_features=MAXIMUM,+PIPES,+PIPE_STATIC_DESCRIBE,+ANALYTIC_FUNCTIONS]
+select 1 x, 2 y
+|> ORDER BY x, y DESC, x*2
+|> ORDER @{hint=1} BY x
+--
+QueryStmt
++-output_column_list=
+| +-$query.x#1 AS x [INT64]
+| +-$query.y#2 AS y [INT64]
++-query=
+  +-OrderByScan
+    +-column_list=$query.[x#1, y#2]
+    +-hint_list=
+    | +-hint := Literal(type=INT64, value=1)
+    +-is_ordered=TRUE
+    +-input_scan=
+    | +-OrderByScan
+    |   +-column_list=$query.[x#1, y#2]
+    |   +-is_ordered=TRUE
+    |   +-input_scan=
+    |   | +-ProjectScan
+    |   |   +-column_list=[$query.x#1, $query.y#2, $orderby.$orderbycol3#3]
+    |   |   +-expr_list=
+    |   |   | +-$orderbycol3#3 :=
+    |   |   |   +-FunctionCall(GoogleSQL:$multiply(INT64, INT64) -> INT64)
+    |   |   |     +-ColumnRef(type=INT64, column=$query.x#1)
+    |   |   |     +-Literal(type=INT64, value=2)
+    |   |   +-input_scan=
+    |   |     +-ProjectScan
+    |   |       +-column_list=$query.[x#1, y#2]
+    |   |       +-expr_list=
+    |   |       | +-x#1 := Literal(type=INT64, value=1)
+    |   |       | +-y#2 := Literal(type=INT64, value=2)
+    |   |       +-input_scan=
+    |   |         +-SingleRowScan
+    |   +-order_by_item_list=
+    |     +-OrderByItem
+    |     | +-column_ref=
+    |     |   +-ColumnRef(type=INT64, column=$query.x#1)
+    |     +-OrderByItem
+    |     | +-column_ref=
+    |     | | +-ColumnRef(type=INT64, column=$query.y#2)
+    |     | +-is_descending=TRUE
+    |     +-OrderByItem
+    |       +-column_ref=
+    |         +-ColumnRef(type=INT64, column=$orderby.$orderbycol3#3)
+    +-order_by_item_list=
+      +-OrderByItem
+        +-column_ref=
+          +-ColumnRef(type=INT64, column=$query.x#1)
+==
+
+[language_features=NONE,+PIPES,+ORDER_BY_COLLATE,+NULLS_FIRST_LAST_IN_ORDER_BY]
+select "abc" x, 2 y
+|> ORDER BY x COLLATE "abc"
+|> ORDER BY y DESC NULLS LAST
+--
+QueryStmt
++-output_column_list=
+| +-$query.x#1 AS x [STRING]
+| +-$query.y#2 AS y [INT64]
++-query=
+  +-OrderByScan
+    +-column_list=$query.[x#1, y#2]
+    +-is_ordered=TRUE
+    +-input_scan=
+    | +-OrderByScan
+    |   +-column_list=$query.[x#1, y#2]
+    |   +-is_ordered=TRUE
+    |   +-input_scan=
+    |   | +-ProjectScan
+    |   |   +-column_list=$query.[x#1, y#2]
+    |   |   +-expr_list=
+    |   |   | +-x#1 := Literal(type=STRING, value="abc")
+    |   |   | +-y#2 := Literal(type=INT64, value=2)
+    |   |   +-input_scan=
+    |   |     +-SingleRowScan
+    |   +-order_by_item_list=
+    |     +-OrderByItem
+    |       +-column_ref=
+    |       | +-ColumnRef(type=STRING, column=$query.x#1)
+    |       +-collation_name=
+    |         +-Literal(type=STRING, value="abc")
+    +-order_by_item_list=
+      +-OrderByItem
+        +-column_ref=
+        | +-ColumnRef(type=INT64, column=$query.y#2)
+        +-is_descending=TRUE
+        +-null_order=NULLS_LAST
+==
+
+# ORDER BY ordinals
+select 1 x, 2 y
+|> ORDER BY x, 2
+|> ORDER BY 2, 1 DESC
+--
+QueryStmt
++-output_column_list=
+| +-$query.x#1 AS x [INT64]
+| +-$query.y#2 AS y [INT64]
++-query=
+  +-OrderByScan
+    +-column_list=$query.[x#1, y#2]
+    +-is_ordered=TRUE
+    +-input_scan=
+    | +-OrderByScan
+    |   +-column_list=$query.[x#1, y#2]
+    |   +-is_ordered=TRUE
+    |   +-input_scan=
+    |   | +-ProjectScan
+    |   |   +-column_list=$query.[x#1, y#2]
+    |   |   +-expr_list=
+    |   |   | +-x#1 := Literal(type=INT64, value=1)
+    |   |   | +-y#2 := Literal(type=INT64, value=2)
+    |   |   +-input_scan=
+    |   |     +-SingleRowScan
+    |   +-order_by_item_list=
+    |     +-OrderByItem
+    |     | +-column_ref=
+    |     |   +-ColumnRef(type=INT64, column=$query.x#1)
+    |     +-OrderByItem
+    |       +-column_ref=
+    |         +-ColumnRef(type=INT64, column=$query.y#2)
+    +-order_by_item_list=
+      +-OrderByItem
+      | +-column_ref=
+      |   +-ColumnRef(type=INT64, column=$query.y#2)
+      +-OrderByItem
+        +-column_ref=
+        | +-ColumnRef(type=INT64, column=$query.x#1)
+        +-is_descending=TRUE
+==
+
+select 1 x, 2 y
+|> ORDER BY 3
+--
+ERROR: ORDER BY column number exceeds input table column count: 3 vs 2 [at 2:13]
+|> ORDER BY 3
+            ^
+==
+
+select 1 x, 2 y
+|> ORDER BY -1
+--
+ERROR: ORDER BY column number item is out of range. Column numbers must be greater than or equal to one. Found : -1 [at 2:13]
+|> ORDER BY -1
+            ^
+==
+
+select 1 x, 2 y
+|> ORDER BY sum(x)
+--
+ERROR: Aggregate function SUM not allowed in pipe ORDER BY clause [at 2:13]
+|> ORDER BY sum(x)
+            ^
+==
+
+[language_features=NONE,+PIPES{{|,+ANALYTIC_FUNCTIONS}}]
+select 1 x, 2 y
+|> ORDER BY sum(x) OVER ()
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: Analytic functions not supported [at 2:13]
+|> ORDER BY sum(x) OVER ()
+            ^
+--
+ALTERNATION GROUP: ,+ANALYTIC_FUNCTIONS
+--
+QueryStmt
++-output_column_list=
+| +-$query.x#1 AS x [INT64]
+| +-$query.y#2 AS y [INT64]
++-query=
+  +-OrderByScan
+    +-column_list=[$query.x#1, $query.y#2, $analytic.$analytic1#3]
+    +-is_ordered=TRUE
+    +-input_scan=
+    | +-AnalyticScan
+    |   +-column_list=[$query.x#1, $query.y#2, $analytic.$analytic1#3]
+    |   +-input_scan=
+    |   | +-ProjectScan
+    |   |   +-column_list=$query.[x#1, y#2]
+    |   |   +-expr_list=
+    |   |   | +-x#1 := Literal(type=INT64, value=1)
+    |   |   | +-y#2 := Literal(type=INT64, value=2)
+    |   |   +-input_scan=
+    |   |     +-SingleRowScan
+    |   +-function_group_list=
+    |     +-AnalyticFunctionGroup
+    |       +-analytic_function_list=
+    |         +-$analytic1#3 :=
+    |           +-AnalyticFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+    |             +-ColumnRef(type=INT64, column=$query.x#1)
+    |             +-window_frame=
+    |               +-WindowFrame(frame_unit=ROWS)
+    |                 +-start_expr=
+    |                 | +-WindowFrameExpr(boundary_type=UNBOUNDED PRECEDING)
+    |                 +-end_expr=
+    |                   +-WindowFrameExpr(boundary_type=UNBOUNDED FOLLOWING)
+    +-order_by_item_list=
+      +-OrderByItem
+        +-column_ref=
+          +-ColumnRef(type=INT64, column=$analytic.$analytic1#3)
+==
+
+# ORDER BY with a mix of expressions before and after the window function.
+select 1 x, 2 y, 3 z
+|> ORDER BY x,
+            x+1,
+            1+sum(x) OVER (),
+            avg(y+1) OVER (order by x),
+            max(x) OVER (partition by x+1)
+--
+QueryStmt
++-output_column_list=
+| +-$query.x#1 AS x [INT64]
+| +-$query.y#2 AS y [INT64]
+| +-$query.z#3 AS z [INT64]
++-query=
+  +-OrderByScan
+    +-column_list=[$query.x#1, $query.y#2, $query.z#3, $analytic.$analytic1#4, $analytic.$analytic2#5, $analytic.$analytic3#6]
+    +-is_ordered=TRUE
+    +-input_scan=
+    | +-ProjectScan
+    |   +-column_list=[$query.x#1, $query.y#2, $query.z#3, $analytic.$analytic1#4, $analytic.$analytic2#5, $analytic.$analytic3#6, $orderby.$orderbycol2#8, $orderby.$orderbycol3#9]
+    |   +-expr_list=
+    |   | +-$orderbycol2#8 :=
+    |   | | +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |   | |   +-ColumnRef(type=INT64, column=$query.x#1)
+    |   | |   +-Literal(type=INT64, value=1)
+    |   | +-$orderbycol3#9 :=
+    |   |   +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |   |     +-Literal(type=INT64, value=1)
+    |   |     +-ColumnRef(type=INT64, column=$analytic.$analytic1#4)
+    |   +-input_scan=
+    |     +-AnalyticScan
+    |       +-column_list=[$query.x#1, $query.y#2, $query.z#3, $analytic.$analytic1#4, $analytic.$analytic2#5, $analytic.$analytic3#6]
+    |       +-input_scan=
+    |       | +-ProjectScan
+    |       |   +-column_list=[$query.x#1, $query.y#2, $query.z#3, $partitionby.$partitionbycol1#7]
+    |       |   +-expr_list=
+    |       |   | +-$partitionbycol1#7 :=
+    |       |   |   +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |       |   |     +-ColumnRef(type=INT64, column=$query.x#1)
+    |       |   |     +-Literal(type=INT64, value=1)
+    |       |   +-input_scan=
+    |       |     +-ProjectScan
+    |       |       +-column_list=$query.[x#1, y#2, z#3]
+    |       |       +-expr_list=
+    |       |       | +-x#1 := Literal(type=INT64, value=1)
+    |       |       | +-y#2 := Literal(type=INT64, value=2)
+    |       |       | +-z#3 := Literal(type=INT64, value=3)
+    |       |       +-input_scan=
+    |       |         +-SingleRowScan
+    |       +-function_group_list=
+    |         +-AnalyticFunctionGroup
+    |         | +-analytic_function_list=
+    |         |   +-$analytic1#4 :=
+    |         |     +-AnalyticFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+    |         |       +-ColumnRef(type=INT64, column=$query.x#1)
+    |         |       +-window_frame=
+    |         |         +-WindowFrame(frame_unit=ROWS)
+    |         |           +-start_expr=
+    |         |           | +-WindowFrameExpr(boundary_type=UNBOUNDED PRECEDING)
+    |         |           +-end_expr=
+    |         |             +-WindowFrameExpr(boundary_type=UNBOUNDED FOLLOWING)
+    |         +-AnalyticFunctionGroup
+    |         | +-order_by=
+    |         | | +-WindowOrdering
+    |         | |   +-order_by_item_list=
+    |         | |     +-OrderByItem
+    |         | |       +-column_ref=
+    |         | |         +-ColumnRef(type=INT64, column=$query.x#1)
+    |         | +-analytic_function_list=
+    |         |   +-$analytic2#5 :=
+    |         |     +-AnalyticFunctionCall(GoogleSQL:avg(INT64) -> DOUBLE)
+    |         |       +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |         |       | +-ColumnRef(type=INT64, column=$query.y#2)
+    |         |       | +-Literal(type=INT64, value=1)
+    |         |       +-window_frame=
+    |         |         +-WindowFrame(frame_unit=RANGE)
+    |         |           +-start_expr=
+    |         |           | +-WindowFrameExpr(boundary_type=UNBOUNDED PRECEDING)
+    |         |           +-end_expr=
+    |         |             +-WindowFrameExpr(boundary_type=CURRENT ROW)
+    |         +-AnalyticFunctionGroup
+    |           +-partition_by=
+    |           | +-WindowPartitioning
+    |           |   +-partition_by_list=
+    |           |     +-ColumnRef(type=INT64, column=$partitionby.$partitionbycol1#7)
+    |           +-analytic_function_list=
+    |             +-$analytic3#6 :=
+    |               +-AnalyticFunctionCall(GoogleSQL:max(INT64) -> INT64)
+    |                 +-ColumnRef(type=INT64, column=$query.x#1)
+    |                 +-window_frame=
+    |                   +-WindowFrame(frame_unit=ROWS)
+    |                     +-start_expr=
+    |                     | +-WindowFrameExpr(boundary_type=UNBOUNDED PRECEDING)
+    |                     +-end_expr=
+    |                       +-WindowFrameExpr(boundary_type=UNBOUNDED FOLLOWING)
+    +-order_by_item_list=
+      +-OrderByItem
+      | +-column_ref=
+      |   +-ColumnRef(type=INT64, column=$query.x#1)
+      +-OrderByItem
+      | +-column_ref=
+      |   +-ColumnRef(type=INT64, column=$orderby.$orderbycol2#8)
+      +-OrderByItem
+      | +-column_ref=
+      |   +-ColumnRef(type=INT64, column=$orderby.$orderbycol3#9)
+      +-OrderByItem
+      | +-column_ref=
+      |   +-ColumnRef(type=DOUBLE, column=$analytic.$analytic2#5)
+      +-OrderByItem
+        +-column_ref=
+          +-ColumnRef(type=INT64, column=$analytic.$analytic3#6)
+==
+
+# ORDER BY with a window function over a value table, preserving
+# the value table.
+from TestExtraValueTable
+|> ORDER BY sum(int32_val1) OVER (order by int32_val2)
+|> STATIC_DESCRIBE
+|> WHERE Filename != ""
+--
+QueryStmt
++-output_column_list=
+| +-TestExtraValueTable.value#1 AS `$value` [PROTO<googlesql_test.TestExtraPB>]
++-is_value_table=TRUE
++-query=
+  +-FilterScan
+    +-column_list=[TestExtraValueTable.value#1, TestExtraValueTable.Filename#2, $analytic.$analytic1#4]
+    +-input_scan=
+    | +-StaticDescribeScan
+    |   +-column_list=[TestExtraValueTable.value#1, TestExtraValueTable.Filename#2, $analytic.$analytic1#4]
+    |   +-is_ordered=TRUE
+    |   +-describe_text=
+    |   |   """
+    |   |   NameList (is_value_table = true):
+    |   |     TestExtraValueTable googlesql_test.TestExtraPB TestExtraValueTable.value#1 (value table)
+    |   |   NameScope:
+    |   |     Names:
+    |   |       Filename -> STRING (TestExtraValueTable.Filename#2) (implicit) (pseudo-column)
+    |   |       RowId -> BYTES (TestExtraValueTable.RowId#3) (implicit) (pseudo-column)
+    |   |     Range variables:
+    |   |       TestExtraValueTable -> RANGE_VARIABLE<value#1, pseudo_columns: Filename#2,RowId#3> (value table)
+    |   |     Value table columns:
+    |   |       TestExtraValueTable.value#1
+    |   |
+    |   |   Result is ordered.
+    |   |   """
+    |   +-input_scan=
+    |     +-OrderByScan
+    |       +-column_list=[TestExtraValueTable.value#1, TestExtraValueTable.Filename#2, $analytic.$analytic1#4]
+    |       +-is_ordered=TRUE
+    |       +-input_scan=
+    |       | +-AnalyticScan
+    |       |   +-column_list=[TestExtraValueTable.value#1, TestExtraValueTable.Filename#2, $analytic.$analytic1#4]
+    |       |   +-input_scan=
+    |       |   | +-ProjectScan
+    |       |   |   +-column_list=[TestExtraValueTable.value#1, TestExtraValueTable.Filename#2, $orderby.int32_val2#5]
+    |       |   |   +-expr_list=
+    |       |   |   | +-int32_val2#5 :=
+    |       |   |   |   +-GetProtoField
+    |       |   |   |     +-type=INT32
+    |       |   |   |     +-expr=
+    |       |   |   |     | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=TestExtraValueTable.value#1)
+    |       |   |   |     +-field_descriptor=int32_val2
+    |       |   |   |     +-default_value=0
+    |       |   |   +-input_scan=
+    |       |   |     +-TableScan(column_list=TestExtraValueTable.[value#1, Filename#2], table=TestExtraValueTable, column_index_list=[0, 1])
+    |       |   +-function_group_list=
+    |       |     +-AnalyticFunctionGroup
+    |       |       +-order_by=
+    |       |       | +-WindowOrdering
+    |       |       |   +-order_by_item_list=
+    |       |       |     +-OrderByItem
+    |       |       |       +-column_ref=
+    |       |       |         +-ColumnRef(type=INT32, column=$orderby.int32_val2#5)
+    |       |       +-analytic_function_list=
+    |       |         +-$analytic1#4 :=
+    |       |           +-AnalyticFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+    |       |             +-Cast(INT32 -> INT64)
+    |       |             | +-GetProtoField
+    |       |             |   +-type=INT32
+    |       |             |   +-expr=
+    |       |             |   | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=TestExtraValueTable.value#1)
+    |       |             |   +-field_descriptor=int32_val1
+    |       |             |   +-default_value=0
+    |       |             +-window_frame=
+    |       |               +-WindowFrame(frame_unit=RANGE)
+    |       |                 +-start_expr=
+    |       |                 | +-WindowFrameExpr(boundary_type=UNBOUNDED PRECEDING)
+    |       |                 +-end_expr=
+    |       |                   +-WindowFrameExpr(boundary_type=CURRENT ROW)
+    |       +-order_by_item_list=
+    |         +-OrderByItem
+    |           +-column_ref=
+    |             +-ColumnRef(type=INT64, column=$analytic.$analytic1#4)
+    +-filter_expr=
+      +-FunctionCall(GoogleSQL:$not_equal(STRING, STRING) -> BOOL)
+        +-ColumnRef(type=STRING, column=TestExtraValueTable.Filename#2)
+        +-Literal(type=STRING, value="")
+==
+
+from KeyValue
+|> ORDER BY count(*) OVER w
+--
+ERROR: Cannot reference a named window in pipe ORDER BY clause [at 2:27]
+|> ORDER BY count(*) OVER w
+                          ^
+==
+
+# b/373412424: ORDER BY ordinal was using the column_list rather than the
+# NameList, so got confused about columns after DROP.
+FROM KeyValue
+|> DROP key
+|> ORDER BY {{1|2}}
+--
+ALTERNATION GROUP: 1
+--
+QueryStmt
++-output_column_list=
+| +-KeyValue.Value#2 AS Value [STRING]
++-query=
+  +-OrderByScan
+    +-column_list=[KeyValue.Value#2]
+    +-is_ordered=TRUE
+    +-input_scan=
+    | +-TableScan(column_list=[KeyValue.Value#2], table=KeyValue, column_index_list=[1])
+    +-order_by_item_list=
+      +-OrderByItem
+        +-column_ref=
+          +-ColumnRef(type=STRING, column=KeyValue.Value#2)
+--
+ALTERNATION GROUP: 2
+--
+ERROR: ORDER BY column number exceeds input table column count: 2 vs 1 [at 3:13]
+|> ORDER BY 2
+            ^
+==
+
+# b/373412424: ORDER BY ordinal was using the column_list rather than the
+# NameList, so ordinals could reference pseudo-columns incorrectly.
+# This table has 3 real columns and 2 pseudo-columns.
+FROM EnumTable
+|> ORDER BY {{3|4}}
+--
+ALTERNATION GROUP: 3
+--
+QueryStmt
++-output_column_list=
+| +-EnumTable.key#1 AS key [INT32]
+| +-EnumTable.TestEnum#2 AS TestEnum [ENUM<googlesql_test.TestEnum>]
+| +-EnumTable.AnotherTestEnum#3 AS AnotherTestEnum [ENUM<googlesql_test.AnotherTestEnum>]
++-query=
+  +-OrderByScan
+    +-column_list=EnumTable.[key#1, TestEnum#2, AnotherTestEnum#3]
+    +-is_ordered=TRUE
+    +-input_scan=
+    | +-TableScan(column_list=EnumTable.[key#1, TestEnum#2, AnotherTestEnum#3], table=EnumTable, column_index_list=[0, 1, 2])
+    +-order_by_item_list=
+      +-OrderByItem
+        +-column_ref=
+          +-ColumnRef(type=ENUM<googlesql_test.AnotherTestEnum>, column=EnumTable.AnotherTestEnum#3)
+--
+ALTERNATION GROUP: 4
+--
+ERROR: ORDER BY column number exceeds input table column count: 4 vs 3 [at 2:13]
+|> ORDER BY 4
+            ^
+==
+
+# For value tables, ORDER BY 1 orders by the value, if possible.
+# TestExtraValueTable also has pseudo-columns, which ordinals can't select.
+FROM {{TestExtraValueTable|Int32ValueTable}}
+|> ORDER BY {{1|2}}
+--
+ALTERNATION GROUP: TestExtraValueTable,1
+--
+ERROR: ORDER BY does not support expressions of type googlesql_test.TestExtraPB [at 2:13]
+|> ORDER BY 1
+            ^
+--
+ALTERNATION GROUPS:
+    TestExtraValueTable,2
+    Int32ValueTable,2
+--
+ERROR: ORDER BY column number exceeds input table column count: 2 vs 1 [at 2:13]
+|> ORDER BY 2
+            ^
+--
+ALTERNATION GROUP: Int32ValueTable,1
+--
+QueryStmt
++-output_column_list=
+| +-Int32ValueTable.value#1 AS `$value` [INT32]
++-is_value_table=TRUE
++-query=
+  +-OrderByScan
+    +-column_list=[Int32ValueTable.value#1]
+    +-is_ordered=TRUE
+    +-input_scan=
+    | +-TableScan(column_list=[Int32ValueTable.value#1], table=Int32ValueTable, column_index_list=[0])
+    +-order_by_item_list=
+      +-OrderByItem
+        +-column_ref=
+          +-ColumnRef(type=INT32, column=Int32ValueTable.value#1)

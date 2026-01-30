@@ -1,0 +1,359 @@
+[default language_features=MAXIMUM,+MATCH_RECOGNIZE,+TABLE_VALUED_FUNCTIONS,+NAMED_ARGUMENTS,+NULLS_FIRST_LAST_IN_ORDER_BY,+ANALYTIC_FUNCTIONS,+ORDER_BY_IN_AGGREGATE,+MULTILEVEL_AGGREGATION,+HAVING_IN_AGGREGATE,+LIMIT_IN_AGGREGATE,+SAFE_FUNCTION_CALL]
+[default allow_undeclared_parameters]
+
+# Cannot be used outside of MATCH_RECOGNIZE
+select next(uint32) from SimpleTypes
+--
+
+ERROR: function NEXT must be directly inside a MATCH_RECOGNIZE's DEFINE clause, without any enclosing subquery [at 2:8]
+select next(uint32) from SimpleTypes
+       ^
+==
+
+# Does not support SAFE
+select * from SimpleTypes MATCH_RECOGNIZE(
+  ORDER BY rand()
+  MEASURES avg(A.double) AS m
+  PATTERN (a)
+  DEFINE
+    A AS uint32 > SAFE.NEXT(uint32)
+)
+--
+
+ERROR: Function NEXT does not support SAFE error mode [at 6:19]
+    A AS uint32 > SAFE.NEXT(uint32)
+                  ^
+==
+
+# PREV does not support any aggregation modifiers.
+select * from SimpleTypes MATCH_RECOGNIZE(
+  ORDER BY rand()
+  MEASURES avg(A.double) AS m
+  PATTERN (a)
+  DEFINE
+    A AS uint32 > Prev(uint32 {{IGNORE NULLS|DISTINCT|LIMIT 3|ORDER BY rand()}})
+)
+--
+
+ALTERNATION GROUP: IGNORE NULLS
+--
+ERROR: IGNORE NULLS and RESPECT NULLS are not supported on scalar functions [at 6:19]
+    A AS uint32 > Prev(uint32 IGNORE NULLS)
+                  ^
+--
+ALTERNATION GROUP: DISTINCT
+--
+ERROR: Syntax error: Expected ")" but got keyword DISTINCT [at 6:31]
+    A AS uint32 > Prev(uint32 DISTINCT)
+                              ^
+--
+ALTERNATION GROUP: LIMIT 3
+--
+ERROR: LIMIT in arguments is not supported on scalar functions [at 6:31]
+    A AS uint32 > Prev(uint32 LIMIT 3)
+                              ^
+--
+ALTERNATION GROUP: ORDER BY rand()
+--
+ERROR: ORDER BY in arguments is not supported on scalar functions [at 6:31]
+    A AS uint32 > Prev(uint32 ORDER BY rand())
+                              ^
+==
+
+# NEXT does not support the OVER clause
+select * from SimpleTypes MATCH_RECOGNIZE(
+  ORDER BY rand()
+  MEASURES avg(A.double) AS m
+  PATTERN (a)
+  DEFINE
+    A AS uint32 > Next(uint32) OVER (ORDER BY string)
+)
+--
+
+ERROR: Analytic function not allowed in MATCH_RECOGNIZE DEFINE predicate [at 6:19]
+    A AS uint32 > Next(uint32) OVER (ORDER BY string)
+                  ^
+==
+
+# All in the same MR window.
+select * from SimpleTypes MATCH_RECOGNIZE(
+  ORDER BY rand()
+  MEASURES avg(A.double) AS m
+  PATTERN (a b+)
+  DEFINE
+    A AS uint32 > NEXT(uint32 + 4, 3) - prev(double),
+    B AS date >= PREV(date, 2)
+)
+--
+
+QueryStmt
++-output_column_list=
+| +-$match_recognize.m#28 AS m [DOUBLE]
++-query=
+  +-ProjectScan
+    +-column_list=[$match_recognize.m#28]
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[$match_recognize.m#28]
+        +-expr_list=
+        | +-m#28 := ColumnRef(type=DOUBLE, column=$aggregate.$agg1#27)
+        +-input_scan=
+          +-MatchRecognizeScan
+            +-column_list=[$aggregate.$agg1#27]
+            +-input_scan=
+            | +-ProjectScan
+            |   +-column_list=[SimpleTypes.uint32#3, SimpleTypes.double#9, SimpleTypes.date#10, $orderby.$orderbycol1#23]
+            |   +-expr_list=
+            |   | +-$orderbycol1#23 := FunctionCall(GoogleSQL:rand() -> DOUBLE)
+            |   +-input_scan=
+            |     +-TableScan(column_list=SimpleTypes.[uint32#3, double#9, date#10], table=SimpleTypes, column_index_list=[2, 8, 9])
+            +-analytic_function_group_list=
+            | +-AnalyticFunctionGroup
+            |   +-order_by=
+            |   | +-WindowOrdering
+            |   |   +-order_by_item_list=
+            |   |     +-OrderByItem
+            |   |       +-column_ref=
+            |   |         +-ColumnRef(type=DOUBLE, column=$orderby.$orderbycol1#23)
+            |   +-analytic_function_list=
+            |     +-$analytic1#20 :=
+            |     | +-AnalyticFunctionCall(GoogleSQL:lead(UINT64, optional(1) INT64) -> UINT64)
+            |     |   +-FunctionCall(GoogleSQL:$add(UINT64, UINT64) -> UINT64)
+            |     |   | +-Cast(UINT32 -> UINT64)
+            |     |   | | +-ColumnRef(type=UINT32, column=SimpleTypes.uint32#3)
+            |     |   | +-Literal(type=UINT64, value=4)
+            |     |   +-Literal(type=INT64, value=3)
+            |     +-$analytic2#21 :=
+            |     | +-AnalyticFunctionCall(GoogleSQL:lag(DOUBLE, optional(0) INT64) -> DOUBLE)
+            |     |   +-ColumnRef(type=DOUBLE, column=SimpleTypes.double#9)
+            |     +-$analytic3#22 :=
+            |       +-AnalyticFunctionCall(GoogleSQL:lag(DATE, optional(1) INT64) -> DATE)
+            |         +-ColumnRef(type=DATE, column=SimpleTypes.date#10)
+            |         +-Literal(type=INT64, value=2)
+            +-pattern_variable_definition_list=
+            | +-MatchRecognizeVariableDefinition
+            | | +-name="A"
+            | | +-predicate=
+            | |   +-FunctionCall(GoogleSQL:$greater(DOUBLE, DOUBLE) -> BOOL)
+            | |     +-Cast(UINT32 -> DOUBLE)
+            | |     | +-ColumnRef(type=UINT32, column=SimpleTypes.uint32#3)
+            | |     +-FunctionCall(GoogleSQL:$subtract(DOUBLE, DOUBLE) -> DOUBLE)
+            | |       +-Cast(UINT64 -> DOUBLE)
+            | |       | +-ColumnRef(type=UINT64, column=$analytic.$analytic1#20)
+            | |       +-ColumnRef(type=DOUBLE, column=$analytic.$analytic2#21)
+            | +-MatchRecognizeVariableDefinition
+            |   +-name="B"
+            |   +-predicate=
+            |     +-FunctionCall(GoogleSQL:$greater_or_equal(DATE, DATE) -> BOOL)
+            |       +-ColumnRef(type=DATE, column=SimpleTypes.date#10)
+            |       +-ColumnRef(type=DATE, column=$analytic.$analytic3#22)
+            +-pattern=
+            | +-MatchRecognizePatternOperation
+            |   +-op_type=CONCAT
+            |   +-operand_list=
+            |     +-MatchRecognizePatternVariableRef(name="A")
+            |     +-MatchRecognizePatternQuantification
+            |       +-operand=
+            |       | +-MatchRecognizePatternVariableRef(name="B")
+            |       +-lower_bound=
+            |       | +-Literal(type=INT64, value=1)
+            |       +-is_reluctant=FALSE
+            +-after_match_skip_mode=END_OF_MATCH
+            +-measure_group_list=
+            | +-MeasureGroup
+            |   +-pattern_variable_ref=
+            |   | +-MatchRecognizePatternVariableRef(name="A")
+            |   +-aggregate_list=
+            |     +-$agg1#27 :=
+            |       +-AggregateFunctionCall(GoogleSQL:avg(DOUBLE) -> DOUBLE)
+            |         +-ColumnRef(type=DOUBLE, column=SimpleTypes.double#9)
+            +-match_number_column=$match_recognize.$match_number#24
+            +-match_row_number_column=$match_recognize.$match_row_number#25
+            +-classifier_column=$match_recognize.$classifier#26
+[UNDECLARED_PARAMETERS]
+==
+
+# NEXT() and PREV() cannot be nested
+select * from SimpleTypes MATCH_RECOGNIZE(
+  ORDER BY rand()
+  MEASURES avg(A.double) AS m
+  PATTERN (a+)
+  DEFINE
+    A AS uint32 > NEXT(PREV(uint32 + 4), 3)
+)
+--
+ERROR: function PREV cannot be nested in another PREV() or NEXT() call [at 6:24]
+    A AS uint32 > NEXT(PREV(uint32 + 4), 3)
+                       ^
+==
+
+# NEXT() and PREV() cannot reference pattern variables
+select * from SimpleTypes MATCH_RECOGNIZE(
+  ORDER BY rand()
+  MEASURES avg(A.double) AS m
+  PATTERN (a+)
+  DEFINE
+    A AS uint32 > NEXT(A.uint32)
+)
+--
+ERROR: Cannot access columns through pattern variables. [at 6:24]
+    A AS uint32 > NEXT(A.uint32)
+                       ^
+==
+
+# NEXT() and PREV() cannot be used in MEASURES
+select * from SimpleTypes MATCH_RECOGNIZE(
+  ORDER BY rand()
+  MEASURES {{NEXT(double)|NEXT(MIN(double))|MIN(NEXT(double))}} AS m
+  PATTERN (a+)
+  DEFINE
+    A AS true
+)
+--
+ALTERNATION GROUP: NEXT(double)
+--
+ERROR: function NEXT must be directly inside a MATCH_RECOGNIZE's DEFINE clause, without any enclosing subquery [at 3:12]
+  MEASURES NEXT(double) AS m
+           ^
+--
+ALTERNATION GROUP: NEXT(MIN(double))
+--
+ERROR: function NEXT must be directly inside a MATCH_RECOGNIZE's DEFINE clause, without any enclosing subquery [at 3:12]
+  MEASURES NEXT(MIN(double)) AS m
+           ^
+--
+ALTERNATION GROUP: MIN(NEXT(double))
+--
+ERROR: function NEXT must be directly inside a MATCH_RECOGNIZE's DEFINE clause, without any enclosing subquery [at 3:16]
+  MEASURES MIN(NEXT(double)) AS m
+               ^
+==
+
+# NEXT() and PREV() cannot be used from inside a subquery
+select * from SimpleTypes MATCH_RECOGNIZE(
+  ORDER BY rand()
+  MEASURES avg(A.double) AS m
+  PATTERN (a+)
+  DEFINE
+    A AS uint32 > (SELECT NEXT(uint32))
+)
+--
+ERROR: function NEXT must be directly inside a MATCH_RECOGNIZE's DEFINE clause, without any enclosing subquery [at 6:27]
+    A AS uint32 > (SELECT NEXT(uint32))
+                          ^
+==
+
+# Parameters are just like LEAD() and LAG() (e.g. offset must be constant)
+select * from SimpleTypes MATCH_RECOGNIZE(
+  PARTITION BY int64
+  ORDER BY rand()
+  MEASURES avg(A.double) AS m
+  PATTERN (a+)
+  DEFINE
+    A AS uint32 > PREV(uint32, {{int64|int32|@p}})
+)
+--
+ALTERNATION GROUP: int64
+--
+ERROR: Argument 2 to PREV must be a literal or query parameter [at 7:32]
+    A AS uint32 > PREV(uint32, int64)
+                               ^
+--
+ALTERNATION GROUP: int32
+--
+ERROR: Argument 2 to PREV must be a literal or query parameter [at 7:32]
+    A AS uint32 > PREV(uint32, int32)
+                               ^
+--
+ALTERNATION GROUP: @p
+--
+QueryStmt
++-output_column_list=
+| +-$partitionby.int64#20 AS int64 [INT64]
+| +-$match_recognize.m#27 AS m [DOUBLE]
++-query=
+  +-ProjectScan
+    +-column_list=[$partitionby.int64#20, $match_recognize.m#27]
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[$partitionby.int64#20, $match_recognize.m#27]
+        +-expr_list=
+        | +-m#27 := ColumnRef(type=DOUBLE, column=$aggregate.$agg1#26)
+        +-input_scan=
+          +-MatchRecognizeScan
+            +-column_list=[$partitionby.int64#20, $aggregate.$agg1#26]
+            +-input_scan=
+            | +-ProjectScan
+            |   +-column_list=[SimpleTypes.int64#2, SimpleTypes.uint32#3, SimpleTypes.double#9, $partitionby.int64#20, $orderby.$orderbycol1#22]
+            |   +-expr_list=
+            |   | +-int64#20 := ColumnRef(type=INT64, column=SimpleTypes.int64#2)
+            |   | +-$orderbycol1#22 := FunctionCall(GoogleSQL:rand() -> DOUBLE)
+            |   +-input_scan=
+            |     +-TableScan(column_list=SimpleTypes.[int64#2, uint32#3, double#9], table=SimpleTypes, column_index_list=[1, 2, 8])
+            +-analytic_function_group_list=
+            | +-AnalyticFunctionGroup
+            |   +-partition_by=
+            |   | +-WindowPartitioning
+            |   |   +-partition_by_list=
+            |   |     +-ColumnRef(type=INT64, column=$partitionby.int64#20)
+            |   +-order_by=
+            |   | +-WindowOrdering
+            |   |   +-order_by_item_list=
+            |   |     +-OrderByItem
+            |   |       +-column_ref=
+            |   |         +-ColumnRef(type=DOUBLE, column=$orderby.$orderbycol1#22)
+            |   +-analytic_function_list=
+            |     +-$analytic1#21 :=
+            |       +-AnalyticFunctionCall(GoogleSQL:lag(UINT32, optional(1) INT64) -> UINT32)
+            |         +-ColumnRef(type=UINT32, column=SimpleTypes.uint32#3)
+            |         +-Parameter(parse_location=167-169, type=INT64, name="p", is_untyped=TRUE)
+            +-pattern_variable_definition_list=
+            | +-MatchRecognizeVariableDefinition
+            |   +-name="A"
+            |   +-predicate=
+            |     +-FunctionCall(GoogleSQL:$greater(UINT32, UINT32) -> BOOL)
+            |       +-ColumnRef(type=UINT32, column=SimpleTypes.uint32#3)
+            |       +-ColumnRef(type=UINT32, column=$analytic.$analytic1#21)
+            +-pattern=
+            | +-MatchRecognizePatternQuantification
+            |   +-operand=
+            |   | +-MatchRecognizePatternVariableRef(name="A")
+            |   +-lower_bound=
+            |   | +-Literal(type=INT64, value=1)
+            |   +-is_reluctant=FALSE
+            +-after_match_skip_mode=END_OF_MATCH
+            +-measure_group_list=
+            | +-MeasureGroup
+            |   +-pattern_variable_ref=
+            |   | +-MatchRecognizePatternVariableRef(name="A")
+            |   +-aggregate_list=
+            |     +-$agg1#26 :=
+            |       +-AggregateFunctionCall(GoogleSQL:avg(DOUBLE) -> DOUBLE)
+            |         +-ColumnRef(type=DOUBLE, column=SimpleTypes.double#9)
+            +-match_number_column=$match_recognize.$match_number#23
+            +-match_row_number_column=$match_recognize.$match_row_number#24
+            +-classifier_column=$match_recognize.$classifier#25
+[UNDECLARED_PARAMETERS]
+p: INT64
+==
+
+# The offset cannot be null
+select * from SimpleTypes MATCH_RECOGNIZE(
+  ORDER BY rand()
+  MEASURES avg(A.double) AS m
+  PATTERN (a)
+  DEFINE
+    A AS uint32 > {{prev|next}}(uint32, NULL)
+)
+--
+ALTERNATION GROUP: prev
+--
+ERROR: Argument 2 to PREV must be non-NULL [at 6:32]
+    A AS uint32 > prev(uint32, NULL)
+                               ^
+--
+ALTERNATION GROUP: next
+--
+ERROR: Argument 2 to NEXT must be non-NULL [at 6:32]
+    A AS uint32 > next(uint32, NULL)
+                               ^

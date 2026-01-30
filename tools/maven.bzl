@@ -22,13 +22,13 @@ load("@google_bazel_common//tools/maven:pom_file.bzl", default_pom_file = "pom_f
 def pom_file(name, targets, artifact_name, artifact_id, excluded_artifacts = None, **kwargs):
     if excluded_artifacts == None:
         excluded_artifacts = []
-    excluded_artifacts.append("com.google.zetasql:{}".format(artifact_id))
+    excluded_artifacts.append("com.google.googlesql:{}".format(artifact_id))
 
     default_pom_file(
         name = name,
         targets = targets,
         preferred_group_ids = [
-            "com.google.zetasql",
+            "com.google.googlesql",
             "com.google",
         ],
         template_file = "//tools:pom-template.xml",

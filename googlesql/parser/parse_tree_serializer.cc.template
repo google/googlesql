@@ -1,0 +1,267 @@
+//
+// Copyright 2019 Google LLC
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+//
+
+#include "googlesql/parser/parse_tree_serializer.h"
+
+// NOLINTBEGIN(whitespace/line_length)
+
+namespace googlesql {
+
+
+absl::Status ParseTreeSerializer::Serialize(const ASTNode* node,
+                                            ASTNodeProto* proto) {
+  GOOGLESQL_ASSIGN_OR_RETURN(*proto->mutable_parse_location_range(),
+                   node->GetParseLocationRange().ToProto());
+  return absl::OkStatus();
+}
+
+absl::StatusOr<std::unique_ptr<ParserOutput>> ParseTreeSerializer::Deserialize(
+    const AnyASTStatementProto& proto, const ParserOptions& parser_options_in) {
+  ParserOptions parser_options = parser_options_in;
+  parser_options.CreateDefaultArenasIfNotSet();
+  std::unique_ptr<ASTNode> ast_node;
+  std::vector<std::unique_ptr<ASTNode>> allocated_ast_nodes;
+  GOOGLESQL_ASSIGN_OR_RETURN(googlesql::ASTStatement* statement,
+                   ParseTreeSerializer::Deserialize(
+                       proto, parser_options.id_string_pool().get(),
+                       parser_options.arena().get(), &allocated_ast_nodes));
+
+  GOOGLESQL_RET_CHECK(statement != nullptr);
+  for (int i = allocated_ast_nodes.size() - 1; i >= 0; --i) {
+    GOOGLESQL_RETURN_IF_ERROR((allocated_ast_nodes)[i]->InitFields());
+    // Locate the target statement among the allocated_ast_nodes, move
+    // its unique_ptr into *output.
+    if ((allocated_ast_nodes)[i].get() == statement) {
+      ast_node = std::move((allocated_ast_nodes)[i]);
+    }
+  }
+  std::unique_ptr<ASTStatement> statement_ptr(
+      ast_node.release()->GetAsOrDie<ASTStatement>());
+
+  return std::make_unique<ParserOutput>(
+      parser_options.id_string_pool(), parser_options.arena(),
+      std::move(allocated_ast_nodes), std::move(statement_ptr),
+      WarningSink{/*consider_location=*/true});
+}
+
+absl::StatusOr<std::unique_ptr<ParserOutput>> ParseTreeSerializer::Deserialize(
+    const AnyASTExpressionProto& proto, const ParserOptions& parser_options_in) {
+  ParserOptions parser_options = parser_options_in;
+  parser_options.CreateDefaultArenasIfNotSet();
+  std::unique_ptr<ASTNode> ast_node;
+  std::vector<std::unique_ptr<ASTNode>> allocated_ast_nodes;
+  GOOGLESQL_ASSIGN_OR_RETURN(googlesql::ASTExpression* expression,
+                   ParseTreeSerializer::Deserialize(
+                       proto, parser_options.id_string_pool().get(),
+                       parser_options.arena().get(), &allocated_ast_nodes));
+
+  GOOGLESQL_RET_CHECK(expression != nullptr);
+  for (int i = allocated_ast_nodes.size() - 1; i >= 0; --i) {
+    GOOGLESQL_RETURN_IF_ERROR((allocated_ast_nodes)[i]->InitFields());
+    // Locate the target expression among the allocated_ast_nodes, move
+    // its unique_ptr into *output.
+    if ((allocated_ast_nodes)[i].get() == expression) {
+      ast_node = std::move((allocated_ast_nodes)[i]);
+    }
+  }
+  std::unique_ptr<ASTExpression> expression_ptr(
+      ast_node.release()->GetAsOrDie<ASTExpression>());
+
+  return std::make_unique<ParserOutput>(
+      parser_options.id_string_pool(), parser_options.arena(),
+      std::move(allocated_ast_nodes), std::move(expression_ptr),
+      WarningSink{/*consider_location=*/true});
+}
+
+absl::Status ParseTreeSerializer::DeserializeAbstract(
+    ASTNode* node, const ASTNodeProto& proto, IdStringPool* id_string_pool,
+    googlesql_base::UnsafeArena* arena,
+    std::vector<std::unique_ptr<ASTNode>>* allocated_ast_nodes) {
+  GOOGLESQL_ASSIGN_OR_RETURN(ParseLocationRange parse_location_range,
+                   ParseLocationRange::Create(proto.parse_location_range()));
+  node->set_start_location(parse_location_range.start());
+  node->set_end_location(parse_location_range.end());
+  return absl::OkStatus();
+}
+
+
+# for node in nodes
+{{blank_line}}
+absl::Status ParseTreeSerializer::Serialize(const {{node.name}}* node,
+                                            {{node.proto_type}}* proto) {
+  {# The primary Serialize() first invokes Serialize() for the immediate #}
+  {# parent, then sets each field in the current node. If those fields   #}
+  {# are themselves nodes, invoke their respective Serialize() methods.  #}
+  GOOGLESQL_RETURN_IF_ERROR(Serialize(node, proto->mutable_parent()));
+ # for field in node.fields|sort_by_tag_id
+  # if field.is_node_ptr
+  if (node->{{field.member_name}} != nullptr) {
+    GOOGLESQL_RETURN_IF_ERROR(Serialize(node->{{field.member_name}}, proto->mutable_{{field.name}}()));
+  }
+  # elif field.is_vector
+  for (int i = 0; i < node->{{field.name}}().length(); i++) {
+    {{field.element_storage_type}} {{field.member_name}} = node->{{field.name}}().at(i);
+    {{field.proto_type}}* proto2 = proto->add_{{field.name}}();
+    GOOGLESQL_RETURN_IF_ERROR(Serialize({{field.member_name}}, proto2));
+  }
+  # elif field.is_enum
+  proto->set_{{field.name}}(static_cast<{{field.enum_value}}>(node->{{field.member_name}}));
+  # elif field.member_type is eq('IdString')
+  proto->set_{{field.name}}(node->{{field.member_name}}.ToString());
+  # elif not field.serialize_default_value
+  if (node->{{field.member_name}}) {
+    proto->set_{{field.name}}(node->{{field.member_name}});
+  }
+  # else
+  {# This case includes bool, int, std::string, TypeKind. #}
+  proto->set_{{field.name}}(node->{{field.member_name}});
+  # endif
+ # endfor
+  return absl::OkStatus();
+}
+  # for tag_id, ancestor in node.ancestors|dictsort
+absl::Status ParseTreeSerializer::Serialize(const {{node.name}}* node,
+                                           {{ancestor.proto_field_type}}* proto) {
+  {{ancestor.container_type}}* {{ancestor.member_name}}_proto =
+      proto->mutable_{{ancestor.member_name}}_node();
+  GOOGLESQL_RETURN_IF_ERROR(Serialize(node, {{ancestor.member_name}}_proto));
+  return absl::OkStatus();
+}
+  # endfor
+ # if node.is_abstract
+absl::Status ParseTreeSerializer::Serialize(const {{node.name}}* node,
+                                           {{node.proto_field_type}}* proto) {
+  {# Serialize() for an abstract class delegates to Serialize() of the #}
+  {# immediate subclass, which may itself be abstract or final.        #}
+  # for tag_id, subclass in node.subclasses|dictsort
+    {# We cannot use node_kind() here to determine the subclass because it #}
+    {# returns the final class rather than any intermediate abstract class. #}
+    {% if loop.index == 1 %}  if{% else %}  } else if{% endif %} (dynamic_cast<const {{subclass.name}}*>(node)) {
+    GOOGLESQL_RETURN_IF_ERROR(Serialize(static_cast<const {{subclass.name}}*>(node),
+                              proto->mutable_{{subclass.member_name}}_node()));
+  # endfor
+  } else {
+    return absl::InvalidArgumentError("Unknown subclass of {{node.name}}");
+  }
+  return absl::OkStatus();
+}
+ # endif
+
+ # if node.is_abstract
+{# Deserialize() for abstract methods passes control to Deserialize() of the subclass #}
+{# of which it is an instance, which may final or abstract also. #}
+absl::StatusOr<{{node.name}}*> ParseTreeSerializer::Deserialize(
+    const {{node.proto_field_type}}& proto,
+          IdStringPool* id_string_pool,
+          googlesql_base::UnsafeArena* arena,
+    std::vector<std::unique_ptr<ASTNode>>* allocated_ast_nodes) {
+
+  switch (proto.node_case()) {
+  # for tag_id, subclass in node.subclasses|dictsort
+    case {{node.proto_field_type}}::{{subclass.node_kind_oneof_value}}: {
+      return Deserialize(
+          proto.{{subclass.member_name}}_node(),
+          id_string_pool, arena,
+          allocated_ast_nodes);
+    }
+  # endfor
+    case {{node.proto_field_type}}::NODE_NOT_SET:
+      break;
+  }
+  return absl::InvalidArgumentError("Empty proto!");
+}
+ # else
+absl::StatusOr<{{node.name}}*> ParseTreeSerializer::Deserialize(
+    const {{node.proto_type}}& proto,
+    IdStringPool* id_string_pool,
+    googlesql_base::UnsafeArena* arena,
+    std::vector<std::unique_ptr<ASTNode>>* allocated_ast_nodes) {
+  {{node.name}}* node = googlesql_base::NewInArena<{{node.name}}>(arena);
+  allocated_ast_nodes->push_back(std::unique_ptr<ASTNode>(node));
+  GOOGLESQL_RETURN_IF_ERROR(DeserializeAbstract(node,
+                                      proto.parent(),
+                                      id_string_pool,
+                                      arena,
+                                      allocated_ast_nodes));
+  GOOGLESQL_RETURN_IF_ERROR(DeserializeFields(node,
+                                    proto,
+                                    id_string_pool,
+                                    arena,
+                                    allocated_ast_nodes));
+  return node;
+}
+ # endif
+
+ # if node.is_abstract
+absl::Status ParseTreeSerializer::DeserializeAbstract(
+      {{node.name}}* node, const {{node.proto_type}}& proto,
+      IdStringPool* id_string_pool,
+      googlesql_base::UnsafeArena* arena,
+      std::vector<std::unique_ptr<ASTNode>>* allocated_ast_nodes) {
+  GOOGLESQL_RETURN_IF_ERROR(DeserializeAbstract(node,
+                                      proto.parent(),
+                                      id_string_pool,
+                                      arena,
+                                      allocated_ast_nodes));
+  return DeserializeFields(node,
+                           proto,
+                           id_string_pool,
+                           arena,
+                           allocated_ast_nodes);
+}
+ # endif
+
+absl::Status ParseTreeSerializer::DeserializeFields(
+      {{node.name}}* node, const {{node.proto_type}}& proto,
+      IdStringPool* id_string_pool,
+      googlesql_base::UnsafeArena* arena,
+      std::vector<std::unique_ptr<ASTNode>>* allocated_ast_nodes) {
+  # for field in node.fields
+
+   {# Only ASTOnOrUsingClauseList has a field of type ASTNode. #}
+   {# TODO: Decide how or if this should be supported. #}
+   # if field.ctype == 'ASTNode'
+  return absl::UnimplementedError("Fields of type ASTNode are not supported");
+   # elif field.is_node_ptr
+  if (proto.has_{{field.name}}()) {
+    node->AddChild(Deserialize(proto.{{field.name}}(),
+                   id_string_pool,
+                   arena,
+                   allocated_ast_nodes).value());
+  }
+   # elif field.is_vector
+  for (int i=0; i < proto.{{field.name}}_size(); i++) {
+    node->AddChild(Deserialize(proto.{{field.name}}(i),
+                               id_string_pool,
+                               arena,
+                               allocated_ast_nodes).value());
+  }
+   # elif field.is_enum
+  node->{{field.member_name}} = static_cast<{{field.member_type}}>(proto.{{field.name}}());
+   # elif field.member_type is eq('IdString')
+  node->{{field.member_name}} = id_string_pool->Make(proto.{{field.name}}());
+   # else
+  {# This case includes bool, int, std::string, TypeKind. #}
+  node->{{field.member_name}} = proto.{{field.name}}();
+   # endif
+  # endfor
+  return absl::OkStatus();
+}
+# endfor
+
+}  // namespace googlesql
+// NOLINTEND
+{{blank_line}}

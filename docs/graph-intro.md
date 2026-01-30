@@ -34,7 +34,7 @@ linear query statement comes from the final `RETURN` statement.
 
 #### Examples
 
-```zetasql
+```googlesql
 GRAPH FinGraph
 MATCH (p:Person)-[o:Owns]->(a:Account)
 FILTER p.birthday < '1990-01-10'
@@ -58,7 +58,7 @@ For more information, see the syntax for the [GQL set operation][set-op].
 A set operator between two linear query statements with the same set of output
 column names and types but with different column orders is supported. For example:
 
-```zetasql
+```googlesql
 GRAPH FinGraph
 MATCH (p:Person)
 RETURN p.name, 1 AS group_id
@@ -88,7 +88,7 @@ into one.
 The following is an example of a graph query chaining multiple linear query statements
 using `NEXT`.
 
-```zetasql
+```googlesql
 GRAPH FinGraph
 
 MATCH (a:Account {is_blocked: TRUE})
@@ -112,15 +112,15 @@ RETURN oa.nick_name
  +----------------*/
 ```
 
-[supertypes]: https://github.com/google/zetasql/blob/master/docs/conversion_rules.md#supertypes
+[supertypes]: https://github.com/google/googlesql/blob/master/docs/conversion_rules.md#supertypes
 
-[match-statement]: https://github.com/google/zetasql/blob/master/docs/graph-query-statements.md#gql_match
+[match-statement]: https://github.com/google/googlesql/blob/master/docs/graph-query-statements.md#gql_match
 
-[return-statement]: https://github.com/google/zetasql/blob/master/docs/graph-query-statements.md#gql_return
+[return-statement]: https://github.com/google/googlesql/blob/master/docs/graph-query-statements.md#gql_return
 
-[statement-list]: https://github.com/google/zetasql/blob/master/docs/graph-query-statements.md#language_list
+[statement-list]: https://github.com/google/googlesql/blob/master/docs/graph-query-statements.md#language_list
 
-[set-op]: https://github.com/google/zetasql/blob/master/docs/graph-query-statements.md#gql_set
+[set-op]: https://github.com/google/googlesql/blob/master/docs/graph-query-statements.md#gql_set
 
-[graph-clause]: https://github.com/google/zetasql/blob/master/docs/graph-query-statements.md#graph_query
+[graph-clause]: https://github.com/google/googlesql/blob/master/docs/graph-query-statements.md#graph_query
 

@@ -1,0 +1,1732 @@
+############################
+# Tests on explicit coercion.
+
+# Cast to a type written as a struct with anonymous field.
+[default language_features=MAXIMUM]
+select cast(null as STRUCT<INT32, x STRING, BYTES>)
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [STRUCT<INT32, x STRING, BYTES>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 := Literal(type=STRUCT<INT32, x STRING, BYTES>, value=NULL, has_explicit_type=TRUE)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Literal with the exact same field types works.
+select cast((5, '2014-01-01') AS STRUCT<INT64, x STRING>)
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [STRUCT<INT64, x STRING>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 := Literal(type=STRUCT<INT64, x STRING>, value={5, x:"2014-01-01"}, has_explicit_type=TRUE)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Struct with coercible literal fields works.
+select cast((5, '2014-01-01') AS STRUCT<INT32, x STRING>)
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [STRUCT<INT32, x STRING>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 := Literal(type=STRUCT<INT32, x STRING>, value={5, x:"2014-01-01"}, has_explicit_type=TRUE)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+select cast(('2014-01-01 12:34:56.000001', "int64_key_1: 1, int64_key_2: 2")
+            AS STRUCT<TIMESTAMP, `googlesql_test.KitchenSinkPB`>)
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [STRUCT<TIMESTAMP, PROTO<googlesql_test.KitchenSinkPB>>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 := Literal(type=STRUCT<TIMESTAMP, PROTO<googlesql_test.KitchenSinkPB>>, value={2014-01-01 20:34:56.000001+00, {int64_key_1: 1 int64_key_2: 2}}, has_explicit_type=TRUE)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Timezone is propogated correctly inside the struct.
+[default_timezone=EST]
+select cast(("1970-01-01 01:01:06 UTC", "1970-01-01 01:01:06")
+            AS STRUCT<TIMESTAMP, TIMESTAMP>)
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [STRUCT<TIMESTAMP, TIMESTAMP>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 := Literal(type=STRUCT<TIMESTAMP, TIMESTAMP>, value={1970-01-01 01:01:06+00, 1970-01-01 06:01:06+00}, has_explicit_type=TRUE)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Literal struct with non-coercible fields fails.
+select cast((5, '2014-01-01') AS STRUCT<STRING, INT32>)
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [STRUCT<STRING, INT32>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-Cast(STRUCT<INT64, STRING> -> STRUCT<STRING, INT32>)
+    |     +-Literal(type=STRUCT<INT64, STRING>, value={5, "2014-01-01"})
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Struct with NULL fields work. The NULL types must get determined based on the
+# casted field types.
+select cast((NULL, NULL) AS STRUCT<INT32, x STRING>)
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [STRUCT<INT32, x STRING>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 := Literal(type=STRUCT<INT32, x STRING>, value={NULL, x:NULL}, has_explicit_type=TRUE)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Null type propogation works deeply.
+select cast((NULL, (NULL, (NULL, NULL))) AS
+             STRUCT<INT32, STRUCT<INT64, STRUCT<UINT32, UINT64>>>)
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [STRUCT<INT32, STRUCT<INT64, STRUCT<UINT32, UINT64>>>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 := Literal(type=STRUCT<INT32, STRUCT<INT64, STRUCT<UINT32, UINT64>>>, value={NULL, {NULL, {NULL, NULL}}}, has_explicit_type=TRUE)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+select cast((null, null) as STRUCT<INT32, STRUCT<INT64, INT64>>);
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [STRUCT<INT32, STRUCT<INT64, INT64>>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 := Literal(type=STRUCT<INT32, STRUCT<INT64, INT64>>, value={NULL, NULL}, has_explicit_type=TRUE)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Non-literal with exact field types works.
+select cast((int64, string) AS STRUCT<INT64, x STRING>)
+from SimpleTypes
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#20 AS `$col1` [STRUCT<INT64, x STRING>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#20]
+    +-expr_list=
+    | +-$col1#20 :=
+    |   +-MakeStruct
+    |     +-type=STRUCT<INT64, x STRING>
+    |     +-field_list=
+    |       +-ColumnRef(type=INT64, column=SimpleTypes.int64#2)
+    |       +-ColumnRef(type=STRING, column=SimpleTypes.string#5)
+    +-input_scan=
+      +-TableScan(column_list=SimpleTypes.[int64#2, string#5], table=SimpleTypes, column_index_list=[1, 4])
+==
+
+select cast((int32, float) AS STRUCT<INT64, x DOUBLE>)
+from SimpleTypes
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#20 AS `$col1` [STRUCT<INT64, x DOUBLE>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#20]
+    +-expr_list=
+    | +-$col1#20 :=
+    |   +-MakeStruct
+    |     +-type=STRUCT<INT64, x DOUBLE>
+    |     +-field_list=
+    |       +-Cast(INT32 -> INT64)
+    |       | +-ColumnRef(type=INT32, column=SimpleTypes.int32#1)
+    |       +-Cast(FLOAT -> DOUBLE)
+    |         +-ColumnRef(type=FLOAT, column=SimpleTypes.float#8)
+    +-input_scan=
+      +-TableScan(column_list=SimpleTypes.[int32#1, float#8], table=SimpleTypes, column_index_list=[0, 7])
+==
+
+# Mix of literals and non-literals should work.
+select cast((5, string) AS STRUCT<int32, STRING>)
+from SimpleTypes
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#20 AS `$col1` [STRUCT<INT32, STRING>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#20]
+    +-expr_list=
+    | +-$col1#20 :=
+    |   +-MakeStruct
+    |     +-type=STRUCT<INT32, STRING>
+    |     +-field_list=
+    |       +-Literal(type=INT32, value=5, has_explicit_type=TRUE)
+    |       +-ColumnRef(type=STRING, column=SimpleTypes.string#5)
+    +-input_scan=
+      +-TableScan(column_list=[SimpleTypes.string#5], table=SimpleTypes, column_index_list=[4])
+==
+
+# Mix of literals and non-literals should work. Both literal and non-literal
+# fields coerce independently.
+select cast((5, int32) AS STRUCT<INT32, INT64>)
+from SimpleTypes
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#20 AS `$col1` [STRUCT<INT32, INT64>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#20]
+    +-expr_list=
+    | +-$col1#20 :=
+    |   +-MakeStruct
+    |     +-type=STRUCT<INT32, INT64>
+    |     +-field_list=
+    |       +-Literal(type=INT32, value=5, has_explicit_type=TRUE)
+    |       +-Cast(INT32 -> INT64)
+    |         +-ColumnRef(type=INT32, column=SimpleTypes.int32#1)
+    +-input_scan=
+      +-TableScan(column_list=[SimpleTypes.int32#1], table=SimpleTypes, column_index_list=[0])
+==
+
+select cast((int32, timestamp "2014-01-01 12:34:56.000001",
+             "2014-01-01") AS STRUCT<INT32, DATE, DATE>)
+from SimpleTypes
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#20 AS `$col1` [STRUCT<INT32, DATE, DATE>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#20]
+    +-expr_list=
+    | +-$col1#20 :=
+    |   +-MakeStruct
+    |     +-type=STRUCT<INT32, DATE, DATE>
+    |     +-field_list=
+    |       +-ColumnRef(type=INT32, column=SimpleTypes.int32#1)
+    |       +-Literal(type=DATE, value=2014-01-01, has_explicit_type=TRUE)
+    |       +-Literal(type=DATE, value=2014-01-01, has_explicit_type=TRUE)
+    +-input_scan=
+      +-TableScan(column_list=[SimpleTypes.int32#1], table=SimpleTypes, column_index_list=[0])
+==
+
+# We do not support named struct types. TestStruct acts as a simple type name
+# alias and has no semantics.
+select cast('abc' as TestStruct)
+from ComplexTypes
+--
+ERROR: Invalid cast from STRING to STRUCT<Key INT64, Value STRING> [at 1:13]
+select cast('abc' as TestStruct)
+            ^
+==
+
+# Literals value which can't be coerced to target type.
+select cast((-1, -1) AS STRUCT<INT32, UINT32>)
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [STRUCT<INT32, UINT32>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-Cast(STRUCT<INT64, INT64> -> STRUCT<INT32, UINT32>)
+    |     +-Literal(type=STRUCT<INT64, INT64>, value={-1, -1})
+    +-input_scan=
+      +-SingleRowScan
+==
+
+select cast((-1, cast(-1 AS INT32)) AS STRUCT<INT32, UINT32>)
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [STRUCT<INT32, UINT32>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-Cast(STRUCT<INT32, INT32> -> STRUCT<INT32, UINT32>)
+    |     +-MakeStruct
+    |       +-type=STRUCT<INT32, INT32>
+    |       +-field_list=
+    |         +-Literal(type=INT32, value=-1, has_explicit_type=TRUE)
+    |         +-Literal(type=INT32, value=-1, has_explicit_type=TRUE)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+select cast(cast((-1, -1) AS STRUCT<INT64, INT64>) AS STRUCT<INT32, UINT32>)
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [STRUCT<INT32, UINT32>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-Cast(STRUCT<INT64, INT64> -> STRUCT<INT32, UINT32>)
+    |     +-Literal(type=STRUCT<INT64, INT64>, value={-1, -1}, has_explicit_type=TRUE)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+select cast((timestamp '1678-01-01', "b") AS STRUCT<STRING, BYTES>),
+       (cast(timestamp '1678-01-01' AS STRING), cast("b" AS BYTES))
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [STRUCT<STRING, BYTES>]
+| +-$query.$col2#2 AS `$col2` [STRUCT<STRING, BYTES>]
++-query=
+  +-ProjectScan
+    +-column_list=$query.[$col1#1, $col2#2]
+    +-expr_list=
+    | +-$col1#1 := Literal(type=STRUCT<STRING, BYTES>, value={"1678-01-01 00:00:58-07:52", b"b"}, has_explicit_type=TRUE)
+    | +-$col2#2 := Literal(type=STRUCT<STRING, BYTES>, value={"1678-01-01 00:00:58-07:52", b"b"}, has_explicit_type=TRUE)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# For query parameters of struct_type, we add the cast on top of the struct.
+select cast(@test_param_struct AS STRUCT<INT64, DATE>)
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [STRUCT<INT64, DATE>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-Cast(STRUCT<a INT32, b STRING> -> STRUCT<INT64, DATE>)
+    |     +-Parameter(type=STRUCT<a INT32, b STRING>, name="test_param_struct")
+    +-input_scan=
+      +-SingleRowScan
+==
+
+select cast(@test_param_empty_struct AS STRUCT<INT64, DATE>)
+--
+ERROR: Invalid cast from STRUCT<> to STRUCT<INT64, DATE> [at 1:13]
+select cast(@test_param_empty_struct AS STRUCT<INT64, DATE>)
+            ^
+==
+
+##############################
+# Tests on implicit and literal coercions.
+select ARRAY<STRUCT<INT64, DOUBLE>>[(1, 1.0),
+                                    (cast(1 as INT32), cast(1 as INT32)),
+                                    (1, 1),
+                                    (cast(1 AS UINT32), cast(1 AS UINT32)),
+                                    (1, cast(1 AS UINT64)),
+                                    (1, cast(1 AS FLOAT))]
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [ARRAY<STRUCT<INT64, DOUBLE>>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(GoogleSQL:$make_array(repeated(6) STRUCT<INT64, DOUBLE>) -> ARRAY<STRUCT<INT64, DOUBLE>>)
+    |     +-Literal(type=STRUCT<INT64, DOUBLE>, value={1, 1})
+    |     +-Literal(type=STRUCT<INT64, DOUBLE>, value={1, 1}, has_explicit_type=TRUE)
+    |     +-Literal(type=STRUCT<INT64, DOUBLE>, value={1, 1})
+    |     +-Literal(type=STRUCT<INT64, DOUBLE>, value={1, 1}, has_explicit_type=TRUE)
+    |     +-MakeStruct
+    |     | +-type=STRUCT<INT64, DOUBLE>
+    |     | +-field_list=
+    |     |   +-Literal(type=INT64, value=1)
+    |     |   +-Literal(type=DOUBLE, value=1, has_explicit_type=TRUE)
+    |     +-MakeStruct
+    |       +-type=STRUCT<INT64, DOUBLE>
+    |       +-field_list=
+    |         +-Literal(type=INT64, value=1)
+    |         +-Literal(type=DOUBLE, value=1, has_explicit_type=TRUE)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+select STRUCT<INT64, INT64>(1, cast(1 AS FLOAT))
+--
+ERROR: Struct field 2 has type FLOAT which does not coerce to INT64 [at 1:32]
+select STRUCT<INT64, INT64>(1, cast(1 AS FLOAT))
+                               ^
+==
+
+select STRUCT<INT64, INT32>(1, 1)
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [STRUCT<INT64, INT32>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 := Literal(type=STRUCT<INT64, INT32>, value={1, 1}, has_explicit_type=TRUE)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+select STRUCT<a INT64, b INT32>(1, 1)
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [STRUCT<a INT64, b INT32>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 := Literal(type=STRUCT<a INT64, b INT32>, value={a:1, b:1}, has_explicit_type=TRUE)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+select STRUCT<INT64, INT32>(1, cast(1 as INT64))
+--
+ERROR: Struct field 2 has type INT64 which does not coerce to INT32 [at 1:32]
+select STRUCT<INT64, INT32>(1, cast(1 as INT64))
+                               ^
+==
+
+select STRUCT<INT32, DATE>(1, "2014-01-01")
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [STRUCT<INT32, DATE>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 := Literal(type=STRUCT<INT32, DATE>, value={1, 2014-01-01}, has_explicit_type=TRUE)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+select STRUCT<INT32, DATE>(1, "invalid")
+--
+ERROR: Could not cast literal "invalid" to type DATE [at 1:31]
+select STRUCT<INT32, DATE>(1, "invalid")
+                              ^
+==
+
+[language_features=NONE,{{|+IMPLICIT_COERCION_STRING_LITERAL_TO_BYTES}}]
+select STRUCT<INT32, BYTES>(1, "b")
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: Struct field 2 has type STRING which does not coerce to BYTES [at 1:32]
+select STRUCT<INT32, BYTES>(1, "b")
+                               ^
+--
+ALTERNATION GROUP: +IMPLICIT_COERCION_STRING_LITERAL_TO_BYTES
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [STRUCT<INT32, BYTES>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 := Literal(type=STRUCT<INT32, BYTES>, value={1, b"b"}, has_explicit_type=TRUE)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+select STRUCT<`googlesql_test.TestEnum`, TIMESTAMP>
+    (1, "2014-01-01 12:34:56.000001")
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [STRUCT<ENUM<googlesql_test.TestEnum>, TIMESTAMP>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 := Literal(type=STRUCT<ENUM<googlesql_test.TestEnum>, TIMESTAMP>, value={TESTENUM1, 2014-01-01 20:34:56.000001+00}, has_explicit_type=TRUE)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+[language_features=NONE,{{|+IMPLICIT_COERCION_STRING_LITERAL_TO_BYTES}}]
+select coalesce((1, "a"), (2, b"b"))
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: No matching signature for function COALESCE
+  Argument types: STRUCT<INT64, STRING>, STRUCT<INT64, BYTES>
+  Signature: COALESCE([T1, ...])
+    Unable to find common supertype for templated argument <T1>
+      Input types for <T1>: {STRUCT<INT64, BYTES>, STRUCT<INT64, STRING>} [at 1:8]
+select coalesce((1, "a"), (2, b"b"))
+       ^
+--
+ALTERNATION GROUP: +IMPLICIT_COERCION_STRING_LITERAL_TO_BYTES
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [STRUCT<INT64, BYTES>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(GoogleSQL:coalesce(repeated(2) STRUCT<INT64, BYTES>) -> STRUCT<INT64, BYTES>)
+    |     +-Literal(type=STRUCT<INT64, BYTES>, value={1, b"a"})
+    |     +-Literal(type=STRUCT<INT64, BYTES>, value={2, b"b"})
+    +-input_scan=
+      +-SingleRowScan
+==
+
+select STRUCT<INT32, STRING>(1, timestamp '1678-01-01')
+--
+ERROR: Struct field 2 has type TIMESTAMP which does not coerce to STRING [at 1:33]
+select STRUCT<INT32, STRING>(1, timestamp '1678-01-01')
+                                ^
+==
+
+select STRUCT<INT32, FLOAT>(1, cast(1 AS DOUBLE))
+--
+ERROR: Struct field 2 has type DOUBLE which does not coerce to FLOAT [at 1:32]
+select STRUCT<INT32, FLOAT>(1, cast(1 AS DOUBLE))
+                               ^
+==
+
+# Mix of literals and non-literals in struct.
+select STRUCT<INT32, FLOAT>(int32, cast(1 AS DOUBLE)) from SimpleTypes
+--
+ERROR: Struct field 2 has type DOUBLE which does not coerce to FLOAT [at 1:36]
+select STRUCT<INT32, FLOAT>(int32, cast(1 AS DOUBLE)) from SimpleTypes
+                                   ^
+==
+
+select STRUCT<INT32, FLOAT>(int32, 1.0) from SimpleTypes
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#20 AS `$col1` [STRUCT<INT32, FLOAT>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#20]
+    +-expr_list=
+    | +-$col1#20 :=
+    |   +-MakeStruct
+    |     +-type=STRUCT<INT32, FLOAT>
+    |     +-field_list=
+    |       +-ColumnRef(type=INT32, column=SimpleTypes.int32#1)
+    |       +-Literal(type=FLOAT, value=1, has_explicit_type=TRUE)
+    +-input_scan=
+      +-TableScan(column_list=[SimpleTypes.int32#1], table=SimpleTypes, column_index_list=[0])
+==
+
+# NULLs as structs.
+select ARRAY<STRUCT<INT32, STRUCT<INT64, INT64>>>
+    [(1, (1, 1)),
+     (NULL, STRUCT<INT32, INT32>(NULL, 1)),
+     (NULL, (NULL, NULL)),
+     (NULL, NULL),
+     NULL]
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [ARRAY<STRUCT<INT32, STRUCT<INT64, INT64>>>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(GoogleSQL:$make_array(repeated(5) STRUCT<INT32, STRUCT<INT64, INT64>>) -> ARRAY<STRUCT<INT32, STRUCT<INT64, INT64>>>)
+    |     +-Literal(type=STRUCT<INT32, STRUCT<INT64, INT64>>, value={1, {1, 1}})
+    |     +-MakeStruct
+    |     | +-type=STRUCT<INT32, STRUCT<INT64, INT64>>
+    |     | +-field_list=
+    |     |   +-Literal(type=INT32, value=NULL)
+    |     |   +-Literal(type=STRUCT<INT64, INT64>, value={NULL, 1}, has_explicit_type=TRUE)
+    |     +-MakeStruct
+    |     | +-type=STRUCT<INT32, STRUCT<INT64, INT64>>
+    |     | +-field_list=
+    |     |   +-Literal(type=INT32, value=NULL)
+    |     |   +-MakeStruct
+    |     |     +-type=STRUCT<INT64, INT64>
+    |     |     +-field_list=
+    |     |       +-Literal(type=INT64, value=NULL)
+    |     |       +-Literal(type=INT64, value=NULL)
+    |     +-MakeStruct
+    |     | +-type=STRUCT<INT32, STRUCT<INT64, INT64>>
+    |     | +-field_list=
+    |     |   +-Literal(type=INT32, value=NULL)
+    |     |   +-Literal(type=STRUCT<INT64, INT64>, value=NULL)
+    |     +-Literal(type=STRUCT<INT32, STRUCT<INT64, INT64>>, value=NULL)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+#############################
+# Tests on supertyping.
+select [(1, 1), (-1, -1)]
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [ARRAY<STRUCT<INT64, INT64>>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 := Literal(type=ARRAY<STRUCT<INT64, INT64>>, value=[{1, 1}, {-1, -1}])
+    +-input_scan=
+      +-SingleRowScan
+==
+
+select [(cast(1 as int32), cast(1 as int64)), (-1, -1)]
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [ARRAY<STRUCT<INT32, INT64>>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 := Literal(type=ARRAY<STRUCT<INT32, INT64>>, value=[{1, 1}, {-1, -1}], has_explicit_type=TRUE)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+select [(cast(1 as int32), cast(1 as uint32)), (-1, -1)]
+--
+ERROR: Could not cast literal {-1, -1} to type STRUCT<INT32, UINT32> [at 1:48]
+select [(cast(1 as int32), cast(1 as uint32)), (-1, -1)]
+                                               ^
+==
+
+select (1, cast(1 as int32)) = (1, 1)
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [BOOL]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(GoogleSQL:$equal(STRUCT<INT64, INT32>, STRUCT<INT64, INT32>) -> BOOL)
+    |     +-MakeStruct
+    |     | +-type=STRUCT<INT64, INT32>
+    |     | +-field_list=
+    |     |   +-Literal(type=INT64, value=1)
+    |     |   +-Literal(type=INT32, value=1, has_explicit_type=TRUE)
+    |     +-Literal(type=STRUCT<INT64, INT32>, value={1, 1})
+    +-input_scan=
+      +-SingleRowScan
+==
+
+select (1, 1) IN ((1, cast(1 as int32)))
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [BOOL]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(GoogleSQL:$in(STRUCT<INT64, INT32>, repeated(1) STRUCT<INT64, INT32>) -> BOOL)
+    |     +-Literal(type=STRUCT<INT64, INT32>, value={1, 1})
+    |     +-MakeStruct
+    |       +-type=STRUCT<INT64, INT32>
+    |       +-field_list=
+    |         +-Literal(type=INT64, value=1)
+    |         +-Literal(type=INT32, value=1, has_explicit_type=TRUE)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# TODO: In another CL the 'struct(...)' and '(...)' construction
+# syntax will be equivalent.  Currently, the first infers field names and
+# the second does not.  So update this test when the other CL goes in.
+select max(value)
+from keyvalue kv
+where {{struct|}} (key, key) in (select as struct key, key as key1
+                                 from KeyValue)
+--
+ALTERNATION GROUP: struct
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#8 AS `$col1` [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#8]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$aggregate.$agg1#8]
+        +-input_scan=
+        | +-FilterScan
+        |   +-column_list=KeyValue.[Key#1, Value#2]
+        |   +-input_scan=
+        |   | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1], alias="kv")
+        |   +-filter_expr=
+        |     +-SubqueryExpr
+        |       +-type=BOOL
+        |       +-subquery_type=IN
+        |       +-in_expr=
+        |       | +-MakeStruct
+        |       |   +-type=STRUCT<key INT64, key INT64>
+        |       |   +-field_list=
+        |       |     +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+        |       |     +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+        |       +-subquery=
+        |         +-ProjectScan
+        |           +-column_list=[$in_subquery_cast.$struct#7]
+        |           +-expr_list=
+        |           | +-$struct#7 :=
+        |           |   +-Cast(STRUCT<key INT64, key1 INT64> -> STRUCT<key INT64, key INT64>)
+        |           |     +-ColumnRef(type=STRUCT<key INT64, key1 INT64>, column=$make_struct.$struct#5)
+        |           +-input_scan=
+        |             +-ProjectScan
+        |               +-column_list=[$make_struct.$struct#5]
+        |               +-expr_list=
+        |               | +-$struct#5 :=
+        |               |   +-MakeStruct
+        |               |     +-type=STRUCT<key INT64, key1 INT64>
+        |               |     +-field_list=
+        |               |       +-ColumnRef(type=INT64, column=KeyValue.Key#3)
+        |               |       +-ColumnRef(type=INT64, column=KeyValue.Key#3)
+        |               +-input_scan=
+        |                 +-ProjectScan
+        |                   +-column_list=KeyValue.[Key#3, Key#3]
+        |                   +-input_scan=
+        |                     +-TableScan(column_list=[KeyValue.Key#3], table=KeyValue, column_index_list=[0])
+        +-aggregate_list=
+          +-$agg1#8 :=
+            +-AggregateFunctionCall(GoogleSQL:max(STRING) -> STRING)
+              +-ColumnRef(type=STRING, column=KeyValue.Value#2)
+--
+ALTERNATION GROUP: <empty>
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#8 AS `$col1` [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#8]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$aggregate.$agg1#8]
+        +-input_scan=
+        | +-FilterScan
+        |   +-column_list=KeyValue.[Key#1, Value#2]
+        |   +-input_scan=
+        |   | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1], alias="kv")
+        |   +-filter_expr=
+        |     +-SubqueryExpr
+        |       +-type=BOOL
+        |       +-subquery_type=IN
+        |       +-in_expr=
+        |       | +-MakeStruct
+        |       |   +-type=STRUCT<INT64, INT64>
+        |       |   +-field_list=
+        |       |     +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+        |       |     +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+        |       +-subquery=
+        |         +-ProjectScan
+        |           +-column_list=[$in_subquery_cast.$struct#7]
+        |           +-expr_list=
+        |           | +-$struct#7 :=
+        |           |   +-Cast(STRUCT<key INT64, key1 INT64> -> STRUCT<INT64, INT64>)
+        |           |     +-ColumnRef(type=STRUCT<key INT64, key1 INT64>, column=$make_struct.$struct#5)
+        |           +-input_scan=
+        |             +-ProjectScan
+        |               +-column_list=[$make_struct.$struct#5]
+        |               +-expr_list=
+        |               | +-$struct#5 :=
+        |               |   +-MakeStruct
+        |               |     +-type=STRUCT<key INT64, key1 INT64>
+        |               |     +-field_list=
+        |               |       +-ColumnRef(type=INT64, column=KeyValue.Key#3)
+        |               |       +-ColumnRef(type=INT64, column=KeyValue.Key#3)
+        |               +-input_scan=
+        |                 +-ProjectScan
+        |                   +-column_list=KeyValue.[Key#3, Key#3]
+        |                   +-input_scan=
+        |                     +-TableScan(column_list=[KeyValue.Key#3], table=KeyValue, column_index_list=[0])
+        +-aggregate_list=
+          +-$agg1#8 :=
+            +-AggregateFunctionCall(GoogleSQL:max(STRING) -> STRING)
+              +-ColumnRef(type=STRING, column=KeyValue.Value#2)
+==
+
+# Same query as above, but with '=' instead of 'IN'.
+select key, value
+from keyvalue kv
+where {{struct|}}(key, key) = (select as struct key, key as key1
+                               from KeyValue)
+--
+ALTERNATION GROUP: struct
+--
+QueryStmt
++-output_column_list=
+| +-KeyValue.Key#1 AS key [INT64]
+| +-KeyValue.Value#2 AS value [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=KeyValue.[Key#1, Value#2]
+    +-input_scan=
+      +-FilterScan
+        +-column_list=KeyValue.[Key#1, Value#2]
+        +-input_scan=
+        | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1], alias="kv")
+        +-filter_expr=
+          +-FunctionCall(GoogleSQL:$equal(STRUCT<key INT64, key INT64>, STRUCT<key INT64, key INT64>) -> BOOL)
+            +-MakeStruct
+            | +-type=STRUCT<key INT64, key INT64>
+            | +-field_list=
+            |   +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+            |   +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+            +-Cast(STRUCT<key INT64, key1 INT64> -> STRUCT<key INT64, key INT64>)
+              +-SubqueryExpr
+                +-type=STRUCT<key INT64, key1 INT64>
+                +-subquery_type=SCALAR
+                +-subquery=
+                  +-ProjectScan
+                    +-column_list=[$make_struct.$struct#5]
+                    +-expr_list=
+                    | +-$struct#5 :=
+                    |   +-MakeStruct
+                    |     +-type=STRUCT<key INT64, key1 INT64>
+                    |     +-field_list=
+                    |       +-ColumnRef(type=INT64, column=KeyValue.Key#3)
+                    |       +-ColumnRef(type=INT64, column=KeyValue.Key#3)
+                    +-input_scan=
+                      +-ProjectScan
+                        +-column_list=KeyValue.[Key#3, Key#3]
+                        +-input_scan=
+                          +-TableScan(column_list=[KeyValue.Key#3], table=KeyValue, column_index_list=[0])
+--
+ALTERNATION GROUP: <empty>
+--
+QueryStmt
++-output_column_list=
+| +-KeyValue.Key#1 AS key [INT64]
+| +-KeyValue.Value#2 AS value [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=KeyValue.[Key#1, Value#2]
+    +-input_scan=
+      +-FilterScan
+        +-column_list=KeyValue.[Key#1, Value#2]
+        +-input_scan=
+        | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1], alias="kv")
+        +-filter_expr=
+          +-FunctionCall(GoogleSQL:$equal(STRUCT<INT64, INT64>, STRUCT<INT64, INT64>) -> BOOL)
+            +-MakeStruct
+            | +-type=STRUCT<INT64, INT64>
+            | +-field_list=
+            |   +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+            |   +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+            +-Cast(STRUCT<key INT64, key1 INT64> -> STRUCT<INT64, INT64>)
+              +-SubqueryExpr
+                +-type=STRUCT<key INT64, key1 INT64>
+                +-subquery_type=SCALAR
+                +-subquery=
+                  +-ProjectScan
+                    +-column_list=[$make_struct.$struct#5]
+                    +-expr_list=
+                    | +-$struct#5 :=
+                    |   +-MakeStruct
+                    |     +-type=STRUCT<key INT64, key1 INT64>
+                    |     +-field_list=
+                    |       +-ColumnRef(type=INT64, column=KeyValue.Key#3)
+                    |       +-ColumnRef(type=INT64, column=KeyValue.Key#3)
+                    +-input_scan=
+                      +-ProjectScan
+                        +-column_list=KeyValue.[Key#3, Key#3]
+                        +-input_scan=
+                          +-TableScan(column_list=[KeyValue.Key#3], table=KeyValue, column_index_list=[0])
+==
+
+select key, value
+from keyvalue kv
+where {{struct|}}(key, key) {{=|<>}} {{struct|}}(1, 1);
+--
+ALTERNATION GROUPS:
+    struct,=,struct
+    struct,=,
+--
+QueryStmt
++-output_column_list=
+| +-KeyValue.Key#1 AS key [INT64]
+| +-KeyValue.Value#2 AS value [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=KeyValue.[Key#1, Value#2]
+    +-input_scan=
+      +-FilterScan
+        +-column_list=KeyValue.[Key#1, Value#2]
+        +-input_scan=
+        | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1], alias="kv")
+        +-filter_expr=
+          +-FunctionCall(GoogleSQL:$equal(STRUCT<key INT64, key INT64>, STRUCT<key INT64, key INT64>) -> BOOL)
+            +-MakeStruct
+            | +-type=STRUCT<key INT64, key INT64>
+            | +-field_list=
+            |   +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+            |   +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+            +-Literal(type=STRUCT<key INT64, key INT64>, value={key:1, key:1})
+--
+ALTERNATION GROUPS:
+    struct,<>,struct
+    struct,<>,
+--
+QueryStmt
++-output_column_list=
+| +-KeyValue.Key#1 AS key [INT64]
+| +-KeyValue.Value#2 AS value [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=KeyValue.[Key#1, Value#2]
+    +-input_scan=
+      +-FilterScan
+        +-column_list=KeyValue.[Key#1, Value#2]
+        +-input_scan=
+        | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1], alias="kv")
+        +-filter_expr=
+          +-FunctionCall(GoogleSQL:$not_equal(STRUCT<key INT64, key INT64>, STRUCT<key INT64, key INT64>) -> BOOL)
+            +-MakeStruct
+            | +-type=STRUCT<key INT64, key INT64>
+            | +-field_list=
+            |   +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+            |   +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+            +-Literal(type=STRUCT<key INT64, key INT64>, value={key:1, key:1})
+--
+ALTERNATION GROUPS:
+    =,struct
+    =,
+--
+QueryStmt
++-output_column_list=
+| +-KeyValue.Key#1 AS key [INT64]
+| +-KeyValue.Value#2 AS value [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=KeyValue.[Key#1, Value#2]
+    +-input_scan=
+      +-FilterScan
+        +-column_list=KeyValue.[Key#1, Value#2]
+        +-input_scan=
+        | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1], alias="kv")
+        +-filter_expr=
+          +-FunctionCall(GoogleSQL:$equal(STRUCT<INT64, INT64>, STRUCT<INT64, INT64>) -> BOOL)
+            +-MakeStruct
+            | +-type=STRUCT<INT64, INT64>
+            | +-field_list=
+            |   +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+            |   +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+            +-Literal(type=STRUCT<INT64, INT64>, value={1, 1})
+--
+ALTERNATION GROUPS:
+    <>,struct
+    <>,
+--
+QueryStmt
++-output_column_list=
+| +-KeyValue.Key#1 AS key [INT64]
+| +-KeyValue.Value#2 AS value [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=KeyValue.[Key#1, Value#2]
+    +-input_scan=
+      +-FilterScan
+        +-column_list=KeyValue.[Key#1, Value#2]
+        +-input_scan=
+        | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1], alias="kv")
+        +-filter_expr=
+          +-FunctionCall(GoogleSQL:$not_equal(STRUCT<INT64, INT64>, STRUCT<INT64, INT64>) -> BOOL)
+            +-MakeStruct
+            | +-type=STRUCT<INT64, INT64>
+            | +-field_list=
+            |   +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+            |   +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+            +-Literal(type=STRUCT<INT64, INT64>, value={1, 1})
+==
+
+select max(value)
+from keyvalue kv
+group by (key, key) in (select as struct key, key as key1
+                        from KeyValue
+                        group by key1)
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#3 AS `$col1` [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#3]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$aggregate.$agg1#3]
+        +-input_scan=
+        | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1], alias="kv")
+        +-group_by_list=
+        | +-$groupbycol1#10 :=
+        |   +-SubqueryExpr
+        |     +-type=BOOL
+        |     +-subquery_type=IN
+        |     +-in_expr=
+        |     | +-MakeStruct
+        |     |   +-type=STRUCT<INT64, INT64>
+        |     |   +-field_list=
+        |     |     +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+        |     |     +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+        |     +-subquery=
+        |       +-ProjectScan
+        |         +-column_list=[$in_subquery_cast.$struct#9]
+        |         +-expr_list=
+        |         | +-$struct#9 :=
+        |         |   +-Cast(STRUCT<key INT64, key1 INT64> -> STRUCT<INT64, INT64>)
+        |         |     +-ColumnRef(type=STRUCT<key INT64, key1 INT64>, column=$make_struct.$struct#7)
+        |         +-input_scan=
+        |           +-ProjectScan
+        |             +-column_list=[$make_struct.$struct#7]
+        |             +-expr_list=
+        |             | +-$struct#7 :=
+        |             |   +-MakeStruct
+        |             |     +-type=STRUCT<key INT64, key1 INT64>
+        |             |     +-field_list=
+        |             |       +-ColumnRef(type=INT64, column=$groupby.key1#6)
+        |             |       +-ColumnRef(type=INT64, column=$groupby.key1#6)
+        |             +-input_scan=
+        |               +-ProjectScan
+        |                 +-column_list=$groupby.[key1#6, key1#6]
+        |                 +-input_scan=
+        |                   +-AggregateScan
+        |                     +-column_list=[$groupby.key1#6]
+        |                     +-input_scan=
+        |                     | +-TableScan(column_list=[KeyValue.Key#4], table=KeyValue, column_index_list=[0])
+        |                     +-group_by_list=
+        |                       +-key1#6 := ColumnRef(type=INT64, column=KeyValue.Key#4)
+        +-aggregate_list=
+          +-$agg1#3 :=
+            +-AggregateFunctionCall(GoogleSQL:max(STRING) -> STRING)
+              +-ColumnRef(type=STRING, column=KeyValue.Value#2)
+==
+
+# STRUCT = with incompatible types.
+select key, value
+from keyvalue kv
+where struct(key, key) = ('1', '1');
+--
+ERROR: No matching signature for operator = for argument types: STRUCT<key INT64, key INT64>, STRUCT<STRING, STRING>
+  Signature: T1 = T1
+    Unable to find common supertype for templated argument <T1>
+      Input types for <T1>: {STRUCT<key INT64, key INT64>, STRUCT<STRING, STRING>}
+  Signature: INT64 = UINT64
+    Argument 1: Unable to coerce type STRUCT<key INT64, key INT64> to expected type INT64
+  Signature: UINT64 = INT64
+    Argument 1: Unable to coerce type STRUCT<key INT64, key INT64> to expected type UINT64 [at 3:7]
+where struct(key, key) = ('1', '1');
+      ^
+==
+
+# STRUCT in-list with incompatible types.
+select key, value
+from keyvalue kv
+where struct(key, key) in (('1', '1'), ('2', '2'));
+--
+ERROR: No matching signature for operator IN for argument types STRUCT<key INT64, key INT64> and {STRUCT<STRING, STRING>} [at 3:24]
+where struct(key, key) in (('1', '1'), ('2', '2'));
+                       ^
+==
+
+# STRUCT in-subquery with incompatible types.
+select key, value
+from keyvalue kv
+where struct(key, key) in (select ('1', '1'));
+--
+ERROR: Cannot execute IN subquery with uncomparable types STRUCT<key INT64, key INT64> and STRUCT<STRING, STRING> [at 3:7]
+where struct(key, key) in (select ('1', '1'));
+      ^
+==
+
+# TODO: Fix this.  Under the rule that two structs are comparable
+# if corresponding fields are comparable, we should allow corresponding
+# fields of types INT64 and UINT64 to be comparable.  But currently, we
+# do not.
+select key, value
+from keyvalue kv
+where struct(key, key) = struct<key uint64, key int64>(cast(1 as uint64), 1);
+--
+ERROR: No matching signature for operator = for argument types: STRUCT<key INT64, key INT64>, STRUCT<key UINT64, key INT64>
+  Signature: T1 = T1
+    Unable to find common supertype for templated argument <T1>
+      Input types for <T1>: {STRUCT<key INT64, key INT64>, STRUCT<key UINT64, key INT64>}
+  Signature: INT64 = UINT64
+    Argument 1: Unable to coerce type STRUCT<key INT64, key INT64> to expected type INT64
+  Signature: UINT64 = INT64
+    Argument 1: Unable to coerce type STRUCT<key INT64, key INT64> to expected type UINT64 [at 3:7]
+where struct(key, key) = struct<key uint64, key int64>(cast(1 as uint64), 1);
+      ^
+==
+
+# TODO: Fix this, INT64 and UINT64 fields should be comparable.
+select max(value)
+from keyvalue kv
+group by
+    struct<key int64, key1 int64>(key, key) in (
+        select as struct cast(key as uint64) as key, key as key1
+        from KeyValue)
+--
+ERROR: Cannot execute IN subquery with uncomparable types STRUCT<key INT64, key1 INT64> and STRUCT<key UINT64, key1 INT64> [at 4:5]
+    struct<key int64, key1 int64>(key, key) in (
+    ^
+==
+
+# -------------------
+# Tests with NULLs
+# -------------------
+
+select STRUCT<INT64, INT32>(1, 2) IN (NULL, (NULL, NULL))
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [BOOL]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(GoogleSQL:$in(STRUCT<INT64, INT32>, repeated(2) STRUCT<INT64, INT32>) -> BOOL)
+    |     +-Literal(type=STRUCT<INT64, INT32>, value={1, 2}, has_explicit_type=TRUE)
+    |     +-Literal(type=STRUCT<INT64, INT32>, value=NULL)
+    |     +-MakeStruct
+    |       +-type=STRUCT<INT64, INT32>
+    |       +-field_list=
+    |         +-Literal(type=INT64, value=NULL)
+    |         +-Literal(type=INT32, value=NULL)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+select STRUCT<>() IN (NULL)
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [BOOL]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(GoogleSQL:$in(STRUCT<>, repeated(1) STRUCT<>) -> BOOL)
+    |     +-Literal(type=STRUCT<>, value={}, has_explicit_type=TRUE)
+    |     +-Literal(type=STRUCT<>, value=NULL)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+select (1, 2) IN (NULL)
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [BOOL]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(GoogleSQL:$in(STRUCT<INT64, INT64>, repeated(1) STRUCT<INT64, INT64>) -> BOOL)
+    |     +-Literal(type=STRUCT<INT64, INT64>, value={1, 2})
+    |     +-Literal(type=STRUCT<INT64, INT64>, value=NULL)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+select STRUCT<INT64, INT32>(NULL, NULL) IN (STRUCT<INT64, INT64>(NULL, NULL))
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [BOOL]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(GoogleSQL:$in(STRUCT<INT64, INT64>, repeated(1) STRUCT<INT64, INT64>) -> BOOL)
+    |     +-Literal(type=STRUCT<INT64, INT64>, value={NULL, NULL}, has_explicit_type=TRUE)
+    |     +-Literal(type=STRUCT<INT64, INT64>, value={NULL, NULL}, has_explicit_type=TRUE)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+select STRUCT<INT32, STRING>(NULL, NULL) IN (STRUCT<INT64, INT64>(NULL, NULL))
+--
+ERROR: No matching signature for operator IN for argument types STRUCT<INT32, STRING> and {STRUCT<INT64, INT64>} [at 1:42]
+select STRUCT<INT32, STRING>(NULL, NULL) IN (STRUCT<INT64, INT64>(NULL, NULL))
+                                         ^
+==
+
+select STRUCT<UINT64>(1) IN (STRUCT<INT64>(1))
+--
+ERROR: No matching signature for operator IN for argument types STRUCT<UINT64> and {STRUCT<INT64>} [at 1:26]
+select STRUCT<UINT64>(1) IN (STRUCT<INT64>(1))
+                         ^
+==
+
+select (cast(NULL as INT32), cast(NULL as STRING)) IN ((cast(NULL as INT64), cast(NULL as INT64)))
+--
+ERROR: No matching signature for operator IN for argument types STRUCT<INT32, STRING> and {STRUCT<INT64, INT64>} [at 1:52]
+select (cast(NULL as INT32), cast(NULL as STRING)) IN ((cast(NULL as INT64), ...
+                                                   ^
+==
+
+select (1, NULL) IN (NULL, (NULL, cast(NULL as STRING)))
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [BOOL]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(GoogleSQL:$in(STRUCT<INT64, STRING>, repeated(2) STRUCT<INT64, STRING>) -> BOOL)
+    |     +-MakeStruct
+    |     | +-type=STRUCT<INT64, STRING>
+    |     | +-field_list=
+    |     |   +-Literal(type=INT64, value=1)
+    |     |   +-Literal(type=STRING, value=NULL)
+    |     +-Literal(type=STRUCT<INT64, STRING>, value=NULL)
+    |     +-MakeStruct
+    |       +-type=STRUCT<INT64, STRING>
+    |       +-field_list=
+    |         +-Literal(type=INT64, value=NULL)
+    |         +-Literal(type=STRING, value=NULL, has_explicit_type=TRUE)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+select (NULL, NULL) IN ((NULL, (NULL, NULL)))
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [BOOL]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(GoogleSQL:$in(STRUCT<INT64, STRUCT<INT64, INT64>>, repeated(1) STRUCT<INT64, STRUCT<INT64, INT64>>) -> BOOL)
+    |     +-MakeStruct
+    |     | +-type=STRUCT<INT64, STRUCT<INT64, INT64>>
+    |     | +-field_list=
+    |     |   +-Literal(type=INT64, value=NULL)
+    |     |   +-Literal(type=STRUCT<INT64, INT64>, value=NULL)
+    |     +-MakeStruct
+    |       +-type=STRUCT<INT64, STRUCT<INT64, INT64>>
+    |       +-field_list=
+    |         +-Literal(type=INT64, value=NULL)
+    |         +-MakeStruct
+    |           +-type=STRUCT<INT64, INT64>
+    |           +-field_list=
+    |             +-Literal(type=INT64, value=NULL)
+    |             +-Literal(type=INT64, value=NULL)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+select (NULL, (NULL, NULL)) IN (NULL,
+                                (NULL, NULL),
+                                (NULL, (NULL, NULL)))
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [BOOL]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(GoogleSQL:$in(STRUCT<INT64, STRUCT<INT64, INT64>>, repeated(3) STRUCT<INT64, STRUCT<INT64, INT64>>) -> BOOL)
+    |     +-MakeStruct
+    |     | +-type=STRUCT<INT64, STRUCT<INT64, INT64>>
+    |     | +-field_list=
+    |     |   +-Literal(type=INT64, value=NULL)
+    |     |   +-MakeStruct
+    |     |     +-type=STRUCT<INT64, INT64>
+    |     |     +-field_list=
+    |     |       +-Literal(type=INT64, value=NULL)
+    |     |       +-Literal(type=INT64, value=NULL)
+    |     +-Literal(type=STRUCT<INT64, STRUCT<INT64, INT64>>, value=NULL)
+    |     +-MakeStruct
+    |     | +-type=STRUCT<INT64, STRUCT<INT64, INT64>>
+    |     | +-field_list=
+    |     |   +-Literal(type=INT64, value=NULL)
+    |     |   +-Literal(type=STRUCT<INT64, INT64>, value=NULL)
+    |     +-MakeStruct
+    |       +-type=STRUCT<INT64, STRUCT<INT64, INT64>>
+    |       +-field_list=
+    |         +-Literal(type=INT64, value=NULL)
+    |         +-MakeStruct
+    |           +-type=STRUCT<INT64, INT64>
+    |           +-field_list=
+    |             +-Literal(type=INT64, value=NULL)
+    |             +-Literal(type=INT64, value=NULL)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# The field aliases would be picked from the first non-NULL argument and we
+# consider typed NULLs as non-NULL literals.
+select COALESCE(NULL, STRUCT<a INT32>(NULL))
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [STRUCT<a INT32>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(GoogleSQL:coalesce(repeated(2) STRUCT<a INT32>) -> STRUCT<a INT32>)
+    |     +-Literal(type=STRUCT<a INT32>, value=NULL)
+    |     +-Literal(type=STRUCT<a INT32>, value={a:NULL}, has_explicit_type=TRUE)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+select COALESCE(STRUCT<INT32>(NULL), STRUCT<b INT64>(NULL))
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [STRUCT<INT64>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(GoogleSQL:coalesce(repeated(2) STRUCT<INT64>) -> STRUCT<INT64>)
+    |     +-Literal(type=STRUCT<INT64>, value={NULL}, has_explicit_type=TRUE)
+    |     +-Literal(type=STRUCT<INT64>, value={NULL}, has_explicit_type=TRUE)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+select COALESCE(STRUCT<a INT32>(NULL), STRUCT<b INT32>(NULL))
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [STRUCT<a INT32>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(GoogleSQL:coalesce(repeated(2) STRUCT<a INT32>) -> STRUCT<a INT32>)
+    |     +-Literal(type=STRUCT<a INT32>, value={a:NULL}, has_explicit_type=TRUE)
+    |     +-Literal(type=STRUCT<a INT32>, value={a:NULL}, has_explicit_type=TRUE)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+select COALESCE(cast(NULL AS STRUCT<a INT32, b INT64>), STRUCT<INT64, a INT32>(3, 4))
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [STRUCT<a INT64, b INT64>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(GoogleSQL:coalesce(repeated(2) STRUCT<a INT64, b INT64>) -> STRUCT<a INT64, b INT64>)
+    |     +-Literal(type=STRUCT<a INT64, b INT64>, value=NULL, has_explicit_type=TRUE)
+    |     +-Literal(type=STRUCT<a INT64, b INT64>, value={a:3, b:4}, has_explicit_type=TRUE)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+select COALESCE(cast((1, 2) AS STRUCT<a INT32, b INT64>), STRUCT<INT64, a INT32>(3, 4))
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [STRUCT<a INT64, b INT64>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(GoogleSQL:coalesce(repeated(2) STRUCT<a INT64, b INT64>) -> STRUCT<a INT64, b INT64>)
+    |     +-Literal(type=STRUCT<a INT64, b INT64>, value={a:1, b:2}, has_explicit_type=TRUE)
+    |     +-Literal(type=STRUCT<a INT64, b INT64>, value={a:3, b:4}, has_explicit_type=TRUE)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+select COALESCE(STRUCT<a INT32, b INT64>(1, 2), STRUCT<INT64, a INT32>(3, 4))
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [STRUCT<a INT64, b INT64>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(GoogleSQL:coalesce(repeated(2) STRUCT<a INT64, b INT64>) -> STRUCT<a INT64, b INT64>)
+    |     +-Literal(type=STRUCT<a INT64, b INT64>, value={a:1, b:2}, has_explicit_type=TRUE)
+    |     +-Literal(type=STRUCT<a INT64, b INT64>, value={a:3, b:4}, has_explicit_type=TRUE)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# COALESCE on nested structs. Field aliases for even the nested structs should
+# correspond to the first non-NULL argument to COALESCE.
+select COALESCE(STRUCT<a INT32, STRUCT<INT32, b DOUBLE>>(1, NULL),
+                STRUCT<a1 INT32, STRUCT<a2 INT32, a3 INT32>>(NULL, (1, 1)),
+                (1, (1, 1.5)))
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [STRUCT<a INT32, STRUCT<INT32, b DOUBLE>>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(GoogleSQL:coalesce(repeated(3) STRUCT<a INT32, STRUCT<INT32, b DOUBLE>>) -> STRUCT<a INT32, STRUCT<INT32, b DOUBLE>>)
+    |     +-Literal(type=STRUCT<a INT32, STRUCT<INT32, b DOUBLE>>, value={a:1, NULL}, has_explicit_type=TRUE)
+    |     +-Literal(type=STRUCT<a INT32, STRUCT<INT32, b DOUBLE>>, value={a:NULL, {1, b:1}}, has_explicit_type=TRUE)
+    |     +-Literal(type=STRUCT<a INT32, STRUCT<INT32, b DOUBLE>>, value={a:1, {1, b:1.5}})
+    +-input_scan=
+      +-SingleRowScan
+==
+
+select COALESCE(NULL,
+                STRUCT<a INT32, STRUCT<INT32, b DOUBLE>>(1, NULL),
+                (NULL, NULL))
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [STRUCT<a INT32, STRUCT<INT32, b DOUBLE>>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(GoogleSQL:coalesce(repeated(3) STRUCT<a INT32, STRUCT<INT32, b DOUBLE>>) -> STRUCT<a INT32, STRUCT<INT32, b DOUBLE>>)
+    |     +-Literal(type=STRUCT<a INT32, STRUCT<INT32, b DOUBLE>>, value=NULL)
+    |     +-Literal(type=STRUCT<a INT32, STRUCT<INT32, b DOUBLE>>, value={a:1, NULL}, has_explicit_type=TRUE)
+    |     +-MakeStruct
+    |       +-type=STRUCT<a INT32, STRUCT<INT32, b DOUBLE>>
+    |       +-field_list=
+    |         +-Literal(type=INT32, value=NULL)
+    |         +-Literal(type=STRUCT<INT32, b DOUBLE>, value=NULL)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# We consider (NULL, NULL) as a non-NULL argument (as it is not actually a
+# untyped NULL) which has no field aliases. So the final supertype does not have
+# any field aliases associated with it.
+select COALESCE(NULL,
+                (NULL, NULL),
+                STRUCT<a INT32, STRUCT<INT32, b DOUBLE>>(1, NULL))
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [STRUCT<INT32, STRUCT<INT32, DOUBLE>>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(GoogleSQL:coalesce(repeated(3) STRUCT<INT32, STRUCT<INT32, DOUBLE>>) -> STRUCT<INT32, STRUCT<INT32, DOUBLE>>)
+    |     +-Literal(type=STRUCT<INT32, STRUCT<INT32, DOUBLE>>, value=NULL)
+    |     +-MakeStruct
+    |     | +-type=STRUCT<INT32, STRUCT<INT32, DOUBLE>>
+    |     | +-field_list=
+    |     |   +-Literal(type=INT32, value=NULL)
+    |     |   +-Literal(type=STRUCT<INT32, DOUBLE>, value=NULL)
+    |     +-Literal(type=STRUCT<INT32, STRUCT<INT32, DOUBLE>>, value={1, NULL}, has_explicit_type=TRUE)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+select COALESCE(NULL,
+                (NULL, NULL),
+                STRUCT<INT32, STRUCT<INT32, STRUCT<INT32, b INT32>>>(1, (1, NULL)))
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [STRUCT<INT32, STRUCT<INT32, STRUCT<INT32, INT32>>>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(GoogleSQL:coalesce(repeated(3) STRUCT<INT32, STRUCT<INT32, STRUCT<INT32, INT32>>>) -> STRUCT<INT32, STRUCT<INT32, STRUCT<INT32, INT32>>>)
+    |     +-Literal(type=STRUCT<INT32, STRUCT<INT32, STRUCT<INT32, INT32>>>, value=NULL)
+    |     +-MakeStruct
+    |     | +-type=STRUCT<INT32, STRUCT<INT32, STRUCT<INT32, INT32>>>
+    |     | +-field_list=
+    |     |   +-Literal(type=INT32, value=NULL)
+    |     |   +-Literal(type=STRUCT<INT32, STRUCT<INT32, INT32>>, value=NULL)
+    |     +-Literal(type=STRUCT<INT32, STRUCT<INT32, STRUCT<INT32, INT32>>>, value={1, {1, NULL}}, has_explicit_type=TRUE)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+select COALESCE(STRUCT(NULL as x, NULL as y),
+                STRUCT<a INT32, STRUCT<INT32, b DOUBLE>>(1, NULL))
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [STRUCT<x INT32, y STRUCT<INT32, DOUBLE>>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(GoogleSQL:coalesce(repeated(2) STRUCT<x INT32, y STRUCT<INT32, DOUBLE>>) -> STRUCT<x INT32, y STRUCT<INT32, DOUBLE>>)
+    |     +-MakeStruct
+    |     | +-type=STRUCT<x INT32, y STRUCT<INT32, DOUBLE>>
+    |     | +-field_list=
+    |     |   +-Literal(type=INT32, value=NULL)
+    |     |   +-Literal(type=STRUCT<INT32, DOUBLE>, value=NULL)
+    |     +-Literal(type=STRUCT<x INT32, y STRUCT<INT32, DOUBLE>>, value={x:1, y:NULL}, has_explicit_type=TRUE)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+select COALESCE(1, (1, 1))
+--
+ERROR: No matching signature for function COALESCE
+  Argument types: INT64, STRUCT<INT64, INT64>
+  Signature: COALESCE([T1, ...])
+    Unable to find common supertype for templated argument <T1>
+      Input types for <T1>: {INT64, STRUCT<INT64, INT64>} [at 1:8]
+select COALESCE(1, (1, 1))
+       ^
+==
+
+select coalesce(
+  (select as struct 1 x, 2 y),
+  (select as struct 3 z, 4 z))
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#7 AS `$col1` [STRUCT<x INT64, y INT64>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#7]
+    +-expr_list=
+    | +-$col1#7 :=
+    |   +-FunctionCall(GoogleSQL:coalesce(repeated(2) STRUCT<x INT64, y INT64>) -> STRUCT<x INT64, y INT64>)
+    |     +-SubqueryExpr
+    |     | +-type=STRUCT<x INT64, y INT64>
+    |     | +-subquery_type=SCALAR
+    |     | +-subquery=
+    |     |   +-ProjectScan
+    |     |     +-column_list=[$make_struct.$struct#3]
+    |     |     +-expr_list=
+    |     |     | +-$struct#3 :=
+    |     |     |   +-MakeStruct
+    |     |     |     +-type=STRUCT<x INT64, y INT64>
+    |     |     |     +-field_list=
+    |     |     |       +-ColumnRef(type=INT64, column=$expr_subquery.x#1)
+    |     |     |       +-ColumnRef(type=INT64, column=$expr_subquery.y#2)
+    |     |     +-input_scan=
+    |     |       +-ProjectScan
+    |     |         +-column_list=$expr_subquery.[x#1, y#2]
+    |     |         +-expr_list=
+    |     |         | +-x#1 := Literal(type=INT64, value=1)
+    |     |         | +-y#2 := Literal(type=INT64, value=2)
+    |     |         +-input_scan=
+    |     |           +-SingleRowScan
+    |     +-Cast(STRUCT<z INT64, z INT64> -> STRUCT<x INT64, y INT64>)
+    |       +-SubqueryExpr
+    |         +-type=STRUCT<z INT64, z INT64>
+    |         +-subquery_type=SCALAR
+    |         +-subquery=
+    |           +-ProjectScan
+    |             +-column_list=[$make_struct.$struct#6]
+    |             +-expr_list=
+    |             | +-$struct#6 :=
+    |             |   +-MakeStruct
+    |             |     +-type=STRUCT<z INT64, z INT64>
+    |             |     +-field_list=
+    |             |       +-ColumnRef(type=INT64, column=$expr_subquery.z#4)
+    |             |       +-ColumnRef(type=INT64, column=$expr_subquery.z#5)
+    |             +-input_scan=
+    |               +-ProjectScan
+    |                 +-column_list=$expr_subquery.[z#4, z#5]
+    |                 +-expr_list=
+    |                 | +-z#4 := Literal(type=INT64, value=3)
+    |                 | +-z#5 := Literal(type=INT64, value=4)
+    |                 +-input_scan=
+    |                   +-SingleRowScan
+    +-input_scan=
+      +-SingleRowScan
+==
+
+select as struct 1 x, 2 y
+union all
+select as struct 3 z, 4 z
+--
+QueryStmt
++-output_column_list=
+| +-$union_all.$struct#7 AS `$struct` [STRUCT<x INT64, y INT64>]
++-is_value_table=TRUE
++-query=
+  +-SetOperationScan
+    +-column_list=[$union_all.$struct#7]
+    +-op_type=UNION_ALL
+    +-input_item_list=
+      +-SetOperationItem
+      | +-scan=
+      | | +-ProjectScan
+      | |   +-column_list=[$make_struct.$struct#3]
+      | |   +-expr_list=
+      | |   | +-$struct#3 :=
+      | |   |   +-MakeStruct
+      | |   |     +-type=STRUCT<x INT64, y INT64>
+      | |   |     +-field_list=
+      | |   |       +-ColumnRef(type=INT64, column=$union_all1.x#1)
+      | |   |       +-ColumnRef(type=INT64, column=$union_all1.y#2)
+      | |   +-input_scan=
+      | |     +-ProjectScan
+      | |       +-column_list=$union_all1.[x#1, y#2]
+      | |       +-expr_list=
+      | |       | +-x#1 := Literal(type=INT64, value=1)
+      | |       | +-y#2 := Literal(type=INT64, value=2)
+      | |       +-input_scan=
+      | |         +-SingleRowScan
+      | +-output_column_list=[$make_struct.$struct#3]
+      +-SetOperationItem
+        +-scan=
+        | +-ProjectScan
+        |   +-column_list=[$union_all2_cast.$struct#8]
+        |   +-expr_list=
+        |   | +-$struct#8 :=
+        |   |   +-Cast(STRUCT<z INT64, z INT64> -> STRUCT<x INT64, y INT64>)
+        |   |     +-ColumnRef(type=STRUCT<z INT64, z INT64>, column=$make_struct.$struct#6)
+        |   +-input_scan=
+        |     +-ProjectScan
+        |       +-column_list=[$make_struct.$struct#6]
+        |       +-expr_list=
+        |       | +-$struct#6 :=
+        |       |   +-MakeStruct
+        |       |     +-type=STRUCT<z INT64, z INT64>
+        |       |     +-field_list=
+        |       |       +-ColumnRef(type=INT64, column=$union_all2.z#4)
+        |       |       +-ColumnRef(type=INT64, column=$union_all2.z#5)
+        |       +-input_scan=
+        |         +-ProjectScan
+        |           +-column_list=$union_all2.[z#4, z#5]
+        |           +-expr_list=
+        |           | +-z#4 := Literal(type=INT64, value=3)
+        |           | +-z#5 := Literal(type=INT64, value=4)
+        |           +-input_scan=
+        |             +-SingleRowScan
+        +-output_column_list=[$union_all2_cast.$struct#8]
+==
+
+# Struct coercion with untyped null and empty array literals.
+select cast((array<string>[], [], cast(null as string), null)
+    AS STRUCT<array<string>, {{array<int64>|array<string>}},
+              string, {{int64|string}}>)
+--
+ALTERNATION GROUP: array<int64>,int64
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [STRUCT<ARRAY<STRING>, ARRAY<INT64>, STRING, INT64>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 := Literal(type=STRUCT<ARRAY<STRING>, ARRAY<INT64>, STRING, INT64>, value={[], [], NULL, NULL}, has_explicit_type=TRUE)
+    +-input_scan=
+      +-SingleRowScan
+--
+ALTERNATION GROUP: array<int64>,string
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [STRUCT<ARRAY<STRING>, ARRAY<INT64>, STRING, STRING>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 := Literal(type=STRUCT<ARRAY<STRING>, ARRAY<INT64>, STRING, STRING>, value={[], [], NULL, NULL}, has_explicit_type=TRUE)
+    +-input_scan=
+      +-SingleRowScan
+--
+ALTERNATION GROUP: array<string>,int64
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [STRUCT<ARRAY<STRING>, ARRAY<STRING>, STRING, INT64>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 := Literal(type=STRUCT<ARRAY<STRING>, ARRAY<STRING>, STRING, INT64>, value={[], [], NULL, NULL}, has_explicit_type=TRUE)
+    +-input_scan=
+      +-SingleRowScan
+--
+ALTERNATION GROUP: array<string>,string
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [STRUCT<ARRAY<STRING>, ARRAY<STRING>, STRING, STRING>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 := Literal(type=STRUCT<ARRAY<STRING>, ARRAY<STRING>, STRING, STRING>, value={[], [], NULL, NULL}, has_explicit_type=TRUE)
+    +-input_scan=
+      +-SingleRowScan

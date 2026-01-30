@@ -4,7 +4,7 @@
 
 # Navigation functions
 
-ZetaSQL supports navigation functions.
+GoogleSQL supports navigation functions.
 Navigation functions are a subset of window functions. To create a
 window function call and learn about the syntax for window functions,
 see [Window function_calls][window-function-calls].
@@ -28,7 +28,7 @@ For all navigation functions, the result data type is the same type as
   <tbody>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/navigation_functions.md#first_value"><code>FIRST_VALUE</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/navigation_functions.md#first_value"><code>FIRST_VALUE</code></a>
 </td>
   <td>
     Gets a value for the first row in the current window frame.
@@ -37,7 +37,7 @@ For all navigation functions, the result data type is the same type as
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/navigation_functions.md#lag"><code>LAG</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/navigation_functions.md#lag"><code>LAG</code></a>
 </td>
   <td>
     Gets a value for a preceding row.
@@ -46,7 +46,7 @@ For all navigation functions, the result data type is the same type as
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/navigation_functions.md#last_value"><code>LAST_VALUE</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/navigation_functions.md#last_value"><code>LAST_VALUE</code></a>
 </td>
   <td>
     Gets a value for the last row in the current window frame.
@@ -55,7 +55,7 @@ For all navigation functions, the result data type is the same type as
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/navigation_functions.md#lead"><code>LEAD</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/navigation_functions.md#lead"><code>LEAD</code></a>
 </td>
   <td>
     Gets a value for a subsequent row.
@@ -64,7 +64,7 @@ For all navigation functions, the result data type is the same type as
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/navigation_functions.md#nth_value"><code>NTH_VALUE</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/navigation_functions.md#nth_value"><code>NTH_VALUE</code></a>
 </td>
   <td>
     Gets a value for the Nth row of the current window frame.
@@ -73,7 +73,7 @@ For all navigation functions, the result data type is the same type as
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/navigation_functions.md#percentile_cont"><code>PERCENTILE_CONT</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/navigation_functions.md#percentile_cont"><code>PERCENTILE_CONT</code></a>
 </td>
   <td>
     Computes the specified percentile for a value, using
@@ -83,7 +83,7 @@ For all navigation functions, the result data type is the same type as
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/navigation_functions.md#percentile_disc"><code>PERCENTILE_DISC</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/navigation_functions.md#percentile_disc"><code>PERCENTILE_DISC</code></a>
 </td>
   <td>
     Computes the specified percentile for a discrete value.
@@ -96,7 +96,7 @@ For all navigation functions, the result data type is the same type as
 
 ## `FIRST_VALUE`
 
-```zetasql
+```googlesql
 FIRST_VALUE (value_expression [{RESPECT | IGNORE} NULLS])
 OVER over_clause
 
@@ -125,7 +125,7 @@ To learn more about the `OVER` clause and how to use it, see
 
 <!-- mdlint off(WHITESPACE_LINE_LENGTH) -->
 
-[window-function-calls]: https://github.com/google/zetasql/blob/master/docs/window-function-calls.md
+[window-function-calls]: https://github.com/google/googlesql/blob/master/docs/window-function-calls.md
 
 <!-- mdlint on -->
 
@@ -141,7 +141,7 @@ Same type as `value_expression`.
 
 The following example computes the fastest time for each division.
 
-```zetasql
+```googlesql
 WITH finishers AS
  (SELECT 'Sophia Liu' as name,
   TIMESTAMP '2016-10-18 2:51:45' as finish_time,
@@ -187,7 +187,7 @@ FROM (
 
 ## `LAG`
 
-```zetasql
+```googlesql
 LAG (value_expression[, offset [, default_expression]])
 OVER over_clause
 
@@ -218,7 +218,7 @@ To learn more about the `OVER` clause and how to use it, see
 
 <!-- mdlint off(WHITESPACE_LINE_LENGTH) -->
 
-[window-function-calls]: https://github.com/google/zetasql/blob/master/docs/window-function-calls.md
+[window-function-calls]: https://github.com/google/googlesql/blob/master/docs/window-function-calls.md
 
 <!-- mdlint on -->
 
@@ -237,7 +237,7 @@ Same type as `value_expression`.
 
 The following example illustrates a basic use of the `LAG` function.
 
-```zetasql
+```googlesql
 WITH finishers AS
  (SELECT 'Sophia Liu' as name,
   TIMESTAMP '2016-10-18 2:51:45' as finish_time,
@@ -276,7 +276,7 @@ FROM finishers;
 
 This next example uses the optional `offset` parameter.
 
-```zetasql
+```googlesql
 WITH finishers AS
  (SELECT 'Sophia Liu' as name,
   TIMESTAMP '2016-10-18 2:51:45' as finish_time,
@@ -315,7 +315,7 @@ FROM finishers;
 
 The following example replaces NULL values with a default value.
 
-```zetasql
+```googlesql
 WITH finishers AS
  (SELECT 'Sophia Liu' as name,
   TIMESTAMP '2016-10-18 2:51:45' as finish_time,
@@ -354,7 +354,7 @@ FROM finishers;
 
 ## `LAST_VALUE`
 
-```zetasql
+```googlesql
 LAST_VALUE (value_expression [{RESPECT | IGNORE} NULLS])
 OVER over_clause
 
@@ -383,7 +383,7 @@ To learn more about the `OVER` clause and how to use it, see
 
 <!-- mdlint off(WHITESPACE_LINE_LENGTH) -->
 
-[window-function-calls]: https://github.com/google/zetasql/blob/master/docs/window-function-calls.md
+[window-function-calls]: https://github.com/google/googlesql/blob/master/docs/window-function-calls.md
 
 <!-- mdlint on -->
 
@@ -399,7 +399,7 @@ Same type as `value_expression`.
 
 The following example computes the slowest time for each division.
 
-```zetasql
+```googlesql
 WITH finishers AS
  (SELECT 'Sophia Liu' as name,
   TIMESTAMP '2016-10-18 2:51:45' as finish_time,
@@ -445,7 +445,7 @@ FROM (
 
 ## `LEAD`
 
-```zetasql
+```googlesql
 LEAD (value_expression[, offset [, default_expression]])
 OVER over_clause
 
@@ -476,7 +476,7 @@ To learn more about the `OVER` clause and how to use it, see
 
 <!-- mdlint off(WHITESPACE_LINE_LENGTH) -->
 
-[window-function-calls]: https://github.com/google/zetasql/blob/master/docs/window-function-calls.md
+[window-function-calls]: https://github.com/google/googlesql/blob/master/docs/window-function-calls.md
 
 <!-- mdlint on -->
 
@@ -495,7 +495,7 @@ Same type as `value_expression`.
 
 The following example illustrates a basic use of the `LEAD` function.
 
-```zetasql
+```googlesql
 WITH finishers AS
  (SELECT 'Sophia Liu' as name,
   TIMESTAMP '2016-10-18 2:51:45' as finish_time,
@@ -534,7 +534,7 @@ FROM finishers;
 
 This next example uses the optional `offset` parameter.
 
-```zetasql
+```googlesql
 WITH finishers AS
  (SELECT 'Sophia Liu' as name,
   TIMESTAMP '2016-10-18 2:51:45' as finish_time,
@@ -573,7 +573,7 @@ FROM finishers;
 
 The following example replaces NULL values with a default value.
 
-```zetasql
+```googlesql
 WITH finishers AS
  (SELECT 'Sophia Liu' as name,
   TIMESTAMP '2016-10-18 2:51:45' as finish_time,
@@ -612,7 +612,7 @@ FROM finishers;
 
 ## `NTH_VALUE`
 
-```zetasql
+```googlesql
 NTH_VALUE (value_expression, constant_integer_expression [{RESPECT | IGNORE} NULLS])
 OVER over_clause
 
@@ -642,7 +642,7 @@ To learn more about the `OVER` clause and how to use it, see
 
 <!-- mdlint off(WHITESPACE_LINE_LENGTH) -->
 
-[window-function-calls]: https://github.com/google/zetasql/blob/master/docs/window-function-calls.md
+[window-function-calls]: https://github.com/google/googlesql/blob/master/docs/window-function-calls.md
 
 <!-- mdlint on -->
 
@@ -659,7 +659,7 @@ Same type as `value_expression`.
 
 **Examples**
 
-```zetasql
+```googlesql
 WITH finishers AS
  (SELECT 'Sophia Liu' as name,
   TIMESTAMP '2016-10-18 2:51:45' as finish_time,
@@ -709,7 +709,7 @@ FROM (
 
 ## `PERCENTILE_CONT`
 
-```zetasql
+```googlesql
 PERCENTILE_CONT (value_expression, percentile [{RESPECT | IGNORE} NULLS])
 OVER over_clause
 
@@ -740,7 +740,7 @@ To learn more about the `OVER` clause and how to use it, see
 
 <!-- mdlint off(WHITESPACE_LINE_LENGTH) -->
 
-[window-function-calls]: https://github.com/google/zetasql/blob/master/docs/window-function-calls.md
+[window-function-calls]: https://github.com/google/googlesql/blob/master/docs/window-function-calls.md
 
 <!-- mdlint on -->
 
@@ -779,7 +779,7 @@ table.
 The following example computes the value for some percentiles from a column of
 values while ignoring nulls.
 
-```zetasql
+```googlesql
 SELECT
   PERCENTILE_CONT(x, 0) OVER() AS min,
   PERCENTILE_CONT(x, 0.01) OVER() AS percentile1,
@@ -798,7 +798,7 @@ FROM UNNEST([0, 3, NULL, 1, 2]) AS x LIMIT 1;
 The following example computes the value for some percentiles from a column of
 values while respecting nulls.
 
-```zetasql
+```googlesql
 SELECT
   PERCENTILE_CONT(x, 0 RESPECT NULLS) OVER() AS min,
   PERCENTILE_CONT(x, 0.01 RESPECT NULLS) OVER() AS percentile1,
@@ -814,11 +814,11 @@ FROM UNNEST([0, 3, NULL, 1, 2]) AS x LIMIT 1;
  +------+-------------+--------+--------------+-----*/
 ```
 
-[dp-functions]: https://github.com/google/zetasql/blob/master/docs/aggregate-dp-functions.md
+[dp-functions]: https://github.com/google/googlesql/blob/master/docs/aggregate-dp-functions.md
 
 ## `PERCENTILE_DISC`
 
-```zetasql
+```googlesql
 PERCENTILE_DISC (value_expression, percentile [{RESPECT | IGNORE} NULLS])
 OVER over_clause
 
@@ -846,7 +846,7 @@ To learn more about the `OVER` clause and how to use it, see
 
 <!-- mdlint off(WHITESPACE_LINE_LENGTH) -->
 
-[window-function-calls]: https://github.com/google/zetasql/blob/master/docs/window-function-calls.md
+[window-function-calls]: https://github.com/google/googlesql/blob/master/docs/window-function-calls.md
 
 <!-- mdlint on -->
 
@@ -868,7 +868,7 @@ Same type as `value_expression`.
 The following example computes the value for some percentiles from a column of
 values while ignoring nulls.
 
-```zetasql
+```googlesql
 SELECT
   x,
   PERCENTILE_DISC(x, 0) OVER() AS min,
@@ -889,7 +889,7 @@ FROM UNNEST(['c', NULL, 'b', 'a']) AS x;
 The following example computes the value for some percentiles from a column of
 values while respecting nulls.
 
-```zetasql
+```googlesql
 SELECT
   x,
   PERCENTILE_DISC(x, 0 RESPECT NULLS) OVER() AS min,
@@ -908,7 +908,7 @@ FROM UNNEST(['c', NULL, 'b', 'a']) AS x;
 
 ```
 
-[sketches]: https://github.com/google/zetasql/blob/master/docs/sketches.md
+[sketches]: https://github.com/google/googlesql/blob/master/docs/sketches.md
 
-[window-function-calls]: https://github.com/google/zetasql/blob/master/docs/window-function-calls.md
+[window-function-calls]: https://github.com/google/googlesql/blob/master/docs/window-function-calls.md
 

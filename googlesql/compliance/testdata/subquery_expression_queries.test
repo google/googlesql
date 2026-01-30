@@ -1,0 +1,362 @@
+# Miscellaneous tests for subquery expressions.
+[load_proto_files=googlesql/testdata/test_schema.proto]
+[load_proto_names=googlesql_test.KitchenSinkPB, googlesql_test.TestExtraPB, googlesql_test.KitchenSinkPB.Nested, googlesql_test.RepeatedHolderPB]
+
+[prepare_database]
+CREATE TABLE Table1 AS
+SELECT cast(1 as int64) as primary_key,
+       cast(true as bool) as bool_val, cast(0.1 as double) as double_val,
+       cast(1 as int64) as int64_val, cast("1" as string) as str_val UNION ALL
+  SELECT 2, false, 0.2, 2, "2"
+--
+ARRAY<STRUCT<primary_key INT64,
+             bool_val BOOL,
+             double_val DOUBLE,
+             int64_val INT64,
+             str_val STRING>>
+[
+  {1, true, 0.1, 1, "1"},
+  {2, false, 0.2, 2, "2"}
+]
+==
+[prepare_database]
+CREATE TABLE Table2 AS
+SELECT 1 id,
+       (SELECT AS `googlesql_test.TestExtraPB`
+         1 int32_val1, ['a', 'b', 'c'] str_value) Info
+UNION ALL
+SELECT 2 id,
+       (SELECT AS `googlesql_test.TestExtraPB`
+         2 int32_val1, ['d'] str_value) Info
+--
+ARRAY<STRUCT<
+        id INT64,
+        Info PROTO<googlesql_test.TestExtraPB>
+      >>
+[{1,
+  {
+    int32_val1: 1
+    str_value: "a"
+    str_value: "b"
+    str_value: "c"
+  }},
+ {2,
+  {
+    int32_val1: 2
+    str_value: "d"
+  }}]
+==
+
+# Scalar subquery expression enforced by a predicate.
+[name=subquery_expression_3]
+SELECT (SELECT int64_val FROM Table1 WHERE int64_val = 1)
+--
+ARRAY<STRUCT<INT64>>[{1}]
+==
+
+# Scalar subquery expression with 1 row, 2 columns as struct.
+[name=subquery_expression_2]
+SELECT (SELECT AS STRUCT 1 A, 2 B)
+--
+ARRAY<STRUCT<STRUCT<A INT64, B INT64>>>[{{1, 2}}]
+==
+
+# Scalar subquery expression with 1 row, 2 columns as proto.
+[name=subquery_expression_proto]
+SELECT (SELECT AS `googlesql_test.TestExtraPB` 1 int32_val1, 2 int32_val2)
+--
+ARRAY<STRUCT<PROTO<googlesql_test.TestExtraPB>>>[
+  {{
+     int32_val1: 1
+     int32_val2: 2
+   }}
+]
+==
+
+# Scalar subquery expression with 1 row after aggregation over repeated field.
+[name=subquery_expression_aggregation_no_group_by]
+SELECT (SELECT COUNT(*) count FROM t.Info.str_value)
+FROM Table2 t
+ORDER BY id
+--
+ARRAY<STRUCT<INT64>>[known order:{3}, {1}]
+==
+
+# Scalar subquery expression with > 1 rows after aggregation over repeated field.
+[name=subquery_expression_aggregation_group_by]
+SELECT (
+  SELECT COUNT(*) count
+  FROM t.Info.str_value s
+  GROUP BY s
+)
+FROM Table2 t
+ORDER BY t.id
+--
+ERROR: generic::out_of_range: More than one element
+==
+
+# Scalar subquery expression with a UNION ALL with one input returning zero
+# rows.
+[name=subquery_expression_8]
+SELECT (SELECT 1 UNION ALL SELECT 2 FROM Table1 WHERE int64_val = -1)
+--
+ARRAY<STRUCT<INT64>>[{1}]
+==
+
+# Scalar subquery expression with a UNION ALL with both inputs returning zero
+# rows.
+[name=subquery_expression_union_all_inputs_empty]
+SELECT (
+  SELECT 1 FROM Table1 WHERE FALSE
+  UNION ALL
+  SELECT 2 FROM Table1 WHERE NOT TRUE
+)
+--
+ARRAY<STRUCT<INT64>>[{NULL}]
+==
+
+# Scalar subquery expression with ARRAY_AGG.
+[name=subquery_expression_array_agg]
+SELECT (SELECT ARRAY_AGG(s) FROM t.Info.str_value s)
+FROM Table2 t
+ORDER BY t.id
+--
+ARRAY<STRUCT<ARRAY<>>>[known order:
+  {ARRAY<STRING>[unknown order:"b", "a", "c"]},
+  {ARRAY<STRING>["d"]}
+]
+==
+
+# Correlated scalar subquery expression with single reference to outer query.
+[name=subquery_expression_correlated_single_ref]
+SELECT (SELECT CONCAT('_', str_val)) AS key
+FROM Table1
+WHERE int64_val < 3
+ORDER BY key
+--
+ARRAY<STRUCT<key STRING>>[known order:{"_1"}, {"_2"}]
+==
+
+# Correlated scalar subquery expression with multiple references to outer query.
+[name=subquery_expression_correlated_multi_ref]
+SELECT (SELECT CONCAT('_', str_val, '@', CAST(int64_val AS string))) AS key
+FROM Table1
+WHERE int64_val < 3
+ORDER BY key
+--
+ARRAY<STRUCT<key STRING>>[known order:{"_1@1"}, {"_2@2"}]
+==
+
+# Nested correlated scalar subquery expression with references to both outer
+# queries.
+[name=subquery_expression_correlated_nested_simple_refs]
+SELECT (SELECT (SELECT CONCAT(hashmark, str_val))
+        FROM (SELECT '#' AS hashmark) AS T) AS key
+FROM Table1
+WHERE int64_val < 3
+ORDER BY key
+--
+ARRAY<STRUCT<key STRING>>[known order:{"#1"}, {"#2"}]
+==
+
+# Nested correlated scalar subquery expression with references to both outer
+# queries at different nesting levels.
+[name=subquery_expression_correlated_nested_mixed_refs]
+SELECT (SELECT CONCAT(str_val, hashmark, (SELECT hashmark), (SELECT str_val))
+        FROM (SELECT '#' AS hashmark) AS T) AS key
+FROM Table1
+WHERE int64_val < 3
+ORDER BY key
+--
+ARRAY<STRUCT<key STRING>>[known order:{"1##1"}, {"2##2"}]
+==
+
+# Nested correlated scalar subquery expression with references to homonymous
+# fields in multiple containing queries.
+[name=subquery_expression_correlated_nested_ambiguous_refs]
+SELECT (SELECT (SELECT (SELECT str_val) FROM (SELECT 's2' AS str_val) AS T2)
+        FROM (SELECT 's1' AS str_val) AS T1)
+FROM Table1
+WHERE int64_val = 1
+--
+ARRAY<STRUCT<STRING>>[{"s2"}]
+==
+
+# Scalar subquery expression that contains an array subquery expression.
+[name=scalar_subquery_expression_containing_array_subquery_expression]
+SELECT (SELECT * FROM UNNEST(ARRAY(SELECT t FROM UNNEST([1]) t)))
+--
+ARRAY<STRUCT<INT64>>[{1}]
+==
+
+# Queries fail because the scalar subqueries return > 1 row.
+[name=subquery_expression_9]
+SELECT (SELECT int64_val FROM Table1)
+--
+ERROR: generic::out_of_range: More than one element
+==
+
+[name=subquery_expression_10]
+SELECT (SELECT AS STRUCT bool_val, double_val, int64_val, str_val FROM Table1)
+--
+ERROR: generic::out_of_range: More than one element
+==
+
+[name=subquery_expression_11]
+SELECT (SELECT 1 UNION ALL SELECT 2)
+--
+ERROR: generic::out_of_range: More than one element
+==
+
+[name=subquery_expression_12]
+SELECT (SELECT AS STRUCT 1, 2 UNION ALL SELECT AS STRUCT 3, 4)
+--
+ERROR: generic::out_of_range: More than one element
+==
+
+# Array subquery expression that contains a scalar subquery expression.
+[name=array_subquery_expression_containing_scalar_subquery_expression]
+SELECT ARRAY(SELECT (SELECT AS STRUCT s, 1 AS i) FROM t.Info.str_value s)
+FROM Table2 t
+WHERE id = 1
+--
+ARRAY<STRUCT<ARRAY<>>>[
+  {ARRAY<STRUCT<s STRING, i INT64>>[unknown order:{"b", 1}, {"a", 1}, {"c", 1}]}
+]
+==
+
+# Array subquery expression with multiple rows, 1 column
+[name=subquery_expression_4]
+SELECT ARRAY(SELECT int64_val FROM Table1)
+--
+ARRAY<STRUCT<ARRAY<>>>[{ARRAY<INT64>[unknown order:1, 2]}]
+==
+
+# Array subquery expression with a single row containing a struct with one
+# column.
+[name=array_subquery_expression_single_row_with_single_column_struct]
+SELECT ARRAY(SELECT AS STRUCT 1 FROM (SELECT 1 AS point))
+--
+ARRAY<STRUCT<ARRAY<>>>[{ARRAY<STRUCT<INT64>>[{1}]}]
+==
+
+# Array subquery expression with multiple rows and multiple columns.
+[name=subquery_expression_5]
+SELECT ARRAY(SELECT AS STRUCT * FROM Table1 ORDER BY int64_val DESC)
+--
+ARRAY<STRUCT<ARRAY<>>>[
+  {ARRAY<STRUCT<primary_key INT64,
+                bool_val BOOL,
+                double_val DOUBLE,
+                int64_val INT64,
+                str_val STRING>>
+   [unknown order:
+     {2, false, 0.2, 2, "2"},
+     {1, true, 0.1, 1, "1"}
+   ]}
+]
+==
+
+# Array subquery expression with 1 row after aggregation over repeated field.
+[name=array_subquery_expression_aggregation_no_group_by]
+SELECT ARRAY(SELECT COUNT(*) count FROM t.Info.str_value)
+FROM Table2 t
+ORDER BY id
+--
+ARRAY<STRUCT<ARRAY<>>>[known order:{ARRAY<INT64>[3]}, {ARRAY<INT64>[1]}]
+==
+
+# Array subquery expression with > 1 rows after aggregation over repeated field.
+[name=array_subquery_expression_aggregation_group_by]
+SELECT ARRAY(
+  SELECT COUNT(*) count
+  FROM t.Info.str_value s
+  GROUP BY s
+)
+FROM Table2 t
+ORDER BY t.id
+--
+ARRAY<STRUCT<ARRAY<>>>[known order:
+  {ARRAY<INT64>[unknown order:1, 1, 1]},
+  {ARRAY<INT64>[1]}
+]
+==
+
+# Array subquery expression with a single-column UNION ALL.
+[name=subquery_expression_6]
+SELECT ARRAY(SELECT 1 AS i UNION ALL SELECT 2 ORDER BY i)
+--
+ARRAY<STRUCT<ARRAY<>>>[{ARRAY<INT64>[known order:1, 2]}]
+==
+
+# Array subquery expression with a multiple-columns UNION ALL.
+[name=subquery_expression_7]
+SELECT ARRAY(SELECT AS STRUCT 1, 2 UNION ALL SELECT AS STRUCT 3, 4)
+--
+ARRAY<STRUCT<ARRAY<>>>[
+  {ARRAY<STRUCT<INT64, INT64>>[unknown order:{1, 2}, {3, 4}]}
+]
+==
+
+# Array subquery expression with a UNION ALL with one input returning zero
+# rows.
+[name=array_subquery_expression_union_one_input_empty]
+SELECT ARRAY(
+  SELECT 1 FROM Table1 WHERE FALSE
+  UNION ALL
+  SELECT 2 FROM Table1
+)
+--
+ARRAY<STRUCT<ARRAY<>>>[{ARRAY<INT64>[unknown order:2, 2]}]
+==
+
+# Array subquery expression with a UNION ALL with both inputs returning zero
+# rows.
+[name=array_subquery_expression_union_all_inputs_empty]
+SELECT ARRAY(
+  SELECT 1 FROM Table1 WHERE FALSE
+  UNION ALL
+  SELECT 2 FROM Table1 WHERE NOT TRUE
+)
+--
+ARRAY<STRUCT<ARRAY<>>>[{ARRAY<INT64>[]}]
+==
+
+# Correlated array subquery expression with single reference to outer query.
+[name=array_subquery_expression_correlated_single_ref]
+SELECT id, ARRAY_LENGTH(ARRAY(SELECT CONCAT(CAST(id AS STRING), '_', s)
+                              FROM t.Info.str_value s)) AS size
+FROM Table2 t
+ORDER BY id
+--
+ARRAY<STRUCT<id INT64, size INT64>>[known order:{1, 3}, {2, 1}]
+==
+
+# Nested correlated array subquery expression with references to both outer
+# queries.
+[name=array_subquery_expression_correlated_nested_simple_refs]
+SELECT id, ARRAY_LENGTH(ARRAY(
+             SELECT ARRAY_LENGTH(ARRAY(
+               SELECT CONCAT(CAST(id AS STRING), hashmark, s)
+               FROM UNNEST(['#', '#']) AS hashmark))
+             FROM t.Info.str_value s)) AS size
+FROM Table2 t
+ORDER BY id
+--
+ARRAY<STRUCT<id INT64, size INT64>>[known order:{1, 3}, {2, 1}]
+==
+
+# Nested correlated array subquery expression with references to both outer
+# queries at different nesting levels.
+[name=array_subquery_expression_correlated_nested_mixed_refs]
+SELECT id, ARRAY_LENGTH(ARRAY(
+             SELECT CONCAT(CAST(
+                             ARRAY_LENGTH(ARRAY(
+                               SELECT CONCAT(CAST(id AS STRING), hashmark, s)
+                               FROM UNNEST(['#', '#']) AS hashmark)) AS STRING),
+                           s, CAST(id AS STRING))
+             FROM t.Info.str_value s)) AS size
+FROM Table2 t
+ORDER BY id
+--
+ARRAY<STRUCT<id INT64, size INT64>>[known order:{1, 3}, {2, 1}]

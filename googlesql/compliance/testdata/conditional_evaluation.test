@@ -1,0 +1,136 @@
+[prepare_database]
+CREATE TABLE T AS
+SELECT 0 as a, 0 as b UNION ALL
+SELECT 1,     10      UNION ALL
+SELECT 2,     20      UNION ALL
+SELECT 3,     30      UNION ALL
+SELECT 4,     40
+--
+ARRAY<STRUCT<a INT64, b INT64>>[{0, 0}, {1, 10}, {2, 20}, {3, 30}, {4, 40}]
+==
+# Scalar expressions
+[name=scalar_expressions_in_if]
+SELECT IF(a >= 0, a, (a/a-1)) FROM T
+--
+ARRAY<STRUCT<DOUBLE>>[unknown order:{1}, {3}, {0}, {2}, {4}]
+==
+[name=scalar_expressions_in_case]
+SELECT CASE WHEN a >= 0 THEN a ELSE (a/a-1) END AS x FROM T
+--
+ARRAY<STRUCT<x DOUBLE>>[unknown order:{1}, {3}, {0}, {2}, {4}]
+==
+# Aggregate expressions
+[required_features=ENFORCE_CONDITIONAL_EVALUATION]
+[name=aggregate_in_if]
+SELECT IF(1 > 0, sum(a), sum(a/0)) FROM T
+--
+ARRAY<STRUCT<DOUBLE>>[{10}]
+==
+[required_features=ENFORCE_CONDITIONAL_EVALUATION]
+[name=aggregate_in_case]
+SELECT CASE WHEN 1 > 0 THEN sum(a) ELSE sum(a/0) END FROM T
+--
+ARRAY<STRUCT<DOUBLE>>[{10}]
+==
+[required_features=ENFORCE_CONDITIONAL_EVALUATION]
+[name=aggregate_in_if_also_in_condition]
+SELECT IF(sum(a) > 0, sum(a), sum(a/0)) FROM T
+--
+ARRAY<STRUCT<DOUBLE>>[{10}]
+==
+[required_features=ENFORCE_CONDITIONAL_EVALUATION]
+[name=aggregate_in_case_also_in_condition]
+SELECT CASE WHEN sum(a) > 0 THEN sum(a) ELSE sum(a/0) END FROM T
+--
+ARRAY<STRUCT<DOUBLE>>[{10}]
+==
+[required_features=ENFORCE_CONDITIONAL_EVALUATION]
+[name=aggregate_in_if_with_grouping_column_in_condition]
+SELECT IF(b >= 0, sum(a), sum(a/0)) FROM T GROUP BY b
+--
+ARRAY<STRUCT<DOUBLE>>[unknown order:{1}, {3}, {0}, {2}, {4}]
+==
+[required_features=ENFORCE_CONDITIONAL_EVALUATION]
+[name=aggregate_in_case_with_grouping_column_in_condition]
+SELECT CASE WHEN b >= 0 THEN sum(a) ELSE sum(a/0) END FROM T GROUP BY b
+--
+ARRAY<STRUCT<DOUBLE>>[unknown order:{1}, {3}, {0}, {2}, {4}]
+==
+# Uncorrelated subqueries
+[name=uncorrelated_subquery_with_top1_in_if]
+SELECT IF((SELECT COUNT(*) FROM T) > 0, 1, (SELECT 1/a FROM T ORDER BY a LIMIT 1))
+--
+ARRAY<STRUCT<DOUBLE>>[{1}]
+==
+[name=uncorrelated_subquery_with_top1_in_case]
+SELECT CASE WHEN (SELECT COUNT(*) FROM T) > 0 THEN 1 ELSE (SELECT a/(a-1) FROM T ORDER BY a LIMIT 1) END
+--
+ARRAY<STRUCT<DOUBLE>>[{1}]
+==
+[name=uncorrelated_subquery_in_false_branch]
+SELECT IF (a >= 0, a, (SELECT SUM(1/a) FROM t)) FROM t GROUP BY a;
+--
+ARRAY<STRUCT<DOUBLE>>[unknown order:{1}, {3}, {0}, {2}, {4}]
+==
+# Correlated subqueries
+[name=correlated_subquery_with_top1_in_if]
+SELECT IF(
+    (SELECT COUNT(*) FROM T WHERE a < outerT.b) > 0,
+    1,
+    (SELECT 1/a FROM T WHERE a < outerT.b ORDER BY a LIMIT 1))
+  FROM T outerT
+--
+ARRAY<STRUCT<DOUBLE>>[unknown order:{1}, {1}, {NULL}, {1}, {1}]
+==
+[name=correlated_subquery_with_top1_in_case]
+SELECT CASE
+    WHEN (SELECT COUNT(*) FROM T WHERE a < outerT.b) > 0 THEN 1
+    ELSE (SELECT a/(a-1) FROM T WHERE a < outerT.b ORDER BY a LIMIT 1) END
+  FROM T outerT
+--
+ARRAY<STRUCT<DOUBLE>>[unknown order:{1}, {1}, {NULL}, {1}, {1}]
+==
+[name=correlated_subquery_in_false_branch]
+SELECT IF (a >= 0, a, (SELECT SUM(1/a) FROM t AS t2 WHERE t2.b < 20 )) FROM t GROUP BY a;
+--
+ARRAY<STRUCT<DOUBLE>>[unknown order:{1}, {3}, {0}, {2}, {4}]
+==
+[required_features=INLINE_LAMBDA_ARGUMENT]
+[name=lambdas_in_false_branch]
+SELECT IF (a >= 0, [1.0], ARRAY_TRANSFORM([a, a], e -> 1/e)) FROM t GROUP BY a;
+--
+ARRAY<STRUCT<ARRAY<>>>[unknown order:
+  {ARRAY<DOUBLE>[1]},
+  {ARRAY<DOUBLE>[1]},
+  {ARRAY<DOUBLE>[1]},
+  {ARRAY<DOUBLE>[1]},
+  {ARRAY<DOUBLE>[1]}
+]
+==
+[required_features=INLINE_LAMBDA_ARGUMENT]
+[name=lambdas_with_uncorrelated_subquery_in_false_branch]
+SELECT IF (a >= 0, [1.0], ARRAY_TRANSFORM([a, a], e -> (SELECT MAX(1/a) FROM t AS innerT))) FROM t GROUP BY a;
+--
+ARRAY<STRUCT<ARRAY<>>>[unknown order:
+  {ARRAY<DOUBLE>[1]},
+  {ARRAY<DOUBLE>[1]},
+  {ARRAY<DOUBLE>[1]},
+  {ARRAY<DOUBLE>[1]},
+  {ARRAY<DOUBLE>[1]}
+]
+==
+[required_features=INLINE_LAMBDA_ARGUMENT]
+[name=lambdas_with_correlated_subquery_in_false_branch]
+SELECT IF (a >= 0, [1.0], ARRAY_TRANSFORM([a, a], e -> (SELECT MAX(1/a) FROM t AS innerT WHERE innerT.a = outerT.a))) FROM t AS outerT GROUP BY a;
+--
+ARRAY<STRUCT<ARRAY<>>>[unknown order:
+  {ARRAY<DOUBLE>[1]},
+  {ARRAY<DOUBLE>[1]},
+  {ARRAY<DOUBLE>[1]},
+  {ARRAY<DOUBLE>[1]},
+  {ARRAY<DOUBLE>[1]}
+]
+########
+# TODO: non-SQL UDFs inlined and not inlined, as they may force a barrier that
+# IF() doesn't catch (definer-rights?), also UDAFs
+########

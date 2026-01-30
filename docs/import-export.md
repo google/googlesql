@@ -4,7 +4,7 @@
 
 # Data import and export statements
 
-ZetaSQL can specify the syntax for exporting and importing data.
+GoogleSQL can specify the syntax for exporting and importing data.
 
 ## `EXPORT DATA` 
 <a id="export_data_statement"></a>

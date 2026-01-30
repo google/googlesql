@@ -1,0 +1,434 @@
+[load_proto_files=googlesql/testdata/test_schema.proto]
+[load_proto_names=googlesql_test.KitchenSinkPB, googlesql_test.MessageWithMapField, googlesql_test.MessageWithMapField.StringInt32MapEntry]
+[prepare_database]
+
+CREATE TABLE Table0 AS
+SELECT 0 key, NEW googlesql_test.MessageWithMapField(
+  [NEW googlesql_test.MessageWithMapField.StringInt32MapEntry("foo" AS key, 123 AS value),
+   NEW googlesql_test.MessageWithMapField.StringInt32MapEntry("bar" AS key, 456 AS value)] AS string_int32_map
+) value
+--
+ARRAY<STRUCT<
+        key INT64,
+        value PROTO<googlesql_test.MessageWithMapField>
+      >>
+[{0,
+  {
+    string_int32_map {
+      key: "bar"
+      value: 456
+    }
+    string_int32_map {
+      key: "foo"
+      value: 123
+    }
+  }}]
+==
+
+[name=map_entry]
+SELECT NEW googlesql_test.MessageWithMapField(
+  [NEW googlesql_test.MessageWithMapField.StringInt32MapEntry("foo" AS key, 123 AS value)] AS string_int32_map
+) as pb
+--
+ARRAY<STRUCT<pb PROTO<googlesql_test.MessageWithMapField>>>[
+  {{
+     string_int32_map {
+       key: "foo"
+       value: 123
+     }
+   }}
+]
+==
+
+[default required_features=PROTO_MAPS]
+[name=map_entry_key_null]
+SELECT NEW googlesql_test.MessageWithMapField(
+  [NEW googlesql_test.MessageWithMapField.StringInt32MapEntry(CAST(NULL AS STRING) AS key, 123 AS value)] AS string_int32_map
+) as pb
+--
+ERROR: generic::out_of_range: Cannot write NULL to key or value of map field in StringInt32MapEntry
+==
+
+[name=map_entry_value_null]
+SELECT NEW googlesql_test.MessageWithMapField(
+  [NEW googlesql_test.MessageWithMapField.StringInt32MapEntry("foo" AS key, CAST(NULL AS INT32) AS value)] AS string_int32_map
+) as pb
+--
+ERROR: generic::out_of_range: Cannot write NULL to key or value of map field in StringInt32MapEntry
+==
+
+[name=lookup]
+SELECT value.string_int32_map[KEY("foo")] FROM Table0;
+--
+ARRAY<STRUCT<INT32>>[{123}]
+==
+
+[name=lookup_safe]
+SELECT value.string_int32_map[SAFE_KEY("bar")] FROM Table0;
+--
+ARRAY<STRUCT<INT32>>[{456}]
+==
+
+# This case repros a crash found in RQG
+# Even if this shape can't happen in "real protos" the code-path is still
+# reachable by user statements and we at least need it to not crash, having
+# a reasonable result is nice too.
+[name=map_array_with_a_null_entry]
+SELECT ARRAY<`googlesql_test.MessageWithMapField.Uint64StringMapEntry`>[
+    NEW `googlesql_test.MessageWithMapField.Uint64StringMapEntry`(
+      1 AS key,
+      "hello there" AS value
+    ),
+    NULL
+  ][SAFE_KEY(1)]
+--
+ARRAY<STRUCT<STRING>>[{"hello there"}]
+==
+
+[name=map_lookup_with_conflicting_values_for_key_takes_last_matching_value]
+(SELECT [NEW googlesql_test.MessageWithMapField.StringInt32MapEntry("foo" AS key, 123 AS value),
+         NEW googlesql_test.MessageWithMapField.StringInt32MapEntry("bar" AS key, 456 AS value),
+         NEW googlesql_test.MessageWithMapField.StringInt32MapEntry("foo" AS key, 789 AS value)][KEY("foo")])
+--
+ARRAY<STRUCT<INT32>>[{789}]
+==
+
+[name=lookup_in_null]
+SELECT CAST(NULL AS ARRAY<googlesql_test.MessageWithMapField.StringInt32MapEntry>)[KEY("foo")];
+--
+ARRAY<STRUCT<INT32>>[{NULL}]
+==
+
+[name=lookup_with_null_key]
+SELECT value.string_int32_map[KEY(NULL)] FROM Table0;
+--
+ARRAY<STRUCT<INT32>>[{NULL}]
+==
+
+[name=lookup_with_missing_key]
+SELECT value.string_int32_map[KEY("not present in map")] FROM Table0;
+--
+ERROR: generic::out_of_range: Key not found in map: "not present in map"
+==
+
+[name=lookup_with_missing_key_safe]
+SELECT value.string_int32_map[SAFE_KEY("not present in map")] FROM Table0;
+--
+ARRAY<STRUCT<INT32>>[{NULL}]
+==
+
+[name=lookup_depending_on_other_map_key]
+WITH Input AS (
+    SELECT [NEW googlesql_test.MessageWithMapField.StringStringMapEntry("foo" AS key, "bar" AS value),
+            NEW googlesql_test.MessageWithMapField.StringStringMapEntry("bar" AS key, "success" AS value)] AS map)
+SELECT i.map[KEY(i.map[KEY("foo")])] FROM Input i;
+--
+ARRAY<STRUCT<STRING>>[{"success"}]
+==
+
+[name=proto_modify_map]
+SELECT PROTO_MODIFY_MAP(value.string_int32_map, "foo", 789) FROM Table0;
+--
+ARRAY<STRUCT<ARRAY<>>>[
+  {
+    ARRAY<PROTO<googlesql_test.MessageWithMapField.StringInt32MapEntry>>[unknown order:
+      {
+        key: "bar"
+        value: 456
+      },
+      {
+        key: "foo"
+        value: 789
+      }
+    ]
+  }
+]
+==
+
+[name=proto_modify_map_null_map]
+SELECT PROTO_MODIFY_MAP(CAST(NULL AS ARRAY<googlesql_test.MessageWithMapField.StringInt32MapEntry>), "foo", 789) FROM Table0;
+--
+ARRAY<STRUCT<ARRAY<>>>[
+  {ARRAY<PROTO<googlesql_test.MessageWithMapField.StringInt32MapEntry>>(NULL)}
+]
+==
+
+[name=proto_modify_map_empty_map]
+SELECT PROTO_MODIFY_MAP(CAST([] AS ARRAY<googlesql_test.MessageWithMapField.StringInt32MapEntry>), "foo", 789) FROM Table0;
+--
+ARRAY<STRUCT<ARRAY<>>>[
+  {ARRAY<PROTO<googlesql_test.MessageWithMapField.StringInt32MapEntry>>[
+     {
+       key: "foo"
+       value: 789
+     }
+   ]}
+]
+==
+
+[name=proto_modify_map_multiple_keys]
+SELECT PROTO_MODIFY_MAP(value.string_int32_map, "foo", 789, "quux", 1337) FROM Table0;
+--
+ARRAY<STRUCT<ARRAY<>>>[
+  {
+    ARRAY<PROTO<googlesql_test.MessageWithMapField.StringInt32MapEntry>>[unknown order:
+      {
+        key: "bar"
+        value: 456
+      },
+      {
+        key: "foo"
+        value: 789
+      },
+      {
+        key: "quux"
+        value: 1337
+      }
+    ]
+  }
+]
+==
+
+[name=proto_modify_map_using_expression]
+SELECT PROTO_MODIFY_MAP(value.string_int32_map, "foo", CAST(value.string_int32_map[KEY("bar")] + 1 AS INT32)) FROM Table0;
+--
+ARRAY<STRUCT<ARRAY<>>>[
+  {
+    ARRAY<PROTO<googlesql_test.MessageWithMapField.StringInt32MapEntry>>[unknown order:
+      {
+        key: "bar"
+        value: 456
+      },
+      {
+        key: "foo"
+        value: 457
+      }
+    ]
+  }
+]
+==
+
+[name=proto_modify_map_duplicate_keys]
+SELECT PROTO_MODIFY_MAP(value.string_int32_map, "foo", 789, "foo", 10) FROM Table0;
+--
+ERROR: generic::out_of_range: PROTO_MODIFY_MAP: Only one instance of each key is allowed. Found multiple instances of key: "foo"
+==
+
+[name=proto_modify_map_new_key]
+SELECT PROTO_MODIFY_MAP(value.string_int32_map, "baz", 789) FROM Table0;
+--
+ARRAY<STRUCT<ARRAY<>>>[
+  {
+    ARRAY<PROTO<googlesql_test.MessageWithMapField.StringInt32MapEntry>>[unknown order:
+      {
+        key: "foo"
+        value: 123
+      },
+      {
+        key: "bar"
+        value: 456
+      },
+      {
+        key: "baz"
+        value: 789
+      }
+    ]
+  }
+]
+==
+
+[name=proto_modify_map_delete_key]
+SELECT PROTO_MODIFY_MAP(value.string_int32_map, "bar", NULL) FROM Table0;
+--
+ARRAY<STRUCT<ARRAY<>>>[
+  {ARRAY<PROTO<googlesql_test.MessageWithMapField.StringInt32MapEntry>>[
+     {
+       key: "foo"
+       value: 123
+     }
+   ]}
+]
+==
+
+[name=proto_modify_map_delete_duplicate_key]
+SELECT PROTO_MODIFY_MAP((NEW googlesql_test.MessageWithMapField(
+    [NEW googlesql_test.MessageWithMapField.StringInt32MapEntry("foo" AS key, 2 AS value),
+     NEW googlesql_test.MessageWithMapField.StringInt32MapEntry("foo" AS key, 1 AS value)] AS string_int32_map)).string_int32_map, "foo", NULL);
+--
+ARRAY<STRUCT<ARRAY<>>>[
+  {ARRAY<PROTO<googlesql_test.MessageWithMapField.StringInt32MapEntry>>[]}
+]
+
+==
+[name=proto_modify_map_delete_nonexistent_key]
+SELECT PROTO_MODIFY_MAP(value.string_int32_map, "quux", NULL) FROM Table0;
+--
+ARRAY<STRUCT<ARRAY<>>>[
+  {
+    ARRAY<PROTO<googlesql_test.MessageWithMapField.StringInt32MapEntry>>[unknown order:
+      {
+        key: "foo"
+        value: 123
+      },
+      {
+        key: "bar"
+        value: 456
+      }
+    ]
+  }
+]
+==
+
+[name=proto_modify_map_null_key]
+SELECT PROTO_MODIFY_MAP(value.string_int32_map, NULL, 789) FROM Table0;
+--
+ERROR: generic::out_of_range: PROTO_MODIFY_MAP: All key arguments must be non-NULL, but found NULL at argument 1
+==
+
+[name=proto_map_contains_key]
+SELECT PROTO_MAP_CONTAINS_KEY(value.string_int32_map, "foo") has_foo,
+       PROTO_MAP_CONTAINS_KEY(value.string_int32_map, "bar") has_bar,
+       PROTO_MAP_CONTAINS_KEY(value.string_int32_map, CONCAT("ba", "r")) has_concat_making_bar,
+       PROTO_MAP_CONTAINS_KEY(value.string_int32_map, "baz") has_baz,
+       PROTO_MAP_CONTAINS_KEY(value.string_int32_map, NULL) has_null,
+       PROTO_MAP_CONTAINS_KEY(CAST(NULL AS ARRAY<googlesql_test.MessageWithMapField.StringInt32MapEntry>), "foo") null_has_foo
+FROM Table0;
+--
+ARRAY<STRUCT<
+        has_foo BOOL,
+        has_bar BOOL,
+        has_concat_making_bar BOOL,
+        has_baz BOOL,
+        has_null BOOL,
+        null_has_foo BOOL
+      >>[{true, true, true, false, false, NULL}]
+==
+
+[name=proto_modify_map_and_braced_constructors]
+[required_features=PROTO_MAPS,BRACED_PROTO_CONSTRUCTORS]
+SELECT NEW googlesql_test.MessageWithMapField {
+  string_int32_map: PROTO_MODIFY_MAP(input.string_int32_map, "to_be_replaced", 5)
+} AS result
+FROM (
+  SELECT AS VALUE NEW googlesql_test.MessageWithMapField {
+    string_int32_map: [
+      NEW googlesql_test.MessageWithMapField.StringInt32MapEntry{
+        key: "key"
+        value: 123
+      },
+      NEW googlesql_test.MessageWithMapField.StringInt32MapEntry{
+        key: "to_be_replaced"
+        value: 4
+      }
+    ]
+  }
+) AS input;
+--
+ARRAY<STRUCT<result PROTO<googlesql_test.MessageWithMapField>>>[
+  {{
+     string_int32_map {
+       key: "key"
+       value: 123
+     }
+     string_int32_map {
+       key: "to_be_replaced"
+       value: 5
+     }
+   }}
+]
+
+NOTE: Reference implementation reports non-determinism.
+==
+
+[name=map_lookup_with_ordinal]
+[required_features=]
+# If we handle proto maps, the last entry should win.
+# If we do not, the order should be unaffected.
+# Therefore we make the first and last the same.
+SELECT NEW googlesql_test.MessageWithMapField(
+    [
+      NEW googlesql_test.MessageWithMapField.StringDoubleMapEntry("foo" AS key, 789.0 AS value),
+      NEW googlesql_test.MessageWithMapField.StringDoubleMapEntry("foo" AS key, 456.0 AS value),
+      NEW googlesql_test.MessageWithMapField.StringDoubleMapEntry("foo" AS key, 789.0 AS value)
+    ] AS string_double_map).string_double_map[ORDINAL(1)]
+AS result
+--
+ARRAY<STRUCT<result PROTO<googlesql_test.MessageWithMapField.StringDoubleMapEntry>>>[
+  {{
+     key: "foo"
+     value: 789
+   }}
+]
+==
+
+[name=map_deduplicate_and_preserve_each_key]
+[required_features=]
+# Whether or not proto maps are enabled, maps should be deduplicated by key,
+# with the last instance of a given key winning.
+SELECT NEW googlesql_test.MessageWithMapField(
+    [
+      NEW googlesql_test.MessageWithMapField.StringDoubleMapEntry("foo" AS key, 123.0 AS value),
+      NEW googlesql_test.MessageWithMapField.StringDoubleMapEntry("bar" AS key, 456.0 AS value),
+      NEW googlesql_test.MessageWithMapField.StringDoubleMapEntry("foo" AS key, 456.0 AS value),
+      NEW googlesql_test.MessageWithMapField.StringDoubleMapEntry("foo" AS key, 789.0 AS value)
+    ] AS string_double_map) AS result;
+--
+ARRAY<STRUCT<result PROTO<googlesql_test.MessageWithMapField>>>[
+  {{
+     string_double_map {
+       key: "bar"
+       value: 456
+     }
+     string_double_map {
+       key: "foo"
+       value: 789
+     }
+   }}
+]
+==
+
+[name=array_of_map_entry_does_not_deduplicate]
+[required_features=]
+# This test ensures that we don't interpret all arrays of map entries as
+# protobuf maps for the purpose of deduplication. In the code, an array of map
+# entries is considered to be *compatible* with proto maps. Be we want to make
+# sure that they aren't treated as identical.
+SELECT [
+  NEW googlesql_test.MessageWithMapField.StringDoubleMapEntry("foo" AS key, 123.0 AS value),
+  NEW googlesql_test.MessageWithMapField.StringDoubleMapEntry("foo" AS key, 456.0 AS value),
+  NEW googlesql_test.MessageWithMapField.StringDoubleMapEntry("foo" AS key, 789.0 AS value)
+]
+AS result
+--
+ARRAY<STRUCT<result ARRAY<>>>[
+  {
+    ARRAY<PROTO<googlesql_test.MessageWithMapField.StringDoubleMapEntry>>[known order:
+      {
+        key: "foo"
+        value: 123
+      },
+      {
+        key: "foo"
+        value: 456
+      },
+      {
+        key: "foo"
+        value: 789
+      }
+    ]
+  }
+]
+==
+
+[name=cast_null_struct_to_proto_map_entry]
+SELECT CAST(CAST(NULL AS STRUCT<key STRING, value INT32>) AS googlesql_test.MessageWithMapField.StringInt32MapEntry)
+--
+ERROR: generic::out_of_range: Cannot cast a NULL struct to a proto map entry
+==
+
+[name=safe_cast_null_struct_to_proto_map_entry]
+SELECT SAFE_CAST(CAST(NULL AS STRUCT<key STRING, value INT32>) AS googlesql_test.MessageWithMapField.StringInt32MapEntry)
+--
+ARRAY<STRUCT<PROTO<googlesql_test.MessageWithMapField.StringInt32MapEntry>>>[
+  {NULL}
+]

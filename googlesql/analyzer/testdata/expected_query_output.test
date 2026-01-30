@@ -1,0 +1,596 @@
+# Coercing statement to expected types not implemented yet for Pipe queries.
+[default language_features=MAXIMUM]
+[default sql_builder_target_syntax_mode=standard]
+
+[coerced_query_output_types=struct<int64>]
+SELECT 1;
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 := Literal(type=INT64, value=1)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+[coerced_query_output_types=struct<int32>]
+SELECT 1;
+--
+QueryStmt
++-output_column_list=
+| +-$casted_column.$col1#2 AS `$col1` [INT32]
++-query=
+  +-ProjectScan
+    +-column_list=[$casted_column.$col1#2]
+    +-expr_list=
+    | +-$col1#2 := Literal(type=INT32, value=1)
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[$query.$col1#1]
+        +-expr_list=
+        | +-$col1#1 := Literal(type=INT64, value=1)
+        +-input_scan=
+          +-SingleRowScan
+==
+
+# Ensure subqueries don't have output validation performed on them
+[coerced_query_output_types=struct<int32, string>]
+SELECT (SELECT 1), (SELECT "foo");
+--
+QueryStmt
++-output_column_list=
+| +-$casted_column.$col1#5 AS `$col1` [INT32]
+| +-$query.$col2#4 AS `$col2` [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$casted_column.$col1#5, $query.$col2#4]
+    +-expr_list=
+    | +-$col1#5 :=
+    |   +-Cast(INT64 -> INT32)
+    |     +-ColumnRef(type=INT64, column=$query.$col1#3)
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=$query.[$col1#3, $col2#4]
+        +-expr_list=
+        | +-$col1#3 :=
+        | | +-SubqueryExpr
+        | |   +-type=INT64
+        | |   +-subquery_type=SCALAR
+        | |   +-subquery=
+        | |     +-ProjectScan
+        | |       +-column_list=[$expr_subquery.$col1#1]
+        | |       +-expr_list=
+        | |       | +-$col1#1 := Literal(type=INT64, value=1)
+        | |       +-input_scan=
+        | |         +-SingleRowScan
+        | +-$col2#4 :=
+        |   +-SubqueryExpr
+        |     +-type=STRING
+        |     +-subquery_type=SCALAR
+        |     +-subquery=
+        |       +-ProjectScan
+        |         +-column_list=[$expr_subquery.$col1#2]
+        |         +-expr_list=
+        |         | +-$col1#2 := Literal(type=STRING, value="foo")
+        |         +-input_scan=
+        |           +-SingleRowScan
+        +-input_scan=
+          +-SingleRowScan
+==
+
+# Note  the field names in the output type are irrelevant as the struct type
+# is only used to represent a vector of types for coercion.
+[coerced_query_output_types=struct<a int32, b string>]
+SELECT (SELECT 1), (SELECT "foo");
+--
+QueryStmt
++-output_column_list=
+| +-$casted_column.$col1#5 AS `$col1` [INT32]
+| +-$query.$col2#4 AS `$col2` [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$casted_column.$col1#5, $query.$col2#4]
+    +-expr_list=
+    | +-$col1#5 :=
+    |   +-Cast(INT64 -> INT32)
+    |     +-ColumnRef(type=INT64, column=$query.$col1#3)
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=$query.[$col1#3, $col2#4]
+        +-expr_list=
+        | +-$col1#3 :=
+        | | +-SubqueryExpr
+        | |   +-type=INT64
+        | |   +-subquery_type=SCALAR
+        | |   +-subquery=
+        | |     +-ProjectScan
+        | |       +-column_list=[$expr_subquery.$col1#1]
+        | |       +-expr_list=
+        | |       | +-$col1#1 := Literal(type=INT64, value=1)
+        | |       +-input_scan=
+        | |         +-SingleRowScan
+        | +-$col2#4 :=
+        |   +-SubqueryExpr
+        |     +-type=STRING
+        |     +-subquery_type=SCALAR
+        |     +-subquery=
+        |       +-ProjectScan
+        |         +-column_list=[$expr_subquery.$col1#2]
+        |         +-expr_list=
+        |         | +-$col1#2 := Literal(type=STRING, value="foo")
+        |         +-input_scan=
+        |           +-SingleRowScan
+        +-input_scan=
+          +-SingleRowScan
+==
+
+
+[coerced_query_output_types=struct<int32>]
+SELECT 1, 2;
+--
+ERROR: Query has unexpected number of output columns, expected 1, but had 2 [at 1:1]
+SELECT 1, 2;
+^
+==
+
+[coerced_query_output_types=struct<int32, int32>]
+SELECT 1;
+--
+ERROR: Query has unexpected number of output columns, expected 2, but had 1 [at 1:1]
+SELECT 1;
+^
+
+==
+
+[coerced_query_output_types=struct<int32>]
+SELECT AS VALUE 1;
+--
+QueryStmt
++-output_column_list=
+| +-$casted_column.$value_column#2 AS `$value_column` [INT32]
++-is_value_table=TRUE
++-query=
+  +-ProjectScan
+    +-column_list=[$casted_column.$value_column#2]
+    +-expr_list=
+    | +-$value_column#2 := Literal(type=INT32, value=1)
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[$query.$col1#1]
+        +-expr_list=
+        | +-$col1#1 := Literal(type=INT64, value=1)
+        +-input_scan=
+          +-SingleRowScan
+==
+
+[coerced_query_output_types=struct<x int32>]
+SELECT AS VALUE 1;
+--
+QueryStmt
++-output_column_list=
+| +-$casted_column.$value_column#2 AS `$value_column` [INT32]
++-is_value_table=TRUE
++-query=
+  +-ProjectScan
+    +-column_list=[$casted_column.$value_column#2]
+    +-expr_list=
+    | +-$value_column#2 := Literal(type=INT32, value=1)
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[$query.$col1#1]
+        +-expr_list=
+        | +-$col1#1 := Literal(type=INT64, value=1)
+        +-input_scan=
+          +-SingleRowScan
+==
+
+[coerced_query_output_types=struct<int32, int32>]
+SELECT AS STRUCT 1, 2;
+--
+ERROR: Query has unexpected number of output columns, expected 2, but had 1 [at 1:1]
+SELECT AS STRUCT 1, 2;
+^
+==
+
+[coerced_query_output_types=struct<struct<int32, int32>>]
+SELECT AS STRUCT 1, 2;
+--
+ERROR: Query column 1 has type STRUCT<INT64, INT64> which cannot be coerced to target type STRUCT<INT32, INT32> [at 1:1]
+SELECT AS STRUCT 1, 2;
+^
+==
+
+[coerced_query_output_types=struct<int32>]
+SELECT true;
+--
+ERROR: Query column 1 has type BOOL which cannot be coerced to target type INT32 [at 1:1]
+SELECT true;
+^
+==
+
+[coerced_query_output_types=struct<struct<int64, bool>>]
+SELECT AS STRUCT 1, true;
+--
+QueryStmt
++-output_column_list=
+| +-$make_struct.$struct#3 AS `$struct` [STRUCT<INT64, BOOL>]
++-is_value_table=TRUE
++-query=
+  +-ProjectScan
+    +-column_list=[$make_struct.$struct#3]
+    +-expr_list=
+    | +-$struct#3 :=
+    |   +-MakeStruct
+    |     +-type=STRUCT<INT64, BOOL>
+    |     +-field_list=
+    |       +-ColumnRef(type=INT64, column=$query.$col1#1)
+    |       +-ColumnRef(type=BOOL, column=$query.$col2#2)
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=$query.[$col1#1, $col2#2]
+        +-expr_list=
+        | +-$col1#1 := Literal(type=INT64, value=1)
+        | +-$col2#2 := Literal(type=BOOL, value=true)
+        +-input_scan=
+          +-SingleRowScan
+==
+
+[coerced_query_output_types=struct<struct<a int64, b bool>>]
+SELECT AS STRUCT 1 x, true y;
+--
+QueryStmt
++-output_column_list=
+| +-$casted_column.$struct#4 AS `$struct` [STRUCT<a INT64, b BOOL>]
++-is_value_table=TRUE
++-query=
+  +-ProjectScan
+    +-column_list=[$casted_column.$struct#4]
+    +-expr_list=
+    | +-$struct#4 :=
+    |   +-Cast(STRUCT<x INT64, y BOOL> -> STRUCT<a INT64, b BOOL>)
+    |     +-ColumnRef(type=STRUCT<x INT64, y BOOL>, column=$make_struct.$struct#3)
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[$make_struct.$struct#3]
+        +-expr_list=
+        | +-$struct#3 :=
+        |   +-MakeStruct
+        |     +-type=STRUCT<x INT64, y BOOL>
+        |     +-field_list=
+        |       +-ColumnRef(type=INT64, column=$query.x#1)
+        |       +-ColumnRef(type=BOOL, column=$query.y#2)
+        +-input_scan=
+          +-ProjectScan
+            +-column_list=$query.[x#1, y#2]
+            +-expr_list=
+            | +-x#1 := Literal(type=INT64, value=1)
+            | +-y#2 := Literal(type=BOOL, value=true)
+            +-input_scan=
+              +-SingleRowScan
+==
+
+[coerced_query_output_types=struct<int32>]
+SELECT true;
+--
+ERROR: Query column 1 has type BOOL which cannot be coerced to target type INT32 [at 1:1]
+SELECT true;
+^
+==
+
+[coerced_query_output_types=struct<googlesql_test.KitchenSinkPB>]
+SELECT AS googlesql_test.KitchenSinkPB 1 int64_key_1, 2 int64_key_2;
+--
+QueryStmt
++-output_column_list=
+| +-$make_proto.$proto#3 AS `$proto` [PROTO<googlesql_test.KitchenSinkPB>]
++-is_value_table=TRUE
++-query=
+  +-ProjectScan
+    +-column_list=[$make_proto.$proto#3]
+    +-expr_list=
+    | +-$proto#3 :=
+    |   +-MakeProto
+    |     +-type=PROTO<googlesql_test.KitchenSinkPB>
+    |     +-field_list=
+    |       +-int64_key_1 := ColumnRef(type=INT64, column=$query.int64_key_1#1)
+    |       +-int64_key_2 := ColumnRef(type=INT64, column=$query.int64_key_2#2)
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=$query.[int64_key_1#1, int64_key_2#2]
+        +-expr_list=
+        | +-int64_key_1#1 := Literal(type=INT64, value=1)
+        | +-int64_key_2#2 := Literal(type=INT64, value=2)
+        +-input_scan=
+          +-SingleRowScan
+==
+
+[coerced_query_output_types=struct<googlesql_test.KitchenSinkPB>]
+SELECT KitchenSink FROM TestTable;
+--
+QueryStmt
++-output_column_list=
+| +-TestTable.KitchenSink#3 AS KitchenSink [PROTO<googlesql_test.KitchenSinkPB>]
++-query=
+  +-ProjectScan
+    +-column_list=[TestTable.KitchenSink#3]
+    +-input_scan=
+      +-TableScan(column_list=[TestTable.KitchenSink#3], table=TestTable, column_index_list=[2])
+==
+
+[coerced_query_output_types=struct<string>]
+SELECT NULL;
+--
+QueryStmt
++-output_column_list=
+| +-$casted_column.$col1#2 AS `$col1` [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$casted_column.$col1#2]
+    +-expr_list=
+    | +-$col1#2 := Literal(type=STRING, value=NULL)
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[$query.$col1#1]
+        +-expr_list=
+        | +-$col1#1 := Literal(type=INT64, value=NULL)
+        +-input_scan=
+          +-SingleRowScan
+==
+
+[coerced_query_output_types=struct<timestamp>]
+SELECT '2017-01-01';
+--
+QueryStmt
++-output_column_list=
+| +-$casted_column.$col1#2 AS `$col1` [TIMESTAMP]
++-query=
+  +-ProjectScan
+    +-column_list=[$casted_column.$col1#2]
+    +-expr_list=
+    | +-$col1#2 := Literal(type=TIMESTAMP, value=2017-01-01 08:00:00+00)
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[$query.$col1#1]
+        +-expr_list=
+        | +-$col1#1 := Literal(type=STRING, value="2017-01-01")
+        +-input_scan=
+          +-SingleRowScan
+==
+
+[coerced_query_output_types={{struct<string>|}}]
+[allow_undeclared_parameters]
+SELECT @param;
+--
+ALTERNATION GROUP: struct<string>
+--
+ERROR: Untyped parameter cannot be coerced to an output target type for a query [at 1:1]
+SELECT @param;
+^
+--
+ALTERNATION GROUP: <empty>
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 := Parameter(parse_location=7-13, type=INT64, name="param", is_untyped=TRUE)
+    +-input_scan=
+      +-SingleRowScan
+[UNDECLARED_PARAMETERS]
+param: INT64
+==
+
+[coerced_query_output_types=struct<int64>]
+[parameter_mode=named]
+SELECT @test_param_int32;
+--
+QueryStmt
++-output_column_list=
+| +-$casted_column.$col1#2 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$casted_column.$col1#2]
+    +-expr_list=
+    | +-$col1#2 :=
+    |   +-Cast(INT32 -> INT64)
+    |     +-ColumnRef(type=INT32, column=$query.$col1#1)
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[$query.$col1#1]
+        +-expr_list=
+        | +-$col1#1 := Parameter(type=INT32, name="test_param_int32")
+        +-input_scan=
+          +-SingleRowScan
+==
+
+[coerced_query_output_types=struct<int32>]
+[parameter_mode=named]
+SELECT @test_param_int64;
+--
+QueryStmt
++-output_column_list=
+| +-$casted_column.$col1#2 AS `$col1` [INT32]
++-query=
+  +-ProjectScan
+    +-column_list=[$casted_column.$col1#2]
+    +-expr_list=
+    | +-$col1#2 :=
+    |   +-Cast(INT64 -> INT32)
+    |     +-ColumnRef(type=INT64, column=$query.$col1#1)
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[$query.$col1#1]
+        +-expr_list=
+        | +-$col1#1 := Parameter(type=INT64, name="test_param_int64")
+        +-input_scan=
+          +-SingleRowScan
+==
+
+[coerced_query_output_types=struct<date>]
+SELECT '2017-13-13';
+--
+ERROR: Could not cast literal "2017-13-13" to type DATE [at 1:8]
+SELECT '2017-13-13';
+       ^
+==
+
+[coerced_query_output_types=struct<int64>]
+INSERT INTO KeyValue (key, value)
+VALUES (1, "one"), (2, "two")
+--
+ERROR: Unexpected statement type, expected query statement because output columns are required [at 1:1]
+INSERT INTO KeyValue (key, value)
+^
+==
+
+[coerced_query_output_types={{struct<int64, string, int64>|}}]
+WITH orders AS (SELECT 5 as order_id, "sprocket" as item_name, 200 as quantity)
+SELECT * FROM orders;
+--
+QueryStmt
++-output_column_list=
+| +-orders.order_id#4 AS order_id [INT64]
+| +-orders.item_name#5 AS item_name [STRING]
+| +-orders.quantity#6 AS quantity [INT64]
++-query=
+  +-WithScan
+    +-column_list=orders.[order_id#4, item_name#5, quantity#6]
+    +-with_entry_list=
+    | +-WithEntry
+    |   +-with_query_name="orders"
+    |   +-with_subquery=
+    |     +-ProjectScan
+    |       +-column_list=orders.[order_id#1, item_name#2, quantity#3]
+    |       +-expr_list=
+    |       | +-order_id#1 := Literal(type=INT64, value=5)
+    |       | +-item_name#2 := Literal(type=STRING, value="sprocket")
+    |       | +-quantity#3 := Literal(type=INT64, value=200)
+    |       +-input_scan=
+    |         +-SingleRowScan
+    +-query=
+      +-ProjectScan
+        +-column_list=orders.[order_id#4, item_name#5, quantity#6]
+        +-input_scan=
+          +-WithRefScan(column_list=orders.[order_id#4, item_name#5, quantity#6], with_query_name="orders")
+==
+
+[coerced_query_output_types=struct<int64, string, int32>]
+WITH orders AS (SELECT 5 as order_id, "sprocket" as item_name, 200 as quantity)
+SELECT * FROM orders;
+--
+QueryStmt
++-output_column_list=
+| +-orders.order_id#4 AS order_id [INT64]
+| +-orders.item_name#5 AS item_name [STRING]
+| +-$casted_column.quantity#7 AS quantity [INT32]
++-query=
+  +-WithScan
+    +-column_list=[orders.order_id#4, orders.item_name#5, $casted_column.quantity#7]
+    +-with_entry_list=
+    | +-WithEntry
+    |   +-with_query_name="orders"
+    |   +-with_subquery=
+    |     +-ProjectScan
+    |       +-column_list=orders.[order_id#1, item_name#2, quantity#3]
+    |       +-expr_list=
+    |       | +-order_id#1 := Literal(type=INT64, value=5)
+    |       | +-item_name#2 := Literal(type=STRING, value="sprocket")
+    |       | +-quantity#3 := Literal(type=INT64, value=200)
+    |       +-input_scan=
+    |         +-SingleRowScan
+    +-query=
+      +-ProjectScan
+        +-column_list=[orders.order_id#4, orders.item_name#5, $casted_column.quantity#7]
+        +-expr_list=
+        | +-quantity#7 :=
+        |   +-Cast(INT64 -> INT32)
+        |     +-ColumnRef(type=INT64, column=orders.quantity#6)
+        +-input_scan=
+          +-ProjectScan
+            +-column_list=orders.[order_id#4, item_name#5, quantity#6]
+            +-input_scan=
+              +-WithRefScan(column_list=orders.[order_id#4, item_name#5, quantity#6], with_query_name="orders")
+==
+
+[coerced_query_output_types=struct<int32>]
+@{key=value} SELECT 1;
+--
+QueryStmt
++-hint_list=
+| +-key := Literal(type=STRING, value="value")
++-output_column_list=
+| +-$casted_column.$col1#2 AS `$col1` [INT32]
++-query=
+  +-ProjectScan
+    +-column_list=[$casted_column.$col1#2]
+    +-expr_list=
+    | +-$col1#2 := Literal(type=INT32, value=1)
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[$query.$col1#1]
+        +-expr_list=
+        | +-$col1#1 := Literal(type=INT64, value=1)
+        +-input_scan=
+          +-SingleRowScan
+==
+
+[coerced_query_output_types=struct<int32>]
+EXPLAIN SELECT 1;
+--
+ERROR: Unexpected statement type, expected query statement because output columns are required [at 1:1]
+EXPLAIN SELECT 1;
+^
+==
+
+[coerced_query_output_types=struct<int32,int64,double>]
+select KitchenSink.int32_val a, KitchenSink.int32_val b, KitchenSink.int32_val c from TestTable;
+--
+QueryStmt
++-output_column_list=
+| +-$query.a#4 AS a [INT32]
+| +-$casted_column.b#7 AS b [INT64]
+| +-$casted_column.c#8 AS c [DOUBLE]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.a#4, $casted_column.b#7, $casted_column.c#8]
+    +-expr_list=
+    | +-b#7 :=
+    | | +-Cast(INT32 -> INT64)
+    | |   +-ColumnRef(type=INT32, column=$query.b#5)
+    | +-c#8 :=
+    |   +-Cast(INT32 -> DOUBLE)
+    |     +-ColumnRef(type=INT32, column=$query.c#6)
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=$query.[a#4, b#5, c#6]
+        +-expr_list=
+        | +-a#4 :=
+        | | +-GetProtoField
+        | |   +-type=INT32
+        | |   +-expr=
+        | |   | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=TestTable.KitchenSink#3)
+        | |   +-field_descriptor=int32_val
+        | |   +-default_value=77
+        | +-b#5 :=
+        | | +-GetProtoField
+        | |   +-type=INT32
+        | |   +-expr=
+        | |   | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=TestTable.KitchenSink#3)
+        | |   +-field_descriptor=int32_val
+        | |   +-default_value=77
+        | +-c#6 :=
+        |   +-GetProtoField
+        |     +-type=INT32
+        |     +-expr=
+        |     | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=TestTable.KitchenSink#3)
+        |     +-field_descriptor=int32_val
+        |     +-default_value=77
+        +-input_scan=
+          +-TableScan(column_list=[TestTable.KitchenSink#3], table=TestTable, column_index_list=[2])

@@ -1,0 +1,871 @@
+[default language_features=MAXIMUM,+PIPES,+ANALYTIC_FUNCTIONS,+SELECT_STAR_EXCEPT_REPLACE]
+select 1 x
+|> window sum(x) OVER (), count(*) OVER () AS c
+--
+QueryStmt
++-output_column_list=
+| +-$query.x#1 AS x [INT64]
+| +-$analytic.$analytic1#4 AS `$col1` [INT64]
+| +-$analytic.c#5 AS c [INT64]
++-query=
+  +-AnalyticScan
+    +-column_list=[$query.x#1, $analytic.$analytic1#4, $analytic.c#5]
+    +-input_scan=
+    | +-ProjectScan
+    |   +-column_list=[$query.x#1]
+    |   +-expr_list=
+    |   | +-x#1 := Literal(type=INT64, value=1)
+    |   +-input_scan=
+    |     +-SingleRowScan
+    +-function_group_list=
+      +-AnalyticFunctionGroup
+        +-analytic_function_list=
+          +-$analytic1#4 :=
+          | +-AnalyticFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+          |   +-ColumnRef(type=INT64, column=$query.x#1)
+          |   +-window_frame=
+          |     +-WindowFrame(frame_unit=ROWS)
+          |       +-start_expr=
+          |       | +-WindowFrameExpr(boundary_type=UNBOUNDED PRECEDING)
+          |       +-end_expr=
+          |         +-WindowFrameExpr(boundary_type=UNBOUNDED FOLLOWING)
+          +-c#5 :=
+            +-AnalyticFunctionCall(GoogleSQL:$count_star() -> INT64)
+              +-window_frame=
+                +-WindowFrame(frame_unit=ROWS)
+                  +-start_expr=
+                  | +-WindowFrameExpr(boundary_type=UNBOUNDED PRECEDING)
+                  +-end_expr=
+                    +-WindowFrameExpr(boundary_type=UNBOUNDED FOLLOWING)
+
+
+DEPRECATION WARNING:
+The pipe WINDOW operator is deprecated; Use EXTEND instead [at 2:1]
+|> window sum(x) OVER (), count(*) OVER () AS c
+^
+[googlesql.DeprecationWarning] { kind: PIPE_WINDOW }
+==
+
+# Expressions without a window function are not allowed.
+select 1 x
+|> window {{1|x|rand()|x+x|(select x)|sum(x)}}
+--
+ALTERNATION GROUP: 1
+--
+ERROR: Pipe WINDOW expression must include a window function call (with an OVER clause) [at 2:11]
+|> window 1
+          ^
+--
+ALTERNATION GROUP: x
+--
+ERROR: Pipe WINDOW expression must include a window function call (with an OVER clause) [at 2:11]
+|> window x
+          ^
+--
+ALTERNATION GROUP: rand()
+--
+ERROR: Pipe WINDOW expression must include a window function call (with an OVER clause) [at 2:11]
+|> window rand()
+          ^
+--
+ALTERNATION GROUP: x+x
+--
+ERROR: Pipe WINDOW expression must include a window function call (with an OVER clause) [at 2:11]
+|> window x+x
+          ^
+--
+ALTERNATION GROUP: (select x)
+--
+ERROR: Pipe WINDOW expression must include a window function call (with an OVER clause) [at 2:11]
+|> window (select x)
+          ^
+--
+ALTERNATION GROUP: sum(x)
+--
+ERROR: Aggregate function SUM not allowed in pipe WINDOW [at 2:11]
+|> window sum(x)
+          ^
+==
+
+# The error points at the aggregate function.
+select 1 x
+|> WINDOW count(*) OVER () + 1 + sum(x)
+--
+ERROR: Aggregate function SUM not allowed in pipe WINDOW [at 2:34]
+|> WINDOW count(*) OVER () + 1 + sum(x)
+                                 ^
+==
+
+select 1 x
+|> WINDOW count(*) OVER (ORDER BY 1+sum(x))
+--
+ERROR: Aggregate function SUM not allowed in Window ORDER BY [at 2:37]
+|> WINDOW count(*) OVER (ORDER BY 1+sum(x))
+                                    ^
+==
+
+# This pattern is allowed in normal SQL, as a window function of an aggregate function.
+select 1 x
+|> WINDOW SUM(SUM(x)) OVER ()
+--
+ERROR: Aggregate function SUM not allowed in pipe WINDOW [at 2:15]
+|> WINDOW SUM(SUM(x)) OVER ()
+              ^
+==
+
+select 1 x
+|> WINDOW SUM(SUM(SUM(x))) OVER ()
+--
+ERROR: Aggregate function SUM not allowed in pipe WINDOW [at 2:19]
+|> WINDOW SUM(SUM(SUM(x))) OVER ()
+                  ^
+==
+
+# The two identical OVER clauses are not grouped together.  This only works
+# (including in standard syntax) for empty OVER clauses or named windows.
+select 1 x, 2 y, 3 z
+|> window x+sum(y+1) OVER (ORDER BY z),
+          count(*) OVER (),
+          sum(x) OVER (),
+          rank() OVER(ORDER BY z)
+--
+QueryStmt
++-output_column_list=
+| +-$query.x#1 AS x [INT64]
+| +-$query.y#2 AS y [INT64]
+| +-$query.z#3 AS z [INT64]
+| +-$pipe_window.$col1#9 AS `$col1` [INT64]
+| +-$analytic.$analytic2#10 AS `$col2` [INT64]
+| +-$analytic.$analytic3#11 AS `$col3` [INT64]
+| +-$analytic.$analytic4#12 AS `$col4` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.x#1, $query.y#2, $query.z#3, $pipe_window.$col1#9, $analytic.$analytic2#10, $analytic.$analytic3#11, $analytic.$analytic4#12]
+    +-expr_list=
+    | +-$col1#9 :=
+    |   +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |     +-ColumnRef(type=INT64, column=$query.x#1)
+    |     +-ColumnRef(type=INT64, column=$analytic.$analytic1#8)
+    +-input_scan=
+      +-AnalyticScan
+        +-column_list=[$query.x#1, $query.y#2, $query.z#3, $analytic.$analytic1#8, $analytic.$analytic2#10, $analytic.$analytic3#11, $analytic.$analytic4#12]
+        +-input_scan=
+        | +-ProjectScan
+        |   +-column_list=$query.[x#1, y#2, z#3]
+        |   +-expr_list=
+        |   | +-x#1 := Literal(type=INT64, value=1)
+        |   | +-y#2 := Literal(type=INT64, value=2)
+        |   | +-z#3 := Literal(type=INT64, value=3)
+        |   +-input_scan=
+        |     +-SingleRowScan
+        +-function_group_list=
+          +-AnalyticFunctionGroup
+          | +-order_by=
+          | | +-WindowOrdering
+          | |   +-order_by_item_list=
+          | |     +-OrderByItem
+          | |       +-column_ref=
+          | |         +-ColumnRef(type=INT64, column=$query.z#3)
+          | +-analytic_function_list=
+          |   +-$analytic1#8 :=
+          |     +-AnalyticFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+          |       +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+          |       | +-ColumnRef(type=INT64, column=$query.y#2)
+          |       | +-Literal(type=INT64, value=1)
+          |       +-window_frame=
+          |         +-WindowFrame(frame_unit=RANGE)
+          |           +-start_expr=
+          |           | +-WindowFrameExpr(boundary_type=UNBOUNDED PRECEDING)
+          |           +-end_expr=
+          |             +-WindowFrameExpr(boundary_type=CURRENT ROW)
+          +-AnalyticFunctionGroup
+          | +-analytic_function_list=
+          |   +-$analytic2#10 :=
+          |   | +-AnalyticFunctionCall(GoogleSQL:$count_star() -> INT64)
+          |   |   +-window_frame=
+          |   |     +-WindowFrame(frame_unit=ROWS)
+          |   |       +-start_expr=
+          |   |       | +-WindowFrameExpr(boundary_type=UNBOUNDED PRECEDING)
+          |   |       +-end_expr=
+          |   |         +-WindowFrameExpr(boundary_type=UNBOUNDED FOLLOWING)
+          |   +-$analytic3#11 :=
+          |     +-AnalyticFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+          |       +-ColumnRef(type=INT64, column=$query.x#1)
+          |       +-window_frame=
+          |         +-WindowFrame(frame_unit=ROWS)
+          |           +-start_expr=
+          |           | +-WindowFrameExpr(boundary_type=UNBOUNDED PRECEDING)
+          |           +-end_expr=
+          |             +-WindowFrameExpr(boundary_type=UNBOUNDED FOLLOWING)
+          +-AnalyticFunctionGroup
+            +-order_by=
+            | +-WindowOrdering
+            |   +-order_by_item_list=
+            |     +-OrderByItem
+            |       +-column_ref=
+            |         +-ColumnRef(type=INT64, column=$query.z#3)
+            +-analytic_function_list=
+              +-$analytic4#12 := AnalyticFunctionCall(GoogleSQL:rank() -> INT64)
+
+
+DEPRECATION WARNING:
+The pipe WINDOW operator is deprecated; Use EXTEND instead [at 2:1]
+|> window x+sum(y+1) OVER (ORDER BY z),
+^
+[googlesql.DeprecationWarning] { kind: PIPE_WINDOW }
+==
+
+# An expression combining the result of two window functions.
+select 1 x, 2 y, 3 z
+|> window sum(x) OVER (ORDER BY y) + avg(x) OVER (ORDER BY y DESC)
+--
+QueryStmt
++-output_column_list=
+| +-$query.x#1 AS x [INT64]
+| +-$query.y#2 AS y [INT64]
+| +-$query.z#3 AS z [INT64]
+| +-$pipe_window.$col1#8 AS `$col1` [DOUBLE]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.x#1, $query.y#2, $query.z#3, $pipe_window.$col1#8]
+    +-expr_list=
+    | +-$col1#8 :=
+    |   +-FunctionCall(GoogleSQL:$add(DOUBLE, DOUBLE) -> DOUBLE)
+    |     +-Cast(INT64 -> DOUBLE)
+    |     | +-ColumnRef(type=INT64, column=$analytic.$analytic1#6)
+    |     +-ColumnRef(type=DOUBLE, column=$analytic.$analytic2#7)
+    +-input_scan=
+      +-AnalyticScan
+        +-column_list=[$query.x#1, $query.y#2, $query.z#3, $analytic.$analytic1#6, $analytic.$analytic2#7]
+        +-input_scan=
+        | +-ProjectScan
+        |   +-column_list=$query.[x#1, y#2, z#3]
+        |   +-expr_list=
+        |   | +-x#1 := Literal(type=INT64, value=1)
+        |   | +-y#2 := Literal(type=INT64, value=2)
+        |   | +-z#3 := Literal(type=INT64, value=3)
+        |   +-input_scan=
+        |     +-SingleRowScan
+        +-function_group_list=
+          +-AnalyticFunctionGroup
+          | +-order_by=
+          | | +-WindowOrdering
+          | |   +-order_by_item_list=
+          | |     +-OrderByItem
+          | |       +-column_ref=
+          | |         +-ColumnRef(type=INT64, column=$query.y#2)
+          | +-analytic_function_list=
+          |   +-$analytic1#6 :=
+          |     +-AnalyticFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+          |       +-ColumnRef(type=INT64, column=$query.x#1)
+          |       +-window_frame=
+          |         +-WindowFrame(frame_unit=RANGE)
+          |           +-start_expr=
+          |           | +-WindowFrameExpr(boundary_type=UNBOUNDED PRECEDING)
+          |           +-end_expr=
+          |             +-WindowFrameExpr(boundary_type=CURRENT ROW)
+          +-AnalyticFunctionGroup
+            +-order_by=
+            | +-WindowOrdering
+            |   +-order_by_item_list=
+            |     +-OrderByItem
+            |       +-column_ref=
+            |       | +-ColumnRef(type=INT64, column=$query.y#2)
+            |       +-is_descending=TRUE
+            +-analytic_function_list=
+              +-$analytic2#7 :=
+                +-AnalyticFunctionCall(GoogleSQL:avg(INT64) -> DOUBLE)
+                  +-ColumnRef(type=INT64, column=$query.x#1)
+                  +-window_frame=
+                    +-WindowFrame(frame_unit=RANGE)
+                      +-start_expr=
+                      | +-WindowFrameExpr(boundary_type=UNBOUNDED PRECEDING)
+                      +-end_expr=
+                        +-WindowFrameExpr(boundary_type=CURRENT ROW)
+
+
+DEPRECATION WARNING:
+The pipe WINDOW operator is deprecated; Use EXTEND instead [at 2:1]
+|> window sum(x) OVER (ORDER BY y) + avg(x) OVER (ORDER BY y DESC)
+^
+[googlesql.DeprecationWarning] { kind: PIPE_WINDOW }
+==
+
+# Test visibility of names after pipe window.
+select 1 x, 2 y
+|> window rank() over (order by y) AS r
+|> where x=r
+|> select *
+--
+QueryStmt
++-output_column_list=
+| +-$query.x#1 AS x [INT64]
+| +-$query.y#2 AS y [INT64]
+| +-$analytic.r#4 AS r [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.x#1, $query.y#2, $analytic.r#4]
+    +-input_scan=
+      +-FilterScan
+        +-column_list=[$query.x#1, $query.y#2, $analytic.r#4]
+        +-input_scan=
+        | +-AnalyticScan
+        |   +-column_list=[$query.x#1, $query.y#2, $analytic.r#4]
+        |   +-input_scan=
+        |   | +-ProjectScan
+        |   |   +-column_list=$query.[x#1, y#2]
+        |   |   +-expr_list=
+        |   |   | +-x#1 := Literal(type=INT64, value=1)
+        |   |   | +-y#2 := Literal(type=INT64, value=2)
+        |   |   +-input_scan=
+        |   |     +-SingleRowScan
+        |   +-function_group_list=
+        |     +-AnalyticFunctionGroup
+        |       +-order_by=
+        |       | +-WindowOrdering
+        |       |   +-order_by_item_list=
+        |       |     +-OrderByItem
+        |       |       +-column_ref=
+        |       |         +-ColumnRef(type=INT64, column=$query.y#2)
+        |       +-analytic_function_list=
+        |         +-r#4 := AnalyticFunctionCall(GoogleSQL:rank() -> INT64)
+        +-filter_expr=
+          +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+            +-ColumnRef(type=INT64, column=$query.x#1)
+            +-ColumnRef(type=INT64, column=$analytic.r#4)
+
+
+DEPRECATION WARNING:
+The pipe WINDOW operator is deprecated; Use EXTEND instead [at 2:1]
+|> window rank() over (order by y) AS r
+^
+[googlesql.DeprecationWarning] { kind: PIPE_WINDOW }
+==
+
+# Applying WINDOW on a value table input.
+FROM TestExtraValueTable t
+|> WINDOW sum(int32_val1) OVER (order by t.int32_val2) AS sum_col
+--
+QueryStmt
++-output_column_list=
+| +-TestExtraValueTable.value#1 AS t [PROTO<googlesql_test.TestExtraPB>]
+| +-$analytic.sum_col#5 AS sum_col [INT64]
++-query=
+  +-AnalyticScan
+    +-column_list=[TestExtraValueTable.value#1, $analytic.sum_col#5]
+    +-input_scan=
+    | +-ProjectScan
+    |   +-column_list=[TestExtraValueTable.value#1, $orderby.int32_val2#6]
+    |   +-expr_list=
+    |   | +-int32_val2#6 :=
+    |   |   +-GetProtoField
+    |   |     +-type=INT32
+    |   |     +-expr=
+    |   |     | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=TestExtraValueTable.value#1)
+    |   |     +-field_descriptor=int32_val2
+    |   |     +-default_value=0
+    |   +-input_scan=
+    |     +-TableScan(column_list=[TestExtraValueTable.value#1], table=TestExtraValueTable, column_index_list=[0], alias="t")
+    +-function_group_list=
+      +-AnalyticFunctionGroup
+        +-order_by=
+        | +-WindowOrdering
+        |   +-order_by_item_list=
+        |     +-OrderByItem
+        |       +-column_ref=
+        |         +-ColumnRef(type=INT32, column=$orderby.int32_val2#6)
+        +-analytic_function_list=
+          +-sum_col#5 :=
+            +-AnalyticFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+              +-Cast(INT32 -> INT64)
+              | +-GetProtoField
+              |   +-type=INT32
+              |   +-expr=
+              |   | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=TestExtraValueTable.value#1)
+              |   +-field_descriptor=int32_val1
+              |   +-default_value=0
+              +-window_frame=
+                +-WindowFrame(frame_unit=RANGE)
+                  +-start_expr=
+                  | +-WindowFrameExpr(boundary_type=UNBOUNDED PRECEDING)
+                  +-end_expr=
+                    +-WindowFrameExpr(boundary_type=CURRENT ROW)
+
+
+DEPRECATION WARNING:
+The pipe WINDOW operator is deprecated; Use EXTEND instead [at 2:1]
+|> WINDOW sum(int32_val1) OVER (order by t.int32_val2) AS sum_col
+^
+[googlesql.DeprecationWarning] { kind: PIPE_WINDOW }
+==
+
+# Range variables and pseudo-columns are preserved after WINDOW.
+FROM EnumTable t
+|> WHERE key = 1
+|> WHERE filename = ''
+|> WINDOW COUNT(*) OVER () + 1
+|> WHERE key = 1
+|> WHERE filename = ''
+|> WHERE t.key=1
+--
+QueryStmt
++-output_column_list=
+| +-EnumTable.key#1 AS key [INT32]
+| +-EnumTable.TestEnum#2 AS TestEnum [ENUM<googlesql_test.TestEnum>]
+| +-EnumTable.AnotherTestEnum#3 AS AnotherTestEnum [ENUM<googlesql_test.AnotherTestEnum>]
+| +-$pipe_window.$col1#8 AS `$col1` [INT64]
++-query=
+  +-FilterScan
+    +-column_list=[EnumTable.key#1, EnumTable.TestEnum#2, EnumTable.AnotherTestEnum#3, EnumTable.Filename#4, $pipe_window.$col1#8]
+    +-input_scan=
+    | +-FilterScan
+    |   +-column_list=[EnumTable.key#1, EnumTable.TestEnum#2, EnumTable.AnotherTestEnum#3, EnumTable.Filename#4, $pipe_window.$col1#8]
+    |   +-input_scan=
+    |   | +-FilterScan
+    |   |   +-column_list=[EnumTable.key#1, EnumTable.TestEnum#2, EnumTable.AnotherTestEnum#3, EnumTable.Filename#4, $pipe_window.$col1#8]
+    |   |   +-input_scan=
+    |   |   | +-ProjectScan
+    |   |   |   +-column_list=[EnumTable.key#1, EnumTable.TestEnum#2, EnumTable.AnotherTestEnum#3, EnumTable.Filename#4, $pipe_window.$col1#8]
+    |   |   |   +-expr_list=
+    |   |   |   | +-$col1#8 :=
+    |   |   |   |   +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |   |   |   |     +-ColumnRef(type=INT64, column=$analytic.$analytic1#7)
+    |   |   |   |     +-Literal(type=INT64, value=1)
+    |   |   |   +-input_scan=
+    |   |   |     +-AnalyticScan
+    |   |   |       +-column_list=[EnumTable.key#1, EnumTable.TestEnum#2, EnumTable.AnotherTestEnum#3, EnumTable.Filename#4, $analytic.$analytic1#7]
+    |   |   |       +-input_scan=
+    |   |   |       | +-FilterScan
+    |   |   |       |   +-column_list=EnumTable.[key#1, TestEnum#2, AnotherTestEnum#3, Filename#4]
+    |   |   |       |   +-input_scan=
+    |   |   |       |   | +-FilterScan
+    |   |   |       |   |   +-column_list=EnumTable.[key#1, TestEnum#2, AnotherTestEnum#3, Filename#4]
+    |   |   |       |   |   +-input_scan=
+    |   |   |       |   |   | +-TableScan(column_list=EnumTable.[key#1, TestEnum#2, AnotherTestEnum#3, Filename#4], table=EnumTable, column_index_list=[0, 1, 2, 3], alias="t")
+    |   |   |       |   |   +-filter_expr=
+    |   |   |       |   |     +-FunctionCall(GoogleSQL:$equal(INT32, INT32) -> BOOL)
+    |   |   |       |   |       +-ColumnRef(type=INT32, column=EnumTable.key#1)
+    |   |   |       |   |       +-Literal(type=INT32, value=1)
+    |   |   |       |   +-filter_expr=
+    |   |   |       |     +-FunctionCall(GoogleSQL:$equal(STRING, STRING) -> BOOL)
+    |   |   |       |       +-ColumnRef(type=STRING, column=EnumTable.Filename#4)
+    |   |   |       |       +-Literal(type=STRING, value="")
+    |   |   |       +-function_group_list=
+    |   |   |         +-AnalyticFunctionGroup
+    |   |   |           +-analytic_function_list=
+    |   |   |             +-$analytic1#7 :=
+    |   |   |               +-AnalyticFunctionCall(GoogleSQL:$count_star() -> INT64)
+    |   |   |                 +-window_frame=
+    |   |   |                   +-WindowFrame(frame_unit=ROWS)
+    |   |   |                     +-start_expr=
+    |   |   |                     | +-WindowFrameExpr(boundary_type=UNBOUNDED PRECEDING)
+    |   |   |                     +-end_expr=
+    |   |   |                       +-WindowFrameExpr(boundary_type=UNBOUNDED FOLLOWING)
+    |   |   +-filter_expr=
+    |   |     +-FunctionCall(GoogleSQL:$equal(INT32, INT32) -> BOOL)
+    |   |       +-ColumnRef(type=INT32, column=EnumTable.key#1)
+    |   |       +-Literal(type=INT32, value=1)
+    |   +-filter_expr=
+    |     +-FunctionCall(GoogleSQL:$equal(STRING, STRING) -> BOOL)
+    |       +-ColumnRef(type=STRING, column=EnumTable.Filename#4)
+    |       +-Literal(type=STRING, value="")
+    +-filter_expr=
+      +-FunctionCall(GoogleSQL:$equal(INT32, INT32) -> BOOL)
+        +-ColumnRef(type=INT32, column=EnumTable.key#1)
+        +-Literal(type=INT32, value=1)
+
+
+DEPRECATION WARNING:
+The pipe WINDOW operator is deprecated; Use EXTEND instead [at 4:1]
+|> WINDOW COUNT(*) OVER () + 1
+^
+[googlesql.DeprecationWarning] { kind: PIPE_WINDOW }
+==
+
+# This tests that unselected pseudo-columns are still pruned
+# from the column_lists.  `Filename#4` is removed.
+FROM EnumTable
+|> WINDOW COUNT(*) OVER ()
+|> WHERE RowId = b''
+--
+QueryStmt
++-output_column_list=
+| +-EnumTable.key#1 AS key [INT32]
+| +-EnumTable.TestEnum#2 AS TestEnum [ENUM<googlesql_test.TestEnum>]
+| +-EnumTable.AnotherTestEnum#3 AS AnotherTestEnum [ENUM<googlesql_test.AnotherTestEnum>]
+| +-$analytic.$analytic1#7 AS `$col1` [INT64]
++-query=
+  +-FilterScan
+    +-column_list=[EnumTable.key#1, EnumTable.TestEnum#2, EnumTable.AnotherTestEnum#3, EnumTable.RowId#5, $analytic.$analytic1#7]
+    +-input_scan=
+    | +-AnalyticScan
+    |   +-column_list=[EnumTable.key#1, EnumTable.TestEnum#2, EnumTable.AnotherTestEnum#3, EnumTable.RowId#5, $analytic.$analytic1#7]
+    |   +-input_scan=
+    |   | +-TableScan(column_list=EnumTable.[key#1, TestEnum#2, AnotherTestEnum#3, RowId#5], table=EnumTable, column_index_list=[0, 1, 2, 4])
+    |   +-function_group_list=
+    |     +-AnalyticFunctionGroup
+    |       +-analytic_function_list=
+    |         +-$analytic1#7 :=
+    |           +-AnalyticFunctionCall(GoogleSQL:$count_star() -> INT64)
+    |             +-window_frame=
+    |               +-WindowFrame(frame_unit=ROWS)
+    |                 +-start_expr=
+    |                 | +-WindowFrameExpr(boundary_type=UNBOUNDED PRECEDING)
+    |                 +-end_expr=
+    |                   +-WindowFrameExpr(boundary_type=UNBOUNDED FOLLOWING)
+    +-filter_expr=
+      +-FunctionCall(GoogleSQL:$equal(BYTES, BYTES) -> BOOL)
+        +-ColumnRef(type=BYTES, column=EnumTable.RowId#5)
+        +-Literal(type=BYTES, value=b"")
+
+
+DEPRECATION WARNING:
+The pipe WINDOW operator is deprecated; Use EXTEND instead [at 2:1]
+|> WINDOW COUNT(*) OVER ()
+^
+[googlesql.DeprecationWarning] { kind: PIPE_WINDOW }
+==
+
+# This shows a case where a window function is computed but not used.
+FROM EnumTable
+|> WINDOW COUNT(*) OVER () win
+|> SELECT key
+--
+QueryStmt
++-output_column_list=
+| +-EnumTable.key#1 AS key [INT32]
++-query=
+  +-ProjectScan
+    +-column_list=[EnumTable.key#1]
+    +-input_scan=
+      +-AnalyticScan
+        +-column_list=[EnumTable.key#1, $analytic.win#7]
+        +-input_scan=
+        | +-TableScan(column_list=[EnumTable.key#1], table=EnumTable, column_index_list=[0])
+        +-function_group_list=
+          +-AnalyticFunctionGroup
+            +-analytic_function_list=
+              +-win#7 :=
+                +-AnalyticFunctionCall(GoogleSQL:$count_star() -> INT64)
+                  +-window_frame=
+                    +-WindowFrame(frame_unit=ROWS)
+                      +-start_expr=
+                      | +-WindowFrameExpr(boundary_type=UNBOUNDED PRECEDING)
+                      +-end_expr=
+                        +-WindowFrameExpr(boundary_type=UNBOUNDED FOLLOWING)
+
+
+DEPRECATION WARNING:
+The pipe WINDOW operator is deprecated; Use EXTEND instead [at 2:1]
+|> WINDOW COUNT(*) OVER () win
+^
+[googlesql.DeprecationWarning] { kind: PIPE_WINDOW }
+==
+
+# Dot-star works in WINDOW, but still requires a window fucntion.
+FROM ComplexTypes
+|> SELECT TestStruct
+|> WINDOW TestStruct.*
+--
+ERROR: Pipe WINDOW expression must include a window function call (with an OVER clause) [at 3:11]
+|> WINDOW TestStruct.*
+          ^
+==
+
+# Dot-star after a window function.
+FROM ComplexTypes
+|> SELECT TestStruct
+|> WINDOW ANY_VALUE(TestStruct) OVER ().*
+--
+QueryStmt
++-output_column_list=
+| +-ComplexTypes.TestStruct#5 AS TestStruct [STRUCT<c INT32, d STRUCT<a INT32, b STRING>>]
+| +-$pipe_window.c#9 AS c [INT32]
+| +-$pipe_window.d#10 AS d [STRUCT<a INT32, b STRING>]
++-query=
+  +-ProjectScan
+    +-column_list=[ComplexTypes.TestStruct#5, $pipe_window.c#9, $pipe_window.d#10]
+    +-expr_list=
+    | +-c#9 :=
+    | | +-GetStructField
+    | |   +-type=INT32
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=$analytic.$analytic1#8)
+    | |   +-field_idx=0
+    | +-d#10 :=
+    |   +-GetStructField
+    |     +-type=STRUCT<a INT32, b STRING>
+    |     +-expr=
+    |     | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=$analytic.$analytic1#8)
+    |     +-field_idx=1
+    +-input_scan=
+      +-AnalyticScan
+        +-column_list=[ComplexTypes.TestStruct#5, $analytic.$analytic1#8]
+        +-input_scan=
+        | +-ProjectScan
+        |   +-column_list=[ComplexTypes.TestStruct#5]
+        |   +-input_scan=
+        |     +-TableScan(column_list=[ComplexTypes.TestStruct#5], table=ComplexTypes, column_index_list=[4])
+        +-function_group_list=
+          +-AnalyticFunctionGroup
+            +-analytic_function_list=
+              +-$analytic1#8 :=
+                +-AnalyticFunctionCall(GoogleSQL:any_value(STRUCT<c INT32, d STRUCT<a INT32, b STRING>>) -> STRUCT<c INT32, d STRUCT<a INT32, b STRING>>)
+                  +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#5)
+                  +-window_frame=
+                    +-WindowFrame(frame_unit=ROWS)
+                      +-start_expr=
+                      | +-WindowFrameExpr(boundary_type=UNBOUNDED PRECEDING)
+                      +-end_expr=
+                        +-WindowFrameExpr(boundary_type=UNBOUNDED FOLLOWING)
+
+
+DEPRECATION WARNING:
+The pipe WINDOW operator is deprecated; Use EXTEND instead [at 3:1]
+|> WINDOW ANY_VALUE(TestStruct) OVER ().*
+^
+[googlesql.DeprecationWarning] { kind: PIPE_WINDOW }
+==
+
+# Dot-star after a window function with modifiers.
+FROM ComplexTypes
+|> SELECT TestStruct
+|> WINDOW ANY_VALUE(TestStruct) OVER ().*
+      REPLACE ('abc' AS d)
+--
+QueryStmt
++-output_column_list=
+| +-ComplexTypes.TestStruct#5 AS TestStruct [STRUCT<c INT32, d STRUCT<a INT32, b STRING>>]
+| +-$pipe_window.c#9 AS c [INT32]
+| +-$pipe_window.d#10 AS d [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[ComplexTypes.TestStruct#5, $pipe_window.c#9, $pipe_window.d#10]
+    +-expr_list=
+    | +-c#9 :=
+    |   +-GetStructField
+    |     +-type=INT32
+    |     +-expr=
+    |     | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=$analytic.$analytic1#8)
+    |     +-field_idx=0
+    +-input_scan=
+      +-AnalyticScan
+        +-column_list=[ComplexTypes.TestStruct#5, $pipe_window.d#10, $analytic.$analytic1#8]
+        +-input_scan=
+        | +-ProjectScan
+        |   +-column_list=[ComplexTypes.TestStruct#5, $pipe_window.d#10]
+        |   +-expr_list=
+        |   | +-d#10 := Literal(type=STRING, value="abc")
+        |   +-input_scan=
+        |     +-ProjectScan
+        |       +-column_list=[ComplexTypes.TestStruct#5]
+        |       +-input_scan=
+        |         +-TableScan(column_list=[ComplexTypes.TestStruct#5], table=ComplexTypes, column_index_list=[4])
+        +-function_group_list=
+          +-AnalyticFunctionGroup
+            +-analytic_function_list=
+              +-$analytic1#8 :=
+                +-AnalyticFunctionCall(GoogleSQL:any_value(STRUCT<c INT32, d STRUCT<a INT32, b STRING>>) -> STRUCT<c INT32, d STRUCT<a INT32, b STRING>>)
+                  +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#5)
+                  +-window_frame=
+                    +-WindowFrame(frame_unit=ROWS)
+                      +-start_expr=
+                      | +-WindowFrameExpr(boundary_type=UNBOUNDED PRECEDING)
+                      +-end_expr=
+                        +-WindowFrameExpr(boundary_type=UNBOUNDED FOLLOWING)
+
+
+DEPRECATION WARNING:
+The pipe WINDOW operator is deprecated; Use EXTEND instead [at 3:1]
+|> WINDOW ANY_VALUE(TestStruct) OVER ().*
+^
+[googlesql.DeprecationWarning] { kind: PIPE_WINDOW }
+==
+
+# Dot-star over an expression constructing a STRUCT.
+SELECT 1 pos
+|> WINDOW (FIRST_VALUE(STRUCT(1 AS x, 2, 'abc' AS x, null AS y))
+             OVER (ORDER BY pos)).*
+--
+QueryStmt
++-output_column_list=
+| +-$query.pos#1 AS pos [INT64]
+| +-$pipe_window.x#4 AS x [INT64]
+| +-$pipe_window.$field2#5 AS `$field2` [INT64]
+| +-$pipe_window.x#6 AS x [STRING]
+| +-$pipe_window.y#7 AS y [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.pos#1, $pipe_window.x#4, $pipe_window.$field2#5, $pipe_window.x#6, $pipe_window.y#7]
+    +-expr_list=
+    | +-x#4 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<x INT64, INT64, x STRING, y INT64>, column=$analytic.$analytic1#3)
+    | |   +-field_idx=0
+    | +-$field2#5 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<x INT64, INT64, x STRING, y INT64>, column=$analytic.$analytic1#3)
+    | |   +-field_idx=1
+    | +-x#6 :=
+    | | +-GetStructField
+    | |   +-type=STRING
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<x INT64, INT64, x STRING, y INT64>, column=$analytic.$analytic1#3)
+    | |   +-field_idx=2
+    | +-y#7 :=
+    |   +-GetStructField
+    |     +-type=INT64
+    |     +-expr=
+    |     | +-ColumnRef(type=STRUCT<x INT64, INT64, x STRING, y INT64>, column=$analytic.$analytic1#3)
+    |     +-field_idx=3
+    +-input_scan=
+      +-AnalyticScan
+        +-column_list=[$query.pos#1, $analytic.$analytic1#3]
+        +-input_scan=
+        | +-ProjectScan
+        |   +-column_list=[$query.pos#1]
+        |   +-expr_list=
+        |   | +-pos#1 := Literal(type=INT64, value=1)
+        |   +-input_scan=
+        |     +-SingleRowScan
+        +-function_group_list=
+          +-AnalyticFunctionGroup
+            +-order_by=
+            | +-WindowOrdering
+            |   +-order_by_item_list=
+            |     +-OrderByItem
+            |       +-column_ref=
+            |         +-ColumnRef(type=INT64, column=$query.pos#1)
+            +-analytic_function_list=
+              +-$analytic1#3 :=
+                +-AnalyticFunctionCall(GoogleSQL:first_value(STRUCT<x INT64, INT64, x STRING, y INT64>) -> STRUCT<x INT64, INT64, x STRING, y INT64>)
+                  +-MakeStruct
+                  | +-type=STRUCT<x INT64, INT64, x STRING, y INT64>
+                  | +-field_list=
+                  |   +-Literal(type=INT64, value=1)
+                  |   +-Literal(type=INT64, value=2)
+                  |   +-Literal(type=STRING, value="abc")
+                  |   +-Literal(type=INT64, value=NULL)
+                  +-window_frame=
+                    +-WindowFrame(frame_unit=RANGE)
+                      +-start_expr=
+                      | +-WindowFrameExpr(boundary_type=UNBOUNDED PRECEDING)
+                      +-end_expr=
+                        +-WindowFrameExpr(boundary_type=CURRENT ROW)
+
+
+DEPRECATION WARNING:
+The pipe WINDOW operator is deprecated; Use EXTEND instead [at 2:1]
+|> WINDOW (FIRST_VALUE(STRUCT(1 AS x, 2, 'abc' AS x, null AS y))
+^
+[googlesql.DeprecationWarning] { kind: PIPE_WINDOW }
+==
+
+# Normal errors from .* apply.  This file doesn't repeat all the error case
+# tests since they are the same as those in pipe_extend.test and other places.
+FROM ComplexTypes
+|> SELECT TestStruct
+|> WINDOW ANY_VALUE(TestStruct) OVER ().* EXCEPT (bad)
+--
+ERROR: Column bad in SELECT * EXCEPT list does not exist [at 3:51]
+|> WINDOW ANY_VALUE(TestStruct) OVER ().* EXCEPT (bad)
+                                                  ^
+==
+
+# Window function in the .* REPLACE is not allowed.
+FROM KeyValue
+|> WINDOW ANY_VALUE(STRUCT(key, value)) OVER ().*
+     REPLACE(COUNT(*) OVER () AS value)
+--
+ERROR: Cannot use analytic functions inside SELECT * REPLACE [at 3:14]
+     REPLACE(COUNT(*) OVER () AS value)
+             ^
+==
+
+# Collation propagation for pipe WINDOW, for both aggregate and grouping
+# columns.
+# TODO Enable java support for collation.
+[no_java]
+[language_features=NONE,+PIPES,+ANALYTIC_FUNCTIONS{{|,+ANNOTATION_FRAMEWORK|,+ANNOTATION_FRAMEWORK,+COLLATION_SUPPORT}}]
+from CollatedTable
+|> SELECT string_ci
+|> WINDOW MAX(COALESCE(string_ci)) OVER () AS newcol
+--
+ALTERNATION GROUPS:
+    <empty>
+    ,+ANNOTATION_FRAMEWORK
+--
+QueryStmt
++-output_column_list=
+| +-CollatedTable.string_ci#1{Collation:"und:ci"} AS string_ci [STRING]
+| +-$analytic.newcol#6 AS newcol [STRING]
++-query=
+  +-AnalyticScan
+    +-column_list=[CollatedTable.string_ci#1{Collation:"und:ci"}, $analytic.newcol#6]
+    +-input_scan=
+    | +-ProjectScan
+    |   +-column_list=[CollatedTable.string_ci#1{Collation:"und:ci"}]
+    |   +-input_scan=
+    |     +-TableScan(column_list=[CollatedTable.string_ci#1{Collation:"und:ci"}], table=CollatedTable, column_index_list=[0])
+    +-function_group_list=
+      +-AnalyticFunctionGroup
+        +-analytic_function_list=
+          +-newcol#6 :=
+            +-AnalyticFunctionCall(GoogleSQL:max(STRING) -> STRING)
+              +-FunctionCall(GoogleSQL:coalesce(repeated(1) STRING) -> STRING)
+              | +-ColumnRef(type=STRING, column=CollatedTable.string_ci#1{Collation:"und:ci"})
+              +-window_frame=
+                +-WindowFrame(frame_unit=ROWS)
+                  +-start_expr=
+                  | +-WindowFrameExpr(boundary_type=UNBOUNDED PRECEDING)
+                  +-end_expr=
+                    +-WindowFrameExpr(boundary_type=UNBOUNDED FOLLOWING)
+
+
+DEPRECATION WARNING:
+The pipe WINDOW operator is deprecated; Use EXTEND instead [at 3:1]
+|> WINDOW MAX(COALESCE(string_ci)) OVER () AS newcol
+^
+[googlesql.DeprecationWarning] { kind: PIPE_WINDOW }
+--
+ALTERNATION GROUP: ,+ANNOTATION_FRAMEWORK,+COLLATION_SUPPORT
+--
+QueryStmt
++-output_column_list=
+| +-CollatedTable.string_ci#1{Collation:"und:ci"} AS string_ci [STRING]
+| +-$analytic.newcol#6{Collation:"und:ci"} AS newcol [STRING]
++-query=
+  +-AnalyticScan
+    +-column_list=[CollatedTable.string_ci#1{Collation:"und:ci"}, $analytic.newcol#6{Collation:"und:ci"}]
+    +-input_scan=
+    | +-ProjectScan
+    |   +-column_list=[CollatedTable.string_ci#1{Collation:"und:ci"}]
+    |   +-input_scan=
+    |     +-TableScan(column_list=[CollatedTable.string_ci#1{Collation:"und:ci"}], table=CollatedTable, column_index_list=[0])
+    +-function_group_list=
+      +-AnalyticFunctionGroup
+        +-analytic_function_list=
+          +-newcol#6 :=
+            +-AnalyticFunctionCall(GoogleSQL:max(STRING) -> STRING)
+              +-type_annotation_map={Collation:"und:ci"}
+              +-FunctionCall(GoogleSQL:coalesce(repeated(1) STRING) -> STRING)
+              | +-type_annotation_map={Collation:"und:ci"}
+              | +-ColumnRef(type=STRING, type_annotation_map={Collation:"und:ci"}, column=CollatedTable.string_ci#1{Collation:"und:ci"})
+              +-collation_list=[und:ci]
+              +-window_frame=
+                +-WindowFrame(frame_unit=ROWS)
+                  +-start_expr=
+                  | +-WindowFrameExpr(boundary_type=UNBOUNDED PRECEDING)
+                  +-end_expr=
+                    +-WindowFrameExpr(boundary_type=UNBOUNDED FOLLOWING)
+
+
+DEPRECATION WARNING:
+The pipe WINDOW operator is deprecated; Use EXTEND instead [at 3:1]
+|> WINDOW MAX(COALESCE(string_ci)) OVER () AS newcol
+^
+[googlesql.DeprecationWarning] { kind: PIPE_WINDOW }

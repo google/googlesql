@@ -1,0 +1,1202 @@
+# Tests for the TemplatedFunctionCallRewriter, which is enabled via
+# ResolvedASTRewrite::REWRITE_APPLY_ENABLED_REWRITES_TO_TEMPLATED_FUNCTION_CALLS
+[default enabled_ast_rewrites=DEFAULTS,+APPLY_ENABLED_REWRITES_TO_TEMPLATED_FUNCTION_CALLS,+ANONYMIZATION]
+[default language_features=NONE,+BARE_ARRAY_ACCESS,+TYPEOF_FUNCTION,+TABLE_VALUED_FUNCTIONS,+NAMED_ARGUMENTS]
+
+# TYPEOF is rewritten when TYPEOF_FUNCTION is enabled.
+SELECT TYPEOF(1)
+--
+
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(GoogleSQL:typeof(INT64) -> STRING)
+    |     +-Literal(type=INT64, value=1)
+    +-input_scan=
+      +-SingleRowScan
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(GoogleSQL:if(BOOL, STRING, STRING) -> STRING)
+    |     +-Literal(type=BOOL, value=true, has_explicit_type=TRUE)
+    |     +-Literal(type=STRING, value="INT64", has_explicit_type=TRUE)
+    |     +-Cast(BOOL -> STRING)
+    |       +-FunctionCall(GoogleSQL:$is_null(INT64) -> BOOL)
+    |         +-Literal(type=INT64, value=1)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# A templated SQL function call with TYPEOF is rewritten.
+SELECT udf_templated_typeof_function(1)
+--
+
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(Templated_SQL_Function:udf_templated_typeof_function(INT64) -> STRING)
+    |     +-Literal(type=INT64, value=1)
+    +-input_scan=
+      +-SingleRowScan
+
+With Templated SQL function call:
+  Templated_SQL_Function:udf_templated_typeof_function(INT64) -> STRING
+containing resolved templated expression:
+FunctionCall(GoogleSQL:typeof(INT64) -> STRING)
++-ArgumentRef(type=INT64, name="x")
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(Templated_SQL_Function:udf_templated_typeof_function(INT64) -> STRING)
+    |     +-Literal(type=INT64, value=1)
+    +-input_scan=
+      +-SingleRowScan
+
+With Templated SQL function call:
+  Templated_SQL_Function:udf_templated_typeof_function(INT64) -> STRING
+containing resolved templated expression:
+FunctionCall(GoogleSQL:if(BOOL, STRING, STRING) -> STRING)
++-Literal(type=BOOL, value=true, has_explicit_type=TRUE)
++-Literal(type=STRING, value="INT64", has_explicit_type=TRUE)
++-Cast(BOOL -> STRING)
+  +-FunctionCall(GoogleSQL:$is_null(INT64) -> BOOL)
+    +-ArgumentRef(type=INT64, name="x")
+==
+
+# A templated SQL function call with TYPEOF is NOT rewritten because the rewrite
+# for TYPEOF is explicitly disabled.
+[enabled_ast_rewrites=DEFAULTS,+APPLY_ENABLED_REWRITES_TO_TEMPLATED_FUNCTION_CALLS,-TYPEOF_FUNCTION]
+SELECT udf_templated_typeof_function(1)
+--
+
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(Templated_SQL_Function:udf_templated_typeof_function(INT64) -> STRING)
+    |     +-Literal(type=INT64, value=1)
+    +-input_scan=
+      +-SingleRowScan
+
+With Templated SQL function call:
+  Templated_SQL_Function:udf_templated_typeof_function(INT64) -> STRING
+containing resolved templated expression:
+FunctionCall(GoogleSQL:typeof(INT64) -> STRING)
++-ArgumentRef(type=INT64, name="x")
+==
+
+# A templated function is called twice, but with different arguments such that
+# the applied rewrite is different at each callsite.
+SELECT
+    udf_templated_typeof_function(1),
+    udf_templated_typeof_function('a')
+--
+
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [STRING]
+| +-$query.$col2#2 AS `$col2` [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=$query.[$col1#1, $col2#2]
+    +-expr_list=
+    | +-$col1#1 :=
+    | | +-FunctionCall(Templated_SQL_Function:udf_templated_typeof_function(INT64) -> STRING)
+    | |   +-Literal(type=INT64, value=1)
+    | +-$col2#2 :=
+    |   +-FunctionCall(Templated_SQL_Function:udf_templated_typeof_function(STRING) -> STRING)
+    |     +-Literal(type=STRING, value="a")
+    +-input_scan=
+      +-SingleRowScan
+
+With Templated SQL function call:
+  Templated_SQL_Function:udf_templated_typeof_function(INT64) -> STRING
+containing resolved templated expression:
+FunctionCall(GoogleSQL:typeof(INT64) -> STRING)
++-ArgumentRef(type=INT64, name="x")
+
+With Templated SQL function call:
+  Templated_SQL_Function:udf_templated_typeof_function(STRING) -> STRING
+containing resolved templated expression:
+FunctionCall(GoogleSQL:typeof(STRING) -> STRING)
++-ArgumentRef(type=STRING, name="x")
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [STRING]
+| +-$query.$col2#2 AS `$col2` [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=$query.[$col1#1, $col2#2]
+    +-expr_list=
+    | +-$col1#1 :=
+    | | +-FunctionCall(Templated_SQL_Function:udf_templated_typeof_function(INT64) -> STRING)
+    | |   +-Literal(type=INT64, value=1)
+    | +-$col2#2 :=
+    |   +-FunctionCall(Templated_SQL_Function:udf_templated_typeof_function(STRING) -> STRING)
+    |     +-Literal(type=STRING, value="a")
+    +-input_scan=
+      +-SingleRowScan
+
+With Templated SQL function call:
+  Templated_SQL_Function:udf_templated_typeof_function(INT64) -> STRING
+containing resolved templated expression:
+FunctionCall(GoogleSQL:if(BOOL, STRING, STRING) -> STRING)
++-Literal(type=BOOL, value=true, has_explicit_type=TRUE)
++-Literal(type=STRING, value="INT64", has_explicit_type=TRUE)
++-Cast(BOOL -> STRING)
+  +-FunctionCall(GoogleSQL:$is_null(INT64) -> BOOL)
+    +-ArgumentRef(type=INT64, name="x")
+
+With Templated SQL function call:
+  Templated_SQL_Function:udf_templated_typeof_function(STRING) -> STRING
+containing resolved templated expression:
+FunctionCall(GoogleSQL:if(BOOL, STRING, STRING) -> STRING)
++-Literal(type=BOOL, value=true, has_explicit_type=TRUE)
++-Literal(type=STRING, value="STRING", has_explicit_type=TRUE)
++-Cast(BOOL -> STRING)
+  +-FunctionCall(GoogleSQL:$is_null(STRING) -> BOOL)
+    +-ArgumentRef(type=STRING, name="x")
+==
+
+# A templated function call which has a nested templated function call is
+# rewritten.
+SELECT nested_udf_templated_typeof_function(1)
+--
+
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(Templated_SQL_Function:nested_udf_templated_typeof_function(INT64) -> STRING)
+    |     +-Literal(type=INT64, value=1)
+    +-input_scan=
+      +-SingleRowScan
+
+With Templated SQL function call:
+  Templated_SQL_Function:nested_udf_templated_typeof_function(INT64) -> STRING
+containing resolved templated expression:
+FunctionCall(Templated_SQL_Function:udf_templated_typeof_function(INT64) -> STRING)
++-ArgumentRef(type=INT64, name="x")
+
+With Templated SQL function call:
+  Templated_SQL_Function:udf_templated_typeof_function(INT64) -> STRING
+containing resolved templated expression:
+FunctionCall(GoogleSQL:typeof(INT64) -> STRING)
++-ArgumentRef(type=INT64, name="x")
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(Templated_SQL_Function:nested_udf_templated_typeof_function(INT64) -> STRING)
+    |     +-Literal(type=INT64, value=1)
+    +-input_scan=
+      +-SingleRowScan
+
+With Templated SQL function call:
+  Templated_SQL_Function:nested_udf_templated_typeof_function(INT64) -> STRING
+containing resolved templated expression:
+FunctionCall(Templated_SQL_Function:udf_templated_typeof_function(INT64) -> STRING)
++-ArgumentRef(type=INT64, name="x")
+
+With Templated SQL function call:
+  Templated_SQL_Function:udf_templated_typeof_function(INT64) -> STRING
+containing resolved templated expression:
+FunctionCall(GoogleSQL:if(BOOL, STRING, STRING) -> STRING)
++-Literal(type=BOOL, value=true, has_explicit_type=TRUE)
++-Literal(type=STRING, value="INT64", has_explicit_type=TRUE)
++-Cast(BOOL -> STRING)
+  +-FunctionCall(GoogleSQL:$is_null(INT64) -> BOOL)
+    +-ArgumentRef(type=INT64, name="x")
+==
+
+# CREATE TEMP FUNCTION is analyzed as a statement and has its templated function
+# call rewritten.
+CREATE TEMP FUNCTION Call_udf_templated_typeof_function(x INT64) AS (
+  udf_templated_typeof_function(x)
+)
+--
+
+CreateFunctionStmt
++-name_path=Call_udf_templated_typeof_function
++-create_scope=CREATE_TEMP
++-return_type=STRING
++-argument_name_list=[x]
++-signature=(INT64 x) -> STRING
++-language="SQL"
++-code="udf_templated_typeof_function(x)"
++-function_expression=
+  +-FunctionCall(Templated_SQL_Function:udf_templated_typeof_function(INT64) -> STRING)
+    +-ArgumentRef(type=INT64, name="x")
+
+With Templated SQL function call:
+  Templated_SQL_Function:udf_templated_typeof_function(INT64) -> STRING
+containing resolved templated expression:
+FunctionCall(GoogleSQL:typeof(INT64) -> STRING)
++-ArgumentRef(type=INT64, name="x")
+
+[REWRITTEN AST]
+CreateFunctionStmt
++-name_path=Call_udf_templated_typeof_function
++-create_scope=CREATE_TEMP
++-return_type=STRING
++-argument_name_list=[x]
++-signature=(INT64 x) -> STRING
++-language="SQL"
++-code="udf_templated_typeof_function(x)"
++-function_expression=
+  +-FunctionCall(Templated_SQL_Function:udf_templated_typeof_function(INT64) -> STRING)
+    +-ArgumentRef(type=INT64, name="x")
+
+With Templated SQL function call:
+  Templated_SQL_Function:udf_templated_typeof_function(INT64) -> STRING
+containing resolved templated expression:
+FunctionCall(GoogleSQL:if(BOOL, STRING, STRING) -> STRING)
++-Literal(type=BOOL, value=true, has_explicit_type=TRUE)
++-Literal(type=STRING, value="INT64", has_explicit_type=TRUE)
++-Cast(BOOL -> STRING)
+  +-FunctionCall(GoogleSQL:$is_null(INT64) -> BOOL)
+    +-ArgumentRef(type=INT64, name="x")
+==
+
+# A templated SQL function reads from a non-templated TVF.
+SELECT udf_templated_typeof_function(column_bytes) FROM tvf_no_args()
+--
+
+QueryStmt
++-output_column_list=
+| +-$query.$col1#3 AS `$col1` [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#3]
+    +-expr_list=
+    | +-$col1#3 :=
+    |   +-FunctionCall(Templated_SQL_Function:udf_templated_typeof_function(BYTES) -> STRING)
+    |     +-ColumnRef(type=BYTES, column=tvf_no_args.column_bytes#2)
+    +-input_scan=
+      +-TVFScan(column_list=[tvf_no_args.column_bytes#2], tvf=tvf_no_args(() -> TABLE<column_bool BOOL, column_bytes BYTES>), signature=() -> TABLE<column_bool BOOL, column_bytes BYTES>, column_index_list=[1], function_call_signature=() -> TABLE<column_bool BOOL, column_bytes BYTES>)
+
+With Templated SQL function call:
+  Templated_SQL_Function:udf_templated_typeof_function(BYTES) -> STRING
+containing resolved templated expression:
+FunctionCall(GoogleSQL:typeof(BYTES) -> STRING)
++-ArgumentRef(type=BYTES, name="x")
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$query.$col1#3 AS `$col1` [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#3]
+    +-expr_list=
+    | +-$col1#3 :=
+    |   +-FunctionCall(Templated_SQL_Function:udf_templated_typeof_function(BYTES) -> STRING)
+    |     +-ColumnRef(type=BYTES, column=tvf_no_args.column_bytes#2)
+    +-input_scan=
+      +-TVFScan(column_list=[tvf_no_args.column_bytes#2], tvf=tvf_no_args(() -> TABLE<column_bool BOOL, column_bytes BYTES>), signature=() -> TABLE<column_bool BOOL, column_bytes BYTES>, column_index_list=[1], function_call_signature=() -> TABLE<column_bool BOOL, column_bytes BYTES>)
+
+With Templated SQL function call:
+  Templated_SQL_Function:udf_templated_typeof_function(BYTES) -> STRING
+containing resolved templated expression:
+FunctionCall(GoogleSQL:if(BOOL, STRING, STRING) -> STRING)
++-Literal(type=BOOL, value=true, has_explicit_type=TRUE)
++-Literal(type=STRING, value="BYTES", has_explicit_type=TRUE)
++-Cast(BOOL -> STRING)
+  +-FunctionCall(GoogleSQL:$is_null(BYTES) -> BOOL)
+    +-ArgumentRef(type=BYTES, name="x")
+==
+
+# A templated SQL function reads from a templated TVF, but the TVF does not
+# need to be rewritten.
+SELECT udf_templated_typeof_function(x) FROM tvf_templated_select_one()
+--
+
+QueryStmt
++-output_column_list=
+| +-$query.$col1#2 AS `$col1` [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#2]
+    +-expr_list=
+    | +-$col1#2 :=
+    |   +-FunctionCall(Templated_SQL_Function:udf_templated_typeof_function(INT64) -> STRING)
+    |     +-ColumnRef(type=INT64, column=tvf_templated_select_one.x#1)
+    +-input_scan=
+      +-TVFScan(column_list=[tvf_templated_select_one.x#1], tvf=tvf_templated_select_one(() -> ANY TABLE), signature=() -> TABLE<x INT64>, column_index_list=[0], function_call_signature=() -> ANY TABLE)
+
+With Templated SQL function call:
+  Templated_SQL_Function:udf_templated_typeof_function(INT64) -> STRING
+containing resolved templated expression:
+FunctionCall(GoogleSQL:typeof(INT64) -> STRING)
++-ArgumentRef(type=INT64, name="x")
+
+With Templated SQL TVF signature:
+  tvf_templated_select_one() -> TABLE<x INT64>
+containing resolved templated query:
+QueryStmt
++-output_column_list=
+| +-$query.x#1 AS x [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.x#1]
+    +-expr_list=
+    | +-x#1 := Literal(type=INT64, value=1)
+    +-input_scan=
+      +-SingleRowScan
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$query.$col1#2 AS `$col1` [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#2]
+    +-expr_list=
+    | +-$col1#2 :=
+    |   +-FunctionCall(Templated_SQL_Function:udf_templated_typeof_function(INT64) -> STRING)
+    |     +-ColumnRef(type=INT64, column=tvf_templated_select_one.x#1)
+    +-input_scan=
+      +-TVFScan(column_list=[tvf_templated_select_one.x#1], tvf=tvf_templated_select_one(() -> ANY TABLE), signature=() -> TABLE<x INT64>, column_index_list=[0], function_call_signature=() -> ANY TABLE)
+
+With Templated SQL function call:
+  Templated_SQL_Function:udf_templated_typeof_function(INT64) -> STRING
+containing resolved templated expression:
+FunctionCall(GoogleSQL:if(BOOL, STRING, STRING) -> STRING)
++-Literal(type=BOOL, value=true, has_explicit_type=TRUE)
++-Literal(type=STRING, value="INT64", has_explicit_type=TRUE)
++-Cast(BOOL -> STRING)
+  +-FunctionCall(GoogleSQL:$is_null(INT64) -> BOOL)
+    +-ArgumentRef(type=INT64, name="x")
+
+With Templated SQL TVF signature:
+  tvf_templated_select_one() -> TABLE<x INT64>
+containing resolved templated query:
+QueryStmt
++-output_column_list=
+| +-$query.x#1 AS x [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.x#1]
+    +-expr_list=
+    | +-x#1 := Literal(type=INT64, value=1)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# A templated TVF call with TYPEOF is rewritten.
+SELECT * FROM tvf_templated_select_typeof_function(1)
+--
+QueryStmt
++-output_column_list=
+| +-tvf_templated_select_typeof_function.col#1 AS col [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[tvf_templated_select_typeof_function.col#1]
+    +-input_scan=
+      +-TVFScan
+        +-column_list=[tvf_templated_select_typeof_function.col#1]
+        +-tvf=tvf_templated_select_typeof_function((ANY TYPE) -> ANY TABLE)
+        +-signature=(literal INT64) -> TABLE<col STRING>
+        +-argument_list=
+        | +-FunctionArgument
+        |   +-expr=
+        |     +-Literal(type=INT64, value=1)
+        +-column_index_list=[0]
+        +-function_call_signature=(INT64) -> ANY TABLE
+
+With Templated SQL TVF signature:
+  tvf_templated_select_typeof_function(literal INT64) -> TABLE<col STRING>
+containing resolved templated query:
+QueryStmt
++-output_column_list=
+| +-$query.col#1 AS col [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.col#1]
+    +-expr_list=
+    | +-col#1 :=
+    |   +-FunctionCall(GoogleSQL:typeof(INT64) -> STRING)
+    |     +-ArgumentRef(type=INT64, name="x")
+    +-input_scan=
+      +-SingleRowScan
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-tvf_templated_select_typeof_function.col#1 AS col [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[tvf_templated_select_typeof_function.col#1]
+    +-input_scan=
+      +-TVFScan
+        +-column_list=[tvf_templated_select_typeof_function.col#1]
+        +-tvf=tvf_templated_select_typeof_function((ANY TYPE) -> ANY TABLE)
+        +-signature=(literal INT64) -> TABLE<col STRING>
+        +-argument_list=
+        | +-FunctionArgument
+        |   +-expr=
+        |     +-Literal(type=INT64, value=1)
+        +-column_index_list=[0]
+        +-function_call_signature=(INT64) -> ANY TABLE
+
+With Templated SQL TVF signature:
+  tvf_templated_select_typeof_function(literal INT64) -> TABLE<col STRING>
+containing resolved templated query:
+QueryStmt
++-output_column_list=
+| +-$query.col#1 AS col [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.col#1]
+    +-expr_list=
+    | +-col#1 :=
+    |   +-FunctionCall(GoogleSQL:if(BOOL, STRING, STRING) -> STRING)
+    |     +-Literal(type=BOOL, value=true, has_explicit_type=TRUE)
+    |     +-Literal(type=STRING, value="INT64", has_explicit_type=TRUE)
+    |     +-Cast(BOOL -> STRING)
+    |       +-FunctionCall(GoogleSQL:$is_null(INT64) -> BOOL)
+    |         +-ArgumentRef(type=INT64, name="x")
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# A templated TVF call with TYPEOF and that has anonymization info is rewritten.
+# Two rewrites should be applied:
+# 1. The templated TVF signature is rewritten to for TYPEOF.
+# 2. Rewrite differential_privacy_count_star to differential_privacy_sum.
+[language_features=NONE,+BARE_ARRAY_ACCESS,+TYPEOF_FUNCTION,+TABLE_VALUED_FUNCTIONS,+NAMED_ARGUMENTS,+DIFFERENTIAL_PRIVACY,+PIPE_AGGREGATE_WITH_DIFFERENTIAL_PRIVACY]
+SELECT WITH DIFFERENTIAL_PRIVACY OPTIONS(epsilon=10, delta=.01)
+  value,
+  COUNT(*)
+FROM tvf_templated_select_typeof_function_with_anonymization_info('hello')
+GROUP BY value
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.value#4 AS value [STRING]
+| +-$aggregate.$agg1#3 AS `$col2` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$groupby.value#4, $aggregate.$agg1#3]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$groupby.value#4, $aggregate.$agg1#3]
+        +-input_scan=
+        | +-TVFScan
+        |   +-column_list=[tvf_templated_select_typeof_function_with_anonymization_info.value#2]
+        |   +-tvf=tvf_templated_select_typeof_function_with_anonymization_info((ANY TYPE) -> ANY TABLE)
+        |   +-signature=(literal STRING) -> TABLE<user_id INT64, value STRING>
+        |   +-argument_list=
+        |   | +-FunctionArgument
+        |   |   +-expr=
+        |   |     +-Literal(type=STRING, value="hello")
+        |   +-column_index_list=[1]
+        |   +-function_call_signature=(STRING) -> ANY TABLE
+        +-group_by_list=
+        | +-value#4 := ColumnRef(type=STRING, column=tvf_templated_select_typeof_function_with_anonymization_info.value#2)
+        +-aggregate_list=
+        | +-$agg1#3 :=
+        |   +-AggregateFunctionCall(GoogleSQL:$differential_privacy_count_star(optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+        |     +-Literal(type=STRUCT<INT64, INT64>, value=NULL)
+        +-option_list=
+          +-epsilon := Literal(type=DOUBLE, value=10)
+          +-delta := Literal(type=DOUBLE, value=0.01)
+
+With Templated SQL TVF signature:
+  tvf_templated_select_typeof_function_with_anonymization_info(literal STRING) -> TABLE<user_id INT64, value STRING>
+containing resolved templated query:
+QueryStmt
++-output_column_list=
+| +-$query.user_id#1 AS user_id [INT64]
+| +-$query.value#2 AS value [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=$query.[user_id#1, value#2]
+    +-expr_list=
+    | +-user_id#1 := Literal(type=INT64, value=1)
+    | +-value#2 :=
+    |   +-FunctionCall(GoogleSQL:typeof(STRING) -> STRING)
+    |     +-ArgumentRef(type=STRING, name="x")
+    +-input_scan=
+      +-SingleRowScan
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$groupby.value#4 AS value [STRING]
+| +-$aggregate.$agg1#3 AS `$col2` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$groupby.value#4, $aggregate.$agg1#3]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$groupby.value#4, $aggregate.$agg1#3]
+        +-input_scan=
+        | +-AggregateScan
+        |   +-column_list=[$aggregate.$agg1_partial#7, $groupby.value_partial#8, $group_by.$uid#9]
+        |   +-input_scan=
+        |   | +-TVFScan
+        |   |   +-column_list=tvf_templated_select_typeof_function_with_anonymization_info.[user_id#5, value#2]
+        |   |   +-tvf=tvf_templated_select_typeof_function_with_anonymization_info((ANY TYPE) -> ANY TABLE)
+        |   |   +-signature=(literal STRING) -> TABLE<user_id INT64, value STRING>
+        |   |   +-argument_list=
+        |   |   | +-FunctionArgument
+        |   |   |   +-expr=
+        |   |   |     +-Literal(type=STRING, value="hello")
+        |   |   +-column_index_list=[0, 1]
+        |   |   +-function_call_signature=(STRING) -> ANY TABLE
+        |   +-group_by_list=
+        |   | +-value_partial#8 := ColumnRef(type=STRING, column=tvf_templated_select_typeof_function_with_anonymization_info.value#2)
+        |   | +-$uid#9 := ColumnRef(type=INT64, column=tvf_templated_select_typeof_function_with_anonymization_info.user_id#5)
+        |   +-aggregate_list=
+        |     +-$agg1_partial#7 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+        +-group_by_list=
+        | +-value#4 := ColumnRef(type=STRING, column=$groupby.value_partial#8)
+        +-aggregate_list=
+        | +-$agg1#3 :=
+        | | +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+        | |   +-ColumnRef(type=INT64, column=$aggregate.$agg1_partial#7)
+        | |   +-Literal(type=STRUCT<INT64, INT64>, value=NULL)
+        | +-$group_selection_threshold_col#12 :=
+        |   +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+        |     +-Literal(type=INT64, value=1)
+        |     +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+        +-group_selection_threshold_expr=
+        | +-ColumnRef(type=INT64, column=$differential_privacy.$group_selection_threshold_col#12)
+        +-option_list=
+          +-epsilon := Literal(type=DOUBLE, value=10)
+          +-delta := Literal(type=DOUBLE, value=0.01)
+
+With Templated SQL TVF signature:
+  tvf_templated_select_typeof_function_with_anonymization_info(literal STRING) -> TABLE<user_id INT64, value STRING>
+containing resolved templated query:
+QueryStmt
++-output_column_list=
+| +-$query.user_id#1 AS user_id [INT64]
+| +-$query.value#2 AS value [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=$query.[user_id#1, value#2]
+    +-expr_list=
+    | +-user_id#1 := Literal(type=INT64, value=1)
+    | +-value#2 :=
+    |   +-FunctionCall(GoogleSQL:if(BOOL, STRING, STRING) -> STRING)
+    |     +-Literal(type=BOOL, value=true, has_explicit_type=TRUE)
+    |     +-Literal(type=STRING, value="STRING", has_explicit_type=TRUE)
+    |     +-Cast(BOOL -> STRING)
+    |       +-FunctionCall(GoogleSQL:$is_null(STRING) -> BOOL)
+    |         +-ArgumentRef(type=STRING, name="x")
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# A templated TVF call with a nested templated TVF with TYPEOF is rewritten.
+SELECT * FROM tvf_templated_select_nested_typeof_function('hello')
+--
+
+QueryStmt
++-output_column_list=
+| +-tvf_templated_select_nested_typeof_function.col#1 AS col [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[tvf_templated_select_nested_typeof_function.col#1]
+    +-input_scan=
+      +-TVFScan
+        +-column_list=[tvf_templated_select_nested_typeof_function.col#1]
+        +-tvf=tvf_templated_select_nested_typeof_function((ANY TYPE) -> ANY TABLE)
+        +-signature=(literal STRING) -> TABLE<col STRING>
+        +-argument_list=
+        | +-FunctionArgument
+        |   +-expr=
+        |     +-Literal(type=STRING, value="hello")
+        +-column_index_list=[0]
+        +-function_call_signature=(STRING) -> ANY TABLE
+
+With Templated SQL TVF signature:
+  tvf_templated_select_nested_typeof_function(literal STRING) -> TABLE<col STRING>
+containing resolved templated query:
+QueryStmt
++-output_column_list=
+| +-tvf_templated_select_typeof_function.col#1 AS col [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[tvf_templated_select_typeof_function.col#1]
+    +-input_scan=
+      +-TVFScan
+        +-column_list=[tvf_templated_select_typeof_function.col#1]
+        +-tvf=tvf_templated_select_typeof_function((ANY TYPE) -> ANY TABLE)
+        +-signature=(STRING) -> TABLE<col STRING>
+        +-argument_list=
+        | +-FunctionArgument
+        |   +-expr=
+        |     +-ArgumentRef(type=STRING, name="x")
+        +-column_index_list=[0]
+        +-function_call_signature=(STRING) -> ANY TABLE
+
+With Templated SQL TVF signature:
+  tvf_templated_select_typeof_function(STRING) -> TABLE<col STRING>
+containing resolved templated query:
+QueryStmt
++-output_column_list=
+| +-$query.col#1 AS col [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.col#1]
+    +-expr_list=
+    | +-col#1 :=
+    |   +-FunctionCall(GoogleSQL:typeof(STRING) -> STRING)
+    |     +-ArgumentRef(type=STRING, name="x")
+    +-input_scan=
+      +-SingleRowScan
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-tvf_templated_select_nested_typeof_function.col#1 AS col [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[tvf_templated_select_nested_typeof_function.col#1]
+    +-input_scan=
+      +-TVFScan
+        +-column_list=[tvf_templated_select_nested_typeof_function.col#1]
+        +-tvf=tvf_templated_select_nested_typeof_function((ANY TYPE) -> ANY TABLE)
+        +-signature=(literal STRING) -> TABLE<col STRING>
+        +-argument_list=
+        | +-FunctionArgument
+        |   +-expr=
+        |     +-Literal(type=STRING, value="hello")
+        +-column_index_list=[0]
+        +-function_call_signature=(STRING) -> ANY TABLE
+
+With Templated SQL TVF signature:
+  tvf_templated_select_nested_typeof_function(literal STRING) -> TABLE<col STRING>
+containing resolved templated query:
+QueryStmt
++-output_column_list=
+| +-tvf_templated_select_typeof_function.col#1 AS col [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[tvf_templated_select_typeof_function.col#1]
+    +-input_scan=
+      +-TVFScan
+        +-column_list=[tvf_templated_select_typeof_function.col#1]
+        +-tvf=tvf_templated_select_typeof_function((ANY TYPE) -> ANY TABLE)
+        +-signature=(STRING) -> TABLE<col STRING>
+        +-argument_list=
+        | +-FunctionArgument
+        |   +-expr=
+        |     +-ArgumentRef(type=STRING, name="x")
+        +-column_index_list=[0]
+        +-function_call_signature=(STRING) -> ANY TABLE
+
+With Templated SQL TVF signature:
+  tvf_templated_select_typeof_function(STRING) -> TABLE<col STRING>
+containing resolved templated query:
+QueryStmt
++-output_column_list=
+| +-$query.col#1 AS col [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.col#1]
+    +-expr_list=
+    | +-col#1 :=
+    |   +-FunctionCall(GoogleSQL:if(BOOL, STRING, STRING) -> STRING)
+    |     +-Literal(type=BOOL, value=true, has_explicit_type=TRUE)
+    |     +-Literal(type=STRING, value="STRING", has_explicit_type=TRUE)
+    |     +-Cast(BOOL -> STRING)
+    |       +-FunctionCall(GoogleSQL:$is_null(STRING) -> BOOL)
+    |         +-ArgumentRef(type=STRING, name="x")
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# A templated UDA with TYPEOF is rewritten.
+SELECT TemplatedUdaCountIfTypeOfIsString(T) FROM UNNEST(['hello', 'world']) AS T
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#2 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#2]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$aggregate.$agg1#2]
+        +-input_scan=
+        | +-ArrayScan
+        |   +-column_list=[$array.T#1]
+        |   +-array_expr_list=
+        |   | +-Literal(type=ARRAY<STRING>, value=["hello", "world"])
+        |   +-element_column_list=[$array.T#1]
+        +-aggregate_list=
+          +-$agg1#2 :=
+            +-AggregateFunctionCall(Templated_SQL_Function:TemplatedUdaCountIfTypeOfIsString(STRING x) -> INT64)
+              +-ColumnRef(type=STRING, column=$array.T#1)
+
+With Templated SQL function call:
+  Templated_SQL_Function:TemplatedUdaCountIfTypeOfIsString(STRING x) -> INT64
+containing resolved templated expression:
+ColumnRef(type=INT64, column=$aggregate.$agg1#1)
+
+  $agg1#1 :=
+    +-AggregateFunctionCall(GoogleSQL:countif(BOOL) -> INT64)
+      +-FunctionCall(GoogleSQL:$equal(STRING, STRING) -> BOOL)
+        +-FunctionCall(GoogleSQL:typeof(STRING) -> STRING)
+        | +-ArgumentRef(parse_location=15-16, type=STRING, name="x", argument_kind=AGGREGATE)
+        +-Literal(type=STRING, value="STRING")
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#2 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#2]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$aggregate.$agg1#2]
+        +-input_scan=
+        | +-ArrayScan
+        |   +-column_list=[$array.T#1]
+        |   +-array_expr_list=
+        |   | +-Literal(type=ARRAY<STRING>, value=["hello", "world"])
+        |   +-element_column_list=[$array.T#1]
+        +-aggregate_list=
+          +-$agg1#2 :=
+            +-AggregateFunctionCall(Templated_SQL_Function:TemplatedUdaCountIfTypeOfIsString(STRING x) -> INT64)
+              +-ColumnRef(type=STRING, column=$array.T#1)
+
+With Templated SQL function call:
+  Templated_SQL_Function:TemplatedUdaCountIfTypeOfIsString(STRING x) -> INT64
+containing resolved templated expression:
+ColumnRef(type=INT64, column=$aggregate.$agg1#1)
+
+  $agg1#1 :=
+    +-AggregateFunctionCall(GoogleSQL:countif(BOOL) -> INT64)
+      +-FunctionCall(GoogleSQL:$equal(STRING, STRING) -> BOOL)
+        +-FunctionCall(GoogleSQL:if(BOOL, STRING, STRING) -> STRING)
+        | +-Literal(type=BOOL, value=true, has_explicit_type=TRUE)
+        | +-Literal(type=STRING, value="STRING", has_explicit_type=TRUE)
+        | +-Cast(BOOL -> STRING)
+        |   +-FunctionCall(GoogleSQL:$is_null(STRING) -> BOOL)
+        |     +-ArgumentRef(parse_location=15-16, type=STRING, name="x", argument_kind=AGGREGATE)
+        +-Literal(type=STRING, value="STRING")
+==
+
+# This test verifies that there are no column id collisions when rewriting a
+# templated TVF that injects columns.
+SELECT * FROM tvf_templated_select_array_max_function(
+  TABLE TableWithSingleInt64ArrayCol, 123)
+--
+QueryStmt
++-output_column_list=
+| +-tvf_templated_select_array_max_function.first_two_elements#2 AS first_two_elements [ARRAY<INT64>]
+| +-tvf_templated_select_array_max_function.next_two_elements#3 AS next_two_elements [ARRAY<INT64>]
++-query=
+  +-ProjectScan
+    +-column_list=tvf_templated_select_array_max_function.[first_two_elements#2, next_two_elements#3]
+    +-input_scan=
+      +-TVFScan
+        +-column_list=tvf_templated_select_array_max_function.[first_two_elements#2, next_two_elements#3]
+        +-tvf=tvf_templated_select_array_max_function((ANY TABLE, ANY TYPE) -> ANY TABLE)
+        +-signature=(TABLE<array_col ARRAY<INT64>>, literal INT64) -> TABLE<first_two_elements ARRAY<INT64>, next_two_elements ARRAY<INT64>>
+        +-argument_list=
+        | +-FunctionArgument
+        | | +-scan=
+        | | | +-TableScan(column_list=[TableWithSingleInt64ArrayCol.array_col#1], node_source="table_clause", table=TableWithSingleInt64ArrayCol, column_index_list=[0])
+        | | +-argument_column_list=[TableWithSingleInt64ArrayCol.array_col#1]
+        | +-FunctionArgument
+        |   +-expr=
+        |     +-Literal(type=INT64, value=123)
+        +-column_index_list=[0, 1]
+        +-function_call_signature=(ANY TABLE, INT64) -> ANY TABLE
+
+With Templated SQL TVF signature:
+  tvf_templated_select_array_max_function(TABLE<array_col ARRAY<INT64>>, literal INT64) -> TABLE<first_two_elements ARRAY<INT64>, next_two_elements ARRAY<INT64>>
+containing resolved templated query:
+QueryStmt
++-output_column_list=
+| +-TempTable.first_two_elements#4 AS first_two_elements [ARRAY<INT64>]
+| +-TempTable.next_two_elements#5 AS next_two_elements [ARRAY<INT64>]
++-query=
+  +-WithScan
+    +-column_list=TempTable.[first_two_elements#4, next_two_elements#5]
+    +-with_entry_list=
+    | +-WithEntry
+    |   +-with_query_name="TempTable"
+    |   +-with_subquery=
+    |     +-ProjectScan
+    |       +-column_list=TempTable.[first_two_elements#2, next_two_elements#3]
+    |       +-expr_list=
+    |       | +-first_two_elements#2 :=
+    |       | | +-FunctionCall(GoogleSQL:$make_array(repeated(2) INT64) -> ARRAY<INT64>)
+    |       | |   +-FunctionCall(GoogleSQL:$array_at_offset(ARRAY<INT64>, INT64) -> INT64)
+    |       | |   | +-ColumnRef(type=ARRAY<INT64>, column=InputTable.array_col#1)
+    |       | |   | +-Literal(type=INT64, value=0)
+    |       | |   +-FunctionCall(GoogleSQL:$array_at_offset(ARRAY<INT64>, INT64) -> INT64)
+    |       | |     +-ColumnRef(type=ARRAY<INT64>, column=InputTable.array_col#1)
+    |       | |     +-Literal(type=INT64, value=1)
+    |       | +-next_two_elements#3 :=
+    |       |   +-FunctionCall(GoogleSQL:$make_array(repeated(2) INT64) -> ARRAY<INT64>)
+    |       |     +-FunctionCall(GoogleSQL:$array_at_offset(ARRAY<INT64>, INT64) -> INT64)
+    |       |     | +-ColumnRef(type=ARRAY<INT64>, column=InputTable.array_col#1)
+    |       |     | +-Literal(type=INT64, value=2)
+    |       |     +-FunctionCall(GoogleSQL:$array_at_offset(ARRAY<INT64>, INT64) -> INT64)
+    |       |       +-ColumnRef(type=ARRAY<INT64>, column=InputTable.array_col#1)
+    |       |       +-Literal(type=INT64, value=3)
+    |       +-input_scan=
+    |         +-RelationArgumentScan(column_list=[InputTable.array_col#1], name="InputTable")
+    +-query=
+      +-ProjectScan
+        +-column_list=TempTable.[first_two_elements#4, next_two_elements#5]
+        +-input_scan=
+          +-FilterScan
+            +-column_list=TempTable.[first_two_elements#4, next_two_elements#5]
+            +-input_scan=
+            | +-WithRefScan(column_list=TempTable.[first_two_elements#4, next_two_elements#5], with_query_name="TempTable")
+            +-filter_expr=
+              +-FunctionCall(GoogleSQL:$and(BOOL, repeated(1) BOOL) -> BOOL)
+                +-FunctionCall(GoogleSQL:$less(INT64, INT64) -> BOOL)
+                | +-FunctionCall(GoogleSQL:array_max(ARRAY<INT64> input_array) -> INT64)
+                | | +-ColumnRef(type=ARRAY<INT64>, column=TempTable.first_two_elements#4)
+                | +-ArgumentRef(type=INT64, name="threshold")
+                +-FunctionCall(GoogleSQL:$greater(INT64, INT64) -> BOOL)
+                  +-FunctionCall(GoogleSQL:array_max(ARRAY<INT64> input_array) -> INT64)
+                  | +-ColumnRef(type=ARRAY<INT64>, column=TempTable.next_two_elements#5)
+                  +-ArgumentRef(type=INT64, name="threshold")
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-tvf_templated_select_array_max_function.first_two_elements#2 AS first_two_elements [ARRAY<INT64>]
+| +-tvf_templated_select_array_max_function.next_two_elements#3 AS next_two_elements [ARRAY<INT64>]
++-query=
+  +-ProjectScan
+    +-column_list=tvf_templated_select_array_max_function.[first_two_elements#2, next_two_elements#3]
+    +-input_scan=
+      +-TVFScan
+        +-column_list=tvf_templated_select_array_max_function.[first_two_elements#2, next_two_elements#3]
+        +-tvf=tvf_templated_select_array_max_function((ANY TABLE, ANY TYPE) -> ANY TABLE)
+        +-signature=(TABLE<array_col ARRAY<INT64>>, literal INT64) -> TABLE<first_two_elements ARRAY<INT64>, next_two_elements ARRAY<INT64>>
+        +-argument_list=
+        | +-FunctionArgument
+        | | +-scan=
+        | | | +-TableScan(column_list=[TableWithSingleInt64ArrayCol.array_col#1], node_source="table_clause", table=TableWithSingleInt64ArrayCol, column_index_list=[0])
+        | | +-argument_column_list=[TableWithSingleInt64ArrayCol.array_col#1]
+        | +-FunctionArgument
+        |   +-expr=
+        |     +-Literal(type=INT64, value=123)
+        +-column_index_list=[0, 1]
+        +-function_call_signature=(ANY TABLE, INT64) -> ANY TABLE
+
+With Templated SQL TVF signature:
+  tvf_templated_select_array_max_function(TABLE<array_col ARRAY<INT64>>, literal INT64) -> TABLE<first_two_elements ARRAY<INT64>, next_two_elements ARRAY<INT64>>
+containing resolved templated query:
+QueryStmt
++-output_column_list=
+| +-TempTable.first_two_elements#1 AS first_two_elements [ARRAY<INT64>]
+| +-TempTable.next_two_elements#2 AS next_two_elements [ARRAY<INT64>]
++-query=
+  +-WithScan
+    +-column_list=TempTable.[first_two_elements#1, next_two_elements#2]
+    +-with_entry_list=
+    | +-WithEntry
+    |   +-with_query_name="TempTable"
+    |   +-with_subquery=
+    |     +-ProjectScan
+    |       +-column_list=TempTable.[first_two_elements#3, next_two_elements#5]
+    |       +-expr_list=
+    |       | +-first_two_elements#3 :=
+    |       | | +-FunctionCall(GoogleSQL:$make_array(repeated(2) INT64) -> ARRAY<INT64>)
+    |       | |   +-FunctionCall(GoogleSQL:$array_at_offset(ARRAY<INT64>, INT64) -> INT64)
+    |       | |   | +-ColumnRef(type=ARRAY<INT64>, column=InputTable.array_col#4)
+    |       | |   | +-Literal(type=INT64, value=0)
+    |       | |   +-FunctionCall(GoogleSQL:$array_at_offset(ARRAY<INT64>, INT64) -> INT64)
+    |       | |     +-ColumnRef(type=ARRAY<INT64>, column=InputTable.array_col#4)
+    |       | |     +-Literal(type=INT64, value=1)
+    |       | +-next_two_elements#5 :=
+    |       |   +-FunctionCall(GoogleSQL:$make_array(repeated(2) INT64) -> ARRAY<INT64>)
+    |       |     +-FunctionCall(GoogleSQL:$array_at_offset(ARRAY<INT64>, INT64) -> INT64)
+    |       |     | +-ColumnRef(type=ARRAY<INT64>, column=InputTable.array_col#4)
+    |       |     | +-Literal(type=INT64, value=2)
+    |       |     +-FunctionCall(GoogleSQL:$array_at_offset(ARRAY<INT64>, INT64) -> INT64)
+    |       |       +-ColumnRef(type=ARRAY<INT64>, column=InputTable.array_col#4)
+    |       |       +-Literal(type=INT64, value=3)
+    |       +-input_scan=
+    |         +-RelationArgumentScan(column_list=[InputTable.array_col#4], name="InputTable")
+    +-query=
+      +-ProjectScan
+        +-column_list=TempTable.[first_two_elements#1, next_two_elements#2]
+        +-input_scan=
+          +-FilterScan
+            +-column_list=TempTable.[first_two_elements#1, next_two_elements#2]
+            +-input_scan=
+            | +-WithRefScan(column_list=TempTable.[first_two_elements#1, next_two_elements#2], with_query_name="TempTable")
+            +-filter_expr=
+              +-FunctionCall(GoogleSQL:$and(BOOL, repeated(1) BOOL) -> BOOL)
+                +-FunctionCall(GoogleSQL:$less(INT64, INT64) -> BOOL)
+                | +-SubqueryExpr
+                | | +-type=INT64
+                | | +-subquery_type=SCALAR
+                | | +-parameter_list=
+                | | | +-ColumnRef(type=ARRAY<INT64>, column=TempTable.first_two_elements#1)
+                | | +-subquery=
+                | |   +-ProjectScan
+                | |     +-column_list=[$expr_subquery.$col1#9]
+                | |     +-expr_list=
+                | |     | +-$col1#9 :=
+                | |     |   +-FunctionCall(GoogleSQL:if(BOOL, INT64, INT64) -> INT64)
+                | |     |     +-FunctionCall(GoogleSQL:$is_null(ARRAY<INT64>) -> BOOL)
+                | |     |     | +-ColumnRef(type=ARRAY<INT64>, column=$subquery1.input_array#6)
+                | |     |     +-Literal(type=INT64, value=NULL)
+                | |     |     +-SubqueryExpr
+                | |     |       +-type=INT64
+                | |     |       +-subquery_type=SCALAR
+                | |     |       +-parameter_list=
+                | |     |       | +-ColumnRef(type=ARRAY<INT64>, column=$subquery1.input_array#6)
+                | |     |       +-subquery=
+                | |     |         +-LimitOffsetScan
+                | |     |           +-column_list=[$array.e#7]
+                | |     |           +-input_scan=
+                | |     |           | +-OrderByScan
+                | |     |           |   +-column_list=[$array.e#7]
+                | |     |           |   +-is_ordered=TRUE
+                | |     |           |   +-input_scan=
+                | |     |           |   | +-FilterScan
+                | |     |           |   |   +-column_list=[$array.e#7, $array_offset.idx#8]
+                | |     |           |   |   +-input_scan=
+                | |     |           |   |   | +-ArrayScan
+                | |     |           |   |   |   +-column_list=[$array.e#7, $array_offset.idx#8]
+                | |     |           |   |   |   +-array_expr_list=
+                | |     |           |   |   |   | +-ColumnRef(type=ARRAY<INT64>, column=$subquery1.input_array#6, is_correlated=TRUE)
+                | |     |           |   |   |   +-element_column_list=[$array.e#7]
+                | |     |           |   |   |   +-array_offset_column=
+                | |     |           |   |   |     +-ColumnHolder(column=$array_offset.idx#8)
+                | |     |           |   |   +-filter_expr=
+                | |     |           |   |     +-FunctionCall(GoogleSQL:$not(BOOL) -> BOOL)
+                | |     |           |   |       +-FunctionCall(GoogleSQL:$is_null(INT64) -> BOOL)
+                | |     |           |   |         +-ColumnRef(type=INT64, column=$array.e#7)
+                | |     |           |   +-order_by_item_list=
+                | |     |           |     +-OrderByItem
+                | |     |           |     | +-column_ref=
+                | |     |           |     | | +-ColumnRef(type=INT64, column=$array.e#7)
+                | |     |           |     | +-is_descending=TRUE
+                | |     |           |     +-OrderByItem
+                | |     |           |       +-column_ref=
+                | |     |           |         +-ColumnRef(type=INT64, column=$array_offset.idx#8)
+                | |     |           +-limit=
+                | |     |             +-Literal(type=INT64, value=1)
+                | |     +-input_scan=
+                | |       +-ProjectScan
+                | |         +-column_list=[$subquery1.input_array#6]
+                | |         +-expr_list=
+                | |         | +-input_array#6 := ColumnRef(type=ARRAY<INT64>, column=TempTable.first_two_elements#1, is_correlated=TRUE)
+                | |         +-input_scan=
+                | |           +-SingleRowScan
+                | +-ArgumentRef(type=INT64, name="threshold")
+                +-FunctionCall(GoogleSQL:$greater(INT64, INT64) -> BOOL)
+                  +-SubqueryExpr
+                  | +-type=INT64
+                  | +-subquery_type=SCALAR
+                  | +-parameter_list=
+                  | | +-ColumnRef(type=ARRAY<INT64>, column=TempTable.next_two_elements#2)
+                  | +-subquery=
+                  |   +-ProjectScan
+                  |     +-column_list=[$expr_subquery.$col1#13]
+                  |     +-expr_list=
+                  |     | +-$col1#13 :=
+                  |     |   +-FunctionCall(GoogleSQL:if(BOOL, INT64, INT64) -> INT64)
+                  |     |     +-FunctionCall(GoogleSQL:$is_null(ARRAY<INT64>) -> BOOL)
+                  |     |     | +-ColumnRef(type=ARRAY<INT64>, column=$subquery1.input_array#10)
+                  |     |     +-Literal(type=INT64, value=NULL)
+                  |     |     +-SubqueryExpr
+                  |     |       +-type=INT64
+                  |     |       +-subquery_type=SCALAR
+                  |     |       +-parameter_list=
+                  |     |       | +-ColumnRef(type=ARRAY<INT64>, column=$subquery1.input_array#10)
+                  |     |       +-subquery=
+                  |     |         +-LimitOffsetScan
+                  |     |           +-column_list=[$array.e#11]
+                  |     |           +-input_scan=
+                  |     |           | +-OrderByScan
+                  |     |           |   +-column_list=[$array.e#11]
+                  |     |           |   +-is_ordered=TRUE
+                  |     |           |   +-input_scan=
+                  |     |           |   | +-FilterScan
+                  |     |           |   |   +-column_list=[$array.e#11, $array_offset.idx#12]
+                  |     |           |   |   +-input_scan=
+                  |     |           |   |   | +-ArrayScan
+                  |     |           |   |   |   +-column_list=[$array.e#11, $array_offset.idx#12]
+                  |     |           |   |   |   +-array_expr_list=
+                  |     |           |   |   |   | +-ColumnRef(type=ARRAY<INT64>, column=$subquery1.input_array#10, is_correlated=TRUE)
+                  |     |           |   |   |   +-element_column_list=[$array.e#11]
+                  |     |           |   |   |   +-array_offset_column=
+                  |     |           |   |   |     +-ColumnHolder(column=$array_offset.idx#12)
+                  |     |           |   |   +-filter_expr=
+                  |     |           |   |     +-FunctionCall(GoogleSQL:$not(BOOL) -> BOOL)
+                  |     |           |   |       +-FunctionCall(GoogleSQL:$is_null(INT64) -> BOOL)
+                  |     |           |   |         +-ColumnRef(type=INT64, column=$array.e#11)
+                  |     |           |   +-order_by_item_list=
+                  |     |           |     +-OrderByItem
+                  |     |           |     | +-column_ref=
+                  |     |           |     | | +-ColumnRef(type=INT64, column=$array.e#11)
+                  |     |           |     | +-is_descending=TRUE
+                  |     |           |     +-OrderByItem
+                  |     |           |       +-column_ref=
+                  |     |           |         +-ColumnRef(type=INT64, column=$array_offset.idx#12)
+                  |     |           +-limit=
+                  |     |             +-Literal(type=INT64, value=1)
+                  |     +-input_scan=
+                  |       +-ProjectScan
+                  |         +-column_list=[$subquery1.input_array#10]
+                  |         +-expr_list=
+                  |         | +-input_array#10 := ColumnRef(type=ARRAY<INT64>, column=TempTable.next_two_elements#2, is_correlated=TRUE)
+                  |         +-input_scan=
+                  |           +-SingleRowScan
+                  +-ArgumentRef(type=INT64, name="threshold")
+
+==
+
+# Regression test for b/436748777 - Parent aggregate function with multiple
+# aggregate expressions is rewritten by TemplatedFunctionCallRewriter correctly.
+# In particular, the scalar and aggregate expressions within a single aggregate
+# function call have IDs which are correlated.
+SELECT TemplatedUdaCallsRewritableUda(x)
+FROM (SELECT 1 AS x);
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#2 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#2]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$aggregate.$agg1#2]
+        +-input_scan=
+        | +-ProjectScan
+        |   +-column_list=[$subquery1.x#1]
+        |   +-expr_list=
+        |   | +-x#1 := Literal(type=INT64, value=1)
+        |   +-input_scan=
+        |     +-SingleRowScan
+        +-aggregate_list=
+          +-$agg1#2 :=
+            +-AggregateFunctionCall(Templated_SQL_Function:TemplatedUdaCallsRewritableUda(INT64 x) -> INT64)
+              +-ColumnRef(type=INT64, column=$subquery1.x#1)
+
+With Templated SQL function call:
+  Templated_SQL_Function:TemplatedUdaCallsRewritableUda(INT64 x) -> INT64
+containing resolved templated expression:
+FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
++-ColumnRef(type=INT64, column=$aggregate.$agg1#1)
++-ColumnRef(type=INT64, column=$aggregate.$agg2#2)
+
+  $agg1#1 :=
+    +-AggregateFunctionCall(Templated_SQL_Function:TemplatedUdaCountIfTypeOfIsString(INT64 x) -> INT64)
+      +-ArgumentRef(parse_location=34-35, type=INT64, name="x", argument_kind=AGGREGATE)
+
+  $agg2#2 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+
+With Templated SQL function call:
+  Templated_SQL_Function:TemplatedUdaCountIfTypeOfIsString(INT64 x) -> INT64
+containing resolved templated expression:
+ColumnRef(type=INT64, column=$aggregate.$agg1#1)
+
+  $agg1#1 :=
+    +-AggregateFunctionCall(GoogleSQL:countif(BOOL) -> INT64)
+      +-FunctionCall(GoogleSQL:$equal(STRING, STRING) -> BOOL)
+        +-FunctionCall(GoogleSQL:typeof(INT64) -> STRING)
+        | +-ArgumentRef(parse_location=15-16, type=INT64, name="x", argument_kind=AGGREGATE)
+        +-Literal(type=STRING, value="STRING")
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#2 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#2]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$aggregate.$agg1#2]
+        +-input_scan=
+        | +-ProjectScan
+        |   +-column_list=[$subquery1.x#1]
+        |   +-expr_list=
+        |   | +-x#1 := Literal(type=INT64, value=1)
+        |   +-input_scan=
+        |     +-SingleRowScan
+        +-aggregate_list=
+          +-$agg1#2 :=
+            +-AggregateFunctionCall(Templated_SQL_Function:TemplatedUdaCallsRewritableUda(INT64 x) -> INT64)
+              +-ColumnRef(type=INT64, column=$subquery1.x#1)
+
+With Templated SQL function call:
+  Templated_SQL_Function:TemplatedUdaCallsRewritableUda(INT64 x) -> INT64
+containing resolved templated expression:
+FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
++-ColumnRef(type=INT64, column=$aggregate.$agg1#1)
++-ColumnRef(type=INT64, column=$aggregate.$agg2#2)
+
+  $agg1#1 :=
+    +-AggregateFunctionCall(Templated_SQL_Function:TemplatedUdaCountIfTypeOfIsString(INT64 x) -> INT64)
+      +-ArgumentRef(parse_location=34-35, type=INT64, name="x", argument_kind=AGGREGATE)
+
+  $agg2#2 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+
+With Templated SQL function call:
+  Templated_SQL_Function:TemplatedUdaCountIfTypeOfIsString(INT64 x) -> INT64
+containing resolved templated expression:
+ColumnRef(type=INT64, column=$aggregate.$agg1#1)
+
+  $agg1#1 :=
+    +-AggregateFunctionCall(GoogleSQL:countif(BOOL) -> INT64)
+      +-FunctionCall(GoogleSQL:$equal(STRING, STRING) -> BOOL)
+        +-FunctionCall(GoogleSQL:if(BOOL, STRING, STRING) -> STRING)
+        | +-Literal(type=BOOL, value=true, has_explicit_type=TRUE)
+        | +-Literal(type=STRING, value="INT64", has_explicit_type=TRUE)
+        | +-Cast(BOOL -> STRING)
+        |   +-FunctionCall(GoogleSQL:$is_null(INT64) -> BOOL)
+        |     +-ArgumentRef(parse_location=15-16, type=INT64, name="x", argument_kind=AGGREGATE)
+        +-Literal(type=STRING, value="STRING")

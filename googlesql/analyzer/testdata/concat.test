@@ -1,0 +1,489 @@
+[default language_features=MAXIMUM]
+[language_features=NONE,{{|+CONCAT_MIXED_TYPES}}]
+select concat("a", "b");
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(GoogleSQL:concat(STRING, repeated(1) STRING) -> STRING)
+    |     +-Literal(type=STRING, value="a")
+    |     +-Literal(type=STRING, value="b")
+    +-input_scan=
+      +-SingleRowScan
+==
+
+[language_features=NONE,{{|+CONCAT_MIXED_TYPES}}]
+select concat(b"a", b"b");
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [BYTES]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(GoogleSQL:concat(BYTES, repeated(1) BYTES) -> BYTES)
+    |     +-Literal(type=BYTES, value=b"a")
+    |     +-Literal(type=BYTES, value=b"b")
+    +-input_scan=
+      +-SingleRowScan
+==
+
+[language_features=NONE,{{+CONCAT_MIXED_TYPES,+IMPLICIT_COERCION_STRING_LITERAL_TO_BYTES|+CONCAT_MIXED_TYPES}}]
+select concat("a", b"b");
+--
+ALTERNATION GROUP: +CONCAT_MIXED_TYPES,+IMPLICIT_COERCION_STRING_LITERAL_TO_BYTES
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [BYTES]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(GoogleSQL:concat(BYTES, repeated(1) BYTES) -> BYTES)
+    |     +-Literal(type=BYTES, value=b"a")
+    |     +-Literal(type=BYTES, value=b"b")
+    +-input_scan=
+      +-SingleRowScan
+--
+ALTERNATION GROUP: +CONCAT_MIXED_TYPES
+--
+ERROR: No matching signature for function CONCAT
+  Argument types: STRING, BYTES
+  Signature: CONCAT(STRING, [STRING, ...])
+    Argument 2: Unable to coerce type BYTES to expected type STRING
+  Signature: CONCAT(BYTES, [BYTES, ...])
+    Argument 1: Unable to coerce type STRING to expected type BYTES [at 1:8]
+select concat("a", b"b");
+       ^
+==
+
+[language_features=NONE,+CONCAT_MIXED_TYPES]
+select concat(1, b"b");
+--
+ERROR: No matching signature for function CONCAT
+  Argument types: INT64, BYTES
+  Signature: CONCAT(STRING, [STRING, ...])
+    Argument 2: Unable to coerce type BYTES to expected type STRING
+  Signature: CONCAT(BYTES, [BYTES, ...])
+    Argument 1: Unable to coerce type INT64 to expected type BYTES [at 1:8]
+select concat(1, b"b");
+       ^
+==
+
+[language_features=NONE,+CONCAT_MIXED_TYPES]
+select concat("a", 1)
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(GoogleSQL:concat(STRING, repeated(1) STRING) -> STRING)
+    |     +-Literal(type=STRING, value="a")
+    |     +-Literal(type=STRING, value="1")
+    +-input_scan=
+      +-SingleRowScan
+==
+
+[language_features=NONE,+CONCAT_MIXED_TYPES]
+select concat(n, "a") from unnest([1,2,3]) n
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#2 AS `$col1` [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#2]
+    +-expr_list=
+    | +-$col1#2 :=
+    |   +-FunctionCall(GoogleSQL:concat(STRING, repeated(1) STRING) -> STRING)
+    |     +-Cast(INT64 -> STRING)
+    |     | +-ColumnRef(type=INT64, column=$array.n#1)
+    |     +-Literal(type=STRING, value="a")
+    +-input_scan=
+      +-ArrayScan
+        +-column_list=[$array.n#1]
+        +-array_expr_list=
+        | +-Literal(type=ARRAY<INT64>, value=[1, 2, 3])
+        +-element_column_list=[$array.n#1]
+==
+
+[language_features=NONE,+CONCAT_MIXED_TYPES]
+[allow_undeclared_parameters]
+select concat(NULL)
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(GoogleSQL:concat(STRING, repeated(0) STRING) -> STRING)
+    |     +-Literal(type=STRING, value=NULL)
+    +-input_scan=
+      +-SingleRowScan
+[UNDECLARED_PARAMETERS]
+==
+
+[language_features=NONE,+CONCAT_MIXED_TYPES]
+[allow_undeclared_parameters]
+select concat(x, NULL, @param) from unnest([1]) x
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#2 AS `$col1` [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#2]
+    +-expr_list=
+    | +-$col1#2 :=
+    |   +-FunctionCall(GoogleSQL:concat(STRING, repeated(2) STRING) -> STRING)
+    |     +-Cast(INT64 -> STRING)
+    |     | +-ColumnRef(type=INT64, column=$array.x#1)
+    |     +-Literal(type=STRING, value=NULL)
+    |     +-Parameter(parse_location=23-29, type=STRING, name="param")
+    +-input_scan=
+      +-ArrayScan
+        +-column_list=[$array.x#1]
+        +-array_expr_list=
+        | +-Literal(type=ARRAY<INT64>, value=[1])
+        +-element_column_list=[$array.x#1]
+[UNDECLARED_PARAMETERS]
+param: STRING
+==
+
+[language_features=NONE,+CONCAT_MIXED_TYPES]
+[allow_undeclared_parameters]
+[parameter_mode=positional]
+select concat(?, ?)
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(GoogleSQL:concat(STRING, repeated(1) STRING) -> STRING)
+    |     +-Parameter(parse_location=14-15, type=STRING, position=1)
+    |     +-Parameter(parse_location=17-18, type=STRING, position=2)
+    +-input_scan=
+      +-SingleRowScan
+[UNDECLARED_PARAMETERS]
+STRING
+STRING
+==
+
+[language_features=NONE,+CONCAT_MIXED_TYPES]
+[allow_undeclared_parameters]
+select concat(@param, b"b")
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [BYTES]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(GoogleSQL:concat(BYTES, repeated(1) BYTES) -> BYTES)
+    |     +-Parameter(parse_location=14-20, type=BYTES, name="param")
+    |     +-Literal(type=BYTES, value=b"b")
+    +-input_scan=
+      +-SingleRowScan
+[UNDECLARED_PARAMETERS]
+param: BYTES
+==
+
+[language_features=NONE,+CONCAT_MIXED_TYPES]
+[parameter_mode=positional]
+[allow_undeclared_parameters]
+select concat(?, b"b")
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [BYTES]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(GoogleSQL:concat(BYTES, repeated(1) BYTES) -> BYTES)
+    |     +-Parameter(parse_location=14-15, type=BYTES, position=1)
+    |     +-Literal(type=BYTES, value=b"b")
+    +-input_scan=
+      +-SingleRowScan
+[UNDECLARED_PARAMETERS]
+BYTES
+==
+
+[language_features=NONE,+CONCAT_MIXED_TYPES]
+select concat(1 > 0, 0-5, 3.14+0, CAST(10 AS UINT64), CURRENT_TIMESTAMP, CURRENT_DATE)
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(GoogleSQL:concat(STRING, repeated(5) STRING) -> STRING)
+    |     +-Cast(BOOL -> STRING)
+    |     | +-FunctionCall(GoogleSQL:$greater(INT64, INT64) -> BOOL)
+    |     |   +-Literal(type=INT64, value=1)
+    |     |   +-Literal(type=INT64, value=0)
+    |     +-Cast(INT64 -> STRING)
+    |     | +-FunctionCall(GoogleSQL:$subtract(INT64, INT64) -> INT64)
+    |     |   +-Literal(type=INT64, value=0)
+    |     |   +-Literal(type=INT64, value=5)
+    |     +-Cast(DOUBLE -> STRING)
+    |     | +-FunctionCall(GoogleSQL:$add(DOUBLE, DOUBLE) -> DOUBLE)
+    |     |   +-Literal(type=DOUBLE, value=3.14)
+    |     |   +-Literal(type=DOUBLE, value=0)
+    |     +-Literal(type=STRING, value="10", has_explicit_type=TRUE)
+    |     +-Cast(TIMESTAMP -> STRING)
+    |     | +-FunctionCall(GoogleSQL:current_timestamp() -> TIMESTAMP)
+    |     +-Cast(DATE -> STRING)
+    |       +-FunctionCall(GoogleSQL:current_date(optional(0) STRING) -> DATE)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+[language_features=NONE,+CONCAT_MIXED_TYPES,+CIVIL_TIME]
+select concat(CURRENT_DATETIME, CURRENT_TIME)
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(GoogleSQL:concat(STRING, repeated(1) STRING) -> STRING)
+    |     +-Cast(DATETIME -> STRING)
+    |     | +-FunctionCall(GoogleSQL:current_datetime(optional(0) STRING) -> DATETIME)
+    |     +-Cast(TIME -> STRING)
+    |       +-FunctionCall(GoogleSQL:current_time(optional(0) STRING) -> TIME)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+[language_features=NONE,+CONCAT_MIXED_TYPES,+INTERVAL_TYPE]
+select concat("a", current_date - '2000-01-01');
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(GoogleSQL:concat(STRING, repeated(1) STRING) -> STRING)
+    |     +-Literal(type=STRING, value="a")
+    |     +-Cast(INTERVAL -> STRING)
+    |       +-FunctionCall(GoogleSQL:$subtract(DATE, DATE) -> INTERVAL)
+    |         +-FunctionCall(GoogleSQL:current_date(optional(0) STRING) -> DATE)
+    |         +-Literal(type=DATE, value=2000-01-01)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+[language_features=NONE,+CONCAT_MIXED_TYPES,+NUMERIC_TYPE]
+select concat(CAST(9876543210.123 AS NUMERIC))
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(GoogleSQL:concat(STRING, repeated(0) STRING) -> STRING)
+    |     +-Literal(type=STRING, value="9876543210.123", has_explicit_type=TRUE)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+[language_features=NONE,+CONCAT_MIXED_TYPES,+GEOGRAPHY]
+select concat(ST_GEOGPOINT(0, 0))
+--
+ERROR: No matching signature for function CONCAT
+  Argument types: GEOGRAPHY
+  Signature: CONCAT(STRING, [STRING, ...])
+    Argument 1: Unable to coerce type GEOGRAPHY to expected type STRING
+  Signature: CONCAT(BYTES, [BYTES, ...])
+    Argument 1: Unable to coerce type GEOGRAPHY to expected type BYTES [at 1:8]
+select concat(ST_GEOGPOINT(0, 0))
+       ^
+==
+
+[language_features=NONE,+CONCAT_MIXED_TYPES]
+select concat([1,2,3])
+--
+ERROR: No matching signature for function CONCAT
+  Argument types: ARRAY<INT64>
+  Signature: CONCAT(STRING, [STRING, ...])
+    Argument 1: Unable to coerce type ARRAY<INT64> to expected type STRING
+  Signature: CONCAT(BYTES, [BYTES, ...])
+    Argument 1: Unable to coerce type ARRAY<INT64> to expected type BYTES [at 1:8]
+select concat([1,2,3])
+       ^
+==
+
+[language_features=NONE,+CONCAT_MIXED_TYPES]
+select concat((1,"foo"))
+--
+ERROR: No matching signature for function CONCAT
+  Argument types: STRUCT<INT64, STRING>
+  Signature: CONCAT(STRING, [STRING, ...])
+    Argument 1: Unable to coerce type STRUCT<INT64, STRING> to expected type STRING
+  Signature: CONCAT(BYTES, [BYTES, ...])
+    Argument 1: Unable to coerce type STRUCT<INT64, STRING> to expected type BYTES [at 1:8]
+select concat((1,"foo"))
+       ^
+==
+
+[language_features=NONE,+CONCAT_MIXED_TYPES]
+select concat(new googlesql_test.EmptyMessage())
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(GoogleSQL:concat(STRING, repeated(0) STRING) -> STRING)
+    |     +-Cast(PROTO<googlesql_test.EmptyMessage> -> STRING)
+    |       +-MakeProto(type=PROTO<googlesql_test.EmptyMessage>)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+[language_features=NONE,+CONCAT_MIXED_TYPES]
+select concat(CAST(1 as googlesql_test.TestEnum))
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(GoogleSQL:concat(STRING, repeated(0) STRING) -> STRING)
+    |     +-Literal(type=STRING, value="TESTENUM1", has_explicit_type=TRUE)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+[language_features=NONE,+CONCAT_MIXED_TYPES,+SAFE_FUNCTION_CALL]
+select safe.concat(x) from unnest([1.0, -3.2]) x
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#2 AS `$col1` [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#2]
+    +-expr_list=
+    | +-$col1#2 :=
+    |   +-FunctionCall({SAFE_ERROR_MODE} GoogleSQL:concat(STRING, repeated(0) STRING) -> STRING)
+    |     +-Cast(DOUBLE -> STRING)
+    |       +-ColumnRef(type=DOUBLE, column=$array.x#1)
+    +-input_scan=
+      +-ArrayScan
+        +-column_list=[$array.x#1]
+        +-array_expr_list=
+        | +-Literal(type=ARRAY<DOUBLE>, value=[1, -3.2])
+        +-element_column_list=[$array.x#1]
+==
+
+[language_features=NONE,{{+CONCAT_MIXED_TYPES,|}}+TEMPLATE_FUNCTIONS]
+CREATE FUNCTION MY_CONCAT(a ANY TYPE) AS (CONCAT(a, a));
+--
+CreateFunctionStmt(name_path=MY_CONCAT, return_type=STRUCT<>, argument_name_list=[a], signature=(ANY TYPE a) -> ANY TYPE, language="SQL", code="CONCAT(a, a)")
+==
+
+[language_features=NONE,{{|+CONCAT_MIXED_TYPES}}]
+SELECT 'abc' || 2
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: No matching signature for operator ||
+  Argument types: STRING, INT64
+  Signature: STRING || ([STRING, ...])
+    Argument 2: Unable to coerce type INT64 to expected type STRING
+  Signature: BYTES || ([BYTES, ...])
+    Argument 1: Unable to coerce type STRING to expected type BYTES
+  Signature: (ARRAY<T1>) || ([ARRAY<T1>, ...])
+    Argument 1: expected array type but found STRING [at 1:8]
+SELECT 'abc' || 2
+       ^
+--
+ALTERNATION GROUP: +CONCAT_MIXED_TYPES
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(GoogleSQL:concat(STRING, repeated(1) STRING) -> STRING)
+    |     +-Literal(type=STRING, value="abc")
+    |     +-Literal(type=STRING, value="2")
+    +-input_scan=
+      +-SingleRowScan
+==
+
+[language_features=NONE,{{|+CONCAT_MIXED_TYPES}}]
+SELECT ARRAY<INT32>[1] || 2
+--
+ERROR: No matching signature for operator ||
+  Argument types: ARRAY<INT32>, INT64
+  Signature: STRING || ([STRING, ...])
+    Argument 1: Unable to coerce type ARRAY<INT32> to expected type STRING
+  Signature: BYTES || ([BYTES, ...])
+    Argument 1: Unable to coerce type ARRAY<INT32> to expected type BYTES
+  Signature: (ARRAY<T1>) || ([ARRAY<T1>, ...])
+    Argument 2: expected array type but found INT64 [at 1:8]
+SELECT ARRAY<INT32>[1] || 2
+       ^
+==
+
+[language_features=NONE,{{|+CONCAT_MIXED_TYPES}}]
+SELECT ["abc"] || [2]
+--
+ERROR: No matching signature for operator ||
+  Argument types: ARRAY<STRING>, ARRAY<INT64>
+  Signature: STRING || ([STRING, ...])
+    Argument 1: Unable to coerce type ARRAY<STRING> to expected type STRING
+  Signature: BYTES || ([BYTES, ...])
+    Argument 1: Unable to coerce type ARRAY<STRING> to expected type BYTES
+  Signature: (ARRAY<T1>) || ([ARRAY<T1>, ...])
+    Unable to find common supertype for templated argument <T1>
+      Input types for <T1>: {INT64, STRING} [at 1:8]
+SELECT ["abc"] || [2]
+       ^

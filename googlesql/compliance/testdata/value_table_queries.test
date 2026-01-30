@@ -1,0 +1,386 @@
+# See specification at (broken link)
+[load_proto_files=googlesql/testdata/test_schema.proto]
+[load_proto_names=googlesql_test.KitchenSinkPB,googlesql_test.TestExtraPB]
+
+[prepare_database]
+CREATE TABLE TestTable AS
+SELECT 1 foo, "abc" bar,
+  cast("int64_key_1: 100, int64_key_2: 200" AS googlesql_test.KitchenSinkPB) pb
+UNION ALL
+SELECT 2 foo, "def" bar,
+  cast("int64_key_1: 300, int64_key_2: 400 double_val: 3.14"
+       AS googlesql_test.KitchenSinkPB) pb
+--
+ARRAY<STRUCT<
+        foo INT64,
+        bar STRING,
+        pb PROTO<googlesql_test.KitchenSinkPB>
+      >>
+[{1,
+  "abc",
+  {
+    int64_key_1: 100
+    int64_key_2: 200
+  }},
+ {2,
+  "def",
+  {
+    int64_key_1: 300
+    int64_key_2: 400
+    double_val: 3.14
+  }}]
+
+==
+[prepare_database]
+CREATE TABLE KitchenSinkValueTable AS
+SELECT AS `googlesql_test.KitchenSinkPB` 55 int64_key_1, 66 int64_key_2
+UNION ALL
+SELECT AS `googlesql_test.KitchenSinkPB` 77 int64_key_1, 88 int64_key_2,
+  true bool_val
+--
+ARRAY<PROTO<googlesql_test.KitchenSinkPB>>[
+  {
+    int64_key_1: 55
+    int64_key_2: 66
+  },
+  {
+    int64_key_1: 77
+    int64_key_2: 88
+    bool_val: true
+  }
+]
+
+==
+# Another proto value table which doesn't contain fields with types having
+# is_wrapper and is_struct annotations, so we can apply SELECT * on those.
+[prepare_database]
+CREATE TABLE TestExtraPBValueTable AS
+SELECT AS `googlesql_test.TestExtraPB` 55 int32_val1
+UNION ALL
+SELECT AS `googlesql_test.TestExtraPB` 77 int32_val1,
+  ["77one", "77two"] str_value
+--
+ARRAY<PROTO<googlesql_test.TestExtraPB>>[
+  {int32_val1: 55},
+  {
+    int32_val1: 77
+    str_value: "77one"
+    str_value: "77two"
+  }
+]
+
+==
+[prepare_database]
+CREATE TABLE StructValueTable AS
+SELECT AS STRUCT 55 foo, "fifty five" bar
+UNION ALL
+SELECT AS STRUCT 77 foo, "seventy seven" bar
+--
+ARRAY<STRUCT<foo INT64, bar STRING>>[
+  {55, "fifty five"},
+  {77, "seventy seven"}
+]
+
+# Queries returning value tables.
+==
+[name=value_table_proto_single]
+SELECT AS `googlesql_test.KitchenSinkPB` 5 int64_key_1, 6 int64_key_2;
+--
+ARRAY<PROTO<googlesql_test.KitchenSinkPB>>[
+  {
+    int64_key_1: 5
+    int64_key_2: 6
+  }
+]
+==
+[name=value_table_proto_union_all]
+SELECT AS `googlesql_test.KitchenSinkPB` 5 int64_key_1, 6 int64_key_2
+UNION ALL
+SELECT AS `googlesql_test.KitchenSinkPB` 7 int64_key_1, 8 int64_key_2
+--
+ARRAY<PROTO<googlesql_test.KitchenSinkPB>>[unknown order:
+  {
+    int64_key_1: 5
+    int64_key_2: 6
+  },
+  {
+    int64_key_1: 7
+    int64_key_2: 8
+  }
+]
+==
+[name=value_table_proto_from]
+SELECT AS `googlesql_test.KitchenSinkPB`
+  foo int64_key_1, foo int64_key_2
+FROM TestTable
+--
+ARRAY<PROTO<googlesql_test.KitchenSinkPB>>[unknown order:
+  {
+    int64_key_1: 2
+    int64_key_2: 2
+  },
+  {
+    int64_key_1: 1
+    int64_key_2: 1
+  }
+]
+==
+[name=value_table_struct_single_row]
+SELECT AS STRUCT 1 foo, "hey" bar
+--
+ARRAY<STRUCT<foo INT64, bar STRING>>[{1, "hey"}]
+==
+[name=value_table_struct_single_row_column]
+SELECT AS STRUCT 1 foo
+--
+ARRAY<STRUCT<foo INT64>>[{1}]
+==
+[name=value_table_struct_union_all]
+SELECT AS STRUCT 1 foo, "hey" bar UNION ALL
+SELECT AS STRUCT 2 foo, "there" bar UNION ALL
+SELECT AS STRUCT 2 foo, "there" bar
+
+--
+ARRAY<STRUCT<foo INT64, bar STRING>>[unknown order:
+  {1, "hey"},
+  {2, "there"},
+  {2, "there"}
+]
+==
+[name=value_table_struct_union]
+[required_features=GROUP_BY_STRUCT]
+SELECT AS STRUCT 1 foo, "hey" bar UNION DISTINCT
+SELECT AS STRUCT 2 foo, "there" bar UNION DISTINCT
+SELECT AS STRUCT 1 foo, "hey" bar
+--
+ARRAY<STRUCT<foo INT64, bar STRING>>[unknown order:{1, "hey"}, {2, "there"}]
+==
+[name=value_table_struct_from]
+SELECT AS STRUCT foo, bar
+FROM TestTable
+--
+ARRAY<STRUCT<foo INT64, bar STRING>>[unknown order:{2, "def"}, {1, "abc"}]
+==
+[name=value_table_distinct_proto_from]
+SELECT DISTINCT AS `googlesql_test.KitchenSinkPB`
+  foo int64_key_1, foo int64_key_2
+FROM TestTable
+--
+ARRAY<PROTO<googlesql_test.KitchenSinkPB>>[unknown order:
+  {
+    int64_key_1: 2
+    int64_key_2: 2
+  },
+  {
+    int64_key_1: 1
+    int64_key_2: 1
+  }
+]
+==
+[name=value_table_distinct_struct_from]
+SELECT DISTINCT AS STRUCT foo, bar
+FROM TestTable
+--
+ARRAY<STRUCT<foo INT64, bar STRING>>[unknown order:{2, "def"}, {1, "abc"}]
+==
+[name=value_table_proto_union_all_table]
+SELECT AS `googlesql_test.KitchenSinkPB` 5 int64_key_1, 6 int64_key_2
+UNION ALL
+SELECT pb FROM TestTable
+ORDER BY int64_key_1
+--
+ARRAY<PROTO<googlesql_test.KitchenSinkPB>>[known order:
+  {
+    int64_key_1: 5
+    int64_key_2: 6
+  },
+  {
+    int64_key_1: 100
+    int64_key_2: 200
+  },
+  {
+    int64_key_1: 300
+    int64_key_2: 400
+    double_val: 3.14
+  }
+]
+
+# Queries using value tables as inputs.
+==
+[name=value_table_source_proto_star]
+SELECT * FROM TestExtraPBValueTable
+--
+ARRAY<STRUCT<int32_val1 INT32, int32_val2 INT32, str_value ARRAY<>>>[unknown order:
+  {
+    77,
+    0,
+    ARRAY<STRING>[known order:"77one", "77two"]
+  },
+  {55, 0, ARRAY<STRING>[]}
+]
+==
+[name=value_table_source_proto_self]
+SELECT p FROM TestExtraPBValueTable p
+--
+ARRAY<STRUCT<p PROTO<googlesql_test.TestExtraPB>>>[unknown order:
+  {{int32_val1: 55}},
+  {{
+     int32_val1: 77
+     str_value: "77one"
+     str_value: "77two"
+   }}
+]
+==
+[name=value_table_source_proto_filter]
+SELECT AS googlesql_test.TestExtraPB p.* FROM TestExtraPBValueTable p
+WHERE p.int32_val1 = 77
+--
+ARRAY<PROTO<googlesql_test.TestExtraPB>>[
+  {
+    int32_val1: 77
+    int32_val2: 0
+    str_value: "77one"
+    str_value: "77two"
+  }
+]
+==
+[name=value_table_source_proto_explicit_filter]
+SELECT AS googlesql_test.KitchenSinkPB int64_key_1, int64_key_2, bool_val
+FROM KitchenSinkValueTable
+WHERE int64_key_1 = 77
+--
+ARRAY<PROTO<googlesql_test.KitchenSinkPB>>[
+  {
+    int64_key_1: 77
+    int64_key_2: 88
+    bool_val: true
+  }
+]
+==
+# Select and filter objects from a value table, outputing a value table.
+[name=value_table_in_out_filter_proto]
+select AS VALUE v
+FROM KitchenSinkValueTable v
+where int64_key_1=77
+--
+ARRAY<PROTO<googlesql_test.KitchenSinkPB>>[
+  {
+    int64_key_1: 77
+    int64_key_2: 88
+    bool_val: true
+  }
+]
+==
+[name=value_table_source_struct_star]
+SELECT * FROM StructValueTable
+--
+ARRAY<STRUCT<foo INT64, bar STRING>>[unknown order:
+  {77, "seventy seven"},
+  {55, "fifty five"}
+]
+==
+[name=value_table_source_struct_self]
+SELECT s FROM StructValueTable s
+--
+ARRAY<STRUCT<s STRUCT<foo INT64, bar STRING>>>[unknown order:
+  {{55, "fifty five"}},
+  {{77, "seventy seven"}}
+]
+==
+[name=value_table_source_struct_filter]
+SELECT AS STRUCT s.* FROM StructValueTable s
+WHERE s.foo = 77
+--
+ARRAY<STRUCT<foo INT64, bar STRING>>[{77, "seventy seven"}]
+
+# Queries in which value tables are created as part of WITH statement.
+==
+[name=value_table_with_proto_star]
+WITH
+  WithProtoValueTable AS
+    (SELECT AS `googlesql_test.TestExtraPB` 55 int32_val1
+     UNION ALL
+     SELECT AS `googlesql_test.TestExtraPB` 77 int32_val1)
+SELECT * FROM WithProtoValueTable
+--
+ARRAY<STRUCT<int32_val1 INT32, int32_val2 INT32, str_value ARRAY<>>>[unknown order:
+  {77, 0, ARRAY<STRING>[]},
+  {55, 0, ARRAY<STRING>[]}
+]
+==
+[name=value_table_with_proto_filter]
+WITH
+  WithProtoValueTable AS
+    (SELECT AS `googlesql_test.TestExtraPB` 55 int32_val1
+     UNION ALL
+     SELECT AS `googlesql_test.TestExtraPB` 77 int32_val1)
+SELECT AS googlesql_test.TestExtraPB p.* FROM WithProtoValueTable p
+--
+ARRAY<PROTO<googlesql_test.TestExtraPB>>[unknown order:
+  {
+    int32_val1: 55
+    int32_val2: 0
+  },
+  {
+    int32_val1: 77
+    int32_val2: 0
+  }
+]
+==
+[name=value_table_with_struct_star]
+WITH
+  WithStructValueTable AS
+    (SELECT AS STRUCT 55 foo, "fifty five" bar
+     UNION ALL
+     SELECT AS STRUCT 77 foo, "seventy seven" bar)
+SELECT * FROM WithStructValueTable
+--
+ARRAY<STRUCT<foo INT64, bar STRING>>[unknown order:
+  {77, "seventy seven"},
+  {55, "fifty five"}
+]
+==
+[name=value_table_with_struct_star_filter]
+WITH
+  WithStructValueTable AS
+    (SELECT AS STRUCT 55 foo, "fifty five" bar
+     UNION ALL
+     SELECT AS STRUCT 77 foo, "seventy seven" bar)
+SELECT AS STRUCT * FROM WithStructValueTable
+WHERE foo = 77
+--
+ARRAY<STRUCT<foo INT64, bar STRING>>[{77, "seventy seven"}]
+==
+[name=output_scalar_value_table_1]
+select as value 5
+--
+ARRAY<INT64>[5]
+==
+[name=output_scalar_value_table_2]
+select as value t.str
+from (
+  select 'abc' str
+  union all
+  select 'def' str
+) t
+--
+ARRAY<STRING>[unknown order:"abc", "def"]
+==
+# TODO Remove exclude_in_sql_builder_pipe_sql_equivalence_tests once the bug is fixed.
+[name=value_table_scalar_distinct]
+[exclude_in_sql_builder_pipe_sql_equivalence_tests]
+select distinct as value x
+from (select as value 1
+      union all
+      select as value 2
+      union all
+      select as value 1) x
+--
+ARRAY<INT64>[unknown order:1, 2]
+==
+# This is allowed in googlesql but the compliance framework cannot express it
+# because it wants to represent tables with arrays.
+# [name=value_table_of_arrays]
+# select as value [1,2,3]
+# --
+# ERROR: generic::invalid_argument: Array of array types are not supported

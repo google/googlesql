@@ -1,0 +1,1945 @@
+[default language_features=NONE,+ANALYTIC_FUNCTIONS,+GROUPING_BUILTIN,+AGGREGATE_FILTERING,+MULTILEVEL_AGGREGATION,+QUALIFY,+GROUP_BY_STRUCT,+ORDER_BY_IN_AGGREGATE,+LIMIT_IN_AGGREGATE]
+[default show_sqlbuilder_output]
+
+# Simple WHERE filtering works.
+SELECT
+  SUM(int64 WHERE bool IS NOT NULL){{ OVER ()|}}
+FROM SimpleTypes;
+--
+
+ALTERNATION GROUP:  OVER ()
+--
+QueryStmt
++-output_column_list=
+| +-$analytic.$analytic1#21 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$analytic.$analytic1#21]
+    +-input_scan=
+      +-AnalyticScan
+        +-column_list=[SimpleTypes.int64#2, SimpleTypes.bool#7, $analytic.$analytic1#21]
+        +-input_scan=
+        | +-TableScan(column_list=SimpleTypes.[int64#2, bool#7], table=SimpleTypes, column_index_list=[1, 6])
+        +-function_group_list=
+          +-AnalyticFunctionGroup
+            +-analytic_function_list=
+              +-$analytic1#21 :=
+                +-AnalyticFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+                  +-ColumnRef(type=INT64, column=SimpleTypes.int64#2)
+                  +-where_expr=
+                  | +-FunctionCall(GoogleSQL:$not(BOOL) -> BOOL)
+                  |   +-FunctionCall(GoogleSQL:$is_null(BOOL) -> BOOL)
+                  |     +-ColumnRef(type=BOOL, column=SimpleTypes.bool#7)
+                  +-window_frame=
+                    +-WindowFrame(frame_unit=ROWS)
+                      +-start_expr=
+                      | +-WindowFrameExpr(boundary_type=UNBOUNDED PRECEDING)
+                      +-end_expr=
+                        +-WindowFrameExpr(boundary_type=UNBOUNDED FOLLOWING)
+
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+SELECT
+  analyticscan_5.a_4 AS a_4
+FROM
+  (
+    SELECT
+      simpletypes_3.a_1 AS a_1,
+      simpletypes_3.a_2 AS a_2,
+      SUM(simpletypes_3.a_1
+        WHERE
+          NOT((simpletypes_3.a_2) IS NULL)) OVER (ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) AS a_4
+    FROM
+      (
+        SELECT
+          SimpleTypes.int64 AS a_1,
+          SimpleTypes.bool AS a_2
+        FROM
+          SimpleTypes
+      ) AS simpletypes_3
+  ) AS analyticscan_5;
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+FROM
+  SimpleTypes
+|> SELECT
+     SimpleTypes.int64 AS a_1,
+     SimpleTypes.bool AS a_2
+|> AS simpletypes_3
+|> SELECT
+     simpletypes_3.a_1 AS a_1,
+     simpletypes_3.a_2 AS a_2,
+     SUM(simpletypes_3.a_1
+       WHERE
+         NOT((simpletypes_3.a_2) IS NULL)) OVER (ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) AS a_4
+|> AS analyticscan_5
+|> SELECT
+     analyticscan_5.a_4 AS a_4;
+--
+ALTERNATION GROUP: <empty>
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#20 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#20]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$aggregate.$agg1#20]
+        +-input_scan=
+        | +-TableScan(column_list=SimpleTypes.[int64#2, bool#7], table=SimpleTypes, column_index_list=[1, 6])
+        +-aggregate_list=
+          +-$agg1#20 :=
+            +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+              +-ColumnRef(type=INT64, column=SimpleTypes.int64#2)
+              +-where_expr=
+                +-FunctionCall(GoogleSQL:$not(BOOL) -> BOOL)
+                  +-FunctionCall(GoogleSQL:$is_null(BOOL) -> BOOL)
+                    +-ColumnRef(type=BOOL, column=SimpleTypes.bool#7)
+
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+SELECT
+  SUM(simpletypes_3.a_1
+    WHERE
+      NOT((simpletypes_3.a_2) IS NULL)) AS a_4
+FROM
+  (
+    SELECT
+      SimpleTypes.int64 AS a_1,
+      SimpleTypes.bool AS a_2
+    FROM
+      SimpleTypes
+  ) AS simpletypes_3;
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+FROM
+  SimpleTypes
+|> SELECT
+     SimpleTypes.int64 AS a_1,
+     SimpleTypes.bool AS a_2
+|> AS simpletypes_3
+|> AGGREGATE
+     SUM(simpletypes_3.a_1
+       WHERE
+         NOT((simpletypes_3.a_2) IS NULL)) AS a_4;
+==
+
+# WHERE filtering works with analytic functions with various arguments.
+# Test to ensure SQLBuilder prints WHERE modifier correctly.
+SELECT
+  COUNT({{DISTINCT int64|ROUND(int64, 0)|*}} WHERE bool) OVER ()
+FROM SimpleTypes
+{{GROUP BY int64, bool|}};
+--
+
+ALTERNATION GROUP: DISTINCT int64,GROUP BY int64, bool
+--
+QueryStmt
++-output_column_list=
+| +-$analytic.$analytic1#23 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$analytic.$analytic1#23]
+    +-input_scan=
+      +-AnalyticScan
+        +-column_list=[$groupby.int64#21, $groupby.bool#22, $analytic.$analytic1#23]
+        +-input_scan=
+        | +-AggregateScan
+        |   +-column_list=$groupby.[int64#21, bool#22]
+        |   +-input_scan=
+        |   | +-TableScan(column_list=SimpleTypes.[int64#2, bool#7], table=SimpleTypes, column_index_list=[1, 6])
+        |   +-group_by_list=
+        |     +-int64#21 := ColumnRef(type=INT64, column=SimpleTypes.int64#2)
+        |     +-bool#22 := ColumnRef(type=BOOL, column=SimpleTypes.bool#7)
+        +-function_group_list=
+          +-AnalyticFunctionGroup
+            +-analytic_function_list=
+              +-$analytic1#23 :=
+                +-AnalyticFunctionCall(GoogleSQL:count(INT64) -> INT64)
+                  +-ColumnRef(type=INT64, column=$groupby.int64#21)
+                  +-distinct=TRUE
+                  +-where_expr=
+                  | +-ColumnRef(type=BOOL, column=$groupby.bool#22)
+                  +-window_frame=
+                    +-WindowFrame(frame_unit=ROWS)
+                      +-start_expr=
+                      | +-WindowFrameExpr(boundary_type=UNBOUNDED PRECEDING)
+                      +-end_expr=
+                        +-WindowFrameExpr(boundary_type=UNBOUNDED FOLLOWING)
+
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+SELECT
+  analyticscan_8.a_7 AS a_7
+FROM
+  (
+    SELECT
+      aggregatescan_6.a_4 AS a_4,
+      aggregatescan_6.a_5 AS a_5,
+      COUNT(DISTINCT aggregatescan_6.a_4
+        WHERE
+          aggregatescan_6.a_5) OVER () AS a_7
+    FROM
+      (
+        SELECT
+          simpletypes_3.a_1 AS a_4,
+          simpletypes_3.a_2 AS a_5
+        FROM
+          (
+            SELECT
+              SimpleTypes.int64 AS a_1,
+              SimpleTypes.bool AS a_2
+            FROM
+              SimpleTypes
+          ) AS simpletypes_3
+        GROUP BY 1, 2
+      ) AS aggregatescan_6
+  ) AS analyticscan_8;
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+FROM
+  SimpleTypes
+|> SELECT
+     SimpleTypes.int64 AS a_1,
+     SimpleTypes.bool AS a_2
+|> AS simpletypes_3
+|> EXTEND
+     simpletypes_3.a_1 AS a_4,
+     simpletypes_3.a_2 AS a_5
+|> AGGREGATE
+   GROUP BY a_4, a_5
+|> AS aggregatescan_6
+|> SELECT
+     aggregatescan_6.a_4 AS a_4,
+     aggregatescan_6.a_5 AS a_5,
+     COUNT(DISTINCT aggregatescan_6.a_4
+       WHERE
+         aggregatescan_6.a_5) OVER () AS a_7
+|> AS analyticscan_8
+|> SELECT
+     analyticscan_8.a_7 AS a_7;
+--
+ALTERNATION GROUP: DISTINCT int64,
+--
+QueryStmt
++-output_column_list=
+| +-$analytic.$analytic1#21 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$analytic.$analytic1#21]
+    +-input_scan=
+      +-AnalyticScan
+        +-column_list=[SimpleTypes.int64#2, SimpleTypes.bool#7, $analytic.$analytic1#21]
+        +-input_scan=
+        | +-TableScan(column_list=SimpleTypes.[int64#2, bool#7], table=SimpleTypes, column_index_list=[1, 6])
+        +-function_group_list=
+          +-AnalyticFunctionGroup
+            +-analytic_function_list=
+              +-$analytic1#21 :=
+                +-AnalyticFunctionCall(GoogleSQL:count(INT64) -> INT64)
+                  +-ColumnRef(type=INT64, column=SimpleTypes.int64#2)
+                  +-distinct=TRUE
+                  +-where_expr=
+                  | +-ColumnRef(type=BOOL, column=SimpleTypes.bool#7)
+                  +-window_frame=
+                    +-WindowFrame(frame_unit=ROWS)
+                      +-start_expr=
+                      | +-WindowFrameExpr(boundary_type=UNBOUNDED PRECEDING)
+                      +-end_expr=
+                        +-WindowFrameExpr(boundary_type=UNBOUNDED FOLLOWING)
+
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+SELECT
+  analyticscan_5.a_4 AS a_4
+FROM
+  (
+    SELECT
+      simpletypes_3.a_1 AS a_1,
+      simpletypes_3.a_2 AS a_2,
+      COUNT(DISTINCT simpletypes_3.a_1
+        WHERE
+          simpletypes_3.a_2) OVER () AS a_4
+    FROM
+      (
+        SELECT
+          SimpleTypes.int64 AS a_1,
+          SimpleTypes.bool AS a_2
+        FROM
+          SimpleTypes
+      ) AS simpletypes_3
+  ) AS analyticscan_5;
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+FROM
+  SimpleTypes
+|> SELECT
+     SimpleTypes.int64 AS a_1,
+     SimpleTypes.bool AS a_2
+|> AS simpletypes_3
+|> SELECT
+     simpletypes_3.a_1 AS a_1,
+     simpletypes_3.a_2 AS a_2,
+     COUNT(DISTINCT simpletypes_3.a_1
+       WHERE
+         simpletypes_3.a_2) OVER () AS a_4
+|> AS analyticscan_5
+|> SELECT
+     analyticscan_5.a_4 AS a_4;
+--
+ALTERNATION GROUP: ROUND(int64, 0),GROUP BY int64, bool
+--
+QueryStmt
++-output_column_list=
+| +-$analytic.$analytic1#23 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$analytic.$analytic1#23]
+    +-input_scan=
+      +-AnalyticScan
+        +-column_list=[$groupby.int64#21, $groupby.bool#22, $analytic.$analytic1#23]
+        +-input_scan=
+        | +-AggregateScan
+        |   +-column_list=$groupby.[int64#21, bool#22]
+        |   +-input_scan=
+        |   | +-TableScan(column_list=SimpleTypes.[int64#2, bool#7], table=SimpleTypes, column_index_list=[1, 6])
+        |   +-group_by_list=
+        |     +-int64#21 := ColumnRef(type=INT64, column=SimpleTypes.int64#2)
+        |     +-bool#22 := ColumnRef(type=BOOL, column=SimpleTypes.bool#7)
+        +-function_group_list=
+          +-AnalyticFunctionGroup
+            +-analytic_function_list=
+              +-$analytic1#23 :=
+                +-AnalyticFunctionCall(GoogleSQL:count(DOUBLE) -> INT64)
+                  +-FunctionCall(GoogleSQL:round(DOUBLE, INT64) -> DOUBLE)
+                  | +-Cast(INT64 -> DOUBLE)
+                  | | +-ColumnRef(type=INT64, column=$groupby.int64#21)
+                  | +-Literal(type=INT64, value=0)
+                  +-where_expr=
+                  | +-ColumnRef(type=BOOL, column=$groupby.bool#22)
+                  +-window_frame=
+                    +-WindowFrame(frame_unit=ROWS)
+                      +-start_expr=
+                      | +-WindowFrameExpr(boundary_type=UNBOUNDED PRECEDING)
+                      +-end_expr=
+                        +-WindowFrameExpr(boundary_type=UNBOUNDED FOLLOWING)
+
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+SELECT
+  analyticscan_8.a_7 AS a_7
+FROM
+  (
+    SELECT
+      aggregatescan_6.a_4 AS a_4,
+      aggregatescan_6.a_5 AS a_5,
+      COUNT(ROUND(CAST(aggregatescan_6.a_4 AS DOUBLE), 0)
+        WHERE
+          aggregatescan_6.a_5) OVER (ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) AS a_7
+    FROM
+      (
+        SELECT
+          simpletypes_3.a_1 AS a_4,
+          simpletypes_3.a_2 AS a_5
+        FROM
+          (
+            SELECT
+              SimpleTypes.int64 AS a_1,
+              SimpleTypes.bool AS a_2
+            FROM
+              SimpleTypes
+          ) AS simpletypes_3
+        GROUP BY 1, 2
+      ) AS aggregatescan_6
+  ) AS analyticscan_8;
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+FROM
+  SimpleTypes
+|> SELECT
+     SimpleTypes.int64 AS a_1,
+     SimpleTypes.bool AS a_2
+|> AS simpletypes_3
+|> EXTEND
+     simpletypes_3.a_1 AS a_4,
+     simpletypes_3.a_2 AS a_5
+|> AGGREGATE
+   GROUP BY a_4, a_5
+|> AS aggregatescan_6
+|> SELECT
+     aggregatescan_6.a_4 AS a_4,
+     aggregatescan_6.a_5 AS a_5,
+     COUNT(ROUND(CAST(aggregatescan_6.a_4 AS DOUBLE), 0)
+       WHERE
+         aggregatescan_6.a_5) OVER (ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) AS a_7
+|> AS analyticscan_8
+|> SELECT
+     analyticscan_8.a_7 AS a_7;
+--
+ALTERNATION GROUP: ROUND(int64, 0),
+--
+QueryStmt
++-output_column_list=
+| +-$analytic.$analytic1#21 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$analytic.$analytic1#21]
+    +-input_scan=
+      +-AnalyticScan
+        +-column_list=[SimpleTypes.int64#2, SimpleTypes.bool#7, $analytic.$analytic1#21]
+        +-input_scan=
+        | +-TableScan(column_list=SimpleTypes.[int64#2, bool#7], table=SimpleTypes, column_index_list=[1, 6])
+        +-function_group_list=
+          +-AnalyticFunctionGroup
+            +-analytic_function_list=
+              +-$analytic1#21 :=
+                +-AnalyticFunctionCall(GoogleSQL:count(DOUBLE) -> INT64)
+                  +-FunctionCall(GoogleSQL:round(DOUBLE, INT64) -> DOUBLE)
+                  | +-Cast(INT64 -> DOUBLE)
+                  | | +-ColumnRef(type=INT64, column=SimpleTypes.int64#2)
+                  | +-Literal(type=INT64, value=0)
+                  +-where_expr=
+                  | +-ColumnRef(type=BOOL, column=SimpleTypes.bool#7)
+                  +-window_frame=
+                    +-WindowFrame(frame_unit=ROWS)
+                      +-start_expr=
+                      | +-WindowFrameExpr(boundary_type=UNBOUNDED PRECEDING)
+                      +-end_expr=
+                        +-WindowFrameExpr(boundary_type=UNBOUNDED FOLLOWING)
+
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+SELECT
+  analyticscan_5.a_4 AS a_4
+FROM
+  (
+    SELECT
+      simpletypes_3.a_1 AS a_1,
+      simpletypes_3.a_2 AS a_2,
+      COUNT(ROUND(CAST(simpletypes_3.a_1 AS DOUBLE), 0)
+        WHERE
+          simpletypes_3.a_2) OVER (ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) AS a_4
+    FROM
+      (
+        SELECT
+          SimpleTypes.int64 AS a_1,
+          SimpleTypes.bool AS a_2
+        FROM
+          SimpleTypes
+      ) AS simpletypes_3
+  ) AS analyticscan_5;
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+FROM
+  SimpleTypes
+|> SELECT
+     SimpleTypes.int64 AS a_1,
+     SimpleTypes.bool AS a_2
+|> AS simpletypes_3
+|> SELECT
+     simpletypes_3.a_1 AS a_1,
+     simpletypes_3.a_2 AS a_2,
+     COUNT(ROUND(CAST(simpletypes_3.a_1 AS DOUBLE), 0)
+       WHERE
+         simpletypes_3.a_2) OVER (ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) AS a_4
+|> AS analyticscan_5
+|> SELECT
+     analyticscan_5.a_4 AS a_4;
+--
+ALTERNATION GROUP: *,GROUP BY int64, bool
+--
+QueryStmt
++-output_column_list=
+| +-$analytic.$analytic1#23 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$analytic.$analytic1#23]
+    +-input_scan=
+      +-AnalyticScan
+        +-column_list=[$groupby.bool#22, $analytic.$analytic1#23]
+        +-input_scan=
+        | +-AggregateScan
+        |   +-column_list=[$groupby.bool#22]
+        |   +-input_scan=
+        |   | +-TableScan(column_list=SimpleTypes.[int64#2, bool#7], table=SimpleTypes, column_index_list=[1, 6])
+        |   +-group_by_list=
+        |     +-int64#21 := ColumnRef(type=INT64, column=SimpleTypes.int64#2)
+        |     +-bool#22 := ColumnRef(type=BOOL, column=SimpleTypes.bool#7)
+        +-function_group_list=
+          +-AnalyticFunctionGroup
+            +-analytic_function_list=
+              +-$analytic1#23 :=
+                +-AnalyticFunctionCall(GoogleSQL:$count_star() -> INT64)
+                  +-where_expr=
+                  | +-ColumnRef(type=BOOL, column=$groupby.bool#22)
+                  +-window_frame=
+                    +-WindowFrame(frame_unit=ROWS)
+                      +-start_expr=
+                      | +-WindowFrameExpr(boundary_type=UNBOUNDED PRECEDING)
+                      +-end_expr=
+                        +-WindowFrameExpr(boundary_type=UNBOUNDED FOLLOWING)
+
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+SELECT
+  analyticscan_7.a_6 AS a_6
+FROM
+  (
+    SELECT
+      aggregatescan_5.a_4 AS a_4,
+      COUNT(*
+        WHERE
+          aggregatescan_5.a_4) OVER (ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) AS a_6
+    FROM
+      (
+        SELECT
+          simpletypes_3.a_2 AS a_4
+        FROM
+          (
+            SELECT
+              SimpleTypes.int64 AS a_1,
+              SimpleTypes.bool AS a_2
+            FROM
+              SimpleTypes
+          ) AS simpletypes_3
+        GROUP BY simpletypes_3.a_1, 1
+      ) AS aggregatescan_5
+  ) AS analyticscan_7;
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+SELECT
+  simpletypes_3.a_2 AS a_4
+FROM
+  (
+    FROM
+      SimpleTypes
+    |> SELECT
+         SimpleTypes.int64 AS a_1,
+         SimpleTypes.bool AS a_2
+    |> AS simpletypes_3
+  )
+GROUP BY simpletypes_3.a_1, 1
+|> AS aggregatescan_5
+|> SELECT
+     aggregatescan_5.a_4 AS a_4,
+     COUNT(*
+       WHERE
+         aggregatescan_5.a_4) OVER (ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) AS a_6
+|> AS analyticscan_7
+|> SELECT
+     analyticscan_7.a_6 AS a_6;
+--
+ALTERNATION GROUP: *,
+--
+QueryStmt
++-output_column_list=
+| +-$analytic.$analytic1#21 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$analytic.$analytic1#21]
+    +-input_scan=
+      +-AnalyticScan
+        +-column_list=[SimpleTypes.bool#7, $analytic.$analytic1#21]
+        +-input_scan=
+        | +-TableScan(column_list=[SimpleTypes.bool#7], table=SimpleTypes, column_index_list=[6])
+        +-function_group_list=
+          +-AnalyticFunctionGroup
+            +-analytic_function_list=
+              +-$analytic1#21 :=
+                +-AnalyticFunctionCall(GoogleSQL:$count_star() -> INT64)
+                  +-where_expr=
+                  | +-ColumnRef(type=BOOL, column=SimpleTypes.bool#7)
+                  +-window_frame=
+                    +-WindowFrame(frame_unit=ROWS)
+                      +-start_expr=
+                      | +-WindowFrameExpr(boundary_type=UNBOUNDED PRECEDING)
+                      +-end_expr=
+                        +-WindowFrameExpr(boundary_type=UNBOUNDED FOLLOWING)
+
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+SELECT
+  analyticscan_4.a_3 AS a_3
+FROM
+  (
+    SELECT
+      simpletypes_2.a_1 AS a_1,
+      COUNT(*
+        WHERE
+          simpletypes_2.a_1) OVER (ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) AS a_3
+    FROM
+      (
+        SELECT
+          SimpleTypes.bool AS a_1
+        FROM
+          SimpleTypes
+      ) AS simpletypes_2
+  ) AS analyticscan_4;
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+FROM
+  SimpleTypes
+|> SELECT
+     SimpleTypes.bool AS a_1
+|> AS simpletypes_2
+|> SELECT
+     simpletypes_2.a_1 AS a_1,
+     COUNT(*
+       WHERE
+         simpletypes_2.a_1) OVER (ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) AS a_3
+|> AS analyticscan_4
+|> SELECT
+     analyticscan_4.a_3 AS a_3;
+==
+
+# WHERE filtering works with multi-level aggregation.
+SELECT
+  SUM(ANY_VALUE(int64) WHERE bool GROUP BY {{int32|bool}})
+FROM SimpleTypes;
+--
+
+ALTERNATION GROUP: int32
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#22 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#22]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$aggregate.$agg1#22]
+        +-input_scan=
+        | +-TableScan(column_list=SimpleTypes.[int32#1, int64#2, bool#7], table=SimpleTypes, column_index_list=[0, 1, 6])
+        +-aggregate_list=
+          +-$agg1#22 :=
+            +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+              +-ColumnRef(type=INT64, column=$aggregate.$agg1#21)
+              +-where_expr=
+              | +-ColumnRef(type=BOOL, column=SimpleTypes.bool#7)
+              +-group_by_list=
+              | +-$groupbymod#20 := ColumnRef(type=INT32, column=SimpleTypes.int32#1)
+              +-group_by_aggregate_list=
+                +-$agg1#21 :=
+                  +-AggregateFunctionCall(GoogleSQL:any_value(INT64) -> INT64)
+                    +-ColumnRef(type=INT64, column=SimpleTypes.int64#2)
+
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+SELECT
+  SUM(ANY_VALUE(simpletypes_4.a_2)
+    WHERE
+      simpletypes_4.a_3
+    GROUP BY simpletypes_4.a_1) AS a_5
+FROM
+  (
+    SELECT
+      SimpleTypes.int32 AS a_1,
+      SimpleTypes.int64 AS a_2,
+      SimpleTypes.bool AS a_3
+    FROM
+      SimpleTypes
+  ) AS simpletypes_4;
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+FROM
+  SimpleTypes
+|> SELECT
+     SimpleTypes.int32 AS a_1,
+     SimpleTypes.int64 AS a_2,
+     SimpleTypes.bool AS a_3
+|> AS simpletypes_4
+|> AGGREGATE
+     SUM(ANY_VALUE(simpletypes_4.a_2)
+       WHERE
+         simpletypes_4.a_3
+       GROUP BY simpletypes_4.a_1) AS a_5;
+--
+ALTERNATION GROUP: bool
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#22 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#22]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$aggregate.$agg1#22]
+        +-input_scan=
+        | +-TableScan(column_list=SimpleTypes.[int64#2, bool#7], table=SimpleTypes, column_index_list=[1, 6])
+        +-aggregate_list=
+          +-$agg1#22 :=
+            +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+              +-ColumnRef(type=INT64, column=$aggregate.$agg1#21)
+              +-where_expr=
+              | +-ColumnRef(type=BOOL, column=SimpleTypes.bool#7)
+              +-group_by_list=
+              | +-$groupbymod#20 := ColumnRef(type=BOOL, column=SimpleTypes.bool#7)
+              +-group_by_aggregate_list=
+                +-$agg1#21 :=
+                  +-AggregateFunctionCall(GoogleSQL:any_value(INT64) -> INT64)
+                    +-ColumnRef(type=INT64, column=SimpleTypes.int64#2)
+
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+SELECT
+  SUM(ANY_VALUE(simpletypes_3.a_1)
+    WHERE
+      simpletypes_3.a_2
+    GROUP BY simpletypes_3.a_2) AS a_4
+FROM
+  (
+    SELECT
+      SimpleTypes.int64 AS a_1,
+      SimpleTypes.bool AS a_2
+    FROM
+      SimpleTypes
+  ) AS simpletypes_3;
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+FROM
+  SimpleTypes
+|> SELECT
+     SimpleTypes.int64 AS a_1,
+     SimpleTypes.bool AS a_2
+|> AS simpletypes_3
+|> AGGREGATE
+     SUM(ANY_VALUE(simpletypes_3.a_1)
+       WHERE
+         simpletypes_3.a_2
+       GROUP BY simpletypes_3.a_2) AS a_4;
+==
+
+# WHERE filtering works with multiple nested aggregates.
+SELECT SUM(
+  AVG(
+    MAX(
+      ANY_VALUE(key)
+      WHERE key > 1
+      GROUP BY TestEnum)
+    WHERE key > 10
+    GROUP by AnotherTestEnum)
+  WHERE key > 100
+  GROUP by RowId)
+FROM EnumTable;
+--
+
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#15 AS `$col1` [DOUBLE]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#15]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$aggregate.$agg1#15]
+        +-input_scan=
+        | +-TableScan(column_list=EnumTable.[key#1, TestEnum#2, AnotherTestEnum#3, RowId#5], table=EnumTable, column_index_list=[0, 1, 2, 4])
+        +-aggregate_list=
+          +-$agg1#15 :=
+            +-AggregateFunctionCall(GoogleSQL:sum(DOUBLE) -> DOUBLE)
+              +-ColumnRef(type=DOUBLE, column=$aggregate.$agg1#14)
+              +-where_expr=
+              | +-FunctionCall(GoogleSQL:$greater(INT32, INT32) -> BOOL)
+              |   +-ColumnRef(type=INT32, column=EnumTable.key#1)
+              |   +-Literal(type=INT32, value=100)
+              +-group_by_list=
+              | +-$groupbymod#6 := ColumnRef(type=BYTES, column=EnumTable.RowId#5)
+              +-group_by_aggregate_list=
+                +-$agg1#14 :=
+                  +-AggregateFunctionCall(GoogleSQL:avg(INT64) -> DOUBLE)
+                    +-Cast(INT32 -> INT64)
+                    | +-ColumnRef(type=INT32, column=$aggregate.$agg1#13)
+                    +-where_expr=
+                    | +-FunctionCall(GoogleSQL:$greater(INT32, INT32) -> BOOL)
+                    |   +-ColumnRef(type=INT32, column=EnumTable.key#1)
+                    |   +-Literal(type=INT32, value=10)
+                    +-group_by_list=
+                    | +-$groupbymod#7 := ColumnRef(type=BYTES, column=EnumTable.RowId#5)
+                    | +-$groupbymod#8 := ColumnRef(type=ENUM<googlesql_test.AnotherTestEnum>, column=EnumTable.AnotherTestEnum#3)
+                    +-group_by_aggregate_list=
+                      +-$agg1#13 :=
+                        +-AggregateFunctionCall(GoogleSQL:max(INT32) -> INT32)
+                          +-ColumnRef(type=INT32, column=$aggregate.$agg1#12)
+                          +-where_expr=
+                          | +-FunctionCall(GoogleSQL:$greater(INT32, INT32) -> BOOL)
+                          |   +-ColumnRef(type=INT32, column=EnumTable.key#1)
+                          |   +-Literal(type=INT32, value=1)
+                          +-group_by_list=
+                          | +-$groupbymod#9 := ColumnRef(type=BYTES, column=EnumTable.RowId#5)
+                          | +-$groupbymod#10 := ColumnRef(type=ENUM<googlesql_test.AnotherTestEnum>, column=EnumTable.AnotherTestEnum#3)
+                          | +-$groupbymod#11 := ColumnRef(type=ENUM<googlesql_test.TestEnum>, column=EnumTable.TestEnum#2)
+                          +-group_by_aggregate_list=
+                            +-$agg1#12 :=
+                              +-AggregateFunctionCall(GoogleSQL:any_value(INT32) -> INT32)
+                                +-ColumnRef(type=INT32, column=EnumTable.key#1)
+
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+SELECT
+  SUM(AVG(CAST(MAX(ANY_VALUE(enumtable_5.a_1)
+        WHERE
+          (enumtable_5.a_1) > CAST(1 AS INT32)
+        GROUP BY enumtable_5.a_4, enumtable_5.a_3, enumtable_5.a_2) AS INT64)
+      WHERE
+        (enumtable_5.a_1) > CAST(10 AS INT32)
+      GROUP BY enumtable_5.a_4, enumtable_5.a_3)
+    WHERE
+      (enumtable_5.a_1) > CAST(100 AS INT32)
+    GROUP BY enumtable_5.a_4) AS a_6
+FROM
+  (
+    SELECT
+      EnumTable.key AS a_1,
+      EnumTable.TestEnum AS a_2,
+      EnumTable.AnotherTestEnum AS a_3,
+      EnumTable.RowId AS a_4
+    FROM
+      EnumTable
+  ) AS enumtable_5;
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+FROM
+  EnumTable
+|> SELECT
+     EnumTable.key AS a_1,
+     EnumTable.TestEnum AS a_2,
+     EnumTable.AnotherTestEnum AS a_3,
+     EnumTable.RowId AS a_4
+|> AS enumtable_5
+|> AGGREGATE
+     SUM(AVG(CAST(MAX(ANY_VALUE(enumtable_5.a_1)
+           WHERE
+             (enumtable_5.a_1) > CAST(1 AS INT32)
+           GROUP BY enumtable_5.a_4, enumtable_5.a_3, enumtable_5.a_2) AS INT64)
+         WHERE
+           (enumtable_5.a_1) > CAST(10 AS INT32)
+         GROUP BY enumtable_5.a_4, enumtable_5.a_3)
+       WHERE
+         (enumtable_5.a_1) > CAST(100 AS INT32)
+       GROUP BY enumtable_5.a_4) AS a_6;
+==
+
+# WHERE filtering works with nested fields. GROUP BY on parent field allows
+# filtering on child fields.
+SELECT
+  SUM(doubly_nested_struct.e + doubly_nested_struct.f.d.a
+      WHERE doubly_nested_struct.f.c = 1
+      GROUP BY doubly_nested_struct),
+  SUM(doubly_nested_struct.f.c + doubly_nested_struct.f.d.a
+      WHERE doubly_nested_struct.f.d.b LIKE '%filter_expr%'
+      GROUP BY doubly_nested_struct.f.c)
+FROM DoublyNestedStructTable
+GROUP BY doubly_nested_struct.f;
+--
+
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#6 AS `$col1` [INT64]
+| +-$aggregate.$agg2#9 AS `$col2` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=$aggregate.[$agg1#6, $agg2#9]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=$aggregate.[$agg1#6, $agg2#9]
+        +-input_scan=
+        | +-TableScan(column_list=[DoublyNestedStructTable.doubly_nested_struct#2], table=DoublyNestedStructTable, column_index_list=[1])
+        +-group_by_list=
+        | +-f#3 :=
+        |   +-GetStructField
+        |     +-type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>
+        |     +-expr=
+        |     | +-ColumnRef(type=STRUCT<e INT32, f STRUCT<c INT32, d STRUCT<a INT32, b STRING>>>, column=DoublyNestedStructTable.doubly_nested_struct#2)
+        |     +-field_idx=1
+        +-aggregate_list=
+          +-$agg1#6 :=
+          | +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+          |   +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+          |   | +-Cast(INT32 -> INT64)
+          |   | | +-GetStructField
+          |   | |   +-type=INT32
+          |   | |   +-expr=
+          |   | |   | +-ColumnRef(type=STRUCT<e INT32, f STRUCT<c INT32, d STRUCT<a INT32, b STRING>>>, column=$group_by_list.$groupbymod#5)
+          |   | |   +-field_idx=0
+          |   | +-Cast(INT32 -> INT64)
+          |   |   +-GetStructField
+          |   |     +-type=INT32
+          |   |     +-expr=
+          |   |     | +-GetStructField
+          |   |     |   +-type=STRUCT<a INT32, b STRING>
+          |   |     |   +-expr=
+          |   |     |   | +-GetStructField
+          |   |     |   |   +-type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>
+          |   |     |   |   +-expr=
+          |   |     |   |   | +-ColumnRef(type=STRUCT<e INT32, f STRUCT<c INT32, d STRUCT<a INT32, b STRING>>>, column=$group_by_list.$groupbymod#5)
+          |   |     |   |   +-field_idx=1
+          |   |     |   +-field_idx=1
+          |   |     +-field_idx=0
+          |   +-where_expr=
+          |   | +-FunctionCall(GoogleSQL:$equal(INT32, INT32) -> BOOL)
+          |   |   +-GetStructField
+          |   |   | +-type=INT32
+          |   |   | +-expr=
+          |   |   | | +-GetStructField
+          |   |   | |   +-type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>
+          |   |   | |   +-expr=
+          |   |   | |   | +-ColumnRef(type=STRUCT<e INT32, f STRUCT<c INT32, d STRUCT<a INT32, b STRING>>>, column=DoublyNestedStructTable.doubly_nested_struct#2)
+          |   |   | |   +-field_idx=1
+          |   |   | +-field_idx=0
+          |   |   +-Literal(type=INT32, value=1)
+          |   +-group_by_list=
+          |     +-$groupbymod#4 :=
+          |     | +-GetStructField
+          |     |   +-type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>
+          |     |   +-expr=
+          |     |   | +-ColumnRef(type=STRUCT<e INT32, f STRUCT<c INT32, d STRUCT<a INT32, b STRING>>>, column=DoublyNestedStructTable.doubly_nested_struct#2)
+          |     |   +-field_idx=1
+          |     +-$groupbymod#5 := ColumnRef(type=STRUCT<e INT32, f STRUCT<c INT32, d STRUCT<a INT32, b STRING>>>, column=DoublyNestedStructTable.doubly_nested_struct#2)
+          +-$agg2#9 :=
+            +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+              +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+              | +-Cast(INT32 -> INT64)
+              | | +-ColumnRef(type=INT32, column=$group_by_list.$groupbymod#8)
+              | +-Cast(INT32 -> INT64)
+              |   +-GetStructField
+              |     +-type=INT32
+              |     +-expr=
+              |     | +-GetStructField
+              |     |   +-type=STRUCT<a INT32, b STRING>
+              |     |   +-expr=
+              |     |   | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=$group_by_list.$groupbymod#7)
+              |     |   +-field_idx=1
+              |     +-field_idx=0
+              +-where_expr=
+              | +-FunctionCall(GoogleSQL:$like(STRING, STRING) -> BOOL)
+              |   +-GetStructField
+              |   | +-type=STRING
+              |   | +-expr=
+              |   | | +-GetStructField
+              |   | |   +-type=STRUCT<a INT32, b STRING>
+              |   | |   +-expr=
+              |   | |   | +-GetStructField
+              |   | |   |   +-type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>
+              |   | |   |   +-expr=
+              |   | |   |   | +-ColumnRef(type=STRUCT<e INT32, f STRUCT<c INT32, d STRUCT<a INT32, b STRING>>>, column=DoublyNestedStructTable.doubly_nested_struct#2)
+              |   | |   |   +-field_idx=1
+              |   | |   +-field_idx=1
+              |   | +-field_idx=1
+              |   +-Literal(type=STRING, value="%filter_expr%")
+              +-group_by_list=
+                +-$groupbymod#7 :=
+                | +-GetStructField
+                |   +-type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>
+                |   +-expr=
+                |   | +-ColumnRef(type=STRUCT<e INT32, f STRUCT<c INT32, d STRUCT<a INT32, b STRING>>>, column=DoublyNestedStructTable.doubly_nested_struct#2)
+                |   +-field_idx=1
+                +-$groupbymod#8 :=
+                  +-GetStructField
+                    +-type=INT32
+                    +-expr=
+                    | +-GetStructField
+                    |   +-type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>
+                    |   +-expr=
+                    |   | +-ColumnRef(type=STRUCT<e INT32, f STRUCT<c INT32, d STRUCT<a INT32, b STRING>>>, column=DoublyNestedStructTable.doubly_nested_struct#2)
+                    |   +-field_idx=1
+                    +-field_idx=0
+
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+SELECT
+  SUM(CAST(doublynestedstructtable_2.a_1.e AS INT64) + CAST(doublynestedstructtable_2.a_1.f.d.a AS INT64)
+    WHERE
+      (doublynestedstructtable_2.a_1.f.c) = CAST(1 AS INT32)
+    GROUP BY doublynestedstructtable_2.a_1.f, doublynestedstructtable_2.a_1) AS a_3,
+  SUM(CAST(doublynestedstructtable_2.a_1.f.c AS INT64) + CAST(doublynestedstructtable_2.a_1.f.d.a AS INT64)
+    WHERE
+      (doublynestedstructtable_2.a_1.f.d.b) LIKE "%filter_expr%"
+    GROUP BY doublynestedstructtable_2.a_1.f, doublynestedstructtable_2.a_1.f.c) AS a_4
+FROM
+  (
+    SELECT
+      DoublyNestedStructTable.doubly_nested_struct AS a_1
+    FROM
+      DoublyNestedStructTable
+  ) AS doublynestedstructtable_2
+GROUP BY doublynestedstructtable_2.a_1.f;
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+SELECT
+  SUM(CAST(doublynestedstructtable_2.a_1.e AS INT64) + CAST(doublynestedstructtable_2.a_1.f.d.a AS INT64)
+    WHERE
+      (doublynestedstructtable_2.a_1.f.c) = CAST(1 AS INT32)
+    GROUP BY doublynestedstructtable_2.a_1.f, doublynestedstructtable_2.a_1) AS a_3,
+  SUM(CAST(doublynestedstructtable_2.a_1.f.c AS INT64) + CAST(doublynestedstructtable_2.a_1.f.d.a AS INT64)
+    WHERE
+      (doublynestedstructtable_2.a_1.f.d.b) LIKE "%filter_expr%"
+    GROUP BY doublynestedstructtable_2.a_1.f, doublynestedstructtable_2.a_1.f.c) AS a_4
+FROM
+  (
+    FROM
+      DoublyNestedStructTable
+    |> SELECT
+         DoublyNestedStructTable.doubly_nested_struct AS a_1
+    |> AS doublynestedstructtable_2
+  )
+GROUP BY doublynestedstructtable_2.a_1.f
+|> AS aggregatescan_5
+|> SELECT
+     aggregatescan_5.a_3 AS a_3,
+     aggregatescan_5.a_4 AS a_4;
+==
+
+# WHERE filtering supported in aggregate functions in ORDER BY clause.
+SELECT
+  SUM(int64)
+FROM SimpleTypes
+GROUP BY int32
+ORDER BY AVG(double WHERE bool);
+--
+
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#20 AS `$col1` [INT64]
++-query=
+  +-OrderByScan
+    +-column_list=[$aggregate.$agg1#20]
+    +-is_ordered=TRUE
+    +-input_scan=
+    | +-AggregateScan
+    |   +-column_list=$aggregate.[$agg1#20, $agg2#22]
+    |   +-input_scan=
+    |   | +-TableScan(column_list=SimpleTypes.[int32#1, int64#2, bool#7, double#9], table=SimpleTypes, column_index_list=[0, 1, 6, 8])
+    |   +-group_by_list=
+    |   | +-int32#21 := ColumnRef(type=INT32, column=SimpleTypes.int32#1)
+    |   +-aggregate_list=
+    |     +-$agg1#20 :=
+    |     | +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+    |     |   +-ColumnRef(type=INT64, column=SimpleTypes.int64#2)
+    |     +-$agg2#22 :=
+    |       +-AggregateFunctionCall(GoogleSQL:avg(DOUBLE) -> DOUBLE)
+    |         +-ColumnRef(type=DOUBLE, column=SimpleTypes.double#9)
+    |         +-where_expr=
+    |           +-ColumnRef(type=BOOL, column=SimpleTypes.bool#7)
+    +-order_by_item_list=
+      +-OrderByItem
+        +-column_ref=
+          +-ColumnRef(type=DOUBLE, column=$aggregate.$agg2#22)
+
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+SELECT
+  aggregatescan_8.a_6 AS a_6
+FROM
+  (
+    SELECT
+      SUM(simpletypes_5.a_2) AS a_6,
+      AVG(simpletypes_5.a_4
+        WHERE
+          simpletypes_5.a_3) AS a_7
+    FROM
+      (
+        SELECT
+          SimpleTypes.int32 AS a_1,
+          SimpleTypes.int64 AS a_2,
+          SimpleTypes.bool AS a_3,
+          SimpleTypes.double AS a_4
+        FROM
+          SimpleTypes
+      ) AS simpletypes_5
+    GROUP BY simpletypes_5.a_1
+  ) AS aggregatescan_8
+ORDER BY aggregatescan_8.a_7;
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+SELECT
+  SUM(simpletypes_5.a_2) AS a_6,
+  AVG(simpletypes_5.a_4
+    WHERE
+      simpletypes_5.a_3) AS a_7
+FROM
+  (
+    FROM
+      SimpleTypes
+    |> SELECT
+         SimpleTypes.int32 AS a_1,
+         SimpleTypes.int64 AS a_2,
+         SimpleTypes.bool AS a_3,
+         SimpleTypes.double AS a_4
+    |> AS simpletypes_5
+  )
+GROUP BY simpletypes_5.a_1
+|> AS aggregatescan_8
+|> ORDER BY aggregatescan_8.a_7
+|> SELECT
+     aggregatescan_8.a_6 AS a_6;
+==
+
+
+# WHERE filtering works in GROUP BY queries with HAVING clause.
+SELECT
+  SUM(int64)
+FROM SimpleTypes
+GROUP BY int32
+HAVING AVG(double WHERE bool) > 100.0;
+--
+
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#20 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#20]
+    +-input_scan=
+      +-FilterScan
+        +-column_list=$aggregate.[$agg1#20, $agg2#22]
+        +-input_scan=
+        | +-AggregateScan
+        |   +-column_list=$aggregate.[$agg1#20, $agg2#22]
+        |   +-input_scan=
+        |   | +-TableScan(column_list=SimpleTypes.[int32#1, int64#2, bool#7, double#9], table=SimpleTypes, column_index_list=[0, 1, 6, 8])
+        |   +-group_by_list=
+        |   | +-int32#21 := ColumnRef(type=INT32, column=SimpleTypes.int32#1)
+        |   +-aggregate_list=
+        |     +-$agg1#20 :=
+        |     | +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+        |     |   +-ColumnRef(type=INT64, column=SimpleTypes.int64#2)
+        |     +-$agg2#22 :=
+        |       +-AggregateFunctionCall(GoogleSQL:avg(DOUBLE) -> DOUBLE)
+        |         +-ColumnRef(type=DOUBLE, column=SimpleTypes.double#9)
+        |         +-where_expr=
+        |           +-ColumnRef(type=BOOL, column=SimpleTypes.bool#7)
+        +-filter_expr=
+          +-FunctionCall(GoogleSQL:$greater(DOUBLE, DOUBLE) -> BOOL)
+            +-ColumnRef(type=DOUBLE, column=$aggregate.$agg2#22)
+            +-Literal(type=DOUBLE, value=100)
+
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+SELECT
+  aggregatescan_8.a_6 AS a_6
+FROM
+  (
+    SELECT
+      SUM(simpletypes_5.a_2) AS a_6,
+      AVG(simpletypes_5.a_4
+        WHERE
+          simpletypes_5.a_3) AS a_7
+    FROM
+      (
+        SELECT
+          SimpleTypes.int32 AS a_1,
+          SimpleTypes.int64 AS a_2,
+          SimpleTypes.bool AS a_3,
+          SimpleTypes.double AS a_4
+        FROM
+          SimpleTypes
+      ) AS simpletypes_5
+    GROUP BY simpletypes_5.a_1
+  ) AS aggregatescan_8
+WHERE
+  (aggregatescan_8.a_7) > 100.0;
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+SELECT
+  SUM(simpletypes_5.a_2) AS a_6,
+  AVG(simpletypes_5.a_4
+    WHERE
+      simpletypes_5.a_3) AS a_7
+FROM
+  (
+    FROM
+      SimpleTypes
+    |> SELECT
+         SimpleTypes.int32 AS a_1,
+         SimpleTypes.int64 AS a_2,
+         SimpleTypes.bool AS a_3,
+         SimpleTypes.double AS a_4
+    |> AS simpletypes_5
+  )
+GROUP BY simpletypes_5.a_1
+|> AS aggregatescan_8
+|> WHERE
+     (aggregatescan_8.a_7) > 100.0
+|> SELECT
+     aggregatescan_8.a_6 AS a_6;
+==
+
+# WHERE filtering works in GROUP BY queries with QUALIFY clause.
+SELECT
+  SUM(int64 WHERE int64 > 0) OVER ()
+FROM SimpleTypes
+GROUP BY int64, bool
+QUALIFY AVG(int64 WHERE bool) OVER() > 100.0;
+--
+QueryStmt
++-output_column_list=
+| +-$analytic.$analytic1#23 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$analytic.$analytic1#23]
+    +-input_scan=
+      +-FilterScan
+        +-column_list=[$groupby.int64#21, $groupby.bool#22, $analytic.$analytic1#23, $analytic.$analytic2#24]
+        +-input_scan=
+        | +-AnalyticScan
+        |   +-column_list=[$groupby.int64#21, $groupby.bool#22, $analytic.$analytic1#23, $analytic.$analytic2#24]
+        |   +-input_scan=
+        |   | +-AggregateScan
+        |   |   +-column_list=$groupby.[int64#21, bool#22]
+        |   |   +-input_scan=
+        |   |   | +-TableScan(column_list=SimpleTypes.[int64#2, bool#7], table=SimpleTypes, column_index_list=[1, 6])
+        |   |   +-group_by_list=
+        |   |     +-int64#21 := ColumnRef(type=INT64, column=SimpleTypes.int64#2)
+        |   |     +-bool#22 := ColumnRef(type=BOOL, column=SimpleTypes.bool#7)
+        |   +-function_group_list=
+        |     +-AnalyticFunctionGroup
+        |       +-analytic_function_list=
+        |         +-$analytic1#23 :=
+        |         | +-AnalyticFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+        |         |   +-ColumnRef(type=INT64, column=$groupby.int64#21)
+        |         |   +-where_expr=
+        |         |   | +-FunctionCall(GoogleSQL:$greater(INT64, INT64) -> BOOL)
+        |         |   |   +-ColumnRef(type=INT64, column=$groupby.int64#21)
+        |         |   |   +-Literal(type=INT64, value=0)
+        |         |   +-window_frame=
+        |         |     +-WindowFrame(frame_unit=ROWS)
+        |         |       +-start_expr=
+        |         |       | +-WindowFrameExpr(boundary_type=UNBOUNDED PRECEDING)
+        |         |       +-end_expr=
+        |         |         +-WindowFrameExpr(boundary_type=UNBOUNDED FOLLOWING)
+        |         +-$analytic2#24 :=
+        |           +-AnalyticFunctionCall(GoogleSQL:avg(INT64) -> DOUBLE)
+        |             +-ColumnRef(type=INT64, column=$groupby.int64#21)
+        |             +-where_expr=
+        |             | +-ColumnRef(type=BOOL, column=$groupby.bool#22)
+        |             +-window_frame=
+        |               +-WindowFrame(frame_unit=ROWS)
+        |                 +-start_expr=
+        |                 | +-WindowFrameExpr(boundary_type=UNBOUNDED PRECEDING)
+        |                 +-end_expr=
+        |                   +-WindowFrameExpr(boundary_type=UNBOUNDED FOLLOWING)
+        +-filter_expr=
+          +-FunctionCall(GoogleSQL:$greater(DOUBLE, DOUBLE) -> BOOL)
+            +-ColumnRef(type=DOUBLE, column=$analytic.$analytic2#24)
+            +-Literal(type=DOUBLE, value=100)
+
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+SELECT
+  analyticscan_9.a_7 AS a_7
+FROM
+  (
+    SELECT
+      aggregatescan_6.a_4 AS a_4,
+      aggregatescan_6.a_5 AS a_5,
+      SUM(aggregatescan_6.a_4
+        WHERE
+          (aggregatescan_6.a_4) > 0) OVER (ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) AS a_7,
+      AVG(aggregatescan_6.a_4
+        WHERE
+          aggregatescan_6.a_5) OVER (ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) AS a_8
+    FROM
+      (
+        SELECT
+          simpletypes_3.a_1 AS a_4,
+          simpletypes_3.a_2 AS a_5
+        FROM
+          (
+            SELECT
+              SimpleTypes.int64 AS a_1,
+              SimpleTypes.bool AS a_2
+            FROM
+              SimpleTypes
+          ) AS simpletypes_3
+        GROUP BY 1, 2
+      ) AS aggregatescan_6
+  ) AS analyticscan_9
+WHERE
+  (analyticscan_9.a_8) > 100.0;
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+FROM
+  SimpleTypes
+|> SELECT
+     SimpleTypes.int64 AS a_1,
+     SimpleTypes.bool AS a_2
+|> AS simpletypes_3
+|> EXTEND
+     simpletypes_3.a_1 AS a_4,
+     simpletypes_3.a_2 AS a_5
+|> AGGREGATE
+   GROUP BY a_4, a_5
+|> AS aggregatescan_6
+|> SELECT
+     aggregatescan_6.a_4 AS a_4,
+     aggregatescan_6.a_5 AS a_5,
+     SUM(aggregatescan_6.a_4
+       WHERE
+         (aggregatescan_6.a_4) > 0) OVER (ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) AS a_7,
+     AVG(aggregatescan_6.a_4
+       WHERE
+         aggregatescan_6.a_5) OVER (ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) AS a_8
+|> AS analyticscan_9
+|> WHERE
+     (analyticscan_9.a_8) > 100.0
+|> SELECT
+     analyticscan_9.a_7 AS a_7;
+==
+
+# Simple HAVING filter. Alternations for new aggregate and grouping key.
+SELECT
+  SUM(ANY_VALUE(int64) GROUP BY bool HAVING {{COUNT(*) > 10|bool}})
+FROM SimpleTypes;
+--
+
+ALTERNATION GROUP: COUNT(*) > 10
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#23 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#23]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$aggregate.$agg1#23]
+        +-input_scan=
+        | +-TableScan(column_list=SimpleTypes.[int64#2, bool#7], table=SimpleTypes, column_index_list=[1, 6])
+        +-aggregate_list=
+          +-$agg1#23 :=
+            +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+              +-ColumnRef(type=INT64, column=$aggregate.$agg1#21)
+              +-group_by_list=
+              | +-$groupbymod#20 := ColumnRef(type=BOOL, column=SimpleTypes.bool#7)
+              +-group_by_aggregate_list=
+              | +-$agg1#21 :=
+              | | +-AggregateFunctionCall(GoogleSQL:any_value(INT64) -> INT64)
+              | |   +-ColumnRef(type=INT64, column=SimpleTypes.int64#2)
+              | +-$agg2#22 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+              +-having_expr=
+                +-FunctionCall(GoogleSQL:$greater(INT64, INT64) -> BOOL)
+                  +-ColumnRef(type=INT64, column=$aggregate.$agg2#22)
+                  +-Literal(type=INT64, value=10)
+
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+SELECT
+  SUM(ANY_VALUE(simpletypes_3.a_1)
+    GROUP BY simpletypes_3.a_2
+    HAVING(COUNT(*)) > 10) AS a_4
+FROM
+  (
+    SELECT
+      SimpleTypes.int64 AS a_1,
+      SimpleTypes.bool AS a_2
+    FROM
+      SimpleTypes
+  ) AS simpletypes_3;
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+FROM
+  SimpleTypes
+|> SELECT
+     SimpleTypes.int64 AS a_1,
+     SimpleTypes.bool AS a_2
+|> AS simpletypes_3
+|> AGGREGATE
+     SUM(ANY_VALUE(simpletypes_3.a_1)
+       GROUP BY simpletypes_3.a_2
+       HAVING(COUNT(*)) > 10) AS a_4;
+--
+ALTERNATION GROUP: bool
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#22 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#22]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$aggregate.$agg1#22]
+        +-input_scan=
+        | +-TableScan(column_list=SimpleTypes.[int64#2, bool#7], table=SimpleTypes, column_index_list=[1, 6])
+        +-aggregate_list=
+          +-$agg1#22 :=
+            +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+              +-ColumnRef(type=INT64, column=$aggregate.$agg1#21)
+              +-group_by_list=
+              | +-$groupbymod#20 := ColumnRef(type=BOOL, column=SimpleTypes.bool#7)
+              +-group_by_aggregate_list=
+              | +-$agg1#21 :=
+              |   +-AggregateFunctionCall(GoogleSQL:any_value(INT64) -> INT64)
+              |     +-ColumnRef(type=INT64, column=SimpleTypes.int64#2)
+              +-having_expr=
+                +-ColumnRef(type=BOOL, column=$group_by_list.$groupbymod#20)
+
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+SELECT
+  SUM(ANY_VALUE(simpletypes_3.a_1)
+    GROUP BY simpletypes_3.a_2
+    HAVING simpletypes_3.a_2) AS a_4
+FROM
+  (
+    SELECT
+      SimpleTypes.int64 AS a_1,
+      SimpleTypes.bool AS a_2
+    FROM
+      SimpleTypes
+  ) AS simpletypes_3;
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+FROM
+  SimpleTypes
+|> SELECT
+     SimpleTypes.int64 AS a_1,
+     SimpleTypes.bool AS a_2
+|> AS simpletypes_3
+|> AGGREGATE
+     SUM(ANY_VALUE(simpletypes_3.a_1)
+       GROUP BY simpletypes_3.a_2
+       HAVING simpletypes_3.a_2) AS a_4;
+==
+
+# HAVING filter can reference field from query level grouped columns.
+SELECT
+  SUM(ANY_VALUE(double) GROUP BY bool HAVING int32 > 10)
+FROM SimpleTypes
+GROUP BY int32;
+--
+
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#24 AS `$col1` [DOUBLE]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#24]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$aggregate.$agg1#24]
+        +-input_scan=
+        | +-TableScan(column_list=SimpleTypes.[int32#1, bool#7, double#9], table=SimpleTypes, column_index_list=[0, 6, 8])
+        +-group_by_list=
+        | +-int32#20 := ColumnRef(type=INT32, column=SimpleTypes.int32#1)
+        +-aggregate_list=
+          +-$agg1#24 :=
+            +-AggregateFunctionCall(GoogleSQL:sum(DOUBLE) -> DOUBLE)
+              +-ColumnRef(type=DOUBLE, column=$aggregate.$agg1#23)
+              +-group_by_list=
+              | +-$groupbymod#21 := ColumnRef(type=INT32, column=SimpleTypes.int32#1)
+              | +-$groupbymod#22 := ColumnRef(type=BOOL, column=SimpleTypes.bool#7)
+              +-group_by_aggregate_list=
+              | +-$agg1#23 :=
+              |   +-AggregateFunctionCall(GoogleSQL:any_value(DOUBLE) -> DOUBLE)
+              |     +-ColumnRef(type=DOUBLE, column=SimpleTypes.double#9)
+              +-having_expr=
+                +-FunctionCall(GoogleSQL:$greater(INT32, INT32) -> BOOL)
+                  +-ColumnRef(type=INT32, column=$group_by_list.$groupbymod#21)
+                  +-Literal(type=INT32, value=10)
+
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+SELECT
+  SUM(ANY_VALUE(simpletypes_4.a_3)
+    GROUP BY simpletypes_4.a_1, simpletypes_4.a_2
+    HAVING(simpletypes_4.a_1) > CAST(10 AS INT32)) AS a_5
+FROM
+  (
+    SELECT
+      SimpleTypes.int32 AS a_1,
+      SimpleTypes.bool AS a_2,
+      SimpleTypes.double AS a_3
+    FROM
+      SimpleTypes
+  ) AS simpletypes_4
+GROUP BY simpletypes_4.a_1;
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+SELECT
+  SUM(ANY_VALUE(simpletypes_4.a_3)
+    GROUP BY simpletypes_4.a_1, simpletypes_4.a_2
+    HAVING(simpletypes_4.a_1) > CAST(10 AS INT32)) AS a_5
+FROM
+  (
+    FROM
+      SimpleTypes
+    |> SELECT
+         SimpleTypes.int32 AS a_1,
+         SimpleTypes.bool AS a_2,
+         SimpleTypes.double AS a_3
+    |> AS simpletypes_4
+  )
+GROUP BY simpletypes_4.a_1
+|> AS aggregatescan_6
+|> SELECT
+     aggregatescan_6.a_5 AS a_5;
+==
+
+# HAVING filter works with multiple nested aggregates.
+SELECT SUM(
+  AVG(
+    MAX(
+      ANY_VALUE(key)
+      GROUP BY TestEnum
+      HAVING AnotherTestEnum IS NOT NULL)
+    GROUP by AnotherTestEnum
+    HAVING COUNT(*) > 10)
+  GROUP by RowId
+  HAVING MAX(AnotherTestEnum) > 0)
+FROM EnumTable
+GROUP BY RowId;
+--
+
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#18 AS `$col1` [DOUBLE]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#18]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$aggregate.$agg1#18]
+        +-input_scan=
+        | +-TableScan(column_list=EnumTable.[key#1, TestEnum#2, AnotherTestEnum#3, RowId#5], table=EnumTable, column_index_list=[0, 1, 2, 4])
+        +-group_by_list=
+        | +-RowId#6 := ColumnRef(type=BYTES, column=EnumTable.RowId#5)
+        +-aggregate_list=
+          +-$agg1#18 :=
+            +-AggregateFunctionCall(GoogleSQL:sum(DOUBLE) -> DOUBLE)
+              +-ColumnRef(type=DOUBLE, column=$aggregate.$agg1#16)
+              +-group_by_list=
+              | +-$groupbymod#7 := ColumnRef(type=BYTES, column=EnumTable.RowId#5)
+              +-group_by_aggregate_list=
+              | +-$agg1#16 :=
+              | | +-AggregateFunctionCall(GoogleSQL:avg(INT64) -> DOUBLE)
+              | |   +-Cast(INT32 -> INT64)
+              | |   | +-ColumnRef(type=INT32, column=$aggregate.$agg1#14)
+              | |   +-group_by_list=
+              | |   | +-$groupbymod#8 := ColumnRef(type=BYTES, column=EnumTable.RowId#5)
+              | |   | +-$groupbymod#9 := ColumnRef(type=ENUM<googlesql_test.AnotherTestEnum>, column=EnumTable.AnotherTestEnum#3)
+              | |   +-group_by_aggregate_list=
+              | |   | +-$agg1#14 :=
+              | |   | | +-AggregateFunctionCall(GoogleSQL:max(INT32) -> INT32)
+              | |   | |   +-ColumnRef(type=INT32, column=$aggregate.$agg1#13)
+              | |   | |   +-group_by_list=
+              | |   | |   | +-$groupbymod#10 := ColumnRef(type=BYTES, column=EnumTable.RowId#5)
+              | |   | |   | +-$groupbymod#11 := ColumnRef(type=ENUM<googlesql_test.AnotherTestEnum>, column=EnumTable.AnotherTestEnum#3)
+              | |   | |   | +-$groupbymod#12 := ColumnRef(type=ENUM<googlesql_test.TestEnum>, column=EnumTable.TestEnum#2)
+              | |   | |   +-group_by_aggregate_list=
+              | |   | |   | +-$agg1#13 :=
+              | |   | |   |   +-AggregateFunctionCall(GoogleSQL:any_value(INT32) -> INT32)
+              | |   | |   |     +-ColumnRef(type=INT32, column=EnumTable.key#1)
+              | |   | |   +-having_expr=
+              | |   | |     +-FunctionCall(GoogleSQL:$not(BOOL) -> BOOL)
+              | |   | |       +-FunctionCall(GoogleSQL:$is_null(ENUM<googlesql_test.AnotherTestEnum>) -> BOOL)
+              | |   | |         +-ColumnRef(type=ENUM<googlesql_test.AnotherTestEnum>, column=$group_by_list.$groupbymod#11)
+              | |   | +-$agg2#15 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+              | |   +-having_expr=
+              | |     +-FunctionCall(GoogleSQL:$greater(INT64, INT64) -> BOOL)
+              | |       +-ColumnRef(type=INT64, column=$aggregate.$agg2#15)
+              | |       +-Literal(type=INT64, value=10)
+              | +-$agg2#17 :=
+              |   +-AggregateFunctionCall(GoogleSQL:max(ENUM<googlesql_test.AnotherTestEnum>) -> ENUM<googlesql_test.AnotherTestEnum>)
+              |     +-ColumnRef(type=ENUM<googlesql_test.AnotherTestEnum>, column=EnumTable.AnotherTestEnum#3)
+              +-having_expr=
+                +-FunctionCall(GoogleSQL:$greater(ENUM<googlesql_test.AnotherTestEnum>, ENUM<googlesql_test.AnotherTestEnum>) -> BOOL)
+                  +-ColumnRef(type=ENUM<googlesql_test.AnotherTestEnum>, column=$aggregate.$agg2#17)
+                  +-Literal(type=ENUM<googlesql_test.AnotherTestEnum>, value=ANOTHERTESTENUM0)
+
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+SELECT
+  SUM(AVG(CAST(MAX(ANY_VALUE(enumtable_5.a_1)
+        GROUP BY enumtable_5.a_4, enumtable_5.a_3, enumtable_5.a_2
+        HAVING NOT((enumtable_5.a_3) IS NULL)) AS INT64)
+      GROUP BY enumtable_5.a_4, enumtable_5.a_3
+      HAVING(COUNT(*)) > 10)
+    GROUP BY enumtable_5.a_4
+    HAVING(MAX(enumtable_5.a_3)) > CAST("ANOTHERTESTENUM0" AS `googlesql_test.AnotherTestEnum`)) AS a_6
+FROM
+  (
+    SELECT
+      EnumTable.key AS a_1,
+      EnumTable.TestEnum AS a_2,
+      EnumTable.AnotherTestEnum AS a_3,
+      EnumTable.RowId AS a_4
+    FROM
+      EnumTable
+  ) AS enumtable_5
+GROUP BY enumtable_5.a_4;
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+SELECT
+  SUM(AVG(CAST(MAX(ANY_VALUE(enumtable_5.a_1)
+        GROUP BY enumtable_5.a_4, enumtable_5.a_3, enumtable_5.a_2
+        HAVING NOT((enumtable_5.a_3) IS NULL)) AS INT64)
+      GROUP BY enumtable_5.a_4, enumtable_5.a_3
+      HAVING(COUNT(*)) > 10)
+    GROUP BY enumtable_5.a_4
+    HAVING(MAX(enumtable_5.a_3)) > CAST("ANOTHERTESTENUM0" AS `googlesql_test.AnotherTestEnum`)) AS a_6
+FROM
+  (
+    FROM
+      EnumTable
+    |> SELECT
+         EnumTable.key AS a_1,
+         EnumTable.TestEnum AS a_2,
+         EnumTable.AnotherTestEnum AS a_3,
+         EnumTable.RowId AS a_4
+    |> AS enumtable_5
+  )
+GROUP BY enumtable_5.a_4
+|> AS aggregatescan_7
+|> SELECT
+     aggregatescan_7.a_6 AS a_6;
+==
+
+# HAVING filtering supported in aggregate functions in ORDER BY clause.
+SELECT
+  SUM(int64)
+FROM SimpleTypes
+GROUP BY int32
+ORDER BY AVG(ANY_VALUE(double) GROUP BY bool HAVING int32 > 10 AND COUNT(*) = 10);
+--
+
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#20 AS `$col1` [INT64]
++-query=
+  +-OrderByScan
+    +-column_list=[$aggregate.$agg1#20]
+    +-is_ordered=TRUE
+    +-input_scan=
+    | +-AggregateScan
+    |   +-column_list=$aggregate.[$agg1#20, $agg2#26]
+    |   +-input_scan=
+    |   | +-TableScan(column_list=SimpleTypes.[int32#1, int64#2, bool#7, double#9], table=SimpleTypes, column_index_list=[0, 1, 6, 8])
+    |   +-group_by_list=
+    |   | +-int32#21 := ColumnRef(type=INT32, column=SimpleTypes.int32#1)
+    |   +-aggregate_list=
+    |     +-$agg1#20 :=
+    |     | +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+    |     |   +-ColumnRef(type=INT64, column=SimpleTypes.int64#2)
+    |     +-$agg2#26 :=
+    |       +-AggregateFunctionCall(GoogleSQL:avg(DOUBLE) -> DOUBLE)
+    |         +-ColumnRef(type=DOUBLE, column=$aggregate.$agg1#24)
+    |         +-group_by_list=
+    |         | +-$groupbymod#22 := ColumnRef(type=INT32, column=SimpleTypes.int32#1)
+    |         | +-$groupbymod#23 := ColumnRef(type=BOOL, column=SimpleTypes.bool#7)
+    |         +-group_by_aggregate_list=
+    |         | +-$agg1#24 :=
+    |         | | +-AggregateFunctionCall(GoogleSQL:any_value(DOUBLE) -> DOUBLE)
+    |         | |   +-ColumnRef(type=DOUBLE, column=SimpleTypes.double#9)
+    |         | +-$agg2#25 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+    |         +-having_expr=
+    |           +-FunctionCall(GoogleSQL:$and(BOOL, repeated(1) BOOL) -> BOOL)
+    |             +-FunctionCall(GoogleSQL:$greater(INT32, INT32) -> BOOL)
+    |             | +-ColumnRef(type=INT32, column=$group_by_list.$groupbymod#22)
+    |             | +-Literal(type=INT32, value=10)
+    |             +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+    |               +-ColumnRef(type=INT64, column=$aggregate.$agg2#25)
+    |               +-Literal(type=INT64, value=10)
+    +-order_by_item_list=
+      +-OrderByItem
+        +-column_ref=
+          +-ColumnRef(type=DOUBLE, column=$aggregate.$agg2#26)
+
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+SELECT
+  aggregatescan_8.a_6 AS a_6
+FROM
+  (
+    SELECT
+      SUM(simpletypes_5.a_2) AS a_6,
+      AVG(ANY_VALUE(simpletypes_5.a_4)
+        GROUP BY simpletypes_5.a_1, simpletypes_5.a_3
+        HAVING((simpletypes_5.a_1) > CAST(10 AS INT32)) AND ((COUNT(*)) = 10)) AS a_7
+    FROM
+      (
+        SELECT
+          SimpleTypes.int32 AS a_1,
+          SimpleTypes.int64 AS a_2,
+          SimpleTypes.bool AS a_3,
+          SimpleTypes.double AS a_4
+        FROM
+          SimpleTypes
+      ) AS simpletypes_5
+    GROUP BY simpletypes_5.a_1
+  ) AS aggregatescan_8
+ORDER BY aggregatescan_8.a_7;
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+SELECT
+  SUM(simpletypes_5.a_2) AS a_6,
+  AVG(ANY_VALUE(simpletypes_5.a_4)
+    GROUP BY simpletypes_5.a_1, simpletypes_5.a_3
+    HAVING((simpletypes_5.a_1) > CAST(10 AS INT32)) AND ((COUNT(*)) = 10)) AS a_7
+FROM
+  (
+    FROM
+      SimpleTypes
+    |> SELECT
+         SimpleTypes.int32 AS a_1,
+         SimpleTypes.int64 AS a_2,
+         SimpleTypes.bool AS a_3,
+         SimpleTypes.double AS a_4
+    |> AS simpletypes_5
+  )
+GROUP BY simpletypes_5.a_1
+|> AS aggregatescan_8
+|> ORDER BY aggregatescan_8.a_7
+|> SELECT
+     aggregatescan_8.a_6 AS a_6;
+==
+
+# HAVING filtering works in GROUP BY queries with query level HAVING clause.
+SELECT
+  SUM(MIN(int64) GROUP BY bool HAVING int32 > 10)
+FROM SimpleTypes
+GROUP BY int32
+HAVING AVG(ANY_VALUE(double) GROUP BY bool HAVING int32 > 10 AND COUNT(*) = 10) > 100.0;
+--
+
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#24 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#24]
+    +-input_scan=
+      +-FilterScan
+        +-column_list=$aggregate.[$agg1#24, $agg2#29]
+        +-input_scan=
+        | +-AggregateScan
+        |   +-column_list=$aggregate.[$agg1#24, $agg2#29]
+        |   +-input_scan=
+        |   | +-TableScan(column_list=SimpleTypes.[int32#1, int64#2, bool#7, double#9], table=SimpleTypes, column_index_list=[0, 1, 6, 8])
+        |   +-group_by_list=
+        |   | +-int32#20 := ColumnRef(type=INT32, column=SimpleTypes.int32#1)
+        |   +-aggregate_list=
+        |     +-$agg1#24 :=
+        |     | +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+        |     |   +-ColumnRef(type=INT64, column=$aggregate.$agg1#23)
+        |     |   +-group_by_list=
+        |     |   | +-$groupbymod#21 := ColumnRef(type=INT32, column=SimpleTypes.int32#1)
+        |     |   | +-$groupbymod#22 := ColumnRef(type=BOOL, column=SimpleTypes.bool#7)
+        |     |   +-group_by_aggregate_list=
+        |     |   | +-$agg1#23 :=
+        |     |   |   +-AggregateFunctionCall(GoogleSQL:min(INT64) -> INT64)
+        |     |   |     +-ColumnRef(type=INT64, column=SimpleTypes.int64#2)
+        |     |   +-having_expr=
+        |     |     +-FunctionCall(GoogleSQL:$greater(INT32, INT32) -> BOOL)
+        |     |       +-ColumnRef(type=INT32, column=$group_by_list.$groupbymod#21)
+        |     |       +-Literal(type=INT32, value=10)
+        |     +-$agg2#29 :=
+        |       +-AggregateFunctionCall(GoogleSQL:avg(DOUBLE) -> DOUBLE)
+        |         +-ColumnRef(type=DOUBLE, column=$aggregate.$agg1#27)
+        |         +-group_by_list=
+        |         | +-$groupbymod#25 := ColumnRef(type=INT32, column=SimpleTypes.int32#1)
+        |         | +-$groupbymod#26 := ColumnRef(type=BOOL, column=SimpleTypes.bool#7)
+        |         +-group_by_aggregate_list=
+        |         | +-$agg1#27 :=
+        |         | | +-AggregateFunctionCall(GoogleSQL:any_value(DOUBLE) -> DOUBLE)
+        |         | |   +-ColumnRef(type=DOUBLE, column=SimpleTypes.double#9)
+        |         | +-$agg2#28 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+        |         +-having_expr=
+        |           +-FunctionCall(GoogleSQL:$and(BOOL, repeated(1) BOOL) -> BOOL)
+        |             +-FunctionCall(GoogleSQL:$greater(INT32, INT32) -> BOOL)
+        |             | +-ColumnRef(type=INT32, column=$group_by_list.$groupbymod#25)
+        |             | +-Literal(type=INT32, value=10)
+        |             +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+        |               +-ColumnRef(type=INT64, column=$aggregate.$agg2#28)
+        |               +-Literal(type=INT64, value=10)
+        +-filter_expr=
+          +-FunctionCall(GoogleSQL:$greater(DOUBLE, DOUBLE) -> BOOL)
+            +-ColumnRef(type=DOUBLE, column=$aggregate.$agg2#29)
+            +-Literal(type=DOUBLE, value=100)
+
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+SELECT
+  aggregatescan_8.a_6 AS a_6
+FROM
+  (
+    SELECT
+      SUM(MIN(simpletypes_5.a_2)
+        GROUP BY simpletypes_5.a_1, simpletypes_5.a_3
+        HAVING(simpletypes_5.a_1) > CAST(10 AS INT32)) AS a_6,
+      AVG(ANY_VALUE(simpletypes_5.a_4)
+        GROUP BY simpletypes_5.a_1, simpletypes_5.a_3
+        HAVING((simpletypes_5.a_1) > CAST(10 AS INT32)) AND ((COUNT(*)) = 10)) AS a_7
+    FROM
+      (
+        SELECT
+          SimpleTypes.int32 AS a_1,
+          SimpleTypes.int64 AS a_2,
+          SimpleTypes.bool AS a_3,
+          SimpleTypes.double AS a_4
+        FROM
+          SimpleTypes
+      ) AS simpletypes_5
+    GROUP BY simpletypes_5.a_1
+  ) AS aggregatescan_8
+WHERE
+  (aggregatescan_8.a_7) > 100.0;
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+SELECT
+  SUM(MIN(simpletypes_5.a_2)
+    GROUP BY simpletypes_5.a_1, simpletypes_5.a_3
+    HAVING(simpletypes_5.a_1) > CAST(10 AS INT32)) AS a_6,
+  AVG(ANY_VALUE(simpletypes_5.a_4)
+    GROUP BY simpletypes_5.a_1, simpletypes_5.a_3
+    HAVING((simpletypes_5.a_1) > CAST(10 AS INT32)) AND ((COUNT(*)) = 10)) AS a_7
+FROM
+  (
+    FROM
+      SimpleTypes
+    |> SELECT
+         SimpleTypes.int32 AS a_1,
+         SimpleTypes.int64 AS a_2,
+         SimpleTypes.bool AS a_3,
+         SimpleTypes.double AS a_4
+    |> AS simpletypes_5
+  )
+GROUP BY simpletypes_5.a_1
+|> AS aggregatescan_8
+|> WHERE
+     (aggregatescan_8.a_7) > 100.0
+|> SELECT
+     aggregatescan_8.a_6 AS a_6;
+==
+
+# HAVING filtering HAVING expressions.
+SELECT
+  SUM(MAX(int64)
+    GROUP BY bool
+    HAVING COUNT(*) > 100)
+FROM SimpleTypes
+GROUP BY int32
+HAVING AVG(double WHERE bool) > 100.0;
+--
+
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#25 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#25]
+    +-input_scan=
+      +-FilterScan
+        +-column_list=$aggregate.[$agg1#25, $agg2#26]
+        +-input_scan=
+        | +-AggregateScan
+        |   +-column_list=$aggregate.[$agg1#25, $agg2#26]
+        |   +-input_scan=
+        |   | +-TableScan(column_list=SimpleTypes.[int32#1, int64#2, bool#7, double#9], table=SimpleTypes, column_index_list=[0, 1, 6, 8])
+        |   +-group_by_list=
+        |   | +-int32#20 := ColumnRef(type=INT32, column=SimpleTypes.int32#1)
+        |   +-aggregate_list=
+        |     +-$agg1#25 :=
+        |     | +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+        |     |   +-ColumnRef(type=INT64, column=$aggregate.$agg1#23)
+        |     |   +-group_by_list=
+        |     |   | +-$groupbymod#21 := ColumnRef(type=INT32, column=SimpleTypes.int32#1)
+        |     |   | +-$groupbymod#22 := ColumnRef(type=BOOL, column=SimpleTypes.bool#7)
+        |     |   +-group_by_aggregate_list=
+        |     |   | +-$agg1#23 :=
+        |     |   | | +-AggregateFunctionCall(GoogleSQL:max(INT64) -> INT64)
+        |     |   | |   +-ColumnRef(type=INT64, column=SimpleTypes.int64#2)
+        |     |   | +-$agg2#24 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+        |     |   +-having_expr=
+        |     |     +-FunctionCall(GoogleSQL:$greater(INT64, INT64) -> BOOL)
+        |     |       +-ColumnRef(type=INT64, column=$aggregate.$agg2#24)
+        |     |       +-Literal(type=INT64, value=100)
+        |     +-$agg2#26 :=
+        |       +-AggregateFunctionCall(GoogleSQL:avg(DOUBLE) -> DOUBLE)
+        |         +-ColumnRef(type=DOUBLE, column=SimpleTypes.double#9)
+        |         +-where_expr=
+        |           +-ColumnRef(type=BOOL, column=SimpleTypes.bool#7)
+        +-filter_expr=
+          +-FunctionCall(GoogleSQL:$greater(DOUBLE, DOUBLE) -> BOOL)
+            +-ColumnRef(type=DOUBLE, column=$aggregate.$agg2#26)
+            +-Literal(type=DOUBLE, value=100)
+
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+SELECT
+  aggregatescan_8.a_6 AS a_6
+FROM
+  (
+    SELECT
+      SUM(MAX(simpletypes_5.a_2)
+        GROUP BY simpletypes_5.a_1, simpletypes_5.a_3
+        HAVING(COUNT(*)) > 100) AS a_6,
+      AVG(simpletypes_5.a_4
+        WHERE
+          simpletypes_5.a_3) AS a_7
+    FROM
+      (
+        SELECT
+          SimpleTypes.int32 AS a_1,
+          SimpleTypes.int64 AS a_2,
+          SimpleTypes.bool AS a_3,
+          SimpleTypes.double AS a_4
+        FROM
+          SimpleTypes
+      ) AS simpletypes_5
+    GROUP BY simpletypes_5.a_1
+  ) AS aggregatescan_8
+WHERE
+  (aggregatescan_8.a_7) > 100.0;
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+SELECT
+  SUM(MAX(simpletypes_5.a_2)
+    GROUP BY simpletypes_5.a_1, simpletypes_5.a_3
+    HAVING(COUNT(*)) > 100) AS a_6,
+  AVG(simpletypes_5.a_4
+    WHERE
+      simpletypes_5.a_3) AS a_7
+FROM
+  (
+    FROM
+      SimpleTypes
+    |> SELECT
+         SimpleTypes.int32 AS a_1,
+         SimpleTypes.int64 AS a_2,
+         SimpleTypes.bool AS a_3,
+         SimpleTypes.double AS a_4
+    |> AS simpletypes_5
+  )
+GROUP BY simpletypes_5.a_1
+|> AS aggregatescan_8
+|> WHERE
+     (aggregatescan_8.a_7) > 100.0
+|> SELECT
+     aggregatescan_8.a_6 AS a_6;

@@ -6,11 +6,11 @@
 
 Query statements scan one or more tables or expressions and return the computed
 result rows. This topic describes the syntax for SQL queries in
-ZetaSQL.
+GoogleSQL.
 
 ## SQL syntax notation rules
 
-The following table lists and describes the syntax notation rules that ZetaSQL
+The following table lists and describes the syntax notation rules that GoogleSQL
 documentation commonly uses.
 
 <table>
@@ -145,7 +145,7 @@ Each item in the `SELECT` list is one of:
 `SELECT *`, often referred to as *select star*, produces one output column for
 each column that's visible after executing the full query.
 
-```zetasql
+```googlesql
 SELECT * FROM (SELECT "apple" AS fruit, "carrot" AS vegetable);
 
 /*-------+-----------+
@@ -177,7 +177,7 @@ data type with fields, such as a STRUCT.
 The following query produces one output column for each column in the table
 `groceries`, aliased as `g`.
 
-```zetasql
+```googlesql
 WITH groceries AS
   (SELECT "milk" AS dairy,
    "eggs" AS protein,
@@ -194,7 +194,7 @@ FROM groceries AS g;
 
 More examples:
 
-```zetasql
+```googlesql
 WITH locations AS
   (SELECT STRUCT("Seattle" AS city, "Washington" AS state) AS location
   UNION ALL
@@ -210,7 +210,7 @@ FROM locations l;
  +---------+------------*/
 ```
 
-```zetasql
+```googlesql
 WITH locations AS
   (SELECT ARRAY<STRUCT<city STRING, state STRING>>[("Seattle", "Washington"),
     ("Phoenix", "Arizona")] AS location)
@@ -229,7 +229,7 @@ FROM locations l;
 A `SELECT * EXCEPT` statement specifies the names of one or more columns to
 exclude from the result. All matching column names are omitted from the output.
 
-```zetasql
+```googlesql
 WITH orders AS
   (SELECT 5 as order_id,
   "sprocket" as item_name,
@@ -257,7 +257,7 @@ that `REPLACE` clause.
 A `SELECT * REPLACE` statement doesn't change the names or order of columns.
 However, it can change the value and the value type.
 
-```zetasql
+```googlesql
 WITH orders AS
   (SELECT 5 as order_id,
   "sprocket" as item_name,
@@ -297,7 +297,7 @@ remaining rows. `SELECT DISTINCT` can't return columns of the following types:
 
 In the following example, `SELECT DISTINCT` is used to produce distinct arrays:
 
-```zetasql
+```googlesql
 WITH PlayerStats AS (
   SELECT ['Coolidge', 'Adams'] as Name, 3 as PointsScored UNION ALL
   SELECT ['Adams', 'Buchanan'], 0 UNION ALL
@@ -317,7 +317,7 @@ FROM PlayerStats;
 
 In the following example, `SELECT DISTINCT` is used to produce distinct structs:
 
-```zetasql
+```googlesql
 WITH
   PlayerStats AS (
     SELECT
@@ -355,7 +355,7 @@ A `SELECT ALL` statement returns all rows, including duplicate rows.
 
 ### `SELECT AS STRUCT`
 
-```zetasql
+```googlesql
 SELECT AS STRUCT expr [[AS] struct_field_name1] [,...]
 ```
 
@@ -366,7 +366,7 @@ and types produced in the `SELECT` list.
 
 Example:
 
-```zetasql
+```googlesql
 SELECT ARRAY(SELECT AS STRUCT 1 a, 2 b)
 ```
 
@@ -380,7 +380,7 @@ Anonymous columns are allowed.
 
 Example:
 
-```zetasql
+```googlesql
 SELECT AS STRUCT 1 x, 2, 3
 ```
 
@@ -391,7 +391,7 @@ second and third fields are anonymous.
 The example above produces the same result as this `SELECT AS VALUE` query using
 a struct constructor:
 
-```zetasql
+```googlesql
 SELECT AS VALUE STRUCT(1 AS x, 2, 3)
 ```
 
@@ -399,7 +399,7 @@ Duplicate columns are allowed.
 
 Example:
 
-```zetasql
+```googlesql
 SELECT AS STRUCT 1 x, 2 y, 3 x
 ```
 
@@ -410,14 +410,14 @@ name `x` while the second field has the name `y`.
 The example above produces the same result as this `SELECT AS VALUE` query
 using a struct constructor:
 
-```zetasql
+```googlesql
 SELECT AS VALUE STRUCT(1 AS x, 2 AS y, 3 AS x)
 ```
 
 ### `SELECT AS typename` 
 <a id="select_as_typename"></a>
 
-```zetasql
+```googlesql
 SELECT AS typename
   expr [[AS] field]
   [, ...]
@@ -441,7 +441,7 @@ grouping isn't supported on the constructed type.
 
 The following is an example of a `SELECT AS typename` query.
 
-```zetasql
+```googlesql
 SELECT AS tests.TestProtocolBuffer mytable.key int64_val, mytable.name string_val
 FROM mytable;
 ```
@@ -465,7 +465,7 @@ value table.
 
 Example:
 
-```zetasql
+```googlesql
 SELECT AS VALUE 1
 ```
 
@@ -473,7 +473,7 @@ The query above produces a table with row type INT64.
 
 Example:
 
-```zetasql
+```googlesql
 SELECT AS VALUE STRUCT(1 AS a, 2 AS b) xyz
 ```
 
@@ -481,7 +481,7 @@ The query above produces a table with row type `STRUCT<a int64, b int64>`.
 
 Example:
 
-```zetasql
+```googlesql
 SELECT AS VALUE v FROM (SELECT AS STRUCT 1 a, true b) v WHERE v.b
 ```
 
@@ -566,7 +566,7 @@ arbitrarily deep into a nested data structure.
 
 Some examples of valid `field_path` values include:
 
-```zetasql
+```googlesql
 SELECT * FROM T1 t1, t1.array_column;
 
 SELECT * FROM T1 t1, t1.struct_column.array_field;
@@ -606,7 +606,7 @@ In the example below, `subQ1` and `subQ2` are CTEs.
 
 Example:
 
-```zetasql
+```googlesql
 WITH
   subQ1 AS (SELECT * FROM Roster WHERE SchoolID = 52),
   subQ2 AS (SELECT SchoolID FROM subQ1)
@@ -674,7 +674,7 @@ Input values:
 
   Example:
 
-  ```zetasql
+  ```googlesql
   SELECT * FROM UNNEST ([10,20,30]) as numbers WITH OFFSET;
 
   /*---------+--------+
@@ -706,7 +706,7 @@ field.
 
 Example:
 
-```zetasql
+```googlesql
 SELECT *
 FROM UNNEST(
   ARRAY<
@@ -734,7 +734,7 @@ struct in the input table.
 
 Example:
 
-```zetasql
+```googlesql
 SELECT *, struct_value
 FROM UNNEST(
   ARRAY<
@@ -761,11 +761,11 @@ protocol buffer field.
 
 Example:
 
-```zetasql
+```googlesql
 SELECT *
 FROM UNNEST(
-  ARRAY<zetasql.examples.music.Album>[
-    NEW zetasql.examples.music.Album (
+  ARRAY<googlesql.examples.music.Album>[
+    NEW googlesql.examples.music.Album (
       'The Goldberg Variations' AS album_name,
       ['Aria', 'Variation 1', 'Variation 2'] AS song
     )
@@ -783,11 +783,11 @@ As with structs, you can alias `UNNEST` to define a range variable. You
 can reference this alias in the `SELECT` list to return a value table where each
 row is a protocol buffer element from the array.
 
-```zetasql
+```googlesql
 SELECT proto_value
 FROM UNNEST(
-  ARRAY<zetasql.examples.music.Album>[
-    NEW zetasql.examples.music.Album (
+  ARRAY<googlesql.examples.music.Album>[
+    NEW googlesql.examples.music.Album (
       'The Goldberg Variations' AS album_name,
       ['Aria', 'Var. 1'] AS song
     )
@@ -811,7 +811,7 @@ following sections.
 
 The `UNNEST` keyword is required in explicit unnesting. For example:
 
-```zetasql
+```googlesql
 WITH Coordinates AS (SELECT ARRAY<STRUCT<x INT64, y ARRAY<INT64>>>[(1, [2,3]), (4, [5,6])] AS position)
 SELECT results FROM Coordinates, UNNEST(Coordinates.position.y) AS results;
 ```
@@ -826,12 +826,12 @@ you can optionally prepend `array_path` with a table.
 
 The following queries produce the same results:
 
-```zetasql
+```googlesql
 WITH Coordinates AS (SELECT ARRAY<STRUCT<x INT64, y ARRAY<INT64>>>[(1, [2,3]), (4, [5,6])] AS position)
 SELECT results FROM Coordinates, UNNEST(position.y) AS results;
 ```
 
-```zetasql
+```googlesql
 WITH Coordinates AS (SELECT ARRAY<STRUCT<x INT64, y ARRAY<INT64>>>[(1, [2,3]), (4, [5,6])] AS position)
 SELECT results FROM Coordinates, UNNEST(Coordinates.position.y) AS results;
 ```
@@ -842,7 +842,7 @@ The `UNNEST` keyword isn't used in implicit unnesting.
 
 For example:
 
-```zetasql
+```googlesql
 WITH Coordinates AS (SELECT ARRAY<STRUCT<x INT64, y ARRAY<INT64>>>[(1, [2,3]), (4, [5,6])] AS position)
 SELECT results FROM Coordinates, Coordinates.position.y AS results;
 ```
@@ -850,19 +850,19 @@ SELECT results FROM Coordinates, Coordinates.position.y AS results;
 When you use `array_path` with `UNNEST`, the
 [`FLATTEN` operator][flatten-operator] is used implicitly. These are equivalent:
 
-```zetasql
+```googlesql
 -- In UNNEST, FLATTEN used explicitly:
 WITH Coordinates AS (SELECT ARRAY<STRUCT<x INT64, y ARRAY<INT64>>>[(1, [2,3]), (4, [5,6])] AS position)
 SELECT results FROM Coordinates, UNNEST(FLATTEN(Coordinates.position.y)) AS results;
 ```
 
-```zetasql
+```googlesql
 -- In UNNEST, FLATTEN used implicitly:
 WITH Coordinates AS (SELECT ARRAY<STRUCT<x INT64, y ARRAY<INT64>>>[(1, [2,3]), (4, [5,6])] AS position)
 SELECT results FROM Coordinates, UNNEST(Coordinates.position.y) AS results;
 ```
 
-```zetasql
+```googlesql
 -- In the FROM clause, UNNEST used implicitly:
 WITH Coordinates AS (SELECT ARRAY<STRUCT<x INT64, y ARRAY<INT64>>>[(1, [2,3]), (4, [5,6])] AS position)
 SELECT results FROM Coordinates, Coordinates.position.y AS results;
@@ -873,7 +873,7 @@ SELECT results FROM Coordinates, Coordinates.position.y AS results;
 When you use `array_path` with implicit `UNNEST`, `array_path` must be prepended
 with the table. For example:
 
-```zetasql
+```googlesql
 WITH Coordinates AS (SELECT [1,2] AS position)
 SELECT results FROM Coordinates, Coordinates.position AS results;
 ```
@@ -886,14 +886,14 @@ in the `FROM` clause, but only if the
 
 The following query is valid:
 
-```zetasql
+```googlesql
 WITH Coordinates AS (SELECT ARRAY<STRUCT<x INT64, y ARRAY<INT64>>>[(1, [2,3]), (4, [5,6])] AS position)
 SELECT results FROM Coordinates, UNNEST(Coordinates.position.y[SAFE_OFFSET(1)]) AS results;
 ```
 
 The following query is invalid:
 
-```zetasql {.bad}
+```googlesql {.bad}
 -- Invalid
 WITH Coordinates AS (SELECT ARRAY<STRUCT<x INT64, y ARRAY<INT64>>>[(1, [2,3]), (4, [5,6])] AS position)
 SELECT results FROM Coordinates, Coordinates.position.y[SAFE_OFFSET(1)] AS results;
@@ -933,7 +933,7 @@ The `PIVOT` operator rotates rows into columns, using aggregation.
 
 Conceptual example:
 
-```zetasql
+```googlesql
 -- Before PIVOT is used to rotate sales and quarter into Q1, Q2, Q3, Q4 columns:
 /*---------+-------+---------+------+
  | product | sales | quarter | year |
@@ -1167,7 +1167,7 @@ Rules for `pivot_column`:
 
 The following examples reference a table called `Produce` that looks like this:
 
-```zetasql
+```googlesql
 WITH Produce AS (
   SELECT 'Kale' as product, 51 as sales, 'Q1' as quarter, 2020 as year UNION ALL
   SELECT 'Kale', 23, 'Q2', 2020 UNION ALL
@@ -1200,7 +1200,7 @@ these new columns: `Q1`, `Q2`, `Q3`, `Q4`. The aggregate function `SUM` is
 implicitly grouped by all unaggregated columns other than the `pivot_column`:
 `product` and `year`.
 
-```zetasql
+```googlesql
 SELECT * FROM
   Produce
   PIVOT(SUM(sales) FOR quarter IN ('Q1', 'Q2', 'Q3', 'Q4'))
@@ -1217,7 +1217,7 @@ SELECT * FROM
 
 If you don't include `year`, then `SUM` is grouped only by `product`.
 
-```zetasql
+```googlesql
 SELECT * FROM
   (SELECT product, sales, quarter FROM Produce)
   PIVOT(SUM(sales) FOR quarter IN ('Q1', 'Q2', 'Q3', 'Q4'))
@@ -1232,7 +1232,7 @@ SELECT * FROM
 
 You can select a subset of values in the `pivot_column`:
 
-```zetasql
+```googlesql
 SELECT * FROM
   (SELECT product, sales, quarter FROM Produce)
   PIVOT(SUM(sales) FOR quarter IN ('Q1', 'Q2', 'Q3'))
@@ -1245,7 +1245,7 @@ SELECT * FROM
  +---------+-----+-----+------*/
 ```
 
-```zetasql
+```googlesql
 SELECT * FROM
   (SELECT sales, quarter FROM Produce)
   PIVOT(SUM(sales) FOR quarter IN ('Q1', 'Q2', 'Q3'))
@@ -1261,7 +1261,7 @@ You can include multiple aggregation functions in the `PIVOT`. In this case, you
 must specify an alias for each aggregation. These aliases are used to construct
 the column names in the resulting table.
 
-```zetasql
+```googlesql
 SELECT * FROM
   (SELECT product, sales, quarter FROM Produce)
   PIVOT(SUM(sales) AS total_sales, COUNT(*) AS num_records FOR quarter IN ('Q1', 'Q2'))
@@ -1319,7 +1319,7 @@ The `UNPIVOT` operator rotates columns into rows. `UNPIVOT` is part of the
 
 Conceptual example:
 
-```zetasql
+```googlesql
 -- Before UNPIVOT is used to rotate Q1, Q2, Q3, Q4 into sales and quarter columns:
 /*---------+----+----+----+----+
  | product | Q1 | Q2 | Q3 | Q4 |
@@ -1460,7 +1460,7 @@ Rules for `row_value_alias`:
 
 The following examples reference a table called `Produce` that looks like this:
 
-```zetasql
+```googlesql
 WITH Produce AS (
   SELECT 'Kale' as product, 51 as Q1, 23 as Q2, 45 as Q3, 3 as Q4 UNION ALL
   SELECT 'Apple', 77, 0, 25, 2)
@@ -1479,7 +1479,7 @@ rotated. The values of these columns now populate a new column called `Sales`
 and the names of these columns now populate a new column called `Quarter`.
 This is a single-column unpivot operation.
 
-```zetasql
+```googlesql
 SELECT * FROM Produce
 UNPIVOT(sales FOR quarter IN (Q1, Q2, Q3, Q4))
 
@@ -1500,7 +1500,7 @@ UNPIVOT(sales FOR quarter IN (Q1, Q2, Q3, Q4))
 In this example, we `UNPIVOT` four quarters into two semesters.
 This is a multi-column unpivot operation.
 
-```zetasql
+```googlesql
 SELECT * FROM Produce
 UNPIVOT(
   (first_half_sales, second_half_sales)
@@ -1600,28 +1600,28 @@ The following examples illustrate the use of the `TABLESAMPLE` operator.
 
 Select from a table using the `RESERVOIR` sampling method:
 
-```zetasql
+```googlesql
 SELECT MessageId
 FROM Messages TABLESAMPLE RESERVOIR (100 ROWS);
 ```
 
 Select from a table using the `BERNOULLI` sampling method:
 
-```zetasql
+```googlesql
 SELECT MessageId
 FROM Messages TABLESAMPLE BERNOULLI (0.1 PERCENT);
 ```
 
 Use `TABLESAMPLE` with a repeat argument:
 
-```zetasql
+```googlesql
 SELECT MessageId
 FROM Messages TABLESAMPLE RESERVOIR (100 ROWS) REPEATABLE(10);
 ```
 
 Use `TABLESAMPLE` with a subquery:
 
-```zetasql
+```googlesql
 SELECT Subject FROM
 (SELECT MessageId, Subject FROM Messages WHERE ServerId="test")
 TABLESAMPLE BERNOULLI(50 PERCENT)
@@ -1630,7 +1630,7 @@ WHERE MessageId > 3;
 
 Use a `TABLESAMPLE` operation with a join to another table.
 
-```zetasql
+```googlesql
 SELECT S.Subject
 FROM
 (SELECT MessageId, ThreadId FROM Messages WHERE ServerId="test") AS R
@@ -1641,7 +1641,7 @@ WHERE S.ServerId="test" AND R.ThreadId = S.ThreadId;
 
 Group results by country, using stratified sampling:
 
-```zetasql
+```googlesql
 SELECT country, SUM(click_cost) FROM ClickEvents
  TABLESAMPLE RESERVOIR (100 ROWS PARTITION BY country)
  GROUP BY country;
@@ -1649,7 +1649,7 @@ SELECT country, SUM(click_cost) FROM ClickEvents
 
 Add scaling weight to stratified sampling:
 
-```zetasql
+```googlesql
 SELECT country, SUM(click_cost * sampling_weight) FROM ClickEvents
  TABLESAMPLE RESERVOIR (100 ROWS PARTITION BY country)
  WITH WEIGHT AS sampling_weight
@@ -1659,7 +1659,7 @@ SELECT country, SUM(click_cost * sampling_weight) FROM ClickEvents
 This is equivalent to the previous example. Note that you don't have to use
 an alias after `WITH WEIGHT`. If you don't, the default alias `weight` is used.
 
-```zetasql
+```googlesql
 SELECT country, SUM(click_cost * weight) FROM ClickEvents
  TABLESAMPLE RESERVOIR (100 ROWS PARTITION BY country)
  WITH WEIGHT
@@ -1689,7 +1689,7 @@ click events, each of which has two fields: `country` and `click_cost`.
 and `click_cost` represents how much the click costs. In this example,
 100 rows are randomly selected for each country.
 
-```zetasql
+```googlesql
 SELECT click_cost, country FROM ClickEvents
 TABLESAMPLE RESERVOIR (100 ROWS PARTITION BY country)
 ```
@@ -1713,7 +1713,7 @@ click events, each of which has two fields: `country` and `click_cost`.
 and `click_cost` represents how much the click costs. To calculate the
 total click cost per country, you can use the following query:
 
-```zetasql
+```googlesql
 SELECT country, SUM(click_cost)
 FROM ClickEvents
 GROUP BY country;
@@ -1723,7 +1723,7 @@ You can leverage the existing uniform sampling with fixed probability, using
 Bernoulli sampling and run this query to estimate the result of the previous
 query:
 
-```zetasql
+```googlesql
 SELECT country, SUM(click_cost * weight)
 FROM ClickEvents TABLESAMPLE BERNOULLI (1 PERCENT)
 WITH WEIGHT
@@ -1808,7 +1808,7 @@ of the two `from_item`s and discards all rows that don't meet the join
 condition. _Effectively_ means that it's possible to implement an `INNER JOIN`
 without actually calculating the Cartesian product.
 
-```zetasql
+```googlesql
 FROM A INNER JOIN B ON A.w = B.y
 
 /*
@@ -1825,7 +1825,7 @@ Table A       Table B       Result
 */
 ```
 
-```zetasql
+```googlesql
 FROM A INNER JOIN B USING (x)
 
 /*
@@ -1847,7 +1847,7 @@ Table A       Table B       Result
 This query performs an `INNER JOIN` on the [`Roster`][roster-table]
 and [`TeamMascot`][teammascot-table] tables.
 
-```zetasql
+```googlesql
 SELECT Roster.LastName, TeamMascot.Mascot
 FROM Roster JOIN TeamMascot ON Roster.SchoolID = TeamMascot.SchoolID;
 
@@ -1877,7 +1877,7 @@ this still holds for the case when either `from_item` has zero rows.
 
 In a `FROM` clause, a `CROSS JOIN` can be written like this:
 
-```zetasql
+```googlesql
 FROM A CROSS JOIN B
 
 /*
@@ -1903,7 +1903,7 @@ preferred over `CROSS JOIN` for this case. To learn more, see
 This query performs an `CROSS JOIN` on the [`Roster`][roster-table]
 and [`TeamMascot`][teammascot-table] tables.
 
-```zetasql
+```googlesql
 SELECT Roster.LastName, TeamMascot.Mascot
 FROM Roster CROSS JOIN TeamMascot;
 
@@ -1930,7 +1930,7 @@ called a comma cross join.
 
 A comma cross join looks like this in a `FROM` clause:
 
-```zetasql
+```googlesql
 FROM A, B
 
 /*
@@ -1949,7 +1949,7 @@ Table A       Table B       Result
 You can't write comma cross joins inside parentheses. To learn more, see
 [Join operations in a sequence][sequences-of-joins].
 
-```zetasql {.bad}
+```googlesql {.bad}
 FROM (A, B)  // INVALID
 ```
 
@@ -1962,7 +1962,7 @@ flatten an array into a set of rows. To learn more, see
 This query performs a comma cross join on the [`Roster`][roster-table]
 and [`TeamMascot`][teammascot-table] tables.
 
-```zetasql
+```googlesql
 SELECT Roster.LastName, TeamMascot.Mascot
 FROM Roster, TeamMascot;
 
@@ -1989,7 +1989,7 @@ rows in both `from_items` that meet the join condition. If a given row from one
 `from_item` doesn't join to any row in the other `from_item`, the row returns
 with `NULL` values for all columns from the other `from_item`.
 
-```zetasql
+```googlesql
 FROM A FULL OUTER JOIN B ON A.w = B.y
 
 /*
@@ -2008,7 +2008,7 @@ Table A       Table B       Result
 */
 ```
 
-```zetasql
+```googlesql
 FROM A FULL OUTER JOIN B USING (x)
 
 /*
@@ -2032,7 +2032,7 @@ Table A       Table B       Result
 This query performs a `FULL JOIN` on the [`Roster`][roster-table]
 and [`TeamMascot`][teammascot-table] tables.
 
-```zetasql
+```googlesql
 SELECT Roster.LastName, TeamMascot.Mascot
 FROM Roster FULL JOIN TeamMascot ON Roster.SchoolID = TeamMascot.SchoolID;
 
@@ -2062,7 +2062,7 @@ in the _right_ `from_item`, the row will return with `NULL` values for all
 columns exclusively from the right `from_item`. Rows from the right
 `from_item` that don't join to any row in the left `from_item` are discarded.
 
-```zetasql
+```googlesql
 FROM A LEFT OUTER JOIN B ON A.w = B.y
 
 /*
@@ -2080,7 +2080,7 @@ Table A       Table B       Result
 */
 ```
 
-```zetasql
+```googlesql
 FROM A LEFT OUTER JOIN B USING (x)
 
 /*
@@ -2103,7 +2103,7 @@ Table A       Table B       Result
 This query performs a `LEFT JOIN` on the [`Roster`][roster-table]
 and [`TeamMascot`][teammascot-table] tables.
 
-```zetasql
+```googlesql
 SELECT Roster.LastName, TeamMascot.Mascot
 FROM Roster LEFT JOIN TeamMascot ON Roster.SchoolID = TeamMascot.SchoolID;
 
@@ -2132,7 +2132,7 @@ in the _left_ `from_item`, the row will return with `NULL` values for all
 columns exclusively from the left `from_item`. Rows from the left `from_item`
 that don't join to any row in the right `from_item` are discarded.
 
-```zetasql
+```googlesql
 FROM A RIGHT OUTER JOIN B ON A.w = B.y
 
 /*
@@ -2150,7 +2150,7 @@ Table A       Table B       Result
 */
 ```
 
-```zetasql
+```googlesql
 FROM A RIGHT OUTER JOIN B USING (x)
 
 /*
@@ -2173,7 +2173,7 @@ Table A       Table B       Result
 This query performs a `RIGHT JOIN` on the [`Roster`][roster-table]
 and [`TeamMascot`][teammascot-table] tables.
 
-```zetasql
+```googlesql
 SELECT Roster.LastName, TeamMascot.Mascot
 FROM Roster RIGHT JOIN TeamMascot ON Roster.SchoolID = TeamMascot.SchoolID;
 
@@ -2243,7 +2243,7 @@ These examples include statements which perform queries on the
 The first query aims to find, for each school, the opponent player who scored
 the highest points against this school.
 
-```zetasql
+```googlesql
 
 SELECT R.SchoolID, OP.LastName AS TopOpPlayer, OP.PointsScored
 FROM Roster AS R,
@@ -2271,7 +2271,7 @@ Result (using implicit CROSS JOIN with LATERAL):
 
 Using `LEFT JOIN LATERAL`:
 
-```zetasql
+```googlesql
 
 SELECT R.LastName, R.SchoolID, M.Mascot FROM Roster AS R LEFT JOIN LATERAL (
 SELECT Mascot FROM TeamMascot m WHERE m.SchoolID = R.SchoolI ) AS M ORDER BY
@@ -2281,10 +2281,17 @@ R.LastName;
 `LEFT OUTER`, players from schoolID 77 still shows up in the output, with `NULL`
 padding.
 
-Result: +------------+----------+---------+ | LastName | SchoolID | Mascot |
-+------------+----------+---------+ | Adams | 50 | Jaguars | | Buchanan | 52 |
-Lakers | | Coolidge | 52 | Lakers | | Davis | 51 | Knights | | Eisenhower | 77 |
-NULL | +------------+----------+---------+ */
+Result:
++------------+----------+---------+
+| LastName   | SchoolID | Mascot  |
++------------+----------+---------+
+| Adams      | 50       | Jaguars |
+| Buchanan   | 52       | Lakers  |
+| Coolidge   | 52       | Lakers  |
+| Davis      | 51       | Knights |
+| Eisenhower | 77       | NULL    |
++------------+----------+---------+
+*/
 ```
 
 **Restrictions and notes:**
@@ -2316,7 +2323,7 @@ cross join operation.
 #### `ON` clause 
 <a id="on_clause"></a>
 
-```zetasql
+```googlesql
 ON bool_expression
 ```
 
@@ -2347,7 +2354,7 @@ order.
 
 The following examples show how to use the `ON` clause:
 
-```zetasql
+```googlesql
 WITH
   A AS ( SELECT 1 as x UNION ALL SELECT 2 UNION ALL SELECT 3),
   B AS ( SELECT 2 as x UNION ALL SELECT 3 UNION ALL SELECT 4)
@@ -2370,7 +2377,7 @@ Table A   Table B   Result (A.x, B.x)
 */
 ```
 
-```zetasql
+```googlesql
 WITH
   A AS ( SELECT 1 as x UNION ALL SELECT 2 UNION ALL SELECT 3 UNION ALL SELECT NULL),
   B AS ( SELECT 2 as x UNION ALL SELECT 3 UNION ALL SELECT 4 UNION ALL SELECT 5)
@@ -2394,7 +2401,7 @@ Table A    Table B   Result
 */
 ```
 
-```zetasql
+```googlesql
 WITH
   A AS ( SELECT 1 as x UNION ALL SELECT 2 UNION ALL SELECT 3 UNION ALL SELECT NULL),
   B AS ( SELECT 2 as x UNION ALL SELECT 3 UNION ALL SELECT 4 UNION ALL SELECT 5)
@@ -2423,7 +2430,7 @@ Table A    Table B   Result
 #### `USING` clause 
 <a id="using_clause"></a>
 
-```zetasql
+```googlesql
 USING ( column_name_list )
 
 column_name_list:
@@ -2473,7 +2480,7 @@ tables in that order.
 The following example shows how to use the `USING` clause with one
 column name in the column name list:
 
-```zetasql
+```googlesql
 WITH
   A AS ( SELECT 1 as x UNION ALL SELECT 2 UNION ALL SELECT 9 UNION ALL SELECT NULL),
   B AS ( SELECT 2 as x UNION ALL SELECT 9 UNION ALL SELECT 9 UNION ALL SELECT 5)
@@ -2495,7 +2502,7 @@ Table A    Table B   Result
 The following example shows how to use the `USING` clause with
 multiple column names in the column name list:
 
-```zetasql
+```googlesql
 WITH
   A AS (
     SELECT 1 as x, 15 as y UNION ALL
@@ -2525,7 +2532,7 @@ Table A         Table B        Result
 The following examples show additional ways in which to use the `USING` clause
 with one column name in the column name list:
 
-```zetasql
+```googlesql
 WITH
   A AS ( SELECT 1 as x UNION ALL SELECT 2 UNION ALL SELECT 9 UNION ALL SELECT NULL),
   B AS ( SELECT 2 as x UNION ALL SELECT 9 UNION ALL SELECT 9 UNION ALL SELECT 5)
@@ -2544,7 +2551,7 @@ Table A    Table B   Result
 */
 ```
 
-```zetasql
+```googlesql
 WITH
   A AS ( SELECT 1 as x UNION ALL SELECT 2 UNION ALL SELECT 9 UNION ALL SELECT NULL),
   B AS ( SELECT 2 as x UNION ALL SELECT 9 UNION ALL SELECT 9 UNION ALL SELECT 5)
@@ -2564,7 +2571,7 @@ Table A    Table B   Result
 */
 ```
 
-```zetasql
+```googlesql
 WITH
   A AS ( SELECT 1 as x UNION ALL SELECT 2 UNION ALL SELECT 2 UNION ALL SELECT NULL),
   B AS ( SELECT 2 as x UNION ALL SELECT 9 UNION ALL SELECT 9 UNION ALL SELECT 5)
@@ -2584,7 +2591,7 @@ Table A    Table B   Result
 */
 ```
 
-```zetasql
+```googlesql
 WITH
   A AS ( SELECT 1 as x UNION ALL SELECT 2 UNION ALL SELECT 2 UNION ALL SELECT NULL),
   B AS ( SELECT 2 as x UNION ALL SELECT 9 UNION ALL SELECT 9 UNION ALL SELECT 5)
@@ -2609,7 +2616,7 @@ Table A    Table B   Result
 The following example shows how to use the `USING` clause with
 only some column names in the column name list.
 
-```zetasql
+```googlesql
 WITH
   A AS (
     SELECT 1 as x, 15 as y UNION ALL
@@ -2642,7 +2649,7 @@ The query returns the rows from `Roster` and `TeamMascot` where
 `Roster.SchoolID` is the same as `TeamMascot.SchoolID`. The results include a
 single `SchoolID` column.
 
-```zetasql
+```googlesql
 SELECT * FROM Roster INNER JOIN TeamMascot USING (SchoolID);
 
 /*----------------------------------------+
@@ -2665,7 +2672,7 @@ In the following examples, observe what is returned when all rows
 are produced for inner and outer joins. Also, look at how
 each join condition handles `NULL` values.
 
-```zetasql
+```googlesql
 WITH
   A AS (SELECT 1 as x UNION ALL SELECT 2 UNION ALL SELECT 3),
   B AS (SELECT 2 as x UNION ALL SELECT 3 UNION ALL SELECT 4)
@@ -2688,7 +2695,7 @@ Table A   Table B   Result ON     Result USING
 */
 ```
 
-```zetasql
+```googlesql
 WITH
   A AS (SELECT 1 as x UNION ALL SELECT 2 UNION ALL SELECT 3 UNION ALL SELECT NULL),
   B AS (SELECT 2 as x UNION ALL SELECT 3 UNION ALL SELECT 4 UNION ALL SELECT 5)
@@ -2712,7 +2719,7 @@ Table A    Table B   Result ON           Result USING
 */
 ```
 
-```zetasql
+```googlesql
 WITH
   A AS (SELECT 1 as x UNION ALL SELECT 2 UNION ALL SELECT 3),
   B AS (SELECT 2 as x UNION ALL SELECT 3 UNION ALL SELECT 4)
@@ -2743,7 +2750,7 @@ In the following examples, observe what is returned when a specific row
 is produced for inner and outer joins. Also, look at how each
 join condition handles `NULL` values.
 
-```zetasql
+```googlesql
 WITH
   A AS (SELECT 1 as x UNION ALL SELECT 2 UNION ALL SELECT 3 UNION ALL SELECT NULL),
   B AS (SELECT 2 as x UNION ALL SELECT 3 UNION ALL SELECT 4 UNION ALL SELECT 5)
@@ -2767,7 +2774,7 @@ Table A    Table B   Result ON     Result USING
 */
 ```
 
-```zetasql
+```googlesql
 WITH
   A AS (SELECT 1 as x UNION ALL SELECT 2 UNION ALL SELECT 3 UNION ALL SELECT NULL),
   B AS (SELECT 2 as x UNION ALL SELECT 3 UNION ALL SELECT 4 UNION ALL SELECT 5)
@@ -2791,7 +2798,7 @@ Table A    Table B   Result ON    Result USING
 */
 ```
 
-```zetasql
+```googlesql
 WITH
   A AS (SELECT 1 as x UNION ALL SELECT 2 UNION ALL SELECT 3 UNION ALL SELECT NULL),
   B AS (SELECT 2 as x UNION ALL SELECT 3 UNION ALL SELECT 4 UNION ALL SELECT 5)
@@ -2817,7 +2824,7 @@ Table A    Table B   Result ON    Result USING
 */
 ```
 
-```zetasql
+```googlesql
 WITH
   A AS (SELECT 1 as x UNION ALL SELECT 2 UNION ALL SELECT 3 UNION ALL SELECT NULL),
   B AS (SELECT 2 as x UNION ALL SELECT 3 UNION ALL SELECT 4 UNION ALL SELECT 5)
@@ -2847,7 +2854,7 @@ In the following example, observe what is returned when `COALESCE` is used
 with the `ON` clause. It provides the same results as a query
 with the `USING` clause.
 
-```zetasql
+```googlesql
 WITH
   A AS (SELECT 1 as x UNION ALL SELECT 2 UNION ALL SELECT 3 UNION ALL SELECT NULL),
   B AS (SELECT 2 as x UNION ALL SELECT 3 UNION ALL SELECT 4 UNION ALL SELECT 5)
@@ -2879,7 +2886,7 @@ Table A    Table B   Result ON    Result USING
 The `FROM` clause can contain multiple `JOIN` operations in a sequence.
 `JOIN`s are bound from left to right. For example:
 
-```zetasql
+```googlesql
 FROM A JOIN B USING (x) JOIN C USING (x)
 
 -- A JOIN B USING (x)        = result_1
@@ -2889,7 +2896,7 @@ FROM A JOIN B USING (x) JOIN C USING (x)
 
 You can also insert parentheses to group `JOIN`s:
 
-```zetasql
+```googlesql
 FROM ( (A JOIN B USING (x)) JOIN C USING (x) )
 
 -- A JOIN B USING (x)        = result_1
@@ -2900,7 +2907,7 @@ FROM ( (A JOIN B USING (x)) JOIN C USING (x) )
 With parentheses, you can group `JOIN`s so that they are bound in a different
 order:
 
-```zetasql
+```googlesql
 FROM ( A JOIN (B JOIN C USING (x)) USING (x) )
 
 -- B JOIN C USING (x)       = result_1
@@ -2912,24 +2919,24 @@ A `FROM` clause can have multiple joins. Provided there are no comma cross joins
 in the `FROM` clause, joins don't require parenthesis, though parenthesis can
 help readability:
 
-```zetasql
+```googlesql
 FROM A JOIN B JOIN C JOIN D USING (w) ON B.x = C.y ON A.z = B.x
 ```
 
 If your clause contains comma cross joins, you must use parentheses:
 
-```zetasql {.bad}
+```googlesql {.bad}
 FROM A, B JOIN C JOIN D ON C.x = D.y ON B.z = C.x    // INVALID
 ```
 
-```zetasql
+```googlesql
 FROM A, B JOIN (C JOIN D ON C.x = D.y) ON B.z = C.x  // VALID
 ```
 
 When comma cross joins are present in a query with a sequence of JOINs, they
 group from left to right like other `JOIN` types:
 
-```zetasql
+```googlesql
 FROM A JOIN B USING (x) JOIN C USING (x), D
 
 -- A JOIN B USING (x)        = result_1
@@ -2940,23 +2947,23 @@ FROM A JOIN B USING (x) JOIN C USING (x), D
 There can't be a `RIGHT JOIN` or `FULL JOIN` after a comma cross join unless
 it's parenthesized:
 
-```zetasql {.bad}
+```googlesql {.bad}
 FROM A, B RIGHT JOIN C ON TRUE // INVALID
 ```
 
-```zetasql {.bad}
+```googlesql {.bad}
 FROM A, B FULL JOIN C ON TRUE  // INVALID
 ```
 
-```zetasql
+```googlesql
 FROM A, B JOIN C ON TRUE       // VALID
 ```
 
-```zetasql
+```googlesql
 FROM A, (B RIGHT JOIN C ON TRUE) // VALID
 ```
 
-```zetasql
+```googlesql
 FROM A, (B FULL JOIN C ON TRUE)  // VALID
 ```
 
@@ -2977,7 +2984,7 @@ All correlated join operations must reference an array in the right `from_item`.
 This is a conceptual example of a correlated join operation that includes
 a [correlated subquery][correlated-subquery]:
 
-```zetasql
+```googlesql
 FROM A JOIN UNNEST(ARRAY(SELECT AS STRUCT * FROM B WHERE A.ID = B.ID)) AS C
 ```
 
@@ -2989,18 +2996,18 @@ This is another conceptual example of a correlated join operation.
 `array_of_IDs` is part of the left `from_item` but is referenced in the
 right `from_item`.
 
-```zetasql
+```googlesql
 FROM A JOIN UNNEST(A.array_of_IDs) AS C
 ```
 
 The [`UNNEST` operator][unnest-operator] can be explicit or implicit.
 These are both allowed:
 
-```zetasql
+```googlesql
 FROM A JOIN UNNEST(A.array_of_IDs) AS IDs
 ```
 
-```zetasql
+```googlesql
 FROM A JOIN A.array_of_IDs AS IDs
 ```
 
@@ -3009,7 +3016,7 @@ against each distinct row from the left `from_item`. In the following
 conceptual example, the correlated join operation first
 evaluates `A` and `B`, then `A` and `C`:
 
-```zetasql
+```googlesql
 FROM
   A
   JOIN
@@ -3034,7 +3041,7 @@ FROM
 This is an example of a correlated join, using the
 [Roster][roster-table] and [PlayerStats][playerstats-table] tables:
 
-```zetasql
+```googlesql
 SELECT *
 FROM
   Roster
@@ -3062,7 +3069,7 @@ the `UNNEST` operation produces no rows on the right input. In that case, a row
 with a `NULL` entry in each column of the right input is created to join with
 the row from the left input. For example:
 
-```zetasql
+```googlesql
 SELECT A.name, item, ARRAY_LENGTH(A.items) item_count_for_name
 FROM
   UNNEST(
@@ -3091,7 +3098,7 @@ In the case of a correlated `INNER JOIN` or `CROSS JOIN`, when the input on the
 right side is empty for some row from the left side, the final row is dropped
 from the results. For example:
 
-```zetasql
+```googlesql
 SELECT A.name, item
 FROM
   UNNEST(
@@ -3151,14 +3158,14 @@ it can't reference `SELECT` list aliases.
 This query returns returns all rows from the [`Roster`][roster-table] table
 where the `SchoolID` column has the value `52`:
 
-```zetasql
+```googlesql
 SELECT * FROM Roster
 WHERE SchoolID = 52;
 ```
 
 The `bool_expression` can contain multiple sub-conditions:
 
-```zetasql
+```googlesql
 SELECT * FROM Roster
 WHERE STARTS_WITH(LastName, "Mc") OR STARTS_WITH(LastName, "Mac");
 ```
@@ -3168,13 +3175,13 @@ Expressions in an `INNER JOIN` have an equivalent expression in the
 equivalent expression using `CROSS JOIN` and `WHERE`. For example,
 the following two queries are equivalent:
 
-```zetasql
+```googlesql
 SELECT Roster.LastName, TeamMascot.Mascot
 FROM Roster INNER JOIN TeamMascot
 ON Roster.SchoolID = TeamMascot.SchoolID;
 ```
 
-```zetasql
+```googlesql
 SELECT Roster.LastName, TeamMascot.Mascot
 FROM Roster CROSS JOIN TeamMascot
 WHERE Roster.SchoolID = TeamMascot.SchoolID;
@@ -3257,7 +3264,7 @@ and their ordinals.
 The `GROUP BY` clause can group rows in a table with non-distinct
 values in the `GROUP BY` clause. For example:
 
-```zetasql
+```googlesql
 WITH PlayerStats AS (
   SELECT 'Adams' as LastName, 'Noam' as FirstName, 3 as PointsScored UNION ALL
   SELECT 'Buchanan', 'Jie', 0 UNION ALL
@@ -3281,7 +3288,7 @@ GROUP BY LastName;
 the `SELECT` clause, those aliases override names in the corresponding `FROM`
 clause. For example:
 
-```zetasql
+```googlesql
 WITH PlayerStats AS (
   SELECT 'Adams' as LastName, 'Noam' as FirstName, 3 as PointsScored UNION ALL
   SELECT 'Buchanan', 'Jie', 0 UNION ALL
@@ -3304,7 +3311,7 @@ GROUP BY last_name;
 You can use the `GROUP BY` clause with arrays. The following query executes
 because the array elements being grouped are the same length and group type:
 
-```zetasql
+```googlesql
 WITH PlayerStats AS (
   SELECT ['Coolidge', 'Adams'] as Name, 3 as PointsScored UNION ALL
   SELECT ['Adams', 'Buchanan'], 0 UNION ALL
@@ -3326,7 +3333,7 @@ GROUP BY Name;
 You can use the `GROUP BY` clause with structs. The following query executes
 because the struct fields being grouped have the same group types:
 
-```zetasql
+```googlesql
 WITH
   TeamStats AS (
     SELECT
@@ -3383,7 +3390,7 @@ list, using integer values. `1` refers to the first value in the
 `SELECT` list, `2` the second, and so forth. The value list can combine
 ordinals and value names. The following queries are equivalent:
 
-```zetasql
+```googlesql
 WITH PlayerStats AS (
   SELECT 'Adams' as LastName, 'Noam' as FirstName, 3 as PointsScored UNION ALL
   SELECT 'Buchanan', 'Jie', 0 UNION ALL
@@ -3403,7 +3410,7 @@ GROUP BY LastName, FirstName;
  +--------------+----------+-----------*/
 ```
 
-```zetasql
+```googlesql
 WITH PlayerStats AS (
   SELECT 'Adams' as LastName, 'Noam' as FirstName, 3 as PointsScored UNION ALL
   SELECT 'Buchanan', 'Jie', 0 UNION ALL
@@ -3460,7 +3467,7 @@ In the following example, the query groups rows by `first_name` and
 `last_name`. `total_points` is excluded because it represents an
 aggregate function.
 
-```zetasql
+```googlesql
 WITH PlayerStats AS (
   SELECT 'Adams' as LastName, 'Noam' as FirstName, 3 as PointsScored UNION ALL
   SELECT 'Buchanan', 'Jie', 0 UNION ALL
@@ -3487,7 +3494,7 @@ If the select list contains an analytic function, the query groups rows by
 `first_name` and `last_name`. `total_people` is excluded because it
 contains a window function.
 
-```zetasql
+```googlesql
 WITH PlayerStats AS (
   SELECT 'Adams' as LastName, 'Noam' as FirstName, 3 as PointsScored UNION ALL
   SELECT 'Buchanan', 'Jie', 0 UNION ALL
@@ -3517,7 +3524,7 @@ In the following example, `coordinates` is excluded because `x_coordinate` and
 `FROM` clause, and they are prefixes of the path expression used in
 `x_coordinate`:
 
-```zetasql
+```googlesql
 WITH Values AS (
   SELECT 1 AS x, 2 AS y
   UNION ALL SELECT 1 AS x, 4 AS y
@@ -3542,7 +3549,7 @@ GROUP BY ALL
 In the following example, the inferred set of grouping keys is empty. The query
 returns one row even when the input contains zero rows.
 
-```zetasql
+```googlesql
 SELECT COUNT(*) AS num_rows
 FROM UNNEST([])
 GROUP BY ALL
@@ -3662,7 +3669,7 @@ You can filter results for specific groupable items. To learn more, see the
 The following queries produce the same results, but
 the first one uses `GROUP BY GROUPING SETS` and the second one doesn't:
 
-```zetasql
+```googlesql
 -- GROUP BY with GROUPING SETS
 WITH
   Products AS (
@@ -3687,7 +3694,7 @@ ORDER BY product_name
  +--------------+--------------+-------------*/
 ```
 
-```zetasql
+```googlesql
 -- GROUP BY without GROUPING SETS
 -- (produces the same results as GROUPING SETS)
 WITH
@@ -3710,7 +3717,7 @@ ORDER BY product_name
 You can include groupable item sets in a `GROUP BY GROUPING SETS` clause.
 In the example below, `(product_type, product_name)` is a groupable item set.
 
-```zetasql
+```googlesql
 -- GROUP BY with GROUPING SETS and a groupable item set
 WITH
   Products AS (
@@ -3737,7 +3744,7 @@ ORDER BY product_type, product_name;
  +--------------+--------------+-------------*/
 ```
 
-```zetasql
+```googlesql
 -- GROUP BY with GROUPING SETS but without a groupable item set
 -- (produces the same results as GROUPING SETS with a groupable item set)
 WITH
@@ -3760,7 +3767,7 @@ ORDER BY product_type, product_name;
 You can include [`ROLLUP`][group-by-rollup] in a
 `GROUP BY GROUPING SETS` clause. For example:
 
-```zetasql
+```googlesql
 -- GROUP BY with GROUPING SETS and ROLLUP
 WITH
   Products AS (
@@ -3790,7 +3797,7 @@ ORDER BY product_type, product_name;
  +--------------+--------------+-------------*/
 ```
 
-```zetasql
+```googlesql
 -- GROUP BY with GROUPING SETS, but without ROLLUP
 -- (produces the same results as GROUPING SETS with ROLLUP)
 WITH
@@ -3813,7 +3820,7 @@ ORDER BY product_type, product_name;
 You can include [`CUBE`][group-by-cube] in a `GROUP BY GROUPING SETS` clause.
 For example:
 
-```zetasql
+```googlesql
 -- GROUP BY with GROUPING SETS and CUBE
 WITH
   Products AS (
@@ -3846,7 +3853,7 @@ ORDER BY product_type, product_name;
  +--------------+--------------+-------------*/
 ```
 
-```zetasql
+```googlesql
 -- GROUP BY with GROUPING SETS, but without CUBE
 -- (produces the same results as GROUPING SETS with CUBE)
 WITH
@@ -3938,7 +3945,7 @@ You can filter results by specific groupable items. To learn more, see the
 The following queries produce the same subtotals and a grand total, but
 the first one uses `GROUP BY` with `ROLLUP` and the second one doesn't:
 
-```zetasql
+```googlesql
 -- GROUP BY with ROLLUP
 WITH
   Products AS (
@@ -3964,7 +3971,7 @@ ORDER BY product_type, product_name;
  +--------------+--------------+-------------*/
 ```
 
-```zetasql
+```googlesql
 -- GROUP BY without ROLLUP (produces the same results as ROLLUP)
 WITH
   Products AS (
@@ -3989,7 +3996,7 @@ You can include groupable item sets in a `GROUP BY ROLLUP` clause.
 In the following example, `(product_type, product_name)` is a
 groupable item set.
 
-```zetasql
+```googlesql
 WITH
   Products AS (
     SELECT 'shirt' AS product_type, 't-shirt' AS product_name, 3 AS product_count UNION ALL
@@ -4093,7 +4100,7 @@ You can filter results by specific groupable items. To learn more, see the
 The following query groups rows by all combinations of `product_type` and
 `product_name` to produce a contingency table:
 
-```zetasql
+```googlesql
 -- GROUP BY with CUBE
 WITH
   Products AS (
@@ -4126,7 +4133,7 @@ You can include groupable item sets in a `GROUP BY CUBE` clause.
 In the following example, `(product_type, product_name)` is a
 groupable item set.
 
-```zetasql
+```googlesql
 WITH
   Products AS (
     SELECT 'shirt' AS product_type, 't-shirt' AS product_name, 3 AS product_count UNION ALL
@@ -4190,7 +4197,7 @@ well as `SELECT` list aliases. Expressions referenced in the `HAVING` clause
 must either appear in the `GROUP BY` clause or they must be the result of an
 aggregate function:
 
-```zetasql
+```googlesql
 SELECT LastName
 FROM Roster
 GROUP BY LastName
@@ -4200,7 +4207,7 @@ HAVING SUM(PointsScored) > 15;
 If a query contains aliases in the `SELECT` clause, those aliases override names
 in a `FROM` clause.
 
-```zetasql
+```googlesql
 SELECT LastName, SUM(PointsScored) AS ps
 FROM Roster
 GROUP BY LastName
@@ -4215,7 +4222,7 @@ aggregation must be present in at least one of the following forms:
 
 #### Aggregation function in the `SELECT` list.
 
-```zetasql
+```googlesql
 SELECT LastName, SUM(PointsScored) AS total
 FROM PlayerStats
 GROUP BY LastName
@@ -4224,7 +4231,7 @@ HAVING total > 15;
 
 #### Aggregation function in the `HAVING` clause.
 
-```zetasql
+```googlesql
 SELECT LastName
 FROM PlayerStats
 GROUP BY LastName
@@ -4238,7 +4245,7 @@ clause, the aggregation functions and the columns they reference don't need
 to be the same. In the example below, the two aggregation functions,
 `COUNT()` and `SUM()`, are different and also use different columns.
 
-```zetasql
+```googlesql
 SELECT LastName, COUNT(*)
 FROM PlayerStats
 GROUP BY LastName
@@ -4295,7 +4302,7 @@ override names in the corresponding `FROM` clause. The data type of
 
 Use the default sort order (ascending).
 
-```zetasql
+```googlesql
 SELECT x, y
 FROM (SELECT 1 AS x, true AS y UNION ALL
       SELECT 9, true UNION ALL
@@ -4313,7 +4320,7 @@ ORDER BY x;
 
 Use the default sort order (ascending), but return null values last.
 
-```zetasql
+```googlesql
 SELECT x, y
 FROM (SELECT 1 AS x, true AS y UNION ALL
       SELECT 9, true UNION ALL
@@ -4331,7 +4338,7 @@ ORDER BY x NULLS LAST;
 
 Use descending sort order.
 
-```zetasql
+```googlesql
 SELECT x, y
 FROM (SELECT 1 AS x, true AS y UNION ALL
       SELECT 9, true UNION ALL
@@ -4349,7 +4356,7 @@ ORDER BY x DESC;
 
 Use descending sort order, but return null values first.
 
-```zetasql
+```googlesql
 SELECT x, y
 FROM (SELECT 1 AS x, true AS y UNION ALL
       SELECT 9, true UNION ALL
@@ -4368,7 +4375,7 @@ ORDER BY x DESC NULLS FIRST;
 It's possible to order by multiple columns. In the example below, the result
 set is ordered first by `SchoolID` and then by `LastName`:
 
-```zetasql
+```googlesql
 SELECT LastName, PointsScored, OpponentID
 FROM PlayerStats
 ORDER BY SchoolID, LastName;
@@ -4383,7 +4390,7 @@ BY`.
 
 This query without parentheses:
 
-```zetasql
+```googlesql
 SELECT * FROM Roster
 UNION ALL
 SELECT * FROM TeamMascot
@@ -4392,7 +4399,7 @@ ORDER BY SchoolID;
 
 is equivalent to this query with parentheses:
 
-```zetasql
+```googlesql
 ( SELECT * FROM Roster
   UNION ALL
   SELECT * FROM TeamMascot )
@@ -4402,7 +4409,7 @@ ORDER BY SchoolID;
 but isn't equivalent to this query, where the `ORDER BY` clause applies only to
 the second `SELECT` statement:
 
-```zetasql
+```googlesql
 SELECT * FROM Roster
 UNION ALL
 ( SELECT * FROM TeamMascot
@@ -4415,14 +4422,14 @@ the `SELECT` list.
 
 Example - the following two queries are equivalent:
 
-```zetasql
+```googlesql
 SELECT SUM(PointsScored), LastName
 FROM PlayerStats
 GROUP BY LastName
 ORDER BY LastName;
 ```
 
-```zetasql
+```googlesql
 SELECT SUM(PointsScored), LastName
 FROM PlayerStats
 GROUP BY 2
@@ -4431,7 +4438,7 @@ ORDER BY 2;
 
 Collate results using English - Canada:
 
-```zetasql
+```googlesql
 SELECT Place
 FROM Locations
 ORDER BY Place COLLATE "en_CA"
@@ -4439,7 +4446,7 @@ ORDER BY Place COLLATE "en_CA"
 
 Collate results using a parameter:
 
-```zetasql
+```googlesql
 #@collate_param = "arg_EG"
 SELECT Place
 FROM Locations
@@ -4448,7 +4455,7 @@ ORDER BY Place COLLATE @collate_param
 
 Using multiple `COLLATE` clauses in a statement:
 
-```zetasql
+```googlesql
 SELECT APlace, BPlace, CPlace
 FROM Locations
 ORDER BY APlace COLLATE "en_US" ASC,
@@ -4458,7 +4465,7 @@ ORDER BY APlace COLLATE "en_US" ASC,
 
 Case insensitive collation:
 
-```zetasql
+```googlesql
 SELECT Place
 FROM Locations
 ORDER BY Place COLLATE "en_US:ci"
@@ -4466,7 +4473,7 @@ ORDER BY Place COLLATE "en_US:ci"
 
 Default Unicode case-insensitive collation:
 
-```zetasql
+```googlesql
 SELECT Place
 FROM Locations
 ORDER BY Place COLLATE "und:ci"
@@ -4506,7 +4513,7 @@ Evaluation order doesn't always match syntax order.
 The following query returns the most popular vegetables in the
 [`Produce`][produce-table] table and their rank.
 
-```zetasql
+```googlesql
 SELECT
   item,
   RANK() OVER (PARTITION BY category ORDER BY purchases DESC) as rank
@@ -4527,7 +4534,7 @@ You don't have to include a window function in the `SELECT` list to use
 `QUALIFY`. The following query returns the most popular vegetables in the
 [`Produce`][produce-table] table.
 
-```zetasql
+```googlesql
 SELECT item
 FROM Produce
 WHERE Produce.category = 'vegetable'
@@ -4566,7 +4573,7 @@ They all return the same [result][named-window-example]. Note the different
 ways you can combine named windows and use them in a window function's
 `OVER` clause.
 
-```zetasql
+```googlesql
 SELECT item, purchases, category, LAST_VALUE(item)
   OVER (item_window) AS most_popular
 FROM Produce
@@ -4576,7 +4583,7 @@ WINDOW item_window AS (
   ROWS BETWEEN 2 PRECEDING AND 2 FOLLOWING)
 ```
 
-```zetasql
+```googlesql
 SELECT item, purchases, category, LAST_VALUE(item)
   OVER (d) AS most_popular
 FROM Produce
@@ -4587,7 +4594,7 @@ WINDOW
   d AS (c)
 ```
 
-```zetasql
+```googlesql
 SELECT item, purchases, category, LAST_VALUE(item)
   OVER (c ROWS BETWEEN 2 PRECEDING AND 2 FOLLOWING) AS most_popular
 FROM Produce
@@ -4663,7 +4670,7 @@ the `BY NAME` modifier is recommended because it's shorter and clearer.
 
 Example:
 
-```zetasql
+```googlesql
 SELECT 1 AS one_digit, 10 AS two_digit
 UNION ALL BY NAME
 SELECT 20 AS two_digit, 2 AS one_digit;
@@ -4699,7 +4706,7 @@ SELECT 20 AS two_digit, 2 AS one_digit;
 The following examples illustrate the use of parentheses with set
 operations:
 
-```zetasql
+```googlesql
 -- Same set operations, no parentheses.
 query1
 UNION ALL
@@ -4708,7 +4715,7 @@ UNION ALL
 query3;
 ```
 
-```zetasql
+```googlesql
 -- Different set operations, parentheses needed.
 query1
 UNION ALL
@@ -4719,7 +4726,7 @@ UNION ALL
 );
 ```
 
-```zetasql {.bad}
+```googlesql {.bad}
 -- Invalid
 query1
 UNION ALL
@@ -4728,7 +4735,7 @@ UNION DISTINCT
 query3;
 ```
 
-```zetasql
+```googlesql
 -- Same set operations, no parentheses.
 query1
 EXCEPT ALL
@@ -4746,7 +4753,7 @@ EXCEPT ALL
 query3;
 ```
 
-```zetasql
+```googlesql
 -- Different execution order with a subquery, parentheses needed.
 query1
 EXCEPT ALL
@@ -4914,7 +4921,7 @@ rows are concatenated vertically.
 
 **Examples**
 
-```zetasql
+```googlesql
 SELECT * FROM UNNEST(ARRAY<INT64>[1, 2, 3]) AS number
 UNION ALL
 SELECT 1;
@@ -4929,7 +4936,7 @@ SELECT 1;
  +--------*/
 ```
 
-```zetasql
+```googlesql
 SELECT * FROM UNNEST(ARRAY<INT64>[1, 2, 3]) AS number
 UNION DISTINCT
 SELECT 1;
@@ -4945,7 +4952,7 @@ SELECT 1;
 
 The following example shows multiple chained operators:
 
-```zetasql
+```googlesql
 SELECT * FROM UNNEST(ARRAY<INT64>[1, 2, 3]) AS number
 UNION DISTINCT
 SELECT 1
@@ -4966,7 +4973,7 @@ queries specify the same column names but in different orders. As a result, the
 column values are matched by column position in the input query and the column
 names are ignored.
 
-```zetasql
+```googlesql
 SELECT 1 AS one_digit, 10 AS two_digit
 UNION ALL
 SELECT 20 AS two_digit, 2 AS one_digit;
@@ -4984,7 +4991,7 @@ To resolve this ordering issue, the following example uses the
 `BY NAME` modifier to match
 the columns by name instead of by position in the query results.
 
-```zetasql
+```googlesql
 SELECT 1 AS one_digit, 10 AS two_digit
 UNION ALL BY NAME
 SELECT 20 AS two_digit, 2 AS one_digit;
@@ -5002,7 +5009,7 @@ The previous set operation with `BY NAME` is equivalent to using the `STRICT
 CORRESPONDING` modifier. The `BY NAME` modifier is recommended because it's
 shorter and clearer than the `STRICT CORRESPONDING` modifier.
 
-```zetasql
+```googlesql
 SELECT 1 AS one_digit, 10 AS two_digit
 UNION ALL STRICT CORRESPONDING
 SELECT 20 AS two_digit, 2 AS one_digit;
@@ -5023,7 +5030,7 @@ adds the `INNER`
 mode prefix so that the new columns are excluded from the results, executing the
 query successfully.
 
-```zetasql
+```googlesql
 SELECT 1 AS one_digit, 10 AS two_digit, 100 AS three_digit
 INNER UNION ALL BY NAME
 SELECT 20 AS two_digit, 2 AS one_digit, 1000 AS four_digit;
@@ -5040,7 +5047,7 @@ To include the differing columns in the results, the following example uses
 the `FULL OUTER` mode prefix to populate `NULL` values for the missing column in
 each query.
 
-```zetasql
+```googlesql
 SELECT 1 AS one_digit, 10 AS two_digit, 100 AS three_digit
 FULL OUTER UNION ALL BY NAME
 SELECT 20 AS two_digit, 2 AS one_digit, 1000 AS four_digit;
@@ -5057,7 +5064,7 @@ Similarly, the following example uses the `LEFT OUTER` mode prefix to include
 the new column from only the left input query and populate a `NULL` value for
 the missing column in the right input query.
 
-```zetasql
+```googlesql
 SELECT 1 AS one_digit, 10 AS two_digit, 100 AS three_digit
 LEFT OUTER UNION ALL BY NAME
 SELECT 20 AS two_digit, 2 AS one_digit, 1000 AS four_digit;
@@ -5073,7 +5080,7 @@ SELECT 20 AS two_digit, 2 AS one_digit, 1000 AS four_digit;
 The following example adds the modifier `ON (column_list)`
 to return only the specified columns in the specified order.
 
-```zetasql
+```googlesql
 SELECT 1 AS one_digit, 10 AS two_digit, 100 AS three_digit
 FULL OUTER UNION ALL BY NAME ON (three_digit, two_digit)
 SELECT 20 AS two_digit, 2 AS one_digit, 1000 AS four_digit;
@@ -5094,7 +5101,7 @@ left and right input queries.
 
 **Examples**
 
-```zetasql
+```googlesql
 SELECT * FROM UNNEST(ARRAY<INT64>[1, 2, 3, 3, 4]) AS number
 INTERSECT ALL
 SELECT * FROM UNNEST(ARRAY<INT64>[2, 3, 3, 5]) AS number;
@@ -5108,7 +5115,7 @@ SELECT * FROM UNNEST(ARRAY<INT64>[2, 3, 3, 5]) AS number;
  +--------*/
 ```
 
-```zetasql
+```googlesql
 SELECT * FROM UNNEST(ARRAY<INT64>[1, 2, 3, 3, 4]) AS number
 INTERSECT DISTINCT
 SELECT * FROM UNNEST(ARRAY<INT64>[2, 3, 3, 5]) AS number;
@@ -5123,7 +5130,7 @@ SELECT * FROM UNNEST(ARRAY<INT64>[2, 3, 3, 5]) AS number;
 
 The following example shows multiple chained operations:
 
-```zetasql
+```googlesql
 SELECT * FROM UNNEST(ARRAY<INT64>[1, 2, 3, 3, 4]) AS number
 INTERSECT DISTINCT
 SELECT * FROM UNNEST(ARRAY<INT64>[2, 3, 3, 5]) AS number
@@ -5142,7 +5149,7 @@ queries specify the same column names but in different orders. As a result, the
 same columns in differing order are considered different columns, so the query
 doesn't detect any intersecting row values. Therefore, no results are returned.
 
-```zetasql
+```googlesql
 WITH
   NumbersTable AS (
     SELECT 1 AS one_digit, 10 AS two_digit
@@ -5165,7 +5172,7 @@ To resolve this ordering issue, the following example uses the
 `BY NAME` modifier to match
 the columns by name instead of by position in the query results.
 
-```zetasql
+```googlesql
 WITH
   NumbersTable AS (
     SELECT 1 AS one_digit, 10 AS two_digit
@@ -5189,7 +5196,7 @@ The previous set operation with `BY NAME` is equivalent to using the `STRICT
 CORRESPONDING` modifier. The `BY NAME` modifier is recommended because it's
 shorter and clearer than the `STRICT CORRESPONDING` modifier.
 
-```zetasql
+```googlesql
 WITH
   NumbersTable AS (
     SELECT 1 AS one_digit, 10 AS two_digit
@@ -5220,7 +5227,7 @@ in the right input query.
 
 **Examples**
 
-```zetasql
+```googlesql
 SELECT * FROM UNNEST(ARRAY<INT64>[1, 2, 3, 3, 4]) AS number
 EXCEPT ALL
 SELECT * FROM UNNEST(ARRAY<INT64>[1, 2]) AS number;
@@ -5234,7 +5241,7 @@ SELECT * FROM UNNEST(ARRAY<INT64>[1, 2]) AS number;
  +--------*/
 ```
 
-```zetasql
+```googlesql
 SELECT * FROM UNNEST(ARRAY<INT64>[1, 2, 3, 3, 4]) AS number
 EXCEPT DISTINCT
 SELECT * FROM UNNEST(ARRAY<INT64>[1, 2]) AS number;
@@ -5249,7 +5256,7 @@ SELECT * FROM UNNEST(ARRAY<INT64>[1, 2]) AS number;
 
 The following example shows multiple chained operations:
 
-```zetasql
+```googlesql
 SELECT * FROM UNNEST(ARRAY<INT64>[1, 2, 3, 3, 4]) AS number
 EXCEPT DISTINCT
 SELECT * FROM UNNEST(ARRAY<INT64>[1, 2]) AS number
@@ -5270,7 +5277,7 @@ the `EXCEPT` result of the last two input queries is `2`. Therefore, the
 `EXCEPT` results of the entire query are any values other than `2` in the first
 input query.
 
-```zetasql
+```googlesql
 SELECT * FROM UNNEST(ARRAY<INT64>[1, 2, 3, 3, 4]) AS number
 EXCEPT DISTINCT
 (
@@ -5294,7 +5301,7 @@ same columns in differing order are considered different columns, so the query
 doesn't detect any common rows that should be excluded. Therefore, all column
 values from the left input query are returned with no exclusions.
 
-```zetasql
+```googlesql
 WITH
   NumbersTable AS (
     SELECT 1 AS one_digit, 10 AS two_digit
@@ -5321,7 +5328,7 @@ To resolve this ordering issue, the following example uses the
 `BY NAME` modifier to match
 the columns by name instead of by position in the query results.
 
-```zetasql
+```googlesql
 WITH
   NumbersTable AS (
     SELECT 1 AS one_digit, 10 AS two_digit
@@ -5346,7 +5353,7 @@ The previous set operation with `BY NAME` is equivalent to using the `STRICT
 CORRESPONDING` modifier. The `BY NAME` modifier is recommended because it's
 shorter and clearer than the `STRICT CORRESPONDING` modifier.
 
-```zetasql
+```googlesql
 WITH
   NumbersTable AS (
     SELECT 1 AS one_digit, 10 AS two_digit
@@ -5373,7 +5380,7 @@ modifier, see the [`UNION`][union] set operator.
 ## `LIMIT` and `OFFSET` clause 
 <a id="limit_and_offset_clause"></a>
 
-```zetasql
+```googlesql
 LIMIT count [ OFFSET skip_rows ]
 ```
 
@@ -5412,7 +5419,7 @@ doesn't limit the amount of data processed by that query.
 
 **Examples**
 
-```zetasql
+```googlesql
 SELECT *
 FROM UNNEST(ARRAY<STRING>['a', 'b', 'c', 'd', 'e']) AS letter
 ORDER BY letter ASC LIMIT 2;
@@ -5425,7 +5432,7 @@ ORDER BY letter ASC LIMIT 2;
  +---------*/
 ```
 
-```zetasql
+```googlesql
 SELECT *
 FROM UNNEST(ARRAY<STRING>['a', 'b', 'c', 'd', 'e']) AS letter
 ORDER BY letter ASC LIMIT 3 OFFSET 1;
@@ -5499,7 +5506,7 @@ In this example, a `WITH` clause defines two non-recursive CTEs that
 are referenced in the related set operation, where one CTE is referenced by
 each of the set operation's input query expressions:
 
-```zetasql
+```googlesql
 WITH subQ1 AS (SELECT SchoolID FROM Roster),
      subQ2 AS (SELECT OpponentID FROM PlayerStats)
 SELECT * FROM subQ1
@@ -5511,14 +5518,14 @@ You can break up more complex queries into a `WITH` clause and
 `WITH` `SELECT` statement instead of writing nested table subqueries.
 For example:
 
-```zetasql
+```googlesql
 WITH q1 AS (my_query)
 SELECT *
 FROM
   (WITH q2 AS (SELECT * FROM q1) SELECT * FROM q2)
 ```
 
-```zetasql
+```googlesql
 WITH q1 AS (my_query)
 SELECT *
 FROM
@@ -5580,7 +5587,7 @@ following parts:
 
 A recursive CTE looks like this:
 
-```zetasql
+```googlesql
 WITH RECURSIVE
   T1 AS ( (SELECT 1 AS n) UNION ALL (SELECT n + 1 AS n FROM T1 WHERE n < 3) )
 SELECT n FROM T1
@@ -5618,7 +5625,7 @@ see [Work with recursive CTEs][work-with-recursive-ctes].
 
 This is a simple recursive CTE:
 
-```zetasql
+```googlesql
 WITH RECURSIVE
   T1 AS (
     (SELECT 1 AS n) UNION ALL
@@ -5638,7 +5645,7 @@ Multiple subqueries in the same recursive CTE are okay, as
 long as each recursion has a cycle length of 1. It's also okay for recursive
 entries to depend on non-recursive entries and vice-versa:
 
-```zetasql
+```googlesql
 WITH RECURSIVE
   T0 AS (SELECT 1 AS n),
   T1 AS ((SELECT * FROM T0) UNION ALL (SELECT n + 1 FROM T1 WHERE n < 4)),
@@ -5659,7 +5666,7 @@ SELECT * FROM T3 ORDER BY n
 Aggregate functions can be invoked in subqueries, as long as they aren't
 aggregating on the table being defined:
 
-```zetasql
+```googlesql
 WITH RECURSIVE
   T0 AS (SELECT * FROM UNNEST ([60, 20, 30])),
   T1 AS ((SELECT 1 AS n) UNION ALL (SELECT n + (SELECT COUNT(*) FROM T0) FROM T1 WHERE n < 4))
@@ -5675,7 +5682,7 @@ SELECT * FROM T1 ORDER BY n
 
 `INNER JOIN` can be used inside subqueries:
 
-```zetasql
+```googlesql
 WITH RECURSIVE
   T0 AS (SELECT 1 AS n),
   T1 AS ((SELECT 1 AS n) UNION ALL (SELECT n + 1 FROM T1 INNER JOIN T0 USING (n)))
@@ -5691,7 +5698,7 @@ SELECT * FROM T1 ORDER BY n
 
 `CROSS JOIN` can be used inside subqueries:
 
-```zetasql
+```googlesql
 WITH RECURSIVE
   T0 AS (SELECT 2 AS p),
   T1 AS ((SELECT 1 AS n) UNION ALL (SELECT T1.n + T0.p FROM T1 CROSS JOIN T0 WHERE T1.n < 4))
@@ -5711,7 +5718,7 @@ this query would never terminate; it would keep generating rows
 `0, 1, 2, 3, 4, 0, 1, 2, 3, 4...`. With `UNION DISTINCT`, however, the only row
 produced by iteration `5` is a duplicate, so the query terminates.
 
-```zetasql
+```googlesql
 WITH RECURSIVE
   T1 AS ( (SELECT 0 AS n) UNION DISTINCT (SELECT MOD(n + 1, 5) FROM T1) )
 SELECT * FROM T1 ORDER BY n
@@ -5733,7 +5740,7 @@ The following recursive CTE is disallowed because the
 self-reference doesn't include a set operator, base term, and
 recursive term.
 
-```zetasql {.bad}
+```googlesql {.bad}
 WITH RECURSIVE
   T1 AS (SELECT * FROM T1)
 SELECT * FROM T1
@@ -5744,7 +5751,7 @@ SELECT * FROM T1
 The following recursive CTE is disallowed because the self-reference to `T1`
 is in the base term. The self reference is only allowed in the recursive term.
 
-```zetasql {.bad}
+```googlesql {.bad}
 WITH RECURSIVE
   T1 AS ((SELECT * FROM T1) UNION ALL (SELECT 1))
 SELECT * FROM T1
@@ -5755,7 +5762,7 @@ SELECT * FROM T1
 The following recursive CTE is disallowed because there are multiple
 self-references in the recursive term when there must only be one.
 
-```zetasql {.bad}
+```googlesql {.bad}
 WITH RECURSIVE
   T1 AS ((SELECT 1 AS n) UNION ALL ((SELECT * FROM T1) UNION ALL (SELECT * FROM T1)))
 SELECT * FROM T1
@@ -5766,7 +5773,7 @@ SELECT * FROM T1
 The following recursive CTE is disallowed because the self-reference is
 inside an [expression subquery][expression-subquery-concepts]
 
-```zetasql {.bad}
+```googlesql {.bad}
 WITH RECURSIVE
   T1 AS ((SELECT 1 AS n) UNION ALL (SELECT (SELECT n FROM T1)))
 SELECT * FROM T1
@@ -5777,7 +5784,7 @@ SELECT * FROM T1
 The following recursive CTE is disallowed because there is a
 self-reference as an argument to a table-valued function (TVF).
 
-```zetasql {.bad}
+```googlesql {.bad}
 WITH RECURSIVE
   T1 AS (
     (SELECT 1 AS n) UNION ALL
@@ -5790,7 +5797,7 @@ SELECT * FROM T1;
 The following recursive CTE is disallowed because there is a
 self-reference as input to an outer join.
 
-```zetasql {.bad}
+```googlesql {.bad}
 WITH RECURSIVE
   T0 AS (SELECT 1 AS n),
   T1 AS ((SELECT 1 AS n) UNION ALL (SELECT * FROM T1 FULL OUTER JOIN T0 USING (n)))
@@ -5802,7 +5809,7 @@ SELECT * FROM T1;
 The following recursive CTE is disallowed because you can't use aggregation
 with a self-reference.
 
-```zetasql {.bad}
+```googlesql {.bad}
 WITH RECURSIVE
   T1 AS (
     (SELECT 1 AS n) UNION ALL
@@ -5815,7 +5822,7 @@ SELECT * FROM T1;
 The following recursive CTE is disallowed because you can't use the
 window function `OVER` clause with a self-reference.
 
-```zetasql {.bad}
+```googlesql {.bad}
 WITH RECURSIVE
   T1 AS (
     (SELECT 1.0 AS n) UNION ALL
@@ -5828,7 +5835,7 @@ SELECT n FROM T1;
 The following recursive CTE is disallowed because you can't use a
 `LIMIT` clause with a self-reference.
 
-```zetasql {.bad}
+```googlesql {.bad}
 WITH RECURSIVE
   T1 AS ((SELECT 1 AS n) UNION ALL (SELECT n FROM T1 LIMIT 3))
 SELECT * FROM T1;
@@ -5839,7 +5846,7 @@ SELECT * FROM T1;
 The following recursive CTEs are disallowed because you can't use an
 `ORDER BY` clause with a self-reference.
 
-```zetasql {.bad}
+```googlesql {.bad}
 WITH RECURSIVE
   T1 AS ((SELECT 1 AS n) UNION ALL (SELECT n + 1 FROM T1 ORDER BY n))
 SELECT * FROM T1;
@@ -5850,7 +5857,7 @@ SELECT * FROM T1;
 The following recursive CTE is disallowed because table `T1` can't be
 recursively referenced from inside an inner `WITH` clause
 
-```zetasql {.bad}
+```googlesql {.bad}
 WITH RECURSIVE
   T1 AS ((SELECT 1 AS n) UNION ALL (WITH t AS (SELECT n FROM T1) SELECT * FROM t))
 SELECT * FROM T1
@@ -5944,7 +5951,7 @@ CTE in the clause:
 
 `A` can reference itself because self-references are supported:
 
-```zetasql
+```googlesql
 WITH RECURSIVE
   A AS (SELECT 1 AS n UNION ALL (SELECT n + 1 FROM A WHERE n < 3))
 SELECT * FROM A
@@ -5960,7 +5967,7 @@ SELECT * FROM A
 
 `A` can reference `B` because references between CTEs can go forwards:
 
-```zetasql
+```googlesql
 WITH RECURSIVE
   A AS (SELECT * FROM B),
   B AS (SELECT 1 AS n)
@@ -5975,7 +5982,7 @@ SELECT * FROM B
 
 `B` can reference `A` because references between CTEs can go backwards:
 
-```zetasql
+```googlesql
 WITH RECURSIVE
   A AS (SELECT 1 AS n),
   B AS (SELECT * FROM A)
@@ -5990,7 +5997,7 @@ SELECT * FROM B
 
 This produces an error. `A` and `B` reference each other, which creates a cycle:
 
-```zetasql
+```googlesql
 WITH RECURSIVE
   A AS (SELECT * FROM B),
   B AS (SELECT * FROM A)
@@ -6017,7 +6024,7 @@ is the second CTE in the clause:
 This produces an error. `A` can't reference itself because self-references
 aren't supported:
 
-```zetasql
+```googlesql
 WITH
   A AS (SELECT 1 AS n UNION ALL (SELECT n + 1 FROM A WHERE n < 3))
 SELECT * FROM A
@@ -6028,7 +6035,7 @@ SELECT * FROM A
 This produces an error. `A` can't reference `B` because references between
 CTEs can go backwards but not forwards:
 
-```zetasql
+```googlesql
 WITH
   A AS (SELECT * FROM B),
   B AS (SELECT 1 AS n)
@@ -6039,7 +6046,7 @@ SELECT * FROM B
 
 `B` can reference `A` because references between CTEs can go backwards:
 
-```zetasql
+```googlesql
 WITH
   A AS (SELECT 1 AS n),
   B AS (SELECT * FROM A)
@@ -6055,7 +6062,7 @@ SELECT * FROM B
 This produces an error. `A` and `B` reference each other, which creates a
 cycle:
 
-```zetasql
+```googlesql
 WITH
   A AS (SELECT * FROM B),
   B AS (SELECT * FROM A)
@@ -6122,7 +6129,7 @@ In the following example, an aggregation threshold is enforced
 on a query. Notice that some privacy units are dropped because
 there aren't enough distinct instances.
 
-```zetasql
+```googlesql
 WITH ExamTable AS (
   SELECT "Hansen" AS last_name, "P91" AS test_id, 510 AS test_score UNION ALL
   SELECT "Wang", "U25", 500 UNION ALL
@@ -6237,7 +6244,7 @@ useful during initial data exploration and experimentation with
 differential privacy. Extremely large `epsilon` values, such as `1e308`,
 cause query failure.
 
-ZetaSQL splits `epsilon` between the differentially private
+GoogleSQL splits `epsilon` between the differentially private
 aggregates in the query. In addition to the explicit
 differentially private aggregate functions, the differential privacy process
 also injects an implicit differentially private aggregate into the plan for
@@ -6352,14 +6359,14 @@ Semantic rules for `PUBLIC_GROUPS`:
 ### Differential privacy examples
 
 This section contains examples that illustrate how to work with
-differential privacy in ZetaSQL.
+differential privacy in GoogleSQL.
 
 #### Tables for examples 
 <a id="dp_example_tables"></a>
 
 The examples in this section reference the following tables:
 
-```zetasql
+```googlesql
 CREATE OR REPLACE TABLE {{USERNAME}}.professors AS (
   SELECT 101 AS id, "pencil" AS item, 24 AS quantity UNION ALL
   SELECT 123, "pen", 16 UNION ALL
@@ -6371,7 +6378,7 @@ CREATE OR REPLACE TABLE {{USERNAME}}.professors AS (
   SELECT 150, "pencil", 72);
 ```
 
-```zetasql
+```googlesql
 CREATE OR REPLACE TABLE {{USERNAME}}.students AS (
   SELECT 1 AS id, "pencil" AS item, 5 AS quantity UNION ALL
   SELECT 1, "pen", 2 UNION ALL
@@ -6384,13 +6391,13 @@ CREATE OR REPLACE TABLE {{USERNAME}}.students AS (
 
 The examples in this section reference these views:
 
-```zetasql
+```googlesql
 CREATE OR REPLACE VIEW {{USERNAME}}.view_on_professors
 OPTIONS(anonymization_userid_column='id')
 AS (SELECT * FROM {{USERNAME}}.professors);
 ```
 
-```zetasql
+```googlesql
 CREATE OR REPLACE VIEW {{USERNAME}}.view_on_students
 OPTIONS(anonymization_userid_column='id')
 AS (SELECT * FROM {{USERNAME}}.students);
@@ -6406,7 +6413,7 @@ You can add noise to a differentially private query. Smaller groups might not be
 included. Smaller epsilons and more noise will provide greater
 privacy protection.
 
-```zetasql
+```googlesql
 -- This gets the average number of items requested per professor and adds
 -- noise to the results
 SELECT
@@ -6428,7 +6435,7 @@ GROUP BY item;
  +----------+------------------*/
 ```
 
-```zetasql
+```googlesql
 -- This gets the average number of items requested per professor and adds
 -- noise to the results
 SELECT
@@ -6457,7 +6464,7 @@ Removing noise removes privacy protection. Only remove noise for
 testing queries on non-private data. When `epsilon` is high, noise is removed
 from the results.
 
-```zetasql
+```googlesql
 -- This gets the average number of items requested per professor and removes
 -- noise from the results
 SELECT
@@ -6477,7 +6484,7 @@ GROUP BY item;
  +----------+------------------*/
 ```
 
-```zetasql
+```googlesql
 -- This gets the average number of items requested per professor and removes
 -- noise from the results
 SELECT
@@ -6505,7 +6512,7 @@ A privacy unit column can exist within multiple groups. For example, in the
 `pen` group. You can set `max_groups_contributed` to different values to limit how many
 groups each privacy unit column will be included in.
 
-```zetasql
+```googlesql
 SELECT
   WITH DIFFERENTIAL_PRIVACY
     OPTIONS(epsilon=1e20, delta=.01, max_groups_contributed=1)
@@ -6525,7 +6532,7 @@ GROUP BY item;
  +----------+------------------*/
 ```
 
-```zetasql
+```googlesql
 SELECT
   WITH DIFFERENTIAL_PRIVACY
     OPTIONS(epsilon=1e20, delta=.01, privacy_unit_column=id)
@@ -6553,7 +6560,7 @@ anonymized because it's public knowledge and doesn't reveal any information
 about user data. In the results, `scissors` is excluded because it's not in the
 public table that's generated by the `UNNEST` operation.
 
-```zetasql
+```googlesql
 -- Create the professors table (table to protect)
 CREATE OR REPLACE TABLE {{USERNAME}}.professors AS (
   SELECT 101 AS id, "pencil" AS item, 24 AS quantity UNION ALL
@@ -6602,7 +6609,7 @@ GROUP BY item;
 
 An alias is a temporary name given to a table, column, or expression present in
 a query. You can introduce explicit aliases in the `SELECT` list or `FROM`
-clause, or ZetaSQL infers an implicit alias for some expressions.
+clause, or GoogleSQL infers an implicit alias for some expressions.
 Expressions with neither an explicit nor implicit alias are anonymous and the
 query can't reference them by name.
 
@@ -6618,7 +6625,7 @@ keyword is optional.
 
 Example:
 
-```zetasql
+```googlesql
 SELECT s.FirstName, s2.SongName
 FROM Singers AS s, (SELECT * FROM Songs) AS s2;
 ```
@@ -6628,7 +6635,7 @@ You can introduce explicit aliases for any expression in the `SELECT` list using
 
 Example:
 
-```zetasql
+```googlesql
 SELECT s.FirstName AS name, LOWER(s.FirstName) AS lname
 FROM Singers s;
 ```
@@ -6637,7 +6644,7 @@ FROM Singers s;
 <a id="implicit_aliases"></a>
 
 In the `SELECT` list, if there is an expression that doesn't have an explicit
-alias, ZetaSQL assigns an implicit alias according to the following
+alias, GoogleSQL assigns an implicit alias according to the following
 rules. There can be multiple columns with the same alias in the `SELECT` list.
 
 +  For identifiers, the alias is the identifier. For example, `SELECT abc`
@@ -6659,7 +6666,7 @@ following rules apply:
 <ul>
   <li>
     If there is an expression that doesn't have an explicit alias,
-    ZetaSQL assigns an implicit alias in these cases:
+    GoogleSQL assigns an implicit alias in these cases:
     <ul>
     <li>
       For identifiers, the alias is the identifier. For example,
@@ -6688,12 +6695,12 @@ following rules apply:
 
 After you introduce an explicit alias in a query, there are restrictions on
 where else in the query you can reference that alias. These restrictions on
-alias visibility are the result of ZetaSQL name scoping rules.
+alias visibility are the result of GoogleSQL name scoping rules.
 
 #### Visibility in the `FROM` clause 
 <a id="from_clause_aliases"></a>
 
-ZetaSQL processes aliases in a `FROM` clause from left to right,
+GoogleSQL processes aliases in a `FROM` clause from left to right,
 and aliases are visible only to subsequent path expressions in a `FROM`
 clause.
 
@@ -6701,14 +6708,14 @@ Example:
 
 Assume the `Singers` table had a `Concerts` column of `ARRAY` type.
 
-```zetasql
+```googlesql
 SELECT FirstName
 FROM Singers AS s, s.Concerts;
 ```
 
 Invalid:
 
-```zetasql {.bad}
+```googlesql {.bad}
 SELECT FirstName
 FROM s.Concerts, Singers AS s;  // INVALID.
 ```
@@ -6719,7 +6726,7 @@ other tables in the same `FROM` clause.
 
 Invalid:
 
-```zetasql {.bad}
+```googlesql {.bad}
 SELECT FirstName
 FROM Singers AS s, (SELECT (2020 - ReleaseDate) FROM s)  // INVALID.
 ```
@@ -6729,7 +6736,7 @@ the query, with or without qualification with the table name.
 
 Example:
 
-```zetasql
+```googlesql
 SELECT FirstName, s.ReleaseDate
 FROM Singers s WHERE ReleaseDate = 1975;
 ```
@@ -6742,14 +6749,14 @@ scanned multiple times during query processing.
 
 Example:
 
-```zetasql
+```googlesql
 SELECT * FROM Singers as s, Songs as s2
 ORDER BY s.LastName
 ```
 
 Invalid &mdash; `ORDER BY` doesn't use the table alias:
 
-```zetasql {.bad}
+```googlesql {.bad}
 SELECT * FROM Singers as s, Songs as s2
 ORDER BY Singers.LastName;  // INVALID.
 ```
@@ -6765,7 +6772,7 @@ Aliases in the `SELECT` list are visible only to the following clauses:
 
 Example:
 
-```zetasql
+```googlesql
 SELECT LastName AS last, SingerID
 FROM Singers
 ORDER BY last;
@@ -6788,7 +6795,7 @@ following values:
 
 Example:
 
-```zetasql
+```googlesql
 SELECT SingerID AS sid, COUNT(Songid) AS s2id
 FROM Songs
 GROUP BY 1
@@ -6797,7 +6804,7 @@ ORDER BY 2 DESC;
 
 The previous query is equivalent to:
 
-```zetasql
+```googlesql
 SELECT SingerID AS sid, COUNT(Songid) AS s2id
 FROM Songs
 GROUP BY sid
@@ -6814,7 +6821,7 @@ elsewhere in the query, since the reference would be
 
 Example:
 
-```zetasql
+```googlesql
 SELECT 1 AS a, 2 AS a;
 
 /*---+---+
@@ -6827,14 +6834,14 @@ SELECT 1 AS a, 2 AS a;
 ### Ambiguous aliases 
 <a id="ambiguous_aliases"></a>
 
-ZetaSQL provides an error if accessing a name is ambiguous, meaning
+GoogleSQL provides an error if accessing a name is ambiguous, meaning
 it can resolve to more than one unique object in the query or in a table schema,
 including the schema of a destination table.
 
 The following query contains column names that conflict between tables, since
 both `Singers` and `Songs` have a column named `SingerID`:
 
-```zetasql
+```googlesql
 SELECT SingerID
 FROM Singers, Songs;
 ```
@@ -6842,7 +6849,7 @@ FROM Singers, Songs;
 The following query contains aliases that are ambiguous in the `GROUP BY` clause
 because they are duplicated in the `SELECT` list:
 
-```zetasql {.bad}
+```googlesql {.bad}
 SELECT FirstName AS name, LastName AS name,
 FROM Singers
 GROUP BY name;
@@ -6860,7 +6867,7 @@ The alias `P` is ambiguous and will produce an error because `P.FirstName` in
 the `GROUP BY` clause could refer to either `Person.FirstName` or
 `Person.PrimaryContact.FirstName`.
 
-```zetasql {.bad}
+```googlesql {.bad}
 SELECT FirstName, LastName, PrimaryContact AS P
 FROM Person AS P
 GROUP BY P.FirstName;
@@ -6872,7 +6879,7 @@ same underlying object. In the following example, the alias `BirthYear` isn't
 ambiguous because it resolves to the same underlying column,
 `Singers.BirthYear`.
 
-```zetasql
+```googlesql
 SELECT LastName, BirthYear AS BirthYear
 FROM Singers
 GROUP BY BirthYear;
@@ -6881,7 +6888,7 @@ GROUP BY BirthYear;
 ### Range variables 
 <a id="range_variables"></a>
 
-In ZetaSQL, a range variable is a table expression alias in the
+In GoogleSQL, a range variable is a table expression alias in the
 `FROM` clause. Sometimes a range variable is known as a `table alias`. A
 range variable lets you reference rows being scanned from a table expression.
 A table expression represents an item in the `FROM` clause that returns a table.
@@ -6914,7 +6921,7 @@ can be used to access the entire row or columns in the row.
 The following example selects column `x` from range variable `Coordinate`,
 which in effect selects column `x` from table `Grid`.
 
-```zetasql
+```googlesql
 WITH Grid AS (SELECT 1 x, 2 y)
 SELECT Coordinate.x FROM Grid AS Coordinate;
 
@@ -6928,7 +6935,7 @@ SELECT Coordinate.x FROM Grid AS Coordinate;
 The following example selects all columns from range variable `Coordinate`,
 which in effect selects all columns from table `Grid`.
 
-```zetasql
+```googlesql
 WITH Grid AS (SELECT 1 x, 2 y)
 SELECT Coordinate.* FROM Grid AS Coordinate;
 
@@ -6944,7 +6951,7 @@ reference to rows in table `Grid`. Since `Grid` isn't a value table,
 the result type of `Coordinate` is a struct that contains all the columns
 from `Grid`.
 
-```zetasql
+```googlesql
 WITH Grid AS (SELECT 1 x, 2 y)
 SELECT Coordinate FROM Grid AS Coordinate;
 
@@ -6971,7 +6978,7 @@ return a table with rows for customers with a CustomerId between 100
 and 200. The call doesn't include the `customer_type` argument, so the function
 uses the default `CUSTOMER_TYPE_ADVERTISER`.
 
-```zetasql
+```googlesql
 SELECT CustomerId, Info
 FROM CustomerRangeWithCustomerType(100, 200);
 ```
@@ -6979,7 +6986,7 @@ FROM CustomerRangeWithCustomerType(100, 200);
 The following query calls the `CustomerCreationTimeRange` function defined
 previously, passing the result of a subquery as the table argument.
 
-```zetasql
+```googlesql
 SELECT *
 FROM
   CustomerCreationTimeRange(
@@ -6995,7 +7002,7 @@ FROM
 The following query calls `CustomerCreationTimeRange`, passing the table
 `MyCustomerTable` as an argument.
 
-```zetasql
+```googlesql
 SELECT *
 FROM
   CustomerCreationTimeRange(
@@ -7025,7 +7032,7 @@ query clauses in this reference.
 The `Roster` table includes a list of player names (`LastName`) and the
 unique ID assigned to their school (`SchoolID`). It looks like this:
 
-```zetasql
+```googlesql
 /*-----------------------+
  | LastName   | SchoolID |
  +-----------------------+
@@ -7040,7 +7047,7 @@ unique ID assigned to their school (`SchoolID`). It looks like this:
 You can use this `WITH` clause to emulate a temporary table name for the
 examples in this reference:
 
-```zetasql
+```googlesql
 WITH Roster AS
  (SELECT 'Adams' as LastName, 50 as SchoolID UNION ALL
   SELECT 'Buchanan', 52 UNION ALL
@@ -7056,7 +7063,7 @@ The `PlayerStats` table includes a list of player names (`LastName`) and the
 unique ID assigned to the opponent they played in a given game (`OpponentID`)
 and the number of points scored by the athlete in that game (`PointsScored`).
 
-```zetasql
+```googlesql
 /*----------------------------------------+
  | LastName   | OpponentID | PointsScored |
  +----------------------------------------+
@@ -7071,7 +7078,7 @@ and the number of points scored by the athlete in that game (`PointsScored`).
 You can use this `WITH` clause to emulate a temporary table name for the
 examples in this reference:
 
-```zetasql
+```googlesql
 WITH PlayerStats AS
  (SELECT 'Adams' as LastName, 51 as OpponentID, 3 as PointsScored UNION ALL
   SELECT 'Buchanan', 77, 0 UNION ALL
@@ -7086,7 +7093,7 @@ SELECT * FROM PlayerStats
 The `TeamMascot` table includes a list of unique school IDs (`SchoolID`) and the
 mascot for that school (`Mascot`).
 
-```zetasql
+```googlesql
 /*---------------------+
  | SchoolID | Mascot   |
  +---------------------+
@@ -7100,7 +7107,7 @@ mascot for that school (`Mascot`).
 You can use this `WITH` clause to emulate a temporary table name for the
 examples in this reference:
 
-```zetasql
+```googlesql
 WITH TeamMascot AS
  (SELECT 50 as SchoolID, 'Jaguars' as Mascot UNION ALL
   SELECT 51, 'Knights' UNION ALL
@@ -7114,7 +7121,7 @@ SELECT * FROM TeamMascot
 
 Example:
 
-```zetasql
+```googlesql
 SELECT LastName, SUM(PointsScored)
 FROM PlayerStats
 GROUP BY LastName;
@@ -7152,7 +7159,7 @@ concatenating them.
 
 Example:
 
-```zetasql
+```googlesql
 SELECT Mascot AS X, SchoolID AS Y
 FROM TeamMascot
 UNION ALL
@@ -7215,7 +7222,7 @@ Results:
 This query returns the last names that are present in both Roster and
 PlayerStats.
 
-```zetasql
+```googlesql
 SELECT LastName
 FROM Roster
 INTERSECT ALL
@@ -7250,7 +7257,7 @@ Results:
 The query below returns last names in Roster that are **not** present in
 PlayerStats.
 
-```zetasql
+```googlesql
 SELECT LastName
 FROM Roster
 EXCEPT DISTINCT
@@ -7279,7 +7286,7 @@ Results:
 Reversing the order of the `SELECT` statements will return last names in
 PlayerStats that are **not** present in Roster:
 
-```zetasql
+```googlesql
 SELECT LastName
 FROM PlayerStats
 EXCEPT DISTINCT
@@ -7289,7 +7296,7 @@ FROM Roster;
 
 Results:
 
-```zetasql
+```googlesql
 (empty)
 ```
 
@@ -7365,7 +7372,7 @@ Results:
 
 [group-by-all]: #group_by_all
 
-[aggregate-function-calls]: https://github.com/google/zetasql/blob/master/docs/aggregate-function-calls.md
+[aggregate-function-calls]: https://github.com/google/googlesql/blob/master/docs/aggregate-function-calls.md
 
 [group-by-rollup]: #group_by_rollup
 
@@ -7375,9 +7382,9 @@ Results:
 
 [contingency-table]: https://en.wikipedia.org/wiki/Contingency_table
 
-[tuple-struct]: https://github.com/google/zetasql/blob/master/docs/data-types.md#tuple_syntax
+[tuple-struct]: https://github.com/google/googlesql/blob/master/docs/data-types.md#tuple_syntax
 
-[grouping-function]: https://github.com/google/zetasql/blob/master/docs/aggregate_functions.md#grouping
+[grouping-function]: https://github.com/google/googlesql/blob/master/docs/aggregate_functions.md#grouping
 
 [pivot-operator]: #pivot_operator
 
@@ -7385,7 +7392,7 @@ Results:
 
 [tablesample-operator]: #tablesample_operator
 
-[work-with-recursive-ctes]: https://github.com/google/zetasql/blob/master/docs/recursive-ctes.md
+[work-with-recursive-ctes]: https://github.com/google/googlesql/blob/master/docs/recursive-ctes.md
 
 [recursive-keyword]: #recursive_keyword
 
@@ -7395,57 +7402,57 @@ Results:
 
 [recursive-cte]: #recursive_cte
 
-[window-function-calls]: https://github.com/google/zetasql/blob/master/docs/window-function-calls.md
+[window-function-calls]: https://github.com/google/googlesql/blob/master/docs/window-function-calls.md
 
-[query-window-specification]: https://github.com/google/zetasql/blob/master/docs/window-function-calls.md#def_window_spec
+[query-window-specification]: https://github.com/google/googlesql/blob/master/docs/window-function-calls.md#def_window_spec
 
-[named-window-example]: https://github.com/google/zetasql/blob/master/docs/window-function-calls.md#def_use_named_window
+[named-window-example]: https://github.com/google/googlesql/blob/master/docs/window-function-calls.md#def_use_named_window
 
-[produce-table]: https://github.com/google/zetasql/blob/master/docs/window-function-calls.md#produce_table
+[produce-table]: https://github.com/google/googlesql/blob/master/docs/window-function-calls.md#produce_table
 
-[tvf-concepts]: https://github.com/google/zetasql/blob/master/docs/table-functions.md#tvfs
+[tvf-concepts]: https://github.com/google/googlesql/blob/master/docs/table-functions.md#tvfs
 
-[tvf-arguments]: https://github.com/google/zetasql/blob/master/docs/table-functions.md#tvf_arguments
+[tvf-arguments]: https://github.com/google/googlesql/blob/master/docs/table-functions.md#tvf_arguments
 
-[dp-concepts]: https://github.com/google/zetasql/blob/master/docs/differential-privacy.md
+[dp-concepts]: https://github.com/google/googlesql/blob/master/docs/differential-privacy.md
 
-[flattening-arrays]: https://github.com/google/zetasql/blob/master/docs/arrays.md#flattening_arrays
+[flattening-arrays]: https://github.com/google/googlesql/blob/master/docs/arrays.md#flattening_arrays
 
-[working-with-arrays]: https://github.com/google/zetasql/blob/master/docs/arrays.md
+[working-with-arrays]: https://github.com/google/googlesql/blob/master/docs/arrays.md
 
-[data-type-properties]: https://github.com/google/zetasql/blob/master/docs/data-types.md#data_type_properties
+[data-type-properties]: https://github.com/google/googlesql/blob/master/docs/data-types.md#data_type_properties
 
-[orderable-data-types]: https://github.com/google/zetasql/blob/master/docs/data-types.md#orderable_data_types
+[orderable-data-types]: https://github.com/google/googlesql/blob/master/docs/data-types.md#orderable_data_types
 
-[subquery-concepts]: https://github.com/google/zetasql/blob/master/docs/subqueries.md
+[subquery-concepts]: https://github.com/google/googlesql/blob/master/docs/subqueries.md
 
-[correlated-subquery]: https://github.com/google/zetasql/blob/master/docs/subqueries.md#correlated_subquery_concepts
+[correlated-subquery]: https://github.com/google/googlesql/blob/master/docs/subqueries.md#correlated_subquery_concepts
 
-[table-subquery-concepts]: https://github.com/google/zetasql/blob/master/docs/subqueries.md#table_subquery_concepts
+[table-subquery-concepts]: https://github.com/google/googlesql/blob/master/docs/subqueries.md#table_subquery_concepts
 
-[expression-subquery-concepts]: https://github.com/google/zetasql/blob/master/docs/subqueries.md#expression_subquery_concepts
+[expression-subquery-concepts]: https://github.com/google/googlesql/blob/master/docs/subqueries.md#expression_subquery_concepts
 
-[create-view-statement]: https://github.com/google/zetasql/blob/master/docs/data-definition-language.md#create_view_statement
+[create-view-statement]: https://github.com/google/googlesql/blob/master/docs/data-definition-language.md#create_view_statement
 
-[in-operator]: https://github.com/google/zetasql/blob/master/docs/operators.md#in_operators
+[in-operator]: https://github.com/google/googlesql/blob/master/docs/operators.md#in_operators
 
-[array-subscript-operator]: https://github.com/google/zetasql/blob/master/docs/operators.md#array_subscript_operator
+[array-subscript-operator]: https://github.com/google/googlesql/blob/master/docs/operators.md#array_subscript_operator
 
-[field-access-operator]: https://github.com/google/zetasql/blob/master/docs/operators.md#field_access_operator
+[field-access-operator]: https://github.com/google/googlesql/blob/master/docs/operators.md#field_access_operator
 
-[comparison-operators]: https://github.com/google/zetasql/blob/master/docs/operators.md#comparison_operators
+[comparison-operators]: https://github.com/google/googlesql/blob/master/docs/operators.md#comparison_operators
 
-[proto-buffers]: https://github.com/google/zetasql/blob/master/docs/protocol-buffers.md
+[proto-buffers]: https://github.com/google/googlesql/blob/master/docs/protocol-buffers.md
 
-[flattening-trees-into-table]: https://github.com/google/zetasql/blob/master/docs/arrays.md#flattening_nested_data_into_table
+[flattening-trees-into-table]: https://github.com/google/googlesql/blob/master/docs/arrays.md#flattening_nested_data_into_table
 
-[flatten-operator]: https://github.com/google/zetasql/blob/master/docs/array_functions.md#flatten
+[flatten-operator]: https://github.com/google/googlesql/blob/master/docs/array_functions.md#flatten
 
-[array-el-field-operator]: https://github.com/google/zetasql/blob/master/docs/operators.md#array_el_field_operator
+[array-el-field-operator]: https://github.com/google/googlesql/blob/master/docs/operators.md#array_el_field_operator
 
-[collation-spec]: https://github.com/google/zetasql/blob/master/docs/collation-concepts.md#collate_spec_details
+[collation-spec]: https://github.com/google/googlesql/blob/master/docs/collation-concepts.md#collate_spec_details
 
-[value-tables]: https://github.com/google/zetasql/blob/master/docs/data-model.md#value_tables
+[value-tables]: https://github.com/google/googlesql/blob/master/docs/data-model.md#value_tables
 
 [dp-example-tables]: #dp_example_tables
 
@@ -7461,19 +7468,19 @@ Results:
 
 [dp-group-selection-strategy]: #dp_group_selection_strategy
 
-[dp-define-privacy-unit-id]: https://github.com/google/zetasql/blob/master/docs/differential-privacy.md#dp_define_privacy_unit_id
+[dp-define-privacy-unit-id]: https://github.com/google/googlesql/blob/master/docs/differential-privacy.md#dp_define_privacy_unit_id
 
-[dp-functions]: https://github.com/google/zetasql/blob/master/docs/aggregate-dp-functions.md
+[dp-functions]: https://github.com/google/googlesql/blob/master/docs/aggregate-dp-functions.md
 
-[analysis-rules]: https://github.com/google/zetasql/blob/master/docs/analysis-rules.md
+[analysis-rules]: https://github.com/google/googlesql/blob/master/docs/analysis-rules.md
 
-[privacy-view]: https://github.com/google/zetasql/blob/master/docs/analysis-rules.md#privacy_view
+[privacy-view]: https://github.com/google/googlesql/blob/master/docs/analysis-rules.md#privacy_view
 
-[graph-table-operator]: https://github.com/google/zetasql/blob/master/docs/graph-sql-queries.md#graph_table_operator
+[graph-table-operator]: https://github.com/google/googlesql/blob/master/docs/graph-sql-queries.md#graph_table_operator
 
-[graph-hints-gql]: https://github.com/google/zetasql/blob/master/docs/graph-query-statements.md#graph_hints
+[graph-hints-gql]: https://github.com/google/googlesql/blob/master/docs/graph-query-statements.md#graph_hints
 
-[coalesce]: https://github.com/google/zetasql/blob/master/docs/conditional_expressions.md#coalesce
+[coalesce]: https://github.com/google/googlesql/blob/master/docs/conditional_expressions.md#coalesce
 
 <!-- mdlint on -->
 

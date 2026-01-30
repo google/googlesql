@@ -23,7 +23,7 @@ such as [`APPROX_COUNT_DISTINCT`][approx-count-distinct]. However,
 `APPROX_COUNT_DISTINCT` doesn't allow partial aggregations, re-aggregations,
 and custom precision.
 
-ZetaSQL supports the following HLL++ functions.
+GoogleSQL supports the following HLL++ functions.
 
 ## Function list
 
@@ -37,7 +37,7 @@ ZetaSQL supports the following HLL++ functions.
   <tbody>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/hll_functions.md#hll_countextract"><code>HLL_COUNT.EXTRACT</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/hll_functions.md#hll_countextract"><code>HLL_COUNT.EXTRACT</code></a>
 </td>
   <td>
     Extracts a cardinality estimate of an HLL++ sketch.
@@ -45,7 +45,7 @@ ZetaSQL supports the following HLL++ functions.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/hll_functions.md#hll_countinit"><code>HLL_COUNT.INIT</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/hll_functions.md#hll_countinit"><code>HLL_COUNT.INIT</code></a>
 </td>
   <td>
     Aggregates values of the same underlying type into a new HLL++ sketch.
@@ -53,7 +53,7 @@ ZetaSQL supports the following HLL++ functions.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/hll_functions.md#hll_countmerge"><code>HLL_COUNT.MERGE</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/hll_functions.md#hll_countmerge"><code>HLL_COUNT.MERGE</code></a>
 </td>
   <td>
     Merges HLL++ sketches of the same underlying type into a new sketch, and
@@ -62,7 +62,7 @@ ZetaSQL supports the following HLL++ functions.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/hll_functions.md#hll_countmerge_partial"><code>HLL_COUNT.MERGE_PARTIAL</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/hll_functions.md#hll_countmerge_partial"><code>HLL_COUNT.MERGE_PARTIAL</code></a>
 </td>
   <td>
     Merges HLL++ sketches of the same underlying type into a new sketch.
@@ -98,7 +98,7 @@ If `sketch` is `NULL`, this function returns a cardinality estimate of `0`.
 The following query returns the number of distinct users for each country who
 have at least one invoice.
 
-```zetasql
+```googlesql
 SELECT
   country,
   HLL_COUNT.EXTRACT(HLL_sketch) AS distinct_customers_with_open_invoice
@@ -174,7 +174,7 @@ a State of The Art Cardinality Estimation Algorithm][hll-link-to-research-whitep
 The following query creates HLL++ sketches that count the number of distinct
 users with at least one invoice per country.
 
-```zetasql
+```googlesql
 SELECT
   country,
   HLL_COUNT.INIT(customer_id, 10)
@@ -200,7 +200,7 @@ GROUP BY country;
 
 [hll-link-to-research-whitepaper]: https://static.googleusercontent.com/media/research.google.com/en//pubs/archive/40671.pdf
 
-[precision_hll]: https://github.com/google/zetasql/blob/master/docs/sketches.md#precision_hll
+[precision_hll]: https://github.com/google/googlesql/blob/master/docs/sketches.md#precision_hll
 
 ## `HLL_COUNT.MERGE`
 
@@ -236,7 +236,7 @@ over zero rows or only over `NULL` values, the function returns `0`.
  The following query counts the number of distinct users across all countries
  who have at least one invoice.
 
-```zetasql
+```googlesql
 SELECT HLL_COUNT.MERGE(hll_sketch) AS distinct_customers_with_open_invoice
 FROM
   (
@@ -300,7 +300,7 @@ This function returns `NULL` if there is no input or all inputs are `NULL`.
 The following query returns an HLL++ sketch that counts the number of distinct
 users who have at least one invoice across all countries.
 
-```zetasql
+```googlesql
 SELECT HLL_COUNT.MERGE_PARTIAL(HLL_sketch) AS distinct_customers_with_open_invoice
 FROM
   (
@@ -332,9 +332,9 @@ FROM
 
 [cardinality]: https://en.wikipedia.org/wiki/Cardinality
 
-[count-distinct]: https://github.com/google/zetasql/blob/master/docs/aggregate_functions.md#count
+[count-distinct]: https://github.com/google/googlesql/blob/master/docs/aggregate_functions.md#count
 
-[approx-count-distinct]: https://github.com/google/zetasql/blob/master/docs/approximate_aggregate_functions.md#approx_count_distinct
+[approx-count-distinct]: https://github.com/google/googlesql/blob/master/docs/approximate_aggregate_functions.md#approx_count_distinct
 
-[approx-functions-reference]: https://github.com/google/zetasql/blob/master/docs/approximate_aggregate_functions.md
+[approx-functions-reference]: https://github.com/google/googlesql/blob/master/docs/approximate_aggregate_functions.md
 

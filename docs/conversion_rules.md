@@ -4,13 +4,13 @@
 
 # Conversion rules
 
-ZetaSQL supports conversion.
+GoogleSQL supports conversion.
 Conversion includes, but isn't limited to, casting, coercion, and
 supertyping.
 
 + Casting is explicit conversion and uses the
   [`CAST()`][con-rules-link-to-cast] function.
-+ Coercion is implicit conversion, which ZetaSQL performs
++ Coercion is implicit conversion, which GoogleSQL performs
   automatically under the conditions described below.
 + A supertype is a common type to which two or more expressions can be coerced.
 
@@ -22,7 +22,7 @@ There are also conversions that have their own function names, such as
 <a id="comparison_chart"></a>
 
 The following table summarizes all possible cast and coercion possibilities for
-ZetaSQL data types. The _Coerce to_ column applies to all
+GoogleSQL data types. The _Coerce to_ column applies to all
 expressions of a given data type, (for example, a
 column), but
 literals and parameters can also be coerced. See
@@ -262,7 +262,7 @@ literals and parameters can also be coerced. See
 ### Casting
 
 Most data types can be cast from one type to another with the `CAST` function.
-When using `CAST`, a query can fail if ZetaSQL is unable to perform
+When using `CAST`, a query can fail if GoogleSQL is unable to perform
 the cast. If you want to protect your queries from these types of errors, you
 can use `SAFE_CAST`. To learn more about the rules for `CAST`, `SAFE_CAST` and
 other casting functions, see
@@ -270,7 +270,7 @@ other casting functions, see
 
 ### Coercion
 
-ZetaSQL coerces the result type of an argument expression to another
+GoogleSQL coerces the result type of an argument expression to another
 type if needed to match function signatures. For example, if function `func()`
 is defined to take a single argument of type `DOUBLE`
 and an expression is used as an argument that has a result type of
@@ -279,7 +279,7 @@ coerced to `DOUBLE` type before `func()` is computed.
 
 #### Literal coercion
 
-ZetaSQL supports the following literal coercions:
+GoogleSQL supports the following literal coercions:
 
 <table>
   <thead>
@@ -357,7 +357,7 @@ Note: String literals don't coerce to numeric types.
 #### Query parameter coercion 
 <a id="parameter_coercion"></a>
 
-ZetaSQL supports the following query parameter coercions:
+GoogleSQL supports the following query parameter coercions:
 
 <table>
   <thead>
@@ -943,11 +943,11 @@ when the input set of types includes types related to literals:
 
 [con-supertype-specificity]: #supertype_specificity
 
-[con-rules-link-to-time-zones]: https://github.com/google/zetasql/blob/master/docs/data-types.md#time_zones
+[con-rules-link-to-time-zones]: https://github.com/google/googlesql/blob/master/docs/data-types.md#time_zones
 
-[con-rules-link-to-conversion-functions]: https://github.com/google/zetasql/blob/master/docs/conversion_functions.md
+[con-rules-link-to-conversion-functions]: https://github.com/google/googlesql/blob/master/docs/conversion_functions.md
 
-[con-rules-link-to-cast]: https://github.com/google/zetasql/blob/master/docs/conversion_functions.md#cast
+[con-rules-link-to-cast]: https://github.com/google/googlesql/blob/master/docs/conversion_functions.md#cast
 
 <!-- mdlint on -->
 

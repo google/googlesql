@@ -1,0 +1,378 @@
+[default language_features=MAXIMUM,+TABLE_VALUED_FUNCTIONS,+TVF_PSEUDO_COLUMNS]
+[default no_run_sqlbuilder]
+# SQL Builder cannot reproduce queries that pass pseudo-columns into TVFs.
+
+# Call TVF with pseudo columns that strip them with select all
+SELECT *
+FROM select_star_from_pseudo_columns_table(TABLE EnumTable)
+--
+QueryStmt
++-output_column_list=
+| +-select_star_from_pseudo_columns_table.key#6 AS key [INT32]
+| +-select_star_from_pseudo_columns_table.TestEnum#7 AS TestEnum [ENUM<googlesql_test.TestEnum>]
+| +-select_star_from_pseudo_columns_table.AnotherTestEnum#8 AS AnotherTestEnum [ENUM<googlesql_test.AnotherTestEnum>]
++-query=
+  +-ProjectScan
+    +-column_list=select_star_from_pseudo_columns_table.[key#6, TestEnum#7, AnotherTestEnum#8]
+    +-input_scan=
+      +-TVFScan
+        +-column_list=select_star_from_pseudo_columns_table.[key#6, TestEnum#7, AnotherTestEnum#8]
+        +-tvf=select_star_from_pseudo_columns_table((ANY TABLE table_with_pseudo_columns) -> ANY TABLE)
+        +-signature=(TABLE<key INT32, TestEnum ENUM<googlesql_test.TestEnum>, AnotherTestEnum ENUM<googlesql_test.AnotherTestEnum>, Filename STRING, RowId BYTES>) -> TABLE<key INT32, TestEnum ENUM<googlesql_test.TestEnum>, AnotherTestEnum ENUM<googlesql_test.AnotherTestEnum>>
+        +-argument_list=
+        | +-FunctionArgument
+        |   +-scan=
+        |   | +-TableScan(column_list=EnumTable.[key#1, TestEnum#2, AnotherTestEnum#3, Filename#4, RowId#5], node_source="table_clause", table=EnumTable, column_index_list=[0, 1, 2, 3, 4])
+        |   +-argument_column_list=EnumTable.[key#1, TestEnum#2, AnotherTestEnum#3, Filename#4, RowId#5]
+        +-column_index_list=[0, 1, 2]
+        +-function_call_signature=(ANY TABLE table_with_pseudo_columns) -> ANY TABLE
+
+With Templated SQL TVF signature:
+  select_star_from_pseudo_columns_table(TABLE<key INT32, TestEnum ENUM<googlesql_test.TestEnum>, AnotherTestEnum ENUM<googlesql_test.AnotherTestEnum>, Filename STRING, RowId BYTES>) -> TABLE<key INT32, TestEnum ENUM<googlesql_test.TestEnum>, AnotherTestEnum ENUM<googlesql_test.AnotherTestEnum>>
+containing resolved templated query:
+QueryStmt
++-output_column_list=
+| +-table_with_pseudo_columns.key#1 AS key [INT32]
+| +-table_with_pseudo_columns.TestEnum#2 AS TestEnum [ENUM<googlesql_test.TestEnum>]
+| +-table_with_pseudo_columns.AnotherTestEnum#3 AS AnotherTestEnum [ENUM<googlesql_test.AnotherTestEnum>]
++-query=
+  +-ProjectScan
+    +-column_list=table_with_pseudo_columns.[key#1, TestEnum#2, AnotherTestEnum#3]
+    +-input_scan=
+      +-RelationArgumentScan(column_list=table_with_pseudo_columns.[key#1, TestEnum#2, AnotherTestEnum#3], name="table_with_pseudo_columns")
+==
+
+# Explicitly select pseudo columns returned by TVF.
+SELECT key, Filename, RowId
+FROM select_pseudo_columns_from_table(TABLE EnumTable)
+--
+QueryStmt
++-output_column_list=
+| +-select_pseudo_columns_from_table.key#6 AS key [INT32]
+| +-select_pseudo_columns_from_table.Filename#7 AS Filename [STRING]
+| +-select_pseudo_columns_from_table.RowId#8 AS RowId [BYTES]
++-query=
+  +-ProjectScan
+    +-column_list=select_pseudo_columns_from_table.[key#6, Filename#7, RowId#8]
+    +-input_scan=
+      +-TVFScan
+        +-column_list=select_pseudo_columns_from_table.[key#6, Filename#7, RowId#8]
+        +-tvf=select_pseudo_columns_from_table((ANY TABLE table_with_pseudo_columns) -> ANY TABLE)
+        +-signature=(TABLE<key INT32, TestEnum ENUM<googlesql_test.TestEnum>, AnotherTestEnum ENUM<googlesql_test.AnotherTestEnum>, Filename STRING, RowId BYTES>) -> TABLE<key INT32, Filename STRING, RowId BYTES>
+        +-argument_list=
+        | +-FunctionArgument
+        |   +-scan=
+        |   | +-TableScan(column_list=EnumTable.[key#1, TestEnum#2, AnotherTestEnum#3, Filename#4, RowId#5], node_source="table_clause", table=EnumTable, column_index_list=[0, 1, 2, 3, 4])
+        |   +-argument_column_list=EnumTable.[key#1, TestEnum#2, AnotherTestEnum#3, Filename#4, RowId#5]
+        +-column_index_list=[0, 1, 2]
+        +-function_call_signature=(ANY TABLE table_with_pseudo_columns) -> ANY TABLE
+
+With Templated SQL TVF signature:
+  select_pseudo_columns_from_table(TABLE<key INT32, TestEnum ENUM<googlesql_test.TestEnum>, AnotherTestEnum ENUM<googlesql_test.AnotherTestEnum>, Filename STRING, RowId BYTES>) -> TABLE<key INT32, Filename STRING, RowId BYTES>
+containing resolved templated query:
+QueryStmt
++-output_column_list=
+| +-table_with_pseudo_columns.key#1 AS key [INT32]
+| +-table_with_pseudo_columns.Filename#4 AS Filename [STRING]
+| +-table_with_pseudo_columns.RowId#5 AS RowId [BYTES]
++-query=
+  +-ProjectScan
+    +-column_list=table_with_pseudo_columns.[key#1, Filename#4, RowId#5]
+    +-input_scan=
+      +-RelationArgumentScan(column_list=table_with_pseudo_columns.[key#1, Filename#4, RowId#5], name="table_with_pseudo_columns")
+==
+
+# Explicitly select pseudo columns returned by TVF using dot notation.
+SELECT t.key, t.Filename, t.RowId
+FROM select_pseudo_columns_from_table(TABLE EnumTable) t
+--
+QueryStmt
++-output_column_list=
+| +-select_pseudo_columns_from_table.key#6 AS key [INT32]
+| +-select_pseudo_columns_from_table.Filename#7 AS Filename [STRING]
+| +-select_pseudo_columns_from_table.RowId#8 AS RowId [BYTES]
++-query=
+  +-ProjectScan
+    +-column_list=select_pseudo_columns_from_table.[key#6, Filename#7, RowId#8]
+    +-input_scan=
+      +-TVFScan
+        +-column_list=select_pseudo_columns_from_table.[key#6, Filename#7, RowId#8]
+        +-tvf=select_pseudo_columns_from_table((ANY TABLE table_with_pseudo_columns) -> ANY TABLE)
+        +-signature=(TABLE<key INT32, TestEnum ENUM<googlesql_test.TestEnum>, AnotherTestEnum ENUM<googlesql_test.AnotherTestEnum>, Filename STRING, RowId BYTES>) -> TABLE<key INT32, Filename STRING, RowId BYTES>
+        +-argument_list=
+        | +-FunctionArgument
+        |   +-scan=
+        |   | +-TableScan(column_list=EnumTable.[key#1, TestEnum#2, AnotherTestEnum#3, Filename#4, RowId#5], node_source="table_clause", table=EnumTable, column_index_list=[0, 1, 2, 3, 4])
+        |   +-argument_column_list=EnumTable.[key#1, TestEnum#2, AnotherTestEnum#3, Filename#4, RowId#5]
+        +-column_index_list=[0, 1, 2]
+        +-alias="t"
+        +-function_call_signature=(ANY TABLE table_with_pseudo_columns) -> ANY TABLE
+
+With Templated SQL TVF signature:
+  select_pseudo_columns_from_table(TABLE<key INT32, TestEnum ENUM<googlesql_test.TestEnum>, AnotherTestEnum ENUM<googlesql_test.AnotherTestEnum>, Filename STRING, RowId BYTES>) -> TABLE<key INT32, Filename STRING, RowId BYTES>
+containing resolved templated query:
+QueryStmt
++-output_column_list=
+| +-table_with_pseudo_columns.key#1 AS key [INT32]
+| +-table_with_pseudo_columns.Filename#4 AS Filename [STRING]
+| +-table_with_pseudo_columns.RowId#5 AS RowId [BYTES]
++-query=
+  +-ProjectScan
+    +-column_list=table_with_pseudo_columns.[key#1, Filename#4, RowId#5]
+    +-input_scan=
+      +-RelationArgumentScan(column_list=table_with_pseudo_columns.[key#1, Filename#4, RowId#5], name="table_with_pseudo_columns")
+==
+
+# Call TVF that selects pseudo columns, but input table was filtered.
+SELECT *
+FROM select_pseudo_columns_from_table(
+  (SELECT *, Filename, RowId FROM EnumTable WHERE RowId IS NOT NULL)
+)
+--
+QueryStmt
++-output_column_list=
+| +-select_pseudo_columns_from_table.key#6 AS key [INT32]
+| +-select_pseudo_columns_from_table.Filename#7 AS Filename [STRING]
+| +-select_pseudo_columns_from_table.RowId#8 AS RowId [BYTES]
++-query=
+  +-ProjectScan
+    +-column_list=select_pseudo_columns_from_table.[key#6, Filename#7, RowId#8]
+    +-input_scan=
+      +-TVFScan
+        +-column_list=select_pseudo_columns_from_table.[key#6, Filename#7, RowId#8]
+        +-tvf=select_pseudo_columns_from_table((ANY TABLE table_with_pseudo_columns) -> ANY TABLE)
+        +-signature=(TABLE<key INT32, TestEnum ENUM<googlesql_test.TestEnum>, AnotherTestEnum ENUM<googlesql_test.AnotherTestEnum>, Filename STRING, RowId BYTES>) -> TABLE<key INT32, Filename STRING, RowId BYTES>
+        +-argument_list=
+        | +-FunctionArgument
+        |   +-scan=
+        |   | +-ProjectScan
+        |   |   +-column_list=EnumTable.[key#1, TestEnum#2, AnotherTestEnum#3, Filename#4, RowId#5]
+        |   |   +-input_scan=
+        |   |     +-FilterScan
+        |   |       +-column_list=EnumTable.[key#1, TestEnum#2, AnotherTestEnum#3, Filename#4, RowId#5]
+        |   |       +-input_scan=
+        |   |       | +-TableScan(column_list=EnumTable.[key#1, TestEnum#2, AnotherTestEnum#3, Filename#4, RowId#5], table=EnumTable, column_index_list=[0, 1, 2, 3, 4])
+        |   |       +-filter_expr=
+        |   |         +-FunctionCall(GoogleSQL:$not(BOOL) -> BOOL)
+        |   |           +-FunctionCall(GoogleSQL:$is_null(BYTES) -> BOOL)
+        |   |             +-ColumnRef(type=BYTES, column=EnumTable.RowId#5)
+        |   +-argument_column_list=EnumTable.[key#1, TestEnum#2, AnotherTestEnum#3, Filename#4, RowId#5]
+        +-column_index_list=[0, 1, 2]
+        +-function_call_signature=(ANY TABLE table_with_pseudo_columns) -> ANY TABLE
+
+With Templated SQL TVF signature:
+  select_pseudo_columns_from_table(TABLE<key INT32, TestEnum ENUM<googlesql_test.TestEnum>, AnotherTestEnum ENUM<googlesql_test.AnotherTestEnum>, Filename STRING, RowId BYTES>) -> TABLE<key INT32, Filename STRING, RowId BYTES>
+containing resolved templated query:
+QueryStmt
++-output_column_list=
+| +-table_with_pseudo_columns.key#1 AS key [INT32]
+| +-table_with_pseudo_columns.Filename#4 AS Filename [STRING]
+| +-table_with_pseudo_columns.RowId#5 AS RowId [BYTES]
++-query=
+  +-ProjectScan
+    +-column_list=table_with_pseudo_columns.[key#1, Filename#4, RowId#5]
+    +-input_scan=
+      +-RelationArgumentScan(column_list=table_with_pseudo_columns.[key#1, Filename#4, RowId#5], name="table_with_pseudo_columns")
+==
+
+# Call TVF that selects pseudo columns, but input table was filtered, and TVF
+# result is further filtered afterwards.
+SELECT *
+FROM select_pseudo_columns_from_table(
+  (SELECT *, Filename, RowId FROM EnumTable WHERE RowId IS NOT NULL)
+)
+WHERE RowId IS NULL
+--
+
+QueryStmt
++-output_column_list=
+| +-select_pseudo_columns_from_table.key#6 AS key [INT32]
+| +-select_pseudo_columns_from_table.Filename#7 AS Filename [STRING]
+| +-select_pseudo_columns_from_table.RowId#8 AS RowId [BYTES]
++-query=
+  +-ProjectScan
+    +-column_list=select_pseudo_columns_from_table.[key#6, Filename#7, RowId#8]
+    +-input_scan=
+      +-FilterScan
+        +-column_list=select_pseudo_columns_from_table.[key#6, Filename#7, RowId#8]
+        +-input_scan=
+        | +-TVFScan
+        |   +-column_list=select_pseudo_columns_from_table.[key#6, Filename#7, RowId#8]
+        |   +-tvf=select_pseudo_columns_from_table((ANY TABLE table_with_pseudo_columns) -> ANY TABLE)
+        |   +-signature=(TABLE<key INT32, TestEnum ENUM<googlesql_test.TestEnum>, AnotherTestEnum ENUM<googlesql_test.AnotherTestEnum>, Filename STRING, RowId BYTES>) -> TABLE<key INT32, Filename STRING, RowId BYTES>
+        |   +-argument_list=
+        |   | +-FunctionArgument
+        |   |   +-scan=
+        |   |   | +-ProjectScan
+        |   |   |   +-column_list=EnumTable.[key#1, TestEnum#2, AnotherTestEnum#3, Filename#4, RowId#5]
+        |   |   |   +-input_scan=
+        |   |   |     +-FilterScan
+        |   |   |       +-column_list=EnumTable.[key#1, TestEnum#2, AnotherTestEnum#3, Filename#4, RowId#5]
+        |   |   |       +-input_scan=
+        |   |   |       | +-TableScan(column_list=EnumTable.[key#1, TestEnum#2, AnotherTestEnum#3, Filename#4, RowId#5], table=EnumTable, column_index_list=[0, 1, 2, 3, 4])
+        |   |   |       +-filter_expr=
+        |   |   |         +-FunctionCall(GoogleSQL:$not(BOOL) -> BOOL)
+        |   |   |           +-FunctionCall(GoogleSQL:$is_null(BYTES) -> BOOL)
+        |   |   |             +-ColumnRef(type=BYTES, column=EnumTable.RowId#5)
+        |   |   +-argument_column_list=EnumTable.[key#1, TestEnum#2, AnotherTestEnum#3, Filename#4, RowId#5]
+        |   +-column_index_list=[0, 1, 2]
+        |   +-function_call_signature=(ANY TABLE table_with_pseudo_columns) -> ANY TABLE
+        +-filter_expr=
+          +-FunctionCall(GoogleSQL:$is_null(BYTES) -> BOOL)
+            +-ColumnRef(type=BYTES, column=select_pseudo_columns_from_table.RowId#8)
+
+With Templated SQL TVF signature:
+  select_pseudo_columns_from_table(TABLE<key INT32, TestEnum ENUM<googlesql_test.TestEnum>, AnotherTestEnum ENUM<googlesql_test.AnotherTestEnum>, Filename STRING, RowId BYTES>) -> TABLE<key INT32, Filename STRING, RowId BYTES>
+containing resolved templated query:
+QueryStmt
++-output_column_list=
+| +-table_with_pseudo_columns.key#1 AS key [INT32]
+| +-table_with_pseudo_columns.Filename#4 AS Filename [STRING]
+| +-table_with_pseudo_columns.RowId#5 AS RowId [BYTES]
++-query=
+  +-ProjectScan
+    +-column_list=table_with_pseudo_columns.[key#1, Filename#4, RowId#5]
+    +-input_scan=
+      +-RelationArgumentScan(column_list=table_with_pseudo_columns.[key#1, Filename#4, RowId#5], name="table_with_pseudo_columns")
+==
+
+# TVF that selects all from value table table containing pseudo columns. (strips pseudo-columns)
+SELECT *
+FROM select_all_from_pseudo_columns_value_table(TABLE TestExtraValueTable)
+--
+QueryStmt
++-output_column_list=
+| +-select_all_from_pseudo_columns_value_table.int32_val1#4 AS int32_val1 [INT32]
+| +-select_all_from_pseudo_columns_value_table.int32_val2#5 AS int32_val2 [INT32]
+| +-select_all_from_pseudo_columns_value_table.str_value#6 AS str_value [ARRAY<STRING>]
++-query=
+  +-ProjectScan
+    +-column_list=select_all_from_pseudo_columns_value_table.[int32_val1#4, int32_val2#5, str_value#6]
+    +-input_scan=
+      +-TVFScan
+        +-column_list=select_all_from_pseudo_columns_value_table.[int32_val1#4, int32_val2#5, str_value#6]
+        +-tvf=select_all_from_pseudo_columns_value_table((ANY TABLE value_table_with_pseudo_columns) -> ANY TABLE)
+        +-signature=(TABLE<PROTO<googlesql_test.TestExtraPB>, Filename STRING, RowId BYTES>) -> TABLE<int32_val1 INT32, int32_val2 INT32, str_value ARRAY<STRING>>
+        +-argument_list=
+        | +-FunctionArgument
+        |   +-scan=
+        |   | +-TableScan(column_list=TestExtraValueTable.[value#1, Filename#2, RowId#3], node_source="table_clause", table=TestExtraValueTable, column_index_list=[0, 1, 2])
+        |   +-argument_column_list=TestExtraValueTable.[value#1, Filename#2, RowId#3]
+        +-column_index_list=[0, 1, 2]
+        +-function_call_signature=(ANY TABLE value_table_with_pseudo_columns) -> ANY TABLE
+
+With Templated SQL TVF signature:
+  select_all_from_pseudo_columns_value_table(TABLE<PROTO<googlesql_test.TestExtraPB>, Filename STRING, RowId BYTES>) -> TABLE<int32_val1 INT32, int32_val2 INT32, str_value ARRAY<STRING>>
+containing resolved templated query:
+QueryStmt
++-output_column_list=
+| +-$query.int32_val1#4 AS int32_val1 [INT32]
+| +-$query.int32_val2#5 AS int32_val2 [INT32]
+| +-$query.str_value#6 AS str_value [ARRAY<STRING>]
++-query=
+  +-ProjectScan
+    +-column_list=$query.[int32_val1#4, int32_val2#5, str_value#6]
+    +-expr_list=
+    | +-int32_val1#4 :=
+    | | +-GetProtoField
+    | |   +-type=INT32
+    | |   +-expr=
+    | |   | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=value_table_with_pseudo_columns.$value_column#1)
+    | |   +-field_descriptor=int32_val1
+    | |   +-default_value=0
+    | +-int32_val2#5 :=
+    | | +-GetProtoField
+    | |   +-type=INT32
+    | |   +-expr=
+    | |   | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=value_table_with_pseudo_columns.$value_column#1)
+    | |   +-field_descriptor=int32_val2
+    | |   +-default_value=0
+    | +-str_value#6 :=
+    |   +-GetProtoField
+    |     +-type=ARRAY<STRING>
+    |     +-expr=
+    |     | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=value_table_with_pseudo_columns.$value_column#1)
+    |     +-field_descriptor=str_value
+    |     +-default_value=[]
+    +-input_scan=
+      +-RelationArgumentScan(column_list=[value_table_with_pseudo_columns.$value_column#1], name="value_table_with_pseudo_columns", is_value_table=TRUE)
+==
+
+# TVF that selects pseudo columns from value table in an unqualified manner.
+SELECT *
+FROM select_pseudo_columns_from_value_table(TABLE TestExtraValueTable)
+--
+QueryStmt
++-output_column_list=
+| +-select_pseudo_columns_from_value_table.t#4 AS t [PROTO<googlesql_test.TestExtraPB>]
+| +-select_pseudo_columns_from_value_table.Filename#5 AS Filename [STRING]
+| +-select_pseudo_columns_from_value_table.RowId#6 AS RowId [BYTES]
++-query=
+  +-ProjectScan
+    +-column_list=select_pseudo_columns_from_value_table.[t#4, Filename#5, RowId#6]
+    +-input_scan=
+      +-TVFScan
+        +-column_list=select_pseudo_columns_from_value_table.[t#4, Filename#5, RowId#6]
+        +-tvf=select_pseudo_columns_from_value_table((ANY TABLE value_table_with_pseudo_columns) -> ANY TABLE)
+        +-signature=(TABLE<PROTO<googlesql_test.TestExtraPB>, Filename STRING, RowId BYTES>) -> TABLE<t PROTO<googlesql_test.TestExtraPB>, Filename STRING, RowId BYTES>
+        +-argument_list=
+        | +-FunctionArgument
+        |   +-scan=
+        |   | +-TableScan(column_list=TestExtraValueTable.[value#1, Filename#2, RowId#3], node_source="table_clause", table=TestExtraValueTable, column_index_list=[0, 1, 2])
+        |   +-argument_column_list=TestExtraValueTable.[value#1, Filename#2, RowId#3]
+        +-column_index_list=[0, 1, 2]
+        +-function_call_signature=(ANY TABLE value_table_with_pseudo_columns) -> ANY TABLE
+
+With Templated SQL TVF signature:
+  select_pseudo_columns_from_value_table(TABLE<PROTO<googlesql_test.TestExtraPB>, Filename STRING, RowId BYTES>) -> TABLE<t PROTO<googlesql_test.TestExtraPB>, Filename STRING, RowId BYTES>
+containing resolved templated query:
+QueryStmt
++-output_column_list=
+| +-value_table_with_pseudo_columns.$value_column#1 AS t [PROTO<googlesql_test.TestExtraPB>]
+| +-value_table_with_pseudo_columns.Filename#2 AS Filename [STRING]
+| +-value_table_with_pseudo_columns.RowId#3 AS RowId [BYTES]
++-query=
+  +-ProjectScan
+    +-column_list=value_table_with_pseudo_columns.[$value_column#1, Filename#2, RowId#3]
+    +-input_scan=
+      +-RelationArgumentScan(column_list=value_table_with_pseudo_columns.[$value_column#1, Filename#2, RowId#3], name="value_table_with_pseudo_columns", is_value_table=TRUE)
+==
+
+# TVF that selects pseudo columns from value table in a qualified manner.
+SELECT *
+FROM select_dot_pseudo_columns_from_value_table(TABLE TestExtraValueTable)
+--
+QueryStmt
++-output_column_list=
+| +-select_dot_pseudo_columns_from_value_table.t#4 AS t [PROTO<googlesql_test.TestExtraPB>]
+| +-select_dot_pseudo_columns_from_value_table.Filename#5 AS Filename [STRING]
+| +-select_dot_pseudo_columns_from_value_table.RowId#6 AS RowId [BYTES]
++-query=
+  +-ProjectScan
+    +-column_list=select_dot_pseudo_columns_from_value_table.[t#4, Filename#5, RowId#6]
+    +-input_scan=
+      +-TVFScan
+        +-column_list=select_dot_pseudo_columns_from_value_table.[t#4, Filename#5, RowId#6]
+        +-tvf=select_dot_pseudo_columns_from_value_table((ANY TABLE value_table_with_pseudo_columns) -> ANY TABLE)
+        +-signature=(TABLE<PROTO<googlesql_test.TestExtraPB>, Filename STRING, RowId BYTES>) -> TABLE<t PROTO<googlesql_test.TestExtraPB>, Filename STRING, RowId BYTES>
+        +-argument_list=
+        | +-FunctionArgument
+        |   +-scan=
+        |   | +-TableScan(column_list=TestExtraValueTable.[value#1, Filename#2, RowId#3], node_source="table_clause", table=TestExtraValueTable, column_index_list=[0, 1, 2])
+        |   +-argument_column_list=TestExtraValueTable.[value#1, Filename#2, RowId#3]
+        +-column_index_list=[0, 1, 2]
+        +-function_call_signature=(ANY TABLE value_table_with_pseudo_columns) -> ANY TABLE
+
+With Templated SQL TVF signature:
+  select_dot_pseudo_columns_from_value_table(TABLE<PROTO<googlesql_test.TestExtraPB>, Filename STRING, RowId BYTES>) -> TABLE<t PROTO<googlesql_test.TestExtraPB>, Filename STRING, RowId BYTES>
+containing resolved templated query:
+QueryStmt
++-output_column_list=
+| +-value_table_with_pseudo_columns.$value_column#1 AS t [PROTO<googlesql_test.TestExtraPB>]
+| +-value_table_with_pseudo_columns.Filename#2 AS Filename [STRING]
+| +-value_table_with_pseudo_columns.RowId#3 AS RowId [BYTES]
++-query=
+  +-ProjectScan
+    +-column_list=value_table_with_pseudo_columns.[$value_column#1, Filename#2, RowId#3]
+    +-input_scan=
+      +-RelationArgumentScan(column_list=value_table_with_pseudo_columns.[$value_column#1, Filename#2, RowId#3], name="value_table_with_pseudo_columns", is_value_table=TRUE)

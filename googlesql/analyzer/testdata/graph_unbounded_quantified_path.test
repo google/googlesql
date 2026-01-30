@@ -1,0 +1,3005 @@
+[default language_features=NONE,+SQL_GRAPH,+SQL_GRAPH_BOUNDED_PATH_QUANTIFICATION]
+[default no_test_extract_table_names]
+[default no_run_sqlbuilder]
+
+###############################################################################
+# No selective search prefix or restrictive path mode
+###############################################################################
+# Unbounded path quantifier with omitted upper bound.
+SELECT one FROM GRAPH_TABLE(
+  aml
+  MATCH((a)-[b]->(c)){1,}
+  COLUMNS(1 AS one)
+  )
+--
+ERROR: Unbounded quantifier is not supported [at 7:22]
+  MATCH((a)-[b]->(c)){1,}
+                     ^
+==
+
+# Unbounded path quantifier with omitted upper bound.
+SELECT one FROM GRAPH_TABLE(
+  aml
+  MATCH (a)-[b]->{,}(c)
+  COLUMNS(1 AS one)
+  )
+--
+ERROR: Unbounded quantifier is not supported [at 3:18]
+  MATCH (a)-[b]->{,}(c)
+                 ^
+==
+
+# Unbounded path quantifier with star quantifier.
+SELECT one FROM GRAPH_TABLE(
+  aml
+  MATCH((a)-[b]->(c))*
+  COLUMNS(1 AS one)
+  )
+--
+ERROR: Unbounded quantifier is not supported [at 3:22]
+  MATCH((a)-[b]->(c))*
+                     ^
+==
+
+# Unbounded path quantifier with plus quantifier.
+SELECT one FROM GRAPH_TABLE(
+  aml
+  MATCH (a)-[b]->+(c)
+  COLUMNS(1 AS one)
+  )
+--
+ERROR: Unbounded quantifier is not supported [at 3:18]
+  MATCH (a)-[b]->+(c)
+                 ^
+==
+
+[default language_features=NONE,+SQL_GRAPH,+SQL_GRAPH_ADVANCED_QUERY,+SQL_GRAPH_PATH_MODE,+SQL_GRAPH_BOUNDED_PATH_QUANTIFICATION,+SQL_GRAPH_UNBOUNDED_PATH_QUANTIFICATION]
+
+select * from graph_table(aml
+  match  ANY ((a)(-[]->){,}(b))*
+  return COUNT(*)
+)
+--
+ERROR: Nested quantifiers are not allowed [at 2:14]
+  match  ANY ((a)(-[]->){,}(b))*
+             ^
+==
+
+# Non-selective search prefix error.
+select * from graph_table(aml
+  match {{|ALL}} (n)->{1, }(m)
+  return n.name
+)
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: Unbounded quantified path pattern is not allowed without a selective search prefix or a restrictive path mode [at 2:15]
+  match  (n)->{1, }(m)
+              ^
+--
+ALTERNATION GROUP: ALL
+--
+ERROR: Unbounded quantified path pattern is not allowed without a selective search prefix or a restrictive path mode [at 2:18]
+  match ALL (n)->{1, }(m)
+                 ^
+==
+
+# Non-selective search prefix error.
+select * from graph_table(aml
+  match {{|ALL}} (n)->+(m)
+  return n.name
+)
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: Unbounded quantified path pattern is not allowed without a selective search prefix or a restrictive path mode [at 2:15]
+  match  (n)->+(m)
+              ^
+--
+ALTERNATION GROUP: ALL
+--
+ERROR: Unbounded quantified path pattern is not allowed without a selective search prefix or a restrictive path mode [at 2:18]
+  match ALL (n)->+(m)
+                 ^
+==
+
+# Non-selective search prefix error.
+select * from graph_table(aml
+  match {{|ALL}} (n)->*(m)
+  return n.name
+)
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: Unbounded quantified path pattern is not allowed without a selective search prefix or a restrictive path mode [at 2:15]
+  match  (n)->*(m)
+              ^
+--
+ALTERNATION GROUP: ALL
+--
+ERROR: Unbounded quantified path pattern is not allowed without a selective search prefix or a restrictive path mode [at 2:18]
+  match ALL (n)->*(m)
+                 ^
+==
+
+# Non-restrictive path mode error.
+select * from graph_table(aml
+  match WALK (n)->{{*|+}}(m)
+  return n.name
+)
+--
+ALTERNATION GROUP: *
+--
+ERROR: Unbounded quantified path pattern is not allowed without a selective search prefix or a restrictive path mode [at 2:19]
+  match WALK (n)->*(m)
+                  ^
+--
+ALTERNATION GROUP: +
+--
+ERROR: Unbounded quantified path pattern is not allowed without a selective search prefix or a restrictive path mode [at 2:19]
+  match WALK (n)->+(m)
+                  ^
+==
+
+select * from graph_table(aml
+  match  ANY (a)->(b), ((n)-[e]->{{*|+}}(m))
+  return n.name
+)
+--
+ALTERNATION GROUP: *
+--
+ERROR: Unbounded quantified path pattern is not allowed without a selective search prefix or a restrictive path mode [at 2:34]
+  match  ANY (a)->(b), ((n)-[e]->*(m))
+                                 ^
+--
+ALTERNATION GROUP: +
+--
+ERROR: Unbounded quantified path pattern is not allowed without a selective search prefix or a restrictive path mode [at 2:34]
+  match  ANY (a)->(b), ((n)-[e]->+(m))
+                                 ^
+==
+
+GRAPH aml
+MATCH (a)-[]->{1,}->(TRAIL (d)->())
+RETURN a.name
+--
+ERROR: Unbounded quantified path pattern is not allowed without a selective search prefix or a restrictive path mode [at 2:15]
+MATCH (a)-[]->{1,}->(TRAIL (d)->())
+              ^
+==
+
+GRAPH aml
+MATCH (a)-[]->(TRAIL (d)->()){1,}
+return COUNT(*)
+--
+ERROR: Unbounded quantified path pattern is not allowed without a selective search prefix or a restrictive path mode [at 2:30]
+MATCH (a)-[]->(TRAIL (d)->()){1,}
+                             ^
+==
+
+###############################################################################
+# Selective search prefix.
+###############################################################################
+select * from graph_table(aml
+  match {{ANY|ANY SHORTEST}} (n)->{1, }(m)
+  return n.name
+)
+--
+ALTERNATION GROUP: ANY
+--
+QueryStmt
++-output_column_list=
+| +-$graph_table.name#11 AS name [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$graph_table.name#11]
+    +-input_scan=
+      +-GraphTableScan
+        +-column_list=[$graph_table.name#11]
+        +-property_graph=aml
+        +-input_scan=
+          +-GraphLinearScan
+            +-column_list=[$graph_table.name#11]
+            +-scan_list=
+              +-GraphLinearScan
+                +-column_list=[$graph_table.name#11]
+                +-scan_list=
+                  +-GraphScan
+                  | +-column_list=[$element_table.n#1, $path_scan.$head#8, $path_scan.$tail#9, $element_table.m#10]
+                  | +-input_scan_list=
+                  | | +-GraphPathScan
+                  | |   +-column_list=[$element_table.n#1, $path_scan.$head#8, $path_scan.$tail#9, $element_table.m#10]
+                  | |   +-input_scan_list=
+                  | |   | +-GraphNodeScan
+                  | |   | | +-column_list=[$element_table.n#1]
+                  | |   | | +-label_expr=
+                  | |   | | | +-GraphLabelNaryExpr
+                  | |   | | |   +-op=OR
+                  | |   | | |   +-operand_list=
+                  | |   | | |     +-GraphWildCardLabel
+                  | |   | | |     +-GraphLabelNaryExpr
+                  | |   | | |       +-op=NOT
+                  | |   | | |       +-operand_list=
+                  | |   | | |         +-GraphWildCardLabel
+                  | |   | | +-target_element_table_list=[aml.Account,aml.Person,aml.Syndicate]
+                  | |   | +-GraphPathScan
+                  | |   | | +-column_list=$path_scan.[$head#8, $tail#9]
+                  | |   | | +-input_scan_list=
+                  | |   | | | +-GraphNodeScan
+                  | |   | | | | +-column_list=[$element_table.$element1#2]
+                  | |   | | | | +-label_expr=
+                  | |   | | | | | +-GraphLabelNaryExpr
+                  | |   | | | | |   +-op=OR
+                  | |   | | | | |   +-operand_list=
+                  | |   | | | | |     +-GraphWildCardLabel
+                  | |   | | | | |     +-GraphLabelNaryExpr
+                  | |   | | | | |       +-op=NOT
+                  | |   | | | | |       +-operand_list=
+                  | |   | | | | |         +-GraphWildCardLabel
+                  | |   | | | | +-target_element_table_list=[aml.Account,aml.Person,aml.Syndicate]
+                  | |   | | | +-GraphEdgeScan
+                  | |   | | | | +-column_list=[$element_table.$element2#3]
+                  | |   | | | | +-label_expr=
+                  | |   | | | | | +-GraphLabelNaryExpr
+                  | |   | | | | |   +-op=OR
+                  | |   | | | | |   +-operand_list=
+                  | |   | | | | |     +-GraphWildCardLabel
+                  | |   | | | | |     +-GraphLabelNaryExpr
+                  | |   | | | | |       +-op=NOT
+                  | |   | | | | |       +-operand_list=
+                  | |   | | | | |         +-GraphWildCardLabel
+                  | |   | | | | +-target_element_table_list=[aml.PersonOwnAccount,aml.Transfer]
+                  | |   | | | | +-orientation=RIGHT
+                  | |   | | | +-GraphNodeScan
+                  | |   | | |   +-column_list=[$element_table.$element3#4]
+                  | |   | | |   +-label_expr=
+                  | |   | | |   | +-GraphLabelNaryExpr
+                  | |   | | |   |   +-op=OR
+                  | |   | | |   |   +-operand_list=
+                  | |   | | |   |     +-GraphWildCardLabel
+                  | |   | | |   |     +-GraphLabelNaryExpr
+                  | |   | | |   |       +-op=NOT
+                  | |   | | |   |       +-operand_list=
+                  | |   | | |   |         +-GraphWildCardLabel
+                  | |   | | |   +-target_element_table_list=[aml.Account,aml.Person,aml.Syndicate]
+                  | |   | | +-head=$path_scan.$head#8
+                  | |   | | +-tail=$path_scan.$tail#9
+                  | |   | | +-quantifier=
+                  | |   | | | +-GraphPathPatternQuantifier
+                  | |   | | |   +-lower_bound=
+                  | |   | | |     +-Literal(type=INT64, value=1)
+                  | |   | | +-group_variable_list=
+                  | |   | |   +-GraphMakeArrayVariable(element=$element_table.$element1#2, array=$element_table.$element1#5)
+                  | |   | |   +-GraphMakeArrayVariable(element=$element_table.$element2#3, array=$element_table.$element2#6)
+                  | |   | |   +-GraphMakeArrayVariable(element=$element_table.$element3#4, array=$element_table.$element3#7)
+                  | |   | +-GraphNodeScan
+                  | |   |   +-column_list=[$element_table.m#10]
+                  | |   |   +-label_expr=
+                  | |   |   | +-GraphLabelNaryExpr
+                  | |   |   |   +-op=OR
+                  | |   |   |   +-operand_list=
+                  | |   |   |     +-GraphWildCardLabel
+                  | |   |   |     +-GraphLabelNaryExpr
+                  | |   |   |       +-op=NOT
+                  | |   |   |       +-operand_list=
+                  | |   |   |         +-GraphWildCardLabel
+                  | |   |   +-target_element_table_list=[aml.Account,aml.Person,aml.Syndicate]
+                  | |   +-head=$element_table.n#1
+                  | |   +-tail=$element_table.m#10
+                  | |   +-search_prefix=
+                  | |     +-GraphPathSearchPrefix(type=ANY)
+                  | +-input_scan=
+                  |   +-SingleRowScan
+                  +-ProjectScan
+                    +-column_list=[$graph_table.name#11]
+                    +-expr_list=
+                    | +-name#11 :=
+                    |   +-GraphGetElementProperty
+                    |     +-type=STRING
+                    |     +-expr=
+                    |     | +-ColumnRef(type=GRAPH_NODE(aml)<age UINT32, balance UINT64, birthday DATE, data BYTES, id INT64, name STRING, syndicateData ARRAY<INT64>, syndicateId INT64, syndicateName STRING>, column=$element_table.n#1)
+                    |     +-property=name(STRING)
+                    +-input_scan=
+                      +-GraphRefScan(column_list=$element_table.[n#1, m#10])
+--
+ALTERNATION GROUP: ANY SHORTEST
+--
+QueryStmt
++-output_column_list=
+| +-$graph_table.name#11 AS name [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$graph_table.name#11]
+    +-input_scan=
+      +-GraphTableScan
+        +-column_list=[$graph_table.name#11]
+        +-property_graph=aml
+        +-input_scan=
+          +-GraphLinearScan
+            +-column_list=[$graph_table.name#11]
+            +-scan_list=
+              +-GraphLinearScan
+                +-column_list=[$graph_table.name#11]
+                +-scan_list=
+                  +-GraphScan
+                  | +-column_list=[$element_table.n#1, $path_scan.$head#8, $path_scan.$tail#9, $element_table.m#10]
+                  | +-input_scan_list=
+                  | | +-GraphPathScan
+                  | |   +-column_list=[$element_table.n#1, $path_scan.$head#8, $path_scan.$tail#9, $element_table.m#10]
+                  | |   +-input_scan_list=
+                  | |   | +-GraphNodeScan
+                  | |   | | +-column_list=[$element_table.n#1]
+                  | |   | | +-label_expr=
+                  | |   | | | +-GraphLabelNaryExpr
+                  | |   | | |   +-op=OR
+                  | |   | | |   +-operand_list=
+                  | |   | | |     +-GraphWildCardLabel
+                  | |   | | |     +-GraphLabelNaryExpr
+                  | |   | | |       +-op=NOT
+                  | |   | | |       +-operand_list=
+                  | |   | | |         +-GraphWildCardLabel
+                  | |   | | +-target_element_table_list=[aml.Account,aml.Person,aml.Syndicate]
+                  | |   | +-GraphPathScan
+                  | |   | | +-column_list=$path_scan.[$head#8, $tail#9]
+                  | |   | | +-input_scan_list=
+                  | |   | | | +-GraphNodeScan
+                  | |   | | | | +-column_list=[$element_table.$element1#2]
+                  | |   | | | | +-label_expr=
+                  | |   | | | | | +-GraphLabelNaryExpr
+                  | |   | | | | |   +-op=OR
+                  | |   | | | | |   +-operand_list=
+                  | |   | | | | |     +-GraphWildCardLabel
+                  | |   | | | | |     +-GraphLabelNaryExpr
+                  | |   | | | | |       +-op=NOT
+                  | |   | | | | |       +-operand_list=
+                  | |   | | | | |         +-GraphWildCardLabel
+                  | |   | | | | +-target_element_table_list=[aml.Account,aml.Person,aml.Syndicate]
+                  | |   | | | +-GraphEdgeScan
+                  | |   | | | | +-column_list=[$element_table.$element2#3]
+                  | |   | | | | +-label_expr=
+                  | |   | | | | | +-GraphLabelNaryExpr
+                  | |   | | | | |   +-op=OR
+                  | |   | | | | |   +-operand_list=
+                  | |   | | | | |     +-GraphWildCardLabel
+                  | |   | | | | |     +-GraphLabelNaryExpr
+                  | |   | | | | |       +-op=NOT
+                  | |   | | | | |       +-operand_list=
+                  | |   | | | | |         +-GraphWildCardLabel
+                  | |   | | | | +-target_element_table_list=[aml.PersonOwnAccount,aml.Transfer]
+                  | |   | | | | +-orientation=RIGHT
+                  | |   | | | +-GraphNodeScan
+                  | |   | | |   +-column_list=[$element_table.$element3#4]
+                  | |   | | |   +-label_expr=
+                  | |   | | |   | +-GraphLabelNaryExpr
+                  | |   | | |   |   +-op=OR
+                  | |   | | |   |   +-operand_list=
+                  | |   | | |   |     +-GraphWildCardLabel
+                  | |   | | |   |     +-GraphLabelNaryExpr
+                  | |   | | |   |       +-op=NOT
+                  | |   | | |   |       +-operand_list=
+                  | |   | | |   |         +-GraphWildCardLabel
+                  | |   | | |   +-target_element_table_list=[aml.Account,aml.Person,aml.Syndicate]
+                  | |   | | +-head=$path_scan.$head#8
+                  | |   | | +-tail=$path_scan.$tail#9
+                  | |   | | +-quantifier=
+                  | |   | | | +-GraphPathPatternQuantifier
+                  | |   | | |   +-lower_bound=
+                  | |   | | |     +-Literal(type=INT64, value=1)
+                  | |   | | +-group_variable_list=
+                  | |   | |   +-GraphMakeArrayVariable(element=$element_table.$element1#2, array=$element_table.$element1#5)
+                  | |   | |   +-GraphMakeArrayVariable(element=$element_table.$element2#3, array=$element_table.$element2#6)
+                  | |   | |   +-GraphMakeArrayVariable(element=$element_table.$element3#4, array=$element_table.$element3#7)
+                  | |   | +-GraphNodeScan
+                  | |   |   +-column_list=[$element_table.m#10]
+                  | |   |   +-label_expr=
+                  | |   |   | +-GraphLabelNaryExpr
+                  | |   |   |   +-op=OR
+                  | |   |   |   +-operand_list=
+                  | |   |   |     +-GraphWildCardLabel
+                  | |   |   |     +-GraphLabelNaryExpr
+                  | |   |   |       +-op=NOT
+                  | |   |   |       +-operand_list=
+                  | |   |   |         +-GraphWildCardLabel
+                  | |   |   +-target_element_table_list=[aml.Account,aml.Person,aml.Syndicate]
+                  | |   +-head=$element_table.n#1
+                  | |   +-tail=$element_table.m#10
+                  | |   +-search_prefix=
+                  | |     +-GraphPathSearchPrefix(type=SHORTEST)
+                  | +-input_scan=
+                  |   +-SingleRowScan
+                  +-ProjectScan
+                    +-column_list=[$graph_table.name#11]
+                    +-expr_list=
+                    | +-name#11 :=
+                    |   +-GraphGetElementProperty
+                    |     +-type=STRING
+                    |     +-expr=
+                    |     | +-ColumnRef(type=GRAPH_NODE(aml)<age UINT32, balance UINT64, birthday DATE, data BYTES, id INT64, name STRING, syndicateData ARRAY<INT64>, syndicateId INT64, syndicateName STRING>, column=$element_table.n#1)
+                    |     +-property=name(STRING)
+                    +-input_scan=
+                      +-GraphRefScan(column_list=$element_table.[n#1, m#10])
+==
+
+# Symbol quantifier.
+select * from graph_table(aml
+  match ANY SHORTEST (n)->{{*|+}}(m)
+  return n.name
+)
+--
+ALTERNATION GROUP: *
+--
+QueryStmt
++-output_column_list=
+| +-$graph_table.name#11 AS name [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$graph_table.name#11]
+    +-input_scan=
+      +-GraphTableScan
+        +-column_list=[$graph_table.name#11]
+        +-property_graph=aml
+        +-input_scan=
+          +-GraphLinearScan
+            +-column_list=[$graph_table.name#11]
+            +-scan_list=
+              +-GraphLinearScan
+                +-column_list=[$graph_table.name#11]
+                +-scan_list=
+                  +-GraphScan
+                  | +-column_list=[$element_table.n#1, $path_scan.$head#8, $path_scan.$tail#9, $element_table.m#10]
+                  | +-input_scan_list=
+                  | | +-GraphPathScan
+                  | |   +-column_list=[$element_table.n#1, $path_scan.$head#8, $path_scan.$tail#9, $element_table.m#10]
+                  | |   +-input_scan_list=
+                  | |   | +-GraphNodeScan
+                  | |   | | +-column_list=[$element_table.n#1]
+                  | |   | | +-label_expr=
+                  | |   | | | +-GraphLabelNaryExpr
+                  | |   | | |   +-op=OR
+                  | |   | | |   +-operand_list=
+                  | |   | | |     +-GraphWildCardLabel
+                  | |   | | |     +-GraphLabelNaryExpr
+                  | |   | | |       +-op=NOT
+                  | |   | | |       +-operand_list=
+                  | |   | | |         +-GraphWildCardLabel
+                  | |   | | +-target_element_table_list=[aml.Account,aml.Person,aml.Syndicate]
+                  | |   | +-GraphPathScan
+                  | |   | | +-column_list=$path_scan.[$head#8, $tail#9]
+                  | |   | | +-input_scan_list=
+                  | |   | | | +-GraphNodeScan
+                  | |   | | | | +-column_list=[$element_table.$element1#2]
+                  | |   | | | | +-label_expr=
+                  | |   | | | | | +-GraphLabelNaryExpr
+                  | |   | | | | |   +-op=OR
+                  | |   | | | | |   +-operand_list=
+                  | |   | | | | |     +-GraphWildCardLabel
+                  | |   | | | | |     +-GraphLabelNaryExpr
+                  | |   | | | | |       +-op=NOT
+                  | |   | | | | |       +-operand_list=
+                  | |   | | | | |         +-GraphWildCardLabel
+                  | |   | | | | +-target_element_table_list=[aml.Account,aml.Person,aml.Syndicate]
+                  | |   | | | +-GraphEdgeScan
+                  | |   | | | | +-column_list=[$element_table.$element2#3]
+                  | |   | | | | +-label_expr=
+                  | |   | | | | | +-GraphLabelNaryExpr
+                  | |   | | | | |   +-op=OR
+                  | |   | | | | |   +-operand_list=
+                  | |   | | | | |     +-GraphWildCardLabel
+                  | |   | | | | |     +-GraphLabelNaryExpr
+                  | |   | | | | |       +-op=NOT
+                  | |   | | | | |       +-operand_list=
+                  | |   | | | | |         +-GraphWildCardLabel
+                  | |   | | | | +-target_element_table_list=[aml.PersonOwnAccount,aml.Transfer]
+                  | |   | | | | +-orientation=RIGHT
+                  | |   | | | +-GraphNodeScan
+                  | |   | | |   +-column_list=[$element_table.$element3#4]
+                  | |   | | |   +-label_expr=
+                  | |   | | |   | +-GraphLabelNaryExpr
+                  | |   | | |   |   +-op=OR
+                  | |   | | |   |   +-operand_list=
+                  | |   | | |   |     +-GraphWildCardLabel
+                  | |   | | |   |     +-GraphLabelNaryExpr
+                  | |   | | |   |       +-op=NOT
+                  | |   | | |   |       +-operand_list=
+                  | |   | | |   |         +-GraphWildCardLabel
+                  | |   | | |   +-target_element_table_list=[aml.Account,aml.Person,aml.Syndicate]
+                  | |   | | +-head=$path_scan.$head#8
+                  | |   | | +-tail=$path_scan.$tail#9
+                  | |   | | +-quantifier=
+                  | |   | | | +-GraphPathPatternQuantifier
+                  | |   | | |   +-lower_bound=
+                  | |   | | |     +-Literal(type=INT64, value=0)
+                  | |   | | +-group_variable_list=
+                  | |   | |   +-GraphMakeArrayVariable(element=$element_table.$element1#2, array=$element_table.$element1#5)
+                  | |   | |   +-GraphMakeArrayVariable(element=$element_table.$element2#3, array=$element_table.$element2#6)
+                  | |   | |   +-GraphMakeArrayVariable(element=$element_table.$element3#4, array=$element_table.$element3#7)
+                  | |   | +-GraphNodeScan
+                  | |   |   +-column_list=[$element_table.m#10]
+                  | |   |   +-label_expr=
+                  | |   |   | +-GraphLabelNaryExpr
+                  | |   |   |   +-op=OR
+                  | |   |   |   +-operand_list=
+                  | |   |   |     +-GraphWildCardLabel
+                  | |   |   |     +-GraphLabelNaryExpr
+                  | |   |   |       +-op=NOT
+                  | |   |   |       +-operand_list=
+                  | |   |   |         +-GraphWildCardLabel
+                  | |   |   +-target_element_table_list=[aml.Account,aml.Person,aml.Syndicate]
+                  | |   +-head=$element_table.n#1
+                  | |   +-tail=$element_table.m#10
+                  | |   +-search_prefix=
+                  | |     +-GraphPathSearchPrefix(type=SHORTEST)
+                  | +-input_scan=
+                  |   +-SingleRowScan
+                  +-ProjectScan
+                    +-column_list=[$graph_table.name#11]
+                    +-expr_list=
+                    | +-name#11 :=
+                    |   +-GraphGetElementProperty
+                    |     +-type=STRING
+                    |     +-expr=
+                    |     | +-ColumnRef(type=GRAPH_NODE(aml)<age UINT32, balance UINT64, birthday DATE, data BYTES, id INT64, name STRING, syndicateData ARRAY<INT64>, syndicateId INT64, syndicateName STRING>, column=$element_table.n#1)
+                    |     +-property=name(STRING)
+                    +-input_scan=
+                      +-GraphRefScan(column_list=$element_table.[n#1, m#10])
+--
+ALTERNATION GROUP: +
+--
+QueryStmt
++-output_column_list=
+| +-$graph_table.name#11 AS name [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$graph_table.name#11]
+    +-input_scan=
+      +-GraphTableScan
+        +-column_list=[$graph_table.name#11]
+        +-property_graph=aml
+        +-input_scan=
+          +-GraphLinearScan
+            +-column_list=[$graph_table.name#11]
+            +-scan_list=
+              +-GraphLinearScan
+                +-column_list=[$graph_table.name#11]
+                +-scan_list=
+                  +-GraphScan
+                  | +-column_list=[$element_table.n#1, $path_scan.$head#8, $path_scan.$tail#9, $element_table.m#10]
+                  | +-input_scan_list=
+                  | | +-GraphPathScan
+                  | |   +-column_list=[$element_table.n#1, $path_scan.$head#8, $path_scan.$tail#9, $element_table.m#10]
+                  | |   +-input_scan_list=
+                  | |   | +-GraphNodeScan
+                  | |   | | +-column_list=[$element_table.n#1]
+                  | |   | | +-label_expr=
+                  | |   | | | +-GraphLabelNaryExpr
+                  | |   | | |   +-op=OR
+                  | |   | | |   +-operand_list=
+                  | |   | | |     +-GraphWildCardLabel
+                  | |   | | |     +-GraphLabelNaryExpr
+                  | |   | | |       +-op=NOT
+                  | |   | | |       +-operand_list=
+                  | |   | | |         +-GraphWildCardLabel
+                  | |   | | +-target_element_table_list=[aml.Account,aml.Person,aml.Syndicate]
+                  | |   | +-GraphPathScan
+                  | |   | | +-column_list=$path_scan.[$head#8, $tail#9]
+                  | |   | | +-input_scan_list=
+                  | |   | | | +-GraphNodeScan
+                  | |   | | | | +-column_list=[$element_table.$element1#2]
+                  | |   | | | | +-label_expr=
+                  | |   | | | | | +-GraphLabelNaryExpr
+                  | |   | | | | |   +-op=OR
+                  | |   | | | | |   +-operand_list=
+                  | |   | | | | |     +-GraphWildCardLabel
+                  | |   | | | | |     +-GraphLabelNaryExpr
+                  | |   | | | | |       +-op=NOT
+                  | |   | | | | |       +-operand_list=
+                  | |   | | | | |         +-GraphWildCardLabel
+                  | |   | | | | +-target_element_table_list=[aml.Account,aml.Person,aml.Syndicate]
+                  | |   | | | +-GraphEdgeScan
+                  | |   | | | | +-column_list=[$element_table.$element2#3]
+                  | |   | | | | +-label_expr=
+                  | |   | | | | | +-GraphLabelNaryExpr
+                  | |   | | | | |   +-op=OR
+                  | |   | | | | |   +-operand_list=
+                  | |   | | | | |     +-GraphWildCardLabel
+                  | |   | | | | |     +-GraphLabelNaryExpr
+                  | |   | | | | |       +-op=NOT
+                  | |   | | | | |       +-operand_list=
+                  | |   | | | | |         +-GraphWildCardLabel
+                  | |   | | | | +-target_element_table_list=[aml.PersonOwnAccount,aml.Transfer]
+                  | |   | | | | +-orientation=RIGHT
+                  | |   | | | +-GraphNodeScan
+                  | |   | | |   +-column_list=[$element_table.$element3#4]
+                  | |   | | |   +-label_expr=
+                  | |   | | |   | +-GraphLabelNaryExpr
+                  | |   | | |   |   +-op=OR
+                  | |   | | |   |   +-operand_list=
+                  | |   | | |   |     +-GraphWildCardLabel
+                  | |   | | |   |     +-GraphLabelNaryExpr
+                  | |   | | |   |       +-op=NOT
+                  | |   | | |   |       +-operand_list=
+                  | |   | | |   |         +-GraphWildCardLabel
+                  | |   | | |   +-target_element_table_list=[aml.Account,aml.Person,aml.Syndicate]
+                  | |   | | +-head=$path_scan.$head#8
+                  | |   | | +-tail=$path_scan.$tail#9
+                  | |   | | +-quantifier=
+                  | |   | | | +-GraphPathPatternQuantifier
+                  | |   | | |   +-lower_bound=
+                  | |   | | |     +-Literal(type=INT64, value=1)
+                  | |   | | +-group_variable_list=
+                  | |   | |   +-GraphMakeArrayVariable(element=$element_table.$element1#2, array=$element_table.$element1#5)
+                  | |   | |   +-GraphMakeArrayVariable(element=$element_table.$element2#3, array=$element_table.$element2#6)
+                  | |   | |   +-GraphMakeArrayVariable(element=$element_table.$element3#4, array=$element_table.$element3#7)
+                  | |   | +-GraphNodeScan
+                  | |   |   +-column_list=[$element_table.m#10]
+                  | |   |   +-label_expr=
+                  | |   |   | +-GraphLabelNaryExpr
+                  | |   |   |   +-op=OR
+                  | |   |   |   +-operand_list=
+                  | |   |   |     +-GraphWildCardLabel
+                  | |   |   |     +-GraphLabelNaryExpr
+                  | |   |   |       +-op=NOT
+                  | |   |   |       +-operand_list=
+                  | |   |   |         +-GraphWildCardLabel
+                  | |   |   +-target_element_table_list=[aml.Account,aml.Person,aml.Syndicate]
+                  | |   +-head=$element_table.n#1
+                  | |   +-tail=$element_table.m#10
+                  | |   +-search_prefix=
+                  | |     +-GraphPathSearchPrefix(type=SHORTEST)
+                  | +-input_scan=
+                  |   +-SingleRowScan
+                  +-ProjectScan
+                    +-column_list=[$graph_table.name#11]
+                    +-expr_list=
+                    | +-name#11 :=
+                    |   +-GraphGetElementProperty
+                    |     +-type=STRING
+                    |     +-expr=
+                    |     | +-ColumnRef(type=GRAPH_NODE(aml)<age UINT32, balance UINT64, birthday DATE, data BYTES, id INT64, name STRING, syndicateData ARRAY<INT64>, syndicateId INT64, syndicateName STRING>, column=$element_table.n#1)
+                    |     +-property=name(STRING)
+                    +-input_scan=
+                      +-GraphRefScan(column_list=$element_table.[n#1, m#10])
+==
+
+[language_features=NONE,+SQL_GRAPH,+SQL_GRAPH_ADVANCED_QUERY,+SQL_GRAPH_BOUNDED_PATH_QUANTIFICATION,+SQL_GRAPH_CHEAPEST_PATH,+SQL_GRAPH_UNBOUNDED_PATH_QUANTIFICATION]
+select * from graph_table(aml
+  match ANY CHEAPEST (n)-[e COST e.amount]->{1, }(m)
+  return n.name
+)
+--
+QueryStmt
++-output_column_list=
+| +-$graph_table.name#21 AS name [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$graph_table.name#21]
+    +-input_scan=
+      +-GraphTableScan
+        +-column_list=[$graph_table.name#21]
+        +-property_graph=aml
+        +-input_scan=
+          +-GraphLinearScan
+            +-column_list=[$graph_table.name#21]
+            +-scan_list=
+              +-GraphLinearScan
+                +-column_list=[$graph_table.name#21]
+                +-scan_list=
+                  +-GraphScan
+                  | +-column_list=[$element_table.n#11, $path_scan.$head#18, $path_scan.$tail#19, $element_table.m#20]
+                  | +-input_scan_list=
+                  | | +-GraphPathScan
+                  | |   +-column_list=[$element_table.n#11, $path_scan.$head#18, $path_scan.$tail#19, $element_table.m#20]
+                  | |   +-input_scan_list=
+                  | |   | +-GraphNodeScan
+                  | |   | | +-column_list=[$element_table.n#11]
+                  | |   | | +-label_expr=
+                  | |   | | | +-GraphLabelNaryExpr
+                  | |   | | |   +-op=OR
+                  | |   | | |   +-operand_list=
+                  | |   | | |     +-GraphWildCardLabel
+                  | |   | | |     +-GraphLabelNaryExpr
+                  | |   | | |       +-op=NOT
+                  | |   | | |       +-operand_list=
+                  | |   | | |         +-GraphWildCardLabel
+                  | |   | | +-target_element_table_list=[aml.Account,aml.Person,aml.Syndicate]
+                  | |   | +-GraphPathScan
+                  | |   | | +-column_list=$path_scan.[$head#18, $tail#19]
+                  | |   | | +-input_scan_list=
+                  | |   | | | +-GraphNodeScan
+                  | |   | | | | +-column_list=[$element_table.$element3#12]
+                  | |   | | | | +-label_expr=
+                  | |   | | | | | +-GraphLabelNaryExpr
+                  | |   | | | | |   +-op=OR
+                  | |   | | | | |   +-operand_list=
+                  | |   | | | | |     +-GraphWildCardLabel
+                  | |   | | | | |     +-GraphLabelNaryExpr
+                  | |   | | | | |       +-op=NOT
+                  | |   | | | | |       +-operand_list=
+                  | |   | | | | |         +-GraphWildCardLabel
+                  | |   | | | | +-target_element_table_list=[aml.Account,aml.Person,aml.Syndicate]
+                  | |   | | | +-GraphEdgeScan
+                  | |   | | | | +-column_list=[$element_table.e#13]
+                  | |   | | | | +-label_expr=
+                  | |   | | | | | +-GraphLabelNaryExpr
+                  | |   | | | | |   +-op=OR
+                  | |   | | | | |   +-operand_list=
+                  | |   | | | | |     +-GraphWildCardLabel
+                  | |   | | | | |     +-GraphLabelNaryExpr
+                  | |   | | | | |       +-op=NOT
+                  | |   | | | | |       +-operand_list=
+                  | |   | | | | |         +-GraphWildCardLabel
+                  | |   | | | | +-target_element_table_list=[aml.PersonOwnAccount,aml.Transfer]
+                  | |   | | | | +-orientation=RIGHT
+                  | |   | | | | +-cost_expr=
+                  | |   | | | |   +-GraphGetElementProperty
+                  | |   | | | |     +-type=UINT64
+                  | |   | | | |     +-expr=
+                  | |   | | | |     | +-ColumnRef(type=GRAPH_EDGE(aml)<accountId INT64, amount UINT64, personId INT64, targetAccountId INT64>, column=$element_table.e#13)
+                  | |   | | | |     +-property=amount(UINT64)
+                  | |   | | | +-GraphNodeScan
+                  | |   | | |   +-column_list=[$element_table.$element4#14]
+                  | |   | | |   +-label_expr=
+                  | |   | | |   | +-GraphLabelNaryExpr
+                  | |   | | |   |   +-op=OR
+                  | |   | | |   |   +-operand_list=
+                  | |   | | |   |     +-GraphWildCardLabel
+                  | |   | | |   |     +-GraphLabelNaryExpr
+                  | |   | | |   |       +-op=NOT
+                  | |   | | |   |       +-operand_list=
+                  | |   | | |   |         +-GraphWildCardLabel
+                  | |   | | |   +-target_element_table_list=[aml.Account,aml.Person,aml.Syndicate]
+                  | |   | | +-head=$path_scan.$head#18
+                  | |   | | +-tail=$path_scan.$tail#19
+                  | |   | | +-quantifier=
+                  | |   | | | +-GraphPathPatternQuantifier
+                  | |   | | |   +-lower_bound=
+                  | |   | | |     +-Literal(type=INT64, value=1)
+                  | |   | | +-group_variable_list=
+                  | |   | | | +-GraphMakeArrayVariable(element=$element_table.$element3#12, array=$element_table.$element3#15)
+                  | |   | | | +-GraphMakeArrayVariable(element=$element_table.e#13, array=$element_table.e#16)
+                  | |   | | | +-GraphMakeArrayVariable(element=$element_table.$element4#14, array=$element_table.$element4#17)
+                  | |   | | +-path_cost=
+                  | |   | |   +-GraphPathCost(cost_supertype=UINT64)
+                  | |   | +-GraphNodeScan
+                  | |   |   +-column_list=[$element_table.m#20]
+                  | |   |   +-label_expr=
+                  | |   |   | +-GraphLabelNaryExpr
+                  | |   |   |   +-op=OR
+                  | |   |   |   +-operand_list=
+                  | |   |   |     +-GraphWildCardLabel
+                  | |   |   |     +-GraphLabelNaryExpr
+                  | |   |   |       +-op=NOT
+                  | |   |   |       +-operand_list=
+                  | |   |   |         +-GraphWildCardLabel
+                  | |   |   +-target_element_table_list=[aml.Account,aml.Person,aml.Syndicate]
+                  | |   +-head=$element_table.n#11
+                  | |   +-tail=$element_table.m#20
+                  | |   +-search_prefix=
+                  | |   | +-GraphPathSearchPrefix(type=CHEAPEST)
+                  | |   +-path_cost=
+                  | |     +-GraphPathCost(cost_supertype=UINT64)
+                  | +-input_scan=
+                  |   +-SingleRowScan
+                  +-ProjectScan
+                    +-column_list=[$graph_table.name#21]
+                    +-expr_list=
+                    | +-name#21 :=
+                    |   +-GraphGetElementProperty
+                    |     +-type=STRING
+                    |     +-expr=
+                    |     | +-ColumnRef(type=GRAPH_NODE(aml)<age UINT32, balance UINT64, birthday DATE, data BYTES, id INT64, name STRING, syndicateData ARRAY<INT64>, syndicateId INT64, syndicateName STRING>, column=$element_table.n#11)
+                    |     +-property=name(STRING)
+                    +-input_scan=
+                      +-GraphRefScan(column_list=$element_table.[n#11, m#20])
+==
+
+[language_features=NONE,+SQL_GRAPH,+SQL_GRAPH_ADVANCED_QUERY,+SQL_GRAPH_BOUNDED_PATH_QUANTIFICATION,+SQL_GRAPH_CHEAPEST_PATH,+SQL_GRAPH_UNBOUNDED_PATH_QUANTIFICATION]
+# Symbol quantifier.
+select * from graph_table(aml
+  match ANY CHEAPEST (n)-[e COST e.amount]->{{*|+}}(m)
+  return n.name
+)
+--
+ALTERNATION GROUP: *
+--
+QueryStmt
++-output_column_list=
+| +-$graph_table.name#21 AS name [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$graph_table.name#21]
+    +-input_scan=
+      +-GraphTableScan
+        +-column_list=[$graph_table.name#21]
+        +-property_graph=aml
+        +-input_scan=
+          +-GraphLinearScan
+            +-column_list=[$graph_table.name#21]
+            +-scan_list=
+              +-GraphLinearScan
+                +-column_list=[$graph_table.name#21]
+                +-scan_list=
+                  +-GraphScan
+                  | +-column_list=[$element_table.n#11, $path_scan.$head#18, $path_scan.$tail#19, $element_table.m#20]
+                  | +-input_scan_list=
+                  | | +-GraphPathScan
+                  | |   +-column_list=[$element_table.n#11, $path_scan.$head#18, $path_scan.$tail#19, $element_table.m#20]
+                  | |   +-input_scan_list=
+                  | |   | +-GraphNodeScan
+                  | |   | | +-column_list=[$element_table.n#11]
+                  | |   | | +-label_expr=
+                  | |   | | | +-GraphLabelNaryExpr
+                  | |   | | |   +-op=OR
+                  | |   | | |   +-operand_list=
+                  | |   | | |     +-GraphWildCardLabel
+                  | |   | | |     +-GraphLabelNaryExpr
+                  | |   | | |       +-op=NOT
+                  | |   | | |       +-operand_list=
+                  | |   | | |         +-GraphWildCardLabel
+                  | |   | | +-target_element_table_list=[aml.Account,aml.Person,aml.Syndicate]
+                  | |   | +-GraphPathScan
+                  | |   | | +-column_list=$path_scan.[$head#18, $tail#19]
+                  | |   | | +-input_scan_list=
+                  | |   | | | +-GraphNodeScan
+                  | |   | | | | +-column_list=[$element_table.$element3#12]
+                  | |   | | | | +-label_expr=
+                  | |   | | | | | +-GraphLabelNaryExpr
+                  | |   | | | | |   +-op=OR
+                  | |   | | | | |   +-operand_list=
+                  | |   | | | | |     +-GraphWildCardLabel
+                  | |   | | | | |     +-GraphLabelNaryExpr
+                  | |   | | | | |       +-op=NOT
+                  | |   | | | | |       +-operand_list=
+                  | |   | | | | |         +-GraphWildCardLabel
+                  | |   | | | | +-target_element_table_list=[aml.Account,aml.Person,aml.Syndicate]
+                  | |   | | | +-GraphEdgeScan
+                  | |   | | | | +-column_list=[$element_table.e#13]
+                  | |   | | | | +-label_expr=
+                  | |   | | | | | +-GraphLabelNaryExpr
+                  | |   | | | | |   +-op=OR
+                  | |   | | | | |   +-operand_list=
+                  | |   | | | | |     +-GraphWildCardLabel
+                  | |   | | | | |     +-GraphLabelNaryExpr
+                  | |   | | | | |       +-op=NOT
+                  | |   | | | | |       +-operand_list=
+                  | |   | | | | |         +-GraphWildCardLabel
+                  | |   | | | | +-target_element_table_list=[aml.PersonOwnAccount,aml.Transfer]
+                  | |   | | | | +-orientation=RIGHT
+                  | |   | | | | +-cost_expr=
+                  | |   | | | |   +-GraphGetElementProperty
+                  | |   | | | |     +-type=UINT64
+                  | |   | | | |     +-expr=
+                  | |   | | | |     | +-ColumnRef(type=GRAPH_EDGE(aml)<accountId INT64, amount UINT64, personId INT64, targetAccountId INT64>, column=$element_table.e#13)
+                  | |   | | | |     +-property=amount(UINT64)
+                  | |   | | | +-GraphNodeScan
+                  | |   | | |   +-column_list=[$element_table.$element4#14]
+                  | |   | | |   +-label_expr=
+                  | |   | | |   | +-GraphLabelNaryExpr
+                  | |   | | |   |   +-op=OR
+                  | |   | | |   |   +-operand_list=
+                  | |   | | |   |     +-GraphWildCardLabel
+                  | |   | | |   |     +-GraphLabelNaryExpr
+                  | |   | | |   |       +-op=NOT
+                  | |   | | |   |       +-operand_list=
+                  | |   | | |   |         +-GraphWildCardLabel
+                  | |   | | |   +-target_element_table_list=[aml.Account,aml.Person,aml.Syndicate]
+                  | |   | | +-head=$path_scan.$head#18
+                  | |   | | +-tail=$path_scan.$tail#19
+                  | |   | | +-quantifier=
+                  | |   | | | +-GraphPathPatternQuantifier
+                  | |   | | |   +-lower_bound=
+                  | |   | | |     +-Literal(type=INT64, value=0)
+                  | |   | | +-group_variable_list=
+                  | |   | | | +-GraphMakeArrayVariable(element=$element_table.$element3#12, array=$element_table.$element3#15)
+                  | |   | | | +-GraphMakeArrayVariable(element=$element_table.e#13, array=$element_table.e#16)
+                  | |   | | | +-GraphMakeArrayVariable(element=$element_table.$element4#14, array=$element_table.$element4#17)
+                  | |   | | +-path_cost=
+                  | |   | |   +-GraphPathCost(cost_supertype=UINT64)
+                  | |   | +-GraphNodeScan
+                  | |   |   +-column_list=[$element_table.m#20]
+                  | |   |   +-label_expr=
+                  | |   |   | +-GraphLabelNaryExpr
+                  | |   |   |   +-op=OR
+                  | |   |   |   +-operand_list=
+                  | |   |   |     +-GraphWildCardLabel
+                  | |   |   |     +-GraphLabelNaryExpr
+                  | |   |   |       +-op=NOT
+                  | |   |   |       +-operand_list=
+                  | |   |   |         +-GraphWildCardLabel
+                  | |   |   +-target_element_table_list=[aml.Account,aml.Person,aml.Syndicate]
+                  | |   +-head=$element_table.n#11
+                  | |   +-tail=$element_table.m#20
+                  | |   +-search_prefix=
+                  | |   | +-GraphPathSearchPrefix(type=CHEAPEST)
+                  | |   +-path_cost=
+                  | |     +-GraphPathCost(cost_supertype=UINT64)
+                  | +-input_scan=
+                  |   +-SingleRowScan
+                  +-ProjectScan
+                    +-column_list=[$graph_table.name#21]
+                    +-expr_list=
+                    | +-name#21 :=
+                    |   +-GraphGetElementProperty
+                    |     +-type=STRING
+                    |     +-expr=
+                    |     | +-ColumnRef(type=GRAPH_NODE(aml)<age UINT32, balance UINT64, birthday DATE, data BYTES, id INT64, name STRING, syndicateData ARRAY<INT64>, syndicateId INT64, syndicateName STRING>, column=$element_table.n#11)
+                    |     +-property=name(STRING)
+                    +-input_scan=
+                      +-GraphRefScan(column_list=$element_table.[n#11, m#20])
+--
+ALTERNATION GROUP: +
+--
+QueryStmt
++-output_column_list=
+| +-$graph_table.name#21 AS name [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$graph_table.name#21]
+    +-input_scan=
+      +-GraphTableScan
+        +-column_list=[$graph_table.name#21]
+        +-property_graph=aml
+        +-input_scan=
+          +-GraphLinearScan
+            +-column_list=[$graph_table.name#21]
+            +-scan_list=
+              +-GraphLinearScan
+                +-column_list=[$graph_table.name#21]
+                +-scan_list=
+                  +-GraphScan
+                  | +-column_list=[$element_table.n#11, $path_scan.$head#18, $path_scan.$tail#19, $element_table.m#20]
+                  | +-input_scan_list=
+                  | | +-GraphPathScan
+                  | |   +-column_list=[$element_table.n#11, $path_scan.$head#18, $path_scan.$tail#19, $element_table.m#20]
+                  | |   +-input_scan_list=
+                  | |   | +-GraphNodeScan
+                  | |   | | +-column_list=[$element_table.n#11]
+                  | |   | | +-label_expr=
+                  | |   | | | +-GraphLabelNaryExpr
+                  | |   | | |   +-op=OR
+                  | |   | | |   +-operand_list=
+                  | |   | | |     +-GraphWildCardLabel
+                  | |   | | |     +-GraphLabelNaryExpr
+                  | |   | | |       +-op=NOT
+                  | |   | | |       +-operand_list=
+                  | |   | | |         +-GraphWildCardLabel
+                  | |   | | +-target_element_table_list=[aml.Account,aml.Person,aml.Syndicate]
+                  | |   | +-GraphPathScan
+                  | |   | | +-column_list=$path_scan.[$head#18, $tail#19]
+                  | |   | | +-input_scan_list=
+                  | |   | | | +-GraphNodeScan
+                  | |   | | | | +-column_list=[$element_table.$element3#12]
+                  | |   | | | | +-label_expr=
+                  | |   | | | | | +-GraphLabelNaryExpr
+                  | |   | | | | |   +-op=OR
+                  | |   | | | | |   +-operand_list=
+                  | |   | | | | |     +-GraphWildCardLabel
+                  | |   | | | | |     +-GraphLabelNaryExpr
+                  | |   | | | | |       +-op=NOT
+                  | |   | | | | |       +-operand_list=
+                  | |   | | | | |         +-GraphWildCardLabel
+                  | |   | | | | +-target_element_table_list=[aml.Account,aml.Person,aml.Syndicate]
+                  | |   | | | +-GraphEdgeScan
+                  | |   | | | | +-column_list=[$element_table.e#13]
+                  | |   | | | | +-label_expr=
+                  | |   | | | | | +-GraphLabelNaryExpr
+                  | |   | | | | |   +-op=OR
+                  | |   | | | | |   +-operand_list=
+                  | |   | | | | |     +-GraphWildCardLabel
+                  | |   | | | | |     +-GraphLabelNaryExpr
+                  | |   | | | | |       +-op=NOT
+                  | |   | | | | |       +-operand_list=
+                  | |   | | | | |         +-GraphWildCardLabel
+                  | |   | | | | +-target_element_table_list=[aml.PersonOwnAccount,aml.Transfer]
+                  | |   | | | | +-orientation=RIGHT
+                  | |   | | | | +-cost_expr=
+                  | |   | | | |   +-GraphGetElementProperty
+                  | |   | | | |     +-type=UINT64
+                  | |   | | | |     +-expr=
+                  | |   | | | |     | +-ColumnRef(type=GRAPH_EDGE(aml)<accountId INT64, amount UINT64, personId INT64, targetAccountId INT64>, column=$element_table.e#13)
+                  | |   | | | |     +-property=amount(UINT64)
+                  | |   | | | +-GraphNodeScan
+                  | |   | | |   +-column_list=[$element_table.$element4#14]
+                  | |   | | |   +-label_expr=
+                  | |   | | |   | +-GraphLabelNaryExpr
+                  | |   | | |   |   +-op=OR
+                  | |   | | |   |   +-operand_list=
+                  | |   | | |   |     +-GraphWildCardLabel
+                  | |   | | |   |     +-GraphLabelNaryExpr
+                  | |   | | |   |       +-op=NOT
+                  | |   | | |   |       +-operand_list=
+                  | |   | | |   |         +-GraphWildCardLabel
+                  | |   | | |   +-target_element_table_list=[aml.Account,aml.Person,aml.Syndicate]
+                  | |   | | +-head=$path_scan.$head#18
+                  | |   | | +-tail=$path_scan.$tail#19
+                  | |   | | +-quantifier=
+                  | |   | | | +-GraphPathPatternQuantifier
+                  | |   | | |   +-lower_bound=
+                  | |   | | |     +-Literal(type=INT64, value=1)
+                  | |   | | +-group_variable_list=
+                  | |   | | | +-GraphMakeArrayVariable(element=$element_table.$element3#12, array=$element_table.$element3#15)
+                  | |   | | | +-GraphMakeArrayVariable(element=$element_table.e#13, array=$element_table.e#16)
+                  | |   | | | +-GraphMakeArrayVariable(element=$element_table.$element4#14, array=$element_table.$element4#17)
+                  | |   | | +-path_cost=
+                  | |   | |   +-GraphPathCost(cost_supertype=UINT64)
+                  | |   | +-GraphNodeScan
+                  | |   |   +-column_list=[$element_table.m#20]
+                  | |   |   +-label_expr=
+                  | |   |   | +-GraphLabelNaryExpr
+                  | |   |   |   +-op=OR
+                  | |   |   |   +-operand_list=
+                  | |   |   |     +-GraphWildCardLabel
+                  | |   |   |     +-GraphLabelNaryExpr
+                  | |   |   |       +-op=NOT
+                  | |   |   |       +-operand_list=
+                  | |   |   |         +-GraphWildCardLabel
+                  | |   |   +-target_element_table_list=[aml.Account,aml.Person,aml.Syndicate]
+                  | |   +-head=$element_table.n#11
+                  | |   +-tail=$element_table.m#20
+                  | |   +-search_prefix=
+                  | |   | +-GraphPathSearchPrefix(type=CHEAPEST)
+                  | |   +-path_cost=
+                  | |     +-GraphPathCost(cost_supertype=UINT64)
+                  | +-input_scan=
+                  |   +-SingleRowScan
+                  +-ProjectScan
+                    +-column_list=[$graph_table.name#21]
+                    +-expr_list=
+                    | +-name#21 :=
+                    |   +-GraphGetElementProperty
+                    |     +-type=STRING
+                    |     +-expr=
+                    |     | +-ColumnRef(type=GRAPH_NODE(aml)<age UINT32, balance UINT64, birthday DATE, data BYTES, id INT64, name STRING, syndicateData ARRAY<INT64>, syndicateId INT64, syndicateName STRING>, column=$element_table.n#11)
+                    |     +-property=name(STRING)
+                    +-input_scan=
+                      +-GraphRefScan(column_list=$element_table.[n#11, m#20])
+==
+
+[language_features=NONE,+SQL_GRAPH,+SQL_GRAPH_ADVANCED_QUERY,+SQL_GRAPH_BOUNDED_PATH_QUANTIFICATION,+SQL_GRAPH_PATH_SEARCH_PREFIX_PATH_COUNT,+SQL_GRAPH_UNBOUNDED_PATH_QUANTIFICATION]
+select * from graph_table(aml
+  match SHORTEST 3 (n)->{1, }(m)
+  return n.name
+)
+--
+QueryStmt
++-output_column_list=
+| +-$graph_table.name#11 AS name [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$graph_table.name#11]
+    +-input_scan=
+      +-GraphTableScan
+        +-column_list=[$graph_table.name#11]
+        +-property_graph=aml
+        +-input_scan=
+          +-GraphLinearScan
+            +-column_list=[$graph_table.name#11]
+            +-scan_list=
+              +-GraphLinearScan
+                +-column_list=[$graph_table.name#11]
+                +-scan_list=
+                  +-GraphScan
+                  | +-column_list=[$element_table.n#1, $path_scan.$head#8, $path_scan.$tail#9, $element_table.m#10]
+                  | +-input_scan_list=
+                  | | +-GraphPathScan
+                  | |   +-column_list=[$element_table.n#1, $path_scan.$head#8, $path_scan.$tail#9, $element_table.m#10]
+                  | |   +-input_scan_list=
+                  | |   | +-GraphNodeScan
+                  | |   | | +-column_list=[$element_table.n#1]
+                  | |   | | +-label_expr=
+                  | |   | | | +-GraphLabelNaryExpr
+                  | |   | | |   +-op=OR
+                  | |   | | |   +-operand_list=
+                  | |   | | |     +-GraphWildCardLabel
+                  | |   | | |     +-GraphLabelNaryExpr
+                  | |   | | |       +-op=NOT
+                  | |   | | |       +-operand_list=
+                  | |   | | |         +-GraphWildCardLabel
+                  | |   | | +-target_element_table_list=[aml.Account,aml.Person,aml.Syndicate]
+                  | |   | +-GraphPathScan
+                  | |   | | +-column_list=$path_scan.[$head#8, $tail#9]
+                  | |   | | +-input_scan_list=
+                  | |   | | | +-GraphNodeScan
+                  | |   | | | | +-column_list=[$element_table.$element1#2]
+                  | |   | | | | +-label_expr=
+                  | |   | | | | | +-GraphLabelNaryExpr
+                  | |   | | | | |   +-op=OR
+                  | |   | | | | |   +-operand_list=
+                  | |   | | | | |     +-GraphWildCardLabel
+                  | |   | | | | |     +-GraphLabelNaryExpr
+                  | |   | | | | |       +-op=NOT
+                  | |   | | | | |       +-operand_list=
+                  | |   | | | | |         +-GraphWildCardLabel
+                  | |   | | | | +-target_element_table_list=[aml.Account,aml.Person,aml.Syndicate]
+                  | |   | | | +-GraphEdgeScan
+                  | |   | | | | +-column_list=[$element_table.$element2#3]
+                  | |   | | | | +-label_expr=
+                  | |   | | | | | +-GraphLabelNaryExpr
+                  | |   | | | | |   +-op=OR
+                  | |   | | | | |   +-operand_list=
+                  | |   | | | | |     +-GraphWildCardLabel
+                  | |   | | | | |     +-GraphLabelNaryExpr
+                  | |   | | | | |       +-op=NOT
+                  | |   | | | | |       +-operand_list=
+                  | |   | | | | |         +-GraphWildCardLabel
+                  | |   | | | | +-target_element_table_list=[aml.PersonOwnAccount,aml.Transfer]
+                  | |   | | | | +-orientation=RIGHT
+                  | |   | | | +-GraphNodeScan
+                  | |   | | |   +-column_list=[$element_table.$element3#4]
+                  | |   | | |   +-label_expr=
+                  | |   | | |   | +-GraphLabelNaryExpr
+                  | |   | | |   |   +-op=OR
+                  | |   | | |   |   +-operand_list=
+                  | |   | | |   |     +-GraphWildCardLabel
+                  | |   | | |   |     +-GraphLabelNaryExpr
+                  | |   | | |   |       +-op=NOT
+                  | |   | | |   |       +-operand_list=
+                  | |   | | |   |         +-GraphWildCardLabel
+                  | |   | | |   +-target_element_table_list=[aml.Account,aml.Person,aml.Syndicate]
+                  | |   | | +-head=$path_scan.$head#8
+                  | |   | | +-tail=$path_scan.$tail#9
+                  | |   | | +-quantifier=
+                  | |   | | | +-GraphPathPatternQuantifier
+                  | |   | | |   +-lower_bound=
+                  | |   | | |     +-Literal(type=INT64, value=1)
+                  | |   | | +-group_variable_list=
+                  | |   | |   +-GraphMakeArrayVariable(element=$element_table.$element1#2, array=$element_table.$element1#5)
+                  | |   | |   +-GraphMakeArrayVariable(element=$element_table.$element2#3, array=$element_table.$element2#6)
+                  | |   | |   +-GraphMakeArrayVariable(element=$element_table.$element3#4, array=$element_table.$element3#7)
+                  | |   | +-GraphNodeScan
+                  | |   |   +-column_list=[$element_table.m#10]
+                  | |   |   +-label_expr=
+                  | |   |   | +-GraphLabelNaryExpr
+                  | |   |   |   +-op=OR
+                  | |   |   |   +-operand_list=
+                  | |   |   |     +-GraphWildCardLabel
+                  | |   |   |     +-GraphLabelNaryExpr
+                  | |   |   |       +-op=NOT
+                  | |   |   |       +-operand_list=
+                  | |   |   |         +-GraphWildCardLabel
+                  | |   |   +-target_element_table_list=[aml.Account,aml.Person,aml.Syndicate]
+                  | |   +-head=$element_table.n#1
+                  | |   +-tail=$element_table.m#10
+                  | |   +-search_prefix=
+                  | |     +-GraphPathSearchPrefix
+                  | |       +-type=SHORTEST
+                  | |       +-path_count=
+                  | |         +-Literal(type=INT64, value=3)
+                  | +-input_scan=
+                  |   +-SingleRowScan
+                  +-ProjectScan
+                    +-column_list=[$graph_table.name#11]
+                    +-expr_list=
+                    | +-name#11 :=
+                    |   +-GraphGetElementProperty
+                    |     +-type=STRING
+                    |     +-expr=
+                    |     | +-ColumnRef(type=GRAPH_NODE(aml)<age UINT32, balance UINT64, birthday DATE, data BYTES, id INT64, name STRING, syndicateData ARRAY<INT64>, syndicateId INT64, syndicateName STRING>, column=$element_table.n#1)
+                    |     +-property=name(STRING)
+                    +-input_scan=
+                      +-GraphRefScan(column_list=$element_table.[n#1, m#10])
+==
+
+[language_features=NONE,+SQL_GRAPH,+SQL_GRAPH_ADVANCED_QUERY,+SQL_GRAPH_BOUNDED_PATH_QUANTIFICATION,+SQL_GRAPH_CHEAPEST_PATH,+SQL_GRAPH_PATH_SEARCH_PREFIX_PATH_COUNT,+SQL_GRAPH_UNBOUNDED_PATH_QUANTIFICATION]
+select * from graph_table(aml
+  match CHEAPEST 3 (n)-[e COST e.amount]->{1, }(m)
+  return n.name
+)
+--
+QueryStmt
++-output_column_list=
+| +-$graph_table.name#21 AS name [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$graph_table.name#21]
+    +-input_scan=
+      +-GraphTableScan
+        +-column_list=[$graph_table.name#21]
+        +-property_graph=aml
+        +-input_scan=
+          +-GraphLinearScan
+            +-column_list=[$graph_table.name#21]
+            +-scan_list=
+              +-GraphLinearScan
+                +-column_list=[$graph_table.name#21]
+                +-scan_list=
+                  +-GraphScan
+                  | +-column_list=[$element_table.n#11, $path_scan.$head#18, $path_scan.$tail#19, $element_table.m#20]
+                  | +-input_scan_list=
+                  | | +-GraphPathScan
+                  | |   +-column_list=[$element_table.n#11, $path_scan.$head#18, $path_scan.$tail#19, $element_table.m#20]
+                  | |   +-input_scan_list=
+                  | |   | +-GraphNodeScan
+                  | |   | | +-column_list=[$element_table.n#11]
+                  | |   | | +-label_expr=
+                  | |   | | | +-GraphLabelNaryExpr
+                  | |   | | |   +-op=OR
+                  | |   | | |   +-operand_list=
+                  | |   | | |     +-GraphWildCardLabel
+                  | |   | | |     +-GraphLabelNaryExpr
+                  | |   | | |       +-op=NOT
+                  | |   | | |       +-operand_list=
+                  | |   | | |         +-GraphWildCardLabel
+                  | |   | | +-target_element_table_list=[aml.Account,aml.Person,aml.Syndicate]
+                  | |   | +-GraphPathScan
+                  | |   | | +-column_list=$path_scan.[$head#18, $tail#19]
+                  | |   | | +-input_scan_list=
+                  | |   | | | +-GraphNodeScan
+                  | |   | | | | +-column_list=[$element_table.$element3#12]
+                  | |   | | | | +-label_expr=
+                  | |   | | | | | +-GraphLabelNaryExpr
+                  | |   | | | | |   +-op=OR
+                  | |   | | | | |   +-operand_list=
+                  | |   | | | | |     +-GraphWildCardLabel
+                  | |   | | | | |     +-GraphLabelNaryExpr
+                  | |   | | | | |       +-op=NOT
+                  | |   | | | | |       +-operand_list=
+                  | |   | | | | |         +-GraphWildCardLabel
+                  | |   | | | | +-target_element_table_list=[aml.Account,aml.Person,aml.Syndicate]
+                  | |   | | | +-GraphEdgeScan
+                  | |   | | | | +-column_list=[$element_table.e#13]
+                  | |   | | | | +-label_expr=
+                  | |   | | | | | +-GraphLabelNaryExpr
+                  | |   | | | | |   +-op=OR
+                  | |   | | | | |   +-operand_list=
+                  | |   | | | | |     +-GraphWildCardLabel
+                  | |   | | | | |     +-GraphLabelNaryExpr
+                  | |   | | | | |       +-op=NOT
+                  | |   | | | | |       +-operand_list=
+                  | |   | | | | |         +-GraphWildCardLabel
+                  | |   | | | | +-target_element_table_list=[aml.PersonOwnAccount,aml.Transfer]
+                  | |   | | | | +-orientation=RIGHT
+                  | |   | | | | +-cost_expr=
+                  | |   | | | |   +-GraphGetElementProperty
+                  | |   | | | |     +-type=UINT64
+                  | |   | | | |     +-expr=
+                  | |   | | | |     | +-ColumnRef(type=GRAPH_EDGE(aml)<accountId INT64, amount UINT64, personId INT64, targetAccountId INT64>, column=$element_table.e#13)
+                  | |   | | | |     +-property=amount(UINT64)
+                  | |   | | | +-GraphNodeScan
+                  | |   | | |   +-column_list=[$element_table.$element4#14]
+                  | |   | | |   +-label_expr=
+                  | |   | | |   | +-GraphLabelNaryExpr
+                  | |   | | |   |   +-op=OR
+                  | |   | | |   |   +-operand_list=
+                  | |   | | |   |     +-GraphWildCardLabel
+                  | |   | | |   |     +-GraphLabelNaryExpr
+                  | |   | | |   |       +-op=NOT
+                  | |   | | |   |       +-operand_list=
+                  | |   | | |   |         +-GraphWildCardLabel
+                  | |   | | |   +-target_element_table_list=[aml.Account,aml.Person,aml.Syndicate]
+                  | |   | | +-head=$path_scan.$head#18
+                  | |   | | +-tail=$path_scan.$tail#19
+                  | |   | | +-quantifier=
+                  | |   | | | +-GraphPathPatternQuantifier
+                  | |   | | |   +-lower_bound=
+                  | |   | | |     +-Literal(type=INT64, value=1)
+                  | |   | | +-group_variable_list=
+                  | |   | | | +-GraphMakeArrayVariable(element=$element_table.$element3#12, array=$element_table.$element3#15)
+                  | |   | | | +-GraphMakeArrayVariable(element=$element_table.e#13, array=$element_table.e#16)
+                  | |   | | | +-GraphMakeArrayVariable(element=$element_table.$element4#14, array=$element_table.$element4#17)
+                  | |   | | +-path_cost=
+                  | |   | |   +-GraphPathCost(cost_supertype=UINT64)
+                  | |   | +-GraphNodeScan
+                  | |   |   +-column_list=[$element_table.m#20]
+                  | |   |   +-label_expr=
+                  | |   |   | +-GraphLabelNaryExpr
+                  | |   |   |   +-op=OR
+                  | |   |   |   +-operand_list=
+                  | |   |   |     +-GraphWildCardLabel
+                  | |   |   |     +-GraphLabelNaryExpr
+                  | |   |   |       +-op=NOT
+                  | |   |   |       +-operand_list=
+                  | |   |   |         +-GraphWildCardLabel
+                  | |   |   +-target_element_table_list=[aml.Account,aml.Person,aml.Syndicate]
+                  | |   +-head=$element_table.n#11
+                  | |   +-tail=$element_table.m#20
+                  | |   +-search_prefix=
+                  | |   | +-GraphPathSearchPrefix
+                  | |   |   +-type=CHEAPEST
+                  | |   |   +-path_count=
+                  | |   |     +-Literal(type=INT64, value=3)
+                  | |   +-path_cost=
+                  | |     +-GraphPathCost(cost_supertype=UINT64)
+                  | +-input_scan=
+                  |   +-SingleRowScan
+                  +-ProjectScan
+                    +-column_list=[$graph_table.name#21]
+                    +-expr_list=
+                    | +-name#21 :=
+                    |   +-GraphGetElementProperty
+                    |     +-type=STRING
+                    |     +-expr=
+                    |     | +-ColumnRef(type=GRAPH_NODE(aml)<age UINT32, balance UINT64, birthday DATE, data BYTES, id INT64, name STRING, syndicateData ARRAY<INT64>, syndicateId INT64, syndicateName STRING>, column=$element_table.n#11)
+                    |     +-property=name(STRING)
+                    +-input_scan=
+                      +-GraphRefScan(column_list=$element_table.[n#11, m#20])
+==
+
+[language_features=NONE,+SQL_GRAPH,+SQL_GRAPH_ADVANCED_QUERY,+SQL_GRAPH_BOUNDED_PATH_QUANTIFICATION,+SQL_GRAPH_CHEAPEST_PATH,+SQL_GRAPH_PATH_SEARCH_PREFIX_PATH_COUNT,+SQL_GRAPH_UNBOUNDED_PATH_QUANTIFICATION]
+# Unimplemented search prefix.
+select * from graph_table(aml
+  match {{ALL SHORTEST|ALL CHEAPEST}} (n)-[e COST e.amount]->{1, }(m)
+  return n.name
+)
+--
+ALTERNATION GROUP: ALL SHORTEST
+--
+ERROR: ALL SHORTEST search is unimplemented [at 3:9]
+  match ALL SHORTEST (n)-[e COST e.amount]->{1, }(m)
+        ^
+--
+ALTERNATION GROUP: ALL CHEAPEST
+--
+ERROR: ALL CHEAPEST search is not supported [at 3:9]
+  match ALL CHEAPEST (n)-[e COST e.amount]->{1, }(m)
+        ^
+==
+
+###############################################################################
+# Restrictive path mode
+###############################################################################
+select * from graph_table(aml
+  match {{TRAIL|SIMPLE|ACYCLIC}} (n)->{1, }(m)
+  return n.name
+)
+--
+ALTERNATION GROUP: TRAIL
+--
+QueryStmt
++-output_column_list=
+| +-$graph_table.name#11 AS name [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$graph_table.name#11]
+    +-input_scan=
+      +-GraphTableScan
+        +-column_list=[$graph_table.name#11]
+        +-property_graph=aml
+        +-input_scan=
+          +-GraphLinearScan
+            +-column_list=[$graph_table.name#11]
+            +-scan_list=
+              +-GraphLinearScan
+                +-column_list=[$graph_table.name#11]
+                +-scan_list=
+                  +-GraphScan
+                  | +-column_list=[$element_table.n#1, $path_scan.$head#8, $element_table.$element2#6, $path_scan.$tail#9, $element_table.m#10]
+                  | +-input_scan_list=
+                  | | +-GraphPathScan
+                  | |   +-column_list=[$element_table.n#1, $path_scan.$head#8, $element_table.$element2#6, $path_scan.$tail#9, $element_table.m#10]
+                  | |   +-input_scan_list=
+                  | |   | +-GraphNodeScan
+                  | |   | | +-column_list=[$element_table.n#1]
+                  | |   | | +-label_expr=
+                  | |   | | | +-GraphLabelNaryExpr
+                  | |   | | |   +-op=OR
+                  | |   | | |   +-operand_list=
+                  | |   | | |     +-GraphWildCardLabel
+                  | |   | | |     +-GraphLabelNaryExpr
+                  | |   | | |       +-op=NOT
+                  | |   | | |       +-operand_list=
+                  | |   | | |         +-GraphWildCardLabel
+                  | |   | | +-target_element_table_list=[aml.Account,aml.Person,aml.Syndicate]
+                  | |   | +-GraphPathScan
+                  | |   | | +-column_list=[$path_scan.$head#8, $element_table.$element2#6, $path_scan.$tail#9]
+                  | |   | | +-input_scan_list=
+                  | |   | | | +-GraphNodeScan
+                  | |   | | | | +-column_list=[$element_table.$element1#2]
+                  | |   | | | | +-label_expr=
+                  | |   | | | | | +-GraphLabelNaryExpr
+                  | |   | | | | |   +-op=OR
+                  | |   | | | | |   +-operand_list=
+                  | |   | | | | |     +-GraphWildCardLabel
+                  | |   | | | | |     +-GraphLabelNaryExpr
+                  | |   | | | | |       +-op=NOT
+                  | |   | | | | |       +-operand_list=
+                  | |   | | | | |         +-GraphWildCardLabel
+                  | |   | | | | +-target_element_table_list=[aml.Account,aml.Person,aml.Syndicate]
+                  | |   | | | +-GraphEdgeScan
+                  | |   | | | | +-column_list=[$element_table.$element2#3]
+                  | |   | | | | +-label_expr=
+                  | |   | | | | | +-GraphLabelNaryExpr
+                  | |   | | | | |   +-op=OR
+                  | |   | | | | |   +-operand_list=
+                  | |   | | | | |     +-GraphWildCardLabel
+                  | |   | | | | |     +-GraphLabelNaryExpr
+                  | |   | | | | |       +-op=NOT
+                  | |   | | | | |       +-operand_list=
+                  | |   | | | | |         +-GraphWildCardLabel
+                  | |   | | | | +-target_element_table_list=[aml.PersonOwnAccount,aml.Transfer]
+                  | |   | | | | +-orientation=RIGHT
+                  | |   | | | +-GraphNodeScan
+                  | |   | | |   +-column_list=[$element_table.$element3#4]
+                  | |   | | |   +-label_expr=
+                  | |   | | |   | +-GraphLabelNaryExpr
+                  | |   | | |   |   +-op=OR
+                  | |   | | |   |   +-operand_list=
+                  | |   | | |   |     +-GraphWildCardLabel
+                  | |   | | |   |     +-GraphLabelNaryExpr
+                  | |   | | |   |       +-op=NOT
+                  | |   | | |   |       +-operand_list=
+                  | |   | | |   |         +-GraphWildCardLabel
+                  | |   | | |   +-target_element_table_list=[aml.Account,aml.Person,aml.Syndicate]
+                  | |   | | +-head=$path_scan.$head#8
+                  | |   | | +-tail=$path_scan.$tail#9
+                  | |   | | +-quantifier=
+                  | |   | | | +-GraphPathPatternQuantifier
+                  | |   | | |   +-lower_bound=
+                  | |   | | |     +-Literal(type=INT64, value=1)
+                  | |   | | +-group_variable_list=
+                  | |   | |   +-GraphMakeArrayVariable(element=$element_table.$element1#2, array=$element_table.$element1#5)
+                  | |   | |   +-GraphMakeArrayVariable(element=$element_table.$element2#3, array=$element_table.$element2#6)
+                  | |   | |   +-GraphMakeArrayVariable(element=$element_table.$element3#4, array=$element_table.$element3#7)
+                  | |   | +-GraphNodeScan
+                  | |   |   +-column_list=[$element_table.m#10]
+                  | |   |   +-label_expr=
+                  | |   |   | +-GraphLabelNaryExpr
+                  | |   |   |   +-op=OR
+                  | |   |   |   +-operand_list=
+                  | |   |   |     +-GraphWildCardLabel
+                  | |   |   |     +-GraphLabelNaryExpr
+                  | |   |   |       +-op=NOT
+                  | |   |   |       +-operand_list=
+                  | |   |   |         +-GraphWildCardLabel
+                  | |   |   +-target_element_table_list=[aml.Account,aml.Person,aml.Syndicate]
+                  | |   +-head=$element_table.n#1
+                  | |   +-tail=$element_table.m#10
+                  | |   +-path_mode=
+                  | |     +-GraphPathMode(path_mode=TRAIL)
+                  | +-input_scan=
+                  |   +-SingleRowScan
+                  +-ProjectScan
+                    +-column_list=[$graph_table.name#11]
+                    +-expr_list=
+                    | +-name#11 :=
+                    |   +-GraphGetElementProperty
+                    |     +-type=STRING
+                    |     +-expr=
+                    |     | +-ColumnRef(type=GRAPH_NODE(aml)<age UINT32, balance UINT64, birthday DATE, data BYTES, id INT64, name STRING, syndicateData ARRAY<INT64>, syndicateId INT64, syndicateName STRING>, column=$element_table.n#1)
+                    |     +-property=name(STRING)
+                    +-input_scan=
+                      +-GraphRefScan(column_list=$element_table.[n#1, $element2#6, m#10])
+--
+ALTERNATION GROUP: SIMPLE
+--
+QueryStmt
++-output_column_list=
+| +-$graph_table.name#11 AS name [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$graph_table.name#11]
+    +-input_scan=
+      +-GraphTableScan
+        +-column_list=[$graph_table.name#11]
+        +-property_graph=aml
+        +-input_scan=
+          +-GraphLinearScan
+            +-column_list=[$graph_table.name#11]
+            +-scan_list=
+              +-GraphLinearScan
+                +-column_list=[$graph_table.name#11]
+                +-scan_list=
+                  +-GraphScan
+                  | +-column_list=[$element_table.n#1, $path_scan.$head#8, $element_table.$element1#5, $element_table.$element3#7, $path_scan.$tail#9, $element_table.m#10]
+                  | +-input_scan_list=
+                  | | +-GraphPathScan
+                  | |   +-column_list=[$element_table.n#1, $path_scan.$head#8, $element_table.$element1#5, $element_table.$element3#7, $path_scan.$tail#9, $element_table.m#10]
+                  | |   +-input_scan_list=
+                  | |   | +-GraphNodeScan
+                  | |   | | +-column_list=[$element_table.n#1]
+                  | |   | | +-label_expr=
+                  | |   | | | +-GraphLabelNaryExpr
+                  | |   | | |   +-op=OR
+                  | |   | | |   +-operand_list=
+                  | |   | | |     +-GraphWildCardLabel
+                  | |   | | |     +-GraphLabelNaryExpr
+                  | |   | | |       +-op=NOT
+                  | |   | | |       +-operand_list=
+                  | |   | | |         +-GraphWildCardLabel
+                  | |   | | +-target_element_table_list=[aml.Account,aml.Person,aml.Syndicate]
+                  | |   | +-GraphPathScan
+                  | |   | | +-column_list=[$path_scan.$head#8, $element_table.$element1#5, $element_table.$element3#7, $path_scan.$tail#9]
+                  | |   | | +-input_scan_list=
+                  | |   | | | +-GraphNodeScan
+                  | |   | | | | +-column_list=[$element_table.$element1#2]
+                  | |   | | | | +-label_expr=
+                  | |   | | | | | +-GraphLabelNaryExpr
+                  | |   | | | | |   +-op=OR
+                  | |   | | | | |   +-operand_list=
+                  | |   | | | | |     +-GraphWildCardLabel
+                  | |   | | | | |     +-GraphLabelNaryExpr
+                  | |   | | | | |       +-op=NOT
+                  | |   | | | | |       +-operand_list=
+                  | |   | | | | |         +-GraphWildCardLabel
+                  | |   | | | | +-target_element_table_list=[aml.Account,aml.Person,aml.Syndicate]
+                  | |   | | | +-GraphEdgeScan
+                  | |   | | | | +-column_list=[$element_table.$element2#3]
+                  | |   | | | | +-label_expr=
+                  | |   | | | | | +-GraphLabelNaryExpr
+                  | |   | | | | |   +-op=OR
+                  | |   | | | | |   +-operand_list=
+                  | |   | | | | |     +-GraphWildCardLabel
+                  | |   | | | | |     +-GraphLabelNaryExpr
+                  | |   | | | | |       +-op=NOT
+                  | |   | | | | |       +-operand_list=
+                  | |   | | | | |         +-GraphWildCardLabel
+                  | |   | | | | +-target_element_table_list=[aml.PersonOwnAccount,aml.Transfer]
+                  | |   | | | | +-orientation=RIGHT
+                  | |   | | | +-GraphNodeScan
+                  | |   | | |   +-column_list=[$element_table.$element3#4]
+                  | |   | | |   +-label_expr=
+                  | |   | | |   | +-GraphLabelNaryExpr
+                  | |   | | |   |   +-op=OR
+                  | |   | | |   |   +-operand_list=
+                  | |   | | |   |     +-GraphWildCardLabel
+                  | |   | | |   |     +-GraphLabelNaryExpr
+                  | |   | | |   |       +-op=NOT
+                  | |   | | |   |       +-operand_list=
+                  | |   | | |   |         +-GraphWildCardLabel
+                  | |   | | |   +-target_element_table_list=[aml.Account,aml.Person,aml.Syndicate]
+                  | |   | | +-head=$path_scan.$head#8
+                  | |   | | +-tail=$path_scan.$tail#9
+                  | |   | | +-quantifier=
+                  | |   | | | +-GraphPathPatternQuantifier
+                  | |   | | |   +-lower_bound=
+                  | |   | | |     +-Literal(type=INT64, value=1)
+                  | |   | | +-group_variable_list=
+                  | |   | |   +-GraphMakeArrayVariable(element=$element_table.$element1#2, array=$element_table.$element1#5)
+                  | |   | |   +-GraphMakeArrayVariable(element=$element_table.$element2#3, array=$element_table.$element2#6)
+                  | |   | |   +-GraphMakeArrayVariable(element=$element_table.$element3#4, array=$element_table.$element3#7)
+                  | |   | +-GraphNodeScan
+                  | |   |   +-column_list=[$element_table.m#10]
+                  | |   |   +-label_expr=
+                  | |   |   | +-GraphLabelNaryExpr
+                  | |   |   |   +-op=OR
+                  | |   |   |   +-operand_list=
+                  | |   |   |     +-GraphWildCardLabel
+                  | |   |   |     +-GraphLabelNaryExpr
+                  | |   |   |       +-op=NOT
+                  | |   |   |       +-operand_list=
+                  | |   |   |         +-GraphWildCardLabel
+                  | |   |   +-target_element_table_list=[aml.Account,aml.Person,aml.Syndicate]
+                  | |   +-head=$element_table.n#1
+                  | |   +-tail=$element_table.m#10
+                  | |   +-path_mode=
+                  | |     +-GraphPathMode(path_mode=SIMPLE)
+                  | +-input_scan=
+                  |   +-SingleRowScan
+                  +-ProjectScan
+                    +-column_list=[$graph_table.name#11]
+                    +-expr_list=
+                    | +-name#11 :=
+                    |   +-GraphGetElementProperty
+                    |     +-type=STRING
+                    |     +-expr=
+                    |     | +-ColumnRef(type=GRAPH_NODE(aml)<age UINT32, balance UINT64, birthday DATE, data BYTES, id INT64, name STRING, syndicateData ARRAY<INT64>, syndicateId INT64, syndicateName STRING>, column=$element_table.n#1)
+                    |     +-property=name(STRING)
+                    +-input_scan=
+                      +-GraphRefScan(column_list=$element_table.[n#1, $element1#5, $element3#7, m#10])
+--
+ALTERNATION GROUP: ACYCLIC
+--
+QueryStmt
++-output_column_list=
+| +-$graph_table.name#11 AS name [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$graph_table.name#11]
+    +-input_scan=
+      +-GraphTableScan
+        +-column_list=[$graph_table.name#11]
+        +-property_graph=aml
+        +-input_scan=
+          +-GraphLinearScan
+            +-column_list=[$graph_table.name#11]
+            +-scan_list=
+              +-GraphLinearScan
+                +-column_list=[$graph_table.name#11]
+                +-scan_list=
+                  +-GraphScan
+                  | +-column_list=[$element_table.n#1, $path_scan.$head#8, $element_table.$element1#5, $element_table.$element3#7, $path_scan.$tail#9, $element_table.m#10]
+                  | +-input_scan_list=
+                  | | +-GraphPathScan
+                  | |   +-column_list=[$element_table.n#1, $path_scan.$head#8, $element_table.$element1#5, $element_table.$element3#7, $path_scan.$tail#9, $element_table.m#10]
+                  | |   +-input_scan_list=
+                  | |   | +-GraphNodeScan
+                  | |   | | +-column_list=[$element_table.n#1]
+                  | |   | | +-label_expr=
+                  | |   | | | +-GraphLabelNaryExpr
+                  | |   | | |   +-op=OR
+                  | |   | | |   +-operand_list=
+                  | |   | | |     +-GraphWildCardLabel
+                  | |   | | |     +-GraphLabelNaryExpr
+                  | |   | | |       +-op=NOT
+                  | |   | | |       +-operand_list=
+                  | |   | | |         +-GraphWildCardLabel
+                  | |   | | +-target_element_table_list=[aml.Account,aml.Person,aml.Syndicate]
+                  | |   | +-GraphPathScan
+                  | |   | | +-column_list=[$path_scan.$head#8, $element_table.$element1#5, $element_table.$element3#7, $path_scan.$tail#9]
+                  | |   | | +-input_scan_list=
+                  | |   | | | +-GraphNodeScan
+                  | |   | | | | +-column_list=[$element_table.$element1#2]
+                  | |   | | | | +-label_expr=
+                  | |   | | | | | +-GraphLabelNaryExpr
+                  | |   | | | | |   +-op=OR
+                  | |   | | | | |   +-operand_list=
+                  | |   | | | | |     +-GraphWildCardLabel
+                  | |   | | | | |     +-GraphLabelNaryExpr
+                  | |   | | | | |       +-op=NOT
+                  | |   | | | | |       +-operand_list=
+                  | |   | | | | |         +-GraphWildCardLabel
+                  | |   | | | | +-target_element_table_list=[aml.Account,aml.Person,aml.Syndicate]
+                  | |   | | | +-GraphEdgeScan
+                  | |   | | | | +-column_list=[$element_table.$element2#3]
+                  | |   | | | | +-label_expr=
+                  | |   | | | | | +-GraphLabelNaryExpr
+                  | |   | | | | |   +-op=OR
+                  | |   | | | | |   +-operand_list=
+                  | |   | | | | |     +-GraphWildCardLabel
+                  | |   | | | | |     +-GraphLabelNaryExpr
+                  | |   | | | | |       +-op=NOT
+                  | |   | | | | |       +-operand_list=
+                  | |   | | | | |         +-GraphWildCardLabel
+                  | |   | | | | +-target_element_table_list=[aml.PersonOwnAccount,aml.Transfer]
+                  | |   | | | | +-orientation=RIGHT
+                  | |   | | | +-GraphNodeScan
+                  | |   | | |   +-column_list=[$element_table.$element3#4]
+                  | |   | | |   +-label_expr=
+                  | |   | | |   | +-GraphLabelNaryExpr
+                  | |   | | |   |   +-op=OR
+                  | |   | | |   |   +-operand_list=
+                  | |   | | |   |     +-GraphWildCardLabel
+                  | |   | | |   |     +-GraphLabelNaryExpr
+                  | |   | | |   |       +-op=NOT
+                  | |   | | |   |       +-operand_list=
+                  | |   | | |   |         +-GraphWildCardLabel
+                  | |   | | |   +-target_element_table_list=[aml.Account,aml.Person,aml.Syndicate]
+                  | |   | | +-head=$path_scan.$head#8
+                  | |   | | +-tail=$path_scan.$tail#9
+                  | |   | | +-quantifier=
+                  | |   | | | +-GraphPathPatternQuantifier
+                  | |   | | |   +-lower_bound=
+                  | |   | | |     +-Literal(type=INT64, value=1)
+                  | |   | | +-group_variable_list=
+                  | |   | |   +-GraphMakeArrayVariable(element=$element_table.$element1#2, array=$element_table.$element1#5)
+                  | |   | |   +-GraphMakeArrayVariable(element=$element_table.$element2#3, array=$element_table.$element2#6)
+                  | |   | |   +-GraphMakeArrayVariable(element=$element_table.$element3#4, array=$element_table.$element3#7)
+                  | |   | +-GraphNodeScan
+                  | |   |   +-column_list=[$element_table.m#10]
+                  | |   |   +-label_expr=
+                  | |   |   | +-GraphLabelNaryExpr
+                  | |   |   |   +-op=OR
+                  | |   |   |   +-operand_list=
+                  | |   |   |     +-GraphWildCardLabel
+                  | |   |   |     +-GraphLabelNaryExpr
+                  | |   |   |       +-op=NOT
+                  | |   |   |       +-operand_list=
+                  | |   |   |         +-GraphWildCardLabel
+                  | |   |   +-target_element_table_list=[aml.Account,aml.Person,aml.Syndicate]
+                  | |   +-head=$element_table.n#1
+                  | |   +-tail=$element_table.m#10
+                  | |   +-path_mode=
+                  | |     +-GraphPathMode(path_mode=ACYCLIC)
+                  | +-input_scan=
+                  |   +-SingleRowScan
+                  +-ProjectScan
+                    +-column_list=[$graph_table.name#11]
+                    +-expr_list=
+                    | +-name#11 :=
+                    |   +-GraphGetElementProperty
+                    |     +-type=STRING
+                    |     +-expr=
+                    |     | +-ColumnRef(type=GRAPH_NODE(aml)<age UINT32, balance UINT64, birthday DATE, data BYTES, id INT64, name STRING, syndicateData ARRAY<INT64>, syndicateId INT64, syndicateName STRING>, column=$element_table.n#1)
+                    |     +-property=name(STRING)
+                    +-input_scan=
+                      +-GraphRefScan(column_list=$element_table.[n#1, $element1#5, $element3#7, m#10])
+==
+
+# Symbol quantifier.
+select * from graph_table(aml
+  match {{TRAIL|SIMPLE|ACYCLIC}} (n)->{{*|+}}(m)
+  return n.name
+)
+--
+ALTERNATION GROUP: TRAIL,*
+--
+QueryStmt
++-output_column_list=
+| +-$graph_table.name#11 AS name [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$graph_table.name#11]
+    +-input_scan=
+      +-GraphTableScan
+        +-column_list=[$graph_table.name#11]
+        +-property_graph=aml
+        +-input_scan=
+          +-GraphLinearScan
+            +-column_list=[$graph_table.name#11]
+            +-scan_list=
+              +-GraphLinearScan
+                +-column_list=[$graph_table.name#11]
+                +-scan_list=
+                  +-GraphScan
+                  | +-column_list=[$element_table.n#1, $path_scan.$head#8, $element_table.$element2#6, $path_scan.$tail#9, $element_table.m#10]
+                  | +-input_scan_list=
+                  | | +-GraphPathScan
+                  | |   +-column_list=[$element_table.n#1, $path_scan.$head#8, $element_table.$element2#6, $path_scan.$tail#9, $element_table.m#10]
+                  | |   +-input_scan_list=
+                  | |   | +-GraphNodeScan
+                  | |   | | +-column_list=[$element_table.n#1]
+                  | |   | | +-label_expr=
+                  | |   | | | +-GraphLabelNaryExpr
+                  | |   | | |   +-op=OR
+                  | |   | | |   +-operand_list=
+                  | |   | | |     +-GraphWildCardLabel
+                  | |   | | |     +-GraphLabelNaryExpr
+                  | |   | | |       +-op=NOT
+                  | |   | | |       +-operand_list=
+                  | |   | | |         +-GraphWildCardLabel
+                  | |   | | +-target_element_table_list=[aml.Account,aml.Person,aml.Syndicate]
+                  | |   | +-GraphPathScan
+                  | |   | | +-column_list=[$path_scan.$head#8, $element_table.$element2#6, $path_scan.$tail#9]
+                  | |   | | +-input_scan_list=
+                  | |   | | | +-GraphNodeScan
+                  | |   | | | | +-column_list=[$element_table.$element1#2]
+                  | |   | | | | +-label_expr=
+                  | |   | | | | | +-GraphLabelNaryExpr
+                  | |   | | | | |   +-op=OR
+                  | |   | | | | |   +-operand_list=
+                  | |   | | | | |     +-GraphWildCardLabel
+                  | |   | | | | |     +-GraphLabelNaryExpr
+                  | |   | | | | |       +-op=NOT
+                  | |   | | | | |       +-operand_list=
+                  | |   | | | | |         +-GraphWildCardLabel
+                  | |   | | | | +-target_element_table_list=[aml.Account,aml.Person,aml.Syndicate]
+                  | |   | | | +-GraphEdgeScan
+                  | |   | | | | +-column_list=[$element_table.$element2#3]
+                  | |   | | | | +-label_expr=
+                  | |   | | | | | +-GraphLabelNaryExpr
+                  | |   | | | | |   +-op=OR
+                  | |   | | | | |   +-operand_list=
+                  | |   | | | | |     +-GraphWildCardLabel
+                  | |   | | | | |     +-GraphLabelNaryExpr
+                  | |   | | | | |       +-op=NOT
+                  | |   | | | | |       +-operand_list=
+                  | |   | | | | |         +-GraphWildCardLabel
+                  | |   | | | | +-target_element_table_list=[aml.PersonOwnAccount,aml.Transfer]
+                  | |   | | | | +-orientation=RIGHT
+                  | |   | | | +-GraphNodeScan
+                  | |   | | |   +-column_list=[$element_table.$element3#4]
+                  | |   | | |   +-label_expr=
+                  | |   | | |   | +-GraphLabelNaryExpr
+                  | |   | | |   |   +-op=OR
+                  | |   | | |   |   +-operand_list=
+                  | |   | | |   |     +-GraphWildCardLabel
+                  | |   | | |   |     +-GraphLabelNaryExpr
+                  | |   | | |   |       +-op=NOT
+                  | |   | | |   |       +-operand_list=
+                  | |   | | |   |         +-GraphWildCardLabel
+                  | |   | | |   +-target_element_table_list=[aml.Account,aml.Person,aml.Syndicate]
+                  | |   | | +-head=$path_scan.$head#8
+                  | |   | | +-tail=$path_scan.$tail#9
+                  | |   | | +-quantifier=
+                  | |   | | | +-GraphPathPatternQuantifier
+                  | |   | | |   +-lower_bound=
+                  | |   | | |     +-Literal(type=INT64, value=0)
+                  | |   | | +-group_variable_list=
+                  | |   | |   +-GraphMakeArrayVariable(element=$element_table.$element1#2, array=$element_table.$element1#5)
+                  | |   | |   +-GraphMakeArrayVariable(element=$element_table.$element2#3, array=$element_table.$element2#6)
+                  | |   | |   +-GraphMakeArrayVariable(element=$element_table.$element3#4, array=$element_table.$element3#7)
+                  | |   | +-GraphNodeScan
+                  | |   |   +-column_list=[$element_table.m#10]
+                  | |   |   +-label_expr=
+                  | |   |   | +-GraphLabelNaryExpr
+                  | |   |   |   +-op=OR
+                  | |   |   |   +-operand_list=
+                  | |   |   |     +-GraphWildCardLabel
+                  | |   |   |     +-GraphLabelNaryExpr
+                  | |   |   |       +-op=NOT
+                  | |   |   |       +-operand_list=
+                  | |   |   |         +-GraphWildCardLabel
+                  | |   |   +-target_element_table_list=[aml.Account,aml.Person,aml.Syndicate]
+                  | |   +-head=$element_table.n#1
+                  | |   +-tail=$element_table.m#10
+                  | |   +-path_mode=
+                  | |     +-GraphPathMode(path_mode=TRAIL)
+                  | +-input_scan=
+                  |   +-SingleRowScan
+                  +-ProjectScan
+                    +-column_list=[$graph_table.name#11]
+                    +-expr_list=
+                    | +-name#11 :=
+                    |   +-GraphGetElementProperty
+                    |     +-type=STRING
+                    |     +-expr=
+                    |     | +-ColumnRef(type=GRAPH_NODE(aml)<age UINT32, balance UINT64, birthday DATE, data BYTES, id INT64, name STRING, syndicateData ARRAY<INT64>, syndicateId INT64, syndicateName STRING>, column=$element_table.n#1)
+                    |     +-property=name(STRING)
+                    +-input_scan=
+                      +-GraphRefScan(column_list=$element_table.[n#1, $element2#6, m#10])
+--
+ALTERNATION GROUP: TRAIL,+
+--
+QueryStmt
++-output_column_list=
+| +-$graph_table.name#11 AS name [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$graph_table.name#11]
+    +-input_scan=
+      +-GraphTableScan
+        +-column_list=[$graph_table.name#11]
+        +-property_graph=aml
+        +-input_scan=
+          +-GraphLinearScan
+            +-column_list=[$graph_table.name#11]
+            +-scan_list=
+              +-GraphLinearScan
+                +-column_list=[$graph_table.name#11]
+                +-scan_list=
+                  +-GraphScan
+                  | +-column_list=[$element_table.n#1, $path_scan.$head#8, $element_table.$element2#6, $path_scan.$tail#9, $element_table.m#10]
+                  | +-input_scan_list=
+                  | | +-GraphPathScan
+                  | |   +-column_list=[$element_table.n#1, $path_scan.$head#8, $element_table.$element2#6, $path_scan.$tail#9, $element_table.m#10]
+                  | |   +-input_scan_list=
+                  | |   | +-GraphNodeScan
+                  | |   | | +-column_list=[$element_table.n#1]
+                  | |   | | +-label_expr=
+                  | |   | | | +-GraphLabelNaryExpr
+                  | |   | | |   +-op=OR
+                  | |   | | |   +-operand_list=
+                  | |   | | |     +-GraphWildCardLabel
+                  | |   | | |     +-GraphLabelNaryExpr
+                  | |   | | |       +-op=NOT
+                  | |   | | |       +-operand_list=
+                  | |   | | |         +-GraphWildCardLabel
+                  | |   | | +-target_element_table_list=[aml.Account,aml.Person,aml.Syndicate]
+                  | |   | +-GraphPathScan
+                  | |   | | +-column_list=[$path_scan.$head#8, $element_table.$element2#6, $path_scan.$tail#9]
+                  | |   | | +-input_scan_list=
+                  | |   | | | +-GraphNodeScan
+                  | |   | | | | +-column_list=[$element_table.$element1#2]
+                  | |   | | | | +-label_expr=
+                  | |   | | | | | +-GraphLabelNaryExpr
+                  | |   | | | | |   +-op=OR
+                  | |   | | | | |   +-operand_list=
+                  | |   | | | | |     +-GraphWildCardLabel
+                  | |   | | | | |     +-GraphLabelNaryExpr
+                  | |   | | | | |       +-op=NOT
+                  | |   | | | | |       +-operand_list=
+                  | |   | | | | |         +-GraphWildCardLabel
+                  | |   | | | | +-target_element_table_list=[aml.Account,aml.Person,aml.Syndicate]
+                  | |   | | | +-GraphEdgeScan
+                  | |   | | | | +-column_list=[$element_table.$element2#3]
+                  | |   | | | | +-label_expr=
+                  | |   | | | | | +-GraphLabelNaryExpr
+                  | |   | | | | |   +-op=OR
+                  | |   | | | | |   +-operand_list=
+                  | |   | | | | |     +-GraphWildCardLabel
+                  | |   | | | | |     +-GraphLabelNaryExpr
+                  | |   | | | | |       +-op=NOT
+                  | |   | | | | |       +-operand_list=
+                  | |   | | | | |         +-GraphWildCardLabel
+                  | |   | | | | +-target_element_table_list=[aml.PersonOwnAccount,aml.Transfer]
+                  | |   | | | | +-orientation=RIGHT
+                  | |   | | | +-GraphNodeScan
+                  | |   | | |   +-column_list=[$element_table.$element3#4]
+                  | |   | | |   +-label_expr=
+                  | |   | | |   | +-GraphLabelNaryExpr
+                  | |   | | |   |   +-op=OR
+                  | |   | | |   |   +-operand_list=
+                  | |   | | |   |     +-GraphWildCardLabel
+                  | |   | | |   |     +-GraphLabelNaryExpr
+                  | |   | | |   |       +-op=NOT
+                  | |   | | |   |       +-operand_list=
+                  | |   | | |   |         +-GraphWildCardLabel
+                  | |   | | |   +-target_element_table_list=[aml.Account,aml.Person,aml.Syndicate]
+                  | |   | | +-head=$path_scan.$head#8
+                  | |   | | +-tail=$path_scan.$tail#9
+                  | |   | | +-quantifier=
+                  | |   | | | +-GraphPathPatternQuantifier
+                  | |   | | |   +-lower_bound=
+                  | |   | | |     +-Literal(type=INT64, value=1)
+                  | |   | | +-group_variable_list=
+                  | |   | |   +-GraphMakeArrayVariable(element=$element_table.$element1#2, array=$element_table.$element1#5)
+                  | |   | |   +-GraphMakeArrayVariable(element=$element_table.$element2#3, array=$element_table.$element2#6)
+                  | |   | |   +-GraphMakeArrayVariable(element=$element_table.$element3#4, array=$element_table.$element3#7)
+                  | |   | +-GraphNodeScan
+                  | |   |   +-column_list=[$element_table.m#10]
+                  | |   |   +-label_expr=
+                  | |   |   | +-GraphLabelNaryExpr
+                  | |   |   |   +-op=OR
+                  | |   |   |   +-operand_list=
+                  | |   |   |     +-GraphWildCardLabel
+                  | |   |   |     +-GraphLabelNaryExpr
+                  | |   |   |       +-op=NOT
+                  | |   |   |       +-operand_list=
+                  | |   |   |         +-GraphWildCardLabel
+                  | |   |   +-target_element_table_list=[aml.Account,aml.Person,aml.Syndicate]
+                  | |   +-head=$element_table.n#1
+                  | |   +-tail=$element_table.m#10
+                  | |   +-path_mode=
+                  | |     +-GraphPathMode(path_mode=TRAIL)
+                  | +-input_scan=
+                  |   +-SingleRowScan
+                  +-ProjectScan
+                    +-column_list=[$graph_table.name#11]
+                    +-expr_list=
+                    | +-name#11 :=
+                    |   +-GraphGetElementProperty
+                    |     +-type=STRING
+                    |     +-expr=
+                    |     | +-ColumnRef(type=GRAPH_NODE(aml)<age UINT32, balance UINT64, birthday DATE, data BYTES, id INT64, name STRING, syndicateData ARRAY<INT64>, syndicateId INT64, syndicateName STRING>, column=$element_table.n#1)
+                    |     +-property=name(STRING)
+                    +-input_scan=
+                      +-GraphRefScan(column_list=$element_table.[n#1, $element2#6, m#10])
+--
+ALTERNATION GROUP: SIMPLE,*
+--
+QueryStmt
++-output_column_list=
+| +-$graph_table.name#11 AS name [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$graph_table.name#11]
+    +-input_scan=
+      +-GraphTableScan
+        +-column_list=[$graph_table.name#11]
+        +-property_graph=aml
+        +-input_scan=
+          +-GraphLinearScan
+            +-column_list=[$graph_table.name#11]
+            +-scan_list=
+              +-GraphLinearScan
+                +-column_list=[$graph_table.name#11]
+                +-scan_list=
+                  +-GraphScan
+                  | +-column_list=[$element_table.n#1, $path_scan.$head#8, $element_table.$element1#5, $element_table.$element3#7, $path_scan.$tail#9, $element_table.m#10]
+                  | +-input_scan_list=
+                  | | +-GraphPathScan
+                  | |   +-column_list=[$element_table.n#1, $path_scan.$head#8, $element_table.$element1#5, $element_table.$element3#7, $path_scan.$tail#9, $element_table.m#10]
+                  | |   +-input_scan_list=
+                  | |   | +-GraphNodeScan
+                  | |   | | +-column_list=[$element_table.n#1]
+                  | |   | | +-label_expr=
+                  | |   | | | +-GraphLabelNaryExpr
+                  | |   | | |   +-op=OR
+                  | |   | | |   +-operand_list=
+                  | |   | | |     +-GraphWildCardLabel
+                  | |   | | |     +-GraphLabelNaryExpr
+                  | |   | | |       +-op=NOT
+                  | |   | | |       +-operand_list=
+                  | |   | | |         +-GraphWildCardLabel
+                  | |   | | +-target_element_table_list=[aml.Account,aml.Person,aml.Syndicate]
+                  | |   | +-GraphPathScan
+                  | |   | | +-column_list=[$path_scan.$head#8, $element_table.$element1#5, $element_table.$element3#7, $path_scan.$tail#9]
+                  | |   | | +-input_scan_list=
+                  | |   | | | +-GraphNodeScan
+                  | |   | | | | +-column_list=[$element_table.$element1#2]
+                  | |   | | | | +-label_expr=
+                  | |   | | | | | +-GraphLabelNaryExpr
+                  | |   | | | | |   +-op=OR
+                  | |   | | | | |   +-operand_list=
+                  | |   | | | | |     +-GraphWildCardLabel
+                  | |   | | | | |     +-GraphLabelNaryExpr
+                  | |   | | | | |       +-op=NOT
+                  | |   | | | | |       +-operand_list=
+                  | |   | | | | |         +-GraphWildCardLabel
+                  | |   | | | | +-target_element_table_list=[aml.Account,aml.Person,aml.Syndicate]
+                  | |   | | | +-GraphEdgeScan
+                  | |   | | | | +-column_list=[$element_table.$element2#3]
+                  | |   | | | | +-label_expr=
+                  | |   | | | | | +-GraphLabelNaryExpr
+                  | |   | | | | |   +-op=OR
+                  | |   | | | | |   +-operand_list=
+                  | |   | | | | |     +-GraphWildCardLabel
+                  | |   | | | | |     +-GraphLabelNaryExpr
+                  | |   | | | | |       +-op=NOT
+                  | |   | | | | |       +-operand_list=
+                  | |   | | | | |         +-GraphWildCardLabel
+                  | |   | | | | +-target_element_table_list=[aml.PersonOwnAccount,aml.Transfer]
+                  | |   | | | | +-orientation=RIGHT
+                  | |   | | | +-GraphNodeScan
+                  | |   | | |   +-column_list=[$element_table.$element3#4]
+                  | |   | | |   +-label_expr=
+                  | |   | | |   | +-GraphLabelNaryExpr
+                  | |   | | |   |   +-op=OR
+                  | |   | | |   |   +-operand_list=
+                  | |   | | |   |     +-GraphWildCardLabel
+                  | |   | | |   |     +-GraphLabelNaryExpr
+                  | |   | | |   |       +-op=NOT
+                  | |   | | |   |       +-operand_list=
+                  | |   | | |   |         +-GraphWildCardLabel
+                  | |   | | |   +-target_element_table_list=[aml.Account,aml.Person,aml.Syndicate]
+                  | |   | | +-head=$path_scan.$head#8
+                  | |   | | +-tail=$path_scan.$tail#9
+                  | |   | | +-quantifier=
+                  | |   | | | +-GraphPathPatternQuantifier
+                  | |   | | |   +-lower_bound=
+                  | |   | | |     +-Literal(type=INT64, value=0)
+                  | |   | | +-group_variable_list=
+                  | |   | |   +-GraphMakeArrayVariable(element=$element_table.$element1#2, array=$element_table.$element1#5)
+                  | |   | |   +-GraphMakeArrayVariable(element=$element_table.$element2#3, array=$element_table.$element2#6)
+                  | |   | |   +-GraphMakeArrayVariable(element=$element_table.$element3#4, array=$element_table.$element3#7)
+                  | |   | +-GraphNodeScan
+                  | |   |   +-column_list=[$element_table.m#10]
+                  | |   |   +-label_expr=
+                  | |   |   | +-GraphLabelNaryExpr
+                  | |   |   |   +-op=OR
+                  | |   |   |   +-operand_list=
+                  | |   |   |     +-GraphWildCardLabel
+                  | |   |   |     +-GraphLabelNaryExpr
+                  | |   |   |       +-op=NOT
+                  | |   |   |       +-operand_list=
+                  | |   |   |         +-GraphWildCardLabel
+                  | |   |   +-target_element_table_list=[aml.Account,aml.Person,aml.Syndicate]
+                  | |   +-head=$element_table.n#1
+                  | |   +-tail=$element_table.m#10
+                  | |   +-path_mode=
+                  | |     +-GraphPathMode(path_mode=SIMPLE)
+                  | +-input_scan=
+                  |   +-SingleRowScan
+                  +-ProjectScan
+                    +-column_list=[$graph_table.name#11]
+                    +-expr_list=
+                    | +-name#11 :=
+                    |   +-GraphGetElementProperty
+                    |     +-type=STRING
+                    |     +-expr=
+                    |     | +-ColumnRef(type=GRAPH_NODE(aml)<age UINT32, balance UINT64, birthday DATE, data BYTES, id INT64, name STRING, syndicateData ARRAY<INT64>, syndicateId INT64, syndicateName STRING>, column=$element_table.n#1)
+                    |     +-property=name(STRING)
+                    +-input_scan=
+                      +-GraphRefScan(column_list=$element_table.[n#1, $element1#5, $element3#7, m#10])
+--
+ALTERNATION GROUP: SIMPLE,+
+--
+QueryStmt
++-output_column_list=
+| +-$graph_table.name#11 AS name [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$graph_table.name#11]
+    +-input_scan=
+      +-GraphTableScan
+        +-column_list=[$graph_table.name#11]
+        +-property_graph=aml
+        +-input_scan=
+          +-GraphLinearScan
+            +-column_list=[$graph_table.name#11]
+            +-scan_list=
+              +-GraphLinearScan
+                +-column_list=[$graph_table.name#11]
+                +-scan_list=
+                  +-GraphScan
+                  | +-column_list=[$element_table.n#1, $path_scan.$head#8, $element_table.$element1#5, $element_table.$element3#7, $path_scan.$tail#9, $element_table.m#10]
+                  | +-input_scan_list=
+                  | | +-GraphPathScan
+                  | |   +-column_list=[$element_table.n#1, $path_scan.$head#8, $element_table.$element1#5, $element_table.$element3#7, $path_scan.$tail#9, $element_table.m#10]
+                  | |   +-input_scan_list=
+                  | |   | +-GraphNodeScan
+                  | |   | | +-column_list=[$element_table.n#1]
+                  | |   | | +-label_expr=
+                  | |   | | | +-GraphLabelNaryExpr
+                  | |   | | |   +-op=OR
+                  | |   | | |   +-operand_list=
+                  | |   | | |     +-GraphWildCardLabel
+                  | |   | | |     +-GraphLabelNaryExpr
+                  | |   | | |       +-op=NOT
+                  | |   | | |       +-operand_list=
+                  | |   | | |         +-GraphWildCardLabel
+                  | |   | | +-target_element_table_list=[aml.Account,aml.Person,aml.Syndicate]
+                  | |   | +-GraphPathScan
+                  | |   | | +-column_list=[$path_scan.$head#8, $element_table.$element1#5, $element_table.$element3#7, $path_scan.$tail#9]
+                  | |   | | +-input_scan_list=
+                  | |   | | | +-GraphNodeScan
+                  | |   | | | | +-column_list=[$element_table.$element1#2]
+                  | |   | | | | +-label_expr=
+                  | |   | | | | | +-GraphLabelNaryExpr
+                  | |   | | | | |   +-op=OR
+                  | |   | | | | |   +-operand_list=
+                  | |   | | | | |     +-GraphWildCardLabel
+                  | |   | | | | |     +-GraphLabelNaryExpr
+                  | |   | | | | |       +-op=NOT
+                  | |   | | | | |       +-operand_list=
+                  | |   | | | | |         +-GraphWildCardLabel
+                  | |   | | | | +-target_element_table_list=[aml.Account,aml.Person,aml.Syndicate]
+                  | |   | | | +-GraphEdgeScan
+                  | |   | | | | +-column_list=[$element_table.$element2#3]
+                  | |   | | | | +-label_expr=
+                  | |   | | | | | +-GraphLabelNaryExpr
+                  | |   | | | | |   +-op=OR
+                  | |   | | | | |   +-operand_list=
+                  | |   | | | | |     +-GraphWildCardLabel
+                  | |   | | | | |     +-GraphLabelNaryExpr
+                  | |   | | | | |       +-op=NOT
+                  | |   | | | | |       +-operand_list=
+                  | |   | | | | |         +-GraphWildCardLabel
+                  | |   | | | | +-target_element_table_list=[aml.PersonOwnAccount,aml.Transfer]
+                  | |   | | | | +-orientation=RIGHT
+                  | |   | | | +-GraphNodeScan
+                  | |   | | |   +-column_list=[$element_table.$element3#4]
+                  | |   | | |   +-label_expr=
+                  | |   | | |   | +-GraphLabelNaryExpr
+                  | |   | | |   |   +-op=OR
+                  | |   | | |   |   +-operand_list=
+                  | |   | | |   |     +-GraphWildCardLabel
+                  | |   | | |   |     +-GraphLabelNaryExpr
+                  | |   | | |   |       +-op=NOT
+                  | |   | | |   |       +-operand_list=
+                  | |   | | |   |         +-GraphWildCardLabel
+                  | |   | | |   +-target_element_table_list=[aml.Account,aml.Person,aml.Syndicate]
+                  | |   | | +-head=$path_scan.$head#8
+                  | |   | | +-tail=$path_scan.$tail#9
+                  | |   | | +-quantifier=
+                  | |   | | | +-GraphPathPatternQuantifier
+                  | |   | | |   +-lower_bound=
+                  | |   | | |     +-Literal(type=INT64, value=1)
+                  | |   | | +-group_variable_list=
+                  | |   | |   +-GraphMakeArrayVariable(element=$element_table.$element1#2, array=$element_table.$element1#5)
+                  | |   | |   +-GraphMakeArrayVariable(element=$element_table.$element2#3, array=$element_table.$element2#6)
+                  | |   | |   +-GraphMakeArrayVariable(element=$element_table.$element3#4, array=$element_table.$element3#7)
+                  | |   | +-GraphNodeScan
+                  | |   |   +-column_list=[$element_table.m#10]
+                  | |   |   +-label_expr=
+                  | |   |   | +-GraphLabelNaryExpr
+                  | |   |   |   +-op=OR
+                  | |   |   |   +-operand_list=
+                  | |   |   |     +-GraphWildCardLabel
+                  | |   |   |     +-GraphLabelNaryExpr
+                  | |   |   |       +-op=NOT
+                  | |   |   |       +-operand_list=
+                  | |   |   |         +-GraphWildCardLabel
+                  | |   |   +-target_element_table_list=[aml.Account,aml.Person,aml.Syndicate]
+                  | |   +-head=$element_table.n#1
+                  | |   +-tail=$element_table.m#10
+                  | |   +-path_mode=
+                  | |     +-GraphPathMode(path_mode=SIMPLE)
+                  | +-input_scan=
+                  |   +-SingleRowScan
+                  +-ProjectScan
+                    +-column_list=[$graph_table.name#11]
+                    +-expr_list=
+                    | +-name#11 :=
+                    |   +-GraphGetElementProperty
+                    |     +-type=STRING
+                    |     +-expr=
+                    |     | +-ColumnRef(type=GRAPH_NODE(aml)<age UINT32, balance UINT64, birthday DATE, data BYTES, id INT64, name STRING, syndicateData ARRAY<INT64>, syndicateId INT64, syndicateName STRING>, column=$element_table.n#1)
+                    |     +-property=name(STRING)
+                    +-input_scan=
+                      +-GraphRefScan(column_list=$element_table.[n#1, $element1#5, $element3#7, m#10])
+--
+ALTERNATION GROUP: ACYCLIC,*
+--
+QueryStmt
++-output_column_list=
+| +-$graph_table.name#11 AS name [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$graph_table.name#11]
+    +-input_scan=
+      +-GraphTableScan
+        +-column_list=[$graph_table.name#11]
+        +-property_graph=aml
+        +-input_scan=
+          +-GraphLinearScan
+            +-column_list=[$graph_table.name#11]
+            +-scan_list=
+              +-GraphLinearScan
+                +-column_list=[$graph_table.name#11]
+                +-scan_list=
+                  +-GraphScan
+                  | +-column_list=[$element_table.n#1, $path_scan.$head#8, $element_table.$element1#5, $element_table.$element3#7, $path_scan.$tail#9, $element_table.m#10]
+                  | +-input_scan_list=
+                  | | +-GraphPathScan
+                  | |   +-column_list=[$element_table.n#1, $path_scan.$head#8, $element_table.$element1#5, $element_table.$element3#7, $path_scan.$tail#9, $element_table.m#10]
+                  | |   +-input_scan_list=
+                  | |   | +-GraphNodeScan
+                  | |   | | +-column_list=[$element_table.n#1]
+                  | |   | | +-label_expr=
+                  | |   | | | +-GraphLabelNaryExpr
+                  | |   | | |   +-op=OR
+                  | |   | | |   +-operand_list=
+                  | |   | | |     +-GraphWildCardLabel
+                  | |   | | |     +-GraphLabelNaryExpr
+                  | |   | | |       +-op=NOT
+                  | |   | | |       +-operand_list=
+                  | |   | | |         +-GraphWildCardLabel
+                  | |   | | +-target_element_table_list=[aml.Account,aml.Person,aml.Syndicate]
+                  | |   | +-GraphPathScan
+                  | |   | | +-column_list=[$path_scan.$head#8, $element_table.$element1#5, $element_table.$element3#7, $path_scan.$tail#9]
+                  | |   | | +-input_scan_list=
+                  | |   | | | +-GraphNodeScan
+                  | |   | | | | +-column_list=[$element_table.$element1#2]
+                  | |   | | | | +-label_expr=
+                  | |   | | | | | +-GraphLabelNaryExpr
+                  | |   | | | | |   +-op=OR
+                  | |   | | | | |   +-operand_list=
+                  | |   | | | | |     +-GraphWildCardLabel
+                  | |   | | | | |     +-GraphLabelNaryExpr
+                  | |   | | | | |       +-op=NOT
+                  | |   | | | | |       +-operand_list=
+                  | |   | | | | |         +-GraphWildCardLabel
+                  | |   | | | | +-target_element_table_list=[aml.Account,aml.Person,aml.Syndicate]
+                  | |   | | | +-GraphEdgeScan
+                  | |   | | | | +-column_list=[$element_table.$element2#3]
+                  | |   | | | | +-label_expr=
+                  | |   | | | | | +-GraphLabelNaryExpr
+                  | |   | | | | |   +-op=OR
+                  | |   | | | | |   +-operand_list=
+                  | |   | | | | |     +-GraphWildCardLabel
+                  | |   | | | | |     +-GraphLabelNaryExpr
+                  | |   | | | | |       +-op=NOT
+                  | |   | | | | |       +-operand_list=
+                  | |   | | | | |         +-GraphWildCardLabel
+                  | |   | | | | +-target_element_table_list=[aml.PersonOwnAccount,aml.Transfer]
+                  | |   | | | | +-orientation=RIGHT
+                  | |   | | | +-GraphNodeScan
+                  | |   | | |   +-column_list=[$element_table.$element3#4]
+                  | |   | | |   +-label_expr=
+                  | |   | | |   | +-GraphLabelNaryExpr
+                  | |   | | |   |   +-op=OR
+                  | |   | | |   |   +-operand_list=
+                  | |   | | |   |     +-GraphWildCardLabel
+                  | |   | | |   |     +-GraphLabelNaryExpr
+                  | |   | | |   |       +-op=NOT
+                  | |   | | |   |       +-operand_list=
+                  | |   | | |   |         +-GraphWildCardLabel
+                  | |   | | |   +-target_element_table_list=[aml.Account,aml.Person,aml.Syndicate]
+                  | |   | | +-head=$path_scan.$head#8
+                  | |   | | +-tail=$path_scan.$tail#9
+                  | |   | | +-quantifier=
+                  | |   | | | +-GraphPathPatternQuantifier
+                  | |   | | |   +-lower_bound=
+                  | |   | | |     +-Literal(type=INT64, value=0)
+                  | |   | | +-group_variable_list=
+                  | |   | |   +-GraphMakeArrayVariable(element=$element_table.$element1#2, array=$element_table.$element1#5)
+                  | |   | |   +-GraphMakeArrayVariable(element=$element_table.$element2#3, array=$element_table.$element2#6)
+                  | |   | |   +-GraphMakeArrayVariable(element=$element_table.$element3#4, array=$element_table.$element3#7)
+                  | |   | +-GraphNodeScan
+                  | |   |   +-column_list=[$element_table.m#10]
+                  | |   |   +-label_expr=
+                  | |   |   | +-GraphLabelNaryExpr
+                  | |   |   |   +-op=OR
+                  | |   |   |   +-operand_list=
+                  | |   |   |     +-GraphWildCardLabel
+                  | |   |   |     +-GraphLabelNaryExpr
+                  | |   |   |       +-op=NOT
+                  | |   |   |       +-operand_list=
+                  | |   |   |         +-GraphWildCardLabel
+                  | |   |   +-target_element_table_list=[aml.Account,aml.Person,aml.Syndicate]
+                  | |   +-head=$element_table.n#1
+                  | |   +-tail=$element_table.m#10
+                  | |   +-path_mode=
+                  | |     +-GraphPathMode(path_mode=ACYCLIC)
+                  | +-input_scan=
+                  |   +-SingleRowScan
+                  +-ProjectScan
+                    +-column_list=[$graph_table.name#11]
+                    +-expr_list=
+                    | +-name#11 :=
+                    |   +-GraphGetElementProperty
+                    |     +-type=STRING
+                    |     +-expr=
+                    |     | +-ColumnRef(type=GRAPH_NODE(aml)<age UINT32, balance UINT64, birthday DATE, data BYTES, id INT64, name STRING, syndicateData ARRAY<INT64>, syndicateId INT64, syndicateName STRING>, column=$element_table.n#1)
+                    |     +-property=name(STRING)
+                    +-input_scan=
+                      +-GraphRefScan(column_list=$element_table.[n#1, $element1#5, $element3#7, m#10])
+--
+ALTERNATION GROUP: ACYCLIC,+
+--
+QueryStmt
++-output_column_list=
+| +-$graph_table.name#11 AS name [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$graph_table.name#11]
+    +-input_scan=
+      +-GraphTableScan
+        +-column_list=[$graph_table.name#11]
+        +-property_graph=aml
+        +-input_scan=
+          +-GraphLinearScan
+            +-column_list=[$graph_table.name#11]
+            +-scan_list=
+              +-GraphLinearScan
+                +-column_list=[$graph_table.name#11]
+                +-scan_list=
+                  +-GraphScan
+                  | +-column_list=[$element_table.n#1, $path_scan.$head#8, $element_table.$element1#5, $element_table.$element3#7, $path_scan.$tail#9, $element_table.m#10]
+                  | +-input_scan_list=
+                  | | +-GraphPathScan
+                  | |   +-column_list=[$element_table.n#1, $path_scan.$head#8, $element_table.$element1#5, $element_table.$element3#7, $path_scan.$tail#9, $element_table.m#10]
+                  | |   +-input_scan_list=
+                  | |   | +-GraphNodeScan
+                  | |   | | +-column_list=[$element_table.n#1]
+                  | |   | | +-label_expr=
+                  | |   | | | +-GraphLabelNaryExpr
+                  | |   | | |   +-op=OR
+                  | |   | | |   +-operand_list=
+                  | |   | | |     +-GraphWildCardLabel
+                  | |   | | |     +-GraphLabelNaryExpr
+                  | |   | | |       +-op=NOT
+                  | |   | | |       +-operand_list=
+                  | |   | | |         +-GraphWildCardLabel
+                  | |   | | +-target_element_table_list=[aml.Account,aml.Person,aml.Syndicate]
+                  | |   | +-GraphPathScan
+                  | |   | | +-column_list=[$path_scan.$head#8, $element_table.$element1#5, $element_table.$element3#7, $path_scan.$tail#9]
+                  | |   | | +-input_scan_list=
+                  | |   | | | +-GraphNodeScan
+                  | |   | | | | +-column_list=[$element_table.$element1#2]
+                  | |   | | | | +-label_expr=
+                  | |   | | | | | +-GraphLabelNaryExpr
+                  | |   | | | | |   +-op=OR
+                  | |   | | | | |   +-operand_list=
+                  | |   | | | | |     +-GraphWildCardLabel
+                  | |   | | | | |     +-GraphLabelNaryExpr
+                  | |   | | | | |       +-op=NOT
+                  | |   | | | | |       +-operand_list=
+                  | |   | | | | |         +-GraphWildCardLabel
+                  | |   | | | | +-target_element_table_list=[aml.Account,aml.Person,aml.Syndicate]
+                  | |   | | | +-GraphEdgeScan
+                  | |   | | | | +-column_list=[$element_table.$element2#3]
+                  | |   | | | | +-label_expr=
+                  | |   | | | | | +-GraphLabelNaryExpr
+                  | |   | | | | |   +-op=OR
+                  | |   | | | | |   +-operand_list=
+                  | |   | | | | |     +-GraphWildCardLabel
+                  | |   | | | | |     +-GraphLabelNaryExpr
+                  | |   | | | | |       +-op=NOT
+                  | |   | | | | |       +-operand_list=
+                  | |   | | | | |         +-GraphWildCardLabel
+                  | |   | | | | +-target_element_table_list=[aml.PersonOwnAccount,aml.Transfer]
+                  | |   | | | | +-orientation=RIGHT
+                  | |   | | | +-GraphNodeScan
+                  | |   | | |   +-column_list=[$element_table.$element3#4]
+                  | |   | | |   +-label_expr=
+                  | |   | | |   | +-GraphLabelNaryExpr
+                  | |   | | |   |   +-op=OR
+                  | |   | | |   |   +-operand_list=
+                  | |   | | |   |     +-GraphWildCardLabel
+                  | |   | | |   |     +-GraphLabelNaryExpr
+                  | |   | | |   |       +-op=NOT
+                  | |   | | |   |       +-operand_list=
+                  | |   | | |   |         +-GraphWildCardLabel
+                  | |   | | |   +-target_element_table_list=[aml.Account,aml.Person,aml.Syndicate]
+                  | |   | | +-head=$path_scan.$head#8
+                  | |   | | +-tail=$path_scan.$tail#9
+                  | |   | | +-quantifier=
+                  | |   | | | +-GraphPathPatternQuantifier
+                  | |   | | |   +-lower_bound=
+                  | |   | | |     +-Literal(type=INT64, value=1)
+                  | |   | | +-group_variable_list=
+                  | |   | |   +-GraphMakeArrayVariable(element=$element_table.$element1#2, array=$element_table.$element1#5)
+                  | |   | |   +-GraphMakeArrayVariable(element=$element_table.$element2#3, array=$element_table.$element2#6)
+                  | |   | |   +-GraphMakeArrayVariable(element=$element_table.$element3#4, array=$element_table.$element3#7)
+                  | |   | +-GraphNodeScan
+                  | |   |   +-column_list=[$element_table.m#10]
+                  | |   |   +-label_expr=
+                  | |   |   | +-GraphLabelNaryExpr
+                  | |   |   |   +-op=OR
+                  | |   |   |   +-operand_list=
+                  | |   |   |     +-GraphWildCardLabel
+                  | |   |   |     +-GraphLabelNaryExpr
+                  | |   |   |       +-op=NOT
+                  | |   |   |       +-operand_list=
+                  | |   |   |         +-GraphWildCardLabel
+                  | |   |   +-target_element_table_list=[aml.Account,aml.Person,aml.Syndicate]
+                  | |   +-head=$element_table.n#1
+                  | |   +-tail=$element_table.m#10
+                  | |   +-path_mode=
+                  | |     +-GraphPathMode(path_mode=ACYCLIC)
+                  | +-input_scan=
+                  |   +-SingleRowScan
+                  +-ProjectScan
+                    +-column_list=[$graph_table.name#11]
+                    +-expr_list=
+                    | +-name#11 :=
+                    |   +-GraphGetElementProperty
+                    |     +-type=STRING
+                    |     +-expr=
+                    |     | +-ColumnRef(type=GRAPH_NODE(aml)<age UINT32, balance UINT64, birthday DATE, data BYTES, id INT64, name STRING, syndicateData ARRAY<INT64>, syndicateId INT64, syndicateName STRING>, column=$element_table.n#1)
+                    |     +-property=name(STRING)
+                    +-input_scan=
+                      +-GraphRefScan(column_list=$element_table.[n#1, $element1#5, $element3#7, m#10])
+==
+
+###############################################################################
+# More complicated path patterns.
+###############################################################################
+# Multiple quantified path patterns.
+select * from graph_table(aml
+  match  ANY (a)->{,}(b), TRAIL ((n)-[e]->{{*|+}}(m))
+  return n.name
+)
+--
+ALTERNATION GROUP: *
+--
+QueryStmt
++-output_column_list=
+| +-$graph_table.name#21 AS name [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$graph_table.name#21]
+    +-input_scan=
+      +-GraphTableScan
+        +-column_list=[$graph_table.name#21]
+        +-property_graph=aml
+        +-input_scan=
+          +-GraphLinearScan
+            +-column_list=[$graph_table.name#21]
+            +-scan_list=
+              +-GraphLinearScan
+                +-column_list=[$graph_table.name#21]
+                +-scan_list=
+                  +-GraphScan
+                  | +-column_list=[$element_table.a#1, $path_scan.$head#8, $path_scan.$tail#9, $element_table.b#10, $element_table.n#11, $path_scan.$head#18, $element_table.e#16, $path_scan.$tail#19, $element_table.m#20]
+                  | +-input_scan_list=
+                  | | +-GraphPathScan
+                  | | | +-column_list=[$element_table.a#1, $path_scan.$head#8, $path_scan.$tail#9, $element_table.b#10]
+                  | | | +-input_scan_list=
+                  | | | | +-GraphNodeScan
+                  | | | | | +-column_list=[$element_table.a#1]
+                  | | | | | +-label_expr=
+                  | | | | | | +-GraphLabelNaryExpr
+                  | | | | | |   +-op=OR
+                  | | | | | |   +-operand_list=
+                  | | | | | |     +-GraphWildCardLabel
+                  | | | | | |     +-GraphLabelNaryExpr
+                  | | | | | |       +-op=NOT
+                  | | | | | |       +-operand_list=
+                  | | | | | |         +-GraphWildCardLabel
+                  | | | | | +-target_element_table_list=[aml.Account,aml.Person,aml.Syndicate]
+                  | | | | +-GraphPathScan
+                  | | | | | +-column_list=$path_scan.[$head#8, $tail#9]
+                  | | | | | +-input_scan_list=
+                  | | | | | | +-GraphNodeScan
+                  | | | | | | | +-column_list=[$element_table.$element1#2]
+                  | | | | | | | +-label_expr=
+                  | | | | | | | | +-GraphLabelNaryExpr
+                  | | | | | | | |   +-op=OR
+                  | | | | | | | |   +-operand_list=
+                  | | | | | | | |     +-GraphWildCardLabel
+                  | | | | | | | |     +-GraphLabelNaryExpr
+                  | | | | | | | |       +-op=NOT
+                  | | | | | | | |       +-operand_list=
+                  | | | | | | | |         +-GraphWildCardLabel
+                  | | | | | | | +-target_element_table_list=[aml.Account,aml.Person,aml.Syndicate]
+                  | | | | | | +-GraphEdgeScan
+                  | | | | | | | +-column_list=[$element_table.$element2#3]
+                  | | | | | | | +-label_expr=
+                  | | | | | | | | +-GraphLabelNaryExpr
+                  | | | | | | | |   +-op=OR
+                  | | | | | | | |   +-operand_list=
+                  | | | | | | | |     +-GraphWildCardLabel
+                  | | | | | | | |     +-GraphLabelNaryExpr
+                  | | | | | | | |       +-op=NOT
+                  | | | | | | | |       +-operand_list=
+                  | | | | | | | |         +-GraphWildCardLabel
+                  | | | | | | | +-target_element_table_list=[aml.PersonOwnAccount,aml.Transfer]
+                  | | | | | | | +-orientation=RIGHT
+                  | | | | | | +-GraphNodeScan
+                  | | | | | |   +-column_list=[$element_table.$element3#4]
+                  | | | | | |   +-label_expr=
+                  | | | | | |   | +-GraphLabelNaryExpr
+                  | | | | | |   |   +-op=OR
+                  | | | | | |   |   +-operand_list=
+                  | | | | | |   |     +-GraphWildCardLabel
+                  | | | | | |   |     +-GraphLabelNaryExpr
+                  | | | | | |   |       +-op=NOT
+                  | | | | | |   |       +-operand_list=
+                  | | | | | |   |         +-GraphWildCardLabel
+                  | | | | | |   +-target_element_table_list=[aml.Account,aml.Person,aml.Syndicate]
+                  | | | | | +-head=$path_scan.$head#8
+                  | | | | | +-tail=$path_scan.$tail#9
+                  | | | | | +-quantifier=
+                  | | | | | | +-GraphPathPatternQuantifier
+                  | | | | | |   +-lower_bound=
+                  | | | | | |     +-Literal(type=INT64, value=0)
+                  | | | | | +-group_variable_list=
+                  | | | | |   +-GraphMakeArrayVariable(element=$element_table.$element1#2, array=$element_table.$element1#5)
+                  | | | | |   +-GraphMakeArrayVariable(element=$element_table.$element2#3, array=$element_table.$element2#6)
+                  | | | | |   +-GraphMakeArrayVariable(element=$element_table.$element3#4, array=$element_table.$element3#7)
+                  | | | | +-GraphNodeScan
+                  | | | |   +-column_list=[$element_table.b#10]
+                  | | | |   +-label_expr=
+                  | | | |   | +-GraphLabelNaryExpr
+                  | | | |   |   +-op=OR
+                  | | | |   |   +-operand_list=
+                  | | | |   |     +-GraphWildCardLabel
+                  | | | |   |     +-GraphLabelNaryExpr
+                  | | | |   |       +-op=NOT
+                  | | | |   |       +-operand_list=
+                  | | | |   |         +-GraphWildCardLabel
+                  | | | |   +-target_element_table_list=[aml.Account,aml.Person,aml.Syndicate]
+                  | | | +-head=$element_table.a#1
+                  | | | +-tail=$element_table.b#10
+                  | | | +-search_prefix=
+                  | | |   +-GraphPathSearchPrefix(type=ANY)
+                  | | +-GraphPathScan
+                  | |   +-column_list=[$element_table.n#11, $path_scan.$head#18, $element_table.e#16, $path_scan.$tail#19, $element_table.m#20]
+                  | |   +-input_scan_list=
+                  | |   | +-GraphPathScan
+                  | |   |   +-column_list=[$element_table.n#11, $path_scan.$head#18, $element_table.e#16, $path_scan.$tail#19, $element_table.m#20]
+                  | |   |   +-input_scan_list=
+                  | |   |   | +-GraphNodeScan
+                  | |   |   | | +-column_list=[$element_table.n#11]
+                  | |   |   | | +-label_expr=
+                  | |   |   | | | +-GraphLabelNaryExpr
+                  | |   |   | | |   +-op=OR
+                  | |   |   | | |   +-operand_list=
+                  | |   |   | | |     +-GraphWildCardLabel
+                  | |   |   | | |     +-GraphLabelNaryExpr
+                  | |   |   | | |       +-op=NOT
+                  | |   |   | | |       +-operand_list=
+                  | |   |   | | |         +-GraphWildCardLabel
+                  | |   |   | | +-target_element_table_list=[aml.Account,aml.Person,aml.Syndicate]
+                  | |   |   | +-GraphPathScan
+                  | |   |   | | +-column_list=[$path_scan.$head#18, $element_table.e#16, $path_scan.$tail#19]
+                  | |   |   | | +-input_scan_list=
+                  | |   |   | | | +-GraphNodeScan
+                  | |   |   | | | | +-column_list=[$element_table.$element4#12]
+                  | |   |   | | | | +-label_expr=
+                  | |   |   | | | | | +-GraphLabelNaryExpr
+                  | |   |   | | | | |   +-op=OR
+                  | |   |   | | | | |   +-operand_list=
+                  | |   |   | | | | |     +-GraphWildCardLabel
+                  | |   |   | | | | |     +-GraphLabelNaryExpr
+                  | |   |   | | | | |       +-op=NOT
+                  | |   |   | | | | |       +-operand_list=
+                  | |   |   | | | | |         +-GraphWildCardLabel
+                  | |   |   | | | | +-target_element_table_list=[aml.Account,aml.Person,aml.Syndicate]
+                  | |   |   | | | +-GraphEdgeScan
+                  | |   |   | | | | +-column_list=[$element_table.e#13]
+                  | |   |   | | | | +-label_expr=
+                  | |   |   | | | | | +-GraphLabelNaryExpr
+                  | |   |   | | | | |   +-op=OR
+                  | |   |   | | | | |   +-operand_list=
+                  | |   |   | | | | |     +-GraphWildCardLabel
+                  | |   |   | | | | |     +-GraphLabelNaryExpr
+                  | |   |   | | | | |       +-op=NOT
+                  | |   |   | | | | |       +-operand_list=
+                  | |   |   | | | | |         +-GraphWildCardLabel
+                  | |   |   | | | | +-target_element_table_list=[aml.PersonOwnAccount,aml.Transfer]
+                  | |   |   | | | | +-orientation=RIGHT
+                  | |   |   | | | +-GraphNodeScan
+                  | |   |   | | |   +-column_list=[$element_table.$element5#14]
+                  | |   |   | | |   +-label_expr=
+                  | |   |   | | |   | +-GraphLabelNaryExpr
+                  | |   |   | | |   |   +-op=OR
+                  | |   |   | | |   |   +-operand_list=
+                  | |   |   | | |   |     +-GraphWildCardLabel
+                  | |   |   | | |   |     +-GraphLabelNaryExpr
+                  | |   |   | | |   |       +-op=NOT
+                  | |   |   | | |   |       +-operand_list=
+                  | |   |   | | |   |         +-GraphWildCardLabel
+                  | |   |   | | |   +-target_element_table_list=[aml.Account,aml.Person,aml.Syndicate]
+                  | |   |   | | +-head=$path_scan.$head#18
+                  | |   |   | | +-tail=$path_scan.$tail#19
+                  | |   |   | | +-quantifier=
+                  | |   |   | | | +-GraphPathPatternQuantifier
+                  | |   |   | | |   +-lower_bound=
+                  | |   |   | | |     +-Literal(type=INT64, value=0)
+                  | |   |   | | +-group_variable_list=
+                  | |   |   | |   +-GraphMakeArrayVariable(element=$element_table.$element4#12, array=$element_table.$element4#15)
+                  | |   |   | |   +-GraphMakeArrayVariable(element=$element_table.e#13, array=$element_table.e#16)
+                  | |   |   | |   +-GraphMakeArrayVariable(element=$element_table.$element5#14, array=$element_table.$element5#17)
+                  | |   |   | +-GraphNodeScan
+                  | |   |   |   +-column_list=[$element_table.m#20]
+                  | |   |   |   +-label_expr=
+                  | |   |   |   | +-GraphLabelNaryExpr
+                  | |   |   |   |   +-op=OR
+                  | |   |   |   |   +-operand_list=
+                  | |   |   |   |     +-GraphWildCardLabel
+                  | |   |   |   |     +-GraphLabelNaryExpr
+                  | |   |   |   |       +-op=NOT
+                  | |   |   |   |       +-operand_list=
+                  | |   |   |   |         +-GraphWildCardLabel
+                  | |   |   |   +-target_element_table_list=[aml.Account,aml.Person,aml.Syndicate]
+                  | |   |   +-head=$element_table.n#11
+                  | |   |   +-tail=$element_table.m#20
+                  | |   +-head=$element_table.n#11
+                  | |   +-tail=$element_table.m#20
+                  | |   +-path_mode=
+                  | |     +-GraphPathMode(path_mode=TRAIL)
+                  | +-input_scan=
+                  |   +-SingleRowScan
+                  +-ProjectScan
+                    +-column_list=[$graph_table.name#21]
+                    +-expr_list=
+                    | +-name#21 :=
+                    |   +-GraphGetElementProperty
+                    |     +-type=STRING
+                    |     +-expr=
+                    |     | +-ColumnRef(type=GRAPH_NODE(aml)<age UINT32, balance UINT64, birthday DATE, data BYTES, id INT64, name STRING, syndicateData ARRAY<INT64>, syndicateId INT64, syndicateName STRING>, column=$element_table.n#11)
+                    |     +-property=name(STRING)
+                    +-input_scan=
+                      +-GraphRefScan(column_list=$element_table.[a#1, b#10, n#11, e#16, m#20])
+--
+ALTERNATION GROUP: +
+--
+QueryStmt
++-output_column_list=
+| +-$graph_table.name#21 AS name [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$graph_table.name#21]
+    +-input_scan=
+      +-GraphTableScan
+        +-column_list=[$graph_table.name#21]
+        +-property_graph=aml
+        +-input_scan=
+          +-GraphLinearScan
+            +-column_list=[$graph_table.name#21]
+            +-scan_list=
+              +-GraphLinearScan
+                +-column_list=[$graph_table.name#21]
+                +-scan_list=
+                  +-GraphScan
+                  | +-column_list=[$element_table.a#1, $path_scan.$head#8, $path_scan.$tail#9, $element_table.b#10, $element_table.n#11, $path_scan.$head#18, $element_table.e#16, $path_scan.$tail#19, $element_table.m#20]
+                  | +-input_scan_list=
+                  | | +-GraphPathScan
+                  | | | +-column_list=[$element_table.a#1, $path_scan.$head#8, $path_scan.$tail#9, $element_table.b#10]
+                  | | | +-input_scan_list=
+                  | | | | +-GraphNodeScan
+                  | | | | | +-column_list=[$element_table.a#1]
+                  | | | | | +-label_expr=
+                  | | | | | | +-GraphLabelNaryExpr
+                  | | | | | |   +-op=OR
+                  | | | | | |   +-operand_list=
+                  | | | | | |     +-GraphWildCardLabel
+                  | | | | | |     +-GraphLabelNaryExpr
+                  | | | | | |       +-op=NOT
+                  | | | | | |       +-operand_list=
+                  | | | | | |         +-GraphWildCardLabel
+                  | | | | | +-target_element_table_list=[aml.Account,aml.Person,aml.Syndicate]
+                  | | | | +-GraphPathScan
+                  | | | | | +-column_list=$path_scan.[$head#8, $tail#9]
+                  | | | | | +-input_scan_list=
+                  | | | | | | +-GraphNodeScan
+                  | | | | | | | +-column_list=[$element_table.$element1#2]
+                  | | | | | | | +-label_expr=
+                  | | | | | | | | +-GraphLabelNaryExpr
+                  | | | | | | | |   +-op=OR
+                  | | | | | | | |   +-operand_list=
+                  | | | | | | | |     +-GraphWildCardLabel
+                  | | | | | | | |     +-GraphLabelNaryExpr
+                  | | | | | | | |       +-op=NOT
+                  | | | | | | | |       +-operand_list=
+                  | | | | | | | |         +-GraphWildCardLabel
+                  | | | | | | | +-target_element_table_list=[aml.Account,aml.Person,aml.Syndicate]
+                  | | | | | | +-GraphEdgeScan
+                  | | | | | | | +-column_list=[$element_table.$element2#3]
+                  | | | | | | | +-label_expr=
+                  | | | | | | | | +-GraphLabelNaryExpr
+                  | | | | | | | |   +-op=OR
+                  | | | | | | | |   +-operand_list=
+                  | | | | | | | |     +-GraphWildCardLabel
+                  | | | | | | | |     +-GraphLabelNaryExpr
+                  | | | | | | | |       +-op=NOT
+                  | | | | | | | |       +-operand_list=
+                  | | | | | | | |         +-GraphWildCardLabel
+                  | | | | | | | +-target_element_table_list=[aml.PersonOwnAccount,aml.Transfer]
+                  | | | | | | | +-orientation=RIGHT
+                  | | | | | | +-GraphNodeScan
+                  | | | | | |   +-column_list=[$element_table.$element3#4]
+                  | | | | | |   +-label_expr=
+                  | | | | | |   | +-GraphLabelNaryExpr
+                  | | | | | |   |   +-op=OR
+                  | | | | | |   |   +-operand_list=
+                  | | | | | |   |     +-GraphWildCardLabel
+                  | | | | | |   |     +-GraphLabelNaryExpr
+                  | | | | | |   |       +-op=NOT
+                  | | | | | |   |       +-operand_list=
+                  | | | | | |   |         +-GraphWildCardLabel
+                  | | | | | |   +-target_element_table_list=[aml.Account,aml.Person,aml.Syndicate]
+                  | | | | | +-head=$path_scan.$head#8
+                  | | | | | +-tail=$path_scan.$tail#9
+                  | | | | | +-quantifier=
+                  | | | | | | +-GraphPathPatternQuantifier
+                  | | | | | |   +-lower_bound=
+                  | | | | | |     +-Literal(type=INT64, value=0)
+                  | | | | | +-group_variable_list=
+                  | | | | |   +-GraphMakeArrayVariable(element=$element_table.$element1#2, array=$element_table.$element1#5)
+                  | | | | |   +-GraphMakeArrayVariable(element=$element_table.$element2#3, array=$element_table.$element2#6)
+                  | | | | |   +-GraphMakeArrayVariable(element=$element_table.$element3#4, array=$element_table.$element3#7)
+                  | | | | +-GraphNodeScan
+                  | | | |   +-column_list=[$element_table.b#10]
+                  | | | |   +-label_expr=
+                  | | | |   | +-GraphLabelNaryExpr
+                  | | | |   |   +-op=OR
+                  | | | |   |   +-operand_list=
+                  | | | |   |     +-GraphWildCardLabel
+                  | | | |   |     +-GraphLabelNaryExpr
+                  | | | |   |       +-op=NOT
+                  | | | |   |       +-operand_list=
+                  | | | |   |         +-GraphWildCardLabel
+                  | | | |   +-target_element_table_list=[aml.Account,aml.Person,aml.Syndicate]
+                  | | | +-head=$element_table.a#1
+                  | | | +-tail=$element_table.b#10
+                  | | | +-search_prefix=
+                  | | |   +-GraphPathSearchPrefix(type=ANY)
+                  | | +-GraphPathScan
+                  | |   +-column_list=[$element_table.n#11, $path_scan.$head#18, $element_table.e#16, $path_scan.$tail#19, $element_table.m#20]
+                  | |   +-input_scan_list=
+                  | |   | +-GraphPathScan
+                  | |   |   +-column_list=[$element_table.n#11, $path_scan.$head#18, $element_table.e#16, $path_scan.$tail#19, $element_table.m#20]
+                  | |   |   +-input_scan_list=
+                  | |   |   | +-GraphNodeScan
+                  | |   |   | | +-column_list=[$element_table.n#11]
+                  | |   |   | | +-label_expr=
+                  | |   |   | | | +-GraphLabelNaryExpr
+                  | |   |   | | |   +-op=OR
+                  | |   |   | | |   +-operand_list=
+                  | |   |   | | |     +-GraphWildCardLabel
+                  | |   |   | | |     +-GraphLabelNaryExpr
+                  | |   |   | | |       +-op=NOT
+                  | |   |   | | |       +-operand_list=
+                  | |   |   | | |         +-GraphWildCardLabel
+                  | |   |   | | +-target_element_table_list=[aml.Account,aml.Person,aml.Syndicate]
+                  | |   |   | +-GraphPathScan
+                  | |   |   | | +-column_list=[$path_scan.$head#18, $element_table.e#16, $path_scan.$tail#19]
+                  | |   |   | | +-input_scan_list=
+                  | |   |   | | | +-GraphNodeScan
+                  | |   |   | | | | +-column_list=[$element_table.$element4#12]
+                  | |   |   | | | | +-label_expr=
+                  | |   |   | | | | | +-GraphLabelNaryExpr
+                  | |   |   | | | | |   +-op=OR
+                  | |   |   | | | | |   +-operand_list=
+                  | |   |   | | | | |     +-GraphWildCardLabel
+                  | |   |   | | | | |     +-GraphLabelNaryExpr
+                  | |   |   | | | | |       +-op=NOT
+                  | |   |   | | | | |       +-operand_list=
+                  | |   |   | | | | |         +-GraphWildCardLabel
+                  | |   |   | | | | +-target_element_table_list=[aml.Account,aml.Person,aml.Syndicate]
+                  | |   |   | | | +-GraphEdgeScan
+                  | |   |   | | | | +-column_list=[$element_table.e#13]
+                  | |   |   | | | | +-label_expr=
+                  | |   |   | | | | | +-GraphLabelNaryExpr
+                  | |   |   | | | | |   +-op=OR
+                  | |   |   | | | | |   +-operand_list=
+                  | |   |   | | | | |     +-GraphWildCardLabel
+                  | |   |   | | | | |     +-GraphLabelNaryExpr
+                  | |   |   | | | | |       +-op=NOT
+                  | |   |   | | | | |       +-operand_list=
+                  | |   |   | | | | |         +-GraphWildCardLabel
+                  | |   |   | | | | +-target_element_table_list=[aml.PersonOwnAccount,aml.Transfer]
+                  | |   |   | | | | +-orientation=RIGHT
+                  | |   |   | | | +-GraphNodeScan
+                  | |   |   | | |   +-column_list=[$element_table.$element5#14]
+                  | |   |   | | |   +-label_expr=
+                  | |   |   | | |   | +-GraphLabelNaryExpr
+                  | |   |   | | |   |   +-op=OR
+                  | |   |   | | |   |   +-operand_list=
+                  | |   |   | | |   |     +-GraphWildCardLabel
+                  | |   |   | | |   |     +-GraphLabelNaryExpr
+                  | |   |   | | |   |       +-op=NOT
+                  | |   |   | | |   |       +-operand_list=
+                  | |   |   | | |   |         +-GraphWildCardLabel
+                  | |   |   | | |   +-target_element_table_list=[aml.Account,aml.Person,aml.Syndicate]
+                  | |   |   | | +-head=$path_scan.$head#18
+                  | |   |   | | +-tail=$path_scan.$tail#19
+                  | |   |   | | +-quantifier=
+                  | |   |   | | | +-GraphPathPatternQuantifier
+                  | |   |   | | |   +-lower_bound=
+                  | |   |   | | |     +-Literal(type=INT64, value=1)
+                  | |   |   | | +-group_variable_list=
+                  | |   |   | |   +-GraphMakeArrayVariable(element=$element_table.$element4#12, array=$element_table.$element4#15)
+                  | |   |   | |   +-GraphMakeArrayVariable(element=$element_table.e#13, array=$element_table.e#16)
+                  | |   |   | |   +-GraphMakeArrayVariable(element=$element_table.$element5#14, array=$element_table.$element5#17)
+                  | |   |   | +-GraphNodeScan
+                  | |   |   |   +-column_list=[$element_table.m#20]
+                  | |   |   |   +-label_expr=
+                  | |   |   |   | +-GraphLabelNaryExpr
+                  | |   |   |   |   +-op=OR
+                  | |   |   |   |   +-operand_list=
+                  | |   |   |   |     +-GraphWildCardLabel
+                  | |   |   |   |     +-GraphLabelNaryExpr
+                  | |   |   |   |       +-op=NOT
+                  | |   |   |   |       +-operand_list=
+                  | |   |   |   |         +-GraphWildCardLabel
+                  | |   |   |   +-target_element_table_list=[aml.Account,aml.Person,aml.Syndicate]
+                  | |   |   +-head=$element_table.n#11
+                  | |   |   +-tail=$element_table.m#20
+                  | |   +-head=$element_table.n#11
+                  | |   +-tail=$element_table.m#20
+                  | |   +-path_mode=
+                  | |     +-GraphPathMode(path_mode=TRAIL)
+                  | +-input_scan=
+                  |   +-SingleRowScan
+                  +-ProjectScan
+                    +-column_list=[$graph_table.name#21]
+                    +-expr_list=
+                    | +-name#21 :=
+                    |   +-GraphGetElementProperty
+                    |     +-type=STRING
+                    |     +-expr=
+                    |     | +-ColumnRef(type=GRAPH_NODE(aml)<age UINT32, balance UINT64, birthday DATE, data BYTES, id INT64, name STRING, syndicateData ARRAY<INT64>, syndicateId INT64, syndicateName STRING>, column=$element_table.n#11)
+                    |     +-property=name(STRING)
+                    +-input_scan=
+                      +-GraphRefScan(column_list=$element_table.[a#1, b#10, n#11, e#16, m#20])
+==
+
+select * from graph_table(aml
+  match  ANY SHORTEST ((a)-[]->(b)){1,}->(c)->{,}(d)
+  return COUNT(*) AS cnt
+)
+--
+QueryStmt
++-output_column_list=
+| +-$graph_table.cnt#20 AS cnt [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$graph_table.cnt#20]
+    +-input_scan=
+      +-GraphTableScan
+        +-column_list=[$graph_table.cnt#20]
+        +-property_graph=aml
+        +-input_scan=
+          +-GraphLinearScan
+            +-column_list=[$graph_table.cnt#20]
+            +-scan_list=
+              +-GraphLinearScan
+                +-column_list=[$graph_table.cnt#20]
+                +-scan_list=
+                  +-GraphScan
+                  | +-column_list=[$path_scan.$head#7, $path_scan.$tail#8, $element_table.$element2#9, $element_table.c#10, $path_scan.$head#17, $path_scan.$tail#18, $element_table.d#19]
+                  | +-input_scan_list=
+                  | | +-GraphPathScan
+                  | |   +-column_list=[$path_scan.$head#7, $path_scan.$tail#8, $element_table.$element2#9, $element_table.c#10, $path_scan.$head#17, $path_scan.$tail#18, $element_table.d#19]
+                  | |   +-input_scan_list=
+                  | |   | +-GraphPathScan
+                  | |   | | +-column_list=$path_scan.[$head#7, $tail#8]
+                  | |   | | +-input_scan_list=
+                  | |   | | | +-GraphNodeScan
+                  | |   | | | | +-column_list=[$element_table.a#1]
+                  | |   | | | | +-label_expr=
+                  | |   | | | | | +-GraphLabelNaryExpr
+                  | |   | | | | |   +-op=OR
+                  | |   | | | | |   +-operand_list=
+                  | |   | | | | |     +-GraphWildCardLabel
+                  | |   | | | | |     +-GraphLabelNaryExpr
+                  | |   | | | | |       +-op=NOT
+                  | |   | | | | |       +-operand_list=
+                  | |   | | | | |         +-GraphWildCardLabel
+                  | |   | | | | +-target_element_table_list=[aml.Account,aml.Person,aml.Syndicate]
+                  | |   | | | +-GraphEdgeScan
+                  | |   | | | | +-column_list=[$element_table.$element1#2]
+                  | |   | | | | +-label_expr=
+                  | |   | | | | | +-GraphLabelNaryExpr
+                  | |   | | | | |   +-op=OR
+                  | |   | | | | |   +-operand_list=
+                  | |   | | | | |     +-GraphWildCardLabel
+                  | |   | | | | |     +-GraphLabelNaryExpr
+                  | |   | | | | |       +-op=NOT
+                  | |   | | | | |       +-operand_list=
+                  | |   | | | | |         +-GraphWildCardLabel
+                  | |   | | | | +-target_element_table_list=[aml.PersonOwnAccount,aml.Transfer]
+                  | |   | | | | +-orientation=RIGHT
+                  | |   | | | +-GraphNodeScan
+                  | |   | | |   +-column_list=[$element_table.b#3]
+                  | |   | | |   +-label_expr=
+                  | |   | | |   | +-GraphLabelNaryExpr
+                  | |   | | |   |   +-op=OR
+                  | |   | | |   |   +-operand_list=
+                  | |   | | |   |     +-GraphWildCardLabel
+                  | |   | | |   |     +-GraphLabelNaryExpr
+                  | |   | | |   |       +-op=NOT
+                  | |   | | |   |       +-operand_list=
+                  | |   | | |   |         +-GraphWildCardLabel
+                  | |   | | |   +-target_element_table_list=[aml.Account,aml.Person,aml.Syndicate]
+                  | |   | | +-head=$path_scan.$head#7
+                  | |   | | +-tail=$path_scan.$tail#8
+                  | |   | | +-quantifier=
+                  | |   | | | +-GraphPathPatternQuantifier
+                  | |   | | |   +-lower_bound=
+                  | |   | | |     +-Literal(type=INT64, value=1)
+                  | |   | | +-group_variable_list=
+                  | |   | |   +-GraphMakeArrayVariable(element=$element_table.a#1, array=$element_table.a#4)
+                  | |   | |   +-GraphMakeArrayVariable(element=$element_table.$element1#2, array=$element_table.$element1#5)
+                  | |   | |   +-GraphMakeArrayVariable(element=$element_table.b#3, array=$element_table.b#6)
+                  | |   | +-GraphEdgeScan
+                  | |   | | +-column_list=[$element_table.$element2#9]
+                  | |   | | +-label_expr=
+                  | |   | | | +-GraphLabelNaryExpr
+                  | |   | | |   +-op=OR
+                  | |   | | |   +-operand_list=
+                  | |   | | |     +-GraphWildCardLabel
+                  | |   | | |     +-GraphLabelNaryExpr
+                  | |   | | |       +-op=NOT
+                  | |   | | |       +-operand_list=
+                  | |   | | |         +-GraphWildCardLabel
+                  | |   | | +-target_element_table_list=[aml.PersonOwnAccount,aml.Transfer]
+                  | |   | | +-orientation=RIGHT
+                  | |   | +-GraphNodeScan
+                  | |   | | +-column_list=[$element_table.c#10]
+                  | |   | | +-label_expr=
+                  | |   | | | +-GraphLabelNaryExpr
+                  | |   | | |   +-op=OR
+                  | |   | | |   +-operand_list=
+                  | |   | | |     +-GraphWildCardLabel
+                  | |   | | |     +-GraphLabelNaryExpr
+                  | |   | | |       +-op=NOT
+                  | |   | | |       +-operand_list=
+                  | |   | | |         +-GraphWildCardLabel
+                  | |   | | +-target_element_table_list=[aml.Account,aml.Person,aml.Syndicate]
+                  | |   | +-GraphPathScan
+                  | |   | | +-column_list=$path_scan.[$head#17, $tail#18]
+                  | |   | | +-input_scan_list=
+                  | |   | | | +-GraphNodeScan
+                  | |   | | | | +-column_list=[$element_table.$element3#11]
+                  | |   | | | | +-label_expr=
+                  | |   | | | | | +-GraphLabelNaryExpr
+                  | |   | | | | |   +-op=OR
+                  | |   | | | | |   +-operand_list=
+                  | |   | | | | |     +-GraphWildCardLabel
+                  | |   | | | | |     +-GraphLabelNaryExpr
+                  | |   | | | | |       +-op=NOT
+                  | |   | | | | |       +-operand_list=
+                  | |   | | | | |         +-GraphWildCardLabel
+                  | |   | | | | +-target_element_table_list=[aml.Account,aml.Person,aml.Syndicate]
+                  | |   | | | +-GraphEdgeScan
+                  | |   | | | | +-column_list=[$element_table.$element4#12]
+                  | |   | | | | +-label_expr=
+                  | |   | | | | | +-GraphLabelNaryExpr
+                  | |   | | | | |   +-op=OR
+                  | |   | | | | |   +-operand_list=
+                  | |   | | | | |     +-GraphWildCardLabel
+                  | |   | | | | |     +-GraphLabelNaryExpr
+                  | |   | | | | |       +-op=NOT
+                  | |   | | | | |       +-operand_list=
+                  | |   | | | | |         +-GraphWildCardLabel
+                  | |   | | | | +-target_element_table_list=[aml.PersonOwnAccount,aml.Transfer]
+                  | |   | | | | +-orientation=RIGHT
+                  | |   | | | +-GraphNodeScan
+                  | |   | | |   +-column_list=[$element_table.$element5#13]
+                  | |   | | |   +-label_expr=
+                  | |   | | |   | +-GraphLabelNaryExpr
+                  | |   | | |   |   +-op=OR
+                  | |   | | |   |   +-operand_list=
+                  | |   | | |   |     +-GraphWildCardLabel
+                  | |   | | |   |     +-GraphLabelNaryExpr
+                  | |   | | |   |       +-op=NOT
+                  | |   | | |   |       +-operand_list=
+                  | |   | | |   |         +-GraphWildCardLabel
+                  | |   | | |   +-target_element_table_list=[aml.Account,aml.Person,aml.Syndicate]
+                  | |   | | +-head=$path_scan.$head#17
+                  | |   | | +-tail=$path_scan.$tail#18
+                  | |   | | +-quantifier=
+                  | |   | | | +-GraphPathPatternQuantifier
+                  | |   | | |   +-lower_bound=
+                  | |   | | |     +-Literal(type=INT64, value=0)
+                  | |   | | +-group_variable_list=
+                  | |   | |   +-GraphMakeArrayVariable(element=$element_table.$element3#11, array=$element_table.$element3#14)
+                  | |   | |   +-GraphMakeArrayVariable(element=$element_table.$element4#12, array=$element_table.$element4#15)
+                  | |   | |   +-GraphMakeArrayVariable(element=$element_table.$element5#13, array=$element_table.$element5#16)
+                  | |   | +-GraphNodeScan
+                  | |   |   +-column_list=[$element_table.d#19]
+                  | |   |   +-label_expr=
+                  | |   |   | +-GraphLabelNaryExpr
+                  | |   |   |   +-op=OR
+                  | |   |   |   +-operand_list=
+                  | |   |   |     +-GraphWildCardLabel
+                  | |   |   |     +-GraphLabelNaryExpr
+                  | |   |   |       +-op=NOT
+                  | |   |   |       +-operand_list=
+                  | |   |   |         +-GraphWildCardLabel
+                  | |   |   +-target_element_table_list=[aml.Account,aml.Person,aml.Syndicate]
+                  | |   +-head=$path_scan.$head#7
+                  | |   +-tail=$element_table.d#19
+                  | |   +-search_prefix=
+                  | |     +-GraphPathSearchPrefix(type=SHORTEST)
+                  | +-input_scan=
+                  |   +-SingleRowScan
+                  +-ProjectScan
+                    +-column_list=[$graph_table.cnt#20]
+                    +-input_scan=
+                      +-AggregateScan
+                        +-column_list=[$graph_table.cnt#20]
+                        +-input_scan=
+                        | +-GraphRefScan(column_list=$element_table.[$element2#9, c#10, d#19])
+                        +-aggregate_list=
+                          +-cnt#20 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+==
+
+

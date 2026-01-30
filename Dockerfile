@@ -33,27 +33,21 @@ RUN add-apt-repository ppa:ubuntu-toolchain-r/test                          && \
 RUN apt-get -qq install locales && locale-gen en_US.UTF-8
 ENV LANG=en_US.UTF-8
 
-COPY . /zetasql
+COPY . /googlesql
 
-# Create a new user zetasql to avoid running as root.
-RUN useradd -ms /bin/bash zetasql
-RUN chown -R zetasql:zetasql /zetasql
-USER zetasql
+# Create a new user googlesql to avoid running as root.
+RUN useradd -ms /bin/bash googlesql
+RUN chown -R googlesql:googlesql /googlesql
+USER googlesql
 
-ENV HOME=/home/zetasql
+ENV HOME=/home/googlesql
 RUN mkdir -p $HOME/bin
 
-# Supported MODE:
-# - `build` (default): Builds all ZetaSQL targets.
-# - `execute_query`: Installs the `execute_query` tool only. Erases all other
-#                    build artifacts.
-ARG MODE=build
-
-RUN cd zetasql && ./docker_build.sh $MODE
+RUN cd googlesql && ./docker_build.sh execute_query
 
 ENV PATH=$PATH:$HOME/bin
 
-WORKDIR /zetasql
+WORKDIR /googlesql
 
 ################################################################################
 #                                COPY STAGE                                    #
@@ -68,19 +62,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-RUN useradd -ms /bin/bash zetasql
-ENV HOME=/home/zetasql
+RUN useradd -ms /bin/bash googlesql
+ENV HOME=/home/googlesql
 ENV PATH=$PATH:$HOME/bin
 
 # Set the final working directory
-WORKDIR /zetasql
+WORKDIR /googlesql
 
 # Copy only the final artifacts from the 'builder' stage.
-COPY --from=builder --chown=zetasql:zetasql $HOME/bin/execute_query /zetasql/execute_query
+COPY --from=builder --chown=googlesql:googlesql $HOME/bin/execute_query /googlesql/execute_query
 
 # Use the non-root user for running the container
-USER zetasql
+USER googlesql
 
 # Command to run the final application
-ENTRYPOINT ["/zetasql/execute_query"]
+ENTRYPOINT ["/googlesql/execute_query"]
 CMD ["--help"]

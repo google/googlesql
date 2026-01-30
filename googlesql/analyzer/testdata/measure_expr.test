@@ -1,0 +1,115 @@
+# Positive Tests for analyzing measure expressions.
+# Don't run SQLBuilder, since we're analyzing measure expressions on a table,
+# and the rebuilt SQL will not analyze successfully against the catalog.
+[default language_features=MAXIMUM]
+[default mode=measure_expression]
+[default no_run_sqlbuilder]
+[default table_for_measure_expr_analysis=SimpleTypes]
+
+1
+--
+Literal(type=INT64, value=1)
+==
+
+1 + 1
+--
+FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
++-Literal(type=INT64, value=1)
++-Literal(type=INT64, value=1)
+==
+
+SUM(int64)
+--
+AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
++-ExpressionColumn(type=INT64, name="int64")
+==
+
+SUM(int64) / SUM(double)
+--
+FunctionCall(GoogleSQL:$divide(DOUBLE, DOUBLE) -> DOUBLE)
++-Cast(INT64 -> DOUBLE)
+| +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+|   +-ExpressionColumn(type=INT64, name="int64")
++-AggregateFunctionCall(GoogleSQL:sum(DOUBLE) -> DOUBLE)
+  +-ExpressionColumn(type=DOUBLE, name="double")
+==
+
+SUM(int64) / COUNT(1) * 100
+--
+FunctionCall(GoogleSQL:$multiply(DOUBLE, DOUBLE) -> DOUBLE)
++-FunctionCall(GoogleSQL:$divide(DOUBLE, DOUBLE) -> DOUBLE)
+| +-Cast(INT64 -> DOUBLE)
+| | +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+| |   +-ExpressionColumn(type=INT64, name="int64")
+| +-Cast(INT64 -> DOUBLE)
+|   +-AggregateFunctionCall(GoogleSQL:count(INT64) -> INT64)
+|     +-Literal(type=INT64, value=1)
++-Literal(type=DOUBLE, value=100)
+==
+
+SUM(ANY_VALUE(int64) GROUP BY string)
+--
+AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
++-ColumnRef(type=INT64, column=$aggregate.$agg1#2)
++-group_by_list=
+| +-$groupbymod#1 := ExpressionColumn(type=STRING, name="string")
++-group_by_aggregate_list=
+  +-$agg1#2 :=
+    +-AggregateFunctionCall(GoogleSQL:any_value(INT64) -> INT64)
+      +-ExpressionColumn(type=INT64, name="int64")
+==
+
+SUM((SELECT int64)) + (SELECT SUM(1) FROM UNNEST([1]))
+--
+FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
++-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+| +-SubqueryExpr
+|   +-type=INT64
+|   +-subquery_type=SCALAR
+|   +-subquery=
+|     +-ProjectScan
+|       +-column_list=[$expr_subquery.int64#1]
+|       +-expr_list=
+|       | +-int64#1 := ExpressionColumn(type=INT64, name="int64")
+|       +-input_scan=
+|         +-SingleRowScan
++-SubqueryExpr
+  +-type=INT64
+  +-subquery_type=SCALAR
+  +-subquery=
+    +-ProjectScan
+      +-column_list=[$aggregate.$agg1#3]
+      +-input_scan=
+        +-AggregateScan
+          +-column_list=[$aggregate.$agg1#3]
+          +-input_scan=
+          | +-ArrayScan
+          |   +-array_expr_list=
+          |   | +-Literal(type=ARRAY<INT64>, value=[1])
+          |   +-element_column_list=[$array.$unnest1#2]
+          +-aggregate_list=
+            +-$agg1#3 :=
+              +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+                +-Literal(type=INT64, value=1)
+==
+
+WITH(a as SUM(int64), a + 1)
+--
+WithExpr
++-type=INT64
++-assignment_list=
+| +-a#1 :=
+|   +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+|     +-ExpressionColumn(type=INT64, name="int64")
++-expr=
+  +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    +-ColumnRef(type=INT64, column=$with_expr.a#1)
+    +-Literal(type=INT64, value=1)
+==
+
+ARRAY_REMOVE_LAST_N([1,2], COUNT(int64))
+--
+FunctionCall(GoogleSQL:array_remove_last_n(ARRAY<INT64> input_array, INT64 n) -> ARRAY<INT64>)
++-Literal(type=ARRAY<INT64>, value=[1, 2])
++-AggregateFunctionCall(GoogleSQL:count(INT64) -> INT64)
+  +-ExpressionColumn(type=INT64, name="int64")

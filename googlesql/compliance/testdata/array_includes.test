@@ -1,0 +1,230 @@
+[load_proto_files=googlesql/testdata/test_schema.proto]
+[load_proto_names=googlesql_test.TestOptionalFields]
+
+[prepare_database]
+CREATE TABLE T AS
+  SELECT e AS ele  FROM UNNEST([1,2,3]) AS e;
+--
+ARRAY<STRUCT<ele INT64>>[{1}, {2}, {3}]
+==
+[name=array_includes_null_array]
+SELECT ARRAY_INCLUDES(CAST(NULL AS ARRAY<INT64>), 1)
+--
+ARRAY<STRUCT<BOOL>>[{NULL}]
+==
+[name=array_includes_null_target]
+SELECT ARRAY_INCLUDES([1,2,3], NULL)
+--
+ARRAY<STRUCT<BOOL>>[{NULL}]
+==
+[name=array_includes_null_element]
+SELECT ARRAY_INCLUDES([NULL], 1)
+--
+ARRAY<STRUCT<BOOL>>[{false}]
+==
+[name=array_includes_with_null_element]
+SELECT ARRAY_INCLUDES([NULL,1,2], 1)
+--
+ARRAY<STRUCT<BOOL>>[{true}]
+==
+[name=array_includes_hit]
+SELECT ARRAY_INCLUDES([1,2,3], 1)
+--
+ARRAY<STRUCT<BOOL>>[{true}]
+==
+[name=array_includes_miss]
+SELECT ARRAY_INCLUDES([1,2,3], 4)
+--
+ARRAY<STRUCT<BOOL>>[{false}]
+==
+[name=array_includes_with_table]
+SELECT ARRAY_INCLUDES([2,3,4], t.ele) FROM T as t ORDER BY t.ele;
+--
+ARRAY<STRUCT<BOOL>>[known order:{false}, {true}, {true}]
+==
+[name=array_includes_with_subquery_in_input]
+SELECT ARRAY_INCLUDES([2,3,(SELECT t.ele)], 1) FROM T as t ORDER BY t.ele;
+--
+ARRAY<STRUCT<BOOL>>[known order:{true}, {false}, {false}]
+==
+[name=array_includes_with_subquery_in_target]
+SELECT ARRAY_INCLUDES([2,3,4], (SELECT t.ele)) FROM T as t ORDER BY t.ele;
+--
+ARRAY<STRUCT<BOOL>>[known order:{false}, {true}, {true}]
+==
+[name=array_includes_lambda_null_array]
+[default required_features=INLINE_LAMBDA_ARGUMENT]
+SELECT ARRAY_INCLUDES(CAST(NULL AS ARRAY<INT64>), e->e>0)
+--
+ARRAY<STRUCT<BOOL>>[{NULL}]
+==
+[name=array_includes_lambda_hit]
+SELECT ARRAY_INCLUDES([1,2,3], e->e>0)
+--
+ARRAY<STRUCT<BOOL>>[{true}]
+==
+[name=array_includes_lambda_miss]
+SELECT ARRAY_INCLUDES([1,2,3], e->e>3)
+--
+ARRAY<STRUCT<BOOL>>[{false}]
+==
+[name=array_includes_lambda_null_element]
+SELECT ARRAY_INCLUDES([NULL], e->e>0)
+--
+ARRAY<STRUCT<BOOL>>[{false}]
+==
+[name=array_includes_lambda_with_null_element]
+SELECT ARRAY_INCLUDES([NULL,1], e->e>0)
+--
+ARRAY<STRUCT<BOOL>>[{true}]
+==
+[name=array_includes_lambda_find_null_element]
+SELECT ARRAY_INCLUDES([NULL,1], e->e IS NULL)
+--
+ARRAY<STRUCT<BOOL>>[{true}]
+==
+[name=array_includes_lambda_with_table]
+SELECT ARRAY_INCLUDES([1,2,3], e->e>t.ele) FROM T as t ORDER BY t.ele;
+--
+ARRAY<STRUCT<BOOL>>[known order:{true}, {true}, {false}]
+==
+[name=array_includes_lambda_with_subquery_input]
+SELECT ARRAY_INCLUDES([1,2,(SELECT t.ele)], e->e>t.ele) FROM T as t ORDER BY t.ele;
+--
+ARRAY<STRUCT<BOOL>>[known order:{true}, {false}, {false}]
+==
+[name=array_includes_lambda_with_subquery_in_lambda]
+SELECT ARRAY_INCLUDES([1,2,3], e->e>(SELECT t.ele)) FROM T as t ORDER BY t.ele;
+--
+ARRAY<STRUCT<BOOL>>[known order:{true}, {true}, {false}]
+==
+[default required_features=]
+[name=array_includes_any_untyped_null_array]
+SELECT ARRAY_INCLUDES_ANY(NULL, [1])
+--
+ARRAY<STRUCT<BOOL>>[{NULL}]
+==
+[name=array_includes_any_null_array]
+SELECT ARRAY_INCLUDES_ANY(CAST(NULL AS ARRAY<INT64>), [1])
+--
+ARRAY<STRUCT<BOOL>>[{NULL}]
+==
+[name=array_includes_any_null_target]
+SELECT ARRAY_INCLUDES_ANY([1,2,3], NULL)
+--
+ARRAY<STRUCT<BOOL>>[{NULL}]
+==
+[name=array_includes_any_hit]
+SELECT ARRAY_INCLUDES_ANY([1,2,3], [0,3,4])
+--
+ARRAY<STRUCT<BOOL>>[{true}]
+==
+[name=array_includes_any_miss]
+SELECT ARRAY_INCLUDES_ANY([1,2,3], [4,5,6])
+--
+ARRAY<STRUCT<BOOL>>[{false}]
+==
+[name=array_includes_any_null_element]
+SELECT ARRAY_INCLUDES_ANY([NULL,1,2], [1])
+--
+ARRAY<STRUCT<BOOL>>[{true}]
+==
+[name=array_includes_any_null_input_target_element]
+SELECT ARRAY_INCLUDES_ANY([NULL,1,2], [NULL])
+--
+ARRAY<STRUCT<BOOL>>[{false}]
+==
+[name=array_includes_any_null_element_target_with_null]
+SELECT ARRAY_INCLUDES_ANY([NULL,1,2], [NULL, 1])
+--
+ARRAY<STRUCT<BOOL>>[{true}]
+==
+[name=array_includes_any_with_table]
+SELECT ARRAY_INCLUDES_ANY([2,3,4], [t.ele]) FROM T as t ORDER BY t.ele;
+--
+ARRAY<STRUCT<BOOL>>[known order:{false}, {true}, {true}]
+==
+[name=array_includes_any_with_subquery_in_input]
+SELECT ARRAY_INCLUDES_ANY([2,3,(SELECT t.ele)], [t.ele]) FROM T as t ORDER BY t.ele;
+--
+ARRAY<STRUCT<BOOL>>[known order:{true}, {true}, {true}]
+==
+[name=array_includes_any_with_subquery_in_target]
+SELECT ARRAY_INCLUDES_ANY([2,3,4], [(SELECT t.ele)]) FROM T as t ORDER BY t.ele;
+--
+ARRAY<STRUCT<BOOL>>[known order:{false}, {true}, {true}]
+==
+[name=array_includes_all_untyped_null_array]
+SELECT ARRAY_INCLUDES_ALL(NULL, [1])
+--
+ARRAY<STRUCT<BOOL>>[{NULL}]
+==
+[name=array_includes_all_null_array]
+SELECT ARRAY_INCLUDES_ALL(CAST(NULL AS ARRAY<INT64>), [1])
+--
+ARRAY<STRUCT<BOOL>>[{NULL}]
+==
+[name=array_includes_all_null_target]
+SELECT ARRAY_INCLUDES_ALL([1,2,3], NULL)
+--
+ARRAY<STRUCT<BOOL>>[{NULL}]
+==
+[name=array_includes_all_hit]
+SELECT ARRAY_INCLUDES_ALL([1,2,3], [2,3])
+--
+ARRAY<STRUCT<BOOL>>[{true}]
+==
+[name=array_includes_all_miss]
+SELECT ARRAY_INCLUDES_ALL([1,2,3], [4,5,6])
+--
+ARRAY<STRUCT<BOOL>>[{false}]
+==
+[name=array_includes_all_some_miss]
+SELECT ARRAY_INCLUDES_ALL([1,2,3], [2,3,6])
+--
+ARRAY<STRUCT<BOOL>>[{false}]
+==
+[name=array_includes_all_duplicates_in_input]
+SELECT ARRAY_INCLUDES_ALL([1,2,2,3], [2,3])
+--
+ARRAY<STRUCT<BOOL>>[{true}]
+==
+[name=array_includes_all_duplicates_in_target]
+SELECT ARRAY_INCLUDES_ALL([1,2,3], [2,2,3])
+--
+ARRAY<STRUCT<BOOL>>[{true}]
+==
+[name=array_includes_all_duplicates_in_both]
+SELECT ARRAY_INCLUDES_ALL([1,2,2,3,3], [2,2,3])
+--
+ARRAY<STRUCT<BOOL>>[{true}]
+==
+[name=array_includes_all_null_element]
+SELECT ARRAY_INCLUDES_ALL([NULL,1,2], [1])
+--
+ARRAY<STRUCT<BOOL>>[{true}]
+==
+[name=array_includes_all_null_input_target_element]
+SELECT ARRAY_INCLUDES_ALL([NULL,1,2], [NULL])
+--
+ARRAY<STRUCT<BOOL>>[{false}]
+==
+[name=array_includes_all_null_element_target_with_null]
+SELECT ARRAY_INCLUDES_ALL([NULL,1,2], [NULL, 1])
+--
+ARRAY<STRUCT<BOOL>>[{false}]
+==
+[name=array_includes_all_with_table]
+SELECT ARRAY_INCLUDES_ALL([2,3,4], [t.ele]) FROM T as t ORDER BY t.ele;
+--
+ARRAY<STRUCT<BOOL>>[known order:{false}, {true}, {true}]
+==
+[name=array_includes_all_with_subquery_in_input]
+SELECT ARRAY_INCLUDES_ALL([2,3,(SELECT t.ele)], [t.ele]) FROM T as t ORDER BY t.ele;
+--
+ARRAY<STRUCT<BOOL>>[known order:{true}, {true}, {true}]
+==
+[name=array_includes_all_with_subquery_in_target]
+SELECT ARRAY_INCLUDES_ALL([2,3,4], [(SELECT t.ele)]) FROM T as t ORDER BY t.ele;
+--
+ARRAY<STRUCT<BOOL>>[known order:{false}, {true}, {true}]

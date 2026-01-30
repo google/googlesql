@@ -4,12 +4,12 @@
 
 # Collation
 
-ZetaSQL supports collation. Collation
+GoogleSQL supports collation. Collation
 defines rules to sort and compare strings in certain
 [operations][collate-operations], such as conditional expressions, joins, and
 groupings.
 
-By default, ZetaSQL sorts strings case-sensitively. This means that `a` and
+By default, GoogleSQL sorts strings case-sensitively. This means that `a` and
 `A` are treated as different letters, and `Z` would come before `a`.
 
 **Example default sorting:** Apple, Zebra, apple
@@ -59,14 +59,14 @@ query, this is known as _propagation_. During propagation:
 + All inputs with a non-empty explicitly defined collation specification must
   have the same type of collation specification, otherwise an error is thrown.
 
-ZetaSQL has several [functions][functions-propagation],
+GoogleSQL has several [functions][functions-propagation],
 [operators][operators-propagation], and [expressions][expressions-propagation]
 that can propagate collation.
 
 In the following example, the `'und:ci'` collation specification is propagated
 from the `character` column to the `ORDER BY` operation.
 
-```zetasql
+```googlesql
 -- With collation
 SELECT *
 FROM UNNEST([
@@ -85,7 +85,7 @@ ORDER BY character
  +-----------*/
 ```
 
-```zetasql
+```googlesql
 -- Without collation
 SELECT *
 FROM UNNEST([
@@ -219,14 +219,14 @@ In summary:
 
 You can define a default collation specification for a schema. For example:
 
-```zetasql
+```googlesql
 CREATE SCHEMA (...)
 DEFAULT COLLATE 'und:ci'
 ```
 
 You can define a default collation specification for a table. For example:
 
-```zetasql
+```googlesql
 CREATE TABLE (...)
 DEFAULT COLLATE 'und:ci'
 ```
@@ -234,7 +234,7 @@ DEFAULT COLLATE 'und:ci'
 You can define a collation specification for a collation-supported column.
 For example:
 
-```zetasql
+```googlesql
 CREATE TABLE (
   case_insensitive_column STRING COLLATE 'und:ci'
 )
@@ -243,7 +243,7 @@ CREATE TABLE (
 You can specify a collation specification for a collation-supported expression
 with the `COLLATE` function. For example:
 
-```zetasql
+```googlesql
 SELECT COLLATE('a', 'und:ci') AS character
 ```
 
@@ -253,7 +253,7 @@ collation specifications set previously.
 
 For example:
 
-```zetasql
+```googlesql
 SELECT Place
 FROM Locations
 ORDER BY Place COLLATE "und:ci"
@@ -392,7 +392,7 @@ collation-supported types. In a collation-supported operation:
 
 For example:
 
-```zetasql
+```googlesql
 -- Assume there's a table with this column declaration:
 CREATE TABLE table_a
 (
@@ -465,7 +465,7 @@ collation:
 ### Binary collation specification 
 <a id="binary_collation"></a>
 
-```zetasql
+```googlesql
 collation_specification:
   'language_tag'
 ```
@@ -480,7 +480,7 @@ The allowed value for the `language_tag` is `binary`.
 This is what the `binary` language tag looks like when used with the `ORDER BY`
 clause:
 
-```zetasql
+```googlesql
 SELECT Place
 FROM Locations
 ORDER BY Place COLLATE 'binary'
@@ -489,7 +489,7 @@ ORDER BY Place COLLATE 'binary'
 ### Unicode collation specification 
 <a id="unicode_collation"></a>
 
-```zetasql
+```googlesql
 collation_specification:
   'language_tag[:collation_attribute]'
 ```
@@ -544,14 +544,14 @@ caveats apply:
 This is what the `ci` collation attribute looks like when used with the
 `und` language tag in the `COLLATE` function:
 
-```zetasql
+```googlesql
 COLLATE('orange1', 'und:ci')
 ```
 
 This is what the `ci` collation attribute looks like when used with the
 `und` language tag in the `ORDER BY` clause:
 
-```zetasql
+```googlesql
 SELECT Place
 FROM Locations
 ORDER BY Place COLLATE 'und:ci'
@@ -561,7 +561,7 @@ ORDER BY Place COLLATE 'und:ci'
 <a id="collation_extensions"></a>
 
 The [Unicode Collation Algorithm][tr10-collation-algorithm] standard
-includes some useful locale extensions. In ZetaSQL, a `language_tag`
+includes some useful locale extensions. In GoogleSQL, a `language_tag`
 may be extended by appending `-u-[extension]` to it and replacing `[extension]`
 with your desired [Unicode local extension][tr35-collation-settings].
 
@@ -570,7 +570,7 @@ This is what the `kn-true` extension looks like when used with the
 
 For example:
 
-```zetasql
+```googlesql
 SELECT *
 FROM UNNEST([
   'a12b',
@@ -586,7 +586,7 @@ ORDER BY ids COLLATE 'en-us-u-kn-true'
  +-------*/
 ```
 
-```zetasql
+```googlesql
 SELECT *
 FROM UNNEST([
   'a12b',
@@ -658,7 +658,7 @@ For a complete list and in depth technical details, consult
   and without them are sorted identically. For example, the format control
   code point `U+2060` is ignored when the following strings are sorted:
 
-  ```zetasql
+  ```googlesql
   SELECT *
   FROM UNNEST([
     COLLATE('oran\u2060ge1', 'und:ci'),
@@ -687,7 +687,7 @@ sections, but here are a few general limitations to keep in mind:
 
 + Table functions can't take table arguments with collated columns.
 
-  ```zetasql
+  ```googlesql
   CREATE TABLE FUNCTION my_dataset.my_tvf(x TABLE<col_str STRING>) AS (
     SELECT col_str FROM x
   );
@@ -742,9 +742,9 @@ sections, but here are a few general limitations to keep in mind:
 
 [limitations]: #limitations
 
-[order-by-clause]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#order_by_clause
+[order-by-clause]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#order_by_clause
 
-[collate-clause]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#collate_clause
+[collate-clause]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#collate_clause
 
 [create-schema]: #create_schema_statement
 [create-table]: #create_table_statement
@@ -753,167 +753,167 @@ sections, but here are a few general limitations to keep in mind:
 [alter-column]: #alter_column_set_data_type_statement
 [add-column]: #alter_table_add_column_statement
 
-[string-dt]: https://github.com/google/zetasql/blob/master/docs/data-types.md#string_type
+[string-dt]: https://github.com/google/googlesql/blob/master/docs/data-types.md#string_type
 
-[struct-dt]: https://github.com/google/zetasql/blob/master/docs/data-types.md#struct_type
+[struct-dt]: https://github.com/google/googlesql/blob/master/docs/data-types.md#struct_type
 
-[array-dt]: https://github.com/google/zetasql/blob/master/docs/data-types.md#array_type
+[array-dt]: https://github.com/google/googlesql/blob/master/docs/data-types.md#array_type
 
-[join-types]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#join_types
+[join-types]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#join_types
 
-[group-by-clause]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#group_by_clause
+[group-by-clause]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#group_by_clause
 
-[window-clause]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#window_clause
+[window-clause]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#window_clause
 
-[set-operators]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#set_operators
+[set-operators]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#set_operators
 
-[unnest-operator]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#unnest_operator
+[unnest-operator]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#unnest_operator
 
-[aead_decrypt_string]: https://github.com/google/zetasql/blob/master/docs/aead_encryption_functions.md.md#aeaddecrypt_string
+[aead_decrypt_string]: https://github.com/google/googlesql/blob/master/docs/aead_encryption_functions.md.md#aeaddecrypt_string
 
-[any-value]: https://github.com/google/zetasql/blob/master/docs/aggregate_functions.md#any_value
+[any-value]: https://github.com/google/googlesql/blob/master/docs/aggregate_functions.md#any_value
 
-[approx-top-count]: https://github.com/google/zetasql/blob/master/docs/approximate_aggregate_functions.md#approx_top_count
+[approx-top-count]: https://github.com/google/googlesql/blob/master/docs/approximate_aggregate_functions.md#approx_top_count
 
-[array-agg]: https://github.com/google/zetasql/blob/master/docs/aggregate_functions.md#array_agg
+[array-agg]: https://github.com/google/googlesql/blob/master/docs/aggregate_functions.md#array_agg
 
-[array-to-string]: https://github.com/google/zetasql/blob/master/docs/array_functions.md#array_to_string
+[array-to-string]: https://github.com/google/googlesql/blob/master/docs/array_functions.md#array_to_string
 
-[array-slice]: https://github.com/google/zetasql/blob/master/docs/array_functions.md#array_slice
+[array-slice]: https://github.com/google/googlesql/blob/master/docs/array_functions.md#array_slice
 
-[array-first]: https://github.com/google/zetasql/blob/master/docs/array_functions.md#array_first
+[array-first]: https://github.com/google/googlesql/blob/master/docs/array_functions.md#array_first
 
-[array-last]: https://github.com/google/zetasql/blob/master/docs/array_functions.md#array_last
+[array-last]: https://github.com/google/googlesql/blob/master/docs/array_functions.md#array_last
 
-[cast]: https://github.com/google/zetasql/blob/master/docs/conversion_functions.md
+[cast]: https://github.com/google/googlesql/blob/master/docs/conversion_functions.md
 
-[collate]: https://github.com/google/zetasql/blob/master/docs/string_functions.md#collate
+[collate]: https://github.com/google/googlesql/blob/master/docs/string_functions.md#collate
 
-[concat]: https://github.com/google/zetasql/blob/master/docs/string_functions.md#concat
+[concat]: https://github.com/google/googlesql/blob/master/docs/string_functions.md#concat
 
-[count]: https://github.com/google/zetasql/blob/master/docs/aggregate_functions.md#count
+[count]: https://github.com/google/googlesql/blob/master/docs/aggregate_functions.md#count
 
-[ends-with]: https://github.com/google/zetasql/blob/master/docs/string_functions.md#ends_with
+[ends-with]: https://github.com/google/googlesql/blob/master/docs/string_functions.md#ends_with
 
-[format-func]: https://github.com/google/zetasql/blob/master/docs/string_functions.md#format_string
+[format-func]: https://github.com/google/googlesql/blob/master/docs/string_functions.md#format_string
 
-[format-date]: https://github.com/google/zetasql/blob/master/docs/date_functions.md#format_date
+[format-date]: https://github.com/google/googlesql/blob/master/docs/date_functions.md#format_date
 
-[format-datetime]: https://github.com/google/zetasql/blob/master/docs/datetime_functions.md#format_datetime
+[format-datetime]: https://github.com/google/googlesql/blob/master/docs/datetime_functions.md#format_datetime
 
-[format-time]: https://github.com/google/zetasql/blob/master/docs/time_functions.md#format_time
+[format-time]: https://github.com/google/googlesql/blob/master/docs/time_functions.md#format_time
 
-[format-timestamp]: https://github.com/google/zetasql/blob/master/docs/timestamp_functions.md#format_timestamp
+[format-timestamp]: https://github.com/google/googlesql/blob/master/docs/timestamp_functions.md#format_timestamp
 
-[from-proto]: https://github.com/google/zetasql/blob/master/docs/protocol_buffer_functions.md#from_proto
+[from-proto]: https://github.com/google/googlesql/blob/master/docs/protocol_buffer_functions.md#from_proto
 
-[greatest]: https://github.com/google/zetasql/blob/master/docs/mathematical_functions.md#greatest
+[greatest]: https://github.com/google/googlesql/blob/master/docs/mathematical_functions.md#greatest
 
-[initcap]: https://github.com/google/zetasql/blob/master/docs/string_functions.md#initcap
+[initcap]: https://github.com/google/googlesql/blob/master/docs/string_functions.md#initcap
 
-[instr]: https://github.com/google/zetasql/blob/master/docs/string_functions.md#instr
+[instr]: https://github.com/google/googlesql/blob/master/docs/string_functions.md#instr
 
-[json-extract]: https://github.com/google/zetasql/blob/master/docs/json_functions.md#json_extract
+[json-extract]: https://github.com/google/googlesql/blob/master/docs/json_functions.md#json_extract
 
-[json-extract-array]: https://github.com/google/zetasql/blob/master/docs/json_functions.md#json_extract_array
+[json-extract-array]: https://github.com/google/googlesql/blob/master/docs/json_functions.md#json_extract_array
 
-[json-extract-scalar]: https://github.com/google/zetasql/blob/master/docs/json_functions.md#json_extract_scalar
+[json-extract-scalar]: https://github.com/google/googlesql/blob/master/docs/json_functions.md#json_extract_scalar
 
-[json-extract-string-array]: https://github.com/google/zetasql/blob/master/docs/json_functions.md#json_extract_string_array
+[json-extract-string-array]: https://github.com/google/googlesql/blob/master/docs/json_functions.md#json_extract_string_array
 
-[json-query]: https://github.com/google/zetasql/blob/master/docs/json_functions.md#json_query
+[json-query]: https://github.com/google/googlesql/blob/master/docs/json_functions.md#json_query
 
-[json-query-array]: https://github.com/google/zetasql/blob/master/docs/json_functions.md#json_query_array
+[json-query-array]: https://github.com/google/googlesql/blob/master/docs/json_functions.md#json_query_array
 
-[json-value]: https://github.com/google/zetasql/blob/master/docs/json_functions.md#json_value
+[json-value]: https://github.com/google/googlesql/blob/master/docs/json_functions.md#json_value
 
-[json-value-array]: https://github.com/google/zetasql/blob/master/docs/json_functions.md#json_value_array
+[json-value-array]: https://github.com/google/googlesql/blob/master/docs/json_functions.md#json_value_array
 
-[lag]: https://github.com/google/zetasql/blob/master/docs/navigation_functions.md#lag
+[lag]: https://github.com/google/googlesql/blob/master/docs/navigation_functions.md#lag
 
-[lead]: https://github.com/google/zetasql/blob/master/docs/navigation_functions.md#lead
+[lead]: https://github.com/google/googlesql/blob/master/docs/navigation_functions.md#lead
 
-[least]: https://github.com/google/zetasql/blob/master/docs/mathematical_functions.md#least
+[least]: https://github.com/google/googlesql/blob/master/docs/mathematical_functions.md#least
 
-[left]: https://github.com/google/zetasql/blob/master/docs/string_functions.md#left
+[left]: https://github.com/google/googlesql/blob/master/docs/string_functions.md#left
 
-[lower]: https://github.com/google/zetasql/blob/master/docs/string_functions.md#lower
+[lower]: https://github.com/google/googlesql/blob/master/docs/string_functions.md#lower
 
-[lpad]: https://github.com/google/zetasql/blob/master/docs/string_functions.md#lpad
+[lpad]: https://github.com/google/googlesql/blob/master/docs/string_functions.md#lpad
 
-[max]: https://github.com/google/zetasql/blob/master/docs/aggregate_functions.md#max
+[max]: https://github.com/google/googlesql/blob/master/docs/aggregate_functions.md#max
 
-[min]: https://github.com/google/zetasql/blob/master/docs/aggregate_functions.md#min
+[min]: https://github.com/google/googlesql/blob/master/docs/aggregate_functions.md#min
 
-[nethost]: https://github.com/google/zetasql/blob/master/docs/net_functions.md#nethost
+[nethost]: https://github.com/google/googlesql/blob/master/docs/net_functions.md#nethost
 
-[netmake-net]: https://github.com/google/zetasql/blob/master/docs/net_functions.md#netmake_net
+[netmake-net]: https://github.com/google/googlesql/blob/master/docs/net_functions.md#netmake_net
 
-[netpublic-suffix]: https://github.com/google/zetasql/blob/master/docs/net_functions.md#netpublic_suffix
+[netpublic-suffix]: https://github.com/google/googlesql/blob/master/docs/net_functions.md#netpublic_suffix
 
-[netreg-domain]: https://github.com/google/zetasql/blob/master/docs/net_functions.md#netreg_domain
+[netreg-domain]: https://github.com/google/googlesql/blob/master/docs/net_functions.md#netreg_domain
 
-[nth-value]: https://github.com/google/zetasql/blob/master/docs/navigation_functions.md#nth_value
+[nth-value]: https://github.com/google/googlesql/blob/master/docs/navigation_functions.md#nth_value
 
-[normalize]: https://github.com/google/zetasql/blob/master/docs/string_functions.md#normalize
+[normalize]: https://github.com/google/googlesql/blob/master/docs/string_functions.md#normalize
 
-[normalize-and-casefold]: https://github.com/google/zetasql/blob/master/docs/string_functions.md#normalize_and_casefold
+[normalize-and-casefold]: https://github.com/google/googlesql/blob/master/docs/string_functions.md#normalize_and_casefold
 
-[nulliferror]: https://github.com/google/zetasql/blob/master/docs/debugging_functions.md#nulliferror
+[nulliferror]: https://github.com/google/googlesql/blob/master/docs/debugging_functions.md#nulliferror
 
-[proto-default-if-null]: https://github.com/google/zetasql/blob/master/docs/protocol_buffer_functions.md#proto_default_if_null
+[proto-default-if-null]: https://github.com/google/googlesql/blob/master/docs/protocol_buffer_functions.md#proto_default_if_null
 
-[repeat]: https://github.com/google/zetasql/blob/master/docs/string_functions.md#repeat
+[repeat]: https://github.com/google/googlesql/blob/master/docs/string_functions.md#repeat
 
-[replace]: https://github.com/google/zetasql/blob/master/docs/string_functions.md#replace
+[replace]: https://github.com/google/googlesql/blob/master/docs/string_functions.md#replace
 
-[reverse]: https://github.com/google/zetasql/blob/master/docs/string_functions.md#reverse
+[reverse]: https://github.com/google/googlesql/blob/master/docs/string_functions.md#reverse
 
-[right]: https://github.com/google/zetasql/blob/master/docs/string_functions.md#right
+[right]: https://github.com/google/googlesql/blob/master/docs/string_functions.md#right
 
-[rpad]: https://github.com/google/zetasql/blob/master/docs/string_functions.md#rpad
+[rpad]: https://github.com/google/googlesql/blob/master/docs/string_functions.md#rpad
 
-[soundex]: https://github.com/google/zetasql/blob/master/docs/string_functions.md#soundex
+[soundex]: https://github.com/google/googlesql/blob/master/docs/string_functions.md#soundex
 
-[split]: https://github.com/google/zetasql/blob/master/docs/string_functions.md#split
+[split]: https://github.com/google/googlesql/blob/master/docs/string_functions.md#split
 
-[starts-with]: https://github.com/google/zetasql/blob/master/docs/string_functions.md#starts_with
+[starts-with]: https://github.com/google/googlesql/blob/master/docs/string_functions.md#starts_with
 
-[string-func]: https://github.com/google/zetasql/blob/master/docs/conversion_functions.md#other_conv_functions
+[string-func]: https://github.com/google/googlesql/blob/master/docs/conversion_functions.md#other_conv_functions
 
-[string-agg]: https://github.com/google/zetasql/blob/master/docs/aggregate_functions.md#string_agg
+[string-agg]: https://github.com/google/googlesql/blob/master/docs/aggregate_functions.md#string_agg
 
-[strpos]: https://github.com/google/zetasql/blob/master/docs/string_functions.md#strpos
+[strpos]: https://github.com/google/googlesql/blob/master/docs/string_functions.md#strpos
 
-[substr]: https://github.com/google/zetasql/blob/master/docs/string_functions.md#substr
+[substr]: https://github.com/google/googlesql/blob/master/docs/string_functions.md#substr
 
-[upper]: https://github.com/google/zetasql/blob/master/docs/string_functions.md#upper
+[upper]: https://github.com/google/googlesql/blob/master/docs/string_functions.md#upper
 
-[comparison-op]: https://github.com/google/zetasql/blob/master/docs/operators.md#comparison_operators
+[comparison-op]: https://github.com/google/googlesql/blob/master/docs/operators.md#comparison_operators
 
-[in-op]: https://github.com/google/zetasql/blob/master/docs/operators.md#in_operators
+[in-op]: https://github.com/google/googlesql/blob/master/docs/operators.md#in_operators
 
-[like-op]: https://github.com/google/zetasql/blob/master/docs/operators.md#like_operator
+[like-op]: https://github.com/google/googlesql/blob/master/docs/operators.md#like_operator
 
-[q-like-op]: https://github.com/google/zetasql/blob/master/docs/operators.md#like_operator_quantified
+[q-like-op]: https://github.com/google/googlesql/blob/master/docs/operators.md#like_operator_quantified
 
-[concat-op]: https://github.com/google/zetasql/blob/master/docs/operators.md#concatenation_operator
+[concat-op]: https://github.com/google/googlesql/blob/master/docs/operators.md#concatenation_operator
 
-[field-access-operator]: https://github.com/google/zetasql/blob/master/docs/operators.md#field_access_operator
+[field-access-operator]: https://github.com/google/googlesql/blob/master/docs/operators.md#field_access_operator
 
-[array-subscript-operator]: https://github.com/google/zetasql/blob/master/docs/operators.md#array_subscript_operator
+[array-subscript-operator]: https://github.com/google/googlesql/blob/master/docs/operators.md#array_subscript_operator
 
-[case]: https://github.com/google/zetasql/blob/master/docs/conditional_expressions.md#case
+[case]: https://github.com/google/googlesql/blob/master/docs/conditional_expressions.md#case
 
-[case-expr]: https://github.com/google/zetasql/blob/master/docs/conditional_expressions.md#case_expr
+[case-expr]: https://github.com/google/googlesql/blob/master/docs/conditional_expressions.md#case_expr
 
-[coalesce]: https://github.com/google/zetasql/blob/master/docs/conditional_expressions.md#coalesce
+[coalesce]: https://github.com/google/googlesql/blob/master/docs/conditional_expressions.md#coalesce
 
-[if]: https://github.com/google/zetasql/blob/master/docs/conditional_expressions.md#if
+[if]: https://github.com/google/googlesql/blob/master/docs/conditional_expressions.md#if
 
-[ifnull]: https://github.com/google/zetasql/blob/master/docs/conditional_expressions.md#ifnull
+[ifnull]: https://github.com/google/googlesql/blob/master/docs/conditional_expressions.md#ifnull
 
-[nullif]: https://github.com/google/zetasql/blob/master/docs/conditional_expressions.md#nullif
+[nullif]: https://github.com/google/googlesql/blob/master/docs/conditional_expressions.md#nullif
 
 <!-- mdlint on -->
 

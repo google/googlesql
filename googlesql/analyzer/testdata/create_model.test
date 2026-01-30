@@ -1,0 +1,1373 @@
+# NOTE: CREATE MODEL tests are derived from those for CREATE TABLE AS SELECT and
+# CREATE VIEW tests.
+[default language_features=NONE,+CREATE_MODEL_WITH_ALIASED_QUERY_LIST,+REMOTE_MODEL,+REMOTE_FUNCTION]
+
+[language_features=NONE,{{+REMOTE_MODEL,|+CREATE_MODEL_WITH_ALIASED_QUERY_LIST,|}}+REMOTE_FUNCTION]
+# Bare statement
+create model t1
+--
+ALTERNATION GROUP: +REMOTE_MODEL,
+--
+CreateModelStmt(name_path=t1)
+--
+ALTERNATION GROUP: +CREATE_MODEL_WITH_ALIASED_QUERY_LIST,
+--
+ERROR: Either the AS SELECT clause or AS aliased query list is required for CREATE MODEL [at 2:1]
+create model t1
+^
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: The AS SELECT clause is required for CREATE MODEL [at 2:1]
+create model t1
+^
+==
+
+[language_features=NONE,{{+REMOTE_MODEL,|}}+REMOTE_FUNCTION]
+create model t1 input (i1 INT64, i2 FLOAT64) output (o1 BOOL)
+--
+ALTERNATION GROUP: +REMOTE_MODEL,
+--
+CreateModelStmt
++-name_path=t1
++-input_column_definition_list=
+| +-ColumnDefinition(name="i1", type=INT64, column=t1.i1#1)
+| +-ColumnDefinition(name="i2", type=DOUBLE, column=t1.i2#2)
++-output_column_definition_list=
+  +-ColumnDefinition(name="o1", type=BOOL, column=t1.o1#3)
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: INPUT and OUTPUT clause is not supported [at 1:17]
+create model t1 input (i1 INT64, i2 FLOAT64) output (o1 BOOL)
+                ^
+==
+
+[language_features=NONE,{{+REMOTE_MODEL,|}}+REMOTE_FUNCTION]
+create model t1 input (i1 INT64, i2 FLOAT64) output (o1 BOOL)
+transform (a + b as t)
+--
+
+ALTERNATION GROUP: +REMOTE_MODEL,
+
+--
+ERROR: The TRANSFORM clause cannot be used without AS SELECT clause [at 2:1]
+transform (a + b as t)
+^
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: INPUT and OUTPUT clause is not supported [at 1:17]
+create model t1 input (i1 INT64, i2 FLOAT64) output (o1 BOOL)
+                ^
+==
+
+[language_features=NONE,{{+REMOTE_MODEL,|}}+REMOTE_FUNCTION]
+create model t1 transform (a + b as t)
+--
+ALTERNATION GROUP: +REMOTE_MODEL,
+--
+ERROR: The TRANSFORM clause cannot be used without AS SELECT clause [at 1:17]
+create model t1 transform (a + b as t)
+                ^
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: The AS SELECT clause is required for CREATE MODEL [at 1:1]
+create model t1 transform (a + b as t)
+^
+==
+
+create model m
+transform (a + b as t)
+--
+ERROR: The TRANSFORM clause cannot be used without AS SELECT clause [at 2:1]
+transform (a + b as t)
+^
+==
+
+create model m
+transform (a + b as t)
+as (d as (select 1 a))
+--
+ERROR: The TRANSFORM clause cannot be used with aliased query list [at 2:1]
+transform (a + b as t)
+^
+==
+
+[language_features=NONE,{{+REMOTE_MODEL,|}}+REMOTE_FUNCTION]
+create model t1 remote
+--
+ALTERNATION GROUP: +REMOTE_MODEL,
+--
+CreateModelStmt(name_path=t1, is_remote=TRUE)
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: REMOTE is not supported [at 1:1]
+create model t1 remote
+^
+==
+
+[language_features=NONE,{{+REMOTE_MODEL,|}}+REMOTE_FUNCTION]
+create model t1 with connection connection1 as select 1 a
+--
+ALTERNATION GROUP: +REMOTE_MODEL,
+--
+ERROR: WITH CONNECTION clause can be specified only for remote models [at 1:17]
+create model t1 with connection connection1 as select 1 a
+                ^
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: WITH CONNECTION is not supported [at 1:17]
+create model t1 with connection connection1 as select 1 a
+                ^
+==
+
+[language_features=NONE,{{+REMOTE_MODEL,|}}+REMOTE_FUNCTION]
+create model t1 remote with connection connection1
+--
+ALTERNATION GROUP: +REMOTE_MODEL,
+--
+CreateModelStmt
++-name_path=t1
++-is_remote=TRUE
++-connection=
+  +-Connection(connection=connection1)
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: REMOTE is not supported [at 1:1]
+create model t1 remote with connection connection1
+^
+==
+
+[language_features=NONE,{{+REMOTE_MODEL,|}}+REMOTE_FUNCTION]
+create model t1 options (abc = def)
+--
+ALTERNATION GROUP: +REMOTE_MODEL,
+--
+CreateModelStmt
++-name_path=t1
++-option_list=
+  +-abc := Literal(type=STRING, value="def")
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: The AS SELECT clause is required for CREATE MODEL [at 1:1]
+create model t1 options (abc = def)
+^
+==
+
+create model tt
+as select 1 a
+--
+CreateModelStmt
++-name_path=tt
++-output_column_list=
+| +-$create_as.a#1 AS a [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$create_as.a#1]
+    +-expr_list=
+    | +-a#1 := Literal(type=INT64, value=1)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+create model tt
+input (a INT64) output (b BOOL)
+as select 1 a, TRUE b
+--
+ERROR: The AS SELECT clause cannot be used with INPUT and OUTPUT [at 3:4]
+as select 1 a, TRUE b
+   ^
+==
+
+create model tt
+input (a INT64) output (b BOOL)
+as (training_data as (select 1 a, TRUE b))
+--
+ERROR: The aliased query cannot be used with INPUT and OUTPUT [at 3:5]
+as (training_data as (select 1 a, TRUE b))
+    ^
+==
+
+create model tt
+transform (a + b as t)
+remote
+--
+ERROR: The TRANSFORM clause cannot be used with REMOTE [at 2:1]
+transform (a + b as t)
+^
+==
+
+create model tt
+input (a INT64) output (b BOOL)
+remote
+as select 1 a, TRUE b
+--
+ERROR: The AS SELECT clause cannot be used with INPUT and OUTPUT [at 4:4]
+as select 1 a, TRUE b
+   ^
+==
+
+create model tt
+remote
+as select 1 a
+--
+CreateModelStmt
++-name_path=tt
++-output_column_list=
+| +-$create_as.a#1 AS a [INT64]
++-query=
+| +-ProjectScan
+|   +-column_list=[$create_as.a#1]
+|   +-expr_list=
+|   | +-a#1 := Literal(type=INT64, value=1)
+|   +-input_scan=
+|     +-SingleRowScan
++-is_remote=TRUE
+==
+
+create model tt
+remote
+as (training_data as (select 1 a))
+--
+ERROR: The aliased query cannot be used with REMOTE [at 3:5]
+as (training_data as (select 1 a))
+    ^
+==
+
+# The two columns from SELECT statement reference the same column. b/140028539
+create model tt
+as select key as a, key as b from KeyValue
+--
+CreateModelStmt
++-name_path=tt
++-output_column_list=
+| +-KeyValue.Key#1 AS a [INT64]
+| +-KeyValue.Key#1 AS b [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=KeyValue.[Key#1, Key#1]
+    +-input_scan=
+      +-TableScan(column_list=[KeyValue.Key#1], table=KeyValue, column_index_list=[0])
+==
+
+create temp model MyModel as select * from KeyValue
+--
+
+CreateModelStmt
++-name_path=MyModel
++-create_scope=CREATE_TEMP
++-output_column_list=
+| +-KeyValue.Key#1 AS Key [INT64]
+| +-KeyValue.Value#2 AS Value [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=KeyValue.[Key#1, Value#2]
+    +-input_scan=
+      +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+==
+
+create temp model MyModel as select * from KeyValue
+--
+CreateModelStmt
++-name_path=MyModel
++-create_scope=CREATE_TEMP
++-output_column_list=
+| +-KeyValue.Key#1 AS Key [INT64]
+| +-KeyValue.Value#2 AS Value [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=KeyValue.[Key#1, Value#2]
+    +-input_scan=
+      +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+==
+
+[statement_context={{|module}}]
+create {{public|private}} model MyModel as select * from KeyValue
+--
+ALTERNATION GROUP: public
+--
+ERROR: CREATE MODEL with PUBLIC or PRIVATE modifiers is not supported [at 1:1]
+create public model MyModel as select * from KeyValue
+^
+--
+ALTERNATION GROUP: private
+--
+ERROR: CREATE MODEL with PUBLIC or PRIVATE modifiers is not supported [at 1:1]
+create private model MyModel as select * from KeyValue
+^
+--
+ALTERNATION GROUP: module,public
+--
+ERROR: Statement not supported inside modules: CreateModelStatement [at 1:1]
+create public model MyModel as select * from KeyValue
+^
+--
+ALTERNATION GROUP: module,private
+--
+ERROR: Statement not supported inside modules: CreateModelStatement [at 1:1]
+create private model MyModel as select * from KeyValue
+^
+==
+
+create temporary model X
+options(x=5, y='abc', z=@test_param_array, z=abc,
+        sum=1+2, func=concat('abc', @test_param_string))
+as
+select key, key k1, key k2, key+1 k3 from keYvalue limit 5
+--
+CreateModelStmt
++-name_path=X
++-create_scope=CREATE_TEMP
++-option_list=
+| +-x := Literal(type=INT64, value=5)
+| +-y := Literal(type=STRING, value="abc")
+| +-z := Parameter(type=ARRAY<INT32>, name="test_param_array")
+| +-z := Literal(type=STRING, value="abc")
+| +-sum :=
+| | +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+| |   +-Literal(type=INT64, value=1)
+| |   +-Literal(type=INT64, value=2)
+| +-func :=
+|   +-FunctionCall(GoogleSQL:concat(STRING, repeated(1) STRING) -> STRING)
+|     +-Literal(type=STRING, value="abc")
+|     +-Parameter(type=STRING, name="test_param_string")
++-output_column_list=
+| +-KeyValue.Key#1 AS key [INT64]
+| +-KeyValue.Key#1 AS k1 [INT64]
+| +-KeyValue.Key#1 AS k2 [INT64]
+| +-$create_as.k3#3 AS k3 [INT64]
++-query=
+  +-LimitOffsetScan
+    +-column_list=[KeyValue.Key#1, KeyValue.Key#1, KeyValue.Key#1, $create_as.k3#3]
+    +-input_scan=
+    | +-ProjectScan
+    |   +-column_list=[KeyValue.Key#1, KeyValue.Key#1, KeyValue.Key#1, $create_as.k3#3]
+    |   +-expr_list=
+    |   | +-k3#3 :=
+    |   |   +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |   |     +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+    |   |     +-Literal(type=INT64, value=1)
+    |   +-input_scan=
+    |     +-TableScan(column_list=[KeyValue.Key#1], table=KeyValue, column_index_list=[0])
+    +-limit=
+      +-Literal(type=INT64, value=5)
+==
+
+create model Z
+transform (c as A, c+B as d, *)
+options ()
+as select 1 c, 2 b;
+--
+CreateModelStmt
++-name_path=Z
++-output_column_list=
+| +-$create_as.c#1 AS c [INT64]
+| +-$create_as.b#2 AS b [INT64]
++-query=
+| +-ProjectScan
+|   +-column_list=$create_as.[c#1, b#2]
+|   +-expr_list=
+|   | +-c#1 := Literal(type=INT64, value=1)
+|   | +-b#2 := Literal(type=INT64, value=2)
+|   +-input_scan=
+|     +-SingleRowScan
++-transform_input_column_list=
+| +-ColumnDefinition(name="c", type=INT64, column=Z.c#3)
+| +-ColumnDefinition(name="b", type=INT64, column=Z.b#4)
++-transform_list=
+| +-A#6 := ColumnRef(type=INT64, column=Z.c#3)
+| +-d#5 :=
+| | +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+| |   +-ColumnRef(type=INT64, column=Z.c#3)
+| |   +-ColumnRef(type=INT64, column=Z.b#4)
+| +-c#7 := ColumnRef(type=INT64, column=Z.c#3)
+| +-b#8 := ColumnRef(type=INT64, column=Z.b#4)
++-transform_output_column_list=
+  +-Z.A#6 AS A [INT64]
+  +-$dummy_table.d#5 AS d [INT64]
+  +-Z.c#7 AS c [INT64]
+  +-Z.b#8 AS b [INT64]
+==
+
+create model Z
+transform (c as A, c+B as d, *)
+remote
+as select 1 c, 2 b;
+--
+ERROR: The TRANSFORM clause cannot be used with REMOTE [at 2:1]
+transform (c as A, c+B as d, *)
+^
+==
+
+[language_features=NONE,+ANALYTIC_FUNCTIONS]
+create model Z
+transform (row_number() over() as A, max(c+B) over() as d, sum(b) over() + max(c) over() + 1 as e, *)
+options ()
+as select 1 c, 2 b;
+--
+CreateModelStmt
++-name_path=Z
++-output_column_list=
+| +-$create_as.c#1 AS c [INT64]
+| +-$create_as.b#2 AS b [INT64]
++-query=
+| +-ProjectScan
+|   +-column_list=$create_as.[c#1, b#2]
+|   +-expr_list=
+|   | +-c#1 := Literal(type=INT64, value=1)
+|   | +-b#2 := Literal(type=INT64, value=2)
+|   +-input_scan=
+|     +-SingleRowScan
++-transform_input_column_list=
+| +-ColumnDefinition(name="c", type=INT64, column=Z.c#3)
+| +-ColumnDefinition(name="b", type=INT64, column=Z.b#4)
++-transform_list=
+| +-A#10 := ColumnRef(type=INT64, column=$analytic.A#5)
+| +-d#11 := ColumnRef(type=INT64, column=$analytic.d#6)
+| +-e#9 :=
+| | +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+| |   +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+| |   | +-ColumnRef(type=INT64, column=$analytic.$analytic3#7)
+| |   | +-ColumnRef(type=INT64, column=$analytic.$analytic4#8)
+| |   +-Literal(type=INT64, value=1)
+| +-c#12 := ColumnRef(type=INT64, column=Z.c#3)
+| +-b#13 := ColumnRef(type=INT64, column=Z.b#4)
++-transform_output_column_list=
+| +-$analytic.A#10 AS A [INT64]
+| +-$analytic.d#11 AS d [INT64]
+| +-$dummy_table.e#9 AS e [INT64]
+| +-Z.c#12 AS c [INT64]
+| +-Z.b#13 AS b [INT64]
++-transform_analytic_function_group_list=
+  +-AnalyticFunctionGroup
+    +-analytic_function_list=
+      +-A#5 := AnalyticFunctionCall(GoogleSQL:row_number() -> INT64)
+      +-d#6 :=
+      | +-AnalyticFunctionCall(GoogleSQL:max(INT64) -> INT64)
+      |   +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+      |   | +-ColumnRef(type=INT64, column=Z.c#3)
+      |   | +-ColumnRef(type=INT64, column=Z.b#4)
+      |   +-window_frame=
+      |     +-WindowFrame(frame_unit=ROWS)
+      |       +-start_expr=
+      |       | +-WindowFrameExpr(boundary_type=UNBOUNDED PRECEDING)
+      |       +-end_expr=
+      |         +-WindowFrameExpr(boundary_type=UNBOUNDED FOLLOWING)
+      +-$analytic3#7 :=
+      | +-AnalyticFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+      |   +-ColumnRef(type=INT64, column=Z.b#4)
+      |   +-window_frame=
+      |     +-WindowFrame(frame_unit=ROWS)
+      |       +-start_expr=
+      |       | +-WindowFrameExpr(boundary_type=UNBOUNDED PRECEDING)
+      |       +-end_expr=
+      |         +-WindowFrameExpr(boundary_type=UNBOUNDED FOLLOWING)
+      +-$analytic4#8 :=
+        +-AnalyticFunctionCall(GoogleSQL:max(INT64) -> INT64)
+          +-ColumnRef(type=INT64, column=Z.c#3)
+          +-window_frame=
+            +-WindowFrame(frame_unit=ROWS)
+              +-start_expr=
+              | +-WindowFrameExpr(boundary_type=UNBOUNDED PRECEDING)
+              +-end_expr=
+                +-WindowFrameExpr(boundary_type=UNBOUNDED FOLLOWING)
+==
+
+create model Z
+options ()
+as select 1 c, 2 b;
+--
+CreateModelStmt
++-name_path=Z
++-output_column_list=
+| +-$create_as.c#1 AS c [INT64]
+| +-$create_as.b#2 AS b [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=$create_as.[c#1, b#2]
+    +-expr_list=
+    | +-c#1 := Literal(type=INT64, value=1)
+    | +-b#2 := Literal(type=INT64, value=2)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+create model Z
+transform (c, 1 AS d)
+options ()
+as select 1 c, 2 b;
+--
+CreateModelStmt
++-name_path=Z
++-output_column_list=
+| +-$create_as.c#1 AS c [INT64]
+| +-$create_as.b#2 AS b [INT64]
++-query=
+| +-ProjectScan
+|   +-column_list=$create_as.[c#1, b#2]
+|   +-expr_list=
+|   | +-c#1 := Literal(type=INT64, value=1)
+|   | +-b#2 := Literal(type=INT64, value=2)
+|   +-input_scan=
+|     +-SingleRowScan
++-transform_input_column_list=
+| +-ColumnDefinition(name="c", type=INT64, column=Z.c#3)
+| +-ColumnDefinition(name="b", type=INT64, column=Z.b#4)
++-transform_list=
+| +-c#6 := ColumnRef(type=INT64, column=Z.c#3)
+| +-d#5 := Literal(type=INT64, value=1)
++-transform_output_column_list=
+  +-Z.c#6 AS c [INT64]
+  +-$dummy_table.d#5 AS d [INT64]
+==
+
+create model Z
+transform (a+1 as a, b+1 as b)
+options ()
+as select 1 a, 2 b;
+--
+CreateModelStmt
++-name_path=Z
++-output_column_list=
+| +-$create_as.a#1 AS a [INT64]
+| +-$create_as.b#2 AS b [INT64]
++-query=
+| +-ProjectScan
+|   +-column_list=$create_as.[a#1, b#2]
+|   +-expr_list=
+|   | +-a#1 := Literal(type=INT64, value=1)
+|   | +-b#2 := Literal(type=INT64, value=2)
+|   +-input_scan=
+|     +-SingleRowScan
++-transform_input_column_list=
+| +-ColumnDefinition(name="a", type=INT64, column=Z.a#3)
+| +-ColumnDefinition(name="b", type=INT64, column=Z.b#4)
++-transform_list=
+| +-a#5 :=
+| | +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+| |   +-ColumnRef(type=INT64, column=Z.a#3)
+| |   +-Literal(type=INT64, value=1)
+| +-b#6 :=
+|   +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+|     +-ColumnRef(type=INT64, column=Z.b#4)
+|     +-Literal(type=INT64, value=1)
++-transform_output_column_list=
+  +-$dummy_table.a#5 AS a [INT64]
+  +-$dummy_table.b#6 AS b [INT64]
+==
+
+create model Z
+transform (c+1)
+options ()
+as select 1 c, 2 b;
+--
+ERROR: Anonymous columns are disallowed in TRANSFORM clause. Please provide a column name [at 2:12]
+transform (c+1)
+           ^
+==
+
+create model Z
+transform (SUM(c) AS t)
+options ()
+as select 1 c, 2 b;
+--
+ERROR: Aggregation functions are not supported in TRANSFORM clause [at 2:12]
+transform (SUM(c) AS t)
+           ^
+==
+
+[language_features=NONE,+ANALYTIC_FUNCTIONS]
+create model Z
+transform (SUM(c) OVER (PARTITION BY b) AS t)
+options ()
+as select 1 c, 2 b;
+--
+ERROR: Analytic functions with a non-empty OVER() clause are disallowed in the TRANSFORM clause [at 2:12]
+transform (SUM(c) OVER (PARTITION BY b) AS t)
+           ^
+==
+
+[language_features=NONE,+ANALYTIC_FUNCTIONS]
+create model Z
+transform (SUM(c) OVER (ORDER BY b) AS t)
+options ()
+as select 1 c, 2 b;
+--
+ERROR: Analytic functions with a non-empty OVER() clause are disallowed in the TRANSFORM clause [at 2:12]
+transform (SUM(c) OVER (ORDER BY b) AS t)
+           ^
+==
+
+[language_features=NONE,+ANALYTIC_FUNCTIONS]
+create model Z
+transform (SUM(key) OVER w AS t)
+options ()
+as select key, value from keYvalue window w1 as (partition by key);
+--
+ERROR: Unrecognized window alias w [at 2:26]
+transform (SUM(key) OVER w AS t)
+                         ^
+==
+
+create model Z
+transform (a)
+options ()
+as select 1 c, 2 b;
+--
+ERROR: Unrecognized name: a [at 2:12]
+transform (a)
+           ^
+==
+
+create model Z
+transform (c a, 2 A)
+options ()
+as select 1 c, 2 b;
+--
+ERROR: Duplicate column aliases are disallowed in TRANSFORM clause [at 2:17]
+transform (c a, 2 A)
+                ^
+==
+
+create model Z
+transform (c, *)
+options ()
+as select 1 c, 2 b;
+--
+ERROR: Duplicate column aliases are disallowed in TRANSFORM clause [at 2:15]
+transform (c, *)
+              ^
+==
+
+create model Z
+transform (*, *)
+options ()
+as select 1 c, 2 b;
+--
+ERROR: Duplicate column aliases are disallowed in TRANSFORM clause [at 2:15]
+transform (*, *)
+              ^
+==
+
+create model Z
+transform (select c as d)
+options ()
+as select 1 c, 2 b;
+--
+ERROR: Syntax error: Unexpected keyword SELECT [at 2:12]
+transform (select c as d)
+           ^
+==
+
+create model Z
+options (abc=def, xyz=@bad_param)
+as select 1 c;
+--
+ERROR: Query parameter 'bad_param' not found [at 2:23]
+options (abc=def, xyz=@bad_param)
+                      ^
+==
+
+create model a.b.`c.d`.`e f g`.kk
+as select 1 c
+--
+CreateModelStmt
++-name_path=a.b.`c.d`.`e f g`.kk
++-output_column_list=
+| +-$create_as.c#1 AS c [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$create_as.c#1]
+    +-expr_list=
+    | +-c#1 := Literal(type=INT64, value=1)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Subqueries are allowed in options.
+create temporary model X
+options( subq=(select 1) )
+as
+select key, value from keYvalue limit 5
+--
+CreateModelStmt
++-name_path=X
++-create_scope=CREATE_TEMP
++-option_list=
+| +-subq :=
+|   +-SubqueryExpr
+|     +-type=INT64
+|     +-subquery_type=SCALAR
+|     +-subquery=
+|       +-ProjectScan
+|         +-column_list=[$expr_subquery.$col1#3]
+|         +-expr_list=
+|         | +-$col1#3 := Literal(type=INT64, value=1)
+|         +-input_scan=
+|           +-SingleRowScan
++-output_column_list=
+| +-KeyValue.Key#1 AS key [INT64]
+| +-KeyValue.Value#2 AS value [STRING]
++-query=
+  +-LimitOffsetScan
+    +-column_list=KeyValue.[Key#1, Value#2]
+    +-input_scan=
+    | +-ProjectScan
+    |   +-column_list=KeyValue.[Key#1, Value#2]
+    |   +-input_scan=
+    |     +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+    +-limit=
+      +-Literal(type=INT64, value=5)
+==
+
+# Inside options, no columns are visible.  Single identifiers are
+# resolved as string literals.
+create temporary model X
+options(k=key)
+as
+select key, value from keYvalue
+--
+CreateModelStmt
++-name_path=X
++-create_scope=CREATE_TEMP
++-option_list=
+| +-k := Literal(type=STRING, value="key")
++-output_column_list=
+| +-KeyValue.Key#1 AS key [INT64]
+| +-KeyValue.Value#2 AS value [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=KeyValue.[Key#1, Value#2]
+    +-input_scan=
+      +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+==
+
+create temporary model X
+options(k=a.b)
+as
+select key from keYvalue
+--
+ERROR: Unrecognized name: a [at 2:11]
+options(k=a.b)
+          ^
+==
+
+create model Z
+options (abc=def, xyz=@bad_param)
+as select 1 c;
+--
+ERROR: Query parameter 'bad_param' not found [at 2:23]
+options (abc=def, xyz=@bad_param)
+                      ^
+==
+
+# Anonymous columns not allowed.
+create model tt
+as select 1
+--
+ERROR: CREATE MODEL columns must be named, but column 1 has no name [at 2:4]
+as select 1
+   ^
+==
+
+# Duplicate column names not allowed.
+create model tt
+options (abc=def)
+as select 1 aaA, 2 Aaa
+--
+ERROR: CREATE MODEL has columns with duplicate name Aaa [at 3:4]
+as select 1 aaA, 2 Aaa
+   ^
+==
+
+create model tt
+as SELECT 1 a, 2 a;
+
+--
+
+ERROR: CREATE MODEL has columns with duplicate name a [at 2:4]
+as SELECT 1 a, 2 a;
+   ^
+==
+
+create or replace model x.y as (select 1 a, 2 b)
+--
+CreateModelStmt
++-name_path=x.y
++-create_mode=CREATE_OR_REPLACE
++-output_column_list=
+| +-$create_as.a#1 AS a [INT64]
+| +-$create_as.b#2 AS b [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=$create_as.[a#1, b#2]
+    +-expr_list=
+    | +-a#1 := Literal(type=INT64, value=1)
+    | +-b#2 := Literal(type=INT64, value=2)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+create model if not exists x.y options (x=y) as (select 1 a, 2 b)
+--
+CreateModelStmt
++-name_path=x.y
++-create_mode=CREATE_IF_NOT_EXISTS
++-option_list=
+| +-x := Literal(type=STRING, value="y")
++-output_column_list=
+| +-$create_as.a#1 AS a [INT64]
+| +-$create_as.b#2 AS b [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=$create_as.[a#1, b#2]
+    +-expr_list=
+    | +-a#1 := Literal(type=INT64, value=1)
+    | +-b#2 := Literal(type=INT64, value=2)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+create or replace model if not exists T as (select 1 a)
+--
+ERROR: CREATE MODEL cannot have both OR REPLACE and IF NOT EXISTS [at 1:1]
+create or replace model if not exists T as (select 1 a)
+^
+==
+
+# Create model with a WITH statement.
+create temp model T as
+WITH t1 as (select 1 label, '2' as value),
+     t2 as (select key label, value from KeyValue),
+     t3 as (select * from t1 union all select * from t2)
+select * from t3 where label=5
+--
+CreateModelStmt
++-name_path=T
++-create_scope=CREATE_TEMP
++-output_column_list=
+| +-t3.label#11 AS label [INT64]
+| +-t3.value#12 AS value [STRING]
++-query=
+  +-WithScan
+    +-column_list=t3.[label#11, value#12]
+    +-with_entry_list=
+    | +-WithEntry
+    | | +-with_query_name="t1"
+    | | +-with_subquery=
+    | |   +-ProjectScan
+    | |     +-column_list=t1.[label#1, value#2]
+    | |     +-expr_list=
+    | |     | +-label#1 := Literal(type=INT64, value=1)
+    | |     | +-value#2 := Literal(type=STRING, value="2")
+    | |     +-input_scan=
+    | |       +-SingleRowScan
+    | +-WithEntry
+    | | +-with_query_name="t2"
+    | | +-with_subquery=
+    | |   +-ProjectScan
+    | |     +-column_list=KeyValue.[Key#3, Value#4]
+    | |     +-input_scan=
+    | |       +-TableScan(column_list=KeyValue.[Key#3, Value#4], table=KeyValue, column_index_list=[0, 1])
+    | +-WithEntry
+    |   +-with_query_name="t3"
+    |   +-with_subquery=
+    |     +-SetOperationScan
+    |       +-column_list=$union_all.[label#9, value#10]
+    |       +-op_type=UNION_ALL
+    |       +-input_item_list=
+    |         +-SetOperationItem
+    |         | +-scan=
+    |         | | +-ProjectScan
+    |         | |   +-column_list=t1.[label#5, value#6]
+    |         | |   +-input_scan=
+    |         | |     +-WithRefScan(column_list=t1.[label#5, value#6], with_query_name="t1")
+    |         | +-output_column_list=t1.[label#5, value#6]
+    |         +-SetOperationItem
+    |           +-scan=
+    |           | +-ProjectScan
+    |           |   +-column_list=t2.[label#7, value#8]
+    |           |   +-input_scan=
+    |           |     +-WithRefScan(column_list=t2.[label#7, value#8], with_query_name="t2")
+    |           +-output_column_list=t2.[label#7, value#8]
+    +-query=
+      +-ProjectScan
+        +-column_list=t3.[label#11, value#12]
+        +-input_scan=
+          +-FilterScan
+            +-column_list=t3.[label#11, value#12]
+            +-input_scan=
+            | +-WithRefScan(column_list=t3.[label#11, value#12], with_query_name="t3")
+            +-filter_expr=
+              +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+                +-ColumnRef(type=INT64, column=t3.label#11)
+                +-Literal(type=INT64, value=5)
+==
+
+# Create model with a WITH statement with an error in a with subquery.
+create temp model T as
+WITH t1 as (select 1 key),
+     t2 as (select key from xxx),
+     t3 as (select * from t2)
+select * from t3
+--
+ERROR: Table not found: xxx [at 3:29]
+     t2 as (select key from xxx),
+                            ^
+==
+
+# Create model with a WITH statement with an error in the final query.
+create temp model T as
+WITH t1 as (select 1 key)
+select * from xxx
+--
+ERROR: Table not found: xxx [at 3:15]
+select * from xxx
+              ^
+==
+
+# Note that the output_column_list must contain 1 entry for every column in the
+# result of the SELECT list.
+create temp model T as select *, Value x from KeyValue
+--
+CreateModelStmt
++-name_path=T
++-create_scope=CREATE_TEMP
++-output_column_list=
+| +-KeyValue.Key#1 AS Key [INT64]
+| +-KeyValue.Value#2 AS Value [STRING]
+| +-KeyValue.Value#2 AS x [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=KeyValue.[Key#1, Value#2, Value#2]
+    +-input_scan=
+      +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+==
+
+# Create model without AS SELECT.
+create temp model T
+--
+CreateModelStmt(name_path=T, create_scope=CREATE_TEMP)
+==
+
+create model t1
+remote with connection ``
+--
+ERROR: Syntax error: Invalid empty identifier [at 2:24]
+remote with connection ``
+                       ^
+==
+
+create model t1
+remote with connection default
+--
+CreateModelStmt
++-name_path=t1
++-is_remote=TRUE
++-connection=
+  +-Connection(connection=$connection_default)
+==
+
+[no_java]
+[use_database=SpecialCatalog]
+create model t1
+remote with connection default
+--
+ERROR: Default connection not found [at 2:24]
+remote with connection default
+                       ^
+==
+
+# All remote model clauses
+create model t1
+input (i1 INT64, i2 FLOAT64)
+output (o1 BOOL)
+remote with connection connection1
+options (abc = def)
+--
+CreateModelStmt
++-name_path=t1
++-option_list=
+| +-abc := Literal(type=STRING, value="def")
++-input_column_definition_list=
+| +-ColumnDefinition(name="i1", type=INT64, column=t1.i1#1)
+| +-ColumnDefinition(name="i2", type=DOUBLE, column=t1.i2#2)
++-output_column_definition_list=
+| +-ColumnDefinition(name="o1", type=BOOL, column=t1.o1#3)
++-is_remote=TRUE
++-connection=
+  +-Connection(connection=connection1)
+==
+
+# All clauses
+create model t1
+input (i1 INT64, i2 FLOAT64)
+output (o1 BOOL)
+transform(a, 2 as b)
+remote with connection connection1
+options (abc = def)
+as select * from t2;
+--
+ERROR: The AS SELECT clause cannot be used with INPUT and OUTPUT [at 7:4]
+as select * from t2;
+   ^
+==
+
+# Create model with transform and collation in the output column. Annotations should be accessed.
+[language_features=NONE,+ANNOTATION_FRAMEWORK,+COLLATION_SUPPORT]
+[no_java]
+CREATE MODEL m
+TRANSFORM(CAST(e AS INT64) k)
+OPTIONS(model_type='logistic_reg')
+AS SELECT COLLATE('5', 'und:ci') e;
+--
+CreateModelStmt
++-name_path=m
++-option_list=
+| +-model_type := Literal(type=STRING, value="logistic_reg")
++-output_column_list=
+| +-$create_as.e#1{Collation:"und:ci"} AS e [STRING]
++-query=
+| +-ProjectScan
+|   +-column_list=[$create_as.e#1{Collation:"und:ci"}]
+|   +-expr_list=
+|   | +-e#1 :=
+|   |   +-FunctionCall(GoogleSQL:collate(STRING, STRING) -> STRING)
+|   |     +-type_annotation_map={Collation:"und:ci"}
+|   |     +-Literal(type=STRING, value="5")
+|   |     +-Literal(type=STRING, value="und:ci", preserve_in_literal_remover=TRUE)
+|   +-input_scan=
+|     +-SingleRowScan
++-transform_input_column_list=
+| +-ColumnDefinition
+|   +-name="e"
+|   +-type=STRING
+|   +-annotations=
+|   | +-ColumnAnnotations
+|   |   +-collation_name=
+|   |     +-Literal(type=STRING, value="und:ci")
+|   +-column=m.e#2{Collation:"und:ci"}
++-transform_list=
+| +-k#3 :=
+|   +-Cast(STRING -> INT64)
+|     +-ColumnRef(type=STRING, type_annotation_map={Collation:"und:ci"}, column=m.e#2{Collation:"und:ci"})
++-transform_output_column_list=
+  +-$dummy_table.k#3 AS k [INT64]
+
+==
+
+# Create model with aliased query list is not supported yet if language feature
+# flag is not turned on yet.
+[language_features=NONE]
+create model m
+as
+(
+  a1 as (select * from t1)
+)
+--
+ERROR: Aliased query list is not supported yet [at 4:3]
+  a1 as (select * from t1)
+  ^
+
+==
+
+# Create model with duplicate alias.
+create model m
+as
+(
+  training_data as (select 1 a),
+  training_data as (select 2 b)
+)
+--
+ERROR: Duplicate alias training_data for aliased query list [at 5:3]
+  training_data as (select 2 b)
+  ^
+
+==
+
+# Create model with aliased queries referencing each other. As each aliased
+# query is independently scoped, it will not be able to reference the other
+# aliased query and instead try to reference a table with that name.
+create model m
+as
+(
+  training_data as (select 1 a),
+  custom_holiday as (select * from training_data)
+)
+--
+ERROR: Table not found: training_data [at 5:36]
+  custom_holiday as (select * from training_data)
+                                   ^
+==
+
+# Create model with one aliased query.
+create model tt
+as (training_data as (select 1 a))
+--
+CreateModelStmt
++-name_path=tt
++-aliased_query_list=
+  +-CreateModelAliasedQuery
+    +-alias="training_data"
+    +-query=
+    | +-ProjectScan
+    |   +-column_list=[training_data.a#1]
+    |   +-expr_list=
+    |   | +-a#1 := Literal(type=INT64, value=1)
+    |   +-input_scan=
+    |     +-SingleRowScan
+    +-output_column_list=
+      +-training_data.a#1 AS a [INT64]
+
+==
+
+# Create model with more than one aliased queries.
+create model tt
+as
+(
+  training_data as (select 1 a),
+  custom_holiday as (select 2 b)
+)
+--
+CreateModelStmt
++-name_path=tt
++-aliased_query_list=
+  +-CreateModelAliasedQuery
+  | +-alias="training_data"
+  | +-query=
+  | | +-ProjectScan
+  | |   +-column_list=[training_data.a#1]
+  | |   +-expr_list=
+  | |   | +-a#1 := Literal(type=INT64, value=1)
+  | |   +-input_scan=
+  | |     +-SingleRowScan
+  | +-output_column_list=
+  |   +-training_data.a#1 AS a [INT64]
+  +-CreateModelAliasedQuery
+    +-alias="custom_holiday"
+    +-query=
+    | +-ProjectScan
+    |   +-column_list=[custom_holiday.b#2]
+    |   +-expr_list=
+    |   | +-b#2 := Literal(type=INT64, value=2)
+    |   +-input_scan=
+    |     +-SingleRowScan
+    +-output_column_list=
+      +-custom_holiday.b#2 AS b [INT64]
+
+==
+
+# Create model with WITH clause in aliased query.
+create model tt
+as
+(
+  training_data as
+  (
+    with a1 as (select 1 as t1)
+    select * from a1
+  )
+)
+--
+CreateModelStmt
++-name_path=tt
++-aliased_query_list=
+  +-CreateModelAliasedQuery
+    +-alias="training_data"
+    +-query=
+    | +-WithScan
+    |   +-column_list=[a1.t1#2]
+    |   +-with_entry_list=
+    |   | +-WithEntry
+    |   |   +-with_query_name="a1"
+    |   |   +-with_subquery=
+    |   |     +-ProjectScan
+    |   |       +-column_list=[a1.t1#1]
+    |   |       +-expr_list=
+    |   |       | +-t1#1 := Literal(type=INT64, value=1)
+    |   |       +-input_scan=
+    |   |         +-SingleRowScan
+    |   +-query=
+    |     +-ProjectScan
+    |       +-column_list=[a1.t1#2]
+    |       +-input_scan=
+    |         +-WithRefScan(column_list=[a1.t1#2], with_query_name="a1")
+    +-output_column_list=
+      +-a1.t1#2 AS t1 [INT64]
+
+==
+
+# Create model with a WITH clause that has the same name as outer aliased query.
+# This should resolve correctly as the inner with clause has a scope that does
+# not reach out to outer aliased query.
+create model tt
+as
+(
+  training_data as
+  (
+    with training_data as (select 1 as t1)
+    select training_data.t1 as c1 from training_data
+  )
+)
+--
+CreateModelStmt
++-name_path=tt
++-aliased_query_list=
+  +-CreateModelAliasedQuery
+    +-alias="training_data"
+    +-query=
+    | +-WithScan
+    |   +-column_list=[training_data.t1#2]
+    |   +-with_entry_list=
+    |   | +-WithEntry
+    |   |   +-with_query_name="training_data"
+    |   |   +-with_subquery=
+    |   |     +-ProjectScan
+    |   |       +-column_list=[training_data.t1#1]
+    |   |       +-expr_list=
+    |   |       | +-t1#1 := Literal(type=INT64, value=1)
+    |   |       +-input_scan=
+    |   |         +-SingleRowScan
+    |   +-query=
+    |     +-ProjectScan
+    |       +-column_list=[training_data.t1#2]
+    |       +-input_scan=
+    |         +-WithRefScan(column_list=[training_data.t1#2], with_query_name="training_data")
+    +-output_column_list=
+      +-training_data.t1#2 AS c1 [INT64]
+
+==
+
+# Aliased query generates a column without name. This should not be allowed as
+# all the column inputs for CREATE MODEL must be named.
+create model tt
+as (training_data as (select 1))
+--
+ERROR: CREATE MODEL columns must be named, but column 1 has no name [at 2:22]
+as (training_data as (select 1))
+                     ^
+
+==
+
+# Create model with aliased query referencing a non-existing table.
+create model tt
+as
+(
+  training_data as
+  (
+    select * from non_existing_table
+  )
+)
+--
+ERROR: Table not found: non_existing_table [at 6:19]
+    select * from non_existing_table
+                  ^
+
+==
+
+# Create model with aliased query referencing named tables.
+create model tt
+as
+(
+  training_data as (select * from user_training_data),
+  custom_holiday as (select * from user_custom_holiday)
+)
+--
+CreateModelStmt
++-name_path=tt
++-aliased_query_list=
+  +-CreateModelAliasedQuery
+  | +-alias="training_data"
+  | +-query=
+  | | +-ProjectScan
+  | |   +-column_list=[user_training_data.data#1]
+  | |   +-input_scan=
+  | |     +-TableScan(column_list=[user_training_data.data#1], table=user_training_data, column_index_list=[0])
+  | +-output_column_list=
+  |   +-user_training_data.data#1 AS data [INT32]
+  +-CreateModelAliasedQuery
+    +-alias="custom_holiday"
+    +-query=
+    | +-ProjectScan
+    |   +-column_list=user_custom_holiday.[region#2, holiday_name#3, primary_date#4]
+    |   +-input_scan=
+    |     +-TableScan(column_list=user_custom_holiday.[region#2, holiday_name#3, primary_date#4], table=user_custom_holiday, column_index_list=[0, 1, 2])
+    +-output_column_list=
+      +-user_custom_holiday.region#2 AS region [STRING]
+      +-user_custom_holiday.holiday_name#3 AS holiday_name [STRING]
+      +-user_custom_holiday.primary_date#4 AS primary_date [DATE]
+==
+
+[disallow_duplicate_options]
+create model t1 options (abc = def, abc = 2)
+--
+
+ERROR: Duplicate option specified for 'abc' [at 1:37]
+create model t1 options (abc = def, abc = 2)
+                                    ^
+==
+
+[language_features=NONE,+PIPES]
+CREATE MODEL m
+AS
+FROM KeyValue
+--
+CreateModelStmt
++-name_path=m
++-output_column_list=
+| +-KeyValue.Key#1 AS Key [INT64]
+| +-KeyValue.Value#2 AS Value [STRING]
++-query=
+  +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+==
+
+# Test with input from a pipe query with pruning, like the case in b/399439396.
+[language_features=NONE,+PIPES]
+CREATE MODEL m
+AS
+FROM KeyValue
+|> SELECT key
+--
+CreateModelStmt
++-name_path=m
++-output_column_list=
+| +-KeyValue.Key#1 AS key [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[KeyValue.Key#1]
+    +-input_scan=
+      +-TableScan(column_list=[KeyValue.Key#1], table=KeyValue, column_index_list=[0])
+
+==
+
+[language_features=NONE,+SQL_GRAPH,+SQL_GRAPH_ADVANCED_QUERY]
+create model m AS
+graph aml
+return 1 as x
+--
+CreateModelStmt
++-name_path=m
++-output_column_list=
+| +-$graph_table.x#1 AS x [INT64]
++-query=
+  +-GraphTableScan
+    +-column_list=[$graph_table.x#1]
+    +-property_graph=aml
+    +-input_scan=
+      +-GraphLinearScan
+        +-column_list=[$graph_table.x#1]
+        +-scan_list=
+          +-GraphLinearScan
+            +-column_list=[$graph_table.x#1]
+            +-scan_list=
+              +-ProjectScan
+                +-column_list=[$graph_table.x#1]
+                +-expr_list=
+                | +-x#1 := Literal(type=INT64, value=1)
+                +-input_scan=
+                  +-SingleRowScan

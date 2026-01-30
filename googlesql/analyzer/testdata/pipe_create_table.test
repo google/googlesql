@@ -1,0 +1,1359 @@
+[default language_features=NONE]
+[language_features=NONE,+PIPES]
+FROM KeyValue
+|> CREATE TABLE t2
+--
+ERROR: Pipe CREATE TABLE not supported [at 2:1]
+|> CREATE TABLE t2
+^
+==
+
+# CREATE TABLE is allowed only if both QUERY and GENERALIZED_QUERY
+# statement kinds are enabled.
+# TODO SQLBuilder doesn't work for pipe CREATE TABLE yet.
+[default no_run_sqlbuilder]
+[default language_features=NONE,+PIPES,+PIPE_CREATE_TABLE,+PIPE_FORK,+PIPE_TEE,+PIPE_IF,+CREATE_TABLE_AS_SELECT_COLUMN_LIST,+WITH_ON_SUBQUERY,+WITH_RECURSIVE,+ENABLE_MEASURES]
+[enabled_ast_rewrites=DEFAULTS]
+[supported_statement_kinds={{QUERY|GENERALIZED_QUERY|QUERY,GENERALIZED_QUERY|INSERT}}]
+FROM KeyValue
+|> CREATE TABLE t2
+--
+ALTERNATION GROUP: QUERY
+--
+ERROR: Generalized query statements are not supported so pipe CREATE TABLE cannot be used [at 2:1]
+|> CREATE TABLE t2
+^
+--
+ALTERNATION GROUPS:
+    GENERALIZED_QUERY
+    INSERT
+--
+ERROR: Statement not supported: QueryStatement [at 1:1]
+FROM KeyValue
+^
+--
+ALTERNATION GROUP: QUERY,GENERALIZED_QUERY
+--
+GeneralizedQueryStmt
++-query=
+  +-PipeCreateTableScan
+    +-create_table_as_select_stmt=
+      +-CreateTableAsSelectStmt
+        +-name_path=t2
+        +-column_definition_list=
+        | +-ColumnDefinition(name="Key", type=INT64, column=t2.Key#3)
+        | +-ColumnDefinition(name="Value", type=STRING, column=t2.Value#4)
+        +-output_column_list=
+        | +-KeyValue.Key#1 AS Key [INT64]
+        | +-KeyValue.Value#2 AS Value [STRING]
+        +-query=
+          +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+
+
+[REWRITTEN AST]
+CreateTableAsSelectStmt
++-name_path=t2
++-column_definition_list=
+| +-ColumnDefinition(name="Key", type=INT64, column=t2.Key#3)
+| +-ColumnDefinition(name="Value", type=STRING, column=t2.Value#4)
++-output_column_list=
+| +-KeyValue.Key#1 AS Key [INT64]
+| +-KeyValue.Value#2 AS Value [STRING]
++-query=
+  +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+==
+
+# CREATE TABLE is terminal so can't have more operators after.
+FROM KeyValue
+|> CREATE TABLE t2
+|> WHERE true
+--
+ERROR: Additional pipe operators cannot follow the terminal pipe operator CREATE TABLE [at 3:1]
+|> WHERE true
+^
+==
+
+# CREATE TABLE is terminal so can't occur in a subquery.
+FROM (
+  FROM KeyValue
+  |> CREATE TABLE t2
+)
+--
+ERROR: CREATE TABLE is only allowed as part of the outermost query in a statement [at 3:3]
+  |> CREATE TABLE t2
+  ^
+==
+
+# Some tests for matching input schema with an explicit column list.
+[enabled_ast_rewrites=DEFAULTS]
+select 123 input_name
+|> CREATE TABLE t1 (output_name {{INT64|STRING}})
+--
+ALTERNATION GROUP: INT64
+--
+GeneralizedQueryStmt
++-query=
+  +-PipeCreateTableScan
+    +-create_table_as_select_stmt=
+      +-CreateTableAsSelectStmt
+        +-name_path=t1
+        +-column_definition_list=
+        | +-ColumnDefinition(name="output_name", type=INT64, column=t1.output_name#2)
+        +-output_column_list=
+        | +-$query.input_name#1 AS output_name [INT64]
+        +-query=
+          +-ProjectScan
+            +-column_list=[$query.input_name#1]
+            +-expr_list=
+            | +-input_name#1 := Literal(type=INT64, value=123)
+            +-input_scan=
+              +-SingleRowScan
+
+
+[REWRITTEN AST]
+CreateTableAsSelectStmt
++-name_path=t1
++-column_definition_list=
+| +-ColumnDefinition(name="output_name", type=INT64, column=t1.output_name#2)
++-output_column_list=
+| +-$query.input_name#1 AS output_name [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.input_name#1]
+    +-expr_list=
+    | +-input_name#1 := Literal(type=INT64, value=123)
+    +-input_scan=
+      +-SingleRowScan
+--
+ALTERNATION GROUP: STRING
+--
+ERROR: Column 'output_name' has type STRING which cannot be coerced from query output type INT64 [at 2:21]
+|> CREATE TABLE t1 (output_name STRING)
+                    ^
+==
+
+select 123 key
+|> CREATE TABLE t1 (key INT64, value STRING)
+--
+ERROR: The number of columns in the column definition list does not match the number of columns produced by the query [at 2:20]
+|> CREATE TABLE t1 (key INT64, value STRING)
+                   ^
+==
+
+from KeyValue
+|> CREATE TABLE t1 (value STRING)
+--
+ERROR: The number of columns in the column definition list does not match the number of columns produced by the query [at 2:20]
+|> CREATE TABLE t1 (value STRING)
+                   ^
+==
+
+# This one also shows that column lists are only allowed if
+# CREATE_TABLE_AS_SELECT_COLUMN_LIST is set, to match regular CTAS.
+[language_features=NONE,+PIPES,+PIPE_CREATE_TABLE{{|,+CREATE_TABLE_AS_SELECT_COLUMN_LIST}}]
+from KeyValue
+|> CREATE TABLE t1 (key INT64, value STRING)
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: Pipe CREATE TABLE with column definition list is unsupported [at 2:20]
+|> CREATE TABLE t1 (key INT64, value STRING)
+                   ^
+--
+ALTERNATION GROUP: ,+CREATE_TABLE_AS_SELECT_COLUMN_LIST
+--
+GeneralizedQueryStmt
++-query=
+  +-PipeCreateTableScan
+    +-create_table_as_select_stmt=
+      +-CreateTableAsSelectStmt
+        +-name_path=t1
+        +-column_definition_list=
+        | +-ColumnDefinition(name="key", type=INT64, column=t1.key#3)
+        | +-ColumnDefinition(name="value", type=STRING, column=t1.value#4)
+        +-output_column_list=
+        | +-KeyValue.Key#1 AS key [INT64]
+        | +-KeyValue.Value#2 AS value [STRING]
+        +-query=
+          +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+==
+
+# Columns match by position, not by name.
+from KeyValue
+|> CREATE TABLE t1 (value STRING, key INT64)
+--
+ERROR: Column 'value' has type STRING which cannot be coerced from query output type INT64 [at 2:21]
+|> CREATE TABLE t1 (value STRING, key INT64)
+                    ^
+==
+
+# With a value table input, we get `is_value_table` on the created table.
+FROM TestExtraValueTable
+|> CREATE TABLE vt
+--
+GeneralizedQueryStmt
++-query=
+  +-PipeCreateTableScan
+    +-create_table_as_select_stmt=
+      +-CreateTableAsSelectStmt
+        +-name_path=vt
+        +-column_definition_list=
+        | +-ColumnDefinition(name="$value", type=PROTO<googlesql_test.TestExtraPB>, column=vt.TestExtraValueTable#4)
+        +-is_value_table=TRUE
+        +-output_column_list=
+        | +-TestExtraValueTable.value#1 AS `$value` [PROTO<googlesql_test.TestExtraPB>]
+        +-query=
+          +-TableScan(column_list=[TestExtraValueTable.value#1], table=TestExtraValueTable, column_index_list=[0])
+==
+
+# Creating a one-column talbe from a value table input doesn't work currently.
+# of that type.
+FROM TestExtraValueTable
+|> CREATE TABLE vt (protocol googlesql_test.TestExtraPB{{|, extra INT64}})
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: Column definition list cannot be specified when creating a value table [at 2:20]
+|> CREATE TABLE vt (protocol googlesql_test.TestExtraPB)
+                   ^
+--
+ALTERNATION GROUP: , extra INT64
+--
+ERROR: Column definition list cannot be specified when creating a value table [at 2:20]
+|> CREATE TABLE vt (protocol googlesql_test.TestExtraPB, extra INT64)
+                   ^
+==
+
+# Value tables don't work for regular CTAS either.
+CREATE TABLE vt (protocol googlesql_test.TestExtraPB) AS
+FROM TestExtraValueTable
+--
+ERROR: Column definition list cannot be specified when creating a value table [at 1:17]
+CREATE TABLE vt (protocol googlesql_test.TestExtraPB) AS
+                ^
+==
+
+# Materialize one of the pseudo-columns from the value table.
+FROM TestExtraValueTable t
+|> SELECT t, filename
+|> CREATE TABLE vt
+--
+GeneralizedQueryStmt
++-query=
+  +-PipeCreateTableScan
+    +-create_table_as_select_stmt=
+      +-CreateTableAsSelectStmt
+        +-name_path=vt
+        +-column_definition_list=
+        | +-ColumnDefinition(name="t", type=PROTO<googlesql_test.TestExtraPB>, column=vt.t#4)
+        | +-ColumnDefinition(name="filename", type=STRING, column=vt.filename#5)
+        +-output_column_list=
+        | +-TestExtraValueTable.value#1 AS t [PROTO<googlesql_test.TestExtraPB>]
+        | +-TestExtraValueTable.Filename#2 AS filename [STRING]
+        +-query=
+          +-ProjectScan
+            +-column_list=TestExtraValueTable.[value#1, Filename#2]
+            +-input_scan=
+              +-TableScan(column_list=TestExtraValueTable.[value#1, Filename#2], table=TestExtraValueTable, column_index_list=[0, 1], alias="t")
+==
+
+# This shows the input scan being modified to add a ProjectScan with casts.
+# This is casting literals, including a literal NULL.  They show up with the
+# casted value, without an actual CAST expression.
+SELECT CAST(123 AS INT32) incol, 456 incol2, null incol3
+|> CREATE TABLE t1 (outcol1 INT64, outcol2 INT32, outcol3 STRING)
+--
+GeneralizedQueryStmt
++-query=
+  +-PipeCreateTableScan
+    +-create_table_as_select_stmt=
+      +-CreateTableAsSelectStmt
+        +-name_path=t1
+        +-column_definition_list=
+        | +-ColumnDefinition(name="outcol1", type=INT64, column=t1.outcol1#4)
+        | +-ColumnDefinition(name="outcol2", type=INT32, column=t1.outcol2#5)
+        | +-ColumnDefinition(name="outcol3", type=STRING, column=t1.outcol3#6)
+        +-output_column_list=
+        | +-$create_as_cast.incol#7 AS outcol1 [INT64]
+        | +-$create_as_cast.incol2#8 AS outcol2 [INT32]
+        | +-$create_as_cast.incol3#9 AS outcol3 [STRING]
+        +-query=
+          +-ProjectScan
+            +-column_list=$create_as_cast.[incol#7, incol2#8, incol3#9]
+            +-expr_list=
+            | +-incol#7 := Literal(type=INT64, value=123, has_explicit_type=TRUE)
+            | +-incol2#8 := Literal(type=INT32, value=456)
+            | +-incol3#9 := Literal(type=STRING, value=NULL)
+            +-input_scan=
+              +-ProjectScan
+                +-column_list=$query.[incol#1, incol2#2, incol3#3]
+                +-expr_list=
+                | +-incol#1 := Literal(type=INT32, value=123, has_explicit_type=TRUE)
+                | +-incol2#2 := Literal(type=INT64, value=456)
+                | +-incol3#3 := Literal(type=INT64, value=NULL)
+                +-input_scan=
+                  +-SingleRowScan
+==
+
+# This shows adding casts on the input columns when they aren't literals.
+# One is a widening coercion and one is a narrowing assignment coercion.
+[enabled_ast_rewrites=DEFAULTS]
+SELECT CAST(1+2 AS INT32) incol, 4+5 incol2
+|> CREATE TABLE t1 (outcol1 INT64, outcol2 INT32)
+--
+GeneralizedQueryStmt
++-query=
+  +-PipeCreateTableScan
+    +-create_table_as_select_stmt=
+      +-CreateTableAsSelectStmt
+        +-name_path=t1
+        +-column_definition_list=
+        | +-ColumnDefinition(name="outcol1", type=INT64, column=t1.outcol1#3)
+        | +-ColumnDefinition(name="outcol2", type=INT32, column=t1.outcol2#4)
+        +-output_column_list=
+        | +-$create_as_cast.incol#5 AS outcol1 [INT64]
+        | +-$create_as_cast.incol2#6 AS outcol2 [INT32]
+        +-query=
+          +-ProjectScan
+            +-column_list=$create_as_cast.[incol#5, incol2#6]
+            +-expr_list=
+            | +-incol#5 :=
+            | | +-Cast(INT32 -> INT64)
+            | |   +-ColumnRef(type=INT32, column=$query.incol#1)
+            | +-incol2#6 :=
+            |   +-Cast(INT64 -> INT32)
+            |     +-ColumnRef(type=INT64, column=$query.incol2#2)
+            +-input_scan=
+              +-ProjectScan
+                +-column_list=$query.[incol#1, incol2#2]
+                +-expr_list=
+                | +-incol#1 :=
+                | | +-Cast(INT64 -> INT32)
+                | |   +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+                | |     +-Literal(type=INT64, value=1)
+                | |     +-Literal(type=INT64, value=2)
+                | +-incol2#2 :=
+                |   +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+                |     +-Literal(type=INT64, value=4)
+                |     +-Literal(type=INT64, value=5)
+                +-input_scan=
+                  +-SingleRowScan
+
+
+[REWRITTEN AST]
+CreateTableAsSelectStmt
++-name_path=t1
++-column_definition_list=
+| +-ColumnDefinition(name="outcol1", type=INT64, column=t1.outcol1#3)
+| +-ColumnDefinition(name="outcol2", type=INT32, column=t1.outcol2#4)
++-output_column_list=
+| +-$create_as_cast.incol#5 AS outcol1 [INT64]
+| +-$create_as_cast.incol2#6 AS outcol2 [INT32]
++-query=
+  +-ProjectScan
+    +-column_list=$create_as_cast.[incol#5, incol2#6]
+    +-expr_list=
+    | +-incol#5 :=
+    | | +-Cast(INT32 -> INT64)
+    | |   +-ColumnRef(type=INT32, column=$query.incol#1)
+    | +-incol2#6 :=
+    |   +-Cast(INT64 -> INT32)
+    |     +-ColumnRef(type=INT64, column=$query.incol2#2)
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=$query.[incol#1, incol2#2]
+        +-expr_list=
+        | +-incol#1 :=
+        | | +-Cast(INT64 -> INT32)
+        | |   +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+        | |     +-Literal(type=INT64, value=1)
+        | |     +-Literal(type=INT64, value=2)
+        | +-incol2#2 :=
+        |   +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+        |     +-Literal(type=INT64, value=4)
+        |     +-Literal(type=INT64, value=5)
+        +-input_scan=
+          +-SingleRowScan
+==
+
+# Order on the input table has no effect on the created table.
+FROM KeyValue
+|> ORDER BY key
+|> CREATE TABLE t
+--
+GeneralizedQueryStmt
++-query=
+  +-PipeCreateTableScan
+    +-create_table_as_select_stmt=
+      +-CreateTableAsSelectStmt
+        +-name_path=t
+        +-column_definition_list=
+        | +-ColumnDefinition(name="Key", type=INT64, column=t.Key#3)
+        | +-ColumnDefinition(name="Value", type=STRING, column=t.Value#4)
+        +-output_column_list=
+        | +-KeyValue.Key#1 AS Key [INT64]
+        | +-KeyValue.Value#2 AS Value [STRING]
+        +-query=
+          +-OrderByScan
+            +-column_list=KeyValue.[Key#1, Value#2]
+            +-is_ordered=TRUE
+            +-input_scan=
+            | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+            +-order_by_item_list=
+              +-OrderByItem
+                +-column_ref=
+                  +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+==
+
+# CREATE TABLE with PARTITION BY
+# pseudo_column_list comes from the default test setup of SetDdlPseudoColumns.
+[language_features=NONE,+PIPES,+PIPE_CREATE_TABLE{{|,+CREATE_TABLE_PARTITION_BY}}]
+from KeyValue
+|> CREATE TABLE t1 PARTITION BY key
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: Pipe CREATE TABLE with PARTITION BY is unsupported [at 2:20]
+|> CREATE TABLE t1 PARTITION BY key
+                   ^
+--
+ALTERNATION GROUP: ,+CREATE_TABLE_PARTITION_BY
+--
+GeneralizedQueryStmt
++-query=
+  +-PipeCreateTableScan
+    +-create_table_as_select_stmt=
+      +-CreateTableAsSelectStmt
+        +-name_path=t1
+        +-column_definition_list=
+        | +-ColumnDefinition(name="Key", type=INT64, column=t1.Key#3)
+        | +-ColumnDefinition(name="Value", type=STRING, column=t1.Value#4)
+        +-pseudo_column_list=t1.[pseudo_column_int32#5, pseudo_column_kitchensink#6, pseudo_column_timestamp#7]
+        +-partition_by_list=
+        | +-ColumnRef(type=INT64, column=t1.Key#3)
+        +-output_column_list=
+        | +-KeyValue.Key#1 AS Key [INT64]
+        | +-KeyValue.Value#2 AS Value [STRING]
+        +-query=
+          +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+==
+
+# CREATE TABLE with CLUSTER BY
+# pseudo_column_list comes from the default test setup of SetDdlPseudoColumns.
+[language_features=NONE,+PIPES,+PIPE_CREATE_TABLE{{|,+CREATE_TABLE_CLUSTER_BY}}]
+from KeyValue
+|> CREATE TABLE t1 CLUSTER BY value
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: Pipe CREATE TABLE with CLUSTER BY is unsupported [at 2:20]
+|> CREATE TABLE t1 CLUSTER BY value
+                   ^
+--
+ALTERNATION GROUP: ,+CREATE_TABLE_CLUSTER_BY
+--
+GeneralizedQueryStmt
++-query=
+  +-PipeCreateTableScan
+    +-create_table_as_select_stmt=
+      +-CreateTableAsSelectStmt
+        +-name_path=t1
+        +-column_definition_list=
+        | +-ColumnDefinition(name="Key", type=INT64, column=t1.Key#3)
+        | +-ColumnDefinition(name="Value", type=STRING, column=t1.Value#4)
+        +-pseudo_column_list=t1.[pseudo_column_int32#5, pseudo_column_kitchensink#6, pseudo_column_timestamp#7]
+        +-cluster_by_list=
+        | +-ColumnRef(type=STRING, column=t1.Value#4)
+        +-output_column_list=
+        | +-KeyValue.Key#1 AS Key [INT64]
+        | +-KeyValue.Value#2 AS Value [STRING]
+        +-query=
+          +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+==
+
+# CREATE TABLE with a PRIMARY KEY.
+select 123 key
+|> CREATE TABLE t1 (key INT64,
+                    primary key(key))
+--
+GeneralizedQueryStmt
++-query=
+  +-PipeCreateTableScan
+    +-create_table_as_select_stmt=
+      +-CreateTableAsSelectStmt
+        +-name_path=t1
+        +-column_definition_list=
+        | +-ColumnDefinition(name="key", type=INT64, column=t1.key#2)
+        +-primary_key=
+        | +-PrimaryKey(column_offset_list=[0], column_name_list=[key])
+        +-output_column_list=
+        | +-$query.key#1 AS key [INT64]
+        +-query=
+          +-ProjectScan
+            +-column_list=[$query.key#1]
+            +-expr_list=
+            | +-key#1 := Literal(type=INT64, value=123)
+            +-input_scan=
+              +-SingleRowScan
+==
+
+# CREATE TABLE with a FOREIGN KEY.
+[language_features=NONE,+PIPES,+PIPE_CREATE_TABLE,+CREATE_TABLE_AS_SELECT_COLUMN_LIST{{|,+FOREIGN_KEYS}}]
+select 123 key
+|> CREATE TABLE t1 (key INT64,
+                    foreign key(key) references KeyValue(key))
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: Foreign keys are not supported [at 3:21]
+                    foreign key(key) references KeyValue(key))
+                    ^
+--
+ALTERNATION GROUP: ,+FOREIGN_KEYS
+--
+GeneralizedQueryStmt
++-query=
+  +-PipeCreateTableScan
+    +-create_table_as_select_stmt=
+      +-CreateTableAsSelectStmt
+        +-name_path=t1
+        +-column_definition_list=
+        | +-ColumnDefinition(name="key", type=INT64, column=t1.key#2)
+        +-foreign_key_list=
+        | +-ForeignKey(constraint_name="", referencing_column_offset_list=[0], referenced_table=KeyValue, referenced_column_offset_list=[0], match_mode=SIMPLE, update_action=NO_ACTION, delete_action=NO_ACTION, enforced=TRUE, referencing_column_list=key)
+        +-output_column_list=
+        | +-$query.key#1 AS key [INT64]
+        +-query=
+          +-ProjectScan
+            +-column_list=[$query.key#1]
+            +-expr_list=
+            | +-key#1 := Literal(type=INT64, value=123)
+            +-input_scan=
+              +-SingleRowScan
+==
+
+# CREATE TABLE with OPTIONS
+FROM KeyValue
+|> CREATE TABLE t2
+   OPTIONS (opt1=123, opt2='abc')
+--
+GeneralizedQueryStmt
++-query=
+  +-PipeCreateTableScan
+    +-create_table_as_select_stmt=
+      +-CreateTableAsSelectStmt
+        +-name_path=t2
+        +-option_list=
+        | +-opt1 := Literal(type=INT64, value=123)
+        | +-opt2 := Literal(type=STRING, value="abc")
+        +-column_definition_list=
+        | +-ColumnDefinition(name="Key", type=INT64, column=t2.Key#3)
+        | +-ColumnDefinition(name="Value", type=STRING, column=t2.Value#4)
+        +-output_column_list=
+        | +-KeyValue.Key#1 AS Key [INT64]
+        | +-KeyValue.Value#2 AS Value [STRING]
+        +-query=
+          +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+==
+
+# CREATE TABLE with scope
+FROM KeyValue
+|> CREATE {{TEMP|PUBLIC|PRIVATE}} TABLE t2
+--
+ALTERNATION GROUP: TEMP
+--
+GeneralizedQueryStmt
++-query=
+  +-PipeCreateTableScan
+    +-create_table_as_select_stmt=
+      +-CreateTableAsSelectStmt
+        +-name_path=t2
+        +-create_scope=CREATE_TEMP
+        +-column_definition_list=
+        | +-ColumnDefinition(name="Key", type=INT64, column=t2.Key#3)
+        | +-ColumnDefinition(name="Value", type=STRING, column=t2.Value#4)
+        +-output_column_list=
+        | +-KeyValue.Key#1 AS Key [INT64]
+        | +-KeyValue.Value#2 AS Value [STRING]
+        +-query=
+          +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+--
+ALTERNATION GROUP: PUBLIC
+--
+ERROR: Pipe CREATE TABLE with PUBLIC or PRIVATE modifiers is not supported [at 2:4]
+|> CREATE PUBLIC TABLE t2
+   ^
+--
+ALTERNATION GROUP: PRIVATE
+--
+ERROR: Pipe CREATE TABLE with PUBLIC or PRIVATE modifiers is not supported [at 2:4]
+|> CREATE PRIVATE TABLE t2
+   ^
+==
+
+# CREATE TABLE with OR REPLACE
+FROM KeyValue
+|> CREATE OR REPLACE TABLE t2
+--
+GeneralizedQueryStmt
++-query=
+  +-PipeCreateTableScan
+    +-create_table_as_select_stmt=
+      +-CreateTableAsSelectStmt
+        +-name_path=t2
+        +-create_mode=CREATE_OR_REPLACE
+        +-column_definition_list=
+        | +-ColumnDefinition(name="Key", type=INT64, column=t2.Key#3)
+        | +-ColumnDefinition(name="Value", type=STRING, column=t2.Value#4)
+        +-output_column_list=
+        | +-KeyValue.Key#1 AS Key [INT64]
+        | +-KeyValue.Value#2 AS Value [STRING]
+        +-query=
+          +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+==
+
+# CREATE TABLE with IF NOT EXISTS
+FROM KeyValue
+|> CREATE TABLE IF NOT EXISTS t2
+--
+GeneralizedQueryStmt
++-query=
+  +-PipeCreateTableScan
+    +-create_table_as_select_stmt=
+      +-CreateTableAsSelectStmt
+        +-name_path=t2
+        +-create_mode=CREATE_IF_NOT_EXISTS
+        +-column_definition_list=
+        | +-ColumnDefinition(name="Key", type=INT64, column=t2.Key#3)
+        | +-ColumnDefinition(name="Value", type=STRING, column=t2.Value#4)
+        +-output_column_list=
+        | +-KeyValue.Key#1 AS Key [INT64]
+        | +-KeyValue.Value#2 AS Value [STRING]
+        +-query=
+          +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+==
+
+# CREATE TABLE with CLONE - not allowed, since we always have an
+# input table.
+[language_features=NONE,+PIPES,+PIPE_CREATE_TABLE,+CREATE_TABLE_AS_SELECT_COLUMN_LIST,+CREATE_TABLE_CLONE]
+FROM KeyValue
+|> CREATE TABLE t2 CLONE KeyValue
+--
+ERROR: CREATE TABLE CLONE cannot be used in pipe CREATE TABLE [at 2:4]
+|> CREATE TABLE t2 CLONE KeyValue
+   ^
+==
+
+# CREATE TABLE with COPY - not allowed, since we always have an input
+# table.
+[language_features=NONE,+PIPES,+PIPE_CREATE_TABLE,+CREATE_TABLE_AS_SELECT_COLUMN_LIST,+CREATE_TABLE_COPY]
+FROM KeyValue
+|> CREATE TABLE t2 COPY KeyValue
+--
+ERROR: CREATE TABLE COPY cannot be used in pipe CREATE TABLE [at 2:4]
+|> CREATE TABLE t2 COPY KeyValue
+   ^
+==
+
+# CREATE TABLE with LIKE
+[language_features=NONE,+PIPES,+PIPE_CREATE_TABLE,+CREATE_TABLE_AS_SELECT_COLUMN_LIST,+CREATE_TABLE_LIKE]
+[create_table_like_not_scanned]
+SELECT 1, 'abc'{{|, 456}}
+|> CREATE TABLE t2 LIKE KeyValue
+--
+ALTERNATION GROUP: <empty>
+--
+GeneralizedQueryStmt
++-query=
+  +-PipeCreateTableScan
+    +-create_table_as_select_stmt=
+      +-CreateTableAsSelectStmt
+        +-name_path=t2
+        +-column_definition_list=
+        | +-ColumnDefinition(name="Key", type=INT64, column=t2.Key#3)
+        | +-ColumnDefinition(name="Value", type=STRING, column=t2.Value#4)
+        +-like_table=KeyValue
+        +-output_column_list=
+        | +-$query.$col1#1 AS Key [INT64]
+        | +-$query.$col2#2 AS Value [STRING]
+        +-query=
+          +-ProjectScan
+            +-column_list=$query.[$col1#1, $col2#2]
+            +-expr_list=
+            | +-$col1#1 := Literal(type=INT64, value=1)
+            | +-$col2#2 := Literal(type=STRING, value="abc")
+            +-input_scan=
+              +-SingleRowScan
+--
+ALTERNATION GROUP: , 456
+--
+ERROR: The number of columns in the LIKE table does not match the number of columns produced by the query [at 2:25]
+|> CREATE TABLE t2 LIKE KeyValue
+                        ^
+==
+
+# CREATE TABLE with `collate`
+# Literal replacement doens't work on the COLLATE string.
+[language_features=NONE,+PIPES,+PIPE_CREATE_TABLE,+CREATE_TABLE_AS_SELECT_COLUMN_LIST,+COLLATION_SUPPORT,+ANNOTATION_FRAMEWORK]
+[no_enable_literal_replacement]
+From KeyValue
+|> CREATE TABLE t2 DEFAULT COLLATE 'und:ci'
+--
+GeneralizedQueryStmt
++-query=
+  +-PipeCreateTableScan
+    +-create_table_as_select_stmt=
+      +-CreateTableAsSelectStmt
+        +-name_path=t2
+        +-column_definition_list=
+        | +-ColumnDefinition(name="Key", type=INT64, column=t2.Key#3)
+        | +-ColumnDefinition(name="Value", type=STRING, column=t2.Value#4)
+        +-collation_name=
+        | +-Literal(type=STRING, value="und:ci")
+        +-output_column_list=
+        | +-KeyValue.Key#1 AS Key [INT64]
+        | +-KeyValue.Value#2 AS Value [STRING]
+        +-query=
+          +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+==
+
+# CREATE TABLE with WITH CONNECTION
+[language_features=NONE,+PIPES,+PIPE_CREATE_TABLE,+CREATE_TABLE_AS_SELECT_COLUMN_LIST,+CREATE_TABLE_WITH_CONNECTION]
+From KeyValue
+|> CREATE TABLE t2
+   WITH CONNECTION connection2
+--
+GeneralizedQueryStmt
++-query=
+  +-PipeCreateTableScan
+    +-create_table_as_select_stmt=
+      +-CreateTableAsSelectStmt
+        +-name_path=t2
+        +-column_definition_list=
+        | +-ColumnDefinition(name="Key", type=INT64, column=t2.Key#3)
+        | +-ColumnDefinition(name="Value", type=STRING, column=t2.Value#4)
+        +-connection=
+        | +-Connection(connection=connection2)
+        +-output_column_list=
+        | +-KeyValue.Key#1 AS Key [INT64]
+        | +-KeyValue.Value#2 AS Value [STRING]
+        +-query=
+          +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+==
+
+# CREATE TABLE with `spanner_options` version of PRIMARY KEY
+SELECT 1
+|> CREATE TABLE t2 (
+     x INT64,
+     PRIMARY KEY (x)
+   )
+--
+GeneralizedQueryStmt
++-query=
+  +-PipeCreateTableScan
+    +-create_table_as_select_stmt=
+      +-CreateTableAsSelectStmt
+        +-name_path=t2
+        +-column_definition_list=
+        | +-ColumnDefinition(name="x", type=INT64, column=t2.x#2)
+        +-primary_key=
+        | +-PrimaryKey(column_offset_list=[0], column_name_list=[x])
+        +-output_column_list=
+        | +-$query.$col1#1 AS x [INT64]
+        +-query=
+          +-ProjectScan
+            +-column_list=[$query.$col1#1]
+            +-expr_list=
+            | +-$col1#1 := Literal(type=INT64, value=1)
+            +-input_scan=
+              +-SingleRowScan
+==
+
+# CREATE TABLE with `ttl`
+# Not fully implemented yet - the deletion policy isn't in the output.
+[language_features=NONE,+PIPES,+PIPE_CREATE_TABLE,+CREATE_TABLE_AS_SELECT_COLUMN_LIST,+TTL]
+SELECT 1 x
+|> CREATE TABLE t2{{| (x INT64)}}
+   ROW DELETION POLICY ( x < 10 )
+--
+GeneralizedQueryStmt
++-query=
+  +-PipeCreateTableScan
+    +-create_table_as_select_stmt=
+      +-CreateTableAsSelectStmt
+        +-name_path=t2
+        +-column_definition_list=
+        | +-ColumnDefinition(name="x", type=INT64, column=t2.x#2)
+        +-output_column_list=
+        | +-$query.x#1 AS x [INT64]
+        +-query=
+          +-ProjectScan
+            +-column_list=[$query.x#1]
+            +-expr_list=
+            | +-x#1 := Literal(type=INT64, value=1)
+            +-input_scan=
+              +-SingleRowScan
+==
+
+# CREATE TABLE is not allowed in CTE definitions.
+WITH cte AS (FROM KeyValue |> CREATE TABLE t2)
+FROM cte
+--
+ERROR: CREATE TABLE is only allowed as part of the outermost query in a statement [at 1:28]
+WITH cte AS (FROM KeyValue |> CREATE TABLE t2)
+                           ^
+==
+
+# CREATE TABLE is allowed in the main query of WITH.
+# Note the rewrite for this.  It has to move the WithScan inside
+# the CreateTableAsSelectStmt's input_scan.
+[default enabled_ast_rewrites=DEFAULTS]
+WITH cte AS (FROM KeyValue)
+FROM cte
+|> CREATE TABLE t2
+--
+GeneralizedQueryStmt
++-query=
+  +-WithScan
+    +-with_entry_list=
+    | +-WithEntry
+    |   +-with_query_name="cte"
+    |   +-with_subquery=
+    |     +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+    +-query=
+      +-PipeCreateTableScan
+        +-create_table_as_select_stmt=
+          +-CreateTableAsSelectStmt
+            +-name_path=t2
+            +-column_definition_list=
+            | +-ColumnDefinition(name="Key", type=INT64, column=t2.Key#5)
+            | +-ColumnDefinition(name="Value", type=STRING, column=t2.Value#6)
+            +-output_column_list=
+            | +-cte.Key#3 AS Key [INT64]
+            | +-cte.Value#4 AS Value [STRING]
+            +-query=
+              +-WithRefScan(column_list=cte.[Key#3, Value#4], with_query_name="cte")
+
+
+[REWRITTEN AST]
+CreateTableAsSelectStmt
++-name_path=t2
++-column_definition_list=
+| +-ColumnDefinition(name="Key", type=INT64, column=t2.Key#5)
+| +-ColumnDefinition(name="Value", type=STRING, column=t2.Value#6)
++-output_column_list=
+| +-cte.Key#3 AS Key [INT64]
+| +-cte.Value#4 AS Value [STRING]
++-query=
+  +-WithScan
+    +-column_list=cte.[Key#3, Value#4]
+    +-with_entry_list=
+    | +-WithEntry
+    |   +-with_query_name="cte"
+    |   +-with_subquery=
+    |     +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+    +-query=
+      +-WithRefScan(column_list=cte.[Key#3, Value#4], with_query_name="cte")
+==
+
+# Chained WITH does not allow CREATE TABLE.
+WITH cte1 AS (FROM KeyValue)
+(
+  WITH cte2 AS (FROM cte1)
+  FROM cte1 JOIN cte2 USING (key)
+  |> CREATE TABLE t2
+)
+--
+ERROR: CREATE TABLE is only allowed as part of the outermost query in a statement [at 5:3]
+  |> CREATE TABLE t2
+  ^
+==
+
+# CREATE TABLE after WITH RECURSIVE.
+# The WithScan gets rewritten inside the CreateTableAsSelectStmt.
+with recursive t as (
+  select 1 xx
+  union all
+  select * from t
+)
+from t
+|> CREATE TABLE t2;
+--
+GeneralizedQueryStmt
++-query=
+  +-WithScan
+    +-with_entry_list=
+    | +-WithEntry
+    |   +-with_query_name="t"
+    |   +-with_subquery=
+    |     +-RecursiveScan
+    |       +-column_list=[$union_all.xx#2]
+    |       +-op_type=UNION_ALL
+    |       +-non_recursive_term=
+    |       | +-SetOperationItem
+    |       |   +-scan=
+    |       |   | +-ProjectScan
+    |       |   |   +-column_list=[$union_all1.xx#1]
+    |       |   |   +-expr_list=
+    |       |   |   | +-xx#1 := Literal(type=INT64, value=1)
+    |       |   |   +-input_scan=
+    |       |   |     +-SingleRowScan
+    |       |   +-output_column_list=[$union_all1.xx#1]
+    |       +-recursive_term=
+    |         +-SetOperationItem
+    |           +-scan=
+    |           | +-ProjectScan
+    |           |   +-column_list=[t.xx#3]
+    |           |   +-input_scan=
+    |           |     +-RecursiveRefScan(column_list=[t.xx#3])
+    |           +-output_column_list=[t.xx#3]
+    +-query=
+    | +-PipeCreateTableScan
+    |   +-create_table_as_select_stmt=
+    |     +-CreateTableAsSelectStmt
+    |       +-name_path=t2
+    |       +-column_definition_list=
+    |       | +-ColumnDefinition(name="xx", type=INT64, column=t2.xx#5)
+    |       +-output_column_list=
+    |       | +-t.xx#4 AS xx [INT64]
+    |       +-query=
+    |         +-WithRefScan(column_list=[t.xx#4], with_query_name="t")
+    +-recursive=TRUE
+
+
+[REWRITTEN AST]
+CreateTableAsSelectStmt
++-name_path=t2
++-column_definition_list=
+| +-ColumnDefinition(name="xx", type=INT64, column=t2.xx#5)
++-output_column_list=
+| +-t.xx#4 AS xx [INT64]
++-query=
+  +-WithScan
+    +-column_list=[t.xx#4]
+    +-with_entry_list=
+    | +-WithEntry
+    |   +-with_query_name="t"
+    |   +-with_subquery=
+    |     +-RecursiveScan
+    |       +-column_list=[$union_all.xx#2]
+    |       +-op_type=UNION_ALL
+    |       +-non_recursive_term=
+    |       | +-SetOperationItem
+    |       |   +-scan=
+    |       |   | +-ProjectScan
+    |       |   |   +-column_list=[$union_all1.xx#1]
+    |       |   |   +-expr_list=
+    |       |   |   | +-xx#1 := Literal(type=INT64, value=1)
+    |       |   |   +-input_scan=
+    |       |   |     +-SingleRowScan
+    |       |   +-output_column_list=[$union_all1.xx#1]
+    |       +-recursive_term=
+    |         +-SetOperationItem
+    |           +-scan=
+    |           | +-ProjectScan
+    |           |   +-column_list=[t.xx#3]
+    |           |   +-input_scan=
+    |           |     +-RecursiveRefScan(column_list=[t.xx#3])
+    |           +-output_column_list=[t.xx#3]
+    +-query=
+    | +-WithRefScan(column_list=[t.xx#4], with_query_name="t")
+    +-recursive=TRUE
+==
+
+CREATE VIEW v AS
+FROM KeyValue
+|> CREATE TABLE t2
+--
+ERROR: CREATE TABLE is only allowed as part of the outermost query in a statement [at 3:1]
+|> CREATE TABLE t2
+^
+==
+
+CREATE TABLE t2 AS
+FROM KeyValue
+|> CREATE TABLE t3
+--
+ERROR: CREATE TABLE is only allowed as part of the outermost query in a statement [at 3:1]
+|> CREATE TABLE t3
+^
+==
+
+# Pipe CREATE TABLE inside a query inside an EXPLAIN.
+# The statement gets rewritten inside the EXPLAIN.
+EXPLAIN
+FROM KeyValue
+|> CREATE TABLE t2
+--
+ExplainStmt
++-statement=
+  +-GeneralizedQueryStmt
+    +-query=
+      +-PipeCreateTableScan
+        +-create_table_as_select_stmt=
+          +-CreateTableAsSelectStmt
+            +-name_path=t2
+            +-column_definition_list=
+            | +-ColumnDefinition(name="Key", type=INT64, column=t2.Key#3)
+            | +-ColumnDefinition(name="Value", type=STRING, column=t2.Value#4)
+            +-output_column_list=
+            | +-KeyValue.Key#1 AS Key [INT64]
+            | +-KeyValue.Value#2 AS Value [STRING]
+            +-query=
+              +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+
+
+[REWRITTEN AST]
+ExplainStmt
++-statement=
+  +-CreateTableAsSelectStmt
+    +-name_path=t2
+    +-column_definition_list=
+    | +-ColumnDefinition(name="Key", type=INT64, column=t2.Key#3)
+    | +-ColumnDefinition(name="Value", type=STRING, column=t2.Value#4)
+    +-output_column_list=
+    | +-KeyValue.Key#1 AS Key [INT64]
+    | +-KeyValue.Value#2 AS Value [STRING]
+    +-query=
+      +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+==
+
+# CREATE TABLE inside FORK or TEE.
+# There's no check here that we don't create the same table name twice.
+# That's the engine's responsibility to deal with.
+FROM KeyValue
+|> {{FORK|TEE}} (
+     |> EXTEND key*10 k10
+     |> CREATE TABLE t2
+   ), (
+     |> SELECT AS VALUE value
+     |> CREATE TABLE t2
+   )
+--
+ALTERNATION GROUP: FORK
+--
+GeneralizedQueryStmt
++-query=
+  +-PipeForkScan
+    +-input_scan=
+    | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+    +-subpipeline_list=
+      +-GeneralizedQuerySubpipeline
+      | +-subpipeline=
+      |   +-Subpipeline
+      |     +-scan=
+      |       +-PipeCreateTableScan
+      |         +-create_table_as_select_stmt=
+      |           +-CreateTableAsSelectStmt
+      |             +-name_path=t2
+      |             +-column_definition_list=
+      |             | +-ColumnDefinition(name="Key", type=INT64, column=t2.Key#4)
+      |             | +-ColumnDefinition(name="Value", type=STRING, column=t2.Value#5)
+      |             | +-ColumnDefinition(name="k10", type=INT64, column=t2.k10#6)
+      |             +-output_column_list=
+      |             | +-KeyValue.Key#1 AS Key [INT64]
+      |             | +-KeyValue.Value#2 AS Value [STRING]
+      |             | +-$pipe_extend.k10#3 AS k10 [INT64]
+      |             +-query=
+      |               +-ProjectScan
+      |                 +-column_list=[KeyValue.Key#1, KeyValue.Value#2, $pipe_extend.k10#3]
+      |                 +-expr_list=
+      |                 | +-k10#3 :=
+      |                 |   +-FunctionCall(GoogleSQL:$multiply(INT64, INT64) -> INT64)
+      |                 |     +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+      |                 |     +-Literal(type=INT64, value=10)
+      |                 +-input_scan=
+      |                   +-SubpipelineInputScan(column_list=KeyValue.[Key#1, Value#2])
+      +-GeneralizedQuerySubpipeline
+        +-subpipeline=
+          +-Subpipeline
+            +-scan=
+              +-PipeCreateTableScan
+                +-create_table_as_select_stmt=
+                  +-CreateTableAsSelectStmt
+                    +-name_path=t2
+                    +-column_definition_list=
+                    | +-ColumnDefinition(name="$value_column", type=STRING, column=t2.$value_column#7)
+                    +-is_value_table=TRUE
+                    +-output_column_list=
+                    | +-KeyValue.Value#2 AS `$value_column` [STRING]
+                    +-query=
+                      +-ProjectScan
+                        +-column_list=[KeyValue.Value#2]
+                        +-input_scan=
+                          +-SubpipelineInputScan(column_list=KeyValue.[Key#1, Value#2])
+
+
+[REWRITTEN AST]
+MultiStmt
++-statement_list=
+  +-CreateWithEntryStmt
+  | +-with_entry=
+  |   +-WithEntry
+  |     +-with_query_name="$fork_cte_1"
+  |     +-with_subquery=
+  |       +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+  +-CreateTableAsSelectStmt
+  | +-name_path=t2
+  | +-column_definition_list=
+  | | +-ColumnDefinition(name="Key", type=INT64, column=t2.Key#4)
+  | | +-ColumnDefinition(name="Value", type=STRING, column=t2.Value#5)
+  | | +-ColumnDefinition(name="k10", type=INT64, column=t2.k10#6)
+  | +-output_column_list=
+  | | +-KeyValue.Key#1 AS Key [INT64]
+  | | +-KeyValue.Value#2 AS Value [STRING]
+  | | +-$pipe_extend.k10#3 AS k10 [INT64]
+  | +-query=
+  |   +-ProjectScan
+  |     +-column_list=[KeyValue.Key#1, KeyValue.Value#2, $pipe_extend.k10#3]
+  |     +-expr_list=
+  |     | +-k10#3 :=
+  |     |   +-FunctionCall(GoogleSQL:$multiply(INT64, INT64) -> INT64)
+  |     |     +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+  |     |     +-Literal(type=INT64, value=10)
+  |     +-input_scan=
+  |       +-WithRefScan(column_list=KeyValue.[Key#1, Value#2], with_query_name="$fork_cte_1")
+  +-CreateTableAsSelectStmt
+    +-name_path=t2
+    +-column_definition_list=
+    | +-ColumnDefinition(name="$value_column", type=STRING, column=t2.$value_column#7)
+    +-is_value_table=TRUE
+    +-output_column_list=
+    | +-KeyValue.Value#2 AS `$value_column` [STRING]
+    +-query=
+      +-ProjectScan
+        +-column_list=[KeyValue.Value#2]
+        +-input_scan=
+          +-WithRefScan(column_list=KeyValue.[Key#1, Value#2], with_query_name="$fork_cte_1")
+--
+ALTERNATION GROUP: TEE
+--
+GeneralizedQueryStmt
++-output_schema=
+| +-OutputSchema
+|   +-output_column_list=
+|     +-KeyValue.Key#1 AS Key [INT64]
+|     +-KeyValue.Value#2 AS Value [STRING]
++-query=
+  +-PipeTeeScan
+    +-column_list=KeyValue.[Key#1, Value#2]
+    +-input_scan=
+    | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+    +-subpipeline_list=
+      +-GeneralizedQuerySubpipeline
+      | +-subpipeline=
+      |   +-Subpipeline
+      |     +-scan=
+      |       +-PipeCreateTableScan
+      |         +-create_table_as_select_stmt=
+      |           +-CreateTableAsSelectStmt
+      |             +-name_path=t2
+      |             +-column_definition_list=
+      |             | +-ColumnDefinition(name="Key", type=INT64, column=t2.Key#4)
+      |             | +-ColumnDefinition(name="Value", type=STRING, column=t2.Value#5)
+      |             | +-ColumnDefinition(name="k10", type=INT64, column=t2.k10#6)
+      |             +-output_column_list=
+      |             | +-KeyValue.Key#1 AS Key [INT64]
+      |             | +-KeyValue.Value#2 AS Value [STRING]
+      |             | +-$pipe_extend.k10#3 AS k10 [INT64]
+      |             +-query=
+      |               +-ProjectScan
+      |                 +-column_list=[KeyValue.Key#1, KeyValue.Value#2, $pipe_extend.k10#3]
+      |                 +-expr_list=
+      |                 | +-k10#3 :=
+      |                 |   +-FunctionCall(GoogleSQL:$multiply(INT64, INT64) -> INT64)
+      |                 |     +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+      |                 |     +-Literal(type=INT64, value=10)
+      |                 +-input_scan=
+      |                   +-SubpipelineInputScan(column_list=KeyValue.[Key#1, Value#2])
+      +-GeneralizedQuerySubpipeline
+        +-subpipeline=
+          +-Subpipeline
+            +-scan=
+              +-PipeCreateTableScan
+                +-create_table_as_select_stmt=
+                  +-CreateTableAsSelectStmt
+                    +-name_path=t2
+                    +-column_definition_list=
+                    | +-ColumnDefinition(name="$value_column", type=STRING, column=t2.$value_column#7)
+                    +-is_value_table=TRUE
+                    +-output_column_list=
+                    | +-KeyValue.Value#2 AS `$value_column` [STRING]
+                    +-query=
+                      +-ProjectScan
+                        +-column_list=[KeyValue.Value#2]
+                        +-input_scan=
+                          +-SubpipelineInputScan(column_list=KeyValue.[Key#1, Value#2])
+
+
+[REWRITTEN AST]
+MultiStmt
++-statement_list=
+  +-CreateWithEntryStmt
+  | +-with_entry=
+  |   +-WithEntry
+  |     +-with_query_name="$tee_cte_1"
+  |     +-with_subquery=
+  |       +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+  +-CreateTableAsSelectStmt
+  | +-name_path=t2
+  | +-column_definition_list=
+  | | +-ColumnDefinition(name="Key", type=INT64, column=t2.Key#4)
+  | | +-ColumnDefinition(name="Value", type=STRING, column=t2.Value#5)
+  | | +-ColumnDefinition(name="k10", type=INT64, column=t2.k10#6)
+  | +-output_column_list=
+  | | +-KeyValue.Key#1 AS Key [INT64]
+  | | +-KeyValue.Value#2 AS Value [STRING]
+  | | +-$pipe_extend.k10#3 AS k10 [INT64]
+  | +-query=
+  |   +-ProjectScan
+  |     +-column_list=[KeyValue.Key#1, KeyValue.Value#2, $pipe_extend.k10#3]
+  |     +-expr_list=
+  |     | +-k10#3 :=
+  |     |   +-FunctionCall(GoogleSQL:$multiply(INT64, INT64) -> INT64)
+  |     |     +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+  |     |     +-Literal(type=INT64, value=10)
+  |     +-input_scan=
+  |       +-WithRefScan(column_list=KeyValue.[Key#1, Value#2], with_query_name="$tee_cte_1")
+  +-CreateTableAsSelectStmt
+  | +-name_path=t2
+  | +-column_definition_list=
+  | | +-ColumnDefinition(name="$value_column", type=STRING, column=t2.$value_column#7)
+  | +-is_value_table=TRUE
+  | +-output_column_list=
+  | | +-KeyValue.Value#2 AS `$value_column` [STRING]
+  | +-query=
+  |   +-ProjectScan
+  |     +-column_list=[KeyValue.Value#2]
+  |     +-input_scan=
+  |       +-WithRefScan(column_list=KeyValue.[Key#1, Value#2], with_query_name="$tee_cte_1")
+  +-QueryStmt
+    +-output_column_list=
+    | +-KeyValue.Key#1 AS Key [INT64]
+    | +-KeyValue.Value#2 AS Value [STRING]
+    +-query=
+      +-WithRefScan(column_list=KeyValue.[Key#1, Value#2], with_query_name="$tee_cte_1")
+==
+
+# CREATE TABLE inside an IF.
+FROM KeyValue
+|> IF {{TestConstantTrue|TestConstantFalse}} THEN (
+     |> EXTEND key*10 k10
+     |> CREATE TABLE t2
+   ) ELSE (
+     |> DROP key
+     |> CREATE TABLE t3
+   )
+--
+ALTERNATION GROUP: TestConstantTrue
+--
+GeneralizedQueryStmt
++-query=
+  +-PipeIfScan
+    +-input_scan=
+    | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+    +-selected_case=0
+    +-if_case_list=
+      +-PipeIfCase
+      | +-condition=
+      | | +-Constant(TestConstantTrue, type=BOOL, value=true)
+      | +-subpipeline_sql="(\n     |> EXTEND key*10 k10\n     |> CREATE TABLE t2\n   )"
+      | +-subpipeline=
+      |   +-Subpipeline
+      |     +-scan=
+      |       +-PipeCreateTableScan
+      |         +-create_table_as_select_stmt=
+      |           +-CreateTableAsSelectStmt
+      |             +-name_path=t2
+      |             +-column_definition_list=
+      |             | +-ColumnDefinition(name="Key", type=INT64, column=t2.Key#4)
+      |             | +-ColumnDefinition(name="Value", type=STRING, column=t2.Value#5)
+      |             | +-ColumnDefinition(name="k10", type=INT64, column=t2.k10#6)
+      |             +-output_column_list=
+      |             | +-KeyValue.Key#1 AS Key [INT64]
+      |             | +-KeyValue.Value#2 AS Value [STRING]
+      |             | +-$pipe_extend.k10#3 AS k10 [INT64]
+      |             +-query=
+      |               +-ProjectScan
+      |                 +-column_list=[KeyValue.Key#1, KeyValue.Value#2, $pipe_extend.k10#3]
+      |                 +-expr_list=
+      |                 | +-k10#3 :=
+      |                 |   +-FunctionCall(GoogleSQL:$multiply(INT64, INT64) -> INT64)
+      |                 |     +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+      |                 |     +-Literal(type=INT64, value=10)
+      |                 +-input_scan=
+      |                   +-SubpipelineInputScan(column_list=KeyValue.[Key#1, Value#2])
+      +-PipeIfCase(subpipeline_sql="(\n     |> DROP key\n     |> CREATE TABLE t3\n   )")
+
+
+[REWRITTEN AST]
+CreateTableAsSelectStmt
++-name_path=t2
++-column_definition_list=
+| +-ColumnDefinition(name="Key", type=INT64, column=t2.Key#4)
+| +-ColumnDefinition(name="Value", type=STRING, column=t2.Value#5)
+| +-ColumnDefinition(name="k10", type=INT64, column=t2.k10#6)
++-output_column_list=
+| +-KeyValue.Key#1 AS Key [INT64]
+| +-KeyValue.Value#2 AS Value [STRING]
+| +-$pipe_extend.k10#3 AS k10 [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[KeyValue.Key#1, KeyValue.Value#2, $pipe_extend.k10#3]
+    +-expr_list=
+    | +-k10#3 :=
+    |   +-FunctionCall(GoogleSQL:$multiply(INT64, INT64) -> INT64)
+    |     +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+    |     +-Literal(type=INT64, value=10)
+    +-input_scan=
+      +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+--
+ALTERNATION GROUP: TestConstantFalse
+--
+GeneralizedQueryStmt
++-query=
+  +-PipeIfScan
+    +-input_scan=
+    | +-TableScan(column_list=[KeyValue.Value#2], table=KeyValue, column_index_list=[1])
+    +-selected_case=1
+    +-if_case_list=
+      +-PipeIfCase
+      | +-condition=
+      | | +-Constant(TestConstantFalse, type=BOOL, value=false)
+      | +-subpipeline_sql="(\n     |> EXTEND key*10 k10\n     |> CREATE TABLE t2\n   )"
+      +-PipeIfCase
+        +-subpipeline_sql="(\n     |> DROP key\n     |> CREATE TABLE t3\n   )"
+        +-subpipeline=
+          +-Subpipeline
+            +-scan=
+              +-PipeCreateTableScan
+                +-create_table_as_select_stmt=
+                  +-CreateTableAsSelectStmt
+                    +-name_path=t3
+                    +-column_definition_list=
+                    | +-ColumnDefinition(name="Value", type=STRING, column=t3.Value#3)
+                    +-output_column_list=
+                    | +-KeyValue.Value#2 AS Value [STRING]
+                    +-query=
+                      +-SubpipelineInputScan(column_list=[KeyValue.Value#2])
+
+
+[REWRITTEN AST]
+CreateTableAsSelectStmt
++-name_path=t3
++-column_definition_list=
+| +-ColumnDefinition(name="Value", type=STRING, column=t3.Value#3)
++-output_column_list=
+| +-KeyValue.Value#2 AS Value [STRING]
++-query=
+  +-TableScan(column_list=[KeyValue.Value#2], table=KeyValue, column_index_list=[1])
+==
+
+# TODO Measures don't work in java yet.
+[no_java]
+FROM MeasureTable_SingleKey
+|> CREATE TABLE t2
+--
+ERROR: Returning expressions of type MEASURE is not allowed [at 2:4]
+|> CREATE TABLE t2
+   ^

@@ -5,7 +5,7 @@
 # User-defined aggregate functions 
 <a id="udas"></a>
 
-ZetaSQL supports user-defined aggregate functions (UDAs).
+GoogleSQL supports user-defined aggregate functions (UDAs).
 
 A SQL UDA is a user-defined function that
 performs a calculation on a group of rows at a time and returns the result of
@@ -18,7 +18,7 @@ group has a value for that column.
 
 You can create a UDA using the following syntax:
 
-```zetasql
+```googlesql
 CREATE
   [ OR REPLACE ]
   [ { TEMPORARY | TEMP } ] AGGREGATE FUNCTION
@@ -53,7 +53,7 @@ This syntax consists of the following components:
 
     + `parameter_name`: The name of the function parameter.
 
-    + `data_type`: A ZetaSQL [data type][data-types].
+    + `data_type`: A GoogleSQL [data type][data-types].
 
     
     + `ANY TYPE`: The function will accept an argument of any type for this
@@ -80,12 +80,12 @@ This syntax consists of the following components:
       [here][aggregate-udf-parameters].
     
 + `RETURNS data_type`: Optional clause that specifies the data type
-  that the function returns. ZetaSQL infers the result type
+  that the function returns. GoogleSQL infers the result type
   of the function from the SQL function body when the `RETURN` clause is
   omitted.
 + `function_body`: The SQL expression that defines the function body.
 
-[quoted-literals]: https://github.com/google/zetasql/blob/master/docs/lexical.md#quoted_literals
+[quoted-literals]: https://github.com/google/googlesql/blob/master/docs/lexical.md#quoted_literals
 
 ## Call a SQL UDA
 
@@ -116,7 +116,7 @@ function parameter. Inside the function definition, the aggregate `SUM` method
 takes the aggregate function parameter `dividend`, while the non-aggregate
 division operator ( `/` ) takes the non-aggregate function parameter `divisor`.
 
-```zetasql
+```googlesql
 CREATE TEMP AGGREGATE FUNCTION ScaledSum(
   dividend DOUBLE,
   divisor DOUBLE NOT AGGREGATE)
@@ -143,7 +143,7 @@ FROM (
 
 A templated function parameter can match more than one argument type at
 function call time. If a function signature includes a
-templated function parameter, ZetaSQL allows function calls
+templated function parameter, GoogleSQL allows function calls
 to pass to the function any argument type as long as the function body is
 valid for that argument type.
 
@@ -151,15 +151,15 @@ valid for that argument type.
 
 [templated-parameters]: #templated_function_parameters
 
-[data-types]: https://github.com/google/zetasql/blob/master/docs/data-types.md
+[data-types]: https://github.com/google/googlesql/blob/master/docs/data-types.md
 
-[function-calls]: https://github.com/google/zetasql/blob/master/docs/functions-reference.md
+[function-calls]: https://github.com/google/googlesql/blob/master/docs/functions-reference.md
 
 [aggregate-udf-parameters]: #aggregate_udf_parameters
 
-[group-by-link]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#group_by_clause
+[group-by-link]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#group_by_clause
 
-[aggregate-fns-link]: https://github.com/google/zetasql/blob/master/docs/aggregate-function-calls.md
+[aggregate-fns-link]: https://github.com/google/googlesql/blob/master/docs/aggregate-function-calls.md
 
 <!-- mdlint on -->
 

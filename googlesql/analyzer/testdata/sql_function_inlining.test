@@ -1,0 +1,2661 @@
+# This file tests the rewrite rule that inlines SQL functions
+[default enabled_ast_rewrites=ALL,-WITH_EXPR]
+[default language_features=NONE,+SAFE_FUNCTION_CALL,+INLINE_LAMBDA_ARGUMENT,+LATERAL_JOIN]
+
+################################################################################
+## Non Error Nullary
+################################################################################
+SELECT NullaryPi();
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [DOUBLE]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 := FunctionCall(Lazy_resolution_function:NullaryPi() -> DOUBLE)
+    +-input_scan=
+      +-SingleRowScan
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [DOUBLE]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 := Literal(type=DOUBLE, value=3.141597)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+[suppress_functions={{|NULLIFERROR|IFERROR}}]
+SELECT SAFE.NullaryPi();
+--
+ALTERNATION GROUP: <empty>
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [DOUBLE]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 := FunctionCall({SAFE_ERROR_MODE} Lazy_resolution_function:NullaryPi() -> DOUBLE)
+    +-input_scan=
+      +-SingleRowScan
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [DOUBLE]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(GoogleSQL:iferror(DOUBLE, DOUBLE) -> DOUBLE)
+    |     +-Literal(type=DOUBLE, value=3.141597)
+    |     +-Literal(type=DOUBLE, value=NULL)
+    +-input_scan=
+      +-SingleRowScan
+--
+ALTERNATION GROUPS:
+    NULLIFERROR
+    IFERROR
+--
+[PRE-REWRITE AST]
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [DOUBLE]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 := FunctionCall({SAFE_ERROR_MODE} Lazy_resolution_function:NullaryPi() -> DOUBLE)
+    +-input_scan=
+      +-SingleRowScan
+
+Rewrite ERROR: generic::unimplemented: SAFE mode calls to NullaryPi are not supported.
+==
+
+SELECT NullaryWithSubquery();
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [BOOL]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 := FunctionCall(Lazy_resolution_function:NullaryWithSubquery() -> BOOL)
+    +-input_scan=
+      +-SingleRowScan
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [BOOL]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-SubqueryExpr
+    |     +-type=BOOL
+    |     +-subquery_type=EXISTS
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$expr_subquery.$col1#2]
+    |         +-expr_list=
+    |         | +-$col1#2 := Literal(type=INT64, value=1)
+    |         +-input_scan=
+    |           +-FilterScan
+    |             +-column_list=[$array.e#3]
+    |             +-input_scan=
+    |             | +-ArrayScan
+    |             |   +-column_list=[$array.e#3]
+    |             |   +-array_expr_list=
+    |             |   | +-Literal(type=ARRAY<INT64>, value=[1, 2, 3])
+    |             |   +-element_column_list=[$array.e#3]
+    |             +-filter_expr=
+    |               +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+    |                 +-ColumnRef(type=INT64, column=$array.e#3)
+    |                 +-Literal(type=INT64, value=2)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+SELECT NullaryWithCommonTableExpression();
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [BOOL]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 := FunctionCall(Lazy_resolution_function:NullaryWithCommonTableExpression() -> BOOL)
+    +-input_scan=
+      +-SingleRowScan
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [BOOL]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-SubqueryExpr
+    |     +-type=BOOL
+    |     +-subquery_type=EXISTS
+    |     +-subquery=
+    |       +-WithScan
+    |         +-column_list=[$expr_subquery.$col1#3]
+    |         +-with_entry_list=
+    |         | +-WithEntry
+    |         |   +-with_query_name="t"
+    |         |   +-with_subquery=
+    |         |     +-ProjectScan
+    |         |       +-column_list=[t.arr#2]
+    |         |       +-expr_list=
+    |         |       | +-arr#2 := Literal(type=ARRAY<INT64>, value=[1, 2, 3])
+    |         |       +-input_scan=
+    |         |         +-SingleRowScan
+    |         +-query=
+    |           +-ProjectScan
+    |             +-column_list=[$expr_subquery.$col1#3]
+    |             +-expr_list=
+    |             | +-$col1#3 := Literal(type=INT64, value=1)
+    |             +-input_scan=
+    |               +-FilterScan
+    |                 +-column_list=[t.arr#4, $array.e#5]
+    |                 +-input_scan=
+    |                 | +-ArrayScan
+    |                 |   +-column_list=[t.arr#4, $array.e#5]
+    |                 |   +-input_scan=
+    |                 |   | +-WithRefScan(column_list=[t.arr#4], with_query_name="t")
+    |                 |   +-array_expr_list=
+    |                 |   | +-ColumnRef(type=ARRAY<INT64>, column=t.arr#4)
+    |                 |   +-element_column_list=[$array.e#5]
+    |                 +-filter_expr=
+    |                   +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+    |                     +-ColumnRef(type=INT64, column=$array.e#5)
+    |                     +-Literal(type=INT64, value=2)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# This query shows an issue. The array includes rewriter does not trigger
+# because the AnalyzerOutputProperties does not know there is a lambda, there
+# wasn't one in the initial query.
+SELECT NullaryWithLambda();
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [BOOL]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 := FunctionCall(Lazy_resolution_function:NullaryWithLambda() -> BOOL)
+    +-input_scan=
+      +-SingleRowScan
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [BOOL]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-SubqueryExpr
+    |     +-type=BOOL
+    |     +-subquery_type=SCALAR
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$expr_subquery.$col1#6]
+    |         +-expr_list=
+    |         | +-$col1#6 :=
+    |         |   +-FunctionCall(GoogleSQL:if(BOOL, BOOL, BOOL) -> BOOL)
+    |         |     +-FunctionCall(GoogleSQL:$is_null(ARRAY<INT64>) -> BOOL)
+    |         |     | +-ColumnRef(type=ARRAY<INT64>, column=$subquery1.array_to_search#3)
+    |         |     +-Literal(type=BOOL, value=NULL)
+    |         |     +-SubqueryExpr
+    |         |       +-type=BOOL
+    |         |       +-subquery_type=EXISTS
+    |         |       +-parameter_list=
+    |         |       | +-ColumnRef(type=ARRAY<INT64>, column=$subquery1.array_to_search#3)
+    |         |       +-subquery=
+    |         |         +-ProjectScan
+    |         |           +-column_list=[$expr_subquery.$col1#5]
+    |         |           +-expr_list=
+    |         |           | +-$col1#5 := Literal(type=INT64, value=1)
+    |         |           +-input_scan=
+    |         |             +-FilterScan
+    |         |               +-column_list=[$array.element#4]
+    |         |               +-input_scan=
+    |         |               | +-ArrayScan
+    |         |               |   +-column_list=[$array.element#4]
+    |         |               |   +-array_expr_list=
+    |         |               |   | +-ColumnRef(type=ARRAY<INT64>, column=$subquery1.array_to_search#3, is_correlated=TRUE)
+    |         |               |   +-element_column_list=[$array.element#4]
+    |         |               +-filter_expr=
+    |         |                 +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+    |         |                   +-ColumnRef(type=INT64, column=$array.element#4)
+    |         |                   +-Literal(type=INT64, value=2)
+    |         +-input_scan=
+    |           +-ProjectScan
+    |             +-column_list=[$subquery1.array_to_search#3]
+    |             +-expr_list=
+    |             | +-array_to_search#3 := Literal(type=ARRAY<INT64>, value=[1, 2, 3])
+    |             +-input_scan=
+    |               +-SingleRowScan
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# This query will rewrite the lambda inside and outside the function.
+SELECT NullaryWithLambda(), ARRAY_INCLUDES([1.0, 2, 3], e -> e = NullaryPi());
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#2 AS `$col1` [BOOL]
+| +-$query.$col2#3 AS `$col2` [BOOL]
++-query=
+  +-ProjectScan
+    +-column_list=$query.[$col1#2, $col2#3]
+    +-expr_list=
+    | +-$col1#2 := FunctionCall(Lazy_resolution_function:NullaryWithLambda() -> BOOL)
+    | +-$col2#3 :=
+    |   +-FunctionCall(GoogleSQL:array_includes(ARRAY<DOUBLE> array_to_search, FUNCTION<DOUBLE->BOOL> condition) -> BOOL)
+    |     +-FunctionArgument
+    |     | +-expr=
+    |     |   +-Literal(type=ARRAY<DOUBLE>, value=[1, 2, 3])
+    |     +-FunctionArgument
+    |       +-inline_lambda=
+    |         +-InlineLambda
+    |           +-argument_list=[$lambda_arg.e#1]
+    |           +-body=
+    |             +-FunctionCall(GoogleSQL:$equal(DOUBLE, DOUBLE) -> BOOL)
+    |               +-ColumnRef(type=DOUBLE, column=$lambda_arg.e#1)
+    |               +-FunctionCall(Lazy_resolution_function:NullaryPi() -> DOUBLE)
+    +-input_scan=
+      +-SingleRowScan
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$query.$col1#2 AS `$col1` [BOOL]
+| +-$query.$col2#3 AS `$col2` [BOOL]
++-query=
+  +-ProjectScan
+    +-column_list=$query.[$col1#2, $col2#3]
+    +-expr_list=
+    | +-$col1#2 :=
+    | | +-SubqueryExpr
+    | |   +-type=BOOL
+    | |   +-subquery_type=SCALAR
+    | |   +-subquery=
+    | |     +-ProjectScan
+    | |       +-column_list=[$expr_subquery.$col1#8]
+    | |       +-expr_list=
+    | |       | +-$col1#8 :=
+    | |       |   +-FunctionCall(GoogleSQL:if(BOOL, BOOL, BOOL) -> BOOL)
+    | |       |     +-FunctionCall(GoogleSQL:$is_null(ARRAY<INT64>) -> BOOL)
+    | |       |     | +-ColumnRef(type=ARRAY<INT64>, column=$subquery1.array_to_search#5)
+    | |       |     +-Literal(type=BOOL, value=NULL)
+    | |       |     +-SubqueryExpr
+    | |       |       +-type=BOOL
+    | |       |       +-subquery_type=EXISTS
+    | |       |       +-parameter_list=
+    | |       |       | +-ColumnRef(type=ARRAY<INT64>, column=$subquery1.array_to_search#5)
+    | |       |       +-subquery=
+    | |       |         +-ProjectScan
+    | |       |           +-column_list=[$expr_subquery.$col1#7]
+    | |       |           +-expr_list=
+    | |       |           | +-$col1#7 := Literal(type=INT64, value=1)
+    | |       |           +-input_scan=
+    | |       |             +-FilterScan
+    | |       |               +-column_list=[$array.element#6]
+    | |       |               +-input_scan=
+    | |       |               | +-ArrayScan
+    | |       |               |   +-column_list=[$array.element#6]
+    | |       |               |   +-array_expr_list=
+    | |       |               |   | +-ColumnRef(type=ARRAY<INT64>, column=$subquery1.array_to_search#5, is_correlated=TRUE)
+    | |       |               |   +-element_column_list=[$array.element#6]
+    | |       |               +-filter_expr=
+    | |       |                 +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+    | |       |                   +-ColumnRef(type=INT64, column=$array.element#6)
+    | |       |                   +-Literal(type=INT64, value=2)
+    | |       +-input_scan=
+    | |         +-ProjectScan
+    | |           +-column_list=[$subquery1.array_to_search#5]
+    | |           +-expr_list=
+    | |           | +-array_to_search#5 := Literal(type=ARRAY<INT64>, value=[1, 2, 3])
+    | |           +-input_scan=
+    | |             +-SingleRowScan
+    | +-$col2#3 :=
+    |   +-SubqueryExpr
+    |     +-type=BOOL
+    |     +-subquery_type=SCALAR
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$expr_subquery.$col1#12]
+    |         +-expr_list=
+    |         | +-$col1#12 :=
+    |         |   +-FunctionCall(GoogleSQL:if(BOOL, BOOL, BOOL) -> BOOL)
+    |         |     +-FunctionCall(GoogleSQL:$is_null(ARRAY<DOUBLE>) -> BOOL)
+    |         |     | +-ColumnRef(type=ARRAY<DOUBLE>, column=$subquery1.array_to_search#9)
+    |         |     +-Literal(type=BOOL, value=NULL)
+    |         |     +-SubqueryExpr
+    |         |       +-type=BOOL
+    |         |       +-subquery_type=EXISTS
+    |         |       +-parameter_list=
+    |         |       | +-ColumnRef(type=ARRAY<DOUBLE>, column=$subquery1.array_to_search#9)
+    |         |       +-subquery=
+    |         |         +-ProjectScan
+    |         |           +-column_list=[$expr_subquery.$col1#11]
+    |         |           +-expr_list=
+    |         |           | +-$col1#11 := Literal(type=INT64, value=1)
+    |         |           +-input_scan=
+    |         |             +-FilterScan
+    |         |               +-column_list=[$array.element#10]
+    |         |               +-input_scan=
+    |         |               | +-ArrayScan
+    |         |               |   +-column_list=[$array.element#10]
+    |         |               |   +-array_expr_list=
+    |         |               |   | +-ColumnRef(type=ARRAY<DOUBLE>, column=$subquery1.array_to_search#9, is_correlated=TRUE)
+    |         |               |   +-element_column_list=[$array.element#10]
+    |         |               +-filter_expr=
+    |         |                 +-FunctionCall(GoogleSQL:$equal(DOUBLE, DOUBLE) -> BOOL)
+    |         |                   +-ColumnRef(type=DOUBLE, column=$array.element#10)
+    |         |                   +-Literal(type=DOUBLE, value=3.141597)
+    |         +-input_scan=
+    |           +-ProjectScan
+    |             +-column_list=[$subquery1.array_to_search#9]
+    |             +-expr_list=
+    |             | +-array_to_search#9 := Literal(type=ARRAY<DOUBLE>, value=[1, 2, 3])
+    |             +-input_scan=
+    |               +-SingleRowScan
+    +-input_scan=
+      +-SingleRowScan
+==
+
+SELECT NullaryWithSqlFunctionCall{{|NOT}}PreInlined();
+
+--
+ALTERNATION GROUP: <empty>
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [DOUBLE]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 := FunctionCall(Lazy_resolution_function:NullaryWithSqlFunctionCallPreInlined() -> DOUBLE)
+    +-input_scan=
+      +-SingleRowScan
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [DOUBLE]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 := Literal(type=DOUBLE, value=3.141597)
+    +-input_scan=
+      +-SingleRowScan
+--
+ALTERNATION GROUP: NOT
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [DOUBLE]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 := FunctionCall(Lazy_resolution_function:NullaryWithSqlFunctionCallNotPreInlined() -> DOUBLE)
+    +-input_scan=
+      +-SingleRowScan
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [DOUBLE]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 := Literal(type=DOUBLE, value=3.141597)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+################################################################################
+## Functions with arguments
+################################################################################
+
+SELECT UnaryIncrement{{|RefArg}}(1);
+
+--
+ALTERNATION GROUP: <empty>
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(Lazy_resolution_function:UnaryIncrement(INT64 a) -> INT64)
+    |     +-Literal(type=INT64, value=1)
+    +-input_scan=
+      +-SingleRowScan
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-WithExpr
+    |     +-type=INT64
+    |     +-assignment_list=
+    |     | +-a#2 := Literal(type=INT64, value=1)
+    |     +-expr=
+    |       +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |         +-ColumnRef(type=INT64, column=$inlined_UnaryIncrement.a#2)
+    |         +-Literal(type=INT64, value=1)
+    +-input_scan=
+      +-SingleRowScan
+--
+ALTERNATION GROUP: RefArg
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(Lazy_resolution_function:UnaryIncrementRefArg(INT64) -> INT64)
+    |     +-Literal(type=INT64, value=1)
+    +-input_scan=
+      +-SingleRowScan
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-WithExpr
+    |     +-type=INT64
+    |     +-assignment_list=
+    |     | +-a#2 := Literal(type=INT64, value=1)
+    |     +-expr=
+    |       +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |         +-ColumnRef(type=INT64, column=$inlined_UnaryIncrementRefArg.a#2)
+    |         +-Literal(type=INT64, value=1)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# This case is useful because the argument is a column rather than a literal.
+SELECT UnaryIncrement(a) FROM (SELECT 1 a);
+
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#2 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#2]
+    +-expr_list=
+    | +-$col1#2 :=
+    |   +-FunctionCall(Lazy_resolution_function:UnaryIncrement(INT64 a) -> INT64)
+    |     +-ColumnRef(type=INT64, column=$subquery1.a#1)
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[$subquery1.a#1]
+        +-expr_list=
+        | +-a#1 := Literal(type=INT64, value=1)
+        +-input_scan=
+          +-SingleRowScan
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$query.$col1#2 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#2]
+    +-expr_list=
+    | +-$col1#2 :=
+    |   +-WithExpr
+    |     +-type=INT64
+    |     +-assignment_list=
+    |     | +-a#3 := ColumnRef(type=INT64, column=$subquery1.a#1)
+    |     +-expr=
+    |       +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |         +-ColumnRef(type=INT64, column=$inlined_UnaryIncrement.a#3)
+    |         +-Literal(type=INT64, value=1)
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[$subquery1.a#1]
+        +-expr_list=
+        | +-a#1 := Literal(type=INT64, value=1)
+        +-input_scan=
+          +-SingleRowScan
+==
+
+SELECT IgnoresArg(3);
+
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(Lazy_resolution_function:IgnoresArg(INT64 a) -> INT64)
+    |     +-Literal(type=INT64, value=3)
+    +-input_scan=
+      +-SingleRowScan
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-WithExpr
+    |     +-type=INT64
+    |     +-assignment_list=
+    |     | +-a#2 := Literal(type=INT64, value=3)
+    |     +-expr=
+    |       +-Literal(type=INT64, value=1)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+SELECT FloorDiv(1, 2);
+
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(Lazy_resolution_function:FloorDiv(INT64 n, INT64 d) -> INT64)
+    |     +-Literal(type=INT64, value=1)
+    |     +-Literal(type=INT64, value=2)
+    +-input_scan=
+      +-SingleRowScan
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-WithExpr
+    |     +-type=INT64
+    |     +-assignment_list=
+    |     | +-n#2 := Literal(type=INT64, value=1)
+    |     | +-d#3 := Literal(type=INT64, value=2)
+    |     +-expr=
+    |       +-FunctionCall(GoogleSQL:$subtract(INT64, INT64) -> INT64)
+    |         +-FunctionCall(GoogleSQL:div(INT64, INT64) -> INT64)
+    |         | +-ColumnRef(type=INT64, column=$inlined_FloorDiv.n#2)
+    |         | +-ColumnRef(type=INT64, column=$inlined_FloorDiv.d#3)
+    |         +-FunctionCall(GoogleSQL:if(BOOL, INT64, INT64) -> INT64)
+    |           +-FunctionCall(GoogleSQL:$and(BOOL, repeated(1) BOOL) -> BOOL)
+    |           | +-FunctionCall(GoogleSQL:$less(INT64, INT64) -> BOOL)
+    |           | | +-ColumnRef(type=INT64, column=$inlined_FloorDiv.n#2)
+    |           | | +-Literal(type=INT64, value=0)
+    |           | +-FunctionCall(GoogleSQL:$not_equal(INT64, INT64) -> BOOL)
+    |           |   +-FunctionCall(GoogleSQL:mod(INT64, INT64) -> INT64)
+    |           |   | +-ColumnRef(type=INT64, column=$inlined_FloorDiv.n#2)
+    |           |   | +-ColumnRef(type=INT64, column=$inlined_FloorDiv.d#3)
+    |           |   +-Literal(type=INT64, value=0)
+    |           +-Literal(type=INT64, value=1)
+    |           +-Literal(type=INT64, value=0)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+SELECT FloorDiv(values[OFFSET(FloorDiv(CAST(Ceil(RAND() * 11) AS INT64), 2))],
+                values[OFFSET(FloorDiv(CAST(Ceil(RAND() * 11) AS INT64), 2))])
+FROM (SELECT [1, 1, 2, 3, 0] AS values);
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#2 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#2]
+    +-expr_list=
+    | +-$col1#2 :=
+    |   +-FunctionCall(Lazy_resolution_function:FloorDiv(INT64 n, INT64 d) -> INT64)
+    |     +-FunctionCall(GoogleSQL:$array_at_offset(ARRAY<INT64>, INT64) -> INT64)
+    |     | +-ColumnRef(type=ARRAY<INT64>, column=$subquery1.values#1)
+    |     | +-FunctionCall(Lazy_resolution_function:FloorDiv(INT64 n, INT64 d) -> INT64)
+    |     |   +-Cast(DOUBLE -> INT64)
+    |     |   | +-FunctionCall(GoogleSQL:ceil(DOUBLE) -> DOUBLE)
+    |     |   |   +-FunctionCall(GoogleSQL:$multiply(DOUBLE, DOUBLE) -> DOUBLE)
+    |     |   |     +-FunctionCall(GoogleSQL:rand() -> DOUBLE)
+    |     |   |     +-Literal(type=DOUBLE, value=11)
+    |     |   +-Literal(type=INT64, value=2)
+    |     +-FunctionCall(GoogleSQL:$array_at_offset(ARRAY<INT64>, INT64) -> INT64)
+    |       +-ColumnRef(type=ARRAY<INT64>, column=$subquery1.values#1)
+    |       +-FunctionCall(Lazy_resolution_function:FloorDiv(INT64 n, INT64 d) -> INT64)
+    |         +-Cast(DOUBLE -> INT64)
+    |         | +-FunctionCall(GoogleSQL:ceil(DOUBLE) -> DOUBLE)
+    |         |   +-FunctionCall(GoogleSQL:$multiply(DOUBLE, DOUBLE) -> DOUBLE)
+    |         |     +-FunctionCall(GoogleSQL:rand() -> DOUBLE)
+    |         |     +-Literal(type=DOUBLE, value=11)
+    |         +-Literal(type=INT64, value=2)
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[$subquery1.values#1]
+        +-expr_list=
+        | +-values#1 := Literal(type=ARRAY<INT64>, value=[1, 1, 2, 3, 0])
+        +-input_scan=
+          +-SingleRowScan
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$query.$col1#2 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#2]
+    +-expr_list=
+    | +-$col1#2 :=
+    |   +-WithExpr
+    |     +-type=INT64
+    |     +-assignment_list=
+    |     | +-n#5 :=
+    |     | | +-FunctionCall(GoogleSQL:$array_at_offset(ARRAY<INT64>, INT64) -> INT64)
+    |     | |   +-ColumnRef(type=ARRAY<INT64>, column=$subquery1.values#1)
+    |     | |   +-WithExpr
+    |     | |     +-type=INT64
+    |     | |     +-assignment_list=
+    |     | |     | +-n#3 :=
+    |     | |     | | +-Cast(DOUBLE -> INT64)
+    |     | |     | |   +-FunctionCall(GoogleSQL:ceil(DOUBLE) -> DOUBLE)
+    |     | |     | |     +-FunctionCall(GoogleSQL:$multiply(DOUBLE, DOUBLE) -> DOUBLE)
+    |     | |     | |       +-FunctionCall(GoogleSQL:rand() -> DOUBLE)
+    |     | |     | |       +-Literal(type=DOUBLE, value=11)
+    |     | |     | +-d#4 := Literal(type=INT64, value=2)
+    |     | |     +-expr=
+    |     | |       +-FunctionCall(GoogleSQL:$subtract(INT64, INT64) -> INT64)
+    |     | |         +-FunctionCall(GoogleSQL:div(INT64, INT64) -> INT64)
+    |     | |         | +-ColumnRef(type=INT64, column=$inlined_FloorDiv.n#3)
+    |     | |         | +-ColumnRef(type=INT64, column=$inlined_FloorDiv.d#4)
+    |     | |         +-FunctionCall(GoogleSQL:if(BOOL, INT64, INT64) -> INT64)
+    |     | |           +-FunctionCall(GoogleSQL:$and(BOOL, repeated(1) BOOL) -> BOOL)
+    |     | |           | +-FunctionCall(GoogleSQL:$less(INT64, INT64) -> BOOL)
+    |     | |           | | +-ColumnRef(type=INT64, column=$inlined_FloorDiv.n#3)
+    |     | |           | | +-Literal(type=INT64, value=0)
+    |     | |           | +-FunctionCall(GoogleSQL:$not_equal(INT64, INT64) -> BOOL)
+    |     | |           |   +-FunctionCall(GoogleSQL:mod(INT64, INT64) -> INT64)
+    |     | |           |   | +-ColumnRef(type=INT64, column=$inlined_FloorDiv.n#3)
+    |     | |           |   | +-ColumnRef(type=INT64, column=$inlined_FloorDiv.d#4)
+    |     | |           |   +-Literal(type=INT64, value=0)
+    |     | |           +-Literal(type=INT64, value=1)
+    |     | |           +-Literal(type=INT64, value=0)
+    |     | +-d#8 :=
+    |     |   +-FunctionCall(GoogleSQL:$array_at_offset(ARRAY<INT64>, INT64) -> INT64)
+    |     |     +-ColumnRef(type=ARRAY<INT64>, column=$subquery1.values#1)
+    |     |     +-WithExpr
+    |     |       +-type=INT64
+    |     |       +-assignment_list=
+    |     |       | +-n#6 :=
+    |     |       | | +-Cast(DOUBLE -> INT64)
+    |     |       | |   +-FunctionCall(GoogleSQL:ceil(DOUBLE) -> DOUBLE)
+    |     |       | |     +-FunctionCall(GoogleSQL:$multiply(DOUBLE, DOUBLE) -> DOUBLE)
+    |     |       | |       +-FunctionCall(GoogleSQL:rand() -> DOUBLE)
+    |     |       | |       +-Literal(type=DOUBLE, value=11)
+    |     |       | +-d#7 := Literal(type=INT64, value=2)
+    |     |       +-expr=
+    |     |         +-FunctionCall(GoogleSQL:$subtract(INT64, INT64) -> INT64)
+    |     |           +-FunctionCall(GoogleSQL:div(INT64, INT64) -> INT64)
+    |     |           | +-ColumnRef(type=INT64, column=$inlined_FloorDiv.n#6)
+    |     |           | +-ColumnRef(type=INT64, column=$inlined_FloorDiv.d#7)
+    |     |           +-FunctionCall(GoogleSQL:if(BOOL, INT64, INT64) -> INT64)
+    |     |             +-FunctionCall(GoogleSQL:$and(BOOL, repeated(1) BOOL) -> BOOL)
+    |     |             | +-FunctionCall(GoogleSQL:$less(INT64, INT64) -> BOOL)
+    |     |             | | +-ColumnRef(type=INT64, column=$inlined_FloorDiv.n#6)
+    |     |             | | +-Literal(type=INT64, value=0)
+    |     |             | +-FunctionCall(GoogleSQL:$not_equal(INT64, INT64) -> BOOL)
+    |     |             |   +-FunctionCall(GoogleSQL:mod(INT64, INT64) -> INT64)
+    |     |             |   | +-ColumnRef(type=INT64, column=$inlined_FloorDiv.n#6)
+    |     |             |   | +-ColumnRef(type=INT64, column=$inlined_FloorDiv.d#7)
+    |     |             |   +-Literal(type=INT64, value=0)
+    |     |             +-Literal(type=INT64, value=1)
+    |     |             +-Literal(type=INT64, value=0)
+    |     +-expr=
+    |       +-FunctionCall(GoogleSQL:$subtract(INT64, INT64) -> INT64)
+    |         +-FunctionCall(GoogleSQL:div(INT64, INT64) -> INT64)
+    |         | +-ColumnRef(type=INT64, column=$inlined_FloorDiv.n#5)
+    |         | +-ColumnRef(type=INT64, column=$inlined_FloorDiv.d#8)
+    |         +-FunctionCall(GoogleSQL:if(BOOL, INT64, INT64) -> INT64)
+    |           +-FunctionCall(GoogleSQL:$and(BOOL, repeated(1) BOOL) -> BOOL)
+    |           | +-FunctionCall(GoogleSQL:$less(INT64, INT64) -> BOOL)
+    |           | | +-ColumnRef(type=INT64, column=$inlined_FloorDiv.n#5)
+    |           | | +-Literal(type=INT64, value=0)
+    |           | +-FunctionCall(GoogleSQL:$not_equal(INT64, INT64) -> BOOL)
+    |           |   +-FunctionCall(GoogleSQL:mod(INT64, INT64) -> INT64)
+    |           |   | +-ColumnRef(type=INT64, column=$inlined_FloorDiv.n#5)
+    |           |   | +-ColumnRef(type=INT64, column=$inlined_FloorDiv.d#8)
+    |           |   +-Literal(type=INT64, value=0)
+    |           +-Literal(type=INT64, value=1)
+    |           +-Literal(type=INT64, value=0)
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[$subquery1.values#1]
+        +-expr_list=
+        | +-values#1 := Literal(type=ARRAY<INT64>, value=[1, 1, 2, 3, 0])
+        +-input_scan=
+          +-SingleRowScan
+==
+
+# In this case the argument column becomes a parameter to the subquery inside
+# the function body
+SELECT ReferencesArgsInsideSubquery(1, 2);
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(Lazy_resolution_function:ReferencesArgsInsideSubquery(INT64 a, INT64 b) -> INT64)
+    |     +-Literal(type=INT64, value=1)
+    |     +-Literal(type=INT64, value=2)
+    +-input_scan=
+      +-SingleRowScan
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-WithExpr
+    |     +-type=INT64
+    |     +-assignment_list=
+    |     | +-a#3 := Literal(type=INT64, value=1)
+    |     | +-b#4 := Literal(type=INT64, value=2)
+    |     +-expr=
+    |       +-SubqueryExpr
+    |         +-type=INT64
+    |         +-subquery_type=SCALAR
+    |         +-parameter_list=
+    |         | +-ColumnRef(type=INT64, column=$inlined_ReferencesArgsInsideSubquery.a#3)
+    |         | +-ColumnRef(type=INT64, column=$inlined_ReferencesArgsInsideSubquery.b#4)
+    |         +-subquery=
+    |           +-ProjectScan
+    |             +-column_list=[$expr_subquery.$col1#2]
+    |             +-expr_list=
+    |             | +-$col1#2 :=
+    |             |   +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |             |     +-ColumnRef(type=INT64, column=$inlined_ReferencesArgsInsideSubquery.a#3, is_correlated=TRUE)
+    |             |     +-ColumnRef(type=INT64, column=$inlined_ReferencesArgsInsideSubquery.b#4, is_correlated=TRUE)
+    |             +-input_scan=
+    |               +-SingleRowScan
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Multiple arguments referencing columns. Different columns and same columns.
+# Show the WITH_EXPR rewrite in this case to repro b/234774120
+[enabled_ast_rewrites=ALL,{{|-WITH_EXPR}}]
+SELECT ReferencesArgsInsideSubquery(a, {{a|b}}) FROM (SELECT 1 AS a, 2 AS b);
+--
+ALTERNATION GROUP: a
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#3 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#3]
+    +-expr_list=
+    | +-$col1#3 :=
+    |   +-FunctionCall(Lazy_resolution_function:ReferencesArgsInsideSubquery(INT64 a, INT64 b) -> INT64)
+    |     +-ColumnRef(type=INT64, column=$subquery1.a#1)
+    |     +-ColumnRef(type=INT64, column=$subquery1.a#1)
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=$subquery1.[a#1, b#2]
+        +-expr_list=
+        | +-a#1 := Literal(type=INT64, value=1)
+        | +-b#2 := Literal(type=INT64, value=2)
+        +-input_scan=
+          +-SingleRowScan
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$query.$col1#3 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#3]
+    +-expr_list=
+    | +-$col1#3 :=
+    |   +-SubqueryExpr
+    |     +-type=INT64
+    |     +-subquery_type=SCALAR
+    |     +-parameter_list=
+    |     | +-ColumnRef(type=INT64, column=$subquery1.a#1)
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$with_expr.injected#7]
+    |         +-expr_list=
+    |         | +-injected#7 :=
+    |         |   +-SubqueryExpr
+    |         |     +-type=INT64
+    |         |     +-subquery_type=SCALAR
+    |         |     +-parameter_list=
+    |         |     | +-ColumnRef(type=INT64, column=$inlined_ReferencesArgsInsideSubquery.a#5)
+    |         |     | +-ColumnRef(type=INT64, column=$inlined_ReferencesArgsInsideSubquery.b#6)
+    |         |     +-subquery=
+    |         |       +-ProjectScan
+    |         |         +-column_list=[$expr_subquery.$col1#4]
+    |         |         +-expr_list=
+    |         |         | +-$col1#4 :=
+    |         |         |   +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |         |         |     +-ColumnRef(type=INT64, column=$inlined_ReferencesArgsInsideSubquery.a#5, is_correlated=TRUE)
+    |         |         |     +-ColumnRef(type=INT64, column=$inlined_ReferencesArgsInsideSubquery.b#6, is_correlated=TRUE)
+    |         |         +-input_scan=
+    |         |           +-SingleRowScan
+    |         +-input_scan=
+    |           +-ProjectScan
+    |             +-column_list=$inlined_ReferencesArgsInsideSubquery.[a#5, b#6]
+    |             +-expr_list=
+    |             | +-b#6 := ColumnRef(type=INT64, column=$subquery1.a#1, is_correlated=TRUE)
+    |             +-input_scan=
+    |               +-ProjectScan
+    |                 +-column_list=[$inlined_ReferencesArgsInsideSubquery.a#5]
+    |                 +-expr_list=
+    |                 | +-a#5 := ColumnRef(type=INT64, column=$subquery1.a#1, is_correlated=TRUE)
+    |                 +-input_scan=
+    |                   +-SingleRowScan
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=$subquery1.[a#1, b#2]
+        +-expr_list=
+        | +-a#1 := Literal(type=INT64, value=1)
+        | +-b#2 := Literal(type=INT64, value=2)
+        +-input_scan=
+          +-SingleRowScan
+--
+ALTERNATION GROUP: b
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#3 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#3]
+    +-expr_list=
+    | +-$col1#3 :=
+    |   +-FunctionCall(Lazy_resolution_function:ReferencesArgsInsideSubquery(INT64 a, INT64 b) -> INT64)
+    |     +-ColumnRef(type=INT64, column=$subquery1.a#1)
+    |     +-ColumnRef(type=INT64, column=$subquery1.b#2)
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=$subquery1.[a#1, b#2]
+        +-expr_list=
+        | +-a#1 := Literal(type=INT64, value=1)
+        | +-b#2 := Literal(type=INT64, value=2)
+        +-input_scan=
+          +-SingleRowScan
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$query.$col1#3 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#3]
+    +-expr_list=
+    | +-$col1#3 :=
+    |   +-SubqueryExpr
+    |     +-type=INT64
+    |     +-subquery_type=SCALAR
+    |     +-parameter_list=
+    |     | +-ColumnRef(type=INT64, column=$subquery1.a#1)
+    |     | +-ColumnRef(type=INT64, column=$subquery1.b#2)
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$with_expr.injected#7]
+    |         +-expr_list=
+    |         | +-injected#7 :=
+    |         |   +-SubqueryExpr
+    |         |     +-type=INT64
+    |         |     +-subquery_type=SCALAR
+    |         |     +-parameter_list=
+    |         |     | +-ColumnRef(type=INT64, column=$inlined_ReferencesArgsInsideSubquery.a#5)
+    |         |     | +-ColumnRef(type=INT64, column=$inlined_ReferencesArgsInsideSubquery.b#6)
+    |         |     +-subquery=
+    |         |       +-ProjectScan
+    |         |         +-column_list=[$expr_subquery.$col1#4]
+    |         |         +-expr_list=
+    |         |         | +-$col1#4 :=
+    |         |         |   +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |         |         |     +-ColumnRef(type=INT64, column=$inlined_ReferencesArgsInsideSubquery.a#5, is_correlated=TRUE)
+    |         |         |     +-ColumnRef(type=INT64, column=$inlined_ReferencesArgsInsideSubquery.b#6, is_correlated=TRUE)
+    |         |         +-input_scan=
+    |         |           +-SingleRowScan
+    |         +-input_scan=
+    |           +-ProjectScan
+    |             +-column_list=$inlined_ReferencesArgsInsideSubquery.[a#5, b#6]
+    |             +-expr_list=
+    |             | +-b#6 := ColumnRef(type=INT64, column=$subquery1.b#2, is_correlated=TRUE)
+    |             +-input_scan=
+    |               +-ProjectScan
+    |                 +-column_list=[$inlined_ReferencesArgsInsideSubquery.a#5]
+    |                 +-expr_list=
+    |                 | +-a#5 := ColumnRef(type=INT64, column=$subquery1.a#1, is_correlated=TRUE)
+    |                 +-input_scan=
+    |                   +-SingleRowScan
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=$subquery1.[a#1, b#2]
+        +-expr_list=
+        | +-a#1 := Literal(type=INT64, value=1)
+        | +-b#2 := Literal(type=INT64, value=2)
+        +-input_scan=
+          +-SingleRowScan
+--
+ALTERNATION GROUP: -WITH_EXPR,a
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#3 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#3]
+    +-expr_list=
+    | +-$col1#3 :=
+    |   +-FunctionCall(Lazy_resolution_function:ReferencesArgsInsideSubquery(INT64 a, INT64 b) -> INT64)
+    |     +-ColumnRef(type=INT64, column=$subquery1.a#1)
+    |     +-ColumnRef(type=INT64, column=$subquery1.a#1)
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=$subquery1.[a#1, b#2]
+        +-expr_list=
+        | +-a#1 := Literal(type=INT64, value=1)
+        | +-b#2 := Literal(type=INT64, value=2)
+        +-input_scan=
+          +-SingleRowScan
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$query.$col1#3 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#3]
+    +-expr_list=
+    | +-$col1#3 :=
+    |   +-WithExpr
+    |     +-type=INT64
+    |     +-assignment_list=
+    |     | +-a#5 := ColumnRef(type=INT64, column=$subquery1.a#1)
+    |     | +-b#6 := ColumnRef(type=INT64, column=$subquery1.a#1)
+    |     +-expr=
+    |       +-SubqueryExpr
+    |         +-type=INT64
+    |         +-subquery_type=SCALAR
+    |         +-parameter_list=
+    |         | +-ColumnRef(type=INT64, column=$inlined_ReferencesArgsInsideSubquery.a#5)
+    |         | +-ColumnRef(type=INT64, column=$inlined_ReferencesArgsInsideSubquery.b#6)
+    |         +-subquery=
+    |           +-ProjectScan
+    |             +-column_list=[$expr_subquery.$col1#4]
+    |             +-expr_list=
+    |             | +-$col1#4 :=
+    |             |   +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |             |     +-ColumnRef(type=INT64, column=$inlined_ReferencesArgsInsideSubquery.a#5, is_correlated=TRUE)
+    |             |     +-ColumnRef(type=INT64, column=$inlined_ReferencesArgsInsideSubquery.b#6, is_correlated=TRUE)
+    |             +-input_scan=
+    |               +-SingleRowScan
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=$subquery1.[a#1, b#2]
+        +-expr_list=
+        | +-a#1 := Literal(type=INT64, value=1)
+        | +-b#2 := Literal(type=INT64, value=2)
+        +-input_scan=
+          +-SingleRowScan
+--
+ALTERNATION GROUP: -WITH_EXPR,b
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#3 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#3]
+    +-expr_list=
+    | +-$col1#3 :=
+    |   +-FunctionCall(Lazy_resolution_function:ReferencesArgsInsideSubquery(INT64 a, INT64 b) -> INT64)
+    |     +-ColumnRef(type=INT64, column=$subquery1.a#1)
+    |     +-ColumnRef(type=INT64, column=$subquery1.b#2)
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=$subquery1.[a#1, b#2]
+        +-expr_list=
+        | +-a#1 := Literal(type=INT64, value=1)
+        | +-b#2 := Literal(type=INT64, value=2)
+        +-input_scan=
+          +-SingleRowScan
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$query.$col1#3 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#3]
+    +-expr_list=
+    | +-$col1#3 :=
+    |   +-WithExpr
+    |     +-type=INT64
+    |     +-assignment_list=
+    |     | +-a#5 := ColumnRef(type=INT64, column=$subquery1.a#1)
+    |     | +-b#6 := ColumnRef(type=INT64, column=$subquery1.b#2)
+    |     +-expr=
+    |       +-SubqueryExpr
+    |         +-type=INT64
+    |         +-subquery_type=SCALAR
+    |         +-parameter_list=
+    |         | +-ColumnRef(type=INT64, column=$inlined_ReferencesArgsInsideSubquery.a#5)
+    |         | +-ColumnRef(type=INT64, column=$inlined_ReferencesArgsInsideSubquery.b#6)
+    |         +-subquery=
+    |           +-ProjectScan
+    |             +-column_list=[$expr_subquery.$col1#4]
+    |             +-expr_list=
+    |             | +-$col1#4 :=
+    |             |   +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |             |     +-ColumnRef(type=INT64, column=$inlined_ReferencesArgsInsideSubquery.a#5, is_correlated=TRUE)
+    |             |     +-ColumnRef(type=INT64, column=$inlined_ReferencesArgsInsideSubquery.b#6, is_correlated=TRUE)
+    |             +-input_scan=
+    |               +-SingleRowScan
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=$subquery1.[a#1, b#2]
+        +-expr_list=
+        | +-a#1 := Literal(type=INT64, value=1)
+        | +-b#2 := Literal(type=INT64, value=2)
+        +-input_scan=
+          +-SingleRowScan
+==
+
+# Show the WITH_EXPR rewrite in this case to repro b/234774120
+[enabled_ast_rewrites=ALL,{{|-WITH_EXPR}}]
+SELECT
+  ReferencesArgsInsideLateralJoin(CAST(a + rand() AS INT64), CAST(b + rand() AS INT64))
+FROM (SELECT 1 AS a, 2 AS b);
+--
+ALTERNATION GROUP: <empty>
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#3 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#3]
+    +-expr_list=
+    | +-$col1#3 :=
+    |   +-FunctionCall(Lazy_resolution_function:ReferencesArgsInsideLateralJoin(INT64 a, INT64 b) -> INT64)
+    |     +-Cast(DOUBLE -> INT64)
+    |     | +-FunctionCall(GoogleSQL:$add(DOUBLE, DOUBLE) -> DOUBLE)
+    |     |   +-Cast(INT64 -> DOUBLE)
+    |     |   | +-ColumnRef(type=INT64, column=$subquery1.a#1)
+    |     |   +-FunctionCall(GoogleSQL:rand() -> DOUBLE)
+    |     +-Cast(DOUBLE -> INT64)
+    |       +-FunctionCall(GoogleSQL:$add(DOUBLE, DOUBLE) -> DOUBLE)
+    |         +-Cast(INT64 -> DOUBLE)
+    |         | +-ColumnRef(type=INT64, column=$subquery1.b#2)
+    |         +-FunctionCall(GoogleSQL:rand() -> DOUBLE)
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=$subquery1.[a#1, b#2]
+        +-expr_list=
+        | +-a#1 := Literal(type=INT64, value=1)
+        | +-b#2 := Literal(type=INT64, value=2)
+        +-input_scan=
+          +-SingleRowScan
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$query.$col1#3 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#3]
+    +-expr_list=
+    | +-$col1#3 :=
+    |   +-SubqueryExpr
+    |     +-type=INT64
+    |     +-subquery_type=SCALAR
+    |     +-parameter_list=
+    |     | +-ColumnRef(type=INT64, column=$subquery1.a#1)
+    |     | +-ColumnRef(type=INT64, column=$subquery1.b#2)
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$with_expr.injected#13]
+    |         +-expr_list=
+    |         | +-injected#13 :=
+    |         |   +-SubqueryExpr
+    |         |     +-type=INT64
+    |         |     +-subquery_type=SCALAR
+    |         |     +-parameter_list=
+    |         |     | +-ColumnRef(type=INT64, column=$inlined_ReferencesArgsInsideLateralJoin.a#11)
+    |         |     | +-ColumnRef(type=INT64, column=$inlined_ReferencesArgsInsideLateralJoin.b#12)
+    |         |     +-subquery=
+    |         |       +-ProjectScan
+    |         |         +-column_list=[$expr_subquery.$col1#4]
+    |         |         +-expr_list=
+    |         |         | +-$col1#4 :=
+    |         |         |   +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |         |         |     +-ColumnRef(type=INT64, column=$inlined_ReferencesArgsInsideLateralJoin.a#11, is_correlated=TRUE)
+    |         |         |     +-ColumnRef(type=INT64, column=$inlined_ReferencesArgsInsideLateralJoin.a#11, is_correlated=TRUE)
+    |         |         +-input_scan=
+    |         |           +-JoinScan
+    |         |             +-column_list=[t.$col1#5, t2.$col1#6]
+    |         |             +-left_scan=
+    |         |             | +-ProjectScan
+    |         |             |   +-column_list=[t.$col1#5]
+    |         |             |   +-expr_list=
+    |         |             |   | +-$col1#5 := Literal(type=INT64, value=1)
+    |         |             |   +-input_scan=
+    |         |             |     +-SingleRowScan
+    |         |             +-right_scan=
+    |         |             | +-ProjectScan
+    |         |             |   +-column_list=[t2.$col1#6]
+    |         |             |   +-expr_list=
+    |         |             |   | +-$col1#6 :=
+    |         |             |   |   +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |         |             |   |     +-ColumnRef(type=INT64, column=$inlined_ReferencesArgsInsideLateralJoin.a#11, is_correlated=TRUE)
+    |         |             |   |     +-ColumnRef(type=INT64, column=$inlined_ReferencesArgsInsideLateralJoin.b#12, is_correlated=TRUE)
+    |         |             |   +-input_scan=
+    |         |             |     +-ProjectScan
+    |         |             |       +-column_list=[t1.x#7, t2.$col1#8]
+    |         |             |       +-input_scan=
+    |         |             |         +-JoinScan
+    |         |             |           +-column_list=[t1.x#7, t2.$col1#8]
+    |         |             |           +-join_type=LEFT
+    |         |             |           +-left_scan=
+    |         |             |           | +-ProjectScan
+    |         |             |           |   +-column_list=[t1.x#7]
+    |         |             |           |   +-expr_list=
+    |         |             |           |   | +-x#7 := Literal(type=INT64, value=1)
+    |         |             |           |   +-input_scan=
+    |         |             |           |     +-SingleRowScan
+    |         |             |           +-right_scan=
+    |         |             |           | +-ProjectScan
+    |         |             |           |   +-column_list=[t2.$col1#8]
+    |         |             |           |   +-expr_list=
+    |         |             |           |   | +-$col1#8 :=
+    |         |             |           |   |   +-SubqueryExpr
+    |         |             |           |   |     +-type=BOOL
+    |         |             |           |   |     +-subquery_type=SCALAR
+    |         |             |           |   |     +-parameter_list=
+    |         |             |           |   |     | +-ColumnRef(type=INT64, column=t1.x#7, is_correlated=TRUE)
+    |         |             |           |   |     | +-ColumnRef(type=INT64, column=$inlined_ReferencesArgsInsideLateralJoin.a#11, is_correlated=TRUE)
+    |         |             |           |   |     | +-ColumnRef(type=INT64, column=$inlined_ReferencesArgsInsideLateralJoin.b#12, is_correlated=TRUE)
+    |         |             |           |   |     +-subquery=
+    |         |             |           |   |       +-ProjectScan
+    |         |             |           |   |         +-column_list=[$expr_subquery.$col1#9]
+    |         |             |           |   |         +-expr_list=
+    |         |             |           |   |         | +-$col1#9 :=
+    |         |             |           |   |         |   +-FunctionCall(GoogleSQL:$greater(INT64, INT64) -> BOOL)
+    |         |             |           |   |         |     +-FunctionCall(GoogleSQL:$subtract(INT64, INT64) -> INT64)
+    |         |             |           |   |         |     | +-ColumnRef(type=INT64, column=$inlined_ReferencesArgsInsideLateralJoin.a#11, is_correlated=TRUE)
+    |         |             |           |   |         |     | +-ColumnRef(type=INT64, column=$inlined_ReferencesArgsInsideLateralJoin.b#12, is_correlated=TRUE)
+    |         |             |           |   |         |     +-ColumnRef(type=INT64, column=t1.x#7, is_correlated=TRUE)
+    |         |             |           |   |         +-input_scan=
+    |         |             |           |   |           +-SingleRowScan
+    |         |             |           |   +-input_scan=
+    |         |             |           |     +-ProjectScan
+    |         |             |           |       +-column_list=[$subquery2.$col1#10]
+    |         |             |           |       +-expr_list=
+    |         |             |           |       | +-$col1#10 := Literal(type=INT64, value=1)
+    |         |             |           |       +-input_scan=
+    |         |             |           |         +-SingleRowScan
+    |         |             |           +-join_expr=
+    |         |             |           | +-FunctionCall(GoogleSQL:$greater(INT64, INT64) -> BOOL)
+    |         |             |           |   +-ColumnRef(type=INT64, column=$inlined_ReferencesArgsInsideLateralJoin.a#11, is_correlated=TRUE)
+    |         |             |           |   +-ColumnRef(type=INT64, column=$inlined_ReferencesArgsInsideLateralJoin.b#12, is_correlated=TRUE)
+    |         |             |           +-is_lateral=TRUE
+    |         |             |           +-parameter_list=
+    |         |             |             +-ColumnRef(type=INT64, column=t1.x#7)
+    |         |             |             +-ColumnRef(type=INT64, column=$inlined_ReferencesArgsInsideLateralJoin.a#11, is_correlated=TRUE)
+    |         |             |             +-ColumnRef(type=INT64, column=$inlined_ReferencesArgsInsideLateralJoin.b#12, is_correlated=TRUE)
+    |         |             +-is_lateral=TRUE
+    |         |             +-parameter_list=
+    |         |               +-ColumnRef(type=INT64, column=$inlined_ReferencesArgsInsideLateralJoin.a#11, is_correlated=TRUE)
+    |         |               +-ColumnRef(type=INT64, column=$inlined_ReferencesArgsInsideLateralJoin.b#12, is_correlated=TRUE)
+    |         +-input_scan=
+    |           +-ProjectScan
+    |             +-column_list=$inlined_ReferencesArgsInsideLateralJoin.[a#11, b#12]
+    |             +-expr_list=
+    |             | +-b#12 :=
+    |             |   +-Cast(DOUBLE -> INT64)
+    |             |     +-FunctionCall(GoogleSQL:$add(DOUBLE, DOUBLE) -> DOUBLE)
+    |             |       +-Cast(INT64 -> DOUBLE)
+    |             |       | +-ColumnRef(type=INT64, column=$subquery1.b#2, is_correlated=TRUE)
+    |             |       +-FunctionCall(GoogleSQL:rand() -> DOUBLE)
+    |             +-input_scan=
+    |               +-ProjectScan
+    |                 +-column_list=[$inlined_ReferencesArgsInsideLateralJoin.a#11]
+    |                 +-expr_list=
+    |                 | +-a#11 :=
+    |                 |   +-Cast(DOUBLE -> INT64)
+    |                 |     +-FunctionCall(GoogleSQL:$add(DOUBLE, DOUBLE) -> DOUBLE)
+    |                 |       +-Cast(INT64 -> DOUBLE)
+    |                 |       | +-ColumnRef(type=INT64, column=$subquery1.a#1, is_correlated=TRUE)
+    |                 |       +-FunctionCall(GoogleSQL:rand() -> DOUBLE)
+    |                 +-input_scan=
+    |                   +-SingleRowScan
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=$subquery1.[a#1, b#2]
+        +-expr_list=
+        | +-a#1 := Literal(type=INT64, value=1)
+        | +-b#2 := Literal(type=INT64, value=2)
+        +-input_scan=
+          +-SingleRowScan
+--
+ALTERNATION GROUP: -WITH_EXPR
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#3 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#3]
+    +-expr_list=
+    | +-$col1#3 :=
+    |   +-FunctionCall(Lazy_resolution_function:ReferencesArgsInsideLateralJoin(INT64 a, INT64 b) -> INT64)
+    |     +-Cast(DOUBLE -> INT64)
+    |     | +-FunctionCall(GoogleSQL:$add(DOUBLE, DOUBLE) -> DOUBLE)
+    |     |   +-Cast(INT64 -> DOUBLE)
+    |     |   | +-ColumnRef(type=INT64, column=$subquery1.a#1)
+    |     |   +-FunctionCall(GoogleSQL:rand() -> DOUBLE)
+    |     +-Cast(DOUBLE -> INT64)
+    |       +-FunctionCall(GoogleSQL:$add(DOUBLE, DOUBLE) -> DOUBLE)
+    |         +-Cast(INT64 -> DOUBLE)
+    |         | +-ColumnRef(type=INT64, column=$subquery1.b#2)
+    |         +-FunctionCall(GoogleSQL:rand() -> DOUBLE)
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=$subquery1.[a#1, b#2]
+        +-expr_list=
+        | +-a#1 := Literal(type=INT64, value=1)
+        | +-b#2 := Literal(type=INT64, value=2)
+        +-input_scan=
+          +-SingleRowScan
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$query.$col1#3 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#3]
+    +-expr_list=
+    | +-$col1#3 :=
+    |   +-WithExpr
+    |     +-type=INT64
+    |     +-assignment_list=
+    |     | +-a#11 :=
+    |     | | +-Cast(DOUBLE -> INT64)
+    |     | |   +-FunctionCall(GoogleSQL:$add(DOUBLE, DOUBLE) -> DOUBLE)
+    |     | |     +-Cast(INT64 -> DOUBLE)
+    |     | |     | +-ColumnRef(type=INT64, column=$subquery1.a#1)
+    |     | |     +-FunctionCall(GoogleSQL:rand() -> DOUBLE)
+    |     | +-b#12 :=
+    |     |   +-Cast(DOUBLE -> INT64)
+    |     |     +-FunctionCall(GoogleSQL:$add(DOUBLE, DOUBLE) -> DOUBLE)
+    |     |       +-Cast(INT64 -> DOUBLE)
+    |     |       | +-ColumnRef(type=INT64, column=$subquery1.b#2)
+    |     |       +-FunctionCall(GoogleSQL:rand() -> DOUBLE)
+    |     +-expr=
+    |       +-SubqueryExpr
+    |         +-type=INT64
+    |         +-subquery_type=SCALAR
+    |         +-parameter_list=
+    |         | +-ColumnRef(type=INT64, column=$inlined_ReferencesArgsInsideLateralJoin.a#11)
+    |         | +-ColumnRef(type=INT64, column=$inlined_ReferencesArgsInsideLateralJoin.b#12)
+    |         +-subquery=
+    |           +-ProjectScan
+    |             +-column_list=[$expr_subquery.$col1#4]
+    |             +-expr_list=
+    |             | +-$col1#4 :=
+    |             |   +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |             |     +-ColumnRef(type=INT64, column=$inlined_ReferencesArgsInsideLateralJoin.a#11, is_correlated=TRUE)
+    |             |     +-ColumnRef(type=INT64, column=$inlined_ReferencesArgsInsideLateralJoin.a#11, is_correlated=TRUE)
+    |             +-input_scan=
+    |               +-JoinScan
+    |                 +-column_list=[t.$col1#5, t2.$col1#6]
+    |                 +-left_scan=
+    |                 | +-ProjectScan
+    |                 |   +-column_list=[t.$col1#5]
+    |                 |   +-expr_list=
+    |                 |   | +-$col1#5 := Literal(type=INT64, value=1)
+    |                 |   +-input_scan=
+    |                 |     +-SingleRowScan
+    |                 +-right_scan=
+    |                 | +-ProjectScan
+    |                 |   +-column_list=[t2.$col1#6]
+    |                 |   +-expr_list=
+    |                 |   | +-$col1#6 :=
+    |                 |   |   +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |                 |   |     +-ColumnRef(type=INT64, column=$inlined_ReferencesArgsInsideLateralJoin.a#11, is_correlated=TRUE)
+    |                 |   |     +-ColumnRef(type=INT64, column=$inlined_ReferencesArgsInsideLateralJoin.b#12, is_correlated=TRUE)
+    |                 |   +-input_scan=
+    |                 |     +-ProjectScan
+    |                 |       +-column_list=[t1.x#7, t2.$col1#8]
+    |                 |       +-input_scan=
+    |                 |         +-JoinScan
+    |                 |           +-column_list=[t1.x#7, t2.$col1#8]
+    |                 |           +-join_type=LEFT
+    |                 |           +-left_scan=
+    |                 |           | +-ProjectScan
+    |                 |           |   +-column_list=[t1.x#7]
+    |                 |           |   +-expr_list=
+    |                 |           |   | +-x#7 := Literal(type=INT64, value=1)
+    |                 |           |   +-input_scan=
+    |                 |           |     +-SingleRowScan
+    |                 |           +-right_scan=
+    |                 |           | +-ProjectScan
+    |                 |           |   +-column_list=[t2.$col1#8]
+    |                 |           |   +-expr_list=
+    |                 |           |   | +-$col1#8 :=
+    |                 |           |   |   +-SubqueryExpr
+    |                 |           |   |     +-type=BOOL
+    |                 |           |   |     +-subquery_type=SCALAR
+    |                 |           |   |     +-parameter_list=
+    |                 |           |   |     | +-ColumnRef(type=INT64, column=t1.x#7, is_correlated=TRUE)
+    |                 |           |   |     | +-ColumnRef(type=INT64, column=$inlined_ReferencesArgsInsideLateralJoin.a#11, is_correlated=TRUE)
+    |                 |           |   |     | +-ColumnRef(type=INT64, column=$inlined_ReferencesArgsInsideLateralJoin.b#12, is_correlated=TRUE)
+    |                 |           |   |     +-subquery=
+    |                 |           |   |       +-ProjectScan
+    |                 |           |   |         +-column_list=[$expr_subquery.$col1#9]
+    |                 |           |   |         +-expr_list=
+    |                 |           |   |         | +-$col1#9 :=
+    |                 |           |   |         |   +-FunctionCall(GoogleSQL:$greater(INT64, INT64) -> BOOL)
+    |                 |           |   |         |     +-FunctionCall(GoogleSQL:$subtract(INT64, INT64) -> INT64)
+    |                 |           |   |         |     | +-ColumnRef(type=INT64, column=$inlined_ReferencesArgsInsideLateralJoin.a#11, is_correlated=TRUE)
+    |                 |           |   |         |     | +-ColumnRef(type=INT64, column=$inlined_ReferencesArgsInsideLateralJoin.b#12, is_correlated=TRUE)
+    |                 |           |   |         |     +-ColumnRef(type=INT64, column=t1.x#7, is_correlated=TRUE)
+    |                 |           |   |         +-input_scan=
+    |                 |           |   |           +-SingleRowScan
+    |                 |           |   +-input_scan=
+    |                 |           |     +-ProjectScan
+    |                 |           |       +-column_list=[$subquery2.$col1#10]
+    |                 |           |       +-expr_list=
+    |                 |           |       | +-$col1#10 := Literal(type=INT64, value=1)
+    |                 |           |       +-input_scan=
+    |                 |           |         +-SingleRowScan
+    |                 |           +-join_expr=
+    |                 |           | +-FunctionCall(GoogleSQL:$greater(INT64, INT64) -> BOOL)
+    |                 |           |   +-ColumnRef(type=INT64, column=$inlined_ReferencesArgsInsideLateralJoin.a#11, is_correlated=TRUE)
+    |                 |           |   +-ColumnRef(type=INT64, column=$inlined_ReferencesArgsInsideLateralJoin.b#12, is_correlated=TRUE)
+    |                 |           +-is_lateral=TRUE
+    |                 |           +-parameter_list=
+    |                 |             +-ColumnRef(type=INT64, column=t1.x#7)
+    |                 |             +-ColumnRef(type=INT64, column=$inlined_ReferencesArgsInsideLateralJoin.a#11, is_correlated=TRUE)
+    |                 |             +-ColumnRef(type=INT64, column=$inlined_ReferencesArgsInsideLateralJoin.b#12, is_correlated=TRUE)
+    |                 +-is_lateral=TRUE
+    |                 +-parameter_list=
+    |                   +-ColumnRef(type=INT64, column=$inlined_ReferencesArgsInsideLateralJoin.a#11, is_correlated=TRUE)
+    |                   +-ColumnRef(type=INT64, column=$inlined_ReferencesArgsInsideLateralJoin.b#12, is_correlated=TRUE)
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=$subquery1.[a#1, b#2]
+        +-expr_list=
+        | +-a#1 := Literal(type=INT64, value=1)
+        | +-b#2 := Literal(type=INT64, value=2)
+        +-input_scan=
+          +-SingleRowScan
+
+==
+
+SELECT ReferencesArgOutsideCte(1);
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(Lazy_resolution_function:ReferencesArgOutsideCte(INT64 a) -> INT64)
+    |     +-Literal(type=INT64, value=1)
+    +-input_scan=
+      +-SingleRowScan
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-WithExpr
+    |     +-type=INT64
+    |     +-assignment_list=
+    |     | +-a#5 := Literal(type=INT64, value=1)
+    |     +-expr=
+    |       +-SubqueryExpr
+    |         +-type=INT64
+    |         +-subquery_type=SCALAR
+    |         +-parameter_list=
+    |         | +-ColumnRef(type=INT64, column=$inlined_ReferencesArgOutsideCte.a#5)
+    |         +-subquery=
+    |           +-WithScan
+    |             +-column_list=[$expr_subquery.$col1#3]
+    |             +-with_entry_list=
+    |             | +-WithEntry
+    |             |   +-with_query_name="t"
+    |             |   +-with_subquery=
+    |             |     +-ProjectScan
+    |             |       +-column_list=[t.c#2]
+    |             |       +-expr_list=
+    |             |       | +-c#2 := Literal(type=INT64, value=1)
+    |             |       +-input_scan=
+    |             |         +-SingleRowScan
+    |             +-query=
+    |               +-ProjectScan
+    |                 +-column_list=[$expr_subquery.$col1#3]
+    |                 +-expr_list=
+    |                 | +-$col1#3 :=
+    |                 |   +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |                 |     +-ColumnRef(type=INT64, column=t.c#4)
+    |                 |     +-ColumnRef(type=INT64, column=$inlined_ReferencesArgOutsideCte.a#5, is_correlated=TRUE)
+    |                 +-input_scan=
+    |                   +-WithRefScan(column_list=[t.c#4], with_query_name="t")
+    +-input_scan=
+      +-SingleRowScan
+==
+
+SELECT ReferencesArgInsideLambda{{(1)|(a) FROM (SELECT 1 AS a)}};
+--
+ALTERNATION GROUP: (1)
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [ARRAY<BOOL>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(Lazy_resolution_function:ReferencesArgInsideLambda(INT64 a) -> ARRAY<BOOL>)
+    |     +-Literal(type=INT64, value=1)
+    +-input_scan=
+      +-SingleRowScan
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [ARRAY<BOOL>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-WithExpr
+    |     +-type=ARRAY<BOOL>
+    |     +-assignment_list=
+    |     | +-a#3 := Literal(type=INT64, value=1)
+    |     +-expr=
+    |       +-SubqueryExpr
+    |         +-type=ARRAY<BOOL>
+    |         +-subquery_type=SCALAR
+    |         +-parameter_list=
+    |         | +-ColumnRef(type=INT64, column=$inlined_ReferencesArgInsideLambda.a#3)
+    |         +-subquery=
+    |           +-ProjectScan
+    |             +-column_list=[$expr_subquery.$col1#8]
+    |             +-expr_list=
+    |             | +-$col1#8 :=
+    |             |   +-FunctionCall(GoogleSQL:if(BOOL, ARRAY<BOOL>, ARRAY<BOOL>) -> ARRAY<BOOL>)
+    |             |     +-FunctionCall(GoogleSQL:$is_null(ARRAY<INT64>) -> BOOL)
+    |             |     | +-ColumnRef(type=ARRAY<INT64>, column=$subquery1.array_to_transform#4)
+    |             |     +-Literal(type=ARRAY<BOOL>, value=NULL)
+    |             |     +-SubqueryExpr
+    |             |       +-type=ARRAY<BOOL>
+    |             |       +-subquery_type=ARRAY
+    |             |       +-parameter_list=
+    |             |       | +-ColumnRef(type=ARRAY<INT64>, column=$subquery1.array_to_transform#4)
+    |             |       | +-ColumnRef(type=INT64, column=$inlined_ReferencesArgInsideLambda.a#3, is_correlated=TRUE)
+    |             |       +-subquery=
+    |             |         +-OrderByScan
+    |             |           +-column_list=[$expr_subquery.$col1#7]
+    |             |           +-is_ordered=TRUE
+    |             |           +-input_scan=
+    |             |           | +-ProjectScan
+    |             |           |   +-column_list=[$array.element#5, $array_offset.off#6, $expr_subquery.$col1#7]
+    |             |           |   +-expr_list=
+    |             |           |   | +-$col1#7 :=
+    |             |           |   |   +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+    |             |           |   |     +-ColumnRef(type=INT64, column=$array.element#5)
+    |             |           |   |     +-ColumnRef(type=INT64, column=$inlined_ReferencesArgInsideLambda.a#3, is_correlated=TRUE)
+    |             |           |   +-input_scan=
+    |             |           |     +-ArrayScan
+    |             |           |       +-column_list=[$array.element#5, $array_offset.off#6]
+    |             |           |       +-array_expr_list=
+    |             |           |       | +-ColumnRef(type=ARRAY<INT64>, column=$subquery1.array_to_transform#4, is_correlated=TRUE)
+    |             |           |       +-element_column_list=[$array.element#5]
+    |             |           |       +-array_offset_column=
+    |             |           |         +-ColumnHolder(column=$array_offset.off#6)
+    |             |           +-order_by_item_list=
+    |             |             +-OrderByItem
+    |             |               +-column_ref=
+    |             |                 +-ColumnRef(type=INT64, column=$array_offset.off#6)
+    |             +-input_scan=
+    |               +-ProjectScan
+    |                 +-column_list=[$subquery1.array_to_transform#4]
+    |                 +-expr_list=
+    |                 | +-array_to_transform#4 := Literal(type=ARRAY<INT64>, value=[1, 2, 3])
+    |                 +-input_scan=
+    |                   +-SingleRowScan
+    +-input_scan=
+      +-SingleRowScan
+--
+ALTERNATION GROUP: (a) FROM (SELECT 1 AS a)
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#2 AS `$col1` [ARRAY<BOOL>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#2]
+    +-expr_list=
+    | +-$col1#2 :=
+    |   +-FunctionCall(Lazy_resolution_function:ReferencesArgInsideLambda(INT64 a) -> ARRAY<BOOL>)
+    |     +-ColumnRef(type=INT64, column=$subquery1.a#1)
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[$subquery1.a#1]
+        +-expr_list=
+        | +-a#1 := Literal(type=INT64, value=1)
+        +-input_scan=
+          +-SingleRowScan
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$query.$col1#2 AS `$col1` [ARRAY<BOOL>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#2]
+    +-expr_list=
+    | +-$col1#2 :=
+    |   +-WithExpr
+    |     +-type=ARRAY<BOOL>
+    |     +-assignment_list=
+    |     | +-a#4 := ColumnRef(type=INT64, column=$subquery1.a#1)
+    |     +-expr=
+    |       +-SubqueryExpr
+    |         +-type=ARRAY<BOOL>
+    |         +-subquery_type=SCALAR
+    |         +-parameter_list=
+    |         | +-ColumnRef(type=INT64, column=$inlined_ReferencesArgInsideLambda.a#4)
+    |         +-subquery=
+    |           +-ProjectScan
+    |             +-column_list=[$expr_subquery.$col1#9]
+    |             +-expr_list=
+    |             | +-$col1#9 :=
+    |             |   +-FunctionCall(GoogleSQL:if(BOOL, ARRAY<BOOL>, ARRAY<BOOL>) -> ARRAY<BOOL>)
+    |             |     +-FunctionCall(GoogleSQL:$is_null(ARRAY<INT64>) -> BOOL)
+    |             |     | +-ColumnRef(type=ARRAY<INT64>, column=$subquery1.array_to_transform#5)
+    |             |     +-Literal(type=ARRAY<BOOL>, value=NULL)
+    |             |     +-SubqueryExpr
+    |             |       +-type=ARRAY<BOOL>
+    |             |       +-subquery_type=ARRAY
+    |             |       +-parameter_list=
+    |             |       | +-ColumnRef(type=ARRAY<INT64>, column=$subquery1.array_to_transform#5)
+    |             |       | +-ColumnRef(type=INT64, column=$inlined_ReferencesArgInsideLambda.a#4, is_correlated=TRUE)
+    |             |       +-subquery=
+    |             |         +-OrderByScan
+    |             |           +-column_list=[$expr_subquery.$col1#8]
+    |             |           +-is_ordered=TRUE
+    |             |           +-input_scan=
+    |             |           | +-ProjectScan
+    |             |           |   +-column_list=[$array.element#6, $array_offset.off#7, $expr_subquery.$col1#8]
+    |             |           |   +-expr_list=
+    |             |           |   | +-$col1#8 :=
+    |             |           |   |   +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+    |             |           |   |     +-ColumnRef(type=INT64, column=$array.element#6)
+    |             |           |   |     +-ColumnRef(type=INT64, column=$inlined_ReferencesArgInsideLambda.a#4, is_correlated=TRUE)
+    |             |           |   +-input_scan=
+    |             |           |     +-ArrayScan
+    |             |           |       +-column_list=[$array.element#6, $array_offset.off#7]
+    |             |           |       +-array_expr_list=
+    |             |           |       | +-ColumnRef(type=ARRAY<INT64>, column=$subquery1.array_to_transform#5, is_correlated=TRUE)
+    |             |           |       +-element_column_list=[$array.element#6]
+    |             |           |       +-array_offset_column=
+    |             |           |         +-ColumnHolder(column=$array_offset.off#7)
+    |             |           +-order_by_item_list=
+    |             |             +-OrderByItem
+    |             |               +-column_ref=
+    |             |                 +-ColumnRef(type=INT64, column=$array_offset.off#7)
+    |             +-input_scan=
+    |               +-ProjectScan
+    |                 +-column_list=[$subquery1.array_to_transform#5]
+    |                 +-expr_list=
+    |                 | +-array_to_transform#5 := Literal(type=ARRAY<INT64>, value=[1, 2, 3])
+    |                 +-input_scan=
+    |                   +-SingleRowScan
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[$subquery1.a#1]
+        +-expr_list=
+        | +-a#1 := Literal(type=INT64, value=1)
+        +-input_scan=
+          +-SingleRowScan
+==
+
+# Using an aggregate function in the arguments.
+[enabled_ast_rewrites=ALL|ALL,-WITH_EXPR]
+SELECT UnaryIncrement{{|RefArg}}(SUM(a){{|+SUM(b)}})
+FROM (SELECT 1 AS a, 2 AS b)
+--
+ALTERNATION GROUP: <empty>
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#4 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#4]
+    +-expr_list=
+    | +-$col1#4 :=
+    |   +-FunctionCall(Lazy_resolution_function:UnaryIncrement(INT64 a) -> INT64)
+    |     +-ColumnRef(type=INT64, column=$aggregate.$agg1#3)
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$aggregate.$agg1#3]
+        +-input_scan=
+        | +-ProjectScan
+        |   +-column_list=$subquery1.[a#1, b#2]
+        |   +-expr_list=
+        |   | +-a#1 := Literal(type=INT64, value=1)
+        |   | +-b#2 := Literal(type=INT64, value=2)
+        |   +-input_scan=
+        |     +-SingleRowScan
+        +-aggregate_list=
+          +-$agg1#3 :=
+            +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+              +-ColumnRef(type=INT64, column=$subquery1.a#1)
+
+[[ REWRITER ARTIFACTS FOR RULE GROUPS 'ALL' ]]
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$query.$col1#4 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#4]
+    +-expr_list=
+    | +-$col1#4 :=
+    |   +-SubqueryExpr
+    |     +-type=INT64
+    |     +-subquery_type=SCALAR
+    |     +-parameter_list=
+    |     | +-ColumnRef(type=INT64, column=$aggregate.$agg1#3)
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$with_expr.injected#6]
+    |         +-expr_list=
+    |         | +-injected#6 :=
+    |         |   +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |         |     +-ColumnRef(type=INT64, column=$inlined_UnaryIncrement.a#5)
+    |         |     +-Literal(type=INT64, value=1)
+    |         +-input_scan=
+    |           +-ProjectScan
+    |             +-column_list=[$inlined_UnaryIncrement.a#5]
+    |             +-expr_list=
+    |             | +-a#5 := ColumnRef(type=INT64, column=$aggregate.$agg1#3, is_correlated=TRUE)
+    |             +-input_scan=
+    |               +-SingleRowScan
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$aggregate.$agg1#3]
+        +-input_scan=
+        | +-ProjectScan
+        |   +-column_list=$subquery1.[a#1, b#2]
+        |   +-expr_list=
+        |   | +-a#1 := Literal(type=INT64, value=1)
+        |   | +-b#2 := Literal(type=INT64, value=2)
+        |   +-input_scan=
+        |     +-SingleRowScan
+        +-aggregate_list=
+          +-$agg1#3 :=
+            +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+              +-ColumnRef(type=INT64, column=$subquery1.a#1)
+
+[[ REWRITER ARTIFACTS FOR RULE GROUPS 'ALL,-WITH_EXPR' ]]
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$query.$col1#4 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#4]
+    +-expr_list=
+    | +-$col1#4 :=
+    |   +-WithExpr
+    |     +-type=INT64
+    |     +-assignment_list=
+    |     | +-a#5 := ColumnRef(type=INT64, column=$aggregate.$agg1#3)
+    |     +-expr=
+    |       +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |         +-ColumnRef(type=INT64, column=$inlined_UnaryIncrement.a#5)
+    |         +-Literal(type=INT64, value=1)
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$aggregate.$agg1#3]
+        +-input_scan=
+        | +-ProjectScan
+        |   +-column_list=$subquery1.[a#1, b#2]
+        |   +-expr_list=
+        |   | +-a#1 := Literal(type=INT64, value=1)
+        |   | +-b#2 := Literal(type=INT64, value=2)
+        |   +-input_scan=
+        |     +-SingleRowScan
+        +-aggregate_list=
+          +-$agg1#3 :=
+            +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+              +-ColumnRef(type=INT64, column=$subquery1.a#1)
+--
+ALTERNATION GROUP: +SUM(b)
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#5 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#5]
+    +-expr_list=
+    | +-$col1#5 :=
+    |   +-FunctionCall(Lazy_resolution_function:UnaryIncrement(INT64 a) -> INT64)
+    |     +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |       +-ColumnRef(type=INT64, column=$aggregate.$agg1#3)
+    |       +-ColumnRef(type=INT64, column=$aggregate.$agg2#4)
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=$aggregate.[$agg1#3, $agg2#4]
+        +-input_scan=
+        | +-ProjectScan
+        |   +-column_list=$subquery1.[a#1, b#2]
+        |   +-expr_list=
+        |   | +-a#1 := Literal(type=INT64, value=1)
+        |   | +-b#2 := Literal(type=INT64, value=2)
+        |   +-input_scan=
+        |     +-SingleRowScan
+        +-aggregate_list=
+          +-$agg1#3 :=
+          | +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+          |   +-ColumnRef(type=INT64, column=$subquery1.a#1)
+          +-$agg2#4 :=
+            +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+              +-ColumnRef(type=INT64, column=$subquery1.b#2)
+
+[[ REWRITER ARTIFACTS FOR RULE GROUPS 'ALL' ]]
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$query.$col1#5 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#5]
+    +-expr_list=
+    | +-$col1#5 :=
+    |   +-SubqueryExpr
+    |     +-type=INT64
+    |     +-subquery_type=SCALAR
+    |     +-parameter_list=
+    |     | +-ColumnRef(type=INT64, column=$aggregate.$agg1#3)
+    |     | +-ColumnRef(type=INT64, column=$aggregate.$agg2#4)
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$with_expr.injected#7]
+    |         +-expr_list=
+    |         | +-injected#7 :=
+    |         |   +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |         |     +-ColumnRef(type=INT64, column=$inlined_UnaryIncrement.a#6)
+    |         |     +-Literal(type=INT64, value=1)
+    |         +-input_scan=
+    |           +-ProjectScan
+    |             +-column_list=[$inlined_UnaryIncrement.a#6]
+    |             +-expr_list=
+    |             | +-a#6 :=
+    |             |   +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |             |     +-ColumnRef(type=INT64, column=$aggregate.$agg1#3, is_correlated=TRUE)
+    |             |     +-ColumnRef(type=INT64, column=$aggregate.$agg2#4, is_correlated=TRUE)
+    |             +-input_scan=
+    |               +-SingleRowScan
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=$aggregate.[$agg1#3, $agg2#4]
+        +-input_scan=
+        | +-ProjectScan
+        |   +-column_list=$subquery1.[a#1, b#2]
+        |   +-expr_list=
+        |   | +-a#1 := Literal(type=INT64, value=1)
+        |   | +-b#2 := Literal(type=INT64, value=2)
+        |   +-input_scan=
+        |     +-SingleRowScan
+        +-aggregate_list=
+          +-$agg1#3 :=
+          | +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+          |   +-ColumnRef(type=INT64, column=$subquery1.a#1)
+          +-$agg2#4 :=
+            +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+              +-ColumnRef(type=INT64, column=$subquery1.b#2)
+
+[[ REWRITER ARTIFACTS FOR RULE GROUPS 'ALL,-WITH_EXPR' ]]
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$query.$col1#5 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#5]
+    +-expr_list=
+    | +-$col1#5 :=
+    |   +-WithExpr
+    |     +-type=INT64
+    |     +-assignment_list=
+    |     | +-a#6 :=
+    |     |   +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |     |     +-ColumnRef(type=INT64, column=$aggregate.$agg1#3)
+    |     |     +-ColumnRef(type=INT64, column=$aggregate.$agg2#4)
+    |     +-expr=
+    |       +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |         +-ColumnRef(type=INT64, column=$inlined_UnaryIncrement.a#6)
+    |         +-Literal(type=INT64, value=1)
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=$aggregate.[$agg1#3, $agg2#4]
+        +-input_scan=
+        | +-ProjectScan
+        |   +-column_list=$subquery1.[a#1, b#2]
+        |   +-expr_list=
+        |   | +-a#1 := Literal(type=INT64, value=1)
+        |   | +-b#2 := Literal(type=INT64, value=2)
+        |   +-input_scan=
+        |     +-SingleRowScan
+        +-aggregate_list=
+          +-$agg1#3 :=
+          | +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+          |   +-ColumnRef(type=INT64, column=$subquery1.a#1)
+          +-$agg2#4 :=
+            +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+              +-ColumnRef(type=INT64, column=$subquery1.b#2)
+--
+ALTERNATION GROUP: RefArg,
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#4 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#4]
+    +-expr_list=
+    | +-$col1#4 :=
+    |   +-FunctionCall(Lazy_resolution_function:UnaryIncrementRefArg(INT64) -> INT64)
+    |     +-ColumnRef(type=INT64, column=$aggregate.$agg1#3)
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$aggregate.$agg1#3]
+        +-input_scan=
+        | +-ProjectScan
+        |   +-column_list=$subquery1.[a#1, b#2]
+        |   +-expr_list=
+        |   | +-a#1 := Literal(type=INT64, value=1)
+        |   | +-b#2 := Literal(type=INT64, value=2)
+        |   +-input_scan=
+        |     +-SingleRowScan
+        +-aggregate_list=
+          +-$agg1#3 :=
+            +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+              +-ColumnRef(type=INT64, column=$subquery1.a#1)
+
+[[ REWRITER ARTIFACTS FOR RULE GROUPS 'ALL' ]]
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$query.$col1#4 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#4]
+    +-expr_list=
+    | +-$col1#4 :=
+    |   +-SubqueryExpr
+    |     +-type=INT64
+    |     +-subquery_type=SCALAR
+    |     +-parameter_list=
+    |     | +-ColumnRef(type=INT64, column=$aggregate.$agg1#3)
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$with_expr.injected#6]
+    |         +-expr_list=
+    |         | +-injected#6 :=
+    |         |   +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |         |     +-ColumnRef(type=INT64, column=$inlined_UnaryIncrementRefArg.a#5)
+    |         |     +-Literal(type=INT64, value=1)
+    |         +-input_scan=
+    |           +-ProjectScan
+    |             +-column_list=[$inlined_UnaryIncrementRefArg.a#5]
+    |             +-expr_list=
+    |             | +-a#5 := ColumnRef(type=INT64, column=$aggregate.$agg1#3, is_correlated=TRUE)
+    |             +-input_scan=
+    |               +-SingleRowScan
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$aggregate.$agg1#3]
+        +-input_scan=
+        | +-ProjectScan
+        |   +-column_list=$subquery1.[a#1, b#2]
+        |   +-expr_list=
+        |   | +-a#1 := Literal(type=INT64, value=1)
+        |   | +-b#2 := Literal(type=INT64, value=2)
+        |   +-input_scan=
+        |     +-SingleRowScan
+        +-aggregate_list=
+          +-$agg1#3 :=
+            +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+              +-ColumnRef(type=INT64, column=$subquery1.a#1)
+
+[[ REWRITER ARTIFACTS FOR RULE GROUPS 'ALL,-WITH_EXPR' ]]
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$query.$col1#4 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#4]
+    +-expr_list=
+    | +-$col1#4 :=
+    |   +-WithExpr
+    |     +-type=INT64
+    |     +-assignment_list=
+    |     | +-a#5 := ColumnRef(type=INT64, column=$aggregate.$agg1#3)
+    |     +-expr=
+    |       +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |         +-ColumnRef(type=INT64, column=$inlined_UnaryIncrementRefArg.a#5)
+    |         +-Literal(type=INT64, value=1)
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$aggregate.$agg1#3]
+        +-input_scan=
+        | +-ProjectScan
+        |   +-column_list=$subquery1.[a#1, b#2]
+        |   +-expr_list=
+        |   | +-a#1 := Literal(type=INT64, value=1)
+        |   | +-b#2 := Literal(type=INT64, value=2)
+        |   +-input_scan=
+        |     +-SingleRowScan
+        +-aggregate_list=
+          +-$agg1#3 :=
+            +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+              +-ColumnRef(type=INT64, column=$subquery1.a#1)
+--
+ALTERNATION GROUP: RefArg,+SUM(b)
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#5 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#5]
+    +-expr_list=
+    | +-$col1#5 :=
+    |   +-FunctionCall(Lazy_resolution_function:UnaryIncrementRefArg(INT64) -> INT64)
+    |     +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |       +-ColumnRef(type=INT64, column=$aggregate.$agg1#3)
+    |       +-ColumnRef(type=INT64, column=$aggregate.$agg2#4)
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=$aggregate.[$agg1#3, $agg2#4]
+        +-input_scan=
+        | +-ProjectScan
+        |   +-column_list=$subquery1.[a#1, b#2]
+        |   +-expr_list=
+        |   | +-a#1 := Literal(type=INT64, value=1)
+        |   | +-b#2 := Literal(type=INT64, value=2)
+        |   +-input_scan=
+        |     +-SingleRowScan
+        +-aggregate_list=
+          +-$agg1#3 :=
+          | +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+          |   +-ColumnRef(type=INT64, column=$subquery1.a#1)
+          +-$agg2#4 :=
+            +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+              +-ColumnRef(type=INT64, column=$subquery1.b#2)
+
+[[ REWRITER ARTIFACTS FOR RULE GROUPS 'ALL' ]]
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$query.$col1#5 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#5]
+    +-expr_list=
+    | +-$col1#5 :=
+    |   +-SubqueryExpr
+    |     +-type=INT64
+    |     +-subquery_type=SCALAR
+    |     +-parameter_list=
+    |     | +-ColumnRef(type=INT64, column=$aggregate.$agg1#3)
+    |     | +-ColumnRef(type=INT64, column=$aggregate.$agg2#4)
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$with_expr.injected#7]
+    |         +-expr_list=
+    |         | +-injected#7 :=
+    |         |   +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |         |     +-ColumnRef(type=INT64, column=$inlined_UnaryIncrementRefArg.a#6)
+    |         |     +-Literal(type=INT64, value=1)
+    |         +-input_scan=
+    |           +-ProjectScan
+    |             +-column_list=[$inlined_UnaryIncrementRefArg.a#6]
+    |             +-expr_list=
+    |             | +-a#6 :=
+    |             |   +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |             |     +-ColumnRef(type=INT64, column=$aggregate.$agg1#3, is_correlated=TRUE)
+    |             |     +-ColumnRef(type=INT64, column=$aggregate.$agg2#4, is_correlated=TRUE)
+    |             +-input_scan=
+    |               +-SingleRowScan
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=$aggregate.[$agg1#3, $agg2#4]
+        +-input_scan=
+        | +-ProjectScan
+        |   +-column_list=$subquery1.[a#1, b#2]
+        |   +-expr_list=
+        |   | +-a#1 := Literal(type=INT64, value=1)
+        |   | +-b#2 := Literal(type=INT64, value=2)
+        |   +-input_scan=
+        |     +-SingleRowScan
+        +-aggregate_list=
+          +-$agg1#3 :=
+          | +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+          |   +-ColumnRef(type=INT64, column=$subquery1.a#1)
+          +-$agg2#4 :=
+            +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+              +-ColumnRef(type=INT64, column=$subquery1.b#2)
+
+[[ REWRITER ARTIFACTS FOR RULE GROUPS 'ALL,-WITH_EXPR' ]]
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$query.$col1#5 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#5]
+    +-expr_list=
+    | +-$col1#5 :=
+    |   +-WithExpr
+    |     +-type=INT64
+    |     +-assignment_list=
+    |     | +-a#6 :=
+    |     |   +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |     |     +-ColumnRef(type=INT64, column=$aggregate.$agg1#3)
+    |     |     +-ColumnRef(type=INT64, column=$aggregate.$agg2#4)
+    |     +-expr=
+    |       +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |         +-ColumnRef(type=INT64, column=$inlined_UnaryIncrementRefArg.a#6)
+    |         +-Literal(type=INT64, value=1)
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=$aggregate.[$agg1#3, $agg2#4]
+        +-input_scan=
+        | +-ProjectScan
+        |   +-column_list=$subquery1.[a#1, b#2]
+        |   +-expr_list=
+        |   | +-a#1 := Literal(type=INT64, value=1)
+        |   | +-b#2 := Literal(type=INT64, value=2)
+        |   +-input_scan=
+        |     +-SingleRowScan
+        +-aggregate_list=
+          +-$agg1#3 :=
+          | +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+          |   +-ColumnRef(type=INT64, column=$subquery1.a#1)
+          +-$agg2#4 :=
+            +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+              +-ColumnRef(type=INT64, column=$subquery1.b#2)
+==
+
+################################################################################
+## Error Cases
+################################################################################
+
+SELECT NullaryPi()@{hint=1};
+--
+[PRE-REWRITE AST]
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [DOUBLE]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(Lazy_resolution_function:NullaryPi() -> DOUBLE)
+    |     +-hint_list=
+    |       +-hint := Literal(type=INT64, value=1)
+    +-input_scan=
+      +-SingleRowScan
+
+Rewrite ERROR: generic::unimplemented: Hinted calls to SQL defined function 'NullaryPi' are not supported.
+==
+
+SELECT ReferencesArgInsideCte(1);
+--
+[PRE-REWRITE AST]
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(Lazy_resolution_function:ReferencesArgInsideCte(INT64 a) -> INT64)
+    |     +-Literal(type=INT64, value=1)
+    +-input_scan=
+      +-SingleRowScan
+
+Rewrite ERROR: generic::unimplemented: SQL defined functions that contain argument references inside embedded WITH clauses are not implemented.
+
+==
+
+SELECT CallsPi25();
+--
+[PRE-REWRITE AST]
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [DOUBLE]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 := FunctionCall(Lazy_resolution_function:CallsPi25() -> DOUBLE)
+    +-input_scan=
+      +-SingleRowScan
+
+Rewrite ERROR: generic::resource_exhausted: Query exceeded configured maximum number of rewriter iterations (25) without converging.
+==
+
+SELECT scalar_function_definer_rights()
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 := FunctionCall(Lazy_resolution_function:scalar_function_definer_rights() -> INT64)
+    +-input_scan=
+      +-SingleRowScan
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-SubqueryExpr
+    |     +-type=INT64
+    |     +-subquery_type=SCALAR
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$aggregate.$agg1#2]
+    |         +-input_scan=
+    |           +-AggregateScan
+    |             +-column_list=[$aggregate.$agg1#2]
+    |             +-input_scan=
+    |             | +-TableScan(column_list=KeyValue.[Key#3, Value#4], table=KeyValue, column_index_list=[0, 1])
+    |             +-aggregate_list=
+    |               +-$agg1#2 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+    +-input_scan=
+      +-SingleRowScan
+
+==
+
+################################################################################
+## Bug Repros
+################################################################################
+
+SELECT *
+FROM (SELECT 1 AS thing_id)
+WHERE b290673529(thing_id);
+--
+
+QueryStmt
++-output_column_list=
+| +-$subquery1.thing_id#1 AS thing_id [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$subquery1.thing_id#1]
+    +-input_scan=
+      +-FilterScan
+        +-column_list=[$subquery1.thing_id#1]
+        +-input_scan=
+        | +-ProjectScan
+        |   +-column_list=[$subquery1.thing_id#1]
+        |   +-expr_list=
+        |   | +-thing_id#1 := Literal(type=INT64, value=1)
+        |   +-input_scan=
+        |     +-SingleRowScan
+        +-filter_expr=
+          +-FunctionCall(Templated_SQL_Function:b290673529(INT64 thing_id) -> BOOL)
+            +-ColumnRef(type=INT64, column=$subquery1.thing_id#1)
+
+With Templated SQL function call:
+  Templated_SQL_Function:b290673529(INT64 thing_id) -> BOOL
+containing resolved templated expression:
+SubqueryExpr
++-type=BOOL
++-subquery_type=IN
++-in_expr=
+| +-ArgumentRef(type=INT64, name="thing_id")
++-subquery=
+  +-ProjectScan
+    +-column_list=[$subquery1.thing_id#1]
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[$subquery1.thing_id#1]
+        +-expr_list=
+        | +-thing_id#1 := Literal(type=INT64, value=1)
+        +-input_scan=
+          +-SingleRowScan
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$subquery1.thing_id#1 AS thing_id [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$subquery1.thing_id#1]
+    +-input_scan=
+      +-FilterScan
+        +-column_list=[$subquery1.thing_id#1]
+        +-input_scan=
+        | +-ProjectScan
+        |   +-column_list=[$subquery1.thing_id#1]
+        |   +-expr_list=
+        |   | +-thing_id#1 := Literal(type=INT64, value=1)
+        |   +-input_scan=
+        |     +-SingleRowScan
+        +-filter_expr=
+          +-WithExpr
+            +-type=BOOL
+            +-assignment_list=
+            | +-thing_id#3 := ColumnRef(type=INT64, column=$subquery1.thing_id#1)
+            +-expr=
+              +-SubqueryExpr
+                +-type=BOOL
+                +-subquery_type=IN
+                +-in_expr=
+                | +-ColumnRef(type=INT64, column=$inlined_b290673529.thing_id#3)
+                +-subquery=
+                  +-ProjectScan
+                    +-column_list=[$subquery1.thing_id#2]
+                    +-input_scan=
+                      +-ProjectScan
+                        +-column_list=[$subquery1.thing_id#2]
+                        +-expr_list=
+                        | +-thing_id#2 := Literal(type=INT64, value=1)
+                        +-input_scan=
+                          +-SingleRowScan
+
+==
+
+# Repros b/327662731
+[language_features=NONE,+TEMPLATED_SQL_FUNCTION_RESOLVE_WITH_TYPED_ARGS]
+SELECT template_with_typed_arg("foo", NULL);
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [BOOL]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(Templated_SQL_Function:template_with_typed_arg(STRING arg_any, STRING arg_string) -> BOOL)
+    |     +-Literal(type=STRING, value="foo")
+    |     +-Literal(type=STRING, value=NULL)
+    +-input_scan=
+      +-SingleRowScan
+
+With Templated SQL function call:
+  Templated_SQL_Function:template_with_typed_arg(STRING arg_any, STRING arg_string) -> BOOL
+containing resolved templated expression:
+FunctionCall(GoogleSQL:$or(BOOL, repeated(1) BOOL) -> BOOL)
++-FunctionCall(GoogleSQL:$is_null(STRING) -> BOOL)
+| +-ArgumentRef(type=STRING, name="arg_any")
++-FunctionCall(GoogleSQL:$is_null(STRING) -> BOOL)
+  +-ArgumentRef(type=STRING, name="arg_string")
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [BOOL]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-WithExpr
+    |     +-type=BOOL
+    |     +-assignment_list=
+    |     | +-arg_any#2 := Literal(type=STRING, value="foo")
+    |     | +-arg_string#3 := Literal(type=STRING, value=NULL)
+    |     +-expr=
+    |       +-FunctionCall(GoogleSQL:$or(BOOL, repeated(1) BOOL) -> BOOL)
+    |         +-FunctionCall(GoogleSQL:$is_null(STRING) -> BOOL)
+    |         | +-ColumnRef(type=STRING, column=$inlined_template_with_typed_arg.arg_any#2)
+    |         +-FunctionCall(GoogleSQL:$is_null(STRING) -> BOOL)
+    |           +-ColumnRef(type=STRING, column=$inlined_template_with_typed_arg.arg_string#3)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+[language_features=NONE,+MULTILEVEL_AGGREGATION]
+SELECT
+  GroupingConstantFromUnnest([1,2,3], int64)
+FROM SimpleTypes;
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#20 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#20]
+    +-expr_list=
+    | +-$col1#20 :=
+    |   +-FunctionCall(Lazy_resolution_function:GroupingConstantFromUnnest(ARRAY<INT64> arr, INT64 int64_arg) -> INT64)
+    |     +-Literal(type=ARRAY<INT64>, value=[1, 2, 3])
+    |     +-ColumnRef(type=INT64, column=SimpleTypes.int64#2)
+    +-input_scan=
+      +-TableScan(column_list=[SimpleTypes.int64#2], table=SimpleTypes, column_index_list=[1])
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$query.$col1#20 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#20]
+    +-expr_list=
+    | +-$col1#20 :=
+    |   +-WithExpr
+    |     +-type=INT64
+    |     +-assignment_list=
+    |     | +-arr#24 := Literal(type=ARRAY<INT64>, value=[1, 2, 3])
+    |     | +-int64_arg#25 := ColumnRef(type=INT64, column=SimpleTypes.int64#2)
+    |     +-expr=
+    |       +-SubqueryExpr
+    |         +-type=INT64
+    |         +-subquery_type=SCALAR
+    |         +-parameter_list=
+    |         | +-ColumnRef(type=ARRAY<INT64>, column=$inlined_GroupingConstantFromUnnest.arr#24)
+    |         +-subquery=
+    |           +-ProjectScan
+    |             +-column_list=[$aggregate.$agg1#21]
+    |             +-input_scan=
+    |               +-AggregateScan
+    |                 +-column_list=[$aggregate.$agg1#21]
+    |                 +-input_scan=
+    |                 | +-ArrayScan
+    |                 |   +-column_list=[$array.X#22]
+    |                 |   +-array_expr_list=
+    |                 |   | +-ColumnRef(type=ARRAY<INT64>, column=$inlined_GroupingConstantFromUnnest.arr#24, is_correlated=TRUE)
+    |                 |   +-element_column_list=[$array.X#22]
+    |                 +-aggregate_list=
+    |                   +-$agg1#21 :=
+    |                     +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+    |                       +-ColumnRef(type=INT64, column=$group_by_list.$groupbymod#23)
+    |                       +-group_by_list=
+    |                         +-$groupbymod#23 := ColumnRef(type=INT64, column=$array.X#22)
+    +-input_scan=
+      +-TableScan(column_list=[SimpleTypes.int64#2], table=SimpleTypes, column_index_list=[1])
+==
+
+[language_features=NONE,+MULTILEVEL_AGGREGATION]
+SELECT
+  GroupingConstantFromArg([1,2,3], int64)
+FROM SimpleTypes;
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#20 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#20]
+    +-expr_list=
+    | +-$col1#20 :=
+    |   +-FunctionCall(Lazy_resolution_function:GroupingConstantFromArg(ARRAY<INT64> arr, INT64 int64_arg) -> INT64)
+    |     +-Literal(type=ARRAY<INT64>, value=[1, 2, 3])
+    |     +-ColumnRef(type=INT64, column=SimpleTypes.int64#2)
+    +-input_scan=
+      +-TableScan(column_list=[SimpleTypes.int64#2], table=SimpleTypes, column_index_list=[1])
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$query.$col1#20 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#20]
+    +-expr_list=
+    | +-$col1#20 :=
+    |   +-WithExpr
+    |     +-type=INT64
+    |     +-assignment_list=
+    |     | +-arr#24 := Literal(type=ARRAY<INT64>, value=[1, 2, 3])
+    |     | +-int64_arg#25 := ColumnRef(type=INT64, column=SimpleTypes.int64#2)
+    |     +-expr=
+    |       +-SubqueryExpr
+    |         +-type=INT64
+    |         +-subquery_type=SCALAR
+    |         +-parameter_list=
+    |         | +-ColumnRef(type=ARRAY<INT64>, column=$inlined_GroupingConstantFromArg.arr#24)
+    |         | +-ColumnRef(type=INT64, column=$inlined_GroupingConstantFromArg.int64_arg#25)
+    |         +-subquery=
+    |           +-ProjectScan
+    |             +-column_list=[$aggregate.$agg1#21]
+    |             +-input_scan=
+    |               +-AggregateScan
+    |                 +-column_list=[$aggregate.$agg1#21]
+    |                 +-input_scan=
+    |                 | +-ArrayScan
+    |                 |   +-column_list=[$array.X#22]
+    |                 |   +-array_expr_list=
+    |                 |   | +-ColumnRef(type=ARRAY<INT64>, column=$inlined_GroupingConstantFromArg.arr#24, is_correlated=TRUE)
+    |                 |   +-element_column_list=[$array.X#22]
+    |                 +-aggregate_list=
+    |                   +-$agg1#21 :=
+    |                     +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+    |                       +-ColumnRef(type=INT64, column=$inlined_GroupingConstantFromArg.int64_arg#25, is_correlated=TRUE)
+    |                       +-group_by_list=
+    |                         +-$groupbymod#23 := ColumnRef(type=INT64, column=$array.X#22)
+    +-input_scan=
+      +-TableScan(column_list=[SimpleTypes.int64#2], table=SimpleTypes, column_index_list=[1])
+==
+
+[language_features=NONE,+MULTILEVEL_AGGREGATION]
+SELECT NullaryWithMultilevelAgg() as result;
+--
+QueryStmt
++-output_column_list=
+| +-$query.result#1 AS result [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.result#1]
+    +-expr_list=
+    | +-result#1 := FunctionCall(Lazy_resolution_function:NullaryWithMultilevelAgg() -> INT64)
+    +-input_scan=
+      +-SingleRowScan
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$query.result#1 AS result [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.result#1]
+    +-expr_list=
+    | +-result#1 :=
+    |   +-SubqueryExpr
+    |     +-type=INT64
+    |     +-subquery_type=SCALAR
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$aggregate.$agg1#2]
+    |         +-input_scan=
+    |           +-AggregateScan
+    |             +-column_list=[$aggregate.$agg1#2]
+    |             +-input_scan=
+    |             | +-ArrayScan
+    |             |   +-column_list=[$array.x#3]
+    |             |   +-array_expr_list=
+    |             |   | +-Literal(type=ARRAY<INT64>, value=[1, 2, 3, 3])
+    |             |   +-element_column_list=[$array.x#3]
+    |             +-aggregate_list=
+    |               +-$agg1#2 :=
+    |                 +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+    |                   +-ColumnRef(type=INT64, column=$group_by_list.$groupbymod#4)
+    |                   +-group_by_list=
+    |                     +-$groupbymod#4 := ColumnRef(type=INT64, column=$array.x#3)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+[language_features=NONE,+MULTILEVEL_AGGREGATION]
+SELECT NestedNullaryWithMultilevelAgg() as result;
+--
+QueryStmt
++-output_column_list=
+| +-$query.result#1 AS result [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.result#1]
+    +-expr_list=
+    | +-result#1 := FunctionCall(Lazy_resolution_function:NestedNullaryWithMultilevelAgg() -> INT64)
+    +-input_scan=
+      +-SingleRowScan
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$query.result#1 AS result [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.result#1]
+    +-expr_list=
+    | +-result#1 :=
+    |   +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |     +-SubqueryExpr
+    |     | +-type=INT64
+    |     | +-subquery_type=SCALAR
+    |     | +-subquery=
+    |     |   +-ProjectScan
+    |     |     +-column_list=[$aggregate.$agg1#2]
+    |     |     +-input_scan=
+    |     |       +-AggregateScan
+    |     |         +-column_list=[$aggregate.$agg1#2]
+    |     |         +-input_scan=
+    |     |         | +-ArrayScan
+    |     |         |   +-column_list=[$array.x#3]
+    |     |         |   +-array_expr_list=
+    |     |         |   | +-Literal(type=ARRAY<INT64>, value=[1, 2, 3, 3])
+    |     |         |   +-element_column_list=[$array.x#3]
+    |     |         +-aggregate_list=
+    |     |           +-$agg1#2 :=
+    |     |             +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+    |     |               +-ColumnRef(type=INT64, column=$group_by_list.$groupbymod#4)
+    |     |               +-group_by_list=
+    |     |                 +-$groupbymod#4 := ColumnRef(type=INT64, column=$array.x#3)
+    |     +-SubqueryExpr
+    |       +-type=INT64
+    |       +-subquery_type=SCALAR
+    |       +-subquery=
+    |         +-ProjectScan
+    |           +-column_list=[$aggregate.$agg1#5]
+    |           +-input_scan=
+    |             +-AggregateScan
+    |               +-column_list=[$aggregate.$agg1#5]
+    |               +-input_scan=
+    |               | +-ArrayScan
+    |               |   +-column_list=[$array.x#6]
+    |               |   +-array_expr_list=
+    |               |   | +-Literal(type=ARRAY<INT64>, value=[1, 2, 3, 3])
+    |               |   +-element_column_list=[$array.x#6]
+    |               +-aggregate_list=
+    |                 +-$agg1#5 :=
+    |                   +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+    |                     +-ColumnRef(type=INT64, column=$group_by_list.$groupbymod#7)
+    |                     +-group_by_list=
+    |                       +-$groupbymod#7 := ColumnRef(type=INT64, column=$array.x#6)
+    +-input_scan=
+      +-SingleRowScan

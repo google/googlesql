@@ -1,0 +1,1502 @@
+# This file tests for ambiguity cases for SELECT list aliases used
+# in the ORDER BY, GROUP BY, and HAVING clauses.  There are similar
+# tests cases for these in strict_mode.test.
+
+
+# ORDER BY alias tests
+
+[default language_features=MAXIMUM]
+select {{key | keyvalue.key | key as key | keyvalue.key as key}}
+from keyvalue
+order by {{key | keyvalue.key}}
+--
+QueryStmt
++-output_column_list=
+| +-KeyValue.Key#1 AS key [INT64]
++-query=
+  +-OrderByScan
+    +-column_list=[KeyValue.Key#1]
+    +-is_ordered=TRUE
+    +-input_scan=
+    | +-TableScan(column_list=[KeyValue.Key#1], table=KeyValue, column_index_list=[0])
+    +-order_by_item_list=
+      +-OrderByItem
+        +-column_ref=
+          +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+==
+
+select keyvalue.key as key1
+from keyvalue
+order by key1
+--
+QueryStmt
++-output_column_list=
+| +-KeyValue.Key#1 AS key1 [INT64]
++-query=
+  +-OrderByScan
+    +-column_list=[KeyValue.Key#1]
+    +-is_ordered=TRUE
+    +-input_scan=
+    | +-TableScan(column_list=[KeyValue.Key#1], table=KeyValue, column_index_list=[0])
+    +-order_by_item_list=
+      +-OrderByItem
+        +-column_ref=
+          +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+==
+
+select key+1 as key
+from keyvalue
+order by key;
+--
+QueryStmt
++-output_column_list=
+| +-$query.key#3 AS key [INT64]
++-query=
+  +-OrderByScan
+    +-column_list=[$query.key#3]
+    +-is_ordered=TRUE
+    +-input_scan=
+    | +-ProjectScan
+    |   +-column_list=[KeyValue.Key#1, $query.key#3]
+    |   +-expr_list=
+    |   | +-key#3 :=
+    |   |   +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |   |     +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+    |   |     +-Literal(type=INT64, value=1)
+    |   +-input_scan=
+    |     +-TableScan(column_list=[KeyValue.Key#1], table=KeyValue, column_index_list=[0])
+    +-order_by_item_list=
+      +-OrderByItem
+        +-column_ref=
+          +-ColumnRef(type=INT64, column=$query.key#3)
+==
+
+select key as value
+from keyvalue
+order by value;
+--
+QueryStmt
++-output_column_list=
+| +-KeyValue.Key#1 AS value [INT64]
++-query=
+  +-OrderByScan
+    +-column_list=[KeyValue.Key#1]
+    +-is_ordered=TRUE
+    +-input_scan=
+    | +-TableScan(column_list=[KeyValue.Key#1], table=KeyValue, column_index_list=[0])
+    +-order_by_item_list=
+      +-OrderByItem
+        +-column_ref=
+          +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+==
+
+# TODO: Maybe this should work.  These key references all should
+# resolve to the same thing.
+select key, key
+from keyvalue
+order by key;
+--
+ERROR: Column name key is ambiguous [at 3:10]
+order by key;
+         ^
+==
+
+select keyvalue.key, keyvalue.key as key
+from keyvalue
+order by key;
+--
+ERROR: Column name key is ambiguous [at 3:10]
+order by key;
+         ^
+==
+
+select key
+from keyvalue
+order by value;
+--
+QueryStmt
++-output_column_list=
+| +-KeyValue.Key#1 AS key [INT64]
++-query=
+  +-OrderByScan
+    +-column_list=[KeyValue.Key#1]
+    +-is_ordered=TRUE
+    +-input_scan=
+    | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+    +-order_by_item_list=
+      +-OrderByItem
+        +-column_ref=
+          +-ColumnRef(type=STRING, column=KeyValue.Value#2)
+==
+
+select key as value
+from keyvalue
+order by key;
+--
+QueryStmt
++-output_column_list=
+| +-KeyValue.Key#1 AS value [INT64]
++-query=
+  +-OrderByScan
+    +-column_list=[KeyValue.Key#1]
+    +-is_ordered=TRUE
+    +-input_scan=
+    | +-TableScan(column_list=[KeyValue.Key#1], table=KeyValue, column_index_list=[0])
+    +-order_by_item_list=
+      +-OrderByItem
+        +-column_ref=
+          +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+==
+
+# GROUP BY alias tests
+
+select {{key | keyvalue.key | key as key | keyvalue.key as key}}
+from keyvalue
+group by {{key | keyvalue.key}}
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.key#3 AS key [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$groupby.key#3]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$groupby.key#3]
+        +-input_scan=
+        | +-TableScan(column_list=[KeyValue.Key#1], table=KeyValue, column_index_list=[0])
+        +-group_by_list=
+          +-key#3 := ColumnRef(type=INT64, column=KeyValue.Key#1)
+==
+
+select keyvalue.key as key1
+from keyvalue
+group by key1
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.key1#3 AS key1 [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$groupby.key1#3]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$groupby.key1#3]
+        +-input_scan=
+        | +-TableScan(column_list=[KeyValue.Key#1], table=KeyValue, column_index_list=[0])
+        +-group_by_list=
+          +-key1#3 := ColumnRef(type=INT64, column=KeyValue.Key#1)
+==
+
+select key+1 as key
+from keyvalue
+group by key;
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.key#3 AS key [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$groupby.key#3]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$groupby.key#3]
+        +-input_scan=
+        | +-TableScan(column_list=[KeyValue.Key#1], table=KeyValue, column_index_list=[0])
+        +-group_by_list=
+          +-key#3 :=
+            +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+              +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+              +-Literal(type=INT64, value=1)
+==
+
+# TODO: Improve error message to indicate non matching expressions in
+# GROUP BY.
+select key+1 as key
+from keyvalue
+group by key + 2;
+--
+ERROR: SELECT list expression references column key which is neither grouped nor aggregated [at 1:8]
+select key+1 as key
+       ^
+==
+
+select key as value
+from keyvalue
+group by value;
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.value#3 AS value [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$groupby.value#3]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$groupby.value#3]
+        +-input_scan=
+        | +-TableScan(column_list=[KeyValue.Key#1], table=KeyValue, column_index_list=[0])
+        +-group_by_list=
+          +-value#3 := ColumnRef(type=INT64, column=KeyValue.Key#1)
+==
+
+# TODO: Maybe this should work.  These key references all should
+# resolve to the same thing.
+select key, key
+from keyvalue
+group by key;
+--
+ERROR: Name key in GROUP BY clause is ambiguous; it may refer to multiple columns in the SELECT-list [at 3:10]
+group by key;
+         ^
+==
+
+select key
+from keyvalue
+group by value;
+--
+ERROR: SELECT list expression references column key which is neither grouped nor aggregated [at 1:8]
+select key
+       ^
+==
+
+select key as value
+from keyvalue
+group by key;
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.key#3 AS value [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$groupby.key#3]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$groupby.key#3]
+        +-input_scan=
+        | +-TableScan(column_list=[KeyValue.Key#1], table=KeyValue, column_index_list=[0])
+        +-group_by_list=
+          +-key#3 := ColumnRef(type=INT64, column=KeyValue.Key#1)
+==
+
+# HAVING alias tests
+
+select sum(key) as key
+from keyvalue
+having key > 5;
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.key#3 AS key [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.key#3]
+    +-input_scan=
+      +-FilterScan
+        +-column_list=[$aggregate.key#3]
+        +-input_scan=
+        | +-AggregateScan
+        |   +-column_list=[$aggregate.key#3]
+        |   +-input_scan=
+        |   | +-TableScan(column_list=[KeyValue.Key#1], table=KeyValue, column_index_list=[0])
+        |   +-aggregate_list=
+        |     +-key#3 :=
+        |       +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+        |         +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+        +-filter_expr=
+          +-FunctionCall(GoogleSQL:$greater(INT64, INT64) -> BOOL)
+            +-ColumnRef(type=INT64, column=$aggregate.key#3)
+            +-Literal(type=INT64, value=5)
+==
+
+select sum(key) as key
+from keyvalue
+having sum(key) > 5;
+--
+ERROR: Aggregations of aggregations are not allowed [at 3:12]
+having sum(key) > 5;
+           ^
+==
+
+select sum(key) as key
+from keyvalue
+having sum(1+key) > 5;
+--
+ERROR: Aggregations of aggregations are not allowed [at 3:14]
+having sum(1+key) > 5;
+             ^
+==
+
+select sum(key) as key
+from keyvalue
+having key + sum(key) > 5;
+--
+ERROR: Aggregations of aggregations are not allowed [at 3:18]
+having key + sum(key) > 5;
+                 ^
+==
+
+# GROUP BY and HAVING alias tests
+
+select {{key | keyvalue.key | key as key | keyvalue.key as key}}
+from keyvalue
+group by 1
+having key > 1
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.key#3 AS key [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$groupby.key#3]
+    +-input_scan=
+      +-FilterScan
+        +-column_list=[$groupby.key#3]
+        +-input_scan=
+        | +-AggregateScan
+        |   +-column_list=[$groupby.key#3]
+        |   +-input_scan=
+        |   | +-TableScan(column_list=[KeyValue.Key#1], table=KeyValue, column_index_list=[0])
+        |   +-group_by_list=
+        |     +-key#3 := ColumnRef(type=INT64, column=KeyValue.Key#1)
+        +-filter_expr=
+          +-FunctionCall(GoogleSQL:$greater(INT64, INT64) -> BOOL)
+            +-ColumnRef(type=INT64, column=$groupby.key#3)
+            +-Literal(type=INT64, value=1)
+==
+
+select keyvalue.key as key1
+from keyvalue
+group by 1
+having key1 > 1
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.key1#3 AS key1 [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$groupby.key1#3]
+    +-input_scan=
+      +-FilterScan
+        +-column_list=[$groupby.key1#3]
+        +-input_scan=
+        | +-AggregateScan
+        |   +-column_list=[$groupby.key1#3]
+        |   +-input_scan=
+        |   | +-TableScan(column_list=[KeyValue.Key#1], table=KeyValue, column_index_list=[0])
+        |   +-group_by_list=
+        |     +-key1#3 := ColumnRef(type=INT64, column=KeyValue.Key#1)
+        +-filter_expr=
+          +-FunctionCall(GoogleSQL:$greater(INT64, INT64) -> BOOL)
+            +-ColumnRef(type=INT64, column=$groupby.key1#3)
+            +-Literal(type=INT64, value=1)
+==
+
+select key as value
+from keyvalue
+group by 1
+having value > 5
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.value#3 AS value [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$groupby.value#3]
+    +-input_scan=
+      +-FilterScan
+        +-column_list=[$groupby.value#3]
+        +-input_scan=
+        | +-AggregateScan
+        |   +-column_list=[$groupby.value#3]
+        |   +-input_scan=
+        |   | +-TableScan(column_list=[KeyValue.Key#1], table=KeyValue, column_index_list=[0])
+        |   +-group_by_list=
+        |     +-value#3 := ColumnRef(type=INT64, column=KeyValue.Key#1)
+        +-filter_expr=
+          +-FunctionCall(GoogleSQL:$greater(INT64, INT64) -> BOOL)
+            +-ColumnRef(type=INT64, column=$groupby.value#3)
+            +-Literal(type=INT64, value=5)
+==
+
+select key as key1
+from keyvalue
+group by 1
+having key > 5
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.key1#3 AS key1 [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$groupby.key1#3]
+    +-input_scan=
+      +-FilterScan
+        +-column_list=[$groupby.key1#3]
+        +-input_scan=
+        | +-AggregateScan
+        |   +-column_list=[$groupby.key1#3]
+        |   +-input_scan=
+        |   | +-TableScan(column_list=[KeyValue.Key#1], table=KeyValue, column_index_list=[0])
+        |   +-group_by_list=
+        |     +-key1#3 := ColumnRef(type=INT64, column=KeyValue.Key#1)
+        +-filter_expr=
+          +-FunctionCall(GoogleSQL:$greater(INT64, INT64) -> BOOL)
+            +-ColumnRef(type=INT64, column=$groupby.key1#3)
+            +-Literal(type=INT64, value=5)
+==
+
+select key as key
+from keyvalue
+group by 1
+having sum(key) > 10
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.key#3 AS key [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$groupby.key#3]
+    +-input_scan=
+      +-FilterScan
+        +-column_list=[$groupby.key#3, $aggregate.$agg1#4]
+        +-input_scan=
+        | +-AggregateScan
+        |   +-column_list=[$groupby.key#3, $aggregate.$agg1#4]
+        |   +-input_scan=
+        |   | +-TableScan(column_list=[KeyValue.Key#1], table=KeyValue, column_index_list=[0])
+        |   +-group_by_list=
+        |   | +-key#3 := ColumnRef(type=INT64, column=KeyValue.Key#1)
+        |   +-aggregate_list=
+        |     +-$agg1#4 :=
+        |       +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+        |         +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+        +-filter_expr=
+          +-FunctionCall(GoogleSQL:$greater(INT64, INT64) -> BOOL)
+            +-ColumnRef(type=INT64, column=$aggregate.$agg1#4)
+            +-Literal(type=INT64, value=10)
+==
+
+select key+1 as key
+from keyvalue
+group by 1
+having sum(key) > 10
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.key#4 AS key [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$groupby.key#4]
+    +-input_scan=
+      +-FilterScan
+        +-column_list=[$groupby.key#4, $aggregate.$agg1#5]
+        +-input_scan=
+        | +-AggregateScan
+        |   +-column_list=[$groupby.key#4, $aggregate.$agg1#5]
+        |   +-input_scan=
+        |   | +-ProjectScan
+        |   |   +-column_list=[KeyValue.Key#1, $pre_groupby.key#3]
+        |   |   +-expr_list=
+        |   |   | +-key#3 :=
+        |   |   |   +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+        |   |   |     +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+        |   |   |     +-Literal(type=INT64, value=1)
+        |   |   +-input_scan=
+        |   |     +-TableScan(column_list=[KeyValue.Key#1], table=KeyValue, column_index_list=[0])
+        |   +-group_by_list=
+        |   | +-key#4 := ColumnRef(type=INT64, column=$pre_groupby.key#3)
+        |   +-aggregate_list=
+        |     +-$agg1#5 :=
+        |       +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+        |         +-ColumnRef(type=INT64, column=$pre_groupby.key#3)
+        +-filter_expr=
+          +-FunctionCall(GoogleSQL:$greater(INT64, INT64) -> BOOL)
+            +-ColumnRef(type=INT64, column=$aggregate.$agg1#5)
+            +-Literal(type=INT64, value=10)
+==
+
+select key as key
+from keyvalue
+group by 1
+having key > 5 and sum(key) < 10
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.key#3 AS key [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$groupby.key#3]
+    +-input_scan=
+      +-FilterScan
+        +-column_list=[$groupby.key#3, $aggregate.$agg1#4]
+        +-input_scan=
+        | +-AggregateScan
+        |   +-column_list=[$groupby.key#3, $aggregate.$agg1#4]
+        |   +-input_scan=
+        |   | +-TableScan(column_list=[KeyValue.Key#1], table=KeyValue, column_index_list=[0])
+        |   +-group_by_list=
+        |   | +-key#3 := ColumnRef(type=INT64, column=KeyValue.Key#1)
+        |   +-aggregate_list=
+        |     +-$agg1#4 :=
+        |       +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+        |         +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+        +-filter_expr=
+          +-FunctionCall(GoogleSQL:$and(BOOL, repeated(1) BOOL) -> BOOL)
+            +-FunctionCall(GoogleSQL:$greater(INT64, INT64) -> BOOL)
+            | +-ColumnRef(type=INT64, column=$groupby.key#3)
+            | +-Literal(type=INT64, value=5)
+            +-FunctionCall(GoogleSQL:$less(INT64, INT64) -> BOOL)
+              +-ColumnRef(type=INT64, column=$aggregate.$agg1#4)
+              +-Literal(type=INT64, value=10)
+==
+
+# Queries with GROUP BY and ORDER BY
+select key
+from keyvalue
+group by key
+order by key
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.key#3 AS key [INT64]
++-query=
+  +-OrderByScan
+    +-column_list=[$groupby.key#3]
+    +-is_ordered=TRUE
+    +-input_scan=
+    | +-AggregateScan
+    |   +-column_list=[$groupby.key#3]
+    |   +-input_scan=
+    |   | +-TableScan(column_list=[KeyValue.Key#1], table=KeyValue, column_index_list=[0])
+    |   +-group_by_list=
+    |     +-key#3 := ColumnRef(type=INT64, column=KeyValue.Key#1)
+    +-order_by_item_list=
+      +-OrderByItem
+        +-column_ref=
+          +-ColumnRef(type=INT64, column=$groupby.key#3)
+==
+
+select {{key | keyvalue.key | key as key | keyvalue.key as key}}
+from keyvalue
+group by 1
+order by key
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.key#3 AS key [INT64]
++-query=
+  +-OrderByScan
+    +-column_list=[$groupby.key#3]
+    +-is_ordered=TRUE
+    +-input_scan=
+    | +-AggregateScan
+    |   +-column_list=[$groupby.key#3]
+    |   +-input_scan=
+    |   | +-TableScan(column_list=[KeyValue.Key#1], table=KeyValue, column_index_list=[0])
+    |   +-group_by_list=
+    |     +-key#3 := ColumnRef(type=INT64, column=KeyValue.Key#1)
+    +-order_by_item_list=
+      +-OrderByItem
+        +-column_ref=
+          +-ColumnRef(type=INT64, column=$groupby.key#3)
+==
+
+select key as key1
+from keyvalue
+group by 1
+order by key1
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.key1#3 AS key1 [INT64]
++-query=
+  +-OrderByScan
+    +-column_list=[$groupby.key1#3]
+    +-is_ordered=TRUE
+    +-input_scan=
+    | +-AggregateScan
+    |   +-column_list=[$groupby.key1#3]
+    |   +-input_scan=
+    |   | +-TableScan(column_list=[KeyValue.Key#1], table=KeyValue, column_index_list=[0])
+    |   +-group_by_list=
+    |     +-key1#3 := ColumnRef(type=INT64, column=KeyValue.Key#1)
+    +-order_by_item_list=
+      +-OrderByItem
+        +-column_ref=
+          +-ColumnRef(type=INT64, column=$groupby.key1#3)
+==
+
+select key as value
+from keyvalue
+group by 1
+order by value
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.value#3 AS value [INT64]
++-query=
+  +-OrderByScan
+    +-column_list=[$groupby.value#3]
+    +-is_ordered=TRUE
+    +-input_scan=
+    | +-AggregateScan
+    |   +-column_list=[$groupby.value#3]
+    |   +-input_scan=
+    |   | +-TableScan(column_list=[KeyValue.Key#1], table=KeyValue, column_index_list=[0])
+    |   +-group_by_list=
+    |     +-value#3 := ColumnRef(type=INT64, column=KeyValue.Key#1)
+    +-order_by_item_list=
+      +-OrderByItem
+        +-column_ref=
+          +-ColumnRef(type=INT64, column=$groupby.value#3)
+==
+
+select key as key1
+from keyvalue
+group by 1
+order by key
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.key1#3 AS key1 [INT64]
++-query=
+  +-OrderByScan
+    +-column_list=[$groupby.key1#3]
+    +-is_ordered=TRUE
+    +-input_scan=
+    | +-AggregateScan
+    |   +-column_list=[$groupby.key1#3]
+    |   +-input_scan=
+    |   | +-TableScan(column_list=[KeyValue.Key#1], table=KeyValue, column_index_list=[0])
+    |   +-group_by_list=
+    |     +-key1#3 := ColumnRef(type=INT64, column=KeyValue.Key#1)
+    +-order_by_item_list=
+      +-OrderByItem
+        +-column_ref=
+          +-ColumnRef(type=INT64, column=$groupby.key1#3)
+==
+
+select key as key
+from keyvalue
+group by 1
+order by sum(key)
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.key#3 AS key [INT64]
++-query=
+  +-OrderByScan
+    +-column_list=[$groupby.key#3]
+    +-is_ordered=TRUE
+    +-input_scan=
+    | +-AggregateScan
+    |   +-column_list=[$groupby.key#3, $aggregate.$agg1#4]
+    |   +-input_scan=
+    |   | +-TableScan(column_list=[KeyValue.Key#1], table=KeyValue, column_index_list=[0])
+    |   +-group_by_list=
+    |   | +-key#3 := ColumnRef(type=INT64, column=KeyValue.Key#1)
+    |   +-aggregate_list=
+    |     +-$agg1#4 :=
+    |       +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+    |         +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+    +-order_by_item_list=
+      +-OrderByItem
+        +-column_ref=
+          +-ColumnRef(type=INT64, column=$aggregate.$agg1#4)
+==
+
+select key as key
+from keyvalue
+group by 1
+order by key, sum(key)
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.key#3 AS key [INT64]
++-query=
+  +-OrderByScan
+    +-column_list=[$groupby.key#3]
+    +-is_ordered=TRUE
+    +-input_scan=
+    | +-AggregateScan
+    |   +-column_list=[$groupby.key#3, $aggregate.$agg1#4]
+    |   +-input_scan=
+    |   | +-TableScan(column_list=[KeyValue.Key#1], table=KeyValue, column_index_list=[0])
+    |   +-group_by_list=
+    |   | +-key#3 := ColumnRef(type=INT64, column=KeyValue.Key#1)
+    |   +-aggregate_list=
+    |     +-$agg1#4 :=
+    |       +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+    |         +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+    +-order_by_item_list=
+      +-OrderByItem
+      | +-column_ref=
+      |   +-ColumnRef(type=INT64, column=$groupby.key#3)
+      +-OrderByItem
+        +-column_ref=
+          +-ColumnRef(type=INT64, column=$aggregate.$agg1#4)
+==
+
+# Some additional tests with range variables.
+# TODO: select kv, kv.key, kv.value should work. Need to fix this.
+[language_features=NONE,{{+GROUP_BY_STRUCT|}}]
+select kv {{|, kv.key, kv.value}}
+from KeyValue kv
+group by kv
+--
+ALTERNATION GROUP: +GROUP_BY_STRUCT,
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.kv#4 AS kv [STRUCT<Key INT64, Value STRING>]
++-query=
+  +-ProjectScan
+    +-column_list=[$groupby.kv#4]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$groupby.kv#4]
+        +-input_scan=
+        | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1], alias="kv")
+        +-group_by_list=
+          +-kv#4 :=
+            +-MakeStruct
+              +-type=STRUCT<Key INT64, Value STRING>
+              +-field_list=
+                +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+                +-ColumnRef(type=STRING, column=KeyValue.Value#2)
+--
+ALTERNATION GROUP: +GROUP_BY_STRUCT,, kv.key, kv.value
+--
+ERROR: SELECT list expression references kv.key which is neither grouped nor aggregated [at 1:13]
+select kv , kv.key, kv.value
+            ^
+--
+ALTERNATION GROUPS:
+    <empty>
+    , kv.key, kv.value
+--
+ERROR: Grouping by expressions of type STRUCT is not allowed [at 3:10]
+group by kv
+         ^
+==
+
+# For value table, vt.a is resolved to post-group.
+[language_features=NONE,{{+GROUP_BY_STRUCT|}}]
+select vt {{|, vt.a}}
+from TestStructValueTable vt
+group by vt
+--
+ALTERNATION GROUP: +GROUP_BY_STRUCT,
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.vt#2 AS vt [STRUCT<a INT32, b STRING>]
++-query=
+  +-ProjectScan
+    +-column_list=[$groupby.vt#2]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$groupby.vt#2]
+        +-input_scan=
+        | +-TableScan(column_list=[TestStructValueTable.value#1], table=TestStructValueTable, column_index_list=[0], alias="vt")
+        +-group_by_list=
+          +-vt#2 := ColumnRef(type=STRUCT<a INT32, b STRING>, column=TestStructValueTable.value#1)
+--
+ALTERNATION GROUP: +GROUP_BY_STRUCT,, vt.a
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.vt#2 AS vt [STRUCT<a INT32, b STRING>]
+| +-$query.a#3 AS a [INT32]
++-query=
+  +-ProjectScan
+    +-column_list=[$groupby.vt#2, $query.a#3]
+    +-expr_list=
+    | +-a#3 :=
+    |   +-GetStructField
+    |     +-type=INT32
+    |     +-expr=
+    |     | +-ColumnRef(type=STRUCT<a INT32, b STRING>, column=$groupby.vt#2)
+    |     +-field_idx=0
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$groupby.vt#2]
+        +-input_scan=
+        | +-TableScan(column_list=[TestStructValueTable.value#1], table=TestStructValueTable, column_index_list=[0], alias="vt")
+        +-group_by_list=
+          +-vt#2 := ColumnRef(type=STRUCT<a INT32, b STRING>, column=TestStructValueTable.value#1)
+--
+ALTERNATION GROUPS:
+    <empty>
+    , vt.a
+--
+ERROR: Grouping by expressions of type STRUCT is not allowed [at 3:10]
+group by vt
+         ^
+==
+
+select kv
+from UNNEST([1,2,3]) kv
+group by kv
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.kv#2 AS kv [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$groupby.kv#2]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$groupby.kv#2]
+        +-input_scan=
+        | +-ArrayScan
+        |   +-column_list=[$array.kv#1]
+        |   +-array_expr_list=
+        |   | +-Literal(type=ARRAY<INT64>, value=[1, 2, 3])
+        |   +-element_column_list=[$array.kv#1]
+        +-group_by_list=
+          +-kv#2 := ColumnRef(type=INT64, column=$array.kv#1)
+==
+
+# The kv reference is ambiguous in the SELECT list.  Note that the kv
+# RangeVariable in the FROM clause does not override the ambiguous kv
+# defined in the SELECT list, so the GROUP BY kv reference is ambiguous.
+select 1 as kv, kv
+from unnest([1,2,3]) kv
+group by kv
+--
+ERROR: Name kv in GROUP BY clause is ambiguous; it may refer to multiple columns in the SELECT-list [at 3:10]
+group by kv
+         ^
+==
+
+# Same failure as above, we currently consider two different SELECT list
+# columns with the same 'kv' alias to be ambiguous (we are not currently
+# checking if they are the same thing).
+select kv, kv
+from unnest([1,2,3]) kv
+group by kv
+--
+ERROR: Name kv in GROUP BY clause is ambiguous; it may refer to multiple columns in the SELECT-list [at 3:10]
+group by kv
+         ^
+==
+
+# Similar tests as above, but with a regular range variable.  If it was
+# unambiguous, then they would fail anyway since we do not allow grouping
+# by structs.
+select 1 as kv, kv
+from KeyValue kv
+group by kv
+--
+ERROR: Name kv in GROUP BY clause is ambiguous; it may refer to multiple columns in the SELECT-list [at 3:10]
+group by kv
+         ^
+==
+
+select kv, kv
+from KeyValue kv
+group by kv
+--
+ERROR: Name kv in GROUP BY clause is ambiguous; it may refer to multiple columns in the SELECT-list [at 3:10]
+group by kv
+         ^
+==
+
+select kv, kv
+from UNNEST([1,2,3]) kv
+group by 1, 2
+having kv > 1
+--
+ERROR: Column name kv is ambiguous [at 4:8]
+having kv > 1
+       ^
+==
+
+select kv.key + 1 as kv
+from KeyValue kv
+group by kv
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.kv#3 AS kv [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$groupby.kv#3]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$groupby.kv#3]
+        +-input_scan=
+        | +-TableScan(column_list=[KeyValue.Key#1], table=KeyValue, column_index_list=[0], alias="kv")
+        +-group_by_list=
+          +-kv#3 :=
+            +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+              +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+              +-Literal(type=INT64, value=1)
+==
+
+select key
+from (select as struct key, value from KeyValue)
+group by key;
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.key#4 AS key [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$groupby.key#4]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$groupby.key#4]
+        +-input_scan=
+        | +-ProjectScan
+        |   +-column_list=[$make_struct.$struct#3]
+        |   +-expr_list=
+        |   | +-$struct#3 :=
+        |   |   +-MakeStruct
+        |   |     +-type=STRUCT<key INT64, value STRING>
+        |   |     +-field_list=
+        |   |       +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+        |   |       +-ColumnRef(type=STRING, column=KeyValue.Value#2)
+        |   +-input_scan=
+        |     +-ProjectScan
+        |       +-column_list=KeyValue.[Key#1, Value#2]
+        |       +-input_scan=
+        |         +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+        +-group_by_list=
+          +-key#4 :=
+            +-GetStructField
+              +-type=INT64
+              +-expr=
+              | +-ColumnRef(type=STRUCT<key INT64, value STRING>, column=$make_struct.$struct#3)
+              +-field_idx=0
+==
+
+select key+1 as key
+from (select as struct key, value from KeyValue)
+group by key;
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.key#4 AS key [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$groupby.key#4]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$groupby.key#4]
+        +-input_scan=
+        | +-ProjectScan
+        |   +-column_list=[$make_struct.$struct#3]
+        |   +-expr_list=
+        |   | +-$struct#3 :=
+        |   |   +-MakeStruct
+        |   |     +-type=STRUCT<key INT64, value STRING>
+        |   |     +-field_list=
+        |   |       +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+        |   |       +-ColumnRef(type=STRING, column=KeyValue.Value#2)
+        |   +-input_scan=
+        |     +-ProjectScan
+        |       +-column_list=KeyValue.[Key#1, Value#2]
+        |       +-input_scan=
+        |         +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+        +-group_by_list=
+          +-key#4 :=
+            +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+              +-GetStructField
+              | +-type=INT64
+              | +-expr=
+              | | +-ColumnRef(type=STRUCT<key INT64, value STRING>, column=$make_struct.$struct#3)
+              | +-field_idx=0
+              +-Literal(type=INT64, value=1)
+==
+
+# Some tests with range variables.
+select {{kv|kv as kv}}
+from KeyValue kv
+order by kv.key
+--
+QueryStmt
++-output_column_list=
+| +-$query.kv#4 AS kv [STRUCT<Key INT64, Value STRING>]
++-query=
+  +-OrderByScan
+    +-column_list=[$query.kv#4]
+    +-is_ordered=TRUE
+    +-input_scan=
+    | +-ProjectScan
+    |   +-column_list=[KeyValue.Key#1, KeyValue.Value#2, $query.kv#4, $orderby.$orderbycol1#5]
+    |   +-expr_list=
+    |   | +-$orderbycol1#5 :=
+    |   |   +-GetStructField
+    |   |     +-type=INT64
+    |   |     +-expr=
+    |   |     | +-ColumnRef(type=STRUCT<Key INT64, Value STRING>, column=$query.kv#4)
+    |   |     +-field_idx=0
+    |   +-input_scan=
+    |     +-ProjectScan
+    |       +-column_list=[KeyValue.Key#1, KeyValue.Value#2, $query.kv#4]
+    |       +-expr_list=
+    |       | +-kv#4 :=
+    |       |   +-MakeStruct
+    |       |     +-type=STRUCT<Key INT64, Value STRING>
+    |       |     +-field_list=
+    |       |       +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+    |       |       +-ColumnRef(type=STRING, column=KeyValue.Value#2)
+    |       +-input_scan=
+    |         +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1], alias="kv")
+    +-order_by_item_list=
+      +-OrderByItem
+        +-column_ref=
+          +-ColumnRef(type=INT64, column=$orderby.$orderbycol1#5)
+==
+
+# The kv reference is ambiguous in the SELECT list.  Note that the kv
+# RangeVariable in the FROM clause does not override the ambiguous kv
+# defined in the SELECT list, so the ORDER BY kv reference is ambiguous.
+select 1 as kv, kv
+from unnest([1,2,3]) kv
+order by kv
+--
+ERROR: Column name kv is ambiguous [at 3:10]
+order by kv
+         ^
+==
+
+# Same failure as above, we currently consider two different SELECT list
+# columns with the same 'kv' alias to be ambiguous (we are not currently
+# checking if they are the same thing).
+select kv, kv
+from unnest([1,2,3]) kv
+order by kv
+--
+ERROR: Column name kv is ambiguous [at 3:10]
+order by kv
+         ^
+==
+
+# Similar tests as above, but with a regular range variable.
+select 1 as kv, kv
+from KeyValue kv
+order by kv.key
+--
+ERROR: Column name kv is ambiguous [at 3:10]
+order by kv.key
+         ^
+==
+
+select kv, kv
+from KeyValue kv
+order by kv.key
+--
+ERROR: Column name kv is ambiguous [at 3:10]
+order by kv.key
+         ^
+==
+
+select kv.key + 1 as kv
+from KeyValue kv
+order by kv
+--
+QueryStmt
++-output_column_list=
+| +-$query.kv#3 AS kv [INT64]
++-query=
+  +-OrderByScan
+    +-column_list=[$query.kv#3]
+    +-is_ordered=TRUE
+    +-input_scan=
+    | +-ProjectScan
+    |   +-column_list=[KeyValue.Key#1, $query.kv#3]
+    |   +-expr_list=
+    |   | +-kv#3 :=
+    |   |   +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |   |     +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+    |   |     +-Literal(type=INT64, value=1)
+    |   +-input_scan=
+    |     +-TableScan(column_list=[KeyValue.Key#1], table=KeyValue, column_index_list=[0], alias="kv")
+    +-order_by_item_list=
+      +-OrderByItem
+        +-column_ref=
+          +-ColumnRef(type=INT64, column=$query.kv#3)
+==
+
+select key
+from (select as struct key, value from KeyValue)
+order by key;
+--
+QueryStmt
++-output_column_list=
+| +-$query.key#4 AS key [INT64]
++-query=
+  +-OrderByScan
+    +-column_list=[$query.key#4]
+    +-is_ordered=TRUE
+    +-input_scan=
+    | +-ProjectScan
+    |   +-column_list=[$make_struct.$struct#3, $query.key#4]
+    |   +-expr_list=
+    |   | +-key#4 :=
+    |   |   +-GetStructField
+    |   |     +-type=INT64
+    |   |     +-expr=
+    |   |     | +-ColumnRef(type=STRUCT<key INT64, value STRING>, column=$make_struct.$struct#3)
+    |   |     +-field_idx=0
+    |   +-input_scan=
+    |     +-ProjectScan
+    |       +-column_list=[$make_struct.$struct#3]
+    |       +-expr_list=
+    |       | +-$struct#3 :=
+    |       |   +-MakeStruct
+    |       |     +-type=STRUCT<key INT64, value STRING>
+    |       |     +-field_list=
+    |       |       +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+    |       |       +-ColumnRef(type=STRING, column=KeyValue.Value#2)
+    |       +-input_scan=
+    |         +-ProjectScan
+    |           +-column_list=KeyValue.[Key#1, Value#2]
+    |           +-input_scan=
+    |             +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+    +-order_by_item_list=
+      +-OrderByItem
+        +-column_ref=
+          +-ColumnRef(type=INT64, column=$query.key#4)
+==
+
+select key+1 as key
+from (select as struct key, value from KeyValue)
+order by key;
+--
+QueryStmt
++-output_column_list=
+| +-$query.key#4 AS key [INT64]
++-query=
+  +-OrderByScan
+    +-column_list=[$query.key#4]
+    +-is_ordered=TRUE
+    +-input_scan=
+    | +-ProjectScan
+    |   +-column_list=[$make_struct.$struct#3, $query.key#4]
+    |   +-expr_list=
+    |   | +-key#4 :=
+    |   |   +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |   |     +-GetStructField
+    |   |     | +-type=INT64
+    |   |     | +-expr=
+    |   |     | | +-ColumnRef(type=STRUCT<key INT64, value STRING>, column=$make_struct.$struct#3)
+    |   |     | +-field_idx=0
+    |   |     +-Literal(type=INT64, value=1)
+    |   +-input_scan=
+    |     +-ProjectScan
+    |       +-column_list=[$make_struct.$struct#3]
+    |       +-expr_list=
+    |       | +-$struct#3 :=
+    |       |   +-MakeStruct
+    |       |     +-type=STRUCT<key INT64, value STRING>
+    |       |     +-field_list=
+    |       |       +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+    |       |       +-ColumnRef(type=STRING, column=KeyValue.Value#2)
+    |       +-input_scan=
+    |         +-ProjectScan
+    |           +-column_list=KeyValue.[Key#1, Value#2]
+    |           +-input_scan=
+    |             +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+    +-order_by_item_list=
+      +-OrderByItem
+        +-column_ref=
+          +-ColumnRef(type=INT64, column=$query.key#4)
+==
+
+select kv
+from (select as struct key, value from KeyValue) as kv
+order by kv.key
+--
+QueryStmt
++-output_column_list=
+| +-$make_struct.$struct#3 AS kv [STRUCT<key INT64, value STRING>]
++-query=
+  +-OrderByScan
+    +-column_list=[$make_struct.$struct#3]
+    +-is_ordered=TRUE
+    +-input_scan=
+    | +-ProjectScan
+    |   +-column_list=[$make_struct.$struct#3, $orderby.$orderbycol1#4]
+    |   +-expr_list=
+    |   | +-$orderbycol1#4 :=
+    |   |   +-GetStructField
+    |   |     +-type=INT64
+    |   |     +-expr=
+    |   |     | +-ColumnRef(type=STRUCT<key INT64, value STRING>, column=$make_struct.$struct#3)
+    |   |     +-field_idx=0
+    |   +-input_scan=
+    |     +-ProjectScan
+    |       +-column_list=[$make_struct.$struct#3]
+    |       +-expr_list=
+    |       | +-$struct#3 :=
+    |       |   +-MakeStruct
+    |       |     +-type=STRUCT<key INT64, value STRING>
+    |       |     +-field_list=
+    |       |       +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+    |       |       +-ColumnRef(type=STRING, column=KeyValue.Value#2)
+    |       +-input_scan=
+    |         +-ProjectScan
+    |           +-column_list=KeyValue.[Key#1, Value#2]
+    |           +-input_scan=
+    |             +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+    +-order_by_item_list=
+      +-OrderByItem
+        +-column_ref=
+          +-ColumnRef(type=INT64, column=$orderby.$orderbycol1#4)
+==
+
+select *
+from TestTable t, t.KitchenSink.repeated_int32_val v
+order by v;
+--
+QueryStmt
++-output_column_list=
+| +-TestTable.key#1 AS key [INT32]
+| +-TestTable.TestEnum#2 AS TestEnum [ENUM<googlesql_test.TestEnum>]
+| +-TestTable.KitchenSink#3 AS KitchenSink [PROTO<googlesql_test.KitchenSinkPB>]
+| +-$array.v#4 AS v [INT32]
++-query=
+  +-OrderByScan
+    +-column_list=[TestTable.key#1, TestTable.TestEnum#2, TestTable.KitchenSink#3, $array.v#4]
+    +-is_ordered=TRUE
+    +-input_scan=
+    | +-ArrayScan
+    |   +-column_list=[TestTable.key#1, TestTable.TestEnum#2, TestTable.KitchenSink#3, $array.v#4]
+    |   +-input_scan=
+    |   | +-TableScan(column_list=TestTable.[key#1, TestEnum#2, KitchenSink#3], table=TestTable, column_index_list=[0, 1, 2], alias="t")
+    |   +-array_expr_list=
+    |   | +-GetProtoField
+    |   |   +-type=ARRAY<INT32>
+    |   |   +-expr=
+    |   |   | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=TestTable.KitchenSink#3)
+    |   |   +-field_descriptor=repeated_int32_val
+    |   |   +-default_value=[]
+    |   +-element_column_list=[$array.v#4]
+    +-order_by_item_list=
+      +-OrderByItem
+        +-column_ref=
+          +-ColumnRef(type=INT32, column=$array.v#4)
+==
+
+# ORDER BY 'v' is ambiguous in the SELECT list, since we do not detect that
+# the two SELECT list 'v' references are the same thing.
+select *, *
+from TestTable t, t.KitchenSink.repeated_int32_val v
+order by v;
+--
+ERROR: Column name v is ambiguous [at 3:10]
+order by v;
+         ^
+==
+
+# The ORDER BY 'v' reference is ambiguous in the FROM clause.
+select *
+from (select v, v from TestTable t, t.KitchenSink.repeated_int32_val v)
+order by v;
+--
+ERROR: Column name v is ambiguous [at 3:10]
+order by v;
+         ^
+==
+
+select v
+from TestTable t, t.KitchenSink.repeated_int32_val v
+order by v;
+--
+QueryStmt
++-output_column_list=
+| +-$array.v#4 AS v [INT32]
++-query=
+  +-OrderByScan
+    +-column_list=[$array.v#4]
+    +-is_ordered=TRUE
+    +-input_scan=
+    | +-ArrayScan
+    |   +-column_list=[TestTable.KitchenSink#3, $array.v#4]
+    |   +-input_scan=
+    |   | +-TableScan(column_list=[TestTable.KitchenSink#3], table=TestTable, column_index_list=[2], alias="t")
+    |   +-array_expr_list=
+    |   | +-GetProtoField
+    |   |   +-type=ARRAY<INT32>
+    |   |   +-expr=
+    |   |   | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=TestTable.KitchenSink#3)
+    |   |   +-field_descriptor=repeated_int32_val
+    |   |   +-default_value=[]
+    |   +-element_column_list=[$array.v#4]
+    +-order_by_item_list=
+      +-OrderByItem
+        +-column_ref=
+          +-ColumnRef(type=INT32, column=$array.v#4)
+==
+
+SELECT a AS a1, a AS a2, a > a FROM (SELECT 1 AS a) GROUP BY 1
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.a1#2 AS a1 [INT64]
+| +-$groupby.a1#2 AS a2 [INT64]
+| +-$query.$col3#3 AS `$col3` [BOOL]
++-query=
+  +-ProjectScan
+    +-column_list=[$groupby.a1#2, $groupby.a1#2, $query.$col3#3]
+    +-expr_list=
+    | +-$col3#3 :=
+    |   +-FunctionCall(GoogleSQL:$greater(INT64, INT64) -> BOOL)
+    |     +-ColumnRef(type=INT64, column=$groupby.a1#2)
+    |     +-ColumnRef(type=INT64, column=$groupby.a1#2)
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$groupby.a1#2]
+        +-input_scan=
+        | +-ProjectScan
+        |   +-column_list=[$subquery1.a#1]
+        |   +-expr_list=
+        |   | +-a#1 := Literal(type=INT64, value=1)
+        |   +-input_scan=
+        |     +-SingleRowScan
+        +-group_by_list=
+          +-a1#2 := ColumnRef(type=INT64, column=$subquery1.a#1)
+==
+
+# This was originally b/17143975.
+SELECT a AS a1, a AS a2, a > a FROM (SELECT 1 AS a) GROUP BY 1, 2
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.a1#2 AS a1 [INT64]
+| +-$groupby.a1#2 AS a2 [INT64]
+| +-$query.$col3#3 AS `$col3` [BOOL]
++-query=
+  +-ProjectScan
+    +-column_list=[$groupby.a1#2, $groupby.a1#2, $query.$col3#3]
+    +-expr_list=
+    | +-$col3#3 :=
+    |   +-FunctionCall(GoogleSQL:$greater(INT64, INT64) -> BOOL)
+    |     +-ColumnRef(type=INT64, column=$groupby.a1#2)
+    |     +-ColumnRef(type=INT64, column=$groupby.a1#2)
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$groupby.a1#2]
+        +-input_scan=
+        | +-ProjectScan
+        |   +-column_list=[$subquery1.a#1]
+        |   +-expr_list=
+        |   | +-a#1 := Literal(type=INT64, value=1)
+        |   +-input_scan=
+        |     +-SingleRowScan
+        +-group_by_list=
+          +-a1#2 := ColumnRef(type=INT64, column=$subquery1.a#1)
+==
+
+SELECT a AS a1, a AS a2, a > a FROM (SELECT 1 AS a) GROUP BY 2, 3
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.a2#2 AS a1 [INT64]
+| +-$groupby.a2#2 AS a2 [INT64]
+| +-$groupby.$col3#3 AS `$col3` [BOOL]
++-query=
+  +-ProjectScan
+    +-column_list=$groupby.[a2#2, a2#2, $col3#3]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=$groupby.[a2#2, $col3#3]
+        +-input_scan=
+        | +-ProjectScan
+        |   +-column_list=[$subquery1.a#1]
+        |   +-expr_list=
+        |   | +-a#1 := Literal(type=INT64, value=1)
+        |   +-input_scan=
+        |     +-SingleRowScan
+        +-group_by_list=
+          +-a2#2 := ColumnRef(type=INT64, column=$subquery1.a#1)
+          +-$col3#3 :=
+            +-FunctionCall(GoogleSQL:$greater(INT64, INT64) -> BOOL)
+              +-ColumnRef(type=INT64, column=$subquery1.a#1)
+              +-ColumnRef(type=INT64, column=$subquery1.a#1)
+==
+
+SELECT a AS a1, a AS a2, a > a FROM (SELECT 1 AS a) GROUP BY 1, 2, 3
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.a1#2 AS a1 [INT64]
+| +-$groupby.a1#2 AS a2 [INT64]
+| +-$groupby.$col3#3 AS `$col3` [BOOL]
++-query=
+  +-ProjectScan
+    +-column_list=$groupby.[a1#2, a1#2, $col3#3]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=$groupby.[a1#2, $col3#3]
+        +-input_scan=
+        | +-ProjectScan
+        |   +-column_list=[$subquery1.a#1]
+        |   +-expr_list=
+        |   | +-a#1 := Literal(type=INT64, value=1)
+        |   +-input_scan=
+        |     +-SingleRowScan
+        +-group_by_list=
+          +-a1#2 := ColumnRef(type=INT64, column=$subquery1.a#1)
+          +-$col3#3 :=
+            +-FunctionCall(GoogleSQL:$greater(INT64, INT64) -> BOOL)
+              +-ColumnRef(type=INT64, column=$subquery1.a#1)
+              +-ColumnRef(type=INT64, column=$subquery1.a#1)
+==
+
+# This is a query from b/17480659.  It used to result in an ambiguity error,
+# but now correctly resolves the SELECT list 'foo' as the range variable.
+select foo, foo.foo from (select 1 as foo) as foo;
+--
+QueryStmt
++-output_column_list=
+| +-$query.foo#3 AS foo [STRUCT<foo INT64>]
+| +-foo.foo#1 AS foo [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.foo#3, foo.foo#1]
+    +-expr_list=
+    | +-foo#3 :=
+    |   +-MakeStruct
+    |     +-type=STRUCT<foo INT64>
+    |     +-field_list=
+    |       +-ColumnRef(type=INT64, column=foo.foo#1)
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[foo.foo#1]
+        +-expr_list=
+        | +-foo#1 := Literal(type=INT64, value=1)
+        +-input_scan=
+          +-SingleRowScan
+==
+
+# Test case for b/21141804, this query previously failed with an ambiguous
+# column name error.
+SELECT a AS b FROM (SELECT 1 AS a)
+GROUP BY
+    a,
+    a;
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.a#2 AS b [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$groupby.a#2]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$groupby.a#2]
+        +-input_scan=
+        | +-ProjectScan
+        |   +-column_list=[$subquery1.a#1]
+        |   +-expr_list=
+        |   | +-a#1 := Literal(type=INT64, value=1)
+        |   +-input_scan=
+        |     +-SingleRowScan
+        +-group_by_list=
+          +-a#2 := ColumnRef(type=INT64, column=$subquery1.a#1)

@@ -1,0 +1,1527 @@
+[default language_features=MAXIMUM,+PIPES,+GROUP_BY_ARRAY,+GROUP_BY_STRUCT,+PIPE_STATIC_DESCRIBE]
+select 1 |> distinct;
+--
+QueryStmt
++-output_column_list=
+| +-$pipe_distinct.$col1#2 AS `$col1` [INT64]
++-query=
+  +-AggregateScan
+    +-column_list=[$pipe_distinct.$col1#2]
+    +-input_scan=
+    | +-ProjectScan
+    |   +-column_list=[$query.$col1#1]
+    |   +-expr_list=
+    |   | +-$col1#1 := Literal(type=INT64, value=1)
+    |   +-input_scan=
+    |     +-SingleRowScan
+    +-group_by_list=
+      +-$col1#2 := ColumnRef(type=INT64, column=$query.$col1#1)
+==
+
+# EnumTable contains 2 pseudo-columns. DISTINCT drops them.
+from EnumTable
+|> STATIC_DESCRIBE
+|> distinct
+|> STATIC_DESCRIBE
+--
+QueryStmt
++-output_column_list=
+| +-$pipe_distinct.key#6 AS key [INT32]
+| +-$pipe_distinct.TestEnum#7 AS TestEnum [ENUM<googlesql_test.TestEnum>]
+| +-$pipe_distinct.AnotherTestEnum#8 AS AnotherTestEnum [ENUM<googlesql_test.AnotherTestEnum>]
++-query=
+  +-StaticDescribeScan
+    +-column_list=$pipe_distinct.[key#6, TestEnum#7, AnotherTestEnum#8]
+    +-describe_text=
+    |   """
+    |   NameList:
+    |     key INT32 $pipe_distinct.key#6
+    |     TestEnum googlesql_test.TestEnum $pipe_distinct.TestEnum#7
+    |     AnotherTestEnum googlesql_test.AnotherTestEnum $pipe_distinct.AnotherTestEnum#8
+    |   NameScope:
+    |     Names:
+    |       AnotherTestEnum -> googlesql_test.AnotherTestEnum ($pipe_distinct.AnotherTestEnum#8) (implicit)
+    |       TestEnum -> googlesql_test.TestEnum ($pipe_distinct.TestEnum#7) (implicit)
+    |       key -> INT32 ($pipe_distinct.key#6) (implicit)
+    |     Range variables:
+    |       EnumTable -> RANGE_VARIABLE<key#6,TestEnum#7,AnotherTestEnum#8>
+    |   """
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=$pipe_distinct.[key#6, TestEnum#7, AnotherTestEnum#8]
+        +-input_scan=
+        | +-StaticDescribeScan
+        |   +-column_list=EnumTable.[key#1, TestEnum#2, AnotherTestEnum#3]
+        |   +-describe_text=
+        |   |   """
+        |   |   NameList:
+        |   |     key INT32 EnumTable.key#1
+        |   |     TestEnum googlesql_test.TestEnum EnumTable.TestEnum#2
+        |   |     AnotherTestEnum googlesql_test.AnotherTestEnum EnumTable.AnotherTestEnum#3
+        |   |   NameScope:
+        |   |     Names:
+        |   |       AnotherTestEnum -> googlesql_test.AnotherTestEnum (EnumTable.AnotherTestEnum#3) (implicit)
+        |   |       Filename -> STRING (EnumTable.Filename#4) (implicit) (pseudo-column)
+        |   |       RowId -> BYTES (EnumTable.RowId#5) (implicit) (pseudo-column)
+        |   |       TestEnum -> googlesql_test.TestEnum (EnumTable.TestEnum#2) (implicit)
+        |   |       key -> INT32 (EnumTable.key#1) (implicit)
+        |   |     Range variables:
+        |   |       EnumTable -> RANGE_VARIABLE<key#1,TestEnum#2,AnotherTestEnum#3, pseudo_columns: Filename#4,RowId#5>
+        |   |   """
+        |   +-input_scan=
+        |     +-TableScan(column_list=EnumTable.[key#1, TestEnum#2, AnotherTestEnum#3], table=EnumTable, column_index_list=[0, 1, 2])
+        +-group_by_list=
+          +-key#6 := ColumnRef(type=INT32, column=EnumTable.key#1)
+          +-TestEnum#7 := ColumnRef(type=ENUM<googlesql_test.TestEnum>, column=EnumTable.TestEnum#2)
+          +-AnotherTestEnum#8 := ColumnRef(type=ENUM<googlesql_test.AnotherTestEnum>, column=EnumTable.AnotherTestEnum#3)
+==
+
+# Accessing pseudo-column Filename is ok before but should fail after DISTINCT.
+# The error points at the second WHERE-clause, not the first one.
+from EnumTable
+|> WHERE Filename='abc'
+|> distinct
+|> WHERE Filename='def'
+--
+ERROR: Unrecognized name: Filename [at 4:10]
+|> WHERE Filename='def'
+         ^
+==
+
+# DISTINCT on a value table preserves is_value_table.
+[language_features=NONE,{{+PIPES,+GROUP_BY_STRUCT|+PIPES}}]
+from TestStructValueTable
+|> distinct
+|> where a > 0
+--
+ALTERNATION GROUP: +PIPES,+GROUP_BY_STRUCT
+--
+QueryStmt
++-output_column_list=
+| +-$pipe_distinct.TestStructValueTable#2 AS `$value` [STRUCT<a INT32, b STRING>]
++-is_value_table=TRUE
++-query=
+  +-FilterScan
+    +-column_list=[$pipe_distinct.TestStructValueTable#2]
+    +-input_scan=
+    | +-AggregateScan
+    |   +-column_list=[$pipe_distinct.TestStructValueTable#2]
+    |   +-input_scan=
+    |   | +-TableScan(column_list=[TestStructValueTable.value#1], table=TestStructValueTable, column_index_list=[0])
+    |   +-group_by_list=
+    |     +-TestStructValueTable#2 := ColumnRef(type=STRUCT<a INT32, b STRING>, column=TestStructValueTable.value#1)
+    +-filter_expr=
+      +-FunctionCall(GoogleSQL:$greater(INT32, INT32) -> BOOL)
+        +-GetStructField
+        | +-type=INT32
+        | +-expr=
+        | | +-ColumnRef(type=STRUCT<a INT32, b STRING>, column=$pipe_distinct.TestStructValueTable#2)
+        | +-field_idx=0
+        +-Literal(type=INT32, value=0)
+--
+ALTERNATION GROUP: +PIPES
+--
+ERROR: Column TestStructValueTable of type STRUCT is not supported in pipe DISTINCT [at 2:1]
+|> distinct
+^
+==
+
+# DISTINCT on two value table columns.
+from TestStructValueTable vt1, TestStructValueTable vt2
+|> DISTINCT
+|> STATIC_DESCRIBE
+--
+QueryStmt
++-output_column_list=
+| +-$pipe_distinct.vt1#3 AS vt1 [STRUCT<a INT32, b STRING>]
+| +-$pipe_distinct.vt2#4 AS vt2 [STRUCT<a INT32, b STRING>]
++-query=
+  +-StaticDescribeScan
+    +-column_list=$pipe_distinct.[vt1#3, vt2#4]
+    +-describe_text=
+    |   """
+    |   NameList:
+    |     vt1 STRUCT<a INT32, b STRING> $pipe_distinct.vt1#3 (value table)
+    |     vt2 STRUCT<a INT32, b STRING> $pipe_distinct.vt2#4 (value table)
+    |   NameScope:
+    |     Range variables:
+    |       vt1 -> RANGE_VARIABLE<vt1#3> (value table)
+    |       vt2 -> RANGE_VARIABLE<vt2#4> (value table)
+    |     Value table columns:
+    |       $pipe_distinct.vt1#3
+    |       $pipe_distinct.vt2#4
+    |   """
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=$pipe_distinct.[vt1#3, vt2#4]
+        +-input_scan=
+        | +-JoinScan
+        |   +-column_list=TestStructValueTable.[value#1, value#2]
+        |   +-left_scan=
+        |   | +-TableScan(column_list=[TestStructValueTable.value#1], table=TestStructValueTable, column_index_list=[0], alias="vt1")
+        |   +-right_scan=
+        |     +-TableScan(column_list=[TestStructValueTable.value#2], table=TestStructValueTable, column_index_list=[0], alias="vt2")
+        +-group_by_list=
+          +-vt1#3 := ColumnRef(type=STRUCT<a INT32, b STRING>, column=TestStructValueTable.value#1)
+          +-vt2#4 := ColumnRef(type=STRUCT<a INT32, b STRING>, column=TestStructValueTable.value#2)
+==
+
+# When a value table column passes through DISTINCT, it still works as a
+# value table column, meaning we can select fields out of it implicitly,
+# and SELECT * expands its fields.
+from TestTable tt, TestStructValueTable vt1
+|> DROP KitchenSink  # not groupable
+|> STATIC_DESCRIBE
+|> DISTINCT
+|> STATIC_DESCRIBE
+|> SELECT a, vt1.b, '--', *
+--
+QueryStmt
++-output_column_list=
+| +-$pipe_select.a#8 AS a [INT32]
+| +-$pipe_select.b#9 AS b [STRING]
+| +-$pipe_select.$col3#10 AS `$col3` [STRING]
+| +-$pipe_distinct.key#5 AS key [INT32]
+| +-$pipe_distinct.TestEnum#6 AS TestEnum [ENUM<googlesql_test.TestEnum>]
+| +-$pipe_select.a#11 AS a [INT32]
+| +-$pipe_select.b#12 AS b [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$pipe_select.a#8, $pipe_select.b#9, $pipe_select.$col3#10, $pipe_distinct.key#5, $pipe_distinct.TestEnum#6, $pipe_select.a#11, $pipe_select.b#12]
+    +-expr_list=
+    | +-a#8 :=
+    | | +-GetStructField
+    | |   +-type=INT32
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<a INT32, b STRING>, column=$pipe_distinct.vt1#7)
+    | |   +-field_idx=0
+    | +-b#9 :=
+    | | +-GetStructField
+    | |   +-type=STRING
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<a INT32, b STRING>, column=$pipe_distinct.vt1#7)
+    | |   +-field_idx=1
+    | +-$col3#10 := Literal(type=STRING, value="--")
+    | +-a#11 :=
+    | | +-GetStructField
+    | |   +-type=INT32
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<a INT32, b STRING>, column=$pipe_distinct.vt1#7)
+    | |   +-field_idx=0
+    | +-b#12 :=
+    |   +-GetStructField
+    |     +-type=STRING
+    |     +-expr=
+    |     | +-ColumnRef(type=STRUCT<a INT32, b STRING>, column=$pipe_distinct.vt1#7)
+    |     +-field_idx=1
+    +-input_scan=
+      +-StaticDescribeScan
+        +-column_list=$pipe_distinct.[key#5, TestEnum#6, vt1#7]
+        +-describe_text=
+        |   """
+        |   NameList:
+        |     key INT32 $pipe_distinct.key#5
+        |     TestEnum googlesql_test.TestEnum $pipe_distinct.TestEnum#6
+        |     vt1 STRUCT<a INT32, b STRING> $pipe_distinct.vt1#7 (value table) (excluded_field_names KitchenSink)
+        |   NameScope:
+        |     Names:
+        |       TestEnum -> googlesql_test.TestEnum ($pipe_distinct.TestEnum#6) (implicit)
+        |       key -> INT32 ($pipe_distinct.key#5) (implicit)
+        |     Range variables:
+        |       tt -> RANGE_VARIABLE<key#5,TestEnum#6>
+        |       vt1 -> RANGE_VARIABLE<vt1#7> (value table)
+        |     Value table columns:
+        |       $pipe_distinct.vt1#7 (excluded_field_names KitchenSink)
+        |   """
+        +-input_scan=
+          +-AggregateScan
+            +-column_list=$pipe_distinct.[key#5, TestEnum#6, vt1#7]
+            +-input_scan=
+            | +-StaticDescribeScan
+            |   +-column_list=[TestTable.key#1, TestTable.TestEnum#2, TestStructValueTable.value#4]
+            |   +-describe_text=
+            |   |   """
+            |   |   NameList:
+            |   |     key INT32 TestTable.key#1
+            |   |     TestEnum googlesql_test.TestEnum TestTable.TestEnum#2
+            |   |     vt1 STRUCT<a INT32, b STRING> TestStructValueTable.value#4 (value table) (excluded_field_names KitchenSink)
+            |   |   NameScope:
+            |   |     Names:
+            |   |       TestEnum -> googlesql_test.TestEnum (TestTable.TestEnum#2) (implicit)
+            |   |       key -> INT32 (TestTable.key#1) (implicit)
+            |   |     Range variables:
+            |   |       tt -> RANGE_VARIABLE<key#1,TestEnum#2,KitchenSink#3>
+            |   |       vt1 -> RANGE_VARIABLE<value#4> (value table)
+            |   |     Value table columns:
+            |   |       TestStructValueTable.value#4 (excluded_field_names KitchenSink)
+            |   |   """
+            |   +-input_scan=
+            |     +-JoinScan
+            |       +-column_list=[TestTable.key#1, TestTable.TestEnum#2, TestStructValueTable.value#4]
+            |       +-left_scan=
+            |       | +-TableScan(column_list=TestTable.[key#1, TestEnum#2], table=TestTable, column_index_list=[0, 1], alias="tt")
+            |       +-right_scan=
+            |         +-TableScan(column_list=[TestStructValueTable.value#4], table=TestStructValueTable, column_index_list=[0], alias="vt1")
+            +-group_by_list=
+              +-key#5 := ColumnRef(type=INT32, column=TestTable.key#1)
+              +-TestEnum#6 := ColumnRef(type=ENUM<googlesql_test.TestEnum>, column=TestTable.TestEnum#2)
+              +-vt1#7 := ColumnRef(type=STRUCT<a INT32, b STRING>, column=TestStructValueTable.value#4)
+==
+
+# Cross-join, column "Key" from both tables are in pipe-distinct's input
+# name_list, so both columns should be kept after pipe-distinct.
+# The range variables still work after DISTINCT.
+from KeyValue t1, KeyValue2 t2
+|> distinct
+|> where t1.Key = t2.Key
+--
+QueryStmt
++-output_column_list=
+| +-$pipe_distinct.Key#5 AS Key [INT64]
+| +-$pipe_distinct.Value#6 AS Value [STRING]
+| +-$pipe_distinct.Key#7 AS Key [INT64]
+| +-$pipe_distinct.Value2#8 AS Value2 [STRING]
++-query=
+  +-FilterScan
+    +-column_list=$pipe_distinct.[Key#5, Value#6, Key#7, Value2#8]
+    +-input_scan=
+    | +-AggregateScan
+    |   +-column_list=$pipe_distinct.[Key#5, Value#6, Key#7, Value2#8]
+    |   +-input_scan=
+    |   | +-JoinScan
+    |   |   +-column_list=[KeyValue.Key#1, KeyValue.Value#2, KeyValue2.Key#3, KeyValue2.Value2#4]
+    |   |   +-left_scan=
+    |   |   | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1], alias="t1")
+    |   |   +-right_scan=
+    |   |     +-TableScan(column_list=KeyValue2.[Key#3, Value2#4], table=KeyValue2, column_index_list=[0, 1], alias="t2")
+    |   +-group_by_list=
+    |     +-Key#5 := ColumnRef(type=INT64, column=KeyValue.Key#1)
+    |     +-Value#6 := ColumnRef(type=STRING, column=KeyValue.Value#2)
+    |     +-Key#7 := ColumnRef(type=INT64, column=KeyValue2.Key#3)
+    |     +-Value2#8 := ColumnRef(type=STRING, column=KeyValue2.Value2#4)
+    +-filter_expr=
+      +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+        +-ColumnRef(type=INT64, column=$pipe_distinct.Key#5)
+        +-ColumnRef(type=INT64, column=$pipe_distinct.Key#7)
+==
+
+# When joining with USING(key), note the differences in the name scopes
+# after DISTINCT, particularly in columns available under the range variables.
+#
+# The output column named `key` is the column from one of the sides,
+# and only the that sides range variable still has `key` under it.
+#
+# With FULL JOIN, neither column is passed through directly so
+# neither range variable contains `key` any more.
+from KeyValue t1
+|> {{|left|right|full}} join KeyValue2 t2 using(key)
+|> distinct
+|> STATIC_DESCRIBE
+|> SELECT key,
+          1 AS `-- t1.* is:`, t1.*,
+          2 AS `-- t2.* is:`, t2.*
+--
+ALTERNATION GROUP: <empty>
+--
+QueryStmt
++-output_column_list=
+| +-$pipe_distinct.key#5 AS key [INT64]
+| +-$pipe_select.-- t1.* is:#8 AS `-- t1.* is:` [INT64]
+| +-$pipe_distinct.key#5 AS Key [INT64]
+| +-$pipe_distinct.Value#6 AS Value [STRING]
+| +-$pipe_select.-- t2.* is:#9 AS `-- t2.* is:` [INT64]
+| +-$pipe_distinct.Value2#7 AS Value2 [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$pipe_distinct.key#5, $pipe_select.-- t1.* is:#8, $pipe_distinct.key#5, $pipe_distinct.Value#6, $pipe_select.-- t2.* is:#9, $pipe_distinct.Value2#7]
+    +-expr_list=
+    | +--- t1.* is:#8 := Literal(type=INT64, value=1)
+    | +--- t2.* is:#9 := Literal(type=INT64, value=2)
+    +-input_scan=
+      +-StaticDescribeScan
+        +-column_list=$pipe_distinct.[key#5, Value#6, Value2#7]
+        +-describe_text=
+        |   """
+        |   NameList:
+        |     key INT64 $pipe_distinct.key#5
+        |     Value STRING $pipe_distinct.Value#6
+        |     Value2 STRING $pipe_distinct.Value2#7
+        |   NameScope:
+        |     Names:
+        |       Value -> STRING ($pipe_distinct.Value#6) (implicit)
+        |       Value2 -> STRING ($pipe_distinct.Value2#7) (implicit)
+        |       key -> INT64 ($pipe_distinct.key#5)
+        |     Range variables:
+        |       t1 -> RANGE_VARIABLE<key#5 AS Key,Value#6>
+        |       t2 -> RANGE_VARIABLE<Value2#7>
+        |   """
+        +-input_scan=
+          +-AggregateScan
+            +-column_list=$pipe_distinct.[key#5, Value#6, Value2#7]
+            +-input_scan=
+            | +-JoinScan
+            |   +-column_list=[KeyValue.Key#1, KeyValue.Value#2, KeyValue2.Key#3, KeyValue2.Value2#4]
+            |   +-left_scan=
+            |   | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1], alias="t1")
+            |   +-right_scan=
+            |   | +-TableScan(column_list=KeyValue2.[Key#3, Value2#4], table=KeyValue2, column_index_list=[0, 1], alias="t2")
+            |   +-join_expr=
+            |   | +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+            |   |   +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+            |   |   +-ColumnRef(type=INT64, column=KeyValue2.Key#3)
+            |   +-has_using=TRUE
+            +-group_by_list=
+              +-key#5 := ColumnRef(type=INT64, column=KeyValue.Key#1)
+              +-Value#6 := ColumnRef(type=STRING, column=KeyValue.Value#2)
+              +-Value2#7 := ColumnRef(type=STRING, column=KeyValue2.Value2#4)
+--
+ALTERNATION GROUP: left
+--
+QueryStmt
++-output_column_list=
+| +-$pipe_distinct.key#5 AS key [INT64]
+| +-$pipe_select.-- t1.* is:#8 AS `-- t1.* is:` [INT64]
+| +-$pipe_distinct.key#5 AS Key [INT64]
+| +-$pipe_distinct.Value#6 AS Value [STRING]
+| +-$pipe_select.-- t2.* is:#9 AS `-- t2.* is:` [INT64]
+| +-$pipe_distinct.Value2#7 AS Value2 [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$pipe_distinct.key#5, $pipe_select.-- t1.* is:#8, $pipe_distinct.key#5, $pipe_distinct.Value#6, $pipe_select.-- t2.* is:#9, $pipe_distinct.Value2#7]
+    +-expr_list=
+    | +--- t1.* is:#8 := Literal(type=INT64, value=1)
+    | +--- t2.* is:#9 := Literal(type=INT64, value=2)
+    +-input_scan=
+      +-StaticDescribeScan
+        +-column_list=$pipe_distinct.[key#5, Value#6, Value2#7]
+        +-describe_text=
+        |   """
+        |   NameList:
+        |     key INT64 $pipe_distinct.key#5
+        |     Value STRING $pipe_distinct.Value#6
+        |     Value2 STRING $pipe_distinct.Value2#7
+        |   NameScope:
+        |     Names:
+        |       Value -> STRING ($pipe_distinct.Value#6) (implicit)
+        |       Value2 -> STRING ($pipe_distinct.Value2#7) (implicit)
+        |       key -> INT64 ($pipe_distinct.key#5)
+        |     Range variables:
+        |       t1 -> RANGE_VARIABLE<key#5 AS Key,Value#6>
+        |       t2 -> RANGE_VARIABLE<Value2#7>
+        |   """
+        +-input_scan=
+          +-AggregateScan
+            +-column_list=$pipe_distinct.[key#5, Value#6, Value2#7]
+            +-input_scan=
+            | +-JoinScan
+            |   +-column_list=[KeyValue.Key#1, KeyValue.Value#2, KeyValue2.Key#3, KeyValue2.Value2#4]
+            |   +-join_type=LEFT
+            |   +-left_scan=
+            |   | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1], alias="t1")
+            |   +-right_scan=
+            |   | +-TableScan(column_list=KeyValue2.[Key#3, Value2#4], table=KeyValue2, column_index_list=[0, 1], alias="t2")
+            |   +-join_expr=
+            |   | +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+            |   |   +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+            |   |   +-ColumnRef(type=INT64, column=KeyValue2.Key#3)
+            |   +-has_using=TRUE
+            +-group_by_list=
+              +-key#5 := ColumnRef(type=INT64, column=KeyValue.Key#1)
+              +-Value#6 := ColumnRef(type=STRING, column=KeyValue.Value#2)
+              +-Value2#7 := ColumnRef(type=STRING, column=KeyValue2.Value2#4)
+--
+ALTERNATION GROUP: right
+--
+QueryStmt
++-output_column_list=
+| +-$pipe_distinct.key#5 AS key [INT64]
+| +-$pipe_select.-- t1.* is:#8 AS `-- t1.* is:` [INT64]
+| +-$pipe_distinct.Value#6 AS Value [STRING]
+| +-$pipe_select.-- t2.* is:#9 AS `-- t2.* is:` [INT64]
+| +-$pipe_distinct.key#5 AS Key [INT64]
+| +-$pipe_distinct.Value2#7 AS Value2 [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$pipe_distinct.key#5, $pipe_select.-- t1.* is:#8, $pipe_distinct.Value#6, $pipe_select.-- t2.* is:#9, $pipe_distinct.key#5, $pipe_distinct.Value2#7]
+    +-expr_list=
+    | +--- t1.* is:#8 := Literal(type=INT64, value=1)
+    | +--- t2.* is:#9 := Literal(type=INT64, value=2)
+    +-input_scan=
+      +-StaticDescribeScan
+        +-column_list=$pipe_distinct.[key#5, Value#6, Value2#7]
+        +-describe_text=
+        |   """
+        |   NameList:
+        |     key INT64 $pipe_distinct.key#5
+        |     Value STRING $pipe_distinct.Value#6
+        |     Value2 STRING $pipe_distinct.Value2#7
+        |   NameScope:
+        |     Names:
+        |       Value -> STRING ($pipe_distinct.Value#6) (implicit)
+        |       Value2 -> STRING ($pipe_distinct.Value2#7) (implicit)
+        |       key -> INT64 ($pipe_distinct.key#5)
+        |     Range variables:
+        |       t1 -> RANGE_VARIABLE<Value#6>
+        |       t2 -> RANGE_VARIABLE<key#5 AS Key,Value2#7>
+        |   """
+        +-input_scan=
+          +-AggregateScan
+            +-column_list=$pipe_distinct.[key#5, Value#6, Value2#7]
+            +-input_scan=
+            | +-JoinScan
+            |   +-column_list=[KeyValue.Key#1, KeyValue.Value#2, KeyValue2.Key#3, KeyValue2.Value2#4]
+            |   +-join_type=RIGHT
+            |   +-left_scan=
+            |   | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1], alias="t1")
+            |   +-right_scan=
+            |   | +-TableScan(column_list=KeyValue2.[Key#3, Value2#4], table=KeyValue2, column_index_list=[0, 1], alias="t2")
+            |   +-join_expr=
+            |   | +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+            |   |   +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+            |   |   +-ColumnRef(type=INT64, column=KeyValue2.Key#3)
+            |   +-has_using=TRUE
+            +-group_by_list=
+              +-key#5 := ColumnRef(type=INT64, column=KeyValue2.Key#3)
+              +-Value#6 := ColumnRef(type=STRING, column=KeyValue.Value#2)
+              +-Value2#7 := ColumnRef(type=STRING, column=KeyValue2.Value2#4)
+--
+ALTERNATION GROUP: full
+--
+QueryStmt
++-output_column_list=
+| +-$pipe_distinct.key#6 AS key [INT64]
+| +-$pipe_select.-- t1.* is:#9 AS `-- t1.* is:` [INT64]
+| +-$pipe_distinct.Value#7 AS Value [STRING]
+| +-$pipe_select.-- t2.* is:#10 AS `-- t2.* is:` [INT64]
+| +-$pipe_distinct.Value2#8 AS Value2 [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$pipe_distinct.key#6, $pipe_select.-- t1.* is:#9, $pipe_distinct.Value#7, $pipe_select.-- t2.* is:#10, $pipe_distinct.Value2#8]
+    +-expr_list=
+    | +--- t1.* is:#9 := Literal(type=INT64, value=1)
+    | +--- t2.* is:#10 := Literal(type=INT64, value=2)
+    +-input_scan=
+      +-StaticDescribeScan
+        +-column_list=$pipe_distinct.[key#6, Value#7, Value2#8]
+        +-describe_text=
+        |   """
+        |   NameList:
+        |     key INT64 $pipe_distinct.key#6
+        |     Value STRING $pipe_distinct.Value#7
+        |     Value2 STRING $pipe_distinct.Value2#8
+        |   NameScope:
+        |     Names:
+        |       Value -> STRING ($pipe_distinct.Value#7) (implicit)
+        |       Value2 -> STRING ($pipe_distinct.Value2#8) (implicit)
+        |       key -> INT64 ($pipe_distinct.key#6)
+        |     Range variables:
+        |       t1 -> RANGE_VARIABLE<Value#7>
+        |       t2 -> RANGE_VARIABLE<Value2#8>
+        |   """
+        +-input_scan=
+          +-AggregateScan
+            +-column_list=$pipe_distinct.[key#6, Value#7, Value2#8]
+            +-input_scan=
+            | +-ProjectScan
+            |   +-column_list=[KeyValue.Key#1, KeyValue.Value#2, KeyValue2.Key#3, KeyValue2.Value2#4, $full_join.key#5]
+            |   +-expr_list=
+            |   | +-key#5 :=
+            |   |   +-FunctionCall(GoogleSQL:coalesce(repeated(2) INT64) -> INT64)
+            |   |     +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+            |   |     +-ColumnRef(type=INT64, column=KeyValue2.Key#3)
+            |   +-input_scan=
+            |     +-JoinScan
+            |       +-column_list=[KeyValue.Key#1, KeyValue.Value#2, KeyValue2.Key#3, KeyValue2.Value2#4]
+            |       +-join_type=FULL
+            |       +-left_scan=
+            |       | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1], alias="t1")
+            |       +-right_scan=
+            |       | +-TableScan(column_list=KeyValue2.[Key#3, Value2#4], table=KeyValue2, column_index_list=[0, 1], alias="t2")
+            |       +-join_expr=
+            |       | +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+            |       |   +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+            |       |   +-ColumnRef(type=INT64, column=KeyValue2.Key#3)
+            |       +-has_using=TRUE
+            +-group_by_list=
+              +-key#6 := ColumnRef(type=INT64, column=$full_join.key#5)
+              +-Value#7 := ColumnRef(type=STRING, column=KeyValue.Value#2)
+              +-Value2#8 := ColumnRef(type=STRING, column=KeyValue2.Value2#4)
+==
+
+# Even with inner join, rhs.key is not available after DISTINCT.
+# This is actually necessary - consider when the join might have been
+# case insensitive string equality, and now the original rhs value is no
+# longer available, even though it is equal to the lhs value.
+from KeyValue t1
+|> join KeyValue2 t2 using(key)
+|> WHERE t1.key = t2.key
+|> DISTINCT
+|> SELECT key, t1.key, t2.key
+--
+ERROR: Name key not found inside t2 [at 5:27]
+|> SELECT key, t1.key, t2.key
+                          ^
+==
+
+# All t2 columns were dropped by USING, so expanding t2.* after
+# DISTINCT is an error, but `t2` can be read as an empty struct.
+from KeyValue t1
+|> join KeyValue t2 using(key, value)
+|> distinct
+|> STATIC_DESCRIBE
+|> select *, '--', t1.*, '--', t2,{{| t2.*}}
+--
+ALTERNATION GROUP: <empty>
+--
+QueryStmt
++-output_column_list=
+| +-$pipe_distinct.key#5 AS key [INT64]
+| +-$pipe_distinct.value#6 AS value [STRING]
+| +-$pipe_select.$col2#8 AS `$col2` [STRING]
+| +-$pipe_distinct.key#5 AS Key [INT64]
+| +-$pipe_distinct.value#6 AS Value [STRING]
+| +-$pipe_select.$col4#9 AS `$col4` [STRING]
+| +-$pipe_select.t2#10 AS t2 [STRUCT<>]
++-query=
+  +-ProjectScan
+    +-column_list=[$pipe_distinct.key#5, $pipe_distinct.value#6, $pipe_select.$col2#8, $pipe_distinct.key#5, $pipe_distinct.value#6, $pipe_select.$col4#9, $pipe_select.t2#10]
+    +-expr_list=
+    | +-$col2#8 := Literal(type=STRING, value="--")
+    | +-$col4#9 := Literal(type=STRING, value="--")
+    | +-t2#10 := MakeStruct(type=STRUCT<>)
+    +-input_scan=
+      +-StaticDescribeScan
+        +-column_list=$pipe_distinct.[key#5, value#6]
+        +-describe_text=
+        |   """
+        |   NameList:
+        |     key INT64 $pipe_distinct.key#5
+        |     value STRING $pipe_distinct.value#6
+        |   NameScope:
+        |     Names:
+        |       key -> INT64 ($pipe_distinct.key#5)
+        |       value -> STRING ($pipe_distinct.value#6)
+        |     Range variables:
+        |       t1 -> RANGE_VARIABLE<key#5 AS Key,value#6 AS Value>
+        |       t2 -> RANGE_VARIABLE<>
+        |   """
+        +-input_scan=
+          +-AggregateScan
+            +-column_list=$pipe_distinct.[key#5, value#6]
+            +-input_scan=
+            | +-JoinScan
+            |   +-column_list=KeyValue.[Key#1, Value#2, Key#3, Value#4]
+            |   +-left_scan=
+            |   | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1], alias="t1")
+            |   +-right_scan=
+            |   | +-TableScan(column_list=KeyValue.[Key#3, Value#4], table=KeyValue, column_index_list=[0, 1], alias="t2")
+            |   +-join_expr=
+            |   | +-FunctionCall(GoogleSQL:$and(BOOL, repeated(1) BOOL) -> BOOL)
+            |   |   +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+            |   |   | +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+            |   |   | +-ColumnRef(type=INT64, column=KeyValue.Key#3)
+            |   |   +-FunctionCall(GoogleSQL:$equal(STRING, STRING) -> BOOL)
+            |   |     +-ColumnRef(type=STRING, column=KeyValue.Value#2)
+            |   |     +-ColumnRef(type=STRING, column=KeyValue.Value#4)
+            |   +-has_using=TRUE
+            +-group_by_list=
+              +-key#5 := ColumnRef(type=INT64, column=KeyValue.Key#1)
+              +-value#6 := ColumnRef(type=STRING, column=KeyValue.Value#2)
+--
+ALTERNATION GROUP:  t2.*
+--
+ERROR: Dot-star would expand to zero columns [at 5:36]
+|> select *, '--', t1.*, '--', t2, t2.*
+                                   ^
+==
+
+# Range variable t is kept.
+from (select 1 x, 2 y) AS t
+|> distinct
+|> where x = 1
+|> where t.y = 2
+--
+QueryStmt
++-output_column_list=
+| +-$pipe_distinct.x#3 AS x [INT64]
+| +-$pipe_distinct.y#4 AS y [INT64]
++-query=
+  +-FilterScan
+    +-column_list=$pipe_distinct.[x#3, y#4]
+    +-input_scan=
+    | +-FilterScan
+    |   +-column_list=$pipe_distinct.[x#3, y#4]
+    |   +-input_scan=
+    |   | +-AggregateScan
+    |   |   +-column_list=$pipe_distinct.[x#3, y#4]
+    |   |   +-input_scan=
+    |   |   | +-ProjectScan
+    |   |   |   +-column_list=t.[x#1, y#2]
+    |   |   |   +-expr_list=
+    |   |   |   | +-x#1 := Literal(type=INT64, value=1)
+    |   |   |   | +-y#2 := Literal(type=INT64, value=2)
+    |   |   |   +-input_scan=
+    |   |   |     +-SingleRowScan
+    |   |   +-group_by_list=
+    |   |     +-x#3 := ColumnRef(type=INT64, column=t.x#1)
+    |   |     +-y#4 := ColumnRef(type=INT64, column=t.y#2)
+    |   +-filter_expr=
+    |     +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+    |       +-ColumnRef(type=INT64, column=$pipe_distinct.x#3)
+    |       +-Literal(type=INT64, value=1)
+    +-filter_expr=
+      +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+        +-ColumnRef(type=INT64, column=$pipe_distinct.y#4)
+        +-Literal(type=INT64, value=2)
+==
+
+# Duplicated group-by column is only included in the group_by_list once.
+(select x as y, x as z from (select 1 x))
+|> STATIC_DESCRIBE
+|> distinct
+|> STATIC_DESCRIBE
+--
+QueryStmt
++-output_column_list=
+| +-$pipe_distinct.y#2 AS y [INT64]
+| +-$pipe_distinct.y#2 AS z [INT64]
++-query=
+  +-StaticDescribeScan
+    +-column_list=[$pipe_distinct.y#2]
+    +-describe_text=
+    |   """
+    |   NameList:
+    |     y INT64 $pipe_distinct.y#2
+    |     z INT64 $pipe_distinct.y#2
+    |   NameScope:
+    |     Names:
+    |       y -> INT64 ($pipe_distinct.y#2)
+    |       z -> INT64 ($pipe_distinct.y#2)
+    |   """
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$pipe_distinct.y#2]
+        +-input_scan=
+        | +-StaticDescribeScan
+        |   +-column_list=$subquery1.[x#1, x#1]
+        |   +-describe_text=
+        |   |   """
+        |   |   NameList:
+        |   |     y INT64 $subquery1.x#1
+        |   |     z INT64 $subquery1.x#1
+        |   |   NameScope:
+        |   |     Names:
+        |   |       y -> INT64 ($subquery1.x#1)
+        |   |       z -> INT64 ($subquery1.x#1)
+        |   |   """
+        |   +-input_scan=
+        |     +-ProjectScan
+        |       +-column_list=$subquery1.[x#1, x#1]
+        |       +-input_scan=
+        |         +-ProjectScan
+        |           +-column_list=[$subquery1.x#1]
+        |           +-expr_list=
+        |           | +-x#1 := Literal(type=INT64, value=1)
+        |           +-input_scan=
+        |             +-SingleRowScan
+        +-group_by_list=
+          +-y#2 := ColumnRef(type=INT64, column=$subquery1.x#1)
+==
+
+# Duplicated group-by column is only included in the group_by_list once.
+# The range variable still has both duplicate columns after the DISTINCT.
+(select x as y, x as z from (select 1 x))
+|> AS rv
+|> STATIC_DESCRIBE
+|> distinct
+|> STATIC_DESCRIBE
+|> WHERE y = z
+|> WHERE rv.y = rv.z
+--
+QueryStmt
++-output_column_list=
+| +-$pipe_distinct.y#2 AS y [INT64]
+| +-$pipe_distinct.y#2 AS z [INT64]
++-query=
+  +-FilterScan
+    +-column_list=[$pipe_distinct.y#2]
+    +-input_scan=
+    | +-FilterScan
+    |   +-column_list=[$pipe_distinct.y#2]
+    |   +-input_scan=
+    |   | +-StaticDescribeScan
+    |   |   +-column_list=[$pipe_distinct.y#2]
+    |   |   +-describe_text=
+    |   |   |   """
+    |   |   |   NameList:
+    |   |   |     y INT64 $pipe_distinct.y#2
+    |   |   |     z INT64 $pipe_distinct.y#2
+    |   |   |   NameScope:
+    |   |   |     Names:
+    |   |   |       y -> INT64 ($pipe_distinct.y#2)
+    |   |   |       z -> INT64 ($pipe_distinct.y#2)
+    |   |   |     Range variables:
+    |   |   |       rv -> RANGE_VARIABLE<y#2,y#2 AS z>
+    |   |   |   """
+    |   |   +-input_scan=
+    |   |     +-AggregateScan
+    |   |       +-column_list=[$pipe_distinct.y#2]
+    |   |       +-input_scan=
+    |   |       | +-StaticDescribeScan
+    |   |       |   +-column_list=$subquery1.[x#1, x#1]
+    |   |       |   +-describe_text=
+    |   |       |   |   """
+    |   |       |   |   NameList:
+    |   |       |   |     y INT64 $subquery1.x#1
+    |   |       |   |     z INT64 $subquery1.x#1
+    |   |       |   |   NameScope:
+    |   |       |   |     Names:
+    |   |       |   |       y -> INT64 ($subquery1.x#1)
+    |   |       |   |       z -> INT64 ($subquery1.x#1)
+    |   |       |   |     Range variables:
+    |   |       |   |       rv -> RANGE_VARIABLE<x#1 AS y,x#1 AS z>
+    |   |       |   |   """
+    |   |       |   +-input_scan=
+    |   |       |     +-ProjectScan
+    |   |       |       +-column_list=$subquery1.[x#1, x#1]
+    |   |       |       +-input_scan=
+    |   |       |         +-ProjectScan
+    |   |       |           +-column_list=[$subquery1.x#1]
+    |   |       |           +-expr_list=
+    |   |       |           | +-x#1 := Literal(type=INT64, value=1)
+    |   |       |           +-input_scan=
+    |   |       |             +-SingleRowScan
+    |   |       +-group_by_list=
+    |   |         +-y#2 := ColumnRef(type=INT64, column=$subquery1.x#1)
+    |   +-filter_expr=
+    |     +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+    |       +-ColumnRef(type=INT64, column=$pipe_distinct.y#2)
+    |       +-ColumnRef(type=INT64, column=$pipe_distinct.y#2)
+    +-filter_expr=
+      +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+        +-ColumnRef(type=INT64, column=$pipe_distinct.y#2)
+        +-ColumnRef(type=INT64, column=$pipe_distinct.y#2)
+==
+
+# Duplicated output column names will be kept.
+SELECT
+  tb.transfer_back_date,
+  tb.transfer_back_date
+FROM (select 1 as transfer_back_date) AS tb
+|> STATIC_DESCRIBE
+|> distinct
+|> STATIC_DESCRIBE
+--
+QueryStmt
++-output_column_list=
+| +-$pipe_distinct.transfer_back_date#2 AS transfer_back_date [INT64]
+| +-$pipe_distinct.transfer_back_date#2 AS transfer_back_date [INT64]
++-query=
+  +-StaticDescribeScan
+    +-column_list=[$pipe_distinct.transfer_back_date#2]
+    +-describe_text=
+    |   """
+    |   NameList:
+    |     transfer_back_date INT64 $pipe_distinct.transfer_back_date#2
+    |     transfer_back_date INT64 $pipe_distinct.transfer_back_date#2
+    |   NameScope:
+    |     Names:
+    |       transfer_back_date -> ambiguous
+    |   """
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$pipe_distinct.transfer_back_date#2]
+        +-input_scan=
+        | +-StaticDescribeScan
+        |   +-column_list=tb.[transfer_back_date#1, transfer_back_date#1]
+        |   +-describe_text=
+        |   |   """
+        |   |   NameList:
+        |   |     transfer_back_date INT64 tb.transfer_back_date#1
+        |   |     transfer_back_date INT64 tb.transfer_back_date#1
+        |   |   NameScope:
+        |   |     Names:
+        |   |       transfer_back_date -> ambiguous
+        |   |   """
+        |   +-input_scan=
+        |     +-ProjectScan
+        |       +-column_list=tb.[transfer_back_date#1, transfer_back_date#1]
+        |       +-input_scan=
+        |         +-ProjectScan
+        |           +-column_list=[tb.transfer_back_date#1]
+        |           +-expr_list=
+        |           | +-transfer_back_date#1 := Literal(type=INT64, value=1)
+        |           +-input_scan=
+        |             +-SingleRowScan
+        +-group_by_list=
+          +-transfer_back_date#2 := ColumnRef(type=INT64, column=tb.transfer_back_date#1)
+==
+
+from TestTable
+|> DISTINCT
+--
+ERROR: Column KitchenSink of type PROTO is not supported in pipe DISTINCT [at 2:1]
+|> DISTINCT
+^
+==
+
+from KitchenSinkValueTable
+|> distinct
+--
+ERROR: Column KitchenSinkValueTable of type PROTO is not supported in pipe DISTINCT [at 2:1]
+|> distinct
+^
+==
+
+from (select as value k from KitchenSinkValueTable k)
+|> distinct
+--
+ERROR: Column 1 of type PROTO is not supported in pipe DISTINCT [at 2:1]
+|> distinct
+^
+==
+
+select KitchenSink.string_val, KitchenSink.test_enum, NULL
+from TestTable
+|> distinct
+--
+QueryStmt
++-output_column_list=
+| +-$pipe_distinct.string_val#7 AS string_val [STRING]
+| +-$pipe_distinct.test_enum#8 AS test_enum [ENUM<googlesql_test.TestEnum>]
+| +-$pipe_distinct.$col3#9 AS `$col3` [INT64]
++-query=
+  +-AggregateScan
+    +-column_list=$pipe_distinct.[string_val#7, test_enum#8, $col3#9]
+    +-input_scan=
+    | +-ProjectScan
+    |   +-column_list=$query.[string_val#4, test_enum#5, $col3#6]
+    |   +-expr_list=
+    |   | +-string_val#4 :=
+    |   | | +-GetProtoField
+    |   | |   +-type=STRING
+    |   | |   +-expr=
+    |   | |   | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=TestTable.KitchenSink#3)
+    |   | |   +-field_descriptor=string_val
+    |   | |   +-default_value="default_name"
+    |   | +-test_enum#5 :=
+    |   | | +-GetProtoField
+    |   | |   +-type=ENUM<googlesql_test.TestEnum>
+    |   | |   +-expr=
+    |   | |   | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=TestTable.KitchenSink#3)
+    |   | |   +-field_descriptor=test_enum
+    |   | |   +-default_value=TESTENUM0
+    |   | +-$col3#6 := Literal(type=INT64, value=NULL)
+    |   +-input_scan=
+    |     +-TableScan(column_list=[TestTable.KitchenSink#3], table=TestTable, column_index_list=[2])
+    +-group_by_list=
+      +-string_val#7 := ColumnRef(type=STRING, column=$query.string_val#4)
+      +-test_enum#8 := ColumnRef(type=ENUM<googlesql_test.TestEnum>, column=$query.test_enum#5)
+      +-$col3#9 := ColumnRef(type=INT64, column=$query.$col3#6)
+==
+
+# ValueTable column won't be expanded.
+from Int64ValueTable
+|> distinct;
+--
+QueryStmt
++-output_column_list=
+| +-$pipe_distinct.Int64ValueTable#2 AS `$value` [INT64]
++-is_value_table=TRUE
++-query=
+  +-AggregateScan
+    +-column_list=[$pipe_distinct.Int64ValueTable#2]
+    +-input_scan=
+    | +-TableScan(column_list=[Int64ValueTable.IntValue#1], table=Int64ValueTable, column_index_list=[0])
+    +-group_by_list=
+      +-Int64ValueTable#2 := ColumnRef(type=INT64, column=Int64ValueTable.IntValue#1)
+==
+
+from ArrayTypes
+|> select Int32Array, DateArray, DoubleArray, TimestampArray, StructArray
+|> distinct
+--
+QueryStmt
++-output_column_list=
+| +-$pipe_distinct.Int32Array#21 AS Int32Array [ARRAY<INT32>]
+| +-$pipe_distinct.DateArray#22 AS DateArray [ARRAY<DATE>]
+| +-$pipe_distinct.DoubleArray#23 AS DoubleArray [ARRAY<DOUBLE>]
+| +-$pipe_distinct.TimestampArray#24 AS TimestampArray [ARRAY<TIMESTAMP>]
+| +-$pipe_distinct.StructArray#25 AS StructArray [ARRAY<STRUCT<a INT32, b STRING>>]
++-query=
+  +-AggregateScan
+    +-column_list=$pipe_distinct.[Int32Array#21, DateArray#22, DoubleArray#23, TimestampArray#24, StructArray#25]
+    +-input_scan=
+    | +-ProjectScan
+    |   +-column_list=ArrayTypes.[Int32Array#1, DateArray#10, DoubleArray#9, TimestampArray#14, StructArray#16]
+    |   +-input_scan=
+    |     +-TableScan(column_list=ArrayTypes.[Int32Array#1, DoubleArray#9, DateArray#10, TimestampArray#14, StructArray#16], table=ArrayTypes, column_index_list=[0, 8, 9, 13, 15])
+    +-group_by_list=
+      +-Int32Array#21 := ColumnRef(type=ARRAY<INT32>, column=ArrayTypes.Int32Array#1)
+      +-DateArray#22 := ColumnRef(type=ARRAY<DATE>, column=ArrayTypes.DateArray#10)
+      +-DoubleArray#23 := ColumnRef(type=ARRAY<DOUBLE>, column=ArrayTypes.DoubleArray#9)
+      +-TimestampArray#24 := ColumnRef(type=ARRAY<TIMESTAMP>, column=ArrayTypes.TimestampArray#14)
+      +-StructArray#25 := ColumnRef(type=ARRAY<STRUCT<a INT32, b STRING>>, column=ArrayTypes.StructArray#16)
+==
+
+CREATE TEMP TABLE t
+AS (SELECT 1 AS a |> DISTINCT);
+--
+CreateTableAsSelectStmt
++-name_path=t
++-create_scope=CREATE_TEMP
++-column_definition_list=
+| +-ColumnDefinition(name="a", type=INT64, column=t.a#3)
++-output_column_list=
+| +-$pipe_distinct.a#2 AS a [INT64]
++-query=
+  +-AggregateScan
+    +-column_list=[$pipe_distinct.a#2]
+    +-input_scan=
+    | +-ProjectScan
+    |   +-column_list=[$create_as.a#1]
+    |   +-expr_list=
+    |   | +-a#1 := Literal(type=INT64, value=1)
+    |   +-input_scan=
+    |     +-SingleRowScan
+    +-group_by_list=
+      +-a#2 := ColumnRef(type=INT64, column=$create_as.a#1)
+==
+
+select KitchenSink.key_value_array from TestTable
+|> distinct
+--
+ERROR: Column key_value_array of type ARRAY containing PROTO is not supported in pipe DISTINCT [at 2:1]
+|> distinct
+^
+==
+
+from (select 'abc', (1, null), 'def')
+|> distinct
+--
+QueryStmt
++-output_column_list=
+| +-$pipe_distinct.$col1#4 AS `$col1` [STRING]
+| +-$pipe_distinct.$col2#5 AS `$col2` [STRUCT<INT64, INT64>]
+| +-$pipe_distinct.$col3#6 AS `$col3` [STRING]
++-query=
+  +-AggregateScan
+    +-column_list=$pipe_distinct.[$col1#4, $col2#5, $col3#6]
+    +-input_scan=
+    | +-ProjectScan
+    |   +-column_list=$subquery1.[$col1#1, $col2#2, $col3#3]
+    |   +-expr_list=
+    |   | +-$col1#1 := Literal(type=STRING, value="abc")
+    |   | +-$col2#2 :=
+    |   | | +-MakeStruct
+    |   | |   +-type=STRUCT<INT64, INT64>
+    |   | |   +-field_list=
+    |   | |     +-Literal(type=INT64, value=1)
+    |   | |     +-Literal(type=INT64, value=NULL)
+    |   | +-$col3#3 := Literal(type=STRING, value="def")
+    |   +-input_scan=
+    |     +-SingleRowScan
+    +-group_by_list=
+      +-$col1#4 := ColumnRef(type=STRING, column=$subquery1.$col1#1)
+      +-$col2#5 := ColumnRef(type=STRUCT<INT64, INT64>, column=$subquery1.$col2#2)
+      +-$col3#6 := ColumnRef(type=STRING, column=$subquery1.$col3#3)
+==
+
+SELECT TestStruct FROM ComplexTypes
+|> distinct
+--
+QueryStmt
++-output_column_list=
+| +-$pipe_distinct.TestStruct#7 AS TestStruct [STRUCT<c INT32, d STRUCT<a INT32, b STRING>>]
++-query=
+  +-AggregateScan
+    +-column_list=[$pipe_distinct.TestStruct#7]
+    +-input_scan=
+    | +-ProjectScan
+    |   +-column_list=[ComplexTypes.TestStruct#5]
+    |   +-input_scan=
+    |     +-TableScan(column_list=[ComplexTypes.TestStruct#5], table=ComplexTypes, column_index_list=[4])
+    +-group_by_list=
+      +-TestStruct#7 := ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#5)
+==
+
+from TestStructValueTable t1
+|> join TestStructValueTable t2 USING(a)
+|> distinct
+|> where t1.b = t2.b
+--
+QueryStmt
++-output_column_list=
+| +-$pipe_distinct.a#5 AS a [INT32]
+| +-$pipe_distinct.t1#6 AS t1 [STRUCT<a INT32, b STRING>]
+| +-$pipe_distinct.t2#7 AS t2 [STRUCT<a INT32, b STRING>]
++-query=
+  +-FilterScan
+    +-column_list=$pipe_distinct.[a#5, t1#6, t2#7]
+    +-input_scan=
+    | +-AggregateScan
+    |   +-column_list=$pipe_distinct.[a#5, t1#6, t2#7]
+    |   +-input_scan=
+    |   | +-JoinScan
+    |   |   +-column_list=[TestStructValueTable.value#1, $join_left.a#3, TestStructValueTable.value#2, $join_right.a#4]
+    |   |   +-left_scan=
+    |   |   | +-ProjectScan
+    |   |   |   +-column_list=[TestStructValueTable.value#1, $join_left.a#3]
+    |   |   |   +-expr_list=
+    |   |   |   | +-a#3 :=
+    |   |   |   |   +-GetStructField
+    |   |   |   |     +-type=INT32
+    |   |   |   |     +-expr=
+    |   |   |   |     | +-ColumnRef(type=STRUCT<a INT32, b STRING>, column=TestStructValueTable.value#1)
+    |   |   |   |     +-field_idx=0
+    |   |   |   +-input_scan=
+    |   |   |     +-TableScan(column_list=[TestStructValueTable.value#1], table=TestStructValueTable, column_index_list=[0], alias="t1")
+    |   |   +-right_scan=
+    |   |   | +-ProjectScan
+    |   |   |   +-column_list=[TestStructValueTable.value#2, $join_right.a#4]
+    |   |   |   +-expr_list=
+    |   |   |   | +-a#4 :=
+    |   |   |   |   +-GetStructField
+    |   |   |   |     +-type=INT32
+    |   |   |   |     +-expr=
+    |   |   |   |     | +-ColumnRef(type=STRUCT<a INT32, b STRING>, column=TestStructValueTable.value#2)
+    |   |   |   |     +-field_idx=0
+    |   |   |   +-input_scan=
+    |   |   |     +-TableScan(column_list=[TestStructValueTable.value#2], table=TestStructValueTable, column_index_list=[0], alias="t2")
+    |   |   +-join_expr=
+    |   |   | +-FunctionCall(GoogleSQL:$equal(INT32, INT32) -> BOOL)
+    |   |   |   +-ColumnRef(type=INT32, column=$join_left.a#3)
+    |   |   |   +-ColumnRef(type=INT32, column=$join_right.a#4)
+    |   |   +-has_using=TRUE
+    |   +-group_by_list=
+    |     +-a#5 := ColumnRef(type=INT32, column=$join_left.a#3)
+    |     +-t1#6 := ColumnRef(type=STRUCT<a INT32, b STRING>, column=TestStructValueTable.value#1)
+    |     +-t2#7 := ColumnRef(type=STRUCT<a INT32, b STRING>, column=TestStructValueTable.value#2)
+    +-filter_expr=
+      +-FunctionCall(GoogleSQL:$equal(STRING, STRING) -> BOOL)
+        +-GetStructField
+        | +-type=STRING
+        | +-expr=
+        | | +-ColumnRef(type=STRUCT<a INT32, b STRING>, column=$pipe_distinct.t1#6)
+        | +-field_idx=1
+        +-GetStructField
+          +-type=STRING
+          +-expr=
+          | +-ColumnRef(type=STRUCT<a INT32, b STRING>, column=$pipe_distinct.t2#7)
+          +-field_idx=1
+==
+
+from TestStructValueTable t
+|> distinct
+|> distinct
+|> distinct
+|> where t.a = 1
+--
+QueryStmt
++-output_column_list=
+| +-$pipe_distinct.t#4 AS `$value` [STRUCT<a INT32, b STRING>]
++-is_value_table=TRUE
++-query=
+  +-FilterScan
+    +-column_list=[$pipe_distinct.t#4]
+    +-input_scan=
+    | +-AggregateScan
+    |   +-column_list=[$pipe_distinct.t#4]
+    |   +-input_scan=
+    |   | +-AggregateScan
+    |   |   +-column_list=[$pipe_distinct.t#3]
+    |   |   +-input_scan=
+    |   |   | +-AggregateScan
+    |   |   |   +-column_list=[$pipe_distinct.t#2]
+    |   |   |   +-input_scan=
+    |   |   |   | +-TableScan(column_list=[TestStructValueTable.value#1], table=TestStructValueTable, column_index_list=[0], alias="t")
+    |   |   |   +-group_by_list=
+    |   |   |     +-t#2 := ColumnRef(type=STRUCT<a INT32, b STRING>, column=TestStructValueTable.value#1)
+    |   |   +-group_by_list=
+    |   |     +-t#3 := ColumnRef(type=STRUCT<a INT32, b STRING>, column=$pipe_distinct.t#2)
+    |   +-group_by_list=
+    |     +-t#4 := ColumnRef(type=STRUCT<a INT32, b STRING>, column=$pipe_distinct.t#3)
+    +-filter_expr=
+      +-FunctionCall(GoogleSQL:$equal(INT32, INT32) -> BOOL)
+        +-GetStructField
+        | +-type=INT32
+        | +-expr=
+        | | +-ColumnRef(type=STRUCT<a INT32, b STRING>, column=$pipe_distinct.t#4)
+        | +-field_idx=0
+        +-Literal(type=INT32, value=1)
+==
+
+select key, TestEnum from TestTable
+union all
+select key, TestEnum from TestTable
+|> distinct
+--
+QueryStmt
++-output_column_list=
+| +-$pipe_distinct.key#9 AS key [INT32]
+| +-$pipe_distinct.TestEnum#10 AS TestEnum [ENUM<googlesql_test.TestEnum>]
++-query=
+  +-AggregateScan
+    +-column_list=$pipe_distinct.[key#9, TestEnum#10]
+    +-input_scan=
+    | +-SetOperationScan
+    |   +-column_list=$union_all.[key#7, TestEnum#8]
+    |   +-op_type=UNION_ALL
+    |   +-input_item_list=
+    |     +-SetOperationItem
+    |     | +-scan=
+    |     | | +-ProjectScan
+    |     | |   +-column_list=TestTable.[key#1, TestEnum#2]
+    |     | |   +-input_scan=
+    |     | |     +-TableScan(column_list=TestTable.[key#1, TestEnum#2], table=TestTable, column_index_list=[0, 1])
+    |     | +-output_column_list=TestTable.[key#1, TestEnum#2]
+    |     +-SetOperationItem
+    |       +-scan=
+    |       | +-ProjectScan
+    |       |   +-column_list=TestTable.[key#4, TestEnum#5]
+    |       |   +-input_scan=
+    |       |     +-TableScan(column_list=TestTable.[key#4, TestEnum#5], table=TestTable, column_index_list=[0, 1])
+    |       +-output_column_list=TestTable.[key#4, TestEnum#5]
+    +-group_by_list=
+      +-key#9 := ColumnRef(type=INT32, column=$union_all.key#7)
+      +-TestEnum#10 := ColumnRef(type=ENUM<googlesql_test.TestEnum>, column=$union_all.TestEnum#8)
+==
+
+select 1 x, 2 y
+|> AGGREGATE GROUP BY x, y
+|> distinct
+--
+QueryStmt
++-output_column_list=
+| +-$pipe_distinct.x#5 AS x [INT64]
+| +-$pipe_distinct.y#6 AS y [INT64]
++-query=
+  +-AggregateScan
+    +-column_list=$pipe_distinct.[x#5, y#6]
+    +-input_scan=
+    | +-AggregateScan
+    |   +-column_list=$groupby.[x#3, y#4]
+    |   +-input_scan=
+    |   | +-ProjectScan
+    |   |   +-column_list=$query.[x#1, y#2]
+    |   |   +-expr_list=
+    |   |   | +-x#1 := Literal(type=INT64, value=1)
+    |   |   | +-y#2 := Literal(type=INT64, value=2)
+    |   |   +-input_scan=
+    |   |     +-SingleRowScan
+    |   +-group_by_list=
+    |     +-x#3 := ColumnRef(type=INT64, column=$query.x#1)
+    |     +-y#4 := ColumnRef(type=INT64, column=$query.y#2)
+    +-group_by_list=
+      +-x#5 := ColumnRef(type=INT64, column=$groupby.x#3)
+      +-y#6 := ColumnRef(type=INT64, column=$groupby.y#4)
+==
+
+select 1 x, 2 y
+|> distinct
+|> AGGREGATE GROUP BY x, y
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.x#5 AS x [INT64]
+| +-$groupby.y#6 AS y [INT64]
++-query=
+  +-AggregateScan
+    +-column_list=$groupby.[x#5, y#6]
+    +-input_scan=
+    | +-AggregateScan
+    |   +-column_list=$pipe_distinct.[x#3, y#4]
+    |   +-input_scan=
+    |   | +-ProjectScan
+    |   |   +-column_list=$query.[x#1, y#2]
+    |   |   +-expr_list=
+    |   |   | +-x#1 := Literal(type=INT64, value=1)
+    |   |   | +-y#2 := Literal(type=INT64, value=2)
+    |   |   +-input_scan=
+    |   |     +-SingleRowScan
+    |   +-group_by_list=
+    |     +-x#3 := ColumnRef(type=INT64, column=$query.x#1)
+    |     +-y#4 := ColumnRef(type=INT64, column=$query.y#2)
+    +-group_by_list=
+      +-x#5 := ColumnRef(type=INT64, column=$pipe_distinct.x#3)
+      +-y#6 := ColumnRef(type=INT64, column=$pipe_distinct.y#4)
+==
+
+# Duplicate table aliases aren't allowed, so we can't hit this potential case
+# with an alias being both a table and value table, which might cause
+# problems with the by-name exclusion map in CloneRangeVariablesMapped.
+FROM KeyValue t, TestExtraValueTable t
+|> STATIC_DESCRIBE
+|> DISTINCT
+|> STATIC_DESCRIBE
+--
+ERROR: Duplicate table alias t in the same FROM clause [at 1:38]
+FROM KeyValue t, TestExtraValueTable t
+                                     ^
+==
+
+# Value table field exclusions are not lost after DISTINCT.
+# If they weren't propagated, referencing 'a' would become
+# ambiguous because it would still be available from value tables.
+FROM TestStructValueTable vt1 JOIN TestStructValueTable vt2 USING (a)
+|> STATIC_DESCRIBE
+|> WHERE a = 5
+|> DISTINCT
+|> STATIC_DESCRIBE
+|> WHERE a = 6
+--
+QueryStmt
++-output_column_list=
+| +-$pipe_distinct.a#5 AS a [INT32]
+| +-$pipe_distinct.vt1#6 AS vt1 [STRUCT<a INT32, b STRING>]
+| +-$pipe_distinct.vt2#7 AS vt2 [STRUCT<a INT32, b STRING>]
++-query=
+  +-FilterScan
+    +-column_list=$pipe_distinct.[a#5, vt1#6, vt2#7]
+    +-input_scan=
+    | +-StaticDescribeScan
+    |   +-column_list=$pipe_distinct.[a#5, vt1#6, vt2#7]
+    |   +-describe_text=
+    |   |   """
+    |   |   NameList:
+    |   |     a INT32 $pipe_distinct.a#5
+    |   |     vt1 STRUCT<a INT32, b STRING> $pipe_distinct.vt1#6 (value table) (excluded_field_names a)
+    |   |     vt2 STRUCT<a INT32, b STRING> $pipe_distinct.vt2#7 (value table) (excluded_field_names a)
+    |   |   NameScope:
+    |   |     Names:
+    |   |       a -> INT32 ($pipe_distinct.a#5)
+    |   |     Range variables:
+    |   |       vt1 -> RANGE_VARIABLE<vt1#6> (value table)
+    |   |       vt2 -> RANGE_VARIABLE<vt2#7> (value table)
+    |   |     Value table columns:
+    |   |       $pipe_distinct.vt1#6 (excluded_field_names a)
+    |   |       $pipe_distinct.vt2#7 (excluded_field_names a)
+    |   |   """
+    |   +-input_scan=
+    |     +-AggregateScan
+    |       +-column_list=$pipe_distinct.[a#5, vt1#6, vt2#7]
+    |       +-input_scan=
+    |       | +-FilterScan
+    |       |   +-column_list=[TestStructValueTable.value#1, $join_left.a#3, TestStructValueTable.value#2, $join_right.a#4]
+    |       |   +-input_scan=
+    |       |   | +-StaticDescribeScan
+    |       |   |   +-column_list=[TestStructValueTable.value#1, $join_left.a#3, TestStructValueTable.value#2, $join_right.a#4]
+    |       |   |   +-describe_text=
+    |       |   |   |   """
+    |       |   |   |   NameList:
+    |       |   |   |     a INT32 $join_left.a#3
+    |       |   |   |     vt1 STRUCT<a INT32, b STRING> TestStructValueTable.value#1 (value table) (excluded_field_names a)
+    |       |   |   |     vt2 STRUCT<a INT32, b STRING> TestStructValueTable.value#2 (value table) (excluded_field_names a)
+    |       |   |   |   NameScope:
+    |       |   |   |     Names:
+    |       |   |   |       a -> INT32 ($join_left.a#3)
+    |       |   |   |     Range variables:
+    |       |   |   |       vt1 -> RANGE_VARIABLE<value#1> (value table)
+    |       |   |   |       vt2 -> RANGE_VARIABLE<value#2> (value table)
+    |       |   |   |     Value table columns:
+    |       |   |   |       TestStructValueTable.value#1 (excluded_field_names a)
+    |       |   |   |       TestStructValueTable.value#2 (excluded_field_names a)
+    |       |   |   |   """
+    |       |   |   +-input_scan=
+    |       |   |     +-JoinScan
+    |       |   |       +-column_list=[TestStructValueTable.value#1, $join_left.a#3, TestStructValueTable.value#2, $join_right.a#4]
+    |       |   |       +-left_scan=
+    |       |   |       | +-ProjectScan
+    |       |   |       |   +-column_list=[TestStructValueTable.value#1, $join_left.a#3]
+    |       |   |       |   +-expr_list=
+    |       |   |       |   | +-a#3 :=
+    |       |   |       |   |   +-GetStructField
+    |       |   |       |   |     +-type=INT32
+    |       |   |       |   |     +-expr=
+    |       |   |       |   |     | +-ColumnRef(type=STRUCT<a INT32, b STRING>, column=TestStructValueTable.value#1)
+    |       |   |       |   |     +-field_idx=0
+    |       |   |       |   +-input_scan=
+    |       |   |       |     +-TableScan(column_list=[TestStructValueTable.value#1], table=TestStructValueTable, column_index_list=[0], alias="vt1")
+    |       |   |       +-right_scan=
+    |       |   |       | +-ProjectScan
+    |       |   |       |   +-column_list=[TestStructValueTable.value#2, $join_right.a#4]
+    |       |   |       |   +-expr_list=
+    |       |   |       |   | +-a#4 :=
+    |       |   |       |   |   +-GetStructField
+    |       |   |       |   |     +-type=INT32
+    |       |   |       |   |     +-expr=
+    |       |   |       |   |     | +-ColumnRef(type=STRUCT<a INT32, b STRING>, column=TestStructValueTable.value#2)
+    |       |   |       |   |     +-field_idx=0
+    |       |   |       |   +-input_scan=
+    |       |   |       |     +-TableScan(column_list=[TestStructValueTable.value#2], table=TestStructValueTable, column_index_list=[0], alias="vt2")
+    |       |   |       +-join_expr=
+    |       |   |       | +-FunctionCall(GoogleSQL:$equal(INT32, INT32) -> BOOL)
+    |       |   |       |   +-ColumnRef(type=INT32, column=$join_left.a#3)
+    |       |   |       |   +-ColumnRef(type=INT32, column=$join_right.a#4)
+    |       |   |       +-has_using=TRUE
+    |       |   +-filter_expr=
+    |       |     +-FunctionCall(GoogleSQL:$equal(INT32, INT32) -> BOOL)
+    |       |       +-ColumnRef(type=INT32, column=$join_left.a#3)
+    |       |       +-Literal(type=INT32, value=5)
+    |       +-group_by_list=
+    |         +-a#5 := ColumnRef(type=INT32, column=$join_left.a#3)
+    |         +-vt1#6 := ColumnRef(type=STRUCT<a INT32, b STRING>, column=TestStructValueTable.value#1)
+    |         +-vt2#7 := ColumnRef(type=STRUCT<a INT32, b STRING>, column=TestStructValueTable.value#2)
+    +-filter_expr=
+      +-FunctionCall(GoogleSQL:$equal(INT32, INT32) -> BOOL)
+        +-ColumnRef(type=INT32, column=$pipe_distinct.a#5)
+        +-Literal(type=INT32, value=6)
+==
+
+# This is an edge case that might potentially be considered a bug.
+# The JOIN USING columns are not supposed to be visible under t2
+# after DISTINCT.
+# `t2.b` is removed, as expected.
+# `t2.y` is still visible.  This happens because the mapping to
+# decide which columns to keep is done by ResolvedColumn ID, and
+# there is also a column `t2.z` that is an alias for the same
+# ResolvedColumn.  We correctly keep `t2.z` because it's not in the
+# USING, and DISTINCT includes it in the grouping.
+# `t2.y` stays visible accidentally because it's the same column as `z`.
+# This case is quite obscure.
+FROM
+  (select 1 y, 2 a, 3 b) t1
+JOIN
+  (select x as y, x as z, 4 b from (select 1 x)) t2
+USING (y, b)
+|> STATIC_DESCRIBE
+|> DISTINCT
+|> STATIC_DESCRIBE
+|> WHERE y = t2.{{b|y}}
+--
+ALTERNATION GROUP: b
+--
+ERROR: Name b not found inside t2 [at 9:17]
+|> WHERE y = t2.b
+                ^
+--
+ALTERNATION GROUP: y
+--
+QueryStmt
++-output_column_list=
+| +-$pipe_distinct.y#6 AS y [INT64]
+| +-$pipe_distinct.b#7 AS b [INT64]
+| +-$pipe_distinct.a#8 AS a [INT64]
+| +-$pipe_distinct.z#9 AS z [INT64]
++-query=
+  +-FilterScan
+    +-column_list=$pipe_distinct.[y#6, b#7, a#8, z#9]
+    +-input_scan=
+    | +-StaticDescribeScan
+    |   +-column_list=$pipe_distinct.[y#6, b#7, a#8, z#9]
+    |   +-describe_text=
+    |   |   """
+    |   |   NameList:
+    |   |     y INT64 $pipe_distinct.y#6
+    |   |     b INT64 $pipe_distinct.b#7
+    |   |     a INT64 $pipe_distinct.a#8
+    |   |     z INT64 $pipe_distinct.z#9
+    |   |   NameScope:
+    |   |     Names:
+    |   |       a -> INT64 ($pipe_distinct.a#8)
+    |   |       b -> INT64 ($pipe_distinct.b#7)
+    |   |       y -> INT64 ($pipe_distinct.y#6)
+    |   |       z -> INT64 ($pipe_distinct.z#9)
+    |   |     Range variables:
+    |   |       t1 -> RANGE_VARIABLE<y#6,a#8,b#7>
+    |   |       t2 -> RANGE_VARIABLE<z#9 AS y,z#9>
+    |   |   """
+    |   +-input_scan=
+    |     +-AggregateScan
+    |       +-column_list=$pipe_distinct.[y#6, b#7, a#8, z#9]
+    |       +-input_scan=
+    |       | +-StaticDescribeScan
+    |       |   +-column_list=[t1.y#1, t1.a#2, t1.b#3, $subquery1.x#4, $subquery1.x#4, t2.b#5]
+    |       |   +-describe_text=
+    |       |   |   """
+    |       |   |   NameList:
+    |       |   |     y INT64 t1.y#1
+    |       |   |     b INT64 t1.b#3
+    |       |   |     a INT64 t1.a#2
+    |       |   |     z INT64 $subquery1.x#4
+    |       |   |   NameScope:
+    |       |   |     Names:
+    |       |   |       a -> INT64 (t1.a#2)
+    |       |   |       b -> INT64 (t1.b#3)
+    |       |   |       y -> INT64 (t1.y#1)
+    |       |   |       z -> INT64 ($subquery1.x#4)
+    |       |   |     Range variables:
+    |       |   |       t1 -> RANGE_VARIABLE<y#1,a#2,b#3>
+    |       |   |       t2 -> RANGE_VARIABLE<x#4 AS y,x#4 AS z,b#5>
+    |       |   |   """
+    |       |   +-input_scan=
+    |       |     +-JoinScan
+    |       |       +-column_list=[t1.y#1, t1.a#2, t1.b#3, $subquery1.x#4, $subquery1.x#4, t2.b#5]
+    |       |       +-left_scan=
+    |       |       | +-ProjectScan
+    |       |       |   +-column_list=t1.[y#1, a#2, b#3]
+    |       |       |   +-expr_list=
+    |       |       |   | +-y#1 := Literal(type=INT64, value=1)
+    |       |       |   | +-a#2 := Literal(type=INT64, value=2)
+    |       |       |   | +-b#3 := Literal(type=INT64, value=3)
+    |       |       |   +-input_scan=
+    |       |       |     +-SingleRowScan
+    |       |       +-right_scan=
+    |       |       | +-ProjectScan
+    |       |       |   +-column_list=[$subquery1.x#4, $subquery1.x#4, t2.b#5]
+    |       |       |   +-expr_list=
+    |       |       |   | +-b#5 := Literal(type=INT64, value=4)
+    |       |       |   +-input_scan=
+    |       |       |     +-ProjectScan
+    |       |       |       +-column_list=[$subquery1.x#4]
+    |       |       |       +-expr_list=
+    |       |       |       | +-x#4 := Literal(type=INT64, value=1)
+    |       |       |       +-input_scan=
+    |       |       |         +-SingleRowScan
+    |       |       +-join_expr=
+    |       |       | +-FunctionCall(GoogleSQL:$and(BOOL, repeated(1) BOOL) -> BOOL)
+    |       |       |   +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+    |       |       |   | +-ColumnRef(type=INT64, column=t1.y#1)
+    |       |       |   | +-ColumnRef(type=INT64, column=$subquery1.x#4)
+    |       |       |   +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+    |       |       |     +-ColumnRef(type=INT64, column=t1.b#3)
+    |       |       |     +-ColumnRef(type=INT64, column=t2.b#5)
+    |       |       +-has_using=TRUE
+    |       +-group_by_list=
+    |         +-y#6 := ColumnRef(type=INT64, column=t1.y#1)
+    |         +-b#7 := ColumnRef(type=INT64, column=t1.b#3)
+    |         +-a#8 := ColumnRef(type=INT64, column=t1.a#2)
+    |         +-z#9 := ColumnRef(type=INT64, column=$subquery1.x#4)
+    +-filter_expr=
+      +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+        +-ColumnRef(type=INT64, column=$pipe_distinct.y#6)
+        +-ColumnRef(type=INT64, column=$pipe_distinct.z#9)
+==
+
+# If collation is enabled, collation propagates through DISTINCT.
+# TODO Enable java support for collation.
+[no_java]
+[language_features=NONE,+PIPES,+GROUP_BY_ARRAY,+GROUP_BY_STRUCT,+PIPE_STATIC_DESCRIBE,+ANNOTATION_FRAMEWORK,+COLLATION_SUPPORT]
+from CollatedTable
+|> DISTINCT
+|> WHERE string_ci = 'abc'
+--
+QueryStmt
++-output_column_list=
+| +-$pipe_distinct.string_ci#5{Collation:"und:ci"} AS string_ci [STRING]
+| +-$pipe_distinct.string_binary#6{Collation:"binary"} AS string_binary [STRING]
+| +-$pipe_distinct.struct_with_string_ci#7<_,{Collation:"und:ci"}> AS struct_with_string_ci [STRUCT<a INT32, b STRING>]
+| +-$pipe_distinct.array_with_string_ci#8<{Collation:"und:ci"}> AS array_with_string_ci [ARRAY<STRING>]
++-query=
+  +-FilterScan
+    +-column_list=$pipe_distinct.[string_ci#5, string_binary#6, struct_with_string_ci#7, array_with_string_ci#8]
+    +-input_scan=
+    | +-AggregateScan
+    |   +-column_list=$pipe_distinct.[string_ci#5, string_binary#6, struct_with_string_ci#7, array_with_string_ci#8]
+    |   +-input_scan=
+    |   | +-TableScan(column_list=CollatedTable.[string_ci#1, string_binary#2, struct_with_string_ci#3, array_with_string_ci#4], table=CollatedTable, column_index_list=[0, 1, 2, 3])
+    |   +-group_by_list=
+    |     +-string_ci#5 := ColumnRef(type=STRING, type_annotation_map={Collation:"und:ci"}, column=CollatedTable.string_ci#1{Collation:"und:ci"})
+    |     +-string_binary#6 := ColumnRef(type=STRING, type_annotation_map={Collation:"binary"}, column=CollatedTable.string_binary#2{Collation:"binary"})
+    |     +-struct_with_string_ci#7 := ColumnRef(type=STRUCT<a INT32, b STRING>, type_annotation_map=<_,{Collation:"und:ci"}>, column=CollatedTable.struct_with_string_ci#3<_,{Collation:"und:ci"}>)
+    |     +-array_with_string_ci#8 := ColumnRef(type=ARRAY<STRING>, type_annotation_map=<{Collation:"und:ci"}>, column=CollatedTable.array_with_string_ci#4<{Collation:"und:ci"}>)
+    +-filter_expr=
+      +-FunctionCall(GoogleSQL:$equal(STRING, STRING) -> BOOL)
+        +-ColumnRef(type=STRING, type_annotation_map={Collation:"und:ci"}, column=$pipe_distinct.string_ci#5{Collation:"und:ci"})
+        +-Literal(type=STRING, value="abc")
+        +-collation_list=[und:ci]

@@ -1,0 +1,164 @@
+# See (broken link)
+[load_proto_files=googlesql/testdata/test_schema.proto]
+[load_proto_names=googlesql_test.KitchenSinkEnumPB]
+[prepare_database]
+# Create a table of labelled bytes fields, so they don't need to be repeated
+# in individual tests.
+# Some engines cannot construct protos from these so if we try to cast to proto
+# in the prepare phase, all tests in this file would fail. Using safe_cast()
+# would leave confusing test output for NULLs.
+create table enum_bytes as (select
+   # { required_test_enum: 1 test_enum: 2 }
+   b"\010\001\020\002" as test_enum_2,
+   # { required_test_enum: 7 }
+   b"\010\007" as unknown_required_test_enum_7,
+   # { required_test_enum: 1 test_enum: 7 }
+   b"\010\001\020\007" as unknown_test_enum_7,
+   # { required_test_enum: 1 repeated_test_enum: [7, 1] }
+   b"\010\001\030\007\030\001" as unknown_repeated_test_enum_7,
+   # { required_test_enum: 1 test_enum: 7 repeated_test_enum: [7, 1] }
+   b"\010\001\020\007\030\007\030\001" as
+    unknown_test_enum_7_unknown_repeated_test_enum_7
+)
+--
+ARRAY<STRUCT<
+        test_enum_2 BYTES,
+        unknown_required_test_enum_7 BYTES,
+        unknown_test_enum_7 BYTES,
+        unknown_repeated_test_enum_7 BYTES,
+        unknown_test_enum_7_unknown_repeated_test_enum_7 BYTES
+      >>
+[{
+   b"\x08\x01\x10\x02",
+   b"\x08\x07",
+   b"\x08\x01\x10\x07",
+   b"\x08\x01\x18\x07\x18\x01",
+   b"\x08\x01\x10\x07\x18\x07\x18\x01"
+ }]
+==
+[name=deserialize_known_value]
+select cast(test_enum_2 as googlesql_test.KitchenSinkEnumPB).test_enum as e
+from enum_bytes
+--
+ARRAY<STRUCT<e ENUM<googlesql_test.TestEnum>>>[{TESTENUM2}]
+==
+[name=deserialize_unknown_value]
+select cast(unknown_test_enum_7 as googlesql_test.KitchenSinkEnumPB).test_enum as e
+from enum_bytes
+--
+ARRAY<STRUCT<e ENUM<googlesql_test.TestEnum>>>[{TESTENUM0}]
+==
+[name=string_serialization_for_unknown_value]
+select cast(
+    cast(unknown_test_enum_7 as googlesql_test.KitchenSinkEnumPB)
+  as string) as s
+from enum_bytes
+--
+ARRAY<STRUCT<s STRING>>[{"required_test_enum: TESTENUM1 2: 7"}]
+==
+[name=deserialize_has_unknown_value]
+select cast(unknown_test_enum_7 as googlesql_test.KitchenSinkEnumPB).has_test_enum as e
+from enum_bytes
+--
+ARRAY<STRUCT<e BOOL>>[{false}]
+==
+[required_features=EXTRACT_FROM_PROTO]
+[name=deserialize_extract_has_unknown_value]
+with t as (
+  select cast(unknown_test_enum_7 as googlesql_test.KitchenSinkEnumPB) pb
+  from enum_bytes
+)
+select extract(has(test_enum) from pb) as e
+from t
+--
+ARRAY<STRUCT<e BOOL>>[{false}]
+==
+[name=cast_unknown_value_as_string]
+select cast(cast(unknown_test_enum_7 as googlesql_test.KitchenSinkEnumPB).test_enum as string) as e
+from enum_bytes
+--
+ARRAY<STRUCT<e STRING>>[{"TESTENUM0"}]
+==
+[name=cast_unknown_value_as_int]
+select cast(cast(unknown_test_enum_7 as googlesql_test.KitchenSinkEnumPB).test_enum as int64) as e
+from enum_bytes
+--
+ARRAY<STRUCT<e INT64>>[{0}]
+==
+[name=deserialize_unknown_value_array]
+select cast(unknown_repeated_test_enum_7 as googlesql_test.KitchenSinkEnumPB).repeated_test_enum as e
+from enum_bytes
+--
+ARRAY<STRUCT<e ARRAY<>>>[{ARRAY<ENUM<googlesql_test.TestEnum>>[TESTENUM1]}]
+==
+[name=cast_int]
+select cast(7 as googlesql_test.TestEnum) as e
+--
+ERROR: generic::out_of_range: Out of range cast of integer 7 to enum type googlesql_test.TestEnum
+==
+[name=cast_string]
+select cast("7" as googlesql_test.TestEnum) as e
+--
+ERROR: generic::out_of_range: Out of range cast of string '7' to enum type googlesql_test.TestEnum
+==
+[required_features=BRACED_PROTO_CONSTRUCTORS]
+[name=new_int]
+select new googlesql_test.KitchenSinkEnumPB { required_test_enum: 1, test_enum: 7} as e
+--
+ERROR: generic::invalid_argument: Could not store value with type INT64 into proto field googlesql_test.KitchenSinkEnumPB.test_enum which has SQL type googlesql_test.TestEnum [at 1:70]
+...KitchenSinkEnumPB { required_test_enum: 1, test_enum: 7} as e
+                                              ^
+==
+[name=select_as_unknown_value]
+select as googlesql_test.KitchenSinkEnumPB 1 as required_test_enum, 7 as test_enum
+--
+ERROR: generic::invalid_argument: Could not store value with type INT64 into proto field googlesql_test.KitchenSinkEnumPB.test_enum which has SQL type googlesql_test.TestEnum [at 1:69]
+...KitchenSinkEnumPB 1 as required_test_enum, 7 as test_enum
+                                              ^
+==
+[required_features=REPLACE_FIELDS]
+[name=replace_fields_to_unknown_value]
+select replace_fields(cast(test_enum_2 as googlesql_test.KitchenSinkEnumPB), 7 as test_enum) as e
+from enum_bytes
+--
+ERROR: generic::invalid_argument: Could not cast literal 7 to type googlesql_test.TestEnum [at 1:78]
+...test_enum_2 as googlesql_test.KitchenSinkEnumPB), 7 as test_enum) as e
+                                                     ^
+==
+[name=safe_cast_to_unknown_value]
+select safe_cast(7 as googlesql_test.TestEnum) as e
+--
+ARRAY<STRUCT<e ENUM<googlesql_test.TestEnum>>>[{NULL}]
+==
+[name=reserialize_with_unknown_value]
+# As Spandex cannot represent bytes in the output, compare output with the input.
+select cast(cast(unknown_test_enum_7 as googlesql_test.KitchenSinkEnumPB) as bytes) = unknown_test_enum_7 as e
+from enum_bytes
+--
+ARRAY<STRUCT<e BOOL>>[{true}]
+==
+[name=fetch_unknown_fields_many_times]
+# Engines algebretize and use different codepaths for fetches with multiple
+# fields, so repeat some tests for more complex output.
+with t as (
+  select cast(unknown_test_enum_7_unknown_repeated_test_enum_7 as
+    googlesql_test.KitchenSinkEnumPB) as pb
+  from enum_bytes)
+select pb.has_test_enum as has_test_enum,
+       pb.test_enum as test_enum,
+       pb.required_test_enum as required_test_enum,
+       pb.repeated_test_enum as repeated_test_enum
+from t
+--
+ARRAY<STRUCT<
+        has_test_enum BOOL,
+        test_enum ENUM<googlesql_test.TestEnum>,
+        required_test_enum ENUM<googlesql_test.TestEnum>,
+        repeated_test_enum ARRAY<>
+      >>
+[{
+   false,
+   TESTENUM0,
+   TESTENUM1,
+   ARRAY<ENUM<googlesql_test.TestEnum>>[TESTENUM1]
+ }]

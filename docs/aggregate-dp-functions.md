@@ -5,7 +5,7 @@
 # Differentially private aggregate functions 
 <a id="aggregate-dp-functions"></a>
 
-ZetaSQL supports differentially private aggregate functions.
+GoogleSQL supports differentially private aggregate functions.
 For an explanation of how aggregate functions work, see
 [Aggregate function calls][agg-function-calls].
 
@@ -29,7 +29,7 @@ determine the optimal privacy parameters for your dataset and organization.
   <tbody>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/aggregate-dp-functions.md#dp_avg"><code>AVG</code> (Differential Privacy)</a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/aggregate-dp-functions.md#dp_avg"><code>AVG</code> (Differential Privacy)</a>
 </td>
   <td>
     <code>DIFFERENTIAL_PRIVACY</code>-supported <code>AVG</code>.<br/><br/>
@@ -41,7 +41,7 @@ determine the optimal privacy parameters for your dataset and organization.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/aggregate-dp-functions.md#dp_count"><code>COUNT</code> (Differential Privacy)</a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/aggregate-dp-functions.md#dp_count"><code>COUNT</code> (Differential Privacy)</a>
 </td>
   <td>
     <code>DIFFERENTIAL_PRIVACY</code>-supported <code>COUNT</code>.<br/><br/>
@@ -57,7 +57,7 @@ determine the optimal privacy parameters for your dataset and organization.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/aggregate-dp-functions.md#dp_percentile_cont"><code>PERCENTILE_CONT</code> (Differential Privacy)</a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/aggregate-dp-functions.md#dp_percentile_cont"><code>PERCENTILE_CONT</code> (Differential Privacy)</a>
 </td>
   <td>
     <code>DIFFERENTIAL_PRIVACY</code>-supported <code>PERCENTILE_CONT</code>.<br/><br/>
@@ -68,7 +68,7 @@ determine the optimal privacy parameters for your dataset and organization.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/aggregate-dp-functions.md#dp_sum"><code>SUM</code> (Differential Privacy)</a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/aggregate-dp-functions.md#dp_sum"><code>SUM</code> (Differential Privacy)</a>
 </td>
   <td>
     <code>DIFFERENTIAL_PRIVACY</code>-supported <code>SUM</code>.<br/><br/>
@@ -80,7 +80,7 @@ determine the optimal privacy parameters for your dataset and organization.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/aggregate-dp-functions.md#dp_var_pop"><code>VAR_POP</code> (Differential Privacy)</a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/aggregate-dp-functions.md#dp_var_pop"><code>VAR_POP</code> (Differential Privacy)</a>
 </td>
   <td>
     <code>DIFFERENTIAL_PRIVACY</code>-supported <code>VAR_POP</code> (Differential Privacy).<br/><br/>
@@ -91,7 +91,7 @@ determine the optimal privacy parameters for your dataset and organization.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/aggregate-dp-functions.md#anon_avg"><code>ANON_AVG</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/aggregate-dp-functions.md#anon_avg"><code>ANON_AVG</code></a>
 </td>
   <td>
     Deprecated.
@@ -102,7 +102,7 @@ determine the optimal privacy parameters for your dataset and organization.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/aggregate-dp-functions.md#anon_count"><code>ANON_COUNT</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/aggregate-dp-functions.md#anon_count"><code>ANON_COUNT</code></a>
 </td>
   <td>
     Deprecated.
@@ -119,7 +119,7 @@ determine the optimal privacy parameters for your dataset and organization.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/aggregate-dp-functions.md#anon_percentile_cont"><code>ANON_PERCENTILE_CONT</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/aggregate-dp-functions.md#anon_percentile_cont"><code>ANON_PERCENTILE_CONT</code></a>
 </td>
   <td>
     Deprecated.
@@ -129,7 +129,7 @@ determine the optimal privacy parameters for your dataset and organization.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/aggregate-dp-functions.md#anon_quantiles"><code>ANON_QUANTILES</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/aggregate-dp-functions.md#anon_quantiles"><code>ANON_QUANTILES</code></a>
 </td>
   <td>
     Deprecated.
@@ -139,7 +139,7 @@ determine the optimal privacy parameters for your dataset and organization.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/aggregate-dp-functions.md#anon_stddev_pop"><code>ANON_STDDEV_POP</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/aggregate-dp-functions.md#anon_stddev_pop"><code>ANON_STDDEV_POP</code></a>
 </td>
   <td>
     Deprecated.
@@ -149,7 +149,7 @@ determine the optimal privacy parameters for your dataset and organization.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/aggregate-dp-functions.md#anon_sum"><code>ANON_SUM</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/aggregate-dp-functions.md#anon_sum"><code>ANON_SUM</code></a>
 </td>
   <td>
     Deprecated.
@@ -160,7 +160,7 @@ determine the optimal privacy parameters for your dataset and organization.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/aggregate-dp-functions.md#anon_var_pop"><code>ANON_VAR_POP</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/aggregate-dp-functions.md#anon_var_pop"><code>ANON_VAR_POP</code></a>
 </td>
   <td>
     Deprecated.
@@ -175,7 +175,7 @@ determine the optimal privacy parameters for your dataset and organization.
 ## `AVG` (`DIFFERENTIAL_PRIVACY`) 
 <a id="dp_avg"></a>
 
-```zetasql
+```googlesql
 WITH DIFFERENTIAL_PRIVACY ...
   AVG(
     expression,
@@ -209,7 +209,7 @@ The following differentially private query gets the average number of each item
 requested per professor. Smaller aggregations might not be included. This query
 references a table called [`professors`][dp-example-tables].
 
-```zetasql
+```googlesql
 -- With noise, using the epsilon parameter.
 SELECT
   WITH DIFFERENTIAL_PRIVACY
@@ -229,7 +229,7 @@ GROUP BY item;
  +----------+------------------*/
 ```
 
-```zetasql
+```googlesql
 -- Without noise, using the epsilon parameter.
 -- (this un-noised version is for demonstration only)
 SELECT
@@ -254,7 +254,7 @@ The following differentially private query gets the average number of each item
 requested per professor. Smaller aggregations might not be included. This query
 references a view called [`view_on_professors`][dp-example-views].
 
-```zetasql
+```googlesql
 -- With noise, using the epsilon parameter.
 SELECT
   WITH DIFFERENTIAL_PRIVACY
@@ -274,7 +274,7 @@ GROUP BY item;
  +----------+------------------*/
 ```
 
-```zetasql
+```googlesql
 -- Without noise, using the epsilon parameter.
 -- (this un-noised version is for demonstration only)
 SELECT
@@ -298,15 +298,15 @@ GROUP BY item;
 Note: For more information about when and when not to use
 noise, see [Remove noise][dp-noise].
 
-[dp-example-tables]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#dp_example_tables
+[dp-example-tables]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#dp_example_tables
 
-[dp-noise]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#eliminate_noise
+[dp-noise]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#eliminate_noise
 
 [dp-clamped-named]: #dp_clamped_named
 
-[dp-syntax]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#dp_clause
+[dp-syntax]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#dp_clause
 
-[dp-example-views]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#dp_example_views
+[dp-example-views]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#dp_example_views
 
 ## `COUNT` (`DIFFERENTIAL_PRIVACY`) 
 <a id="dp_count"></a>
@@ -319,7 +319,7 @@ noise, see [Remove noise][dp-noise].
 #### Signature 1 
 <a id="dp_count_signature1"></a>
 
-```zetasql
+```googlesql
 WITH DIFFERENTIAL_PRIVACY ...
   COUNT(
     *,
@@ -351,7 +351,7 @@ The following differentially private query counts the number of requests for
 each item. This query references a table called
 [`professors`][dp-example-tables].
 
-```zetasql
+```googlesql
 -- With noise, using the epsilon parameter.
 SELECT
   WITH DIFFERENTIAL_PRIVACY
@@ -371,7 +371,7 @@ GROUP BY item;
  +----------+-----------------*/
 ```
 
-```zetasql
+```googlesql
 -- Without noise, using the epsilon parameter.
 -- (this un-noised version is for demonstration only)
 SELECT
@@ -396,7 +396,7 @@ The following differentially private query counts the number of requests for
 each item. This query references a view called
 [`view_on_professors`][dp-example-views].
 
-```zetasql
+```googlesql
 -- With noise, using the epsilon parameter.
 SELECT
   WITH DIFFERENTIAL_PRIVACY
@@ -416,7 +416,7 @@ GROUP BY item;
  +----------+-----------------*/
 ```
 
-```zetasql
+```googlesql
 -- Without noise, using the epsilon parameter.
 -- (this un-noised version is for demonstration only)
 SELECT
@@ -443,7 +443,7 @@ noise, see [Remove noise][dp-noise].
 #### Signature 2 
 <a id="dp_count_signature2"></a>
 
-```zetasql
+```googlesql
 WITH DIFFERENTIAL_PRIVACY ...
   COUNT(
     expression,
@@ -476,7 +476,7 @@ The following differentially private query counts the number of requests made
 for each type of item. This query references a table called
 [`professors`][dp-example-tables].
 
-```zetasql
+```googlesql
 -- With noise, using the epsilon parameter.
 SELECT
   WITH DIFFERENTIAL_PRIVACY
@@ -496,7 +496,7 @@ GROUP BY item;
  +----------+-----------------*/
 ```
 
-```zetasql
+```googlesql
 -- Without noise, using the epsilon parameter.
 -- (this un-noised version is for demonstration only)
 SELECT
@@ -521,7 +521,7 @@ The following differentially private query counts the number of requests made
 for each type of item. This query references a view called
 [`view_on_professors`][dp-example-views].
 
-```zetasql
+```googlesql
 -- With noise
 SELECT
   WITH DIFFERENTIAL_PRIVACY
@@ -541,7 +541,7 @@ GROUP BY item;
  +----------+-----------------*/
 ```
 
-```zetasql
+```googlesql
 --Without noise (this un-noised version is for demonstration only)
 SELECT
   WITH DIFFERENTIAL_PRIVACY
@@ -566,22 +566,22 @@ noise, see [Remove noise][dp-noise].
 
 [dp-clamp-implicit]: #dp_implicit_clamping
 
-[dp-from-clause]: https://github.com/google/zetasql/blob/master/docs/differential-privacy.md#dp_from_rules
+[dp-from-clause]: https://github.com/google/googlesql/blob/master/docs/differential-privacy.md#dp_from_rules
 
-[dp-example-tables]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#dp_example_tables
+[dp-example-tables]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#dp_example_tables
 
-[dp-noise]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#eliminate_noise
+[dp-noise]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#eliminate_noise
 
-[dp-syntax]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#dp_clause
+[dp-syntax]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#dp_clause
 
 [dp-clamped-named]: #dp_clamped_named
 
-[dp-example-views]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#dp_example_views
+[dp-example-views]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#dp_example_views
 
 ## `PERCENTILE_CONT` (`DIFFERENTIAL_PRIVACY`) 
 <a id="dp_percentile_cont"></a>
 
-```zetasql
+```googlesql
 WITH DIFFERENTIAL_PRIVACY ...
   PERCENTILE_CONT(
     expression,
@@ -621,7 +621,7 @@ The following differentially private query gets the percentile of items
 requested. Smaller aggregations might not be included. This query references a
 view called [`professors`][dp-example-tables].
 
-```zetasql
+```googlesql
 -- With noise, using the epsilon parameter.
 SELECT
   WITH DIFFERENTIAL_PRIVACY
@@ -646,7 +646,7 @@ The following differentially private query gets the percentile of items
 requested. Smaller aggregations might not be included. This query references a
 view called [`view_on_professors`][dp-example-views].
 
-```zetasql
+```googlesql
 -- With noise, using the epsilon parameter.
 SELECT
   WITH DIFFERENTIAL_PRIVACY
@@ -667,18 +667,18 @@ GROUP BY item;
  +----------+----------------------*/
 ```
 
-[dp-example-tables]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#dp_example_tables
+[dp-example-tables]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#dp_example_tables
 
 [dp-clamped-named]: #dp_clamped_named
 
-[dp-syntax]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#dp_clause
+[dp-syntax]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#dp_clause
 
-[dp-example-views]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#dp_example_views
+[dp-example-views]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#dp_example_views
 
 ## `SUM` (`DIFFERENTIAL_PRIVACY`) 
 <a id="dp_sum"></a>
 
-```zetasql
+```googlesql
 WITH DIFFERENTIAL_PRIVACY ...
   SUM(
     expression,
@@ -714,7 +714,7 @@ The following differentially private query gets the sum of items requested.
 Smaller aggregations might not be included. This query references a view called
 [`professors`][dp-example-tables].
 
-```zetasql
+```googlesql
 -- With noise, using the epsilon parameter.
 SELECT
   WITH DIFFERENTIAL_PRIVACY
@@ -734,7 +734,7 @@ GROUP BY item;
  +----------+-----------*/
 ```
 
-```zetasql
+```googlesql
 -- Without noise, using the epsilon parameter.
 -- (this un-noised version is for demonstration only)
 SELECT
@@ -759,7 +759,7 @@ The following differentially private query gets the sum of items requested.
 Smaller aggregations might not be included. This query references a view called
 [`view_on_professors`][dp-example-views].
 
-```zetasql
+```googlesql
 -- With noise, using the epsilon parameter.
 SELECT
   WITH DIFFERENTIAL_PRIVACY
@@ -779,7 +779,7 @@ GROUP BY item;
  +----------+-----------*/
 ```
 
-```zetasql
+```googlesql
 -- Without noise, using the epsilon parameter.
 -- (this un-noised version is for demonstration only)
 SELECT
@@ -803,22 +803,22 @@ GROUP BY item;
 Note: For more information about when and when not to use
 noise, see [Use differential privacy][dp-noise].
 
-[dp-example-tables]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#dp_example_tables
+[dp-example-tables]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#dp_example_tables
 
-[dp-noise]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#eliminate_noise
+[dp-noise]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#eliminate_noise
 
-[dp-supertype]: https://github.com/google/zetasql/blob/master/docs/conversion_rules.md#supertypes
+[dp-supertype]: https://github.com/google/googlesql/blob/master/docs/conversion_rules.md#supertypes
 
 [dp-clamped-named]: #dp_clamped_named
 
-[dp-syntax]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#dp_clause
+[dp-syntax]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#dp_clause
 
-[dp-example-views]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#dp_example_views
+[dp-example-views]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#dp_example_views
 
 ## `VAR_POP` (`DIFFERENTIAL_PRIVACY`) 
 <a id="dp_var_pop"></a>
 
-```zetasql
+```googlesql
 WITH DIFFERENTIAL_PRIVACY ...
   VAR_POP(
     expression,
@@ -859,7 +859,7 @@ population (biased) variance of items requested. Smaller aggregations may not
 be included. This query references a view called
 [`professors`][dp-example-tables].
 
-```zetasql
+```googlesql
 -- With noise
 SELECT
   WITH DIFFERENTIAL_PRIVACY
@@ -885,7 +885,7 @@ population (biased) variance of items requested. Smaller aggregations might not
 be included. This query references a view called
 [`view_on_professors`][dp-example-views].
 
-```zetasql
+```googlesql
 -- With noise
 SELECT
   WITH DIFFERENTIAL_PRIVACY
@@ -906,11 +906,11 @@ GROUP BY item;
  +----------+-----------------*/
 ```
 
-[dp-example-tables]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#dp_example_tables
+[dp-example-tables]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#dp_example_tables
 
 [dp-clamped-named]: #dp_clamped_named
 
-[dp-example-views]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#dp_example_views
+[dp-example-views]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#dp_example_views
 
 ## `ANON_AVG` (DEPRECATED) 
 <a id="anon_avg"></a>
@@ -918,7 +918,7 @@ GROUP BY item;
 Warning: This function has been deprecated. Use
 `AVG` (differential privacy) instead.
 
-```zetasql
+```googlesql
 WITH ANONYMIZATION ...
   ANON_AVG(expression [clamped_between_clause])
 
@@ -950,7 +950,7 @@ The following differentially private query gets the average number of each item
 requested per professor. Smaller aggregations might not be included. This query
 references a view called [`view_on_professors`][dp-example-views].
 
-```zetasql
+```googlesql
 -- With noise, using the epsilon parameter.
 SELECT
   WITH ANONYMIZATION
@@ -970,7 +970,7 @@ GROUP BY item;
  +----------+------------------*/
 ```
 
-```zetasql
+```googlesql
 -- Without noise, using the epsilon parameter.
 -- (this un-noised version is for demonstration only)
 SELECT
@@ -994,9 +994,9 @@ GROUP BY item;
 Note: You can learn more about when and when not to use
 noise [here][dp-noise].
 
-[dp-example-views]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#dp_example_views
+[dp-example-views]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#dp_example_views
 
-[dp-noise]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#eliminate_noise
+[dp-noise]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#eliminate_noise
 
 [dp-clamping]: #dp_clamping
 
@@ -1012,7 +1012,7 @@ Warning: This function has been deprecated. Use
 #### Signature 1 
 <a id="anon_count_signature1"></a>
 
-```zetasql
+```googlesql
 WITH ANONYMIZATION ...
   ANON_COUNT(*)
 ```
@@ -1037,7 +1037,7 @@ The following differentially private query counts the number of requests for
 each item. This query references a view called
 [`view_on_professors`][dp-example-views].
 
-```zetasql
+```googlesql
 -- With noise, using the epsilon parameter.
 SELECT
   WITH ANONYMIZATION
@@ -1057,7 +1057,7 @@ GROUP BY item;
  +----------+-----------------*/
 ```
 
-```zetasql
+```googlesql
 -- Without noise, using the epsilon parameter.
 -- (this un-noised version is for demonstration only)
 SELECT
@@ -1084,7 +1084,7 @@ noise [here][dp-noise].
 #### Signature 2 
 <a id="anon_count_signature2"></a>
 
-```zetasql
+```googlesql
 WITH ANONYMIZATION ...
   ANON_COUNT(expression [CLAMPED BETWEEN lower_bound AND upper_bound])
 ```
@@ -1112,7 +1112,7 @@ The following differentially private query counts the number of requests made
 for each type of item. This query references a view called
 [`view_on_professors`][dp-example-views].
 
-```zetasql
+```googlesql
 -- With noise
 SELECT
   WITH ANONYMIZATION
@@ -1132,7 +1132,7 @@ GROUP BY item;
  +----------+-----------------*/
 ```
 
-```zetasql
+```googlesql
 --Without noise (this un-noised version is for demonstration only)
 SELECT
   WITH ANONYMIZATION
@@ -1157,11 +1157,11 @@ noise [here][dp-noise].
 
 [dp-clamp-implicit]: #dp_clamped_named_implicit
 
-[dp-from-clause]: https://github.com/google/zetasql/blob/master/docs/differential-privacy.md#dp_from_rules
+[dp-from-clause]: https://github.com/google/googlesql/blob/master/docs/differential-privacy.md#dp_from_rules
 
-[dp-example-views]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#dp_example_views
+[dp-example-views]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#dp_example_views
 
-[dp-noise]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#eliminate_noise
+[dp-noise]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#eliminate_noise
 
 [dp-clamping]: #dp_clamping
 
@@ -1171,7 +1171,7 @@ noise [here][dp-noise].
 Warning: This function has been deprecated. Use
 `PERCENTILE_CONT` (differential privacy) instead.
 
-```zetasql
+```googlesql
 WITH ANONYMIZATION ...
   ANON_PERCENTILE_CONT(expression, percentile [CLAMPED BETWEEN lower_bound AND upper_bound])
 ```
@@ -1205,7 +1205,7 @@ The following differentially private query gets the percentile of items
 requested. Smaller aggregations might not be included. This query references a
 view called [`view_on_professors`][dp-example-views].
 
-```zetasql
+```googlesql
 -- With noise, using the epsilon parameter.
 SELECT
   WITH ANONYMIZATION
@@ -1226,7 +1226,7 @@ GROUP BY item;
  +----------+----------------------*/
 ```
 
-[dp-example-views]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#dp_example_views
+[dp-example-views]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#dp_example_views
 
 [dp-clamping]: #dp_clamping
 
@@ -1236,7 +1236,7 @@ GROUP BY item;
 Warning: This function has been deprecated. Use
 `QUANTILES` (differential privacy) instead.
 
-```zetasql
+```googlesql
 WITH ANONYMIZATION ...
   ANON_QUANTILES(expression, number CLAMPED BETWEEN lower_bound AND upper_bound)
 ```
@@ -1272,7 +1272,7 @@ the four quartiles of the number of items requested. Smaller aggregations
 might not be included. This query references a view called
 [`view_on_professors`][dp-example-views].
 
-```zetasql
+```googlesql
 -- With noise, using the epsilon parameter.
 SELECT
   WITH ANONYMIZATION
@@ -1292,7 +1292,7 @@ GROUP BY item;
  +----------+----------------------------------------------------------------------*/
 ```
 
-[dp-example-views]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#dp_example_views
+[dp-example-views]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#dp_example_views
 
 [dp-clamping]: #dp_clamping
 
@@ -1302,7 +1302,7 @@ GROUP BY item;
 Warning: This function has been deprecated. Use
 `STDDEV_POP` (differential privacy) instead.
 
-```zetasql
+```googlesql
 WITH ANONYMIZATION ...
   ANON_STDDEV_POP(expression [CLAMPED BETWEEN lower_bound AND upper_bound])
 ```
@@ -1336,7 +1336,7 @@ population (biased) standard deviation of items requested. Smaller aggregations
 might not be included. This query references a view called
 [`view_on_professors`][dp-example-views].
 
-```zetasql
+```googlesql
 -- With noise, using the epsilon parameter.
 SELECT
   WITH ANONYMIZATION
@@ -1357,7 +1357,7 @@ GROUP BY item;
  +----------+------------------------*/
 ```
 
-[dp-example-views]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#dp_example_views
+[dp-example-views]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#dp_example_views
 
 [dp-clamping]: #dp_clamping
 
@@ -1367,7 +1367,7 @@ GROUP BY item;
 Warning: This function has been deprecated. Use
 `SUM` (differential privacy) instead.
 
-```zetasql
+```googlesql
 WITH ANONYMIZATION ...
   ANON_SUM(expression [CLAMPED BETWEEN lower_bound AND upper_bound])
 ```
@@ -1399,7 +1399,7 @@ The following differentially private query gets the sum of items requested.
 Smaller aggregations might not be included. This query references a view called
 [`view_on_professors`][dp-example-views].
 
-```zetasql
+```googlesql
 -- With noise, using the epsilon parameter.
 SELECT
   WITH ANONYMIZATION
@@ -1419,7 +1419,7 @@ GROUP BY item;
  +----------+-----------*/
 ```
 
-```zetasql
+```googlesql
 -- Without noise, using the epsilon parameter.
 -- (this un-noised version is for demonstration only)
 SELECT
@@ -1443,11 +1443,11 @@ GROUP BY item;
 Note: You can learn more about when and when not to use
 noise [here][dp-noise].
 
-[dp-example-views]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#dp_example_views
+[dp-example-views]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#dp_example_views
 
-[dp-noise]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#eliminate_noise
+[dp-noise]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#eliminate_noise
 
-[dp-supertype]: https://github.com/google/zetasql/blob/master/docs/conversion_rules.md#supertypes
+[dp-supertype]: https://github.com/google/googlesql/blob/master/docs/conversion_rules.md#supertypes
 
 [dp-clamping]: #dp_clamping
 
@@ -1457,7 +1457,7 @@ noise [here][dp-noise].
 Warning: This function has been deprecated. Use
 `VAR_POP` (differential privacy) instead.
 
-```zetasql
+```googlesql
 WITH ANONYMIZATION ...
   ANON_VAR_POP(expression [CLAMPED BETWEEN lower_bound AND upper_bound])
 ```
@@ -1493,7 +1493,7 @@ population (biased) variance of items requested. Smaller aggregations might not
 be included. This query references a view called
 [`view_on_professors`][dp-example-views].
 
-```zetasql
+```googlesql
 -- With noise, using the epsilon parameter.
 SELECT
   WITH ANONYMIZATION
@@ -1516,7 +1516,7 @@ GROUP BY item;
 
 [dp-clamp-explicit]: #dp_clamped_named
 
-[dp-example-views]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#dp_example_views
+[dp-example-views]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#dp_example_views
 
 [dp-clamping]: #dp_clamping
 
@@ -1573,7 +1573,7 @@ As long as all or most values fall within this range, your results
 will be accurate. This query references a view called
 [`view_on_professors`][dp-example-views].
 
-```zetasql
+```googlesql
 --Without noise (this un-noised version is for demonstration only)
 SELECT WITH DIFFERENTIAL_PRIVACY
   OPTIONS (
@@ -1601,7 +1601,7 @@ As long as all or most values fall within this range, your results
 will be accurate. This query references a view called
 [`view_on_professors`][dp-example-views].
 
-```zetasql
+```googlesql
 --Without noise (this un-noised version is for demonstration only)
 SELECT WITH DIFFERENTIAL_PRIVACY
   OPTIONS (
@@ -1626,11 +1626,11 @@ GROUP BY item;
 #### Explicitly clamp values 
 <a id="dp_clamped_named"></a>
 
-```zetasql
+```googlesql
 contribution_bounds_per_group => (lower_bound,upper_bound)
 ```
 
-```zetasql
+```googlesql
 contribution_bounds_per_row => (lower_bound,upper_bound)
 ```
 
@@ -1686,7 +1686,7 @@ As long as all or most values fall within this range, your results
 will be accurate. This query references a view called
 [`view_on_professors`][dp-example-views].
 
-```zetasql
+```googlesql
 --Without noise (this un-noised version is for demonstration only)
 SELECT WITH DIFFERENTIAL_PRIVACY
   OPTIONS (
@@ -1713,7 +1713,7 @@ To get accurate results, ensure that the difference between the upper and lower
 bound is as small as possible, and that most inputs are between the upper and
 lower bound.
 
-```zetasql {.bad}
+```googlesql {.bad}
 --Without noise (this un-noised version is for demonstration only)
 SELECT WITH DIFFERENTIAL_PRIVACY
   OPTIONS (
@@ -1741,7 +1741,7 @@ As long as all or most values fall within this range, your results will be
 accurate. This query references a view called
 [`view_on_professors`][dp-example-views].
 
-```zetasql
+```googlesql
 --Without noise (this un-noised version is for demonstration only)
 SELECT WITH DIFFERENTIAL_PRIVACY
   OPTIONS (
@@ -1768,7 +1768,7 @@ To get accurate results, ensure that the difference between the upper and lower
 bound is as small as possible, and that most inputs are between the upper and
 lower bound.
 
-```zetasql {.bad}
+```googlesql {.bad}
 --Without noise (this un-noised version is for demonstration only)
 SELECT WITH DIFFERENTIAL_PRIVACY
   OPTIONS (
@@ -1793,21 +1793,21 @@ GROUP BY item;
 Note: For more information about when and when not to use
 noise, see [Remove noise][dp-noise].
 
-[dp-syntax]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#dp_clause
+[dp-syntax]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#dp_clause
 
-[dp-example-views]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#dp_example_views
+[dp-example-views]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#dp_example_views
 
-[dp-noise]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#eliminate_noise
+[dp-noise]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#eliminate_noise
 
-[implicit-limits]: https://github.com/google/zetasql/blob/master/docs/differential-privacy.md#implicit_limits
+[implicit-limits]: https://github.com/google/googlesql/blob/master/docs/differential-privacy.md#implicit_limits
 
 [dp-clamped-named]: #dp_clamped_named
 
 [dp-clamped-named-imp]: #dp_clamped_named_implicit
 
-[dp-guide]: https://github.com/google/zetasql/blob/master/docs/differential-privacy.md
+[dp-guide]: https://github.com/google/googlesql/blob/master/docs/differential-privacy.md
 
-[dp-syntax]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#dp_clause
+[dp-syntax]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#dp_clause
 
-[agg-function-calls]: https://github.com/google/zetasql/blob/master/docs/aggregate-function-calls.md
+[agg-function-calls]: https://github.com/google/googlesql/blob/master/docs/aggregate-function-calls.md
 

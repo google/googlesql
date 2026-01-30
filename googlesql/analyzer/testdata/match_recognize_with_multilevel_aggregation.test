@@ -1,0 +1,1594 @@
+[default language_features=MAXIMUM,+MATCH_RECOGNIZE,+MULTILEVEL_AGGREGATION,+ORDER_BY_IN_AGGREGATE,+LIMIT_IN_AGGREGATE,+HAVING_IN_AGGREGATE,+NULL_HANDLING_MODIFIER_IN_AGGREGATE,+ANALYTIC_FUNCTIONS,+QUALIFY,+GROUPING_BUILTIN,+GROUP_BY_STRUCT]
+
+SELECT * FROM SimpleTypes
+MATCH_RECOGNIZE(
+  {{PARTITION BY int64, int32|}}
+  ORDER BY string
+  MEASURES
+    MAX(int32 + SUM(int32 + int64 + MIN(double) GROUP BY int64) GROUP BY int32) AS max_agg,
+    ARRAY_AGG(string GROUP BY string ORDER BY MIN(double)) AS array_agg
+  PATTERN (A B)
+  DEFINE
+    A AS int64 < 10,
+    B AS int32 >= 10
+)
+--
+
+ALTERNATION GROUP: PARTITION BY int64, int32
+--
+QueryStmt
++-output_column_list=
+| +-$partitionby.int64#20 AS int64 [INT64]
+| +-$partitionby.int32#21 AS int32 [INT32]
+| +-$match_recognize.max_agg#35 AS max_agg [DOUBLE]
+| +-$match_recognize.array_agg#41 AS array_agg [ARRAY<STRING>]
++-query=
+  +-ProjectScan
+    +-column_list=[$partitionby.int64#20, $partitionby.int32#21, $match_recognize.max_agg#35, $match_recognize.array_agg#41]
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[$partitionby.int64#20, $partitionby.int32#21, $match_recognize.max_agg#35, $match_recognize.array_agg#41]
+        +-expr_list=
+        | +-max_agg#35 := ColumnRef(type=DOUBLE, column=$aggregate.$agg1#34)
+        | +-array_agg#41 := ColumnRef(type=ARRAY<STRING>, column=$aggregate.$agg2#40)
+        +-input_scan=
+          +-MatchRecognizeScan
+            +-column_list=[$partitionby.int64#20, $partitionby.int32#21, $aggregate.$agg1#34, $aggregate.$agg2#40]
+            +-input_scan=
+            | +-ProjectScan
+            |   +-column_list=[SimpleTypes.int32#1, SimpleTypes.int64#2, SimpleTypes.string#5, SimpleTypes.double#9, $partitionby.int64#20, $partitionby.int32#21]
+            |   +-expr_list=
+            |   | +-int64#20 := ColumnRef(type=INT64, column=SimpleTypes.int64#2)
+            |   | +-int32#21 := ColumnRef(type=INT32, column=SimpleTypes.int32#1)
+            |   +-input_scan=
+            |     +-TableScan(column_list=SimpleTypes.[int32#1, int64#2, string#5, double#9], table=SimpleTypes, column_index_list=[0, 1, 4, 8])
+            +-analytic_function_group_list=
+            | +-AnalyticFunctionGroup
+            |   +-partition_by=
+            |   | +-WindowPartitioning
+            |   |   +-partition_by_list=
+            |   |     +-ColumnRef(type=INT64, column=$partitionby.int64#20)
+            |   |     +-ColumnRef(type=INT32, column=$partitionby.int32#21)
+            |   +-order_by=
+            |     +-WindowOrdering
+            |       +-order_by_item_list=
+            |         +-OrderByItem
+            |           +-column_ref=
+            |             +-ColumnRef(type=STRING, column=SimpleTypes.string#5)
+            +-pattern_variable_definition_list=
+            | +-MatchRecognizeVariableDefinition
+            | | +-name="A"
+            | | +-predicate=
+            | |   +-FunctionCall(GoogleSQL:$less(INT64, INT64) -> BOOL)
+            | |     +-ColumnRef(type=INT64, column=$partitionby.int64#20)
+            | |     +-Literal(type=INT64, value=10)
+            | +-MatchRecognizeVariableDefinition
+            |   +-name="B"
+            |   +-predicate=
+            |     +-FunctionCall(GoogleSQL:$greater_or_equal(INT32, INT32) -> BOOL)
+            |       +-ColumnRef(type=INT32, column=$partitionby.int32#21)
+            |       +-Literal(type=INT32, value=10)
+            +-pattern=
+            | +-MatchRecognizePatternOperation
+            |   +-op_type=CONCAT
+            |   +-operand_list=
+            |     +-MatchRecognizePatternVariableRef(name="A")
+            |     +-MatchRecognizePatternVariableRef(name="B")
+            +-after_match_skip_mode=END_OF_MATCH
+            +-measure_group_list=
+            | +-MeasureGroup
+            |   +-aggregate_list=
+            |     +-$agg1#34 :=
+            |     | +-AggregateFunctionCall(GoogleSQL:max(DOUBLE) -> DOUBLE)
+            |     |   +-FunctionCall(GoogleSQL:$add(DOUBLE, DOUBLE) -> DOUBLE)
+            |     |   | +-Cast(INT32 -> DOUBLE)
+            |     |   | | +-ColumnRef(type=INT32, column=$group_by_list.$groupbymod#27)
+            |     |   | +-ColumnRef(type=DOUBLE, column=$aggregate.$agg1#33)
+            |     |   +-group_by_list=
+            |     |   | +-$groupbymod#25 := ColumnRef(type=INT64, column=SimpleTypes.int64#2)
+            |     |   | +-$groupbymod#26 := ColumnRef(type=INT32, column=SimpleTypes.int32#1)
+            |     |   | +-$groupbymod#27 := ColumnRef(type=INT32, column=$partitionby.int32#21)
+            |     |   +-group_by_aggregate_list=
+            |     |     +-$agg1#33 :=
+            |     |       +-AggregateFunctionCall(GoogleSQL:sum(DOUBLE) -> DOUBLE)
+            |     |         +-FunctionCall(GoogleSQL:$add(DOUBLE, DOUBLE) -> DOUBLE)
+            |     |         | +-Cast(INT64 -> DOUBLE)
+            |     |         | | +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+            |     |         | |   +-Cast(INT32 -> INT64)
+            |     |         | |   | +-ColumnRef(type=INT32, column=$group_by_list.$groupbymod#30)
+            |     |         | |   +-ColumnRef(type=INT64, column=$group_by_list.$groupbymod#31)
+            |     |         | +-ColumnRef(type=DOUBLE, column=$aggregate.$agg1#32)
+            |     |         +-group_by_list=
+            |     |         | +-$groupbymod#28 := ColumnRef(type=INT64, column=SimpleTypes.int64#2)
+            |     |         | +-$groupbymod#29 := ColumnRef(type=INT32, column=SimpleTypes.int32#1)
+            |     |         | +-$groupbymod#30 := ColumnRef(type=INT32, column=$partitionby.int32#21)
+            |     |         | +-$groupbymod#31 := ColumnRef(type=INT64, column=$partitionby.int64#20)
+            |     |         +-group_by_aggregate_list=
+            |     |           +-$agg1#32 :=
+            |     |             +-AggregateFunctionCall(GoogleSQL:min(DOUBLE) -> DOUBLE)
+            |     |               +-ColumnRef(type=DOUBLE, column=SimpleTypes.double#9)
+            |     +-$agg2#40 :=
+            |       +-AggregateFunctionCall(GoogleSQL:array_agg(STRING) -> ARRAY<STRING>)
+            |         +-ColumnRef(type=STRING, column=$group_by_list.$groupbymod#38)
+            |         +-order_by_item_list=
+            |         | +-OrderByItem
+            |         |   +-column_ref=
+            |         |     +-ColumnRef(type=DOUBLE, column=$aggregate.$agg1#39)
+            |         +-group_by_list=
+            |         | +-$groupbymod#36 := ColumnRef(type=INT64, column=SimpleTypes.int64#2)
+            |         | +-$groupbymod#37 := ColumnRef(type=INT32, column=SimpleTypes.int32#1)
+            |         | +-$groupbymod#38 := ColumnRef(type=STRING, column=SimpleTypes.string#5)
+            |         +-group_by_aggregate_list=
+            |           +-$agg1#39 :=
+            |             +-AggregateFunctionCall(GoogleSQL:min(DOUBLE) -> DOUBLE)
+            |               +-ColumnRef(type=DOUBLE, column=SimpleTypes.double#9)
+            +-match_number_column=$match_recognize.$match_number#22
+            +-match_row_number_column=$match_recognize.$match_row_number#23
+            +-classifier_column=$match_recognize.$classifier#24
+--
+ALTERNATION GROUP: <empty>
+--
+QueryStmt
++-output_column_list=
+| +-$match_recognize.max_agg#29 AS max_agg [DOUBLE]
+| +-$match_recognize.array_agg#33 AS array_agg [ARRAY<STRING>]
++-query=
+  +-ProjectScan
+    +-column_list=$match_recognize.[max_agg#29, array_agg#33]
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=$match_recognize.[max_agg#29, array_agg#33]
+        +-expr_list=
+        | +-max_agg#29 := ColumnRef(type=DOUBLE, column=$aggregate.$agg1#28)
+        | +-array_agg#33 := ColumnRef(type=ARRAY<STRING>, column=$aggregate.$agg2#32)
+        +-input_scan=
+          +-MatchRecognizeScan
+            +-column_list=$aggregate.[$agg1#28, $agg2#32]
+            +-input_scan=
+            | +-TableScan(column_list=SimpleTypes.[int32#1, int64#2, string#5, double#9], table=SimpleTypes, column_index_list=[0, 1, 4, 8])
+            +-analytic_function_group_list=
+            | +-AnalyticFunctionGroup
+            |   +-order_by=
+            |     +-WindowOrdering
+            |       +-order_by_item_list=
+            |         +-OrderByItem
+            |           +-column_ref=
+            |             +-ColumnRef(type=STRING, column=SimpleTypes.string#5)
+            +-pattern_variable_definition_list=
+            | +-MatchRecognizeVariableDefinition
+            | | +-name="A"
+            | | +-predicate=
+            | |   +-FunctionCall(GoogleSQL:$less(INT64, INT64) -> BOOL)
+            | |     +-ColumnRef(type=INT64, column=SimpleTypes.int64#2)
+            | |     +-Literal(type=INT64, value=10)
+            | +-MatchRecognizeVariableDefinition
+            |   +-name="B"
+            |   +-predicate=
+            |     +-FunctionCall(GoogleSQL:$greater_or_equal(INT32, INT32) -> BOOL)
+            |       +-ColumnRef(type=INT32, column=SimpleTypes.int32#1)
+            |       +-Literal(type=INT32, value=10)
+            +-pattern=
+            | +-MatchRecognizePatternOperation
+            |   +-op_type=CONCAT
+            |   +-operand_list=
+            |     +-MatchRecognizePatternVariableRef(name="A")
+            |     +-MatchRecognizePatternVariableRef(name="B")
+            +-after_match_skip_mode=END_OF_MATCH
+            +-measure_group_list=
+            | +-MeasureGroup
+            |   +-aggregate_list=
+            |     +-$agg1#28 :=
+            |     | +-AggregateFunctionCall(GoogleSQL:max(DOUBLE) -> DOUBLE)
+            |     |   +-FunctionCall(GoogleSQL:$add(DOUBLE, DOUBLE) -> DOUBLE)
+            |     |   | +-Cast(INT32 -> DOUBLE)
+            |     |   | | +-ColumnRef(type=INT32, column=$group_by_list.$groupbymod#23)
+            |     |   | +-ColumnRef(type=DOUBLE, column=$aggregate.$agg1#27)
+            |     |   +-group_by_list=
+            |     |   | +-$groupbymod#23 := ColumnRef(type=INT32, column=SimpleTypes.int32#1)
+            |     |   +-group_by_aggregate_list=
+            |     |     +-$agg1#27 :=
+            |     |       +-AggregateFunctionCall(GoogleSQL:sum(DOUBLE) -> DOUBLE)
+            |     |         +-FunctionCall(GoogleSQL:$add(DOUBLE, DOUBLE) -> DOUBLE)
+            |     |         | +-Cast(INT64 -> DOUBLE)
+            |     |         | | +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+            |     |         | |   +-Cast(INT32 -> INT64)
+            |     |         | |   | +-ColumnRef(type=INT32, column=$group_by_list.$groupbymod#24)
+            |     |         | |   +-ColumnRef(type=INT64, column=$group_by_list.$groupbymod#25)
+            |     |         | +-ColumnRef(type=DOUBLE, column=$aggregate.$agg1#26)
+            |     |         +-group_by_list=
+            |     |         | +-$groupbymod#24 := ColumnRef(type=INT32, column=SimpleTypes.int32#1)
+            |     |         | +-$groupbymod#25 := ColumnRef(type=INT64, column=SimpleTypes.int64#2)
+            |     |         +-group_by_aggregate_list=
+            |     |           +-$agg1#26 :=
+            |     |             +-AggregateFunctionCall(GoogleSQL:min(DOUBLE) -> DOUBLE)
+            |     |               +-ColumnRef(type=DOUBLE, column=SimpleTypes.double#9)
+            |     +-$agg2#32 :=
+            |       +-AggregateFunctionCall(GoogleSQL:array_agg(STRING) -> ARRAY<STRING>)
+            |         +-ColumnRef(type=STRING, column=$group_by_list.$groupbymod#30)
+            |         +-order_by_item_list=
+            |         | +-OrderByItem
+            |         |   +-column_ref=
+            |         |     +-ColumnRef(type=DOUBLE, column=$aggregate.$agg1#31)
+            |         +-group_by_list=
+            |         | +-$groupbymod#30 := ColumnRef(type=STRING, column=SimpleTypes.string#5)
+            |         +-group_by_aggregate_list=
+            |           +-$agg1#31 :=
+            |             +-AggregateFunctionCall(GoogleSQL:min(DOUBLE) -> DOUBLE)
+            |               +-ColumnRef(type=DOUBLE, column=SimpleTypes.double#9)
+            +-match_number_column=$match_recognize.$match_number#20
+            +-match_row_number_column=$match_recognize.$match_row_number#21
+            +-classifier_column=$match_recognize.$classifier#22
+==
+
+# Adds pattern variables
+SELECT * FROM SimpleTypes
+MATCH_RECOGNIZE(
+  {{PARTITION BY int64, int32|}}
+  ORDER BY string
+  MEASURES
+    MAX(A.int32 + SUM(A.int32 + A.int64 + MIN(A.double) GROUP BY A.int64) GROUP BY A.int32) +
+    MAX(B.int32 + SUM(B.int32 + B.int64 + MIN(B.double) GROUP BY B.int64) GROUP BY B.int32) +
+    MAX(int32 + SUM(int32 + int64 + MIN(double) GROUP BY int64) GROUP BY int32) AS m
+  PATTERN (A B)
+  DEFINE
+    A AS int64 < 10,
+    B AS int32 >= 10
+)
+--
+ALTERNATION GROUP: PARTITION BY int64, int32
+--
+QueryStmt
++-output_column_list=
+| +-$partitionby.int64#20 AS int64 [INT64]
+| +-$partitionby.int32#21 AS int32 [INT32]
+| +-$match_recognize.m#55 AS m [DOUBLE]
++-query=
+  +-ProjectScan
+    +-column_list=[$partitionby.int64#20, $partitionby.int32#21, $match_recognize.m#55]
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[$partitionby.int64#20, $partitionby.int32#21, $match_recognize.m#55]
+        +-expr_list=
+        | +-m#55 :=
+        |   +-FunctionCall(GoogleSQL:$add(DOUBLE, DOUBLE) -> DOUBLE)
+        |     +-FunctionCall(GoogleSQL:$add(DOUBLE, DOUBLE) -> DOUBLE)
+        |     | +-ColumnRef(type=DOUBLE, column=$aggregate.$agg1#34)
+        |     | +-ColumnRef(type=DOUBLE, column=$aggregate.$agg2#44)
+        |     +-ColumnRef(type=DOUBLE, column=$aggregate.$agg3#54)
+        +-input_scan=
+          +-MatchRecognizeScan
+            +-column_list=[$partitionby.int64#20, $partitionby.int32#21, $aggregate.$agg3#54, $aggregate.$agg1#34, $aggregate.$agg2#44]
+            +-input_scan=
+            | +-ProjectScan
+            |   +-column_list=[SimpleTypes.int32#1, SimpleTypes.int64#2, SimpleTypes.string#5, SimpleTypes.double#9, $partitionby.int64#20, $partitionby.int32#21]
+            |   +-expr_list=
+            |   | +-int64#20 := ColumnRef(type=INT64, column=SimpleTypes.int64#2)
+            |   | +-int32#21 := ColumnRef(type=INT32, column=SimpleTypes.int32#1)
+            |   +-input_scan=
+            |     +-TableScan(column_list=SimpleTypes.[int32#1, int64#2, string#5, double#9], table=SimpleTypes, column_index_list=[0, 1, 4, 8])
+            +-analytic_function_group_list=
+            | +-AnalyticFunctionGroup
+            |   +-partition_by=
+            |   | +-WindowPartitioning
+            |   |   +-partition_by_list=
+            |   |     +-ColumnRef(type=INT64, column=$partitionby.int64#20)
+            |   |     +-ColumnRef(type=INT32, column=$partitionby.int32#21)
+            |   +-order_by=
+            |     +-WindowOrdering
+            |       +-order_by_item_list=
+            |         +-OrderByItem
+            |           +-column_ref=
+            |             +-ColumnRef(type=STRING, column=SimpleTypes.string#5)
+            +-pattern_variable_definition_list=
+            | +-MatchRecognizeVariableDefinition
+            | | +-name="A"
+            | | +-predicate=
+            | |   +-FunctionCall(GoogleSQL:$less(INT64, INT64) -> BOOL)
+            | |     +-ColumnRef(type=INT64, column=$partitionby.int64#20)
+            | |     +-Literal(type=INT64, value=10)
+            | +-MatchRecognizeVariableDefinition
+            |   +-name="B"
+            |   +-predicate=
+            |     +-FunctionCall(GoogleSQL:$greater_or_equal(INT32, INT32) -> BOOL)
+            |       +-ColumnRef(type=INT32, column=$partitionby.int32#21)
+            |       +-Literal(type=INT32, value=10)
+            +-pattern=
+            | +-MatchRecognizePatternOperation
+            |   +-op_type=CONCAT
+            |   +-operand_list=
+            |     +-MatchRecognizePatternVariableRef(name="A")
+            |     +-MatchRecognizePatternVariableRef(name="B")
+            +-after_match_skip_mode=END_OF_MATCH
+            +-measure_group_list=
+            | +-MeasureGroup
+            | | +-aggregate_list=
+            | |   +-$agg3#54 :=
+            | |     +-AggregateFunctionCall(GoogleSQL:max(DOUBLE) -> DOUBLE)
+            | |       +-FunctionCall(GoogleSQL:$add(DOUBLE, DOUBLE) -> DOUBLE)
+            | |       | +-Cast(INT32 -> DOUBLE)
+            | |       | | +-ColumnRef(type=INT32, column=$group_by_list.$groupbymod#47)
+            | |       | +-ColumnRef(type=DOUBLE, column=$aggregate.$agg1#53)
+            | |       +-group_by_list=
+            | |       | +-$groupbymod#45 := ColumnRef(type=INT64, column=SimpleTypes.int64#2)
+            | |       | +-$groupbymod#46 := ColumnRef(type=INT32, column=SimpleTypes.int32#1)
+            | |       | +-$groupbymod#47 := ColumnRef(type=INT32, column=$partitionby.int32#21)
+            | |       +-group_by_aggregate_list=
+            | |         +-$agg1#53 :=
+            | |           +-AggregateFunctionCall(GoogleSQL:sum(DOUBLE) -> DOUBLE)
+            | |             +-FunctionCall(GoogleSQL:$add(DOUBLE, DOUBLE) -> DOUBLE)
+            | |             | +-Cast(INT64 -> DOUBLE)
+            | |             | | +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+            | |             | |   +-Cast(INT32 -> INT64)
+            | |             | |   | +-ColumnRef(type=INT32, column=$group_by_list.$groupbymod#50)
+            | |             | |   +-ColumnRef(type=INT64, column=$group_by_list.$groupbymod#51)
+            | |             | +-ColumnRef(type=DOUBLE, column=$aggregate.$agg1#52)
+            | |             +-group_by_list=
+            | |             | +-$groupbymod#48 := ColumnRef(type=INT64, column=SimpleTypes.int64#2)
+            | |             | +-$groupbymod#49 := ColumnRef(type=INT32, column=SimpleTypes.int32#1)
+            | |             | +-$groupbymod#50 := ColumnRef(type=INT32, column=$partitionby.int32#21)
+            | |             | +-$groupbymod#51 := ColumnRef(type=INT64, column=$partitionby.int64#20)
+            | |             +-group_by_aggregate_list=
+            | |               +-$agg1#52 :=
+            | |                 +-AggregateFunctionCall(GoogleSQL:min(DOUBLE) -> DOUBLE)
+            | |                   +-ColumnRef(type=DOUBLE, column=SimpleTypes.double#9)
+            | +-MeasureGroup
+            | | +-pattern_variable_ref=
+            | | | +-MatchRecognizePatternVariableRef(name="A")
+            | | +-aggregate_list=
+            | |   +-$agg1#34 :=
+            | |     +-AggregateFunctionCall(GoogleSQL:max(DOUBLE) -> DOUBLE)
+            | |       +-FunctionCall(GoogleSQL:$add(DOUBLE, DOUBLE) -> DOUBLE)
+            | |       | +-Cast(INT32 -> DOUBLE)
+            | |       | | +-ColumnRef(type=INT32, column=$group_by_list.$groupbymod#27)
+            | |       | +-ColumnRef(type=DOUBLE, column=$aggregate.$agg1#33)
+            | |       +-group_by_list=
+            | |       | +-$groupbymod#25 := ColumnRef(type=INT64, column=SimpleTypes.int64#2)
+            | |       | +-$groupbymod#26 := ColumnRef(type=INT32, column=SimpleTypes.int32#1)
+            | |       | +-$groupbymod#27 := ColumnRef(type=INT32, column=$partitionby.int32#21)
+            | |       +-group_by_aggregate_list=
+            | |         +-$agg1#33 :=
+            | |           +-AggregateFunctionCall(GoogleSQL:sum(DOUBLE) -> DOUBLE)
+            | |             +-FunctionCall(GoogleSQL:$add(DOUBLE, DOUBLE) -> DOUBLE)
+            | |             | +-Cast(INT64 -> DOUBLE)
+            | |             | | +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+            | |             | |   +-Cast(INT32 -> INT64)
+            | |             | |   | +-ColumnRef(type=INT32, column=$group_by_list.$groupbymod#30)
+            | |             | |   +-ColumnRef(type=INT64, column=$group_by_list.$groupbymod#31)
+            | |             | +-ColumnRef(type=DOUBLE, column=$aggregate.$agg1#32)
+            | |             +-group_by_list=
+            | |             | +-$groupbymod#28 := ColumnRef(type=INT64, column=SimpleTypes.int64#2)
+            | |             | +-$groupbymod#29 := ColumnRef(type=INT32, column=SimpleTypes.int32#1)
+            | |             | +-$groupbymod#30 := ColumnRef(type=INT32, column=$partitionby.int32#21)
+            | |             | +-$groupbymod#31 := ColumnRef(type=INT64, column=$partitionby.int64#20)
+            | |             +-group_by_aggregate_list=
+            | |               +-$agg1#32 :=
+            | |                 +-AggregateFunctionCall(GoogleSQL:min(DOUBLE) -> DOUBLE)
+            | |                   +-ColumnRef(type=DOUBLE, column=SimpleTypes.double#9)
+            | +-MeasureGroup
+            |   +-pattern_variable_ref=
+            |   | +-MatchRecognizePatternVariableRef(name="B")
+            |   +-aggregate_list=
+            |     +-$agg2#44 :=
+            |       +-AggregateFunctionCall(GoogleSQL:max(DOUBLE) -> DOUBLE)
+            |         +-FunctionCall(GoogleSQL:$add(DOUBLE, DOUBLE) -> DOUBLE)
+            |         | +-Cast(INT32 -> DOUBLE)
+            |         | | +-ColumnRef(type=INT32, column=$group_by_list.$groupbymod#37)
+            |         | +-ColumnRef(type=DOUBLE, column=$aggregate.$agg1#43)
+            |         +-group_by_list=
+            |         | +-$groupbymod#35 := ColumnRef(type=INT64, column=SimpleTypes.int64#2)
+            |         | +-$groupbymod#36 := ColumnRef(type=INT32, column=SimpleTypes.int32#1)
+            |         | +-$groupbymod#37 := ColumnRef(type=INT32, column=$partitionby.int32#21)
+            |         +-group_by_aggregate_list=
+            |           +-$agg1#43 :=
+            |             +-AggregateFunctionCall(GoogleSQL:sum(DOUBLE) -> DOUBLE)
+            |               +-FunctionCall(GoogleSQL:$add(DOUBLE, DOUBLE) -> DOUBLE)
+            |               | +-Cast(INT64 -> DOUBLE)
+            |               | | +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+            |               | |   +-Cast(INT32 -> INT64)
+            |               | |   | +-ColumnRef(type=INT32, column=$group_by_list.$groupbymod#40)
+            |               | |   +-ColumnRef(type=INT64, column=$group_by_list.$groupbymod#41)
+            |               | +-ColumnRef(type=DOUBLE, column=$aggregate.$agg1#42)
+            |               +-group_by_list=
+            |               | +-$groupbymod#38 := ColumnRef(type=INT64, column=SimpleTypes.int64#2)
+            |               | +-$groupbymod#39 := ColumnRef(type=INT32, column=SimpleTypes.int32#1)
+            |               | +-$groupbymod#40 := ColumnRef(type=INT32, column=$partitionby.int32#21)
+            |               | +-$groupbymod#41 := ColumnRef(type=INT64, column=$partitionby.int64#20)
+            |               +-group_by_aggregate_list=
+            |                 +-$agg1#42 :=
+            |                   +-AggregateFunctionCall(GoogleSQL:min(DOUBLE) -> DOUBLE)
+            |                     +-ColumnRef(type=DOUBLE, column=SimpleTypes.double#9)
+            +-match_number_column=$match_recognize.$match_number#22
+            +-match_row_number_column=$match_recognize.$match_row_number#23
+            +-classifier_column=$match_recognize.$classifier#24
+--
+ALTERNATION GROUP: <empty>
+--
+QueryStmt
++-output_column_list=
+| +-$match_recognize.m#41 AS m [DOUBLE]
++-query=
+  +-ProjectScan
+    +-column_list=[$match_recognize.m#41]
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[$match_recognize.m#41]
+        +-expr_list=
+        | +-m#41 :=
+        |   +-FunctionCall(GoogleSQL:$add(DOUBLE, DOUBLE) -> DOUBLE)
+        |     +-FunctionCall(GoogleSQL:$add(DOUBLE, DOUBLE) -> DOUBLE)
+        |     | +-ColumnRef(type=DOUBLE, column=$aggregate.$agg1#28)
+        |     | +-ColumnRef(type=DOUBLE, column=$aggregate.$agg2#34)
+        |     +-ColumnRef(type=DOUBLE, column=$aggregate.$agg3#40)
+        +-input_scan=
+          +-MatchRecognizeScan
+            +-column_list=$aggregate.[$agg3#40, $agg1#28, $agg2#34]
+            +-input_scan=
+            | +-TableScan(column_list=SimpleTypes.[int32#1, int64#2, string#5, double#9], table=SimpleTypes, column_index_list=[0, 1, 4, 8])
+            +-analytic_function_group_list=
+            | +-AnalyticFunctionGroup
+            |   +-order_by=
+            |     +-WindowOrdering
+            |       +-order_by_item_list=
+            |         +-OrderByItem
+            |           +-column_ref=
+            |             +-ColumnRef(type=STRING, column=SimpleTypes.string#5)
+            +-pattern_variable_definition_list=
+            | +-MatchRecognizeVariableDefinition
+            | | +-name="A"
+            | | +-predicate=
+            | |   +-FunctionCall(GoogleSQL:$less(INT64, INT64) -> BOOL)
+            | |     +-ColumnRef(type=INT64, column=SimpleTypes.int64#2)
+            | |     +-Literal(type=INT64, value=10)
+            | +-MatchRecognizeVariableDefinition
+            |   +-name="B"
+            |   +-predicate=
+            |     +-FunctionCall(GoogleSQL:$greater_or_equal(INT32, INT32) -> BOOL)
+            |       +-ColumnRef(type=INT32, column=SimpleTypes.int32#1)
+            |       +-Literal(type=INT32, value=10)
+            +-pattern=
+            | +-MatchRecognizePatternOperation
+            |   +-op_type=CONCAT
+            |   +-operand_list=
+            |     +-MatchRecognizePatternVariableRef(name="A")
+            |     +-MatchRecognizePatternVariableRef(name="B")
+            +-after_match_skip_mode=END_OF_MATCH
+            +-measure_group_list=
+            | +-MeasureGroup
+            | | +-aggregate_list=
+            | |   +-$agg3#40 :=
+            | |     +-AggregateFunctionCall(GoogleSQL:max(DOUBLE) -> DOUBLE)
+            | |       +-FunctionCall(GoogleSQL:$add(DOUBLE, DOUBLE) -> DOUBLE)
+            | |       | +-Cast(INT32 -> DOUBLE)
+            | |       | | +-ColumnRef(type=INT32, column=$group_by_list.$groupbymod#35)
+            | |       | +-ColumnRef(type=DOUBLE, column=$aggregate.$agg1#39)
+            | |       +-group_by_list=
+            | |       | +-$groupbymod#35 := ColumnRef(type=INT32, column=SimpleTypes.int32#1)
+            | |       +-group_by_aggregate_list=
+            | |         +-$agg1#39 :=
+            | |           +-AggregateFunctionCall(GoogleSQL:sum(DOUBLE) -> DOUBLE)
+            | |             +-FunctionCall(GoogleSQL:$add(DOUBLE, DOUBLE) -> DOUBLE)
+            | |             | +-Cast(INT64 -> DOUBLE)
+            | |             | | +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+            | |             | |   +-Cast(INT32 -> INT64)
+            | |             | |   | +-ColumnRef(type=INT32, column=$group_by_list.$groupbymod#36)
+            | |             | |   +-ColumnRef(type=INT64, column=$group_by_list.$groupbymod#37)
+            | |             | +-ColumnRef(type=DOUBLE, column=$aggregate.$agg1#38)
+            | |             +-group_by_list=
+            | |             | +-$groupbymod#36 := ColumnRef(type=INT32, column=SimpleTypes.int32#1)
+            | |             | +-$groupbymod#37 := ColumnRef(type=INT64, column=SimpleTypes.int64#2)
+            | |             +-group_by_aggregate_list=
+            | |               +-$agg1#38 :=
+            | |                 +-AggregateFunctionCall(GoogleSQL:min(DOUBLE) -> DOUBLE)
+            | |                   +-ColumnRef(type=DOUBLE, column=SimpleTypes.double#9)
+            | +-MeasureGroup
+            | | +-pattern_variable_ref=
+            | | | +-MatchRecognizePatternVariableRef(name="A")
+            | | +-aggregate_list=
+            | |   +-$agg1#28 :=
+            | |     +-AggregateFunctionCall(GoogleSQL:max(DOUBLE) -> DOUBLE)
+            | |       +-FunctionCall(GoogleSQL:$add(DOUBLE, DOUBLE) -> DOUBLE)
+            | |       | +-Cast(INT32 -> DOUBLE)
+            | |       | | +-ColumnRef(type=INT32, column=$group_by_list.$groupbymod#23)
+            | |       | +-ColumnRef(type=DOUBLE, column=$aggregate.$agg1#27)
+            | |       +-group_by_list=
+            | |       | +-$groupbymod#23 := ColumnRef(type=INT32, column=SimpleTypes.int32#1)
+            | |       +-group_by_aggregate_list=
+            | |         +-$agg1#27 :=
+            | |           +-AggregateFunctionCall(GoogleSQL:sum(DOUBLE) -> DOUBLE)
+            | |             +-FunctionCall(GoogleSQL:$add(DOUBLE, DOUBLE) -> DOUBLE)
+            | |             | +-Cast(INT64 -> DOUBLE)
+            | |             | | +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+            | |             | |   +-Cast(INT32 -> INT64)
+            | |             | |   | +-ColumnRef(type=INT32, column=$group_by_list.$groupbymod#24)
+            | |             | |   +-ColumnRef(type=INT64, column=$group_by_list.$groupbymod#25)
+            | |             | +-ColumnRef(type=DOUBLE, column=$aggregate.$agg1#26)
+            | |             +-group_by_list=
+            | |             | +-$groupbymod#24 := ColumnRef(type=INT32, column=SimpleTypes.int32#1)
+            | |             | +-$groupbymod#25 := ColumnRef(type=INT64, column=SimpleTypes.int64#2)
+            | |             +-group_by_aggregate_list=
+            | |               +-$agg1#26 :=
+            | |                 +-AggregateFunctionCall(GoogleSQL:min(DOUBLE) -> DOUBLE)
+            | |                   +-ColumnRef(type=DOUBLE, column=SimpleTypes.double#9)
+            | +-MeasureGroup
+            |   +-pattern_variable_ref=
+            |   | +-MatchRecognizePatternVariableRef(name="B")
+            |   +-aggregate_list=
+            |     +-$agg2#34 :=
+            |       +-AggregateFunctionCall(GoogleSQL:max(DOUBLE) -> DOUBLE)
+            |         +-FunctionCall(GoogleSQL:$add(DOUBLE, DOUBLE) -> DOUBLE)
+            |         | +-Cast(INT32 -> DOUBLE)
+            |         | | +-ColumnRef(type=INT32, column=$group_by_list.$groupbymod#29)
+            |         | +-ColumnRef(type=DOUBLE, column=$aggregate.$agg1#33)
+            |         +-group_by_list=
+            |         | +-$groupbymod#29 := ColumnRef(type=INT32, column=SimpleTypes.int32#1)
+            |         +-group_by_aggregate_list=
+            |           +-$agg1#33 :=
+            |             +-AggregateFunctionCall(GoogleSQL:sum(DOUBLE) -> DOUBLE)
+            |               +-FunctionCall(GoogleSQL:$add(DOUBLE, DOUBLE) -> DOUBLE)
+            |               | +-Cast(INT64 -> DOUBLE)
+            |               | | +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+            |               | |   +-Cast(INT32 -> INT64)
+            |               | |   | +-ColumnRef(type=INT32, column=$group_by_list.$groupbymod#30)
+            |               | |   +-ColumnRef(type=INT64, column=$group_by_list.$groupbymod#31)
+            |               | +-ColumnRef(type=DOUBLE, column=$aggregate.$agg1#32)
+            |               +-group_by_list=
+            |               | +-$groupbymod#30 := ColumnRef(type=INT32, column=SimpleTypes.int32#1)
+            |               | +-$groupbymod#31 := ColumnRef(type=INT64, column=SimpleTypes.int64#2)
+            |               +-group_by_aggregate_list=
+            |                 +-$agg1#32 :=
+            |                   +-AggregateFunctionCall(GoogleSQL:min(DOUBLE) -> DOUBLE)
+            |                     +-ColumnRef(type=DOUBLE, column=SimpleTypes.double#9)
+            +-match_number_column=$match_recognize.$match_number#20
+            +-match_row_number_column=$match_recognize.$match_row_number#21
+            +-classifier_column=$match_recognize.$classifier#22
+==
+
+# Multilevel aggs with pattern variable references detects conflicting vars,
+# including in arguments
+SELECT * FROM SimpleTypes
+MATCH_RECOGNIZE(
+  ORDER BY string
+  MEASURES
+    MAX(double + SUM(double + int64 + MIN(A.int32) GROUP BY int64) GROUP BY double) AS max_agg
+  PATTERN (A B)
+  DEFINE
+    A AS int64 < 10,
+    B AS int32 >= 10
+)
+--
+ERROR: Column access ranges over pattern variable A in an expression that already ranges over a all input rows [at 5:43]
+    MAX(double + SUM(double + int64 + MIN(A.int32) GROUP BY int64) GROUP BY d...
+                                          ^
+==
+
+# Multilevel aggs with pattern variable references detects conflicting vars,
+# including in ORDER BY, even when the args are constants and do not tell the
+# scope.
+SELECT * FROM SimpleTypes
+MATCH_RECOGNIZE(
+  ORDER BY string
+  MEASURES
+      {{ANY_VALUE(ARRAY_AGG(1 ORDER BY double) GROUP BY A.int64) AS m,|}}
+      ANY_VALUE(ARRAY_AGG(1 ORDER BY A.double) GROUP BY int64) AS m2
+  PATTERN (A)
+  DEFINE
+    A AS int64 < 10
+)
+--
+ALTERNATION GROUP: ANY_VALUE(ARRAY_AGG(1 ORDER BY double) GROUP BY A.int64) AS m,
+--
+ERROR: Column access ranges over all input rows in an expression that already ranges over a pattern variable A [at 5:38]
+      ANY_VALUE(ARRAY_AGG(1 ORDER BY double) GROUP BY A.int64) AS m,
+                                     ^
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: Column access ranges over pattern variable A in an expression that already ranges over a all input rows [at 6:38]
+      ANY_VALUE(ARRAY_AGG(1 ORDER BY A.double) GROUP BY int64) AS m2
+                                     ^
+==
+
+# Modifiers also detects conflict with args
+SELECT * FROM SimpleTypes t
+MATCH_RECOGNIZE(
+  ORDER BY string
+  MEASURES
+      ANY_VALUE(ARRAY_AGG({{A.|t.|}}double ORDER BY {{A.|t.|}}double) GROUP BY {{A.|t.|}}int64) AS m
+  PATTERN (A)
+  DEFINE
+    A AS int64 < 10
+)
+--
+ALTERNATION GROUP: A.,A.,A.
+--
+QueryStmt
++-output_column_list=
+| +-$match_recognize.m#26 AS m [ARRAY<DOUBLE>]
++-query=
+  +-ProjectScan
+    +-column_list=[$match_recognize.m#26]
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[$match_recognize.m#26]
+        +-expr_list=
+        | +-m#26 := ColumnRef(type=ARRAY<DOUBLE>, column=$aggregate.$agg1#25)
+        +-input_scan=
+          +-MatchRecognizeScan
+            +-column_list=[$aggregate.$agg1#25]
+            +-input_scan=
+            | +-TableScan(column_list=SimpleTypes.[int64#2, string#5, double#9], table=SimpleTypes, column_index_list=[1, 4, 8], alias="t")
+            +-analytic_function_group_list=
+            | +-AnalyticFunctionGroup
+            |   +-order_by=
+            |     +-WindowOrdering
+            |       +-order_by_item_list=
+            |         +-OrderByItem
+            |           +-column_ref=
+            |             +-ColumnRef(type=STRING, column=SimpleTypes.string#5)
+            +-pattern_variable_definition_list=
+            | +-MatchRecognizeVariableDefinition
+            |   +-name="A"
+            |   +-predicate=
+            |     +-FunctionCall(GoogleSQL:$less(INT64, INT64) -> BOOL)
+            |       +-ColumnRef(type=INT64, column=SimpleTypes.int64#2)
+            |       +-Literal(type=INT64, value=10)
+            +-pattern=
+            | +-MatchRecognizePatternVariableRef(name="A")
+            +-after_match_skip_mode=END_OF_MATCH
+            +-measure_group_list=
+            | +-MeasureGroup
+            |   +-pattern_variable_ref=
+            |   | +-MatchRecognizePatternVariableRef(name="A")
+            |   +-aggregate_list=
+            |     +-$agg1#25 :=
+            |       +-AggregateFunctionCall(GoogleSQL:any_value(ARRAY<DOUBLE>) -> ARRAY<DOUBLE>)
+            |         +-ColumnRef(type=ARRAY<DOUBLE>, column=$aggregate.$agg1#24)
+            |         +-group_by_list=
+            |         | +-$groupbymod#23 := ColumnRef(type=INT64, column=SimpleTypes.int64#2)
+            |         +-group_by_aggregate_list=
+            |           +-$agg1#24 :=
+            |             +-AggregateFunctionCall(GoogleSQL:array_agg(DOUBLE) -> ARRAY<DOUBLE>)
+            |               +-ColumnRef(type=DOUBLE, column=SimpleTypes.double#9)
+            |               +-order_by_item_list=
+            |                 +-OrderByItem
+            |                   +-column_ref=
+            |                     +-ColumnRef(type=DOUBLE, column=SimpleTypes.double#9)
+            +-match_number_column=$match_recognize.$match_number#20
+            +-match_row_number_column=$match_recognize.$match_row_number#21
+            +-classifier_column=$match_recognize.$classifier#22
+--
+ALTERNATION GROUP: A.,A.,t.
+--
+ERROR: Column access ranges over pattern variable A in an expression that already ranges over a all input rows [at 5:27]
+      ANY_VALUE(ARRAY_AGG(A.double ORDER BY A.double) GROUP BY t.int64) AS m
+                          ^
+--
+ALTERNATION GROUP: A.,A.,
+--
+ERROR: Column access ranges over pattern variable A in an expression that already ranges over a all input rows [at 5:27]
+      ANY_VALUE(ARRAY_AGG(A.double ORDER BY A.double) GROUP BY int64) AS m
+                          ^
+--
+ALTERNATION GROUP: A.,t.,A.
+--
+ERROR: Column access ranges over all input rows in an expression that already ranges over a pattern variable A [at 5:45]
+      ANY_VALUE(ARRAY_AGG(A.double ORDER BY t.double) GROUP BY A.int64) AS m
+                                            ^
+--
+ALTERNATION GROUP: A.,t.,t.
+--
+ERROR: Column access ranges over pattern variable A in an expression that already ranges over a all input rows [at 5:27]
+      ANY_VALUE(ARRAY_AGG(A.double ORDER BY t.double) GROUP BY t.int64) AS m
+                          ^
+--
+ALTERNATION GROUP: A.,t.,
+--
+ERROR: Column access ranges over pattern variable A in an expression that already ranges over a all input rows [at 5:27]
+      ANY_VALUE(ARRAY_AGG(A.double ORDER BY t.double) GROUP BY int64) AS m
+                          ^
+--
+ALTERNATION GROUP: A.,,A.
+--
+ERROR: Column access ranges over all input rows in an expression that already ranges over a pattern variable A [at 5:45]
+      ANY_VALUE(ARRAY_AGG(A.double ORDER BY double) GROUP BY A.int64) AS m
+                                            ^
+--
+ALTERNATION GROUP: A.,,t.
+--
+ERROR: Column access ranges over pattern variable A in an expression that already ranges over a all input rows [at 5:27]
+      ANY_VALUE(ARRAY_AGG(A.double ORDER BY double) GROUP BY t.int64) AS m
+                          ^
+--
+ALTERNATION GROUP: A.,,
+--
+ERROR: Column access ranges over pattern variable A in an expression that already ranges over a all input rows [at 5:27]
+      ANY_VALUE(ARRAY_AGG(A.double ORDER BY double) GROUP BY int64) AS m
+                          ^
+--
+ALTERNATION GROUP: t.,A.,A.
+--
+ERROR: Column access ranges over all input rows in an expression that already ranges over a pattern variable A [at 5:27]
+      ANY_VALUE(ARRAY_AGG(t.double ORDER BY A.double) GROUP BY A.int64) AS m
+                          ^
+--
+ALTERNATION GROUP: t.,A.,t.
+--
+ERROR: Column access ranges over pattern variable A in an expression that already ranges over a all input rows [at 5:45]
+      ANY_VALUE(ARRAY_AGG(t.double ORDER BY A.double) GROUP BY t.int64) AS m
+                                            ^
+--
+ALTERNATION GROUP: t.,A.,
+--
+ERROR: Column access ranges over pattern variable A in an expression that already ranges over a all input rows [at 5:45]
+      ANY_VALUE(ARRAY_AGG(t.double ORDER BY A.double) GROUP BY int64) AS m
+                                            ^
+--
+ALTERNATION GROUP: t.,t.,A.
+--
+ERROR: Column access ranges over all input rows in an expression that already ranges over a pattern variable A [at 5:27]
+      ANY_VALUE(ARRAY_AGG(t.double ORDER BY t.double) GROUP BY A.int64) AS m
+                          ^
+--
+ALTERNATION GROUPS:
+    t.,t.,t.
+    t.,t.,
+    t.,,t.
+    t.,,
+    t.,t.
+    t.,
+    t.
+    <empty>
+--
+QueryStmt
++-output_column_list=
+| +-$match_recognize.m#26 AS m [ARRAY<DOUBLE>]
++-query=
+  +-ProjectScan
+    +-column_list=[$match_recognize.m#26]
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[$match_recognize.m#26]
+        +-expr_list=
+        | +-m#26 := ColumnRef(type=ARRAY<DOUBLE>, column=$aggregate.$agg1#25)
+        +-input_scan=
+          +-MatchRecognizeScan
+            +-column_list=[$aggregate.$agg1#25]
+            +-input_scan=
+            | +-TableScan(column_list=SimpleTypes.[int64#2, string#5, double#9], table=SimpleTypes, column_index_list=[1, 4, 8], alias="t")
+            +-analytic_function_group_list=
+            | +-AnalyticFunctionGroup
+            |   +-order_by=
+            |     +-WindowOrdering
+            |       +-order_by_item_list=
+            |         +-OrderByItem
+            |           +-column_ref=
+            |             +-ColumnRef(type=STRING, column=SimpleTypes.string#5)
+            +-pattern_variable_definition_list=
+            | +-MatchRecognizeVariableDefinition
+            |   +-name="A"
+            |   +-predicate=
+            |     +-FunctionCall(GoogleSQL:$less(INT64, INT64) -> BOOL)
+            |       +-ColumnRef(type=INT64, column=SimpleTypes.int64#2)
+            |       +-Literal(type=INT64, value=10)
+            +-pattern=
+            | +-MatchRecognizePatternVariableRef(name="A")
+            +-after_match_skip_mode=END_OF_MATCH
+            +-measure_group_list=
+            | +-MeasureGroup
+            |   +-aggregate_list=
+            |     +-$agg1#25 :=
+            |       +-AggregateFunctionCall(GoogleSQL:any_value(ARRAY<DOUBLE>) -> ARRAY<DOUBLE>)
+            |         +-ColumnRef(type=ARRAY<DOUBLE>, column=$aggregate.$agg1#24)
+            |         +-group_by_list=
+            |         | +-$groupbymod#23 := ColumnRef(type=INT64, column=SimpleTypes.int64#2)
+            |         +-group_by_aggregate_list=
+            |           +-$agg1#24 :=
+            |             +-AggregateFunctionCall(GoogleSQL:array_agg(DOUBLE) -> ARRAY<DOUBLE>)
+            |               +-ColumnRef(type=DOUBLE, column=SimpleTypes.double#9)
+            |               +-order_by_item_list=
+            |                 +-OrderByItem
+            |                   +-column_ref=
+            |                     +-ColumnRef(type=DOUBLE, column=SimpleTypes.double#9)
+            +-match_number_column=$match_recognize.$match_number#20
+            +-match_row_number_column=$match_recognize.$match_row_number#21
+            +-classifier_column=$match_recognize.$classifier#22
+--
+ALTERNATION GROUP: t.,,A.
+--
+ERROR: Column access ranges over all input rows in an expression that already ranges over a pattern variable A [at 5:27]
+      ANY_VALUE(ARRAY_AGG(t.double ORDER BY double) GROUP BY A.int64) AS m
+                          ^
+--
+ALTERNATION GROUP: A.,A.
+--
+ERROR: Column access ranges over all input rows in an expression that already ranges over a pattern variable A [at 5:27]
+      ANY_VALUE(ARRAY_AGG(double ORDER BY A.double) GROUP BY A.int64) AS m
+                          ^
+--
+ALTERNATION GROUP: A.,t.
+--
+ERROR: Column access ranges over pattern variable A in an expression that already ranges over a all input rows [at 5:43]
+      ANY_VALUE(ARRAY_AGG(double ORDER BY A.double) GROUP BY t.int64) AS m
+                                          ^
+--
+ALTERNATION GROUP: A.,
+--
+ERROR: Column access ranges over pattern variable A in an expression that already ranges over a all input rows [at 5:43]
+      ANY_VALUE(ARRAY_AGG(double ORDER BY A.double) GROUP BY int64) AS m
+                                          ^
+--
+ALTERNATION GROUP: t.,A.
+--
+ERROR: Column access ranges over all input rows in an expression that already ranges over a pattern variable A [at 5:27]
+      ANY_VALUE(ARRAY_AGG(double ORDER BY t.double) GROUP BY A.int64) AS m
+                          ^
+--
+ALTERNATION GROUP: A.
+--
+ERROR: Column access ranges over all input rows in an expression that already ranges over a pattern variable A [at 5:27]
+      ANY_VALUE(ARRAY_AGG(double ORDER BY double) GROUP BY A.int64) AS m
+                          ^
+==
+
+# Pattern variables mixed on separate nested aggregations
+SELECT * FROM SimpleTypes
+MATCH_RECOGNIZE(
+  ORDER BY string
+  MEASURES
+    MAX(MIN({{A.|}}int64) + MIN(B.double) GROUP BY {{A.|}}int32) AS m1
+  PATTERN (A B)
+  DEFINE
+    A AS int64 < 10,
+    B AS int32 >= 10
+)
+--
+ALTERNATION GROUP: A.,A.
+--
+ERROR: Column access ranges over pattern variable B in an expression that already ranges over a pattern variable A [at 5:28]
+    MAX(MIN(A.int64) + MIN(B.double) GROUP BY A.int32) AS m1
+                           ^
+--
+ALTERNATION GROUP: A.,
+--
+ERROR: Column access ranges over pattern variable A in an expression that already ranges over a all input rows [at 5:13]
+    MAX(MIN(A.int64) + MIN(B.double) GROUP BY int32) AS m1
+            ^
+--
+ALTERNATION GROUP: A.
+--
+ERROR: Column access ranges over all input rows in an expression that already ranges over a pattern variable A [at 5:13]
+    MAX(MIN(int64) + MIN(B.double) GROUP BY A.int32) AS m1
+            ^
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: Column access ranges over pattern variable B in an expression that already ranges over a all input rows [at 5:26]
+    MAX(MIN(int64) + MIN(B.double) GROUP BY int32) AS m1
+                         ^
+==
+
+# Partition by with a subquery
+WITH t AS (SELECT 1 AS x, 2 AS y)
+SELECT * FROM SimpleTypes
+MATCH_RECOGNIZE(
+  PARTITION BY int32 IN (SELECT x + int32 FROM t LIMIT 1)
+  ORDER BY string
+  MEASURES
+    MAX(int32 + SUM(int32 + int64 + MIN(double) GROUP BY int64) GROUP BY int32) AS max_agg,
+    ARRAY_AGG(string GROUP BY string ORDER BY MIN(double)) AS array_agg
+  PATTERN (A B)
+  DEFINE
+    A AS int64 < 10,
+    B AS int32 >= 10
+)
+--
+QueryStmt
++-output_column_list=
+| +-$partitionby.$partitionbycol1#25 AS `$partition_by_col1` [BOOL]
+| +-$match_recognize.max_agg#35 AS max_agg [DOUBLE]
+| +-$match_recognize.array_agg#39 AS array_agg [ARRAY<STRING>]
++-query=
+  +-WithScan
+    +-column_list=[$partitionby.$partitionbycol1#25, $match_recognize.max_agg#35, $match_recognize.array_agg#39]
+    +-with_entry_list=
+    | +-WithEntry
+    |   +-with_query_name="t"
+    |   +-with_subquery=
+    |     +-ProjectScan
+    |       +-column_list=t.[x#1, y#2]
+    |       +-expr_list=
+    |       | +-x#1 := Literal(type=INT64, value=1)
+    |       | +-y#2 := Literal(type=INT64, value=2)
+    |       +-input_scan=
+    |         +-SingleRowScan
+    +-query=
+      +-ProjectScan
+        +-column_list=[$partitionby.$partitionbycol1#25, $match_recognize.max_agg#35, $match_recognize.array_agg#39]
+        +-input_scan=
+          +-ProjectScan
+            +-column_list=[$partitionby.$partitionbycol1#25, $match_recognize.max_agg#35, $match_recognize.array_agg#39]
+            +-expr_list=
+            | +-max_agg#35 := ColumnRef(type=DOUBLE, column=$aggregate.$agg1#34)
+            | +-array_agg#39 := ColumnRef(type=ARRAY<STRING>, column=$aggregate.$agg2#38)
+            +-input_scan=
+              +-MatchRecognizeScan
+                +-column_list=[$partitionby.$partitionbycol1#25, $aggregate.$agg1#34, $aggregate.$agg2#38]
+                +-input_scan=
+                | +-ProjectScan
+                |   +-column_list=[SimpleTypes.int32#3, SimpleTypes.int64#4, SimpleTypes.string#7, SimpleTypes.double#11, $partitionby.$partitionbycol1#25]
+                |   +-expr_list=
+                |   | +-$partitionbycol1#25 :=
+                |   |   +-SubqueryExpr
+                |   |     +-type=BOOL
+                |   |     +-subquery_type=IN
+                |   |     +-parameter_list=
+                |   |     | +-ColumnRef(type=INT32, column=SimpleTypes.int32#3)
+                |   |     +-in_expr=
+                |   |     | +-Cast(INT32 -> INT64)
+                |   |     |   +-ColumnRef(type=INT32, column=SimpleTypes.int32#3)
+                |   |     +-subquery=
+                |   |       +-LimitOffsetScan
+                |   |         +-column_list=[$expr_subquery.$col1#24]
+                |   |         +-input_scan=
+                |   |         | +-ProjectScan
+                |   |         |   +-column_list=[$expr_subquery.$col1#24]
+                |   |         |   +-expr_list=
+                |   |         |   | +-$col1#24 :=
+                |   |         |   |   +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+                |   |         |   |     +-ColumnRef(type=INT64, column=t.x#22)
+                |   |         |   |     +-Cast(INT32 -> INT64)
+                |   |         |   |       +-ColumnRef(type=INT32, column=SimpleTypes.int32#3, is_correlated=TRUE)
+                |   |         |   +-input_scan=
+                |   |         |     +-WithRefScan(column_list=t.[x#22, y#23], with_query_name="t")
+                |   |         +-limit=
+                |   |           +-Literal(type=INT64, value=1)
+                |   +-input_scan=
+                |     +-TableScan(column_list=SimpleTypes.[int32#3, int64#4, string#7, double#11], table=SimpleTypes, column_index_list=[0, 1, 4, 8])
+                +-analytic_function_group_list=
+                | +-AnalyticFunctionGroup
+                |   +-partition_by=
+                |   | +-WindowPartitioning
+                |   |   +-partition_by_list=
+                |   |     +-ColumnRef(type=BOOL, column=$partitionby.$partitionbycol1#25)
+                |   +-order_by=
+                |     +-WindowOrdering
+                |       +-order_by_item_list=
+                |         +-OrderByItem
+                |           +-column_ref=
+                |             +-ColumnRef(type=STRING, column=SimpleTypes.string#7)
+                +-pattern_variable_definition_list=
+                | +-MatchRecognizeVariableDefinition
+                | | +-name="A"
+                | | +-predicate=
+                | |   +-FunctionCall(GoogleSQL:$less(INT64, INT64) -> BOOL)
+                | |     +-ColumnRef(type=INT64, column=SimpleTypes.int64#4)
+                | |     +-Literal(type=INT64, value=10)
+                | +-MatchRecognizeVariableDefinition
+                |   +-name="B"
+                |   +-predicate=
+                |     +-FunctionCall(GoogleSQL:$greater_or_equal(INT32, INT32) -> BOOL)
+                |       +-ColumnRef(type=INT32, column=SimpleTypes.int32#3)
+                |       +-Literal(type=INT32, value=10)
+                +-pattern=
+                | +-MatchRecognizePatternOperation
+                |   +-op_type=CONCAT
+                |   +-operand_list=
+                |     +-MatchRecognizePatternVariableRef(name="A")
+                |     +-MatchRecognizePatternVariableRef(name="B")
+                +-after_match_skip_mode=END_OF_MATCH
+                +-measure_group_list=
+                | +-MeasureGroup
+                |   +-aggregate_list=
+                |     +-$agg1#34 :=
+                |     | +-AggregateFunctionCall(GoogleSQL:max(DOUBLE) -> DOUBLE)
+                |     |   +-FunctionCall(GoogleSQL:$add(DOUBLE, DOUBLE) -> DOUBLE)
+                |     |   | +-Cast(INT32 -> DOUBLE)
+                |     |   | | +-ColumnRef(type=INT32, column=$group_by_list.$groupbymod#29)
+                |     |   | +-ColumnRef(type=DOUBLE, column=$aggregate.$agg1#33)
+                |     |   +-group_by_list=
+                |     |   | +-$groupbymod#29 := ColumnRef(type=INT32, column=SimpleTypes.int32#3)
+                |     |   +-group_by_aggregate_list=
+                |     |     +-$agg1#33 :=
+                |     |       +-AggregateFunctionCall(GoogleSQL:sum(DOUBLE) -> DOUBLE)
+                |     |         +-FunctionCall(GoogleSQL:$add(DOUBLE, DOUBLE) -> DOUBLE)
+                |     |         | +-Cast(INT64 -> DOUBLE)
+                |     |         | | +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+                |     |         | |   +-Cast(INT32 -> INT64)
+                |     |         | |   | +-ColumnRef(type=INT32, column=$group_by_list.$groupbymod#30)
+                |     |         | |   +-ColumnRef(type=INT64, column=$group_by_list.$groupbymod#31)
+                |     |         | +-ColumnRef(type=DOUBLE, column=$aggregate.$agg1#32)
+                |     |         +-group_by_list=
+                |     |         | +-$groupbymod#30 := ColumnRef(type=INT32, column=SimpleTypes.int32#3)
+                |     |         | +-$groupbymod#31 := ColumnRef(type=INT64, column=SimpleTypes.int64#4)
+                |     |         +-group_by_aggregate_list=
+                |     |           +-$agg1#32 :=
+                |     |             +-AggregateFunctionCall(GoogleSQL:min(DOUBLE) -> DOUBLE)
+                |     |               +-ColumnRef(type=DOUBLE, column=SimpleTypes.double#11)
+                |     +-$agg2#38 :=
+                |       +-AggregateFunctionCall(GoogleSQL:array_agg(STRING) -> ARRAY<STRING>)
+                |         +-ColumnRef(type=STRING, column=$group_by_list.$groupbymod#36)
+                |         +-order_by_item_list=
+                |         | +-OrderByItem
+                |         |   +-column_ref=
+                |         |     +-ColumnRef(type=DOUBLE, column=$aggregate.$agg1#37)
+                |         +-group_by_list=
+                |         | +-$groupbymod#36 := ColumnRef(type=STRING, column=SimpleTypes.string#7)
+                |         +-group_by_aggregate_list=
+                |           +-$agg1#37 :=
+                |             +-AggregateFunctionCall(GoogleSQL:min(DOUBLE) -> DOUBLE)
+                |               +-ColumnRef(type=DOUBLE, column=SimpleTypes.double#11)
+                +-match_number_column=$match_recognize.$match_number#26
+                +-match_row_number_column=$match_recognize.$match_row_number#27
+                +-classifier_column=$match_recognize.$classifier#28
+==
+
+# Accessing a field on a partitioning column when the partitioning expr is
+# itself a field access.
+SELECT * FROM (SimpleTypes CROSS JOIN ComplexTypes)
+MATCH_RECOGNIZE(
+  PARTITION BY teststruct.d
+  ORDER BY string
+  MEASURES {{A.|}}teststruct.d.b AS m
+  PATTERN (A B)
+  DEFINE
+    A AS int64 < 10,
+    B AS int32 >= 10
+)
+--
+ALTERNATION GROUP: A.
+--
+ERROR: Cannot access columns through pattern variables. [at 5:12]
+  MEASURES A.teststruct.d.b AS m
+           ^
+--
+ALTERNATION GROUP: <empty>
+--
+QueryStmt
++-output_column_list=
+| +-$partitionby.d#26 AS d [STRUCT<a INT32, b STRING>]
+| +-$match_recognize.m#30 AS m [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$partitionby.d#26, $match_recognize.m#30]
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[$partitionby.d#26, $match_recognize.m#30]
+        +-expr_list=
+        | +-m#30 :=
+        |   +-GetStructField
+        |     +-type=STRING
+        |     +-expr=
+        |     | +-ColumnRef(type=STRUCT<a INT32, b STRING>, column=$partitionby.d#26)
+        |     +-field_idx=1
+        +-input_scan=
+          +-MatchRecognizeScan
+            +-column_list=[$partitionby.d#26]
+            +-input_scan=
+            | +-ProjectScan
+            |   +-column_list=[SimpleTypes.int32#1, SimpleTypes.int64#2, SimpleTypes.string#5, ComplexTypes.TestStruct#24, $partitionby.d#26]
+            |   +-expr_list=
+            |   | +-d#26 :=
+            |   |   +-GetStructField
+            |   |     +-type=STRUCT<a INT32, b STRING>
+            |   |     +-expr=
+            |   |     | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#24)
+            |   |     +-field_idx=1
+            |   +-input_scan=
+            |     +-JoinScan
+            |       +-column_list=[SimpleTypes.int32#1, SimpleTypes.int64#2, SimpleTypes.string#5, ComplexTypes.TestStruct#24]
+            |       +-left_scan=
+            |       | +-TableScan(column_list=SimpleTypes.[int32#1, int64#2, string#5], table=SimpleTypes, column_index_list=[0, 1, 4])
+            |       +-right_scan=
+            |         +-TableScan(column_list=[ComplexTypes.TestStruct#24], table=ComplexTypes, column_index_list=[4])
+            +-analytic_function_group_list=
+            | +-AnalyticFunctionGroup
+            |   +-partition_by=
+            |   | +-WindowPartitioning
+            |   |   +-partition_by_list=
+            |   |     +-ColumnRef(type=STRUCT<a INT32, b STRING>, column=$partitionby.d#26)
+            |   +-order_by=
+            |     +-WindowOrdering
+            |       +-order_by_item_list=
+            |         +-OrderByItem
+            |           +-column_ref=
+            |             +-ColumnRef(type=STRING, column=SimpleTypes.string#5)
+            +-pattern_variable_definition_list=
+            | +-MatchRecognizeVariableDefinition
+            | | +-name="A"
+            | | +-predicate=
+            | |   +-FunctionCall(GoogleSQL:$less(INT64, INT64) -> BOOL)
+            | |     +-ColumnRef(type=INT64, column=SimpleTypes.int64#2)
+            | |     +-Literal(type=INT64, value=10)
+            | +-MatchRecognizeVariableDefinition
+            |   +-name="B"
+            |   +-predicate=
+            |     +-FunctionCall(GoogleSQL:$greater_or_equal(INT32, INT32) -> BOOL)
+            |       +-ColumnRef(type=INT32, column=SimpleTypes.int32#1)
+            |       +-Literal(type=INT32, value=10)
+            +-pattern=
+            | +-MatchRecognizePatternOperation
+            |   +-op_type=CONCAT
+            |   +-operand_list=
+            |     +-MatchRecognizePatternVariableRef(name="A")
+            |     +-MatchRecognizePatternVariableRef(name="B")
+            +-after_match_skip_mode=END_OF_MATCH
+            +-match_number_column=$match_recognize.$match_number#27
+            +-match_row_number_column=$match_recognize.$match_row_number#28
+            +-classifier_column=$match_recognize.$classifier#29
+==
+
+# Accessing a field on a partitioning column
+SELECT * FROM (SimpleTypes CROSS JOIN ComplexTypes)
+MATCH_RECOGNIZE(
+  PARTITION BY teststruct.d
+  ORDER BY string
+  MEASURES
+    teststruct.d.a + MAX(teststruct.d.a + SUM(teststruct.d.a + int64 + MIN(double) GROUP BY int64) GROUP BY {{int32|teststruct.d.a}}) AS max_agg,
+    ARRAY_AGG(string GROUP BY string ORDER BY MIN(double)) AS array_agg
+  PATTERN (A B)
+  DEFINE
+    A AS int64 < 10,
+    B AS int32 >= 10
+)
+--
+ALTERNATION GROUP: int32
+--
+QueryStmt
++-output_column_list=
+| +-$partitionby.d#26 AS d [STRUCT<a INT32, b STRING>]
+| +-$match_recognize.max_agg#38 AS max_agg [DOUBLE]
+| +-$match_recognize.array_agg#43 AS array_agg [ARRAY<STRING>]
++-query=
+  +-ProjectScan
+    +-column_list=[$partitionby.d#26, $match_recognize.max_agg#38, $match_recognize.array_agg#43]
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[$partitionby.d#26, $match_recognize.max_agg#38, $match_recognize.array_agg#43]
+        +-expr_list=
+        | +-max_agg#38 :=
+        | | +-FunctionCall(GoogleSQL:$add(DOUBLE, DOUBLE) -> DOUBLE)
+        | |   +-Cast(INT32 -> DOUBLE)
+        | |   | +-GetStructField
+        | |   |   +-type=INT32
+        | |   |   +-expr=
+        | |   |   | +-ColumnRef(type=STRUCT<a INT32, b STRING>, column=$partitionby.d#26)
+        | |   |   +-field_idx=0
+        | |   +-ColumnRef(type=DOUBLE, column=$aggregate.$agg1#37)
+        | +-array_agg#43 := ColumnRef(type=ARRAY<STRING>, column=$aggregate.$agg2#42)
+        +-input_scan=
+          +-MatchRecognizeScan
+            +-column_list=[$partitionby.d#26, $aggregate.$agg1#37, $aggregate.$agg2#42]
+            +-input_scan=
+            | +-ProjectScan
+            |   +-column_list=[SimpleTypes.int32#1, SimpleTypes.int64#2, SimpleTypes.string#5, SimpleTypes.double#9, ComplexTypes.TestStruct#24, $partitionby.d#26]
+            |   +-expr_list=
+            |   | +-d#26 :=
+            |   |   +-GetStructField
+            |   |     +-type=STRUCT<a INT32, b STRING>
+            |   |     +-expr=
+            |   |     | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#24)
+            |   |     +-field_idx=1
+            |   +-input_scan=
+            |     +-JoinScan
+            |       +-column_list=[SimpleTypes.int32#1, SimpleTypes.int64#2, SimpleTypes.string#5, SimpleTypes.double#9, ComplexTypes.TestStruct#24]
+            |       +-left_scan=
+            |       | +-TableScan(column_list=SimpleTypes.[int32#1, int64#2, string#5, double#9], table=SimpleTypes, column_index_list=[0, 1, 4, 8])
+            |       +-right_scan=
+            |         +-TableScan(column_list=[ComplexTypes.TestStruct#24], table=ComplexTypes, column_index_list=[4])
+            +-analytic_function_group_list=
+            | +-AnalyticFunctionGroup
+            |   +-partition_by=
+            |   | +-WindowPartitioning
+            |   |   +-partition_by_list=
+            |   |     +-ColumnRef(type=STRUCT<a INT32, b STRING>, column=$partitionby.d#26)
+            |   +-order_by=
+            |     +-WindowOrdering
+            |       +-order_by_item_list=
+            |         +-OrderByItem
+            |           +-column_ref=
+            |             +-ColumnRef(type=STRING, column=SimpleTypes.string#5)
+            +-pattern_variable_definition_list=
+            | +-MatchRecognizeVariableDefinition
+            | | +-name="A"
+            | | +-predicate=
+            | |   +-FunctionCall(GoogleSQL:$less(INT64, INT64) -> BOOL)
+            | |     +-ColumnRef(type=INT64, column=SimpleTypes.int64#2)
+            | |     +-Literal(type=INT64, value=10)
+            | +-MatchRecognizeVariableDefinition
+            |   +-name="B"
+            |   +-predicate=
+            |     +-FunctionCall(GoogleSQL:$greater_or_equal(INT32, INT32) -> BOOL)
+            |       +-ColumnRef(type=INT32, column=SimpleTypes.int32#1)
+            |       +-Literal(type=INT32, value=10)
+            +-pattern=
+            | +-MatchRecognizePatternOperation
+            |   +-op_type=CONCAT
+            |   +-operand_list=
+            |     +-MatchRecognizePatternVariableRef(name="A")
+            |     +-MatchRecognizePatternVariableRef(name="B")
+            +-after_match_skip_mode=END_OF_MATCH
+            +-measure_group_list=
+            | +-MeasureGroup
+            |   +-aggregate_list=
+            |     +-$agg1#37 :=
+            |     | +-AggregateFunctionCall(GoogleSQL:max(DOUBLE) -> DOUBLE)
+            |     |   +-FunctionCall(GoogleSQL:$add(DOUBLE, DOUBLE) -> DOUBLE)
+            |     |   | +-Cast(INT32 -> DOUBLE)
+            |     |   | | +-GetStructField
+            |     |   | |   +-type=INT32
+            |     |   | |   +-expr=
+            |     |   | |   | +-ColumnRef(type=STRUCT<a INT32, b STRING>, column=$group_by_list.$groupbymod#30)
+            |     |   | |   +-field_idx=0
+            |     |   | +-ColumnRef(type=DOUBLE, column=$aggregate.$agg1#36)
+            |     |   +-group_by_list=
+            |     |   | +-$groupbymod#30 :=
+            |     |   | | +-GetStructField
+            |     |   | |   +-type=STRUCT<a INT32, b STRING>
+            |     |   | |   +-expr=
+            |     |   | |   | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#24)
+            |     |   | |   +-field_idx=1
+            |     |   | +-$groupbymod#31 := ColumnRef(type=INT32, column=SimpleTypes.int32#1)
+            |     |   +-group_by_aggregate_list=
+            |     |     +-$agg1#36 :=
+            |     |       +-AggregateFunctionCall(GoogleSQL:sum(DOUBLE) -> DOUBLE)
+            |     |         +-FunctionCall(GoogleSQL:$add(DOUBLE, DOUBLE) -> DOUBLE)
+            |     |         | +-Cast(INT64 -> DOUBLE)
+            |     |         | | +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+            |     |         | |   +-Cast(INT32 -> INT64)
+            |     |         | |   | +-GetStructField
+            |     |         | |   |   +-type=INT32
+            |     |         | |   |   +-expr=
+            |     |         | |   |   | +-ColumnRef(type=STRUCT<a INT32, b STRING>, column=$group_by_list.$groupbymod#32)
+            |     |         | |   |   +-field_idx=0
+            |     |         | |   +-ColumnRef(type=INT64, column=$group_by_list.$groupbymod#34)
+            |     |         | +-ColumnRef(type=DOUBLE, column=$aggregate.$agg1#35)
+            |     |         +-group_by_list=
+            |     |         | +-$groupbymod#32 :=
+            |     |         | | +-GetStructField
+            |     |         | |   +-type=STRUCT<a INT32, b STRING>
+            |     |         | |   +-expr=
+            |     |         | |   | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#24)
+            |     |         | |   +-field_idx=1
+            |     |         | +-$groupbymod#33 := ColumnRef(type=INT32, column=SimpleTypes.int32#1)
+            |     |         | +-$groupbymod#34 := ColumnRef(type=INT64, column=SimpleTypes.int64#2)
+            |     |         +-group_by_aggregate_list=
+            |     |           +-$agg1#35 :=
+            |     |             +-AggregateFunctionCall(GoogleSQL:min(DOUBLE) -> DOUBLE)
+            |     |               +-ColumnRef(type=DOUBLE, column=SimpleTypes.double#9)
+            |     +-$agg2#42 :=
+            |       +-AggregateFunctionCall(GoogleSQL:array_agg(STRING) -> ARRAY<STRING>)
+            |         +-ColumnRef(type=STRING, column=$group_by_list.$groupbymod#40)
+            |         +-order_by_item_list=
+            |         | +-OrderByItem
+            |         |   +-column_ref=
+            |         |     +-ColumnRef(type=DOUBLE, column=$aggregate.$agg1#41)
+            |         +-group_by_list=
+            |         | +-$groupbymod#39 :=
+            |         | | +-GetStructField
+            |         | |   +-type=STRUCT<a INT32, b STRING>
+            |         | |   +-expr=
+            |         | |   | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#24)
+            |         | |   +-field_idx=1
+            |         | +-$groupbymod#40 := ColumnRef(type=STRING, column=SimpleTypes.string#5)
+            |         +-group_by_aggregate_list=
+            |           +-$agg1#41 :=
+            |             +-AggregateFunctionCall(GoogleSQL:min(DOUBLE) -> DOUBLE)
+            |               +-ColumnRef(type=DOUBLE, column=SimpleTypes.double#9)
+            +-match_number_column=$match_recognize.$match_number#27
+            +-match_row_number_column=$match_recognize.$match_row_number#28
+            +-classifier_column=$match_recognize.$classifier#29
+--
+ALTERNATION GROUP: teststruct.d.a
+--
+QueryStmt
++-output_column_list=
+| +-$partitionby.d#26 AS d [STRUCT<a INT32, b STRING>]
+| +-$match_recognize.max_agg#38 AS max_agg [DOUBLE]
+| +-$match_recognize.array_agg#43 AS array_agg [ARRAY<STRING>]
++-query=
+  +-ProjectScan
+    +-column_list=[$partitionby.d#26, $match_recognize.max_agg#38, $match_recognize.array_agg#43]
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[$partitionby.d#26, $match_recognize.max_agg#38, $match_recognize.array_agg#43]
+        +-expr_list=
+        | +-max_agg#38 :=
+        | | +-FunctionCall(GoogleSQL:$add(DOUBLE, DOUBLE) -> DOUBLE)
+        | |   +-Cast(INT32 -> DOUBLE)
+        | |   | +-GetStructField
+        | |   |   +-type=INT32
+        | |   |   +-expr=
+        | |   |   | +-ColumnRef(type=STRUCT<a INT32, b STRING>, column=$partitionby.d#26)
+        | |   |   +-field_idx=0
+        | |   +-ColumnRef(type=DOUBLE, column=$aggregate.$agg1#37)
+        | +-array_agg#43 := ColumnRef(type=ARRAY<STRING>, column=$aggregate.$agg2#42)
+        +-input_scan=
+          +-MatchRecognizeScan
+            +-column_list=[$partitionby.d#26, $aggregate.$agg1#37, $aggregate.$agg2#42]
+            +-input_scan=
+            | +-ProjectScan
+            |   +-column_list=[SimpleTypes.int32#1, SimpleTypes.int64#2, SimpleTypes.string#5, SimpleTypes.double#9, ComplexTypes.TestStruct#24, $partitionby.d#26]
+            |   +-expr_list=
+            |   | +-d#26 :=
+            |   |   +-GetStructField
+            |   |     +-type=STRUCT<a INT32, b STRING>
+            |   |     +-expr=
+            |   |     | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#24)
+            |   |     +-field_idx=1
+            |   +-input_scan=
+            |     +-JoinScan
+            |       +-column_list=[SimpleTypes.int32#1, SimpleTypes.int64#2, SimpleTypes.string#5, SimpleTypes.double#9, ComplexTypes.TestStruct#24]
+            |       +-left_scan=
+            |       | +-TableScan(column_list=SimpleTypes.[int32#1, int64#2, string#5, double#9], table=SimpleTypes, column_index_list=[0, 1, 4, 8])
+            |       +-right_scan=
+            |         +-TableScan(column_list=[ComplexTypes.TestStruct#24], table=ComplexTypes, column_index_list=[4])
+            +-analytic_function_group_list=
+            | +-AnalyticFunctionGroup
+            |   +-partition_by=
+            |   | +-WindowPartitioning
+            |   |   +-partition_by_list=
+            |   |     +-ColumnRef(type=STRUCT<a INT32, b STRING>, column=$partitionby.d#26)
+            |   +-order_by=
+            |     +-WindowOrdering
+            |       +-order_by_item_list=
+            |         +-OrderByItem
+            |           +-column_ref=
+            |             +-ColumnRef(type=STRING, column=SimpleTypes.string#5)
+            +-pattern_variable_definition_list=
+            | +-MatchRecognizeVariableDefinition
+            | | +-name="A"
+            | | +-predicate=
+            | |   +-FunctionCall(GoogleSQL:$less(INT64, INT64) -> BOOL)
+            | |     +-ColumnRef(type=INT64, column=SimpleTypes.int64#2)
+            | |     +-Literal(type=INT64, value=10)
+            | +-MatchRecognizeVariableDefinition
+            |   +-name="B"
+            |   +-predicate=
+            |     +-FunctionCall(GoogleSQL:$greater_or_equal(INT32, INT32) -> BOOL)
+            |       +-ColumnRef(type=INT32, column=SimpleTypes.int32#1)
+            |       +-Literal(type=INT32, value=10)
+            +-pattern=
+            | +-MatchRecognizePatternOperation
+            |   +-op_type=CONCAT
+            |   +-operand_list=
+            |     +-MatchRecognizePatternVariableRef(name="A")
+            |     +-MatchRecognizePatternVariableRef(name="B")
+            +-after_match_skip_mode=END_OF_MATCH
+            +-measure_group_list=
+            | +-MeasureGroup
+            |   +-aggregate_list=
+            |     +-$agg1#37 :=
+            |     | +-AggregateFunctionCall(GoogleSQL:max(DOUBLE) -> DOUBLE)
+            |     |   +-FunctionCall(GoogleSQL:$add(DOUBLE, DOUBLE) -> DOUBLE)
+            |     |   | +-Cast(INT32 -> DOUBLE)
+            |     |   | | +-ColumnRef(type=INT32, column=$group_by_list.$groupbymod#31)
+            |     |   | +-ColumnRef(type=DOUBLE, column=$aggregate.$agg1#36)
+            |     |   +-group_by_list=
+            |     |   | +-$groupbymod#30 :=
+            |     |   | | +-GetStructField
+            |     |   | |   +-type=STRUCT<a INT32, b STRING>
+            |     |   | |   +-expr=
+            |     |   | |   | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#24)
+            |     |   | |   +-field_idx=1
+            |     |   | +-$groupbymod#31 :=
+            |     |   |   +-GetStructField
+            |     |   |     +-type=INT32
+            |     |   |     +-expr=
+            |     |   |     | +-GetStructField
+            |     |   |     |   +-type=STRUCT<a INT32, b STRING>
+            |     |   |     |   +-expr=
+            |     |   |     |   | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#24)
+            |     |   |     |   +-field_idx=1
+            |     |   |     +-field_idx=0
+            |     |   +-group_by_aggregate_list=
+            |     |     +-$agg1#36 :=
+            |     |       +-AggregateFunctionCall(GoogleSQL:sum(DOUBLE) -> DOUBLE)
+            |     |         +-FunctionCall(GoogleSQL:$add(DOUBLE, DOUBLE) -> DOUBLE)
+            |     |         | +-Cast(INT64 -> DOUBLE)
+            |     |         | | +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+            |     |         | |   +-Cast(INT32 -> INT64)
+            |     |         | |   | +-ColumnRef(type=INT32, column=$group_by_list.$groupbymod#33)
+            |     |         | |   +-ColumnRef(type=INT64, column=$group_by_list.$groupbymod#34)
+            |     |         | +-ColumnRef(type=DOUBLE, column=$aggregate.$agg1#35)
+            |     |         +-group_by_list=
+            |     |         | +-$groupbymod#32 :=
+            |     |         | | +-GetStructField
+            |     |         | |   +-type=STRUCT<a INT32, b STRING>
+            |     |         | |   +-expr=
+            |     |         | |   | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#24)
+            |     |         | |   +-field_idx=1
+            |     |         | +-$groupbymod#33 :=
+            |     |         | | +-GetStructField
+            |     |         | |   +-type=INT32
+            |     |         | |   +-expr=
+            |     |         | |   | +-GetStructField
+            |     |         | |   |   +-type=STRUCT<a INT32, b STRING>
+            |     |         | |   |   +-expr=
+            |     |         | |   |   | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#24)
+            |     |         | |   |   +-field_idx=1
+            |     |         | |   +-field_idx=0
+            |     |         | +-$groupbymod#34 := ColumnRef(type=INT64, column=SimpleTypes.int64#2)
+            |     |         +-group_by_aggregate_list=
+            |     |           +-$agg1#35 :=
+            |     |             +-AggregateFunctionCall(GoogleSQL:min(DOUBLE) -> DOUBLE)
+            |     |               +-ColumnRef(type=DOUBLE, column=SimpleTypes.double#9)
+            |     +-$agg2#42 :=
+            |       +-AggregateFunctionCall(GoogleSQL:array_agg(STRING) -> ARRAY<STRING>)
+            |         +-ColumnRef(type=STRING, column=$group_by_list.$groupbymod#40)
+            |         +-order_by_item_list=
+            |         | +-OrderByItem
+            |         |   +-column_ref=
+            |         |     +-ColumnRef(type=DOUBLE, column=$aggregate.$agg1#41)
+            |         +-group_by_list=
+            |         | +-$groupbymod#39 :=
+            |         | | +-GetStructField
+            |         | |   +-type=STRUCT<a INT32, b STRING>
+            |         | |   +-expr=
+            |         | |   | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#24)
+            |         | |   +-field_idx=1
+            |         | +-$groupbymod#40 := ColumnRef(type=STRING, column=SimpleTypes.string#5)
+            |         +-group_by_aggregate_list=
+            |           +-$agg1#41 :=
+            |             +-AggregateFunctionCall(GoogleSQL:min(DOUBLE) -> DOUBLE)
+            |               +-ColumnRef(type=DOUBLE, column=SimpleTypes.double#9)
+            +-match_number_column=$match_recognize.$match_number#27
+            +-match_row_number_column=$match_recognize.$match_row_number#28
+            +-classifier_column=$match_recognize.$classifier#29
+==
+
+# Regression test for b/380313644
+SELECT * FROM SimpleTypes
+MATCH_RECOGNIZE(
+  ORDER BY string
+  MEASURES
+    string_agg('a' GROUP BY 'a'||'a' ORDER BY avg(2), string_agg('b' ORDER BY a.int32)) AS m
+  PATTERN (a)
+  DEFINE
+    a AS true
+)
+--
+QueryStmt
++-output_column_list=
+| +-$match_recognize.m#27 AS m [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$match_recognize.m#27]
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[$match_recognize.m#27]
+        +-expr_list=
+        | +-m#27 := ColumnRef(type=STRING, column=$aggregate.$agg1#26)
+        +-input_scan=
+          +-MatchRecognizeScan
+            +-column_list=[$aggregate.$agg1#26]
+            +-input_scan=
+            | +-TableScan(column_list=SimpleTypes.[int32#1, string#5], table=SimpleTypes, column_index_list=[0, 4])
+            +-analytic_function_group_list=
+            | +-AnalyticFunctionGroup
+            |   +-order_by=
+            |     +-WindowOrdering
+            |       +-order_by_item_list=
+            |         +-OrderByItem
+            |           +-column_ref=
+            |             +-ColumnRef(type=STRING, column=SimpleTypes.string#5)
+            +-pattern_variable_definition_list=
+            | +-MatchRecognizeVariableDefinition
+            |   +-name="a"
+            |   +-predicate=
+            |     +-Literal(type=BOOL, value=true)
+            +-pattern=
+            | +-MatchRecognizePatternVariableRef(name="a")
+            +-after_match_skip_mode=END_OF_MATCH
+            +-measure_group_list=
+            | +-MeasureGroup
+            |   +-pattern_variable_ref=
+            |   | +-MatchRecognizePatternVariableRef(name="a")
+            |   +-aggregate_list=
+            |     +-$agg1#26 :=
+            |       +-AggregateFunctionCall(GoogleSQL:string_agg(STRING) -> STRING)
+            |         +-Literal(type=STRING, value="a")
+            |         +-order_by_item_list=
+            |         | +-OrderByItem
+            |         | | +-column_ref=
+            |         | |   +-ColumnRef(type=DOUBLE, column=$aggregate.$agg1#24)
+            |         | +-OrderByItem
+            |         |   +-column_ref=
+            |         |     +-ColumnRef(type=STRING, column=$aggregate.$agg2#25)
+            |         +-group_by_list=
+            |         | +-$groupbymod#23 :=
+            |         |   +-FunctionCall(GoogleSQL:concat(STRING, repeated(1) STRING) -> STRING)
+            |         |     +-Literal(type=STRING, value="a")
+            |         |     +-Literal(type=STRING, value="a")
+            |         +-group_by_aggregate_list=
+            |           +-$agg1#24 :=
+            |           | +-AggregateFunctionCall(GoogleSQL:avg(INT64) -> DOUBLE)
+            |           |   +-Literal(type=INT64, value=2)
+            |           +-$agg2#25 :=
+            |             +-AggregateFunctionCall(GoogleSQL:string_agg(STRING) -> STRING)
+            |               +-Literal(type=STRING, value="b")
+            |               +-order_by_item_list=
+            |                 +-OrderByItem
+            |                   +-column_ref=
+            |                     +-ColumnRef(type=INT32, column=SimpleTypes.int32#1)
+            +-match_number_column=$match_recognize.$match_number#20
+            +-match_row_number_column=$match_recognize.$match_row_number#21
+            +-classifier_column=$match_recognize.$classifier#22
+==
+
+# Regression test for b/380313644
+# Using COUNT(*) instead of avg(2) because it's not constant but can still be
+# applied directly to the restricted range.
+SELECT * FROM SimpleTypes
+MATCH_RECOGNIZE(
+  ORDER BY string
+  MEASURES
+    string_agg('a' GROUP BY 'a'||'a' ORDER BY count(*), string_agg('b' ORDER BY a.int32)) AS m
+  PATTERN (a)
+  DEFINE
+    a AS true
+)
+--
+QueryStmt
++-output_column_list=
+| +-$match_recognize.m#27 AS m [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$match_recognize.m#27]
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[$match_recognize.m#27]
+        +-expr_list=
+        | +-m#27 := ColumnRef(type=STRING, column=$aggregate.$agg1#26)
+        +-input_scan=
+          +-MatchRecognizeScan
+            +-column_list=[$aggregate.$agg1#26]
+            +-input_scan=
+            | +-TableScan(column_list=SimpleTypes.[int32#1, string#5], table=SimpleTypes, column_index_list=[0, 4])
+            +-analytic_function_group_list=
+            | +-AnalyticFunctionGroup
+            |   +-order_by=
+            |     +-WindowOrdering
+            |       +-order_by_item_list=
+            |         +-OrderByItem
+            |           +-column_ref=
+            |             +-ColumnRef(type=STRING, column=SimpleTypes.string#5)
+            +-pattern_variable_definition_list=
+            | +-MatchRecognizeVariableDefinition
+            |   +-name="a"
+            |   +-predicate=
+            |     +-Literal(type=BOOL, value=true)
+            +-pattern=
+            | +-MatchRecognizePatternVariableRef(name="a")
+            +-after_match_skip_mode=END_OF_MATCH
+            +-measure_group_list=
+            | +-MeasureGroup
+            |   +-pattern_variable_ref=
+            |   | +-MatchRecognizePatternVariableRef(name="a")
+            |   +-aggregate_list=
+            |     +-$agg1#26 :=
+            |       +-AggregateFunctionCall(GoogleSQL:string_agg(STRING) -> STRING)
+            |         +-Literal(type=STRING, value="a")
+            |         +-order_by_item_list=
+            |         | +-OrderByItem
+            |         | | +-column_ref=
+            |         | |   +-ColumnRef(type=INT64, column=$aggregate.$agg1#24)
+            |         | +-OrderByItem
+            |         |   +-column_ref=
+            |         |     +-ColumnRef(type=STRING, column=$aggregate.$agg2#25)
+            |         +-group_by_list=
+            |         | +-$groupbymod#23 :=
+            |         |   +-FunctionCall(GoogleSQL:concat(STRING, repeated(1) STRING) -> STRING)
+            |         |     +-Literal(type=STRING, value="a")
+            |         |     +-Literal(type=STRING, value="a")
+            |         +-group_by_aggregate_list=
+            |           +-$agg1#24 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+            |           +-$agg2#25 :=
+            |             +-AggregateFunctionCall(GoogleSQL:string_agg(STRING) -> STRING)
+            |               +-Literal(type=STRING, value="b")
+            |               +-order_by_item_list=
+            |                 +-OrderByItem
+            |                   +-column_ref=
+            |                     +-ColumnRef(type=INT32, column=SimpleTypes.int32#1)
+            +-match_number_column=$match_recognize.$match_number#20
+            +-match_row_number_column=$match_recognize.$match_row_number#21
+            +-classifier_column=$match_recognize.$classifier#22

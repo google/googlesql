@@ -4,7 +4,7 @@
 
 # Numbering functions
 
-ZetaSQL supports numbering functions.
+GoogleSQL supports numbering functions.
 Numbering functions are a subset of window functions. To create a
 window function call and learn about the syntax for window functions,
 see [Window function calls][window-function-calls].
@@ -25,7 +25,7 @@ numbering functions.
   <tbody>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/numbering_functions.md#cume_dist"><code>CUME_DIST</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/numbering_functions.md#cume_dist"><code>CUME_DIST</code></a>
 </td>
   <td>
     Gets the cumulative distribution (relative position (0,1]) of each row
@@ -35,7 +35,7 @@ numbering functions.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/numbering_functions.md#dense_rank"><code>DENSE_RANK</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/numbering_functions.md#dense_rank"><code>DENSE_RANK</code></a>
 </td>
   <td>
     Gets the dense rank (1-based, no gaps) of each row within a window.
@@ -46,7 +46,7 @@ numbering functions.
 <tr>
   <td>
     
-    <a href="https://github.com/google/zetasql/blob/master/docs/numbering_functions.md#is_first"><code>IS_FIRST</code></a>
+    <a href="https://github.com/google/googlesql/blob/master/docs/numbering_functions.md#is_first"><code>IS_FIRST</code></a>
 
     
   </td>
@@ -57,7 +57,7 @@ numbering functions.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/numbering_functions.md#IS_LAST"><code>IS_LAST</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/numbering_functions.md#IS_LAST"><code>IS_LAST</code></a>
 </td>
   <td>
         Returns <code>true</code> if this row is in the last <code>k</code> rows (1-based) within the window.
@@ -66,7 +66,7 @@ numbering functions.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/numbering_functions.md#ntile"><code>NTILE</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/numbering_functions.md#ntile"><code>NTILE</code></a>
 </td>
   <td>
     Gets the quantile bucket number (1-based) of each row within a window.
@@ -75,7 +75,7 @@ numbering functions.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/numbering_functions.md#percent_rank"><code>PERCENT_RANK</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/numbering_functions.md#percent_rank"><code>PERCENT_RANK</code></a>
 </td>
   <td>
     Gets the percentile rank (from 0 to 1) of each row within a window.
@@ -84,7 +84,7 @@ numbering functions.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/numbering_functions.md#rank"><code>RANK</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/numbering_functions.md#rank"><code>RANK</code></a>
 </td>
   <td>
     Gets the rank (1-based) of each row within a window.
@@ -93,7 +93,7 @@ numbering functions.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/numbering_functions.md#row_number"><code>ROW_NUMBER</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/numbering_functions.md#row_number"><code>ROW_NUMBER</code></a>
 </td>
   <td>
     Gets the sequential row number (1-based) of each row within a window.
@@ -106,7 +106,7 @@ numbering functions.
 
 ## `CUME_DIST`
 
-```zetasql
+```googlesql
 CUME_DIST()
 OVER over_clause
 
@@ -131,7 +131,7 @@ To learn more about the `OVER` clause and how to use it, see
 
 <!-- mdlint off(WHITESPACE_LINE_LENGTH) -->
 
-[window-function-calls]: https://github.com/google/zetasql/blob/master/docs/window-function-calls.md
+[window-function-calls]: https://github.com/google/googlesql/blob/master/docs/window-function-calls.md
 
 <!-- mdlint on -->
 
@@ -141,7 +141,7 @@ To learn more about the `OVER` clause and how to use it, see
 
 **Example**
 
-```zetasql
+```googlesql
 WITH finishers AS
  (SELECT 'Sophia Liu' as name,
   TIMESTAMP '2016-10-18 2:51:45' as finish_time,
@@ -175,7 +175,7 @@ FROM finishers;
 
 ## `DENSE_RANK`
 
-```zetasql
+```googlesql
 DENSE_RANK()
 OVER over_clause
 
@@ -200,7 +200,7 @@ To learn more about the `OVER` clause and how to use it, see
 
 <!-- mdlint off(WHITESPACE_LINE_LENGTH) -->
 
-[window-function-calls]: https://github.com/google/zetasql/blob/master/docs/window-function-calls.md
+[window-function-calls]: https://github.com/google/googlesql/blob/master/docs/window-function-calls.md
 
 <!-- mdlint on -->
 
@@ -210,7 +210,7 @@ To learn more about the `OVER` clause and how to use it, see
 
 **Examples**
 
-```zetasql
+```googlesql
 WITH Numbers AS
  (SELECT 1 as x
   UNION ALL SELECT 2
@@ -237,7 +237,7 @@ FROM Numbers
  +-------------------------*/
 ```
 
-```zetasql
+```googlesql
 WITH finishers AS
  (SELECT 'Sophia Liu' as name,
   TIMESTAMP '2016-10-18 2:51:45' as finish_time,
@@ -271,7 +271,7 @@ FROM finishers;
 
 ## `IS_FIRST`
 
-```zetasql
+```googlesql
 IS_FIRST(k)
 OVER over_clause
 
@@ -306,7 +306,7 @@ To learn more about the `OVER` clause and how to use it, see
 
 <!-- mdlint off(WHITESPACE_LINE_LENGTH) -->
 
-[window-function-calls]: https://github.com/google/zetasql/blob/master/docs/window-function-calls.md
+[window-function-calls]: https://github.com/google/googlesql/blob/master/docs/window-function-calls.md
 
 <!-- mdlint on -->
 
@@ -316,7 +316,7 @@ To learn more about the `OVER` clause and how to use it, see
 
 **Examples**
 
-```zetasql
+```googlesql
 WITH Numbers AS
  (SELECT 1 as x
   UNION ALL SELECT 2
@@ -343,7 +343,7 @@ FROM Numbers
  +-------------------------*/
 ```
 
-```zetasql
+```googlesql
 WITH finishers AS
  (SELECT 'Sophia Liu' as name,
   TIMESTAMP '2016-10-18 2:51:45' as finish_time,
@@ -377,7 +377,7 @@ FROM finishers;
 
 ## `IS_LAST`
 
-```zetasql
+```googlesql
 IS_LAST(k)
 OVER over_clause
 
@@ -412,7 +412,7 @@ To learn more about the `OVER` clause and how to use it, see
 
 <!-- mdlint off(WHITESPACE_LINE_LENGTH) -->
 
-[window-function-calls]: https://github.com/google/zetasql/blob/master/docs/window-function-calls.md
+[window-function-calls]: https://github.com/google/googlesql/blob/master/docs/window-function-calls.md
 
 <!-- mdlint on -->
 
@@ -422,7 +422,7 @@ To learn more about the `OVER` clause and how to use it, see
 
 **Examples**
 
-```zetasql
+```googlesql
 WITH Numbers AS
  (SELECT 1 as x
   UNION ALL SELECT 2
@@ -449,7 +449,7 @@ FROM Numbers
  +-------------------------*/
 ```
 
-```zetasql
+```googlesql
 WITH finishers AS
  (SELECT 'Sophia Liu' as name,
   TIMESTAMP '2016-10-18 2:51:45' as finish_time,
@@ -483,7 +483,7 @@ FROM finishers;
 
 ## `NTILE`
 
-```zetasql
+```googlesql
 NTILE(constant_integer_expression)
 OVER over_clause
 
@@ -512,7 +512,7 @@ To learn more about the `OVER` clause and how to use it, see
 
 <!-- mdlint off(WHITESPACE_LINE_LENGTH) -->
 
-[window-function-calls]: https://github.com/google/zetasql/blob/master/docs/window-function-calls.md
+[window-function-calls]: https://github.com/google/googlesql/blob/master/docs/window-function-calls.md
 
 <!-- mdlint on -->
 
@@ -522,7 +522,7 @@ To learn more about the `OVER` clause and how to use it, see
 
 **Example**
 
-```zetasql
+```googlesql
 WITH finishers AS
  (SELECT 'Sophia Liu' as name,
   TIMESTAMP '2016-10-18 2:51:45' as finish_time,
@@ -556,7 +556,7 @@ FROM finishers;
 
 ## `PERCENT_RANK`
 
-```zetasql
+```googlesql
 PERCENT_RANK()
 OVER over_clause
 
@@ -581,7 +581,7 @@ To learn more about the `OVER` clause and how to use it, see
 
 <!-- mdlint off(WHITESPACE_LINE_LENGTH) -->
 
-[window-function-calls]: https://github.com/google/zetasql/blob/master/docs/window-function-calls.md
+[window-function-calls]: https://github.com/google/googlesql/blob/master/docs/window-function-calls.md
 
 <!-- mdlint on -->
 
@@ -591,7 +591,7 @@ To learn more about the `OVER` clause and how to use it, see
 
 **Example**
 
-```zetasql
+```googlesql
 WITH finishers AS
  (SELECT 'Sophia Liu' as name,
   TIMESTAMP '2016-10-18 2:51:45' as finish_time,
@@ -625,7 +625,7 @@ FROM finishers;
 
 ## `RANK`
 
-```zetasql
+```googlesql
 RANK()
 OVER over_clause
 
@@ -651,7 +651,7 @@ To learn more about the `OVER` clause and how to use it, see
 
 <!-- mdlint off(WHITESPACE_LINE_LENGTH) -->
 
-[window-function-calls]: https://github.com/google/zetasql/blob/master/docs/window-function-calls.md
+[window-function-calls]: https://github.com/google/googlesql/blob/master/docs/window-function-calls.md
 
 <!-- mdlint on -->
 
@@ -661,7 +661,7 @@ To learn more about the `OVER` clause and how to use it, see
 
 **Examples**
 
-```zetasql
+```googlesql
 WITH Numbers AS
  (SELECT 1 as x
   UNION ALL SELECT 2
@@ -688,7 +688,7 @@ FROM Numbers
  +-------------------------*/
 ```
 
-```zetasql
+```googlesql
 WITH finishers AS
  (SELECT 'Sophia Liu' as name,
   TIMESTAMP '2016-10-18 2:51:45' as finish_time,
@@ -722,7 +722,7 @@ FROM finishers;
 
 ## `ROW_NUMBER`
 
-```zetasql
+```googlesql
 ROW_NUMBER()
 OVER over_clause
 
@@ -750,7 +750,7 @@ To learn more about the `OVER` clause and how to use it, see
 
 <!-- mdlint off(WHITESPACE_LINE_LENGTH) -->
 
-[window-function-calls]: https://github.com/google/zetasql/blob/master/docs/window-function-calls.md
+[window-function-calls]: https://github.com/google/googlesql/blob/master/docs/window-function-calls.md
 
 <!-- mdlint on -->
 
@@ -760,7 +760,7 @@ To learn more about the `OVER` clause and how to use it, see
 
 **Examples**
 
-```zetasql
+```googlesql
 WITH Numbers AS
  (SELECT 1 as x
   UNION ALL SELECT 2
@@ -787,7 +787,7 @@ FROM Numbers
  +-------------------------*/
 ```
 
-```zetasql
+```googlesql
 WITH finishers AS
  (SELECT 'Sophia Liu' as name,
   TIMESTAMP '2016-10-18 2:51:45' as finish_time,
@@ -821,7 +821,7 @@ FROM finishers;
 
 <!-- mdlint off(WHITESPACE_LINE_LENGTH) -->
 
-[window-function-calls]: https://github.com/google/zetasql/blob/master/docs/window-function-calls.md
+[window-function-calls]: https://github.com/google/googlesql/blob/master/docs/window-function-calls.md
 
 <!-- mdlint on -->
 

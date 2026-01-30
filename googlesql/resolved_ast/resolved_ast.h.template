@@ -1,0 +1,825 @@
+//
+// Copyright 2019 Google LLC
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+//
+
+{% from './resolved_ast_field.h.template.import' import field_methods %}
+// resolved_ast.h GENERATED FROM resolved_ast.h.template
+#ifndef GOOGLESQL_RESOLVED_AST_RESOLVED_AST_H_
+#define GOOGLESQL_RESOLVED_AST_RESOLVED_AST_H_
+
+#include <atomic>
+#include <cstdint>
+#include <memory>
+#include <vector>
+
+#include "google/protobuf/descriptor.h"
+#include "googlesql/public/catalog.h"
+#include "googlesql/public/constant.h"
+#include "googlesql/public/function.h"
+#include "googlesql/public/procedure.h"
+#include "googlesql/public/table_valued_function.h"
+#include "googlesql/public/type.h"
+#include "googlesql/public/type_annotation.pb.h"
+#include "googlesql/public/types/type_modifiers.h"
+#include "googlesql/public/types/type_parameters.h"
+#include "googlesql/public/value.h"
+#include "googlesql/resolved_ast/resolved_ast.pb.h"
+#include "googlesql/resolved_ast/resolved_ast_enums.pb.h"
+#include "googlesql/resolved_ast/resolved_collation.h"
+#include "googlesql/resolved_ast/resolved_column.h"
+#include "googlesql/resolved_ast/resolved_node.h"
+#include "googlesql/resolved_ast/resolved_node_kind.h"
+#include "googlesql/base/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+{% macro ZeroArgCtor(node) %}
+  {{node.name}}()
+      : {{node.parent}}()
+    # for field in node.fields
+      , {{field.member_name}}()
+    # endfor
+  {}
+{% endmacro %}
+{{blank_line}}
+namespace googlesql {
+
+class ResolvedASTVisitor;
+
+# for node in nodes
+class {{node.name}};
+# if not node.is_abstract
+class {{node.builder_name}};
+# endif
+# endfor
+{{blank_line}}
+# for node in nodes
+# if node.comment
+{{node.comment}}
+# endif
+class {{node.name}} {{node.class_final}} : public {{node.parent}} {
+ public:
+  typedef {{node.parent}} SUPER;
+
+# if not node.is_abstract
+  static const ResolvedNodeKind TYPE = {{node.enum_name}};
+
+# else
+  // Number of leaf node types that exist as descendants of this abstract type.
+  static const int NUM_DESCENDANT_LEAF_TYPES = {{node.num_descendant_leaf_types}};
+
+# endif
+# if node.extra_defs
+{{node.extra_defs}}
+
+# endif
+# if node.extra_defs_node_only
+{{node.extra_defs_node_only}}
+{{blank_line}}
+# endif
+
+# if node.emit_default_constructor and not node.is_abstract
+ protected:
+{{ ZeroArgCtor(node) }}
+# endif
+ public:
+
+  {{node.name}}(const {{node.name}}&) = delete;
+  {{node.name}}& operator=(const {{node.name}}&) = delete;
+
+{# Make function for building, always return unique_ptr #}
+# if not node.is_abstract and ((node.inherited_fields + node.fields) | is_constructor_arg)
+  friend std::unique_ptr<{{node.name}}> Make{{node.name}}(
+ # for field in (node.inherited_fields + node.fields) | is_constructor_arg
+      {{field.setter_arg_type}} {{field.name}}{%if not loop.last%},{%endif%}
+
+ # endfor
+  );
+# endif
+  ~{{node.name}}() {{node.override_or_final}};
+
+  absl::Status Accept(ResolvedASTVisitor* visitor) const {{node.override_or_final}};
+  absl::Status ChildrenAccept(ResolvedASTVisitor* visitor) const {{node.override_or_final}};
+
+# if not node.is_abstract
+  ResolvedNodeKind node_kind() const {{node.override_or_final}} { return {{node.enum_name}}; }
+  std::string node_kind_string() const {{node.override_or_final}} { return "{{node.node_kind_name}}"; }
+
+# endif
+# if node.fields
+  absl::Status CheckFieldsAccessedImpl(const ResolvedNode* root) const
+      {{node.override_or_final}};
+  absl::Status CheckNoFieldsAccessed() const {{node.override_or_final}};
+  void ClearFieldsAccessed() const {{node.override_or_final}};
+  void MarkFieldsAccessed() const {{node.override_or_final}};
+
+# endif
+  template <typename SUBTYPE>
+  bool Is() const {
+    static_assert((std::is_base_of<{{node.name}}, SUBTYPE>::value),
+                  "target type not derived from source type");
+    return dynamic_cast<const SUBTYPE*>(this) != nullptr;
+  }
+
+  template <typename SUBTYPE>
+  const SUBTYPE* GetAs() const {
+    return static_cast<const SUBTYPE*>(this);
+  }
+  template <typename SUBTYPE>
+  SUBTYPE* GetAs() {
+    return static_cast<SUBTYPE*>(this);
+  }
+
+  using SUPER::SaveTo;
+  absl::Status SaveTo(Type::FileDescriptorSetMap* file_descriptor_set_map,
+                      {{node.proto_type}}* proto) const;
+
+  absl::Status SaveTo(Type::FileDescriptorSetMap* file_descriptor_set_map,
+                      {{node.parent_proto_container_type}}* proto) const final;
+
+# if node.is_abstract
+  virtual absl::Status SaveTo(
+      Type::FileDescriptorSetMap* file_descriptor_set_map,
+      {{node.proto_field_type}}* proto) const = 0;
+# endif
+
+  static absl::StatusOr<std::unique_ptr<{{node.name}}>> RestoreFrom(
+      const {{node.proto_field_type}}& proto,
+      const ResolvedNode::RestoreParams& params);
+
+# if node.fields
+  void GetChildNodes(
+      std::vector<const ResolvedNode*>* child_nodes)
+          const {{node.override_or_final}};
+
+  void AddMutableChildNodePointers(
+      std::vector<std::unique_ptr<const ResolvedNode>*>*
+          mutable_child_node_ptrs) {{node.override_or_final}};
+
+# endif
+
+  // Member fields
+
+# for field in node.fields
+{{ field_methods(field, is_from_builder=False) }}
+{{ blank_line }}
+# endfor
+
+ protected:
+# if node.is_abstract or not node.emit_default_constructor
+{{ ZeroArgCtor(node) }}
+# endif
+{# Constructor that initializes fields in the superclass and in this class #}
+  explicit {{node.name}}(
+ # for field in (node.inherited_fields + node.fields) | is_constructor_arg
+      {{field.setter_arg_type}} {{field.name}},
+ # endfor
+      ConstructorOverload)
+      : {{node.parent}}(
+ # for field in node.inherited_fields | is_constructor_arg
+   # if field.is_move_only
+            std::move({{field.name}}),
+   # else
+            {{field.name}},
+   # endif
+ # endfor
+  {%- if node.parent != "ResolvedNode" %}
+            ConstructorOverload::NEW_CONSTRUCTOR
+  {%- endif %})
+ {%- for field in node.fields %},
+  {% if field.is_constructor_arg %}
+   {%- if field.is_move_only %}
+      {{field.member_name}}(std::move({{field.name}}))
+   {%- else %}
+      {{field.member_name}}({{field.name}})
+   {%- endif %}
+  {%- else %}
+      {{field.member_name}}()
+  {%- endif %}
+ {%- endfor %} {
+ # for field in node.fields
+  # if field.propagate_order
+    set_is_ordered({{field.member_name}}->is_ordered());
+  # endif
+ # endfor
+  }
+
+# if node.fields
+  void CollectDebugStringFields(
+      std::vector<DebugStringField>* fields) const {{node.override_or_final}};
+ # if node.use_custom_debug_string
+  std::string GetNameForDebugString(
+      const DebugStringConfig& config) const {{node.override_or_final}};
+ # endif
+
+# endif
+# if node.fields
+  std::vector<ResolvedColumn> GetColumnsCreated() const override;
+  std::vector<ResolvedColumn> GetColumnsReferenced() const override;
+
+# endif
+# if node.column_list_is_created_columns
+  bool ColumnListIsCreatedColumns() const override { return true; }
+
+# endif
+ private:
+# if node.is_abstract
+  {# List all builders for concrete subclasses as friends, so that they can #}
+  {# access these members. #}
+  # for leaf in node.subclasses if not leaf.is_abstract
+  friend class {{leaf.builder_name}};
+  # endfor
+# else
+  # if node.emit_default_constructor
+  friend std::unique_ptr<{{node.name}}> Make{{node.name}}();
+  # endif
+
+  friend class {{node.builder_name}};
+  friend {{node.builder_name}} ToBuilder(std::unique_ptr<const {{node.name}}>);
+# endif
+
+  // Define this locally so our free function factories (friends) can access it.
+  constexpr static ConstructorOverload NEW_CONSTRUCTOR =
+      ResolvedNode::ConstructorOverload::NEW_CONSTRUCTOR;
+
+# for field in node.fields
+  bool {{field.name}}_accessed() const {
+    return accessed_ & {{field.bitmap}};
+ }
+# endfor
+
+
+# for field in node.fields
+  # if not field.is_default_constructible
+  absl::optional<{{field.member_type}}> {{field.member_name}};
+  # else
+  {{field.member_type}} {{field.member_name}};
+  # endif
+# endfor
+# if node.fields
+  mutable std::atomic<uint32_t> accessed_ = {0};
+# endif
+};
+
+{# Free function for building, always return unique_ptr #}
+# if not node.is_abstract and ((node.inherited_fields + node.fields) | is_constructor_arg)
+# if node.has_node_vector_constructor_arg
+# endif
+inline std::unique_ptr<{{node.name}}> Make{{node.name}}(
+ {% for field in (node.inherited_fields + node.fields) | is_constructor_arg %}
+    {{field.scoped_setter_arg_type}} {{field.name}}
+  {%-if not loop.last%},{{ blank_line }}
+  {%-endif%}
+ {%- endfor %}) {
+  return std::unique_ptr<{{node.name}}>(new {{node.name}}(
+ # for field in (node.inherited_fields + node.fields) | is_constructor_arg
+   # if field.is_move_only
+        std::move({{field.name}}),
+   # else
+        {{field.name}},
+   # endif
+ # endfor
+        {{node.name}}::NEW_CONSTRUCTOR));
+}
+# endif
+
+{# Free function for building containing only required arguments, always return unique_ptr #}
+# if not node.is_abstract and ((node.inherited_fields + node.fields) | is_optional_constructor_arg)
+inline std::unique_ptr<{{node.name}}> Make{{node.name}}(
+ {% for field in (node.inherited_fields + node.fields) | is_required_constructor_arg %}
+    {{field.scoped_setter_arg_type}} {{field.name}}
+  {%-if not loop.last%},{{ blank_line }}
+  {%-endif%}
+ {%- endfor %}) {
+  return Make{{node.name}}(
+ # for field in (node.inherited_fields + node.fields) | is_constructor_arg
+   # if field.is_optional_constructor_arg
+      /*{{field.name}}=*/{{ '{' }}{{field.cpp_default}}{{ '}' }}{%if not loop.last%},
+{%endif%}
+   # elif field.is_move_only
+      std::move({{field.name}}){%if not loop.last%},
+{%endif%}
+   # else
+      {{field.name}}{%if not loop.last%},
+{%endif%}
+   # endif
+ # endfor
+);
+}
+# endif
+
+# if node.has_node_vector_constructor_arg and not node.is_abstract
+{{ blank_line }}
+// Overloaded factory method for the construction of {{node.name}} with
+// a wider range of inputs for node-vector inputs.  In particular allows:
+// 1. unique_ptr element type can be non-const.
+// 2. unique_ptr element type can be any descendant of the required type.
+// 3. input container can be any object with a `begin()` and `end()`.
+//
+// Note, initializer lists cannot be used to pass
+// {% for field in (node.inherited_fields + node.fields) | is_node_vector_constructor_arg %}
+ {{field.name}}{%if not loop.last%},{%endif%}
+ {% endfor %}
+
+// due to incompatibility with unique_ptr.  Use googlesql::MakeNodeVector
+// instead.
+template <
+# for field in (node.inherited_fields + node.fields) | is_node_vector_constructor_arg
+  typename {{field.name}}_t
+      = {{field.setter_arg_type}}{%if not loop.last%},
+{% else %}>
+{% endif %}
+# endfor
+
+std::unique_ptr<{{node.name}}> Make{{node.name}}(
+ # for field in (node.inherited_fields + node.fields) | is_constructor_arg
+   # if field.is_node_vector
+    {{field.name}}_t {{field.name}}{%if not loop.last%},
+{%endif%}
+   # else
+    {{field.scoped_setter_arg_type}} {{field.name}}{%if not loop.last%},
+{%endif%}
+   # endif
+ # endfor
+) {
+  # for field in (node.inherited_fields + node.fields) | is_node_vector_constructor_arg
+  {# Provide slightly better error message in the case of type mis-match. #}
+  static_assert(std::is_base_of<
+      {{field.ctype}},
+      typename std::decay<decltype(**({{field.name}}.begin()))>::type>::value,
+      "{{field.name}} must be a container of unique_ptr with elements of type "
+      "{{field.ctype}} (or its descendants).");
+  # endfor
+
+  return Make{{node.name}}(
+ # for field in (node.inherited_fields + node.fields) | is_constructor_arg
+   # if field.is_node_vector
+      {std::make_move_iterator({{field.name}}.begin()),
+       std::make_move_iterator({{field.name}}.end())}{%if not loop.last%},
+{% endif %}
+   # elif field.is_move_only
+      std::move({{field.name}}){%if not loop.last%},
+{% endif %}
+   # else
+      {{field.name}}{%if not loop.last%},
+{% endif %}
+   # endif
+ # endfor
+);
+}
+
+# endif
+
+{# Zero-arg free function #}
+# if node.emit_default_constructor and not node.is_abstract
+{{ blank_line }}
+inline std::unique_ptr<{{node.name}}> Make{{node.name}}() {
+  {# Note: can't use make_unique because constructor is protected. #}
+  return std::unique_ptr<{{node.name}}>(
+      new {{node.name}}());
+}
+# endif
+{{ blank_line }}
+# endfor
+
+inline std::unique_ptr<ResolvedLiteral> MakeResolvedLiteral(
+    const Value& value) {
+  // The float_literal_id is 0 for any ResolvedLiterals whose original images
+  // are not stored in the resolver's float literal cache.
+  return MakeResolvedLiteral(value.type(), value, false /* has_explicit_type */,
+                             0 /* float_literal_id */);
+}
+
+inline std::unique_ptr<ResolvedLiteral> MakeResolvedLiteral(
+    const Type* type, const Value& value, bool has_explicit_type) {
+  // The float_literal_id is 0 for any ResolvedLiterals whose original images
+  // are not stored in the resolver's float literal cache.
+  return MakeResolvedLiteral(type, value, has_explicit_type,
+                             /*literal_id=*/ 0);
+}
+
+// This should be the only way to create a ResolvedColumnRef, and all other
+// overloads removed, to ensure consistency of the annotated type with the
+// referenced column.
+inline std::unique_ptr<ResolvedColumnRef> MakeResolvedColumnRef(
+    const ResolvedColumn& column, bool is_correlated) {
+  auto column_ref = MakeResolvedColumnRef(column.type(), column, is_correlated);
+  column_ref->set_type_annotation_map(column.type_annotation_map());
+  return column_ref;
+}
+
+// This should be the only way to create a ResolvedWithExpr, and all other
+// overloads removed, to ensure consistency of the annotated type with the
+// final expression.
+inline std::unique_ptr<ResolvedWithExpr> MakeResolvedWithExpr(
+    std::vector<std::unique_ptr<const ResolvedComputedColumn>> assignment_list,
+    std::unique_ptr<const ResolvedExpr> expr) {
+  AnnotatedType annotated_type = expr->annotated_type();
+  auto with_expr = MakeResolvedWithExpr(annotated_type.type,
+                                        std::move(assignment_list),
+                                        std::move(expr));
+  with_expr->set_type_annotation_map(annotated_type.annotation_map);
+  return with_expr;
+}
+
+// This is here for backward compatibility because we added a field
+// generic_argument_list. May be removed in the future.
+//
+// Overloaded factory method for the construction of ResolvedFunctionCall with
+// a wider range of inputs for node-vector inputs.  In particular allows:
+// 1. unique_ptr element type can be non-const.
+// 2. unique_ptr element type can be any descendant of the required type.
+// 3. input container can be any object with a `begin()` and `end()`.
+//
+// Note, initializer lists cannot be used to pass
+//  argument_list
+// due to incompatibility with unique_ptr.  Use googlesql::MakeNodeVector
+// instead.
+template <
+  typename argument_list_t
+      = std::vector<std::unique_ptr<const ResolvedExpr>>>
+ABSL_DEPRECATED("use the other MakeResolvedFunctionCall")
+std::unique_ptr<ResolvedFunctionCall> MakeResolvedFunctionCall(
+    const Type* type,
+    const Function* function,
+    const FunctionSignature& signature,
+    argument_list_t argument_list,
+    ResolvedFunctionCallBase::ErrorMode error_mode,
+    const std::shared_ptr<ResolvedFunctionCallInfo>& function_call_info) {
+  static_assert(std::is_base_of<
+      ResolvedExpr,
+      typename std::decay<decltype(**(argument_list.begin()))>::type>::value,
+      "argument_list must be a container of unique_ptr with elements of type "
+      "ResolvedExpr (or its descendants).");
+  return MakeResolvedFunctionCall(
+      type,
+      function,
+      signature,
+      {std::make_move_iterator(argument_list.begin()),
+       std::make_move_iterator(argument_list.end())},
+      /*generic_argument_list=*/{},
+      error_mode,
+      function_call_info);
+}
+
+// Helper constructor to create a new ResolvedFunctionCall with an
+// empty <function_call_info> field, for convenience. Also, supports wider
+// variety of inputs for `argument_list`.
+template <
+    typename argument_list_t = std::vector<std::unique_ptr<const ResolvedExpr>>>
+inline std::unique_ptr<ResolvedFunctionCall> MakeResolvedFunctionCall(
+    const Type* type, const Function* function,
+    const FunctionSignature& signature, argument_list_t argument_list,
+    ResolvedFunctionCallBase::ErrorMode error_mode) {
+  return MakeResolvedFunctionCall(
+      type, function, signature,
+      {std::make_move_iterator(argument_list.begin()),
+       std::make_move_iterator(argument_list.end())},
+      error_mode,
+      std::shared_ptr<ResolvedFunctionCallInfo>(new ResolvedFunctionCallInfo));
+}
+
+// Helper constructor to create a new ResolvedAggregateFunctionCall with an
+// empty <function_call_info> field, for convenience.  Also, supports wider
+// variety of inputs for `argument_list`.
+template <
+    typename argument_list_t = std::vector<std::unique_ptr<const ResolvedExpr>>,
+    typename order_by_item_list_t =
+        std::vector<std::unique_ptr<const ResolvedOrderByItem>>>
+inline std::unique_ptr<ResolvedAggregateFunctionCall>
+MakeResolvedAggregateFunctionCall(
+    const Type* type, const Function* function,
+    const FunctionSignature& signature, argument_list_t argument_list,
+    ResolvedAggregateFunctionCall::ErrorMode error_mode, bool distinct,
+    ResolvedAggregateFunctionCall::NullHandlingModifier null_handling_modifier,
+    std::unique_ptr<const ResolvedAggregateHavingModifier> having_modifier,
+    order_by_item_list_t order_by_item_list,
+    std::unique_ptr<const ResolvedExpr> limit) {
+  return MakeResolvedAggregateFunctionCall(
+      type, function, signature,
+      {std::make_move_iterator(argument_list.begin()),
+       std::make_move_iterator(argument_list.end())},
+      /*generic_argument_list=*/{},
+      error_mode, distinct, null_handling_modifier, std::move(having_modifier),
+      {std::make_move_iterator(order_by_item_list.begin()),
+       std::make_move_iterator(order_by_item_list.end())},
+      std::move(limit),
+      std::make_shared<ResolvedFunctionCallInfo>() /* function_call_info */);
+}
+
+// Helper that initializes the output_column_list to match
+// input_scan's column_list.  This is helpful because it avoids the argument
+// evaluation order problem in
+// MakeResolvedSetOperationItem(std::move(scan), scan->column_list());
+inline std::unique_ptr<ResolvedSetOperationItem> MakeResolvedSetOperationItem(
+    std::unique_ptr<const ResolvedScan> input_scan) {
+  const std::vector<ResolvedColumn>& output_column_list =
+      input_scan->column_list();
+  return
+      MakeResolvedSetOperationItem(std::move(input_scan), output_column_list);
+}
+
+// This is here for backward compatibility because we renamed
+// ResolvedTVFArgument to ResolvedFunctionArgument.
+using ResolvedTVFArgument = ResolvedFunctionArgument;
+
+// This is here for backward compatibility because we renamed
+// ResolvedTVFArgument to ResolvedFunctionArgument.
+ABSL_DEPRECATED("use MakeResolvedFunctionArgument")
+inline std::unique_ptr<ResolvedTVFArgument> MakeResolvedTVFArgument(
+    std::unique_ptr<const ResolvedExpr> expr,
+    std::unique_ptr<const ResolvedScan> scan,
+    std::unique_ptr<const ResolvedModel> model,
+    std::unique_ptr<const ResolvedConnection> connection,
+    std::unique_ptr<const ResolvedDescriptor> descriptor_arg,
+    const std::vector<ResolvedColumn>& argument_column_list) {
+  return MakeResolvedFunctionArgument(
+        std::move(expr),
+        std::move(scan),
+        std::move(model),
+        std::move(connection),
+        std::move(descriptor_arg),
+        argument_column_list,
+        /*inline_lambda=*/nullptr,
+        /*sequence=*/nullptr,
+        /*graph=*/nullptr);
+}
+
+// This is here for backward compatibility because we added sequence to
+// ResolvedFunctionArgument. Once engine implementations are updated, this
+// should be removed.
+ABSL_DEPRECATED("use nine argument MakeResolvedFunctionArgument")
+inline std::unique_ptr<ResolvedFunctionArgument> MakeResolvedFunctionArgument(
+    std::unique_ptr<const ResolvedExpr> expr,
+    std::unique_ptr<const ResolvedScan> scan,
+    std::unique_ptr<const ResolvedModel> model,
+    std::unique_ptr<const ResolvedConnection> connection,
+    std::unique_ptr<const ResolvedDescriptor> descriptor_arg,
+    const std::vector<ResolvedColumn>& argument_column_list,
+    std::unique_ptr<ResolvedInlineLambda> inline_lambda) {
+  return MakeResolvedFunctionArgument(
+        std::move(expr),
+        std::move(scan),
+        std::move(model),
+        std::move(connection),
+        std::move(descriptor_arg),
+        argument_column_list,
+        std::move(inline_lambda),
+        /*sequence=*/nullptr,
+        /*graph=*/nullptr);
+}
+
+// This is here for backward compatibility because we added graph to
+// ResolvedFunctionArgument. Once engine implementations are updated, this
+// should be removed.
+ABSL_DEPRECATED("use nine argument MakeResolvedFunctionArgument")
+inline std::unique_ptr<ResolvedFunctionArgument> MakeResolvedFunctionArgument(
+    std::unique_ptr<const ResolvedExpr> expr,
+    std::unique_ptr<const ResolvedScan> scan,
+    std::unique_ptr<const ResolvedModel> model,
+    std::unique_ptr<const ResolvedConnection> connection,
+    std::unique_ptr<const ResolvedDescriptor> descriptor_arg,
+    const std::vector<ResolvedColumn>& argument_column_list,
+    std::unique_ptr<ResolvedInlineLambda> inline_lambda,
+    std::unique_ptr<ResolvedSequence> sequence) {
+  return MakeResolvedFunctionArgument(
+        std::move(expr),
+        std::move(scan),
+        std::move(model),
+        std::move(connection),
+        std::move(descriptor_arg),
+        argument_column_list,
+        std::move(inline_lambda),
+        std::move(sequence),
+        /*graph=*/nullptr);
+}
+
+// This is here for backward compatibility because we removed
+// <type_parameters> and added <type_modifiers> inside ResolvedCast.
+ABSL_DEPRECATED("use MakeResolvedCast with <type_modifiers> as input argument.")
+inline std::unique_ptr<ResolvedCast> MakeResolvedCast(
+    const Type* type,
+    std::unique_ptr<const ResolvedExpr> expr,
+    bool return_null_on_error,
+    std::unique_ptr<const ResolvedExtendedCast> extended_cast,
+    std::unique_ptr<const ResolvedExpr> format,
+    std::unique_ptr<const ResolvedExpr> time_zone,
+    const TypeParameters& type_parameters) {
+  return MakeResolvedCast(
+      type,
+      std::move(expr),
+      return_null_on_error,
+      std::move(extended_cast),
+      std::move(format),
+      std::move(time_zone),
+      TypeModifiers::MakeTypeModifiers(
+          type_parameters, googlesql::Collation()));
+}
+
+// This is here for backward compatibility because we added
+// <grouping_call_list> as an optional constructor arg for the
+// ResolvedAggregateScan
+template <
+  typename group_by_list_t
+      = std::vector<std::unique_ptr<const ResolvedComputedColumn>>,
+  typename aggregate_list_t
+      = std::vector<std::unique_ptr<const ResolvedComputedColumnBase>>,
+  typename grouping_set_list_t
+      = std::vector<std::unique_ptr<const ResolvedGroupingSetBase>>,
+  typename rollup_column_list_t
+      = std::vector<std::unique_ptr<const ResolvedColumnRef>>>
+std::unique_ptr<ResolvedAggregateScan> MakeResolvedAggregateScan(
+    const std::vector<ResolvedColumn>& column_list,
+    std::unique_ptr<const ResolvedScan> input_scan,
+    group_by_list_t group_by_list,
+    aggregate_list_t aggregate_list,
+    grouping_set_list_t grouping_set_list,
+    rollup_column_list_t rollup_column_list) {
+  static_assert(std::is_base_of<
+      ResolvedComputedColumn,
+      typename std::decay<decltype(**(group_by_list.begin()))>::type>::value,
+      "group_by_list must be a container of unique_ptr with elements of type "
+      "ResolvedComputedColumn (or its descendants).");
+  static_assert(std::is_base_of<
+      ResolvedComputedColumnBase,
+      typename std::decay<decltype(**(aggregate_list.begin()))>::type>::value,
+      "aggregate_list must be a container of unique_ptr with elements of type "
+      "ResolvedComputedColumnBase (or its descendants).");
+  static_assert(std::is_base_of<
+      ResolvedGroupingSetBase,
+      typename std::decay<decltype(**(grouping_set_list.begin()))>::type>::value,
+      "grouping_set_list must be a container of unique_ptr with elements of type "
+      "ResolvedGroupingSetBase (or its descendants).");
+  static_assert(std::is_base_of<
+      ResolvedColumnRef,
+      typename std::decay<decltype(**(rollup_column_list.begin()))>::type>::value,
+      "rollup_column_list must be a container of unique_ptr with elements of type "
+      "ResolvedColumnRef (or its descendants).");
+  return MakeResolvedAggregateScan(
+      column_list,
+      std::move(input_scan),
+      {std::make_move_iterator(group_by_list.begin()),
+       std::make_move_iterator(group_by_list.end())},
+      {std::make_move_iterator(aggregate_list.begin()),
+       std::make_move_iterator(aggregate_list.end())},
+      {std::make_move_iterator(grouping_set_list.begin()),
+       std::make_move_iterator(grouping_set_list.end())},
+      {std::make_move_iterator(rollup_column_list.begin()),
+       std::make_move_iterator(rollup_column_list.end())},
+      /*grouping_call_list=*/{});
+}
+
+// Special overwrite for backward compatibility purpose.
+inline std::unique_ptr<ResolvedArrayScan> MakeResolvedArrayScan(
+    const std::vector<ResolvedColumn>& column_list,
+    std::unique_ptr<const ResolvedScan> input_scan,
+    std::unique_ptr<const ResolvedExpr> array_expr,
+    const ResolvedColumn& element_column,
+    std::unique_ptr<const ResolvedColumnHolder> array_offset_column,
+    std::unique_ptr<const ResolvedExpr> join_expr,
+    bool is_outer) {
+  std::vector<std::unique_ptr<const ResolvedExpr>> array_expr_list;
+  array_expr_list.push_back(std::move(array_expr));
+  std::vector<ResolvedColumn> element_column_list;
+  element_column_list.push_back(element_column);
+  return MakeResolvedArrayScan(
+        column_list,
+        std::move(input_scan),
+        std::move(array_expr_list),
+        std::move(element_column_list),
+        std::move(array_offset_column),
+        std::move(join_expr),
+        is_outer,
+        /*array_zip_mode=*/nullptr);
+}
+
+// Special overload for backward compatibility purposes.
+inline std::unique_ptr<ResolvedAnalyticFunctionCall> MakeResolvedAnalyticFunctionCall(
+      const Type* type,
+      const Function* function,
+      const FunctionSignature& signature,
+      std::vector<std::unique_ptr<const ResolvedExpr>> argument_list,
+      std::vector<std::unique_ptr<const ResolvedFunctionArgument>> generic_argument_list,
+      ResolvedFunctionCallBase::ErrorMode error_mode,
+      bool distinct,
+      ResolvedNonScalarFunctionCallBase::NullHandlingModifier null_handling_modifier,
+      std::unique_ptr<const ResolvedWindowFrame> window_frame
+  ) {
+  return MakeResolvedAnalyticFunctionCall(
+    type,
+    function,
+    signature,
+    std::move(argument_list),
+    std::move(generic_argument_list),
+    error_mode,
+    distinct,
+    null_handling_modifier,
+    /*where_expr=*/nullptr,
+    std::move(window_frame)
+  );
+}
+
+// Special overload for backward compatibility purposes.
+inline std::unique_ptr<ResolvedAggregateFunctionCall> MakeResolvedAggregateFunctionCall(
+  const Type* type,
+  const Function* function,
+  const FunctionSignature& signature,
+  std::vector<std::unique_ptr<const ResolvedExpr>> argument_list,
+  std::vector<std::unique_ptr<const ResolvedFunctionArgument>> generic_argument_list,
+  ResolvedFunctionCallBase::ErrorMode error_mode,
+  bool distinct,
+  ResolvedNonScalarFunctionCallBase::NullHandlingModifier null_handling_modifier,
+  std::unique_ptr<const ResolvedAggregateHavingModifier> having_modifier,
+  std::vector<std::unique_ptr<const ResolvedOrderByItem>> order_by_item_list,
+  std::unique_ptr<const ResolvedExpr> limit,
+  const std::shared_ptr<ResolvedFunctionCallInfo>& function_call_info) {
+    return MakeResolvedAggregateFunctionCall(
+      type,
+      function,
+      signature,
+      std::move(argument_list),
+      std::move(generic_argument_list),
+      error_mode,
+      distinct,
+      null_handling_modifier,
+      /*where_expr=*/nullptr,
+      std::move(having_modifier),
+      std::move(order_by_item_list),
+      std::move(limit),
+      function_call_info,
+      /*group_by_list=*/{},
+      /*group_by_aggregate_list=*/{},
+      /*having_expr=*/nullptr
+    );
+}
+
+// Special overload for backward compatibility purposes.
+inline std::unique_ptr<ResolvedAggregateFunctionCall> MakeResolvedAggregateFunctionCall(
+  const Type* type,
+  const Function* function,
+  const FunctionSignature& signature,
+  std::vector<std::unique_ptr<const ResolvedExpr>> argument_list,
+  std::vector<std::unique_ptr<const ResolvedFunctionArgument>> generic_argument_list,
+  ResolvedFunctionCallBase::ErrorMode error_mode,
+  bool distinct,
+  ResolvedNonScalarFunctionCallBase::NullHandlingModifier null_handling_modifier,
+  std::unique_ptr<const ResolvedAggregateHavingModifier> having_modifier,
+  std::vector<std::unique_ptr<const ResolvedOrderByItem>> order_by_item_list,
+  std::unique_ptr<const ResolvedExpr> limit,
+  const std::shared_ptr<ResolvedFunctionCallInfo>& function_call_info,
+  std::vector<std::unique_ptr<const ResolvedComputedColumn>> group_by_list,
+  std::vector<std::unique_ptr<const ResolvedComputedColumnBase>> group_by_aggregate_list) {
+    return MakeResolvedAggregateFunctionCall(
+      type,
+      function,
+      signature,
+      std::move(argument_list),
+      std::move(generic_argument_list),
+      error_mode,
+      distinct,
+      null_handling_modifier,
+      /*where_expr=*/nullptr,
+      std::move(having_modifier),
+      std::move(order_by_item_list),
+      std::move(limit),
+      function_call_info,
+      std::move(group_by_list),
+      std::move(group_by_aggregate_list),
+      /*having_expr=*/nullptr
+    );
+}
+
+
+inline std::unique_ptr<ResolvedJoinScan> MakeResolvedJoinScan(
+  const std::vector<ResolvedColumn>& column_list,
+  ResolvedJoinScan::JoinType join_type,
+  std::unique_ptr<const ResolvedScan> left_scan,
+  std::unique_ptr<const ResolvedScan> right_scan,
+  std::unique_ptr<const ResolvedExpr> join_expr,
+  bool has_using) {
+    return MakeResolvedJoinScan(
+      column_list,
+      join_type,
+      std::move(left_scan),
+      std::move(right_scan),
+      std::move(join_expr),
+      has_using,
+      /*is_lateral=*/false,
+      /*parameter_list=*/{}
+    );
+}
+
+}  // namespace googlesql
+
+#endif  // GOOGLESQL_RESOLVED_AST_RESOLVED_AST_H_

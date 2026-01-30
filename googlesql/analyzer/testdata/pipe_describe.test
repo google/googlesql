@@ -1,0 +1,1744 @@
+# This file is for testing the analysis and rewrites of pipe DESCRIBE.
+# `pipe_describe_output.test` has more tests showing the output of DESCRIBE.
+[default language_features=MAXIMUM]
+[default enabled_ast_rewrites=DEFAULTS,+PIPE_DESCRIBE]
+[language_features=NONE,+PIPES]
+from KeyValue
+|> DESCRIBE
+--
+ERROR: Pipe DESCRIBE not supported [at 2:1]
+|> DESCRIBE
+^
+==
+
+[default language_features=MAXIMUM,+PIPES,+PIPE_DESCRIBE,+PIPE_STATIC_DESCRIBE,+PIPE_RECURSIVE_UNION,+WITH_RECURSIVE]
+from KeyValue
+|> DESCRIBE
+--
+QueryStmt
++-output_column_list=
+| +-$pipe_describe.Describe#3 AS Describe [STRING]
++-query=
+  +-DescribeScan
+    +-column_list=[$pipe_describe.Describe#3]
+    +-input_scan=
+    | +-TableScan(table=KeyValue)
+    +-describe_expr=
+      +-Describe#3 := Literal(type=STRING, value="**Columns**:\nTable Alias  Column Name  Type\n-----------  -----------  ------\nKeyValue     Key          INT64\nKeyValue     Value        STRING\n\n**Table Aliases**:\nTable Alias  Columns\n-----------  ----------\nKeyValue     Key, Value\n")
+
+[DESCRIBE output]
+**Columns**:
+Table Alias  Column Name  Type
+\-----------  -----------  ------
+KeyValue     Key          INT64
+KeyValue     Value        STRING
+
+**Table Aliases**:
+Table Alias  Columns
+\-----------  ----------
+KeyValue     Key, Value
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$pipe_describe.Describe#3 AS Describe [STRING]
++-query=
+  +-SetOperationScan
+    +-column_list=[$pipe_describe.Describe#3]
+    +-op_type=UNION_ALL
+    +-input_item_list=
+      +-SetOperationItem
+      | +-scan=
+      | | +-ProjectScan
+      | |   +-column_list=[$rewrite_describe.$null#4]
+      | |   +-expr_list=
+      | |   | +-$null#4 := Literal(type=STRING, value=NULL)
+      | |   +-input_scan=
+      | |     +-FilterScan
+      | |       +-input_scan=
+      | |       | +-TableScan(table=KeyValue)
+      | |       +-filter_expr=
+      | |         +-Literal(type=BOOL, value=false)
+      | +-output_column_list=[$rewrite_describe.$null#4]
+      +-SetOperationItem
+        +-scan=
+        | +-ProjectScan
+        |   +-column_list=[$rewrite_describe.$describe#5]
+        |   +-expr_list=
+        |   | +-$describe#5 := Literal(type=STRING, value="**Columns**:\nTable Alias  Column Name  Type\n-----------  -----------  ------\nKeyValue     Key          INT64\nKeyValue     Value        STRING\n\n**Table Aliases**:\nTable Alias  Columns\n-----------  ----------\nKeyValue     Key, Value\n")
+        |   +-input_scan=
+        |     +-SingleRowScan
+        +-output_column_list=[$rewrite_describe.$describe#5]
+==
+
+# DESCRIBE twice.
+# STATIC_DESCRIBE also shows the full static schema of DESCRIBE output.
+from KeyValue
+|> DESCRIBE
+|> STATIC_DESCRIBE
+|> DESCRIBE
+--
+QueryStmt
++-output_column_list=
+| +-$pipe_describe.Describe#4 AS Describe [STRING]
++-query=
+  +-DescribeScan
+    +-column_list=[$pipe_describe.Describe#4]
+    +-input_scan=
+    | +-StaticDescribeScan
+    |   +-describe_text=
+    |   |   """
+    |   |   NameList:
+    |   |     Describe STRING $pipe_describe.Describe#3
+    |   |   NameScope:
+    |   |     Names:
+    |   |       Describe -> STRING ($pipe_describe.Describe#3)
+    |   |   """
+    |   +-input_scan=
+    |     +-DescribeScan
+    |       +-input_scan=
+    |       | +-TableScan(table=KeyValue)
+    |       +-describe_expr=
+    |         +-Describe#3 := Literal(type=STRING, value="**Columns**:\nTable Alias  Column Name  Type\n-----------  -----------  ------\nKeyValue     Key          INT64\nKeyValue     Value        STRING\n\n**Table Aliases**:\nTable Alias  Columns\n-----------  ----------\nKeyValue     Key, Value\n")
+    +-describe_expr=
+      +-Describe#4 := Literal(type=STRING, value="**Columns**:\nColumn Name  Type\n-----------  ------\nDescribe     STRING\n")
+
+[DESCRIBE output]
+**Columns**:
+Column Name  Type
+\-----------  ------
+Describe     STRING
+
+
+[DESCRIBE output]
+**Columns**:
+Table Alias  Column Name  Type
+\-----------  -----------  ------
+KeyValue     Key          INT64
+KeyValue     Value        STRING
+
+**Table Aliases**:
+Table Alias  Columns
+\-----------  ----------
+KeyValue     Key, Value
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$pipe_describe.Describe#4 AS Describe [STRING]
++-query=
+  +-SetOperationScan
+    +-column_list=[$pipe_describe.Describe#4]
+    +-op_type=UNION_ALL
+    +-input_item_list=
+      +-SetOperationItem
+      | +-scan=
+      | | +-ProjectScan
+      | |   +-column_list=[$rewrite_describe.$null#7]
+      | |   +-expr_list=
+      | |   | +-$null#7 := Literal(type=STRING, value=NULL)
+      | |   +-input_scan=
+      | |     +-FilterScan
+      | |       +-input_scan=
+      | |       | +-StaticDescribeScan
+      | |       |   +-describe_text=
+      | |       |   |   """
+      | |       |   |   NameList:
+      | |       |   |     Describe STRING $pipe_describe.Describe#3
+      | |       |   |   NameScope:
+      | |       |   |     Names:
+      | |       |   |       Describe -> STRING ($pipe_describe.Describe#3)
+      | |       |   |   """
+      | |       |   +-input_scan=
+      | |       |     +-SetOperationScan
+      | |       |       +-column_list=[$pipe_describe.Describe#3]
+      | |       |       +-op_type=UNION_ALL
+      | |       |       +-input_item_list=
+      | |       |         +-SetOperationItem
+      | |       |         | +-scan=
+      | |       |         | | +-ProjectScan
+      | |       |         | |   +-column_list=[$rewrite_describe.$null#5]
+      | |       |         | |   +-expr_list=
+      | |       |         | |   | +-$null#5 := Literal(type=STRING, value=NULL)
+      | |       |         | |   +-input_scan=
+      | |       |         | |     +-FilterScan
+      | |       |         | |       +-input_scan=
+      | |       |         | |       | +-TableScan(table=KeyValue)
+      | |       |         | |       +-filter_expr=
+      | |       |         | |         +-Literal(type=BOOL, value=false)
+      | |       |         | +-output_column_list=[$rewrite_describe.$null#5]
+      | |       |         +-SetOperationItem
+      | |       |           +-scan=
+      | |       |           | +-ProjectScan
+      | |       |           |   +-column_list=[$rewrite_describe.$describe#6]
+      | |       |           |   +-expr_list=
+      | |       |           |   | +-$describe#6 := Literal(type=STRING, value="**Columns**:\nTable Alias  Column Name  Type\n-----------  -----------  ------\nKeyValue     Key          INT64\nKeyValue     Value        STRING\n\n**Table Aliases**:\nTable Alias  Columns\n-----------  ----------\nKeyValue     Key, Value\n")
+      | |       |           |   +-input_scan=
+      | |       |           |     +-SingleRowScan
+      | |       |           +-output_column_list=[$rewrite_describe.$describe#6]
+      | |       +-filter_expr=
+      | |         +-Literal(type=BOOL, value=false)
+      | +-output_column_list=[$rewrite_describe.$null#7]
+      +-SetOperationItem
+        +-scan=
+        | +-ProjectScan
+        |   +-column_list=[$rewrite_describe.$describe#8]
+        |   +-expr_list=
+        |   | +-$describe#8 := Literal(type=STRING, value="**Columns**:\nColumn Name  Type\n-----------  ------\nDescribe     STRING\n")
+        |   +-input_scan=
+        |     +-SingleRowScan
+        +-output_column_list=[$rewrite_describe.$describe#8]
+==
+
+# DESCRIBE output is a column that can be further processed.
+from KeyValue
+|> DESCRIBE
+|> SELECT substr(Describe, 1, 10), length(Describe)
+--
+QueryStmt
++-output_column_list=
+| +-$pipe_select.$col1#4 AS `$col1` [STRING]
+| +-$pipe_select.$col2#5 AS `$col2` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=$pipe_select.[$col1#4, $col2#5]
+    +-expr_list=
+    | +-$col1#4 :=
+    | | +-FunctionCall(GoogleSQL:substr(STRING, INT64, optional(1) INT64) -> STRING)
+    | |   +-ColumnRef(type=STRING, column=$pipe_describe.Describe#3)
+    | |   +-Literal(type=INT64, value=1)
+    | |   +-Literal(type=INT64, value=10)
+    | +-$col2#5 :=
+    |   +-FunctionCall(GoogleSQL:length(STRING) -> INT64)
+    |     +-ColumnRef(type=STRING, column=$pipe_describe.Describe#3)
+    +-input_scan=
+      +-DescribeScan
+        +-column_list=[$pipe_describe.Describe#3]
+        +-input_scan=
+        | +-TableScan(table=KeyValue)
+        +-describe_expr=
+          +-Describe#3 := Literal(type=STRING, value="**Columns**:\nTable Alias  Column Name  Type\n-----------  -----------  ------\nKeyValue     Key          INT64\nKeyValue     Value        STRING\n\n**Table Aliases**:\nTable Alias  Columns\n-----------  ----------\nKeyValue     Key, Value\n")
+
+[DESCRIBE output]
+**Columns**:
+Table Alias  Column Name  Type
+\-----------  -----------  ------
+KeyValue     Key          INT64
+KeyValue     Value        STRING
+
+**Table Aliases**:
+Table Alias  Columns
+\-----------  ----------
+KeyValue     Key, Value
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$pipe_select.$col1#4 AS `$col1` [STRING]
+| +-$pipe_select.$col2#5 AS `$col2` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=$pipe_select.[$col1#4, $col2#5]
+    +-expr_list=
+    | +-$col1#4 :=
+    | | +-FunctionCall(GoogleSQL:substr(STRING, INT64, optional(1) INT64) -> STRING)
+    | |   +-ColumnRef(type=STRING, column=$pipe_describe.Describe#3)
+    | |   +-Literal(type=INT64, value=1)
+    | |   +-Literal(type=INT64, value=10)
+    | +-$col2#5 :=
+    |   +-FunctionCall(GoogleSQL:length(STRING) -> INT64)
+    |     +-ColumnRef(type=STRING, column=$pipe_describe.Describe#3)
+    +-input_scan=
+      +-SetOperationScan
+        +-column_list=[$pipe_describe.Describe#3]
+        +-op_type=UNION_ALL
+        +-input_item_list=
+          +-SetOperationItem
+          | +-scan=
+          | | +-ProjectScan
+          | |   +-column_list=[$rewrite_describe.$null#6]
+          | |   +-expr_list=
+          | |   | +-$null#6 := Literal(type=STRING, value=NULL)
+          | |   +-input_scan=
+          | |     +-FilterScan
+          | |       +-input_scan=
+          | |       | +-TableScan(table=KeyValue)
+          | |       +-filter_expr=
+          | |         +-Literal(type=BOOL, value=false)
+          | +-output_column_list=[$rewrite_describe.$null#6]
+          +-SetOperationItem
+            +-scan=
+            | +-ProjectScan
+            |   +-column_list=[$rewrite_describe.$describe#7]
+            |   +-expr_list=
+            |   | +-$describe#7 := Literal(type=STRING, value="**Columns**:\nTable Alias  Column Name  Type\n-----------  -----------  ------\nKeyValue     Key          INT64\nKeyValue     Value        STRING\n\n**Table Aliases**:\nTable Alias  Columns\n-----------  ----------\nKeyValue     Key, Value\n")
+            |   +-input_scan=
+            |     +-SingleRowScan
+            +-output_column_list=[$rewrite_describe.$describe#7]
+
+==
+
+from KeyValue as kv
+|> CROSS JOIN TestExtraValueTable vt
+|> EXTEND 123  # anonymous column
+|> EXTEND 456 named_column
+|> DESCRIBE
+--
+QueryStmt
++-output_column_list=
+| +-$pipe_describe.Describe#8 AS Describe [STRING]
++-query=
+  +-DescribeScan
+    +-column_list=[$pipe_describe.Describe#8]
+    +-input_scan=
+    | +-ProjectScan
+    |   +-column_list=$pipe_extend.[$col1#6, named_column#7]
+    |   +-expr_list=
+    |   | +-named_column#7 := Literal(type=INT64, value=456)
+    |   +-input_scan=
+    |     +-ProjectScan
+    |       +-column_list=[$pipe_extend.$col1#6]
+    |       +-expr_list=
+    |       | +-$col1#6 := Literal(type=INT64, value=123)
+    |       +-input_scan=
+    |         +-JoinScan
+    |           +-left_scan=
+    |           | +-TableScan(table=KeyValue, alias="kv")
+    |           +-right_scan=
+    |             +-TableScan(table=TestExtraValueTable, alias="vt")
+    +-describe_expr=
+      +-Describe#8 := Literal(type=STRING, value="**Columns**:\nTable Alias  Column Name   Type\n-----------  ------------  --------------------------\nkv           Key           INT64\nkv           Value         STRING\nvt           <value>       googlesql_test.TestExtraPB\n             <unnamed>     INT64\n             named_column  INT64\n\n**Pseudo-columns**:\nTable Alias  Column Name  Type\n-----------  -----------  ------\nvt           Filename     STRING\nvt           RowId        BYTES\n\n**Table Aliases**:\nTable Alias  Columns     Pseudo-columns\n-----------  ----------  ---------------\nkv           Key, Value\nvt           <value>     Filename, RowId\n")
+
+[DESCRIBE output]
+**Columns**:
+Table Alias  Column Name   Type
+\-----------  ------------  --------------------------
+kv           Key           INT64
+kv           Value         STRING
+vt           <value>       googlesql_test.TestExtraPB
+             <unnamed>     INT64
+             named_column  INT64
+
+**Pseudo-columns**:
+Table Alias  Column Name  Type
+\-----------  -----------  ------
+vt           Filename     STRING
+vt           RowId        BYTES
+
+**Table Aliases**:
+Table Alias  Columns     Pseudo-columns
+\-----------  ----------  ---------------
+kv           Key, Value
+vt           <value>     Filename, RowId
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$pipe_describe.Describe#8 AS Describe [STRING]
++-query=
+  +-SetOperationScan
+    +-column_list=[$pipe_describe.Describe#8]
+    +-op_type=UNION_ALL
+    +-input_item_list=
+      +-SetOperationItem
+      | +-scan=
+      | | +-ProjectScan
+      | |   +-column_list=[$rewrite_describe.$null#9]
+      | |   +-expr_list=
+      | |   | +-$null#9 := Literal(type=STRING, value=NULL)
+      | |   +-input_scan=
+      | |     +-FilterScan
+      | |       +-input_scan=
+      | |       | +-ProjectScan
+      | |       |   +-column_list=$pipe_extend.[$col1#6, named_column#7]
+      | |       |   +-expr_list=
+      | |       |   | +-named_column#7 := Literal(type=INT64, value=456)
+      | |       |   +-input_scan=
+      | |       |     +-ProjectScan
+      | |       |       +-column_list=[$pipe_extend.$col1#6]
+      | |       |       +-expr_list=
+      | |       |       | +-$col1#6 := Literal(type=INT64, value=123)
+      | |       |       +-input_scan=
+      | |       |         +-JoinScan
+      | |       |           +-left_scan=
+      | |       |           | +-TableScan(table=KeyValue, alias="kv")
+      | |       |           +-right_scan=
+      | |       |             +-TableScan(table=TestExtraValueTable, alias="vt")
+      | |       +-filter_expr=
+      | |         +-Literal(type=BOOL, value=false)
+      | +-output_column_list=[$rewrite_describe.$null#9]
+      +-SetOperationItem
+        +-scan=
+        | +-ProjectScan
+        |   +-column_list=[$rewrite_describe.$describe#10]
+        |   +-expr_list=
+        |   | +-$describe#10 := Literal(type=STRING, value="**Columns**:\nTable Alias  Column Name   Type\n-----------  ------------  --------------------------\nkv           Key           INT64\nkv           Value         STRING\nvt           <value>       googlesql_test.TestExtraPB\n             <unnamed>     INT64\n             named_column  INT64\n\n**Pseudo-columns**:\nTable Alias  Column Name  Type\n-----------  -----------  ------\nvt           Filename     STRING\nvt           RowId        BYTES\n\n**Table Aliases**:\nTable Alias  Columns     Pseudo-columns\n-----------  ----------  ---------------\nkv           Key, Value\nvt           <value>     Filename, RowId\n")
+        |   +-input_scan=
+        |     +-SingleRowScan
+        +-output_column_list=[$rewrite_describe.$describe#10]
+==
+
+[show_sqlbuilder_output]
+from KeyValue
+|> drop value
+|> extend 123
+|> extend 456 named
+|> describe
+|> where true
+--
+QueryStmt
++-output_column_list=
+| +-$pipe_describe.Describe#5 AS Describe [STRING]
++-query=
+  +-FilterScan
+    +-column_list=[$pipe_describe.Describe#5]
+    +-input_scan=
+    | +-DescribeScan
+    |   +-column_list=[$pipe_describe.Describe#5]
+    |   +-input_scan=
+    |   | +-ProjectScan
+    |   |   +-column_list=$pipe_extend.[$col1#3, named#4]
+    |   |   +-expr_list=
+    |   |   | +-named#4 := Literal(type=INT64, value=456)
+    |   |   +-input_scan=
+    |   |     +-ProjectScan
+    |   |       +-column_list=[$pipe_extend.$col1#3]
+    |   |       +-expr_list=
+    |   |       | +-$col1#3 := Literal(type=INT64, value=123)
+    |   |       +-input_scan=
+    |   |         +-TableScan(table=KeyValue)
+    |   +-describe_expr=
+    |     +-Describe#5 := Literal(type=STRING, value="**Columns**:\nTable Alias  Column Name  Type\n-----------  -----------  -----\nKeyValue     Key          INT64\n             <unnamed>    INT64\n             named        INT64\n\n**Table Aliases**:\nTable Alias  Columns\n-----------  ----------\nKeyValue     Key, Value\n")
+    +-filter_expr=
+      +-Literal(type=BOOL, value=true)
+
+[DESCRIBE output]
+**Columns**:
+Table Alias  Column Name  Type
+\-----------  -----------  -----
+KeyValue     Key          INT64
+             <unnamed>    INT64
+             named        INT64
+
+**Table Aliases**:
+Table Alias  Columns
+\-----------  ----------
+KeyValue     Key, Value
+
+
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+SELECT
+  describescan_5.a_6 AS Describe
+FROM
+  (
+    SELECT
+      Describe AS a_6
+    FROM
+      (
+        SELECT
+          projectscan_2.a_1 AS a_1,
+          456 AS a_3
+        FROM
+          (
+            SELECT
+              123 AS a_1
+            FROM
+              KeyValue
+          ) AS projectscan_2
+        |> AS projectscan_4
+        |> DESCRIBE
+      )
+  ) AS describescan_5
+WHERE
+  true;
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+FROM
+  KeyValue
+|> SELECT
+     123 AS a_1
+|> AS projectscan_2
+|> SELECT
+     projectscan_2.a_1 AS a_1,
+     456 AS a_3
+|> AS projectscan_4
+|> DESCRIBE
+|> WHERE
+     true
+|> SELECT
+     Describe AS Describe;
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$pipe_describe.Describe#5 AS Describe [STRING]
++-query=
+  +-FilterScan
+    +-column_list=[$pipe_describe.Describe#5]
+    +-input_scan=
+    | +-SetOperationScan
+    |   +-column_list=[$pipe_describe.Describe#5]
+    |   +-op_type=UNION_ALL
+    |   +-input_item_list=
+    |     +-SetOperationItem
+    |     | +-scan=
+    |     | | +-ProjectScan
+    |     | |   +-column_list=[$rewrite_describe.$null#6]
+    |     | |   +-expr_list=
+    |     | |   | +-$null#6 := Literal(type=STRING, value=NULL)
+    |     | |   +-input_scan=
+    |     | |     +-FilterScan
+    |     | |       +-input_scan=
+    |     | |       | +-ProjectScan
+    |     | |       |   +-column_list=$pipe_extend.[$col1#3, named#4]
+    |     | |       |   +-expr_list=
+    |     | |       |   | +-named#4 := Literal(type=INT64, value=456)
+    |     | |       |   +-input_scan=
+    |     | |       |     +-ProjectScan
+    |     | |       |       +-column_list=[$pipe_extend.$col1#3]
+    |     | |       |       +-expr_list=
+    |     | |       |       | +-$col1#3 := Literal(type=INT64, value=123)
+    |     | |       |       +-input_scan=
+    |     | |       |         +-TableScan(table=KeyValue)
+    |     | |       +-filter_expr=
+    |     | |         +-Literal(type=BOOL, value=false)
+    |     | +-output_column_list=[$rewrite_describe.$null#6]
+    |     +-SetOperationItem
+    |       +-scan=
+    |       | +-ProjectScan
+    |       |   +-column_list=[$rewrite_describe.$describe#7]
+    |       |   +-expr_list=
+    |       |   | +-$describe#7 := Literal(type=STRING, value="**Columns**:\nTable Alias  Column Name  Type\n-----------  -----------  -----\nKeyValue     Key          INT64\n             <unnamed>    INT64\n             named        INT64\n\n**Table Aliases**:\nTable Alias  Columns\n-----------  ----------\nKeyValue     Key, Value\n")
+    |       |   +-input_scan=
+    |       |     +-SingleRowScan
+    |       +-output_column_list=[$rewrite_describe.$describe#7]
+    +-filter_expr=
+      +-Literal(type=BOOL, value=true)
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+SELECT
+  setoperationscan_7.a_5 AS Describe
+FROM
+  ((
+    SELECT
+      CAST(NULL AS STRING) AS a_5
+    FROM
+      (
+        SELECT
+          projectscan_2.a_1 AS a_1,
+          456 AS a_3
+        FROM
+          (
+            SELECT
+              123 AS a_1
+            FROM
+              KeyValue
+          ) AS projectscan_2
+      ) AS projectscan_4
+    WHERE
+      false
+    ) UNION ALL(
+    SELECT
+      "**Columns**:\nTable Alias  Column Name  Type\n-----------  -----------  -----\nKeyValue     Key          INT64\n             <unnamed>    INT64\n             named        INT64\n\n**Table Aliases**:\nTable Alias  Columns\n-----------  ----------\nKeyValue     Key, Value\n" AS a_6
+    )
+  ) AS setoperationscan_7
+WHERE
+  true;
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+(
+FROM
+  KeyValue
+|> SELECT
+     123 AS a_1
+|> AS projectscan_2
+|> SELECT
+     projectscan_2.a_1 AS a_1,
+     456 AS a_3
+|> AS projectscan_4
+|> WHERE
+     false
+|> SELECT
+     CAST(NULL AS STRING) AS a_5
+) UNION ALL(
+SELECT
+  "**Columns**:\nTable Alias  Column Name  Type\n-----------  -----------  -----\nKeyValue     Key          INT64\n             <unnamed>    INT64\n             named        INT64\n\n**Table Aliases**:\nTable Alias  Columns\n-----------  ----------\nKeyValue     Key, Value\n" AS a_6
+)
+|> AS setoperationscan_7
+|> WHERE
+     true
+|> SELECT
+     setoperationscan_7.a_5 AS Describe;
+==
+
+# Test the rewriter in a case where the output of DESCRIBE is unused.
+FROM KeyValue
+|> DESCRIBE
+|> SELECT 123
+--
+QueryStmt
++-output_column_list=
+| +-$pipe_select.$col1#4 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$pipe_select.$col1#4]
+    +-expr_list=
+    | +-$col1#4 := Literal(type=INT64, value=123)
+    +-input_scan=
+      +-DescribeScan
+        +-input_scan=
+        | +-TableScan(table=KeyValue)
+        +-describe_expr=
+          +-Describe#3 := Literal(type=STRING, value="**Columns**:\nTable Alias  Column Name  Type\n-----------  -----------  ------\nKeyValue     Key          INT64\nKeyValue     Value        STRING\n\n**Table Aliases**:\nTable Alias  Columns\n-----------  ----------\nKeyValue     Key, Value\n")
+
+[DESCRIBE output]
+**Columns**:
+Table Alias  Column Name  Type
+\-----------  -----------  ------
+KeyValue     Key          INT64
+KeyValue     Value        STRING
+
+**Table Aliases**:
+Table Alias  Columns
+\-----------  ----------
+KeyValue     Key, Value
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$pipe_select.$col1#4 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$pipe_select.$col1#4]
+    +-expr_list=
+    | +-$col1#4 := Literal(type=INT64, value=123)
+    +-input_scan=
+      +-SetOperationScan
+        +-column_list=[$pipe_describe.Describe#3]
+        +-op_type=UNION_ALL
+        +-input_item_list=
+          +-SetOperationItem
+          | +-scan=
+          | | +-ProjectScan
+          | |   +-column_list=[$rewrite_describe.$null#5]
+          | |   +-expr_list=
+          | |   | +-$null#5 := Literal(type=STRING, value=NULL)
+          | |   +-input_scan=
+          | |     +-FilterScan
+          | |       +-input_scan=
+          | |       | +-TableScan(table=KeyValue)
+          | |       +-filter_expr=
+          | |         +-Literal(type=BOOL, value=false)
+          | +-output_column_list=[$rewrite_describe.$null#5]
+          +-SetOperationItem
+            +-scan=
+            | +-ProjectScan
+            |   +-column_list=[$rewrite_describe.$describe#6]
+            |   +-expr_list=
+            |   | +-$describe#6 := Literal(type=STRING, value="**Columns**:\nTable Alias  Column Name  Type\n-----------  -----------  ------\nKeyValue     Key          INT64\nKeyValue     Value        STRING\n\n**Table Aliases**:\nTable Alias  Columns\n-----------  ----------\nKeyValue     Key, Value\n")
+            |   +-input_scan=
+            |     +-SingleRowScan
+            +-output_column_list=[$rewrite_describe.$describe#6]
+==
+
+# The DESCRIBE content includes `is_ordered` if the input is ordered.
+# DESCRIBE itself is not order-preserving.
+FROM KeyValue
+|> ORDER BY key
+|> DESCRIBE
+--
+QueryStmt
++-output_column_list=
+| +-$pipe_describe.Describe#3 AS Describe [STRING]
++-query=
+  +-DescribeScan
+    +-column_list=[$pipe_describe.Describe#3]
+    +-input_scan=
+    | +-OrderByScan
+    |   +-column_list=[KeyValue.Key#1]
+    |   +-is_ordered=TRUE
+    |   +-input_scan=
+    |   | +-TableScan(column_list=[KeyValue.Key#1], table=KeyValue, column_index_list=[0])
+    |   +-order_by_item_list=
+    |     +-OrderByItem
+    |       +-column_ref=
+    |         +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+    +-describe_expr=
+      +-Describe#3 := Literal(type=STRING, value="**Columns**:\nTable Alias  Column Name  Type\n-----------  -----------  ------\nKeyValue     Key          INT64\nKeyValue     Value        STRING\n\n**Table Aliases**:\nTable Alias  Columns\n-----------  ----------\nKeyValue     Key, Value\n\nResult is ordered.\n")
+
+[DESCRIBE output]
+**Columns**:
+Table Alias  Column Name  Type
+\-----------  -----------  ------
+KeyValue     Key          INT64
+KeyValue     Value        STRING
+
+**Table Aliases**:
+Table Alias  Columns
+\-----------  ----------
+KeyValue     Key, Value
+
+Result is ordered.
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$pipe_describe.Describe#3 AS Describe [STRING]
++-query=
+  +-SetOperationScan
+    +-column_list=[$pipe_describe.Describe#3]
+    +-op_type=UNION_ALL
+    +-input_item_list=
+      +-SetOperationItem
+      | +-scan=
+      | | +-ProjectScan
+      | |   +-column_list=[$rewrite_describe.$null#4]
+      | |   +-expr_list=
+      | |   | +-$null#4 := Literal(type=STRING, value=NULL)
+      | |   +-input_scan=
+      | |     +-FilterScan
+      | |       +-input_scan=
+      | |       | +-OrderByScan
+      | |       |   +-column_list=[KeyValue.Key#1]
+      | |       |   +-is_ordered=TRUE
+      | |       |   +-input_scan=
+      | |       |   | +-TableScan(column_list=[KeyValue.Key#1], table=KeyValue, column_index_list=[0])
+      | |       |   +-order_by_item_list=
+      | |       |     +-OrderByItem
+      | |       |       +-column_ref=
+      | |       |         +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+      | |       +-filter_expr=
+      | |         +-Literal(type=BOOL, value=false)
+      | +-output_column_list=[$rewrite_describe.$null#4]
+      +-SetOperationItem
+        +-scan=
+        | +-ProjectScan
+        |   +-column_list=[$rewrite_describe.$describe#5]
+        |   +-expr_list=
+        |   | +-$describe#5 := Literal(type=STRING, value="**Columns**:\nTable Alias  Column Name  Type\n-----------  -----------  ------\nKeyValue     Key          INT64\nKeyValue     Value        STRING\n\n**Table Aliases**:\nTable Alias  Columns\n-----------  ----------\nKeyValue     Key, Value\n\nResult is ordered.\n")
+        |   +-input_scan=
+        |     +-SingleRowScan
+        +-output_column_list=[$rewrite_describe.$describe#5]
+==
+
+# Use DESCRIBE in a subquery
+SELECT (SELECT value |> DESCRIBE)
+FROM KeyValue
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#5 AS `$col1` [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#5]
+    +-expr_list=
+    | +-$col1#5 :=
+    |   +-SubqueryExpr
+    |     +-type=STRING
+    |     +-subquery_type=SCALAR
+    |     +-parameter_list=
+    |     | +-ColumnRef(type=STRING, column=KeyValue.Value#2)
+    |     +-subquery=
+    |       +-DescribeScan
+    |         +-column_list=[$pipe_describe.Describe#4]
+    |         +-input_scan=
+    |         | +-ProjectScan
+    |         |   +-column_list=[$expr_subquery.value#3]
+    |         |   +-expr_list=
+    |         |   | +-value#3 := ColumnRef(type=STRING, column=KeyValue.Value#2, is_correlated=TRUE)
+    |         |   +-input_scan=
+    |         |     +-SingleRowScan
+    |         +-describe_expr=
+    |           +-Describe#4 := Literal(type=STRING, value="**Columns**:\nColumn Name  Type\n-----------  ------\nvalue        STRING\n")
+    +-input_scan=
+      +-TableScan(column_list=[KeyValue.Value#2], table=KeyValue, column_index_list=[1])
+
+[DESCRIBE output]
+**Columns**:
+Column Name  Type
+\-----------  ------
+value        STRING
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$query.$col1#5 AS `$col1` [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#5]
+    +-expr_list=
+    | +-$col1#5 :=
+    |   +-SubqueryExpr
+    |     +-type=STRING
+    |     +-subquery_type=SCALAR
+    |     +-parameter_list=
+    |     | +-ColumnRef(type=STRING, column=KeyValue.Value#2)
+    |     +-subquery=
+    |       +-SetOperationScan
+    |         +-column_list=[$pipe_describe.Describe#4]
+    |         +-op_type=UNION_ALL
+    |         +-input_item_list=
+    |           +-SetOperationItem
+    |           | +-scan=
+    |           | | +-ProjectScan
+    |           | |   +-column_list=[$rewrite_describe.$null#6]
+    |           | |   +-expr_list=
+    |           | |   | +-$null#6 := Literal(type=STRING, value=NULL)
+    |           | |   +-input_scan=
+    |           | |     +-FilterScan
+    |           | |       +-input_scan=
+    |           | |       | +-ProjectScan
+    |           | |       |   +-column_list=[$expr_subquery.value#3]
+    |           | |       |   +-expr_list=
+    |           | |       |   | +-value#3 := ColumnRef(type=STRING, column=KeyValue.Value#2, is_correlated=TRUE)
+    |           | |       |   +-input_scan=
+    |           | |       |     +-SingleRowScan
+    |           | |       +-filter_expr=
+    |           | |         +-Literal(type=BOOL, value=false)
+    |           | +-output_column_list=[$rewrite_describe.$null#6]
+    |           +-SetOperationItem
+    |             +-scan=
+    |             | +-ProjectScan
+    |             |   +-column_list=[$rewrite_describe.$describe#7]
+    |             |   +-expr_list=
+    |             |   | +-$describe#7 := Literal(type=STRING, value="**Columns**:\nColumn Name  Type\n-----------  ------\nvalue        STRING\n")
+    |             |   +-input_scan=
+    |             |     +-SingleRowScan
+    |             +-output_column_list=[$rewrite_describe.$describe#7]
+    +-input_scan=
+      +-TableScan(column_list=[KeyValue.Value#2], table=KeyValue, column_index_list=[1])
+==
+
+# Use DESCRIBE in set ops.
+(FROM KeyValue
+ |> DESCRIBE)
+UNION ALL
+(select 1
+ |> DESCRIBE)
+--
+QueryStmt
++-output_column_list=
+| +-$union_all.Describe#6 AS Describe [STRING]
++-query=
+  +-SetOperationScan
+    +-column_list=[$union_all.Describe#6]
+    +-op_type=UNION_ALL
+    +-input_item_list=
+      +-SetOperationItem
+      | +-scan=
+      | | +-DescribeScan
+      | |   +-column_list=[$pipe_describe.Describe#3]
+      | |   +-input_scan=
+      | |   | +-TableScan(table=KeyValue)
+      | |   +-describe_expr=
+      | |     +-Describe#3 := Literal(type=STRING, value="**Columns**:\nTable Alias  Column Name  Type\n-----------  -----------  ------\nKeyValue     Key          INT64\nKeyValue     Value        STRING\n\n**Table Aliases**:\nTable Alias  Columns\n-----------  ----------\nKeyValue     Key, Value\n")
+      | +-output_column_list=[$pipe_describe.Describe#3]
+      +-SetOperationItem
+        +-scan=
+        | +-DescribeScan
+        |   +-column_list=[$pipe_describe.Describe#5]
+        |   +-input_scan=
+        |   | +-ProjectScan
+        |   |   +-column_list=[$union_all2.$col1#4]
+        |   |   +-expr_list=
+        |   |   | +-$col1#4 := Literal(type=INT64, value=1)
+        |   |   +-input_scan=
+        |   |     +-SingleRowScan
+        |   +-describe_expr=
+        |     +-Describe#5 := Literal(type=STRING, value="**Columns**:\nColumn Name  Type\n-----------  -----\n<unnamed>    INT64\n")
+        +-output_column_list=[$pipe_describe.Describe#5]
+
+[DESCRIBE output]
+**Columns**:
+Table Alias  Column Name  Type
+\-----------  -----------  ------
+KeyValue     Key          INT64
+KeyValue     Value        STRING
+
+**Table Aliases**:
+Table Alias  Columns
+\-----------  ----------
+KeyValue     Key, Value
+
+
+[DESCRIBE output]
+**Columns**:
+Column Name  Type
+\-----------  -----
+<unnamed>    INT64
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$union_all.Describe#6 AS Describe [STRING]
++-query=
+  +-SetOperationScan
+    +-column_list=[$union_all.Describe#6]
+    +-op_type=UNION_ALL
+    +-input_item_list=
+      +-SetOperationItem
+      | +-scan=
+      | | +-SetOperationScan
+      | |   +-column_list=[$pipe_describe.Describe#3]
+      | |   +-op_type=UNION_ALL
+      | |   +-input_item_list=
+      | |     +-SetOperationItem
+      | |     | +-scan=
+      | |     | | +-ProjectScan
+      | |     | |   +-column_list=[$rewrite_describe.$null#7]
+      | |     | |   +-expr_list=
+      | |     | |   | +-$null#7 := Literal(type=STRING, value=NULL)
+      | |     | |   +-input_scan=
+      | |     | |     +-FilterScan
+      | |     | |       +-input_scan=
+      | |     | |       | +-TableScan(table=KeyValue)
+      | |     | |       +-filter_expr=
+      | |     | |         +-Literal(type=BOOL, value=false)
+      | |     | +-output_column_list=[$rewrite_describe.$null#7]
+      | |     +-SetOperationItem
+      | |       +-scan=
+      | |       | +-ProjectScan
+      | |       |   +-column_list=[$rewrite_describe.$describe#8]
+      | |       |   +-expr_list=
+      | |       |   | +-$describe#8 := Literal(type=STRING, value="**Columns**:\nTable Alias  Column Name  Type\n-----------  -----------  ------\nKeyValue     Key          INT64\nKeyValue     Value        STRING\n\n**Table Aliases**:\nTable Alias  Columns\n-----------  ----------\nKeyValue     Key, Value\n")
+      | |       |   +-input_scan=
+      | |       |     +-SingleRowScan
+      | |       +-output_column_list=[$rewrite_describe.$describe#8]
+      | +-output_column_list=[$pipe_describe.Describe#3]
+      +-SetOperationItem
+        +-scan=
+        | +-SetOperationScan
+        |   +-column_list=[$pipe_describe.Describe#5]
+        |   +-op_type=UNION_ALL
+        |   +-input_item_list=
+        |     +-SetOperationItem
+        |     | +-scan=
+        |     | | +-ProjectScan
+        |     | |   +-column_list=[$rewrite_describe.$null#9]
+        |     | |   +-expr_list=
+        |     | |   | +-$null#9 := Literal(type=STRING, value=NULL)
+        |     | |   +-input_scan=
+        |     | |     +-FilterScan
+        |     | |       +-input_scan=
+        |     | |       | +-ProjectScan
+        |     | |       |   +-column_list=[$union_all2.$col1#4]
+        |     | |       |   +-expr_list=
+        |     | |       |   | +-$col1#4 := Literal(type=INT64, value=1)
+        |     | |       |   +-input_scan=
+        |     | |       |     +-SingleRowScan
+        |     | |       +-filter_expr=
+        |     | |         +-Literal(type=BOOL, value=false)
+        |     | +-output_column_list=[$rewrite_describe.$null#9]
+        |     +-SetOperationItem
+        |       +-scan=
+        |       | +-ProjectScan
+        |       |   +-column_list=[$rewrite_describe.$describe#10]
+        |       |   +-expr_list=
+        |       |   | +-$describe#10 := Literal(type=STRING, value="**Columns**:\nColumn Name  Type\n-----------  -----\n<unnamed>    INT64\n")
+        |       |   +-input_scan=
+        |       |     +-SingleRowScan
+        |       +-output_column_list=[$rewrite_describe.$describe#10]
+        +-output_column_list=[$pipe_describe.Describe#5]
+==
+
+# Inside RECURSIVE UNION, we have an internally generated CTE.
+# It doesn't show up in the DESCRIBE output when it doesn't have an alias.
+# It does show up when it has an alias.
+FROM KeyValue
+|> SELECT value
+|> RECURSIVE UNION ALL (
+     {{|FROM rec}}
+     |> STATIC_DESCRIBE
+     |> DESCRIBE
+   ){{| AS rec}}
+--
+ALTERNATION GROUP: <empty>
+--
+QueryStmt
++-output_column_list=
+| +-$union_all.value#3 AS value [STRING]
++-query=
+  +-RecursiveScan
+    +-column_list=[$union_all.value#3]
+    +-op_type=UNION_ALL
+    +-non_recursive_term=
+    | +-SetOperationItem
+    |   +-scan=
+    |   | +-ProjectScan
+    |   |   +-column_list=[KeyValue.Value#2]
+    |   |   +-input_scan=
+    |   |     +-TableScan(column_list=[KeyValue.Value#2], table=KeyValue, column_index_list=[1])
+    |   +-output_column_list=[KeyValue.Value#2]
+    +-recursive_term=
+      +-SetOperationItem
+        +-scan=
+        | +-DescribeScan
+        |   +-column_list=[$pipe_describe.Describe#5]
+        |   +-input_scan=
+        |   | +-StaticDescribeScan
+        |   |   +-column_list=[$pipe_recursive_union.value#4]
+        |   |   +-describe_text=
+        |   |   |   """
+        |   |   |   NameList:
+        |   |   |     value STRING $pipe_recursive_union.value#4
+        |   |   |   NameScope:
+        |   |   |     Names:
+        |   |   |       value -> STRING ($pipe_recursive_union.value#4)
+        |   |   |   """
+        |   |   +-input_scan=
+        |   |     +-RecursiveRefScan(column_list=[$pipe_recursive_union.value#4])
+        |   +-describe_expr=
+        |     +-Describe#5 := Literal(type=STRING, value="**Columns**:\nColumn Name  Type\n-----------  ------\nvalue        STRING\n")
+        +-output_column_list=[$pipe_describe.Describe#5]
+
+[DESCRIBE output]
+**Columns**:
+Column Name  Type
+\-----------  ------
+value        STRING
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$union_all.value#3 AS value [STRING]
++-query=
+  +-RecursiveScan
+    +-column_list=[$union_all.value#3]
+    +-op_type=UNION_ALL
+    +-non_recursive_term=
+    | +-SetOperationItem
+    |   +-scan=
+    |   | +-ProjectScan
+    |   |   +-column_list=[KeyValue.Value#2]
+    |   |   +-input_scan=
+    |   |     +-TableScan(column_list=[KeyValue.Value#2], table=KeyValue, column_index_list=[1])
+    |   +-output_column_list=[KeyValue.Value#2]
+    +-recursive_term=
+      +-SetOperationItem
+        +-scan=
+        | +-SetOperationScan
+        |   +-column_list=[$pipe_describe.Describe#5]
+        |   +-op_type=UNION_ALL
+        |   +-input_item_list=
+        |     +-SetOperationItem
+        |     | +-scan=
+        |     | | +-ProjectScan
+        |     | |   +-column_list=[$rewrite_describe.$null#6]
+        |     | |   +-expr_list=
+        |     | |   | +-$null#6 := Literal(type=STRING, value=NULL)
+        |     | |   +-input_scan=
+        |     | |     +-FilterScan
+        |     | |       +-input_scan=
+        |     | |       | +-StaticDescribeScan
+        |     | |       |   +-column_list=[$pipe_recursive_union.value#4]
+        |     | |       |   +-describe_text=
+        |     | |       |   |   """
+        |     | |       |   |   NameList:
+        |     | |       |   |     value STRING $pipe_recursive_union.value#4
+        |     | |       |   |   NameScope:
+        |     | |       |   |     Names:
+        |     | |       |   |       value -> STRING ($pipe_recursive_union.value#4)
+        |     | |       |   |   """
+        |     | |       |   +-input_scan=
+        |     | |       |     +-RecursiveRefScan(column_list=[$pipe_recursive_union.value#4])
+        |     | |       +-filter_expr=
+        |     | |         +-Literal(type=BOOL, value=false)
+        |     | +-output_column_list=[$rewrite_describe.$null#6]
+        |     +-SetOperationItem
+        |       +-scan=
+        |       | +-ProjectScan
+        |       |   +-column_list=[$rewrite_describe.$describe#7]
+        |       |   +-expr_list=
+        |       |   | +-$describe#7 := Literal(type=STRING, value="**Columns**:\nColumn Name  Type\n-----------  ------\nvalue        STRING\n")
+        |       |   +-input_scan=
+        |       |     +-SingleRowScan
+        |       +-output_column_list=[$rewrite_describe.$describe#7]
+        +-output_column_list=[$pipe_describe.Describe#5]
+--
+ALTERNATION GROUPS:
+     AS rec
+    FROM rec, AS rec
+--
+QueryStmt
++-output_column_list=
+| +-$union_all.value#3 AS value [STRING]
++-query=
+  +-RecursiveScan
+    +-column_list=[$union_all.value#3]
+    +-op_type=UNION_ALL
+    +-non_recursive_term=
+    | +-SetOperationItem
+    |   +-scan=
+    |   | +-ProjectScan
+    |   |   +-column_list=[KeyValue.Value#2]
+    |   |   +-input_scan=
+    |   |     +-TableScan(column_list=[KeyValue.Value#2], table=KeyValue, column_index_list=[1])
+    |   +-output_column_list=[KeyValue.Value#2]
+    +-recursive_term=
+      +-SetOperationItem
+        +-scan=
+        | +-DescribeScan
+        |   +-column_list=[$pipe_describe.Describe#5]
+        |   +-input_scan=
+        |   | +-StaticDescribeScan
+        |   |   +-column_list=[rec.value#4]
+        |   |   +-describe_text=
+        |   |   |   """
+        |   |   |   NameList:
+        |   |   |     value STRING rec.value#4
+        |   |   |   NameScope:
+        |   |   |     Names:
+        |   |   |       value -> STRING (rec.value#4)
+        |   |   |     Range variables:
+        |   |   |       rec -> RANGE_VARIABLE<value#4>
+        |   |   |
+        |   |   |   **Common table expressions**:
+        |   |   |   Name  Columns
+        |   |   |   ----  -------
+        |   |   |   rec   value
+        |   |   |   """
+        |   |   +-input_scan=
+        |   |     +-RecursiveRefScan(column_list=[rec.value#4])
+        |   +-describe_expr=
+        |     +-Describe#5 := Literal(type=STRING, value="**Columns**:\nTable Alias  Column Name  Type\n-----------  -----------  ------\nrec          value        STRING\n\n**Table Aliases**:\nTable Alias  Columns\n-----------  -------\nrec          value\n\n**Common table expressions**:\nName  Columns\n----  -------\nrec   value\n")
+        +-output_column_list=[$pipe_describe.Describe#5]
+
+[DESCRIBE output]
+**Columns**:
+Table Alias  Column Name  Type
+\-----------  -----------  ------
+rec          value        STRING
+
+**Table Aliases**:
+Table Alias  Columns
+\-----------  -------
+rec          value
+
+**Common table expressions**:
+Name  Columns
+\----  -------
+rec   value
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$union_all.value#3 AS value [STRING]
++-query=
+  +-RecursiveScan
+    +-column_list=[$union_all.value#3]
+    +-op_type=UNION_ALL
+    +-non_recursive_term=
+    | +-SetOperationItem
+    |   +-scan=
+    |   | +-ProjectScan
+    |   |   +-column_list=[KeyValue.Value#2]
+    |   |   +-input_scan=
+    |   |     +-TableScan(column_list=[KeyValue.Value#2], table=KeyValue, column_index_list=[1])
+    |   +-output_column_list=[KeyValue.Value#2]
+    +-recursive_term=
+      +-SetOperationItem
+        +-scan=
+        | +-SetOperationScan
+        |   +-column_list=[$pipe_describe.Describe#5]
+        |   +-op_type=UNION_ALL
+        |   +-input_item_list=
+        |     +-SetOperationItem
+        |     | +-scan=
+        |     | | +-ProjectScan
+        |     | |   +-column_list=[$rewrite_describe.$null#6]
+        |     | |   +-expr_list=
+        |     | |   | +-$null#6 := Literal(type=STRING, value=NULL)
+        |     | |   +-input_scan=
+        |     | |     +-FilterScan
+        |     | |       +-input_scan=
+        |     | |       | +-StaticDescribeScan
+        |     | |       |   +-column_list=[rec.value#4]
+        |     | |       |   +-describe_text=
+        |     | |       |   |   """
+        |     | |       |   |   NameList:
+        |     | |       |   |     value STRING rec.value#4
+        |     | |       |   |   NameScope:
+        |     | |       |   |     Names:
+        |     | |       |   |       value -> STRING (rec.value#4)
+        |     | |       |   |     Range variables:
+        |     | |       |   |       rec -> RANGE_VARIABLE<value#4>
+        |     | |       |   |
+        |     | |       |   |   **Common table expressions**:
+        |     | |       |   |   Name  Columns
+        |     | |       |   |   ----  -------
+        |     | |       |   |   rec   value
+        |     | |       |   |   """
+        |     | |       |   +-input_scan=
+        |     | |       |     +-RecursiveRefScan(column_list=[rec.value#4])
+        |     | |       +-filter_expr=
+        |     | |         +-Literal(type=BOOL, value=false)
+        |     | +-output_column_list=[$rewrite_describe.$null#6]
+        |     +-SetOperationItem
+        |       +-scan=
+        |       | +-ProjectScan
+        |       |   +-column_list=[$rewrite_describe.$describe#7]
+        |       |   +-expr_list=
+        |       |   | +-$describe#7 := Literal(type=STRING, value="**Columns**:\nTable Alias  Column Name  Type\n-----------  -----------  ------\nrec          value        STRING\n\n**Table Aliases**:\nTable Alias  Columns\n-----------  -------\nrec          value\n\n**Common table expressions**:\nName  Columns\n----  -------\nrec   value\n")
+        |       |   +-input_scan=
+        |       |     +-SingleRowScan
+        |       +-output_column_list=[$rewrite_describe.$describe#7]
+        +-output_column_list=[$pipe_describe.Describe#5]
+--
+ALTERNATION GROUP: FROM rec,
+--
+ERROR: The subquery input of RECURSIVE UNION must have an alias [at 7:5]
+   )
+    ^
+==
+
+# Using DESCRIBE inside WITH.
+# Each one shows all the CTEs defined so far.
+# (Describe outputs are out of order in the output below.)
+WITH t1 AS (
+    SELECT 123 t1_x
+    |> DESCRIBE
+    |> EXTEND 1 from_t1
+  ), t2 AS (
+    SELECT "abc" t2_y, "def" t2_z
+    |> DESCRIBE
+    |> EXTEND 1 from_t2
+  )
+FROM t1, t2
+|> DESCRIBE
+--
+QueryStmt
++-output_column_list=
+| +-$pipe_describe.Describe#12 AS Describe [STRING]
++-query=
+  +-WithScan
+    +-column_list=[$pipe_describe.Describe#12]
+    +-with_entry_list=
+    | +-WithEntry
+    | | +-with_query_name="t1"
+    | | +-with_subquery=
+    | |   +-ProjectScan
+    | |     +-column_list=[$pipe_describe.Describe#2, $pipe_extend.from_t1#3]
+    | |     +-expr_list=
+    | |     | +-from_t1#3 := Literal(type=INT64, value=1)
+    | |     +-input_scan=
+    | |       +-DescribeScan
+    | |         +-column_list=[$pipe_describe.Describe#2]
+    | |         +-input_scan=
+    | |         | +-ProjectScan
+    | |         |   +-column_list=[t1.t1_x#1]
+    | |         |   +-expr_list=
+    | |         |   | +-t1_x#1 := Literal(type=INT64, value=123)
+    | |         |   +-input_scan=
+    | |         |     +-SingleRowScan
+    | |         +-describe_expr=
+    | |           +-Describe#2 := Literal(type=STRING, value="**Columns**:\nColumn Name  Type\n-----------  -----\nt1_x         INT64\n")
+    | +-WithEntry
+    |   +-with_query_name="t2"
+    |   +-with_subquery=
+    |     +-ProjectScan
+    |       +-column_list=[$pipe_describe.Describe#6, $pipe_extend.from_t2#7]
+    |       +-expr_list=
+    |       | +-from_t2#7 := Literal(type=INT64, value=1)
+    |       +-input_scan=
+    |         +-DescribeScan
+    |           +-column_list=[$pipe_describe.Describe#6]
+    |           +-input_scan=
+    |           | +-ProjectScan
+    |           |   +-column_list=t2.[t2_y#4, t2_z#5]
+    |           |   +-expr_list=
+    |           |   | +-t2_y#4 := Literal(type=STRING, value="abc")
+    |           |   | +-t2_z#5 := Literal(type=STRING, value="def")
+    |           |   +-input_scan=
+    |           |     +-SingleRowScan
+    |           +-describe_expr=
+    |             +-Describe#6 := Literal(type=STRING, value="**Columns**:\nColumn Name  Type\n-----------  ------\nt2_y         STRING\nt2_z         STRING\n\n**Common table expressions**:\nName  Columns\n----  -----------------\nt1    Describe, from_t1\n")
+    +-query=
+      +-DescribeScan
+        +-column_list=[$pipe_describe.Describe#12]
+        +-input_scan=
+        | +-JoinScan
+        |   +-column_list=[t1.Describe#8, t1.from_t1#9, t2.Describe#10, t2.from_t2#11]
+        |   +-left_scan=
+        |   | +-WithRefScan(column_list=t1.[Describe#8, from_t1#9], with_query_name="t1")
+        |   +-right_scan=
+        |     +-WithRefScan(column_list=t2.[Describe#10, from_t2#11], with_query_name="t2")
+        +-describe_expr=
+          +-Describe#12 := Literal(type=STRING, value="**Columns**:\nTable Alias  Column Name  Type\n-----------  -----------  ------\nt1           Describe     STRING\nt1           from_t1      INT64\nt2           Describe     STRING\nt2           from_t2      INT64\n\n**Table Aliases**:\nTable Alias  Columns\n-----------  -----------------\nt1           Describe, from_t1\nt2           Describe, from_t2\n\n**Common table expressions**:\nName  Columns\n----  -----------------\nt1    Describe, from_t1\nt2    Describe, from_t2\n")
+
+[DESCRIBE output]
+**Columns**:
+Table Alias  Column Name  Type
+\-----------  -----------  ------
+t1           Describe     STRING
+t1           from_t1      INT64
+t2           Describe     STRING
+t2           from_t2      INT64
+
+**Table Aliases**:
+Table Alias  Columns
+\-----------  -----------------
+t1           Describe, from_t1
+t2           Describe, from_t2
+
+**Common table expressions**:
+Name  Columns
+\----  -----------------
+t1    Describe, from_t1
+t2    Describe, from_t2
+
+
+[DESCRIBE output]
+**Columns**:
+Column Name  Type
+\-----------  -----
+t1_x         INT64
+
+
+[DESCRIBE output]
+**Columns**:
+Column Name  Type
+\-----------  ------
+t2_y         STRING
+t2_z         STRING
+
+**Common table expressions**:
+Name  Columns
+\----  -----------------
+t1    Describe, from_t1
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$pipe_describe.Describe#12 AS Describe [STRING]
++-query=
+  +-WithScan
+    +-column_list=[$pipe_describe.Describe#12]
+    +-with_entry_list=
+    | +-WithEntry
+    | | +-with_query_name="t1"
+    | | +-with_subquery=
+    | |   +-ProjectScan
+    | |     +-column_list=[$pipe_describe.Describe#2, $pipe_extend.from_t1#3]
+    | |     +-expr_list=
+    | |     | +-from_t1#3 := Literal(type=INT64, value=1)
+    | |     +-input_scan=
+    | |       +-SetOperationScan
+    | |         +-column_list=[$pipe_describe.Describe#2]
+    | |         +-op_type=UNION_ALL
+    | |         +-input_item_list=
+    | |           +-SetOperationItem
+    | |           | +-scan=
+    | |           | | +-ProjectScan
+    | |           | |   +-column_list=[$rewrite_describe.$null#13]
+    | |           | |   +-expr_list=
+    | |           | |   | +-$null#13 := Literal(type=STRING, value=NULL)
+    | |           | |   +-input_scan=
+    | |           | |     +-FilterScan
+    | |           | |       +-input_scan=
+    | |           | |       | +-ProjectScan
+    | |           | |       |   +-column_list=[t1.t1_x#1]
+    | |           | |       |   +-expr_list=
+    | |           | |       |   | +-t1_x#1 := Literal(type=INT64, value=123)
+    | |           | |       |   +-input_scan=
+    | |           | |       |     +-SingleRowScan
+    | |           | |       +-filter_expr=
+    | |           | |         +-Literal(type=BOOL, value=false)
+    | |           | +-output_column_list=[$rewrite_describe.$null#13]
+    | |           +-SetOperationItem
+    | |             +-scan=
+    | |             | +-ProjectScan
+    | |             |   +-column_list=[$rewrite_describe.$describe#14]
+    | |             |   +-expr_list=
+    | |             |   | +-$describe#14 := Literal(type=STRING, value="**Columns**:\nColumn Name  Type\n-----------  -----\nt1_x         INT64\n")
+    | |             |   +-input_scan=
+    | |             |     +-SingleRowScan
+    | |             +-output_column_list=[$rewrite_describe.$describe#14]
+    | +-WithEntry
+    |   +-with_query_name="t2"
+    |   +-with_subquery=
+    |     +-ProjectScan
+    |       +-column_list=[$pipe_describe.Describe#6, $pipe_extend.from_t2#7]
+    |       +-expr_list=
+    |       | +-from_t2#7 := Literal(type=INT64, value=1)
+    |       +-input_scan=
+    |         +-SetOperationScan
+    |           +-column_list=[$pipe_describe.Describe#6]
+    |           +-op_type=UNION_ALL
+    |           +-input_item_list=
+    |             +-SetOperationItem
+    |             | +-scan=
+    |             | | +-ProjectScan
+    |             | |   +-column_list=[$rewrite_describe.$null#15]
+    |             | |   +-expr_list=
+    |             | |   | +-$null#15 := Literal(type=STRING, value=NULL)
+    |             | |   +-input_scan=
+    |             | |     +-FilterScan
+    |             | |       +-input_scan=
+    |             | |       | +-ProjectScan
+    |             | |       |   +-column_list=t2.[t2_y#4, t2_z#5]
+    |             | |       |   +-expr_list=
+    |             | |       |   | +-t2_y#4 := Literal(type=STRING, value="abc")
+    |             | |       |   | +-t2_z#5 := Literal(type=STRING, value="def")
+    |             | |       |   +-input_scan=
+    |             | |       |     +-SingleRowScan
+    |             | |       +-filter_expr=
+    |             | |         +-Literal(type=BOOL, value=false)
+    |             | +-output_column_list=[$rewrite_describe.$null#15]
+    |             +-SetOperationItem
+    |               +-scan=
+    |               | +-ProjectScan
+    |               |   +-column_list=[$rewrite_describe.$describe#16]
+    |               |   +-expr_list=
+    |               |   | +-$describe#16 := Literal(type=STRING, value="**Columns**:\nColumn Name  Type\n-----------  ------\nt2_y         STRING\nt2_z         STRING\n\n**Common table expressions**:\nName  Columns\n----  -----------------\nt1    Describe, from_t1\n")
+    |               |   +-input_scan=
+    |               |     +-SingleRowScan
+    |               +-output_column_list=[$rewrite_describe.$describe#16]
+    +-query=
+      +-SetOperationScan
+        +-column_list=[$pipe_describe.Describe#12]
+        +-op_type=UNION_ALL
+        +-input_item_list=
+          +-SetOperationItem
+          | +-scan=
+          | | +-ProjectScan
+          | |   +-column_list=[$rewrite_describe.$null#17]
+          | |   +-expr_list=
+          | |   | +-$null#17 := Literal(type=STRING, value=NULL)
+          | |   +-input_scan=
+          | |     +-FilterScan
+          | |       +-input_scan=
+          | |       | +-JoinScan
+          | |       |   +-column_list=[t1.Describe#8, t1.from_t1#9, t2.Describe#10, t2.from_t2#11]
+          | |       |   +-left_scan=
+          | |       |   | +-WithRefScan(column_list=t1.[Describe#8, from_t1#9], with_query_name="t1")
+          | |       |   +-right_scan=
+          | |       |     +-WithRefScan(column_list=t2.[Describe#10, from_t2#11], with_query_name="t2")
+          | |       +-filter_expr=
+          | |         +-Literal(type=BOOL, value=false)
+          | +-output_column_list=[$rewrite_describe.$null#17]
+          +-SetOperationItem
+            +-scan=
+            | +-ProjectScan
+            |   +-column_list=[$rewrite_describe.$describe#18]
+            |   +-expr_list=
+            |   | +-$describe#18 := Literal(type=STRING, value="**Columns**:\nTable Alias  Column Name  Type\n-----------  -----------  ------\nt1           Describe     STRING\nt1           from_t1      INT64\nt2           Describe     STRING\nt2           from_t2      INT64\n\n**Table Aliases**:\nTable Alias  Columns\n-----------  -----------------\nt1           Describe, from_t1\nt2           Describe, from_t2\n\n**Common table expressions**:\nName  Columns\n----  -----------------\nt1    Describe, from_t1\nt2    Describe, from_t2\n")
+            |   +-input_scan=
+            |     +-SingleRowScan
+            +-output_column_list=[$rewrite_describe.$describe#18]
+==
+
+# DESCRIBE in WITH RECURSIVE.
+# The CTE is visible in the recursive branch of the UNION but not in the base.
+WITH RECURSIVE rec AS (
+ (
+  FROM KeyValue
+  |> EXTEND 1 from_base
+  |> DESCRIBE
+ )
+  UNION ALL
+ (
+  FROM rec
+  |> EXTEND 2 from_recursive
+  |> DESCRIBE
+ )
+)
+FROM rec
+|> EXTEND 3 from_output
+|> DESCRIBE
+--
+QueryStmt
++-output_column_list=
+| +-$pipe_describe.Describe#11 AS Describe [STRING]
++-query=
+  +-WithScan
+    +-column_list=[$pipe_describe.Describe#11]
+    +-with_entry_list=
+    | +-WithEntry
+    |   +-with_query_name="rec"
+    |   +-with_subquery=
+    |     +-RecursiveScan
+    |       +-column_list=[$union_all.Describe#5]
+    |       +-op_type=UNION_ALL
+    |       +-non_recursive_term=
+    |       | +-SetOperationItem
+    |       |   +-scan=
+    |       |   | +-DescribeScan
+    |       |   |   +-column_list=[$pipe_describe.Describe#4]
+    |       |   |   +-input_scan=
+    |       |   |   | +-ProjectScan
+    |       |   |   |   +-column_list=[$pipe_extend.from_base#3]
+    |       |   |   |   +-expr_list=
+    |       |   |   |   | +-from_base#3 := Literal(type=INT64, value=1)
+    |       |   |   |   +-input_scan=
+    |       |   |   |     +-TableScan(table=KeyValue)
+    |       |   |   +-describe_expr=
+    |       |   |     +-Describe#4 := Literal(type=STRING, value="**Columns**:\nTable Alias  Column Name  Type\n-----------  -----------  ------\nKeyValue     Key          INT64\nKeyValue     Value        STRING\n             from_base    INT64\n\n**Table Aliases**:\nTable Alias  Columns\n-----------  ----------\nKeyValue     Key, Value\n")
+    |       |   +-output_column_list=[$pipe_describe.Describe#4]
+    |       +-recursive_term=
+    |         +-SetOperationItem
+    |           +-scan=
+    |           | +-DescribeScan
+    |           |   +-column_list=[$pipe_describe.Describe#8]
+    |           |   +-input_scan=
+    |           |   | +-ProjectScan
+    |           |   |   +-column_list=[rec.Describe#6, $pipe_extend.from_recursive#7]
+    |           |   |   +-expr_list=
+    |           |   |   | +-from_recursive#7 := Literal(type=INT64, value=2)
+    |           |   |   +-input_scan=
+    |           |   |     +-RecursiveRefScan(column_list=[rec.Describe#6])
+    |           |   +-describe_expr=
+    |           |     +-Describe#8 := Literal(type=STRING, value="**Columns**:\nTable Alias  Column Name     Type\n-----------  --------------  ------\nrec          Describe        STRING\n             from_recursive  INT64\n\n**Table Aliases**:\nTable Alias  Columns\n-----------  --------\nrec          Describe\n\n**Common table expressions**:\nName  Columns\n----  --------\nrec   Describe\n")
+    |           +-output_column_list=[$pipe_describe.Describe#8]
+    +-query=
+    | +-DescribeScan
+    |   +-column_list=[$pipe_describe.Describe#11]
+    |   +-input_scan=
+    |   | +-ProjectScan
+    |   |   +-column_list=[rec.Describe#9, $pipe_extend.from_output#10]
+    |   |   +-expr_list=
+    |   |   | +-from_output#10 := Literal(type=INT64, value=3)
+    |   |   +-input_scan=
+    |   |     +-WithRefScan(column_list=[rec.Describe#9], with_query_name="rec")
+    |   +-describe_expr=
+    |     +-Describe#11 := Literal(type=STRING, value="**Columns**:\nTable Alias  Column Name  Type\n-----------  -----------  ------\nrec          Describe     STRING\n             from_output  INT64\n\n**Table Aliases**:\nTable Alias  Columns\n-----------  --------\nrec          Describe\n\n**Common table expressions**:\nName  Columns\n----  --------\nrec   Describe\n")
+    +-recursive=TRUE
+
+[DESCRIBE output]
+**Columns**:
+Table Alias  Column Name  Type
+\-----------  -----------  ------
+rec          Describe     STRING
+             from_output  INT64
+
+**Table Aliases**:
+Table Alias  Columns
+\-----------  --------
+rec          Describe
+
+**Common table expressions**:
+Name  Columns
+\----  --------
+rec   Describe
+
+
+[DESCRIBE output]
+**Columns**:
+Table Alias  Column Name  Type
+\-----------  -----------  ------
+KeyValue     Key          INT64
+KeyValue     Value        STRING
+             from_base    INT64
+
+**Table Aliases**:
+Table Alias  Columns
+\-----------  ----------
+KeyValue     Key, Value
+
+
+[DESCRIBE output]
+**Columns**:
+Table Alias  Column Name     Type
+\-----------  --------------  ------
+rec          Describe        STRING
+             from_recursive  INT64
+
+**Table Aliases**:
+Table Alias  Columns
+\-----------  --------
+rec          Describe
+
+**Common table expressions**:
+Name  Columns
+\----  --------
+rec   Describe
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$pipe_describe.Describe#11 AS Describe [STRING]
++-query=
+  +-WithScan
+    +-column_list=[$pipe_describe.Describe#11]
+    +-with_entry_list=
+    | +-WithEntry
+    |   +-with_query_name="rec"
+    |   +-with_subquery=
+    |     +-RecursiveScan
+    |       +-column_list=[$union_all.Describe#5]
+    |       +-op_type=UNION_ALL
+    |       +-non_recursive_term=
+    |       | +-SetOperationItem
+    |       |   +-scan=
+    |       |   | +-SetOperationScan
+    |       |   |   +-column_list=[$pipe_describe.Describe#4]
+    |       |   |   +-op_type=UNION_ALL
+    |       |   |   +-input_item_list=
+    |       |   |     +-SetOperationItem
+    |       |   |     | +-scan=
+    |       |   |     | | +-ProjectScan
+    |       |   |     | |   +-column_list=[$rewrite_describe.$null#12]
+    |       |   |     | |   +-expr_list=
+    |       |   |     | |   | +-$null#12 := Literal(type=STRING, value=NULL)
+    |       |   |     | |   +-input_scan=
+    |       |   |     | |     +-FilterScan
+    |       |   |     | |       +-input_scan=
+    |       |   |     | |       | +-ProjectScan
+    |       |   |     | |       |   +-column_list=[$pipe_extend.from_base#3]
+    |       |   |     | |       |   +-expr_list=
+    |       |   |     | |       |   | +-from_base#3 := Literal(type=INT64, value=1)
+    |       |   |     | |       |   +-input_scan=
+    |       |   |     | |       |     +-TableScan(table=KeyValue)
+    |       |   |     | |       +-filter_expr=
+    |       |   |     | |         +-Literal(type=BOOL, value=false)
+    |       |   |     | +-output_column_list=[$rewrite_describe.$null#12]
+    |       |   |     +-SetOperationItem
+    |       |   |       +-scan=
+    |       |   |       | +-ProjectScan
+    |       |   |       |   +-column_list=[$rewrite_describe.$describe#13]
+    |       |   |       |   +-expr_list=
+    |       |   |       |   | +-$describe#13 := Literal(type=STRING, value="**Columns**:\nTable Alias  Column Name  Type\n-----------  -----------  ------\nKeyValue     Key          INT64\nKeyValue     Value        STRING\n             from_base    INT64\n\n**Table Aliases**:\nTable Alias  Columns\n-----------  ----------\nKeyValue     Key, Value\n")
+    |       |   |       |   +-input_scan=
+    |       |   |       |     +-SingleRowScan
+    |       |   |       +-output_column_list=[$rewrite_describe.$describe#13]
+    |       |   +-output_column_list=[$pipe_describe.Describe#4]
+    |       +-recursive_term=
+    |         +-SetOperationItem
+    |           +-scan=
+    |           | +-SetOperationScan
+    |           |   +-column_list=[$pipe_describe.Describe#8]
+    |           |   +-op_type=UNION_ALL
+    |           |   +-input_item_list=
+    |           |     +-SetOperationItem
+    |           |     | +-scan=
+    |           |     | | +-ProjectScan
+    |           |     | |   +-column_list=[$rewrite_describe.$null#14]
+    |           |     | |   +-expr_list=
+    |           |     | |   | +-$null#14 := Literal(type=STRING, value=NULL)
+    |           |     | |   +-input_scan=
+    |           |     | |     +-FilterScan
+    |           |     | |       +-input_scan=
+    |           |     | |       | +-ProjectScan
+    |           |     | |       |   +-column_list=[rec.Describe#6, $pipe_extend.from_recursive#7]
+    |           |     | |       |   +-expr_list=
+    |           |     | |       |   | +-from_recursive#7 := Literal(type=INT64, value=2)
+    |           |     | |       |   +-input_scan=
+    |           |     | |       |     +-RecursiveRefScan(column_list=[rec.Describe#6])
+    |           |     | |       +-filter_expr=
+    |           |     | |         +-Literal(type=BOOL, value=false)
+    |           |     | +-output_column_list=[$rewrite_describe.$null#14]
+    |           |     +-SetOperationItem
+    |           |       +-scan=
+    |           |       | +-ProjectScan
+    |           |       |   +-column_list=[$rewrite_describe.$describe#15]
+    |           |       |   +-expr_list=
+    |           |       |   | +-$describe#15 := Literal(type=STRING, value="**Columns**:\nTable Alias  Column Name     Type\n-----------  --------------  ------\nrec          Describe        STRING\n             from_recursive  INT64\n\n**Table Aliases**:\nTable Alias  Columns\n-----------  --------\nrec          Describe\n\n**Common table expressions**:\nName  Columns\n----  --------\nrec   Describe\n")
+    |           |       |   +-input_scan=
+    |           |       |     +-SingleRowScan
+    |           |       +-output_column_list=[$rewrite_describe.$describe#15]
+    |           +-output_column_list=[$pipe_describe.Describe#8]
+    +-query=
+    | +-SetOperationScan
+    |   +-column_list=[$pipe_describe.Describe#11]
+    |   +-op_type=UNION_ALL
+    |   +-input_item_list=
+    |     +-SetOperationItem
+    |     | +-scan=
+    |     | | +-ProjectScan
+    |     | |   +-column_list=[$rewrite_describe.$null#16]
+    |     | |   +-expr_list=
+    |     | |   | +-$null#16 := Literal(type=STRING, value=NULL)
+    |     | |   +-input_scan=
+    |     | |     +-FilterScan
+    |     | |       +-input_scan=
+    |     | |       | +-ProjectScan
+    |     | |       |   +-column_list=[rec.Describe#9, $pipe_extend.from_output#10]
+    |     | |       |   +-expr_list=
+    |     | |       |   | +-from_output#10 := Literal(type=INT64, value=3)
+    |     | |       |   +-input_scan=
+    |     | |       |     +-WithRefScan(column_list=[rec.Describe#9], with_query_name="rec")
+    |     | |       +-filter_expr=
+    |     | |         +-Literal(type=BOOL, value=false)
+    |     | +-output_column_list=[$rewrite_describe.$null#16]
+    |     +-SetOperationItem
+    |       +-scan=
+    |       | +-ProjectScan
+    |       |   +-column_list=[$rewrite_describe.$describe#17]
+    |       |   +-expr_list=
+    |       |   | +-$describe#17 := Literal(type=STRING, value="**Columns**:\nTable Alias  Column Name  Type\n-----------  -----------  ------\nrec          Describe     STRING\n             from_output  INT64\n\n**Table Aliases**:\nTable Alias  Columns\n-----------  --------\nrec          Describe\n\n**Common table expressions**:\nName  Columns\n----  --------\nrec   Describe\n")
+    |       |   +-input_scan=
+    |       |     +-SingleRowScan
+    |       +-output_column_list=[$rewrite_describe.$describe#17]
+    +-recursive=TRUE
+==
+
+# Using DESCRIBE inside a DDL statement.
+CREATE VIEW v1 AS (
+  FROM KeyValue
+  |> DESCRIBE
+)
+--
+CreateViewStmt
++-name_path=v1
++-output_column_list=
+| +-$pipe_describe.Describe#3 AS Describe [STRING]
++-query=
+| +-DescribeScan
+|   +-column_list=[$pipe_describe.Describe#3]
+|   +-input_scan=
+|   | +-TableScan(table=KeyValue)
+|   +-describe_expr=
+|     +-Describe#3 := Literal(type=STRING, value="**Columns**:\nTable Alias  Column Name  Type\n-----------  -----------  ------\nKeyValue     Key          INT64\nKeyValue     Value        STRING\n\n**Table Aliases**:\nTable Alias  Columns\n-----------  ----------\nKeyValue     Key, Value\n")
++-sql="FROM KeyValue\n  |> DESCRIBE"
++-column_definition_list=
+  +-ColumnDefinition(name="Describe", type=STRING, column=v1.Describe#4)
+
+[DESCRIBE output]
+**Columns**:
+Table Alias  Column Name  Type
+\-----------  -----------  ------
+KeyValue     Key          INT64
+KeyValue     Value        STRING
+
+**Table Aliases**:
+Table Alias  Columns
+\-----------  ----------
+KeyValue     Key, Value
+
+[REWRITTEN AST]
+CreateViewStmt
++-name_path=v1
++-output_column_list=
+| +-$pipe_describe.Describe#3 AS Describe [STRING]
++-query=
+| +-SetOperationScan
+|   +-column_list=[$pipe_describe.Describe#3]
+|   +-op_type=UNION_ALL
+|   +-input_item_list=
+|     +-SetOperationItem
+|     | +-scan=
+|     | | +-ProjectScan
+|     | |   +-column_list=[$rewrite_describe.$null#5]
+|     | |   +-expr_list=
+|     | |   | +-$null#5 := Literal(type=STRING, value=NULL)
+|     | |   +-input_scan=
+|     | |     +-FilterScan
+|     | |       +-input_scan=
+|     | |       | +-TableScan(table=KeyValue)
+|     | |       +-filter_expr=
+|     | |         +-Literal(type=BOOL, value=false)
+|     | +-output_column_list=[$rewrite_describe.$null#5]
+|     +-SetOperationItem
+|       +-scan=
+|       | +-ProjectScan
+|       |   +-column_list=[$rewrite_describe.$describe#6]
+|       |   +-expr_list=
+|       |   | +-$describe#6 := Literal(type=STRING, value="**Columns**:\nTable Alias  Column Name  Type\n-----------  -----------  ------\nKeyValue     Key          INT64\nKeyValue     Value        STRING\n\n**Table Aliases**:\nTable Alias  Columns\n-----------  ----------\nKeyValue     Key, Value\n")
+|       |   +-input_scan=
+|       |     +-SingleRowScan
+|       +-output_column_list=[$rewrite_describe.$describe#6]
++-sql="FROM KeyValue\n  |> DESCRIBE"
++-column_definition_list=
+  +-ColumnDefinition(name="Describe", type=STRING, column=v1.Describe#4)

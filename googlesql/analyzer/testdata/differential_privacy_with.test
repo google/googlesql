@@ -1,0 +1,2646 @@
+# Table with UID in the WITH clause, differential privacy in the outer SELECT
+[default language_features=NONE,+DIFFERENTIAL_PRIVACY,+NAMED_ARGUMENTS,+WITH_ON_SUBQUERY,+WITH_RECURSIVE,+PIPE_AGGREGATE_WITH_DIFFERENTIAL_PRIVACY]
+
+[enabled_ast_rewrites=DEFAULTS,+ANONYMIZATION]
+WITH t as (select *
+           from SimpleTypesWithAnonymizationUid)
+SELECT WITH DIFFERENTIAL_PRIVACY count(*) as count from t;
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.count#25 AS count [INT64]
++-query=
+  +-WithScan
+    +-column_list=[$aggregate.count#25]
+    +-with_entry_list=
+    | +-WithEntry
+    |   +-with_query_name="t"
+    |   +-with_subquery=
+    |     +-ProjectScan
+    |       +-column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12]
+    |       +-input_scan=
+    |         +-TableScan(column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12], table=SimpleTypesWithAnonymizationUid, column_index_list=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
+    +-query=
+      +-ProjectScan
+        +-column_list=[$aggregate.count#25]
+        +-input_scan=
+          +-DifferentialPrivacyAggregateScan
+            +-column_list=[$aggregate.count#25]
+            +-input_scan=
+            | +-WithRefScan(column_list=t.[int32#13, int64#14, uint32#15, uint64#16, string#17, bytes#18, bool#19, float#20, double#21, date#22, uid#23, numeric#24], with_query_name="t")
+            +-aggregate_list=
+              +-count#25 :=
+                +-AggregateFunctionCall(GoogleSQL:$differential_privacy_count_star(optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+                  +-Literal(type=STRUCT<INT64, INT64>, value=NULL)
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.count#25 AS count [INT64]
++-query=
+  +-WithScan
+    +-column_list=[$aggregate.count#25]
+    +-with_entry_list=
+    | +-WithEntry
+    |   +-with_query_name="t"
+    |   +-with_subquery=
+    |     +-ProjectScan
+    |       +-column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12]
+    |       +-input_scan=
+    |         +-TableScan(column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12], table=SimpleTypesWithAnonymizationUid, column_index_list=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
+    +-query=
+      +-ProjectScan
+        +-column_list=[$aggregate.count#25]
+        +-input_scan=
+          +-DifferentialPrivacyAggregateScan
+            +-column_list=[$aggregate.count#25]
+            +-input_scan=
+            | +-AggregateScan
+            |   +-column_list=[$aggregate.count_partial#27, $group_by.$uid#28]
+            |   +-input_scan=
+            |   | +-WithRefScan(column_list=t.[int32#13, int64#14, uint32#15, uint64#16, string#17, bytes#18, bool#19, float#20, double#21, date#22, uid#23, numeric#24], with_query_name="t")
+            |   +-group_by_list=
+            |   | +-$uid#28 := ColumnRef(type=INT64, column=t.uid#23)
+            |   +-aggregate_list=
+            |     +-count_partial#27 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+            +-aggregate_list=
+            | +-count#25 :=
+            | | +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+            | |   +-ColumnRef(type=INT64, column=$aggregate.count_partial#27)
+            | |   +-Literal(type=STRUCT<INT64, INT64>, value=NULL)
+            | +-$group_selection_threshold_col#31 :=
+            |   +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+            |     +-Literal(type=INT64, value=1)
+            |     +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+            +-group_selection_threshold_expr=
+              +-ColumnRef(type=INT64, column=$differential_privacy.$group_selection_threshold_col#31)
+==
+
+# Reject WithRefScan without UID table
+[enabled_ast_rewrites=DEFAULTS,+ANONYMIZATION]
+[parse_location_record_type=PARSE_LOCATION_RECORD_CODE_SEARCH]
+with with_scan as (select 1)
+select with differential_privacy count(*, contribution_bounds_per_group => (0, 100))
+from with_scan;
+--
+[PRE-REWRITE AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#3 AS `$col1` [INT64]
++-query=
+  +-WithScan
+    +-parse_location=0-128
+    +-column_list=[$aggregate.$agg1#3]
+    +-with_entry_list=
+    | +-WithEntry
+    |   +-with_query_name="with_scan"
+    |   +-with_subquery=
+    |     +-ProjectScan
+    |       +-parse_location=18-28
+    |       +-column_list=[with_scan.$col1#1]
+    |       +-expr_list=
+    |       | +-$col1#1 := Literal(parse_location=26-27, type=INT64, value=1)
+    |       +-input_scan=
+    |         +-SingleRowScan
+    +-query=
+      +-ProjectScan
+        +-column_list=[$aggregate.$agg1#3]
+        +-input_scan=
+          +-DifferentialPrivacyAggregateScan
+            +-column_list=[$aggregate.$agg1#3]
+            +-input_scan=
+            | +-WithRefScan(parse_location=119-128, column_list=[with_scan.$col1#2], with_query_name="with_scan")
+            +-aggregate_list=
+              +-$agg1#3 :=
+                +-AggregateFunctionCall(GoogleSQL:$differential_privacy_count_star(optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+                  +-parse_location=62-67
+                  +-Literal(parse_location=104-112, type=STRUCT<INT64, INT64>, value={0, 100})
+[REPLACED_LITERALS]
+with with_scan as (select @_p0_INT64)
+select with differential_privacy count(*, contribution_bounds_per_group => @_p1_STRUCT)
+from with_scan;
+
+Rewrite ERROR: A DIFFERENTIAL_PRIVACY query must query data with a specified privacy unit column
+==
+
+# Require explicit uid projection
+[enabled_ast_rewrites=DEFAULTS,+ANONYMIZATION]
+[parse_location_record_type=PARSE_LOCATION_RECORD_CODE_SEARCH]
+with t1 as (select 1 from SimpleTypesWithAnonymizationUid)
+select with differential_privacy count(*, contribution_bounds_per_group => (0, 100))
+from (select * from t1);
+--
+[PRE-REWRITE AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#15 AS `$col1` [INT64]
++-query=
+  +-WithScan
+    +-parse_location=0-167
+    +-column_list=[$aggregate.$agg1#15]
+    +-with_entry_list=
+    | +-WithEntry
+    |   +-with_query_name="t1"
+    |   +-with_subquery=
+    |     +-ProjectScan
+    |       +-parse_location=11-58
+    |       +-column_list=[t1.$col1#13]
+    |       +-expr_list=
+    |       | +-$col1#13 := Literal(parse_location=19-20, type=INT64, value=1)
+    |       +-input_scan=
+    |         +-TableScan(parse_location=26-57, table=SimpleTypesWithAnonymizationUid)
+    +-query=
+      +-ProjectScan
+        +-column_list=[$aggregate.$agg1#15]
+        +-input_scan=
+          +-DifferentialPrivacyAggregateScan
+            +-column_list=[$aggregate.$agg1#15]
+            +-input_scan=
+            | +-ProjectScan
+            |   +-parse_location=150-166
+            |   +-column_list=[t1.$col1#14]
+            |   +-input_scan=
+            |     +-WithRefScan(parse_location=164-166, column_list=[t1.$col1#14], with_query_name="t1")
+            +-aggregate_list=
+              +-$agg1#15 :=
+                +-AggregateFunctionCall(GoogleSQL:$differential_privacy_count_star(optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+                  +-parse_location=92-97
+                  +-Literal(parse_location=134-142, type=STRUCT<INT64, INT64>, value={0, 100})
+[REPLACED_LITERALS]
+with t1 as (select @_p0_INT64 from SimpleTypesWithAnonymizationUid)
+select with differential_privacy count(*, contribution_bounds_per_group => @_p1_STRUCT)
+from (select * from t1);
+
+Rewrite ERROR: Subqueries of differential_privacy queries must explicitly SELECT the userid column 'uid' [at 1:12]
+with t1 as (select 1 from SimpleTypesWithAnonymizationUid)
+           ^
+==
+
+# Require explicit uid projection
+[enabled_ast_rewrites=DEFAULTS,+ANONYMIZATION]
+with t1 as (select uid from SimpleTypesWithAnonymizationUid)
+select with differential_privacy count(*, contribution_bounds_per_group => (0, 100))
+from (select * from t1);
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#14 AS `$col1` [INT64]
++-query=
+  +-WithScan
+    +-column_list=[$aggregate.$agg1#14]
+    +-with_entry_list=
+    | +-WithEntry
+    |   +-with_query_name="t1"
+    |   +-with_subquery=
+    |     +-ProjectScan
+    |       +-column_list=[SimpleTypesWithAnonymizationUid.uid#11]
+    |       +-input_scan=
+    |         +-TableScan(column_list=[SimpleTypesWithAnonymizationUid.uid#11], table=SimpleTypesWithAnonymizationUid, column_index_list=[10])
+    +-query=
+      +-ProjectScan
+        +-column_list=[$aggregate.$agg1#14]
+        +-input_scan=
+          +-DifferentialPrivacyAggregateScan
+            +-column_list=[$aggregate.$agg1#14]
+            +-input_scan=
+            | +-ProjectScan
+            |   +-column_list=[t1.uid#13]
+            |   +-input_scan=
+            |     +-WithRefScan(column_list=[t1.uid#13], with_query_name="t1")
+            +-aggregate_list=
+              +-$agg1#14 :=
+                +-AggregateFunctionCall(GoogleSQL:$differential_privacy_count_star(optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+                  +-Literal(type=STRUCT<INT64, INT64>, value={0, 100})
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#14 AS `$col1` [INT64]
++-query=
+  +-WithScan
+    +-column_list=[$aggregate.$agg1#14]
+    +-with_entry_list=
+    | +-WithEntry
+    |   +-with_query_name="t1"
+    |   +-with_subquery=
+    |     +-ProjectScan
+    |       +-column_list=[SimpleTypesWithAnonymizationUid.uid#11]
+    |       +-input_scan=
+    |         +-TableScan(column_list=[SimpleTypesWithAnonymizationUid.uid#11], table=SimpleTypesWithAnonymizationUid, column_index_list=[10])
+    +-query=
+      +-ProjectScan
+        +-column_list=[$aggregate.$agg1#14]
+        +-input_scan=
+          +-DifferentialPrivacyAggregateScan
+            +-column_list=[$aggregate.$agg1#14]
+            +-input_scan=
+            | +-AggregateScan
+            |   +-column_list=[$aggregate.$agg1_partial#16, $group_by.$uid#17]
+            |   +-input_scan=
+            |   | +-ProjectScan
+            |   |   +-column_list=[t1.uid#13]
+            |   |   +-input_scan=
+            |   |     +-WithRefScan(column_list=[t1.uid#13], with_query_name="t1")
+            |   +-group_by_list=
+            |   | +-$uid#17 := ColumnRef(type=INT64, column=t1.uid#13)
+            |   +-aggregate_list=
+            |     +-$agg1_partial#16 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+            +-aggregate_list=
+            | +-$agg1#14 :=
+            | | +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+            | |   +-ColumnRef(type=INT64, column=$aggregate.$agg1_partial#16)
+            | |   +-Literal(type=STRUCT<INT64, INT64>, value={0, 100})
+            | +-$group_selection_threshold_col#20 :=
+            |   +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+            |     +-Literal(type=INT64, value=1)
+            |     +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+            +-group_selection_threshold_expr=
+              +-ColumnRef(type=INT64, column=$differential_privacy.$group_selection_threshold_col#20)
+==
+
+# Extraneous with clauses
+[enabled_ast_rewrites=DEFAULTS,+ANONYMIZATION]
+with t1 as (select * from SimpleTypesWithAnonymizationUid),
+     t2 as (select * from SimpleTypesWithAnonymizationUid),
+     t3 as (select * from SimpleTypes)
+select with differential_privacy count(*, contribution_bounds_per_group => (0, 100))
+from (select * from t1);
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#56 AS `$col1` [INT64]
++-query=
+  +-WithScan
+    +-column_list=[$aggregate.$agg1#56]
+    +-with_entry_list=
+    | +-WithEntry
+    | | +-with_query_name="t1"
+    | | +-with_subquery=
+    | |   +-ProjectScan
+    | |     +-column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12]
+    | |     +-input_scan=
+    | |       +-TableScan(column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12], table=SimpleTypesWithAnonymizationUid, column_index_list=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
+    | +-WithEntry
+    | | +-with_query_name="t2"
+    | | +-with_subquery=
+    | |   +-ProjectScan
+    | |     +-column_list=SimpleTypesWithAnonymizationUid.[int32#13, int64#14, uint32#15, uint64#16, string#17, bytes#18, bool#19, float#20, double#21, date#22, uid#23, numeric#24]
+    | |     +-input_scan=
+    | |       +-TableScan(column_list=SimpleTypesWithAnonymizationUid.[int32#13, int64#14, uint32#15, uint64#16, string#17, bytes#18, bool#19, float#20, double#21, date#22, uid#23, numeric#24], table=SimpleTypesWithAnonymizationUid, column_index_list=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
+    | +-WithEntry
+    |   +-with_query_name="t3"
+    |   +-with_subquery=
+    |     +-ProjectScan
+    |       +-column_list=SimpleTypes.[int32#25, int64#26, uint32#27, uint64#28, string#29, bytes#30, bool#31, float#32, double#33, date#34, timestamp_seconds#35, timestamp_millis#36, timestamp_micros#37, timestamp_nanos#38, timestamp#39, numeric#40, bignumeric#41, json#42, uuid#43]
+    |       +-input_scan=
+    |         +-TableScan(column_list=SimpleTypes.[int32#25, int64#26, uint32#27, uint64#28, string#29, bytes#30, bool#31, float#32, double#33, date#34, timestamp_seconds#35, timestamp_millis#36, timestamp_micros#37, timestamp_nanos#38, timestamp#39, numeric#40, bignumeric#41, json#42, uuid#43], table=SimpleTypes, column_index_list=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18])
+    +-query=
+      +-ProjectScan
+        +-column_list=[$aggregate.$agg1#56]
+        +-input_scan=
+          +-DifferentialPrivacyAggregateScan
+            +-column_list=[$aggregate.$agg1#56]
+            +-input_scan=
+            | +-ProjectScan
+            |   +-column_list=t1.[int32#44, int64#45, uint32#46, uint64#47, string#48, bytes#49, bool#50, float#51, double#52, date#53, uid#54, numeric#55]
+            |   +-input_scan=
+            |     +-WithRefScan(column_list=t1.[int32#44, int64#45, uint32#46, uint64#47, string#48, bytes#49, bool#50, float#51, double#52, date#53, uid#54, numeric#55], with_query_name="t1")
+            +-aggregate_list=
+              +-$agg1#56 :=
+                +-AggregateFunctionCall(GoogleSQL:$differential_privacy_count_star(optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+                  +-Literal(type=STRUCT<INT64, INT64>, value={0, 100})
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#56 AS `$col1` [INT64]
++-query=
+  +-WithScan
+    +-column_list=[$aggregate.$agg1#56]
+    +-with_entry_list=
+    | +-WithEntry
+    | | +-with_query_name="t1"
+    | | +-with_subquery=
+    | |   +-ProjectScan
+    | |     +-column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12]
+    | |     +-input_scan=
+    | |       +-TableScan(column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12], table=SimpleTypesWithAnonymizationUid, column_index_list=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
+    | +-WithEntry
+    | | +-with_query_name="t2"
+    | | +-with_subquery=
+    | |   +-ProjectScan
+    | |     +-column_list=SimpleTypesWithAnonymizationUid.[int32#13, int64#14, uint32#15, uint64#16, string#17, bytes#18, bool#19, float#20, double#21, date#22, uid#23, numeric#24]
+    | |     +-input_scan=
+    | |       +-TableScan(column_list=SimpleTypesWithAnonymizationUid.[int32#13, int64#14, uint32#15, uint64#16, string#17, bytes#18, bool#19, float#20, double#21, date#22, uid#23, numeric#24], table=SimpleTypesWithAnonymizationUid, column_index_list=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
+    | +-WithEntry
+    |   +-with_query_name="t3"
+    |   +-with_subquery=
+    |     +-ProjectScan
+    |       +-column_list=SimpleTypes.[int32#25, int64#26, uint32#27, uint64#28, string#29, bytes#30, bool#31, float#32, double#33, date#34, timestamp_seconds#35, timestamp_millis#36, timestamp_micros#37, timestamp_nanos#38, timestamp#39, numeric#40, bignumeric#41, json#42, uuid#43]
+    |       +-input_scan=
+    |         +-TableScan(column_list=SimpleTypes.[int32#25, int64#26, uint32#27, uint64#28, string#29, bytes#30, bool#31, float#32, double#33, date#34, timestamp_seconds#35, timestamp_millis#36, timestamp_micros#37, timestamp_nanos#38, timestamp#39, numeric#40, bignumeric#41, json#42, uuid#43], table=SimpleTypes, column_index_list=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18])
+    +-query=
+      +-ProjectScan
+        +-column_list=[$aggregate.$agg1#56]
+        +-input_scan=
+          +-DifferentialPrivacyAggregateScan
+            +-column_list=[$aggregate.$agg1#56]
+            +-input_scan=
+            | +-AggregateScan
+            |   +-column_list=[$aggregate.$agg1_partial#58, $group_by.$uid#59]
+            |   +-input_scan=
+            |   | +-ProjectScan
+            |   |   +-column_list=t1.[int32#44, int64#45, uint32#46, uint64#47, string#48, bytes#49, bool#50, float#51, double#52, date#53, uid#54, numeric#55]
+            |   |   +-input_scan=
+            |   |     +-WithRefScan(column_list=t1.[int32#44, int64#45, uint32#46, uint64#47, string#48, bytes#49, bool#50, float#51, double#52, date#53, uid#54, numeric#55], with_query_name="t1")
+            |   +-group_by_list=
+            |   | +-$uid#59 := ColumnRef(type=INT64, column=t1.uid#54)
+            |   +-aggregate_list=
+            |     +-$agg1_partial#58 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+            +-aggregate_list=
+            | +-$agg1#56 :=
+            | | +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+            | |   +-ColumnRef(type=INT64, column=$aggregate.$agg1_partial#58)
+            | |   +-Literal(type=STRUCT<INT64, INT64>, value={0, 100})
+            | +-$group_selection_threshold_col#62 :=
+            |   +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+            |     +-Literal(type=INT64, value=1)
+            |     +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+            +-group_selection_threshold_expr=
+              +-ColumnRef(type=INT64, column=$differential_privacy.$group_selection_threshold_col#62)
+==
+
+# Reject recursive with clauses referenced from within the anonymization clause
+# This is waiting on support for set operations
+[enabled_ast_rewrites=DEFAULTS,+ANONYMIZATION]
+[parse_location_record_type=PARSE_LOCATION_RECORD_CODE_SEARCH]
+with recursive t1 as (
+  (select int64, uid from SimpleTypesWithAnonymizationUid)
+  union all
+  (select int64+1, uid from t1 where true))
+select with differential_privacy count(*) from t1;
+--
+[PRE-REWRITE AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#20 AS `$col1` [INT64]
++-query=
+  +-WithScan
+    +-parse_location=0-187
+    +-column_list=[$aggregate.$agg1#20]
+    +-with_entry_list=
+    | +-WithEntry
+    |   +-with_query_name="t1"
+    |   +-with_subquery=
+    |     +-RecursiveScan
+    |       +-column_list=$union_all.[int64#13, uid#14]
+    |       +-op_type=UNION_ALL
+    |       +-non_recursive_term=
+    |       | +-SetOperationItem
+    |       |   +-scan=
+    |       |   | +-ProjectScan
+    |       |   |   +-parse_location=26-80
+    |       |   |   +-column_list=SimpleTypesWithAnonymizationUid.[int64#2, uid#11]
+    |       |   |   +-input_scan=
+    |       |   |     +-TableScan(parse_location=49-80, column_list=SimpleTypesWithAnonymizationUid.[int64#2, uid#11], table=SimpleTypesWithAnonymizationUid, column_index_list=[1, 10])
+    |       |   +-output_column_list=SimpleTypesWithAnonymizationUid.[int64#2, uid#11]
+    |       +-recursive_term=
+    |         +-SetOperationItem
+    |           +-scan=
+    |           | +-ProjectScan
+    |           |   +-parse_location=97-135
+    |           |   +-column_list=[$union_all2.$col1#17, t1.uid#16]
+    |           |   +-expr_list=
+    |           |   | +-$col1#17 :=
+    |           |   |   +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |           |   |     +-parse_location=104-111
+    |           |   |     +-ColumnRef(parse_location=104-109, type=INT64, column=t1.int64#15)
+    |           |   |     +-Literal(parse_location=110-111, type=INT64, value=1)
+    |           |   +-input_scan=
+    |           |     +-FilterScan
+    |           |       +-column_list=t1.[int64#15, uid#16]
+    |           |       +-input_scan=
+    |           |       | +-RecursiveRefScan(column_list=t1.[int64#15, uid#16])
+    |           |       +-filter_expr=
+    |           |         +-Literal(parse_location=131-135, type=BOOL, value=true)
+    |           +-output_column_list=[$union_all2.$col1#17, t1.uid#16]
+    +-query=
+    | +-ProjectScan
+    |   +-column_list=[$aggregate.$agg1#20]
+    |   +-input_scan=
+    |     +-DifferentialPrivacyAggregateScan
+    |       +-column_list=[$aggregate.$agg1#20]
+    |       +-input_scan=
+    |       | +-WithRefScan(parse_location=185-187, column_list=t1.[int64#18, uid#19], with_query_name="t1")
+    |       +-aggregate_list=
+    |         +-$agg1#20 :=
+    |           +-AggregateFunctionCall(GoogleSQL:$differential_privacy_count_star(optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+    |             +-parse_location=171-176
+    |             +-Literal(type=STRUCT<INT64, INT64>, value=NULL)
+    +-recursive=TRUE
+[REPLACED_LITERALS]
+with recursive t1 as (
+  (select int64, uid from SimpleTypesWithAnonymizationUid)
+  union all
+  (select int64+@_p0_INT64, uid from t1 where @_p1_BOOL))
+select with differential_privacy count(*) from t1;
+
+Rewrite ERROR: Unsupported scan type inside of DIFFERENTIAL_PRIVACY clause: ResolvedRecursiveScan
+==
+
+# Recursive with clauses with differential_privacy inside the WITH entry
+[enabled_ast_rewrites=DEFAULTS,+ANONYMIZATION]
+with recursive t1 as (
+  (select with differential_privacy count(*) as c
+    from SimpleTypesWithAnonymizationUid)
+  union all
+  (select c+1 from t1 where true))
+select * from t1;
+--
+QueryStmt
++-output_column_list=
+| +-t1.c#17 AS c [INT64]
++-query=
+  +-WithScan
+    +-column_list=[t1.c#17]
+    +-with_entry_list=
+    | +-WithEntry
+    |   +-with_query_name="t1"
+    |   +-with_subquery=
+    |     +-RecursiveScan
+    |       +-column_list=[$union_all.c#14]
+    |       +-op_type=UNION_ALL
+    |       +-non_recursive_term=
+    |       | +-SetOperationItem
+    |       |   +-scan=
+    |       |   | +-ProjectScan
+    |       |   |   +-column_list=[$aggregate.c#13]
+    |       |   |   +-input_scan=
+    |       |   |     +-DifferentialPrivacyAggregateScan
+    |       |   |       +-column_list=[$aggregate.c#13]
+    |       |   |       +-input_scan=
+    |       |   |       | +-TableScan(table=SimpleTypesWithAnonymizationUid)
+    |       |   |       +-aggregate_list=
+    |       |   |         +-c#13 :=
+    |       |   |           +-AggregateFunctionCall(GoogleSQL:$differential_privacy_count_star(optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+    |       |   |             +-Literal(type=STRUCT<INT64, INT64>, value=NULL)
+    |       |   +-output_column_list=[$aggregate.c#13]
+    |       +-recursive_term=
+    |         +-SetOperationItem
+    |           +-scan=
+    |           | +-ProjectScan
+    |           |   +-column_list=[$union_all2.$col1#16]
+    |           |   +-expr_list=
+    |           |   | +-$col1#16 :=
+    |           |   |   +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |           |   |     +-ColumnRef(type=INT64, column=t1.c#15)
+    |           |   |     +-Literal(type=INT64, value=1)
+    |           |   +-input_scan=
+    |           |     +-FilterScan
+    |           |       +-column_list=[t1.c#15]
+    |           |       +-input_scan=
+    |           |       | +-RecursiveRefScan(column_list=[t1.c#15])
+    |           |       +-filter_expr=
+    |           |         +-Literal(type=BOOL, value=true)
+    |           +-output_column_list=[$union_all2.$col1#16]
+    +-query=
+    | +-ProjectScan
+    |   +-column_list=[t1.c#17]
+    |   +-input_scan=
+    |     +-WithRefScan(column_list=[t1.c#17], with_query_name="t1")
+    +-recursive=TRUE
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-t1.c#17 AS c [INT64]
++-query=
+  +-WithScan
+    +-column_list=[t1.c#17]
+    +-with_entry_list=
+    | +-WithEntry
+    |   +-with_query_name="t1"
+    |   +-with_subquery=
+    |     +-RecursiveScan
+    |       +-column_list=[$union_all.c#14]
+    |       +-op_type=UNION_ALL
+    |       +-non_recursive_term=
+    |       | +-SetOperationItem
+    |       |   +-scan=
+    |       |   | +-ProjectScan
+    |       |   |   +-column_list=[$aggregate.c#13]
+    |       |   |   +-input_scan=
+    |       |   |     +-DifferentialPrivacyAggregateScan
+    |       |   |       +-column_list=[$aggregate.c#13]
+    |       |   |       +-input_scan=
+    |       |   |       | +-AggregateScan
+    |       |   |       |   +-column_list=[$aggregate.c_partial#20, $group_by.$uid#21]
+    |       |   |       |   +-input_scan=
+    |       |   |       |   | +-TableScan(column_list=[SimpleTypesWithAnonymizationUid.uid#18], table=SimpleTypesWithAnonymizationUid, column_index_list=[10])
+    |       |   |       |   +-group_by_list=
+    |       |   |       |   | +-$uid#21 := ColumnRef(type=INT64, column=SimpleTypesWithAnonymizationUid.uid#18)
+    |       |   |       |   +-aggregate_list=
+    |       |   |       |     +-c_partial#20 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+    |       |   |       +-aggregate_list=
+    |       |   |       | +-c#13 :=
+    |       |   |       | | +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+    |       |   |       | |   +-ColumnRef(type=INT64, column=$aggregate.c_partial#20)
+    |       |   |       | |   +-Literal(type=STRUCT<INT64, INT64>, value=NULL)
+    |       |   |       | +-$group_selection_threshold_col#24 :=
+    |       |   |       |   +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+    |       |   |       |     +-Literal(type=INT64, value=1)
+    |       |   |       |     +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+    |       |   |       +-group_selection_threshold_expr=
+    |       |   |         +-ColumnRef(type=INT64, column=$differential_privacy.$group_selection_threshold_col#24)
+    |       |   +-output_column_list=[$aggregate.c#13]
+    |       +-recursive_term=
+    |         +-SetOperationItem
+    |           +-scan=
+    |           | +-ProjectScan
+    |           |   +-column_list=[$union_all2.$col1#16]
+    |           |   +-expr_list=
+    |           |   | +-$col1#16 :=
+    |           |   |   +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |           |   |     +-ColumnRef(type=INT64, column=t1.c#15)
+    |           |   |     +-Literal(type=INT64, value=1)
+    |           |   +-input_scan=
+    |           |     +-FilterScan
+    |           |       +-column_list=[t1.c#15]
+    |           |       +-input_scan=
+    |           |       | +-RecursiveRefScan(column_list=[t1.c#15])
+    |           |       +-filter_expr=
+    |           |         +-Literal(type=BOOL, value=true)
+    |           +-output_column_list=[$union_all2.$col1#16]
+    +-query=
+    | +-ProjectScan
+    |   +-column_list=[t1.c#17]
+    |   +-input_scan=
+    |     +-WithRefScan(column_list=[t1.c#17], with_query_name="t1")
+    +-recursive=TRUE
+==
+
+# Reject recursive with clauses with differential_privacy inside the recursive term
+[enabled_ast_rewrites=DEFAULTS,+ANONYMIZATION]
+[parse_location_record_type=PARSE_LOCATION_RECORD_CODE_SEARCH]
+with recursive t1 as (
+  (select int64, uid from SimpleTypesWithAnonymizationUid)
+  union all
+  (select with differential_privacy SUM(int64) as int64, 1 as uid from t1 where true))
+select * from t1;
+--
+[PRE-REWRITE AST]
+QueryStmt
++-output_column_list=
+| +-t1.int64#19 AS int64 [INT64]
+| +-t1.uid#20 AS uid [INT64]
++-query=
+  +-WithScan
+    +-parse_location=0-197
+    +-column_list=t1.[int64#19, uid#20]
+    +-with_entry_list=
+    | +-WithEntry
+    |   +-with_query_name="t1"
+    |   +-with_subquery=
+    |     +-RecursiveScan
+    |       +-column_list=$union_all.[int64#13, uid#14]
+    |       +-op_type=UNION_ALL
+    |       +-non_recursive_term=
+    |       | +-SetOperationItem
+    |       |   +-scan=
+    |       |   | +-ProjectScan
+    |       |   |   +-parse_location=26-80
+    |       |   |   +-column_list=SimpleTypesWithAnonymizationUid.[int64#2, uid#11]
+    |       |   |   +-input_scan=
+    |       |   |     +-TableScan(parse_location=49-80, column_list=SimpleTypesWithAnonymizationUid.[int64#2, uid#11], table=SimpleTypesWithAnonymizationUid, column_index_list=[1, 10])
+    |       |   +-output_column_list=SimpleTypesWithAnonymizationUid.[int64#2, uid#11]
+    |       +-recursive_term=
+    |         +-SetOperationItem
+    |           +-scan=
+    |           | +-ProjectScan
+    |           |   +-parse_location=97-178
+    |           |   +-column_list=[$aggregate.int64#17, $union_all2.uid#18]
+    |           |   +-expr_list=
+    |           |   | +-uid#18 := Literal(parse_location=151-152, type=INT64, value=1)
+    |           |   +-input_scan=
+    |           |     +-DifferentialPrivacyAggregateScan
+    |           |       +-column_list=[$aggregate.int64#17]
+    |           |       +-input_scan=
+    |           |       | +-FilterScan
+    |           |       |   +-column_list=t1.[int64#15, uid#16]
+    |           |       |   +-input_scan=
+    |           |       |   | +-RecursiveRefScan(column_list=t1.[int64#15, uid#16])
+    |           |       |   +-filter_expr=
+    |           |       |     +-Literal(parse_location=174-178, type=BOOL, value=true)
+    |           |       +-aggregate_list=
+    |           |         +-int64#17 :=
+    |           |           +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+    |           |             +-parse_location=130-133
+    |           |             +-ColumnRef(parse_location=134-139, type=INT64, column=t1.int64#15)
+    |           |             +-Literal(type=STRUCT<INT64, INT64>, value=NULL)
+    |           +-output_column_list=[$aggregate.int64#17, $union_all2.uid#18]
+    +-query=
+    | +-ProjectScan
+    |   +-column_list=t1.[int64#19, uid#20]
+    |   +-input_scan=
+    |     +-WithRefScan(parse_location=195-197, column_list=t1.[int64#19, uid#20], with_query_name="t1")
+    +-recursive=TRUE
+[REPLACED_LITERALS]
+with recursive t1 as (
+  (select int64, uid from SimpleTypesWithAnonymizationUid)
+  union all
+  (select with differential_privacy SUM(int64) as int64, @_p0_INT64 as uid from t1 where @_p1_BOOL))
+select * from t1;
+
+Rewrite ERROR: Unsupported scan type inside of DIFFERENTIAL_PRIVACY clause: ResolvedRecursiveRefScan [at 4:4]
+  (select with differential_privacy SUM(int64) as int64, 1 as uid from t1 whe...
+   ^
+==
+
+# Reject uid projection via anonymization in WITH entry
+[enabled_ast_rewrites=DEFAULTS,+ANONYMIZATION]
+[parse_location_record_type=PARSE_LOCATION_RECORD_CODE_SEARCH]
+with t as (select with differential_privacy uid, count(*)
+                  from SimpleTypesWithAnonymizationUid
+                  group by uid)
+select with differential_privacy count(*)
+from t;
+--
+[PRE-REWRITE AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#17 AS `$col1` [INT64]
++-query=
+  +-WithScan
+    +-parse_location=0-193
+    +-column_list=[$aggregate.$agg1#17]
+    +-with_entry_list=
+    | +-WithEntry
+    |   +-with_query_name="t"
+    |   +-with_subquery=
+    |     +-ProjectScan
+    |       +-parse_location=10-144
+    |       +-column_list=[$groupby.uid#14, $aggregate.$agg1#13]
+    |       +-input_scan=
+    |         +-DifferentialPrivacyAggregateScan
+    |           +-column_list=[$groupby.uid#14, $aggregate.$agg1#13]
+    |           +-input_scan=
+    |           | +-TableScan(parse_location=81-112, column_list=[SimpleTypesWithAnonymizationUid.uid#11], table=SimpleTypesWithAnonymizationUid, column_index_list=[10])
+    |           +-group_by_list=
+    |           | +-uid#14 := ColumnRef(parse_location=44-47, type=INT64, column=SimpleTypesWithAnonymizationUid.uid#11)
+    |           +-aggregate_list=
+    |             +-$agg1#13 :=
+    |               +-AggregateFunctionCall(GoogleSQL:$differential_privacy_count_star(optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+    |                 +-parse_location=49-54
+    |                 +-Literal(type=STRUCT<INT64, INT64>, value=NULL)
+    +-query=
+      +-ProjectScan
+        +-column_list=[$aggregate.$agg1#17]
+        +-input_scan=
+          +-DifferentialPrivacyAggregateScan
+            +-column_list=[$aggregate.$agg1#17]
+            +-input_scan=
+            | +-WithRefScan(parse_location=192-193, column_list=t.[uid#15, $col2#16], with_query_name="t")
+            +-aggregate_list=
+              +-$agg1#17 :=
+                +-AggregateFunctionCall(GoogleSQL:$differential_privacy_count_star(optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+                  +-parse_location=178-183
+                  +-Literal(type=STRUCT<INT64, INT64>, value=NULL)
+[REPLACED_LITERALS]
+with t as (select with differential_privacy uid, count(*)
+                  from SimpleTypesWithAnonymizationUid
+                  group by uid)
+select with differential_privacy count(*)
+from t;
+
+Rewrite ERROR: Subqueries of differential_privacy queries must explicitly SELECT the userid column 'uid' [at 1:11]
+with t as (select with differential_privacy uid, count(*)
+          ^
+==
+
+# Extraneous with clauses
+[enabled_ast_rewrites=DEFAULTS,+ANONYMIZATION]
+with t1 as (select * from SimpleTypesWithAnonymizationUid),
+     t2 as (select * from SimpleTypes)
+select 1 from t2;
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#51 AS `$col1` [INT64]
++-query=
+  +-WithScan
+    +-column_list=[$query.$col1#51]
+    +-with_entry_list=
+    | +-WithEntry
+    | | +-with_query_name="t1"
+    | | +-with_subquery=
+    | |   +-ProjectScan
+    | |     +-column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12]
+    | |     +-input_scan=
+    | |       +-TableScan(column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12], table=SimpleTypesWithAnonymizationUid, column_index_list=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
+    | +-WithEntry
+    |   +-with_query_name="t2"
+    |   +-with_subquery=
+    |     +-ProjectScan
+    |       +-column_list=SimpleTypes.[int32#13, int64#14, uint32#15, uint64#16, string#17, bytes#18, bool#19, float#20, double#21, date#22, timestamp_seconds#23, timestamp_millis#24, timestamp_micros#25, timestamp_nanos#26, timestamp#27, numeric#28, bignumeric#29, json#30, uuid#31]
+    |       +-input_scan=
+    |         +-TableScan(column_list=SimpleTypes.[int32#13, int64#14, uint32#15, uint64#16, string#17, bytes#18, bool#19, float#20, double#21, date#22, timestamp_seconds#23, timestamp_millis#24, timestamp_micros#25, timestamp_nanos#26, timestamp#27, numeric#28, bignumeric#29, json#30, uuid#31], table=SimpleTypes, column_index_list=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18])
+    +-query=
+      +-ProjectScan
+        +-column_list=[$query.$col1#51]
+        +-expr_list=
+        | +-$col1#51 := Literal(type=INT64, value=1)
+        +-input_scan=
+          +-WithRefScan(column_list=t2.[int32#32, int64#33, uint32#34, uint64#35, string#36, bytes#37, bool#38, float#39, double#40, date#41, timestamp_seconds#42, timestamp_millis#43, timestamp_micros#44, timestamp_nanos#45, timestamp#46, numeric#47, bignumeric#48, json#49, uuid#50], with_query_name="t2")
+==
+
+# Extraneous with clauses
+[enabled_ast_rewrites=DEFAULTS,+ANONYMIZATION]
+with t1 as (select with differential_privacy count(*) from SimpleTypesWithAnonymizationUid),
+     t2 as (select * from SimpleTypes)
+select 1 from t2;
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#52 AS `$col1` [INT64]
++-query=
+  +-WithScan
+    +-column_list=[$query.$col1#52]
+    +-with_entry_list=
+    | +-WithEntry
+    | | +-with_query_name="t1"
+    | | +-with_subquery=
+    | |   +-ProjectScan
+    | |     +-column_list=[$aggregate.$agg1#13]
+    | |     +-input_scan=
+    | |       +-DifferentialPrivacyAggregateScan
+    | |         +-column_list=[$aggregate.$agg1#13]
+    | |         +-input_scan=
+    | |         | +-TableScan(table=SimpleTypesWithAnonymizationUid)
+    | |         +-aggregate_list=
+    | |           +-$agg1#13 :=
+    | |             +-AggregateFunctionCall(GoogleSQL:$differential_privacy_count_star(optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+    | |               +-Literal(type=STRUCT<INT64, INT64>, value=NULL)
+    | +-WithEntry
+    |   +-with_query_name="t2"
+    |   +-with_subquery=
+    |     +-ProjectScan
+    |       +-column_list=SimpleTypes.[int32#14, int64#15, uint32#16, uint64#17, string#18, bytes#19, bool#20, float#21, double#22, date#23, timestamp_seconds#24, timestamp_millis#25, timestamp_micros#26, timestamp_nanos#27, timestamp#28, numeric#29, bignumeric#30, json#31, uuid#32]
+    |       +-input_scan=
+    |         +-TableScan(column_list=SimpleTypes.[int32#14, int64#15, uint32#16, uint64#17, string#18, bytes#19, bool#20, float#21, double#22, date#23, timestamp_seconds#24, timestamp_millis#25, timestamp_micros#26, timestamp_nanos#27, timestamp#28, numeric#29, bignumeric#30, json#31, uuid#32], table=SimpleTypes, column_index_list=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18])
+    +-query=
+      +-ProjectScan
+        +-column_list=[$query.$col1#52]
+        +-expr_list=
+        | +-$col1#52 := Literal(type=INT64, value=1)
+        +-input_scan=
+          +-WithRefScan(column_list=t2.[int32#33, int64#34, uint32#35, uint64#36, string#37, bytes#38, bool#39, float#40, double#41, date#42, timestamp_seconds#43, timestamp_millis#44, timestamp_micros#45, timestamp_nanos#46, timestamp#47, numeric#48, bignumeric#49, json#50, uuid#51], with_query_name="t2")
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$query.$col1#52 AS `$col1` [INT64]
++-query=
+  +-WithScan
+    +-column_list=[$query.$col1#52]
+    +-with_entry_list=
+    | +-WithEntry
+    | | +-with_query_name="t1"
+    | | +-with_subquery=
+    | |   +-ProjectScan
+    | |     +-column_list=[$aggregate.$agg1#13]
+    | |     +-input_scan=
+    | |       +-DifferentialPrivacyAggregateScan
+    | |         +-column_list=[$aggregate.$agg1#13]
+    | |         +-input_scan=
+    | |         | +-AggregateScan
+    | |         |   +-column_list=[$aggregate.$agg1_partial#55, $group_by.$uid#56]
+    | |         |   +-input_scan=
+    | |         |   | +-TableScan(column_list=[SimpleTypesWithAnonymizationUid.uid#53], table=SimpleTypesWithAnonymizationUid, column_index_list=[10])
+    | |         |   +-group_by_list=
+    | |         |   | +-$uid#56 := ColumnRef(type=INT64, column=SimpleTypesWithAnonymizationUid.uid#53)
+    | |         |   +-aggregate_list=
+    | |         |     +-$agg1_partial#55 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+    | |         +-aggregate_list=
+    | |         | +-$agg1#13 :=
+    | |         | | +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+    | |         | |   +-ColumnRef(type=INT64, column=$aggregate.$agg1_partial#55)
+    | |         | |   +-Literal(type=STRUCT<INT64, INT64>, value=NULL)
+    | |         | +-$group_selection_threshold_col#59 :=
+    | |         |   +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+    | |         |     +-Literal(type=INT64, value=1)
+    | |         |     +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+    | |         +-group_selection_threshold_expr=
+    | |           +-ColumnRef(type=INT64, column=$differential_privacy.$group_selection_threshold_col#59)
+    | +-WithEntry
+    |   +-with_query_name="t2"
+    |   +-with_subquery=
+    |     +-ProjectScan
+    |       +-column_list=SimpleTypes.[int32#14, int64#15, uint32#16, uint64#17, string#18, bytes#19, bool#20, float#21, double#22, date#23, timestamp_seconds#24, timestamp_millis#25, timestamp_micros#26, timestamp_nanos#27, timestamp#28, numeric#29, bignumeric#30, json#31, uuid#32]
+    |       +-input_scan=
+    |         +-TableScan(column_list=SimpleTypes.[int32#14, int64#15, uint32#16, uint64#17, string#18, bytes#19, bool#20, float#21, double#22, date#23, timestamp_seconds#24, timestamp_millis#25, timestamp_micros#26, timestamp_nanos#27, timestamp#28, numeric#29, bignumeric#30, json#31, uuid#32], table=SimpleTypes, column_index_list=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18])
+    +-query=
+      +-ProjectScan
+        +-column_list=[$query.$col1#52]
+        +-expr_list=
+        | +-$col1#52 := Literal(type=INT64, value=1)
+        +-input_scan=
+          +-WithRefScan(column_list=t2.[int32#33, int64#34, uint32#35, uint64#36, string#37, bytes#38, bool#39, float#40, double#41, date#42, timestamp_seconds#43, timestamp_millis#44, timestamp_micros#45, timestamp_nanos#46, timestamp#47, numeric#48, bignumeric#49, json#50, uuid#51], with_query_name="t2")
+==
+
+
+# Extraneous with clauses
+[enabled_ast_rewrites=DEFAULTS,+ANONYMIZATION]
+with t1 as (select * from SimpleTypesWithAnonymizationUid),
+     t2 as (select * from SimpleTypes)
+select with differential_privacy count(*, contribution_bounds_per_group => (0, 100))
+from (select * from t1)
+union all
+SELECT count(*) from t2;
+--
+QueryStmt
++-output_column_list=
+| +-$union_all.$col1#65 AS `$col1` [INT64]
++-query=
+  +-WithScan
+    +-column_list=[$union_all.$col1#65]
+    +-with_entry_list=
+    | +-WithEntry
+    | | +-with_query_name="t1"
+    | | +-with_subquery=
+    | |   +-ProjectScan
+    | |     +-column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12]
+    | |     +-input_scan=
+    | |       +-TableScan(column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12], table=SimpleTypesWithAnonymizationUid, column_index_list=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
+    | +-WithEntry
+    |   +-with_query_name="t2"
+    |   +-with_subquery=
+    |     +-ProjectScan
+    |       +-column_list=SimpleTypes.[int32#13, int64#14, uint32#15, uint64#16, string#17, bytes#18, bool#19, float#20, double#21, date#22, timestamp_seconds#23, timestamp_millis#24, timestamp_micros#25, timestamp_nanos#26, timestamp#27, numeric#28, bignumeric#29, json#30, uuid#31]
+    |       +-input_scan=
+    |         +-TableScan(column_list=SimpleTypes.[int32#13, int64#14, uint32#15, uint64#16, string#17, bytes#18, bool#19, float#20, double#21, date#22, timestamp_seconds#23, timestamp_millis#24, timestamp_micros#25, timestamp_nanos#26, timestamp#27, numeric#28, bignumeric#29, json#30, uuid#31], table=SimpleTypes, column_index_list=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18])
+    +-query=
+      +-SetOperationScan
+        +-column_list=[$union_all.$col1#65]
+        +-op_type=UNION_ALL
+        +-input_item_list=
+          +-SetOperationItem
+          | +-scan=
+          | | +-ProjectScan
+          | |   +-column_list=[$aggregate.$agg1#44]
+          | |   +-input_scan=
+          | |     +-DifferentialPrivacyAggregateScan
+          | |       +-column_list=[$aggregate.$agg1#44]
+          | |       +-input_scan=
+          | |       | +-ProjectScan
+          | |       |   +-column_list=t1.[int32#32, int64#33, uint32#34, uint64#35, string#36, bytes#37, bool#38, float#39, double#40, date#41, uid#42, numeric#43]
+          | |       |   +-input_scan=
+          | |       |     +-WithRefScan(column_list=t1.[int32#32, int64#33, uint32#34, uint64#35, string#36, bytes#37, bool#38, float#39, double#40, date#41, uid#42, numeric#43], with_query_name="t1")
+          | |       +-aggregate_list=
+          | |         +-$agg1#44 :=
+          | |           +-AggregateFunctionCall(GoogleSQL:$differential_privacy_count_star(optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+          | |             +-Literal(type=STRUCT<INT64, INT64>, value={0, 100})
+          | +-output_column_list=[$aggregate.$agg1#44]
+          +-SetOperationItem
+            +-scan=
+            | +-ProjectScan
+            |   +-column_list=[$aggregate.$agg1#64]
+            |   +-input_scan=
+            |     +-AggregateScan
+            |       +-column_list=[$aggregate.$agg1#64]
+            |       +-input_scan=
+            |       | +-WithRefScan(column_list=t2.[int32#45, int64#46, uint32#47, uint64#48, string#49, bytes#50, bool#51, float#52, double#53, date#54, timestamp_seconds#55, timestamp_millis#56, timestamp_micros#57, timestamp_nanos#58, timestamp#59, numeric#60, bignumeric#61, json#62, uuid#63], with_query_name="t2")
+            |       +-aggregate_list=
+            |         +-$agg1#64 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+            +-output_column_list=[$aggregate.$agg1#64]
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$union_all.$col1#65 AS `$col1` [INT64]
++-query=
+  +-WithScan
+    +-column_list=[$union_all.$col1#65]
+    +-with_entry_list=
+    | +-WithEntry
+    | | +-with_query_name="t1"
+    | | +-with_subquery=
+    | |   +-ProjectScan
+    | |     +-column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12]
+    | |     +-input_scan=
+    | |       +-TableScan(column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12], table=SimpleTypesWithAnonymizationUid, column_index_list=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
+    | +-WithEntry
+    |   +-with_query_name="t2"
+    |   +-with_subquery=
+    |     +-ProjectScan
+    |       +-column_list=SimpleTypes.[int32#13, int64#14, uint32#15, uint64#16, string#17, bytes#18, bool#19, float#20, double#21, date#22, timestamp_seconds#23, timestamp_millis#24, timestamp_micros#25, timestamp_nanos#26, timestamp#27, numeric#28, bignumeric#29, json#30, uuid#31]
+    |       +-input_scan=
+    |         +-TableScan(column_list=SimpleTypes.[int32#13, int64#14, uint32#15, uint64#16, string#17, bytes#18, bool#19, float#20, double#21, date#22, timestamp_seconds#23, timestamp_millis#24, timestamp_micros#25, timestamp_nanos#26, timestamp#27, numeric#28, bignumeric#29, json#30, uuid#31], table=SimpleTypes, column_index_list=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18])
+    +-query=
+      +-SetOperationScan
+        +-column_list=[$union_all.$col1#65]
+        +-op_type=UNION_ALL
+        +-input_item_list=
+          +-SetOperationItem
+          | +-scan=
+          | | +-ProjectScan
+          | |   +-column_list=[$aggregate.$agg1#44]
+          | |   +-input_scan=
+          | |     +-DifferentialPrivacyAggregateScan
+          | |       +-column_list=[$aggregate.$agg1#44]
+          | |       +-input_scan=
+          | |       | +-AggregateScan
+          | |       |   +-column_list=[$aggregate.$agg1_partial#67, $group_by.$uid#68]
+          | |       |   +-input_scan=
+          | |       |   | +-ProjectScan
+          | |       |   |   +-column_list=t1.[int32#32, int64#33, uint32#34, uint64#35, string#36, bytes#37, bool#38, float#39, double#40, date#41, uid#42, numeric#43]
+          | |       |   |   +-input_scan=
+          | |       |   |     +-WithRefScan(column_list=t1.[int32#32, int64#33, uint32#34, uint64#35, string#36, bytes#37, bool#38, float#39, double#40, date#41, uid#42, numeric#43], with_query_name="t1")
+          | |       |   +-group_by_list=
+          | |       |   | +-$uid#68 := ColumnRef(type=INT64, column=t1.uid#42)
+          | |       |   +-aggregate_list=
+          | |       |     +-$agg1_partial#67 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+          | |       +-aggregate_list=
+          | |       | +-$agg1#44 :=
+          | |       | | +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+          | |       | |   +-ColumnRef(type=INT64, column=$aggregate.$agg1_partial#67)
+          | |       | |   +-Literal(type=STRUCT<INT64, INT64>, value={0, 100})
+          | |       | +-$group_selection_threshold_col#71 :=
+          | |       |   +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+          | |       |     +-Literal(type=INT64, value=1)
+          | |       |     +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+          | |       +-group_selection_threshold_expr=
+          | |         +-ColumnRef(type=INT64, column=$differential_privacy.$group_selection_threshold_col#71)
+          | +-output_column_list=[$aggregate.$agg1#44]
+          +-SetOperationItem
+            +-scan=
+            | +-ProjectScan
+            |   +-column_list=[$aggregate.$agg1#64]
+            |   +-input_scan=
+            |     +-AggregateScan
+            |       +-column_list=[$aggregate.$agg1#64]
+            |       +-input_scan=
+            |       | +-WithRefScan(column_list=t2.[int32#45, int64#46, uint32#47, uint64#48, string#49, bytes#50, bool#51, float#52, double#53, date#54, timestamp_seconds#55, timestamp_millis#56, timestamp_micros#57, timestamp_nanos#58, timestamp#59, numeric#60, bignumeric#61, json#62, uuid#63], with_query_name="t2")
+            |       +-aggregate_list=
+            |         +-$agg1#64 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+            +-output_column_list=[$aggregate.$agg1#64]
+==
+
+
+# Nested with clauses
+[enabled_ast_rewrites=DEFAULTS,+ANONYMIZATION]
+WITH t1 as (select * from SimpleTypesWithAnonymizationUid),
+     t2 as (select * from t1)
+SELECT WITH DIFFERENTIAL_PRIVACY count(*) as count from t2;
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.count#37 AS count [INT64]
++-query=
+  +-WithScan
+    +-column_list=[$aggregate.count#37]
+    +-with_entry_list=
+    | +-WithEntry
+    | | +-with_query_name="t1"
+    | | +-with_subquery=
+    | |   +-ProjectScan
+    | |     +-column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12]
+    | |     +-input_scan=
+    | |       +-TableScan(column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12], table=SimpleTypesWithAnonymizationUid, column_index_list=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
+    | +-WithEntry
+    |   +-with_query_name="t2"
+    |   +-with_subquery=
+    |     +-ProjectScan
+    |       +-column_list=t1.[int32#13, int64#14, uint32#15, uint64#16, string#17, bytes#18, bool#19, float#20, double#21, date#22, uid#23, numeric#24]
+    |       +-input_scan=
+    |         +-WithRefScan(column_list=t1.[int32#13, int64#14, uint32#15, uint64#16, string#17, bytes#18, bool#19, float#20, double#21, date#22, uid#23, numeric#24], with_query_name="t1")
+    +-query=
+      +-ProjectScan
+        +-column_list=[$aggregate.count#37]
+        +-input_scan=
+          +-DifferentialPrivacyAggregateScan
+            +-column_list=[$aggregate.count#37]
+            +-input_scan=
+            | +-WithRefScan(column_list=t2.[int32#25, int64#26, uint32#27, uint64#28, string#29, bytes#30, bool#31, float#32, double#33, date#34, uid#35, numeric#36], with_query_name="t2")
+            +-aggregate_list=
+              +-count#37 :=
+                +-AggregateFunctionCall(GoogleSQL:$differential_privacy_count_star(optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+                  +-Literal(type=STRUCT<INT64, INT64>, value=NULL)
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.count#37 AS count [INT64]
++-query=
+  +-WithScan
+    +-column_list=[$aggregate.count#37]
+    +-with_entry_list=
+    | +-WithEntry
+    | | +-with_query_name="t1"
+    | | +-with_subquery=
+    | |   +-ProjectScan
+    | |     +-column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12]
+    | |     +-input_scan=
+    | |       +-TableScan(column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12], table=SimpleTypesWithAnonymizationUid, column_index_list=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
+    | +-WithEntry
+    |   +-with_query_name="t2"
+    |   +-with_subquery=
+    |     +-ProjectScan
+    |       +-column_list=t1.[int32#13, int64#14, uint32#15, uint64#16, string#17, bytes#18, bool#19, float#20, double#21, date#22, uid#23, numeric#24]
+    |       +-input_scan=
+    |         +-WithRefScan(column_list=t1.[int32#13, int64#14, uint32#15, uint64#16, string#17, bytes#18, bool#19, float#20, double#21, date#22, uid#23, numeric#24], with_query_name="t1")
+    +-query=
+      +-ProjectScan
+        +-column_list=[$aggregate.count#37]
+        +-input_scan=
+          +-DifferentialPrivacyAggregateScan
+            +-column_list=[$aggregate.count#37]
+            +-input_scan=
+            | +-AggregateScan
+            |   +-column_list=[$aggregate.count_partial#39, $group_by.$uid#40]
+            |   +-input_scan=
+            |   | +-WithRefScan(column_list=t2.[int32#25, int64#26, uint32#27, uint64#28, string#29, bytes#30, bool#31, float#32, double#33, date#34, uid#35, numeric#36], with_query_name="t2")
+            |   +-group_by_list=
+            |   | +-$uid#40 := ColumnRef(type=INT64, column=t2.uid#35)
+            |   +-aggregate_list=
+            |     +-count_partial#39 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+            +-aggregate_list=
+            | +-count#37 :=
+            | | +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+            | |   +-ColumnRef(type=INT64, column=$aggregate.count_partial#39)
+            | |   +-Literal(type=STRUCT<INT64, INT64>, value=NULL)
+            | +-$group_selection_threshold_col#43 :=
+            |   +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+            |     +-Literal(type=INT64, value=1)
+            |     +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+            +-group_selection_threshold_expr=
+              +-ColumnRef(type=INT64, column=$differential_privacy.$group_selection_threshold_col#43)
+==
+
+# Join user data with and user data table
+[enabled_ast_rewrites=DEFAULTS,+ANONYMIZATION]
+WITH t1 as (select * from SimpleTypesWithAnonymizationUid)
+SELECT WITH DIFFERENTIAL_PRIVACY count(*) as count
+from t1
+inner join SimpleTypesWithAnonymizationUid t2 on t1.uid = t2.uid;
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.count#37 AS count [INT64]
++-query=
+  +-WithScan
+    +-column_list=[$aggregate.count#37]
+    +-with_entry_list=
+    | +-WithEntry
+    |   +-with_query_name="t1"
+    |   +-with_subquery=
+    |     +-ProjectScan
+    |       +-column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12]
+    |       +-input_scan=
+    |         +-TableScan(column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12], table=SimpleTypesWithAnonymizationUid, column_index_list=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
+    +-query=
+      +-ProjectScan
+        +-column_list=[$aggregate.count#37]
+        +-input_scan=
+          +-DifferentialPrivacyAggregateScan
+            +-column_list=[$aggregate.count#37]
+            +-input_scan=
+            | +-JoinScan
+            |   +-column_list=[t1.int32#13, t1.int64#14, t1.uint32#15, t1.uint64#16, t1.string#17, t1.bytes#18, t1.bool#19, t1.float#20, t1.double#21, t1.date#22, t1.uid#23, t1.numeric#24, SimpleTypesWithAnonymizationUid.uid#35]
+            |   +-left_scan=
+            |   | +-WithRefScan(column_list=t1.[int32#13, int64#14, uint32#15, uint64#16, string#17, bytes#18, bool#19, float#20, double#21, date#22, uid#23, numeric#24], with_query_name="t1")
+            |   +-right_scan=
+            |   | +-TableScan(column_list=[SimpleTypesWithAnonymizationUid.uid#35], table=SimpleTypesWithAnonymizationUid, column_index_list=[10], alias="t2")
+            |   +-join_expr=
+            |     +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+            |       +-ColumnRef(type=INT64, column=t1.uid#23)
+            |       +-ColumnRef(type=INT64, column=SimpleTypesWithAnonymizationUid.uid#35)
+            +-aggregate_list=
+              +-count#37 :=
+                +-AggregateFunctionCall(GoogleSQL:$differential_privacy_count_star(optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+                  +-Literal(type=STRUCT<INT64, INT64>, value=NULL)
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.count#37 AS count [INT64]
++-query=
+  +-WithScan
+    +-column_list=[$aggregate.count#37]
+    +-with_entry_list=
+    | +-WithEntry
+    |   +-with_query_name="t1"
+    |   +-with_subquery=
+    |     +-ProjectScan
+    |       +-column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12]
+    |       +-input_scan=
+    |         +-TableScan(column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12], table=SimpleTypesWithAnonymizationUid, column_index_list=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
+    +-query=
+      +-ProjectScan
+        +-column_list=[$aggregate.count#37]
+        +-input_scan=
+          +-DifferentialPrivacyAggregateScan
+            +-column_list=[$aggregate.count#37]
+            +-input_scan=
+            | +-AggregateScan
+            |   +-column_list=[$aggregate.count_partial#39, $group_by.$uid#40]
+            |   +-input_scan=
+            |   | +-JoinScan
+            |   |   +-column_list=[t1.int32#13, t1.int64#14, t1.uint32#15, t1.uint64#16, t1.string#17, t1.bytes#18, t1.bool#19, t1.float#20, t1.double#21, t1.date#22, t1.uid#23, t1.numeric#24, SimpleTypesWithAnonymizationUid.uid#35]
+            |   |   +-left_scan=
+            |   |   | +-WithRefScan(column_list=t1.[int32#13, int64#14, uint32#15, uint64#16, string#17, bytes#18, bool#19, float#20, double#21, date#22, uid#23, numeric#24], with_query_name="t1")
+            |   |   +-right_scan=
+            |   |   | +-TableScan(column_list=[SimpleTypesWithAnonymizationUid.uid#35], table=SimpleTypesWithAnonymizationUid, column_index_list=[10], alias="t2")
+            |   |   +-join_expr=
+            |   |     +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+            |   |       +-ColumnRef(type=INT64, column=t1.uid#23)
+            |   |       +-ColumnRef(type=INT64, column=SimpleTypesWithAnonymizationUid.uid#35)
+            |   +-group_by_list=
+            |   | +-$uid#40 := ColumnRef(type=INT64, column=t1.uid#23)
+            |   +-aggregate_list=
+            |     +-count_partial#39 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+            +-aggregate_list=
+            | +-count#37 :=
+            | | +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+            | |   +-ColumnRef(type=INT64, column=$aggregate.count_partial#39)
+            | |   +-Literal(type=STRUCT<INT64, INT64>, value=NULL)
+            | +-$group_selection_threshold_col#43 :=
+            |   +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+            |     +-Literal(type=INT64, value=1)
+            |     +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+            +-group_selection_threshold_expr=
+              +-ColumnRef(type=INT64, column=$differential_privacy.$group_selection_threshold_col#43)
+==
+
+# Require join clause for join user data with and user data table
+[enabled_ast_rewrites=DEFAULTS,+ANONYMIZATION]
+[parse_location_record_type=PARSE_LOCATION_RECORD_CODE_SEARCH]
+WITH t1 as (select * from SimpleTypesWithAnonymizationUid)
+SELECT WITH DIFFERENTIAL_PRIVACY count(*) as count
+from t1
+cross join SimpleTypesWithAnonymizationUid t2;
+--
+[PRE-REWRITE AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.count#37 AS count [INT64]
++-query=
+  +-WithScan
+    +-parse_location=0-163
+    +-column_list=[$aggregate.count#37]
+    +-with_entry_list=
+    | +-WithEntry
+    |   +-with_query_name="t1"
+    |   +-with_subquery=
+    |     +-ProjectScan
+    |       +-parse_location=11-58
+    |       +-column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12]
+    |       +-input_scan=
+    |         +-TableScan(parse_location=26-57, column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12], table=SimpleTypesWithAnonymizationUid, column_index_list=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
+    +-query=
+      +-ProjectScan
+        +-column_list=[$aggregate.count#37]
+        +-input_scan=
+          +-DifferentialPrivacyAggregateScan
+            +-column_list=[$aggregate.count#37]
+            +-input_scan=
+            | +-JoinScan
+            |   +-parse_location=118-128
+            |   +-column_list=t1.[int32#13, int64#14, uint32#15, uint64#16, string#17, bytes#18, bool#19, float#20, double#21, date#22, uid#23, numeric#24]
+            |   +-left_scan=
+            |   | +-WithRefScan(parse_location=115-117, column_list=t1.[int32#13, int64#14, uint32#15, uint64#16, string#17, bytes#18, bool#19, float#20, double#21, date#22, uid#23, numeric#24], with_query_name="t1")
+            |   +-right_scan=
+            |     +-TableScan(parse_location=129-160, table=SimpleTypesWithAnonymizationUid, alias="t2")
+            +-aggregate_list=
+              +-count#37 :=
+                +-AggregateFunctionCall(GoogleSQL:$differential_privacy_count_star(optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+                  +-parse_location=92-97
+                  +-Literal(type=STRUCT<INT64, INT64>, value=NULL)
+[REPLACED_LITERALS]
+WITH t1 as (select * from SimpleTypesWithAnonymizationUid)
+SELECT WITH DIFFERENTIAL_PRIVACY count(*) as count
+from t1
+cross join SimpleTypesWithAnonymizationUid t2;
+
+Rewrite ERROR: Joins between tables containing private data must explicitly join on the user id column in each table, add 'ON t1.uid=t2.uid' [at 4:1]
+cross join SimpleTypesWithAnonymizationUid t2;
+^
+==
+
+# Join user data with and non-user data table
+[enabled_ast_rewrites=DEFAULTS,+ANONYMIZATION]
+WITH t1 as (select * from SimpleTypesWithAnonymizationUid)
+SELECT WITH DIFFERENTIAL_PRIVACY count(*) as count
+from t1
+cross join SimpleTypes;
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.count#44 AS count [INT64]
++-query=
+  +-WithScan
+    +-column_list=[$aggregate.count#44]
+    +-with_entry_list=
+    | +-WithEntry
+    |   +-with_query_name="t1"
+    |   +-with_subquery=
+    |     +-ProjectScan
+    |       +-column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12]
+    |       +-input_scan=
+    |         +-TableScan(column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12], table=SimpleTypesWithAnonymizationUid, column_index_list=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
+    +-query=
+      +-ProjectScan
+        +-column_list=[$aggregate.count#44]
+        +-input_scan=
+          +-DifferentialPrivacyAggregateScan
+            +-column_list=[$aggregate.count#44]
+            +-input_scan=
+            | +-JoinScan
+            |   +-column_list=t1.[int32#13, int64#14, uint32#15, uint64#16, string#17, bytes#18, bool#19, float#20, double#21, date#22, uid#23, numeric#24]
+            |   +-left_scan=
+            |   | +-WithRefScan(column_list=t1.[int32#13, int64#14, uint32#15, uint64#16, string#17, bytes#18, bool#19, float#20, double#21, date#22, uid#23, numeric#24], with_query_name="t1")
+            |   +-right_scan=
+            |     +-TableScan(table=SimpleTypes)
+            +-aggregate_list=
+              +-count#44 :=
+                +-AggregateFunctionCall(GoogleSQL:$differential_privacy_count_star(optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+                  +-Literal(type=STRUCT<INT64, INT64>, value=NULL)
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.count#44 AS count [INT64]
++-query=
+  +-WithScan
+    +-column_list=[$aggregate.count#44]
+    +-with_entry_list=
+    | +-WithEntry
+    |   +-with_query_name="t1"
+    |   +-with_subquery=
+    |     +-ProjectScan
+    |       +-column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12]
+    |       +-input_scan=
+    |         +-TableScan(column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12], table=SimpleTypesWithAnonymizationUid, column_index_list=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
+    +-query=
+      +-ProjectScan
+        +-column_list=[$aggregate.count#44]
+        +-input_scan=
+          +-DifferentialPrivacyAggregateScan
+            +-column_list=[$aggregate.count#44]
+            +-input_scan=
+            | +-AggregateScan
+            |   +-column_list=[$aggregate.count_partial#46, $group_by.$uid#47]
+            |   +-input_scan=
+            |   | +-JoinScan
+            |   |   +-column_list=t1.[int32#13, int64#14, uint32#15, uint64#16, string#17, bytes#18, bool#19, float#20, double#21, date#22, uid#23, numeric#24]
+            |   |   +-left_scan=
+            |   |   | +-WithRefScan(column_list=t1.[int32#13, int64#14, uint32#15, uint64#16, string#17, bytes#18, bool#19, float#20, double#21, date#22, uid#23, numeric#24], with_query_name="t1")
+            |   |   +-right_scan=
+            |   |     +-TableScan(table=SimpleTypes)
+            |   +-group_by_list=
+            |   | +-$uid#47 := ColumnRef(type=INT64, column=t1.uid#23)
+            |   +-aggregate_list=
+            |     +-count_partial#46 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+            +-aggregate_list=
+            | +-count#44 :=
+            | | +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+            | |   +-ColumnRef(type=INT64, column=$aggregate.count_partial#46)
+            | |   +-Literal(type=STRUCT<INT64, INT64>, value=NULL)
+            | +-$group_selection_threshold_col#50 :=
+            |   +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+            |     +-Literal(type=INT64, value=1)
+            |     +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+            +-group_selection_threshold_expr=
+              +-ColumnRef(type=INT64, column=$differential_privacy.$group_selection_threshold_col#50)
+==
+
+# Join non-user data with and user data table
+[enabled_ast_rewrites=DEFAULTS,+ANONYMIZATION]
+WITH t1 as (select 1)
+SELECT WITH DIFFERENTIAL_PRIVACY count(*) as count
+from t1
+cross join SimpleTypesWithAnonymizationUid t2;
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.count#15 AS count [INT64]
++-query=
+  +-WithScan
+    +-column_list=[$aggregate.count#15]
+    +-with_entry_list=
+    | +-WithEntry
+    |   +-with_query_name="t1"
+    |   +-with_subquery=
+    |     +-ProjectScan
+    |       +-column_list=[t1.$col1#1]
+    |       +-expr_list=
+    |       | +-$col1#1 := Literal(type=INT64, value=1)
+    |       +-input_scan=
+    |         +-SingleRowScan
+    +-query=
+      +-ProjectScan
+        +-column_list=[$aggregate.count#15]
+        +-input_scan=
+          +-DifferentialPrivacyAggregateScan
+            +-column_list=[$aggregate.count#15]
+            +-input_scan=
+            | +-JoinScan
+            |   +-column_list=[t1.$col1#2]
+            |   +-left_scan=
+            |   | +-WithRefScan(column_list=[t1.$col1#2], with_query_name="t1")
+            |   +-right_scan=
+            |     +-TableScan(table=SimpleTypesWithAnonymizationUid, alias="t2")
+            +-aggregate_list=
+              +-count#15 :=
+                +-AggregateFunctionCall(GoogleSQL:$differential_privacy_count_star(optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+                  +-Literal(type=STRUCT<INT64, INT64>, value=NULL)
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.count#15 AS count [INT64]
++-query=
+  +-WithScan
+    +-column_list=[$aggregate.count#15]
+    +-with_entry_list=
+    | +-WithEntry
+    |   +-with_query_name="t1"
+    |   +-with_subquery=
+    |     +-ProjectScan
+    |       +-column_list=[t1.$col1#1]
+    |       +-expr_list=
+    |       | +-$col1#1 := Literal(type=INT64, value=1)
+    |       +-input_scan=
+    |         +-SingleRowScan
+    +-query=
+      +-ProjectScan
+        +-column_list=[$aggregate.count#15]
+        +-input_scan=
+          +-DifferentialPrivacyAggregateScan
+            +-column_list=[$aggregate.count#15]
+            +-input_scan=
+            | +-AggregateScan
+            |   +-column_list=[$aggregate.count_partial#18, $group_by.$uid#19]
+            |   +-input_scan=
+            |   | +-JoinScan
+            |   |   +-column_list=[t1.$col1#2, SimpleTypesWithAnonymizationUid.uid#16]
+            |   |   +-left_scan=
+            |   |   | +-WithRefScan(column_list=[t1.$col1#2], with_query_name="t1")
+            |   |   +-right_scan=
+            |   |     +-TableScan(column_list=[SimpleTypesWithAnonymizationUid.uid#16], table=SimpleTypesWithAnonymizationUid, column_index_list=[10], alias="t2")
+            |   +-group_by_list=
+            |   | +-$uid#19 := ColumnRef(type=INT64, column=SimpleTypesWithAnonymizationUid.uid#16)
+            |   +-aggregate_list=
+            |     +-count_partial#18 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+            +-aggregate_list=
+            | +-count#15 :=
+            | | +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+            | |   +-ColumnRef(type=INT64, column=$aggregate.count_partial#18)
+            | |   +-Literal(type=STRUCT<INT64, INT64>, value=NULL)
+            | +-$group_selection_threshold_col#22 :=
+            |   +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+            |     +-Literal(type=INT64, value=1)
+            |     +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+            +-group_selection_threshold_expr=
+              +-ColumnRef(type=INT64, column=$differential_privacy.$group_selection_threshold_col#22)
+==
+
+# Join user data with and user data with
+[enabled_ast_rewrites=DEFAULTS,+ANONYMIZATION]
+WITH t1 as (select * from SimpleTypesWithAnonymizationUid),
+     t2 as (select * from SimpleTypesWithAnonymizationUid)
+SELECT WITH DIFFERENTIAL_PRIVACY count(*) as count
+from t1
+inner join t2 on t1.uid = t2.uid;
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.count#49 AS count [INT64]
++-query=
+  +-WithScan
+    +-column_list=[$aggregate.count#49]
+    +-with_entry_list=
+    | +-WithEntry
+    | | +-with_query_name="t1"
+    | | +-with_subquery=
+    | |   +-ProjectScan
+    | |     +-column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12]
+    | |     +-input_scan=
+    | |       +-TableScan(column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12], table=SimpleTypesWithAnonymizationUid, column_index_list=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
+    | +-WithEntry
+    |   +-with_query_name="t2"
+    |   +-with_subquery=
+    |     +-ProjectScan
+    |       +-column_list=SimpleTypesWithAnonymizationUid.[int32#13, int64#14, uint32#15, uint64#16, string#17, bytes#18, bool#19, float#20, double#21, date#22, uid#23, numeric#24]
+    |       +-input_scan=
+    |         +-TableScan(column_list=SimpleTypesWithAnonymizationUid.[int32#13, int64#14, uint32#15, uint64#16, string#17, bytes#18, bool#19, float#20, double#21, date#22, uid#23, numeric#24], table=SimpleTypesWithAnonymizationUid, column_index_list=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
+    +-query=
+      +-ProjectScan
+        +-column_list=[$aggregate.count#49]
+        +-input_scan=
+          +-DifferentialPrivacyAggregateScan
+            +-column_list=[$aggregate.count#49]
+            +-input_scan=
+            | +-JoinScan
+            |   +-column_list=[t1.int32#25, t1.int64#26, t1.uint32#27, t1.uint64#28, t1.string#29, t1.bytes#30, t1.bool#31, t1.float#32, t1.double#33, t1.date#34, t1.uid#35, t1.numeric#36, t2.int32#37, t2.int64#38, t2.uint32#39, t2.uint64#40, t2.string#41, t2.bytes#42, t2.bool#43, t2.float#44, t2.double#45, t2.date#46, t2.uid#47, t2.numeric#48]
+            |   +-left_scan=
+            |   | +-WithRefScan(column_list=t1.[int32#25, int64#26, uint32#27, uint64#28, string#29, bytes#30, bool#31, float#32, double#33, date#34, uid#35, numeric#36], with_query_name="t1")
+            |   +-right_scan=
+            |   | +-WithRefScan(column_list=t2.[int32#37, int64#38, uint32#39, uint64#40, string#41, bytes#42, bool#43, float#44, double#45, date#46, uid#47, numeric#48], with_query_name="t2")
+            |   +-join_expr=
+            |     +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+            |       +-ColumnRef(type=INT64, column=t1.uid#35)
+            |       +-ColumnRef(type=INT64, column=t2.uid#47)
+            +-aggregate_list=
+              +-count#49 :=
+                +-AggregateFunctionCall(GoogleSQL:$differential_privacy_count_star(optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+                  +-Literal(type=STRUCT<INT64, INT64>, value=NULL)
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.count#49 AS count [INT64]
++-query=
+  +-WithScan
+    +-column_list=[$aggregate.count#49]
+    +-with_entry_list=
+    | +-WithEntry
+    | | +-with_query_name="t1"
+    | | +-with_subquery=
+    | |   +-ProjectScan
+    | |     +-column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12]
+    | |     +-input_scan=
+    | |       +-TableScan(column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12], table=SimpleTypesWithAnonymizationUid, column_index_list=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
+    | +-WithEntry
+    |   +-with_query_name="t2"
+    |   +-with_subquery=
+    |     +-ProjectScan
+    |       +-column_list=SimpleTypesWithAnonymizationUid.[int32#13, int64#14, uint32#15, uint64#16, string#17, bytes#18, bool#19, float#20, double#21, date#22, uid#23, numeric#24]
+    |       +-input_scan=
+    |         +-TableScan(column_list=SimpleTypesWithAnonymizationUid.[int32#13, int64#14, uint32#15, uint64#16, string#17, bytes#18, bool#19, float#20, double#21, date#22, uid#23, numeric#24], table=SimpleTypesWithAnonymizationUid, column_index_list=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
+    +-query=
+      +-ProjectScan
+        +-column_list=[$aggregate.count#49]
+        +-input_scan=
+          +-DifferentialPrivacyAggregateScan
+            +-column_list=[$aggregate.count#49]
+            +-input_scan=
+            | +-AggregateScan
+            |   +-column_list=[$aggregate.count_partial#51, $group_by.$uid#52]
+            |   +-input_scan=
+            |   | +-JoinScan
+            |   |   +-column_list=[t1.int32#25, t1.int64#26, t1.uint32#27, t1.uint64#28, t1.string#29, t1.bytes#30, t1.bool#31, t1.float#32, t1.double#33, t1.date#34, t1.uid#35, t1.numeric#36, t2.int32#37, t2.int64#38, t2.uint32#39, t2.uint64#40, t2.string#41, t2.bytes#42, t2.bool#43, t2.float#44, t2.double#45, t2.date#46, t2.uid#47, t2.numeric#48]
+            |   |   +-left_scan=
+            |   |   | +-WithRefScan(column_list=t1.[int32#25, int64#26, uint32#27, uint64#28, string#29, bytes#30, bool#31, float#32, double#33, date#34, uid#35, numeric#36], with_query_name="t1")
+            |   |   +-right_scan=
+            |   |   | +-WithRefScan(column_list=t2.[int32#37, int64#38, uint32#39, uint64#40, string#41, bytes#42, bool#43, float#44, double#45, date#46, uid#47, numeric#48], with_query_name="t2")
+            |   |   +-join_expr=
+            |   |     +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+            |   |       +-ColumnRef(type=INT64, column=t1.uid#35)
+            |   |       +-ColumnRef(type=INT64, column=t2.uid#47)
+            |   +-group_by_list=
+            |   | +-$uid#52 := ColumnRef(type=INT64, column=t1.uid#35)
+            |   +-aggregate_list=
+            |     +-count_partial#51 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+            +-aggregate_list=
+            | +-count#49 :=
+            | | +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+            | |   +-ColumnRef(type=INT64, column=$aggregate.count_partial#51)
+            | |   +-Literal(type=STRUCT<INT64, INT64>, value=NULL)
+            | +-$group_selection_threshold_col#55 :=
+            |   +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+            |     +-Literal(type=INT64, value=1)
+            |     +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+            +-group_selection_threshold_expr=
+              +-ColumnRef(type=INT64, column=$differential_privacy.$group_selection_threshold_col#55)
+==
+
+# Require join clause for join user data with and user data with
+[enabled_ast_rewrites=DEFAULTS,+ANONYMIZATION]
+[parse_location_record_type=PARSE_LOCATION_RECORD_CODE_SEARCH]
+WITH t1 as (select * from SimpleTypesWithAnonymizationUid),
+     t2 as (select * from SimpleTypesWithAnonymizationUid)
+SELECT WITH DIFFERENTIAL_PRIVACY count(*) as count
+from t1
+cross join t2;
+--
+[PRE-REWRITE AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.count#49 AS count [INT64]
++-query=
+  +-WithScan
+    +-parse_location=0-191
+    +-column_list=[$aggregate.count#49]
+    +-with_entry_list=
+    | +-WithEntry
+    | | +-with_query_name="t1"
+    | | +-with_subquery=
+    | |   +-ProjectScan
+    | |     +-parse_location=11-58
+    | |     +-column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12]
+    | |     +-input_scan=
+    | |       +-TableScan(parse_location=26-57, column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12], table=SimpleTypesWithAnonymizationUid, column_index_list=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
+    | +-WithEntry
+    |   +-with_query_name="t2"
+    |   +-with_subquery=
+    |     +-ProjectScan
+    |       +-parse_location=71-118
+    |       +-column_list=SimpleTypesWithAnonymizationUid.[int32#13, int64#14, uint32#15, uint64#16, string#17, bytes#18, bool#19, float#20, double#21, date#22, uid#23, numeric#24]
+    |       +-input_scan=
+    |         +-TableScan(parse_location=86-117, column_list=SimpleTypesWithAnonymizationUid.[int32#13, int64#14, uint32#15, uint64#16, string#17, bytes#18, bool#19, float#20, double#21, date#22, uid#23, numeric#24], table=SimpleTypesWithAnonymizationUid, column_index_list=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
+    +-query=
+      +-ProjectScan
+        +-column_list=[$aggregate.count#49]
+        +-input_scan=
+          +-DifferentialPrivacyAggregateScan
+            +-column_list=[$aggregate.count#49]
+            +-input_scan=
+            | +-JoinScan
+            |   +-parse_location=178-188
+            |   +-column_list=[t1.int32#25, t1.int64#26, t1.uint32#27, t1.uint64#28, t1.string#29, t1.bytes#30, t1.bool#31, t1.float#32, t1.double#33, t1.date#34, t1.uid#35, t1.numeric#36, t2.int32#37, t2.int64#38, t2.uint32#39, t2.uint64#40, t2.string#41, t2.bytes#42, t2.bool#43, t2.float#44, t2.double#45, t2.date#46, t2.uid#47, t2.numeric#48]
+            |   +-left_scan=
+            |   | +-WithRefScan(parse_location=175-177, column_list=t1.[int32#25, int64#26, uint32#27, uint64#28, string#29, bytes#30, bool#31, float#32, double#33, date#34, uid#35, numeric#36], with_query_name="t1")
+            |   +-right_scan=
+            |     +-WithRefScan(parse_location=189-191, column_list=t2.[int32#37, int64#38, uint32#39, uint64#40, string#41, bytes#42, bool#43, float#44, double#45, date#46, uid#47, numeric#48], with_query_name="t2")
+            +-aggregate_list=
+              +-count#49 :=
+                +-AggregateFunctionCall(GoogleSQL:$differential_privacy_count_star(optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+                  +-parse_location=152-157
+                  +-Literal(type=STRUCT<INT64, INT64>, value=NULL)
+[REPLACED_LITERALS]
+WITH t1 as (select * from SimpleTypesWithAnonymizationUid),
+     t2 as (select * from SimpleTypesWithAnonymizationUid)
+SELECT WITH DIFFERENTIAL_PRIVACY count(*) as count
+from t1
+cross join t2;
+
+Rewrite ERROR: Joins between tables containing private data must explicitly join on the user id column in each table, add 'ON t1.uid=t2.uid' [at 5:1]
+cross join t2;
+^
+==
+
+# Join user data with and non-user data with
+[enabled_ast_rewrites=DEFAULTS,+ANONYMIZATION]
+WITH t1 as (select * from SimpleTypesWithAnonymizationUid),
+     t2 as (select 1)
+SELECT WITH DIFFERENTIAL_PRIVACY count(*) as count
+from t1
+cross join t2;
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.count#27 AS count [INT64]
++-query=
+  +-WithScan
+    +-column_list=[$aggregate.count#27]
+    +-with_entry_list=
+    | +-WithEntry
+    | | +-with_query_name="t1"
+    | | +-with_subquery=
+    | |   +-ProjectScan
+    | |     +-column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12]
+    | |     +-input_scan=
+    | |       +-TableScan(column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12], table=SimpleTypesWithAnonymizationUid, column_index_list=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
+    | +-WithEntry
+    |   +-with_query_name="t2"
+    |   +-with_subquery=
+    |     +-ProjectScan
+    |       +-column_list=[t2.$col1#13]
+    |       +-expr_list=
+    |       | +-$col1#13 := Literal(type=INT64, value=1)
+    |       +-input_scan=
+    |         +-SingleRowScan
+    +-query=
+      +-ProjectScan
+        +-column_list=[$aggregate.count#27]
+        +-input_scan=
+          +-DifferentialPrivacyAggregateScan
+            +-column_list=[$aggregate.count#27]
+            +-input_scan=
+            | +-JoinScan
+            |   +-column_list=[t1.int32#14, t1.int64#15, t1.uint32#16, t1.uint64#17, t1.string#18, t1.bytes#19, t1.bool#20, t1.float#21, t1.double#22, t1.date#23, t1.uid#24, t1.numeric#25, t2.$col1#26]
+            |   +-left_scan=
+            |   | +-WithRefScan(column_list=t1.[int32#14, int64#15, uint32#16, uint64#17, string#18, bytes#19, bool#20, float#21, double#22, date#23, uid#24, numeric#25], with_query_name="t1")
+            |   +-right_scan=
+            |     +-WithRefScan(column_list=[t2.$col1#26], with_query_name="t2")
+            +-aggregate_list=
+              +-count#27 :=
+                +-AggregateFunctionCall(GoogleSQL:$differential_privacy_count_star(optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+                  +-Literal(type=STRUCT<INT64, INT64>, value=NULL)
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.count#27 AS count [INT64]
++-query=
+  +-WithScan
+    +-column_list=[$aggregate.count#27]
+    +-with_entry_list=
+    | +-WithEntry
+    | | +-with_query_name="t1"
+    | | +-with_subquery=
+    | |   +-ProjectScan
+    | |     +-column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12]
+    | |     +-input_scan=
+    | |       +-TableScan(column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12], table=SimpleTypesWithAnonymizationUid, column_index_list=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
+    | +-WithEntry
+    |   +-with_query_name="t2"
+    |   +-with_subquery=
+    |     +-ProjectScan
+    |       +-column_list=[t2.$col1#13]
+    |       +-expr_list=
+    |       | +-$col1#13 := Literal(type=INT64, value=1)
+    |       +-input_scan=
+    |         +-SingleRowScan
+    +-query=
+      +-ProjectScan
+        +-column_list=[$aggregate.count#27]
+        +-input_scan=
+          +-DifferentialPrivacyAggregateScan
+            +-column_list=[$aggregate.count#27]
+            +-input_scan=
+            | +-AggregateScan
+            |   +-column_list=[$aggregate.count_partial#29, $group_by.$uid#30]
+            |   +-input_scan=
+            |   | +-JoinScan
+            |   |   +-column_list=[t1.int32#14, t1.int64#15, t1.uint32#16, t1.uint64#17, t1.string#18, t1.bytes#19, t1.bool#20, t1.float#21, t1.double#22, t1.date#23, t1.uid#24, t1.numeric#25, t2.$col1#26]
+            |   |   +-left_scan=
+            |   |   | +-WithRefScan(column_list=t1.[int32#14, int64#15, uint32#16, uint64#17, string#18, bytes#19, bool#20, float#21, double#22, date#23, uid#24, numeric#25], with_query_name="t1")
+            |   |   +-right_scan=
+            |   |     +-WithRefScan(column_list=[t2.$col1#26], with_query_name="t2")
+            |   +-group_by_list=
+            |   | +-$uid#30 := ColumnRef(type=INT64, column=t1.uid#24)
+            |   +-aggregate_list=
+            |     +-count_partial#29 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+            +-aggregate_list=
+            | +-count#27 :=
+            | | +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+            | |   +-ColumnRef(type=INT64, column=$aggregate.count_partial#29)
+            | |   +-Literal(type=STRUCT<INT64, INT64>, value=NULL)
+            | +-$group_selection_threshold_col#33 :=
+            |   +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+            |     +-Literal(type=INT64, value=1)
+            |     +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+            +-group_selection_threshold_expr=
+              +-ColumnRef(type=INT64, column=$differential_privacy.$group_selection_threshold_col#33)
+==
+
+# Repeated joins of user data withs and non-user data withs
+[enabled_ast_rewrites=DEFAULTS,+ANONYMIZATION]
+WITH t1 as (select * from SimpleTypesWithAnonymizationUid),
+     t2 as (select 1)
+SELECT WITH DIFFERENTIAL_PRIVACY count(*) as count
+from t1 as t1
+cross join t2 as t2
+inner join t1 as t3 on t1.uid = t3.uid
+cross join t2 as t4
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.count#40 AS count [INT64]
++-query=
+  +-WithScan
+    +-column_list=[$aggregate.count#40]
+    +-with_entry_list=
+    | +-WithEntry
+    | | +-with_query_name="t1"
+    | | +-with_subquery=
+    | |   +-ProjectScan
+    | |     +-column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12]
+    | |     +-input_scan=
+    | |       +-TableScan(column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12], table=SimpleTypesWithAnonymizationUid, column_index_list=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
+    | +-WithEntry
+    |   +-with_query_name="t2"
+    |   +-with_subquery=
+    |     +-ProjectScan
+    |       +-column_list=[t2.$col1#13]
+    |       +-expr_list=
+    |       | +-$col1#13 := Literal(type=INT64, value=1)
+    |       +-input_scan=
+    |         +-SingleRowScan
+    +-query=
+      +-ProjectScan
+        +-column_list=[$aggregate.count#40]
+        +-input_scan=
+          +-DifferentialPrivacyAggregateScan
+            +-column_list=[$aggregate.count#40]
+            +-input_scan=
+            | +-JoinScan
+            |   +-column_list=[t1.int32#14, t1.int64#15, t1.uint32#16, t1.uint64#17, t1.string#18, t1.bytes#19, t1.bool#20, t1.float#21, t1.double#22, t1.date#23, t1.uid#24, t1.numeric#25, t2.$col1#26, t1.int32#27, t1.int64#28, t1.uint32#29, t1.uint64#30, t1.string#31, t1.bytes#32, t1.bool#33, t1.float#34, t1.double#35, t1.date#36, t1.uid#37, t1.numeric#38, t2.$col1#39]
+            |   +-left_scan=
+            |   | +-JoinScan
+            |   |   +-column_list=[t1.int32#14, t1.int64#15, t1.uint32#16, t1.uint64#17, t1.string#18, t1.bytes#19, t1.bool#20, t1.float#21, t1.double#22, t1.date#23, t1.uid#24, t1.numeric#25, t2.$col1#26, t1.int32#27, t1.int64#28, t1.uint32#29, t1.uint64#30, t1.string#31, t1.bytes#32, t1.bool#33, t1.float#34, t1.double#35, t1.date#36, t1.uid#37, t1.numeric#38]
+            |   |   +-left_scan=
+            |   |   | +-JoinScan
+            |   |   |   +-column_list=[t1.int32#14, t1.int64#15, t1.uint32#16, t1.uint64#17, t1.string#18, t1.bytes#19, t1.bool#20, t1.float#21, t1.double#22, t1.date#23, t1.uid#24, t1.numeric#25, t2.$col1#26]
+            |   |   |   +-left_scan=
+            |   |   |   | +-WithRefScan(column_list=t1.[int32#14, int64#15, uint32#16, uint64#17, string#18, bytes#19, bool#20, float#21, double#22, date#23, uid#24, numeric#25], with_query_name="t1")
+            |   |   |   +-right_scan=
+            |   |   |     +-WithRefScan(column_list=[t2.$col1#26], with_query_name="t2")
+            |   |   +-right_scan=
+            |   |   | +-WithRefScan(column_list=t1.[int32#27, int64#28, uint32#29, uint64#30, string#31, bytes#32, bool#33, float#34, double#35, date#36, uid#37, numeric#38], with_query_name="t1")
+            |   |   +-join_expr=
+            |   |     +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+            |   |       +-ColumnRef(type=INT64, column=t1.uid#24)
+            |   |       +-ColumnRef(type=INT64, column=t1.uid#37)
+            |   +-right_scan=
+            |     +-WithRefScan(column_list=[t2.$col1#39], with_query_name="t2")
+            +-aggregate_list=
+              +-count#40 :=
+                +-AggregateFunctionCall(GoogleSQL:$differential_privacy_count_star(optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+                  +-Literal(type=STRUCT<INT64, INT64>, value=NULL)
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.count#40 AS count [INT64]
++-query=
+  +-WithScan
+    +-column_list=[$aggregate.count#40]
+    +-with_entry_list=
+    | +-WithEntry
+    | | +-with_query_name="t1"
+    | | +-with_subquery=
+    | |   +-ProjectScan
+    | |     +-column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12]
+    | |     +-input_scan=
+    | |       +-TableScan(column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12], table=SimpleTypesWithAnonymizationUid, column_index_list=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
+    | +-WithEntry
+    |   +-with_query_name="t2"
+    |   +-with_subquery=
+    |     +-ProjectScan
+    |       +-column_list=[t2.$col1#13]
+    |       +-expr_list=
+    |       | +-$col1#13 := Literal(type=INT64, value=1)
+    |       +-input_scan=
+    |         +-SingleRowScan
+    +-query=
+      +-ProjectScan
+        +-column_list=[$aggregate.count#40]
+        +-input_scan=
+          +-DifferentialPrivacyAggregateScan
+            +-column_list=[$aggregate.count#40]
+            +-input_scan=
+            | +-AggregateScan
+            |   +-column_list=[$aggregate.count_partial#42, $group_by.$uid#43]
+            |   +-input_scan=
+            |   | +-JoinScan
+            |   |   +-column_list=[t1.int32#14, t1.int64#15, t1.uint32#16, t1.uint64#17, t1.string#18, t1.bytes#19, t1.bool#20, t1.float#21, t1.double#22, t1.date#23, t1.uid#24, t1.numeric#25, t2.$col1#26, t1.int32#27, t1.int64#28, t1.uint32#29, t1.uint64#30, t1.string#31, t1.bytes#32, t1.bool#33, t1.float#34, t1.double#35, t1.date#36, t1.uid#37, t1.numeric#38, t2.$col1#39]
+            |   |   +-left_scan=
+            |   |   | +-JoinScan
+            |   |   |   +-column_list=[t1.int32#14, t1.int64#15, t1.uint32#16, t1.uint64#17, t1.string#18, t1.bytes#19, t1.bool#20, t1.float#21, t1.double#22, t1.date#23, t1.uid#24, t1.numeric#25, t2.$col1#26, t1.int32#27, t1.int64#28, t1.uint32#29, t1.uint64#30, t1.string#31, t1.bytes#32, t1.bool#33, t1.float#34, t1.double#35, t1.date#36, t1.uid#37, t1.numeric#38]
+            |   |   |   +-left_scan=
+            |   |   |   | +-JoinScan
+            |   |   |   |   +-column_list=[t1.int32#14, t1.int64#15, t1.uint32#16, t1.uint64#17, t1.string#18, t1.bytes#19, t1.bool#20, t1.float#21, t1.double#22, t1.date#23, t1.uid#24, t1.numeric#25, t2.$col1#26]
+            |   |   |   |   +-left_scan=
+            |   |   |   |   | +-WithRefScan(column_list=t1.[int32#14, int64#15, uint32#16, uint64#17, string#18, bytes#19, bool#20, float#21, double#22, date#23, uid#24, numeric#25], with_query_name="t1")
+            |   |   |   |   +-right_scan=
+            |   |   |   |     +-WithRefScan(column_list=[t2.$col1#26], with_query_name="t2")
+            |   |   |   +-right_scan=
+            |   |   |   | +-WithRefScan(column_list=t1.[int32#27, int64#28, uint32#29, uint64#30, string#31, bytes#32, bool#33, float#34, double#35, date#36, uid#37, numeric#38], with_query_name="t1")
+            |   |   |   +-join_expr=
+            |   |   |     +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+            |   |   |       +-ColumnRef(type=INT64, column=t1.uid#24)
+            |   |   |       +-ColumnRef(type=INT64, column=t1.uid#37)
+            |   |   +-right_scan=
+            |   |     +-WithRefScan(column_list=[t2.$col1#39], with_query_name="t2")
+            |   +-group_by_list=
+            |   | +-$uid#43 := ColumnRef(type=INT64, column=t1.uid#24)
+            |   +-aggregate_list=
+            |     +-count_partial#42 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+            +-aggregate_list=
+            | +-count#40 :=
+            | | +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+            | |   +-ColumnRef(type=INT64, column=$aggregate.count_partial#42)
+            | |   +-Literal(type=STRUCT<INT64, INT64>, value=NULL)
+            | +-$group_selection_threshold_col#46 :=
+            |   +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+            |     +-Literal(type=INT64, value=1)
+            |     +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+            +-group_selection_threshold_expr=
+              +-ColumnRef(type=INT64, column=$differential_privacy.$group_selection_threshold_col#46)
+==
+
+# Nested with entires in subqueries outside of WITH DIFFERENTIAL_PRIVACY subquery
+[enabled_ast_rewrites=DEFAULTS,+ANONYMIZATION]
+WITH t1 as (select * from SimpleTypesWithAnonymizationUid)
+SELECT * FROM (
+  WITH t2 as (select * from t1)
+  SELECT WITH DIFFERENTIAL_PRIVACY count(*) as count
+  from t2)
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.count#37 AS count [INT64]
++-query=
+  +-WithScan
+    +-column_list=[$aggregate.count#37]
+    +-with_entry_list=
+    | +-WithEntry
+    |   +-with_query_name="t1"
+    |   +-with_subquery=
+    |     +-ProjectScan
+    |       +-column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12]
+    |       +-input_scan=
+    |         +-TableScan(column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12], table=SimpleTypesWithAnonymizationUid, column_index_list=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
+    +-query=
+      +-ProjectScan
+        +-column_list=[$aggregate.count#37]
+        +-input_scan=
+          +-WithScan
+            +-column_list=[$aggregate.count#37]
+            +-with_entry_list=
+            | +-WithEntry
+            |   +-with_query_name="t2"
+            |   +-with_subquery=
+            |     +-ProjectScan
+            |       +-column_list=t1.[int32#13, int64#14, uint32#15, uint64#16, string#17, bytes#18, bool#19, float#20, double#21, date#22, uid#23, numeric#24]
+            |       +-input_scan=
+            |         +-WithRefScan(column_list=t1.[int32#13, int64#14, uint32#15, uint64#16, string#17, bytes#18, bool#19, float#20, double#21, date#22, uid#23, numeric#24], with_query_name="t1")
+            +-query=
+              +-ProjectScan
+                +-column_list=[$aggregate.count#37]
+                +-input_scan=
+                  +-DifferentialPrivacyAggregateScan
+                    +-column_list=[$aggregate.count#37]
+                    +-input_scan=
+                    | +-WithRefScan(column_list=t2.[int32#25, int64#26, uint32#27, uint64#28, string#29, bytes#30, bool#31, float#32, double#33, date#34, uid#35, numeric#36], with_query_name="t2")
+                    +-aggregate_list=
+                      +-count#37 :=
+                        +-AggregateFunctionCall(GoogleSQL:$differential_privacy_count_star(optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+                          +-Literal(type=STRUCT<INT64, INT64>, value=NULL)
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.count#37 AS count [INT64]
++-query=
+  +-WithScan
+    +-column_list=[$aggregate.count#37]
+    +-with_entry_list=
+    | +-WithEntry
+    |   +-with_query_name="t1"
+    |   +-with_subquery=
+    |     +-ProjectScan
+    |       +-column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12]
+    |       +-input_scan=
+    |         +-TableScan(column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12], table=SimpleTypesWithAnonymizationUid, column_index_list=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
+    +-query=
+      +-ProjectScan
+        +-column_list=[$aggregate.count#37]
+        +-input_scan=
+          +-WithScan
+            +-column_list=[$aggregate.count#37]
+            +-with_entry_list=
+            | +-WithEntry
+            |   +-with_query_name="t2"
+            |   +-with_subquery=
+            |     +-ProjectScan
+            |       +-column_list=t1.[int32#13, int64#14, uint32#15, uint64#16, string#17, bytes#18, bool#19, float#20, double#21, date#22, uid#23, numeric#24]
+            |       +-input_scan=
+            |         +-WithRefScan(column_list=t1.[int32#13, int64#14, uint32#15, uint64#16, string#17, bytes#18, bool#19, float#20, double#21, date#22, uid#23, numeric#24], with_query_name="t1")
+            +-query=
+              +-ProjectScan
+                +-column_list=[$aggregate.count#37]
+                +-input_scan=
+                  +-DifferentialPrivacyAggregateScan
+                    +-column_list=[$aggregate.count#37]
+                    +-input_scan=
+                    | +-AggregateScan
+                    |   +-column_list=[$aggregate.count_partial#39, $group_by.$uid#40]
+                    |   +-input_scan=
+                    |   | +-WithRefScan(column_list=t2.[int32#25, int64#26, uint32#27, uint64#28, string#29, bytes#30, bool#31, float#32, double#33, date#34, uid#35, numeric#36], with_query_name="t2")
+                    |   +-group_by_list=
+                    |   | +-$uid#40 := ColumnRef(type=INT64, column=t2.uid#35)
+                    |   +-aggregate_list=
+                    |     +-count_partial#39 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+                    +-aggregate_list=
+                    | +-count#37 :=
+                    | | +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+                    | |   +-ColumnRef(type=INT64, column=$aggregate.count_partial#39)
+                    | |   +-Literal(type=STRUCT<INT64, INT64>, value=NULL)
+                    | +-$group_selection_threshold_col#43 :=
+                    |   +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+                    |     +-Literal(type=INT64, value=1)
+                    |     +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+                    +-group_selection_threshold_expr=
+                      +-ColumnRef(type=INT64, column=$differential_privacy.$group_selection_threshold_col#43)
+==
+
+
+# WithScan inside SELECT WITH DIFFERENTIAL_PRIVACY
+[enabled_ast_rewrites=DEFAULTS,+ANONYMIZATION]
+select with differential_privacy count(*, contribution_bounds_per_group => (0, 100))
+from (
+  with t1 as (select * from SimpleTypesWithAnonymizationUid)
+  select * from t1);
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#25 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#25]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#25]
+        +-input_scan=
+        | +-WithScan
+        |   +-column_list=t1.[int32#13, int64#14, uint32#15, uint64#16, string#17, bytes#18, bool#19, float#20, double#21, date#22, uid#23, numeric#24]
+        |   +-with_entry_list=
+        |   | +-WithEntry
+        |   |   +-with_query_name="t1"
+        |   |   +-with_subquery=
+        |   |     +-ProjectScan
+        |   |       +-column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12]
+        |   |       +-input_scan=
+        |   |         +-TableScan(column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12], table=SimpleTypesWithAnonymizationUid, column_index_list=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
+        |   +-query=
+        |     +-ProjectScan
+        |       +-column_list=t1.[int32#13, int64#14, uint32#15, uint64#16, string#17, bytes#18, bool#19, float#20, double#21, date#22, uid#23, numeric#24]
+        |       +-input_scan=
+        |         +-WithRefScan(column_list=t1.[int32#13, int64#14, uint32#15, uint64#16, string#17, bytes#18, bool#19, float#20, double#21, date#22, uid#23, numeric#24], with_query_name="t1")
+        +-aggregate_list=
+          +-$agg1#25 :=
+            +-AggregateFunctionCall(GoogleSQL:$differential_privacy_count_star(optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+              +-Literal(type=STRUCT<INT64, INT64>, value={0, 100})
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#25 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#25]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#25]
+        +-input_scan=
+        | +-AggregateScan
+        |   +-column_list=[$aggregate.$agg1_partial#27, $group_by.$uid#28]
+        |   +-input_scan=
+        |   | +-WithScan
+        |   |   +-column_list=t1.[int32#13, int64#14, uint32#15, uint64#16, string#17, bytes#18, bool#19, float#20, double#21, date#22, uid#23, numeric#24]
+        |   |   +-with_entry_list=
+        |   |   | +-WithEntry
+        |   |   |   +-with_query_name="t1"
+        |   |   |   +-with_subquery=
+        |   |   |     +-ProjectScan
+        |   |   |       +-column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12]
+        |   |   |       +-input_scan=
+        |   |   |         +-TableScan(column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12], table=SimpleTypesWithAnonymizationUid, column_index_list=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
+        |   |   +-query=
+        |   |     +-ProjectScan
+        |   |       +-column_list=t1.[int32#13, int64#14, uint32#15, uint64#16, string#17, bytes#18, bool#19, float#20, double#21, date#22, uid#23, numeric#24]
+        |   |       +-input_scan=
+        |   |         +-WithRefScan(column_list=t1.[int32#13, int64#14, uint32#15, uint64#16, string#17, bytes#18, bool#19, float#20, double#21, date#22, uid#23, numeric#24], with_query_name="t1")
+        |   +-group_by_list=
+        |   | +-$uid#28 := ColumnRef(type=INT64, column=t1.uid#23)
+        |   +-aggregate_list=
+        |     +-$agg1_partial#27 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+        +-aggregate_list=
+        | +-$agg1#25 :=
+        | | +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+        | |   +-ColumnRef(type=INT64, column=$aggregate.$agg1_partial#27)
+        | |   +-Literal(type=STRUCT<INT64, INT64>, value={0, 100})
+        | +-$group_selection_threshold_col#31 :=
+        |   +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+        |     +-Literal(type=INT64, value=1)
+        |     +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+        +-group_selection_threshold_expr=
+          +-ColumnRef(type=INT64, column=$differential_privacy.$group_selection_threshold_col#31)
+==
+
+# Nested WithScan inside SELECT WITH DIFFERENTIAL_PRIVACY
+[enabled_ast_rewrites=DEFAULTS,+ANONYMIZATION]
+with t1 as (select * from SimpleTypesWithAnonymizationUid)
+select with differential_privacy count(*, contribution_bounds_per_group => (0, 100))
+from (
+  with t2 as (select * from t1)
+  select * from t2);
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#37 AS `$col1` [INT64]
++-query=
+  +-WithScan
+    +-column_list=[$aggregate.$agg1#37]
+    +-with_entry_list=
+    | +-WithEntry
+    |   +-with_query_name="t1"
+    |   +-with_subquery=
+    |     +-ProjectScan
+    |       +-column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12]
+    |       +-input_scan=
+    |         +-TableScan(column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12], table=SimpleTypesWithAnonymizationUid, column_index_list=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
+    +-query=
+      +-ProjectScan
+        +-column_list=[$aggregate.$agg1#37]
+        +-input_scan=
+          +-DifferentialPrivacyAggregateScan
+            +-column_list=[$aggregate.$agg1#37]
+            +-input_scan=
+            | +-WithScan
+            |   +-column_list=t2.[int32#25, int64#26, uint32#27, uint64#28, string#29, bytes#30, bool#31, float#32, double#33, date#34, uid#35, numeric#36]
+            |   +-with_entry_list=
+            |   | +-WithEntry
+            |   |   +-with_query_name="t2"
+            |   |   +-with_subquery=
+            |   |     +-ProjectScan
+            |   |       +-column_list=t1.[int32#13, int64#14, uint32#15, uint64#16, string#17, bytes#18, bool#19, float#20, double#21, date#22, uid#23, numeric#24]
+            |   |       +-input_scan=
+            |   |         +-WithRefScan(column_list=t1.[int32#13, int64#14, uint32#15, uint64#16, string#17, bytes#18, bool#19, float#20, double#21, date#22, uid#23, numeric#24], with_query_name="t1")
+            |   +-query=
+            |     +-ProjectScan
+            |       +-column_list=t2.[int32#25, int64#26, uint32#27, uint64#28, string#29, bytes#30, bool#31, float#32, double#33, date#34, uid#35, numeric#36]
+            |       +-input_scan=
+            |         +-WithRefScan(column_list=t2.[int32#25, int64#26, uint32#27, uint64#28, string#29, bytes#30, bool#31, float#32, double#33, date#34, uid#35, numeric#36], with_query_name="t2")
+            +-aggregate_list=
+              +-$agg1#37 :=
+                +-AggregateFunctionCall(GoogleSQL:$differential_privacy_count_star(optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+                  +-Literal(type=STRUCT<INT64, INT64>, value={0, 100})
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#37 AS `$col1` [INT64]
++-query=
+  +-WithScan
+    +-column_list=[$aggregate.$agg1#37]
+    +-with_entry_list=
+    | +-WithEntry
+    |   +-with_query_name="t1"
+    |   +-with_subquery=
+    |     +-ProjectScan
+    |       +-column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12]
+    |       +-input_scan=
+    |         +-TableScan(column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12], table=SimpleTypesWithAnonymizationUid, column_index_list=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
+    +-query=
+      +-ProjectScan
+        +-column_list=[$aggregate.$agg1#37]
+        +-input_scan=
+          +-DifferentialPrivacyAggregateScan
+            +-column_list=[$aggregate.$agg1#37]
+            +-input_scan=
+            | +-AggregateScan
+            |   +-column_list=[$aggregate.$agg1_partial#39, $group_by.$uid#40]
+            |   +-input_scan=
+            |   | +-WithScan
+            |   |   +-column_list=t2.[int32#25, int64#26, uint32#27, uint64#28, string#29, bytes#30, bool#31, float#32, double#33, date#34, uid#35, numeric#36]
+            |   |   +-with_entry_list=
+            |   |   | +-WithEntry
+            |   |   |   +-with_query_name="t2"
+            |   |   |   +-with_subquery=
+            |   |   |     +-ProjectScan
+            |   |   |       +-column_list=t1.[int32#13, int64#14, uint32#15, uint64#16, string#17, bytes#18, bool#19, float#20, double#21, date#22, uid#23, numeric#24]
+            |   |   |       +-input_scan=
+            |   |   |         +-WithRefScan(column_list=t1.[int32#13, int64#14, uint32#15, uint64#16, string#17, bytes#18, bool#19, float#20, double#21, date#22, uid#23, numeric#24], with_query_name="t1")
+            |   |   +-query=
+            |   |     +-ProjectScan
+            |   |       +-column_list=t2.[int32#25, int64#26, uint32#27, uint64#28, string#29, bytes#30, bool#31, float#32, double#33, date#34, uid#35, numeric#36]
+            |   |       +-input_scan=
+            |   |         +-WithRefScan(column_list=t2.[int32#25, int64#26, uint32#27, uint64#28, string#29, bytes#30, bool#31, float#32, double#33, date#34, uid#35, numeric#36], with_query_name="t2")
+            |   +-group_by_list=
+            |   | +-$uid#40 := ColumnRef(type=INT64, column=t2.uid#35)
+            |   +-aggregate_list=
+            |     +-$agg1_partial#39 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+            +-aggregate_list=
+            | +-$agg1#37 :=
+            | | +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+            | |   +-ColumnRef(type=INT64, column=$aggregate.$agg1_partial#39)
+            | |   +-Literal(type=STRUCT<INT64, INT64>, value={0, 100})
+            | +-$group_selection_threshold_col#43 :=
+            |   +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+            |     +-Literal(type=INT64, value=1)
+            |     +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+            +-group_selection_threshold_expr=
+              +-ColumnRef(type=INT64, column=$differential_privacy.$group_selection_threshold_col#43)
+==
+
+# SELECT WITH DIFFERENTIAL_PRIVACY inside WITH entry
+[enabled_ast_rewrites=DEFAULTS,+ANONYMIZATION]
+with t1 as (
+  select with differential_privacy count(*)
+  from SimpleTypesWithAnonymizationUid)
+select * from t1;
+--
+QueryStmt
++-output_column_list=
+| +-t1.$col1#14 AS `$col1` [INT64]
++-query=
+  +-WithScan
+    +-column_list=[t1.$col1#14]
+    +-with_entry_list=
+    | +-WithEntry
+    |   +-with_query_name="t1"
+    |   +-with_subquery=
+    |     +-ProjectScan
+    |       +-column_list=[$aggregate.$agg1#13]
+    |       +-input_scan=
+    |         +-DifferentialPrivacyAggregateScan
+    |           +-column_list=[$aggregate.$agg1#13]
+    |           +-input_scan=
+    |           | +-TableScan(table=SimpleTypesWithAnonymizationUid)
+    |           +-aggregate_list=
+    |             +-$agg1#13 :=
+    |               +-AggregateFunctionCall(GoogleSQL:$differential_privacy_count_star(optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+    |                 +-Literal(type=STRUCT<INT64, INT64>, value=NULL)
+    +-query=
+      +-ProjectScan
+        +-column_list=[t1.$col1#14]
+        +-input_scan=
+          +-WithRefScan(column_list=[t1.$col1#14], with_query_name="t1")
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-t1.$col1#14 AS `$col1` [INT64]
++-query=
+  +-WithScan
+    +-column_list=[t1.$col1#14]
+    +-with_entry_list=
+    | +-WithEntry
+    |   +-with_query_name="t1"
+    |   +-with_subquery=
+    |     +-ProjectScan
+    |       +-column_list=[$aggregate.$agg1#13]
+    |       +-input_scan=
+    |         +-DifferentialPrivacyAggregateScan
+    |           +-column_list=[$aggregate.$agg1#13]
+    |           +-input_scan=
+    |           | +-AggregateScan
+    |           |   +-column_list=[$aggregate.$agg1_partial#17, $group_by.$uid#18]
+    |           |   +-input_scan=
+    |           |   | +-TableScan(column_list=[SimpleTypesWithAnonymizationUid.uid#15], table=SimpleTypesWithAnonymizationUid, column_index_list=[10])
+    |           |   +-group_by_list=
+    |           |   | +-$uid#18 := ColumnRef(type=INT64, column=SimpleTypesWithAnonymizationUid.uid#15)
+    |           |   +-aggregate_list=
+    |           |     +-$agg1_partial#17 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+    |           +-aggregate_list=
+    |           | +-$agg1#13 :=
+    |           | | +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+    |           | |   +-ColumnRef(type=INT64, column=$aggregate.$agg1_partial#17)
+    |           | |   +-Literal(type=STRUCT<INT64, INT64>, value=NULL)
+    |           | +-$group_selection_threshold_col#21 :=
+    |           |   +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+    |           |     +-Literal(type=INT64, value=1)
+    |           |     +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+    |           +-group_selection_threshold_expr=
+    |             +-ColumnRef(type=INT64, column=$differential_privacy.$group_selection_threshold_col#21)
+    +-query=
+      +-ProjectScan
+        +-column_list=[t1.$col1#14]
+        +-input_scan=
+          +-WithRefScan(column_list=[t1.$col1#14], with_query_name="t1")
+==
+
+# Extraneous WithScan inside SELECT WITH DIFFERENTIAL_PRIVACY
+[enabled_ast_rewrites=DEFAULTS,+ANONYMIZATION]
+select with differential_privacy count(*, contribution_bounds_per_group => (0, 100))
+from (
+  with t1 as (select * from SimpleTypesWithAnonymizationUid),
+       t2 as (select * from SimpleTypesWithAnonymizationUid),
+       t3 as (select * from SimpleTypes)
+  select * from t1);
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#56 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#56]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#56]
+        +-input_scan=
+        | +-WithScan
+        |   +-column_list=t1.[int32#44, int64#45, uint32#46, uint64#47, string#48, bytes#49, bool#50, float#51, double#52, date#53, uid#54, numeric#55]
+        |   +-with_entry_list=
+        |   | +-WithEntry
+        |   | | +-with_query_name="t1"
+        |   | | +-with_subquery=
+        |   | |   +-ProjectScan
+        |   | |     +-column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12]
+        |   | |     +-input_scan=
+        |   | |       +-TableScan(column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12], table=SimpleTypesWithAnonymizationUid, column_index_list=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
+        |   | +-WithEntry
+        |   | | +-with_query_name="t2"
+        |   | | +-with_subquery=
+        |   | |   +-ProjectScan
+        |   | |     +-column_list=SimpleTypesWithAnonymizationUid.[int32#13, int64#14, uint32#15, uint64#16, string#17, bytes#18, bool#19, float#20, double#21, date#22, uid#23, numeric#24]
+        |   | |     +-input_scan=
+        |   | |       +-TableScan(column_list=SimpleTypesWithAnonymizationUid.[int32#13, int64#14, uint32#15, uint64#16, string#17, bytes#18, bool#19, float#20, double#21, date#22, uid#23, numeric#24], table=SimpleTypesWithAnonymizationUid, column_index_list=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
+        |   | +-WithEntry
+        |   |   +-with_query_name="t3"
+        |   |   +-with_subquery=
+        |   |     +-ProjectScan
+        |   |       +-column_list=SimpleTypes.[int32#25, int64#26, uint32#27, uint64#28, string#29, bytes#30, bool#31, float#32, double#33, date#34, timestamp_seconds#35, timestamp_millis#36, timestamp_micros#37, timestamp_nanos#38, timestamp#39, numeric#40, bignumeric#41, json#42, uuid#43]
+        |   |       +-input_scan=
+        |   |         +-TableScan(column_list=SimpleTypes.[int32#25, int64#26, uint32#27, uint64#28, string#29, bytes#30, bool#31, float#32, double#33, date#34, timestamp_seconds#35, timestamp_millis#36, timestamp_micros#37, timestamp_nanos#38, timestamp#39, numeric#40, bignumeric#41, json#42, uuid#43], table=SimpleTypes, column_index_list=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18])
+        |   +-query=
+        |     +-ProjectScan
+        |       +-column_list=t1.[int32#44, int64#45, uint32#46, uint64#47, string#48, bytes#49, bool#50, float#51, double#52, date#53, uid#54, numeric#55]
+        |       +-input_scan=
+        |         +-WithRefScan(column_list=t1.[int32#44, int64#45, uint32#46, uint64#47, string#48, bytes#49, bool#50, float#51, double#52, date#53, uid#54, numeric#55], with_query_name="t1")
+        +-aggregate_list=
+          +-$agg1#56 :=
+            +-AggregateFunctionCall(GoogleSQL:$differential_privacy_count_star(optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+              +-Literal(type=STRUCT<INT64, INT64>, value={0, 100})
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#56 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#56]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#56]
+        +-input_scan=
+        | +-AggregateScan
+        |   +-column_list=[$aggregate.$agg1_partial#58, $group_by.$uid#59]
+        |   +-input_scan=
+        |   | +-WithScan
+        |   |   +-column_list=t1.[int32#44, int64#45, uint32#46, uint64#47, string#48, bytes#49, bool#50, float#51, double#52, date#53, uid#54, numeric#55]
+        |   |   +-with_entry_list=
+        |   |   | +-WithEntry
+        |   |   | | +-with_query_name="t1"
+        |   |   | | +-with_subquery=
+        |   |   | |   +-ProjectScan
+        |   |   | |     +-column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12]
+        |   |   | |     +-input_scan=
+        |   |   | |       +-TableScan(column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12], table=SimpleTypesWithAnonymizationUid, column_index_list=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
+        |   |   | +-WithEntry
+        |   |   | | +-with_query_name="t2"
+        |   |   | | +-with_subquery=
+        |   |   | |   +-ProjectScan
+        |   |   | |     +-column_list=SimpleTypesWithAnonymizationUid.[int32#13, int64#14, uint32#15, uint64#16, string#17, bytes#18, bool#19, float#20, double#21, date#22, uid#23, numeric#24]
+        |   |   | |     +-input_scan=
+        |   |   | |       +-TableScan(column_list=SimpleTypesWithAnonymizationUid.[int32#13, int64#14, uint32#15, uint64#16, string#17, bytes#18, bool#19, float#20, double#21, date#22, uid#23, numeric#24], table=SimpleTypesWithAnonymizationUid, column_index_list=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
+        |   |   | +-WithEntry
+        |   |   |   +-with_query_name="t3"
+        |   |   |   +-with_subquery=
+        |   |   |     +-ProjectScan
+        |   |   |       +-column_list=SimpleTypes.[int32#25, int64#26, uint32#27, uint64#28, string#29, bytes#30, bool#31, float#32, double#33, date#34, timestamp_seconds#35, timestamp_millis#36, timestamp_micros#37, timestamp_nanos#38, timestamp#39, numeric#40, bignumeric#41, json#42, uuid#43]
+        |   |   |       +-input_scan=
+        |   |   |         +-TableScan(column_list=SimpleTypes.[int32#25, int64#26, uint32#27, uint64#28, string#29, bytes#30, bool#31, float#32, double#33, date#34, timestamp_seconds#35, timestamp_millis#36, timestamp_micros#37, timestamp_nanos#38, timestamp#39, numeric#40, bignumeric#41, json#42, uuid#43], table=SimpleTypes, column_index_list=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18])
+        |   |   +-query=
+        |   |     +-ProjectScan
+        |   |       +-column_list=t1.[int32#44, int64#45, uint32#46, uint64#47, string#48, bytes#49, bool#50, float#51, double#52, date#53, uid#54, numeric#55]
+        |   |       +-input_scan=
+        |   |         +-WithRefScan(column_list=t1.[int32#44, int64#45, uint32#46, uint64#47, string#48, bytes#49, bool#50, float#51, double#52, date#53, uid#54, numeric#55], with_query_name="t1")
+        |   +-group_by_list=
+        |   | +-$uid#59 := ColumnRef(type=INT64, column=t1.uid#54)
+        |   +-aggregate_list=
+        |     +-$agg1_partial#58 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+        +-aggregate_list=
+        | +-$agg1#56 :=
+        | | +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+        | |   +-ColumnRef(type=INT64, column=$aggregate.$agg1_partial#58)
+        | |   +-Literal(type=STRUCT<INT64, INT64>, value={0, 100})
+        | +-$group_selection_threshold_col#62 :=
+        |   +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+        |     +-Literal(type=INT64, value=1)
+        |     +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+        +-group_selection_threshold_expr=
+          +-ColumnRef(type=INT64, column=$differential_privacy.$group_selection_threshold_col#62)
+==
+
+# Extraneous WithScan inside SELECT WITH DIFFERENTIAL_PRIVACY trigger validation
+[enabled_ast_rewrites=DEFAULTS,+ANONYMIZATION]
+[parse_location_record_type=PARSE_LOCATION_RECORD_CODE_SEARCH]
+select with differential_privacy count(*, contribution_bounds_per_group => (0, 100))
+from (
+  with t1 as (select * from SimpleTypesWithAnonymizationUid),
+       t2 as (select 1 from SimpleTypesWithAnonymizationUid)
+  select * from t1);
+--
+[PRE-REWRITE AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#38 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-parse_location=0-234
+    +-column_list=[$aggregate.$agg1#38]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#38]
+        +-input_scan=
+        | +-WithScan
+        |   +-parse_location=94-233
+        |   +-column_list=t1.[int32#26, int64#27, uint32#28, uint64#29, string#30, bytes#31, bool#32, float#33, double#34, date#35, uid#36, numeric#37]
+        |   +-with_entry_list=
+        |   | +-WithEntry
+        |   | | +-with_query_name="t1"
+        |   | | +-with_subquery=
+        |   | |   +-ProjectScan
+        |   | |     +-parse_location=105-152
+        |   | |     +-column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12]
+        |   | |     +-input_scan=
+        |   | |       +-TableScan(parse_location=120-151, column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12], table=SimpleTypesWithAnonymizationUid, column_index_list=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
+        |   | +-WithEntry
+        |   |   +-with_query_name="t2"
+        |   |   +-with_subquery=
+        |   |     +-ProjectScan
+        |   |       +-parse_location=167-214
+        |   |       +-column_list=[t2.$col1#25]
+        |   |       +-expr_list=
+        |   |       | +-$col1#25 := Literal(parse_location=175-176, type=INT64, value=1)
+        |   |       +-input_scan=
+        |   |         +-TableScan(parse_location=182-213, table=SimpleTypesWithAnonymizationUid)
+        |   +-query=
+        |     +-ProjectScan
+        |       +-column_list=t1.[int32#26, int64#27, uint32#28, uint64#29, string#30, bytes#31, bool#32, float#33, double#34, date#35, uid#36, numeric#37]
+        |       +-input_scan=
+        |         +-WithRefScan(parse_location=231-233, column_list=t1.[int32#26, int64#27, uint32#28, uint64#29, string#30, bytes#31, bool#32, float#33, double#34, date#35, uid#36, numeric#37], with_query_name="t1")
+        +-aggregate_list=
+          +-$agg1#38 :=
+            +-AggregateFunctionCall(GoogleSQL:$differential_privacy_count_star(optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+              +-parse_location=33-38
+              +-Literal(parse_location=75-83, type=STRUCT<INT64, INT64>, value={0, 100})
+[REPLACED_LITERALS]
+select with differential_privacy count(*, contribution_bounds_per_group => @_p0_STRUCT)
+from (
+  with t1 as (select * from SimpleTypesWithAnonymizationUid),
+       t2 as (select @_p1_INT64 from SimpleTypesWithAnonymizationUid)
+  select * from t1);
+
+Rewrite ERROR: Subqueries of differential_privacy queries must explicitly SELECT the userid column 'uid' [at 4:14]
+       t2 as (select 1 from SimpleTypesWithAnonymizationUid)
+             ^
+==
+
+# WITH clause was crashed, see b/413760889.
+[enabled_ast_rewrites=DEFAULTS,+ANONYMIZATION]
+[parse_location_record_type=PARSE_LOCATION_RECORD_CODE_SEARCH]
+WITH t AS (
+  SELECT int64
+    FROM SimpleTypesWithAnonymizationUid
+    ORDER BY RAND()
+) SELECT WITH DIFFERENTIAL_PRIVACY OPTIONS (epsilon=100000000, delta=1e-5)
+  COUNT(*) as aggregation_count
+  FROM t;
+--
+[PRE-REWRITE AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.aggregation_count#15 AS aggregation_count [INT64]
++-query=
+  +-WithScan
+    +-parse_location=0-203
+    +-column_list=[$aggregate.aggregation_count#15]
+    +-with_entry_list=
+    | +-WithEntry
+    |   +-with_query_name="t"
+    |   +-with_subquery=
+    |     +-OrderByScan
+    |       +-parse_location=10-89
+    |       +-column_list=[SimpleTypesWithAnonymizationUid.int64#2]
+    |       +-is_ordered=TRUE
+    |       +-input_scan=
+    |       | +-ProjectScan
+    |       |   +-column_list=[SimpleTypesWithAnonymizationUid.int64#2, $orderby.$orderbycol1#13]
+    |       |   +-expr_list=
+    |       |   | +-$orderbycol1#13 := FunctionCall(GoogleSQL:rand() -> DOUBLE)(parse_location=81-85)
+    |       |   +-input_scan=
+    |       |     +-TableScan(parse_location=36-67, column_list=[SimpleTypesWithAnonymizationUid.int64#2], table=SimpleTypesWithAnonymizationUid, column_index_list=[1])
+    |       +-order_by_item_list=
+    |         +-OrderByItem
+    |           +-parse_location=81-87
+    |           +-column_ref=
+    |             +-ColumnRef(type=DOUBLE, column=$orderby.$orderbycol1#13)
+    +-query=
+      +-ProjectScan
+        +-column_list=[$aggregate.aggregation_count#15]
+        +-input_scan=
+          +-DifferentialPrivacyAggregateScan
+            +-column_list=[$aggregate.aggregation_count#15]
+            +-input_scan=
+            | +-WithRefScan(parse_location=202-203, column_list=[t.int64#14], with_query_name="t")
+            +-aggregate_list=
+            | +-aggregation_count#15 :=
+            |   +-AggregateFunctionCall(GoogleSQL:$differential_privacy_count_star(optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+            |     +-parse_location=165-170
+            |     +-Literal(type=STRUCT<INT64, INT64>, value=NULL)
+            +-option_list=
+              +-epsilon=
+              | +-parse_location=132-149
+              | +-Literal(parse_location=140-149, type=DOUBLE, value=100000000)
+              +-delta=
+                +-parse_location=151-161
+                +-Literal(parse_location=157-161, type=DOUBLE, value=1e-05)
+[REPLACED_LITERALS]
+WITH t AS (
+  SELECT int64
+    FROM SimpleTypesWithAnonymizationUid
+    ORDER BY RAND()
+) SELECT WITH DIFFERENTIAL_PRIVACY OPTIONS (epsilon=@_p0_DOUBLE, delta=@_p1_DOUBLE)
+  COUNT(*) as aggregation_count
+  FROM t;
+
+Rewrite ERROR: Subqueries of differential_privacy queries must explicitly SELECT the userid column 'uid'
+==
+
+# Count (*) counting unique users.
+# DIFFERENTIAL_PRIVACY_THRESHOLDING feature is enabled, therefore we should use this
+# count for k_threshold.
+[default language_features=NONE,+DIFFERENTIAL_PRIVACY,+NAMED_ARGUMENTS,+TABLE_VALUED_FUNCTIONS,+DIFFERENTIAL_PRIVACY_THRESHOLDING,+PIPE_AGGREGATE_WITH_DIFFERENTIAL_PRIVACY]
+[default enabled_ast_rewrites=DEFAULTS,+ANONYMIZATION]
+[parse_location_record_type=PARSE_LOCATION_RECORD_CODE_SEARCH]
+WITH t as (select *
+           from SimpleTypesWithAnonymizationUid)
+SELECT WITH DIFFERENTIAL_PRIVACY count(*, contribution_bounds_per_group => (0, 1)) as anon_count from t;
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.anon_count#25 AS anon_count [INT64]
++-query=
+  +-WithScan
+    +-parse_location=0-172
+    +-column_list=[$aggregate.anon_count#25]
+    +-with_entry_list=
+    | +-WithEntry
+    |   +-with_query_name="t"
+    |   +-with_subquery=
+    |     +-ProjectScan
+    |       +-parse_location=10-68
+    |       +-column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12]
+    |       +-input_scan=
+    |         +-TableScan(parse_location=36-67, column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12], table=SimpleTypesWithAnonymizationUid, column_index_list=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
+    +-query=
+      +-ProjectScan
+        +-column_list=[$aggregate.anon_count#25]
+        +-input_scan=
+          +-DifferentialPrivacyAggregateScan
+            +-column_list=[$aggregate.anon_count#25]
+            +-input_scan=
+            | +-WithRefScan(parse_location=171-172, column_list=t.[int32#13, int64#14, uint32#15, uint64#16, string#17, bytes#18, bool#19, float#20, double#21, date#22, uid#23, numeric#24], with_query_name="t")
+            +-aggregate_list=
+              +-anon_count#25 :=
+                +-AggregateFunctionCall(GoogleSQL:$differential_privacy_count_star(optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+                  +-parse_location=102-107
+                  +-Literal(parse_location=144-150, type=STRUCT<INT64, INT64>, value={0, 1})
+[REPLACED_LITERALS]
+WITH t as (select *
+           from SimpleTypesWithAnonymizationUid)
+SELECT WITH DIFFERENTIAL_PRIVACY count(*, contribution_bounds_per_group => @_p0_STRUCT) as anon_count from t;
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.anon_count#25 AS anon_count [INT64]
++-query=
+  +-WithScan
+    +-parse_location=0-172
+    +-column_list=[$aggregate.anon_count#25]
+    +-with_entry_list=
+    | +-WithEntry
+    |   +-with_query_name="t"
+    |   +-with_subquery=
+    |     +-ProjectScan
+    |       +-parse_location=10-68
+    |       +-column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12]
+    |       +-input_scan=
+    |         +-TableScan(parse_location=36-67, column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12], table=SimpleTypesWithAnonymizationUid, column_index_list=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
+    +-query=
+      +-ProjectScan
+        +-column_list=[$aggregate.anon_count#25]
+        +-input_scan=
+          +-DifferentialPrivacyAggregateScan
+            +-column_list=[$aggregate.anon_count#25]
+            +-input_scan=
+            | +-AggregateScan
+            |   +-column_list=[$aggregate.anon_count_partial#27, $group_by.$uid#28]
+            |   +-input_scan=
+            |   | +-WithRefScan(parse_location=171-172, column_list=t.[int32#13, int64#14, uint32#15, uint64#16, string#17, bytes#18, bool#19, float#20, double#21, date#22, uid#23, numeric#24], with_query_name="t")
+            |   +-group_by_list=
+            |   | +-$uid#28 := ColumnRef(type=INT64, column=t.uid#23)
+            |   +-aggregate_list=
+            |     +-anon_count_partial#27 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+            +-aggregate_list=
+            | +-anon_count#25 :=
+            |   +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+            |     +-ColumnRef(type=INT64, column=$aggregate.anon_count_partial#27)
+            |     +-Literal(parse_location=144-150, type=STRUCT<INT64, INT64>, value={0, 1})
+            +-group_selection_threshold_expr=
+              +-ColumnRef(type=INT64, column=$aggregate.anon_count#25)
+==
+
+[parse_location_record_type=PARSE_LOCATION_RECORD_CODE_SEARCH]
+# Test SELECT WITH DIFFERENTIAL_PRIVACY in a CTE.
+WITH
+  first AS (
+    SELECT *
+    FROM SimpleTypesWithAnonymizationUid
+  ),
+  second AS (
+    SELECT WITH DIFFERENTIAL_PRIVACY COUNT(*)
+    FROM first
+  )
+SELECT *
+FROM second;
+--
+QueryStmt
++-output_column_list=
+| +-second.$col1#26 AS `$col1` [INT64]
++-query=
+  +-WithScan
+    +-parse_location=50-226
+    +-column_list=[second.$col1#26]
+    +-with_entry_list=
+    | +-WithEntry
+    | | +-with_query_name="first"
+    | | +-with_subquery=
+    | |   +-ProjectScan
+    | |     +-parse_location=66-125
+    | |     +-column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12]
+    | |     +-input_scan=
+    | |       +-TableScan(parse_location=90-121, column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12], table=SimpleTypesWithAnonymizationUid, column_index_list=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
+    | +-WithEntry
+    |   +-with_query_name="second"
+    |   +-with_subquery=
+    |     +-ProjectScan
+    |       +-parse_location=139-205
+    |       +-column_list=[$aggregate.$agg1#25]
+    |       +-input_scan=
+    |         +-DifferentialPrivacyAggregateScan
+    |           +-column_list=[$aggregate.$agg1#25]
+    |           +-input_scan=
+    |           | +-WithRefScan(parse_location=196-201, column_list=first.[int32#13, int64#14, uint32#15, uint64#16, string#17, bytes#18, bool#19, float#20, double#21, date#22, uid#23, numeric#24], with_query_name="first")
+    |           +-aggregate_list=
+    |             +-$agg1#25 :=
+    |               +-AggregateFunctionCall(GoogleSQL:$differential_privacy_count_star(optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+    |                 +-parse_location=178-183
+    |                 +-Literal(type=STRUCT<INT64, INT64>, value=NULL)
+    +-query=
+      +-ProjectScan
+        +-column_list=[second.$col1#26]
+        +-input_scan=
+          +-WithRefScan(parse_location=220-226, column_list=[second.$col1#26], with_query_name="second")
+[REPLACED_LITERALS]
+\# Test SELECT WITH DIFFERENTIAL_PRIVACY in a CTE.
+WITH
+  first AS (
+    SELECT *
+    FROM SimpleTypesWithAnonymizationUid
+  ),
+  second AS (
+    SELECT WITH DIFFERENTIAL_PRIVACY COUNT(*)
+    FROM first
+  )
+SELECT *
+FROM second;
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-second.$col1#26 AS `$col1` [INT64]
++-query=
+  +-WithScan
+    +-parse_location=50-226
+    +-column_list=[second.$col1#26]
+    +-with_entry_list=
+    | +-WithEntry
+    | | +-with_query_name="first"
+    | | +-with_subquery=
+    | |   +-ProjectScan
+    | |     +-parse_location=66-125
+    | |     +-column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12]
+    | |     +-input_scan=
+    | |       +-TableScan(parse_location=90-121, column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12], table=SimpleTypesWithAnonymizationUid, column_index_list=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
+    | +-WithEntry
+    |   +-with_query_name="second"
+    |   +-with_subquery=
+    |     +-ProjectScan
+    |       +-parse_location=139-205
+    |       +-column_list=[$aggregate.$agg1#25]
+    |       +-input_scan=
+    |         +-DifferentialPrivacyAggregateScan
+    |           +-column_list=[$aggregate.$agg1#25]
+    |           +-input_scan=
+    |           | +-AggregateScan
+    |           |   +-column_list=[$aggregate.$agg1_partial#28, $group_by.$uid#29]
+    |           |   +-input_scan=
+    |           |   | +-WithRefScan(parse_location=196-201, column_list=first.[int32#13, int64#14, uint32#15, uint64#16, string#17, bytes#18, bool#19, float#20, double#21, date#22, uid#23, numeric#24], with_query_name="first")
+    |           |   +-group_by_list=
+    |           |   | +-$uid#29 := ColumnRef(type=INT64, column=first.uid#23)
+    |           |   +-aggregate_list=
+    |           |     +-$agg1_partial#28 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+    |           +-aggregate_list=
+    |           | +-$agg1#25 :=
+    |           | | +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+    |           | |   +-ColumnRef(type=INT64, column=$aggregate.$agg1_partial#28)
+    |           | |   +-Literal(type=STRUCT<INT64, INT64>, value=NULL)
+    |           | +-$group_selection_threshold_col#32 :=
+    |           |   +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+    |           |     +-Literal(type=INT64, value=1)
+    |           |     +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+    |           +-group_selection_threshold_expr=
+    |             +-ColumnRef(type=INT64, column=$differential_privacy.$group_selection_threshold_col#32)
+    +-query=
+      +-ProjectScan
+        +-column_list=[second.$col1#26]
+        +-input_scan=
+          +-WithRefScan(parse_location=220-226, column_list=[second.$col1#26], with_query_name="second")

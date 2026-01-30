@@ -1,0 +1,353 @@
+[load_proto_files=googlesql/testdata/test_schema.proto]
+[load_enum_names=googlesql_test.TestEnum]
+[prepare_database]
+CREATE TABLE TestTable AS
+SELECT cast(1 as int64) as row_id,
+       cast(null as bool) as bool_val,
+       cast(null as int64) as int64_val,
+       cast(null as int32) as int32_val,
+       cast(null as string) as str_val UNION ALL
+  SELECT 2,  true,  null, null,  null  UNION ALL
+  SELECT 3,  false, 1,    1,     "A"   UNION ALL
+  SELECT 4,  true,  1,    2,     "A"   UNION ALL
+  SELECT 5,  false, 1,    3,     "aA"   UNION ALL
+  SELECT 6,  true,  2,    2,     "Aa"   UNION ALL
+  SELECT 7,  false, 1,    1,     'a'   UNION ALL
+  SELECT 8,  true,  2,    1,     "a"   UNION ALL
+  SELECT 9,  false, 2,    3,     "b"   UNION ALL
+  SELECT 10, true,  2,    1,     "B"
+--
+ARRAY<STRUCT<row_id INT64,
+             bool_val BOOL,
+             int64_val INT64,
+             int32_val INT32,
+             str_val STRING>>
+[
+  {1, NULL, NULL, NULL, NULL},
+  {2, true, NULL, NULL, NULL},
+  {3, false, 1, 1, "A"},
+  {4, true, 1, 2, "A"},
+  {5, false, 1, 3, "aA"},
+  {6, true, 2, 2, "Aa"},
+  {7, false, 1, 1, "a"},
+  {8, true, 2, 1, "a"},
+  {9, false, 2, 3, "b"},
+  {10, true, 2, 1, "B"}
+]
+==
+
+[prepare_database]
+CREATE TABLE TableDateTimeBytes AS
+SELECT cast(1 as int64) as row_id,
+       cast(null as date) as date_val,
+       cast(null as timestamp) as timestamp_val,
+       cast(null as bytes) as bytes_val UNION ALL
+SELECT 2,
+       cast('2014-01-01' as date),
+       TIMESTAMP '2014-01-01 00:00:01.011011 UTC',
+       cast("1" as bytes) UNION ALL
+SELECT 3,
+       cast('2014-01-01' as date),
+       TIMESTAMP '2014-01-01 00:00:01.011011 UTC',
+       cast("2" as bytes) UNION ALL
+SELECT 4,
+       cast('2015-01-01' as date),
+       TIMESTAMP '2014-01-01 00:00:01.011011 UTC',
+       cast("1" as bytes) UNION ALL
+SELECT 5,
+       cast('2015-01-01' as date),
+       TIMESTAMP '2013-01-01 00:00:01.011011 UTC',
+       cast("2" as bytes) UNION ALL
+SELECT 6,
+       cast('2014-01-01' as date),
+       TIMESTAMP '2015-01-01 00:00:01.011011 UTC',
+       cast("5" as bytes)
+--
+ARRAY<STRUCT<
+        row_id INT64,
+        date_val DATE,
+        timestamp_val TIMESTAMP,
+        bytes_val BYTES
+      >>
+[{1, NULL, NULL, NULL},
+ {
+   2,
+   2014-01-01,
+   2014-01-01 00:00:01.011011+00,
+   b"1"
+ },
+ {
+   3,
+   2014-01-01,
+   2014-01-01 00:00:01.011011+00,
+   b"2"
+ },
+ {
+   4,
+   2015-01-01,
+   2014-01-01 00:00:01.011011+00,
+   b"1"
+ },
+ {
+   5,
+   2015-01-01,
+   2013-01-01 00:00:01.011011+00,
+   b"2"
+ },
+ {
+   6,
+   2014-01-01,
+   2015-01-01 00:00:01.011011+00,
+   b"5"
+ }]
+==
+
+[default required_features=ANALYTIC_FUNCTIONS]
+[name=dense_rank_int64]
+SELECT bool_val, int64_val,
+       DENSE_RANK() OVER (PARTITION BY bool_val ORDER BY int64_val)
+FROM TestTable
+--
+ARRAY<STRUCT<bool_val BOOL, int64_val INT64, INT64>>[unknown order:
+  {NULL, NULL, 1},
+  {false, 1, 1},
+  {false, 1, 1},
+  {false, 1, 1},
+  {false, 2, 2},
+  {true, NULL, 1},
+  {true, 1, 2},
+  {true, 2, 3},
+  {true, 2, 3},
+  {true, 2, 3}
+]
+==
+
+[name=dense_rank_bool]
+SELECT bool_val, DENSE_RANK() OVER (ORDER BY bool_val)
+FROM TestTable
+--
+ARRAY<STRUCT<bool_val BOOL, INT64>>[unknown order:
+  {NULL, 1},
+  {false, 2},
+  {false, 2},
+  {false, 2},
+  {false, 2},
+  {true, 3},
+  {true, 3},
+  {true, 3},
+  {true, 3},
+  {true, 3}
+]
+==
+
+[name=dense_rank_str_int64]
+SELECT str_val, int64_val,
+       DENSE_RANK() OVER (ORDER BY str_val, int64_val DESC)
+FROM TestTable
+--
+ARRAY<STRUCT<str_val STRING, int64_val INT64, INT64>>[unknown order:
+  {NULL, NULL, 1},
+  {NULL, NULL, 1},
+  {"A", 1, 2},
+  {"A", 1, 2},
+  {"Aa", 2, 3},
+  {"B", 2, 4},
+  {"a", 2, 5},
+  {"a", 1, 6},
+  {"aA", 1, 7},
+  {"b", 2, 8}
+]
+==
+
+[required_features=ANALYTIC_FUNCTIONS,ORDER_BY_COLLATE]
+[name=dense_rank_collate]
+SELECT str_val, int64_val,
+       DENSE_RANK() OVER (ORDER BY str_val COLLATE "en_US", int64_val DESC)
+FROM TestTable
+ORDER BY str_val COLLATE "en_US"
+--
+ARRAY<STRUCT<str_val STRING, int64_val INT64, INT64>>[unknown order:
+  {NULL, NULL, 1},
+  {NULL, NULL, 1},
+  {"a", 1, 3},
+  {"a", 2, 2},
+  {"A", 1, 4},
+  {"A", 1, 4},
+  {"aA", 1, 5},
+  {"Aa", 2, 6},
+  {"b", 2, 7},
+  {"B", 2, 8}
+]
+==
+
+[name=dense_rank_int32_uint64]
+SELECT int32_val, cast(int64_val as uint64),
+       DENSE_RANK() OVER (ORDER BY int32_val, cast(int64_val as uint64) ASC)
+FROM TestTable
+--
+ARRAY<STRUCT<int32_val INT32, UINT64, INT64>>[unknown order:
+  {NULL, NULL, 1},
+  {NULL, NULL, 1},
+  {1, 1, 2},
+  {1, 1, 2},
+  {1, 2, 3},
+  {1, 2, 3},
+  {2, 1, 4},
+  {2, 2, 5},
+  {3, 1, 6},
+  {3, 2, 7}
+]
+==
+
+[name=dense_rank_uint32_int64]
+SELECT cast(int32_val as uint32), int64_val,
+       DENSE_RANK() OVER (ORDER BY cast(int32_val as uint32), int64_val)
+FROM TestTable
+--
+ARRAY<STRUCT<UINT32, int64_val INT64, INT64>>[unknown order:
+  {NULL, NULL, 1},
+  {NULL, NULL, 1},
+  {1, 1, 2},
+  {1, 1, 2},
+  {1, 2, 3},
+  {1, 2, 3},
+  {2, 1, 4},
+  {2, 2, 5},
+  {3, 1, 6},
+  {3, 2, 7}
+]
+==
+
+[name=dense_rank_enum]
+SELECT enum_val, DENSE_RANK() OVER (ORDER BY enum_val DESC)
+FROM unnest([CAST(0 AS `googlesql_test.TestEnum`),
+             CAST(1 AS `googlesql_test.TestEnum`),
+             CAST(1 AS `googlesql_test.TestEnum`),
+             CAST(2 AS `googlesql_test.TestEnum`),
+             CAST(2 AS `googlesql_test.TestEnum`),
+             CAST(null AS `googlesql_test.TestEnum`),
+             CAST(null AS `googlesql_test.TestEnum`)]) as enum_val
+--
+ARRAY<STRUCT<
+        enum_val ENUM<googlesql_test.TestEnum>,
+        INT64
+      >>
+[unknown order:{TESTENUM2, 1},
+               {TESTENUM2, 1},
+               {TESTENUM1, 2},
+               {TESTENUM1, 2},
+               {TESTENUM0, 3},
+               {NULL, 4},
+               {NULL, 4}]
+==
+
+[name=dense_rank_double]
+SELECT double_val, DENSE_RANK() OVER (ORDER BY double_val)
+FROM unnest([CAST(0 AS DOUBLE), CAST(1 AS DOUBLE), CAST(null AS DOUBLE),
+             CAST(null AS DOUBLE), CAST("NaN" AS DOUBLE),
+             CAST("inf" AS DOUBLE), CAST("inf" AS DOUBLE),
+             CAST("NaN" AS DOUBLE), CAST("-inf" AS DOUBLE),
+             CAST("-inf" AS DOUBLE)]) as double_val
+--
+ARRAY<STRUCT<double_val DOUBLE, INT64>>[unknown order:
+  {NULL, 1},
+  {NULL, 1},
+  {nan, 2},
+  {nan, 2},
+  {-inf, 3},
+  {-inf, 3},
+  {0, 4},
+  {1, 5},
+  {inf, 6},
+  {inf, 6}
+]
+==
+
+[name=dense_rank_float]
+SELECT float_val, DENSE_RANK() OVER (ORDER BY float_val)
+FROM unnest([CAST(0 AS FLOAT), CAST(1 AS FLOAT), CAST(null AS FLOAT),
+             CAST(null AS FLOAT), CAST("NaN" AS FLOAT),
+             CAST("inf" AS FLOAT), CAST("inf" AS FLOAT),
+             CAST("NaN" AS FLOAT), CAST("-inf" AS FLOAT),
+             CAST("-inf" AS FLOAT)]) as float_val
+--
+ARRAY<STRUCT<float_val FLOAT, INT64>>[unknown order:
+  {NULL, 1},
+  {NULL, 1},
+  {nan, 2},
+  {nan, 2},
+  {-inf, 3},
+  {-inf, 3},
+  {0, 4},
+  {1, 5},
+  {inf, 6},
+  {inf, 6}
+]
+==
+
+[name=dense_rank_date_timestamp]
+SELECT date_val, timestamp_val,
+       DENSE_RANK() OVER (ORDER BY date_val, timestamp_val)
+FROM TableDateTimeBytes
+--
+ARRAY<STRUCT<
+        date_val DATE,
+        timestamp_val TIMESTAMP,
+        INT64
+      >>
+[unknown order:{NULL, NULL, 1},
+               {
+                 2014-01-01,
+                 2014-01-01 00:00:01.011011+00,
+                 2
+               },
+               {
+                 2014-01-01,
+                 2014-01-01 00:00:01.011011+00,
+                 2
+               },
+               {
+                 2014-01-01,
+                 2015-01-01 00:00:01.011011+00,
+                 3
+               },
+               {
+                 2015-01-01,
+                 2013-01-01 00:00:01.011011+00,
+                 4
+               },
+               {
+                 2015-01-01,
+                 2014-01-01 00:00:01.011011+00,
+                 5
+               }]
+==
+
+[name=dense_rank_bytes]
+SELECT bytes_val,
+       DENSE_RANK() OVER (ORDER BY bytes_val)
+FROM TableDateTimeBytes
+--
+ARRAY<STRUCT<bytes_val BYTES, INT64>>[unknown order:
+  {NULL, 1},
+  {b"1", 2},
+  {b"1", 2},
+  {b"2", 3},
+  {b"2", 3},
+  {b"5", 4}
+]
+==
+
+[required_features=ANALYTIC_FUNCTIONS,NUMERIC_TYPE]
+[name=dense_rank_numeric]
+[parameters="99999999999999999999999999999.999999999" as max_val,
+            "-99999999999999999999999999999.999999999" as min_val]
+SELECT DENSE_RANK() OVER(ORDER BY numeric_val)
+FROM (SELECT CAST(NULL as NUMERIC) numeric_val UNION ALL
+      SELECT 0                                 UNION ALL
+      SELECT 3.5                               UNION ALL
+      SELECT -1.230000001                      UNION ALL
+      SELECT CAST(@max_val AS NUMERIC)         UNION ALL
+      SELECT CAST(@min_val AS NUMERIC))
+--
+ARRAY<STRUCT<INT64>>[unknown order:{1}, {2}, {3}, {4}, {5}, {6}]

@@ -1,0 +1,712 @@
+[default language_features=NONE,+SQL_GRAPH,+SQL_GRAPH_ADVANCED_QUERY]
+[default no_test_extract_table_names]
+# Conflicting element column name
+select gt.* from
+graph_table(aml
+  match (n)
+  let age = DATE_DIFF(CURRENT_DATE, n.birthday, YEAR)
+  for age in [1,2,3] with offset as offset1
+  return x, offset1, col
+) gt
+--
+ERROR: Ambiguous name: age [at 6:3]
+  for age in [1,2,3] with offset as offset1
+  ^
+==
+
+# Conflicting offset column name
+select gt.* from
+graph_table(aml
+  match (n)
+  let offset = 1
+  for x in [1,2,3] with offset
+  return x, offset
+) gt
+--
+ERROR: Ambiguous name: offset [at 5:3]
+  for x in [1,2,3] with offset
+  ^
+==
+
+# Conflicting offset column name
+select gt.* from
+graph_table(aml
+  let offset_alias = 1
+  for x in [1,2,3] with offset as offset_alias
+  return x, offset
+) gt
+--
+ERROR: Ambiguous name: offset_alias [at 4:3]
+  for x in [1,2,3] with offset as offset_alias
+  ^
+==
+
+[language_features=NONE,+SQL_GRAPH,+SQL_GRAPH_ADVANCED_QUERY,+SQL_GRAPH_BOUNDED_PATH_QUANTIFICATION]
+# Conflicting element column name with group var
+select gt.* from
+graph_table(aml
+  match ((a)-[b]->(c)){1, 3}
+  for a in [1,2,3] with offset as offset1
+  return x, offset1
+) gt
+--
+ERROR: Ambiguous name: a [at 5:3]
+  for a in [1,2,3] with offset as offset1
+  ^
+==
+
+[language_features=NONE,+SQL_GRAPH,+SQL_GRAPH_ADVANCED_QUERY,+SQL_GRAPH_BOUNDED_PATH_QUANTIFICATION]
+# Conflicting offset column name with group var
+select gt.* from
+graph_table(aml
+  match ((a)-[b]->(c)){1, 3}
+  for x in [1,2,3] with offset as b
+  return *
+) gt
+--
+ERROR: Ambiguous name: b [at 5:3]
+  for x in [1,2,3] with offset as b
+  ^
+==
+
+[language_features=NONE,+SQL_GRAPH,+SQL_GRAPH_ADVANCED_QUERY,+SQL_GRAPH_BOUNDED_PATH_QUANTIFICATION]
+# Only ARRAY type expressions are allowed
+select gt.* from
+graph_table(aml
+  match (n)
+  for x in "str_literal"
+  return *
+) gt
+--
+ERROR: Expression in graph FOR operator must be of type ARRAY  [at 5:12]
+  for x in "str_literal"
+           ^
+==
+
+select gt.* from
+graph_table(aml
+  match (n)
+  for x in [1,2,3] with offset as off
+  return n.id, x, off
+) gt
+--
+QueryStmt
++-output_column_list=
+| +-$graph_table.id#4 AS id [INT64]
+| +-$graph_table.x#5 AS x [INT64]
+| +-$graph_table.off#6 AS off [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=$graph_table.[id#4, x#5, off#6]
+    +-input_scan=
+      +-GraphTableScan
+        +-column_list=$graph_table.[id#4, x#5, off#6]
+        +-property_graph=aml
+        +-input_scan=
+          +-GraphLinearScan
+            +-column_list=$graph_table.[id#4, x#5, off#6]
+            +-scan_list=
+              +-GraphLinearScan
+                +-column_list=$graph_table.[id#4, x#5, off#6]
+                +-scan_list=
+                  +-GraphScan
+                  | +-column_list=[$element_table.n#1]
+                  | +-input_scan_list=
+                  | | +-GraphPathScan
+                  | |   +-column_list=[$element_table.n#1]
+                  | |   +-input_scan_list=
+                  | |   | +-GraphNodeScan
+                  | |   |   +-column_list=[$element_table.n#1]
+                  | |   |   +-label_expr=
+                  | |   |   | +-GraphLabelNaryExpr
+                  | |   |   |   +-op=OR
+                  | |   |   |   +-operand_list=
+                  | |   |   |     +-GraphWildCardLabel
+                  | |   |   |     +-GraphLabelNaryExpr
+                  | |   |   |       +-op=NOT
+                  | |   |   |       +-operand_list=
+                  | |   |   |         +-GraphWildCardLabel
+                  | |   |   +-target_element_table_list=[aml.Account,aml.Person,aml.Syndicate]
+                  | |   +-head=$element_table.n#1
+                  | |   +-tail=$element_table.n#1
+                  | +-input_scan=
+                  |   +-SingleRowScan
+                  +-ArrayScan
+                  | +-column_list=[$element_table.n#1, $graph_table.x#2, $graph_table.off#3]
+                  | +-input_scan=
+                  | | +-GraphRefScan(column_list=[$element_table.n#1])
+                  | +-array_expr_list=
+                  | | +-Literal(type=ARRAY<INT64>, value=[1, 2, 3])
+                  | +-element_column_list=[$graph_table.x#2]
+                  | +-array_offset_column=
+                  |   +-ColumnHolder(column=$graph_table.off#3)
+                  +-ProjectScan
+                    +-column_list=$graph_table.[id#4, x#5, off#6]
+                    +-expr_list=
+                    | +-id#4 :=
+                    | | +-GraphGetElementProperty
+                    | |   +-type=INT64
+                    | |   +-expr=
+                    | |   | +-ColumnRef(type=GRAPH_NODE(aml)<age UINT32, balance UINT64, birthday DATE, data BYTES, id INT64, name STRING, syndicateData ARRAY<INT64>, syndicateId INT64, syndicateName STRING>, column=$element_table.n#1)
+                    | |   +-property=id(INT64)
+                    | +-x#5 := ColumnRef(type=INT64, column=$graph_table.x#2)
+                    | +-off#6 := ColumnRef(type=INT64, column=$graph_table.off#3)
+                    +-input_scan=
+                      +-GraphRefScan(column_list=[$element_table.n#1, $graph_table.x#2, $graph_table.off#3])
+==
+
+[no_java]
+[language_features=NONE,+SQL_GRAPH,+SQL_GRAPH_ADVANCED_QUERY,+ANNOTATION_FRAMEWORK,+COLLATION_SUPPORT]
+# array expr has collation
+select gt.* from
+graph_table(aml
+  match (n)
+  for x in [COLLATE("a", "und:ci"), COLLATE("b", "und:ci"), COLLATE("c", "und:ci")] with offset
+  return x
+) gt
+--
+QueryStmt
++-output_column_list=
+| +-$graph_table.x#4{Collation:"und:ci"} AS x [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$graph_table.x#4{Collation:"und:ci"}]
+    +-input_scan=
+      +-GraphTableScan
+        +-column_list=[$graph_table.x#4{Collation:"und:ci"}]
+        +-property_graph=aml
+        +-input_scan=
+          +-GraphLinearScan
+            +-column_list=[$graph_table.x#4{Collation:"und:ci"}]
+            +-scan_list=
+              +-GraphLinearScan
+                +-column_list=[$graph_table.x#4{Collation:"und:ci"}]
+                +-scan_list=
+                  +-GraphScan
+                  | +-column_list=[$element_table.n#1]
+                  | +-input_scan_list=
+                  | | +-GraphPathScan
+                  | |   +-column_list=[$element_table.n#1]
+                  | |   +-input_scan_list=
+                  | |   | +-GraphNodeScan
+                  | |   |   +-column_list=[$element_table.n#1]
+                  | |   |   +-label_expr=
+                  | |   |   | +-GraphLabelNaryExpr
+                  | |   |   |   +-op=OR
+                  | |   |   |   +-operand_list=
+                  | |   |   |     +-GraphWildCardLabel
+                  | |   |   |     +-GraphLabelNaryExpr
+                  | |   |   |       +-op=NOT
+                  | |   |   |       +-operand_list=
+                  | |   |   |         +-GraphWildCardLabel
+                  | |   |   +-target_element_table_list=[aml.Account,aml.Person,aml.Syndicate]
+                  | |   +-head=$element_table.n#1
+                  | |   +-tail=$element_table.n#1
+                  | +-input_scan=
+                  |   +-SingleRowScan
+                  +-ArrayScan
+                  | +-column_list=[$element_table.n#1, $graph_table.x#2{Collation:"und:ci"}]
+                  | +-input_scan=
+                  | | +-GraphRefScan(column_list=[$element_table.n#1])
+                  | +-array_expr_list=
+                  | | +-FunctionCall(GoogleSQL:$make_array(repeated(3) STRING) -> ARRAY<STRING>)
+                  | |   +-type_annotation_map=<{Collation:"und:ci"}>
+                  | |   +-FunctionCall(GoogleSQL:collate(STRING, STRING) -> STRING)
+                  | |   | +-type_annotation_map={Collation:"und:ci"}
+                  | |   | +-Literal(type=STRING, value="a")
+                  | |   | +-Literal(type=STRING, value="und:ci", preserve_in_literal_remover=TRUE)
+                  | |   +-FunctionCall(GoogleSQL:collate(STRING, STRING) -> STRING)
+                  | |   | +-type_annotation_map={Collation:"und:ci"}
+                  | |   | +-Literal(type=STRING, value="b")
+                  | |   | +-Literal(type=STRING, value="und:ci", preserve_in_literal_remover=TRUE)
+                  | |   +-FunctionCall(GoogleSQL:collate(STRING, STRING) -> STRING)
+                  | |     +-type_annotation_map={Collation:"und:ci"}
+                  | |     +-Literal(type=STRING, value="c")
+                  | |     +-Literal(type=STRING, value="und:ci", preserve_in_literal_remover=TRUE)
+                  | +-element_column_list=[$graph_table.x#2{Collation:"und:ci"}]
+                  | +-array_offset_column=
+                  |   +-ColumnHolder(column=$graph_table.offset#3)
+                  +-ProjectScan
+                    +-column_list=[$graph_table.x#4{Collation:"und:ci"}]
+                    +-expr_list=
+                    | +-x#4 := ColumnRef(type=STRING, type_annotation_map={Collation:"und:ci"}, column=$graph_table.x#2{Collation:"und:ci"})
+                    +-input_scan=
+                      +-GraphRefScan(column_list=[$element_table.n#1, $graph_table.x#2{Collation:"und:ci"}])
+==
+
+[language_features=NONE,+SQL_GRAPH,+SQL_GRAPH_ADVANCED_QUERY,+INLINE_LAMBDA_ARGUMENT]
+# array expr is a function call
+select gt.* from
+graph_table(aml
+  match (n)
+  for val in ARRAY_TRANSFORM([0.1, 0.2, 0.3], e -> e * 10)
+  return val
+) gt
+--
+QueryStmt
++-output_column_list=
+| +-$graph_table.val#4 AS val [DOUBLE]
++-query=
+  +-ProjectScan
+    +-column_list=[$graph_table.val#4]
+    +-input_scan=
+      +-GraphTableScan
+        +-column_list=[$graph_table.val#4]
+        +-property_graph=aml
+        +-input_scan=
+          +-GraphLinearScan
+            +-column_list=[$graph_table.val#4]
+            +-scan_list=
+              +-GraphLinearScan
+                +-column_list=[$graph_table.val#4]
+                +-scan_list=
+                  +-GraphScan
+                  | +-column_list=[$element_table.n#1]
+                  | +-input_scan_list=
+                  | | +-GraphPathScan
+                  | |   +-column_list=[$element_table.n#1]
+                  | |   +-input_scan_list=
+                  | |   | +-GraphNodeScan
+                  | |   |   +-column_list=[$element_table.n#1]
+                  | |   |   +-label_expr=
+                  | |   |   | +-GraphLabelNaryExpr
+                  | |   |   |   +-op=OR
+                  | |   |   |   +-operand_list=
+                  | |   |   |     +-GraphWildCardLabel
+                  | |   |   |     +-GraphLabelNaryExpr
+                  | |   |   |       +-op=NOT
+                  | |   |   |       +-operand_list=
+                  | |   |   |         +-GraphWildCardLabel
+                  | |   |   +-target_element_table_list=[aml.Account,aml.Person,aml.Syndicate]
+                  | |   +-head=$element_table.n#1
+                  | |   +-tail=$element_table.n#1
+                  | +-input_scan=
+                  |   +-SingleRowScan
+                  +-ArrayScan
+                  | +-column_list=[$element_table.n#1, $graph_table.val#3]
+                  | +-input_scan=
+                  | | +-GraphRefScan(column_list=[$element_table.n#1])
+                  | +-array_expr_list=
+                  | | +-FunctionCall(GoogleSQL:array_transform(ARRAY<DOUBLE> array_to_transform, FUNCTION<DOUBLE->DOUBLE> transformation) -> ARRAY<DOUBLE>)
+                  | |   +-FunctionArgument
+                  | |   | +-expr=
+                  | |   |   +-Literal(type=ARRAY<DOUBLE>, value=[0.1, 0.2, 0.3])
+                  | |   +-FunctionArgument
+                  | |     +-inline_lambda=
+                  | |       +-InlineLambda
+                  | |         +-argument_list=[$lambda_arg.e#2]
+                  | |         +-body=
+                  | |           +-FunctionCall(GoogleSQL:$multiply(DOUBLE, DOUBLE) -> DOUBLE)
+                  | |             +-ColumnRef(type=DOUBLE, column=$lambda_arg.e#2)
+                  | |             +-Literal(type=DOUBLE, value=10)
+                  | +-element_column_list=[$graph_table.val#3]
+                  +-ProjectScan
+                    +-column_list=[$graph_table.val#4]
+                    +-expr_list=
+                    | +-val#4 := ColumnRef(type=DOUBLE, column=$graph_table.val#3)
+                    +-input_scan=
+                      +-GraphRefScan(column_list=[$element_table.n#1, $graph_table.val#3])
+==
+
+# array expr is a subquery expr returning array of structs
+select my_struct.a, my_struct.b from
+graph_table(aml
+  match (n)
+  for my_struct in (SELECT ARRAY(SELECT AS STRUCT a, b
+             FROM UNNEST(["a", NULL, "c"]) b
+             WHERE b IS NOT NULL) FROM UNNEST([1, 2, 3]) a)
+  return my_struct
+) gt
+--
+QueryStmt
++-output_column_list=
+| +-$query.a#9 AS a [INT64]
+| +-$query.b#10 AS b [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=$query.[a#9, b#10]
+    +-expr_list=
+    | +-a#9 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<a INT64, b STRING>, column=$graph_table.my_struct#8)
+    | |   +-field_idx=0
+    | +-b#10 :=
+    |   +-GetStructField
+    |     +-type=STRING
+    |     +-expr=
+    |     | +-ColumnRef(type=STRUCT<a INT64, b STRING>, column=$graph_table.my_struct#8)
+    |     +-field_idx=1
+    +-input_scan=
+      +-GraphTableScan
+        +-column_list=[$graph_table.my_struct#8]
+        +-property_graph=aml
+        +-input_scan=
+          +-GraphLinearScan
+            +-column_list=[$graph_table.my_struct#8]
+            +-scan_list=
+              +-GraphLinearScan
+                +-column_list=[$graph_table.my_struct#8]
+                +-scan_list=
+                  +-GraphScan
+                  | +-column_list=[$element_table.n#1]
+                  | +-input_scan_list=
+                  | | +-GraphPathScan
+                  | |   +-column_list=[$element_table.n#1]
+                  | |   +-input_scan_list=
+                  | |   | +-GraphNodeScan
+                  | |   |   +-column_list=[$element_table.n#1]
+                  | |   |   +-label_expr=
+                  | |   |   | +-GraphLabelNaryExpr
+                  | |   |   |   +-op=OR
+                  | |   |   |   +-operand_list=
+                  | |   |   |     +-GraphWildCardLabel
+                  | |   |   |     +-GraphLabelNaryExpr
+                  | |   |   |       +-op=NOT
+                  | |   |   |       +-operand_list=
+                  | |   |   |         +-GraphWildCardLabel
+                  | |   |   +-target_element_table_list=[aml.Account,aml.Person,aml.Syndicate]
+                  | |   +-head=$element_table.n#1
+                  | |   +-tail=$element_table.n#1
+                  | +-input_scan=
+                  |   +-SingleRowScan
+                  +-ArrayScan
+                  | +-column_list=[$element_table.n#1, $graph_table.my_struct#7]
+                  | +-input_scan=
+                  | | +-GraphRefScan(column_list=[$element_table.n#1])
+                  | +-array_expr_list=
+                  | | +-SubqueryExpr
+                  | |   +-type=ARRAY<STRUCT<a INT64, b STRING>>
+                  | |   +-subquery_type=SCALAR
+                  | |   +-subquery=
+                  | |     +-ProjectScan
+                  | |       +-column_list=[$expr_subquery.$col1#6]
+                  | |       +-expr_list=
+                  | |       | +-$col1#6 :=
+                  | |       |   +-SubqueryExpr
+                  | |       |     +-type=ARRAY<STRUCT<a INT64, b STRING>>
+                  | |       |     +-subquery_type=ARRAY
+                  | |       |     +-parameter_list=
+                  | |       |     | +-ColumnRef(type=INT64, column=$array.a#2)
+                  | |       |     +-subquery=
+                  | |       |       +-ProjectScan
+                  | |       |         +-column_list=[$make_struct.$struct#5]
+                  | |       |         +-expr_list=
+                  | |       |         | +-$struct#5 :=
+                  | |       |         |   +-MakeStruct
+                  | |       |         |     +-type=STRUCT<a INT64, b STRING>
+                  | |       |         |     +-field_list=
+                  | |       |         |       +-ColumnRef(type=INT64, column=$expr_subquery.a#4)
+                  | |       |         |       +-ColumnRef(type=STRING, column=$array.b#3)
+                  | |       |         +-input_scan=
+                  | |       |           +-ProjectScan
+                  | |       |             +-column_list=[$expr_subquery.a#4, $array.b#3]
+                  | |       |             +-expr_list=
+                  | |       |             | +-a#4 := ColumnRef(type=INT64, column=$array.a#2, is_correlated=TRUE)
+                  | |       |             +-input_scan=
+                  | |       |               +-FilterScan
+                  | |       |                 +-column_list=[$array.b#3]
+                  | |       |                 +-input_scan=
+                  | |       |                 | +-ArrayScan
+                  | |       |                 |   +-column_list=[$array.b#3]
+                  | |       |                 |   +-array_expr_list=
+                  | |       |                 |   | +-Literal(type=ARRAY<STRING>, value=["a", NULL, "c"])
+                  | |       |                 |   +-element_column_list=[$array.b#3]
+                  | |       |                 +-filter_expr=
+                  | |       |                   +-FunctionCall(GoogleSQL:$not(BOOL) -> BOOL)
+                  | |       |                     +-FunctionCall(GoogleSQL:$is_null(STRING) -> BOOL)
+                  | |       |                       +-ColumnRef(type=STRING, column=$array.b#3)
+                  | |       +-input_scan=
+                  | |         +-ArrayScan
+                  | |           +-column_list=[$array.a#2]
+                  | |           +-array_expr_list=
+                  | |           | +-Literal(type=ARRAY<INT64>, value=[1, 2, 3])
+                  | |           +-element_column_list=[$array.a#2]
+                  | +-element_column_list=[$graph_table.my_struct#7]
+                  +-ProjectScan
+                    +-column_list=[$graph_table.my_struct#8]
+                    +-expr_list=
+                    | +-my_struct#8 := ColumnRef(type=STRUCT<a INT64, b STRING>, column=$graph_table.my_struct#7)
+                    +-input_scan=
+                      +-GraphRefScan(column_list=[$element_table.n#1, $graph_table.my_struct#7])
+==
+
+# array expr is NULL or contains NULLs
+select * from
+graph_table(aml
+  for x in CAST(NULL AS ARRAY<INT64>)
+  for y in [1, 2, NULL, 3]
+  return *
+) gt
+--
+QueryStmt
++-output_column_list=
+| +-$graph_table.x#3 AS x [INT64]
+| +-$graph_table.y#4 AS y [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=$graph_table.[x#3, y#4]
+    +-input_scan=
+      +-GraphTableScan
+        +-column_list=$graph_table.[x#3, y#4]
+        +-property_graph=aml
+        +-input_scan=
+          +-GraphLinearScan
+            +-column_list=$graph_table.[x#3, y#4]
+            +-scan_list=
+              +-GraphLinearScan
+                +-column_list=$graph_table.[x#3, y#4]
+                +-scan_list=
+                  +-ArrayScan
+                  | +-column_list=[$graph_table.x#1]
+                  | +-input_scan=
+                  | | +-SingleRowScan
+                  | +-array_expr_list=
+                  | | +-Literal(type=ARRAY<INT64>, value=NULL, has_explicit_type=TRUE)
+                  | +-element_column_list=[$graph_table.x#1]
+                  +-ArrayScan
+                  | +-column_list=$graph_table.[x#1, y#2]
+                  | +-input_scan=
+                  | | +-GraphRefScan(column_list=[$graph_table.x#1])
+                  | +-array_expr_list=
+                  | | +-Literal(type=ARRAY<INT64>, value=[1, 2, NULL, 3])
+                  | +-element_column_list=[$graph_table.y#2]
+                  +-ProjectScan
+                    +-column_list=$graph_table.[x#3, y#4]
+                    +-expr_list=
+                    | +-x#3 := ColumnRef(type=INT64, column=$graph_table.x#1)
+                    | +-y#4 := ColumnRef(type=INT64, column=$graph_table.y#2)
+                    +-input_scan=
+                      +-GraphRefScan(column_list=$graph_table.[x#1, y#2])
+==
+
+[language_features=NONE,+SQL_GRAPH,+SQL_GRAPH_ADVANCED_QUERY,+SQL_GRAPH_BOUNDED_PATH_QUANTIFICATION,+SQL_GRAPH_EXPOSE_GRAPH_ELEMENT]
+# array expr is a group variable
+select gt.* from
+graph_table(aml
+  match ((a)-[b]->(c)){1, 3}
+  for b_element in b with offset as off
+  let cnt = count(b.amount)
+  return cnt, b_element.accountid, off
+) gt
+--
+QueryStmt
++-output_column_list=
+| +-$graph_table.cnt#13 AS cnt [INT64]
+| +-$graph_table.accountid#14 AS accountid [INT64]
+| +-$graph_table.off#15 AS off [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=$graph_table.[cnt#13, accountid#14, off#15]
+    +-input_scan=
+      +-GraphTableScan
+        +-column_list=$graph_table.[cnt#13, accountid#14, off#15]
+        +-property_graph=aml
+        +-input_scan=
+          +-GraphLinearScan
+            +-column_list=$graph_table.[cnt#13, accountid#14, off#15]
+            +-scan_list=
+              +-GraphLinearScan
+                +-column_list=$graph_table.[cnt#13, accountid#14, off#15]
+                +-scan_list=
+                  +-GraphScan
+                  | +-column_list=[$path_scan.$head#7, $element_table.b#5, $path_scan.$tail#8]
+                  | +-input_scan_list=
+                  | | +-GraphPathScan
+                  | |   +-column_list=[$path_scan.$head#7, $element_table.b#5, $path_scan.$tail#8]
+                  | |   +-input_scan_list=
+                  | |   | +-GraphNodeScan
+                  | |   | | +-column_list=[$element_table.a#1]
+                  | |   | | +-label_expr=
+                  | |   | | | +-GraphLabelNaryExpr
+                  | |   | | |   +-op=OR
+                  | |   | | |   +-operand_list=
+                  | |   | | |     +-GraphWildCardLabel
+                  | |   | | |     +-GraphLabelNaryExpr
+                  | |   | | |       +-op=NOT
+                  | |   | | |       +-operand_list=
+                  | |   | | |         +-GraphWildCardLabel
+                  | |   | | +-target_element_table_list=[aml.Account,aml.Person,aml.Syndicate]
+                  | |   | +-GraphEdgeScan
+                  | |   | | +-column_list=[$element_table.b#2]
+                  | |   | | +-label_expr=
+                  | |   | | | +-GraphLabelNaryExpr
+                  | |   | | |   +-op=OR
+                  | |   | | |   +-operand_list=
+                  | |   | | |     +-GraphWildCardLabel
+                  | |   | | |     +-GraphLabelNaryExpr
+                  | |   | | |       +-op=NOT
+                  | |   | | |       +-operand_list=
+                  | |   | | |         +-GraphWildCardLabel
+                  | |   | | +-target_element_table_list=[aml.PersonOwnAccount,aml.Transfer]
+                  | |   | | +-orientation=RIGHT
+                  | |   | +-GraphNodeScan
+                  | |   |   +-column_list=[$element_table.c#3]
+                  | |   |   +-label_expr=
+                  | |   |   | +-GraphLabelNaryExpr
+                  | |   |   |   +-op=OR
+                  | |   |   |   +-operand_list=
+                  | |   |   |     +-GraphWildCardLabel
+                  | |   |   |     +-GraphLabelNaryExpr
+                  | |   |   |       +-op=NOT
+                  | |   |   |       +-operand_list=
+                  | |   |   |         +-GraphWildCardLabel
+                  | |   |   +-target_element_table_list=[aml.Account,aml.Person,aml.Syndicate]
+                  | |   +-head=$path_scan.$head#7
+                  | |   +-tail=$path_scan.$tail#8
+                  | |   +-quantifier=
+                  | |   | +-GraphPathPatternQuantifier
+                  | |   |   +-lower_bound=
+                  | |   |   | +-Literal(type=INT64, value=1)
+                  | |   |   +-upper_bound=
+                  | |   |     +-Literal(type=INT64, value=3)
+                  | |   +-group_variable_list=
+                  | |     +-GraphMakeArrayVariable(element=$element_table.a#1, array=$element_table.a#4)
+                  | |     +-GraphMakeArrayVariable(element=$element_table.b#2, array=$element_table.b#5)
+                  | |     +-GraphMakeArrayVariable(element=$element_table.c#3, array=$element_table.c#6)
+                  | +-input_scan=
+                  |   +-SingleRowScan
+                  +-ArrayScan
+                  | +-column_list=[$element_table.b#5, $graph_table.b_element#9, $graph_table.off#10]
+                  | +-input_scan=
+                  | | +-GraphRefScan(column_list=[$element_table.b#5])
+                  | +-array_expr_list=
+                  | | +-ColumnRef(type=ARRAY<GRAPH_EDGE(aml)<accountId INT64, amount UINT64, personId INT64, targetAccountId INT64>>, column=$element_table.b#5)
+                  | +-element_column_list=[$graph_table.b_element#9]
+                  | +-array_offset_column=
+                  |   +-ColumnHolder(column=$graph_table.off#10)
+                  +-ProjectScan
+                  | +-column_list=[$element_table.b#5, $graph_table.b_element#9, $graph_table.off#10, $graph_table.cnt#12]
+                  | +-expr_list=
+                  | | +-cnt#12 :=
+                  | |   +-ArrayAggregate
+                  | |     +-type=INT64
+                  | |     +-array=
+                  | |     | +-ColumnRef(type=ARRAY<GRAPH_EDGE(aml)<accountId INT64, amount UINT64, personId INT64, targetAccountId INT64>>, column=$element_table.b#5)
+                  | |     +-element_column=$horizontal_aggregate.b#11
+                  | |     +-aggregate=
+                  | |       +-AggregateFunctionCall(GoogleSQL:count(UINT64) -> INT64)
+                  | |         +-GraphGetElementProperty
+                  | |           +-type=UINT64
+                  | |           +-expr=
+                  | |           | +-ColumnRef(type=GRAPH_EDGE(aml)<accountId INT64, amount UINT64, personId INT64, targetAccountId INT64>, column=$horizontal_aggregate.b#11)
+                  | |           +-property=amount(UINT64)
+                  | +-input_scan=
+                  |   +-GraphRefScan(column_list=[$element_table.b#5, $graph_table.b_element#9, $graph_table.off#10])
+                  +-ProjectScan
+                    +-column_list=$graph_table.[cnt#13, accountid#14, off#15]
+                    +-expr_list=
+                    | +-cnt#13 := ColumnRef(type=INT64, column=$graph_table.cnt#12)
+                    | +-accountid#14 :=
+                    | | +-GraphGetElementProperty
+                    | |   +-type=INT64
+                    | |   +-expr=
+                    | |   | +-ColumnRef(type=GRAPH_EDGE(aml)<accountId INT64, amount UINT64, personId INT64, targetAccountId INT64>, column=$graph_table.b_element#9)
+                    | |   +-property=accountId(INT64)
+                    | +-off#15 := ColumnRef(type=INT64, column=$graph_table.off#10)
+                    +-input_scan=
+                      +-GraphRefScan(column_list=[$element_table.b#5, $graph_table.b_element#9, $graph_table.off#10, $graph_table.cnt#12])
+==
+
+# SQLBuilder test
+[run_sqlbuilder]
+[show_sqlbuilder_output]
+
+select gt.* from
+graph_table(aml
+  match (n)
+  for x in [1,2,3] with offset
+  return x, offset
+) gt
+--
+QueryStmt
++-output_column_list=
+| +-$graph_table.x#4 AS x [INT64]
+| +-$graph_table.offset#5 AS offset [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=$graph_table.[x#4, offset#5]
+    +-input_scan=
+      +-GraphTableScan
+        +-column_list=$graph_table.[x#4, offset#5]
+        +-property_graph=aml
+        +-input_scan=
+          +-GraphLinearScan
+            +-column_list=$graph_table.[x#4, offset#5]
+            +-scan_list=
+              +-GraphLinearScan
+                +-column_list=$graph_table.[x#4, offset#5]
+                +-scan_list=
+                  +-GraphScan
+                  | +-column_list=[$element_table.n#1]
+                  | +-input_scan_list=
+                  | | +-GraphPathScan
+                  | |   +-column_list=[$element_table.n#1]
+                  | |   +-input_scan_list=
+                  | |   | +-GraphNodeScan
+                  | |   |   +-column_list=[$element_table.n#1]
+                  | |   |   +-label_expr=
+                  | |   |   | +-GraphLabelNaryExpr
+                  | |   |   |   +-op=OR
+                  | |   |   |   +-operand_list=
+                  | |   |   |     +-GraphWildCardLabel
+                  | |   |   |     +-GraphLabelNaryExpr
+                  | |   |   |       +-op=NOT
+                  | |   |   |       +-operand_list=
+                  | |   |   |         +-GraphWildCardLabel
+                  | |   |   +-target_element_table_list=[aml.Account,aml.Person,aml.Syndicate]
+                  | |   +-head=$element_table.n#1
+                  | |   +-tail=$element_table.n#1
+                  | +-input_scan=
+                  |   +-SingleRowScan
+                  +-ArrayScan
+                  | +-column_list=[$element_table.n#1, $graph_table.x#2, $graph_table.offset#3]
+                  | +-input_scan=
+                  | | +-GraphRefScan(column_list=[$element_table.n#1])
+                  | +-array_expr_list=
+                  | | +-Literal(type=ARRAY<INT64>, value=[1, 2, 3])
+                  | +-element_column_list=[$graph_table.x#2]
+                  | +-array_offset_column=
+                  |   +-ColumnHolder(column=$graph_table.offset#3)
+                  +-ProjectScan
+                    +-column_list=$graph_table.[x#4, offset#5]
+                    +-expr_list=
+                    | +-x#4 := ColumnRef(type=INT64, column=$graph_table.x#2)
+                    | +-offset#5 := ColumnRef(type=INT64, column=$graph_table.offset#3)
+                    +-input_scan=
+                      +-GraphRefScan(column_list=[$element_table.n#1, $graph_table.x#2, $graph_table.offset#3])
+
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+SELECT
+  aml_1.a_5 AS x,
+  aml_1.a_6 AS offset
+FROM
+  GRAPH_TABLE(
+    aml
+    MATCH
+      (a_2
+      IS (% | ! %))
+    FOR a_3 IN ARRAY< INT64 >[1, 2, 3] WITH OFFSET AS a_4
+    RETURN
+      a_3 AS a_5,
+      a_4 AS a_6
+  ) AS aml_1;
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+FROM
+  GRAPH_TABLE(
+    aml
+    MATCH
+      (a_2
+      IS (% | ! %))
+    FOR a_3 IN ARRAY< INT64 >[1, 2, 3] WITH OFFSET AS a_4
+    RETURN
+      a_3 AS a_5,
+      a_4 AS a_6
+  ) AS aml_1
+|> SELECT
+     aml_1.a_5 AS x,
+     aml_1.a_6 AS offset;

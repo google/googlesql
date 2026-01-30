@@ -4,7 +4,7 @@
 
 # Conditional expressions
 
-ZetaSQL supports conditional expressions.
+GoogleSQL supports conditional expressions.
 Conditional expressions impose constraints on the evaluation order of their
 inputs. In essence, they are evaluated left to right, with short-circuiting, and
 only evaluate the output value that was chosen. In contrast, all inputs to
@@ -102,7 +102,7 @@ tuning.
 ### `CASE expr` 
 <a id="case_expr"></a>
 
-```zetasql
+```googlesql
 CASE expr
   WHEN expr_to_match THEN result
   [ ... ]
@@ -132,7 +132,7 @@ done on coerced values. There may be multiple `result` types. `result` and
 
 This expression supports specifying [collation][collation].
 
-[collation]: https://github.com/google/zetasql/blob/master/docs/collation-concepts.md
+[collation]: https://github.com/google/googlesql/blob/master/docs/collation-concepts.md
 
 **Return Data Type**
 
@@ -140,7 +140,7 @@ This expression supports specifying [collation][collation].
 
 **Example**
 
-```zetasql
+```googlesql
 WITH Numbers AS (
   SELECT 90 as A, 2 as B UNION ALL
   SELECT 50, 8 UNION ALL
@@ -168,16 +168,16 @@ FROM Numbers
  +------------------*/
 ```
 
-[logical-operators]: https://github.com/google/zetasql/blob/master/docs/operators.md#logical_operators
+[logical-operators]: https://github.com/google/googlesql/blob/master/docs/operators.md#logical_operators
 
 [case]: #case
 
-[cond-exp-supertype]: https://github.com/google/zetasql/blob/master/docs/conversion_rules.md#supertypes
+[cond-exp-supertype]: https://github.com/google/googlesql/blob/master/docs/conversion_rules.md#supertypes
 
 ### `CASE` 
 <a id="case"></a>
 
-```zetasql
+```googlesql
 CASE
   WHEN condition THEN result
   [ ... ]
@@ -203,7 +203,7 @@ three-valued logic table in [Logical operators][logical-operators].
 
 This expression supports specifying [collation][collation].
 
-[collation]: https://github.com/google/zetasql/blob/master/docs/collation-concepts.md
+[collation]: https://github.com/google/googlesql/blob/master/docs/collation-concepts.md
 
 **Return Data Type**
 
@@ -211,7 +211,7 @@ This expression supports specifying [collation][collation].
 
 **Example**
 
-```zetasql
+```googlesql
 WITH Numbers AS (
   SELECT 90 as A, 2 as B UNION ALL
   SELECT 50, 6 UNION ALL
@@ -237,14 +237,14 @@ FROM Numbers
  +------------------*/
 ```
 
-[cond-exp-supertype]: https://github.com/google/zetasql/blob/master/docs/conversion_rules.md#supertypes
+[cond-exp-supertype]: https://github.com/google/googlesql/blob/master/docs/conversion_rules.md#supertypes
 
-[logical-operators]: https://github.com/google/zetasql/blob/master/docs/operators.md#logical_operators
+[logical-operators]: https://github.com/google/googlesql/blob/master/docs/operators.md#logical_operators
 
 ### `COALESCE` 
 <a id="coalesce"></a>
 
-```zetasql
+```googlesql
 COALESCE(expr[, ...])
 ```
 
@@ -262,7 +262,7 @@ All input expressions must be implicitly coercible to a common
 
 **Examples**
 
-```zetasql
+```googlesql
 SELECT COALESCE('A', 'B', 'C') as result
 
 /*--------+
@@ -272,7 +272,7 @@ SELECT COALESCE('A', 'B', 'C') as result
  +--------*/
 ```
 
-```zetasql
+```googlesql
 SELECT COALESCE(NULL, 'B', 'C') as result
 
 /*--------+
@@ -282,12 +282,12 @@ SELECT COALESCE(NULL, 'B', 'C') as result
  +--------*/
 ```
 
-[cond-exp-supertype]: https://github.com/google/zetasql/blob/master/docs/conversion_rules.md#supertypes
+[cond-exp-supertype]: https://github.com/google/googlesql/blob/master/docs/conversion_rules.md#supertypes
 
 ### `IF` 
 <a id="if"></a>
 
-```zetasql
+```googlesql
 IF(expr, true_result, else_result)
 ```
 
@@ -307,7 +307,7 @@ must be coercible to a common [supertype][cond-exp-supertype].
 
 **Examples**
 
-```zetasql
+```googlesql
 SELECT
   10 AS A,
   20 AS B,
@@ -320,7 +320,7 @@ SELECT
  +------------------*/
 ```
 
-```zetasql
+```googlesql
 SELECT
   30 AS A,
   20 AS B,
@@ -333,12 +333,12 @@ SELECT
  +------------------*/
 ```
 
-[cond-exp-supertype]: https://github.com/google/zetasql/blob/master/docs/conversion_rules.md#supertypes
+[cond-exp-supertype]: https://github.com/google/googlesql/blob/master/docs/conversion_rules.md#supertypes
 
 ### `IFNULL` 
 <a id="ifnull"></a>
 
-```zetasql
+```googlesql
 IFNULL(expr, null_result)
 ```
 
@@ -357,7 +357,7 @@ a common [supertype][cond-exp-supertype]. Synonym for
 
 **Examples**
 
-```zetasql
+```googlesql
 SELECT IFNULL(NULL, 0) as result
 
 /*--------+
@@ -367,7 +367,7 @@ SELECT IFNULL(NULL, 0) as result
  +--------*/
 ```
 
-```zetasql
+```googlesql
 SELECT IFNULL(10, 0) as result
 
 /*--------+
@@ -377,12 +377,12 @@ SELECT IFNULL(10, 0) as result
  +--------*/
 ```
 
-[cond-exp-supertype]: https://github.com/google/zetasql/blob/master/docs/conversion_rules.md#supertypes
+[cond-exp-supertype]: https://github.com/google/googlesql/blob/master/docs/conversion_rules.md#supertypes
 
 ### `NULLIF` 
 <a id="nullif"></a>
 
-```zetasql
+```googlesql
 NULLIF(expr, expr_to_match)
 ```
 
@@ -396,7 +396,7 @@ common [supertype][cond-exp-supertype], and must be comparable.
 
 This expression supports specifying [collation][collation].
 
-[collation]: https://github.com/google/zetasql/blob/master/docs/collation-concepts.md
+[collation]: https://github.com/google/googlesql/blob/master/docs/collation-concepts.md
 
 **Return Data Type**
 
@@ -404,7 +404,7 @@ This expression supports specifying [collation][collation].
 
 **Example**
 
-```zetasql
+```googlesql
 SELECT NULLIF(0, 0) as result
 
 /*--------+
@@ -414,7 +414,7 @@ SELECT NULLIF(0, 0) as result
  +--------*/
 ```
 
-```zetasql
+```googlesql
 SELECT NULLIF(10, 0) as result
 
 /*--------+
@@ -424,12 +424,12 @@ SELECT NULLIF(10, 0) as result
  +--------*/
 ```
 
-[cond-exp-supertype]: https://github.com/google/zetasql/blob/master/docs/conversion_rules.md#supertypes
+[cond-exp-supertype]: https://github.com/google/googlesql/blob/master/docs/conversion_rules.md#supertypes
 
 ### `NULLIFZERO` 
 <a id="nullifzero"></a>
 
-```zetasql
+```googlesql
 NULLIFZERO(expr)
 ```
 
@@ -444,7 +444,7 @@ Type of `expr`.
 
 **Example**
 
-```zetasql
+```googlesql
 SELECT NULLIFZERO(0) AS result
 
 /*--------+
@@ -457,7 +457,7 @@ SELECT NULLIFZERO(0) AS result
 ### `ZEROIFNULL` 
 <a id="zeroifnull"></a>
 
-```zetasql
+```googlesql
 ZEROIFNULL(expr)
 ```
 
@@ -472,7 +472,7 @@ Type of `expr`.
 
 **Example**
 
-```zetasql
+```googlesql
 SELECT ZEROIFNULL(NULL) AS result
 
 /*--------+

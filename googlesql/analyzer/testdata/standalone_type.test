@@ -1,0 +1,1504 @@
+# This file includes tests for parsing type names outside of queries.
+[default language_features=MAXIMUM]
+[default mode=type]
+[default no_run_sqlbuilder]
+
+int32
+--
+INT32
+==
+
+/* comment */ int64 # comment
+--
+INT64
+==
+
+string with bad suffix
+--
+ERROR: Syntax error: Expected end of input but got keyword WITH [at 1:8]
+string with bad suffix
+       ^
+==
+
+5
+--
+ERROR: Syntax error: Unexpected integer literal "5" [at 1:1]
+5
+^
+==
+
+xxx
+--
+ERROR: Type not found: xxx [at 1:1]
+xxx
+^
+==
+
+string
+--
+STRING
+==
+
+STRING
+--
+STRING
+==
+
+ByTeS
+--
+BYTES
+==
+
+date
+--
+DATE
+==
+
+timestamp
+--
+TIMESTAMP
+==
+
+[language_features=NONE,{{|+PARAMETERIZED_TYPES}}]
+timestamp(3)
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: Parameterized types are not supported [at 1:10]
+timestamp(3)
+         ^
+--
+ALTERNATION GROUP: +PARAMETERIZED_TYPES
+--
+ERROR: Timestamp precision type parameter is not supported [at 1:10]
+timestamp(3)
+         ^
+==
+
+[language_features=NONE,+PARAMETERIZED_TYPES,+TIMESTAMP_PRECISION]
+timestamp(3)
+--
+TIMESTAMP(3)
+==
+
+# MAX is not supported
+[language_features=NONE,+PARAMETERIZED_TYPES,+TIMESTAMP_PRECISION]
+timestamp(MAX)
+--
+ERROR: TIMESTAMP precision must be 0, 3, 6, 9, or 12 [at 1:10]
+timestamp(MAX)
+         ^
+==
+
+[language_features=NONE,+PARAMETERIZED_TYPES,+TIMESTAMP_PRECISION{{|,+TIMESTAMP_NANOS|,+TIMESTAMP_NANOS,+TIMESTAMP_PICOS}}]
+timestamp({{0|3|6|9|12}})
+--
+ALTERNATION GROUPS:
+    0
+    ,+TIMESTAMP_NANOS,0
+    ,+TIMESTAMP_NANOS,+TIMESTAMP_PICOS,0
+--
+TIMESTAMP(0)
+--
+ALTERNATION GROUPS:
+    3
+    ,+TIMESTAMP_NANOS,3
+    ,+TIMESTAMP_NANOS,+TIMESTAMP_PICOS,3
+--
+TIMESTAMP(3)
+--
+ALTERNATION GROUPS:
+    6
+    ,+TIMESTAMP_NANOS,6
+    ,+TIMESTAMP_NANOS,+TIMESTAMP_PICOS,6
+--
+TIMESTAMP(6)
+--
+ALTERNATION GROUP: 9
+--
+ERROR: Timestamp precision 9 is not supported [at 1:10]
+timestamp(9)
+         ^
+--
+ALTERNATION GROUPS:
+    12
+    ,+TIMESTAMP_NANOS,12
+--
+ERROR: Timestamp precision 12 is not supported [at 1:10]
+timestamp(12)
+         ^
+--
+ALTERNATION GROUPS:
+    ,+TIMESTAMP_NANOS,9
+    ,+TIMESTAMP_NANOS,+TIMESTAMP_PICOS,9
+--
+TIMESTAMP(9)
+--
+ALTERNATION GROUP: ,+TIMESTAMP_NANOS,+TIMESTAMP_PICOS,12
+--
+TIMESTAMP(12)
+==
+
+[language_features=NONE,+PARAMETERIZED_TYPES,+TIMESTAMP_PRECISION{{|,+TIMESTAMP_NANOS|,+TIMESTAMP_NANOS,+TIMESTAMP_PICOS}}]
+timestamp(
+    {{-1|2|13|1.5|BLAH|@p}})
+--
+ALTERNATION GROUPS:
+    -1
+    ,+TIMESTAMP_NANOS,-1
+    ,+TIMESTAMP_NANOS,+TIMESTAMP_PICOS,-1
+--
+ERROR: Syntax error: Unexpected "-" [at 2:5]
+    -1)
+    ^
+--
+ALTERNATION GROUPS:
+    2
+    13
+    1.5
+    ,+TIMESTAMP_NANOS,2
+    ,+TIMESTAMP_NANOS,13
+    ,+TIMESTAMP_NANOS,1.5
+    ,+TIMESTAMP_NANOS,+TIMESTAMP_PICOS,2
+    ,+TIMESTAMP_NANOS,+TIMESTAMP_PICOS,13
+    ,+TIMESTAMP_NANOS,+TIMESTAMP_PICOS,1.5
+--
+ERROR: TIMESTAMP precision must be 0, 3, 6, 9, or 12 [at 1:10]
+timestamp(
+         ^
+--
+ALTERNATION GROUPS:
+    BLAH
+    ,+TIMESTAMP_NANOS,BLAH
+    ,+TIMESTAMP_NANOS,+TIMESTAMP_PICOS,BLAH
+--
+ERROR: Syntax error: Unexpected identifier "BLAH" [at 2:5]
+    BLAH)
+    ^
+--
+ALTERNATION GROUPS:
+    @p
+    ,+TIMESTAMP_NANOS,@p
+    ,+TIMESTAMP_NANOS,+TIMESTAMP_PICOS,@p
+--
+ERROR: Syntax error: Unexpected "@" [at 2:5]
+    @p)
+    ^
+==
+
+[language_features=NONE,+PARAMETERIZED_TYPES,+TIMESTAMP_PRECISION{{|,+TIMESTAMP_NANOS|,+TIMESTAMP_NANOS,+TIMESTAMP_PICOS}}]
+timestamp(3, 3)
+--
+ERROR: TIMESTAMP type can only have one parameter. Found 2 parameters [at 1:10]
+timestamp(3, 3)
+         ^
+==
+
+[language_features=NONE,{{|+PARAMETERIZED_TYPES}}]
+struct<string>(3)
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: Parameterized types are not supported [at 1:15]
+struct<string>(3)
+              ^
+--
+ALTERNATION GROUP: +PARAMETERIZED_TYPES
+--
+ERROR: STRUCT<STRING> type cannot have type parameters by itself, it can only have type parameters on its struct fields [at 1:15]
+struct<string>(3)
+              ^
+==
+
+[language_features=NONE,{{|+PARAMETERIZED_TYPES}}]
+array<string>(3)
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: Parameterized types are not supported [at 1:14]
+array<string>(3)
+             ^
+--
+ALTERNATION GROUP: +PARAMETERIZED_TYPES
+--
+ERROR: ARRAY<STRING> type cannot have type parameters by itself, it can only have type parameters on its element type [at 1:14]
+array<string>(3)
+             ^
+==
+
+[language_features=NONE,{{|+PARAMETERIZED_TYPES}}]
+invalid(2)
+--
+ERROR: Type not found: invalid [at 1:1]
+invalid(2)
+^
+==
+
+[language_features=NONE,{{|+PARAMETERIZED_TYPES}}]
+invalid1.invalid2(3)
+--
+ERROR: Type not found: invalid1.invalid2 [at 1:1]
+invalid1.invalid2(3)
+^
+==
+
+[language_features=NONE,{{|+PARAMETERIZED_TYPES}}]
+STRING.invalid(3)
+--
+ERROR: Type not found: STRING.invalid [at 1:1]
+STRING.invalid(3)
+^
+==
+
+[language_features=NONE,{{|+PARAMETERIZED_TYPES}}]
+invalid1(2).invalid3(4)
+--
+ERROR: Syntax error: Expected end of input but got "." [at 1:12]
+invalid1(2).invalid3(4)
+           ^
+==
+
+[language_features=NONE,{{|+PARAMETERIZED_TYPES}}]
+string
+--
+STRING
+==
+
+[language_features=NONE,{{|+PARAMETERIZED_TYPES}}]
+string(5)
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: Parameterized types are not supported [at 1:7]
+string(5)
+      ^
+--
+ALTERNATION GROUP: +PARAMETERIZED_TYPES
+--
+STRING(5)
+==
+
+[language_features=NONE,{{|+PARAMETERIZED_TYPES}}]
+string(MAX)
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: Parameterized types are not supported [at 1:7]
+string(MAX)
+      ^
+--
+ALTERNATION GROUP: +PARAMETERIZED_TYPES
+--
+STRING(MAX)
+==
+
+[language_features=NONE,{{|+PARAMETERIZED_TYPES}}]
+string(0)
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: Parameterized types are not supported [at 1:7]
+string(0)
+      ^
+--
+ALTERNATION GROUP: +PARAMETERIZED_TYPES
+--
+ERROR: STRING length must be greater than 0 [at 1:7]
+string(0)
+      ^
+==
+
+[language_features=NONE,{{|+PARAMETERIZED_TYPES}}]
+string(-9)
+--
+ERROR: Syntax error: Unexpected "-" [at 1:8]
+string(-9)
+       ^
+==
+
+[language_features=NONE,{{|+PARAMETERIZED_TYPES}}]
+string("MAX")
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: Parameterized types are not supported [at 1:7]
+string("MAX")
+      ^
+--
+ALTERNATION GROUP: +PARAMETERIZED_TYPES
+--
+ERROR: STRING length parameter must be an integer or MAX keyword [at 1:7]
+string("MAX")
+      ^
+==
+
+[language_features=NONE,{{|+PARAMETERIZED_TYPES}}]
+string("hello")
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: Parameterized types are not supported [at 1:7]
+string("hello")
+      ^
+--
+ALTERNATION GROUP: +PARAMETERIZED_TYPES
+--
+ERROR: STRING length parameter must be an integer or MAX keyword [at 1:7]
+string("hello")
+      ^
+==
+
+[language_features=NONE,{{|+PARAMETERIZED_TYPES}}]
+string(DATE "mm/dd/yyy")
+--
+ERROR: Syntax error: Unexpected keyword DATE [at 1:8]
+string(DATE "mm/dd/yyy")
+       ^
+==
+
+[language_features=NONE,{{|+PARAMETERIZED_TYPES}}]
+string(1, 2)
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: Parameterized types are not supported [at 1:7]
+string(1, 2)
+      ^
+--
+ALTERNATION GROUP: +PARAMETERIZED_TYPES
+--
+ERROR: STRING type can only have one parameter. Found 2 parameters [at 1:7]
+string(1, 2)
+      ^
+==
+
+[language_features=NONE,{{|+PARAMETERIZED_TYPES}}]
+bytes(MAX)
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: Parameterized types are not supported [at 1:6]
+bytes(MAX)
+     ^
+--
+ALTERNATION GROUP: +PARAMETERIZED_TYPES
+--
+BYTES(MAX)
+==
+
+[language_features=NONE,{{|+PARAMETERIZED_TYPES}}]
+bytes(500)
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: Parameterized types are not supported [at 1:6]
+bytes(500)
+     ^
+--
+ALTERNATION GROUP: +PARAMETERIZED_TYPES
+--
+BYTES(500)
+==
+
+[language_features=NONE,{{|+PARAMETERIZED_TYPES}}]
+BYTES(b"there")
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: Parameterized types are not supported [at 1:6]
+BYTES(b"there")
+     ^
+--
+ALTERNATION GROUP: +PARAMETERIZED_TYPES
+--
+ERROR: BYTES length parameter must be an integer or MAX keyword [at 1:6]
+BYTES(b"there")
+     ^
+==
+
+[language_features=NONE,{{|+PARAMETERIZED_TYPES}}]
+float64(1)
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: Parameterized types are not supported [at 1:8]
+float64(1)
+       ^
+--
+ALTERNATION GROUP: +PARAMETERIZED_TYPES
+--
+ERROR: DOUBLE does not support type parameters [at 1:8]
+float64(1)
+       ^
+==
+
+[language_features=NONE,{{|+PARAMETERIZED_TYPES}}]
+float64(1.2)
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: Parameterized types are not supported [at 1:8]
+float64(1.2)
+       ^
+--
+ALTERNATION GROUP: +PARAMETERIZED_TYPES
+--
+ERROR: DOUBLE does not support type parameters [at 1:8]
+float64(1.2)
+       ^
+==
+
+[language_features=NONE,{{|+PARAMETERIZED_TYPES}}]
+string(1.2)
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: Parameterized types are not supported [at 1:7]
+string(1.2)
+      ^
+--
+ALTERNATION GROUP: +PARAMETERIZED_TYPES
+--
+ERROR: STRING length parameter must be an integer or MAX keyword [at 1:7]
+string(1.2)
+      ^
+==
+
+[language_features=NONE,{{|+PARAMETERIZED_TYPES}}]
+string(true)
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: Parameterized types are not supported [at 1:7]
+string(true)
+      ^
+--
+ALTERNATION GROUP: +PARAMETERIZED_TYPES
+--
+ERROR: STRING length parameter must be an integer or MAX keyword [at 1:7]
+string(true)
+      ^
+==
+
+[language_features=NONE,{{|+PARAMETERIZED_TYPES,+NUMERIC_TYPE}}]
+numeric(4)
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: Type not found: numeric [at 1:1]
+numeric(4)
+^
+--
+ALTERNATION GROUP: +PARAMETERIZED_TYPES,+NUMERIC_TYPE
+--
+NUMERIC(4, 0)
+==
+
+[language_features=NONE,{{|+PARAMETERIZED_TYPES,+NUMERIC_TYPE}}]
+numeric(6, 2)
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: Type not found: numeric [at 1:1]
+numeric(6, 2)
+^
+--
+ALTERNATION GROUP: +PARAMETERIZED_TYPES,+NUMERIC_TYPE
+--
+NUMERIC(6, 2)
+==
+
+[language_features=NONE,{{|+PARAMETERIZED_TYPES,+NUMERIC_TYPE}}]
+numeric(1, 2, 3)
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: Type not found: numeric [at 1:1]
+numeric(1, 2, 3)
+^
+--
+ALTERNATION GROUP: +PARAMETERIZED_TYPES,+NUMERIC_TYPE
+--
+ERROR: NUMERIC type can only have 1 or 2 parameters. Found 3 parameters [at 1:8]
+numeric(1, 2, 3)
+       ^
+==
+
+[language_features=NONE,{{|+PARAMETERIZED_TYPES,+NUMERIC_TYPE}}]
+numeric()
+--
+ERROR: Syntax error: Unexpected ")" [at 1:9]
+numeric()
+        ^
+==
+
+[language_features=NONE,{{|+PARAMETERIZED_TYPES,+NUMERIC_TYPE}}]
+numeric(MAX, 2)
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: Type not found: numeric [at 1:1]
+numeric(MAX, 2)
+^
+--
+ALTERNATION GROUP: +PARAMETERIZED_TYPES,+NUMERIC_TYPE
+--
+ERROR: NUMERIC precision must be an integer [at 1:8]
+numeric(MAX, 2)
+       ^
+==
+
+[language_features=NONE,{{|+PARAMETERIZED_TYPES,+NUMERIC_TYPE}}]
+numeric(MAX)
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: Type not found: numeric [at 1:1]
+numeric(MAX)
+^
+--
+ALTERNATION GROUP: +PARAMETERIZED_TYPES,+NUMERIC_TYPE
+--
+ERROR: NUMERIC precision must be an integer [at 1:8]
+numeric(MAX)
+       ^
+==
+
+[language_features=NONE,{{|+PARAMETERIZED_TYPES,+NUMERIC_TYPE}}]
+numeric("hello")
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: Type not found: numeric [at 1:1]
+numeric("hello")
+^
+--
+ALTERNATION GROUP: +PARAMETERIZED_TYPES,+NUMERIC_TYPE
+--
+ERROR: NUMERIC precision must be an integer [at 1:8]
+numeric("hello")
+       ^
+==
+
+[language_features=NONE,{{|+PARAMETERIZED_TYPES,+NUMERIC_TYPE}}]
+numeric(30)
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: Type not found: numeric [at 1:1]
+numeric(30)
+^
+--
+ALTERNATION GROUP: +PARAMETERIZED_TYPES,+NUMERIC_TYPE
+--
+ERROR: In NUMERIC(P), P must be between 1 and 29 [at 1:8]
+numeric(30)
+       ^
+==
+
+[language_features=NONE,{{|+PARAMETERIZED_TYPES,+NUMERIC_TYPE}}]
+numeric(1, 9)
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: Type not found: numeric [at 1:1]
+numeric(1, 9)
+^
+--
+ALTERNATION GROUP: +PARAMETERIZED_TYPES,+NUMERIC_TYPE
+--
+ERROR: In NUMERIC(P, 9), P must be between 9 and 38 [at 1:8]
+numeric(1, 9)
+       ^
+==
+
+[language_features=NONE,{{|+PARAMETERIZED_TYPES,+NUMERIC_TYPE}}]
+numeric(12, 10)
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: Type not found: numeric [at 1:1]
+numeric(12, 10)
+^
+--
+ALTERNATION GROUP: +PARAMETERIZED_TYPES,+NUMERIC_TYPE
+--
+ERROR: In NUMERIC(P, S), S must be between 0 and 9 [at 1:8]
+numeric(12, 10)
+       ^
+==
+
+[language_features=NONE,{{|+PARAMETERIZED_TYPES,+NUMERIC_TYPE}}]
+numeric(10.2)
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: Type not found: numeric [at 1:1]
+numeric(10.2)
+^
+--
+ALTERNATION GROUP: +PARAMETERIZED_TYPES,+NUMERIC_TYPE
+--
+ERROR: NUMERIC precision must be an integer [at 1:8]
+numeric(10.2)
+       ^
+==
+
+[language_features=NONE,{{|+PARAMETERIZED_TYPES,+NUMERIC_TYPE}}]
+NUMERIC(NUMERIC 10)
+--
+ERROR: Syntax error: Unexpected keyword NUMERIC [at 1:9]
+NUMERIC(NUMERIC 10)
+        ^
+==
+
+[language_features=NONE,{{|+PARAMETERIZED_TYPES,+BIGNUMERIC_TYPE}}]
+bignumeric(6)
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: Type not found: bignumeric [at 1:1]
+bignumeric(6)
+^
+--
+ALTERNATION GROUP: +PARAMETERIZED_TYPES,+BIGNUMERIC_TYPE
+--
+BIGNUMERIC(6, 0)
+==
+
+[language_features=NONE,{{|+PARAMETERIZED_TYPES,+BIGNUMERIC_TYPE}}]
+bignumeric(6, 2)
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: Type not found: bignumeric [at 1:1]
+bignumeric(6, 2)
+^
+--
+ALTERNATION GROUP: +PARAMETERIZED_TYPES,+BIGNUMERIC_TYPE
+--
+BIGNUMERIC(6, 2)
+==
+
+[language_features=NONE,{{|+PARAMETERIZED_TYPES,+BIGNUMERIC_TYPE}}]
+bignumeric(MAX)
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: Type not found: bignumeric [at 1:1]
+bignumeric(MAX)
+^
+--
+ALTERNATION GROUP: +PARAMETERIZED_TYPES,+BIGNUMERIC_TYPE
+--
+BIGNUMERIC(MAX, 0)
+==
+
+[language_features=NONE,{{|+PARAMETERIZED_TYPES,+BIGNUMERIC_TYPE}}]
+bignumeric(MAX, 1)
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: Type not found: bignumeric [at 1:1]
+bignumeric(MAX, 1)
+^
+--
+ALTERNATION GROUP: +PARAMETERIZED_TYPES,+BIGNUMERIC_TYPE
+--
+BIGNUMERIC(MAX, 1)
+==
+
+[language_features=NONE,{{|+PARAMETERIZED_TYPES,+BIGNUMERIC_TYPE}}]
+bignumeric(1, 2, 3)
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: Type not found: bignumeric [at 1:1]
+bignumeric(1, 2, 3)
+^
+--
+ALTERNATION GROUP: +PARAMETERIZED_TYPES,+BIGNUMERIC_TYPE
+--
+ERROR: BIGNUMERIC type can only have 1 or 2 parameters. Found 3 parameters [at 1:11]
+bignumeric(1, 2, 3)
+          ^
+==
+
+[language_features=NONE,{{|+PARAMETERIZED_TYPES,+BIGNUMERIC_TYPE}}]
+bignumeric(39)
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: Type not found: bignumeric [at 1:1]
+bignumeric(39)
+^
+--
+ALTERNATION GROUP: +PARAMETERIZED_TYPES,+BIGNUMERIC_TYPE
+--
+ERROR: In BIGNUMERIC(P), P must be between 1 and 38 [at 1:11]
+bignumeric(39)
+          ^
+==
+
+[language_features=NONE,{{|+PARAMETERIZED_TYPES,+BIGNUMERIC_TYPE}}]
+bignumeric(1, 9)
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: Type not found: bignumeric [at 1:1]
+bignumeric(1, 9)
+^
+--
+ALTERNATION GROUP: +PARAMETERIZED_TYPES,+BIGNUMERIC_TYPE
+--
+ERROR: In BIGNUMERIC(P, 9), P must be between 9 and 47 [at 1:11]
+bignumeric(1, 9)
+          ^
+==
+
+[language_features=NONE,{{|+PARAMETERIZED_TYPES,+BIGNUMERIC_TYPE}}]
+bignumeric(40, 39)
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: Type not found: bignumeric [at 1:1]
+bignumeric(40, 39)
+^
+--
+ALTERNATION GROUP: +PARAMETERIZED_TYPES,+BIGNUMERIC_TYPE
+--
+ERROR: In BIGNUMERIC(P, S), S must be between 0 and 38 [at 1:11]
+bignumeric(40, 39)
+          ^
+==
+
+[language_features=NONE,{{|+PARAMETERIZED_TYPES,+BIGNUMERIC_TYPE}}]
+bignumeric(MAX, 39)
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: Type not found: bignumeric [at 1:1]
+bignumeric(MAX, 39)
+^
+--
+ALTERNATION GROUP: +PARAMETERIZED_TYPES,+BIGNUMERIC_TYPE
+--
+ERROR: In BIGNUMERIC(P, S), S must be between 0 and 38 [at 1:11]
+bignumeric(MAX, 39)
+          ^
+==
+
+[language_features=NONE,{{|+PARAMETERIZED_TYPES,+BIGNUMERIC_TYPE}}]
+bignumeric("hello")
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: Type not found: bignumeric [at 1:1]
+bignumeric("hello")
+^
+--
+ALTERNATION GROUP: +PARAMETERIZED_TYPES,+BIGNUMERIC_TYPE
+--
+ERROR: BIGNUMERIC precision must be an integer or MAX keyword [at 1:11]
+bignumeric("hello")
+          ^
+==
+
+[language_features=NONE,{{|+PARAMETERIZED_TYPES}}]
+array<string(10)>
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: Parameterized types are not supported [at 1:13]
+array<string(10)>
+            ^
+--
+ALTERNATION GROUP: +PARAMETERIZED_TYPES
+--
+ARRAY<STRING(10)>
+==
+
+[language_features=NONE,{{|+PARAMETERIZED_TYPES,+NUMERIC_TYPE}}]
+array<struct<array<numeric(4, 1)>, array<string(10)>, int32>>
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: Type not found: numeric [at 1:20]
+array<struct<array<numeric(4, 1)>, array<string(10)>, int32>>
+                   ^
+--
+ALTERNATION GROUP: +PARAMETERIZED_TYPES,+NUMERIC_TYPE
+--
+ARRAY<STRUCT<ARRAY<NUMERIC(4, 1)>, ARRAY<STRING(10)>, INT32>>
+==
+
+[language_features=NONE,{{|+PARAMETERIZED_TYPES,+NUMERIC_TYPE,+BIGNUMERIC_TYPE}}]
+struct<struct<array<numeric(4, 1)>, array<string(10)>, int32, bignumeric(MAX, 2), int64>>
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: Type not found: numeric [at 1:21]
+struct<struct<array<numeric(4, 1)>, array<string(10)>, int32, bignumeric(MAX,...
+                    ^
+--
+ALTERNATION GROUP: +PARAMETERIZED_TYPES,+NUMERIC_TYPE,+BIGNUMERIC_TYPE
+--
+STRUCT<STRUCT<ARRAY<NUMERIC(4, 1)>, ARRAY<STRING(10)>, INT32, BIGNUMERIC(MAX, 2), INT64>>
+==
+
+[language_features=NONE,+COLLATION_SUPPORT,+ANNOTATION_FRAMEWORK]
+string collate 'und:ci'
+--
+STRING COLLATE 'und:ci'
+==
+
+[language_features=NONE,+COLLATION_SUPPORT,+ANNOTATION_FRAMEWORK]
+string collate 'und:ci' COLLATE 'binary'
+--
+ERROR: Syntax error: Expected end of input but got keyword COLLATE [at 1:25]
+string collate 'und:ci' COLLATE 'binary'
+                        ^
+==
+
+[language_features=NONE,+COLLATION_SUPPORT,+ANNOTATION_FRAMEWORK]
+double collate 'und:ci'
+--
+ERROR: Type DOUBLE does not support collation name [at 1:8]
+double collate 'und:ci'
+       ^
+==
+
+[language_features=NONE,+COLLATION_SUPPORT,+ANNOTATION_FRAMEWORK]
+range<date> collate 'und:ci'
+--
+ERROR: Range type does not support collation name [at 1:13]
+range<date> collate 'und:ci'
+            ^
+==
+
+[language_features=NONE,+COLLATION_SUPPORT,+ANNOTATION_FRAMEWORK]
+range<string collate 'und:ci'>
+--
+ERROR: Unsupported type: RANGE<STRING> is not supported [at 1:7]
+range<string collate 'und:ci'>
+      ^
+==
+
+[language_features=NONE,+COLLATION_SUPPORT,+ANNOTATION_FRAMEWORK]
+range<array<string collate 'und:ci'>>
+--
+ERROR: Unsupported type: RANGE<ARRAY<STRING>> is not supported [at 1:7]
+range<array<string collate 'und:ci'>>
+      ^
+==
+
+[language_features=NONE,+COLLATION_SUPPORT,+ANNOTATION_FRAMEWORK]
+range<struct<x string collate 'und:ci', y int64>>
+--
+ERROR: Unsupported type: RANGE<STRUCT<x STRING, y INT64>> is not supported [at 1:7]
+range<struct<x string collate 'und:ci', y int64>>
+      ^
+==
+
+[language_features=NONE,+PARAMETERIZED_TYPES,+COLLATION_SUPPORT,+ANNOTATION_FRAMEWORK]
+string(100) collate 'ABC'
+--
+STRING(100) COLLATE 'ABC'
+==
+
+[language_features=NONE,+COLLATION_SUPPORT,+ANNOTATION_FRAMEWORK]
+struct<string collate 'und:ci'>
+--
+STRUCT<STRING COLLATE 'und:ci'>
+==
+
+[language_features=NONE,+COLLATION_SUPPORT,+ANNOTATION_FRAMEWORK]
+struct<string> collate 'und:ci'
+--
+ERROR: STRUCT<STRING> type cannot have collation by itself, it can only have collation on its field type [at 1:16]
+struct<string> collate 'und:ci'
+               ^
+==
+
+[language_features=NONE,+COLLATION_SUPPORT,+ANNOTATION_FRAMEWORK]
+struct<double collate 'und:ci'>
+--
+ERROR: Type DOUBLE does not support collation name [at 1:15]
+struct<double collate 'und:ci'>
+              ^
+==
+
+[language_features=NONE,+COLLATION_SUPPORT,+ANNOTATION_FRAMEWORK]
+array<string collate 'und:ci'>
+--
+ARRAY<STRING COLLATE 'und:ci'>
+==
+
+[language_features=NONE,+COLLATION_SUPPORT,+ANNOTATION_FRAMEWORK]
+array<string> collate 'und:ci'
+--
+ERROR: ARRAY<STRING> type cannot have collation by itself, it can only have collation on its element type [at 1:15]
+array<string> collate 'und:ci'
+              ^
+==
+
+[language_features=NONE,+PARAMETERIZED_TYPES,+COLLATION_SUPPORT,+ANNOTATION_FRAMEWORK]
+array<string(100) collate 'ABC'>
+--
+ARRAY<STRING(100) COLLATE 'ABC'>
+==
+
+[language_features=NONE,+PARAMETERIZED_TYPES,+COLLATION_SUPPORT,+ANNOTATION_FRAMEWORK]
+array<struct<a string(100), b string collate 'ABC', c double, d string>>
+--
+ARRAY<STRUCT<a STRING(100), b STRING COLLATE 'ABC', c DOUBLE, d STRING>>
+==
+
+[language_features=NONE,+PARAMETERIZED_TYPES,+COLLATION_SUPPORT,+ANNOTATION_FRAMEWORK]
+struct<a array<string(100) collate 'ABC'>, b string, c struct<string(50) collate 'CDE'>>
+--
+STRUCT<a ARRAY<STRING(100) COLLATE 'ABC'>, b STRING, c STRUCT<STRING(50) COLLATE 'CDE'>>
+==
+
+[language_features=NONE,{{+CIVIL_TIME|}}]
+time
+--
+ALTERNATION GROUP: +CIVIL_TIME
+--
+TIME
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: Type not found: time [at 1:1]
+time
+^
+==
+
+[language_features=NONE,{{+CIVIL_TIME|}}]
+datetime
+--
+ALTERNATION GROUP: +CIVIL_TIME
+--
+DATETIME
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: Type not found: datetime [at 1:1]
+datetime
+^
+==
+
+[language_features=NONE,{{+GEOGRAPHY|}}]
+geography
+--
+ALTERNATION GROUP: +GEOGRAPHY
+--
+GEOGRAPHY
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: Type not found: geography [at 1:1]
+geography
+^
+==
+
+[language_features=NONE,{{+NUMERIC_TYPE|}}]
+numeric
+--
+ALTERNATION GROUP: +NUMERIC_TYPE
+--
+NUMERIC
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: Type not found: numeric [at 1:1]
+numeric
+^
+==
+
+[language_features=NONE,{{+NUMERIC_TYPE|}}]
+array<numeric>
+--
+ALTERNATION GROUP: +NUMERIC_TYPE
+--
+ARRAY<NUMERIC>
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: Type not found: numeric [at 1:7]
+array<numeric>
+      ^
+==
+
+[language_features=NONE,{{|+NUMERIC_TYPE|+DECIMAL_ALIAS|+NUMERIC_TYPE,+DECIMAL_ALIAS}}]
+decimal
+--
+ALTERNATION GROUPS:
+    <empty>
+    +NUMERIC_TYPE
+    +DECIMAL_ALIAS
+--
+ERROR: Type not found: decimal [at 1:1]
+decimal
+^
+--
+ALTERNATION GROUP: +NUMERIC_TYPE,+DECIMAL_ALIAS
+--
+NUMERIC
+==
+
+[language_features=NONE,{{|+NUMERIC_TYPE|+DECIMAL_ALIAS|+NUMERIC_TYPE,+DECIMAL_ALIAS}}]
+array<decimal>
+--
+ALTERNATION GROUPS:
+    <empty>
+    +NUMERIC_TYPE
+    +DECIMAL_ALIAS
+--
+ERROR: Type not found: decimal [at 1:7]
+array<decimal>
+      ^
+--
+ALTERNATION GROUP: +NUMERIC_TYPE,+DECIMAL_ALIAS
+--
+ARRAY<NUMERIC>
+==
+
+[language_features=NONE,{{+BIGNUMERIC_TYPE|}}]
+bignumeric
+--
+ALTERNATION GROUP: +BIGNUMERIC_TYPE
+--
+BIGNUMERIC
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: Type not found: bignumeric [at 1:1]
+bignumeric
+^
+==
+
+[language_features=NONE,{{+BIGNUMERIC_TYPE|}}]
+array<bignumeric>
+--
+ALTERNATION GROUP: +BIGNUMERIC_TYPE
+--
+ARRAY<BIGNUMERIC>
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: Type not found: bignumeric [at 1:7]
+array<bignumeric>
+      ^
+==
+
+[language_features=NONE,{{|+BIGNUMERIC_TYPE|+DECIMAL_ALIAS|+BIGNUMERIC_TYPE,+DECIMAL_ALIAS}}]
+bigdecimal
+--
+ALTERNATION GROUPS:
+    <empty>
+    +BIGNUMERIC_TYPE
+    +DECIMAL_ALIAS
+--
+ERROR: Type not found: bigdecimal [at 1:1]
+bigdecimal
+^
+--
+ALTERNATION GROUP: +BIGNUMERIC_TYPE,+DECIMAL_ALIAS
+--
+BIGNUMERIC
+==
+
+[language_features=NONE,{{|+BIGNUMERIC_TYPE|+DECIMAL_ALIAS|+BIGNUMERIC_TYPE,+DECIMAL_ALIAS}}]
+array<bigdecimal>
+--
+ALTERNATION GROUPS:
+    <empty>
+    +BIGNUMERIC_TYPE
+    +DECIMAL_ALIAS
+--
+ERROR: Type not found: bigdecimal [at 1:7]
+array<bigdecimal>
+      ^
+--
+ALTERNATION GROUP: +BIGNUMERIC_TYPE,+DECIMAL_ALIAS
+--
+ARRAY<BIGNUMERIC>
+==
+
+[language_features=NONE,{{+JSON_TYPE|}}]
+json
+--
+ALTERNATION GROUP: +JSON_TYPE
+--
+JSON
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: Type not found: json [at 1:1]
+json
+^
+==
+
+array<int32>
+--
+ARRAY<INT32>
+==
+
+array<bool>
+--
+ARRAY<BOOL>
+==
+
+int32
+--
+INT32
+==
+
+{{bool|boolean}}
+--
+BOOL
+==
+
+int64
+--
+INT64
+==
+
+struct<>
+--
+STRUCT<>
+==
+
+struct<int32>
+--
+STRUCT<INT32>
+==
+
+struct<bool, date, uint32>
+--
+STRUCT<BOOL, DATE, UINT32>
+==
+
+struct<b bool, bool, d bool, b bool>
+--
+STRUCT<b BOOL, BOOL, d BOOL, b BOOL>
+==
+
+struct<bool bool>
+--
+STRUCT<bool BOOL>
+==
+
+struct<`Name with spaces` uint64>
+--
+STRUCT<`Name with spaces` UINT64>
+==
+
+array<array<int32>>
+--
+ERROR: Arrays of arrays are not supported [at 1:1]
+array<array<int32>>
+^
+==
+
+array<struct<array<int32>, array_of_date array<date>, int32>>
+--
+ARRAY<STRUCT<ARRAY<INT32>, array_of_date ARRAY<DATE>, INT32>>
+==
+
+struct<
+  struct<x int32>,
+  struct<y int64>
+>
+--
+STRUCT<STRUCT<x INT32>, STRUCT<y INT64>>
+==
+
+`googlesql_test.TestEnum`
+--
+`googlesql_test.TestEnum`
+==
+
+# Proto enums work as paths or as quoted fullnames.
+googlesql_test.TestEnum
+--
+`googlesql_test.TestEnum`
+==
+
+`googlesql_test.TestEnum`
+--
+`googlesql_test.TestEnum`
+==
+
+`googlesql_test.KeyValueStruct`
+--
+`googlesql_test.KeyValueStruct`
+==
+
+# Protos  work as paths or as quoted fullnames.
+googlesql_test.KeyValueStruct
+--
+`googlesql_test.KeyValueStruct`
+==
+
+`googlesql_test.KeyValueStruct`
+--
+`googlesql_test.KeyValueStruct`
+==
+
+googlesql_test.KitchenSinkPB.Nested
+--
+`googlesql_test.KitchenSinkPB.Nested`
+==
+
+`googlesql_test.KitchenSinkPB.Nested`
+--
+`googlesql_test.KitchenSinkPB.Nested`
+==
+
+googlesql_test.`KitchenSinkPB.Nested`
+--
+ERROR: Type not found: googlesql_test.`KitchenSinkPB.Nested` [at 1:1]
+googlesql_test.`KitchenSinkPB.Nested`
+^
+==
+
+`googlesql_test.KitchenSinkPB`.Nested
+--
+ERROR: Type not found: `googlesql_test.KitchenSinkPB`.Nested [at 1:1]
+`googlesql_test.KitchenSinkPB`.Nested
+^
+==
+
+
+# Proto and enum type names are case sensitive.
+`googlesql_test.keyVALUESTRUCT`
+--
+ERROR: Type not found: `googlesql_test.keyVALUESTRUCT` [at 1:1]
+`googlesql_test.keyVALUESTRUCT`
+^
+==
+
+# Proto and enum type names are case sensitive.
+`googlesql_test.TESTenum`
+--
+ERROR: Type not found: `googlesql_test.TESTenum` [at 1:1]
+`googlesql_test.TESTenum`
+^
+==
+
+`googlesql_test.TestOptionalFields.Nested`
+--
+`googlesql_test.TestOptionalFields.Nested`
+==
+
+ARRAY<googlesql_test.TestEnum>
+--
+ARRAY<`googlesql_test.TestEnum`>
+==
+
+STRUCT<`googlesql_test.TestEnum`, f2 googlesql_test.KeyValueStruct>
+--
+STRUCT<`googlesql_test.TestEnum`, f2 `googlesql_test.KeyValueStruct`>
+==
+
+nested_catalog.`googlesql_test.TestEnum`
+--
+`googlesql_test.TestEnum`
+==
+
+nested_catalog.`googlesql_test.KitchenSinkPB`
+--
+`googlesql_test.KitchenSinkPB`
+==
+
+# Path is a catalog and then a proto name as a path.
+nested_catalog.googlesql_test.KitchenSinkPB
+--
+`googlesql_test.KitchenSinkPB`
+==
+
+nested_catalog.`googlesql_test.KitchenSinkPB`
+--
+`googlesql_test.KitchenSinkPB`
+==
+
+# Catalog name cannot be part of the proto fullname as a single identifier.
+`nested_catalog.googlesql_test.KitchenSinkPB`
+--
+ERROR: Type not found: `nested_catalog.googlesql_test.KitchenSinkPB` [at 1:1]
+`nested_catalog.googlesql_test.KitchenSinkPB`
+^
+==
+
+bad.type.name
+--
+ERROR: Type not found: bad.type.name [at 1:1]
+bad.type.name
+^
+==
+
+nested_catalog.bad.type.name
+--
+ERROR: Type not found: nested_catalog.bad.type.name [at 1:1]
+nested_catalog.bad.type.name
+^
+==
+
+nested_catalog.`bad.type.name`
+--
+ERROR: Type not found: nested_catalog.`bad.type.name` [at 1:1]
+nested_catalog.`bad.type.name`
+^
+==
+
+recursive_catalog.recursive_catalog.bad.type.name
+--
+ERROR: Type not found: recursive_catalog.recursive_catalog.bad.type.name [at 1:1]
+recursive_catalog.recursive_catalog.bad.type.name
+^
+
+==
+
+FUNCTION<()->INT64>
+--
+
+ERROR: FUNCTION type not supported [at 1:1]
+FUNCTION<()->INT64>
+^
+==
+
+STRUCT<x FUNCTION<()->INT64>>
+--
+
+ERROR: FUNCTION type not supported [at 1:10]
+STRUCT<x FUNCTION<()->INT64>>
+         ^
+==
+
+[language_features=NONE,{{|+MAP_TYPE}}]
+MAP<STRING, STRING>
+--
+
+ALTERNATION GROUP: <empty>
+--
+ERROR: MAP datatype is not supported [at 1:1]
+MAP<STRING, STRING>
+^
+--
+ALTERNATION GROUP: +MAP_TYPE
+--
+MAP<STRING, STRING>
+==
+
+[language_features=NONE,+MAP_TYPE]
+MAP<STRING, MAP<STRING, STRING>>
+--
+MAP<STRING, MAP<STRING, STRING>>
+==
+
+[language_features=NONE,+MAP_TYPE]
+MAP<STRING, MAP<STRING, STRING> >
+--
+MAP<STRING, MAP<STRING, STRING>>
+==
+
+[language_features=NONE,+MAP_TYPE]
+MAP<STRING, ARRAY<STRUCT<a STRING>>>
+--
+MAP<STRING, ARRAY<STRUCT<a STRING>>>
+==
+
+[language_features=NONE,+MAP_TYPE,+GEOGRAPHY]
+MAP<GEOGRAPHY, STRING>
+--
+ERROR: MAP key type GEOGRAPHY is not groupable [at 1:1]
+MAP<GEOGRAPHY, STRING>
+^
+==
+
+[language_features=NONE,+MAP_TYPE,+GROUP_BY_ARRAY]
+MAP<STRUCT<a ARRAY<STRING>>, INT64>
+--
+ERROR: MAP key type STRUCT is not groupable [at 1:1]
+MAP<STRUCT<a ARRAY<STRING>>, INT64>
+^
+==
+
+[language_features=NONE,+MAP_TYPE,+GROUP_BY_STRUCT,+GROUP_BY_ARRAY]
+MAP<STRUCT<a ARRAY<STRING>>, INT64>
+--
+MAP<STRUCT<a ARRAY<STRING>>, INT64>
+==
+
+[language_features=NONE,+MAP_TYPE,+PARAMETERIZED_TYPES]
+MAP<STRING, STRING>(5)
+--
+ERROR: Type MAP<STRING, STRING> does not support type parameters [at 1:20]
+MAP<STRING, STRING>(5)
+                   ^
+==
+
+[language_features=NONE,+MAP_TYPE,+PARAMETERIZED_TYPES]
+MAP<STRING, STRING(5)>
+--
+MAP<STRING, STRING(5)>
+==
+
+[language_features=NONE,+MAP_TYPE,+PARAMETERIZED_TYPES]
+MAP<STRING(5), STRING>
+--
+MAP<STRING(5), STRING>
+==
+
+[language_features=NONE,+MAP_TYPE,+PARAMETERIZED_TYPES]
+MAP<STRING, STRUCT<a STRING(5)>>
+--
+MAP<STRING, STRUCT<a STRING(5)>>
+==
+
+[language_features=NONE,+MAP_TYPE,+PARAMETERIZED_TYPES]
+MAP<STRING, ARRAY<STRUCT<a STRING(5)>>>
+--
+MAP<STRING, ARRAY<STRUCT<a STRING(5)>>>
+==
+
+[language_features=NONE,+MAP_TYPE,+COLLATION_SUPPORT,+ANNOTATION_FRAMEWORK]
+MAP<STRING, STRING> collate 'und:ci'
+--
+ERROR: Collation is not supported on MAP or its key and value types [at 1:21]
+MAP<STRING, STRING> collate 'und:ci'
+                    ^
+==
+
+[language_features=NONE,+MAP_TYPE,+COLLATION_SUPPORT,+ANNOTATION_FRAMEWORK]
+MAP<STRING collate 'und:ci', STRING>
+--
+ERROR: Collation is not supported on MAP or its key and value types [at 1:5]
+MAP<STRING collate 'und:ci', STRING>
+    ^
+==
+
+[language_features=NONE,+MAP_TYPE,+COLLATION_SUPPORT,+ANNOTATION_FRAMEWORK]
+MAP<STRING, STRING collate 'und:ci'>
+--
+ERROR: Collation is not supported on MAP or its key and value types [at 1:13]
+MAP<STRING, STRING collate 'und:ci'>
+            ^
+==
+
+[language_features=NONE,+MAP_TYPE,+COLLATION_SUPPORT,+ANNOTATION_FRAMEWORK]
+MAP<STRING, ARRAY<STRUCT<a STRING collate 'und:ci'>>>
+--
+ERROR: Collation is not supported on MAP or its key and value types [at 1:13]
+MAP<STRING, ARRAY<STRUCT<a STRING collate 'und:ci'>>>
+            ^
+==
+
+[language_features=NONE,+MAP_TYPE,+COLLATION_SUPPORT,+ANNOTATION_FRAMEWORK,+GROUP_BY_ARRAY,+GROUP_BY_STRUCT]
+MAP<STRUCT<a ARRAY<STRING collate 'und:ci'>>, STRING>
+--
+ERROR: Collation is not supported on MAP or its key and value types [at 1:5]
+MAP<STRUCT<a ARRAY<STRING collate 'und:ci'>>, STRING>
+    ^

@@ -1,0 +1,3356 @@
+[default language_features=MAXIMUM,+LATERAL_COLUMN_REFERENCES,+ANONYMIZATION]
+
+# Test cases for lateral references (aliases in the same SELECT list, as well as
+# the WHERE clause).
+
+# Basic forward reference
+SELECT b + 1 AS a, 2 AS b FROM (SELECT 1 AS a)
+--
+ERROR: Unrecognized name: b [at 5:8]
+SELECT b + 1 AS a, 2 AS b FROM (SELECT 1 AS a)
+       ^
+==
+
+# Basic forward reference, but a column with that name already exists.
+# Picks the incoming column.
+SELECT b + 1 AS a, 2 AS b FROM (SELECT 1 AS a, 10 AS b)
+--
+QueryStmt
++-output_column_list=
+| +-$query.a#3 AS a [INT64]
+| +-$query.b#4 AS b [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=$query.[a#3, b#4]
+    +-expr_list=
+    | +-a#3 :=
+    | | +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    | |   +-ColumnRef(type=INT64, column=$subquery1.b#2)
+    | |   +-Literal(type=INT64, value=1)
+    | +-b#4 := Literal(type=INT64, value=2)
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=$subquery1.[a#1, b#2]
+        +-expr_list=
+        | +-a#1 := Literal(type=INT64, value=1)
+        | +-b#2 := Literal(type=INT64, value=10)
+        +-input_scan=
+          +-SingleRowScan
+==
+
+# Basic backward reference
+SELECT a + 1 AS b, b + 1 AS a FROM (SELECT 1 AS a, 10 AS b)
+--
+QueryStmt
++-output_column_list=
+| +-$query.b#3 AS b [INT64]
+| +-$query.a#4 AS a [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=$query.[b#3, a#4]
+    +-expr_list=
+    | +-b#3 :=
+    | | +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    | |   +-ColumnRef(type=INT64, column=$subquery1.a#1)
+    | |   +-Literal(type=INT64, value=1)
+    | +-a#4 :=
+    |   +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |     +-ColumnRef(type=INT64, column=$subquery1.b#2)
+    |     +-Literal(type=INT64, value=1)
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=$subquery1.[a#1, b#2]
+        +-expr_list=
+        | +-a#1 := Literal(type=INT64, value=1)
+        | +-b#2 := Literal(type=INT64, value=10)
+        +-input_scan=
+          +-SingleRowScan
+==
+
+# Multiple forward references
+SELECT x + rand() AS a, a + 1 AS b, b + 2 AS c, 10 AS b FROM (SELECT 1 AS x)
+--
+QueryStmt
++-output_column_list=
+| +-$query.a#2 AS a [DOUBLE]
+| +-$query.b#3 AS b [DOUBLE]
+| +-$query.c#4 AS c [DOUBLE]
+| +-$query.b#5 AS b [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=$query.[a#2, b#3, c#4, b#5]
+    +-expr_list=
+    | +-c#4 :=
+    | | +-FunctionCall(GoogleSQL:$add(DOUBLE, DOUBLE) -> DOUBLE)
+    | |   +-ColumnRef(type=DOUBLE, column=$query.b#3)
+    | |   +-Literal(type=DOUBLE, value=2)
+    | +-b#5 := Literal(type=INT64, value=10)
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[$subquery1.x#1, $query.a#2, $query.b#3]
+        +-expr_list=
+        | +-b#3 :=
+        |   +-FunctionCall(GoogleSQL:$add(DOUBLE, DOUBLE) -> DOUBLE)
+        |     +-ColumnRef(type=DOUBLE, column=$query.a#2)
+        |     +-Literal(type=DOUBLE, value=1)
+        +-input_scan=
+          +-ProjectScan
+            +-column_list=[$subquery1.x#1, $query.a#2]
+            +-expr_list=
+            | +-a#2 :=
+            |   +-FunctionCall(GoogleSQL:$add(DOUBLE, DOUBLE) -> DOUBLE)
+            |     +-Cast(INT64 -> DOUBLE)
+            |     | +-ColumnRef(type=INT64, column=$subquery1.x#1)
+            |     +-FunctionCall(GoogleSQL:rand() -> DOUBLE)
+            +-input_scan=
+              +-ProjectScan
+                +-column_list=[$subquery1.x#1]
+                +-expr_list=
+                | +-x#1 := Literal(type=INT64, value=1)
+                +-input_scan=
+                  +-SingleRowScan
+==
+
+# Multiple forward references, but columns with those names already exist.
+# Picks the FROM columns.
+SELECT b + 1 AS a, c + 1 AS b, 10 AS b, SUM(a) OVER() AS w
+FROM (SELECT 1 AS a, 10 AS b, 100 AS c)
+--
+
+QueryStmt
++-output_column_list=
+| +-$query.a#5 AS a [INT64]
+| +-$query.b#6 AS b [INT64]
+| +-$query.b#7 AS b [INT64]
+| +-$analytic.w#8 AS w [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.a#5, $query.b#6, $query.b#7, $analytic.w#8]
+    +-input_scan=
+      +-AnalyticScan
+        +-column_list=[$subquery1.a#1, $subquery1.b#2, $subquery1.c#3, $query.a#5, $query.b#6, $query.b#7, $analytic.w#8]
+        +-input_scan=
+        | +-ProjectScan
+        |   +-column_list=[$subquery1.a#1, $subquery1.b#2, $subquery1.c#3, $query.a#5, $query.b#6, $query.b#7]
+        |   +-expr_list=
+        |   | +-a#5 :=
+        |   | | +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+        |   | |   +-ColumnRef(type=INT64, column=$subquery1.b#2)
+        |   | |   +-Literal(type=INT64, value=1)
+        |   | +-b#6 :=
+        |   | | +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+        |   | |   +-ColumnRef(type=INT64, column=$subquery1.c#3)
+        |   | |   +-Literal(type=INT64, value=1)
+        |   | +-b#7 := Literal(type=INT64, value=10)
+        |   +-input_scan=
+        |     +-ProjectScan
+        |       +-column_list=$subquery1.[a#1, b#2, c#3]
+        |       +-expr_list=
+        |       | +-a#1 := Literal(type=INT64, value=1)
+        |       | +-b#2 := Literal(type=INT64, value=10)
+        |       | +-c#3 := Literal(type=INT64, value=100)
+        |       +-input_scan=
+        |         +-SingleRowScan
+        +-function_group_list=
+          +-AnalyticFunctionGroup
+            +-analytic_function_list=
+              +-w#8 :=
+                +-AnalyticFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+                  +-ColumnRef(type=INT64, column=$subquery1.a#1)
+                  +-window_frame=
+                    +-WindowFrame(frame_unit=ROWS)
+                      +-start_expr=
+                      | +-WindowFrameExpr(boundary_type=UNBOUNDED PRECEDING)
+                      +-end_expr=
+                        +-WindowFrameExpr(boundary_type=UNBOUNDED FOLLOWING)
+==
+
+# Reference in WHERE clause
+SELECT a + 1 AS x FROM (SELECT 1 AS a) WHERE x > 0
+--
+QueryStmt
++-output_column_list=
+| +-$query.x#2 AS x [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.x#2]
+    +-input_scan=
+      +-FilterScan
+        +-column_list=[$subquery1.a#1, $query.x#2]
+        +-input_scan=
+        | +-ProjectScan
+        |   +-column_list=[$subquery1.a#1, $query.x#2]
+        |   +-expr_list=
+        |   | +-x#2 :=
+        |   |   +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+        |   |     +-ColumnRef(type=INT64, column=$subquery1.a#1)
+        |   |     +-Literal(type=INT64, value=1)
+        |   +-input_scan=
+        |     +-ProjectScan
+        |       +-column_list=[$subquery1.a#1]
+        |       +-expr_list=
+        |       | +-a#1 := Literal(type=INT64, value=1)
+        |       +-input_scan=
+        |         +-SingleRowScan
+        +-filter_expr=
+          +-FunctionCall(GoogleSQL:$greater(INT64, INT64) -> BOOL)
+            +-ColumnRef(type=INT64, column=$query.x#2)
+            +-Literal(type=INT64, value=0)
+==
+
+# The input column takes precedence over the alias.
+SELECT a + 1 AS b, b + 1 AS c FROM (SELECT 1 AS a, 10 AS b) WHERE b > 0
+--
+
+QueryStmt
++-output_column_list=
+| +-$query.b#3 AS b [INT64]
+| +-$query.c#4 AS c [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=$query.[b#3, c#4]
+    +-expr_list=
+    | +-b#3 :=
+    | | +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    | |   +-ColumnRef(type=INT64, column=$subquery1.a#1)
+    | |   +-Literal(type=INT64, value=1)
+    | +-c#4 :=
+    |   +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |     +-ColumnRef(type=INT64, column=$subquery1.b#2)
+    |     +-Literal(type=INT64, value=1)
+    +-input_scan=
+      +-FilterScan
+        +-column_list=$subquery1.[a#1, b#2]
+        +-input_scan=
+        | +-ProjectScan
+        |   +-column_list=$subquery1.[a#1, b#2]
+        |   +-expr_list=
+        |   | +-a#1 := Literal(type=INT64, value=1)
+        |   | +-b#2 := Literal(type=INT64, value=10)
+        |   +-input_scan=
+        |     +-SingleRowScan
+        +-filter_expr=
+          +-FunctionCall(GoogleSQL:$greater(INT64, INT64) -> BOOL)
+            +-ColumnRef(type=INT64, column=$subquery1.b#2)
+            +-Literal(type=INT64, value=0)
+==
+
+# Same alias used laterally multiple times.
+SELECT x + rand() AS a, a + 1 AS b, a + 2 AS c
+FROM (SELECT 1 AS x)
+WHERE a > 0
+{{|GROUP BY a, b, c}}
+--
+ALTERNATION GROUP: <empty>
+--
+QueryStmt
++-output_column_list=
+| +-$query.a#2 AS a [DOUBLE]
+| +-$query.b#3 AS b [DOUBLE]
+| +-$query.c#4 AS c [DOUBLE]
++-query=
+  +-ProjectScan
+    +-column_list=$query.[a#2, b#3, c#4]
+    +-expr_list=
+    | +-b#3 :=
+    | | +-FunctionCall(GoogleSQL:$add(DOUBLE, DOUBLE) -> DOUBLE)
+    | |   +-ColumnRef(type=DOUBLE, column=$query.a#2)
+    | |   +-Literal(type=DOUBLE, value=1)
+    | +-c#4 :=
+    |   +-FunctionCall(GoogleSQL:$add(DOUBLE, DOUBLE) -> DOUBLE)
+    |     +-ColumnRef(type=DOUBLE, column=$query.a#2)
+    |     +-Literal(type=DOUBLE, value=2)
+    +-input_scan=
+      +-FilterScan
+        +-column_list=[$subquery1.x#1, $query.a#2]
+        +-input_scan=
+        | +-ProjectScan
+        |   +-column_list=[$subquery1.x#1, $query.a#2]
+        |   +-expr_list=
+        |   | +-a#2 :=
+        |   |   +-FunctionCall(GoogleSQL:$add(DOUBLE, DOUBLE) -> DOUBLE)
+        |   |     +-Cast(INT64 -> DOUBLE)
+        |   |     | +-ColumnRef(type=INT64, column=$subquery1.x#1)
+        |   |     +-FunctionCall(GoogleSQL:rand() -> DOUBLE)
+        |   +-input_scan=
+        |     +-ProjectScan
+        |       +-column_list=[$subquery1.x#1]
+        |       +-expr_list=
+        |       | +-x#1 := Literal(type=INT64, value=1)
+        |       +-input_scan=
+        |         +-SingleRowScan
+        +-filter_expr=
+          +-FunctionCall(GoogleSQL:$greater(DOUBLE, DOUBLE) -> BOOL)
+            +-ColumnRef(type=DOUBLE, column=$query.a#2)
+            +-Literal(type=DOUBLE, value=0)
+--
+ALTERNATION GROUP: GROUP BY a, b, c
+--
+ERROR: Column a is referenced laterally from WHERE or argument to an aggregation when there's grouping or aggregation in the query [at 3:7]
+WHERE a > 0
+      ^
+==
+
+# Dependent column can only be a post-grouping one.
+SELECT x + rand() AS a, a + rand() AS post_grouping_col
+FROM (SELECT 1 AS x)
+GROUP BY a
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.a#4 AS a [DOUBLE]
+| +-$query.post_grouping_col#5 AS post_grouping_col [DOUBLE]
++-query=
+  +-ProjectScan
+    +-column_list=[$groupby.a#4, $query.post_grouping_col#5]
+    +-expr_list=
+    | +-post_grouping_col#5 :=
+    |   +-FunctionCall(GoogleSQL:$add(DOUBLE, DOUBLE) -> DOUBLE)
+    |     +-ColumnRef(type=DOUBLE, column=$groupby.a#4)
+    |     +-FunctionCall(GoogleSQL:rand() -> DOUBLE)
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$groupby.a#4]
+        +-input_scan=
+        | +-ProjectScan
+        |   +-column_list=[$subquery1.x#1, $query.a#2]
+        |   +-expr_list=
+        |   | +-a#2 :=
+        |   |   +-FunctionCall(GoogleSQL:$add(DOUBLE, DOUBLE) -> DOUBLE)
+        |   |     +-Cast(INT64 -> DOUBLE)
+        |   |     | +-ColumnRef(type=INT64, column=$subquery1.x#1)
+        |   |     +-FunctionCall(GoogleSQL:rand() -> DOUBLE)
+        |   +-input_scan=
+        |     +-ProjectScan
+        |       +-column_list=[$subquery1.x#1]
+        |       +-expr_list=
+        |       | +-x#1 := Literal(type=INT64, value=1)
+        |       +-input_scan=
+        |         +-SingleRowScan
+        +-group_by_list=
+          +-a#4 := ColumnRef(type=DOUBLE, column=$query.a#2)
+==
+
+# Ensure once-semantics and respecting pre-and post-grouping contexts.
+# All dependent columns are also declared as group-by columns.
+SELECT x + rand() AS a, a + 1 AS b, a + b AS c{{|, SUM(c) AS s}}{{|, b + rand() AS post_grouping_col}}
+FROM (SELECT 1 AS x)
+WHERE a > 0 AND b > 1 AND c > 2
+GROUP BY a, b, c
+--
+ALTERNATION GROUPS:
+    <empty>
+    , b + rand() AS post_grouping_col
+--
+ERROR: Column a is referenced laterally from WHERE or argument to an aggregation when there's grouping or aggregation in the query [at 3:7]
+WHERE a > 0 AND b > 1 AND c > 2
+      ^
+--
+ALTERNATION GROUP: , SUM(c) AS s,
+--
+ERROR: Column c is referenced laterally from WHERE or argument to an aggregation when there's grouping or aggregation in the query [at 1:53]
+SELECT x + rand() AS a, a + 1 AS b, a + b AS c, SUM(c) AS s
+                                                    ^
+--
+ALTERNATION GROUP: , SUM(c) AS s,, b + rand() AS post_grouping_col
+--
+ERROR: Column c is referenced laterally from WHERE or argument to an aggregation when there's grouping or aggregation in the query [at 1:53]
+SELECT x + rand() AS a, a + 1 AS b, a + b AS c, SUM(c) AS s, b + rand() AS po...
+                                                    ^
+==
+
+# Ensure once-semantics and respecting pre-and post-grouping contexts.
+# Dependent columns are not declared as group-by columns.
+SELECT x + rand() AS a, a + 1 AS b, a + b AS c{{|, SUM(c) AS s}}{{|, b + rand() AS post_grouping_col}}
+FROM (SELECT 1 AS x)
+GROUP BY a
+--
+ALTERNATION GROUP: <empty>
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.a#5 AS a [DOUBLE]
+| +-$query.b#6 AS b [DOUBLE]
+| +-$query.c#7 AS c [DOUBLE]
++-query=
+  +-ProjectScan
+    +-column_list=[$groupby.a#5, $query.b#6, $query.c#7]
+    +-expr_list=
+    | +-c#7 :=
+    |   +-FunctionCall(GoogleSQL:$add(DOUBLE, DOUBLE) -> DOUBLE)
+    |     +-ColumnRef(type=DOUBLE, column=$groupby.a#5)
+    |     +-ColumnRef(type=DOUBLE, column=$query.b#6)
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[$groupby.a#5, $query.b#6]
+        +-expr_list=
+        | +-b#6 :=
+        |   +-FunctionCall(GoogleSQL:$add(DOUBLE, DOUBLE) -> DOUBLE)
+        |     +-ColumnRef(type=DOUBLE, column=$groupby.a#5)
+        |     +-Literal(type=DOUBLE, value=1)
+        +-input_scan=
+          +-AggregateScan
+            +-column_list=[$groupby.a#5]
+            +-input_scan=
+            | +-ProjectScan
+            |   +-column_list=[$subquery1.x#1, $query.a#2]
+            |   +-expr_list=
+            |   | +-a#2 :=
+            |   |   +-FunctionCall(GoogleSQL:$add(DOUBLE, DOUBLE) -> DOUBLE)
+            |   |     +-Cast(INT64 -> DOUBLE)
+            |   |     | +-ColumnRef(type=INT64, column=$subquery1.x#1)
+            |   |     +-FunctionCall(GoogleSQL:rand() -> DOUBLE)
+            |   +-input_scan=
+            |     +-ProjectScan
+            |       +-column_list=[$subquery1.x#1]
+            |       +-expr_list=
+            |       | +-x#1 := Literal(type=INT64, value=1)
+            |       +-input_scan=
+            |         +-SingleRowScan
+            +-group_by_list=
+              +-a#5 := ColumnRef(type=DOUBLE, column=$query.a#2)
+--
+ALTERNATION GROUP: , b + rand() AS post_grouping_col
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.a#6 AS a [DOUBLE]
+| +-$query.b#7 AS b [DOUBLE]
+| +-$query.c#8 AS c [DOUBLE]
+| +-$query.post_grouping_col#9 AS post_grouping_col [DOUBLE]
++-query=
+  +-ProjectScan
+    +-column_list=[$groupby.a#6, $query.b#7, $query.c#8, $query.post_grouping_col#9]
+    +-expr_list=
+    | +-c#8 :=
+    | | +-FunctionCall(GoogleSQL:$add(DOUBLE, DOUBLE) -> DOUBLE)
+    | |   +-ColumnRef(type=DOUBLE, column=$groupby.a#6)
+    | |   +-ColumnRef(type=DOUBLE, column=$query.b#7)
+    | +-post_grouping_col#9 :=
+    |   +-FunctionCall(GoogleSQL:$add(DOUBLE, DOUBLE) -> DOUBLE)
+    |     +-ColumnRef(type=DOUBLE, column=$query.b#7)
+    |     +-FunctionCall(GoogleSQL:rand() -> DOUBLE)
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[$groupby.a#6, $query.b#7]
+        +-expr_list=
+        | +-b#7 :=
+        |   +-FunctionCall(GoogleSQL:$add(DOUBLE, DOUBLE) -> DOUBLE)
+        |     +-ColumnRef(type=DOUBLE, column=$groupby.a#6)
+        |     +-Literal(type=DOUBLE, value=1)
+        +-input_scan=
+          +-AggregateScan
+            +-column_list=[$groupby.a#6]
+            +-input_scan=
+            | +-ProjectScan
+            |   +-column_list=[$subquery1.x#1, $query.a#2]
+            |   +-expr_list=
+            |   | +-a#2 :=
+            |   |   +-FunctionCall(GoogleSQL:$add(DOUBLE, DOUBLE) -> DOUBLE)
+            |   |     +-Cast(INT64 -> DOUBLE)
+            |   |     | +-ColumnRef(type=INT64, column=$subquery1.x#1)
+            |   |     +-FunctionCall(GoogleSQL:rand() -> DOUBLE)
+            |   +-input_scan=
+            |     +-ProjectScan
+            |       +-column_list=[$subquery1.x#1]
+            |       +-expr_list=
+            |       | +-x#1 := Literal(type=INT64, value=1)
+            |       +-input_scan=
+            |         +-SingleRowScan
+            +-group_by_list=
+              +-a#6 := ColumnRef(type=DOUBLE, column=$query.a#2)
+--
+ALTERNATION GROUP: , SUM(c) AS s,
+--
+ERROR: Column c is referenced laterally from WHERE or argument to an aggregation when there's grouping or aggregation in the query [at 1:53]
+SELECT x + rand() AS a, a + 1 AS b, a + b AS c, SUM(c) AS s
+                                                    ^
+--
+ALTERNATION GROUP: , SUM(c) AS s,, b + rand() AS post_grouping_col
+--
+ERROR: Column c is referenced laterally from WHERE or argument to an aggregation when there's grouping or aggregation in the query [at 1:53]
+SELECT x + rand() AS a, a + 1 AS b, a + b AS c, SUM(c) AS s, b + rand() AS po...
+                                                    ^
+==
+
+# Once semantics, referenced from WITH expr and from correlated subquery.
+SELECT x + rand() AS a, WITH(tmp AS a + 1, tmp) AS b, (SELECT a + b) AS c
+FROM (SELECT 1 AS x)
+WHERE a > 0 AND WITH(tmp AS b, tmp) > 1 AND (SELECT c > 2)
+GROUP BY a, b, c, 1, 2 ,3
+--
+
+ERROR: Column a is referenced laterally from WHERE or argument to an aggregation when there's grouping or aggregation in the query [at 3:7]
+WHERE a > 0 AND WITH(tmp AS b, tmp) > 1 AND (SELECT c > 2)
+      ^
+==
+
+# ON and USING clauses do not see select aliases
+SELECT rand() AS a
+FROM (SELECT 1 AS x) AS t1
+     JOIN (SELECT 1 AS y) AS t2
+     {{ON x + y > a|USING(a)}}
+--
+
+ALTERNATION GROUP: ON x + y > a
+--
+ERROR: Unrecognized name: a [at 4:17]
+     ON x + y > a
+                ^
+--
+ALTERNATION GROUP: USING(a)
+--
+ERROR: Column a in USING clause not found on left side of join [at 4:12]
+     USING(a)
+           ^
+==
+
+# Reference in WHERE clause with backward reference
+SELECT a + rand() AS b FROM (SELECT 1 AS a) WHERE a < b
+--
+QueryStmt
++-output_column_list=
+| +-$query.b#2 AS b [DOUBLE]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.b#2]
+    +-input_scan=
+      +-FilterScan
+        +-column_list=[$subquery1.a#1, $query.b#2]
+        +-input_scan=
+        | +-ProjectScan
+        |   +-column_list=[$subquery1.a#1, $query.b#2]
+        |   +-expr_list=
+        |   | +-b#2 :=
+        |   |   +-FunctionCall(GoogleSQL:$add(DOUBLE, DOUBLE) -> DOUBLE)
+        |   |     +-Cast(INT64 -> DOUBLE)
+        |   |     | +-ColumnRef(type=INT64, column=$subquery1.a#1)
+        |   |     +-FunctionCall(GoogleSQL:rand() -> DOUBLE)
+        |   +-input_scan=
+        |     +-ProjectScan
+        |       +-column_list=[$subquery1.a#1]
+        |       +-expr_list=
+        |       | +-a#1 := Literal(type=INT64, value=1)
+        |       +-input_scan=
+        |         +-SingleRowScan
+        +-filter_expr=
+          +-FunctionCall(GoogleSQL:$less(DOUBLE, DOUBLE) -> BOOL)
+            +-Cast(INT64 -> DOUBLE)
+            | +-ColumnRef(type=INT64, column=$subquery1.a#1)
+            +-ColumnRef(type=DOUBLE, column=$query.b#2)
+==
+
+# Multi-step forward references
+SELECT a + 1 AS b, b + 1 AS c, c + 1 AS d FROM (SELECT 1 AS a)
+--
+QueryStmt
++-output_column_list=
+| +-$query.b#2 AS b [INT64]
+| +-$query.c#3 AS c [INT64]
+| +-$query.d#4 AS d [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=$query.[b#2, c#3, d#4]
+    +-expr_list=
+    | +-d#4 :=
+    |   +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |     +-ColumnRef(type=INT64, column=$query.c#3)
+    |     +-Literal(type=INT64, value=1)
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[$subquery1.a#1, $query.b#2, $query.c#3]
+        +-expr_list=
+        | +-c#3 :=
+        |   +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+        |     +-ColumnRef(type=INT64, column=$query.b#2)
+        |     +-Literal(type=INT64, value=1)
+        +-input_scan=
+          +-ProjectScan
+            +-column_list=[$subquery1.a#1, $query.b#2]
+            +-expr_list=
+            | +-b#2 :=
+            |   +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+            |     +-ColumnRef(type=INT64, column=$subquery1.a#1)
+            |     +-Literal(type=INT64, value=1)
+            +-input_scan=
+              +-ProjectScan
+                +-column_list=[$subquery1.a#1]
+                +-expr_list=
+                | +-a#1 := Literal(type=INT64, value=1)
+                +-input_scan=
+                  +-SingleRowScan
+==
+
+# Multi-step referencing multiple previous aliases
+SELECT a, a+1 AS b, b + a as c, c+a+b AS d FROM (SELECT 1 AS a)
+--
+QueryStmt
++-output_column_list=
+| +-$subquery1.a#1 AS a [INT64]
+| +-$query.b#2 AS b [INT64]
+| +-$query.c#3 AS c [INT64]
+| +-$query.d#4 AS d [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$subquery1.a#1, $query.b#2, $query.c#3, $query.d#4]
+    +-expr_list=
+    | +-d#4 :=
+    |   +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |     +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |     | +-ColumnRef(type=INT64, column=$query.c#3)
+    |     | +-ColumnRef(type=INT64, column=$subquery1.a#1)
+    |     +-ColumnRef(type=INT64, column=$query.b#2)
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[$subquery1.a#1, $query.b#2, $query.c#3]
+        +-expr_list=
+        | +-c#3 :=
+        |   +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+        |     +-ColumnRef(type=INT64, column=$query.b#2)
+        |     +-ColumnRef(type=INT64, column=$subquery1.a#1)
+        +-input_scan=
+          +-ProjectScan
+            +-column_list=[$subquery1.a#1, $query.b#2]
+            +-expr_list=
+            | +-b#2 :=
+            |   +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+            |     +-ColumnRef(type=INT64, column=$subquery1.a#1)
+            |     +-Literal(type=INT64, value=1)
+            +-input_scan=
+              +-ProjectScan
+                +-column_list=[$subquery1.a#1]
+                +-expr_list=
+                | +-a#1 := Literal(type=INT64, value=1)
+                +-input_scan=
+                  +-SingleRowScan
+==
+
+# Aggregation function referencing a previous alias
+SELECT a AS b, SUM(b+2) - MIN(b+b) AS agg_a, agg_a AS agg_b, agg_b + 1 as sum2
+FROM (SELECT 1 AS a)
+GROUP BY a
+--
+ERROR: Column b is referenced laterally from WHERE or argument to an aggregation when there's grouping or aggregation in the query [at 1:20]
+SELECT a AS b, SUM(b+2) - MIN(b+b) AS agg_a, agg_a AS agg_b, agg_b + 1 as sum2
+                   ^
+==
+
+# Aggregation function referencing a previous alias, with grouping expr matching
+[no_enable_literal_replacement]
+SELECT a+1 AS b, SUM(b+2) - MIN(b+b) AS agg_a, agg_a AS agg_b, agg_b + 1 as sum2
+FROM (SELECT 1 AS a)
+GROUP BY a+1
+--
+ERROR: Column b is referenced laterally from WHERE or argument to an aggregation when there's grouping or aggregation in the query [at 1:22]
+SELECT a+1 AS b, SUM(b+2) - MIN(b+b) AS agg_a, agg_a AS agg_b, agg_b + 1 as sum2
+                     ^
+==
+
+# Aggregation function referencing a post-grouping alias is an error.
+SELECT a+rand() AS b, SUM(b+2) - MIN(b+b) AS agg_a, agg_a AS agg_b, agg_b + 1 as sum2
+FROM (SELECT 1 AS a)
+GROUP BY a
+--
+ERROR: Column b is referenced laterally from WHERE or argument to an aggregation when there's grouping or aggregation in the query [at 1:27]
+SELECT a+rand() AS b, SUM(b+2) - MIN(b+b) AS agg_a, agg_a AS agg_b, agg_b + 1...
+                          ^
+==
+
+# Aggregation function referencing a previous post-grouped alias, the select
+# column itsef is a grouping column.
+SELECT a+rand() AS b, SUM(b+2) - MIN(b+b) AS agg_a, agg_a AS agg_b, agg_b + 1 as sum2
+FROM (SELECT 1 AS a)
+GROUP BY b
+--
+ERROR: Column b is referenced laterally from WHERE or argument to an aggregation when there's grouping or aggregation in the query [at 1:27]
+SELECT a+rand() AS b, SUM(b+2) - MIN(b+b) AS agg_a, agg_a AS agg_b, agg_b + 1...
+                          ^
+==
+
+# Post-grouping alias used in a pre-grouping context transitively.
+SELECT a+rand() AS b, b + rand() AS c, c + rand() AS d, d + rand() AS e, SUM(e)
+FROM (SELECT 1 AS a)
+GROUP BY a
+--
+ERROR: Column e is referenced laterally from WHERE or argument to an aggregation when there's grouping or aggregation in the query [at 1:78]
+SELECT a+rand() AS b, b + rand() AS c, c + rand() AS d, d + rand() AS e, SUM(e)
+                                                                             ^
+==
+
+# Ambiguous lateral alias
+SELECT a+rand() AS b, SUM(b+2) - MIN(b+b) AS agg_a, {{1 AS|agg_a AS|}} agg_a,
+       agg_a + 1 as sum2
+FROM (SELECT 1 AS a)
+GROUP BY a
+--
+ALTERNATION GROUP: 1 AS
+--
+ERROR: Column b is referenced laterally from WHERE or argument to an aggregation when there's grouping or aggregation in the query [at 1:27]
+SELECT a+rand() AS b, SUM(b+2) - MIN(b+b) AS agg_a, 1 AS agg_a,
+                          ^
+--
+ALTERNATION GROUP: agg_a AS
+--
+ERROR: Column b is referenced laterally from WHERE or argument to an aggregation when there's grouping or aggregation in the query [at 1:27]
+SELECT a+rand() AS b, SUM(b+2) - MIN(b+b) AS agg_a, agg_a AS agg_a,
+                          ^
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: Column b is referenced laterally from WHERE or argument to an aggregation when there's grouping or aggregation in the query [at 1:27]
+SELECT a+rand() AS b, SUM(b+2) - MIN(b+b) AS agg_a,  agg_a,
+                          ^
+==
+
+# Aggregation function referencing a forward alias
+SELECT SUM(b) AS sum_b, a+1 AS b
+FROM (SELECT 1 AS a)
+{{|GROUP BY a}}
+--
+
+ERROR: Unrecognized name: b [at 1:12]
+SELECT SUM(b) AS sum_b, a+1 AS b
+           ^
+==
+
+# Window function referencing a previous alias, no aggregation.
+SELECT a+rand() AS b, SUM(b) OVER (ORDER BY b + 2) as analytic
+FROM (SELECT 1 AS a)
+--
+QueryStmt
++-output_column_list=
+| +-$query.b#2 AS b [DOUBLE]
+| +-$analytic.analytic#4 AS analytic [DOUBLE]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.b#2, $analytic.analytic#4]
+    +-input_scan=
+      +-AnalyticScan
+        +-column_list=[$subquery1.a#1, $query.b#2, $analytic.analytic#4]
+        +-input_scan=
+        | +-ProjectScan
+        |   +-column_list=[$subquery1.a#1, $query.b#2, $orderby.$orderbycol1#5]
+        |   +-expr_list=
+        |   | +-$orderbycol1#5 :=
+        |   |   +-FunctionCall(GoogleSQL:$add(DOUBLE, DOUBLE) -> DOUBLE)
+        |   |     +-ColumnRef(type=DOUBLE, column=$query.b#2)
+        |   |     +-Literal(type=DOUBLE, value=2)
+        |   +-input_scan=
+        |     +-ProjectScan
+        |       +-column_list=[$subquery1.a#1, $query.b#2]
+        |       +-expr_list=
+        |       | +-b#2 :=
+        |       |   +-FunctionCall(GoogleSQL:$add(DOUBLE, DOUBLE) -> DOUBLE)
+        |       |     +-Cast(INT64 -> DOUBLE)
+        |       |     | +-ColumnRef(type=INT64, column=$subquery1.a#1)
+        |       |     +-FunctionCall(GoogleSQL:rand() -> DOUBLE)
+        |       +-input_scan=
+        |         +-ProjectScan
+        |           +-column_list=[$subquery1.a#1]
+        |           +-expr_list=
+        |           | +-a#1 := Literal(type=INT64, value=1)
+        |           +-input_scan=
+        |             +-SingleRowScan
+        +-function_group_list=
+          +-AnalyticFunctionGroup
+            +-order_by=
+            | +-WindowOrdering
+            |   +-order_by_item_list=
+            |     +-OrderByItem
+            |       +-column_ref=
+            |         +-ColumnRef(type=DOUBLE, column=$orderby.$orderbycol1#5)
+            +-analytic_function_list=
+              +-analytic#4 :=
+                +-AnalyticFunctionCall(GoogleSQL:sum(DOUBLE) -> DOUBLE)
+                  +-ColumnRef(type=DOUBLE, column=$query.b#2)
+                  +-window_frame=
+                    +-WindowFrame(frame_unit=RANGE)
+                      +-start_expr=
+                      | +-WindowFrameExpr(boundary_type=UNBOUNDED PRECEDING)
+                      +-end_expr=
+                        +-WindowFrameExpr(boundary_type=CURRENT ROW)
+==
+
+# Window function referencing a previous alias, with aggregation.
+SELECT SUM(a + 1) + rand() AS s, MIN(s + s) OVER (ORDER BY s*2) as analytic
+FROM (SELECT 1 AS a)
+GROUP BY a
+--
+QueryStmt
++-output_column_list=
+| +-$query.s#3 AS s [DOUBLE]
+| +-$analytic.analytic#6 AS analytic [DOUBLE]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.s#3, $analytic.analytic#6]
+    +-input_scan=
+      +-AnalyticScan
+        +-column_list=[$aggregate.$agg1#2, $query.s#3, $analytic.analytic#6]
+        +-input_scan=
+        | +-ProjectScan
+        |   +-column_list=[$aggregate.$agg1#2, $query.s#3, $orderby.$orderbycol1#7]
+        |   +-expr_list=
+        |   | +-$orderbycol1#7 :=
+        |   |   +-FunctionCall(GoogleSQL:$multiply(DOUBLE, DOUBLE) -> DOUBLE)
+        |   |     +-ColumnRef(type=DOUBLE, column=$query.s#3)
+        |   |     +-Literal(type=DOUBLE, value=2)
+        |   +-input_scan=
+        |     +-ProjectScan
+        |       +-column_list=[$aggregate.$agg1#2, $query.s#3]
+        |       +-expr_list=
+        |       | +-s#3 :=
+        |       |   +-FunctionCall(GoogleSQL:$add(DOUBLE, DOUBLE) -> DOUBLE)
+        |       |     +-Cast(INT64 -> DOUBLE)
+        |       |     | +-ColumnRef(type=INT64, column=$aggregate.$agg1#2)
+        |       |     +-FunctionCall(GoogleSQL:rand() -> DOUBLE)
+        |       +-input_scan=
+        |         +-AggregateScan
+        |           +-column_list=[$aggregate.$agg1#2]
+        |           +-input_scan=
+        |           | +-ProjectScan
+        |           |   +-column_list=[$subquery1.a#1]
+        |           |   +-expr_list=
+        |           |   | +-a#1 := Literal(type=INT64, value=1)
+        |           |   +-input_scan=
+        |           |     +-SingleRowScan
+        |           +-group_by_list=
+        |           | +-a#5 := ColumnRef(type=INT64, column=$subquery1.a#1)
+        |           +-aggregate_list=
+        |             +-$agg1#2 :=
+        |               +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+        |                 +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+        |                   +-ColumnRef(type=INT64, column=$subquery1.a#1)
+        |                   +-Literal(type=INT64, value=1)
+        +-function_group_list=
+          +-AnalyticFunctionGroup
+            +-order_by=
+            | +-WindowOrdering
+            |   +-order_by_item_list=
+            |     +-OrderByItem
+            |       +-column_ref=
+            |         +-ColumnRef(type=DOUBLE, column=$orderby.$orderbycol1#7)
+            +-analytic_function_list=
+              +-analytic#6 :=
+                +-AnalyticFunctionCall(GoogleSQL:min(DOUBLE) -> DOUBLE)
+                  +-FunctionCall(GoogleSQL:$add(DOUBLE, DOUBLE) -> DOUBLE)
+                  | +-ColumnRef(type=DOUBLE, column=$query.s#3)
+                  | +-ColumnRef(type=DOUBLE, column=$query.s#3)
+                  +-window_frame=
+                    +-WindowFrame(frame_unit=RANGE)
+                      +-start_expr=
+                      | +-WindowFrameExpr(boundary_type=UNBOUNDED PRECEDING)
+                      +-end_expr=
+                        +-WindowFrameExpr(boundary_type=CURRENT ROW)
+==
+
+# Window function referencing a forward alias
+SELECT ROW_NUMBER() OVER (ORDER BY b) as row_num, a+1 AS b FROM (SELECT 1 AS a)
+--
+
+ERROR: Unrecognized name: b [at 1:36]
+SELECT ROW_NUMBER() OVER (ORDER BY b) as row_num, a+1 AS b FROM (SELECT 1 AS a)
+                                   ^
+==
+
+# Mix of aggregation, window function and lateral reference
+SELECT SUM(a+1) AS b, b + 2 AS c, SUM(c + c) OVER () as w, w + 3 AS w2
+FROM (SELECT 1 AS a)
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.b#2 AS b [INT64]
+| +-$query.c#3 AS c [INT64]
+| +-$analytic.w#5 AS w [INT64]
+| +-$query.w2#6 AS w2 [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.b#2, $query.c#3, $analytic.w#5, $query.w2#6]
+    +-expr_list=
+    | +-w2#6 :=
+    |   +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |     +-ColumnRef(type=INT64, column=$analytic.w#5)
+    |     +-Literal(type=INT64, value=3)
+    +-input_scan=
+      +-AnalyticScan
+        +-column_list=[$aggregate.b#2, $query.c#3, $analytic.w#5]
+        +-input_scan=
+        | +-ProjectScan
+        |   +-column_list=[$aggregate.b#2, $query.c#3]
+        |   +-expr_list=
+        |   | +-c#3 :=
+        |   |   +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+        |   |     +-ColumnRef(type=INT64, column=$aggregate.b#2)
+        |   |     +-Literal(type=INT64, value=2)
+        |   +-input_scan=
+        |     +-AggregateScan
+        |       +-column_list=[$aggregate.b#2]
+        |       +-input_scan=
+        |       | +-ProjectScan
+        |       |   +-column_list=[$subquery1.a#1]
+        |       |   +-expr_list=
+        |       |   | +-a#1 := Literal(type=INT64, value=1)
+        |       |   +-input_scan=
+        |       |     +-SingleRowScan
+        |       +-aggregate_list=
+        |         +-b#2 :=
+        |           +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+        |             +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+        |               +-ColumnRef(type=INT64, column=$subquery1.a#1)
+        |               +-Literal(type=INT64, value=1)
+        +-function_group_list=
+          +-AnalyticFunctionGroup
+            +-analytic_function_list=
+              +-w#5 :=
+                +-AnalyticFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+                  +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+                  | +-ColumnRef(type=INT64, column=$query.c#3)
+                  | +-ColumnRef(type=INT64, column=$query.c#3)
+                  +-window_frame=
+                    +-WindowFrame(frame_unit=ROWS)
+                      +-start_expr=
+                      | +-WindowFrameExpr(boundary_type=UNBOUNDED PRECEDING)
+                      +-end_expr=
+                        +-WindowFrameExpr(boundary_type=UNBOUNDED FOLLOWING)
+==
+
+# Lateral reference to a window function from an aggregate
+SELECT ROW_NUMBER() OVER () as row_num, SUM(row_num) AS sum
+FROM (SELECT 1 AS a)
+--
+
+ERROR: Analytic functions cannot be arguments to aggregate functions [at 1:41]
+SELECT ROW_NUMBER() OVER () as row_num, SUM(row_num) AS sum
+                                        ^
+==
+
+# Lateral reference to an aggregate from a window function
+SELECT sum(a) AS sum_a, ROW_NUMBER() OVER (ORDER BY sum_a) as row_num
+FROM (SELECT 1 AS a)
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.sum_a#2 AS sum_a [INT64]
+| +-$analytic.row_num#4 AS row_num [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.sum_a#2, $analytic.row_num#4]
+    +-input_scan=
+      +-AnalyticScan
+        +-column_list=[$aggregate.sum_a#2, $analytic.row_num#4]
+        +-input_scan=
+        | +-AggregateScan
+        |   +-column_list=[$aggregate.sum_a#2]
+        |   +-input_scan=
+        |   | +-ProjectScan
+        |   |   +-column_list=[$subquery1.a#1]
+        |   |   +-expr_list=
+        |   |   | +-a#1 := Literal(type=INT64, value=1)
+        |   |   +-input_scan=
+        |   |     +-SingleRowScan
+        |   +-aggregate_list=
+        |     +-sum_a#2 :=
+        |       +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+        |         +-ColumnRef(type=INT64, column=$subquery1.a#1)
+        +-function_group_list=
+          +-AnalyticFunctionGroup
+            +-order_by=
+            | +-WindowOrdering
+            |   +-order_by_item_list=
+            |     +-OrderByItem
+            |       +-column_ref=
+            |         +-ColumnRef(type=INT64, column=$aggregate.sum_a#2)
+            +-analytic_function_list=
+              +-row_num#4 := AnalyticFunctionCall(GoogleSQL:row_number() -> INT64)
+==
+
+# lateral reference to an aggregate from another aggregate.
+[language_features=MAXIMUM{{,+LATERAL_COLUMN_REFERENCES|}}]
+select max(a) AS x, sum(x) AS y
+from (select 1 AS a)
+--
+ALTERNATION GROUP: ,+LATERAL_COLUMN_REFERENCES
+--
+ERROR: Column x is referenced laterally from WHERE or argument to an aggregation when there's grouping or aggregation in the query [at 1:25]
+select max(a) AS x, sum(x) AS y
+                        ^
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: Unrecognized name: x [at 1:25]
+select max(a) AS x, sum(x) AS y
+                        ^
+==
+
+# Referencing an aggregation from the WHERE clause, directly and indirectly.
+SELECT sum(a) AS s, s + 1 AS s2
+FROM (SELECT 1 AS a)
+WHERE {{s|s2}} > 0
+--
+
+ALTERNATION GROUP: s
+--
+ERROR: Column s is referenced laterally from WHERE or argument to an aggregation when there's grouping or aggregation in the query [at 3:7]
+WHERE s > 0
+      ^
+--
+ALTERNATION GROUP: s2
+--
+ERROR: Column s2 is referenced laterally from WHERE or argument to an aggregation when there's grouping or aggregation in the query [at 3:7]
+WHERE s2 > 0
+      ^
+==
+
+# Referencing a window function from the WHERE clause, directly and indirectly,
+# With and without aggregation.
+SELECT sum({{a|sum(a)}}) OVER() AS w, w + 1 AS w2
+FROM (SELECT 1 AS a)
+WHERE {{w|w2}} > 0
+--
+
+ALTERNATION GROUP: a,w
+--
+ERROR: Column w contains an analytic function, which is not allowed in WHERE clause [at 3:7]
+WHERE w > 0
+      ^
+--
+ALTERNATION GROUP: a,w2
+--
+ERROR: Column w2 contains an analytic function, which is not allowed in WHERE clause [at 3:7]
+WHERE w2 > 0
+      ^
+--
+ALTERNATION GROUP: sum(a),w
+--
+ERROR: Column w is referenced laterally from WHERE or argument to an aggregation when there's grouping or aggregation in the query [at 3:7]
+WHERE w > 0
+      ^
+--
+ALTERNATION GROUP: sum(a),w2
+--
+ERROR: Column w2 is referenced laterally from WHERE or argument to an aggregation when there's grouping or aggregation in the query [at 3:7]
+WHERE w2 > 0
+      ^
+==
+
+# Referencing a window function from the HAVING clause, directly and indirectly,
+# With and without aggregation.
+SELECT sum({{a|sum(a)}}) OVER() AS w, w + 1 AS w2
+FROM (SELECT 1 AS a)
+HAVING {{w|w2}} > 0
+--
+ALTERNATION GROUPS:
+    a,w
+    sum(a),w
+--
+ERROR: Column w contains an analytic function, which is not allowed in HAVING clause [at 3:8]
+HAVING w > 0
+       ^
+--
+ALTERNATION GROUPS:
+    a,w2
+    sum(a),w2
+--
+ERROR: Column w2 contains an analytic function, which is not allowed in HAVING clause [at 3:8]
+HAVING w2 > 0
+       ^
+==
+
+# Cyclic references
+SELECT x + b AS a, x + a AS b FROM (SELECT 1 AS x)
+--
+
+ERROR: Unrecognized name: b [at 1:12]
+SELECT x + b AS a, x + a AS b FROM (SELECT 1 AS x)
+           ^
+==
+
+# Same name: FROM column takes precedence.
+SELECT a + a AS a, a + a AS a FROM (SELECT 1 AS a, 10 AS b)
+--
+QueryStmt
++-output_column_list=
+| +-$query.a#3 AS a [INT64]
+| +-$query.a#4 AS a [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=$query.[a#3, a#4]
+    +-expr_list=
+    | +-a#3 :=
+    | | +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    | |   +-ColumnRef(type=INT64, column=$subquery1.a#1)
+    | |   +-ColumnRef(type=INT64, column=$subquery1.a#1)
+    | +-a#4 :=
+    |   +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |     +-ColumnRef(type=INT64, column=$subquery1.a#1)
+    |     +-ColumnRef(type=INT64, column=$subquery1.a#1)
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=$subquery1.[a#1, b#2]
+        +-expr_list=
+        | +-a#1 := Literal(type=INT64, value=1)
+        | +-b#2 := Literal(type=INT64, value=10)
+        +-input_scan=
+          +-SingleRowScan
+==
+
+# Matching post-grouping columns referenced laterally
+[no_enable_literal_replacement]
+SELECT a+1 AS x, x+2 AS y, MIN(b) + y AS z, SUM(z) OVER () as w
+FROM (SELECT 1 AS a, 2 AS b)
+GROUP BY a+1
+HAVING x < z
+QUALIFY w > 0
+ORDER BY x,y,w,z
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.$groupbycol1#8 AS x [INT64]
+| +-$query.y#9 AS y [INT64]
+| +-$query.z#6 AS z [INT64]
+| +-$analytic.w#10 AS w [INT64]
++-query=
+  +-OrderByScan
+    +-column_list=[$groupby.$groupbycol1#8, $query.y#9, $query.z#6, $analytic.w#10]
+    +-is_ordered=TRUE
+    +-input_scan=
+    | +-FilterScan
+    |   +-column_list=[$groupby.$groupbycol1#8, $aggregate.$agg1#4, $query.y#9, $query.z#6, $analytic.w#10]
+    |   +-input_scan=
+    |   | +-AnalyticScan
+    |   |   +-column_list=[$groupby.$groupbycol1#8, $aggregate.$agg1#4, $query.y#9, $query.z#6, $analytic.w#10]
+    |   |   +-input_scan=
+    |   |   | +-FilterScan
+    |   |   |   +-column_list=[$groupby.$groupbycol1#8, $aggregate.$agg1#4, $query.y#9, $query.z#6]
+    |   |   |   +-input_scan=
+    |   |   |   | +-ProjectScan
+    |   |   |   |   +-column_list=[$groupby.$groupbycol1#8, $aggregate.$agg1#4, $query.y#9, $query.z#6]
+    |   |   |   |   +-expr_list=
+    |   |   |   |   | +-z#6 :=
+    |   |   |   |   |   +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |   |   |   |   |     +-ColumnRef(type=INT64, column=$aggregate.$agg1#4)
+    |   |   |   |   |     +-ColumnRef(type=INT64, column=$query.y#9)
+    |   |   |   |   +-input_scan=
+    |   |   |   |     +-ProjectScan
+    |   |   |   |       +-column_list=[$groupby.$groupbycol1#8, $aggregate.$agg1#4, $query.y#9]
+    |   |   |   |       +-expr_list=
+    |   |   |   |       | +-y#9 :=
+    |   |   |   |       |   +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |   |   |   |       |     +-ColumnRef(type=INT64, column=$groupby.$groupbycol1#8)
+    |   |   |   |       |     +-Literal(type=INT64, value=2)
+    |   |   |   |       +-input_scan=
+    |   |   |   |         +-AggregateScan
+    |   |   |   |           +-column_list=[$groupby.$groupbycol1#8, $aggregate.$agg1#4]
+    |   |   |   |           +-input_scan=
+    |   |   |   |           | +-ProjectScan
+    |   |   |   |           |   +-column_list=[$subquery1.a#1, $subquery1.b#2, $query.x#3]
+    |   |   |   |           |   +-expr_list=
+    |   |   |   |           |   | +-x#3 :=
+    |   |   |   |           |   |   +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |   |   |   |           |   |     +-ColumnRef(type=INT64, column=$subquery1.a#1)
+    |   |   |   |           |   |     +-Literal(type=INT64, value=1)
+    |   |   |   |           |   +-input_scan=
+    |   |   |   |           |     +-ProjectScan
+    |   |   |   |           |       +-column_list=$subquery1.[a#1, b#2]
+    |   |   |   |           |       +-expr_list=
+    |   |   |   |           |       | +-a#1 := Literal(type=INT64, value=1)
+    |   |   |   |           |       | +-b#2 := Literal(type=INT64, value=2)
+    |   |   |   |           |       +-input_scan=
+    |   |   |   |           |         +-SingleRowScan
+    |   |   |   |           +-group_by_list=
+    |   |   |   |           | +-$groupbycol1#8 := ColumnRef(type=INT64, column=$query.x#3)
+    |   |   |   |           +-aggregate_list=
+    |   |   |   |             +-$agg1#4 :=
+    |   |   |   |               +-AggregateFunctionCall(GoogleSQL:min(INT64) -> INT64)
+    |   |   |   |                 +-ColumnRef(type=INT64, column=$subquery1.b#2)
+    |   |   |   +-filter_expr=
+    |   |   |     +-FunctionCall(GoogleSQL:$less(INT64, INT64) -> BOOL)
+    |   |   |       +-ColumnRef(type=INT64, column=$groupby.$groupbycol1#8)
+    |   |   |       +-ColumnRef(type=INT64, column=$query.z#6)
+    |   |   +-function_group_list=
+    |   |     +-AnalyticFunctionGroup
+    |   |       +-analytic_function_list=
+    |   |         +-w#10 :=
+    |   |           +-AnalyticFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+    |   |             +-ColumnRef(type=INT64, column=$query.z#6)
+    |   |             +-window_frame=
+    |   |               +-WindowFrame(frame_unit=ROWS)
+    |   |                 +-start_expr=
+    |   |                 | +-WindowFrameExpr(boundary_type=UNBOUNDED PRECEDING)
+    |   |                 +-end_expr=
+    |   |                   +-WindowFrameExpr(boundary_type=UNBOUNDED FOLLOWING)
+    |   +-filter_expr=
+    |     +-FunctionCall(GoogleSQL:$greater(INT64, INT64) -> BOOL)
+    |       +-ColumnRef(type=INT64, column=$analytic.w#10)
+    |       +-Literal(type=INT64, value=0)
+    +-order_by_item_list=
+      +-OrderByItem
+      | +-column_ref=
+      |   +-ColumnRef(type=INT64, column=$groupby.$groupbycol1#8)
+      +-OrderByItem
+      | +-column_ref=
+      |   +-ColumnRef(type=INT64, column=$query.y#9)
+      +-OrderByItem
+      | +-column_ref=
+      |   +-ColumnRef(type=INT64, column=$analytic.w#10)
+      +-OrderByItem
+        +-column_ref=
+          +-ColumnRef(type=INT64, column=$query.z#6)
+==
+
+# Implicit aliases
+SELECT x.field1, {{field1|SUM(field1)}}
+FROM (SELECT STRUCT(1 AS field1, 2 AS field2) AS x)
+GROUP BY x
+--
+ALTERNATION GROUP: field1
+--
+QueryStmt
++-output_column_list=
+| +-$query.field1#4 AS field1 [INT64]
+| +-$query.field1#4 AS field1 [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=$query.[field1#4, field1#4]
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[$groupby.x#3, $query.field1#4]
+        +-expr_list=
+        | +-field1#4 :=
+        |   +-GetStructField
+        |     +-type=INT64
+        |     +-expr=
+        |     | +-ColumnRef(type=STRUCT<field1 INT64, field2 INT64>, column=$groupby.x#3)
+        |     +-field_idx=0
+        +-input_scan=
+          +-AggregateScan
+            +-column_list=[$groupby.x#3]
+            +-input_scan=
+            | +-ProjectScan
+            |   +-column_list=[$subquery1.x#1]
+            |   +-expr_list=
+            |   | +-x#1 := Literal(type=STRUCT<field1 INT64, field2 INT64>, value={field1:1, field2:2})
+            |   +-input_scan=
+            |     +-SingleRowScan
+            +-group_by_list=
+              +-x#3 := ColumnRef(type=STRUCT<field1 INT64, field2 INT64>, column=$subquery1.x#1)
+--
+ALTERNATION GROUP: SUM(field1)
+--
+ERROR: Column field1 is referenced laterally from WHERE or argument to an aggregation when there's grouping or aggregation in the query [at 1:22]
+SELECT x.field1, SUM(field1)
+                     ^
+==
+
+SELECT {{|x.field1 AS a,}} x.field1 AS b, b+rand() AS c
+FROM (SELECT STRUCT(1 AS field1, 2 AS field2) AS x)
+GROUP BY x.field1, b
+--
+ALTERNATION GROUP: <empty>
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.field1#4 AS b [INT64]
+| +-$query.c#5 AS c [DOUBLE]
++-query=
+  +-ProjectScan
+    +-column_list=[$groupby.field1#4, $query.c#5]
+    +-expr_list=
+    | +-c#5 :=
+    |   +-FunctionCall(GoogleSQL:$add(DOUBLE, DOUBLE) -> DOUBLE)
+    |     +-Cast(INT64 -> DOUBLE)
+    |     | +-ColumnRef(type=INT64, column=$groupby.field1#4)
+    |     +-FunctionCall(GoogleSQL:rand() -> DOUBLE)
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$groupby.field1#4]
+        +-input_scan=
+        | +-ProjectScan
+        |   +-column_list=[$subquery1.x#1, $query.b#2]
+        |   +-expr_list=
+        |   | +-b#2 :=
+        |   |   +-GetStructField
+        |   |     +-type=INT64
+        |   |     +-expr=
+        |   |     | +-ColumnRef(type=STRUCT<field1 INT64, field2 INT64>, column=$subquery1.x#1)
+        |   |     +-field_idx=0
+        |   +-input_scan=
+        |     +-ProjectScan
+        |       +-column_list=[$subquery1.x#1]
+        |       +-expr_list=
+        |       | +-x#1 := Literal(type=STRUCT<field1 INT64, field2 INT64>, value={field1:1, field2:2})
+        |       +-input_scan=
+        |         +-SingleRowScan
+        +-group_by_list=
+          +-field1#4 := ColumnRef(type=INT64, column=$query.b#2)
+--
+ALTERNATION GROUP: x.field1 AS a,
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.field1#5 AS a [INT64]
+| +-$groupby.field1#5 AS b [INT64]
+| +-$query.c#6 AS c [DOUBLE]
++-query=
+  +-ProjectScan
+    +-column_list=[$groupby.field1#5, $groupby.field1#5, $query.c#6]
+    +-expr_list=
+    | +-c#6 :=
+    |   +-FunctionCall(GoogleSQL:$add(DOUBLE, DOUBLE) -> DOUBLE)
+    |     +-Cast(INT64 -> DOUBLE)
+    |     | +-ColumnRef(type=INT64, column=$groupby.field1#5)
+    |     +-FunctionCall(GoogleSQL:rand() -> DOUBLE)
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$groupby.field1#5]
+        +-input_scan=
+        | +-ProjectScan
+        |   +-column_list=[$subquery1.x#1, $query.b#2, $pre_groupby.a#3]
+        |   +-expr_list=
+        |   | +-a#3 :=
+        |   |   +-GetStructField
+        |   |     +-type=INT64
+        |   |     +-expr=
+        |   |     | +-ColumnRef(type=STRUCT<field1 INT64, field2 INT64>, column=$subquery1.x#1)
+        |   |     +-field_idx=0
+        |   +-input_scan=
+        |     +-ProjectScan
+        |       +-column_list=[$subquery1.x#1, $query.b#2]
+        |       +-expr_list=
+        |       | +-b#2 :=
+        |       |   +-GetStructField
+        |       |     +-type=INT64
+        |       |     +-expr=
+        |       |     | +-ColumnRef(type=STRUCT<field1 INT64, field2 INT64>, column=$subquery1.x#1)
+        |       |     +-field_idx=0
+        |       +-input_scan=
+        |         +-ProjectScan
+        |           +-column_list=[$subquery1.x#1]
+        |           +-expr_list=
+        |           | +-x#1 := Literal(type=STRUCT<field1 INT64, field2 INT64>, value={field1:1, field2:2})
+        |           +-input_scan=
+        |             +-SingleRowScan
+        +-group_by_list=
+          +-field1#5 := ColumnRef(type=INT64, column=$query.b#2)
+==
+
+# DISTINCT
+SELECT DISTINCT x+rand() AS a, a+1 AS b, b+2 AS c
+FROM (SELECT 1 AS x)
+{{|GROUP BY a}}
+--
+ALTERNATION GROUP: <empty>
+--
+QueryStmt
++-output_column_list=
+| +-$distinct.a#5 AS a [DOUBLE]
+| +-$distinct.b#6 AS b [DOUBLE]
+| +-$distinct.c#7 AS c [DOUBLE]
++-query=
+  +-AggregateScan
+    +-column_list=$distinct.[a#5, b#6, c#7]
+    +-input_scan=
+    | +-ProjectScan
+    |   +-column_list=[$subquery1.x#1, $query.a#2, $query.b#3, $query.c#4]
+    |   +-expr_list=
+    |   | +-c#4 :=
+    |   |   +-FunctionCall(GoogleSQL:$add(DOUBLE, DOUBLE) -> DOUBLE)
+    |   |     +-ColumnRef(type=DOUBLE, column=$query.b#3)
+    |   |     +-Literal(type=DOUBLE, value=2)
+    |   +-input_scan=
+    |     +-ProjectScan
+    |       +-column_list=[$subquery1.x#1, $query.a#2, $query.b#3]
+    |       +-expr_list=
+    |       | +-b#3 :=
+    |       |   +-FunctionCall(GoogleSQL:$add(DOUBLE, DOUBLE) -> DOUBLE)
+    |       |     +-ColumnRef(type=DOUBLE, column=$query.a#2)
+    |       |     +-Literal(type=DOUBLE, value=1)
+    |       +-input_scan=
+    |         +-ProjectScan
+    |           +-column_list=[$subquery1.x#1, $query.a#2]
+    |           +-expr_list=
+    |           | +-a#2 :=
+    |           |   +-FunctionCall(GoogleSQL:$add(DOUBLE, DOUBLE) -> DOUBLE)
+    |           |     +-Cast(INT64 -> DOUBLE)
+    |           |     | +-ColumnRef(type=INT64, column=$subquery1.x#1)
+    |           |     +-FunctionCall(GoogleSQL:rand() -> DOUBLE)
+    |           +-input_scan=
+    |             +-ProjectScan
+    |               +-column_list=[$subquery1.x#1]
+    |               +-expr_list=
+    |               | +-x#1 := Literal(type=INT64, value=1)
+    |               +-input_scan=
+    |                 +-SingleRowScan
+    +-group_by_list=
+      +-a#5 := ColumnRef(type=DOUBLE, column=$query.a#2)
+      +-b#6 := ColumnRef(type=DOUBLE, column=$query.b#3)
+      +-c#7 := ColumnRef(type=DOUBLE, column=$query.c#4)
+--
+ALTERNATION GROUP: GROUP BY a
+--
+QueryStmt
++-output_column_list=
+| +-$distinct.a#8 AS a [DOUBLE]
+| +-$distinct.b#9 AS b [DOUBLE]
+| +-$distinct.c#10 AS c [DOUBLE]
++-query=
+  +-AggregateScan
+    +-column_list=$distinct.[a#8, b#9, c#10]
+    +-input_scan=
+    | +-ProjectScan
+    |   +-column_list=[$groupby.a#5, $query.b#6, $query.c#7]
+    |   +-expr_list=
+    |   | +-c#7 :=
+    |   |   +-FunctionCall(GoogleSQL:$add(DOUBLE, DOUBLE) -> DOUBLE)
+    |   |     +-ColumnRef(type=DOUBLE, column=$query.b#6)
+    |   |     +-Literal(type=DOUBLE, value=2)
+    |   +-input_scan=
+    |     +-ProjectScan
+    |       +-column_list=[$groupby.a#5, $query.b#6]
+    |       +-expr_list=
+    |       | +-b#6 :=
+    |       |   +-FunctionCall(GoogleSQL:$add(DOUBLE, DOUBLE) -> DOUBLE)
+    |       |     +-ColumnRef(type=DOUBLE, column=$groupby.a#5)
+    |       |     +-Literal(type=DOUBLE, value=1)
+    |       +-input_scan=
+    |         +-AggregateScan
+    |           +-column_list=[$groupby.a#5]
+    |           +-input_scan=
+    |           | +-ProjectScan
+    |           |   +-column_list=[$subquery1.x#1, $query.a#2]
+    |           |   +-expr_list=
+    |           |   | +-a#2 :=
+    |           |   |   +-FunctionCall(GoogleSQL:$add(DOUBLE, DOUBLE) -> DOUBLE)
+    |           |   |     +-Cast(INT64 -> DOUBLE)
+    |           |   |     | +-ColumnRef(type=INT64, column=$subquery1.x#1)
+    |           |   |     +-FunctionCall(GoogleSQL:rand() -> DOUBLE)
+    |           |   +-input_scan=
+    |           |     +-ProjectScan
+    |           |       +-column_list=[$subquery1.x#1]
+    |           |       +-expr_list=
+    |           |       | +-x#1 := Literal(type=INT64, value=1)
+    |           |       +-input_scan=
+    |           |         +-SingleRowScan
+    |           +-group_by_list=
+    |             +-a#5 := ColumnRef(type=DOUBLE, column=$query.a#2)
+    +-group_by_list=
+      +-a#8 := ColumnRef(type=DOUBLE, column=$groupby.a#5)
+      +-b#9 := ColumnRef(type=DOUBLE, column=$query.b#6)
+      +-c#10 := ColumnRef(type=DOUBLE, column=$query.c#7)
+==
+
+# DISTINCT with aggregations
+SELECT DISTINCT x+rand() AS a, a+1 AS b, b+2 AS c, SUM(a) AS s1{{|, SUM(c) AS s2}}
+FROM (SELECT 1 AS x)
+GROUP BY a
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: Column a is referenced laterally from WHERE or argument to an aggregation when there's grouping or aggregation in the query [at 1:56]
+SELECT DISTINCT x+rand() AS a, a+1 AS b, b+2 AS c, SUM(a) AS s1
+                                                       ^
+--
+ALTERNATION GROUP: , SUM(c) AS s2
+--
+ERROR: Column a is referenced laterally from WHERE or argument to an aggregation when there's grouping or aggregation in the query [at 1:56]
+SELECT DISTINCT x+rand() AS a, a+1 AS b, b+2 AS c, SUM(a) AS s1, SUM(c) AS s2
+                                                       ^
+==
+
+# GROUP BY ALL, stable expressions.
+SELECT{{| DISTINCT}} x+1 AS a, a+1 AS b, b+2 AS c, SUM(a) AS s, SUM(c) AS s
+FROM (SELECT 1 AS x)
+GROUP BY ALL
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: Column a is referenced laterally from WHERE or argument to an aggregation when there's grouping or aggregation in the query [at 1:42]
+SELECT x+1 AS a, a+1 AS b, b+2 AS c, SUM(a) AS s, SUM(c) AS s
+                                         ^
+--
+ALTERNATION GROUP:  DISTINCT
+--
+ERROR: Column a is referenced laterally from WHERE or argument to an aggregation when there's grouping or aggregation in the query [at 1:51]
+SELECT DISTINCT x+1 AS a, a+1 AS b, b+2 AS c, SUM(a) AS s, SUM(c) AS s
+                                                  ^
+==
+
+# GROUP BY ALL, volatile expressions.
+SELECT{{| DISTINCT}} x+rand() AS a, a+1 AS b, b+2 AS c, SUM(a) AS s, SUM(c) AS s
+FROM (SELECT 1 AS x)
+GROUP BY ALL
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: Column a is referenced laterally from WHERE or argument to an aggregation when there's grouping or aggregation in the query [at 1:47]
+SELECT x+rand() AS a, a+1 AS b, b+2 AS c, SUM(a) AS s, SUM(c) AS s
+                                              ^
+--
+ALTERNATION GROUP:  DISTINCT
+--
+ERROR: Column a is referenced laterally from WHERE or argument to an aggregation when there's grouping or aggregation in the query [at 1:56]
+SELECT DISTINCT x+rand() AS a, a+1 AS b, b+2 AS c, SUM(a) AS s, SUM(c) AS s
+                                                       ^
+==
+
+# Columns for dot-star themselves laterally referenced.
+SELECT x.*, field2 + rand() AS a, MAX(field2) OVER() AS w1, w1 + rand() AS w2
+FROM (SELECT STRUCT(1 AS field1, 2 AS field2) AS x) AS t
+{{|GROUP BY x}}
+--
+ALTERNATION GROUP: <empty>
+--
+QueryStmt
++-output_column_list=
+| +-$query.field1#4 AS field1 [INT64]
+| +-$query.field2#5 AS field2 [INT64]
+| +-$query.a#6 AS a [DOUBLE]
+| +-$analytic.w1#7 AS w1 [INT64]
+| +-$query.w2#8 AS w2 [DOUBLE]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.field1#4, $query.field2#5, $query.a#6, $analytic.w1#7, $query.w2#8]
+    +-expr_list=
+    | +-w2#8 :=
+    |   +-FunctionCall(GoogleSQL:$add(DOUBLE, DOUBLE) -> DOUBLE)
+    |     +-Cast(INT64 -> DOUBLE)
+    |     | +-ColumnRef(type=INT64, column=$analytic.w1#7)
+    |     +-FunctionCall(GoogleSQL:rand() -> DOUBLE)
+    +-input_scan=
+      +-AnalyticScan
+        +-column_list=[t.x#1, $query.field1#4, $query.field2#5, $query.a#6, $analytic.w1#7]
+        +-input_scan=
+        | +-ProjectScan
+        |   +-column_list=[t.x#1, $query.field1#4, $query.field2#5, $query.a#6]
+        |   +-expr_list=
+        |   | +-field1#4 :=
+        |   | | +-GetStructField
+        |   | |   +-type=INT64
+        |   | |   +-expr=
+        |   | |   | +-ColumnRef(type=STRUCT<field1 INT64, field2 INT64>, column=t.x#1)
+        |   | |   +-field_idx=0
+        |   | +-a#6 :=
+        |   |   +-FunctionCall(GoogleSQL:$add(DOUBLE, DOUBLE) -> DOUBLE)
+        |   |     +-Cast(INT64 -> DOUBLE)
+        |   |     | +-ColumnRef(type=INT64, column=$query.field2#5)
+        |   |     +-FunctionCall(GoogleSQL:rand() -> DOUBLE)
+        |   +-input_scan=
+        |     +-ProjectScan
+        |       +-column_list=[t.x#1, $query.field2#5]
+        |       +-expr_list=
+        |       | +-field2#5 :=
+        |       |   +-GetStructField
+        |       |     +-type=INT64
+        |       |     +-expr=
+        |       |     | +-ColumnRef(type=STRUCT<field1 INT64, field2 INT64>, column=t.x#1)
+        |       |     +-field_idx=1
+        |       +-input_scan=
+        |         +-ProjectScan
+        |           +-column_list=[t.x#1]
+        |           +-expr_list=
+        |           | +-x#1 := Literal(type=STRUCT<field1 INT64, field2 INT64>, value={field1:1, field2:2})
+        |           +-input_scan=
+        |             +-SingleRowScan
+        +-function_group_list=
+          +-AnalyticFunctionGroup
+            +-analytic_function_list=
+              +-w1#7 :=
+                +-AnalyticFunctionCall(GoogleSQL:max(INT64) -> INT64)
+                  +-ColumnRef(type=INT64, column=$query.field2#5)
+                  +-window_frame=
+                    +-WindowFrame(frame_unit=ROWS)
+                      +-start_expr=
+                      | +-WindowFrameExpr(boundary_type=UNBOUNDED PRECEDING)
+                      +-end_expr=
+                        +-WindowFrameExpr(boundary_type=UNBOUNDED FOLLOWING)
+--
+ALTERNATION GROUP: GROUP BY x
+--
+ERROR: Star expansion expression references column field1 which is neither grouped nor aggregated [at 1:8]
+SELECT x.*, field2 + rand() AS a, MAX(field2) OVER() AS w1, w1 + rand() AS w2
+       ^
+==
+
+# Columns for dot-star on analytic themselves laterally referenced.
+SELECT (ANY_VALUE(x) OVER()) AS w, w.*, field2 + rand() AS a
+FROM (SELECT STRUCT(1 AS field1, 2 AS field2) AS x) AS t
+{{|GROUP BY x}}
+--
+ALTERNATION GROUP: <empty>
+--
+QueryStmt
++-output_column_list=
+| +-$analytic.w#4 AS w [STRUCT<field1 INT64, field2 INT64>]
+| +-$query.field1#5 AS field1 [INT64]
+| +-$query.field2#6 AS field2 [INT64]
+| +-$query.a#7 AS a [DOUBLE]
++-query=
+  +-ProjectScan
+    +-column_list=[$analytic.w#4, $query.field1#5, $query.field2#6, $query.a#7]
+    +-expr_list=
+    | +-field1#5 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<field1 INT64, field2 INT64>, column=$analytic.w#4)
+    | |   +-field_idx=0
+    | +-a#7 :=
+    |   +-FunctionCall(GoogleSQL:$add(DOUBLE, DOUBLE) -> DOUBLE)
+    |     +-Cast(INT64 -> DOUBLE)
+    |     | +-ColumnRef(type=INT64, column=$query.field2#6)
+    |     +-FunctionCall(GoogleSQL:rand() -> DOUBLE)
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[t.x#1, $analytic.w#4, $query.field2#6]
+        +-expr_list=
+        | +-field2#6 :=
+        |   +-GetStructField
+        |     +-type=INT64
+        |     +-expr=
+        |     | +-ColumnRef(type=STRUCT<field1 INT64, field2 INT64>, column=$analytic.w#4)
+        |     +-field_idx=1
+        +-input_scan=
+          +-AnalyticScan
+            +-column_list=[t.x#1, $analytic.w#4]
+            +-input_scan=
+            | +-ProjectScan
+            |   +-column_list=[t.x#1]
+            |   +-expr_list=
+            |   | +-x#1 := Literal(type=STRUCT<field1 INT64, field2 INT64>, value={field1:1, field2:2})
+            |   +-input_scan=
+            |     +-SingleRowScan
+            +-function_group_list=
+              +-AnalyticFunctionGroup
+                +-analytic_function_list=
+                  +-w#4 :=
+                    +-AnalyticFunctionCall(GoogleSQL:any_value(STRUCT<field1 INT64, field2 INT64>) -> STRUCT<field1 INT64, field2 INT64>)
+                      +-ColumnRef(type=STRUCT<field1 INT64, field2 INT64>, column=t.x#1)
+                      +-window_frame=
+                        +-WindowFrame(frame_unit=ROWS)
+                          +-start_expr=
+                          | +-WindowFrameExpr(boundary_type=UNBOUNDED PRECEDING)
+                          +-end_expr=
+                            +-WindowFrameExpr(boundary_type=UNBOUNDED FOLLOWING)
+--
+ALTERNATION GROUP: GROUP BY x
+--
+QueryStmt
++-output_column_list=
+| +-$analytic.w#5 AS w [STRUCT<field1 INT64, field2 INT64>]
+| +-$query.field1#6 AS field1 [INT64]
+| +-$query.field2#7 AS field2 [INT64]
+| +-$query.a#8 AS a [DOUBLE]
++-query=
+  +-ProjectScan
+    +-column_list=[$analytic.w#5, $query.field1#6, $query.field2#7, $query.a#8]
+    +-expr_list=
+    | +-field1#6 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<field1 INT64, field2 INT64>, column=$analytic.w#5)
+    | |   +-field_idx=0
+    | +-a#8 :=
+    |   +-FunctionCall(GoogleSQL:$add(DOUBLE, DOUBLE) -> DOUBLE)
+    |     +-Cast(INT64 -> DOUBLE)
+    |     | +-ColumnRef(type=INT64, column=$query.field2#7)
+    |     +-FunctionCall(GoogleSQL:rand() -> DOUBLE)
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[$groupby.x#4, $analytic.w#5, $query.field2#7]
+        +-expr_list=
+        | +-field2#7 :=
+        |   +-GetStructField
+        |     +-type=INT64
+        |     +-expr=
+        |     | +-ColumnRef(type=STRUCT<field1 INT64, field2 INT64>, column=$analytic.w#5)
+        |     +-field_idx=1
+        +-input_scan=
+          +-AnalyticScan
+            +-column_list=[$groupby.x#4, $analytic.w#5]
+            +-input_scan=
+            | +-AggregateScan
+            |   +-column_list=[$groupby.x#4]
+            |   +-input_scan=
+            |   | +-ProjectScan
+            |   |   +-column_list=[t.x#1]
+            |   |   +-expr_list=
+            |   |   | +-x#1 := Literal(type=STRUCT<field1 INT64, field2 INT64>, value={field1:1, field2:2})
+            |   |   +-input_scan=
+            |   |     +-SingleRowScan
+            |   +-group_by_list=
+            |     +-x#4 := ColumnRef(type=STRUCT<field1 INT64, field2 INT64>, column=t.x#1)
+            +-function_group_list=
+              +-AnalyticFunctionGroup
+                +-analytic_function_list=
+                  +-w#5 :=
+                    +-AnalyticFunctionCall(GoogleSQL:any_value(STRUCT<field1 INT64, field2 INT64>) -> STRUCT<field1 INT64, field2 INT64>)
+                      +-ColumnRef(type=STRUCT<field1 INT64, field2 INT64>, column=$groupby.x#4)
+                      +-window_frame=
+                        +-WindowFrame(frame_unit=ROWS)
+                          +-start_expr=
+                          | +-WindowFrameExpr(boundary_type=UNBOUNDED PRECEDING)
+                          +-end_expr=
+                            +-WindowFrameExpr(boundary_type=UNBOUNDED FOLLOWING)
+==
+
+# Columns for dot-star on aggregation themselves laterally referenced.
+SELECT ANY_VALUE(x) AS m, m.*, field2 + rand() AS a
+FROM (SELECT STRUCT(1 AS field1, 2 AS field2) AS x) AS t
+{{|GROUP BY x}}
+--
+ALTERNATION GROUP: <empty>
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.m#2 AS m [STRUCT<field1 INT64, field2 INT64>]
+| +-$query.field1#4 AS field1 [INT64]
+| +-$query.field2#5 AS field2 [INT64]
+| +-$query.a#6 AS a [DOUBLE]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.m#2, $query.field1#4, $query.field2#5, $query.a#6]
+    +-expr_list=
+    | +-field1#4 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<field1 INT64, field2 INT64>, column=$aggregate.m#2)
+    | |   +-field_idx=0
+    | +-a#6 :=
+    |   +-FunctionCall(GoogleSQL:$add(DOUBLE, DOUBLE) -> DOUBLE)
+    |     +-Cast(INT64 -> DOUBLE)
+    |     | +-ColumnRef(type=INT64, column=$query.field2#5)
+    |     +-FunctionCall(GoogleSQL:rand() -> DOUBLE)
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[$aggregate.m#2, $query.field2#5]
+        +-expr_list=
+        | +-field2#5 :=
+        |   +-GetStructField
+        |     +-type=INT64
+        |     +-expr=
+        |     | +-ColumnRef(type=STRUCT<field1 INT64, field2 INT64>, column=$aggregate.m#2)
+        |     +-field_idx=1
+        +-input_scan=
+          +-AggregateScan
+            +-column_list=[$aggregate.m#2]
+            +-input_scan=
+            | +-ProjectScan
+            |   +-column_list=[t.x#1]
+            |   +-expr_list=
+            |   | +-x#1 := Literal(type=STRUCT<field1 INT64, field2 INT64>, value={field1:1, field2:2})
+            |   +-input_scan=
+            |     +-SingleRowScan
+            +-aggregate_list=
+              +-m#2 :=
+                +-AggregateFunctionCall(GoogleSQL:any_value(STRUCT<field1 INT64, field2 INT64>) -> STRUCT<field1 INT64, field2 INT64>)
+                  +-ColumnRef(type=STRUCT<field1 INT64, field2 INT64>, column=t.x#1)
+--
+ALTERNATION GROUP: GROUP BY x
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.m#2 AS m [STRUCT<field1 INT64, field2 INT64>]
+| +-$query.field1#5 AS field1 [INT64]
+| +-$query.field2#6 AS field2 [INT64]
+| +-$query.a#7 AS a [DOUBLE]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.m#2, $query.field1#5, $query.field2#6, $query.a#7]
+    +-expr_list=
+    | +-field1#5 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<field1 INT64, field2 INT64>, column=$aggregate.m#2)
+    | |   +-field_idx=0
+    | +-a#7 :=
+    |   +-FunctionCall(GoogleSQL:$add(DOUBLE, DOUBLE) -> DOUBLE)
+    |     +-Cast(INT64 -> DOUBLE)
+    |     | +-ColumnRef(type=INT64, column=$query.field2#6)
+    |     +-FunctionCall(GoogleSQL:rand() -> DOUBLE)
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[$aggregate.m#2, $query.field2#6]
+        +-expr_list=
+        | +-field2#6 :=
+        |   +-GetStructField
+        |     +-type=INT64
+        |     +-expr=
+        |     | +-ColumnRef(type=STRUCT<field1 INT64, field2 INT64>, column=$aggregate.m#2)
+        |     +-field_idx=1
+        +-input_scan=
+          +-AggregateScan
+            +-column_list=[$aggregate.m#2]
+            +-input_scan=
+            | +-ProjectScan
+            |   +-column_list=[t.x#1]
+            |   +-expr_list=
+            |   | +-x#1 := Literal(type=STRUCT<field1 INT64, field2 INT64>, value={field1:1, field2:2})
+            |   +-input_scan=
+            |     +-SingleRowScan
+            +-group_by_list=
+            | +-x#4 := ColumnRef(type=STRUCT<field1 INT64, field2 INT64>, column=t.x#1)
+            +-aggregate_list=
+              +-m#2 :=
+                +-AggregateFunctionCall(GoogleSQL:any_value(STRUCT<field1 INT64, field2 INT64>) -> STRUCT<field1 INT64, field2 INT64>)
+                  +-ColumnRef(type=STRUCT<field1 INT64, field2 INT64>, column=t.x#1)
+==
+
+# Dot star on a lateral reference
+SELECT x AS x2, x2.*, t AS t2, t2.*
+FROM (SELECT STRUCT(1 AS field1, 2 AS field2) AS x) AS t
+{{|GROUP BY x}}
+--
+ALTERNATION GROUP: <empty>
+--
+QueryStmt
++-output_column_list=
+| +-t.x#1 AS x2 [STRUCT<field1 INT64, field2 INT64>]
+| +-$query.field1#4 AS field1 [INT64]
+| +-$query.field2#5 AS field2 [INT64]
+| +-$query.t2#3 AS t2 [STRUCT<x STRUCT<field1 INT64, field2 INT64>>]
+| +-$query.x#6 AS x [STRUCT<field1 INT64, field2 INT64>]
++-query=
+  +-ProjectScan
+    +-column_list=[t.x#1, $query.field1#4, $query.field2#5, $query.t2#3, $query.x#6]
+    +-expr_list=
+    | +-field1#4 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<field1 INT64, field2 INT64>, column=t.x#1)
+    | |   +-field_idx=0
+    | +-field2#5 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<field1 INT64, field2 INT64>, column=t.x#1)
+    | |   +-field_idx=1
+    | +-x#6 :=
+    |   +-GetStructField
+    |     +-type=STRUCT<field1 INT64, field2 INT64>
+    |     +-expr=
+    |     | +-ColumnRef(type=STRUCT<x STRUCT<field1 INT64, field2 INT64>>, column=$query.t2#3)
+    |     +-field_idx=0
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[t.x#1, $query.t2#3]
+        +-expr_list=
+        | +-t2#3 :=
+        |   +-MakeStruct
+        |     +-type=STRUCT<x STRUCT<field1 INT64, field2 INT64>>
+        |     +-field_list=
+        |       +-ColumnRef(type=STRUCT<field1 INT64, field2 INT64>, column=t.x#1)
+        +-input_scan=
+          +-ProjectScan
+            +-column_list=[t.x#1]
+            +-expr_list=
+            | +-x#1 := Literal(type=STRUCT<field1 INT64, field2 INT64>, value={field1:1, field2:2})
+            +-input_scan=
+              +-SingleRowScan
+--
+ALTERNATION GROUP: GROUP BY x
+--
+ERROR: SELECT list expression references column x which is neither grouped nor aggregated [at 1:8]
+SELECT x AS x2, x2.*, t AS t2, t2.*
+       ^
+==
+
+# Dot star on an anaytic lateral reference
+SELECT ANY_VALUE(x) OVER() AS w, w.*, field2 + rand() AS a
+FROM (SELECT STRUCT(1 AS field1, 2 AS field2) AS x) AS t
+{{|GROUP BY x}}
+--
+
+ALTERNATION GROUP: <empty>
+--
+QueryStmt
++-output_column_list=
+| +-$analytic.w#4 AS w [STRUCT<field1 INT64, field2 INT64>]
+| +-$query.field1#5 AS field1 [INT64]
+| +-$query.field2#6 AS field2 [INT64]
+| +-$query.a#7 AS a [DOUBLE]
++-query=
+  +-ProjectScan
+    +-column_list=[$analytic.w#4, $query.field1#5, $query.field2#6, $query.a#7]
+    +-expr_list=
+    | +-field1#5 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<field1 INT64, field2 INT64>, column=$analytic.w#4)
+    | |   +-field_idx=0
+    | +-a#7 :=
+    |   +-FunctionCall(GoogleSQL:$add(DOUBLE, DOUBLE) -> DOUBLE)
+    |     +-Cast(INT64 -> DOUBLE)
+    |     | +-ColumnRef(type=INT64, column=$query.field2#6)
+    |     +-FunctionCall(GoogleSQL:rand() -> DOUBLE)
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[t.x#1, $analytic.w#4, $query.field2#6]
+        +-expr_list=
+        | +-field2#6 :=
+        |   +-GetStructField
+        |     +-type=INT64
+        |     +-expr=
+        |     | +-ColumnRef(type=STRUCT<field1 INT64, field2 INT64>, column=$analytic.w#4)
+        |     +-field_idx=1
+        +-input_scan=
+          +-AnalyticScan
+            +-column_list=[t.x#1, $analytic.w#4]
+            +-input_scan=
+            | +-ProjectScan
+            |   +-column_list=[t.x#1]
+            |   +-expr_list=
+            |   | +-x#1 := Literal(type=STRUCT<field1 INT64, field2 INT64>, value={field1:1, field2:2})
+            |   +-input_scan=
+            |     +-SingleRowScan
+            +-function_group_list=
+              +-AnalyticFunctionGroup
+                +-analytic_function_list=
+                  +-w#4 :=
+                    +-AnalyticFunctionCall(GoogleSQL:any_value(STRUCT<field1 INT64, field2 INT64>) -> STRUCT<field1 INT64, field2 INT64>)
+                      +-ColumnRef(type=STRUCT<field1 INT64, field2 INT64>, column=t.x#1)
+                      +-window_frame=
+                        +-WindowFrame(frame_unit=ROWS)
+                          +-start_expr=
+                          | +-WindowFrameExpr(boundary_type=UNBOUNDED PRECEDING)
+                          +-end_expr=
+                            +-WindowFrameExpr(boundary_type=UNBOUNDED FOLLOWING)
+--
+ALTERNATION GROUP: GROUP BY x
+--
+QueryStmt
++-output_column_list=
+| +-$analytic.w#5 AS w [STRUCT<field1 INT64, field2 INT64>]
+| +-$query.field1#6 AS field1 [INT64]
+| +-$query.field2#7 AS field2 [INT64]
+| +-$query.a#8 AS a [DOUBLE]
++-query=
+  +-ProjectScan
+    +-column_list=[$analytic.w#5, $query.field1#6, $query.field2#7, $query.a#8]
+    +-expr_list=
+    | +-field1#6 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<field1 INT64, field2 INT64>, column=$analytic.w#5)
+    | |   +-field_idx=0
+    | +-a#8 :=
+    |   +-FunctionCall(GoogleSQL:$add(DOUBLE, DOUBLE) -> DOUBLE)
+    |     +-Cast(INT64 -> DOUBLE)
+    |     | +-ColumnRef(type=INT64, column=$query.field2#7)
+    |     +-FunctionCall(GoogleSQL:rand() -> DOUBLE)
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[$groupby.x#4, $analytic.w#5, $query.field2#7]
+        +-expr_list=
+        | +-field2#7 :=
+        |   +-GetStructField
+        |     +-type=INT64
+        |     +-expr=
+        |     | +-ColumnRef(type=STRUCT<field1 INT64, field2 INT64>, column=$analytic.w#5)
+        |     +-field_idx=1
+        +-input_scan=
+          +-AnalyticScan
+            +-column_list=[$groupby.x#4, $analytic.w#5]
+            +-input_scan=
+            | +-AggregateScan
+            |   +-column_list=[$groupby.x#4]
+            |   +-input_scan=
+            |   | +-ProjectScan
+            |   |   +-column_list=[t.x#1]
+            |   |   +-expr_list=
+            |   |   | +-x#1 := Literal(type=STRUCT<field1 INT64, field2 INT64>, value={field1:1, field2:2})
+            |   |   +-input_scan=
+            |   |     +-SingleRowScan
+            |   +-group_by_list=
+            |     +-x#4 := ColumnRef(type=STRUCT<field1 INT64, field2 INT64>, column=t.x#1)
+            +-function_group_list=
+              +-AnalyticFunctionGroup
+                +-analytic_function_list=
+                  +-w#5 :=
+                    +-AnalyticFunctionCall(GoogleSQL:any_value(STRUCT<field1 INT64, field2 INT64>) -> STRUCT<field1 INT64, field2 INT64>)
+                      +-ColumnRef(type=STRUCT<field1 INT64, field2 INT64>, column=$groupby.x#4)
+                      +-window_frame=
+                        +-WindowFrame(frame_unit=ROWS)
+                          +-start_expr=
+                          | +-WindowFrameExpr(boundary_type=UNBOUNDED PRECEDING)
+                          +-end_expr=
+                            +-WindowFrameExpr(boundary_type=UNBOUNDED FOLLOWING)
+==
+
+# Dot star on an aggregate lateral reference
+SELECT ANY_VALUE(x) AS m, m.*, field2 + rand() AS a
+FROM (SELECT STRUCT(1 AS field1, 2 AS field2) AS x) AS t
+{{|GROUP BY x}}
+--
+ALTERNATION GROUP: <empty>
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.m#2 AS m [STRUCT<field1 INT64, field2 INT64>]
+| +-$query.field1#4 AS field1 [INT64]
+| +-$query.field2#5 AS field2 [INT64]
+| +-$query.a#6 AS a [DOUBLE]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.m#2, $query.field1#4, $query.field2#5, $query.a#6]
+    +-expr_list=
+    | +-field1#4 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<field1 INT64, field2 INT64>, column=$aggregate.m#2)
+    | |   +-field_idx=0
+    | +-a#6 :=
+    |   +-FunctionCall(GoogleSQL:$add(DOUBLE, DOUBLE) -> DOUBLE)
+    |     +-Cast(INT64 -> DOUBLE)
+    |     | +-ColumnRef(type=INT64, column=$query.field2#5)
+    |     +-FunctionCall(GoogleSQL:rand() -> DOUBLE)
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[$aggregate.m#2, $query.field2#5]
+        +-expr_list=
+        | +-field2#5 :=
+        |   +-GetStructField
+        |     +-type=INT64
+        |     +-expr=
+        |     | +-ColumnRef(type=STRUCT<field1 INT64, field2 INT64>, column=$aggregate.m#2)
+        |     +-field_idx=1
+        +-input_scan=
+          +-AggregateScan
+            +-column_list=[$aggregate.m#2]
+            +-input_scan=
+            | +-ProjectScan
+            |   +-column_list=[t.x#1]
+            |   +-expr_list=
+            |   | +-x#1 := Literal(type=STRUCT<field1 INT64, field2 INT64>, value={field1:1, field2:2})
+            |   +-input_scan=
+            |     +-SingleRowScan
+            +-aggregate_list=
+              +-m#2 :=
+                +-AggregateFunctionCall(GoogleSQL:any_value(STRUCT<field1 INT64, field2 INT64>) -> STRUCT<field1 INT64, field2 INT64>)
+                  +-ColumnRef(type=STRUCT<field1 INT64, field2 INT64>, column=t.x#1)
+--
+ALTERNATION GROUP: GROUP BY x
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.m#2 AS m [STRUCT<field1 INT64, field2 INT64>]
+| +-$query.field1#5 AS field1 [INT64]
+| +-$query.field2#6 AS field2 [INT64]
+| +-$query.a#7 AS a [DOUBLE]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.m#2, $query.field1#5, $query.field2#6, $query.a#7]
+    +-expr_list=
+    | +-field1#5 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<field1 INT64, field2 INT64>, column=$aggregate.m#2)
+    | |   +-field_idx=0
+    | +-a#7 :=
+    |   +-FunctionCall(GoogleSQL:$add(DOUBLE, DOUBLE) -> DOUBLE)
+    |     +-Cast(INT64 -> DOUBLE)
+    |     | +-ColumnRef(type=INT64, column=$query.field2#6)
+    |     +-FunctionCall(GoogleSQL:rand() -> DOUBLE)
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[$aggregate.m#2, $query.field2#6]
+        +-expr_list=
+        | +-field2#6 :=
+        |   +-GetStructField
+        |     +-type=INT64
+        |     +-expr=
+        |     | +-ColumnRef(type=STRUCT<field1 INT64, field2 INT64>, column=$aggregate.m#2)
+        |     +-field_idx=1
+        +-input_scan=
+          +-AggregateScan
+            +-column_list=[$aggregate.m#2]
+            +-input_scan=
+            | +-ProjectScan
+            |   +-column_list=[t.x#1]
+            |   +-expr_list=
+            |   | +-x#1 := Literal(type=STRUCT<field1 INT64, field2 INT64>, value={field1:1, field2:2})
+            |   +-input_scan=
+            |     +-SingleRowScan
+            +-group_by_list=
+            | +-x#4 := ColumnRef(type=STRUCT<field1 INT64, field2 INT64>, column=t.x#1)
+            +-aggregate_list=
+              +-m#2 :=
+                +-AggregateFunctionCall(GoogleSQL:any_value(STRUCT<field1 INT64, field2 INT64>) -> STRUCT<field1 INT64, field2 INT64>)
+                  +-ColumnRef(type=STRUCT<field1 INT64, field2 INT64>, column=t.x#1)
+==
+
+# Detect pre-vs post-grouping context error across a lateral reference to a
+# dot-star column whose source itself has a lateral reference.
+SELECT STRUCT(x.field1 + rand() AS f1, x.field2 + rand() AS f2) AS a, a.*, f2 + rand() AS b
+FROM (SELECT STRUCT(1 AS field1, 2 AS field2) AS x) AS t
+WHERE b > 0
+{{|GROUP BY a|GROUP BY x|GROUP BY a, f1, f2}}
+--
+ALTERNATION GROUP: <empty>
+--
+QueryStmt
++-output_column_list=
+| +-$query.a#2 AS a [STRUCT<f1 DOUBLE, f2 DOUBLE>]
+| +-$query.f1#5 AS f1 [DOUBLE]
+| +-$query.f2#3 AS f2 [DOUBLE]
+| +-$query.b#4 AS b [DOUBLE]
++-query=
+  +-ProjectScan
+    +-column_list=$query.[a#2, f1#5, f2#3, b#4]
+    +-expr_list=
+    | +-f1#5 :=
+    |   +-GetStructField
+    |     +-type=DOUBLE
+    |     +-expr=
+    |     | +-ColumnRef(type=STRUCT<f1 DOUBLE, f2 DOUBLE>, column=$query.a#2)
+    |     +-field_idx=0
+    +-input_scan=
+      +-FilterScan
+        +-column_list=[t.x#1, $query.a#2, $query.f2#3, $query.b#4]
+        +-input_scan=
+        | +-ProjectScan
+        |   +-column_list=[t.x#1, $query.a#2, $query.f2#3, $query.b#4]
+        |   +-expr_list=
+        |   | +-b#4 :=
+        |   |   +-FunctionCall(GoogleSQL:$add(DOUBLE, DOUBLE) -> DOUBLE)
+        |   |     +-ColumnRef(type=DOUBLE, column=$query.f2#3)
+        |   |     +-FunctionCall(GoogleSQL:rand() -> DOUBLE)
+        |   +-input_scan=
+        |     +-ProjectScan
+        |       +-column_list=[t.x#1, $query.a#2, $query.f2#3]
+        |       +-expr_list=
+        |       | +-f2#3 :=
+        |       |   +-GetStructField
+        |       |     +-type=DOUBLE
+        |       |     +-expr=
+        |       |     | +-ColumnRef(type=STRUCT<f1 DOUBLE, f2 DOUBLE>, column=$query.a#2)
+        |       |     +-field_idx=1
+        |       +-input_scan=
+        |         +-ProjectScan
+        |           +-column_list=[t.x#1, $query.a#2]
+        |           +-expr_list=
+        |           | +-a#2 :=
+        |           |   +-MakeStruct
+        |           |     +-type=STRUCT<f1 DOUBLE, f2 DOUBLE>
+        |           |     +-field_list=
+        |           |       +-FunctionCall(GoogleSQL:$add(DOUBLE, DOUBLE) -> DOUBLE)
+        |           |       | +-Cast(INT64 -> DOUBLE)
+        |           |       | | +-GetStructField
+        |           |       | |   +-type=INT64
+        |           |       | |   +-expr=
+        |           |       | |   | +-ColumnRef(type=STRUCT<field1 INT64, field2 INT64>, column=t.x#1)
+        |           |       | |   +-field_idx=0
+        |           |       | +-FunctionCall(GoogleSQL:rand() -> DOUBLE)
+        |           |       +-FunctionCall(GoogleSQL:$add(DOUBLE, DOUBLE) -> DOUBLE)
+        |           |         +-Cast(INT64 -> DOUBLE)
+        |           |         | +-GetStructField
+        |           |         |   +-type=INT64
+        |           |         |   +-expr=
+        |           |         |   | +-ColumnRef(type=STRUCT<field1 INT64, field2 INT64>, column=t.x#1)
+        |           |         |   +-field_idx=1
+        |           |         +-FunctionCall(GoogleSQL:rand() -> DOUBLE)
+        |           +-input_scan=
+        |             +-ProjectScan
+        |               +-column_list=[t.x#1]
+        |               +-expr_list=
+        |               | +-x#1 := Literal(type=STRUCT<field1 INT64, field2 INT64>, value={field1:1, field2:2})
+        |               +-input_scan=
+        |                 +-SingleRowScan
+        +-filter_expr=
+          +-FunctionCall(GoogleSQL:$greater(DOUBLE, DOUBLE) -> BOOL)
+            +-ColumnRef(type=DOUBLE, column=$query.b#4)
+            +-Literal(type=DOUBLE, value=0)
+--
+ALTERNATION GROUPS:
+    GROUP BY a
+    GROUP BY x
+    GROUP BY a, f1, f2
+--
+ERROR: Column b is referenced laterally from WHERE or argument to an aggregation when there's grouping or aggregation in the query [at 3:7]
+WHERE b > 0
+      ^
+==
+
+# Multilevel aggregation
+SELECT x+rand() AS a, a AS b, AVG(MIN(a) GROUP BY b+1) AS m1, m1 + b AS m2
+FROM (SELECT 1 AS x)
+GROUP BY a
+--
+ERROR: Lateral references to SELECT columns with multi-level aggregation or GROUP ROWS are not supported [at 1:63]
+SELECT x+rand() AS a, a AS b, AVG(MIN(a) GROUP BY b+1) AS m1, m1 + b AS m2
+                                                              ^
+==
+
+# Range variable accessed laterally
+SELECT t AS t2, {{t2.*|t2.x AS y}}
+FROM (SELECT 1 AS x) AS t
+{{|GROUP BY t2}}
+--
+ALTERNATION GROUP: t2.*,
+--
+QueryStmt
++-output_column_list=
+| +-$query.t2#3 AS t2 [STRUCT<x INT64>]
+| +-$query.x#4 AS x [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=$query.[t2#3, x#4]
+    +-expr_list=
+    | +-x#4 :=
+    |   +-GetStructField
+    |     +-type=INT64
+    |     +-expr=
+    |     | +-ColumnRef(type=STRUCT<x INT64>, column=$query.t2#3)
+    |     +-field_idx=0
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[t.x#1, $query.t2#3]
+        +-expr_list=
+        | +-t2#3 :=
+        |   +-MakeStruct
+        |     +-type=STRUCT<x INT64>
+        |     +-field_list=
+        |       +-ColumnRef(type=INT64, column=t.x#1)
+        +-input_scan=
+          +-ProjectScan
+            +-column_list=[t.x#1]
+            +-expr_list=
+            | +-x#1 := Literal(type=INT64, value=1)
+            +-input_scan=
+              +-SingleRowScan
+--
+ALTERNATION GROUP: t2.*,GROUP BY t2
+--
+ERROR: Star expansion expression references column x which is neither grouped nor aggregated [at 1:17]
+SELECT t AS t2, t2.*
+                ^
+--
+ALTERNATION GROUP: t2.x AS y,
+--
+QueryStmt
++-output_column_list=
+| +-$query.t2#3 AS t2 [STRUCT<x INT64>]
+| +-$query.y#4 AS y [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=$query.[t2#3, y#4]
+    +-expr_list=
+    | +-y#4 :=
+    |   +-GetStructField
+    |     +-type=INT64
+    |     +-expr=
+    |     | +-ColumnRef(type=STRUCT<x INT64>, column=$query.t2#3)
+    |     +-field_idx=0
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[t.x#1, $query.t2#3]
+        +-expr_list=
+        | +-t2#3 :=
+        |   +-MakeStruct
+        |     +-type=STRUCT<x INT64>
+        |     +-field_list=
+        |       +-ColumnRef(type=INT64, column=t.x#1)
+        +-input_scan=
+          +-ProjectScan
+            +-column_list=[t.x#1]
+            +-expr_list=
+            | +-x#1 := Literal(type=INT64, value=1)
+            +-input_scan=
+              +-SingleRowScan
+--
+ALTERNATION GROUP: t2.x AS y,GROUP BY t2
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.t2#5 AS t2 [STRUCT<x INT64>]
+| +-$query.y#6 AS y [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$groupby.t2#5, $query.y#6]
+    +-expr_list=
+    | +-y#6 :=
+    |   +-GetStructField
+    |     +-type=INT64
+    |     +-expr=
+    |     | +-ColumnRef(type=STRUCT<x INT64>, column=$groupby.t2#5)
+    |     +-field_idx=0
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$groupby.t2#5]
+        +-input_scan=
+        | +-ProjectScan
+        |   +-column_list=[t.x#1, $query.t2#3]
+        |   +-expr_list=
+        |   | +-t2#3 :=
+        |   |   +-MakeStruct
+        |   |     +-type=STRUCT<x INT64>
+        |   |     +-field_list=
+        |   |       +-ColumnRef(type=INT64, column=t.x#1)
+        |   +-input_scan=
+        |     +-ProjectScan
+        |       +-column_list=[t.x#1]
+        |       +-expr_list=
+        |       | +-x#1 := Literal(type=INT64, value=1)
+        |       +-input_scan=
+        |         +-SingleRowScan
+        +-group_by_list=
+          +-t2#5 := ColumnRef(type=STRUCT<x INT64>, column=$query.t2#3)
+==
+
+# Lateral reference shadows outer columns, even when the lateral reference
+# is correlated.
+SELECT
+  (SELECT AS STRUCT
+    s.*,
+    rand() AS s{{|, MAX(s-y)}}  # `s` becomes a double, instead of a struct.
+   FROM (SELECT 1 AS x, 2 AS y) AS inner_t
+   WHERE s < x
+   {{|GROUP BY s}}
+  )
+FROM (SELECT STRUCT(1 AS x, 2 AS y) AS s) AS outer_t
+--
+ALTERNATION GROUP: <empty>
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#9 AS `$col1` [STRUCT<x INT64, y INT64, s DOUBLE>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#9]
+    +-expr_list=
+    | +-$col1#9 :=
+    |   +-SubqueryExpr
+    |     +-type=STRUCT<x INT64, y INT64, s DOUBLE>
+    |     +-subquery_type=SCALAR
+    |     +-parameter_list=
+    |     | +-ColumnRef(type=STRUCT<x INT64, y INT64>, column=outer_t.s#1)
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$make_struct.$struct#8]
+    |         +-expr_list=
+    |         | +-$struct#8 :=
+    |         |   +-MakeStruct
+    |         |     +-type=STRUCT<x INT64, y INT64, s DOUBLE>
+    |         |     +-field_list=
+    |         |       +-ColumnRef(type=INT64, column=$expr_subquery.x#6)
+    |         |       +-ColumnRef(type=INT64, column=$expr_subquery.y#7)
+    |         |       +-ColumnRef(type=DOUBLE, column=$expr_subquery.s#5)
+    |         +-input_scan=
+    |           +-ProjectScan
+    |             +-column_list=$expr_subquery.[x#6, y#7, s#5]
+    |             +-expr_list=
+    |             | +-x#6 :=
+    |             | | +-GetStructField
+    |             | |   +-type=INT64
+    |             | |   +-expr=
+    |             | |   | +-ColumnRef(type=STRUCT<x INT64, y INT64>, column=$preproject.$struct#4)
+    |             | |   +-field_idx=0
+    |             | +-y#7 :=
+    |             |   +-GetStructField
+    |             |     +-type=INT64
+    |             |     +-expr=
+    |             |     | +-ColumnRef(type=STRUCT<x INT64, y INT64>, column=$preproject.$struct#4)
+    |             |     +-field_idx=1
+    |             +-input_scan=
+    |               +-ProjectScan
+    |                 +-column_list=[inner_t.x#2, inner_t.y#3, $expr_subquery.s#5, $preproject.$struct#4]
+    |                 +-expr_list=
+    |                 | +-$struct#4 := ColumnRef(type=STRUCT<x INT64, y INT64>, column=outer_t.s#1, is_correlated=TRUE)
+    |                 +-input_scan=
+    |                   +-FilterScan
+    |                     +-column_list=[inner_t.x#2, inner_t.y#3, $expr_subquery.s#5]
+    |                     +-input_scan=
+    |                     | +-ProjectScan
+    |                     |   +-column_list=[inner_t.x#2, inner_t.y#3, $expr_subquery.s#5]
+    |                     |   +-expr_list=
+    |                     |   | +-s#5 := FunctionCall(GoogleSQL:rand() -> DOUBLE)
+    |                     |   +-input_scan=
+    |                     |     +-ProjectScan
+    |                     |       +-column_list=inner_t.[x#2, y#3]
+    |                     |       +-expr_list=
+    |                     |       | +-x#2 := Literal(type=INT64, value=1)
+    |                     |       | +-y#3 := Literal(type=INT64, value=2)
+    |                     |       +-input_scan=
+    |                     |         +-SingleRowScan
+    |                     +-filter_expr=
+    |                       +-FunctionCall(GoogleSQL:$less(DOUBLE, DOUBLE) -> BOOL)
+    |                         +-ColumnRef(type=DOUBLE, column=$expr_subquery.s#5)
+    |                         +-Cast(INT64 -> DOUBLE)
+    |                           +-ColumnRef(type=INT64, column=inner_t.x#2)
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[outer_t.s#1]
+        +-expr_list=
+        | +-s#1 := Literal(type=STRUCT<x INT64, y INT64>, value={x:1, y:2})
+        +-input_scan=
+          +-SingleRowScan
+--
+ALTERNATION GROUPS:
+    GROUP BY s
+    , MAX(s-y),
+--
+ERROR: Column s is referenced laterally from WHERE or argument to an aggregation when there's grouping or aggregation in the query [at 6:10]
+   WHERE s < x
+         ^
+--
+ALTERNATION GROUP: , MAX(s-y),GROUP BY s
+--
+ERROR: Column s is referenced laterally from WHERE or argument to an aggregation when there's grouping or aggregation in the query [at 4:22]
+    rand() AS s, MAX(s-y)  # `s` becomes a double, instead of a struct.
+                     ^
+==
+
+# Lateral columns shadow constants, even when correlated
+SELECT
+  TestConstantInt64 AS from_catalog,
+  12345 AS TestConstantInt64, # Overrides the constant.
+  TestConstantInt64 + 1 AS lateral_access_uncorrelated,
+  (SELECT TestConstantInt64) AS lateral_access_correlated
+FROM (SELECT 1 AS a)
+WHERE TestConstantInt64 > 0
+--
+QueryStmt
++-output_column_list=
+| +-$query.from_catalog#4 AS from_catalog [INT64]
+| +-$query.TestConstantInt64#2 AS TestConstantInt64 [INT64]
+| +-$query.lateral_access_uncorrelated#5 AS lateral_access_uncorrelated [INT64]
+| +-$query.lateral_access_correlated#6 AS lateral_access_correlated [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=$query.[from_catalog#4, TestConstantInt64#2, lateral_access_uncorrelated#5, lateral_access_correlated#6]
+    +-expr_list=
+    | +-from_catalog#4 := Constant(TestConstantInt64, type=INT64, value=1)
+    | +-lateral_access_uncorrelated#5 :=
+    | | +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    | |   +-ColumnRef(type=INT64, column=$query.TestConstantInt64#2)
+    | |   +-Literal(type=INT64, value=1)
+    | +-lateral_access_correlated#6 :=
+    |   +-SubqueryExpr
+    |     +-type=INT64
+    |     +-subquery_type=SCALAR
+    |     +-parameter_list=
+    |     | +-ColumnRef(type=INT64, column=$query.TestConstantInt64#2)
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$expr_subquery.TestConstantInt64#3]
+    |         +-expr_list=
+    |         | +-TestConstantInt64#3 := ColumnRef(type=INT64, column=$query.TestConstantInt64#2, is_correlated=TRUE)
+    |         +-input_scan=
+    |           +-SingleRowScan
+    +-input_scan=
+      +-FilterScan
+        +-column_list=[$subquery1.a#1, $query.TestConstantInt64#2]
+        +-input_scan=
+        | +-ProjectScan
+        |   +-column_list=[$subquery1.a#1, $query.TestConstantInt64#2]
+        |   +-expr_list=
+        |   | +-TestConstantInt64#2 := Literal(type=INT64, value=12345)
+        |   +-input_scan=
+        |     +-ProjectScan
+        |       +-column_list=[$subquery1.a#1]
+        |       +-expr_list=
+        |       | +-a#1 := Literal(type=INT64, value=1)
+        |       +-input_scan=
+        |         +-SingleRowScan
+        +-filter_expr=
+          +-FunctionCall(GoogleSQL:$greater(INT64, INT64) -> BOOL)
+            +-ColumnRef(type=INT64, column=$query.TestConstantInt64#2)
+            +-Literal(type=INT64, value=0)
+==
+
+# Lateral references (even correlated ones) shadow function arguments.
+CREATE TABLE FUNCTION func(arg1 INT64, arg2 INT64) AS (
+  SELECT 2 AS arg1,
+         arg1 AS lateral_uncorrelated,
+         (SELECT WITH(tmp AS arg2, tmp)) AS lateral_correlated,
+         3 AS arg2,
+
+         # lateral vs lambda arg vs fn arg
+         ARRAY_TRANSFORM([1], arg2 -> arg2) AS a,
+
+         4 AS lateral_name,
+
+         # lateral vs lambda arg but not fn arg
+         ARRAY_TRANSFORM([1], lateral_name -> lateral_name) AS b
+)
+--
+CreateTableFunctionStmt
++-name_path=func
++-argument_name_list=[arg1, arg2]
++-signature=(INT64 arg1, INT64 arg2) -> TABLE<arg1 INT64, lateral_uncorrelated INT64, lateral_correlated INT64, arg2 INT64, a ARRAY<INT64>, lateral_name INT64, b ARRAY<INT64>>
++-language="SQL"
++-code="SELECT 2 AS arg1,\n         arg1 AS lateral_uncorrelated,\n         (SELECT WITH(tmp AS arg2, tmp)) AS lateral_correlated,\n         3 AS arg2,\n\n         # lateral vs lambda arg vs fn arg\n         ARRAY_TRANSFORM([1], arg2 -> arg2) AS a,\n\n         4 AS lateral_name,\n\n         # lateral vs lambda arg but not fn arg\n         ARRAY_TRANSFORM([1], lateral_name -> lateral_name) AS b"
++-query=
+| +-ProjectScan
+|   +-column_list=$query.[arg1#1, arg1#1, lateral_correlated#6, arg2#7, a#8, lateral_name#9, b#10]
+|   +-expr_list=
+|   | +-lateral_correlated#6 :=
+|   | | +-SubqueryExpr
+|   | |   +-type=INT64
+|   | |   +-subquery_type=SCALAR
+|   | |   +-subquery=
+|   | |     +-ProjectScan
+|   | |       +-column_list=[$expr_subquery.$col1#3]
+|   | |       +-expr_list=
+|   | |       | +-$col1#3 :=
+|   | |       |   +-WithExpr
+|   | |       |     +-type=INT64
+|   | |       |     +-assignment_list=
+|   | |       |     | +-tmp#2 := ArgumentRef(type=INT64, name="arg2")
+|   | |       |     +-expr=
+|   | |       |       +-ColumnRef(type=INT64, column=$with_expr.tmp#2)
+|   | |       +-input_scan=
+|   | |         +-SingleRowScan
+|   | +-arg2#7 := Literal(type=INT64, value=3)
+|   | +-a#8 :=
+|   | | +-FunctionCall(GoogleSQL:array_transform(ARRAY<INT64> array_to_transform, FUNCTION<INT64->INT64> transformation) -> ARRAY<INT64>)
+|   | |   +-FunctionArgument
+|   | |   | +-expr=
+|   | |   |   +-Literal(type=ARRAY<INT64>, value=[1])
+|   | |   +-FunctionArgument
+|   | |     +-inline_lambda=
+|   | |       +-InlineLambda
+|   | |         +-argument_list=[$lambda_arg.arg2#4]
+|   | |         +-body=
+|   | |           +-ColumnRef(type=INT64, column=$lambda_arg.arg2#4)
+|   | +-lateral_name#9 := Literal(type=INT64, value=4)
+|   | +-b#10 :=
+|   |   +-FunctionCall(GoogleSQL:array_transform(ARRAY<INT64> array_to_transform, FUNCTION<INT64->INT64> transformation) -> ARRAY<INT64>)
+|   |     +-FunctionArgument
+|   |     | +-expr=
+|   |     |   +-Literal(type=ARRAY<INT64>, value=[1])
+|   |     +-FunctionArgument
+|   |       +-inline_lambda=
+|   |         +-InlineLambda
+|   |           +-argument_list=[$lambda_arg.lateral_name#5]
+|   |           +-body=
+|   |             +-ColumnRef(type=INT64, column=$lambda_arg.lateral_name#5)
+|   +-input_scan=
+|     +-ProjectScan
+|       +-column_list=[$query.arg1#1]
+|       +-expr_list=
+|       | +-arg1#1 := Literal(type=INT64, value=2)
+|       +-input_scan=
+|         +-SingleRowScan
++-output_column_list=
+  +-$query.arg1#1 AS arg1 [INT64]
+  +-$query.arg1#1 AS lateral_uncorrelated [INT64]
+  +-$query.lateral_correlated#6 AS lateral_correlated [INT64]
+  +-$query.arg2#7 AS arg2 [INT64]
+  +-$query.a#8 AS a [ARRAY<INT64>]
+  +-$query.lateral_name#9 AS lateral_name [INT64]
+  +-$query.b#10 AS b [ARRAY<INT64>]
+==
+
+SELECT WITH ANONYMIZATION
+  int64 + rand() AS a, anon_sum(a) AS s{{|, anon_sum(s)}}
+FROM SimpleTypesWithAnonymizationUid
+GROUP BY a
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: Column a is referenced laterally from WHERE or argument to an aggregation when there's grouping or aggregation in the query [at 2:33]
+  int64 + rand() AS a, anon_sum(a) AS s
+                                ^
+--
+ALTERNATION GROUP: , anon_sum(s)
+--
+ERROR: Column a is referenced laterally from WHERE or argument to an aggregation when there's grouping or aggregation in the query [at 2:33]
+  int64 + rand() AS a, anon_sum(a) AS s, anon_sum(s)
+                                ^
+==
+
+# The GROUPING() built-in.
+SELECT
+  x+rand() AS a,
+  a AS a2,
+  SUM(a+1) AS b,
+  b + 2 AS c,
+  SUM(c + c) OVER () as w,
+  w + 3 AS w2,
+  GROUPING({{a|a2|b|c|w|w2}}) AS g,
+  g + 10 AS g2
+FROM (SELECT 1 AS x)
+GROUP BY a
+HAVING g2 > 0
+--
+ERROR: Column a is referenced laterally from WHERE or argument to an aggregation when there's grouping or aggregation in the query [at 4:7]
+  SUM(a+1) AS b,
+      ^
+==
+
+# GROUPING SETS
+# TODO: b/412681054 - Deduplication and matching of columns when the bug is fixed.
+[enabled_ast_rewrites=DEFAULTS,+GROUPING_SET]
+SELECT
+  x+rand() AS a,
+  a + 1 AS b,
+  sum(x+rand()) AS agg1,
+  agg1 + 2 AS agg2,
+  SUM(agg1 + agg2) OVER () AS w,
+  w + 3 AS w2,
+  GROUPING(x) AS gx,
+  GROUPING(a) AS ga,
+  GROUPING(b) AS gb
+FROM (SELECT 1 AS x)
+GROUP BY GROUPING SETS(
+            ({{agg1|agg2|w|w2|}}),
+            (a, a, x, x, b, b, 1, 2),
+            (1, 1),
+            (2, 2)
+          )
+--
+ERROR: Column a is referenced laterally from WHERE or argument to an aggregation when there's grouping or aggregation in the query [at 9:12]
+  GROUPING(a) AS ga,
+           ^
+==
+
+# GROUPING SETS: using GROUP BY ()
+# TODO: b/412681054 - Deduplication and matching of columns when the bug is fixed.
+[enabled_ast_rewrites=DEFAULTS,+GROUPING_SET]
+SELECT
+  x+rand() AS a,
+  a + 1 AS b,
+  sum(x+rand()) AS agg1,
+  agg1 + 2 AS agg2,
+  SUM(agg1 + agg2) OVER () AS w,
+  w + 3 AS w2,
+  GROUPING(x) AS gx,
+  GROUPING(a) AS ga,
+  GROUPING(b) AS gb
+FROM (SELECT 1 AS x)
+GROUP BY (){{|, ()}}
+--
+ERROR: Column a is referenced laterally from WHERE or argument to an aggregation when there's grouping or aggregation in the query [at 9:12]
+  GROUPING(a) AS ga,
+           ^
+==
+
+# ROLLUP
+# TODO: b/412681054 - Deduplication and matching of columns when the bug is fixed.
+[enabled_ast_rewrites=DEFAULTS,+GROUPING_SET]
+SELECT
+  x+rand() AS a,
+  a + 1 AS b,
+  sum(x+rand()) AS agg1,
+  agg1 + 2 AS agg2,
+  SUM(agg1 + agg2) OVER () AS w,
+  w + 3 AS w2,
+  GROUPING(x) AS gx,
+  GROUPING(a) AS ga,
+  GROUPING(b) AS gb
+FROM (SELECT 1 AS x)
+GROUP BY ROLLUP({{agg1|agg2|w|w2|2}}, a, a, x, x, b, b)
+--
+ERROR: Column a is referenced laterally from WHERE or argument to an aggregation when there's grouping or aggregation in the query [at 9:12]
+  GROUPING(a) AS ga,
+           ^
+==
+
+# CUBE
+# TODO: b/412681054 - Deduplication and matching of columns when the bug is fixed.
+[enabled_ast_rewrites=DEFAULTS,+GROUPING_SET]
+SELECT
+  x+rand() AS a,
+  a + 1 AS b,
+  sum(x+rand()) AS agg1,
+  agg1 + 2 AS agg2,
+  SUM(agg1 + agg2) OVER () AS w,
+  w + 3 AS w2,
+  GROUPING(x) AS gx,
+  GROUPING(a) AS ga,
+  GROUPING(b) AS gb
+FROM (SELECT 1 AS x)
+GROUP BY CUBE({{agg1|agg2|w|w2|2}}, a, a, x, x, b, b)
+--
+ERROR: Column a is referenced laterally from WHERE or argument to an aggregation when there's grouping or aggregation in the query [at 9:12]
+  GROUPING(a) AS ga,
+           ^
+==
+
+# Test valid field paths with lateral aliases
+SELECT s.fs.f2, f2 + 1 AS other
+FROM (SELECT STRUCT(STRUCT(1 AS f1, 2 AS f2) AS fs) AS s)
+GROUP BY s.fs
+--
+QueryStmt
++-output_column_list=
+| +-$query.f2#5 AS f2 [INT64]
+| +-$query.other#6 AS other [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=$query.[f2#5, other#6]
+    +-expr_list=
+    | +-other#6 :=
+    |   +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |     +-ColumnRef(type=INT64, column=$query.f2#5)
+    |     +-Literal(type=INT64, value=1)
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[$groupby.fs#4, $query.f2#5]
+        +-expr_list=
+        | +-f2#5 :=
+        |   +-GetStructField
+        |     +-type=INT64
+        |     +-expr=
+        |     | +-ColumnRef(type=STRUCT<f1 INT64, f2 INT64>, column=$groupby.fs#4)
+        |     +-field_idx=1
+        +-input_scan=
+          +-AggregateScan
+            +-column_list=[$groupby.fs#4]
+            +-input_scan=
+            | +-ProjectScan
+            |   +-column_list=[$subquery1.s#1]
+            |   +-expr_list=
+            |   | +-s#1 := Literal(type=STRUCT<fs STRUCT<f1 INT64, f2 INT64>>, value={fs:{f1:1, f2:2}})
+            |   +-input_scan=
+            |     +-SingleRowScan
+            +-group_by_list=
+              +-fs#4 :=
+                +-GetStructField
+                  +-type=STRUCT<f1 INT64, f2 INT64>
+                  +-expr=
+                  | +-ColumnRef(type=STRUCT<fs STRUCT<f1 INT64, f2 INT64>>, column=$subquery1.s#1)
+                  +-field_idx=0
+==
+
+SELECT x2.*, field1, field2 FROM
+(SELECT STRUCT(1 AS field1, 2 AS field2) AS x2)
+--
+QueryStmt
++-output_column_list=
+| +-$query.field1#2 AS field1 [INT64]
+| +-$query.field2#3 AS field2 [INT64]
+| +-$query.field1#2 AS field1 [INT64]
+| +-$query.field2#3 AS field2 [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=$query.[field1#2, field2#3, field1#2, field2#3]
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[$subquery1.x2#1, $query.field1#2, $query.field2#3]
+        +-expr_list=
+        | +-field2#3 :=
+        |   +-GetStructField
+        |     +-type=INT64
+        |     +-expr=
+        |     | +-ColumnRef(type=STRUCT<field1 INT64, field2 INT64>, column=$subquery1.x2#1)
+        |     +-field_idx=1
+        +-input_scan=
+          +-ProjectScan
+            +-column_list=[$subquery1.x2#1, $query.field1#2]
+            +-expr_list=
+            | +-field1#2 :=
+            |   +-GetStructField
+            |     +-type=INT64
+            |     +-expr=
+            |     | +-ColumnRef(type=STRUCT<field1 INT64, field2 INT64>, column=$subquery1.x2#1)
+            |     +-field_idx=0
+            +-input_scan=
+              +-ProjectScan
+                +-column_list=[$subquery1.x2#1]
+                +-expr_list=
+                | +-x2#1 := Literal(type=STRUCT<field1 INT64, field2 INT64>, value={field1:1, field2:2})
+                +-input_scan=
+                  +-SingleRowScan
+==
+
+SELECT x2.*
+FROM
+  (SELECT STRUCT(1 AS field1, 2 AS field2) AS x2)
+WHERE field1=1
+--
+
+QueryStmt
++-output_column_list=
+| +-$query.field1#2 AS field1 [INT64]
+| +-$query.field2#3 AS field2 [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=$query.[field1#2, field2#3]
+    +-expr_list=
+    | +-field2#3 :=
+    |   +-GetStructField
+    |     +-type=INT64
+    |     +-expr=
+    |     | +-ColumnRef(type=STRUCT<field1 INT64, field2 INT64>, column=$subquery1.x2#1)
+    |     +-field_idx=1
+    +-input_scan=
+      +-FilterScan
+        +-column_list=[$subquery1.x2#1, $query.field1#2]
+        +-input_scan=
+        | +-ProjectScan
+        |   +-column_list=[$subquery1.x2#1, $query.field1#2]
+        |   +-expr_list=
+        |   | +-field1#2 :=
+        |   |   +-GetStructField
+        |   |     +-type=INT64
+        |   |     +-expr=
+        |   |     | +-ColumnRef(type=STRUCT<field1 INT64, field2 INT64>, column=$subquery1.x2#1)
+        |   |     +-field_idx=0
+        |   +-input_scan=
+        |     +-ProjectScan
+        |       +-column_list=[$subquery1.x2#1]
+        |       +-expr_list=
+        |       | +-x2#1 := Literal(type=STRUCT<field1 INT64, field2 INT64>, value={field1:1, field2:2})
+        |       +-input_scan=
+        |         +-SingleRowScan
+        +-filter_expr=
+          +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+            +-ColumnRef(type=INT64, column=$query.field1#2)
+            +-Literal(type=INT64, value=1)
+==
+
+[language_features=MAXIMUM,+SINGLE_TABLE_NAME_ARRAY_PATH,{{+|-}}LATERAL_COLUMN_REFERENCES]
+SELECT struct([1, 2] AS ArrayTypes) AS col,
+       ARRAY(SELECT AS STRUCT * FROM ArrayTypes.Int32Array)
+--
+QueryStmt
++-output_column_list=
+| +-$query.col#23 AS col [STRUCT<ArrayTypes ARRAY<INT64>>]
+| +-$query.$col2#24 AS `$col2` [ARRAY<STRUCT<Int32Array INT32>>]
++-query=
+  +-ProjectScan
+    +-column_list=$query.[col#23, $col2#24]
+    +-expr_list=
+    | +-col#23 := Literal(type=STRUCT<ArrayTypes ARRAY<INT64>>, value={ArrayTypes:[1, 2]})
+    | +-$col2#24 :=
+    |   +-SubqueryExpr
+    |     +-type=ARRAY<STRUCT<Int32Array INT32>>
+    |     +-subquery_type=ARRAY
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$make_struct.$struct#22]
+    |         +-expr_list=
+    |         | +-$struct#22 :=
+    |         |   +-MakeStruct
+    |         |     +-type=STRUCT<Int32Array INT32>
+    |         |     +-field_list=
+    |         |       +-ColumnRef(type=INT32, column=$array.Int32Array#21)
+    |         +-input_scan=
+    |           +-ProjectScan
+    |             +-column_list=[$array.Int32Array#21]
+    |             +-input_scan=
+    |               +-ArrayScan
+    |                 +-column_list=[$array.Int32Array#21]
+    |                 +-node_source="single_table_array_name_path"
+    |                 +-input_scan=
+    |                 | +-TableScan(column_list=[ArrayTypes.Int32Array#1], table=ArrayTypes, column_index_list=[0])
+    |                 +-array_expr_list=
+    |                 | +-ColumnRef(type=ARRAY<INT32>, column=ArrayTypes.Int32Array#1)
+    |                 +-element_column_list=[$array.Int32Array#21]
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Baseline for below: correlated refs already cover the catalog, even without
+# LATERAL_COLUMN_REFERENCES.
+select
+  (from ArrayTypes.int32array)
+from (SELECT struct(1 as int32array) as ArrayTypes)
+--
+ERROR: Values referenced in FROM clause must be arrays. ArrayTypes.int32array has type INT64 [at 2:9]
+  (from ArrayTypes.int32array)
+        ^
+==
+
+[language_features=MAXIMUM,+SINGLE_TABLE_NAME_ARRAY_PATH,+LATERAL_COLUMN_REFERENCES]
+SELECT
+  STRUCT(1 as int32array) as ArrayTypes,
+  (FROM ArrayTypes.int32array)
+from (select 1)
+--
+ERROR: Values referenced in FROM clause must be arrays. ArrayTypes.int32array has type INT64 [at 3:9]
+  (FROM ArrayTypes.int32array)
+        ^
+==
+
+# Expr properties are tracked through subqueries.
+# Here the subquery itself is an argument of an aggregate.
+# The correlated reference to `a` makes it required to be available pre-grouping
+# so the query is only valid when `a` is a grouping column.
+WITH t2 AS (SELECT 1 AS m)
+SELECT
+ x+1 AS a,
+ MAX( (SELECT MIN(a + 2) FROM t2) ) AS b   # No error nor multi-agg: outer-ref is like a constant.
+FROM (SELECT 1 AS x)
+{{|GROUP BY a|GROUP BY ALL}}
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: SELECT list expression references column x which is neither grouped nor aggregated [at 3:2]
+ x+1 AS a,
+ ^
+--
+ALTERNATION GROUPS:
+    GROUP BY a
+    GROUP BY ALL
+--
+ERROR: Column a is referenced laterally from WHERE or argument to an aggregation when there's grouping or aggregation in the query [at 4:19]
+ MAX( (SELECT MIN(a + 2) FROM t2) ) AS b   # No error nor multi-agg: outer-re...
+                  ^
+
+==
+
+# Like the above, but now we ensure that dependent columns can still properly
+# track pre- and post-grouping status.
+WITH t2 AS (SELECT 1 AS m)
+SELECT
+ x+1 AS a,
+ a + rand() AS b,
+ MAX( (SELECT b) ) AS c
+FROM (SELECT 1 AS x)
+GROUP BY a
+--
+ERROR: Column b is referenced laterally from WHERE or argument to an aggregation when there's grouping or aggregation in the query [at 5:15]
+ MAX( (SELECT b) ) AS c
+              ^
+==
+
+# Same as above, but trigger the pre-grouping context from the WHERE clause.
+WITH t2 AS (SELECT 1 AS m)
+SELECT
+ x+1 AS a,
+ a + rand() AS b
+FROM (SELECT 1 AS x)
+WHERE (SELECT b FROM t2) > 0
+GROUP BY a
+--
+ERROR: Column b is referenced laterally from WHERE or argument to an aggregation when there's grouping or aggregation in the query [at 6:15]
+WHERE (SELECT b FROM t2) > 0
+              ^
+==
+
+# Expr properties are tracked through subqueries - Positive case.
+# Here the correlated reference to  the aggregation was tracked and placed
+# correctly as an arg to an analytic function.
+WITH t2 AS (SELECT 1 AS m)
+SELECT
+ SUM(x+1) AS a,
+ (SELECT
+    (SELECT a+1 FROM t2) AS inner1
+    FROM t2) AS b,
+ (SELECT MIN(b + 2) FROM t2) AS c,   # No error: outer-ref is like a constant.
+ MIN(c) OVER() AS d
+FROM (SELECT 1 AS x)
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.a#3 AS a [INT64]
+| +-$query.b#9 AS b [INT64]
+| +-$query.c#11 AS c [INT64]
+| +-$analytic.d#19 AS d [INT64]
++-query=
+  +-WithScan
+    +-column_list=[$aggregate.a#3, $query.b#9, $query.c#11, $analytic.d#19]
+    +-with_entry_list=
+    | +-WithEntry
+    |   +-with_query_name="t2"
+    |   +-with_subquery=
+    |     +-ProjectScan
+    |       +-column_list=[t2.m#1]
+    |       +-expr_list=
+    |       | +-m#1 := Literal(type=INT64, value=1)
+    |       +-input_scan=
+    |         +-SingleRowScan
+    +-query=
+      +-ProjectScan
+        +-column_list=[$aggregate.a#3, $query.b#9, $query.c#11, $analytic.d#19]
+        +-input_scan=
+          +-AnalyticScan
+            +-column_list=[$aggregate.a#3, $query.b#9, $query.c#11, $analytic.d#19]
+            +-input_scan=
+            | +-ProjectScan
+            |   +-column_list=[$aggregate.a#3, $query.b#9, $query.c#11]
+            |   +-expr_list=
+            |   | +-c#11 :=
+            |   |   +-SubqueryExpr
+            |   |     +-type=INT64
+            |   |     +-subquery_type=SCALAR
+            |   |     +-parameter_list=
+            |   |     | +-ColumnRef(type=INT64, column=$query.b#9)
+            |   |     +-subquery=
+            |   |       +-ProjectScan
+            |   |         +-column_list=[$aggregate.$agg1#18]
+            |   |         +-input_scan=
+            |   |           +-AggregateScan
+            |   |             +-column_list=[$aggregate.$agg1#18]
+            |   |             +-input_scan=
+            |   |             | +-WithRefScan(column_list=[t2.m#17], with_query_name="t2")
+            |   |             +-aggregate_list=
+            |   |               +-$agg1#18 :=
+            |   |                 +-AggregateFunctionCall(GoogleSQL:min(INT64) -> INT64)
+            |   |                   +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+            |   |                     +-ColumnRef(type=INT64, column=$query.b#9, is_correlated=TRUE)
+            |   |                     +-Literal(type=INT64, value=2)
+            |   +-input_scan=
+            |     +-ProjectScan
+            |       +-column_list=[$aggregate.a#3, $query.b#9]
+            |       +-expr_list=
+            |       | +-b#9 :=
+            |       |   +-SubqueryExpr
+            |       |     +-type=INT64
+            |       |     +-subquery_type=SCALAR
+            |       |     +-parameter_list=
+            |       |     | +-ColumnRef(type=INT64, column=$aggregate.a#3)
+            |       |     +-subquery=
+            |       |       +-ProjectScan
+            |       |         +-column_list=[$expr_subquery.inner1#16]
+            |       |         +-expr_list=
+            |       |         | +-inner1#16 :=
+            |       |         |   +-SubqueryExpr
+            |       |         |     +-type=INT64
+            |       |         |     +-subquery_type=SCALAR
+            |       |         |     +-parameter_list=
+            |       |         |     | +-ColumnRef(type=INT64, column=$aggregate.a#3, is_correlated=TRUE)
+            |       |         |     +-subquery=
+            |       |         |       +-ProjectScan
+            |       |         |         +-column_list=[$expr_subquery.$col1#15]
+            |       |         |         +-expr_list=
+            |       |         |         | +-$col1#15 :=
+            |       |         |         |   +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+            |       |         |         |     +-ColumnRef(type=INT64, column=$aggregate.a#3, is_correlated=TRUE)
+            |       |         |         |     +-Literal(type=INT64, value=1)
+            |       |         |         +-input_scan=
+            |       |         |           +-WithRefScan(column_list=[t2.m#14], with_query_name="t2")
+            |       |         +-input_scan=
+            |       |           +-WithRefScan(column_list=[t2.m#13], with_query_name="t2")
+            |       +-input_scan=
+            |         +-AggregateScan
+            |           +-column_list=[$aggregate.a#3]
+            |           +-input_scan=
+            |           | +-ProjectScan
+            |           |   +-column_list=[$subquery1.x#2]
+            |           |   +-expr_list=
+            |           |   | +-x#2 := Literal(type=INT64, value=1)
+            |           |   +-input_scan=
+            |           |     +-SingleRowScan
+            |           +-aggregate_list=
+            |             +-a#3 :=
+            |               +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+            |                 +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+            |                   +-ColumnRef(type=INT64, column=$subquery1.x#2)
+            |                   +-Literal(type=INT64, value=1)
+            +-function_group_list=
+              +-AnalyticFunctionGroup
+                +-analytic_function_list=
+                  +-d#19 :=
+                    +-AnalyticFunctionCall(GoogleSQL:min(INT64) -> INT64)
+                      +-ColumnRef(type=INT64, column=$query.c#11)
+                      +-window_frame=
+                        +-WindowFrame(frame_unit=ROWS)
+                          +-start_expr=
+                          | +-WindowFrameExpr(boundary_type=UNBOUNDED PRECEDING)
+                          +-end_expr=
+                            +-WindowFrameExpr(boundary_type=UNBOUNDED FOLLOWING)
+==
+
+# Like the above, but with GROUP BY ALL, ORDER BY and with & without DISTINCT.
+WITH t2 AS (SELECT 1 AS m)
+SELECT{{| DISTINCT}}
+ SUM(x+1) AS a,
+ (SELECT
+    (SELECT a+1 FROM t2) AS inner1
+    FROM t2) AS b,
+ (SELECT MIN(b + 2) FROM t2) AS c,   # No error: outer-ref is like a constant.
+ MIN(c) OVER() AS d
+FROM (SELECT 1 AS x)
+GROUP BY ALL
+ORDER BY d
+--
+ERROR: Column a is referenced laterally; GROUP BY ALL is not supported when lateral references are present [at 3:2]
+ SUM(x+1) AS a,
+ ^
+==
+
+# Expr properties are tracked through subqueries - Negative case.
+WITH t2 AS (SELECT 1 AS m)
+SELECT
+ SUM(x+1) AS y,
+ (SELECT y+1 FROM t2) AS z,
+ {{SUM( (SELECT y+1 FROM t2) )|SUM(z)}}
+FROM (SELECT 1 AS x)
+GROUP BY z
+--
+ALTERNATION GROUP: SUM( (SELECT y+1 FROM t2) )
+--
+ERROR: Column y is referenced laterally from WHERE or argument to an aggregation when there's grouping or aggregation in the query [at 5:15]
+ SUM( (SELECT y+1 FROM t2) )
+              ^
+--
+ALTERNATION GROUP: SUM(z)
+--
+ERROR: Column z is referenced laterally from WHERE or argument to an aggregation when there's grouping or aggregation in the query [at 5:6]
+ SUM(z)
+     ^
+==
+
+
+SELECT 2 AS a
+FROM (SELECT 1)
+WHERE a > 0
+GROUP BY a
+--
+
+ERROR: Column a is referenced laterally from WHERE or argument to an aggregation when there's grouping or aggregation in the query [at 3:7]
+WHERE a > 0
+      ^
+==
+
+select 1 as a, a + a as b
+--
+QueryStmt
++-output_column_list=
+| +-$query.a#1 AS a [INT64]
+| +-$query.b#2 AS b [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=$query.[a#1, b#2]
+    +-expr_list=
+    | +-b#2 :=
+    |   +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |     +-ColumnRef(type=INT64, column=$query.a#1)
+    |     +-ColumnRef(type=INT64, column=$query.a#1)
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[$query.a#1]
+        +-expr_list=
+        | +-a#1 := Literal(type=INT64, value=1)
+        +-input_scan=
+          +-SingleRowScan
+==
+
+# Value table
+select a as col1, col1 + b as col2
+from (
+  select as struct 1 as a, 2 as b
+)
+--
+QueryStmt
++-output_column_list=
+| +-$query.col1#4 AS col1 [INT64]
+| +-$query.col2#5 AS col2 [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=$query.[col1#4, col2#5]
+    +-expr_list=
+    | +-col2#5 :=
+    |   +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |     +-ColumnRef(type=INT64, column=$query.col1#4)
+    |     +-GetStructField
+    |       +-type=INT64
+    |       +-expr=
+    |       | +-ColumnRef(type=STRUCT<a INT64, b INT64>, column=$make_struct.$struct#3)
+    |       +-field_idx=1
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[$make_struct.$struct#3, $query.col1#4]
+        +-expr_list=
+        | +-col1#4 :=
+        |   +-GetStructField
+        |     +-type=INT64
+        |     +-expr=
+        |     | +-ColumnRef(type=STRUCT<a INT64, b INT64>, column=$make_struct.$struct#3)
+        |     +-field_idx=0
+        +-input_scan=
+          +-ProjectScan
+            +-column_list=[$make_struct.$struct#3]
+            +-expr_list=
+            | +-$struct#3 :=
+            |   +-MakeStruct
+            |     +-type=STRUCT<a INT64, b INT64>
+            |     +-field_list=
+            |       +-ColumnRef(type=INT64, column=$subquery1.a#1)
+            |       +-ColumnRef(type=INT64, column=$subquery1.b#2)
+            +-input_scan=
+              +-ProjectScan
+                +-column_list=$subquery1.[a#1, b#2]
+                +-expr_list=
+                | +-a#1 := Literal(type=INT64, value=1)
+                | +-b#2 := Literal(type=INT64, value=2)
+                +-input_scan=
+                  +-SingleRowScan
+==
+
+# ArgRef takes priority
+CREATE TABLE FUNCTION MyTvf(arg0 INT64, arg1 INT64)
+AS
+SELECT arg0, arg1, arg0 + arg1 AS sum;
+--
+CreateTableFunctionStmt
++-name_path=MyTvf
++-argument_name_list=[arg0, arg1]
++-signature=(INT64 arg0, INT64 arg1) -> TABLE<arg0 INT64, arg1 INT64, sum INT64>
++-language="SQL"
++-code="SELECT arg0, arg1, arg0 + arg1 AS sum"
++-query=
+| +-ProjectScan
+|   +-column_list=$query.[arg0#1, arg1#2, sum#3]
+|   +-expr_list=
+|   | +-sum#3 :=
+|   |   +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+|   |     +-ColumnRef(type=INT64, column=$query.arg0#1)
+|   |     +-ColumnRef(type=INT64, column=$query.arg1#2)
+|   +-input_scan=
+|     +-ProjectScan
+|       +-column_list=$query.[arg0#1, arg1#2]
+|       +-expr_list=
+|       | +-arg1#2 := ArgumentRef(type=INT64, name="arg1")
+|       +-input_scan=
+|         +-ProjectScan
+|           +-column_list=[$query.arg0#1]
+|           +-expr_list=
+|           | +-arg0#1 := ArgumentRef(type=INT64, name="arg0")
+|           +-input_scan=
+|             +-SingleRowScan
++-output_column_list=
+  +-$query.arg0#1 AS arg0 [INT64]
+  +-$query.arg1#2 AS arg1 [INT64]
+  +-$query.sum#3 AS sum [INT64]
+==
+
+select col + 1 as a, a as b
+from (select 1 AS col)
+group by b
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.b#3 AS a [INT64]
+| +-$groupby.b#3 AS b [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=$groupby.[b#3, b#3]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$groupby.b#3]
+        +-input_scan=
+        | +-ProjectScan
+        |   +-column_list=[$subquery1.col#1, $query.a#2]
+        |   +-expr_list=
+        |   | +-a#2 :=
+        |   |   +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+        |   |     +-ColumnRef(type=INT64, column=$subquery1.col#1)
+        |   |     +-Literal(type=INT64, value=1)
+        |   +-input_scan=
+        |     +-ProjectScan
+        |       +-column_list=[$subquery1.col#1]
+        |       +-expr_list=
+        |       | +-col#1 := Literal(type=INT64, value=1)
+        |       +-input_scan=
+        |         +-SingleRowScan
+        +-group_by_list=
+          +-b#3 := ColumnRef(type=INT64, column=$query.a#2)
+==
+
+SELECT a + 1 as col1, col1 + 2 as col2
+FROM (SELECT 1 as a, 2 as b)
+GROUP BY col1
+HAVING SUM(col2) > 1
+--
+ERROR: Post-grouping column cannot be used in arguments to aggregations [at 4:12]
+HAVING SUM(col2) > 1
+           ^
+==
+
+WITH t as (
+    SELECT 1 as a, 2 as b
+)
+SELECT a + 1 as col1, col1 + 1 as col2
+FROM t
+GROUP BY col1, col2
+HAVING SUM(col2 + 1) > 1
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.col1#7 AS col1 [INT64]
+| +-$groupby.col2#8 AS col2 [INT64]
++-query=
+  +-WithScan
+    +-column_list=$groupby.[col1#7, col2#8]
+    +-with_entry_list=
+    | +-WithEntry
+    |   +-with_query_name="t"
+    |   +-with_subquery=
+    |     +-ProjectScan
+    |       +-column_list=t.[a#1, b#2]
+    |       +-expr_list=
+    |       | +-a#1 := Literal(type=INT64, value=1)
+    |       | +-b#2 := Literal(type=INT64, value=2)
+    |       +-input_scan=
+    |         +-SingleRowScan
+    +-query=
+      +-ProjectScan
+        +-column_list=$groupby.[col1#7, col2#8]
+        +-input_scan=
+          +-FilterScan
+            +-column_list=[$groupby.col1#7, $groupby.col2#8, $aggregate.$agg1#9]
+            +-input_scan=
+            | +-AggregateScan
+            |   +-column_list=[$groupby.col1#7, $groupby.col2#8, $aggregate.$agg1#9]
+            |   +-input_scan=
+            |   | +-ProjectScan
+            |   |   +-column_list=[t.a#3, t.b#4, $query.col1#5, $pre_groupby.col2#6]
+            |   |   +-expr_list=
+            |   |   | +-col2#6 :=
+            |   |   |   +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+            |   |   |     +-ColumnRef(type=INT64, column=$query.col1#5)
+            |   |   |     +-Literal(type=INT64, value=1)
+            |   |   +-input_scan=
+            |   |     +-ProjectScan
+            |   |       +-column_list=[t.a#3, t.b#4, $query.col1#5]
+            |   |       +-expr_list=
+            |   |       | +-col1#5 :=
+            |   |       |   +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+            |   |       |     +-ColumnRef(type=INT64, column=t.a#3)
+            |   |       |     +-Literal(type=INT64, value=1)
+            |   |       +-input_scan=
+            |   |         +-WithRefScan(column_list=t.[a#3, b#4], with_query_name="t")
+            |   +-group_by_list=
+            |   | +-col1#7 := ColumnRef(type=INT64, column=$query.col1#5)
+            |   | +-col2#8 := ColumnRef(type=INT64, column=$pre_groupby.col2#6)
+            |   +-aggregate_list=
+            |     +-$agg1#9 :=
+            |       +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+            |         +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+            |           +-ColumnRef(type=INT64, column=$pre_groupby.col2#6)
+            |           +-Literal(type=INT64, value=1)
+            +-filter_expr=
+              +-FunctionCall(GoogleSQL:$greater(INT64, INT64) -> BOOL)
+                +-ColumnRef(type=INT64, column=$aggregate.$agg1#9)
+                +-Literal(type=INT64, value=1)
+==
+
+WITH t as (
+    SELECT 1 as a, 2 as b
+)
+SELECT STRUCT(a + 1 as col1).*, SUM(col1 + 1) as col2
+FROM t
+GROUP BY a
+--
+ERROR: Column col1 is referenced laterally from WHERE or argument to an aggregation when there's grouping or aggregation in the query [at 4:37]
+SELECT STRUCT(a + 1 as col1).*, SUM(col1 + 1) as col2
+                                    ^
+==
+
+[language_features=DEV,+LATERAL_COLUMN_REFERENCES]
+WITH test AS (
+  SELECT COLLATE('a', 'und:ci') AS a2, 1 AS a
+)
+SELECT a2 AS a0new, concat(a0new, 'a') AS x FROM test  GROUP BY 2
+--
+ERROR: SELECT list expression references column a2 which is neither grouped nor aggregated [at 4:8]
+SELECT a2 AS a0new, concat(a0new, 'a') AS x FROM test  GROUP BY 2
+       ^
+==
+
+
+# TODO:
+# Script variable.
+# Value tables?
+# PIVOT/M_R?

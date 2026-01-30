@@ -4,7 +4,7 @@
 
 # Debugging statements
 
-ZetaSQL supports the following debugging statements.
+GoogleSQL supports the following debugging statements.
 
 ## `ASSERT`
 
@@ -32,14 +32,14 @@ message.
 The following examples assert that the data source contains more than a specific
 number of rows.
 
-```zetasql
+```googlesql
 -- This query succeeds and no error is produced.
 ASSERT (
   (SELECT COUNT(*) > 5 FROM UNNEST([1, 2, 3, 4, 5, 6]))
 ) AS 'Table must contain more than 5 rows.';
 ```
 
-```zetasql
+```googlesql
 -- Error: Table must contain more than 10 rows.
 ASSERT (
   (SELECT COUNT(*) > 10 FROM UNNEST([1, 2, 3, 4, 5, 6]))
@@ -48,7 +48,7 @@ ASSERT (
 
 The following examples assert that the data source contains a particular value.
 
-```zetasql
+```googlesql
 -- This query succeeds and no error is produced.
 ASSERT
   EXISTS(
@@ -56,7 +56,7 @@ ASSERT
 AS 'Column X must contain the value 7907.';
 ```
 
-```zetasql
+```googlesql
 -- Error: Column X must contain the value 7919.
 ASSERT
   EXISTS(

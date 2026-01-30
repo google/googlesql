@@ -1,0 +1,1078 @@
+# Valid function calls
+[default language_features=MAXIMUM]
+[language_features=NONE,+ANONYMIZATION]
+
+select ANON_COUNT(string clamped between 0 and 1), ANON_COUNT(* clamped between 0 and 1) from SimpleTypes
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#20 AS `$col1` [INT64]
+| +-$aggregate.$agg2#21 AS `$col2` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=$aggregate.[$agg1#20, $agg2#21]
+    +-input_scan=
+      +-AnonymizedAggregateScan
+        +-column_list=$aggregate.[$agg1#20, $agg2#21]
+        +-input_scan=
+        | +-TableScan(column_list=[SimpleTypes.string#5], table=SimpleTypes, column_index_list=[4])
+        +-aggregate_list=
+          +-$agg1#20 :=
+          | +-AggregateFunctionCall(GoogleSQL:anon_count(STRING, optional(1) INT64, optional(1) INT64) -> INT64)
+          |   +-ColumnRef(type=STRING, column=SimpleTypes.string#5)
+          |   +-Literal(type=INT64, value=0)
+          |   +-Literal(type=INT64, value=1)
+          +-$agg2#21 :=
+            +-AggregateFunctionCall(GoogleSQL:$anon_count_star(optional(1) INT64, optional(1) INT64) -> INT64)
+              +-Literal(type=INT64, value=0)
+              +-Literal(type=INT64, value=1)
+==
+
+# Invalid function call with extra argument
+[language_features=NONE,+ANONYMIZATION]
+select ANON_COUNT(string, 1.0 clamped between 0 and 1), ANON_COUNT(*, 1.0 clamped between 0 and 1) from SimpleTypes
+--
+ERROR: Anonymized aggregate function ANON_COUNT expects exactly 1 argument but found 2 arguments [at 1:8]
+select ANON_COUNT(string, 1.0 clamped between 0 and 1), ANON_COUNT(*, 1.0 cla...
+       ^
+==
+
+# Invalid function call with extra arguments
+[language_features=NONE,+ANONYMIZATION]
+select ANON_COUNT(string, 1.0, string clamped between 0 and 1), ANON_COUNT(*, 1.0, string clamped between 0 and 1) from SimpleTypes
+--
+ERROR: Anonymized aggregate function ANON_COUNT expects exactly 1 argument but found 3 arguments [at 1:8]
+select ANON_COUNT(string, 1.0, string clamped between 0 and 1), ANON_COUNT(*,...
+       ^
+==
+
+# Reject ANON_COUNT() using old style invocation with no CLAMPED BETWEEN
+[language_features=NONE,+ANONYMIZATION]
+select ANON_COUNT(string, 0, 1, 1.0, string) from SimpleTypes
+--
+ERROR: Anonymized aggregate function ANON_COUNT expects exactly 1 argument but found 5 arguments [at 1:8]
+select ANON_COUNT(string, 0, 1, 1.0, string) from SimpleTypes
+       ^
+==
+
+# Reject ANON_COUNT() with no arguments
+[language_features=NONE,+ANONYMIZATION]
+select ANON_COUNT() from SimpleTypes
+--
+ERROR: Anonymized aggregate function ANON_COUNT expects exactly 1 argument but found 0 arguments [at 1:8]
+select ANON_COUNT() from SimpleTypes
+       ^
+==
+
+# Reject ANON_COUNT() with two arguments (and no CLAMPED clause)
+[language_features=NONE,+ANONYMIZATION]
+select ANON_COUNT(int64, 1) from SimpleTypes
+--
+ERROR: Anonymized aggregate function ANON_COUNT expects exactly 1 argument but found 2 arguments [at 1:8]
+select ANON_COUNT(int64, 1) from SimpleTypes
+       ^
+==
+
+# Reject ANON_COUNT() with three arguments (and no CLAMPED clause)
+[language_features=NONE,+ANONYMIZATION]
+select ANON_COUNT(int64, 1, string) from SimpleTypes
+--
+ERROR: Anonymized aggregate function ANON_COUNT expects exactly 1 argument but found 3 arguments [at 1:8]
+select ANON_COUNT(int64, 1, string) from SimpleTypes
+       ^
+==
+
+# DISTINCT is not supported for ANON_COUNT()
+[language_features=NONE,+DISALLOW_GROUP_BY_FLOAT,+ANONYMIZATION]
+select ANON_COUNT(DISTINCT string clamped between 0 and 1) from SimpleTypes
+--
+ERROR: Aggregate function ANON_COUNT does not support DISTINCT in arguments [at 1:8]
+select ANON_COUNT(DISTINCT string clamped between 0 and 1) from SimpleTypes
+       ^
+==
+
+# Calling ANON_COUNT(*) without any optional arguments works.
+[language_features=NONE,+DISALLOW_GROUP_BY_FLOAT,+ANONYMIZATION]
+select ANON_COUNT(*) from SimpleTypes
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#20 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#20]
+    +-input_scan=
+      +-AnonymizedAggregateScan
+        +-column_list=[$aggregate.$agg1#20]
+        +-input_scan=
+        | +-TableScan(table=SimpleTypes)
+        +-aggregate_list=
+          +-$agg1#20 := AggregateFunctionCall(GoogleSQL:$anon_count_star(optional(0) INT64, optional(0) INT64) -> INT64)
+==
+
+# Specify a non-constant expression for clamped bounds
+[language_features=NONE,+ANONYMIZATION]
+select ANON_COUNT(string clamped between {{0|int64}} and {{1|int64}}) from SimpleTypes
+--
+ALTERNATION GROUP: 0,1
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#20 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#20]
+    +-input_scan=
+      +-AnonymizedAggregateScan
+        +-column_list=[$aggregate.$agg1#20]
+        +-input_scan=
+        | +-TableScan(column_list=[SimpleTypes.string#5], table=SimpleTypes, column_index_list=[4])
+        +-aggregate_list=
+          +-$agg1#20 :=
+            +-AggregateFunctionCall(GoogleSQL:anon_count(STRING, optional(1) INT64, optional(1) INT64) -> INT64)
+              +-ColumnRef(type=STRING, column=SimpleTypes.string#5)
+              +-Literal(type=INT64, value=0)
+              +-Literal(type=INT64, value=1)
+--
+ALTERNATION GROUP: 0,int64
+--
+ERROR: Upper bound on CLAMPED BETWEEN must be a literal or query parameter [at 1:48]
+select ANON_COUNT(string clamped between 0 and int64) from SimpleTypes
+                                               ^
+--
+ALTERNATION GROUP: int64,1
+--
+ERROR: Lower bound on CLAMPED BETWEEN must be a literal or query parameter [at 1:42]
+select ANON_COUNT(string clamped between int64 and 1) from SimpleTypes
+                                         ^
+--
+ALTERNATION GROUP: int64,int64
+--
+ERROR: Lower bound on CLAMPED BETWEEN must be a literal or query parameter [at 1:42]
+select ANON_COUNT(string clamped between int64 and int64) from SimpleTypes
+                                         ^
+==
+
+# Specify a non-constant expression for clamped bounds
+[language_features=NONE,+ANONYMIZATION]
+select ANON_COUNT(* clamped between {{0|int64}} and {{1|int64}}) from SimpleTypes
+--
+ALTERNATION GROUP: 0,1
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#20 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#20]
+    +-input_scan=
+      +-AnonymizedAggregateScan
+        +-column_list=[$aggregate.$agg1#20]
+        +-input_scan=
+        | +-TableScan(table=SimpleTypes)
+        +-aggregate_list=
+          +-$agg1#20 :=
+            +-AggregateFunctionCall(GoogleSQL:$anon_count_star(optional(1) INT64, optional(1) INT64) -> INT64)
+              +-Literal(type=INT64, value=0)
+              +-Literal(type=INT64, value=1)
+--
+ALTERNATION GROUP: 0,int64
+--
+ERROR: Upper bound on CLAMPED BETWEEN must be a literal or query parameter [at 1:43]
+select ANON_COUNT(* clamped between 0 and int64) from SimpleTypes
+                                          ^
+--
+ALTERNATION GROUP: int64,1
+--
+ERROR: Lower bound on CLAMPED BETWEEN must be a literal or query parameter [at 1:37]
+select ANON_COUNT(* clamped between int64 and 1) from SimpleTypes
+                                    ^
+--
+ALTERNATION GROUP: int64,int64
+--
+ERROR: Lower bound on CLAMPED BETWEEN must be a literal or query parameter [at 1:37]
+select ANON_COUNT(* clamped between int64 and int64) from SimpleTypes
+                                    ^
+==
+
+# Non-INT64 argument for clamp bounds.
+[language_features=NONE,+ANONYMIZATION]
+select ANON_COUNT(* clamped between {{0|"abc"}} and {{1|"def"}}) from SimpleTypes
+--
+ALTERNATION GROUP: 0,1
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#20 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#20]
+    +-input_scan=
+      +-AnonymizedAggregateScan
+        +-column_list=[$aggregate.$agg1#20]
+        +-input_scan=
+        | +-TableScan(table=SimpleTypes)
+        +-aggregate_list=
+          +-$agg1#20 :=
+            +-AggregateFunctionCall(GoogleSQL:$anon_count_star(optional(1) INT64, optional(1) INT64) -> INT64)
+              +-Literal(type=INT64, value=0)
+              +-Literal(type=INT64, value=1)
+--
+ALTERNATION GROUP: 0,"def"
+--
+ERROR: No matching signature for aggregate operator ANON_COUNT(*)
+  Argument types: INT64, STRING
+  Signature: ANON_COUNT(* [CLAMPED BETWEEN INT64 AND INT64])
+    Argument 2: Unable to coerce type STRING to expected type INT64 [at 1:8]
+select ANON_COUNT(* clamped between 0 and "def") from SimpleTypes
+       ^
+--
+ALTERNATION GROUP: "abc",1
+--
+ERROR: No matching signature for aggregate operator ANON_COUNT(*)
+  Argument types: STRING, INT64
+  Signature: ANON_COUNT(* [CLAMPED BETWEEN INT64 AND INT64])
+    Argument 1: Unable to coerce type STRING to expected type INT64 [at 1:8]
+select ANON_COUNT(* clamped between "abc" and 1) from SimpleTypes
+       ^
+--
+ALTERNATION GROUP: "abc","def"
+--
+ERROR: No matching signature for aggregate operator ANON_COUNT(*)
+  Argument types: STRING, STRING
+  Signature: ANON_COUNT(* [CLAMPED BETWEEN INT64 AND INT64])
+    Argument 1: Unable to coerce type STRING to expected type INT64 [at 1:8]
+select ANON_COUNT(* clamped between "abc" and "def") from SimpleTypes
+       ^
+==
+
+# Reject non-const bounds
+[language_features=NONE,+ANONYMIZATION]
+select ANON_COUNT(string clamped between int64 and 5) from SimpleTypes
+--
+ERROR: Lower bound on CLAMPED BETWEEN must be a literal or query parameter [at 1:42]
+select ANON_COUNT(string clamped between int64 and 5) from SimpleTypes
+                                         ^
+==
+
+# Non-INT64 argument for clamp bounds.
+[language_features=NONE,+ANONYMIZATION]
+select ANON_COUNT(string clamped between {{0|"abc"}} and {{1|"def"}}) from SimpleTypes
+--
+ALTERNATION GROUP: 0,1
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#20 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#20]
+    +-input_scan=
+      +-AnonymizedAggregateScan
+        +-column_list=[$aggregate.$agg1#20]
+        +-input_scan=
+        | +-TableScan(column_list=[SimpleTypes.string#5], table=SimpleTypes, column_index_list=[4])
+        +-aggregate_list=
+          +-$agg1#20 :=
+            +-AggregateFunctionCall(GoogleSQL:anon_count(STRING, optional(1) INT64, optional(1) INT64) -> INT64)
+              +-ColumnRef(type=STRING, column=SimpleTypes.string#5)
+              +-Literal(type=INT64, value=0)
+              +-Literal(type=INT64, value=1)
+--
+ALTERNATION GROUP: 0,"def"
+--
+ERROR: No matching signature for aggregate function ANON_COUNT
+  Argument types: STRING, INT64, STRING
+  Signature: ANON_COUNT(ANY [CLAMPED BETWEEN INT64 AND INT64])
+    Argument 3: Unable to coerce type STRING to expected type INT64 [at 1:8]
+select ANON_COUNT(string clamped between 0 and "def") from SimpleTypes
+       ^
+--
+ALTERNATION GROUP: "abc",1
+--
+ERROR: No matching signature for aggregate function ANON_COUNT
+  Argument types: STRING, STRING, INT64
+  Signature: ANON_COUNT(ANY [CLAMPED BETWEEN INT64 AND INT64])
+    Argument 2: Unable to coerce type STRING to expected type INT64 [at 1:8]
+select ANON_COUNT(string clamped between "abc" and 1) from SimpleTypes
+       ^
+--
+ALTERNATION GROUP: "abc","def"
+--
+ERROR: No matching signature for aggregate function ANON_COUNT
+  Argument types: STRING, STRING, STRING
+  Signature: ANON_COUNT(ANY [CLAMPED BETWEEN INT64 AND INT64])
+    Argument 2: Unable to coerce type STRING to expected type INT64 [at 1:8]
+select ANON_COUNT(string clamped between "abc" and "def") from SimpleTypes
+       ^
+==
+
+# Accept const parameter bounds
+[language_features=NONE,+ANONYMIZATION]
+select ANON_COUNT({{*|string}} clamped between @test_param_int64 and 6) from SimpleTypes
+--
+ALTERNATION GROUP: *
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#20 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#20]
+    +-input_scan=
+      +-AnonymizedAggregateScan
+        +-column_list=[$aggregate.$agg1#20]
+        +-input_scan=
+        | +-TableScan(table=SimpleTypes)
+        +-aggregate_list=
+          +-$agg1#20 :=
+            +-AggregateFunctionCall(GoogleSQL:$anon_count_star(optional(1) INT64, optional(1) INT64) -> INT64)
+              +-Parameter(type=INT64, name="test_param_int64")
+              +-Literal(type=INT64, value=6)
+--
+ALTERNATION GROUP: string
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#20 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#20]
+    +-input_scan=
+      +-AnonymizedAggregateScan
+        +-column_list=[$aggregate.$agg1#20]
+        +-input_scan=
+        | +-TableScan(column_list=[SimpleTypes.string#5], table=SimpleTypes, column_index_list=[4])
+        +-aggregate_list=
+          +-$agg1#20 :=
+            +-AggregateFunctionCall(GoogleSQL:anon_count(STRING, optional(1) INT64, optional(1) INT64) -> INT64)
+              +-ColumnRef(type=STRING, column=SimpleTypes.string#5)
+              +-Parameter(type=INT64, name="test_param_int64")
+              +-Literal(type=INT64, value=6)
+==
+
+# Support GROUP BY
+[language_features=NONE,+ANONYMIZATION]
+select ANON_COUNT(string clamped between 0 and 1), ANON_COUNT(* clamped between 0 and 1) from SimpleTypes
+group by int64
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#20 AS `$col1` [INT64]
+| +-$aggregate.$agg2#21 AS `$col2` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=$aggregate.[$agg1#20, $agg2#21]
+    +-input_scan=
+      +-AnonymizedAggregateScan
+        +-column_list=$aggregate.[$agg1#20, $agg2#21]
+        +-input_scan=
+        | +-TableScan(column_list=SimpleTypes.[int64#2, string#5], table=SimpleTypes, column_index_list=[1, 4])
+        +-group_by_list=
+        | +-int64#22 := ColumnRef(type=INT64, column=SimpleTypes.int64#2)
+        +-aggregate_list=
+          +-$agg1#20 :=
+          | +-AggregateFunctionCall(GoogleSQL:anon_count(STRING, optional(1) INT64, optional(1) INT64) -> INT64)
+          |   +-ColumnRef(type=STRING, column=SimpleTypes.string#5)
+          |   +-Literal(type=INT64, value=0)
+          |   +-Literal(type=INT64, value=1)
+          +-$agg2#21 :=
+            +-AggregateFunctionCall(GoogleSQL:$anon_count_star(optional(1) INT64, optional(1) INT64) -> INT64)
+              +-Literal(type=INT64, value=0)
+              +-Literal(type=INT64, value=1)
+==
+
+# ANON_SUM should reject exprs other than int64, uint64, double & numeric
+[language_features=NONE,+ANONYMIZATION]
+select ANON_SUM(string clamped between 0 and 1) from SimpleTypes
+--
+ERROR: No matching signature for aggregate function ANON_SUM
+  Argument types: STRING, INT64, INT64
+  Signature: ANON_SUM(INT64 [CLAMPED BETWEEN INT64 AND INT64])
+    Argument 1: Unable to coerce type STRING to expected type INT64
+  Signature: ANON_SUM(UINT64 [CLAMPED BETWEEN UINT64 AND UINT64])
+    Argument 1: Unable to coerce type STRING to expected type UINT64
+  Signature: ANON_SUM(DOUBLE [CLAMPED BETWEEN DOUBLE AND DOUBLE])
+    Argument 1: Unable to coerce type STRING to expected type DOUBLE [at 1:8]
+select ANON_SUM(string clamped between 0 and 1) from SimpleTypes
+       ^
+==
+
+# ANON_AVG should reject exprs other than int64, uint64, double & numeric
+[language_features=NONE,+ANONYMIZATION]
+select ANON_AVG(string clamped between 0 and 1) from SimpleTypes
+--
+ERROR: No matching signature for aggregate function ANON_AVG
+  Argument types: STRING, INT64, INT64
+  Signature: ANON_AVG(DOUBLE [CLAMPED BETWEEN DOUBLE AND DOUBLE])
+    Argument 1: Unable to coerce type STRING to expected type DOUBLE [at 1:8]
+select ANON_AVG(string clamped between 0 and 1) from SimpleTypes
+       ^
+==
+
+# Valid ANON_SUM function call
+[language_features=NONE,+ANONYMIZATION]
+select ANON_SUM(int64 clamped between 0 and 1), ANON_SUM(uint64 clamped between 0 and 1), ANON_SUM(double clamped between 0 and 1),
+ANON_SUM(numeric clamped between 0 and 1) from SimpleTypes
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#20 AS `$col1` [INT64]
+| +-$aggregate.$agg2#21 AS `$col2` [UINT64]
+| +-$aggregate.$agg3#22 AS `$col3` [DOUBLE]
+| +-$aggregate.$agg4#23 AS `$col4` [DOUBLE]
++-query=
+  +-ProjectScan
+    +-column_list=$aggregate.[$agg1#20, $agg2#21, $agg3#22, $agg4#23]
+    +-input_scan=
+      +-AnonymizedAggregateScan
+        +-column_list=$aggregate.[$agg1#20, $agg2#21, $agg3#22, $agg4#23]
+        +-input_scan=
+        | +-TableScan(column_list=SimpleTypes.[int64#2, uint64#4, double#9, numeric#16], table=SimpleTypes, column_index_list=[1, 3, 8, 15])
+        +-aggregate_list=
+          +-$agg1#20 :=
+          | +-AggregateFunctionCall(GoogleSQL:anon_sum(INT64, optional(1) INT64, optional(1) INT64) -> INT64)
+          |   +-ColumnRef(type=INT64, column=SimpleTypes.int64#2)
+          |   +-Literal(type=INT64, value=0)
+          |   +-Literal(type=INT64, value=1)
+          +-$agg2#21 :=
+          | +-AggregateFunctionCall(GoogleSQL:anon_sum(UINT64, optional(1) UINT64, optional(1) UINT64) -> UINT64)
+          |   +-ColumnRef(type=UINT64, column=SimpleTypes.uint64#4)
+          |   +-Literal(type=UINT64, value=0)
+          |   +-Literal(type=UINT64, value=1)
+          +-$agg3#22 :=
+          | +-AggregateFunctionCall(GoogleSQL:anon_sum(DOUBLE, optional(1) DOUBLE, optional(1) DOUBLE) -> DOUBLE)
+          |   +-ColumnRef(type=DOUBLE, column=SimpleTypes.double#9)
+          |   +-Literal(type=DOUBLE, value=0)
+          |   +-Literal(type=DOUBLE, value=1)
+          +-$agg4#23 :=
+            +-AggregateFunctionCall(GoogleSQL:anon_sum(DOUBLE, optional(1) DOUBLE, optional(1) DOUBLE) -> DOUBLE)
+              +-Cast(NUMERIC -> DOUBLE)
+              | +-ColumnRef(type=NUMERIC, column=SimpleTypes.numeric#16)
+              +-Literal(type=DOUBLE, value=0)
+              +-Literal(type=DOUBLE, value=1)
+==
+
+# Valid ANON_AVG function call
+[language_features=NONE,+ANONYMIZATION]
+select ANON_AVG(int64 clamped between 0 and 1), ANON_AVG(uint64 clamped between 0 and 1), ANON_AVG(double clamped between 0 and 1),
+ANON_AVG(numeric clamped between 0 and 1) from SimpleTypes
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#20 AS `$col1` [DOUBLE]
+| +-$aggregate.$agg2#21 AS `$col2` [DOUBLE]
+| +-$aggregate.$agg3#22 AS `$col3` [DOUBLE]
+| +-$aggregate.$agg4#23 AS `$col4` [DOUBLE]
++-query=
+  +-ProjectScan
+    +-column_list=$aggregate.[$agg1#20, $agg2#21, $agg3#22, $agg4#23]
+    +-input_scan=
+      +-AnonymizedAggregateScan
+        +-column_list=$aggregate.[$agg1#20, $agg2#21, $agg3#22, $agg4#23]
+        +-input_scan=
+        | +-TableScan(column_list=SimpleTypes.[int64#2, uint64#4, double#9, numeric#16], table=SimpleTypes, column_index_list=[1, 3, 8, 15])
+        +-aggregate_list=
+          +-$agg1#20 :=
+          | +-AggregateFunctionCall(GoogleSQL:anon_avg(DOUBLE, optional(1) DOUBLE, optional(1) DOUBLE) -> DOUBLE)
+          |   +-Cast(INT64 -> DOUBLE)
+          |   | +-ColumnRef(type=INT64, column=SimpleTypes.int64#2)
+          |   +-Literal(type=DOUBLE, value=0)
+          |   +-Literal(type=DOUBLE, value=1)
+          +-$agg2#21 :=
+          | +-AggregateFunctionCall(GoogleSQL:anon_avg(DOUBLE, optional(1) DOUBLE, optional(1) DOUBLE) -> DOUBLE)
+          |   +-Cast(UINT64 -> DOUBLE)
+          |   | +-ColumnRef(type=UINT64, column=SimpleTypes.uint64#4)
+          |   +-Literal(type=DOUBLE, value=0)
+          |   +-Literal(type=DOUBLE, value=1)
+          +-$agg3#22 :=
+          | +-AggregateFunctionCall(GoogleSQL:anon_avg(DOUBLE, optional(1) DOUBLE, optional(1) DOUBLE) -> DOUBLE)
+          |   +-ColumnRef(type=DOUBLE, column=SimpleTypes.double#9)
+          |   +-Literal(type=DOUBLE, value=0)
+          |   +-Literal(type=DOUBLE, value=1)
+          +-$agg4#23 :=
+            +-AggregateFunctionCall(GoogleSQL:anon_avg(DOUBLE, optional(1) DOUBLE, optional(1) DOUBLE) -> DOUBLE)
+              +-Cast(NUMERIC -> DOUBLE)
+              | +-ColumnRef(type=NUMERIC, column=SimpleTypes.numeric#16)
+              +-Literal(type=DOUBLE, value=0)
+              +-Literal(type=DOUBLE, value=1)
+==
+
+# HAVING modifier is currently disabled for ANON functions, this is because the
+# SQL builder will append all present modifiers to the last argument.
+# In the case of the CLAMPED BETWEEN modifier this could potentially produce
+# invalid syntax when performing an unparse.
+[language_features=NONE,+ANONYMIZATION,+HAVING_IN_AGGREGATE]
+select ANON_SUM(int64 having max 1 clamped between 0 and 1) from SimpleTypes
+--
+ERROR: Aggregate function ANON_SUM does not support HAVING in arguments [at 1:23]
+select ANON_SUM(int64 having max 1 clamped between 0 and 1) from SimpleTypes
+                      ^
+==
+
+# HAVING modifier is currently disabled for ANON functions, this is because the
+# SQL builder will append all present modifiers to the last argument.
+# In the case of the CLAMPED BETWEEN modifier this could potentially produce
+# invalid syntax when performing an unparse.
+[language_features=NONE,+ANONYMIZATION,+HAVING_IN_AGGREGATE]
+select ANON_AVG(int64 having max 1 clamped between 0 and 1) from SimpleTypes
+--
+ERROR: Aggregate function ANON_AVG does not support HAVING in arguments [at 1:23]
+select ANON_AVG(int64 having max 1 clamped between 0 and 1) from SimpleTypes
+                      ^
+==
+
+# Non-ANON functions do not accept the CLAMPED BETWEEN clause
+SELECT SUM(int64 clamped between 0 and 1) from SimpleTypes;
+--
+ERROR: The CLAMPED BETWEEN clause is not allowed in the function call arguments for function SUM [at 1:8]
+SELECT SUM(int64 clamped between 0 and 1) from SimpleTypes;
+       ^
+==
+
+# Non-ANON functions do not accept the CLAMPED BETWEEN clause
+SELECT AVG(int64 clamped between 0 and 1) from SimpleTypes;
+--
+ERROR: The CLAMPED BETWEEN clause is not allowed in the function call arguments for function AVG [at 1:8]
+SELECT AVG(int64 clamped between 0 and 1) from SimpleTypes;
+       ^
+==
+
+# Valid ANON_SUM function call
+[language_features=NONE,+ANONYMIZATION,+SAFE_FUNCTION_CALL]
+select {{|WITH ANONYMIZATION}} safe.ANON_SUM(int64 clamped between 0 and 1)
+from SimpleTypes
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#20 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#20]
+    +-input_scan=
+      +-AnonymizedAggregateScan
+        +-column_list=[$aggregate.$agg1#20]
+        +-input_scan=
+        | +-TableScan(column_list=[SimpleTypes.int64#2], table=SimpleTypes, column_index_list=[1])
+        +-aggregate_list=
+          +-$agg1#20 :=
+            +-AggregateFunctionCall({SAFE_ERROR_MODE} GoogleSQL:anon_sum(INT64, optional(1) INT64, optional(1) INT64) -> INT64)
+              +-ColumnRef(type=INT64, column=SimpleTypes.int64#2)
+              +-Literal(type=INT64, value=0)
+              +-Literal(type=INT64, value=1)
+==
+
+# DISTINCT is not supported for anonymized aggregate functions
+[language_features=NONE,+DISALLOW_GROUP_BY_FLOAT,+ANONYMIZATION]
+select ANON_SUM(DISTINCT int32 clamped between 0 and 1) from SimpleTypes
+--
+ERROR: Aggregate function ANON_SUM does not support DISTINCT in arguments [at 1:8]
+select ANON_SUM(DISTINCT int32 clamped between 0 and 1) from SimpleTypes
+       ^
+==
+
+[language_features=NONE,+ANONYMIZATION,+NUMERIC_TYPE]
+SELECT
+ANON_SUM(numeric CLAMPED BETWEEN 1.9 AND 3.5)
+FROM SimpleTypes
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#20 AS `$col1` [NUMERIC]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#20]
+    +-input_scan=
+      +-AnonymizedAggregateScan
+        +-column_list=[$aggregate.$agg1#20]
+        +-input_scan=
+        | +-TableScan(column_list=[SimpleTypes.numeric#16], table=SimpleTypes, column_index_list=[15])
+        +-aggregate_list=
+          +-$agg1#20 :=
+            +-AggregateFunctionCall(GoogleSQL:anon_sum(NUMERIC, optional(1) NUMERIC, optional(1) NUMERIC) -> NUMERIC)
+              +-ColumnRef(type=NUMERIC, column=SimpleTypes.numeric#16)
+              +-Literal(type=NUMERIC, value=1.9)
+              +-Literal(type=NUMERIC, value=3.5)
+==
+
+[language_features=NONE,+ANONYMIZATION,+NUMERIC_TYPE]
+SELECT
+ANON_SUM(numeric CLAMPED BETWEEN 0.999999999 AND 1.000000001)
+FROM SimpleTypes
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#20 AS `$col1` [NUMERIC]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#20]
+    +-input_scan=
+      +-AnonymizedAggregateScan
+        +-column_list=[$aggregate.$agg1#20]
+        +-input_scan=
+        | +-TableScan(column_list=[SimpleTypes.numeric#16], table=SimpleTypes, column_index_list=[15])
+        +-aggregate_list=
+          +-$agg1#20 :=
+            +-AggregateFunctionCall(GoogleSQL:anon_sum(NUMERIC, optional(1) NUMERIC, optional(1) NUMERIC) -> NUMERIC)
+              +-ColumnRef(type=NUMERIC, column=SimpleTypes.numeric#16)
+              +-Literal(type=NUMERIC, value=0.999999999)
+              +-Literal(type=NUMERIC, value=1.000000001)
+==
+
+# Valid ANON_AVG function call
+[language_features=NONE,+ANONYMIZATION,+SAFE_FUNCTION_CALL]
+select {{|WITH ANONYMIZATION}} safe.ANON_AVG(int64 clamped between 0 and 1)
+from SimpleTypes
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#20 AS `$col1` [DOUBLE]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#20]
+    +-input_scan=
+      +-AnonymizedAggregateScan
+        +-column_list=[$aggregate.$agg1#20]
+        +-input_scan=
+        | +-TableScan(column_list=[SimpleTypes.int64#2], table=SimpleTypes, column_index_list=[1])
+        +-aggregate_list=
+          +-$agg1#20 :=
+            +-AggregateFunctionCall({SAFE_ERROR_MODE} GoogleSQL:anon_avg(DOUBLE, optional(1) DOUBLE, optional(1) DOUBLE) -> DOUBLE)
+              +-Cast(INT64 -> DOUBLE)
+              | +-ColumnRef(type=INT64, column=SimpleTypes.int64#2)
+              +-Literal(type=DOUBLE, value=0)
+              +-Literal(type=DOUBLE, value=1)
+==
+
+# DISTINCT is not supported for anonymized aggregate functions
+[language_features=NONE,+DISALLOW_GROUP_BY_FLOAT,+ANONYMIZATION]
+select ANON_AVG(DISTINCT int32 clamped between 0 and 1) from SimpleTypes
+--
+ERROR: Aggregate function ANON_AVG does not support DISTINCT in arguments [at 1:8]
+select ANON_AVG(DISTINCT int32 clamped between 0 and 1) from SimpleTypes
+       ^
+==
+
+[language_features=NONE,+ANONYMIZATION,+NUMERIC_TYPE]
+SELECT
+ANON_AVG(numeric CLAMPED BETWEEN 0.999999999 AND 1.000000001)
+FROM SimpleTypes
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#20 AS `$col1` [NUMERIC]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#20]
+    +-input_scan=
+      +-AnonymizedAggregateScan
+        +-column_list=[$aggregate.$agg1#20]
+        +-input_scan=
+        | +-TableScan(column_list=[SimpleTypes.numeric#16], table=SimpleTypes, column_index_list=[15])
+        +-aggregate_list=
+          +-$agg1#20 :=
+            +-AggregateFunctionCall(GoogleSQL:anon_avg(NUMERIC, optional(1) NUMERIC, optional(1) NUMERIC) -> NUMERIC)
+              +-ColumnRef(type=NUMERIC, column=SimpleTypes.numeric#16)
+              +-Literal(type=NUMERIC, value=0.999999999)
+              +-Literal(type=NUMERIC, value=1.000000001)
+==
+
+[language_features=NONE,+ANONYMIZATION,+NUMERIC_TYPE]
+SELECT
+ANON_AVG(numeric CLAMPED BETWEEN 1.9 AND 3.5)
+FROM SimpleTypes
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#20 AS `$col1` [NUMERIC]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#20]
+    +-input_scan=
+      +-AnonymizedAggregateScan
+        +-column_list=[$aggregate.$agg1#20]
+        +-input_scan=
+        | +-TableScan(column_list=[SimpleTypes.numeric#16], table=SimpleTypes, column_index_list=[15])
+        +-aggregate_list=
+          +-$agg1#20 :=
+            +-AggregateFunctionCall(GoogleSQL:anon_avg(NUMERIC, optional(1) NUMERIC, optional(1) NUMERIC) -> NUMERIC)
+              +-ColumnRef(type=NUMERIC, column=SimpleTypes.numeric#16)
+              +-Literal(type=NUMERIC, value=1.9)
+              +-Literal(type=NUMERIC, value=3.5)
+==
+
+# ANON_VAR_POP(ARRAY<DOUBLE>) is an internal signature and cannot be used by
+# users.
+[language_features=NONE,+ANONYMIZATION,+NUMERIC_TYPE]
+select with anonymization ANON_VAR_POP(double_array)
+from ArrayWithAnonymizationUid;
+--
+ERROR: No matching signature for aggregate function ANON_VAR_POP
+  Argument types: ARRAY<DOUBLE>
+  Signature: ANON_VAR_POP(DOUBLE [CLAMPED BETWEEN DOUBLE AND DOUBLE])
+    Argument 1: Unable to coerce type ARRAY<DOUBLE> to expected type DOUBLE [at 1:27]
+select with anonymization ANON_VAR_POP(double_array)
+                          ^
+==
+
+# ANON_STDDEV_POP(ARRAY<DOUBLE>) is an internal signature and cannot be used by
+# users.
+[language_features=NONE,+ANONYMIZATION,+NUMERIC_TYPE]
+select with anonymization ANON_STDDEV_POP(double_array)
+from ArrayWithAnonymizationUid;
+--
+ERROR: No matching signature for aggregate function ANON_STDDEV_POP
+  Argument types: ARRAY<DOUBLE>
+  Signature: ANON_STDDEV_POP(DOUBLE [CLAMPED BETWEEN DOUBLE AND DOUBLE])
+    Argument 1: Unable to coerce type ARRAY<DOUBLE> to expected type DOUBLE [at 1:27]
+select with anonymization ANON_STDDEV_POP(double_array)
+                          ^
+==
+
+# ANON_PERCENTILE_CONT(ARRAY<DOUBLE>, DOUBLE) is an internal signature and
+# cannot be used by users.
+[language_features=NONE,+ANONYMIZATION,+NUMERIC_TYPE]
+select with anonymization ANON_PERCENTILE_CONT(double_array, 0.4)
+from ArrayWithAnonymizationUid;
+--
+ERROR: No matching signature for aggregate function ANON_PERCENTILE_CONT
+  Argument types: ARRAY<DOUBLE>, DOUBLE
+  Signature: ANON_PERCENTILE_CONT(DOUBLE, DOUBLE [CLAMPED BETWEEN DOUBLE AND DOUBLE])
+    Argument 1: Unable to coerce type ARRAY<DOUBLE> to expected type DOUBLE [at 1:27]
+select with anonymization ANON_PERCENTILE_CONT(double_array, 0.4)
+                          ^
+==
+
+# ANON_PERCENTILE_CONT(DOUBLE) is not supported because that percentile is not
+# provided.
+[language_features=NONE,+ANONYMIZATION,+NUMERIC_TYPE]
+select with anonymization ANON_PERCENTILE_CONT(double)
+from SimpleTypesWithAnonymizationUid;
+--
+ERROR: Anonymized aggregate function ANON_PERCENTILE_CONT expects exactly 2 arguments but found 1 argument [at 1:27]
+select with anonymization ANON_PERCENTILE_CONT(double)
+                          ^
+==
+
+# More than two arguments are not supported for ANON_PERCENTILE_CONT.
+[language_features=NONE,+ANONYMIZATION,+NUMERIC_TYPE]
+select with anonymization ANON_PERCENTILE_CONT(double, double, double)
+from SimpleTypesWithAnonymizationUid;
+--
+ERROR: Anonymized aggregate function ANON_PERCENTILE_CONT expects exactly 2 arguments but found 3 arguments [at 1:27]
+select with anonymization ANON_PERCENTILE_CONT(double, double, double)
+                          ^
+==
+
+# percentile must be in the range [0.0, 1.0]
+[language_features=NONE,+ANONYMIZATION,+NUMERIC_TYPE]
+select with anonymization ANON_PERCENTILE_CONT(double, 1.5)
+from SimpleTypesWithAnonymizationUid;
+--
+ERROR: Percentile must be between 0 and 1 [at 1:56]
+select with anonymization ANON_PERCENTILE_CONT(double, 1.5)
+                                                       ^
+==
+
+# percentile must have two arguments.
+[language_features=NONE,+ANONYMIZATION,+NUMERIC_TYPE]
+select with anonymization ANON_PERCENTILE_CONT(double, 1.5, 1.5)
+from SimpleTypesWithAnonymizationUid;
+--
+ERROR: Anonymized aggregate function ANON_PERCENTILE_CONT expects exactly 2 arguments but found 3 arguments [at 1:27]
+select with anonymization ANON_PERCENTILE_CONT(double, 1.5, 1.5)
+                          ^
+==
+
+# percentile must have two arguments.
+[language_features=NONE,+ANONYMIZATION,+NUMERIC_TYPE]
+select with anonymization ANON_PERCENTILE_CONT(double)
+from SimpleTypesWithAnonymizationUid;
+--
+ERROR: Anonymized aggregate function ANON_PERCENTILE_CONT expects exactly 2 arguments but found 1 argument [at 1:27]
+select with anonymization ANON_PERCENTILE_CONT(double)
+                          ^
+==
+
+[language_features=NONE,+ANONYMIZATION,+NUMERIC_TYPE]
+select with anonymization
+    ANON_PERCENTILE_CONT(int64, 0.4, 0.4 CLAMPED BETWEEN 2 AND 3)
+from SimpleTypesWithAnonymizationUid;
+--
+ERROR: Anonymized aggregate function ANON_PERCENTILE_CONT expects exactly 2 arguments but found 3 arguments [at 2:5]
+    ANON_PERCENTILE_CONT(int64, 0.4, 0.4 CLAMPED BETWEEN 2 AND 3)
+    ^
+==
+
+[language_features=NONE,+ANONYMIZATION,+NUMERIC_TYPE]
+select with anonymization
+    ANON_PERCENTILE_CONT(int64 CLAMPED BETWEEN 2 AND 3)
+from SimpleTypesWithAnonymizationUid;
+--
+ERROR: Anonymized aggregate function ANON_PERCENTILE_CONT expects exactly 2 arguments but found 1 argument [at 2:5]
+    ANON_PERCENTILE_CONT(int64 CLAMPED BETWEEN 2 AND 3)
+    ^
+==
+
+[language_features=NONE,+ANONYMIZATION,+NUMERIC_TYPE]
+select with anonymization
+    ANON_PERCENTILE_CONT(int64, double CLAMPED BETWEEN 2 AND 3)
+from SimpleTypesWithAnonymizationUid;
+--
+ERROR: Percentile must be a literal or query parameter [at 2:33]
+    ANON_PERCENTILE_CONT(int64, double CLAMPED BETWEEN 2 AND 3)
+                                ^
+==
+
+[language_features=NONE,+ANONYMIZATION,+NUMERIC_TYPE]
+select with anonymization
+    ANON_PERCENTILE_CONT(int64, 0.4 CLAMPED BETWEEN double AND 3)
+from SimpleTypesWithAnonymizationUid;
+--
+ERROR: Lower bound on CLAMPED BETWEEN must be a literal or query parameter [at 2:53]
+    ANON_PERCENTILE_CONT(int64, 0.4 CLAMPED BETWEEN double AND 3)
+                                                    ^
+==
+
+[language_features=NONE,+ANONYMIZATION,+NUMERIC_TYPE]
+select with anonymization
+    ANON_PERCENTILE_CONT(int64, 0.4 CLAMPED BETWEEN 2 AND double)
+from SimpleTypesWithAnonymizationUid;
+--
+ERROR: Upper bound on CLAMPED BETWEEN must be a literal or query parameter [at 2:59]
+    ANON_PERCENTILE_CONT(int64, 0.4 CLAMPED BETWEEN 2 AND double)
+                                                          ^
+==
+
+# ANON_QUANTILES(ARRAY<DOUBLE>, INT64) is an internal signature and
+# cannot be used by users.
+[language_features=NONE,+ANONYMIZATION,+NUMERIC_TYPE]
+select with anonymization ANON_QUANTILES(double_array, 4)
+from ArrayWithAnonymizationUid;
+--
+ERROR: No matching signature for aggregate function ANON_QUANTILES
+  Argument types: ARRAY<DOUBLE>, INT64
+  Signature: ANON_QUANTILES(DOUBLE, INT64 CLAMPED BETWEEN DOUBLE AND DOUBLE)
+    Signature requires at least 4 arguments, found 2 arguments [at 1:27]
+select with anonymization ANON_QUANTILES(double_array, 4)
+                          ^
+==
+
+# ANON_QUANTILES(DOUBLE) is not supported because quantiles are not
+# provided.
+[language_features=NONE,+ANONYMIZATION,+NUMERIC_TYPE]
+select with anonymization ANON_QUANTILES(double)
+from SimpleTypesWithAnonymizationUid;
+--
+ERROR: Anonymized aggregate function ANON_QUANTILES expects exactly 2 arguments but found 1 argument [at 1:27]
+select with anonymization ANON_QUANTILES(double)
+                          ^
+==
+
+# More than two arguments are not supported for ANON_QUANTILES.
+[language_features=NONE,+ANONYMIZATION,+NUMERIC_TYPE]
+select with anonymization ANON_QUANTILES(double, int64, double)
+from SimpleTypesWithAnonymizationUid;
+--
+ERROR: Anonymized aggregate function ANON_QUANTILES expects exactly 2 arguments but found 3 arguments [at 1:27]
+select with anonymization ANON_QUANTILES(double, int64, double)
+                          ^
+==
+
+# quantiles must be an int64
+[language_features=NONE,+ANONYMIZATION,+NUMERIC_TYPE]
+select with anonymization ANON_QUANTILES(double, double)
+from SimpleTypesWithAnonymizationUid;
+--
+ERROR: No matching signature for aggregate function ANON_QUANTILES
+  Argument types: DOUBLE, DOUBLE
+  Signature: ANON_QUANTILES(DOUBLE, INT64 CLAMPED BETWEEN DOUBLE AND DOUBLE)
+    Signature requires at least 4 arguments, found 2 arguments [at 1:27]
+select with anonymization ANON_QUANTILES(double, double)
+                          ^
+==
+
+# quantiles requires explicit bounds
+[language_features=NONE,+ANONYMIZATION,+NUMERIC_TYPE]
+select with anonymization ANON_QUANTILES(double, int64)
+from SimpleTypesWithAnonymizationUid;
+--
+ERROR: No matching signature for aggregate function ANON_QUANTILES
+  Argument types: DOUBLE, INT64
+  Signature: ANON_QUANTILES(DOUBLE, INT64 CLAMPED BETWEEN DOUBLE AND DOUBLE)
+    Signature requires at least 4 arguments, found 2 arguments [at 1:27]
+select with anonymization ANON_QUANTILES(double, int64)
+                          ^
+==
+
+[language_features=NONE,+ANONYMIZATION,+NUMERIC_TYPE]
+select with anonymization
+    ANON_QUANTILES(int64, 4, 0.4 CLAMPED BETWEEN 2 AND 3)
+from SimpleTypesWithAnonymizationUid;
+--
+ERROR: Anonymized aggregate function ANON_QUANTILES expects exactly 2 arguments but found 3 arguments [at 2:5]
+    ANON_QUANTILES(int64, 4, 0.4 CLAMPED BETWEEN 2 AND 3)
+    ^
+==
+
+[language_features=NONE,+ANONYMIZATION,+NUMERIC_TYPE]
+select with anonymization
+    ANON_QUANTILES(int64 CLAMPED BETWEEN 2 AND 3)
+from SimpleTypesWithAnonymizationUid;
+--
+ERROR: Anonymized aggregate function ANON_QUANTILES expects exactly 2 arguments but found 1 argument [at 2:5]
+    ANON_QUANTILES(int64 CLAMPED BETWEEN 2 AND 3)
+    ^
+==
+
+[language_features=NONE,+ANONYMIZATION,+NUMERIC_TYPE]
+select with anonymization
+    ANON_QUANTILES(int64, int64 CLAMPED BETWEEN 2 AND 3)
+from SimpleTypesWithAnonymizationUid;
+--
+ERROR: Quantiles must be a literal or query parameter [at 2:27]
+    ANON_QUANTILES(int64, int64 CLAMPED BETWEEN 2 AND 3)
+                          ^
+==
+
+[language_features=NONE,+ANONYMIZATION,+NUMERIC_TYPE]
+select with anonymization
+    ANON_QUANTILES(int64, 4 CLAMPED BETWEEN double AND 3)
+from SimpleTypesWithAnonymizationUid;
+--
+ERROR: Lower bound on CLAMPED BETWEEN must be a literal or query parameter [at 2:45]
+    ANON_QUANTILES(int64, 4 CLAMPED BETWEEN double AND 3)
+                                            ^
+==
+
+[language_features=NONE,+ANONYMIZATION,+NUMERIC_TYPE]
+select with anonymization
+    ANON_QUANTILES(int64, 4 CLAMPED BETWEEN 2 AND double)
+from SimpleTypesWithAnonymizationUid;
+--
+ERROR: Upper bound on CLAMPED BETWEEN must be a literal or query parameter [at 2:51]
+    ANON_QUANTILES(int64, 4 CLAMPED BETWEEN 2 AND double)
+                                                  ^
+==
+
+[language_features=NONE,+ANONYMIZATION,+NUMERIC_TYPE]
+select with anonymization
+    ANON_QUANTILES(int64, @test_param_int64 CLAMPED BETWEEN @test_param_double AND @test_param_double)
+from SimpleTypesWithAnonymizationUid;
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [ARRAY<DOUBLE>]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-AnonymizedAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-TableScan(column_list=[SimpleTypesWithAnonymizationUid.int64#2], table=SimpleTypesWithAnonymizationUid, column_index_list=[1])
+        +-aggregate_list=
+          +-$agg1#13 :=
+            +-AggregateFunctionCall(GoogleSQL:anon_quantiles(DOUBLE, INT64, DOUBLE, DOUBLE) -> ARRAY<DOUBLE>)
+              +-Cast(INT64 -> DOUBLE)
+              | +-ColumnRef(type=INT64, column=SimpleTypesWithAnonymizationUid.int64#2)
+              +-Parameter(type=INT64, name="test_param_int64")
+              +-Parameter(type=DOUBLE, name="test_param_double")
+              +-Parameter(type=DOUBLE, name="test_param_double")
+==
+
+[language_features=NONE,+ANONYMIZATION]
+select with anonymization
+    ANON_XXXX(int64, 1 CLAMPED BETWEEN 0 AND 10) as xxx
+from SimpleTypesWithAnonymizationUid;
+--
+ERROR: Function not found: ANON_XXXX [at 2:5]
+    ANON_XXXX(int64, 1 CLAMPED BETWEEN 0 AND 10) as xxx
+    ^
+==
+
+[language_features=NONE,+ANONYMIZATION]
+select with anonymization
+    ANON_XXXX(int64 CLAMPED BETWEEN 0 AND 10) as xxx
+from SimpleTypesWithAnonymizationUid;
+--
+ERROR: Function not found: ANON_XXXX [at 2:5]
+    ANON_XXXX(int64 CLAMPED BETWEEN 0 AND 10) as xxx
+    ^
+==
+
+[language_features=NONE,+ANONYMIZATION]
+select with anonymization
+    ANON_NON_ANON(int64 CLAMPED BETWEEN 0 AND 10) as xxx
+from SimpleTypesWithAnonymizationUid;
+--
+ERROR: The CLAMPED BETWEEN clause is not allowed in the function call arguments for function ANON_NON_ANON [at 2:5]
+    ANON_NON_ANON(int64 CLAMPED BETWEEN 0 AND 10) as xxx
+    ^
+==
+
+[language_features=NONE,+ANONYMIZATION]
+select with anonymization
+    ANON_COUNT(*, 1 CLAMPED BETWEEN 0 AND 10) as xxx
+from SimpleTypesWithAnonymizationUid;
+--
+ERROR: Anonymized aggregate function ANON_COUNT expects exactly 1 argument but found 2 arguments [at 2:5]
+    ANON_COUNT(*, 1 CLAMPED BETWEEN 0 AND 10) as xxx
+    ^
+==
+
+[language_features=NONE,+ANONYMIZATION]
+select with anonymization
+    ANON_COUNT(* CLAMPED BETWEEN 0 AND 10) as xxx
+from SimpleTypesWithAnonymizationUid;
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.xxx#13 AS xxx [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.xxx#13]
+    +-input_scan=
+      +-AnonymizedAggregateScan
+        +-column_list=[$aggregate.xxx#13]
+        +-input_scan=
+        | +-TableScan(table=SimpleTypesWithAnonymizationUid)
+        +-aggregate_list=
+          +-xxx#13 :=
+            +-AggregateFunctionCall(GoogleSQL:$anon_count_star(optional(1) INT64, optional(1) INT64) -> INT64)
+              +-Literal(type=INT64, value=0)
+              +-Literal(type=INT64, value=10)
+==
+
+[language_features=NONE,+ANONYMIZATION]
+select with anonymization
+    ANON_SUM(int64, 1 CLAMPED BETWEEN 0 AND 10 WIth REPorT(forMAT=ProTO)) as xxx
+from SimpleTypesWithAnonymizationUid;
+--
+ERROR: Anonymized aggregate function ANON_SUM expects exactly 1 argument but found 2 arguments [at 2:5]
+    ANON_SUM(int64, 1 CLAMPED BETWEEN 0 AND 10 WIth REPorT(forMAT=ProTO)) as xxx
+    ^
+==
+
+[language_features=NONE,+ANONYMIZATION,+JSON_TYPE]
+select with anonymization
+    ANON_SUM(int64 CLAMPED BETWEEN 0 AND 10 WIth REPorT(forMAT=JsON)) as xxx
+from SimpleTypesWithAnonymizationUid;
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.xxx#13 AS xxx [JSON]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.xxx#13]
+    +-input_scan=
+      +-AnonymizedAggregateScan
+        +-column_list=[$aggregate.xxx#13]
+        +-input_scan=
+        | +-TableScan(column_list=[SimpleTypesWithAnonymizationUid.int64#2], table=SimpleTypesWithAnonymizationUid, column_index_list=[1])
+        +-aggregate_list=
+          +-xxx#13 :=
+            +-AggregateFunctionCall(GoogleSQL:$anon_sum_with_report_json(INT64, optional(1) INT64, optional(1) INT64) -> JSON)
+              +-ColumnRef(type=INT64, column=SimpleTypesWithAnonymizationUid.int64#2)
+              +-Literal(type=INT64, value=0)
+              +-Literal(type=INT64, value=10)

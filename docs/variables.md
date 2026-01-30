@@ -4,7 +4,7 @@
 
 # Variables
 
-ZetaSQL supports three types of variables:
+GoogleSQL supports three types of variables:
 
 +   System variables: Defined by a client or an engine to expose configuration.
 +   Query parameters: Defined by a user to bind typed values into a query.
@@ -20,18 +20,18 @@ configuration. System variables are prefixed with a double `@@` symbol, and must
 be one or more SQL [identifiers][sql-identifiers] separated by periods.
 
 Because system variables are defined by each implementation and not by the
-ZetaSQL language, see the documentation for your implementation to
+GoogleSQL language, see the documentation for your implementation to
 determine the names, types, and behavior of available system variables.
 
 **Syntax**
 
-```zetasql
+```googlesql
 SET @@system_variable = expression;
 ```
 
 **Examples**
 
-```zetasql
+```googlesql
 -- Set the system variable `@@system_var_a` to have the literal STRING value
 -- `"TEST"`.
 SET @@system_var_a = "TEST";
@@ -53,13 +53,13 @@ single `@` symbol.
 
 **Syntax**
 
-```zetasql
+```googlesql
 SET @query_parameter = expression;
 ```
 
 **Examples**
 
-```zetasql
+```googlesql
 -- Set the query parameter `@query_parameter_a` to have the value of the
 -- expression `1`.
 SET @query_parameter_a = 1;
@@ -79,13 +79,13 @@ WHERE
 ## Runtime variables
 
 Runtime variables are defined and set by a user to track state in a
-ZetaSQL [procedural language][procedural-language] script. You must
+GoogleSQL [procedural language][procedural-language] script. You must
 first declare a runtime variable using a [`DECLARE`][declare] statement before
 you can set the variable.
 
 **Syntax**
 
-```zetasql
+```googlesql
 DECLARE runtime_variable [variable_type] [DEFAULT expression];
 SET runtime_variable = expression;
 SET (variable1, variable2, ...) = struct_expression;
@@ -93,7 +93,7 @@ SET (variable1, variable2, ...) = struct_expression;
 
 **Examples**
 
-```zetasql
+```googlesql
 -- Declare two runtime variables: `target_word` and `corpus_count`.
 DECLARE target_word STRING DEFAULT 'methinks';
 DECLARE corpus_count, word_count INT64;
@@ -114,11 +114,11 @@ SELECT
 
 <!-- mdlint off(WHITESPACE_LINE_LENGTH) -->
 
-[sql-identifiers]: https://github.com/google/zetasql/blob/master/docs/lexical.md#identifiers
+[sql-identifiers]: https://github.com/google/googlesql/blob/master/docs/lexical.md#identifiers
 
-[procedural-language]: https://github.com/google/zetasql/blob/master/docs/procedural-language.md
+[procedural-language]: https://github.com/google/googlesql/blob/master/docs/procedural-language.md
 
-[declare]: https://github.com/google/zetasql/blob/master/docs/procedural-language.md#declare
+[declare]: https://github.com/google/googlesql/blob/master/docs/procedural-language.md#declare
 
 <!-- mdlint on -->
 

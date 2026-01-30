@@ -4,7 +4,7 @@
 
 # Pipe query syntax
 
-Pipe query syntax is an extension to ZetaSQL that's simpler and more
+Pipe query syntax is an extension to GoogleSQL that's simpler and more
 concise than [standard query syntax][query-syntax]. Pipe syntax supports the
 same operations as standard syntax, and improves some areas of SQL query
 functionality and usability.
@@ -36,7 +36,7 @@ Pipe syntax has the following key characteristics:
 
 Consider the following table called `Produce`:
 
-```zetasql
+```googlesql
 CREATE OR REPLACE TABLE Produce AS (
   SELECT 'apples' AS item, 2 AS sales, 'fruit' AS category
   UNION ALL
@@ -64,7 +64,7 @@ amount of sales for each item in the `Produce` table:
 
 **Standard syntax**
 
-```zetasql
+```googlesql
 SELECT item, COUNT(*) AS num_items, SUM(sales) AS total_sales
 FROM Produce
 WHERE
@@ -82,7 +82,7 @@ ORDER BY item DESC;
 
 **Pipe syntax**
 
-```zetasql
+```googlesql
 FROM Produce
 |> WHERE
     item != 'bananas'
@@ -178,7 +178,7 @@ Subpipelines have the following key characteristics:
 
 This query shows a subpipeline used in the `IF` pipe operator:
 
-```zetasql
+```googlesql
 FROM Produce
 |> IF true THEN
   (
@@ -220,7 +220,7 @@ syntax.
 
 The following queries use the [`Produce` table][query-comparison]:
 
-```zetasql
+```googlesql
 FROM Produce;
 
 /*---------+-------+-----------+
@@ -233,7 +233,7 @@ FROM Produce;
  +---------+-------+-----------*/
 ```
 
-```zetasql
+```googlesql
 -- Join tables in the FROM clause and then apply pipe operators.
 FROM
   Produce AS p1
@@ -252,7 +252,7 @@ FROM
 ## Pipe operators 
 <a id="pipe_operators"></a>
 
-ZetaSQL supports the following pipe operators. For operators that
+GoogleSQL supports the following pipe operators. For operators that
 correspond or relate to similar operations in standard syntax, the operator
 descriptions highlight similarities and differences and link to more detailed
 documentation on the corresponding syntax.
@@ -538,7 +538,7 @@ pipe syntax supports other operators:
 
 **Examples**
 
-```zetasql
+```googlesql
 FROM (SELECT 'apples' AS item, 2 AS sales)
 |> SELECT item AS fruit_name;
 
@@ -549,7 +549,7 @@ FROM (SELECT 'apples' AS item, 2 AS sales)
  +------------*/
 ```
 
-```zetasql
+```googlesql
 -- Window function with a named window
 FROM Produce
 |> SELECT item, sales, category, SUM(sales) OVER item_window AS category_total
@@ -565,13 +565,13 @@ FROM Produce
  +---------+-------+-----------+----------------*/
 ```
 
-[select-clause]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#select_list
+[select-clause]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#select_list
 
-[window-functions]: https://github.com/google/zetasql/blob/master/docs/window-function-calls.md
+[window-functions]: https://github.com/google/googlesql/blob/master/docs/window-function-calls.md
 
-[named-windows]: https://github.com/google/zetasql/blob/master/docs/window-function-calls.md#def_use_named_window
+[named-windows]: https://github.com/google/googlesql/blob/master/docs/window-function-calls.md#def_use_named_window
 
-[select-star]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#select_
+[select-star]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#select_
 
 [aggregate-pipe-operator]: #aggregate_pipe_operator
 
@@ -583,7 +583,7 @@ FROM Produce
 
 [rename-pipe-operator]: #rename_pipe_operator
 
-[value-tables]: https://github.com/google/zetasql/blob/master/docs/data-model.md#value_tables
+[value-tables]: https://github.com/google/googlesql/blob/master/docs/data-model.md#value_tables
 
 ### `EXTEND` pipe operator 
 <a id="extend_pipe_operator"></a>
@@ -603,7 +603,7 @@ Propagates the existing table and adds computed columns, similar to
 
 **Examples**
 
-```zetasql
+```googlesql
 (
   SELECT 'apples' AS item, 2 AS sales
   UNION ALL
@@ -619,7 +619,7 @@ Propagates the existing table and adds computed columns, similar to
  +---------+-------+------------*/
 ```
 
-```zetasql
+```googlesql
 -- Window function, with `OVER`
 (
   SELECT 'apples' AS item, 2 AS sales
@@ -639,7 +639,7 @@ Propagates the existing table and adds computed columns, similar to
  +---------+-------+-------------*/
 ```
 
-```zetasql
+```googlesql
 -- Window function with a named window
 FROM Produce
 |> EXTEND SUM(sales) OVER item_window AS category_total
@@ -655,11 +655,11 @@ FROM Produce
  +----------------------------------------*/
 ```
 
-[select-star]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#select_
+[select-star]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#select_
 
-[window-functions]: https://github.com/google/zetasql/blob/master/docs/window-function-calls.md
+[window-functions]: https://github.com/google/googlesql/blob/master/docs/window-function-calls.md
 
-[named-windows]: https://github.com/google/zetasql/blob/master/docs/window-function-calls.md#def_use_named_window
+[named-windows]: https://github.com/google/googlesql/blob/master/docs/window-function-calls.md#def_use_named_window
 
 ### `SET` pipe operator 
 <a id="set_pipe_operator"></a>
@@ -680,7 +680,7 @@ Therefore, `t.x` will still refer to the original value.
 
 **Example**
 
-```zetasql
+```googlesql
 (
   SELECT 1 AS x, 11 AS y
   UNION ALL
@@ -696,7 +696,7 @@ Therefore, `t.x` will still refer to the original value.
  +---+---*/
 ```
 
-```zetasql
+```googlesql
 FROM (SELECT 2 AS x, 3 AS y) AS t
 |> SET x = x * x, y = 8
 |> SELECT t.x AS original_x, x, y;
@@ -708,7 +708,7 @@ FROM (SELECT 2 AS x, 3 AS y) AS t
  +------------+---+---*/
 ```
 
-[select-replace]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#select_replace
+[select-replace]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#select_replace
 
 ### `DROP` pipe operator 
 <a id="drop_pipe_operator"></a>
@@ -733,7 +733,7 @@ deletes persistent schema objects.
 
 **Example**
 
-```zetasql
+```googlesql
 SELECT 'apples' AS item, 2 AS sales, 'fruit' AS category
 |> DROP sales, category;
 
@@ -744,7 +744,7 @@ SELECT 'apples' AS item, 2 AS sales, 'fruit' AS category
  +--------*/
 ```
 
-```zetasql
+```googlesql
 FROM (SELECT 1 AS x, 2 AS y) AS t
 |> DROP x
 |> SELECT t.x AS original_x, y;
@@ -756,9 +756,9 @@ FROM (SELECT 1 AS x, 2 AS y) AS t
  +------------+---*/
 ```
 
-[select-except]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#select_except
+[select-except]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#select_except
 
-[drop-statement]: https://github.com/google/zetasql/blob/master/docs/data-definition-language.md#drop
+[drop-statement]: https://github.com/google/googlesql/blob/master/docs/data-definition-language.md#drop
 
 ### `RENAME` pipe operator 
 <a id="rename_pipe_operator"></a>
@@ -780,7 +780,7 @@ values. Therefore, `t.x` will still refer to the original value.
 
 **Example**
 
-```zetasql
+```googlesql
 SELECT 1 AS x, 2 AS y, 3 AS z
 |> AS t
 |> RENAME y AS renamed_y
@@ -815,7 +815,7 @@ aliases to them. You can use the table alias to disambiguate columns after the
 
 **Example**
 
-```zetasql
+```googlesql
 (
   SELECT "000123" AS id, "apples" AS item, 2 AS sales
   UNION ALL
@@ -836,7 +836,7 @@ aliases to them. You can use the table alias to disambiguate columns after the
  +-----+-------------+--------*/
 ```
 
-[using-aliases]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#using_aliases
+[using-aliases]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#using_aliases
 
 [select-pipe-operator]: #select_pipe_operator
 
@@ -865,7 +865,7 @@ a `QUALIFY` clause, use window functions inside a `WHERE` clause instead.
 
 **Example**
 
-```zetasql
+```googlesql
 (
   SELECT 'apples' AS item, 2 AS sales
   UNION ALL
@@ -883,15 +883,15 @@ a `QUALIFY` clause, use window functions inside a `WHERE` clause instead.
  +---------+-------*/
 ```
 
-[where-clause]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#where_clause
+[where-clause]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#where_clause
 
-[having-clause]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#having_clause
+[having-clause]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#having_clause
 
-[qualify-clause]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#qualify_clause
+[qualify-clause]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#qualify_clause
 
 [aggregate-pipe-operator]: #aggregate_pipe_operator
 
-[window-functions]: https://github.com/google/zetasql/blob/master/docs/window-function-calls.md
+[window-functions]: https://github.com/google/googlesql/blob/master/docs/window-function-calls.md
 
 ### `AGGREGATE` pipe operator 
 <a id="aggregate_pipe_operator"></a>
@@ -975,7 +975,7 @@ FROM table1
 
 **Examples**
 
-```zetasql
+```googlesql
 -- Full-table aggregation
 (
   SELECT 'apples' AS item, 2 AS sales
@@ -993,7 +993,7 @@ FROM table1
  +-----------+-------------*/
 ```
 
-```zetasql
+```googlesql
 -- Aggregation with grouping
 (
   SELECT 'apples' AS item, 2 AS sales
@@ -1046,7 +1046,7 @@ the left-to-right output column order.
 
 Consider the following table called `Produce`:
 
-```zetasql
+```googlesql
 /*---------+-------+-----------+
  | item    | sales | category  |
  +---------+-------+-----------+
@@ -1060,7 +1060,7 @@ Consider the following table called `Produce`:
 The following two equivalent examples show you how to order by all grouping
 columns using the `GROUP AND ORDER BY` clause or a separate `ORDER BY` clause:
 
-```zetasql
+```googlesql
 -- Order by all grouping columns using GROUP AND ORDER BY.
 FROM Produce
 |> AGGREGATE SUM(sales) AS total_sales
@@ -1075,7 +1075,7 @@ FROM Produce
  +-----------+---------+-------------*/
 ```
 
-```zetasql
+```googlesql
 --Order by columns using ORDER BY after performing aggregation.
 FROM Produce
 |> AGGREGATE SUM(sales) AS total_sales
@@ -1087,7 +1087,7 @@ You can add an ordering suffix to a column in the `AGGREGATE` list. Although the
 `AGGREGATE` list appears before the `GROUP BY` list in the query, ordering
 suffixes on columns in the `GROUP BY` list are applied first.
 
-```zetasql
+```googlesql
 FROM Produce
 |> AGGREGATE SUM(sales) AS total_sales ASC
    GROUP BY item, category DESC;
@@ -1103,7 +1103,7 @@ FROM Produce
 
 The previous query is equivalent to the following:
 
-```zetasql
+```googlesql
 -- Order by specified grouping and aggregate columns.
 FROM Produce
 |> AGGREGATE SUM(sales) AS total_sales
@@ -1111,9 +1111,9 @@ FROM Produce
 |> ORDER BY category DESC, total_sales;
 ```
 
-[group-by-clause]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#group_by_clause
+[group-by-clause]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#group_by_clause
 
-[aggregate-functions]: https://github.com/google/zetasql/blob/master/docs/aggregate_functions.md
+[aggregate-functions]: https://github.com/google/googlesql/blob/master/docs/aggregate_functions.md
 
 [as-pipe-operator]: #as_pipe_operator
 
@@ -1144,7 +1144,7 @@ doesn't expand value table fields, and preserves table aliases from the input.
 
 **Examples**
 
-```zetasql
+```googlesql
 (
   SELECT 'apples' AS item, 2 AS sales
   UNION ALL
@@ -1168,7 +1168,7 @@ doesn't expand value table fields, and preserves table aliases from the input.
 In the following example, the table alias `Produce` can be used in
 expressions after the `DISTINCT` pipe operator.
 
-```zetasql
+```googlesql
 (
   SELECT 'apples' AS item, 2 AS sales
   UNION ALL
@@ -1194,7 +1194,7 @@ expressions after the `DISTINCT` pipe operator.
 By contrast, the table alias isn't visible after a `|> SELECT DISTINCT *`
 clause.
 
-```zetasql {.bad}
+```googlesql {.bad}
 -- Error, unrecognized name: Produce
 (
   SELECT 'apples' AS item, 2 AS sales
@@ -1214,7 +1214,7 @@ In the following examples, the `DISTINCT` operator doesn't expand value table
 fields and retains the `STRUCT` type in the result. By contrast, the
 `|> SELECT DISTINCT *` clause expands the `STRUCT` type into two columns.
 
-```zetasql
+```googlesql
 SELECT AS STRUCT 1 x, 2 y
 |> DISTINCT;
 
@@ -1228,7 +1228,7 @@ SELECT AS STRUCT 1 x, 2 y
  +----------*/
 ```
 
-```zetasql
+```googlesql
 SELECT AS STRUCT 1 x, 2 y
 |> SELECT DISTINCT *;
 
@@ -1242,7 +1242,7 @@ SELECT AS STRUCT 1 x, 2 y
 The following examples show equivalent ways to generate the same results with
 distinct values from columns `a`, `b`, and `c`.
 
-```zetasql
+```googlesql
 FROM table
 |> SELECT DISTINCT a, b, c;
 
@@ -1255,17 +1255,17 @@ FROM table
    GROUP BY a, b, c;
 ```
 
-[select-distinct]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#select_distinct
+[select-distinct]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#select_distinct
 
-[union-operator]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#union
+[union-operator]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#union
 
-[aggregate-pipe-operator]: https://github.com/google/zetasql/blob/master/docs/pipe-syntax.md#aggregate_pipe_operator
+[aggregate-pipe-operator]: https://github.com/google/googlesql/blob/master/docs/pipe-syntax.md#aggregate_pipe_operator
 
-[using-clause]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#using_clause
+[using-clause]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#using_clause
 
-[full-join]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#full_join
+[full-join]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#full_join
 
-[inner-join]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#inner_join
+[inner-join]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#inner_join
 
 ### `JOIN` pipe operator 
 <a id="join_pipe_operator"></a>
@@ -1292,7 +1292,7 @@ input table is needed, perhaps to disambiguate columns in an
 
 **Example**
 
-```zetasql
+```googlesql
 (
   SELECT 'apples' AS item, 2 AS sales
   UNION ALL
@@ -1314,9 +1314,9 @@ input table is needed, perhaps to disambiguate columns in an
  +---------+-------+------*/
 ```
 
-[join-operation]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#join_types
+[join-operation]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#join_types
 
-[on-clause]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#on_clause
+[on-clause]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#on_clause
 
 [as-pipe-operator]: #as_pipe_operator
 
@@ -1353,23 +1353,23 @@ Suppose you have TVFs with the following parameters:
 The following examples compare calling both TVFs on an input table
 by using standard syntax and by using the `CALL` pipe operator:
 
-```zetasql
+```googlesql
 -- Call the TVFs without using the CALL operator.
 SELECT *
 FROM
   tvf2(arg2, arg3, TABLE tvf1(TABLE input_table, arg1));
 ```
 
-```zetasql
+```googlesql
 -- Call the same TVFs with the CALL operator.
 FROM input_table
 |> CALL tvf1(arg1)
 |> CALL tvf2(arg2, arg3);
 ```
 
-[tvf]: https://github.com/google/zetasql/blob/master/docs/table-functions.md#tvfs
+[tvf]: https://github.com/google/googlesql/blob/master/docs/table-functions.md#tvfs
 
-[table-function-calls]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#table_function_calls
+[table-function-calls]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#table_function_calls
 
 ### `ORDER BY` pipe operator 
 <a id="order_by_pipe_operator"></a>
@@ -1391,7 +1391,7 @@ apply `ORDER BY` behavior more concisely as part of aggregation.
 
 **Example**
 
-```zetasql
+```googlesql
 (
   SELECT 1 AS x
   UNION ALL
@@ -1410,7 +1410,7 @@ apply `ORDER BY` behavior more concisely as part of aggregation.
  +---*/
 ```
 
-[order-by-clause]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#order_by_clause
+[order-by-clause]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#order_by_clause
 
 [aggregate-pipe-operator]: #aggregate_pipe_operator
 
@@ -1431,7 +1431,7 @@ to skip over rows. The `LIMIT` operator behaves the same as the
 
 **Examples**
 
-```zetasql
+```googlesql
 (
   SELECT 'apples' AS item, 2 AS sales
   UNION ALL
@@ -1449,7 +1449,7 @@ to skip over rows. The `LIMIT` operator behaves the same as the
  +---------+-------*/
 ```
 
-```zetasql
+```googlesql
 (
   SELECT 'apples' AS item, 2 AS sales
   UNION ALL
@@ -1467,7 +1467,7 @@ to skip over rows. The `LIMIT` operator behaves the same as the
  +---------+-------*/
 ```
 
-[limit-offset-clause]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#limit_and_offset_clause
+[limit-offset-clause]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#limit_and_offset_clause
 
 ### `UNION` pipe operator 
 <a id="union_pipe_operator"></a>
@@ -1490,7 +1490,7 @@ are enclosed in parentheses.
 
 For example, compare the following equivalent queries:
 
-```zetasql
+```googlesql
 -- Standard syntax
 SELECT * FROM ...
 UNION ALL
@@ -1511,7 +1511,7 @@ The `UNION` pipe operator supports the same modifiers as the
 
 **Examples**
 
-```zetasql
+```googlesql
 SELECT * FROM UNNEST(ARRAY<INT64>[1, 2, 3]) AS number
 |> UNION ALL (SELECT 1);
 
@@ -1525,7 +1525,7 @@ SELECT * FROM UNNEST(ARRAY<INT64>[1, 2, 3]) AS number
  +--------*/
 ```
 
-```zetasql
+```googlesql
 SELECT * FROM UNNEST(ARRAY<INT64>[1, 2, 3]) AS number
 |> UNION DISTINCT (SELECT 1);
 
@@ -1541,7 +1541,7 @@ SELECT * FROM UNNEST(ARRAY<INT64>[1, 2, 3]) AS number
 The following example shows multiple input queries to the right of the pipe
 operator:
 
-```zetasql
+```googlesql
 SELECT * FROM UNNEST(ARRAY<INT64>[1, 2, 3]) AS number
 |> UNION DISTINCT
     (SELECT 1),
@@ -1560,7 +1560,7 @@ The following example uses the `BY NAME`
 modifier to match results by column name instead of in the
 order that the columns are given in the input queries.
 
-```zetasql
+```googlesql
 SELECT 1 AS one_digit, 10 AS two_digit
 |> UNION ALL BY NAME
     (SELECT 20 AS two_digit, 2 AS one_digit);
@@ -1577,7 +1577,7 @@ Without the `BY NAME` modifier,
 the results are matched by column position in the input query and the column
 names are ignored.
 
-```zetasql
+```googlesql
 SELECT 1 AS one_digit, 10 AS two_digit
 |> UNION ALL
     (SELECT 20 AS two_digit, 2 AS one_digit);
@@ -1591,7 +1591,7 @@ SELECT 1 AS one_digit, 10 AS two_digit
  +-----------+-----------*/
 ```
 
-[union-operator]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#union
+[union-operator]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#union
 
 ### `RECURSIVE UNION` pipe operator 
 <a id="recursive_union_pipe_operator"></a>
@@ -1661,7 +1661,7 @@ and maintain than the corresponding `WITH RECURSIVE` clause syntax.
 The following comparison shows the basic structure of a `WITH RECURSIVE` clause
 and a `RECURSIVE UNION` operator equivalent:
 
-```zetasql
+```googlesql
 -- Standard syntax
 WITH RECURSIVE name AS (
   base_query
@@ -1688,7 +1688,7 @@ the `FROM` clause can be removed and replaced with the subpipeline form.
 In addition, you can also remove the initial `WITH` clause if the rest of the
 query previously started with a `FROM` clause:
 
-```zetasql
+```googlesql
 -- Example query with no WITH clause
 base_query
 |> RECURSIVE UNION ALL (
@@ -1711,7 +1711,7 @@ final_query
 The following examples assume this is the input table, representing an
 employee hierarchy:
 
-```zetasql
+```googlesql
 CREATE TEMP TABLE Employees(
   employee_id INT64,
   manager_id INT64,
@@ -1725,7 +1725,7 @@ to that manager, and counts how many of those reports are in one state.
 Here is the standard syntax that accomplishes this, using the
 `WITH RECURSIVE` clause:
 
-```zetasql
+```googlesql
 WITH RECURSIVE
   AllReportees AS (
     SELECT employee_id, manager_id, state
@@ -1752,7 +1752,7 @@ WHERE State = 'AK';
 The following example accomplishes the same task using the `RECURSIVE UNION`
 pipe operator with a subquery:
 
-```zetasql
+```googlesql
 FROM Employees
 |> WHERE employee_id = 123456
 |> RECURSIVE UNION ALL
@@ -1777,7 +1777,7 @@ using a subpipeline, which removes the need for an inner `FROM` clause. The
 recursive input table is scanned by the subpipeline automatically and isn't
 explicitly written in the pipe syntax:
 
-```zetasql
+```googlesql
 FROM Employees
 |> WHERE employee_id = 123456
 |> RECURSIVE UNION ALL
@@ -1800,7 +1800,7 @@ It's also still possible to define recursive queries in `WITH` using pipe
 syntax. Using `RECURSIVE UNION` inside `WITH` can be clearer than using
 `WITH RECURSIVE` syntax:
 
-```zetasql
+```googlesql
 WITH
   AllReportees AS (
     FROM
@@ -1824,15 +1824,15 @@ WHERE State = 'AK';
  +-----------------*/
 ```
 
-[datamodel-value-tables]: https://github.com/google/zetasql/blob/master/docs/data-model.md#value_tables
+[datamodel-value-tables]: https://github.com/google/googlesql/blob/master/docs/data-model.md#value_tables
 
 [union-pipe-operator]: #union_pipe_operator
 
 [subpipelines]: #subpipelines
 
-[recursive-cte]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#recursive_cte
+[recursive-cte]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#recursive_cte
 
-[by-name-or-corresponding]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#by_name_or_corresponding
+[by-name-or-corresponding]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#by_name_or_corresponding
 
 ### `INTERSECT` pipe operator 
 <a id="intersect_pipe_operator"></a>
@@ -1856,7 +1856,7 @@ following the operator are enclosed in parentheses.
 
 For example, compare the following equivalent queries:
 
-```zetasql
+```googlesql
 -- Standard syntax
 SELECT * FROM ...
 INTERSECT ALL
@@ -1878,7 +1878,7 @@ The `INTERSECT` pipe operator supports the same modifiers as the
 
 **Examples**
 
-```zetasql
+```googlesql
 SELECT * FROM UNNEST(ARRAY<INT64>[1, 2, 3, 3, 4]) AS number
 |> INTERSECT ALL
     (SELECT * FROM UNNEST(ARRAY<INT64>[2, 3, 3, 5]) AS number);
@@ -1892,7 +1892,7 @@ SELECT * FROM UNNEST(ARRAY<INT64>[1, 2, 3, 3, 4]) AS number
  +--------*/
 ```
 
-```zetasql
+```googlesql
 SELECT * FROM UNNEST(ARRAY<INT64>[1, 2, 3, 3, 4]) AS number
 |> INTERSECT DISTINCT
     (SELECT * FROM UNNEST(ARRAY<INT64>[2, 3, 3, 5]) AS number);
@@ -1908,7 +1908,7 @@ SELECT * FROM UNNEST(ARRAY<INT64>[1, 2, 3, 3, 4]) AS number
 The following example shows multiple input queries to the right of the pipe
 operator:
 
-```zetasql
+```googlesql
 SELECT * FROM UNNEST(ARRAY<INT64>[1, 2, 3, 3, 4]) AS number
 |> INTERSECT DISTINCT
     (SELECT * FROM UNNEST(ARRAY<INT64>[2, 3, 3, 5]) AS number),
@@ -1925,7 +1925,7 @@ The following example uses the `BY NAME`
 modifier to return the intersecting row from the columns despite the differing
 column order in the input queries.
 
-```zetasql
+```googlesql
 WITH
   NumbersTable AS (
     SELECT 1 AS one_digit, 10 AS two_digit
@@ -1949,7 +1949,7 @@ Without the `BY NAME` modifier, the same
 columns in differing order are considered different columns, so the query
 doesn't detect any intersecting row values.
 
-```zetasql
+```googlesql
 WITH
   NumbersTable AS (
     SELECT 1 AS one_digit, 10 AS two_digit
@@ -1968,7 +1968,7 @@ SELECT one_digit, two_digit FROM NumbersTable
  +-----------+-----------*/
 ```
 
-[intersect-operator]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#intersect
+[intersect-operator]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#intersect
 
 ### `EXCEPT` pipe operator 
 <a id="except_pipe_operator"></a>
@@ -1991,7 +1991,7 @@ operator are enclosed in parentheses.
 
 For example, compare the following equivalent queries:
 
-```zetasql
+```googlesql
 -- Standard syntax
 SELECT * FROM ...
 EXCEPT ALL
@@ -2010,7 +2010,7 @@ Parentheses can be used to group set operations and control order of operations.
 In `EXCEPT` set operations, query results can vary depending on the operation
 grouping.
 
-```zetasql
+```googlesql
 -- Default operation grouping
 (
   SELECT * FROM ...
@@ -2044,7 +2044,7 @@ The `EXCEPT` pipe operator supports the same modifiers as the
 
 **Examples**
 
-```zetasql
+```googlesql
 SELECT * FROM UNNEST(ARRAY<INT64>[1, 2, 3, 3, 4]) AS number
 |> EXCEPT ALL
     (SELECT * FROM UNNEST(ARRAY<INT64>[1, 2]) AS number);
@@ -2058,7 +2058,7 @@ SELECT * FROM UNNEST(ARRAY<INT64>[1, 2, 3, 3, 4]) AS number
  +--------*/
 ```
 
-```zetasql
+```googlesql
 SELECT * FROM UNNEST(ARRAY<INT64>[1, 2, 3, 3, 4]) AS number
 |> EXCEPT DISTINCT
     (SELECT * FROM UNNEST(ARRAY<INT64>[1, 2]) AS number);
@@ -2074,7 +2074,7 @@ SELECT * FROM UNNEST(ARRAY<INT64>[1, 2, 3, 3, 4]) AS number
 The following example shows multiple input queries to the right of the pipe
 operator:
 
-```zetasql
+```googlesql
 SELECT * FROM UNNEST(ARRAY<INT64>[1, 2, 3, 3, 4]) AS number
 |> EXCEPT DISTINCT
     (SELECT * FROM UNNEST(ARRAY<INT64>[1, 2]) AS number),
@@ -2091,7 +2091,7 @@ The following example groups the set operations to modify the order of
 operations. The first input query is used against the result of the last two
 queries instead of the values of the last two queries individually.
 
-```zetasql
+```googlesql
 SELECT * FROM UNNEST(ARRAY<INT64>[1, 2, 3, 3, 4]) AS number
 |> EXCEPT DISTINCT
 (
@@ -2113,7 +2113,7 @@ The following example uses the `BY NAME`
 modifier to return unique rows from the input query to the left of the pipe
 operator despite the differing column order in the input queries.
 
-```zetasql
+```googlesql
 WITH
   NumbersTable AS (
     SELECT 1 AS one_digit, 10 AS two_digit
@@ -2138,7 +2138,7 @@ Without the `BY NAME` modifier, the same columns in
 differing order are considered different columns, so the query doesn't detect
 any common rows that should be excluded.
 
-```zetasql
+```googlesql
 WITH
   NumbersTable AS (
     SELECT 1 AS one_digit, 10 AS two_digit
@@ -2161,7 +2161,7 @@ SELECT one_digit, two_digit FROM NumbersTable
  +-----------+-----------*/
 ```
 
-[except-operator]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#except
+[except-operator]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#except
 
 ### `TABLESAMPLE` pipe operator 
 <a id="tablesample_pipe_operator"></a>
@@ -2181,12 +2181,12 @@ standard syntax.
 The following example samples approximately 1% of data from a table called
 `LargeTable`:
 
-```zetasql
+```googlesql
 FROM LargeTable
 |> TABLESAMPLE SYSTEM (1 PERCENT);
 ```
 
-[tablesample-operator]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#tablesample_operator
+[tablesample-operator]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#tablesample_operator
 
 ### `WITH` pipe operator 
 <a id="with_pipe_operator"></a>
@@ -2203,7 +2203,7 @@ pipe input table and passes it through as the input to the next pipe operation.
 
 **Examples**
 
-```zetasql
+```googlesql
 SELECT 1 AS key
 |> WITH t AS (
     SELECT 1 AS key, 'my_value' AS value
@@ -2217,7 +2217,7 @@ SELECT 1 AS key
  +---------+---------*/
 ```
 
-```zetasql
+```googlesql
 SELECT 1 AS key
 -- Define multiple CTEs.
 |> WITH t1 AS (
@@ -2238,7 +2238,7 @@ SELECT 1 AS key
 
 The pipe `WITH` operator allows a trailing comma:
 
-```zetasql
+```googlesql
 SELECT 1 AS key
 |> WITH t1 AS (
      SELECT 2
@@ -2258,7 +2258,7 @@ SELECT 1 AS key
 
 [Recursive queries][recursive-queries] are also supported:
 
-```zetasql
+```googlesql
 SELECT 1 AS key
 |> WITH RECURSIVE t AS (
     SELECT 2 AS key
@@ -2280,9 +2280,9 @@ SELECT 1 AS key
  +-----*/
 ```
 
-[with-clause]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#with_clause
+[with-clause]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#with_clause
 
-[recursive-queries]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#recursive_cte
+[recursive-queries]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#recursive_cte
 
 ### `PIVOT` pipe operator 
 <a id="pivot_pipe_operator"></a>
@@ -2298,7 +2298,7 @@ Rotates rows into columns. The `PIVOT` pipe operator behaves the same as the
 
 **Example**
 
-```zetasql
+```googlesql
 (
   SELECT "kale" AS product, 51 AS sales, "Q1" AS quarter
   UNION ALL
@@ -2320,7 +2320,7 @@ Rotates rows into columns. The `PIVOT` pipe operator behaves the same as the
  +---------+----+------*/
 ```
 
-[pivot-operator]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#pivot_operator
+[pivot-operator]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#pivot_operator
 
 ### `UNPIVOT` pipe operator 
 <a id="unpivot_pipe_operator"></a>
@@ -2336,7 +2336,7 @@ Rotates columns into rows. The `UNPIVOT` pipe operator behaves the same as the
 
 **Example**
 
-```zetasql
+```googlesql
 (
   SELECT 'kale' as product, 55 AS Q1, 45 AS Q2
   UNION ALL
@@ -2354,7 +2354,7 @@ Rotates columns into rows. The `UNPIVOT` pipe operator behaves the same as the
  +---------+-------+---------*/
 ```
 
-[unpivot-operator]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#unpivot_operator
+[unpivot-operator]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#unpivot_operator
 
 <!-- disableFinding(LINK_ID) -->
 
@@ -2381,7 +2381,7 @@ window functions.
 
 **Example**
 
-```zetasql
+```googlesql
 (
   SELECT 'apples' AS item, 2 AS sales
   UNION ALL
@@ -2400,9 +2400,9 @@ window functions.
  +---------+-------+-------------*/
 ```
 
-[window-functions]: https://github.com/google/zetasql/blob/master/docs/window-function-calls.md
+[window-functions]: https://github.com/google/googlesql/blob/master/docs/window-function-calls.md
 
-[over-clause]: https://github.com/google/zetasql/blob/master/docs/window-function-calls.md#def_over_clause
+[over-clause]: https://github.com/google/googlesql/blob/master/docs/window-function-calls.md#def_over_clause
 
 [extend-pipe-operator]: #extend_pipe_operator
 
@@ -2433,7 +2433,7 @@ same as the
 
 **Example**
 
-```zetasql
+```googlesql
 (
   SELECT 1 as x
   UNION ALL
@@ -2462,7 +2462,7 @@ same as the
  +----------+---------*/
 ```
 
-[match-recognize-clause]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#match_recognize_clause
+[match-recognize-clause]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#match_recognize_clause
 
 ### `ASSERT` pipe operator 
 <a id="assert_pipe_operator"></a>
@@ -2495,13 +2495,13 @@ a related feature that verifies that a single expression is true.
 
 **Example**
 
-```zetasql
+```googlesql
 FROM table
 |> ASSERT count != 0, "Count is zero for user", userId
 |> SELECT total / count AS average
 ```
 
-[assert-statement]: https://github.com/google/zetasql/blob/master/docs/debugging-statements.md#assert
+[assert-statement]: https://github.com/google/googlesql/blob/master/docs/debugging-statements.md#assert
 
 ### `DESCRIBE` pipe operator 
 <a id="describe_pipe_operator"></a>
@@ -2552,7 +2552,7 @@ syntax to see the output schema.
 As a baseline example without the `DESCRIBE` operator, the following query
 returns a variety of column values, including unnamed columns:
 
-```zetasql
+```googlesql
 -- Baseline example without DESCRIBE.
 
 FROM
@@ -2570,7 +2570,7 @@ FROM
 The following is the same example query, but uses the `DESCRIBE` operator to
 provide details about the tables, columns, and types:
 
-```zetasql
+```googlesql
 -- Same example with DESCRIBE to describe table aliases and columns.
 
 FROM
@@ -2603,7 +2603,7 @@ FROM
 
 The following example describes a query that uses a CTE and ordering:
 
-```zetasql
+```googlesql
 -- Describe CTEs and ordering.
 
 WITH cte AS (SELECT 1 AS col1, 'abc' AS col2)
@@ -2631,7 +2631,7 @@ FROM cte AS table1
 
 The following example describes a query that uses a value table:
 
-```zetasql
+```googlesql
 -- Describe a value table.
 
 FROM (SELECT AS STRUCT 1 AS x, 'abc' AS y) AS value_table
@@ -2654,9 +2654,9 @@ FROM (SELECT AS STRUCT 1 AS x, 'abc' AS y) AS value_table
  +-----------------------------------------------------*/
 ```
 
-[describe-statement]: https://github.com/google/zetasql/blob/master/docs/utility-statements.md#describedesc
+[describe-statement]: https://github.com/google/googlesql/blob/master/docs/utility-statements.md#describedesc
 
-[pseudocolumns]: https://github.com/google/zetasql/blob/master/docs/data-model.md#pseudo_columns
+[pseudocolumns]: https://github.com/google/googlesql/blob/master/docs/data-model.md#pseudo_columns
 
 ### `IF` pipe operator 
 <a id="if_pipe_operator"></a>
@@ -2703,7 +2703,7 @@ The following value types aren't supported:
 
 **Examples**
 
-```zetasql
+```googlesql
 FROM Produce
 |> IF true THEN
   (
@@ -2722,7 +2722,7 @@ FROM Produce
  +---------*/
 ```
 
-```zetasql
+```googlesql
 FROM Produce
 -- No case is selected, causing IF to be no-op.
 |> IF false THEN
@@ -2744,15 +2744,15 @@ FROM Produce
  +---------+-------+-----------*/
 ```
 
-[subpipelines]: https://github.com/google/zetasql/blob/master/docs/pipe-syntax.md#subpipelines
+[subpipelines]: https://github.com/google/googlesql/blob/master/docs/pipe-syntax.md#subpipelines
 
-[script-variables]: https://github.com/google/zetasql/blob/master/docs/variables.md
+[script-variables]: https://github.com/google/googlesql/blob/master/docs/variables.md
 
-[query-parameters]: https://github.com/google/zetasql/blob/master/docs/variables.md#query-parameters
+[query-parameters]: https://github.com/google/googlesql/blob/master/docs/variables.md#query-parameters
 
-[create-constant]: https://github.com/google/zetasql/blob/master/docs/data-definition-language.md#create_constant
+[create-constant]: https://github.com/google/googlesql/blob/master/docs/data-definition-language.md#create_constant
 
-[logical-operator]: https://github.com/google/zetasql/blob/master/docs/operators.md#logical_operators
+[logical-operator]: https://github.com/google/googlesql/blob/master/docs/operators.md#logical_operators
 
 ### `CREATE TABLE` terminal pipe operator 
 <a id="create_table_pipe_operator"></a>
@@ -2781,7 +2781,7 @@ The `CREATE TABLE` operator is a [terminal pipe operator][terminal-operators].
 
 **Example**
 
-```zetasql
+```googlesql
 FROM Produce
 |> AGGREGATE SUM(sales) AS total_sales GROUP BY category
 |> CREATE TEMP TABLE ShopSales;
@@ -2793,7 +2793,7 @@ FROM Produce
 The previous example is equivalent to the following query that uses a
 standard `CREATE TABLE` statement:
 
-```zetasql
+```googlesql
 -- Equivalent query with standard CREATE TABLE statement
 
 CREATE TEMP TABLE ShopSales AS
@@ -2801,7 +2801,7 @@ FROM Produce
 |> AGGREGATE SUM(sales) AS total_sales GROUP BY category;
 ```
 
-[create-table]: https://github.com/google/zetasql/blob/master/docs/data-definition-language.md#create_table
+[create-table]: https://github.com/google/googlesql/blob/master/docs/data-definition-language.md#create_table
 
 [terminal-operators]: #terminal_operators
 
@@ -2823,9 +2823,9 @@ instead comes from the pipe input table.
 
 The `EXPORT DATA` operator is a [terminal pipe operator][terminal-operators].
 
-[export-data]: https://github.com/google/zetasql/blob/master/docs/import-export.md#export_data_statement
+[export-data]: https://github.com/google/googlesql/blob/master/docs/import-export.md#export_data_statement
 
-[terminal-operators]: https://github.com/google/zetasql/blob/master/docs/pipe-syntax.md#terminal_operators
+[terminal-operators]: https://github.com/google/googlesql/blob/master/docs/pipe-syntax.md#terminal_operators
 
 ### `INSERT` terminal pipe operator 
 <a id="insert_pipe_operator"></a>
@@ -2848,7 +2848,7 @@ The `INSERT` operator is a [terminal pipe operator][terminal-operators].
 
 **Example**
 
-```zetasql
+```googlesql
 FROM Produce
 |> AGGREGATE SUM(sales) AS total_sales GROUP BY category
 |> INSERT INTO ShopSales;
@@ -2857,9 +2857,9 @@ FROM Produce
 -- existing table ShopSales as new rows.
 ```
 
-[insert]: https://github.com/google/zetasql/blob/master/docs/data-manipulation-language.md#insert_statement
+[insert]: https://github.com/google/googlesql/blob/master/docs/data-manipulation-language.md#insert_statement
 
-[terminal-operators]: https://github.com/google/zetasql/blob/master/docs/pipe-syntax.md#terminal_operators
+[terminal-operators]: https://github.com/google/googlesql/blob/master/docs/pipe-syntax.md#terminal_operators
 
 ### `FORK` terminal pipe operator 
 <a id="fork_pipe_operator"></a>
@@ -2898,7 +2898,7 @@ The following example performs multiple aggregations on a common input and also
 returns the unaggregated rows, producing three separate output tables. This
 example is similar to using `GROUPING SETS` in standard syntax.
 
-```zetasql
+```googlesql
 WITH
   Fruit AS (
     SELECT 'apple' AS item, 100 AS sales
@@ -2940,7 +2940,7 @@ The `FORK` operator provides a convenient way to generate multiple outputs from
 a single statement. Without the `FORK` operator, you would need to use temporary
 tables to achieve the same result, as illustrated in the following example:
 
-```zetasql
+```googlesql
 -- Equivalent query using temporary tables in standard syntax.
 
 -- Statement 0: Create a common table.
@@ -2967,7 +2967,7 @@ The following example uses the `FORK` operator to create a table in one
 subpipeline, while returning unaggregated rows as a query result in the other
 subpipeline:
 
-```zetasql
+```googlesql
 WITH
   Fruit AS (
     SELECT 'apple' AS item, 100 AS sales
@@ -2984,7 +2984,7 @@ FROM Fruit
 
 The first subpipeline creates a `FruitCounts` table with the following rows:
 
-```zetasql
+```googlesql
 -- Initial FruitCounts table
 /*--------+---------------+
  | item   | count_by_item |
@@ -2996,7 +2996,7 @@ The first subpipeline creates a `FruitCounts` table with the following rows:
 
 The second subpipeline produces the following result table:
 
-```zetasql
+```googlesql
 -- Final result table
 /*--------+-------+
  | item   | sales |
@@ -3006,7 +3006,7 @@ The second subpipeline produces the following result table:
  +--------+-------*/
 ```
 
-[subpipelines]: https://github.com/google/zetasql/blob/master/docs/pipe-syntax.md#subpipelines
+[subpipelines]: https://github.com/google/googlesql/blob/master/docs/pipe-syntax.md#subpipelines
 
 [terminal-operators]: #terminal_operators
 
@@ -3063,7 +3063,7 @@ of an input table, and then a third output table with the unaggregated rows from
 the main pipeline. This example is similar to using `GROUPING SETS` in
 standard syntax.
 
-```zetasql
+```googlesql
 WITH
   Fruit AS (
     SELECT 'apple' AS item, 100 AS sales
@@ -3105,7 +3105,7 @@ The `TEE` operator provides a convenient way to generate multiple outputs from a
 single statement. Without the `TEE` operator, you would need to use temporary
 tables to achieve the same result, as illustrated in the following example:
 
-```zetasql
+```googlesql
 -- Equivalent query using temporary tables in standard syntax.
 
 -- Statement 0: Create a common table.
@@ -3134,7 +3134,7 @@ from before the aggregation for inspection. You can also use the `TEE` operator
 with subpipelines for custom data inspection, as shown by the second `TEE`
 operator.
 
-```zetasql
+```googlesql
 WITH
   Fruit AS (
     SELECT 'apple' AS item, 100 AS sales
@@ -3175,7 +3175,7 @@ The following example uses the `TEE` operator to create a table in a
 subpipeline, while the main pipeline continues and returns the unaggregated
 rows as a query result:
 
-```zetasql
+```googlesql
 WITH
   Fruit AS (
     SELECT 'apple' AS item, 100 AS sales
@@ -3192,7 +3192,7 @@ FROM Fruit
 
 The subpipeline creates a `FruitCounts` table with the following rows:
 
-```zetasql
+```googlesql
 -- Initial FruitCounts table
 /*--------+---------------+
  | item   | count_by_item |
@@ -3204,7 +3204,7 @@ The subpipeline creates a `FruitCounts` table with the following rows:
 
 The main pipeline produces the following result table:
 
-```zetasql
+```googlesql
 /*--------+-------+
  | item   | sales |
  +--------+-------+
@@ -3213,37 +3213,37 @@ The main pipeline produces the following result table:
  +--------+-------*/
 ```
 
-[subpipelines]: https://github.com/google/zetasql/blob/master/docs/pipe-syntax.md#subpipelines
+[subpipelines]: https://github.com/google/googlesql/blob/master/docs/pipe-syntax.md#subpipelines
 
-[terminal-operators]: https://github.com/google/zetasql/blob/master/docs/pipe-syntax.md#terminal_operators
+[terminal-operators]: https://github.com/google/googlesql/blob/master/docs/pipe-syntax.md#terminal_operators
 
-[semi-terminal-operators]: https://github.com/google/zetasql/blob/master/docs/pipe-syntax.md#semi_terminal_operators
+[semi-terminal-operators]: https://github.com/google/googlesql/blob/master/docs/pipe-syntax.md#semi_terminal_operators
 
 [create-table-pipe-operator]: #create_table_pipe_operator
 
 [insert-pipe-operator]: #insert_pipe_operator
 
-[query-syntax]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md
+[query-syntax]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md
 
-[pipe-syntax-guide]: https://github.com/google/zetasql/blob/master/docs/pipe-syntax-guide.md
+[pipe-syntax-guide]: https://github.com/google/googlesql/blob/master/docs/pipe-syntax-guide.md
 
 [pipe-syntax-paper]: https://research.google/pubs/sql-has-problems-we-can-fix-them-pipe-syntax-in-sql/
 
 [from-queries]: #from_queries
 
-[from-clause]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#from_clause
+[from-clause]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#from_clause
 
-[using-aliases]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#using_aliases
+[using-aliases]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#using_aliases
 
-[select-star]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#select_
+[select-star]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#select_
 
 [query-comparison]: #query_comparison
 
 [pipe-operators]: #pipe_operators
 
-[value-tables]: https://github.com/google/zetasql/blob/master/docs/data-model.md#value_tables
+[value-tables]: https://github.com/google/googlesql/blob/master/docs/data-model.md#value_tables
 
-[select-as-value]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#select_as_value
+[select-as-value]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#select_as_value
 
-[subqueries]: https://github.com/google/zetasql/blob/master/docs/subqueries.md
+[subqueries]: https://github.com/google/googlesql/blob/master/docs/subqueries.md
 

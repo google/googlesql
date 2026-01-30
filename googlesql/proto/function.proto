@@ -1,0 +1,271 @@
+//
+// Copyright 2019 Google LLC
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+//
+
+syntax = "proto2";
+
+package googlesql;
+
+option java_package = "com.google.googlesql";
+option java_outer_classname = "FunctionProtos";
+
+// Public enum and message definitions.
+import "googlesql/public/annotation.proto";
+import "googlesql/public/constness_level.proto";
+import "googlesql/public/deprecation_warning.proto";
+import "googlesql/public/function.proto";
+import "googlesql/public/options.proto";
+import "googlesql/public/parse_location_range.proto";
+import "googlesql/public/parse_resume_location.proto";
+import "googlesql/public/simple_table.proto";
+import "googlesql/public/type.proto";
+import "googlesql/public/value.proto";
+import "googlesql/resolved_ast/resolved_ast_enums.proto";
+import "googlesql/resolved_ast/serialization.proto";
+
+// Wire format of Function related messages, these shouldn't be exposed to end
+// users normally.
+
+message TVFRelationColumnProto {
+  optional string name = 1;
+  optional TypeProto type = 2;
+  optional bool is_pseudo_column = 3;
+  optional AnnotationMapProto annotation_map = 6;
+  // Store the parse location ranges for column name and type.
+  optional ParseLocationRangeProto name_parse_location_range = 4;
+  optional ParseLocationRangeProto type_parse_location_range = 5;
+}
+
+message TVFRelationProto {
+  repeated TVFRelationColumnProto column = 1;
+  optional bool is_value_table = 2 [default = false];
+}
+
+message TVFModelProto {
+  optional string name = 1;
+  optional string full_name = 2;
+}
+
+message TVFConnectionProto {
+  optional string name = 1;
+  optional string full_name = 2;
+}
+
+message TVFDescriptorProto {
+  repeated string column_name = 1;
+}
+
+message TVFGraphProto {
+  optional string name = 1;
+  optional string full_name = 2;
+}
+
+// The fields in here are in FunctionArgumentTypeOptions in the c++ API.
+message FunctionArgumentTypeOptionsProto {
+  optional FunctionEnums.ArgumentCardinality cardinality = 1;
+  // must_be_constant is deprecated and will stop working at some point in the
+  // future. Please set the appropriate constness_level instead.
+  optional bool must_be_constant = 2 [deprecated = true];
+  optional bool must_be_non_null = 3;
+  optional bool is_not_aggregate = 4;
+  optional bool must_support_equality = 5;
+  optional bool must_support_ordering = 6;
+  optional int64 min_value = 7;
+  optional int64 max_value = 8;
+  optional bool extra_relation_input_columns_allowed = 9;
+  optional TVFRelationProto relation_input_schema = 10;
+  optional string argument_name = 11;
+  optional ParseLocationRangeProto argument_name_parse_location = 12;
+  optional ParseLocationRangeProto argument_type_parse_location = 13;
+  optional FunctionEnums.ProcedureArgumentMode procedure_argument_mode = 14;
+  // Replaced by named_argument_kind, tag #25.
+  // TODO: Change to reserved id after June 19, 2023
+  optional bool argument_name_is_mandatory = 15
+      [default = false, deprecated = true];
+  optional int32 descriptor_resolution_table_offset = 16 [default = -1];
+  optional ValueProto default_value = 17;
+  // Type of `default_value`. Only serialized for templated arguments. For fixed
+  // type arguments, deserialization of `default_value` relies on the
+  // `FunctionArgumentTypeProto.type` instead.  Only one of `default_value_type`
+  // or `FunctionArgumentTypeProto.type` will ever be set.
+  optional TypeProto default_value_type = 18;
+  optional FunctionEnums.ArgumentCollationMode argument_collation_mode = 19
+      [default = AFFECTS_OPERATION_AND_PROPAGATION];
+  optional bool uses_array_element_for_collation = 20;
+  optional bool must_support_grouping = 21;
+  optional bool array_element_must_support_equality = 22;
+  optional bool array_element_must_support_ordering = 23;
+  optional bool array_element_must_support_grouping = 24;
+  // Indicates how the argument name can be used in calls to the function.
+  // This field must always be set when `argument_name` is non-empty. Protos
+  // serialized before this field was added used `argument_name_is_mandatory`
+  // and deserialization must consult that field in case `argument_name` is
+  // non-empty and this field is not set.
+  optional FunctionEnums.NamedArgumentKind named_argument_kind = 25;
+  // Indicates whether aliases are supported for a function argument.
+  optional FunctionEnums.ArgumentAliasKind argument_alias_kind = 26
+      [default = ARGUMENT_NON_ALIASED];
+  // If true, this argument must be constant expression or value.
+  // must_be_constant_expression is deprecated and will stop working at some
+  // point in the future. Please set the appropriate constness_level instead.
+  optional bool must_be_constant_expression = 27 [deprecated = true];
+  optional ConstnessLevelProto.Level constness_level = 28;
+}
+
+message ArgumentTypeLambdaProto {
+  repeated FunctionArgumentTypeProto argument = 5;
+  optional FunctionArgumentTypeProto body = 6;
+}
+
+message FunctionArgumentTypeProto {
+  optional SignatureArgumentKind kind = 1;
+  optional TypeProto type = 2;
+  optional int32 num_occurrences = 4;
+
+  optional FunctionArgumentTypeOptionsProto options = 3;
+
+  optional ArgumentTypeLambdaProto lambda = 5;
+}
+
+message FunctionSignatureRewriteOptionsProto {
+  optional bool enabled = 1;
+  optional ResolvedASTRewrite rewriter = 2;
+  optional string sql = 3;
+  optional bool allow_table_references = 4;
+  repeated string allowed_function_groups = 5;
+}
+
+message FunctionSignatureOptionsProto {
+  // optional uint64 timestamp_modes = 1;  bitset<TimestampMode>
+  optional bool is_deprecated = 2 [default = false];
+  repeated FreestandingDeprecationWarning additional_deprecation_warning = 3;
+  repeated LanguageFeature required_language_feature = 4;
+  optional bool is_aliased_signature = 5 [default = false];
+  optional bool propagates_collation = 6 [default = true];
+  optional bool uses_operation_collation = 7 [default = false];
+  optional bool rejects_collation = 8 [default = false];
+  optional FunctionSignatureRewriteOptionsProto rewrite_options = 9;
+}
+
+message FunctionSignatureProto {
+  repeated FunctionArgumentTypeProto argument = 1;
+  optional FunctionArgumentTypeProto return_type = 2;
+  optional int64 context_id = 3;
+  optional FunctionSignatureOptionsProto options = 4;
+}
+
+message FunctionOptionsProto {
+  optional bool supports_over_clause = 1 [default = false];
+  optional FunctionEnums.WindowOrderSupport window_ordering_support = 2
+      [default = ORDER_UNSUPPORTED];
+  optional bool supports_window_framing = 3 [default = false];
+  optional bool arguments_are_coercible = 4 [default = true];
+  optional bool is_deprecated = 5 [default = false];
+  optional string alias_name = 6;
+  optional string sql_name = 7;
+  optional bool allow_external_usage = 8 [default = true];
+  optional FunctionEnums.Volatility volatility = 9 [default = IMMUTABLE];
+  optional bool supports_order_by = 10 [default = false];
+  repeated LanguageFeature required_language_feature = 11;
+  optional bool supports_limit = 12 [default = false];
+  optional bool supports_null_handling_modifier = 13 [default = false];
+  optional bool supports_safe_error_mode = 14 [default = true];
+  optional bool supports_having_modifier = 15 [default = true];
+  optional bool supports_clamped_between_modifier = 16 [default = false];
+  optional bool uses_upper_case_sql_name = 17 [default = true];
+  optional bool may_suppress_side_effects = 18 [default = false];
+  repeated string module_name_from_import = 19;
+}
+
+message FunctionProto {
+  repeated string name_path = 1;
+  optional string group = 2;
+  optional FunctionEnums.Mode mode = 3;
+  repeated FunctionSignatureProto signature = 4;
+  optional FunctionOptionsProto options = 5;
+  optional ParseResumeLocationProto parse_resume_location = 8;
+  repeated string templated_sql_function_argument_name = 7;
+  optional ResolvedCreateStatementEnums.SqlSecurity sql_security = 9
+      [default = SQL_SECURITY_UNSPECIFIED];
+  optional StatementContext statement_context = 10 [default = CONTEXT_DEFAULT];
+}
+
+message ResolvedFunctionCallInfoProto {
+  // Nothing in here for now.
+  // TODO: add extra fields in here for derived context objects.
+}
+
+message TableValuedFunctionOptionsProto {
+  optional bool uses_upper_case_sql_name = 1 [default = true];
+  repeated LanguageFeature required_language_feature = 2;
+}
+
+message TableValuedFunctionProto {
+  repeated string name_path = 1;
+  // DEPRECATED. Use the repeated signatures field instead.
+  // For backward compaitibility, Serialization should temporarily set both the
+  // fields if the TVF has only one signature. If there are multiple signatures,
+  // only the signatures field is set. Deserialization should prefer the
+  // signatures field if present, otherwise fallback to the signature field.
+  // TODO - Remove signature field once its no longer used.
+  optional FunctionSignatureProto signature = 2 [deprecated = true];
+  repeated FunctionSignatureProto signatures = 12;
+  optional TableValuedFunctionOptionsProto options = 9;
+  optional FunctionEnums.TableValuedFunctionType type = 3;
+  optional FunctionEnums.Volatility volatility = 8;
+  optional ParseResumeLocationProto parse_resume_location = 6;
+  repeated string argument_name = 5;
+  optional string custom_context = 7;
+  // Stores anonymization options and information related to this table valued
+  // function.
+  // If set, this table valued function is considered to support anonymization
+  // semantics and return private data. If not set, this table valued function
+  // is assumed to not be usable in an anonymization context, and not return
+  // private data.
+  optional SimpleAnonymizationInfoProto anonymization_info = 10;
+  optional StatementContext statement_context = 11 [default = CONTEXT_DEFAULT];
+  optional string group = 13;
+}
+
+message TVFArgumentProto {
+  optional ValueWithTypeProto scalar_argument = 1;
+  optional TVFRelationProto relation_argument = 2;
+  optional TVFModelProto model_argument = 3;
+  optional TVFConnectionProto connection_argument = 4;
+  optional TVFDescriptorProto descriptor_argument = 5;
+  optional TVFGraphProto graph_argument = 6;
+}
+
+message TVFSignatureOptionsProto {
+  repeated FreestandingDeprecationWarning additional_deprecation_warning = 1;
+}
+
+message TVFSignatureProto {
+  repeated TVFArgumentProto argument = 1;
+  optional TVFSignatureOptionsProto options = 3;
+
+  oneof output_schema_oneof {
+    // If set, the tvf output schema is described by a TVFRelation.
+    TVFRelationProto output_schema = 2;
+
+    // If set, the tvf output schema is described by a table reference.
+    TableRefProto output_table_schema = 4;
+  }
+}
+
+message ProcedureProto {
+  repeated string name_path = 1;
+  optional FunctionSignatureProto signature = 2;
+}

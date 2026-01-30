@@ -1,0 +1,110 @@
+[load_proto_files=googlesql/testdata/test_schema.proto]
+[load_proto_names=googlesql_test.KitchenSinkPB, googlesql_test.KitchenSinkExtension]
+[prepare_database]
+CREATE TABLE Extensions AS
+SELECT 1 key, cast('''
+  int64_key_1: 1
+  int64_key_2: 1
+''' as `googlesql_test.KitchenSinkPB`) as value
+union all
+select 2, null
+union all
+select 4, cast('''
+  int64_key_1: 4
+  int64_key_2: 4
+
+  [googlesql_test.KitchenSinkExtension.optional_extension] { value: "504" }
+  [googlesql_test.KitchenSinkExtension.int_extension]: 506
+  [googlesql_test.KitchenSinkExtension.repeated_extension] { value: "507" }
+  [googlesql_test.KitchenSinkExtension.repeated_extension] { value: "508" }
+''' as `googlesql_test.KitchenSinkPB`) as value
+--
+ARRAY<STRUCT<
+        key INT64,
+        value PROTO<googlesql_test.KitchenSinkPB>
+      >>
+[{1,
+  {
+    int64_key_1: 1
+    int64_key_2: 1
+  }},
+ {2, NULL},
+ {4,
+  {
+    int64_key_1: 4
+    int64_key_2: 4
+    [googlesql_test.KitchenSinkExtension.int_extension]: 506
+    [googlesql_test.KitchenSinkExtension.optional_extension] {
+      value: "504"
+    }
+    [googlesql_test.KitchenSinkExtension.repeated_extension] {
+      value: "507"
+    }
+    [googlesql_test.KitchenSinkExtension.repeated_extension] {
+      value: "508"
+    }
+  }}]
+==
+
+[name=select_scalar_extension]
+select key, value.(googlesql_test.KitchenSinkExtension.int_extension)
+from Extensions order by 1
+--
+ARRAY<STRUCT<key INT64, INT64>>[known order:{1, 0}, {2, NULL}, {4, 506}]
+==
+
+[name=select_optional_extension]
+select key,
+       value.(googlesql_test.KitchenSinkExtension.optional_extension),
+       value.(googlesql_test.KitchenSinkExtension.optional_extension).value
+from Extensions order by 1
+--
+ARRAY<STRUCT<
+        key INT64,
+        PROTO<googlesql_test.KitchenSinkExtension>,
+        value STRING
+      >>
+[known order:
+  {1, NULL, NULL},
+  {2, NULL, NULL},
+  {4, {value: "504"}, "504"}
+]
+==
+
+[name=select_repeated_extension]
+select key,
+       value.(googlesql_test.KitchenSinkExtension.repeated_extension)
+from Extensions order by 1
+--
+ARRAY<STRUCT<key INT64, ARRAY<>>>[known order:
+  {
+    1,
+    ARRAY<PROTO<googlesql_test.KitchenSinkExtension>>[]
+  },
+  {
+    2,
+    ARRAY<PROTO<googlesql_test.KitchenSinkExtension>>(NULL)
+  },
+  {4,
+   ARRAY<PROTO<googlesql_test.KitchenSinkExtension>>[known order:
+     {value: "507"},
+     {value: "508"}
+   ]}
+]
+==
+
+[name=select_repeated_extension_unnested]
+select key, u, u.value
+from Extensions,
+     UNNEST(value.(googlesql_test.KitchenSinkExtension.repeated_extension)) u
+order by 1
+--
+ARRAY<STRUCT<
+        key INT64,
+        u PROTO<googlesql_test.KitchenSinkExtension>,
+        value STRING
+      >>
+[unknown order:
+  {4, {value: "508"}, "508"},
+  {4, {value: "507"}, "507"}
+]

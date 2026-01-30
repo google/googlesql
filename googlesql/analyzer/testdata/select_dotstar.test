@@ -1,0 +1,3477 @@
+[default language_features=NONE]
+select TestStruct.* from ComplexTypes;
+--
+QueryStmt
++-output_column_list=
+| +-$query.c#7 AS c [INT32]
+| +-$query.d#8 AS d [STRUCT<a INT32, b STRING>]
++-query=
+  +-ProjectScan
+    +-column_list=$query.[c#7, d#8]
+    +-expr_list=
+    | +-c#7 :=
+    | | +-GetStructField
+    | |   +-type=INT32
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#5)
+    | |   +-field_idx=0
+    | +-d#8 :=
+    |   +-GetStructField
+    |     +-type=STRUCT<a INT32, b STRING>
+    |     +-expr=
+    |     | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#5)
+    |     +-field_idx=1
+    +-input_scan=
+      +-TableScan(column_list=[ComplexTypes.TestStruct#5], table=ComplexTypes, column_index_list=[4])
+==
+
+select TestProto.* from ComplexTypes;
+--
+QueryStmt
++-output_column_list=
+| +-$query.int32_val1#7 AS int32_val1 [INT32]
+| +-$query.int32_val2#8 AS int32_val2 [INT32]
+| +-$query.str_value#9 AS str_value [ARRAY<STRING>]
++-query=
+  +-ProjectScan
+    +-column_list=$query.[int32_val1#7, int32_val2#8, str_value#9]
+    +-expr_list=
+    | +-int32_val1#7 :=
+    | | +-GetProtoField
+    | |   +-type=INT32
+    | |   +-expr=
+    | |   | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=ComplexTypes.TestProto#6)
+    | |   +-field_descriptor=int32_val1
+    | |   +-default_value=0
+    | +-int32_val2#8 :=
+    | | +-GetProtoField
+    | |   +-type=INT32
+    | |   +-expr=
+    | |   | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=ComplexTypes.TestProto#6)
+    | |   +-field_descriptor=int32_val2
+    | |   +-default_value=0
+    | +-str_value#9 :=
+    |   +-GetProtoField
+    |     +-type=ARRAY<STRING>
+    |     +-expr=
+    |     | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=ComplexTypes.TestProto#6)
+    |     +-field_descriptor=str_value
+    |     +-default_value=[]
+    +-input_scan=
+      +-TableScan(column_list=[ComplexTypes.TestProto#6], table=ComplexTypes, column_index_list=[5])
+==
+
+select TestEnum.* from ComplexTypes;
+--
+ERROR: Dot-star is not supported for type googlesql_test.TestEnum [at 1:8]
+select TestEnum.* from ComplexTypes;
+       ^
+==
+
+select Int32Array.* from ComplexTypes;
+--
+ERROR: Dot-star is not supported for type ARRAY<INT32> [at 1:8]
+select Int32Array.* from ComplexTypes;
+       ^
+==
+
+select [1].*
+--
+ERROR: Dot-star is not supported for type ARRAY<INT64> [at 1:8]
+select [1].*
+       ^
+==
+
+select key.* from ComplexTypes;
+--
+ERROR: Dot-star is not supported for type INT32 [at 1:8]
+select key.* from ComplexTypes;
+       ^
+==
+
+select a.*
+--
+ERROR: Unrecognized name: a [at 1:8]
+select a.*
+       ^
+==
+
+select a.b.*
+--
+ERROR: Unrecognized name: a [at 1:8]
+select a.b.*
+       ^
+==
+
+select T, T.* from TestTable T;
+--
+QueryStmt
++-output_column_list=
+| +-$query.T#5 AS T [STRUCT<key INT32, TestEnum ENUM<googlesql_test.TestEnum>, KitchenSink PROTO<googlesql_test.KitchenSinkPB>>]
+| +-TestTable.key#1 AS key [INT32]
+| +-TestTable.TestEnum#2 AS TestEnum [ENUM<googlesql_test.TestEnum>]
+| +-TestTable.KitchenSink#3 AS KitchenSink [PROTO<googlesql_test.KitchenSinkPB>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.T#5, TestTable.key#1, TestTable.TestEnum#2, TestTable.KitchenSink#3]
+    +-expr_list=
+    | +-T#5 :=
+    |   +-MakeStruct
+    |     +-type=STRUCT<key INT32, TestEnum ENUM<googlesql_test.TestEnum>, KitchenSink PROTO<googlesql_test.KitchenSinkPB>>
+    |     +-field_list=
+    |       +-ColumnRef(type=INT32, column=TestTable.key#1)
+    |       +-ColumnRef(type=ENUM<googlesql_test.TestEnum>, column=TestTable.TestEnum#2)
+    |       +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=TestTable.KitchenSink#3)
+    +-input_scan=
+      +-TableScan(column_list=TestTable.[key#1, TestEnum#2, KitchenSink#3], table=TestTable, column_index_list=[0, 1, 2], alias="T")
+==
+
+select kv.key.* from KeyValue kv
+--
+ERROR: Dot-star is not supported for type INT64 [at 1:8]
+select kv.key.* from KeyValue kv
+       ^
+==
+
+# The 'as struct' makes the subquery return a struct, and then the .*
+# has to use GetField to get fields out.
+select T, T.* from (select as struct 1 a, 2 b, 3 c) T;
+--
+QueryStmt
++-output_column_list=
+| +-$make_struct.$struct#4 AS T [STRUCT<a INT64, b INT64, c INT64>]
+| +-$query.a#5 AS a [INT64]
+| +-$query.b#6 AS b [INT64]
+| +-$query.c#7 AS c [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$make_struct.$struct#4, $query.a#5, $query.b#6, $query.c#7]
+    +-expr_list=
+    | +-a#5 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<a INT64, b INT64, c INT64>, column=$make_struct.$struct#4)
+    | |   +-field_idx=0
+    | +-b#6 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<a INT64, b INT64, c INT64>, column=$make_struct.$struct#4)
+    | |   +-field_idx=1
+    | +-c#7 :=
+    |   +-GetStructField
+    |     +-type=INT64
+    |     +-expr=
+    |     | +-ColumnRef(type=STRUCT<a INT64, b INT64, c INT64>, column=$make_struct.$struct#4)
+    |     +-field_idx=2
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[$make_struct.$struct#4]
+        +-expr_list=
+        | +-$struct#4 :=
+        |   +-MakeStruct
+        |     +-type=STRUCT<a INT64, b INT64, c INT64>
+        |     +-field_list=
+        |       +-ColumnRef(type=INT64, column=T.a#1)
+        |       +-ColumnRef(type=INT64, column=T.b#2)
+        |       +-ColumnRef(type=INT64, column=T.c#3)
+        +-input_scan=
+          +-ProjectScan
+            +-column_list=T.[a#1, b#2, c#3]
+            +-expr_list=
+            | +-a#1 := Literal(type=INT64, value=1)
+            | +-b#2 := Literal(type=INT64, value=2)
+            | +-c#3 := Literal(type=INT64, value=3)
+            +-input_scan=
+              +-SingleRowScan
+==
+
+select *,
+       '---',
+       t.c1, t.c1.*,
+       '---',
+       t.c2, t.c2.*
+from (select (select AS STRUCT 1, 2) c1, (select AS STRUCT 3 a, 4 b) c2) t;
+--
+QueryStmt
++-output_column_list=
+| +-t.c1#7 AS c1 [STRUCT<INT64, INT64>]
+| +-t.c2#8 AS c2 [STRUCT<a INT64, b INT64>]
+| +-$query.$col2#9 AS `$col2` [STRING]
+| +-t.c1#7 AS c1 [STRUCT<INT64, INT64>]
+| +-$query.$field1#10 AS `$field1` [INT64]
+| +-$query.$field2#11 AS `$field2` [INT64]
+| +-$query.$col5#12 AS `$col5` [STRING]
+| +-t.c2#8 AS c2 [STRUCT<a INT64, b INT64>]
+| +-$query.a#13 AS a [INT64]
+| +-$query.b#14 AS b [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[t.c1#7, t.c2#8, $query.$col2#9, t.c1#7, $query.$field1#10, $query.$field2#11, $query.$col5#12, t.c2#8, $query.a#13, $query.b#14]
+    +-expr_list=
+    | +-$col2#9 := Literal(type=STRING, value="---")
+    | +-$field1#10 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<INT64, INT64>, column=t.c1#7)
+    | |   +-field_idx=0
+    | +-$field2#11 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<INT64, INT64>, column=t.c1#7)
+    | |   +-field_idx=1
+    | +-$col5#12 := Literal(type=STRING, value="---")
+    | +-a#13 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<a INT64, b INT64>, column=t.c2#8)
+    | |   +-field_idx=0
+    | +-b#14 :=
+    |   +-GetStructField
+    |     +-type=INT64
+    |     +-expr=
+    |     | +-ColumnRef(type=STRUCT<a INT64, b INT64>, column=t.c2#8)
+    |     +-field_idx=1
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=t.[c1#7, c2#8]
+        +-expr_list=
+        | +-c1#7 :=
+        | | +-SubqueryExpr
+        | |   +-type=STRUCT<INT64, INT64>
+        | |   +-subquery_type=SCALAR
+        | |   +-subquery=
+        | |     +-ProjectScan
+        | |       +-column_list=[$make_struct.$struct#3]
+        | |       +-expr_list=
+        | |       | +-$struct#3 :=
+        | |       |   +-MakeStruct
+        | |       |     +-type=STRUCT<INT64, INT64>
+        | |       |     +-field_list=
+        | |       |       +-ColumnRef(type=INT64, column=$expr_subquery.$col1#1)
+        | |       |       +-ColumnRef(type=INT64, column=$expr_subquery.$col2#2)
+        | |       +-input_scan=
+        | |         +-ProjectScan
+        | |           +-column_list=$expr_subquery.[$col1#1, $col2#2]
+        | |           +-expr_list=
+        | |           | +-$col1#1 := Literal(type=INT64, value=1)
+        | |           | +-$col2#2 := Literal(type=INT64, value=2)
+        | |           +-input_scan=
+        | |             +-SingleRowScan
+        | +-c2#8 :=
+        |   +-SubqueryExpr
+        |     +-type=STRUCT<a INT64, b INT64>
+        |     +-subquery_type=SCALAR
+        |     +-subquery=
+        |       +-ProjectScan
+        |         +-column_list=[$make_struct.$struct#6]
+        |         +-expr_list=
+        |         | +-$struct#6 :=
+        |         |   +-MakeStruct
+        |         |     +-type=STRUCT<a INT64, b INT64>
+        |         |     +-field_list=
+        |         |       +-ColumnRef(type=INT64, column=$expr_subquery.a#4)
+        |         |       +-ColumnRef(type=INT64, column=$expr_subquery.b#5)
+        |         +-input_scan=
+        |           +-ProjectScan
+        |             +-column_list=$expr_subquery.[a#4, b#5]
+        |             +-expr_list=
+        |             | +-a#4 := Literal(type=INT64, value=3)
+        |             | +-b#5 := Literal(type=INT64, value=4)
+        |             +-input_scan=
+        |               +-SingleRowScan
+        +-input_scan=
+          +-SingleRowScan
+==
+
+# Shows how alias names are mantained at the top of select list.
+select (select AS STRUCT 1 a, 2 b, 3 c).*, (select AS STRUCT 1, 2, 3).*
+--
+QueryStmt
++-output_column_list=
+| +-$query.a#11 AS a [INT64]
+| +-$query.b#12 AS b [INT64]
+| +-$query.c#13 AS c [INT64]
+| +-$query.$field1#14 AS `$field1` [INT64]
+| +-$query.$field2#15 AS `$field2` [INT64]
+| +-$query.$field3#16 AS `$field3` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=$query.[a#11, b#12, c#13, $field1#14, $field2#15, $field3#16]
+    +-expr_list=
+    | +-a#11 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<a INT64, b INT64, c INT64>, column=$preproject.$struct#5)
+    | |   +-field_idx=0
+    | +-b#12 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<a INT64, b INT64, c INT64>, column=$preproject.$struct#5)
+    | |   +-field_idx=1
+    | +-c#13 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<a INT64, b INT64, c INT64>, column=$preproject.$struct#5)
+    | |   +-field_idx=2
+    | +-$field1#14 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<INT64, INT64, INT64>, column=$preproject.$struct#10)
+    | |   +-field_idx=0
+    | +-$field2#15 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<INT64, INT64, INT64>, column=$preproject.$struct#10)
+    | |   +-field_idx=1
+    | +-$field3#16 :=
+    |   +-GetStructField
+    |     +-type=INT64
+    |     +-expr=
+    |     | +-ColumnRef(type=STRUCT<INT64, INT64, INT64>, column=$preproject.$struct#10)
+    |     +-field_idx=2
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=$preproject.[$struct#5, $struct#10]
+        +-expr_list=
+        | +-$struct#5 :=
+        | | +-SubqueryExpr
+        | |   +-type=STRUCT<a INT64, b INT64, c INT64>
+        | |   +-subquery_type=SCALAR
+        | |   +-subquery=
+        | |     +-ProjectScan
+        | |       +-column_list=[$make_struct.$struct#4]
+        | |       +-expr_list=
+        | |       | +-$struct#4 :=
+        | |       |   +-MakeStruct
+        | |       |     +-type=STRUCT<a INT64, b INT64, c INT64>
+        | |       |     +-field_list=
+        | |       |       +-ColumnRef(type=INT64, column=$expr_subquery.a#1)
+        | |       |       +-ColumnRef(type=INT64, column=$expr_subquery.b#2)
+        | |       |       +-ColumnRef(type=INT64, column=$expr_subquery.c#3)
+        | |       +-input_scan=
+        | |         +-ProjectScan
+        | |           +-column_list=$expr_subquery.[a#1, b#2, c#3]
+        | |           +-expr_list=
+        | |           | +-a#1 := Literal(type=INT64, value=1)
+        | |           | +-b#2 := Literal(type=INT64, value=2)
+        | |           | +-c#3 := Literal(type=INT64, value=3)
+        | |           +-input_scan=
+        | |             +-SingleRowScan
+        | +-$struct#10 :=
+        |   +-SubqueryExpr
+        |     +-type=STRUCT<INT64, INT64, INT64>
+        |     +-subquery_type=SCALAR
+        |     +-subquery=
+        |       +-ProjectScan
+        |         +-column_list=[$make_struct.$struct#9]
+        |         +-expr_list=
+        |         | +-$struct#9 :=
+        |         |   +-MakeStruct
+        |         |     +-type=STRUCT<INT64, INT64, INT64>
+        |         |     +-field_list=
+        |         |       +-ColumnRef(type=INT64, column=$expr_subquery.$col1#6)
+        |         |       +-ColumnRef(type=INT64, column=$expr_subquery.$col2#7)
+        |         |       +-ColumnRef(type=INT64, column=$expr_subquery.$col3#8)
+        |         +-input_scan=
+        |           +-ProjectScan
+        |             +-column_list=$expr_subquery.[$col1#6, $col2#7, $col3#8]
+        |             +-expr_list=
+        |             | +-$col1#6 := Literal(type=INT64, value=1)
+        |             | +-$col2#7 := Literal(type=INT64, value=2)
+        |             | +-$col3#8 := Literal(type=INT64, value=3)
+        |             +-input_scan=
+        |               +-SingleRowScan
+        +-input_scan=
+          +-SingleRowScan
+==
+
+select (select AS STRUCT 1 a, 2 b).*,
+       '---',
+       (select as `googlesql_test.TestExtraPB` 55 int32_val1).*;
+--
+QueryStmt
++-output_column_list=
+| +-$query.a#8 AS a [INT64]
+| +-$query.b#9 AS b [INT64]
+| +-$query.$col2#10 AS `$col2` [STRING]
+| +-$query.int32_val1#11 AS int32_val1 [INT32]
+| +-$query.int32_val2#12 AS int32_val2 [INT32]
+| +-$query.str_value#13 AS str_value [ARRAY<STRING>]
++-query=
+  +-ProjectScan
+    +-column_list=$query.[a#8, b#9, $col2#10, int32_val1#11, int32_val2#12, str_value#13]
+    +-expr_list=
+    | +-a#8 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<a INT64, b INT64>, column=$preproject.$struct#4)
+    | |   +-field_idx=0
+    | +-b#9 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<a INT64, b INT64>, column=$preproject.$struct#4)
+    | |   +-field_idx=1
+    | +-$col2#10 := Literal(type=STRING, value="---")
+    | +-int32_val1#11 :=
+    | | +-GetProtoField
+    | |   +-type=INT32
+    | |   +-expr=
+    | |   | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=$preproject.$proto#7)
+    | |   +-field_descriptor=int32_val1
+    | |   +-default_value=0
+    | +-int32_val2#12 :=
+    | | +-GetProtoField
+    | |   +-type=INT32
+    | |   +-expr=
+    | |   | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=$preproject.$proto#7)
+    | |   +-field_descriptor=int32_val2
+    | |   +-default_value=0
+    | +-str_value#13 :=
+    |   +-GetProtoField
+    |     +-type=ARRAY<STRING>
+    |     +-expr=
+    |     | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=$preproject.$proto#7)
+    |     +-field_descriptor=str_value
+    |     +-default_value=[]
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=$preproject.[$struct#4, $proto#7]
+        +-expr_list=
+        | +-$struct#4 :=
+        | | +-SubqueryExpr
+        | |   +-type=STRUCT<a INT64, b INT64>
+        | |   +-subquery_type=SCALAR
+        | |   +-subquery=
+        | |     +-ProjectScan
+        | |       +-column_list=[$make_struct.$struct#3]
+        | |       +-expr_list=
+        | |       | +-$struct#3 :=
+        | |       |   +-MakeStruct
+        | |       |     +-type=STRUCT<a INT64, b INT64>
+        | |       |     +-field_list=
+        | |       |       +-ColumnRef(type=INT64, column=$expr_subquery.a#1)
+        | |       |       +-ColumnRef(type=INT64, column=$expr_subquery.b#2)
+        | |       +-input_scan=
+        | |         +-ProjectScan
+        | |           +-column_list=$expr_subquery.[a#1, b#2]
+        | |           +-expr_list=
+        | |           | +-a#1 := Literal(type=INT64, value=1)
+        | |           | +-b#2 := Literal(type=INT64, value=2)
+        | |           +-input_scan=
+        | |             +-SingleRowScan
+        | +-$proto#7 :=
+        |   +-SubqueryExpr
+        |     +-type=PROTO<googlesql_test.TestExtraPB>
+        |     +-subquery_type=SCALAR
+        |     +-subquery=
+        |       +-ProjectScan
+        |         +-column_list=[$make_proto.$proto#6]
+        |         +-expr_list=
+        |         | +-$proto#6 :=
+        |         |   +-MakeProto
+        |         |     +-type=PROTO<googlesql_test.TestExtraPB>
+        |         |     +-field_list=
+        |         |       +-int32_val1 := Literal(type=INT32, value=55)
+        |         +-input_scan=
+        |           +-ProjectScan
+        |             +-column_list=[$expr_subquery.int32_val1#5]
+        |             +-expr_list=
+        |             | +-int32_val1#5 := Literal(type=INT64, value=55)
+        |             +-input_scan=
+        |               +-SingleRowScan
+        +-input_scan=
+          +-SingleRowScan
+==
+
+select t.*, (select AS STRUCT t.*) from (select 1 a, 2 b) t;
+--
+QueryStmt
++-output_column_list=
+| +-t.a#1 AS a [INT64]
+| +-t.b#2 AS b [INT64]
+| +-$query.$col2#6 AS `$col2` [STRUCT<a INT64, b INT64>]
++-query=
+  +-ProjectScan
+    +-column_list=[t.a#1, t.b#2, $query.$col2#6]
+    +-expr_list=
+    | +-$col2#6 :=
+    |   +-SubqueryExpr
+    |     +-type=STRUCT<a INT64, b INT64>
+    |     +-subquery_type=SCALAR
+    |     +-parameter_list=
+    |     | +-ColumnRef(type=INT64, column=t.a#1)
+    |     | +-ColumnRef(type=INT64, column=t.b#2)
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$make_struct.$struct#5]
+    |         +-expr_list=
+    |         | +-$struct#5 :=
+    |         |   +-MakeStruct
+    |         |     +-type=STRUCT<a INT64, b INT64>
+    |         |     +-field_list=
+    |         |       +-ColumnRef(type=INT64, column=$expr_subquery.a#3)
+    |         |       +-ColumnRef(type=INT64, column=$expr_subquery.b#4)
+    |         +-input_scan=
+    |           +-ProjectScan
+    |             +-column_list=$expr_subquery.[a#3, b#4]
+    |             +-expr_list=
+    |             | +-a#3 := ColumnRef(type=INT64, column=t.a#1, is_correlated=TRUE)
+    |             | +-b#4 := ColumnRef(type=INT64, column=t.b#2, is_correlated=TRUE)
+    |             +-input_scan=
+    |               +-SingleRowScan
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=t.[a#1, b#2]
+        +-expr_list=
+        | +-a#1 := Literal(type=INT64, value=1)
+        | +-b#2 := Literal(type=INT64, value=2)
+        +-input_scan=
+          +-SingleRowScan
+==
+
+select * from (select TestProto.* from ComplexTypes);
+--
+QueryStmt
++-output_column_list=
+| +-$subquery1.int32_val1#7 AS int32_val1 [INT32]
+| +-$subquery1.int32_val2#8 AS int32_val2 [INT32]
+| +-$subquery1.str_value#9 AS str_value [ARRAY<STRING>]
++-query=
+  +-ProjectScan
+    +-column_list=$subquery1.[int32_val1#7, int32_val2#8, str_value#9]
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=$subquery1.[int32_val1#7, int32_val2#8, str_value#9]
+        +-expr_list=
+        | +-int32_val1#7 :=
+        | | +-GetProtoField
+        | |   +-type=INT32
+        | |   +-expr=
+        | |   | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=ComplexTypes.TestProto#6)
+        | |   +-field_descriptor=int32_val1
+        | |   +-default_value=0
+        | +-int32_val2#8 :=
+        | | +-GetProtoField
+        | |   +-type=INT32
+        | |   +-expr=
+        | |   | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=ComplexTypes.TestProto#6)
+        | |   +-field_descriptor=int32_val2
+        | |   +-default_value=0
+        | +-str_value#9 :=
+        |   +-GetProtoField
+        |     +-type=ARRAY<STRING>
+        |     +-expr=
+        |     | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=ComplexTypes.TestProto#6)
+        |     +-field_descriptor=str_value
+        |     +-default_value=[]
+        +-input_scan=
+          +-TableScan(column_list=[ComplexTypes.TestProto#6], table=ComplexTypes, column_index_list=[5])
+==
+
+select a from (select (select AS STRUCT 1, 2 a).*)
+--
+QueryStmt
++-output_column_list=
+| +-$subquery1.a#6 AS a [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$subquery1.a#6]
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=$subquery1.[$field1#5, a#6]
+        +-expr_list=
+        | +-$field1#5 :=
+        | | +-GetStructField
+        | |   +-type=INT64
+        | |   +-expr=
+        | |   | +-ColumnRef(type=STRUCT<INT64, a INT64>, column=$preproject.$struct#4)
+        | |   +-field_idx=0
+        | +-a#6 :=
+        |   +-GetStructField
+        |     +-type=INT64
+        |     +-expr=
+        |     | +-ColumnRef(type=STRUCT<INT64, a INT64>, column=$preproject.$struct#4)
+        |     +-field_idx=1
+        +-input_scan=
+          +-ProjectScan
+            +-column_list=[$preproject.$struct#4]
+            +-expr_list=
+            | +-$struct#4 :=
+            |   +-SubqueryExpr
+            |     +-type=STRUCT<INT64, a INT64>
+            |     +-subquery_type=SCALAR
+            |     +-subquery=
+            |       +-ProjectScan
+            |         +-column_list=[$make_struct.$struct#3]
+            |         +-expr_list=
+            |         | +-$struct#3 :=
+            |         |   +-MakeStruct
+            |         |     +-type=STRUCT<INT64, a INT64>
+            |         |     +-field_list=
+            |         |       +-ColumnRef(type=INT64, column=$expr_subquery.$col1#1)
+            |         |       +-ColumnRef(type=INT64, column=$expr_subquery.a#2)
+            |         +-input_scan=
+            |           +-ProjectScan
+            |             +-column_list=$expr_subquery.[$col1#1, a#2]
+            |             +-expr_list=
+            |             | +-$col1#1 := Literal(type=INT64, value=1)
+            |             | +-a#2 := Literal(type=INT64, value=2)
+            |             +-input_scan=
+            |               +-SingleRowScan
+            +-input_scan=
+              +-SingleRowScan
+==
+
+select a from (select (select AS STRUCT 1 a, 2 a).*)
+--
+ERROR: Column name a is ambiguous [at 1:8]
+select a from (select (select AS STRUCT 1 a, 2 a).*)
+       ^
+==
+
+# Shows extracting columns with DotStar from a correlated range variable.
+# Note that we have to pass all columns individually as parameters to the
+# subquery since until the subquery does MakeStruct, they are not related.
+select (select AS STRUCT t.*, 1) from KeyValue t
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#7 AS `$col1` [STRUCT<Key INT64, Value STRING, INT64>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#7]
+    +-expr_list=
+    | +-$col1#7 :=
+    |   +-SubqueryExpr
+    |     +-type=STRUCT<Key INT64, Value STRING, INT64>
+    |     +-subquery_type=SCALAR
+    |     +-parameter_list=
+    |     | +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+    |     | +-ColumnRef(type=STRING, column=KeyValue.Value#2)
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$make_struct.$struct#6]
+    |         +-expr_list=
+    |         | +-$struct#6 :=
+    |         |   +-MakeStruct
+    |         |     +-type=STRUCT<Key INT64, Value STRING, INT64>
+    |         |     +-field_list=
+    |         |       +-ColumnRef(type=INT64, column=$expr_subquery.Key#3)
+    |         |       +-ColumnRef(type=STRING, column=$expr_subquery.Value#4)
+    |         |       +-ColumnRef(type=INT64, column=$expr_subquery.$col2#5)
+    |         +-input_scan=
+    |           +-ProjectScan
+    |             +-column_list=$expr_subquery.[Key#3, Value#4, $col2#5]
+    |             +-expr_list=
+    |             | +-Key#3 := ColumnRef(type=INT64, column=KeyValue.Key#1, is_correlated=TRUE)
+    |             | +-Value#4 := ColumnRef(type=STRING, column=KeyValue.Value#2, is_correlated=TRUE)
+    |             | +-$col2#5 := Literal(type=INT64, value=1)
+    |             +-input_scan=
+    |               +-SingleRowScan
+    +-input_scan=
+      +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1], alias="t")
+==
+
+# Shows extracting fields from a CorrelatedColumnRef without first projecting
+# it to a new column.
+# TODO: Post-refactoring, this is now projecting it to a new column.
+# Try to fix this.
+select (select AS STRUCT t.TestProto.*) from ComplexTypes t;
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#12 AS `$col1` [STRUCT<int32_val1 INT32, int32_val2 INT32, str_value ARRAY<STRING>>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#12]
+    +-expr_list=
+    | +-$col1#12 :=
+    |   +-SubqueryExpr
+    |     +-type=STRUCT<int32_val1 INT32, int32_val2 INT32, str_value ARRAY<STRING>>
+    |     +-subquery_type=SCALAR
+    |     +-parameter_list=
+    |     | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=ComplexTypes.TestProto#6)
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$make_struct.$struct#11]
+    |         +-expr_list=
+    |         | +-$struct#11 :=
+    |         |   +-MakeStruct
+    |         |     +-type=STRUCT<int32_val1 INT32, int32_val2 INT32, str_value ARRAY<STRING>>
+    |         |     +-field_list=
+    |         |       +-ColumnRef(type=INT32, column=$expr_subquery.int32_val1#8)
+    |         |       +-ColumnRef(type=INT32, column=$expr_subquery.int32_val2#9)
+    |         |       +-ColumnRef(type=ARRAY<STRING>, column=$expr_subquery.str_value#10)
+    |         +-input_scan=
+    |           +-ProjectScan
+    |             +-column_list=$expr_subquery.[int32_val1#8, int32_val2#9, str_value#10]
+    |             +-expr_list=
+    |             | +-int32_val1#8 :=
+    |             | | +-GetProtoField
+    |             | |   +-type=INT32
+    |             | |   +-expr=
+    |             | |   | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=$preproject.$proto#7)
+    |             | |   +-field_descriptor=int32_val1
+    |             | |   +-default_value=0
+    |             | +-int32_val2#9 :=
+    |             | | +-GetProtoField
+    |             | |   +-type=INT32
+    |             | |   +-expr=
+    |             | |   | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=$preproject.$proto#7)
+    |             | |   +-field_descriptor=int32_val2
+    |             | |   +-default_value=0
+    |             | +-str_value#10 :=
+    |             |   +-GetProtoField
+    |             |     +-type=ARRAY<STRING>
+    |             |     +-expr=
+    |             |     | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=$preproject.$proto#7)
+    |             |     +-field_descriptor=str_value
+    |             |     +-default_value=[]
+    |             +-input_scan=
+    |               +-ProjectScan
+    |                 +-column_list=[$preproject.$proto#7]
+    |                 +-expr_list=
+    |                 | +-$proto#7 := ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=ComplexTypes.TestProto#6, is_correlated=TRUE)
+    |                 +-input_scan=
+    |                   +-SingleRowScan
+    +-input_scan=
+      +-TableScan(column_list=[ComplexTypes.TestProto#6], table=ComplexTypes, column_index_list=[5], alias="t")
+==
+
+# Creates a proto from proto field members expanded as columns through
+# dot star.
+select (select as `googlesql_test.TestExtraPB` TestProto.* from ComplexTypes);
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#11 AS `$col1` [PROTO<googlesql_test.TestExtraPB>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#11]
+    +-expr_list=
+    | +-$col1#11 :=
+    |   +-SubqueryExpr
+    |     +-type=PROTO<googlesql_test.TestExtraPB>
+    |     +-subquery_type=SCALAR
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$make_proto.$proto#10]
+    |         +-expr_list=
+    |         | +-$proto#10 :=
+    |         |   +-MakeProto
+    |         |     +-type=PROTO<googlesql_test.TestExtraPB>
+    |         |     +-field_list=
+    |         |       +-int32_val1 := ColumnRef(type=INT32, column=$expr_subquery.int32_val1#7)
+    |         |       +-int32_val2 := ColumnRef(type=INT32, column=$expr_subquery.int32_val2#8)
+    |         |       +-str_value := ColumnRef(type=ARRAY<STRING>, column=$expr_subquery.str_value#9)
+    |         +-input_scan=
+    |           +-ProjectScan
+    |             +-column_list=$expr_subquery.[int32_val1#7, int32_val2#8, str_value#9]
+    |             +-expr_list=
+    |             | +-int32_val1#7 :=
+    |             | | +-GetProtoField
+    |             | |   +-type=INT32
+    |             | |   +-expr=
+    |             | |   | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=ComplexTypes.TestProto#6)
+    |             | |   +-field_descriptor=int32_val1
+    |             | |   +-default_value=0
+    |             | +-int32_val2#8 :=
+    |             | | +-GetProtoField
+    |             | |   +-type=INT32
+    |             | |   +-expr=
+    |             | |   | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=ComplexTypes.TestProto#6)
+    |             | |   +-field_descriptor=int32_val2
+    |             | |   +-default_value=0
+    |             | +-str_value#9 :=
+    |             |   +-GetProtoField
+    |             |     +-type=ARRAY<STRING>
+    |             |     +-expr=
+    |             |     | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=ComplexTypes.TestProto#6)
+    |             |     +-field_descriptor=str_value
+    |             |     +-default_value=[]
+    |             +-input_scan=
+    |               +-TableScan(column_list=[ComplexTypes.TestProto#6], table=ComplexTypes, column_index_list=[5])
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Converts proto field members into a struct and then again creates a proto out
+# of struct field members expanded through dot star.
+select as `googlesql_test.TestExtraPB`
+          (select as struct TestProto.* from ComplexTypes).*;
+--
+QueryStmt
++-output_column_list=
+| +-$make_proto.$proto#15 AS `$proto` [PROTO<googlesql_test.TestExtraPB>]
++-is_value_table=TRUE
++-query=
+  +-ProjectScan
+    +-column_list=[$make_proto.$proto#15]
+    +-expr_list=
+    | +-$proto#15 :=
+    |   +-MakeProto
+    |     +-type=PROTO<googlesql_test.TestExtraPB>
+    |     +-field_list=
+    |       +-int32_val1 := ColumnRef(type=INT32, column=$query.int32_val1#12)
+    |       +-int32_val2 := ColumnRef(type=INT32, column=$query.int32_val2#13)
+    |       +-str_value := ColumnRef(type=ARRAY<STRING>, column=$query.str_value#14)
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=$query.[int32_val1#12, int32_val2#13, str_value#14]
+        +-expr_list=
+        | +-int32_val1#12 :=
+        | | +-GetStructField
+        | |   +-type=INT32
+        | |   +-expr=
+        | |   | +-ColumnRef(type=STRUCT<int32_val1 INT32, int32_val2 INT32, str_value ARRAY<STRING>>, column=$preproject.$struct#11)
+        | |   +-field_idx=0
+        | +-int32_val2#13 :=
+        | | +-GetStructField
+        | |   +-type=INT32
+        | |   +-expr=
+        | |   | +-ColumnRef(type=STRUCT<int32_val1 INT32, int32_val2 INT32, str_value ARRAY<STRING>>, column=$preproject.$struct#11)
+        | |   +-field_idx=1
+        | +-str_value#14 :=
+        |   +-GetStructField
+        |     +-type=ARRAY<STRING>
+        |     +-expr=
+        |     | +-ColumnRef(type=STRUCT<int32_val1 INT32, int32_val2 INT32, str_value ARRAY<STRING>>, column=$preproject.$struct#11)
+        |     +-field_idx=2
+        +-input_scan=
+          +-ProjectScan
+            +-column_list=[$preproject.$struct#11]
+            +-expr_list=
+            | +-$struct#11 :=
+            |   +-SubqueryExpr
+            |     +-type=STRUCT<int32_val1 INT32, int32_val2 INT32, str_value ARRAY<STRING>>
+            |     +-subquery_type=SCALAR
+            |     +-subquery=
+            |       +-ProjectScan
+            |         +-column_list=[$make_struct.$struct#10]
+            |         +-expr_list=
+            |         | +-$struct#10 :=
+            |         |   +-MakeStruct
+            |         |     +-type=STRUCT<int32_val1 INT32, int32_val2 INT32, str_value ARRAY<STRING>>
+            |         |     +-field_list=
+            |         |       +-ColumnRef(type=INT32, column=$expr_subquery.int32_val1#7)
+            |         |       +-ColumnRef(type=INT32, column=$expr_subquery.int32_val2#8)
+            |         |       +-ColumnRef(type=ARRAY<STRING>, column=$expr_subquery.str_value#9)
+            |         +-input_scan=
+            |           +-ProjectScan
+            |             +-column_list=$expr_subquery.[int32_val1#7, int32_val2#8, str_value#9]
+            |             +-expr_list=
+            |             | +-int32_val1#7 :=
+            |             | | +-GetProtoField
+            |             | |   +-type=INT32
+            |             | |   +-expr=
+            |             | |   | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=ComplexTypes.TestProto#6)
+            |             | |   +-field_descriptor=int32_val1
+            |             | |   +-default_value=0
+            |             | +-int32_val2#8 :=
+            |             | | +-GetProtoField
+            |             | |   +-type=INT32
+            |             | |   +-expr=
+            |             | |   | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=ComplexTypes.TestProto#6)
+            |             | |   +-field_descriptor=int32_val2
+            |             | |   +-default_value=0
+            |             | +-str_value#9 :=
+            |             |   +-GetProtoField
+            |             |     +-type=ARRAY<STRING>
+            |             |     +-expr=
+            |             |     | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=ComplexTypes.TestProto#6)
+            |             |     +-field_descriptor=str_value
+            |             |     +-default_value=[]
+            |             +-input_scan=
+            |               +-TableScan(column_list=[ComplexTypes.TestProto#6], table=ComplexTypes, column_index_list=[5])
+            +-input_scan=
+              +-SingleRowScan
+==
+
+# Shows the final structure of project tree with columns added through
+# dot star used in the group by list.
+select (select AS STRUCT 1 a, 2 b).* from KeyValue group by 1, 2;
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.a#7 AS a [INT64]
+| +-$groupby.b#8 AS b [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=$groupby.[a#7, b#8]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=$groupby.[a#7, b#8]
+        +-input_scan=
+        | +-ProjectScan
+        |   +-column_list=[$preproject.$struct#6]
+        |   +-expr_list=
+        |   | +-$struct#6 :=
+        |   |   +-SubqueryExpr
+        |   |     +-type=STRUCT<a INT64, b INT64>
+        |   |     +-subquery_type=SCALAR
+        |   |     +-subquery=
+        |   |       +-ProjectScan
+        |   |         +-column_list=[$make_struct.$struct#5]
+        |   |         +-expr_list=
+        |   |         | +-$struct#5 :=
+        |   |         |   +-MakeStruct
+        |   |         |     +-type=STRUCT<a INT64, b INT64>
+        |   |         |     +-field_list=
+        |   |         |       +-ColumnRef(type=INT64, column=$expr_subquery.a#3)
+        |   |         |       +-ColumnRef(type=INT64, column=$expr_subquery.b#4)
+        |   |         +-input_scan=
+        |   |           +-ProjectScan
+        |   |             +-column_list=$expr_subquery.[a#3, b#4]
+        |   |             +-expr_list=
+        |   |             | +-a#3 := Literal(type=INT64, value=1)
+        |   |             | +-b#4 := Literal(type=INT64, value=2)
+        |   |             +-input_scan=
+        |   |               +-SingleRowScan
+        |   +-input_scan=
+        |     +-TableScan(table=KeyValue)
+        +-group_by_list=
+          +-a#7 :=
+          | +-GetStructField
+          |   +-type=INT64
+          |   +-expr=
+          |   | +-ColumnRef(type=STRUCT<a INT64, b INT64>, column=$preproject.$struct#6)
+          |   +-field_idx=0
+          +-b#8 :=
+            +-GetStructField
+              +-type=INT64
+              +-expr=
+              | +-ColumnRef(type=STRUCT<a INT64, b INT64>, column=$preproject.$struct#6)
+              +-field_idx=1
+==
+
+# This shows the GetProtoFields we get for .* with annotated date fields,
+# including one that sets GetProtoField::encoding.
+select KitchenSink.nested_dates.* from TestTable
+--
+QueryStmt
++-output_column_list=
+| +-$query.date#5 AS date [DATE]
+| +-$query.date_decimal#6 AS date_decimal [DATE]
+| +-$query.timestamp_millis#7 AS timestamp_millis [TIMESTAMP]
++-query=
+  +-ProjectScan
+    +-column_list=$query.[date#5, date_decimal#6, timestamp_millis#7]
+    +-expr_list=
+    | +-date#5 :=
+    | | +-GetProtoField
+    | |   +-type=DATE
+    | |   +-expr=
+    | |   | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB.NestedDates>, column=$preproject.$proto#4)
+    | |   +-field_descriptor=date
+    | |   +-default_value=1970-01-01
+    | |   +-format=DATE
+    | +-date_decimal#6 :=
+    | | +-GetProtoField
+    | |   +-type=DATE
+    | |   +-expr=
+    | |   | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB.NestedDates>, column=$preproject.$proto#4)
+    | |   +-field_descriptor=date_decimal
+    | |   +-default_value=NULL
+    | |   +-format=DATE_DECIMAL
+    | +-timestamp_millis#7 :=
+    |   +-GetProtoField
+    |     +-type=TIMESTAMP
+    |     +-expr=
+    |     | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB.NestedDates>, column=$preproject.$proto#4)
+    |     +-field_descriptor=timestamp_millis
+    |     +-default_value=1970-01-01 00:00:00+00
+    |     +-format=TIMESTAMP_MILLIS
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[TestTable.KitchenSink#3, $preproject.$proto#4]
+        +-expr_list=
+        | +-$proto#4 :=
+        |   +-GetProtoField
+        |     +-type=PROTO<googlesql_test.KitchenSinkPB.NestedDates>
+        |     +-expr=
+        |     | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=TestTable.KitchenSink#3)
+        |     +-field_descriptor=nested_dates
+        |     +-default_value=NULL
+        +-input_scan=
+          +-TableScan(column_list=[TestTable.KitchenSink#3], table=TestTable, column_index_list=[2])
+==
+
+# Selecting fields with civil time annotations
+[language_features=NONE,{{+CIVIL_TIME|}}]
+select CivilTimeTypesSink.nested_civil_time_fields.* from CivilTimeTestTable;
+--
+ALTERNATION GROUP: +CIVIL_TIME
+--
+QueryStmt
++-output_column_list=
+| +-$query.time_micros#4 AS time_micros [TIME]
+| +-$query.datetime_micros#5 AS datetime_micros [DATETIME]
++-query=
+  +-ProjectScan
+    +-column_list=$query.[time_micros#4, datetime_micros#5]
+    +-expr_list=
+    | +-time_micros#4 :=
+    | | +-GetProtoField
+    | |   +-type=TIME
+    | |   +-expr=
+    | |   | +-ColumnRef(type=PROTO<googlesql_test.CivilTimeTypesSinkPB.NestedCivilTimeFields>, column=$preproject.$proto#3)
+    | |   +-field_descriptor=time_micros
+    | |   +-default_value=00:00:00
+    | |   +-format=TIME_MICROS
+    | +-datetime_micros#5 :=
+    |   +-GetProtoField
+    |     +-type=DATETIME
+    |     +-expr=
+    |     | +-ColumnRef(type=PROTO<googlesql_test.CivilTimeTypesSinkPB.NestedCivilTimeFields>, column=$preproject.$proto#3)
+    |     +-field_descriptor=datetime_micros
+    |     +-default_value=NULL
+    |     +-format=DATETIME_MICROS
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[CivilTimeTestTable.CivilTimeTypesSink#2, $preproject.$proto#3]
+        +-expr_list=
+        | +-$proto#3 :=
+        |   +-GetProtoField
+        |     +-type=PROTO<googlesql_test.CivilTimeTypesSinkPB.NestedCivilTimeFields>
+        |     +-expr=
+        |     | +-ColumnRef(type=PROTO<googlesql_test.CivilTimeTypesSinkPB>, column=CivilTimeTestTable.CivilTimeTypesSink#2)
+        |     +-field_descriptor=nested_civil_time_fields
+        |     +-default_value=NULL
+        +-input_scan=
+          +-TableScan(column_list=[CivilTimeTestTable.CivilTimeTypesSink#2], table=CivilTimeTestTable, column_index_list=[1])
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: Dot-star expansion includes field time_micros with unsupported type TIME [at 1:8]
+select CivilTimeTypesSink.nested_civil_time_fields.* from CivilTimeTestTable;
+       ^
+==
+
+# Selecting fields with civil time annotations
+[language_features=NONE,{{+CIVIL_TIME|}}]
+select CivilTimeTypesSink.* from CivilTimeTestTable;
+--
+ALTERNATION GROUP: +CIVIL_TIME
+--
+QueryStmt
++-output_column_list=
+| +-$query.time_micros#3 AS time_micros [TIME]
+| +-$query.time_micros_default#4 AS time_micros_default [TIME]
+| +-$query.datetime_micros#5 AS datetime_micros [DATETIME]
+| +-$query.datetime_micros_default#6 AS datetime_micros_default [DATETIME]
+| +-$query.repeated_time_micros#7 AS repeated_time_micros [ARRAY<TIME>]
+| +-$query.repeated_datetime_micros#8 AS repeated_datetime_micros [ARRAY<DATETIME>]
+| +-$query.nested_civil_time_fields#9 AS nested_civil_time_fields [PROTO<googlesql_test.CivilTimeTypesSinkPB.NestedCivilTimeFields>]
+| +-$query.nested_civil_time_repeated_fields#10 AS nested_civil_time_repeated_fields [PROTO<googlesql_test.CivilTimeTypesSinkPB.NestedCivilTimeRepeatedFields>]
+| +-$query.int64_key_1#11 AS int64_key_1 [INT64]
+| +-$query.int64_key_2#12 AS int64_key_2 [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=$query.[time_micros#3, time_micros_default#4, datetime_micros#5, datetime_micros_default#6, repeated_time_micros#7, repeated_datetime_micros#8, nested_civil_time_fields#9, nested_civil_time_repeated_fields#10, int64_key_1#11, int64_key_2#12]
+    +-expr_list=
+    | +-time_micros#3 :=
+    | | +-GetProtoField
+    | |   +-type=TIME
+    | |   +-expr=
+    | |   | +-ColumnRef(type=PROTO<googlesql_test.CivilTimeTypesSinkPB>, column=CivilTimeTestTable.CivilTimeTypesSink#2)
+    | |   +-field_descriptor=time_micros
+    | |   +-default_value=00:00:00
+    | |   +-format=TIME_MICROS
+    | +-time_micros_default#4 :=
+    | | +-GetProtoField
+    | |   +-type=TIME
+    | |   +-expr=
+    | |   | +-ColumnRef(type=PROTO<googlesql_test.CivilTimeTypesSinkPB>, column=CivilTimeTestTable.CivilTimeTypesSink#2)
+    | |   +-field_descriptor=time_micros_default
+    | |   +-default_value=12:34:56.654321
+    | |   +-format=TIME_MICROS
+    | +-datetime_micros#5 :=
+    | | +-GetProtoField
+    | |   +-type=DATETIME
+    | |   +-expr=
+    | |   | +-ColumnRef(type=PROTO<googlesql_test.CivilTimeTypesSinkPB>, column=CivilTimeTestTable.CivilTimeTypesSink#2)
+    | |   +-field_descriptor=datetime_micros
+    | |   +-default_value=NULL
+    | |   +-format=DATETIME_MICROS
+    | +-datetime_micros_default#6 :=
+    | | +-GetProtoField
+    | |   +-type=DATETIME
+    | |   +-expr=
+    | |   | +-ColumnRef(type=PROTO<googlesql_test.CivilTimeTypesSinkPB>, column=CivilTimeTestTable.CivilTimeTypesSink#2)
+    | |   +-field_descriptor=datetime_micros_default
+    | |   +-default_value=1970-01-01 00:00:00
+    | |   +-format=DATETIME_MICROS
+    | +-repeated_time_micros#7 :=
+    | | +-GetProtoField
+    | |   +-type=ARRAY<TIME>
+    | |   +-expr=
+    | |   | +-ColumnRef(type=PROTO<googlesql_test.CivilTimeTypesSinkPB>, column=CivilTimeTestTable.CivilTimeTypesSink#2)
+    | |   +-field_descriptor=repeated_time_micros
+    | |   +-default_value=[]
+    | |   +-format=TIME_MICROS
+    | +-repeated_datetime_micros#8 :=
+    | | +-GetProtoField
+    | |   +-type=ARRAY<DATETIME>
+    | |   +-expr=
+    | |   | +-ColumnRef(type=PROTO<googlesql_test.CivilTimeTypesSinkPB>, column=CivilTimeTestTable.CivilTimeTypesSink#2)
+    | |   +-field_descriptor=repeated_datetime_micros
+    | |   +-default_value=[]
+    | |   +-format=DATETIME_MICROS
+    | +-nested_civil_time_fields#9 :=
+    | | +-GetProtoField
+    | |   +-type=PROTO<googlesql_test.CivilTimeTypesSinkPB.NestedCivilTimeFields>
+    | |   +-expr=
+    | |   | +-ColumnRef(type=PROTO<googlesql_test.CivilTimeTypesSinkPB>, column=CivilTimeTestTable.CivilTimeTypesSink#2)
+    | |   +-field_descriptor=nested_civil_time_fields
+    | |   +-default_value=NULL
+    | +-nested_civil_time_repeated_fields#10 :=
+    | | +-GetProtoField
+    | |   +-type=PROTO<googlesql_test.CivilTimeTypesSinkPB.NestedCivilTimeRepeatedFields>
+    | |   +-expr=
+    | |   | +-ColumnRef(type=PROTO<googlesql_test.CivilTimeTypesSinkPB>, column=CivilTimeTestTable.CivilTimeTypesSink#2)
+    | |   +-field_descriptor=nested_civil_time_repeated_fields
+    | |   +-default_value=NULL
+    | +-int64_key_1#11 :=
+    | | +-GetProtoField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=PROTO<googlesql_test.CivilTimeTypesSinkPB>, column=CivilTimeTestTable.CivilTimeTypesSink#2)
+    | |   +-field_descriptor=int64_key_1
+    | |   +-default_value=0
+    | +-int64_key_2#12 :=
+    |   +-GetProtoField
+    |     +-type=INT64
+    |     +-expr=
+    |     | +-ColumnRef(type=PROTO<googlesql_test.CivilTimeTypesSinkPB>, column=CivilTimeTestTable.CivilTimeTypesSink#2)
+    |     +-field_descriptor=int64_key_2
+    |     +-default_value=0
+    +-input_scan=
+      +-TableScan(column_list=[CivilTimeTestTable.CivilTimeTypesSink#2], table=CivilTimeTestTable, column_index_list=[1])
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: Dot-star expansion includes field time_micros with unsupported type TIME [at 1:8]
+select CivilTimeTypesSink.* from CivilTimeTestTable;
+       ^
+==
+
+[language_features=NONE,{{+CIVIL_TIME|}}]
+select CivilTimeTypesSink.nested_civil_time_repeated_fields.* from CivilTimeTestTable
+
+--
+ALTERNATION GROUP: +CIVIL_TIME
+--
+QueryStmt
++-output_column_list=
+| +-$query.repeated_time_micros#4 AS repeated_time_micros [ARRAY<TIME>]
+| +-$query.repeated_datetime_micros#5 AS repeated_datetime_micros [ARRAY<DATETIME>]
++-query=
+  +-ProjectScan
+    +-column_list=$query.[repeated_time_micros#4, repeated_datetime_micros#5]
+    +-expr_list=
+    | +-repeated_time_micros#4 :=
+    | | +-GetProtoField
+    | |   +-type=ARRAY<TIME>
+    | |   +-expr=
+    | |   | +-ColumnRef(type=PROTO<googlesql_test.CivilTimeTypesSinkPB.NestedCivilTimeRepeatedFields>, column=$preproject.$proto#3)
+    | |   +-field_descriptor=repeated_time_micros
+    | |   +-default_value=[]
+    | |   +-format=TIME_MICROS
+    | +-repeated_datetime_micros#5 :=
+    |   +-GetProtoField
+    |     +-type=ARRAY<DATETIME>
+    |     +-expr=
+    |     | +-ColumnRef(type=PROTO<googlesql_test.CivilTimeTypesSinkPB.NestedCivilTimeRepeatedFields>, column=$preproject.$proto#3)
+    |     +-field_descriptor=repeated_datetime_micros
+    |     +-default_value=[]
+    |     +-format=DATETIME_MICROS
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[CivilTimeTestTable.CivilTimeTypesSink#2, $preproject.$proto#3]
+        +-expr_list=
+        | +-$proto#3 :=
+        |   +-GetProtoField
+        |     +-type=PROTO<googlesql_test.CivilTimeTypesSinkPB.NestedCivilTimeRepeatedFields>
+        |     +-expr=
+        |     | +-ColumnRef(type=PROTO<googlesql_test.CivilTimeTypesSinkPB>, column=CivilTimeTestTable.CivilTimeTypesSink#2)
+        |     +-field_descriptor=nested_civil_time_repeated_fields
+        |     +-default_value=NULL
+        +-input_scan=
+          +-TableScan(column_list=[CivilTimeTestTable.CivilTimeTypesSink#2], table=CivilTimeTestTable, column_index_list=[1])
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: Dot-star expansion includes field repeated_time_micros with unsupported type ARRAY<TIME> [at 1:8]
+select CivilTimeTypesSink.nested_civil_time_repeated_fields.* from CivilTimeT...
+       ^
+==
+
+# Test case from b/32810432.
+[language_features=NONE,+LIMIT_IN_AGGREGATE,+ORDER_BY_IN_AGGREGATE]
+WITH my_table AS (
+  SELECT 1 AS primary_key, "foo" AS value, DATE('2016-11-09') AS modified_date
+)
+SELECT
+  ARRAY_AGG(t ORDER BY modified_date DESC LIMIT 1)[OFFSET(0)].*
+FROM my_table AS t
+GROUP BY t.primary_key;
+--
+QueryStmt
++-output_column_list=
+| +-$query.primary_key#11 AS primary_key [INT64]
+| +-$query.value#12 AS value [STRING]
+| +-$query.modified_date#13 AS modified_date [DATE]
++-query=
+  +-WithScan
+    +-column_list=$query.[primary_key#11, value#12, modified_date#13]
+    +-with_entry_list=
+    | +-WithEntry
+    |   +-with_query_name="my_table"
+    |   +-with_subquery=
+    |     +-ProjectScan
+    |       +-column_list=my_table.[primary_key#1, value#2, modified_date#3]
+    |       +-expr_list=
+    |       | +-primary_key#1 := Literal(type=INT64, value=1)
+    |       | +-value#2 := Literal(type=STRING, value="foo")
+    |       | +-modified_date#3 :=
+    |       |   +-FunctionCall(GoogleSQL:date(TIMESTAMP, optional(0) STRING) -> DATE)
+    |       |     +-Literal(type=TIMESTAMP, value=2016-11-09 08:00:00+00)
+    |       +-input_scan=
+    |         +-SingleRowScan
+    +-query=
+      +-ProjectScan
+        +-column_list=$query.[primary_key#11, value#12, modified_date#13]
+        +-expr_list=
+        | +-primary_key#11 :=
+        | | +-GetStructField
+        | |   +-type=INT64
+        | |   +-expr=
+        | |   | +-ColumnRef(type=STRUCT<primary_key INT64, value STRING, modified_date DATE>, column=$preproject.$struct#9)
+        | |   +-field_idx=0
+        | +-value#12 :=
+        | | +-GetStructField
+        | |   +-type=STRING
+        | |   +-expr=
+        | |   | +-ColumnRef(type=STRUCT<primary_key INT64, value STRING, modified_date DATE>, column=$preproject.$struct#9)
+        | |   +-field_idx=1
+        | +-modified_date#13 :=
+        |   +-GetStructField
+        |     +-type=DATE
+        |     +-expr=
+        |     | +-ColumnRef(type=STRUCT<primary_key INT64, value STRING, modified_date DATE>, column=$preproject.$struct#9)
+        |     +-field_idx=2
+        +-input_scan=
+          +-ProjectScan
+            +-column_list=[$aggregate.$agg1#8, $preproject.$struct#9]
+            +-expr_list=
+            | +-$struct#9 :=
+            |   +-FunctionCall(GoogleSQL:$array_at_offset(ARRAY<STRUCT<primary_key INT64, value STRING, modified_date DATE>>, INT64) -> STRUCT<primary_key INT64, value STRING, modified_date DATE>)
+            |     +-ColumnRef(type=ARRAY<STRUCT<primary_key INT64, value STRING, modified_date DATE>>, column=$aggregate.$agg1#8)
+            |     +-Literal(type=INT64, value=0)
+            +-input_scan=
+              +-AggregateScan
+                +-column_list=[$aggregate.$agg1#8]
+                +-input_scan=
+                | +-WithRefScan(column_list=my_table.[primary_key#4, value#5, modified_date#6], with_query_name="my_table")
+                +-group_by_list=
+                | +-primary_key#10 := ColumnRef(type=INT64, column=my_table.primary_key#4)
+                +-aggregate_list=
+                  +-$agg1#8 :=
+                    +-AggregateFunctionCall(GoogleSQL:array_agg(STRUCT<primary_key INT64, value STRING, modified_date DATE>) -> ARRAY<STRUCT<primary_key INT64, value STRING, modified_date DATE>>)
+                      +-MakeStruct
+                      | +-type=STRUCT<primary_key INT64, value STRING, modified_date DATE>
+                      | +-field_list=
+                      |   +-ColumnRef(type=INT64, column=my_table.primary_key#4)
+                      |   +-ColumnRef(type=STRING, column=my_table.value#5)
+                      |   +-ColumnRef(type=DATE, column=my_table.modified_date#6)
+                      +-order_by_item_list=
+                      | +-OrderByItem
+                      |   +-column_ref=
+                      |   | +-ColumnRef(type=DATE, column=my_table.modified_date#6)
+                      |   +-is_descending=TRUE
+                      +-limit=
+                        +-Literal(type=INT64, value=1)
+==
+
+# Similar to the previous, but with an array constructor around an aggregate
+# function.
+WITH my_table AS (
+  SELECT 1 AS key, "foo" AS value, true as bool_value
+)
+SELECT
+  [struct(sum(key) as k)][OFFSET(0)].*
+FROM my_table as t
+--
+QueryStmt
++-output_column_list=
+| +-$query.k#9 AS k [INT64]
++-query=
+  +-WithScan
+    +-column_list=[$query.k#9]
+    +-with_entry_list=
+    | +-WithEntry
+    |   +-with_query_name="my_table"
+    |   +-with_subquery=
+    |     +-ProjectScan
+    |       +-column_list=my_table.[key#1, value#2, bool_value#3]
+    |       +-expr_list=
+    |       | +-key#1 := Literal(type=INT64, value=1)
+    |       | +-value#2 := Literal(type=STRING, value="foo")
+    |       | +-bool_value#3 := Literal(type=BOOL, value=true)
+    |       +-input_scan=
+    |         +-SingleRowScan
+    +-query=
+      +-ProjectScan
+        +-column_list=[$query.k#9]
+        +-expr_list=
+        | +-k#9 :=
+        |   +-GetStructField
+        |     +-type=INT64
+        |     +-expr=
+        |     | +-ColumnRef(type=STRUCT<k INT64>, column=$preproject.$struct#8)
+        |     +-field_idx=0
+        +-input_scan=
+          +-ProjectScan
+            +-column_list=[$aggregate.$agg1#7, $preproject.$struct#8]
+            +-expr_list=
+            | +-$struct#8 :=
+            |   +-FunctionCall(GoogleSQL:$array_at_offset(ARRAY<STRUCT<k INT64>>, INT64) -> STRUCT<k INT64>)
+            |     +-FunctionCall(GoogleSQL:$make_array(repeated(1) STRUCT<k INT64>) -> ARRAY<STRUCT<k INT64>>)
+            |     | +-MakeStruct
+            |     |   +-type=STRUCT<k INT64>
+            |     |   +-field_list=
+            |     |     +-ColumnRef(type=INT64, column=$aggregate.$agg1#7)
+            |     +-Literal(type=INT64, value=0)
+            +-input_scan=
+              +-AggregateScan
+                +-column_list=[$aggregate.$agg1#7]
+                +-input_scan=
+                | +-WithRefScan(column_list=my_table.[key#4, value#5, bool_value#6], with_query_name="my_table")
+                +-aggregate_list=
+                  +-$agg1#7 :=
+                    +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+                      +-ColumnRef(type=INT64, column=my_table.key#4)
+==
+
+# Similar to the previous, but additionally with GROUP BY.
+WITH my_table AS (
+  SELECT 1 AS key, "foo" AS value, true as bool_value
+)
+SELECT
+  [struct(sum(key) as k)][OFFSET(0)].*
+FROM my_table as t
+GROUP BY value
+--
+QueryStmt
++-output_column_list=
+| +-$query.k#10 AS k [INT64]
++-query=
+  +-WithScan
+    +-column_list=[$query.k#10]
+    +-with_entry_list=
+    | +-WithEntry
+    |   +-with_query_name="my_table"
+    |   +-with_subquery=
+    |     +-ProjectScan
+    |       +-column_list=my_table.[key#1, value#2, bool_value#3]
+    |       +-expr_list=
+    |       | +-key#1 := Literal(type=INT64, value=1)
+    |       | +-value#2 := Literal(type=STRING, value="foo")
+    |       | +-bool_value#3 := Literal(type=BOOL, value=true)
+    |       +-input_scan=
+    |         +-SingleRowScan
+    +-query=
+      +-ProjectScan
+        +-column_list=[$query.k#10]
+        +-expr_list=
+        | +-k#10 :=
+        |   +-GetStructField
+        |     +-type=INT64
+        |     +-expr=
+        |     | +-ColumnRef(type=STRUCT<k INT64>, column=$preproject.$struct#8)
+        |     +-field_idx=0
+        +-input_scan=
+          +-ProjectScan
+            +-column_list=[$aggregate.$agg1#7, $preproject.$struct#8]
+            +-expr_list=
+            | +-$struct#8 :=
+            |   +-FunctionCall(GoogleSQL:$array_at_offset(ARRAY<STRUCT<k INT64>>, INT64) -> STRUCT<k INT64>)
+            |     +-FunctionCall(GoogleSQL:$make_array(repeated(1) STRUCT<k INT64>) -> ARRAY<STRUCT<k INT64>>)
+            |     | +-MakeStruct
+            |     |   +-type=STRUCT<k INT64>
+            |     |   +-field_list=
+            |     |     +-ColumnRef(type=INT64, column=$aggregate.$agg1#7)
+            |     +-Literal(type=INT64, value=0)
+            +-input_scan=
+              +-AggregateScan
+                +-column_list=[$aggregate.$agg1#7]
+                +-input_scan=
+                | +-WithRefScan(column_list=my_table.[key#4, value#5, bool_value#6], with_query_name="my_table")
+                +-group_by_list=
+                | +-value#9 := ColumnRef(type=STRING, column=my_table.value#5)
+                +-aggregate_list=
+                  +-$agg1#7 :=
+                    +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+                      +-ColumnRef(type=INT64, column=my_table.key#4)
+==
+
+# Similar to the previous, but also with a grouped column in the struct.
+# Note - the error message here is technically accurate, but hard to figure out.
+# The reason for the error is that the star expansion results in two columns
+# with implicit aliases 'k' and 'value', so GROUP BY 'value' effectively
+# groups by the SELECT list alias which is derived from the dot-star expansion
+# that includes aggregation.  Ugly.
+WITH my_table AS (
+  SELECT 1 AS key, "foo" AS value, true as bool_value
+)
+SELECT
+  [struct(sum(key) as k, value)][OFFSET(0)].*
+FROM my_table as t
+GROUP BY value
+--
+ERROR: Column value contains an aggregation function, which is not allowed in GROUP BY [at 7:10]
+GROUP BY value
+         ^
+==
+
+# Similar to the previous, but this one works since we group by 't.value',
+# instead of just 'value', so it resolves to the table column not the
+# SELECT alias.
+WITH my_table AS (
+  SELECT 1 AS key, "foo" AS value, true as bool_value
+)
+SELECT
+  [struct(sum(key) as k, value)][OFFSET(0)].*
+FROM my_table as t
+GROUP BY t.value
+--
+QueryStmt
++-output_column_list=
+| +-$query.k#10 AS k [INT64]
+| +-$query.value#11 AS value [STRING]
++-query=
+  +-WithScan
+    +-column_list=$query.[k#10, value#11]
+    +-with_entry_list=
+    | +-WithEntry
+    |   +-with_query_name="my_table"
+    |   +-with_subquery=
+    |     +-ProjectScan
+    |       +-column_list=my_table.[key#1, value#2, bool_value#3]
+    |       +-expr_list=
+    |       | +-key#1 := Literal(type=INT64, value=1)
+    |       | +-value#2 := Literal(type=STRING, value="foo")
+    |       | +-bool_value#3 := Literal(type=BOOL, value=true)
+    |       +-input_scan=
+    |         +-SingleRowScan
+    +-query=
+      +-ProjectScan
+        +-column_list=$query.[k#10, value#11]
+        +-expr_list=
+        | +-k#10 :=
+        | | +-GetStructField
+        | |   +-type=INT64
+        | |   +-expr=
+        | |   | +-ColumnRef(type=STRUCT<k INT64, value STRING>, column=$preproject.$struct#8)
+        | |   +-field_idx=0
+        | +-value#11 :=
+        |   +-GetStructField
+        |     +-type=STRING
+        |     +-expr=
+        |     | +-ColumnRef(type=STRUCT<k INT64, value STRING>, column=$preproject.$struct#8)
+        |     +-field_idx=1
+        +-input_scan=
+          +-ProjectScan
+            +-column_list=[$groupby.value#9, $aggregate.$agg1#7, $preproject.$struct#8]
+            +-expr_list=
+            | +-$struct#8 :=
+            |   +-FunctionCall(GoogleSQL:$array_at_offset(ARRAY<STRUCT<k INT64, value STRING>>, INT64) -> STRUCT<k INT64, value STRING>)
+            |     +-FunctionCall(GoogleSQL:$make_array(repeated(1) STRUCT<k INT64, value STRING>) -> ARRAY<STRUCT<k INT64, value STRING>>)
+            |     | +-MakeStruct
+            |     |   +-type=STRUCT<k INT64, value STRING>
+            |     |   +-field_list=
+            |     |     +-ColumnRef(type=INT64, column=$aggregate.$agg1#7)
+            |     |     +-ColumnRef(type=STRING, column=$groupby.value#9)
+            |     +-Literal(type=INT64, value=0)
+            +-input_scan=
+              +-AggregateScan
+                +-column_list=[$groupby.value#9, $aggregate.$agg1#7]
+                +-input_scan=
+                | +-WithRefScan(column_list=my_table.[key#4, value#5, bool_value#6], with_query_name="my_table")
+                +-group_by_list=
+                | +-value#9 := ColumnRef(type=STRING, column=my_table.value#5)
+                +-aggregate_list=
+                  +-$agg1#7 :=
+                    +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+                      +-ColumnRef(type=INT64, column=my_table.key#4)
+==
+
+# Similar to the previous, but where the aggregate function is part of
+# another expression (addition).
+WITH my_table AS (
+  SELECT 1 AS key, "foo" AS value, true as bool_value
+)
+SELECT
+  [struct(sum(key)+1 as k, value)][OFFSET(0)].*
+FROM my_table as t
+GROUP BY t.value
+--
+QueryStmt
++-output_column_list=
+| +-$query.k#10 AS k [INT64]
+| +-$query.value#11 AS value [STRING]
++-query=
+  +-WithScan
+    +-column_list=$query.[k#10, value#11]
+    +-with_entry_list=
+    | +-WithEntry
+    |   +-with_query_name="my_table"
+    |   +-with_subquery=
+    |     +-ProjectScan
+    |       +-column_list=my_table.[key#1, value#2, bool_value#3]
+    |       +-expr_list=
+    |       | +-key#1 := Literal(type=INT64, value=1)
+    |       | +-value#2 := Literal(type=STRING, value="foo")
+    |       | +-bool_value#3 := Literal(type=BOOL, value=true)
+    |       +-input_scan=
+    |         +-SingleRowScan
+    +-query=
+      +-ProjectScan
+        +-column_list=$query.[k#10, value#11]
+        +-expr_list=
+        | +-k#10 :=
+        | | +-GetStructField
+        | |   +-type=INT64
+        | |   +-expr=
+        | |   | +-ColumnRef(type=STRUCT<k INT64, value STRING>, column=$preproject.$struct#8)
+        | |   +-field_idx=0
+        | +-value#11 :=
+        |   +-GetStructField
+        |     +-type=STRING
+        |     +-expr=
+        |     | +-ColumnRef(type=STRUCT<k INT64, value STRING>, column=$preproject.$struct#8)
+        |     +-field_idx=1
+        +-input_scan=
+          +-ProjectScan
+            +-column_list=[$groupby.value#9, $aggregate.$agg1#7, $preproject.$struct#8]
+            +-expr_list=
+            | +-$struct#8 :=
+            |   +-FunctionCall(GoogleSQL:$array_at_offset(ARRAY<STRUCT<k INT64, value STRING>>, INT64) -> STRUCT<k INT64, value STRING>)
+            |     +-FunctionCall(GoogleSQL:$make_array(repeated(1) STRUCT<k INT64, value STRING>) -> ARRAY<STRUCT<k INT64, value STRING>>)
+            |     | +-MakeStruct
+            |     |   +-type=STRUCT<k INT64, value STRING>
+            |     |   +-field_list=
+            |     |     +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+            |     |     | +-ColumnRef(type=INT64, column=$aggregate.$agg1#7)
+            |     |     | +-Literal(type=INT64, value=1)
+            |     |     +-ColumnRef(type=STRING, column=$groupby.value#9)
+            |     +-Literal(type=INT64, value=0)
+            +-input_scan=
+              +-AggregateScan
+                +-column_list=[$groupby.value#9, $aggregate.$agg1#7]
+                +-input_scan=
+                | +-WithRefScan(column_list=my_table.[key#4, value#5, bool_value#6], with_query_name="my_table")
+                +-group_by_list=
+                | +-value#9 := ColumnRef(type=STRING, column=my_table.value#5)
+                +-aggregate_list=
+                  +-$agg1#7 :=
+                    +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+                      +-ColumnRef(type=INT64, column=my_table.key#4)
+==
+
+# The same as the previous, but with SELECT DISTINCT
+WITH my_table AS (
+  SELECT 1 AS key, "foo" AS value, true as bool_value
+)
+SELECT DISTINCT
+  [struct(sum(key)+1 as k, value)][OFFSET(0)].*
+FROM my_table as t
+GROUP BY t.value
+--
+QueryStmt
++-output_column_list=
+| +-$distinct.k#12 AS k [INT64]
+| +-$distinct.value#13 AS value [STRING]
++-query=
+  +-WithScan
+    +-column_list=$distinct.[k#12, value#13]
+    +-with_entry_list=
+    | +-WithEntry
+    |   +-with_query_name="my_table"
+    |   +-with_subquery=
+    |     +-ProjectScan
+    |       +-column_list=my_table.[key#1, value#2, bool_value#3]
+    |       +-expr_list=
+    |       | +-key#1 := Literal(type=INT64, value=1)
+    |       | +-value#2 := Literal(type=STRING, value="foo")
+    |       | +-bool_value#3 := Literal(type=BOOL, value=true)
+    |       +-input_scan=
+    |         +-SingleRowScan
+    +-query=
+      +-AggregateScan
+        +-column_list=$distinct.[k#12, value#13]
+        +-input_scan=
+        | +-ProjectScan
+        |   +-column_list=[$groupby.value#9, $aggregate.$agg1#7, $preproject.$struct#8, $query.k#10, $query.value#11]
+        |   +-expr_list=
+        |   | +-k#10 :=
+        |   | | +-GetStructField
+        |   | |   +-type=INT64
+        |   | |   +-expr=
+        |   | |   | +-ColumnRef(type=STRUCT<k INT64, value STRING>, column=$preproject.$struct#8)
+        |   | |   +-field_idx=0
+        |   | +-value#11 :=
+        |   |   +-GetStructField
+        |   |     +-type=STRING
+        |   |     +-expr=
+        |   |     | +-ColumnRef(type=STRUCT<k INT64, value STRING>, column=$preproject.$struct#8)
+        |   |     +-field_idx=1
+        |   +-input_scan=
+        |     +-ProjectScan
+        |       +-column_list=[$groupby.value#9, $aggregate.$agg1#7, $preproject.$struct#8]
+        |       +-expr_list=
+        |       | +-$struct#8 :=
+        |       |   +-FunctionCall(GoogleSQL:$array_at_offset(ARRAY<STRUCT<k INT64, value STRING>>, INT64) -> STRUCT<k INT64, value STRING>)
+        |       |     +-FunctionCall(GoogleSQL:$make_array(repeated(1) STRUCT<k INT64, value STRING>) -> ARRAY<STRUCT<k INT64, value STRING>>)
+        |       |     | +-MakeStruct
+        |       |     |   +-type=STRUCT<k INT64, value STRING>
+        |       |     |   +-field_list=
+        |       |     |     +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+        |       |     |     | +-ColumnRef(type=INT64, column=$aggregate.$agg1#7)
+        |       |     |     | +-Literal(type=INT64, value=1)
+        |       |     |     +-ColumnRef(type=STRING, column=$groupby.value#9)
+        |       |     +-Literal(type=INT64, value=0)
+        |       +-input_scan=
+        |         +-AggregateScan
+        |           +-column_list=[$groupby.value#9, $aggregate.$agg1#7]
+        |           +-input_scan=
+        |           | +-WithRefScan(column_list=my_table.[key#4, value#5, bool_value#6], with_query_name="my_table")
+        |           +-group_by_list=
+        |           | +-value#9 := ColumnRef(type=STRING, column=my_table.value#5)
+        |           +-aggregate_list=
+        |             +-$agg1#7 :=
+        |               +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+        |                 +-ColumnRef(type=INT64, column=my_table.key#4)
+        +-group_by_list=
+          +-k#12 := ColumnRef(type=INT64, column=$query.k#10)
+          +-value#13 := ColumnRef(type=STRING, column=$query.value#11)
+==
+
+# The same as the previous, but with ORDER BY but not DISTINCT
+WITH my_table AS (
+  SELECT 1 AS key, "foo" AS value, true as bool_value
+)
+SELECT
+  [struct(sum(key)+1 as k, value)][OFFSET(0)].*
+FROM my_table as t
+GROUP BY t.value
+ORDER BY 1, 2
+--
+QueryStmt
++-output_column_list=
+| +-$query.k#10 AS k [INT64]
+| +-$query.value#11 AS value [STRING]
++-query=
+  +-WithScan
+    +-column_list=$query.[k#10, value#11]
+    +-is_ordered=TRUE
+    +-with_entry_list=
+    | +-WithEntry
+    |   +-with_query_name="my_table"
+    |   +-with_subquery=
+    |     +-ProjectScan
+    |       +-column_list=my_table.[key#1, value#2, bool_value#3]
+    |       +-expr_list=
+    |       | +-key#1 := Literal(type=INT64, value=1)
+    |       | +-value#2 := Literal(type=STRING, value="foo")
+    |       | +-bool_value#3 := Literal(type=BOOL, value=true)
+    |       +-input_scan=
+    |         +-SingleRowScan
+    +-query=
+      +-OrderByScan
+        +-column_list=$query.[k#10, value#11]
+        +-is_ordered=TRUE
+        +-input_scan=
+        | +-ProjectScan
+        |   +-column_list=[$groupby.value#9, $aggregate.$agg1#7, $preproject.$struct#8, $query.k#10, $query.value#11]
+        |   +-expr_list=
+        |   | +-k#10 :=
+        |   | | +-GetStructField
+        |   | |   +-type=INT64
+        |   | |   +-expr=
+        |   | |   | +-ColumnRef(type=STRUCT<k INT64, value STRING>, column=$preproject.$struct#8)
+        |   | |   +-field_idx=0
+        |   | +-value#11 :=
+        |   |   +-GetStructField
+        |   |     +-type=STRING
+        |   |     +-expr=
+        |   |     | +-ColumnRef(type=STRUCT<k INT64, value STRING>, column=$preproject.$struct#8)
+        |   |     +-field_idx=1
+        |   +-input_scan=
+        |     +-ProjectScan
+        |       +-column_list=[$groupby.value#9, $aggregate.$agg1#7, $preproject.$struct#8]
+        |       +-expr_list=
+        |       | +-$struct#8 :=
+        |       |   +-FunctionCall(GoogleSQL:$array_at_offset(ARRAY<STRUCT<k INT64, value STRING>>, INT64) -> STRUCT<k INT64, value STRING>)
+        |       |     +-FunctionCall(GoogleSQL:$make_array(repeated(1) STRUCT<k INT64, value STRING>) -> ARRAY<STRUCT<k INT64, value STRING>>)
+        |       |     | +-MakeStruct
+        |       |     |   +-type=STRUCT<k INT64, value STRING>
+        |       |     |   +-field_list=
+        |       |     |     +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+        |       |     |     | +-ColumnRef(type=INT64, column=$aggregate.$agg1#7)
+        |       |     |     | +-Literal(type=INT64, value=1)
+        |       |     |     +-ColumnRef(type=STRING, column=$groupby.value#9)
+        |       |     +-Literal(type=INT64, value=0)
+        |       +-input_scan=
+        |         +-AggregateScan
+        |           +-column_list=[$groupby.value#9, $aggregate.$agg1#7]
+        |           +-input_scan=
+        |           | +-WithRefScan(column_list=my_table.[key#4, value#5, bool_value#6], with_query_name="my_table")
+        |           +-group_by_list=
+        |           | +-value#9 := ColumnRef(type=STRING, column=my_table.value#5)
+        |           +-aggregate_list=
+        |             +-$agg1#7 :=
+        |               +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+        |                 +-ColumnRef(type=INT64, column=my_table.key#4)
+        +-order_by_item_list=
+          +-OrderByItem
+          | +-column_ref=
+          |   +-ColumnRef(type=INT64, column=$query.k#10)
+          +-OrderByItem
+            +-column_ref=
+              +-ColumnRef(type=STRING, column=$query.value#11)
+==
+
+# The same as the previous, but with ORDER BY and DISTINCT
+WITH my_table AS (
+  SELECT 1 AS key, "foo" AS value, true as bool_value
+)
+SELECT DISTINCT
+  [struct(sum(key)+1 as k, value)][OFFSET(0)].*
+FROM my_table as t
+GROUP BY t.value
+ORDER BY 1, 2
+--
+QueryStmt
++-output_column_list=
+| +-$distinct.k#12 AS k [INT64]
+| +-$distinct.value#13 AS value [STRING]
++-query=
+  +-WithScan
+    +-column_list=$distinct.[k#12, value#13]
+    +-is_ordered=TRUE
+    +-with_entry_list=
+    | +-WithEntry
+    |   +-with_query_name="my_table"
+    |   +-with_subquery=
+    |     +-ProjectScan
+    |       +-column_list=my_table.[key#1, value#2, bool_value#3]
+    |       +-expr_list=
+    |       | +-key#1 := Literal(type=INT64, value=1)
+    |       | +-value#2 := Literal(type=STRING, value="foo")
+    |       | +-bool_value#3 := Literal(type=BOOL, value=true)
+    |       +-input_scan=
+    |         +-SingleRowScan
+    +-query=
+      +-OrderByScan
+        +-column_list=$distinct.[k#12, value#13]
+        +-is_ordered=TRUE
+        +-input_scan=
+        | +-AggregateScan
+        |   +-column_list=$distinct.[k#12, value#13]
+        |   +-input_scan=
+        |   | +-ProjectScan
+        |   |   +-column_list=[$groupby.value#9, $aggregate.$agg1#7, $preproject.$struct#8, $query.k#10, $query.value#11]
+        |   |   +-expr_list=
+        |   |   | +-k#10 :=
+        |   |   | | +-GetStructField
+        |   |   | |   +-type=INT64
+        |   |   | |   +-expr=
+        |   |   | |   | +-ColumnRef(type=STRUCT<k INT64, value STRING>, column=$preproject.$struct#8)
+        |   |   | |   +-field_idx=0
+        |   |   | +-value#11 :=
+        |   |   |   +-GetStructField
+        |   |   |     +-type=STRING
+        |   |   |     +-expr=
+        |   |   |     | +-ColumnRef(type=STRUCT<k INT64, value STRING>, column=$preproject.$struct#8)
+        |   |   |     +-field_idx=1
+        |   |   +-input_scan=
+        |   |     +-ProjectScan
+        |   |       +-column_list=[$groupby.value#9, $aggregate.$agg1#7, $preproject.$struct#8]
+        |   |       +-expr_list=
+        |   |       | +-$struct#8 :=
+        |   |       |   +-FunctionCall(GoogleSQL:$array_at_offset(ARRAY<STRUCT<k INT64, value STRING>>, INT64) -> STRUCT<k INT64, value STRING>)
+        |   |       |     +-FunctionCall(GoogleSQL:$make_array(repeated(1) STRUCT<k INT64, value STRING>) -> ARRAY<STRUCT<k INT64, value STRING>>)
+        |   |       |     | +-MakeStruct
+        |   |       |     |   +-type=STRUCT<k INT64, value STRING>
+        |   |       |     |   +-field_list=
+        |   |       |     |     +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+        |   |       |     |     | +-ColumnRef(type=INT64, column=$aggregate.$agg1#7)
+        |   |       |     |     | +-Literal(type=INT64, value=1)
+        |   |       |     |     +-ColumnRef(type=STRING, column=$groupby.value#9)
+        |   |       |     +-Literal(type=INT64, value=0)
+        |   |       +-input_scan=
+        |   |         +-AggregateScan
+        |   |           +-column_list=[$groupby.value#9, $aggregate.$agg1#7]
+        |   |           +-input_scan=
+        |   |           | +-WithRefScan(column_list=my_table.[key#4, value#5, bool_value#6], with_query_name="my_table")
+        |   |           +-group_by_list=
+        |   |           | +-value#9 := ColumnRef(type=STRING, column=my_table.value#5)
+        |   |           +-aggregate_list=
+        |   |             +-$agg1#7 :=
+        |   |               +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+        |   |                 +-ColumnRef(type=INT64, column=my_table.key#4)
+        |   +-group_by_list=
+        |     +-k#12 := ColumnRef(type=INT64, column=$query.k#10)
+        |     +-value#13 := ColumnRef(type=STRING, column=$query.value#11)
+        +-order_by_item_list=
+          +-OrderByItem
+          | +-column_ref=
+          |   +-ColumnRef(type=INT64, column=$distinct.k#12)
+          +-OrderByItem
+            +-column_ref=
+              +-ColumnRef(type=STRING, column=$distinct.value#13)
+==
+
+# Similar to the previous test cases, but with a non-grouped column in the
+# struct so this is an error.
+WITH my_table AS (
+  SELECT 1 AS key, "foo" AS value, true as bool_value
+)
+SELECT
+  [struct(sum(key) as k, {{|t.}}key)][OFFSET(0)].*
+FROM my_table as t
+GROUP BY t.value
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: SELECT list expression references column key which is neither grouped nor aggregated [at 5:26]
+  [struct(sum(key) as k, key)][OFFSET(0)].*
+                         ^
+--
+ALTERNATION GROUP: t.
+--
+ERROR: SELECT list expression references t.key which is neither grouped nor aggregated [at 5:26]
+  [struct(sum(key) as k, t.key)][OFFSET(0)].*
+                         ^
+==
+
+# This test dot-stars into the result of an expression that includes
+# an analytic function.
+[language_features=NONE,+LIMIT_IN_AGGREGATE,+ORDER_BY_IN_AGGREGATE,+ANALYTIC_FUNCTIONS]
+WITH my_table AS (
+  SELECT 1 AS key, "a" AS value
+)
+SELECT
+  ANY_VALUE([t]) OVER () [OFFSET(0)].*
+FROM my_table AS t
+--
+QueryStmt
++-output_column_list=
+| +-$query.key#10 AS key [INT64]
+| +-$query.value#11 AS value [STRING]
++-query=
+  +-WithScan
+    +-column_list=$query.[key#10, value#11]
+    +-with_entry_list=
+    | +-WithEntry
+    |   +-with_query_name="my_table"
+    |   +-with_subquery=
+    |     +-ProjectScan
+    |       +-column_list=my_table.[key#1, value#2]
+    |       +-expr_list=
+    |       | +-key#1 := Literal(type=INT64, value=1)
+    |       | +-value#2 := Literal(type=STRING, value="a")
+    |       +-input_scan=
+    |         +-SingleRowScan
+    +-query=
+      +-ProjectScan
+        +-column_list=$query.[key#10, value#11]
+        +-expr_list=
+        | +-key#10 :=
+        | | +-GetStructField
+        | |   +-type=INT64
+        | |   +-expr=
+        | |   | +-ColumnRef(type=STRUCT<key INT64, value STRING>, column=$preproject.$struct#7)
+        | |   +-field_idx=0
+        | +-value#11 :=
+        |   +-GetStructField
+        |     +-type=STRING
+        |     +-expr=
+        |     | +-ColumnRef(type=STRUCT<key INT64, value STRING>, column=$preproject.$struct#7)
+        |     +-field_idx=1
+        +-input_scan=
+          +-ProjectScan
+            +-column_list=[my_table.key#3, my_table.value#4, $analytic.$analytic1#9, $preproject.$struct#7]
+            +-expr_list=
+            | +-$struct#7 :=
+            |   +-FunctionCall(GoogleSQL:$array_at_offset(ARRAY<STRUCT<key INT64, value STRING>>, INT64) -> STRUCT<key INT64, value STRING>)
+            |     +-ColumnRef(type=ARRAY<STRUCT<key INT64, value STRING>>, column=$analytic.$analytic1#9)
+            |     +-Literal(type=INT64, value=0)
+            +-input_scan=
+              +-AnalyticScan
+                +-column_list=[my_table.key#3, my_table.value#4, $analytic.$analytic1#9]
+                +-input_scan=
+                | +-WithRefScan(column_list=my_table.[key#3, value#4], with_query_name="my_table")
+                +-function_group_list=
+                  +-AnalyticFunctionGroup
+                    +-analytic_function_list=
+                      +-$analytic1#9 :=
+                        +-AnalyticFunctionCall(GoogleSQL:any_value(ARRAY<STRUCT<key INT64, value STRING>>) -> ARRAY<STRUCT<key INT64, value STRING>>)
+                          +-FunctionCall(GoogleSQL:$make_array(repeated(1) STRUCT<key INT64, value STRING>) -> ARRAY<STRUCT<key INT64, value STRING>>)
+                          | +-MakeStruct
+                          |   +-type=STRUCT<key INT64, value STRING>
+                          |   +-field_list=
+                          |     +-ColumnRef(type=INT64, column=my_table.key#3)
+                          |     +-ColumnRef(type=STRING, column=my_table.value#4)
+                          +-window_frame=
+                            +-WindowFrame(frame_unit=ROWS)
+                              +-start_expr=
+                              | +-WindowFrameExpr(boundary_type=UNBOUNDED PRECEDING)
+                              +-end_expr=
+                                +-WindowFrameExpr(boundary_type=UNBOUNDED FOLLOWING)
+==
+
+# This test dot-stars into the result of an analytic function, with an
+# additional analytic function in the SELECT.
+[language_features=NONE,+LIMIT_IN_AGGREGATE,+ORDER_BY_IN_AGGREGATE,+ANALYTIC_FUNCTIONS]
+WITH my_table AS (
+  SELECT 1 AS key, "a" AS value
+)
+SELECT
+  t,
+  SUM(t.key) OVER (),
+  ANY_VALUE([t]) OVER () [OFFSET(0)].*
+FROM my_table AS t
+--
+QueryStmt
++-output_column_list=
+| +-$query.t#11 AS t [STRUCT<key INT64, value STRING>]
+| +-$analytic.$analytic1#12 AS `$col2` [INT64]
+| +-$query.key#15 AS key [INT64]
+| +-$query.value#16 AS value [STRING]
++-query=
+  +-WithScan
+    +-column_list=[$query.t#11, $analytic.$analytic1#12, $query.key#15, $query.value#16]
+    +-with_entry_list=
+    | +-WithEntry
+    |   +-with_query_name="my_table"
+    |   +-with_subquery=
+    |     +-ProjectScan
+    |       +-column_list=my_table.[key#1, value#2]
+    |       +-expr_list=
+    |       | +-key#1 := Literal(type=INT64, value=1)
+    |       | +-value#2 := Literal(type=STRING, value="a")
+    |       +-input_scan=
+    |         +-SingleRowScan
+    +-query=
+      +-ProjectScan
+        +-column_list=[$query.t#11, $analytic.$analytic1#12, $query.key#15, $query.value#16]
+        +-expr_list=
+        | +-key#15 :=
+        | | +-GetStructField
+        | |   +-type=INT64
+        | |   +-expr=
+        | |   | +-ColumnRef(type=STRUCT<key INT64, value STRING>, column=$preproject.$struct#9)
+        | |   +-field_idx=0
+        | +-value#16 :=
+        |   +-GetStructField
+        |     +-type=STRING
+        |     +-expr=
+        |     | +-ColumnRef(type=STRUCT<key INT64, value STRING>, column=$preproject.$struct#9)
+        |     +-field_idx=1
+        +-input_scan=
+          +-ProjectScan
+            +-column_list=[my_table.key#3, my_table.value#4, $query.t#11, $analytic.$analytic1#12, $analytic.$analytic2#14, $preproject.$struct#9]
+            +-expr_list=
+            | +-$struct#9 :=
+            |   +-FunctionCall(GoogleSQL:$array_at_offset(ARRAY<STRUCT<key INT64, value STRING>>, INT64) -> STRUCT<key INT64, value STRING>)
+            |     +-ColumnRef(type=ARRAY<STRUCT<key INT64, value STRING>>, column=$analytic.$analytic2#14)
+            |     +-Literal(type=INT64, value=0)
+            +-input_scan=
+              +-AnalyticScan
+                +-column_list=[my_table.key#3, my_table.value#4, $query.t#11, $analytic.$analytic1#12, $analytic.$analytic2#14]
+                +-input_scan=
+                | +-ProjectScan
+                |   +-column_list=[my_table.key#3, my_table.value#4, $query.t#11]
+                |   +-expr_list=
+                |   | +-t#11 :=
+                |   |   +-MakeStruct
+                |   |     +-type=STRUCT<key INT64, value STRING>
+                |   |     +-field_list=
+                |   |       +-ColumnRef(type=INT64, column=my_table.key#3)
+                |   |       +-ColumnRef(type=STRING, column=my_table.value#4)
+                |   +-input_scan=
+                |     +-WithRefScan(column_list=my_table.[key#3, value#4], with_query_name="my_table")
+                +-function_group_list=
+                  +-AnalyticFunctionGroup
+                    +-analytic_function_list=
+                      +-$analytic1#12 :=
+                      | +-AnalyticFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+                      |   +-ColumnRef(type=INT64, column=my_table.key#3)
+                      |   +-window_frame=
+                      |     +-WindowFrame(frame_unit=ROWS)
+                      |       +-start_expr=
+                      |       | +-WindowFrameExpr(boundary_type=UNBOUNDED PRECEDING)
+                      |       +-end_expr=
+                      |         +-WindowFrameExpr(boundary_type=UNBOUNDED FOLLOWING)
+                      +-$analytic2#14 :=
+                        +-AnalyticFunctionCall(GoogleSQL:any_value(ARRAY<STRUCT<key INT64, value STRING>>) -> ARRAY<STRUCT<key INT64, value STRING>>)
+                          +-FunctionCall(GoogleSQL:$make_array(repeated(1) STRUCT<key INT64, value STRING>) -> ARRAY<STRUCT<key INT64, value STRING>>)
+                          | +-MakeStruct
+                          |   +-type=STRUCT<key INT64, value STRING>
+                          |   +-field_list=
+                          |     +-ColumnRef(type=INT64, column=my_table.key#3)
+                          |     +-ColumnRef(type=STRING, column=my_table.value#4)
+                          +-window_frame=
+                            +-WindowFrame(frame_unit=ROWS)
+                              +-start_expr=
+                              | +-WindowFrameExpr(boundary_type=UNBOUNDED PRECEDING)
+                              +-end_expr=
+                                +-WindowFrameExpr(boundary_type=UNBOUNDED FOLLOWING)
+==
+
+# This test dot-stars into the result of analytic function, after group by.
+[language_features=NONE,+LIMIT_IN_AGGREGATE,+ORDER_BY_IN_AGGREGATE,+ANALYTIC_FUNCTIONS]
+WITH my_table AS (
+  SELECT 1 AS primary_key, "foo" AS value
+)
+SELECT
+  ANY_VALUE([struct(t.primary_key)]) OVER () [OFFSET(0)].*
+FROM my_table AS t
+GROUP BY t.primary_key;
+--
+QueryStmt
++-output_column_list=
+| +-$query.primary_key#9 AS primary_key [INT64]
++-query=
+  +-WithScan
+    +-column_list=[$query.primary_key#9]
+    +-with_entry_list=
+    | +-WithEntry
+    |   +-with_query_name="my_table"
+    |   +-with_subquery=
+    |     +-ProjectScan
+    |       +-column_list=my_table.[primary_key#1, value#2]
+    |       +-expr_list=
+    |       | +-primary_key#1 := Literal(type=INT64, value=1)
+    |       | +-value#2 := Literal(type=STRING, value="foo")
+    |       +-input_scan=
+    |         +-SingleRowScan
+    +-query=
+      +-ProjectScan
+        +-column_list=[$query.primary_key#9]
+        +-expr_list=
+        | +-primary_key#9 :=
+        |   +-GetStructField
+        |     +-type=INT64
+        |     +-expr=
+        |     | +-ColumnRef(type=STRUCT<primary_key INT64>, column=$preproject.$struct#6)
+        |     +-field_idx=0
+        +-input_scan=
+          +-ProjectScan
+            +-column_list=[$groupby.primary_key#7, $analytic.$analytic1#8, $preproject.$struct#6]
+            +-expr_list=
+            | +-$struct#6 :=
+            |   +-FunctionCall(GoogleSQL:$array_at_offset(ARRAY<STRUCT<primary_key INT64>>, INT64) -> STRUCT<primary_key INT64>)
+            |     +-ColumnRef(type=ARRAY<STRUCT<primary_key INT64>>, column=$analytic.$analytic1#8)
+            |     +-Literal(type=INT64, value=0)
+            +-input_scan=
+              +-AnalyticScan
+                +-column_list=[$groupby.primary_key#7, $analytic.$analytic1#8]
+                +-input_scan=
+                | +-AggregateScan
+                |   +-column_list=[$groupby.primary_key#7]
+                |   +-input_scan=
+                |   | +-WithRefScan(column_list=my_table.[primary_key#3, value#4], with_query_name="my_table")
+                |   +-group_by_list=
+                |     +-primary_key#7 := ColumnRef(type=INT64, column=my_table.primary_key#3)
+                +-function_group_list=
+                  +-AnalyticFunctionGroup
+                    +-analytic_function_list=
+                      +-$analytic1#8 :=
+                        +-AnalyticFunctionCall(GoogleSQL:any_value(ARRAY<STRUCT<primary_key INT64>>) -> ARRAY<STRUCT<primary_key INT64>>)
+                          +-FunctionCall(GoogleSQL:$make_array(repeated(1) STRUCT<primary_key INT64>) -> ARRAY<STRUCT<primary_key INT64>>)
+                          | +-MakeStruct
+                          |   +-type=STRUCT<primary_key INT64>
+                          |   +-field_list=
+                          |     +-ColumnRef(type=INT64, column=$groupby.primary_key#7)
+                          +-window_frame=
+                            +-WindowFrame(frame_unit=ROWS)
+                              +-start_expr=
+                              | +-WindowFrameExpr(boundary_type=UNBOUNDED PRECEDING)
+                              +-end_expr=
+                                +-WindowFrameExpr(boundary_type=UNBOUNDED FOLLOWING)
+==
+
+# This test dot-stars into both an aggregate function and an analytic function.
+[language_features=NONE,+LIMIT_IN_AGGREGATE,+ORDER_BY_IN_AGGREGATE,+ANALYTIC_FUNCTIONS]
+WITH my_table AS (
+  SELECT 1 AS primary_key, "foo" AS value, true as bool_val
+)
+SELECT
+  ARRAY_AGG(t)[OFFSET(0)].*,
+  ANY_VALUE([struct(t.primary_key as pk1, t.primary_key+1 as pk2)])
+      OVER () [OFFSET(0)].*
+FROM my_table AS t
+GROUP BY t.primary_key;
+--
+QueryStmt
++-output_column_list=
+| +-$query.primary_key#13 AS primary_key [INT64]
+| +-$query.value#14 AS value [STRING]
+| +-$query.bool_val#15 AS bool_val [BOOL]
+| +-$query.pk1#17 AS pk1 [INT64]
+| +-$query.pk2#18 AS pk2 [INT64]
++-query=
+  +-WithScan
+    +-column_list=$query.[primary_key#13, value#14, bool_val#15, pk1#17, pk2#18]
+    +-with_entry_list=
+    | +-WithEntry
+    |   +-with_query_name="my_table"
+    |   +-with_subquery=
+    |     +-ProjectScan
+    |       +-column_list=my_table.[primary_key#1, value#2, bool_val#3]
+    |       +-expr_list=
+    |       | +-primary_key#1 := Literal(type=INT64, value=1)
+    |       | +-value#2 := Literal(type=STRING, value="foo")
+    |       | +-bool_val#3 := Literal(type=BOOL, value=true)
+    |       +-input_scan=
+    |         +-SingleRowScan
+    +-query=
+      +-ProjectScan
+        +-column_list=$query.[primary_key#13, value#14, bool_val#15, pk1#17, pk2#18]
+        +-expr_list=
+        | +-pk1#17 :=
+        | | +-GetStructField
+        | |   +-type=INT64
+        | |   +-expr=
+        | |   | +-ColumnRef(type=STRUCT<pk1 INT64, pk2 INT64>, column=$preproject.$struct#11)
+        | |   +-field_idx=0
+        | +-pk2#18 :=
+        |   +-GetStructField
+        |     +-type=INT64
+        |     +-expr=
+        |     | +-ColumnRef(type=STRUCT<pk1 INT64, pk2 INT64>, column=$preproject.$struct#11)
+        |     +-field_idx=1
+        +-input_scan=
+          +-ProjectScan
+            +-column_list=[$aggregate.$agg1#8, $preproject.$struct#9, $groupby.primary_key#12, $query.primary_key#13, $query.value#14, $query.bool_val#15, $analytic.$analytic1#16, $preproject.$struct#11]
+            +-expr_list=
+            | +-$struct#11 :=
+            |   +-FunctionCall(GoogleSQL:$array_at_offset(ARRAY<STRUCT<pk1 INT64, pk2 INT64>>, INT64) -> STRUCT<pk1 INT64, pk2 INT64>)
+            |     +-ColumnRef(type=ARRAY<STRUCT<pk1 INT64, pk2 INT64>>, column=$analytic.$analytic1#16)
+            |     +-Literal(type=INT64, value=0)
+            +-input_scan=
+              +-AnalyticScan
+                +-column_list=[$aggregate.$agg1#8, $preproject.$struct#9, $groupby.primary_key#12, $query.primary_key#13, $query.value#14, $query.bool_val#15, $analytic.$analytic1#16]
+                +-input_scan=
+                | +-ProjectScan
+                |   +-column_list=[$aggregate.$agg1#8, $preproject.$struct#9, $groupby.primary_key#12, $query.primary_key#13, $query.value#14, $query.bool_val#15]
+                |   +-expr_list=
+                |   | +-primary_key#13 :=
+                |   | | +-GetStructField
+                |   | |   +-type=INT64
+                |   | |   +-expr=
+                |   | |   | +-ColumnRef(type=STRUCT<primary_key INT64, value STRING, bool_val BOOL>, column=$preproject.$struct#9)
+                |   | |   +-field_idx=0
+                |   | +-value#14 :=
+                |   | | +-GetStructField
+                |   | |   +-type=STRING
+                |   | |   +-expr=
+                |   | |   | +-ColumnRef(type=STRUCT<primary_key INT64, value STRING, bool_val BOOL>, column=$preproject.$struct#9)
+                |   | |   +-field_idx=1
+                |   | +-bool_val#15 :=
+                |   |   +-GetStructField
+                |   |     +-type=BOOL
+                |   |     +-expr=
+                |   |     | +-ColumnRef(type=STRUCT<primary_key INT64, value STRING, bool_val BOOL>, column=$preproject.$struct#9)
+                |   |     +-field_idx=2
+                |   +-input_scan=
+                |     +-ProjectScan
+                |       +-column_list=[$groupby.primary_key#12, $aggregate.$agg1#8, $preproject.$struct#9]
+                |       +-expr_list=
+                |       | +-$struct#9 :=
+                |       |   +-FunctionCall(GoogleSQL:$array_at_offset(ARRAY<STRUCT<primary_key INT64, value STRING, bool_val BOOL>>, INT64) -> STRUCT<primary_key INT64, value STRING, bool_val BOOL>)
+                |       |     +-ColumnRef(type=ARRAY<STRUCT<primary_key INT64, value STRING, bool_val BOOL>>, column=$aggregate.$agg1#8)
+                |       |     +-Literal(type=INT64, value=0)
+                |       +-input_scan=
+                |         +-AggregateScan
+                |           +-column_list=[$groupby.primary_key#12, $aggregate.$agg1#8]
+                |           +-input_scan=
+                |           | +-WithRefScan(column_list=my_table.[primary_key#4, value#5, bool_val#6], with_query_name="my_table")
+                |           +-group_by_list=
+                |           | +-primary_key#12 := ColumnRef(type=INT64, column=my_table.primary_key#4)
+                |           +-aggregate_list=
+                |             +-$agg1#8 :=
+                |               +-AggregateFunctionCall(GoogleSQL:array_agg(STRUCT<primary_key INT64, value STRING, bool_val BOOL>) -> ARRAY<STRUCT<primary_key INT64, value STRING, bool_val BOOL>>)
+                |                 +-MakeStruct
+                |                   +-type=STRUCT<primary_key INT64, value STRING, bool_val BOOL>
+                |                   +-field_list=
+                |                     +-ColumnRef(type=INT64, column=my_table.primary_key#4)
+                |                     +-ColumnRef(type=STRING, column=my_table.value#5)
+                |                     +-ColumnRef(type=BOOL, column=my_table.bool_val#6)
+                +-function_group_list=
+                  +-AnalyticFunctionGroup
+                    +-analytic_function_list=
+                      +-$analytic1#16 :=
+                        +-AnalyticFunctionCall(GoogleSQL:any_value(ARRAY<STRUCT<pk1 INT64, pk2 INT64>>) -> ARRAY<STRUCT<pk1 INT64, pk2 INT64>>)
+                          +-FunctionCall(GoogleSQL:$make_array(repeated(1) STRUCT<pk1 INT64, pk2 INT64>) -> ARRAY<STRUCT<pk1 INT64, pk2 INT64>>)
+                          | +-MakeStruct
+                          |   +-type=STRUCT<pk1 INT64, pk2 INT64>
+                          |   +-field_list=
+                          |     +-ColumnRef(type=INT64, column=$groupby.primary_key#12)
+                          |     +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+                          |       +-ColumnRef(type=INT64, column=$groupby.primary_key#12)
+                          |       +-Literal(type=INT64, value=1)
+                          +-window_frame=
+                            +-WindowFrame(frame_unit=ROWS)
+                              +-start_expr=
+                              | +-WindowFrameExpr(boundary_type=UNBOUNDED PRECEDING)
+                              +-end_expr=
+                                +-WindowFrameExpr(boundary_type=UNBOUNDED FOLLOWING)
+==
+
+# This test dot-stars into an analytic function that nests an aggregate
+# function.
+[language_features=NONE,+LIMIT_IN_AGGREGATE,+ORDER_BY_IN_AGGREGATE,+ANALYTIC_FUNCTIONS]
+WITH my_table AS (
+  SELECT 1 AS primary_key, "foo" AS value,
+         DATE('2016-11-09') AS modified_date
+)
+SELECT
+  ANY_VALUE(ARRAY_AGG(t)) OVER () [OFFSET(0)].*
+FROM my_table AS t
+GROUP BY t.primary_key;
+--
+QueryStmt
++-output_column_list=
+| +-$query.primary_key#13 AS primary_key [INT64]
+| +-$query.value#14 AS value [STRING]
+| +-$query.modified_date#15 AS modified_date [DATE]
++-query=
+  +-WithScan
+    +-column_list=$query.[primary_key#13, value#14, modified_date#15]
+    +-with_entry_list=
+    | +-WithEntry
+    |   +-with_query_name="my_table"
+    |   +-with_subquery=
+    |     +-ProjectScan
+    |       +-column_list=my_table.[primary_key#1, value#2, modified_date#3]
+    |       +-expr_list=
+    |       | +-primary_key#1 := Literal(type=INT64, value=1)
+    |       | +-value#2 := Literal(type=STRING, value="foo")
+    |       | +-modified_date#3 :=
+    |       |   +-FunctionCall(GoogleSQL:date(TIMESTAMP, optional(0) STRING) -> DATE)
+    |       |     +-Literal(type=TIMESTAMP, value=2016-11-09 08:00:00+00)
+    |       +-input_scan=
+    |         +-SingleRowScan
+    +-query=
+      +-ProjectScan
+        +-column_list=$query.[primary_key#13, value#14, modified_date#15]
+        +-expr_list=
+        | +-primary_key#13 :=
+        | | +-GetStructField
+        | |   +-type=INT64
+        | |   +-expr=
+        | |   | +-ColumnRef(type=STRUCT<primary_key INT64, value STRING, modified_date DATE>, column=$preproject.$struct#10)
+        | |   +-field_idx=0
+        | +-value#14 :=
+        | | +-GetStructField
+        | |   +-type=STRING
+        | |   +-expr=
+        | |   | +-ColumnRef(type=STRUCT<primary_key INT64, value STRING, modified_date DATE>, column=$preproject.$struct#10)
+        | |   +-field_idx=1
+        | +-modified_date#15 :=
+        |   +-GetStructField
+        |     +-type=DATE
+        |     +-expr=
+        |     | +-ColumnRef(type=STRUCT<primary_key INT64, value STRING, modified_date DATE>, column=$preproject.$struct#10)
+        |     +-field_idx=2
+        +-input_scan=
+          +-ProjectScan
+            +-column_list=[$aggregate.$agg1#8, $analytic.$analytic1#12, $preproject.$struct#10]
+            +-expr_list=
+            | +-$struct#10 :=
+            |   +-FunctionCall(GoogleSQL:$array_at_offset(ARRAY<STRUCT<primary_key INT64, value STRING, modified_date DATE>>, INT64) -> STRUCT<primary_key INT64, value STRING, modified_date DATE>)
+            |     +-ColumnRef(type=ARRAY<STRUCT<primary_key INT64, value STRING, modified_date DATE>>, column=$analytic.$analytic1#12)
+            |     +-Literal(type=INT64, value=0)
+            +-input_scan=
+              +-AnalyticScan
+                +-column_list=[$aggregate.$agg1#8, $analytic.$analytic1#12]
+                +-input_scan=
+                | +-AggregateScan
+                |   +-column_list=[$aggregate.$agg1#8]
+                |   +-input_scan=
+                |   | +-WithRefScan(column_list=my_table.[primary_key#4, value#5, modified_date#6], with_query_name="my_table")
+                |   +-group_by_list=
+                |   | +-primary_key#11 := ColumnRef(type=INT64, column=my_table.primary_key#4)
+                |   +-aggregate_list=
+                |     +-$agg1#8 :=
+                |       +-AggregateFunctionCall(GoogleSQL:array_agg(STRUCT<primary_key INT64, value STRING, modified_date DATE>) -> ARRAY<STRUCT<primary_key INT64, value STRING, modified_date DATE>>)
+                |         +-MakeStruct
+                |           +-type=STRUCT<primary_key INT64, value STRING, modified_date DATE>
+                |           +-field_list=
+                |             +-ColumnRef(type=INT64, column=my_table.primary_key#4)
+                |             +-ColumnRef(type=STRING, column=my_table.value#5)
+                |             +-ColumnRef(type=DATE, column=my_table.modified_date#6)
+                +-function_group_list=
+                  +-AnalyticFunctionGroup
+                    +-analytic_function_list=
+                      +-$analytic1#12 :=
+                        +-AnalyticFunctionCall(GoogleSQL:any_value(ARRAY<STRUCT<primary_key INT64, value STRING, modified_date DATE>>) -> ARRAY<STRUCT<primary_key INT64, value STRING, modified_date DATE>>)
+                          +-ColumnRef(type=ARRAY<STRUCT<primary_key INT64, value STRING, modified_date DATE>>, column=$aggregate.$agg1#8)
+                          +-window_frame=
+                            +-WindowFrame(frame_unit=ROWS)
+                              +-start_expr=
+                              | +-WindowFrameExpr(boundary_type=UNBOUNDED PRECEDING)
+                              +-end_expr=
+                                +-WindowFrameExpr(boundary_type=UNBOUNDED FOLLOWING)
+==
+
+# Similar to the previous, but also references grouping columns within
+# the nested expressions.
+[language_features=NONE,+LIMIT_IN_AGGREGATE,+ORDER_BY_IN_AGGREGATE,+ANALYTIC_FUNCTIONS]
+WITH my_table AS (
+  SELECT 1 AS primary_key, "foo" AS value,
+         DATE('2016-11-09') AS modified_date UNION ALL
+  SELECT 1, "bar", DATE('2016-11-10') UNION ALL
+  SELECT 2, "baz", DATE('2016-01-01')
+)
+SELECT
+  [STRUCT(ANY_VALUE(STRUCT(t.primary_key, ARRAY_AGG(t))) OVER () as any_val,
+          t.primary_key)]
+  [OFFSET(0)].*
+FROM my_table AS t
+GROUP BY t.primary_key;
+--
+QueryStmt
++-output_column_list=
+| +-$query.any_val#22 AS any_val [STRUCT<primary_key INT64, ARRAY<STRUCT<primary_key INT64, value STRING, modified_date DATE>>>]
+| +-$query.primary_key#23 AS primary_key [INT64]
++-query=
+  +-WithScan
+    +-column_list=$query.[any_val#22, primary_key#23]
+    +-with_entry_list=
+    | +-WithEntry
+    |   +-with_query_name="my_table"
+    |   +-with_subquery=
+    |     +-SetOperationScan
+    |       +-column_list=$union_all.[primary_key#10, value#11, modified_date#12]
+    |       +-op_type=UNION_ALL
+    |       +-input_item_list=
+    |         +-SetOperationItem
+    |         | +-scan=
+    |         | | +-ProjectScan
+    |         | |   +-column_list=$union_all1.[primary_key#1, value#2, modified_date#3]
+    |         | |   +-expr_list=
+    |         | |   | +-primary_key#1 := Literal(type=INT64, value=1)
+    |         | |   | +-value#2 := Literal(type=STRING, value="foo")
+    |         | |   | +-modified_date#3 :=
+    |         | |   |   +-FunctionCall(GoogleSQL:date(TIMESTAMP, optional(0) STRING) -> DATE)
+    |         | |   |     +-Literal(type=TIMESTAMP, value=2016-11-09 08:00:00+00)
+    |         | |   +-input_scan=
+    |         | |     +-SingleRowScan
+    |         | +-output_column_list=$union_all1.[primary_key#1, value#2, modified_date#3]
+    |         +-SetOperationItem
+    |         | +-scan=
+    |         | | +-ProjectScan
+    |         | |   +-column_list=$union_all2.[$col1#4, $col2#5, $col3#6]
+    |         | |   +-expr_list=
+    |         | |   | +-$col1#4 := Literal(type=INT64, value=1)
+    |         | |   | +-$col2#5 := Literal(type=STRING, value="bar")
+    |         | |   | +-$col3#6 :=
+    |         | |   |   +-FunctionCall(GoogleSQL:date(TIMESTAMP, optional(0) STRING) -> DATE)
+    |         | |   |     +-Literal(type=TIMESTAMP, value=2016-11-10 08:00:00+00)
+    |         | |   +-input_scan=
+    |         | |     +-SingleRowScan
+    |         | +-output_column_list=$union_all2.[$col1#4, $col2#5, $col3#6]
+    |         +-SetOperationItem
+    |           +-scan=
+    |           | +-ProjectScan
+    |           |   +-column_list=$union_all3.[$col1#7, $col2#8, $col3#9]
+    |           |   +-expr_list=
+    |           |   | +-$col1#7 := Literal(type=INT64, value=2)
+    |           |   | +-$col2#8 := Literal(type=STRING, value="baz")
+    |           |   | +-$col3#9 :=
+    |           |   |   +-FunctionCall(GoogleSQL:date(TIMESTAMP, optional(0) STRING) -> DATE)
+    |           |   |     +-Literal(type=TIMESTAMP, value=2016-01-01 08:00:00+00)
+    |           |   +-input_scan=
+    |           |     +-SingleRowScan
+    |           +-output_column_list=$union_all3.[$col1#7, $col2#8, $col3#9]
+    +-query=
+      +-ProjectScan
+        +-column_list=$query.[any_val#22, primary_key#23]
+        +-expr_list=
+        | +-any_val#22 :=
+        | | +-GetStructField
+        | |   +-type=STRUCT<primary_key INT64, ARRAY<STRUCT<primary_key INT64, value STRING, modified_date DATE>>>
+        | |   +-expr=
+        | |   | +-ColumnRef(type=STRUCT<any_val STRUCT<primary_key INT64, ARRAY<STRUCT<primary_key INT64, value STRING, modified_date DATE>>>, primary_key INT64>, column=$preproject.$struct#19)
+        | |   +-field_idx=0
+        | +-primary_key#23 :=
+        |   +-GetStructField
+        |     +-type=INT64
+        |     +-expr=
+        |     | +-ColumnRef(type=STRUCT<any_val STRUCT<primary_key INT64, ARRAY<STRUCT<primary_key INT64, value STRING, modified_date DATE>>>, primary_key INT64>, column=$preproject.$struct#19)
+        |     +-field_idx=1
+        +-input_scan=
+          +-ProjectScan
+            +-column_list=[$groupby.primary_key#20, $aggregate.$agg1#17, $analytic.$analytic1#21, $preproject.$struct#19]
+            +-expr_list=
+            | +-$struct#19 :=
+            |   +-FunctionCall(GoogleSQL:$array_at_offset(ARRAY<STRUCT<any_val STRUCT<primary_key INT64, ARRAY<STRUCT<primary_key INT64, value STRING, modified_date DATE>>>, primary_key INT64>>, INT64) -> STRUCT<any_val STRUCT<primary_key INT64, ARRAY<STRUCT<primary_key INT64, value STRING, modified_date DATE>>>, primary_key INT64>)
+            |     +-FunctionCall(GoogleSQL:$make_array(repeated(1) STRUCT<any_val STRUCT<primary_key INT64, ARRAY<STRUCT<primary_key INT64, value STRING, modified_date DATE>>>, primary_key INT64>) -> ARRAY<STRUCT<any_val STRUCT<primary_key INT64, ARRAY<STRUCT<primary_key INT64, value STRING, modified_date DATE>>>, primary_key INT64>>)
+            |     | +-MakeStruct
+            |     |   +-type=STRUCT<any_val STRUCT<primary_key INT64, ARRAY<STRUCT<primary_key INT64, value STRING, modified_date DATE>>>, primary_key INT64>
+            |     |   +-field_list=
+            |     |     +-ColumnRef(type=STRUCT<primary_key INT64, ARRAY<STRUCT<primary_key INT64, value STRING, modified_date DATE>>>, column=$analytic.$analytic1#21)
+            |     |     +-ColumnRef(type=INT64, column=$groupby.primary_key#20)
+            |     +-Literal(type=INT64, value=0)
+            +-input_scan=
+              +-AnalyticScan
+                +-column_list=[$groupby.primary_key#20, $aggregate.$agg1#17, $analytic.$analytic1#21]
+                +-input_scan=
+                | +-AggregateScan
+                |   +-column_list=[$groupby.primary_key#20, $aggregate.$agg1#17]
+                |   +-input_scan=
+                |   | +-WithRefScan(column_list=my_table.[primary_key#13, value#14, modified_date#15], with_query_name="my_table")
+                |   +-group_by_list=
+                |   | +-primary_key#20 := ColumnRef(type=INT64, column=my_table.primary_key#13)
+                |   +-aggregate_list=
+                |     +-$agg1#17 :=
+                |       +-AggregateFunctionCall(GoogleSQL:array_agg(STRUCT<primary_key INT64, value STRING, modified_date DATE>) -> ARRAY<STRUCT<primary_key INT64, value STRING, modified_date DATE>>)
+                |         +-MakeStruct
+                |           +-type=STRUCT<primary_key INT64, value STRING, modified_date DATE>
+                |           +-field_list=
+                |             +-ColumnRef(type=INT64, column=my_table.primary_key#13)
+                |             +-ColumnRef(type=STRING, column=my_table.value#14)
+                |             +-ColumnRef(type=DATE, column=my_table.modified_date#15)
+                +-function_group_list=
+                  +-AnalyticFunctionGroup
+                    +-analytic_function_list=
+                      +-$analytic1#21 :=
+                        +-AnalyticFunctionCall(GoogleSQL:any_value(STRUCT<primary_key INT64, ARRAY<STRUCT<primary_key INT64, value STRING, modified_date DATE>>>) -> STRUCT<primary_key INT64, ARRAY<STRUCT<primary_key INT64, value STRING, modified_date DATE>>>)
+                          +-MakeStruct
+                          | +-type=STRUCT<primary_key INT64, ARRAY<STRUCT<primary_key INT64, value STRING, modified_date DATE>>>
+                          | +-field_list=
+                          |   +-ColumnRef(type=INT64, column=$groupby.primary_key#20)
+                          |   +-ColumnRef(type=ARRAY<STRUCT<primary_key INT64, value STRING, modified_date DATE>>, column=$aggregate.$agg1#17)
+                          +-window_frame=
+                            +-WindowFrame(frame_unit=ROWS)
+                              +-start_expr=
+                              | +-WindowFrameExpr(boundary_type=UNBOUNDED PRECEDING)
+                              +-end_expr=
+                                +-WindowFrameExpr(boundary_type=UNBOUNDED FOLLOWING)
+==
+
+# This test has an aggregate function in the HAVING reference a column
+# resulting from dot-star expansion.
+# an analytic function.
+[language_features=NONE,+LIMIT_IN_AGGREGATE,+ORDER_BY_IN_AGGREGATE,+ANALYTIC_FUNCTIONS]
+SELECT t.*
+FROM (SELECT 1 AS key, "a" AS value) AS t
+GROUP BY key, value
+HAVING count(value) > 0
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.key#3 AS key [INT64]
+| +-$groupby.value#4 AS value [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=$groupby.[key#3, value#4]
+    +-input_scan=
+      +-FilterScan
+        +-column_list=[$groupby.key#3, $groupby.value#4, $aggregate.$agg1#5]
+        +-input_scan=
+        | +-AggregateScan
+        |   +-column_list=[$groupby.key#3, $groupby.value#4, $aggregate.$agg1#5]
+        |   +-input_scan=
+        |   | +-ProjectScan
+        |   |   +-column_list=t.[key#1, value#2]
+        |   |   +-expr_list=
+        |   |   | +-key#1 := Literal(type=INT64, value=1)
+        |   |   | +-value#2 := Literal(type=STRING, value="a")
+        |   |   +-input_scan=
+        |   |     +-SingleRowScan
+        |   +-group_by_list=
+        |   | +-key#3 := ColumnRef(type=INT64, column=t.key#1)
+        |   | +-value#4 := ColumnRef(type=STRING, column=t.value#2)
+        |   +-aggregate_list=
+        |     +-$agg1#5 :=
+        |       +-AggregateFunctionCall(GoogleSQL:count(STRING) -> INT64)
+        |         +-ColumnRef(type=STRING, column=t.value#2)
+        +-filter_expr=
+          +-FunctionCall(GoogleSQL:$greater(INT64, INT64) -> BOOL)
+            +-ColumnRef(type=INT64, column=$aggregate.$agg1#5)
+            +-Literal(type=INT64, value=0)
+==
+
+# This test has an analytic function in the ORDER BY reference a column
+# resulting from dot-star expansion.
+# an analytic function.
+[language_features=NONE,+LIMIT_IN_AGGREGATE,+ORDER_BY_IN_AGGREGATE,+ANALYTIC_FUNCTIONS]
+SELECT t.*
+FROM (SELECT 1 AS key, "a" AS value) AS t
+ORDER BY sum(key) over ();
+--
+QueryStmt
++-output_column_list=
+| +-t.key#1 AS key [INT64]
+| +-t.value#2 AS value [STRING]
++-query=
+  +-OrderByScan
+    +-column_list=t.[key#1, value#2]
+    +-is_ordered=TRUE
+    +-input_scan=
+    | +-AnalyticScan
+    |   +-column_list=[t.key#1, t.value#2, $analytic.$analytic1#3]
+    |   +-input_scan=
+    |   | +-ProjectScan
+    |   |   +-column_list=t.[key#1, value#2]
+    |   |   +-expr_list=
+    |   |   | +-key#1 := Literal(type=INT64, value=1)
+    |   |   | +-value#2 := Literal(type=STRING, value="a")
+    |   |   +-input_scan=
+    |   |     +-SingleRowScan
+    |   +-function_group_list=
+    |     +-AnalyticFunctionGroup
+    |       +-analytic_function_list=
+    |         +-$analytic1#3 :=
+    |           +-AnalyticFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+    |             +-ColumnRef(type=INT64, column=t.key#1)
+    |             +-window_frame=
+    |               +-WindowFrame(frame_unit=ROWS)
+    |                 +-start_expr=
+    |                 | +-WindowFrameExpr(boundary_type=UNBOUNDED PRECEDING)
+    |                 +-end_expr=
+    |                   +-WindowFrameExpr(boundary_type=UNBOUNDED FOLLOWING)
+    +-order_by_item_list=
+      +-OrderByItem
+        +-column_ref=
+          +-ColumnRef(type=INT64, column=$analytic.$analytic1#3)
+==
+
+# Similar to the previous, but having an analytic function in the ORDER BY
+# reference a column resulting from dot-star expansion after aggregation.
+# an analytic function.
+[language_features=NONE,+LIMIT_IN_AGGREGATE,+ORDER_BY_IN_AGGREGATE,+ANALYTIC_FUNCTIONS]
+SELECT [struct(t.value, sum(t.key) as k)][OFFSET(0)].*
+FROM (SELECT 1 AS key, "a" AS value) AS t
+GROUP BY t.value
+ORDER BY sum(k) over ();
+--
+QueryStmt
++-output_column_list=
+| +-$query.value#6 AS value [STRING]
+| +-$query.k#7 AS k [INT64]
++-query=
+  +-OrderByScan
+    +-column_list=$query.[value#6, k#7]
+    +-is_ordered=TRUE
+    +-input_scan=
+    | +-AnalyticScan
+    |   +-column_list=[$aggregate.$agg1#3, $preproject.$struct#4, $groupby.value#5, $query.value#6, $query.k#7, $analytic.$analytic1#8]
+    |   +-input_scan=
+    |   | +-ProjectScan
+    |   |   +-column_list=[$aggregate.$agg1#3, $preproject.$struct#4, $groupby.value#5, $query.value#6, $query.k#7]
+    |   |   +-expr_list=
+    |   |   | +-value#6 :=
+    |   |   | | +-GetStructField
+    |   |   | |   +-type=STRING
+    |   |   | |   +-expr=
+    |   |   | |   | +-ColumnRef(type=STRUCT<value STRING, k INT64>, column=$preproject.$struct#4)
+    |   |   | |   +-field_idx=0
+    |   |   | +-k#7 :=
+    |   |   |   +-GetStructField
+    |   |   |     +-type=INT64
+    |   |   |     +-expr=
+    |   |   |     | +-ColumnRef(type=STRUCT<value STRING, k INT64>, column=$preproject.$struct#4)
+    |   |   |     +-field_idx=1
+    |   |   +-input_scan=
+    |   |     +-ProjectScan
+    |   |       +-column_list=[$groupby.value#5, $aggregate.$agg1#3, $preproject.$struct#4]
+    |   |       +-expr_list=
+    |   |       | +-$struct#4 :=
+    |   |       |   +-FunctionCall(GoogleSQL:$array_at_offset(ARRAY<STRUCT<value STRING, k INT64>>, INT64) -> STRUCT<value STRING, k INT64>)
+    |   |       |     +-FunctionCall(GoogleSQL:$make_array(repeated(1) STRUCT<value STRING, k INT64>) -> ARRAY<STRUCT<value STRING, k INT64>>)
+    |   |       |     | +-MakeStruct
+    |   |       |     |   +-type=STRUCT<value STRING, k INT64>
+    |   |       |     |   +-field_list=
+    |   |       |     |     +-ColumnRef(type=STRING, column=$groupby.value#5)
+    |   |       |     |     +-ColumnRef(type=INT64, column=$aggregate.$agg1#3)
+    |   |       |     +-Literal(type=INT64, value=0)
+    |   |       +-input_scan=
+    |   |         +-AggregateScan
+    |   |           +-column_list=[$groupby.value#5, $aggregate.$agg1#3]
+    |   |           +-input_scan=
+    |   |           | +-ProjectScan
+    |   |           |   +-column_list=t.[key#1, value#2]
+    |   |           |   +-expr_list=
+    |   |           |   | +-key#1 := Literal(type=INT64, value=1)
+    |   |           |   | +-value#2 := Literal(type=STRING, value="a")
+    |   |           |   +-input_scan=
+    |   |           |     +-SingleRowScan
+    |   |           +-group_by_list=
+    |   |           | +-value#5 := ColumnRef(type=STRING, column=t.value#2)
+    |   |           +-aggregate_list=
+    |   |             +-$agg1#3 :=
+    |   |               +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+    |   |                 +-ColumnRef(type=INT64, column=t.key#1)
+    |   +-function_group_list=
+    |     +-AnalyticFunctionGroup
+    |       +-analytic_function_list=
+    |         +-$analytic1#8 :=
+    |           +-AnalyticFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+    |             +-ColumnRef(type=INT64, column=$query.k#7)
+    |             +-window_frame=
+    |               +-WindowFrame(frame_unit=ROWS)
+    |                 +-start_expr=
+    |                 | +-WindowFrameExpr(boundary_type=UNBOUNDED PRECEDING)
+    |                 +-end_expr=
+    |                   +-WindowFrameExpr(boundary_type=UNBOUNDED FOLLOWING)
+    +-order_by_item_list=
+      +-OrderByItem
+        +-column_ref=
+          +-ColumnRef(type=INT64, column=$analytic.$analytic1#8)
+==
+
+# Test case from b/64682136
+[language_features=NONE,+ORDER_BY_IN_AGGREGATE]
+WITH Perf_Accounts_D AS (
+  SELECT 1 as customer_id, 2 as service_channel, 3 as division_id,
+         4 as sub_pod_id, 5 as division_name, 6 as sub_pod_name, 7 as region,
+         8 as ratio
+)
+SELECT *
+FROM (
+SELECT
+  customer_id AS CustomerId,
+  ARRAY_AGG(STRUCT(service_channel, division_id, sub_pod_id, division_name, sub_pod_name, region) ORDER BY ratio DESC)[SAFE_OFFSET(0)].*
+FROM
+  Perf_Accounts_D
+GROUP BY 1
+)
+LIMIT 10;
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.CustomerId#19 AS CustomerId [INT64]
+| +-$subquery1.service_channel#20 AS service_channel [INT64]
+| +-$subquery1.division_id#21 AS division_id [INT64]
+| +-$subquery1.sub_pod_id#22 AS sub_pod_id [INT64]
+| +-$subquery1.division_name#23 AS division_name [INT64]
+| +-$subquery1.sub_pod_name#24 AS sub_pod_name [INT64]
+| +-$subquery1.region#25 AS region [INT64]
++-query=
+  +-WithScan
+    +-column_list=[$groupby.CustomerId#19, $subquery1.service_channel#20, $subquery1.division_id#21, $subquery1.sub_pod_id#22, $subquery1.division_name#23, $subquery1.sub_pod_name#24, $subquery1.region#25]
+    +-with_entry_list=
+    | +-WithEntry
+    |   +-with_query_name="Perf_Accounts_D"
+    |   +-with_subquery=
+    |     +-ProjectScan
+    |       +-column_list=Perf_Accounts_D.[customer_id#1, service_channel#2, division_id#3, sub_pod_id#4, division_name#5, sub_pod_name#6, region#7, ratio#8]
+    |       +-expr_list=
+    |       | +-customer_id#1 := Literal(type=INT64, value=1)
+    |       | +-service_channel#2 := Literal(type=INT64, value=2)
+    |       | +-division_id#3 := Literal(type=INT64, value=3)
+    |       | +-sub_pod_id#4 := Literal(type=INT64, value=4)
+    |       | +-division_name#5 := Literal(type=INT64, value=5)
+    |       | +-sub_pod_name#6 := Literal(type=INT64, value=6)
+    |       | +-region#7 := Literal(type=INT64, value=7)
+    |       | +-ratio#8 := Literal(type=INT64, value=8)
+    |       +-input_scan=
+    |         +-SingleRowScan
+    +-query=
+      +-LimitOffsetScan
+        +-column_list=[$groupby.CustomerId#19, $subquery1.service_channel#20, $subquery1.division_id#21, $subquery1.sub_pod_id#22, $subquery1.division_name#23, $subquery1.sub_pod_name#24, $subquery1.region#25]
+        +-input_scan=
+        | +-ProjectScan
+        |   +-column_list=[$groupby.CustomerId#19, $subquery1.service_channel#20, $subquery1.division_id#21, $subquery1.sub_pod_id#22, $subquery1.division_name#23, $subquery1.sub_pod_name#24, $subquery1.region#25]
+        |   +-input_scan=
+        |     +-ProjectScan
+        |       +-column_list=[$groupby.CustomerId#19, $subquery1.service_channel#20, $subquery1.division_id#21, $subquery1.sub_pod_id#22, $subquery1.division_name#23, $subquery1.sub_pod_name#24, $subquery1.region#25]
+        |       +-expr_list=
+        |       | +-service_channel#20 :=
+        |       | | +-GetStructField
+        |       | |   +-type=INT64
+        |       | |   +-expr=
+        |       | |   | +-ColumnRef(type=STRUCT<service_channel INT64, division_id INT64, sub_pod_id INT64, division_name INT64, sub_pod_name INT64, region INT64>, column=$preproject.$struct#18)
+        |       | |   +-field_idx=0
+        |       | +-division_id#21 :=
+        |       | | +-GetStructField
+        |       | |   +-type=INT64
+        |       | |   +-expr=
+        |       | |   | +-ColumnRef(type=STRUCT<service_channel INT64, division_id INT64, sub_pod_id INT64, division_name INT64, sub_pod_name INT64, region INT64>, column=$preproject.$struct#18)
+        |       | |   +-field_idx=1
+        |       | +-sub_pod_id#22 :=
+        |       | | +-GetStructField
+        |       | |   +-type=INT64
+        |       | |   +-expr=
+        |       | |   | +-ColumnRef(type=STRUCT<service_channel INT64, division_id INT64, sub_pod_id INT64, division_name INT64, sub_pod_name INT64, region INT64>, column=$preproject.$struct#18)
+        |       | |   +-field_idx=2
+        |       | +-division_name#23 :=
+        |       | | +-GetStructField
+        |       | |   +-type=INT64
+        |       | |   +-expr=
+        |       | |   | +-ColumnRef(type=STRUCT<service_channel INT64, division_id INT64, sub_pod_id INT64, division_name INT64, sub_pod_name INT64, region INT64>, column=$preproject.$struct#18)
+        |       | |   +-field_idx=3
+        |       | +-sub_pod_name#24 :=
+        |       | | +-GetStructField
+        |       | |   +-type=INT64
+        |       | |   +-expr=
+        |       | |   | +-ColumnRef(type=STRUCT<service_channel INT64, division_id INT64, sub_pod_id INT64, division_name INT64, sub_pod_name INT64, region INT64>, column=$preproject.$struct#18)
+        |       | |   +-field_idx=4
+        |       | +-region#25 :=
+        |       |   +-GetStructField
+        |       |     +-type=INT64
+        |       |     +-expr=
+        |       |     | +-ColumnRef(type=STRUCT<service_channel INT64, division_id INT64, sub_pod_id INT64, division_name INT64, sub_pod_name INT64, region INT64>, column=$preproject.$struct#18)
+        |       |     +-field_idx=5
+        |       +-input_scan=
+        |         +-ProjectScan
+        |           +-column_list=[$groupby.CustomerId#19, $aggregate.$agg1#17, $preproject.$struct#18]
+        |           +-expr_list=
+        |           | +-$struct#18 :=
+        |           |   +-FunctionCall(GoogleSQL:$safe_array_at_offset(ARRAY<STRUCT<service_channel INT64, division_id INT64, sub_pod_id INT64, division_name INT64, sub_pod_name INT64, region INT64>>, INT64) -> STRUCT<service_channel INT64, division_id INT64, sub_pod_id INT64, division_name INT64, sub_pod_name INT64, region INT64>)
+        |           |     +-ColumnRef(type=ARRAY<STRUCT<service_channel INT64, division_id INT64, sub_pod_id INT64, division_name INT64, sub_pod_name INT64, region INT64>>, column=$aggregate.$agg1#17)
+        |           |     +-Literal(type=INT64, value=0)
+        |           +-input_scan=
+        |             +-AggregateScan
+        |               +-column_list=[$groupby.CustomerId#19, $aggregate.$agg1#17]
+        |               +-input_scan=
+        |               | +-WithRefScan(column_list=Perf_Accounts_D.[customer_id#9, service_channel#10, division_id#11, sub_pod_id#12, division_name#13, sub_pod_name#14, region#15, ratio#16], with_query_name="Perf_Accounts_D")
+        |               +-group_by_list=
+        |               | +-CustomerId#19 := ColumnRef(type=INT64, column=Perf_Accounts_D.customer_id#9)
+        |               +-aggregate_list=
+        |                 +-$agg1#17 :=
+        |                   +-AggregateFunctionCall(GoogleSQL:array_agg(STRUCT<service_channel INT64, division_id INT64, sub_pod_id INT64, division_name INT64, sub_pod_name INT64, region INT64>) -> ARRAY<STRUCT<service_channel INT64, division_id INT64, sub_pod_id INT64, division_name INT64, sub_pod_name INT64, region INT64>>)
+        |                     +-MakeStruct
+        |                     | +-type=STRUCT<service_channel INT64, division_id INT64, sub_pod_id INT64, division_name INT64, sub_pod_name INT64, region INT64>
+        |                     | +-field_list=
+        |                     |   +-ColumnRef(type=INT64, column=Perf_Accounts_D.service_channel#10)
+        |                     |   +-ColumnRef(type=INT64, column=Perf_Accounts_D.division_id#11)
+        |                     |   +-ColumnRef(type=INT64, column=Perf_Accounts_D.sub_pod_id#12)
+        |                     |   +-ColumnRef(type=INT64, column=Perf_Accounts_D.division_name#13)
+        |                     |   +-ColumnRef(type=INT64, column=Perf_Accounts_D.sub_pod_name#14)
+        |                     |   +-ColumnRef(type=INT64, column=Perf_Accounts_D.region#15)
+        |                     +-order_by_item_list=
+        |                       +-OrderByItem
+        |                         +-column_ref=
+        |                         | +-ColumnRef(type=INT64, column=Perf_Accounts_D.ratio#16)
+        |                         +-is_descending=TRUE
+        +-limit=
+          +-Literal(type=INT64, value=10)
+==
+
+# Test case from b/69311615.
+[language_features=NONE,+LIMIT_IN_AGGREGATE,+ORDER_BY_IN_AGGREGATE,+ANALYTIC_FUNCTIONS,+CIVIL_TIME]
+WITH Candidate_RowPartitions AS (
+  SELECT b'x' as CompressedRowPartition, 'a' as ResourcePath,
+  TIMESTAMP '2017-01-01' as ResourceModifiedTimestamp
+)
+SELECT CAST(STRING_AGG(part) AS googlesql_test.CivilTimeTypesSinkPB).*
+FROM UNNEST((SELECT ARRAY(SELECT CompressedRowPartition
+                          FROM Candidate_RowPartitions
+                          WHERE ResourcePath='Candidate/qa.google.com-4008600339'
+                          AND ResourceModifiedTimestamp='2017-11-13 12:35:19.260426-08:00'))) as part
+--
+QueryStmt
++-output_column_list=
+| +-$query.time_micros#11 AS time_micros [TIME]
+| +-$query.time_micros_default#12 AS time_micros_default [TIME]
+| +-$query.datetime_micros#13 AS datetime_micros [DATETIME]
+| +-$query.datetime_micros_default#14 AS datetime_micros_default [DATETIME]
+| +-$query.repeated_time_micros#15 AS repeated_time_micros [ARRAY<TIME>]
+| +-$query.repeated_datetime_micros#16 AS repeated_datetime_micros [ARRAY<DATETIME>]
+| +-$query.nested_civil_time_fields#17 AS nested_civil_time_fields [PROTO<googlesql_test.CivilTimeTypesSinkPB.NestedCivilTimeFields>]
+| +-$query.nested_civil_time_repeated_fields#18 AS nested_civil_time_repeated_fields [PROTO<googlesql_test.CivilTimeTypesSinkPB.NestedCivilTimeRepeatedFields>]
+| +-$query.int64_key_1#19 AS int64_key_1 [INT64]
+| +-$query.int64_key_2#20 AS int64_key_2 [INT64]
++-query=
+  +-WithScan
+    +-column_list=$query.[time_micros#11, time_micros_default#12, datetime_micros#13, datetime_micros_default#14, repeated_time_micros#15, repeated_datetime_micros#16, nested_civil_time_fields#17, nested_civil_time_repeated_fields#18, int64_key_1#19, int64_key_2#20]
+    +-with_entry_list=
+    | +-WithEntry
+    |   +-with_query_name="Candidate_RowPartitions"
+    |   +-with_subquery=
+    |     +-ProjectScan
+    |       +-column_list=Candidate_RowPartitions.[CompressedRowPartition#1, ResourcePath#2, ResourceModifiedTimestamp#3]
+    |       +-expr_list=
+    |       | +-CompressedRowPartition#1 := Literal(type=BYTES, value=b"x")
+    |       | +-ResourcePath#2 := Literal(type=STRING, value="a")
+    |       | +-ResourceModifiedTimestamp#3 := Literal(type=TIMESTAMP, value=2017-01-01 08:00:00+00, has_explicit_type=TRUE)
+    |       +-input_scan=
+    |         +-SingleRowScan
+    +-query=
+      +-ProjectScan
+        +-column_list=$query.[time_micros#11, time_micros_default#12, datetime_micros#13, datetime_micros_default#14, repeated_time_micros#15, repeated_datetime_micros#16, nested_civil_time_fields#17, nested_civil_time_repeated_fields#18, int64_key_1#19, int64_key_2#20]
+        +-expr_list=
+        | +-time_micros#11 :=
+        | | +-GetProtoField
+        | |   +-type=TIME
+        | |   +-expr=
+        | |   | +-ColumnRef(type=PROTO<googlesql_test.CivilTimeTypesSinkPB>, column=$preproject.$proto#10)
+        | |   +-field_descriptor=time_micros
+        | |   +-default_value=00:00:00
+        | |   +-format=TIME_MICROS
+        | +-time_micros_default#12 :=
+        | | +-GetProtoField
+        | |   +-type=TIME
+        | |   +-expr=
+        | |   | +-ColumnRef(type=PROTO<googlesql_test.CivilTimeTypesSinkPB>, column=$preproject.$proto#10)
+        | |   +-field_descriptor=time_micros_default
+        | |   +-default_value=12:34:56.654321
+        | |   +-format=TIME_MICROS
+        | +-datetime_micros#13 :=
+        | | +-GetProtoField
+        | |   +-type=DATETIME
+        | |   +-expr=
+        | |   | +-ColumnRef(type=PROTO<googlesql_test.CivilTimeTypesSinkPB>, column=$preproject.$proto#10)
+        | |   +-field_descriptor=datetime_micros
+        | |   +-default_value=NULL
+        | |   +-format=DATETIME_MICROS
+        | +-datetime_micros_default#14 :=
+        | | +-GetProtoField
+        | |   +-type=DATETIME
+        | |   +-expr=
+        | |   | +-ColumnRef(type=PROTO<googlesql_test.CivilTimeTypesSinkPB>, column=$preproject.$proto#10)
+        | |   +-field_descriptor=datetime_micros_default
+        | |   +-default_value=1970-01-01 00:00:00
+        | |   +-format=DATETIME_MICROS
+        | +-repeated_time_micros#15 :=
+        | | +-GetProtoField
+        | |   +-type=ARRAY<TIME>
+        | |   +-expr=
+        | |   | +-ColumnRef(type=PROTO<googlesql_test.CivilTimeTypesSinkPB>, column=$preproject.$proto#10)
+        | |   +-field_descriptor=repeated_time_micros
+        | |   +-default_value=[]
+        | |   +-format=TIME_MICROS
+        | +-repeated_datetime_micros#16 :=
+        | | +-GetProtoField
+        | |   +-type=ARRAY<DATETIME>
+        | |   +-expr=
+        | |   | +-ColumnRef(type=PROTO<googlesql_test.CivilTimeTypesSinkPB>, column=$preproject.$proto#10)
+        | |   +-field_descriptor=repeated_datetime_micros
+        | |   +-default_value=[]
+        | |   +-format=DATETIME_MICROS
+        | +-nested_civil_time_fields#17 :=
+        | | +-GetProtoField
+        | |   +-type=PROTO<googlesql_test.CivilTimeTypesSinkPB.NestedCivilTimeFields>
+        | |   +-expr=
+        | |   | +-ColumnRef(type=PROTO<googlesql_test.CivilTimeTypesSinkPB>, column=$preproject.$proto#10)
+        | |   +-field_descriptor=nested_civil_time_fields
+        | |   +-default_value=NULL
+        | +-nested_civil_time_repeated_fields#18 :=
+        | | +-GetProtoField
+        | |   +-type=PROTO<googlesql_test.CivilTimeTypesSinkPB.NestedCivilTimeRepeatedFields>
+        | |   +-expr=
+        | |   | +-ColumnRef(type=PROTO<googlesql_test.CivilTimeTypesSinkPB>, column=$preproject.$proto#10)
+        | |   +-field_descriptor=nested_civil_time_repeated_fields
+        | |   +-default_value=NULL
+        | +-int64_key_1#19 :=
+        | | +-GetProtoField
+        | |   +-type=INT64
+        | |   +-expr=
+        | |   | +-ColumnRef(type=PROTO<googlesql_test.CivilTimeTypesSinkPB>, column=$preproject.$proto#10)
+        | |   +-field_descriptor=int64_key_1
+        | |   +-default_value=0
+        | +-int64_key_2#20 :=
+        |   +-GetProtoField
+        |     +-type=INT64
+        |     +-expr=
+        |     | +-ColumnRef(type=PROTO<googlesql_test.CivilTimeTypesSinkPB>, column=$preproject.$proto#10)
+        |     +-field_descriptor=int64_key_2
+        |     +-default_value=0
+        +-input_scan=
+          +-ProjectScan
+            +-column_list=[$aggregate.$agg1#9, $preproject.$proto#10]
+            +-expr_list=
+            | +-$proto#10 :=
+            |   +-Cast(BYTES -> PROTO<googlesql_test.CivilTimeTypesSinkPB>)
+            |     +-ColumnRef(type=BYTES, column=$aggregate.$agg1#9)
+            +-input_scan=
+              +-AggregateScan
+                +-column_list=[$aggregate.$agg1#9]
+                +-input_scan=
+                | +-ArrayScan
+                |   +-column_list=[$array.part#8]
+                |   +-array_expr_list=
+                |   | +-SubqueryExpr
+                |   |   +-type=ARRAY<BYTES>
+                |   |   +-subquery_type=SCALAR
+                |   |   +-subquery=
+                |   |     +-ProjectScan
+                |   |       +-column_list=[$expr_subquery.$col1#7]
+                |   |       +-expr_list=
+                |   |       | +-$col1#7 :=
+                |   |       |   +-SubqueryExpr
+                |   |       |     +-type=ARRAY<BYTES>
+                |   |       |     +-subquery_type=ARRAY
+                |   |       |     +-subquery=
+                |   |       |       +-ProjectScan
+                |   |       |         +-column_list=[Candidate_RowPartitions.CompressedRowPartition#4]
+                |   |       |         +-input_scan=
+                |   |       |           +-FilterScan
+                |   |       |             +-column_list=Candidate_RowPartitions.[CompressedRowPartition#4, ResourcePath#5, ResourceModifiedTimestamp#6]
+                |   |       |             +-input_scan=
+                |   |       |             | +-WithRefScan(column_list=Candidate_RowPartitions.[CompressedRowPartition#4, ResourcePath#5, ResourceModifiedTimestamp#6], with_query_name="Candidate_RowPartitions")
+                |   |       |             +-filter_expr=
+                |   |       |               +-FunctionCall(GoogleSQL:$and(BOOL, repeated(1) BOOL) -> BOOL)
+                |   |       |                 +-FunctionCall(GoogleSQL:$equal(STRING, STRING) -> BOOL)
+                |   |       |                 | +-ColumnRef(type=STRING, column=Candidate_RowPartitions.ResourcePath#5)
+                |   |       |                 | +-Literal(type=STRING, value="Candidate/qa.google.com-4008600339")
+                |   |       |                 +-FunctionCall(GoogleSQL:$equal(TIMESTAMP, TIMESTAMP) -> BOOL)
+                |   |       |                   +-ColumnRef(type=TIMESTAMP, column=Candidate_RowPartitions.ResourceModifiedTimestamp#6)
+                |   |       |                   +-Literal(type=TIMESTAMP, value=2017-11-13 20:35:19.260426+00)
+                |   |       +-input_scan=
+                |   |         +-SingleRowScan
+                |   +-element_column_list=[$array.part#8]
+                +-aggregate_list=
+                  +-$agg1#9 :=
+                    +-AggregateFunctionCall(GoogleSQL:string_agg(BYTES) -> BYTES)
+                      +-ColumnRef(type=BYTES, column=$array.part#8)
+==
+
+# Test case from b/64271506.  This dot-stars directly into the result of
+# the aggregate function, without an intervening array element access.
+[language_features=NONE,+ANALYTIC_FUNCTIONS]
+SELECT (FIRST_VALUE(c) OVER (ORDER BY c.x)).*
+FROM (SELECT STRUCT(x,y) c
+      FROM (SELECT 1 x, 2 y))
+--
+QueryStmt
++-output_column_list=
+| +-$query.x#6 AS x [INT64]
+| +-$query.y#7 AS y [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=$query.[x#6, y#7]
+    +-expr_list=
+    | +-x#6 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<x INT64, y INT64>, column=$analytic.$analytic1#5)
+    | |   +-field_idx=0
+    | +-y#7 :=
+    |   +-GetStructField
+    |     +-type=INT64
+    |     +-expr=
+    |     | +-ColumnRef(type=STRUCT<x INT64, y INT64>, column=$analytic.$analytic1#5)
+    |     +-field_idx=1
+    +-input_scan=
+      +-AnalyticScan
+        +-column_list=[$subquery1.c#3, $analytic.$analytic1#5]
+        +-input_scan=
+        | +-ProjectScan
+        |   +-column_list=[$subquery1.c#3, $orderby.x#8]
+        |   +-expr_list=
+        |   | +-x#8 :=
+        |   |   +-GetStructField
+        |   |     +-type=INT64
+        |   |     +-expr=
+        |   |     | +-ColumnRef(type=STRUCT<x INT64, y INT64>, column=$subquery1.c#3)
+        |   |     +-field_idx=0
+        |   +-input_scan=
+        |     +-ProjectScan
+        |       +-column_list=[$subquery1.c#3]
+        |       +-expr_list=
+        |       | +-c#3 :=
+        |       |   +-MakeStruct
+        |       |     +-type=STRUCT<x INT64, y INT64>
+        |       |     +-field_list=
+        |       |       +-ColumnRef(type=INT64, column=$subquery2.x#1)
+        |       |       +-ColumnRef(type=INT64, column=$subquery2.y#2)
+        |       +-input_scan=
+        |         +-ProjectScan
+        |           +-column_list=$subquery2.[x#1, y#2]
+        |           +-expr_list=
+        |           | +-x#1 := Literal(type=INT64, value=1)
+        |           | +-y#2 := Literal(type=INT64, value=2)
+        |           +-input_scan=
+        |             +-SingleRowScan
+        +-function_group_list=
+          +-AnalyticFunctionGroup
+            +-order_by=
+            | +-WindowOrdering
+            |   +-order_by_item_list=
+            |     +-OrderByItem
+            |       +-column_ref=
+            |         +-ColumnRef(type=INT64, column=$orderby.x#8)
+            +-analytic_function_list=
+              +-$analytic1#5 :=
+                +-AnalyticFunctionCall(GoogleSQL:first_value(STRUCT<x INT64, y INT64>) -> STRUCT<x INT64, y INT64>)
+                  +-ColumnRef(type=STRUCT<x INT64, y INT64>, column=$subquery1.c#3)
+                  +-window_frame=
+                    +-WindowFrame(frame_unit=RANGE)
+                      +-start_expr=
+                      | +-WindowFrameExpr(boundary_type=UNBOUNDED PRECEDING)
+                      +-end_expr=
+                        +-WindowFrameExpr(boundary_type=CURRENT ROW)
+==
+
+# Dot-star directly on the result of an aggregate function.
+SELECT ANY_VALUE(t).*
+FROM (SELECT 1 a, 2 b) as t;
+--
+QueryStmt
++-output_column_list=
+| +-$query.a#5 AS a [INT64]
+| +-$query.b#6 AS b [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=$query.[a#5, b#6]
+    +-expr_list=
+    | +-a#5 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<a INT64, b INT64>, column=$aggregate.$agg1#4)
+    | |   +-field_idx=0
+    | +-b#6 :=
+    |   +-GetStructField
+    |     +-type=INT64
+    |     +-expr=
+    |     | +-ColumnRef(type=STRUCT<a INT64, b INT64>, column=$aggregate.$agg1#4)
+    |     +-field_idx=1
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$aggregate.$agg1#4]
+        +-input_scan=
+        | +-ProjectScan
+        |   +-column_list=t.[a#1, b#2]
+        |   +-expr_list=
+        |   | +-a#1 := Literal(type=INT64, value=1)
+        |   | +-b#2 := Literal(type=INT64, value=2)
+        |   +-input_scan=
+        |     +-SingleRowScan
+        +-aggregate_list=
+          +-$agg1#4 :=
+            +-AggregateFunctionCall(GoogleSQL:any_value(STRUCT<a INT64, b INT64>) -> STRUCT<a INT64, b INT64>)
+              +-MakeStruct
+                +-type=STRUCT<a INT64, b INT64>
+                +-field_list=
+                  +-ColumnRef(type=INT64, column=t.a#1)
+                  +-ColumnRef(type=INT64, column=t.b#2)
+==
+
+# The star expansion of the aggregate function is used to build a struct,
+# which is not valid syntax.
+# Note - this is a syntax error not an analyzer error, but this test is here
+# because it is related to the previous tests.
+SELECT STRUCT(ANY_VALUE(t).*)
+FROM (SELECT 1 a, 2 b) as t;
+--
+ERROR: Syntax error: Unexpected "*" [at 1:28]
+SELECT STRUCT(ANY_VALUE(t).*)
+                           ^
+==
+
+SELECT
+  STRUCT(x).*
+FROM
+  UNNEST(GENERATE_ARRAY(1, 5)) AS x
+GROUP BY
+  x
+ORDER BY
+  x;
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.x#4 AS x [INT64]
++-query=
+  +-OrderByScan
+    +-column_list=[$groupby.x#4]
+    +-is_ordered=TRUE
+    +-input_scan=
+    | +-AggregateScan
+    |   +-column_list=[$groupby.x#4]
+    |   +-input_scan=
+    |   | +-ProjectScan
+    |   |   +-column_list=[$array.x#1, $preproject.$struct#2, $pre_groupby.x#3]
+    |   |   +-expr_list=
+    |   |   | +-x#3 :=
+    |   |   |   +-GetStructField
+    |   |   |     +-type=INT64
+    |   |   |     +-expr=
+    |   |   |     | +-ColumnRef(type=STRUCT<x INT64>, column=$preproject.$struct#2)
+    |   |   |     +-field_idx=0
+    |   |   +-input_scan=
+    |   |     +-ProjectScan
+    |   |       +-column_list=[$array.x#1, $preproject.$struct#2]
+    |   |       +-expr_list=
+    |   |       | +-$struct#2 :=
+    |   |       |   +-MakeStruct
+    |   |       |     +-type=STRUCT<x INT64>
+    |   |       |     +-field_list=
+    |   |       |       +-ColumnRef(type=INT64, column=$array.x#1)
+    |   |       +-input_scan=
+    |   |         +-ArrayScan
+    |   |           +-column_list=[$array.x#1]
+    |   |           +-array_expr_list=
+    |   |           | +-FunctionCall(GoogleSQL:generate_array(INT64, INT64, optional(0) INT64) -> ARRAY<INT64>)
+    |   |           |   +-Literal(type=INT64, value=1)
+    |   |           |   +-Literal(type=INT64, value=5)
+    |   |           +-element_column_list=[$array.x#1]
+    |   +-group_by_list=
+    |     +-x#4 := ColumnRef(type=INT64, column=$pre_groupby.x#3)
+    +-order_by_item_list=
+      +-OrderByItem
+        +-column_ref=
+          +-ColumnRef(type=INT64, column=$groupby.x#4)
+==
+
+SELECT
+  STRUCT(x).*
+FROM
+  UNNEST(GENERATE_ARRAY(1, 5)) AS x
+GROUP BY
+  x
+HAVING x > 3;
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.x#4 AS x [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$groupby.x#4]
+    +-input_scan=
+      +-FilterScan
+        +-column_list=[$groupby.x#4]
+        +-input_scan=
+        | +-AggregateScan
+        |   +-column_list=[$groupby.x#4]
+        |   +-input_scan=
+        |   | +-ProjectScan
+        |   |   +-column_list=[$array.x#1, $preproject.$struct#2, $pre_groupby.x#3]
+        |   |   +-expr_list=
+        |   |   | +-x#3 :=
+        |   |   |   +-GetStructField
+        |   |   |     +-type=INT64
+        |   |   |     +-expr=
+        |   |   |     | +-ColumnRef(type=STRUCT<x INT64>, column=$preproject.$struct#2)
+        |   |   |     +-field_idx=0
+        |   |   +-input_scan=
+        |   |     +-ProjectScan
+        |   |       +-column_list=[$array.x#1, $preproject.$struct#2]
+        |   |       +-expr_list=
+        |   |       | +-$struct#2 :=
+        |   |       |   +-MakeStruct
+        |   |       |     +-type=STRUCT<x INT64>
+        |   |       |     +-field_list=
+        |   |       |       +-ColumnRef(type=INT64, column=$array.x#1)
+        |   |       +-input_scan=
+        |   |         +-ArrayScan
+        |   |           +-column_list=[$array.x#1]
+        |   |           +-array_expr_list=
+        |   |           | +-FunctionCall(GoogleSQL:generate_array(INT64, INT64, optional(0) INT64) -> ARRAY<INT64>)
+        |   |           |   +-Literal(type=INT64, value=1)
+        |   |           |   +-Literal(type=INT64, value=5)
+        |   |           +-element_column_list=[$array.x#1]
+        |   +-group_by_list=
+        |     +-x#4 := ColumnRef(type=INT64, column=$pre_groupby.x#3)
+        +-filter_expr=
+          +-FunctionCall(GoogleSQL:$greater(INT64, INT64) -> BOOL)
+            +-ColumnRef(type=INT64, column=$groupby.x#4)
+            +-Literal(type=INT64, value=3)
+==
+
+SELECT
+  STRUCT(x).*
+FROM
+  UNNEST(GENERATE_ARRAY(1, 5)) AS x
+GROUP BY
+  x
+HAVING SUM(x) > 3;
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.x#4 AS x [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$groupby.x#4]
+    +-input_scan=
+      +-FilterScan
+        +-column_list=[$groupby.x#4, $aggregate.$agg1#5]
+        +-input_scan=
+        | +-AggregateScan
+        |   +-column_list=[$groupby.x#4, $aggregate.$agg1#5]
+        |   +-input_scan=
+        |   | +-ProjectScan
+        |   |   +-column_list=[$array.x#1, $preproject.$struct#2, $pre_groupby.x#3]
+        |   |   +-expr_list=
+        |   |   | +-x#3 :=
+        |   |   |   +-GetStructField
+        |   |   |     +-type=INT64
+        |   |   |     +-expr=
+        |   |   |     | +-ColumnRef(type=STRUCT<x INT64>, column=$preproject.$struct#2)
+        |   |   |     +-field_idx=0
+        |   |   +-input_scan=
+        |   |     +-ProjectScan
+        |   |       +-column_list=[$array.x#1, $preproject.$struct#2]
+        |   |       +-expr_list=
+        |   |       | +-$struct#2 :=
+        |   |       |   +-MakeStruct
+        |   |       |     +-type=STRUCT<x INT64>
+        |   |       |     +-field_list=
+        |   |       |       +-ColumnRef(type=INT64, column=$array.x#1)
+        |   |       +-input_scan=
+        |   |         +-ArrayScan
+        |   |           +-column_list=[$array.x#1]
+        |   |           +-array_expr_list=
+        |   |           | +-FunctionCall(GoogleSQL:generate_array(INT64, INT64, optional(0) INT64) -> ARRAY<INT64>)
+        |   |           |   +-Literal(type=INT64, value=1)
+        |   |           |   +-Literal(type=INT64, value=5)
+        |   |           +-element_column_list=[$array.x#1]
+        |   +-group_by_list=
+        |   | +-x#4 := ColumnRef(type=INT64, column=$pre_groupby.x#3)
+        |   +-aggregate_list=
+        |     +-$agg1#5 :=
+        |       +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+        |         +-ColumnRef(type=INT64, column=$pre_groupby.x#3)
+        +-filter_expr=
+          +-FunctionCall(GoogleSQL:$greater(INT64, INT64) -> BOOL)
+            +-ColumnRef(type=INT64, column=$aggregate.$agg1#5)
+            +-Literal(type=INT64, value=3)
+==
+
+SELECT NEW googlesql_test.TestBcPB().*
+FROM (SELECT 1)
+GROUP BY 1,2
+ORDER BY 1, 2 ;
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.b#5 AS b [INT32]
+| +-$groupby.c#6 AS c [STRING]
++-query=
+  +-OrderByScan
+    +-column_list=$groupby.[b#5, c#6]
+    +-is_ordered=TRUE
+    +-input_scan=
+    | +-AggregateScan
+    |   +-column_list=$groupby.[b#5, c#6]
+    |   +-input_scan=
+    |   | +-ProjectScan
+    |   |   +-column_list=[$subquery1.$col1#1, $preproject.$proto#2, $pre_groupby.b#3, $pre_groupby.c#4]
+    |   |   +-expr_list=
+    |   |   | +-b#3 :=
+    |   |   | | +-GetProtoField
+    |   |   | |   +-type=INT32
+    |   |   | |   +-expr=
+    |   |   | |   | +-ColumnRef(type=PROTO<googlesql_test.TestBcPB>, column=$preproject.$proto#2)
+    |   |   | |   +-field_descriptor=b
+    |   |   | |   +-default_value=0
+    |   |   | +-c#4 :=
+    |   |   |   +-GetProtoField
+    |   |   |     +-type=STRING
+    |   |   |     +-expr=
+    |   |   |     | +-ColumnRef(type=PROTO<googlesql_test.TestBcPB>, column=$preproject.$proto#2)
+    |   |   |     +-field_descriptor=c
+    |   |   |     +-default_value=""
+    |   |   +-input_scan=
+    |   |     +-ProjectScan
+    |   |       +-column_list=[$subquery1.$col1#1, $preproject.$proto#2]
+    |   |       +-expr_list=
+    |   |       | +-$proto#2 := MakeProto(type=PROTO<googlesql_test.TestBcPB>)
+    |   |       +-input_scan=
+    |   |         +-ProjectScan
+    |   |           +-column_list=[$subquery1.$col1#1]
+    |   |           +-expr_list=
+    |   |           | +-$col1#1 := Literal(type=INT64, value=1)
+    |   |           +-input_scan=
+    |   |             +-SingleRowScan
+    |   +-group_by_list=
+    |     +-b#5 := ColumnRef(type=INT32, column=$pre_groupby.b#3)
+    |     +-c#6 := ColumnRef(type=STRING, column=$pre_groupby.c#4)
+    +-order_by_item_list=
+      +-OrderByItem
+      | +-column_ref=
+      |   +-ColumnRef(type=INT32, column=$groupby.b#5)
+      +-OrderByItem
+        +-column_ref=
+          +-ColumnRef(type=STRING, column=$groupby.c#6)
+==
+
+[language_features=NONE,+QUALIFY,+ANALYTIC_FUNCTIONS]
+SELECT
+  STRUCT(x).*
+FROM
+  UNNEST(GENERATE_ARRAY(1, 5)) AS x
+GROUP BY x
+QUALIFY ROW_NUMBER() OVER (ORDER BY x) > 1
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.x#4 AS x [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$groupby.x#4]
+    +-input_scan=
+      +-FilterScan
+        +-column_list=[$groupby.x#4, $analytic.$analytic1#5]
+        +-input_scan=
+        | +-AnalyticScan
+        |   +-column_list=[$groupby.x#4, $analytic.$analytic1#5]
+        |   +-input_scan=
+        |   | +-AggregateScan
+        |   |   +-column_list=[$groupby.x#4]
+        |   |   +-input_scan=
+        |   |   | +-ProjectScan
+        |   |   |   +-column_list=[$array.x#1, $preproject.$struct#2, $pre_groupby.x#3]
+        |   |   |   +-expr_list=
+        |   |   |   | +-x#3 :=
+        |   |   |   |   +-GetStructField
+        |   |   |   |     +-type=INT64
+        |   |   |   |     +-expr=
+        |   |   |   |     | +-ColumnRef(type=STRUCT<x INT64>, column=$preproject.$struct#2)
+        |   |   |   |     +-field_idx=0
+        |   |   |   +-input_scan=
+        |   |   |     +-ProjectScan
+        |   |   |       +-column_list=[$array.x#1, $preproject.$struct#2]
+        |   |   |       +-expr_list=
+        |   |   |       | +-$struct#2 :=
+        |   |   |       |   +-MakeStruct
+        |   |   |       |     +-type=STRUCT<x INT64>
+        |   |   |       |     +-field_list=
+        |   |   |       |       +-ColumnRef(type=INT64, column=$array.x#1)
+        |   |   |       +-input_scan=
+        |   |   |         +-ArrayScan
+        |   |   |           +-column_list=[$array.x#1]
+        |   |   |           +-array_expr_list=
+        |   |   |           | +-FunctionCall(GoogleSQL:generate_array(INT64, INT64, optional(0) INT64) -> ARRAY<INT64>)
+        |   |   |           |   +-Literal(type=INT64, value=1)
+        |   |   |           |   +-Literal(type=INT64, value=5)
+        |   |   |           +-element_column_list=[$array.x#1]
+        |   |   +-group_by_list=
+        |   |     +-x#4 := ColumnRef(type=INT64, column=$pre_groupby.x#3)
+        |   +-function_group_list=
+        |     +-AnalyticFunctionGroup
+        |       +-order_by=
+        |       | +-WindowOrdering
+        |       |   +-order_by_item_list=
+        |       |     +-OrderByItem
+        |       |       +-column_ref=
+        |       |         +-ColumnRef(type=INT64, column=$groupby.x#4)
+        |       +-analytic_function_list=
+        |         +-$analytic1#5 := AnalyticFunctionCall(GoogleSQL:row_number() -> INT64)
+        +-filter_expr=
+          +-FunctionCall(GoogleSQL:$greater(INT64, INT64) -> BOOL)
+            +-ColumnRef(type=INT64, column=$analytic.$analytic1#5)
+            +-Literal(type=INT64, value=1)
+==
+
+# Dot-star does not accept star modifiers.
+select TestStruct.* EXCEPT(a) from ComplexTypes;
+--
+ERROR: SELECT * EXCEPT is not supported [at 1:8]
+select TestStruct.* EXCEPT(a) from ComplexTypes;
+       ^
+==
+
+# Grouping expression matching on the dot-star source
+[language_features=NONE,+GROUP_BY_STRUCT]
+SELECT CAST(s AS STRUCT<x INT32, y INT32>).*
+FROM (SELECT STRUCT(1 AS a, 2 AS b) AS s)
+GROUP BY {{s|CAST(s AS STRUCT<x INT32, y INT32>)}}
+{{|HAVING x > 1}}
+--
+
+ERROR: Star expansion expression references column x which is neither grouped nor aggregated [at 1:8]
+SELECT CAST(s AS STRUCT<x INT32, y INT32>).*
+       ^
+==
+
+select TestProto.*
+from ComplexTypes
+GROUP BY TestProto
+{{|HAVING TestProto.int32_val > 1}}
+--
+
+ERROR: Grouping by expressions of type PROTO is not allowed [at 3:10]
+GROUP BY TestProto
+         ^
+==
+
+[language_features=NONE,+SQL_GRAPH]
+SELECT * FROM GRAPH_TABLE(
+  aml
+  MATCH (n)
+  RETURN n.* GROUP BY n
+);
+--
+ERROR: Syntax error: Unexpected "*" [at 4:12]
+  RETURN n.* GROUP BY n
+           ^
+==
+
+# Regression test for b/440108949
+[language_features=MAXIMUM,+PIPES]
+WITH q AS (
+FROM (SELECT [1] AS arr) AS t1
+|> JOIN UNNEST(arr) AS a
+|> AS t2
+|> LEFT JOIN (SELECT 10 AS x) AS t3 ON true
+|> select t2.*
+)
+SELECT * FROM q;
+--
+QueryStmt
++-output_column_list=
+| +-q.arr#4 AS arr [ARRAY<INT64>]
+| +-q.a#5 AS a [INT64]
++-query=
+  +-WithScan
+    +-column_list=q.[arr#4, a#5]
+    +-with_entry_list=
+    | +-WithEntry
+    |   +-with_query_name="q"
+    |   +-with_subquery=
+    |     +-ProjectScan
+    |       +-column_list=[t1.arr#1, $array.a#2]
+    |       +-input_scan=
+    |         +-JoinScan
+    |           +-column_list=[t1.arr#1, $array.a#2, t3.x#3]
+    |           +-join_type=LEFT
+    |           +-left_scan=
+    |           | +-ArrayScan
+    |           |   +-column_list=[t1.arr#1, $array.a#2]
+    |           |   +-input_scan=
+    |           |   | +-ProjectScan
+    |           |   |   +-column_list=[t1.arr#1]
+    |           |   |   +-expr_list=
+    |           |   |   | +-arr#1 := Literal(type=ARRAY<INT64>, value=[1])
+    |           |   |   +-input_scan=
+    |           |   |     +-SingleRowScan
+    |           |   +-array_expr_list=
+    |           |   | +-ColumnRef(type=ARRAY<INT64>, column=t1.arr#1)
+    |           |   +-element_column_list=[$array.a#2]
+    |           +-right_scan=
+    |           | +-ProjectScan
+    |           |   +-column_list=[t3.x#3]
+    |           |   +-expr_list=
+    |           |   | +-x#3 := Literal(type=INT64, value=10)
+    |           |   +-input_scan=
+    |           |     +-SingleRowScan
+    |           +-join_expr=
+    |             +-Literal(type=BOOL, value=true)
+    +-query=
+      +-ProjectScan
+        +-column_list=q.[arr#4, a#5]
+        +-input_scan=
+          +-WithRefScan(column_list=q.[arr#4, a#5], with_query_name="q")

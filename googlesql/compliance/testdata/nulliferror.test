@@ -1,0 +1,180 @@
+[prepare_database]
+CREATE TABLE T AS
+SELECT 0 AS A,  0 AS B,  0.0 AS C UNION ALL
+SELECT 1,      10,      100.0     UNION ALL
+SELECT 2,      20,      200.0
+--
+ARRAY<STRUCT<A INT64, B INT64, C DOUBLE>>[
+  {0, 0, 0},
+  {1, 10, 100},
+  {2, 20, 200}
+]
+==
+[prepare_database]
+CREATE TABLE TestTable AS
+SELECT 1 AS id, TRUE AS bool_val, 'a' AS str_val
+  UNION ALL
+  SELECT 2, NULL, 'b'
+  UNION ALL
+  SELECT 3, NULL, 'c'
+  UNION ALL
+  SELECT 4, NULL, NULL
+--
+ARRAY<STRUCT<id INT64, bool_val BOOL, str_val STRING>>[
+  {1, true, "a"},
+  {2, NULL, "b"},
+  {3, NULL, "c"},
+  {4, NULL, NULL}
+]
+==
+[name=no_error]
+SELECT NULLIFERROR(1);
+--
+ARRAY<STRUCT<INT64>>[{1}]
+==
+[name=try_expr_has_constant_folding_error]
+SELECT NULLIFERROR(CAST('a' AS DATE));
+--
+ARRAY<STRUCT<DATE>>[{NULL}]
+==
+[name=reference_to_subquery_with_error_not_absorbed]
+SELECT NULLIFERROR(Y) FROM (SELECT 1/0 AS Y)
+--
+ERROR: generic::out_of_range: division by zero: 1 / 0
+==
+[name=arithmetic_reference_to_subquery_with_error_not_absorbed]
+SELECT NULLIFERROR(Y+Y) FROM (SELECT 1/0 AS Y)
+--
+ERROR: generic::out_of_range: division by zero: 1 / 0
+==
+# Note that the inner error is absorbed, so the outer returns false
+[name=nested_try_expr_has_constant_folding_error]
+SELECT NULLIFERROR(NULLIFERROR(CAST('inner' AS DATE)));
+--
+ARRAY<STRUCT<DATE>>[{NULL}]
+==
+[name=nested_try_expr_has_constant_folding_error_conditioned_on_aggregation]
+SELECT NULLIFERROR(NULLIFERROR(IF(SUM(C) > 0, NULL, CAST('inner' AS DATE)))) FROM T GROUP BY A;
+--
+ARRAY<STRUCT<DATE>>[unknown order:{NULL}, {NULL}, {NULL}]
+==
+[name=expr_has_error_should_still_be_foldable]
+SELECT NULLIFERROR(1/0);
+--
+ARRAY<STRUCT<DOUBLE>>[{NULL}]
+==
+[name=expr_has_error_non_foldable]
+SELECT NULLIFERROR(A/0) FROM T;
+--
+ARRAY<STRUCT<DOUBLE>>[unknown order:{NULL}, {NULL}, {NULL}]
+==
+# -1 means it was handled by the inner NULLIFERROR, NULL means it was the outer
+# one that handled it.
+[name=nested_nulliferror_absorbs_errors]
+SELECT NULLIFERROR(IFNULL(NULLIFERROR(A/0), -1)) FROM T;
+--
+ARRAY<STRUCT<DOUBLE>>[unknown order:{-1}, {-1}, {-1}]
+==
+[name=aggregate_expr_error_explicit_grouping]
+SELECT NULLIFERROR((SELECT SUM(A/0) FROM T)) FROM T GROUP BY B;
+--
+ARRAY<STRUCT<DOUBLE>>[unknown order:{NULL}, {NULL}, {NULL}]
+==
+[name=lambda_with_error_in_arg]
+[required_features=INLINE_LAMBDA_ARGUMENT]
+SELECT NULLIFERROR(ARRAY_FILTER([B, B/0], e -> e > 1)[OFFSET(0)]) FROM T GROUP BY B
+--
+ARRAY<STRUCT<DOUBLE>>[unknown order:{NULL}, {NULL}, {NULL}]
+==
+[name=lambda_with_error_in_body]
+[required_features=INLINE_LAMBDA_ARGUMENT]
+SELECT NULLIFERROR(ARRAY_FILTER([A, A*2], e -> 1/e > 1)[OFFSET(0)]) FROM T GROUP BY A
+--
+ARRAY<STRUCT<INT64>>[unknown order:{NULL}, {NULL}, {NULL}]
+==
+[name=aggregate_expr_error_implicit_grouping]
+[required_features=ENFORCE_CONDITIONAL_EVALUATION]
+SELECT NULLIFERROR(SUM(A/0)) FROM T
+--
+ARRAY<STRUCT<DOUBLE>>[{NULL}]
+==
+[name=nulliferror_on_uninlined_aggregated_subquery_with_error]
+SELECT NULLIFERROR(A) FROM (SELECT MAX(A/0) AS A FROM T)
+--
+ERROR: generic::out_of_range: division by zero: 1 / 0
+==
+[name=nulliferror_on_inlined_scalar_subquery_with_error_grouped]
+SELECT NULLIFERROR((SELECT 1/0 AS X)) FROM T GROUP BY B
+--
+ARRAY<STRUCT<DOUBLE>>[unknown order:{NULL}, {NULL}, {NULL}]
+==
+[name=nulliferror_on_inlined_scalar_subquery_with_error]
+SELECT NULLIFERROR((SELECT 1/0 AS A))
+--
+ARRAY<STRUCT<DOUBLE>>[{NULL}]
+==
+[name=nulliferror_as_group_by_expression]
+SELECT MAX(B) FROM T GROUP BY NULLIFERROR(1/A)
+--
+ARRAY<STRUCT<INT64>>[unknown order:{0}, {20}, {10}]
+
+NOTE: Reference implementation reports non-determinism.
+==
+[name=nulliferror_as_having_expression]
+SELECT MAX(B) FROM T GROUP BY A HAVING NULLIFERROR(A + 1/A) >= 0
+--
+ARRAY<STRUCT<INT64>>[unknown order:{10}, {20}]
+==
+[name=nulliferror_as_order_by_expression]
+SELECT C FROM T ORDER BY NULLIFERROR(1/A)
+--
+ARRAY<STRUCT<C DOUBLE>>[known order:{0}, {200}, {100}]
+==
+# This is a non-computation error: the subquery returns mutliple rows instead
+# of one.
+[name=nulliferror_in_where_clause_handles_scalar_subquery_returning_multiple_rows]
+SELECT C FROM T WHERE NULLIFERROR(B = (SELECT 10*A FROM T))
+--
+ARRAY<STRUCT<C DOUBLE>>[]
+==
+[name=nulliferror_is_not_affected_by_neighboring_safe_calls]
+SELECT AVG(safe_divide(1, 0)), SUM(NULLIFERROR(1)) FROM T
+--
+ARRAY<STRUCT<DOUBLE, INT64>>[{NULL, 3}]
+==
+[name=safe_mode]
+[required_features=SAFE_FUNCTION_CALL]
+SELECT SAFE.NULLIFERROR(A/0) FROM T;
+--
+ARRAY<STRUCT<DOUBLE>>[unknown order:{NULL}, {NULL}, {NULL}]
+==
+[name=safe_mode_no_error]
+[required_features=SAFE_FUNCTION_CALL]
+SELECT SAFE.NULLIFERROR(A) FROM T;
+--
+ARRAY<STRUCT<INT64>>[unknown order:{1}, {0}, {2}]
+==
+[required_features=WITH_EXPRESSION,INLINE_LAMBDA_ARGUMENT,ENFORCE_CONDITIONAL_EVALUATION]
+[name=inside_with_and_aggregate_argument]
+SELECT
+  a,
+  WITH(sumb AS NULLIFERROR(SUM(1/b)),
+       ARRAY_TRANSFORM([1, 2, 3], e -> sumb + e))
+FROM T
+GROUP BY a
+ORDER BY a;
+--
+ARRAY<STRUCT<a INT64, ARRAY<>>>[known order:
+  {
+    0,
+    ARRAY<DOUBLE>[known order:NULL, NULL, NULL]
+  },
+  {
+    1,
+    ARRAY<DOUBLE>[known order:1.1, 2.1, 3.1]
+  },
+  {
+    2,
+    ARRAY<DOUBLE>[known order:1.05, 2.05, 3.05]
+  }
+]

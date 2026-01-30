@@ -1,0 +1,3974 @@
+# This file is the STRUCT version of correlated_subquery_outer_aggr.test.
+# It includes tests with correlation references in a subquery to an outer query
+# that contains aggregation involving struct columns, e.g. GROUP BY STRUCT,
+# DISTINCT STRUCT, etc.
+#
+# The tests in this file are roughly organized by:
+# 1) Correlated subquery in the SELECT list
+# 2) Correlated subquery in the WHERE
+# 3) Correlated subquery in the GROUP BY
+# 4) Correlated subquery in the HAVING
+# 5) Correlated subquery in the ORDER BY
+# 6) Correlated subquery with nested correlated subqueries two levels deep.
+# 7) Correlated subquery with two levels of correlation, where both outer
+#    queries have GROUP BY.
+# 8) Correlated subquery in IN clause.
+# 9) Correlated reference in aggregation function of subquery.
+#10) Correlated subquery and USING
+#11) Correlated subquery with outer table a value table.
+#12) Group by range variable.
+##########################################################################
+# 1. Correlated subquery in the SELECT list.
+##########################################################################
+
+# 1.1 Group by a struct column.
+[default language_features=MAXIMUM,+GROUP_BY_STRUCT,+GROUP_BY_ROLLUP]
+SELECT TestStruct, (SELECT AS STRUCT {{ct.|}}TestStruct, {{ct.|}}TestStruct.c, TestStruct.d)
+FROM ComplexTypes ct
+GROUP BY {{ct.|}}TestStruct
+--
+ALTERNATION GROUPS:
+    ct.,ct.,ct.
+    ct.,ct.,
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.TestStruct#11 AS TestStruct [STRUCT<c INT32, d STRUCT<a INT32, b STRING>>]
+| +-$query.$col2#16 AS `$col2` [STRUCT<TestStruct STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, c INT32, d STRUCT<a INT32, b STRING>>]
++-query=
+  +-ProjectScan
+    +-column_list=[$groupby.TestStruct#11, $query.$col2#16]
+    +-expr_list=
+    | +-$col2#16 :=
+    |   +-SubqueryExpr
+    |     +-type=STRUCT<TestStruct STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, c INT32, d STRUCT<a INT32, b STRING>>
+    |     +-subquery_type=SCALAR
+    |     +-parameter_list=
+    |     | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=$groupby.TestStruct#11)
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$make_struct.$struct#15]
+    |         +-expr_list=
+    |         | +-$struct#15 :=
+    |         |   +-MakeStruct
+    |         |     +-type=STRUCT<TestStruct STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, c INT32, d STRUCT<a INT32, b STRING>>
+    |         |     +-field_list=
+    |         |       +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=$expr_subquery.TestStruct#12)
+    |         |       +-ColumnRef(type=INT32, column=$expr_subquery.c#13)
+    |         |       +-ColumnRef(type=STRUCT<a INT32, b STRING>, column=$expr_subquery.d#14)
+    |         +-input_scan=
+    |           +-ProjectScan
+    |             +-column_list=$expr_subquery.[TestStruct#12, c#13, d#14]
+    |             +-expr_list=
+    |             | +-TestStruct#12 := ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=$groupby.TestStruct#11, is_correlated=TRUE)
+    |             | +-c#13 :=
+    |             | | +-GetStructField
+    |             | |   +-type=INT32
+    |             | |   +-expr=
+    |             | |   | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=$groupby.TestStruct#11, is_correlated=TRUE)
+    |             | |   +-field_idx=0
+    |             | +-d#14 :=
+    |             |   +-GetStructField
+    |             |     +-type=STRUCT<a INT32, b STRING>
+    |             |     +-expr=
+    |             |     | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=$groupby.TestStruct#11, is_correlated=TRUE)
+    |             |     +-field_idx=1
+    |             +-input_scan=
+    |               +-SingleRowScan
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$groupby.TestStruct#11]
+        +-input_scan=
+        | +-TableScan(column_list=[ComplexTypes.TestStruct#5], table=ComplexTypes, column_index_list=[4], alias="ct")
+        +-group_by_list=
+          +-TestStruct#11 := ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#5)
+
+
+DEPRECATION WARNING:
+Lateral column alias will shadow original target: STRUCT<c INT32, d STRUCT<a INT32, b STRING>> (ComplexTypes.TestStruct#5) (implicit) [at 1:70]
+...SELECT AS STRUCT ct.TestStruct, ct.TestStruct.c, TestStruct.d)
+                                                    ^
+[googlesql.DeprecationWarning] { kind: LATERAL_COLUMN_REFERENCE }
+
+DEPRECATION WARNING:
+Lateral column alias will shadow original target: STRUCT<c INT32, d STRUCT<a INT32, b STRING>> ($groupby.TestStruct#11) (implicit) [at 1:70]
+...SELECT AS STRUCT ct.TestStruct, ct.TestStruct.c, TestStruct.d)
+                                                    ^
+[googlesql.DeprecationWarning] { kind: LATERAL_COLUMN_REFERENCE }
+--
+ALTERNATION GROUPS:
+    ct.,,ct.
+    ct.,,
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.TestStruct#11 AS TestStruct [STRUCT<c INT32, d STRUCT<a INT32, b STRING>>]
+| +-$query.$col2#16 AS `$col2` [STRUCT<TestStruct STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, c INT32, d STRUCT<a INT32, b STRING>>]
++-query=
+  +-ProjectScan
+    +-column_list=[$groupby.TestStruct#11, $query.$col2#16]
+    +-expr_list=
+    | +-$col2#16 :=
+    |   +-SubqueryExpr
+    |     +-type=STRUCT<TestStruct STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, c INT32, d STRUCT<a INT32, b STRING>>
+    |     +-subquery_type=SCALAR
+    |     +-parameter_list=
+    |     | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=$groupby.TestStruct#11)
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$make_struct.$struct#15]
+    |         +-expr_list=
+    |         | +-$struct#15 :=
+    |         |   +-MakeStruct
+    |         |     +-type=STRUCT<TestStruct STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, c INT32, d STRUCT<a INT32, b STRING>>
+    |         |     +-field_list=
+    |         |       +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=$expr_subquery.TestStruct#12)
+    |         |       +-ColumnRef(type=INT32, column=$expr_subquery.c#13)
+    |         |       +-ColumnRef(type=STRUCT<a INT32, b STRING>, column=$expr_subquery.d#14)
+    |         +-input_scan=
+    |           +-ProjectScan
+    |             +-column_list=$expr_subquery.[TestStruct#12, c#13, d#14]
+    |             +-expr_list=
+    |             | +-TestStruct#12 := ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=$groupby.TestStruct#11, is_correlated=TRUE)
+    |             | +-c#13 :=
+    |             | | +-GetStructField
+    |             | |   +-type=INT32
+    |             | |   +-expr=
+    |             | |   | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=$groupby.TestStruct#11, is_correlated=TRUE)
+    |             | |   +-field_idx=0
+    |             | +-d#14 :=
+    |             |   +-GetStructField
+    |             |     +-type=STRUCT<a INT32, b STRING>
+    |             |     +-expr=
+    |             |     | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=$groupby.TestStruct#11, is_correlated=TRUE)
+    |             |     +-field_idx=1
+    |             +-input_scan=
+    |               +-SingleRowScan
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$groupby.TestStruct#11]
+        +-input_scan=
+        | +-TableScan(column_list=[ComplexTypes.TestStruct#5], table=ComplexTypes, column_index_list=[4], alias="ct")
+        +-group_by_list=
+          +-TestStruct#11 := ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#5)
+
+
+DEPRECATION WARNING:
+Lateral column alias will shadow original target: STRUCT<c INT32, d STRUCT<a INT32, b STRING>> (ComplexTypes.TestStruct#5) (implicit) [at 1:53]
+SELECT TestStruct, (SELECT AS STRUCT ct.TestStruct, TestStruct.c, TestStruct.d)
+                                                    ^
+[googlesql.DeprecationWarning] { kind: LATERAL_COLUMN_REFERENCE }
+
+DEPRECATION WARNING:
+Lateral column alias will shadow original target: STRUCT<c INT32, d STRUCT<a INT32, b STRING>> ($groupby.TestStruct#11) (implicit) [at 1:53]
+SELECT TestStruct, (SELECT AS STRUCT ct.TestStruct, TestStruct.c, TestStruct.d)
+                                                    ^
+[googlesql.DeprecationWarning] { kind: LATERAL_COLUMN_REFERENCE }
+--
+ALTERNATION GROUPS:
+    ct.,ct.
+    ct.,
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.TestStruct#11 AS TestStruct [STRUCT<c INT32, d STRUCT<a INT32, b STRING>>]
+| +-$query.$col2#16 AS `$col2` [STRUCT<TestStruct STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, c INT32, d STRUCT<a INT32, b STRING>>]
++-query=
+  +-ProjectScan
+    +-column_list=[$groupby.TestStruct#11, $query.$col2#16]
+    +-expr_list=
+    | +-$col2#16 :=
+    |   +-SubqueryExpr
+    |     +-type=STRUCT<TestStruct STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, c INT32, d STRUCT<a INT32, b STRING>>
+    |     +-subquery_type=SCALAR
+    |     +-parameter_list=
+    |     | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=$groupby.TestStruct#11)
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$make_struct.$struct#15]
+    |         +-expr_list=
+    |         | +-$struct#15 :=
+    |         |   +-MakeStruct
+    |         |     +-type=STRUCT<TestStruct STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, c INT32, d STRUCT<a INT32, b STRING>>
+    |         |     +-field_list=
+    |         |       +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=$expr_subquery.TestStruct#12)
+    |         |       +-ColumnRef(type=INT32, column=$expr_subquery.c#13)
+    |         |       +-ColumnRef(type=STRUCT<a INT32, b STRING>, column=$expr_subquery.d#14)
+    |         +-input_scan=
+    |           +-ProjectScan
+    |             +-column_list=$expr_subquery.[TestStruct#12, c#13, d#14]
+    |             +-expr_list=
+    |             | +-TestStruct#12 := ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=$groupby.TestStruct#11, is_correlated=TRUE)
+    |             | +-c#13 :=
+    |             | | +-GetStructField
+    |             | |   +-type=INT32
+    |             | |   +-expr=
+    |             | |   | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=$groupby.TestStruct#11, is_correlated=TRUE)
+    |             | |   +-field_idx=0
+    |             | +-d#14 :=
+    |             |   +-GetStructField
+    |             |     +-type=STRUCT<a INT32, b STRING>
+    |             |     +-expr=
+    |             |     | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=$groupby.TestStruct#11, is_correlated=TRUE)
+    |             |     +-field_idx=1
+    |             +-input_scan=
+    |               +-SingleRowScan
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$groupby.TestStruct#11]
+        +-input_scan=
+        | +-TableScan(column_list=[ComplexTypes.TestStruct#5], table=ComplexTypes, column_index_list=[4], alias="ct")
+        +-group_by_list=
+          +-TestStruct#11 := ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#5)
+
+
+DEPRECATION WARNING:
+Lateral column alias will shadow original target: STRUCT<c INT32, d STRUCT<a INT32, b STRING>> (ComplexTypes.TestStruct#5) (implicit) [at 1:67]
+SELECT TestStruct, (SELECT AS STRUCT TestStruct, ct.TestStruct.c, TestStruct.d)
+                                                                  ^
+[googlesql.DeprecationWarning] { kind: LATERAL_COLUMN_REFERENCE }
+
+DEPRECATION WARNING:
+Lateral column alias will shadow original target: STRUCT<c INT32, d STRUCT<a INT32, b STRING>> ($groupby.TestStruct#11) (implicit) [at 1:67]
+SELECT TestStruct, (SELECT AS STRUCT TestStruct, ct.TestStruct.c, TestStruct.d)
+                                                                  ^
+[googlesql.DeprecationWarning] { kind: LATERAL_COLUMN_REFERENCE }
+--
+ALTERNATION GROUPS:
+    ct.
+    <empty>
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.TestStruct#11 AS TestStruct [STRUCT<c INT32, d STRUCT<a INT32, b STRING>>]
+| +-$query.$col2#16 AS `$col2` [STRUCT<TestStruct STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, c INT32, d STRUCT<a INT32, b STRING>>]
++-query=
+  +-ProjectScan
+    +-column_list=[$groupby.TestStruct#11, $query.$col2#16]
+    +-expr_list=
+    | +-$col2#16 :=
+    |   +-SubqueryExpr
+    |     +-type=STRUCT<TestStruct STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, c INT32, d STRUCT<a INT32, b STRING>>
+    |     +-subquery_type=SCALAR
+    |     +-parameter_list=
+    |     | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=$groupby.TestStruct#11)
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$make_struct.$struct#15]
+    |         +-expr_list=
+    |         | +-$struct#15 :=
+    |         |   +-MakeStruct
+    |         |     +-type=STRUCT<TestStruct STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, c INT32, d STRUCT<a INT32, b STRING>>
+    |         |     +-field_list=
+    |         |       +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=$expr_subquery.TestStruct#12)
+    |         |       +-ColumnRef(type=INT32, column=$expr_subquery.c#13)
+    |         |       +-ColumnRef(type=STRUCT<a INT32, b STRING>, column=$expr_subquery.d#14)
+    |         +-input_scan=
+    |           +-ProjectScan
+    |             +-column_list=$expr_subquery.[TestStruct#12, c#13, d#14]
+    |             +-expr_list=
+    |             | +-TestStruct#12 := ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=$groupby.TestStruct#11, is_correlated=TRUE)
+    |             | +-c#13 :=
+    |             | | +-GetStructField
+    |             | |   +-type=INT32
+    |             | |   +-expr=
+    |             | |   | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=$groupby.TestStruct#11, is_correlated=TRUE)
+    |             | |   +-field_idx=0
+    |             | +-d#14 :=
+    |             |   +-GetStructField
+    |             |     +-type=STRUCT<a INT32, b STRING>
+    |             |     +-expr=
+    |             |     | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=$groupby.TestStruct#11, is_correlated=TRUE)
+    |             |     +-field_idx=1
+    |             +-input_scan=
+    |               +-SingleRowScan
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$groupby.TestStruct#11]
+        +-input_scan=
+        | +-TableScan(column_list=[ComplexTypes.TestStruct#5], table=ComplexTypes, column_index_list=[4], alias="ct")
+        +-group_by_list=
+          +-TestStruct#11 := ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#5)
+
+
+DEPRECATION WARNING:
+Lateral column alias will shadow original target: STRUCT<c INT32, d STRUCT<a INT32, b STRING>> (ComplexTypes.TestStruct#5) (implicit) [at 1:50]
+SELECT TestStruct, (SELECT AS STRUCT TestStruct, TestStruct.c, TestStruct.d)
+                                                 ^
+[googlesql.DeprecationWarning] { kind: LATERAL_COLUMN_REFERENCE }
+
+DEPRECATION WARNING:
+Lateral column alias will shadow original target: STRUCT<c INT32, d STRUCT<a INT32, b STRING>> ($groupby.TestStruct#11) (implicit) [at 1:50]
+SELECT TestStruct, (SELECT AS STRUCT TestStruct, TestStruct.c, TestStruct.d)
+                                                 ^
+[googlesql.DeprecationWarning] { kind: LATERAL_COLUMN_REFERENCE }
+==
+
+# 1.2 Group by a struct nested under a struct column.
+SELECT TestStruct.d.a, (SELECT {{ct.|}}TestStruct.d.a)
+FROM ComplexTypes ct
+GROUP BY {{ct.|}}TestStruct.d
+--
+QueryStmt
++-output_column_list=
+| +-$query.a#9 AS a [INT32]
+| +-$query.$col2#11 AS `$col2` [INT32]
++-query=
+  +-ProjectScan
+    +-column_list=$query.[a#9, $col2#11]
+    +-expr_list=
+    | +-a#9 :=
+    | | +-GetStructField
+    | |   +-type=INT32
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<a INT32, b STRING>, column=$groupby.d#8)
+    | |   +-field_idx=0
+    | +-$col2#11 :=
+    |   +-SubqueryExpr
+    |     +-type=INT32
+    |     +-subquery_type=SCALAR
+    |     +-parameter_list=
+    |     | +-ColumnRef(type=STRUCT<a INT32, b STRING>, column=$groupby.d#8)
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$expr_subquery.a#10]
+    |         +-expr_list=
+    |         | +-a#10 :=
+    |         |   +-GetStructField
+    |         |     +-type=INT32
+    |         |     +-expr=
+    |         |     | +-ColumnRef(type=STRUCT<a INT32, b STRING>, column=$groupby.d#8, is_correlated=TRUE)
+    |         |     +-field_idx=0
+    |         +-input_scan=
+    |           +-SingleRowScan
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$groupby.d#8]
+        +-input_scan=
+        | +-TableScan(column_list=[ComplexTypes.TestStruct#5], table=ComplexTypes, column_index_list=[4], alias="ct")
+        +-group_by_list=
+          +-d#8 :=
+            +-GetStructField
+              +-type=STRUCT<a INT32, b STRING>
+              +-expr=
+              | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#5)
+              +-field_idx=1
+==
+
+# 1.3 Correlated references in an expression.
+SELECT TestStruct.d,
+  (SELECT {{ct.|}}TestStruct.d.a + char_length({{ct.|}}TestStruct.d.b))
+FROM ComplexTypes ct
+GROUP BY TestStruct.d
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.d#8 AS d [STRUCT<a INT32, b STRING>]
+| +-$query.$col2#10 AS `$col2` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$groupby.d#8, $query.$col2#10]
+    +-expr_list=
+    | +-$col2#10 :=
+    |   +-SubqueryExpr
+    |     +-type=INT64
+    |     +-subquery_type=SCALAR
+    |     +-parameter_list=
+    |     | +-ColumnRef(type=STRUCT<a INT32, b STRING>, column=$groupby.d#8)
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$expr_subquery.$col1#9]
+    |         +-expr_list=
+    |         | +-$col1#9 :=
+    |         |   +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |         |     +-Cast(INT32 -> INT64)
+    |         |     | +-GetStructField
+    |         |     |   +-type=INT32
+    |         |     |   +-expr=
+    |         |     |   | +-ColumnRef(type=STRUCT<a INT32, b STRING>, column=$groupby.d#8, is_correlated=TRUE)
+    |         |     |   +-field_idx=0
+    |         |     +-FunctionCall(GoogleSQL:char_length(STRING) -> INT64)
+    |         |       +-GetStructField
+    |         |         +-type=STRING
+    |         |         +-expr=
+    |         |         | +-ColumnRef(type=STRUCT<a INT32, b STRING>, column=$groupby.d#8, is_correlated=TRUE)
+    |         |         +-field_idx=1
+    |         +-input_scan=
+    |           +-SingleRowScan
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$groupby.d#8]
+        +-input_scan=
+        | +-TableScan(column_list=[ComplexTypes.TestStruct#5], table=ComplexTypes, column_index_list=[4], alias="ct")
+        +-group_by_list=
+          +-d#8 :=
+            +-GetStructField
+              +-type=STRUCT<a INT32, b STRING>
+              +-expr=
+              | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#5)
+              +-field_idx=1
+==
+
+# 1.4 Error - cannot access sibling of the GROUP BY struct.
+SELECT (SELECT {{ct.|}}TestStruct.c)
+FROM ComplexTypes ct
+GROUP BY {{TestStruct.d|ROLLUP(TestStruct.d)}}
+--
+ALTERNATION GROUPS:
+    ct.,TestStruct.d
+    ct.,ROLLUP(TestStruct.d)
+--
+ERROR: SELECT without FROM clause expression references ct.TestStruct.c which is neither grouped nor aggregated [at 1:16]
+SELECT (SELECT ct.TestStruct.c)
+               ^
+--
+ALTERNATION GROUPS:
+    TestStruct.d
+    ROLLUP(TestStruct.d)
+--
+ERROR: SELECT without FROM clause expression references TestStruct.c which is neither grouped nor aggregated [at 1:16]
+SELECT (SELECT TestStruct.c)
+               ^
+==
+
+# 1.5 The 'TestStruct' in correlated subquery is resolved into ct.TestStruct in
+# GROUP BY even without the 'ct.' prefix because the TestStruct created in
+# SELECT is not visible to the subquery in SELECT.
+SELECT TestStruct.d as TestStruct, (SELECT {{ct.|}}TestStruct.c)
+FROM ComplexTypes ct
+GROUP BY TestStruct, ct.TestStruct
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.TestStruct#8 AS TestStruct [STRUCT<a INT32, b STRING>]
+| +-$query.$col2#11 AS `$col2` [INT32]
++-query=
+  +-ProjectScan
+    +-column_list=[$groupby.TestStruct#8, $query.$col2#11]
+    +-expr_list=
+    | +-$col2#11 :=
+    |   +-SubqueryExpr
+    |     +-type=INT32
+    |     +-subquery_type=SCALAR
+    |     +-parameter_list=
+    |     | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=$groupby.TestStruct#9)
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$expr_subquery.c#10]
+    |         +-expr_list=
+    |         | +-c#10 :=
+    |         |   +-GetStructField
+    |         |     +-type=INT32
+    |         |     +-expr=
+    |         |     | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=$groupby.TestStruct#9, is_correlated=TRUE)
+    |         |     +-field_idx=0
+    |         +-input_scan=
+    |           +-SingleRowScan
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=$groupby.[TestStruct#8, TestStruct#9]
+        +-input_scan=
+        | +-TableScan(column_list=[ComplexTypes.TestStruct#5], table=ComplexTypes, column_index_list=[4], alias="ct")
+        +-group_by_list=
+          +-TestStruct#8 :=
+          | +-GetStructField
+          |   +-type=STRUCT<a INT32, b STRING>
+          |   +-expr=
+          |   | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#5)
+          |   +-field_idx=1
+          +-TestStruct#9 := ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#5)
+==
+
+# 1.6 Error - Similar to the previous test, the correlated reference
+# 'TestStruct' in subquery is resolved to 'ct.TestStruct' in GROUP BY.
+SELECT TestStruct.d as TestStruct, (SELECT TestStruct.a)
+FROM ComplexTypes ct
+GROUP BY TestStruct, ct.TestStruct
+--
+ERROR: Field name a does not exist in STRUCT<c INT32, d STRUCT<a INT32, b STRING>> [at 1:55]
+SELECT TestStruct.d as TestStruct, (SELECT TestStruct.a)
+                                                      ^
+==
+
+# 1.7 All fields in FROM are visible to SUM in SELECT.
+SELECT (SELECT TestStruct.d), SUM(TestStruct.c)
+FROM ComplexTypes ct
+GROUP BY 1
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.$col1#9 AS `$col1` [STRUCT<a INT32, b STRING>]
+| +-$aggregate.$agg1#8 AS `$col2` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$groupby.$col1#9, $aggregate.$agg1#8]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$groupby.$col1#9, $aggregate.$agg1#8]
+        +-input_scan=
+        | +-TableScan(column_list=[ComplexTypes.TestStruct#5], table=ComplexTypes, column_index_list=[4], alias="ct")
+        +-group_by_list=
+        | +-$col1#9 :=
+        |   +-SubqueryExpr
+        |     +-type=STRUCT<a INT32, b STRING>
+        |     +-subquery_type=SCALAR
+        |     +-parameter_list=
+        |     | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#5)
+        |     +-subquery=
+        |       +-ProjectScan
+        |         +-column_list=[$expr_subquery.d#7]
+        |         +-expr_list=
+        |         | +-d#7 :=
+        |         |   +-GetStructField
+        |         |     +-type=STRUCT<a INT32, b STRING>
+        |         |     +-expr=
+        |         |     | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#5, is_correlated=TRUE)
+        |         |     +-field_idx=1
+        |         +-input_scan=
+        |           +-SingleRowScan
+        +-aggregate_list=
+          +-$agg1#8 :=
+            +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+              +-Cast(INT32 -> INT64)
+                +-GetStructField
+                  +-type=INT32
+                  +-expr=
+                  | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#5)
+                  +-field_idx=0
+==
+
+
+##########################################################################
+# 2. Correlated subquery in the WHERE clause.
+##########################################################################
+# 2.1 The correlated reference is to the pre-grouped version of the grouping
+# column.
+SELECT TestStruct.d.a
+FROM ComplexTypes ct
+WHERE (SELECT {{ct.|}}TestStruct.d.a) > 1
+GROUP BY TestStruct.d
+--
+QueryStmt
++-output_column_list=
+| +-$query.a#9 AS a [INT32]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.a#9]
+    +-expr_list=
+    | +-a#9 :=
+    |   +-GetStructField
+    |     +-type=INT32
+    |     +-expr=
+    |     | +-ColumnRef(type=STRUCT<a INT32, b STRING>, column=$groupby.d#8)
+    |     +-field_idx=0
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$groupby.d#8]
+        +-input_scan=
+        | +-FilterScan
+        |   +-column_list=[ComplexTypes.TestStruct#5]
+        |   +-input_scan=
+        |   | +-TableScan(column_list=[ComplexTypes.TestStruct#5], table=ComplexTypes, column_index_list=[4], alias="ct")
+        |   +-filter_expr=
+        |     +-FunctionCall(GoogleSQL:$greater(INT32, INT32) -> BOOL)
+        |       +-SubqueryExpr
+        |       | +-type=INT32
+        |       | +-subquery_type=SCALAR
+        |       | +-parameter_list=
+        |       | | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#5)
+        |       | +-subquery=
+        |       |   +-ProjectScan
+        |       |     +-column_list=[$expr_subquery.a#7]
+        |       |     +-expr_list=
+        |       |     | +-a#7 :=
+        |       |     |   +-GetStructField
+        |       |     |     +-type=INT32
+        |       |     |     +-expr=
+        |       |     |     | +-GetStructField
+        |       |     |     |   +-type=STRUCT<a INT32, b STRING>
+        |       |     |     |   +-expr=
+        |       |     |     |   | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#5, is_correlated=TRUE)
+        |       |     |     |   +-field_idx=1
+        |       |     |     +-field_idx=0
+        |       |     +-input_scan=
+        |       |       +-SingleRowScan
+        |       +-Literal(type=INT32, value=1)
+        +-group_by_list=
+          +-d#8 :=
+            +-GetStructField
+              +-type=STRUCT<a INT32, b STRING>
+              +-expr=
+              | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#5)
+              +-field_idx=1
+==
+
+# 2.2 The correlated reference is on the pre-grouped version of the grouping
+# field.
+SELECT TestStruct.d
+FROM ComplexTypes ct
+WHERE (SELECT {{ct.|}}TestStruct.c) > 1
+GROUP BY TestStruct.d
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.d#8 AS d [STRUCT<a INT32, b STRING>]
++-query=
+  +-ProjectScan
+    +-column_list=[$groupby.d#8]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$groupby.d#8]
+        +-input_scan=
+        | +-FilterScan
+        |   +-column_list=[ComplexTypes.TestStruct#5]
+        |   +-input_scan=
+        |   | +-TableScan(column_list=[ComplexTypes.TestStruct#5], table=ComplexTypes, column_index_list=[4], alias="ct")
+        |   +-filter_expr=
+        |     +-FunctionCall(GoogleSQL:$greater(INT32, INT32) -> BOOL)
+        |       +-SubqueryExpr
+        |       | +-type=INT32
+        |       | +-subquery_type=SCALAR
+        |       | +-parameter_list=
+        |       | | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#5)
+        |       | +-subquery=
+        |       |   +-ProjectScan
+        |       |     +-column_list=[$expr_subquery.c#7]
+        |       |     +-expr_list=
+        |       |     | +-c#7 :=
+        |       |     |   +-GetStructField
+        |       |     |     +-type=INT32
+        |       |     |     +-expr=
+        |       |     |     | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#5, is_correlated=TRUE)
+        |       |     |     +-field_idx=0
+        |       |     +-input_scan=
+        |       |       +-SingleRowScan
+        |       +-Literal(type=INT32, value=1)
+        +-group_by_list=
+          +-d#8 :=
+            +-GetStructField
+              +-type=STRUCT<a INT32, b STRING>
+              +-expr=
+              | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#5)
+              +-field_idx=1
+==
+
+##########################################################################
+# 3. Correlated subquery in the GROUP BY clause.
+##########################################################################
+# 3.1 In the GROUP BY clause, correlated subquery columns resolve to the
+# pre-grouped version of the column, and/or to SELECT list aliases.
+SELECT 'foo'
+FROM ComplexTypes ct
+GROUP BY (SELECT TestStruct)
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#9 AS `$col1` [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#9]
+    +-expr_list=
+    | +-$col1#9 := Literal(type=STRING, value="foo")
+    +-input_scan=
+      +-AggregateScan
+        +-input_scan=
+        | +-TableScan(column_list=[ComplexTypes.TestStruct#5], table=ComplexTypes, column_index_list=[4], alias="ct")
+        +-group_by_list=
+          +-$groupbycol1#8 :=
+            +-SubqueryExpr
+              +-type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>
+              +-subquery_type=SCALAR
+              +-parameter_list=
+              | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#5)
+              +-subquery=
+                +-ProjectScan
+                  +-column_list=[$expr_subquery.TestStruct#7]
+                  +-expr_list=
+                  | +-TestStruct#7 := ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#5, is_correlated=TRUE)
+                  +-input_scan=
+                    +-SingleRowScan
+==
+
+# 3.2 Error - TestStruct.d is not visible post-group by
+SELECT {{ct.|}}TestStruct.d
+FROM ComplexTypes ct
+GROUP BY (SELECT {{ct.|}}TestStruct).d
+--
+ALTERNATION GROUPS:
+    ct.,ct.
+    ct.,
+--
+ERROR: SELECT list expression references ct.TestStruct.d which is neither grouped nor aggregated [at 1:8]
+SELECT ct.TestStruct.d
+       ^
+--
+ALTERNATION GROUPS:
+    ct.
+    <empty>
+--
+ERROR: SELECT list expression references TestStruct.d which is neither grouped nor aggregated [at 1:8]
+SELECT TestStruct.d
+       ^
+==
+
+# 3.3 All fields in FROM are visible to SUM in SELECT.
+SELECT SUM({{ct.|}}TestStruct.c)
+FROM ComplexTypes ct
+GROUP BY (SELECT {{ct.|}}TestStruct.d)
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#7 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#7]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$aggregate.$agg1#7]
+        +-input_scan=
+        | +-TableScan(column_list=[ComplexTypes.TestStruct#5], table=ComplexTypes, column_index_list=[4], alias="ct")
+        +-group_by_list=
+        | +-$groupbycol1#9 :=
+        |   +-SubqueryExpr
+        |     +-type=STRUCT<a INT32, b STRING>
+        |     +-subquery_type=SCALAR
+        |     +-parameter_list=
+        |     | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#5)
+        |     +-subquery=
+        |       +-ProjectScan
+        |         +-column_list=[$expr_subquery.d#8]
+        |         +-expr_list=
+        |         | +-d#8 :=
+        |         |   +-GetStructField
+        |         |     +-type=STRUCT<a INT32, b STRING>
+        |         |     +-expr=
+        |         |     | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#5, is_correlated=TRUE)
+        |         |     +-field_idx=1
+        |         +-input_scan=
+        |           +-SingleRowScan
+        +-aggregate_list=
+          +-$agg1#7 :=
+            +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+              +-Cast(INT32 -> INT64)
+                +-GetStructField
+                  +-type=INT32
+                  +-expr=
+                  | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#5)
+                  +-field_idx=0
+==
+
+# 3.4 Correlated reference in GROUP BY.
+SELECT TestStruct.d as TestStruct
+FROM ComplexTypes ct
+GROUP BY (SELECT {{ct.|}}TestStruct)
+--
+ERROR: SELECT list expression references TestStruct.d which is neither grouped nor aggregated [at 1:8]
+SELECT TestStruct.d as TestStruct
+       ^
+==
+
+# 3.5 Correlated reference in GROUP BY. 'TestStruct' is both a column in
+# ComplexTypes and an alias in SELECT list. The correlated reference
+# 'ct.TestStruct' is resolved to the column in ComplexTypes and 'TestStruct'
+# is resolved to the alias in SELECT list.
+SELECT TestStruct.d as TestStruct
+FROM ComplexTypes ct
+GROUP BY {{ct.|}}TestStruct, (SELECT {{ct.|}}TestStruct)
+--
+ALTERNATION GROUPS:
+    ct.,ct.
+    ct.,
+--
+QueryStmt
++-output_column_list=
+| +-$query.TestStruct#10 AS TestStruct [STRUCT<a INT32, b STRING>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.TestStruct#10]
+    +-expr_list=
+    | +-TestStruct#10 :=
+    |   +-GetStructField
+    |     +-type=STRUCT<a INT32, b STRING>
+    |     +-expr=
+    |     | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=$groupby.TestStruct#7)
+    |     +-field_idx=1
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$groupby.TestStruct#7]
+        +-input_scan=
+        | +-TableScan(column_list=[ComplexTypes.TestStruct#5], table=ComplexTypes, column_index_list=[4], alias="ct")
+        +-group_by_list=
+          +-TestStruct#7 := ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#5)
+          +-$groupbycol2#9 :=
+            +-SubqueryExpr
+              +-type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>
+              +-subquery_type=SCALAR
+              +-parameter_list=
+              | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#5)
+              +-subquery=
+                +-ProjectScan
+                  +-column_list=[$expr_subquery.TestStruct#8]
+                  +-expr_list=
+                  | +-TestStruct#8 := ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#5, is_correlated=TRUE)
+                  +-input_scan=
+                    +-SingleRowScan
+--
+ALTERNATION GROUPS:
+    ct.
+    <empty>
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.TestStruct#7 AS TestStruct [STRUCT<a INT32, b STRING>]
++-query=
+  +-ProjectScan
+    +-column_list=[$groupby.TestStruct#7]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$groupby.TestStruct#7]
+        +-input_scan=
+        | +-TableScan(column_list=[ComplexTypes.TestStruct#5], table=ComplexTypes, column_index_list=[4], alias="ct")
+        +-group_by_list=
+          +-TestStruct#7 :=
+          | +-GetStructField
+          |   +-type=STRUCT<a INT32, b STRING>
+          |   +-expr=
+          |   | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#5)
+          |   +-field_idx=1
+          +-$groupbycol2#9 :=
+            +-SubqueryExpr
+              +-type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>
+              +-subquery_type=SCALAR
+              +-parameter_list=
+              | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#5)
+              +-subquery=
+                +-ProjectScan
+                  +-column_list=[$expr_subquery.TestStruct#8]
+                  +-expr_list=
+                  | +-TestStruct#8 := ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#5, is_correlated=TRUE)
+                  +-input_scan=
+                    +-SingleRowScan
+==
+
+##########################################################################
+# 4. Correlated subquery in the HAVING clause.
+##########################################################################
+# In the HAVING clause, correlated subquery columns resolve to the post-grouped
+# version of the column, and/or to SELECT list aliases.
+#
+# 4.1
+SELECT {{ct.|}}TestStruct.d
+FROM ComplexTypes ct
+GROUP BY {{ct.|}}TestStruct.d
+HAVING (SELECT {{ct.|}}TestStruct.d.a) > 1;
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.d#8 AS d [STRUCT<a INT32, b STRING>]
++-query=
+  +-ProjectScan
+    +-column_list=[$groupby.d#8]
+    +-input_scan=
+      +-FilterScan
+        +-column_list=[$groupby.d#8]
+        +-input_scan=
+        | +-AggregateScan
+        |   +-column_list=[$groupby.d#8]
+        |   +-input_scan=
+        |   | +-ProjectScan
+        |   |   +-column_list=[ComplexTypes.TestStruct#5, $pre_groupby.d#7]
+        |   |   +-expr_list=
+        |   |   | +-d#7 :=
+        |   |   |   +-GetStructField
+        |   |   |     +-type=STRUCT<a INT32, b STRING>
+        |   |   |     +-expr=
+        |   |   |     | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#5)
+        |   |   |     +-field_idx=1
+        |   |   +-input_scan=
+        |   |     +-TableScan(column_list=[ComplexTypes.TestStruct#5], table=ComplexTypes, column_index_list=[4], alias="ct")
+        |   +-group_by_list=
+        |     +-d#8 := ColumnRef(type=STRUCT<a INT32, b STRING>, column=$pre_groupby.d#7)
+        +-filter_expr=
+          +-FunctionCall(GoogleSQL:$greater(INT32, INT32) -> BOOL)
+            +-SubqueryExpr
+            | +-type=INT32
+            | +-subquery_type=SCALAR
+            | +-parameter_list=
+            | | +-ColumnRef(type=STRUCT<a INT32, b STRING>, column=$groupby.d#8)
+            | +-subquery=
+            |   +-ProjectScan
+            |     +-column_list=[$expr_subquery.a#9]
+            |     +-expr_list=
+            |     | +-a#9 :=
+            |     |   +-GetStructField
+            |     |     +-type=INT32
+            |     |     +-expr=
+            |     |     | +-ColumnRef(type=STRUCT<a INT32, b STRING>, column=$groupby.d#8, is_correlated=TRUE)
+            |     |     +-field_idx=0
+            |     +-input_scan=
+            |       +-SingleRowScan
+            +-Literal(type=INT32, value=1)
+==
+
+# 4.2 Error - the correlated reference in subquery is a sibling of the GROUP BY.
+SELECT {{ct.|}}TestStruct.d.a
+FROM ComplexTypes ct
+GROUP BY {{ct.|}}TestStruct.d
+HAVING (SELECT TestStruct.c) > 1
+--
+ERROR: SELECT without FROM clause expression references TestStruct.c which is neither grouped nor aggregated [at 4:16]
+HAVING (SELECT TestStruct.c) > 1
+               ^
+==
+
+# 4.3 The correlated reference is resolved to select list alias.
+SELECT TestStruct.d as TestStruct
+FROM ComplexTypes ct
+GROUP BY TestStruct
+HAVING (SELECT TestStruct).a > 1;
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.TestStruct#8 AS TestStruct [STRUCT<a INT32, b STRING>]
++-query=
+  +-ProjectScan
+    +-column_list=[$groupby.TestStruct#8]
+    +-input_scan=
+      +-FilterScan
+        +-column_list=[$groupby.TestStruct#8]
+        +-input_scan=
+        | +-AggregateScan
+        |   +-column_list=[$groupby.TestStruct#8]
+        |   +-input_scan=
+        |   | +-ProjectScan
+        |   |   +-column_list=[ComplexTypes.TestStruct#5, $pre_groupby.TestStruct#7]
+        |   |   +-expr_list=
+        |   |   | +-TestStruct#7 :=
+        |   |   |   +-GetStructField
+        |   |   |     +-type=STRUCT<a INT32, b STRING>
+        |   |   |     +-expr=
+        |   |   |     | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#5)
+        |   |   |     +-field_idx=1
+        |   |   +-input_scan=
+        |   |     +-TableScan(column_list=[ComplexTypes.TestStruct#5], table=ComplexTypes, column_index_list=[4], alias="ct")
+        |   +-group_by_list=
+        |     +-TestStruct#8 := ColumnRef(type=STRUCT<a INT32, b STRING>, column=$pre_groupby.TestStruct#7)
+        +-filter_expr=
+          +-FunctionCall(GoogleSQL:$greater(INT32, INT32) -> BOOL)
+            +-GetStructField
+            | +-type=INT32
+            | +-expr=
+            | | +-SubqueryExpr
+            | |   +-type=STRUCT<a INT32, b STRING>
+            | |   +-subquery_type=SCALAR
+            | |   +-parameter_list=
+            | |   | +-ColumnRef(type=STRUCT<a INT32, b STRING>, column=$groupby.TestStruct#8)
+            | |   +-subquery=
+            | |     +-ProjectScan
+            | |       +-column_list=[$expr_subquery.TestStruct#9]
+            | |       +-expr_list=
+            | |       | +-TestStruct#9 := ColumnRef(type=STRUCT<a INT32, b STRING>, column=$groupby.TestStruct#8, is_correlated=TRUE)
+            | |       +-input_scan=
+            | |         +-SingleRowScan
+            | +-field_idx=0
+            +-Literal(type=INT32, value=1)
+==
+
+# 4.4 Correlated reference in HAVING. 'TestStruct' is resolved to post-group by.
+# 'ct.TestStruct' is resolved to pre-group by.
+SELECT TestStruct.d as TestStruct
+FROM ComplexTypes ct
+GROUP BY TestStruct, ct.TestStruct
+HAVING (SELECT {{ct.|}}TestStruct.c) > 1
+--
+ALTERNATION GROUP: ct.
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.TestStruct#8 AS TestStruct [STRUCT<a INT32, b STRING>]
++-query=
+  +-ProjectScan
+    +-column_list=[$groupby.TestStruct#8]
+    +-input_scan=
+      +-FilterScan
+        +-column_list=$groupby.[TestStruct#8, TestStruct#9]
+        +-input_scan=
+        | +-AggregateScan
+        |   +-column_list=$groupby.[TestStruct#8, TestStruct#9]
+        |   +-input_scan=
+        |   | +-ProjectScan
+        |   |   +-column_list=[ComplexTypes.TestStruct#5, $pre_groupby.TestStruct#7]
+        |   |   +-expr_list=
+        |   |   | +-TestStruct#7 :=
+        |   |   |   +-GetStructField
+        |   |   |     +-type=STRUCT<a INT32, b STRING>
+        |   |   |     +-expr=
+        |   |   |     | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#5)
+        |   |   |     +-field_idx=1
+        |   |   +-input_scan=
+        |   |     +-TableScan(column_list=[ComplexTypes.TestStruct#5], table=ComplexTypes, column_index_list=[4], alias="ct")
+        |   +-group_by_list=
+        |     +-TestStruct#8 := ColumnRef(type=STRUCT<a INT32, b STRING>, column=$pre_groupby.TestStruct#7)
+        |     +-TestStruct#9 := ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#5)
+        +-filter_expr=
+          +-FunctionCall(GoogleSQL:$greater(INT32, INT32) -> BOOL)
+            +-SubqueryExpr
+            | +-type=INT32
+            | +-subquery_type=SCALAR
+            | +-parameter_list=
+            | | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=$groupby.TestStruct#9)
+            | +-subquery=
+            |   +-ProjectScan
+            |     +-column_list=[$expr_subquery.c#10]
+            |     +-expr_list=
+            |     | +-c#10 :=
+            |     |   +-GetStructField
+            |     |     +-type=INT32
+            |     |     +-expr=
+            |     |     | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=$groupby.TestStruct#9, is_correlated=TRUE)
+            |     |     +-field_idx=0
+            |     +-input_scan=
+            |       +-SingleRowScan
+            +-Literal(type=INT32, value=1)
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: Field name c does not exist in STRUCT<a INT32, b STRING> [at 4:27]
+HAVING (SELECT TestStruct.c) > 1
+                          ^
+==
+
+# 4.5 TestStruct is resolved to post-group by, '.a' is top level.
+SELECT TestStruct.d as TestStruct
+FROM ComplexTypes ct
+GROUP BY TestStruct, ct.TestStruct
+HAVING (SELECT TestStruct.a) > 1
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.TestStruct#8 AS TestStruct [STRUCT<a INT32, b STRING>]
++-query=
+  +-ProjectScan
+    +-column_list=[$groupby.TestStruct#8]
+    +-input_scan=
+      +-FilterScan
+        +-column_list=[$groupby.TestStruct#8]
+        +-input_scan=
+        | +-AggregateScan
+        |   +-column_list=[$groupby.TestStruct#8]
+        |   +-input_scan=
+        |   | +-ProjectScan
+        |   |   +-column_list=[ComplexTypes.TestStruct#5, $pre_groupby.TestStruct#7]
+        |   |   +-expr_list=
+        |   |   | +-TestStruct#7 :=
+        |   |   |   +-GetStructField
+        |   |   |     +-type=STRUCT<a INT32, b STRING>
+        |   |   |     +-expr=
+        |   |   |     | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#5)
+        |   |   |     +-field_idx=1
+        |   |   +-input_scan=
+        |   |     +-TableScan(column_list=[ComplexTypes.TestStruct#5], table=ComplexTypes, column_index_list=[4], alias="ct")
+        |   +-group_by_list=
+        |     +-TestStruct#8 := ColumnRef(type=STRUCT<a INT32, b STRING>, column=$pre_groupby.TestStruct#7)
+        |     +-TestStruct#9 := ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#5)
+        +-filter_expr=
+          +-FunctionCall(GoogleSQL:$greater(INT32, INT32) -> BOOL)
+            +-SubqueryExpr
+            | +-type=INT32
+            | +-subquery_type=SCALAR
+            | +-parameter_list=
+            | | +-ColumnRef(type=STRUCT<a INT32, b STRING>, column=$groupby.TestStruct#8)
+            | +-subquery=
+            |   +-ProjectScan
+            |     +-column_list=[$expr_subquery.a#10]
+            |     +-expr_list=
+            |     | +-a#10 :=
+            |     |   +-GetStructField
+            |     |     +-type=INT32
+            |     |     +-expr=
+            |     |     | +-ColumnRef(type=STRUCT<a INT32, b STRING>, column=$groupby.TestStruct#8, is_correlated=TRUE)
+            |     |     +-field_idx=0
+            |     +-input_scan=
+            |       +-SingleRowScan
+            +-Literal(type=INT32, value=1)
+==
+
+# 4.6
+SELECT TestStruct.d as TestStruct
+FROM ComplexTypes ct
+GROUP BY ct.TestStruct, TestStruct
+HAVING (SELECT {{ct.|}}TestStruct.d.a) > 1
+--
+ALTERNATION GROUP: ct.
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.TestStruct#9 AS TestStruct [STRUCT<a INT32, b STRING>]
++-query=
+  +-ProjectScan
+    +-column_list=[$groupby.TestStruct#9]
+    +-input_scan=
+      +-FilterScan
+        +-column_list=[$groupby.TestStruct#9]
+        +-input_scan=
+        | +-AggregateScan
+        |   +-column_list=[$groupby.TestStruct#9]
+        |   +-input_scan=
+        |   | +-ProjectScan
+        |   |   +-column_list=[ComplexTypes.TestStruct#5, $pre_groupby.TestStruct#7]
+        |   |   +-expr_list=
+        |   |   | +-TestStruct#7 :=
+        |   |   |   +-GetStructField
+        |   |   |     +-type=STRUCT<a INT32, b STRING>
+        |   |   |     +-expr=
+        |   |   |     | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#5)
+        |   |   |     +-field_idx=1
+        |   |   +-input_scan=
+        |   |     +-TableScan(column_list=[ComplexTypes.TestStruct#5], table=ComplexTypes, column_index_list=[4], alias="ct")
+        |   +-group_by_list=
+        |     +-TestStruct#8 := ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#5)
+        |     +-TestStruct#9 := ColumnRef(type=STRUCT<a INT32, b STRING>, column=$pre_groupby.TestStruct#7)
+        +-filter_expr=
+          +-FunctionCall(GoogleSQL:$greater(INT32, INT32) -> BOOL)
+            +-SubqueryExpr
+            | +-type=INT32
+            | +-subquery_type=SCALAR
+            | +-parameter_list=
+            | | +-ColumnRef(type=STRUCT<a INT32, b STRING>, column=$groupby.TestStruct#9)
+            | +-subquery=
+            |   +-ProjectScan
+            |     +-column_list=[$expr_subquery.a#10]
+            |     +-expr_list=
+            |     | +-a#10 :=
+            |     |   +-GetStructField
+            |     |     +-type=INT32
+            |     |     +-expr=
+            |     |     | +-ColumnRef(type=STRUCT<a INT32, b STRING>, column=$groupby.TestStruct#9, is_correlated=TRUE)
+            |     |     +-field_idx=0
+            |     +-input_scan=
+            |       +-SingleRowScan
+            +-Literal(type=INT32, value=1)
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: Field name d does not exist in STRUCT<a INT32, b STRING> [at 4:27]
+HAVING (SELECT TestStruct.d.a) > 1
+                          ^
+==
+
+##########################################################################
+# 5. Correlated subquery in the ORDER BY clause.
+##########################################################################
+# In the ORDER BY clause, correlated subquery columns resolve to the
+# post-grouped version of the column, and/or to SELECT list aliases (that
+# are GROUPed).
+#
+# 5.1 Refer to sub-fields within the group by struct.
+SELECT TestStruct.d
+FROM ComplexTypes ct
+GROUP BY TestStruct.d
+ORDER BY (SELECT {{ct.|}}TestStruct.d.a);
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.d#8 AS d [STRUCT<a INT32, b STRING>]
++-query=
+  +-OrderByScan
+    +-column_list=[$groupby.d#8]
+    +-is_ordered=TRUE
+    +-input_scan=
+    | +-ProjectScan
+    |   +-column_list=[$groupby.d#8, $orderby.$orderbycol1#10]
+    |   +-expr_list=
+    |   | +-$orderbycol1#10 :=
+    |   |   +-SubqueryExpr
+    |   |     +-type=INT32
+    |   |     +-subquery_type=SCALAR
+    |   |     +-parameter_list=
+    |   |     | +-ColumnRef(type=STRUCT<a INT32, b STRING>, column=$groupby.d#8)
+    |   |     +-subquery=
+    |   |       +-ProjectScan
+    |   |         +-column_list=[$expr_subquery.a#9]
+    |   |         +-expr_list=
+    |   |         | +-a#9 :=
+    |   |         |   +-GetStructField
+    |   |         |     +-type=INT32
+    |   |         |     +-expr=
+    |   |         |     | +-ColumnRef(type=STRUCT<a INT32, b STRING>, column=$groupby.d#8, is_correlated=TRUE)
+    |   |         |     +-field_idx=0
+    |   |         +-input_scan=
+    |   |           +-SingleRowScan
+    |   +-input_scan=
+    |     +-AggregateScan
+    |       +-column_list=[$groupby.d#8]
+    |       +-input_scan=
+    |       | +-ProjectScan
+    |       |   +-column_list=[ComplexTypes.TestStruct#5, $pre_groupby.d#7]
+    |       |   +-expr_list=
+    |       |   | +-d#7 :=
+    |       |   |   +-GetStructField
+    |       |   |     +-type=STRUCT<a INT32, b STRING>
+    |       |   |     +-expr=
+    |       |   |     | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#5)
+    |       |   |     +-field_idx=1
+    |       |   +-input_scan=
+    |       |     +-TableScan(column_list=[ComplexTypes.TestStruct#5], table=ComplexTypes, column_index_list=[4], alias="ct")
+    |       +-group_by_list=
+    |         +-d#8 := ColumnRef(type=STRUCT<a INT32, b STRING>, column=$pre_groupby.d#7)
+    +-order_by_item_list=
+      +-OrderByItem
+        +-column_ref=
+          +-ColumnRef(type=INT32, column=$orderby.$orderbycol1#10)
+==
+
+# 5.2 Refer to nested fields within the GROUP BY struct.
+SELECT TestStruct as ts
+FROM ComplexTypes ct
+GROUP BY TestStruct
+ORDER BY (SELECT TestStruct).d.a;
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.TestStruct#7 AS ts [STRUCT<c INT32, d STRUCT<a INT32, b STRING>>]
++-query=
+  +-OrderByScan
+    +-column_list=[$groupby.TestStruct#7]
+    +-is_ordered=TRUE
+    +-input_scan=
+    | +-ProjectScan
+    |   +-column_list=[$groupby.TestStruct#7, $orderby.$orderbycol1#9]
+    |   +-expr_list=
+    |   | +-$orderbycol1#9 :=
+    |   |   +-GetStructField
+    |   |     +-type=INT32
+    |   |     +-expr=
+    |   |     | +-GetStructField
+    |   |     |   +-type=STRUCT<a INT32, b STRING>
+    |   |     |   +-expr=
+    |   |     |   | +-SubqueryExpr
+    |   |     |   |   +-type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>
+    |   |     |   |   +-subquery_type=SCALAR
+    |   |     |   |   +-parameter_list=
+    |   |     |   |   | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=$groupby.TestStruct#7)
+    |   |     |   |   +-subquery=
+    |   |     |   |     +-ProjectScan
+    |   |     |   |       +-column_list=[$expr_subquery.TestStruct#8]
+    |   |     |   |       +-expr_list=
+    |   |     |   |       | +-TestStruct#8 := ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=$groupby.TestStruct#7, is_correlated=TRUE)
+    |   |     |   |       +-input_scan=
+    |   |     |   |         +-SingleRowScan
+    |   |     |   +-field_idx=1
+    |   |     +-field_idx=0
+    |   +-input_scan=
+    |     +-AggregateScan
+    |       +-column_list=[$groupby.TestStruct#7]
+    |       +-input_scan=
+    |       | +-TableScan(column_list=[ComplexTypes.TestStruct#5], table=ComplexTypes, column_index_list=[4], alias="ct")
+    |       +-group_by_list=
+    |         +-TestStruct#7 := ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#5)
+    +-order_by_item_list=
+      +-OrderByItem
+        +-column_ref=
+          +-ColumnRef(type=INT32, column=$orderby.$orderbycol1#9)
+==
+
+# 5.3 Error- the correlated reference is sibling of the group by.
+SELECT SUM(TestStruct.d.a)
+FROM ComplexTypes ct
+GROUP BY TestStruct.d
+ORDER BY {{(SELECT TestStruct.c)|(SELECT TestStruct).c}}
+--
+ALTERNATION GROUP: (SELECT TestStruct.c)
+--
+ERROR: SELECT without FROM clause expression references TestStruct.c which is neither grouped nor aggregated [at 4:18]
+ORDER BY (SELECT TestStruct.c)
+                 ^
+--
+ALTERNATION GROUP: (SELECT TestStruct).c
+--
+ERROR: SELECT without FROM clause expression references column TestStruct which is neither grouped nor aggregated [at 4:18]
+ORDER BY (SELECT TestStruct).c
+                 ^
+==
+
+##########################################################################
+# 6. Correlated subquery tests, nested correlated subqueries two levels deep.
+##########################################################################
+# Correlated subquery in the SELECT list.
+# 6.1
+SELECT (SELECT as struct TestStruct.d.a, (SELECT TestStruct.d))
+FROM ComplexTypes
+GROUP BY TestStruct
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#16 AS `$col1` [STRUCT<a INT32, STRUCT<a INT32, b STRING>>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#16]
+    +-expr_list=
+    | +-$col1#16 :=
+    |   +-SubqueryExpr
+    |     +-type=STRUCT<a INT32, STRUCT<a INT32, b STRING>>
+    |     +-subquery_type=SCALAR
+    |     +-parameter_list=
+    |     | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=$groupby.TestStruct#11)
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$make_struct.$struct#15]
+    |         +-expr_list=
+    |         | +-$struct#15 :=
+    |         |   +-MakeStruct
+    |         |     +-type=STRUCT<a INT32, STRUCT<a INT32, b STRING>>
+    |         |     +-field_list=
+    |         |       +-ColumnRef(type=INT32, column=$expr_subquery.a#13)
+    |         |       +-ColumnRef(type=STRUCT<a INT32, b STRING>, column=$expr_subquery.$col2#14)
+    |         +-input_scan=
+    |           +-ProjectScan
+    |             +-column_list=$expr_subquery.[a#13, $col2#14]
+    |             +-expr_list=
+    |             | +-a#13 :=
+    |             | | +-GetStructField
+    |             | |   +-type=INT32
+    |             | |   +-expr=
+    |             | |   | +-GetStructField
+    |             | |   |   +-type=STRUCT<a INT32, b STRING>
+    |             | |   |   +-expr=
+    |             | |   |   | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=$groupby.TestStruct#11, is_correlated=TRUE)
+    |             | |   |   +-field_idx=1
+    |             | |   +-field_idx=0
+    |             | +-$col2#14 :=
+    |             |   +-SubqueryExpr
+    |             |     +-type=STRUCT<a INT32, b STRING>
+    |             |     +-subquery_type=SCALAR
+    |             |     +-parameter_list=
+    |             |     | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=$groupby.TestStruct#11, is_correlated=TRUE)
+    |             |     +-subquery=
+    |             |       +-ProjectScan
+    |             |         +-column_list=[$expr_subquery.d#12]
+    |             |         +-expr_list=
+    |             |         | +-d#12 :=
+    |             |         |   +-GetStructField
+    |             |         |     +-type=STRUCT<a INT32, b STRING>
+    |             |         |     +-expr=
+    |             |         |     | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=$groupby.TestStruct#11, is_correlated=TRUE)
+    |             |         |     +-field_idx=1
+    |             |         +-input_scan=
+    |             |           +-SingleRowScan
+    |             +-input_scan=
+    |               +-SingleRowScan
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$groupby.TestStruct#11]
+        +-input_scan=
+        | +-TableScan(column_list=[ComplexTypes.TestStruct#5], table=ComplexTypes, column_index_list=[4])
+        +-group_by_list=
+          +-TestStruct#11 := ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#5)
+==
+
+# 6.2 Error - Refers to a sibling field of the GROUP BY.
+SELECT (SELECT as struct TestStruct.d.a, (SELECT TestStruct.c))
+FROM ComplexTypes
+GROUP BY TestStruct.d
+--
+ERROR: SELECT without FROM clause expression references TestStruct.c which is neither grouped nor aggregated [at 1:50]
+SELECT (SELECT as struct TestStruct.d.a, (SELECT TestStruct.c))
+                                                 ^
+==
+
+# 6.3 'TestStruct.c' is resolved to GROUP BY regardless of range variable
+# prefix. TestStruct.d.a is resolved to GROUP BY field only when prefixed with
+# 'ct.'
+SELECT TestStruct.d.a + (
+  SELECT {{ct.|}}TestStruct.c +
+    (SELECT {{ct.|}}TestStruct.d.a FROM ComplexTypes))
+FROM ComplexTypes ct
+GROUP BY TestStruct
+--
+ALTERNATION GROUPS:
+    ct.,ct.
+    ct.
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#24 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#24]
+    +-expr_list=
+    | +-$col1#24 :=
+    |   +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |     +-Cast(INT32 -> INT64)
+    |     | +-GetStructField
+    |     |   +-type=INT32
+    |     |   +-expr=
+    |     |   | +-GetStructField
+    |     |   |   +-type=STRUCT<a INT32, b STRING>
+    |     |   |   +-expr=
+    |     |   |   | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=$groupby.TestStruct#15)
+    |     |   |   +-field_idx=1
+    |     |   +-field_idx=0
+    |     +-SubqueryExpr
+    |       +-type=INT64
+    |       +-subquery_type=SCALAR
+    |       +-parameter_list=
+    |       | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=$groupby.TestStruct#15)
+    |       +-subquery=
+    |         +-ProjectScan
+    |           +-column_list=[$expr_subquery.$col1#23]
+    |           +-expr_list=
+    |           | +-$col1#23 :=
+    |           |   +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |           |     +-Cast(INT32 -> INT64)
+    |           |     | +-GetStructField
+    |           |     |   +-type=INT32
+    |           |     |   +-expr=
+    |           |     |   | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=$groupby.TestStruct#15, is_correlated=TRUE)
+    |           |     |   +-field_idx=0
+    |           |     +-Cast(INT32 -> INT64)
+    |           |       +-SubqueryExpr
+    |           |         +-type=INT32
+    |           |         +-subquery_type=SCALAR
+    |           |         +-parameter_list=
+    |           |         | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=$groupby.TestStruct#15, is_correlated=TRUE)
+    |           |         +-subquery=
+    |           |           +-ProjectScan
+    |           |             +-column_list=[$expr_subquery.a#22]
+    |           |             +-expr_list=
+    |           |             | +-a#22 :=
+    |           |             |   +-GetStructField
+    |           |             |     +-type=INT32
+    |           |             |     +-expr=
+    |           |             |     | +-GetStructField
+    |           |             |     |   +-type=STRUCT<a INT32, b STRING>
+    |           |             |     |   +-expr=
+    |           |             |     |   | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=$groupby.TestStruct#15, is_correlated=TRUE)
+    |           |             |     |   +-field_idx=1
+    |           |             |     +-field_idx=0
+    |           |             +-input_scan=
+    |           |               +-TableScan(table=ComplexTypes)
+    |           +-input_scan=
+    |             +-SingleRowScan
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$groupby.TestStruct#15]
+        +-input_scan=
+        | +-TableScan(column_list=[ComplexTypes.TestStruct#5], table=ComplexTypes, column_index_list=[4], alias="ct")
+        +-group_by_list=
+          +-TestStruct#15 := ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#5)
+--
+ALTERNATION GROUPS:
+    ct.,
+    <empty>
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#24 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#24]
+    +-expr_list=
+    | +-$col1#24 :=
+    |   +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |     +-Cast(INT32 -> INT64)
+    |     | +-GetStructField
+    |     |   +-type=INT32
+    |     |   +-expr=
+    |     |   | +-GetStructField
+    |     |   |   +-type=STRUCT<a INT32, b STRING>
+    |     |   |   +-expr=
+    |     |   |   | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=$groupby.TestStruct#15)
+    |     |   |   +-field_idx=1
+    |     |   +-field_idx=0
+    |     +-SubqueryExpr
+    |       +-type=INT64
+    |       +-subquery_type=SCALAR
+    |       +-parameter_list=
+    |       | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=$groupby.TestStruct#15)
+    |       +-subquery=
+    |         +-ProjectScan
+    |           +-column_list=[$expr_subquery.$col1#23]
+    |           +-expr_list=
+    |           | +-$col1#23 :=
+    |           |   +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |           |     +-Cast(INT32 -> INT64)
+    |           |     | +-GetStructField
+    |           |     |   +-type=INT32
+    |           |     |   +-expr=
+    |           |     |   | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=$groupby.TestStruct#15, is_correlated=TRUE)
+    |           |     |   +-field_idx=0
+    |           |     +-Cast(INT32 -> INT64)
+    |           |       +-SubqueryExpr
+    |           |         +-type=INT32
+    |           |         +-subquery_type=SCALAR
+    |           |         +-subquery=
+    |           |           +-ProjectScan
+    |           |             +-column_list=[$expr_subquery.a#22]
+    |           |             +-expr_list=
+    |           |             | +-a#22 :=
+    |           |             |   +-GetStructField
+    |           |             |     +-type=INT32
+    |           |             |     +-expr=
+    |           |             |     | +-GetStructField
+    |           |             |     |   +-type=STRUCT<a INT32, b STRING>
+    |           |             |     |   +-expr=
+    |           |             |     |   | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#20)
+    |           |             |     |   +-field_idx=1
+    |           |             |     +-field_idx=0
+    |           |             +-input_scan=
+    |           |               +-TableScan(column_list=[ComplexTypes.TestStruct#20], table=ComplexTypes, column_index_list=[4])
+    |           +-input_scan=
+    |             +-SingleRowScan
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$groupby.TestStruct#15]
+        +-input_scan=
+        | +-TableScan(column_list=[ComplexTypes.TestStruct#5], table=ComplexTypes, column_index_list=[4], alias="ct")
+        +-group_by_list=
+          +-TestStruct#15 := ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#5)
+==
+
+# 6.4
+SELECT (SELECT AS STRUCT TestStruct.c, (SELECT TestStruct).d)
+FROM ComplexTypes
+GROUP BY TestStruct
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#16 AS `$col1` [STRUCT<c INT32, d STRUCT<a INT32, b STRING>>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#16]
+    +-expr_list=
+    | +-$col1#16 :=
+    |   +-SubqueryExpr
+    |     +-type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>
+    |     +-subquery_type=SCALAR
+    |     +-parameter_list=
+    |     | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=$groupby.TestStruct#11)
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$make_struct.$struct#15]
+    |         +-expr_list=
+    |         | +-$struct#15 :=
+    |         |   +-MakeStruct
+    |         |     +-type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>
+    |         |     +-field_list=
+    |         |       +-ColumnRef(type=INT32, column=$expr_subquery.c#13)
+    |         |       +-ColumnRef(type=STRUCT<a INT32, b STRING>, column=$expr_subquery.d#14)
+    |         +-input_scan=
+    |           +-ProjectScan
+    |             +-column_list=$expr_subquery.[c#13, d#14]
+    |             +-expr_list=
+    |             | +-c#13 :=
+    |             | | +-GetStructField
+    |             | |   +-type=INT32
+    |             | |   +-expr=
+    |             | |   | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=$groupby.TestStruct#11, is_correlated=TRUE)
+    |             | |   +-field_idx=0
+    |             | +-d#14 :=
+    |             |   +-GetStructField
+    |             |     +-type=STRUCT<a INT32, b STRING>
+    |             |     +-expr=
+    |             |     | +-SubqueryExpr
+    |             |     |   +-type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>
+    |             |     |   +-subquery_type=SCALAR
+    |             |     |   +-parameter_list=
+    |             |     |   | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=$groupby.TestStruct#11, is_correlated=TRUE)
+    |             |     |   +-subquery=
+    |             |     |     +-ProjectScan
+    |             |     |       +-column_list=[$expr_subquery.TestStruct#12]
+    |             |     |       +-expr_list=
+    |             |     |       | +-TestStruct#12 := ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=$groupby.TestStruct#11, is_correlated=TRUE)
+    |             |     |       +-input_scan=
+    |             |     |         +-SingleRowScan
+    |             |     +-field_idx=1
+    |             +-input_scan=
+    |               +-SingleRowScan
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$groupby.TestStruct#11]
+        +-input_scan=
+        | +-TableScan(column_list=[ComplexTypes.TestStruct#5], table=ComplexTypes, column_index_list=[4])
+        +-group_by_list=
+          +-TestStruct#11 := ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#5)
+==
+
+# 6.5 Correlated subquery in the WHERE clause.
+SELECT TestStruct.d.b
+FROM ComplexTypes
+WHERE (SELECT (SELECT key + TestStruct.d.a)) > 1
+GROUP BY TestStruct.d
+--
+QueryStmt
++-output_column_list=
+| +-$query.b#10 AS b [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.b#10]
+    +-expr_list=
+    | +-b#10 :=
+    |   +-GetStructField
+    |     +-type=STRING
+    |     +-expr=
+    |     | +-ColumnRef(type=STRUCT<a INT32, b STRING>, column=$groupby.d#9)
+    |     +-field_idx=1
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$groupby.d#9]
+        +-input_scan=
+        | +-FilterScan
+        |   +-column_list=ComplexTypes.[key#1, TestStruct#5]
+        |   +-input_scan=
+        |   | +-TableScan(column_list=ComplexTypes.[key#1, TestStruct#5], table=ComplexTypes, column_index_list=[0, 4])
+        |   +-filter_expr=
+        |     +-FunctionCall(GoogleSQL:$greater(INT64, INT64) -> BOOL)
+        |       +-SubqueryExpr
+        |       | +-type=INT64
+        |       | +-subquery_type=SCALAR
+        |       | +-parameter_list=
+        |       | | +-ColumnRef(type=INT32, column=ComplexTypes.key#1)
+        |       | | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#5)
+        |       | +-subquery=
+        |       |   +-ProjectScan
+        |       |     +-column_list=[$expr_subquery.$col1#8]
+        |       |     +-expr_list=
+        |       |     | +-$col1#8 :=
+        |       |     |   +-SubqueryExpr
+        |       |     |     +-type=INT64
+        |       |     |     +-subquery_type=SCALAR
+        |       |     |     +-parameter_list=
+        |       |     |     | +-ColumnRef(type=INT32, column=ComplexTypes.key#1, is_correlated=TRUE)
+        |       |     |     | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#5, is_correlated=TRUE)
+        |       |     |     +-subquery=
+        |       |     |       +-ProjectScan
+        |       |     |         +-column_list=[$expr_subquery.$col1#7]
+        |       |     |         +-expr_list=
+        |       |     |         | +-$col1#7 :=
+        |       |     |         |   +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+        |       |     |         |     +-Cast(INT32 -> INT64)
+        |       |     |         |     | +-ColumnRef(type=INT32, column=ComplexTypes.key#1, is_correlated=TRUE)
+        |       |     |         |     +-Cast(INT32 -> INT64)
+        |       |     |         |       +-GetStructField
+        |       |     |         |         +-type=INT32
+        |       |     |         |         +-expr=
+        |       |     |         |         | +-GetStructField
+        |       |     |         |         |   +-type=STRUCT<a INT32, b STRING>
+        |       |     |         |         |   +-expr=
+        |       |     |         |         |   | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#5, is_correlated=TRUE)
+        |       |     |         |         |   +-field_idx=1
+        |       |     |         |         +-field_idx=0
+        |       |     |         +-input_scan=
+        |       |     |           +-SingleRowScan
+        |       |     +-input_scan=
+        |       |       +-SingleRowScan
+        |       +-Literal(type=INT64, value=1)
+        +-group_by_list=
+          +-d#9 :=
+            +-GetStructField
+              +-type=STRUCT<a INT32, b STRING>
+              +-expr=
+              | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#5)
+              +-field_idx=1
+==
+
+# 6.6 Correlated subquery in the GROUP BY clause
+SELECT TestStruct.d.b
+FROM ComplexTypes
+GROUP BY (SELECT (SELECT TestStruct).d)
+--
+ERROR: SELECT list expression references TestStruct.d.b which is neither grouped nor aggregated [at 1:8]
+SELECT TestStruct.d.b
+       ^
+==
+
+# 6.7 Correlated reference in GROUP BY
+SELECT TestStruct.d
+FROM ComplexTypes
+GROUP BY (SELECT (SELECT TestStruct.d))
+--
+ERROR: SELECT list expression references TestStruct.d which is neither grouped nor aggregated [at 1:8]
+SELECT TestStruct.d
+       ^
+==
+
+# 6.8 Correlated reference in HAVING
+SELECT TestStruct
+FROM ComplexTypes
+GROUP BY TestStruct
+HAVING (SELECT (SELECT TestStruct).d).a = 5
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.TestStruct#7 AS TestStruct [STRUCT<c INT32, d STRUCT<a INT32, b STRING>>]
++-query=
+  +-ProjectScan
+    +-column_list=[$groupby.TestStruct#7]
+    +-input_scan=
+      +-FilterScan
+        +-column_list=[$groupby.TestStruct#7]
+        +-input_scan=
+        | +-AggregateScan
+        |   +-column_list=[$groupby.TestStruct#7]
+        |   +-input_scan=
+        |   | +-TableScan(column_list=[ComplexTypes.TestStruct#5], table=ComplexTypes, column_index_list=[4])
+        |   +-group_by_list=
+        |     +-TestStruct#7 := ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#5)
+        +-filter_expr=
+          +-FunctionCall(GoogleSQL:$equal(INT32, INT32) -> BOOL)
+            +-GetStructField
+            | +-type=INT32
+            | +-expr=
+            | | +-SubqueryExpr
+            | |   +-type=STRUCT<a INT32, b STRING>
+            | |   +-subquery_type=SCALAR
+            | |   +-parameter_list=
+            | |   | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=$groupby.TestStruct#7)
+            | |   +-subquery=
+            | |     +-ProjectScan
+            | |       +-column_list=[$expr_subquery.d#9]
+            | |       +-expr_list=
+            | |       | +-d#9 :=
+            | |       |   +-GetStructField
+            | |       |     +-type=STRUCT<a INT32, b STRING>
+            | |       |     +-expr=
+            | |       |     | +-SubqueryExpr
+            | |       |     |   +-type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>
+            | |       |     |   +-subquery_type=SCALAR
+            | |       |     |   +-parameter_list=
+            | |       |     |   | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=$groupby.TestStruct#7, is_correlated=TRUE)
+            | |       |     |   +-subquery=
+            | |       |     |     +-ProjectScan
+            | |       |     |       +-column_list=[$expr_subquery.TestStruct#8]
+            | |       |     |       +-expr_list=
+            | |       |     |       | +-TestStruct#8 := ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=$groupby.TestStruct#7, is_correlated=TRUE)
+            | |       |     |       +-input_scan=
+            | |       |     |         +-SingleRowScan
+            | |       |     +-field_idx=1
+            | |       +-input_scan=
+            | |         +-SingleRowScan
+            | +-field_idx=0
+            +-Literal(type=INT32, value=5)
+==
+
+# 6.9 Correlated reference in HAVING
+SELECT TestStruct.d.a
+FROM ComplexTypes
+GROUP BY TestStruct
+HAVING (SELECT (SELECT TestStruct.d.a)) = 5
+--
+QueryStmt
++-output_column_list=
+| +-$query.a#9 AS a [INT32]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.a#9]
+    +-input_scan=
+      +-FilterScan
+        +-column_list=[$groupby.TestStruct#8, $query.a#9]
+        +-input_scan=
+        | +-ProjectScan
+        |   +-column_list=[$groupby.TestStruct#8, $query.a#9]
+        |   +-expr_list=
+        |   | +-a#9 :=
+        |   |   +-GetStructField
+        |   |     +-type=INT32
+        |   |     +-expr=
+        |   |     | +-GetStructField
+        |   |     |   +-type=STRUCT<a INT32, b STRING>
+        |   |     |   +-expr=
+        |   |     |   | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=$groupby.TestStruct#8)
+        |   |     |   +-field_idx=1
+        |   |     +-field_idx=0
+        |   +-input_scan=
+        |     +-AggregateScan
+        |       +-column_list=[$groupby.TestStruct#8]
+        |       +-input_scan=
+        |       | +-ProjectScan
+        |       |   +-column_list=[ComplexTypes.TestStruct#5, $pre_groupby.a#7]
+        |       |   +-expr_list=
+        |       |   | +-a#7 :=
+        |       |   |   +-GetStructField
+        |       |   |     +-type=INT32
+        |       |   |     +-expr=
+        |       |   |     | +-GetStructField
+        |       |   |     |   +-type=STRUCT<a INT32, b STRING>
+        |       |   |     |   +-expr=
+        |       |   |     |   | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#5)
+        |       |   |     |   +-field_idx=1
+        |       |   |     +-field_idx=0
+        |       |   +-input_scan=
+        |       |     +-TableScan(column_list=[ComplexTypes.TestStruct#5], table=ComplexTypes, column_index_list=[4])
+        |       +-group_by_list=
+        |         +-TestStruct#8 := ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#5)
+        +-filter_expr=
+          +-FunctionCall(GoogleSQL:$equal(INT32, INT32) -> BOOL)
+            +-SubqueryExpr
+            | +-type=INT32
+            | +-subquery_type=SCALAR
+            | +-parameter_list=
+            | | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=$groupby.TestStruct#8)
+            | +-subquery=
+            |   +-ProjectScan
+            |     +-column_list=[$expr_subquery.$col1#11]
+            |     +-expr_list=
+            |     | +-$col1#11 :=
+            |     |   +-SubqueryExpr
+            |     |     +-type=INT32
+            |     |     +-subquery_type=SCALAR
+            |     |     +-parameter_list=
+            |     |     | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=$groupby.TestStruct#8, is_correlated=TRUE)
+            |     |     +-subquery=
+            |     |       +-ProjectScan
+            |     |         +-column_list=[$expr_subquery.a#10]
+            |     |         +-expr_list=
+            |     |         | +-a#10 :=
+            |     |         |   +-GetStructField
+            |     |         |     +-type=INT32
+            |     |         |     +-expr=
+            |     |         |     | +-GetStructField
+            |     |         |     |   +-type=STRUCT<a INT32, b STRING>
+            |     |         |     |   +-expr=
+            |     |         |     |   | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=$groupby.TestStruct#8, is_correlated=TRUE)
+            |     |         |     |   +-field_idx=1
+            |     |         |     +-field_idx=0
+            |     |         +-input_scan=
+            |     |           +-SingleRowScan
+            |     +-input_scan=
+            |       +-SingleRowScan
+            +-Literal(type=INT32, value=5)
+==
+
+# 6.10 Error - refers to invalid field .
+SELECT TestStruct.d.a
+FROM ComplexTypes
+GROUP BY TestStruct.d
+HAVING (SELECT (SELECT TestStruct.d)).c = 5
+--
+ERROR: Field name c does not exist in STRUCT<a INT32, b STRING> [at 4:39]
+HAVING (SELECT (SELECT TestStruct.d)).c = 5
+                                      ^
+==
+
+# 6.11 'TestStruct' is both a column in ComplexTypes and an alias in SELECT
+# list, the correlated reference is resolved to the alias.
+SELECT TestStruct.d AS TestStruct
+FROM ComplexTypes
+GROUP BY TestStruct
+HAVING (SELECT (SELECT TestStruct.a)) = 5
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.TestStruct#8 AS TestStruct [STRUCT<a INT32, b STRING>]
++-query=
+  +-ProjectScan
+    +-column_list=[$groupby.TestStruct#8]
+    +-input_scan=
+      +-FilterScan
+        +-column_list=[$groupby.TestStruct#8]
+        +-input_scan=
+        | +-AggregateScan
+        |   +-column_list=[$groupby.TestStruct#8]
+        |   +-input_scan=
+        |   | +-ProjectScan
+        |   |   +-column_list=[ComplexTypes.TestStruct#5, $pre_groupby.TestStruct#7]
+        |   |   +-expr_list=
+        |   |   | +-TestStruct#7 :=
+        |   |   |   +-GetStructField
+        |   |   |     +-type=STRUCT<a INT32, b STRING>
+        |   |   |     +-expr=
+        |   |   |     | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#5)
+        |   |   |     +-field_idx=1
+        |   |   +-input_scan=
+        |   |     +-TableScan(column_list=[ComplexTypes.TestStruct#5], table=ComplexTypes, column_index_list=[4])
+        |   +-group_by_list=
+        |     +-TestStruct#8 := ColumnRef(type=STRUCT<a INT32, b STRING>, column=$pre_groupby.TestStruct#7)
+        +-filter_expr=
+          +-FunctionCall(GoogleSQL:$equal(INT32, INT32) -> BOOL)
+            +-SubqueryExpr
+            | +-type=INT32
+            | +-subquery_type=SCALAR
+            | +-parameter_list=
+            | | +-ColumnRef(type=STRUCT<a INT32, b STRING>, column=$groupby.TestStruct#8)
+            | +-subquery=
+            |   +-ProjectScan
+            |     +-column_list=[$expr_subquery.$col1#10]
+            |     +-expr_list=
+            |     | +-$col1#10 :=
+            |     |   +-SubqueryExpr
+            |     |     +-type=INT32
+            |     |     +-subquery_type=SCALAR
+            |     |     +-parameter_list=
+            |     |     | +-ColumnRef(type=STRUCT<a INT32, b STRING>, column=$groupby.TestStruct#8, is_correlated=TRUE)
+            |     |     +-subquery=
+            |     |       +-ProjectScan
+            |     |         +-column_list=[$expr_subquery.a#9]
+            |     |         +-expr_list=
+            |     |         | +-a#9 :=
+            |     |         |   +-GetStructField
+            |     |         |     +-type=INT32
+            |     |         |     +-expr=
+            |     |         |     | +-ColumnRef(type=STRUCT<a INT32, b STRING>, column=$groupby.TestStruct#8, is_correlated=TRUE)
+            |     |         |     +-field_idx=0
+            |     |         +-input_scan=
+            |     |           +-SingleRowScan
+            |     +-input_scan=
+            |       +-SingleRowScan
+            +-Literal(type=INT32, value=5)
+==
+
+# 6.12 Correlated subquery in the ORDER BY clause.
+SELECT TestStruct
+FROM ComplexTypes
+GROUP BY TestStruct
+ORDER BY (SELECT (SELECT TestStruct).c + TestStruct.d.a)
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.TestStruct#7 AS TestStruct [STRUCT<c INT32, d STRUCT<a INT32, b STRING>>]
++-query=
+  +-OrderByScan
+    +-column_list=[$groupby.TestStruct#7]
+    +-is_ordered=TRUE
+    +-input_scan=
+    | +-ProjectScan
+    |   +-column_list=[$groupby.TestStruct#7, $orderby.$orderbycol1#10]
+    |   +-expr_list=
+    |   | +-$orderbycol1#10 :=
+    |   |   +-SubqueryExpr
+    |   |     +-type=INT64
+    |   |     +-subquery_type=SCALAR
+    |   |     +-parameter_list=
+    |   |     | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=$groupby.TestStruct#7)
+    |   |     +-subquery=
+    |   |       +-ProjectScan
+    |   |         +-column_list=[$expr_subquery.$col1#9]
+    |   |         +-expr_list=
+    |   |         | +-$col1#9 :=
+    |   |         |   +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |   |         |     +-Cast(INT32 -> INT64)
+    |   |         |     | +-GetStructField
+    |   |         |     |   +-type=INT32
+    |   |         |     |   +-expr=
+    |   |         |     |   | +-SubqueryExpr
+    |   |         |     |   |   +-type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>
+    |   |         |     |   |   +-subquery_type=SCALAR
+    |   |         |     |   |   +-parameter_list=
+    |   |         |     |   |   | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=$groupby.TestStruct#7, is_correlated=TRUE)
+    |   |         |     |   |   +-subquery=
+    |   |         |     |   |     +-ProjectScan
+    |   |         |     |   |       +-column_list=[$expr_subquery.TestStruct#8]
+    |   |         |     |   |       +-expr_list=
+    |   |         |     |   |       | +-TestStruct#8 := ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=$groupby.TestStruct#7, is_correlated=TRUE)
+    |   |         |     |   |       +-input_scan=
+    |   |         |     |   |         +-SingleRowScan
+    |   |         |     |   +-field_idx=0
+    |   |         |     +-Cast(INT32 -> INT64)
+    |   |         |       +-GetStructField
+    |   |         |         +-type=INT32
+    |   |         |         +-expr=
+    |   |         |         | +-GetStructField
+    |   |         |         |   +-type=STRUCT<a INT32, b STRING>
+    |   |         |         |   +-expr=
+    |   |         |         |   | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=$groupby.TestStruct#7, is_correlated=TRUE)
+    |   |         |         |   +-field_idx=1
+    |   |         |         +-field_idx=0
+    |   |         +-input_scan=
+    |   |           +-SingleRowScan
+    |   +-input_scan=
+    |     +-AggregateScan
+    |       +-column_list=[$groupby.TestStruct#7]
+    |       +-input_scan=
+    |       | +-TableScan(column_list=[ComplexTypes.TestStruct#5], table=ComplexTypes, column_index_list=[4])
+    |       +-group_by_list=
+    |         +-TestStruct#7 := ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#5)
+    +-order_by_item_list=
+      +-OrderByItem
+        +-column_ref=
+          +-ColumnRef(type=INT64, column=$orderby.$orderbycol1#10)
+==
+
+# 6.13 Error - refers to field not visible after the GROUP BY.
+SELECT TestStruct.d
+FROM ComplexTypes
+GROUP BY TestStruct.d
+ORDER BY (SELECT (SELECT TestStruct.d.a + TestStruct.c))
+--
+ERROR: SELECT without FROM clause expression references TestStruct.c which is neither grouped nor aggregated [at 4:43]
+ORDER BY (SELECT (SELECT TestStruct.d.a + TestStruct.c))
+                                          ^
+==
+
+##########################################################################
+# 7. Tests with two levels of correlation, where both outer queries have
+# GROUP BY.
+##########################################################################
+# 7.1 Correlated reference in SELECT
+#
+# The correlated 'TestStruct' reference resolves to the outer query, and
+# resolves to the post-grouped.
+SELECT TestStruct, (SELECT (ct.TestStruct.d, (SELECT ct.TestStruct.d.a))
+                  FROM ComplexTypes
+                  GROUP BY TestStruct.d)
+FROM ComplexTypes ct
+GROUP BY TestStruct
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.TestStruct#17 AS TestStruct [STRUCT<c INT32, d STRUCT<a INT32, b STRING>>]
+| +-$query.$col2#28 AS `$col2` [STRUCT<STRUCT<a INT32, b STRING>, INT32>]
++-query=
+  +-ProjectScan
+    +-column_list=[$groupby.TestStruct#17, $query.$col2#28]
+    +-expr_list=
+    | +-$col2#28 :=
+    |   +-SubqueryExpr
+    |     +-type=STRUCT<STRUCT<a INT32, b STRING>, INT32>
+    |     +-subquery_type=SCALAR
+    |     +-parameter_list=
+    |     | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=$groupby.TestStruct#17)
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$expr_subquery.$col1#27]
+    |         +-expr_list=
+    |         | +-$col1#27 :=
+    |         |   +-MakeStruct
+    |         |     +-type=STRUCT<STRUCT<a INT32, b STRING>, INT32>
+    |         |     +-field_list=
+    |         |       +-GetStructField
+    |         |       | +-type=STRUCT<a INT32, b STRING>
+    |         |       | +-expr=
+    |         |       | | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=$groupby.TestStruct#17, is_correlated=TRUE)
+    |         |       | +-field_idx=1
+    |         |       +-SubqueryExpr
+    |         |         +-type=INT32
+    |         |         +-subquery_type=SCALAR
+    |         |         +-parameter_list=
+    |         |         | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=$groupby.TestStruct#17, is_correlated=TRUE)
+    |         |         +-subquery=
+    |         |           +-ProjectScan
+    |         |             +-column_list=[$expr_subquery.a#26]
+    |         |             +-expr_list=
+    |         |             | +-a#26 :=
+    |         |             |   +-GetStructField
+    |         |             |     +-type=INT32
+    |         |             |     +-expr=
+    |         |             |     | +-GetStructField
+    |         |             |     |   +-type=STRUCT<a INT32, b STRING>
+    |         |             |     |   +-expr=
+    |         |             |     |   | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=$groupby.TestStruct#17, is_correlated=TRUE)
+    |         |             |     |   +-field_idx=1
+    |         |             |     +-field_idx=0
+    |         |             +-input_scan=
+    |         |               +-SingleRowScan
+    |         +-input_scan=
+    |           +-AggregateScan
+    |             +-input_scan=
+    |             | +-TableScan(column_list=[ComplexTypes.TestStruct#22], table=ComplexTypes, column_index_list=[4])
+    |             +-group_by_list=
+    |               +-d#25 :=
+    |                 +-GetStructField
+    |                   +-type=STRUCT<a INT32, b STRING>
+    |                   +-expr=
+    |                   | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#22)
+    |                   +-field_idx=1
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$groupby.TestStruct#17]
+        +-input_scan=
+        | +-TableScan(column_list=[ComplexTypes.TestStruct#5], table=ComplexTypes, column_index_list=[4], alias="ct")
+        +-group_by_list=
+          +-TestStruct#17 := ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#5)
+==
+
+# 7.2 Error because the correlated "TestStruct.c" resolves to the middle query
+# and fails to resolve since "TestStruct.c" is not visible to post-GROUP BY
+# in the middle query.
+SELECT TestStruct,
+       (SELECT (TestStruct.d.a, (SELECT TestStruct.c))
+                  FROM ComplexTypes
+                  GROUP BY TestStruct.d)
+FROM ComplexTypes
+GROUP BY TestStruct
+--
+ERROR: SELECT without FROM clause expression references TestStruct.c which is neither grouped nor aggregated [at 2:41]
+       (SELECT (TestStruct.d.a, (SELECT TestStruct.c))
+                                        ^
+==
+
+# 7.3 Correlated 'TestStruct' reference resolves to the outermost query.
+SELECT TestStruct,
+  (SELECT as struct TestStruct.d.a, (SELECT as struct TestStruct.c, TestEnum)
+   FROM TestTable
+   GROUP BY TestEnum)
+FROM ComplexTypes
+GROUP BY TestStruct
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.TestStruct#20 AS TestStruct [STRUCT<c INT32, d STRUCT<a INT32, b STRING>>]
+| +-$query.$col2#34 AS `$col2` [STRUCT<a INT32, STRUCT<c INT32, TestEnum ENUM<googlesql_test.TestEnum>>>]
++-query=
+  +-ProjectScan
+    +-column_list=[$groupby.TestStruct#20, $query.$col2#34]
+    +-expr_list=
+    | +-$col2#34 :=
+    |   +-SubqueryExpr
+    |     +-type=STRUCT<a INT32, STRUCT<c INT32, TestEnum ENUM<googlesql_test.TestEnum>>>
+    |     +-subquery_type=SCALAR
+    |     +-parameter_list=
+    |     | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=$groupby.TestStruct#20)
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$make_struct.$struct#33]
+    |         +-expr_list=
+    |         | +-$struct#33 :=
+    |         |   +-MakeStruct
+    |         |     +-type=STRUCT<a INT32, STRUCT<c INT32, TestEnum ENUM<googlesql_test.TestEnum>>>
+    |         |     +-field_list=
+    |         |       +-ColumnRef(type=INT32, column=$expr_subquery.a#28)
+    |         |       +-ColumnRef(type=STRUCT<c INT32, TestEnum ENUM<googlesql_test.TestEnum>>, column=$expr_subquery.$col2#32)
+    |         +-input_scan=
+    |           +-ProjectScan
+    |             +-column_list=$expr_subquery.[a#28, $col2#32]
+    |             +-expr_list=
+    |             | +-a#28 :=
+    |             | | +-GetStructField
+    |             | |   +-type=INT32
+    |             | |   +-expr=
+    |             | |   | +-GetStructField
+    |             | |   |   +-type=STRUCT<a INT32, b STRING>
+    |             | |   |   +-expr=
+    |             | |   |   | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=$groupby.TestStruct#20, is_correlated=TRUE)
+    |             | |   |   +-field_idx=1
+    |             | |   +-field_idx=0
+    |             | +-$col2#32 :=
+    |             |   +-SubqueryExpr
+    |             |     +-type=STRUCT<c INT32, TestEnum ENUM<googlesql_test.TestEnum>>
+    |             |     +-subquery_type=SCALAR
+    |             |     +-parameter_list=
+    |             |     | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=$groupby.TestStruct#20, is_correlated=TRUE)
+    |             |     | +-ColumnRef(type=ENUM<googlesql_test.TestEnum>, column=$groupby.TestEnum#27)
+    |             |     +-subquery=
+    |             |       +-ProjectScan
+    |             |         +-column_list=[$make_struct.$struct#31]
+    |             |         +-expr_list=
+    |             |         | +-$struct#31 :=
+    |             |         |   +-MakeStruct
+    |             |         |     +-type=STRUCT<c INT32, TestEnum ENUM<googlesql_test.TestEnum>>
+    |             |         |     +-field_list=
+    |             |         |       +-ColumnRef(type=INT32, column=$expr_subquery.c#29)
+    |             |         |       +-ColumnRef(type=ENUM<googlesql_test.TestEnum>, column=$expr_subquery.TestEnum#30)
+    |             |         +-input_scan=
+    |             |           +-ProjectScan
+    |             |             +-column_list=$expr_subquery.[c#29, TestEnum#30]
+    |             |             +-expr_list=
+    |             |             | +-c#29 :=
+    |             |             | | +-GetStructField
+    |             |             | |   +-type=INT32
+    |             |             | |   +-expr=
+    |             |             | |   | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=$groupby.TestStruct#20, is_correlated=TRUE)
+    |             |             | |   +-field_idx=0
+    |             |             | +-TestEnum#30 := ColumnRef(type=ENUM<googlesql_test.TestEnum>, column=$groupby.TestEnum#27, is_correlated=TRUE)
+    |             |             +-input_scan=
+    |             |               +-SingleRowScan
+    |             +-input_scan=
+    |               +-AggregateScan
+    |                 +-column_list=[$groupby.TestEnum#27]
+    |                 +-input_scan=
+    |                 | +-TableScan(column_list=[TestTable.TestEnum#22], table=TestTable, column_index_list=[1])
+    |                 +-group_by_list=
+    |                   +-TestEnum#27 := ColumnRef(type=ENUM<googlesql_test.TestEnum>, column=TestTable.TestEnum#22)
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$groupby.TestStruct#20]
+        +-input_scan=
+        | +-TableScan(column_list=[ComplexTypes.TestStruct#5], table=ComplexTypes, column_index_list=[4])
+        +-group_by_list=
+          +-TestStruct#20 := ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#5)
+==
+
+# 7.4 Correlated subquery in WHERE.
+SELECT TestStruct.c
+FROM ComplexTypes ct
+WHERE (
+  SELECT TestStruct.d.a
+  FROM ComplexTypes WHERE (SELECT key + ct.TestStruct.c) > 1
+  GROUP BY TestStruct) > 1
+GROUP BY TestStruct
+--
+QueryStmt
++-output_column_list=
+| +-$query.c#17 AS c [INT32]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.c#17]
+    +-expr_list=
+    | +-c#17 :=
+    |   +-GetStructField
+    |     +-type=INT32
+    |     +-expr=
+    |     | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=$groupby.TestStruct#16)
+    |     +-field_idx=0
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$groupby.TestStruct#16]
+        +-input_scan=
+        | +-FilterScan
+        |   +-column_list=[ComplexTypes.TestStruct#5]
+        |   +-input_scan=
+        |   | +-TableScan(column_list=[ComplexTypes.TestStruct#5], table=ComplexTypes, column_index_list=[4], alias="ct")
+        |   +-filter_expr=
+        |     +-FunctionCall(GoogleSQL:$greater(INT32, INT32) -> BOOL)
+        |       +-SubqueryExpr
+        |       | +-type=INT32
+        |       | +-subquery_type=SCALAR
+        |       | +-parameter_list=
+        |       | | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#5)
+        |       | +-subquery=
+        |       |   +-ProjectScan
+        |       |     +-column_list=[$expr_subquery.a#15]
+        |       |     +-expr_list=
+        |       |     | +-a#15 :=
+        |       |     |   +-GetStructField
+        |       |     |     +-type=INT32
+        |       |     |     +-expr=
+        |       |     |     | +-GetStructField
+        |       |     |     |   +-type=STRUCT<a INT32, b STRING>
+        |       |     |     |   +-expr=
+        |       |     |     |   | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=$groupby.TestStruct#14)
+        |       |     |     |   +-field_idx=1
+        |       |     |     +-field_idx=0
+        |       |     +-input_scan=
+        |       |       +-AggregateScan
+        |       |         +-column_list=[$groupby.TestStruct#14]
+        |       |         +-input_scan=
+        |       |         | +-FilterScan
+        |       |         |   +-column_list=ComplexTypes.[key#7, TestStruct#11]
+        |       |         |   +-input_scan=
+        |       |         |   | +-TableScan(column_list=ComplexTypes.[key#7, TestStruct#11], table=ComplexTypes, column_index_list=[0, 4])
+        |       |         |   +-filter_expr=
+        |       |         |     +-FunctionCall(GoogleSQL:$greater(INT64, INT64) -> BOOL)
+        |       |         |       +-SubqueryExpr
+        |       |         |       | +-type=INT64
+        |       |         |       | +-subquery_type=SCALAR
+        |       |         |       | +-parameter_list=
+        |       |         |       | | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#5, is_correlated=TRUE)
+        |       |         |       | | +-ColumnRef(type=INT32, column=ComplexTypes.key#7)
+        |       |         |       | +-subquery=
+        |       |         |       |   +-ProjectScan
+        |       |         |       |     +-column_list=[$expr_subquery.$col1#13]
+        |       |         |       |     +-expr_list=
+        |       |         |       |     | +-$col1#13 :=
+        |       |         |       |     |   +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+        |       |         |       |     |     +-Cast(INT32 -> INT64)
+        |       |         |       |     |     | +-ColumnRef(type=INT32, column=ComplexTypes.key#7, is_correlated=TRUE)
+        |       |         |       |     |     +-Cast(INT32 -> INT64)
+        |       |         |       |     |       +-GetStructField
+        |       |         |       |     |         +-type=INT32
+        |       |         |       |     |         +-expr=
+        |       |         |       |     |         | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#5, is_correlated=TRUE)
+        |       |         |       |     |         +-field_idx=0
+        |       |         |       |     +-input_scan=
+        |       |         |       |       +-SingleRowScan
+        |       |         |       +-Literal(type=INT64, value=1)
+        |       |         +-group_by_list=
+        |       |           +-TestStruct#14 := ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#11)
+        |       +-Literal(type=INT32, value=1)
+        +-group_by_list=
+          +-TestStruct#16 := ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#5)
+==
+
+# 7.5 Correlated subquery in HAVING clause.
+SELECT TestStruct
+FROM ComplexTypes ct
+GROUP BY TestStruct
+HAVING (SELECT TestStruct.c
+        FROM ComplexTypes
+        GROUP BY TestStruct
+        HAVING (SELECT TestStruct.d.a = ct.TestStruct.d.a)) = 1;
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.TestStruct#7 AS TestStruct [STRUCT<c INT32, d STRUCT<a INT32, b STRING>>]
++-query=
+  +-ProjectScan
+    +-column_list=[$groupby.TestStruct#7]
+    +-input_scan=
+      +-FilterScan
+        +-column_list=[$groupby.TestStruct#7]
+        +-input_scan=
+        | +-AggregateScan
+        |   +-column_list=[$groupby.TestStruct#7]
+        |   +-input_scan=
+        |   | +-TableScan(column_list=[ComplexTypes.TestStruct#5], table=ComplexTypes, column_index_list=[4], alias="ct")
+        |   +-group_by_list=
+        |     +-TestStruct#7 := ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#5)
+        +-filter_expr=
+          +-FunctionCall(GoogleSQL:$equal(INT32, INT32) -> BOOL)
+            +-SubqueryExpr
+            | +-type=INT32
+            | +-subquery_type=SCALAR
+            | +-parameter_list=
+            | | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=$groupby.TestStruct#7)
+            | +-subquery=
+            |   +-ProjectScan
+            |     +-column_list=[$expr_subquery.c#16]
+            |     +-input_scan=
+            |       +-FilterScan
+            |         +-column_list=[$groupby.TestStruct#15, $expr_subquery.c#16]
+            |         +-input_scan=
+            |         | +-ProjectScan
+            |         |   +-column_list=[$groupby.TestStruct#15, $expr_subquery.c#16]
+            |         |   +-expr_list=
+            |         |   | +-c#16 :=
+            |         |   |   +-GetStructField
+            |         |   |     +-type=INT32
+            |         |   |     +-expr=
+            |         |   |     | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=$groupby.TestStruct#15)
+            |         |   |     +-field_idx=0
+            |         |   +-input_scan=
+            |         |     +-AggregateScan
+            |         |       +-column_list=[$groupby.TestStruct#15]
+            |         |       +-input_scan=
+            |         |       | +-ProjectScan
+            |         |       |   +-column_list=[ComplexTypes.TestStruct#12, $pre_groupby.c#14]
+            |         |       |   +-expr_list=
+            |         |       |   | +-c#14 :=
+            |         |       |   |   +-GetStructField
+            |         |       |   |     +-type=INT32
+            |         |       |   |     +-expr=
+            |         |       |   |     | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#12)
+            |         |       |   |     +-field_idx=0
+            |         |       |   +-input_scan=
+            |         |       |     +-TableScan(column_list=[ComplexTypes.TestStruct#12], table=ComplexTypes, column_index_list=[4])
+            |         |       +-group_by_list=
+            |         |         +-TestStruct#15 := ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#12)
+            |         +-filter_expr=
+            |           +-SubqueryExpr
+            |             +-type=BOOL
+            |             +-subquery_type=SCALAR
+            |             +-parameter_list=
+            |             | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=$groupby.TestStruct#7, is_correlated=TRUE)
+            |             | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=$groupby.TestStruct#15)
+            |             +-subquery=
+            |               +-ProjectScan
+            |                 +-column_list=[$expr_subquery.$col1#17]
+            |                 +-expr_list=
+            |                 | +-$col1#17 :=
+            |                 |   +-FunctionCall(GoogleSQL:$equal(INT32, INT32) -> BOOL)
+            |                 |     +-GetStructField
+            |                 |     | +-type=INT32
+            |                 |     | +-expr=
+            |                 |     | | +-GetStructField
+            |                 |     | |   +-type=STRUCT<a INT32, b STRING>
+            |                 |     | |   +-expr=
+            |                 |     | |   | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=$groupby.TestStruct#15, is_correlated=TRUE)
+            |                 |     | |   +-field_idx=1
+            |                 |     | +-field_idx=0
+            |                 |     +-GetStructField
+            |                 |       +-type=INT32
+            |                 |       +-expr=
+            |                 |       | +-GetStructField
+            |                 |       |   +-type=STRUCT<a INT32, b STRING>
+            |                 |       |   +-expr=
+            |                 |       |   | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=$groupby.TestStruct#7, is_correlated=TRUE)
+            |                 |       |   +-field_idx=1
+            |                 |       +-field_idx=0
+            |                 +-input_scan=
+            |                   +-SingleRowScan
+            +-Literal(type=INT32, value=1)
+==
+
+# 7.6 Error - correlated reference refers to field invisible post-GROUP BY.
+SELECT TestStruct.d.a
+FROM ComplexTypes ct
+GROUP BY TestStruct.d
+HAVING (SELECT TestStruct.d.a
+        FROM ComplexTypes
+        GROUP BY TestStruct
+        HAVING (SELECT TestStruct.c = ct.TestStruct.c)) = 1;
+--
+ERROR: SELECT without FROM clause expression references ct.TestStruct.c which is neither grouped nor aggregated [at 7:39]
+        HAVING (SELECT TestStruct.c = ct.TestStruct.c)) = 1;
+                                      ^
+==
+
+# 7.7 Correlated subquery in ORDER BY.
+SELECT TestStruct
+FROM ComplexTypes ct
+GROUP BY TestStruct
+ORDER BY (SELECT TestStruct.d.a
+        FROM ComplexTypes
+        GROUP BY TestStruct.d
+        ORDER BY (SELECT ct.TestStruct.c = TestStruct.d.a))
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.TestStruct#7 AS TestStruct [STRUCT<c INT32, d STRUCT<a INT32, b STRING>>]
++-query=
+  +-OrderByScan
+    +-column_list=[$groupby.TestStruct#7]
+    +-is_ordered=TRUE
+    +-input_scan=
+    | +-ProjectScan
+    |   +-column_list=[$groupby.TestStruct#7, $orderby.$orderbycol1#19]
+    |   +-expr_list=
+    |   | +-$orderbycol1#19 :=
+    |   |   +-SubqueryExpr
+    |   |     +-type=INT32
+    |   |     +-subquery_type=SCALAR
+    |   |     +-parameter_list=
+    |   |     | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=$groupby.TestStruct#7)
+    |   |     +-subquery=
+    |   |       +-OrderByScan
+    |   |         +-column_list=[$expr_subquery.a#16]
+    |   |         +-input_scan=
+    |   |         | +-ProjectScan
+    |   |         |   +-column_list=[$groupby.d#15, $expr_subquery.a#16, $orderby.$orderbycol1#18]
+    |   |         |   +-expr_list=
+    |   |         |   | +-$orderbycol1#18 :=
+    |   |         |   |   +-SubqueryExpr
+    |   |         |   |     +-type=BOOL
+    |   |         |   |     +-subquery_type=SCALAR
+    |   |         |   |     +-parameter_list=
+    |   |         |   |     | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=$groupby.TestStruct#7, is_correlated=TRUE)
+    |   |         |   |     | +-ColumnRef(type=STRUCT<a INT32, b STRING>, column=$groupby.d#15)
+    |   |         |   |     +-subquery=
+    |   |         |   |       +-ProjectScan
+    |   |         |   |         +-column_list=[$expr_subquery.$col1#17]
+    |   |         |   |         +-expr_list=
+    |   |         |   |         | +-$col1#17 :=
+    |   |         |   |         |   +-FunctionCall(GoogleSQL:$equal(INT32, INT32) -> BOOL)
+    |   |         |   |         |     +-GetStructField
+    |   |         |   |         |     | +-type=INT32
+    |   |         |   |         |     | +-expr=
+    |   |         |   |         |     | | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=$groupby.TestStruct#7, is_correlated=TRUE)
+    |   |         |   |         |     | +-field_idx=0
+    |   |         |   |         |     +-GetStructField
+    |   |         |   |         |       +-type=INT32
+    |   |         |   |         |       +-expr=
+    |   |         |   |         |       | +-ColumnRef(type=STRUCT<a INT32, b STRING>, column=$groupby.d#15, is_correlated=TRUE)
+    |   |         |   |         |       +-field_idx=0
+    |   |         |   |         +-input_scan=
+    |   |         |   |           +-SingleRowScan
+    |   |         |   +-input_scan=
+    |   |         |     +-ProjectScan
+    |   |         |       +-column_list=[$groupby.d#15, $expr_subquery.a#16]
+    |   |         |       +-expr_list=
+    |   |         |       | +-a#16 :=
+    |   |         |       |   +-GetStructField
+    |   |         |       |     +-type=INT32
+    |   |         |       |     +-expr=
+    |   |         |       |     | +-ColumnRef(type=STRUCT<a INT32, b STRING>, column=$groupby.d#15)
+    |   |         |       |     +-field_idx=0
+    |   |         |       +-input_scan=
+    |   |         |         +-AggregateScan
+    |   |         |           +-column_list=[$groupby.d#15]
+    |   |         |           +-input_scan=
+    |   |         |           | +-ProjectScan
+    |   |         |           |   +-column_list=[ComplexTypes.TestStruct#12, $pre_groupby.a#14]
+    |   |         |           |   +-expr_list=
+    |   |         |           |   | +-a#14 :=
+    |   |         |           |   |   +-GetStructField
+    |   |         |           |   |     +-type=INT32
+    |   |         |           |   |     +-expr=
+    |   |         |           |   |     | +-GetStructField
+    |   |         |           |   |     |   +-type=STRUCT<a INT32, b STRING>
+    |   |         |           |   |     |   +-expr=
+    |   |         |           |   |     |   | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#12)
+    |   |         |           |   |     |   +-field_idx=1
+    |   |         |           |   |     +-field_idx=0
+    |   |         |           |   +-input_scan=
+    |   |         |           |     +-TableScan(column_list=[ComplexTypes.TestStruct#12], table=ComplexTypes, column_index_list=[4])
+    |   |         |           +-group_by_list=
+    |   |         |             +-d#15 :=
+    |   |         |               +-GetStructField
+    |   |         |                 +-type=STRUCT<a INT32, b STRING>
+    |   |         |                 +-expr=
+    |   |         |                 | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#12)
+    |   |         |                 +-field_idx=1
+    |   |         +-order_by_item_list=
+    |   |           +-OrderByItem
+    |   |             +-column_ref=
+    |   |               +-ColumnRef(type=BOOL, column=$orderby.$orderbycol1#18)
+    |   +-input_scan=
+    |     +-AggregateScan
+    |       +-column_list=[$groupby.TestStruct#7]
+    |       +-input_scan=
+    |       | +-TableScan(column_list=[ComplexTypes.TestStruct#5], table=ComplexTypes, column_index_list=[4], alias="ct")
+    |       +-group_by_list=
+    |         +-TestStruct#7 := ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#5)
+    +-order_by_item_list=
+      +-OrderByItem
+        +-column_ref=
+          +-ColumnRef(type=INT32, column=$orderby.$orderbycol1#19)
+==
+
+# 7.8 Correlated reference in SELECT, GROUP BY of the subquery.
+SELECT TestStruct.d
+FROM ComplexTypes ct
+GROUP BY TestStruct
+ORDER BY (
+  SELECT ct.TestStruct.c
+  FROM ComplexTypes
+  GROUP BY ct.TestStruct.d
+  ORDER BY (SELECT ct.TestStruct.d.a))
+--
+QueryStmt
++-output_column_list=
+| +-$query.d#9 AS d [STRUCT<a INT32, b STRING>]
++-query=
+  +-OrderByScan
+    +-column_list=[$query.d#9]
+    +-is_ordered=TRUE
+    +-input_scan=
+    | +-ProjectScan
+    |   +-column_list=[$groupby.TestStruct#8, $query.d#9, $orderby.$orderbycol1#21]
+    |   +-expr_list=
+    |   | +-$orderbycol1#21 :=
+    |   |   +-SubqueryExpr
+    |   |     +-type=INT32
+    |   |     +-subquery_type=SCALAR
+    |   |     +-parameter_list=
+    |   |     | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=$groupby.TestStruct#8)
+    |   |     +-subquery=
+    |   |       +-OrderByScan
+    |   |         +-column_list=[$expr_subquery.c#18]
+    |   |         +-input_scan=
+    |   |         | +-ProjectScan
+    |   |         |   +-column_list=[$expr_subquery.c#18, $orderby.$orderbycol1#20]
+    |   |         |   +-expr_list=
+    |   |         |   | +-$orderbycol1#20 :=
+    |   |         |   |   +-SubqueryExpr
+    |   |         |   |     +-type=INT32
+    |   |         |   |     +-subquery_type=SCALAR
+    |   |         |   |     +-parameter_list=
+    |   |         |   |     | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=$groupby.TestStruct#8, is_correlated=TRUE)
+    |   |         |   |     +-subquery=
+    |   |         |   |       +-ProjectScan
+    |   |         |   |         +-column_list=[$expr_subquery.a#19]
+    |   |         |   |         +-expr_list=
+    |   |         |   |         | +-a#19 :=
+    |   |         |   |         |   +-GetStructField
+    |   |         |   |         |     +-type=INT32
+    |   |         |   |         |     +-expr=
+    |   |         |   |         |     | +-GetStructField
+    |   |         |   |         |     |   +-type=STRUCT<a INT32, b STRING>
+    |   |         |   |         |     |   +-expr=
+    |   |         |   |         |     |   | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=$groupby.TestStruct#8, is_correlated=TRUE)
+    |   |         |   |         |     |   +-field_idx=1
+    |   |         |   |         |     +-field_idx=0
+    |   |         |   |         +-input_scan=
+    |   |         |   |           +-SingleRowScan
+    |   |         |   +-input_scan=
+    |   |         |     +-ProjectScan
+    |   |         |       +-column_list=[$expr_subquery.c#18]
+    |   |         |       +-expr_list=
+    |   |         |       | +-c#18 :=
+    |   |         |       |   +-GetStructField
+    |   |         |       |     +-type=INT32
+    |   |         |       |     +-expr=
+    |   |         |       |     | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=$groupby.TestStruct#8, is_correlated=TRUE)
+    |   |         |       |     +-field_idx=0
+    |   |         |       +-input_scan=
+    |   |         |         +-AggregateScan
+    |   |         |           +-input_scan=
+    |   |         |           | +-ProjectScan
+    |   |         |           |   +-column_list=[$pre_groupby.c#16]
+    |   |         |           |   +-expr_list=
+    |   |         |           |   | +-c#16 :=
+    |   |         |           |   |   +-GetStructField
+    |   |         |           |   |     +-type=INT32
+    |   |         |           |   |     +-expr=
+    |   |         |           |   |     | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=$groupby.TestStruct#8, is_correlated=TRUE)
+    |   |         |           |   |     +-field_idx=0
+    |   |         |           |   +-input_scan=
+    |   |         |           |     +-TableScan(table=ComplexTypes)
+    |   |         |           +-group_by_list=
+    |   |         |             +-d#17 :=
+    |   |         |               +-GetStructField
+    |   |         |                 +-type=STRUCT<a INT32, b STRING>
+    |   |         |                 +-expr=
+    |   |         |                 | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=$groupby.TestStruct#8, is_correlated=TRUE)
+    |   |         |                 +-field_idx=1
+    |   |         +-order_by_item_list=
+    |   |           +-OrderByItem
+    |   |             +-column_ref=
+    |   |               +-ColumnRef(type=INT32, column=$orderby.$orderbycol1#20)
+    |   +-input_scan=
+    |     +-ProjectScan
+    |       +-column_list=[$groupby.TestStruct#8, $query.d#9]
+    |       +-expr_list=
+    |       | +-d#9 :=
+    |       |   +-GetStructField
+    |       |     +-type=STRUCT<a INT32, b STRING>
+    |       |     +-expr=
+    |       |     | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=$groupby.TestStruct#8)
+    |       |     +-field_idx=1
+    |       +-input_scan=
+    |         +-AggregateScan
+    |           +-column_list=[$groupby.TestStruct#8]
+    |           +-input_scan=
+    |           | +-ProjectScan
+    |           |   +-column_list=[ComplexTypes.TestStruct#5, $pre_groupby.d#7]
+    |           |   +-expr_list=
+    |           |   | +-d#7 :=
+    |           |   |   +-GetStructField
+    |           |   |     +-type=STRUCT<a INT32, b STRING>
+    |           |   |     +-expr=
+    |           |   |     | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#5)
+    |           |   |     +-field_idx=1
+    |           |   +-input_scan=
+    |           |     +-TableScan(column_list=[ComplexTypes.TestStruct#5], table=ComplexTypes, column_index_list=[4], alias="ct")
+    |           +-group_by_list=
+    |             +-TestStruct#8 := ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#5)
+    +-order_by_item_list=
+      +-OrderByItem
+        +-column_ref=
+          +-ColumnRef(type=INT32, column=$orderby.$orderbycol1#21)
+==
+
+##########################################################################
+# 8. Correlated reference in IN clause
+##########################################################################
+
+# 8.1 Correlated subquery in SELECT LIST.
+SELECT TestStruct.c IN (SELECT TestStruct.d.a)
+FROM ComplexTypes ct
+GROUP BY TestStruct
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#10 AS `$col1` [BOOL]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#10]
+    +-expr_list=
+    | +-$col1#10 :=
+    |   +-SubqueryExpr
+    |     +-type=BOOL
+    |     +-subquery_type=IN
+    |     +-parameter_list=
+    |     | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=$groupby.TestStruct#8)
+    |     +-in_expr=
+    |     | +-GetStructField
+    |     |   +-type=INT32
+    |     |   +-expr=
+    |     |   | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=$groupby.TestStruct#8)
+    |     |   +-field_idx=0
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$expr_subquery.a#9]
+    |         +-expr_list=
+    |         | +-a#9 :=
+    |         |   +-GetStructField
+    |         |     +-type=INT32
+    |         |     +-expr=
+    |         |     | +-GetStructField
+    |         |     |   +-type=STRUCT<a INT32, b STRING>
+    |         |     |   +-expr=
+    |         |     |   | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=$groupby.TestStruct#8, is_correlated=TRUE)
+    |         |     |   +-field_idx=1
+    |         |     +-field_idx=0
+    |         +-input_scan=
+    |           +-SingleRowScan
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$groupby.TestStruct#8]
+        +-input_scan=
+        | +-TableScan(column_list=[ComplexTypes.TestStruct#5], table=ComplexTypes, column_index_list=[4], alias="ct")
+        +-group_by_list=
+          +-TestStruct#8 := ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#5)
+==
+
+# 8.2 Error - TestStruct.c is not visible after GROUP BY.
+SELECT TestStruct.d.a IN (SELECT TestStruct.c)
+FROM ComplexTypes ct
+GROUP BY TestStruct.d
+--
+ERROR: SELECT without FROM clause expression references TestStruct.c which is neither grouped nor aggregated [at 1:34]
+SELECT TestStruct.d.a IN (SELECT TestStruct.c)
+                                 ^
+==
+
+# 8.3 TestStruct.c is visible after GROUP BY because it is in GROUP BY list.
+SELECT TestStruct.d.a IN (SELECT TestStruct.c)
+FROM ComplexTypes ct
+GROUP BY TestStruct.c, TestStruct.d
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#11 AS `$col1` [BOOL]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#11]
+    +-expr_list=
+    | +-$col1#11 :=
+    |   +-SubqueryExpr
+    |     +-type=BOOL
+    |     +-subquery_type=IN
+    |     +-parameter_list=
+    |     | +-ColumnRef(type=INT32, column=$groupby.c#8)
+    |     +-in_expr=
+    |     | +-GetStructField
+    |     |   +-type=INT32
+    |     |   +-expr=
+    |     |   | +-ColumnRef(type=STRUCT<a INT32, b STRING>, column=$groupby.d#9)
+    |     |   +-field_idx=0
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$expr_subquery.c#10]
+    |         +-expr_list=
+    |         | +-c#10 := ColumnRef(type=INT32, column=$groupby.c#8, is_correlated=TRUE)
+    |         +-input_scan=
+    |           +-SingleRowScan
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=$groupby.[c#8, d#9]
+        +-input_scan=
+        | +-TableScan(column_list=[ComplexTypes.TestStruct#5], table=ComplexTypes, column_index_list=[4], alias="ct")
+        +-group_by_list=
+          +-c#8 :=
+          | +-GetStructField
+          |   +-type=INT32
+          |   +-expr=
+          |   | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#5)
+          |   +-field_idx=0
+          +-d#9 :=
+            +-GetStructField
+              +-type=STRUCT<a INT32, b STRING>
+              +-expr=
+              | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#5)
+              +-field_idx=1
+==
+
+# 8.4 Correlated IN subquery in WHERE clause. This is valid because WHERE is
+# resolved based on FROM and SELECT list.
+SELECT TestStruct.d
+FROM ComplexTypes ct
+WHERE key IN (SELECT TestStruct.c + TestStruct.d.a)
+GROUP BY TestStruct.d
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.d#8 AS d [STRUCT<a INT32, b STRING>]
++-query=
+  +-ProjectScan
+    +-column_list=[$groupby.d#8]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$groupby.d#8]
+        +-input_scan=
+        | +-FilterScan
+        |   +-column_list=ComplexTypes.[key#1, TestStruct#5]
+        |   +-input_scan=
+        |   | +-TableScan(column_list=ComplexTypes.[key#1, TestStruct#5], table=ComplexTypes, column_index_list=[0, 4], alias="ct")
+        |   +-filter_expr=
+        |     +-SubqueryExpr
+        |       +-type=BOOL
+        |       +-subquery_type=IN
+        |       +-parameter_list=
+        |       | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#5)
+        |       +-in_expr=
+        |       | +-Cast(INT32 -> INT64)
+        |       |   +-ColumnRef(type=INT32, column=ComplexTypes.key#1)
+        |       +-subquery=
+        |         +-ProjectScan
+        |           +-column_list=[$expr_subquery.$col1#7]
+        |           +-expr_list=
+        |           | +-$col1#7 :=
+        |           |   +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+        |           |     +-Cast(INT32 -> INT64)
+        |           |     | +-GetStructField
+        |           |     |   +-type=INT32
+        |           |     |   +-expr=
+        |           |     |   | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#5, is_correlated=TRUE)
+        |           |     |   +-field_idx=0
+        |           |     +-Cast(INT32 -> INT64)
+        |           |       +-GetStructField
+        |           |         +-type=INT32
+        |           |         +-expr=
+        |           |         | +-GetStructField
+        |           |         |   +-type=STRUCT<a INT32, b STRING>
+        |           |         |   +-expr=
+        |           |         |   | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#5, is_correlated=TRUE)
+        |           |         |   +-field_idx=1
+        |           |         +-field_idx=0
+        |           +-input_scan=
+        |             +-SingleRowScan
+        +-group_by_list=
+          +-d#8 :=
+            +-GetStructField
+              +-type=STRUCT<a INT32, b STRING>
+              +-expr=
+              | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#5)
+              +-field_idx=1
+==
+
+# 8.5 Correlated IN subquery in GROUP BY. This is valid because GROUP BY is
+# resolved based on FROM and SELECT list.
+SELECT 'foo'
+FROM ComplexTypes
+GROUP BY TestStruct.d IN (SELECT as struct TestStruct.c a, TestStruct.d.b b)
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#11 AS `$col1` [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#11]
+    +-expr_list=
+    | +-$col1#11 := Literal(type=STRING, value="foo")
+    +-input_scan=
+      +-AggregateScan
+        +-input_scan=
+        | +-TableScan(column_list=[ComplexTypes.TestStruct#5], table=ComplexTypes, column_index_list=[4])
+        +-group_by_list=
+          +-$groupbycol1#10 :=
+            +-SubqueryExpr
+              +-type=BOOL
+              +-subquery_type=IN
+              +-parameter_list=
+              | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#5)
+              +-in_expr=
+              | +-GetStructField
+              |   +-type=STRUCT<a INT32, b STRING>
+              |   +-expr=
+              |   | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#5)
+              |   +-field_idx=1
+              +-subquery=
+                +-ProjectScan
+                  +-column_list=[$make_struct.$struct#9]
+                  +-expr_list=
+                  | +-$struct#9 :=
+                  |   +-MakeStruct
+                  |     +-type=STRUCT<a INT32, b STRING>
+                  |     +-field_list=
+                  |       +-ColumnRef(type=INT32, column=$expr_subquery.a#7)
+                  |       +-ColumnRef(type=STRING, column=$expr_subquery.b#8)
+                  +-input_scan=
+                    +-ProjectScan
+                      +-column_list=$expr_subquery.[a#7, b#8]
+                      +-expr_list=
+                      | +-a#7 :=
+                      | | +-GetStructField
+                      | |   +-type=INT32
+                      | |   +-expr=
+                      | |   | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#5, is_correlated=TRUE)
+                      | |   +-field_idx=0
+                      | +-b#8 :=
+                      |   +-GetStructField
+                      |     +-type=STRING
+                      |     +-expr=
+                      |     | +-GetStructField
+                      |     |   +-type=STRUCT<a INT32, b STRING>
+                      |     |   +-expr=
+                      |     |   | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#5, is_correlated=TRUE)
+                      |     |   +-field_idx=1
+                      |     +-field_idx=1
+                      +-input_scan=
+                        +-SingleRowScan
+==
+
+# 8.6 Correlated IN subquery in HAVING. TestStruct.d.a is resovled to post-GROUP
+# BY TestStruct.
+SELECT TestStruct.c
+FROM ComplexTypes
+GROUP BY TestStruct
+HAVING TestStruct.c IN (SELECT TestStruct.d.a)
+--
+QueryStmt
++-output_column_list=
+| +-$query.c#9 AS c [INT32]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.c#9]
+    +-input_scan=
+      +-FilterScan
+        +-column_list=[$groupby.TestStruct#8, $query.c#9]
+        +-input_scan=
+        | +-ProjectScan
+        |   +-column_list=[$groupby.TestStruct#8, $query.c#9]
+        |   +-expr_list=
+        |   | +-c#9 :=
+        |   |   +-GetStructField
+        |   |     +-type=INT32
+        |   |     +-expr=
+        |   |     | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=$groupby.TestStruct#8)
+        |   |     +-field_idx=0
+        |   +-input_scan=
+        |     +-AggregateScan
+        |       +-column_list=[$groupby.TestStruct#8]
+        |       +-input_scan=
+        |       | +-ProjectScan
+        |       |   +-column_list=[ComplexTypes.TestStruct#5, $pre_groupby.c#7]
+        |       |   +-expr_list=
+        |       |   | +-c#7 :=
+        |       |   |   +-GetStructField
+        |       |   |     +-type=INT32
+        |       |   |     +-expr=
+        |       |   |     | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#5)
+        |       |   |     +-field_idx=0
+        |       |   +-input_scan=
+        |       |     +-TableScan(column_list=[ComplexTypes.TestStruct#5], table=ComplexTypes, column_index_list=[4])
+        |       +-group_by_list=
+        |         +-TestStruct#8 := ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#5)
+        +-filter_expr=
+          +-SubqueryExpr
+            +-type=BOOL
+            +-subquery_type=IN
+            +-parameter_list=
+            | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=$groupby.TestStruct#8)
+            +-in_expr=
+            | +-GetStructField
+            |   +-type=INT32
+            |   +-expr=
+            |   | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=$groupby.TestStruct#8)
+            |   +-field_idx=0
+            +-subquery=
+              +-ProjectScan
+                +-column_list=[$expr_subquery.a#10]
+                +-expr_list=
+                | +-a#10 :=
+                |   +-GetStructField
+                |     +-type=INT32
+                |     +-expr=
+                |     | +-GetStructField
+                |     |   +-type=STRUCT<a INT32, b STRING>
+                |     |   +-expr=
+                |     |   | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=$groupby.TestStruct#8, is_correlated=TRUE)
+                |     |   +-field_idx=1
+                |     +-field_idx=0
+                +-input_scan=
+                  +-SingleRowScan
+==
+
+# 8.7 Error - correlated IN subquery refers to sibling of the GROUP BY struct
+# which is invisible after post-GROUP BY.
+SELECT TestStruct.d.a
+FROM ComplexTypes
+GROUP BY TestStruct.d
+HAVING TestStruct.d.a IN (SELECT TestStruct.c)
+--
+ERROR: SELECT without FROM clause expression references TestStruct.c which is neither grouped nor aggregated [at 4:34]
+HAVING TestStruct.d.a IN (SELECT TestStruct.c)
+                                 ^
+==
+
+# 8.8 Correlated IN subquery in ORDER BY, resolved to TestStruct post-GROUP BY.
+SELECT TestStruct.d.a
+FROM ComplexTypes
+GROUP BY TestStruct
+ORDER BY TestStruct.c IN (SELECT TestStruct.d.a)
+--
+QueryStmt
++-output_column_list=
+| +-$query.a#9 AS a [INT32]
++-query=
+  +-OrderByScan
+    +-column_list=[$query.a#9]
+    +-is_ordered=TRUE
+    +-input_scan=
+    | +-ProjectScan
+    |   +-column_list=[$groupby.TestStruct#8, $query.a#9, $orderby.$orderbycol1#11]
+    |   +-expr_list=
+    |   | +-$orderbycol1#11 :=
+    |   |   +-SubqueryExpr
+    |   |     +-type=BOOL
+    |   |     +-subquery_type=IN
+    |   |     +-parameter_list=
+    |   |     | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=$groupby.TestStruct#8)
+    |   |     +-in_expr=
+    |   |     | +-GetStructField
+    |   |     |   +-type=INT32
+    |   |     |   +-expr=
+    |   |     |   | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=$groupby.TestStruct#8)
+    |   |     |   +-field_idx=0
+    |   |     +-subquery=
+    |   |       +-ProjectScan
+    |   |         +-column_list=[$expr_subquery.a#10]
+    |   |         +-expr_list=
+    |   |         | +-a#10 :=
+    |   |         |   +-GetStructField
+    |   |         |     +-type=INT32
+    |   |         |     +-expr=
+    |   |         |     | +-GetStructField
+    |   |         |     |   +-type=STRUCT<a INT32, b STRING>
+    |   |         |     |   +-expr=
+    |   |         |     |   | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=$groupby.TestStruct#8, is_correlated=TRUE)
+    |   |         |     |   +-field_idx=1
+    |   |         |     +-field_idx=0
+    |   |         +-input_scan=
+    |   |           +-SingleRowScan
+    |   +-input_scan=
+    |     +-ProjectScan
+    |       +-column_list=[$groupby.TestStruct#8, $query.a#9]
+    |       +-expr_list=
+    |       | +-a#9 :=
+    |       |   +-GetStructField
+    |       |     +-type=INT32
+    |       |     +-expr=
+    |       |     | +-GetStructField
+    |       |     |   +-type=STRUCT<a INT32, b STRING>
+    |       |     |   +-expr=
+    |       |     |   | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=$groupby.TestStruct#8)
+    |       |     |   +-field_idx=1
+    |       |     +-field_idx=0
+    |       +-input_scan=
+    |         +-AggregateScan
+    |           +-column_list=[$groupby.TestStruct#8]
+    |           +-input_scan=
+    |           | +-ProjectScan
+    |           |   +-column_list=[ComplexTypes.TestStruct#5, $pre_groupby.a#7]
+    |           |   +-expr_list=
+    |           |   | +-a#7 :=
+    |           |   |   +-GetStructField
+    |           |   |     +-type=INT32
+    |           |   |     +-expr=
+    |           |   |     | +-GetStructField
+    |           |   |     |   +-type=STRUCT<a INT32, b STRING>
+    |           |   |     |   +-expr=
+    |           |   |     |   | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#5)
+    |           |   |     |   +-field_idx=1
+    |           |   |     +-field_idx=0
+    |           |   +-input_scan=
+    |           |     +-TableScan(column_list=[ComplexTypes.TestStruct#5], table=ComplexTypes, column_index_list=[4])
+    |           +-group_by_list=
+    |             +-TestStruct#8 := ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#5)
+    +-order_by_item_list=
+      +-OrderByItem
+        +-column_ref=
+          +-ColumnRef(type=BOOL, column=$orderby.$orderbycol1#11)
+==
+
+##########################################################################
+# 9. Correlated reference in aggregation function of subquery.
+##########################################################################
+# 9.1 Correlated aggregation subquery in SELECT. 'ct.TestStruct' is resolved to
+# post-GROUP BY.
+SELECT (SELECT MAX(ct.TestStruct.d.a) FROM ComplexTypes)
+FROM ComplexTypes ct
+GROUP BY TestStruct;
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#22 AS `$col1` [INT32]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#22]
+    +-expr_list=
+    | +-$col1#22 :=
+    |   +-SubqueryExpr
+    |     +-type=INT32
+    |     +-subquery_type=SCALAR
+    |     +-parameter_list=
+    |     | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=$groupby.TestStruct#14)
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$aggregate.$agg1#21]
+    |         +-input_scan=
+    |           +-AggregateScan
+    |             +-column_list=[$aggregate.$agg1#21]
+    |             +-input_scan=
+    |             | +-TableScan(table=ComplexTypes)
+    |             +-aggregate_list=
+    |               +-$agg1#21 :=
+    |                 +-AggregateFunctionCall(GoogleSQL:max(INT32) -> INT32)
+    |                   +-GetStructField
+    |                     +-type=INT32
+    |                     +-expr=
+    |                     | +-GetStructField
+    |                     |   +-type=STRUCT<a INT32, b STRING>
+    |                     |   +-expr=
+    |                     |   | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=$groupby.TestStruct#14, is_correlated=TRUE)
+    |                     |   +-field_idx=1
+    |                     +-field_idx=0
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$groupby.TestStruct#14]
+        +-input_scan=
+        | +-TableScan(column_list=[ComplexTypes.TestStruct#5], table=ComplexTypes, column_index_list=[4], alias="ct")
+        +-group_by_list=
+          +-TestStruct#14 := ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#5)
+==
+
+# 9.2 Error - cannot reference slibling of the GROUP BY struct in aggregate
+# function of correlated query.
+SELECT TestStruct.d.a, (SELECT MAX(ct.TestStruct.c) FROM ComplexTypes)
+FROM ComplexTypes ct
+GROUP BY TestStruct.d;
+--
+ERROR: SELECT expression references ct.TestStruct.c which is neither grouped nor aggregated [at 1:36]
+SELECT TestStruct.d.a, (SELECT MAX(ct.TestStruct.c) FROM ComplexTypes)
+                                   ^
+==
+
+# 9.3 Correlated aggregation subquery in WHERE clause.
+SELECT TestStruct.d.a
+FROM ComplexTypes ct
+WHERE (SELECT MAX(ct.TestStruct.c) FROM ComplexTypes) > 1
+GROUP BY TestStruct.d
+--
+QueryStmt
++-output_column_list=
+| +-$query.a#15 AS a [INT32]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.a#15]
+    +-expr_list=
+    | +-a#15 :=
+    |   +-GetStructField
+    |     +-type=INT32
+    |     +-expr=
+    |     | +-ColumnRef(type=STRUCT<a INT32, b STRING>, column=$groupby.d#14)
+    |     +-field_idx=0
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$groupby.d#14]
+        +-input_scan=
+        | +-FilterScan
+        |   +-column_list=[ComplexTypes.TestStruct#5]
+        |   +-input_scan=
+        |   | +-TableScan(column_list=[ComplexTypes.TestStruct#5], table=ComplexTypes, column_index_list=[4], alias="ct")
+        |   +-filter_expr=
+        |     +-FunctionCall(GoogleSQL:$greater(INT32, INT32) -> BOOL)
+        |       +-SubqueryExpr
+        |       | +-type=INT32
+        |       | +-subquery_type=SCALAR
+        |       | +-parameter_list=
+        |       | | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#5)
+        |       | +-subquery=
+        |       |   +-ProjectScan
+        |       |     +-column_list=[$aggregate.$agg1#13]
+        |       |     +-input_scan=
+        |       |       +-AggregateScan
+        |       |         +-column_list=[$aggregate.$agg1#13]
+        |       |         +-input_scan=
+        |       |         | +-TableScan(table=ComplexTypes)
+        |       |         +-aggregate_list=
+        |       |           +-$agg1#13 :=
+        |       |             +-AggregateFunctionCall(GoogleSQL:max(INT32) -> INT32)
+        |       |               +-GetStructField
+        |       |                 +-type=INT32
+        |       |                 +-expr=
+        |       |                 | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#5, is_correlated=TRUE)
+        |       |                 +-field_idx=0
+        |       +-Literal(type=INT32, value=1)
+        +-group_by_list=
+          +-d#14 :=
+            +-GetStructField
+              +-type=STRUCT<a INT32, b STRING>
+              +-expr=
+              | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#5)
+              +-field_idx=1
+==
+
+# 9.4 Correlated aggregation subquery in GROUP BY clause.
+SELECT 'foo'
+FROM ComplexTypes ct
+GROUP BY (SELECT as struct ct.TestStruct, sum(ct.key) FROM ComplexTypes)
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#17 AS `$col1` [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#17]
+    +-expr_list=
+    | +-$col1#17 := Literal(type=STRING, value="foo")
+    +-input_scan=
+      +-AggregateScan
+        +-input_scan=
+        | +-TableScan(column_list=ComplexTypes.[key#1, TestStruct#5], table=ComplexTypes, column_index_list=[0, 4], alias="ct")
+        +-group_by_list=
+          +-$groupbycol1#16 :=
+            +-SubqueryExpr
+              +-type=STRUCT<TestStruct STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, INT64>
+              +-subquery_type=SCALAR
+              +-parameter_list=
+              | +-ColumnRef(type=INT32, column=ComplexTypes.key#1)
+              | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#5)
+              +-subquery=
+                +-ProjectScan
+                  +-column_list=[$make_struct.$struct#15]
+                  +-expr_list=
+                  | +-$struct#15 :=
+                  |   +-MakeStruct
+                  |     +-type=STRUCT<TestStruct STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, INT64>
+                  |     +-field_list=
+                  |       +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=$expr_subquery.TestStruct#14)
+                  |       +-ColumnRef(type=INT64, column=$aggregate.$agg1#13)
+                  +-input_scan=
+                    +-ProjectScan
+                      +-column_list=[$expr_subquery.TestStruct#14, $aggregate.$agg1#13]
+                      +-expr_list=
+                      | +-TestStruct#14 := ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#5, is_correlated=TRUE)
+                      +-input_scan=
+                        +-AggregateScan
+                          +-column_list=[$aggregate.$agg1#13]
+                          +-input_scan=
+                          | +-TableScan(table=ComplexTypes)
+                          +-aggregate_list=
+                            +-$agg1#13 :=
+                              +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+                                +-Cast(INT32 -> INT64)
+                                  +-ColumnRef(type=INT32, column=ComplexTypes.key#1, is_correlated=TRUE)
+==
+
+# 9.5 Correlated aggregation subquery in the HAVING clause.
+SELECT TestStruct.c
+FROM ComplexTypes ct
+GROUP BY TestStruct
+HAVING (SELECT MAX(ct.TestStruct.c) FROM ComplexTypes) > 1;
+--
+QueryStmt
++-output_column_list=
+| +-$query.c#9 AS c [INT32]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.c#9]
+    +-input_scan=
+      +-FilterScan
+        +-column_list=[$groupby.TestStruct#8, $query.c#9]
+        +-input_scan=
+        | +-ProjectScan
+        |   +-column_list=[$groupby.TestStruct#8, $query.c#9]
+        |   +-expr_list=
+        |   | +-c#9 :=
+        |   |   +-GetStructField
+        |   |     +-type=INT32
+        |   |     +-expr=
+        |   |     | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=$groupby.TestStruct#8)
+        |   |     +-field_idx=0
+        |   +-input_scan=
+        |     +-AggregateScan
+        |       +-column_list=[$groupby.TestStruct#8]
+        |       +-input_scan=
+        |       | +-ProjectScan
+        |       |   +-column_list=[ComplexTypes.TestStruct#5, $pre_groupby.c#7]
+        |       |   +-expr_list=
+        |       |   | +-c#7 :=
+        |       |   |   +-GetStructField
+        |       |   |     +-type=INT32
+        |       |   |     +-expr=
+        |       |   |     | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#5)
+        |       |   |     +-field_idx=0
+        |       |   +-input_scan=
+        |       |     +-TableScan(column_list=[ComplexTypes.TestStruct#5], table=ComplexTypes, column_index_list=[4], alias="ct")
+        |       +-group_by_list=
+        |         +-TestStruct#8 := ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#5)
+        +-filter_expr=
+          +-FunctionCall(GoogleSQL:$greater(INT32, INT32) -> BOOL)
+            +-SubqueryExpr
+            | +-type=INT32
+            | +-subquery_type=SCALAR
+            | +-parameter_list=
+            | | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=$groupby.TestStruct#8)
+            | +-subquery=
+            |   +-ProjectScan
+            |     +-column_list=[$aggregate.$agg1#16]
+            |     +-input_scan=
+            |       +-AggregateScan
+            |         +-column_list=[$aggregate.$agg1#16]
+            |         +-input_scan=
+            |         | +-TableScan(table=ComplexTypes)
+            |         +-aggregate_list=
+            |           +-$agg1#16 :=
+            |             +-AggregateFunctionCall(GoogleSQL:max(INT32) -> INT32)
+            |               +-GetStructField
+            |                 +-type=INT32
+            |                 +-expr=
+            |                 | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=$groupby.TestStruct#8, is_correlated=TRUE)
+            |                 +-field_idx=0
+            +-Literal(type=INT32, value=1)
+==
+
+# 9.6 Error - Correlated aggregation subquery in the HAVING clause. Cannot
+# access ungrouped part of the struct.
+SELECT TestStruct.d.a
+FROM ComplexTypes ct
+GROUP BY TestStruct.d
+HAVING (SELECT MAX(ct.TestStruct.c) FROM ComplexTypes) > 1;
+--
+ERROR: SELECT expression references ct.TestStruct.c which is neither grouped nor aggregated [at 4:20]
+HAVING (SELECT MAX(ct.TestStruct.c) FROM ComplexTypes) > 1;
+                   ^
+==
+
+# 9.7 Correlated aggregation subquery in ORDER BY clause.
+SELECT TestStruct.d.a
+FROM ComplexTypes ct
+GROUP BY TestStruct
+ORDER BY (SELECT SUM(ct.TestStruct.c) FROM ComplexTypes)
+--
+QueryStmt
++-output_column_list=
+| +-$query.a#9 AS a [INT32]
++-query=
+  +-OrderByScan
+    +-column_list=[$query.a#9]
+    +-is_ordered=TRUE
+    +-input_scan=
+    | +-ProjectScan
+    |   +-column_list=[$groupby.TestStruct#8, $query.a#9, $orderby.$orderbycol1#17]
+    |   +-expr_list=
+    |   | +-$orderbycol1#17 :=
+    |   |   +-SubqueryExpr
+    |   |     +-type=INT64
+    |   |     +-subquery_type=SCALAR
+    |   |     +-parameter_list=
+    |   |     | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=$groupby.TestStruct#8)
+    |   |     +-subquery=
+    |   |       +-ProjectScan
+    |   |         +-column_list=[$aggregate.$agg1#16]
+    |   |         +-input_scan=
+    |   |           +-AggregateScan
+    |   |             +-column_list=[$aggregate.$agg1#16]
+    |   |             +-input_scan=
+    |   |             | +-TableScan(table=ComplexTypes)
+    |   |             +-aggregate_list=
+    |   |               +-$agg1#16 :=
+    |   |                 +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+    |   |                   +-Cast(INT32 -> INT64)
+    |   |                     +-GetStructField
+    |   |                       +-type=INT32
+    |   |                       +-expr=
+    |   |                       | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=$groupby.TestStruct#8, is_correlated=TRUE)
+    |   |                       +-field_idx=0
+    |   +-input_scan=
+    |     +-ProjectScan
+    |       +-column_list=[$groupby.TestStruct#8, $query.a#9]
+    |       +-expr_list=
+    |       | +-a#9 :=
+    |       |   +-GetStructField
+    |       |     +-type=INT32
+    |       |     +-expr=
+    |       |     | +-GetStructField
+    |       |     |   +-type=STRUCT<a INT32, b STRING>
+    |       |     |   +-expr=
+    |       |     |   | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=$groupby.TestStruct#8)
+    |       |     |   +-field_idx=1
+    |       |     +-field_idx=0
+    |       +-input_scan=
+    |         +-AggregateScan
+    |           +-column_list=[$groupby.TestStruct#8]
+    |           +-input_scan=
+    |           | +-ProjectScan
+    |           |   +-column_list=[ComplexTypes.TestStruct#5, $pre_groupby.a#7]
+    |           |   +-expr_list=
+    |           |   | +-a#7 :=
+    |           |   |   +-GetStructField
+    |           |   |     +-type=INT32
+    |           |   |     +-expr=
+    |           |   |     | +-GetStructField
+    |           |   |     |   +-type=STRUCT<a INT32, b STRING>
+    |           |   |     |   +-expr=
+    |           |   |     |   | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#5)
+    |           |   |     |   +-field_idx=1
+    |           |   |     +-field_idx=0
+    |           |   +-input_scan=
+    |           |     +-TableScan(column_list=[ComplexTypes.TestStruct#5], table=ComplexTypes, column_index_list=[4], alias="ct")
+    |           +-group_by_list=
+    |             +-TestStruct#8 := ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#5)
+    +-order_by_item_list=
+      +-OrderByItem
+        +-column_ref=
+          +-ColumnRef(type=INT64, column=$orderby.$orderbycol1#17)
+==
+
+# 9.7 Error - Correlated aggregation subquery in ORDER BY clause, cannot access the ungrouped part of the struct.
+SELECT TestStruct.d.a
+FROM ComplexTypes ct
+GROUP BY TestStruct.d
+ORDER BY (SELECT SUM(ct.TestStruct.c) FROM ComplexTypes)
+--
+ERROR: SELECT expression references ct.TestStruct.c which is neither grouped nor aggregated [at 4:22]
+ORDER BY (SELECT SUM(ct.TestStruct.c) FROM ComplexTypes)
+                     ^
+==
+
+##########################################################################
+# 10. Correlated subquery and USING
+# The USING clause produces new names visible from the using clause.
+# These tests cover correlated references that resolve to USING clause
+# names.
+##########################################################################
+# 10.1 Correlated subquery in SELECT, can refer to 'ct1.' but cannot refer to
+# 'ct2.'.
+SELECT ct1.TestStruct.d, (SELECT {{ct1.|ct2.|}}TestStruct.d.a = 5)
+FROM ComplexTypes ct1 JOIN ComplexTypes ct2 USING (TestStruct)
+GROUP BY {{ct1.|}}TestStruct.d
+--
+ALTERNATION GROUPS:
+    ct1.,ct1.
+    ct1.,
+    ct1.
+    <empty>
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.d#14 AS d [STRUCT<a INT32, b STRING>]
+| +-$query.$col2#16 AS `$col2` [BOOL]
++-query=
+  +-ProjectScan
+    +-column_list=[$groupby.d#14, $query.$col2#16]
+    +-expr_list=
+    | +-$col2#16 :=
+    |   +-SubqueryExpr
+    |     +-type=BOOL
+    |     +-subquery_type=SCALAR
+    |     +-parameter_list=
+    |     | +-ColumnRef(type=STRUCT<a INT32, b STRING>, column=$groupby.d#14)
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$expr_subquery.$col1#15]
+    |         +-expr_list=
+    |         | +-$col1#15 :=
+    |         |   +-FunctionCall(GoogleSQL:$equal(INT32, INT32) -> BOOL)
+    |         |     +-GetStructField
+    |         |     | +-type=INT32
+    |         |     | +-expr=
+    |         |     | | +-ColumnRef(type=STRUCT<a INT32, b STRING>, column=$groupby.d#14, is_correlated=TRUE)
+    |         |     | +-field_idx=0
+    |         |     +-Literal(type=INT32, value=5)
+    |         +-input_scan=
+    |           +-SingleRowScan
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$groupby.d#14]
+        +-input_scan=
+        | +-JoinScan
+        |   +-column_list=ComplexTypes.[TestStruct#5, TestStruct#11]
+        |   +-left_scan=
+        |   | +-TableScan(column_list=[ComplexTypes.TestStruct#5], table=ComplexTypes, column_index_list=[4], alias="ct1")
+        |   +-right_scan=
+        |   | +-TableScan(column_list=[ComplexTypes.TestStruct#11], table=ComplexTypes, column_index_list=[4], alias="ct2")
+        |   +-join_expr=
+        |   | +-FunctionCall(GoogleSQL:$equal(STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, STRUCT<c INT32, d STRUCT<a INT32, b STRING>>) -> BOOL)
+        |   |   +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#5)
+        |   |   +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#11)
+        |   +-has_using=TRUE
+        +-group_by_list=
+          +-d#14 :=
+            +-GetStructField
+              +-type=STRUCT<a INT32, b STRING>
+              +-expr=
+              | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#5)
+              +-field_idx=1
+--
+ALTERNATION GROUPS:
+    ct2.,ct1.
+    ct2.,
+--
+ERROR: SELECT without FROM clause expression references ct2.TestStruct.d.a which is neither grouped nor aggregated [at 1:34]
+SELECT ct1.TestStruct.d, (SELECT ct2.TestStruct.d.a = 5)
+                                 ^
+==
+
+##########################################################################
+# 11. Outer table is a value table.
+##########################################################################
+# 11.1 Correlated reference in SELECT.
+SELECT (SELECT as struct TestStructValueTable, {{TestStructValueTable.|}}a)
+FROM TestStructValueTable
+GROUP BY TestStructValueTable
+--
+ALTERNATION GROUP: TestStructValueTable.
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#9 AS `$col1` [STRUCT<TestStructValueTable STRUCT<a INT32, b STRING>, a INT32>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#9]
+    +-expr_list=
+    | +-$col1#9 :=
+    |   +-SubqueryExpr
+    |     +-type=STRUCT<TestStructValueTable STRUCT<a INT32, b STRING>, a INT32>
+    |     +-subquery_type=SCALAR
+    |     +-parameter_list=
+    |     | +-ColumnRef(type=STRUCT<a INT32, b STRING>, column=$groupby.TestStructValueTable#5)
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$make_struct.$struct#8]
+    |         +-expr_list=
+    |         | +-$struct#8 :=
+    |         |   +-MakeStruct
+    |         |     +-type=STRUCT<TestStructValueTable STRUCT<a INT32, b STRING>, a INT32>
+    |         |     +-field_list=
+    |         |       +-ColumnRef(type=STRUCT<a INT32, b STRING>, column=$expr_subquery.TestStructValueTable#6)
+    |         |       +-ColumnRef(type=INT32, column=$expr_subquery.a#7)
+    |         +-input_scan=
+    |           +-ProjectScan
+    |             +-column_list=$expr_subquery.[TestStructValueTable#6, a#7]
+    |             +-expr_list=
+    |             | +-TestStructValueTable#6 := ColumnRef(type=STRUCT<a INT32, b STRING>, column=$groupby.TestStructValueTable#5, is_correlated=TRUE)
+    |             | +-a#7 :=
+    |             |   +-GetStructField
+    |             |     +-type=INT32
+    |             |     +-expr=
+    |             |     | +-ColumnRef(type=STRUCT<a INT32, b STRING>, column=$groupby.TestStructValueTable#5, is_correlated=TRUE)
+    |             |     +-field_idx=0
+    |             +-input_scan=
+    |               +-SingleRowScan
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$groupby.TestStructValueTable#5]
+        +-input_scan=
+        | +-TableScan(column_list=[TestStructValueTable.value#1], table=TestStructValueTable, column_index_list=[0])
+        +-group_by_list=
+          +-TestStructValueTable#5 := ColumnRef(type=STRUCT<a INT32, b STRING>, column=TestStructValueTable.value#1)
+
+
+DEPRECATION WARNING:
+Lateral column alias will shadow original target: RANGE_VARIABLE<value#1> (value table) [at 1:48]
+SELECT (SELECT as struct TestStructValueTable, TestStructValueTable.a)
+                                               ^
+[googlesql.DeprecationWarning] { kind: LATERAL_COLUMN_REFERENCE }
+
+DEPRECATION WARNING:
+Lateral column alias will shadow original target: STRUCT<a INT32, b STRING> ($groupby.TestStructValueTable#5) [at 1:48]
+SELECT (SELECT as struct TestStructValueTable, TestStructValueTable.a)
+                                               ^
+[googlesql.DeprecationWarning] { kind: LATERAL_COLUMN_REFERENCE }
+--
+ALTERNATION GROUP: <empty>
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#9 AS `$col1` [STRUCT<TestStructValueTable STRUCT<a INT32, b STRING>, a INT32>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#9]
+    +-expr_list=
+    | +-$col1#9 :=
+    |   +-SubqueryExpr
+    |     +-type=STRUCT<TestStructValueTable STRUCT<a INT32, b STRING>, a INT32>
+    |     +-subquery_type=SCALAR
+    |     +-parameter_list=
+    |     | +-ColumnRef(type=STRUCT<a INT32, b STRING>, column=$groupby.TestStructValueTable#5)
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$make_struct.$struct#8]
+    |         +-expr_list=
+    |         | +-$struct#8 :=
+    |         |   +-MakeStruct
+    |         |     +-type=STRUCT<TestStructValueTable STRUCT<a INT32, b STRING>, a INT32>
+    |         |     +-field_list=
+    |         |       +-ColumnRef(type=STRUCT<a INT32, b STRING>, column=$expr_subquery.TestStructValueTable#6)
+    |         |       +-ColumnRef(type=INT32, column=$expr_subquery.a#7)
+    |         +-input_scan=
+    |           +-ProjectScan
+    |             +-column_list=$expr_subquery.[TestStructValueTable#6, a#7]
+    |             +-expr_list=
+    |             | +-TestStructValueTable#6 := ColumnRef(type=STRUCT<a INT32, b STRING>, column=$groupby.TestStructValueTable#5, is_correlated=TRUE)
+    |             | +-a#7 :=
+    |             |   +-GetStructField
+    |             |     +-type=INT32
+    |             |     +-expr=
+    |             |     | +-ColumnRef(type=STRUCT<a INT32, b STRING>, column=$groupby.TestStructValueTable#5, is_correlated=TRUE)
+    |             |     +-field_idx=0
+    |             +-input_scan=
+    |               +-SingleRowScan
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$groupby.TestStructValueTable#5]
+        +-input_scan=
+        | +-TableScan(column_list=[TestStructValueTable.value#1], table=TestStructValueTable, column_index_list=[0])
+        +-group_by_list=
+          +-TestStructValueTable#5 := ColumnRef(type=STRUCT<a INT32, b STRING>, column=TestStructValueTable.value#1)
+==
+
+# 11.2 Correlated reference in WHERE.
+SELECT TestStructValueTable, {{TestStructValueTable.|}}a
+FROM TestStructValueTable
+WHERE (SELECT {{TestStructValueTable.|}}a > 1)
+GROUP BY TestStructValueTable
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.TestStructValueTable#3 AS TestStructValueTable [STRUCT<a INT32, b STRING>]
+| +-$query.a#4 AS a [INT32]
++-query=
+  +-ProjectScan
+    +-column_list=[$groupby.TestStructValueTable#3, $query.a#4]
+    +-expr_list=
+    | +-a#4 :=
+    |   +-GetStructField
+    |     +-type=INT32
+    |     +-expr=
+    |     | +-ColumnRef(type=STRUCT<a INT32, b STRING>, column=$groupby.TestStructValueTable#3)
+    |     +-field_idx=0
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$groupby.TestStructValueTable#3]
+        +-input_scan=
+        | +-FilterScan
+        |   +-column_list=[TestStructValueTable.value#1]
+        |   +-input_scan=
+        |   | +-TableScan(column_list=[TestStructValueTable.value#1], table=TestStructValueTable, column_index_list=[0])
+        |   +-filter_expr=
+        |     +-SubqueryExpr
+        |       +-type=BOOL
+        |       +-subquery_type=SCALAR
+        |       +-parameter_list=
+        |       | +-ColumnRef(type=STRUCT<a INT32, b STRING>, column=TestStructValueTable.value#1)
+        |       +-subquery=
+        |         +-ProjectScan
+        |           +-column_list=[$expr_subquery.$col1#2]
+        |           +-expr_list=
+        |           | +-$col1#2 :=
+        |           |   +-FunctionCall(GoogleSQL:$greater(INT32, INT32) -> BOOL)
+        |           |     +-GetStructField
+        |           |     | +-type=INT32
+        |           |     | +-expr=
+        |           |     | | +-ColumnRef(type=STRUCT<a INT32, b STRING>, column=TestStructValueTable.value#1, is_correlated=TRUE)
+        |           |     | +-field_idx=0
+        |           |     +-Literal(type=INT32, value=1)
+        |           +-input_scan=
+        |             +-SingleRowScan
+        +-group_by_list=
+          +-TestStructValueTable#3 := ColumnRef(type=STRUCT<a INT32, b STRING>, column=TestStructValueTable.value#1)
+==
+
+# 11.3 Correlated reference in HAVING.
+SELECT TestStructValueTable, {{TestStructValueTable.|}}a
+FROM TestStructValueTable
+GROUP BY TestStructValueTable
+HAVING (SELECT TestStructValueTable.a) > 1
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.TestStructValueTable#3 AS TestStructValueTable [STRUCT<a INT32, b STRING>]
+| +-$query.a#4 AS a [INT32]
++-query=
+  +-ProjectScan
+    +-column_list=[$groupby.TestStructValueTable#3, $query.a#4]
+    +-input_scan=
+      +-FilterScan
+        +-column_list=[$groupby.TestStructValueTable#3, $query.a#4]
+        +-input_scan=
+        | +-ProjectScan
+        |   +-column_list=[$groupby.TestStructValueTable#3, $query.a#4]
+        |   +-expr_list=
+        |   | +-a#4 :=
+        |   |   +-GetStructField
+        |   |     +-type=INT32
+        |   |     +-expr=
+        |   |     | +-ColumnRef(type=STRUCT<a INT32, b STRING>, column=$groupby.TestStructValueTable#3)
+        |   |     +-field_idx=0
+        |   +-input_scan=
+        |     +-AggregateScan
+        |       +-column_list=[$groupby.TestStructValueTable#3]
+        |       +-input_scan=
+        |       | +-ProjectScan
+        |       |   +-column_list=[TestStructValueTable.value#1, $pre_groupby.a#2]
+        |       |   +-expr_list=
+        |       |   | +-a#2 :=
+        |       |   |   +-GetStructField
+        |       |   |     +-type=INT32
+        |       |   |     +-expr=
+        |       |   |     | +-ColumnRef(type=STRUCT<a INT32, b STRING>, column=TestStructValueTable.value#1)
+        |       |   |     +-field_idx=0
+        |       |   +-input_scan=
+        |       |     +-TableScan(column_list=[TestStructValueTable.value#1], table=TestStructValueTable, column_index_list=[0])
+        |       +-group_by_list=
+        |         +-TestStructValueTable#3 := ColumnRef(type=STRUCT<a INT32, b STRING>, column=TestStructValueTable.value#1)
+        +-filter_expr=
+          +-FunctionCall(GoogleSQL:$greater(INT32, INT32) -> BOOL)
+            +-SubqueryExpr
+            | +-type=INT32
+            | +-subquery_type=SCALAR
+            | +-parameter_list=
+            | | +-ColumnRef(type=STRUCT<a INT32, b STRING>, column=$groupby.TestStructValueTable#3)
+            | +-subquery=
+            |   +-ProjectScan
+            |     +-column_list=[$expr_subquery.a#5]
+            |     +-expr_list=
+            |     | +-a#5 :=
+            |     |   +-GetStructField
+            |     |     +-type=INT32
+            |     |     +-expr=
+            |     |     | +-ColumnRef(type=STRUCT<a INT32, b STRING>, column=$groupby.TestStructValueTable#3, is_correlated=TRUE)
+            |     |     +-field_idx=0
+            |     +-input_scan=
+            |       +-SingleRowScan
+            +-Literal(type=INT32, value=1)
+==
+
+# 11.4 Correlated reference in ORDER BY.
+SELECT TestStructValueTable, {{TestStructValueTable.|}}a
+FROM TestStructValueTable
+GROUP BY TestStructValueTable
+ORDER BY (SELECT TestStructValueTable.a)
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.TestStructValueTable#3 AS TestStructValueTable [STRUCT<a INT32, b STRING>]
+| +-$query.a#4 AS a [INT32]
++-query=
+  +-OrderByScan
+    +-column_list=[$groupby.TestStructValueTable#3, $query.a#4]
+    +-is_ordered=TRUE
+    +-input_scan=
+    | +-ProjectScan
+    |   +-column_list=[$groupby.TestStructValueTable#3, $query.a#4, $orderby.$orderbycol1#6]
+    |   +-expr_list=
+    |   | +-$orderbycol1#6 :=
+    |   |   +-SubqueryExpr
+    |   |     +-type=INT32
+    |   |     +-subquery_type=SCALAR
+    |   |     +-parameter_list=
+    |   |     | +-ColumnRef(type=STRUCT<a INT32, b STRING>, column=$groupby.TestStructValueTable#3)
+    |   |     +-subquery=
+    |   |       +-ProjectScan
+    |   |         +-column_list=[$expr_subquery.a#5]
+    |   |         +-expr_list=
+    |   |         | +-a#5 :=
+    |   |         |   +-GetStructField
+    |   |         |     +-type=INT32
+    |   |         |     +-expr=
+    |   |         |     | +-ColumnRef(type=STRUCT<a INT32, b STRING>, column=$groupby.TestStructValueTable#3, is_correlated=TRUE)
+    |   |         |     +-field_idx=0
+    |   |         +-input_scan=
+    |   |           +-SingleRowScan
+    |   +-input_scan=
+    |     +-ProjectScan
+    |       +-column_list=[$groupby.TestStructValueTable#3, $query.a#4]
+    |       +-expr_list=
+    |       | +-a#4 :=
+    |       |   +-GetStructField
+    |       |     +-type=INT32
+    |       |     +-expr=
+    |       |     | +-ColumnRef(type=STRUCT<a INT32, b STRING>, column=$groupby.TestStructValueTable#3)
+    |       |     +-field_idx=0
+    |       +-input_scan=
+    |         +-AggregateScan
+    |           +-column_list=[$groupby.TestStructValueTable#3]
+    |           +-input_scan=
+    |           | +-ProjectScan
+    |           |   +-column_list=[TestStructValueTable.value#1, $pre_groupby.a#2]
+    |           |   +-expr_list=
+    |           |   | +-a#2 :=
+    |           |   |   +-GetStructField
+    |           |   |     +-type=INT32
+    |           |   |     +-expr=
+    |           |   |     | +-ColumnRef(type=STRUCT<a INT32, b STRING>, column=TestStructValueTable.value#1)
+    |           |   |     +-field_idx=0
+    |           |   +-input_scan=
+    |           |     +-TableScan(column_list=[TestStructValueTable.value#1], table=TestStructValueTable, column_index_list=[0])
+    |           +-group_by_list=
+    |             +-TestStructValueTable#3 := ColumnRef(type=STRUCT<a INT32, b STRING>, column=TestStructValueTable.value#1)
+    +-order_by_item_list=
+      +-OrderByItem
+        +-column_ref=
+          +-ColumnRef(type=INT32, column=$orderby.$orderbycol1#6)
+==
+
+# Range variable vs. value table.
+SELECT vt, {{vt.|}}a
+FROM TestStructValueTable vt
+GROUP BY vt
+ORDER BY (SELECT vt.a)
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.vt#3 AS vt [STRUCT<a INT32, b STRING>]
+| +-$query.a#4 AS a [INT32]
++-query=
+  +-OrderByScan
+    +-column_list=[$groupby.vt#3, $query.a#4]
+    +-is_ordered=TRUE
+    +-input_scan=
+    | +-ProjectScan
+    |   +-column_list=[$groupby.vt#3, $query.a#4, $orderby.$orderbycol1#6]
+    |   +-expr_list=
+    |   | +-$orderbycol1#6 :=
+    |   |   +-SubqueryExpr
+    |   |     +-type=INT32
+    |   |     +-subquery_type=SCALAR
+    |   |     +-parameter_list=
+    |   |     | +-ColumnRef(type=STRUCT<a INT32, b STRING>, column=$groupby.vt#3)
+    |   |     +-subquery=
+    |   |       +-ProjectScan
+    |   |         +-column_list=[$expr_subquery.a#5]
+    |   |         +-expr_list=
+    |   |         | +-a#5 :=
+    |   |         |   +-GetStructField
+    |   |         |     +-type=INT32
+    |   |         |     +-expr=
+    |   |         |     | +-ColumnRef(type=STRUCT<a INT32, b STRING>, column=$groupby.vt#3, is_correlated=TRUE)
+    |   |         |     +-field_idx=0
+    |   |         +-input_scan=
+    |   |           +-SingleRowScan
+    |   +-input_scan=
+    |     +-ProjectScan
+    |       +-column_list=[$groupby.vt#3, $query.a#4]
+    |       +-expr_list=
+    |       | +-a#4 :=
+    |       |   +-GetStructField
+    |       |     +-type=INT32
+    |       |     +-expr=
+    |       |     | +-ColumnRef(type=STRUCT<a INT32, b STRING>, column=$groupby.vt#3)
+    |       |     +-field_idx=0
+    |       +-input_scan=
+    |         +-AggregateScan
+    |           +-column_list=[$groupby.vt#3]
+    |           +-input_scan=
+    |           | +-ProjectScan
+    |           |   +-column_list=[TestStructValueTable.value#1, $pre_groupby.a#2]
+    |           |   +-expr_list=
+    |           |   | +-a#2 :=
+    |           |   |   +-GetStructField
+    |           |   |     +-type=INT32
+    |           |   |     +-expr=
+    |           |   |     | +-ColumnRef(type=STRUCT<a INT32, b STRING>, column=TestStructValueTable.value#1)
+    |           |   |     +-field_idx=0
+    |           |   +-input_scan=
+    |           |     +-TableScan(column_list=[TestStructValueTable.value#1], table=TestStructValueTable, column_index_list=[0], alias="vt")
+    |           +-group_by_list=
+    |             +-vt#3 := ColumnRef(type=STRUCT<a INT32, b STRING>, column=TestStructValueTable.value#1)
+    +-order_by_item_list=
+      +-OrderByItem
+        +-column_ref=
+          +-ColumnRef(type=INT32, column=$orderby.$orderbycol1#6)
+==
+
+##########################################################################
+# 12. Group by range variable.
+##########################################################################
+# 12.1 Correlated reference in SELECT.
+# TODO: st.key is visible post-GROUP BY, this should be valid.
+SELECT (SELECT as struct st.key, st.TestStruct)
+FROM SimpleTypesWithStruct st
+GROUP BY st
+--
+ERROR: SELECT without FROM clause expression references st.key which is neither grouped nor aggregated [at 1:26]
+SELECT (SELECT as struct st.key, st.TestStruct)
+                         ^
+==
+
+# 12.2 Correlated reference in WHERE.
+# Correlated reference in WHERE which is resolved pre-GROUP BY and therefore is
+# valid.
+SELECT count(1)
+FROM SimpleTypesWithStruct st
+WHERE (SELECT st.key) > 10
+GROUP BY st
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#5 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#5]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$aggregate.$agg1#5]
+        +-input_scan=
+        | +-FilterScan
+        |   +-column_list=SimpleTypesWithStruct.[key#1, TestEnum#2, TestStruct#3]
+        |   +-input_scan=
+        |   | +-TableScan(column_list=SimpleTypesWithStruct.[key#1, TestEnum#2, TestStruct#3], table=SimpleTypesWithStruct, column_index_list=[0, 1, 2], alias="st")
+        |   +-filter_expr=
+        |     +-FunctionCall(GoogleSQL:$greater(INT32, INT32) -> BOOL)
+        |       +-SubqueryExpr
+        |       | +-type=INT32
+        |       | +-subquery_type=SCALAR
+        |       | +-parameter_list=
+        |       | | +-ColumnRef(type=INT32, column=SimpleTypesWithStruct.key#1)
+        |       | +-subquery=
+        |       |   +-ProjectScan
+        |       |     +-column_list=[$expr_subquery.key#4]
+        |       |     +-expr_list=
+        |       |     | +-key#4 := ColumnRef(type=INT32, column=SimpleTypesWithStruct.key#1, is_correlated=TRUE)
+        |       |     +-input_scan=
+        |       |       +-SingleRowScan
+        |       +-Literal(type=INT32, value=10)
+        +-group_by_list=
+        | +-st#7 :=
+        |   +-MakeStruct
+        |     +-type=STRUCT<key INT32, TestEnum ENUM<googlesql_test.TestEnum>, TestStruct STRUCT<c INT32, d STRUCT<a INT32, b STRING>>>
+        |     +-field_list=
+        |       +-ColumnRef(type=INT32, column=SimpleTypesWithStruct.key#1)
+        |       +-ColumnRef(type=ENUM<googlesql_test.TestEnum>, column=SimpleTypesWithStruct.TestEnum#2)
+        |       +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=SimpleTypesWithStruct.TestStruct#3)
+        +-aggregate_list=
+          +-$agg1#5 :=
+            +-AggregateFunctionCall(GoogleSQL:count(INT64) -> INT64)
+              +-Literal(type=INT64, value=1)
+==
+
+# 12.3 Correlated reference in GROUP BY which is resolved pre-GROUP BY,
+# therefore is valid.
+SELECT count(1)
+FROM SimpleTypesWithStruct st
+GROUP BY (SELECT st.TestStruct)
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#4 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#4]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$aggregate.$agg1#4]
+        +-input_scan=
+        | +-TableScan(column_list=[SimpleTypesWithStruct.TestStruct#3], table=SimpleTypesWithStruct, column_index_list=[2], alias="st")
+        +-group_by_list=
+        | +-$groupbycol1#6 :=
+        |   +-SubqueryExpr
+        |     +-type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>
+        |     +-subquery_type=SCALAR
+        |     +-parameter_list=
+        |     | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=SimpleTypesWithStruct.TestStruct#3)
+        |     +-subquery=
+        |       +-ProjectScan
+        |         +-column_list=[$expr_subquery.TestStruct#5]
+        |         +-expr_list=
+        |         | +-TestStruct#5 := ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=SimpleTypesWithStruct.TestStruct#3, is_correlated=TRUE)
+        |         +-input_scan=
+        |           +-SingleRowScan
+        +-aggregate_list=
+          +-$agg1#4 :=
+            +-AggregateFunctionCall(GoogleSQL:count(INT64) -> INT64)
+              +-Literal(type=INT64, value=1)
+==
+
+# 12.4 Correlated reference in HAVING which is resolved post-GROUP BY.
+# TODO all fields in 'st' should be visible post-GROUP BY. This should
+# be valid.
+SELECT count(1)
+FROM SimpleTypesWithStruct st
+GROUP BY st
+HAVING (SELECT st.TestStruct.c) = 1
+--
+ERROR: SELECT without FROM clause expression references st.TestStruct.c which is neither grouped nor aggregated [at 4:16]
+HAVING (SELECT st.TestStruct.c) = 1
+               ^
+==
+
+# 12.5 Correlated reference in the FROM clause of subquery in HAVING.
+SELECT st
+FROM SimpleTypesWithStruct st
+GROUP BY st
+HAVING (SELECT COUNT(*) FROM st.key) > 1
+--
+ERROR: Values referenced in FROM clause must be arrays. st.key has type INT32 [at 4:30]
+HAVING (SELECT COUNT(*) FROM st.key) > 1
+                             ^
+==
+
+# 12.6 Correlated reference in ORDER BY.
+# TODO all fields in 'st' should be visible post-GROUP BY. This should
+# be valid.
+SELECT count(1)
+FROM SimpleTypesWithStruct st
+GROUP BY st
+ORDER BY (SELECT st.TestStruct.c)
+--
+ERROR: SELECT without FROM clause expression references st.TestStruct.c which is neither grouped nor aggregated [at 4:18]
+ORDER BY (SELECT st.TestStruct.c)
+                 ^

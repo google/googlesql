@@ -1,0 +1,1723 @@
+[default language_features=NONE]
+SELECT LENGTH([1,2], e->e>0);
+--
+ERROR: Lambda is not supported [at 1:22]
+SELECT LENGTH([1,2], e->e>0);
+                     ^
+==
+
+[default language_features=NONE,+INLINE_LAMBDA_ARGUMENT,+NAMED_ARGUMENTS]
+SELECT e -> e > 0;
+--
+ERROR: Syntax error: Expected end of input but got "->" [at 1:10]
+SELECT e -> e > 0;
+         ^
+==
+
+# Call a lambda
+SELECT (e -> e > 0)(1);
+--
+ERROR: Syntax error: Expected "," but got "->" [at 1:11]
+SELECT (e -> e > 0)(1);
+          ^
+==
+
+SELECT LENGTH([1,2], e.e -> e.e > 0) AS a_1;
+--
+ERROR: Lambda argument name must be a single identifier [at 1:22]
+SELECT LENGTH([1,2], e.e -> e.e > 0) AS a_1;
+                     ^
+==
+
+SELECT LENGTH([2], 1 -> 1 > 0) AS a_1;
+--
+ERROR: Syntax error: Expecting lambda argument list [at 1:20]
+SELECT LENGTH([2], 1 -> 1 > 0) AS a_1;
+                   ^
+==
+
+SELECT LENGTH([2], (e, LENGTH("a")) -> e > 0) AS a_1;
+--
+ERROR: Lambda argument name must be a single identifier [at 1:24]
+SELECT LENGTH([2], (e, LENGTH("a")) -> e > 0) AS a_1;
+                       ^
+==
+
+SELECT LENGTH([2], (e, (f, g)) -> 1 > 0) AS a_1;
+--
+ERROR: Lambda argument name must be a single identifier [at 1:24]
+SELECT LENGTH([2], (e, (f, g)) -> 1 > 0) AS a_1;
+                       ^
+==
+
+SELECT LENGTH([2], (SELECT 1) -> e.e > 0) AS a_1;
+--
+ERROR: Syntax error: Expecting lambda argument list [at 1:20]
+SELECT LENGTH([2], (SELECT 1) -> e.e > 0) AS a_1;
+                   ^
+==
+
+SELECT LENGTH([2], (e, (SELECT 1)) -> e > 0) AS a_1;
+--
+ERROR: Lambda argument name must be a single identifier [at 1:24]
+SELECT LENGTH([2], (e, (SELECT 1)) -> e > 0) AS a_1;
+                       ^
+==
+
+SELECT LENGTH([1,2], (e.e) -> e > 0) AS a_1;
+--
+ERROR: Lambda argument name must be a single identifier [at 1:23]
+SELECT LENGTH([1,2], (e.e) -> e > 0) AS a_1;
+                      ^
+==
+
+SELECT LENGTH([1,2], (e, e.e) -> e > 0) AS a_1;
+--
+ERROR: Lambda argument name must be a single identifier [at 1:26]
+SELECT LENGTH([1,2], (e, e.e) -> e > 0) AS a_1;
+                         ^
+==
+
+SELECT LENGTH([1,2], (e, e.e) -> e > 0) AS a_1;
+--
+ERROR: Lambda argument name must be a single identifier [at 1:26]
+SELECT LENGTH([1,2], (e, e.e) -> e > 0) AS a_1;
+                         ^
+==
+
+SELECT LENGTH([1,2], (e, e>0) -> e > 0) AS a_1;
+--
+ERROR: Lambda argument name must be a single identifier [at 1:26]
+SELECT LENGTH([1,2], (e, e>0) -> e > 0) AS a_1;
+                         ^
+==
+
+# NULL cannot be used for lambda
+SELECT fn_array_filter(ARRAY<INT64>[1, 2], NULL) AS a_1;
+--
+ERROR: No matching signature for function SAMPLE_FUNCTIONS:FN_ARRAY_FILTER
+  Argument types: ARRAY<INT64>, NULL
+  Signature: FN_ARRAY_FILTER(ARRAY<T1>, FUNCTION<T1->BOOL>)
+    Argument 2: expected FUNCTION<T1->BOOL>, found NULL
+  Signature: FN_ARRAY_FILTER(ARRAY<T1>, FUNCTION<(T1, INT64)->BOOL>)
+    Argument 2: expected FUNCTION<(T1, INT64)->BOOL>, found NULL [at 1:8]
+SELECT fn_array_filter(ARRAY<INT64>[1, 2], NULL) AS a_1;
+       ^
+==
+
+# Lambda body mismatch
+# TODO: Enhance the error msg with why each signature doesn't match.
+SELECT fn_array_filter(ARRAY<INT64>[1, 2], e->e+1) AS a_1;
+--
+ERROR: No matching signature for function SAMPLE_FUNCTIONS:FN_ARRAY_FILTER
+  Argument types: ARRAY<INT64>, LAMBDA
+  Signature: FN_ARRAY_FILTER(ARRAY<T1>, FUNCTION<T1->BOOL>)
+    Argument 2: failed to resolve lambda body, error: Lambda should return type BOOL, but returns INT64
+  Signature: FN_ARRAY_FILTER(ARRAY<T1>, FUNCTION<(T1, INT64)->BOOL>)
+    Argument 2: lambda requires 2 arguments but 1 is provided [at 1:8]
+SELECT fn_array_filter(ARRAY<INT64>[1, 2], e->e+1) AS a_1;
+       ^
+==
+
+# No matching signature for transform.
+SELECT fn_array_filter(1, (e, i) -> e > i);
+--
+ERROR: No matching signature for function SAMPLE_FUNCTIONS:FN_ARRAY_FILTER
+  Argument types: INT64, LAMBDA
+  Signature: FN_ARRAY_FILTER(ARRAY<T1>, FUNCTION<T1->BOOL>)
+    Argument 1: expected array type but found INT64
+  Signature: FN_ARRAY_FILTER(ARRAY<T1>, FUNCTION<(T1, INT64)->BOOL>)
+    Argument 1: expected array type but found INT64 [at 1:8]
+SELECT fn_array_filter(1, (e, i) -> e > i);
+       ^
+==
+
+SELECT fn_array_filter(ARRAY<INT64>[1, 2], (e, e)->e+1) AS a_1;
+--
+ERROR: Lambda argument name `e` is already defined [at 1:48]
+SELECT fn_array_filter(ARRAY<INT64>[1, 2], (e, e)->e+1) AS a_1;
+                                               ^
+==
+
+# A typed NULL array is a match.
+SELECT fn_array_filter(CAST(NULL AS ARRAY<INT64>), e -> e > 0) AS a_1;
+--
+QueryStmt
++-output_column_list=
+| +-$query.a_1#2 AS a_1 [ARRAY<INT64>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.a_1#2]
+    +-expr_list=
+    | +-a_1#2 :=
+    |   +-FunctionCall(sample_functions:fn_array_filter(ARRAY<INT64>, FUNCTION<INT64->BOOL>) -> ARRAY<INT64>)
+    |     +-FunctionArgument
+    |     | +-expr=
+    |     |   +-Literal(type=ARRAY<INT64>, value=NULL, has_explicit_type=TRUE)
+    |     +-FunctionArgument
+    |       +-inline_lambda=
+    |         +-InlineLambda
+    |           +-argument_list=[$lambda_arg.e#1]
+    |           +-body=
+    |             +-FunctionCall(GoogleSQL:$greater(INT64, INT64) -> BOOL)
+    |               +-ColumnRef(type=INT64, column=$lambda_arg.e#1)
+    |               +-Literal(type=INT64, value=0)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# A typed empty array is a match.
+SELECT fn_array_filter(ARRAY<INT64>[], e -> e > 0) AS a_1;
+--
+QueryStmt
++-output_column_list=
+| +-$query.a_1#2 AS a_1 [ARRAY<INT64>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.a_1#2]
+    +-expr_list=
+    | +-a_1#2 :=
+    |   +-FunctionCall(sample_functions:fn_array_filter(ARRAY<INT64>, FUNCTION<INT64->BOOL>) -> ARRAY<INT64>)
+    |     +-FunctionArgument
+    |     | +-expr=
+    |     |   +-Literal(type=ARRAY<INT64>, value=[], has_explicit_type=TRUE)
+    |     +-FunctionArgument
+    |       +-inline_lambda=
+    |         +-InlineLambda
+    |           +-argument_list=[$lambda_arg.e#1]
+    |           +-body=
+    |             +-FunctionCall(GoogleSQL:$greater(INT64, INT64) -> BOOL)
+    |               +-ColumnRef(type=INT64, column=$lambda_arg.e#1)
+    |               +-Literal(type=INT64, value=0)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+SELECT fn_array_filter(null, e -> e > 0) AS a_1;
+--
+ERROR: No matching signature for function SAMPLE_FUNCTIONS:FN_ARRAY_FILTER
+  Argument types: NULL, LAMBDA
+  Signature: FN_ARRAY_FILTER(ARRAY<T1>, FUNCTION<T1->BOOL>)
+    Argument 2: failed to infer type for 0-th argument (e) of lambda from other untyped arguments
+  Signature: FN_ARRAY_FILTER(ARRAY<T1>, FUNCTION<(T1, INT64)->BOOL>)
+    Argument 2: lambda requires 2 arguments but 1 is provided [at 1:8]
+SELECT fn_array_filter(null, e -> e > 0) AS a_1;
+       ^
+==
+
+SELECT fn_array_filter([], e -> e > 0) AS a_1;
+--
+ERROR: No matching signature for function SAMPLE_FUNCTIONS:FN_ARRAY_FILTER
+  Argument types: [], LAMBDA
+  Signature: FN_ARRAY_FILTER(ARRAY<T1>, FUNCTION<T1->BOOL>)
+    Argument 2: failed to infer type for 0-th argument (e) of lambda from other untyped arguments
+  Signature: FN_ARRAY_FILTER(ARRAY<T1>, FUNCTION<(T1, INT64)->BOOL>)
+    Argument 2: lambda requires 2 arguments but 1 is provided [at 1:8]
+SELECT fn_array_filter([], e -> e > 0) AS a_1;
+       ^
+==
+
+SELECT fn_array_filter([1,2], e -> true);
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#2 AS `$col1` [ARRAY<INT64>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#2]
+    +-expr_list=
+    | +-$col1#2 :=
+    |   +-FunctionCall(sample_functions:fn_array_filter(ARRAY<INT64>, FUNCTION<INT64->BOOL>) -> ARRAY<INT64>)
+    |     +-FunctionArgument
+    |     | +-expr=
+    |     |   +-Literal(type=ARRAY<INT64>, value=[1, 2])
+    |     +-FunctionArgument
+    |       +-inline_lambda=
+    |         +-InlineLambda
+    |           +-argument_list=[$lambda_arg.e#1]
+    |           +-body=
+    |             +-Literal(type=BOOL, value=true)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+SELECT fn_array_filter([1,2], e -> e > 0);
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#2 AS `$col1` [ARRAY<INT64>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#2]
+    +-expr_list=
+    | +-$col1#2 :=
+    |   +-FunctionCall(sample_functions:fn_array_filter(ARRAY<INT64>, FUNCTION<INT64->BOOL>) -> ARRAY<INT64>)
+    |     +-FunctionArgument
+    |     | +-expr=
+    |     |   +-Literal(type=ARRAY<INT64>, value=[1, 2])
+    |     +-FunctionArgument
+    |       +-inline_lambda=
+    |         +-InlineLambda
+    |           +-argument_list=[$lambda_arg.e#1]
+    |           +-body=
+    |             +-FunctionCall(GoogleSQL:$greater(INT64, INT64) -> BOOL)
+    |               +-ColumnRef(type=INT64, column=$lambda_arg.e#1)
+    |               +-Literal(type=INT64, value=0)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Lambda body accessing columns other than the lambda arguments.
+SELECT fn_array_filter([1,2], e -> e > Key) from KeyValue;
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#4 AS `$col1` [ARRAY<INT64>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#4]
+    +-expr_list=
+    | +-$col1#4 :=
+    |   +-FunctionCall(sample_functions:fn_array_filter(ARRAY<INT64>, FUNCTION<INT64->BOOL>) -> ARRAY<INT64>)
+    |     +-FunctionArgument
+    |     | +-expr=
+    |     |   +-Literal(type=ARRAY<INT64>, value=[1, 2])
+    |     +-FunctionArgument
+    |       +-inline_lambda=
+    |         +-InlineLambda
+    |           +-argument_list=[$lambda_arg.e#3]
+    |           +-parameter_list=
+    |           | +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+    |           +-body=
+    |             +-FunctionCall(GoogleSQL:$greater(INT64, INT64) -> BOOL)
+    |               +-ColumnRef(type=INT64, column=$lambda_arg.e#3)
+    |               +-ColumnRef(type=INT64, column=KeyValue.Key#1, is_correlated=TRUE)
+    +-input_scan=
+      +-TableScan(column_list=[KeyValue.Key#1], table=KeyValue, column_index_list=[0])
+
+==
+
+# Both arguments of the function references the Key column.
+SELECT fn_array_filter([kv.key, 3,4], e -> e > kv.Key) from KeyValue as kv;
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#4 AS `$col1` [ARRAY<INT64>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#4]
+    +-expr_list=
+    | +-$col1#4 :=
+    |   +-FunctionCall(sample_functions:fn_array_filter(ARRAY<INT64>, FUNCTION<INT64->BOOL>) -> ARRAY<INT64>)
+    |     +-FunctionArgument
+    |     | +-expr=
+    |     |   +-FunctionCall(GoogleSQL:$make_array(repeated(3) INT64) -> ARRAY<INT64>)
+    |     |     +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+    |     |     +-Literal(type=INT64, value=3)
+    |     |     +-Literal(type=INT64, value=4)
+    |     +-FunctionArgument
+    |       +-inline_lambda=
+    |         +-InlineLambda
+    |           +-argument_list=[$lambda_arg.e#3]
+    |           +-parameter_list=
+    |           | +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+    |           +-body=
+    |             +-FunctionCall(GoogleSQL:$greater(INT64, INT64) -> BOOL)
+    |               +-ColumnRef(type=INT64, column=$lambda_arg.e#3)
+    |               +-ColumnRef(type=INT64, column=KeyValue.Key#1, is_correlated=TRUE)
+    +-input_scan=
+      +-TableScan(column_list=[KeyValue.Key#1], table=KeyValue, column_index_list=[0], alias="kv")
+==
+
+# Lambda inside lambda
+SELECT fn_array_filter([1,2,3], e1 -> ARRAY_IS_DISTINCT(fn_array_filter([e1,3,4], e2->e2<e1)));
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#3 AS `$col1` [ARRAY<INT64>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#3]
+    +-expr_list=
+    | +-$col1#3 :=
+    |   +-FunctionCall(sample_functions:fn_array_filter(ARRAY<INT64>, FUNCTION<INT64->BOOL>) -> ARRAY<INT64>)
+    |     +-FunctionArgument
+    |     | +-expr=
+    |     |   +-Literal(type=ARRAY<INT64>, value=[1, 2, 3])
+    |     +-FunctionArgument
+    |       +-inline_lambda=
+    |         +-InlineLambda
+    |           +-argument_list=[$lambda_arg.e1#1]
+    |           +-body=
+    |             +-FunctionCall(GoogleSQL:array_is_distinct(ARRAY<INT64>) -> BOOL)
+    |               +-FunctionCall(sample_functions:fn_array_filter(ARRAY<INT64>, FUNCTION<INT64->BOOL>) -> ARRAY<INT64>)
+    |                 +-FunctionArgument
+    |                 | +-expr=
+    |                 |   +-FunctionCall(GoogleSQL:$make_array(repeated(3) INT64) -> ARRAY<INT64>)
+    |                 |     +-ColumnRef(type=INT64, column=$lambda_arg.e1#1)
+    |                 |     +-Literal(type=INT64, value=3)
+    |                 |     +-Literal(type=INT64, value=4)
+    |                 +-FunctionArgument
+    |                   +-inline_lambda=
+    |                     +-InlineLambda
+    |                       +-argument_list=[$lambda_arg.e2#2]
+    |                       +-parameter_list=
+    |                       | +-ColumnRef(type=INT64, column=$lambda_arg.e1#1)
+    |                       +-body=
+    |                         +-FunctionCall(GoogleSQL:$less(INT64, INT64) -> BOOL)
+    |                           +-ColumnRef(type=INT64, column=$lambda_arg.e2#2)
+    |                           +-ColumnRef(type=INT64, column=$lambda_arg.e1#1, is_correlated=TRUE)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Lambda inside lambda, inner lambda body referencing outside lambda argument
+SELECT fn_array_filter([1,2,3], e1 -> e1 in UNNEST(fn_array_filter([2,3,4], e2->e2<e1)));
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#3 AS `$col1` [ARRAY<INT64>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#3]
+    +-expr_list=
+    | +-$col1#3 :=
+    |   +-FunctionCall(sample_functions:fn_array_filter(ARRAY<INT64>, FUNCTION<INT64->BOOL>) -> ARRAY<INT64>)
+    |     +-FunctionArgument
+    |     | +-expr=
+    |     |   +-Literal(type=ARRAY<INT64>, value=[1, 2, 3])
+    |     +-FunctionArgument
+    |       +-inline_lambda=
+    |         +-InlineLambda
+    |           +-argument_list=[$lambda_arg.e1#1]
+    |           +-body=
+    |             +-FunctionCall(GoogleSQL:$in_array(INT64, ARRAY<INT64>) -> BOOL)
+    |               +-ColumnRef(type=INT64, column=$lambda_arg.e1#1)
+    |               +-FunctionCall(sample_functions:fn_array_filter(ARRAY<INT64>, FUNCTION<INT64->BOOL>) -> ARRAY<INT64>)
+    |                 +-FunctionArgument
+    |                 | +-expr=
+    |                 |   +-Literal(type=ARRAY<INT64>, value=[2, 3, 4])
+    |                 +-FunctionArgument
+    |                   +-inline_lambda=
+    |                     +-InlineLambda
+    |                       +-argument_list=[$lambda_arg.e2#2]
+    |                       +-parameter_list=
+    |                       | +-ColumnRef(type=INT64, column=$lambda_arg.e1#1)
+    |                       +-body=
+    |                         +-FunctionCall(GoogleSQL:$less(INT64, INT64) -> BOOL)
+    |                           +-ColumnRef(type=INT64, column=$lambda_arg.e2#2)
+    |                           +-ColumnRef(type=INT64, column=$lambda_arg.e1#1, is_correlated=TRUE)
+    +-input_scan=
+      +-SingleRowScan
+
+==
+
+# Lambda inside lambda, inner lambda argument shadowing outter lambda argument
+SELECT fn_array_filter([1,2,3], e1 -> ARRAY_IS_DISTINCT(fn_array_filter([e1,3,4], e1->e1<0)));
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#3 AS `$col1` [ARRAY<INT64>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#3]
+    +-expr_list=
+    | +-$col1#3 :=
+    |   +-FunctionCall(sample_functions:fn_array_filter(ARRAY<INT64>, FUNCTION<INT64->BOOL>) -> ARRAY<INT64>)
+    |     +-FunctionArgument
+    |     | +-expr=
+    |     |   +-Literal(type=ARRAY<INT64>, value=[1, 2, 3])
+    |     +-FunctionArgument
+    |       +-inline_lambda=
+    |         +-InlineLambda
+    |           +-argument_list=[$lambda_arg.e1#1]
+    |           +-body=
+    |             +-FunctionCall(GoogleSQL:array_is_distinct(ARRAY<INT64>) -> BOOL)
+    |               +-FunctionCall(sample_functions:fn_array_filter(ARRAY<INT64>, FUNCTION<INT64->BOOL>) -> ARRAY<INT64>)
+    |                 +-FunctionArgument
+    |                 | +-expr=
+    |                 |   +-FunctionCall(GoogleSQL:$make_array(repeated(3) INT64) -> ARRAY<INT64>)
+    |                 |     +-ColumnRef(type=INT64, column=$lambda_arg.e1#1)
+    |                 |     +-Literal(type=INT64, value=3)
+    |                 |     +-Literal(type=INT64, value=4)
+    |                 +-FunctionArgument
+    |                   +-inline_lambda=
+    |                     +-InlineLambda
+    |                       +-argument_list=[$lambda_arg.e1#2]
+    |                       +-body=
+    |                         +-FunctionCall(GoogleSQL:$less(INT64, INT64) -> BOOL)
+    |                           +-ColumnRef(type=INT64, column=$lambda_arg.e1#2)
+    |                           +-Literal(type=INT64, value=0)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Lambda inside lambda, inner lambda argument shadowing outter column
+SELECT fn_array_filter([1,2,Key], Key -> (Key > 0)) From KeyValue as e;
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#4 AS `$col1` [ARRAY<INT64>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#4]
+    +-expr_list=
+    | +-$col1#4 :=
+    |   +-FunctionCall(sample_functions:fn_array_filter(ARRAY<INT64>, FUNCTION<INT64->BOOL>) -> ARRAY<INT64>)
+    |     +-FunctionArgument
+    |     | +-expr=
+    |     |   +-FunctionCall(GoogleSQL:$make_array(repeated(3) INT64) -> ARRAY<INT64>)
+    |     |     +-Literal(type=INT64, value=1)
+    |     |     +-Literal(type=INT64, value=2)
+    |     |     +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+    |     +-FunctionArgument
+    |       +-inline_lambda=
+    |         +-InlineLambda
+    |           +-argument_list=[$lambda_arg.Key#3]
+    |           +-body=
+    |             +-FunctionCall(GoogleSQL:$greater(INT64, INT64) -> BOOL)
+    |               +-ColumnRef(type=INT64, column=$lambda_arg.Key#3)
+    |               +-Literal(type=INT64, value=0)
+    +-input_scan=
+      +-TableScan(column_list=[KeyValue.Key#1], table=KeyValue, column_index_list=[0], alias="e")
+==
+
+# Lambda inside lambda, inner lambda argument shadowing outter table
+SELECT fn_array_filter([1,2,e.Key], e -> (e > 0)) From KeyValue as e;
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#4 AS `$col1` [ARRAY<INT64>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#4]
+    +-expr_list=
+    | +-$col1#4 :=
+    |   +-FunctionCall(sample_functions:fn_array_filter(ARRAY<INT64>, FUNCTION<INT64->BOOL>) -> ARRAY<INT64>)
+    |     +-FunctionArgument
+    |     | +-expr=
+    |     |   +-FunctionCall(GoogleSQL:$make_array(repeated(3) INT64) -> ARRAY<INT64>)
+    |     |     +-Literal(type=INT64, value=1)
+    |     |     +-Literal(type=INT64, value=2)
+    |     |     +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+    |     +-FunctionArgument
+    |       +-inline_lambda=
+    |         +-InlineLambda
+    |           +-argument_list=[$lambda_arg.e#3]
+    |           +-body=
+    |             +-FunctionCall(GoogleSQL:$greater(INT64, INT64) -> BOOL)
+    |               +-ColumnRef(type=INT64, column=$lambda_arg.e#3)
+    |               +-Literal(type=INT64, value=0)
+    +-input_scan=
+      +-TableScan(column_list=[KeyValue.Key#1], table=KeyValue, column_index_list=[0], alias="e")
+==
+
+# filter with array index.
+SELECT fn_array_filter([1,2], (e, i) -> e > i);
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#3 AS `$col1` [ARRAY<INT64>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#3]
+    +-expr_list=
+    | +-$col1#3 :=
+    |   +-FunctionCall(sample_functions:fn_array_filter(ARRAY<INT64>, FUNCTION<(INT64, INT64)->BOOL>) -> ARRAY<INT64>)
+    |     +-FunctionArgument
+    |     | +-expr=
+    |     |   +-Literal(type=ARRAY<INT64>, value=[1, 2])
+    |     +-FunctionArgument
+    |       +-inline_lambda=
+    |         +-InlineLambda
+    |           +-argument_list=$lambda_arg.[e#1, i#2]
+    |           +-body=
+    |             +-FunctionCall(GoogleSQL:$greater(INT64, INT64) -> BOOL)
+    |               +-ColumnRef(type=INT64, column=$lambda_arg.e#1)
+    |               +-ColumnRef(type=INT64, column=$lambda_arg.i#2)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Simple transform
+SELECT fn_array_transform([1,2], (e) -> e + 1 );
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#2 AS `$col1` [ARRAY<INT64>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#2]
+    +-expr_list=
+    | +-$col1#2 :=
+    |   +-FunctionCall(sample_functions:fn_array_transform(ARRAY<INT64>, FUNCTION<INT64->INT64>) -> ARRAY<INT64>)
+    |     +-FunctionArgument
+    |     | +-expr=
+    |     |   +-Literal(type=ARRAY<INT64>, value=[1, 2])
+    |     +-FunctionArgument
+    |       +-inline_lambda=
+    |         +-InlineLambda
+    |           +-argument_list=[$lambda_arg.e#1]
+    |           +-body=
+    |             +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |               +-ColumnRef(type=INT64, column=$lambda_arg.e#1)
+    |               +-Literal(type=INT64, value=1)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# No matching signature for transform
+SELECT fn_array_transform(1, (e) -> e + 1 );
+--
+ERROR: No matching signature for function SAMPLE_FUNCTIONS:FN_ARRAY_TRANSFORM
+  Argument types: INT64, LAMBDA
+  Signature: FN_ARRAY_TRANSFORM(ARRAY<T1>, FUNCTION<T1->T2>)
+    Argument 1: expected array type but found INT64
+  Signature: FN_ARRAY_TRANSFORM(ARRAY<T1>, FUNCTION<(T1, INT64)->T2>)
+    Argument 1: expected array type but found INT64 [at 1:8]
+SELECT fn_array_transform(1, (e) -> e + 1 );
+       ^
+==
+
+# Transform with index
+SELECT fn_array_transform([1,2], (e, i) -> e + i);
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#3 AS `$col1` [ARRAY<INT64>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#3]
+    +-expr_list=
+    | +-$col1#3 :=
+    |   +-FunctionCall(sample_functions:fn_array_transform(ARRAY<INT64>, FUNCTION<(INT64, INT64)->INT64>) -> ARRAY<INT64>)
+    |     +-FunctionArgument
+    |     | +-expr=
+    |     |   +-Literal(type=ARRAY<INT64>, value=[1, 2])
+    |     +-FunctionArgument
+    |       +-inline_lambda=
+    |         +-InlineLambda
+    |           +-argument_list=$lambda_arg.[e#1, i#2]
+    |           +-body=
+    |             +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |               +-ColumnRef(type=INT64, column=$lambda_arg.e#1)
+    |               +-ColumnRef(type=INT64, column=$lambda_arg.i#2)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+SELECT fn_fp_T_T_LAMBDA(1, 1, e->e>0);
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#2 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#2]
+    +-expr_list=
+    | +-$col1#2 :=
+    |   +-FunctionCall(sample_functions:fn_fp_T_T_LAMBDA(INT64, INT64, FUNCTION<INT64->BOOL>) -> INT64)
+    |     +-FunctionArgument
+    |     | +-expr=
+    |     |   +-Literal(type=INT64, value=1)
+    |     +-FunctionArgument
+    |     | +-expr=
+    |     |   +-Literal(type=INT64, value=1)
+    |     +-FunctionArgument
+    |       +-inline_lambda=
+    |         +-InlineLambda
+    |           +-argument_list=[$lambda_arg.e#1]
+    |           +-body=
+    |             +-FunctionCall(GoogleSQL:$greater(INT64, INT64) -> BOOL)
+    |               +-ColumnRef(type=INT64, column=$lambda_arg.e#1)
+    |               +-Literal(type=INT64, value=0)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Signature: fn_fp_T_T_LAMBDA(T, T, T->BOOL)
+# In this test, INT64 and DOUBLE are provided as template type T and INT64 is
+# coerced to DOUBLE.
+SELECT fn_fp_T_T_LAMBDA(Key, 1.0, e->e>0) FROM KeyValue;
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#4 AS `$col1` [DOUBLE]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#4]
+    +-expr_list=
+    | +-$col1#4 :=
+    |   +-FunctionCall(sample_functions:fn_fp_T_T_LAMBDA(DOUBLE, DOUBLE, FUNCTION<DOUBLE->BOOL>) -> DOUBLE)
+    |     +-FunctionArgument
+    |     | +-expr=
+    |     |   +-Cast(INT64 -> DOUBLE)
+    |     |     +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+    |     +-FunctionArgument
+    |     | +-expr=
+    |     |   +-Literal(type=DOUBLE, value=1)
+    |     +-FunctionArgument
+    |       +-inline_lambda=
+    |         +-InlineLambda
+    |           +-argument_list=[$lambda_arg.e#3]
+    |           +-body=
+    |             +-FunctionCall(GoogleSQL:$greater(DOUBLE, DOUBLE) -> BOOL)
+    |               +-ColumnRef(type=DOUBLE, column=$lambda_arg.e#3)
+    |               +-Literal(type=DOUBLE, value=0)
+    +-input_scan=
+      +-TableScan(column_list=[KeyValue.Key#1], table=KeyValue, column_index_list=[0])
+==
+
+# Signature: fn_fp_ArrayT_T(ARRAY<T>, T, T->BOOL)
+# In this test, INT64 and DOUBLE are provided for template type T and we don't
+# cast ARRAY<INT64> to ARRAY<DOUBLE>.
+# This test is here to show that the following two tests are consistent with
+# current behaviour without lambda.
+SELECT fn_fp_ArrayT_T([1, 2], 1.0);
+--
+ERROR: No matching signature for function SAMPLE_FUNCTIONS:FN_FP_ARRAYT_T
+  Argument types: ARRAY<INT64>, DOUBLE
+  Signature: FN_FP_ARRAYT_T(ARRAY<T1>, T1)
+    Unable to coerce type ARRAY<INT64> to inferred array type ARRAY<DOUBLE> for argument <array<T1>> [at 1:8]
+SELECT fn_fp_ArrayT_T([1, 2], 1.0);
+       ^
+==
+
+SELECT fn_fp_ArrayT_T_LAMBDA([1, 2], 1, e->e>0);
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#2 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#2]
+    +-expr_list=
+    | +-$col1#2 :=
+    |   +-FunctionCall(sample_functions:fn_fp_ArrayT_T_LAMBDA(ARRAY<INT64>, INT64, FUNCTION<INT64->BOOL>) -> INT64)
+    |     +-FunctionArgument
+    |     | +-expr=
+    |     |   +-Literal(type=ARRAY<INT64>, value=[1, 2])
+    |     +-FunctionArgument
+    |     | +-expr=
+    |     |   +-Literal(type=INT64, value=1)
+    |     +-FunctionArgument
+    |       +-inline_lambda=
+    |         +-InlineLambda
+    |           +-argument_list=[$lambda_arg.e#1]
+    |           +-body=
+    |             +-FunctionCall(GoogleSQL:$greater(INT64, INT64) -> BOOL)
+    |               +-ColumnRef(type=INT64, column=$lambda_arg.e#1)
+    |               +-Literal(type=INT64, value=0)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# See the comment of test of fn_fp_ArrayT_T.
+SELECT fn_fp_ArrayT_T_LAMBDA([1, 2], 1.0, e->e>0);
+--
+ERROR: No matching signature for function SAMPLE_FUNCTIONS:FN_FP_ARRAYT_T_LAMBDA
+  Argument types: ARRAY<INT64>, DOUBLE, LAMBDA
+  Signature: FN_FP_ARRAYT_T_LAMBDA(ARRAY<T1>, T1, FUNCTION<T1->BOOL>)
+    Unable to coerce type ARRAY<INT64> to inferred array type ARRAY<DOUBLE> for argument <array<T1>> [at 1:8]
+SELECT fn_fp_ArrayT_T_LAMBDA([1, 2], 1.0, e->e>0);
+       ^
+==
+
+SELECT fn_fp_T_LAMBDA_RET_T(1, e->e+1);
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#2 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#2]
+    +-expr_list=
+    | +-$col1#2 :=
+    |   +-FunctionCall(sample_functions:fn_fp_T_LAMBDA_RET_T(INT64, FUNCTION<INT64->INT64>) -> INT64)
+    |     +-FunctionArgument
+    |     | +-expr=
+    |     |   +-Literal(type=INT64, value=1)
+    |     +-FunctionArgument
+    |       +-inline_lambda=
+    |         +-InlineLambda
+    |           +-argument_list=[$lambda_arg.e#1]
+    |           +-body=
+    |             +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |               +-ColumnRef(type=INT64, column=$lambda_arg.e#1)
+    |               +-Literal(type=INT64, value=1)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+SELECT fn_fp_T_LAMBDA_RET_T(1, e->"abc");
+--
+ERROR: No matching signature for function SAMPLE_FUNCTIONS:FN_FP_T_LAMBDA_RET_T
+  Argument types: INT64, LAMBDA
+  Signature: FN_FP_T_LAMBDA_RET_T(T1, FUNCTION<T1->T1>)
+    Argument 2: failed to resolve lambda body, error: Lambda should return type INT64, but returns STRING [at 1:8]
+SELECT fn_fp_T_LAMBDA_RET_T(1, e->"abc");
+       ^
+==
+
+# Signature: fn_fp_array_sort(ARRARY<T>, (T, T)->INT64) -> ARRARY<T>
+SELECT fn_fp_array_sort([1,2,3], (e1, e2) -> e1 - e2);
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#3 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#3]
+    +-expr_list=
+    | +-$col1#3 :=
+    |   +-FunctionCall(sample_functions:fn_fp_array_sort(ARRAY<INT64>, FUNCTION<(INT64, INT64)->INT64>) -> INT64)
+    |     +-FunctionArgument
+    |     | +-expr=
+    |     |   +-Literal(type=ARRAY<INT64>, value=[1, 2, 3])
+    |     +-FunctionArgument
+    |       +-inline_lambda=
+    |         +-InlineLambda
+    |           +-argument_list=$lambda_arg.[e1#1, e2#2]
+    |           +-body=
+    |             +-FunctionCall(GoogleSQL:$subtract(INT64, INT64) -> INT64)
+    |               +-ColumnRef(type=INT64, column=$lambda_arg.e1#1)
+    |               +-ColumnRef(type=INT64, column=$lambda_arg.e2#2)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Signature: fn_fp_array_reduce(ARRAY<T1>, T2, LAMBDA((T2, T1)->T2)) -> T2
+SELECT fn_fp_array_reduce([1,2,3], 0, (s, e) -> s + e);
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#3 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#3]
+    +-expr_list=
+    | +-$col1#3 :=
+    |   +-FunctionCall(sample_functions:fn_fp_array_reduce(ARRAY<INT64>, INT64, FUNCTION<(INT64, INT64)->INT64>) -> INT64)
+    |     +-FunctionArgument
+    |     | +-expr=
+    |     |   +-Literal(type=ARRAY<INT64>, value=[1, 2, 3])
+    |     +-FunctionArgument
+    |     | +-expr=
+    |     |   +-Literal(type=INT64, value=0)
+    |     +-FunctionArgument
+    |       +-inline_lambda=
+    |         +-InlineLambda
+    |           +-argument_list=$lambda_arg.[s#1, e#2]
+    |           +-body=
+    |             +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |               +-ColumnRef(type=INT64, column=$lambda_arg.s#1)
+    |               +-ColumnRef(type=INT64, column=$lambda_arg.e#2)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+SELECT fn_fp_named_then_lambda("123", (e) -> e);
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#2 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#2]
+    +-expr_list=
+    | +-$col1#2 :=
+    |   +-FunctionCall(sample_functions:fn_fp_named_then_lambda(STRING format_string, FUNCTION<INT64->INT64>) -> INT64)
+    |     +-FunctionArgument
+    |     | +-expr=
+    |     |   +-Literal(type=STRING, value="123")
+    |     +-FunctionArgument
+    |       +-inline_lambda=
+    |         +-InlineLambda
+    |           +-argument_list=[$lambda_arg.e#1]
+    |           +-body=
+    |             +-ColumnRef(type=INT64, column=$lambda_arg.e#1)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+SELECT fn_fp_named_then_lambda(format_string => "123", (e) -> e);
+--
+ERROR: Call to function sample_functions:fn_fp_named_then_lambda must not specify positional arguments after named arguments; named arguments must be specified last in the argument list [at 1:32]
+SELECT fn_fp_named_then_lambda(format_string => "123", (e) -> e);
+                               ^
+==
+
+SELECT fn_fp_named_then_lambda((e) -> e, format_string => "123");
+--
+ERROR: No matching signature for function SAMPLE_FUNCTIONS:FN_FP_NAMED_THEN_LAMBDA
+  Argument types: LAMBDA, format_string => STRING
+  Signature: FN_FP_NAMED_THEN_LAMBDA([format_string=>]STRING, FUNCTION<INT64->T1>)
+    Named argument `format_string` duplicates positional argument 1, which also provides `format_string` [at 1:8]
+SELECT fn_fp_named_then_lambda((e) -> e, format_string => "123");
+       ^
+==
+
+SELECT fn_fp_lambda_then_named((e) -> e, "123");
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#2 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#2]
+    +-expr_list=
+    | +-$col1#2 :=
+    |   +-FunctionCall(sample_functions:fn_fp_lambda_then_named(FUNCTION<INT64->INT64>, STRING format_string) -> INT64)
+    |     +-FunctionArgument
+    |     | +-inline_lambda=
+    |     |   +-InlineLambda
+    |     |     +-argument_list=[$lambda_arg.e#1]
+    |     |     +-body=
+    |     |       +-ColumnRef(type=INT64, column=$lambda_arg.e#1)
+    |     +-FunctionArgument
+    |       +-expr=
+    |         +-Literal(type=STRING, value="123")
+    +-input_scan=
+      +-SingleRowScan
+==
+
+SELECT fn_fp_lambda_then_named((e) -> e, format_string => "123");
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#2 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#2]
+    +-expr_list=
+    | +-$col1#2 :=
+    |   +-FunctionCall(sample_functions:fn_fp_lambda_then_named(FUNCTION<INT64->INT64>, STRING format_string) -> INT64)
+    |     +-FunctionArgument
+    |     | +-inline_lambda=
+    |     |   +-InlineLambda
+    |     |     +-argument_list=[$lambda_arg.e#1]
+    |     |     +-body=
+    |     |       +-ColumnRef(type=INT64, column=$lambda_arg.e#1)
+    |     +-FunctionArgument
+    |       +-expr=
+    |         +-Literal(type=STRING, value="123")
+    +-input_scan=
+      +-SingleRowScan
+==
+
+SELECT fn_fp_lambda_then_repeated((e) -> e, 1, 2, 3);
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#2 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#2]
+    +-expr_list=
+    | +-$col1#2 :=
+    |   +-FunctionCall(sample_functions:fn_fp_lambda_then_repeated(FUNCTION<INT64->INT64>, repeated(3) INT64) -> INT64)
+    |     +-FunctionArgument
+    |     | +-inline_lambda=
+    |     |   +-InlineLambda
+    |     |     +-argument_list=[$lambda_arg.e#1]
+    |     |     +-body=
+    |     |       +-ColumnRef(type=INT64, column=$lambda_arg.e#1)
+    |     +-FunctionArgument
+    |     | +-expr=
+    |     |   +-Literal(type=INT64, value=1)
+    |     +-FunctionArgument
+    |     | +-expr=
+    |     |   +-Literal(type=INT64, value=2)
+    |     +-FunctionArgument
+    |       +-expr=
+    |         +-Literal(type=INT64, value=3)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# test that the signatures are properly printed.
+SELECT fn_fp_repeated_arg_then_lambda(1, 2, 3, (e) -> e);
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#2 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#2]
+    +-expr_list=
+    | +-$col1#2 :=
+    |   +-FunctionCall(sample_functions:fn_fp_repeated_arg_then_lambda(repeated(3) INT64, FUNCTION<INT64->INT64>) -> INT64)
+    |     +-FunctionArgument
+    |     | +-expr=
+    |     |   +-Literal(type=INT64, value=1)
+    |     +-FunctionArgument
+    |     | +-expr=
+    |     |   +-Literal(type=INT64, value=2)
+    |     +-FunctionArgument
+    |     | +-expr=
+    |     |   +-Literal(type=INT64, value=3)
+    |     +-FunctionArgument
+    |       +-inline_lambda=
+    |         +-InlineLambda
+    |           +-argument_list=[$lambda_arg.e#1]
+    |           +-body=
+    |             +-ColumnRef(type=INT64, column=$lambda_arg.e#1)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+SELECT fn_fp_repeated_arg_then_lambda((e) -> e);
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#2 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#2]
+    +-expr_list=
+    | +-$col1#2 :=
+    |   +-FunctionCall(sample_functions:fn_fp_repeated_arg_then_lambda(repeated(0) INT64, FUNCTION<INT64->INT64>) -> INT64)
+    |     +-FunctionArgument
+    |       +-inline_lambda=
+    |         +-InlineLambda
+    |           +-argument_list=[$lambda_arg.e#1]
+    |           +-body=
+    |             +-ColumnRef(type=INT64, column=$lambda_arg.e#1)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# test that the signatures are properly printed.
+SELECT fn_fp_repeated_arg_then_lambda_string("1", "2", (e) -> e);
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#2 AS `$col1` [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#2]
+    +-expr_list=
+    | +-$col1#2 :=
+    |   +-FunctionCall(sample_functions:fn_fp_repeated_arg_then_lambda_string(repeated(2) STRING, FUNCTION<STRING->STRING>) -> STRING)
+    |     +-FunctionArgument
+    |     | +-expr=
+    |     |   +-Literal(type=STRING, value="1")
+    |     +-FunctionArgument
+    |     | +-expr=
+    |     |   +-Literal(type=STRING, value="2")
+    |     +-FunctionArgument
+    |       +-inline_lambda=
+    |         +-InlineLambda
+    |           +-argument_list=[$lambda_arg.e#1]
+    |           +-body=
+    |             +-ColumnRef(type=STRING, column=$lambda_arg.e#1)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+SELECT fn_fp_repeated_arg_then_lambda_string((e) -> e);
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#2 AS `$col1` [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#2]
+    +-expr_list=
+    | +-$col1#2 :=
+    |   +-FunctionCall(sample_functions:fn_fp_repeated_arg_then_lambda_string(repeated(0) STRING, FUNCTION<STRING->STRING>) -> STRING)
+    |     +-FunctionArgument
+    |       +-inline_lambda=
+    |         +-InlineLambda
+    |           +-argument_list=[$lambda_arg.e#1]
+    |           +-body=
+    |             +-ColumnRef(type=STRING, column=$lambda_arg.e#1)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+
+SELECT ARRAY_FILTER([1,2,3], e -> e>0);
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#2 AS `$col1` [ARRAY<INT64>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#2]
+    +-expr_list=
+    | +-$col1#2 :=
+    |   +-FunctionCall(GoogleSQL:array_filter(ARRAY<INT64> array_to_filter, FUNCTION<INT64->BOOL> condition) -> ARRAY<INT64>)
+    |     +-FunctionArgument
+    |     | +-expr=
+    |     |   +-Literal(type=ARRAY<INT64>, value=[1, 2, 3])
+    |     +-FunctionArgument
+    |       +-inline_lambda=
+    |         +-InlineLambda
+    |           +-argument_list=[$lambda_arg.e#1]
+    |           +-body=
+    |             +-FunctionCall(GoogleSQL:$greater(INT64, INT64) -> BOOL)
+    |               +-ColumnRef(type=INT64, column=$lambda_arg.e#1)
+    |               +-Literal(type=INT64, value=0)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+SELECT ARRAY_FILTER([1,2,3], (e, i) -> e>i*i);
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#3 AS `$col1` [ARRAY<INT64>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#3]
+    +-expr_list=
+    | +-$col1#3 :=
+    |   +-FunctionCall(GoogleSQL:array_filter(ARRAY<INT64> array_to_filter, FUNCTION<(INT64, INT64)->BOOL> condition) -> ARRAY<INT64>)
+    |     +-FunctionArgument
+    |     | +-expr=
+    |     |   +-Literal(type=ARRAY<INT64>, value=[1, 2, 3])
+    |     +-FunctionArgument
+    |       +-inline_lambda=
+    |         +-InlineLambda
+    |           +-argument_list=$lambda_arg.[e#1, i#2]
+    |           +-body=
+    |             +-FunctionCall(GoogleSQL:$greater(INT64, INT64) -> BOOL)
+    |               +-ColumnRef(type=INT64, column=$lambda_arg.e#1)
+    |               +-FunctionCall(GoogleSQL:$multiply(INT64, INT64) -> INT64)
+    |                 +-ColumnRef(type=INT64, column=$lambda_arg.i#2)
+    |                 +-ColumnRef(type=INT64, column=$lambda_arg.i#2)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+SELECT ARRAY_TRANSFORM([1,2,3], (e) -> e+1);
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#2 AS `$col1` [ARRAY<INT64>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#2]
+    +-expr_list=
+    | +-$col1#2 :=
+    |   +-FunctionCall(GoogleSQL:array_transform(ARRAY<INT64> array_to_transform, FUNCTION<INT64->INT64> transformation) -> ARRAY<INT64>)
+    |     +-FunctionArgument
+    |     | +-expr=
+    |     |   +-Literal(type=ARRAY<INT64>, value=[1, 2, 3])
+    |     +-FunctionArgument
+    |       +-inline_lambda=
+    |         +-InlineLambda
+    |           +-argument_list=[$lambda_arg.e#1]
+    |           +-body=
+    |             +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |               +-ColumnRef(type=INT64, column=$lambda_arg.e#1)
+    |               +-Literal(type=INT64, value=1)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+SELECT ARRAY_TRANSFORM([1,2,3], (e, i) -> i*100 + e);
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#3 AS `$col1` [ARRAY<INT64>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#3]
+    +-expr_list=
+    | +-$col1#3 :=
+    |   +-FunctionCall(GoogleSQL:array_transform(ARRAY<INT64> array_to_transform, FUNCTION<(INT64, INT64)->INT64> transformation) -> ARRAY<INT64>)
+    |     +-FunctionArgument
+    |     | +-expr=
+    |     |   +-Literal(type=ARRAY<INT64>, value=[1, 2, 3])
+    |     +-FunctionArgument
+    |       +-inline_lambda=
+    |         +-InlineLambda
+    |           +-argument_list=$lambda_arg.[e#1, i#2]
+    |           +-body=
+    |             +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |               +-FunctionCall(GoogleSQL:$multiply(INT64, INT64) -> INT64)
+    |               | +-ColumnRef(type=INT64, column=$lambda_arg.i#2)
+    |               | +-Literal(type=INT64, value=100)
+    |               +-ColumnRef(type=INT64, column=$lambda_arg.e#1)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+SELECT ARRAY_TRANSFORM([1,2,3], (e, i) -> i*100 + e);
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#3 AS `$col1` [ARRAY<INT64>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#3]
+    +-expr_list=
+    | +-$col1#3 :=
+    |   +-FunctionCall(GoogleSQL:array_transform(ARRAY<INT64> array_to_transform, FUNCTION<(INT64, INT64)->INT64> transformation) -> ARRAY<INT64>)
+    |     +-FunctionArgument
+    |     | +-expr=
+    |     |   +-Literal(type=ARRAY<INT64>, value=[1, 2, 3])
+    |     +-FunctionArgument
+    |       +-inline_lambda=
+    |         +-InlineLambda
+    |           +-argument_list=$lambda_arg.[e#1, i#2]
+    |           +-body=
+    |             +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |               +-FunctionCall(GoogleSQL:$multiply(INT64, INT64) -> INT64)
+    |               | +-ColumnRef(type=INT64, column=$lambda_arg.i#2)
+    |               | +-Literal(type=INT64, value=100)
+    |               +-ColumnRef(type=INT64, column=$lambda_arg.e#1)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+SELECT ARRAY_TRANSFORM([1,2,3], (e, i) -> CAST(i*100 + e AS STRING));
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#3 AS `$col1` [ARRAY<STRING>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#3]
+    +-expr_list=
+    | +-$col1#3 :=
+    |   +-FunctionCall(GoogleSQL:array_transform(ARRAY<INT64> array_to_transform, FUNCTION<(INT64, INT64)->STRING> transformation) -> ARRAY<STRING>)
+    |     +-FunctionArgument
+    |     | +-expr=
+    |     |   +-Literal(type=ARRAY<INT64>, value=[1, 2, 3])
+    |     +-FunctionArgument
+    |       +-inline_lambda=
+    |         +-InlineLambda
+    |           +-argument_list=$lambda_arg.[e#1, i#2]
+    |           +-body=
+    |             +-Cast(INT64 -> STRING)
+    |               +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |                 +-FunctionCall(GoogleSQL:$multiply(INT64, INT64) -> INT64)
+    |                 | +-ColumnRef(type=INT64, column=$lambda_arg.i#2)
+    |                 | +-Literal(type=INT64, value=100)
+    |                 +-ColumnRef(type=INT64, column=$lambda_arg.e#1)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Make sure undeclared query parameters resolve correctly inside the lambda
+# body.
+[allow_undeclared_parameters]
+[enabled_ast_rewrites=DEFAULTS]
+SELECT ARRAY_TRANSFORM([1,2,3], (e, i) -> CAST(i*@factor + e AS STRING));
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#3 AS `$col1` [ARRAY<STRING>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#3]
+    +-expr_list=
+    | +-$col1#3 :=
+    |   +-FunctionCall(GoogleSQL:array_transform(ARRAY<INT64> array_to_transform, FUNCTION<(INT64, INT64)->STRING> transformation) -> ARRAY<STRING>)
+    |     +-FunctionArgument
+    |     | +-expr=
+    |     |   +-Literal(type=ARRAY<INT64>, value=[1, 2, 3])
+    |     +-FunctionArgument
+    |       +-inline_lambda=
+    |         +-InlineLambda
+    |           +-argument_list=$lambda_arg.[e#1, i#2]
+    |           +-body=
+    |             +-Cast(INT64 -> STRING)
+    |               +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |                 +-FunctionCall(GoogleSQL:$multiply(INT64, INT64) -> INT64)
+    |                 | +-ColumnRef(type=INT64, column=$lambda_arg.i#2)
+    |                 | +-Parameter(parse_location=49-56, type=INT64, name="factor", is_untyped=TRUE)
+    |                 +-ColumnRef(type=INT64, column=$lambda_arg.e#1)
+    +-input_scan=
+      +-SingleRowScan
+[UNDECLARED_PARAMETERS]
+factor: INT64
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$query.$col1#3 AS `$col1` [ARRAY<STRING>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#3]
+    +-expr_list=
+    | +-$col1#3 :=
+    |   +-SubqueryExpr
+    |     +-type=ARRAY<STRING>
+    |     +-subquery_type=SCALAR
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$expr_subquery.$col1#8]
+    |         +-expr_list=
+    |         | +-$col1#8 :=
+    |         |   +-FunctionCall(GoogleSQL:if(BOOL, ARRAY<STRING>, ARRAY<STRING>) -> ARRAY<STRING>)
+    |         |     +-FunctionCall(GoogleSQL:$is_null(ARRAY<INT64>) -> BOOL)
+    |         |     | +-ColumnRef(type=ARRAY<INT64>, column=$subquery1.array_to_transform#4)
+    |         |     +-Literal(type=ARRAY<STRING>, value=NULL)
+    |         |     +-SubqueryExpr
+    |         |       +-type=ARRAY<STRING>
+    |         |       +-subquery_type=ARRAY
+    |         |       +-parameter_list=
+    |         |       | +-ColumnRef(type=ARRAY<INT64>, column=$subquery1.array_to_transform#4)
+    |         |       +-subquery=
+    |         |         +-OrderByScan
+    |         |           +-column_list=[$expr_subquery.$col1#7]
+    |         |           +-is_ordered=TRUE
+    |         |           +-input_scan=
+    |         |           | +-ProjectScan
+    |         |           |   +-column_list=[$array.element#5, $array_offset.off#6, $expr_subquery.$col1#7]
+    |         |           |   +-expr_list=
+    |         |           |   | +-$col1#7 :=
+    |         |           |   |   +-Cast(INT64 -> STRING)
+    |         |           |   |     +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |         |           |   |       +-FunctionCall(GoogleSQL:$multiply(INT64, INT64) -> INT64)
+    |         |           |   |       | +-ColumnRef(type=INT64, column=$array_offset.off#6)
+    |         |           |   |       | +-Parameter(parse_location=49-56, type=INT64, name="factor", is_untyped=TRUE)
+    |         |           |   |       +-ColumnRef(type=INT64, column=$array.element#5)
+    |         |           |   +-input_scan=
+    |         |           |     +-ArrayScan
+    |         |           |       +-column_list=[$array.element#5, $array_offset.off#6]
+    |         |           |       +-array_expr_list=
+    |         |           |       | +-ColumnRef(type=ARRAY<INT64>, column=$subquery1.array_to_transform#4, is_correlated=TRUE)
+    |         |           |       +-element_column_list=[$array.element#5]
+    |         |           |       +-array_offset_column=
+    |         |           |         +-ColumnHolder(column=$array_offset.off#6)
+    |         |           +-order_by_item_list=
+    |         |             +-OrderByItem
+    |         |               +-column_ref=
+    |         |                 +-ColumnRef(type=INT64, column=$array_offset.off#6)
+    |         +-input_scan=
+    |           +-ProjectScan
+    |             +-column_list=[$subquery1.array_to_transform#4]
+    |             +-expr_list=
+    |             | +-array_to_transform#4 := Literal(type=ARRAY<INT64>, value=[1, 2, 3])
+    |             +-input_scan=
+    |               +-SingleRowScan
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Similar to the previous, but choosing a parameter name that potentially
+# conflicts with a parameter of the substitution template.
+[allow_undeclared_parameters]
+[enabled_ast_rewrites=DEFAULTS]
+SELECT ARRAY_TRANSFORM([1,2,3], (e, i) -> CAST(i*@array_input + e AS STRING));
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#3 AS `$col1` [ARRAY<STRING>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#3]
+    +-expr_list=
+    | +-$col1#3 :=
+    |   +-FunctionCall(GoogleSQL:array_transform(ARRAY<INT64> array_to_transform, FUNCTION<(INT64, INT64)->STRING> transformation) -> ARRAY<STRING>)
+    |     +-FunctionArgument
+    |     | +-expr=
+    |     |   +-Literal(type=ARRAY<INT64>, value=[1, 2, 3])
+    |     +-FunctionArgument
+    |       +-inline_lambda=
+    |         +-InlineLambda
+    |           +-argument_list=$lambda_arg.[e#1, i#2]
+    |           +-body=
+    |             +-Cast(INT64 -> STRING)
+    |               +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |                 +-FunctionCall(GoogleSQL:$multiply(INT64, INT64) -> INT64)
+    |                 | +-ColumnRef(type=INT64, column=$lambda_arg.i#2)
+    |                 | +-Parameter(parse_location=49-61, type=INT64, name="array_input", is_untyped=TRUE)
+    |                 +-ColumnRef(type=INT64, column=$lambda_arg.e#1)
+    +-input_scan=
+      +-SingleRowScan
+[UNDECLARED_PARAMETERS]
+array_input: INT64
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$query.$col1#3 AS `$col1` [ARRAY<STRING>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#3]
+    +-expr_list=
+    | +-$col1#3 :=
+    |   +-SubqueryExpr
+    |     +-type=ARRAY<STRING>
+    |     +-subquery_type=SCALAR
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$expr_subquery.$col1#8]
+    |         +-expr_list=
+    |         | +-$col1#8 :=
+    |         |   +-FunctionCall(GoogleSQL:if(BOOL, ARRAY<STRING>, ARRAY<STRING>) -> ARRAY<STRING>)
+    |         |     +-FunctionCall(GoogleSQL:$is_null(ARRAY<INT64>) -> BOOL)
+    |         |     | +-ColumnRef(type=ARRAY<INT64>, column=$subquery1.array_to_transform#4)
+    |         |     +-Literal(type=ARRAY<STRING>, value=NULL)
+    |         |     +-SubqueryExpr
+    |         |       +-type=ARRAY<STRING>
+    |         |       +-subquery_type=ARRAY
+    |         |       +-parameter_list=
+    |         |       | +-ColumnRef(type=ARRAY<INT64>, column=$subquery1.array_to_transform#4)
+    |         |       +-subquery=
+    |         |         +-OrderByScan
+    |         |           +-column_list=[$expr_subquery.$col1#7]
+    |         |           +-is_ordered=TRUE
+    |         |           +-input_scan=
+    |         |           | +-ProjectScan
+    |         |           |   +-column_list=[$array.element#5, $array_offset.off#6, $expr_subquery.$col1#7]
+    |         |           |   +-expr_list=
+    |         |           |   | +-$col1#7 :=
+    |         |           |   |   +-Cast(INT64 -> STRING)
+    |         |           |   |     +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |         |           |   |       +-FunctionCall(GoogleSQL:$multiply(INT64, INT64) -> INT64)
+    |         |           |   |       | +-ColumnRef(type=INT64, column=$array_offset.off#6)
+    |         |           |   |       | +-Parameter(parse_location=49-61, type=INT64, name="array_input", is_untyped=TRUE)
+    |         |           |   |       +-ColumnRef(type=INT64, column=$array.element#5)
+    |         |           |   +-input_scan=
+    |         |           |     +-ArrayScan
+    |         |           |       +-column_list=[$array.element#5, $array_offset.off#6]
+    |         |           |       +-array_expr_list=
+    |         |           |       | +-ColumnRef(type=ARRAY<INT64>, column=$subquery1.array_to_transform#4, is_correlated=TRUE)
+    |         |           |       +-element_column_list=[$array.element#5]
+    |         |           |       +-array_offset_column=
+    |         |           |         +-ColumnHolder(column=$array_offset.off#6)
+    |         |           +-order_by_item_list=
+    |         |             +-OrderByItem
+    |         |               +-column_ref=
+    |         |                 +-ColumnRef(type=INT64, column=$array_offset.off#6)
+    |         +-input_scan=
+    |           +-ProjectScan
+    |             +-column_list=[$subquery1.array_to_transform#4]
+    |             +-expr_list=
+    |             | +-array_to_transform#4 := Literal(type=ARRAY<INT64>, value=[1, 2, 3])
+    |             +-input_scan=
+    |               +-SingleRowScan
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Make sure positional query parameters resolve correctly inside the lambda
+# body.
+[allow_undeclared_parameters]
+[parameter_mode=positional]
+[enabled_ast_rewrites=DEFAULTS]
+SELECT ARRAY_TRANSFORM([1,2,3], (e, i) -> CAST(i*? + e AS STRING));
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#3 AS `$col1` [ARRAY<STRING>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#3]
+    +-expr_list=
+    | +-$col1#3 :=
+    |   +-FunctionCall(GoogleSQL:array_transform(ARRAY<INT64> array_to_transform, FUNCTION<(INT64, INT64)->STRING> transformation) -> ARRAY<STRING>)
+    |     +-FunctionArgument
+    |     | +-expr=
+    |     |   +-Literal(type=ARRAY<INT64>, value=[1, 2, 3])
+    |     +-FunctionArgument
+    |       +-inline_lambda=
+    |         +-InlineLambda
+    |           +-argument_list=$lambda_arg.[e#1, i#2]
+    |           +-body=
+    |             +-Cast(INT64 -> STRING)
+    |               +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |                 +-FunctionCall(GoogleSQL:$multiply(INT64, INT64) -> INT64)
+    |                 | +-ColumnRef(type=INT64, column=$lambda_arg.i#2)
+    |                 | +-Parameter(parse_location=49-50, type=INT64, position=1, is_untyped=TRUE)
+    |                 +-ColumnRef(type=INT64, column=$lambda_arg.e#1)
+    +-input_scan=
+      +-SingleRowScan
+[UNDECLARED_PARAMETERS]
+INT64
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$query.$col1#3 AS `$col1` [ARRAY<STRING>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#3]
+    +-expr_list=
+    | +-$col1#3 :=
+    |   +-SubqueryExpr
+    |     +-type=ARRAY<STRING>
+    |     +-subquery_type=SCALAR
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$expr_subquery.$col1#8]
+    |         +-expr_list=
+    |         | +-$col1#8 :=
+    |         |   +-FunctionCall(GoogleSQL:if(BOOL, ARRAY<STRING>, ARRAY<STRING>) -> ARRAY<STRING>)
+    |         |     +-FunctionCall(GoogleSQL:$is_null(ARRAY<INT64>) -> BOOL)
+    |         |     | +-ColumnRef(type=ARRAY<INT64>, column=$subquery1.array_to_transform#4)
+    |         |     +-Literal(type=ARRAY<STRING>, value=NULL)
+    |         |     +-SubqueryExpr
+    |         |       +-type=ARRAY<STRING>
+    |         |       +-subquery_type=ARRAY
+    |         |       +-parameter_list=
+    |         |       | +-ColumnRef(type=ARRAY<INT64>, column=$subquery1.array_to_transform#4)
+    |         |       +-subquery=
+    |         |         +-OrderByScan
+    |         |           +-column_list=[$expr_subquery.$col1#7]
+    |         |           +-is_ordered=TRUE
+    |         |           +-input_scan=
+    |         |           | +-ProjectScan
+    |         |           |   +-column_list=[$array.element#5, $array_offset.off#6, $expr_subquery.$col1#7]
+    |         |           |   +-expr_list=
+    |         |           |   | +-$col1#7 :=
+    |         |           |   |   +-Cast(INT64 -> STRING)
+    |         |           |   |     +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |         |           |   |       +-FunctionCall(GoogleSQL:$multiply(INT64, INT64) -> INT64)
+    |         |           |   |       | +-ColumnRef(type=INT64, column=$array_offset.off#6)
+    |         |           |   |       | +-Parameter(parse_location=49-50, type=INT64, position=1, is_untyped=TRUE)
+    |         |           |   |       +-ColumnRef(type=INT64, column=$array.element#5)
+    |         |           |   +-input_scan=
+    |         |           |     +-ArrayScan
+    |         |           |       +-column_list=[$array.element#5, $array_offset.off#6]
+    |         |           |       +-array_expr_list=
+    |         |           |       | +-ColumnRef(type=ARRAY<INT64>, column=$subquery1.array_to_transform#4, is_correlated=TRUE)
+    |         |           |       +-element_column_list=[$array.element#5]
+    |         |           |       +-array_offset_column=
+    |         |           |         +-ColumnHolder(column=$array_offset.off#6)
+    |         |           +-order_by_item_list=
+    |         |             +-OrderByItem
+    |         |               +-column_ref=
+    |         |                 +-ColumnRef(type=INT64, column=$array_offset.off#6)
+    |         +-input_scan=
+    |           +-ProjectScan
+    |             +-column_list=[$subquery1.array_to_transform#4]
+    |             +-expr_list=
+    |             | +-array_to_transform#4 := Literal(type=ARRAY<INT64>, value=[1, 2, 3])
+    |             +-input_scan=
+    |               +-SingleRowScan
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# No matching signature error for nested lambda usage.
+SELECT fn_array_filter([1], e -> LENGTH(fn_array_filter([e], (e1, e2, e3)->TRUE)) > 0);
+--
+ERROR: No matching signature for function SAMPLE_FUNCTIONS:FN_ARRAY_FILTER
+  Argument types: ARRAY<INT64>, LAMBDA
+  Signature: FN_ARRAY_FILTER(ARRAY<T1>, FUNCTION<T1->BOOL>)
+    Argument 2: failed to resolve lambda body, error: No matching signature for function SAMPLE_FUNCTIONS:FN_ARRAY_FILTER
+      Argument types: ARRAY<INT64>, LAMBDA
+      Signature: FN_ARRAY_FILTER(ARRAY<T1>, FUNCTION<T1->BOOL>)
+        Argument 2: lambda requires 1 arguments but 3 is provided
+      Signature: FN_ARRAY_FILTER(ARRAY<T1>, FUNCTION<(T1, INT64)->BOOL>)
+        Argument 2: lambda requires 2 arguments but 3 is provided
+  Signature: FN_ARRAY_FILTER(ARRAY<T1>, FUNCTION<(T1, INT64)->BOOL>)
+    Argument 2: lambda requires 2 arguments but 1 is provided [at 1:8]
+SELECT fn_array_filter([1], e -> LENGTH(fn_array_filter([e], (e1, e2, e3)->TR...
+       ^
+==
+
+# No matching signature error, error in lambda body.
+SELECT fn_array_filter([1], e -> f);
+--
+ERROR: No matching signature for function SAMPLE_FUNCTIONS:FN_ARRAY_FILTER
+  Argument types: ARRAY<INT64>, LAMBDA
+  Signature: FN_ARRAY_FILTER(ARRAY<T1>, FUNCTION<T1->BOOL>)
+    Argument 2: failed to resolve lambda body, error: Unrecognized name: f
+  Signature: FN_ARRAY_FILTER(ARRAY<T1>, FUNCTION<(T1, INT64)->BOOL>)
+    Argument 2: lambda requires 2 arguments but 1 is provided [at 1:8]
+SELECT fn_array_filter([1], e -> f);
+       ^
+==
+
+# No matching signature error for nested lambda with signature mismatch in body.
+SELECT fn_array_filter([1], e -> LENGTH(fn_array_filter([e], e->e > "")) > 0);
+--
+ERROR: No matching signature for function SAMPLE_FUNCTIONS:FN_ARRAY_FILTER
+  Argument types: ARRAY<INT64>, LAMBDA
+  Signature: FN_ARRAY_FILTER(ARRAY<T1>, FUNCTION<T1->BOOL>)
+    Argument 2: failed to resolve lambda body, error: No matching signature for function SAMPLE_FUNCTIONS:FN_ARRAY_FILTER
+      Argument types: ARRAY<INT64>, LAMBDA
+      Signature: FN_ARRAY_FILTER(ARRAY<T1>, FUNCTION<T1->BOOL>)
+        Argument 2: failed to resolve lambda body, error: No matching signature for operator > for argument types: INT64, STRING
+          Signature: T1 > T1
+            Unable to find common supertype for templated argument <T1>
+              Input types for <T1>: {INT64, STRING}
+          Signature: INT64 > UINT64
+            Argument 2: Unable to coerce type STRING to expected type UINT64
+          Signature: UINT64 > INT64
+            Argument 1: Unable to coerce type INT64 to expected type UINT64
+      Signature: FN_ARRAY_FILTER(ARRAY<T1>, FUNCTION<(T1, INT64)->BOOL>)
+        Argument 2: lambda requires 2 arguments but 1 is provided
+  Signature: FN_ARRAY_FILTER(ARRAY<T1>, FUNCTION<(T1, INT64)->BOOL>)
+    Argument 2: lambda requires 2 arguments but 1 is provided [at 1:8]
+SELECT fn_array_filter([1], e -> LENGTH(fn_array_filter([e], e->e > "")) > 0);
+       ^
+==
+
+[language_features=NONE,+MAP_TYPE,+INLINE_LAMBDA_ARGUMENT]
+SELECT fn_map_type_any_1_2_lambda_any_1_any_2_return_bool(
+  MAP_FROM_ARRAY([('a', 1)]), e -> 1);
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#2 AS `$col1` [BOOL]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#2]
+    +-expr_list=
+    | +-$col1#2 :=
+    |   +-FunctionCall(sample_functions:fn_map_type_any_1_2_lambda_any_1_any_2_return_bool(MAP<STRING, INT64>, FUNCTION<STRING->INT64>) -> BOOL)
+    |     +-FunctionArgument
+    |     | +-expr=
+    |     |   +-FunctionCall(GoogleSQL:map_from_array(ARRAY<STRUCT<STRING, INT64>>) -> MAP<STRING, INT64>)
+    |     |     +-Literal(type=ARRAY<STRUCT<STRING, INT64>>, value=[{"a", 1}])
+    |     +-FunctionArgument
+    |       +-inline_lambda=
+    |         +-InlineLambda
+    |           +-argument_list=[$lambda_arg.e#1]
+    |           +-body=
+    |             +-Literal(type=INT64, value=1)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+[language_features=NONE,+MAP_TYPE,+INLINE_LAMBDA_ARGUMENT]
+SELECT fn_map_type_any_1_2_lambda_any_1_any_2_return_bool(
+  MAP_FROM_ARRAY([(1, "a")]), e -> 1);
+--
+ERROR: No matching signature for function SAMPLE_FUNCTIONS:FN_MAP_TYPE_ANY_1_2_LAMBDA_ANY_1_ANY_2_RETURN_BOOL
+  Argument types: MAP<INT64, STRING>, LAMBDA
+  Signature: FN_MAP_TYPE_ANY_1_2_LAMBDA_ANY_1_ANY_2_RETURN_BOOL(MAP<T1, T2>, FUNCTION<T1->T2>)
+    Argument 2: failed to resolve lambda body, error: Lambda should return type STRING, but returns INT64 [at 1:8]
+SELECT fn_map_type_any_1_2_lambda_any_1_any_2_return_bool(
+       ^
+==
+
+[language_features=NONE,+MAP_TYPE,+INLINE_LAMBDA_ARGUMENT]
+SELECT fn_map_type_any_1_2_lambda_any_1_any_2_return_bool(
+  MAP_FROM_ARRAY([('a', 1)]), e -> CONCAT(e, 'a'));
+--
+ERROR: No matching signature for function SAMPLE_FUNCTIONS:FN_MAP_TYPE_ANY_1_2_LAMBDA_ANY_1_ANY_2_RETURN_BOOL
+  Argument types: MAP<STRING, INT64>, LAMBDA
+  Signature: FN_MAP_TYPE_ANY_1_2_LAMBDA_ANY_1_ANY_2_RETURN_BOOL(MAP<T1, T2>, FUNCTION<T1->T2>)
+    Argument 2: failed to resolve lambda body, error: Lambda should return type INT64, but returns STRING [at 1:8]
+SELECT fn_map_type_any_1_2_lambda_any_1_any_2_return_bool(
+       ^
+==
+
+[language_features=NONE,+MAP_TYPE,+INLINE_LAMBDA_ARGUMENT]
+SELECT
+  fn_map_type_any_1_2_lambda_any_1_any_2_return_bool(NULL, e -> CONCAT(e, 'a'));
+--
+ERROR: No matching signature for function SAMPLE_FUNCTIONS:FN_MAP_TYPE_ANY_1_2_LAMBDA_ANY_1_ANY_2_RETURN_BOOL
+  Argument types: NULL, LAMBDA
+  Signature: FN_MAP_TYPE_ANY_1_2_LAMBDA_ANY_1_ANY_2_RETURN_BOOL(MAP<T1, T2>, FUNCTION<T1->T2>)
+    Failed to infer type <T1> [at 2:3]
+  fn_map_type_any_1_2_lambda_any_1_any_2_return_bool(NULL, e -> CONCAT(e, 'a'));
+  ^
+==
+
+# Regression test for b/439566179.
+# b/b/166482992): java tests cannot yet support annotations.
+[language_features=MAXIMUM,+COLLATION_SUPPORT,+ANNOTATION_FRAMEWORK]
+[enabled_ast_rewrites=ALL]
+[no_java]
+SELECT ARRAY_TRANSFORM([STRUCT(1 AS a, COLLATE('x', 'und:ci') AS b)], (e) -> 'a')
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#3 AS `$col1` [ARRAY<STRING>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#3]
+    +-expr_list=
+    | +-$col1#3 :=
+    |   +-FunctionCall(GoogleSQL:array_transform(ARRAY<STRUCT<a INT64, b STRING>> array_to_transform, FUNCTION<STRUCT<a INT64, b STRING>->STRING> transformation) -> ARRAY<STRING>)
+    |     +-FunctionArgument
+    |     | +-expr=
+    |     |   +-FunctionCall(GoogleSQL:$make_array(repeated(1) STRUCT<a INT64, b STRING>) -> ARRAY<STRUCT<a INT64, b STRING>>)
+    |     |     +-type_annotation_map=<<_,{Collation:"und:ci"}>>
+    |     |     +-MakeStruct
+    |     |       +-type=STRUCT<a INT64, b STRING>
+    |     |       +-type_annotation_map=<_,{Collation:"und:ci"}>
+    |     |       +-field_list=
+    |     |         +-Literal(type=INT64, value=1)
+    |     |         +-FunctionCall(GoogleSQL:collate(STRING, STRING) -> STRING)
+    |     |           +-type_annotation_map={Collation:"und:ci"}
+    |     |           +-Literal(type=STRING, value="x")
+    |     |           +-Literal(type=STRING, value="und:ci", preserve_in_literal_remover=TRUE)
+    |     +-FunctionArgument
+    |       +-inline_lambda=
+    |         +-InlineLambda
+    |           +-argument_list=[$lambda_arg.e#2<_,{Collation:"und:ci"}>]
+    |           +-body=
+    |             +-Literal(type=STRING, value="a")
+    +-input_scan=
+      +-SingleRowScan
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$query.$col1#3 AS `$col1` [ARRAY<STRING>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#3]
+    +-expr_list=
+    | +-$col1#3 :=
+    |   +-SubqueryExpr
+    |     +-type=ARRAY<STRING>
+    |     +-subquery_type=SCALAR
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$expr_subquery.$col1#8]
+    |         +-expr_list=
+    |         | +-$col1#8 :=
+    |         |   +-FunctionCall(GoogleSQL:if(BOOL, ARRAY<STRING>, ARRAY<STRING>) -> ARRAY<STRING>)
+    |         |     +-FunctionCall(GoogleSQL:$is_null(ARRAY<STRUCT<a INT64, b STRING>>) -> BOOL)
+    |         |     | +-ColumnRef(type=ARRAY<STRUCT<a INT64, b STRING>>, type_annotation_map=<<_,{Collation:"und:ci"}>>, column=$subquery1.array_to_transform#4<<_,{Collation:"und:ci"}>>)
+    |         |     +-Literal(type=ARRAY<STRING>, value=NULL)
+    |         |     +-SubqueryExpr
+    |         |       +-type=ARRAY<STRING>
+    |         |       +-subquery_type=ARRAY
+    |         |       +-parameter_list=
+    |         |       | +-ColumnRef(type=ARRAY<STRUCT<a INT64, b STRING>>, type_annotation_map=<<_,{Collation:"und:ci"}>>, column=$subquery1.array_to_transform#4<<_,{Collation:"und:ci"}>>)
+    |         |       +-subquery=
+    |         |         +-OrderByScan
+    |         |           +-column_list=[$expr_subquery.$col1#7]
+    |         |           +-is_ordered=TRUE
+    |         |           +-input_scan=
+    |         |           | +-ProjectScan
+    |         |           |   +-column_list=[$array.element#5<_,{Collation:"und:ci"}>, $array_offset.off#6, $expr_subquery.$col1#7]
+    |         |           |   +-expr_list=
+    |         |           |   | +-$col1#7 := Literal(type=STRING, value="a")
+    |         |           |   +-input_scan=
+    |         |           |     +-ArrayScan
+    |         |           |       +-column_list=[$array.element#5<_,{Collation:"und:ci"}>, $array_offset.off#6]
+    |         |           |       +-array_expr_list=
+    |         |           |       | +-ColumnRef(type=ARRAY<STRUCT<a INT64, b STRING>>, type_annotation_map=<<_,{Collation:"und:ci"}>>, column=$subquery1.array_to_transform#4<<_,{Collation:"und:ci"}>>, is_correlated=TRUE)
+    |         |           |       +-element_column_list=[$array.element#5<_,{Collation:"und:ci"}>]
+    |         |           |       +-array_offset_column=
+    |         |           |         +-ColumnHolder(column=$array_offset.off#6)
+    |         |           +-order_by_item_list=
+    |         |             +-OrderByItem
+    |         |               +-column_ref=
+    |         |                 +-ColumnRef(type=INT64, column=$array_offset.off#6)
+    |         +-input_scan=
+    |           +-ProjectScan
+    |             +-column_list=[$subquery1.array_to_transform#4<<_,{Collation:"und:ci"}>>]
+    |             +-expr_list=
+    |             | +-array_to_transform#4 :=
+    |             |   +-FunctionCall(GoogleSQL:$make_array(repeated(1) STRUCT<a INT64, b STRING>) -> ARRAY<STRUCT<a INT64, b STRING>>)
+    |             |     +-type_annotation_map=<<_,{Collation:"und:ci"}>>
+    |             |     +-MakeStruct
+    |             |       +-type=STRUCT<a INT64, b STRING>
+    |             |       +-type_annotation_map=<_,{Collation:"und:ci"}>
+    |             |       +-field_list=
+    |             |         +-Literal(type=INT64, value=1)
+    |             |         +-FunctionCall(GoogleSQL:collate(STRING, STRING) -> STRING)
+    |             |           +-type_annotation_map={Collation:"und:ci"}
+    |             |           +-Literal(type=STRING, value="x")
+    |             |           +-Literal(type=STRING, value="und:ci", preserve_in_literal_remover=TRUE)
+    |             +-input_scan=
+    |               +-SingleRowScan
+    +-input_scan=
+      +-SingleRowScan

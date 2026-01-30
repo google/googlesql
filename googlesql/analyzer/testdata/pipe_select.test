@@ -1,0 +1,862 @@
+[default language_features=MAXIMUM,+PIPES,+ANALYTIC_FUNCTIONS,+SELECT_STAR_EXCEPT_REPLACE]
+select 1 x, 2 y
+|> select *, x+y as z
+|> select x, z
+;
+--
+QueryStmt
++-output_column_list=
+| +-$query.x#1 AS x [INT64]
+| +-$pipe_select.z#3 AS z [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.x#1, $pipe_select.z#3]
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[$query.x#1, $query.y#2, $pipe_select.z#3]
+        +-expr_list=
+        | +-z#3 :=
+        |   +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+        |     +-ColumnRef(type=INT64, column=$query.x#1)
+        |     +-ColumnRef(type=INT64, column=$query.y#2)
+        +-input_scan=
+          +-ProjectScan
+            +-column_list=$query.[x#1, y#2]
+            +-expr_list=
+            | +-x#1 := Literal(type=INT64, value=1)
+            | +-y#2 := Literal(type=INT64, value=2)
+            +-input_scan=
+              +-SingleRowScan
+==
+
+# Can't have WITH ANONYMIZATION clause on pipe SELECT.
+select 1
+|> select with anonymization 1,2
+--
+ERROR: Pipe SELECT does not support SELECT WITH [at 2:11]
+|> select with anonymization 1,2
+          ^
+==
+
+select 1 x
+|> select 1 + count(*)
+--
+ERROR: Aggregate function COUNT(*) not allowed in pipe SELECT [at 2:15]
+|> select 1 + count(*)
+              ^
+==
+
+[language_features=NONE,+PIPES]
+select 1 x
+|> select sum(x) OVER ()
+--
+ERROR: Analytic functions not supported [at 2:11]
+|> select sum(x) OVER ()
+          ^
+==
+
+# Window functions.  ProjectScans are added for the expression
+# fragments before and after the AnalyticScan.
+# The common OVER clause becomes one AnalyticFunctionGroup, but this only
+# works for empty OVER clauses. (This is the same in standard syntax.)
+select 1 x, 2 y, 3 z
+|> select 1 + sum(x) OVER (),
+          avg(y) OVER (),
+          x,
+          avg(x+1) OVER (partition by y order by z) AS a2
+|> select a2
+--
+QueryStmt
++-output_column_list=
+| +-$analytic.a2#10 AS a2 [DOUBLE]
++-query=
+  +-ProjectScan
+    +-column_list=[$analytic.a2#10]
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[$pipe_select.$col1#8, $analytic.$analytic2#9, $query.x#1, $analytic.a2#10]
+        +-expr_list=
+        | +-$col1#8 :=
+        |   +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+        |     +-Literal(type=INT64, value=1)
+        |     +-ColumnRef(type=INT64, column=$analytic.$analytic1#7)
+        +-input_scan=
+          +-AnalyticScan
+            +-column_list=[$query.x#1, $query.y#2, $query.z#3, $analytic.$analytic1#7, $analytic.$analytic2#9, $analytic.a2#10]
+            +-input_scan=
+            | +-ProjectScan
+            |   +-column_list=$query.[x#1, y#2, z#3]
+            |   +-expr_list=
+            |   | +-x#1 := Literal(type=INT64, value=1)
+            |   | +-y#2 := Literal(type=INT64, value=2)
+            |   | +-z#3 := Literal(type=INT64, value=3)
+            |   +-input_scan=
+            |     +-SingleRowScan
+            +-function_group_list=
+              +-AnalyticFunctionGroup
+              | +-analytic_function_list=
+              |   +-$analytic1#7 :=
+              |   | +-AnalyticFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+              |   |   +-ColumnRef(type=INT64, column=$query.x#1)
+              |   |   +-window_frame=
+              |   |     +-WindowFrame(frame_unit=ROWS)
+              |   |       +-start_expr=
+              |   |       | +-WindowFrameExpr(boundary_type=UNBOUNDED PRECEDING)
+              |   |       +-end_expr=
+              |   |         +-WindowFrameExpr(boundary_type=UNBOUNDED FOLLOWING)
+              |   +-$analytic2#9 :=
+              |     +-AnalyticFunctionCall(GoogleSQL:avg(INT64) -> DOUBLE)
+              |       +-ColumnRef(type=INT64, column=$query.y#2)
+              |       +-window_frame=
+              |         +-WindowFrame(frame_unit=ROWS)
+              |           +-start_expr=
+              |           | +-WindowFrameExpr(boundary_type=UNBOUNDED PRECEDING)
+              |           +-end_expr=
+              |             +-WindowFrameExpr(boundary_type=UNBOUNDED FOLLOWING)
+              +-AnalyticFunctionGroup
+                +-partition_by=
+                | +-WindowPartitioning
+                |   +-partition_by_list=
+                |     +-ColumnRef(type=INT64, column=$query.y#2)
+                +-order_by=
+                | +-WindowOrdering
+                |   +-order_by_item_list=
+                |     +-OrderByItem
+                |       +-column_ref=
+                |         +-ColumnRef(type=INT64, column=$query.z#3)
+                +-analytic_function_list=
+                  +-a2#10 :=
+                    +-AnalyticFunctionCall(GoogleSQL:avg(INT64) -> DOUBLE)
+                      +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+                      | +-ColumnRef(type=INT64, column=$query.x#1)
+                      | +-Literal(type=INT64, value=1)
+                      +-window_frame=
+                        +-WindowFrame(frame_unit=RANGE)
+                          +-start_expr=
+                          | +-WindowFrameExpr(boundary_type=UNBOUNDED PRECEDING)
+                          +-end_expr=
+                            +-WindowFrameExpr(boundary_type=CURRENT ROW)
+==
+
+# Window function on a value table input.
+FROM TestExtraValueTable t
+|> SELECT t, sum(int32_val1) OVER (ORDER BY int32_val1, t.int32_val2)
+--
+QueryStmt
++-output_column_list=
+| +-TestExtraValueTable.value#1 AS t [PROTO<googlesql_test.TestExtraPB>]
+| +-$analytic.$analytic1#5 AS `$col2` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[TestExtraValueTable.value#1, $analytic.$analytic1#5]
+    +-input_scan=
+      +-AnalyticScan
+        +-column_list=[TestExtraValueTable.value#1, $analytic.$analytic1#5]
+        +-input_scan=
+        | +-ProjectScan
+        |   +-column_list=[TestExtraValueTable.value#1, $orderby.int32_val1#6, $orderby.int32_val2#7]
+        |   +-expr_list=
+        |   | +-int32_val1#6 :=
+        |   | | +-GetProtoField
+        |   | |   +-type=INT32
+        |   | |   +-expr=
+        |   | |   | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=TestExtraValueTable.value#1)
+        |   | |   +-field_descriptor=int32_val1
+        |   | |   +-default_value=0
+        |   | +-int32_val2#7 :=
+        |   |   +-GetProtoField
+        |   |     +-type=INT32
+        |   |     +-expr=
+        |   |     | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=TestExtraValueTable.value#1)
+        |   |     +-field_descriptor=int32_val2
+        |   |     +-default_value=0
+        |   +-input_scan=
+        |     +-TableScan(column_list=[TestExtraValueTable.value#1], table=TestExtraValueTable, column_index_list=[0], alias="t")
+        +-function_group_list=
+          +-AnalyticFunctionGroup
+            +-order_by=
+            | +-WindowOrdering
+            |   +-order_by_item_list=
+            |     +-OrderByItem
+            |     | +-column_ref=
+            |     |   +-ColumnRef(type=INT32, column=$orderby.int32_val1#6)
+            |     +-OrderByItem
+            |       +-column_ref=
+            |         +-ColumnRef(type=INT32, column=$orderby.int32_val2#7)
+            +-analytic_function_list=
+              +-$analytic1#5 :=
+                +-AnalyticFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+                  +-Cast(INT32 -> INT64)
+                  | +-GetProtoField
+                  |   +-type=INT32
+                  |   +-expr=
+                  |   | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=TestExtraValueTable.value#1)
+                  |   +-field_descriptor=int32_val1
+                  |   +-default_value=0
+                  +-window_frame=
+                    +-WindowFrame(frame_unit=RANGE)
+                      +-start_expr=
+                      | +-WindowFrameExpr(boundary_type=UNBOUNDED PRECEDING)
+                      +-end_expr=
+                        +-WindowFrameExpr(boundary_type=CURRENT ROW)
+==
+
+# Window function in combination with DISTINCT.
+select 1 x, 2 y, 3 z
+|> select distinct 1+sum(x) OVER () xp1
+--
+QueryStmt
++-output_column_list=
+| +-$distinct.xp1#7 AS xp1 [INT64]
++-query=
+  +-AggregateScan
+    +-column_list=[$distinct.xp1#7]
+    +-input_scan=
+    | +-ProjectScan
+    |   +-column_list=[$query.x#1, $query.y#2, $query.z#3, $analytic.$analytic1#5, $pipe_select.xp1#6]
+    |   +-expr_list=
+    |   | +-xp1#6 :=
+    |   |   +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |   |     +-Literal(type=INT64, value=1)
+    |   |     +-ColumnRef(type=INT64, column=$analytic.$analytic1#5)
+    |   +-input_scan=
+    |     +-AnalyticScan
+    |       +-column_list=[$query.x#1, $query.y#2, $query.z#3, $analytic.$analytic1#5]
+    |       +-input_scan=
+    |       | +-ProjectScan
+    |       |   +-column_list=$query.[x#1, y#2, z#3]
+    |       |   +-expr_list=
+    |       |   | +-x#1 := Literal(type=INT64, value=1)
+    |       |   | +-y#2 := Literal(type=INT64, value=2)
+    |       |   | +-z#3 := Literal(type=INT64, value=3)
+    |       |   +-input_scan=
+    |       |     +-SingleRowScan
+    |       +-function_group_list=
+    |         +-AnalyticFunctionGroup
+    |           +-analytic_function_list=
+    |             +-$analytic1#5 :=
+    |               +-AnalyticFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+    |                 +-ColumnRef(type=INT64, column=$query.x#1)
+    |                 +-window_frame=
+    |                   +-WindowFrame(frame_unit=ROWS)
+    |                     +-start_expr=
+    |                     | +-WindowFrameExpr(boundary_type=UNBOUNDED PRECEDING)
+    |                     +-end_expr=
+    |                       +-WindowFrameExpr(boundary_type=UNBOUNDED FOLLOWING)
+    +-group_by_list=
+      +-xp1#7 := ColumnRef(type=INT64, column=$pipe_select.xp1#6)
+==
+
+# Window function computed but not used.
+FROM KeyValue
+|> select key, count(*) over ()
+|> select key
+--
+QueryStmt
++-output_column_list=
+| +-KeyValue.Key#1 AS key [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[KeyValue.Key#1]
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[KeyValue.Key#1, $analytic.$analytic1#4]
+        +-input_scan=
+          +-AnalyticScan
+            +-column_list=[KeyValue.Key#1, $analytic.$analytic1#4]
+            +-input_scan=
+            | +-TableScan(column_list=[KeyValue.Key#1], table=KeyValue, column_index_list=[0])
+            +-function_group_list=
+              +-AnalyticFunctionGroup
+                +-analytic_function_list=
+                  +-$analytic1#4 :=
+                    +-AnalyticFunctionCall(GoogleSQL:$count_star() -> INT64)
+                      +-window_frame=
+                        +-WindowFrame(frame_unit=ROWS)
+                          +-start_expr=
+                          | +-WindowFrameExpr(boundary_type=UNBOUNDED PRECEDING)
+                          +-end_expr=
+                            +-WindowFrameExpr(boundary_type=UNBOUNDED FOLLOWING)
+==
+
+# Window function over aggregate function works in standard SQL, but
+# doesn't make sense here.
+select 1 x, 2 y, 3 z
+|> select distinct sum(sum(x)) OVER ()
+--
+ERROR: Aggregate function SUM not allowed in pipe SELECT [at 2:24]
+|> select distinct sum(sum(x)) OVER ()
+                       ^
+==
+
+# Calling SELECT with a window function after AGGREGATE.
+FROM KeyValue
+|> AGGREGATE max(value) as max_value GROUP BY key
+|> SELECT key, max_value, RANK() OVER (ORDER BY max_value)
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.key#4 AS key [INT64]
+| +-$aggregate.max_value#3 AS max_value [STRING]
+| +-$analytic.$analytic1#6 AS `$col3` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$groupby.key#4, $aggregate.max_value#3, $analytic.$analytic1#6]
+    +-input_scan=
+      +-AnalyticScan
+        +-column_list=[$groupby.key#4, $aggregate.max_value#3, $analytic.$analytic1#6]
+        +-input_scan=
+        | +-AggregateScan
+        |   +-column_list=[$groupby.key#4, $aggregate.max_value#3]
+        |   +-input_scan=
+        |   | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+        |   +-group_by_list=
+        |   | +-key#4 := ColumnRef(type=INT64, column=KeyValue.Key#1)
+        |   +-aggregate_list=
+        |     +-max_value#3 :=
+        |       +-AggregateFunctionCall(GoogleSQL:max(STRING) -> STRING)
+        |         +-ColumnRef(type=STRING, column=KeyValue.Value#2)
+        +-function_group_list=
+          +-AnalyticFunctionGroup
+            +-order_by=
+            | +-WindowOrdering
+            |   +-order_by_item_list=
+            |     +-OrderByItem
+            |       +-column_ref=
+            |         +-ColumnRef(type=STRING, column=$aggregate.max_value#3)
+            +-analytic_function_list=
+              +-$analytic1#6 := AnalyticFunctionCall(GoogleSQL:rank() -> INT64)
+==
+
+select 1 z
+|> select @{hint1=1} z*2 as z
+|> select @{hint2=1} as struct 1 x, z*2 y
+--
+ERROR: Pipe SELECT does not support hints yet [at 2:11]
+|> select @{hint1=1} z*2 as z
+          ^
+==
+
+select 1 z
+|> select distinct z
+--
+QueryStmt
++-output_column_list=
+| +-$distinct.z#2 AS z [INT64]
++-query=
+  +-AggregateScan
+    +-column_list=[$distinct.z#2]
+    +-input_scan=
+    | +-ProjectScan
+    |   +-column_list=[$query.z#1]
+    |   +-expr_list=
+    |   | +-z#1 := Literal(type=INT64, value=1)
+    |   +-input_scan=
+    |     +-SingleRowScan
+    +-group_by_list=
+      +-z#2 := ColumnRef(type=INT64, column=$query.z#1)
+==
+
+FROM KeyValue
+|> SELECT DISTINCT *, concat('abc', value)
+--
+QueryStmt
++-output_column_list=
+| +-$distinct.Key#4 AS Key [INT64]
+| +-$distinct.Value#5 AS Value [STRING]
+| +-$distinct.$col2#6 AS `$col2` [STRING]
++-query=
+  +-AggregateScan
+    +-column_list=$distinct.[Key#4, Value#5, $col2#6]
+    +-input_scan=
+    | +-ProjectScan
+    |   +-column_list=[KeyValue.Key#1, KeyValue.Value#2, $pipe_select.$col2#3]
+    |   +-expr_list=
+    |   | +-$col2#3 :=
+    |   |   +-FunctionCall(GoogleSQL:concat(STRING, repeated(1) STRING) -> STRING)
+    |   |     +-Literal(type=STRING, value="abc")
+    |   |     +-ColumnRef(type=STRING, column=KeyValue.Value#2)
+    |   +-input_scan=
+    |     +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+    +-group_by_list=
+      +-Key#4 := ColumnRef(type=INT64, column=KeyValue.Key#1)
+      +-Value#5 := ColumnRef(type=STRING, column=KeyValue.Value#2)
+      +-$col2#6 := ColumnRef(type=STRING, column=$pipe_select.$col2#3)
+==
+
+# Can't DISTINCT on a proto.
+FROM TestTable
+|> select distinct KitchenSink
+--
+ERROR: Column KitchenSink of type PROTO cannot be used in SELECT DISTINCT [at 2:20]
+|> select distinct KitchenSink
+                   ^
+==
+
+# Can do DISTINCT when constructing a proto.
+FROM TestTable
+|> SELECT DISTINCT AS googlesql_test.KitchenSinkPB
+      KitchenSink.int32_val, KitchenSink.int64_key_1, 123 AS int64_key_2
+--
+QueryStmt
++-output_column_list=
+| +-$make_proto.$proto#10 AS `$proto` [PROTO<googlesql_test.KitchenSinkPB>]
++-is_value_table=TRUE
++-query=
+  +-ProjectScan
+    +-column_list=[$make_proto.$proto#10]
+    +-expr_list=
+    | +-$proto#10 :=
+    |   +-MakeProto
+    |     +-type=PROTO<googlesql_test.KitchenSinkPB>
+    |     +-field_list=
+    |       +-int32_val := ColumnRef(type=INT32, column=$distinct.int32_val#7)
+    |       +-int64_key_1 := ColumnRef(type=INT64, column=$distinct.int64_key_1#8)
+    |       +-int64_key_2 := ColumnRef(type=INT64, column=$distinct.int64_key_2#9)
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=$distinct.[int32_val#7, int64_key_1#8, int64_key_2#9]
+        +-input_scan=
+        | +-ProjectScan
+        |   +-column_list=[TestTable.KitchenSink#3, $pipe_select.int32_val#4, $pipe_select.int64_key_1#5, $pipe_select.int64_key_2#6]
+        |   +-expr_list=
+        |   | +-int32_val#4 :=
+        |   | | +-GetProtoField
+        |   | |   +-type=INT32
+        |   | |   +-expr=
+        |   | |   | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=TestTable.KitchenSink#3)
+        |   | |   +-field_descriptor=int32_val
+        |   | |   +-default_value=77
+        |   | +-int64_key_1#5 :=
+        |   | | +-GetProtoField
+        |   | |   +-type=INT64
+        |   | |   +-expr=
+        |   | |   | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=TestTable.KitchenSink#3)
+        |   | |   +-field_descriptor=int64_key_1
+        |   | +-int64_key_2#6 := Literal(type=INT64, value=123)
+        |   +-input_scan=
+        |     +-TableScan(column_list=[TestTable.KitchenSink#3], table=TestTable, column_index_list=[2])
+        +-group_by_list=
+          +-int32_val#7 := ColumnRef(type=INT32, column=$pipe_select.int32_val#4)
+          +-int64_key_1#8 := ColumnRef(type=INT64, column=$pipe_select.int64_key_1#5)
+          +-int64_key_2#9 := ColumnRef(type=INT64, column=$pipe_select.int64_key_2#6)
+==
+
+# Can do DISTINCT when constructing a struct.
+FROM TestTable tt, KeyValue kv
+|> select DISTINCT AS STRUCT tt.KitchenSink.bool_val, kv.key
+--
+QueryStmt
++-output_column_list=
+| +-$make_struct.$struct#9 AS `$struct` [STRUCT<bool_val BOOL, key INT64>]
++-is_value_table=TRUE
++-query=
+  +-ProjectScan
+    +-column_list=[$make_struct.$struct#9]
+    +-expr_list=
+    | +-$struct#9 :=
+    |   +-MakeStruct
+    |     +-type=STRUCT<bool_val BOOL, key INT64>
+    |     +-field_list=
+    |       +-ColumnRef(type=BOOL, column=$distinct.bool_val#7)
+    |       +-ColumnRef(type=INT64, column=$distinct.Key#8)
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=$distinct.[bool_val#7, Key#8]
+        +-input_scan=
+        | +-ProjectScan
+        |   +-column_list=[TestTable.KitchenSink#3, KeyValue.Key#4, $pipe_select.bool_val#6]
+        |   +-expr_list=
+        |   | +-bool_val#6 :=
+        |   |   +-GetProtoField
+        |   |     +-type=BOOL
+        |   |     +-expr=
+        |   |     | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=TestTable.KitchenSink#3)
+        |   |     +-field_descriptor=bool_val
+        |   |     +-default_value=false
+        |   +-input_scan=
+        |     +-JoinScan
+        |       +-column_list=[TestTable.KitchenSink#3, KeyValue.Key#4]
+        |       +-left_scan=
+        |       | +-TableScan(column_list=[TestTable.KitchenSink#3], table=TestTable, column_index_list=[2], alias="tt")
+        |       +-right_scan=
+        |         +-TableScan(column_list=[KeyValue.Key#4], table=KeyValue, column_index_list=[0], alias="kv")
+        +-group_by_list=
+          +-bool_val#7 := ColumnRef(type=BOOL, column=$pipe_select.bool_val#6)
+          +-Key#8 := ColumnRef(type=INT64, column=KeyValue.Key#4)
+==
+
+select 1 x, "abc" y
+|> select x AS y, y AS x
+--
+QueryStmt
++-output_column_list=
+| +-$query.x#1 AS y [INT64]
+| +-$query.y#2 AS x [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=$query.[x#1, y#2]
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=$query.[x#1, y#2]
+        +-expr_list=
+        | +-x#1 := Literal(type=INT64, value=1)
+        | +-y#2 := Literal(type=STRING, value="abc")
+        +-input_scan=
+          +-SingleRowScan
+==
+
+# SELECT (by default) makes the result no longer a value table.
+select as value 1
+|> select *
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$value_column` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[$query.$col1#1]
+        +-expr_list=
+        | +-$col1#1 := Literal(type=INT64, value=1)
+        +-input_scan=
+          +-SingleRowScan
+==
+
+# SELECT can make a value table.
+select 1 x, 2 y
+|> select as value x
+--
+QueryStmt
++-output_column_list=
+| +-$query.x#1 AS `$value_column` [INT64]
++-is_value_table=TRUE
++-query=
+  +-ProjectScan
+    +-column_list=[$query.x#1]
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=$query.[x#1, y#2]
+        +-expr_list=
+        | +-x#1 := Literal(type=INT64, value=1)
+        | +-y#2 := Literal(type=INT64, value=2)
+        +-input_scan=
+          +-SingleRowScan
+==
+
+select (select 1, 2 y |> select as struct *, t)
+from unnest([1,2]) t
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#6 AS `$col1` [STRUCT<INT64, y INT64, t INT64>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#6]
+    +-expr_list=
+    | +-$col1#6 :=
+    |   +-SubqueryExpr
+    |     +-type=STRUCT<INT64, y INT64, t INT64>
+    |     +-subquery_type=SCALAR
+    |     +-parameter_list=
+    |     | +-ColumnRef(type=INT64, column=$array.t#1)
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$make_struct.$struct#5]
+    |         +-expr_list=
+    |         | +-$struct#5 :=
+    |         |   +-MakeStruct
+    |         |     +-type=STRUCT<INT64, y INT64, t INT64>
+    |         |     +-field_list=
+    |         |       +-ColumnRef(type=INT64, column=$expr_subquery.$col1#2)
+    |         |       +-ColumnRef(type=INT64, column=$expr_subquery.y#3)
+    |         |       +-ColumnRef(type=INT64, column=$pipe_select.t#4)
+    |         +-input_scan=
+    |           +-ProjectScan
+    |             +-column_list=[$expr_subquery.$col1#2, $expr_subquery.y#3, $pipe_select.t#4]
+    |             +-expr_list=
+    |             | +-t#4 := ColumnRef(type=INT64, column=$array.t#1, is_correlated=TRUE)
+    |             +-input_scan=
+    |               +-ProjectScan
+    |                 +-column_list=$expr_subquery.[$col1#2, y#3]
+    |                 +-expr_list=
+    |                 | +-$col1#2 := Literal(type=INT64, value=1)
+    |                 | +-y#3 := Literal(type=INT64, value=2)
+    |                 +-input_scan=
+    |                   +-SingleRowScan
+    +-input_scan=
+      +-ArrayScan
+        +-column_list=[$array.t#1]
+        +-array_expr_list=
+        | +-Literal(type=ARRAY<INT64>, value=[1, 2])
+        +-element_column_list=[$array.t#1]
+==
+
+# SELECT AS Proto
+select 17 value, 'k' key
+|> SELECT AS googlesql_test.KeyValueStruct *
+--
+QueryStmt
++-output_column_list=
+| +-$make_proto.$proto#3 AS `$proto` [PROTO<googlesql_test.KeyValueStruct>]
++-is_value_table=TRUE
++-query=
+  +-ProjectScan
+    +-column_list=[$make_proto.$proto#3]
+    +-expr_list=
+    | +-$proto#3 :=
+    |   +-MakeProto
+    |     +-type=PROTO<googlesql_test.KeyValueStruct>
+    |     +-field_list=
+    |       +-value := ColumnRef(type=INT64, column=$query.value#1)
+    |       +-key := ColumnRef(type=STRING, column=$query.key#2)
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=$query.[value#1, key#2]
+        +-input_scan=
+          +-ProjectScan
+            +-column_list=$query.[value#1, key#2]
+            +-expr_list=
+            | +-value#1 := Literal(type=INT64, value=17)
+            | +-key#2 := Literal(type=STRING, value="k")
+            +-input_scan=
+              +-SingleRowScan
+==
+
+# This is an example where the SELECT pipe turns into three ProjectScans,
+# for the initial expression (MakeStruct), dot-star, and MakeMproto.
+# TODO Possibly there could be one more once hints are supported.
+select 'k' key
+|> SELECT AS googlesql_test.KeyValueStruct struct(key,17 as value).*
+--
+QueryStmt
++-output_column_list=
+| +-$make_proto.$proto#5 AS `$proto` [PROTO<googlesql_test.KeyValueStruct>]
++-is_value_table=TRUE
++-query=
+  +-ProjectScan
+    +-column_list=[$make_proto.$proto#5]
+    +-expr_list=
+    | +-$proto#5 :=
+    |   +-MakeProto
+    |     +-type=PROTO<googlesql_test.KeyValueStruct>
+    |     +-field_list=
+    |       +-key := ColumnRef(type=STRING, column=$pipe_select.key#3)
+    |       +-value := ColumnRef(type=INT64, column=$pipe_select.value#4)
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=$pipe_select.[key#3, value#4]
+        +-expr_list=
+        | +-key#3 :=
+        | | +-GetStructField
+        | |   +-type=STRING
+        | |   +-expr=
+        | |   | +-ColumnRef(type=STRUCT<key STRING, value INT64>, column=$preproject.$struct#2)
+        | |   +-field_idx=0
+        | +-value#4 :=
+        |   +-GetStructField
+        |     +-type=INT64
+        |     +-expr=
+        |     | +-ColumnRef(type=STRUCT<key STRING, value INT64>, column=$preproject.$struct#2)
+        |     +-field_idx=1
+        +-input_scan=
+          +-ProjectScan
+            +-column_list=[$query.key#1, $preproject.$struct#2]
+            +-expr_list=
+            | +-$struct#2 :=
+            |   +-MakeStruct
+            |     +-type=STRUCT<key STRING, value INT64>
+            |     +-field_list=
+            |       +-ColumnRef(type=STRING, column=$query.key#1)
+            |       +-Literal(type=INT64, value=17)
+            +-input_scan=
+              +-ProjectScan
+                +-column_list=[$query.key#1]
+                +-expr_list=
+                | +-key#1 := Literal(type=STRING, value="k")
+                +-input_scan=
+                  +-SingleRowScan
+==
+
+# This shows a pipe SELECT with an inferred table type passed in (for a
+# braced proto constructor).
+[language_features=NONE,+PIPES,+BRACED_PROTO_CONSTRUCTORS]
+SELECT NEW googlesql_test.KitchenSinkPB {
+  int64_key_1: 1
+  int64_key_2: 2
+  nested_value: (SELECT 1 |> SELECT { {{nested_int64|bad_name}}: 5 })
+}
+--
+ALTERNATION GROUP: nested_int64
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#3 AS `$col1` [PROTO<googlesql_test.KitchenSinkPB>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#3]
+    +-expr_list=
+    | +-$col1#3 :=
+    |   +-MakeProto
+    |     +-type=PROTO<googlesql_test.KitchenSinkPB>
+    |     +-field_list=
+    |       +-int64_key_1 := Literal(type=INT64, value=1)
+    |       +-int64_key_2 := Literal(type=INT64, value=2)
+    |       +-nested_value :=
+    |         +-SubqueryExpr
+    |           +-type=PROTO<googlesql_test.KitchenSinkPB.Nested>
+    |           +-subquery_type=SCALAR
+    |           +-subquery=
+    |             +-ProjectScan
+    |               +-column_list=[$pipe_select.$col1#2]
+    |               +-expr_list=
+    |               | +-$col1#2 :=
+    |               |   +-MakeProto
+    |               |     +-type=PROTO<googlesql_test.KitchenSinkPB.Nested>
+    |               |     +-field_list=
+    |               |       +-nested_int64 := Literal(type=INT64, value=5)
+    |               +-input_scan=
+    |                 +-ProjectScan
+    |                   +-column_list=[$expr_subquery.$col1#1]
+    |                   +-expr_list=
+    |                   | +-$col1#1 := Literal(type=INT64, value=1)
+    |                   +-input_scan=
+    |                     +-SingleRowScan
+    +-input_scan=
+      +-SingleRowScan
+--
+ALTERNATION GROUP: bad_name
+--
+ERROR: Protocol buffer googlesql_test.KitchenSinkPB.Nested does not have a field named bad_name [at 4:39]
+  nested_value: (SELECT 1 |> SELECT { bad_name: 5 })
+                                      ^
+==
+
+# This shows type inferrence is not currently passed through pipe WHERE
+# to pipe SELECT.
+[language_features=NONE,+PIPES,+BRACED_PROTO_CONSTRUCTORS]
+SELECT NEW googlesql_test.KitchenSinkPB {
+  int64_key_1: 1
+  int64_key_2: 2
+  nested_value: (SELECT 1 |> SELECT { nested_int64: 5 } |> WHERE true)
+}
+--
+ERROR: Unable to infer a type for braced constructor [at 4:37]
+  nested_value: (SELECT 1 |> SELECT { nested_int64: 5 } |> WHERE true)
+                                    ^
+==
+
+FROM (SELECT 1 AS col1, 2 AS col2)
+|> SELECT ANY_VALUE(col2)
+--
+ERROR: Aggregate function ANY_VALUE not allowed in pipe SELECT [at 2:11]
+|> SELECT ANY_VALUE(col2)
+          ^
+==
+
+FROM (SELECT 1 AS col1, 2 AS col2)
+|> SELECT ANY_VALUE(STRUCT(col2))
+--
+ERROR: Aggregate function ANY_VALUE not allowed in pipe SELECT [at 2:11]
+|> SELECT ANY_VALUE(STRUCT(col2))
+          ^
+==
+
+# b/327665663 - previously, the ExprResolutionInfo option to disallow
+# aggregates was not propagated inside .* resolution, so the error disallowing
+# aggregates wouldn't happen, and this led to a ret_check.
+FROM (SELECT 1 AS col1, 2 AS col2)
+|> SELECT ANY_VALUE(STRUCT(col2)).*
+--
+ERROR: Aggregate function ANY_VALUE not allowed in pipe SELECT [at 2:11]
+|> SELECT ANY_VALUE(STRUCT(col2)).*
+          ^
+==
+
+FROM KeyValue
+|> SELECT SUM(key).*
+--
+ERROR: Aggregate function SUM not allowed in pipe SELECT [at 2:11]
+|> SELECT SUM(key).*
+          ^
+==
+
+FROM KeyValue
+|> SELECT STRUCT(SUM(key)).*
+--
+ERROR: Aggregate function SUM not allowed in pipe SELECT [at 2:18]
+|> SELECT STRUCT(SUM(key)).*
+                 ^
+==
+
+# Window functions are allowed in pipe SELECT, and therefore
+# combining them with STRUCT and .* is okay.
+FROM KeyValue
+|> SELECT STRUCT(COUNT(*) OVER ()).*
+--
+QueryStmt
++-output_column_list=
+| +-$pipe_select.$field1#6 AS `$field1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$pipe_select.$field1#6]
+    +-expr_list=
+    | +-$field1#6 :=
+    |   +-GetStructField
+    |     +-type=INT64
+    |     +-expr=
+    |     | +-ColumnRef(type=STRUCT<INT64>, column=$preproject.$struct#4)
+    |     +-field_idx=0
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[$analytic.$analytic1#5, $preproject.$struct#4]
+        +-expr_list=
+        | +-$struct#4 :=
+        |   +-MakeStruct
+        |     +-type=STRUCT<INT64>
+        |     +-field_list=
+        |       +-ColumnRef(type=INT64, column=$analytic.$analytic1#5)
+        +-input_scan=
+          +-AnalyticScan
+            +-column_list=[$analytic.$analytic1#5]
+            +-input_scan=
+            | +-TableScan(table=KeyValue)
+            +-function_group_list=
+              +-AnalyticFunctionGroup
+                +-analytic_function_list=
+                  +-$analytic1#5 :=
+                    +-AnalyticFunctionCall(GoogleSQL:$count_star() -> INT64)
+                      +-window_frame=
+                        +-WindowFrame(frame_unit=ROWS)
+                          +-start_expr=
+                          | +-WindowFrameExpr(boundary_type=UNBOUNDED PRECEDING)
+                          +-end_expr=
+                            +-WindowFrameExpr(boundary_type=UNBOUNDED FOLLOWING)
+==
+
+# Make sure appropriate errors are generated for the expressions
+# inside SELECT * REPLACE.
+FROM KeyValue
+|> SELECT * REPLACE (sum(key) AS key)
+--
+ERROR: Aggregate function SUM not allowed in pipe SELECT [at 2:22]
+|> SELECT * REPLACE (sum(key) AS key)
+                     ^
+==
+
+FROM KeyValue
+|> SELECT struct(key, value).* REPLACE (sum(key) AS key)
+--
+ERROR: Aggregate function SUM not allowed in pipe SELECT [at 2:41]
+|> SELECT struct(key, value).* REPLACE (sum(key) AS key)
+                                        ^
+==
+
+FROM KeyValue
+|> SELECT * REPLACE (COUNT(*) OVER () AS key)
+--
+ERROR: Cannot use analytic functions inside SELECT * REPLACE [at 2:22]
+|> SELECT * REPLACE (COUNT(*) OVER () AS key)
+                     ^

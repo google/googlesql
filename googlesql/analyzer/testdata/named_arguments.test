@@ -1,0 +1,3455 @@
+# Analyzer tests for GoogleSQL named arguments as designed at
+# (broken link).
+#
+# Valid function call with named arguments in the same order as they appear in
+# the function signature.
+[default language_features=NONE,+NAMED_ARGUMENTS,+TABLE_VALUED_FUNCTIONS]
+select fn_named_args(format_string => "%x", date_string => "12/25/08")
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [BOOL]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(sample_functions:fn_named_args(STRING format_string, STRING date_string) -> BOOL)
+    |     +-Literal(type=STRING, value="%x")
+    |     +-Literal(type=STRING, value="12/25/08")
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Valid function call with named arguments in a different order that they appear
+# in the function signature.
+select fn_named_args(date_string => "12/25/08", format_string => "%x")
+--
+[SAME AS PREVIOUS]
+==
+
+# Valid function call with named arguments assigned to non-literal expressions.
+select fn_named_args(
+    format_string => concat("%", "x"),
+    date_string => concat(cast(10 + 2 as string), "/25/08"))
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [BOOL]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(sample_functions:fn_named_args(STRING format_string, STRING date_string) -> BOOL)
+    |     +-FunctionCall(GoogleSQL:concat(STRING, repeated(1) STRING) -> STRING)
+    |     | +-Literal(type=STRING, value="%")
+    |     | +-Literal(type=STRING, value="x")
+    |     +-FunctionCall(GoogleSQL:concat(STRING, repeated(1) STRING) -> STRING)
+    |       +-Cast(INT64 -> STRING)
+    |       | +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |       |   +-Literal(type=INT64, value=10)
+    |       |   +-Literal(type=INT64, value=2)
+    |       +-Literal(type=STRING, value="/25/08")
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Valid function call with a positional argument followed by a named argument.
+# For this example, the function signature comprises two named arguments like
+# this: create function fn_named_args(format_string STRING, date_string STRING);
+# Calls to this function may provide the arguments positionally (following the
+# order in the function signature) or by name, or a combination of the former
+# followed by the latter.
+select fn_named_args("%x", date_string => "12/25/08")
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [BOOL]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(sample_functions:fn_named_args(STRING format_string, STRING date_string) -> BOOL)
+    |     +-Literal(type=STRING, value="%x")
+    |     +-Literal(type=STRING, value="12/25/08")
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Valid function call with named arguments for a function that has two
+# signatures.
+select fn_named_args_two_signatures(
+    format_string => "%X", date_string => "12/25/08");
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [BOOL]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(sample_functions:fn_named_args_two_signatures(STRING format_string, STRING date_string) -> BOOL)
+    |     +-Literal(type=STRING, value="%X")
+    |     +-Literal(type=STRING, value="12/25/08")
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Valid function call with two required arguments and one named argument.
+select fn_three_named_args_two_signatures(
+    "%X", "12/25/08",  format_string => "%X");
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [BOOL]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(sample_functions:fn_three_named_args_two_signatures(STRING, STRING, STRING format_string) -> BOOL)
+    |     +-Literal(type=STRING, value="%X")
+    |     +-Literal(type=STRING, value="12/25/08")
+    |     +-Literal(type=STRING, value="%X")
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Valid function call with two required arguments and one named argument.
+select fn_three_named_args_two_signatures(
+    "%X", "12/25/08",  date_string => "12/25/08");
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [BOOL]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(sample_functions:fn_three_named_args_two_signatures(STRING, STRING, STRING date_string) -> BOOL)
+    |     +-Literal(type=STRING, value="%X")
+    |     +-Literal(type=STRING, value="12/25/08")
+    |     +-Literal(type=STRING, value="12/25/08")
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Invalid function call with two required arguments and one named argument,
+# because the provided argument name is wrong.
+select fn_three_named_args_two_signatures(
+    "%X", "12/25/08",  invalid_arg_name => "12/25/08");
+--
+ERROR: No matching signature for function SAMPLE_FUNCTIONS:FN_THREE_NAMED_ARGS_TWO_SIGNATURES
+  Argument types: STRING, STRING, invalid_arg_name => STRING
+  Signature: FN_THREE_NAMED_ARGS_TWO_SIGNATURES(STRING, STRING, [format_string=>]STRING)
+    Named argument `invalid_arg_name` does not exist in signature
+  Signature: FN_THREE_NAMED_ARGS_TWO_SIGNATURES(STRING, STRING, [date_string=>]STRING)
+    Named argument `invalid_arg_name` does not exist in signature [at 1:8]
+select fn_three_named_args_two_signatures(
+       ^
+==
+
+# Invalid function call with two required arguments and one named argument.
+# The second required non-named argument is missing.
+select fn_three_named_args_two_signatures(
+    "%X", format_string => "%X");
+--
+ERROR: No matching signature for function SAMPLE_FUNCTIONS:FN_THREE_NAMED_ARGS_TWO_SIGNATURES
+  Argument types: STRING, format_string => STRING
+  Signature: FN_THREE_NAMED_ARGS_TWO_SIGNATURES(STRING, STRING, [format_string=>]STRING)
+    Signature requires at least 3 arguments, found 2 arguments
+  Signature: FN_THREE_NAMED_ARGS_TWO_SIGNATURES(STRING, STRING, [date_string=>]STRING)
+    Named argument `format_string` does not exist in signature [at 1:8]
+select fn_three_named_args_two_signatures(
+       ^
+==
+
+# Valid function call with named arguments for a function with optional
+# arguments.
+select fn_named_args_optional(
+    format_string => "%X", date_string => "12/25/08");
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [BOOL]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(sample_functions:fn_named_args_optional(optional(1) STRING format_string, optional(1) STRING date_string) -> BOOL)
+    |     +-Literal(type=STRING, value="%X")
+    |     +-Literal(type=STRING, value="12/25/08")
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Valid function call with named arguments for a function with optional
+# arguments with some optional arguments not named.
+select fn_named_args_optional(format_string => "%X")
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [BOOL]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(sample_functions:fn_named_args_optional(optional(1) STRING format_string, optional(1) STRING date_string) -> BOOL)
+    |     +-Literal(type=STRING, value="%X")
+    |     +-Literal(type=STRING, value=NULL)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Valid function call with named arguments for a function with optional
+# arguments with some optional arguments not named.
+select fn_named_args_optional(date_string => "12/25/08")
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [BOOL]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(sample_functions:fn_named_args_optional(optional(1) STRING format_string, optional(1) STRING date_string) -> BOOL)
+    |     +-Literal(type=STRING, value=NULL)
+    |     +-Literal(type=STRING, value="12/25/08")
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Valid TVF call with two scalar named arguments.
+select * from tvf_named_required_scalar_args(
+    date_string => "12/25/08", format_string => "%X")
+--
+QueryStmt
++-output_column_list=
+| +-tvf_named_required_scalar_args.column_bool#1 AS column_bool [BOOL]
+| +-tvf_named_required_scalar_args.column_bytes#2 AS column_bytes [BYTES]
++-query=
+  +-ProjectScan
+    +-column_list=tvf_named_required_scalar_args.[column_bool#1, column_bytes#2]
+    +-input_scan=
+      +-TVFScan
+        +-column_list=tvf_named_required_scalar_args.[column_bool#1, column_bytes#2]
+        +-tvf=tvf_named_required_scalar_args((STRING format_string, STRING date_string) -> TABLE<column_bool BOOL, column_bytes BYTES>)
+        +-signature=(literal STRING, literal STRING) -> TABLE<column_bool BOOL, column_bytes BYTES>
+        +-argument_list=
+        | +-FunctionArgument
+        | | +-expr=
+        | |   +-Literal(type=STRING, value="%X")
+        | +-FunctionArgument
+        |   +-expr=
+        |     +-Literal(type=STRING, value="12/25/08")
+        +-column_index_list=[0, 1]
+        +-function_call_signature=(STRING format_string, STRING date_string) -> TABLE<column_bool BOOL, column_bytes BYTES>
+==
+
+# Valid TVF call with two scalar optional named arguments.
+select * from tvf_named_optional_scalar_args(
+    format_string => "%X", date_string => "12/25/08")
+--
+QueryStmt
++-output_column_list=
+| +-tvf_named_optional_scalar_args.column_bool#1 AS column_bool [BOOL]
+| +-tvf_named_optional_scalar_args.column_bytes#2 AS column_bytes [BYTES]
++-query=
+  +-ProjectScan
+    +-column_list=tvf_named_optional_scalar_args.[column_bool#1, column_bytes#2]
+    +-input_scan=
+      +-TVFScan
+        +-column_list=tvf_named_optional_scalar_args.[column_bool#1, column_bytes#2]
+        +-tvf=tvf_named_optional_scalar_args((optional STRING format_string, optional STRING date_string) -> TABLE<column_bool BOOL, column_bytes BYTES>)
+        +-signature=(literal STRING, literal STRING) -> TABLE<column_bool BOOL, column_bytes BYTES>
+        +-argument_list=
+        | +-FunctionArgument
+        | | +-expr=
+        | |   +-Literal(type=STRING, value="%X")
+        | +-FunctionArgument
+        |   +-expr=
+        |     +-Literal(type=STRING, value="12/25/08")
+        +-column_index_list=[0, 1]
+        +-function_call_signature=(optional(1) STRING format_string, optional(1) STRING date_string) -> TABLE<column_bool BOOL, column_bytes BYTES>
+==
+
+# Valid TVF call with named arguments for a function with optional arguments
+# with some optional arguments not named.
+select * from tvf_named_optional_scalar_args(format_string => "%X")
+--
+QueryStmt
++-output_column_list=
+| +-tvf_named_optional_scalar_args.column_bool#1 AS column_bool [BOOL]
+| +-tvf_named_optional_scalar_args.column_bytes#2 AS column_bytes [BYTES]
++-query=
+  +-ProjectScan
+    +-column_list=tvf_named_optional_scalar_args.[column_bool#1, column_bytes#2]
+    +-input_scan=
+      +-TVFScan
+        +-column_list=tvf_named_optional_scalar_args.[column_bool#1, column_bytes#2]
+        +-tvf=tvf_named_optional_scalar_args((optional STRING format_string, optional STRING date_string) -> TABLE<column_bool BOOL, column_bytes BYTES>)
+        +-signature=(literal STRING, null STRING) -> TABLE<column_bool BOOL, column_bytes BYTES>
+        +-argument_list=
+        | +-FunctionArgument
+        | | +-expr=
+        | |   +-Literal(type=STRING, value="%X")
+        | +-FunctionArgument
+        |   +-expr=
+        |     +-Literal(type=STRING, value=NULL)
+        +-column_index_list=[0, 1]
+        +-function_call_signature=(optional(1) STRING format_string, optional(1) STRING date_string) -> TABLE<column_bool BOOL, column_bytes BYTES>
+==
+
+# Valid TVF call with named arguments for a function with optional arguments
+# with some optional arguments not named.
+select * from tvf_named_optional_scalar_args(date_string => "12/25/08")
+--
+QueryStmt
++-output_column_list=
+| +-tvf_named_optional_scalar_args.column_bool#1 AS column_bool [BOOL]
+| +-tvf_named_optional_scalar_args.column_bytes#2 AS column_bytes [BYTES]
++-query=
+  +-ProjectScan
+    +-column_list=tvf_named_optional_scalar_args.[column_bool#1, column_bytes#2]
+    +-input_scan=
+      +-TVFScan
+        +-column_list=tvf_named_optional_scalar_args.[column_bool#1, column_bytes#2]
+        +-tvf=tvf_named_optional_scalar_args((optional STRING format_string, optional STRING date_string) -> TABLE<column_bool BOOL, column_bytes BYTES>)
+        +-signature=(null STRING, literal STRING) -> TABLE<column_bool BOOL, column_bytes BYTES>
+        +-argument_list=
+        | +-FunctionArgument
+        | | +-expr=
+        | |   +-Literal(type=STRING, value=NULL)
+        | +-FunctionArgument
+        |   +-expr=
+        |     +-Literal(type=STRING, value="12/25/08")
+        +-column_index_list=[0, 1]
+        +-function_call_signature=(optional(1) STRING format_string, optional(1) STRING date_string) -> TABLE<column_bool BOOL, column_bytes BYTES>
+==
+
+# Valid TVF call with a named argument for a function with an optional relation
+# argument.
+select * from tvf_named_optional_any_relation_arg(
+    any_relation_arg => (select 1 as x))
+--
+QueryStmt
++-output_column_list=
+| +-tvf_named_optional_any_relation_arg.column_bool#2 AS column_bool [BOOL]
+| +-tvf_named_optional_any_relation_arg.column_bytes#3 AS column_bytes [BYTES]
++-query=
+  +-ProjectScan
+    +-column_list=tvf_named_optional_any_relation_arg.[column_bool#2, column_bytes#3]
+    +-input_scan=
+      +-TVFScan
+        +-column_list=tvf_named_optional_any_relation_arg.[column_bool#2, column_bytes#3]
+        +-tvf=tvf_named_optional_any_relation_arg((optional ANY TABLE any_relation_arg) -> TABLE<column_bool BOOL, column_bytes BYTES>)
+        +-signature=(TABLE<x INT64>) -> TABLE<column_bool BOOL, column_bytes BYTES>
+        +-argument_list=
+        | +-FunctionArgument
+        |   +-scan=
+        |   | +-ProjectScan
+        |   |   +-column_list=[$subquery1.x#1]
+        |   |   +-expr_list=
+        |   |   | +-x#1 := Literal(type=INT64, value=1)
+        |   |   +-input_scan=
+        |   |     +-SingleRowScan
+        |   +-argument_column_list=[$subquery1.x#1]
+        +-column_index_list=[0, 1]
+        +-function_call_signature=(optional(1) ANY TABLE any_relation_arg) -> TABLE<column_bool BOOL, column_bytes BYTES>
+==
+
+# Invalid TVF call with a named argument for a function with an optional
+# relation argument using the wrong name.
+select * from tvf_named_optional_any_relation_arg(
+    invalid_arg => (select 1 as x))
+--
+ERROR: Named argument invalid_arg not found in signature for call to function TVF_NAMED_OPTIONAL_ANY_RELATION_ARG [at 2:5]
+    invalid_arg => (select 1 as x))
+    ^
+==
+
+[language_features=NONE,+NAMED_ARGUMENTS,+TABLE_VALUED_FUNCTIONS,+TOP_LEVEL_TABLE_STATEMENTS]
+# TVF call using named TABLE argument
+select * from tvf_named_optional_any_relation_arg(
+    any_relation_arg => TABLE KeyValue)
+--
+
+QueryStmt
++-output_column_list=
+| +-tvf_named_optional_any_relation_arg.column_bool#3 AS column_bool [BOOL]
+| +-tvf_named_optional_any_relation_arg.column_bytes#4 AS column_bytes [BYTES]
++-query=
+  +-ProjectScan
+    +-column_list=tvf_named_optional_any_relation_arg.[column_bool#3, column_bytes#4]
+    +-input_scan=
+      +-TVFScan
+        +-column_list=tvf_named_optional_any_relation_arg.[column_bool#3, column_bytes#4]
+        +-tvf=tvf_named_optional_any_relation_arg((optional ANY TABLE any_relation_arg) -> TABLE<column_bool BOOL, column_bytes BYTES>)
+        +-signature=(TABLE<Key INT64, Value STRING>) -> TABLE<column_bool BOOL, column_bytes BYTES>
+        +-argument_list=
+        | +-FunctionArgument
+        |   +-scan=
+        |   | +-TableScan(column_list=KeyValue.[Key#1, Value#2], node_source="table_clause", table=KeyValue, column_index_list=[0, 1])
+        |   +-argument_column_list=KeyValue.[Key#1, Value#2]
+        +-column_index_list=[0, 1]
+        +-function_call_signature=(optional(1) ANY TABLE any_relation_arg) -> TABLE<column_bool BOOL, column_bytes BYTES>
+==
+
+[language_features=NONE,+NAMED_ARGUMENTS,+TABLE_VALUED_FUNCTIONS,+TOP_LEVEL_TABLE_STATEMENTS]
+# TVF call using named TABLE argument
+select * from tvf_named_optional_any_relation_arg(
+    any_relation_arg => TABLE tvf_named_optional_any_relation_arg(any_relation_arg => TABLE KeyValue))
+--
+QueryStmt
++-output_column_list=
+| +-tvf_named_optional_any_relation_arg.column_bool#5 AS column_bool [BOOL]
+| +-tvf_named_optional_any_relation_arg.column_bytes#6 AS column_bytes [BYTES]
++-query=
+  +-ProjectScan
+    +-column_list=tvf_named_optional_any_relation_arg.[column_bool#5, column_bytes#6]
+    +-input_scan=
+      +-TVFScan
+        +-column_list=tvf_named_optional_any_relation_arg.[column_bool#5, column_bytes#6]
+        +-tvf=tvf_named_optional_any_relation_arg((optional ANY TABLE any_relation_arg) -> TABLE<column_bool BOOL, column_bytes BYTES>)
+        +-signature=(TABLE<column_bool BOOL, column_bytes BYTES>) -> TABLE<column_bool BOOL, column_bytes BYTES>
+        +-argument_list=
+        | +-FunctionArgument
+        |   +-scan=
+        |   | +-TVFScan
+        |   |   +-column_list=tvf_named_optional_any_relation_arg.[column_bool#3, column_bytes#4]
+        |   |   +-node_source="table_clause"
+        |   |   +-tvf=tvf_named_optional_any_relation_arg((optional ANY TABLE any_relation_arg) -> TABLE<column_bool BOOL, column_bytes BYTES>)
+        |   |   +-signature=(TABLE<Key INT64, Value STRING>) -> TABLE<column_bool BOOL, column_bytes BYTES>
+        |   |   +-argument_list=
+        |   |   | +-FunctionArgument
+        |   |   |   +-scan=
+        |   |   |   | +-TableScan(column_list=KeyValue.[Key#1, Value#2], node_source="table_clause", table=KeyValue, column_index_list=[0, 1])
+        |   |   |   +-argument_column_list=KeyValue.[Key#1, Value#2]
+        |   |   +-column_index_list=[0, 1]
+        |   |   +-function_call_signature=(optional(1) ANY TABLE any_relation_arg) -> TABLE<column_bool BOOL, column_bytes BYTES>
+        |   +-argument_column_list=tvf_named_optional_any_relation_arg.[column_bool#3, column_bytes#4]
+        +-column_index_list=[0, 1]
+        +-function_call_signature=(optional(1) ANY TABLE any_relation_arg) -> TABLE<column_bool BOOL, column_bytes BYTES>
+==
+
+# TVF call using named TABLE argument but not providing table name
+select * from tvf_named_optional_any_relation_arg(
+    any_relation_arg => TABLE)
+--
+
+ERROR: Table-valued function TVF_NAMED_OPTIONAL_ANY_RELATION_ARG argument 1 ('any_relation_arg') must be a relation (i.e. table subquery); if you meant to refer to table TABLE then add the TABLE keyword before the table name (i.e. TABLE TABLE) [at 2:25]
+    any_relation_arg => TABLE)
+                        ^
+==
+
+# Valid TVF call with named arguments for a function with an optional relation
+# argument and an optional scalar argument.
+# The TVF signature looks like:
+#   tvf_named_optional_any_relation_arg_optional_scalar_arg(
+#       optional any_relation_arg ANY TABLE,
+#       optional format_string STRING)
+#     RETURNS TABLE<BOOL, BYTES>.
+select * from tvf_named_optional_any_relation_arg_optional_scalar_arg(
+    format_string => 'abc', any_relation_arg => (select 1 as x))
+--
+QueryStmt
++-output_column_list=
+| +-tvf_named_optional_any_relation_arg_optional_scalar_arg.column_bool#2 AS column_bool [BOOL]
+| +-tvf_named_optional_any_relation_arg_optional_scalar_arg.column_bytes#3 AS column_bytes [BYTES]
++-query=
+  +-ProjectScan
+    +-column_list=tvf_named_optional_any_relation_arg_optional_scalar_arg.[column_bool#2, column_bytes#3]
+    +-input_scan=
+      +-TVFScan
+        +-column_list=tvf_named_optional_any_relation_arg_optional_scalar_arg.[column_bool#2, column_bytes#3]
+        +-tvf=tvf_named_optional_any_relation_arg_optional_scalar_arg((optional ANY TABLE any_relation_arg, optional STRING format_string) -> TABLE<column_bool BOOL, column_bytes BYTES>)
+        +-signature=(TABLE<x INT64>, literal STRING) -> TABLE<column_bool BOOL, column_bytes BYTES>
+        +-argument_list=
+        | +-FunctionArgument
+        | | +-scan=
+        | | | +-ProjectScan
+        | | |   +-column_list=[$subquery1.x#1]
+        | | |   +-expr_list=
+        | | |   | +-x#1 := Literal(type=INT64, value=1)
+        | | |   +-input_scan=
+        | | |     +-SingleRowScan
+        | | +-argument_column_list=[$subquery1.x#1]
+        | +-FunctionArgument
+        |   +-expr=
+        |     +-Literal(type=STRING, value="abc")
+        +-column_index_list=[0, 1]
+        +-function_call_signature=(optional(1) ANY TABLE any_relation_arg, optional(1) STRING format_string) -> TABLE<column_bool BOOL, column_bytes BYTES>
+==
+
+# TVF call with the STRING named argument provided but the relation
+# argument omitted.
+# The TVF signature is the same as above.
+[show_sqlbuilder_output]
+select * from tvf_named_optional_any_relation_arg_optional_scalar_arg(
+    format_string => 'abc')
+--
+QueryStmt
++-output_column_list=
+| +-tvf_named_optional_any_relation_arg_optional_scalar_arg.column_bool#1 AS column_bool [BOOL]
+| +-tvf_named_optional_any_relation_arg_optional_scalar_arg.column_bytes#2 AS column_bytes [BYTES]
++-query=
+  +-ProjectScan
+    +-column_list=tvf_named_optional_any_relation_arg_optional_scalar_arg.[column_bool#1, column_bytes#2]
+    +-input_scan=
+      +-TVFScan
+        +-column_list=tvf_named_optional_any_relation_arg_optional_scalar_arg.[column_bool#1, column_bytes#2]
+        +-tvf=tvf_named_optional_any_relation_arg_optional_scalar_arg((optional ANY TABLE any_relation_arg, optional STRING format_string) -> TABLE<column_bool BOOL, column_bytes BYTES>)
+        +-signature=(TABLE<>, literal STRING) -> TABLE<column_bool BOOL, column_bytes BYTES>
+        +-argument_list=
+        | +-FunctionArgument
+        | | +-scan=
+        | |   +-UnsetArgumentScan
+        | +-FunctionArgument
+        |   +-expr=
+        |     +-Literal(type=STRING, value="abc")
+        +-column_index_list=[0, 1]
+        +-function_call_signature=(optional(1) ANY TABLE any_relation_arg, optional(1) STRING format_string) -> TABLE<column_bool BOOL, column_bytes BYTES>
+
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+SELECT
+  tvfscan_1.column_bool AS column_bool,
+  tvfscan_1.column_bytes AS column_bytes
+FROM
+  TVF_NAMED_OPTIONAL_ANY_RELATION_ARG_OPTIONAL_SCALAR_ARG(format_string  => "abc") AS tvfscan_1;
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+FROM
+  TVF_NAMED_OPTIONAL_ANY_RELATION_ARG_OPTIONAL_SCALAR_ARG(format_string  => "abc") AS tvfscan_1
+|> SELECT
+     tvfscan_1.column_bool AS column_bool,
+     tvfscan_1.column_bytes AS column_bytes;
+==
+
+# Valid TVF call with the relation named argument provided and the STRING
+# argument omitted.
+# The TVF signature is the same as above.
+# TODO: Update this test case to remove the injected NULL argument
+# for the omitted 'format_string' argument once we have the feature not to
+# materializing omitted arguments without default values in the resolved
+# function call node.
+select * from tvf_named_optional_any_relation_arg_optional_scalar_arg(
+    any_relation_arg => (select 1 as x))
+--
+QueryStmt
++-output_column_list=
+| +-tvf_named_optional_any_relation_arg_optional_scalar_arg.column_bool#2 AS column_bool [BOOL]
+| +-tvf_named_optional_any_relation_arg_optional_scalar_arg.column_bytes#3 AS column_bytes [BYTES]
++-query=
+  +-ProjectScan
+    +-column_list=tvf_named_optional_any_relation_arg_optional_scalar_arg.[column_bool#2, column_bytes#3]
+    +-input_scan=
+      +-TVFScan
+        +-column_list=tvf_named_optional_any_relation_arg_optional_scalar_arg.[column_bool#2, column_bytes#3]
+        +-tvf=tvf_named_optional_any_relation_arg_optional_scalar_arg((optional ANY TABLE any_relation_arg, optional STRING format_string) -> TABLE<column_bool BOOL, column_bytes BYTES>)
+        +-signature=(TABLE<x INT64>, null STRING) -> TABLE<column_bool BOOL, column_bytes BYTES>
+        +-argument_list=
+        | +-FunctionArgument
+        | | +-scan=
+        | | | +-ProjectScan
+        | | |   +-column_list=[$subquery1.x#1]
+        | | |   +-expr_list=
+        | | |   | +-x#1 := Literal(type=INT64, value=1)
+        | | |   +-input_scan=
+        | | |     +-SingleRowScan
+        | | +-argument_column_list=[$subquery1.x#1]
+        | +-FunctionArgument
+        |   +-expr=
+        |     +-Literal(type=STRING, value=NULL)
+        +-column_index_list=[0, 1]
+        +-function_call_signature=(optional(1) ANY TABLE any_relation_arg, optional(1) STRING format_string) -> TABLE<column_bool BOOL, column_bytes BYTES>
+==
+
+# Valid TVF call with one "any table" relation named argument.
+select * from tvf_named_required_any_relation_arg(
+    any_relation_arg => (select * from keyvalue))
+--
+QueryStmt
++-output_column_list=
+| +-tvf_named_required_any_relation_arg.column_bool#3 AS column_bool [BOOL]
+| +-tvf_named_required_any_relation_arg.column_bytes#4 AS column_bytes [BYTES]
++-query=
+  +-ProjectScan
+    +-column_list=tvf_named_required_any_relation_arg.[column_bool#3, column_bytes#4]
+    +-input_scan=
+      +-TVFScan
+        +-column_list=tvf_named_required_any_relation_arg.[column_bool#3, column_bytes#4]
+        +-tvf=tvf_named_required_any_relation_arg((ANY TABLE any_relation_arg) -> TABLE<column_bool BOOL, column_bytes BYTES>)
+        +-signature=(TABLE<Key INT64, Value STRING>) -> TABLE<column_bool BOOL, column_bytes BYTES>
+        +-argument_list=
+        | +-FunctionArgument
+        |   +-scan=
+        |   | +-ProjectScan
+        |   |   +-column_list=KeyValue.[Key#1, Value#2]
+        |   |   +-input_scan=
+        |   |     +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+        |   +-argument_column_list=KeyValue.[Key#1, Value#2]
+        +-column_index_list=[0, 1]
+        +-function_call_signature=(ANY TABLE any_relation_arg) -> TABLE<column_bool BOOL, column_bytes BYTES>
+==
+
+# Valid TVF call with one relation named argument with required schema.
+select * from tvf_named_required_schema_relation_arg(
+    schema_relation_arg => (select true as column_bool,
+                            cast("abc" as bytes) as column_bytes))
+--
+QueryStmt
++-output_column_list=
+| +-tvf_named_required_schema_relation_arg.column_bool#3 AS column_bool [BOOL]
+| +-tvf_named_required_schema_relation_arg.column_bytes#4 AS column_bytes [BYTES]
++-query=
+  +-ProjectScan
+    +-column_list=tvf_named_required_schema_relation_arg.[column_bool#3, column_bytes#4]
+    +-input_scan=
+      +-TVFScan
+        +-column_list=tvf_named_required_schema_relation_arg.[column_bool#3, column_bytes#4]
+        +-tvf=tvf_named_required_schema_relation_arg((TABLE<column_bool BOOL, column_bytes BYTES> schema_relation_arg) -> TABLE<column_bool BOOL, column_bytes BYTES>)
+        +-signature=(TABLE<column_bool BOOL, column_bytes BYTES>) -> TABLE<column_bool BOOL, column_bytes BYTES>
+        +-argument_list=
+        | +-FunctionArgument
+        |   +-scan=
+        |   | +-ProjectScan
+        |   |   +-column_list=$subquery1.[column_bool#1, column_bytes#2]
+        |   |   +-expr_list=
+        |   |   | +-column_bool#1 := Literal(type=BOOL, value=true)
+        |   |   | +-column_bytes#2 := Literal(type=BYTES, value=b"abc", has_explicit_type=TRUE)
+        |   |   +-input_scan=
+        |   |     +-SingleRowScan
+        |   +-argument_column_list=$subquery1.[column_bool#1, column_bytes#2]
+        +-column_index_list=[0, 1]
+        +-function_call_signature=(TABLE<column_bool BOOL, column_bytes BYTES> schema_relation_arg) -> TABLE<column_bool BOOL, column_bytes BYTES>
+==
+
+# Valid TVF call with one relation named argument with a value table.
+select * from tvf_named_required_value_table_relation_arg(
+    value_table_relation_arg => (select as value cast (null as googlesql_test.TestExtraPB) from keyvalue))
+--
+QueryStmt
++-output_column_list=
+| +-tvf_named_required_value_table_relation_arg.column_bool#4 AS column_bool [BOOL]
+| +-tvf_named_required_value_table_relation_arg.column_bytes#5 AS column_bytes [BYTES]
++-query=
+  +-ProjectScan
+    +-column_list=tvf_named_required_value_table_relation_arg.[column_bool#4, column_bytes#5]
+    +-input_scan=
+      +-TVFScan
+        +-column_list=tvf_named_required_value_table_relation_arg.[column_bool#4, column_bytes#5]
+        +-tvf=tvf_named_required_value_table_relation_arg((TABLE<PROTO<googlesql_test.TestExtraPB>> value_table_relation_arg) -> TABLE<column_bool BOOL, column_bytes BYTES>)
+        +-signature=(TABLE<PROTO<googlesql_test.TestExtraPB>>) -> TABLE<column_bool BOOL, column_bytes BYTES>
+        +-argument_list=
+        | +-FunctionArgument
+        |   +-scan=
+        |   | +-ProjectScan
+        |   |   +-column_list=[$subquery1.$col1#3]
+        |   |   +-expr_list=
+        |   |   | +-$col1#3 := Literal(type=PROTO<googlesql_test.TestExtraPB>, value=NULL, has_explicit_type=TRUE)
+        |   |   +-input_scan=
+        |   |     +-TableScan(table=KeyValue)
+        |   +-argument_column_list=[$subquery1.$col1#3]
+        +-column_index_list=[0, 1]
+        +-function_call_signature=(TABLE<PROTO<googlesql_test.TestExtraPB>> value_table_relation_arg) -> TABLE<column_bool BOOL, column_bytes BYTES>
+==
+
+# Valid TVF call with a combination of named scalar and relation arguments.
+select * from tvf_named_scalar_and_relation_args(
+    format_string => "%X",
+    schema_relation_arg => (select true as column_bool,
+                            cast("abc" as bytes) as column_bytes))
+--
+QueryStmt
++-output_column_list=
+| +-tvf_named_scalar_and_relation_args.column_bool#3 AS column_bool [BOOL]
+| +-tvf_named_scalar_and_relation_args.column_bytes#4 AS column_bytes [BYTES]
++-query=
+  +-ProjectScan
+    +-column_list=tvf_named_scalar_and_relation_args.[column_bool#3, column_bytes#4]
+    +-input_scan=
+      +-TVFScan
+        +-column_list=tvf_named_scalar_and_relation_args.[column_bool#3, column_bytes#4]
+        +-tvf=tvf_named_scalar_and_relation_args((STRING format_string, TABLE<column_bool BOOL, column_bytes BYTES> schema_relation_arg) -> TABLE<column_bool BOOL, column_bytes BYTES>)
+        +-signature=(literal STRING, TABLE<column_bool BOOL, column_bytes BYTES>) -> TABLE<column_bool BOOL, column_bytes BYTES>
+        +-argument_list=
+        | +-FunctionArgument
+        | | +-expr=
+        | |   +-Literal(type=STRING, value="%X")
+        | +-FunctionArgument
+        |   +-scan=
+        |   | +-ProjectScan
+        |   |   +-column_list=$subquery1.[column_bool#1, column_bytes#2]
+        |   |   +-expr_list=
+        |   |   | +-column_bool#1 := Literal(type=BOOL, value=true)
+        |   |   | +-column_bytes#2 := Literal(type=BYTES, value=b"abc", has_explicit_type=TRUE)
+        |   |   +-input_scan=
+        |   |     +-SingleRowScan
+        |   +-argument_column_list=$subquery1.[column_bool#1, column_bytes#2]
+        +-column_index_list=[0, 1]
+        +-function_call_signature=(STRING format_string, TABLE<column_bool BOOL, column_bytes BYTES> schema_relation_arg) -> TABLE<column_bool BOOL, column_bytes BYTES>
+==
+
+# Valid TVF call with a combination of named and positional arguments.
+select * from tvf_named_scalar_and_relation_args(
+    "%X",
+    schema_relation_arg => (select true as column_bool,
+                            cast("abc" as bytes) as column_bytes))
+--
+QueryStmt
++-output_column_list=
+| +-tvf_named_scalar_and_relation_args.column_bool#3 AS column_bool [BOOL]
+| +-tvf_named_scalar_and_relation_args.column_bytes#4 AS column_bytes [BYTES]
++-query=
+  +-ProjectScan
+    +-column_list=tvf_named_scalar_and_relation_args.[column_bool#3, column_bytes#4]
+    +-input_scan=
+      +-TVFScan
+        +-column_list=tvf_named_scalar_and_relation_args.[column_bool#3, column_bytes#4]
+        +-tvf=tvf_named_scalar_and_relation_args((STRING format_string, TABLE<column_bool BOOL, column_bytes BYTES> schema_relation_arg) -> TABLE<column_bool BOOL, column_bytes BYTES>)
+        +-signature=(literal STRING, TABLE<column_bool BOOL, column_bytes BYTES>) -> TABLE<column_bool BOOL, column_bytes BYTES>
+        +-argument_list=
+        | +-FunctionArgument
+        | | +-expr=
+        | |   +-Literal(type=STRING, value="%X")
+        | +-FunctionArgument
+        |   +-scan=
+        |   | +-ProjectScan
+        |   |   +-column_list=$subquery1.[column_bool#1, column_bytes#2]
+        |   |   +-expr_list=
+        |   |   | +-column_bool#1 := Literal(type=BOOL, value=true)
+        |   |   | +-column_bytes#2 := Literal(type=BYTES, value=b"abc", has_explicit_type=TRUE)
+        |   |   +-input_scan=
+        |   |     +-SingleRowScan
+        |   +-argument_column_list=$subquery1.[column_bool#1, column_bytes#2]
+        +-column_index_list=[0, 1]
+        +-function_call_signature=(STRING format_string, TABLE<column_bool BOOL, column_bytes BYTES> schema_relation_arg) -> TABLE<column_bool BOOL, column_bytes BYTES>
+==
+
+# Invalid function call with named arguments. The resolver returns an error if
+# these arguments are used positionally, and this is the case here.
+select fn_named_args_error_if_positional(
+    "%X",
+    date_string => "12/25/08");
+--
+ERROR: No matching signature for function SAMPLE_FUNCTIONS:FN_NAMED_ARGS_ERROR_IF_POSITIONAL
+  Argument types: STRING, date_string => STRING
+  Signature: FN_NAMED_ARGS_ERROR_IF_POSITIONAL(format_string => STRING, date_string => STRING)
+    Positional argument at 1 is invalid because argument `format_string` can only be referred to by name [at 1:8]
+select fn_named_args_error_if_positional(
+       ^
+==
+
+# Invalid function call with named arguments. The function call includes a
+# positional argument after a named argument, which is invalid and returns an
+# error. The latter function argument also includes an option which specifies
+# that it may not be used positionally in general, but the function resolver
+# does not reach far enough to check this case.
+select fn_named_args_error_if_positional(
+    format_string => "%X",
+    "12/25/08");
+--
+ERROR: Call to function sample_functions:fn_named_args_error_if_positional must not specify positional arguments after named arguments; named arguments must be specified last in the argument list [at 2:5]
+    format_string => "%X",
+    ^
+==
+
+# Invalid function call with named arguments. The resolver returns an error if
+# these arguments are used positionally, and this is the case here.
+select fn_named_args_error_if_positional(
+    "%X", "12/25/08");
+--
+ERROR: No matching signature for function SAMPLE_FUNCTIONS:FN_NAMED_ARGS_ERROR_IF_POSITIONAL
+  Argument types: STRING, STRING
+  Signature: FN_NAMED_ARGS_ERROR_IF_POSITIONAL(format_string => STRING, date_string => STRING)
+    Positional argument at 1 is invalid because argument `format_string` can only be referred to by name [at 1:8]
+select fn_named_args_error_if_positional(
+       ^
+==
+
+# Invalid function call with named arguments. The resolver returns an error if
+# these arguments are used positionally, and this is the case here.
+select fn_named_args_error_if_positional(
+   "12/25/08",
+   format_string=> "%X");
+--
+ERROR: No matching signature for function SAMPLE_FUNCTIONS:FN_NAMED_ARGS_ERROR_IF_POSITIONAL
+  Argument types: STRING, format_string => STRING
+  Signature: FN_NAMED_ARGS_ERROR_IF_POSITIONAL(format_string => STRING, date_string => STRING)
+    Named argument `format_string` duplicates positional argument 1, which also provides `format_string` [at 1:8]
+select fn_named_args_error_if_positional(
+       ^
+==
+
+# Invalid function call with named arguments. The resolver returns an error if
+# the first argument is used positionally, and this is the case here.
+select fn_named_args_error_if_positional_first_arg(
+    "%X",
+    date_string => "12/25/08");
+--
+ERROR: No matching signature for function SAMPLE_FUNCTIONS:FN_NAMED_ARGS_ERROR_IF_POSITIONAL_FIRST_ARG
+  Argument types: STRING, date_string => STRING
+  Signature: FN_NAMED_ARGS_ERROR_IF_POSITIONAL_FIRST_ARG(format_string => STRING, [date_string=>]STRING)
+    Positional argument at 1 is invalid because argument `format_string` can only be referred to by name [at 1:8]
+select fn_named_args_error_if_positional_first_arg(
+       ^
+==
+
+# Invalid function call with named arguments. The resolver returns an error if
+# the first argument is used positionally, and this is the case here.
+select fn_named_args_error_if_positional_second_arg(
+    "%X",
+    "12/25/08");
+--
+ERROR: No matching signature for function SAMPLE_FUNCTIONS:FN_NAMED_ARGS_ERROR_IF_POSITIONAL_SECOND_ARG
+  Argument types: STRING, STRING
+  Signature: FN_NAMED_ARGS_ERROR_IF_POSITIONAL_SECOND_ARG(STRING, date_string => STRING)
+    Positional argument at 2 is invalid because argument `date_string` can only be referred to by name [at 1:8]
+select fn_named_args_error_if_positional_second_arg(
+       ^
+==
+
+# Invalid function call with mandatory-named arguments. The error includes
+# the correct syntax for using named arguments.
+select fn_named_args_error_if_positional(
+    format_string => 1,
+    date_string => "12/25/08");
+--
+ERROR: No matching signature for function SAMPLE_FUNCTIONS:FN_NAMED_ARGS_ERROR_IF_POSITIONAL
+  Argument types: format_string => INT64, date_string => STRING
+  Signature: FN_NAMED_ARGS_ERROR_IF_POSITIONAL(format_string => STRING, date_string => STRING)
+    Named argument `format_string`: Unable to coerce type INT64 to expected type STRING [at 1:8]
+select fn_named_args_error_if_positional(
+       ^
+==
+
+# Invalid function call with mandatory-named arguments, second of which is
+# optional. The error includes the correct syntax for using named arguments.
+select fn_named_optional_args_error_if_positional(
+    format_string => 1,
+    date_string => "12/25/08");
+--
+ERROR: No matching signature for function SAMPLE_FUNCTIONS:FN_NAMED_OPTIONAL_ARGS_ERROR_IF_POSITIONAL
+  Argument types: format_string => INT64, date_string => STRING
+  Signature: FN_NAMED_OPTIONAL_ARGS_ERROR_IF_POSITIONAL(format_string => STRING, [date_string => STRING])
+    Named argument `format_string`: Unable to coerce type INT64 to expected type STRING [at 1:8]
+select fn_named_optional_args_error_if_positional(
+       ^
+==
+
+# Valid function call of a function that requires named required arguments.
+select fn_named_args_error_if_positional(
+    format_string => "%X",
+    date_string => "12/25/08");
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [BOOL]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(sample_functions:fn_named_args_error_if_positional(STRING format_string, STRING date_string) -> BOOL)
+    |     +-Literal(type=STRING, value="%X")
+    |     +-Literal(type=STRING, value="12/25/08")
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Valid function call of a function that requires named arguments, one required
+# and one optional.
+select fn_named_optional_args_error_if_positional(
+    format_string => "%X",
+    date_string => "12/25/08");
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [BOOL]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(sample_functions:fn_named_optional_args_error_if_positional(STRING format_string, optional(1) STRING date_string) -> BOOL)
+    |     +-Literal(type=STRING, value="%X")
+    |     +-Literal(type=STRING, value="12/25/08")
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Valid function call of a function that requires named arguments, using
+# argument order opposite to the function's signature order.
+select fn_named_args_error_if_positional_second_arg(
+    date_string => "12/25/08",
+    format_string => "%X");
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [BOOL]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(sample_functions:fn_named_args_error_if_positional_second_arg(STRING format_string, STRING date_string) -> BOOL)
+    |     +-Literal(type=STRING, value="%X")
+    |     +-Literal(type=STRING, value="12/25/08")
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Valid function call of a function with two optional arguments, first regular
+# one and second one named that cannot be specified positionally.
+# In this call we omit the named argument.
+select fn_optional_named_optional_args("foo")
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [BOOL]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(sample_functions:fn_optional_named_optional_args(optional(1) STRING, optional(1) STRING date_string) -> BOOL)
+    |     +-Literal(type=STRING, value="foo")
+    |     +-Literal(type=STRING, value=NULL)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Valid function call of a function with three optional arguments: regular one,
+# named that cannot be specified positionally and cannot be null, and named that
+# cannot be specified positionally.
+# In this invocation we omit all named arguments.
+# This currently fails, as mandatory-named argument substitution makes
+# the omitted named arguments NULL.
+select fn_optional_named_optional_not_null_args(arg => "foo")
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [BOOL]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(sample_functions:fn_optional_named_optional_not_null_args(optional(1) STRING, optional(1) STRING arg, optional(1) STRING date_string) -> BOOL)
+    |     +-Literal(type=STRING, value=NULL)
+    |     +-Literal(type=STRING, value="foo")
+    |     +-Literal(type=STRING, value=NULL)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Invalid function call of a function with three optional arguments: regular
+# one, named that cannot be specified positionally and cannot be null, and
+# named that cannot be specified positionally.
+# In this invocation we omit all named arguments.
+# This currently fails, as mandatory-named argument substitution makes
+# the omitted named arguments NULL.
+select fn_optional_named_optional_not_null_args("foo")
+--
+ERROR: Argument 2 to SAMPLE_FUNCTIONS:FN_OPTIONAL_NAMED_OPTIONAL_NOT_NULL_ARGS must be non-NULL [at 1:8]
+select fn_optional_named_optional_not_null_args("foo")
+       ^
+==
+
+# Invalid function call of a function with three optional arguments: regular
+# one, named that cannot be specified positionally and cannot be null, and
+# named that cannot be specified positionally.
+# In this invocation we omit first named argument, that cannot be NULL.
+# This currently fails, as mandatory-named argument substitution makes
+# the omitted named arguments NULL.
+select fn_optional_named_optional_not_null_args("foo", date_string => "bar")
+--
+ERROR: Argument 2 to SAMPLE_FUNCTIONS:FN_OPTIONAL_NAMED_OPTIONAL_NOT_NULL_ARGS must be non-NULL [at 1:8]
+select fn_optional_named_optional_not_null_args("foo", date_string => "bar")
+       ^
+==
+
+# Invalid function call of a function with three optional arguments: regular one,
+# named that cannot be specified positionally and cannot be null, and
+# named cannot be specified positionally.
+# In this call we pass NULL to first named argument, that cannot be NULL.
+select fn_optional_named_optional_not_null_args("foo", arg => NULL, date_string => "bar")
+--
+ERROR: Argument 'arg' to SAMPLE_FUNCTIONS:FN_OPTIONAL_NAMED_OPTIONAL_NOT_NULL_ARGS must be non-NULL [at 1:56]
+...fn_optional_named_optional_not_null_args("foo", arg => NULL, date_string =...
+                                                   ^
+==
+
+# Invalid function call with a mix of positional and named arguments, where one
+# of the positional arguments corresponds to an argument type declaration in the
+# function signature with the same name as one of the provided named arguments.
+select fn_named_args("%x", format_string => "%x")
+--
+ERROR: No matching signature for function SAMPLE_FUNCTIONS:FN_NAMED_ARGS
+  Argument types: STRING, format_string => STRING
+  Signature: FN_NAMED_ARGS([format_string=>]STRING, [date_string=>]STRING)
+    Named argument `format_string` duplicates positional argument 1, which also provides `format_string` [at 1:8]
+select fn_named_args("%x", format_string => "%x")
+       ^
+==
+
+# Invalid function call with a mix of positional and named arguments, where one
+# of the positional arguments corresponds to an argument type declaration in the
+# function signature with the same name as one of the provided named arguments.
+select fn_named_args("%x", format_string => "%x", date_string => "12/25/08")
+--
+ERROR: No matching signature for function SAMPLE_FUNCTIONS:FN_NAMED_ARGS
+  Argument types: STRING, format_string => STRING, date_string => STRING
+  Signature: FN_NAMED_ARGS([format_string=>]STRING, [date_string=>]STRING)
+    Signature accepts at most 2 arguments, found 3 arguments [at 1:8]
+select fn_named_args("%x", format_string => "%x", date_string => "12/25/08")
+       ^
+==
+
+# Invalid TVF call with one relation named argument: an extra argument name is
+# provided.
+select * from tvf_named_required_any_relation_arg(
+    any_relation_arg => (select 1 as x), extra_arg => 42)
+--
+ERROR: Named argument extra_arg not found in signature for call to function TVF_NAMED_REQUIRED_ANY_RELATION_ARG [at 2:42]
+    any_relation_arg => (select 1 as x), extra_arg => 42)
+                                         ^
+==
+
+# Invalid TVF call with one relation named argument: a scalar value is provided.
+select * from tvf_named_required_any_relation_arg(
+    any_relation_arg => 42)
+--
+ERROR: Table-valued function TVF_NAMED_REQUIRED_ANY_RELATION_ARG argument 1 ('any_relation_arg') must be a relation (i.e. table subquery) [at 2:25]
+    any_relation_arg => 42)
+                        ^
+==
+
+# Invalid TVF call with one relation named argument: the wrong schema is
+# provided.
+select * from tvf_named_required_schema_relation_arg(
+    schema_relation_arg => (select * from keyvalue))
+--
+ERROR: Function does not allow extra input column named "Key" for argument 1 of TVF_NAMED_REQUIRED_SCHEMA_RELATION_ARG(TABLE<column_bool BOOL, column_bytes BYTES>) [at 2:5]
+    schema_relation_arg => (select * from keyvalue))
+    ^
+==
+
+# Invalid TVF call with two scalar named arguments: a required argument name is
+# missing.
+select * from tvf_named_required_scalar_args(
+    format_string => "%X")
+--
+ERROR: No matching signature for tvf_named_required_scalar_args
+  Argument types: STRING
+  Signature: TVF_NAMED_REQUIRED_SCALAR_ARGS(format_string => STRING, date_string => STRING)
+    Signature requires at least 2 arguments, found 1 argument [at 1:15]
+select * from tvf_named_required_scalar_args(
+              ^
+==
+
+# Invalid TVF call with two scalar named arguments: an extra argument name is
+# provided.
+select * from tvf_named_required_scalar_args(
+    format_string => "%X", date_string => "12/25/08", extra_arg => 42)
+--
+ERROR: Named argument extra_arg not found in signature for call to function TVF_NAMED_REQUIRED_SCALAR_ARGS [at 2:55]
+    format_string => "%X", date_string => "12/25/08", extra_arg => 42)
+                                                      ^
+==
+
+# The TVF call provides named arguments with scalar values but the function
+# signature does not indicate any required argument names.
+select * from tvf_exactly_3_int64_args(first => 1, second => 2, third => 3)
+--
+ERROR: Named argument first not found in signature for call to function TVF_EXACTLY_3_INT64_ARGS [at 1:40]
+select * from tvf_exactly_3_int64_args(first => 1, second => 2, third => 3)
+                                       ^
+==
+
+# Invalid TVF call with a mix of positional and named arguments, where one
+# of the positional arguments corresponds to an argument type declaration in the
+# function signature with the same name as one of the provided named arguments.
+select *
+from tvf_named_optional_scalar_args("abc", "def", format_string => "hgi")
+--
+ERROR: No matching signature for tvf_named_optional_scalar_args
+  Argument types: STRING, STRING, STRING
+  Signature: TVF_NAMED_OPTIONAL_SCALAR_ARGS([format_string => STRING], [date_string => STRING])
+    Signature accepts at most 2 arguments, found 3 arguments [at 2:6]
+from tvf_named_optional_scalar_args("abc", "def", format_string => "hgi")
+     ^
+==
+
+# Invalid TVF call with a mix of positional and named arguments, where one
+# of the positional arguments corresponds to an argument type declaration in the
+# function signature with the same name as one of the provided named arguments.
+select *
+from tvf_named_optional_scalar_args("abc", "def", date_string => "hgi")
+--
+ERROR: No matching signature for tvf_named_optional_scalar_args
+  Argument types: STRING, STRING, STRING
+  Signature: TVF_NAMED_OPTIONAL_SCALAR_ARGS([format_string => STRING], [date_string => STRING])
+    Signature accepts at most 2 arguments, found 3 arguments [at 2:6]
+from tvf_named_optional_scalar_args("abc", "def", date_string => "hgi")
+     ^
+==
+
+# Invalid TVF call with a mix of positional and named arguments, where one
+# of the positional arguments corresponds to an argument type declaration in the
+# function signature with the same name as one of the provided named arguments.
+select * from tvf_named_optional_any_relation_arg_optional_scalar_arg(
+    (select 2 as y), any_relation_arg => (select 1 as x), format_string => 42)
+--
+ERROR: No matching signature for tvf_named_optional_any_relation_arg_optional_scalar_arg
+  Argument types: TABLE<y INT64>, TABLE<x INT64>, INT64
+  Signature: TVF_NAMED_OPTIONAL_ANY_RELATION_ARG_OPTIONAL_SCALAR_ARG([any_relation_arg => TABLE], [format_string => STRING])
+    Signature accepts at most 2 arguments, found 3 arguments [at 1:15]
+select * from tvf_named_optional_any_relation_arg_optional_scalar_arg(
+              ^
+==
+
+# The TVF call provides a named argument with a relation value but the function
+# signature does not indicate any required argument names.
+select * from tvf_one_relation_arg_with_fixed_output(
+  name => (select cast(42 as bool) as bool_column))
+--
+ERROR: Named argument name not found in signature for call to function TVF_ONE_RELATION_ARG_WITH_FIXED_OUTPUT [at 2:3]
+  name => (select cast(42 as bool) as bool_column))
+  ^
+==
+
+# Invalid function call with a duplicate provided argument name.
+select fn_named_args(
+    format_string => "%X", date_string => "12/24/08", date_string => "12/25/08")
+--
+ERROR: No matching signature for function SAMPLE_FUNCTIONS:FN_NAMED_ARGS
+  Argument types: format_string => STRING, date_string => STRING, date_string => STRING
+  Signature: FN_NAMED_ARGS([format_string=>]STRING, [date_string=>]STRING)
+    Signature accepts at most 2 arguments, found 3 arguments [at 1:8]
+select fn_named_args(
+       ^
+==
+
+# Invalid function call with a provided argument name not found in the function
+# signature.
+select fn_named_args(bad_name => "12/25/08")
+--
+ERROR: No matching signature for function SAMPLE_FUNCTIONS:FN_NAMED_ARGS
+  Argument types: bad_name => STRING
+  Signature: FN_NAMED_ARGS([format_string=>]STRING, [date_string=>]STRING)
+    Named argument `bad_name` does not exist in signature [at 1:8]
+select fn_named_args(bad_name => "12/25/08")
+       ^
+==
+
+# Invalid function call with a provided argument name not found in the function
+# signature, but also includes all the valid argument names.
+select fn_named_args(
+    format_string => "%X", date_string => "12/25/08", bad_name => "12/25/08")
+--
+ERROR: No matching signature for function SAMPLE_FUNCTIONS:FN_NAMED_ARGS
+  Argument types: format_string => STRING, date_string => STRING, bad_name => STRING
+  Signature: FN_NAMED_ARGS([format_string=>]STRING, [date_string=>]STRING)
+    Named argument `bad_name` does not exist in signature [at 1:8]
+select fn_named_args(
+       ^
+==
+
+# Invalid function call with a provided argument name not found in the function
+# signature, but also includes some of the valid argument names.
+select fn_named_args(
+    format_string => "%X", bad_name => "12/25/08")
+--
+ERROR: No matching signature for function SAMPLE_FUNCTIONS:FN_NAMED_ARGS
+  Argument types: format_string => STRING, bad_name => STRING
+  Signature: FN_NAMED_ARGS([format_string=>]STRING, [date_string=>]STRING)
+    Named argument `bad_name` does not exist in signature [at 1:8]
+select fn_named_args(
+       ^
+==
+
+# Invalid function call with a positional argument following a named argument.
+select fn_named_args(format_string => "%x", "12/25/08")
+--
+ERROR: Call to function sample_functions:fn_named_args must not specify positional arguments after named arguments; named arguments must be specified last in the argument list [at 1:22]
+select fn_named_args(format_string => "%x", "12/25/08")
+                     ^
+==
+
+# Invalid function call with a positional argument following a named argument.
+select fn_named_args(format_string => "%x", "12/25/08", date_string => "%X")
+--
+ERROR: No matching signature for function SAMPLE_FUNCTIONS:FN_NAMED_ARGS
+  Argument types: format_string => STRING, STRING, date_string => STRING
+  Signature: FN_NAMED_ARGS([format_string=>]STRING, [date_string=>]STRING)
+    Signature accepts at most 2 arguments, found 3 arguments [at 1:8]
+select fn_named_args(format_string => "%x", "12/25/08", date_string => "%X")
+       ^
+==
+
+# Invalid function call missing a required argument.
+select fn_named_args(format_string => "%x")
+--
+ERROR: No matching signature for function SAMPLE_FUNCTIONS:FN_NAMED_ARGS
+  Argument types: format_string => STRING
+  Signature: FN_NAMED_ARGS([format_string=>]STRING, [date_string=>]STRING)
+    Signature requires at least 2 arguments, found 1 argument [at 1:8]
+select fn_named_args(format_string => "%x")
+       ^
+==
+
+# The language feature is not enabled.
+[language_features=NONE]
+select fn_named_args(format_string => "%x", date_string => "12/25/08")
+--
+ERROR: Named arguments are not supported [at 1:22]
+select fn_named_args(format_string => "%x", date_string => "12/25/08")
+                     ^
+==
+
+# The language feature is not enabled.
+[language_features=NONE]
+select * from tvf_exactly_3_int64_args(first => 1, second => 2, third => 3)
+--
+ERROR: Table-valued functions are not supported [at 1:15]
+select * from tvf_exactly_3_int64_args(first => 1, second => 2, third => 3)
+              ^
+==
+
+# Error message with named argument
+select fn_const_named_arg(date_string => "12/25/08", Format_String => x) from unnest(["a", "b"]) x
+--
+ERROR: Argument 'format_string' to SAMPLE_FUNCTIONS:FN_CONST_NAMED_ARG must be a literal or query parameter [at 1:54]
+select fn_const_named_arg(date_string => "12/25/08", Format_String => x) from...
+                                                     ^
+==
+
+# Error message with positional argument
+select fn_const_named_arg(x, "12/25/08") from unnest(["a", "b"]) x
+--
+ERROR: Argument 1 to SAMPLE_FUNCTIONS:FN_CONST_NAMED_ARG must be a literal or query parameter [at 1:27]
+select fn_const_named_arg(x, "12/25/08") from unnest(["a", "b"]) x
+                          ^
+==
+
+# Call to a function that provides two similar signatures, one with regular
+# argument, and one with named argument of same type.
+select fn_regular_and_named_signatures("foo")
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [BOOL]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(sample_functions:fn_regular_and_named_signatures(STRING, optional(0) STRING) -> BOOL)
+    |     +-Literal(type=STRING, value="foo")
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Call to a function that provides two similar signatures, one with regular
+# argument, and one with named argument of same type.
+select fn_regular_and_named_signatures("foo", "bar")
+--
+
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [BOOL]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(sample_functions:fn_regular_and_named_signatures(STRING, optional(1) STRING) -> BOOL)
+    |     +-Literal(type=STRING, value="foo")
+    |     +-Literal(type=STRING, value="bar")
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Call to a function that provides two similar signatures, one with regular
+# argument, and one with named argument of same type.
+select fn_regular_and_named_signatures("foo", date_string => "bar")
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [BOOL]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(sample_functions:fn_regular_and_named_signatures(STRING, optional(1) STRING date_string) -> BOOL)
+    |     +-Literal(type=STRING, value="foo")
+    |     +-Literal(type=STRING, value="bar")
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Invalid call to a function that provides two similar signatures, one with
+# regular argument, and one with named argument of same type.
+select fn_regular_and_named_signatures("foo", "bar", date_string => "baz")
+--
+ERROR: No matching signature for function SAMPLE_FUNCTIONS:FN_REGULAR_AND_NAMED_SIGNATURES
+  Argument types: STRING, STRING, date_string => STRING
+  Signature: FN_REGULAR_AND_NAMED_SIGNATURES(STRING, [STRING])
+    Named argument `date_string` does not exist in signature
+  Signature: FN_REGULAR_AND_NAMED_SIGNATURES(STRING, [date_string => STRING])
+    Signature accepts at most 2 arguments, found 3 arguments [at 1:8]
+select fn_regular_and_named_signatures("foo", "bar", date_string => "baz")
+       ^
+==
+
+# Invalid call to a function that provides two similar signatures, one with
+# regular argument, and one with named argument of same type.
+select fn_regular_and_named_signatures("foo", unknown_arg => "baz")
+--
+ERROR: No matching signature for function SAMPLE_FUNCTIONS:FN_REGULAR_AND_NAMED_SIGNATURES
+  Argument types: STRING, unknown_arg => STRING
+  Signature: FN_REGULAR_AND_NAMED_SIGNATURES(STRING, [STRING])
+    Named argument `unknown_arg` does not exist in signature
+  Signature: FN_REGULAR_AND_NAMED_SIGNATURES(STRING, [date_string => STRING])
+    Named argument `unknown_arg` does not exist in signature [at 1:8]
+select fn_regular_and_named_signatures("foo", unknown_arg => "baz")
+       ^
+==
+
+# Call to the 'fn_rep_opt' function which has multiple repeated and optional
+# arguments with all positional arguments.
+SELECT
+ fn_rep_opt("a0", "a1"),
+ fn_rep_opt("a0", "r0", "r1", "r2", "a1"),
+ fn_rep_opt("a0", "r0", "r1", "r2", "r0-1", "r1-1", "r2-1", "a1"),
+ fn_rep_opt("a0", "a1", "o0"),
+ fn_rep_opt("a0", "a1", "o0", "o1");
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [INT64]
+| +-$query.$col2#2 AS `$col2` [INT64]
+| +-$query.$col3#3 AS `$col3` [INT64]
+| +-$query.$col4#4 AS `$col4` [INT64]
+| +-$query.$col5#5 AS `$col5` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=$query.[$col1#1, $col2#2, $col3#3, $col4#4, $col5#5]
+    +-expr_list=
+    | +-$col1#1 :=
+    | | +-FunctionCall(sample_functions:fn_rep_opt(STRING a0, repeated(0) STRING r0, repeated(0) STRING r1, repeated(0) STRING r2, STRING a1, optional(1) STRING o0, optional(1) STRING o1) -> INT64)
+    | |   +-Literal(type=STRING, value="a0")
+    | |   +-Literal(type=STRING, value="a1")
+    | |   +-Literal(type=STRING, value=NULL)
+    | |   +-Literal(type=STRING, value=NULL)
+    | +-$col2#2 :=
+    | | +-FunctionCall(sample_functions:fn_rep_opt(STRING a0, repeated(1) STRING r0, repeated(1) STRING r1, repeated(1) STRING r2, STRING a1, optional(1) STRING o0, optional(1) STRING o1) -> INT64)
+    | |   +-Literal(type=STRING, value="a0")
+    | |   +-Literal(type=STRING, value="r0")
+    | |   +-Literal(type=STRING, value="r1")
+    | |   +-Literal(type=STRING, value="r2")
+    | |   +-Literal(type=STRING, value="a1")
+    | |   +-Literal(type=STRING, value=NULL)
+    | |   +-Literal(type=STRING, value=NULL)
+    | +-$col3#3 :=
+    | | +-FunctionCall(sample_functions:fn_rep_opt(STRING a0, repeated(2) STRING r0, repeated(2) STRING r1, repeated(2) STRING r2, STRING a1, optional(1) STRING o0, optional(1) STRING o1) -> INT64)
+    | |   +-Literal(type=STRING, value="a0")
+    | |   +-Literal(type=STRING, value="r0")
+    | |   +-Literal(type=STRING, value="r1")
+    | |   +-Literal(type=STRING, value="r2")
+    | |   +-Literal(type=STRING, value="r0-1")
+    | |   +-Literal(type=STRING, value="r1-1")
+    | |   +-Literal(type=STRING, value="r2-1")
+    | |   +-Literal(type=STRING, value="a1")
+    | |   +-Literal(type=STRING, value=NULL)
+    | |   +-Literal(type=STRING, value=NULL)
+    | +-$col4#4 :=
+    | | +-FunctionCall(sample_functions:fn_rep_opt(STRING a0, repeated(0) STRING r0, repeated(0) STRING r1, repeated(0) STRING r2, STRING a1, optional(1) STRING o0, optional(1) STRING o1) -> INT64)
+    | |   +-Literal(type=STRING, value="a0")
+    | |   +-Literal(type=STRING, value="a1")
+    | |   +-Literal(type=STRING, value="o0")
+    | |   +-Literal(type=STRING, value=NULL)
+    | +-$col5#5 :=
+    |   +-FunctionCall(sample_functions:fn_rep_opt(STRING a0, repeated(0) STRING r0, repeated(0) STRING r1, repeated(0) STRING r2, STRING a1, optional(1) STRING o0, optional(1) STRING o1) -> INT64)
+    |     +-Literal(type=STRING, value="a0")
+    |     +-Literal(type=STRING, value="a1")
+    |     +-Literal(type=STRING, value="o0")
+    |     +-Literal(type=STRING, value="o1")
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Call to the 'fn_rep_opt' function which has multiple repeated and optional
+# arguments with positional and named arguments, but does not specify the
+# repeated arguments.
+SELECT
+ fn_rep_opt("a0", a1 => "a1"),
+ fn_rep_opt("a0", a1 => "a1", o0 => "o0"),
+ fn_rep_opt("a0", a1 => "a1", o1 => "o1"),
+ fn_rep_opt("a0", o0 => "o0", a1 => "a1"),
+ fn_rep_opt("a0", o1 => "o1", a1 => "a1"),
+ fn_rep_opt("a0", o1 => "o1", o0 => "o0", a1 => "a1");
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [INT64]
+| +-$query.$col2#2 AS `$col2` [INT64]
+| +-$query.$col3#3 AS `$col3` [INT64]
+| +-$query.$col4#4 AS `$col4` [INT64]
+| +-$query.$col5#5 AS `$col5` [INT64]
+| +-$query.$col6#6 AS `$col6` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=$query.[$col1#1, $col2#2, $col3#3, $col4#4, $col5#5, $col6#6]
+    +-expr_list=
+    | +-$col1#1 :=
+    | | +-FunctionCall(sample_functions:fn_rep_opt(STRING a0, repeated(0) STRING r0, repeated(0) STRING r1, repeated(0) STRING r2, STRING a1, optional(1) STRING o0, optional(1) STRING o1) -> INT64)
+    | |   +-Literal(type=STRING, value="a0")
+    | |   +-Literal(type=STRING, value="a1")
+    | |   +-Literal(type=STRING, value=NULL)
+    | |   +-Literal(type=STRING, value=NULL)
+    | +-$col2#2 :=
+    | | +-FunctionCall(sample_functions:fn_rep_opt(STRING a0, repeated(0) STRING r0, repeated(0) STRING r1, repeated(0) STRING r2, STRING a1, optional(1) STRING o0, optional(1) STRING o1) -> INT64)
+    | |   +-Literal(type=STRING, value="a0")
+    | |   +-Literal(type=STRING, value="a1")
+    | |   +-Literal(type=STRING, value="o0")
+    | |   +-Literal(type=STRING, value=NULL)
+    | +-$col3#3 :=
+    | | +-FunctionCall(sample_functions:fn_rep_opt(STRING a0, repeated(0) STRING r0, repeated(0) STRING r1, repeated(0) STRING r2, STRING a1, optional(1) STRING o0, optional(1) STRING o1) -> INT64)
+    | |   +-Literal(type=STRING, value="a0")
+    | |   +-Literal(type=STRING, value="a1")
+    | |   +-Literal(type=STRING, value=NULL)
+    | |   +-Literal(type=STRING, value="o1")
+    | +-$col4#4 :=
+    | | +-FunctionCall(sample_functions:fn_rep_opt(STRING a0, repeated(0) STRING r0, repeated(0) STRING r1, repeated(0) STRING r2, STRING a1, optional(1) STRING o0, optional(1) STRING o1) -> INT64)
+    | |   +-Literal(type=STRING, value="a0")
+    | |   +-Literal(type=STRING, value="a1")
+    | |   +-Literal(type=STRING, value="o0")
+    | |   +-Literal(type=STRING, value=NULL)
+    | +-$col5#5 :=
+    | | +-FunctionCall(sample_functions:fn_rep_opt(STRING a0, repeated(0) STRING r0, repeated(0) STRING r1, repeated(0) STRING r2, STRING a1, optional(1) STRING o0, optional(1) STRING o1) -> INT64)
+    | |   +-Literal(type=STRING, value="a0")
+    | |   +-Literal(type=STRING, value="a1")
+    | |   +-Literal(type=STRING, value=NULL)
+    | |   +-Literal(type=STRING, value="o1")
+    | +-$col6#6 :=
+    |   +-FunctionCall(sample_functions:fn_rep_opt(STRING a0, repeated(0) STRING r0, repeated(0) STRING r1, repeated(0) STRING r2, STRING a1, optional(1) STRING o0, optional(1) STRING o1) -> INT64)
+    |     +-Literal(type=STRING, value="a0")
+    |     +-Literal(type=STRING, value="a1")
+    |     +-Literal(type=STRING, value="o0")
+    |     +-Literal(type=STRING, value="o1")
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Call to the 'fn_rep_opt' function which has multiple repeated and optional
+# arguments with positional and named arguments, including the repeated
+# arguments.
+SELECT
+ fn_rep_opt("a0", "r0", "r1", "r2", a1 => "a1"),
+ fn_rep_opt("a0", "r0", "r1", "r2", "r0", "r1", "r2", a1 => "a1", o0 => "o0"),
+ fn_rep_opt("a0", "r0", "r1", "r2", a1 => "a1", o1 => "o1"),
+ fn_rep_opt("a0", "r0", "r1", "r2", "r0", "r1", "r2", "r0", "r1", "r2",
+            o0 => "o0", a1 => "a1"),
+ fn_rep_opt("a0", "r0", "r1", "r2", o1 => "o1", a1 => "a1"),
+ fn_rep_opt("a0", "r0", "r1", "r2", o1 => "o1", o0 => "o0", a1 => "a1");
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [INT64]
+| +-$query.$col2#2 AS `$col2` [INT64]
+| +-$query.$col3#3 AS `$col3` [INT64]
+| +-$query.$col4#4 AS `$col4` [INT64]
+| +-$query.$col5#5 AS `$col5` [INT64]
+| +-$query.$col6#6 AS `$col6` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=$query.[$col1#1, $col2#2, $col3#3, $col4#4, $col5#5, $col6#6]
+    +-expr_list=
+    | +-$col1#1 :=
+    | | +-FunctionCall(sample_functions:fn_rep_opt(STRING a0, repeated(1) STRING r0, repeated(1) STRING r1, repeated(1) STRING r2, STRING a1, optional(1) STRING o0, optional(1) STRING o1) -> INT64)
+    | |   +-Literal(type=STRING, value="a0")
+    | |   +-Literal(type=STRING, value="r0")
+    | |   +-Literal(type=STRING, value="r1")
+    | |   +-Literal(type=STRING, value="r2")
+    | |   +-Literal(type=STRING, value="a1")
+    | |   +-Literal(type=STRING, value=NULL)
+    | |   +-Literal(type=STRING, value=NULL)
+    | +-$col2#2 :=
+    | | +-FunctionCall(sample_functions:fn_rep_opt(STRING a0, repeated(2) STRING r0, repeated(2) STRING r1, repeated(2) STRING r2, STRING a1, optional(1) STRING o0, optional(1) STRING o1) -> INT64)
+    | |   +-Literal(type=STRING, value="a0")
+    | |   +-Literal(type=STRING, value="r0")
+    | |   +-Literal(type=STRING, value="r1")
+    | |   +-Literal(type=STRING, value="r2")
+    | |   +-Literal(type=STRING, value="r0")
+    | |   +-Literal(type=STRING, value="r1")
+    | |   +-Literal(type=STRING, value="r2")
+    | |   +-Literal(type=STRING, value="a1")
+    | |   +-Literal(type=STRING, value="o0")
+    | |   +-Literal(type=STRING, value=NULL)
+    | +-$col3#3 :=
+    | | +-FunctionCall(sample_functions:fn_rep_opt(STRING a0, repeated(1) STRING r0, repeated(1) STRING r1, repeated(1) STRING r2, STRING a1, optional(1) STRING o0, optional(1) STRING o1) -> INT64)
+    | |   +-Literal(type=STRING, value="a0")
+    | |   +-Literal(type=STRING, value="r0")
+    | |   +-Literal(type=STRING, value="r1")
+    | |   +-Literal(type=STRING, value="r2")
+    | |   +-Literal(type=STRING, value="a1")
+    | |   +-Literal(type=STRING, value=NULL)
+    | |   +-Literal(type=STRING, value="o1")
+    | +-$col4#4 :=
+    | | +-FunctionCall(sample_functions:fn_rep_opt(STRING a0, repeated(3) STRING r0, repeated(3) STRING r1, repeated(3) STRING r2, STRING a1, optional(1) STRING o0, optional(1) STRING o1) -> INT64)
+    | |   +-Literal(type=STRING, value="a0")
+    | |   +-Literal(type=STRING, value="r0")
+    | |   +-Literal(type=STRING, value="r1")
+    | |   +-Literal(type=STRING, value="r2")
+    | |   +-Literal(type=STRING, value="r0")
+    | |   +-Literal(type=STRING, value="r1")
+    | |   +-Literal(type=STRING, value="r2")
+    | |   +-Literal(type=STRING, value="r0")
+    | |   +-Literal(type=STRING, value="r1")
+    | |   +-Literal(type=STRING, value="r2")
+    | |   +-Literal(type=STRING, value="a1")
+    | |   +-Literal(type=STRING, value="o0")
+    | |   +-Literal(type=STRING, value=NULL)
+    | +-$col5#5 :=
+    | | +-FunctionCall(sample_functions:fn_rep_opt(STRING a0, repeated(1) STRING r0, repeated(1) STRING r1, repeated(1) STRING r2, STRING a1, optional(1) STRING o0, optional(1) STRING o1) -> INT64)
+    | |   +-Literal(type=STRING, value="a0")
+    | |   +-Literal(type=STRING, value="r0")
+    | |   +-Literal(type=STRING, value="r1")
+    | |   +-Literal(type=STRING, value="r2")
+    | |   +-Literal(type=STRING, value="a1")
+    | |   +-Literal(type=STRING, value=NULL)
+    | |   +-Literal(type=STRING, value="o1")
+    | +-$col6#6 :=
+    |   +-FunctionCall(sample_functions:fn_rep_opt(STRING a0, repeated(1) STRING r0, repeated(1) STRING r1, repeated(1) STRING r2, STRING a1, optional(1) STRING o0, optional(1) STRING o1) -> INT64)
+    |     +-Literal(type=STRING, value="a0")
+    |     +-Literal(type=STRING, value="r0")
+    |     +-Literal(type=STRING, value="r1")
+    |     +-Literal(type=STRING, value="r2")
+    |     +-Literal(type=STRING, value="a1")
+    |     +-Literal(type=STRING, value="o0")
+    |     +-Literal(type=STRING, value="o1")
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# An invalid function call: a named argument notation comes before a positional
+# arguments.
+SELECT fn_rep_opt("a0", "r0", "r1", a1 => "a1", "r2");
+--
+ERROR: Call to function sample_functions:fn_rep_opt must not specify positional arguments after named arguments; named arguments must be specified last in the argument list [at 1:37]
+SELECT fn_rep_opt("a0", "r0", "r1", a1 => "a1", "r2");
+                                    ^
+==
+
+# An invalid function call: the required named argument "a1" is omitted.
+SELECT fn_rep_opt("a0", "r0", "r1", "r2", o0 => "o0", o1 => "o1");
+--
+ERROR: No matching signature for function SAMPLE_FUNCTIONS:FN_REP_OPT
+  Argument types: STRING, STRING, STRING, STRING, o0 => STRING, o1 => STRING
+  Signature: FN_REP_OPT([a0=>]STRING, [[STRING, STRING, STRING], ...], [a1=>]STRING, [[o0=>]STRING], [[o1=>]STRING])
+    Required named argument `a1` is not provided [at 1:8]
+SELECT fn_rep_opt("a0", "r0", "r1", "r2", o0 => "o0", o1 => "o1");
+       ^
+==
+
+# Named-or-positional argument after a repeated. All with different arg types.
+SELECT fn_repeated_with_optional_named_only("r0", o1=>"o1");
+--
+
+ERROR: Call to function sample_functions:fn_repeated_with_optional_named_only is missing repeated arguments. [at 1:8]
+SELECT fn_repeated_with_optional_named_only("r0", o1=>"o1");
+       ^
+==
+
+# Named-only argument after repeated
+SELECT
+  # no rep, no named
+  fn_repeated_with_optional_named_only(),
+  # no rep, with named
+  fn_repeated_with_optional_named_only(o1=>"o1"),
+  # one rep, no named
+  fn_repeated_with_optional_named_only("r0", "r1"),
+  # one rep, with named
+  fn_repeated_with_optional_named_only("r0", "r1", o1=>"o1"),
+  # two rep, no named
+  fn_repeated_with_optional_named_only("r0-1", "r1-1", "r0-2", "r1-2"),
+  # two rep, with named
+  fn_repeated_with_optional_named_only("r0-1", "r1-1", "r0-2", "r1-2", o1=>"o1");
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [STRING]
+| +-$query.$col2#2 AS `$col2` [STRING]
+| +-$query.$col3#3 AS `$col3` [STRING]
+| +-$query.$col4#4 AS `$col4` [STRING]
+| +-$query.$col5#5 AS `$col5` [STRING]
+| +-$query.$col6#6 AS `$col6` [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=$query.[$col1#1, $col2#2, $col3#3, $col4#4, $col5#5, $col6#6]
+    +-expr_list=
+    | +-$col1#1 :=
+    | | +-FunctionCall(sample_functions:fn_repeated_with_optional_named_only(repeated(0) STRING, repeated(0) STRING, optional(1) STRING o1) -> STRING)
+    | |   +-Literal(type=STRING, value=NULL)
+    | +-$col2#2 :=
+    | | +-FunctionCall(sample_functions:fn_repeated_with_optional_named_only(repeated(0) STRING, repeated(0) STRING, optional(1) STRING o1) -> STRING)
+    | |   +-Literal(type=STRING, value="o1")
+    | +-$col3#3 :=
+    | | +-FunctionCall(sample_functions:fn_repeated_with_optional_named_only(repeated(1) STRING, repeated(1) STRING, optional(1) STRING o1) -> STRING)
+    | |   +-Literal(type=STRING, value="r0")
+    | |   +-Literal(type=STRING, value="r1")
+    | |   +-Literal(type=STRING, value=NULL)
+    | +-$col4#4 :=
+    | | +-FunctionCall(sample_functions:fn_repeated_with_optional_named_only(repeated(1) STRING, repeated(1) STRING, optional(1) STRING o1) -> STRING)
+    | |   +-Literal(type=STRING, value="r0")
+    | |   +-Literal(type=STRING, value="r1")
+    | |   +-Literal(type=STRING, value="o1")
+    | +-$col5#5 :=
+    | | +-FunctionCall(sample_functions:fn_repeated_with_optional_named_only(repeated(2) STRING, repeated(2) STRING, optional(1) STRING o1) -> STRING)
+    | |   +-Literal(type=STRING, value="r0-1")
+    | |   +-Literal(type=STRING, value="r1-1")
+    | |   +-Literal(type=STRING, value="r0-2")
+    | |   +-Literal(type=STRING, value="r1-2")
+    | |   +-Literal(type=STRING, value=NULL)
+    | +-$col6#6 :=
+    |   +-FunctionCall(sample_functions:fn_repeated_with_optional_named_only(repeated(2) STRING, repeated(2) STRING, optional(1) STRING o1) -> STRING)
+    |     +-Literal(type=STRING, value="r0-1")
+    |     +-Literal(type=STRING, value="r1-1")
+    |     +-Literal(type=STRING, value="r0-2")
+    |     +-Literal(type=STRING, value="r1-2")
+    |     +-Literal(type=STRING, value="o1")
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Named-or-positional argument after a repeated. All with different arg types.
+# This _should_ be an error the named arg is the wrong type (should be bool)
+SELECT fn_repeated_diff_args_optional_named_only("r0", o1=>1);
+--
+
+
+ERROR: Call to function sample_functions:fn_repeated_diff_args_optional_named_only is missing repeated arguments. [at 1:8]
+SELECT fn_repeated_diff_args_optional_named_only("r0", o1=>1);
+       ^
+==
+
+# Named-or-positional argument after a repeated. All with different arg types.
+# This is properly an error: missing repeated argument.
+SELECT fn_repeated_diff_args_optional_named_only("r0", o1=>true);
+--
+
+
+ERROR: Call to function sample_functions:fn_repeated_diff_args_optional_named_only is missing repeated arguments. [at 1:8]
+SELECT fn_repeated_diff_args_optional_named_only("r0", o1=>true);
+       ^
+==
+
+# Named-or-positional argument after a repeated. All with different arg types.
+SELECT
+  # no rep, no named
+  fn_repeated_diff_args_optional_named_only(),
+  # no rep, with named
+  fn_repeated_diff_args_optional_named_only(o1=>true),
+  # one rep, no named
+  fn_repeated_diff_args_optional_named_only("r0", 1),
+  # one rep, with named
+  fn_repeated_diff_args_optional_named_only("r0", 1, o1=>true),
+  # two rep, no named
+  fn_repeated_diff_args_optional_named_only("r0-1", 1, "r0-2", 1),
+  # two rep, with named
+  fn_repeated_diff_args_optional_named_only("r0-1", 1, "r0-2", 1, o1=>true);
+--
+
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [STRING]
+| +-$query.$col2#2 AS `$col2` [STRING]
+| +-$query.$col3#3 AS `$col3` [STRING]
+| +-$query.$col4#4 AS `$col4` [STRING]
+| +-$query.$col5#5 AS `$col5` [STRING]
+| +-$query.$col6#6 AS `$col6` [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=$query.[$col1#1, $col2#2, $col3#3, $col4#4, $col5#5, $col6#6]
+    +-expr_list=
+    | +-$col1#1 :=
+    | | +-FunctionCall(sample_functions:fn_repeated_diff_args_optional_named_only(repeated(0) STRING, repeated(0) INT64, optional(1) BOOL o1) -> STRING)
+    | |   +-Literal(type=BOOL, value=NULL)
+    | +-$col2#2 :=
+    | | +-FunctionCall(sample_functions:fn_repeated_diff_args_optional_named_only(repeated(0) STRING, repeated(0) INT64, optional(1) BOOL o1) -> STRING)
+    | |   +-Literal(type=BOOL, value=true)
+    | +-$col3#3 :=
+    | | +-FunctionCall(sample_functions:fn_repeated_diff_args_optional_named_only(repeated(1) STRING, repeated(1) INT64, optional(1) BOOL o1) -> STRING)
+    | |   +-Literal(type=STRING, value="r0")
+    | |   +-Literal(type=INT64, value=1)
+    | |   +-Literal(type=BOOL, value=NULL)
+    | +-$col4#4 :=
+    | | +-FunctionCall(sample_functions:fn_repeated_diff_args_optional_named_only(repeated(1) STRING, repeated(1) INT64, optional(1) BOOL o1) -> STRING)
+    | |   +-Literal(type=STRING, value="r0")
+    | |   +-Literal(type=INT64, value=1)
+    | |   +-Literal(type=BOOL, value=true)
+    | +-$col5#5 :=
+    | | +-FunctionCall(sample_functions:fn_repeated_diff_args_optional_named_only(repeated(2) STRING, repeated(2) INT64, optional(1) BOOL o1) -> STRING)
+    | |   +-Literal(type=STRING, value="r0-1")
+    | |   +-Literal(type=INT64, value=1)
+    | |   +-Literal(type=STRING, value="r0-2")
+    | |   +-Literal(type=INT64, value=1)
+    | |   +-Literal(type=BOOL, value=NULL)
+    | +-$col6#6 :=
+    |   +-FunctionCall(sample_functions:fn_repeated_diff_args_optional_named_only(repeated(2) STRING, repeated(2) INT64, optional(1) BOOL o1) -> STRING)
+    |     +-Literal(type=STRING, value="r0-1")
+    |     +-Literal(type=INT64, value=1)
+    |     +-Literal(type=STRING, value="r0-2")
+    |     +-Literal(type=INT64, value=1)
+    |     +-Literal(type=BOOL, value=true)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Named-only argument after repeated ANY
+# Each call has one with heterogeneous types, and one with all string.
+SELECT
+  # no rep, no named
+  fn_repeated_arbitrary_with_optional_named_only(),
+  # no rep, with named
+  fn_repeated_arbitrary_with_optional_named_only(o1=>"o1"),
+  # one rep, no named
+  fn_repeated_arbitrary_with_optional_named_only(1, 2.0),
+  fn_repeated_arbitrary_with_optional_named_only("1", "2.0"),
+  # one rep, with named
+  fn_repeated_arbitrary_with_optional_named_only(1, 2.0, o1=>true),
+  fn_repeated_arbitrary_with_optional_named_only("1", "2.0", o1=>"o1"),
+  # two rep, no named
+  fn_repeated_arbitrary_with_optional_named_only(1, 2.0, "1-2", 21),
+  fn_repeated_arbitrary_with_optional_named_only("1", "2.0", "1-2", "21"),
+  # two rep, with named
+  fn_repeated_arbitrary_with_optional_named_only(1, 2.0, "1-2", 21, o1=>true),
+  fn_repeated_arbitrary_with_optional_named_only("1", "2.0", "1-2", "21", o1=>"o1");
+--
+
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [STRING]
+| +-$query.$col2#2 AS `$col2` [STRING]
+| +-$query.$col3#3 AS `$col3` [STRING]
+| +-$query.$col4#4 AS `$col4` [STRING]
+| +-$query.$col5#5 AS `$col5` [STRING]
+| +-$query.$col6#6 AS `$col6` [STRING]
+| +-$query.$col7#7 AS `$col7` [STRING]
+| +-$query.$col8#8 AS `$col8` [STRING]
+| +-$query.$col9#9 AS `$col9` [STRING]
+| +-$query.$col10#10 AS `$col10` [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=$query.[$col1#1, $col2#2, $col3#3, $col4#4, $col5#5, $col6#6, $col7#7, $col8#8, $col9#9, $col10#10]
+    +-expr_list=
+    | +-$col1#1 :=
+    | | +-FunctionCall(sample_functions:fn_repeated_arbitrary_with_optional_named_only(repeated ANY TYPE, repeated ANY TYPE, optional(1) INT64 o1) -> STRING)
+    | |   +-Literal(type=INT64, value=NULL)
+    | +-$col2#2 :=
+    | | +-FunctionCall(sample_functions:fn_repeated_arbitrary_with_optional_named_only(repeated ANY TYPE, repeated ANY TYPE, optional(1) STRING o1) -> STRING)
+    | |   +-Literal(type=STRING, value="o1")
+    | +-$col3#3 :=
+    | | +-FunctionCall(sample_functions:fn_repeated_arbitrary_with_optional_named_only(repeated(1) INT64, repeated(1) DOUBLE, optional(1) INT64 o1) -> STRING)
+    | |   +-Literal(type=INT64, value=1)
+    | |   +-Literal(type=DOUBLE, value=2)
+    | |   +-Literal(type=INT64, value=NULL)
+    | +-$col4#4 :=
+    | | +-FunctionCall(sample_functions:fn_repeated_arbitrary_with_optional_named_only(repeated(1) STRING, repeated(1) STRING, optional(1) INT64 o1) -> STRING)
+    | |   +-Literal(type=STRING, value="1")
+    | |   +-Literal(type=STRING, value="2.0")
+    | |   +-Literal(type=INT64, value=NULL)
+    | +-$col5#5 :=
+    | | +-FunctionCall(sample_functions:fn_repeated_arbitrary_with_optional_named_only(repeated(1) INT64, repeated(1) DOUBLE, optional(1) BOOL o1) -> STRING)
+    | |   +-Literal(type=INT64, value=1)
+    | |   +-Literal(type=DOUBLE, value=2)
+    | |   +-Literal(type=BOOL, value=true)
+    | +-$col6#6 :=
+    | | +-FunctionCall(sample_functions:fn_repeated_arbitrary_with_optional_named_only(repeated(1) STRING, repeated(1) STRING, optional(1) STRING o1) -> STRING)
+    | |   +-Literal(type=STRING, value="1")
+    | |   +-Literal(type=STRING, value="2.0")
+    | |   +-Literal(type=STRING, value="o1")
+    | +-$col7#7 :=
+    | | +-FunctionCall(sample_functions:fn_repeated_arbitrary_with_optional_named_only(repeated(1) INT64, repeated(1) DOUBLE, repeated(1) STRING, repeated(1) INT64, optional(1) INT64 o1) -> STRING)
+    | |   +-Literal(type=INT64, value=1)
+    | |   +-Literal(type=DOUBLE, value=2)
+    | |   +-Literal(type=STRING, value="1-2")
+    | |   +-Literal(type=INT64, value=21)
+    | |   +-Literal(type=INT64, value=NULL)
+    | +-$col8#8 :=
+    | | +-FunctionCall(sample_functions:fn_repeated_arbitrary_with_optional_named_only(repeated(1) STRING, repeated(1) STRING, repeated(1) STRING, repeated(1) STRING, optional(1) INT64 o1) -> STRING)
+    | |   +-Literal(type=STRING, value="1")
+    | |   +-Literal(type=STRING, value="2.0")
+    | |   +-Literal(type=STRING, value="1-2")
+    | |   +-Literal(type=STRING, value="21")
+    | |   +-Literal(type=INT64, value=NULL)
+    | +-$col9#9 :=
+    | | +-FunctionCall(sample_functions:fn_repeated_arbitrary_with_optional_named_only(repeated(1) INT64, repeated(1) DOUBLE, repeated(1) STRING, repeated(1) INT64, optional(1) BOOL o1) -> STRING)
+    | |   +-Literal(type=INT64, value=1)
+    | |   +-Literal(type=DOUBLE, value=2)
+    | |   +-Literal(type=STRING, value="1-2")
+    | |   +-Literal(type=INT64, value=21)
+    | |   +-Literal(type=BOOL, value=true)
+    | +-$col10#10 :=
+    |   +-FunctionCall(sample_functions:fn_repeated_arbitrary_with_optional_named_only(repeated(1) STRING, repeated(1) STRING, repeated(1) STRING, repeated(1) STRING, optional(1) STRING o1) -> STRING)
+    |     +-Literal(type=STRING, value="1")
+    |     +-Literal(type=STRING, value="2.0")
+    |     +-Literal(type=STRING, value="1-2")
+    |     +-Literal(type=STRING, value="21")
+    |     +-Literal(type=STRING, value="o1")
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Named-only argument after repeated
+SELECT
+  # no rep, no named
+  fn_repeated_with_optional_named_or_positional(),
+  # no rep, with named
+  fn_repeated_with_optional_named_or_positional(o1=>"o1"),
+  # one rep, no named
+  fn_repeated_with_optional_named_or_positional("r0", "r1"),
+  # one rep, with named
+  fn_repeated_with_optional_named_or_positional("r0", "r1", o1=>"o1"),
+  # two rep, no named
+  fn_repeated_with_optional_named_or_positional("r0-1", "r1-1", "r0-2", "r1-2"),
+  # two rep, with named
+  fn_repeated_with_optional_named_or_positional("r0-1", "r1-1", "r0-2", "r1-2", o1=>"o1");
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [STRING]
+| +-$query.$col2#2 AS `$col2` [STRING]
+| +-$query.$col3#3 AS `$col3` [STRING]
+| +-$query.$col4#4 AS `$col4` [STRING]
+| +-$query.$col5#5 AS `$col5` [STRING]
+| +-$query.$col6#6 AS `$col6` [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=$query.[$col1#1, $col2#2, $col3#3, $col4#4, $col5#5, $col6#6]
+    +-expr_list=
+    | +-$col1#1 :=
+    | | +-FunctionCall(sample_functions:fn_repeated_with_optional_named_or_positional(repeated(0) STRING, repeated(0) STRING, optional(1) STRING o1) -> STRING)
+    | |   +-Literal(type=STRING, value=NULL)
+    | +-$col2#2 :=
+    | | +-FunctionCall(sample_functions:fn_repeated_with_optional_named_or_positional(repeated(0) STRING, repeated(0) STRING, optional(1) STRING o1) -> STRING)
+    | |   +-Literal(type=STRING, value="o1")
+    | +-$col3#3 :=
+    | | +-FunctionCall(sample_functions:fn_repeated_with_optional_named_or_positional(repeated(1) STRING, repeated(1) STRING, optional(1) STRING o1) -> STRING)
+    | |   +-Literal(type=STRING, value="r0")
+    | |   +-Literal(type=STRING, value="r1")
+    | |   +-Literal(type=STRING, value=NULL)
+    | +-$col4#4 :=
+    | | +-FunctionCall(sample_functions:fn_repeated_with_optional_named_or_positional(repeated(1) STRING, repeated(1) STRING, optional(1) STRING o1) -> STRING)
+    | |   +-Literal(type=STRING, value="r0")
+    | |   +-Literal(type=STRING, value="r1")
+    | |   +-Literal(type=STRING, value="o1")
+    | +-$col5#5 :=
+    | | +-FunctionCall(sample_functions:fn_repeated_with_optional_named_or_positional(repeated(2) STRING, repeated(2) STRING, optional(1) STRING o1) -> STRING)
+    | |   +-Literal(type=STRING, value="r0-1")
+    | |   +-Literal(type=STRING, value="r1-1")
+    | |   +-Literal(type=STRING, value="r0-2")
+    | |   +-Literal(type=STRING, value="r1-2")
+    | |   +-Literal(type=STRING, value=NULL)
+    | +-$col6#6 :=
+    |   +-FunctionCall(sample_functions:fn_repeated_with_optional_named_or_positional(repeated(2) STRING, repeated(2) STRING, optional(1) STRING o1) -> STRING)
+    |     +-Literal(type=STRING, value="r0-1")
+    |     +-Literal(type=STRING, value="r1-1")
+    |     +-Literal(type=STRING, value="r0-2")
+    |     +-Literal(type=STRING, value="r1-2")
+    |     +-Literal(type=STRING, value="o1")
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Named-or-positional argument after a repeated. All with different arg types.
+SELECT
+  # no rep, no named
+  fn_repeated_diff_args_optional_named_or_positional(),
+  # no rep, with named
+  fn_repeated_diff_args_optional_named_or_positional(true),
+  fn_repeated_diff_args_optional_named_or_positional(o1=>true),
+  # one rep, no named
+  fn_repeated_diff_args_optional_named_or_positional("r0", 1),
+  # one rep, with named
+  fn_repeated_diff_args_optional_named_or_positional("r0", 1, true),
+  fn_repeated_diff_args_optional_named_or_positional("r0", 1, o1=>true),
+  # two rep, no named
+  fn_repeated_diff_args_optional_named_or_positional("r0-1", 1, "r0-2", 1),
+  # two rep, with named
+  fn_repeated_diff_args_optional_named_or_positional("r0-1", 1, "r0-2", 1, true),
+  fn_repeated_diff_args_optional_named_or_positional("r0-1", 1, "r0-2", 1, o1=>true);
+--
+
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [STRING]
+| +-$query.$col2#2 AS `$col2` [STRING]
+| +-$query.$col3#3 AS `$col3` [STRING]
+| +-$query.$col4#4 AS `$col4` [STRING]
+| +-$query.$col5#5 AS `$col5` [STRING]
+| +-$query.$col6#6 AS `$col6` [STRING]
+| +-$query.$col7#7 AS `$col7` [STRING]
+| +-$query.$col8#8 AS `$col8` [STRING]
+| +-$query.$col9#9 AS `$col9` [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=$query.[$col1#1, $col2#2, $col3#3, $col4#4, $col5#5, $col6#6, $col7#7, $col8#8, $col9#9]
+    +-expr_list=
+    | +-$col1#1 :=
+    | | +-FunctionCall(sample_functions:fn_repeated_diff_args_optional_named_or_positional(repeated(0) STRING, repeated(0) INT64, optional(1) BOOL o1) -> STRING)
+    | |   +-Literal(type=BOOL, value=NULL)
+    | +-$col2#2 :=
+    | | +-FunctionCall(sample_functions:fn_repeated_diff_args_optional_named_or_positional(repeated(0) STRING, repeated(0) INT64, optional(1) BOOL o1) -> STRING)
+    | |   +-Literal(type=BOOL, value=true)
+    | +-$col3#3 :=
+    | | +-FunctionCall(sample_functions:fn_repeated_diff_args_optional_named_or_positional(repeated(0) STRING, repeated(0) INT64, optional(1) BOOL o1) -> STRING)
+    | |   +-Literal(type=BOOL, value=true)
+    | +-$col4#4 :=
+    | | +-FunctionCall(sample_functions:fn_repeated_diff_args_optional_named_or_positional(repeated(1) STRING, repeated(1) INT64, optional(1) BOOL o1) -> STRING)
+    | |   +-Literal(type=STRING, value="r0")
+    | |   +-Literal(type=INT64, value=1)
+    | |   +-Literal(type=BOOL, value=NULL)
+    | +-$col5#5 :=
+    | | +-FunctionCall(sample_functions:fn_repeated_diff_args_optional_named_or_positional(repeated(1) STRING, repeated(1) INT64, optional(1) BOOL o1) -> STRING)
+    | |   +-Literal(type=STRING, value="r0")
+    | |   +-Literal(type=INT64, value=1)
+    | |   +-Literal(type=BOOL, value=true)
+    | +-$col6#6 :=
+    | | +-FunctionCall(sample_functions:fn_repeated_diff_args_optional_named_or_positional(repeated(1) STRING, repeated(1) INT64, optional(1) BOOL o1) -> STRING)
+    | |   +-Literal(type=STRING, value="r0")
+    | |   +-Literal(type=INT64, value=1)
+    | |   +-Literal(type=BOOL, value=true)
+    | +-$col7#7 :=
+    | | +-FunctionCall(sample_functions:fn_repeated_diff_args_optional_named_or_positional(repeated(2) STRING, repeated(2) INT64, optional(1) BOOL o1) -> STRING)
+    | |   +-Literal(type=STRING, value="r0-1")
+    | |   +-Literal(type=INT64, value=1)
+    | |   +-Literal(type=STRING, value="r0-2")
+    | |   +-Literal(type=INT64, value=1)
+    | |   +-Literal(type=BOOL, value=NULL)
+    | +-$col8#8 :=
+    | | +-FunctionCall(sample_functions:fn_repeated_diff_args_optional_named_or_positional(repeated(2) STRING, repeated(2) INT64, optional(1) BOOL o1) -> STRING)
+    | |   +-Literal(type=STRING, value="r0-1")
+    | |   +-Literal(type=INT64, value=1)
+    | |   +-Literal(type=STRING, value="r0-2")
+    | |   +-Literal(type=INT64, value=1)
+    | |   +-Literal(type=BOOL, value=true)
+    | +-$col9#9 :=
+    |   +-FunctionCall(sample_functions:fn_repeated_diff_args_optional_named_or_positional(repeated(2) STRING, repeated(2) INT64, optional(1) BOOL o1) -> STRING)
+    |     +-Literal(type=STRING, value="r0-1")
+    |     +-Literal(type=INT64, value=1)
+    |     +-Literal(type=STRING, value="r0-2")
+    |     +-Literal(type=INT64, value=1)
+    |     +-Literal(type=BOOL, value=true)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Named-only argument after repeated ANY
+# Each call has one with heterogeneous types, and one with all string.
+SELECT
+  # no rep, no named
+  fn_repeated_arbitrary_with_optional_named_or_positional(),
+  # no rep, with named
+  fn_repeated_arbitrary_with_optional_named_or_positional("o1"),
+  fn_repeated_arbitrary_with_optional_named_or_positional(o1=>"o1"),
+  # one rep, no named
+  fn_repeated_arbitrary_with_optional_named_or_positional(1, 2.0),
+  fn_repeated_arbitrary_with_optional_named_or_positional("1", "2.0"),
+  # one rep, with named
+  fn_repeated_arbitrary_with_optional_named_or_positional(1, 2.0, true),
+  fn_repeated_arbitrary_with_optional_named_or_positional(1, 2.0, o1=>true),
+  fn_repeated_arbitrary_with_optional_named_or_positional("1", "2.0", "o1"),
+  fn_repeated_arbitrary_with_optional_named_or_positional("1", "2.0", o1=>"o1"),
+  # two rep, no named
+  fn_repeated_arbitrary_with_optional_named_or_positional(1, 2.0, "1-2", 21),
+  fn_repeated_arbitrary_with_optional_named_or_positional("1", "2.0", "1-2", "21"),
+  # two rep, with named
+  fn_repeated_arbitrary_with_optional_named_or_positional(1, 2.0, "1-2", 21, true),
+  fn_repeated_arbitrary_with_optional_named_or_positional(1, 2.0, "1-2", 21, o1=>true),
+  fn_repeated_arbitrary_with_optional_named_or_positional("1", "2.0", "1-2", "21", "o1"),
+  fn_repeated_arbitrary_with_optional_named_or_positional("1", "2.0", "1-2", "21", o1=>"o1");
+--
+
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [STRING]
+| +-$query.$col2#2 AS `$col2` [STRING]
+| +-$query.$col3#3 AS `$col3` [STRING]
+| +-$query.$col4#4 AS `$col4` [STRING]
+| +-$query.$col5#5 AS `$col5` [STRING]
+| +-$query.$col6#6 AS `$col6` [STRING]
+| +-$query.$col7#7 AS `$col7` [STRING]
+| +-$query.$col8#8 AS `$col8` [STRING]
+| +-$query.$col9#9 AS `$col9` [STRING]
+| +-$query.$col10#10 AS `$col10` [STRING]
+| +-$query.$col11#11 AS `$col11` [STRING]
+| +-$query.$col12#12 AS `$col12` [STRING]
+| +-$query.$col13#13 AS `$col13` [STRING]
+| +-$query.$col14#14 AS `$col14` [STRING]
+| +-$query.$col15#15 AS `$col15` [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=$query.[$col1#1, $col2#2, $col3#3, $col4#4, $col5#5, $col6#6, $col7#7, $col8#8, $col9#9, $col10#10, $col11#11, $col12#12, $col13#13, $col14#14, $col15#15]
+    +-expr_list=
+    | +-$col1#1 :=
+    | | +-FunctionCall(sample_functions:fn_repeated_arbitrary_with_optional_named_or_positional(repeated ANY TYPE, repeated ANY TYPE, optional(1) INT64 o1) -> STRING)
+    | |   +-Literal(type=INT64, value=NULL)
+    | +-$col2#2 :=
+    | | +-FunctionCall(sample_functions:fn_repeated_arbitrary_with_optional_named_or_positional(repeated ANY TYPE, repeated ANY TYPE, optional(1) STRING o1) -> STRING)
+    | |   +-Literal(type=STRING, value="o1")
+    | +-$col3#3 :=
+    | | +-FunctionCall(sample_functions:fn_repeated_arbitrary_with_optional_named_or_positional(repeated ANY TYPE, repeated ANY TYPE, optional(1) STRING o1) -> STRING)
+    | |   +-Literal(type=STRING, value="o1")
+    | +-$col4#4 :=
+    | | +-FunctionCall(sample_functions:fn_repeated_arbitrary_with_optional_named_or_positional(repeated(1) INT64, repeated(1) DOUBLE, optional(1) INT64 o1) -> STRING)
+    | |   +-Literal(type=INT64, value=1)
+    | |   +-Literal(type=DOUBLE, value=2)
+    | |   +-Literal(type=INT64, value=NULL)
+    | +-$col5#5 :=
+    | | +-FunctionCall(sample_functions:fn_repeated_arbitrary_with_optional_named_or_positional(repeated(1) STRING, repeated(1) STRING, optional(1) INT64 o1) -> STRING)
+    | |   +-Literal(type=STRING, value="1")
+    | |   +-Literal(type=STRING, value="2.0")
+    | |   +-Literal(type=INT64, value=NULL)
+    | +-$col6#6 :=
+    | | +-FunctionCall(sample_functions:fn_repeated_arbitrary_with_optional_named_or_positional(repeated(1) INT64, repeated(1) DOUBLE, optional(1) BOOL o1) -> STRING)
+    | |   +-Literal(type=INT64, value=1)
+    | |   +-Literal(type=DOUBLE, value=2)
+    | |   +-Literal(type=BOOL, value=true)
+    | +-$col7#7 :=
+    | | +-FunctionCall(sample_functions:fn_repeated_arbitrary_with_optional_named_or_positional(repeated(1) INT64, repeated(1) DOUBLE, optional(1) BOOL o1) -> STRING)
+    | |   +-Literal(type=INT64, value=1)
+    | |   +-Literal(type=DOUBLE, value=2)
+    | |   +-Literal(type=BOOL, value=true)
+    | +-$col8#8 :=
+    | | +-FunctionCall(sample_functions:fn_repeated_arbitrary_with_optional_named_or_positional(repeated(1) STRING, repeated(1) STRING, optional(1) STRING o1) -> STRING)
+    | |   +-Literal(type=STRING, value="1")
+    | |   +-Literal(type=STRING, value="2.0")
+    | |   +-Literal(type=STRING, value="o1")
+    | +-$col9#9 :=
+    | | +-FunctionCall(sample_functions:fn_repeated_arbitrary_with_optional_named_or_positional(repeated(1) STRING, repeated(1) STRING, optional(1) STRING o1) -> STRING)
+    | |   +-Literal(type=STRING, value="1")
+    | |   +-Literal(type=STRING, value="2.0")
+    | |   +-Literal(type=STRING, value="o1")
+    | +-$col10#10 :=
+    | | +-FunctionCall(sample_functions:fn_repeated_arbitrary_with_optional_named_or_positional(repeated(1) INT64, repeated(1) DOUBLE, repeated(1) STRING, repeated(1) INT64, optional(1) INT64 o1) -> STRING)
+    | |   +-Literal(type=INT64, value=1)
+    | |   +-Literal(type=DOUBLE, value=2)
+    | |   +-Literal(type=STRING, value="1-2")
+    | |   +-Literal(type=INT64, value=21)
+    | |   +-Literal(type=INT64, value=NULL)
+    | +-$col11#11 :=
+    | | +-FunctionCall(sample_functions:fn_repeated_arbitrary_with_optional_named_or_positional(repeated(1) STRING, repeated(1) STRING, repeated(1) STRING, repeated(1) STRING, optional(1) INT64 o1) -> STRING)
+    | |   +-Literal(type=STRING, value="1")
+    | |   +-Literal(type=STRING, value="2.0")
+    | |   +-Literal(type=STRING, value="1-2")
+    | |   +-Literal(type=STRING, value="21")
+    | |   +-Literal(type=INT64, value=NULL)
+    | +-$col12#12 :=
+    | | +-FunctionCall(sample_functions:fn_repeated_arbitrary_with_optional_named_or_positional(repeated(1) INT64, repeated(1) DOUBLE, repeated(1) STRING, repeated(1) INT64, optional(1) BOOL o1) -> STRING)
+    | |   +-Literal(type=INT64, value=1)
+    | |   +-Literal(type=DOUBLE, value=2)
+    | |   +-Literal(type=STRING, value="1-2")
+    | |   +-Literal(type=INT64, value=21)
+    | |   +-Literal(type=BOOL, value=true)
+    | +-$col13#13 :=
+    | | +-FunctionCall(sample_functions:fn_repeated_arbitrary_with_optional_named_or_positional(repeated(1) INT64, repeated(1) DOUBLE, repeated(1) STRING, repeated(1) INT64, optional(1) BOOL o1) -> STRING)
+    | |   +-Literal(type=INT64, value=1)
+    | |   +-Literal(type=DOUBLE, value=2)
+    | |   +-Literal(type=STRING, value="1-2")
+    | |   +-Literal(type=INT64, value=21)
+    | |   +-Literal(type=BOOL, value=true)
+    | +-$col14#14 :=
+    | | +-FunctionCall(sample_functions:fn_repeated_arbitrary_with_optional_named_or_positional(repeated(1) STRING, repeated(1) STRING, repeated(1) STRING, repeated(1) STRING, optional(1) STRING o1) -> STRING)
+    | |   +-Literal(type=STRING, value="1")
+    | |   +-Literal(type=STRING, value="2.0")
+    | |   +-Literal(type=STRING, value="1-2")
+    | |   +-Literal(type=STRING, value="21")
+    | |   +-Literal(type=STRING, value="o1")
+    | +-$col15#15 :=
+    |   +-FunctionCall(sample_functions:fn_repeated_arbitrary_with_optional_named_or_positional(repeated(1) STRING, repeated(1) STRING, repeated(1) STRING, repeated(1) STRING, optional(1) STRING o1) -> STRING)
+    |     +-Literal(type=STRING, value="1")
+    |     +-Literal(type=STRING, value="2.0")
+    |     +-Literal(type=STRING, value="1-2")
+    |     +-Literal(type=STRING, value="21")
+    |     +-Literal(type=STRING, value="o1")
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Named-only argument after repeated
+SELECT
+  # no rep, with named
+  fn_repeated_with_required_named(r1=>"r1"),
+  # one rep, with named
+  fn_repeated_with_required_named("0", "1", r1=>"r1"),
+  # two rep, with named
+  fn_repeated_with_required_named("0-1", "1-1", "0-2", "1-2", r1=>"r1");
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [STRING]
+| +-$query.$col2#2 AS `$col2` [STRING]
+| +-$query.$col3#3 AS `$col3` [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=$query.[$col1#1, $col2#2, $col3#3]
+    +-expr_list=
+    | +-$col1#1 :=
+    | | +-FunctionCall(sample_functions:fn_repeated_with_required_named(repeated(0) STRING, repeated(0) STRING, STRING r1) -> STRING)
+    | |   +-Literal(type=STRING, value="r1")
+    | +-$col2#2 :=
+    | | +-FunctionCall(sample_functions:fn_repeated_with_required_named(repeated(1) STRING, repeated(1) STRING, STRING r1) -> STRING)
+    | |   +-Literal(type=STRING, value="0")
+    | |   +-Literal(type=STRING, value="1")
+    | |   +-Literal(type=STRING, value="r1")
+    | +-$col3#3 :=
+    |   +-FunctionCall(sample_functions:fn_repeated_with_required_named(repeated(2) STRING, repeated(2) STRING, STRING r1) -> STRING)
+    |     +-Literal(type=STRING, value="0-1")
+    |     +-Literal(type=STRING, value="1-1")
+    |     +-Literal(type=STRING, value="0-2")
+    |     +-Literal(type=STRING, value="1-2")
+    |     +-Literal(type=STRING, value="r1")
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Required named only argument after a repeated. All with different arg types.
+SELECT
+  # no rep, with named
+  fn_repeated_diff_args_required_named(r1=>true),
+  # one rep, with named
+  fn_repeated_diff_args_required_named("r0", 1, r1=>true),
+  # two rep, with named
+  fn_repeated_diff_args_required_named("r0-1", 1, "r0-2", 1, r1=>true);
+--
+
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [STRING]
+| +-$query.$col2#2 AS `$col2` [STRING]
+| +-$query.$col3#3 AS `$col3` [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=$query.[$col1#1, $col2#2, $col3#3]
+    +-expr_list=
+    | +-$col1#1 :=
+    | | +-FunctionCall(sample_functions:fn_repeated_diff_args_required_named(repeated(0) STRING, repeated(0) INT64, BOOL r1) -> STRING)
+    | |   +-Literal(type=BOOL, value=true)
+    | +-$col2#2 :=
+    | | +-FunctionCall(sample_functions:fn_repeated_diff_args_required_named(repeated(1) STRING, repeated(1) INT64, BOOL r1) -> STRING)
+    | |   +-Literal(type=STRING, value="r0")
+    | |   +-Literal(type=INT64, value=1)
+    | |   +-Literal(type=BOOL, value=true)
+    | +-$col3#3 :=
+    |   +-FunctionCall(sample_functions:fn_repeated_diff_args_required_named(repeated(2) STRING, repeated(2) INT64, BOOL r1) -> STRING)
+    |     +-Literal(type=STRING, value="r0-1")
+    |     +-Literal(type=INT64, value=1)
+    |     +-Literal(type=STRING, value="r0-2")
+    |     +-Literal(type=INT64, value=1)
+    |     +-Literal(type=BOOL, value=true)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Named-only argument after repeated ANY
+# Each call has one with heterogeneous types, and one with all string.
+SELECT
+  # no rep, with named
+  fn_repeated_arbitrary_with_required_named(r1=>"r1"),
+  # one rep, with named
+  fn_repeated_arbitrary_with_required_named(1, 2.0, r1=>true),
+  fn_repeated_arbitrary_with_required_named("1", "2.0", r1=>"r1"),
+  # two rep, with named
+  fn_repeated_arbitrary_with_required_named(1, 2.0, "1-2", 21, r1=>true),
+  fn_repeated_arbitrary_with_required_named("1", "2.0", "1-2", "21", r1=>"r1");
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [STRING]
+| +-$query.$col2#2 AS `$col2` [STRING]
+| +-$query.$col3#3 AS `$col3` [STRING]
+| +-$query.$col4#4 AS `$col4` [STRING]
+| +-$query.$col5#5 AS `$col5` [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=$query.[$col1#1, $col2#2, $col3#3, $col4#4, $col5#5]
+    +-expr_list=
+    | +-$col1#1 :=
+    | | +-FunctionCall(sample_functions:fn_repeated_arbitrary_with_required_named(repeated ANY TYPE, repeated ANY TYPE, STRING r1) -> STRING)
+    | |   +-Literal(type=STRING, value="r1")
+    | +-$col2#2 :=
+    | | +-FunctionCall(sample_functions:fn_repeated_arbitrary_with_required_named(repeated(1) INT64, repeated(1) DOUBLE, BOOL r1) -> STRING)
+    | |   +-Literal(type=INT64, value=1)
+    | |   +-Literal(type=DOUBLE, value=2)
+    | |   +-Literal(type=BOOL, value=true)
+    | +-$col3#3 :=
+    | | +-FunctionCall(sample_functions:fn_repeated_arbitrary_with_required_named(repeated(1) STRING, repeated(1) STRING, STRING r1) -> STRING)
+    | |   +-Literal(type=STRING, value="1")
+    | |   +-Literal(type=STRING, value="2.0")
+    | |   +-Literal(type=STRING, value="r1")
+    | +-$col4#4 :=
+    | | +-FunctionCall(sample_functions:fn_repeated_arbitrary_with_required_named(repeated(1) INT64, repeated(1) DOUBLE, repeated(1) STRING, repeated(1) INT64, BOOL r1) -> STRING)
+    | |   +-Literal(type=INT64, value=1)
+    | |   +-Literal(type=DOUBLE, value=2)
+    | |   +-Literal(type=STRING, value="1-2")
+    | |   +-Literal(type=INT64, value=21)
+    | |   +-Literal(type=BOOL, value=true)
+    | +-$col5#5 :=
+    |   +-FunctionCall(sample_functions:fn_repeated_arbitrary_with_required_named(repeated(1) STRING, repeated(1) STRING, repeated(1) STRING, repeated(1) STRING, STRING r1) -> STRING)
+    |     +-Literal(type=STRING, value="1")
+    |     +-Literal(type=STRING, value="2.0")
+    |     +-Literal(type=STRING, value="1-2")
+    |     +-Literal(type=STRING, value="21")
+    |     +-Literal(type=STRING, value="r1")
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Valid function calls with the signature like:
+#   fn_req_opt_unnamed_named(
+#       STRING, optional STRING, optional o1 STRING)
+# This is to test if the resolver can handle mix of unnamed and named arguments
+# correctly.
+SELECT
+  fn_req_opt_unnamed_named("abc"),
+  fn_req_opt_unnamed_named("abc", "def"),
+  fn_req_opt_unnamed_named("abc", "def", "ghi"),
+  fn_req_opt_unnamed_named("abc", o1 => "ghi"),
+  fn_req_opt_unnamed_named("abc", "def", o1 => "ghi");
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [INT64]
+| +-$query.$col2#2 AS `$col2` [INT64]
+| +-$query.$col3#3 AS `$col3` [INT64]
+| +-$query.$col4#4 AS `$col4` [INT64]
+| +-$query.$col5#5 AS `$col5` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=$query.[$col1#1, $col2#2, $col3#3, $col4#4, $col5#5]
+    +-expr_list=
+    | +-$col1#1 :=
+    | | +-FunctionCall(sample_functions:fn_req_opt_unnamed_named(STRING, optional(1) STRING, optional(1) STRING o1) -> INT64)
+    | |   +-Literal(type=STRING, value="abc")
+    | |   +-Literal(type=STRING, value=NULL)
+    | |   +-Literal(type=STRING, value=NULL)
+    | +-$col2#2 :=
+    | | +-FunctionCall(sample_functions:fn_req_opt_unnamed_named(STRING, optional(1) STRING, optional(1) STRING o1) -> INT64)
+    | |   +-Literal(type=STRING, value="abc")
+    | |   +-Literal(type=STRING, value="def")
+    | |   +-Literal(type=STRING, value=NULL)
+    | +-$col3#3 :=
+    | | +-FunctionCall(sample_functions:fn_req_opt_unnamed_named(STRING, optional(1) STRING, optional(1) STRING o1) -> INT64)
+    | |   +-Literal(type=STRING, value="abc")
+    | |   +-Literal(type=STRING, value="def")
+    | |   +-Literal(type=STRING, value="ghi")
+    | +-$col4#4 :=
+    | | +-FunctionCall(sample_functions:fn_req_opt_unnamed_named(STRING, optional(1) STRING, optional(1) STRING o1) -> INT64)
+    | |   +-Literal(type=STRING, value="abc")
+    | |   +-Literal(type=STRING, value=NULL)
+    | |   +-Literal(type=STRING, value="ghi")
+    | +-$col5#5 :=
+    |   +-FunctionCall(sample_functions:fn_req_opt_unnamed_named(STRING, optional(1) STRING, optional(1) STRING o1) -> INT64)
+    |     +-Literal(type=STRING, value="abc")
+    |     +-Literal(type=STRING, value="def")
+    |     +-Literal(type=STRING, value="ghi")
+    +-input_scan=
+      +-SingleRowScan
+==
+
+SELECT
+  # 1 rep
+  fn_repeated_t1_t2_with_optional_named_t1(1, "2"),
+  # two rep, with named
+  fn_repeated_t1_t2_with_optional_named_t1(1, "2", o1=>1),
+  # two rep, no named
+  fn_repeated_t1_t2_with_optional_named_t1(1, "2", 3, "4"),
+  # two rep, with named
+  fn_repeated_t1_t2_with_optional_named_t1(1, "2", 3, "4", o1=>4);
+--
+
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [STRING]
+| +-$query.$col2#2 AS `$col2` [STRING]
+| +-$query.$col3#3 AS `$col3` [STRING]
+| +-$query.$col4#4 AS `$col4` [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=$query.[$col1#1, $col2#2, $col3#3, $col4#4]
+    +-expr_list=
+    | +-$col1#1 :=
+    | | +-FunctionCall(sample_functions:fn_repeated_t1_t2_with_optional_named_t1(repeated(1) INT64, repeated(1) STRING, optional(1) INT64 o1) -> STRING)
+    | |   +-Literal(type=INT64, value=1)
+    | |   +-Literal(type=STRING, value="2")
+    | |   +-Literal(type=INT64, value=NULL)
+    | +-$col2#2 :=
+    | | +-FunctionCall(sample_functions:fn_repeated_t1_t2_with_optional_named_t1(repeated(1) INT64, repeated(1) STRING, optional(1) INT64 o1) -> STRING)
+    | |   +-Literal(type=INT64, value=1)
+    | |   +-Literal(type=STRING, value="2")
+    | |   +-Literal(type=INT64, value=1)
+    | +-$col3#3 :=
+    | | +-FunctionCall(sample_functions:fn_repeated_t1_t2_with_optional_named_t1(repeated(2) INT64, repeated(2) STRING, optional(1) INT64 o1) -> STRING)
+    | |   +-Literal(type=INT64, value=1)
+    | |   +-Literal(type=STRING, value="2")
+    | |   +-Literal(type=INT64, value=3)
+    | |   +-Literal(type=STRING, value="4")
+    | |   +-Literal(type=INT64, value=NULL)
+    | +-$col4#4 :=
+    |   +-FunctionCall(sample_functions:fn_repeated_t1_t2_with_optional_named_t1(repeated(2) INT64, repeated(2) STRING, optional(1) INT64 o1) -> STRING)
+    |     +-Literal(type=INT64, value=1)
+    |     +-Literal(type=STRING, value="2")
+    |     +-Literal(type=INT64, value=3)
+    |     +-Literal(type=STRING, value="4")
+    |     +-Literal(type=INT64, value=4)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Should any of these be an error? Cannot determine input types.
+# b/288479313
+select fn_optional_any(),
+       fn_repeated_any(),
+       fn_optional_t1(),
+       fn_repeated_t1()
+--
+
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [STRING]
+| +-$query.$col2#2 AS `$col2` [STRING]
+| +-$query.$col3#3 AS `$col3` [STRING]
+| +-$query.$col4#4 AS `$col4` [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=$query.[$col1#1, $col2#2, $col3#3, $col4#4]
+    +-expr_list=
+    | +-$col1#1 := FunctionCall(sample_functions:fn_optional_any(optional ANY TYPE) -> STRING)
+    | +-$col2#2 := FunctionCall(sample_functions:fn_repeated_any(repeated ANY TYPE) -> STRING)
+    | +-$col3#3 := FunctionCall(sample_functions:fn_optional_t1(optional <T1>) -> STRING)
+    | +-$col4#4 := FunctionCall(sample_functions:fn_repeated_t1(repeated <T1>) -> STRING)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+select fn_optional_t1_ret_t1();
+--
+ERROR: No matching signature for function SAMPLE_FUNCTIONS:FN_OPTIONAL_T1_RET_T1 with no arguments
+  Signature: FN_OPTIONAL_T1_RET_T1([T1])
+    Unable to determine type for function return type of kind T1 [at 1:8]
+select fn_optional_t1_ret_t1();
+       ^
+==
+
+select fn_repeated_t1_ret_t1();
+--
+ERROR: No matching signature for function SAMPLE_FUNCTIONS:FN_REPEATED_T1_RET_T1 with no arguments
+  Signature: FN_REPEATED_T1_RET_T1([T1, ...])
+    Unable to determine type for function return type of kind T1 [at 1:8]
+select fn_repeated_t1_ret_t1();
+       ^
+==
+
+# This should be an error? cannot determine type of optional?
+SELECT
+  # no rep, no named
+  fn_repeated_t1_t2_with_optional_named_t1();
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(sample_functions:fn_repeated_t1_t2_with_optional_named_t1(repeated(0) INT64, repeated <T2>, optional(1) INT64 o1) -> STRING)
+    |     +-Literal(type=INT64, value=NULL)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# This should be an error? cannot determine type of optional?
+SELECT
+  # no rep, no named
+  fn_repeated_t1_t2_with_optional_named_t1();
+
+--
+
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(sample_functions:fn_repeated_t1_t2_with_optional_named_t1(repeated(0) INT64, repeated <T2>, optional(1) INT64 o1) -> STRING)
+    |     +-Literal(type=INT64, value=NULL)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Should be an error, type mismatch on optional
+SELECT
+  # no rep, no named
+  fn_repeated_t1_t2_with_optional_named_t1(1, "2", o1=>true);
+--
+
+ERROR: No matching signature for function SAMPLE_FUNCTIONS:FN_REPEATED_T1_T2_WITH_OPTIONAL_NAMED_T1
+  Argument types: INT64, STRING, o1 => BOOL
+  Signature: FN_REPEATED_T1_T2_WITH_OPTIONAL_NAMED_T1([[T1, T2], ...], [o1 => T1])
+    Unable to find common supertype for templated argument <T1>
+      Input types for <T1>: {INT64, BOOL} [at 3:3]
+  fn_repeated_t1_t2_with_optional_named_t1(1, "2", o1=>true);
+  ^
+==
+
+# Should be an error, type mismatch on optional
+SELECT
+  # no rep, no named
+  fn_repeated_t1_t2_with_optional_named_t1(1, "2", 3, "4", o1=>true);
+--
+
+ERROR: No matching signature for function SAMPLE_FUNCTIONS:FN_REPEATED_T1_T2_WITH_OPTIONAL_NAMED_T1
+  Argument types: INT64, STRING, INT64, STRING, o1 => BOOL
+  Signature: FN_REPEATED_T1_T2_WITH_OPTIONAL_NAMED_T1([[T1, T2], ...], [o1 => T1])
+    Unable to find common supertype for templated argument <T1>
+      Input types for <T1>: {INT64, BOOL} [at 3:3]
+  fn_repeated_t1_t2_with_optional_named_t1(1, "2", 3, "4", o1=>true);
+  ^
+==
+
+# Should be an error, type mismatch on 2nd rep
+SELECT
+  # no rep, no named
+  fn_repeated_t1_t2_with_optional_named_t1(1, "2", true, "3", o1=>1);
+--
+
+ERROR: No matching signature for function SAMPLE_FUNCTIONS:FN_REPEATED_T1_T2_WITH_OPTIONAL_NAMED_T1
+  Argument types: INT64, STRING, BOOL, STRING, o1 => INT64
+  Signature: FN_REPEATED_T1_T2_WITH_OPTIONAL_NAMED_T1([[T1, T2], ...], [o1 => T1])
+    Unable to find common supertype for templated argument <T1>
+      Input types for <T1>: {INT64, BOOL} [at 3:3]
+  fn_repeated_t1_t2_with_optional_named_t1(1, "2", true, "3", o1=>1);
+  ^
+==
+
+# Valid function calls with the signature like:
+#   tvf_optional_unnamed_named(
+#       ANY TABLE, BOOL, optional STRING, optional o1 STRING)
+# This is to test if the resolver can handle mix of unnamed and named arguments
+# correctly.
+#
+# TODO: Note that unlike the scalar function case above, NULLs are not
+# injected when some trailing optional arguments are omitted, even if some of
+# them are named. This is an existing confusing behavior. We need to fix it
+# afterwards.
+SELECT *
+FROM tvf_optional_unnamed_named((SELECT 1 as x), true)
+UNION ALL
+SELECT *
+FROM tvf_optional_unnamed_named((SELECT 1 as x), true, "abc")
+UNION ALL
+SELECT *
+FROM tvf_optional_unnamed_named((SELECT 1 as x), true, "abc", "def")
+UNION ALL
+SELECT *
+FROM tvf_optional_unnamed_named((SELECT 1 as x), true, "abc", o1 => "def")
+--
+QueryStmt
++-output_column_list=
+| +-$union_all.x#9 AS x [INT64]
++-query=
+  +-SetOperationScan
+    +-column_list=[$union_all.x#9]
+    +-op_type=UNION_ALL
+    +-input_item_list=
+      +-SetOperationItem
+      | +-scan=
+      | | +-ProjectScan
+      | |   +-column_list=[tvf_optional_unnamed_named.x#2]
+      | |   +-input_scan=
+      | |     +-TVFScan
+      | |       +-column_list=[tvf_optional_unnamed_named.x#2]
+      | |       +-tvf=tvf_optional_unnamed_named((ANY TABLE, BOOL, optional STRING, optional STRING o1) -> ANY TABLE)
+      | |       +-signature=(TABLE<x INT64>, literal BOOL) -> TABLE<x INT64>
+      | |       +-argument_list=
+      | |       | +-FunctionArgument
+      | |       | | +-scan=
+      | |       | | | +-ProjectScan
+      | |       | | |   +-column_list=[$subquery1.x#1]
+      | |       | | |   +-expr_list=
+      | |       | | |   | +-x#1 := Literal(type=INT64, value=1)
+      | |       | | |   +-input_scan=
+      | |       | | |     +-SingleRowScan
+      | |       | | +-argument_column_list=[$subquery1.x#1]
+      | |       | +-FunctionArgument
+      | |       |   +-expr=
+      | |       |     +-Literal(type=BOOL, value=true)
+      | |       +-column_index_list=[0]
+      | |       +-function_call_signature=(ANY TABLE, BOOL, optional(0) STRING, optional(0) STRING o1) -> ANY TABLE
+      | +-output_column_list=[tvf_optional_unnamed_named.x#2]
+      +-SetOperationItem
+      | +-scan=
+      | | +-ProjectScan
+      | |   +-column_list=[tvf_optional_unnamed_named.x#4]
+      | |   +-input_scan=
+      | |     +-TVFScan
+      | |       +-column_list=[tvf_optional_unnamed_named.x#4]
+      | |       +-tvf=tvf_optional_unnamed_named((ANY TABLE, BOOL, optional STRING, optional STRING o1) -> ANY TABLE)
+      | |       +-signature=(TABLE<x INT64>, literal BOOL, literal STRING) -> TABLE<x INT64>
+      | |       +-argument_list=
+      | |       | +-FunctionArgument
+      | |       | | +-scan=
+      | |       | | | +-ProjectScan
+      | |       | | |   +-column_list=[$subquery2.x#3]
+      | |       | | |   +-expr_list=
+      | |       | | |   | +-x#3 := Literal(type=INT64, value=1)
+      | |       | | |   +-input_scan=
+      | |       | | |     +-SingleRowScan
+      | |       | | +-argument_column_list=[$subquery2.x#3]
+      | |       | +-FunctionArgument
+      | |       | | +-expr=
+      | |       | |   +-Literal(type=BOOL, value=true)
+      | |       | +-FunctionArgument
+      | |       |   +-expr=
+      | |       |     +-Literal(type=STRING, value="abc")
+      | |       +-column_index_list=[0]
+      | |       +-function_call_signature=(ANY TABLE, BOOL, optional(1) STRING, optional(0) STRING o1) -> ANY TABLE
+      | +-output_column_list=[tvf_optional_unnamed_named.x#4]
+      +-SetOperationItem
+      | +-scan=
+      | | +-ProjectScan
+      | |   +-column_list=[tvf_optional_unnamed_named.x#6]
+      | |   +-input_scan=
+      | |     +-TVFScan
+      | |       +-column_list=[tvf_optional_unnamed_named.x#6]
+      | |       +-tvf=tvf_optional_unnamed_named((ANY TABLE, BOOL, optional STRING, optional STRING o1) -> ANY TABLE)
+      | |       +-signature=(TABLE<x INT64>, literal BOOL, literal STRING, literal STRING) -> TABLE<x INT64>
+      | |       +-argument_list=
+      | |       | +-FunctionArgument
+      | |       | | +-scan=
+      | |       | | | +-ProjectScan
+      | |       | | |   +-column_list=[$subquery3.x#5]
+      | |       | | |   +-expr_list=
+      | |       | | |   | +-x#5 := Literal(type=INT64, value=1)
+      | |       | | |   +-input_scan=
+      | |       | | |     +-SingleRowScan
+      | |       | | +-argument_column_list=[$subquery3.x#5]
+      | |       | +-FunctionArgument
+      | |       | | +-expr=
+      | |       | |   +-Literal(type=BOOL, value=true)
+      | |       | +-FunctionArgument
+      | |       | | +-expr=
+      | |       | |   +-Literal(type=STRING, value="abc")
+      | |       | +-FunctionArgument
+      | |       |   +-expr=
+      | |       |     +-Literal(type=STRING, value="def")
+      | |       +-column_index_list=[0]
+      | |       +-function_call_signature=(ANY TABLE, BOOL, optional(1) STRING, optional(1) STRING o1) -> ANY TABLE
+      | +-output_column_list=[tvf_optional_unnamed_named.x#6]
+      +-SetOperationItem
+        +-scan=
+        | +-ProjectScan
+        |   +-column_list=[tvf_optional_unnamed_named.x#8]
+        |   +-input_scan=
+        |     +-TVFScan
+        |       +-column_list=[tvf_optional_unnamed_named.x#8]
+        |       +-tvf=tvf_optional_unnamed_named((ANY TABLE, BOOL, optional STRING, optional STRING o1) -> ANY TABLE)
+        |       +-signature=(TABLE<x INT64>, literal BOOL, literal STRING, literal STRING) -> TABLE<x INT64>
+        |       +-argument_list=
+        |       | +-FunctionArgument
+        |       | | +-scan=
+        |       | | | +-ProjectScan
+        |       | | |   +-column_list=[$subquery4.x#7]
+        |       | | |   +-expr_list=
+        |       | | |   | +-x#7 := Literal(type=INT64, value=1)
+        |       | | |   +-input_scan=
+        |       | | |     +-SingleRowScan
+        |       | | +-argument_column_list=[$subquery4.x#7]
+        |       | +-FunctionArgument
+        |       | | +-expr=
+        |       | |   +-Literal(type=BOOL, value=true)
+        |       | +-FunctionArgument
+        |       | | +-expr=
+        |       | |   +-Literal(type=STRING, value="abc")
+        |       | +-FunctionArgument
+        |       |   +-expr=
+        |       |     +-Literal(type=STRING, value="def")
+        |       +-column_index_list=[0]
+        |       +-function_call_signature=(ANY TABLE, BOOL, optional(1) STRING, optional(1) STRING o1) -> ANY TABLE
+        +-output_column_list=[tvf_optional_unnamed_named.x#8]
+==
+
+# Regression test against b/182060963: Make sure the AST location of TVF
+# arguments are correctly passed to FunctionResolver::AddCastOrConvertLiteral.
+#
+# The TVF signature is like:
+#   tvf_named_struct_args(
+#       struct_arg1 STRUCT<field1 ARRAY<STRING>, field2 ARRAY<STRING>>,
+#       struct_arg2 STRUCT<field1 ARRAY<STRING>,
+#                          field2 ARRAY<STRING>,
+#                          field3 ARRAY<STRING>)
+#
+# Note the TVF call here specifies a wrong struct field name ('field2__'
+# instead of 'field2').
+SELECT * FROM tvf_named_struct_args(
+    struct_arg2 => STRUCT(
+        [""] AS field1,
+        (ARRAY(SELECT v FROM UNNEST([""]) v WHERE v <> "")) AS field2__,
+        [""] AS field3),
+    struct_arg1 => STRUCT([""] AS field1, ["A","B"]AS field2));
+--
+QueryStmt
++-output_column_list=
+| +-tvf_named_struct_args.column_bool#2 AS column_bool [BOOL]
+| +-tvf_named_struct_args.column_bytes#3 AS column_bytes [BYTES]
++-query=
+  +-ProjectScan
+    +-column_list=tvf_named_struct_args.[column_bool#2, column_bytes#3]
+    +-input_scan=
+      +-TVFScan
+        +-column_list=tvf_named_struct_args.[column_bool#2, column_bytes#3]
+        +-tvf=tvf_named_struct_args((STRUCT<field1 ARRAY<STRING>, field2 ARRAY<STRING>> struct_arg1, STRUCT<field1 ARRAY<STRING>, field2 ARRAY<STRING>, field3 ARRAY<STRING>> struct_arg2) -> TABLE<column_bool BOOL, column_bytes BYTES>)
+        +-signature=(STRUCT<field1 ARRAY<STRING>, field2 ARRAY<STRING>>, STRUCT<field1 ARRAY<STRING>, field2 ARRAY<STRING>, field3 ARRAY<STRING>>) -> TABLE<column_bool BOOL, column_bytes BYTES>
+        +-argument_list=
+        | +-FunctionArgument
+        | | +-expr=
+        | |   +-Literal(type=STRUCT<field1 ARRAY<STRING>, field2 ARRAY<STRING>>, value={field1:[""], field2:["A", "B"]})
+        | +-FunctionArgument
+        |   +-expr=
+        |     +-MakeStruct
+        |       +-type=STRUCT<field1 ARRAY<STRING>, field2 ARRAY<STRING>, field3 ARRAY<STRING>>
+        |       +-field_list=
+        |         +-Literal(type=ARRAY<STRING>, value=[""])
+        |         +-SubqueryExpr
+        |         | +-type=ARRAY<STRING>
+        |         | +-subquery_type=ARRAY
+        |         | +-subquery=
+        |         |   +-ProjectScan
+        |         |     +-column_list=[$array.v#1]
+        |         |     +-input_scan=
+        |         |       +-FilterScan
+        |         |         +-column_list=[$array.v#1]
+        |         |         +-input_scan=
+        |         |         | +-ArrayScan
+        |         |         |   +-column_list=[$array.v#1]
+        |         |         |   +-array_expr_list=
+        |         |         |   | +-Literal(type=ARRAY<STRING>, value=[""])
+        |         |         |   +-element_column_list=[$array.v#1]
+        |         |         +-filter_expr=
+        |         |           +-FunctionCall(GoogleSQL:$not_equal(STRING, STRING) -> BOOL)
+        |         |             +-ColumnRef(type=STRING, column=$array.v#1)
+        |         |             +-Literal(type=STRING, value="")
+        |         +-Literal(type=ARRAY<STRING>, value=[""])
+        +-column_index_list=[0, 1]
+        +-function_call_signature=(STRUCT<field1 ARRAY<STRING>, field2 ARRAY<STRING>> struct_arg1, STRUCT<field1 ARRAY<STRING>, field2 ARRAY<STRING>, field3 ARRAY<STRING>> struct_arg2) -> TABLE<column_bool BOOL, column_bytes BYTES>
+==
+
+# Regression test for b/214174087. A templated UDA has a NOT AGGREGATE argument
+# with a default value.
+SELECT uda_templated_two_not_aggregate_args(col) AS result
+FROM UNNEST(['a', 'b', 'c', 'f']) AS col;
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.result#2 AS result [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.result#2]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$aggregate.result#2]
+        +-input_scan=
+        | +-ArrayScan
+        |   +-column_list=[$array.col#1]
+        |   +-array_expr_list=
+        |   | +-Literal(type=ARRAY<STRING>, value=["a", "b", "c", "f"])
+        |   +-element_column_list=[$array.col#1]
+        +-aggregate_list=
+          +-result#2 :=
+            +-AggregateFunctionCall(Templated_SQL_Function:uda_templated_two_not_aggregate_args(STRING, optional(1) INT64 delta, optional(1) BOOL allow_nulls) -> STRING)
+              +-ColumnRef(type=STRING, column=$array.col#1)
+              +-Literal(type=INT64, value=0)
+              +-Literal(type=BOOL, value=false)
+
+With Templated SQL function call:
+  Templated_SQL_Function:uda_templated_two_not_aggregate_args(STRING, optional(1) INT64 {is_not_aggregate: true} delta, optional(1) BOOL {is_not_aggregate: true} allow_nulls) -> STRING
+containing resolved templated expression:
+FunctionCall(GoogleSQL:if(BOOL, STRING, STRING) -> STRING)
++-FunctionCall(GoogleSQL:$or(BOOL, repeated(1) BOOL) -> BOOL)
+| +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+| | +-ColumnRef(type=INT64, column=$aggregate.$agg1#1)
+| | +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+| |   +-ColumnRef(type=INT64, column=$aggregate.$agg2#2)
+| |   +-ArgumentRef(type=INT64, name="delta", argument_kind=NOT_AGGREGATE)
+| +-FunctionCall(GoogleSQL:$and(BOOL, repeated(1) BOOL) -> BOOL)
+|   +-ArgumentRef(type=BOOL, name="allow_nulls", argument_kind=NOT_AGGREGATE)
+|   +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+|     +-ColumnRef(type=INT64, column=$aggregate.$agg3#3)
+|     +-ColumnRef(type=INT64, column=$aggregate.$agg4#4)
++-Literal(type=STRING, value=NULL)
++-Literal(type=STRING, value="NOT NULL")
+
+  $agg1#1 :=
+    +-AggregateFunctionCall(GoogleSQL:count(INT64) -> INT64)
+      +-Literal(type=INT64, value=1)
+
+  $agg2#2 :=
+    +-AggregateFunctionCall(GoogleSQL:count(STRING) -> INT64)
+      +-ArgumentRef(parse_location=38-42, type=STRING, name="cval", argument_kind=AGGREGATE)
+      +-distinct=TRUE
+
+  $agg3#3 :=
+    +-AggregateFunctionCall(GoogleSQL:countif(BOOL) -> INT64)
+      +-FunctionCall(GoogleSQL:$not(BOOL) -> BOOL)
+        +-FunctionCall(GoogleSQL:$is_null(STRING) -> BOOL)
+          +-ArgumentRef(parse_location=91-95, type=STRING, name="cval", argument_kind=AGGREGATE)
+
+  $agg4#4 :=
+    +-AggregateFunctionCall(GoogleSQL:count(STRING) -> INT64)
+      +-ArgumentRef(parse_location=126-130, type=STRING, name="cval", argument_kind=AGGREGATE)
+      +-distinct=TRUE
+==
+
+# Regression test for b/214174087. A templated UDA has a NOT AGGREGATE argument
+# with a default value.
+SELECT uda_templated_two_not_aggregate_args(col, allow_nulls => TRUE) AS result
+FROM UNNEST(['a', 'b', 'c', 'f']) AS col;
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.result#2 AS result [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.result#2]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$aggregate.result#2]
+        +-input_scan=
+        | +-ArrayScan
+        |   +-column_list=[$array.col#1]
+        |   +-array_expr_list=
+        |   | +-Literal(type=ARRAY<STRING>, value=["a", "b", "c", "f"])
+        |   +-element_column_list=[$array.col#1]
+        +-aggregate_list=
+          +-result#2 :=
+            +-AggregateFunctionCall(Templated_SQL_Function:uda_templated_two_not_aggregate_args(STRING, optional(1) INT64 delta, optional(1) BOOL allow_nulls) -> STRING)
+              +-ColumnRef(type=STRING, column=$array.col#1)
+              +-Literal(type=INT64, value=0)
+              +-Literal(type=BOOL, value=true)
+
+With Templated SQL function call:
+  Templated_SQL_Function:uda_templated_two_not_aggregate_args(STRING, optional(1) INT64 {is_not_aggregate: true} delta, optional(1) BOOL {is_not_aggregate: true} allow_nulls) -> STRING
+containing resolved templated expression:
+FunctionCall(GoogleSQL:if(BOOL, STRING, STRING) -> STRING)
++-FunctionCall(GoogleSQL:$or(BOOL, repeated(1) BOOL) -> BOOL)
+| +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+| | +-ColumnRef(type=INT64, column=$aggregate.$agg1#1)
+| | +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+| |   +-ColumnRef(type=INT64, column=$aggregate.$agg2#2)
+| |   +-ArgumentRef(type=INT64, name="delta", argument_kind=NOT_AGGREGATE)
+| +-FunctionCall(GoogleSQL:$and(BOOL, repeated(1) BOOL) -> BOOL)
+|   +-ArgumentRef(type=BOOL, name="allow_nulls", argument_kind=NOT_AGGREGATE)
+|   +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+|     +-ColumnRef(type=INT64, column=$aggregate.$agg3#3)
+|     +-ColumnRef(type=INT64, column=$aggregate.$agg4#4)
++-Literal(type=STRING, value=NULL)
++-Literal(type=STRING, value="NOT NULL")
+
+  $agg1#1 :=
+    +-AggregateFunctionCall(GoogleSQL:count(INT64) -> INT64)
+      +-Literal(type=INT64, value=1)
+
+  $agg2#2 :=
+    +-AggregateFunctionCall(GoogleSQL:count(STRING) -> INT64)
+      +-ArgumentRef(parse_location=38-42, type=STRING, name="cval", argument_kind=AGGREGATE)
+      +-distinct=TRUE
+
+  $agg3#3 :=
+    +-AggregateFunctionCall(GoogleSQL:countif(BOOL) -> INT64)
+      +-FunctionCall(GoogleSQL:$not(BOOL) -> BOOL)
+        +-FunctionCall(GoogleSQL:$is_null(STRING) -> BOOL)
+          +-ArgumentRef(parse_location=91-95, type=STRING, name="cval", argument_kind=AGGREGATE)
+
+  $agg4#4 :=
+    +-AggregateFunctionCall(GoogleSQL:count(STRING) -> INT64)
+      +-ArgumentRef(parse_location=126-130, type=STRING, name="cval", argument_kind=AGGREGATE)
+      +-distinct=TRUE
+==
+
+# Regression test for b/214174087. A templated UDA has a NOT AGGREGATE argument
+# with a default value.
+SELECT uda_templated_two_not_aggregate_args(col, 1) AS result
+FROM UNNEST(['a', 'b', 'c', 'f']) AS col;
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.result#2 AS result [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.result#2]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$aggregate.result#2]
+        +-input_scan=
+        | +-ArrayScan
+        |   +-column_list=[$array.col#1]
+        |   +-array_expr_list=
+        |   | +-Literal(type=ARRAY<STRING>, value=["a", "b", "c", "f"])
+        |   +-element_column_list=[$array.col#1]
+        +-aggregate_list=
+          +-result#2 :=
+            +-AggregateFunctionCall(Templated_SQL_Function:uda_templated_two_not_aggregate_args(STRING, optional(1) INT64 delta, optional(1) BOOL allow_nulls) -> STRING)
+              +-ColumnRef(type=STRING, column=$array.col#1)
+              +-Literal(type=INT64, value=1)
+              +-Literal(type=BOOL, value=false)
+
+With Templated SQL function call:
+  Templated_SQL_Function:uda_templated_two_not_aggregate_args(STRING, optional(1) INT64 {is_not_aggregate: true} delta, optional(1) BOOL {is_not_aggregate: true} allow_nulls) -> STRING
+containing resolved templated expression:
+FunctionCall(GoogleSQL:if(BOOL, STRING, STRING) -> STRING)
++-FunctionCall(GoogleSQL:$or(BOOL, repeated(1) BOOL) -> BOOL)
+| +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+| | +-ColumnRef(type=INT64, column=$aggregate.$agg1#1)
+| | +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+| |   +-ColumnRef(type=INT64, column=$aggregate.$agg2#2)
+| |   +-ArgumentRef(type=INT64, name="delta", argument_kind=NOT_AGGREGATE)
+| +-FunctionCall(GoogleSQL:$and(BOOL, repeated(1) BOOL) -> BOOL)
+|   +-ArgumentRef(type=BOOL, name="allow_nulls", argument_kind=NOT_AGGREGATE)
+|   +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+|     +-ColumnRef(type=INT64, column=$aggregate.$agg3#3)
+|     +-ColumnRef(type=INT64, column=$aggregate.$agg4#4)
++-Literal(type=STRING, value=NULL)
++-Literal(type=STRING, value="NOT NULL")
+
+  $agg1#1 :=
+    +-AggregateFunctionCall(GoogleSQL:count(INT64) -> INT64)
+      +-Literal(type=INT64, value=1)
+
+  $agg2#2 :=
+    +-AggregateFunctionCall(GoogleSQL:count(STRING) -> INT64)
+      +-ArgumentRef(parse_location=38-42, type=STRING, name="cval", argument_kind=AGGREGATE)
+      +-distinct=TRUE
+
+  $agg3#3 :=
+    +-AggregateFunctionCall(GoogleSQL:countif(BOOL) -> INT64)
+      +-FunctionCall(GoogleSQL:$not(BOOL) -> BOOL)
+        +-FunctionCall(GoogleSQL:$is_null(STRING) -> BOOL)
+          +-ArgumentRef(parse_location=91-95, type=STRING, name="cval", argument_kind=AGGREGATE)
+
+  $agg4#4 :=
+    +-AggregateFunctionCall(GoogleSQL:count(STRING) -> INT64)
+      +-ArgumentRef(parse_location=126-130, type=STRING, name="cval", argument_kind=AGGREGATE)
+      +-distinct=TRUE
+==
+
+# Regression test against b/244550962: Make sure the AST location of fields in
+# MakeStruct are correctly extracted when the MakeStruct is in an
+# ASTNamedArgument.
+# Note the function call here specifies a different struct field name ('field2_'
+# instead of 'field2') and thus a Cast would be added by the resolver and thus
+# trigger the issue in b/244550962.
+SELECT fn_named_struct_args(
+    struct_arg1 => STRUCT<field1 ARRAY<STRING>, field2 ARRAY<STRING>>(
+                       [""], ["A","B"]),
+    struct_arg2 =>
+      STRUCT<field1 ARRAY<STRING>,
+             field2_ ARRAY<STRING>,
+             field3 ARRAY<STRING>>(
+          [""], ARRAY(SELECT v FROM UNNEST([""]) v WHERE v <> ""), [""])
+);
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#2 AS `$col1` [ARRAY<STRING>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#2]
+    +-expr_list=
+    | +-$col1#2 :=
+    |   +-FunctionCall(sample_functions:fn_named_struct_args(STRUCT<field1 ARRAY<STRING>, field2 ARRAY<STRING>> struct_arg1, STRUCT<field1 ARRAY<STRING>, field2 ARRAY<STRING>, field3 ARRAY<STRING>> struct_arg2) -> ARRAY<STRING>)
+    |     +-Literal(type=STRUCT<field1 ARRAY<STRING>, field2 ARRAY<STRING>>, value={field1:[""], field2:["A", "B"]}, has_explicit_type=TRUE)
+    |     +-MakeStruct
+    |       +-type=STRUCT<field1 ARRAY<STRING>, field2 ARRAY<STRING>, field3 ARRAY<STRING>>
+    |       +-field_list=
+    |         +-Literal(type=ARRAY<STRING>, value=[""], has_explicit_type=TRUE)
+    |         +-SubqueryExpr
+    |         | +-type=ARRAY<STRING>
+    |         | +-subquery_type=ARRAY
+    |         | +-subquery=
+    |         |   +-ProjectScan
+    |         |     +-column_list=[$array.v#1]
+    |         |     +-input_scan=
+    |         |       +-FilterScan
+    |         |         +-column_list=[$array.v#1]
+    |         |         +-input_scan=
+    |         |         | +-ArrayScan
+    |         |         |   +-column_list=[$array.v#1]
+    |         |         |   +-array_expr_list=
+    |         |         |   | +-Literal(type=ARRAY<STRING>, value=[""])
+    |         |         |   +-element_column_list=[$array.v#1]
+    |         |         +-filter_expr=
+    |         |           +-FunctionCall(GoogleSQL:$not_equal(STRING, STRING) -> BOOL)
+    |         |             +-ColumnRef(type=STRING, column=$array.v#1)
+    |         |             +-Literal(type=STRING, value="")
+    |         +-Literal(type=ARRAY<STRING>, value=[""], has_explicit_type=TRUE)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# TVF with constraints - all constraints are satisfied.
+select (select column_bool from
+  tvf_named_scalar_args_with_constraints(
+    arg_1 => 7,  -- must_be_non_null
+    arg_2 => "test string",  -- must_be_constant
+    arg_3 => COS(2 * 3.14), -- must_be_constant_expression
+    arg_4 => (int64, string),  -- must_support_equality
+    arg_5 => string, -- must_support_ordering
+    arg_6 => double,  -- must_support_grouping
+    arg_7 => [int64],  -- array_element_must_support_equality
+    arg_8 => [string],  -- array_element_must_support_ordering
+    arg_9 => [double],  -- array_element_must_support_grouping
+    arg_10 => 15.3  -- must_be_non_null with default
+)) from SimpleTypes;
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#22 AS `$col1` [BOOL]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#22]
+    +-expr_list=
+    | +-$col1#22 :=
+    |   +-SubqueryExpr
+    |     +-type=BOOL
+    |     +-subquery_type=SCALAR
+    |     +-parameter_list=
+    |     | +-ColumnRef(type=INT64, column=SimpleTypes.int64#2)
+    |     | +-ColumnRef(type=STRING, column=SimpleTypes.string#5)
+    |     | +-ColumnRef(type=DOUBLE, column=SimpleTypes.double#9)
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[tvf_named_scalar_args_with_constraints.column_bool#20]
+    |         +-input_scan=
+    |           +-TVFScan
+    |             +-column_list=[tvf_named_scalar_args_with_constraints.column_bool#20]
+    |             +-tvf=tvf_named_scalar_args_with_constraints((optional INT64 {must_be_non_null: true} arg_1, optional STRING {must_be_constant: true} arg_2, optional DOUBLE {must_be_constant_expression: true} arg_3, optional <struct> arg_4, optional <T1> arg_5, optional <T2> arg_6, optional <array<T3>> arg_7, optional <array<T4>> arg_8, optional <array<T5>> arg_9, optional DOUBLE {must_be_non_null: true, default_value: 3.14} arg_10) -> TABLE<column_bool BOOL, column_bytes BYTES>)
+    |             +-signature=(literal INT64, literal STRING, DOUBLE, STRUCT<INT64, STRING>, STRING, DOUBLE, ARRAY<INT64>, ARRAY<STRING>, ARRAY<DOUBLE>, literal DOUBLE) -> TABLE<column_bool BOOL, column_bytes BYTES>
+    |             +-argument_list=
+    |             | +-FunctionArgument
+    |             | | +-expr=
+    |             | |   +-Literal(type=INT64, value=7)
+    |             | +-FunctionArgument
+    |             | | +-expr=
+    |             | |   +-Literal(type=STRING, value="test string")
+    |             | +-FunctionArgument
+    |             | | +-expr=
+    |             | |   +-FunctionCall(GoogleSQL:cos(DOUBLE) -> DOUBLE)
+    |             | |     +-FunctionCall(GoogleSQL:$multiply(DOUBLE, DOUBLE) -> DOUBLE)
+    |             | |       +-Literal(type=DOUBLE, value=2)
+    |             | |       +-Literal(type=DOUBLE, value=3.14)
+    |             | +-FunctionArgument
+    |             | | +-expr=
+    |             | |   +-MakeStruct
+    |             | |     +-type=STRUCT<INT64, STRING>
+    |             | |     +-field_list=
+    |             | |       +-ColumnRef(type=INT64, column=SimpleTypes.int64#2, is_correlated=TRUE)
+    |             | |       +-ColumnRef(type=STRING, column=SimpleTypes.string#5, is_correlated=TRUE)
+    |             | +-FunctionArgument
+    |             | | +-expr=
+    |             | |   +-ColumnRef(type=STRING, column=SimpleTypes.string#5, is_correlated=TRUE)
+    |             | +-FunctionArgument
+    |             | | +-expr=
+    |             | |   +-ColumnRef(type=DOUBLE, column=SimpleTypes.double#9, is_correlated=TRUE)
+    |             | +-FunctionArgument
+    |             | | +-expr=
+    |             | |   +-FunctionCall(GoogleSQL:$make_array(repeated(1) INT64) -> ARRAY<INT64>)
+    |             | |     +-ColumnRef(type=INT64, column=SimpleTypes.int64#2, is_correlated=TRUE)
+    |             | +-FunctionArgument
+    |             | | +-expr=
+    |             | |   +-FunctionCall(GoogleSQL:$make_array(repeated(1) STRING) -> ARRAY<STRING>)
+    |             | |     +-ColumnRef(type=STRING, column=SimpleTypes.string#5, is_correlated=TRUE)
+    |             | +-FunctionArgument
+    |             | | +-expr=
+    |             | |   +-FunctionCall(GoogleSQL:$make_array(repeated(1) DOUBLE) -> ARRAY<DOUBLE>)
+    |             | |     +-ColumnRef(type=DOUBLE, column=SimpleTypes.double#9, is_correlated=TRUE)
+    |             | +-FunctionArgument
+    |             |   +-expr=
+    |             |     +-Literal(type=DOUBLE, value=15.3)
+    |             +-column_index_list=[0]
+    |             +-function_call_signature=(optional(1) INT64 arg_1, optional(1) STRING arg_2, optional(1) DOUBLE arg_3, optional(1) STRUCT<INT64, STRING> arg_4, optional(1) STRING arg_5, optional(1) DOUBLE arg_6, optional(1) ARRAY<INT64> arg_7, optional(1) ARRAY<STRING> arg_8, optional(1) ARRAY<DOUBLE> arg_9, optional(1) DOUBLE arg_10) -> TABLE<column_bool BOOL, column_bytes BYTES>
+    +-input_scan=
+      +-TableScan(column_list=SimpleTypes.[int64#2, string#5, double#9], table=SimpleTypes, column_index_list=[1, 4, 8])
+==
+
+# TVF with constraints - all constraints are satisfied with omitted arguments.
+# There is currently a bug (b/330392311) which leads to confusing error message
+# in this scenario.
+select (select column_bool from
+  tvf_named_scalar_args_with_constraints()) from SimpleTypes;
+--
+ERROR: No matching signature for tvf_named_scalar_args_with_constraints
+  Argument types: INT64, STRING, DOUBLE, NULL, NULL, NULL, NULL, NULL, NULL, DOUBLE
+  Signature: TVF_NAMED_SCALAR_ARGS_WITH_CONSTRAINTS([arg_1 => INT64], [arg_2 => STRING], [arg_3 => DOUBLE], [arg_4 => STRUCT], [arg_5 => T1], [arg_6 => T2], [arg_7 => ARRAY<T3>], [arg_8 => ARRAY<T4>], [arg_9 => ARRAY<T5>], [arg_10 => DOUBLE])
+    Unable to determine type for untyped null for argument kind <struct> [at 2:3]
+  tvf_named_scalar_args_with_constraints()) from SimpleTypes;
+  ^
+==
+
+# TVF with constraints - all constraints are satisfied with omitted (except the
+# default) arguments.
+# There is currently a bug (b/330392311) which leads to confusing error message
+# in this scenario.
+select (select column_bool from
+  tvf_named_scalar_args_with_constraints(
+    arg_4 => (int64, string)  -- must_support_equality
+)) from SimpleTypes;
+--
+ERROR: Argument 1 to table-valued function TVF_NAMED_SCALAR_ARGS_WITH_CONSTRAINTS must be non-NULL [at 2:3]
+  tvf_named_scalar_args_with_constraints(
+  ^
+==
+
+# TVF with constraints - all constraints are satisfied with partially omitted
+# arguments.
+# There is currently a bug (b/330392311) which leads to confusing error message
+# in this scenario, therefore we need to explicly specify arg_1.
+# TODO: b/459308331 - Fix analyzer debug string for untyped empty array in Java.
+[no_java]
+select (select column_bool from
+  tvf_named_scalar_args_with_constraints(
+    arg_1 => 7,  -- must_be_non_null
+    arg_4 => (int64, string)  -- must_support_equality
+)) from SimpleTypes;
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#22 AS `$col1` [BOOL]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#22]
+    +-expr_list=
+    | +-$col1#22 :=
+    |   +-SubqueryExpr
+    |     +-type=BOOL
+    |     +-subquery_type=SCALAR
+    |     +-parameter_list=
+    |     | +-ColumnRef(type=INT64, column=SimpleTypes.int64#2)
+    |     | +-ColumnRef(type=STRING, column=SimpleTypes.string#5)
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[tvf_named_scalar_args_with_constraints.column_bool#20]
+    |         +-input_scan=
+    |           +-TVFScan
+    |             +-column_list=[tvf_named_scalar_args_with_constraints.column_bool#20]
+    |             +-tvf=tvf_named_scalar_args_with_constraints((optional INT64 {must_be_non_null: true} arg_1, optional STRING {must_be_constant: true} arg_2, optional DOUBLE {must_be_constant_expression: true} arg_3, optional <struct> arg_4, optional <T1> arg_5, optional <T2> arg_6, optional <array<T3>> arg_7, optional <array<T4>> arg_8, optional <array<T5>> arg_9, optional DOUBLE {must_be_non_null: true, default_value: 3.14} arg_10) -> TABLE<column_bool BOOL, column_bytes BYTES>)
+    |             +-signature=(literal INT64, null STRING, null DOUBLE, STRUCT<INT64, STRING>, null INT64, null INT64, null ARRAY<INT64>, null ARRAY<INT64>, null ARRAY<INT64>, literal DOUBLE) -> TABLE<column_bool BOOL, column_bytes BYTES>
+    |             +-argument_list=
+    |             | +-FunctionArgument
+    |             | | +-expr=
+    |             | |   +-Literal(type=INT64, value=7)
+    |             | +-FunctionArgument
+    |             | | +-expr=
+    |             | |   +-Literal(type=STRING, value=NULL)
+    |             | +-FunctionArgument
+    |             | | +-expr=
+    |             | |   +-Literal(type=DOUBLE, value=NULL)
+    |             | +-FunctionArgument
+    |             | | +-expr=
+    |             | |   +-MakeStruct
+    |             | |     +-type=STRUCT<INT64, STRING>
+    |             | |     +-field_list=
+    |             | |       +-ColumnRef(type=INT64, column=SimpleTypes.int64#2, is_correlated=TRUE)
+    |             | |       +-ColumnRef(type=STRING, column=SimpleTypes.string#5, is_correlated=TRUE)
+    |             | +-FunctionArgument
+    |             | | +-expr=
+    |             | |   +-Literal(type=INT64, value=NULL)
+    |             | +-FunctionArgument
+    |             | | +-expr=
+    |             | |   +-Literal(type=INT64, value=NULL)
+    |             | +-FunctionArgument
+    |             | | +-expr=
+    |             | |   +-Literal(type=ARRAY<INT64>, value=NULL)
+    |             | +-FunctionArgument
+    |             | | +-expr=
+    |             | |   +-Literal(type=ARRAY<INT64>, value=NULL)
+    |             | +-FunctionArgument
+    |             | | +-expr=
+    |             | |   +-Literal(type=ARRAY<INT64>, value=NULL)
+    |             | +-FunctionArgument
+    |             |   +-expr=
+    |             |     +-Literal(type=DOUBLE, value=3.14)
+    |             +-column_index_list=[0]
+    |             +-function_call_signature=(optional(1) INT64 arg_1, optional(1) STRING arg_2, optional(1) DOUBLE arg_3, optional(1) STRUCT<INT64, STRING> arg_4, optional(1) INT64 arg_5, optional(1) INT64 arg_6, optional(1) ARRAY<INT64> arg_7, optional(1) ARRAY<INT64> arg_8, optional(1) ARRAY<INT64> arg_9, optional(1) DOUBLE arg_10) -> TABLE<column_bool BOOL, column_bytes BYTES>
+    +-input_scan=
+      +-TableScan(column_list=SimpleTypes.[int64#2, string#5], table=SimpleTypes, column_index_list=[1, 4])
+==
+
+# TVF with constraints - must_be_non_null is not satisfied.
+select (select column_bool from
+  tvf_named_scalar_args_with_constraints(
+    arg_2 => "test string",  -- must_be_constant
+    arg_3 => COS(2 * 3.14), -- must_be_constant_expression
+    arg_4 => (int64, string),  -- must_support_equality
+    arg_5 => string, -- must_support_ordering
+    arg_6 => double,  -- must_support_grouping
+    arg_7 => [int64],  -- array_element_must_support_equality
+    arg_8 => [string],  -- array_element_must_support_ordering
+    arg_9 => [double],  -- array_element_must_support_grouping
+    arg_10 => 15.3,  -- must_be_non_null with default
+    arg_1 => NULL  -- must_be_non_null
+)) from SimpleTypes;
+--
+
+ERROR: Argument 'arg_1' to table-valued function TVF_NAMED_SCALAR_ARGS_WITH_CONSTRAINTS must be non-NULL [at 12:5]
+    arg_1 => NULL  -- must_be_non_null
+    ^
+==
+
+# TVF with constraints - must_be_non_null is not satisfied (with CAST).
+select (select column_bool from
+  tvf_named_scalar_args_with_constraints(
+    arg_2 => "test string",  -- must_be_constant
+    arg_3 => COS(2 * 3.14), -- must_be_constant_expression
+    arg_4 => (int64, string),  -- must_support_equality
+    arg_5 => string, -- must_support_ordering
+    arg_6 => double,  -- must_support_grouping
+    arg_7 => [int64],  -- array_element_must_support_equality
+    arg_8 => [string],  -- array_element_must_support_ordering
+    arg_9 => [double],  -- array_element_must_support_grouping
+    arg_10 => 15.3,  -- must_be_non_null with default
+    arg_1 => CAST(NULL AS int64)  -- must_be_non_null
+)) from SimpleTypes;
+--
+
+ERROR: Argument 'arg_1' to table-valued function TVF_NAMED_SCALAR_ARGS_WITH_CONSTRAINTS must be non-NULL [at 12:5]
+    arg_1 => CAST(NULL AS int64)  -- must_be_non_null
+    ^
+==
+
+# TVF with constraints - must_be_non_null (with default) is not satisfied.
+select (select column_bool from
+  tvf_named_scalar_args_with_constraints(
+    arg_1 => 7,  -- must_be_non_null
+    arg_2 => "test string",  -- must_be_constant
+    arg_3 => COS(2 * 3.14), -- must_be_constant_expression
+    arg_4 => (int64, string),  -- must_support_equality
+    arg_5 => string, -- must_support_ordering
+    arg_6 => double,  -- must_support_grouping
+    arg_7 => [int64],  -- array_element_must_support_equality
+    arg_8 => [string],  -- array_element_must_support_ordering
+    arg_9 => [double],  -- array_element_must_support_grouping
+    arg_10 => NULL  -- must_be_non_null with default
+)) from SimpleTypes;
+--
+
+ERROR: Argument 'arg_10' to table-valued function TVF_NAMED_SCALAR_ARGS_WITH_CONSTRAINTS must be non-NULL [at 12:5]
+    arg_10 => NULL  -- must_be_non_null with default
+    ^
+==
+
+# TVF with constraints - must_be_non_null (with default omitted) is satisfied.
+select (select column_bool from
+  tvf_named_scalar_args_with_constraints(
+    arg_1 => 7,  -- must_be_non_null
+    arg_2 => "test string",  -- must_be_constant
+    arg_3 => COS(2 * 3.14), -- must_be_constant_expression
+    arg_4 => (int64, string),  -- must_support_equality
+    arg_5 => string, -- must_support_ordering
+    arg_6 => double,  -- must_support_grouping
+    arg_7 => [int64],  -- array_element_must_support_equality
+    arg_8 => [string],  -- array_element_must_support_ordering
+    arg_9 => [double]  -- array_element_must_support_grouping
+)) from SimpleTypes;
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#22 AS `$col1` [BOOL]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#22]
+    +-expr_list=
+    | +-$col1#22 :=
+    |   +-SubqueryExpr
+    |     +-type=BOOL
+    |     +-subquery_type=SCALAR
+    |     +-parameter_list=
+    |     | +-ColumnRef(type=INT64, column=SimpleTypes.int64#2)
+    |     | +-ColumnRef(type=STRING, column=SimpleTypes.string#5)
+    |     | +-ColumnRef(type=DOUBLE, column=SimpleTypes.double#9)
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[tvf_named_scalar_args_with_constraints.column_bool#20]
+    |         +-input_scan=
+    |           +-TVFScan
+    |             +-column_list=[tvf_named_scalar_args_with_constraints.column_bool#20]
+    |             +-tvf=tvf_named_scalar_args_with_constraints((optional INT64 {must_be_non_null: true} arg_1, optional STRING {must_be_constant: true} arg_2, optional DOUBLE {must_be_constant_expression: true} arg_3, optional <struct> arg_4, optional <T1> arg_5, optional <T2> arg_6, optional <array<T3>> arg_7, optional <array<T4>> arg_8, optional <array<T5>> arg_9, optional DOUBLE {must_be_non_null: true, default_value: 3.14} arg_10) -> TABLE<column_bool BOOL, column_bytes BYTES>)
+    |             +-signature=(literal INT64, literal STRING, DOUBLE, STRUCT<INT64, STRING>, STRING, DOUBLE, ARRAY<INT64>, ARRAY<STRING>, ARRAY<DOUBLE>, literal DOUBLE) -> TABLE<column_bool BOOL, column_bytes BYTES>
+    |             +-argument_list=
+    |             | +-FunctionArgument
+    |             | | +-expr=
+    |             | |   +-Literal(type=INT64, value=7)
+    |             | +-FunctionArgument
+    |             | | +-expr=
+    |             | |   +-Literal(type=STRING, value="test string")
+    |             | +-FunctionArgument
+    |             | | +-expr=
+    |             | |   +-FunctionCall(GoogleSQL:cos(DOUBLE) -> DOUBLE)
+    |             | |     +-FunctionCall(GoogleSQL:$multiply(DOUBLE, DOUBLE) -> DOUBLE)
+    |             | |       +-Literal(type=DOUBLE, value=2)
+    |             | |       +-Literal(type=DOUBLE, value=3.14)
+    |             | +-FunctionArgument
+    |             | | +-expr=
+    |             | |   +-MakeStruct
+    |             | |     +-type=STRUCT<INT64, STRING>
+    |             | |     +-field_list=
+    |             | |       +-ColumnRef(type=INT64, column=SimpleTypes.int64#2, is_correlated=TRUE)
+    |             | |       +-ColumnRef(type=STRING, column=SimpleTypes.string#5, is_correlated=TRUE)
+    |             | +-FunctionArgument
+    |             | | +-expr=
+    |             | |   +-ColumnRef(type=STRING, column=SimpleTypes.string#5, is_correlated=TRUE)
+    |             | +-FunctionArgument
+    |             | | +-expr=
+    |             | |   +-ColumnRef(type=DOUBLE, column=SimpleTypes.double#9, is_correlated=TRUE)
+    |             | +-FunctionArgument
+    |             | | +-expr=
+    |             | |   +-FunctionCall(GoogleSQL:$make_array(repeated(1) INT64) -> ARRAY<INT64>)
+    |             | |     +-ColumnRef(type=INT64, column=SimpleTypes.int64#2, is_correlated=TRUE)
+    |             | +-FunctionArgument
+    |             | | +-expr=
+    |             | |   +-FunctionCall(GoogleSQL:$make_array(repeated(1) STRING) -> ARRAY<STRING>)
+    |             | |     +-ColumnRef(type=STRING, column=SimpleTypes.string#5, is_correlated=TRUE)
+    |             | +-FunctionArgument
+    |             | | +-expr=
+    |             | |   +-FunctionCall(GoogleSQL:$make_array(repeated(1) DOUBLE) -> ARRAY<DOUBLE>)
+    |             | |     +-ColumnRef(type=DOUBLE, column=SimpleTypes.double#9, is_correlated=TRUE)
+    |             | +-FunctionArgument
+    |             |   +-expr=
+    |             |     +-Literal(type=DOUBLE, value=3.14)
+    |             +-column_index_list=[0]
+    |             +-function_call_signature=(optional(1) INT64 arg_1, optional(1) STRING arg_2, optional(1) DOUBLE arg_3, optional(1) STRUCT<INT64, STRING> arg_4, optional(1) STRING arg_5, optional(1) DOUBLE arg_6, optional(1) ARRAY<INT64> arg_7, optional(1) ARRAY<STRING> arg_8, optional(1) ARRAY<DOUBLE> arg_9, optional(1) DOUBLE arg_10) -> TABLE<column_bool BOOL, column_bytes BYTES>
+    +-input_scan=
+      +-TableScan(column_list=SimpleTypes.[int64#2, string#5, double#9], table=SimpleTypes, column_index_list=[1, 4, 8])
+==
+
+# TVF with constraints - must_be_constant is not satisfied.
+select (select column_bool from
+  tvf_named_scalar_args_with_constraints(
+    arg_1 => 7,  -- must_be_non_null
+    arg_3 => COS(2 * 3.14), -- must_be_constant_expression
+    arg_4 => (int64, string),  -- must_support_equality
+    arg_5 => string, -- must_support_ordering
+    arg_6 => double,  -- must_support_grouping
+    arg_7 => [int64],  -- array_element_must_support_equality
+    arg_8 => [string],  -- array_element_must_support_ordering
+    arg_9 => [double],  -- array_element_must_support_grouping
+    arg_10 => 15.3,  -- must_be_non_null with default
+    arg_2 => CONCAT("test", "string")  -- must_be_constant
+)) from SimpleTypes;
+--
+
+ERROR: Argument 'arg_2' to table-valued function TVF_NAMED_SCALAR_ARGS_WITH_CONSTRAINTS must be a literal or query parameter [at 12:5]
+    arg_2 => CONCAT("test", "string")  -- must_be_constant
+    ^
+==
+
+# TVF with constraints - must_be_constant_expression is not satisfied.
+select (select column_bool from
+  tvf_named_scalar_args_with_constraints(
+    arg_1 => 7,  -- must_be_non_null
+    arg_2 => "test string",  -- must_be_constant
+    arg_4 => (int64, string),  -- must_support_equality
+    arg_5 => string, -- must_support_ordering
+    arg_6 => double,  -- must_support_grouping
+    arg_7 => [int64],  -- array_element_must_support_equality
+    arg_8 => [string],  -- array_element_must_support_ordering
+    arg_9 => [double],  -- array_element_must_support_grouping
+    arg_10 => 15.3,  -- must_be_non_null with default
+    arg_3 => COS(double * 3.14) -- must_be_constant_expression
+)) from SimpleTypes;
+--
+
+ERROR: Argument 'arg_3' to table-valued function TVF_NAMED_SCALAR_ARGS_WITH_CONSTRAINTS must be a constant expression [at 12:5]
+    arg_3 => COS(double * 3.14) -- must_be_constant_expression
+    ^
+==
+
+# TVF with constraints - must_support_equality is not satisfied.
+select (select column_bool from
+  tvf_named_scalar_args_with_constraints(
+    arg_1 => 7,  -- must_be_non_null
+    arg_2 => "test string",  -- must_be_constant
+    arg_3 => COS(2 * 3.14), -- must_be_constant_expression
+    arg_5 => string, -- must_support_ordering
+    arg_6 => double,  -- must_support_grouping
+    arg_7 => [int64],  -- array_element_must_support_equality
+    arg_8 => [string],  -- array_element_must_support_ordering
+    arg_9 => [double],  -- array_element_must_support_grouping
+    arg_10 => 15.3,  -- must_be_non_null with default
+    arg_4 => (int64, json)  -- must_support_equality
+)) from SimpleTypes;
+--
+
+ERROR: Argument 'arg_4' to table-valued function TVF_NAMED_SCALAR_ARGS_WITH_CONSTRAINTS must support equality; Type STRUCT<INT64, JSON> does not [at 12:5]
+    arg_4 => (int64, json)  -- must_support_equality
+    ^
+==
+
+# TVF with constraints - must_support_ordering is not satisfied.
+select (select column_bool from
+  tvf_named_scalar_args_with_constraints(
+    arg_1 => 7,  -- must_be_non_null
+    arg_2 => "test string",  -- must_be_constant
+    arg_3 => COS(2 * 3.14), -- must_be_constant_expression
+    arg_4 => (int64, string),  -- must_support_equality
+    arg_6 => double,  -- must_support_grouping
+    arg_7 => [int64],  -- array_element_must_support_equality
+    arg_8 => [string],  -- array_element_must_support_ordering
+    arg_9 => [double],  -- array_element_must_support_grouping
+    arg_10 => 15.3,  -- must_be_non_null with default
+    arg_5 => [string] -- must_support_ordering
+)) from SimpleTypes;
+--
+
+ERROR: Argument 'arg_5' to table-valued function TVF_NAMED_SCALAR_ARGS_WITH_CONSTRAINTS must support ordering; Type ARRAY<STRING> does not [at 12:5]
+    arg_5 => [string] -- must_support_ordering
+    ^
+==
+
+# TVF with constraints - must_support_grouping is not satisfied.
+select (select column_bool from
+  tvf_named_scalar_args_with_constraints(
+    arg_1 => CAST(7.0 AS int64),  -- must_be_non_null
+    arg_2 => "test string",  -- must_be_constant
+    arg_3 => COS(2 * 3.14), -- must_be_constant_expression
+    arg_4 => (int64, string),  -- must_support_equality
+    arg_5 => string, -- must_support_ordering
+    arg_7 => [123],  -- array_element_must_support_equality
+    arg_8 => ["abc"],  -- array_element_must_support_ordering
+    arg_9 => [213.0],  -- array_element_must_support_grouping
+    arg_10 => 15.3,  -- must_be_non_null with default
+    arg_6 => [double]  -- must_support_grouping
+)) from SimpleTypes;
+--
+
+ERROR: Argument 'arg_6' to table-valued function TVF_NAMED_SCALAR_ARGS_WITH_CONSTRAINTS must support grouping; Type ARRAY<DOUBLE> does not [at 12:5]
+    arg_6 => [double]  -- must_support_grouping
+    ^
+==
+
+# TVF with constraints - array_element_must_support_equality is not satisfied.
+select (select column_bool from
+  tvf_named_scalar_args_with_constraints(
+    arg_1 => int64,  -- must_be_non_null
+    arg_2 => "test string",  -- must_be_constant
+    arg_3 => COS(2 * 3.14), -- must_be_constant_expression
+    arg_4 => (int64, string),  -- must_support_equality
+    arg_5 => string, -- must_support_ordering
+    arg_6 => double,  -- must_support_grouping
+    arg_8 => [string],  -- array_element_must_support_ordering
+    arg_9 => [double],  -- array_element_must_support_grouping
+    arg_10 => 15.3,  -- must_be_non_null with default
+    arg_7 => [json]  -- array_element_must_support_equality
+)) from SimpleTypes;
+--
+
+ERROR: Table-valued function TVF_NAMED_SCALAR_ARGS_WITH_CONSTRAINTS cannot be used on argument of type ARRAY<JSON> because the array's element type does not support equality [at 2:3]
+  tvf_named_scalar_args_with_constraints(
+  ^
+==
+
+# TVF with constraints - array_element_must_support_ordering is not satisfied.
+select (select column_bool from
+  tvf_named_scalar_args_with_constraints(
+    arg_1 => int32,  -- must_be_non_null
+    arg_2 => "test string",  -- must_be_constant
+    arg_3 => COS(2 * 3.14), -- must_be_constant_expression
+    arg_4 => (int64, string),  -- must_support_equality
+    arg_5 => string, -- must_support_ordering
+    arg_6 => double,  -- must_support_grouping
+    arg_7 => [int64],  -- array_element_must_support_equality
+    arg_9 => [double],  -- array_element_must_support_grouping
+    arg_10 => 15.3,  -- must_be_non_null with default
+    arg_8 => [(9, [string])]  -- array_element_must_support_ordering
+)) from SimpleTypes;
+--
+
+ERROR: Table-valued function TVF_NAMED_SCALAR_ARGS_WITH_CONSTRAINTS cannot be used on argument of type ARRAY<STRUCT<INT64, ARRAY<STRING>>> because the array's element type does not support ordering [at 2:3]
+  tvf_named_scalar_args_with_constraints(
+  ^
+==
+
+# TVF with constraints - array_element_must_support_grouping is not satisfied.
+select (select column_bool from
+  tvf_named_scalar_args_with_constraints(
+    arg_1 => @test_param_int64,  -- must_be_non_null
+    arg_2 => @test_param_string,  -- must_be_constant
+    arg_3 => @test_param_double, -- must_be_constant_expression
+    arg_4 => (int64, string),  -- must_support_equality
+    arg_5 => string, -- must_support_ordering
+    arg_6 => double,  -- must_support_grouping
+    arg_7 => [int64],  -- array_element_must_support_equality
+    arg_8 => [string],  -- array_element_must_support_ordering
+    arg_10 => @test_param_double,  -- must_be_non_null with default
+    arg_9 => [([double], 12)]  -- array_element_must_support_grouping
+)) from SimpleTypes;
+--
+
+ERROR: Table-valued function TVF_NAMED_SCALAR_ARGS_WITH_CONSTRAINTS cannot be used on argument of type ARRAY<STRUCT<ARRAY<DOUBLE>, INT64>> because the array's element type does not support grouping [at 2:3]
+  tvf_named_scalar_args_with_constraints(
+  ^
+==
+
+# TVF with constraints - min_value is not satisfied.
+select (select column_bool from
+  tvf_named_scalar_args_with_constraints(
+    arg_1 => 2,  -- min_value = 3
+    arg_2 => "test string",  -- must_be_constant
+    arg_3 => COS(2 * 3.14), -- must_be_constant_expression
+    arg_4 => (int64, string),  -- must_support_equality
+    arg_5 => string, -- must_support_ordering
+    arg_6 => double,  -- must_support_grouping
+    arg_7 => [int64],  -- array_element_must_support_equality
+    arg_8 => [string],  -- array_element_must_support_ordering
+    arg_9 => [double],  -- array_element_must_support_grouping
+    arg_10 => 15.3  -- must_be_non_null with default
+)) from SimpleTypes;
+--
+ERROR: Argument 'arg_1' to table-valued function TVF_NAMED_SCALAR_ARGS_WITH_CONSTRAINTS must be at least 3 [at 3:5]
+    arg_1 => 2,  -- min_value = 3
+    ^
+==
+
+# TVF with constraints - max_value is not satisfied.
+select (select column_bool from
+  tvf_named_scalar_args_with_constraints(
+    arg_1 => 7,  -- must_be_non_null
+    arg_2 => "test string",  -- must_be_constant
+    arg_3 => 500, -- max_value = 100
+    arg_4 => (int64, string),  -- must_support_equality
+    arg_5 => string, -- must_support_ordering
+    arg_6 => double,  -- must_support_grouping
+    arg_7 => [int64],  -- array_element_must_support_equality
+    arg_8 => [string],  -- array_element_must_support_ordering
+    arg_9 => [double],  -- array_element_must_support_grouping
+    arg_10 => 15.3  -- must_be_non_null with default
+)) from SimpleTypes;
+--
+ERROR: Argument 'arg_3' to table-valued function TVF_NAMED_SCALAR_ARGS_WITH_CONSTRAINTS must be at most 100 [at 5:5]
+    arg_3 => 500, -- max_value = 100
+    ^

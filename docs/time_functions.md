@@ -4,7 +4,7 @@
 
 # Time functions
 
-ZetaSQL supports the following time functions.
+GoogleSQL supports the following time functions.
 
 ## Function list
 
@@ -18,7 +18,7 @@ ZetaSQL supports the following time functions.
   <tbody>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/time_functions.md#current_time"><code>CURRENT_TIME</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/time_functions.md#current_time"><code>CURRENT_TIME</code></a>
 </td>
   <td>
     Returns the current time as a <code>TIME</code> value.
@@ -26,7 +26,7 @@ ZetaSQL supports the following time functions.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/time_functions.md#extract"><code>EXTRACT</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/time_functions.md#extract"><code>EXTRACT</code></a>
 </td>
   <td>
     Extracts part of a <code>TIME</code> value.
@@ -34,7 +34,7 @@ ZetaSQL supports the following time functions.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/time_functions.md#format_time"><code>FORMAT_TIME</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/time_functions.md#format_time"><code>FORMAT_TIME</code></a>
 </td>
   <td>
     Formats a <code>TIME</code> value according to the specified format string.
@@ -42,7 +42,7 @@ ZetaSQL supports the following time functions.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/time_functions.md#parse_time"><code>PARSE_TIME</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/time_functions.md#parse_time"><code>PARSE_TIME</code></a>
 </td>
   <td>
     Converts a <code>STRING</code> value to a <code>TIME</code> value.
@@ -51,7 +51,7 @@ ZetaSQL supports the following time functions.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/time_functions.md#time"><code>TIME</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/time_functions.md#time"><code>TIME</code></a>
 </td>
   <td>
     Constructs a <code>TIME</code> value.
@@ -59,7 +59,7 @@ ZetaSQL supports the following time functions.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/time_functions.md#time_add"><code>TIME_ADD</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/time_functions.md#time_add"><code>TIME_ADD</code></a>
 </td>
   <td>
     Adds a specified time interval to a <code>TIME</code> value.
@@ -67,7 +67,7 @@ ZetaSQL supports the following time functions.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/time_functions.md#time_diff"><code>TIME_DIFF</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/time_functions.md#time_diff"><code>TIME_DIFF</code></a>
 </td>
   <td>
     Gets the number of unit boundaries between two <code>TIME</code> values at
@@ -76,7 +76,7 @@ ZetaSQL supports the following time functions.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/time_functions.md#time_sub"><code>TIME_SUB</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/time_functions.md#time_sub"><code>TIME_SUB</code></a>
 </td>
   <td>
     Subtracts a specified time interval from a <code>TIME</code> value.
@@ -84,7 +84,7 @@ ZetaSQL supports the following time functions.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/time_functions.md#time_trunc"><code>TIME_TRUNC</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/time_functions.md#time_trunc"><code>TIME_TRUNC</code></a>
 </td>
   <td>
     Truncates a <code>TIME</code> value at a particular granularity.
@@ -96,11 +96,11 @@ ZetaSQL supports the following time functions.
 
 ## `CURRENT_TIME`
 
-```zetasql
+```googlesql
 CURRENT_TIME([time_zone])
 ```
 
-```zetasql
+```googlesql
 CURRENT_TIME
 ```
 
@@ -123,7 +123,7 @@ yield the same value.
 
 **Example**
 
-```zetasql
+```googlesql
 SELECT CURRENT_TIME() as now;
 
 /*----------------------------+
@@ -133,11 +133,11 @@ SELECT CURRENT_TIME() as now;
  +----------------------------*/
 ```
 
-[time-link-to-timezone-definitions]: https://github.com/google/zetasql/blob/master/docs/timestamp_functions.md#timezone_definitions
+[time-link-to-timezone-definitions]: https://github.com/google/googlesql/blob/master/docs/timestamp_functions.md#timezone_definitions
 
 ## `EXTRACT`
 
-```zetasql
+```googlesql
 EXTRACT(part FROM time_expression)
 ```
 
@@ -167,7 +167,7 @@ seconds, `EXTRACT` truncates the millisecond and microsecond values.
 In the following example, `EXTRACT` returns a value corresponding to the `HOUR`
 time part.
 
-```zetasql
+```googlesql
 SELECT EXTRACT(HOUR FROM TIME "15:30:00") as hour;
 
 /*------------------+
@@ -179,7 +179,7 @@ SELECT EXTRACT(HOUR FROM TIME "15:30:00") as hour;
 
 ## `FORMAT_TIME`
 
-```zetasql
+```googlesql
 FORMAT_TIME(format_string, time_expr)
 ```
 
@@ -199,7 +199,7 @@ Formats a `TIME` value according to the specified format string.
 
 **Example**
 
-```zetasql
+```googlesql
 SELECT FORMAT_TIME("%R", TIME "15:30:00") as formatted_time;
 
 /*----------------+
@@ -209,11 +209,11 @@ SELECT FORMAT_TIME("%R", TIME "15:30:00") as formatted_time;
  +----------------*/
 ```
 
-[time-format-elements]: https://github.com/google/zetasql/blob/master/docs/format-elements.md#format_elements_date_time
+[time-format-elements]: https://github.com/google/googlesql/blob/master/docs/format-elements.md#format_elements_date_time
 
 ## `PARSE_TIME`
 
-```zetasql
+```googlesql
 PARSE_TIME(format_string, time_string)
 ```
 
@@ -233,7 +233,7 @@ Each element in `time_string` must have a corresponding element in
 `format_string`. The location of each element in `format_string` must match the
 location of each element in `time_string`.
 
-```zetasql
+```googlesql
 -- This works because elements on both sides match.
 SELECT PARSE_TIME("%I:%M:%S", "07:30:00");
 
@@ -267,7 +267,7 @@ function:
 
 **Example**
 
-```zetasql
+```googlesql
 SELECT PARSE_TIME("%H", "15") as parsed_time;
 
 /*-------------+
@@ -277,7 +277,7 @@ SELECT PARSE_TIME("%H", "15") as parsed_time;
  +-------------*/
 ```
 
-```zetasql
+```googlesql
 SELECT PARSE_TIME('%I:%M:%S %p', '2:23:38 pm') AS parsed_time;
 
 /*-------------+
@@ -287,11 +287,11 @@ SELECT PARSE_TIME('%I:%M:%S %p', '2:23:38 pm') AS parsed_time;
  +-------------*/
 ```
 
-[time-format-elements]: https://github.com/google/zetasql/blob/master/docs/format-elements.md#format_elements_date_time
+[time-format-elements]: https://github.com/google/googlesql/blob/master/docs/format-elements.md#format_elements_date_time
 
 ## `TIME`
 
-```zetasql
+```googlesql
 1. TIME(hour, minute, second)
 2. TIME(timestamp, [time_zone])
 3. TIME(datetime)
@@ -315,7 +315,7 @@ SELECT PARSE_TIME('%I:%M:%S %p', '2:23:38 pm') AS parsed_time;
 
 **Example**
 
-```zetasql
+```googlesql
 SELECT
   TIME(15, 30, 00) as time_hms,
   TIME(TIMESTAMP "2008-12-25 15:30:00+08", "America/Los_Angeles") as time_tstz;
@@ -327,7 +327,7 @@ SELECT
  +----------+-----------*/
 ```
 
-```zetasql
+```googlesql
 SELECT TIME(DATETIME "2008-12-25 15:30:00.000000") AS time_dt;
 
 /*----------+
@@ -337,11 +337,11 @@ SELECT TIME(DATETIME "2008-12-25 15:30:00.000000") AS time_dt;
  +----------*/
 ```
 
-[time-link-to-timezone-definitions]: https://github.com/google/zetasql/blob/master/docs/timestamp_functions.md#timezone_definitions
+[time-link-to-timezone-definitions]: https://github.com/google/googlesql/blob/master/docs/timestamp_functions.md#timezone_definitions
 
 ## `TIME_ADD`
 
-```zetasql
+```googlesql
 TIME_ADD(time_expression, INTERVAL int64_expression part)
 ```
 
@@ -368,7 +368,7 @@ value is `00:30:00`.
 
 **Example**
 
-```zetasql
+```googlesql
 SELECT
   TIME "15:30:00" as original_time,
   TIME_ADD(TIME "15:30:00", INTERVAL 10 MINUTE) as later;
@@ -382,7 +382,7 @@ SELECT
 
 ## `TIME_DIFF`
 
-```zetasql
+```googlesql
 TIME_DIFF(end_time, start_time, granularity)
 ```
 
@@ -424,7 +424,7 @@ behaves like `TIMESTAMP_DIFF(TIMESTAMP, TIMESTAMP, PART)`.
 
 **Example**
 
-```zetasql
+```googlesql
 SELECT
   TIME "15:30:00" as first_time,
   TIME "14:35:00" as second_time,
@@ -439,7 +439,7 @@ SELECT
 
 ## `TIME_SUB`
 
-```zetasql
+```googlesql
 TIME_SUB(time_expression, INTERVAL int64_expression part)
 ```
 
@@ -466,7 +466,7 @@ returned value is `23:30:00`.
 
 **Example**
 
-```zetasql
+```googlesql
 SELECT
   TIME "15:30:00" as original_date,
   TIME_SUB(TIME "15:30:00", INTERVAL 10 MINUTE) as earlier;
@@ -480,7 +480,7 @@ SELECT
 
 ## `TIME_TRUNC`
 
-```zetasql
+```googlesql
 TIME_TRUNC(time_value, time_granularity)
 ```
 
@@ -520,7 +520,7 @@ The resulting value is always rounded to the beginning of `granularity`.
 
 **Example**
 
-```zetasql
+```googlesql
 SELECT
   TIME "15:30:00" as original,
   TIME_TRUNC(TIME "15:30:00", HOUR) as truncated;
@@ -534,5 +534,5 @@ SELECT
 
 [time-trunc-granularity-time]: #time_trunc_granularity_time
 
-[time-to-string]: https://github.com/google/zetasql/blob/master/docs/conversion_functions.md#cast
+[time-to-string]: https://github.com/google/googlesql/blob/master/docs/conversion_functions.md#cast
 

@@ -1,0 +1,1643 @@
+# NOTE: CREATE VIEW tests are identical to those for
+# CREATE TABLE AS SELECT tests, except for the keyword and some error messages.
+
+[default language_features=NONE]
+create table tt
+as select 1 a, 2 b
+--
+CreateTableAsSelectStmt
++-name_path=tt
++-column_definition_list=
+| +-ColumnDefinition(name="a", type=INT64, column=tt.a#3)
+| +-ColumnDefinition(name="b", type=INT64, column=tt.b#4)
++-output_column_list=
+| +-$create_as.a#1 AS a [INT64]
+| +-$create_as.b#2 AS b [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=$create_as.[a#1, b#2]
+    +-expr_list=
+    | +-a#1 := Literal(type=INT64, value=1)
+    | +-b#2 := Literal(type=INT64, value=2)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+create table t1 like t2 as select * from KeyValue;
+--
+ERROR: CREATE TABLE LIKE is not supported [at 1:22]
+create table t1 like t2 as select * from KeyValue;
+                     ^
+==
+
+[language_features=NONE,+CREATE_TABLE_LIKE]
+create table t1 like t2 as select * from KeyValue;
+--
+ERROR: Table not found: t2 [at 1:22]
+create table t1 like t2 as select * from KeyValue;
+                     ^
+==
+
+[language_features=NONE,+CREATE_TABLE_LIKE,+CREATE_TABLE_AS_SELECT_COLUMN_LIST]
+create table t1 (a int64) like t2 as select * from KeyValue;
+--
+ERROR: Cannot have both column definition list and LIKE [at 1:32]
+create table t1 (a int64) like t2 as select * from KeyValue;
+                               ^
+==
+
+[language_features=NONE,+CREATE_TABLE_LIKE]
+create table t1 like KeyValue as select 1 a;
+--
+ERROR: The number of columns in the LIKE table does not match the number of columns produced by the query [at 1:22]
+create table t1 like KeyValue as select 1 a;
+                     ^
+==
+
+[language_features=NONE,+CREATE_TABLE_LIKE]
+create table t1 like KeyValue as select 1 a, 2 b;
+--
+ERROR: KeyValue's column 'Value' has type STRING which cannot be coerced from query output type INT64 [at 1:22]
+create table t1 like KeyValue as select 1 a, 2 b;
+                     ^
+==
+
+[language_features=NONE,+CREATE_TABLE_LIKE,+CREATE_TABLE_PARTITION_BY,+CREATE_TABLE_CLUSTER_BY]
+create table t1 like KeyValue partition by Key cluster by Key options(table_option=1) as select * from KeyValue;
+--
+CreateTableAsSelectStmt
++-name_path=t1
++-option_list=
+| +-table_option := Literal(type=INT64, value=1)
++-column_definition_list=
+| +-ColumnDefinition(name="Key", type=INT64, column=t1.Key#1)
+| +-ColumnDefinition(name="Value", type=STRING, column=t1.Value#2)
++-pseudo_column_list=t1.[pseudo_column_int32#5, pseudo_column_kitchensink#6, pseudo_column_timestamp#7]
++-like_table=KeyValue
++-partition_by_list=
+| +-ColumnRef(type=INT64, column=t1.Key#1)
++-cluster_by_list=
+| +-ColumnRef(type=INT64, column=t1.Key#1)
++-output_column_list=
+| +-KeyValue.Key#3 AS Key [INT64]
+| +-KeyValue.Value#4 AS Value [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=KeyValue.[Key#3, Value#4]
+    +-input_scan=
+      +-TableScan(column_list=KeyValue.[Key#3, Value#4], table=KeyValue, column_index_list=[0, 1])
+==
+
+
+create temp table MyTable as select * from KeyValue
+--
+CreateTableAsSelectStmt
++-name_path=MyTable
++-create_scope=CREATE_TEMP
++-column_definition_list=
+| +-ColumnDefinition(name="Key", type=INT64, column=MyTable.Key#3)
+| +-ColumnDefinition(name="Value", type=STRING, column=MyTable.Value#4)
++-output_column_list=
+| +-KeyValue.Key#1 AS Key [INT64]
+| +-KeyValue.Value#2 AS Value [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=KeyValue.[Key#1, Value#2]
+    +-input_scan=
+      +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+==
+
+[statement_context={{|module}}]
+create {{public|private}} table MyTable as select * from KeyValue
+--
+ALTERNATION GROUP: public
+--
+ERROR: CREATE TABLE AS SELECT with PUBLIC or PRIVATE modifiers is not supported [at 1:1]
+create public table MyTable as select * from KeyValue
+^
+--
+ALTERNATION GROUP: private
+--
+ERROR: CREATE TABLE AS SELECT with PUBLIC or PRIVATE modifiers is not supported [at 1:1]
+create private table MyTable as select * from KeyValue
+^
+--
+ALTERNATION GROUP: module,public
+--
+ERROR: Statement not supported inside modules: CreateTableStatement [at 1:1]
+create public table MyTable as select * from KeyValue
+^
+--
+ALTERNATION GROUP: module,private
+--
+ERROR: Statement not supported inside modules: CreateTableStatement [at 1:1]
+create private table MyTable as select * from KeyValue
+^
+==
+
+create temporary table X
+options(x=5, y='abc', z=@test_param_array, z=abc,
+        sum=1+2, func=concat('abc', @test_param_string))
+as
+select key, key k1, key k2, key+1 k3 from keYvalue limit 5
+--
+CreateTableAsSelectStmt
++-name_path=X
++-create_scope=CREATE_TEMP
++-option_list=
+| +-x := Literal(type=INT64, value=5)
+| +-y := Literal(type=STRING, value="abc")
+| +-z := Parameter(type=ARRAY<INT32>, name="test_param_array")
+| +-z := Literal(type=STRING, value="abc")
+| +-sum :=
+| | +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+| |   +-Literal(type=INT64, value=1)
+| |   +-Literal(type=INT64, value=2)
+| +-func :=
+|   +-FunctionCall(GoogleSQL:concat(STRING, repeated(1) STRING) -> STRING)
+|     +-Literal(type=STRING, value="abc")
+|     +-Parameter(type=STRING, name="test_param_string")
++-column_definition_list=
+| +-ColumnDefinition(name="key", type=INT64, column=X.key#4)
+| +-ColumnDefinition(name="k1", type=INT64, column=X.k1#5)
+| +-ColumnDefinition(name="k2", type=INT64, column=X.k2#6)
+| +-ColumnDefinition(name="k3", type=INT64, column=X.k3#7)
++-output_column_list=
+| +-KeyValue.Key#1 AS key [INT64]
+| +-KeyValue.Key#1 AS k1 [INT64]
+| +-KeyValue.Key#1 AS k2 [INT64]
+| +-$create_as.k3#3 AS k3 [INT64]
++-query=
+  +-LimitOffsetScan
+    +-column_list=[KeyValue.Key#1, KeyValue.Key#1, KeyValue.Key#1, $create_as.k3#3]
+    +-input_scan=
+    | +-ProjectScan
+    |   +-column_list=[KeyValue.Key#1, KeyValue.Key#1, KeyValue.Key#1, $create_as.k3#3]
+    |   +-expr_list=
+    |   | +-k3#3 :=
+    |   |   +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |   |     +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+    |   |     +-Literal(type=INT64, value=1)
+    |   +-input_scan=
+    |     +-TableScan(column_list=[KeyValue.Key#1], table=KeyValue, column_index_list=[0])
+    +-limit=
+      +-Literal(type=INT64, value=5)
+==
+
+# Subqueries are not disallowed in options.
+create temporary table X
+options( subq=(select 1) )
+as
+select key from keYvalue limit 5
+--
+CreateTableAsSelectStmt
++-name_path=X
++-create_scope=CREATE_TEMP
++-option_list=
+| +-subq :=
+|   +-SubqueryExpr
+|     +-type=INT64
+|     +-subquery_type=SCALAR
+|     +-subquery=
+|       +-ProjectScan
+|         +-column_list=[$expr_subquery.$col1#1]
+|         +-expr_list=
+|         | +-$col1#1 := Literal(type=INT64, value=1)
+|         +-input_scan=
+|           +-SingleRowScan
++-column_definition_list=
+| +-ColumnDefinition(name="key", type=INT64, column=X.key#4)
++-output_column_list=
+| +-KeyValue.Key#2 AS key [INT64]
++-query=
+  +-LimitOffsetScan
+    +-column_list=[KeyValue.Key#2]
+    +-input_scan=
+    | +-ProjectScan
+    |   +-column_list=[KeyValue.Key#2]
+    |   +-input_scan=
+    |     +-TableScan(column_list=[KeyValue.Key#2], table=KeyValue, column_index_list=[0])
+    +-limit=
+      +-Literal(type=INT64, value=5)
+==
+
+# Inside options, no columns are visible.  Single identifiers are
+# resolved as string literals.
+create temporary table X
+options(k=key)
+as
+select key from keYvalue
+--
+CreateTableAsSelectStmt
++-name_path=X
++-create_scope=CREATE_TEMP
++-option_list=
+| +-k := Literal(type=STRING, value="key")
++-column_definition_list=
+| +-ColumnDefinition(name="key", type=INT64, column=X.key#3)
++-output_column_list=
+| +-KeyValue.Key#1 AS key [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[KeyValue.Key#1]
+    +-input_scan=
+      +-TableScan(column_list=[KeyValue.Key#1], table=KeyValue, column_index_list=[0])
+==
+
+create temporary table X
+options(k=a.b)
+as
+select key from keYvalue
+--
+ERROR: Unrecognized name: a [at 2:11]
+options(k=a.b)
+          ^
+==
+
+create table Z
+options ()
+as select 1 c;
+--
+CreateTableAsSelectStmt
++-name_path=Z
++-column_definition_list=
+| +-ColumnDefinition(name="c", type=INT64, column=Z.c#2)
++-output_column_list=
+| +-$create_as.c#1 AS c [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$create_as.c#1]
+    +-expr_list=
+    | +-c#1 := Literal(type=INT64, value=1)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+create table Z
+options (abc=def, xyz=@bad_param)
+as select 1 c;
+--
+ERROR: Query parameter 'bad_param' not found [at 2:23]
+options (abc=def, xyz=@bad_param)
+                      ^
+==
+
+create table a.b.`c.d`.`e f g`.kk
+as select 1 c
+--
+CreateTableAsSelectStmt
++-name_path=a.b.`c.d`.`e f g`.kk
++-column_definition_list=
+| +-ColumnDefinition(name="c", type=INT64, column=a.b.`c.d`.`e f g`.kk.c#2)
++-output_column_list=
+| +-$create_as.c#1 AS c [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$create_as.c#1]
+    +-expr_list=
+    | +-c#1 := Literal(type=INT64, value=1)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Anonymous columns not allowed.
+create table tt
+as select 1
+--
+ERROR: CREATE TABLE columns must be named, but column 1 has no name [at 2:4]
+as select 1
+   ^
+==
+
+# Duplicate column names not allowed.
+create table tt
+options (abc=def)
+as select 1 aaA, 2 Aaa
+--
+ERROR: CREATE TABLE has columns with duplicate name Aaa [at 3:4]
+as select 1 aaA, 2 Aaa
+   ^
+==
+
+# Create a value table with SELECT AS STRUCT.
+# Duplicate and anonymous fields are allowed inside the struct.
+[language_features=NONE,{{|+CREATE_TABLE_AS_SELECT_COLUMN_LIST}}]
+create table tt
+as select as struct 1 a, 2, 3 c, 4 c
+--
+
+CreateTableAsSelectStmt
++-name_path=tt
++-column_definition_list=
+| +-ColumnDefinition(name="$struct", type=STRUCT<a INT64, INT64, c INT64, c INT64>, column=tt.$struct#6)
++-is_value_table=TRUE
++-output_column_list=
+| +-$make_struct.$struct#5 AS `$struct` [STRUCT<a INT64, INT64, c INT64, c INT64>]
++-query=
+  +-ProjectScan
+    +-column_list=[$make_struct.$struct#5]
+    +-expr_list=
+    | +-$struct#5 :=
+    |   +-MakeStruct
+    |     +-type=STRUCT<a INT64, INT64, c INT64, c INT64>
+    |     +-field_list=
+    |       +-ColumnRef(type=INT64, column=$create_as.a#1)
+    |       +-ColumnRef(type=INT64, column=$create_as.$col2#2)
+    |       +-ColumnRef(type=INT64, column=$create_as.c#3)
+    |       +-ColumnRef(type=INT64, column=$create_as.c#4)
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=$create_as.[a#1, $col2#2, c#3, c#4]
+        +-expr_list=
+        | +-a#1 := Literal(type=INT64, value=1)
+        | +-$col2#2 := Literal(type=INT64, value=2)
+        | +-c#3 := Literal(type=INT64, value=3)
+        | +-c#4 := Literal(type=INT64, value=4)
+        +-input_scan=
+          +-SingleRowScan
+==
+
+# Create a value table with SELECT AS ProtoName.
+create table tt
+as select as `googlesql_test.TestExtraPB` 55 int32_val1
+--
+CreateTableAsSelectStmt
++-name_path=tt
++-column_definition_list=
+| +-ColumnDefinition(name="$proto", type=PROTO<googlesql_test.TestExtraPB>, column=tt.$proto#3)
++-is_value_table=TRUE
++-output_column_list=
+| +-$make_proto.$proto#2 AS `$proto` [PROTO<googlesql_test.TestExtraPB>]
++-query=
+  +-ProjectScan
+    +-column_list=[$make_proto.$proto#2]
+    +-expr_list=
+    | +-$proto#2 :=
+    |   +-MakeProto
+    |     +-type=PROTO<googlesql_test.TestExtraPB>
+    |     +-field_list=
+    |       +-int32_val1 := Literal(type=INT32, value=55)
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[$create_as.int32_val1#1]
+        +-expr_list=
+        | +-int32_val1#1 := Literal(type=INT64, value=55)
+        +-input_scan=
+          +-SingleRowScan
+==
+
+create or replace table x.y as (select 1 a)
+--
+CreateTableAsSelectStmt
++-name_path=x.y
++-create_mode=CREATE_OR_REPLACE
++-column_definition_list=
+| +-ColumnDefinition(name="a", type=INT64, column=x.y.a#2)
++-output_column_list=
+| +-$create_as.a#1 AS a [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$create_as.a#1]
+    +-expr_list=
+    | +-a#1 := Literal(type=INT64, value=1)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+create table if not exists x.y options (x=y) as (select 1 a)
+--
+CreateTableAsSelectStmt
++-name_path=x.y
++-create_mode=CREATE_IF_NOT_EXISTS
++-option_list=
+| +-x := Literal(type=STRING, value="y")
++-column_definition_list=
+| +-ColumnDefinition(name="a", type=INT64, column=x.y.a#2)
++-output_column_list=
+| +-$create_as.a#1 AS a [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$create_as.a#1]
+    +-expr_list=
+    | +-a#1 := Literal(type=INT64, value=1)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+create or replace table if not exists T as (select 1 a)
+--
+ERROR: CREATE TABLE AS SELECT cannot have both OR REPLACE and IF NOT EXISTS [at 1:1]
+create or replace table if not exists T as (select 1 a)
+^
+==
+
+# Create table with a WITH statement.
+create temp table T as
+WITH t1 as (select 1 key),
+     t2 as (select key from KeyValue),
+     t3 as (select * from t1 union all select * from t2)
+select * from t3 where key=5
+--
+CreateTableAsSelectStmt
++-name_path=T
++-create_scope=CREATE_TEMP
++-column_definition_list=
+| +-ColumnDefinition(name="key", type=INT64, column=T.key#8)
++-output_column_list=
+| +-t3.key#7 AS key [INT64]
++-query=
+  +-WithScan
+    +-column_list=[t3.key#7]
+    +-with_entry_list=
+    | +-WithEntry
+    | | +-with_query_name="t1"
+    | | +-with_subquery=
+    | |   +-ProjectScan
+    | |     +-column_list=[t1.key#1]
+    | |     +-expr_list=
+    | |     | +-key#1 := Literal(type=INT64, value=1)
+    | |     +-input_scan=
+    | |       +-SingleRowScan
+    | +-WithEntry
+    | | +-with_query_name="t2"
+    | | +-with_subquery=
+    | |   +-ProjectScan
+    | |     +-column_list=[KeyValue.Key#2]
+    | |     +-input_scan=
+    | |       +-TableScan(column_list=[KeyValue.Key#2], table=KeyValue, column_index_list=[0])
+    | +-WithEntry
+    |   +-with_query_name="t3"
+    |   +-with_subquery=
+    |     +-SetOperationScan
+    |       +-column_list=[$union_all.key#6]
+    |       +-op_type=UNION_ALL
+    |       +-input_item_list=
+    |         +-SetOperationItem
+    |         | +-scan=
+    |         | | +-ProjectScan
+    |         | |   +-column_list=[t1.key#4]
+    |         | |   +-input_scan=
+    |         | |     +-WithRefScan(column_list=[t1.key#4], with_query_name="t1")
+    |         | +-output_column_list=[t1.key#4]
+    |         +-SetOperationItem
+    |           +-scan=
+    |           | +-ProjectScan
+    |           |   +-column_list=[t2.key#5]
+    |           |   +-input_scan=
+    |           |     +-WithRefScan(column_list=[t2.key#5], with_query_name="t2")
+    |           +-output_column_list=[t2.key#5]
+    +-query=
+      +-ProjectScan
+        +-column_list=[t3.key#7]
+        +-input_scan=
+          +-FilterScan
+            +-column_list=[t3.key#7]
+            +-input_scan=
+            | +-WithRefScan(column_list=[t3.key#7], with_query_name="t3")
+            +-filter_expr=
+              +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+                +-ColumnRef(type=INT64, column=t3.key#7)
+                +-Literal(type=INT64, value=5)
+==
+
+# Create table with a WITH statement with an error in a with subquery.
+create temp table T as
+WITH t1 as (select 1 key),
+     t2 as (select key from xxx),
+     t3 as (select * from t2)
+select * from t3
+--
+ERROR: Table not found: xxx [at 3:29]
+     t2 as (select key from xxx),
+                            ^
+==
+
+# Create table with a WITH statement with an error in the final query.
+create temp table T as
+WITH t1 as (select 1 key)
+select * from xxx
+--
+ERROR: Table not found: xxx [at 3:15]
+select * from xxx
+              ^
+==
+
+# This example shows a problem in column de-duplication when * and explicit
+# column references are both present.
+# TODO: De-duplicate column Value#2 from the ProjectScan.
+create temp table T as select *, Value as x from KeyValue
+--
+CreateTableAsSelectStmt
++-name_path=T
++-create_scope=CREATE_TEMP
++-column_definition_list=
+| +-ColumnDefinition(name="Key", type=INT64, column=T.Key#3)
+| +-ColumnDefinition(name="Value", type=STRING, column=T.Value#4)
+| +-ColumnDefinition(name="x", type=STRING, column=T.x#5)
++-output_column_list=
+| +-KeyValue.Key#1 AS Key [INT64]
+| +-KeyValue.Value#2 AS Value [STRING]
+| +-KeyValue.Value#2 AS x [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=KeyValue.[Key#1, Value#2, Value#2]
+    +-input_scan=
+      +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+==
+
+# Create table with both column list and SELECT.
+# The output column list and the column definition list have different column
+# names. One of the table element in the table element list is not a
+# column definition. 2 of the columns receive the value from the same output
+# column. One of the output columns has no name. The types are
+# assignment-coerced (INT64->INT32).
+[language_features=NONE,{{|+CREATE_TABLE_AS_SELECT_COLUMN_LIST}}]
+create temp table MyTable
+(x INT32, primary key(z,x), y STRING, z INT64, y2 STRING)
+as select *, CAST(NULL AS INT32), Value from KeyValue
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: CREATE TABLE AS SELECT with column definition list is unsupported [at 2:1]
+(x INT32, primary key(z,x), y STRING, z INT64, y2 STRING)
+^
+--
+ALTERNATION GROUP: +CREATE_TABLE_AS_SELECT_COLUMN_LIST
+--
+CreateTableAsSelectStmt
++-name_path=MyTable
++-create_scope=CREATE_TEMP
++-column_definition_list=
+| +-ColumnDefinition(name="x", type=INT32, column=MyTable.x#1)
+| +-ColumnDefinition(name="y", type=STRING, column=MyTable.y#2)
+| +-ColumnDefinition(name="z", type=INT64, column=MyTable.z#3)
+| +-ColumnDefinition(name="y2", type=STRING, column=MyTable.y2#4)
++-primary_key=
+| +-PrimaryKey(column_offset_list=[2, 0], column_name_list=[z, x])
++-output_column_list=
+| +-$create_as_cast.Key#8 AS x [INT32]
+| +-KeyValue.Value#6 AS y [STRING]
+| +-$create_as_cast.$col2#9 AS z [INT64]
+| +-KeyValue.Value#6 AS y2 [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$create_as_cast.Key#8, KeyValue.Value#6, $create_as_cast.$col2#9, KeyValue.Value#6]
+    +-expr_list=
+    | +-Key#8 :=
+    | | +-Cast(INT64 -> INT32)
+    | |   +-ColumnRef(type=INT64, column=KeyValue.Key#5)
+    | +-$col2#9 := Literal(type=INT64, value=NULL, has_explicit_type=TRUE)
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[KeyValue.Key#5, KeyValue.Value#6, $create_as.$col2#7, KeyValue.Value#6]
+        +-expr_list=
+        | +-$col2#7 := Literal(type=INT32, value=NULL, has_explicit_type=TRUE)
+        +-input_scan=
+          +-TableScan(column_list=KeyValue.[Key#5, Value#6], table=KeyValue, column_index_list=[0, 1])
+==
+
+# Select the same column from the table twice to populate two columns in a
+# created table, but for one column the types match and for the other column
+# they do not match.  This should add a coercion for one, but not the other.
+[language_features=NONE,+CREATE_TABLE_AS_SELECT_COLUMN_LIST]
+CREATE TEMP TABLE MyTable(x INT32, y INT64)
+AS SELECT key, key FROM KeyValue;
+--
+CreateTableAsSelectStmt
++-name_path=MyTable
++-create_scope=CREATE_TEMP
++-column_definition_list=
+| +-ColumnDefinition(name="x", type=INT32, column=MyTable.x#1)
+| +-ColumnDefinition(name="y", type=INT64, column=MyTable.y#2)
++-output_column_list=
+| +-$create_as_cast.Key#5 AS x [INT32]
+| +-KeyValue.Key#3 AS y [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$create_as_cast.Key#5, KeyValue.Key#3]
+    +-expr_list=
+    | +-Key#5 :=
+    |   +-Cast(INT64 -> INT32)
+    |     +-ColumnRef(type=INT64, column=KeyValue.Key#3)
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=KeyValue.[Key#3, Key#3]
+        +-input_scan=
+          +-TableScan(column_list=[KeyValue.Key#3], table=KeyValue, column_index_list=[0])
+==
+
+# Create table with empty column list and select.
+# b/114772419 Primary Key is not supported without explicit column list.
+[language_features=NONE,{{|+CREATE_TABLE_AS_SELECT_COLUMN_LIST}}]
+create temp table MyTable (primary key(x)) as select 1 x
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: CREATE TABLE AS SELECT with column definition list is unsupported [at 1:27]
+create temp table MyTable (primary key(x)) as select 1 x
+                          ^
+--
+ALTERNATION GROUP: +CREATE_TABLE_AS_SELECT_COLUMN_LIST
+--
+ERROR: Primary key definition is only allowed with explicit column definitions in CREATE TABLE AS SELECT [at 1:1]
+create temp table MyTable (primary key(x)) as select 1 x
+^
+==
+
+[language_features=NONE,+CREATE_TABLE_AS_SELECT_COLUMN_LIST{{|,+CREATE_TABLE_NOT_NULL|,+CREATE_TABLE_NOT_NULL,+CREATE_TABLE_FIELD_ANNOTATIONS}}]
+create table t1 (
+  c1 int32 not null primary key hidden OPTIONS(a=1),
+  c2 STRUCT<int64, z string not null OPTIONS(y=3)>,
+  c3 STRUCT<> not null
+) as select key, (key, value), struct<>() from KeyValue
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: NOT NULL constraint is unsupported [at 2:12]
+  c1 int32 not null primary key hidden OPTIONS(a=1),
+           ^
+--
+ALTERNATION GROUP: ,+CREATE_TABLE_NOT_NULL
+--
+ERROR: Nested column attributes are unsupported [at 3:29]
+  c2 STRUCT<int64, z string not null OPTIONS(y=3)>,
+                            ^
+--
+ALTERNATION GROUP: ,+CREATE_TABLE_NOT_NULL,+CREATE_TABLE_FIELD_ANNOTATIONS
+--
+CreateTableAsSelectStmt
++-name_path=t1
++-column_definition_list=
+| +-ColumnDefinition
+| | +-name="c1"
+| | +-type=INT32
+| | +-annotations=
+| | | +-ColumnAnnotations
+| | |   +-not_null=TRUE
+| | |   +-option_list=
+| | |     +-a := Literal(type=INT64, value=1)
+| | +-is_hidden=TRUE
+| | +-column=t1.c1#1
+| +-ColumnDefinition
+| | +-name="c2"
+| | +-type=STRUCT<INT64, z STRING>
+| | +-annotations=
+| | | +-ColumnAnnotations
+| | |   +-child_list=
+| | |     +-ColumnAnnotations
+| | |     +-ColumnAnnotations
+| | |       +-not_null=TRUE
+| | |       +-option_list=
+| | |         +-y := Literal(type=INT64, value=3)
+| | +-column=t1.c2#2
+| +-ColumnDefinition
+|   +-name="c3"
+|   +-type=STRUCT<>
+|   +-annotations=
+|   | +-ColumnAnnotations(not_null=TRUE)
+|   +-column=t1.c3#3
++-primary_key=
+| +-PrimaryKey(column_offset_list=[0], column_name_list=[c1])
++-output_column_list=
+| +-$create_as_cast.Key#8 AS c1 [INT32]
+| +-$create_as_cast.$col2#9 AS c2 [STRUCT<INT64, z STRING>]
+| +-$create_as.$col3#7 AS c3 [STRUCT<>]
++-query=
+  +-ProjectScan
+    +-column_list=[$create_as_cast.Key#8, $create_as_cast.$col2#9, $create_as.$col3#7]
+    +-expr_list=
+    | +-Key#8 :=
+    | | +-Cast(INT64 -> INT32)
+    | |   +-ColumnRef(type=INT64, column=KeyValue.Key#4)
+    | +-$col2#9 :=
+    |   +-Cast(STRUCT<INT64, STRING> -> STRUCT<INT64, z STRING>)
+    |     +-ColumnRef(type=STRUCT<INT64, STRING>, column=$create_as.$col2#6)
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[KeyValue.Key#4, $create_as.$col2#6, $create_as.$col3#7]
+        +-expr_list=
+        | +-$col2#6 :=
+        | | +-MakeStruct
+        | |   +-type=STRUCT<INT64, STRING>
+        | |   +-field_list=
+        | |     +-ColumnRef(type=INT64, column=KeyValue.Key#4)
+        | |     +-ColumnRef(type=STRING, column=KeyValue.Value#5)
+        | +-$col3#7 := Literal(type=STRUCT<>, value={}, has_explicit_type=TRUE)
+        +-input_scan=
+          +-TableScan(column_list=KeyValue.[Key#4, Value#5], table=KeyValue, column_index_list=[0, 1])
+==
+
+# The SELECT list has too many columns.
+[language_features=NONE,+CREATE_TABLE_AS_SELECT_COLUMN_LIST]
+create table t1 (x int64, y int64) as select 1 Z, 2 X, 3 A
+--
+ERROR: The number of columns in the column definition list does not match the number of columns produced by the query [at 1:17]
+create table t1 (x int64, y int64) as select 1 Z, 2 X, 3 A
+                ^
+==
+
+# The SELECT list has too few columns.
+[language_features=NONE,+CREATE_TABLE_AS_SELECT_COLUMN_LIST]
+create temp table MyTable (x INT32, y STRING, b bool) as select * from KeyValue
+--
+ERROR: The number of columns in the column definition list does not match the number of columns produced by the query [at 1:27]
+create temp table MyTable (x INT32, y STRING, b bool) as select * from KeyValue
+                          ^
+==
+
+[language_features=NONE,+CREATE_TABLE_AS_SELECT_COLUMN_LIST]
+create table t1 (x int64, primary key(x), y string) as select 1 x, 2 y
+--
+ERROR: Column 'y' has type STRING which cannot be coerced from query output type INT64 [at 1:43]
+create table t1 (x int64, primary key(x), y string) as select 1 x, 2 y
+                                          ^
+==
+
+# Untyped literals (nulls and empty arrays) are coerced if possible.
+[language_features=NONE,+CREATE_TABLE_AS_SELECT_COLUMN_LIST]
+create table t1 (x string, y array<bytes>) as select null, []
+--
+CreateTableAsSelectStmt
++-name_path=t1
++-column_definition_list=
+| +-ColumnDefinition(name="x", type=STRING, column=t1.x#1)
+| +-ColumnDefinition(name="y", type=ARRAY<BYTES>, column=t1.y#2)
++-output_column_list=
+| +-$create_as_cast.$col1#5 AS x [STRING]
+| +-$create_as_cast.$col2#6 AS y [ARRAY<BYTES>]
++-query=
+  +-ProjectScan
+    +-column_list=$create_as_cast.[$col1#5, $col2#6]
+    +-expr_list=
+    | +-$col1#5 := Literal(type=STRING, value=NULL)
+    | +-$col2#6 := Literal(type=ARRAY<BYTES>, value=[])
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=$create_as.[$col1#3, $col2#4]
+        +-expr_list=
+        | +-$col1#3 := Literal(type=INT64, value=NULL)
+        | +-$col2#4 := Literal(type=ARRAY<INT64>, value=[])
+        +-input_scan=
+          +-SingleRowScan
+==
+
+# Typed null literal is not coerced.
+[language_features=NONE,+CREATE_TABLE_AS_SELECT_COLUMN_LIST]
+create table t1 (x string) as select cast(null as bytes)
+--
+ERROR: Column 'x' has type STRING which cannot be coerced from query output type BYTES [at 1:18]
+create table t1 (x string) as select cast(null as bytes)
+                 ^
+==
+
+# Typed empty array literal is not coerced.
+[language_features=NONE,+CREATE_TABLE_AS_SELECT_COLUMN_LIST]
+create table t1 (x array<string>) as select array<int64>[]
+--
+ERROR: Column 'x' has type ARRAY<STRING> which cannot be coerced from query output type ARRAY<INT64> [at 1:18]
+create table t1 (x array<string>) as select array<int64>[]
+                 ^
+==
+
+# Non-empty array literal is not coerced.
+[language_features=NONE,+CREATE_TABLE_AS_SELECT_COLUMN_LIST]
+create table t1 (x array<string>) as select [null]
+--
+ERROR: Column 'x' has type ARRAY<STRING> which cannot be coerced from query output type ARRAY<INT64> [at 1:18]
+create table t1 (x array<string>) as select [null]
+                 ^
+==
+
+# Empty array literal cannot be coerced to non-array types.
+[language_features=NONE,+CREATE_TABLE_AS_SELECT_COLUMN_LIST]
+create table t1 (x string) as select []
+--
+ERROR: Could not cast literal [] to type STRING [at 1:38]
+create table t1 (x string) as select []
+                                     ^
+==
+
+[language_features=NONE,+CREATE_TABLE_AS_SELECT_COLUMN_LIST{{|,+CREATE_TABLE_PARTITION_BY}}]
+create table t1 (x int64, y string) partition by y as select 1 x, 'foo' as y
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: CREATE TABLE AS SELECT with PARTITION BY is unsupported [at 1:37]
+create table t1 (x int64, y string) partition by y as select 1 x, 'foo' as y
+                                    ^
+--
+ALTERNATION GROUP: ,+CREATE_TABLE_PARTITION_BY
+--
+CreateTableAsSelectStmt
++-name_path=t1
++-column_definition_list=
+| +-ColumnDefinition(name="x", type=INT64, column=t1.x#1)
+| +-ColumnDefinition(name="y", type=STRING, column=t1.y#2)
++-pseudo_column_list=t1.[pseudo_column_int32#5, pseudo_column_kitchensink#6, pseudo_column_timestamp#7]
++-partition_by_list=
+| +-ColumnRef(type=STRING, column=t1.y#2)
++-output_column_list=
+| +-$create_as.x#3 AS x [INT64]
+| +-$create_as.y#4 AS y [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=$create_as.[x#3, y#4]
+    +-expr_list=
+    | +-x#3 := Literal(type=INT64, value=1)
+    | +-y#4 := Literal(type=STRING, value="foo")
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# PARTITION BY without an explicit column list
+[language_features=NONE,+CREATE_TABLE_PARTITION_BY]
+create table t1 partition by x, y as
+select 1 as a, 'foo' as y, key, value as x
+from KeyValue
+--
+CreateTableAsSelectStmt
++-name_path=t1
++-column_definition_list=
+| +-ColumnDefinition(name="a", type=INT64, column=t1.a#5)
+| +-ColumnDefinition(name="y", type=STRING, column=t1.y#6)
+| +-ColumnDefinition(name="key", type=INT64, column=t1.key#7)
+| +-ColumnDefinition(name="x", type=STRING, column=t1.x#8)
++-pseudo_column_list=t1.[pseudo_column_int32#9, pseudo_column_kitchensink#10, pseudo_column_timestamp#11]
++-partition_by_list=
+| +-ColumnRef(type=STRING, column=t1.x#8)
+| +-ColumnRef(type=STRING, column=t1.y#6)
++-output_column_list=
+| +-$create_as.a#3 AS a [INT64]
+| +-$create_as.y#4 AS y [STRING]
+| +-KeyValue.Key#1 AS key [INT64]
+| +-KeyValue.Value#2 AS x [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$create_as.a#3, $create_as.y#4, KeyValue.Key#1, KeyValue.Value#2]
+    +-expr_list=
+    | +-a#3 := Literal(type=INT64, value=1)
+    | +-y#4 := Literal(type=STRING, value="foo")
+    +-input_scan=
+      +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+==
+
+# PARTITION BY with a pseudo column
+[language_features=NONE,+CREATE_TABLE_PARTITION_BY]
+create table t1 partition by x, pseudo_column_timestamp, y as
+select 1 as a, 'foo' as y, key, value as x
+from KeyValue
+--
+CreateTableAsSelectStmt
++-name_path=t1
++-column_definition_list=
+| +-ColumnDefinition(name="a", type=INT64, column=t1.a#5)
+| +-ColumnDefinition(name="y", type=STRING, column=t1.y#6)
+| +-ColumnDefinition(name="key", type=INT64, column=t1.key#7)
+| +-ColumnDefinition(name="x", type=STRING, column=t1.x#8)
++-pseudo_column_list=t1.[pseudo_column_int32#9, pseudo_column_kitchensink#10, pseudo_column_timestamp#11]
++-partition_by_list=
+| +-ColumnRef(type=STRING, column=t1.x#8)
+| +-ColumnRef(type=TIMESTAMP, column=t1.pseudo_column_timestamp#11)
+| +-ColumnRef(type=STRING, column=t1.y#6)
++-output_column_list=
+| +-$create_as.a#3 AS a [INT64]
+| +-$create_as.y#4 AS y [STRING]
+| +-KeyValue.Key#1 AS key [INT64]
+| +-KeyValue.Value#2 AS x [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$create_as.a#3, $create_as.y#4, KeyValue.Key#1, KeyValue.Value#2]
+    +-expr_list=
+    | +-a#3 := Literal(type=INT64, value=1)
+    | +-y#4 := Literal(type=STRING, value="foo")
+    +-input_scan=
+      +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+==
+
+[language_features=NONE,+CREATE_TABLE_AS_SELECT_COLUMN_LIST{{|,+CREATE_TABLE_CLUSTER_BY}}]
+create table t1 (x int64) cluster by x as select 1 x
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: CREATE TABLE AS SELECT with CLUSTER BY is unsupported [at 1:27]
+create table t1 (x int64) cluster by x as select 1 x
+                          ^
+--
+ALTERNATION GROUP: ,+CREATE_TABLE_CLUSTER_BY
+--
+CreateTableAsSelectStmt
++-name_path=t1
++-column_definition_list=
+| +-ColumnDefinition(name="x", type=INT64, column=t1.x#1)
++-pseudo_column_list=t1.[pseudo_column_int32#3, pseudo_column_kitchensink#4, pseudo_column_timestamp#5]
++-cluster_by_list=
+| +-ColumnRef(type=INT64, column=t1.x#1)
++-output_column_list=
+| +-$create_as.x#2 AS x [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$create_as.x#2]
+    +-expr_list=
+    | +-x#2 := Literal(type=INT64, value=1)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# CLUSTER BY without an explicit column list
+[language_features=NONE,+CREATE_TABLE_CLUSTER_BY]
+create table t1 cluster by x, y as
+select 1 as a, 'foo' as y, key, value as x
+from KeyValue
+--
+CreateTableAsSelectStmt
++-name_path=t1
++-column_definition_list=
+| +-ColumnDefinition(name="a", type=INT64, column=t1.a#5)
+| +-ColumnDefinition(name="y", type=STRING, column=t1.y#6)
+| +-ColumnDefinition(name="key", type=INT64, column=t1.key#7)
+| +-ColumnDefinition(name="x", type=STRING, column=t1.x#8)
++-pseudo_column_list=t1.[pseudo_column_int32#9, pseudo_column_kitchensink#10, pseudo_column_timestamp#11]
++-cluster_by_list=
+| +-ColumnRef(type=STRING, column=t1.x#8)
+| +-ColumnRef(type=STRING, column=t1.y#6)
++-output_column_list=
+| +-$create_as.a#3 AS a [INT64]
+| +-$create_as.y#4 AS y [STRING]
+| +-KeyValue.Key#1 AS key [INT64]
+| +-KeyValue.Value#2 AS x [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$create_as.a#3, $create_as.y#4, KeyValue.Key#1, KeyValue.Value#2]
+    +-expr_list=
+    | +-a#3 := Literal(type=INT64, value=1)
+    | +-y#4 := Literal(type=STRING, value="foo")
+    +-input_scan=
+      +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+==
+
+# CLUSTER BY with a pseudo column
+[language_features=NONE,+CREATE_TABLE_CLUSTER_BY]
+create table t1 cluster by x, pseudo_column_timestamp, y as
+select 1 as a, 'foo' as y, key, value as x
+from KeyValue
+--
+CreateTableAsSelectStmt
++-name_path=t1
++-column_definition_list=
+| +-ColumnDefinition(name="a", type=INT64, column=t1.a#5)
+| +-ColumnDefinition(name="y", type=STRING, column=t1.y#6)
+| +-ColumnDefinition(name="key", type=INT64, column=t1.key#7)
+| +-ColumnDefinition(name="x", type=STRING, column=t1.x#8)
++-pseudo_column_list=t1.[pseudo_column_int32#9, pseudo_column_kitchensink#10, pseudo_column_timestamp#11]
++-cluster_by_list=
+| +-ColumnRef(type=STRING, column=t1.x#8)
+| +-ColumnRef(type=TIMESTAMP, column=t1.pseudo_column_timestamp#11)
+| +-ColumnRef(type=STRING, column=t1.y#6)
++-output_column_list=
+| +-$create_as.a#3 AS a [INT64]
+| +-$create_as.y#4 AS y [STRING]
+| +-KeyValue.Key#1 AS key [INT64]
+| +-KeyValue.Value#2 AS x [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$create_as.a#3, $create_as.y#4, KeyValue.Key#1, KeyValue.Value#2]
+    +-expr_list=
+    | +-a#3 := Literal(type=INT64, value=1)
+    | +-y#4 := Literal(type=STRING, value="foo")
+    +-input_scan=
+      +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+==
+
+# PARTITION BY and CLUSTER BY with an explicit column list
+[language_features=NONE,+CREATE_TABLE_AS_SELECT_COLUMN_LIST,+CREATE_TABLE_PARTITION_BY,+CREATE_TABLE_CLUSTER_BY]
+create table t1
+(
+  a INT64,
+  y STRING,
+  key INT64,
+  x STRING
+)
+partition by x, y cluster by a as
+select 1 as a, 'foo' as y, key, value as x
+from KeyValue
+--
+CreateTableAsSelectStmt
++-name_path=t1
++-column_definition_list=
+| +-ColumnDefinition(name="a", type=INT64, column=t1.a#1)
+| +-ColumnDefinition(name="y", type=STRING, column=t1.y#2)
+| +-ColumnDefinition(name="key", type=INT64, column=t1.key#3)
+| +-ColumnDefinition(name="x", type=STRING, column=t1.x#4)
++-pseudo_column_list=t1.[pseudo_column_int32#9, pseudo_column_kitchensink#10, pseudo_column_timestamp#11]
++-partition_by_list=
+| +-ColumnRef(type=STRING, column=t1.x#4)
+| +-ColumnRef(type=STRING, column=t1.y#2)
++-cluster_by_list=
+| +-ColumnRef(type=INT64, column=t1.a#1)
++-output_column_list=
+| +-$create_as.a#7 AS a [INT64]
+| +-$create_as.y#8 AS y [STRING]
+| +-KeyValue.Key#5 AS key [INT64]
+| +-KeyValue.Value#6 AS x [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$create_as.a#7, $create_as.y#8, KeyValue.Key#5, KeyValue.Value#6]
+    +-expr_list=
+    | +-a#7 := Literal(type=INT64, value=1)
+    | +-y#8 := Literal(type=STRING, value="foo")
+    +-input_scan=
+      +-TableScan(column_list=KeyValue.[Key#5, Value#6], table=KeyValue, column_index_list=[0, 1])
+==
+
+# PARTITION BY and CLUSTER BY without an explicit column list
+[language_features=NONE,+CREATE_TABLE_PARTITION_BY,+CREATE_TABLE_CLUSTER_BY]
+create table t1 partition by x, y cluster by a as
+select 1 as a, 'foo' as y, key, value as x
+from KeyValue
+--
+CreateTableAsSelectStmt
++-name_path=t1
++-column_definition_list=
+| +-ColumnDefinition(name="a", type=INT64, column=t1.a#5)
+| +-ColumnDefinition(name="y", type=STRING, column=t1.y#6)
+| +-ColumnDefinition(name="key", type=INT64, column=t1.key#7)
+| +-ColumnDefinition(name="x", type=STRING, column=t1.x#8)
++-pseudo_column_list=t1.[pseudo_column_int32#9, pseudo_column_kitchensink#10, pseudo_column_timestamp#11]
++-partition_by_list=
+| +-ColumnRef(type=STRING, column=t1.x#8)
+| +-ColumnRef(type=STRING, column=t1.y#6)
++-cluster_by_list=
+| +-ColumnRef(type=INT64, column=t1.a#5)
++-output_column_list=
+| +-$create_as.a#3 AS a [INT64]
+| +-$create_as.y#4 AS y [STRING]
+| +-KeyValue.Key#1 AS key [INT64]
+| +-KeyValue.Value#2 AS x [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$create_as.a#3, $create_as.y#4, KeyValue.Key#1, KeyValue.Value#2]
+    +-expr_list=
+    | +-a#3 := Literal(type=INT64, value=1)
+    | +-y#4 := Literal(type=STRING, value="foo")
+    +-input_scan=
+      +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+==
+
+# PARTITION BY and CLUSTER BY with GEOGRAPHY column
+[language_features=NONE,{{+CREATE_TABLE_PARTITION_BY,+CREATE_TABLE_CLUSTER_BY|+CREATE_TABLE_PARTITION_BY,+CREATE_TABLE_CLUSTER_BY,+GEOGRAPHY}}]
+create table t1 partition by x, y cluster by a as
+select ST_GeogPoint(1, 3) as a, 'foo' as y, key, value as x
+from KeyValue
+--
+ALTERNATION GROUP: +CREATE_TABLE_PARTITION_BY,+CREATE_TABLE_CLUSTER_BY
+--
+ERROR: Function not found: ST_GeogPoint [at 2:8]
+select ST_GeogPoint(1, 3) as a, 'foo' as y, key, value as x
+       ^
+--
+ALTERNATION GROUP: +CREATE_TABLE_PARTITION_BY,+CREATE_TABLE_CLUSTER_BY,+GEOGRAPHY
+--
+CreateTableAsSelectStmt
++-name_path=t1
++-column_definition_list=
+| +-ColumnDefinition(name="a", type=GEOGRAPHY, column=t1.a#5)
+| +-ColumnDefinition(name="y", type=STRING, column=t1.y#6)
+| +-ColumnDefinition(name="key", type=INT64, column=t1.key#7)
+| +-ColumnDefinition(name="x", type=STRING, column=t1.x#8)
++-pseudo_column_list=t1.[pseudo_column_int32#9, pseudo_column_kitchensink#10, pseudo_column_timestamp#11]
++-partition_by_list=
+| +-ColumnRef(type=STRING, column=t1.x#8)
+| +-ColumnRef(type=STRING, column=t1.y#6)
++-cluster_by_list=
+| +-ColumnRef(type=GEOGRAPHY, column=t1.a#5)
++-output_column_list=
+| +-$create_as.a#3 AS a [GEOGRAPHY]
+| +-$create_as.y#4 AS y [STRING]
+| +-KeyValue.Key#1 AS key [INT64]
+| +-KeyValue.Value#2 AS x [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$create_as.a#3, $create_as.y#4, KeyValue.Key#1, KeyValue.Value#2]
+    +-expr_list=
+    | +-a#3 :=
+    | | +-FunctionCall(GoogleSQL:st_geogpoint(DOUBLE, DOUBLE) -> GEOGRAPHY)
+    | |   +-Literal(type=DOUBLE, value=1)
+    | |   +-Literal(type=DOUBLE, value=3)
+    | +-y#4 := Literal(type=STRING, value="foo")
+    +-input_scan=
+      +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+==
+
+[language_features=NONE,+CREATE_TABLE_AS_SELECT_COLUMN_LIST,+CREATE_TABLE_NOT_NULL,+CREATE_TABLE_FIELD_ANNOTATIONS,+CREATE_TABLE_PARTITION_BY,+CREATE_TABLE_CLUSTER_BY]
+create table t1 (
+  c1 int32 not null primary key hidden OPTIONS(a=1),
+  c2 STRUCT<int64, z string not null OPTIONS(y=3)>,
+  c3 STRUCT<> not null
+)
+partition by c1 cluster by c2.z
+options (key = 'value') as
+select key, (key, value), struct<>() from KeyValue
+--
+CreateTableAsSelectStmt
++-name_path=t1
++-option_list=
+| +-key := Literal(type=STRING, value="value")
++-column_definition_list=
+| +-ColumnDefinition
+| | +-name="c1"
+| | +-type=INT32
+| | +-annotations=
+| | | +-ColumnAnnotations
+| | |   +-not_null=TRUE
+| | |   +-option_list=
+| | |     +-a := Literal(type=INT64, value=1)
+| | +-is_hidden=TRUE
+| | +-column=t1.c1#1
+| +-ColumnDefinition
+| | +-name="c2"
+| | +-type=STRUCT<INT64, z STRING>
+| | +-annotations=
+| | | +-ColumnAnnotations
+| | |   +-child_list=
+| | |     +-ColumnAnnotations
+| | |     +-ColumnAnnotations
+| | |       +-not_null=TRUE
+| | |       +-option_list=
+| | |         +-y := Literal(type=INT64, value=3)
+| | +-column=t1.c2#2
+| +-ColumnDefinition
+|   +-name="c3"
+|   +-type=STRUCT<>
+|   +-annotations=
+|   | +-ColumnAnnotations(not_null=TRUE)
+|   +-column=t1.c3#3
++-pseudo_column_list=t1.[pseudo_column_int32#10, pseudo_column_kitchensink#11, pseudo_column_timestamp#12]
++-primary_key=
+| +-PrimaryKey(column_offset_list=[0], column_name_list=[c1])
++-partition_by_list=
+| +-ColumnRef(type=INT32, column=t1.c1#1)
++-cluster_by_list=
+| +-GetStructField
+|   +-type=STRING
+|   +-expr=
+|   | +-ColumnRef(type=STRUCT<INT64, z STRING>, column=t1.c2#2)
+|   +-field_idx=1
++-output_column_list=
+| +-$create_as_cast.Key#8 AS c1 [INT32]
+| +-$create_as_cast.$col2#9 AS c2 [STRUCT<INT64, z STRING>]
+| +-$create_as.$col3#7 AS c3 [STRUCT<>]
++-query=
+  +-ProjectScan
+    +-column_list=[$create_as_cast.Key#8, $create_as_cast.$col2#9, $create_as.$col3#7]
+    +-expr_list=
+    | +-Key#8 :=
+    | | +-Cast(INT64 -> INT32)
+    | |   +-ColumnRef(type=INT64, column=KeyValue.Key#4)
+    | +-$col2#9 :=
+    |   +-Cast(STRUCT<INT64, STRING> -> STRUCT<INT64, z STRING>)
+    |     +-ColumnRef(type=STRUCT<INT64, STRING>, column=$create_as.$col2#6)
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[KeyValue.Key#4, $create_as.$col2#6, $create_as.$col3#7]
+        +-expr_list=
+        | +-$col2#6 :=
+        | | +-MakeStruct
+        | |   +-type=STRUCT<INT64, STRING>
+        | |   +-field_list=
+        | |     +-ColumnRef(type=INT64, column=KeyValue.Key#4)
+        | |     +-ColumnRef(type=STRING, column=KeyValue.Value#5)
+        | +-$col3#7 := Literal(type=STRUCT<>, value={}, has_explicit_type=TRUE)
+        +-input_scan=
+          +-TableScan(column_list=KeyValue.[Key#4, Value#5], table=KeyValue, column_index_list=[0, 1])
+==
+
+[language_features=NONE,+CREATE_TABLE_AS_SELECT_COLUMN_LIST]
+create table t1 (x int64) as select as value 1 x
+--
+ERROR: Column definition list cannot be specified when creating a value table [at 1:17]
+create table t1 (x int64) as select as value 1 x
+                ^
+==
+
+# Foreign key in CTAS: proper error message when feature is not enabled.
+[language_features=NONE,+CREATE_TABLE_AS_SELECT_COLUMN_LIST]
+create table t1
+(
+  a int64,
+  foreign key (a) references KeyValue (key)
+) as select 1 as a;
+--
+ERROR: Foreign keys are not supported [at 4:3]
+  foreign key (a) references KeyValue (key)
+  ^
+==
+
+# b/114772419 Foreign Key is not supported in CTAS without explicit column list.
+[language_features=NONE,+CREATE_TABLE_AS_SELECT_COLUMN_LIST,+FOREIGN_KEYS]
+create table t1
+(
+  foreign key (a) references KeyValue (key)
+) as select 1 as a;
+--
+ERROR: Foreign key definition is only allowed with explicit column definitions in CREATE TABLE AS SELECT [at 1:1]
+create table t1
+^
+==
+
+# Check constraint: proper error message if feature is not enabled.
+[language_features=NONE,+CREATE_TABLE_AS_SELECT_COLUMN_LIST]
+[no_enable_literal_replacement]
+create table t1
+(
+  a int64,
+  check (a > 10)
+) as select 1 as a;
+--
+ERROR: CHECK constraints are not supported [at 4:3]
+  check (a > 10)
+  ^
+==
+
+# Check constraint in CTAS without explicit column list.
+[language_features=NONE,+CREATE_TABLE_AS_SELECT_COLUMN_LIST,+CHECK_CONSTRAINT]
+[no_enable_literal_replacement]
+create table t1
+(
+  check (a > 10),
+  check (length(b) > 3),
+  check (key != 0)
+) as select 1 as a, 'foo' as b, key from KeyValue;
+--
+CreateTableAsSelectStmt
++-name_path=t1
++-column_definition_list=
+| +-ColumnDefinition(name="a", type=INT64, column=t1.a#5)
+| +-ColumnDefinition(name="b", type=STRING, column=t1.b#6)
+| +-ColumnDefinition(name="key", type=INT64, column=t1.key#7)
++-pseudo_column_list=t1.[pseudo_column_int32#8, pseudo_column_kitchensink#9, pseudo_column_timestamp#10]
++-check_constraint_list=
+| +-CheckConstraint
+| | +-constraint_name=""
+| | +-expression=
+| | | +-FunctionCall(GoogleSQL:$greater(INT64, INT64) -> BOOL)
+| | |   +-ColumnRef(type=INT64, column=t1.a#5)
+| | |   +-Literal(type=INT64, value=10)
+| | +-enforced=TRUE
+| +-CheckConstraint
+| | +-constraint_name=""
+| | +-expression=
+| | | +-FunctionCall(GoogleSQL:$greater(INT64, INT64) -> BOOL)
+| | |   +-FunctionCall(GoogleSQL:length(STRING) -> INT64)
+| | |   | +-ColumnRef(type=STRING, column=t1.b#6)
+| | |   +-Literal(type=INT64, value=3)
+| | +-enforced=TRUE
+| +-CheckConstraint
+|   +-constraint_name=""
+|   +-expression=
+|   | +-FunctionCall(GoogleSQL:$not_equal(INT64, INT64) -> BOOL)
+|   |   +-ColumnRef(type=INT64, column=t1.key#7)
+|   |   +-Literal(type=INT64, value=0)
+|   +-enforced=TRUE
++-output_column_list=
+| +-$create_as.a#3 AS a [INT64]
+| +-$create_as.b#4 AS b [STRING]
+| +-KeyValue.Key#1 AS key [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$create_as.a#3, $create_as.b#4, KeyValue.Key#1]
+    +-expr_list=
+    | +-a#3 := Literal(type=INT64, value=1)
+    | +-b#4 := Literal(type=STRING, value="foo")
+    +-input_scan=
+      +-TableScan(column_list=[KeyValue.Key#1], table=KeyValue, column_index_list=[0])
+==
+
+# Check constraint in CTAS with SELECT *.
+[language_features=NONE,+CREATE_TABLE_AS_SELECT_COLUMN_LIST,+CHECK_CONSTRAINT]
+[no_enable_literal_replacement]
+create table t1
+(
+  check (key > 100),
+  check (value != "foo")
+) as select * from KeyValue;
+--
+CreateTableAsSelectStmt
++-name_path=t1
++-column_definition_list=
+| +-ColumnDefinition(name="Key", type=INT64, column=t1.Key#3)
+| +-ColumnDefinition(name="Value", type=STRING, column=t1.Value#4)
++-pseudo_column_list=t1.[pseudo_column_int32#5, pseudo_column_kitchensink#6, pseudo_column_timestamp#7]
++-check_constraint_list=
+| +-CheckConstraint
+| | +-constraint_name=""
+| | +-expression=
+| | | +-FunctionCall(GoogleSQL:$greater(INT64, INT64) -> BOOL)
+| | |   +-ColumnRef(type=INT64, column=t1.Key#3)
+| | |   +-Literal(type=INT64, value=100)
+| | +-enforced=TRUE
+| +-CheckConstraint
+|   +-constraint_name=""
+|   +-expression=
+|   | +-FunctionCall(GoogleSQL:$not_equal(STRING, STRING) -> BOOL)
+|   |   +-ColumnRef(type=STRING, column=t1.Value#4)
+|   |   +-Literal(type=STRING, value="foo")
+|   +-enforced=TRUE
++-output_column_list=
+| +-KeyValue.Key#1 AS Key [INT64]
+| +-KeyValue.Value#2 AS Value [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=KeyValue.[Key#1, Value#2]
+    +-input_scan=
+      +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+==
+
+# Check constraint with explicit column list.
+[language_features=NONE,+CREATE_TABLE_AS_SELECT_COLUMN_LIST,+CHECK_CONSTRAINT]
+[no_enable_literal_replacement]
+create table t1
+(
+  check (a1 > 10),
+  check (c1 != 0),
+  a1 int64,
+  check (length(b1) > 3),
+  b1 string,
+  c1 int64
+) as select 1 as a, 'foo' as b, key from KeyValue;
+--
+CreateTableAsSelectStmt
++-name_path=t1
++-column_definition_list=
+| +-ColumnDefinition(name="a1", type=INT64, column=t1.a1#1)
+| +-ColumnDefinition(name="b1", type=STRING, column=t1.b1#2)
+| +-ColumnDefinition(name="c1", type=INT64, column=t1.c1#3)
++-pseudo_column_list=t1.[pseudo_column_int32#8, pseudo_column_kitchensink#9, pseudo_column_timestamp#10]
++-check_constraint_list=
+| +-CheckConstraint
+| | +-constraint_name=""
+| | +-expression=
+| | | +-FunctionCall(GoogleSQL:$greater(INT64, INT64) -> BOOL)
+| | |   +-ColumnRef(type=INT64, column=t1.a1#1)
+| | |   +-Literal(type=INT64, value=10)
+| | +-enforced=TRUE
+| +-CheckConstraint
+| | +-constraint_name=""
+| | +-expression=
+| | | +-FunctionCall(GoogleSQL:$not_equal(INT64, INT64) -> BOOL)
+| | |   +-ColumnRef(type=INT64, column=t1.c1#3)
+| | |   +-Literal(type=INT64, value=0)
+| | +-enforced=TRUE
+| +-CheckConstraint
+|   +-constraint_name=""
+|   +-expression=
+|   | +-FunctionCall(GoogleSQL:$greater(INT64, INT64) -> BOOL)
+|   |   +-FunctionCall(GoogleSQL:length(STRING) -> INT64)
+|   |   | +-ColumnRef(type=STRING, column=t1.b1#2)
+|   |   +-Literal(type=INT64, value=3)
+|   +-enforced=TRUE
++-output_column_list=
+| +-$create_as.a#6 AS a1 [INT64]
+| +-$create_as.b#7 AS b1 [STRING]
+| +-KeyValue.Key#4 AS c1 [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$create_as.a#6, $create_as.b#7, KeyValue.Key#4]
+    +-expr_list=
+    | +-a#6 := Literal(type=INT64, value=1)
+    | +-b#7 := Literal(type=STRING, value="foo")
+    +-input_scan=
+      +-TableScan(column_list=[KeyValue.Key#4], table=KeyValue, column_index_list=[0])
+==
+
+# Check constraint can only reference column alias from the query output, if
+# explicit column list is not provided.
+[language_features=NONE,+CREATE_TABLE_AS_SELECT_COLUMN_LIST,+CHECK_CONSTRAINT]
+[no_enable_literal_replacement]
+create table t1
+(
+  check (key < 100)
+) as select 1 as a, 'foo' as b, key as c from KeyValue;
+--
+ERROR: Unrecognized name: key [at 3:10]
+  check (key < 100)
+         ^
+==
+
+# Check constraint can only reference column name in the column definition list
+# if it's provided.
+[language_features=NONE,+CREATE_TABLE_AS_SELECT_COLUMN_LIST,+CHECK_CONSTRAINT]
+[no_enable_literal_replacement]
+create table t1
+(
+  check (key < 100),
+  a int64
+) as select key from KeyValue;
+--
+ERROR: Unrecognized name: key [at 3:10]
+  check (key < 100),
+         ^
+==
+
+create table tt
+with connection connection2
+as select 1 a, 2 b;
+--
+ERROR: WITH CONNECTION clause is unsupported for CREATE TABLE [at 2:1]
+with connection connection2
+^
+==
+
+[language_features=NONE,+CREATE_TABLE_WITH_CONNECTION]
+create table tt
+with connection ``
+as select 1 a, 2 b;
+--
+ERROR: Syntax error: Invalid empty identifier [at 2:17]
+with connection ``
+                ^
+==
+
+
+[language_features=NONE,+CREATE_TABLE_WITH_CONNECTION]
+create table tt
+with connection default
+as select 1 a, 2 b;
+--
+CreateTableAsSelectStmt
++-name_path=tt
++-column_definition_list=
+| +-ColumnDefinition(name="a", type=INT64, column=tt.a#3)
+| +-ColumnDefinition(name="b", type=INT64, column=tt.b#4)
++-connection=
+| +-Connection(connection=$connection_default)
++-output_column_list=
+| +-$create_as.a#1 AS a [INT64]
+| +-$create_as.b#2 AS b [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=$create_as.[a#1, b#2]
+    +-expr_list=
+    | +-a#1 := Literal(type=INT64, value=1)
+    | +-b#2 := Literal(type=INT64, value=2)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+
+[no_java]
+[use_database=SpecialCatalog]
+[language_features=NONE,+CREATE_TABLE_WITH_CONNECTION]
+create table tt
+with connection default
+as select 1 a, 2 b;
+--
+ERROR: Default connection not found [at 2:17]
+with connection default
+                ^
+==
+
+
+[language_features=NONE,+CREATE_TABLE_WITH_CONNECTION]
+create table tt
+with connection connection2
+as select 1 a, 2 b;
+--
+CreateTableAsSelectStmt
++-name_path=tt
++-column_definition_list=
+| +-ColumnDefinition(name="a", type=INT64, column=tt.a#3)
+| +-ColumnDefinition(name="b", type=INT64, column=tt.b#4)
++-connection=
+| +-Connection(connection=connection2)
++-output_column_list=
+| +-$create_as.a#1 AS a [INT64]
+| +-$create_as.b#2 AS b [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=$create_as.[a#1, b#2]
+    +-expr_list=
+    | +-a#1 := Literal(type=INT64, value=1)
+    | +-b#2 := Literal(type=INT64, value=2)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+[language_features=NONE,+CREATE_TABLE_WITH_CONNECTION]
+create table tt
+with connection conn
+as select 1 a, 2 b;
+--
+ERROR: Connection not found: conn [at 2:17]
+with connection conn
+                ^
+==
+
+[language_features=NONE,+CREATE_TABLE_WITH_CONNECTION]
+create table tt
+with connection `connection2`
+as select 1 a, 2 b;
+--
+CreateTableAsSelectStmt
++-name_path=tt
++-column_definition_list=
+| +-ColumnDefinition(name="a", type=INT64, column=tt.a#3)
+| +-ColumnDefinition(name="b", type=INT64, column=tt.b#4)
++-connection=
+| +-Connection(connection=connection2)
++-output_column_list=
+| +-$create_as.a#1 AS a [INT64]
+| +-$create_as.b#2 AS b [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=$create_as.[a#1, b#2]
+    +-expr_list=
+    | +-a#1 := Literal(type=INT64, value=1)
+    | +-b#2 := Literal(type=INT64, value=2)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+[language_features=NONE,+CREATE_TABLE_WITH_CONNECTION]
+create table tt
+with connection nested_catalog.connection2
+as select 1 a, 2 b;
+--
+CreateTableAsSelectStmt
++-name_path=tt
++-column_definition_list=
+| +-ColumnDefinition(name="a", type=INT64, column=tt.a#3)
+| +-ColumnDefinition(name="b", type=INT64, column=tt.b#4)
++-connection=
+| +-Connection(connection=connection2)
++-output_column_list=
+| +-$create_as.a#1 AS a [INT64]
+| +-$create_as.b#2 AS b [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=$create_as.[a#1, b#2]
+    +-expr_list=
+    | +-a#1 := Literal(type=INT64, value=1)
+    | +-b#2 := Literal(type=INT64, value=2)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+[language_features=NONE,+CREATE_TABLE_WITH_CONNECTION]
+create table tt
+with connection connection2
+options(x=5, y='abc')
+as select 1 a, 2 b;
+--
+CreateTableAsSelectStmt
++-name_path=tt
++-option_list=
+| +-x := Literal(type=INT64, value=5)
+| +-y := Literal(type=STRING, value="abc")
++-column_definition_list=
+| +-ColumnDefinition(name="a", type=INT64, column=tt.a#3)
+| +-ColumnDefinition(name="b", type=INT64, column=tt.b#4)
++-connection=
+| +-Connection(connection=connection2)
++-output_column_list=
+| +-$create_as.a#1 AS a [INT64]
+| +-$create_as.b#2 AS b [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=$create_as.[a#1, b#2]
+    +-expr_list=
+    | +-a#1 := Literal(type=INT64, value=1)
+    | +-b#2 := Literal(type=INT64, value=2)
+    +-input_scan=
+      +-SingleRowScan
+
+==
+
+[language_features=NONE,+SQL_GRAPH,+SQL_GRAPH_ADVANCED_QUERY]
+create table t
+as
+graph aml
+return 1 as x
+--
+CreateTableAsSelectStmt
++-name_path=t
++-column_definition_list=
+| +-ColumnDefinition(name="x", type=INT64, column=t.x#2)
++-output_column_list=
+| +-$graph_table.x#1 AS x [INT64]
++-query=
+  +-GraphTableScan
+    +-column_list=[$graph_table.x#1]
+    +-property_graph=aml
+    +-input_scan=
+      +-GraphLinearScan
+        +-column_list=[$graph_table.x#1]
+        +-scan_list=
+          +-GraphLinearScan
+            +-column_list=[$graph_table.x#1]
+            +-scan_list=
+              +-ProjectScan
+                +-column_list=[$graph_table.x#1]
+                +-expr_list=
+                | +-x#1 := Literal(type=INT64, value=1)
+                +-input_scan=
+                  +-SingleRowScan

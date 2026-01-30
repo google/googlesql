@@ -1,0 +1,358 @@
+[default language_features=MAXIMUM]
+select error('abc')
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(GoogleSQL:error(STRING) -> INT64)
+    |     +-Literal(type=STRING, value="abc")
+    +-input_scan=
+      +-SingleRowScan
+==
+
+select error(concat('abc', 'def'))
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(GoogleSQL:error(STRING) -> INT64)
+    |     +-FunctionCall(GoogleSQL:concat(STRING, repeated(1) STRING) -> STRING)
+    |       +-Literal(type=STRING, value="abc")
+    |       +-Literal(type=STRING, value="def")
+    +-input_scan=
+      +-SingleRowScan
+==
+
+select if(true, error('e1'), error('e2'))
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(GoogleSQL:if(BOOL, INT64, INT64) -> INT64)
+    |     +-Literal(type=BOOL, value=true)
+    |     +-FunctionCall(GoogleSQL:error(STRING) -> INT64)
+    |     | +-Literal(type=STRING, value="e1")
+    |     +-FunctionCall(GoogleSQL:error(STRING) -> INT64)
+    |       +-Literal(type=STRING, value="e2")
+    +-input_scan=
+      +-SingleRowScan
+==
+
+select if(true, struct(), error('e2')),
+       if(true, error('e1'), struct())
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [STRUCT<>]
+| +-$query.$col2#2 AS `$col2` [STRUCT<>]
++-query=
+  +-ProjectScan
+    +-column_list=$query.[$col1#1, $col2#2]
+    +-expr_list=
+    | +-$col1#1 :=
+    | | +-FunctionCall(GoogleSQL:if(BOOL, STRUCT<>, STRUCT<>) -> STRUCT<>)
+    | |   +-Literal(type=BOOL, value=true)
+    | |   +-Literal(type=STRUCT<>, value={})
+    | |   +-Cast(STRUCT<> -> STRUCT<>)
+    | |     +-FunctionCall(GoogleSQL:error(STRING) -> STRUCT<>)
+    | |       +-Literal(type=STRING, value="e2")
+    | +-$col2#2 :=
+    |   +-FunctionCall(GoogleSQL:if(BOOL, STRUCT<>, STRUCT<>) -> STRUCT<>)
+    |     +-Literal(type=BOOL, value=true)
+    |     +-Cast(STRUCT<> -> STRUCT<>)
+    |     | +-FunctionCall(GoogleSQL:error(STRING) -> STRUCT<>)
+    |     |   +-Literal(type=STRING, value="e1")
+    |     +-Literal(type=STRUCT<>, value={})
+    +-input_scan=
+      +-SingleRowScan
+==
+
+select
+  case key
+  when 0 then 'abc'
+  when 1 then 'def'
+  else error('bad')
+  end
+from KeyValue
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#3 AS `$col1` [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#3]
+    +-expr_list=
+    | +-$col1#3 :=
+    |   +-FunctionCall(GoogleSQL:$case_with_value(INT64, repeated(2) INT64, repeated(2) STRING, STRING) -> STRING)
+    |     +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+    |     +-Literal(type=INT64, value=0)
+    |     +-Literal(type=STRING, value="abc")
+    |     +-Literal(type=INT64, value=1)
+    |     +-Literal(type=STRING, value="def")
+    |     +-Cast(STRING -> STRING)
+    |       +-FunctionCall(GoogleSQL:error(STRING) -> STRING)
+    |         +-Literal(type=STRING, value="bad")
+    +-input_scan=
+      +-TableScan(column_list=[KeyValue.Key#1], table=KeyValue, column_index_list=[0])
+==
+
+select
+  case
+  when key=0 then error('e1')
+  when key=1 then cast(4 as uint32)
+  when key=2 then cast(4 as uint64)
+  end
+from KeyValue
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#3 AS `$col1` [UINT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#3]
+    +-expr_list=
+    | +-$col1#3 :=
+    |   +-FunctionCall(GoogleSQL:$case_no_value(repeated(3) BOOL, repeated(3) UINT64, UINT64) -> UINT64)
+    |     +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+    |     | +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+    |     | +-Literal(type=INT64, value=0)
+    |     +-Cast(UINT64 -> UINT64)
+    |     | +-FunctionCall(GoogleSQL:error(STRING) -> UINT64)
+    |     |   +-Literal(type=STRING, value="e1")
+    |     +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+    |     | +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+    |     | +-Literal(type=INT64, value=1)
+    |     +-Literal(type=UINT64, value=4, has_explicit_type=TRUE)
+    |     +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+    |     | +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+    |     | +-Literal(type=INT64, value=2)
+    |     +-Literal(type=UINT64, value=4, has_explicit_type=TRUE)
+    |     +-Literal(type=UINT64, value=NULL)
+    +-input_scan=
+      +-TableScan(column_list=[KeyValue.Key#1], table=KeyValue, column_index_list=[0])
+==
+
+select concat('abc', error('def'))
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(GoogleSQL:concat(STRING, repeated(1) STRING) -> STRING)
+    |     +-Literal(type=STRING, value="abc")
+    |     +-Cast(STRING -> STRING)
+    |       +-FunctionCall(GoogleSQL:error(STRING) -> STRING)
+    |         +-Literal(type=STRING, value="def")
+    +-input_scan=
+      +-SingleRowScan
+==
+
+[language_features=NONE,{{|+IMPLICIT_COERCION_STRING_LITERAL_TO_BYTES}}]
+select coalesce('abc', cast(error('def') as bytes))
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: No matching signature for function COALESCE
+  Argument types: STRING, BYTES
+  Signature: COALESCE([T1, ...])
+    Unable to find common supertype for templated argument <T1>
+      Input types for <T1>: {STRING, BYTES} [at 1:8]
+select coalesce('abc', cast(error('def') as bytes))
+       ^
+--
+ALTERNATION GROUP: +IMPLICIT_COERCION_STRING_LITERAL_TO_BYTES
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [BYTES]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(GoogleSQL:coalesce(repeated(2) BYTES) -> BYTES)
+    |     +-Literal(type=BYTES, value=b"abc")
+    |     +-Cast(BYTES -> BYTES)
+    |       +-FunctionCall(GoogleSQL:error(STRING) -> BYTES)
+    |         +-Literal(type=STRING, value="def")
+    +-input_scan=
+      +-SingleRowScan
+==
+
+select coalesce('abc', cast(error('def') as string))
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(GoogleSQL:coalesce(repeated(2) STRING) -> STRING)
+    |     +-Literal(type=STRING, value="abc")
+    |     +-Cast(STRING -> STRING)
+    |       +-FunctionCall(GoogleSQL:error(STRING) -> STRING)
+    |         +-Literal(type=STRING, value="def")
+    +-input_scan=
+      +-SingleRowScan
+==
+
+select coalesce('int64_key_1: 0 int64_key_2: 1',
+                cast(error('def') as googlesql_test.KitchenSinkPB))
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [PROTO<googlesql_test.KitchenSinkPB>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(GoogleSQL:coalesce(repeated(2) PROTO<googlesql_test.KitchenSinkPB>) -> PROTO<googlesql_test.KitchenSinkPB>)
+    |     +-Literal(type=PROTO<googlesql_test.KitchenSinkPB>, value={int64_key_1: 0 int64_key_2: 1})
+    |     +-Cast(PROTO<googlesql_test.KitchenSinkPB> -> PROTO<googlesql_test.KitchenSinkPB>)
+    |       +-FunctionCall(GoogleSQL:error(STRING) -> PROTO<googlesql_test.KitchenSinkPB>)
+    |         +-Literal(type=STRING, value="def")
+    +-input_scan=
+      +-SingleRowScan
+==
+
+select error(cast(sqrt(error('abc')) as string))
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(GoogleSQL:error(STRING) -> INT64)
+    |     +-Cast(DOUBLE -> STRING)
+    |       +-FunctionCall(GoogleSQL:sqrt(DOUBLE) -> DOUBLE)
+    |         +-Cast(DOUBLE -> DOUBLE)
+    |           +-FunctionCall(GoogleSQL:error(STRING) -> DOUBLE)
+    |             +-Literal(type=STRING, value="abc")
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# There is no CAST wrapping the call to ERROR() because there are no constraints
+# on its return type. The resolver just chooses INT64 arbitrarily.
+select error(null)
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(GoogleSQL:error(STRING) -> INT64)
+    |     +-Literal(type=STRING, value=NULL)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Same as above, but with the type explicitly casted to INT64.
+select cast(error(null) as int64)
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-Cast(INT64 -> INT64)
+    |     +-FunctionCall(GoogleSQL:error(STRING) -> INT64)
+    |       +-Literal(type=STRING, value=NULL)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# The return type of ERROR() is chosen to match the INT32 column. Notably, we do
+# not treat return type of ERROR() as INT64 and promote the column.
+select coalesce(error('xxx'), int32) from SimpleTypes
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#20 AS `$col1` [INT32]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#20]
+    +-expr_list=
+    | +-$col1#20 :=
+    |   +-FunctionCall(GoogleSQL:coalesce(repeated(2) INT32) -> INT32)
+    |     +-Cast(INT32 -> INT32)
+    |     | +-FunctionCall(GoogleSQL:error(STRING) -> INT32)
+    |     |   +-Literal(type=STRING, value="xxx")
+    |     +-ColumnRef(type=INT32, column=SimpleTypes.int32#1)
+    +-input_scan=
+      +-TableScan(column_list=[SimpleTypes.int32#1], table=SimpleTypes, column_index_list=[0])
+==
+
+[language_features=NONE,+SAFE_FUNCTION_CALL]
+select concat(b'123', safe.error('abc'))
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [BYTES]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(GoogleSQL:concat(BYTES, repeated(1) BYTES) -> BYTES)
+    |     +-Literal(type=BYTES, value=b"123")
+    |     +-Cast(BYTES -> BYTES)
+    |       +-FunctionCall({SAFE_ERROR_MODE} GoogleSQL:error(STRING) -> BYTES)
+    |         +-Literal(type=STRING, value="abc")
+    +-input_scan=
+      +-SingleRowScan
+==
+
+select error('xxx'),
+       cast(error('xxx') as bytes)
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [INT64]
+| +-$query.$col2#2 AS `$col2` [BYTES]
++-query=
+  +-ProjectScan
+    +-column_list=$query.[$col1#1, $col2#2]
+    +-expr_list=
+    | +-$col1#1 :=
+    | | +-FunctionCall(GoogleSQL:error(STRING) -> INT64)
+    | |   +-Literal(type=STRING, value="xxx")
+    | +-$col2#2 :=
+    |   +-Cast(BYTES -> BYTES)
+    |     +-FunctionCall(GoogleSQL:error(STRING) -> BYTES)
+    |       +-Literal(type=STRING, value="xxx")
+    +-input_scan=
+      +-SingleRowScan
+==
+

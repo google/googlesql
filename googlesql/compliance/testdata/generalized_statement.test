@@ -1,0 +1,379 @@
+[prepare_database]
+create table MyTable as
+select 1 as col;
+--
+ARRAY<STRUCT<col INT64>>[{1}]
+==
+
+[name=basic_tee]
+[required_features=PIPES,PIPE_TEE]
+select 1 as a
+|> tee (
+  |> select 2 as b
+)
+--
+ScriptResult
+ARRAY<STRUCT<b INT64>>[{2}]
+ARRAY<STRUCT<a INT64>>[{1}]
+==
+
+[name=tee_failing_branch]
+[required_features=PIPES,PIPE_TEE]
+select 1 as a
+|> tee (
+  |> select error("this branch failed")
+), (
+  |> select 3 as c
+)
+--
+ScriptResult
+ERROR: generic::out_of_range: this branch failed
+ARRAY<STRUCT<c INT64>>[{3}]
+ARRAY<STRUCT<a INT64>>[{1}]
+==
+
+[name=tee_with_failing_final_pipe]
+[required_features=PIPES,PIPE_TEE]
+select 1 as a
+|> tee (
+  |> select 2 as b
+)
+|> select error("final pipe error")
+--
+ScriptResult
+ARRAY<STRUCT<b INT64>>[{2}]
+ERROR: generic::out_of_range: final pipe error
+==
+
+[name=tee_input_error]
+[required_features=PIPES,PIPE_TEE]
+select error("this is an error")
+|> tee (
+  |> select 1 as a
+)
+--
+ScriptResult
+ERROR: generic::out_of_range: Prerequisite CreateWithEntryStmt failed, statement index: 0 error: this is an error
+ERROR: generic::out_of_range: Prerequisite CreateWithEntryStmt failed, statement index: 0 error: this is an error
+==
+
+# The pipe input error prevents the execution of DDL as well.
+[name=tee_input_error_ddl]
+[required_features=PIPES,PIPE_TEE,PIPE_CREATE_TABLE]
+[use_test_database_copy]
+select error("this is an error") as col
+|> tee (
+  |> select 1 as a
+)
+|> create table my_new_table
+--
+ScriptResult
+ERROR: generic::out_of_range: Prerequisite CreateWithEntryStmt failed, statement index: 0 error: this is an error
+ERROR: generic::out_of_range: Prerequisite CreateWithEntryStmt failed, statement index: 0 error: this is an error
+==
+
+[name=nested_tee]
+[required_features=PIPES,PIPE_TEE]
+select 1 as a
+|> tee (
+  |> select a + 1 as b
+  |> tee (
+    |> select b + 1 as c
+  )
+)
+--
+ScriptResult
+ARRAY<STRUCT<c INT64>>[{3}]
+ARRAY<STRUCT<b INT64>>[{2}]
+ARRAY<STRUCT<a INT64>>[{1}]
+==
+
+[name=tee_empty_input]
+[required_features=PIPES,PIPE_TEE]
+select 1 as a
+|> where false
+|> tee (
+  |> select error("this error should not be shown")
+)
+--
+ScriptResult
+ARRAY<STRUCT<INT64>>[]
+ARRAY<STRUCT<a INT64>>[]
+==
+
+[name=sequential_tees]
+[required_features=PIPES,PIPE_TEE]
+select 1 as a
+|> tee (
+  |> select a + 1 as b
+)
+|> select a * 10 as a
+|> tee (
+  |> select a + 2 as c
+)
+--
+ScriptResult
+ARRAY<STRUCT<b INT64>>[{2}]
+ARRAY<STRUCT<c INT64>>[{12}]
+ARRAY<STRUCT<a INT64>>[{10}]
+==
+
+[name=tee_create_table_as_select]
+[required_features=PIPES,PIPE_TEE,PIPE_CREATE_TABLE]
+[use_test_database_copy]
+select 1 as x, "foo" as y
+|> tee (
+  |> create table my_new_table
+)
+--
+ScriptResult
+ARRAY<STRUCT<x INT64, y STRING>>[{1, "foo"}]
+ARRAY<STRUCT<x INT64, y STRING>>[{1, "foo"}]
+==
+
+[name=tee_two_branches_create_different_tables]
+[required_features=PIPES,PIPE_TEE,PIPE_CREATE_TABLE]
+[use_test_database_copy]
+select 1 as x
+|> tee (
+  |> create table my_table_1
+), (
+  |> create table my_table_2
+)
+--
+ScriptResult
+ARRAY<STRUCT<x INT64>>[{1}]
+ARRAY<STRUCT<x INT64>>[{1}]
+ARRAY<STRUCT<x INT64>>[{1}]
+==
+
+# Two create table statements execute on the same table. In the reference
+# implementation, DDLs are evaluated against the same database snapshot, but
+# executed sequentially, so the second create table statement would fail. Other
+# engines do not have to conform to this result.
+[name=tee_two_branches_create_same_table]
+[required_features=PIPES,PIPE_TEE,PIPE_CREATE_TABLE]
+[use_test_database_copy]
+select 1 as x
+|> tee (
+  |> create table my_table_1
+), (
+  |> create table my_table_1
+)
+--
+ScriptResult
+ARRAY<STRUCT<x INT64>>[{1}]
+ERROR: generic::invalid_argument: Table my_table_1 already exists
+ARRAY<STRUCT<x INT64>>[{1}]
+==
+
+# The side effect of the insert statement should not affect the result of the
+# "union all" branch, so the result of "union all" should only have two rows.
+[name=tee_branches_side_effects_not_visible]
+[required_features=PIPES,PIPE_TEE,PIPE_INSERT]
+select 10000 as x
+|> tee (
+  |> insert into MyTable(col)
+), (
+  |> union all (from MyTable)
+)
+--
+ScriptResult
+STRUCT<
+  num_rows_modified INT64,
+  all_rows ARRAY<>
+>{
+  1,
+  ARRAY<STRUCT<col INT64>>[unknown order:{1}, {10000}]
+}
+ARRAY<STRUCT<x INT64>>[unknown order:{10000}, {1}]
+ARRAY<STRUCT<x INT64>>[{10000}]
+==
+
+# Conflicting INSERTs. Because the reference implementation does not actually
+# apply side effects for DML, both inserts succeed.
+[name=tee_branches_conflicting_inserts]
+[required_features=PIPES,PIPE_TEE,PIPE_INSERT]
+select 10000 as x
+|> tee (
+  |> insert into MyTable(col)
+), (
+  |> insert into MyTable(col)
+)
+--
+ScriptResult
+STRUCT<
+  num_rows_modified INT64,
+  all_rows ARRAY<>
+>{
+  1,
+  ARRAY<STRUCT<col INT64>>[unknown order:{1}, {10000}]
+}
+STRUCT<
+  num_rows_modified INT64,
+  all_rows ARRAY<>
+>{
+  1,
+  ARRAY<STRUCT<col INT64>>[unknown order:{1}, {10000}]
+}
+ARRAY<STRUCT<x INT64>>[{10000}]
+==
+
+[name=basic_fork]
+[required_features=PIPES,PIPE_FORK]
+select 1 as a
+|> fork (
+  |> select 2 as b
+)
+--
+ARRAY<STRUCT<b INT64>>[{2}]
+==
+
+[name=fork_failing_branch]
+[required_features=PIPES,PIPE_FORK]
+select 1 as a
+|> fork (
+  |> select error("this branch failed")
+), (
+  |> select 3 as c
+)
+--
+ScriptResult
+ERROR: generic::out_of_range: this branch failed
+ARRAY<STRUCT<c INT64>>[{3}]
+==
+
+[name=fork_input_error]
+[required_features=PIPES,PIPE_FORK]
+select error("this is an error")
+|> fork (
+  |> select 1 as a
+)
+--
+ERROR: generic::out_of_range: Prerequisite CreateWithEntryStmt failed, statement index: 0 error: this is an error
+==
+
+# The pipe input error prevents the execution of DDL as well.
+[name=fork_input_error_ddl]
+[required_features=PIPES,PIPE_FORK,PIPE_CREATE_TABLE]
+[use_test_database_copy]
+select error("this is an error") as col
+|> fork (
+  |> select 1 as a
+), (
+  |> create table my_new_table
+)
+--
+ScriptResult
+ERROR: generic::out_of_range: Prerequisite CreateWithEntryStmt failed, statement index: 0 error: this is an error
+ERROR: generic::out_of_range: Prerequisite CreateWithEntryStmt failed, statement index: 0 error: this is an error
+==
+
+[name=nested_fork]
+[required_features=PIPES,PIPE_FORK]
+select 1 as a
+|> fork (
+  |> select a + 1 as b
+  |> fork (
+    |> select b + 1 as c
+  )
+)
+--
+ARRAY<STRUCT<c INT64>>[{3}]
+==
+
+[name=fork_empty_input]
+[required_features=PIPES,PIPE_FORK]
+select 1 as a
+|> where false
+|> fork (
+  |> select error("this error should not be shown")
+)
+--
+ARRAY<STRUCT<INT64>>[]
+==
+
+[name=fork_create_table_as_select]
+[required_features=PIPES,PIPE_FORK,PIPE_CREATE_TABLE]
+[use_test_database_copy]
+select 1 as x, "foo" as y
+|> fork (
+  |> create table my_new_table
+)
+--
+ARRAY<STRUCT<x INT64, y STRING>>[{1, "foo"}]
+==
+
+[name=fork_two_branches_create_different_tables]
+[required_features=PIPES,PIPE_FORK,PIPE_CREATE_TABLE]
+[use_test_database_copy]
+select 1 as x
+|> fork (
+  |> create table my_table_1
+), (
+  |> create table my_table_2
+)
+--
+ScriptResult
+ARRAY<STRUCT<x INT64>>[{1}]
+ARRAY<STRUCT<x INT64>>[{1}]
+==
+
+# Two create table statements execute on the same table. In the reference
+# implementation, DDLs are evaluated against the same database snapshot, but
+# executed sequentially, so the second create table statement would fail. Other
+# engines do not have to conform to this result.
+[name=fork_two_branches_create_same_table]
+[required_features=PIPES,PIPE_FORK,PIPE_CREATE_TABLE]
+[use_test_database_copy]
+select 1 as x
+|> fork (
+  |> create table my_table_1
+), (
+  |> create table my_table_1
+)
+--
+ScriptResult
+ARRAY<STRUCT<x INT64>>[{1}]
+ERROR: generic::invalid_argument: Table my_table_1 already exists
+==
+
+# The side effect of the insert statement should not affect the result of the
+# "union all" branch, so the result of "union all" should only have two rows.
+[name=fork_branches_side_effects_not_visible]
+[required_features=PIPES,PIPE_FORK,PIPE_INSERT]
+select 10000 as x
+|> fork (
+  |> insert into MyTable(col)
+), (
+  |> union all (from MyTable)
+)
+--
+ScriptResult
+STRUCT<
+  num_rows_modified INT64,
+  all_rows ARRAY<>
+>{
+  1,
+  ARRAY<STRUCT<col INT64>>[unknown order:{1}, {10000}]
+}
+ARRAY<STRUCT<x INT64>>[unknown order:{10000}, {1}]
+==
+
+# Verifies the non-deterministic output bit is set correctly.
+[name=non_deterministic_output]
+[required_features=PIPES,PIPE_FORK]
+select 1 as a, 'x' as b
+union all
+select 2, 'y'
+|> fork (
+  |> limit 1
+), (
+  |> select b
+);
+--
+ScriptResult
+ARRAY<STRUCT<a INT64, b STRING>>[{2, "y"}]
+ARRAY<STRUCT<b STRING>>[unknown order:{"x"}, {"y"}]
+
+NOTE: Reference implementation reports non-determinism.

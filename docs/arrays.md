@@ -5,14 +5,14 @@
 # Work with arrays 
 <a id="working_with_arrays"></a>
 
-In ZetaSQL, an array is an ordered list consisting of zero or more
+In GoogleSQL, an array is an ordered list consisting of zero or more
 values of the same data type. You can construct arrays of a simple data type,
 such as `INT64`, or a complex data type, such as `STRUCT`. However,
 arrays of arrays aren't supported. To learn more about the `ARRAY`
 data type, including
 `NULL` handling, see [Array type][array-data-type].
 
-With ZetaSQL, you can construct array literals,
+With GoogleSQL, you can construct array literals,
  build arrays from subqueries using the
 [`ARRAY`][array-function] function,
  and aggregate values into an array using the
@@ -28,7 +28,7 @@ You can combine arrays using functions like
 Consider the following table called `Sequences`. This table contains
 the column `some_numbers` of the `ARRAY` data type.
 
-```zetasql
+```googlesql
 WITH
   Sequences AS (
     SELECT [0, 1, 1, 2, 3, 5] AS some_numbers UNION ALL
@@ -55,7 +55,7 @@ one-based indexes.
 
 For example:
 
-```zetasql
+```googlesql
 SELECT
   some_numbers,
   some_numbers[0] AS index_0,
@@ -80,7 +80,7 @@ range. To avoid this, you can use `SAFE_OFFSET` or `SAFE_ORDINAL` to return
 
 The `ARRAY_LENGTH` function returns the length of an array.
 
-```zetasql
+```googlesql
 WITH Sequences AS
   (SELECT [0, 1, 1, 2, 3, 5] AS some_numbers
    UNION ALL SELECT [2, 4, 8, 16, 32] AS some_numbers
@@ -111,7 +111,7 @@ array and the [array element field access operator][array-el-field-operator].
 The examples in this section references nested data in an array called
 `items` in a table called `ItemsTable`:
 
-```zetasql
+```googlesql
 WITH ItemsTable AS (SELECT [
   STRUCT('red' AS color,
          2 AS inventory,
@@ -131,7 +131,7 @@ SELECT * FROM ItemsTable
 You can flatten nested data in an array called `items` with the
 `FLATTEN` operator. Here are some examples:
 
-```zetasql
+```googlesql
 SELECT FLATTEN(items.color) AS colors
 FROM ItemsTable
 
@@ -142,7 +142,7 @@ FROM ItemsTable
  +----------------------*/
 ```
 
-```zetasql
+```googlesql
 SELECT FLATTEN(items.inventory) AS inventory
 FROM ItemsTable
 
@@ -153,7 +153,7 @@ FROM ItemsTable
  +---------------*/
 ```
 
-```zetasql
+```googlesql
 SELECT FLATTEN(items.sales.prices) AS all_prices
 FROM ItemsTable
 
@@ -164,7 +164,7 @@ FROM ItemsTable
  +------------------------*/
 ```
 
-```zetasql
+```googlesql
 SELECT FLATTEN(items.sales.prices[SAFE_OFFSET(1)]) AS second_prices
 FROM ItemsTable
 
@@ -189,7 +189,7 @@ element field access operator][array-el-field-operator].
 The examples in this section references nested data in an array called `items`
 in a table called `ItemsTable`:
 
-```zetasql
+```googlesql
 WITH ItemsTable AS (SELECT [
   STRUCT('red' AS color,
          2 AS inventory,
@@ -209,7 +209,7 @@ SELECT * FROM ItemsTable
 You can flatten nested data in an array called `items` with the
 `UNNEST` operator or directly in the `FROM` clause. Here are some examples:
 
-```zetasql
+```googlesql
 -- In UNNEST (FLATTEN used explicitly):
 SELECT colors
 FROM ItemsTable
@@ -234,7 +234,7 @@ INNER JOIN ItemsTable.items.color AS colors;
  +--------*/
 ```
 
-```zetasql
+```googlesql
 -- In UNNEST (FLATTEN used explicitly):
 SELECT inventory
 FROM ItemsTable
@@ -259,7 +259,7 @@ INNER JOIN ItemsTable.items.inventory AS inventory;
  +-----------*/
 ```
 
-```zetasql
+```googlesql
 -- In UNNEST (FLATTEN used explicitly):
 SELECT all_prices
 FROM ItemsTable
@@ -286,7 +286,7 @@ INNER JOIN ItemsTable.items.sales.prices AS all_prices;
  +------------*/
 ```
 
-```zetasql
+```googlesql
 -- In UNNEST (FLATTEN used explicitly):
 SELECT second_prices
 FROM ItemsTable
@@ -327,7 +327,7 @@ then use the `ORDER BY` clause to order the rows by their offset.
 
 **Example**
 
-```zetasql
+```googlesql
 SELECT *
 FROM UNNEST(['foo', 'bar', 'baz', 'qux', 'corge', 'garply', 'waldo', 'fred'])
   AS element
@@ -366,7 +366,7 @@ The following example uses [`UNNEST`][unnest-query] to return a row for each
 element in the array column. Because of the `INNER JOIN`, the `id` column
 contains the `id` values for the row in `Sequences` that contains each number.
 
-```zetasql
+```googlesql
 WITH
   Sequences AS (
     SELECT 1 AS id, [0, 1, 1, 2, 3, 5] AS some_numbers
@@ -401,7 +401,7 @@ Note that for correlated joins the `UNNEST` operator is optional and the
 comma cross join shorthand notation, the previous example is consolidated as
 follows:
 
-```zetasql
+```googlesql
 WITH
   Sequences AS (
     SELECT 1 AS id, [0, 1, 1, 2, 3, 5] AS some_numbers
@@ -436,7 +436,7 @@ If a table contains an `ARRAY` of `STRUCT` or `PROTO` values, you can
 [flatten the `ARRAY`][flattening-arrays] to query the fields of the `STRUCT` or
 `PROTO`.
 You can also flatten `ARRAY` type fields of `STRUCT` values and repeated fields
-of `PROTO` values. ZetaSQL treats repeated `PROTO` fields as
+of `PROTO` values. GoogleSQL treats repeated `PROTO` fields as
 `ARRAY`s.
 
 ### Querying `STRUCT` elements in an array 
@@ -445,7 +445,7 @@ of `PROTO` values. ZetaSQL treats repeated `PROTO` fields as
 The following example uses `UNNEST` with `INNER JOIN` to flatten an `ARRAY` of
 `STRUCT`s.
 
-```zetasql
+```googlesql
 WITH
   Races AS (
     SELECT
@@ -489,7 +489,7 @@ represent a common way to get information from a repeated field.
 
 **Example**
 
-```zetasql
+```googlesql
 WITH
   Races AS (
     SELECT
@@ -533,23 +533,23 @@ The following query shows the contents of a table where one row contains an
 `ARRAY` of `PROTO`s. All of the `PROTO` field values in the `ARRAY` appear in a
 single row.
 
-```zetasql
+```googlesql
 WITH
   Albums AS (
   SELECT
     'Let It Be' AS album_name,
     [
-      NEW zetasql.examples.music.Chart(1 AS rank, 'US 100' AS chart_name),
-      NEW zetasql.examples.music.Chart(1 AS rank, 'UK 40' AS chart_name),
-      NEW zetasql.examples.music.Chart(2 AS rank, 'Oricon' AS chart_name)
+      NEW googlesql.examples.music.Chart(1 AS rank, 'US 100' AS chart_name),
+      NEW googlesql.examples.music.Chart(1 AS rank, 'UK 40' AS chart_name),
+      NEW googlesql.examples.music.Chart(2 AS rank, 'Oricon' AS chart_name)
     ] AS charts
   UNION ALL
   SELECT
     'Rubber Soul' AS album_name,
     [
-      NEW zetasql.examples.music.Chart(1 AS rank, 'US 100' AS chart_name),
-      NEW zetasql.examples.music.Chart(1 AS rank, 'UK 40' AS chart_name),
-      NEW zetasql.examples.music.Chart(24 AS rank, 'Oricon' AS chart_name)
+      NEW googlesql.examples.music.Chart(1 AS rank, 'US 100' AS chart_name),
+      NEW googlesql.examples.music.Chart(1 AS rank, 'UK 40' AS chart_name),
+      NEW googlesql.examples.music.Chart(24 AS rank, 'Oricon' AS chart_name)
     ] AS charts
   )
 SELECT *
@@ -583,23 +583,23 @@ joins the duplicated value of `table.album_name` to the `chart` table. This
 allows the query to include the `table.album_name` column in the `SELECT` list
 together with the `PROTO` fields `chart.chart_name` and `chart.rank`.
 
-```zetasql
+```googlesql
 WITH
   Albums AS (
     SELECT
       'Let It Be' AS album_name,
       [
-        NEW zetasql.examples.music.Chart(1 AS rank, 'US 100' AS chart_name),
-        NEW zetasql.examples.music.Chart(1 AS rank, 'UK 40' AS chart_name),
-        NEW zetasql.examples.music.Chart(2 AS rank, 'Oricon' AS chart_name)
+        NEW googlesql.examples.music.Chart(1 AS rank, 'US 100' AS chart_name),
+        NEW googlesql.examples.music.Chart(1 AS rank, 'UK 40' AS chart_name),
+        NEW googlesql.examples.music.Chart(2 AS rank, 'Oricon' AS chart_name)
       ] AS charts
     UNION ALL
     SELECT
       'Rubber Soul' AS album_name,
       [
-        NEW zetasql.examples.music.Chart(1 AS rank, 'US 100' AS chart_name),
-        NEW zetasql.examples.music.Chart(1 AS rank, 'UK 40' AS chart_name),
-        NEW zetasql.examples.music.Chart(24 AS rank, 'Oricon' AS chart_name)
+        NEW googlesql.examples.music.Chart(1 AS rank, 'US 100' AS chart_name),
+        NEW googlesql.examples.music.Chart(1 AS rank, 'UK 40' AS chart_name),
+        NEW googlesql.examples.music.Chart(24 AS rank, 'Oricon' AS chart_name)
       ] AS charts
   )
 SELECT Albums.album_name, chart.chart_name, chart.rank
@@ -623,7 +623,7 @@ INNER JOIN UNNEST(charts) AS chart;
 You can also get information from nested repeated fields. For example, the
 following statement returns the runner who had the fastest lap in an 800M race.
 
-```zetasql
+```googlesql
 WITH
   Races AS (
     SELECT
@@ -660,7 +660,7 @@ Notice that the preceding query uses the comma operator (`,`) to perform a cross
 join and flatten the array. This is equivalent to using an explicit
 `CROSS JOIN`, or the following example which uses an explicit `INNER JOIN`:
 
-```zetasql
+```googlesql
 WITH
   Races AS (
     SELECT "800M" AS race,
@@ -695,7 +695,7 @@ FROM Races;
 Flattening arrays with `INNER JOIN` excludes rows that have empty or `NULL`
 arrays. If you want to include these rows, use `LEFT JOIN`.
 
-```zetasql
+```googlesql
 WITH
   Races AS (
     SELECT
@@ -739,7 +739,7 @@ GROUP BY name;
 
 ### Querying repeated fields
 
-ZetaSQL represents a repeated field of a `PROTO` as an `ARRAY`. You
+GoogleSQL represents a repeated field of a `PROTO` as an `ARRAY`. You
 can query this `ARRAY` using `UNNEST` and `INNER JOIN`.
 
 The following example queries a table containing a column of type `PROTO` with
@@ -748,18 +748,18 @@ the alias `album` and the repeated field `song`. All values of `song` for each
 
 **Example**
 
-```zetasql
+```googlesql
 WITH
   Bands AS (
     SELECT
       'The Beatles' AS band_name,
-      NEW zetasql.examples.music.Album(
+      NEW googlesql.examples.music.Album(
         'Let It Be' AS album_name,
         ['Across the Universe', 'Get Back', 'Dig It'] AS song) AS album
     UNION ALL
     SELECT
       'The Beatles' AS band_name,
-      NEW zetasql.examples.music.Album(
+      NEW googlesql.examples.music.Album(
         'Rubber Soul' AS album_name,
         ['Drive My Car', 'The Word', 'Michelle'] AS song) AS album
   )
@@ -789,18 +789,18 @@ the `ARRAY` that represents the repeated field `song`. `INNER JOIN` applies the
 value of the column `band_name` and the non-repeated field `album_name` within
 that row.
 
-```zetasql
+```googlesql
 WITH Bands AS (
   SELECT
     'The Beatles' AS band_name,
-    NEW zetasql.examples.music.Album(
+    NEW googlesql.examples.music.Album(
       'Let It Be' AS album_name,
       ['Across the Universe', 'Get Back', 'Dig It'] AS song
     ) AS album
     UNION ALL
   SELECT
     'The Beatles' AS band_name,
-    NEW zetasql.examples.music.Album(
+    NEW googlesql.examples.music.Album(
       'Rubber Soul' AS album_name,
       ['Drive My Car', 'The Word', 'Michelle'] AS song
     ) AS album
@@ -831,7 +831,7 @@ is valid; casting from type `ARRAY<INT32>` to `ARRAY<BYTES>` isn't valid.
 
 **Example**
 
-```zetasql
+```googlesql
 SELECT CAST(int_array AS ARRAY<DOUBLE>) AS double_array
 FROM (SELECT ARRAY<INT32>[1, 2, 3] AS int_array);
 
@@ -850,12 +850,12 @@ more about constructing arrays, see [Array type][array-data-type-construct].
 ## Creating arrays from subqueries
 
 A common task when working with arrays is turning a subquery result into an
-array. In ZetaSQL, you can accomplish this using the
+array. In GoogleSQL, you can accomplish this using the
 [`ARRAY()`][array-function] function.
 
 For example, consider the following operation on the `Sequences` table:
 
-```zetasql
+```googlesql
 WITH Sequences AS
   (SELECT [0, 1, 1, 2, 3, 5] AS some_numbers
   UNION ALL SELECT [2, 4, 8, 16, 32] AS some_numbers
@@ -890,7 +890,7 @@ to filter the returned rows.
 Note: In the following examples, the resulting rows are
 not ordered.
 
-```zetasql
+```googlesql
 WITH Sequences AS
   (SELECT [0, 1, 1, 2, 3, 5] AS some_numbers
    UNION ALL SELECT [2, 4, 8, 16, 32] AS some_numbers
@@ -917,7 +917,7 @@ corresponding original row (`[5, 10]`) didn't meet the filter requirement of
 You can also filter arrays by using `SELECT DISTINCT` to return only
 unique elements within an array.
 
-```zetasql
+```googlesql
 WITH Sequences AS
   (SELECT [0, 1, 1, 2, 3, 5] AS some_numbers)
 SELECT ARRAY(SELECT DISTINCT x
@@ -936,7 +936,7 @@ You can also filter rows of arrays by using the
 keyword filters rows containing arrays by determining if a specific
 value matches an element in the array.
 
-```zetasql
+```googlesql
 WITH Sequences AS
   (SELECT [0, 1, 1, 2, 3, 5] AS some_numbers
    UNION ALL SELECT [2, 4, 8, 16, 32] AS some_numbers
@@ -974,7 +974,7 @@ To scan an array for a specific value, use the `IN` operator with `UNNEST`.
 
 The following example returns `true` if the array contains the number 2.
 
-```zetasql
+```googlesql
 SELECT 2 IN UNNEST([0, 1, 1, 2, 3, 5]) AS contains_value;
 
 /*----------------+
@@ -992,7 +992,7 @@ filter the results of `IN UNNEST` using the `WHERE` clause.
 The following example returns the `id` value for the rows where the array
 column contains the value 2.
 
-```zetasql
+```googlesql
 WITH Sequences AS
   (SELECT 1 AS id, [0, 1, 1, 2, 3, 5] AS some_numbers
    UNION ALL SELECT 2 AS id, [2, 4, 8, 16, 32] AS some_numbers
@@ -1021,7 +1021,7 @@ a subquery, and use `EXISTS` to check if the filtered table contains any rows.
 The following example returns the `id` value for the rows where the array
 column contains values greater than 5.
 
-```zetasql
+```googlesql
 WITH
   Sequences AS (
     SELECT 1 AS id, [0, 1, 1, 2, 3, 5] AS some_numbers
@@ -1053,7 +1053,7 @@ non-matching rows from the table using `WHERE EXISTS`.
 The following example returns the rows where the array column contains a
 `STRUCT` whose field `b` has a value greater than 3.
 
-```zetasql
+```googlesql
 WITH
   Sequences AS (
     SELECT 1 AS id, [STRUCT(0 AS a, 1 AS b)] AS some_numbers
@@ -1076,10 +1076,10 @@ WHERE EXISTS(SELECT 1 FROM UNNEST(some_numbers) WHERE b > 3);
 
 ## Arrays and aggregation
 
-With ZetaSQL, you can aggregate values into an array using
+With GoogleSQL, you can aggregate values into an array using
 `ARRAY_AGG()`.
 
-```zetasql
+```googlesql
 WITH Fruits AS
   (SELECT "apple" AS fruit
    UNION ALL SELECT "pear" AS fruit
@@ -1098,7 +1098,7 @@ The array returned by `ARRAY_AGG()` is in an arbitrary order, since the order in
 which the function concatenates values isn't guaranteed. To order the array
 elements, use `ORDER BY`. For example:
 
-```zetasql
+```googlesql
 WITH Fruits AS
   (SELECT "apple" AS fruit
    UNION ALL SELECT "pear" AS fruit
@@ -1117,7 +1117,7 @@ You can also apply aggregate functions such as `SUM()` to the elements in an
 array. For example, the following query returns the sum of array elements for
 each row of the `Sequences` table.
 
-```zetasql
+```googlesql
 WITH Sequences AS
   (SELECT [0, 1, 1, 2, 3, 5] AS some_numbers
    UNION ALL SELECT [2, 4, 8, 16, 32] AS some_numbers
@@ -1136,10 +1136,10 @@ FROM Sequences AS s;
  +--------------------+------*/
 ```
 
-ZetaSQL also supports an aggregate function, `ARRAY_CONCAT_AGG()`,
+GoogleSQL also supports an aggregate function, `ARRAY_CONCAT_AGG()`,
 which concatenates the elements of an array column across rows.
 
-```zetasql
+```googlesql
 WITH Aggregates AS
   (SELECT [1,2] AS numbers
    UNION ALL SELECT [3,4] AS numbers
@@ -1170,7 +1170,7 @@ type as the elements of the first argument.
 
 Example:
 
-```zetasql
+```googlesql
 WITH Words AS
   (SELECT ["Hello", "World"] AS greeting)
 SELECT ARRAY_TO_STRING(greeting, " ") AS greetings
@@ -1194,7 +1194,7 @@ separator for `NULL` array elements.
 
 Example:
 
-```zetasql
+```googlesql
 SELECT
   ARRAY_TO_STRING(arr, ".", "N") AS non_empty_string,
   ARRAY_TO_STRING(arr, ".", "") AS empty_string,
@@ -1213,7 +1213,7 @@ FROM (SELECT ["a", NULL, "b", NULL, "c", NULL] AS arr);
 In some cases, you might want to combine multiple arrays into a single array.
 You can accomplish this using the `ARRAY_CONCAT()` function.
 
-```zetasql
+```googlesql
 SELECT ARRAY_CONCAT([1, 2], [3, 4], [5, 6]) AS count_to_six;
 
 /*--------------------------------------------------+
@@ -1229,7 +1229,7 @@ Consider the following table called `arrays_table`. The first column in the
 table is an array of integers and the second column contains two nested arrays
 of integers.
 
-```zetasql
+```googlesql
 WITH arrays_table AS (
   SELECT
     [1, 2] AS regular_array,
@@ -1253,7 +1253,7 @@ example inserts the number 5 into the `regular_array` column,
 and inserts the elements from the `first_array` field of the `nested_arrays`
 column into the `second_array` field:
 
-```zetasql
+```googlesql
 UPDATE
   arrays_table
 SET
@@ -1282,13 +1282,13 @@ You can zip arrays with the function [`ARRAY_ZIP`][array-zip].
 
 ## Building arrays of arrays
 
-ZetaSQL doesn't support building
+GoogleSQL doesn't support building
 [arrays of arrays][array-data-type]
 directly. Instead, you must create an array of structs, with each struct
 containing a field of type `ARRAY`. To illustrate this, consider the following
 `Points` table:
 
-```zetasql
+```googlesql
 /*----------+
  | point    |
  +----------+
@@ -1304,7 +1304,7 @@ Now, let's say you wanted to create an array consisting of each `point` in the
 `Points` table. To accomplish this, wrap the array returned from each row in a
 `STRUCT`, as shown below.
 
-```zetasql
+```googlesql
 WITH Points AS
   (SELECT [1, 5] AS point
    UNION ALL SELECT [2, 8] AS point
@@ -1329,7 +1329,7 @@ SELECT ARRAY(
 
 You can use this DML statement to insert the example data:
 
-```zetasql
+```googlesql
 INSERT Points
   (point, id)
 VALUES
@@ -1340,7 +1340,7 @@ VALUES
   ([5, 7], 5);
 ```
 
-```zetasql
+```googlesql
 SELECT ARRAY(
   SELECT STRUCT(point)
   FROM Points)
@@ -1363,37 +1363,37 @@ SELECT ARRAY(
 
 [flattening-arrays]: #flattening_arrays
 
-[array-data-type]: https://github.com/google/zetasql/blob/master/docs/data-types.md#array_type
+[array-data-type]: https://github.com/google/googlesql/blob/master/docs/data-types.md#array_type
 
-[array-data-type-construct]: https://github.com/google/zetasql/blob/master/docs/data-types.md#constructing_an_array
+[array-data-type-construct]: https://github.com/google/googlesql/blob/master/docs/data-types.md#constructing_an_array
 
-[from-clause]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#from_clause
+[from-clause]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#from_clause
 
-[unnest-query]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#unnest_operator
+[unnest-query]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#unnest_operator
 
-[inner-join-query]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#inner_join
+[inner-join-query]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#inner_join
 
-[comma-cross-join-query]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#comma_cross_join
+[comma-cross-join-query]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#comma_cross_join
 
-[correlated-join-query]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#correlated_join
+[correlated-join-query]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#correlated_join
 
-[in-operators]: https://github.com/google/zetasql/blob/master/docs/operators.md#in_operators
+[in-operators]: https://github.com/google/googlesql/blob/master/docs/operators.md#in_operators
 
-[exists-operator]: https://github.com/google/zetasql/blob/master/docs/operators.md#exists_operator
+[exists-operator]: https://github.com/google/googlesql/blob/master/docs/operators.md#exists_operator
 
-[cast-as-array]: https://github.com/google/zetasql/blob/master/docs/conversion_functions.md#cast-as-array
+[cast-as-array]: https://github.com/google/googlesql/blob/master/docs/conversion_functions.md#cast-as-array
 
-[array-function]: https://github.com/google/zetasql/blob/master/docs/array_functions.md
+[array-function]: https://github.com/google/googlesql/blob/master/docs/array_functions.md
 
-[array-agg-function]: https://github.com/google/zetasql/blob/master/docs/aggregate_functions.md#array_agg
+[array-agg-function]: https://github.com/google/googlesql/blob/master/docs/aggregate_functions.md#array_agg
 
-[array-subscript-operator]: https://github.com/google/zetasql/blob/master/docs/operators.md#array_subscript_operator
+[array-subscript-operator]: https://github.com/google/googlesql/blob/master/docs/operators.md#array_subscript_operator
 
-[flatten-operator]: https://github.com/google/zetasql/blob/master/docs/array_functions.md#flatten
+[flatten-operator]: https://github.com/google/googlesql/blob/master/docs/array_functions.md#flatten
 
-[array-el-field-operator]: https://github.com/google/zetasql/blob/master/docs/operators.md#array_el_field_operator
+[array-el-field-operator]: https://github.com/google/googlesql/blob/master/docs/operators.md#array_el_field_operator
 
-[array-zip]: https://github.com/google/zetasql/blob/master/docs/array_functions.md#array-zip
+[array-zip]: https://github.com/google/googlesql/blob/master/docs/array_functions.md#array-zip
 
 <!-- mdlint on -->
 

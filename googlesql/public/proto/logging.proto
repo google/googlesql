@@ -1,0 +1,93 @@
+//
+// Copyright 2019 Google LLC
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+//
+
+syntax = "proto2";
+
+package googlesql;
+
+import "google/protobuf/duration.proto";
+
+option java_multiple_files = true;
+
+// Each stage in the GoogleSQL processing is reported as a separate
+// operation, with information about its resource usage.
+//
+message ExecutionStats {
+  optional google.protobuf.Duration wall_time = 1;
+  optional google.protobuf.Duration cpu_time = 2;
+
+  // Stack available to be used at the start of the operation
+  optional uint64 stack_available_bytes = 4;
+
+  // Peak stack use estimated for the operation
+  optional uint64 stack_peak_used_bytes = 5;
+
+  enum ParserVariant {
+    PARSER_UNSPECIFIED = 0;
+    PARSER_BISON = 1;
+    // Experimental Textmapper parser
+    PARSER_TEXTMAPPER = 2;
+  }
+}
+
+// The AnalyzerLogEntry summarizes the resource usage across operations
+// for a GoogleSQL invocation and provides more general reporting.
+//
+// We expect incomplete information in error cases.
+message AnalyzerLogEntry {
+  enum LoggedOperationCategory {
+    reserved 6;
+
+    UNKNOWN_LOGGED_OPERATION_CATEGORY = 0;
+    // Parsing may not occur for pre-parsed queries.
+    PARSER = 1;
+    // The analyzer resolves the parsed ASTNode structure into ResolvedAST.
+    // Time spent in Catalog lookups is excluded here and counted in
+    // CATALOG_RESOLVER instead.
+
+    RESOLVER = 2;
+    // Rewriters modify the ResolvedAST and depend on configuration.
+    REWRITER = 3;
+
+    // Time spent in the engine-provided catalog, not GoogleSQL code. This is
+    // unique in that it's counting non-GoogleSQL time.
+    CATALOG_RESOLVER = 4;
+
+    // Tracks resources used in validator, if enabled.
+    VALIDATOR = 5;
+  }
+
+  // Number of lexical tokens summed over all statements in this log entry.
+  // This can be used as a measure of query complexity.
+  optional int64 num_lexical_tokens = 1;
+
+  optional ExecutionStats overall_execution_stats = 2;
+
+  // These items represent a partitioning of the resource usage, without any
+  // double counting within the entries. No time is counted in two buckets.
+  // We expect to add new LoggedOperationCategory keys in the future.
+  //
+  // If there are multiple steps of the same kind then they are aggregated into
+  // one entry for that op type.
+  //
+  // Note this is laid out like a map, but keys in map fields cannot be enum
+  // types.
+  message ExecutionStatsByOpEntry {
+    optional LoggedOperationCategory key = 1;
+    optional ExecutionStats value = 2;
+  }
+  repeated ExecutionStatsByOpEntry execution_stats_by_op = 3;
+}

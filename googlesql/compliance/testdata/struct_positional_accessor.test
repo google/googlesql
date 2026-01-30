@@ -1,0 +1,121 @@
+# Tests for (broken link)
+[prepare_database]
+CREATE TEMP CONSTANT CInt64Literal = 1;
+==
+
+[prepare_database]
+CREATE TEMP CONSTANT CInt32Literal = 0;
+==
+
+[default required_features=STRUCT_POSITIONAL_ACCESSOR]
+[name=table_struct_field_double]
+WITH t AS (SELECT STRUCT(3.14 as d,TRUE) AS s)
+SELECT s[OFFSET(0)] AS c FROM t
+--
+ARRAY<STRUCT<c DOUBLE>>[{3.14}]
+==
+
+[name=struct_offset_double]
+SELECT STRUCT(3.14,TRUE)[OFFSET(0)] AS c
+--
+ARRAY<STRUCT<c DOUBLE>>[{3.14}]
+==
+
+[name=struct_offset_bool]
+SELECT STRUCT(3.14,TRUE)[OFFSET(1)] AS c
+--
+ARRAY<STRUCT<c BOOL>>[{true}]
+==
+
+[name=struct_ordinal_double]
+SELECT STRUCT(3.14,TRUE)[ORDINAL(1)] AS c
+--
+ARRAY<STRUCT<c DOUBLE>>[{3.14}]
+==
+
+[name=struct_ordinal_bool]
+SELECT STRUCT(3.14,TRUE)[ORDINAL(2)] AS c
+--
+ARRAY<STRUCT<c BOOL>>[{true}]
+==
+
+[name=struct_offset_null]
+SELECT CAST(NULL AS STRUCT<DOUBLE>)[OFFSET(0)] AS c
+--
+ARRAY<STRUCT<c DOUBLE>>[{NULL}]
+==
+
+[name=table_struct_field_double_multiply_requested]
+WITH t AS (SELECT STRUCT(3.14 as d, TRUE) AS s)
+SELECT s.d AS a, s[OFFSET(0)] AS b, s[ORDINAL(1)] AS c FROM t
+--
+ARRAY<STRUCT<a DOUBLE, b DOUBLE, c DOUBLE>>[{3.14, 3.14, 3.14}]
+
+==
+
+[name=table_struct_multiple_fields]
+WITH t AS (SELECT STRUCT(3.14 as d, TRUE as f) AS s)
+SELECT s.d AS d, s.f AS f, s[OFFSET(0)] AS a, s[OFFSET(1)] AS b FROM t
+--
+ARRAY<STRUCT<d DOUBLE, f BOOL, a DOUBLE, b BOOL>>[{3.14, true, 3.14, true}]
+==
+
+[name=table_struct_multiple_anon_fields]
+WITH t AS (SELECT STRUCT(3.14, TRUE) AS s)
+SELECT s[OFFSET(0)] AS a, s[OFFSET(1)] AS b FROM t
+--
+ARRAY<STRUCT<a DOUBLE, b BOOL>>[{3.14, true}]
+==
+
+[name=table_struct_same_name_field_double_multiply_requested]
+WITH t AS (SELECT STRUCT(3.14 as d, TRUE as d) AS s)
+SELECT
+  s[OFFSET(0)] AS a,
+  s[ORDINAL(1)] AS b,
+  s[OFFSET(1)] AS c,
+  s[ORDINAL(2)] AS d
+FROM t
+--
+ARRAY<STRUCT<a DOUBLE, b DOUBLE, c BOOL, d BOOL>>[{3.14, 3.14, true, true}]
+==
+
+[name=table_nested_struct]
+WITH t AS (SELECT STRUCT("s" AS d, [1,2] AS d, b'' AS d) AS d)
+SELECT
+  t[OFFSET(0)][OFFSET(0)] AS a,
+  t[ORDINAL(1)][OFFSET(1)] AS b,
+  t[OFFSET(0)][OFFSET(1)] AS c,
+  t[ORDINAL(1)][OFFSET(2)] AS d
+FROM t
+--
+ARRAY<STRUCT<a STRING, b ARRAY<>, c ARRAY<>, d BYTES>>[
+  {
+    "s",
+    ARRAY<INT64>[known order:1, 2],
+    ARRAY<INT64>[known order:1, 2],
+    b""
+  }
+]
+==
+
+[name=base_struct_access]
+[required_features=STRUCT_POSITIONAL_ACCESSOR,BARE_ARRAY_ACCESS]
+SELECT STRUCT(3.14 as d, 2.78 as d)[1] AS c
+--
+ARRAY<STRUCT<c DOUBLE>>[{2.78}]
+==
+
+[name=struct_positional_accessor_with_named_constant_int64]
+[required_features=STRUCT_POSITIONAL_ACCESSOR,BARE_ARRAY_ACCESS,ANALYSIS_CONSTANT_STRUCT_POSITIONAL_ACCESSOR]
+SELECT STRUCT(3.14 as a, 2.78 as b)[CInt64Literal] AS b
+--
+ARRAY<STRUCT<b DOUBLE>>[{2.78}]
+==
+
+[name=struct_positional_accessor_with_named_constant_int32]
+[required_features=STRUCT_POSITIONAL_ACCESSOR,BARE_ARRAY_ACCESS,ANALYSIS_CONSTANT_STRUCT_POSITIONAL_ACCESSOR]
+SELECT STRUCT(3.14 as a, 2.78 as b)[CInt32Literal] AS a
+--
+ARRAY<STRUCT<a DOUBLE>>[{3.14}]
+==
+

@@ -1,0 +1,91 @@
+//
+// Copyright 2019 Google LLC
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+//
+
+syntax = "proto2";
+
+package googlesql;
+
+option java_package = "com.google.googlesql";
+
+// This proto is used as a absl::Status error payload to give the location
+// for SQL parsing and analysis errors.
+message ErrorLocation {
+
+  // 1-based <line> and <column> offset in the input SQL string.
+  // <column> may point to one character off the end of a line when the error
+  // occurs at end-of-line.
+  //
+  // NOTE: <line> is computed assuming lines can be split
+  // with \n, \r or \r\n, and <column> is computed assuming tabs
+  // expand to eight characters.
+  optional int32 line = 1 [default = 1];
+  optional int32 column = 2 [default = 1];
+
+  // An optional filename related to the error, if applicable.  May be used
+  // to express more general error source information than a filename, for
+  // instance if the error comes from a module imported from datascape.
+  // ErrorLocation typically gets formatted as 'filename:line:column', so
+  // this field content should make sense in this format (i.e., it should
+  // probably avoid whitespace).
+  optional string filename = 3;
+
+  // Optional offsets of the input in its original source. `line` and `column`
+  // above are relative to the start of the input, but that input itself may
+  // be extracted from a much larger source which is not available. These
+  // offsets are added when printing the locations to reflect the position to
+  // the beginning of the original source, instead of the available input.
+  // Note that this is the offset of the input string itself, not of this
+  // location.
+  // Note that `input_start_column_offset` is only relevant when `line`  is 1.
+  // After the first line, the text starts from the first column anyway.
+  optional int32 input_start_line_offset = 5;
+  optional int32 input_start_column_offset = 6;
+
+  // An optional list of error source information for the related Status.
+  // The last element in this list is the immediate error cause, with
+  // the previous element being its cause, etc.  These error sources should
+  // normally be displayed in reverse order.
+  repeated ErrorSource error_source = 4;
+}
+
+// This proto indicates an error that is the source of another error.
+// It is expected that all of <error_message>, <error_message_caret_string>,
+// and <error_location> are populated in normal use cases.
+//
+// An example of usage is for deferred, nested resolution of SQL expressions
+// related to SQL UDFs inside Modules.  Resolving a SQL UDF (func1) that
+// references another SQL UDF (func2) can cause nested resolution, and if the
+// resolution of func2 fails then that error information is captured in an
+// ErrorSource that is attached to the error Status returned by func1's
+// resolution.  The returned Status may also have its own ErrorLocation
+// related to func1, while the ErrorSource will be specific to func2's
+// resolution.
+message ErrorSource {
+  // The error message for this ErrorSource.
+  optional string error_message = 1;
+
+  // An additional error string added to <error_message> when in
+  // ErrorMessageMode ERROR_MESSAGE_MODE_MULTI_LINE_WITH_CARET.  This
+  // is constructed as one line of input text, a newline, and then a
+  // second line with the caret in the position pointing at the error
+  // in the first line.
+  optional string error_message_caret_string = 2;
+
+  // The error location indicating a position in the original input file
+  // containing the statement with the error.
+  // This <error_location> should not itself have <error_source> filled in.
+  optional ErrorLocation error_location = 3;
+}

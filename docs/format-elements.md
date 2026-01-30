@@ -4,12 +4,12 @@
 
 # Format elements
 
-ZetaSQL supports the following format elements.
+GoogleSQL supports the following format elements.
 
 ## Format elements for date and time parts 
 <a id="format_elements_date_time"></a>
 
-Many ZetaSQL parsing and formatting functions rely on a format string
+Many GoogleSQL parsing and formatting functions rely on a format string
 to describe the format of parsed or formatted values. A format string represents
 the textual form of date and time and contains separate format elements that are
 applied left-to-right.
@@ -521,7 +521,7 @@ Format strings generally support the following elements:
 
 Examples:
 
-```zetasql
+```googlesql
 SELECT FORMAT_DATE("%b-%d-%Y", DATE "2008-12-25") AS formatted;
 
 /*-------------+
@@ -531,7 +531,7 @@ SELECT FORMAT_DATE("%b-%d-%Y", DATE "2008-12-25") AS formatted;
  +-------------*/
 ```
 
-```zetasql
+```googlesql
 SELECT
   FORMAT_DATETIME("%c", DATETIME "2008-12-25 15:30:00")
   AS formatted;
@@ -543,7 +543,7 @@ SELECT
  +--------------------------*/
 ```
 
-```zetasql
+```googlesql
 SELECT FORMAT_TIME("%R", TIME "15:30:00") as formatted_time;
 
 /*----------------+
@@ -553,7 +553,7 @@ SELECT FORMAT_TIME("%R", TIME "15:30:00") as formatted_time;
  +----------------*/
 ```
 
-```zetasql
+```googlesql
 SELECT FORMAT_TIMESTAMP("%b %Y %Ez", TIMESTAMP "2008-12-25 15:30:00+00")
   AS formatted;
 
@@ -564,7 +564,7 @@ SELECT FORMAT_TIMESTAMP("%b %Y %Ez", TIMESTAMP "2008-12-25 15:30:00+00")
  +-----------------*/
 ```
 
-```zetasql
+```googlesql
 SELECT PARSE_DATE("%Y%m%d", "20081225") AS parsed;
 
 /*------------+
@@ -574,7 +574,7 @@ SELECT PARSE_DATE("%Y%m%d", "20081225") AS parsed;
  +------------*/
 ```
 
-```zetasql
+```googlesql
 SELECT PARSE_DATETIME('%Y-%m-%d %H:%M:%S', '1998-10-18 13:45:55') AS datetime;
 
 /*---------------------+
@@ -584,7 +584,7 @@ SELECT PARSE_DATETIME('%Y-%m-%d %H:%M:%S', '1998-10-18 13:45:55') AS datetime;
  +---------------------*/
 ```
 
-```zetasql
+```googlesql
 SELECT PARSE_TIME('%I:%M:%S %p', '2:23:38 pm') AS parsed_time
 
 /*-------------+
@@ -594,7 +594,7 @@ SELECT PARSE_TIME('%I:%M:%S %p', '2:23:38 pm') AS parsed_time
  +-------------*/
 ```
 
-```zetasql
+```googlesql
 SELECT PARSE_TIMESTAMP("%c", "Thu Dec 25 07:30:00 2008") AS parsed;
 
 -- Display of results may differ, depending upon the environment and
@@ -609,7 +609,7 @@ SELECT PARSE_TIMESTAMP("%c", "Thu Dec 25 07:30:00 2008") AS parsed;
 ## Format clause for CAST 
 <a id="formatting_syntax"></a>
 
-```zetasql
+```googlesql
 format_clause:
   FORMAT format_model
 
@@ -629,7 +629,7 @@ format elements combined together as a format string.
 ### Format bytes as string 
 <a id="format_bytes_as_string"></a>
 
-```zetasql
+```googlesql
 CAST(bytes_expression AS STRING FORMAT format_string_expression)
 ```
 
@@ -725,7 +725,7 @@ result is `NULL`. Format elements are case-insensitive.
 
 **Example**
 
-```zetasql
+```googlesql
 SELECT CAST(b'\x48\x65\x6c\x6c\x6f' AS STRING FORMAT 'ASCII') AS bytes_to_string;
 
 /*-----------------+
@@ -738,7 +738,7 @@ SELECT CAST(b'\x48\x65\x6c\x6c\x6f' AS STRING FORMAT 'ASCII') AS bytes_to_string
 ### Format string as bytes 
 <a id="format_string_as_bytes"></a>
 
-```zetasql
+```googlesql
 CAST(string_expression AS BYTES FORMAT format_string_expression)
 ```
 
@@ -840,7 +840,7 @@ if the `BASE64` or `BASE64M` format element is used.
 
 **Example**
 
-```zetasql
+```googlesql
 SELECT CAST('Hello' AS BYTES FORMAT 'ASCII') AS string_to_bytes
 
 -- Displays the bytes output value (b'\x48\x65\x6c\x6c\x6f').
@@ -890,7 +890,7 @@ format element is capitalized. This is called case matching. The rules are:
 #### Format year part as string 
 <a id="format_year_as_string"></a>
 
-```zetasql
+```googlesql
 CAST(expression AS STRING FORMAT format_string_expression)
 ```
 
@@ -986,7 +986,7 @@ contain a value specified by a format element.
 
 **Example**
 
-```zetasql
+```googlesql
 SELECT CAST(DATE '2018-01-30' AS STRING FORMAT 'YYYY') AS date_time_to_string;
 
 /*---------------------+
@@ -999,7 +999,7 @@ SELECT CAST(DATE '2018-01-30' AS STRING FORMAT 'YYYY') AS date_time_to_string;
 #### Format month part as string 
 <a id="format_month_as_string"></a>
 
-```zetasql
+```googlesql
 CAST(expression AS STRING FORMAT format_string_expression)
 ```
 
@@ -1073,7 +1073,7 @@ contain a value specified by a format element.
 
 **Example**
 
-```zetasql
+```googlesql
 SELECT CAST(DATE '2018-01-30' AS STRING FORMAT 'MONTH') AS date_time_to_string;
 
 /*---------------------+
@@ -1086,7 +1086,7 @@ SELECT CAST(DATE '2018-01-30' AS STRING FORMAT 'MONTH') AS date_time_to_string;
 #### Format day part as string 
 <a id="format_day_as_string"></a>
 
-```zetasql
+```googlesql
 CAST(expression AS STRING FORMAT format_string_expression)
 ```
 
@@ -1177,7 +1177,7 @@ contain a value specified by a format element.
 
 **Example**
 
-```zetasql
+```googlesql
 SELECT CAST(DATE '2018-02-15' AS STRING FORMAT 'DD') AS date_time_to_string;
 
 /*---------------------+
@@ -1190,7 +1190,7 @@ SELECT CAST(DATE '2018-02-15' AS STRING FORMAT 'DD') AS date_time_to_string;
 #### Format hour part as string 
 <a id="format_hour_as_string"></a>
 
-```zetasql
+```googlesql
 CAST(expression AS STRING FORMAT format_string_expression)
 ```
 
@@ -1260,7 +1260,7 @@ contain a value specified by a format element.
 
 **Examples**
 
-```zetasql
+```googlesql
 SELECT CAST(TIME '21:30:00' AS STRING FORMAT 'HH24') AS date_time_to_string;
 
 /*---------------------+
@@ -1270,7 +1270,7 @@ SELECT CAST(TIME '21:30:00' AS STRING FORMAT 'HH24') AS date_time_to_string;
  +---------------------*/
 ```
 
-```zetasql
+```googlesql
 SELECT CAST(TIME '21:30:00' AS STRING FORMAT 'HH12') AS date_time_to_string;
 
 /*---------------------+
@@ -1283,7 +1283,7 @@ SELECT CAST(TIME '21:30:00' AS STRING FORMAT 'HH12') AS date_time_to_string;
 #### Format minute part as string 
 <a id="format_minute_as_string"></a>
 
-```zetasql
+```googlesql
 CAST(expression AS STRING FORMAT format_string_expression)
 ```
 
@@ -1333,7 +1333,7 @@ contain a value specified by a format element.
 
 **Example**
 
-```zetasql
+```googlesql
 SELECT CAST(TIME '21:30:00' AS STRING FORMAT 'MI') AS date_time_to_string;
 
 /*---------------------+
@@ -1346,7 +1346,7 @@ SELECT CAST(TIME '21:30:00' AS STRING FORMAT 'MI') AS date_time_to_string;
 #### Format second part as string 
 <a id="format_second_as_string"></a>
 
-```zetasql
+```googlesql
 CAST(expression AS STRING FORMAT format_string_expression)
 ```
 
@@ -1423,7 +1423,7 @@ contain a value specified by a format element.
 
 **Examples**
 
-```zetasql
+```googlesql
 SELECT CAST(TIME '21:30:25.16' AS STRING FORMAT 'SS') AS date_time_to_string;
 
 /*---------------------+
@@ -1433,7 +1433,7 @@ SELECT CAST(TIME '21:30:25.16' AS STRING FORMAT 'SS') AS date_time_to_string;
  +---------------------*/
 ```
 
-```zetasql
+```googlesql
 SELECT CAST(TIME '21:30:25.16' AS STRING FORMAT 'FF2') AS date_time_to_string;
 
 /*---------------------+
@@ -1446,7 +1446,7 @@ SELECT CAST(TIME '21:30:25.16' AS STRING FORMAT 'FF2') AS date_time_to_string;
 #### Format meridian indicator part as string 
 <a id="format_meridian_as_string"></a>
 
-```zetasql
+```googlesql
 CAST(expression AS STRING FORMAT format_string_expression)
 ```
 
@@ -1540,7 +1540,7 @@ contain a value specified by a format element.
 
 **Examples**
 
-```zetasql
+```googlesql
 SELECT CAST(TIME '21:30:00' AS STRING FORMAT 'AM') AS date_time_to_string;
 SELECT CAST(TIME '21:30:00' AS STRING FORMAT 'PM') AS date_time_to_string;
 
@@ -1551,7 +1551,7 @@ SELECT CAST(TIME '21:30:00' AS STRING FORMAT 'PM') AS date_time_to_string;
  +---------------------*/
 ```
 
-```zetasql
+```googlesql
 SELECT CAST(TIME '01:30:00' AS STRING FORMAT 'AM') AS date_time_to_string;
 SELECT CAST(TIME '01:30:00' AS STRING FORMAT 'PM') AS date_time_to_string;
 
@@ -1565,7 +1565,7 @@ SELECT CAST(TIME '01:30:00' AS STRING FORMAT 'PM') AS date_time_to_string;
 #### Format time zone part as string 
 <a id="format_tz_as_string"></a>
 
-```zetasql
+```googlesql
 CAST(expression AS STRING FORMAT format_string_expression)
 ```
 
@@ -1629,7 +1629,7 @@ contain a value specified by a format element.
 
 **Examples**
 
-```zetasql
+```googlesql
 SELECT CAST(TIMESTAMP '2008-12-25 00:00:00+00:00' AS STRING FORMAT 'TZH') AS date_time_to_string;
 
 -- Results depend upon where this query was executed.
@@ -1640,7 +1640,7 @@ SELECT CAST(TIMESTAMP '2008-12-25 00:00:00+00:00' AS STRING FORMAT 'TZH') AS dat
  +---------------------*/
 ```
 
-```zetasql
+```googlesql
 SELECT CAST(TIMESTAMP '2008-12-25 00:00:00+00:00' AS STRING FORMAT 'TZH' AT TIME ZONE 'Asia/Kolkata')
 AS date_time_to_string;
 
@@ -1652,7 +1652,7 @@ AS date_time_to_string;
  +---------------------*/
 ```
 
-```zetasql
+```googlesql
 SELECT CAST(TIMESTAMP '2008-12-25 00:00:00+00:00' AS STRING FORMAT 'TZM') AS date_time_to_string;
 
 -- Results depend upon where this query was executed.
@@ -1663,7 +1663,7 @@ SELECT CAST(TIMESTAMP '2008-12-25 00:00:00+00:00' AS STRING FORMAT 'TZM') AS dat
  +---------------------*/
 ```
 
-```zetasql
+```googlesql
 SELECT CAST(TIMESTAMP '2008-12-25 00:00:00+00:00' AS STRING FORMAT 'TZM' AT TIME ZONE 'Asia/Kolkata')
 AS date_time_to_string;
 
@@ -1678,7 +1678,7 @@ AS date_time_to_string;
 #### Format literal as string 
 <a id="format_literal_as_string"></a>
 
-```zetasql
+```googlesql
 CAST(expression AS STRING FORMAT format_string_expression)
 ```
 
@@ -1802,7 +1802,7 @@ rules:
 #### Format string as year part 
 <a id="format_string_as_year"></a>
 
-```zetasql
+```googlesql
 CAST(string_expression AS type FORMAT format_string_expression)
 ```
 
@@ -1960,7 +1960,7 @@ The data type to which the string was cast. This can be:
 
 **Examples**
 
-```zetasql
+```googlesql
 SELECT CAST('18-12-03' AS DATE FORMAT 'YY-MM-DD') AS string_to_date
 
 /*----------------+
@@ -1973,7 +1973,7 @@ SELECT CAST('18-12-03' AS DATE FORMAT 'YY-MM-DD') AS string_to_date
 #### Format string as month part 
 <a id="format_string_as_month"></a>
 
-```zetasql
+```googlesql
 CAST(string_expression AS type FORMAT format_string_expression)
 ```
 
@@ -2057,7 +2057,7 @@ The data type to which the string was cast. This can be:
 
 **Examples**
 
-```zetasql
+```googlesql
 SELECT CAST('DEC 03, 2018' AS DATE FORMAT 'MON DD, YYYY') AS string_to_date
 
 /*----------------+
@@ -2070,7 +2070,7 @@ SELECT CAST('DEC 03, 2018' AS DATE FORMAT 'MON DD, YYYY') AS string_to_date
 #### Format string as day part 
 <a id="format_string_as_day"></a>
 
-```zetasql
+```googlesql
 CAST(string_expression AS type FORMAT format_string_expression)
 ```
 
@@ -2130,7 +2130,7 @@ The data type to which the string was cast. This can be:
 
 **Examples**
 
-```zetasql
+```googlesql
 SELECT CAST('DECEMBER 03, 2018' AS DATE FORMAT 'MONTH DD, YYYY') AS string_to_date
 
 /*----------------+
@@ -2143,7 +2143,7 @@ SELECT CAST('DECEMBER 03, 2018' AS DATE FORMAT 'MONTH DD, YYYY') AS string_to_da
 #### Format string as hour part 
 <a id="format_string_as_hour"></a>
 
-```zetasql
+```googlesql
 CAST(string_expression AS type FORMAT format_string_expression)
 ```
 
@@ -2227,7 +2227,7 @@ The data type to which the string was cast. This can be:
 
 **Examples**
 
-```zetasql
+```googlesql
 SELECT CAST('15:30' AS TIME FORMAT 'HH24:MI') AS string_to_date_time
 
 /*---------------------+
@@ -2240,7 +2240,7 @@ SELECT CAST('15:30' AS TIME FORMAT 'HH24:MI') AS string_to_date_time
 #### Format string as minute part 
 <a id="format_string_as_minute"></a>
 
-```zetasql
+```googlesql
 CAST(string_expression AS type FORMAT format_string_expression)
 ```
 
@@ -2302,7 +2302,7 @@ The data type to which the string was cast. This can be:
 
 **Examples**
 
-```zetasql
+```googlesql
 SELECT CAST('03:30 P.M.' AS TIME FORMAT 'HH:MI P.M.') AS string_to_date_time
 
 /*---------------------+
@@ -2315,7 +2315,7 @@ SELECT CAST('03:30 P.M.' AS TIME FORMAT 'HH:MI P.M.') AS string_to_date_time
 #### Format string as second part 
 <a id="format_string_as_second"></a>
 
-```zetasql
+```googlesql
 CAST(string_expression AS type FORMAT format_string_expression)
 ```
 
@@ -2406,7 +2406,7 @@ The data type to which the string was cast. This can be:
 
 **Examples**
 
-```zetasql
+```googlesql
 SELECT CAST('01:05:07.16' AS TIME FORMAT 'HH24:MI:SS.FF1') AS string_to_date_time
 
 /*---------------------+
@@ -2419,7 +2419,7 @@ SELECT CAST('01:05:07.16' AS TIME FORMAT 'HH24:MI:SS.FF1') AS string_to_date_tim
 #### Format string as meridian indicator part 
 <a id="format_string_as_meridian"></a>
 
-```zetasql
+```googlesql
 CAST(string_expression AS type FORMAT format_string_expression)
 ```
 
@@ -2490,7 +2490,7 @@ The data type to which the string was cast. This can be:
 
 **Examples**
 
-```zetasql
+```googlesql
 SELECT CAST('03:30 P.M.' AS TIME FORMAT 'HH:MI A.M.') AS string_to_date_time
 
 /*---------------------+
@@ -2503,7 +2503,7 @@ SELECT CAST('03:30 P.M.' AS TIME FORMAT 'HH:MI A.M.') AS string_to_date_time
 #### Format string as time zone part 
 <a id="format_string_as_tz"></a>
 
-```zetasql
+```googlesql
 CAST(string_expression AS type FORMAT format_string_expression)
 ```
 
@@ -2581,7 +2581,7 @@ The data type to which the string was cast. This can be:
 
 **Examples**
 
-```zetasql
+```googlesql
 SELECT CAST('2020.06.03 00:00:53+00' AS TIMESTAMP FORMAT 'YYYY.MM.DD HH:MI:SSTZH') AS string_to_date_time
 
 /*----------------------------+
@@ -2594,7 +2594,7 @@ SELECT CAST('2020.06.03 00:00:53+00' AS TIMESTAMP FORMAT 'YYYY.MM.DD HH:MI:SSTZH
 #### Format string as literal 
 <a id="format_string_as_literal"></a>
 
-```zetasql
+```googlesql
 CAST(string_expression AS data_type FORMAT format_string_expression)
 ```
 
@@ -2675,7 +2675,7 @@ CAST(string_expression AS data_type FORMAT format_string_expression)
 ### Format numeric type as string 
 <a id="format_numeric_type_as_string"></a>
 
-```zetasql
+```googlesql
 CAST(numeric_expression AS STRING FORMAT format_string_expression)
 ```
 
@@ -2701,7 +2701,7 @@ otherwise a space. To suppress blank characters and trailing zeroes, use the
 
 **Example**
 
-```zetasql
+```googlesql
 SELECT input, CAST(input AS STRING FORMAT '$999,999.999') AS output
 FROM UNNEST([1.2, 12.3, 123.456, 1234.56, -12345.678, 1234567.89]) AS input
 
@@ -2807,7 +2807,7 @@ characters.
 
 **Example**
 
-```zetasql
+```googlesql
 SELECT
   CAST(12 AS STRING FORMAT '999') as a,
   CAST(-12 AS STRING FORMAT '999') as b;
@@ -2859,7 +2859,7 @@ mutually exclusive. At most one can appear in the format string.
 
 **Example**
 
-```zetasql
+```googlesql
 SELECT CAST(12.5 AS STRING FORMAT '99.99') as a;
 
 /*--------+
@@ -2948,7 +2948,7 @@ symbol element, then the sign appears before the currency symbol.
 
 **Example**
 
-```zetasql
+```googlesql
 SELECT
   CAST(12 AS STRING FORMAT 'S99') as a,
   CAST(-12 AS STRING FORMAT 'S99') as b;
@@ -3016,7 +3016,7 @@ output, the currency symbol appears before the first digit or decimal point.
 
 **Example**
 
-```zetasql
+```googlesql
 SELECT
   CAST(12 AS STRING FORMAT '$99') as a,
   CAST(-12 AS STRING FORMAT '$99') as b;
@@ -3067,7 +3067,7 @@ The following format elements output a group separator.
 
 **Example**
 
-```zetasql
+```googlesql
 SELECT CAST(1234 AS STRING FORMAT '999,999') as a;
 
 /*----------+
@@ -3163,7 +3163,7 @@ SELECT CAST(1234 AS STRING FORMAT '999,999') as a;
 
 **Example**
 
-```zetasql
+```googlesql
 SELECT CAST(-123456 AS STRING FORMAT '9.999EEEE') as a;"
 
 /*------------+
@@ -3189,21 +3189,21 @@ the Latin letters in the input string are case-insensitive. For example, both
 "3a" and "3A" are valid input strings for BASE16/Hexadecimal decoding, and
 will output the same result.
 
-[format-date]: https://github.com/google/zetasql/blob/master/docs/date_functions.md#format_date
+[format-date]: https://github.com/google/googlesql/blob/master/docs/date_functions.md#format_date
 
-[parse-date]: https://github.com/google/zetasql/blob/master/docs/date_functions.md#parse_date
+[parse-date]: https://github.com/google/googlesql/blob/master/docs/date_functions.md#parse_date
 
-[format-time]: https://github.com/google/zetasql/blob/master/docs/time_functions.md#format_time
+[format-time]: https://github.com/google/googlesql/blob/master/docs/time_functions.md#format_time
 
-[parse-time]: https://github.com/google/zetasql/blob/master/docs/time_functions.md#parse_time
+[parse-time]: https://github.com/google/googlesql/blob/master/docs/time_functions.md#parse_time
 
-[format-datetime]: https://github.com/google/zetasql/blob/master/docs/datetime_functions.md#format_datetime
+[format-datetime]: https://github.com/google/googlesql/blob/master/docs/datetime_functions.md#format_datetime
 
-[parse-datetime]: https://github.com/google/zetasql/blob/master/docs/datetime_functions.md#parse_datetime
+[parse-datetime]: https://github.com/google/googlesql/blob/master/docs/datetime_functions.md#parse_datetime
 
-[format-timestamp]: https://github.com/google/zetasql/blob/master/docs/timestamp_functions.md#format_timestamp
+[format-timestamp]: https://github.com/google/googlesql/blob/master/docs/timestamp_functions.md#format_timestamp
 
-[parse-timestamp]: https://github.com/google/zetasql/blob/master/docs/timestamp_functions.md#parse_timestamp
+[parse-timestamp]: https://github.com/google/googlesql/blob/master/docs/timestamp_functions.md#parse_timestamp
 
 [rfc-4648]: https://tools.ietf.org/html/rfc4648#section-3.3
 
@@ -3259,7 +3259,7 @@ will output the same result.
 
 [format-other-elements]: #format_other_elements
 
-[numeric-types]: https://github.com/google/zetasql/blob/master/docs/data-types.md#numeric_types
+[numeric-types]: https://github.com/google/googlesql/blob/master/docs/data-types.md#numeric_types
 
-[cast-functions]: https://github.com/google/zetasql/blob/master/docs/conversion_functions.md#cast
+[cast-functions]: https://github.com/google/googlesql/blob/master/docs/conversion_functions.md#cast
 

@@ -1,0 +1,1623 @@
+################################################################################
+#
+# Positive test cases
+#
+################################################################################
+#
+# Call a simple valid templated SQL function. This exercises the code to declare
+# SQL UDFs using the TemplatedSQLUDF class and add them to the catalog, then
+# defer resolving these SQL bodies until the function is actually called later.
+# In this case the function has no arguments, but the return type is templated.
+# TODO: Enable Java support when serialization for templated SQL
+# functions is implemented.
+[default language_features=NONE]
+[default no_java]
+
+select udf_templated_return_one();
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 := FunctionCall(Templated_SQL_Function:udf_templated_return_one() -> INT64)
+    +-input_scan=
+      +-SingleRowScan
+
+With Templated SQL function call:
+  Templated_SQL_Function:udf_templated_return_one() -> INT64
+containing resolved templated expression:
+Literal(type=INT64, value=1)
+==
+
+# The query calls a function that has a deprecation warning, which should be
+# propagated.
+select udf_calls_deprecation_warning()
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 := FunctionCall(Templated_SQL_Function:udf_calls_deprecation_warning() -> INT64)
+    +-input_scan=
+      +-SingleRowScan
+
+With Templated SQL function call:
+  Templated_SQL_Function:udf_calls_deprecation_warning() -> INT64 (1 deprecation warning)
+containing resolved templated expression:
+FunctionCall(sample_functions:deprecation_warning() -> INT64)
+
+
+DEPRECATION WARNING:
+Function TEMPLATED_SQL_FUNCTION:UDF_CALLS_DEPRECATION_WARNING triggers a deprecation warning with kind PROTO3_FIELD_PRESENCE [at 1:8]
+select udf_calls_deprecation_warning()
+       ^
+Operation <foo101> is deprecated [at module101.sqlm:111:121]
+some caret string for foo_101
+                      ^
+[googlesql.DeprecationWarning] { kind: PROTO3_FIELD_PRESENCE }
+==
+
+# The query calls a function that has a deprecation warning, twice. The warning
+# should be propagated once. For more extensive tests of functions and
+# deprecation warnings, see function.test. We don't need a huge test suite for
+# deprecation warnings with templated UDFs because most of the resolution code
+# is shared with non-templated UDFs.
+select udf_calls_deprecation_warning(), udf_calls_deprecation_warning()
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [INT64]
+| +-$query.$col2#2 AS `$col2` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=$query.[$col1#1, $col2#2]
+    +-expr_list=
+    | +-$col1#1 := FunctionCall(Templated_SQL_Function:udf_calls_deprecation_warning() -> INT64)
+    | +-$col2#2 := FunctionCall(Templated_SQL_Function:udf_calls_deprecation_warning() -> INT64)
+    +-input_scan=
+      +-SingleRowScan
+
+With Templated SQL function call:
+  Templated_SQL_Function:udf_calls_deprecation_warning() -> INT64 (1 deprecation warning)
+containing resolved templated expression:
+FunctionCall(sample_functions:deprecation_warning() -> INT64)
+
+
+DEPRECATION WARNING:
+Function TEMPLATED_SQL_FUNCTION:UDF_CALLS_DEPRECATION_WARNING triggers a deprecation warning with kind PROTO3_FIELD_PRESENCE [at 1:8]
+select udf_calls_deprecation_warning(), udf_calls_deprecation_warning()
+       ^
+Operation <foo101> is deprecated [at module101.sqlm:111:121]
+some caret string for foo_101
+                      ^
+[googlesql.DeprecationWarning] { kind: PROTO3_FIELD_PRESENCE }
+==
+
+# Call a UDF passing a query parameter within a scalar argument.
+select udf_templated_return_bool_arg(@test_param_bool)
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [BOOL]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(Templated_SQL_Function:udf_templated_return_bool_arg(BOOL) -> BOOL)
+    |     +-Parameter(type=BOOL, name="test_param_bool")
+    +-input_scan=
+      +-SingleRowScan
+
+With Templated SQL function call:
+  Templated_SQL_Function:udf_templated_return_bool_arg(BOOL) -> BOOL
+containing resolved templated expression:
+ArgumentRef(type=BOOL, name="x")
+==
+
+# Show a case where the same template resolves to two different signatures:
+# part one.
+select udf_templated_return_any_scalar_arg("abc");
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(Templated_SQL_Function:udf_templated_return_any_scalar_arg(STRING) -> STRING)
+    |     +-Literal(type=STRING, value="abc")
+    +-input_scan=
+      +-SingleRowScan
+
+With Templated SQL function call:
+  Templated_SQL_Function:udf_templated_return_any_scalar_arg(STRING) -> STRING
+containing resolved templated expression:
+ArgumentRef(type=STRING, name="x")
+==
+
+# Show a case where the same template resolves to two different signatures:
+# part two.
+select udf_templated_return_any_scalar_arg(true);
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [BOOL]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(Templated_SQL_Function:udf_templated_return_any_scalar_arg(BOOL) -> BOOL)
+    |     +-Literal(type=BOOL, value=true)
+    +-input_scan=
+      +-SingleRowScan
+
+With Templated SQL function call:
+  Templated_SQL_Function:udf_templated_return_any_scalar_arg(BOOL) -> BOOL
+containing resolved templated expression:
+ArgumentRef(type=BOOL, name="x")
+==
+
+# Call a UDF with a valid templated SQL body that refers to a scalar argument.
+select udf_templated_return_int64_arg(42);
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(Templated_SQL_Function:udf_templated_return_int64_arg(INT64) -> INT64)
+    |     +-Literal(type=INT64, value=42)
+    +-input_scan=
+      +-SingleRowScan
+
+With Templated SQL function call:
+  Templated_SQL_Function:udf_templated_return_int64_arg(INT64) -> INT64
+containing resolved templated expression:
+ArgumentRef(type=INT64, name="x")
+==
+
+# The function performs a projection.
+select udf_templated_arg_plus_integer(42),
+       udf_templated_arg_concat_string("abc");
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [INT64]
+| +-$query.$col2#2 AS `$col2` [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=$query.[$col1#1, $col2#2]
+    +-expr_list=
+    | +-$col1#1 :=
+    | | +-FunctionCall(Templated_SQL_Function:udf_templated_arg_plus_integer(INT64) -> INT64)
+    | |   +-Literal(type=INT64, value=42)
+    | +-$col2#2 :=
+    |   +-FunctionCall(Templated_SQL_Function:udf_templated_arg_concat_string(STRING) -> STRING)
+    |     +-Literal(type=STRING, value="abc")
+    +-input_scan=
+      +-SingleRowScan
+
+With Templated SQL function call:
+  Templated_SQL_Function:udf_templated_arg_plus_integer(INT64) -> INT64
+containing resolved templated expression:
+FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
++-ArgumentRef(type=INT64, name="x")
++-Literal(type=INT64, value=42)
+
+With Templated SQL function call:
+  Templated_SQL_Function:udf_templated_arg_concat_string(STRING) -> STRING
+containing resolved templated expression:
+FunctionCall(GoogleSQL:concat(STRING, repeated(1) STRING) -> STRING)
++-ArgumentRef(type=STRING, name="x")
++-Literal(type=STRING, value="abc")
+==
+
+# The function takes two arguments.
+select udf_templated_arg_concat_two_strings("abc", "def");
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(Templated_SQL_Function:udf_templated_arg_concat_two_strings(STRING, STRING) -> STRING)
+    |     +-Literal(type=STRING, value="abc")
+    |     +-Literal(type=STRING, value="def")
+    +-input_scan=
+      +-SingleRowScan
+
+With Templated SQL function call:
+  Templated_SQL_Function:udf_templated_arg_concat_two_strings(STRING, STRING) -> STRING
+containing resolved templated expression:
+FunctionCall(GoogleSQL:concat(STRING, repeated(1) STRING) -> STRING)
++-ArgumentRef(type=STRING, name="x")
++-ArgumentRef(type=STRING, name="y")
+==
+
+# The function has a $ in its internal argument name.
+select udf_templated_arg_plus_integer_accept_dollars_col_name(52)
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(Templated_SQL_Function:udf_templated_arg_plus_integer_accept_dollars_col_name(INT64) -> INT64)
+    |     +-Literal(type=INT64, value=52)
+    +-input_scan=
+      +-SingleRowScan
+
+With Templated SQL function call:
+  Templated_SQL_Function:udf_templated_arg_plus_integer_accept_dollars_col_name(INT64) -> INT64
+containing resolved templated expression:
+ArgumentRef(type=INT64, name="$col1")
+==
+
+# Call a templated SQL UDF that calls another templated SQL UDF.
+select udf_call_udf_templated_return_one();
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 := FunctionCall(Templated_SQL_Function:udf_call_udf_templated_return_one() -> INT64)
+    +-input_scan=
+      +-SingleRowScan
+
+With Templated SQL function call:
+  Templated_SQL_Function:udf_call_udf_templated_return_one() -> INT64
+containing resolved templated expression:
+FunctionCall(Templated_SQL_Function:udf_templated_return_one() -> INT64)
+
+With Templated SQL function call:
+  Templated_SQL_Function:udf_templated_return_one() -> INT64
+containing resolved templated expression:
+Literal(type=INT64, value=1)
+==
+
+# Call a templated SQL UDF that calls another templated SQL UDF twice.
+select udf_call_udf_templated_return_one_twice();
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 := FunctionCall(Templated_SQL_Function:udf_call_udf_templated_return_one_twice() -> INT64)
+    +-input_scan=
+      +-SingleRowScan
+
+With Templated SQL function call:
+  Templated_SQL_Function:udf_call_udf_templated_return_one_twice() -> INT64
+containing resolved templated expression:
+FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
++-FunctionCall(Templated_SQL_Function:udf_call_udf_templated_return_one() -> INT64)
++-FunctionCall(Templated_SQL_Function:udf_call_udf_templated_return_one() -> INT64)
+
+With Templated SQL function call:
+  Templated_SQL_Function:udf_call_udf_templated_return_one() -> INT64
+containing resolved templated expression:
+FunctionCall(Templated_SQL_Function:udf_templated_return_one() -> INT64)
+
+With Templated SQL function call:
+  Templated_SQL_Function:udf_templated_return_one() -> INT64
+containing resolved templated expression:
+Literal(type=INT64, value=1)
+==
+
+# Call a templated SQL UDF with an argument type that exactly matches its
+# expected return type. The function call finishes successfully.
+select udf_one_templated_arg_return_int64(cast(1 as int64))
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(Templated_SQL_Function:udf_one_templated_arg_return_int64(INT64) -> INT64)
+    |     +-Literal(type=INT64, value=1, has_explicit_type=TRUE)
+    +-input_scan=
+      +-SingleRowScan
+
+With Templated SQL function call:
+  Templated_SQL_Function:udf_one_templated_arg_return_int64(INT64) -> INT64
+containing resolved templated expression:
+ArgumentRef(type=INT64, name="x")
+==
+
+# Call a templated SQL UDF with a literal NULL argument value, and an expected
+# return type of INT64. The function call finishes successfully.
+select udf_one_templated_arg_return_int64(null)
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(Templated_SQL_Function:udf_one_templated_arg_return_int64(INT64) -> INT64)
+    |     +-Literal(type=INT64, value=NULL)
+    +-input_scan=
+      +-SingleRowScan
+
+With Templated SQL function call:
+  Templated_SQL_Function:udf_one_templated_arg_return_int64(INT64) -> INT64
+containing resolved templated expression:
+ArgumentRef(type=INT64, name="x")
+==
+
+# Call a templated SQL UDF with literal NULL explicitly casted to DATE, and an
+# expected return type of DATE.
+select udf_one_templated_arg_return_date(cast(null as date))
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [DATE]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(Templated_SQL_Function:udf_one_templated_arg_return_date(DATE) -> DATE)
+    |     +-Literal(type=DATE, value=NULL, has_explicit_type=TRUE)
+    +-input_scan=
+      +-SingleRowScan
+
+With Templated SQL function call:
+  Templated_SQL_Function:udf_one_templated_arg_return_date(DATE) -> DATE
+containing resolved templated expression:
+ArgumentRef(type=DATE, name="x")
+==
+
+# Call a templated SQL UDF with an argument type that does not exactly match its
+# expected return type but is coercible. The resolver adds a coercion and the
+# function call finishes successfully.
+select udf_one_templated_arg_return_int64(cast(1 as int32))
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(Templated_SQL_Function:udf_one_templated_arg_return_int64(INT32) -> INT64)
+    |     +-Literal(type=INT32, value=1, has_explicit_type=TRUE)
+    +-input_scan=
+      +-SingleRowScan
+
+With Templated SQL function call:
+  Templated_SQL_Function:udf_one_templated_arg_return_int64(INT32) -> INT64
+containing resolved templated expression:
+Cast(INT32 -> INT64)
++-ArgumentRef(type=INT32, name="x")
+==
+
+# Call a templated SQL UDF with an argument type that exactly matches its
+# expected return type. The function call finishes successfully.
+select udf_one_templated_arg_return_struct_int64_string(
+    (select as struct cast(1 as int64) as int_field, "abc" as string_field))
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#4 AS `$col1` [STRUCT<int_field INT64, string_field STRING>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#4]
+    +-expr_list=
+    | +-$col1#4 :=
+    |   +-FunctionCall(Templated_SQL_Function:udf_one_templated_arg_return_struct_int64_string(STRUCT<int_field INT64, string_field STRING>) -> STRUCT<int_field INT64, string_field STRING>)
+    |     +-SubqueryExpr
+    |       +-type=STRUCT<int_field INT64, string_field STRING>
+    |       +-subquery_type=SCALAR
+    |       +-subquery=
+    |         +-ProjectScan
+    |           +-column_list=[$make_struct.$struct#3]
+    |           +-expr_list=
+    |           | +-$struct#3 :=
+    |           |   +-MakeStruct
+    |           |     +-type=STRUCT<int_field INT64, string_field STRING>
+    |           |     +-field_list=
+    |           |       +-ColumnRef(type=INT64, column=$expr_subquery.int_field#1)
+    |           |       +-ColumnRef(type=STRING, column=$expr_subquery.string_field#2)
+    |           +-input_scan=
+    |             +-ProjectScan
+    |               +-column_list=$expr_subquery.[int_field#1, string_field#2]
+    |               +-expr_list=
+    |               | +-int_field#1 := Literal(type=INT64, value=1, has_explicit_type=TRUE)
+    |               | +-string_field#2 := Literal(type=STRING, value="abc")
+    |               +-input_scan=
+    |                 +-SingleRowScan
+    +-input_scan=
+      +-SingleRowScan
+
+With Templated SQL function call:
+  Templated_SQL_Function:udf_one_templated_arg_return_struct_int64_string(STRUCT<int_field INT64, string_field STRING>) -> STRUCT<int_field INT64, string_field STRING>
+containing resolved templated expression:
+ArgumentRef(type=STRUCT<int_field INT64, string_field STRING>, name="x")
+==
+
+# Call a templated SQL UDF with an argument type comprising a struct with
+# literal fields that does not exactly match its expected return type but is
+# coercible. The resolver adds a coercion and the function call finishes
+# successfully.
+select udf_one_templated_arg_return_struct_int64_string(
+    (select as struct cast(1 as int32) as int_field, "abc" as string_field))
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#4 AS `$col1` [STRUCT<int_field INT64, string_field STRING>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#4]
+    +-expr_list=
+    | +-$col1#4 :=
+    |   +-FunctionCall(Templated_SQL_Function:udf_one_templated_arg_return_struct_int64_string(STRUCT<int_field INT32, string_field STRING>) -> STRUCT<int_field INT64, string_field STRING>)
+    |     +-SubqueryExpr
+    |       +-type=STRUCT<int_field INT32, string_field STRING>
+    |       +-subquery_type=SCALAR
+    |       +-subquery=
+    |         +-ProjectScan
+    |           +-column_list=[$make_struct.$struct#3]
+    |           +-expr_list=
+    |           | +-$struct#3 :=
+    |           |   +-MakeStruct
+    |           |     +-type=STRUCT<int_field INT32, string_field STRING>
+    |           |     +-field_list=
+    |           |       +-ColumnRef(type=INT32, column=$expr_subquery.int_field#1)
+    |           |       +-ColumnRef(type=STRING, column=$expr_subquery.string_field#2)
+    |           +-input_scan=
+    |             +-ProjectScan
+    |               +-column_list=$expr_subquery.[int_field#1, string_field#2]
+    |               +-expr_list=
+    |               | +-int_field#1 := Literal(type=INT32, value=1, has_explicit_type=TRUE)
+    |               | +-string_field#2 := Literal(type=STRING, value="abc")
+    |               +-input_scan=
+    |                 +-SingleRowScan
+    +-input_scan=
+      +-SingleRowScan
+
+With Templated SQL function call:
+  Templated_SQL_Function:udf_one_templated_arg_return_struct_int64_string(STRUCT<int_field INT32, string_field STRING>) -> STRUCT<int_field INT64, string_field STRING>
+containing resolved templated expression:
+Cast(STRUCT<int_field INT32, string_field STRING> -> STRUCT<int_field INT64, string_field STRING>)
++-ArgumentRef(type=STRUCT<int_field INT32, string_field STRING>, name="x")
+==
+
+# Call a templated SQL UDF with an argument type comprising a struct with
+# non-literal fields that does not exactly match its expected return type but is
+# coercible. The resolver adds a coercion in the function's resolved SQL body
+# and the function call finishes successfully.
+select udf_one_templated_arg_return_struct_int64_string(
+    (select as struct cast(value as int32) as int_field,
+                      cast(key as string) as string_field
+     from keyvalue))
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#6 AS `$col1` [STRUCT<int_field INT64, string_field STRING>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#6]
+    +-expr_list=
+    | +-$col1#6 :=
+    |   +-FunctionCall(Templated_SQL_Function:udf_one_templated_arg_return_struct_int64_string(STRUCT<int_field INT32, string_field STRING>) -> STRUCT<int_field INT64, string_field STRING>)
+    |     +-SubqueryExpr
+    |       +-type=STRUCT<int_field INT32, string_field STRING>
+    |       +-subquery_type=SCALAR
+    |       +-subquery=
+    |         +-ProjectScan
+    |           +-column_list=[$make_struct.$struct#5]
+    |           +-expr_list=
+    |           | +-$struct#5 :=
+    |           |   +-MakeStruct
+    |           |     +-type=STRUCT<int_field INT32, string_field STRING>
+    |           |     +-field_list=
+    |           |       +-ColumnRef(type=INT32, column=$expr_subquery.int_field#3)
+    |           |       +-ColumnRef(type=STRING, column=$expr_subquery.string_field#4)
+    |           +-input_scan=
+    |             +-ProjectScan
+    |               +-column_list=$expr_subquery.[int_field#3, string_field#4]
+    |               +-expr_list=
+    |               | +-int_field#3 :=
+    |               | | +-Cast(STRING -> INT32)
+    |               | |   +-ColumnRef(type=STRING, column=KeyValue.Value#2)
+    |               | +-string_field#4 :=
+    |               |   +-Cast(INT64 -> STRING)
+    |               |     +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+    |               +-input_scan=
+    |                 +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+    +-input_scan=
+      +-SingleRowScan
+
+With Templated SQL function call:
+  Templated_SQL_Function:udf_one_templated_arg_return_struct_int64_string(STRUCT<int_field INT32, string_field STRING>) -> STRUCT<int_field INT64, string_field STRING>
+containing resolved templated expression:
+Cast(STRUCT<int_field INT32, string_field STRING> -> STRUCT<int_field INT64, string_field STRING>)
++-ArgumentRef(type=STRUCT<int_field INT32, string_field STRING>, name="x")
+==
+
+# Call a templated SQL function with a 32-bit integer return type that returns
+# the literal value 42.
+select udf_templated_return_42_return_type_int32("abc")
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [INT32]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(Templated_SQL_Function:udf_templated_return_42_return_type_int32(STRING) -> INT32)
+    |     +-Literal(type=STRING, value="abc")
+    +-input_scan=
+      +-SingleRowScan
+
+With Templated SQL function call:
+  Templated_SQL_Function:udf_templated_return_42_return_type_int32(STRING) -> INT32
+containing resolved templated expression:
+Literal(type=INT32, value=42)
+==
+
+# Call a SQL UDA with a valid templated SQL body that refers to an aggregate
+# argument only.
+select uda_valid_templated_return_sum_int64_arg(key) from keyvalue;
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#3 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#3]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$aggregate.$agg1#3]
+        +-input_scan=
+        | +-TableScan(column_list=[KeyValue.Key#1], table=KeyValue, column_index_list=[0])
+        +-aggregate_list=
+          +-$agg1#3 :=
+            +-AggregateFunctionCall(Templated_SQL_Function:uda_valid_templated_return_sum_int64_arg(INT64) -> INT64)
+              +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+
+With Templated SQL function call:
+  Templated_SQL_Function:uda_valid_templated_return_sum_int64_arg(INT64) -> INT64
+containing resolved templated expression:
+ColumnRef(type=INT64, column=$aggregate.$agg1#1)
+
+  $agg1#1 :=
+    +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+      +-ArgumentRef(parse_location=4-5, type=INT64, name="x", argument_kind=AGGREGATE)
+==
+
+# Call a SQL UDA with a valid templated SQL body that refers to a NOT
+# AGGREGATE argument only.
+select uda_valid_templated_return_int64_not_aggregate_arg(42) from keyvalue;
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#3 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#3]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$aggregate.$agg1#3]
+        +-input_scan=
+        | +-TableScan(table=KeyValue)
+        +-aggregate_list=
+          +-$agg1#3 :=
+            +-AggregateFunctionCall(Templated_SQL_Function:uda_valid_templated_return_int64_not_aggregate_arg(INT64) -> INT64)
+              +-Literal(type=INT64, value=42)
+
+With Templated SQL function call:
+  Templated_SQL_Function:uda_valid_templated_return_int64_not_aggregate_arg(INT64 {is_not_aggregate: true}) -> INT64
+containing resolved templated expression:
+ArgumentRef(type=INT64, name="y", argument_kind=NOT_AGGREGATE)
+==
+
+# Call a SQL UDA with a valid templated SQL body that refers to an AGGREGATE
+# argument and also a NOT AGGREGATE argument in the same script.
+select uda_valid_templated_return_int64_aggregate_and_not_aggregate_arg(key, 42)
+from keyvalue;
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#3 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#3]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$aggregate.$agg1#3]
+        +-input_scan=
+        | +-TableScan(column_list=[KeyValue.Key#1], table=KeyValue, column_index_list=[0])
+        +-aggregate_list=
+          +-$agg1#3 :=
+            +-AggregateFunctionCall(Templated_SQL_Function:uda_valid_templated_return_int64_aggregate_and_not_aggregate_arg(INT64, INT64) -> INT64)
+              +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+              +-Literal(type=INT64, value=42)
+
+With Templated SQL function call:
+  Templated_SQL_Function:uda_valid_templated_return_int64_aggregate_and_not_aggregate_arg(INT64, INT64 {is_not_aggregate: true}) -> INT64
+containing resolved templated expression:
+FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
++-ColumnRef(type=INT64, column=$aggregate.$agg1#1)
++-ArgumentRef(type=INT64, name="y", argument_kind=NOT_AGGREGATE)
+
+  $agg1#1 :=
+    +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+      +-ArgumentRef(parse_location=4-5, type=INT64, name="x", argument_kind=AGGREGATE)
+==
+
+# Regression test for b/316178328.
+#
+# The UDF is defined like
+#   CREATE FUNCTION udf_any_and_double_args_return_any(
+#       a ANY TYPE, x DOUBLE) AS (IF(x < 0, 'a', 'b'));
+#
+# The NULL value for argument 'x' in the second call should be converted to
+# DOUBLE explicitly, or otherwise the '<' in the templated SQL body would become
+# a comparison between two INT64s.
+[language_features=NONE,{{|+TEMPLATED_SQL_FUNCTION_RESOLVE_WITH_TYPED_ARGS}}]
+SELECT
+  udf_any_and_double_args_return_any(1, 314),
+  udf_any_and_double_args_return_any(1, null);
+--
+ALTERNATION GROUP: <empty>
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [STRING]
+| +-$query.$col2#2 AS `$col2` [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=$query.[$col1#1, $col2#2]
+    +-expr_list=
+    | +-$col1#1 :=
+    | | +-FunctionCall(Templated_SQL_Function:udf_any_and_double_args_return_any(INT64, DOUBLE) -> STRING)
+    | |   +-Literal(type=INT64, value=1)
+    | |   +-Literal(type=DOUBLE, value=314)
+    | +-$col2#2 :=
+    |   +-FunctionCall(Templated_SQL_Function:udf_any_and_double_args_return_any(INT64, DOUBLE) -> STRING)
+    |     +-Literal(type=INT64, value=1)
+    |     +-Literal(type=DOUBLE, value=NULL)
+    +-input_scan=
+      +-SingleRowScan
+
+With Templated SQL function call:
+  Templated_SQL_Function:udf_any_and_double_args_return_any(INT64, DOUBLE) -> STRING
+containing resolved templated expression:
+FunctionCall(GoogleSQL:if(BOOL, STRING, STRING) -> STRING)
++-FunctionCall(GoogleSQL:$less(DOUBLE, DOUBLE) -> BOOL)
+| +-ArgumentRef(type=DOUBLE, name="x")
+| +-Literal(type=DOUBLE, value=0)
++-Literal(type=STRING, value="a")
++-Literal(type=STRING, value="b")
+
+With Templated SQL function call:
+  Templated_SQL_Function:udf_any_and_double_args_return_any(INT64, DOUBLE) -> STRING
+containing resolved templated expression:
+FunctionCall(GoogleSQL:if(BOOL, STRING, STRING) -> STRING)
++-FunctionCall(GoogleSQL:$less(INT64, INT64) -> BOOL)
+| +-ArgumentRef(type=INT64, name="x")
+| +-Literal(type=INT64, value=0)
++-Literal(type=STRING, value="a")
++-Literal(type=STRING, value="b")
+--
+ALTERNATION GROUP: +TEMPLATED_SQL_FUNCTION_RESOLVE_WITH_TYPED_ARGS
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [STRING]
+| +-$query.$col2#2 AS `$col2` [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=$query.[$col1#1, $col2#2]
+    +-expr_list=
+    | +-$col1#1 :=
+    | | +-FunctionCall(Templated_SQL_Function:udf_any_and_double_args_return_any(INT64, DOUBLE) -> STRING)
+    | |   +-Literal(type=INT64, value=1)
+    | |   +-Literal(type=DOUBLE, value=314)
+    | +-$col2#2 :=
+    |   +-FunctionCall(Templated_SQL_Function:udf_any_and_double_args_return_any(INT64, DOUBLE) -> STRING)
+    |     +-Literal(type=INT64, value=1)
+    |     +-Literal(type=DOUBLE, value=NULL)
+    +-input_scan=
+      +-SingleRowScan
+
+With Templated SQL function call:
+  Templated_SQL_Function:udf_any_and_double_args_return_any(INT64, DOUBLE) -> STRING
+containing resolved templated expression:
+FunctionCall(GoogleSQL:if(BOOL, STRING, STRING) -> STRING)
++-FunctionCall(GoogleSQL:$less(DOUBLE, DOUBLE) -> BOOL)
+| +-ArgumentRef(type=DOUBLE, name="x")
+| +-Literal(type=DOUBLE, value=0)
++-Literal(type=STRING, value="a")
++-Literal(type=STRING, value="b")
+==
+
+# Regression test for b/316178328.
+#
+# The UDF is defined like
+#   CREATE FUNCTION udf_any_and_double_array_args_return_any(
+#       a ANY TYPE, x ARRAY<DOUBLE>) AS (IF(x[SAFE_OFFSET(0)] < 0, 'a', 'b'));
+#
+# The NULL and [] values for argument 'x' in the 2nd and 3rd calls should be
+# converted to DOUBLE array explicitly.
+# Before the fix, the type of 'x' in the 2nd and 3rd templated SQL function call
+# bodies would be ARRAY<INT64> which is the default type of an untyped NULL or
+# an empty array.
+[language_features=NONE,{{|+TEMPLATED_SQL_FUNCTION_RESOLVE_WITH_TYPED_ARGS}}]
+SELECT
+  udf_any_and_double_array_args_return_any(1, [314.0]),
+  udf_any_and_double_array_args_return_any(1, null),
+  udf_any_and_double_array_args_return_any(1, []);
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: Invalid function udf_any_and_double_array_args_return_any [at 3:3]
+  udf_any_and_double_array_args_return_any(1, null),
+  ^
+Analysis of function Templated_SQL_Function:udf_any_and_double_array_args_return_any failed [at 1:5]
+IF(x[SAFE_OFFSET(0)] < 0, 'a', 'b')
+    ^
+Subscript access using [SAFE_OFFSET()] is not supported on values of type INT64 [at 1:5]
+IF(x[SAFE_OFFSET(0)] < 0, 'a', 'b')
+    ^
+--
+ALTERNATION GROUP: +TEMPLATED_SQL_FUNCTION_RESOLVE_WITH_TYPED_ARGS
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [STRING]
+| +-$query.$col2#2 AS `$col2` [STRING]
+| +-$query.$col3#3 AS `$col3` [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=$query.[$col1#1, $col2#2, $col3#3]
+    +-expr_list=
+    | +-$col1#1 :=
+    | | +-FunctionCall(Templated_SQL_Function:udf_any_and_double_array_args_return_any(INT64, ARRAY<DOUBLE>) -> STRING)
+    | |   +-Literal(type=INT64, value=1)
+    | |   +-Literal(type=ARRAY<DOUBLE>, value=[314])
+    | +-$col2#2 :=
+    | | +-FunctionCall(Templated_SQL_Function:udf_any_and_double_array_args_return_any(INT64, ARRAY<DOUBLE>) -> STRING)
+    | |   +-Literal(type=INT64, value=1)
+    | |   +-Literal(type=ARRAY<DOUBLE>, value=NULL)
+    | +-$col3#3 :=
+    |   +-FunctionCall(Templated_SQL_Function:udf_any_and_double_array_args_return_any(INT64, ARRAY<DOUBLE>) -> STRING)
+    |     +-Literal(type=INT64, value=1)
+    |     +-Literal(type=ARRAY<DOUBLE>, value=[])
+    +-input_scan=
+      +-SingleRowScan
+
+With Templated SQL function call:
+  Templated_SQL_Function:udf_any_and_double_array_args_return_any(INT64, ARRAY<DOUBLE>) -> STRING
+containing resolved templated expression:
+FunctionCall(GoogleSQL:if(BOOL, STRING, STRING) -> STRING)
++-FunctionCall(GoogleSQL:$less(DOUBLE, DOUBLE) -> BOOL)
+| +-FunctionCall(GoogleSQL:$safe_array_at_offset(ARRAY<DOUBLE>, INT64) -> DOUBLE)
+| | +-ArgumentRef(type=ARRAY<DOUBLE>, name="x")
+| | +-Literal(type=INT64, value=0)
+| +-Literal(type=DOUBLE, value=0)
++-Literal(type=STRING, value="a")
++-Literal(type=STRING, value="b")
+==
+
+# Regression test for b/259962379.
+#
+# The UDF is defined like
+#   CREATE FUNCTION udf_any_and_string_args_return_string_arg(
+#       a ANY TYPE, x DOUBLE) AS (x);
+#
+# Before the fix, the type of 'x' in the templated SQL function call body would
+# be INT64 which is the default type of an untyped NULL.
+# Cannot run with the feature disabled, or it would run into the error like
+# 'Unparsed tree does not produce same result shape as the original resolved
+# tree'.
+[language_features=NONE,+TEMPLATED_SQL_FUNCTION_RESOLVE_WITH_TYPED_ARGS]
+SELECT udf_any_and_string_args_return_string_arg(TRUE, NULL);
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(Templated_SQL_Function:udf_any_and_string_args_return_string_arg(BOOL, STRING) -> STRING)
+    |     +-Literal(type=BOOL, value=true)
+    |     +-Literal(type=STRING, value=NULL)
+    +-input_scan=
+      +-SingleRowScan
+
+With Templated SQL function call:
+  Templated_SQL_Function:udf_any_and_string_args_return_string_arg(BOOL, STRING) -> STRING
+containing resolved templated expression:
+ArgumentRef(type=STRING, name="x")
+==
+
+# Regression test for b/259962379.
+#
+# The UDF is defined like
+#   CREATE FUNCTION udf_any_and_string_args_return_string_arg(
+#       a ANY TYPE, x DOUBLE) AS (x);
+#
+# Unlike the case above, here the function argument is an untyped parameter.
+# This test case verifies that the untyped parameter can be handled correctly
+# with and without the feature.
+[language_features=NONE,+TEMPLATED_SQL_FUNCTION_RESOLVE_WITH_TYPED_ARGS]
+[allow_undeclared_parameters]
+SELECT udf_any_and_string_args_return_string_arg(TRUE, @untyped_param);
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(Templated_SQL_Function:udf_any_and_string_args_return_string_arg(BOOL, STRING) -> STRING)
+    |     +-Literal(type=BOOL, value=true)
+    |     +-Parameter(parse_location=55-69, type=STRING, name="untyped_param")
+    +-input_scan=
+      +-SingleRowScan
+
+With Templated SQL function call:
+  Templated_SQL_Function:udf_any_and_string_args_return_string_arg(BOOL, STRING) -> STRING
+containing resolved templated expression:
+ArgumentRef(type=STRING, name="x")
+[UNDECLARED_PARAMETERS]
+untyped_param: STRING
+==
+
+# Regression test for b/316178328.
+#
+# The UDA is defined like
+#   CREATE AGGREGATE FUNCTION uda_any_and_double_args_return_any(
+#       a ANY TYPE NOT AGGREGATE, x DOUBLE) AS (
+#     STRING_AGG(IF(x < 0, 'a', 'b'))
+#   );
+#
+# The NULL value for argument 'x' in the call should be converted to DOUBLE
+# explicitly, or otherwise the '<' in the templated SQL body would become a
+# comparison between two INT64s.
+[language_features=NONE,{{|+TEMPLATED_SQL_FUNCTION_RESOLVE_WITH_TYPED_ARGS}}]
+SELECT uda_any_and_double_args_return_any(3.1415, NULL)
+FROM KeyValue
+--
+ALTERNATION GROUP: <empty>
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#3 AS `$col1` [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#3]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$aggregate.$agg1#3]
+        +-input_scan=
+        | +-TableScan(table=KeyValue)
+        +-aggregate_list=
+          +-$agg1#3 :=
+            +-AggregateFunctionCall(Templated_SQL_Function:uda_any_and_double_args_return_any(DOUBLE, DOUBLE) -> STRING)
+              +-Literal(type=DOUBLE, value=3.1415)
+              +-Literal(type=DOUBLE, value=NULL)
+
+With Templated SQL function call:
+  Templated_SQL_Function:uda_any_and_double_args_return_any(DOUBLE {is_not_aggregate: true}, DOUBLE) -> STRING
+containing resolved templated expression:
+ColumnRef(type=STRING, column=$aggregate.$agg1#1)
+
+  $agg1#1 :=
+    +-AggregateFunctionCall(GoogleSQL:string_agg(STRING) -> STRING)
+      +-FunctionCall(GoogleSQL:if(BOOL, STRING, STRING) -> STRING)
+        +-FunctionCall(GoogleSQL:$less(INT64, INT64) -> BOOL)
+        | +-ArgumentRef(parse_location=14-15, type=INT64, name="x", argument_kind=AGGREGATE)
+        | +-Literal(type=INT64, value=0)
+        +-Literal(type=STRING, value="a")
+        +-Literal(type=STRING, value="b")
+--
+ALTERNATION GROUP: +TEMPLATED_SQL_FUNCTION_RESOLVE_WITH_TYPED_ARGS
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#3 AS `$col1` [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#3]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$aggregate.$agg1#3]
+        +-input_scan=
+        | +-TableScan(table=KeyValue)
+        +-aggregate_list=
+          +-$agg1#3 :=
+            +-AggregateFunctionCall(Templated_SQL_Function:uda_any_and_double_args_return_any(DOUBLE, DOUBLE) -> STRING)
+              +-Literal(type=DOUBLE, value=3.1415)
+              +-Literal(type=DOUBLE, value=NULL)
+
+With Templated SQL function call:
+  Templated_SQL_Function:uda_any_and_double_args_return_any(DOUBLE {is_not_aggregate: true}, DOUBLE) -> STRING
+containing resolved templated expression:
+ColumnRef(type=STRING, column=$aggregate.$agg1#1)
+
+  $agg1#1 :=
+    +-AggregateFunctionCall(GoogleSQL:string_agg(STRING) -> STRING)
+      +-FunctionCall(GoogleSQL:if(BOOL, STRING, STRING) -> STRING)
+        +-FunctionCall(GoogleSQL:$less(DOUBLE, DOUBLE) -> BOOL)
+        | +-ArgumentRef(parse_location=14-15, type=DOUBLE, name="x", argument_kind=AGGREGATE)
+        | +-Literal(type=DOUBLE, value=0)
+        +-Literal(type=STRING, value="a")
+        +-Literal(type=STRING, value="b")
+==
+
+# Regression test for b/316178328.
+#
+# The UDA is defined like
+#   CREATE AGGREGATE FUNCTION uda_any_and_double_array_args_return_any(
+#       a ANY TYPE, x ARRAY<DOUBLE> NOT AGGREGATE) AS (
+#     IF(x[SAFE_OFFSET(0)] < 0, MAX(a), MIN(a))
+#   );
+#
+# The NULL and [] values for argument 'x' in the 2nd and 3rd calls should be
+# converted to DOUBLE array explicitly.
+# Before the fix, the type of 'x' in the 2nd and 3rd templated SQL function call
+# bodies would be ARRAY<INT64> which is the default type of an untyped NULL or
+# an empty array.
+[language_features=NONE,{{|+TEMPLATED_SQL_FUNCTION_RESOLVE_WITH_TYPED_ARGS}}]
+SELECT
+  uda_any_and_double_array_args_return_any(key, [314.0]),
+  uda_any_and_double_array_args_return_any(key, null),
+  uda_any_and_double_array_args_return_any(key, [])
+FROM
+  keyValue
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: Invalid function uda_any_and_double_array_args_return_any [at 3:3]
+  uda_any_and_double_array_args_return_any(key, null),
+  ^
+Analysis of function Templated_SQL_Function:uda_any_and_double_array_args_return_any failed [at 1:5]
+IF(x[SAFE_OFFSET(0)] < 0, MAX(a), MIN(a))
+    ^
+Subscript access using [SAFE_OFFSET()] is not supported on values of type INT64 [at 1:5]
+IF(x[SAFE_OFFSET(0)] < 0, MAX(a), MIN(a))
+    ^
+--
+ALTERNATION GROUP: +TEMPLATED_SQL_FUNCTION_RESOLVE_WITH_TYPED_ARGS
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#3 AS `$col1` [INT64]
+| +-$aggregate.$agg2#4 AS `$col2` [INT64]
+| +-$aggregate.$agg3#5 AS `$col3` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=$aggregate.[$agg1#3, $agg2#4, $agg3#5]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=$aggregate.[$agg1#3, $agg2#4, $agg3#5]
+        +-input_scan=
+        | +-TableScan(column_list=[KeyValue.Key#1], table=KeyValue, column_index_list=[0])
+        +-aggregate_list=
+          +-$agg1#3 :=
+          | +-AggregateFunctionCall(Templated_SQL_Function:uda_any_and_double_array_args_return_any(INT64, ARRAY<DOUBLE>) -> INT64)
+          |   +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+          |   +-Literal(type=ARRAY<DOUBLE>, value=[314])
+          +-$agg2#4 :=
+          | +-AggregateFunctionCall(Templated_SQL_Function:uda_any_and_double_array_args_return_any(INT64, ARRAY<DOUBLE>) -> INT64)
+          |   +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+          |   +-Literal(type=ARRAY<DOUBLE>, value=NULL)
+          +-$agg3#5 :=
+            +-AggregateFunctionCall(Templated_SQL_Function:uda_any_and_double_array_args_return_any(INT64, ARRAY<DOUBLE>) -> INT64)
+              +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+              +-Literal(type=ARRAY<DOUBLE>, value=[])
+
+With Templated SQL function call:
+  Templated_SQL_Function:uda_any_and_double_array_args_return_any(INT64, ARRAY<DOUBLE> {is_not_aggregate: true}) -> INT64
+containing resolved templated expression:
+FunctionCall(GoogleSQL:if(BOOL, INT64, INT64) -> INT64)
++-FunctionCall(GoogleSQL:$less(DOUBLE, DOUBLE) -> BOOL)
+| +-FunctionCall(GoogleSQL:$safe_array_at_offset(ARRAY<DOUBLE>, INT64) -> DOUBLE)
+| | +-ArgumentRef(type=ARRAY<DOUBLE>, name="x", argument_kind=NOT_AGGREGATE)
+| | +-Literal(type=INT64, value=0)
+| +-Literal(type=DOUBLE, value=0)
++-ColumnRef(type=INT64, column=$aggregate.$agg1#1)
++-ColumnRef(type=INT64, column=$aggregate.$agg2#2)
+
+  $agg1#1 :=
+    +-AggregateFunctionCall(GoogleSQL:max(INT64) -> INT64)
+      +-ArgumentRef(parse_location=30-31, type=INT64, name="a", argument_kind=AGGREGATE)
+
+  $agg2#2 :=
+    +-AggregateFunctionCall(GoogleSQL:min(INT64) -> INT64)
+      +-ArgumentRef(parse_location=38-39, type=INT64, name="a", argument_kind=AGGREGATE)
+==
+
+# Regression test for b/259962379.
+#
+# The UDA is defined like
+#   CREATE AGGREGATE FUNCTION uda_any_and_string_args_return_string(
+#       a ANY TYPE, x STRING NOT AGGREGATE) AS (
+#     IF(LOGICAL_OR(a), x, x || '_suffix')
+#   );
+#
+# Before the fix, the type of 'x' in the templated SQL function call body would
+# be INT64 which is the default type of an untyped NULL.
+[language_features=NONE,{{|+TEMPLATED_SQL_FUNCTION_RESOLVE_WITH_TYPED_ARGS}}]
+SELECT uda_any_and_string_args_return_string(key > 43, NULL)
+FROM
+  keyValue
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: Invalid function uda_any_and_string_args_return_string [at 1:8]
+SELECT uda_any_and_string_args_return_string(key > 43, NULL)
+       ^
+Analysis of function Templated_SQL_Function:uda_any_and_string_args_return_string failed [at 1:22]
+IF(LOGICAL_OR(a), x, x || '_suffix')
+                     ^
+No matching signature for operator ||
+  Argument types: INT64, STRING
+  Signature: STRING || ([STRING, ...])
+    Argument 1: Unable to coerce type INT64 to expected type STRING
+  Signature: BYTES || ([BYTES, ...])
+    Argument 1: Unable to coerce type INT64 to expected type BYTES
+  Signature: (ARRAY<T1>) || ([ARRAY<T1>, ...])
+    Argument 1: expected array type but found INT64 [at 1:22]
+IF(LOGICAL_OR(a), x, x || '_suffix')
+                     ^
+--
+ALTERNATION GROUP: +TEMPLATED_SQL_FUNCTION_RESOLVE_WITH_TYPED_ARGS
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#3 AS `$col1` [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#3]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$aggregate.$agg1#3]
+        +-input_scan=
+        | +-TableScan(column_list=[KeyValue.Key#1], table=KeyValue, column_index_list=[0])
+        +-aggregate_list=
+          +-$agg1#3 :=
+            +-AggregateFunctionCall(Templated_SQL_Function:uda_any_and_string_args_return_string(BOOL, STRING) -> STRING)
+              +-FunctionCall(GoogleSQL:$greater(INT64, INT64) -> BOOL)
+              | +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+              | +-Literal(type=INT64, value=43)
+              +-Literal(type=STRING, value=NULL)
+
+With Templated SQL function call:
+  Templated_SQL_Function:uda_any_and_string_args_return_string(BOOL, STRING {is_not_aggregate: true}) -> STRING
+containing resolved templated expression:
+FunctionCall(GoogleSQL:if(BOOL, STRING, STRING) -> STRING)
++-ColumnRef(type=BOOL, column=$aggregate.$agg1#1)
++-ArgumentRef(type=STRING, name="x", argument_kind=NOT_AGGREGATE)
++-FunctionCall(GoogleSQL:concat(STRING, repeated(1) STRING) -> STRING)
+  +-ArgumentRef(type=STRING, name="x", argument_kind=NOT_AGGREGATE)
+  +-Literal(type=STRING, value="_suffix")
+
+  $agg1#1 :=
+    +-AggregateFunctionCall(GoogleSQL:logical_or(BOOL) -> BOOL)
+      +-ArgumentRef(parse_location=14-15, type=BOOL, name="a", argument_kind=AGGREGATE)
+==
+
+################################################################################
+#
+# Negative test cases
+#
+################################################################################
+#
+# Call a templated SQL UDF that contains a query parameter reference within the
+# function body.
+select udf_templated_function_body_refer_to_parameter()
+--
+ERROR: Invalid function udf_templated_function_body_refer_to_parameter [at 1:8]
+select udf_templated_function_body_refer_to_parameter()
+       ^
+Analysis of function Templated_SQL_Function:udf_templated_function_body_refer_to_parameter failed [at 1:1]
+@test_param_bool
+^
+Query parameters cannot be used inside SQL function bodies [at 1:1]
+@test_param_bool
+^
+==
+
+# Call a templated SQL UDF that references itself directly. This should return
+# an error.
+select udf_recursive()
+--
+ERROR: Invalid function udf_recursive [at 1:8]
+select udf_recursive()
+       ^
+Analysis of function Templated_SQL_Function:udf_recursive failed [at 1:1]
+udf_recursive()
+^
+Invalid function udf_recursive [at 1:1]
+udf_recursive()
+^
+The function Templated_SQL_Function:udf_recursive is recursive
+==
+
+# Call a templated SQL UDF that references itself indirectly. This should return
+# an error.
+select udf_calls_self_indirectly_1()
+--
+ERROR: Invalid function udf_calls_self_indirectly_1 [at 1:8]
+select udf_calls_self_indirectly_1()
+       ^
+Analysis of function Templated_SQL_Function:udf_calls_self_indirectly_1 failed [at 1:1]
+udf_calls_self_indirectly_2()
+^
+Invalid function udf_calls_self_indirectly_2 [at 1:1]
+udf_calls_self_indirectly_2()
+^
+Analysis of function Templated_SQL_Function:udf_calls_self_indirectly_2 failed [at 1:1]
+udf_calls_self_indirectly_1()
+^
+Invalid function udf_calls_self_indirectly_1 [at 1:1]
+udf_calls_self_indirectly_1()
+^
+Recursive dependencies detected when resolving function Templated_SQL_Function:udf_calls_self_indirectly_1, which include objects (Templated_SQL_Function:udf_calls_self_indirectly_1, Templated_SQL_Function:udf_calls_self_indirectly_2, Templated_SQL_Function:udf_calls_self_indirectly_1)
+==
+
+# The function performs an invalid projection.
+select udf_templated_arg_plus_integer("abc");
+--
+ERROR: Invalid function udf_templated_arg_plus_integer [at 1:8]
+select udf_templated_arg_plus_integer("abc");
+       ^
+Analysis of function Templated_SQL_Function:udf_templated_arg_plus_integer failed [at 1:1]
+x + 42
+^
+No matching signature for operator +
+  Argument types: STRING, INT64
+  Signature: INT64 + INT64
+    Argument 1: Unable to coerce type STRING to expected type INT64
+  Signature: UINT64 + UINT64
+    Argument 1: Unable to coerce type STRING to expected type UINT64
+  Signature: DOUBLE + DOUBLE
+    Argument 1: Unable to coerce type STRING to expected type DOUBLE [at 1:1]
+x + 42
+^
+==
+
+# Parse error.
+select udf_templated_parse_error();
+--
+ERROR: Invalid function udf_templated_parse_error [at 1:8]
+select udf_templated_parse_error();
+       ^
+Analysis of function Templated_SQL_Function:udf_templated_parse_error failed [at 1:3]
+a b c d e
+  ^
+Syntax error: Expected end of input but got identifier "b" [at 1:3]
+a b c d e
+  ^
+
+==
+
+# Test that we propagate language options correctly, this should
+# be a parser error without LIKE_ANY_SOME_ALL
+select udf_templated_like_any('y');
+--
+ERROR: Invalid function udf_templated_like_any [at 1:8]
+select udf_templated_like_any('y');
+       ^
+Analysis of function Templated_SQL_Function:udf_templated_like_any failed [at 1:3]
+x like any ('z')
+  ^
+LIKE ANY is not supported [at 1:3]
+x like any ('z')
+  ^
+==
+
+[language_features=NONE,+LIKE_ANY_SOME_ALL]
+
+select udf_templated_like_any('y');
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [BOOL]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(Templated_SQL_Function:udf_templated_like_any(STRING) -> BOOL)
+    |     +-Literal(type=STRING, value="y")
+    +-input_scan=
+      +-SingleRowScan
+
+With Templated SQL function call:
+  Templated_SQL_Function:udf_templated_like_any(STRING) -> BOOL
+containing resolved templated expression:
+FunctionCall(GoogleSQL:$like_any(STRING, repeated(1) STRING) -> BOOL)
++-ArgumentRef(type=STRING, name="x")
++-Literal(type=STRING, value="z")
+==
+
+# Analysis error.
+select udf_templated_analysis_error();
+--
+ERROR: Invalid function udf_templated_analysis_error [at 1:8]
+select udf_templated_analysis_error();
+       ^
+Analysis of function Templated_SQL_Function:udf_templated_analysis_error failed [at 1:1]
+'abc' + 42
+^
+No matching signature for operator +
+  Argument types: STRING, INT64
+  Signature: INT64 + INT64
+    Argument 1: Unable to coerce type STRING to expected type INT64
+  Signature: UINT64 + UINT64
+    Argument 1: Unable to coerce type STRING to expected type UINT64
+  Signature: DOUBLE + DOUBLE
+    Argument 1: Unable to coerce type STRING to expected type DOUBLE [at 1:1]
+'abc' + 42
+^
+==
+
+# Call a UDF that refers to 'udf_templated_analysis_error' to show two levels
+# of nested error messages.
+select key, value, udf_call_udf_templated_analysis_error()
+from keyvalue;
+--
+ERROR: Invalid function udf_call_udf_templated_analysis_error [at 1:20]
+select key, value, udf_call_udf_templated_analysis_error()
+                   ^
+Analysis of function Templated_SQL_Function:udf_call_udf_templated_analysis_error failed [at 1:1]
+udf_templated_analysis_error() + 1
+^
+Invalid function udf_templated_analysis_error [at 1:1]
+udf_templated_analysis_error() + 1
+^
+Analysis of function Templated_SQL_Function:udf_templated_analysis_error failed [at 1:1]
+'abc' + 42
+^
+No matching signature for operator +
+  Argument types: STRING, INT64
+  Signature: INT64 + INT64
+    Argument 1: Unable to coerce type STRING to expected type INT64
+  Signature: UINT64 + UINT64
+    Argument 1: Unable to coerce type STRING to expected type UINT64
+  Signature: DOUBLE + DOUBLE
+    Argument 1: Unable to coerce type STRING to expected type DOUBLE [at 1:1]
+'abc' + 42
+^
+==
+
+# Call a UDF that refers to 'udf_call_udf_templated_analysis_error' to show
+# three levels of nested error messages.
+select key, value, udf_call_udf_call_udf_templated_analysis_error()
+from keyvalue;
+--
+ERROR: Invalid function udf_call_udf_call_udf_templated_analysis_error [at 1:20]
+select key, value, udf_call_udf_call_udf_templated_analysis_error()
+                   ^
+Analysis of function Templated_SQL_Function:udf_call_udf_call_udf_templated_analysis_error failed [at 1:1]
+udf_call_udf_templated_analysis_error() + 1
+^
+Invalid function udf_call_udf_templated_analysis_error [at 1:1]
+udf_call_udf_templated_analysis_error() + 1
+^
+Analysis of function Templated_SQL_Function:udf_call_udf_templated_analysis_error failed [at 1:1]
+udf_templated_analysis_error() + 1
+^
+Invalid function udf_templated_analysis_error [at 1:1]
+udf_templated_analysis_error() + 1
+^
+Analysis of function Templated_SQL_Function:udf_templated_analysis_error failed [at 1:1]
+'abc' + 42
+^
+No matching signature for operator +
+  Argument types: STRING, INT64
+  Signature: INT64 + INT64
+    Argument 1: Unable to coerce type STRING to expected type INT64
+  Signature: UINT64 + UINT64
+    Argument 1: Unable to coerce type STRING to expected type UINT64
+  Signature: DOUBLE + DOUBLE
+    Argument 1: Unable to coerce type STRING to expected type DOUBLE [at 1:1]
+'abc' + 42
+^
+==
+
+# Call a UDF that refers to 'udf_calludf_call_udf_templated_analysis_error' to
+# show four levels of nested error messages.
+select key, value, udf_call_udf_call_udf_call_udf_templated_analysis_error()
+from keyvalue;
+--
+ERROR: Invalid function udf_call_udf_call_udf_call_udf_templated_analysis_error [at 1:20]
+select key, value, udf_call_udf_call_udf_call_udf_templated_analysis_error()
+                   ^
+Analysis of function Templated_SQL_Function:udf_call_udf_call_udf_call_udf_templated_analysis_error failed [at 1:1]
+udf_call_udf_call_udf_templated_analysis_error() + 1
+^
+Invalid function udf_call_udf_call_udf_templated_analysis_error [at 1:1]
+udf_call_udf_call_udf_templated_analysis_error() + 1
+^
+Analysis of function Templated_SQL_Function:udf_call_udf_call_udf_templated_analysis_error failed [at 1:1]
+udf_call_udf_templated_analysis_error() + 1
+^
+Invalid function udf_call_udf_templated_analysis_error [at 1:1]
+udf_call_udf_templated_analysis_error() + 1
+^
+Analysis of function Templated_SQL_Function:udf_call_udf_templated_analysis_error failed [at 1:1]
+udf_templated_analysis_error() + 1
+^
+Invalid function udf_templated_analysis_error [at 1:1]
+udf_templated_analysis_error() + 1
+^
+Analysis of function Templated_SQL_Function:udf_templated_analysis_error failed [at 1:1]
+'abc' + 42
+^
+No matching signature for operator +
+  Argument types: STRING, INT64
+  Signature: INT64 + INT64
+    Argument 1: Unable to coerce type STRING to expected type INT64
+  Signature: UINT64 + UINT64
+    Argument 1: Unable to coerce type STRING to expected type UINT64
+  Signature: DOUBLE + DOUBLE
+    Argument 1: Unable to coerce type STRING to expected type DOUBLE [at 1:1]
+'abc' + 42
+^
+==
+
+# Empty function body.
+select udf_templated_function_body_empty();
+--
+ERROR: Invalid function udf_templated_function_body_empty [at 1:8]
+select udf_templated_function_body_empty();
+       ^
+Analysis of function Templated_SQL_Function:udf_templated_function_body_empty failed [at 1:1]
+
+^
+Syntax error: Unexpected end of expression [at 1:1]
+==
+
+# Add a UDF with a valid templated SQL body that performs a proto field access
+# on an argument. The function signature accepts a single argument of any
+# type. We pass an integer argument here, resulting in an analysis error.
+select udf_templated_arg_proto_field_access(42)
+--
+ERROR: Invalid function udf_templated_arg_proto_field_access [at 1:8]
+select udf_templated_arg_proto_field_access(42)
+       ^
+Analysis of function Templated_SQL_Function:udf_templated_arg_proto_field_access failed [at 1:3]
+x.int32_field
+  ^
+Cannot access field int32_field on a value with type INT64 [at 1:3]
+x.int32_field
+  ^
+==
+
+# Call a templated SQL UDF with duplicate argument names, to show the error
+# messages.
+select udf_templated_duplicate_arg_names("abc", "def");
+--
+ERROR: Invalid function udf_templated_duplicate_arg_names [at 1:8]
+select udf_templated_duplicate_arg_names("abc", "def");
+       ^
+Analysis of function Templated_SQL_Function:udf_templated_duplicate_arg_names failed:
+Duplicate argument name x
+==
+
+# Call a templated SQL function that calls a templated SQL TVF that calls the
+# original templated SQL function again, to make sure cycle detection works.
+[language_features=NONE,+TABLE_VALUED_FUNCTIONS]
+select udf_calls_tvf_calls_same_udf();
+--
+ERROR: Invalid function udf_calls_tvf_calls_same_udf [at 1:8]
+select udf_calls_tvf_calls_same_udf();
+       ^
+Analysis of function Templated_SQL_Function:udf_calls_tvf_calls_same_udf failed [at 1:16]
+(select * from tvf_calls_udf_calls_same_tvf())
+               ^
+Invalid table-valued function tvf_calls_udf_calls_same_tvf [at 1:16]
+(select * from tvf_calls_udf_calls_same_tvf())
+               ^
+Analysis of table-valued function tvf_calls_udf_calls_same_tvf failed [at 1:8]
+select udf_calls_tvf_calls_same_udf()
+       ^
+Invalid function udf_calls_tvf_calls_same_udf [at 1:8]
+select udf_calls_tvf_calls_same_udf()
+       ^
+Recursive dependencies detected when resolving function Templated_SQL_Function:udf_calls_tvf_calls_same_udf, which include objects (Templated_SQL_Function:udf_calls_tvf_calls_same_udf, tvf_calls_udf_calls_same_tvf, Templated_SQL_Function:udf_calls_tvf_calls_same_udf)
+==
+
+# Call a templated SQL TVF that calls a templated SQL function that calls the
+# original templated SQL TVF again, to make sure cycle detection works.
+[language_features=NONE,+TABLE_VALUED_FUNCTIONS]
+select * from tvf_calls_udf_calls_same_tvf();
+--
+ERROR: Invalid table-valued function tvf_calls_udf_calls_same_tvf [at 1:15]
+select * from tvf_calls_udf_calls_same_tvf();
+              ^
+Analysis of table-valued function tvf_calls_udf_calls_same_tvf failed [at 1:8]
+select udf_calls_tvf_calls_same_udf()
+       ^
+Invalid function udf_calls_tvf_calls_same_udf [at 1:8]
+select udf_calls_tvf_calls_same_udf()
+       ^
+Analysis of function Templated_SQL_Function:udf_calls_tvf_calls_same_udf failed [at 1:16]
+(select * from tvf_calls_udf_calls_same_tvf())
+               ^
+Invalid table-valued function tvf_calls_udf_calls_same_tvf [at 1:16]
+(select * from tvf_calls_udf_calls_same_tvf())
+               ^
+Recursive dependencies detected when resolving table function tvf_calls_udf_calls_same_tvf, which include objects (tvf_calls_udf_calls_same_tvf, Templated_SQL_Function:udf_calls_tvf_calls_same_udf, tvf_calls_udf_calls_same_tvf)
+==
+
+# Call a templated SQL UDF that always returns the integer 42 but has a required
+# signature return type of STRING. GoogleSQL cannot automatically coerce the
+# value and the function call fails.
+select udf_templated_return_42_return_type_string(null)
+--
+ERROR: Invalid function udf_templated_return_42_return_type_string [at 1:8]
+select udf_templated_return_42_return_type_string(null)
+       ^
+Analysis of function Templated_SQL_Function:udf_templated_return_42_return_type_string failed:
+Function declared to return STRING but the function body produces incompatible type INT64
+==
+
+# Call a templated SQL UDF with literal NULL, and an expected return type of
+# DATE.
+select udf_one_templated_arg_return_date(null)
+--
+ERROR: Invalid function udf_one_templated_arg_return_date [at 1:8]
+select udf_one_templated_arg_return_date(null)
+       ^
+Analysis of function Templated_SQL_Function:udf_one_templated_arg_return_date failed:
+Function declared to return DATE but the function body produces incompatible type INT64
+==
+
+# Call a templated SQL UDF that always returns the integer 42 but has a required
+# signature return type of STRING. GoogleSQL cannot automatically coerce the
+# value and the function call fails.
+select udf_templated_return_42_return_type_string(cast(null as string))
+--
+ERROR: Invalid function udf_templated_return_42_return_type_string [at 1:8]
+select udf_templated_return_42_return_type_string(cast(null as string))
+       ^
+Analysis of function Templated_SQL_Function:udf_templated_return_42_return_type_string failed:
+Function declared to return STRING but the function body produces incompatible type INT64
+==
+
+# Call a templated SQL function with a 32-bit integer return type that returns
+# an integer too large to fit into 32 bits..
+select udf_templated_return_999999999999999_return_type_int32("abc")
+--
+ERROR: Invalid function udf_templated_return_999999999999999_return_type_int32 [at 1:8]
+select udf_templated_return_999999999999999_return_type_int32("abc")
+       ^
+Analysis of function Templated_SQL_Function:udf_templated_return_999999999999999_return_type_int32 failed:
+Could not cast literal 999999999999999 to type INT32
+==
+
+# Call a templated SQL UDF with a string, and an expected return type of DATE.
+select udf_one_templated_arg_return_date('2018-07-01')
+--
+ERROR: Invalid function udf_one_templated_arg_return_date [at 1:8]
+select udf_one_templated_arg_return_date('2018-07-01')
+       ^
+Analysis of function Templated_SQL_Function:udf_one_templated_arg_return_date failed:
+Function declared to return DATE but the function body produces incompatible type STRING
+==
+
+# Call a templated SQL UDF with a 64-bit integer argument type that fits under
+# the maximum integer of the expected 32-bit return type.
+select udf_one_templated_arg_return_int32(42)
+--
+ERROR: Invalid function udf_one_templated_arg_return_int32 [at 1:8]
+select udf_one_templated_arg_return_int32(42)
+       ^
+Analysis of function Templated_SQL_Function:udf_one_templated_arg_return_int32 failed:
+Function declared to return INT32 but the function body produces incompatible type INT64
+==
+
+# Call a templated SQL UDF with an integer argument type that is larger than the
+# maximum integer of the expected 32-bit return type.
+select udf_one_templated_arg_return_int32(999999999999999)
+--
+ERROR: Invalid function udf_one_templated_arg_return_int32 [at 1:8]
+select udf_one_templated_arg_return_int32(999999999999999)
+       ^
+Analysis of function Templated_SQL_Function:udf_one_templated_arg_return_int32 failed:
+Function declared to return INT32 but the function body produces incompatible type INT64
+==
+
+# Call a templated SQL UDF with an argument type that does not exactly match its
+# expected return type.
+select udf_one_templated_arg_return_int64(cast(1 as string))
+--
+ERROR: Invalid function udf_one_templated_arg_return_int64 [at 1:8]
+select udf_one_templated_arg_return_int64(cast(1 as string))
+       ^
+Analysis of function Templated_SQL_Function:udf_one_templated_arg_return_int64 failed:
+Function declared to return INT64 but the function body produces incompatible type STRING
+==
+
+# Call a SQL UDA with an invalid templated SQL body that refers to an AGGREGATE
+# argument and also a NOT AGGREGATE argument in the same script. The function
+# attempts to refer to the AGGREGATE argument outside of an aggregate function,
+# which is invalid.
+select uda_invalid_templated_return_int64_aggregate_and_not_aggregate_arg(
+    key, 42)
+from keyvalue;
+--
+ERROR: Invalid function uda_invalid_templated_return_int64_aggregate_and_not_aggregate_arg [at 1:8]
+select uda_invalid_templated_return_int64_aggregate_and_not_aggregate_arg(
+       ^
+Analysis of function Templated_SQL_Function:uda_invalid_templated_return_int64_aggregate_and_not_aggregate_arg failed [at 1:1]
+sum(y) + x
+^
+Analysis of function Templated_SQL_Function:uda_invalid_templated_return_int64_aggregate_and_not_aggregate_arg failed:
+Function argument x cannot be referenced outside aggregate function calls unless marked as NOT AGGREGATE
+==
+
+# Call a SQL UDA with an invalid templated SQL body, since there is an ORDER
+# BY clause in an aggregate function nested inside.
+select uda_invalid_templated_return_sum_int64_arg_nested_order_by(key)
+from keyvalue;
+--
+ERROR: Invalid function uda_invalid_templated_return_sum_int64_arg_nested_order_by [at 1:8]
+select uda_invalid_templated_return_sum_int64_arg_nested_order_by(key)
+       ^
+Analysis of function Templated_SQL_Function:uda_invalid_templated_return_sum_int64_arg_nested_order_by failed [at 1:7]
+sum(x order by x)
+      ^
+ORDER BY in aggregate function is not supported [at 1:7]
+sum(x order by x)
+      ^
+==
+
+[language_features=NONE,+TEMPLATE_FUNCTIONS]
+[allow_internal_error_todo_bug=b/456550678]
+SELECT TemplatedUdfExplicitReturnType('a', 'b');
+--
+
+ERROR: generic::internal: RET_CHECK failure (<location redacted>) Cannot obtain the AST expressions for field arguments of struct constructor:
+FunctionCall [7-47]
+  PathExpression [7-37]
+    Identifier(TemplatedUdfExplicitReturnType) [7-37]
+  StringLiteral [38-41]
+    StringLiteralComponent('a') [38-41]
+  StringLiteral [43-46]
+    StringLiteralComponent('b') [43-46]

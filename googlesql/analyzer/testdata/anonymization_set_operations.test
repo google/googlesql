@@ -1,0 +1,1956 @@
+# Reject set operations that don't read user data
+[default language_features=MAXIMUM,+ANONYMIZATION,+NUMERIC_TYPE]
+[enabled_ast_rewrites=DEFAULTS,+ANONYMIZATION]
+[parse_location_record_type=PARSE_LOCATION_RECORD_CODE_SEARCH]
+
+select with anonymization anon_count(* CLAMPED BETWEEN 0 AND 100)
+from (select 1 union all select 2);
+--
+[PRE-REWRITE AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#4 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-parse_location=0-100
+    +-column_list=[$aggregate.$agg1#4]
+    +-input_scan=
+      +-AnonymizedAggregateScan
+        +-column_list=[$aggregate.$agg1#4]
+        +-input_scan=
+        | +-SetOperationScan
+        |   +-parse_location=72-99
+        |   +-column_list=[$union_all.$col1#3]
+        |   +-op_type=UNION_ALL
+        |   +-input_item_list=
+        |     +-SetOperationItem
+        |     | +-scan=
+        |     | | +-ProjectScan
+        |     | |   +-column_list=[$union_all1.$col1#1]
+        |     | |   +-expr_list=
+        |     | |   | +-$col1#1 := Literal(parse_location=79-80, type=INT64, value=1)
+        |     | |   +-input_scan=
+        |     | |     +-SingleRowScan
+        |     | +-output_column_list=[$union_all1.$col1#1]
+        |     +-SetOperationItem
+        |       +-scan=
+        |       | +-ProjectScan
+        |       |   +-column_list=[$union_all2.$col1#2]
+        |       |   +-expr_list=
+        |       |   | +-$col1#2 := Literal(parse_location=98-99, type=INT64, value=2)
+        |       |   +-input_scan=
+        |       |     +-SingleRowScan
+        |       +-output_column_list=[$union_all2.$col1#2]
+        +-aggregate_list=
+          +-$agg1#4 :=
+            +-AggregateFunctionCall(GoogleSQL:$anon_count_star(optional(1) INT64, optional(1) INT64) -> INT64)
+              +-parse_location=26-36
+              +-Literal(parse_location=55-56, type=INT64, value=0)
+              +-Literal(parse_location=61-64, type=INT64, value=100)
+[REPLACED_LITERALS]
+select with anonymization anon_count(* CLAMPED BETWEEN @_p0_INT64 AND @_p1_INT64)
+from (select @_p2_INT64 union all select @_p3_INT64);
+
+Rewrite ERROR: A SELECT WITH ANONYMIZATION query must query data with a specified privacy unit column [at 1:1]
+select with anonymization anon_count(* CLAMPED BETWEEN 0 AND 100)
+^
+==
+
+# Accept set operations that read user data
+[enabled_ast_rewrites=DEFAULTS,+ANONYMIZATION]
+[parse_location_record_type=PARSE_LOCATION_RECORD_CODE_SEARCH]
+select with anonymization anon_count(* CLAMPED BETWEEN 0 AND 100)
+from (select * from SimpleTypesWithAnonymizationUid
+      {{union|intersect|except}} {{all|distinct}}
+      select * from SimpleTypesWithAnonymizationUid);
+--
+ALTERNATION GROUP: union,all
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#37 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-parse_location=0-186
+    +-column_list=[$aggregate.$agg1#37]
+    +-input_scan=
+      +-AnonymizedAggregateScan
+        +-column_list=[$aggregate.$agg1#37]
+        +-input_scan=
+        | +-SetOperationScan
+        |   +-parse_location=72-185
+        |   +-column_list=$union_all.[int32#25, int64#26, uint32#27, uint64#28, string#29, bytes#30, bool#31, float#32, double#33, date#34, uid#35, numeric#36]
+        |   +-op_type=UNION_ALL
+        |   +-input_item_list=
+        |     +-SetOperationItem
+        |     | +-scan=
+        |     | | +-ProjectScan
+        |     | |   +-column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12]
+        |     | |   +-input_scan=
+        |     | |     +-TableScan(parse_location=86-117, column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12], table=SimpleTypesWithAnonymizationUid, column_index_list=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
+        |     | +-output_column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12]
+        |     +-SetOperationItem
+        |       +-scan=
+        |       | +-ProjectScan
+        |       |   +-column_list=SimpleTypesWithAnonymizationUid.[int32#13, int64#14, uint32#15, uint64#16, string#17, bytes#18, bool#19, float#20, double#21, date#22, uid#23, numeric#24]
+        |       |   +-input_scan=
+        |       |     +-TableScan(parse_location=154-185, column_list=SimpleTypesWithAnonymizationUid.[int32#13, int64#14, uint32#15, uint64#16, string#17, bytes#18, bool#19, float#20, double#21, date#22, uid#23, numeric#24], table=SimpleTypesWithAnonymizationUid, column_index_list=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
+        |       +-output_column_list=SimpleTypesWithAnonymizationUid.[int32#13, int64#14, uint32#15, uint64#16, string#17, bytes#18, bool#19, float#20, double#21, date#22, uid#23, numeric#24]
+        +-aggregate_list=
+          +-$agg1#37 :=
+            +-AggregateFunctionCall(GoogleSQL:$anon_count_star(optional(1) INT64, optional(1) INT64) -> INT64)
+              +-parse_location=26-36
+              +-Literal(parse_location=55-56, type=INT64, value=0)
+              +-Literal(parse_location=61-64, type=INT64, value=100)
+[REPLACED_LITERALS]
+select with anonymization anon_count(* CLAMPED BETWEEN @_p0_INT64 AND @_p1_INT64)
+from (select * from SimpleTypesWithAnonymizationUid
+      union all
+      select * from SimpleTypesWithAnonymizationUid);
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#37 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-parse_location=0-186
+    +-column_list=[$aggregate.$agg1#37]
+    +-input_scan=
+      +-AnonymizedAggregateScan
+        +-column_list=[$aggregate.$agg1#37]
+        +-input_scan=
+        | +-AggregateScan
+        |   +-column_list=[$aggregate.$agg1_partial#39, $group_by.$uid#40]
+        |   +-input_scan=
+        |   | +-SetOperationScan
+        |   |   +-column_list=$union_all.[int32#25, int64#26, uint32#27, uint64#28, string#29, bytes#30, bool#31, float#32, double#33, date#34, uid#35, numeric#36]
+        |   |   +-op_type=UNION_ALL
+        |   |   +-input_item_list=
+        |   |     +-SetOperationItem
+        |   |     | +-scan=
+        |   |     | | +-ProjectScan
+        |   |     | |   +-column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12]
+        |   |     | |   +-input_scan=
+        |   |     | |     +-TableScan(parse_location=86-117, column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12], table=SimpleTypesWithAnonymizationUid, column_index_list=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
+        |   |     | +-output_column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12]
+        |   |     +-SetOperationItem
+        |   |       +-scan=
+        |   |       | +-ProjectScan
+        |   |       |   +-column_list=SimpleTypesWithAnonymizationUid.[int32#13, int64#14, uint32#15, uint64#16, string#17, bytes#18, bool#19, float#20, double#21, date#22, uid#23, numeric#24]
+        |   |       |   +-input_scan=
+        |   |       |     +-TableScan(parse_location=154-185, column_list=SimpleTypesWithAnonymizationUid.[int32#13, int64#14, uint32#15, uint64#16, string#17, bytes#18, bool#19, float#20, double#21, date#22, uid#23, numeric#24], table=SimpleTypesWithAnonymizationUid, column_index_list=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
+        |   |       +-output_column_list=SimpleTypesWithAnonymizationUid.[int32#13, int64#14, uint32#15, uint64#16, string#17, bytes#18, bool#19, float#20, double#21, date#22, uid#23, numeric#24]
+        |   +-group_by_list=
+        |   | +-$uid#40 := ColumnRef(type=INT64, column=$union_all.uid#35)
+        |   +-aggregate_list=
+        |     +-$agg1_partial#39 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+        +-aggregate_list=
+        | +-$agg1#37 :=
+        | | +-AggregateFunctionCall(GoogleSQL:anon_sum(INT64, optional(1) INT64, optional(1) INT64) -> INT64)
+        | |   +-ColumnRef(type=INT64, column=$aggregate.$agg1_partial#39)
+        | |   +-Literal(parse_location=55-56, type=INT64, value=0)
+        | |   +-Literal(parse_location=61-64, type=INT64, value=100)
+        | +-$k_threshold_col#43 :=
+        |   +-AggregateFunctionCall(GoogleSQL:anon_sum(INT64, optional(1) INT64, optional(1) INT64) -> INT64)
+        |     +-Literal(type=INT64, value=1)
+        |     +-Literal(type=INT64, value=0)
+        |     +-Literal(type=INT64, value=1)
+        +-k_threshold_expr=
+          +-ColumnRef(type=INT64, column=$anon.$k_threshold_col#43)
+--
+ALTERNATION GROUP: union,distinct
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#37 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-parse_location=0-191
+    +-column_list=[$aggregate.$agg1#37]
+    +-input_scan=
+      +-AnonymizedAggregateScan
+        +-column_list=[$aggregate.$agg1#37]
+        +-input_scan=
+        | +-SetOperationScan
+        |   +-parse_location=72-190
+        |   +-column_list=$union_distinct.[int32#25, int64#26, uint32#27, uint64#28, string#29, bytes#30, bool#31, float#32, double#33, date#34, uid#35, numeric#36]
+        |   +-op_type=UNION_DISTINCT
+        |   +-input_item_list=
+        |     +-SetOperationItem
+        |     | +-scan=
+        |     | | +-ProjectScan
+        |     | |   +-column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12]
+        |     | |   +-input_scan=
+        |     | |     +-TableScan(parse_location=86-117, column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12], table=SimpleTypesWithAnonymizationUid, column_index_list=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
+        |     | +-output_column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12]
+        |     +-SetOperationItem
+        |       +-scan=
+        |       | +-ProjectScan
+        |       |   +-column_list=SimpleTypesWithAnonymizationUid.[int32#13, int64#14, uint32#15, uint64#16, string#17, bytes#18, bool#19, float#20, double#21, date#22, uid#23, numeric#24]
+        |       |   +-input_scan=
+        |       |     +-TableScan(parse_location=159-190, column_list=SimpleTypesWithAnonymizationUid.[int32#13, int64#14, uint32#15, uint64#16, string#17, bytes#18, bool#19, float#20, double#21, date#22, uid#23, numeric#24], table=SimpleTypesWithAnonymizationUid, column_index_list=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
+        |       +-output_column_list=SimpleTypesWithAnonymizationUid.[int32#13, int64#14, uint32#15, uint64#16, string#17, bytes#18, bool#19, float#20, double#21, date#22, uid#23, numeric#24]
+        +-aggregate_list=
+          +-$agg1#37 :=
+            +-AggregateFunctionCall(GoogleSQL:$anon_count_star(optional(1) INT64, optional(1) INT64) -> INT64)
+              +-parse_location=26-36
+              +-Literal(parse_location=55-56, type=INT64, value=0)
+              +-Literal(parse_location=61-64, type=INT64, value=100)
+[REPLACED_LITERALS]
+select with anonymization anon_count(* CLAMPED BETWEEN @_p0_INT64 AND @_p1_INT64)
+from (select * from SimpleTypesWithAnonymizationUid
+      union distinct
+      select * from SimpleTypesWithAnonymizationUid);
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#37 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-parse_location=0-191
+    +-column_list=[$aggregate.$agg1#37]
+    +-input_scan=
+      +-AnonymizedAggregateScan
+        +-column_list=[$aggregate.$agg1#37]
+        +-input_scan=
+        | +-AggregateScan
+        |   +-column_list=[$aggregate.$agg1_partial#39, $group_by.$uid#40]
+        |   +-input_scan=
+        |   | +-SetOperationScan
+        |   |   +-column_list=$union_distinct.[int32#25, int64#26, uint32#27, uint64#28, string#29, bytes#30, bool#31, float#32, double#33, date#34, uid#35, numeric#36]
+        |   |   +-op_type=UNION_DISTINCT
+        |   |   +-input_item_list=
+        |   |     +-SetOperationItem
+        |   |     | +-scan=
+        |   |     | | +-ProjectScan
+        |   |     | |   +-column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12]
+        |   |     | |   +-input_scan=
+        |   |     | |     +-TableScan(parse_location=86-117, column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12], table=SimpleTypesWithAnonymizationUid, column_index_list=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
+        |   |     | +-output_column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12]
+        |   |     +-SetOperationItem
+        |   |       +-scan=
+        |   |       | +-ProjectScan
+        |   |       |   +-column_list=SimpleTypesWithAnonymizationUid.[int32#13, int64#14, uint32#15, uint64#16, string#17, bytes#18, bool#19, float#20, double#21, date#22, uid#23, numeric#24]
+        |   |       |   +-input_scan=
+        |   |       |     +-TableScan(parse_location=159-190, column_list=SimpleTypesWithAnonymizationUid.[int32#13, int64#14, uint32#15, uint64#16, string#17, bytes#18, bool#19, float#20, double#21, date#22, uid#23, numeric#24], table=SimpleTypesWithAnonymizationUid, column_index_list=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
+        |   |       +-output_column_list=SimpleTypesWithAnonymizationUid.[int32#13, int64#14, uint32#15, uint64#16, string#17, bytes#18, bool#19, float#20, double#21, date#22, uid#23, numeric#24]
+        |   +-group_by_list=
+        |   | +-$uid#40 := ColumnRef(type=INT64, column=$union_distinct.uid#35)
+        |   +-aggregate_list=
+        |     +-$agg1_partial#39 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+        +-aggregate_list=
+        | +-$agg1#37 :=
+        | | +-AggregateFunctionCall(GoogleSQL:anon_sum(INT64, optional(1) INT64, optional(1) INT64) -> INT64)
+        | |   +-ColumnRef(type=INT64, column=$aggregate.$agg1_partial#39)
+        | |   +-Literal(parse_location=55-56, type=INT64, value=0)
+        | |   +-Literal(parse_location=61-64, type=INT64, value=100)
+        | +-$k_threshold_col#43 :=
+        |   +-AggregateFunctionCall(GoogleSQL:anon_sum(INT64, optional(1) INT64, optional(1) INT64) -> INT64)
+        |     +-Literal(type=INT64, value=1)
+        |     +-Literal(type=INT64, value=0)
+        |     +-Literal(type=INT64, value=1)
+        +-k_threshold_expr=
+          +-ColumnRef(type=INT64, column=$anon.$k_threshold_col#43)
+--
+ALTERNATION GROUP: intersect,all
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#37 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-parse_location=0-190
+    +-column_list=[$aggregate.$agg1#37]
+    +-input_scan=
+      +-AnonymizedAggregateScan
+        +-column_list=[$aggregate.$agg1#37]
+        +-input_scan=
+        | +-SetOperationScan
+        |   +-parse_location=72-189
+        |   +-column_list=$intersect_all.[int32#25, int64#26, uint32#27, uint64#28, string#29, bytes#30, bool#31, float#32, double#33, date#34, uid#35, numeric#36]
+        |   +-op_type=INTERSECT_ALL
+        |   +-input_item_list=
+        |     +-SetOperationItem
+        |     | +-scan=
+        |     | | +-ProjectScan
+        |     | |   +-column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12]
+        |     | |   +-input_scan=
+        |     | |     +-TableScan(parse_location=86-117, column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12], table=SimpleTypesWithAnonymizationUid, column_index_list=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
+        |     | +-output_column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12]
+        |     +-SetOperationItem
+        |       +-scan=
+        |       | +-ProjectScan
+        |       |   +-column_list=SimpleTypesWithAnonymizationUid.[int32#13, int64#14, uint32#15, uint64#16, string#17, bytes#18, bool#19, float#20, double#21, date#22, uid#23, numeric#24]
+        |       |   +-input_scan=
+        |       |     +-TableScan(parse_location=158-189, column_list=SimpleTypesWithAnonymizationUid.[int32#13, int64#14, uint32#15, uint64#16, string#17, bytes#18, bool#19, float#20, double#21, date#22, uid#23, numeric#24], table=SimpleTypesWithAnonymizationUid, column_index_list=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
+        |       +-output_column_list=SimpleTypesWithAnonymizationUid.[int32#13, int64#14, uint32#15, uint64#16, string#17, bytes#18, bool#19, float#20, double#21, date#22, uid#23, numeric#24]
+        +-aggregate_list=
+          +-$agg1#37 :=
+            +-AggregateFunctionCall(GoogleSQL:$anon_count_star(optional(1) INT64, optional(1) INT64) -> INT64)
+              +-parse_location=26-36
+              +-Literal(parse_location=55-56, type=INT64, value=0)
+              +-Literal(parse_location=61-64, type=INT64, value=100)
+[REPLACED_LITERALS]
+select with anonymization anon_count(* CLAMPED BETWEEN @_p0_INT64 AND @_p1_INT64)
+from (select * from SimpleTypesWithAnonymizationUid
+      intersect all
+      select * from SimpleTypesWithAnonymizationUid);
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#37 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-parse_location=0-190
+    +-column_list=[$aggregate.$agg1#37]
+    +-input_scan=
+      +-AnonymizedAggregateScan
+        +-column_list=[$aggregate.$agg1#37]
+        +-input_scan=
+        | +-AggregateScan
+        |   +-column_list=[$aggregate.$agg1_partial#39, $group_by.$uid#40]
+        |   +-input_scan=
+        |   | +-SetOperationScan
+        |   |   +-column_list=$intersect_all.[int32#25, int64#26, uint32#27, uint64#28, string#29, bytes#30, bool#31, float#32, double#33, date#34, uid#35, numeric#36]
+        |   |   +-op_type=INTERSECT_ALL
+        |   |   +-input_item_list=
+        |   |     +-SetOperationItem
+        |   |     | +-scan=
+        |   |     | | +-ProjectScan
+        |   |     | |   +-column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12]
+        |   |     | |   +-input_scan=
+        |   |     | |     +-TableScan(parse_location=86-117, column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12], table=SimpleTypesWithAnonymizationUid, column_index_list=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
+        |   |     | +-output_column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12]
+        |   |     +-SetOperationItem
+        |   |       +-scan=
+        |   |       | +-ProjectScan
+        |   |       |   +-column_list=SimpleTypesWithAnonymizationUid.[int32#13, int64#14, uint32#15, uint64#16, string#17, bytes#18, bool#19, float#20, double#21, date#22, uid#23, numeric#24]
+        |   |       |   +-input_scan=
+        |   |       |     +-TableScan(parse_location=158-189, column_list=SimpleTypesWithAnonymizationUid.[int32#13, int64#14, uint32#15, uint64#16, string#17, bytes#18, bool#19, float#20, double#21, date#22, uid#23, numeric#24], table=SimpleTypesWithAnonymizationUid, column_index_list=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
+        |   |       +-output_column_list=SimpleTypesWithAnonymizationUid.[int32#13, int64#14, uint32#15, uint64#16, string#17, bytes#18, bool#19, float#20, double#21, date#22, uid#23, numeric#24]
+        |   +-group_by_list=
+        |   | +-$uid#40 := ColumnRef(type=INT64, column=$intersect_all.uid#35)
+        |   +-aggregate_list=
+        |     +-$agg1_partial#39 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+        +-aggregate_list=
+        | +-$agg1#37 :=
+        | | +-AggregateFunctionCall(GoogleSQL:anon_sum(INT64, optional(1) INT64, optional(1) INT64) -> INT64)
+        | |   +-ColumnRef(type=INT64, column=$aggregate.$agg1_partial#39)
+        | |   +-Literal(parse_location=55-56, type=INT64, value=0)
+        | |   +-Literal(parse_location=61-64, type=INT64, value=100)
+        | +-$k_threshold_col#43 :=
+        |   +-AggregateFunctionCall(GoogleSQL:anon_sum(INT64, optional(1) INT64, optional(1) INT64) -> INT64)
+        |     +-Literal(type=INT64, value=1)
+        |     +-Literal(type=INT64, value=0)
+        |     +-Literal(type=INT64, value=1)
+        +-k_threshold_expr=
+          +-ColumnRef(type=INT64, column=$anon.$k_threshold_col#43)
+--
+ALTERNATION GROUP: intersect,distinct
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#37 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-parse_location=0-195
+    +-column_list=[$aggregate.$agg1#37]
+    +-input_scan=
+      +-AnonymizedAggregateScan
+        +-column_list=[$aggregate.$agg1#37]
+        +-input_scan=
+        | +-SetOperationScan
+        |   +-parse_location=72-194
+        |   +-column_list=$intersect_distinct.[int32#25, int64#26, uint32#27, uint64#28, string#29, bytes#30, bool#31, float#32, double#33, date#34, uid#35, numeric#36]
+        |   +-op_type=INTERSECT_DISTINCT
+        |   +-input_item_list=
+        |     +-SetOperationItem
+        |     | +-scan=
+        |     | | +-ProjectScan
+        |     | |   +-column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12]
+        |     | |   +-input_scan=
+        |     | |     +-TableScan(parse_location=86-117, column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12], table=SimpleTypesWithAnonymizationUid, column_index_list=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
+        |     | +-output_column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12]
+        |     +-SetOperationItem
+        |       +-scan=
+        |       | +-ProjectScan
+        |       |   +-column_list=SimpleTypesWithAnonymizationUid.[int32#13, int64#14, uint32#15, uint64#16, string#17, bytes#18, bool#19, float#20, double#21, date#22, uid#23, numeric#24]
+        |       |   +-input_scan=
+        |       |     +-TableScan(parse_location=163-194, column_list=SimpleTypesWithAnonymizationUid.[int32#13, int64#14, uint32#15, uint64#16, string#17, bytes#18, bool#19, float#20, double#21, date#22, uid#23, numeric#24], table=SimpleTypesWithAnonymizationUid, column_index_list=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
+        |       +-output_column_list=SimpleTypesWithAnonymizationUid.[int32#13, int64#14, uint32#15, uint64#16, string#17, bytes#18, bool#19, float#20, double#21, date#22, uid#23, numeric#24]
+        +-aggregate_list=
+          +-$agg1#37 :=
+            +-AggregateFunctionCall(GoogleSQL:$anon_count_star(optional(1) INT64, optional(1) INT64) -> INT64)
+              +-parse_location=26-36
+              +-Literal(parse_location=55-56, type=INT64, value=0)
+              +-Literal(parse_location=61-64, type=INT64, value=100)
+[REPLACED_LITERALS]
+select with anonymization anon_count(* CLAMPED BETWEEN @_p0_INT64 AND @_p1_INT64)
+from (select * from SimpleTypesWithAnonymizationUid
+      intersect distinct
+      select * from SimpleTypesWithAnonymizationUid);
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#37 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-parse_location=0-195
+    +-column_list=[$aggregate.$agg1#37]
+    +-input_scan=
+      +-AnonymizedAggregateScan
+        +-column_list=[$aggregate.$agg1#37]
+        +-input_scan=
+        | +-AggregateScan
+        |   +-column_list=[$aggregate.$agg1_partial#39, $group_by.$uid#40]
+        |   +-input_scan=
+        |   | +-SetOperationScan
+        |   |   +-column_list=$intersect_distinct.[int32#25, int64#26, uint32#27, uint64#28, string#29, bytes#30, bool#31, float#32, double#33, date#34, uid#35, numeric#36]
+        |   |   +-op_type=INTERSECT_DISTINCT
+        |   |   +-input_item_list=
+        |   |     +-SetOperationItem
+        |   |     | +-scan=
+        |   |     | | +-ProjectScan
+        |   |     | |   +-column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12]
+        |   |     | |   +-input_scan=
+        |   |     | |     +-TableScan(parse_location=86-117, column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12], table=SimpleTypesWithAnonymizationUid, column_index_list=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
+        |   |     | +-output_column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12]
+        |   |     +-SetOperationItem
+        |   |       +-scan=
+        |   |       | +-ProjectScan
+        |   |       |   +-column_list=SimpleTypesWithAnonymizationUid.[int32#13, int64#14, uint32#15, uint64#16, string#17, bytes#18, bool#19, float#20, double#21, date#22, uid#23, numeric#24]
+        |   |       |   +-input_scan=
+        |   |       |     +-TableScan(parse_location=163-194, column_list=SimpleTypesWithAnonymizationUid.[int32#13, int64#14, uint32#15, uint64#16, string#17, bytes#18, bool#19, float#20, double#21, date#22, uid#23, numeric#24], table=SimpleTypesWithAnonymizationUid, column_index_list=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
+        |   |       +-output_column_list=SimpleTypesWithAnonymizationUid.[int32#13, int64#14, uint32#15, uint64#16, string#17, bytes#18, bool#19, float#20, double#21, date#22, uid#23, numeric#24]
+        |   +-group_by_list=
+        |   | +-$uid#40 := ColumnRef(type=INT64, column=$intersect_distinct.uid#35)
+        |   +-aggregate_list=
+        |     +-$agg1_partial#39 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+        +-aggregate_list=
+        | +-$agg1#37 :=
+        | | +-AggregateFunctionCall(GoogleSQL:anon_sum(INT64, optional(1) INT64, optional(1) INT64) -> INT64)
+        | |   +-ColumnRef(type=INT64, column=$aggregate.$agg1_partial#39)
+        | |   +-Literal(parse_location=55-56, type=INT64, value=0)
+        | |   +-Literal(parse_location=61-64, type=INT64, value=100)
+        | +-$k_threshold_col#43 :=
+        |   +-AggregateFunctionCall(GoogleSQL:anon_sum(INT64, optional(1) INT64, optional(1) INT64) -> INT64)
+        |     +-Literal(type=INT64, value=1)
+        |     +-Literal(type=INT64, value=0)
+        |     +-Literal(type=INT64, value=1)
+        +-k_threshold_expr=
+          +-ColumnRef(type=INT64, column=$anon.$k_threshold_col#43)
+--
+ALTERNATION GROUP: except,all
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#37 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-parse_location=0-187
+    +-column_list=[$aggregate.$agg1#37]
+    +-input_scan=
+      +-AnonymizedAggregateScan
+        +-column_list=[$aggregate.$agg1#37]
+        +-input_scan=
+        | +-SetOperationScan
+        |   +-parse_location=72-186
+        |   +-column_list=$except_all.[int32#25, int64#26, uint32#27, uint64#28, string#29, bytes#30, bool#31, float#32, double#33, date#34, uid#35, numeric#36]
+        |   +-op_type=EXCEPT_ALL
+        |   +-input_item_list=
+        |     +-SetOperationItem
+        |     | +-scan=
+        |     | | +-ProjectScan
+        |     | |   +-column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12]
+        |     | |   +-input_scan=
+        |     | |     +-TableScan(parse_location=86-117, column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12], table=SimpleTypesWithAnonymizationUid, column_index_list=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
+        |     | +-output_column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12]
+        |     +-SetOperationItem
+        |       +-scan=
+        |       | +-ProjectScan
+        |       |   +-column_list=SimpleTypesWithAnonymizationUid.[int32#13, int64#14, uint32#15, uint64#16, string#17, bytes#18, bool#19, float#20, double#21, date#22, uid#23, numeric#24]
+        |       |   +-input_scan=
+        |       |     +-TableScan(parse_location=155-186, column_list=SimpleTypesWithAnonymizationUid.[int32#13, int64#14, uint32#15, uint64#16, string#17, bytes#18, bool#19, float#20, double#21, date#22, uid#23, numeric#24], table=SimpleTypesWithAnonymizationUid, column_index_list=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
+        |       +-output_column_list=SimpleTypesWithAnonymizationUid.[int32#13, int64#14, uint32#15, uint64#16, string#17, bytes#18, bool#19, float#20, double#21, date#22, uid#23, numeric#24]
+        +-aggregate_list=
+          +-$agg1#37 :=
+            +-AggregateFunctionCall(GoogleSQL:$anon_count_star(optional(1) INT64, optional(1) INT64) -> INT64)
+              +-parse_location=26-36
+              +-Literal(parse_location=55-56, type=INT64, value=0)
+              +-Literal(parse_location=61-64, type=INT64, value=100)
+[REPLACED_LITERALS]
+select with anonymization anon_count(* CLAMPED BETWEEN @_p0_INT64 AND @_p1_INT64)
+from (select * from SimpleTypesWithAnonymizationUid
+      except all
+      select * from SimpleTypesWithAnonymizationUid);
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#37 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-parse_location=0-187
+    +-column_list=[$aggregate.$agg1#37]
+    +-input_scan=
+      +-AnonymizedAggregateScan
+        +-column_list=[$aggregate.$agg1#37]
+        +-input_scan=
+        | +-AggregateScan
+        |   +-column_list=[$aggregate.$agg1_partial#39, $group_by.$uid#40]
+        |   +-input_scan=
+        |   | +-SetOperationScan
+        |   |   +-column_list=$except_all.[int32#25, int64#26, uint32#27, uint64#28, string#29, bytes#30, bool#31, float#32, double#33, date#34, uid#35, numeric#36]
+        |   |   +-op_type=EXCEPT_ALL
+        |   |   +-input_item_list=
+        |   |     +-SetOperationItem
+        |   |     | +-scan=
+        |   |     | | +-ProjectScan
+        |   |     | |   +-column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12]
+        |   |     | |   +-input_scan=
+        |   |     | |     +-TableScan(parse_location=86-117, column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12], table=SimpleTypesWithAnonymizationUid, column_index_list=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
+        |   |     | +-output_column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12]
+        |   |     +-SetOperationItem
+        |   |       +-scan=
+        |   |       | +-ProjectScan
+        |   |       |   +-column_list=SimpleTypesWithAnonymizationUid.[int32#13, int64#14, uint32#15, uint64#16, string#17, bytes#18, bool#19, float#20, double#21, date#22, uid#23, numeric#24]
+        |   |       |   +-input_scan=
+        |   |       |     +-TableScan(parse_location=155-186, column_list=SimpleTypesWithAnonymizationUid.[int32#13, int64#14, uint32#15, uint64#16, string#17, bytes#18, bool#19, float#20, double#21, date#22, uid#23, numeric#24], table=SimpleTypesWithAnonymizationUid, column_index_list=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
+        |   |       +-output_column_list=SimpleTypesWithAnonymizationUid.[int32#13, int64#14, uint32#15, uint64#16, string#17, bytes#18, bool#19, float#20, double#21, date#22, uid#23, numeric#24]
+        |   +-group_by_list=
+        |   | +-$uid#40 := ColumnRef(type=INT64, column=$except_all.uid#35)
+        |   +-aggregate_list=
+        |     +-$agg1_partial#39 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+        +-aggregate_list=
+        | +-$agg1#37 :=
+        | | +-AggregateFunctionCall(GoogleSQL:anon_sum(INT64, optional(1) INT64, optional(1) INT64) -> INT64)
+        | |   +-ColumnRef(type=INT64, column=$aggregate.$agg1_partial#39)
+        | |   +-Literal(parse_location=55-56, type=INT64, value=0)
+        | |   +-Literal(parse_location=61-64, type=INT64, value=100)
+        | +-$k_threshold_col#43 :=
+        |   +-AggregateFunctionCall(GoogleSQL:anon_sum(INT64, optional(1) INT64, optional(1) INT64) -> INT64)
+        |     +-Literal(type=INT64, value=1)
+        |     +-Literal(type=INT64, value=0)
+        |     +-Literal(type=INT64, value=1)
+        +-k_threshold_expr=
+          +-ColumnRef(type=INT64, column=$anon.$k_threshold_col#43)
+--
+ALTERNATION GROUP: except,distinct
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#37 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-parse_location=0-192
+    +-column_list=[$aggregate.$agg1#37]
+    +-input_scan=
+      +-AnonymizedAggregateScan
+        +-column_list=[$aggregate.$agg1#37]
+        +-input_scan=
+        | +-SetOperationScan
+        |   +-parse_location=72-191
+        |   +-column_list=$except_distinct.[int32#25, int64#26, uint32#27, uint64#28, string#29, bytes#30, bool#31, float#32, double#33, date#34, uid#35, numeric#36]
+        |   +-op_type=EXCEPT_DISTINCT
+        |   +-input_item_list=
+        |     +-SetOperationItem
+        |     | +-scan=
+        |     | | +-ProjectScan
+        |     | |   +-column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12]
+        |     | |   +-input_scan=
+        |     | |     +-TableScan(parse_location=86-117, column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12], table=SimpleTypesWithAnonymizationUid, column_index_list=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
+        |     | +-output_column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12]
+        |     +-SetOperationItem
+        |       +-scan=
+        |       | +-ProjectScan
+        |       |   +-column_list=SimpleTypesWithAnonymizationUid.[int32#13, int64#14, uint32#15, uint64#16, string#17, bytes#18, bool#19, float#20, double#21, date#22, uid#23, numeric#24]
+        |       |   +-input_scan=
+        |       |     +-TableScan(parse_location=160-191, column_list=SimpleTypesWithAnonymizationUid.[int32#13, int64#14, uint32#15, uint64#16, string#17, bytes#18, bool#19, float#20, double#21, date#22, uid#23, numeric#24], table=SimpleTypesWithAnonymizationUid, column_index_list=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
+        |       +-output_column_list=SimpleTypesWithAnonymizationUid.[int32#13, int64#14, uint32#15, uint64#16, string#17, bytes#18, bool#19, float#20, double#21, date#22, uid#23, numeric#24]
+        +-aggregate_list=
+          +-$agg1#37 :=
+            +-AggregateFunctionCall(GoogleSQL:$anon_count_star(optional(1) INT64, optional(1) INT64) -> INT64)
+              +-parse_location=26-36
+              +-Literal(parse_location=55-56, type=INT64, value=0)
+              +-Literal(parse_location=61-64, type=INT64, value=100)
+[REPLACED_LITERALS]
+select with anonymization anon_count(* CLAMPED BETWEEN @_p0_INT64 AND @_p1_INT64)
+from (select * from SimpleTypesWithAnonymizationUid
+      except distinct
+      select * from SimpleTypesWithAnonymizationUid);
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#37 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-parse_location=0-192
+    +-column_list=[$aggregate.$agg1#37]
+    +-input_scan=
+      +-AnonymizedAggregateScan
+        +-column_list=[$aggregate.$agg1#37]
+        +-input_scan=
+        | +-AggregateScan
+        |   +-column_list=[$aggregate.$agg1_partial#39, $group_by.$uid#40]
+        |   +-input_scan=
+        |   | +-SetOperationScan
+        |   |   +-column_list=$except_distinct.[int32#25, int64#26, uint32#27, uint64#28, string#29, bytes#30, bool#31, float#32, double#33, date#34, uid#35, numeric#36]
+        |   |   +-op_type=EXCEPT_DISTINCT
+        |   |   +-input_item_list=
+        |   |     +-SetOperationItem
+        |   |     | +-scan=
+        |   |     | | +-ProjectScan
+        |   |     | |   +-column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12]
+        |   |     | |   +-input_scan=
+        |   |     | |     +-TableScan(parse_location=86-117, column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12], table=SimpleTypesWithAnonymizationUid, column_index_list=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
+        |   |     | +-output_column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12]
+        |   |     +-SetOperationItem
+        |   |       +-scan=
+        |   |       | +-ProjectScan
+        |   |       |   +-column_list=SimpleTypesWithAnonymizationUid.[int32#13, int64#14, uint32#15, uint64#16, string#17, bytes#18, bool#19, float#20, double#21, date#22, uid#23, numeric#24]
+        |   |       |   +-input_scan=
+        |   |       |     +-TableScan(parse_location=160-191, column_list=SimpleTypesWithAnonymizationUid.[int32#13, int64#14, uint32#15, uint64#16, string#17, bytes#18, bool#19, float#20, double#21, date#22, uid#23, numeric#24], table=SimpleTypesWithAnonymizationUid, column_index_list=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
+        |   |       +-output_column_list=SimpleTypesWithAnonymizationUid.[int32#13, int64#14, uint32#15, uint64#16, string#17, bytes#18, bool#19, float#20, double#21, date#22, uid#23, numeric#24]
+        |   +-group_by_list=
+        |   | +-$uid#40 := ColumnRef(type=INT64, column=$except_distinct.uid#35)
+        |   +-aggregate_list=
+        |     +-$agg1_partial#39 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+        +-aggregate_list=
+        | +-$agg1#37 :=
+        | | +-AggregateFunctionCall(GoogleSQL:anon_sum(INT64, optional(1) INT64, optional(1) INT64) -> INT64)
+        | |   +-ColumnRef(type=INT64, column=$aggregate.$agg1_partial#39)
+        | |   +-Literal(parse_location=55-56, type=INT64, value=0)
+        | |   +-Literal(parse_location=61-64, type=INT64, value=100)
+        | +-$k_threshold_col#43 :=
+        |   +-AggregateFunctionCall(GoogleSQL:anon_sum(INT64, optional(1) INT64, optional(1) INT64) -> INT64)
+        |     +-Literal(type=INT64, value=1)
+        |     +-Literal(type=INT64, value=0)
+        |     +-Literal(type=INT64, value=1)
+        +-k_threshold_expr=
+          +-ColumnRef(type=INT64, column=$anon.$k_threshold_col#43)
+==
+
+# Reject set operations without a consistent userid column
+[enabled_ast_rewrites=DEFAULTS,+ANONYMIZATION]
+[parse_location_record_type=PARSE_LOCATION_RECORD_CODE_SEARCH]
+select with anonymization anon_count(* CLAMPED BETWEEN 0 AND 100)
+from (select * from SimpleTypesWithAnonymizationUid
+      {{union|intersect|except}} {{all|distinct}}
+      select NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+--
+ALTERNATION GROUP: union,all
+--
+[PRE-REWRITE AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#47 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-parse_location=0-218
+    +-column_list=[$aggregate.$agg1#47]
+    +-input_scan=
+      +-AnonymizedAggregateScan
+        +-column_list=[$aggregate.$agg1#47]
+        +-input_scan=
+        | +-SetOperationScan
+        |   +-parse_location=72-217
+        |   +-column_list=$union_all.[int32#25, int64#26, uint32#27, uint64#28, string#29, bytes#30, bool#31, float#32, double#33, date#34, uid#35, numeric#36]
+        |   +-op_type=UNION_ALL
+        |   +-input_item_list=
+        |     +-SetOperationItem
+        |     | +-scan=
+        |     | | +-ProjectScan
+        |     | |   +-column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12]
+        |     | |   +-input_scan=
+        |     | |     +-TableScan(parse_location=86-117, column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12], table=SimpleTypesWithAnonymizationUid, column_index_list=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
+        |     | +-output_column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12]
+        |     +-SetOperationItem
+        |       +-scan=
+        |       | +-ProjectScan
+        |       |   +-column_list=[$union_all2_cast.$col1#37, $union_all2.$col2#14, $union_all2_cast.$col3#38, $union_all2_cast.$col4#39, $union_all2_cast.$col5#40, $union_all2_cast.$col6#41, $union_all2_cast.$col7#42, $union_all2_cast.$col8#43, $union_all2_cast.$col9#44, $union_all2_cast.$col10#45, $union_all2.$col11#23, $union_all2_cast.$col12#46]
+        |       |   +-expr_list=
+        |       |   | +-$col1#37 := Literal(parse_location=147-151, type=INT32, value=NULL)
+        |       |   | +-$col3#38 := Literal(parse_location=159-163, type=UINT32, value=NULL)
+        |       |   | +-$col4#39 := Literal(parse_location=165-169, type=UINT64, value=NULL)
+        |       |   | +-$col5#40 := Literal(parse_location=171-175, type=STRING, value=NULL)
+        |       |   | +-$col6#41 := Literal(parse_location=177-181, type=BYTES, value=NULL)
+        |       |   | +-$col7#42 := Literal(parse_location=183-187, type=BOOL, value=NULL)
+        |       |   | +-$col8#43 := Literal(parse_location=189-193, type=FLOAT, value=NULL)
+        |       |   | +-$col9#44 := Literal(parse_location=195-199, type=DOUBLE, value=NULL)
+        |       |   | +-$col10#45 := Literal(parse_location=201-205, type=DATE, value=NULL)
+        |       |   | +-$col12#46 := Literal(parse_location=213-217, type=NUMERIC, value=NULL)
+        |       |   +-input_scan=
+        |       |     +-ProjectScan
+        |       |       +-column_list=$union_all2.[$col1#13, $col2#14, $col3#15, $col4#16, $col5#17, $col6#18, $col7#19, $col8#20, $col9#21, $col10#22, $col11#23, $col12#24]
+        |       |       +-expr_list=
+        |       |       | +-$col1#13 := Literal(type=INT64, value=NULL)
+        |       |       | +-$col2#14 := Literal(parse_location=153-157, type=INT64, value=NULL)
+        |       |       | +-$col3#15 := Literal(type=INT64, value=NULL)
+        |       |       | +-$col4#16 := Literal(type=INT64, value=NULL)
+        |       |       | +-$col5#17 := Literal(type=INT64, value=NULL)
+        |       |       | +-$col6#18 := Literal(type=INT64, value=NULL)
+        |       |       | +-$col7#19 := Literal(type=INT64, value=NULL)
+        |       |       | +-$col8#20 := Literal(type=INT64, value=NULL)
+        |       |       | +-$col9#21 := Literal(type=INT64, value=NULL)
+        |       |       | +-$col10#22 := Literal(type=INT64, value=NULL)
+        |       |       | +-$col11#23 := Literal(parse_location=207-211, type=INT64, value=NULL)
+        |       |       | +-$col12#24 := Literal(type=INT64, value=NULL)
+        |       |       +-input_scan=
+        |       |         +-SingleRowScan
+        |       +-output_column_list=[$union_all2_cast.$col1#37, $union_all2.$col2#14, $union_all2_cast.$col3#38, $union_all2_cast.$col4#39, $union_all2_cast.$col5#40, $union_all2_cast.$col6#41, $union_all2_cast.$col7#42, $union_all2_cast.$col8#43, $union_all2_cast.$col9#44, $union_all2_cast.$col10#45, $union_all2.$col11#23, $union_all2_cast.$col12#46]
+        +-aggregate_list=
+          +-$agg1#47 :=
+            +-AggregateFunctionCall(GoogleSQL:$anon_count_star(optional(1) INT64, optional(1) INT64) -> INT64)
+              +-parse_location=26-36
+              +-Literal(parse_location=55-56, type=INT64, value=0)
+              +-Literal(parse_location=61-64, type=INT64, value=100)
+[REPLACED_LITERALS]
+select with anonymization anon_count(* CLAMPED BETWEEN @_p0_INT64 AND @_p1_INT64)
+from (select * from SimpleTypesWithAnonymizationUid
+      union all
+      select @_p2_INT32, @_p3_INT64, @_p4_UINT32, @_p5_UINT64, @_p6_STRING, @_p7_BYTES, @_p8_BOOL, @_p9_FLOAT, @_p10_DOUBLE, @_p11_DATE, @_p12_INT64, @_p13_NUMERIC);
+
+Rewrite ERROR: Not all queries in UNION ALL are anonymization-enabled table expressions; query 1 is an anonymization-enabled table expression, but query 2 is not [at 2:7]
+from (select * from SimpleTypesWithAnonymizationUid
+      ^
+--
+ALTERNATION GROUP: union,distinct
+--
+[PRE-REWRITE AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#47 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-parse_location=0-223
+    +-column_list=[$aggregate.$agg1#47]
+    +-input_scan=
+      +-AnonymizedAggregateScan
+        +-column_list=[$aggregate.$agg1#47]
+        +-input_scan=
+        | +-SetOperationScan
+        |   +-parse_location=72-222
+        |   +-column_list=$union_distinct.[int32#25, int64#26, uint32#27, uint64#28, string#29, bytes#30, bool#31, float#32, double#33, date#34, uid#35, numeric#36]
+        |   +-op_type=UNION_DISTINCT
+        |   +-input_item_list=
+        |     +-SetOperationItem
+        |     | +-scan=
+        |     | | +-ProjectScan
+        |     | |   +-column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12]
+        |     | |   +-input_scan=
+        |     | |     +-TableScan(parse_location=86-117, column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12], table=SimpleTypesWithAnonymizationUid, column_index_list=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
+        |     | +-output_column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12]
+        |     +-SetOperationItem
+        |       +-scan=
+        |       | +-ProjectScan
+        |       |   +-column_list=[$union_distinct2_cast.$col1#37, $union_distinct2.$col2#14, $union_distinct2_cast.$col3#38, $union_distinct2_cast.$col4#39, $union_distinct2_cast.$col5#40, $union_distinct2_cast.$col6#41, $union_distinct2_cast.$col7#42, $union_distinct2_cast.$col8#43, $union_distinct2_cast.$col9#44, $union_distinct2_cast.$col10#45, $union_distinct2.$col11#23, $union_distinct2_cast.$col12#46]
+        |       |   +-expr_list=
+        |       |   | +-$col1#37 := Literal(parse_location=152-156, type=INT32, value=NULL)
+        |       |   | +-$col3#38 := Literal(parse_location=164-168, type=UINT32, value=NULL)
+        |       |   | +-$col4#39 := Literal(parse_location=170-174, type=UINT64, value=NULL)
+        |       |   | +-$col5#40 := Literal(parse_location=176-180, type=STRING, value=NULL)
+        |       |   | +-$col6#41 := Literal(parse_location=182-186, type=BYTES, value=NULL)
+        |       |   | +-$col7#42 := Literal(parse_location=188-192, type=BOOL, value=NULL)
+        |       |   | +-$col8#43 := Literal(parse_location=194-198, type=FLOAT, value=NULL)
+        |       |   | +-$col9#44 := Literal(parse_location=200-204, type=DOUBLE, value=NULL)
+        |       |   | +-$col10#45 := Literal(parse_location=206-210, type=DATE, value=NULL)
+        |       |   | +-$col12#46 := Literal(parse_location=218-222, type=NUMERIC, value=NULL)
+        |       |   +-input_scan=
+        |       |     +-ProjectScan
+        |       |       +-column_list=$union_distinct2.[$col1#13, $col2#14, $col3#15, $col4#16, $col5#17, $col6#18, $col7#19, $col8#20, $col9#21, $col10#22, $col11#23, $col12#24]
+        |       |       +-expr_list=
+        |       |       | +-$col1#13 := Literal(type=INT64, value=NULL)
+        |       |       | +-$col2#14 := Literal(parse_location=158-162, type=INT64, value=NULL)
+        |       |       | +-$col3#15 := Literal(type=INT64, value=NULL)
+        |       |       | +-$col4#16 := Literal(type=INT64, value=NULL)
+        |       |       | +-$col5#17 := Literal(type=INT64, value=NULL)
+        |       |       | +-$col6#18 := Literal(type=INT64, value=NULL)
+        |       |       | +-$col7#19 := Literal(type=INT64, value=NULL)
+        |       |       | +-$col8#20 := Literal(type=INT64, value=NULL)
+        |       |       | +-$col9#21 := Literal(type=INT64, value=NULL)
+        |       |       | +-$col10#22 := Literal(type=INT64, value=NULL)
+        |       |       | +-$col11#23 := Literal(parse_location=212-216, type=INT64, value=NULL)
+        |       |       | +-$col12#24 := Literal(type=INT64, value=NULL)
+        |       |       +-input_scan=
+        |       |         +-SingleRowScan
+        |       +-output_column_list=[$union_distinct2_cast.$col1#37, $union_distinct2.$col2#14, $union_distinct2_cast.$col3#38, $union_distinct2_cast.$col4#39, $union_distinct2_cast.$col5#40, $union_distinct2_cast.$col6#41, $union_distinct2_cast.$col7#42, $union_distinct2_cast.$col8#43, $union_distinct2_cast.$col9#44, $union_distinct2_cast.$col10#45, $union_distinct2.$col11#23, $union_distinct2_cast.$col12#46]
+        +-aggregate_list=
+          +-$agg1#47 :=
+            +-AggregateFunctionCall(GoogleSQL:$anon_count_star(optional(1) INT64, optional(1) INT64) -> INT64)
+              +-parse_location=26-36
+              +-Literal(parse_location=55-56, type=INT64, value=0)
+              +-Literal(parse_location=61-64, type=INT64, value=100)
+[REPLACED_LITERALS]
+select with anonymization anon_count(* CLAMPED BETWEEN @_p0_INT64 AND @_p1_INT64)
+from (select * from SimpleTypesWithAnonymizationUid
+      union distinct
+      select @_p2_INT32, @_p3_INT64, @_p4_UINT32, @_p5_UINT64, @_p6_STRING, @_p7_BYTES, @_p8_BOOL, @_p9_FLOAT, @_p10_DOUBLE, @_p11_DATE, @_p12_INT64, @_p13_NUMERIC);
+
+Rewrite ERROR: Not all queries in UNION DISTINCT are anonymization-enabled table expressions; query 1 is an anonymization-enabled table expression, but query 2 is not [at 2:7]
+from (select * from SimpleTypesWithAnonymizationUid
+      ^
+--
+ALTERNATION GROUP: intersect,all
+--
+[PRE-REWRITE AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#47 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-parse_location=0-222
+    +-column_list=[$aggregate.$agg1#47]
+    +-input_scan=
+      +-AnonymizedAggregateScan
+        +-column_list=[$aggregate.$agg1#47]
+        +-input_scan=
+        | +-SetOperationScan
+        |   +-parse_location=72-221
+        |   +-column_list=$intersect_all.[int32#25, int64#26, uint32#27, uint64#28, string#29, bytes#30, bool#31, float#32, double#33, date#34, uid#35, numeric#36]
+        |   +-op_type=INTERSECT_ALL
+        |   +-input_item_list=
+        |     +-SetOperationItem
+        |     | +-scan=
+        |     | | +-ProjectScan
+        |     | |   +-column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12]
+        |     | |   +-input_scan=
+        |     | |     +-TableScan(parse_location=86-117, column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12], table=SimpleTypesWithAnonymizationUid, column_index_list=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
+        |     | +-output_column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12]
+        |     +-SetOperationItem
+        |       +-scan=
+        |       | +-ProjectScan
+        |       |   +-column_list=[$intersect_all2_cast.$col1#37, $intersect_all2.$col2#14, $intersect_all2_cast.$col3#38, $intersect_all2_cast.$col4#39, $intersect_all2_cast.$col5#40, $intersect_all2_cast.$col6#41, $intersect_all2_cast.$col7#42, $intersect_all2_cast.$col8#43, $intersect_all2_cast.$col9#44, $intersect_all2_cast.$col10#45, $intersect_all2.$col11#23, $intersect_all2_cast.$col12#46]
+        |       |   +-expr_list=
+        |       |   | +-$col1#37 := Literal(parse_location=151-155, type=INT32, value=NULL)
+        |       |   | +-$col3#38 := Literal(parse_location=163-167, type=UINT32, value=NULL)
+        |       |   | +-$col4#39 := Literal(parse_location=169-173, type=UINT64, value=NULL)
+        |       |   | +-$col5#40 := Literal(parse_location=175-179, type=STRING, value=NULL)
+        |       |   | +-$col6#41 := Literal(parse_location=181-185, type=BYTES, value=NULL)
+        |       |   | +-$col7#42 := Literal(parse_location=187-191, type=BOOL, value=NULL)
+        |       |   | +-$col8#43 := Literal(parse_location=193-197, type=FLOAT, value=NULL)
+        |       |   | +-$col9#44 := Literal(parse_location=199-203, type=DOUBLE, value=NULL)
+        |       |   | +-$col10#45 := Literal(parse_location=205-209, type=DATE, value=NULL)
+        |       |   | +-$col12#46 := Literal(parse_location=217-221, type=NUMERIC, value=NULL)
+        |       |   +-input_scan=
+        |       |     +-ProjectScan
+        |       |       +-column_list=$intersect_all2.[$col1#13, $col2#14, $col3#15, $col4#16, $col5#17, $col6#18, $col7#19, $col8#20, $col9#21, $col10#22, $col11#23, $col12#24]
+        |       |       +-expr_list=
+        |       |       | +-$col1#13 := Literal(type=INT64, value=NULL)
+        |       |       | +-$col2#14 := Literal(parse_location=157-161, type=INT64, value=NULL)
+        |       |       | +-$col3#15 := Literal(type=INT64, value=NULL)
+        |       |       | +-$col4#16 := Literal(type=INT64, value=NULL)
+        |       |       | +-$col5#17 := Literal(type=INT64, value=NULL)
+        |       |       | +-$col6#18 := Literal(type=INT64, value=NULL)
+        |       |       | +-$col7#19 := Literal(type=INT64, value=NULL)
+        |       |       | +-$col8#20 := Literal(type=INT64, value=NULL)
+        |       |       | +-$col9#21 := Literal(type=INT64, value=NULL)
+        |       |       | +-$col10#22 := Literal(type=INT64, value=NULL)
+        |       |       | +-$col11#23 := Literal(parse_location=211-215, type=INT64, value=NULL)
+        |       |       | +-$col12#24 := Literal(type=INT64, value=NULL)
+        |       |       +-input_scan=
+        |       |         +-SingleRowScan
+        |       +-output_column_list=[$intersect_all2_cast.$col1#37, $intersect_all2.$col2#14, $intersect_all2_cast.$col3#38, $intersect_all2_cast.$col4#39, $intersect_all2_cast.$col5#40, $intersect_all2_cast.$col6#41, $intersect_all2_cast.$col7#42, $intersect_all2_cast.$col8#43, $intersect_all2_cast.$col9#44, $intersect_all2_cast.$col10#45, $intersect_all2.$col11#23, $intersect_all2_cast.$col12#46]
+        +-aggregate_list=
+          +-$agg1#47 :=
+            +-AggregateFunctionCall(GoogleSQL:$anon_count_star(optional(1) INT64, optional(1) INT64) -> INT64)
+              +-parse_location=26-36
+              +-Literal(parse_location=55-56, type=INT64, value=0)
+              +-Literal(parse_location=61-64, type=INT64, value=100)
+[REPLACED_LITERALS]
+select with anonymization anon_count(* CLAMPED BETWEEN @_p0_INT64 AND @_p1_INT64)
+from (select * from SimpleTypesWithAnonymizationUid
+      intersect all
+      select @_p2_INT32, @_p3_INT64, @_p4_UINT32, @_p5_UINT64, @_p6_STRING, @_p7_BYTES, @_p8_BOOL, @_p9_FLOAT, @_p10_DOUBLE, @_p11_DATE, @_p12_INT64, @_p13_NUMERIC);
+
+Rewrite ERROR: Not all queries in INTERSECT ALL are anonymization-enabled table expressions; query 1 is an anonymization-enabled table expression, but query 2 is not [at 2:7]
+from (select * from SimpleTypesWithAnonymizationUid
+      ^
+--
+ALTERNATION GROUP: intersect,distinct
+--
+[PRE-REWRITE AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#47 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-parse_location=0-227
+    +-column_list=[$aggregate.$agg1#47]
+    +-input_scan=
+      +-AnonymizedAggregateScan
+        +-column_list=[$aggregate.$agg1#47]
+        +-input_scan=
+        | +-SetOperationScan
+        |   +-parse_location=72-226
+        |   +-column_list=$intersect_distinct.[int32#25, int64#26, uint32#27, uint64#28, string#29, bytes#30, bool#31, float#32, double#33, date#34, uid#35, numeric#36]
+        |   +-op_type=INTERSECT_DISTINCT
+        |   +-input_item_list=
+        |     +-SetOperationItem
+        |     | +-scan=
+        |     | | +-ProjectScan
+        |     | |   +-column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12]
+        |     | |   +-input_scan=
+        |     | |     +-TableScan(parse_location=86-117, column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12], table=SimpleTypesWithAnonymizationUid, column_index_list=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
+        |     | +-output_column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12]
+        |     +-SetOperationItem
+        |       +-scan=
+        |       | +-ProjectScan
+        |       |   +-column_list=[$intersect_distinct2_cast.$col1#37, $intersect_distinct2.$col2#14, $intersect_distinct2_cast.$col3#38, $intersect_distinct2_cast.$col4#39, $intersect_distinct2_cast.$col5#40, $intersect_distinct2_cast.$col6#41, $intersect_distinct2_cast.$col7#42, $intersect_distinct2_cast.$col8#43, $intersect_distinct2_cast.$col9#44, $intersect_distinct2_cast.$col10#45, $intersect_distinct2.$col11#23, $intersect_distinct2_cast.$col12#46]
+        |       |   +-expr_list=
+        |       |   | +-$col1#37 := Literal(parse_location=156-160, type=INT32, value=NULL)
+        |       |   | +-$col3#38 := Literal(parse_location=168-172, type=UINT32, value=NULL)
+        |       |   | +-$col4#39 := Literal(parse_location=174-178, type=UINT64, value=NULL)
+        |       |   | +-$col5#40 := Literal(parse_location=180-184, type=STRING, value=NULL)
+        |       |   | +-$col6#41 := Literal(parse_location=186-190, type=BYTES, value=NULL)
+        |       |   | +-$col7#42 := Literal(parse_location=192-196, type=BOOL, value=NULL)
+        |       |   | +-$col8#43 := Literal(parse_location=198-202, type=FLOAT, value=NULL)
+        |       |   | +-$col9#44 := Literal(parse_location=204-208, type=DOUBLE, value=NULL)
+        |       |   | +-$col10#45 := Literal(parse_location=210-214, type=DATE, value=NULL)
+        |       |   | +-$col12#46 := Literal(parse_location=222-226, type=NUMERIC, value=NULL)
+        |       |   +-input_scan=
+        |       |     +-ProjectScan
+        |       |       +-column_list=$intersect_distinct2.[$col1#13, $col2#14, $col3#15, $col4#16, $col5#17, $col6#18, $col7#19, $col8#20, $col9#21, $col10#22, $col11#23, $col12#24]
+        |       |       +-expr_list=
+        |       |       | +-$col1#13 := Literal(type=INT64, value=NULL)
+        |       |       | +-$col2#14 := Literal(parse_location=162-166, type=INT64, value=NULL)
+        |       |       | +-$col3#15 := Literal(type=INT64, value=NULL)
+        |       |       | +-$col4#16 := Literal(type=INT64, value=NULL)
+        |       |       | +-$col5#17 := Literal(type=INT64, value=NULL)
+        |       |       | +-$col6#18 := Literal(type=INT64, value=NULL)
+        |       |       | +-$col7#19 := Literal(type=INT64, value=NULL)
+        |       |       | +-$col8#20 := Literal(type=INT64, value=NULL)
+        |       |       | +-$col9#21 := Literal(type=INT64, value=NULL)
+        |       |       | +-$col10#22 := Literal(type=INT64, value=NULL)
+        |       |       | +-$col11#23 := Literal(parse_location=216-220, type=INT64, value=NULL)
+        |       |       | +-$col12#24 := Literal(type=INT64, value=NULL)
+        |       |       +-input_scan=
+        |       |         +-SingleRowScan
+        |       +-output_column_list=[$intersect_distinct2_cast.$col1#37, $intersect_distinct2.$col2#14, $intersect_distinct2_cast.$col3#38, $intersect_distinct2_cast.$col4#39, $intersect_distinct2_cast.$col5#40, $intersect_distinct2_cast.$col6#41, $intersect_distinct2_cast.$col7#42, $intersect_distinct2_cast.$col8#43, $intersect_distinct2_cast.$col9#44, $intersect_distinct2_cast.$col10#45, $intersect_distinct2.$col11#23, $intersect_distinct2_cast.$col12#46]
+        +-aggregate_list=
+          +-$agg1#47 :=
+            +-AggregateFunctionCall(GoogleSQL:$anon_count_star(optional(1) INT64, optional(1) INT64) -> INT64)
+              +-parse_location=26-36
+              +-Literal(parse_location=55-56, type=INT64, value=0)
+              +-Literal(parse_location=61-64, type=INT64, value=100)
+[REPLACED_LITERALS]
+select with anonymization anon_count(* CLAMPED BETWEEN @_p0_INT64 AND @_p1_INT64)
+from (select * from SimpleTypesWithAnonymizationUid
+      intersect distinct
+      select @_p2_INT32, @_p3_INT64, @_p4_UINT32, @_p5_UINT64, @_p6_STRING, @_p7_BYTES, @_p8_BOOL, @_p9_FLOAT, @_p10_DOUBLE, @_p11_DATE, @_p12_INT64, @_p13_NUMERIC);
+
+Rewrite ERROR: Not all queries in INTERSECT DISTINCT are anonymization-enabled table expressions; query 1 is an anonymization-enabled table expression, but query 2 is not [at 2:7]
+from (select * from SimpleTypesWithAnonymizationUid
+      ^
+--
+ALTERNATION GROUP: except,all
+--
+[PRE-REWRITE AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#47 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-parse_location=0-219
+    +-column_list=[$aggregate.$agg1#47]
+    +-input_scan=
+      +-AnonymizedAggregateScan
+        +-column_list=[$aggregate.$agg1#47]
+        +-input_scan=
+        | +-SetOperationScan
+        |   +-parse_location=72-218
+        |   +-column_list=$except_all.[int32#25, int64#26, uint32#27, uint64#28, string#29, bytes#30, bool#31, float#32, double#33, date#34, uid#35, numeric#36]
+        |   +-op_type=EXCEPT_ALL
+        |   +-input_item_list=
+        |     +-SetOperationItem
+        |     | +-scan=
+        |     | | +-ProjectScan
+        |     | |   +-column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12]
+        |     | |   +-input_scan=
+        |     | |     +-TableScan(parse_location=86-117, column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12], table=SimpleTypesWithAnonymizationUid, column_index_list=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
+        |     | +-output_column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12]
+        |     +-SetOperationItem
+        |       +-scan=
+        |       | +-ProjectScan
+        |       |   +-column_list=[$except_all2_cast.$col1#37, $except_all2.$col2#14, $except_all2_cast.$col3#38, $except_all2_cast.$col4#39, $except_all2_cast.$col5#40, $except_all2_cast.$col6#41, $except_all2_cast.$col7#42, $except_all2_cast.$col8#43, $except_all2_cast.$col9#44, $except_all2_cast.$col10#45, $except_all2.$col11#23, $except_all2_cast.$col12#46]
+        |       |   +-expr_list=
+        |       |   | +-$col1#37 := Literal(parse_location=148-152, type=INT32, value=NULL)
+        |       |   | +-$col3#38 := Literal(parse_location=160-164, type=UINT32, value=NULL)
+        |       |   | +-$col4#39 := Literal(parse_location=166-170, type=UINT64, value=NULL)
+        |       |   | +-$col5#40 := Literal(parse_location=172-176, type=STRING, value=NULL)
+        |       |   | +-$col6#41 := Literal(parse_location=178-182, type=BYTES, value=NULL)
+        |       |   | +-$col7#42 := Literal(parse_location=184-188, type=BOOL, value=NULL)
+        |       |   | +-$col8#43 := Literal(parse_location=190-194, type=FLOAT, value=NULL)
+        |       |   | +-$col9#44 := Literal(parse_location=196-200, type=DOUBLE, value=NULL)
+        |       |   | +-$col10#45 := Literal(parse_location=202-206, type=DATE, value=NULL)
+        |       |   | +-$col12#46 := Literal(parse_location=214-218, type=NUMERIC, value=NULL)
+        |       |   +-input_scan=
+        |       |     +-ProjectScan
+        |       |       +-column_list=$except_all2.[$col1#13, $col2#14, $col3#15, $col4#16, $col5#17, $col6#18, $col7#19, $col8#20, $col9#21, $col10#22, $col11#23, $col12#24]
+        |       |       +-expr_list=
+        |       |       | +-$col1#13 := Literal(type=INT64, value=NULL)
+        |       |       | +-$col2#14 := Literal(parse_location=154-158, type=INT64, value=NULL)
+        |       |       | +-$col3#15 := Literal(type=INT64, value=NULL)
+        |       |       | +-$col4#16 := Literal(type=INT64, value=NULL)
+        |       |       | +-$col5#17 := Literal(type=INT64, value=NULL)
+        |       |       | +-$col6#18 := Literal(type=INT64, value=NULL)
+        |       |       | +-$col7#19 := Literal(type=INT64, value=NULL)
+        |       |       | +-$col8#20 := Literal(type=INT64, value=NULL)
+        |       |       | +-$col9#21 := Literal(type=INT64, value=NULL)
+        |       |       | +-$col10#22 := Literal(type=INT64, value=NULL)
+        |       |       | +-$col11#23 := Literal(parse_location=208-212, type=INT64, value=NULL)
+        |       |       | +-$col12#24 := Literal(type=INT64, value=NULL)
+        |       |       +-input_scan=
+        |       |         +-SingleRowScan
+        |       +-output_column_list=[$except_all2_cast.$col1#37, $except_all2.$col2#14, $except_all2_cast.$col3#38, $except_all2_cast.$col4#39, $except_all2_cast.$col5#40, $except_all2_cast.$col6#41, $except_all2_cast.$col7#42, $except_all2_cast.$col8#43, $except_all2_cast.$col9#44, $except_all2_cast.$col10#45, $except_all2.$col11#23, $except_all2_cast.$col12#46]
+        +-aggregate_list=
+          +-$agg1#47 :=
+            +-AggregateFunctionCall(GoogleSQL:$anon_count_star(optional(1) INT64, optional(1) INT64) -> INT64)
+              +-parse_location=26-36
+              +-Literal(parse_location=55-56, type=INT64, value=0)
+              +-Literal(parse_location=61-64, type=INT64, value=100)
+[REPLACED_LITERALS]
+select with anonymization anon_count(* CLAMPED BETWEEN @_p0_INT64 AND @_p1_INT64)
+from (select * from SimpleTypesWithAnonymizationUid
+      except all
+      select @_p2_INT32, @_p3_INT64, @_p4_UINT32, @_p5_UINT64, @_p6_STRING, @_p7_BYTES, @_p8_BOOL, @_p9_FLOAT, @_p10_DOUBLE, @_p11_DATE, @_p12_INT64, @_p13_NUMERIC);
+
+Rewrite ERROR: Not all queries in EXCEPT ALL are anonymization-enabled table expressions; query 1 is an anonymization-enabled table expression, but query 2 is not [at 2:7]
+from (select * from SimpleTypesWithAnonymizationUid
+      ^
+--
+ALTERNATION GROUP: except,distinct
+--
+[PRE-REWRITE AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#47 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-parse_location=0-224
+    +-column_list=[$aggregate.$agg1#47]
+    +-input_scan=
+      +-AnonymizedAggregateScan
+        +-column_list=[$aggregate.$agg1#47]
+        +-input_scan=
+        | +-SetOperationScan
+        |   +-parse_location=72-223
+        |   +-column_list=$except_distinct.[int32#25, int64#26, uint32#27, uint64#28, string#29, bytes#30, bool#31, float#32, double#33, date#34, uid#35, numeric#36]
+        |   +-op_type=EXCEPT_DISTINCT
+        |   +-input_item_list=
+        |     +-SetOperationItem
+        |     | +-scan=
+        |     | | +-ProjectScan
+        |     | |   +-column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12]
+        |     | |   +-input_scan=
+        |     | |     +-TableScan(parse_location=86-117, column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12], table=SimpleTypesWithAnonymizationUid, column_index_list=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
+        |     | +-output_column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12]
+        |     +-SetOperationItem
+        |       +-scan=
+        |       | +-ProjectScan
+        |       |   +-column_list=[$except_distinct2_cast.$col1#37, $except_distinct2.$col2#14, $except_distinct2_cast.$col3#38, $except_distinct2_cast.$col4#39, $except_distinct2_cast.$col5#40, $except_distinct2_cast.$col6#41, $except_distinct2_cast.$col7#42, $except_distinct2_cast.$col8#43, $except_distinct2_cast.$col9#44, $except_distinct2_cast.$col10#45, $except_distinct2.$col11#23, $except_distinct2_cast.$col12#46]
+        |       |   +-expr_list=
+        |       |   | +-$col1#37 := Literal(parse_location=153-157, type=INT32, value=NULL)
+        |       |   | +-$col3#38 := Literal(parse_location=165-169, type=UINT32, value=NULL)
+        |       |   | +-$col4#39 := Literal(parse_location=171-175, type=UINT64, value=NULL)
+        |       |   | +-$col5#40 := Literal(parse_location=177-181, type=STRING, value=NULL)
+        |       |   | +-$col6#41 := Literal(parse_location=183-187, type=BYTES, value=NULL)
+        |       |   | +-$col7#42 := Literal(parse_location=189-193, type=BOOL, value=NULL)
+        |       |   | +-$col8#43 := Literal(parse_location=195-199, type=FLOAT, value=NULL)
+        |       |   | +-$col9#44 := Literal(parse_location=201-205, type=DOUBLE, value=NULL)
+        |       |   | +-$col10#45 := Literal(parse_location=207-211, type=DATE, value=NULL)
+        |       |   | +-$col12#46 := Literal(parse_location=219-223, type=NUMERIC, value=NULL)
+        |       |   +-input_scan=
+        |       |     +-ProjectScan
+        |       |       +-column_list=$except_distinct2.[$col1#13, $col2#14, $col3#15, $col4#16, $col5#17, $col6#18, $col7#19, $col8#20, $col9#21, $col10#22, $col11#23, $col12#24]
+        |       |       +-expr_list=
+        |       |       | +-$col1#13 := Literal(type=INT64, value=NULL)
+        |       |       | +-$col2#14 := Literal(parse_location=159-163, type=INT64, value=NULL)
+        |       |       | +-$col3#15 := Literal(type=INT64, value=NULL)
+        |       |       | +-$col4#16 := Literal(type=INT64, value=NULL)
+        |       |       | +-$col5#17 := Literal(type=INT64, value=NULL)
+        |       |       | +-$col6#18 := Literal(type=INT64, value=NULL)
+        |       |       | +-$col7#19 := Literal(type=INT64, value=NULL)
+        |       |       | +-$col8#20 := Literal(type=INT64, value=NULL)
+        |       |       | +-$col9#21 := Literal(type=INT64, value=NULL)
+        |       |       | +-$col10#22 := Literal(type=INT64, value=NULL)
+        |       |       | +-$col11#23 := Literal(parse_location=213-217, type=INT64, value=NULL)
+        |       |       | +-$col12#24 := Literal(type=INT64, value=NULL)
+        |       |       +-input_scan=
+        |       |         +-SingleRowScan
+        |       +-output_column_list=[$except_distinct2_cast.$col1#37, $except_distinct2.$col2#14, $except_distinct2_cast.$col3#38, $except_distinct2_cast.$col4#39, $except_distinct2_cast.$col5#40, $except_distinct2_cast.$col6#41, $except_distinct2_cast.$col7#42, $except_distinct2_cast.$col8#43, $except_distinct2_cast.$col9#44, $except_distinct2_cast.$col10#45, $except_distinct2.$col11#23, $except_distinct2_cast.$col12#46]
+        +-aggregate_list=
+          +-$agg1#47 :=
+            +-AggregateFunctionCall(GoogleSQL:$anon_count_star(optional(1) INT64, optional(1) INT64) -> INT64)
+              +-parse_location=26-36
+              +-Literal(parse_location=55-56, type=INT64, value=0)
+              +-Literal(parse_location=61-64, type=INT64, value=100)
+[REPLACED_LITERALS]
+select with anonymization anon_count(* CLAMPED BETWEEN @_p0_INT64 AND @_p1_INT64)
+from (select * from SimpleTypesWithAnonymizationUid
+      except distinct
+      select @_p2_INT32, @_p3_INT64, @_p4_UINT32, @_p5_UINT64, @_p6_STRING, @_p7_BYTES, @_p8_BOOL, @_p9_FLOAT, @_p10_DOUBLE, @_p11_DATE, @_p12_INT64, @_p13_NUMERIC);
+
+Rewrite ERROR: Not all queries in EXCEPT DISTINCT are anonymization-enabled table expressions; query 1 is an anonymization-enabled table expression, but query 2 is not [at 2:7]
+from (select * from SimpleTypesWithAnonymizationUid
+      ^
+==
+
+# Reject set operations without a consistent userid column
+[enabled_ast_rewrites=DEFAULTS,+ANONYMIZATION]
+[parse_location_record_type=PARSE_LOCATION_RECORD_CODE_SEARCH]
+select with anonymization anon_count(* CLAMPED BETWEEN 0 AND 100)
+from (select * from T1StringAnonymizationUid
+      union all
+      select * from T1StringAnonymizationUid
+      union all
+      select NULL, NULL);
+--
+[PRE-REWRITE AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#11 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-parse_location=0-212
+    +-column_list=[$aggregate.$agg1#11]
+    +-input_scan=
+      +-AnonymizedAggregateScan
+        +-column_list=[$aggregate.$agg1#11]
+        +-input_scan=
+        | +-SetOperationScan
+        |   +-parse_location=72-211
+        |   +-column_list=$union_all.[uid#7, c2#8]
+        |   +-op_type=UNION_ALL
+        |   +-input_item_list=
+        |     +-SetOperationItem
+        |     | +-scan=
+        |     | | +-ProjectScan
+        |     | |   +-column_list=T1StringAnonymizationUid.[uid#1, c2#2]
+        |     | |   +-input_scan=
+        |     | |     +-TableScan(parse_location=86-110, column_list=T1StringAnonymizationUid.[uid#1, c2#2], table=T1StringAnonymizationUid, column_index_list=[0, 1])
+        |     | +-output_column_list=T1StringAnonymizationUid.[uid#1, c2#2]
+        |     +-SetOperationItem
+        |     | +-scan=
+        |     | | +-ProjectScan
+        |     | |   +-column_list=T1StringAnonymizationUid.[uid#3, c2#4]
+        |     | |   +-input_scan=
+        |     | |     +-TableScan(parse_location=147-171, column_list=T1StringAnonymizationUid.[uid#3, c2#4], table=T1StringAnonymizationUid, column_index_list=[0, 1])
+        |     | +-output_column_list=T1StringAnonymizationUid.[uid#3, c2#4]
+        |     +-SetOperationItem
+        |       +-scan=
+        |       | +-ProjectScan
+        |       |   +-column_list=$union_all3_cast.[$col1#9, $col2#10]
+        |       |   +-expr_list=
+        |       |   | +-$col1#9 := Literal(parse_location=201-205, type=STRING, value=NULL)
+        |       |   | +-$col2#10 := Literal(parse_location=207-211, type=STRING, value=NULL)
+        |       |   +-input_scan=
+        |       |     +-ProjectScan
+        |       |       +-column_list=$union_all3.[$col1#5, $col2#6]
+        |       |       +-expr_list=
+        |       |       | +-$col1#5 := Literal(type=INT64, value=NULL)
+        |       |       | +-$col2#6 := Literal(type=INT64, value=NULL)
+        |       |       +-input_scan=
+        |       |         +-SingleRowScan
+        |       +-output_column_list=$union_all3_cast.[$col1#9, $col2#10]
+        +-aggregate_list=
+          +-$agg1#11 :=
+            +-AggregateFunctionCall(GoogleSQL:$anon_count_star(optional(1) INT64, optional(1) INT64) -> INT64)
+              +-parse_location=26-36
+              +-Literal(parse_location=55-56, type=INT64, value=0)
+              +-Literal(parse_location=61-64, type=INT64, value=100)
+[REPLACED_LITERALS]
+select with anonymization anon_count(* CLAMPED BETWEEN @_p0_INT64 AND @_p1_INT64)
+from (select * from T1StringAnonymizationUid
+      union all
+      select * from T1StringAnonymizationUid
+      union all
+      select @_p2_STRING, @_p5_STRING);
+
+Rewrite ERROR: Not all queries in UNION ALL are anonymization-enabled table expressions; query 1 is an anonymization-enabled table expression, but query 3 is not [at 2:7]
+from (select * from T1StringAnonymizationUid
+      ^
+==
+
+# Reject set operations with inconsistent userid columns
+[enabled_ast_rewrites=DEFAULTS,+ANONYMIZATION]
+[parse_location_record_type=PARSE_LOCATION_RECORD_CODE_SEARCH]
+select with anonymization anon_count(* CLAMPED BETWEEN 0 AND 100)
+from (select * from T1StringAnonymizationUid
+      {{union|intersect|except}} {{all|distinct}}
+      select * from T2StringAnonymizationUid);
+--
+ALTERNATION GROUP: union,all
+--
+[PRE-REWRITE AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#7 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-parse_location=0-172
+    +-column_list=[$aggregate.$agg1#7]
+    +-input_scan=
+      +-AnonymizedAggregateScan
+        +-column_list=[$aggregate.$agg1#7]
+        +-input_scan=
+        | +-SetOperationScan
+        |   +-parse_location=72-171
+        |   +-column_list=$union_all.[uid#5, c2#6]
+        |   +-op_type=UNION_ALL
+        |   +-input_item_list=
+        |     +-SetOperationItem
+        |     | +-scan=
+        |     | | +-ProjectScan
+        |     | |   +-column_list=T1StringAnonymizationUid.[uid#1, c2#2]
+        |     | |   +-input_scan=
+        |     | |     +-TableScan(parse_location=86-110, column_list=T1StringAnonymizationUid.[uid#1, c2#2], table=T1StringAnonymizationUid, column_index_list=[0, 1])
+        |     | +-output_column_list=T1StringAnonymizationUid.[uid#1, c2#2]
+        |     +-SetOperationItem
+        |       +-scan=
+        |       | +-ProjectScan
+        |       |   +-column_list=T2StringAnonymizationUid.[c1#3, uid#4]
+        |       |   +-input_scan=
+        |       |     +-TableScan(parse_location=147-171, column_list=T2StringAnonymizationUid.[c1#3, uid#4], table=T2StringAnonymizationUid, column_index_list=[0, 1])
+        |       +-output_column_list=T2StringAnonymizationUid.[c1#3, uid#4]
+        +-aggregate_list=
+          +-$agg1#7 :=
+            +-AggregateFunctionCall(GoogleSQL:$anon_count_star(optional(1) INT64, optional(1) INT64) -> INT64)
+              +-parse_location=26-36
+              +-Literal(parse_location=55-56, type=INT64, value=0)
+              +-Literal(parse_location=61-64, type=INT64, value=100)
+[REPLACED_LITERALS]
+select with anonymization anon_count(* CLAMPED BETWEEN @_p0_INT64 AND @_p1_INT64)
+from (select * from T1StringAnonymizationUid
+      union all
+      select * from T2StringAnonymizationUid);
+
+Rewrite ERROR: Queries in UNION ALL have mismatched userid columns; query 1 has userid column 'uid' in position 1, query 2 has userid column 'uid' in position 2 [at 2:7]
+from (select * from T1StringAnonymizationUid
+      ^
+--
+ALTERNATION GROUP: union,distinct
+--
+[PRE-REWRITE AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#7 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-parse_location=0-177
+    +-column_list=[$aggregate.$agg1#7]
+    +-input_scan=
+      +-AnonymizedAggregateScan
+        +-column_list=[$aggregate.$agg1#7]
+        +-input_scan=
+        | +-SetOperationScan
+        |   +-parse_location=72-176
+        |   +-column_list=$union_distinct.[uid#5, c2#6]
+        |   +-op_type=UNION_DISTINCT
+        |   +-input_item_list=
+        |     +-SetOperationItem
+        |     | +-scan=
+        |     | | +-ProjectScan
+        |     | |   +-column_list=T1StringAnonymizationUid.[uid#1, c2#2]
+        |     | |   +-input_scan=
+        |     | |     +-TableScan(parse_location=86-110, column_list=T1StringAnonymizationUid.[uid#1, c2#2], table=T1StringAnonymizationUid, column_index_list=[0, 1])
+        |     | +-output_column_list=T1StringAnonymizationUid.[uid#1, c2#2]
+        |     +-SetOperationItem
+        |       +-scan=
+        |       | +-ProjectScan
+        |       |   +-column_list=T2StringAnonymizationUid.[c1#3, uid#4]
+        |       |   +-input_scan=
+        |       |     +-TableScan(parse_location=152-176, column_list=T2StringAnonymizationUid.[c1#3, uid#4], table=T2StringAnonymizationUid, column_index_list=[0, 1])
+        |       +-output_column_list=T2StringAnonymizationUid.[c1#3, uid#4]
+        +-aggregate_list=
+          +-$agg1#7 :=
+            +-AggregateFunctionCall(GoogleSQL:$anon_count_star(optional(1) INT64, optional(1) INT64) -> INT64)
+              +-parse_location=26-36
+              +-Literal(parse_location=55-56, type=INT64, value=0)
+              +-Literal(parse_location=61-64, type=INT64, value=100)
+[REPLACED_LITERALS]
+select with anonymization anon_count(* CLAMPED BETWEEN @_p0_INT64 AND @_p1_INT64)
+from (select * from T1StringAnonymizationUid
+      union distinct
+      select * from T2StringAnonymizationUid);
+
+Rewrite ERROR: Queries in UNION DISTINCT have mismatched userid columns; query 1 has userid column 'uid' in position 1, query 2 has userid column 'uid' in position 2 [at 2:7]
+from (select * from T1StringAnonymizationUid
+      ^
+--
+ALTERNATION GROUP: intersect,all
+--
+[PRE-REWRITE AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#7 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-parse_location=0-176
+    +-column_list=[$aggregate.$agg1#7]
+    +-input_scan=
+      +-AnonymizedAggregateScan
+        +-column_list=[$aggregate.$agg1#7]
+        +-input_scan=
+        | +-SetOperationScan
+        |   +-parse_location=72-175
+        |   +-column_list=$intersect_all.[uid#5, c2#6]
+        |   +-op_type=INTERSECT_ALL
+        |   +-input_item_list=
+        |     +-SetOperationItem
+        |     | +-scan=
+        |     | | +-ProjectScan
+        |     | |   +-column_list=T1StringAnonymizationUid.[uid#1, c2#2]
+        |     | |   +-input_scan=
+        |     | |     +-TableScan(parse_location=86-110, column_list=T1StringAnonymizationUid.[uid#1, c2#2], table=T1StringAnonymizationUid, column_index_list=[0, 1])
+        |     | +-output_column_list=T1StringAnonymizationUid.[uid#1, c2#2]
+        |     +-SetOperationItem
+        |       +-scan=
+        |       | +-ProjectScan
+        |       |   +-column_list=T2StringAnonymizationUid.[c1#3, uid#4]
+        |       |   +-input_scan=
+        |       |     +-TableScan(parse_location=151-175, column_list=T2StringAnonymizationUid.[c1#3, uid#4], table=T2StringAnonymizationUid, column_index_list=[0, 1])
+        |       +-output_column_list=T2StringAnonymizationUid.[c1#3, uid#4]
+        +-aggregate_list=
+          +-$agg1#7 :=
+            +-AggregateFunctionCall(GoogleSQL:$anon_count_star(optional(1) INT64, optional(1) INT64) -> INT64)
+              +-parse_location=26-36
+              +-Literal(parse_location=55-56, type=INT64, value=0)
+              +-Literal(parse_location=61-64, type=INT64, value=100)
+[REPLACED_LITERALS]
+select with anonymization anon_count(* CLAMPED BETWEEN @_p0_INT64 AND @_p1_INT64)
+from (select * from T1StringAnonymizationUid
+      intersect all
+      select * from T2StringAnonymizationUid);
+
+Rewrite ERROR: Queries in INTERSECT ALL have mismatched userid columns; query 1 has userid column 'uid' in position 1, query 2 has userid column 'uid' in position 2 [at 2:7]
+from (select * from T1StringAnonymizationUid
+      ^
+--
+ALTERNATION GROUP: intersect,distinct
+--
+[PRE-REWRITE AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#7 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-parse_location=0-181
+    +-column_list=[$aggregate.$agg1#7]
+    +-input_scan=
+      +-AnonymizedAggregateScan
+        +-column_list=[$aggregate.$agg1#7]
+        +-input_scan=
+        | +-SetOperationScan
+        |   +-parse_location=72-180
+        |   +-column_list=$intersect_distinct.[uid#5, c2#6]
+        |   +-op_type=INTERSECT_DISTINCT
+        |   +-input_item_list=
+        |     +-SetOperationItem
+        |     | +-scan=
+        |     | | +-ProjectScan
+        |     | |   +-column_list=T1StringAnonymizationUid.[uid#1, c2#2]
+        |     | |   +-input_scan=
+        |     | |     +-TableScan(parse_location=86-110, column_list=T1StringAnonymizationUid.[uid#1, c2#2], table=T1StringAnonymizationUid, column_index_list=[0, 1])
+        |     | +-output_column_list=T1StringAnonymizationUid.[uid#1, c2#2]
+        |     +-SetOperationItem
+        |       +-scan=
+        |       | +-ProjectScan
+        |       |   +-column_list=T2StringAnonymizationUid.[c1#3, uid#4]
+        |       |   +-input_scan=
+        |       |     +-TableScan(parse_location=156-180, column_list=T2StringAnonymizationUid.[c1#3, uid#4], table=T2StringAnonymizationUid, column_index_list=[0, 1])
+        |       +-output_column_list=T2StringAnonymizationUid.[c1#3, uid#4]
+        +-aggregate_list=
+          +-$agg1#7 :=
+            +-AggregateFunctionCall(GoogleSQL:$anon_count_star(optional(1) INT64, optional(1) INT64) -> INT64)
+              +-parse_location=26-36
+              +-Literal(parse_location=55-56, type=INT64, value=0)
+              +-Literal(parse_location=61-64, type=INT64, value=100)
+[REPLACED_LITERALS]
+select with anonymization anon_count(* CLAMPED BETWEEN @_p0_INT64 AND @_p1_INT64)
+from (select * from T1StringAnonymizationUid
+      intersect distinct
+      select * from T2StringAnonymizationUid);
+
+Rewrite ERROR: Queries in INTERSECT DISTINCT have mismatched userid columns; query 1 has userid column 'uid' in position 1, query 2 has userid column 'uid' in position 2 [at 2:7]
+from (select * from T1StringAnonymizationUid
+      ^
+--
+ALTERNATION GROUP: except,all
+--
+[PRE-REWRITE AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#7 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-parse_location=0-173
+    +-column_list=[$aggregate.$agg1#7]
+    +-input_scan=
+      +-AnonymizedAggregateScan
+        +-column_list=[$aggregate.$agg1#7]
+        +-input_scan=
+        | +-SetOperationScan
+        |   +-parse_location=72-172
+        |   +-column_list=$except_all.[uid#5, c2#6]
+        |   +-op_type=EXCEPT_ALL
+        |   +-input_item_list=
+        |     +-SetOperationItem
+        |     | +-scan=
+        |     | | +-ProjectScan
+        |     | |   +-column_list=T1StringAnonymizationUid.[uid#1, c2#2]
+        |     | |   +-input_scan=
+        |     | |     +-TableScan(parse_location=86-110, column_list=T1StringAnonymizationUid.[uid#1, c2#2], table=T1StringAnonymizationUid, column_index_list=[0, 1])
+        |     | +-output_column_list=T1StringAnonymizationUid.[uid#1, c2#2]
+        |     +-SetOperationItem
+        |       +-scan=
+        |       | +-ProjectScan
+        |       |   +-column_list=T2StringAnonymizationUid.[c1#3, uid#4]
+        |       |   +-input_scan=
+        |       |     +-TableScan(parse_location=148-172, column_list=T2StringAnonymizationUid.[c1#3, uid#4], table=T2StringAnonymizationUid, column_index_list=[0, 1])
+        |       +-output_column_list=T2StringAnonymizationUid.[c1#3, uid#4]
+        +-aggregate_list=
+          +-$agg1#7 :=
+            +-AggregateFunctionCall(GoogleSQL:$anon_count_star(optional(1) INT64, optional(1) INT64) -> INT64)
+              +-parse_location=26-36
+              +-Literal(parse_location=55-56, type=INT64, value=0)
+              +-Literal(parse_location=61-64, type=INT64, value=100)
+[REPLACED_LITERALS]
+select with anonymization anon_count(* CLAMPED BETWEEN @_p0_INT64 AND @_p1_INT64)
+from (select * from T1StringAnonymizationUid
+      except all
+      select * from T2StringAnonymizationUid);
+
+Rewrite ERROR: Queries in EXCEPT ALL have mismatched userid columns; query 1 has userid column 'uid' in position 1, query 2 has userid column 'uid' in position 2 [at 2:7]
+from (select * from T1StringAnonymizationUid
+      ^
+--
+ALTERNATION GROUP: except,distinct
+--
+[PRE-REWRITE AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#7 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-parse_location=0-178
+    +-column_list=[$aggregate.$agg1#7]
+    +-input_scan=
+      +-AnonymizedAggregateScan
+        +-column_list=[$aggregate.$agg1#7]
+        +-input_scan=
+        | +-SetOperationScan
+        |   +-parse_location=72-177
+        |   +-column_list=$except_distinct.[uid#5, c2#6]
+        |   +-op_type=EXCEPT_DISTINCT
+        |   +-input_item_list=
+        |     +-SetOperationItem
+        |     | +-scan=
+        |     | | +-ProjectScan
+        |     | |   +-column_list=T1StringAnonymizationUid.[uid#1, c2#2]
+        |     | |   +-input_scan=
+        |     | |     +-TableScan(parse_location=86-110, column_list=T1StringAnonymizationUid.[uid#1, c2#2], table=T1StringAnonymizationUid, column_index_list=[0, 1])
+        |     | +-output_column_list=T1StringAnonymizationUid.[uid#1, c2#2]
+        |     +-SetOperationItem
+        |       +-scan=
+        |       | +-ProjectScan
+        |       |   +-column_list=T2StringAnonymizationUid.[c1#3, uid#4]
+        |       |   +-input_scan=
+        |       |     +-TableScan(parse_location=153-177, column_list=T2StringAnonymizationUid.[c1#3, uid#4], table=T2StringAnonymizationUid, column_index_list=[0, 1])
+        |       +-output_column_list=T2StringAnonymizationUid.[c1#3, uid#4]
+        +-aggregate_list=
+          +-$agg1#7 :=
+            +-AggregateFunctionCall(GoogleSQL:$anon_count_star(optional(1) INT64, optional(1) INT64) -> INT64)
+              +-parse_location=26-36
+              +-Literal(parse_location=55-56, type=INT64, value=0)
+              +-Literal(parse_location=61-64, type=INT64, value=100)
+[REPLACED_LITERALS]
+select with anonymization anon_count(* CLAMPED BETWEEN @_p0_INT64 AND @_p1_INT64)
+from (select * from T1StringAnonymizationUid
+      except distinct
+      select * from T2StringAnonymizationUid);
+
+Rewrite ERROR: Queries in EXCEPT DISTINCT have mismatched userid columns; query 1 has userid column 'uid' in position 1, query 2 has userid column 'uid' in position 2 [at 2:7]
+from (select * from T1StringAnonymizationUid
+      ^
+==
+
+# Reject set operations without a consistent userid column
+[enabled_ast_rewrites=DEFAULTS,+ANONYMIZATION]
+[parse_location_record_type=PARSE_LOCATION_RECORD_CODE_SEARCH]
+select with anonymization anon_count(* CLAMPED BETWEEN 0 AND 100)
+from (select * from T1StringAnonymizationUid
+      union all
+      select * from T1StringAnonymizationUid
+      union all
+      select * from T2StringAnonymizationUid);
+--
+[PRE-REWRITE AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#9 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-parse_location=0-233
+    +-column_list=[$aggregate.$agg1#9]
+    +-input_scan=
+      +-AnonymizedAggregateScan
+        +-column_list=[$aggregate.$agg1#9]
+        +-input_scan=
+        | +-SetOperationScan
+        |   +-parse_location=72-232
+        |   +-column_list=$union_all.[uid#7, c2#8]
+        |   +-op_type=UNION_ALL
+        |   +-input_item_list=
+        |     +-SetOperationItem
+        |     | +-scan=
+        |     | | +-ProjectScan
+        |     | |   +-column_list=T1StringAnonymizationUid.[uid#1, c2#2]
+        |     | |   +-input_scan=
+        |     | |     +-TableScan(parse_location=86-110, column_list=T1StringAnonymizationUid.[uid#1, c2#2], table=T1StringAnonymizationUid, column_index_list=[0, 1])
+        |     | +-output_column_list=T1StringAnonymizationUid.[uid#1, c2#2]
+        |     +-SetOperationItem
+        |     | +-scan=
+        |     | | +-ProjectScan
+        |     | |   +-column_list=T1StringAnonymizationUid.[uid#3, c2#4]
+        |     | |   +-input_scan=
+        |     | |     +-TableScan(parse_location=147-171, column_list=T1StringAnonymizationUid.[uid#3, c2#4], table=T1StringAnonymizationUid, column_index_list=[0, 1])
+        |     | +-output_column_list=T1StringAnonymizationUid.[uid#3, c2#4]
+        |     +-SetOperationItem
+        |       +-scan=
+        |       | +-ProjectScan
+        |       |   +-column_list=T2StringAnonymizationUid.[c1#5, uid#6]
+        |       |   +-input_scan=
+        |       |     +-TableScan(parse_location=208-232, column_list=T2StringAnonymizationUid.[c1#5, uid#6], table=T2StringAnonymizationUid, column_index_list=[0, 1])
+        |       +-output_column_list=T2StringAnonymizationUid.[c1#5, uid#6]
+        +-aggregate_list=
+          +-$agg1#9 :=
+            +-AggregateFunctionCall(GoogleSQL:$anon_count_star(optional(1) INT64, optional(1) INT64) -> INT64)
+              +-parse_location=26-36
+              +-Literal(parse_location=55-56, type=INT64, value=0)
+              +-Literal(parse_location=61-64, type=INT64, value=100)
+[REPLACED_LITERALS]
+select with anonymization anon_count(* CLAMPED BETWEEN @_p0_INT64 AND @_p1_INT64)
+from (select * from T1StringAnonymizationUid
+      union all
+      select * from T1StringAnonymizationUid
+      union all
+      select * from T2StringAnonymizationUid);
+
+Rewrite ERROR: Queries in UNION ALL have mismatched userid columns; query 1 has userid column 'uid' in position 1, query 3 has userid column 'uid' in position 2 [at 2:7]
+from (select * from T1StringAnonymizationUid
+      ^
+==
+
+# Support nested set operations
+[enabled_ast_rewrites=DEFAULTS,+ANONYMIZATION]
+[parse_location_record_type=PARSE_LOCATION_RECORD_CODE_SEARCH]
+select with anonymization anon_count(* CLAMPED BETWEEN 0 AND 100)
+from (select * from T1StringAnonymizationUid
+      union all
+      select * from (
+        select * from T1StringAnonymizationUid
+        union all
+        select * from T1StringAnonymizationUid));
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#11 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-parse_location=0-262
+    +-column_list=[$aggregate.$agg1#11]
+    +-input_scan=
+      +-AnonymizedAggregateScan
+        +-column_list=[$aggregate.$agg1#11]
+        +-input_scan=
+        | +-SetOperationScan
+        |   +-parse_location=72-261
+        |   +-column_list=$union_all.[uid#9, c2#10]
+        |   +-op_type=UNION_ALL
+        |   +-input_item_list=
+        |     +-SetOperationItem
+        |     | +-scan=
+        |     | | +-ProjectScan
+        |     | |   +-column_list=T1StringAnonymizationUid.[uid#1, c2#2]
+        |     | |   +-input_scan=
+        |     | |     +-TableScan(parse_location=86-110, column_list=T1StringAnonymizationUid.[uid#1, c2#2], table=T1StringAnonymizationUid, column_index_list=[0, 1])
+        |     | +-output_column_list=T1StringAnonymizationUid.[uid#1, c2#2]
+        |     +-SetOperationItem
+        |       +-scan=
+        |       | +-ProjectScan
+        |       |   +-column_list=$union_all.[uid#7, c2#8]
+        |       |   +-input_scan=
+        |       |     +-SetOperationScan
+        |       |       +-parse_location=157-260
+        |       |       +-column_list=$union_all.[uid#7, c2#8]
+        |       |       +-op_type=UNION_ALL
+        |       |       +-input_item_list=
+        |       |         +-SetOperationItem
+        |       |         | +-scan=
+        |       |         | | +-ProjectScan
+        |       |         | |   +-column_list=T1StringAnonymizationUid.[uid#3, c2#4]
+        |       |         | |   +-input_scan=
+        |       |         | |     +-TableScan(parse_location=171-195, column_list=T1StringAnonymizationUid.[uid#3, c2#4], table=T1StringAnonymizationUid, column_index_list=[0, 1])
+        |       |         | +-output_column_list=T1StringAnonymizationUid.[uid#3, c2#4]
+        |       |         +-SetOperationItem
+        |       |           +-scan=
+        |       |           | +-ProjectScan
+        |       |           |   +-column_list=T1StringAnonymizationUid.[uid#5, c2#6]
+        |       |           |   +-input_scan=
+        |       |           |     +-TableScan(parse_location=236-260, column_list=T1StringAnonymizationUid.[uid#5, c2#6], table=T1StringAnonymizationUid, column_index_list=[0, 1])
+        |       |           +-output_column_list=T1StringAnonymizationUid.[uid#5, c2#6]
+        |       +-output_column_list=$union_all.[uid#7, c2#8]
+        +-aggregate_list=
+          +-$agg1#11 :=
+            +-AggregateFunctionCall(GoogleSQL:$anon_count_star(optional(1) INT64, optional(1) INT64) -> INT64)
+              +-parse_location=26-36
+              +-Literal(parse_location=55-56, type=INT64, value=0)
+              +-Literal(parse_location=61-64, type=INT64, value=100)
+[REPLACED_LITERALS]
+select with anonymization anon_count(* CLAMPED BETWEEN @_p0_INT64 AND @_p1_INT64)
+from (select * from T1StringAnonymizationUid
+      union all
+      select * from (
+        select * from T1StringAnonymizationUid
+        union all
+        select * from T1StringAnonymizationUid));
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#11 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-parse_location=0-262
+    +-column_list=[$aggregate.$agg1#11]
+    +-input_scan=
+      +-AnonymizedAggregateScan
+        +-column_list=[$aggregate.$agg1#11]
+        +-input_scan=
+        | +-AggregateScan
+        |   +-column_list=[$aggregate.$agg1_partial#13, $group_by.$uid#14]
+        |   +-input_scan=
+        |   | +-SetOperationScan
+        |   |   +-column_list=$union_all.[uid#9, c2#10]
+        |   |   +-op_type=UNION_ALL
+        |   |   +-input_item_list=
+        |   |     +-SetOperationItem
+        |   |     | +-scan=
+        |   |     | | +-ProjectScan
+        |   |     | |   +-column_list=T1StringAnonymizationUid.[uid#1, c2#2]
+        |   |     | |   +-input_scan=
+        |   |     | |     +-TableScan(parse_location=86-110, column_list=T1StringAnonymizationUid.[uid#1, c2#2], table=T1StringAnonymizationUid, column_index_list=[0, 1])
+        |   |     | +-output_column_list=T1StringAnonymizationUid.[uid#1, c2#2]
+        |   |     +-SetOperationItem
+        |   |       +-scan=
+        |   |       | +-ProjectScan
+        |   |       |   +-column_list=$union_all.[uid#7, c2#8]
+        |   |       |   +-input_scan=
+        |   |       |     +-SetOperationScan
+        |   |       |       +-column_list=$union_all.[uid#7, c2#8]
+        |   |       |       +-op_type=UNION_ALL
+        |   |       |       +-input_item_list=
+        |   |       |         +-SetOperationItem
+        |   |       |         | +-scan=
+        |   |       |         | | +-ProjectScan
+        |   |       |         | |   +-column_list=T1StringAnonymizationUid.[uid#3, c2#4]
+        |   |       |         | |   +-input_scan=
+        |   |       |         | |     +-TableScan(parse_location=171-195, column_list=T1StringAnonymizationUid.[uid#3, c2#4], table=T1StringAnonymizationUid, column_index_list=[0, 1])
+        |   |       |         | +-output_column_list=T1StringAnonymizationUid.[uid#3, c2#4]
+        |   |       |         +-SetOperationItem
+        |   |       |           +-scan=
+        |   |       |           | +-ProjectScan
+        |   |       |           |   +-column_list=T1StringAnonymizationUid.[uid#5, c2#6]
+        |   |       |           |   +-input_scan=
+        |   |       |           |     +-TableScan(parse_location=236-260, column_list=T1StringAnonymizationUid.[uid#5, c2#6], table=T1StringAnonymizationUid, column_index_list=[0, 1])
+        |   |       |           +-output_column_list=T1StringAnonymizationUid.[uid#5, c2#6]
+        |   |       +-output_column_list=$union_all.[uid#7, c2#8]
+        |   +-group_by_list=
+        |   | +-$uid#14 := ColumnRef(type=STRING, column=$union_all.uid#9)
+        |   +-aggregate_list=
+        |     +-$agg1_partial#13 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+        +-aggregate_list=
+        | +-$agg1#11 :=
+        | | +-AggregateFunctionCall(GoogleSQL:anon_sum(INT64, optional(1) INT64, optional(1) INT64) -> INT64)
+        | |   +-ColumnRef(type=INT64, column=$aggregate.$agg1_partial#13)
+        | |   +-Literal(parse_location=55-56, type=INT64, value=0)
+        | |   +-Literal(parse_location=61-64, type=INT64, value=100)
+        | +-$k_threshold_col#17 :=
+        |   +-AggregateFunctionCall(GoogleSQL:anon_sum(INT64, optional(1) INT64, optional(1) INT64) -> INT64)
+        |     +-Literal(type=INT64, value=1)
+        |     +-Literal(type=INT64, value=0)
+        |     +-Literal(type=INT64, value=1)
+        +-k_threshold_expr=
+          +-ColumnRef(type=INT64, column=$anon.$k_threshold_col#17)
+==
+
+# Support a mix of set operations with and without uid columns
+[enabled_ast_rewrites=DEFAULTS,+ANONYMIZATION]
+[parse_location_record_type=PARSE_LOCATION_RECORD_CODE_SEARCH]
+select with anonymization anon_count(* CLAMPED BETWEEN 0 AND 100)
+from (select * from T1StringAnonymizationUid
+      union all
+      select * from T1StringAnonymizationUid)
+cross join (select "a", "b"
+            union all
+            select "c", "d");
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-parse_location=0-251
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-AnonymizedAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-JoinScan
+        |   +-parse_location=173-183
+        |   +-column_list=$union_all.[uid#5, c2#6, $col1#11, $col2#12]
+        |   +-left_scan=
+        |   | +-SetOperationScan
+        |   |   +-parse_location=72-171
+        |   |   +-column_list=$union_all.[uid#5, c2#6]
+        |   |   +-op_type=UNION_ALL
+        |   |   +-input_item_list=
+        |   |     +-SetOperationItem
+        |   |     | +-scan=
+        |   |     | | +-ProjectScan
+        |   |     | |   +-column_list=T1StringAnonymizationUid.[uid#1, c2#2]
+        |   |     | |   +-input_scan=
+        |   |     | |     +-TableScan(parse_location=86-110, column_list=T1StringAnonymizationUid.[uid#1, c2#2], table=T1StringAnonymizationUid, column_index_list=[0, 1])
+        |   |     | +-output_column_list=T1StringAnonymizationUid.[uid#1, c2#2]
+        |   |     +-SetOperationItem
+        |   |       +-scan=
+        |   |       | +-ProjectScan
+        |   |       |   +-column_list=T1StringAnonymizationUid.[uid#3, c2#4]
+        |   |       |   +-input_scan=
+        |   |       |     +-TableScan(parse_location=147-171, column_list=T1StringAnonymizationUid.[uid#3, c2#4], table=T1StringAnonymizationUid, column_index_list=[0, 1])
+        |   |       +-output_column_list=T1StringAnonymizationUid.[uid#3, c2#4]
+        |   +-right_scan=
+        |     +-SetOperationScan
+        |       +-parse_location=185-250
+        |       +-column_list=$union_all.[$col1#11, $col2#12]
+        |       +-op_type=UNION_ALL
+        |       +-input_item_list=
+        |         +-SetOperationItem
+        |         | +-scan=
+        |         | | +-ProjectScan
+        |         | |   +-column_list=$union_all1.[$col1#7, $col2#8]
+        |         | |   +-expr_list=
+        |         | |   | +-$col1#7 := Literal(parse_location=192-195, type=STRING, value="a")
+        |         | |   | +-$col2#8 := Literal(parse_location=197-200, type=STRING, value="b")
+        |         | |   +-input_scan=
+        |         | |     +-SingleRowScan
+        |         | +-output_column_list=$union_all1.[$col1#7, $col2#8]
+        |         +-SetOperationItem
+        |           +-scan=
+        |           | +-ProjectScan
+        |           |   +-column_list=$union_all2.[$col1#9, $col2#10]
+        |           |   +-expr_list=
+        |           |   | +-$col1#9 := Literal(parse_location=242-245, type=STRING, value="c")
+        |           |   | +-$col2#10 := Literal(parse_location=247-250, type=STRING, value="d")
+        |           |   +-input_scan=
+        |           |     +-SingleRowScan
+        |           +-output_column_list=$union_all2.[$col1#9, $col2#10]
+        +-aggregate_list=
+          +-$agg1#13 :=
+            +-AggregateFunctionCall(GoogleSQL:$anon_count_star(optional(1) INT64, optional(1) INT64) -> INT64)
+              +-parse_location=26-36
+              +-Literal(parse_location=55-56, type=INT64, value=0)
+              +-Literal(parse_location=61-64, type=INT64, value=100)
+[REPLACED_LITERALS]
+select with anonymization anon_count(* CLAMPED BETWEEN @_p0_INT64 AND @_p1_INT64)
+from (select * from T1StringAnonymizationUid
+      union all
+      select * from T1StringAnonymizationUid)
+cross join (select @_p2_STRING, @_p5_STRING
+            union all
+            select @_p6_STRING, @_p7_STRING);
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-parse_location=0-251
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-AnonymizedAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-AggregateScan
+        |   +-column_list=[$aggregate.$agg1_partial#15, $group_by.$uid#16]
+        |   +-input_scan=
+        |   | +-JoinScan
+        |   |   +-parse_location=173-183
+        |   |   +-column_list=$union_all.[uid#5, c2#6, $col1#11, $col2#12]
+        |   |   +-left_scan=
+        |   |   | +-SetOperationScan
+        |   |   |   +-column_list=$union_all.[uid#5, c2#6]
+        |   |   |   +-op_type=UNION_ALL
+        |   |   |   +-input_item_list=
+        |   |   |     +-SetOperationItem
+        |   |   |     | +-scan=
+        |   |   |     | | +-ProjectScan
+        |   |   |     | |   +-column_list=T1StringAnonymizationUid.[uid#1, c2#2]
+        |   |   |     | |   +-input_scan=
+        |   |   |     | |     +-TableScan(parse_location=86-110, column_list=T1StringAnonymizationUid.[uid#1, c2#2], table=T1StringAnonymizationUid, column_index_list=[0, 1])
+        |   |   |     | +-output_column_list=T1StringAnonymizationUid.[uid#1, c2#2]
+        |   |   |     +-SetOperationItem
+        |   |   |       +-scan=
+        |   |   |       | +-ProjectScan
+        |   |   |       |   +-column_list=T1StringAnonymizationUid.[uid#3, c2#4]
+        |   |   |       |   +-input_scan=
+        |   |   |       |     +-TableScan(parse_location=147-171, column_list=T1StringAnonymizationUid.[uid#3, c2#4], table=T1StringAnonymizationUid, column_index_list=[0, 1])
+        |   |   |       +-output_column_list=T1StringAnonymizationUid.[uid#3, c2#4]
+        |   |   +-right_scan=
+        |   |     +-SetOperationScan
+        |   |       +-column_list=$union_all.[$col1#11, $col2#12]
+        |   |       +-op_type=UNION_ALL
+        |   |       +-input_item_list=
+        |   |         +-SetOperationItem
+        |   |         | +-scan=
+        |   |         | | +-ProjectScan
+        |   |         | |   +-column_list=$union_all1.[$col1#7, $col2#8]
+        |   |         | |   +-expr_list=
+        |   |         | |   | +-$col1#7 := Literal(parse_location=192-195, type=STRING, value="a")
+        |   |         | |   | +-$col2#8 := Literal(parse_location=197-200, type=STRING, value="b")
+        |   |         | |   +-input_scan=
+        |   |         | |     +-SingleRowScan
+        |   |         | +-output_column_list=$union_all1.[$col1#7, $col2#8]
+        |   |         +-SetOperationItem
+        |   |           +-scan=
+        |   |           | +-ProjectScan
+        |   |           |   +-column_list=$union_all2.[$col1#9, $col2#10]
+        |   |           |   +-expr_list=
+        |   |           |   | +-$col1#9 := Literal(parse_location=242-245, type=STRING, value="c")
+        |   |           |   | +-$col2#10 := Literal(parse_location=247-250, type=STRING, value="d")
+        |   |           |   +-input_scan=
+        |   |           |     +-SingleRowScan
+        |   |           +-output_column_list=$union_all2.[$col1#9, $col2#10]
+        |   +-group_by_list=
+        |   | +-$uid#16 := ColumnRef(type=STRING, column=$union_all.uid#5)
+        |   +-aggregate_list=
+        |     +-$agg1_partial#15 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+        +-aggregate_list=
+        | +-$agg1#13 :=
+        | | +-AggregateFunctionCall(GoogleSQL:anon_sum(INT64, optional(1) INT64, optional(1) INT64) -> INT64)
+        | |   +-ColumnRef(type=INT64, column=$aggregate.$agg1_partial#15)
+        | |   +-Literal(parse_location=55-56, type=INT64, value=0)
+        | |   +-Literal(parse_location=61-64, type=INT64, value=100)
+        | +-$k_threshold_col#19 :=
+        |   +-AggregateFunctionCall(GoogleSQL:anon_sum(INT64, optional(1) INT64, optional(1) INT64) -> INT64)
+        |     +-Literal(type=INT64, value=1)
+        |     +-Literal(type=INT64, value=0)
+        |     +-Literal(type=INT64, value=1)
+        +-k_threshold_expr=
+          +-ColumnRef(type=INT64, column=$anon.$k_threshold_col#19)
+==
+
+# Count (*) counting unique users.
+# ANONYMIZATION_THRESHOLDING feature is enabled, therefore we should use this
+# count for k_threshold.
+[language_features=NONE,+ANONYMIZATION,+TABLE_VALUED_FUNCTIONS,+TEMPLATE_FUNCTIONS,+CREATE_TABLE_FUNCTION,+ANONYMIZATION_THRESHOLDING]
+[enabled_ast_rewrites=DEFAULTS,+ANONYMIZATION]
+[parse_location_record_type=PARSE_LOCATION_RECORD_CODE_SEARCH]
+select with anonymization anon_count(* CLAMPED BETWEEN 0 AND 1)
+from (select * from SimpleTypesWithAnonymizationUid
+      union all
+      select * from SimpleTypesWithAnonymizationUid);
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#37 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-parse_location=0-184
+    +-column_list=[$aggregate.$agg1#37]
+    +-input_scan=
+      +-AnonymizedAggregateScan
+        +-column_list=[$aggregate.$agg1#37]
+        +-input_scan=
+        | +-SetOperationScan
+        |   +-parse_location=70-183
+        |   +-column_list=$union_all.[int32#25, int64#26, uint32#27, uint64#28, string#29, bytes#30, bool#31, float#32, double#33, date#34, uid#35, numeric#36]
+        |   +-op_type=UNION_ALL
+        |   +-input_item_list=
+        |     +-SetOperationItem
+        |     | +-scan=
+        |     | | +-ProjectScan
+        |     | |   +-column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12]
+        |     | |   +-input_scan=
+        |     | |     +-TableScan(parse_location=84-115, column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12], table=SimpleTypesWithAnonymizationUid, column_index_list=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
+        |     | +-output_column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12]
+        |     +-SetOperationItem
+        |       +-scan=
+        |       | +-ProjectScan
+        |       |   +-column_list=SimpleTypesWithAnonymizationUid.[int32#13, int64#14, uint32#15, uint64#16, string#17, bytes#18, bool#19, float#20, double#21, date#22, uid#23, numeric#24]
+        |       |   +-input_scan=
+        |       |     +-TableScan(parse_location=152-183, column_list=SimpleTypesWithAnonymizationUid.[int32#13, int64#14, uint32#15, uint64#16, string#17, bytes#18, bool#19, float#20, double#21, date#22, uid#23, numeric#24], table=SimpleTypesWithAnonymizationUid, column_index_list=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
+        |       +-output_column_list=SimpleTypesWithAnonymizationUid.[int32#13, int64#14, uint32#15, uint64#16, string#17, bytes#18, bool#19, float#20, double#21, date#22, uid#23, numeric#24]
+        +-aggregate_list=
+          +-$agg1#37 :=
+            +-AggregateFunctionCall(GoogleSQL:$anon_count_star(optional(1) INT64, optional(1) INT64) -> INT64)
+              +-parse_location=26-36
+              +-Literal(parse_location=55-56, type=INT64, value=0)
+              +-Literal(parse_location=61-62, type=INT64, value=1)
+[REPLACED_LITERALS]
+select with anonymization anon_count(* CLAMPED BETWEEN @_p0_INT64 AND @_p1_INT64)
+from (select * from SimpleTypesWithAnonymizationUid
+      union all
+      select * from SimpleTypesWithAnonymizationUid);
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#37 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-parse_location=0-184
+    +-column_list=[$aggregate.$agg1#37]
+    +-input_scan=
+      +-AnonymizedAggregateScan
+        +-column_list=[$aggregate.$agg1#37]
+        +-input_scan=
+        | +-AggregateScan
+        |   +-column_list=[$aggregate.$agg1_partial#39, $group_by.$uid#40]
+        |   +-input_scan=
+        |   | +-SetOperationScan
+        |   |   +-column_list=$union_all.[int32#25, int64#26, uint32#27, uint64#28, string#29, bytes#30, bool#31, float#32, double#33, date#34, uid#35, numeric#36]
+        |   |   +-op_type=UNION_ALL
+        |   |   +-input_item_list=
+        |   |     +-SetOperationItem
+        |   |     | +-scan=
+        |   |     | | +-ProjectScan
+        |   |     | |   +-column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12]
+        |   |     | |   +-input_scan=
+        |   |     | |     +-TableScan(parse_location=84-115, column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12], table=SimpleTypesWithAnonymizationUid, column_index_list=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
+        |   |     | +-output_column_list=SimpleTypesWithAnonymizationUid.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, uid#11, numeric#12]
+        |   |     +-SetOperationItem
+        |   |       +-scan=
+        |   |       | +-ProjectScan
+        |   |       |   +-column_list=SimpleTypesWithAnonymizationUid.[int32#13, int64#14, uint32#15, uint64#16, string#17, bytes#18, bool#19, float#20, double#21, date#22, uid#23, numeric#24]
+        |   |       |   +-input_scan=
+        |   |       |     +-TableScan(parse_location=152-183, column_list=SimpleTypesWithAnonymizationUid.[int32#13, int64#14, uint32#15, uint64#16, string#17, bytes#18, bool#19, float#20, double#21, date#22, uid#23, numeric#24], table=SimpleTypesWithAnonymizationUid, column_index_list=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
+        |   |       +-output_column_list=SimpleTypesWithAnonymizationUid.[int32#13, int64#14, uint32#15, uint64#16, string#17, bytes#18, bool#19, float#20, double#21, date#22, uid#23, numeric#24]
+        |   +-group_by_list=
+        |   | +-$uid#40 := ColumnRef(type=INT64, column=$union_all.uid#35)
+        |   +-aggregate_list=
+        |     +-$agg1_partial#39 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+        +-aggregate_list=
+        | +-$agg1#37 :=
+        |   +-AggregateFunctionCall(GoogleSQL:anon_sum(INT64, optional(1) INT64, optional(1) INT64) -> INT64)
+        |     +-ColumnRef(type=INT64, column=$aggregate.$agg1_partial#39)
+        |     +-Literal(parse_location=55-56, type=INT64, value=0)
+        |     +-Literal(parse_location=61-62, type=INT64, value=1)
+        +-k_threshold_expr=
+          +-ColumnRef(type=INT64, column=$aggregate.$agg1#37)

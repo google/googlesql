@@ -1,0 +1,307 @@
+# This file contains test cases against the following callbacks associated with
+# functions or function signatures.
+# - FunctionSignatureArgumentConstraintsCallback,
+# - PostResolutionArgumentConstraintsCallback,
+# - ComputeResultTypeCallback.
+# TODO: Add tests for other function constraints callbacks.
+#
+# The following cases test with a function that has a
+# FunctionSignatureArgumentConstraints callback associated which does the
+# consistency check on the passed in signature and arguments and rejects NULL
+# arguments.
+#
+# The function signature is like:
+#   fn_named_opt_args_nonnull_nonnegative_constraints(optional o1_string STRING,
+#                                                     optional o2_int64 INT64,
+#                                                     optional o3_double DOUBLE)
+#
+# For now, Java GoogleSQL API does not have the corresponding interface of
+# FunctionSignatureArgumentConstraintsCallback, and it is impossible serialize
+# the C++ callbacks and use in Java. Thus testing in Java here would result in
+# different result (e.g., a case failing in C++ because of argument constraints
+# would pass in Java.). So disabling Java mode here.
+[default no_java]
+[default language_features=NONE,+NAMED_ARGUMENTS]
+SELECT
+  fn_named_opt_args_nonnull_nonnegative_constraints("o1", 1, 3.14)
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [BOOL]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(sample_functions:fn_named_opt_args_nonnull_nonnegative_constraints(optional(1) STRING o1_string, optional(1) INT64 o2_int64, optional(1) DOUBLE o3_double) -> BOOL)
+    |     +-Literal(type=STRING, value="o1")
+    |     +-Literal(type=INT64, value=1)
+    |     +-Literal(type=DOUBLE, value=3.14)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Tests with the same function signature, but in named arguments notation.
+# This should produce the same AST.
+SELECT
+  fn_named_opt_args_nonnull_nonnegative_constraints(
+      o3_double => 3.14, o1_string => "o1", o2_int64 => 1)
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [BOOL]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(sample_functions:fn_named_opt_args_nonnull_nonnegative_constraints(optional(1) STRING o1_string, optional(1) INT64 o2_int64, optional(1) DOUBLE o3_double) -> BOOL)
+    |     +-Literal(type=STRING, value="o1")
+    |     +-Literal(type=INT64, value=1)
+    |     +-Literal(type=DOUBLE, value=3.14)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Tests with the same function signature, but setting 'o2_int64' with a negative
+# value and thus the call violates the functions' post resolution argument
+# constraints.
+SELECT
+  fn_named_opt_args_nonnull_nonnegative_constraints(
+      o3_double => 3.14, o1_string => "o1", o2_int64 => -1)
+--
+ERROR: Argument o2_int64 must not be negative [at 2:3]
+  fn_named_opt_args_nonnull_nonnegative_constraints(
+  ^
+==
+
+# Tests with the same function signature, but with named arguments omitted.
+# This would trigger the argument constraints callback to fail, because for now
+# we are injecting NULLs for the omitted named arguments.
+#
+# TODO: Fix this failed case once the representation of omitted
+# args is fixed.
+SELECT
+  fn_named_opt_args_nonnull_nonnegative_constraints("o1")
+--
+ERROR: No matching signature for function SAMPLE_FUNCTIONS:FN_NAMED_OPT_ARGS_NONNULL_NONNEGATIVE_CONSTRAINTS
+  Argument types: STRING
+  Signature: FN_NAMED_OPT_ARGS_NONNULL_NONNEGATIVE_CONSTRAINTS([STRING], [INT64], [DOUBLE])
+    Argument `o2_int64`: NULL argument is not allowed [at 2:3]
+  fn_named_opt_args_nonnull_nonnegative_constraints("o1")
+  ^
+==
+
+# Same as above. NULLs are being injected for 'o2_int64' and 'o3_double'.
+#
+# TODO: Fix this failed case once the representation of omitted
+# args is fixed.
+SELECT
+  fn_named_opt_args_nonnull_nonnegative_constraints(o1_string => "o1")
+--
+ERROR: No matching signature for function SAMPLE_FUNCTIONS:FN_NAMED_OPT_ARGS_NONNULL_NONNEGATIVE_CONSTRAINTS
+  Argument types: o1_string => STRING
+  Signature: FN_NAMED_OPT_ARGS_NONNULL_NONNEGATIVE_CONSTRAINTS([[o1_string=>]STRING], [[o2_int64=>]INT64], [[o3_double=>]DOUBLE])
+    Argument `o2_int64`: NULL argument is not allowed [at 2:3]
+  fn_named_opt_args_nonnull_nonnegative_constraints(o1_string => "o1")
+  ^
+==
+
+# Same as above. NULL is being injected for 'o3_double'.
+#
+# TODO: Fix this failed case once the representation of omitted
+# args is fixed.
+SELECT
+  fn_named_opt_args_nonnull_nonnegative_constraints(o2_int64 => 1, o1_string => "o1")
+--
+ERROR: No matching signature for function SAMPLE_FUNCTIONS:FN_NAMED_OPT_ARGS_NONNULL_NONNEGATIVE_CONSTRAINTS
+  Argument types: o2_int64 => INT64, o1_string => STRING
+  Signature: FN_NAMED_OPT_ARGS_NONNULL_NONNEGATIVE_CONSTRAINTS([[o1_string=>]STRING], [[o2_int64=>]INT64], [[o3_double=>]DOUBLE])
+    Argument `o3_double`: NULL argument is not allowed [at 2:3]
+  fn_named_opt_args_nonnull_nonnegative_constraints(o2_int64 => 1, o1_string ...
+  ^
+==
+
+# Same as above. NULL is being injected for 'o3_double'.
+#
+# TODO: Fix this failed case once the representation of omitted
+# args is fixed.
+SELECT
+  fn_named_opt_args_nonnull_nonnegative_constraints(o2_int64 => 1, o1_string => "o1")
+--
+ERROR: No matching signature for function SAMPLE_FUNCTIONS:FN_NAMED_OPT_ARGS_NONNULL_NONNEGATIVE_CONSTRAINTS
+  Argument types: o2_int64 => INT64, o1_string => STRING
+  Signature: FN_NAMED_OPT_ARGS_NONNULL_NONNEGATIVE_CONSTRAINTS([[o1_string=>]STRING], [[o2_int64=>]INT64], [[o3_double=>]DOUBLE])
+    Argument `o3_double`: NULL argument is not allowed [at 2:3]
+  fn_named_opt_args_nonnull_nonnegative_constraints(o2_int64 => 1, o1_string ...
+  ^
+==
+
+# Same as above. NULL is being injected for 'o2_int64'.
+#
+# TODO: Fix this failed case once the representation of omitted
+# args is fixed.
+SELECT
+  fn_named_opt_args_nonnull_nonnegative_constraints("o1", o3_double => 3.14)
+--
+ERROR: No matching signature for function SAMPLE_FUNCTIONS:FN_NAMED_OPT_ARGS_NONNULL_NONNEGATIVE_CONSTRAINTS
+  Argument types: STRING, o3_double => DOUBLE
+  Signature: FN_NAMED_OPT_ARGS_NONNULL_NONNEGATIVE_CONSTRAINTS([[o1_string=>]STRING], [[o2_int64=>]INT64], [[o3_double=>]DOUBLE])
+    Argument `o2_int64`: NULL argument is not allowed [at 2:3]
+  fn_named_opt_args_nonnull_nonnegative_constraints("o1", o3_double => 3.14)
+  ^
+==
+
+# Same as above. NULLs are being injected for 'o1_string' and 'o2_int64'.
+#
+# TODO: Fix this failed case once the representation of omitted
+# args is fixed.
+SELECT
+  fn_named_opt_args_nonnull_nonnegative_constraints(o3_double => 3.14)
+--
+ERROR: No matching signature for function SAMPLE_FUNCTIONS:FN_NAMED_OPT_ARGS_NONNULL_NONNEGATIVE_CONSTRAINTS
+  Argument types: o3_double => DOUBLE
+  Signature: FN_NAMED_OPT_ARGS_NONNULL_NONNEGATIVE_CONSTRAINTS([[o1_string=>]STRING], [[o2_int64=>]INT64], [[o3_double=>]DOUBLE])
+    Argument `o1_string`: NULL argument is not allowed [at 2:3]
+  fn_named_opt_args_nonnull_nonnegative_constraints(o3_double => 3.14)
+  ^
+==
+
+# Same as above. NULL is being injected for 'o1_string'.
+#
+# TODO: Fix this failed case once the representation of omitted
+# args is fixed.
+SELECT
+  fn_named_opt_args_nonnull_nonnegative_constraints(o3_double => 3.14, o2_int64 => 1)
+--
+ERROR: No matching signature for function SAMPLE_FUNCTIONS:FN_NAMED_OPT_ARGS_NONNULL_NONNEGATIVE_CONSTRAINTS
+  Argument types: o3_double => DOUBLE, o2_int64 => INT64
+  Signature: FN_NAMED_OPT_ARGS_NONNULL_NONNEGATIVE_CONSTRAINTS([[o1_string=>]STRING], [[o2_int64=>]INT64], [[o3_double=>]DOUBLE])
+    Argument `o1_string`: NULL argument is not allowed [at 2:3]
+  fn_named_opt_args_nonnull_nonnegative_constraints(o3_double => 3.14, o2_int...
+  ^
+==
+
+# The following cases test with a function that has unnamed arguments and a
+# FunctionSignatureArgumentConstraints callback associated which does the
+# consistency check on the passed in signature and arguments and rejects NULL
+# args.
+#
+# The function signature is like:
+#   fn_unnamed_opt_args_nonnull_nonnegative_constraints(optional STRING,
+#                                                       optional INT64,
+#                                                       optional DOUBLE)
+SELECT
+  fn_unnamed_opt_args_nonnull_nonnegative_constraints("o1"),
+  fn_unnamed_opt_args_nonnull_nonnegative_constraints("o1", 1),
+  fn_unnamed_opt_args_nonnull_nonnegative_constraints("o1", 1, 3.14)
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [BOOL]
+| +-$query.$col2#2 AS `$col2` [BOOL]
+| +-$query.$col3#3 AS `$col3` [BOOL]
++-query=
+  +-ProjectScan
+    +-column_list=$query.[$col1#1, $col2#2, $col3#3]
+    +-expr_list=
+    | +-$col1#1 :=
+    | | +-FunctionCall(sample_functions:fn_unnamed_opt_args_nonnull_nonnegative_constraints(optional(1) STRING, optional(0) INT64, optional(0) DOUBLE) -> BOOL)
+    | |   +-Literal(type=STRING, value="o1")
+    | +-$col2#2 :=
+    | | +-FunctionCall(sample_functions:fn_unnamed_opt_args_nonnull_nonnegative_constraints(optional(1) STRING, optional(1) INT64, optional(0) DOUBLE) -> BOOL)
+    | |   +-Literal(type=STRING, value="o1")
+    | |   +-Literal(type=INT64, value=1)
+    | +-$col3#3 :=
+    |   +-FunctionCall(sample_functions:fn_unnamed_opt_args_nonnull_nonnegative_constraints(optional(1) STRING, optional(1) INT64, optional(1) DOUBLE) -> BOOL)
+    |     +-Literal(type=STRING, value="o1")
+    |     +-Literal(type=INT64, value=1)
+    |     +-Literal(type=DOUBLE, value=3.14)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Tests with the same function signature, but setting 'o2_int64' with zero and
+# thus the call violates the functions' post resolution argument constratins.
+SELECT
+  fn_unnamed_opt_args_nonnull_nonnegative_constraints("o1", -1)
+--
+ERROR: Argument 2 must not be negative [at 2:3]
+  fn_unnamed_opt_args_nonnull_nonnegative_constraints("o1", -1)
+  ^
+==
+
+# The argument constraints callback is trigger to return false because of an
+# explicit NULL argument.
+SELECT
+  fn_unnamed_opt_args_nonnull_nonnegative_constraints("o1", NULL)
+--
+ERROR: No matching signature for function SAMPLE_FUNCTIONS:FN_UNNAMED_OPT_ARGS_NONNULL_NONNEGATIVE_CONSTRAINTS
+  Argument types: STRING, NULL
+  Signature: FN_UNNAMED_OPT_ARGS_NONNULL_NONNEGATIVE_CONSTRAINTS([STRING], [INT64], [DOUBLE])
+    Argument 2: NULL argument is not allowed [at 2:3]
+  fn_unnamed_opt_args_nonnull_nonnegative_constraints("o1", NULL)
+  ^
+==
+
+# Tests with the 'fn_result_type_from_arg' function that has a callback to
+# compute its result type dynamically. Its signature is like:
+#   fn_result_type_from_arg(OPTIONAL STRING o1, OPTIONAL STRING type_name).
+# The result type is determined by the arg value of 'type_name'.
+[no_enable_literal_replacement]
+SELECT
+  fn_result_type_from_arg("googlesql_test.TestEnum", "int64"),
+  fn_result_type_from_arg("int64", "googlesql_test.TestEnum"),
+  fn_result_type_from_arg(type_name => "double", o1 => "int64"),
+  fn_result_type_from_arg(type_name => "string");
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [INT64]
+| +-$query.$col2#2 AS `$col2` [ENUM<googlesql_test.TestEnum>]
+| +-$query.$col3#3 AS `$col3` [DOUBLE]
+| +-$query.$col4#4 AS `$col4` [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=$query.[$col1#1, $col2#2, $col3#3, $col4#4]
+    +-expr_list=
+    | +-$col1#1 :=
+    | | +-FunctionCall(sample_functions:fn_result_type_from_arg(optional(1) STRING o1, optional(1) STRING type_name) -> INT64)
+    | |   +-Literal(type=STRING, value="googlesql_test.TestEnum")
+    | |   +-Literal(type=STRING, value="int64")
+    | +-$col2#2 :=
+    | | +-FunctionCall(sample_functions:fn_result_type_from_arg(optional(1) STRING o1, optional(1) STRING type_name) -> ENUM<googlesql_test.TestEnum>)
+    | |   +-Literal(type=STRING, value="int64")
+    | |   +-Literal(type=STRING, value="googlesql_test.TestEnum")
+    | +-$col3#3 :=
+    | | +-FunctionCall(sample_functions:fn_result_type_from_arg(optional(1) STRING o1, optional(1) STRING type_name) -> DOUBLE)
+    | |   +-Literal(type=STRING, value="int64")
+    | |   +-Literal(type=STRING, value="double")
+    | +-$col4#4 :=
+    |   +-FunctionCall(sample_functions:fn_result_type_from_arg(optional(1) STRING o1, optional(1) STRING type_name) -> STRING)
+    |     +-Literal(type=STRING, value=NULL)
+    |     +-Literal(type=STRING, value="string")
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Tests with the same 'fn_result_type_from_arg' function but does not specify
+# the 'type_name' argument and thus results an error.
+# TODO: Update the case with once we do not fill NULL values for
+# omitted arguments.
+[no_enable_literal_replacement]
+SELECT fn_result_type_from_arg("googlesql_test.TestEnum");
+--
+ERROR: Argument 'type_name' cannot be NULL [at 1:8]
+SELECT fn_result_type_from_arg("googlesql_test.TestEnum");
+       ^
+==
+
+# Tests with the same 'fn_result_type_from_arg' function but specifies the
+# 'type_name' argument with an invalid type name.
+[no_enable_literal_replacement]
+SELECT fn_result_type_from_arg(type_name => "InvalidType");
+--
+ERROR: Invalid type name provided: InvalidType [at 1:8]
+SELECT fn_result_type_from_arg(type_name => "InvalidType");
+       ^

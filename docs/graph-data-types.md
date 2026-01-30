@@ -4,7 +4,7 @@
 
 # GQL data types
 
-Graph Query Language (GQL) supports all ZetaSQL [data types][data-types],
+Graph Query Language (GQL) supports all GoogleSQL [data types][data-types],
 including the following GQL-specific data type:
 
 ## Graph data types list
@@ -67,7 +67,7 @@ similar to fields of a struct.
 In the following example, `n` represents a graph element in the
 [`FinGraph`][fin-graph] property graph:
 
-```zetasql
+```googlesql
 GRAPH FinGraph
 MATCH (n:Person)
 RETURN n.name
@@ -76,7 +76,7 @@ RETURN n.name
 In the following example, the [`TYPEOF`][type-of] function is used to inspect the
 set of properties defined in the graph element type.
 
-```zetasql
+```googlesql
 GRAPH FinGraph
 MATCH (n:Person)
 RETURN TYPEOF(n) AS t
@@ -89,9 +89,9 @@ LIMIT 1
  +---------------------------------------------*/
 ```
 
-[graph-query]: https://github.com/google/zetasql/blob/master/docs/graph-intro.md
+[graph-query]: https://github.com/google/googlesql/blob/master/docs/graph-intro.md
 
-[fin-graph]: https://github.com/google/zetasql/blob/master/docs/graph-schema-statements.md#fin_graph
+[fin-graph]: https://github.com/google/googlesql/blob/master/docs/graph-schema-statements.md#fin_graph
 
-[data-types]: https://github.com/google/zetasql/blob/master/docs/data-types.md
+[data-types]: https://github.com/google/googlesql/blob/master/docs/data-types.md
 

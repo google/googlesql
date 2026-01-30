@@ -1,0 +1,2610 @@
+[default language_features=NONE]
+[default enabled_ast_rewrites=DEFAULTS]
+[language_features=NONE,+PIPES]
+FROM KeyValue
+|> TEE ()
+--
+ERROR: Pipe TEE not supported [at 2:1]
+|> TEE ()
+^
+==
+
+# TEE is allowed only if both QUERY and GENERALIZED_QUERY
+# statement kinds are enabled.
+# TODO SQLBuilder doesn't work for pipe TEE yet.
+[default no_run_sqlbuilder]
+[default language_features=NONE,+PIPES,+PIPE_TEE,+PIPE_FORK,+PIPE_IF,+TABLE_VALUED_FUNCTIONS,+CREATE_TABLE_FUNCTION,+WITH_ON_SUBQUERY,+PIPE_STATIC_DESCRIBE,+PIPE_LOG,+PIPE_CREATE_TABLE,+PIPE_EXPORT_DATA]
+[supported_statement_kinds={{QUERY|GENERALIZED_QUERY|QUERY,GENERALIZED_QUERY|INSERT}}]
+FROM KeyValue
+|> TEE ()
+--
+ALTERNATION GROUP: QUERY
+--
+ERROR: Generalized query statements are not supported so pipe TEE cannot be used [at 2:1]
+|> TEE ()
+^
+--
+ALTERNATION GROUPS:
+    GENERALIZED_QUERY
+    INSERT
+--
+ERROR: Statement not supported: QueryStatement [at 1:1]
+FROM KeyValue
+^
+--
+ALTERNATION GROUP: QUERY,GENERALIZED_QUERY
+--
+GeneralizedQueryStmt
++-output_schema=
+| +-OutputSchema
+|   +-output_column_list=
+|     +-KeyValue.Key#1 AS Key [INT64]
+|     +-KeyValue.Value#2 AS Value [STRING]
++-query=
+  +-PipeTeeScan
+    +-column_list=KeyValue.[Key#1, Value#2]
+    +-input_scan=
+    | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+    +-subpipeline_list=
+      +-GeneralizedQuerySubpipeline
+        +-subpipeline=
+        | +-Subpipeline
+        |   +-scan=
+        |     +-SubpipelineInputScan(column_list=KeyValue.[Key#1, Value#2])
+        +-output_schema=
+          +-OutputSchema
+            +-output_column_list=
+              +-KeyValue.Key#1 AS Key [INT64]
+              +-KeyValue.Value#2 AS Value [STRING]
+
+
+[REWRITTEN AST]
+MultiStmt
++-statement_list=
+  +-CreateWithEntryStmt
+  | +-with_entry=
+  |   +-WithEntry
+  |     +-with_query_name="$tee_cte_1"
+  |     +-with_subquery=
+  |       +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+  +-QueryStmt
+  | +-output_column_list=
+  | | +-KeyValue.Key#1 AS Key [INT64]
+  | | +-KeyValue.Value#2 AS Value [STRING]
+  | +-query=
+  |   +-WithRefScan(column_list=KeyValue.[Key#1, Value#2], with_query_name="$tee_cte_1")
+  +-QueryStmt
+    +-output_column_list=
+    | +-KeyValue.Key#1 AS Key [INT64]
+    | +-KeyValue.Value#2 AS Value [STRING]
+    +-query=
+      +-WithRefScan(column_list=KeyValue.[Key#1, Value#2], with_query_name="$tee_cte_1")
+==
+
+# TEE with no argument is equivalent to TEE with () as an empty subpipeline.
+# This example also has EXPLAIN, which just wraps the whole statement.
+EXPLAIN
+FROM KeyValue
+|> EXTEND 1.1 dval
+|> TEE{{| ()}}
+|> STATIC_DESCRIBE
+--
+ExplainStmt
++-statement=
+  +-GeneralizedQueryStmt
+    +-output_schema=
+    | +-OutputSchema
+    |   +-output_column_list=
+    |     +-KeyValue.Key#1 AS Key [INT64]
+    |     +-KeyValue.Value#2 AS Value [STRING]
+    |     +-$pipe_extend.dval#3 AS dval [DOUBLE]
+    +-query=
+      +-StaticDescribeScan
+        +-column_list=[KeyValue.Key#1, KeyValue.Value#2, $pipe_extend.dval#3]
+        +-describe_text=
+        |   """
+        |   NameList:
+        |     Key INT64 KeyValue.Key#1
+        |     Value STRING KeyValue.Value#2
+        |     dval DOUBLE $pipe_extend.dval#3
+        |   NameScope:
+        |     Names:
+        |       Key -> INT64 (KeyValue.Key#1) (implicit)
+        |       Value -> STRING (KeyValue.Value#2) (implicit)
+        |       dval -> DOUBLE ($pipe_extend.dval#3)
+        |     Range variables:
+        |       KeyValue -> RANGE_VARIABLE<Key#1,Value#2>
+        |   """
+        +-input_scan=
+          +-PipeTeeScan
+            +-column_list=[KeyValue.Key#1, KeyValue.Value#2, $pipe_extend.dval#3]
+            +-input_scan=
+            | +-ProjectScan
+            |   +-column_list=[KeyValue.Key#1, KeyValue.Value#2, $pipe_extend.dval#3]
+            |   +-expr_list=
+            |   | +-dval#3 := Literal(type=DOUBLE, value=1.1)
+            |   +-input_scan=
+            |     +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+            +-subpipeline_list=
+              +-GeneralizedQuerySubpipeline
+                +-subpipeline=
+                | +-Subpipeline
+                |   +-scan=
+                |     +-SubpipelineInputScan(column_list=[KeyValue.Key#1, KeyValue.Value#2, $pipe_extend.dval#3])
+                +-output_schema=
+                  +-OutputSchema
+                    +-output_column_list=
+                      +-KeyValue.Key#1 AS Key [INT64]
+                      +-KeyValue.Value#2 AS Value [STRING]
+                      +-$pipe_extend.dval#3 AS dval [DOUBLE]
+
+
+[REWRITTEN AST]
+ExplainStmt
++-statement=
+  +-MultiStmt
+    +-statement_list=
+      +-CreateWithEntryStmt
+      | +-with_entry=
+      |   +-WithEntry
+      |     +-with_query_name="$tee_cte_1"
+      |     +-with_subquery=
+      |       +-ProjectScan
+      |         +-column_list=[KeyValue.Key#1, KeyValue.Value#2, $pipe_extend.dval#3]
+      |         +-expr_list=
+      |         | +-dval#3 := Literal(type=DOUBLE, value=1.1)
+      |         +-input_scan=
+      |           +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+      +-QueryStmt
+      | +-output_column_list=
+      | | +-KeyValue.Key#1 AS Key [INT64]
+      | | +-KeyValue.Value#2 AS Value [STRING]
+      | | +-$pipe_extend.dval#3 AS dval [DOUBLE]
+      | +-query=
+      |   +-WithRefScan(column_list=[KeyValue.Key#1, KeyValue.Value#2, $pipe_extend.dval#3], with_query_name="$tee_cte_1")
+      +-QueryStmt
+        +-output_column_list=
+        | +-KeyValue.Key#1 AS Key [INT64]
+        | +-KeyValue.Value#2 AS Value [STRING]
+        | +-$pipe_extend.dval#3 AS dval [DOUBLE]
+        +-query=
+          +-StaticDescribeScan
+            +-column_list=[KeyValue.Key#1, KeyValue.Value#2, $pipe_extend.dval#3]
+            +-describe_text=
+            |   """
+            |   NameList:
+            |     Key INT64 KeyValue.Key#1
+            |     Value STRING KeyValue.Value#2
+            |     dval DOUBLE $pipe_extend.dval#3
+            |   NameScope:
+            |     Names:
+            |       Key -> INT64 (KeyValue.Key#1) (implicit)
+            |       Value -> STRING (KeyValue.Value#2) (implicit)
+            |       dval -> DOUBLE ($pipe_extend.dval#3)
+            |     Range variables:
+            |       KeyValue -> RANGE_VARIABLE<Key#1,Value#2>
+            |   """
+            +-input_scan=
+              +-WithRefScan(column_list=[KeyValue.Key#1, KeyValue.Value#2, $pipe_extend.dval#3], with_query_name="$tee_cte_1")
+==
+
+FROM KeyValue
+|> LIMIT 10
+|> TEE @{hint=5}
+     ( |> WHERE true ),
+     ( |> WHERE false )
+--
+GeneralizedQueryStmt
++-output_schema=
+| +-OutputSchema
+|   +-output_column_list=
+|     +-KeyValue.Key#1 AS Key [INT64]
+|     +-KeyValue.Value#2 AS Value [STRING]
++-query=
+  +-PipeTeeScan
+    +-column_list=KeyValue.[Key#1, Value#2]
+    +-hint_list=
+    | +-hint := Literal(type=INT64, value=5)
+    +-input_scan=
+    | +-LimitOffsetScan
+    |   +-column_list=KeyValue.[Key#1, Value#2]
+    |   +-input_scan=
+    |   | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+    |   +-limit=
+    |     +-Literal(type=INT64, value=10)
+    +-subpipeline_list=
+      +-GeneralizedQuerySubpipeline
+      | +-subpipeline=
+      | | +-Subpipeline
+      | |   +-scan=
+      | |     +-FilterScan
+      | |       +-column_list=KeyValue.[Key#1, Value#2]
+      | |       +-input_scan=
+      | |       | +-SubpipelineInputScan(column_list=KeyValue.[Key#1, Value#2])
+      | |       +-filter_expr=
+      | |         +-Literal(type=BOOL, value=true)
+      | +-output_schema=
+      |   +-OutputSchema
+      |     +-output_column_list=
+      |       +-KeyValue.Key#1 AS Key [INT64]
+      |       +-KeyValue.Value#2 AS Value [STRING]
+      +-GeneralizedQuerySubpipeline
+        +-subpipeline=
+        | +-Subpipeline
+        |   +-scan=
+        |     +-FilterScan
+        |       +-column_list=KeyValue.[Key#1, Value#2]
+        |       +-input_scan=
+        |       | +-SubpipelineInputScan(column_list=KeyValue.[Key#1, Value#2])
+        |       +-filter_expr=
+        |         +-Literal(type=BOOL, value=false)
+        +-output_schema=
+          +-OutputSchema
+            +-output_column_list=
+              +-KeyValue.Key#1 AS Key [INT64]
+              +-KeyValue.Value#2 AS Value [STRING]
+
+
+[REWRITTEN AST]
+MultiStmt
++-statement_list=
+  +-CreateWithEntryStmt
+  | +-with_entry=
+  |   +-WithEntry
+  |     +-with_query_name="$tee_cte_1"
+  |     +-with_subquery=
+  |       +-LimitOffsetScan
+  |         +-column_list=KeyValue.[Key#1, Value#2]
+  |         +-input_scan=
+  |         | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+  |         +-limit=
+  |           +-Literal(type=INT64, value=10)
+  +-QueryStmt
+  | +-output_column_list=
+  | | +-KeyValue.Key#1 AS Key [INT64]
+  | | +-KeyValue.Value#2 AS Value [STRING]
+  | +-query=
+  |   +-FilterScan
+  |     +-column_list=KeyValue.[Key#1, Value#2]
+  |     +-input_scan=
+  |     | +-WithRefScan(column_list=KeyValue.[Key#1, Value#2], with_query_name="$tee_cte_1")
+  |     +-filter_expr=
+  |       +-Literal(type=BOOL, value=true)
+  +-QueryStmt
+  | +-output_column_list=
+  | | +-KeyValue.Key#1 AS Key [INT64]
+  | | +-KeyValue.Value#2 AS Value [STRING]
+  | +-query=
+  |   +-FilterScan
+  |     +-column_list=KeyValue.[Key#1, Value#2]
+  |     +-input_scan=
+  |     | +-WithRefScan(column_list=KeyValue.[Key#1, Value#2], with_query_name="$tee_cte_1")
+  |     +-filter_expr=
+  |       +-Literal(type=BOOL, value=false)
+  +-QueryStmt
+    +-output_column_list=
+    | +-KeyValue.Key#1 AS Key [INT64]
+    | +-KeyValue.Value#2 AS Value [STRING]
+    +-query=
+      +-WithRefScan(column_list=KeyValue.[Key#1, Value#2], with_query_name="$tee_cte_1")
+==
+
+FROM KeyValue
+|> TEE (
+    |> SELECT key
+   ), (
+    |> SELECT value
+   ), (
+    |> WHERE key = 0
+    |> EXTEND key*1000 k1000
+   )
+--
+GeneralizedQueryStmt
++-output_schema=
+| +-OutputSchema
+|   +-output_column_list=
+|     +-KeyValue.Key#1 AS Key [INT64]
+|     +-KeyValue.Value#2 AS Value [STRING]
++-query=
+  +-PipeTeeScan
+    +-column_list=KeyValue.[Key#1, Value#2]
+    +-input_scan=
+    | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+    +-subpipeline_list=
+      +-GeneralizedQuerySubpipeline
+      | +-subpipeline=
+      | | +-Subpipeline
+      | |   +-scan=
+      | |     +-ProjectScan
+      | |       +-column_list=[KeyValue.Key#1]
+      | |       +-input_scan=
+      | |         +-SubpipelineInputScan(column_list=KeyValue.[Key#1, Value#2])
+      | +-output_schema=
+      |   +-OutputSchema
+      |     +-output_column_list=
+      |       +-KeyValue.Key#1 AS key [INT64]
+      +-GeneralizedQuerySubpipeline
+      | +-subpipeline=
+      | | +-Subpipeline
+      | |   +-scan=
+      | |     +-ProjectScan
+      | |       +-column_list=[KeyValue.Value#2]
+      | |       +-input_scan=
+      | |         +-SubpipelineInputScan(column_list=KeyValue.[Key#1, Value#2])
+      | +-output_schema=
+      |   +-OutputSchema
+      |     +-output_column_list=
+      |       +-KeyValue.Value#2 AS value [STRING]
+      +-GeneralizedQuerySubpipeline
+        +-subpipeline=
+        | +-Subpipeline
+        |   +-scan=
+        |     +-ProjectScan
+        |       +-column_list=[KeyValue.Key#1, KeyValue.Value#2, $pipe_extend.k1000#3]
+        |       +-expr_list=
+        |       | +-k1000#3 :=
+        |       |   +-FunctionCall(GoogleSQL:$multiply(INT64, INT64) -> INT64)
+        |       |     +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+        |       |     +-Literal(type=INT64, value=1000)
+        |       +-input_scan=
+        |         +-FilterScan
+        |           +-column_list=KeyValue.[Key#1, Value#2]
+        |           +-input_scan=
+        |           | +-SubpipelineInputScan(column_list=KeyValue.[Key#1, Value#2])
+        |           +-filter_expr=
+        |             +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+        |               +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+        |               +-Literal(type=INT64, value=0)
+        +-output_schema=
+          +-OutputSchema
+            +-output_column_list=
+              +-KeyValue.Key#1 AS Key [INT64]
+              +-KeyValue.Value#2 AS Value [STRING]
+              +-$pipe_extend.k1000#3 AS k1000 [INT64]
+
+
+[REWRITTEN AST]
+MultiStmt
++-statement_list=
+  +-CreateWithEntryStmt
+  | +-with_entry=
+  |   +-WithEntry
+  |     +-with_query_name="$tee_cte_1"
+  |     +-with_subquery=
+  |       +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+  +-QueryStmt
+  | +-output_column_list=
+  | | +-KeyValue.Key#1 AS key [INT64]
+  | +-query=
+  |   +-ProjectScan
+  |     +-column_list=[KeyValue.Key#1]
+  |     +-input_scan=
+  |       +-WithRefScan(column_list=KeyValue.[Key#1, Value#2], with_query_name="$tee_cte_1")
+  +-QueryStmt
+  | +-output_column_list=
+  | | +-KeyValue.Value#2 AS value [STRING]
+  | +-query=
+  |   +-ProjectScan
+  |     +-column_list=[KeyValue.Value#2]
+  |     +-input_scan=
+  |       +-WithRefScan(column_list=KeyValue.[Key#1, Value#2], with_query_name="$tee_cte_1")
+  +-QueryStmt
+  | +-output_column_list=
+  | | +-KeyValue.Key#1 AS Key [INT64]
+  | | +-KeyValue.Value#2 AS Value [STRING]
+  | | +-$pipe_extend.k1000#3 AS k1000 [INT64]
+  | +-query=
+  |   +-ProjectScan
+  |     +-column_list=[KeyValue.Key#1, KeyValue.Value#2, $pipe_extend.k1000#3]
+  |     +-expr_list=
+  |     | +-k1000#3 :=
+  |     |   +-FunctionCall(GoogleSQL:$multiply(INT64, INT64) -> INT64)
+  |     |     +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+  |     |     +-Literal(type=INT64, value=1000)
+  |     +-input_scan=
+  |       +-FilterScan
+  |         +-column_list=KeyValue.[Key#1, Value#2]
+  |         +-input_scan=
+  |         | +-WithRefScan(column_list=KeyValue.[Key#1, Value#2], with_query_name="$tee_cte_1")
+  |         +-filter_expr=
+  |           +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+  |             +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+  |             +-Literal(type=INT64, value=0)
+  +-QueryStmt
+    +-output_column_list=
+    | +-KeyValue.Key#1 AS Key [INT64]
+    | +-KeyValue.Value#2 AS Value [STRING]
+    +-query=
+      +-WithRefScan(column_list=KeyValue.[Key#1, Value#2], with_query_name="$tee_cte_1")
+==
+
+# TEE is not terminal, other operators can follow.
+FROM KeyValue
+|> TEE ()
+|> STATIC_DESCRIBE
+|> SELECT key, key*10
+--
+GeneralizedQueryStmt
++-output_schema=
+| +-OutputSchema
+|   +-output_column_list=
+|     +-KeyValue.Key#1 AS key [INT64]
+|     +-$pipe_select.$col2#3 AS `$col2` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[KeyValue.Key#1, $pipe_select.$col2#3]
+    +-expr_list=
+    | +-$col2#3 :=
+    |   +-FunctionCall(GoogleSQL:$multiply(INT64, INT64) -> INT64)
+    |     +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+    |     +-Literal(type=INT64, value=10)
+    +-input_scan=
+      +-StaticDescribeScan
+        +-column_list=KeyValue.[Key#1, Value#2]
+        +-describe_text=
+        |   """
+        |   NameList:
+        |     Key INT64 KeyValue.Key#1
+        |     Value STRING KeyValue.Value#2
+        |   NameScope:
+        |     Names:
+        |       Key -> INT64 (KeyValue.Key#1) (implicit)
+        |       Value -> STRING (KeyValue.Value#2) (implicit)
+        |     Range variables:
+        |       KeyValue -> RANGE_VARIABLE<Key#1,Value#2>
+        |   """
+        +-input_scan=
+          +-PipeTeeScan
+            +-column_list=KeyValue.[Key#1, Value#2]
+            +-input_scan=
+            | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+            +-subpipeline_list=
+              +-GeneralizedQuerySubpipeline
+                +-subpipeline=
+                | +-Subpipeline
+                |   +-scan=
+                |     +-SubpipelineInputScan(column_list=KeyValue.[Key#1, Value#2])
+                +-output_schema=
+                  +-OutputSchema
+                    +-output_column_list=
+                      +-KeyValue.Key#1 AS Key [INT64]
+                      +-KeyValue.Value#2 AS Value [STRING]
+
+
+[REWRITTEN AST]
+MultiStmt
++-statement_list=
+  +-CreateWithEntryStmt
+  | +-with_entry=
+  |   +-WithEntry
+  |     +-with_query_name="$tee_cte_1"
+  |     +-with_subquery=
+  |       +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+  +-QueryStmt
+  | +-output_column_list=
+  | | +-KeyValue.Key#1 AS Key [INT64]
+  | | +-KeyValue.Value#2 AS Value [STRING]
+  | +-query=
+  |   +-WithRefScan(column_list=KeyValue.[Key#1, Value#2], with_query_name="$tee_cte_1")
+  +-QueryStmt
+    +-output_column_list=
+    | +-KeyValue.Key#1 AS key [INT64]
+    | +-$pipe_select.$col2#3 AS `$col2` [INT64]
+    +-query=
+      +-ProjectScan
+        +-column_list=[KeyValue.Key#1, $pipe_select.$col2#3]
+        +-expr_list=
+        | +-$col2#3 :=
+        |   +-FunctionCall(GoogleSQL:$multiply(INT64, INT64) -> INT64)
+        |     +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+        |     +-Literal(type=INT64, value=10)
+        +-input_scan=
+          +-StaticDescribeScan
+            +-column_list=KeyValue.[Key#1, Value#2]
+            +-describe_text=
+            |   """
+            |   NameList:
+            |     Key INT64 KeyValue.Key#1
+            |     Value STRING KeyValue.Value#2
+            |   NameScope:
+            |     Names:
+            |       Key -> INT64 (KeyValue.Key#1) (implicit)
+            |       Value -> STRING (KeyValue.Value#2) (implicit)
+            |     Range variables:
+            |       KeyValue -> RANGE_VARIABLE<Key#1,Value#2>
+            |   """
+            +-input_scan=
+              +-WithRefScan(column_list=KeyValue.[Key#1, Value#2], with_query_name="$tee_cte_1")
+==
+
+FROM KeyValue
+|> TEE (), ()
+|> WHERE key=1
+--
+GeneralizedQueryStmt
++-output_schema=
+| +-OutputSchema
+|   +-output_column_list=
+|     +-KeyValue.Key#1 AS Key [INT64]
+|     +-KeyValue.Value#2 AS Value [STRING]
++-query=
+  +-FilterScan
+    +-column_list=KeyValue.[Key#1, Value#2]
+    +-input_scan=
+    | +-PipeTeeScan
+    |   +-column_list=KeyValue.[Key#1, Value#2]
+    |   +-input_scan=
+    |   | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+    |   +-subpipeline_list=
+    |     +-GeneralizedQuerySubpipeline
+    |     | +-subpipeline=
+    |     | | +-Subpipeline
+    |     | |   +-scan=
+    |     | |     +-SubpipelineInputScan(column_list=KeyValue.[Key#1, Value#2])
+    |     | +-output_schema=
+    |     |   +-OutputSchema
+    |     |     +-output_column_list=
+    |     |       +-KeyValue.Key#1 AS Key [INT64]
+    |     |       +-KeyValue.Value#2 AS Value [STRING]
+    |     +-GeneralizedQuerySubpipeline
+    |       +-subpipeline=
+    |       | +-Subpipeline
+    |       |   +-scan=
+    |       |     +-SubpipelineInputScan(column_list=KeyValue.[Key#1, Value#2])
+    |       +-output_schema=
+    |         +-OutputSchema
+    |           +-output_column_list=
+    |             +-KeyValue.Key#1 AS Key [INT64]
+    |             +-KeyValue.Value#2 AS Value [STRING]
+    +-filter_expr=
+      +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+        +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+        +-Literal(type=INT64, value=1)
+
+
+[REWRITTEN AST]
+MultiStmt
++-statement_list=
+  +-CreateWithEntryStmt
+  | +-with_entry=
+  |   +-WithEntry
+  |     +-with_query_name="$tee_cte_1"
+  |     +-with_subquery=
+  |       +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+  +-QueryStmt
+  | +-output_column_list=
+  | | +-KeyValue.Key#1 AS Key [INT64]
+  | | +-KeyValue.Value#2 AS Value [STRING]
+  | +-query=
+  |   +-WithRefScan(column_list=KeyValue.[Key#1, Value#2], with_query_name="$tee_cte_1")
+  +-QueryStmt
+  | +-output_column_list=
+  | | +-KeyValue.Key#1 AS Key [INT64]
+  | | +-KeyValue.Value#2 AS Value [STRING]
+  | +-query=
+  |   +-WithRefScan(column_list=KeyValue.[Key#1, Value#2], with_query_name="$tee_cte_1")
+  +-QueryStmt
+    +-output_column_list=
+    | +-KeyValue.Key#1 AS Key [INT64]
+    | +-KeyValue.Value#2 AS Value [STRING]
+    +-query=
+      +-FilterScan
+        +-column_list=KeyValue.[Key#1, Value#2]
+        +-input_scan=
+        | +-WithRefScan(column_list=KeyValue.[Key#1, Value#2], with_query_name="$tee_cte_1")
+        +-filter_expr=
+          +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+            +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+            +-Literal(type=INT64, value=1)
+==
+
+# TEE in table subquery.
+# This could be allowed but isn't currently.
+FROM (
+  FROM KeyValue
+  |> TEE ()
+)
+--
+ERROR: TEE is only allowed as part of the outermost query in a statement [at 3:3]
+  |> TEE ()
+  ^
+==
+
+# TEE in expression subquery.
+FROM KeyValue
+|> SELECT (
+     FROM KeyValue
+     |> TEE ()
+   )
+--
+ERROR: TEE is only allowed as part of the outermost query in a statement [at 4:6]
+     |> TEE ()
+     ^
+==
+
+# TEE in non-query-statement.
+CREATE {{VIEW|TABLE}} vt AS
+FROM KeyValue
+|> TEE ()
+--
+ERROR: TEE is only allowed as part of the outermost query in a statement [at 3:1]
+|> TEE ()
+^
+==
+
+# TEE in CREATE TVF.
+# This also shows the error messages when various statement kinds are
+# enabled, for this non-query statement.
+[supported_statement_kinds={{QUERY|GENERALIZED_QUERY|QUERY,GENERALIZED_QUERY|INSERT}},CREATE_TABLE_FUNCTION]
+CREATE TABLE FUNCTION tvf() AS
+FROM KeyValue
+|> TEE ()
+--
+ALTERNATION GROUPS:
+    QUERY
+    INSERT
+--
+ERROR: Generalized query statements are not supported so pipe TEE cannot be used [at 3:1]
+|> TEE ()
+^
+--
+ALTERNATION GROUPS:
+    GENERALIZED_QUERY
+    QUERY,GENERALIZED_QUERY
+--
+ERROR: TEE is only allowed as part of the outermost query in a statement [at 3:1]
+|> TEE ()
+^
+==
+
+# TEE in a CTE definition.
+WITH cte AS (
+  FROM KeyValue
+  |> TEE ()
+)
+FROM cte
+--
+ERROR: TEE is only allowed as part of the outermost query in a statement [at 3:3]
+  |> TEE ()
+  ^
+==
+
+# TEE used in the final query of a CTE.
+# The CTE is visible inside the TEE and after it.
+WITH cte AS (FROM KeyValue)
+FROM cte
+|> TEE ( |> SELECT key ),
+       ( |> JOIN cte AS cte2 USING (key) )
+|> JOIN cte AS cte3 USING (value)
+--
+GeneralizedQueryStmt
++-output_schema=
+| +-OutputSchema
+|   +-output_column_list=
+|     +-cte.Value#4 AS value [STRING]
+|     +-cte.Key#3 AS Key [INT64]
+|     +-cte.Key#7 AS Key [INT64]
++-query=
+  +-WithScan
+    +-column_list=cte.[Key#3, Value#4, Key#7, Value#8]
+    +-with_entry_list=
+    | +-WithEntry
+    |   +-with_query_name="cte"
+    |   +-with_subquery=
+    |     +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+    +-query=
+      +-JoinScan
+        +-column_list=cte.[Key#3, Value#4, Key#7, Value#8]
+        +-left_scan=
+        | +-PipeTeeScan
+        |   +-column_list=cte.[Key#3, Value#4]
+        |   +-input_scan=
+        |   | +-WithRefScan(column_list=cte.[Key#3, Value#4], with_query_name="cte")
+        |   +-subpipeline_list=
+        |     +-GeneralizedQuerySubpipeline
+        |     | +-subpipeline=
+        |     | | +-Subpipeline
+        |     | |   +-scan=
+        |     | |     +-ProjectScan
+        |     | |       +-column_list=[cte.Key#3]
+        |     | |       +-input_scan=
+        |     | |         +-SubpipelineInputScan(column_list=cte.[Key#3, Value#4])
+        |     | +-output_schema=
+        |     |   +-OutputSchema
+        |     |     +-output_column_list=
+        |     |       +-cte.Key#3 AS key [INT64]
+        |     +-GeneralizedQuerySubpipeline
+        |       +-subpipeline=
+        |       | +-Subpipeline
+        |       |   +-scan=
+        |       |     +-JoinScan
+        |       |       +-column_list=cte.[Key#3, Value#4, Key#5, Value#6]
+        |       |       +-left_scan=
+        |       |       | +-SubpipelineInputScan(column_list=cte.[Key#3, Value#4])
+        |       |       +-right_scan=
+        |       |       | +-WithRefScan(column_list=cte.[Key#5, Value#6], with_query_name="cte")
+        |       |       +-join_expr=
+        |       |       | +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+        |       |       |   +-ColumnRef(type=INT64, column=cte.Key#3)
+        |       |       |   +-ColumnRef(type=INT64, column=cte.Key#5)
+        |       |       +-has_using=TRUE
+        |       +-output_schema=
+        |         +-OutputSchema
+        |           +-output_column_list=
+        |             +-cte.Key#3 AS key [INT64]
+        |             +-cte.Value#4 AS Value [STRING]
+        |             +-cte.Value#6 AS Value [STRING]
+        +-right_scan=
+        | +-WithRefScan(column_list=cte.[Key#7, Value#8], with_query_name="cte")
+        +-join_expr=
+        | +-FunctionCall(GoogleSQL:$equal(STRING, STRING) -> BOOL)
+        |   +-ColumnRef(type=STRING, column=cte.Value#4)
+        |   +-ColumnRef(type=STRING, column=cte.Value#8)
+        +-has_using=TRUE
+
+
+[REWRITTEN AST]
+MultiStmt
++-statement_list=
+  +-CreateWithEntryStmt
+  | +-with_entry=
+  |   +-WithEntry
+  |     +-with_query_name="cte"
+  |     +-with_subquery=
+  |       +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+  +-CreateWithEntryStmt
+  | +-with_entry=
+  |   +-WithEntry
+  |     +-with_query_name="$tee_cte_1"
+  |     +-with_subquery=
+  |       +-WithRefScan(column_list=cte.[Key#3, Value#4], with_query_name="cte")
+  +-QueryStmt
+  | +-output_column_list=
+  | | +-cte.Key#3 AS key [INT64]
+  | +-query=
+  |   +-ProjectScan
+  |     +-column_list=[cte.Key#3]
+  |     +-input_scan=
+  |       +-WithRefScan(column_list=cte.[Key#3, Value#4], with_query_name="$tee_cte_1")
+  +-QueryStmt
+  | +-output_column_list=
+  | | +-cte.Key#3 AS key [INT64]
+  | | +-cte.Value#4 AS Value [STRING]
+  | | +-cte.Value#6 AS Value [STRING]
+  | +-query=
+  |   +-JoinScan
+  |     +-column_list=cte.[Key#3, Value#4, Key#5, Value#6]
+  |     +-left_scan=
+  |     | +-WithRefScan(column_list=cte.[Key#3, Value#4], with_query_name="$tee_cte_1")
+  |     +-right_scan=
+  |     | +-WithRefScan(column_list=cte.[Key#5, Value#6], with_query_name="cte")
+  |     +-join_expr=
+  |     | +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+  |     |   +-ColumnRef(type=INT64, column=cte.Key#3)
+  |     |   +-ColumnRef(type=INT64, column=cte.Key#5)
+  |     +-has_using=TRUE
+  +-QueryStmt
+    +-output_column_list=
+    | +-cte.Value#4 AS value [STRING]
+    | +-cte.Key#3 AS Key [INT64]
+    | +-cte.Key#7 AS Key [INT64]
+    +-query=
+      +-JoinScan
+        +-column_list=cte.[Key#3, Value#4, Key#7, Value#8]
+        +-left_scan=
+        | +-WithRefScan(column_list=cte.[Key#3, Value#4], with_query_name="$tee_cte_1")
+        +-right_scan=
+        | +-WithRefScan(column_list=cte.[Key#7, Value#8], with_query_name="cte")
+        +-join_expr=
+        | +-FunctionCall(GoogleSQL:$equal(STRING, STRING) -> BOOL)
+        |   +-ColumnRef(type=STRING, column=cte.Value#4)
+        |   +-ColumnRef(type=STRING, column=cte.Value#8)
+        +-has_using=TRUE
+==
+
+# TEE isn't allowed under a CTE inside a subquery.
+FROM (
+  WITH cte AS (FROM KeyValue)
+  FROM cte
+  |> TEE ( |> SELECT key ),
+         ( |> SELECT value )
+)
+--
+ERROR: TEE is only allowed as part of the outermost query in a statement [at 4:3]
+  |> TEE ( |> SELECT key ),
+  ^
+==
+
+# Consecutive TEEs.
+FROM KeyValue
+|> TEE
+|> TEE ( |> SELECT key ),
+       ( |> SELECT key*2.5 )
+|> TEE ( |> SELECT value )
+|> WHERE key = 10
+--
+GeneralizedQueryStmt
++-output_schema=
+| +-OutputSchema
+|   +-output_column_list=
+|     +-KeyValue.Key#1 AS Key [INT64]
+|     +-KeyValue.Value#2 AS Value [STRING]
++-query=
+  +-FilterScan
+    +-column_list=KeyValue.[Key#1, Value#2]
+    +-input_scan=
+    | +-PipeTeeScan
+    |   +-column_list=KeyValue.[Key#1, Value#2]
+    |   +-input_scan=
+    |   | +-PipeTeeScan
+    |   |   +-column_list=KeyValue.[Key#1, Value#2]
+    |   |   +-input_scan=
+    |   |   | +-PipeTeeScan
+    |   |   |   +-column_list=KeyValue.[Key#1, Value#2]
+    |   |   |   +-input_scan=
+    |   |   |   | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+    |   |   |   +-subpipeline_list=
+    |   |   |     +-GeneralizedQuerySubpipeline
+    |   |   |       +-subpipeline=
+    |   |   |       | +-Subpipeline
+    |   |   |       |   +-scan=
+    |   |   |       |     +-SubpipelineInputScan(column_list=KeyValue.[Key#1, Value#2])
+    |   |   |       +-output_schema=
+    |   |   |         +-OutputSchema
+    |   |   |           +-output_column_list=
+    |   |   |             +-KeyValue.Key#1 AS Key [INT64]
+    |   |   |             +-KeyValue.Value#2 AS Value [STRING]
+    |   |   +-subpipeline_list=
+    |   |     +-GeneralizedQuerySubpipeline
+    |   |     | +-subpipeline=
+    |   |     | | +-Subpipeline
+    |   |     | |   +-scan=
+    |   |     | |     +-ProjectScan
+    |   |     | |       +-column_list=[KeyValue.Key#1]
+    |   |     | |       +-input_scan=
+    |   |     | |         +-SubpipelineInputScan(column_list=KeyValue.[Key#1, Value#2])
+    |   |     | +-output_schema=
+    |   |     |   +-OutputSchema
+    |   |     |     +-output_column_list=
+    |   |     |       +-KeyValue.Key#1 AS key [INT64]
+    |   |     +-GeneralizedQuerySubpipeline
+    |   |       +-subpipeline=
+    |   |       | +-Subpipeline
+    |   |       |   +-scan=
+    |   |       |     +-ProjectScan
+    |   |       |       +-column_list=[$pipe_select.$col1#3]
+    |   |       |       +-expr_list=
+    |   |       |       | +-$col1#3 :=
+    |   |       |       |   +-FunctionCall(GoogleSQL:$multiply(DOUBLE, DOUBLE) -> DOUBLE)
+    |   |       |       |     +-Cast(INT64 -> DOUBLE)
+    |   |       |       |     | +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+    |   |       |       |     +-Literal(type=DOUBLE, value=2.5)
+    |   |       |       +-input_scan=
+    |   |       |         +-SubpipelineInputScan(column_list=KeyValue.[Key#1, Value#2])
+    |   |       +-output_schema=
+    |   |         +-OutputSchema
+    |   |           +-output_column_list=
+    |   |             +-$pipe_select.$col1#3 AS `$col1` [DOUBLE]
+    |   +-subpipeline_list=
+    |     +-GeneralizedQuerySubpipeline
+    |       +-subpipeline=
+    |       | +-Subpipeline
+    |       |   +-scan=
+    |       |     +-ProjectScan
+    |       |       +-column_list=[KeyValue.Value#2]
+    |       |       +-input_scan=
+    |       |         +-SubpipelineInputScan(column_list=KeyValue.[Key#1, Value#2])
+    |       +-output_schema=
+    |         +-OutputSchema
+    |           +-output_column_list=
+    |             +-KeyValue.Value#2 AS value [STRING]
+    +-filter_expr=
+      +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+        +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+        +-Literal(type=INT64, value=10)
+
+
+[REWRITTEN AST]
+MultiStmt
++-statement_list=
+  +-CreateWithEntryStmt
+  | +-with_entry=
+  |   +-WithEntry
+  |     +-with_query_name="$tee_cte_3"
+  |     +-with_subquery=
+  |       +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+  +-QueryStmt
+  | +-output_column_list=
+  | | +-KeyValue.Key#1 AS Key [INT64]
+  | | +-KeyValue.Value#2 AS Value [STRING]
+  | +-query=
+  |   +-WithRefScan(column_list=KeyValue.[Key#1, Value#2], with_query_name="$tee_cte_3")
+  +-CreateWithEntryStmt
+  | +-with_entry=
+  |   +-WithEntry
+  |     +-with_query_name="$tee_cte_2"
+  |     +-with_subquery=
+  |       +-WithRefScan(column_list=KeyValue.[Key#1, Value#2], with_query_name="$tee_cte_3")
+  +-QueryStmt
+  | +-output_column_list=
+  | | +-KeyValue.Key#1 AS key [INT64]
+  | +-query=
+  |   +-ProjectScan
+  |     +-column_list=[KeyValue.Key#1]
+  |     +-input_scan=
+  |       +-WithRefScan(column_list=KeyValue.[Key#1, Value#2], with_query_name="$tee_cte_2")
+  +-QueryStmt
+  | +-output_column_list=
+  | | +-$pipe_select.$col1#3 AS `$col1` [DOUBLE]
+  | +-query=
+  |   +-ProjectScan
+  |     +-column_list=[$pipe_select.$col1#3]
+  |     +-expr_list=
+  |     | +-$col1#3 :=
+  |     |   +-FunctionCall(GoogleSQL:$multiply(DOUBLE, DOUBLE) -> DOUBLE)
+  |     |     +-Cast(INT64 -> DOUBLE)
+  |     |     | +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+  |     |     +-Literal(type=DOUBLE, value=2.5)
+  |     +-input_scan=
+  |       +-WithRefScan(column_list=KeyValue.[Key#1, Value#2], with_query_name="$tee_cte_2")
+  +-CreateWithEntryStmt
+  | +-with_entry=
+  |   +-WithEntry
+  |     +-with_query_name="$tee_cte_1"
+  |     +-with_subquery=
+  |       +-WithRefScan(column_list=KeyValue.[Key#1, Value#2], with_query_name="$tee_cte_2")
+  +-QueryStmt
+  | +-output_column_list=
+  | | +-KeyValue.Value#2 AS value [STRING]
+  | +-query=
+  |   +-ProjectScan
+  |     +-column_list=[KeyValue.Value#2]
+  |     +-input_scan=
+  |       +-WithRefScan(column_list=KeyValue.[Key#1, Value#2], with_query_name="$tee_cte_1")
+  +-QueryStmt
+    +-output_column_list=
+    | +-KeyValue.Key#1 AS Key [INT64]
+    | +-KeyValue.Value#2 AS Value [STRING]
+    +-query=
+      +-FilterScan
+        +-column_list=KeyValue.[Key#1, Value#2]
+        +-input_scan=
+        | +-WithRefScan(column_list=KeyValue.[Key#1, Value#2], with_query_name="$tee_cte_1")
+        +-filter_expr=
+          +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+            +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+            +-Literal(type=INT64, value=10)
+==
+
+# Nested TEEs.
+# Unlike with FORK, each GeneralizedQuerySubpipeline has an output_schema here,
+# since the TEE operators inside are not terminal.
+FROM KeyValue
+|> TEE (
+     |> EXTEND 10 ten
+     |> TEE (
+          |> SELECT key+ten k10
+        ), (
+          |> WHERE true
+        )
+   ), (
+     |> SELECT key,key,key
+   )
+|> LIMIT 10
+--
+GeneralizedQueryStmt
++-output_schema=
+| +-OutputSchema
+|   +-output_column_list=
+|     +-KeyValue.Key#1 AS Key [INT64]
+|     +-KeyValue.Value#2 AS Value [STRING]
++-query=
+  +-LimitOffsetScan
+    +-column_list=KeyValue.[Key#1, Value#2]
+    +-input_scan=
+    | +-PipeTeeScan
+    |   +-column_list=KeyValue.[Key#1, Value#2]
+    |   +-input_scan=
+    |   | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+    |   +-subpipeline_list=
+    |     +-GeneralizedQuerySubpipeline
+    |     | +-subpipeline=
+    |     | | +-Subpipeline
+    |     | |   +-scan=
+    |     | |     +-PipeTeeScan
+    |     | |       +-column_list=[KeyValue.Key#1, KeyValue.Value#2, $pipe_extend.ten#3]
+    |     | |       +-input_scan=
+    |     | |       | +-ProjectScan
+    |     | |       |   +-column_list=[KeyValue.Key#1, KeyValue.Value#2, $pipe_extend.ten#3]
+    |     | |       |   +-expr_list=
+    |     | |       |   | +-ten#3 := Literal(type=INT64, value=10)
+    |     | |       |   +-input_scan=
+    |     | |       |     +-SubpipelineInputScan(column_list=KeyValue.[Key#1, Value#2])
+    |     | |       +-subpipeline_list=
+    |     | |         +-GeneralizedQuerySubpipeline
+    |     | |         | +-subpipeline=
+    |     | |         | | +-Subpipeline
+    |     | |         | |   +-scan=
+    |     | |         | |     +-ProjectScan
+    |     | |         | |       +-column_list=[$pipe_select.k10#4]
+    |     | |         | |       +-expr_list=
+    |     | |         | |       | +-k10#4 :=
+    |     | |         | |       |   +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |     | |         | |       |     +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+    |     | |         | |       |     +-ColumnRef(type=INT64, column=$pipe_extend.ten#3)
+    |     | |         | |       +-input_scan=
+    |     | |         | |         +-SubpipelineInputScan(column_list=[KeyValue.Key#1, KeyValue.Value#2, $pipe_extend.ten#3])
+    |     | |         | +-output_schema=
+    |     | |         |   +-OutputSchema
+    |     | |         |     +-output_column_list=
+    |     | |         |       +-$pipe_select.k10#4 AS k10 [INT64]
+    |     | |         +-GeneralizedQuerySubpipeline
+    |     | |           +-subpipeline=
+    |     | |           | +-Subpipeline
+    |     | |           |   +-scan=
+    |     | |           |     +-FilterScan
+    |     | |           |       +-column_list=[KeyValue.Key#1, KeyValue.Value#2, $pipe_extend.ten#3]
+    |     | |           |       +-input_scan=
+    |     | |           |       | +-SubpipelineInputScan(column_list=[KeyValue.Key#1, KeyValue.Value#2, $pipe_extend.ten#3])
+    |     | |           |       +-filter_expr=
+    |     | |           |         +-Literal(type=BOOL, value=true)
+    |     | |           +-output_schema=
+    |     | |             +-OutputSchema
+    |     | |               +-output_column_list=
+    |     | |                 +-KeyValue.Key#1 AS Key [INT64]
+    |     | |                 +-KeyValue.Value#2 AS Value [STRING]
+    |     | |                 +-$pipe_extend.ten#3 AS ten [INT64]
+    |     | +-output_schema=
+    |     |   +-OutputSchema
+    |     |     +-output_column_list=
+    |     |       +-KeyValue.Key#1 AS Key [INT64]
+    |     |       +-KeyValue.Value#2 AS Value [STRING]
+    |     |       +-$pipe_extend.ten#3 AS ten [INT64]
+    |     +-GeneralizedQuerySubpipeline
+    |       +-subpipeline=
+    |       | +-Subpipeline
+    |       |   +-scan=
+    |       |     +-ProjectScan
+    |       |       +-column_list=KeyValue.[Key#1, Key#1, Key#1]
+    |       |       +-input_scan=
+    |       |         +-SubpipelineInputScan(column_list=KeyValue.[Key#1, Value#2])
+    |       +-output_schema=
+    |         +-OutputSchema
+    |           +-output_column_list=
+    |             +-KeyValue.Key#1 AS key [INT64]
+    |             +-KeyValue.Key#1 AS key [INT64]
+    |             +-KeyValue.Key#1 AS key [INT64]
+    +-limit=
+      +-Literal(type=INT64, value=10)
+
+
+[REWRITTEN AST]
+MultiStmt
++-statement_list=
+  +-CreateWithEntryStmt
+  | +-with_entry=
+  |   +-WithEntry
+  |     +-with_query_name="$tee_cte_1"
+  |     +-with_subquery=
+  |       +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+  +-CreateWithEntryStmt
+  | +-with_entry=
+  |   +-WithEntry
+  |     +-with_query_name="$tee_cte_2"
+  |     +-with_subquery=
+  |       +-ProjectScan
+  |         +-column_list=[KeyValue.Key#1, KeyValue.Value#2, $pipe_extend.ten#3]
+  |         +-expr_list=
+  |         | +-ten#3 := Literal(type=INT64, value=10)
+  |         +-input_scan=
+  |           +-WithRefScan(column_list=KeyValue.[Key#1, Value#2], with_query_name="$tee_cte_1")
+  +-QueryStmt
+  | +-output_column_list=
+  | | +-$pipe_select.k10#4 AS k10 [INT64]
+  | +-query=
+  |   +-ProjectScan
+  |     +-column_list=[$pipe_select.k10#4]
+  |     +-expr_list=
+  |     | +-k10#4 :=
+  |     |   +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+  |     |     +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+  |     |     +-ColumnRef(type=INT64, column=$pipe_extend.ten#3)
+  |     +-input_scan=
+  |       +-WithRefScan(column_list=[KeyValue.Key#1, KeyValue.Value#2, $pipe_extend.ten#3], with_query_name="$tee_cte_2")
+  +-QueryStmt
+  | +-output_column_list=
+  | | +-KeyValue.Key#1 AS Key [INT64]
+  | | +-KeyValue.Value#2 AS Value [STRING]
+  | | +-$pipe_extend.ten#3 AS ten [INT64]
+  | +-query=
+  |   +-FilterScan
+  |     +-column_list=[KeyValue.Key#1, KeyValue.Value#2, $pipe_extend.ten#3]
+  |     +-input_scan=
+  |     | +-WithRefScan(column_list=[KeyValue.Key#1, KeyValue.Value#2, $pipe_extend.ten#3], with_query_name="$tee_cte_2")
+  |     +-filter_expr=
+  |       +-Literal(type=BOOL, value=true)
+  +-QueryStmt
+  | +-output_column_list=
+  | | +-KeyValue.Key#1 AS Key [INT64]
+  | | +-KeyValue.Value#2 AS Value [STRING]
+  | | +-$pipe_extend.ten#3 AS ten [INT64]
+  | +-query=
+  |   +-WithRefScan(column_list=[KeyValue.Key#1, KeyValue.Value#2, $pipe_extend.ten#3], with_query_name="$tee_cte_2")
+  +-QueryStmt
+  | +-output_column_list=
+  | | +-KeyValue.Key#1 AS key [INT64]
+  | | +-KeyValue.Key#1 AS key [INT64]
+  | | +-KeyValue.Key#1 AS key [INT64]
+  | +-query=
+  |   +-ProjectScan
+  |     +-column_list=KeyValue.[Key#1, Key#1, Key#1]
+  |     +-input_scan=
+  |       +-WithRefScan(column_list=KeyValue.[Key#1, Value#2], with_query_name="$tee_cte_1")
+  +-QueryStmt
+    +-output_column_list=
+    | +-KeyValue.Key#1 AS Key [INT64]
+    | +-KeyValue.Value#2 AS Value [STRING]
+    +-query=
+      +-LimitOffsetScan
+        +-column_list=KeyValue.[Key#1, Value#2]
+        +-input_scan=
+        | +-WithRefScan(column_list=KeyValue.[Key#1, Value#2], with_query_name="$tee_cte_1")
+        +-limit=
+          +-Literal(type=INT64, value=10)
+==
+
+# is_value_table propagates to subpipeline OutputSchemas.
+FROM KeyValue
+|> TEE
+     ( |> SELECT key ),
+     ( |> SELECT AS VALUE value )
+--
+GeneralizedQueryStmt
++-output_schema=
+| +-OutputSchema
+|   +-output_column_list=
+|     +-KeyValue.Key#1 AS Key [INT64]
+|     +-KeyValue.Value#2 AS Value [STRING]
++-query=
+  +-PipeTeeScan
+    +-column_list=KeyValue.[Key#1, Value#2]
+    +-input_scan=
+    | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+    +-subpipeline_list=
+      +-GeneralizedQuerySubpipeline
+      | +-subpipeline=
+      | | +-Subpipeline
+      | |   +-scan=
+      | |     +-ProjectScan
+      | |       +-column_list=[KeyValue.Key#1]
+      | |       +-input_scan=
+      | |         +-SubpipelineInputScan(column_list=KeyValue.[Key#1, Value#2])
+      | +-output_schema=
+      |   +-OutputSchema
+      |     +-output_column_list=
+      |       +-KeyValue.Key#1 AS key [INT64]
+      +-GeneralizedQuerySubpipeline
+        +-subpipeline=
+        | +-Subpipeline
+        |   +-scan=
+        |     +-ProjectScan
+        |       +-column_list=[KeyValue.Value#2]
+        |       +-input_scan=
+        |         +-SubpipelineInputScan(column_list=KeyValue.[Key#1, Value#2])
+        +-output_schema=
+          +-OutputSchema
+            +-output_column_list=
+            | +-KeyValue.Value#2 AS `$value_column` [STRING]
+            +-is_value_table=TRUE
+
+
+[REWRITTEN AST]
+MultiStmt
++-statement_list=
+  +-CreateWithEntryStmt
+  | +-with_entry=
+  |   +-WithEntry
+  |     +-with_query_name="$tee_cte_1"
+  |     +-with_subquery=
+  |       +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+  +-QueryStmt
+  | +-output_column_list=
+  | | +-KeyValue.Key#1 AS key [INT64]
+  | +-query=
+  |   +-ProjectScan
+  |     +-column_list=[KeyValue.Key#1]
+  |     +-input_scan=
+  |       +-WithRefScan(column_list=KeyValue.[Key#1, Value#2], with_query_name="$tee_cte_1")
+  +-QueryStmt
+  | +-output_column_list=
+  | | +-KeyValue.Value#2 AS `$value_column` [STRING]
+  | +-is_value_table=TRUE
+  | +-query=
+  |   +-ProjectScan
+  |     +-column_list=[KeyValue.Value#2]
+  |     +-input_scan=
+  |       +-WithRefScan(column_list=KeyValue.[Key#1, Value#2], with_query_name="$tee_cte_1")
+  +-QueryStmt
+    +-output_column_list=
+    | +-KeyValue.Key#1 AS Key [INT64]
+    | +-KeyValue.Value#2 AS Value [STRING]
+    +-query=
+      +-WithRefScan(column_list=KeyValue.[Key#1, Value#2], with_query_name="$tee_cte_1")
+==
+
+# TEE on a value table propagates is_value_table and pseudo-columns into the
+# output and into the subpipeline, with both default and () pipelines.
+FROM TestExtraValueTable
+|> TEE{{| ()}}
+|> STATIC_DESCRIBE
+--
+GeneralizedQueryStmt
++-output_schema=
+| +-OutputSchema
+|   +-output_column_list=
+|   | +-TestExtraValueTable.value#1 AS `$value` [PROTO<googlesql_test.TestExtraPB>]
+|   +-is_value_table=TRUE
++-query=
+  +-StaticDescribeScan
+    +-column_list=[TestExtraValueTable.value#1]
+    +-describe_text=
+    |   """
+    |   NameList (is_value_table = true):
+    |     TestExtraValueTable googlesql_test.TestExtraPB TestExtraValueTable.value#1 (value table)
+    |   NameScope:
+    |     Names:
+    |       Filename -> STRING (TestExtraValueTable.Filename#2) (implicit) (pseudo-column)
+    |       RowId -> BYTES (TestExtraValueTable.RowId#3) (implicit) (pseudo-column)
+    |     Range variables:
+    |       TestExtraValueTable -> RANGE_VARIABLE<value#1, pseudo_columns: Filename#2,RowId#3> (value table)
+    |     Value table columns:
+    |       TestExtraValueTable.value#1
+    |   """
+    +-input_scan=
+      +-PipeTeeScan
+        +-column_list=[TestExtraValueTable.value#1]
+        +-input_scan=
+        | +-TableScan(column_list=[TestExtraValueTable.value#1], table=TestExtraValueTable, column_index_list=[0])
+        +-subpipeline_list=
+          +-GeneralizedQuerySubpipeline
+            +-subpipeline=
+            | +-Subpipeline
+            |   +-scan=
+            |     +-SubpipelineInputScan(column_list=[TestExtraValueTable.value#1])
+            +-output_schema=
+              +-OutputSchema
+                +-output_column_list=
+                | +-TestExtraValueTable.value#1 AS `$value` [PROTO<googlesql_test.TestExtraPB>]
+                +-is_value_table=TRUE
+
+
+[REWRITTEN AST]
+MultiStmt
++-statement_list=
+  +-CreateWithEntryStmt
+  | +-with_entry=
+  |   +-WithEntry
+  |     +-with_query_name="$tee_cte_1"
+  |     +-with_subquery=
+  |       +-TableScan(column_list=[TestExtraValueTable.value#1], table=TestExtraValueTable, column_index_list=[0])
+  +-QueryStmt
+  | +-output_column_list=
+  | | +-TestExtraValueTable.value#1 AS `$value` [PROTO<googlesql_test.TestExtraPB>]
+  | +-is_value_table=TRUE
+  | +-query=
+  |   +-WithRefScan(column_list=[TestExtraValueTable.value#1], with_query_name="$tee_cte_1")
+  +-QueryStmt
+    +-output_column_list=
+    | +-TestExtraValueTable.value#1 AS `$value` [PROTO<googlesql_test.TestExtraPB>]
+    +-is_value_table=TRUE
+    +-query=
+      +-StaticDescribeScan
+        +-column_list=[TestExtraValueTable.value#1]
+        +-describe_text=
+        |   """
+        |   NameList (is_value_table = true):
+        |     TestExtraValueTable googlesql_test.TestExtraPB TestExtraValueTable.value#1 (value table)
+        |   NameScope:
+        |     Names:
+        |       Filename -> STRING (TestExtraValueTable.Filename#2) (implicit) (pseudo-column)
+        |       RowId -> BYTES (TestExtraValueTable.RowId#3) (implicit) (pseudo-column)
+        |     Range variables:
+        |       TestExtraValueTable -> RANGE_VARIABLE<value#1, pseudo_columns: Filename#2,RowId#3> (value table)
+        |     Value table columns:
+        |       TestExtraValueTable.value#1
+        |   """
+        +-input_scan=
+          +-WithRefScan(column_list=[TestExtraValueTable.value#1], with_query_name="$tee_cte_1")
+==
+
+# is_value_table and pseudo-columns propagate into all subpipelines and to the
+# output.  The second branch has non-value-table output.
+FROM TestExtraValueTable
+|> TEE (
+    |> STATIC_DESCRIBE
+    |> WHERE Filename = 'abc'
+   ), (
+    |> SELECT RowId
+   )
+--
+GeneralizedQueryStmt
++-output_schema=
+| +-OutputSchema
+|   +-output_column_list=
+|   | +-TestExtraValueTable.value#1 AS `$value` [PROTO<googlesql_test.TestExtraPB>]
+|   +-is_value_table=TRUE
++-query=
+  +-PipeTeeScan
+    +-column_list=TestExtraValueTable.[value#1, Filename#2, RowId#3]
+    +-input_scan=
+    | +-TableScan(column_list=TestExtraValueTable.[value#1, Filename#2, RowId#3], table=TestExtraValueTable, column_index_list=[0, 1, 2])
+    +-subpipeline_list=
+      +-GeneralizedQuerySubpipeline
+      | +-subpipeline=
+      | | +-Subpipeline
+      | |   +-scan=
+      | |     +-FilterScan
+      | |       +-column_list=TestExtraValueTable.[value#1, Filename#2, RowId#3]
+      | |       +-input_scan=
+      | |       | +-StaticDescribeScan
+      | |       |   +-column_list=TestExtraValueTable.[value#1, Filename#2, RowId#3]
+      | |       |   +-describe_text=
+      | |       |   |   """
+      | |       |   |   NameList (is_value_table = true):
+      | |       |   |     TestExtraValueTable googlesql_test.TestExtraPB TestExtraValueTable.value#1 (value table)
+      | |       |   |   NameScope:
+      | |       |   |     Names:
+      | |       |   |       Filename -> STRING (TestExtraValueTable.Filename#2) (implicit) (pseudo-column)
+      | |       |   |       RowId -> BYTES (TestExtraValueTable.RowId#3) (implicit) (pseudo-column)
+      | |       |   |     Range variables:
+      | |       |   |       TestExtraValueTable -> RANGE_VARIABLE<value#1, pseudo_columns: Filename#2,RowId#3> (value table)
+      | |       |   |     Value table columns:
+      | |       |   |       TestExtraValueTable.value#1
+      | |       |   |   """
+      | |       |   +-input_scan=
+      | |       |     +-SubpipelineInputScan(column_list=TestExtraValueTable.[value#1, Filename#2, RowId#3])
+      | |       +-filter_expr=
+      | |         +-FunctionCall(GoogleSQL:$equal(STRING, STRING) -> BOOL)
+      | |           +-ColumnRef(type=STRING, column=TestExtraValueTable.Filename#2)
+      | |           +-Literal(type=STRING, value="abc")
+      | +-output_schema=
+      |   +-OutputSchema
+      |     +-output_column_list=
+      |     | +-TestExtraValueTable.value#1 AS `$value` [PROTO<googlesql_test.TestExtraPB>]
+      |     +-is_value_table=TRUE
+      +-GeneralizedQuerySubpipeline
+        +-subpipeline=
+        | +-Subpipeline
+        |   +-scan=
+        |     +-ProjectScan
+        |       +-column_list=[TestExtraValueTable.RowId#3]
+        |       +-input_scan=
+        |         +-SubpipelineInputScan(column_list=TestExtraValueTable.[value#1, Filename#2, RowId#3])
+        +-output_schema=
+          +-OutputSchema
+            +-output_column_list=
+              +-TestExtraValueTable.RowId#3 AS RowId [BYTES]
+
+
+[REWRITTEN AST]
+MultiStmt
++-statement_list=
+  +-CreateWithEntryStmt
+  | +-with_entry=
+  |   +-WithEntry
+  |     +-with_query_name="$tee_cte_1"
+  |     +-with_subquery=
+  |       +-TableScan(column_list=TestExtraValueTable.[value#1, Filename#2, RowId#3], table=TestExtraValueTable, column_index_list=[0, 1, 2])
+  +-QueryStmt
+  | +-output_column_list=
+  | | +-TestExtraValueTable.value#1 AS `$value` [PROTO<googlesql_test.TestExtraPB>]
+  | +-is_value_table=TRUE
+  | +-query=
+  |   +-FilterScan
+  |     +-column_list=TestExtraValueTable.[value#1, Filename#2, RowId#3]
+  |     +-input_scan=
+  |     | +-StaticDescribeScan
+  |     |   +-column_list=TestExtraValueTable.[value#1, Filename#2, RowId#3]
+  |     |   +-describe_text=
+  |     |   |   """
+  |     |   |   NameList (is_value_table = true):
+  |     |   |     TestExtraValueTable googlesql_test.TestExtraPB TestExtraValueTable.value#1 (value table)
+  |     |   |   NameScope:
+  |     |   |     Names:
+  |     |   |       Filename -> STRING (TestExtraValueTable.Filename#2) (implicit) (pseudo-column)
+  |     |   |       RowId -> BYTES (TestExtraValueTable.RowId#3) (implicit) (pseudo-column)
+  |     |   |     Range variables:
+  |     |   |       TestExtraValueTable -> RANGE_VARIABLE<value#1, pseudo_columns: Filename#2,RowId#3> (value table)
+  |     |   |     Value table columns:
+  |     |   |       TestExtraValueTable.value#1
+  |     |   |   """
+  |     |   +-input_scan=
+  |     |     +-WithRefScan(column_list=TestExtraValueTable.[value#1, Filename#2, RowId#3], with_query_name="$tee_cte_1")
+  |     +-filter_expr=
+  |       +-FunctionCall(GoogleSQL:$equal(STRING, STRING) -> BOOL)
+  |         +-ColumnRef(type=STRING, column=TestExtraValueTable.Filename#2)
+  |         +-Literal(type=STRING, value="abc")
+  +-QueryStmt
+  | +-output_column_list=
+  | | +-TestExtraValueTable.RowId#3 AS RowId [BYTES]
+  | +-query=
+  |   +-ProjectScan
+  |     +-column_list=[TestExtraValueTable.RowId#3]
+  |     +-input_scan=
+  |       +-WithRefScan(column_list=TestExtraValueTable.[value#1, Filename#2, RowId#3], with_query_name="$tee_cte_1")
+  +-QueryStmt
+    +-output_column_list=
+    | +-TestExtraValueTable.value#1 AS `$value` [PROTO<googlesql_test.TestExtraPB>]
+    +-is_value_table=TRUE
+    +-query=
+      +-WithRefScan(column_list=TestExtraValueTable.[value#1, Filename#2, RowId#3], with_query_name="$tee_cte_1")
+==
+
+# Subpipelines producing ordered output have `is_ordered` on the outermost scan
+# inside the subpipeline.
+FROM KeyValue
+|> TEE
+     ( ),
+     ( |> ORDER BY key )
+--
+GeneralizedQueryStmt
++-output_schema=
+| +-OutputSchema
+|   +-output_column_list=
+|     +-KeyValue.Key#1 AS Key [INT64]
+|     +-KeyValue.Value#2 AS Value [STRING]
++-query=
+  +-PipeTeeScan
+    +-column_list=KeyValue.[Key#1, Value#2]
+    +-input_scan=
+    | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+    +-subpipeline_list=
+      +-GeneralizedQuerySubpipeline
+      | +-subpipeline=
+      | | +-Subpipeline
+      | |   +-scan=
+      | |     +-SubpipelineInputScan(column_list=KeyValue.[Key#1, Value#2])
+      | +-output_schema=
+      |   +-OutputSchema
+      |     +-output_column_list=
+      |       +-KeyValue.Key#1 AS Key [INT64]
+      |       +-KeyValue.Value#2 AS Value [STRING]
+      +-GeneralizedQuerySubpipeline
+        +-subpipeline=
+        | +-Subpipeline
+        |   +-scan=
+        |     +-OrderByScan
+        |       +-column_list=KeyValue.[Key#1, Value#2]
+        |       +-is_ordered=TRUE
+        |       +-input_scan=
+        |       | +-SubpipelineInputScan(column_list=KeyValue.[Key#1, Value#2])
+        |       +-order_by_item_list=
+        |         +-OrderByItem
+        |           +-column_ref=
+        |             +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+        +-output_schema=
+          +-OutputSchema
+            +-output_column_list=
+              +-KeyValue.Key#1 AS Key [INT64]
+              +-KeyValue.Value#2 AS Value [STRING]
+
+
+[REWRITTEN AST]
+MultiStmt
++-statement_list=
+  +-CreateWithEntryStmt
+  | +-with_entry=
+  |   +-WithEntry
+  |     +-with_query_name="$tee_cte_1"
+  |     +-with_subquery=
+  |       +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+  +-QueryStmt
+  | +-output_column_list=
+  | | +-KeyValue.Key#1 AS Key [INT64]
+  | | +-KeyValue.Value#2 AS Value [STRING]
+  | +-query=
+  |   +-WithRefScan(column_list=KeyValue.[Key#1, Value#2], with_query_name="$tee_cte_1")
+  +-QueryStmt
+  | +-output_column_list=
+  | | +-KeyValue.Key#1 AS Key [INT64]
+  | | +-KeyValue.Value#2 AS Value [STRING]
+  | +-query=
+  |   +-OrderByScan
+  |     +-column_list=KeyValue.[Key#1, Value#2]
+  |     +-is_ordered=TRUE
+  |     +-input_scan=
+  |     | +-WithRefScan(column_list=KeyValue.[Key#1, Value#2], with_query_name="$tee_cte_1")
+  |     +-order_by_item_list=
+  |       +-OrderByItem
+  |         +-column_ref=
+  |           +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+  +-QueryStmt
+    +-output_column_list=
+    | +-KeyValue.Key#1 AS Key [INT64]
+    | +-KeyValue.Value#2 AS Value [STRING]
+    +-query=
+      +-WithRefScan(column_list=KeyValue.[Key#1, Value#2], with_query_name="$tee_cte_1")
+==
+
+# When input is ordered, is_ordered doesn't propagate to the
+# subpipelines or to TEE's result table.
+FROM KeyValue
+|> ORDER BY key
+|> TEE
+     ( |> LIMIT 1 )
+|> LIMIT 2
+--
+GeneralizedQueryStmt
++-output_schema=
+| +-OutputSchema
+|   +-output_column_list=
+|     +-KeyValue.Key#1 AS Key [INT64]
+|     +-KeyValue.Value#2 AS Value [STRING]
++-query=
+  +-LimitOffsetScan
+    +-column_list=KeyValue.[Key#1, Value#2]
+    +-input_scan=
+    | +-PipeTeeScan
+    |   +-column_list=KeyValue.[Key#1, Value#2]
+    |   +-input_scan=
+    |   | +-OrderByScan
+    |   |   +-column_list=KeyValue.[Key#1, Value#2]
+    |   |   +-is_ordered=TRUE
+    |   |   +-input_scan=
+    |   |   | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+    |   |   +-order_by_item_list=
+    |   |     +-OrderByItem
+    |   |       +-column_ref=
+    |   |         +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+    |   +-subpipeline_list=
+    |     +-GeneralizedQuerySubpipeline
+    |       +-subpipeline=
+    |       | +-Subpipeline
+    |       |   +-scan=
+    |       |     +-LimitOffsetScan
+    |       |       +-column_list=KeyValue.[Key#1, Value#2]
+    |       |       +-input_scan=
+    |       |       | +-SubpipelineInputScan(column_list=KeyValue.[Key#1, Value#2])
+    |       |       +-limit=
+    |       |         +-Literal(type=INT64, value=1)
+    |       +-output_schema=
+    |         +-OutputSchema
+    |           +-output_column_list=
+    |             +-KeyValue.Key#1 AS Key [INT64]
+    |             +-KeyValue.Value#2 AS Value [STRING]
+    +-limit=
+      +-Literal(type=INT64, value=2)
+
+
+[REWRITTEN AST]
+MultiStmt
++-statement_list=
+  +-CreateWithEntryStmt
+  | +-with_entry=
+  |   +-WithEntry
+  |     +-with_query_name="$tee_cte_1"
+  |     +-with_subquery=
+  |       +-OrderByScan
+  |         +-column_list=KeyValue.[Key#1, Value#2]
+  |         +-is_ordered=TRUE
+  |         +-input_scan=
+  |         | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+  |         +-order_by_item_list=
+  |           +-OrderByItem
+  |             +-column_ref=
+  |               +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+  +-QueryStmt
+  | +-output_column_list=
+  | | +-KeyValue.Key#1 AS Key [INT64]
+  | | +-KeyValue.Value#2 AS Value [STRING]
+  | +-query=
+  |   +-LimitOffsetScan
+  |     +-column_list=KeyValue.[Key#1, Value#2]
+  |     +-input_scan=
+  |     | +-WithRefScan(column_list=KeyValue.[Key#1, Value#2], with_query_name="$tee_cte_1")
+  |     +-limit=
+  |       +-Literal(type=INT64, value=1)
+  +-QueryStmt
+    +-output_column_list=
+    | +-KeyValue.Key#1 AS Key [INT64]
+    | +-KeyValue.Value#2 AS Value [STRING]
+    +-query=
+      +-LimitOffsetScan
+        +-column_list=KeyValue.[Key#1, Value#2]
+        +-input_scan=
+        | +-WithRefScan(column_list=KeyValue.[Key#1, Value#2], with_query_name="$tee_cte_1")
+        +-limit=
+          +-Literal(type=INT64, value=2)
+==
+
+# With TEE in IF, we only get a GeneralizedQueryStmt if the IF is actually
+# taken and runs a TEE.
+# Literal replacement doesn't work for constants in pipe IF.
+[no_enable_literal_replacement]
+FROM KeyValue
+|> IF {{true|false}} THEN (
+     |> TEE ( |> SELECT key )
+   )
+--
+ALTERNATION GROUP: true
+--
+GeneralizedQueryStmt
++-output_schema=
+| +-OutputSchema
+|   +-output_column_list=
+|     +-KeyValue.Key#1 AS Key [INT64]
+|     +-KeyValue.Value#2 AS Value [STRING]
++-query=
+  +-PipeIfScan
+    +-column_list=KeyValue.[Key#1, Value#2]
+    +-input_scan=
+    | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+    +-selected_case=0
+    +-if_case_list=
+      +-PipeIfCase
+        +-condition=
+        | +-Literal(type=BOOL, value=true)
+        +-subpipeline_sql="(\n     |> TEE ( |> SELECT key )\n   )"
+        +-subpipeline=
+          +-Subpipeline
+            +-scan=
+              +-PipeTeeScan
+                +-column_list=KeyValue.[Key#1, Value#2]
+                +-input_scan=
+                | +-SubpipelineInputScan(column_list=KeyValue.[Key#1, Value#2])
+                +-subpipeline_list=
+                  +-GeneralizedQuerySubpipeline
+                    +-subpipeline=
+                    | +-Subpipeline
+                    |   +-scan=
+                    |     +-ProjectScan
+                    |       +-column_list=[KeyValue.Key#1]
+                    |       +-input_scan=
+                    |         +-SubpipelineInputScan(column_list=KeyValue.[Key#1, Value#2])
+                    +-output_schema=
+                      +-OutputSchema
+                        +-output_column_list=
+                          +-KeyValue.Key#1 AS key [INT64]
+
+
+[REWRITTEN AST]
+MultiStmt
++-statement_list=
+  +-CreateWithEntryStmt
+  | +-with_entry=
+  |   +-WithEntry
+  |     +-with_query_name="$tee_cte_1"
+  |     +-with_subquery=
+  |       +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+  +-QueryStmt
+  | +-output_column_list=
+  | | +-KeyValue.Key#1 AS key [INT64]
+  | +-query=
+  |   +-ProjectScan
+  |     +-column_list=[KeyValue.Key#1]
+  |     +-input_scan=
+  |       +-WithRefScan(column_list=KeyValue.[Key#1, Value#2], with_query_name="$tee_cte_1")
+  +-QueryStmt
+    +-output_column_list=
+    | +-KeyValue.Key#1 AS Key [INT64]
+    | +-KeyValue.Value#2 AS Value [STRING]
+    +-query=
+      +-WithRefScan(column_list=KeyValue.[Key#1, Value#2], with_query_name="$tee_cte_1")
+--
+ALTERNATION GROUP: false
+--
+QueryStmt
++-output_column_list=
+| +-KeyValue.Key#1 AS Key [INT64]
+| +-KeyValue.Value#2 AS Value [STRING]
++-query=
+  +-PipeIfScan
+    +-column_list=KeyValue.[Key#1, Value#2]
+    +-input_scan=
+    | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+    +-selected_case=-1
+    +-if_case_list=
+      +-PipeIfCase
+        +-condition=
+        | +-Literal(type=BOOL, value=false)
+        +-subpipeline_sql="(\n     |> TEE ( |> SELECT key )\n   )"
+
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-KeyValue.Key#1 AS Key [INT64]
+| +-KeyValue.Value#2 AS Value [STRING]
++-query=
+  +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+==
+
+# IF containing TEE is never terminal, since TEE is not terminal.
+[no_enable_literal_replacement]
+FROM KeyValue
+|> IF {{true|false}} THEN (
+     |> TEE ( |> WHERE true )
+   )
+|> WHERE false
+--
+ALTERNATION GROUP: true
+--
+GeneralizedQueryStmt
++-output_schema=
+| +-OutputSchema
+|   +-output_column_list=
+|     +-KeyValue.Key#1 AS Key [INT64]
+|     +-KeyValue.Value#2 AS Value [STRING]
++-query=
+  +-FilterScan
+    +-column_list=KeyValue.[Key#1, Value#2]
+    +-input_scan=
+    | +-PipeIfScan
+    |   +-column_list=KeyValue.[Key#1, Value#2]
+    |   +-input_scan=
+    |   | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+    |   +-selected_case=0
+    |   +-if_case_list=
+    |     +-PipeIfCase
+    |       +-condition=
+    |       | +-Literal(type=BOOL, value=true)
+    |       +-subpipeline_sql="(\n     |> TEE ( |> WHERE true )\n   )"
+    |       +-subpipeline=
+    |         +-Subpipeline
+    |           +-scan=
+    |             +-PipeTeeScan
+    |               +-column_list=KeyValue.[Key#1, Value#2]
+    |               +-input_scan=
+    |               | +-SubpipelineInputScan(column_list=KeyValue.[Key#1, Value#2])
+    |               +-subpipeline_list=
+    |                 +-GeneralizedQuerySubpipeline
+    |                   +-subpipeline=
+    |                   | +-Subpipeline
+    |                   |   +-scan=
+    |                   |     +-FilterScan
+    |                   |       +-column_list=KeyValue.[Key#1, Value#2]
+    |                   |       +-input_scan=
+    |                   |       | +-SubpipelineInputScan(column_list=KeyValue.[Key#1, Value#2])
+    |                   |       +-filter_expr=
+    |                   |         +-Literal(type=BOOL, value=true)
+    |                   +-output_schema=
+    |                     +-OutputSchema
+    |                       +-output_column_list=
+    |                         +-KeyValue.Key#1 AS Key [INT64]
+    |                         +-KeyValue.Value#2 AS Value [STRING]
+    +-filter_expr=
+      +-Literal(type=BOOL, value=false)
+
+
+[REWRITTEN AST]
+MultiStmt
++-statement_list=
+  +-CreateWithEntryStmt
+  | +-with_entry=
+  |   +-WithEntry
+  |     +-with_query_name="$tee_cte_1"
+  |     +-with_subquery=
+  |       +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+  +-QueryStmt
+  | +-output_column_list=
+  | | +-KeyValue.Key#1 AS Key [INT64]
+  | | +-KeyValue.Value#2 AS Value [STRING]
+  | +-query=
+  |   +-FilterScan
+  |     +-column_list=KeyValue.[Key#1, Value#2]
+  |     +-input_scan=
+  |     | +-WithRefScan(column_list=KeyValue.[Key#1, Value#2], with_query_name="$tee_cte_1")
+  |     +-filter_expr=
+  |       +-Literal(type=BOOL, value=true)
+  +-QueryStmt
+    +-output_column_list=
+    | +-KeyValue.Key#1 AS Key [INT64]
+    | +-KeyValue.Value#2 AS Value [STRING]
+    +-query=
+      +-FilterScan
+        +-column_list=KeyValue.[Key#1, Value#2]
+        +-input_scan=
+        | +-WithRefScan(column_list=KeyValue.[Key#1, Value#2], with_query_name="$tee_cte_1")
+        +-filter_expr=
+          +-Literal(type=BOOL, value=false)
+--
+ALTERNATION GROUP: false
+--
+QueryStmt
++-output_column_list=
+| +-KeyValue.Key#1 AS Key [INT64]
+| +-KeyValue.Value#2 AS Value [STRING]
++-query=
+  +-FilterScan
+    +-column_list=KeyValue.[Key#1, Value#2]
+    +-input_scan=
+    | +-PipeIfScan
+    |   +-column_list=KeyValue.[Key#1, Value#2]
+    |   +-input_scan=
+    |   | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+    |   +-selected_case=-1
+    |   +-if_case_list=
+    |     +-PipeIfCase
+    |       +-condition=
+    |       | +-Literal(type=BOOL, value=false)
+    |       +-subpipeline_sql="(\n     |> TEE ( |> WHERE true )\n   )"
+    +-filter_expr=
+      +-Literal(type=BOOL, value=false)
+
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-KeyValue.Key#1 AS Key [INT64]
+| +-KeyValue.Value#2 AS Value [STRING]
++-query=
+  +-FilterScan
+    +-column_list=KeyValue.[Key#1, Value#2]
+    +-input_scan=
+    | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+    +-filter_expr=
+      +-Literal(type=BOOL, value=false)
+==
+
+# Check for error if we try to return an unretunable type (GRAPH_ELEMENT).
+# If we don't select `a` inside the TEE, we get the same error trying to return
+# it after the TEE.
+[language_features=NONE,+PIPES,+PIPE_TEE,+SQL_GRAPH,+SQL_GRAPH_EXPOSE_GRAPH_ELEMENT]
+FROM GRAPH_TABLE(
+  aml
+  MATCH (a IS Person) -[e]-> (b IS Account)
+)
+|> TEE ( |> SELECT {{a|null}} )
+--
+ALTERNATION GROUP: a
+--
+ERROR: Returning expressions of type GRAPH_ELEMENT is not allowed [at 5:8]
+|> TEE ( |> SELECT a )
+       ^
+--
+ALTERNATION GROUP: null
+--
+ERROR: Returning expressions of type GRAPH_ELEMENT is not allowed [at 1:1]
+FROM GRAPH_TABLE(
+^
+==
+
+# Mixing FORK and TEE.  TEE can't happen after FORK since FORK is terminal.
+FROM KeyValue
+|> TEE ( |> SELECT value )
+|> FORK ( |> SELECT key ),
+        ( |> SELECT key*1.5 )
+--
+GeneralizedQueryStmt
++-query=
+  +-PipeForkScan
+    +-input_scan=
+    | +-PipeTeeScan
+    |   +-column_list=KeyValue.[Key#1, Value#2]
+    |   +-input_scan=
+    |   | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+    |   +-subpipeline_list=
+    |     +-GeneralizedQuerySubpipeline
+    |       +-subpipeline=
+    |       | +-Subpipeline
+    |       |   +-scan=
+    |       |     +-ProjectScan
+    |       |       +-column_list=[KeyValue.Value#2]
+    |       |       +-input_scan=
+    |       |         +-SubpipelineInputScan(column_list=KeyValue.[Key#1, Value#2])
+    |       +-output_schema=
+    |         +-OutputSchema
+    |           +-output_column_list=
+    |             +-KeyValue.Value#2 AS value [STRING]
+    +-subpipeline_list=
+      +-GeneralizedQuerySubpipeline
+      | +-subpipeline=
+      | | +-Subpipeline
+      | |   +-scan=
+      | |     +-ProjectScan
+      | |       +-column_list=[KeyValue.Key#1]
+      | |       +-input_scan=
+      | |         +-SubpipelineInputScan(column_list=KeyValue.[Key#1, Value#2])
+      | +-output_schema=
+      |   +-OutputSchema
+      |     +-output_column_list=
+      |       +-KeyValue.Key#1 AS key [INT64]
+      +-GeneralizedQuerySubpipeline
+        +-subpipeline=
+        | +-Subpipeline
+        |   +-scan=
+        |     +-ProjectScan
+        |       +-column_list=[$pipe_select.$col1#3]
+        |       +-expr_list=
+        |       | +-$col1#3 :=
+        |       |   +-FunctionCall(GoogleSQL:$multiply(DOUBLE, DOUBLE) -> DOUBLE)
+        |       |     +-Cast(INT64 -> DOUBLE)
+        |       |     | +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+        |       |     +-Literal(type=DOUBLE, value=1.5)
+        |       +-input_scan=
+        |         +-SubpipelineInputScan(column_list=KeyValue.[Key#1, Value#2])
+        +-output_schema=
+          +-OutputSchema
+            +-output_column_list=
+              +-$pipe_select.$col1#3 AS `$col1` [DOUBLE]
+
+
+[REWRITTEN AST]
+MultiStmt
++-statement_list=
+  +-CreateWithEntryStmt
+  | +-with_entry=
+  |   +-WithEntry
+  |     +-with_query_name="$tee_cte_2"
+  |     +-with_subquery=
+  |       +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+  +-QueryStmt
+  | +-output_column_list=
+  | | +-KeyValue.Value#2 AS value [STRING]
+  | +-query=
+  |   +-ProjectScan
+  |     +-column_list=[KeyValue.Value#2]
+  |     +-input_scan=
+  |       +-WithRefScan(column_list=KeyValue.[Key#1, Value#2], with_query_name="$tee_cte_2")
+  +-CreateWithEntryStmt
+  | +-with_entry=
+  |   +-WithEntry
+  |     +-with_query_name="$fork_cte_1"
+  |     +-with_subquery=
+  |       +-WithRefScan(column_list=KeyValue.[Key#1, Value#2], with_query_name="$tee_cte_2")
+  +-QueryStmt
+  | +-output_column_list=
+  | | +-KeyValue.Key#1 AS key [INT64]
+  | +-query=
+  |   +-ProjectScan
+  |     +-column_list=[KeyValue.Key#1]
+  |     +-input_scan=
+  |       +-WithRefScan(column_list=KeyValue.[Key#1, Value#2], with_query_name="$fork_cte_1")
+  +-QueryStmt
+    +-output_column_list=
+    | +-$pipe_select.$col1#3 AS `$col1` [DOUBLE]
+    +-query=
+      +-ProjectScan
+        +-column_list=[$pipe_select.$col1#3]
+        +-expr_list=
+        | +-$col1#3 :=
+        |   +-FunctionCall(GoogleSQL:$multiply(DOUBLE, DOUBLE) -> DOUBLE)
+        |     +-Cast(INT64 -> DOUBLE)
+        |     | +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+        |     +-Literal(type=DOUBLE, value=1.5)
+        +-input_scan=
+          +-WithRefScan(column_list=KeyValue.[Key#1, Value#2], with_query_name="$fork_cte_1")
+==
+
+# FORK inside TEE.
+FROM KeyValue
+|> TEE ( |> FORK ( |> SELECT key ),
+                 ( |> SELECT value ) )
+--
+GeneralizedQueryStmt
++-output_schema=
+| +-OutputSchema
+|   +-output_column_list=
+|     +-KeyValue.Key#1 AS Key [INT64]
+|     +-KeyValue.Value#2 AS Value [STRING]
++-query=
+  +-PipeTeeScan
+    +-column_list=KeyValue.[Key#1, Value#2]
+    +-input_scan=
+    | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+    +-subpipeline_list=
+      +-GeneralizedQuerySubpipeline
+        +-subpipeline=
+          +-Subpipeline
+            +-scan=
+              +-PipeForkScan
+                +-input_scan=
+                | +-SubpipelineInputScan(column_list=KeyValue.[Key#1, Value#2])
+                +-subpipeline_list=
+                  +-GeneralizedQuerySubpipeline
+                  | +-subpipeline=
+                  | | +-Subpipeline
+                  | |   +-scan=
+                  | |     +-ProjectScan
+                  | |       +-column_list=[KeyValue.Key#1]
+                  | |       +-input_scan=
+                  | |         +-SubpipelineInputScan(column_list=KeyValue.[Key#1, Value#2])
+                  | +-output_schema=
+                  |   +-OutputSchema
+                  |     +-output_column_list=
+                  |       +-KeyValue.Key#1 AS key [INT64]
+                  +-GeneralizedQuerySubpipeline
+                    +-subpipeline=
+                    | +-Subpipeline
+                    |   +-scan=
+                    |     +-ProjectScan
+                    |       +-column_list=[KeyValue.Value#2]
+                    |       +-input_scan=
+                    |         +-SubpipelineInputScan(column_list=KeyValue.[Key#1, Value#2])
+                    +-output_schema=
+                      +-OutputSchema
+                        +-output_column_list=
+                          +-KeyValue.Value#2 AS value [STRING]
+
+
+[REWRITTEN AST]
+MultiStmt
++-statement_list=
+  +-CreateWithEntryStmt
+  | +-with_entry=
+  |   +-WithEntry
+  |     +-with_query_name="$tee_cte_1"
+  |     +-with_subquery=
+  |       +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+  +-CreateWithEntryStmt
+  | +-with_entry=
+  |   +-WithEntry
+  |     +-with_query_name="$fork_cte_2"
+  |     +-with_subquery=
+  |       +-WithRefScan(column_list=KeyValue.[Key#1, Value#2], with_query_name="$tee_cte_1")
+  +-QueryStmt
+  | +-output_column_list=
+  | | +-KeyValue.Key#1 AS key [INT64]
+  | +-query=
+  |   +-ProjectScan
+  |     +-column_list=[KeyValue.Key#1]
+  |     +-input_scan=
+  |       +-WithRefScan(column_list=KeyValue.[Key#1, Value#2], with_query_name="$fork_cte_2")
+  +-QueryStmt
+  | +-output_column_list=
+  | | +-KeyValue.Value#2 AS value [STRING]
+  | +-query=
+  |   +-ProjectScan
+  |     +-column_list=[KeyValue.Value#2]
+  |     +-input_scan=
+  |       +-WithRefScan(column_list=KeyValue.[Key#1, Value#2], with_query_name="$fork_cte_2")
+  +-QueryStmt
+    +-output_column_list=
+    | +-KeyValue.Key#1 AS Key [INT64]
+    | +-KeyValue.Value#2 AS Value [STRING]
+    +-query=
+      +-WithRefScan(column_list=KeyValue.[Key#1, Value#2], with_query_name="$tee_cte_1")
+==
+
+# TEE inside FORK.
+FROM KeyValue
+|> FORK (
+     |> TEE
+     |> SELECT value
+   ), (
+     |> SELECT key
+     |> TEE ( |> SELECT key * 10.5 )
+     |> WHERE key > 4
+   )
+--
+GeneralizedQueryStmt
++-query=
+  +-PipeForkScan
+    +-input_scan=
+    | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+    +-subpipeline_list=
+      +-GeneralizedQuerySubpipeline
+      | +-subpipeline=
+      | | +-Subpipeline
+      | |   +-scan=
+      | |     +-ProjectScan
+      | |       +-column_list=[KeyValue.Value#2]
+      | |       +-input_scan=
+      | |         +-PipeTeeScan
+      | |           +-column_list=KeyValue.[Key#1, Value#2]
+      | |           +-input_scan=
+      | |           | +-SubpipelineInputScan(column_list=KeyValue.[Key#1, Value#2])
+      | |           +-subpipeline_list=
+      | |             +-GeneralizedQuerySubpipeline
+      | |               +-subpipeline=
+      | |               | +-Subpipeline
+      | |               |   +-scan=
+      | |               |     +-SubpipelineInputScan(column_list=KeyValue.[Key#1, Value#2])
+      | |               +-output_schema=
+      | |                 +-OutputSchema
+      | |                   +-output_column_list=
+      | |                     +-KeyValue.Key#1 AS Key [INT64]
+      | |                     +-KeyValue.Value#2 AS Value [STRING]
+      | +-output_schema=
+      |   +-OutputSchema
+      |     +-output_column_list=
+      |       +-KeyValue.Value#2 AS value [STRING]
+      +-GeneralizedQuerySubpipeline
+        +-subpipeline=
+        | +-Subpipeline
+        |   +-scan=
+        |     +-FilterScan
+        |       +-column_list=[KeyValue.Key#1]
+        |       +-input_scan=
+        |       | +-PipeTeeScan
+        |       |   +-column_list=[KeyValue.Key#1]
+        |       |   +-input_scan=
+        |       |   | +-ProjectScan
+        |       |   |   +-column_list=[KeyValue.Key#1]
+        |       |   |   +-input_scan=
+        |       |   |     +-SubpipelineInputScan(column_list=KeyValue.[Key#1, Value#2])
+        |       |   +-subpipeline_list=
+        |       |     +-GeneralizedQuerySubpipeline
+        |       |       +-subpipeline=
+        |       |       | +-Subpipeline
+        |       |       |   +-scan=
+        |       |       |     +-ProjectScan
+        |       |       |       +-column_list=[$pipe_select.$col1#3]
+        |       |       |       +-expr_list=
+        |       |       |       | +-$col1#3 :=
+        |       |       |       |   +-FunctionCall(GoogleSQL:$multiply(DOUBLE, DOUBLE) -> DOUBLE)
+        |       |       |       |     +-Cast(INT64 -> DOUBLE)
+        |       |       |       |     | +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+        |       |       |       |     +-Literal(type=DOUBLE, value=10.5)
+        |       |       |       +-input_scan=
+        |       |       |         +-SubpipelineInputScan(column_list=[KeyValue.Key#1])
+        |       |       +-output_schema=
+        |       |         +-OutputSchema
+        |       |           +-output_column_list=
+        |       |             +-$pipe_select.$col1#3 AS `$col1` [DOUBLE]
+        |       +-filter_expr=
+        |         +-FunctionCall(GoogleSQL:$greater(INT64, INT64) -> BOOL)
+        |           +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+        |           +-Literal(type=INT64, value=4)
+        +-output_schema=
+          +-OutputSchema
+            +-output_column_list=
+              +-KeyValue.Key#1 AS key [INT64]
+
+
+[REWRITTEN AST]
+MultiStmt
++-statement_list=
+  +-CreateWithEntryStmt
+  | +-with_entry=
+  |   +-WithEntry
+  |     +-with_query_name="$fork_cte_1"
+  |     +-with_subquery=
+  |       +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+  +-CreateWithEntryStmt
+  | +-with_entry=
+  |   +-WithEntry
+  |     +-with_query_name="$tee_cte_2"
+  |     +-with_subquery=
+  |       +-WithRefScan(column_list=KeyValue.[Key#1, Value#2], with_query_name="$fork_cte_1")
+  +-QueryStmt
+  | +-output_column_list=
+  | | +-KeyValue.Key#1 AS Key [INT64]
+  | | +-KeyValue.Value#2 AS Value [STRING]
+  | +-query=
+  |   +-WithRefScan(column_list=KeyValue.[Key#1, Value#2], with_query_name="$tee_cte_2")
+  +-QueryStmt
+  | +-output_column_list=
+  | | +-KeyValue.Value#2 AS value [STRING]
+  | +-query=
+  |   +-ProjectScan
+  |     +-column_list=[KeyValue.Value#2]
+  |     +-input_scan=
+  |       +-WithRefScan(column_list=KeyValue.[Key#1, Value#2], with_query_name="$tee_cte_2")
+  +-CreateWithEntryStmt
+  | +-with_entry=
+  |   +-WithEntry
+  |     +-with_query_name="$tee_cte_3"
+  |     +-with_subquery=
+  |       +-ProjectScan
+  |         +-column_list=[KeyValue.Key#1]
+  |         +-input_scan=
+  |           +-WithRefScan(column_list=KeyValue.[Key#1, Value#2], with_query_name="$fork_cte_1")
+  +-QueryStmt
+  | +-output_column_list=
+  | | +-$pipe_select.$col1#3 AS `$col1` [DOUBLE]
+  | +-query=
+  |   +-ProjectScan
+  |     +-column_list=[$pipe_select.$col1#3]
+  |     +-expr_list=
+  |     | +-$col1#3 :=
+  |     |   +-FunctionCall(GoogleSQL:$multiply(DOUBLE, DOUBLE) -> DOUBLE)
+  |     |     +-Cast(INT64 -> DOUBLE)
+  |     |     | +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+  |     |     +-Literal(type=DOUBLE, value=10.5)
+  |     +-input_scan=
+  |       +-WithRefScan(column_list=[KeyValue.Key#1], with_query_name="$tee_cte_3")
+  +-QueryStmt
+    +-output_column_list=
+    | +-KeyValue.Key#1 AS key [INT64]
+    +-query=
+      +-FilterScan
+        +-column_list=[KeyValue.Key#1]
+        +-input_scan=
+        | +-WithRefScan(column_list=[KeyValue.Key#1], with_query_name="$tee_cte_3")
+        +-filter_expr=
+          +-FunctionCall(GoogleSQL:$greater(INT64, INT64) -> BOOL)
+            +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+            +-Literal(type=INT64, value=4)
+==
+
+# TEE with LOG before, inside, and after, to test that other subpipelines that
+# aren't being rewritten for FORK or TEE still pass through unchanged.
+from KeyValue
+|> LOG ( |> SELECT key )
+|> TEE (
+     |> LOG ( |> SELECT value )
+     |> SELECT key
+    )
+|> LOG ( |> SELECT value is null )
+--
+GeneralizedQueryStmt
++-output_schema=
+| +-OutputSchema
+|   +-output_column_list=
+|     +-KeyValue.Key#1 AS Key [INT64]
+|     +-KeyValue.Value#2 AS Value [STRING]
++-query=
+  +-LogScan
+    +-column_list=KeyValue.[Key#1, Value#2]
+    +-input_scan=
+    | +-PipeTeeScan
+    |   +-column_list=KeyValue.[Key#1, Value#2]
+    |   +-input_scan=
+    |   | +-LogScan
+    |   |   +-column_list=KeyValue.[Key#1, Value#2]
+    |   |   +-input_scan=
+    |   |   | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+    |   |   +-subpipeline=
+    |   |   | +-Subpipeline
+    |   |   |   +-scan=
+    |   |   |     +-ProjectScan
+    |   |   |       +-column_list=[KeyValue.Key#1]
+    |   |   |       +-input_scan=
+    |   |   |         +-SubpipelineInputScan(column_list=KeyValue.[Key#1, Value#2])
+    |   |   +-output_schema=
+    |   |     +-OutputSchema
+    |   |       +-output_column_list=
+    |   |         +-KeyValue.Key#1 AS key [INT64]
+    |   +-subpipeline_list=
+    |     +-GeneralizedQuerySubpipeline
+    |       +-subpipeline=
+    |       | +-Subpipeline
+    |       |   +-scan=
+    |       |     +-ProjectScan
+    |       |       +-column_list=[KeyValue.Key#1]
+    |       |       +-input_scan=
+    |       |         +-LogScan
+    |       |           +-column_list=KeyValue.[Key#1, Value#2]
+    |       |           +-input_scan=
+    |       |           | +-SubpipelineInputScan(column_list=KeyValue.[Key#1, Value#2])
+    |       |           +-subpipeline=
+    |       |           | +-Subpipeline
+    |       |           |   +-scan=
+    |       |           |     +-ProjectScan
+    |       |           |       +-column_list=[KeyValue.Value#2]
+    |       |           |       +-input_scan=
+    |       |           |         +-SubpipelineInputScan(column_list=KeyValue.[Key#1, Value#2])
+    |       |           +-output_schema=
+    |       |             +-OutputSchema
+    |       |               +-output_column_list=
+    |       |                 +-KeyValue.Value#2 AS value [STRING]
+    |       +-output_schema=
+    |         +-OutputSchema
+    |           +-output_column_list=
+    |             +-KeyValue.Key#1 AS key [INT64]
+    +-subpipeline=
+    | +-Subpipeline
+    |   +-scan=
+    |     +-ProjectScan
+    |       +-column_list=[$pipe_select.$col1#3]
+    |       +-expr_list=
+    |       | +-$col1#3 :=
+    |       |   +-FunctionCall(GoogleSQL:$is_null(STRING) -> BOOL)
+    |       |     +-ColumnRef(type=STRING, column=KeyValue.Value#2)
+    |       +-input_scan=
+    |         +-SubpipelineInputScan(column_list=KeyValue.[Key#1, Value#2])
+    +-output_schema=
+      +-OutputSchema
+        +-output_column_list=
+          +-$pipe_select.$col1#3 AS `$col1` [BOOL]
+
+
+[REWRITTEN AST]
+MultiStmt
++-statement_list=
+  +-CreateWithEntryStmt
+  | +-with_entry=
+  |   +-WithEntry
+  |     +-with_query_name="$tee_cte_1"
+  |     +-with_subquery=
+  |       +-LogScan
+  |         +-column_list=KeyValue.[Key#1, Value#2]
+  |         +-input_scan=
+  |         | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+  |         +-subpipeline=
+  |         | +-Subpipeline
+  |         |   +-scan=
+  |         |     +-ProjectScan
+  |         |       +-column_list=[KeyValue.Key#1]
+  |         |       +-input_scan=
+  |         |         +-SubpipelineInputScan(column_list=KeyValue.[Key#1, Value#2])
+  |         +-output_schema=
+  |           +-OutputSchema
+  |             +-output_column_list=
+  |               +-KeyValue.Key#1 AS key [INT64]
+  +-QueryStmt
+  | +-output_column_list=
+  | | +-KeyValue.Key#1 AS key [INT64]
+  | +-query=
+  |   +-ProjectScan
+  |     +-column_list=[KeyValue.Key#1]
+  |     +-input_scan=
+  |       +-LogScan
+  |         +-column_list=KeyValue.[Key#1, Value#2]
+  |         +-input_scan=
+  |         | +-WithRefScan(column_list=KeyValue.[Key#1, Value#2], with_query_name="$tee_cte_1")
+  |         +-subpipeline=
+  |         | +-Subpipeline
+  |         |   +-scan=
+  |         |     +-ProjectScan
+  |         |       +-column_list=[KeyValue.Value#2]
+  |         |       +-input_scan=
+  |         |         +-SubpipelineInputScan(column_list=KeyValue.[Key#1, Value#2])
+  |         +-output_schema=
+  |           +-OutputSchema
+  |             +-output_column_list=
+  |               +-KeyValue.Value#2 AS value [STRING]
+  +-QueryStmt
+    +-output_column_list=
+    | +-KeyValue.Key#1 AS Key [INT64]
+    | +-KeyValue.Value#2 AS Value [STRING]
+    +-query=
+      +-LogScan
+        +-column_list=KeyValue.[Key#1, Value#2]
+        +-input_scan=
+        | +-WithRefScan(column_list=KeyValue.[Key#1, Value#2], with_query_name="$tee_cte_1")
+        +-subpipeline=
+        | +-Subpipeline
+        |   +-scan=
+        |     +-ProjectScan
+        |       +-column_list=[$pipe_select.$col1#3]
+        |       +-expr_list=
+        |       | +-$col1#3 :=
+        |       |   +-FunctionCall(GoogleSQL:$is_null(STRING) -> BOOL)
+        |       |     +-ColumnRef(type=STRING, column=KeyValue.Value#2)
+        |       +-input_scan=
+        |         +-SubpipelineInputScan(column_list=KeyValue.[Key#1, Value#2])
+        +-output_schema=
+          +-OutputSchema
+            +-output_column_list=
+              +-$pipe_select.$col1#3 AS `$col1` [BOOL]
+==
+
+# TEE with terminal operator inside.
+FROM KeyValue
+|> TEE (
+    |> EXPORT DATA
+  )
+|> SELECT value
+--
+GeneralizedQueryStmt
++-output_schema=
+| +-OutputSchema
+|   +-output_column_list=
+|     +-KeyValue.Value#2 AS value [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[KeyValue.Value#2]
+    +-input_scan=
+      +-PipeTeeScan
+        +-column_list=KeyValue.[Key#1, Value#2]
+        +-input_scan=
+        | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+        +-subpipeline_list=
+          +-GeneralizedQuerySubpipeline
+            +-subpipeline=
+              +-Subpipeline
+                +-scan=
+                  +-PipeExportDataScan
+                    +-export_data_stmt=
+                      +-ExportDataStmt
+                        +-output_column_list=
+                        | +-KeyValue.Key#1 AS Key [INT64]
+                        | +-KeyValue.Value#2 AS Value [STRING]
+                        +-query=
+                          +-SubpipelineInputScan(column_list=KeyValue.[Key#1, Value#2])
+
+
+[REWRITTEN AST]
+MultiStmt
++-statement_list=
+  +-CreateWithEntryStmt
+  | +-with_entry=
+  |   +-WithEntry
+  |     +-with_query_name="$tee_cte_1"
+  |     +-with_subquery=
+  |       +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+  +-ExportDataStmt
+  | +-output_column_list=
+  | | +-KeyValue.Key#1 AS Key [INT64]
+  | | +-KeyValue.Value#2 AS Value [STRING]
+  | +-query=
+  |   +-WithRefScan(column_list=KeyValue.[Key#1, Value#2], with_query_name="$tee_cte_1")
+  +-QueryStmt
+    +-output_column_list=
+    | +-KeyValue.Value#2 AS value [STRING]
+    +-query=
+      +-ProjectScan
+        +-column_list=[KeyValue.Value#2]
+        +-input_scan=
+          +-WithRefScan(column_list=KeyValue.[Key#1, Value#2], with_query_name="$tee_cte_1")
+==
+
+# TEE with multiple terminal operators inside and after.
+FROM KeyValue
+|> TEE (
+    |> EXPORT DATA
+  ), (
+    |> SELECT key
+  ), (
+    |> SELECT value
+    |> CREATE TABLE t2
+  )
+|> CREATE TABLE t3
+--
+GeneralizedQueryStmt
++-query=
+  +-PipeCreateTableScan
+    +-create_table_as_select_stmt=
+      +-CreateTableAsSelectStmt
+        +-name_path=t3
+        +-column_definition_list=
+        | +-ColumnDefinition(name="Key", type=INT64, column=t3.Key#4)
+        | +-ColumnDefinition(name="Value", type=STRING, column=t3.Value#5)
+        +-output_column_list=
+        | +-KeyValue.Key#1 AS Key [INT64]
+        | +-KeyValue.Value#2 AS Value [STRING]
+        +-query=
+          +-PipeTeeScan
+            +-column_list=KeyValue.[Key#1, Value#2]
+            +-input_scan=
+            | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+            +-subpipeline_list=
+              +-GeneralizedQuerySubpipeline
+              | +-subpipeline=
+              |   +-Subpipeline
+              |     +-scan=
+              |       +-PipeExportDataScan
+              |         +-export_data_stmt=
+              |           +-ExportDataStmt
+              |             +-output_column_list=
+              |             | +-KeyValue.Key#1 AS Key [INT64]
+              |             | +-KeyValue.Value#2 AS Value [STRING]
+              |             +-query=
+              |               +-SubpipelineInputScan(column_list=KeyValue.[Key#1, Value#2])
+              +-GeneralizedQuerySubpipeline
+              | +-subpipeline=
+              | | +-Subpipeline
+              | |   +-scan=
+              | |     +-ProjectScan
+              | |       +-column_list=[KeyValue.Key#1]
+              | |       +-input_scan=
+              | |         +-SubpipelineInputScan(column_list=KeyValue.[Key#1, Value#2])
+              | +-output_schema=
+              |   +-OutputSchema
+              |     +-output_column_list=
+              |       +-KeyValue.Key#1 AS key [INT64]
+              +-GeneralizedQuerySubpipeline
+                +-subpipeline=
+                  +-Subpipeline
+                    +-scan=
+                      +-PipeCreateTableScan
+                        +-create_table_as_select_stmt=
+                          +-CreateTableAsSelectStmt
+                            +-name_path=t2
+                            +-column_definition_list=
+                            | +-ColumnDefinition(name="value", type=STRING, column=t2.value#3)
+                            +-output_column_list=
+                            | +-KeyValue.Value#2 AS value [STRING]
+                            +-query=
+                              +-ProjectScan
+                                +-column_list=[KeyValue.Value#2]
+                                +-input_scan=
+                                  +-SubpipelineInputScan(column_list=KeyValue.[Key#1, Value#2])
+
+
+[REWRITTEN AST]
+MultiStmt
++-statement_list=
+  +-CreateWithEntryStmt
+  | +-with_entry=
+  |   +-WithEntry
+  |     +-with_query_name="$tee_cte_1"
+  |     +-with_subquery=
+  |       +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+  +-ExportDataStmt
+  | +-output_column_list=
+  | | +-KeyValue.Key#1 AS Key [INT64]
+  | | +-KeyValue.Value#2 AS Value [STRING]
+  | +-query=
+  |   +-WithRefScan(column_list=KeyValue.[Key#1, Value#2], with_query_name="$tee_cte_1")
+  +-QueryStmt
+  | +-output_column_list=
+  | | +-KeyValue.Key#1 AS key [INT64]
+  | +-query=
+  |   +-ProjectScan
+  |     +-column_list=[KeyValue.Key#1]
+  |     +-input_scan=
+  |       +-WithRefScan(column_list=KeyValue.[Key#1, Value#2], with_query_name="$tee_cte_1")
+  +-CreateTableAsSelectStmt
+  | +-name_path=t2
+  | +-column_definition_list=
+  | | +-ColumnDefinition(name="value", type=STRING, column=t2.value#3)
+  | +-output_column_list=
+  | | +-KeyValue.Value#2 AS value [STRING]
+  | +-query=
+  |   +-ProjectScan
+  |     +-column_list=[KeyValue.Value#2]
+  |     +-input_scan=
+  |       +-WithRefScan(column_list=KeyValue.[Key#1, Value#2], with_query_name="$tee_cte_1")
+  +-CreateTableAsSelectStmt
+    +-name_path=t3
+    +-column_definition_list=
+    | +-ColumnDefinition(name="Key", type=INT64, column=t3.Key#4)
+    | +-ColumnDefinition(name="Value", type=STRING, column=t3.Value#5)
+    +-output_column_list=
+    | +-KeyValue.Key#1 AS Key [INT64]
+    | +-KeyValue.Value#2 AS Value [STRING]
+    +-query=
+      +-WithRefScan(column_list=KeyValue.[Key#1, Value#2], with_query_name="$tee_cte_1")
+==
+
+# A hint on the generalized statement propagates to the ResolvedMultiStmt.
+@{hint=1}
+FROM KeyValue
+|> TEE (|> SELECT value)
+--
+GeneralizedQueryStmt
++-hint_list=
+| +-hint := Literal(type=INT64, value=1)
++-output_schema=
+| +-OutputSchema
+|   +-output_column_list=
+|     +-KeyValue.Key#1 AS Key [INT64]
+|     +-KeyValue.Value#2 AS Value [STRING]
++-query=
+  +-PipeTeeScan
+    +-column_list=KeyValue.[Key#1, Value#2]
+    +-input_scan=
+    | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+    +-subpipeline_list=
+      +-GeneralizedQuerySubpipeline
+        +-subpipeline=
+        | +-Subpipeline
+        |   +-scan=
+        |     +-ProjectScan
+        |       +-column_list=[KeyValue.Value#2]
+        |       +-input_scan=
+        |         +-SubpipelineInputScan(column_list=KeyValue.[Key#1, Value#2])
+        +-output_schema=
+          +-OutputSchema
+            +-output_column_list=
+              +-KeyValue.Value#2 AS value [STRING]
+
+
+[REWRITTEN AST]
+MultiStmt
++-hint_list=
+| +-hint := Literal(type=INT64, value=1)
++-statement_list=
+  +-CreateWithEntryStmt
+  | +-with_entry=
+  |   +-WithEntry
+  |     +-with_query_name="$tee_cte_1"
+  |     +-with_subquery=
+  |       +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+  +-QueryStmt
+  | +-output_column_list=
+  | | +-KeyValue.Value#2 AS value [STRING]
+  | +-query=
+  |   +-ProjectScan
+  |     +-column_list=[KeyValue.Value#2]
+  |     +-input_scan=
+  |       +-WithRefScan(column_list=KeyValue.[Key#1, Value#2], with_query_name="$tee_cte_1")
+  +-QueryStmt
+    +-output_column_list=
+    | +-KeyValue.Key#1 AS Key [INT64]
+    | +-KeyValue.Value#2 AS Value [STRING]
+    +-query=
+      +-WithRefScan(column_list=KeyValue.[Key#1, Value#2], with_query_name="$tee_cte_1")

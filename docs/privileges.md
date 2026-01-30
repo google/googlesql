@@ -4,7 +4,7 @@
 
 # Privileges
 
-ZetaSQL supports statements for privileges.
+GoogleSQL supports statements for privileges.
 
 ## `GRANT` and `REVOKE`
 

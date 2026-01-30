@@ -1,0 +1,331 @@
+[prepare_database]
+CREATE TABLE TableWithTimestampColumn AS (
+  SELECT TIMESTAMP '2025-01-01 00:00:00' AS ts_col
+  UNION ALL
+  SELECT TIMESTAMP '2025-01-02 00:00:00' AS ts_col
+  UNION ALL
+  SELECT TIMESTAMP '2025-01-03 00:00:00' AS ts_col
+  UNION ALL
+  SELECT TIMESTAMP '2025-01-04 00:00:00' AS ts_col
+);
+--
+ARRAY<STRUCT<ts_col TIMESTAMP>>[
+  {2025-01-01 08:00:00+00},
+  {2025-01-02 08:00:00+00},
+  {2025-01-03 08:00:00+00},
+  {2025-01-04 08:00:00+00}
+]
+==
+[required_features=INTERVAL_TYPE,TABLE_VALUED_FUNCTIONS,TUMBLE_HOP_TVFS]
+[name=default_origin]
+SELECT * FROM tumble(TABLE TableWithTimestampColumn, "ts_col", INTERVAL 1 DAY);
+--
+ARRAY<STRUCT<
+        ts_col TIMESTAMP,
+        WINDOW_START TIMESTAMP,
+        WINDOW_END TIMESTAMP
+      >>
+[unknown order:{
+                 2025-01-02 08:00:00+00,
+                 2025-01-02 00:00:00+00,
+                 2025-01-03 00:00:00+00
+               },
+               {
+                 2025-01-04 08:00:00+00,
+                 2025-01-04 00:00:00+00,
+                 2025-01-05 00:00:00+00
+               },
+               {
+                 2025-01-01 08:00:00+00,
+                 2025-01-01 00:00:00+00,
+                 2025-01-02 00:00:00+00
+               },
+               {
+                 2025-01-03 08:00:00+00,
+                 2025-01-03 00:00:00+00,
+                 2025-01-04 00:00:00+00
+               }]
+==
+[required_features=INTERVAL_TYPE,TABLE_VALUED_FUNCTIONS,TUMBLE_HOP_TVFS]
+[name=column_name_argument_is_case_insensitive]
+SELECT * FROM tumble(TABLE TableWithTimestampColumn, "TS_COL", INTERVAL 1 DAY);
+--
+ARRAY<STRUCT<
+        ts_col TIMESTAMP,
+        WINDOW_START TIMESTAMP,
+        WINDOW_END TIMESTAMP
+      >>
+[unknown order:{
+                 2025-01-02 08:00:00+00,
+                 2025-01-02 00:00:00+00,
+                 2025-01-03 00:00:00+00
+               },
+               {
+                 2025-01-04 08:00:00+00,
+                 2025-01-04 00:00:00+00,
+                 2025-01-05 00:00:00+00
+               },
+               {
+                 2025-01-01 08:00:00+00,
+                 2025-01-01 00:00:00+00,
+                 2025-01-02 00:00:00+00
+               },
+               {
+                 2025-01-03 08:00:00+00,
+                 2025-01-03 00:00:00+00,
+                 2025-01-04 00:00:00+00
+               }]
+==
+[required_features=INTERVAL_TYPE,TABLE_VALUED_FUNCTIONS,TUMBLE_HOP_TVFS]
+[name=mixed_case_timestamp_column]
+WITH CteWithMixedCaseTimestamps AS (
+  SELECT TIMESTAMP '2025-01-01 00:00:00' AS tS_cOl
+  UNION ALL
+  SELECT TIMESTAMP '2025-01-02 00:00:00' AS tS_cOl
+  UNION ALL
+  SELECT TIMESTAMP '2025-01-03 00:00:00' AS tS_cOl
+  UNION ALL
+  SELECT TIMESTAMP '2025-01-04 00:00:00' AS tS_cOl
+)
+SELECT * FROM tumble(TABLE CteWithMixedCaseTimestamps, "ts_col", INTERVAL 1 DAY);
+--
+ARRAY<STRUCT<
+        tS_cOl TIMESTAMP,
+        WINDOW_START TIMESTAMP,
+        WINDOW_END TIMESTAMP
+      >>
+[unknown order:{
+                 2025-01-02 08:00:00+00,
+                 2025-01-02 00:00:00+00,
+                 2025-01-03 00:00:00+00
+               },
+               {
+                 2025-01-04 08:00:00+00,
+                 2025-01-04 00:00:00+00,
+                 2025-01-05 00:00:00+00
+               },
+               {
+                 2025-01-01 08:00:00+00,
+                 2025-01-01 00:00:00+00,
+                 2025-01-02 00:00:00+00
+               },
+               {
+                 2025-01-03 08:00:00+00,
+                 2025-01-03 00:00:00+00,
+                 2025-01-04 00:00:00+00
+               }]
+==
+[required_features=INTERVAL_TYPE,TABLE_VALUED_FUNCTIONS,TUMBLE_HOP_TVFS,NAMED_ARGUMENTS]
+[name=with_origin]
+SELECT * FROM tumble(TABLE TableWithTimestampColumn, "ts_col", INTERVAL 1 DAY, origin => TIMESTAMP("2025-01-01 02:00:00+00"));
+--
+ARRAY<STRUCT<
+        ts_col TIMESTAMP,
+        WINDOW_START TIMESTAMP,
+        WINDOW_END TIMESTAMP
+      >>
+[unknown order:{
+                 2025-01-02 08:00:00+00,
+                 2025-01-02 02:00:00+00,
+                 2025-01-03 02:00:00+00
+               },
+               {
+                 2025-01-04 08:00:00+00,
+                 2025-01-04 02:00:00+00,
+                 2025-01-05 02:00:00+00
+               },
+               {
+                 2025-01-01 08:00:00+00,
+                 2025-01-01 02:00:00+00,
+                 2025-01-02 02:00:00+00
+               },
+               {
+                 2025-01-03 08:00:00+00,
+                 2025-01-03 02:00:00+00,
+                 2025-01-04 02:00:00+00
+               }]
+==
+[required_features=INTERVAL_TYPE,TABLE_VALUED_FUNCTIONS,TUMBLE_HOP_TVFS,NAMED_ARGUMENTS]
+[name=timestamps_before_origin]
+SELECT * FROM tumble(TABLE TableWithTimestampColumn, "ts_col", INTERVAL 1 DAY, origin => TIMESTAMP("2026-01-01 02:00:00+00"));
+--
+ARRAY<STRUCT<
+        ts_col TIMESTAMP,
+        WINDOW_START TIMESTAMP,
+        WINDOW_END TIMESTAMP
+      >>
+[unknown order:{
+                 2025-01-02 08:00:00+00,
+                 2025-01-02 02:00:00+00,
+                 2025-01-03 02:00:00+00
+               },
+               {
+                 2025-01-04 08:00:00+00,
+                 2025-01-04 02:00:00+00,
+                 2025-01-05 02:00:00+00
+               },
+               {
+                 2025-01-01 08:00:00+00,
+                 2025-01-01 02:00:00+00,
+                 2025-01-02 02:00:00+00
+               },
+               {
+                 2025-01-03 08:00:00+00,
+                 2025-01-03 02:00:00+00,
+                 2025-01-04 02:00:00+00
+               }]
+==
+[required_features=INTERVAL_TYPE,TABLE_VALUED_FUNCTIONS,TUMBLE_HOP_TVFS]
+[name=window_start_end_boundaries]
+WITH CteWithWindowStartEndAndBoundaries AS (
+  SELECT TIMESTAMP '2025-01-01 00:00:00+00' AS ts_col,
+         "a" AS window_START,
+         "b" AS window_END,
+  UNION ALL
+  SELECT TIMESTAMP '2025-01-02 00:00:00+00' AS ts_col,
+         "a" AS window_START,
+         "b" AS window_END,
+)
+SELECT * FROM tumble(TABLE CteWithWindowStartEndAndBoundaries, "ts_col", INTERVAL 1 DAY);
+--
+ARRAY<STRUCT<
+        ts_col TIMESTAMP,
+        WINDOW_START TIMESTAMP,
+        WINDOW_END TIMESTAMP
+      >>
+[unknown order:{
+                 2025-01-02 00:00:00+00,
+                 2025-01-02 00:00:00+00,
+                 2025-01-03 00:00:00+00
+               },
+               {
+                 2025-01-01 00:00:00+00,
+                 2025-01-01 00:00:00+00,
+                 2025-01-02 00:00:00+00
+               }]
+==
+[required_features=INTERVAL_TYPE,TABLE_VALUED_FUNCTIONS,TUMBLE_HOP_TVFS]
+[name=null_timestamps_results_in_null_window_start_end]
+WITH CteWithNullTimestamps AS (
+  SELECT 1 as id, TIMESTAMP '2025-01-01 00:00:00+00' AS ts_col
+  UNION ALL
+  SELECT 2 as id, CAST(NULL AS TIMESTAMP) AS ts_col
+  UNION ALL
+  SELECT 3 as id, CAST(NULL AS TIMESTAMP) AS ts_col
+)
+SELECT * FROM tumble(TABLE CteWithNullTimestamps, "ts_col", INTERVAL 1 DAY);
+--
+ARRAY<STRUCT<
+        id INT64,
+        ts_col TIMESTAMP,
+        WINDOW_START TIMESTAMP,
+        WINDOW_END TIMESTAMP
+      >>
+[unknown order:{2, NULL, NULL, NULL},
+               {
+                 1,
+                 2025-01-01 00:00:00+00,
+                 2025-01-01 00:00:00+00,
+                 2025-01-02 00:00:00+00
+               },
+               {3, NULL, NULL, NULL}]
+==
+# Omitting the WINDOW_START and WINDOW_END in the select does not affect Tumble.
+# Column pruning does not affect Tumble TVF reference implementation.
+[required_features=INTERVAL_TYPE,TABLE_VALUED_FUNCTIONS,TUMBLE_HOP_TVFS,NAMED_ARGUMENTS]
+[name=only_ts_col_selected]
+SELECT ts_col FROM tumble(TABLE TableWithTimestampColumn, "ts_col", INTERVAL 1 DAY, origin => TIMESTAMP("2026-01-01 02:00:00+00"));
+--
+ARRAY<STRUCT<ts_col TIMESTAMP>>[unknown order:
+  {2025-01-02 08:00:00+00},
+  {2025-01-04 08:00:00+00},
+  {2025-01-01 08:00:00+00},
+  {2025-01-03 08:00:00+00}
+]
+==
+# Omitting the ts_col and WINDOW_END in the select does not affect Tumble.
+# Column pruning does not affect Tumble TVF reference implementation.
+[required_features=INTERVAL_TYPE,TABLE_VALUED_FUNCTIONS,TUMBLE_HOP_TVFS,NAMED_ARGUMENTS]
+[name=only_window_start_selected]
+SELECT WINDOW_START FROM tumble(TABLE TableWithTimestampColumn, "ts_col", INTERVAL 1 DAY, origin => TIMESTAMP("2026-01-01 02:00:00+00"));
+--
+ARRAY<STRUCT<WINDOW_START TIMESTAMP>>[unknown order:
+  {2025-01-02 02:00:00+00},
+  {2025-01-04 02:00:00+00},
+  {2025-01-01 02:00:00+00},
+  {2025-01-03 02:00:00+00}
+]
+==
+# Omitting the ts_col and WINDOW_START in the select does not affect Tumble.
+# Column pruning does not affect Tumble TVF reference implementation.
+[required_features=INTERVAL_TYPE,TABLE_VALUED_FUNCTIONS,TUMBLE_HOP_TVFS,NAMED_ARGUMENTS]
+[name=only_window_end_selected]
+SELECT WINDOW_END FROM tumble(TABLE TableWithTimestampColumn, "ts_col", INTERVAL 1 DAY, origin => TIMESTAMP("2026-01-01 02:00:00+00"));
+--
+ARRAY<STRUCT<WINDOW_END TIMESTAMP>>[unknown order:
+  {2025-01-03 02:00:00+00},
+  {2025-01-05 02:00:00+00},
+  {2025-01-02 02:00:00+00},
+  {2025-01-04 02:00:00+00}
+]
+==
+[required_features=INTERVAL_TYPE,TABLE_VALUED_FUNCTIONS,TUMBLE_HOP_TVFS]
+[name=window_generation_underflow]
+WITH CteWithMinTimestamp AS (
+  SELECT TIMESTAMP '0001-01-01 00:00:00+00' AS ts_col
+)
+SELECT * FROM tumble(TABLE CteWithMinTimestamp, "ts_col", INTERVAL 3 DAY);
+--
+ERROR: generic::out_of_range: Bucket for 0001-01-01 00:00:00+00 is outside of timestamp range
+==
+[required_features=INTERVAL_TYPE,TABLE_VALUED_FUNCTIONS,TUMBLE_HOP_TVFS]
+[name=window_generation_overflow]
+WITH CteWithMaxTimestamp AS (
+  SELECT TIMESTAMP '9999-12-31 23:59:59.999999+00' AS ts_col
+)
+SELECT * FROM tumble(TABLE CteWithMaxTimestamp, "ts_col", INTERVAL 1 DAY);
+--
+ERROR: generic::out_of_range: Bucket for 9999-12-31 23:59:59.999999+00 is outside of timestamp range
+==
+[required_features=INTERVAL_TYPE,TABLE_VALUED_FUNCTIONS,TUMBLE_HOP_TVFS]
+[name=zero_window_size]
+SELECT * FROM tumble(TABLE TableWithTimestampColumn, "ts_col", INTERVAL 0 DAY);
+--
+ERROR: generic::invalid_argument: Window size cannot be zero.
+==
+[required_features=INTERVAL_TYPE,TABLE_VALUED_FUNCTIONS,TUMBLE_HOP_TVFS]
+[name=negative_window_size]
+SELECT * FROM tumble(TABLE TableWithTimestampColumn, "ts_col", - INTERVAL 1 DAY);
+--
+ERROR: generic::invalid_argument: Window size cannot be negative.
+==
+[required_features=INTERVAL_TYPE,TABLE_VALUED_FUNCTIONS,TUMBLE_HOP_TVFS]
+[name=null_window_size]
+SELECT * FROM tumble(TABLE TableWithTimestampColumn, "ts_col", CAST(NULL AS INTERVAL));
+--
+ERROR: generic::invalid_argument: Window size cannot be null.
+==
+[required_features=INTERVAL_TYPE,TABLE_VALUED_FUNCTIONS,TUMBLE_HOP_TVFS]
+[name=timestamp_col_wrong_type]
+WITH CteWithNullTimestamps AS (
+  SELECT 1 as id, TIMESTAMP '2025-01-01 00:00:00+00' AS ts_col
+  UNION ALL
+  SELECT 2 as id, CAST(NULL AS TIMESTAMP) AS ts_col
+  UNION ALL
+  SELECT 3 as id, CAST(NULL AS TIMESTAMP) AS ts_col
+)
+SELECT * FROM tumble(TABLE CteWithNullTimestamps, "id", INTERVAL 1 DAY);
+--
+ERROR: generic::invalid_argument: Timestamp column 'id' is not of TIMESTAMP type.
+==
+[required_features=INTERVAL_TYPE,TABLE_VALUED_FUNCTIONS,TUMBLE_HOP_TVFS]
+[name=timestamp_col_not_found]
+SELECT * FROM tumble(TABLE TableWithTimestampColumn, "non_existent_ts_col", INTERVAL 1 DAY);
+--
+ERROR: generic::invalid_argument: Timestamp column 'non_existent_ts_col' not found in input table.
+==
+[required_features=INTERVAL_TYPE,TABLE_VALUED_FUNCTIONS,TUMBLE_HOP_TVFS,NAMED_ARGUMENTS]
+[name=null_origin]
+SELECT * FROM tumble(TABLE TableWithTimestampColumn, "ts_col", INTERVAL 1 DAY, origin => NULL);
+--
+ERROR: generic::invalid_argument: Origin cannot be null.

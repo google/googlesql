@@ -4,7 +4,7 @@
 
 # Security functions
 
-ZetaSQL supports the following security functions.
+GoogleSQL supports the following security functions.
 
 ## Function list
 
@@ -18,7 +18,7 @@ ZetaSQL supports the following security functions.
   <tbody>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/security_functions.md#session_user"><code>SESSION_USER</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/security_functions.md#session_user"><code>SESSION_USER</code></a>
 </td>
   <td>
     Get the email address or principal identifier of the user that's running
@@ -51,7 +51,7 @@ For more information about identities, see
 
 **Example**
 
-```zetasql
+```googlesql
 SELECT SESSION_USER() as user;
 
 /*----------------------+

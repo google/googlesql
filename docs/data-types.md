@@ -4,7 +4,7 @@
 
 # Data types
 
-This page provides an overview of all ZetaSQL
+This page provides an overview of all GoogleSQL
 data types, including information about their value
 domains. For
 information on data type literals and constructors, see
@@ -157,7 +157,7 @@ information on data type literals and constructors, see
     
     
     <p>
-      A decimal value with precision of 76.76 digits (the 77th digit is partial).<br/>
+      A decimal value with precision of approximately 76.8 digits (the 77th digit is partial).<br/>
       SQL type name: <code>BIGNUMERIC</code>
       <br/>
       SQL aliases: <code>BIGDECIMAL</code>
@@ -317,7 +317,7 @@ array elements are ignored.
 
 For example:
 
-```zetasql
+```googlesql
 WITH
   t AS (
     SELECT [1, 2] a UNION ALL
@@ -460,20 +460,20 @@ arrays using the `SELECT AS STRUCT` construct.
 To learn more about the literal representation of an array type,
 see [Array literals][array-literals].
 
-To learn more about using arrays in ZetaSQL, see [Work with
+To learn more about using arrays in GoogleSQL, see [Work with
 arrays][working-with-arrays].
 
 ### `NULL`s and the array type 
 <a id="array_nulls"></a>
 
-Currently, ZetaSQL has the following rules with respect to `NULL`s and
+Currently, GoogleSQL has the following rules with respect to `NULL`s and
 arrays:
 
 + An array can be `NULL`.
 
   For example:
 
-  ```zetasql
+  ```googlesql
   SELECT CAST(NULL AS ARRAY<INT64>) IS NULL AS array_is_null;
 
   /*---------------+
@@ -482,13 +482,13 @@ arrays:
    | TRUE          |
    +---------------*/
   ```
-+ ZetaSQL translates a `NULL` array into an empty array in the query
++ GoogleSQL translates a `NULL` array into an empty array in the query
   result, although inside the query, `NULL` and empty arrays are two distinct
   values.
 
   For example:
 
-  ```zetasql
+  ```googlesql
   WITH Items AS (
     SELECT [] AS numbers, "Empty array in query" AS description UNION ALL
     SELECT CAST(NULL AS ARRAY<INT64>), "NULL array in query")
@@ -507,7 +507,7 @@ arrays:
   empty array. If you write `Items` to a table from the previous query,
   then each array is written as an empty array:
 
-  ```zetasql
+  ```googlesql
   SELECT numbers, description, numbers IS NULL AS numbers_null
   FROM Items;
 
@@ -585,10 +585,10 @@ You can construct an array using array literals or array functions.
 
 #### Using array literals
 
-You can build an array literal in ZetaSQL using brackets (`[` and
+You can build an array literal in GoogleSQL using brackets (`[` and
 `]`). Each element in an array is separated by a comma.
 
-```zetasql
+```googlesql
 SELECT [1, 2, 3] AS numbers;
 
 SELECT ["apple", "pear", "orange"] AS fruit;
@@ -599,7 +599,7 @@ SELECT [true, false, true] AS booleans;
 You can also create arrays from any expressions that have compatible types. For
 example:
 
-```zetasql
+```googlesql
 SELECT [a, b, c]
 FROM
   (SELECT 5 AS a,
@@ -621,21 +621,21 @@ declares a literal. This expression works because all three expressions share
 To declare a specific data type for an array, use angle
 brackets (`<` and `>`). For example:
 
-```zetasql
+```googlesql
 SELECT ARRAY<DOUBLE>[1, 2, 3] AS floats;
 ```
 
 Arrays of most data types, such as `INT64` or `STRING`, don't require
 that you declare them first.
 
-```zetasql
+```googlesql
 SELECT [1, 2, 3] AS numbers;
 ```
 
 You can write an empty array of a specific type using `ARRAY<type>[]`. You can
-also write an untyped empty array using `[]`, in which case ZetaSQL
+also write an untyped empty array using `[]`, in which case GoogleSQL
 attempts to infer the array type from the surrounding context. If
-ZetaSQL can't infer a type, the default type `ARRAY<INT64>` is used.
+GoogleSQL can't infer a type, the default type `ARRAY<INT64>` is used.
 
 #### Using generated values
 
@@ -648,7 +648,7 @@ generates an array of values from a starting and ending value and a step value.
 For example, the following query generates an array that contains all of the odd
 integers from 11 to 33, inclusive:
 
-```zetasql
+```googlesql
 SELECT GENERATE_ARRAY(11, 33, 2) AS odds;
 
 /*--------------------------------------------------+
@@ -661,7 +661,7 @@ SELECT GENERATE_ARRAY(11, 33, 2) AS odds;
 You can also generate an array of values in descending order by giving a
 negative step value:
 
-```zetasql
+```googlesql
 SELECT GENERATE_ARRAY(21, 14, -1) AS countdown;
 
 /*----------------------------------+
@@ -681,7 +681,7 @@ You can generate a set of `DATE` values using `GENERATE_DATE_ARRAY`. For
 example, this query returns the current `DATE` and the following
 `DATE`s at 1 `WEEK` intervals up to and including a later `DATE`:
 
-```zetasql
+```googlesql
 SELECT
   GENERATE_DATE_ARRAY('2017-11-21', '2017-12-31', INTERVAL 1 WEEK)
     AS date_array;
@@ -693,13 +693,13 @@ SELECT
  +--------------------------------------------------------------------------*/
 ```
 
-[array-literals]: https://github.com/google/zetasql/blob/master/docs/lexical.md#array_literals
+[array-literals]: https://github.com/google/googlesql/blob/master/docs/lexical.md#array_literals
 
-[working-with-arrays]: https://github.com/google/zetasql/blob/master/docs/arrays.md#constructing_arrays
+[working-with-arrays]: https://github.com/google/googlesql/blob/master/docs/arrays.md#constructing_arrays
 
-[generate-array-function]: https://github.com/google/zetasql/blob/master/docs/array_functions.md#generate_array
+[generate-array-function]: https://github.com/google/googlesql/blob/master/docs/array_functions.md#generate_array
 
-[generate-date-array]: https://github.com/google/zetasql/blob/master/docs/array_functions.md#generate_date_array
+[generate-date-array]: https://github.com/google/googlesql/blob/master/docs/array_functions.md#generate_date_array
 
 ## Boolean type 
 <a id="boolean_type"></a>
@@ -764,11 +764,11 @@ expression using the
 To learn more about the literal representation of a bytes type,
 see [Bytes literals][bytes-literals].
 
-[bytes-literals]: https://github.com/google/zetasql/blob/master/docs/lexical.md#string_and_bytes_literals
+[bytes-literals]: https://github.com/google/googlesql/blob/master/docs/lexical.md#string_and_bytes_literals
 
-[from-base]: https://github.com/google/zetasql/blob/master/docs/string_functions.md#from_base64
+[from-base]: https://github.com/google/googlesql/blob/master/docs/string_functions.md#from_base64
 
-[to-base]: https://github.com/google/zetasql/blob/master/docs/string_functions.md#to_base64
+[to-base]: https://github.com/google/googlesql/blob/master/docs/string_functions.md#to_base64
 
 ## Date type 
 <a id="date_type"></a>
@@ -812,7 +812,7 @@ see [Date literals][date-literals].
 
 [timestamp-type]: #timestamp_type
 
-[date-literals]: https://github.com/google/zetasql/blob/master/docs/lexical.md#date_literals
+[date-literals]: https://github.com/google/googlesql/blob/master/docs/lexical.md#date_literals
 
 ## Datetime type 
 <a id="datetime_type"></a>
@@ -875,7 +875,7 @@ see [Datetime literals][datetime-literals].
 
 [timestamp-type]: #timestamp_type
 
-[datetime-literals]: https://github.com/google/zetasql/blob/master/docs/lexical.md#datetime_literals
+[datetime-literals]: https://github.com/google/googlesql/blob/master/docs/lexical.md#datetime_literals
 
 ## Enum type 
 <a id="enum_type"></a>
@@ -910,12 +910,12 @@ Enum values are referenced using their integer value or their string value.
 You reference an enum type, such as when using CAST, by using its fully
 qualified name.
 
-You can't create new enum types using ZetaSQL.
+You can't create new enum types using GoogleSQL.
 
 To learn more about the literal representation of an enum type,
 see [Enum literals][enum-literals].
 
-[enum-literals]: https://github.com/google/zetasql/blob/master/docs/lexical.md#enum_literals
+[enum-literals]: https://github.com/google/googlesql/blob/master/docs/lexical.md#enum_literals
 
 ## Geography type 
 <a id="geography_type"></a>
@@ -1124,7 +1124,7 @@ The geography that contains no points, linestrings or polygons is called an
 empty geography. An empty geography isn't associated with a particular
 geometry shape. For example, the following query produces the same results:
 
-```zetasql
+```googlesql
 SELECT
   ST_GEOGFROMTEXT('POINT EMPTY') AS a,
   ST_GEOGFROMTEXT('GEOMETRYCOLLECTION EMPTY') AS b
@@ -1141,7 +1141,7 @@ simpler type can be produced. For example, in column `b`,
 `GEOMETRYCOLLECTION` with `(POINT(1 1)` and `POINT(2 2)` is converted into the
 simplest possible geometry, `MULTIPOINT(1 1, 2 2)`.
 
-```zetasql
+```googlesql
 SELECT
   ST_GEOGFROMTEXT('MULTIPOINT(1 1, 2 2)') AS a,
   ST_GEOGFROMTEXT('GEOMETRYCOLLECTION(POINT(1 1), POINT(2 2))') AS b
@@ -1160,7 +1160,7 @@ A geography is the result of, or an argument to, a
 
 [WGS84-reference-ellipsoid]: https://en.wikipedia.org/wiki/World_Geodetic_System
 
-[geography-functions]: https://github.com/google/zetasql/blob/master/docs/geography_functions.md
+[geography-functions]: https://github.com/google/googlesql/blob/master/docs/geography_functions.md
 
 ## Graph element type 
 <a id="graph_element_type"></a>
@@ -1199,7 +1199,7 @@ similar to fields of a struct.
 In the following example, `n` represents a graph element in the
 [`FinGraph`][fin-graph] property graph:
 
-```zetasql
+```googlesql
 GRAPH FinGraph
 MATCH (n:Person)
 RETURN n.name
@@ -1208,7 +1208,7 @@ RETURN n.name
 In the following example, the [`TYPEOF`][type-of] function is used to inspect the
 set of properties defined in the graph element type.
 
-```zetasql
+```googlesql
 GRAPH FinGraph
 MATCH (n:Person)
 RETURN TYPEOF(n) AS t
@@ -1221,9 +1221,9 @@ LIMIT 1
  +---------------------------------------------*/
 ```
 
-[graph-query]: https://github.com/google/zetasql/blob/master/docs/graph-intro.md
+[graph-query]: https://github.com/google/googlesql/blob/master/docs/graph-intro.md
 
-[fin-graph]: https://github.com/google/zetasql/blob/master/docs/graph-schema-statements.md#fin_graph
+[fin-graph]: https://github.com/google/googlesql/blob/master/docs/graph-schema-statements.md#fin_graph
 
 ## Interval type 
 <a id="interval_type"></a>
@@ -1277,14 +1277,14 @@ a [single datetime part][single-datetime-part-interval] or a
 #### Construct an interval with a single datetime part 
 <a id="single_datetime_part_interval"></a>
 
-```zetasql
+```googlesql
 INTERVAL int64_expression datetime_part
 ```
 
 You can construct an `INTERVAL` object with an `INT64` expression and one
 [interval-supported datetime part][interval-datetime-parts]. For example:
 
-```zetasql
+```googlesql
 -- 1 year, 0 months, 0 days, 0 hours, 0 minutes, and 0 seconds (1-0 0 0:0:0)
 INTERVAL 1 YEAR
 INTERVAL 4 QUARTER
@@ -1318,7 +1318,7 @@ For additional examples, see [Interval literals][interval-literal-single].
 #### Construct an interval with a datetime part range 
 <a id="range_datetime_part_interval"></a>
 
-```zetasql
+```googlesql
 INTERVAL datetime_parts_string starting_datetime_part TO ending_datetime_part
 ```
 
@@ -1419,7 +1419,7 @@ You can use one of the following formats with the
 
 For example:
 
-```zetasql
+```googlesql
 -- 0 years, 8 months, 20 days, 17 hours, 0 minutes, and 0 seconds (0-8 20 17:0:0)
 INTERVAL '8 20 17' MONTH TO HOUR
 
@@ -1457,11 +1457,11 @@ You can use the following time parts to construct an interval:
 
 [range-datetime-part-interval]: #range_datetime_part_interval
 
-[interval-literals]: https://github.com/google/zetasql/blob/master/docs/lexical.md#interval_literals
+[interval-literals]: https://github.com/google/googlesql/blob/master/docs/lexical.md#interval_literals
 
-[interval-literal-single]: https://github.com/google/zetasql/blob/master/docs/lexical.md#interval_literal_single
+[interval-literal-single]: https://github.com/google/googlesql/blob/master/docs/lexical.md#interval_literal_single
 
-[interval-literal-range]: https://github.com/google/zetasql/blob/master/docs/lexical.md#interval_literal_range
+[interval-literal-range]: https://github.com/google/googlesql/blob/master/docs/lexical.md#interval_literal_range
 
 ## JSON type 
 <a id="json_type"></a>
@@ -1499,7 +1499,7 @@ Expect these canonicalization behaviors when creating a value of JSON type:
 To learn more about the literal representation of a JSON type,
 see [JSON literals][json-literals].
 
-[json-literals]: https://github.com/google/zetasql/blob/master/docs/lexical.md#json_literals
+[json-literals]: https://github.com/google/googlesql/blob/master/docs/lexical.md#json_literals
 
 ## Numeric types 
 <a id="numeric_types"></a>
@@ -1591,7 +1591,7 @@ calculations.
   <td id="bignumeric-type" style="vertical-align:middle"><code>BIGNUMERIC</code>
     <br><code>BIGDECIMAL</code></td>
   <td style="vertical-align:middle">
-    Precision: 76.76 (the 77th digit is partial)<br>
+    Precision: approximately 76.8 digits (the 77th digit is partial)<br>
     Scale: 38<br>
     Minimum value greater than 0 that can be handled: 1e-38<br>
     Min: <small>-5.7896044618658097711785492504343953926634992332820282019728792003956564819968E+38</small><br>
@@ -1806,15 +1806,15 @@ see [Ordering floating point values][orderable-floating-points].
 
 [orderable-floating-points]: #orderable_floating_points
 
-[integer-literals]: https://github.com/google/zetasql/blob/master/docs/lexical.md#integer_literals
+[integer-literals]: https://github.com/google/googlesql/blob/master/docs/lexical.md#integer_literals
 
-[floating-point-literals]: https://github.com/google/zetasql/blob/master/docs/lexical.md#floating_point_literals
+[floating-point-literals]: https://github.com/google/googlesql/blob/master/docs/lexical.md#floating_point_literals
 
-[mathematical-functions]: https://github.com/google/zetasql/blob/master/docs/mathematical_functions.md
+[mathematical-functions]: https://github.com/google/googlesql/blob/master/docs/mathematical_functions.md
 
-[numeric-literals]: https://github.com/google/zetasql/blob/master/docs/lexical.md#numeric_literals
+[numeric-literals]: https://github.com/google/googlesql/blob/master/docs/lexical.md#numeric_literals
 
-[bignumeric-literals]: https://github.com/google/zetasql/blob/master/docs/lexical.md#bignumeric_literals
+[bignumeric-literals]: https://github.com/google/googlesql/blob/master/docs/lexical.md#bignumeric_literals
 
 ## Protocol buffer type 
 <a id="protocol_buffer_type"></a>
@@ -1850,7 +1850,7 @@ optional fields.
 Protocol buffer [enum types](#enum_type) are also available and can be
 referenced using the fully-qualified enum type name.
 
-To learn more about using protocol buffers in ZetaSQL, see
+To learn more about using protocol buffers in GoogleSQL, see
 [Work with protocol buffers][protocol-buffers].
 
 ### Constructing a protocol buffer 
@@ -1865,7 +1865,7 @@ method that you choose, the resulting protocol buffer is the same.
 You can create a protocol buffer using the [`NEW`][new-operator]
 operator with a map constructor:
 
-```zetasql
+```googlesql
 NEW protocol_buffer {
   field_name: literal_or_expression
   field_name { ... }
@@ -1887,8 +1887,8 @@ Where:
 
 **Example**
 
-```zetasql
-NEW zetasql.examples.astronomy.Planet {
+```googlesql
+NEW googlesql.examples.astronomy.Planet {
   planet_name: 'Jupiter'
   facts: {
     length_of_day: 9.93
@@ -1955,18 +1955,18 @@ When using this syntax, the following rules apply:
 
 Simple:
 
-```zetasql
+```googlesql
 SELECT
   key,
   name,
-  NEW zetasql.examples.music.Chart { rank: 1 chart_name: '2' }
+  NEW googlesql.examples.music.Chart { rank: 1 chart_name: '2' }
 ```
 
 Nested messages and arrays:
 
-```zetasql
+```googlesql
 SELECT
-  NEW zetasql.examples.music.Album {
+  NEW googlesql.examples.music.Album {
     album_name: 'New Moon'
     singer {
       nationality: 'Canadian'
@@ -1978,19 +1978,19 @@ SELECT
 
 With an extension field (note a comma is required before the extension field):
 
-```zetasql
+```googlesql
 SELECT
-  NEW zetasql.examples.music.Album {
+  NEW googlesql.examples.music.Album {
     album_name: 'New Moon',
-    (zetasql.examples.music.downloads): 30
+    (googlesql.examples.music.downloads): 30
   }
 ```
 
 Non-literal expressions as values:
 
-```zetasql
+```googlesql
 SELECT
-  NEW zetasql.examples.music.Chart {
+  NEW googlesql.examples.music.Chart {
     rank: (SELECT COUNT(*) FROM TableName WHERE foo = 'bar')
     chart_name: CONCAT('best', 'hits')
   }
@@ -2000,30 +2000,30 @@ The following examples infers the protocol buffer data type from context:
 
 +   From `ARRAY` constructor:
 
-    ```zetasql
+    ```googlesql
     SELECT
-      ARRAY<zetasql.examples.music.Chart>[
+      ARRAY<googlesql.examples.music.Chart>[
         { rank: 1 chart_name: '2' },
         { rank: 2 chart_name: '3' }]
     ```
 +   From `STRUCT` constructor:
 
-    ```zetasql
+    ```googlesql
     SELECT
-      STRUCT<STRING, zetasql.examples.music.Chart, INT64>(
+      STRUCT<STRING, googlesql.examples.music.Chart, INT64>(
         'foo', { rank: 1 chart_name: '2' }, 7)[1]
     ```
 +   From column names through `SET`:
 
     +   Simple column:
 
-    ```zetasql
+    ```googlesql
     UPDATE TableName SET proto_column = { rank: 1 chart_name: '2' }
     ```
 
     +   Array column:
 
-    ```zetasql
+    ```googlesql
     UPDATE TableName
     SET proto_array_column = [
       { rank: 1 chart_name: '2' }, { rank: 2 chart_name: '3' }]
@@ -2031,29 +2031,29 @@ The following examples infers the protocol buffer data type from context:
 
     +   Struct column:
 
-    ```zetasql
+    ```googlesql
     UPDATE TableName
     SET proto_struct_column = ('foo', { rank: 1 chart_name: '2' }, 7)
     ```
 +   From generated column names in `CREATE`:
 
-    ```zetasql
+    ```googlesql
     CREATE TABLE TableName (
-      proto_column zetasql.examples.music.Chart GENERATED ALWAYS AS (
+      proto_column googlesql.examples.music.Chart GENERATED ALWAYS AS (
         { rank: 1 chart_name: '2' }))
     ```
 +   From column names in default values in `CREATE`:
 
-    ```zetasql
+    ```googlesql
     CREATE TABLE TableName(
-      proto_column zetasql.examples.music.Chart DEFAULT (
+      proto_column googlesql.examples.music.Chart DEFAULT (
         { rank: 1 chart_name: '2' }))
     ```
 +   From return types in SQL function body:
 
-    ```zetasql
+    ```googlesql
     CREATE FUNCTION MyFunc()
-    RETURNS zetasql.examples.music.Chart
+    RETURNS googlesql.examples.music.Chart
     AS (
       { rank: 1 chart_name: '2' }
     )
@@ -2065,17 +2065,17 @@ The following examples infers the protocol buffer data type from context:
 You can create a protocol buffer using the [`NEW`][new-operator] operator with a
 parenthesized list of arguments and aliases to specify field names:
 
-```zetasql
+```googlesql
 NEW protocol_buffer(field [AS alias], ...)
 ```
 
 **Example**
 
-```zetasql
+```googlesql
 SELECT
   key,
   name,
-  NEW zetasql.examples.music.Chart(key AS rank, name AS chart_name)
+  NEW googlesql.examples.music.Chart(key AS rank, name AS chart_name)
 FROM
   (SELECT 1 AS key, "2" AS name);
 ```
@@ -2094,7 +2094,7 @@ When using this syntax, the following rules apply:
 
 To create a protocol buffer with an extension, use this syntax:
 
-```zetasql
+```googlesql
 NEW protocol_buffer(expression AS (path.to.extension), ...)
 ```
 
@@ -2106,11 +2106,11 @@ NEW protocol_buffer(expression AS (path.to.extension), ...)
 
     Example:
 
-    ```zetasql
+    ```googlesql
     SELECT
-     NEW zetasql.examples.music.Album (
+     NEW googlesql.examples.music.Album (
        album AS album_name,
-       count AS (zetasql.examples.music.downloads)
+       count AS (googlesql.examples.music.downloads)
      )
      FROM (SELECT 'New Moon' AS album, 30 AS count);
 
@@ -2125,14 +2125,14 @@ NEW protocol_buffer(expression AS (path.to.extension), ...)
 
     Example:
 
-    ```zetasql
+    ```googlesql
     SELECT
-     NEW zetasql.examples.music.Album(
+     NEW googlesql.examples.music.Album(
        'New Moon' AS album_name,
-       NEW zetasql.examples.music.AlbumExtension(
+       NEW googlesql.examples.music.AlbumExtension(
         DATE(1956,1,1) AS release_date
        )
-     AS (zetasql.examples.music.AlbumExtension.album_extension));
+     AS (googlesql.examples.music.AlbumExtension.album_extension));
 
     /*---------------------------------------------+
      | $col1                                       |
@@ -2154,13 +2154,13 @@ value table where the row type is a specific named protocol buffer type.
 the [`NEW`][new-keyword] keyword instead. For example,  to create a
 protocol buffer with an extension, change a query like this:
 
-```zetasql
+```googlesql
 SELECT AS typename field1, field2, ...
 ```
 
 to a query like this:
 
-```zetasql
+```googlesql
 SELECT AS VALUE NEW ProtoType(field1, field2, field3 AS (path.to.extension), ...)
 ```
 
@@ -2177,19 +2177,19 @@ alternative solutions:
 
 [protocol-buffers-dev-guide]: https://developers.google.com/protocol-buffers/docs/overview
 
-[protocol-buffers]: https://github.com/google/zetasql/blob/master/docs/protocol-buffers.md
+[protocol-buffers]: https://github.com/google/googlesql/blob/master/docs/protocol-buffers.md
 
-[new-operator]: https://github.com/google/zetasql/blob/master/docs/operators.md#new_operator
+[new-operator]: https://github.com/google/googlesql/blob/master/docs/operators.md#new_operator
 
-[select-as-typename]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#select_as_typename
+[select-as-typename]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#select_as_typename
 
 [new-keyword]: #using_new
 
-[explicit-alias]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#explicit_alias_syntax
+[explicit-alias]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#explicit_alias_syntax
 
-[implicit-alias]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#implicit_aliases
+[implicit-alias]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#implicit_aliases
 
-[conversion-rules]: https://github.com/google/zetasql/blob/master/docs/conversion_rules.md
+[conversion-rules]: https://github.com/google/googlesql/blob/master/docs/conversion_rules.md
 
 ## Range type 
 <a id="range_type"></a>
@@ -2258,7 +2258,7 @@ see [`RANGE`][range-constructor].
 You can construct a range with a range literal. The canonical format for a
 range literal has the following parts:
 
-```zetasql
+```googlesql
 RANGE<T> '[lower_bound, upper_bound)'
 ```
 
@@ -2281,19 +2281,19 @@ see [Range literals][range-literals].
 
 The range type doesn't support arithmetic operators.
 
-[range-literals]: https://github.com/google/zetasql/blob/master/docs/lexical.md#range_literals
+[range-literals]: https://github.com/google/googlesql/blob/master/docs/lexical.md#range_literals
 
 [range-with-constructor]: #range_with_constructor
 
-[range-constructor]: https://github.com/google/zetasql/blob/master/docs/range-functions.md#range
+[range-constructor]: https://github.com/google/googlesql/blob/master/docs/range-functions.md#range
 
 [range-with-literal]: #range_with_literal
 
-[date-literals]: https://github.com/google/zetasql/blob/master/docs/lexical.md#date_literals
+[date-literals]: https://github.com/google/googlesql/blob/master/docs/lexical.md#date_literals
 
-[datetime-literals]: https://github.com/google/zetasql/blob/master/docs/lexical.md#datetime_literals
+[datetime-literals]: https://github.com/google/googlesql/blob/master/docs/lexical.md#datetime_literals
 
-[timestamp-literals]: https://github.com/google/zetasql/blob/master/docs/lexical.md#timestamp_literals
+[timestamp-literals]: https://github.com/google/googlesql/blob/master/docs/lexical.md#timestamp_literals
 
 ## String type 
 <a id="string_type"></a>
@@ -2336,7 +2336,7 @@ bytes aren't valid UTF-8.
 To learn more about the literal representation of a string type,
 see [String literals][string-literals].
 
-[string-literals]: https://github.com/google/zetasql/blob/master/docs/lexical.md#string_and_bytes_literals
+[string-literals]: https://github.com/google/googlesql/blob/master/docs/lexical.md#string_and_bytes_literals
 
 ## Struct type 
 <a id="struct_type"></a>
@@ -2561,7 +2561,7 @@ the struct pairwise in ordinal order ignoring any field names. If instead you
 want to compare identically named fields of a struct, you can compare the
 individual fields directly.
 
-[struct-literals]: https://github.com/google/zetasql/blob/master/docs/lexical.md#struct_literals
+[struct-literals]: https://github.com/google/googlesql/blob/master/docs/lexical.md#struct_literals
 
 ## Time type 
 <a id="time_type"></a>
@@ -2612,7 +2612,7 @@ see [Time literals][time-literals].
 
 [timestamp-type]: #timestamp_type
 
-[time-literals]: https://github.com/google/zetasql/blob/master/docs/lexical.md#time_literals
+[time-literals]: https://github.com/google/googlesql/blob/master/docs/lexical.md#time_literals
 
 ## Timestamp type 
 <a id="timestamp_type"></a>
@@ -2726,11 +2726,11 @@ Time zones are represented by strings in one of these canonical formats:
 The following timestamps are identical because the time zone offset
 for `America/Los_Angeles` is `-08` for the specified date and time.
 
-```zetasql
+```googlesql
 SELECT UNIX_MILLIS(TIMESTAMP '2008-12-25 15:30:00 America/Los_Angeles') AS millis;
 ```
 
-```zetasql
+```googlesql
 SELECT UNIX_MILLIS(TIMESTAMP '2008-12-25 15:30:00-08:00') AS millis;
 ```
 
@@ -2857,7 +2857,7 @@ with a timezone that observes DST, the following rules apply:
   between 2 AM and 3 AM on March 10, 2024 is skipped on a clock. The times
   2:30 AM and 3:30 AM on that date are treated as the same point in time:
 
-  ```zetasql
+  ```googlesql
   SELECT
   FORMAT_TIMESTAMP("%c %Z", "2024-03-10 02:30:00 America/Los_Angeles", "UTC") AS two_thirty,
   FORMAT_TIMESTAMP("%c %Z", "2024-03-10 03:30:00 America/Los_Angeles", "UTC") AS three_thirty;
@@ -2871,7 +2871,7 @@ with a timezone that observes DST, the following rules apply:
 + When there's ambiguity in how to represent a civil time in a particular
   timezone because of DST, the later time is chosen:
 
-  ```zetasql
+  ```googlesql
   SELECT
   FORMAT_TIMESTAMP("%c %Z", "2024-03-10 10:30:00 UTC", "America/Los_Angeles") as ten_thirty;
 
@@ -2888,7 +2888,7 @@ with a timezone that observes DST, the following rules apply:
   clock. The time 1:30 AM on that date is treated as the earlier (DST) instance
   of that time.
 
-  ```zetasql
+  ```googlesql
   SELECT
   FORMAT_TIMESTAMP("%c %Z", "2024-11-03 01:30:00 America/Los_Angeles", "UTC") as one_thirty,
   FORMAT_TIMESTAMP("%c %Z", "2024-11-03 02:30:00 America/Los_Angeles", "UTC") as two_thirty;
@@ -2912,7 +2912,7 @@ with a timezone that observes DST, the following rules apply:
 
 [datetime-type]: #datetime_type
 
-[timestamp-literals]: https://github.com/google/zetasql/blob/master/docs/lexical.md#timestamp_literals
+[timestamp-literals]: https://github.com/google/googlesql/blob/master/docs/lexical.md#timestamp_literals
 
 ## UUID type 
 <a id="uuid_type"></a>
@@ -2945,7 +2945,7 @@ represent a UUID:
 
 You can cast a UUID to a string by using the following syntax:
 
-```zetasql
+```googlesql
   SELECT CAST(NEW_UUID() AS STRING) AS UUID_STR;
 ```
 
@@ -2954,11 +2954,11 @@ implicit coercion of a literal or parameter.
 
 **Examples**
 
-```zetasql
+```googlesql
   SELECT UUID_id >= CAST("00000000-0000-0000-0000-000000000000" AS UUID) FROM T1;
 ```
 
-```zetasql
+```googlesql
   SELECT UUID_id >= "00000000-0000-0000-0000-000000000000" FROM T1;
 ```
 
@@ -2966,7 +2966,7 @@ implicit coercion of a literal or parameter.
 
 You can cast a UUID to bytes by using the following syntax:
 
-```zetasql
+```googlesql
   SELECT CAST(NEW_UUID() AS BYTES) AS UUID_BYTES;
 ```
 
@@ -3025,7 +3025,7 @@ using lexicographical order.
 
 **Example**
 
-```zetasql
+```googlesql
   SELECT NEW_UUID() >= "00000000-0000-0000-0000-000000000000" AS Is_GE;
 
 /*-------+
@@ -3039,11 +3039,11 @@ using lexicographical order.
 
 [floating-point-types]: #floating_point_types
 
-[lexical-literals]: https://github.com/google/zetasql/blob/master/docs/lexical.md#literals
+[lexical-literals]: https://github.com/google/googlesql/blob/master/docs/lexical.md#literals
 
-[join-types]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#join_types
+[join-types]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#join_types
 
-[order-by-clause]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#order_by_clause
+[order-by-clause]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#order_by_clause
 
-[st-equals]: https://github.com/google/zetasql/blob/master/docs/geography_functions.md#st_equals
+[st-equals]: https://github.com/google/googlesql/blob/master/docs/geography_functions.md#st_equals
 

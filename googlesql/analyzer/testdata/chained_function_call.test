@@ -1,0 +1,1916 @@
+[default language_features=NONE]
+[default sqlbuilder_target_syntax_map_mode=kChainedFunctionCall]
+
+SELECT abc().def()
+--
+ERROR: Chained function calls are not supported [at 1:14]
+SELECT abc().def()
+             ^
+==
+
+SELECT abc().(def.ghi)()
+--
+ERROR: Chained function calls are not supported [at 1:15]
+SELECT abc().(def.ghi)()
+              ^
+==
+
+[default language_features=NONE,+CHAINED_FUNCTION_CALLS,+SAFE_FUNCTION_CALL,+ANALYTIC_FUNCTIONS,+INLINE_LAMBDA_ARGUMENT,+NAMED_ARGUMENTS,+ARRAY_AGGREGATION_FUNCTIONS,+BRACED_PROTO_CONSTRUCTORS,+PIPES,+MULTILEVEL_AGGREGATION]
+# Call chained function calls, with and without parentheses.
+SELECT (123)
+  .sqrt()
+  .(safe.sqrt)()
+  .(sqrt)()
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [DOUBLE]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(GoogleSQL:sqrt(DOUBLE) -> DOUBLE)
+    |     +-FunctionCall({SAFE_ERROR_MODE} GoogleSQL:sqrt(DOUBLE) -> DOUBLE)
+    |       +-FunctionCall(GoogleSQL:sqrt(DOUBLE) -> DOUBLE)
+    |         +-Literal(type=DOUBLE, value=123)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+SELECT (1-5).abs()
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(GoogleSQL:abs(INT64) -> INT64)
+    |     +-FunctionCall(GoogleSQL:$subtract(INT64, INT64) -> INT64)
+    |       +-Literal(type=INT64, value=1)
+    |       +-Literal(type=INT64, value=5)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Signature mismatch error.
+# The error location points at the function name.
+select ("abc").concat("def", 5, "ghi")
+--
+ERROR: No matching signature for function CONCAT
+  Argument types: STRING (from chained function call input), STRING, INT64, STRING
+  Signature: CONCAT(STRING, [STRING, ...])
+    Argument 3: Unable to coerce type INT64 to expected type STRING
+  Signature: CONCAT(BYTES, [BYTES, ...])
+    Argument 1: Unable to coerce type STRING to expected type BYTES [at 1:16]
+select ("abc").concat("def", 5, "ghi")
+               ^
+==
+
+select (5).concat("def")
+--
+ERROR: No matching signature for function CONCAT
+  Argument types: INT64 (from chained function call input), STRING
+  Signature: CONCAT(STRING, [STRING, ...])
+    Argument 1: Unable to coerce type INT64 to expected type STRING
+  Signature: CONCAT(BYTES, [BYTES, ...])
+    Argument 1: Unable to coerce type INT64 to expected type BYTES [at 1:12]
+select (5).concat("def")
+           ^
+==
+
+# Bad expression before the chained call.
+SELECT (invalid_column).abs()
+--
+ERROR: Unrecognized name: invalid_column [at 1:9]
+SELECT (invalid_column).abs()
+        ^
+==
+
+# Bad function name in the chained call.
+SELECT (123).bad_function()
+--
+ERROR: Function not found: bad_function; Did you mean test_function? [at 1:14]
+SELECT (123).bad_function()
+             ^
+==
+
+# When we have a bad expression and a bad function name, we want to get the
+# error for the expression first.
+# This requires special error handling in resolver_expr.cc.
+SELECT (bad_column).bad_function()
+--
+ERROR: Unrecognized name: bad_column [at 1:9]
+SELECT (bad_column).bad_function()
+        ^
+==
+
+# With multiple bad function names, we want the error for the first one.
+# This requires special error handling in resolver_expr.cc.
+SELECT bad_f1().bad_f2().bad_f3()
+--
+ERROR: Function not found: bad_f1 [at 1:8]
+SELECT bad_f1().bad_f2().bad_f3()
+       ^
+==
+
+# In a chain of function calls, we want the error for first bad function name.
+# This requires special error handling in resolver_expr.cc.
+select rand().coalesce().bad_func1().bad_func2().coalesce()
+--
+ERROR: Function not found: bad_func1 [at 1:26]
+select rand().coalesce().bad_func1().bad_func2().coalesce()
+                         ^
+==
+
+# Same thing for window function calls.  We want the earlier error on the expr.
+select (bad_expr).bad_func1().bad_func2() OVER ()
+from KeyValue
+--
+ERROR: Unrecognized name: bad_expr [at 1:9]
+select (bad_expr).bad_func1().bad_func2() OVER ()
+        ^
+==
+
+# Same thing for window function calls.  We want the first bad function.
+select (123).bad_func1().bad_func2() OVER ()
+from KeyValue
+--
+ERROR: Function not found: bad_func1 [at 1:14]
+select (123).bad_func1().bad_func2() OVER ()
+             ^
+==
+
+# With bad arguemnts, we get the error for the first failed signature match.
+# This happens as part of the normal flow.
+select coalesce("abc").substr(1,2).substr(1,2,3).substr(1,2,3).substr(1,2)
+--
+ERROR: No matching signature for function SUBSTR
+  Argument types: STRING (from chained function call input), INT64, INT64, INT64
+  Signature: SUBSTR(STRING, INT64, [INT64])
+    Signature accepts at most 3 arguments, found 4 arguments (including chained function call input)
+  Signature: SUBSTR(BYTES, INT64, [INT64])
+    Signature accepts at most 3 arguments, found 4 arguments (including chained function call input) [at 1:36]
+select coalesce("abc").substr(1,2).substr(1,2,3).substr(1,2,3).substr(1,2)
+                                   ^
+==
+
+select "abc".substr()
+--
+ERROR: No matching signature for function SUBSTR
+  Argument types: STRING (from chained function call input)
+  Signature: SUBSTR(STRING, INT64, [INT64])
+    Signature requires at least 2 arguments, found 1 argument (including chained function call input)
+  Signature: SUBSTR(BYTES, INT64, [INT64])
+    Signature requires at least 2 arguments, found 1 argument (including chained function call input) [at 1:14]
+select "abc".substr()
+             ^
+==
+
+# A bad function name after an aggregate function works as expected.
+select (key).sum().bad_function()
+from KeyValue
+--
+ERROR: Function not found: bad_function; Did you mean test_function? [at 1:20]
+select (key).sum().bad_function()
+                   ^
+==
+
+# Error for aggregate-of-aggregate underneath a bad function name.
+[language_features=NONE,+CHAINED_FUNCTION_CALLS{{|,+MULTILEVEL_AGGREGATION}}]
+select (key).sum().sum().bad_function()
+from KeyValue
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: Aggregations of aggregations are not allowed [at 1:20]
+select (key).sum().sum().bad_function()
+                   ^
+--
+ALTERNATION GROUP: ,+MULTILEVEL_AGGREGATION
+--
+ERROR: Multi-level aggregation requires the enclosing aggregate function to have one or more GROUP BY modifiers. [at 1:20]
+select (key).sum().sum().bad_function()
+                   ^
+==
+
+# Error for illegal window function underneath a bad function name.
+select key
+from KeyValue
+group by (value).max() OVER ().bad_function()
+--
+ERROR: Analytic function not allowed in GROUP BY [at 3:18]
+group by (value).max() OVER ().bad_function()
+                 ^
+==
+
+# Signature mismatch error for an aggregate function.
+select (key).sum(1) OVER ()
+from KeyValue
+--
+ERROR: No matching signature for aggregate function SUM
+  Argument types: INT64, INT64
+  Signature: SUM(INT64)
+    Signature accepts at most 1 argument, found 2 arguments
+  Signature: SUM(UINT64)
+    Signature accepts at most 1 argument, found 2 arguments
+  Signature: SUM(DOUBLE)
+    Signature accepts at most 1 argument, found 2 arguments [at 1:14]
+select (key).sum(1) OVER ()
+             ^
+==
+
+SELECT "abc".concat("def").substr(2,2)
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(GoogleSQL:substr(STRING, INT64, optional(1) INT64) -> STRING)
+    |     +-FunctionCall(GoogleSQL:concat(STRING, repeated(1) STRING) -> STRING)
+    |     | +-Literal(type=STRING, value="abc")
+    |     | +-Literal(type=STRING, value="def")
+    |     +-Literal(type=INT64, value=2)
+    |     +-Literal(type=INT64, value=2)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# We get type inference on the base arg for the NULL literal.
+SELECT (null).concat("def")
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(GoogleSQL:concat(STRING, repeated(1) STRING) -> STRING)
+    |     +-Literal(type=STRING, value=NULL)
+    |     +-Literal(type=STRING, value="def")
+    +-input_scan=
+      +-SingleRowScan
+==
+
+SELECT (-5).safe.sqrt()
+--
+ERROR: Cannot access field safe on a value with type INT64; Calling multi-part function names in chained call syntax requires parentheses; Did you mean .(safe.sqrt)(...)? [at 1:13]
+SELECT (-5).safe.sqrt()
+            ^
+==
+
+[language_features=NONE,+CHAINED_FUNCTION_CALLS]
+SELECT (-5).sqrt().(safe.sqrt)().sqrt()
+--
+ERROR: Function calls with SAFE are not supported [at 1:21]
+SELECT (-5).sqrt().(safe.sqrt)().sqrt()
+                    ^
+==
+
+# Aggregate functions.
+SELECT (key).sum(), (value).count().abs()
+FROM KeyValue
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#3 AS `$col1` [INT64]
+| +-$query.$col2#5 AS `$col2` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#3, $query.$col2#5]
+    +-expr_list=
+    | +-$col2#5 :=
+    |   +-FunctionCall(GoogleSQL:abs(INT64) -> INT64)
+    |     +-ColumnRef(type=INT64, column=$aggregate.$agg2#4)
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=$aggregate.[$agg1#3, $agg2#4]
+        +-input_scan=
+        | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+        +-aggregate_list=
+          +-$agg1#3 :=
+          | +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+          |   +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+          +-$agg2#4 :=
+            +-AggregateFunctionCall(GoogleSQL:count(STRING) -> INT64)
+              +-ColumnRef(type=STRING, column=KeyValue.Value#2)
+==
+
+# Calling a zero-arg function.
+select "abc".rand()
+--
+ERROR: No matching signature for function RAND
+  Argument types: STRING (from chained function call input)
+  Signature: RAND()
+    Signature accepts at most 0 arguments, found 1 argument (including chained function call input) [at 1:14]
+select "abc".rand()
+             ^
+==
+
+# COUNT(*) doesn't make sense as a chained call.
+SELECT (value).count(*)
+FROM KeyValue
+--
+ERROR: Argument * can only be used in COUNT(*) [at 1:22]
+SELECT (value).count(*)
+                     ^
+==
+
+SELECT (value).count(x, *)
+--
+ERROR: Syntax error: Unexpected "*" [at 1:25]
+SELECT (value).count(x, *)
+                        ^
+==
+
+# Make sure these forms of COUNT(*) don't work.
+SELECT *.count()
+--
+ERROR: Syntax error: Expected end of input but got "." [at 1:9]
+SELECT *.count()
+        ^
+==
+
+select (*).count()
+--
+ERROR: Syntax error: Unexpected "*" [at 1:9]
+select (*).count()
+        ^
+==
+
+# Try something that might work like `t.*`.
+select kv.*.count()
+--
+ERROR: Syntax error: Expected end of input but got "." [at 1:12]
+select kv.*.count()
+           ^
+==
+
+select (kv.*).count()
+from KeyValue
+--
+ERROR: Syntax error: Unexpected "*" [at 1:12]
+select (kv.*).count()
+           ^
+==
+
+# A window functions will work if it's the last thing before OVER.
+# key.sum().abs() doesn't work because ABS isn't a window function.
+[language_features=NONE,+CHAINED_FUNCTION_CALLS{{|,+ANALYTIC_FUNCTIONS}}]
+SELECT (key).sum(){{|.abs()}} OVER ()
+FROM KeyValue
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: Analytic functions not supported [at 1:14]
+SELECT (key).sum() OVER ()
+             ^
+--
+ALTERNATION GROUP: .abs()
+--
+ERROR: Analytic functions not supported [at 1:20]
+SELECT (key).sum().abs() OVER ()
+                   ^
+--
+ALTERNATION GROUP: ,+ANALYTIC_FUNCTIONS,
+--
+QueryStmt
++-output_column_list=
+| +-$analytic.$analytic1#4 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$analytic.$analytic1#4]
+    +-input_scan=
+      +-AnalyticScan
+        +-column_list=[KeyValue.Key#1, $analytic.$analytic1#4]
+        +-input_scan=
+        | +-TableScan(column_list=[KeyValue.Key#1], table=KeyValue, column_index_list=[0])
+        +-function_group_list=
+          +-AnalyticFunctionGroup
+            +-analytic_function_list=
+              +-$analytic1#4 :=
+                +-AnalyticFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+                  +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+                  +-window_frame=
+                    +-WindowFrame(frame_unit=ROWS)
+                      +-start_expr=
+                      | +-WindowFrameExpr(boundary_type=UNBOUNDED PRECEDING)
+                      +-end_expr=
+                        +-WindowFrameExpr(boundary_type=UNBOUNDED FOLLOWING)
+--
+ALTERNATION GROUP: ,+ANALYTIC_FUNCTIONS,.abs()
+--
+ERROR: Function ABS does not support an OVER clause [at 1:20]
+SELECT (key).sum().abs() OVER ()
+                   ^
+==
+
+# Chained call after the window function works, even without
+# parentheses.
+SELECT (key).sum() OVER ().abs()
+FROM KeyValue
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#5 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#5]
+    +-expr_list=
+    | +-$col1#5 :=
+    |   +-FunctionCall(GoogleSQL:abs(INT64) -> INT64)
+    |     +-ColumnRef(type=INT64, column=$analytic.$analytic1#4)
+    +-input_scan=
+      +-AnalyticScan
+        +-column_list=[KeyValue.Key#1, $analytic.$analytic1#4]
+        +-input_scan=
+        | +-TableScan(column_list=[KeyValue.Key#1], table=KeyValue, column_index_list=[0])
+        +-function_group_list=
+          +-AnalyticFunctionGroup
+            +-analytic_function_list=
+              +-$analytic1#4 :=
+                +-AnalyticFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+                  +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+                  +-window_frame=
+                    +-WindowFrame(frame_unit=ROWS)
+                      +-start_expr=
+                      | +-WindowFrameExpr(boundary_type=UNBOUNDED PRECEDING)
+                      +-end_expr=
+                        +-WindowFrameExpr(boundary_type=UNBOUNDED FOLLOWING)
+==
+
+# Wrong type.
+select "abc".sqrt()
+--
+ERROR: No matching signature for function SQRT
+  Argument types: STRING (from chained function call input)
+  Signature: SQRT(DOUBLE)
+    Argument 1: Unable to coerce type STRING to expected type DOUBLE [at 1:14]
+select "abc".sqrt()
+             ^
+==
+
+# Widening cast gets added.
+SELECT (1+2).sqrt()
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [DOUBLE]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(GoogleSQL:sqrt(DOUBLE) -> DOUBLE)
+    |     +-Cast(INT64 -> DOUBLE)
+    |       +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |         +-Literal(type=INT64, value=1)
+    |         +-Literal(type=INT64, value=2)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Type inference for NULL.
+SELECT NULL.sqrt()
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [DOUBLE]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(GoogleSQL:sqrt(DOUBLE) -> DOUBLE)
+    |     +-Literal(type=DOUBLE, value=NULL)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Type inference for [] from the array argument's declared type.
+SELECT [].fn_on_int32_array_returns_int32()
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [INT32]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(sample_functions:fn_on_int32_array_returns_int32(ARRAY<INT32>) -> INT32)
+    |     +-Literal(type=ARRAY<INT32>, value=[])
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Type for [] infers a default type, the same way in both syntaxes.
+SELECT {{[].array_sum()|array_sum([])}}
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(GoogleSQL:array_sum(ARRAY<INT64> input_array) -> INT64)
+    |     +-Literal(type=ARRAY<INT64>, value=[])
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# ARRAY_SUM with doubles works the same in both syntaxes.
+SELECT {{[1.5].array_sum()|array_sum([1.5])}}
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [DOUBLE]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(GoogleSQL:array_sum(ARRAY<DOUBLE> input_array) -> DOUBLE)
+    |     +-Literal(type=ARRAY<DOUBLE>, value=[1.5])
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Type inference for [] from another arg in a templated call.
+SELECT [].array_includes("abc")
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [BOOL]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(GoogleSQL:array_includes(ARRAY<STRING> array_to_search, STRING search_value) -> BOOL)
+    |     +-Literal(type=ARRAY<STRING>, value=[])
+    |     +-Literal(type=STRING, value="abc")
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Default type for [] when there's an ANY ARRAY arg.
+SELECT [].fn_on_any_array_returns_element()
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(sample_functions:fn_on_any_array_returns_element(ARRAY<INT64>) -> INT64)
+    |     +-Literal(type=ARRAY<INT64>, value=[])
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Literal coercion for date literals.
+SELECT {{"2022-01-01"|"2022-01-01 12:12:12"|"bad"}}
+          .date_add(interval 1 day)
+--
+ALTERNATION GROUP: "2022-01-01"
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [DATE]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(GoogleSQL:date_add(DATE, INT64, ENUM<googlesql.functions.DateTimestampPart>) -> DATE)
+    |     +-Literal(type=DATE, value=2022-01-01)
+    |     +-Literal(type=INT64, value=1)
+    |     +-Literal(type=ENUM<googlesql.functions.DateTimestampPart>, value=DAY)
+    +-input_scan=
+      +-SingleRowScan
+--
+ALTERNATION GROUP: "2022-01-01 12:12:12"
+--
+ERROR: Could not cast literal "2022-01-01 12:12:12" to type DATE [at 1:8]
+SELECT "2022-01-01 12:12:12"
+       ^
+--
+ALTERNATION GROUP: "bad"
+--
+ERROR: Could not cast literal "bad" to type DATE [at 1:8]
+SELECT "bad"
+       ^
+==
+
+# Literal coercion for timestamp literals.
+SELECT {{"2022-01-01"|"2022-01-01 12:12:12"|"bad"}}
+          .fn_on_timestamp()
+--
+ALTERNATION GROUP: "2022-01-01"
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [BOOL]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(sample_functions:fn_on_timestamp(TIMESTAMP) -> BOOL)
+    |     +-Literal(type=TIMESTAMP, value=2022-01-01 08:00:00+00)
+    +-input_scan=
+      +-SingleRowScan
+--
+ALTERNATION GROUP: "2022-01-01 12:12:12"
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [BOOL]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(sample_functions:fn_on_timestamp(TIMESTAMP) -> BOOL)
+    |     +-Literal(type=TIMESTAMP, value=2022-01-01 20:12:12+00)
+    +-input_scan=
+      +-SingleRowScan
+--
+ALTERNATION GROUP: "bad"
+--
+ERROR: Could not cast literal "bad" to type TIMESTAMP [at 1:8]
+SELECT "bad"
+       ^
+==
+
+# Literal coercion for enum literals.
+select {{"TESTENUM1"|"TeStEnUm2"|"bad"|NULL}}
+   .fn_on_TestEnum()
+--
+ALTERNATION GROUP: "TESTENUM1"
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [BOOL]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(sample_functions:fn_on_TestEnum(ENUM<googlesql_test.TestEnum>) -> BOOL)
+    |     +-Literal(type=ENUM<googlesql_test.TestEnum>, value=TESTENUM1)
+    +-input_scan=
+      +-SingleRowScan
+--
+ALTERNATION GROUP: "TeStEnUm2"
+--
+ERROR: Could not cast literal "TeStEnUm2" to type googlesql_test.TestEnum; Did you mean 'TESTENUM2'? (Note: ENUM values are case sensitive) [at 1:8]
+select "TeStEnUm2"
+       ^
+--
+ALTERNATION GROUP: "bad"
+--
+ERROR: Could not cast literal "bad" to type googlesql_test.TestEnum [at 1:8]
+select "bad"
+       ^
+--
+ALTERNATION GROUP: NULL
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [BOOL]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(sample_functions:fn_on_TestEnum(ENUM<googlesql_test.TestEnum>) -> BOOL)
+    |     +-Literal(type=ENUM<googlesql_test.TestEnum>, value=NULL)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# String-literal coercion for protos.
+select {{"int64_key_1: 1 int64_key_2: 2"|"bad_field: 6"|""|null}}
+   .fn_on_KitchenSinkPB()
+--
+ALTERNATION GROUP: "int64_key_1: 1 int64_key_2: 2"
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [BOOL]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(sample_functions:fn_on_KitchenSinkPB(PROTO<googlesql_test.KitchenSinkPB>) -> BOOL)
+    |     +-Literal(type=PROTO<googlesql_test.KitchenSinkPB>, value={int64_key_1: 1 int64_key_2: 2})
+    +-input_scan=
+      +-SingleRowScan
+--
+ALTERNATION GROUP: "bad_field: 6"
+--
+ERROR: Could not cast literal "bad_field: 6" to type googlesql_test.KitchenSinkPB (Error parsing proto: Message type "googlesql_test.KitchenSinkPB" has no field named "bad_field". [1:10]) [at 1:8]
+select "bad_field: 6"
+       ^
+--
+ALTERNATION GROUP: ""
+--
+ERROR: Could not cast literal "" to type googlesql_test.KitchenSinkPB (Error parsing proto: Message missing required fields: int64_key_1, int64_key_2 [0:1]) [at 1:8]
+select ""
+       ^
+--
+ALTERNATION GROUP: null
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [BOOL]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(sample_functions:fn_on_KitchenSinkPB(PROTO<googlesql_test.KitchenSinkPB>) -> BOOL)
+    |     +-Literal(type=PROTO<googlesql_test.KitchenSinkPB>, value=NULL)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Proto constructor type inference.
+# This doesn't work for function arguments yet, in either syntax.
+select {int64_key_1: 1, int64_key_2: 2}
+   .fn_on_KitchenSinkPB()
+--
+ERROR: Unable to infer a type for braced constructor [at 1:8]
+select {int64_key_1: 1, int64_key_2: 2}
+       ^
+==
+
+select (5).offset()
+--
+ERROR: OFFSET is not a function. It can only be used for array element access using array[OFFSET(position)] [at 1:12]
+select (5).offset()
+           ^
+==
+
+# OFFSET(1) in array access does not work as 1.OFFSET().
+# It's part of the syntax of array accessors, not a function.
+[language_features=NONE,+CHAINED_FUNCTION_CALLS{{|,+BARE_ARRAY_ACCESS}}]
+select [1,2,3][ {{offset(1)|(1).offset()}} ]
+--
+ALTERNATION GROUPS:
+    offset(1)
+    ,+BARE_ARRAY_ACCESS,offset(1)
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(GoogleSQL:$array_at_offset(ARRAY<INT64>, INT64) -> INT64)
+    |     +-Literal(type=ARRAY<INT64>, value=[1, 2, 3])
+    |     +-Literal(type=INT64, value=1)
+    +-input_scan=
+      +-SingleRowScan
+--
+ALTERNATION GROUP: (1).offset()
+--
+ERROR: Array element access with array[position] is not supported. Use array[OFFSET(zero_based_offset)] or array[ORDINAL(one_based_ordinal)] [at 1:17]
+select [1,2,3][ (1).offset() ]
+                ^
+--
+ALTERNATION GROUP: ,+BARE_ARRAY_ACCESS,(1).offset()
+--
+ERROR: OFFSET is not a function. It can only be used for array element access using array[OFFSET(position)] [at 1:21]
+select [1,2,3][ (1).offset() ]
+                    ^
+==
+
+# Function with a lambda arg.
+SELECT [1,2,3].array_transform(x -> x + 1)
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#2 AS `$col1` [ARRAY<INT64>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#2]
+    +-expr_list=
+    | +-$col1#2 :=
+    |   +-FunctionCall(GoogleSQL:array_transform(ARRAY<INT64> array_to_transform, FUNCTION<INT64->INT64> transformation) -> ARRAY<INT64>)
+    |     +-FunctionArgument
+    |     | +-expr=
+    |     |   +-Literal(type=ARRAY<INT64>, value=[1, 2, 3])
+    |     +-FunctionArgument
+    |       +-inline_lambda=
+    |         +-InlineLambda
+    |           +-argument_list=[$lambda_arg.x#1]
+    |           +-body=
+    |             +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |               +-ColumnRef(type=INT64, column=$lambda_arg.x#1)
+    |               +-Literal(type=INT64, value=1)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Function with a named arg.
+select ("abc").fn_named_args(date_string=>"def")
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [BOOL]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(sample_functions:fn_named_args(STRING format_string, STRING date_string) -> BOOL)
+    |     +-Literal(type=STRING, value="abc")
+    |     +-Literal(type=STRING, value="def")
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Function that accepts only named-only args.
+select ("abc").fn_named_args_error_if_positional(date_string=>"def")
+--
+ERROR: No matching signature for function SAMPLE_FUNCTIONS:FN_NAMED_ARGS_ERROR_IF_POSITIONAL
+  Argument types: STRING (from chained function call input), date_string => STRING
+  Signature: FN_NAMED_ARGS_ERROR_IF_POSITIONAL(format_string => STRING, date_string => STRING)
+    Positional argument at 1 is invalid because argument `format_string` can only be referred to by name [at 1:16]
+select ("abc").fn_named_args_error_if_positional(date_string=>"def")
+               ^
+==
+
+# This function expects a lambda first.
+SELECT (123).fn_fp_lambda_then_repeated()
+--
+ERROR: No matching signature for function SAMPLE_FUNCTIONS:FN_FP_LAMBDA_THEN_REPEATED
+  Argument types: INT64 (from chained function call input)
+  Signature: FN_FP_LAMBDA_THEN_REPEATED(FUNCTION<INT64->T1>, [INT64, ...])
+    Argument 1: expected FUNCTION<INT64->T1>, found INT64 [at 1:14]
+SELECT (123).fn_fp_lambda_then_repeated()
+             ^
+==
+
+# Lambdas don't currently work as base arguments because they aren't expressions.
+SELECT (x -> x+1).fn_fp_lambda_then_repeated()
+--
+ERROR: Syntax error: Expected "," but got "->" [at 1:11]
+SELECT (x -> x+1).fn_fp_lambda_then_repeated()
+          ^
+==
+
+# Aggregate functions called with chained syntax.
+SELECT (key).sum(), (value).upper().any_value().substr(1,2)
+FROM KeyValue
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#3 AS `$col1` [INT64]
+| +-$query.$col2#5 AS `$col2` [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#3, $query.$col2#5]
+    +-expr_list=
+    | +-$col2#5 :=
+    |   +-FunctionCall(GoogleSQL:substr(STRING, INT64, optional(1) INT64) -> STRING)
+    |     +-ColumnRef(type=STRING, column=$aggregate.$agg2#4)
+    |     +-Literal(type=INT64, value=1)
+    |     +-Literal(type=INT64, value=2)
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=$aggregate.[$agg1#3, $agg2#4]
+        +-input_scan=
+        | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+        +-aggregate_list=
+          +-$agg1#3 :=
+          | +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+          |   +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+          +-$agg2#4 :=
+            +-AggregateFunctionCall(GoogleSQL:any_value(STRING) -> STRING)
+              +-FunctionCall(GoogleSQL:upper(STRING) -> STRING)
+                +-ColumnRef(type=STRING, column=KeyValue.Value#2)
+==
+
+# Aggregate of aggregate.
+[language_features=NONE,+CHAINED_FUNCTION_CALLS{{|,+MULTILEVEL_AGGREGATION}}]
+SELECT (key).sum().sum()
+FROM KeyValue
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: Aggregations of aggregations are not allowed [at 1:20]
+SELECT (key).sum().sum()
+                   ^
+--
+ALTERNATION GROUP: ,+MULTILEVEL_AGGREGATION
+--
+ERROR: Multi-level aggregation requires the enclosing aggregate function to have one or more GROUP BY modifiers. [at 1:20]
+SELECT (key).sum().sum()
+                   ^
+==
+
+# Aggregate of analytic.
+select (sum(key) over ()).avg()
+from KeyValue
+--
+ERROR: Analytic functions cannot be arguments to aggregate functions [at 1:27]
+select (sum(key) over ()).avg()
+                          ^
+==
+
+# The weird SUM(AVG(x)) OVER () window function case.
+SELECT {{(key).avg().sum()|SUM(AVG(key))}} OVER ()
+FROM KeyValue
+--
+QueryStmt
++-output_column_list=
+| +-$analytic.$analytic1#5 AS `$col1` [DOUBLE]
++-query=
+  +-ProjectScan
+    +-column_list=[$analytic.$analytic1#5]
+    +-input_scan=
+      +-AnalyticScan
+        +-column_list=[$aggregate.$agg1#3, $analytic.$analytic1#5]
+        +-input_scan=
+        | +-AggregateScan
+        |   +-column_list=[$aggregate.$agg1#3]
+        |   +-input_scan=
+        |   | +-TableScan(column_list=[KeyValue.Key#1], table=KeyValue, column_index_list=[0])
+        |   +-aggregate_list=
+        |     +-$agg1#3 :=
+        |       +-AggregateFunctionCall(GoogleSQL:avg(INT64) -> DOUBLE)
+        |         +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+        +-function_group_list=
+          +-AnalyticFunctionGroup
+            +-analytic_function_list=
+              +-$analytic1#5 :=
+                +-AnalyticFunctionCall(GoogleSQL:sum(DOUBLE) -> DOUBLE)
+                  +-ColumnRef(type=DOUBLE, column=$aggregate.$agg1#3)
+                  +-window_frame=
+                    +-WindowFrame(frame_unit=ROWS)
+                      +-start_expr=
+                      | +-WindowFrameExpr(boundary_type=UNBOUNDED PRECEDING)
+                      +-end_expr=
+                        +-WindowFrameExpr(boundary_type=UNBOUNDED FOLLOWING)
+==
+
+# Chained calls with hints.
+select sqrt(10) @{hint=1}
+          .coalesce() @{hint=2}
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [DOUBLE]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(GoogleSQL:coalesce(repeated(1) DOUBLE) -> DOUBLE)
+    |     +-FunctionCall(GoogleSQL:sqrt(DOUBLE) -> DOUBLE)
+    |     | +-Literal(type=DOUBLE, value=10)
+    |     | +-hint_list=
+    |     |   +-hint := Literal(type=INT64, value=1)
+    |     +-hint_list=
+    |       +-hint := Literal(type=INT64, value=2)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# When a chained call has the wrong type as its output, the error points at the
+# start of the call, not the function name.
+# This makes sure ASTFunctionCall error location mapping is not misbehaving.
+select *
+from KeyValue
+where (key).coalesce()
+--
+ERROR: WHERE clause should return type BOOL, but returns INT64 [at 3:7]
+where (key).coalesce()
+      ^
+==
+
+# Show output with parse locations in the two supported modes.
+# In CODE_SEARCH mode, the location range is just the function name.
+# In FULL mode, the location range for a function includes the arguments, so they
+# include the base argument, meaning all ranges have the same start point.
+# One regular function call is shown for comparison.
+[parse_location_record_type={{PARSE_LOCATION_RECORD_CODE_SEARCH|PARSE_LOCATION_RECORD_FULL_NODE_SCOPE}}]
+select
+  (1+2)
+    .coalesce()
+    .apply(x->cast(x as string))
+    .upper()
+    .concat('xxx')
+    .lower(),
+  concat("abc","def")
+--
+ALTERNATION GROUP: PARSE_LOCATION_RECORD_CODE_SEARCH
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#2 AS `$col1` [STRING]
+| +-$query.$col2#3 AS `$col2` [STRING]
++-query=
+  +-ProjectScan
+    +-parse_location=0-131
+    +-column_list=$query.[$col1#2, $col2#3]
+    +-expr_list=
+    | +-$col1#2 :=
+    | | +-FunctionCall(GoogleSQL:lower(STRING) -> STRING)
+    | |   +-parse_location=101-106
+    | |   +-FunctionCall(GoogleSQL:concat(STRING, repeated(1) STRING) -> STRING)
+    | |     +-parse_location=82-88
+    | |     +-FunctionCall(GoogleSQL:upper(STRING) -> STRING)
+    | |     | +-parse_location=69-74
+    | |     | +-FunctionCall(GoogleSQL:apply(INT64 value, FUNCTION<INT64->STRING> transform) -> STRING)
+    | |     |   +-parse_location=36-41
+    | |     |   +-FunctionArgument
+    | |     |   | +-expr=
+    | |     |   |   +-FunctionCall(GoogleSQL:coalesce(repeated(1) INT64) -> INT64)
+    | |     |   |     +-parse_location=20-28
+    | |     |   |     +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    | |     |   |       +-parse_location=10-13
+    | |     |   |       +-Literal(parse_location=10-11, type=INT64, value=1)
+    | |     |   |       +-Literal(parse_location=12-13, type=INT64, value=2)
+    | |     |   +-FunctionArgument
+    | |     |     +-inline_lambda=
+    | |     |       +-InlineLambda
+    | |     |         +-argument_list=[$lambda_arg.x#1]
+    | |     |         +-body=
+    | |     |           +-Cast(INT64 -> STRING)
+    | |     |             +-parse_location=55-61
+    | |     |             +-ColumnRef(parse_location=50-51, type=INT64, column=$lambda_arg.x#1)
+    | |     +-Literal(parse_location=89-94, type=STRING, value="xxx")
+    | +-$col2#3 :=
+    |   +-FunctionCall(GoogleSQL:concat(STRING, repeated(1) STRING) -> STRING)
+    |     +-parse_location=112-118
+    |     +-Literal(parse_location=119-124, type=STRING, value="abc")
+    |     +-Literal(parse_location=125-130, type=STRING, value="def")
+    +-input_scan=
+      +-SingleRowScan
+[REPLACED_LITERALS]
+select
+  (@_p0_INT64+@_p1_INT64)
+    .coalesce()
+    .apply(x->cast(x as string))
+    .upper()
+    .concat(@_p2_STRING)
+    .lower(),
+  concat(@_p5_STRING,@_p6_STRING)
+--
+ALTERNATION GROUP: PARSE_LOCATION_RECORD_FULL_NODE_SCOPE
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#2 AS `$col1` [STRING]
+| +-$query.$col2#3 AS `$col2` [STRING]
++-query=
+  +-ProjectScan
+    +-parse_location=0-131
+    +-column_list=$query.[$col1#2, $col2#3]
+    +-expr_list=
+    | +-$col1#2 :=
+    | | +-FunctionCall(GoogleSQL:lower(STRING) -> STRING)
+    | |   +-parse_location=9-108
+    | |   +-FunctionCall(GoogleSQL:concat(STRING, repeated(1) STRING) -> STRING)
+    | |     +-parse_location=9-95
+    | |     +-FunctionCall(GoogleSQL:upper(STRING) -> STRING)
+    | |     | +-parse_location=9-76
+    | |     | +-FunctionCall(GoogleSQL:apply(INT64 value, FUNCTION<INT64->STRING> transform) -> STRING)
+    | |     |   +-parse_location=9-63
+    | |     |   +-FunctionArgument
+    | |     |   | +-expr=
+    | |     |   |   +-FunctionCall(GoogleSQL:coalesce(repeated(1) INT64) -> INT64)
+    | |     |   |     +-parse_location=9-30
+    | |     |   |     +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    | |     |   |       +-parse_location=10-13
+    | |     |   |       +-Literal(parse_location=10-11, type=INT64, value=1)
+    | |     |   |       +-Literal(parse_location=12-13, type=INT64, value=2)
+    | |     |   +-FunctionArgument
+    | |     |     +-inline_lambda=
+    | |     |       +-InlineLambda
+    | |     |         +-argument_list=[$lambda_arg.x#1]
+    | |     |         +-body=
+    | |     |           +-Cast(INT64 -> STRING)
+    | |     |             +-parse_location=45-62
+    | |     |             +-ColumnRef(parse_location=50-51, type=INT64, column=$lambda_arg.x#1)
+    | |     +-Literal(parse_location=89-94, type=STRING, value="xxx")
+    | +-$col2#3 :=
+    |   +-FunctionCall(GoogleSQL:concat(STRING, repeated(1) STRING) -> STRING)
+    |     +-parse_location=112-131
+    |     +-Literal(parse_location=119-124, type=STRING, value="abc")
+    |     +-Literal(parse_location=125-130, type=STRING, value="def")
+    +-input_scan=
+      +-SingleRowScan
+[REPLACED_LITERALS]
+select
+  (@_p0_INT64+@_p1_INT64)
+    .coalesce()
+    .apply(x->cast(x as string))
+    .upper()
+    .concat(@_p2_STRING)
+    .lower(),
+  concat(@_p5_STRING,@_p6_STRING)
+==
+
+# A path with () is always treated as a function name.
+select t.RecursivePB.recursive_pb.int64_val.abs()
+from RecursivePBTable t
+--
+ERROR: Function not found: t.RecursivePB.recursive_pb.int64_val.abs; Chained function calls require parentheses on input paths; Did you mean (t.RecursivePB.recursive_pb.int64_val).abs(...)? [at 1:8]
+select t.RecursivePB.recursive_pb.int64_val.abs()
+       ^
+==
+
+# A chained call after a parenthesized path.
+select (t.RecursivePB.recursive_pb.int64_val).abs()
+from RecursivePBTable t
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#2 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#2]
+    +-expr_list=
+    | +-$col1#2 :=
+    |   +-FunctionCall(GoogleSQL:abs(INT64) -> INT64)
+    |     +-GetProtoField
+    |       +-type=INT64
+    |       +-expr=
+    |       | +-GetProtoField
+    |       |   +-type=PROTO<googlesql_test.RecursivePB>
+    |       |   +-expr=
+    |       |   | +-ColumnRef(type=PROTO<googlesql_test.RecursivePB>, column=RecursivePBTable.RecursivePB#1)
+    |       |   +-field_descriptor=recursive_pb
+    |       |   +-default_value=NULL
+    |       +-field_descriptor=int64_val
+    |       +-default_value=0
+    +-input_scan=
+      +-TableScan(column_list=[RecursivePBTable.RecursivePB#1], table=RecursivePBTable, column_index_list=[0], alias="t")
+==
+
+# Mixing chained calls and dot-field syntax.
+select coalesce(t.RecursivePB.recursive_pb)
+          .coalesce()
+          .recursive_pb
+          .recursive_pb
+          .coalesce()
+          .int64_val
+from RecursivePBTable t
+--
+QueryStmt
++-output_column_list=
+| +-$query.int64_val#2 AS int64_val [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.int64_val#2]
+    +-expr_list=
+    | +-int64_val#2 :=
+    |   +-GetProtoField
+    |     +-type=INT64
+    |     +-expr=
+    |     | +-FunctionCall(GoogleSQL:coalesce(repeated(1) PROTO<googlesql_test.RecursivePB>) -> PROTO<googlesql_test.RecursivePB>)
+    |     |   +-GetProtoField
+    |     |     +-type=PROTO<googlesql_test.RecursivePB>
+    |     |     +-expr=
+    |     |     | +-GetProtoField
+    |     |     |   +-type=PROTO<googlesql_test.RecursivePB>
+    |     |     |   +-expr=
+    |     |     |   | +-FunctionCall(GoogleSQL:coalesce(repeated(1) PROTO<googlesql_test.RecursivePB>) -> PROTO<googlesql_test.RecursivePB>)
+    |     |     |   |   +-FunctionCall(GoogleSQL:coalesce(repeated(1) PROTO<googlesql_test.RecursivePB>) -> PROTO<googlesql_test.RecursivePB>)
+    |     |     |   |     +-GetProtoField
+    |     |     |   |       +-type=PROTO<googlesql_test.RecursivePB>
+    |     |     |   |       +-expr=
+    |     |     |   |       | +-ColumnRef(type=PROTO<googlesql_test.RecursivePB>, column=RecursivePBTable.RecursivePB#1)
+    |     |     |   |       +-field_descriptor=recursive_pb
+    |     |     |   |       +-default_value=NULL
+    |     |     |   +-field_descriptor=recursive_pb
+    |     |     |   +-default_value=NULL
+    |     |     +-field_descriptor=recursive_pb
+    |     |     +-default_value=NULL
+    |     +-field_descriptor=int64_val
+    |     +-default_value=0
+    +-input_scan=
+      +-TableScan(column_list=[RecursivePBTable.RecursivePB#1], table=RecursivePBTable, column_index_list=[0], alias="t")
+==
+
+# A path with () is always treated as a function name.
+select t.RecursivePB.recursive_pb.int64_val.abs()
+from RecursivePBTable t
+--
+ERROR: Function not found: t.RecursivePB.recursive_pb.int64_val.abs; Chained function calls require parentheses on input paths; Did you mean (t.RecursivePB.recursive_pb.int64_val).abs(...)? [at 1:8]
+select t.RecursivePB.recursive_pb.int64_val.abs()
+       ^
+==
+
+# A chained call after a parenthesized path.
+select (t.RecursivePB.recursive_pb.int64_val).abs()
+from RecursivePBTable t
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#2 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#2]
+    +-expr_list=
+    | +-$col1#2 :=
+    |   +-FunctionCall(GoogleSQL:abs(INT64) -> INT64)
+    |     +-GetProtoField
+    |       +-type=INT64
+    |       +-expr=
+    |       | +-GetProtoField
+    |       |   +-type=PROTO<googlesql_test.RecursivePB>
+    |       |   +-expr=
+    |       |   | +-ColumnRef(type=PROTO<googlesql_test.RecursivePB>, column=RecursivePBTable.RecursivePB#1)
+    |       |   +-field_descriptor=recursive_pb
+    |       |   +-default_value=NULL
+    |       +-field_descriptor=int64_val
+    |       +-default_value=0
+    +-input_scan=
+      +-TableScan(column_list=[RecursivePBTable.RecursivePB#1], table=RecursivePBTable, column_index_list=[0], alias="t")
+==
+
+# Mixing chained calls and dot-field syntax.
+select coalesce(t.RecursivePB.recursive_pb)
+          .coalesce()
+          .recursive_pb
+          .recursive_pb
+          .coalesce()
+          .int64_val
+from RecursivePBTable t
+--
+QueryStmt
++-output_column_list=
+| +-$query.int64_val#2 AS int64_val [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.int64_val#2]
+    +-expr_list=
+    | +-int64_val#2 :=
+    |   +-GetProtoField
+    |     +-type=INT64
+    |     +-expr=
+    |     | +-FunctionCall(GoogleSQL:coalesce(repeated(1) PROTO<googlesql_test.RecursivePB>) -> PROTO<googlesql_test.RecursivePB>)
+    |     |   +-GetProtoField
+    |     |     +-type=PROTO<googlesql_test.RecursivePB>
+    |     |     +-expr=
+    |     |     | +-GetProtoField
+    |     |     |   +-type=PROTO<googlesql_test.RecursivePB>
+    |     |     |   +-expr=
+    |     |     |   | +-FunctionCall(GoogleSQL:coalesce(repeated(1) PROTO<googlesql_test.RecursivePB>) -> PROTO<googlesql_test.RecursivePB>)
+    |     |     |   |   +-FunctionCall(GoogleSQL:coalesce(repeated(1) PROTO<googlesql_test.RecursivePB>) -> PROTO<googlesql_test.RecursivePB>)
+    |     |     |   |     +-GetProtoField
+    |     |     |   |       +-type=PROTO<googlesql_test.RecursivePB>
+    |     |     |   |       +-expr=
+    |     |     |   |       | +-ColumnRef(type=PROTO<googlesql_test.RecursivePB>, column=RecursivePBTable.RecursivePB#1)
+    |     |     |   |       +-field_descriptor=recursive_pb
+    |     |     |   |       +-default_value=NULL
+    |     |     |   +-field_descriptor=recursive_pb
+    |     |     |   +-default_value=NULL
+    |     |     +-field_descriptor=recursive_pb
+    |     |     +-default_value=NULL
+    |     +-field_descriptor=int64_val
+    |     +-default_value=0
+    +-input_scan=
+      +-TableScan(column_list=[RecursivePBTable.RecursivePB#1], table=RecursivePBTable, column_index_list=[0], alias="t")
+==
+
+# Either of these work, but the first is more natural.
+select (kv.key).sqrt(), kv.key.(sqrt)()
+from KeyValue kv
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#3 AS `$col1` [DOUBLE]
+| +-$query.$col2#4 AS `$col2` [DOUBLE]
++-query=
+  +-ProjectScan
+    +-column_list=$query.[$col1#3, $col2#4]
+    +-expr_list=
+    | +-$col1#3 :=
+    | | +-FunctionCall(GoogleSQL:sqrt(DOUBLE) -> DOUBLE)
+    | |   +-Cast(INT64 -> DOUBLE)
+    | |     +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+    | +-$col2#4 :=
+    |   +-FunctionCall(GoogleSQL:sqrt(DOUBLE) -> DOUBLE)
+    |     +-Cast(INT64 -> DOUBLE)
+    |       +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+    +-input_scan=
+      +-TableScan(column_list=[KeyValue.Key#1], table=KeyValue, column_index_list=[0], alias="kv")
+==
+
+# Trying to do a chained call on a column name without parentheses.
+# We give a suggestion to add parentheses.
+[language_features=NONE,{{|+CHAINED_FUNCTION_CALLS}}]
+select key.sqrt()
+from KeyValue
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: Function not found: key.sqrt [at 1:8]
+select key.sqrt()
+       ^
+--
+ALTERNATION GROUP: +CHAINED_FUNCTION_CALLS
+--
+ERROR: Function not found: key.sqrt; Chained function calls require parentheses on input paths; Did you mean (key).sqrt(...)? [at 1:8]
+select key.sqrt()
+       ^
+==
+
+# Trying to do a chained call on a path without parentheses.
+# The suggestion uses parentheses around the input.
+[language_features=NONE,{{|+CHAINED_FUNCTION_CALLS}}]
+select kv.key.sqrt()
+from KeyValue kv
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: Function not found: kv.key.sqrt [at 1:8]
+select kv.key.sqrt()
+       ^
+--
+ALTERNATION GROUP: +CHAINED_FUNCTION_CALLS
+--
+ERROR: Function not found: kv.key.sqrt; Chained function calls require parentheses on input paths; Did you mean (kv.key).sqrt(...)? [at 1:8]
+select kv.key.sqrt()
+       ^
+==
+
+# For a path ending with `.safe.sqrt()`, we suggest `.(safe.sqrt)()` rather than
+# `.(sqrt)()`.
+[language_features=NONE,{{|+CHAINED_FUNCTION_CALLS}}]
+select kv.key.safe.sqrt()
+from KeyValue kv
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: Function not found: kv.key.safe.sqrt [at 1:8]
+select kv.key.safe.sqrt()
+       ^
+--
+ALTERNATION GROUP: +CHAINED_FUNCTION_CALLS
+--
+ERROR: Function not found: kv.key.safe.sqrt; Calling multi-part function names in chained call syntax requires parentheses; Did you mean kv.key.(safe.sqrt)(...)? [at 1:8]
+select kv.key.safe.sqrt()
+       ^
+==
+
+# We don't make a suggestion for `safe.safe.sqrt`.
+[language_features=NONE,{{|+CHAINED_FUNCTION_CALLS}}]
+select kv.key.safe.safe.sqrt()
+--
+ERROR: Function not found: kv.key.safe.safe.sqrt [at 1:8]
+select kv.key.safe.safe.sqrt()
+       ^
+==
+
+# We can find a two-part function name to suggest.
+[language_features=NONE,{{|+CHAINED_FUNCTION_CALLS}}]
+select kv.key.net.parse_ip()
+from KeyValue
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: Function not found: kv.key.net.parse_ip [at 1:8]
+select kv.key.net.parse_ip()
+       ^
+--
+ALTERNATION GROUP: +CHAINED_FUNCTION_CALLS
+--
+ERROR: Function not found: kv.key.net.parse_ip; Calling multi-part function names in chained call syntax requires parentheses; Did you mean kv.key.(net.parse_ip)(...)? [at 1:8]
+select kv.key.net.parse_ip()
+       ^
+==
+
+# We can find a two-part function name to suggest, plus SAFE.
+[language_features=NONE,{{|+CHAINED_FUNCTION_CALLS}}]
+select kv.key.safe.net.parse_ip()
+from KeyValue
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: Function not found: kv.key.safe.net.parse_ip [at 1:8]
+select kv.key.safe.net.parse_ip()
+       ^
+--
+ALTERNATION GROUP: +CHAINED_FUNCTION_CALLS
+--
+ERROR: Function not found: kv.key.safe.net.parse_ip; Calling multi-part function names in chained call syntax requires parentheses; Did you mean kv.key.(safe.net.parse_ip)(...)? [at 1:8]
+select kv.key.safe.net.parse_ip()
+       ^
+==
+
+# Trying to do a chained call on a path without parentheses, with a
+# two-part function name.
+# The suggestion uses parentheses around the function name.
+[language_features=NONE,{{|+CHAINED_FUNCTION_CALLS}}]
+select kv.key.nested_catalog.nested_function()
+from KeyValue kv
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: Function not found: kv.key.nested_catalog.nested_function [at 1:8]
+select kv.key.nested_catalog.nested_function()
+       ^
+--
+ALTERNATION GROUP: +CHAINED_FUNCTION_CALLS
+--
+ERROR: Function not found: kv.key.nested_catalog.nested_function; Calling multi-part function names in chained call syntax requires parentheses; Did you mean kv.key.(nested_catalog.nested_function)(...)? [at 1:8]
+select kv.key.nested_catalog.nested_function()
+       ^
+==
+
+# Trying to do a chained call on a path without parentheses that
+# could work as a one or two-part name.
+# The suggestion uses the shorter name, which is actually worse here,
+# but we're not checking the base name is valid.
+[language_features=NONE,{{|+CHAINED_FUNCTION_CALLS}}]
+select kv.key.recursive_catalog.test_function()
+from KeyValue kv
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: Function not found: kv.key.recursive_catalog.test_function [at 1:8]
+select kv.key.recursive_catalog.test_function()
+       ^
+--
+ALTERNATION GROUP: +CHAINED_FUNCTION_CALLS
+--
+ERROR: Function not found: kv.key.recursive_catalog.test_function; Chained function calls require parentheses on input paths; Did you mean (kv.key.recursive_catalog).test_function(...)? [at 1:8]
+select kv.key.recursive_catalog.test_function()
+       ^
+==
+
+# If the base path is bad, we'll still get the suggested error.
+[language_features=NONE,{{|+CHAINED_FUNCTION_CALLS}}]
+select bad.path.sqrt()
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: Function not found: bad.path.sqrt [at 1:8]
+select bad.path.sqrt()
+       ^
+--
+ALTERNATION GROUP: +CHAINED_FUNCTION_CALLS
+--
+ERROR: Function not found: bad.path.sqrt; Chained function calls require parentheses on input paths; Did you mean (bad.path).sqrt(...)? [at 1:8]
+select bad.path.sqrt()
+       ^
+==
+
+# If the base path is bad, we'll still get the suggested error, for
+# multi-part names.
+[language_features=NONE,{{|+CHAINED_FUNCTION_CALLS}}]
+select bad.path.nested_catalog.nested_function()
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: Function not found: bad.path.nested_catalog.nested_function [at 1:8]
+select bad.path.nested_catalog.nested_function()
+       ^
+--
+ALTERNATION GROUP: +CHAINED_FUNCTION_CALLS
+--
+ERROR: Function not found: bad.path.nested_catalog.nested_function; Calling multi-part function names in chained call syntax requires parentheses; Did you mean bad.path.(nested_catalog.nested_function)(...)? [at 1:8]
+select bad.path.nested_catalog.nested_function()
+       ^
+==
+
+# Make sure we don't give strange suggestions for how to use SAFE on functions
+# that's don't allow SAFE calls.
+[language_features=NONE,+SAFE_FUNCTION_CALL,+INLINE_LAMBDA_ARGUMENT{{|,+SAFE_FUNCTION_CALL_WITH_LAMBDA_ARGS}}{{|,+CHAINED_FUNCTION_CALLS}}]
+[sqlbuilder_target_syntax_map_mode=]
+SELECT SAFE.ARRAY_FILTER([1,2,3], e -> e>0);
+--
+ALTERNATION GROUPS:
+    <empty>
+    ,+CHAINED_FUNCTION_CALLS
+--
+ERROR: Function ARRAY_FILTER does not support SAFE error mode [at 1:8]
+SELECT SAFE.ARRAY_FILTER([1,2,3], e -> e>0);
+       ^
+--
+ALTERNATION GROUPS:
+    ,+SAFE_FUNCTION_CALL_WITH_LAMBDA_ARGS,
+    ,+SAFE_FUNCTION_CALL_WITH_LAMBDA_ARGS,,+CHAINED_FUNCTION_CALLS
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#2 AS `$col1` [ARRAY<INT64>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#2]
+    +-expr_list=
+    | +-$col1#2 :=
+    |   +-FunctionCall({SAFE_ERROR_MODE} GoogleSQL:array_filter(ARRAY<INT64> array_to_filter, FUNCTION<INT64->BOOL> condition) -> ARRAY<INT64>)
+    |     +-FunctionArgument
+    |     | +-expr=
+    |     |   +-Literal(type=ARRAY<INT64>, value=[1, 2, 3])
+    |     +-FunctionArgument
+    |       +-inline_lambda=
+    |         +-InlineLambda
+    |           +-argument_list=[$lambda_arg.e#1]
+    |           +-body=
+    |             +-FunctionCall(GoogleSQL:$greater(INT64, INT64) -> BOOL)
+    |               +-ColumnRef(type=INT64, column=$lambda_arg.e#1)
+    |               +-Literal(type=INT64, value=0)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Test errors for multi-part function names with and without parentheses.
+# Case 1:
+# - `safe` is not a field name.
+# - `coalesce` is also a valid function name without the prefix.
+#
+# All cases are actually valid here.
+select struct(1 AS safe, 2 as other) AS st
+|> extend (st).safe.coalesce(), ((st).safe).coalesce(), (st).(safe.coalesce)()
+--
+QueryStmt
++-output_column_list=
+| +-$query.st#1 AS st [STRUCT<safe INT64, other INT64>]
+| +-$pipe_extend.$col1#2 AS `$col1` [INT64]
+| +-$pipe_extend.$col2#3 AS `$col2` [INT64]
+| +-$pipe_extend.$col3#4 AS `$col3` [STRUCT<safe INT64, other INT64>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.st#1, $pipe_extend.$col1#2, $pipe_extend.$col2#3, $pipe_extend.$col3#4]
+    +-expr_list=
+    | +-$col1#2 :=
+    | | +-FunctionCall(GoogleSQL:coalesce(repeated(1) INT64) -> INT64)
+    | |   +-GetStructField
+    | |     +-type=INT64
+    | |     +-expr=
+    | |     | +-ColumnRef(type=STRUCT<safe INT64, other INT64>, column=$query.st#1)
+    | |     +-field_idx=0
+    | +-$col2#3 :=
+    | | +-FunctionCall(GoogleSQL:coalesce(repeated(1) INT64) -> INT64)
+    | |   +-GetStructField
+    | |     +-type=INT64
+    | |     +-expr=
+    | |     | +-ColumnRef(type=STRUCT<safe INT64, other INT64>, column=$query.st#1)
+    | |     +-field_idx=0
+    | +-$col3#4 :=
+    |   +-FunctionCall({SAFE_ERROR_MODE} GoogleSQL:coalesce(repeated(1) STRUCT<safe INT64, other INT64>) -> STRUCT<safe INT64, other INT64>)
+    |     +-ColumnRef(type=STRUCT<safe INT64, other INT64>, column=$query.st#1)
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[$query.st#1]
+        +-expr_list=
+        | +-st#1 := Literal(type=STRUCT<safe INT64, other INT64>, value={safe:1, other:2})
+        +-input_scan=
+          +-SingleRowScan
+==
+
+# Test errors for multi-part function names with and without parentheses.
+# Case 2:
+# - `safe` is a field name.
+# - `coalesce` is also a valid function name without the prefix.
+select struct(1 AS not_safe, 2 as other) AS st
+|> extend {{(st).safe.coalesce()| ((st).safe).coalesce()| (st).(safe.coalesce)()}}
+--
+ALTERNATION GROUP: (st).safe.coalesce()
+--
+ERROR: Field name safe does not exist in STRUCT<not_safe INT64, other INT64>; Calling multi-part function names in chained call syntax requires parentheses; Did you mean .(safe.coalesce)(...)? [at 2:16]
+|> extend (st).safe.coalesce()
+               ^
+--
+ALTERNATION GROUP:  ((st).safe).coalesce()
+--
+ERROR: Field name safe does not exist in STRUCT<not_safe INT64, other INT64> [at 2:18]
+|> extend  ((st).safe).coalesce()
+                 ^
+--
+ALTERNATION GROUP:  (st).(safe.coalesce)()
+--
+QueryStmt
++-output_column_list=
+| +-$query.st#1 AS st [STRUCT<not_safe INT64, other INT64>]
+| +-$pipe_extend.$col1#2 AS `$col1` [STRUCT<not_safe INT64, other INT64>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.st#1, $pipe_extend.$col1#2]
+    +-expr_list=
+    | +-$col1#2 :=
+    |   +-FunctionCall({SAFE_ERROR_MODE} GoogleSQL:coalesce(repeated(1) STRUCT<not_safe INT64, other INT64>) -> STRUCT<not_safe INT64, other INT64>)
+    |     +-ColumnRef(type=STRUCT<not_safe INT64, other INT64>, column=$query.st#1)
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[$query.st#1]
+        +-expr_list=
+        | +-st#1 := Literal(type=STRUCT<not_safe INT64, other INT64>, value={not_safe:1, other:2})
+        +-input_scan=
+          +-SingleRowScan
+==
+
+# Test errors for multi-part function names with and without parentheses.
+# Case 3:
+# - `net` is not a field name.
+# - `parse_ip` is not a valid function without the prefix.
+select struct(1 AS not_safe, 2 as other) AS st
+|> extend {{(st).net.parse_ip()| ((st).net).parse_ip()| (st).(net.parse_ip)()}}
+--
+ALTERNATION GROUP: (st).net.parse_ip()
+--
+ERROR: Function not found: parse_ip; Calling multi-part function names in chained call syntax requires parentheses; Did you mean .(net.parse_ip)(...)? [at 2:20]
+|> extend (st).net.parse_ip()
+                   ^
+--
+ALTERNATION GROUP:  ((st).net).parse_ip()
+--
+ERROR: Field name net does not exist in STRUCT<not_safe INT64, other INT64> [at 2:18]
+|> extend  ((st).net).parse_ip()
+                 ^
+--
+ALTERNATION GROUP:  (st).(net.parse_ip)()
+--
+ERROR: No matching signature for function NET.PARSE_IP
+  Argument types: STRUCT<not_safe INT64, other INT64> (from chained function call input)
+  Signature: NET.PARSE_IP(STRING)
+    Argument 1: Unable to coerce type STRUCT<not_safe INT64, other INT64> to expected type STRING [at 2:18]
+|> extend  (st).(net.parse_ip)()
+                 ^
+==
+
+# Test errors for multi-part function names with and without parentheses.
+# Case 3b:
+# - `nested_catalog` is not a field name.
+# - `nested_function` is not a valid function without the prefix.
+#
+# Same as case 3, except `nested_function` is close enough to
+# `test_function` that we get another "Did you mean" suggestion.
+select struct(1 AS not_safe, 2 as other) AS st
+|> extend {{(st).nested_catalog.nested_function()| ((st).nested_catalog).nested_function()| (st).(nested_catalog.nested_function)()}}
+--
+ALTERNATION GROUP: (st).nested_catalog.nested_function()
+--
+ERROR: Function not found: nested_function; Did you mean test_function?; Calling multi-part function names in chained call syntax requires parentheses; Did you mean .(nested_catalog.nested_function)(...)? [at 2:31]
+|> extend (st).nested_catalog.nested_function()
+                              ^
+--
+ALTERNATION GROUP:  ((st).nested_catalog).nested_function()
+--
+ERROR: Field name nested_catalog does not exist in STRUCT<not_safe INT64, other INT64> [at 2:18]
+|> extend  ((st).nested_catalog).nested_function()
+                 ^
+--
+ALTERNATION GROUP:  (st).(nested_catalog.nested_function)()
+--
+ERROR: No matching signature for function SAMPLE_FUNCTIONS:NESTED_CATALOG.NESTED_FUNCTION
+  Argument types: STRUCT<not_safe INT64, other INT64> (from chained function call input)
+  Signature: NESTED_CATALOG.NESTED_FUNCTION(INT64)
+    Argument 1: Unable to coerce type STRUCT<not_safe INT64, other INT64> to expected type INT64 [at 2:18]
+|> extend  (st).(nested_catalog.nested_function)()
+                 ^
+==
+
+# Test errors for multi-part function names with and without parentheses.
+# Case 4:
+# - `net` is a field name.
+# - `parse_ip` is not a valid function without the prefix.
+select struct(1 AS net, 2 as other) AS st
+|> extend {{(st).net.parse_ip()| ((st).net).parse_ip()| (st).(net.parse_ip)()}}
+--
+ALTERNATION GROUP: (st).net.parse_ip()
+--
+ERROR: Function not found: parse_ip; Calling multi-part function names in chained call syntax requires parentheses; Did you mean .(net.parse_ip)(...)? [at 2:20]
+|> extend (st).net.parse_ip()
+                   ^
+--
+ALTERNATION GROUP:  ((st).net).parse_ip()
+--
+ERROR: Function not found: parse_ip [at 2:23]
+|> extend  ((st).net).parse_ip()
+                      ^
+--
+ALTERNATION GROUP:  (st).(net.parse_ip)()
+--
+ERROR: No matching signature for function NET.PARSE_IP
+  Argument types: STRUCT<net INT64, other INT64> (from chained function call input)
+  Signature: NET.PARSE_IP(STRING)
+    Argument 1: Unable to coerce type STRUCT<net INT64, other INT64> to expected type STRING [at 2:18]
+|> extend  (st).(net.parse_ip)()
+                 ^
+==
+
+# Test errors for multi-part function names with and without parentheses.
+# Case 4b:
+# - `nested_catalog` is a field name.
+# - `nested_function` is not a valid function without the prefix.
+#
+# Same as case 4, except `nested_function` is close enough to
+# `test_function` that we get another "Did you mean" suggestion.
+select struct(1 AS nested_catalog, 2 as other) AS st
+|> extend {{(st).nested_catalog.nested_function()| ((st).nested_catalog).nested_function()| (st).(nested_catalog.nested_function)()}}
+--
+ALTERNATION GROUP: (st).nested_catalog.nested_function()
+--
+ERROR: Function not found: nested_function; Did you mean test_function?; Calling multi-part function names in chained call syntax requires parentheses; Did you mean .(nested_catalog.nested_function)(...)? [at 2:31]
+|> extend (st).nested_catalog.nested_function()
+                              ^
+--
+ALTERNATION GROUP:  ((st).nested_catalog).nested_function()
+--
+ERROR: Function not found: nested_function; Did you mean test_function? [at 2:34]
+|> extend  ((st).nested_catalog).nested_function()
+                                 ^
+--
+ALTERNATION GROUP:  (st).(nested_catalog.nested_function)()
+--
+ERROR: No matching signature for function SAMPLE_FUNCTIONS:NESTED_CATALOG.NESTED_FUNCTION
+  Argument types: STRUCT<nested_catalog INT64, other INT64> (from chained function call input)
+  Signature: NESTED_CATALOG.NESTED_FUNCTION(INT64)
+    Argument 1: Unable to coerce type STRUCT<nested_catalog INT64, other INT64> to expected type INT64 [at 2:18]
+|> extend  (st).(nested_catalog.nested_function)()
+                 ^
+==
+
+# Test errors for multi-part function names with and without parentheses.
+# Case 5:
+# - `bad_catalog` is not a field name.
+# - `bad_function` is not a valid function.
+select struct(1 AS nested_catalog, 2 as other) AS st
+|> extend {{(st).bad_catalog.bad_function()| ((st).bad_catalog).bad_function()| (st).(bad_catalog.bad_function)()}}
+--
+ALTERNATION GROUP: (st).bad_catalog.bad_function()
+--
+ERROR: Field name bad_catalog does not exist in STRUCT<nested_catalog INT64, other INT64> [at 2:16]
+|> extend (st).bad_catalog.bad_function()
+               ^
+--
+ALTERNATION GROUP:  ((st).bad_catalog).bad_function()
+--
+ERROR: Field name bad_catalog does not exist in STRUCT<nested_catalog INT64, other INT64> [at 2:18]
+|> extend  ((st).bad_catalog).bad_function()
+                 ^
+--
+ALTERNATION GROUP:  (st).(bad_catalog.bad_function)()
+--
+ERROR: Function not found: bad_catalog.bad_function [at 2:18]
+|> extend  (st).(bad_catalog.bad_function)()
+                 ^
+==
+
+# We don't really need the suggestion here, but it's unlikeley and isn't wrong.
+select "abc".net.(parse_ip)()
+--
+ERROR: Function not found: parse_ip; Calling multi-part function names in chained call syntax requires parentheses; Did you mean .(net.parse_ip)(...)? [at 1:19]
+select "abc".net.(parse_ip)()
+                  ^
+==
+
+# No suggestion here.
+select "abc".net.(parse_ip.xxx)()
+--
+ERROR: Cannot access field net on a value with type STRING [at 1:14]
+select "abc".net.(parse_ip.xxx)()
+             ^
+==
+
+# We also get suggestions for unparenthesized window functions.
+# (Tests an alternate code path to ResolveExpressionArguments.)
+select (key).{{bad.bad|nested_catalog.nested_function|safe.sum|(safe.sum)}}() over ()
+from KeyValue
+--
+ALTERNATION GROUP: bad.bad
+--
+ERROR: Cannot access field bad on a value with type INT64 [at 1:14]
+select (key).bad.bad() over ()
+             ^
+--
+ALTERNATION GROUP: nested_catalog.nested_function
+--
+ERROR: Function not found: nested_function; Did you mean test_function?; Calling multi-part function names in chained call syntax requires parentheses; Did you mean .(nested_catalog.nested_function)(...)? [at 1:29]
+select (key).nested_catalog.nested_function() over ()
+                            ^
+--
+ALTERNATION GROUP: safe.sum
+--
+ERROR: Cannot access field safe on a value with type INT64; Calling multi-part function names in chained call syntax requires parentheses; Did you mean .(safe.sum)(...)? [at 1:14]
+select (key).safe.sum() over ()
+             ^
+--
+ALTERNATION GROUP: (safe.sum)
+--
+QueryStmt
++-output_column_list=
+| +-$analytic.$analytic1#4 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$analytic.$analytic1#4]
+    +-input_scan=
+      +-AnalyticScan
+        +-column_list=[KeyValue.Key#1, $analytic.$analytic1#4]
+        +-input_scan=
+        | +-TableScan(column_list=[KeyValue.Key#1], table=KeyValue, column_index_list=[0])
+        +-function_group_list=
+          +-AnalyticFunctionGroup
+            +-analytic_function_list=
+              +-$analytic1#4 :=
+                +-AnalyticFunctionCall({SAFE_ERROR_MODE} GoogleSQL:sum(INT64) -> INT64)
+                  +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+                  +-window_frame=
+                    +-WindowFrame(frame_unit=ROWS)
+                      +-start_expr=
+                      | +-WindowFrameExpr(boundary_type=UNBOUNDED PRECEDING)
+                      +-end_expr=
+                        +-WindowFrameExpr(boundary_type=UNBOUNDED FOLLOWING)
+==
+
+# We were previosuly getting suggestions for unparenthesized multi-level
+# aggregate functions, but they are now disallowed in chained calls.
+# (Tests an alternate code path to ResolveExpressionArguments.)
+select sum(key).{{bad.bad|nested_catalog.nested_function|safe.sum|(safe.sum)}}(group by value)
+from KeyValue
+--
+ALTERNATION GROUP: bad.bad
+--
+ERROR: Chained function call cannot use multi-level aggregation [at 1:21]
+select sum(key).bad.bad(group by value)
+                    ^
+--
+ALTERNATION GROUP: nested_catalog.nested_function
+--
+ERROR: Chained function call cannot use multi-level aggregation [at 1:32]
+select sum(key).nested_catalog.nested_function(group by value)
+                               ^
+--
+ALTERNATION GROUP: safe.sum
+--
+ERROR: Chained function call cannot use multi-level aggregation [at 1:22]
+select sum(key).safe.sum(group by value)
+                     ^
+--
+ALTERNATION GROUP: (safe.sum)
+--
+ERROR: Chained function call cannot use multi-level aggregation [at 1:18]
+select sum(key).(safe.sum)(group by value)
+                 ^
+==
+
+# Multi-level aggregates, expressed with different combinations of
+# chained and non-chained calls for the inner and outer aggregate.
+select {{avg(sum(key)|avg((key).sum()|sum(key).avg(|(key).sum().avg(}} group by value)
+from KeyValue
+--
+ALTERNATION GROUPS:
+    avg(sum(key)
+    avg((key).sum()
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#5 AS `$col1` [DOUBLE]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#5]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$aggregate.$agg1#5]
+        +-input_scan=
+        | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+        +-aggregate_list=
+          +-$agg1#5 :=
+            +-AggregateFunctionCall(GoogleSQL:avg(INT64) -> DOUBLE)
+              +-ColumnRef(type=INT64, column=$aggregate.$agg1#4)
+              +-group_by_list=
+              | +-$groupbymod#3 := ColumnRef(type=STRING, column=KeyValue.Value#2)
+              +-group_by_aggregate_list=
+                +-$agg1#4 :=
+                  +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+                    +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+--
+ALTERNATION GROUP: sum(key).avg(
+--
+ERROR: Chained function call cannot use multi-level aggregation [at 1:17]
+select sum(key).avg( group by value)
+                ^
+--
+ALTERNATION GROUP: (key).sum().avg(
+--
+ERROR: Chained function call cannot use multi-level aggregation [at 1:20]
+select (key).sum().avg( group by value)
+                   ^

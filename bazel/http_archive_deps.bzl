@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Module extension for ZetaSQL http_archive dependencies."""
+"""Module extension for GoogleSQL http_archive dependencies."""
 
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 
@@ -85,4 +85,4 @@ def _http_archive_deps_impl(_):
         ],
     )
 
-zetasql_http_archive_deps = module_extension(implementation = _http_archive_deps_impl)
+googlesql_http_archive_deps = module_extension(implementation = _http_archive_deps_impl)

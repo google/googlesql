@@ -1,0 +1,255 @@
+[default language_features=MAXIMUM]
+CLONE DATA INTO ds.tbl
+FROM ds.src
+--
+ERROR: CLONE DATA not supported [at 1:1]
+CLONE DATA INTO ds.tbl
+^
+==
+
+# Source is value table
+[default language_features=MAXIMUM,+CLONE_DATA]
+CLONE DATA INTO KeyValue
+FROM Int64ValueTable
+--
+ERROR: Cannot copy from value table: Int64ValueTable [at 2:6]
+FROM Int64ValueTable
+     ^
+==
+
+# Target is value table
+[default language_features=MAXIMUM,+CLONE_DATA]
+CLONE DATA INTO Int64ValueTable
+FROM KeyValue
+--
+ERROR: Cannot clone into a value table: Int64ValueTable [at 1:17]
+CLONE DATA INTO Int64ValueTable
+                ^
+==
+
+# Source and target have different number of columns
+[default language_features=MAXIMUM,+CLONE_DATA]
+CLONE DATA INTO KeyValue
+FROM SimpleTypes
+--
+ERROR: Source table SimpleTypes has different number of columns than destination table KeyValue: 19 vs. 2 [at 2:6]
+FROM SimpleTypes
+     ^
+==
+
+# Clone into same table
+[default language_features=MAXIMUM,+CLONE_DATA]
+CLONE DATA INTO KeyValue
+FROM KeyValue
+--
+ERROR: Source table cannot be the same as destination table [at 2:6]
+FROM KeyValue
+     ^
+==
+
+# Clone from the same table twice
+[default language_features=MAXIMUM,+CLONE_DATA]
+CLONE DATA INTO KeyValue
+FROM AnotherKeyValue UNION ALL AnotherKeyValue
+--
+ERROR: Cannot clone from the same source table twice [at 2:32]
+FROM AnotherKeyValue UNION ALL AnotherKeyValue
+                               ^
+==
+
+# Same number of columns but diffrent column type
+[default language_features=MAXIMUM,+CLONE_DATA]
+CLONE DATA INTO KeyValue
+FROM TwoIntegers
+--
+ERROR: Incompatible column KeyValue.Value (STRING) vs. TwoIntegers.value (INT64) [at 2:6]
+FROM TwoIntegers
+     ^
+==
+
+# Different number of columns between source and destination table,
+# with WHERE clause.
+[default language_features=MAXIMUM,+CLONE_DATA]
+CLONE DATA INTO KeyValue
+FROM SimpleTypes WHERE int32 = 1
+--
+ERROR: Source table SimpleTypes has different number of columns than destination table KeyValue: 19 vs. 2 [at 2:6]
+FROM SimpleTypes WHERE int32 = 1
+     ^
+==
+
+# Different number of columns between source and destination table,
+# with FOR SYSTEM_TIME clause.
+[default language_features=MAXIMUM,+CLONE_DATA]
+CLONE DATA INTO KeyValue
+FROM SimpleTypes FOR SYSTEM_TIME AS OF CURRENT_TIMESTAMP()
+--
+ERROR: Source table SimpleTypes has different number of columns than destination table KeyValue: 19 vs. 2 [at 2:6]
+FROM SimpleTypes FOR SYSTEM_TIME AS OF CURRENT_TIMESTAMP()
+     ^
+==
+
+# Same number of columns, same type but different name,
+# with FOR SYSTEM_TIME clause.
+[language_features=NONE,+CLONE_DATA]
+CLONE DATA INTO KeyValue FROM KeyValue2 FOR SYSTEM_TIME AS OF CURRENT_TIMESTAMP()
+--
+ERROR: Incompatible column KeyValue.Value (STRING) vs. KeyValue2.Value2 (STRING) [at 1:31]
+CLONE DATA INTO KeyValue FROM KeyValue2 FOR SYSTEM_TIME AS OF CURRENT_TIMESTA...
+                              ^
+==
+
+# Same number of columns, same type but different name,
+# with WHERE clause.
+[language_features=NONE,+CLONE_DATA]
+CLONE DATA INTO KeyValue FROM KeyValue2 WHERE Key = 1 AND Value2 IS NULL
+--
+ERROR: Incompatible column KeyValue.Value (STRING) vs. KeyValue2.Value2 (STRING) [at 1:31]
+CLONE DATA INTO KeyValue FROM KeyValue2 WHERE Key = 1 AND Value2 IS NULL
+                              ^
+==
+
+# One of the source tables in UNION ALL is incompatible
+[default language_features=MAXIMUM,+CLONE_DATA]
+CLONE DATA INTO KeyValue
+FROM KeyValueReadTimeIgnored UNION ALL KeyValue2
+--
+ERROR: Incompatible column KeyValue.Value (STRING) vs. KeyValue2.Value2 (STRING) [at 2:40]
+FROM KeyValueReadTimeIgnored UNION ALL KeyValue2
+                                       ^
+==
+
+# Subquery as source is not supported.
+[default language_features=MAXIMUM,+CLONE_DATA]
+CLONE DATA INTO KeyValue
+FROM (SELECT 1, 2)
+--
+ERROR: Syntax error: Unexpected "(" [at 2:6]
+FROM (SELECT 1, 2)
+     ^
+==
+
+# Simplest form.
+[default language_features=MAXIMUM,+CLONE_DATA]
+CLONE DATA INTO KeyValue
+FROM AnotherKeyValue
+--
+CloneDataStmt
++-target_table=
+| +-TableScan(table=KeyValue)
++-clone_from=
+  +-TableScan(table=AnotherKeyValue)
+==
+
+
+[language_features=NONE,+CLONE_DATA]
+CLONE DATA INTO KeyValue FROM AnotherKeyValue
+WHERE (select 1) = 1
+--
+CloneDataStmt
++-target_table=
+| +-TableScan(table=KeyValue)
++-clone_from=
+  +-FilterScan
+    +-input_scan=
+    | +-TableScan(table=AnotherKeyValue)
+    +-filter_expr=
+      +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+        +-SubqueryExpr
+        | +-type=INT64
+        | +-subquery_type=SCALAR
+        | +-subquery=
+        |   +-ProjectScan
+        |     +-column_list=[$expr_subquery.$col1#5]
+        |     +-expr_list=
+        |     | +-$col1#5 := Literal(type=INT64, value=1)
+        |     +-input_scan=
+        |       +-SingleRowScan
+        +-Literal(type=INT64, value=1)
+==
+
+# Group by is not supported.
+[default language_features=MAXIMUM,+CLONE_DATA]
+CLONE DATA INTO KeyValue
+FROM AnotherKeyValue
+GROUP BY KEY
+--
+ERROR: Syntax error: Expected end of input but got keyword GROUP [at 3:1]
+GROUP BY KEY
+^
+==
+
+# Clone from multiple tables.
+[default language_features=MAXIMUM,+CLONE_DATA]
+CLONE DATA INTO KeyValue
+FROM KeyValueReadTimeIgnored UNION ALL AnotherKeyValue
+--
+CloneDataStmt
++-target_table=
+| +-TableScan(table=KeyValue)
++-clone_from=
+  +-SetOperationScan
+    +-op_type=UNION_ALL
+    +-input_item_list=
+      +-SetOperationItem
+      | +-scan=
+      | | +-TableScan(table=KeyValueReadTimeIgnored)
+      | +-output_column_list=KeyValueReadTimeIgnored.[Key#3, Value#4]
+      +-SetOperationItem
+        +-scan=
+        | +-TableScan(table=AnotherKeyValue)
+        +-output_column_list=AnotherKeyValue.[Key#5, value#6]
+==
+
+[language_features=NONE,+CLONE_DATA]
+CLONE DATA INTO KeyValue
+FROM AnotherKeyValue WHERE Key = 1 AND Value IS NULL
+UNION ALL KeyValueReadTimeIgnored FOR SYSTEM_TIME AS OF CURRENT_TIMESTAMP()
+WHERE Value = ''
+--
+CloneDataStmt
++-target_table=
+| +-TableScan(table=KeyValue)
++-clone_from=
+  +-SetOperationScan
+    +-op_type=UNION_ALL
+    +-input_item_list=
+      +-SetOperationItem
+      | +-scan=
+      | | +-FilterScan
+      | |   +-column_list=AnotherKeyValue.[Key#3, value#4]
+      | |   +-input_scan=
+      | |   | +-TableScan(column_list=AnotherKeyValue.[Key#3, value#4], table=AnotherKeyValue, column_index_list=[0, 1])
+      | |   +-filter_expr=
+      | |     +-FunctionCall(GoogleSQL:$and(BOOL, repeated(1) BOOL) -> BOOL)
+      | |       +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+      | |       | +-ColumnRef(type=INT64, column=AnotherKeyValue.Key#3)
+      | |       | +-Literal(type=INT64, value=1)
+      | |       +-FunctionCall(GoogleSQL:$is_null(STRING) -> BOOL)
+      | |         +-ColumnRef(type=STRING, column=AnotherKeyValue.value#4)
+      | +-output_column_list=AnotherKeyValue.[Key#3, value#4]
+      +-SetOperationItem
+        +-scan=
+        | +-FilterScan
+        |   +-column_list=[KeyValueReadTimeIgnored.Value#6]
+        |   +-input_scan=
+        |   | +-TableScan
+        |   |   +-column_list=[KeyValueReadTimeIgnored.Value#6]
+        |   |   +-table=KeyValueReadTimeIgnored
+        |   |   +-for_system_time_expr=
+        |   |   | +-FunctionCall(GoogleSQL:current_timestamp() -> TIMESTAMP)
+        |   |   +-column_index_list=[1]
+        |   +-filter_expr=
+        |     +-FunctionCall(GoogleSQL:$equal(STRING, STRING) -> BOOL)
+        |       +-ColumnRef(type=STRING, column=KeyValueReadTimeIgnored.Value#6)
+        |       +-Literal(type=STRING, value="")
+        +-output_column_list=KeyValueReadTimeIgnored.[Key#5, Value#6]
+==
+
+[supported_statement_kinds=QUERY]
+CLONE DATA INTO ds.tbl
+FROM ds.src
+--
+ERROR: Statement not supported: CloneDataStatement [at 1:1]
+CLONE DATA INTO ds.tbl
+^

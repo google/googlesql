@@ -4,12 +4,12 @@
 
 # Data model
 
-The following sections provide an overview of the ZetaSQL data
+The following sections provide an overview of the GoogleSQL data
 model.
 
 ## Standard SQL tables
 
-ZetaSQL data is stored in tables. Each table consists of an ordered
+GoogleSQL data is stored in tables. Each table consists of an ordered
 list of columns and a number of rows. Each column has a name used to identify it
 through SQL statements, and is assigned a specific data type.
 
@@ -131,7 +131,7 @@ While tables don't have a type, some operations will construct an implicit
 `STRUCT` type out of a SQL row, using the column names and types for field
 definitions.
 
-For more information on the data types ZetaSQL supports, see
+For more information on the data types GoogleSQL supports, see
 [Data Types][data-types].
 
 ## Constraints
@@ -139,7 +139,7 @@ For more information on the data types ZetaSQL supports, see
 Constraints require that any writes to one or more columns, such as inserts or
 updates, conform to certain rules.
 [Data manipulation language (DML)][data-manipulation-language]
-statements enforce constraints. ZetaSQL supports the
+statements enforce constraints. GoogleSQL supports the
 following constraints:
 
 * **Primary key constraint.** A primary key consists of one or more columns, and
@@ -148,7 +148,7 @@ following constraints:
 
   Some [data manipulation language (DML)][data-manipulation-language]
   keywords may require the existence of a primary key.
-  ZetaSQL also implicitly builds an index on the primary key. The
+  GoogleSQL also implicitly builds an index on the primary key. The
   default order of this index is ascending. The primary key can contain `NULL`
   values.
 * **Unique constraint.** Specifies that one or more columns must contain only
@@ -165,7 +165,7 @@ constraint.
 ## Pseudocolumns 
 <a id="pseudo_columns"></a>
 
-ZetaSQL tables support pseudocolumns. Pseudocolumns contain data elements
+GoogleSQL tables support pseudocolumns. Pseudocolumns contain data elements
 that you can query like regular columns, but aren't considered real columns in
 the table. Pseudocolumn values may not be physically stored with each row, but
 the query engine will materialize a value for the column using some appropriate
@@ -222,14 +222,14 @@ pseudocolumns such as `ROWNUM`.
 
 ## Value tables
 
-In addition to standard SQL _tables_, ZetaSQL supports _value tables_.
+In addition to standard SQL _tables_, GoogleSQL supports _value tables_.
 In a value table, rather than having rows made up of a list of columns, each row
 is a single value of type `STRUCT`, and there are no column names.
 
 In the following example, a value table for a `STRUCT` is produced with the
 `SELECT AS VALUE` statement:
 
-```zetasql
+```googlesql
 SELECT * FROM (SELECT AS VALUE STRUCT(123 AS a, FALSE AS b))
 
 /*-----+-------+
@@ -247,7 +247,7 @@ files instead of in the database.
 For example, the following protocol buffer definition, `AlbumReview`, contains
 data about the reviews for an album.
 
-```zetasql
+```googlesql
 message AlbumReview {
   optional string albumtitle = 1;
   optional string reviewer = 2;
@@ -266,7 +266,7 @@ A list of `AlbumReview` protocol buffers is stored in a file, `AlbumReviewData`.
 The following query returns a stream of rows, with each row a value of type
 `AlbumReview`.
 
-```zetasql
+```googlesql
 SELECT a FROM AlbumReviewsData AS a
 ```
 
@@ -274,20 +274,20 @@ To get specific data, such as all album titles in
 the table, you have two options. You can specify `albumtitle` as a protocol
 buffer field:
 
-```zetasql
+```googlesql
 SELECT a.albumtitle FROM AlbumReviewsData AS a
 ```
 
 You can also access the top-level fields inside the value like columns in a
 table:
 
-```zetasql
+```googlesql
 SELECT albumtitle FROM AlbumReviewsData
 ```
 
 ### Return query results as a value table
 
-You can use ZetaSQL to return query results as a value table. This
+You can use GoogleSQL to return query results as a value table. This
 is useful when you want to store a query result with a
 `PROTO` or  type as a
 table. To return a query result as a value table, use one of the following
@@ -304,7 +304,7 @@ introduces a value table if the subquery used produces a value table.
 In contexts where a query with exactly one column is expected, a value table
 query can be used instead. For example, scalar and
 array [subqueries][subquery-concepts] normally require a single-column query,
-but in ZetaSQL, they also allow using a value table query.
+but in GoogleSQL, they also allow using a value table query.
 
 Most commonly, value tables are used for protocol buffer value tables, where the
 table contains a stream of protocol buffer values. In this case, the top-level
@@ -316,12 +316,12 @@ when querying a regular table.
 In some cases you might not want to work with the data within a protocol buffer,
 but with the protocol buffer itself.
 
-Using `SELECT AS VALUE` can help you keep your ZetaSQL statements as
+Using `SELECT AS VALUE` can help you keep your GoogleSQL statements as
 simple as possible. To illustrate this, consider the
 [AlbumReview][value-table-example] example specified earlier. To create a new
 table from this data, you could write:
 
-```zetasql
+```googlesql
 CREATE TABLE Reviews AS
 SELECT albumreviews FROM AlbumReviewData AS albumreviews;
 ```
@@ -331,7 +331,7 @@ This statement creates a table that has a single column,
 `AlbumReviewData`. To retrieve all album titles from this table, you'd need to
 write a query similar to:
 
-```zetasql
+```googlesql
 SELECT r.albumreviews.albumtitle
 FROM Reviews AS r;
 ```
@@ -339,7 +339,7 @@ FROM Reviews AS r;
 Now, consider the same initial `CREATE TABLE` statement, this time modified to
 use `SELECT AS VALUE`:
 
-```zetasql
+```googlesql
 CREATE TABLE Reviews AS
 SELECT AS VALUE albumreviews FROM AlbumReview AS albumreviews;
 ```
@@ -349,7 +349,7 @@ query any protocol buffer field as if it was a column. Now, if
 you want to retrieve all album titles from this table, you can write a much
 simpler query:
 
-```zetasql
+```googlesql
 SELECT albumtitle
 FROM Reviews;
 ```
@@ -389,7 +389,7 @@ For example, consider the following definition for a table,
 Next, we have a file, `AlbumReviewData` that contains a list of `AlbumReview`
 protocol buffers.
 
-```zetasql
+```googlesql
 {albumtitle: "Songs on a Broken Banjo", reviewer: "Dan Starling", review: "Off key"}
 {albumtitle: "Six and Seven", reviewer: "Alice Wayfarer", review: "Hurt my ears!"}
 {albumtitle: "Go! Go! Go!", reviewer: "Eustace Millson", review: "My kids loved it!"}
@@ -399,7 +399,7 @@ The following query combines the `AlbumReview` data from the
 `SingersAndAlbums` table with the data stored in the `AlbumReviewData` file and
 stores it in a new value table, `AllAlbumReviews`.
 
-```zetasql
+```googlesql
 SELECT AS VALUE sa.AlbumReview FROM SingersAndAlbums AS sa
 UNION ALL
 SELECT a FROM AlbumReviewData AS a
@@ -415,7 +415,7 @@ because `a` is an alias of the table `AlbumReviewData`, and this table has a
 `ROWNUM` pseudocolumn. As a result, `AlbumReviewData AS a` represents the
 scanned rows, not the value.
 
-```zetasql
+```googlesql
 -- This works
 SELECT a.ROWNUM, a.albumtitle AS title FROM AlbumReviewData AS a
 
@@ -433,24 +433,24 @@ The reason it fails is because the subquery,
 `SELECT a FROM AlbumReviewData AS a`, returns the `AlbumReviewData` value only,
 and this value doesn't have a field called `ROWNUM`.
 
-```zetasql
+```googlesql
 -- This fails
 SELECT a.ROWNUM, a.albumtitle AS title FROM (SELECT a FROM AlbumReviewData AS a)
 ```
 
 <!-- mdlint off(WHITESPACE_LINE_LENGTH) -->
 
-[subquery-concepts]: https://github.com/google/zetasql/blob/master/docs/subqueries.md
+[subquery-concepts]: https://github.com/google/googlesql/blob/master/docs/subqueries.md
 
 [value-table-example]: #value_table_example
 
 [pseudocolumns]: #pseudo_columns
 
-[unnest-operator]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#unnest_operator
+[unnest-operator]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#unnest_operator
 
-[with-clause]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#with_clause
+[with-clause]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#with_clause
 
-[query-syntax-select]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#select_list
+[query-syntax-select]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#select_list
 
 <!-- mdlint on -->
 
@@ -477,11 +477,11 @@ To create a property graph on top of a relational dataset, see the
 
 <!-- mdlint off(WHITESPACE_LINE_LENGTH) -->
 
-[data-types]: https://github.com/google/zetasql/blob/master/docs/data-types.md
+[data-types]: https://github.com/google/googlesql/blob/master/docs/data-types.md
 
-[data-manipulation-language]: https://github.com/google/zetasql/blob/master/docs/data-manipulation-language.md
+[data-manipulation-language]: https://github.com/google/googlesql/blob/master/docs/data-manipulation-language.md
 
-[create-property-graph]: https://github.com/google/zetasql/blob/master/docs/data-definition-language.md#create_property_graph
+[create-property-graph]: https://github.com/google/googlesql/blob/master/docs/data-definition-language.md#create_property_graph
 
 <!-- mdlint on -->
 

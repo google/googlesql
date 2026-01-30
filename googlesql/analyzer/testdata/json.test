@@ -1,0 +1,1480 @@
+[default language_features=NONE,+JSON_TYPE]
+
+SELECT JSON '1'
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [JSON]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 := Literal(type=JSON, value=1, has_explicit_type=TRUE)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+SELECT json_col FROM JsonTable
+--
+QueryStmt
++-output_column_list=
+| +-JSONTable.json_col#1 AS json_col [JSON]
++-query=
+  +-ProjectScan
+    +-column_list=[JSONTable.json_col#1]
+    +-input_scan=
+      +-TableScan(column_list=[JSONTable.json_col#1], table=JSONTable, column_index_list=[0])
+==
+
+SELECT json_col.field FROM JsonTable
+--
+QueryStmt
++-output_column_list=
+| +-$query.field#2 AS field [JSON]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.field#2]
+    +-expr_list=
+    | +-field#2 :=
+    |   +-GetJsonField
+    |     +-type=JSON
+    |     +-expr=
+    |     | +-ColumnRef(type=JSON, column=JSONTable.json_col#1)
+    |     +-field_name="field"
+    +-input_scan=
+      +-TableScan(column_list=[JSONTable.json_col#1], table=JSONTable, column_index_list=[0])
+==
+
+SELECT json_col.field.field2 FROM JsonTable
+--
+QueryStmt
++-output_column_list=
+| +-$query.field2#2 AS field2 [JSON]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.field2#2]
+    +-expr_list=
+    | +-field2#2 :=
+    |   +-GetJsonField
+    |     +-type=JSON
+    |     +-expr=
+    |     | +-GetJsonField
+    |     |   +-type=JSON
+    |     |   +-expr=
+    |     |   | +-ColumnRef(type=JSON, column=JSONTable.json_col#1)
+    |     |   +-field_name="field"
+    |     +-field_name="field2"
+    +-input_scan=
+      +-TableScan(column_list=[JSONTable.json_col#1], table=JSONTable, column_index_list=[0])
+==
+
+SELECT json_col.`"foo\'bar[ \?@#\\123_baz` FROM JsonTable
+--
+QueryStmt
++-output_column_list=
+| +-$query."foo'bar[ ?@#\123_baz#2 AS `"foo'bar[ ?@#\\123_baz` [JSON]
++-query=
+  +-ProjectScan
+    +-column_list=[$query."foo'bar[ ?@#\123_baz#2]
+    +-expr_list=
+    | +-"foo'bar[ ?@#\123_baz#2 :=
+    |   +-GetJsonField
+    |     +-type=JSON
+    |     +-expr=
+    |     | +-ColumnRef(type=JSON, column=JSONTable.json_col#1)
+    |     +-field_name="\"foo'bar[ ?@#\\123_baz"
+    +-input_scan=
+      +-TableScan(column_list=[JSONTable.json_col#1], table=JSONTable, column_index_list=[0])
+==
+
+SELECT json_val.field FROM ArrayTypes, UNNEST(JsonArray) AS json_val
+--
+QueryStmt
++-output_column_list=
+| +-$query.field#22 AS field [JSON]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.field#22]
+    +-expr_list=
+    | +-field#22 :=
+    |   +-GetJsonField
+    |     +-type=JSON
+    |     +-expr=
+    |     | +-ColumnRef(type=JSON, column=$array.json_val#21)
+    |     +-field_name="field"
+    +-input_scan=
+      +-ArrayScan
+        +-column_list=[ArrayTypes.JsonArray#17, $array.json_val#21]
+        +-input_scan=
+        | +-TableScan(column_list=[ArrayTypes.JsonArray#17], table=ArrayTypes, column_index_list=[16])
+        +-array_expr_list=
+        | +-ColumnRef(type=ARRAY<JSON>, column=ArrayTypes.JsonArray#17)
+        +-element_column_list=[$array.json_val#21]
+==
+
+SELECT json_col['field'] FROM JsonTable;
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#2 AS `$col1` [JSON]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#2]
+    +-expr_list=
+    | +-$col1#2 :=
+    |   +-FunctionCall(GoogleSQL:$subscript(JSON, STRING) -> JSON)
+    |     +-ColumnRef(type=JSON, column=JSONTable.json_col#1)
+    |     +-Literal(type=STRING, value="field")
+    +-input_scan=
+      +-TableScan(column_list=[JSONTable.json_col#1], table=JSONTable, column_index_list=[0])
+==
+
+SELECT json_col[SUBSTR("bar", 0, 2)] FROM JsonTable;
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#2 AS `$col1` [JSON]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#2]
+    +-expr_list=
+    | +-$col1#2 :=
+    |   +-FunctionCall(GoogleSQL:$subscript(JSON, STRING) -> JSON)
+    |     +-ColumnRef(type=JSON, column=JSONTable.json_col#1)
+    |     +-FunctionCall(GoogleSQL:substr(STRING, INT64, optional(1) INT64) -> STRING)
+    |       +-Literal(type=STRING, value="bar")
+    |       +-Literal(type=INT64, value=0)
+    |       +-Literal(type=INT64, value=2)
+    +-input_scan=
+      +-TableScan(column_list=[JSONTable.json_col#1], table=JSONTable, column_index_list=[0])
+==
+
+select json_col[CAST(0 AS INT32)] from JsonTable;
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#2 AS `$col1` [JSON]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#2]
+    +-expr_list=
+    | +-$col1#2 :=
+    |   +-FunctionCall(GoogleSQL:$subscript(JSON, INT64) -> JSON)
+    |     +-ColumnRef(type=JSON, column=JSONTable.json_col#1)
+    |     +-Literal(type=INT64, value=0, has_explicit_type=TRUE)
+    +-input_scan=
+      +-TableScan(column_list=[JSONTable.json_col#1], table=JSONTable, column_index_list=[0])
+==
+
+SELECT json_col[1+2] FROM JsonTable;
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#2 AS `$col1` [JSON]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#2]
+    +-expr_list=
+    | +-$col1#2 :=
+    |   +-FunctionCall(GoogleSQL:$subscript(JSON, INT64) -> JSON)
+    |     +-ColumnRef(type=JSON, column=JSONTable.json_col#1)
+    |     +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |       +-Literal(type=INT64, value=1)
+    |       +-Literal(type=INT64, value=2)
+    +-input_scan=
+      +-TableScan(column_list=[JSONTable.json_col#1], table=JSONTable, column_index_list=[0])
+
+==
+
+SELECT json_col[1.0] FROM JsonTable;
+--
+ERROR: Subscript access using [DOUBLE] is not supported on values of type JSON [at 1:17]
+SELECT json_col[1.0] FROM JsonTable;
+                ^
+==
+
+SELECT json_col[OFFSET(0)] FROM JsonTable;
+--
+ERROR: Subscript access using [OFFSET(INT64)] is not supported on values of type JSON [at 1:17]
+SELECT json_col[OFFSET(0)] FROM JsonTable;
+                ^
+==
+
+SELECT 0[0];
+--
+ERROR: Subscript access using [INT64] is not supported on values of type INT64 [at 1:10]
+SELECT 0[0];
+         ^
+==
+
+SELECT 0[OFFSET(0)];
+--
+ERROR: Subscript access using [OFFSET(INT64)] is not supported on values of type INT64 [at 1:10]
+SELECT 0[OFFSET(0)];
+         ^
+==
+
+[language_features=NONE,+SAFE_FUNCTION_CALL,+JSON_TYPE]
+SELECT json_col[SAFE.SUBSTR("bar", 0, 2)] FROM JsonTable;
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#2 AS `$col1` [JSON]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#2]
+    +-expr_list=
+    | +-$col1#2 :=
+    |   +-FunctionCall(GoogleSQL:$subscript(JSON, STRING) -> JSON)
+    |     +-ColumnRef(type=JSON, column=JSONTable.json_col#1)
+    |     +-FunctionCall({SAFE_ERROR_MODE} GoogleSQL:substr(STRING, INT64, optional(1) INT64) -> STRING)
+    |       +-Literal(type=STRING, value="bar")
+    |       +-Literal(type=INT64, value=0)
+    |       +-Literal(type=INT64, value=2)
+    +-input_scan=
+      +-TableScan(column_list=[JSONTable.json_col#1], table=JSONTable, column_index_list=[0])
+==
+
+SELECT json_col[CAST(NULL AS STRING)] FROM JsonTable;
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#2 AS `$col1` [JSON]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#2]
+    +-expr_list=
+    | +-$col1#2 :=
+    |   +-FunctionCall(GoogleSQL:$subscript(JSON, STRING) -> JSON)
+    |     +-ColumnRef(type=JSON, column=JSONTable.json_col#1)
+    |     +-Literal(type=STRING, value=NULL, has_explicit_type=TRUE)
+    +-input_scan=
+      +-TableScan(column_list=[JSONTable.json_col#1], table=JSONTable, column_index_list=[0])
+==
+
+[language_features=NONE,+SAFE_FUNCTION_CALL,+JSON_TYPE]
+# Subscripts with KEY and SAFE_KEY should be an error.
+SELECT (JSON '[{"a": "foo"}, {"a": "bar"}]')[0][{{"a"|KEY("a")|SAFE_KEY("a")}}]
+--
+ALTERNATION GROUP: "a"
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [JSON]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(GoogleSQL:$subscript(JSON, STRING) -> JSON)
+    |     +-FunctionCall(GoogleSQL:$subscript(JSON, INT64) -> JSON)
+    |     | +-Literal(type=JSON, value=[{"a":"foo"},{"a":"bar"}], has_explicit_type=TRUE)
+    |     | +-Literal(type=INT64, value=0)
+    |     +-Literal(type=STRING, value="a")
+    +-input_scan=
+      +-SingleRowScan
+--
+ALTERNATION GROUP: KEY("a")
+--
+ERROR: Subscript access using [KEY(STRING)] is not supported on values of type JSON [at 2:49]
+SELECT (JSON '[{"a": "foo"}, {"a": "bar"}]')[0][KEY("a")]
+                                                ^
+--
+ALTERNATION GROUP: SAFE_KEY("a")
+--
+ERROR: Subscript access using [SAFE_KEY(STRING)] is not supported on values of type JSON [at 2:49]
+SELECT (JSON '[{"a": "foo"}, {"a": "bar"}]')[0][SAFE_KEY("a")]
+                                                ^
+==
+
+[language_features=NONE,+SAFE_FUNCTION_CALL,+JSON_TYPE]
+# Subscripts with OFFSET, ORDINAL, and their SAFE versions should be an error.
+SELECT (JSON '[{"a": "foo"}, {"a": "bar"}]')[{{OFFSET(0)|ORDINAL(1)|SAFE_OFFSET(0)|SAFE_ORDINAL(1)}}]["a"]
+--
+ALTERNATION GROUP: OFFSET(0)
+--
+ERROR: Subscript access using [OFFSET(INT64)] is not supported on values of type JSON [at 2:46]
+SELECT (JSON '[{"a": "foo"}, {"a": "bar"}]')[OFFSET(0)]["a"]
+                                             ^
+--
+ALTERNATION GROUP: ORDINAL(1)
+--
+ERROR: Subscript access using [ORDINAL(INT64)] is not supported on values of type JSON [at 2:46]
+SELECT (JSON '[{"a": "foo"}, {"a": "bar"}]')[ORDINAL(1)]["a"]
+                                             ^
+--
+ALTERNATION GROUP: SAFE_OFFSET(0)
+--
+ERROR: Subscript access using [SAFE_OFFSET(INT64)] is not supported on values of type JSON [at 2:46]
+SELECT (JSON '[{"a": "foo"}, {"a": "bar"}]')[SAFE_OFFSET(0)]["a"]
+                                             ^
+--
+ALTERNATION GROUP: SAFE_ORDINAL(1)
+--
+ERROR: Subscript access using [SAFE_ORDINAL(INT64)] is not supported on values of type JSON [at 2:46]
+SELECT (JSON '[{"a": "foo"}, {"a": "bar"}]')[SAFE_ORDINAL(1)]["a"]
+                                             ^
+==
+
+[language_features=NONE,+JSON_TYPE,+NAMED_ARGUMENTS,+TO_JSON_UNSUPPORTED_FIELDS]
+SELECT TO_JSON(key), TO_JSON(TestEnum, stringify_wide_numbers=>true), TO_JSON(KitchenSink, stringify_wide_numbers=>false) FROM TestTable;
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#4 AS `$col1` [JSON]
+| +-$query.$col2#5 AS `$col2` [JSON]
+| +-$query.$col3#6 AS `$col3` [JSON]
++-query=
+  +-ProjectScan
+    +-column_list=$query.[$col1#4, $col2#5, $col3#6]
+    +-expr_list=
+    | +-$col1#4 :=
+    | | +-FunctionCall(GoogleSQL:to_json(INT32, optional(1) BOOL stringify_wide_numbers) -> JSON)
+    | |   +-ColumnRef(type=INT32, column=TestTable.key#1)
+    | |   +-Literal(type=BOOL, value=false)
+    | +-$col2#5 :=
+    | | +-FunctionCall(GoogleSQL:to_json(ENUM<googlesql_test.TestEnum>, optional(1) BOOL stringify_wide_numbers) -> JSON)
+    | |   +-ColumnRef(type=ENUM<googlesql_test.TestEnum>, column=TestTable.TestEnum#2)
+    | |   +-Literal(type=BOOL, value=true)
+    | +-$col3#6 :=
+    |   +-FunctionCall(GoogleSQL:to_json(PROTO<googlesql_test.KitchenSinkPB>, optional(1) BOOL stringify_wide_numbers) -> JSON)
+    |     +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=TestTable.KitchenSink#3)
+    |     +-Literal(type=BOOL, value=false)
+    +-input_scan=
+      +-TableScan(column_list=TestTable.[key#1, TestEnum#2, KitchenSink#3], table=TestTable, column_index_list=[0, 1, 2])
+==
+
+[language_features=NONE,+JSON_TYPE,+NAMED_ARGUMENTS,+TO_JSON_UNSUPPORTED_FIELDS]
+SELECT TO_JSON(1, false);
+--
+ERROR: No matching signature for function TO_JSON
+  Argument types: INT64, BOOL
+  Signature: TO_JSON(T1, [stringify_wide_numbers => BOOL])
+    Positional argument at 2 is invalid because argument `stringify_wide_numbers` can only be referred to by name
+  Signature: TO_JSON(T1, [stringify_wide_numbers => BOOL], [unsupported_fields => UNSUPPORTED_FIELDS])
+    Positional argument at 2 is invalid because argument `stringify_wide_numbers` can only be referred to by name [at 1:8]
+SELECT TO_JSON(1, false);
+       ^
+==
+
+[language_features=NONE,+JSON_TYPE,+NAMED_ARGUMENTS]
+SELECT PARSE_JSON('1'), PARSE_JSON('[1, null, true]'),
+PARSE_JSON('2.5', wide_number_mode=>'exact'),
+PARSE_JSON('2.2412421353246235436', wide_number_mode=>'round'),
+PARSE_JSON('18446744073709551615', wide_number_mode=>'round'),
+PARSE_JSON(Value, wide_number_mode=>'round'),
+PARSE_JSON(Value, wide_number_mode=>'garbage'),
+PARSE_JSON('123', wide_number_mode=>value),
+PARSE_JSON('456', wide_number_mode=>concat('rou', 'nd'))
+FROM KeyValue;
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#3 AS `$col1` [JSON]
+| +-$query.$col2#4 AS `$col2` [JSON]
+| +-$query.$col3#5 AS `$col3` [JSON]
+| +-$query.$col4#6 AS `$col4` [JSON]
+| +-$query.$col5#7 AS `$col5` [JSON]
+| +-$query.$col6#8 AS `$col6` [JSON]
+| +-$query.$col7#9 AS `$col7` [JSON]
+| +-$query.$col8#10 AS `$col8` [JSON]
+| +-$query.$col9#11 AS `$col9` [JSON]
++-query=
+  +-ProjectScan
+    +-column_list=$query.[$col1#3, $col2#4, $col3#5, $col4#6, $col5#7, $col6#8, $col7#9, $col8#10, $col9#11]
+    +-expr_list=
+    | +-$col1#3 :=
+    | | +-FunctionCall(GoogleSQL:parse_json(STRING, optional(1) STRING wide_number_mode) -> JSON)
+    | |   +-Literal(type=STRING, value="1")
+    | |   +-Literal(type=STRING, value="exact")
+    | +-$col2#4 :=
+    | | +-FunctionCall(GoogleSQL:parse_json(STRING, optional(1) STRING wide_number_mode) -> JSON)
+    | |   +-Literal(type=STRING, value="[1, null, true]")
+    | |   +-Literal(type=STRING, value="exact")
+    | +-$col3#5 :=
+    | | +-FunctionCall(GoogleSQL:parse_json(STRING, optional(1) STRING wide_number_mode) -> JSON)
+    | |   +-Literal(type=STRING, value="2.5")
+    | |   +-Literal(type=STRING, value="exact")
+    | +-$col4#6 :=
+    | | +-FunctionCall(GoogleSQL:parse_json(STRING, optional(1) STRING wide_number_mode) -> JSON)
+    | |   +-Literal(type=STRING, value="2.2412421353246235436")
+    | |   +-Literal(type=STRING, value="round")
+    | +-$col5#7 :=
+    | | +-FunctionCall(GoogleSQL:parse_json(STRING, optional(1) STRING wide_number_mode) -> JSON)
+    | |   +-Literal(type=STRING, value="18446744073709551615")
+    | |   +-Literal(type=STRING, value="round")
+    | +-$col6#8 :=
+    | | +-FunctionCall(GoogleSQL:parse_json(STRING, optional(1) STRING wide_number_mode) -> JSON)
+    | |   +-ColumnRef(type=STRING, column=KeyValue.Value#2)
+    | |   +-Literal(type=STRING, value="round")
+    | +-$col7#9 :=
+    | | +-FunctionCall(GoogleSQL:parse_json(STRING, optional(1) STRING wide_number_mode) -> JSON)
+    | |   +-ColumnRef(type=STRING, column=KeyValue.Value#2)
+    | |   +-Literal(type=STRING, value="garbage")
+    | +-$col8#10 :=
+    | | +-FunctionCall(GoogleSQL:parse_json(STRING, optional(1) STRING wide_number_mode) -> JSON)
+    | |   +-Literal(type=STRING, value="123")
+    | |   +-ColumnRef(type=STRING, column=KeyValue.Value#2)
+    | +-$col9#11 :=
+    |   +-FunctionCall(GoogleSQL:parse_json(STRING, optional(1) STRING wide_number_mode) -> JSON)
+    |     +-Literal(type=STRING, value="456")
+    |     +-FunctionCall(GoogleSQL:concat(STRING, repeated(1) STRING) -> STRING)
+    |       +-Literal(type=STRING, value="rou")
+    |       +-Literal(type=STRING, value="nd")
+    +-input_scan=
+      +-TableScan(column_list=[KeyValue.Value#2], table=KeyValue, column_index_list=[1])
+==
+
+#  Mandatory constant expression for path.
+[language_features=NONE,+JSON_TYPE,+ENABLE_CONSTANT_EXPRESSION_IN_JSON_PATH]
+SELECT JSON_QUERY(json_col, TRIM("$.a ")) FROM JsonTable;
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#2 AS `$col1` [JSON]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#2]
+    +-expr_list=
+    | +-$col1#2 :=
+    |   +-FunctionCall(GoogleSQL:json_query(JSON, STRING) -> JSON)
+    |     +-ColumnRef(type=JSON, column=JSONTable.json_col#1)
+    |     +-FunctionCall(GoogleSQL:trim(STRING, optional(0) STRING) -> STRING)
+    |       +-Literal(type=STRING, value="$.a ")
+    +-input_scan=
+      +-TableScan(column_list=[JSONTable.json_col#1], table=JSONTable, column_index_list=[0])
+==
+
+# Mandatory constant expression for path resulting in error.
+[language_features=NONE,+JSON_TYPE,+ENABLE_CONSTANT_EXPRESSION_IN_JSON_PATH]
+SELECT JSON_QUERY(json_col, TO_JSON_STRING(json_col)) FROM JsonTable;
+--
+ERROR: Argument 2 to JSON_QUERY must be a constant expression [at 1:29]
+SELECT JSON_QUERY(json_col, TO_JSON_STRING(json_col)) FROM JsonTable;
+                            ^
+==
+
+#  Optional constant expression for path.
+[language_features=NONE,+JSON_TYPE,+ENABLE_CONSTANT_EXPRESSION_IN_JSON_PATH]
+SELECT JSON_VALUE(json_col, TRIM("$.a ")) FROM JsonTable;
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#2 AS `$col1` [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#2]
+    +-expr_list=
+    | +-$col1#2 :=
+    |   +-FunctionCall(GoogleSQL:json_value(JSON, optional(1) STRING) -> STRING)
+    |     +-ColumnRef(type=JSON, column=JSONTable.json_col#1)
+    |     +-FunctionCall(GoogleSQL:trim(STRING, optional(0) STRING) -> STRING)
+    |       +-Literal(type=STRING, value="$.a ")
+    +-input_scan=
+      +-TableScan(column_list=[JSONTable.json_col#1], table=JSONTable, column_index_list=[0])
+==
+
+#  Optional constant expression for path resulting in error.
+[language_features=NONE,+JSON_TYPE,+ENABLE_CONSTANT_EXPRESSION_IN_JSON_PATH]
+SELECT JSON_VALUE(json_col, TO_JSON_STRING(json_col)) FROM JsonTable;
+--
+ERROR: Argument 2 to JSON_VALUE must be a constant expression [at 1:29]
+SELECT JSON_VALUE(json_col, TO_JSON_STRING(json_col)) FROM JsonTable;
+                            ^
+==
+
+# Test repeated field with constant expression.
+[language_features=NONE,+JSON_TYPE,+JSON_MUTATOR_FUNCTIONS,+ENABLE_CONSTANT_EXPRESSION_IN_JSON_PATH]
+SELECT JSON_REMOVE(json_col, TRIM("$.a "), "$.b ", TRIM("$.c ")) FROM JsonTable;
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#2 AS `$col1` [JSON]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#2]
+    +-expr_list=
+    | +-$col1#2 :=
+    |   +-FunctionCall(GoogleSQL:json_remove(JSON, STRING, repeated(2) STRING) -> JSON)
+    |     +-ColumnRef(type=JSON, column=JSONTable.json_col#1)
+    |     +-FunctionCall(GoogleSQL:trim(STRING, optional(0) STRING) -> STRING)
+    |     | +-Literal(type=STRING, value="$.a ")
+    |     +-Literal(type=STRING, value="$.b ")
+    |     +-FunctionCall(GoogleSQL:trim(STRING, optional(0) STRING) -> STRING)
+    |       +-Literal(type=STRING, value="$.c ")
+    +-input_scan=
+      +-TableScan(column_list=[JSONTable.json_col#1], table=JSONTable, column_index_list=[0])
+==
+
+# Test repeated field with non-constant expression.
+[language_features=NONE,+JSON_TYPE,+JSON_MUTATOR_FUNCTIONS,+ENABLE_CONSTANT_EXPRESSION_IN_JSON_PATH]
+SELECT JSON_REMOVE(json_col, "$.a", TRIM(" $.a"), TO_JSON_STRING(json_col)) FROM JsonTable;
+--
+ERROR: Argument 4 to JSON_REMOVE must be a constant expression [at 1:51]
+SELECT JSON_REMOVE(json_col, "$.a", TRIM(" $.a"), TO_JSON_STRING(json_col)) F...
+                                                  ^
+==
+
+[language_features=NONE,+JSON_TYPE,+JSON_CONTAINS_FUNCTION]
+SELECT JSON_CONTAINS(JSON 'true', JSON 'true'),
+       JSON_CONTAINS(json_col, JSON '[1,3]'),
+       JSON_CONTAINS(JSON_QUERY(json_col, "$.a"), @test_param_json)
+FROM JsonTable;
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#2 AS `$col1` [BOOL]
+| +-$query.$col2#3 AS `$col2` [BOOL]
+| +-$query.$col3#4 AS `$col3` [BOOL]
++-query=
+  +-ProjectScan
+    +-column_list=$query.[$col1#2, $col2#3, $col3#4]
+    +-expr_list=
+    | +-$col1#2 :=
+    | | +-FunctionCall(GoogleSQL:json_contains(JSON, JSON) -> BOOL)
+    | |   +-Literal(type=JSON, value=true, has_explicit_type=TRUE)
+    | |   +-Literal(type=JSON, value=true, has_explicit_type=TRUE)
+    | +-$col2#3 :=
+    | | +-FunctionCall(GoogleSQL:json_contains(JSON, JSON) -> BOOL)
+    | |   +-ColumnRef(type=JSON, column=JSONTable.json_col#1)
+    | |   +-Literal(type=JSON, value=[1,3], has_explicit_type=TRUE)
+    | +-$col3#4 :=
+    |   +-FunctionCall(GoogleSQL:json_contains(JSON, JSON) -> BOOL)
+    |     +-FunctionCall(GoogleSQL:json_query(JSON, STRING) -> JSON)
+    |     | +-ColumnRef(type=JSON, column=JSONTable.json_col#1)
+    |     | +-Literal(type=STRING, value="$.a")
+    |     +-Parameter(type=JSON, name="test_param_json")
+    +-input_scan=
+      +-TableScan(column_list=[JSONTable.json_col#1], table=JSONTable, column_index_list=[0])
+==
+
+[language_features=NONE,+JSON_TYPE,+JSON_CONTAINS_FUNCTION]
+SELECT JSON_CONTAINS(json_col, "1")
+FROM JsonTable;
+--
+ERROR: No matching signature for function JSON_CONTAINS
+  Argument types: JSON, STRING
+  Signature: JSON_CONTAINS(JSON, JSON)
+    Argument 2: Unable to coerce type STRING to expected type JSON [at 1:8]
+SELECT JSON_CONTAINS(json_col, "1")
+       ^
+==
+
+# Test unsupported function if `JSON_CONTAINS_FUNCTION` feature is missing.
+[language_features=NONE,+JSON_TYPE]
+SELECT JSON_CONTAINS(JSON 'true', JSON 'true')
+--
+ERROR: Function not found: JSON_CONTAINS [at 1:8]
+SELECT JSON_CONTAINS(JSON 'true', JSON 'true')
+       ^
+==
+
+# Test JSON_KEYS function.
+[language_features=NONE,+JSON_TYPE,+JSON_KEYS_FUNCTION,+NAMED_ARGUMENTS]
+SELECT JSON_KEYS(JSON '999'),
+       JSON_KEYS(JSON '999', 1),
+       JSON_KEYS(JSON '999', 1, mode=>Trim("lax"))
+FROM JsonTable;
+--
+
+QueryStmt
++-output_column_list=
+| +-$query.$col1#2 AS `$col1` [ARRAY<STRING>]
+| +-$query.$col2#3 AS `$col2` [ARRAY<STRING>]
+| +-$query.$col3#4 AS `$col3` [ARRAY<STRING>]
++-query=
+  +-ProjectScan
+    +-column_list=$query.[$col1#2, $col2#3, $col3#4]
+    +-expr_list=
+    | +-$col1#2 :=
+    | | +-FunctionCall(GoogleSQL:json_keys(JSON, optional(1) INT64, optional(1) STRING mode) -> ARRAY<STRING>)
+    | |   +-Literal(type=JSON, value=999, has_explicit_type=TRUE)
+    | |   +-Literal(type=INT64, value=9223372036854775807)
+    | |   +-Literal(type=STRING, value="strict")
+    | +-$col2#3 :=
+    | | +-FunctionCall(GoogleSQL:json_keys(JSON, optional(1) INT64, optional(1) STRING mode) -> ARRAY<STRING>)
+    | |   +-Literal(type=JSON, value=999, has_explicit_type=TRUE)
+    | |   +-Literal(type=INT64, value=1)
+    | |   +-Literal(type=STRING, value="strict")
+    | +-$col3#4 :=
+    |   +-FunctionCall(GoogleSQL:json_keys(JSON, optional(1) INT64, optional(1) STRING mode) -> ARRAY<STRING>)
+    |     +-Literal(type=JSON, value=999, has_explicit_type=TRUE)
+    |     +-Literal(type=INT64, value=1)
+    |     +-FunctionCall(GoogleSQL:trim(STRING, optional(0) STRING) -> STRING)
+    |       +-Literal(type=STRING, value="lax")
+    +-input_scan=
+      +-TableScan(table=JSONTable)
+==
+
+# Test JSON_KEYS with non-const `max_depth`
+[language_features=NONE,+JSON_TYPE,+JSON_KEYS_FUNCTION,+JSON_LAX_VALUE_EXTRACTION_FUNCTIONS,+NAMED_ARGUMENTS]
+SELECT JSON_KEYS(JSON '1', LAX_INT64(json_col))
+FROM JsonTable;
+--
+
+QueryStmt
++-output_column_list=
+| +-$query.$col1#2 AS `$col1` [ARRAY<STRING>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#2]
+    +-expr_list=
+    | +-$col1#2 :=
+    |   +-FunctionCall(GoogleSQL:json_keys(JSON, optional(1) INT64, optional(1) STRING mode) -> ARRAY<STRING>)
+    |     +-Literal(type=JSON, value=1, has_explicit_type=TRUE)
+    |     +-FunctionCall(GoogleSQL:lax_int64(JSON) -> INT64)
+    |     | +-ColumnRef(type=JSON, column=JSONTable.json_col#1)
+    |     +-Literal(type=STRING, value="strict")
+    +-input_scan=
+      +-TableScan(column_list=[JSONTable.json_col#1], table=JSONTable, column_index_list=[0])
+==
+
+# Error: Test JSON_KEYS function with non-const expression for `mode`.
+[language_features=NONE,+JSON_TYPE,+JSON_KEYS_FUNCTION,+NAMED_ARGUMENTS]
+SELECT JSON_KEYS(JSON '999', mode=>TO_JSON_STRING(json_col))
+FROM JsonTable;
+--
+ERROR: Argument 'mode' to JSON_KEYS must be a constant expression [at 1:30]
+SELECT JSON_KEYS(JSON '999', mode=>TO_JSON_STRING(json_col))
+                             ^
+==
+
+[language_features=NONE,+JSON_TYPE,+NAMED_ARGUMENTS,+RANGE_TYPE,+TO_JSON_UNSUPPORTED_FIELDS]
+[enabled_ast_rewrites=DEFAULTS]
+[run_sqlbuilder]
+[show_sqlbuilder_output]
+
+# TO_JSON with unsupported_fields defauls to 'FAIL'
+SELECT TO_JSON(RANGE(DATE '2022-10-01', NULL))
+--
+
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [JSON]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(GoogleSQL:to_json(RANGE<DATE>, optional(1) BOOL stringify_wide_numbers) -> JSON)
+    |     +-FunctionCall(GoogleSQL:range(DATE, DATE) -> RANGE<DATE>)
+    |     | +-Literal(type=DATE, value=2022-10-01, has_explicit_type=TRUE)
+    |     | +-Literal(type=DATE, value=NULL)
+    |     +-Literal(type=BOOL, value=false)
+    +-input_scan=
+      +-SingleRowScan
+
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+SELECT
+  TO_JSON(`RANGE`(DATE "2022-10-01", CAST(NULL AS DATE)), stringify_wide_numbers  => false) AS a_1;
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+SELECT
+  TO_JSON(`RANGE`(DATE "2022-10-01", CAST(NULL AS DATE)), stringify_wide_numbers  => false) AS a_1;
+==
+
+[language_features=NONE,+JSON_TYPE,+NAMED_ARGUMENTS,+RANGE_TYPE,+TO_JSON_UNSUPPORTED_FIELDS]
+[enabled_ast_rewrites=DEFAULTS]
+[run_sqlbuilder]
+[show_sqlbuilder_output]
+
+# TO_JSON with unsupported_fields set to 'IGNORE' or 'PLACEHOLDER'
+SELECT TO_JSON(RANGE(DATE '2022-10-01', NULL), unsupported_fields=>{{'IGNORE'|'PLACEHOLDER'}})
+--
+
+ALTERNATION GROUP: 'IGNORE'
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [JSON]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(GoogleSQL:to_json(RANGE<DATE>, optional(1) BOOL stringify_wide_numbers, optional(1) ENUM<UNSUPPORTED_FIELDS> unsupported_fields) -> JSON)
+    |     +-FunctionCall(GoogleSQL:range(DATE, DATE) -> RANGE<DATE>)
+    |     | +-Literal(type=DATE, value=2022-10-01, has_explicit_type=TRUE)
+    |     | +-Literal(type=DATE, value=NULL)
+    |     +-Literal(type=BOOL, value=false)
+    |     +-Literal(type=ENUM<UNSUPPORTED_FIELDS>, value=IGNORE)
+    +-input_scan=
+      +-SingleRowScan
+
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+SELECT
+  TO_JSON(`RANGE`(DATE "2022-10-01", CAST(NULL AS DATE)), stringify_wide_numbers  => false, unsupported_fields  => CAST("IGNORE" AS UNSUPPORTED_FIELDS)) AS a_1;
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+SELECT
+  TO_JSON(`RANGE`(DATE "2022-10-01", CAST(NULL AS DATE)), stringify_wide_numbers  => false, unsupported_fields  => CAST("IGNORE" AS UNSUPPORTED_FIELDS)) AS a_1;
+--
+ALTERNATION GROUP: 'PLACEHOLDER'
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [JSON]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(GoogleSQL:to_json(RANGE<DATE>, optional(1) BOOL stringify_wide_numbers, optional(1) ENUM<UNSUPPORTED_FIELDS> unsupported_fields) -> JSON)
+    |     +-FunctionCall(GoogleSQL:range(DATE, DATE) -> RANGE<DATE>)
+    |     | +-Literal(type=DATE, value=2022-10-01, has_explicit_type=TRUE)
+    |     | +-Literal(type=DATE, value=NULL)
+    |     +-Literal(type=BOOL, value=false)
+    |     +-Literal(type=ENUM<UNSUPPORTED_FIELDS>, value=PLACEHOLDER)
+    +-input_scan=
+      +-SingleRowScan
+
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+SELECT
+  TO_JSON(`RANGE`(DATE "2022-10-01", CAST(NULL AS DATE)), stringify_wide_numbers  => false, unsupported_fields  => CAST("PLACEHOLDER" AS UNSUPPORTED_FIELDS)) AS a_1;
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+SELECT
+  TO_JSON(`RANGE`(DATE "2022-10-01", CAST(NULL AS DATE)), stringify_wide_numbers  => false, unsupported_fields  => CAST("PLACEHOLDER" AS UNSUPPORTED_FIELDS)) AS a_1;
+==
+
+[language_features=NONE,+JSON_TYPE,+NAMED_ARGUMENTS,+RANGE_TYPE,+TO_JSON_UNSUPPORTED_FIELDS]
+[enabled_ast_rewrites=DEFAULTS]
+
+# TO_JSON with unsupported_fields set to invalid value 'blah'
+SELECT TO_JSON(RANGE(DATE '2022-10-01', NULL), unsupported_fields=>'blah')
+--
+
+ERROR: Could not cast literal "blah" to type UNSUPPORTED_FIELDS [at 2:48]
+SELECT TO_JSON(RANGE(DATE '2022-10-01', NULL), unsupported_fields=>'blah')
+                                               ^
+==
+
+# Case sensitive: setting unsupported_fields to `iGnore` triggers hint
+[language_features=NONE,+JSON_TYPE,+NAMED_ARGUMENTS,+RANGE_TYPE,+TO_JSON_UNSUPPORTED_FIELDS]
+[enabled_ast_rewrites=DEFAULTS]
+[run_sqlbuilder]
+[show_sqlbuilder_output]
+
+SELECT TO_JSON(RANGE(DATE '2022-10-01', NULL), unsupported_fields=>'iGnore')
+--
+
+ERROR: Could not cast literal "iGnore" to type UNSUPPORTED_FIELDS; Did you mean 'IGNORE'? (Note: ENUM values are case sensitive) [at 1:48]
+SELECT TO_JSON(RANGE(DATE '2022-10-01', NULL), unsupported_fields=>'iGnore')
+                                               ^
+==
+
+# Case sensitive: setting unsupported_fields to `iGnore` triggers hint
+[language_features=NONE,+JSON_TYPE,+NAMED_ARGUMENTS,+RANGE_TYPE,+TO_JSON_UNSUPPORTED_FIELDS]
+[enabled_ast_rewrites=DEFAULTS]
+[run_sqlbuilder]
+[show_sqlbuilder_output]
+
+SELECT TO_JSON(RANGE(DATE '2022-10-01', NULL), unsupported_fields=>'iGnore')
+--
+
+ERROR: Could not cast literal "iGnore" to type UNSUPPORTED_FIELDS; Did you mean 'IGNORE'? (Note: ENUM values are case sensitive) [at 1:48]
+SELECT TO_JSON(RANGE(DATE '2022-10-01', NULL), unsupported_fields=>'iGnore')
+                                               ^
+==
+
+# Setting unsupported_fields to a named parameter
+[language_features=NONE,+JSON_TYPE,+NAMED_ARGUMENTS,+TO_JSON_UNSUPPORTED_FIELDS]
+[allow_undeclared_parameters]
+SELECT TO_JSON(1, unsupported_fields=>@p);
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [JSON]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(GoogleSQL:to_json(INT64, optional(1) BOOL stringify_wide_numbers, optional(1) ENUM<UNSUPPORTED_FIELDS> unsupported_fields) -> JSON)
+    |     +-Literal(type=INT64, value=1)
+    |     +-Literal(type=BOOL, value=false)
+    |     +-Parameter(parse_location=38-40, type=ENUM<UNSUPPORTED_FIELDS>, name="p")
+    +-input_scan=
+      +-SingleRowScan
+[UNDECLARED_PARAMETERS]
+p: ENUM<UNSUPPORTED_FIELDS>
+==
+
+# Setting unsupported_fields to a positional parameter
+[language_features=NONE,+JSON_TYPE,+NAMED_ARGUMENTS,+TO_JSON_UNSUPPORTED_FIELDS]
+[allow_undeclared_parameters]
+[parameter_mode=positional]
+SELECT TO_JSON(1, unsupported_fields=>?);
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [JSON]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(GoogleSQL:to_json(INT64, optional(1) BOOL stringify_wide_numbers, optional(1) ENUM<UNSUPPORTED_FIELDS> unsupported_fields) -> JSON)
+    |     +-Literal(type=INT64, value=1)
+    |     +-Literal(type=BOOL, value=false)
+    |     +-Parameter(parse_location=38-39, type=ENUM<UNSUPPORTED_FIELDS>, position=1)
+    +-input_scan=
+      +-SingleRowScan
+[UNDECLARED_PARAMETERS]
+ENUM<UNSUPPORTED_FIELDS>
+==
+
+# Test SAFE_TO_JSON() function
+[language_features=NONE,+JSON_TYPE]
+SELECT SAFE_TO_JSON(1);
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [JSON]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(GoogleSQL:safe_to_json(INT64) -> JSON)
+    |     +-Literal(type=INT64, value=1)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Test SAFE_TO_JSON() function
+[language_features=NONE,+JSON_TYPE,+NAMED_ARGUMENTS]
+SELECT SAFE_TO_JSON(1, unsupported_fields=>"IGNORE");
+--
+ERROR: No matching signature for function SAFE_TO_JSON
+  Argument types: INT64, unsupported_fields => STRING
+  Signature: SAFE_TO_JSON(T1)
+    Named argument `unsupported_fields` does not exist in signature [at 1:8]
+SELECT SAFE_TO_JSON(1, unsupported_fields=>"IGNORE");
+       ^
+==
+
+# Test JSON_FLATTEN function.
+[language_features=NONE,+JSON_TYPE,+JSON_FLATTEN_FUNCTION]
+SELECT JSON_FLATTEN(JSON '[[[1, 2], 3], 4]');
+--
+
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [ARRAY<JSON>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(GoogleSQL:json_flatten(JSON) -> ARRAY<JSON>)
+    |     +-Literal(type=JSON, value=[[[1,2],3],4], has_explicit_type=TRUE)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Test JSON_FLATTEN function with NULL.
+[language_features=NONE,+JSON_TYPE,+JSON_FLATTEN_FUNCTION]
+SELECT JSON_FLATTEN(NULL);
+--
+
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [ARRAY<JSON>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(GoogleSQL:json_flatten(JSON) -> ARRAY<JSON>)
+    |     +-Literal(type=JSON, value=NULL)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Test JSON_FLATTEN function with the feature flag disabled.
+[language_features=NONE,+JSON_TYPE]
+SELECT JSON_FLATTEN(NULL);
+--
+
+ERROR: Function not found: JSON_FLATTEN [at 1:8]
+SELECT JSON_FLATTEN(NULL);
+       ^
+==
+
+# Hindi vowel following consonant is called "matra" and it looks like a single
+# character, but in reality it is still 2 UTF8 characters. Therefore the below
+# input string is not 3 characters, but 5 UTF8 characters (2 matras at the
+# beginning). The test shows that split works both by vowels, consonants and
+# matras.
+select
+  json_extract('{"a": "foo"}', path),
+  json_extract_scalar('{"a": "foo"}', path)
+from (select '$.a' as path union all select '$.b')
+--
+ERROR: Argument 2 to JSON_EXTRACT must be a literal or query parameter [at 2:32]
+  json_extract('{"a": "foo"}', path),
+                               ^
+==
+
+select
+  json_extract('{"a": "foo"}', (select '$.a')),
+  json_extract_scalar('{"a": "foo"}', (select '$.a'))
+--
+ERROR: Argument 2 to JSON_EXTRACT must be a literal or query parameter [at 2:32]
+  json_extract('{"a": "foo"}', (select '$.a')),
+                               ^
+==
+
+select
+  json_extract_array('{"a": ["foo"]}', path)
+from (select '$.a' as path)
+--
+ERROR: Argument 2 to JSON_EXTRACT_ARRAY must be a literal or query parameter [at 2:40]
+  json_extract_array('{"a": ["foo"]}', path)
+                                       ^
+==
+
+select
+  json_extract_array('{"a": ["foo"]}', (select '$.a'))
+--
+ERROR: Argument 2 to JSON_EXTRACT_ARRAY must be a literal or query parameter [at 2:40]
+  json_extract_array('{"a": ["foo"]}', (select '$.a'))
+                                       ^
+==
+
+[language_features=NONE,+JSON_ARRAY_FUNCTIONS]
+select
+  json_extract_string_array('{"a": ["foo"]}', path)
+from (select '$.a' as path)
+--
+ERROR: Argument 2 to JSON_EXTRACT_STRING_ARRAY must be a literal or query parameter [at 2:47]
+  json_extract_string_array('{"a": ["foo"]}', path)
+                                              ^
+==
+
+[language_features=NONE,+JSON_ARRAY_FUNCTIONS]
+select
+  json_extract_string_array('{"a": ["foo"]}', (select '$.a'))
+--
+ERROR: Argument 2 to JSON_EXTRACT_STRING_ARRAY must be a literal or query parameter [at 2:47]
+  json_extract_string_array('{"a": ["foo"]}', (select '$.a'))
+                                              ^
+==
+
+[language_features=NONE,+JSON_TYPE]
+SELECT JSON '1' = JSON '1';
+--
+ERROR: Equality is not defined for arguments of type JSON [at 1:8]
+SELECT JSON '1' = JSON '1';
+       ^
+
+==
+
+[language_features=NONE,+JSON_TYPE,+JSON_TYPE_COMPARISON]
+SELECT JSON '1' = JSON '1';
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [BOOL]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(GoogleSQL:$equal(JSON, JSON) -> BOOL)
+    |     +-Literal(type=JSON, value=1, has_explicit_type=TRUE)
+    |     +-Literal(type=JSON, value=1, has_explicit_type=TRUE)
+    +-input_scan=
+      +-SingleRowScan
+
+==
+
+[language_features=NONE,+JSON_TYPE]
+SELECT JSON '1' < JSON '1';
+--
+ERROR: Less than is not defined for arguments of type JSON [at 1:8]
+SELECT JSON '1' < JSON '1';
+       ^
+
+==
+
+[language_features=NONE,+JSON_TYPE,+JSON_TYPE_COMPARISON]
+SELECT JSON '1' < JSON '1';
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [BOOL]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(GoogleSQL:$less(JSON, JSON) -> BOOL)
+    |     +-Literal(type=JSON, value=1, has_explicit_type=TRUE)
+    |     +-Literal(type=JSON, value=1, has_explicit_type=TRUE)
+    +-input_scan=
+      +-SingleRowScan
+
+==
+
+[language_features=NONE,+JSON_TYPE,+JSON_TYPE_COMPARISON]
+
+SELECT JSON '1' = JSON '1', JSON '1' < JSON '1.0', JSON '1' != JSON '1.0',
+       JSON '1' > JSON '1.0', JSON '1' <= JSON '1.0', JSON '1' >= JSON '1.0';
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [BOOL]
+| +-$query.$col2#2 AS `$col2` [BOOL]
+| +-$query.$col3#3 AS `$col3` [BOOL]
+| +-$query.$col4#4 AS `$col4` [BOOL]
+| +-$query.$col5#5 AS `$col5` [BOOL]
+| +-$query.$col6#6 AS `$col6` [BOOL]
++-query=
+  +-ProjectScan
+    +-column_list=$query.[$col1#1, $col2#2, $col3#3, $col4#4, $col5#5, $col6#6]
+    +-expr_list=
+    | +-$col1#1 :=
+    | | +-FunctionCall(GoogleSQL:$equal(JSON, JSON) -> BOOL)
+    | |   +-Literal(type=JSON, value=1, has_explicit_type=TRUE)
+    | |   +-Literal(type=JSON, value=1, has_explicit_type=TRUE)
+    | +-$col2#2 :=
+    | | +-FunctionCall(GoogleSQL:$less(JSON, JSON) -> BOOL)
+    | |   +-Literal(type=JSON, value=1, has_explicit_type=TRUE)
+    | |   +-Literal(type=JSON, value=1.0, has_explicit_type=TRUE)
+    | +-$col3#3 :=
+    | | +-FunctionCall(GoogleSQL:$not_equal(JSON, JSON) -> BOOL)
+    | |   +-Literal(type=JSON, value=1, has_explicit_type=TRUE)
+    | |   +-Literal(type=JSON, value=1.0, has_explicit_type=TRUE)
+    | +-$col4#4 :=
+    | | +-FunctionCall(GoogleSQL:$greater(JSON, JSON) -> BOOL)
+    | |   +-Literal(type=JSON, value=1, has_explicit_type=TRUE)
+    | |   +-Literal(type=JSON, value=1.0, has_explicit_type=TRUE)
+    | +-$col5#5 :=
+    | | +-FunctionCall(GoogleSQL:$less_or_equal(JSON, JSON) -> BOOL)
+    | |   +-Literal(type=JSON, value=1, has_explicit_type=TRUE)
+    | |   +-Literal(type=JSON, value=1.0, has_explicit_type=TRUE)
+    | +-$col6#6 :=
+    |   +-FunctionCall(GoogleSQL:$greater_or_equal(JSON, JSON) -> BOOL)
+    |     +-Literal(type=JSON, value=1, has_explicit_type=TRUE)
+    |     +-Literal(type=JSON, value=1.0, has_explicit_type=TRUE)
+    +-input_scan=
+      +-SingleRowScan
+
+==
+
+[language_features=NONE,+JSON_TYPE,+JSON_TYPE_COMPARISON]
+SELECT JSON '1' + JSON '1';
+--
+ERROR: No matching signature for operator +
+  Argument types: JSON, JSON
+  Signature: INT64 + INT64
+    Argument 1: Unable to coerce type JSON to expected type INT64
+  Signature: UINT64 + UINT64
+    Argument 1: Unable to coerce type JSON to expected type UINT64
+  Signature: DOUBLE + DOUBLE
+    Argument 1: Unable to coerce type JSON to expected type DOUBLE [at 1:8]
+SELECT JSON '1' + JSON '1';
+       ^
+
+==
+
+[language_features=NONE,+JSON_TYPE]
+SELECT JSON '2' BETWEEN JSON '1' AND JSON '3';
+--
+ERROR: BETWEEN is not defined for arguments of type JSON [at 1:17]
+SELECT JSON '2' BETWEEN JSON '1' AND JSON '3';
+                ^
+
+==
+
+[language_features=NONE,+JSON_TYPE,+JSON_TYPE_COMPARISON]
+SELECT JSON '2' BETWEEN JSON '1' AND JSON '3';
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [BOOL]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(GoogleSQL:$between(JSON, JSON, JSON) -> BOOL)
+    |     +-Literal(type=JSON, value=2, has_explicit_type=TRUE)
+    |     +-Literal(type=JSON, value=1, has_explicit_type=TRUE)
+    |     +-Literal(type=JSON, value=3, has_explicit_type=TRUE)
+    +-input_scan=
+      +-SingleRowScan
+
+==
+
+[language_features=NONE,+JSON_TYPE]
+SELECT JSON '2' IN (JSON '1', JSON '2', JSON '3');
+--
+ERROR: IN is not defined for arguments of type JSON [at 1:17]
+SELECT JSON '2' IN (JSON '1', JSON '2', JSON '3');
+                ^
+
+==
+
+[language_features=NONE,+JSON_TYPE,+JSON_TYPE_COMPARISON]
+SELECT JSON '2' IN (JSON '1', JSON '2', JSON '3');
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [BOOL]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(GoogleSQL:$in(JSON, repeated(3) JSON) -> BOOL)
+    |     +-Literal(type=JSON, value=2, has_explicit_type=TRUE)
+    |     +-Literal(type=JSON, value=1, has_explicit_type=TRUE)
+    |     +-Literal(type=JSON, value=2, has_explicit_type=TRUE)
+    |     +-Literal(type=JSON, value=3, has_explicit_type=TRUE)
+    +-input_scan=
+      +-SingleRowScan
+
+==
+
+[language_features=NONE,+JSON_TYPE]
+SELECT JSON '2' IN (SELECT json_col FROM JSONTable);
+--
+ERROR: Cannot execute IN subquery with uncomparable types JSON and JSON [at 1:8]
+SELECT JSON '2' IN (SELECT json_col FROM JSONTable);
+       ^
+
+==
+
+[language_features=NONE,+JSON_TYPE,+JSON_TYPE_COMPARISON]
+SELECT JSON '2' IN (SELECT json_col FROM JSONTable);
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#2 AS `$col1` [BOOL]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#2]
+    +-expr_list=
+    | +-$col1#2 :=
+    |   +-SubqueryExpr
+    |     +-type=BOOL
+    |     +-subquery_type=IN
+    |     +-in_expr=
+    |     | +-Literal(type=JSON, value=2, has_explicit_type=TRUE)
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[JSONTable.json_col#1]
+    |         +-input_scan=
+    |           +-TableScan(column_list=[JSONTable.json_col#1], table=JSONTable, column_index_list=[0])
+    +-input_scan=
+      +-SingleRowScan
+
+==
+
+[language_features=NONE,+JSON_TYPE,+IS_DISTINCT]
+SELECT (JSON '2') IS NOT DISTINCT FROM (JSON '1');
+--
+ERROR: Grouping is not defined for arguments of type JSON [at 1:8]
+SELECT (JSON '2') IS NOT DISTINCT FROM (JSON '1');
+       ^
+
+==
+
+[language_features=NONE,+JSON_TYPE,+IS_DISTINCT,+JSON_TYPE_COMPARISON]
+SELECT (JSON '2') IS NOT DISTINCT FROM (JSON '1');
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [BOOL]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(GoogleSQL:$is_not_distinct_from(JSON, JSON) -> BOOL)
+    |     +-Literal(type=JSON, value=2, has_explicit_type=TRUE)
+    |     +-Literal(type=JSON, value=1, has_explicit_type=TRUE)
+    +-input_scan=
+      +-SingleRowScan
+
+==
+
+[language_features=NONE,+JSON_TYPE]
+SELECT MIN(json_col), MAX(json_col) FROM JSONTable;
+--
+ERROR: MIN is not defined for arguments of type JSON [at 1:8]
+SELECT MIN(json_col), MAX(json_col) FROM JSONTable;
+       ^
+
+==
+
+[language_features=NONE,+JSON_TYPE,+JSON_TYPE_COMPARISON]
+SELECT MIN(json_col), MAX(json_col) FROM JSONTable;
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#2 AS `$col1` [JSON]
+| +-$aggregate.$agg2#3 AS `$col2` [JSON]
++-query=
+  +-ProjectScan
+    +-column_list=$aggregate.[$agg1#2, $agg2#3]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=$aggregate.[$agg1#2, $agg2#3]
+        +-input_scan=
+        | +-TableScan(column_list=[JSONTable.json_col#1], table=JSONTable, column_index_list=[0])
+        +-aggregate_list=
+          +-$agg1#2 :=
+          | +-AggregateFunctionCall(GoogleSQL:min(JSON) -> JSON)
+          |   +-ColumnRef(type=JSON, column=JSONTable.json_col#1)
+          +-$agg2#3 :=
+            +-AggregateFunctionCall(GoogleSQL:max(JSON) -> JSON)
+              +-ColumnRef(type=JSON, column=JSONTable.json_col#1)
+
+==
+
+[language_features=NONE,+JSON_TYPE]
+[allow_undeclared_parameters]
+SELECT JSON '1' = @p;
+--
+ERROR: Equality is not defined for arguments of type JSON [at 1:8]
+SELECT JSON '1' = @p;
+       ^
+
+==
+
+[language_features=NONE,+JSON_TYPE,+JSON_TYPE_COMPARISON]
+[allow_undeclared_parameters]
+SELECT JSON '1' = @p;
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [BOOL]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(GoogleSQL:$equal(JSON, JSON) -> BOOL)
+    |     +-Literal(type=JSON, value=1, has_explicit_type=TRUE)
+    |     +-Parameter(parse_location=18-20, type=JSON, name="p")
+    +-input_scan=
+      +-SingleRowScan
+[UNDECLARED_PARAMETERS]
+p: JSON
+
+==
+
+[language_features=NONE,+JSON_TYPE]
+SELECT json_col FROM JSONTable ORDER BY json_col;
+--
+ERROR: ORDER BY does not support expressions of type JSON [at 1:41]
+SELECT json_col FROM JSONTable ORDER BY json_col;
+                                        ^
+==
+
+[language_features=NONE,+JSON_TYPE,+JSON_TYPE_COMPARISON]
+SELECT json_col FROM JSONTable ORDER BY json_col;
+--
+QueryStmt
++-output_column_list=
+| +-JSONTable.json_col#1 AS json_col [JSON]
++-query=
+  +-OrderByScan
+    +-column_list=[JSONTable.json_col#1]
+    +-is_ordered=TRUE
+    +-input_scan=
+    | +-TableScan(column_list=[JSONTable.json_col#1], table=JSONTable, column_index_list=[0])
+    +-order_by_item_list=
+      +-OrderByItem
+        +-column_ref=
+          +-ColumnRef(type=JSON, column=JSONTable.json_col#1)
+==
+
+[language_features=NONE,+JSON_TYPE]
+SELECT json_col, COUNT(*) FROM JSONTable GROUP BY json_col;
+--
+ERROR: Grouping by expressions of type JSON is not allowed [at 1:51]
+SELECT json_col, COUNT(*) FROM JSONTable GROUP BY json_col;
+                                                  ^
+
+==
+
+[language_features=NONE,+JSON_TYPE,+JSON_TYPE_COMPARISON]
+SELECT json_col, COUNT(*) FROM JSONTable GROUP BY json_col;
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.json_col#3 AS json_col [JSON]
+| +-$aggregate.$agg1#2 AS `$col2` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$groupby.json_col#3, $aggregate.$agg1#2]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$groupby.json_col#3, $aggregate.$agg1#2]
+        +-input_scan=
+        | +-TableScan(column_list=[JSONTable.json_col#1], table=JSONTable, column_index_list=[0])
+        +-group_by_list=
+        | +-json_col#3 := ColumnRef(type=JSON, column=JSONTable.json_col#1)
+        +-aggregate_list=
+          +-$agg1#2 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+
+==
+
+[language_features=NONE,+JSON_TYPE,+JSON_TYPE_COMPARISON]
+SELECT json_col, COUNT(*) FROM JSONTable GROUP BY json_col ORDER BY json_col;
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.json_col#3 AS json_col [JSON]
+| +-$aggregate.$agg1#2 AS `$col2` [INT64]
++-query=
+  +-OrderByScan
+    +-column_list=[$groupby.json_col#3, $aggregate.$agg1#2]
+    +-is_ordered=TRUE
+    +-input_scan=
+    | +-AggregateScan
+    |   +-column_list=[$groupby.json_col#3, $aggregate.$agg1#2]
+    |   +-input_scan=
+    |   | +-TableScan(column_list=[JSONTable.json_col#1], table=JSONTable, column_index_list=[0])
+    |   +-group_by_list=
+    |   | +-json_col#3 := ColumnRef(type=JSON, column=JSONTable.json_col#1)
+    |   +-aggregate_list=
+    |     +-$agg1#2 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+    +-order_by_item_list=
+      +-OrderByItem
+        +-column_ref=
+          +-ColumnRef(type=JSON, column=$groupby.json_col#3)
+==
+
+[language_features=NONE,+JSON_TYPE,+ANALYTIC_FUNCTIONS]
+select afn_agg() over (partition by json_col) from JSONTable;
+--
+ERROR: Partitioning by expressions of type JSON is not allowed [at 1:37]
+select afn_agg() over (partition by json_col) from JSONTable;
+                                    ^
+==
+
+[language_features=NONE,+JSON_TYPE,+ANALYTIC_FUNCTIONS,+JSON_TYPE_COMPARISON]
+select afn_agg() over (partition by json_col) from JSONTable;
+--
+QueryStmt
++-output_column_list=
+| +-$analytic.$analytic1#3 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$analytic.$analytic1#3]
+    +-input_scan=
+      +-AnalyticScan
+        +-column_list=[JSONTable.json_col#1, $analytic.$analytic1#3]
+        +-input_scan=
+        | +-TableScan(column_list=[JSONTable.json_col#1], table=JSONTable, column_index_list=[0])
+        +-function_group_list=
+          +-AnalyticFunctionGroup
+            +-partition_by=
+            | +-WindowPartitioning
+            |   +-partition_by_list=
+            |     +-ColumnRef(type=JSON, column=JSONTable.json_col#1)
+            +-analytic_function_list=
+              +-$analytic1#3 :=
+                +-AnalyticFunctionCall(sample_functions:afn_agg() -> INT64)
+                  +-window_frame=
+                    +-WindowFrame(frame_unit=ROWS)
+                      +-start_expr=
+                      | +-WindowFrameExpr(boundary_type=UNBOUNDED PRECEDING)
+                      +-end_expr=
+                        +-WindowFrameExpr(boundary_type=UNBOUNDED FOLLOWING)
+==
+
+
+[language_features=NONE,+JSON_TYPE,+ANALYTIC_FUNCTIONS]
+select afn_agg() over (order by json_col) from JSONTable;
+--
+ERROR: Ordering by expressions of type JSON is not allowed [at 1:33]
+select afn_agg() over (order by json_col) from JSONTable;
+                                ^
+==
+
+[language_features=NONE,+JSON_TYPE,+ANALYTIC_FUNCTIONS,+JSON_TYPE_COMPARISON]
+select afn_agg() over (order by json_col) from JSONTable;
+--
+QueryStmt
++-output_column_list=
+| +-$analytic.$analytic1#3 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$analytic.$analytic1#3]
+    +-input_scan=
+      +-AnalyticScan
+        +-column_list=[JSONTable.json_col#1, $analytic.$analytic1#3]
+        +-input_scan=
+        | +-TableScan(column_list=[JSONTable.json_col#1], table=JSONTable, column_index_list=[0])
+        +-function_group_list=
+          +-AnalyticFunctionGroup
+            +-order_by=
+            | +-WindowOrdering
+            |   +-order_by_item_list=
+            |     +-OrderByItem
+            |       +-column_ref=
+            |         +-ColumnRef(type=JSON, column=JSONTable.json_col#1)
+            +-analytic_function_list=
+              +-$analytic1#3 :=
+                +-AnalyticFunctionCall(sample_functions:afn_agg() -> INT64)
+                  +-window_frame=
+                    +-WindowFrame(frame_unit=RANGE)
+                      +-start_expr=
+                      | +-WindowFrameExpr(boundary_type=UNBOUNDED PRECEDING)
+                      +-end_expr=
+                        +-WindowFrameExpr(boundary_type=CURRENT ROW)
+==
+
+[language_features=NONE,+JSON_TYPE,+ANALYTIC_FUNCTIONS,+JSON_TYPE_COMPARISON]
+select afn_agg() over (partition by json_col order by json_col) from JSONTable;
+--
+QueryStmt
++-output_column_list=
+| +-$analytic.$analytic1#3 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$analytic.$analytic1#3]
+    +-input_scan=
+      +-AnalyticScan
+        +-column_list=[JSONTable.json_col#1, $analytic.$analytic1#3]
+        +-input_scan=
+        | +-TableScan(column_list=[JSONTable.json_col#1], table=JSONTable, column_index_list=[0])
+        +-function_group_list=
+          +-AnalyticFunctionGroup
+            +-partition_by=
+            | +-WindowPartitioning
+            |   +-partition_by_list=
+            |     +-ColumnRef(type=JSON, column=JSONTable.json_col#1)
+            +-order_by=
+            | +-WindowOrdering
+            |   +-order_by_item_list=
+            |     +-OrderByItem
+            |       +-column_ref=
+            |         +-ColumnRef(type=JSON, column=JSONTable.json_col#1)
+            +-analytic_function_list=
+              +-$analytic1#3 :=
+                +-AnalyticFunctionCall(sample_functions:afn_agg() -> INT64)
+                  +-window_frame=
+                    +-WindowFrame(frame_unit=RANGE)
+                      +-start_expr=
+                      | +-WindowFrameExpr(boundary_type=UNBOUNDED PRECEDING)
+                      +-end_expr=
+                        +-WindowFrameExpr(boundary_type=CURRENT ROW)
+
+==
+
+
+

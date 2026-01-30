@@ -4,7 +4,7 @@
 
 # GQL functions
 
-All ZetaSQL [functions][functions-all] are supported,
+All GoogleSQL [functions][functions-all] are supported,
 including the following GQL-specific functions:
 
 ## Function list
@@ -21,7 +21,7 @@ including the following GQL-specific functions:
 <tr>
   <td>
     
-    <a href="https://github.com/google/zetasql/blob/master/docs/graph-gql-functions.md#destination_node_id"><code>DESTINATION_NODE_ID</code></a>
+    <a href="https://github.com/google/googlesql/blob/master/docs/graph-gql-functions.md#destination_node_id"><code>DESTINATION_NODE_ID</code></a>
 
     
   </td>
@@ -31,7 +31,7 @@ including the following GQL-specific functions:
 <tr>
   <td>
     
-    <a href="https://github.com/google/zetasql/blob/master/docs/graph-gql-functions.md#edges"><code>EDGES</code></a>
+    <a href="https://github.com/google/googlesql/blob/master/docs/graph-gql-functions.md#edges"><code>EDGES</code></a>
 
     
   </td>
@@ -44,7 +44,19 @@ including the following GQL-specific functions:
 <tr>
   <td>
     
-    <a href="https://github.com/google/zetasql/blob/master/docs/graph-gql-functions.md#element_id"><code>ELEMENT_ID</code></a>
+    <a href="https://github.com/google/googlesql/blob/master/docs/graph-gql-functions.md#element_definition_name"><code>ELEMENT_DEFINITION_NAME</code></a>
+
+    
+  </td>
+  <td>Gets a graph element's element definition name.</td>
+</tr>
+
+ 
+
+<tr>
+  <td>
+    
+    <a href="https://github.com/google/googlesql/blob/master/docs/graph-gql-functions.md#element_id"><code>ELEMENT_ID</code></a>
 
     
   </td>
@@ -54,7 +66,7 @@ including the following GQL-specific functions:
 <tr>
   <td>
     
-    <a href="https://github.com/google/zetasql/blob/master/docs/graph-gql-functions.md#is_acyclic"><code>IS_ACYCLIC</code></a>
+    <a href="https://github.com/google/googlesql/blob/master/docs/graph-gql-functions.md#is_acyclic"><code>IS_ACYCLIC</code></a>
 
     
   </td>
@@ -64,7 +76,7 @@ including the following GQL-specific functions:
 <tr>
   <td>
     
-    <a href="https://github.com/google/zetasql/blob/master/docs/graph-gql-functions.md#is_simple"><code>IS_SIMPLE</code></a>
+    <a href="https://github.com/google/googlesql/blob/master/docs/graph-gql-functions.md#is_simple"><code>IS_SIMPLE</code></a>
 
     
   </td>
@@ -74,7 +86,7 @@ including the following GQL-specific functions:
 <tr>
   <td>
     
-    <a href="https://github.com/google/zetasql/blob/master/docs/graph-gql-functions.md#is_trail"><code>IS_TRAIL</code></a>
+    <a href="https://github.com/google/googlesql/blob/master/docs/graph-gql-functions.md#is_trail"><code>IS_TRAIL</code></a>
 
     
   </td>
@@ -84,7 +96,7 @@ including the following GQL-specific functions:
 <tr>
   <td>
     
-    <a href="https://github.com/google/zetasql/blob/master/docs/graph-gql-functions.md#labels"><code>LABELS</code></a>
+    <a href="https://github.com/google/googlesql/blob/master/docs/graph-gql-functions.md#labels"><code>LABELS</code></a>
 
     
   </td>
@@ -94,7 +106,7 @@ including the following GQL-specific functions:
 <tr>
   <td>
     
-    <a href="https://github.com/google/zetasql/blob/master/docs/graph-gql-functions.md#nodes"><code>NODES</code></a>
+    <a href="https://github.com/google/googlesql/blob/master/docs/graph-gql-functions.md#nodes"><code>NODES</code></a>
 
     
   </td>
@@ -107,7 +119,7 @@ including the following GQL-specific functions:
 <tr>
   <td>
     
-    <a href="https://github.com/google/zetasql/blob/master/docs/graph-gql-functions.md#path"><code>PATH</code></a>
+    <a href="https://github.com/google/googlesql/blob/master/docs/graph-gql-functions.md#path"><code>PATH</code></a>
 
     
   </td>
@@ -117,7 +129,7 @@ including the following GQL-specific functions:
 <tr>
   <td>
     
-    <a href="https://github.com/google/zetasql/blob/master/docs/graph-gql-functions.md#path_first"><code>PATH_FIRST</code></a>
+    <a href="https://github.com/google/googlesql/blob/master/docs/graph-gql-functions.md#path_first"><code>PATH_FIRST</code></a>
 
     
   </td>
@@ -127,7 +139,7 @@ including the following GQL-specific functions:
 <tr>
   <td>
     
-    <a href="https://github.com/google/zetasql/blob/master/docs/graph-gql-functions.md#path_last"><code>PATH_LAST</code></a>
+    <a href="https://github.com/google/googlesql/blob/master/docs/graph-gql-functions.md#path_last"><code>PATH_LAST</code></a>
 
     
   </td>
@@ -137,7 +149,7 @@ including the following GQL-specific functions:
 <tr>
   <td>
     
-    <a href="https://github.com/google/zetasql/blob/master/docs/graph-gql-functions.md#path_length"><code>PATH_LENGTH</code></a>
+    <a href="https://github.com/google/googlesql/blob/master/docs/graph-gql-functions.md#path_length"><code>PATH_LENGTH</code></a>
 
     
   </td>
@@ -147,7 +159,7 @@ including the following GQL-specific functions:
 <tr>
   <td>
     
-    <a href="https://github.com/google/zetasql/blob/master/docs/graph-gql-functions.md#property_names"><code>PROPERTY_NAMES</code></a>
+    <a href="https://github.com/google/googlesql/blob/master/docs/graph-gql-functions.md#property_names"><code>PROPERTY_NAMES</code></a>
 
     
   </td>
@@ -157,7 +169,7 @@ including the following GQL-specific functions:
 <tr>
   <td>
     
-    <a href="https://github.com/google/zetasql/blob/master/docs/graph-gql-functions.md#source_node_id"><code>SOURCE_NODE_ID</code></a>
+    <a href="https://github.com/google/googlesql/blob/master/docs/graph-gql-functions.md#source_node_id"><code>SOURCE_NODE_ID</code></a>
 
     
   </td>
@@ -169,7 +181,7 @@ including the following GQL-specific functions:
 
 ## `DESTINATION_NODE_ID`
 
-```zetasql
+```googlesql
 DESTINATION_NODE_ID(edge_element)
 ```
 
@@ -191,7 +203,7 @@ Returns `NULL` if `edge_element` is `NULL`.
 
 **Examples**
 
-```zetasql
+```googlesql
 GRAPH FinGraph
 MATCH (:Person)-[o:Owns]->(a:Account)
 RETURN a.id AS account_id, DESTINATION_NODE_ID(o) AS destination_node_id
@@ -209,7 +221,7 @@ Note that the actual identifiers obtained may be different from what's shown abo
 
 ## `EDGES`
 
-```zetasql
+```googlesql
 EDGES(graph_path)
 ```
 
@@ -232,7 +244,7 @@ If `graph_path` is `NULL`, returns `NULL`.
 
 **Examples**
 
-```zetasql
+```googlesql
 GRAPH FinGraph
 MATCH p=(src:Account)-[t1:Transfers]->(mid:Account)-[t2:Transfers]->(dst:Account)
 LET es = EDGES(p)
@@ -257,9 +269,52 @@ RETURN ARRAY_CONCAT(ARRAY_TRANSFORM(es, e -> e.Id), [dst.Id]) as ids_in_path
  +-------------*/
 ```
 
+## `ELEMENT_DEFINITION_NAME`
+
+```googlesql
+ELEMENT_DEFINITION_NAME(element)
+```
+
+**Description**
+
+Returns the name of the graph element table underlying the graph element.
+
+**Arguments**
+
++   `element`: A `GRAPH_ELEMENT` value.
+
+**Details**
+
+Returns `NULL` if `element` is `NULL`.
+
+**Return type**
+
+`STRING`
+
+**Examples**
+
+```googlesql
+GRAPH FinGraph
+MATCH (p:Person)-[o:Owns]->(:Account)
+RETURN
+  p.name AS name,
+  ELEMENT_DEFINITION_NAME(p) AS node_element_definition_name,
+  ELEMENT_DEFINITION_NAME(o) AS edge_element_definition_name
+
+/*--------------------------------------------------------------------+
+ | name | node_element_definition_name | edge_element_definition_name |
+ +------|------------------------------|------------------------------+
+ | Alex | Person                       | Owns                         |
+ | Dana | Person                       | Owns                         |
+ | Lee  | Person                       | Owns                         |
+ +--------------------------------------------------------------------*/
+```
+
+ 
+
 ## `ELEMENT_ID`
 
-```zetasql
+```googlesql
 ELEMENT_ID(element)
 ```
 
@@ -281,7 +336,7 @@ Returns `NULL` if `element` is `NULL`.
 
 **Examples**
 
-```zetasql
+```googlesql
 GRAPH FinGraph
 MATCH (p:Person)-[o:Owns]->(:Account)
 RETURN p.name AS name, ELEMENT_ID(p) AS node_element_id, ELEMENT_ID(o) AS edge_element_id
@@ -299,7 +354,7 @@ Note that the actual identifiers obtained may be different from what's shown abo
 
 ## `IS_ACYCLIC`
 
-```zetasql
+```googlesql
 IS_ACYCLIC(graph_path)
 ```
 
@@ -324,7 +379,7 @@ Returns `NULL` if `graph_path` is `NULL`.
 
 **Examples**
 
-```zetasql
+```googlesql
 GRAPH FinGraph
 MATCH p=(src:Account)-[t1:Transfers]->(mid:Account)-[t2:Transfers]->(dst:Account)
 RETURN src.id AS source_account_id, IS_ACYCLIC(p) AS is_acyclic_path
@@ -344,7 +399,7 @@ RETURN src.id AS source_account_id, IS_ACYCLIC(p) AS is_acyclic_path
 
 ## `IS_SIMPLE`
 
-```zetasql
+```googlesql
 IS_SIMPLE(graph_path)
 ```
 
@@ -368,7 +423,7 @@ Returns `NULL` if `graph_path` is `NULL`.
 
 **Examples**
 
-```zetasql
+```googlesql
 GRAPH FinGraph
 MATCH p=(a1:Account)-[t1:Transfers where t1.amount > 200]->
         (a2:Account)-[t2:Transfers where t2.amount > 200]->
@@ -389,7 +444,7 @@ RETURN
 
 ## `IS_TRAIL`
 
-```zetasql
+```googlesql
 IS_TRAIL(graph_path)
 ```
 
@@ -412,7 +467,7 @@ Returns `NULL` if `graph_path` is `NULL`.
 
 **Examples**
 
-```zetasql
+```googlesql
 GRAPH FinGraph
 MATCH
   p=(a1:Account)-[t1:Transfers]->(a2:Account)-[t2:Transfers]->
@@ -432,7 +487,7 @@ RETURN
 
 ## `LABELS`
 
-```zetasql
+```googlesql
 LABELS(element)
 ```
 
@@ -456,7 +511,7 @@ Returns `NULL` if `element` is `NULL`.
 
 **Examples**
 
-```zetasql
+```googlesql
 GRAPH FinGraph
 MATCH (n:Person|Account)
 RETURN LABELS(n) AS label, n.id
@@ -475,7 +530,7 @@ RETURN LABELS(n) AS label, n.id
 
 ## `NODES`
 
-```zetasql
+```googlesql
 NODES(graph_path)
 ```
 
@@ -498,7 +553,7 @@ Returns `NULL` if `graph_path` is `NULL`.
 
 **Examples**
 
-```zetasql
+```googlesql
 GRAPH FinGraph
 MATCH p=(src:Account)-[t1:Transfers]->(mid:Account)-[t2:Transfers]->(dst:Account)
 LET ns = NODES(p)
@@ -522,7 +577,7 @@ RETURN
 
 ## `PATH`
 
-```zetasql
+```googlesql
 PATH(graph_element[, ...])
 ```
 
@@ -549,7 +604,7 @@ This function produces an error if:
 
 **Examples**
 
-```zetasql
+```googlesql
 GRAPH FinGraph
 MATCH (src:Account)-[t1:Transfers]->(mid:Account)-[t2:Transfers]->(dst:Account)
 LET p = PATH(src, t1, mid, t2, dst)
@@ -566,7 +621,7 @@ RETURN
  +-------------------------------------------*/
 ```
 
-```zetasql
+```googlesql
 -- Error: in 'p', a graph element is NULL.
 GRAPH FinGraph
 MATCH (src:Account)-[t1:Transfers]->(mid:Account)-[t2:Transfers]->(dst:Account)
@@ -574,7 +629,7 @@ LET p = PATH(src, NULL, mid, t2, dst)
 RETURN TO_JSON(p) AS results
 ```
 
-```zetasql
+```googlesql
 -- Error: in 'p', 'src' and 'mid' are nodes that should be interleaved with an
 -- edge.
 GRAPH FinGraph
@@ -583,7 +638,7 @@ LET p = PATH(src, mid, t2, dst)
 RETURN TO_JSON(p) AS results
 ```
 
-```zetasql
+```googlesql
 -- Error: in 'p', 't2' is an edge that doesn't connect to a neighboring node on
 -- the right.
 GRAPH FinGraph
@@ -594,7 +649,7 @@ RETURN TO_JSON(p) AS results
 
 ## `PATH_FIRST`
 
-```zetasql
+```googlesql
 PATH_FIRST(graph_path)
 ```
 
@@ -617,7 +672,7 @@ Returns `NULL` if `graph_path` is `NULL`.
 
 **Examples**
 
-```zetasql
+```googlesql
 GRAPH FinGraph
 MATCH p=(src:Account)-[t1:Transfers]->(mid:Account)-[t2:Transfers]->(dst:Account)
 LET f = PATH_FIRST(p)
@@ -640,7 +695,7 @@ RETURN
 
 ## `PATH_LAST`
 
-```zetasql
+```googlesql
 PATH_LAST(graph_path)
 ```
 
@@ -663,7 +718,7 @@ Returns `NULL` if `graph_path` is `NULL`.
 
 **Examples**
 
-```zetasql
+```googlesql
 GRAPH FinGraph
 MATCH p=(src:Account)-[t1:Transfers]->(mid:Account)-[t2:Transfers]->(dst:Account)
 LET f = PATH_LAST(p)
@@ -686,7 +741,7 @@ RETURN
 
 ## `PATH_LENGTH`
 
-```zetasql
+```googlesql
 PATH_LENGTH(graph_path)
 ```
 
@@ -709,7 +764,7 @@ Returns `NULL` if `graph_path` is `NULL`.
 
 **Examples**
 
-```zetasql
+```googlesql
 GRAPH FinGraph
 MATCH p=(src:Account)-[t1:Transfers]->(mid:Account)-[t2:Transfers]->(dst:Account)
 RETURN PATH_LENGTH(p) AS results
@@ -729,7 +784,7 @@ RETURN PATH_LENGTH(p) AS results
 
 ## `PROPERTY_NAMES`
 
-```zetasql
+```googlesql
 PROPERTY_NAMES(element)
 ```
 
@@ -752,7 +807,7 @@ Returns `NULL` if `element` is `NULL`.
 
 **Examples**
 
-```zetasql
+```googlesql
 GRAPH FinGraph
 MATCH (n:Person|Account)
 RETURN PROPERTY_NAMES(n) AS property_names, n.id
@@ -771,7 +826,7 @@ RETURN PROPERTY_NAMES(n) AS property_names, n.id
 
 ## `SOURCE_NODE_ID`
 
-```zetasql
+```googlesql
 SOURCE_NODE_ID(edge_element)
 ```
 
@@ -793,7 +848,7 @@ Returns `NULL` if `edge_element` is `NULL`.
 
 **Examples**
 
-```zetasql
+```googlesql
 GRAPH FinGraph
 MATCH (p:Person)-[o:Owns]->(:Account)
 RETURN p.name AS name, SOURCE_NODE_ID(o) AS source_node_id
@@ -842,7 +897,7 @@ system orders inputs by their position in the array if you don't provide an
 In the following query, the `SUM` function horizontally aggregates over an
 array (`arr`), and then produces the sum of the values in `arr`:
 
-```zetasql {.no-copy}
+```googlesql {.no-copy}
 GRAPH FinGraph
 LET arr = [1, 2, 3]
 LET total = SUM(arr)
@@ -859,7 +914,7 @@ In the following query, the `SUM` function horizontally aggregates over an
 array of structs (`arr`), and then produces the sum of the `x` fields in the
 array:
 
-```zetasql {.no-copy}
+```googlesql {.no-copy}
 GRAPH FinGraph
 LET arr = [STRUCT(1 as x, 10 as y), STRUCT(2, 9), STRUCT(3, 8)]
 LET total = SUM(arr.x)
@@ -876,7 +931,7 @@ In the following query, the `AVG` function horizontally aggregates over an
 array of structs (`arr`), and then produces the average of the `x` and `y`
 fields in the array:
 
-```zetasql {.no-copy}
+```googlesql {.no-copy}
 GRAPH FinGraph
 LET arr = [STRUCT(1 as x, 10 as y), STRUCT(2, 9), STRUCT(3, 8)]
 LET avg_sum = AVG(arr.x + arr.y)
@@ -893,7 +948,7 @@ The `ARRAY_AGG` function can be used as a projection when horizontally
 aggregating. The resulting array is in the same order as the array that's
 horizontally aggregated over.
 
-```zetasql {.no-copy}
+```googlesql {.no-copy}
 GRAPH FinGraph
 LET arr = [STRUCT(1 as x, 9 as y), STRUCT(2, 9), STRUCT(4, 8)]
 LET result = ARRAY_AGG(arr.x + arr.y)
@@ -909,7 +964,7 @@ RETURN result
 The following query produces an error because two arrays were passed into
 the `AVG` aggregate function:
 
-```zetasql {.bad}
+```googlesql {.bad}
 -- ERROR: Horizontal aggregation on more than one array-typed variable
 -- isn't allowed
 GRAPH FinGraph
@@ -926,7 +981,7 @@ array in the aggregate.
 The fix is to lift any expressions that want to use the array as is outside
 the horizontal aggregation.
 
-```zetasql {.bad}
+```googlesql {.bad}
 -- ERROR: No matching signature for function ARRAY_LENGTH for argument types: INT64
 GRAPH FinGraph
 LET arr1 = [1, 2, 3]
@@ -936,7 +991,7 @@ RETURN bad_avg_val
 
 The fix:
 
-```zetasql {.no-copy}
+```googlesql {.no-copy}
 GRAPH FinGraph
 LET arr1 = [1, 2, 3]
 LET len = ARRAY_LENGTH(arr1)
@@ -948,7 +1003,7 @@ In the following query, the `COUNT` function counts the unique amount
 transfers with one to three hops between a source account (`src`) and a
 destination account (`dst`):
 
-```zetasql {.no-copy}
+```googlesql {.no-copy}
 GRAPH FinGraph
 MATCH (src:Account)-[e:Transfers]->{1, 3}(dst:Account)
 WHERE src != dst
@@ -975,7 +1030,7 @@ grouped implicitly by the non-aggregated columns
 (`source_account_id`, `destination_account_id`). `ARRAY_AGG` produces one row
 for each distinct destination account.
 
-```zetasql
+```googlesql
 GRAPH FinGraph
 MATCH (src:Account {id: 7})-[e:Transfers]->{1,2}(dst:Account)
 LET total_amount = SUM(e.amount)
@@ -991,7 +1046,7 @@ RETURN
  +---------------------------------------------------------------------*/
 ```
 
-[group-variables]: https://github.com/google/zetasql/blob/master/docs/graph-patterns#quantified_paths.md
+[group-variables]: https://github.com/google/googlesql/blob/master/docs/graph-patterns#quantified_paths.md
 
-[functions-all]: https://github.com/google/zetasql/blob/master/docs/functions-and-operators.md
+[functions-all]: https://github.com/google/googlesql/blob/master/docs/functions-and-operators.md
 

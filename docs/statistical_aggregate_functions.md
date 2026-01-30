@@ -4,7 +4,7 @@
 
 # Statistical aggregate functions
 
-ZetaSQL supports statistical aggregate functions.
+GoogleSQL supports statistical aggregate functions.
 To learn about the syntax for aggregate function calls, see
 [Aggregate function calls][agg-function-calls].
 
@@ -20,7 +20,7 @@ To learn about the syntax for aggregate function calls, see
   <tbody>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/statistical_aggregate_functions.md#corr"><code>CORR</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/statistical_aggregate_functions.md#corr"><code>CORR</code></a>
 </td>
   <td>
     Computes the Pearson coefficient of correlation of a set of number pairs.
@@ -29,7 +29,7 @@ To learn about the syntax for aggregate function calls, see
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/statistical_aggregate_functions.md#covar_pop"><code>COVAR_POP</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/statistical_aggregate_functions.md#covar_pop"><code>COVAR_POP</code></a>
 </td>
   <td>
     Computes the population covariance of a set of number pairs.
@@ -38,7 +38,7 @@ To learn about the syntax for aggregate function calls, see
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/statistical_aggregate_functions.md#covar_samp"><code>COVAR_SAMP</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/statistical_aggregate_functions.md#covar_samp"><code>COVAR_SAMP</code></a>
 </td>
   <td>
     Computes the sample covariance of a set of number pairs.
@@ -47,7 +47,7 @@ To learn about the syntax for aggregate function calls, see
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/statistical_aggregate_functions.md#stddev"><code>STDDEV</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/statistical_aggregate_functions.md#stddev"><code>STDDEV</code></a>
 </td>
   <td>
     An alias of the <code>STDDEV_SAMP</code> function.
@@ -56,7 +56,7 @@ To learn about the syntax for aggregate function calls, see
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/statistical_aggregate_functions.md#stddev_pop"><code>STDDEV_POP</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/statistical_aggregate_functions.md#stddev_pop"><code>STDDEV_POP</code></a>
 </td>
   <td>
     Computes the population (biased) standard deviation of the values.
@@ -65,7 +65,7 @@ To learn about the syntax for aggregate function calls, see
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/statistical_aggregate_functions.md#stddev_samp"><code>STDDEV_SAMP</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/statistical_aggregate_functions.md#stddev_samp"><code>STDDEV_SAMP</code></a>
 </td>
   <td>
     Computes the sample (unbiased) standard deviation of the values.
@@ -74,7 +74,7 @@ To learn about the syntax for aggregate function calls, see
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/statistical_aggregate_functions.md#var_pop"><code>VAR_POP</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/statistical_aggregate_functions.md#var_pop"><code>VAR_POP</code></a>
 </td>
   <td>
     Computes the population (biased) variance of the values.
@@ -83,7 +83,7 @@ To learn about the syntax for aggregate function calls, see
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/statistical_aggregate_functions.md#var_samp"><code>VAR_SAMP</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/statistical_aggregate_functions.md#var_samp"><code>VAR_SAMP</code></a>
 </td>
   <td>
     Computes the sample (unbiased) variance of the values.
@@ -92,7 +92,7 @@ To learn about the syntax for aggregate function calls, see
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/statistical_aggregate_functions.md#variance"><code>VARIANCE</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/statistical_aggregate_functions.md#variance"><code>VARIANCE</code></a>
 </td>
   <td>
     An alias of <code>VAR_SAMP</code>.
@@ -105,7 +105,7 @@ To learn about the syntax for aggregate function calls, see
 
 ## `CORR`
 
-```zetasql
+```googlesql
 CORR(
   X1, X2
   [ WHERE where_expression ]
@@ -155,7 +155,7 @@ into this function, see
 
 <!-- mdlint off(WHITESPACE_LINE_LENGTH) -->
 
-[aggregate-function-calls]: https://github.com/google/zetasql/blob/master/docs/aggregate-function-calls.md
+[aggregate-function-calls]: https://github.com/google/googlesql/blob/master/docs/aggregate-function-calls.md
 
 <!-- mdlint on -->
 
@@ -164,7 +164,7 @@ To learn more about the `OVER` clause and how to use it, see
 
 <!-- mdlint off(WHITESPACE_LINE_LENGTH) -->
 
-[window-function-calls]: https://github.com/google/zetasql/blob/master/docs/window-function-calls.md
+[window-function-calls]: https://github.com/google/googlesql/blob/master/docs/window-function-calls.md
 
 <!-- mdlint on -->
 
@@ -174,7 +174,7 @@ To learn more about the `OVER` clause and how to use it, see
 
 **Examples**
 
-```zetasql
+```googlesql
 SELECT CORR(y, x) AS results
 FROM
   UNNEST(
@@ -190,7 +190,7 @@ FROM
  +--------------------*/
 ```
 
-```zetasql
+```googlesql
 SELECT CORR(y, x) AS results
 FROM
   UNNEST(
@@ -206,7 +206,7 @@ FROM
  +---------*/
 ```
 
-```zetasql
+```googlesql
 SELECT CORR(y, x) AS results
 FROM UNNEST([STRUCT(1.0 AS y, NULL AS x),(9.0, 3.0)])
 
@@ -217,7 +217,7 @@ FROM UNNEST([STRUCT(1.0 AS y, NULL AS x),(9.0, 3.0)])
  +---------*/
 ```
 
-```zetasql
+```googlesql
 SELECT CORR(y, x) AS results
 FROM UNNEST([STRUCT(1.0 AS y, NULL AS x),(9.0, NULL)])
 
@@ -228,7 +228,7 @@ FROM UNNEST([STRUCT(1.0 AS y, NULL AS x),(9.0, NULL)])
  +---------*/
 ```
 
-```zetasql
+```googlesql
 SELECT CORR(y, x) AS results
 FROM
   UNNEST(
@@ -246,7 +246,7 @@ FROM
  +---------*/
 ```
 
-```zetasql
+```googlesql
 SELECT CORR(x, y) AS results
 FROM
   (
@@ -266,7 +266,7 @@ FROM
 
 ## `COVAR_POP`
 
-```zetasql
+```googlesql
 COVAR_POP(
   X1, X2
   [ WHERE where_expression ]
@@ -314,7 +314,7 @@ into this function, see
 
 <!-- mdlint off(WHITESPACE_LINE_LENGTH) -->
 
-[aggregate-function-calls]: https://github.com/google/zetasql/blob/master/docs/aggregate-function-calls.md
+[aggregate-function-calls]: https://github.com/google/googlesql/blob/master/docs/aggregate-function-calls.md
 
 <!-- mdlint on -->
 
@@ -323,7 +323,7 @@ To learn more about the `OVER` clause and how to use it, see
 
 <!-- mdlint off(WHITESPACE_LINE_LENGTH) -->
 
-[window-function-calls]: https://github.com/google/zetasql/blob/master/docs/window-function-calls.md
+[window-function-calls]: https://github.com/google/googlesql/blob/master/docs/window-function-calls.md
 
 <!-- mdlint on -->
 
@@ -333,7 +333,7 @@ To learn more about the `OVER` clause and how to use it, see
 
 **Examples**
 
-```zetasql
+```googlesql
 SELECT COVAR_POP(y, x) AS results
 FROM
   UNNEST(
@@ -351,7 +351,7 @@ FROM
  +---------------------*/
 ```
 
-```zetasql
+```googlesql
 SELECT COVAR_POP(y, x) AS results
 FROM UNNEST([STRUCT(1.0 AS y, NULL AS x),(9.0, 3.0)])
 
@@ -362,7 +362,7 @@ FROM UNNEST([STRUCT(1.0 AS y, NULL AS x),(9.0, 3.0)])
  +---------*/
 ```
 
-```zetasql
+```googlesql
 SELECT COVAR_POP(y, x) AS results
 FROM UNNEST([STRUCT(1.0 AS y, NULL AS x),(9.0, NULL)])
 
@@ -373,7 +373,7 @@ FROM UNNEST([STRUCT(1.0 AS y, NULL AS x),(9.0, NULL)])
  +---------*/
 ```
 
-```zetasql
+```googlesql
 SELECT COVAR_POP(y, x) AS results
 FROM
   UNNEST(
@@ -391,7 +391,7 @@ FROM
  +---------*/
 ```
 
-```zetasql
+```googlesql
 SELECT COVAR_POP(y, x) AS results
 FROM
   UNNEST(
@@ -413,7 +413,7 @@ FROM
 
 ## `COVAR_SAMP`
 
-```zetasql
+```googlesql
 COVAR_SAMP(
   X1, X2
   [ WHERE where_expression ]
@@ -463,9 +463,9 @@ This function can be used with the
 
 <!-- mdlint off(WHITESPACE_LINE_LENGTH) -->
 
-[aggregate-function-calls]: https://github.com/google/zetasql/blob/master/docs/aggregate-function-calls.md
+[aggregate-function-calls]: https://github.com/google/googlesql/blob/master/docs/aggregate-function-calls.md
 
-[agg-threshold-clause]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#agg_threshold_clause
+[agg-threshold-clause]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#agg_threshold_clause
 
 <!-- mdlint on -->
 
@@ -474,7 +474,7 @@ To learn more about the `OVER` clause and how to use it, see
 
 <!-- mdlint off(WHITESPACE_LINE_LENGTH) -->
 
-[window-function-calls]: https://github.com/google/zetasql/blob/master/docs/window-function-calls.md
+[window-function-calls]: https://github.com/google/googlesql/blob/master/docs/window-function-calls.md
 
 <!-- mdlint on -->
 
@@ -484,7 +484,7 @@ To learn more about the `OVER` clause and how to use it, see
 
 **Examples**
 
-```zetasql
+```googlesql
 SELECT COVAR_SAMP(y, x) AS results
 FROM
   UNNEST(
@@ -502,7 +502,7 @@ FROM
  +---------*/
 ```
 
-```zetasql
+```googlesql
 SELECT COVAR_SAMP(y, x) AS results
 FROM
   UNNEST(
@@ -520,7 +520,7 @@ FROM
  +----------------------*/
 ```
 
-```zetasql
+```googlesql
 SELECT COVAR_SAMP(y, x) AS results
 FROM UNNEST([STRUCT(1.0 AS y, NULL AS x),(9.0, 3.0)])
 
@@ -531,7 +531,7 @@ FROM UNNEST([STRUCT(1.0 AS y, NULL AS x),(9.0, 3.0)])
  +---------*/
 ```
 
-```zetasql
+```googlesql
 SELECT COVAR_SAMP(y, x) AS results
 FROM UNNEST([STRUCT(1.0 AS y, NULL AS x),(9.0, NULL)])
 
@@ -542,7 +542,7 @@ FROM UNNEST([STRUCT(1.0 AS y, NULL AS x),(9.0, NULL)])
  +---------*/
 ```
 
-```zetasql
+```googlesql
 SELECT COVAR_SAMP(y, x) AS results
 FROM
   UNNEST(
@@ -564,7 +564,7 @@ FROM
 
 ## `STDDEV`
 
-```zetasql
+```googlesql
 STDDEV(
   [ DISTINCT ]
   expression
@@ -592,7 +592,7 @@ An alias of [STDDEV_SAMP][stat-agg-link-to-stddev-samp].
 
 ## `STDDEV_POP`
 
-```zetasql
+```googlesql
 STDDEV_POP(
   [ DISTINCT ]
   expression
@@ -641,9 +641,9 @@ This function can be used with the
 
 <!-- mdlint off(WHITESPACE_LINE_LENGTH) -->
 
-[aggregate-function-calls]: https://github.com/google/zetasql/blob/master/docs/aggregate-function-calls.md
+[aggregate-function-calls]: https://github.com/google/googlesql/blob/master/docs/aggregate-function-calls.md
 
-[agg-threshold-clause]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#agg_threshold_clause
+[agg-threshold-clause]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#agg_threshold_clause
 
 <!-- mdlint on -->
 
@@ -652,7 +652,7 @@ To learn more about the `OVER` clause and how to use it, see
 
 <!-- mdlint off(WHITESPACE_LINE_LENGTH) -->
 
-[window-function-calls]: https://github.com/google/zetasql/blob/master/docs/window-function-calls.md
+[window-function-calls]: https://github.com/google/googlesql/blob/master/docs/window-function-calls.md
 
 <!-- mdlint on -->
 
@@ -665,7 +665,7 @@ To learn more about the `OVER` clause and how to use it, see
 
 **Examples**
 
-```zetasql
+```googlesql
 SELECT STDDEV_POP(x) AS results FROM UNNEST([10, 14, 18]) AS x
 
 /*-------------------+
@@ -675,7 +675,7 @@ SELECT STDDEV_POP(x) AS results FROM UNNEST([10, 14, 18]) AS x
  +-------------------*/
 ```
 
-```zetasql
+```googlesql
 SELECT STDDEV_POP(x) AS results FROM UNNEST([10, 14, NULL]) AS x
 
 /*---------+
@@ -685,7 +685,7 @@ SELECT STDDEV_POP(x) AS results FROM UNNEST([10, 14, NULL]) AS x
  +---------*/
 ```
 
-```zetasql
+```googlesql
 SELECT STDDEV_POP(x) AS results FROM UNNEST([10, NULL]) AS x
 
 /*---------+
@@ -695,7 +695,7 @@ SELECT STDDEV_POP(x) AS results FROM UNNEST([10, NULL]) AS x
  +---------*/
 ```
 
-```zetasql
+```googlesql
 SELECT STDDEV_POP(x) AS results FROM UNNEST([NULL]) AS x
 
 /*---------+
@@ -705,7 +705,7 @@ SELECT STDDEV_POP(x) AS results FROM UNNEST([NULL]) AS x
  +---------*/
 ```
 
-```zetasql
+```googlesql
 SELECT STDDEV_POP(x) AS results FROM UNNEST([10, 14, CAST('Infinity' as DOUBLE)]) AS x
 
 /*---------+
@@ -715,11 +715,11 @@ SELECT STDDEV_POP(x) AS results FROM UNNEST([10, 14, CAST('Infinity' as DOUBLE)]
  +---------*/
 ```
 
-[dp-functions]: https://github.com/google/zetasql/blob/master/docs/aggregate-dp-functions.md
+[dp-functions]: https://github.com/google/googlesql/blob/master/docs/aggregate-dp-functions.md
 
 ## `STDDEV_SAMP`
 
-```zetasql
+```googlesql
 STDDEV_SAMP(
   [ DISTINCT ]
   expression
@@ -767,9 +767,9 @@ This function can be used with the
 
 <!-- mdlint off(WHITESPACE_LINE_LENGTH) -->
 
-[aggregate-function-calls]: https://github.com/google/zetasql/blob/master/docs/aggregate-function-calls.md
+[aggregate-function-calls]: https://github.com/google/googlesql/blob/master/docs/aggregate-function-calls.md
 
-[agg-threshold-clause]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#agg_threshold_clause
+[agg-threshold-clause]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#agg_threshold_clause
 
 <!-- mdlint on -->
 
@@ -778,7 +778,7 @@ To learn more about the `OVER` clause and how to use it, see
 
 <!-- mdlint off(WHITESPACE_LINE_LENGTH) -->
 
-[window-function-calls]: https://github.com/google/zetasql/blob/master/docs/window-function-calls.md
+[window-function-calls]: https://github.com/google/googlesql/blob/master/docs/window-function-calls.md
 
 <!-- mdlint on -->
 
@@ -788,7 +788,7 @@ To learn more about the `OVER` clause and how to use it, see
 
 **Examples**
 
-```zetasql
+```googlesql
 SELECT STDDEV_SAMP(x) AS results FROM UNNEST([10, 14, 18]) AS x
 
 /*---------+
@@ -798,7 +798,7 @@ SELECT STDDEV_SAMP(x) AS results FROM UNNEST([10, 14, 18]) AS x
  +---------*/
 ```
 
-```zetasql
+```googlesql
 SELECT STDDEV_SAMP(x) AS results FROM UNNEST([10, 14, NULL]) AS x
 
 /*--------------------+
@@ -808,7 +808,7 @@ SELECT STDDEV_SAMP(x) AS results FROM UNNEST([10, 14, NULL]) AS x
  +--------------------*/
 ```
 
-```zetasql
+```googlesql
 SELECT STDDEV_SAMP(x) AS results FROM UNNEST([10, NULL]) AS x
 
 /*---------+
@@ -818,7 +818,7 @@ SELECT STDDEV_SAMP(x) AS results FROM UNNEST([10, NULL]) AS x
  +---------*/
 ```
 
-```zetasql
+```googlesql
 SELECT STDDEV_SAMP(x) AS results FROM UNNEST([NULL]) AS x
 
 /*---------+
@@ -828,7 +828,7 @@ SELECT STDDEV_SAMP(x) AS results FROM UNNEST([NULL]) AS x
  +---------*/
 ```
 
-```zetasql
+```googlesql
 SELECT STDDEV_SAMP(x) AS results FROM UNNEST([10, 14, CAST('Infinity' as DOUBLE)]) AS x
 
 /*---------+
@@ -840,7 +840,7 @@ SELECT STDDEV_SAMP(x) AS results FROM UNNEST([10, 14, CAST('Infinity' as DOUBLE)
 
 ## `VAR_POP`
 
-```zetasql
+```googlesql
 VAR_POP(
   [ DISTINCT ]
   expression
@@ -885,7 +885,7 @@ To learn more about the `OVER` clause and how to use it, see
 
 <!-- mdlint off(WHITESPACE_LINE_LENGTH) -->
 
-[window-function-calls]: https://github.com/google/zetasql/blob/master/docs/window-function-calls.md
+[window-function-calls]: https://github.com/google/googlesql/blob/master/docs/window-function-calls.md
 
 <!-- mdlint on -->
 
@@ -898,7 +898,7 @@ To learn more about the `OVER` clause and how to use it, see
 
 **Examples**
 
-```zetasql
+```googlesql
 SELECT VAR_POP(x) AS results FROM UNNEST([10, 14, 18]) AS x
 
 /*--------------------+
@@ -908,7 +908,7 @@ SELECT VAR_POP(x) AS results FROM UNNEST([10, 14, 18]) AS x
  +--------------------*/
 ```
 
-```zetasql
+```googlesql
 SELECT VAR_POP(x) AS results FROM UNNEST([10, 14, NULL]) AS x
 
 /*----------+
@@ -918,7 +918,7 @@ SELECT VAR_POP(x) AS results FROM UNNEST([10, 14, NULL]) AS x
  +---------*/
 ```
 
-```zetasql
+```googlesql
 SELECT VAR_POP(x) AS results FROM UNNEST([10, NULL]) AS x
 
 /*----------+
@@ -928,7 +928,7 @@ SELECT VAR_POP(x) AS results FROM UNNEST([10, NULL]) AS x
  +---------*/
 ```
 
-```zetasql
+```googlesql
 SELECT VAR_POP(x) AS results FROM UNNEST([NULL]) AS x
 
 /*---------+
@@ -938,7 +938,7 @@ SELECT VAR_POP(x) AS results FROM UNNEST([NULL]) AS x
  +---------*/
 ```
 
-```zetasql
+```googlesql
 SELECT VAR_POP(x) AS results FROM UNNEST([10, 14, CAST('Infinity' as DOUBLE)]) AS x
 
 /*---------+
@@ -948,11 +948,11 @@ SELECT VAR_POP(x) AS results FROM UNNEST([10, 14, CAST('Infinity' as DOUBLE)]) A
  +---------*/
 ```
 
-[dp-functions]: https://github.com/google/zetasql/blob/master/docs/aggregate-dp-functions.md
+[dp-functions]: https://github.com/google/googlesql/blob/master/docs/aggregate-dp-functions.md
 
 ## `VAR_SAMP`
 
-```zetasql
+```googlesql
 VAR_SAMP(
   [ DISTINCT ]
   expression
@@ -1000,9 +1000,9 @@ This function can be used with the
 
 <!-- mdlint off(WHITESPACE_LINE_LENGTH) -->
 
-[aggregate-function-calls]: https://github.com/google/zetasql/blob/master/docs/aggregate-function-calls.md
+[aggregate-function-calls]: https://github.com/google/googlesql/blob/master/docs/aggregate-function-calls.md
 
-[agg-threshold-clause]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#agg_threshold_clause
+[agg-threshold-clause]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#agg_threshold_clause
 
 <!-- mdlint on -->
 
@@ -1011,7 +1011,7 @@ To learn more about the `OVER` clause and how to use it, see
 
 <!-- mdlint off(WHITESPACE_LINE_LENGTH) -->
 
-[window-function-calls]: https://github.com/google/zetasql/blob/master/docs/window-function-calls.md
+[window-function-calls]: https://github.com/google/googlesql/blob/master/docs/window-function-calls.md
 
 <!-- mdlint on -->
 
@@ -1021,7 +1021,7 @@ To learn more about the `OVER` clause and how to use it, see
 
 **Examples**
 
-```zetasql
+```googlesql
 SELECT VAR_SAMP(x) AS results FROM UNNEST([10, 14, 18]) AS x
 
 /*---------+
@@ -1031,7 +1031,7 @@ SELECT VAR_SAMP(x) AS results FROM UNNEST([10, 14, 18]) AS x
  +---------*/
 ```
 
-```zetasql
+```googlesql
 SELECT VAR_SAMP(x) AS results FROM UNNEST([10, 14, NULL]) AS x
 
 /*---------+
@@ -1041,7 +1041,7 @@ SELECT VAR_SAMP(x) AS results FROM UNNEST([10, 14, NULL]) AS x
  +---------*/
 ```
 
-```zetasql
+```googlesql
 SELECT VAR_SAMP(x) AS results FROM UNNEST([10, NULL]) AS x
 
 /*---------+
@@ -1051,7 +1051,7 @@ SELECT VAR_SAMP(x) AS results FROM UNNEST([10, NULL]) AS x
  +---------*/
 ```
 
-```zetasql
+```googlesql
 SELECT VAR_SAMP(x) AS results FROM UNNEST([NULL]) AS x
 
 /*---------+
@@ -1061,7 +1061,7 @@ SELECT VAR_SAMP(x) AS results FROM UNNEST([NULL]) AS x
  +---------*/
 ```
 
-```zetasql
+```googlesql
 SELECT VAR_SAMP(x) AS results FROM UNNEST([10, 14, CAST('Infinity' as DOUBLE)]) AS x
 
 /*---------+
@@ -1073,7 +1073,7 @@ SELECT VAR_SAMP(x) AS results FROM UNNEST([10, 14, CAST('Infinity' as DOUBLE)]) 
 
 ## `VARIANCE`
 
-```zetasql
+```googlesql
 VARIANCE(
   [ DISTINCT ]
   expression
@@ -1099,5 +1099,5 @@ An alias of [VAR_SAMP][stat-agg-link-to-var-samp].
 
 [stat-agg-link-to-var-samp]: #var_samp
 
-[agg-function-calls]: https://github.com/google/zetasql/blob/master/docs/aggregate-function-calls.md
+[agg-function-calls]: https://github.com/google/googlesql/blob/master/docs/aggregate-function-calls.md
 

@@ -1,0 +1,488 @@
+[default language_features={{NONE|MAXIMUM}},+TABLE_VALUED_FUNCTIONS, +TUMBLE_HOP_TVFS, +INTERVAL_TYPE, +NAMED_ARGUMENTS]
+[default no_enable_literal_replacement]
+# Disable literal replacement for TUMBLE AND HOP TVFs because timestamp_column
+# must be a string literal.
+
+# TUMBLE resolves correctly, adds the window start and end columns.
+
+SELECT * FROM tumble(TABLE TableWithTimestampColumn, "ts_col", INTERVAL 1 DAY);
+--
+QueryStmt
++-output_column_list=
+| +-tumble.ts_col#3 AS ts_col [TIMESTAMP]
+| +-tumble.WINDOW_START#4 AS WINDOW_START [TIMESTAMP]
+| +-tumble.WINDOW_END#5 AS WINDOW_END [TIMESTAMP]
++-query=
+  +-ProjectScan
+    +-column_list=tumble.[ts_col#3, WINDOW_START#4, WINDOW_END#5]
+    +-input_scan=
+      +-TVFScan
+        +-column_list=tumble.[ts_col#3, WINDOW_START#4, WINDOW_END#5]
+        +-tvf=GoogleSQL:tumble((ANY TABLE table_expr, STRING timestamp_column, INTERVAL window_size, optional TIMESTAMP {default_value: 1970-01-01 00:00:00+00} origin) -> ANY TABLE; (ANY TABLE table_expr, INTERVAL window_size, optional TIMESTAMP {default_value: 1970-01-01 00:00:00+00} origin) -> ANY TABLE)
+        +-signature=(TABLE<ts_col TIMESTAMP>, literal STRING, INTERVAL, literal TIMESTAMP) -> TABLE<ts_col TIMESTAMP, WINDOW_START TIMESTAMP, WINDOW_END TIMESTAMP>
+        +-argument_list=
+        | +-FunctionArgument
+        | | +-scan=
+        | | | +-TableScan(column_list=[TableWithTimestampColumn.ts_col#1], node_source="table_clause", table=TableWithTimestampColumn, column_index_list=[0])
+        | | +-argument_column_list=[TableWithTimestampColumn.ts_col#1]
+        | +-FunctionArgument
+        | | +-expr=
+        | |   +-Literal(type=STRING, value="ts_col")
+        | +-FunctionArgument
+        | | +-expr=
+        | |   +-FunctionCall(GoogleSQL:$interval(INT64, ENUM<googlesql.functions.DateTimestampPart>) -> INTERVAL)
+        | |     +-Literal(type=INT64, value=1)
+        | |     +-Literal(type=ENUM<googlesql.functions.DateTimestampPart>, value=DAY)
+        | +-FunctionArgument
+        |   +-expr=
+        |     +-Literal(type=TIMESTAMP, value=1970-01-01 00:00:00+00)
+        +-column_index_list=[0, 1, 2]
+        +-function_call_signature=(ANY TABLE table_expr, STRING timestamp_column, INTERVAL window_size, optional(1) TIMESTAMP origin) -> ANY TABLE
+==
+
+# HOP resolves correctly, adds the window start and end columns.
+
+SELECT * FROM hop(TABLE TableWithTimestampColumn, "ts_col", INTERVAL 1 DAY, INTERVAL 1 HOUR);
+--
+QueryStmt
++-output_column_list=
+| +-hop.ts_col#3 AS ts_col [TIMESTAMP]
+| +-hop.WINDOW_START#4 AS WINDOW_START [TIMESTAMP]
+| +-hop.WINDOW_END#5 AS WINDOW_END [TIMESTAMP]
++-query=
+  +-ProjectScan
+    +-column_list=hop.[ts_col#3, WINDOW_START#4, WINDOW_END#5]
+    +-input_scan=
+      +-TVFScan
+        +-column_list=hop.[ts_col#3, WINDOW_START#4, WINDOW_END#5]
+        +-tvf=GoogleSQL:hop((ANY TABLE table_expr, STRING timestamp_column, INTERVAL window_size, INTERVAL step_size, optional TIMESTAMP {default_value: 1970-01-01 00:00:00+00} origin) -> ANY TABLE; (ANY TABLE table_expr, INTERVAL window_size, INTERVAL step_size, optional TIMESTAMP {default_value: 1970-01-01 00:00:00+00} origin) -> ANY TABLE)
+        +-signature=(TABLE<ts_col TIMESTAMP>, literal STRING, INTERVAL, INTERVAL, literal TIMESTAMP) -> TABLE<ts_col TIMESTAMP, WINDOW_START TIMESTAMP, WINDOW_END TIMESTAMP>
+        +-argument_list=
+        | +-FunctionArgument
+        | | +-scan=
+        | | | +-TableScan(column_list=[TableWithTimestampColumn.ts_col#1], node_source="table_clause", table=TableWithTimestampColumn, column_index_list=[0])
+        | | +-argument_column_list=[TableWithTimestampColumn.ts_col#1]
+        | +-FunctionArgument
+        | | +-expr=
+        | |   +-Literal(type=STRING, value="ts_col")
+        | +-FunctionArgument
+        | | +-expr=
+        | |   +-FunctionCall(GoogleSQL:$interval(INT64, ENUM<googlesql.functions.DateTimestampPart>) -> INTERVAL)
+        | |     +-Literal(type=INT64, value=1)
+        | |     +-Literal(type=ENUM<googlesql.functions.DateTimestampPart>, value=DAY)
+        | +-FunctionArgument
+        | | +-expr=
+        | |   +-FunctionCall(GoogleSQL:$interval(INT64, ENUM<googlesql.functions.DateTimestampPart>) -> INTERVAL)
+        | |     +-Literal(type=INT64, value=1)
+        | |     +-Literal(type=ENUM<googlesql.functions.DateTimestampPart>, value=HOUR)
+        | +-FunctionArgument
+        |   +-expr=
+        |     +-Literal(type=TIMESTAMP, value=1970-01-01 00:00:00+00)
+        +-column_index_list=[0, 1, 2]
+        +-function_call_signature=(ANY TABLE table_expr, STRING timestamp_column, INTERVAL window_size, INTERVAL step_size, optional(1) TIMESTAMP origin) -> ANY TABLE
+==
+
+# TUMBLE with optional origin argument.
+
+SELECT * FROM tumble(TABLE TableWithTimestampColumn, "ts_col", INTERVAL 1 DAY, origin => TIMESTAMP("1970-01-01"));
+--
+QueryStmt
++-output_column_list=
+| +-tumble.ts_col#3 AS ts_col [TIMESTAMP]
+| +-tumble.WINDOW_START#4 AS WINDOW_START [TIMESTAMP]
+| +-tumble.WINDOW_END#5 AS WINDOW_END [TIMESTAMP]
++-query=
+  +-ProjectScan
+    +-column_list=tumble.[ts_col#3, WINDOW_START#4, WINDOW_END#5]
+    +-input_scan=
+      +-TVFScan
+        +-column_list=tumble.[ts_col#3, WINDOW_START#4, WINDOW_END#5]
+        +-tvf=GoogleSQL:tumble((ANY TABLE table_expr, STRING timestamp_column, INTERVAL window_size, optional TIMESTAMP {default_value: 1970-01-01 00:00:00+00} origin) -> ANY TABLE; (ANY TABLE table_expr, INTERVAL window_size, optional TIMESTAMP {default_value: 1970-01-01 00:00:00+00} origin) -> ANY TABLE)
+        +-signature=(TABLE<ts_col TIMESTAMP>, literal STRING, INTERVAL, TIMESTAMP) -> TABLE<ts_col TIMESTAMP, WINDOW_START TIMESTAMP, WINDOW_END TIMESTAMP>
+        +-argument_list=
+        | +-FunctionArgument
+        | | +-scan=
+        | | | +-TableScan(column_list=[TableWithTimestampColumn.ts_col#1], node_source="table_clause", table=TableWithTimestampColumn, column_index_list=[0])
+        | | +-argument_column_list=[TableWithTimestampColumn.ts_col#1]
+        | +-FunctionArgument
+        | | +-expr=
+        | |   +-Literal(type=STRING, value="ts_col")
+        | +-FunctionArgument
+        | | +-expr=
+        | |   +-FunctionCall(GoogleSQL:$interval(INT64, ENUM<googlesql.functions.DateTimestampPart>) -> INTERVAL)
+        | |     +-Literal(type=INT64, value=1)
+        | |     +-Literal(type=ENUM<googlesql.functions.DateTimestampPart>, value=DAY)
+        | +-FunctionArgument
+        |   +-expr=
+        |     +-FunctionCall(GoogleSQL:timestamp(STRING, optional(0) STRING) -> TIMESTAMP)
+        |       +-Literal(type=STRING, value="1970-01-01")
+        +-column_index_list=[0, 1, 2]
+        +-function_call_signature=(ANY TABLE table_expr, STRING timestamp_column, INTERVAL window_size, optional(1) TIMESTAMP origin) -> ANY TABLE
+==
+
+# HOP with optional origin argument.
+
+SELECT * FROM hop(TABLE TableWithTimestampColumn, "ts_col", INTERVAL 1 DAY, INTERVAL 1 HOUR, origin => TIMESTAMP("1970-01-01"));
+--
+QueryStmt
++-output_column_list=
+| +-hop.ts_col#3 AS ts_col [TIMESTAMP]
+| +-hop.WINDOW_START#4 AS WINDOW_START [TIMESTAMP]
+| +-hop.WINDOW_END#5 AS WINDOW_END [TIMESTAMP]
++-query=
+  +-ProjectScan
+    +-column_list=hop.[ts_col#3, WINDOW_START#4, WINDOW_END#5]
+    +-input_scan=
+      +-TVFScan
+        +-column_list=hop.[ts_col#3, WINDOW_START#4, WINDOW_END#5]
+        +-tvf=GoogleSQL:hop((ANY TABLE table_expr, STRING timestamp_column, INTERVAL window_size, INTERVAL step_size, optional TIMESTAMP {default_value: 1970-01-01 00:00:00+00} origin) -> ANY TABLE; (ANY TABLE table_expr, INTERVAL window_size, INTERVAL step_size, optional TIMESTAMP {default_value: 1970-01-01 00:00:00+00} origin) -> ANY TABLE)
+        +-signature=(TABLE<ts_col TIMESTAMP>, literal STRING, INTERVAL, INTERVAL, TIMESTAMP) -> TABLE<ts_col TIMESTAMP, WINDOW_START TIMESTAMP, WINDOW_END TIMESTAMP>
+        +-argument_list=
+        | +-FunctionArgument
+        | | +-scan=
+        | | | +-TableScan(column_list=[TableWithTimestampColumn.ts_col#1], node_source="table_clause", table=TableWithTimestampColumn, column_index_list=[0])
+        | | +-argument_column_list=[TableWithTimestampColumn.ts_col#1]
+        | +-FunctionArgument
+        | | +-expr=
+        | |   +-Literal(type=STRING, value="ts_col")
+        | +-FunctionArgument
+        | | +-expr=
+        | |   +-FunctionCall(GoogleSQL:$interval(INT64, ENUM<googlesql.functions.DateTimestampPart>) -> INTERVAL)
+        | |     +-Literal(type=INT64, value=1)
+        | |     +-Literal(type=ENUM<googlesql.functions.DateTimestampPart>, value=DAY)
+        | +-FunctionArgument
+        | | +-expr=
+        | |   +-FunctionCall(GoogleSQL:$interval(INT64, ENUM<googlesql.functions.DateTimestampPart>) -> INTERVAL)
+        | |     +-Literal(type=INT64, value=1)
+        | |     +-Literal(type=ENUM<googlesql.functions.DateTimestampPart>, value=HOUR)
+        | +-FunctionArgument
+        |   +-expr=
+        |     +-FunctionCall(GoogleSQL:timestamp(STRING, optional(0) STRING) -> TIMESTAMP)
+        |       +-Literal(type=STRING, value="1970-01-01")
+        +-column_index_list=[0, 1, 2]
+        +-function_call_signature=(ANY TABLE table_expr, STRING timestamp_column, INTERVAL window_size, INTERVAL step_size, optional(1) TIMESTAMP origin) -> ANY TABLE
+==
+
+# TUMBLE ignores input window start column regardless of column type
+# and adds new window start and end timestamp columns.
+
+SELECT * FROM tumble((SELECT ts_col, 1 AS Window_Start FROM TableWithTimestampColumn), "ts_col", INTERVAL 1 DAY);
+--
+QueryStmt
++-output_column_list=
+| +-tumble.ts_col#5 AS ts_col [TIMESTAMP]
+| +-tumble.WINDOW_START#6 AS WINDOW_START [TIMESTAMP]
+| +-tumble.WINDOW_END#7 AS WINDOW_END [TIMESTAMP]
++-query=
+  +-ProjectScan
+    +-column_list=tumble.[ts_col#5, WINDOW_START#6, WINDOW_END#7]
+    +-input_scan=
+      +-TVFScan
+        +-column_list=tumble.[ts_col#5, WINDOW_START#6, WINDOW_END#7]
+        +-tvf=GoogleSQL:tumble((ANY TABLE table_expr, STRING timestamp_column, INTERVAL window_size, optional TIMESTAMP {default_value: 1970-01-01 00:00:00+00} origin) -> ANY TABLE; (ANY TABLE table_expr, INTERVAL window_size, optional TIMESTAMP {default_value: 1970-01-01 00:00:00+00} origin) -> ANY TABLE)
+        +-signature=(TABLE<ts_col TIMESTAMP, Window_Start INT64>, literal STRING, INTERVAL, literal TIMESTAMP) -> TABLE<ts_col TIMESTAMP, WINDOW_START TIMESTAMP, WINDOW_END TIMESTAMP>
+        +-argument_list=
+        | +-FunctionArgument
+        | | +-scan=
+        | | | +-ProjectScan
+        | | |   +-column_list=[TableWithTimestampColumn.ts_col#1, $subquery1.Window_Start#2]
+        | | |   +-expr_list=
+        | | |   | +-Window_Start#2 := Literal(type=INT64, value=1)
+        | | |   +-input_scan=
+        | | |     +-TableScan(column_list=[TableWithTimestampColumn.ts_col#1], table=TableWithTimestampColumn, column_index_list=[0])
+        | | +-argument_column_list=[TableWithTimestampColumn.ts_col#1, $subquery1.Window_Start#2]
+        | +-FunctionArgument
+        | | +-expr=
+        | |   +-Literal(type=STRING, value="ts_col")
+        | +-FunctionArgument
+        | | +-expr=
+        | |   +-FunctionCall(GoogleSQL:$interval(INT64, ENUM<googlesql.functions.DateTimestampPart>) -> INTERVAL)
+        | |     +-Literal(type=INT64, value=1)
+        | |     +-Literal(type=ENUM<googlesql.functions.DateTimestampPart>, value=DAY)
+        | +-FunctionArgument
+        |   +-expr=
+        |     +-Literal(type=TIMESTAMP, value=1970-01-01 00:00:00+00)
+        +-column_index_list=[0, 1, 2]
+        +-function_call_signature=(ANY TABLE table_expr, STRING timestamp_column, INTERVAL window_size, optional(1) TIMESTAMP origin) -> ANY TABLE
+==
+
+# HOP ignores input window start column regardless of column type
+# and adds new window start and end timestamp columns.
+
+SELECT * FROM hop((SELECT ts_col, 1 AS Window_Start FROM TableWithTimestampColumn), "ts_col", INTERVAL 1 DAY, INTERVAL 1 HOUR);
+--
+QueryStmt
++-output_column_list=
+| +-hop.ts_col#5 AS ts_col [TIMESTAMP]
+| +-hop.WINDOW_START#6 AS WINDOW_START [TIMESTAMP]
+| +-hop.WINDOW_END#7 AS WINDOW_END [TIMESTAMP]
++-query=
+  +-ProjectScan
+    +-column_list=hop.[ts_col#5, WINDOW_START#6, WINDOW_END#7]
+    +-input_scan=
+      +-TVFScan
+        +-column_list=hop.[ts_col#5, WINDOW_START#6, WINDOW_END#7]
+        +-tvf=GoogleSQL:hop((ANY TABLE table_expr, STRING timestamp_column, INTERVAL window_size, INTERVAL step_size, optional TIMESTAMP {default_value: 1970-01-01 00:00:00+00} origin) -> ANY TABLE; (ANY TABLE table_expr, INTERVAL window_size, INTERVAL step_size, optional TIMESTAMP {default_value: 1970-01-01 00:00:00+00} origin) -> ANY TABLE)
+        +-signature=(TABLE<ts_col TIMESTAMP, Window_Start INT64>, literal STRING, INTERVAL, INTERVAL, literal TIMESTAMP) -> TABLE<ts_col TIMESTAMP, WINDOW_START TIMESTAMP, WINDOW_END TIMESTAMP>
+        +-argument_list=
+        | +-FunctionArgument
+        | | +-scan=
+        | | | +-ProjectScan
+        | | |   +-column_list=[TableWithTimestampColumn.ts_col#1, $subquery1.Window_Start#2]
+        | | |   +-expr_list=
+        | | |   | +-Window_Start#2 := Literal(type=INT64, value=1)
+        | | |   +-input_scan=
+        | | |     +-TableScan(column_list=[TableWithTimestampColumn.ts_col#1], table=TableWithTimestampColumn, column_index_list=[0])
+        | | +-argument_column_list=[TableWithTimestampColumn.ts_col#1, $subquery1.Window_Start#2]
+        | +-FunctionArgument
+        | | +-expr=
+        | |   +-Literal(type=STRING, value="ts_col")
+        | +-FunctionArgument
+        | | +-expr=
+        | |   +-FunctionCall(GoogleSQL:$interval(INT64, ENUM<googlesql.functions.DateTimestampPart>) -> INTERVAL)
+        | |     +-Literal(type=INT64, value=1)
+        | |     +-Literal(type=ENUM<googlesql.functions.DateTimestampPart>, value=DAY)
+        | +-FunctionArgument
+        | | +-expr=
+        | |   +-FunctionCall(GoogleSQL:$interval(INT64, ENUM<googlesql.functions.DateTimestampPart>) -> INTERVAL)
+        | |     +-Literal(type=INT64, value=1)
+        | |     +-Literal(type=ENUM<googlesql.functions.DateTimestampPart>, value=HOUR)
+        | +-FunctionArgument
+        |   +-expr=
+        |     +-Literal(type=TIMESTAMP, value=1970-01-01 00:00:00+00)
+        +-column_index_list=[0, 1, 2]
+        +-function_call_signature=(ANY TABLE table_expr, STRING timestamp_column, INTERVAL window_size, INTERVAL step_size, optional(1) TIMESTAMP origin) -> ANY TABLE
+==
+
+# TUMBLE ignores input window end column regardless of column type
+# and letter case. It adds new window start and end timestamp columns.
+
+SELECT * FROM tumble((SELECT ts_col, 1 AS Window_End FROM TableWithTimestampColumn), "ts_col", INTERVAL 1 DAY);
+--
+QueryStmt
++-output_column_list=
+| +-tumble.ts_col#5 AS ts_col [TIMESTAMP]
+| +-tumble.WINDOW_START#6 AS WINDOW_START [TIMESTAMP]
+| +-tumble.WINDOW_END#7 AS WINDOW_END [TIMESTAMP]
++-query=
+  +-ProjectScan
+    +-column_list=tumble.[ts_col#5, WINDOW_START#6, WINDOW_END#7]
+    +-input_scan=
+      +-TVFScan
+        +-column_list=tumble.[ts_col#5, WINDOW_START#6, WINDOW_END#7]
+        +-tvf=GoogleSQL:tumble((ANY TABLE table_expr, STRING timestamp_column, INTERVAL window_size, optional TIMESTAMP {default_value: 1970-01-01 00:00:00+00} origin) -> ANY TABLE; (ANY TABLE table_expr, INTERVAL window_size, optional TIMESTAMP {default_value: 1970-01-01 00:00:00+00} origin) -> ANY TABLE)
+        +-signature=(TABLE<ts_col TIMESTAMP, Window_End INT64>, literal STRING, INTERVAL, literal TIMESTAMP) -> TABLE<ts_col TIMESTAMP, WINDOW_START TIMESTAMP, WINDOW_END TIMESTAMP>
+        +-argument_list=
+        | +-FunctionArgument
+        | | +-scan=
+        | | | +-ProjectScan
+        | | |   +-column_list=[TableWithTimestampColumn.ts_col#1, $subquery1.Window_End#2]
+        | | |   +-expr_list=
+        | | |   | +-Window_End#2 := Literal(type=INT64, value=1)
+        | | |   +-input_scan=
+        | | |     +-TableScan(column_list=[TableWithTimestampColumn.ts_col#1], table=TableWithTimestampColumn, column_index_list=[0])
+        | | +-argument_column_list=[TableWithTimestampColumn.ts_col#1, $subquery1.Window_End#2]
+        | +-FunctionArgument
+        | | +-expr=
+        | |   +-Literal(type=STRING, value="ts_col")
+        | +-FunctionArgument
+        | | +-expr=
+        | |   +-FunctionCall(GoogleSQL:$interval(INT64, ENUM<googlesql.functions.DateTimestampPart>) -> INTERVAL)
+        | |     +-Literal(type=INT64, value=1)
+        | |     +-Literal(type=ENUM<googlesql.functions.DateTimestampPart>, value=DAY)
+        | +-FunctionArgument
+        |   +-expr=
+        |     +-Literal(type=TIMESTAMP, value=1970-01-01 00:00:00+00)
+        +-column_index_list=[0, 1, 2]
+        +-function_call_signature=(ANY TABLE table_expr, STRING timestamp_column, INTERVAL window_size, optional(1) TIMESTAMP origin) -> ANY TABLE
+==
+
+# HOP ignores input window end column regardless of column type
+# and letter case. It adds new window start and end timestamp columns.
+
+SELECT * FROM hop((SELECT ts_col, 1 AS Window_End FROM TableWithTimestampColumn), "ts_col", INTERVAL 1 DAY, INTERVAL 1 HOUR);
+--
+QueryStmt
++-output_column_list=
+| +-hop.ts_col#5 AS ts_col [TIMESTAMP]
+| +-hop.WINDOW_START#6 AS WINDOW_START [TIMESTAMP]
+| +-hop.WINDOW_END#7 AS WINDOW_END [TIMESTAMP]
++-query=
+  +-ProjectScan
+    +-column_list=hop.[ts_col#5, WINDOW_START#6, WINDOW_END#7]
+    +-input_scan=
+      +-TVFScan
+        +-column_list=hop.[ts_col#5, WINDOW_START#6, WINDOW_END#7]
+        +-tvf=GoogleSQL:hop((ANY TABLE table_expr, STRING timestamp_column, INTERVAL window_size, INTERVAL step_size, optional TIMESTAMP {default_value: 1970-01-01 00:00:00+00} origin) -> ANY TABLE; (ANY TABLE table_expr, INTERVAL window_size, INTERVAL step_size, optional TIMESTAMP {default_value: 1970-01-01 00:00:00+00} origin) -> ANY TABLE)
+        +-signature=(TABLE<ts_col TIMESTAMP, Window_End INT64>, literal STRING, INTERVAL, INTERVAL, literal TIMESTAMP) -> TABLE<ts_col TIMESTAMP, WINDOW_START TIMESTAMP, WINDOW_END TIMESTAMP>
+        +-argument_list=
+        | +-FunctionArgument
+        | | +-scan=
+        | | | +-ProjectScan
+        | | |   +-column_list=[TableWithTimestampColumn.ts_col#1, $subquery1.Window_End#2]
+        | | |   +-expr_list=
+        | | |   | +-Window_End#2 := Literal(type=INT64, value=1)
+        | | |   +-input_scan=
+        | | |     +-TableScan(column_list=[TableWithTimestampColumn.ts_col#1], table=TableWithTimestampColumn, column_index_list=[0])
+        | | +-argument_column_list=[TableWithTimestampColumn.ts_col#1, $subquery1.Window_End#2]
+        | +-FunctionArgument
+        | | +-expr=
+        | |   +-Literal(type=STRING, value="ts_col")
+        | +-FunctionArgument
+        | | +-expr=
+        | |   +-FunctionCall(GoogleSQL:$interval(INT64, ENUM<googlesql.functions.DateTimestampPart>) -> INTERVAL)
+        | |     +-Literal(type=INT64, value=1)
+        | |     +-Literal(type=ENUM<googlesql.functions.DateTimestampPart>, value=DAY)
+        | +-FunctionArgument
+        | | +-expr=
+        | |   +-FunctionCall(GoogleSQL:$interval(INT64, ENUM<googlesql.functions.DateTimestampPart>) -> INTERVAL)
+        | |     +-Literal(type=INT64, value=1)
+        | |     +-Literal(type=ENUM<googlesql.functions.DateTimestampPart>, value=HOUR)
+        | +-FunctionArgument
+        |   +-expr=
+        |     +-Literal(type=TIMESTAMP, value=1970-01-01 00:00:00+00)
+        +-column_index_list=[0, 1, 2]
+        +-function_call_signature=(ANY TABLE table_expr, STRING timestamp_column, INTERVAL window_size, INTERVAL step_size, optional(1) TIMESTAMP origin) -> ANY TABLE
+==
+
+# Validates that TUMBLE fails at pre-resolution time if the signature
+# does not match.
+
+SELECT * FROM tumble("string1", "string2", "string3");
+--
+ERROR: No matching signature for table valued function : TUMBLE. Supported Signatures: TUMBLE(table_expr => TABLE, timestamp_column => STRING, window_size => INTERVAL, [origin => TIMESTAMP]) [at 1:15]
+SELECT * FROM tumble("string1", "string2", "string3");
+              ^
+==
+
+# Validates that HOP fails at pre-resolution time if the signature
+# does not match.
+
+SELECT * FROM hop("string1", "string2", "string3");
+--
+ERROR: No matching signature for table valued function : HOP. Supported Signatures: HOP(table_expr => TABLE, timestamp_column => STRING, window_size => INTERVAL, step_size => INTERVAL, [origin => TIMESTAMP]) [at 1:15]
+SELECT * FROM hop("string1", "string2", "string3");
+              ^
+==
+
+# TUMBLE preserves the letter case of column names.
+
+SELECT * FROM tumble(TABLE TableWithMixedCaseColumn, "ts_col", INTERVAL 1 DAY);
+--
+QueryStmt
++-output_column_list=
+| +-tumble.ts_col#5 AS ts_col [TIMESTAMP]
+| +-tumble.MiXeD_cAsE#6 AS MiXeD_cAsE [STRING]
+| +-tumble.WINDOW_START#7 AS WINDOW_START [TIMESTAMP]
+| +-tumble.WINDOW_END#8 AS WINDOW_END [TIMESTAMP]
++-query=
+  +-ProjectScan
+    +-column_list=tumble.[ts_col#5, MiXeD_cAsE#6, WINDOW_START#7, WINDOW_END#8]
+    +-input_scan=
+      +-TVFScan
+        +-column_list=tumble.[ts_col#5, MiXeD_cAsE#6, WINDOW_START#7, WINDOW_END#8]
+        +-tvf=GoogleSQL:tumble((ANY TABLE table_expr, STRING timestamp_column, INTERVAL window_size, optional TIMESTAMP {default_value: 1970-01-01 00:00:00+00} origin) -> ANY TABLE; (ANY TABLE table_expr, INTERVAL window_size, optional TIMESTAMP {default_value: 1970-01-01 00:00:00+00} origin) -> ANY TABLE)
+        +-signature=(TABLE<ts_col TIMESTAMP, MiXeD_cAsE STRING>, literal STRING, INTERVAL, literal TIMESTAMP) -> TABLE<ts_col TIMESTAMP, MiXeD_cAsE STRING, WINDOW_START TIMESTAMP, WINDOW_END TIMESTAMP>
+        +-argument_list=
+        | +-FunctionArgument
+        | | +-scan=
+        | | | +-TableScan(column_list=TableWithMixedCaseColumn.[ts_col#1, MiXeD_cAsE#2], node_source="table_clause", table=TableWithMixedCaseColumn, column_index_list=[0, 1])
+        | | +-argument_column_list=TableWithMixedCaseColumn.[ts_col#1, MiXeD_cAsE#2]
+        | +-FunctionArgument
+        | | +-expr=
+        | |   +-Literal(type=STRING, value="ts_col")
+        | +-FunctionArgument
+        | | +-expr=
+        | |   +-FunctionCall(GoogleSQL:$interval(INT64, ENUM<googlesql.functions.DateTimestampPart>) -> INTERVAL)
+        | |     +-Literal(type=INT64, value=1)
+        | |     +-Literal(type=ENUM<googlesql.functions.DateTimestampPart>, value=DAY)
+        | +-FunctionArgument
+        |   +-expr=
+        |     +-Literal(type=TIMESTAMP, value=1970-01-01 00:00:00+00)
+        +-column_index_list=[0, 1, 2, 3]
+        +-function_call_signature=(ANY TABLE table_expr, STRING timestamp_column, INTERVAL window_size, optional(1) TIMESTAMP origin) -> ANY TABLE
+==
+
+# HOP preserves the letter case of column names.
+
+SELECT * FROM hop(TABLE TableWithMixedCaseColumn, "ts_col", INTERVAL 1 DAY, INTERVAL 1 HOUR);
+--
+QueryStmt
++-output_column_list=
+| +-hop.ts_col#5 AS ts_col [TIMESTAMP]
+| +-hop.MiXeD_cAsE#6 AS MiXeD_cAsE [STRING]
+| +-hop.WINDOW_START#7 AS WINDOW_START [TIMESTAMP]
+| +-hop.WINDOW_END#8 AS WINDOW_END [TIMESTAMP]
++-query=
+  +-ProjectScan
+    +-column_list=hop.[ts_col#5, MiXeD_cAsE#6, WINDOW_START#7, WINDOW_END#8]
+    +-input_scan=
+      +-TVFScan
+        +-column_list=hop.[ts_col#5, MiXeD_cAsE#6, WINDOW_START#7, WINDOW_END#8]
+        +-tvf=GoogleSQL:hop((ANY TABLE table_expr, STRING timestamp_column, INTERVAL window_size, INTERVAL step_size, optional TIMESTAMP {default_value: 1970-01-01 00:00:00+00} origin) -> ANY TABLE; (ANY TABLE table_expr, INTERVAL window_size, INTERVAL step_size, optional TIMESTAMP {default_value: 1970-01-01 00:00:00+00} origin) -> ANY TABLE)
+        +-signature=(TABLE<ts_col TIMESTAMP, MiXeD_cAsE STRING>, literal STRING, INTERVAL, INTERVAL, literal TIMESTAMP) -> TABLE<ts_col TIMESTAMP, MiXeD_cAsE STRING, WINDOW_START TIMESTAMP, WINDOW_END TIMESTAMP>
+        +-argument_list=
+        | +-FunctionArgument
+        | | +-scan=
+        | | | +-TableScan(column_list=TableWithMixedCaseColumn.[ts_col#1, MiXeD_cAsE#2], node_source="table_clause", table=TableWithMixedCaseColumn, column_index_list=[0, 1])
+        | | +-argument_column_list=TableWithMixedCaseColumn.[ts_col#1, MiXeD_cAsE#2]
+        | +-FunctionArgument
+        | | +-expr=
+        | |   +-Literal(type=STRING, value="ts_col")
+        | +-FunctionArgument
+        | | +-expr=
+        | |   +-FunctionCall(GoogleSQL:$interval(INT64, ENUM<googlesql.functions.DateTimestampPart>) -> INTERVAL)
+        | |     +-Literal(type=INT64, value=1)
+        | |     +-Literal(type=ENUM<googlesql.functions.DateTimestampPart>, value=DAY)
+        | +-FunctionArgument
+        | | +-expr=
+        | |   +-FunctionCall(GoogleSQL:$interval(INT64, ENUM<googlesql.functions.DateTimestampPart>) -> INTERVAL)
+        | |     +-Literal(type=INT64, value=1)
+        | |     +-Literal(type=ENUM<googlesql.functions.DateTimestampPart>, value=HOUR)
+        | +-FunctionArgument
+        |   +-expr=
+        |     +-Literal(type=TIMESTAMP, value=1970-01-01 00:00:00+00)
+        +-column_index_list=[0, 1, 2, 3]
+        +-function_call_signature=(ANY TABLE table_expr, STRING timestamp_column, INTERVAL window_size, INTERVAL step_size, optional(1) TIMESTAMP origin) -> ANY TABLE
+==
+
+[language_features=MAXIMUM{{,-TUMBLE_HOP_TVFS|}}]
+# TODO: Remove this test once the tumble hop tvfs are enabled by
+# default.
+# TUMBLE fails when the feature is not enabled.
+SELECT * FROM tumble(TABLE TableWithTimestampColumn, "ts_col", INTERVAL 1 DAY);
+--
+ERROR: Table-valued function not found: tumble [at 4:15]
+SELECT * FROM tumble(TABLE TableWithTimestampColumn, "ts_col", INTERVAL 1 DAY);
+              ^
+==
+
+[language_features=MAXIMUM{{,-TUMBLE_HOP_TVFS|}}]
+# TODO: Remove this test once the tumble hop tvfs are enabled by
+# default.
+# HOP fails when the feature is not enabled.
+SELECT * FROM hop(TABLE TableWithTimestampColumn, "ts_col", INTERVAL 1 DAY, INTERVAL 1 HOUR);
+--
+ERROR: Table-valued function not found: hop [at 4:15]
+SELECT * FROM hop(TABLE TableWithTimestampColumn, "ts_col", INTERVAL 1 DAY, I...
+              ^
+==
+
+# Validates that the timestamp_column argument must be a literal for TUMBLE.
+
+SELECT * FROM tumble(TABLE TableWithTimestampColumn, CONCAT("ts", "_col"), INTERVAL 1 DAY);
+--
+ERROR: Invalid table-valued function tumble [at 1:15]
+SELECT * FROM tumble(TABLE TableWithTimestampColumn, CONCAT("ts", "_col"), IN...
+              ^
+Argument 'timestamp_column' must be a string literal
+==
+
+# Validates that the timestamp_column argument must be a literal for HOP.
+
+SELECT * FROM hop(TABLE TableWithTimestampColumn, CONCAT("ts", "_col"), INTERVAL 1 DAY, INTERVAL 1 HOUR);
+--
+ERROR: Invalid table-valued function hop [at 1:15]
+SELECT * FROM hop(TABLE TableWithTimestampColumn, CONCAT("ts", "_col"), INTER...
+              ^
+Argument 'timestamp_column' must be a string literal

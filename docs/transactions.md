@@ -4,7 +4,7 @@
 
 # Transactions
 
-ZetaSQL supports the following transaction statements.
+GoogleSQL supports the following transaction statements.
 
 ## `BEGIN`
 

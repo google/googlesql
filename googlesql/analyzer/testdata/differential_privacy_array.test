@@ -1,0 +1,142 @@
+# Tests for DIFFERENTIAL_PRIVACY in conjunction with ARRAY types and UNNEST.
+[default language_features=NONE,+DIFFERENTIAL_PRIVACY,+NAMED_ARGUMENTS,+PIPE_AGGREGATE_WITH_DIFFERENTIAL_PRIVACY]
+
+[enabled_ast_rewrites=DEFAULTS,+ANONYMIZATION]
+# Support ArrayScan
+select with differential_privacy count(*)
+from ArrayWithAnonymizationUid t, t.int64_array a
+group by a;
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#5 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#5]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#5]
+        +-input_scan=
+        | +-ArrayScan
+        |   +-column_list=[ArrayWithAnonymizationUid.int64_array#1, $array.a#4]
+        |   +-input_scan=
+        |   | +-TableScan(column_list=[ArrayWithAnonymizationUid.int64_array#1], table=ArrayWithAnonymizationUid, column_index_list=[0], alias="t")
+        |   +-array_expr_list=
+        |   | +-ColumnRef(type=ARRAY<INT64>, column=ArrayWithAnonymizationUid.int64_array#1)
+        |   +-element_column_list=[$array.a#4]
+        +-group_by_list=
+        | +-a#6 := ColumnRef(type=INT64, column=$array.a#4)
+        +-aggregate_list=
+          +-$agg1#5 :=
+            +-AggregateFunctionCall(GoogleSQL:$differential_privacy_count_star(optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+              +-Literal(type=STRUCT<INT64, INT64>, value=NULL)
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#5 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#5]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#5]
+        +-input_scan=
+        | +-AggregateScan
+        |   +-column_list=[$aggregate.$agg1_partial#9, $groupby.a_partial#10, $group_by.$uid#11]
+        |   +-input_scan=
+        |   | +-ArrayScan
+        |   |   +-column_list=[ArrayWithAnonymizationUid.int64_array#1, $array.a#4, ArrayWithAnonymizationUid.uid#7]
+        |   |   +-input_scan=
+        |   |   | +-TableScan(column_list=ArrayWithAnonymizationUid.[int64_array#1, uid#7], table=ArrayWithAnonymizationUid, column_index_list=[0, 2], alias="t")
+        |   |   +-array_expr_list=
+        |   |   | +-ColumnRef(type=ARRAY<INT64>, column=ArrayWithAnonymizationUid.int64_array#1)
+        |   |   +-element_column_list=[$array.a#4]
+        |   +-group_by_list=
+        |   | +-a_partial#10 := ColumnRef(type=INT64, column=$array.a#4)
+        |   | +-$uid#11 := ColumnRef(type=INT64, column=ArrayWithAnonymizationUid.uid#7)
+        |   +-aggregate_list=
+        |     +-$agg1_partial#9 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+        +-group_by_list=
+        | +-a#6 := ColumnRef(type=INT64, column=$groupby.a_partial#10)
+        +-aggregate_list=
+        | +-$agg1#5 :=
+        | | +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+        | |   +-ColumnRef(type=INT64, column=$aggregate.$agg1_partial#9)
+        | |   +-Literal(type=STRUCT<INT64, INT64>, value=NULL)
+        | +-$group_selection_threshold_col#14 :=
+        |   +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+        |     +-Literal(type=INT64, value=1)
+        |     +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+        +-group_selection_threshold_expr=
+          +-ColumnRef(type=INT64, column=$differential_privacy.$group_selection_threshold_col#14)
+==
+
+# Support ArrayScan with join_expr
+[enabled_ast_rewrites=DEFAULTS,+ANONYMIZATION]
+select with differential_privacy count(*)
+from ArrayWithAnonymizationUid t inner join unnest(t.int64_array) a on true;
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#5 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#5]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#5]
+        +-input_scan=
+        | +-ArrayScan
+        |   +-column_list=[ArrayWithAnonymizationUid.int64_array#1]
+        |   +-input_scan=
+        |   | +-TableScan(column_list=[ArrayWithAnonymizationUid.int64_array#1], table=ArrayWithAnonymizationUid, column_index_list=[0], alias="t")
+        |   +-array_expr_list=
+        |   | +-ColumnRef(type=ARRAY<INT64>, column=ArrayWithAnonymizationUid.int64_array#1)
+        |   +-element_column_list=[$array.a#4]
+        |   +-join_expr=
+        |     +-Literal(type=BOOL, value=true)
+        +-aggregate_list=
+          +-$agg1#5 :=
+            +-AggregateFunctionCall(GoogleSQL:$differential_privacy_count_star(optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+              +-Literal(type=STRUCT<INT64, INT64>, value=NULL)
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#5 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#5]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#5]
+        +-input_scan=
+        | +-AggregateScan
+        |   +-column_list=[$aggregate.$agg1_partial#8, $group_by.$uid#9]
+        |   +-input_scan=
+        |   | +-ArrayScan
+        |   |   +-column_list=ArrayWithAnonymizationUid.[int64_array#1, uid#6]
+        |   |   +-input_scan=
+        |   |   | +-TableScan(column_list=ArrayWithAnonymizationUid.[int64_array#1, uid#6], table=ArrayWithAnonymizationUid, column_index_list=[0, 2], alias="t")
+        |   |   +-array_expr_list=
+        |   |   | +-ColumnRef(type=ARRAY<INT64>, column=ArrayWithAnonymizationUid.int64_array#1)
+        |   |   +-element_column_list=[$array.a#4]
+        |   |   +-join_expr=
+        |   |     +-Literal(type=BOOL, value=true)
+        |   +-group_by_list=
+        |   | +-$uid#9 := ColumnRef(type=INT64, column=ArrayWithAnonymizationUid.uid#6)
+        |   +-aggregate_list=
+        |     +-$agg1_partial#8 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+        +-aggregate_list=
+        | +-$agg1#5 :=
+        | | +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+        | |   +-ColumnRef(type=INT64, column=$aggregate.$agg1_partial#8)
+        | |   +-Literal(type=STRUCT<INT64, INT64>, value=NULL)
+        | +-$group_selection_threshold_col#12 :=
+        |   +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+        |     +-Literal(type=INT64, value=1)
+        |     +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+        +-group_selection_threshold_expr=
+          +-ColumnRef(type=INT64, column=$differential_privacy.$group_selection_threshold_col#12)
+==

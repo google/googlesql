@@ -1,0 +1,521 @@
+# Simple assignment to system variable
+[default language_features=MAXIMUM]
+SET @@int64_system_variable = 0;
+--
+AssignmentStmt
++-target=
+| +-SystemVariable(int64_system_variable, type=INT64)
++-expr=
+  +-Literal(type=INT64, value=0)
+==
+
+# Assignment to complex expression
+SET @@int64_system_variable = (SELECT MAX(key) from KeyValue);
+--
+AssignmentStmt
++-target=
+| +-SystemVariable(int64_system_variable, type=INT64)
++-expr=
+  +-SubqueryExpr
+    +-type=INT64
+    +-subquery_type=SCALAR
+    +-subquery=
+      +-ProjectScan
+        +-column_list=[$aggregate.$agg1#3]
+        +-input_scan=
+          +-AggregateScan
+            +-column_list=[$aggregate.$agg1#3]
+            +-input_scan=
+            | +-TableScan(column_list=[KeyValue.Key#1], table=KeyValue, column_index_list=[0])
+            +-aggregate_list=
+              +-$agg1#3 :=
+                +-AggregateFunctionCall(GoogleSQL:max(INT64) -> INT64)
+                  +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+==
+
+# Assignment to constants is not supported.
+SET int64_constant = 3;
+--
+ERROR: Statement not supported: SingleAssignment [at 1:1]
+SET int64_constant = 3;
+^
+==
+
+# Assignment to query parameters is not supported.
+SET @foo = 3;
+--
+ERROR: Statement not supported: ParameterAssignment [at 1:1]
+SET @foo = 3;
+^
+==
+
+# Assignment to system variable (wrong type)
+SET @@int64_system_variable = 'string';
+--
+ERROR: Expected type INT64; found STRING [at 1:31]
+SET @@int64_system_variable = 'string';
+                              ^
+==
+
+# Assignment of NULL value to system variable
+SET @@int64_system_variable = NULL;
+--
+AssignmentStmt
++-target=
+| +-SystemVariable(int64_system_variable, type=INT64)
++-expr=
+  +-Literal(type=INT64, value=NULL)
+==
+
+# Assignment to UINT64 system variable
+SET @@uint64_system_variable = 9223372036854775808;
+--
+AssignmentStmt
++-target=
+| +-SystemVariable(uint64_system_variable, type=UINT64)
++-expr=
+  +-Literal(type=UINT64, value=9223372036854775808)
+==
+
+# Assignment to INT64 system variable of UINT64 value.
+SET @@int64_system_variable = @@uint64_system_variable;
+--
+ERROR: Expected type INT64; found UINT64 [at 1:31]
+SET @@int64_system_variable = @@uint64_system_variable;
+                              ^
+==
+
+# Assignment to UINT64 system variable of INT64 value.
+SET @@uint64_system_variable = @@int64_system_variable;
+--
+ERROR: Expected type UINT64; found INT64 [at 1:32]
+SET @@uint64_system_variable = @@int64_system_variable;
+                               ^
+==
+
+# Assignment to INT64 system variable of UINT64 literal
+SET @@int64_system_variable = 5;
+--
+AssignmentStmt
++-target=
+| +-SystemVariable(int64_system_variable, type=INT64)
++-expr=
+  +-Literal(type=INT64, value=5)
+==
+
+# Assignment to INT64 system variable of UINT64 literal that is out of range.
+SET @@int64_system_variable = 9223372036854775808;
+--
+ERROR: Could not cast literal 9223372036854775808 to type INT64 [at 1:31]
+SET @@int64_system_variable = 9223372036854775808;
+                              ^
+==
+
+# Literal string->TIMESTAMP coercion when assigning to a system variable
+SET @@timestamp_system_variable = '2017-05-01 12:34:56';
+--
+AssignmentStmt
++-target=
+| +-SystemVariable(timestamp_system_variable, type=TIMESTAMP)
++-expr=
+  +-Literal(type=TIMESTAMP, value=2017-05-01 19:34:56+00)
+==
+
+# Assignment to non-existant system variable
+SET @@system_variable_that_does_not_exist = 1;
+--
+ERROR: Unrecognized name: @@system_variable_that_does_not_exist [at 1:5]
+SET @@system_variable_that_does_not_exist = 1;
+    ^
+==
+
+# Assignment to field of system variable that is not a struct
+SET @@int64_system_variable.a = 0;
+--
+ERROR: Cannot access field a on a value with type INT64 [at 1:29]
+SET @@int64_system_variable.a = 0;
+                            ^
+==
+
+# Assignment of struct-type system variable
+SET @@struct_system_variable = (21, (25, 'test'));
+--
+AssignmentStmt
++-target=
+| +-SystemVariable(struct_system_variable, type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>)
++-expr=
+  +-Literal(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, value={c:21, d:{a:25, b:"test"}})
+==
+
+# Assignment to field of struct-type system variable
+SET @@struct_system_variable.c = 50;
+--
+AssignmentStmt
++-target=
+| +-GetStructField
+|   +-type=INT32
+|   +-expr=
+|   | +-SystemVariable(struct_system_variable, type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>)
+|   +-field_idx=0
++-expr=
+  +-Literal(type=INT32, value=50)
+==
+
+# Incrementing field of system variable
+SET @@struct_system_variable.c = @@struct_system_variable.c + 1;
+--
+AssignmentStmt
++-target=
+| +-GetStructField
+|   +-type=INT32
+|   +-expr=
+|   | +-SystemVariable(struct_system_variable, type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>)
+|   +-field_idx=0
++-expr=
+  +-Cast(INT64 -> INT32)
+    +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+      +-Cast(INT32 -> INT64)
+      | +-GetStructField
+      |   +-type=INT32
+      |   +-expr=
+      |   | +-SystemVariable(struct_system_variable, type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>)
+      |   +-field_idx=0
+      +-Literal(type=INT64, value=1)
+==
+
+# Assignment to nested field of struct-type system variable
+SET @@struct_system_variable.d.a = 50;
+--
+AssignmentStmt
++-target=
+| +-GetStructField
+|   +-type=INT32
+|   +-expr=
+|   | +-GetStructField
+|   |   +-type=STRUCT<a INT32, b STRING>
+|   |   +-expr=
+|   |   | +-SystemVariable(struct_system_variable, type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>)
+|   |   +-field_idx=1
+|   +-field_idx=0
++-expr=
+  +-Literal(type=INT32, value=50)
+==
+
+# Assignment to nested field of struct-type system variable (wrong type)
+SET @@struct_system_variable.d.a = 'this is a string';
+--
+ERROR: Expected type INT32; found STRING [at 1:36]
+SET @@struct_system_variable.d.a = 'this is a string';
+                                   ^
+==
+
+# Assignment to non-existent field of struct-type system variable
+SET @@struct_system_variable.d.garbage = 50;
+--
+ERROR: Field name garbage does not exist in STRUCT<a INT32, b STRING> [at 1:32]
+SET @@struct_system_variable.d.garbage = 50;
+                               ^
+==
+
+# Assignment to system variable of proto type (NULL value)
+SET @@proto_system_variable = NULL;
+--
+AssignmentStmt
++-target=
+| +-SystemVariable(proto_system_variable, type=PROTO<googlesql_test.KitchenSinkPB>)
++-expr=
+  +-Literal(type=PROTO<googlesql_test.KitchenSinkPB>, value=NULL)
+==
+
+# Assignment to system variable of proto type (proto value)
+SET @@proto_system_variable = (
+  SELECT AS `googlesql_test.KitchenSinkPB`
+    3 int64_key_1,
+    4 int64_key_2,
+    [5,6] repeated_int64_val
+);
+--
+AssignmentStmt
++-target=
+| +-SystemVariable(proto_system_variable, type=PROTO<googlesql_test.KitchenSinkPB>)
++-expr=
+  +-SubqueryExpr
+    +-type=PROTO<googlesql_test.KitchenSinkPB>
+    +-subquery_type=SCALAR
+    +-subquery=
+      +-ProjectScan
+        +-column_list=[$make_proto.$proto#4]
+        +-expr_list=
+        | +-$proto#4 :=
+        |   +-MakeProto
+        |     +-type=PROTO<googlesql_test.KitchenSinkPB>
+        |     +-field_list=
+        |       +-int64_key_1 := ColumnRef(type=INT64, column=$expr_subquery.int64_key_1#1)
+        |       +-int64_key_2 := ColumnRef(type=INT64, column=$expr_subquery.int64_key_2#2)
+        |       +-repeated_int64_val := ColumnRef(type=ARRAY<INT64>, column=$expr_subquery.repeated_int64_val#3)
+        +-input_scan=
+          +-ProjectScan
+            +-column_list=$expr_subquery.[int64_key_1#1, int64_key_2#2, repeated_int64_val#3]
+            +-expr_list=
+            | +-int64_key_1#1 := Literal(type=INT64, value=3)
+            | +-int64_key_2#2 := Literal(type=INT64, value=4)
+            | +-repeated_int64_val#3 := Literal(type=ARRAY<INT64>, value=[5, 6])
+            +-input_scan=
+              +-SingleRowScan
+==
+
+# Assignment to scalar field of system variable of proto type
+SET @@proto_system_variable.int64_key_1 = 8;
+--
+AssignmentStmt
++-target=
+| +-GetProtoField
+|   +-type=INT64
+|   +-expr=
+|   | +-SystemVariable(proto_system_variable, type=PROTO<googlesql_test.KitchenSinkPB>)
+|   +-field_descriptor=int64_key_1
++-expr=
+  +-Literal(type=INT64, value=8)
+==
+
+# Assignment to scalar field of system variable of proto type (value wrong type)
+SET @@proto_system_variable.int64_key_1 = 'test';
+--
+ERROR: Expected type INT64; found STRING [at 1:43]
+SET @@proto_system_variable.int64_key_1 = 'test';
+                                          ^
+==
+
+# Assignment to repeated field of system variable of proto type to non-empty
+# array
+SET @@proto_system_variable.repeated_int64_val = [20, 21];
+--
+AssignmentStmt
++-target=
+| +-GetProtoField
+|   +-type=ARRAY<INT64>
+|   +-expr=
+|   | +-SystemVariable(proto_system_variable, type=PROTO<googlesql_test.KitchenSinkPB>)
+|   +-field_descriptor=repeated_int64_val
+|   +-default_value=[]
++-expr=
+  +-Literal(type=ARRAY<INT64>, value=[20, 21])
+==
+
+# Assign to repeated proto field (one element has wrong type)
+SET @@proto_system_variable.repeated_int64_val = [20, 'abcd'];
+--
+ERROR: Array elements of types {INT64, STRING} do not have a common supertype [at 1:50]
+SET @@proto_system_variable.repeated_int64_val = [20, 'abcd'];
+                                                 ^
+==
+
+# Assign to repeated proto field (all elements have wrong type)
+SET @@proto_system_variable.repeated_int64_val = ['abcd', 'efgh'];
+--
+ERROR: Expected type ARRAY<INT64>; found ARRAY<STRING> [at 1:50]
+SET @@proto_system_variable.repeated_int64_val = ['abcd', 'efgh'];
+                                                 ^
+==
+
+# Assignment to repeated field of system variable of proto type to empty array
+SET @@proto_system_variable.repeated_string_val = [];
+--
+AssignmentStmt
++-target=
+| +-GetProtoField
+|   +-type=ARRAY<STRING>
+|   +-expr=
+|   | +-SystemVariable(proto_system_variable, type=PROTO<googlesql_test.KitchenSinkPB>)
+|   +-field_descriptor=repeated_string_val
+|   +-default_value=[]
++-expr=
+  +-Literal(type=ARRAY<STRING>, value=[])
+==
+
+# Assignment to a specific element of a repeated field is not supported.
+SET @@proto_system_variable.repeated_int64_val[OFFSET(0)] = 5;
+--
+ERROR: Syntax error: Expected "=" but got "[" [at 1:47]
+SET @@proto_system_variable.repeated_int64_val[OFFSET(0)] = 5;
+                                              ^
+==
+
+# Assignment to field in nested message
+SET @@proto_system_variable.nested_value.nested_int64 = 25;
+--
+AssignmentStmt
++-target=
+| +-GetProtoField
+|   +-type=INT64
+|   +-expr=
+|   | +-GetProtoField
+|   |   +-type=PROTO<googlesql_test.KitchenSinkPB.Nested>
+|   |   +-expr=
+|   |   | +-SystemVariable(proto_system_variable, type=PROTO<googlesql_test.KitchenSinkPB>)
+|   |   +-field_descriptor=nested_value
+|   |   +-default_value=NULL
+|   +-field_descriptor=nested_int64
+|   +-default_value=88
++-expr=
+  +-Literal(type=INT64, value=25)
+==
+
+# Assignment to nested proto
+SET @@proto_system_variable.nested_value = (
+  SELECT AS `googlesql_test.KitchenSinkPB.Nested`
+    15 nested_int64,
+    [5,6] nested_repeated_int64
+);
+--
+AssignmentStmt
++-target=
+| +-GetProtoField
+|   +-type=PROTO<googlesql_test.KitchenSinkPB.Nested>
+|   +-expr=
+|   | +-SystemVariable(proto_system_variable, type=PROTO<googlesql_test.KitchenSinkPB>)
+|   +-field_descriptor=nested_value
+|   +-default_value=NULL
++-expr=
+  +-SubqueryExpr
+    +-type=PROTO<googlesql_test.KitchenSinkPB.Nested>
+    +-subquery_type=SCALAR
+    +-subquery=
+      +-ProjectScan
+        +-column_list=[$make_proto.$proto#3]
+        +-expr_list=
+        | +-$proto#3 :=
+        |   +-MakeProto
+        |     +-type=PROTO<googlesql_test.KitchenSinkPB.Nested>
+        |     +-field_list=
+        |       +-nested_int64 := ColumnRef(type=INT64, column=$expr_subquery.nested_int64#1)
+        |       +-nested_repeated_int64 := ColumnRef(type=ARRAY<INT64>, column=$expr_subquery.nested_repeated_int64#2)
+        +-input_scan=
+          +-ProjectScan
+            +-column_list=$expr_subquery.[nested_int64#1, nested_repeated_int64#2]
+            +-expr_list=
+            | +-nested_int64#1 := Literal(type=INT64, value=15)
+            | +-nested_repeated_int64#2 := Literal(type=ARRAY<INT64>, value=[5, 6])
+            +-input_scan=
+              +-SingleRowScan
+==
+
+# Assignment to non-existant proto field
+SET @@proto_system_variable.garbage = 25;
+--
+ERROR: Protocol buffer googlesql_test.KitchenSinkPB does not have a field called garbage [at 1:29]
+SET @@proto_system_variable.garbage = 25;
+                            ^
+==
+
+# Assignment to non-existent proto field in nested message
+SET @@proto_system_variable.nested_value.garbage = 25;
+--
+ERROR: Protocol buffer googlesql_test.KitchenSinkPB.Nested does not have a field called garbage [at 1:42]
+SET @@proto_system_variable.nested_value.garbage = 25;
+                                         ^
+==
+
+# Assignment to system variable of ARRAY type (empty array)
+SET @@int64_array_system_variable = [];
+--
+AssignmentStmt
++-target=
+| +-SystemVariable(int64_array_system_variable, type=ARRAY<INT64>)
++-expr=
+  +-Literal(type=ARRAY<INT64>, value=[])
+==
+
+# Assignment to system variable of ARRAY type (non-empty array)
+SET @@int64_array_system_variable = [2, 3];
+--
+AssignmentStmt
++-target=
+| +-SystemVariable(int64_array_system_variable, type=ARRAY<INT64>)
++-expr=
+  +-Literal(type=ARRAY<INT64>, value=[2, 3])
+==
+
+# Assignment to system variable of ARRAY type (element wrong type)
+SET @@int64_array_system_variable = ['2', 'abcd'];
+--
+ERROR: Expected type ARRAY<INT64>; found ARRAY<STRING> [at 1:37]
+SET @@int64_array_system_variable = ['2', 'abcd'];
+                                    ^
+==
+
+# Assignment to element of system variable of ARRAY type
+# (not supported)
+SET @@int64_array_system_variable[OFFSET(0)] = 5;
+--
+ERROR: Syntax error: Expected "=" but got "[" [at 1:34]
+SET @@int64_array_system_variable[OFFSET(0)] = 5;
+                                 ^
+==
+
+# Assigning and int64 literal to an int32 system variable is ok
+SET @@int32_system_variable = 5;
+--
+AssignmentStmt
++-target=
+| +-SystemVariable(int32_system_variable, type=INT32)
++-expr=
+  +-Literal(type=INT32, value=5)
+==
+
+# Assigning and int64 literal to an int32 system variable fails when out of
+# range
+SET @@int32_system_variable = 123456789012345;
+--
+ERROR: Could not cast literal 123456789012345 to type INT32 [at 1:31]
+SET @@int32_system_variable = 123456789012345;
+                              ^
+==
+
+# Assigning an int64 named constant to an int32 system variable is ok.
+SET @@int32_system_variable = TestConstantInt64;
+--
+AssignmentStmt
++-target=
+| +-SystemVariable(int32_system_variable, type=INT32)
++-expr=
+  +-Cast(INT64 -> INT32)
+    +-Constant(TestConstantInt64, type=INT64, value=1)
+==
+
+# Assigning an int64 named constant, with simple arithmetic,
+# to an int32 system variable is ok.
+SET @@int32_system_variable = TestConstantInt64 + 1;
+--
+AssignmentStmt
++-target=
+| +-SystemVariable(int32_system_variable, type=INT32)
++-expr=
+  +-Cast(INT64 -> INT32)
+    +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+      +-Constant(TestConstantInt64, type=INT64, value=1)
+      +-Literal(type=INT64, value=1)
+
+==
+
+SET @@map_system_variable = []
+--
+
+AssignmentStmt
++-target=
+| +-SystemVariable(map_system_variable, type=ARRAY<PROTO<googlesql_test.MessageWithMapField.StringInt32MapEntry>>)
++-expr=
+  +-Literal(type=ARRAY<PROTO<googlesql_test.MessageWithMapField.StringInt32MapEntry>>, value=[])
+==
+
+[language_features=NONE,+PROTO_MAPS]
+SET @@map_system_variable = PROTO_MODIFY_MAP(@@map_system_variable, "hello", 3)
+--
+AssignmentStmt
++-target=
+| +-SystemVariable(map_system_variable, type=ARRAY<PROTO<googlesql_test.MessageWithMapField.StringInt32MapEntry>>)
++-expr=
+  +-FunctionCall(GoogleSQL:proto_modify_map(ARRAY<PROTO<googlesql_test.MessageWithMapField.StringInt32MapEntry>>, repeated(1) STRING, repeated(1) INT32) -> ARRAY<PROTO<googlesql_test.MessageWithMapField.StringInt32MapEntry>>)
+    +-SystemVariable(map_system_variable, type=ARRAY<PROTO<googlesql_test.MessageWithMapField.StringInt32MapEntry>>)
+    +-Literal(type=STRING, value="hello")
+    +-Literal(type=INT32, value=3)

@@ -1,0 +1,199 @@
+[load_proto_files=googlesql/testdata/test_schema.proto]
+[load_proto_names=googlesql_test.KitchenSinkPB, googlesql_test.TestExtraPB, googlesql_test.KitchenSinkPB.Nested, googlesql_test.RepeatedHolderPB]
+[name=proto_1]
+SELECT AS `googlesql_test.KitchenSinkPB` 5 int64_key_1, 6 int64_key_2
+--
+ARRAY<PROTO<googlesql_test.KitchenSinkPB>>[
+  {
+    int64_key_1: 5
+    int64_key_2: 6
+  }
+]
+==
+[name=proto_2]
+SELECT p.int64_key_1, p.int64_key_2 FROM
+(SELECT (SELECT AS `googlesql_test.KitchenSinkPB`
+         5 int64_key_1, 6 int64_key_2) p)
+--
+ARRAY<STRUCT<int64_key_1 INT64, int64_key_2 INT64>>[{5, 6}]
+==
+[name=proto_3]
+SELECT AS `googlesql_test.TestExtraPB` 10 int32_val1
+--
+ARRAY<PROTO<googlesql_test.TestExtraPB>>[{int32_val1: 10}]
+==
+[name=proto_4]
+SELECT AS `googlesql_test.KitchenSinkPB` 5 int64_key_1, 6 int64_key_2,
+  ARRAY(SELECT AS `googlesql_test.KitchenSinkPB.Nested` 7 nested_int64)
+  nested_repeated_value
+--
+ARRAY<PROTO<googlesql_test.KitchenSinkPB>>[
+  {
+    int64_key_1: 5
+    int64_key_2: 6
+    nested_repeated_value {
+      nested_int64: 7
+    }
+  }
+]
+
+NOTE: Reference implementation reports non-determinism.
+==
+[name=proto_5]
+SELECT AS `googlesql_test.KitchenSinkPB` 5 int64_key_1, 6 int64_key_2,
+  ARRAY(SELECT AS `googlesql_test.RepeatedHolderPB`
+    ARRAY(SELECT AS `googlesql_test.TestExtraPB` a int32_val1
+          FROM (SELECT 10 a UNION ALL SELECT 20) ORDER BY a)
+    repeated_field)
+  repeated_holder
+--
+ARRAY<PROTO<googlesql_test.KitchenSinkPB>>[
+  {
+    int64_key_1: 5
+    int64_key_2: 6
+    repeated_holder {
+      repeated_field {
+        int32_val1: 10
+      }
+      repeated_field {
+        int32_val1: 20
+      }
+    }
+  }
+]
+
+NOTE: Reference implementation reports non-determinism.
+==
+# NULL in required field.
+[name=proto_6]
+SELECT AS `googlesql_test.KitchenSinkPB` 5 int64_key_1, NULL int64_key_2
+--
+ERROR: generic::out_of_range: Cannot encode a null value Int64(NULL) in required protocol message field googlesql_test.KitchenSinkPB.int64_key_2
+==
+# Write date_decimal field, which is annotated to use DATE_DECIMAL format.
+[name=proto_7]
+SELECT AS `googlesql_test.KitchenSinkPB`
+       5 int64_key_1, 6 int64_key_2, date '2011-03-05' date_decimal
+--
+ARRAY<PROTO<googlesql_test.KitchenSinkPB>>[
+  {
+    int64_key_1: 5
+    int64_key_2: 6
+    date_decimal: 20110305
+  }
+]
+==
+[name=proto_8]
+SELECT p.date_decimal
+FROM (SELECT (SELECT AS `googlesql_test.KitchenSinkPB`
+              5 int64_key_1, 6 int64_key_2) p)
+--
+ARRAY<STRUCT<date_decimal DATE>>[{NULL}]
+==
+[name=proto_9]
+SELECT AS `googlesql_test.KitchenSinkPB` 5 int64_key_1, NULL int64_key_2
+--
+ERROR: generic::out_of_range: Cannot encode a null value Int64(NULL) in required protocol message field googlesql_test.KitchenSinkPB.int64_key_2
+==
+[name=proto_10]
+SELECT
+  (SELECT AS `googlesql_test.KitchenSinkPB.Nested` 18 nested_int64) proto_val
+--
+ARRAY<STRUCT<proto_val PROTO<googlesql_test.KitchenSinkPB.Nested>>>[
+  {{nested_int64: 18}}
+]
+==
+[name=proto_11]
+SELECT IF(FALSE, p, NULL) proto_val FROM
+  (SELECT AS `googlesql_test.KitchenSinkPB.Nested` 18 nested_int64) p
+--
+ARRAY<STRUCT<proto_val PROTO<googlesql_test.KitchenSinkPB.Nested>>>[{NULL}]
+==
+[name=proto_12]
+SELECT ARRAY(SELECT p) proto_val
+FROM
+ (SELECT (SELECT AS `googlesql_test.KitchenSinkPB.Nested` 18 nested_int64) p
+    UNION ALL
+  SELECT (SELECT AS `googlesql_test.KitchenSinkPB.Nested`
+                         19 nested_int64, [1, 2, 3] nested_repeated_int64))
+ORDER BY p.nested_int64
+--
+ARRAY<STRUCT<proto_val ARRAY<>>>[known order:
+  {ARRAY<PROTO<googlesql_test.KitchenSinkPB.Nested>>[{nested_int64: 18}]},
+  {ARRAY<PROTO<googlesql_test.KitchenSinkPB.Nested>>[
+     {
+       nested_int64: 19
+       nested_repeated_int64: 1
+       nested_repeated_int64: 2
+       nested_repeated_int64: 3
+     }
+   ]}
+]
+==
+[name=proto_12b]
+SELECT ARRAY(SELECT p) proto_val
+FROM
+ (SELECT AS `googlesql_test.KitchenSinkPB.Nested` 18 nested_int64
+    UNION ALL
+  SELECT AS `googlesql_test.KitchenSinkPB.Nested`
+                         19 nested_int64, [1, 2, 3] nested_repeated_int64) p
+--
+ARRAY<STRUCT<proto_val ARRAY<>>>[unknown order:
+  {ARRAY<PROTO<googlesql_test.KitchenSinkPB.Nested>>[
+     {
+       nested_int64: 19
+       nested_repeated_int64: 1
+       nested_repeated_int64: 2
+       nested_repeated_int64: 3
+     }
+   ]},
+  {ARRAY<PROTO<googlesql_test.KitchenSinkPB.Nested>>[{nested_int64: 18}]}
+]
+==
+[name=proto_13]
+SELECT
+  (SELECT AS `googlesql_test.KitchenSinkPB.Nested` 18 nested_int64) x,
+  (SELECT AS `googlesql_test.KitchenSinkPB.Nested`
+     19 nested_int64, [1, 2, 3] nested_repeated_int64) y,
+  (SELECT NULL) z
+--
+ARRAY<STRUCT<
+        x PROTO<googlesql_test.KitchenSinkPB.Nested>,
+        y PROTO<googlesql_test.KitchenSinkPB.Nested>,
+        z INT64
+      >>
+[{{nested_int64: 18},
+  {
+    nested_int64: 19
+    nested_repeated_int64: 1
+    nested_repeated_int64: 2
+    nested_repeated_int64: 3
+  },
+  NULL}]
+
+==
+[name=proto_null_array_int32]
+SELECT AS `googlesql_test.KitchenSinkPB`
+  5 int64_key_1, 6 int64_key_2,
+  CAST(NULL as array<int32>) repeated_int32_val
+--
+ARRAY<PROTO<googlesql_test.KitchenSinkPB>>[
+  {
+    int64_key_1: 5
+    int64_key_2: 6
+  }
+]
+
+==
+[name=read_missing_required_field]
+SELECT p.int64_key_2
+FROM (select CAST(b'' AS googlesql_test.KitchenSinkPB) p)
+--
+ERROR: generic::out_of_range: Protocol buffer missing required field googlesql_test.KitchenSinkPB.int64_key_2
+
+==
+[name=has_missing_required_field]
+SELECT p.has_int64_key_2
+FROM (select CAST(b'' AS googlesql_test.KitchenSinkPB) p)
+--
+ARRAY<STRUCT<has_int64_key_2 BOOL>>[{false}]

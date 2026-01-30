@@ -1,0 +1,656 @@
+[load_enum_names=googlesql_test.TestEnum]
+[load_proto_files=googlesql/testdata/test_schema.proto]
+[load_proto_names=googlesql_test.TestExtraPB]
+
+[name=case_statement_1]
+SELECT CASE WHEN true THEN 't' ELSE 'f' END
+--
+ARRAY<STRUCT<STRING>>[{"t"}]
+==
+[name=case_statement_2]
+SELECT CASE WHEN false THEN 't' END
+--
+ARRAY<STRUCT<STRING>>[{NULL}]
+==
+[name=case_statement_3]
+SELECT CASE WHEN false THEN 'a' WHEN false THEN 'b' ELSE 'c' END
+--
+ARRAY<STRUCT<STRING>>[{"c"}]
+==
+[name=case_statement_4]
+SELECT CASE 1 WHEN 1 THEN 't' ELSE 'f' END
+--
+ARRAY<STRUCT<STRING>>[{"t"}]
+==
+[name=case_statement_5]
+SELECT CASE 1 WHEN 2 THEN 't' END
+--
+ARRAY<STRUCT<STRING>>[{NULL}]
+==
+[name=case_statement_6]
+SELECT CASE 3 WHEN 1 THEN 'a' WHEN 2 THEN 'b' ELSE 'c' END
+--
+ARRAY<STRUCT<STRING>>[{"c"}]
+==
+[name=case_statement_7]
+SELECT CASE 1 WHEN 1 THEN 5 ELSE 3.7 END
+--
+ARRAY<STRUCT<DOUBLE>>[{5}]
+==
+[name=case_statement_7b]
+SELECT CASE 1 WHEN 1 THEN CAST(5 as int32) ELSE 3.7 END
+--
+ARRAY<STRUCT<DOUBLE>>[{5}]
+==
+[name=case_statement_8]
+SELECT COALESCE(NULL)
+--
+ARRAY<STRUCT<INT64>>[{NULL}]
+==
+[required_features=NUMERIC_TYPE]
+[name=case_statement_numeric]
+SELECT
+  CASE x
+    WHEN CAST(1 AS NUMERIC) THEN 1
+    WHEN CAST(1.23 AS NUMERIC) THEN 2
+  ELSE 3 END
+FROM (
+  SELECT CAST(-1 AS NUMERIC) AS x UNION ALL
+  SELECT CAST(1.23 AS NUMERIC) AS x UNION ALL
+  SELECT CAST(NULL AS NUMERIC) AS x
+)
+ORDER BY x
+--
+ARRAY<STRUCT<INT64>>[known order:{3}, {3}, {2}]
+==
+[required_features=BIGNUMERIC_TYPE]
+[name=case_statement_bignumeric]
+SELECT
+  CASE x
+    WHEN CAST(1 AS BIGNUMERIC) THEN 1
+    WHEN CAST(1.2345678901234567890 AS BIGNUMERIC) THEN 2
+  ELSE 3 END
+FROM (
+  SELECT CAST(-1 AS BIGNUMERIC) AS x UNION ALL
+  SELECT CAST(1.2345678901234567890 AS BIGNUMERIC) AS x UNION ALL
+  SELECT CAST(NULL AS BIGNUMERIC) AS x
+)
+ORDER BY x
+--
+ARRAY<STRUCT<INT64>>[known order:{3}, {3}, {2}]
+==
+[required_features=UUID_TYPE]
+[name=case_statement_uuid]
+SELECT
+  CASE x
+    WHEN CAST('9d3da323-4c20-360f-bd9b-ec54feec54f0' AS UUID) THEN 1
+    WHEN CAST('9d4da323-4c20-360f-bd9b-ec54feec54f0' AS UUID) THEN 2
+  ELSE 3 END
+FROM (
+  SELECT CAST('9d3da323-4c20-360f-bd9b-ec54feec54f0' AS UUID) AS x UNION ALL
+  SELECT CAST('9d4da323-4c20-360f-bd9b-ec54feec54f0' AS UUID) AS x UNION ALL
+  SELECT CAST(NULL AS UUID) AS x
+)
+ORDER BY x
+--
+ARRAY<STRUCT<INT64>>[known order:{3}, {1}, {2}]
+==
+[required_features=RANGE_TYPE]
+[name=case_statement_range_of_dates]
+SELECT
+  CASE
+    WHEN
+      RANGE<DATE> '[1050-10-01, 1051-01-01)' < RANGE<DATE> '[2050-10-01, 2051-01-01)'
+      THEN RANGE<DATE> '[2018-10-01, 2019-01-01)'
+    WHEN
+      RANGE<DATE> '[3050-10-01, 3051-01-01)' IS NULL
+      THEN RANGE<DATE> '[2019-10-01, 2020-01-01)'
+    ELSE RANGE<DATE> '[2020-10-01, 2021-01-01)'
+  END
+--
+ARRAY<STRUCT<RANGE<DATE>>>[{[2018-10-01, 2019-01-01)}]
+==
+[required_features=RANGE_TYPE,CIVIL_TIME]
+[name=case_statement_range_of_datetimes]
+SELECT
+  CASE
+    WHEN
+      RANGE<DATETIME> '[1050-10-01 12:00:00, 1051-01-01 12:00:00)' < RANGE<DATETIME> '[2050-10-01 12:00:00, 2051-01-01 12:00:00)'
+      THEN RANGE<DATETIME> '[2018-10-01 12:00:00, 2019-01-01 12:00:00)'
+    WHEN
+      RANGE<DATETIME> '[3050-10-01 12:00:00, 3051-01-01 12:00:00)' IS NULL
+      THEN RANGE<DATETIME> '[2019-10-01 12:00:00, 2020-01-01 12:00:00)'
+    ELSE RANGE<DATETIME> '[2020-10-01 12:00:00, 2021-01-01 12:00:00)'
+  END
+--
+ARRAY<STRUCT<RANGE<DATETIME>>>[{[2018-10-01 12:00:00, 2019-01-01 12:00:00)}]
+==
+[required_features=RANGE_TYPE]
+[name=case_statement_range_of_timestamps]
+SELECT
+  CASE
+    WHEN
+      RANGE<TIMESTAMP> '[1050-10-01 12:00:00, 1051-01-01 12:00:00)' < RANGE<TIMESTAMP> '[2050-10-01 12:00:00, 2051-01-01 12:00:00)'
+      THEN RANGE<TIMESTAMP> '[2018-10-01 12:00:00+00, 2019-01-01 12:00:00+00)'
+    WHEN
+      RANGE<TIMESTAMP> '[3050-10-01 12:00:00, 3051-01-01 12:00:00)' IS NULL
+      THEN RANGE<TIMESTAMP> '[2019-10-01 12:00:00+00, 2020-01-01 12:00:00+00)'
+    ELSE RANGE<TIMESTAMP> '[2020-10-01 12:00:00+00, 2021-01-01 12:00:00+00)'
+  END
+--
+ARRAY<STRUCT<RANGE<TIMESTAMP>>>[
+  {[
+     2018-10-01 12:00:00+00,
+     2019-01-01 12:00:00+00
+   )}
+]
+==
+[name=coalesce_1]
+SELECT COALESCE(1)
+--
+ARRAY<STRUCT<INT64>>[{1}]
+==
+[name=case_statement_9]
+SELECT COALESCE(1, NULL)
+--
+ARRAY<STRUCT<INT64>>[{1}]
+==
+[name=case_statement_10]
+SELECT COALESCE(NULL, 1)
+--
+ARRAY<STRUCT<INT64>>[{1}]
+==
+[name=case_statement_11]
+SELECT COALESCE(NULL, 1, NULL, 2)
+--
+ARRAY<STRUCT<INT64>>[{1}]
+==
+[name=coalesce_null_uint64]
+SELECT COALESCE(NULL, CAST(1 AS UINT64))
+--
+ARRAY<STRUCT<UINT64>>[{1}]
+==
+[name=coalesce_null_int32]
+SELECT COALESCE(NULL, CAST(-1 AS INT32))
+--
+ARRAY<STRUCT<INT32>>[{-1}]
+==
+[name=coalesce_null_uint32]
+SELECT COALESCE(NULL, CAST(1 AS UINT32))
+--
+ARRAY<STRUCT<UINT32>>[{1}]
+==
+[name=coalesce_null_float]
+SELECT COALESCE(NULL, CAST(0 AS FLOAT))
+--
+ARRAY<STRUCT<FLOAT>>[{0}]
+==
+[name=coalesce_null_double]
+SELECT COALESCE(NULL, CAST(-0.43 AS DOUBLE))
+--
+ARRAY<STRUCT<DOUBLE>>[{-0.43}]
+==
+[name=coalesce_null_enum]
+SELECT COALESCE(NULL, CAST(0 AS `googlesql_test.TestEnum`))
+--
+ARRAY<STRUCT<ENUM<googlesql_test.TestEnum>>>[{TESTENUM0}]
+==
+[name=coalesce_null_date]
+SELECT COALESCE(NULL, DATE '2014-12-18')
+--
+ARRAY<STRUCT<DATE>>[{2014-12-18}]
+==
+[name=coalesce_null_timestamp]
+SELECT COALESCE(NULL, TIMESTAMP '2014-12-18 15:00:43.345-05:00')
+--
+ARRAY<STRUCT<TIMESTAMP>>[{2014-12-18 20:00:43.345+00}]
+==
+[name=coalesce_null_empty_array_int64]
+SELECT COALESCE(NULL, ARRAY<INT64>[])
+--
+ARRAY<STRUCT<ARRAY<>>>[{ARRAY<INT64>[]}]
+==
+[name=coalesce_null_array_int64]
+SELECT COALESCE(NULL, ARRAY<INT64>[9, 0])
+--
+ARRAY<STRUCT<ARRAY<>>>[{ARRAY<INT64>[known order:9, 0]}]
+==
+[name=coalesce_null_struct]
+SELECT COALESCE(NULL, STRUCT("a" AS s, -33 AS i))
+--
+ARRAY<STRUCT<STRUCT<s STRING, i INT64>>>[{{"a", -33}}]
+==
+[name=coalesce_null_proto]
+SELECT COALESCE(NULL, (SELECT AS `googlesql_test.TestExtraPB` 5 int32_val1, 6 int32_val2))
+--
+ARRAY<STRUCT<PROTO<googlesql_test.TestExtraPB>>>[
+  {{
+     int32_val1: 5
+     int32_val2: 6
+   }}
+]
+==
+[name=coalesce_null_string]
+SELECT COALESCE(NULL, "abc de")
+--
+ARRAY<STRUCT<STRING>>[{"abc de"}]
+==
+[name=coalesce_null_bytes]
+SELECT COALESCE(NULL, CAST("abc de" AS BYTES))
+--
+ARRAY<STRUCT<BYTES>>[{b"abc de"}]
+==
+[name=coalesce_null_range_dates]
+[required_features=RANGE_TYPE]
+SELECT
+  COALESCE(NULL, RANGE<DATE> '[2018-10-01, 2019-01-01)',
+           RANGE<DATE> '[2019-10-01, 2020-01-01)'),
+  COALESCE(NULL, NULL, RANGE<DATE> '[2018-10-01, 2019-01-01)', NULL),
+  COALESCE(CAST(NULL AS RANGE<DATE>)),
+  COALESCE(COALESCE(NULL, RANGE<DATE> '[2018-10-01, 2019-01-01)')),
+  COALESCE(COALESCE(CAST(NULL AS RANGE<DATE>)),
+           RANGE<DATE> '[2018-10-01, 2019-01-01)')
+--
+ARRAY<STRUCT<RANGE<DATE>, RANGE<DATE>, RANGE<DATE>, RANGE<DATE>, RANGE<DATE>>>[
+  {
+    [2018-10-01, 2019-01-01),
+    [2018-10-01, 2019-01-01),
+    NULL,
+    [2018-10-01, 2019-01-01),
+    [2018-10-01, 2019-01-01)
+  }
+]
+==
+[name=coalesce_null_range_datetimes]
+[required_features=RANGE_TYPE,CIVIL_TIME]
+SELECT
+  COALESCE(NULL, RANGE<DATETIME> '[2018-10-01 12:00:00, 2019-01-01 12:00:00)',
+           RANGE<DATETIME> '[2019-10-01 12:00:00, 2020-01-01 12:00:00)'),
+  COALESCE(NULL, NULL,
+           RANGE<DATETIME> '[2018-10-01 12:00:00, 2019-01-01 12:00:00)', NULL),
+  COALESCE(CAST(NULL AS RANGE<DATETIME>)),
+  COALESCE(
+    COALESCE(NULL,
+             RANGE<DATETIME> '[2018-10-01 12:00:00, 2019-01-01 12:00:00)')),
+  COALESCE(COALESCE(CAST(NULL AS RANGE<DATETIME>)),
+           RANGE<DATETIME> '[2018-10-01 12:00:00, 2019-01-01 12:00:00)')
+--
+ARRAY<STRUCT<RANGE<DATETIME>,
+             RANGE<DATETIME>,
+             RANGE<DATETIME>,
+             RANGE<DATETIME>,
+             RANGE<DATETIME>>>
+[{
+   [2018-10-01 12:00:00, 2019-01-01 12:00:00),
+   [2018-10-01 12:00:00, 2019-01-01 12:00:00),
+   NULL,
+   [2018-10-01 12:00:00, 2019-01-01 12:00:00),
+   [2018-10-01 12:00:00, 2019-01-01 12:00:00)
+ }]
+==
+[name=coalesce_null_range_timestamps]
+[required_features=RANGE_TYPE]
+SELECT
+  COALESCE(NULL,
+           RANGE<TIMESTAMP> '[2018-10-01 12:00:00+00, 2019-01-01 12:00:00+00)',
+           RANGE<TIMESTAMP> '[2019-10-01 12:00:00+00, 2020-01-01 12:00:00+00)'),
+  COALESCE(NULL, NULL,
+           RANGE<TIMESTAMP> '[2018-10-01 12:00:00+00, 2019-01-01 12:00:00+00)',
+           NULL),
+  COALESCE(CAST(NULL AS RANGE<TIMESTAMP>)),
+  COALESCE(
+    COALESCE(
+      NULL,
+      RANGE<TIMESTAMP> '[2018-10-01 12:00:00+00, 2019-01-01 12:00:00+00)')),
+  COALESCE(
+    COALESCE(CAST(NULL AS RANGE<TIMESTAMP>)),
+    RANGE<TIMESTAMP> '[2018-10-01 12:00:00+00, 2019-01-01 12:00:00+00)')
+--
+ARRAY<STRUCT<RANGE<TIMESTAMP>,
+             RANGE<TIMESTAMP>,
+             RANGE<TIMESTAMP>,
+             RANGE<TIMESTAMP>,
+             RANGE<TIMESTAMP>>>
+[{[
+    2018-10-01 12:00:00+00,
+    2019-01-01 12:00:00+00
+  ),
+  [
+    2018-10-01 12:00:00+00,
+    2019-01-01 12:00:00+00
+  ),
+  NULL,
+  [
+    2018-10-01 12:00:00+00,
+    2019-01-01 12:00:00+00
+  ),
+  [
+    2018-10-01 12:00:00+00,
+    2019-01-01 12:00:00+00
+  )}]
+==
+[name=coalesce_a_b_b_a]
+SELECT COALESCE('a', 'b', 'b', 'a')
+--
+ARRAY<STRUCT<STRING>>[{"a"}]
+==
+[name=coalesce_null_null_false_true]
+SELECT COALESCE(NULL, NULL, FALSE, TRUE)
+--
+ARRAY<STRUCT<BOOL>>[{false}]
+==
+[name=coalesce_is_not_null_null_null]
+SELECT COALESCE(NULL IS NOT NULL, NULL)
+--
+ARRAY<STRUCT<BOOL>>[{false}]
+==
+[name=coalesce_coalesce_null_1]
+SELECT COALESCE(COALESCE(NULL), 1)
+--
+ARRAY<STRUCT<INT64>>[{1}]
+==
+[name=coalesce_coalesce_null_0_1]
+SELECT COALESCE(COALESCE(NULL, 0), 1)
+--
+ARRAY<STRUCT<INT64>>[{0}]
+==
+[name=literal_null_in_when]
+SELECT CASE WHEN NULL THEN "a" END
+--
+ARRAY<STRUCT<STRING>>[{NULL}]
+==
+[name=literal_null_in_when_with_else]
+SELECT CASE WHEN NULL THEN "a" ELSE "b" END
+--
+ARRAY<STRUCT<STRING>>[{"b"}]
+==
+[name=non_literal_null_in_when_with_else]
+SELECT CASE WHEN COALESCE(CAST(NULL AS BOOL)) THEN "a" ELSE "b" END
+--
+ARRAY<STRUCT<STRING>>[{"b"}]
+==
+[name=literal_null_in_case_and_when]
+SELECT CASE NULL WHEN NULL THEN "a" END
+--
+ARRAY<STRUCT<STRING>>[{NULL}]
+==
+[name=literal_null_in_case_and_when_with_else]
+SELECT CASE NULL WHEN NULL THEN "a" ELSE "b" END
+--
+ARRAY<STRUCT<STRING>>[{"b"}]
+==
+[name=non_literal_null_in_case_and_when_with_else]
+SELECT CASE COALESCE(CAST(NULL AS STRING))
+         WHEN NULL THEN "a"
+         WHEN "NULL" THEN "b"
+         ELSE "c"
+       END
+--
+ARRAY<STRUCT<STRING>>[{"c"}]
+==
+[name=null_in_then]
+SELECT CASE WHEN TRUE THEN NULL ELSE "f" END
+--
+ARRAY<STRUCT<STRING>>[{NULL}]
+==
+[name=type_coercion_in_case_and_when]
+SELECT CASE 10 WHEN 10.0 THEN "10" WHEN 20.0 THEN "20" END
+--
+ARRAY<STRUCT<STRING>>[{"10"}]
+==
+[name=type_coercion_in_case_and_two_when]
+SELECT CASE 10.0 WHEN 10 THEN "10" WHEN CAST(20 AS UINT32) THEN "20" END
+--
+ARRAY<STRUCT<STRING>>[{"10"}]
+==
+[name=type_coercion_in_then]
+SELECT CASE "a"
+         WHEN "a" THEN 10
+         WHEN "b" THEN 20.0
+         WHEN "c" THEN CAST(20 AS UINT32)
+       END
+--
+ARRAY<STRUCT<DOUBLE>>[{10}]
+==
+[name=case_value_with_struct1]
+SELECT CASE ct
+         WHEN ct then true
+         ELSE false
+       END
+FROM (select as struct 1 a, 2 b) as ct
+--
+ARRAY<STRUCT<BOOL>>[{true}]
+==
+[name=case_value_with_struct2]
+SELECT CASE ct
+         WHEN (1, 1) then 11
+         WHEN (2, 2) then 22
+         WHEN (3, 3) then 33
+         ELSE 0
+       END
+FROM (select as struct 2 a, 2 b) as ct
+--
+ARRAY<STRUCT<INT64>>[{22}]
+==
+[name=case_value_with_struct3]
+SELECT CASE ct
+         WHEN (1, 1) then 11
+         WHEN (2, 2) then 22
+         WHEN (3, 3) then 33
+         ELSE 0
+       END
+FROM (select as struct 1 a, 2 b) as ct
+--
+ARRAY<STRUCT<INT64>>[{0}]
+==
+[name=case_value_with_array_of_structs]
+SELECT CASE x
+         WHEN 1 THEN [s1, s2]
+         WHEN 2 THEN [s2]
+         WHEN 3 THEN [s3]
+       END AS s
+FROM (SELECT x,
+        (1, false) AS s1,
+        (NULL, true) AS s2,
+        CAST(NULL AS STRUCT<INT64, BOOL>) AS s3
+      FROM UNNEST([2, 1, 3]) AS x);
+--
+ARRAY<STRUCT<s ARRAY<>>>[unknown order:
+  {ARRAY<STRUCT<INT64, BOOL>>[{NULL, true}]},
+  {ARRAY<STRUCT<INT64, BOOL>>[known order:{1, false}, {NULL, true}]},
+  {ARRAY<STRUCT<INT64, BOOL>>[NULL]}
+]
+==
+[name=case_value_with_struct_non_comparable]
+SELECT CASE ct
+         WHEN (1, 1) then [1,2,3]
+         WHEN (2, 2) then [4,5,6]
+         WHEN (3, 3) then [6,7,8]
+         ELSE [0]
+       END
+FROM (select as struct 1 a, 2 b) as ct
+--
+ARRAY<STRUCT<ARRAY<>>>[{ARRAY<INT64>[0]}]
+==
+[name=case_value_with_protos]
+SELECT CASE x
+         WHEN 1 THEN p1
+         WHEN 2 THEN p2
+         WHEN 3 THEN p3
+       END AS p
+FROM (SELECT x,
+        NEW googlesql_test.TestExtraPB(2 AS int32_val1) AS p1,
+        NEW googlesql_test.TestExtraPB(3 AS int32_val2) AS p2,
+        CAST(NULL AS googlesql_test.TestExtraPB) AS p3
+      FROM UNNEST([2, 1, 3]) AS x);
+--
+ARRAY<STRUCT<p PROTO<googlesql_test.TestExtraPB>>>[unknown order:
+  {{int32_val2: 3}},
+  {{int32_val1: 2}},
+  {NULL}
+]
+==
+[name=case_value_with_array_of_protos]
+SELECT CASE x
+         WHEN 1 THEN [p1, p2]
+         WHEN 2 THEN [p2]
+         WHEN 3 THEN [p3]
+       END AS p
+FROM (SELECT x,
+        NEW googlesql_test.TestExtraPB(2 AS int32_val1) AS p1,
+        NEW googlesql_test.TestExtraPB(3 AS int32_val2) AS p2,
+        CAST(NULL AS googlesql_test.TestExtraPB) AS p3
+      FROM UNNEST([2, 1, 3]) AS x);
+--
+ARRAY<STRUCT<p ARRAY<>>>[unknown order:
+  {ARRAY<PROTO<googlesql_test.TestExtraPB>>[{int32_val2: 3}]},
+  {ARRAY<PROTO<googlesql_test.TestExtraPB>>[known order:
+     {int32_val1: 2},
+     {int32_val2: 3}
+   ]},
+  {ARRAY<PROTO<googlesql_test.TestExtraPB>>[NULL]}
+]
+==
+[name=case_value_with_array_of_strings]
+SELECT CASE x
+         WHEN 1 THEN [s1, s2]
+         WHEN 2 THEN [s2]
+         WHEN 3 THEN [s3]
+       END AS s
+FROM (SELECT x, "foo" AS s1, "bar" AS s2, CAST(NULL AS STRING) AS s3
+      FROM UNNEST([2, 1, 3]) AS x);
+--
+ARRAY<STRUCT<s ARRAY<>>>[unknown order:
+  {ARRAY<STRING>["bar"]},
+  {ARRAY<STRING>[known order:"foo", "bar"]},
+  {ARRAY<STRING>[NULL]}
+]
+==
+[required_features=RANGE_TYPE]
+[name=case_value_with_range_of_dates]
+SELECT
+  CASE x
+    WHEN RANGE<DATE> '[2018-10-01, 2019-01-01)' THEN 1
+    WHEN RANGE<DATE> '[2019-10-01, 2020-01-01)' THEN 2
+  ELSE 3 END
+FROM (
+  SELECT RANGE<DATE> '[2018-10-01, 2019-01-01)' AS x UNION ALL
+  SELECT RANGE<DATE> '[2018-10-02, 2019-01-01)' AS x UNION ALL
+  SELECT RANGE<DATE> '[2019-10-01, 2020-01-01)' AS x UNION ALL
+  SELECT RANGE<DATE> '[2019-10-01, 2020-01-02)' AS x
+)
+ORDER BY x
+--
+ARRAY<STRUCT<INT64>>[known order:{1}, {3}, {2}, {3}]
+==
+[required_features=RANGE_TYPE,CIVIL_TIME]
+[name=case_value_with_range_of_datetimes]
+SELECT
+  CASE x
+    WHEN RANGE<DATETIME> '[2018-10-01 12:00:00, 2019-01-01 12:00:00)' THEN 1
+    WHEN RANGE<DATETIME> '[2019-10-01 12:00:00, 2020-01-01 12:00:00)' THEN 2
+  ELSE 3 END
+FROM (
+  SELECT RANGE<DATETIME> '[2018-10-01 12:00:00, 2019-01-01 12:00:00)' AS x UNION ALL
+  SELECT RANGE<DATETIME> '[2018-10-02 12:00:00, 2019-01-01 12:00:00)' AS x UNION ALL
+  SELECT RANGE<DATETIME> '[2019-10-01 12:00:00, 2020-01-01 12:00:00)' AS x UNION ALL
+  SELECT RANGE<DATETIME> '[2019-10-01 12:00:00, 2020-01-02 12:00:00)' AS x
+)
+ORDER BY x
+--
+ARRAY<STRUCT<INT64>>[known order:{1}, {3}, {2}, {3}]
+==
+[required_features=RANGE_TYPE]
+[name=case_value_with_range_of_timestamps]
+SELECT
+  CASE x
+    WHEN RANGE<TIMESTAMP> '[2018-10-01 12:00:00+00, 2019-01-01 12:00:00+00)' THEN 1
+    WHEN RANGE<TIMESTAMP> '[2019-10-01 12:00:00+00, 2020-01-01 12:00:00+00)' THEN 2
+  ELSE 3 END
+FROM (
+  SELECT RANGE<TIMESTAMP> '[2018-10-01 12:00:00+00, 2019-01-01 12:00:00+00)' AS x UNION ALL
+  SELECT RANGE<TIMESTAMP> '[2018-10-02 12:00:00+00, 2019-01-01 12:00:00+00)' AS x UNION ALL
+  SELECT RANGE<TIMESTAMP> '[2019-10-01 12:00:00+00, 2020-01-01 12:00:00+00)' AS x UNION ALL
+  SELECT RANGE<TIMESTAMP> '[2019-10-01 12:00:00+00, 2020-01-02 12:00:00+00)' AS x
+)
+ORDER BY x
+--
+ARRAY<STRUCT<INT64>>[known order:{1}, {3}, {2}, {3}]
+==
+[required_features=RANGE_TYPE]
+[name=case_value_with_returned_range_of_dates]
+SELECT
+  CASE x
+    WHEN 1 THEN RANGE<DATE> '[3010-01-01, 4010-01-01)'
+    WHEN 3 THEN RANGE<DATE> '[4010-01-01, 5010-01-01)'
+  ELSE RANGE<DATE> '[5010-01-01, 6010-01-01)' END
+FROM (
+  SELECT 1 AS x UNION ALL
+  SELECT 2 AS x UNION ALL
+  SELECT 3 AS x UNION ALL
+  SELECT 4 AS x
+)
+ORDER BY x
+--
+ARRAY<STRUCT<RANGE<DATE>>>[known order:
+  {[3010-01-01, 4010-01-01)},
+  {[5010-01-01, 6010-01-01)},
+  {[4010-01-01, 5010-01-01)},
+  {[5010-01-01, 6010-01-01)}
+]
+==
+[required_features=RANGE_TYPE,CIVIL_TIME]
+[name=case_value_with_returned_range_of_datetimes]
+SELECT
+  CASE x
+    WHEN 1 THEN RANGE<DATETIME> '[3010-01-01 00:00:00, 4010-01-01 00:00:00)'
+    WHEN 3 THEN RANGE<DATETIME> '[4010-01-01 00:00:00, 5010-01-01 00:00:00)'
+  ELSE RANGE<DATETIME> '[5010-01-01 00:00:00, 6010-01-01 00:00:00)' END
+FROM (
+  SELECT 1 AS x UNION ALL
+  SELECT 2 AS x UNION ALL
+  SELECT 3 AS x UNION ALL
+  SELECT 4 AS x
+)
+ORDER BY x
+--
+ARRAY<STRUCT<RANGE<DATETIME>>>[known order:
+  {[3010-01-01 00:00:00, 4010-01-01 00:00:00)},
+  {[5010-01-01 00:00:00, 6010-01-01 00:00:00)},
+  {[4010-01-01 00:00:00, 5010-01-01 00:00:00)},
+  {[5010-01-01 00:00:00, 6010-01-01 00:00:00)}
+]
+==
+[required_features=RANGE_TYPE]
+[name=case_value_with_returned_range_of_timestamps]
+SELECT
+  CASE x
+    WHEN 1 THEN RANGE<TIMESTAMP> '[3010-01-01 00:00:00+00, 4010-01-01 00:00:00+00)'
+    WHEN 3 THEN RANGE<TIMESTAMP> '[4010-01-01 00:00:00+00, 5010-01-01 00:00:00+00)'
+  ELSE RANGE<TIMESTAMP> '[5010-01-01 00:00:00+00, 6010-01-01 00:00:00+00)' END
+FROM (
+  SELECT 1 AS x UNION ALL
+  SELECT 2 AS x UNION ALL
+  SELECT 3 AS x UNION ALL
+  SELECT 4 AS x
+)
+ORDER BY x
+--
+ARRAY<STRUCT<RANGE<TIMESTAMP>>>[known order:
+  {[
+     3010-01-01 00:00:00+00,
+     4010-01-01 00:00:00+00
+   )},
+  {[
+     5010-01-01 00:00:00+00,
+     6010-01-01 00:00:00+00
+   )},
+  {[
+     4010-01-01 00:00:00+00,
+     5010-01-01 00:00:00+00
+   )},
+  {[
+     5010-01-01 00:00:00+00,
+     6010-01-01 00:00:00+00
+   )}
+]

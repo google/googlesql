@@ -1,0 +1,4659 @@
+[default language_features=MAXIMUM]
+select *
+from KeyValue kv1 join KeyValue kv2 using (value)
+--
+QueryStmt
++-output_column_list=
+| +-KeyValue.Value#2 AS value [STRING]
+| +-KeyValue.Key#1 AS Key [INT64]
+| +-KeyValue.Key#3 AS Key [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=KeyValue.[Value#2, Key#1, Key#3]
+    +-input_scan=
+      +-JoinScan
+        +-column_list=KeyValue.[Key#1, Value#2, Key#3, Value#4]
+        +-left_scan=
+        | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1], alias="kv1")
+        +-right_scan=
+        | +-TableScan(column_list=KeyValue.[Key#3, Value#4], table=KeyValue, column_index_list=[0, 1], alias="kv2")
+        +-join_expr=
+        | +-FunctionCall(GoogleSQL:$equal(STRING, STRING) -> BOOL)
+        |   +-ColumnRef(type=STRING, column=KeyValue.Value#2)
+        |   +-ColumnRef(type=STRING, column=KeyValue.Value#4)
+        +-has_using=TRUE
+==
+
+select *
+from KeyValue kv1 left join KeyValue kv2 using (VALue)
+--
+QueryStmt
++-output_column_list=
+| +-KeyValue.Value#2 AS VALue [STRING]
+| +-KeyValue.Key#1 AS Key [INT64]
+| +-KeyValue.Key#3 AS Key [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=KeyValue.[Value#2, Key#1, Key#3]
+    +-input_scan=
+      +-JoinScan
+        +-column_list=KeyValue.[Key#1, Value#2, Key#3, Value#4]
+        +-join_type=LEFT
+        +-left_scan=
+        | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1], alias="kv1")
+        +-right_scan=
+        | +-TableScan(column_list=KeyValue.[Key#3, Value#4], table=KeyValue, column_index_list=[0, 1], alias="kv2")
+        +-join_expr=
+        | +-FunctionCall(GoogleSQL:$equal(STRING, STRING) -> BOOL)
+        |   +-ColumnRef(type=STRING, column=KeyValue.Value#2)
+        |   +-ColumnRef(type=STRING, column=KeyValue.Value#4)
+        +-has_using=TRUE
+==
+
+# Things to note, and compare to other versions:
+# 1. Output columns have join columns, then the non-join columns from the
+#    left, then non-join columns from the right.
+# 2. Join column `value` is the rhs version because this is RIGHT JOIN.
+select *
+from KeyValue kv1 right join KeyValue kv2 using (value)
+--
+QueryStmt
++-output_column_list=
+| +-KeyValue.Value#4 AS value [STRING]
+| +-KeyValue.Key#1 AS Key [INT64]
+| +-KeyValue.Key#3 AS Key [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=KeyValue.[Value#4, Key#1, Key#3]
+    +-input_scan=
+      +-JoinScan
+        +-column_list=KeyValue.[Key#1, Value#2, Key#3, Value#4]
+        +-join_type=RIGHT
+        +-left_scan=
+        | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1], alias="kv1")
+        +-right_scan=
+        | +-TableScan(column_list=KeyValue.[Key#3, Value#4], table=KeyValue, column_index_list=[0, 1], alias="kv2")
+        +-join_expr=
+        | +-FunctionCall(GoogleSQL:$equal(STRING, STRING) -> BOOL)
+        |   +-ColumnRef(type=STRING, column=KeyValue.Value#2)
+        |   +-ColumnRef(type=STRING, column=KeyValue.Value#4)
+        +-has_using=TRUE
+==
+
+# FULL JOIN with USING returns a value column made from the
+# expression COALESCE(lhs_value, rhs_value).
+select *
+from KeyValue kv1 full join KeyValue kv2 using (value)
+--
+QueryStmt
++-output_column_list=
+| +-$full_join.value#5 AS value [STRING]
+| +-KeyValue.Key#1 AS Key [INT64]
+| +-KeyValue.Key#3 AS Key [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$full_join.value#5, KeyValue.Key#1, KeyValue.Key#3]
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[KeyValue.Key#1, KeyValue.Value#2, KeyValue.Key#3, KeyValue.Value#4, $full_join.value#5]
+        +-expr_list=
+        | +-value#5 :=
+        |   +-FunctionCall(GoogleSQL:coalesce(repeated(2) STRING) -> STRING)
+        |     +-ColumnRef(type=STRING, column=KeyValue.Value#2)
+        |     +-ColumnRef(type=STRING, column=KeyValue.Value#4)
+        +-input_scan=
+          +-JoinScan
+            +-column_list=KeyValue.[Key#1, Value#2, Key#3, Value#4]
+            +-join_type=FULL
+            +-left_scan=
+            | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1], alias="kv1")
+            +-right_scan=
+            | +-TableScan(column_list=KeyValue.[Key#3, Value#4], table=KeyValue, column_index_list=[0, 1], alias="kv2")
+            +-join_expr=
+            | +-FunctionCall(GoogleSQL:$equal(STRING, STRING) -> BOOL)
+            |   +-ColumnRef(type=STRING, column=KeyValue.Value#2)
+            |   +-ColumnRef(type=STRING, column=KeyValue.Value#4)
+            +-has_using=TRUE
+==
+
+select kv1.*, '---', kv2.*
+from KeyValue kv1 right join KeyValue kv2 using (value)
+--
+QueryStmt
++-output_column_list=
+| +-KeyValue.Key#1 AS Key [INT64]
+| +-KeyValue.Value#2 AS Value [STRING]
+| +-$query.$col2#5 AS `$col2` [STRING]
+| +-KeyValue.Key#3 AS Key [INT64]
+| +-KeyValue.Value#4 AS Value [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[KeyValue.Key#1, KeyValue.Value#2, $query.$col2#5, KeyValue.Key#3, KeyValue.Value#4]
+    +-expr_list=
+    | +-$col2#5 := Literal(type=STRING, value="---")
+    +-input_scan=
+      +-JoinScan
+        +-column_list=KeyValue.[Key#1, Value#2, Key#3, Value#4]
+        +-join_type=RIGHT
+        +-left_scan=
+        | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1], alias="kv1")
+        +-right_scan=
+        | +-TableScan(column_list=KeyValue.[Key#3, Value#4], table=KeyValue, column_index_list=[0, 1], alias="kv2")
+        +-join_expr=
+        | +-FunctionCall(GoogleSQL:$equal(STRING, STRING) -> BOOL)
+        |   +-ColumnRef(type=STRING, column=KeyValue.Value#2)
+        |   +-ColumnRef(type=STRING, column=KeyValue.Value#4)
+        +-has_using=TRUE
+==
+
+select key
+from KeyValue kv1 right join KeyValue kv2 using (value)
+--
+ERROR: Column name key is ambiguous [at 1:8]
+select key
+       ^
+==
+
+# SELECT column 'value1' is ambiguous on the right side of the join.
+select value1
+from KeyValue kv1 join
+  (select kv2.key, kv2.value as value1, kv3.value as value1
+   from KeyValue kv2, KeyValue kv3)
+using (key)
+--
+ERROR: Column name value1 is ambiguous [at 1:8]
+select value1
+       ^
+==
+
+# `key` is the column from the right with RIGHT JOIN USING (key).
+select key, kv1.value, kv2.value, kv1.key, kv2.key
+from KeyValue kv1 right join KeyValue kv2 using (key)
+where key=5
+--
+QueryStmt
++-output_column_list=
+| +-KeyValue.Key#3 AS key [INT64]
+| +-KeyValue.Value#2 AS value [STRING]
+| +-KeyValue.Value#4 AS value [STRING]
+| +-KeyValue.Key#1 AS key [INT64]
+| +-KeyValue.Key#3 AS key [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=KeyValue.[Key#3, Value#2, Value#4, Key#1, Key#3]
+    +-input_scan=
+      +-FilterScan
+        +-column_list=KeyValue.[Key#1, Value#2, Key#3, Value#4]
+        +-input_scan=
+        | +-JoinScan
+        |   +-column_list=KeyValue.[Key#1, Value#2, Key#3, Value#4]
+        |   +-join_type=RIGHT
+        |   +-left_scan=
+        |   | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1], alias="kv1")
+        |   +-right_scan=
+        |   | +-TableScan(column_list=KeyValue.[Key#3, Value#4], table=KeyValue, column_index_list=[0, 1], alias="kv2")
+        |   +-join_expr=
+        |   | +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+        |   |   +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+        |   |   +-ColumnRef(type=INT64, column=KeyValue.Key#3)
+        |   +-has_using=TRUE
+        +-filter_expr=
+          +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+            +-ColumnRef(type=INT64, column=KeyValue.Key#3)
+            +-Literal(type=INT64, value=5)
+==
+
+# `key` is the column from the left with JOIN USING (key).
+select key from KeyValue kv1 join KeyValue kv2 using (key)
+--
+QueryStmt
++-output_column_list=
+| +-KeyValue.Key#1 AS key [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[KeyValue.Key#1]
+    +-input_scan=
+      +-JoinScan
+        +-column_list=KeyValue.[Key#1, Key#3]
+        +-left_scan=
+        | +-TableScan(column_list=[KeyValue.Key#1], table=KeyValue, column_index_list=[0], alias="kv1")
+        +-right_scan=
+        | +-TableScan(column_list=[KeyValue.Key#3], table=KeyValue, column_index_list=[0], alias="kv2")
+        +-join_expr=
+        | +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+        |   +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+        |   +-ColumnRef(type=INT64, column=KeyValue.Key#3)
+        +-has_using=TRUE
+==
+
+# `key` is the column from the left with LEFT JOIN USING (key).
+select key from KeyValue kv1 left join KeyValue kv2 using (key)
+--
+QueryStmt
++-output_column_list=
+| +-KeyValue.Key#1 AS key [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[KeyValue.Key#1]
+    +-input_scan=
+      +-JoinScan
+        +-column_list=KeyValue.[Key#1, Key#3]
+        +-join_type=LEFT
+        +-left_scan=
+        | +-TableScan(column_list=[KeyValue.Key#1], table=KeyValue, column_index_list=[0], alias="kv1")
+        +-right_scan=
+        | +-TableScan(column_list=[KeyValue.Key#3], table=KeyValue, column_index_list=[0], alias="kv2")
+        +-join_expr=
+        | +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+        |   +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+        |   +-ColumnRef(type=INT64, column=KeyValue.Key#3)
+        +-has_using=TRUE
+==
+
+select key from KeyValue kv1 full join KeyValue kv2 using (key)
+--
+QueryStmt
++-output_column_list=
+| +-$full_join.key#5 AS key [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$full_join.key#5]
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[KeyValue.Key#1, KeyValue.Key#3, $full_join.key#5]
+        +-expr_list=
+        | +-key#5 :=
+        |   +-FunctionCall(GoogleSQL:coalesce(repeated(2) INT64) -> INT64)
+        |     +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+        |     +-ColumnRef(type=INT64, column=KeyValue.Key#3)
+        +-input_scan=
+          +-JoinScan
+            +-column_list=KeyValue.[Key#1, Key#3]
+            +-join_type=FULL
+            +-left_scan=
+            | +-TableScan(column_list=[KeyValue.Key#1], table=KeyValue, column_index_list=[0], alias="kv1")
+            +-right_scan=
+            | +-TableScan(column_list=[KeyValue.Key#3], table=KeyValue, column_index_list=[0], alias="kv2")
+            +-join_expr=
+            | +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+            |   +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+            |   +-ColumnRef(type=INT64, column=KeyValue.Key#3)
+            +-has_using=TRUE
+==
+
+# Note that {key, kv1.key, kv2.key} produce three distinct output columns here.
+select key, value, kv1.key, kv2.key, '--', kv1.*, '--', *
+from KeyValue kv1
+  full join KeyValue kv2 using (value, key)
+--
+QueryStmt
++-output_column_list=
+| +-$full_join.key#6 AS key [INT64]
+| +-$full_join.value#5 AS value [STRING]
+| +-KeyValue.Key#1 AS key [INT64]
+| +-KeyValue.Key#3 AS key [INT64]
+| +-$query.$col5#7 AS `$col5` [STRING]
+| +-KeyValue.Key#1 AS Key [INT64]
+| +-KeyValue.Value#2 AS Value [STRING]
+| +-$query.$col7#8 AS `$col7` [STRING]
+| +-$full_join.value#5 AS value [STRING]
+| +-$full_join.key#6 AS key [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$full_join.key#6, $full_join.value#5, KeyValue.Key#1, KeyValue.Key#3, $query.$col5#7, KeyValue.Key#1, KeyValue.Value#2, $query.$col7#8, $full_join.value#5, $full_join.key#6]
+    +-expr_list=
+    | +-$col5#7 := Literal(type=STRING, value="--")
+    | +-$col7#8 := Literal(type=STRING, value="--")
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[KeyValue.Key#1, KeyValue.Value#2, KeyValue.Key#3, KeyValue.Value#4, $full_join.value#5, $full_join.key#6]
+        +-expr_list=
+        | +-value#5 :=
+        | | +-FunctionCall(GoogleSQL:coalesce(repeated(2) STRING) -> STRING)
+        | |   +-ColumnRef(type=STRING, column=KeyValue.Value#2)
+        | |   +-ColumnRef(type=STRING, column=KeyValue.Value#4)
+        | +-key#6 :=
+        |   +-FunctionCall(GoogleSQL:coalesce(repeated(2) INT64) -> INT64)
+        |     +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+        |     +-ColumnRef(type=INT64, column=KeyValue.Key#3)
+        +-input_scan=
+          +-JoinScan
+            +-column_list=KeyValue.[Key#1, Value#2, Key#3, Value#4]
+            +-join_type=FULL
+            +-left_scan=
+            | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1], alias="kv1")
+            +-right_scan=
+            | +-TableScan(column_list=KeyValue.[Key#3, Value#4], table=KeyValue, column_index_list=[0, 1], alias="kv2")
+            +-join_expr=
+            | +-FunctionCall(GoogleSQL:$and(BOOL, repeated(1) BOOL) -> BOOL)
+            |   +-FunctionCall(GoogleSQL:$equal(STRING, STRING) -> BOOL)
+            |   | +-ColumnRef(type=STRING, column=KeyValue.Value#2)
+            |   | +-ColumnRef(type=STRING, column=KeyValue.Value#4)
+            |   +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+            |     +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+            |     +-ColumnRef(type=INT64, column=KeyValue.Key#3)
+            +-has_using=TRUE
+==
+
+# Note that the COALESCE generated for FULL JOIN USING includes the implicit
+# casting of arguments to a common supertype.
+select *
+from
+  (select cast(5 as int32) as key) s1
+  full join
+  (select cast(5 as int64) as key) s2
+  using (key)
+--
+QueryStmt
++-output_column_list=
+| +-$full_join.key#3 AS key [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$full_join.key#3]
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[s1.key#1, s2.key#2, $full_join.key#3]
+        +-expr_list=
+        | +-key#3 :=
+        |   +-FunctionCall(GoogleSQL:coalesce(repeated(2) INT64) -> INT64)
+        |     +-Cast(INT32 -> INT64)
+        |     | +-ColumnRef(type=INT32, column=s1.key#1)
+        |     +-ColumnRef(type=INT64, column=s2.key#2)
+        +-input_scan=
+          +-JoinScan
+            +-column_list=[s1.key#1, s2.key#2]
+            +-join_type=FULL
+            +-left_scan=
+            | +-ProjectScan
+            |   +-column_list=[s1.key#1]
+            |   +-expr_list=
+            |   | +-key#1 := Literal(type=INT32, value=5, has_explicit_type=TRUE)
+            |   +-input_scan=
+            |     +-SingleRowScan
+            +-right_scan=
+            | +-ProjectScan
+            |   +-column_list=[s2.key#2]
+            |   +-expr_list=
+            |   | +-key#2 := Literal(type=INT64, value=5, has_explicit_type=TRUE)
+            |   +-input_scan=
+            |     +-SingleRowScan
+            +-join_expr=
+            | +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+            |   +-Cast(INT32 -> INT64)
+            |   | +-ColumnRef(type=INT32, column=s1.key#1)
+            |   +-ColumnRef(type=INT64, column=s2.key#2)
+            +-has_using=TRUE
+==
+
+select 1 from KeyValue join TestTable using (value)
+--
+ERROR: Column value in USING clause not found on right side of join [at 1:46]
+select 1 from KeyValue join TestTable using (value)
+                                             ^
+==
+
+select 1 from KeyValue join TestTable using (KitchenSink)
+--
+ERROR: Column KitchenSink in USING clause not found on left side of join [at 1:46]
+select 1 from KeyValue join TestTable using (KitchenSink)
+                                             ^
+==
+
+# The USING column <key> has different types in KeyValue and TestTable, and
+# gets coerced to a common supertype for the join comparison.
+select 1 from KeyValue join TestTable using (key)
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#6 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#6]
+    +-expr_list=
+    | +-$col1#6 := Literal(type=INT64, value=1)
+    +-input_scan=
+      +-JoinScan
+        +-column_list=[KeyValue.Key#1, TestTable.key#3]
+        +-left_scan=
+        | +-TableScan(column_list=[KeyValue.Key#1], table=KeyValue, column_index_list=[0])
+        +-right_scan=
+        | +-TableScan(column_list=[TestTable.key#3], table=TestTable, column_index_list=[0])
+        +-join_expr=
+        | +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+        |   +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+        |   +-Cast(INT32 -> INT64)
+        |     +-ColumnRef(type=INT32, column=TestTable.key#3)
+        +-has_using=TRUE
+==
+
+select 1
+from KeyValue join (select 123 value) using (value)
+--
+ERROR: Column 'value' in USING has incompatible types that cannot be directly compared using equality on either side of the join: STRING and INT64 [at 2:46]
+from KeyValue join (select 123 value) using (value)
+                                             ^
+==
+
+# Select list aliases are in a different order from each other.
+# Using clause references are in a different order from either select list.
+# None of the USING columns have the same type in both input subqueries.
+# The 'a' join keys coerce to a supertype different from both.
+# The 'b' join keys coerce to the type from the first subquery.
+# The 'c' join keys coerce to the type from the second subquery.
+select *
+from
+  (select int32 a, float c, int64 b from SimpleTypes)
+{{| left| right}} join
+  (select uint32 a, uint32 b, double c from SimpleTypes)
+using (b, a, c)
+--
+ALTERNATION GROUP: <empty>
+--
+QueryStmt
++-output_column_list=
+| +-SimpleTypes.int64#2 AS b [INT64]
+| +-SimpleTypes.int32#1 AS a [INT32]
+| +-SimpleTypes.float#8 AS c [FLOAT]
++-query=
+  +-ProjectScan
+    +-column_list=SimpleTypes.[int64#2, int32#1, float#8]
+    +-input_scan=
+      +-JoinScan
+        +-column_list=SimpleTypes.[int32#1, float#8, int64#2, uint32#22, uint32#22, double#28]
+        +-left_scan=
+        | +-ProjectScan
+        |   +-column_list=SimpleTypes.[int32#1, float#8, int64#2]
+        |   +-input_scan=
+        |     +-TableScan(column_list=SimpleTypes.[int32#1, int64#2, float#8], table=SimpleTypes, column_index_list=[0, 1, 7])
+        +-right_scan=
+        | +-ProjectScan
+        |   +-column_list=SimpleTypes.[uint32#22, uint32#22, double#28]
+        |   +-input_scan=
+        |     +-TableScan(column_list=SimpleTypes.[uint32#22, double#28], table=SimpleTypes, column_index_list=[2, 8])
+        +-join_expr=
+        | +-FunctionCall(GoogleSQL:$and(BOOL, repeated(2) BOOL) -> BOOL)
+        |   +-FunctionCall(GoogleSQL:$equal(INT64, UINT64) -> BOOL)
+        |   | +-ColumnRef(type=INT64, column=SimpleTypes.int64#2)
+        |   | +-Cast(UINT32 -> UINT64)
+        |   |   +-ColumnRef(type=UINT32, column=SimpleTypes.uint32#22)
+        |   +-FunctionCall(GoogleSQL:$equal(INT64, UINT64) -> BOOL)
+        |   | +-Cast(INT32 -> INT64)
+        |   | | +-ColumnRef(type=INT32, column=SimpleTypes.int32#1)
+        |   | +-Cast(UINT32 -> UINT64)
+        |   |   +-ColumnRef(type=UINT32, column=SimpleTypes.uint32#22)
+        |   +-FunctionCall(GoogleSQL:$equal(DOUBLE, DOUBLE) -> BOOL)
+        |     +-Cast(FLOAT -> DOUBLE)
+        |     | +-ColumnRef(type=FLOAT, column=SimpleTypes.float#8)
+        |     +-ColumnRef(type=DOUBLE, column=SimpleTypes.double#28)
+        +-has_using=TRUE
+--
+ALTERNATION GROUP:  left
+--
+QueryStmt
++-output_column_list=
+| +-SimpleTypes.int64#2 AS b [INT64]
+| +-SimpleTypes.int32#1 AS a [INT32]
+| +-SimpleTypes.float#8 AS c [FLOAT]
++-query=
+  +-ProjectScan
+    +-column_list=SimpleTypes.[int64#2, int32#1, float#8]
+    +-input_scan=
+      +-JoinScan
+        +-column_list=SimpleTypes.[int32#1, float#8, int64#2, uint32#22, uint32#22, double#28]
+        +-join_type=LEFT
+        +-left_scan=
+        | +-ProjectScan
+        |   +-column_list=SimpleTypes.[int32#1, float#8, int64#2]
+        |   +-input_scan=
+        |     +-TableScan(column_list=SimpleTypes.[int32#1, int64#2, float#8], table=SimpleTypes, column_index_list=[0, 1, 7])
+        +-right_scan=
+        | +-ProjectScan
+        |   +-column_list=SimpleTypes.[uint32#22, uint32#22, double#28]
+        |   +-input_scan=
+        |     +-TableScan(column_list=SimpleTypes.[uint32#22, double#28], table=SimpleTypes, column_index_list=[2, 8])
+        +-join_expr=
+        | +-FunctionCall(GoogleSQL:$and(BOOL, repeated(2) BOOL) -> BOOL)
+        |   +-FunctionCall(GoogleSQL:$equal(INT64, UINT64) -> BOOL)
+        |   | +-ColumnRef(type=INT64, column=SimpleTypes.int64#2)
+        |   | +-Cast(UINT32 -> UINT64)
+        |   |   +-ColumnRef(type=UINT32, column=SimpleTypes.uint32#22)
+        |   +-FunctionCall(GoogleSQL:$equal(INT64, UINT64) -> BOOL)
+        |   | +-Cast(INT32 -> INT64)
+        |   | | +-ColumnRef(type=INT32, column=SimpleTypes.int32#1)
+        |   | +-Cast(UINT32 -> UINT64)
+        |   |   +-ColumnRef(type=UINT32, column=SimpleTypes.uint32#22)
+        |   +-FunctionCall(GoogleSQL:$equal(DOUBLE, DOUBLE) -> BOOL)
+        |     +-Cast(FLOAT -> DOUBLE)
+        |     | +-ColumnRef(type=FLOAT, column=SimpleTypes.float#8)
+        |     +-ColumnRef(type=DOUBLE, column=SimpleTypes.double#28)
+        +-has_using=TRUE
+--
+ALTERNATION GROUP:  right
+--
+QueryStmt
++-output_column_list=
+| +-SimpleTypes.uint32#22 AS b [UINT32]
+| +-SimpleTypes.uint32#22 AS a [UINT32]
+| +-SimpleTypes.double#28 AS c [DOUBLE]
++-query=
+  +-ProjectScan
+    +-column_list=SimpleTypes.[uint32#22, uint32#22, double#28]
+    +-input_scan=
+      +-JoinScan
+        +-column_list=SimpleTypes.[int32#1, float#8, int64#2, uint32#22, uint32#22, double#28]
+        +-join_type=RIGHT
+        +-left_scan=
+        | +-ProjectScan
+        |   +-column_list=SimpleTypes.[int32#1, float#8, int64#2]
+        |   +-input_scan=
+        |     +-TableScan(column_list=SimpleTypes.[int32#1, int64#2, float#8], table=SimpleTypes, column_index_list=[0, 1, 7])
+        +-right_scan=
+        | +-ProjectScan
+        |   +-column_list=SimpleTypes.[uint32#22, uint32#22, double#28]
+        |   +-input_scan=
+        |     +-TableScan(column_list=SimpleTypes.[uint32#22, double#28], table=SimpleTypes, column_index_list=[2, 8])
+        +-join_expr=
+        | +-FunctionCall(GoogleSQL:$and(BOOL, repeated(2) BOOL) -> BOOL)
+        |   +-FunctionCall(GoogleSQL:$equal(INT64, UINT64) -> BOOL)
+        |   | +-ColumnRef(type=INT64, column=SimpleTypes.int64#2)
+        |   | +-Cast(UINT32 -> UINT64)
+        |   |   +-ColumnRef(type=UINT32, column=SimpleTypes.uint32#22)
+        |   +-FunctionCall(GoogleSQL:$equal(INT64, UINT64) -> BOOL)
+        |   | +-Cast(INT32 -> INT64)
+        |   | | +-ColumnRef(type=INT32, column=SimpleTypes.int32#1)
+        |   | +-Cast(UINT32 -> UINT64)
+        |   |   +-ColumnRef(type=UINT32, column=SimpleTypes.uint32#22)
+        |   +-FunctionCall(GoogleSQL:$equal(DOUBLE, DOUBLE) -> BOOL)
+        |     +-Cast(FLOAT -> DOUBLE)
+        |     | +-ColumnRef(type=FLOAT, column=SimpleTypes.float#8)
+        |     +-ColumnRef(type=DOUBLE, column=SimpleTypes.double#28)
+        +-has_using=TRUE
+==
+
+select *
+from
+  (select 'abc' a1, 123 a2, 456 a3, 'def' a4) q1
+join
+  (select 333 a3, 17, 'xxx', 'aaa' a1, 'def' a2, 'z' a4) q2
+using (a3, a1, a4)
+--
+QueryStmt
++-output_column_list=
+| +-q1.a3#3 AS a3 [INT64]
+| +-q1.a1#1 AS a1 [STRING]
+| +-q1.a4#4 AS a4 [STRING]
+| +-q1.a2#2 AS a2 [INT64]
+| +-q2.$col2#6 AS `$col2` [INT64]
+| +-q2.$col3#7 AS `$col3` [STRING]
+| +-q2.a2#9 AS a2 [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[q1.a3#3, q1.a1#1, q1.a4#4, q1.a2#2, q2.$col2#6, q2.$col3#7, q2.a2#9]
+    +-input_scan=
+      +-JoinScan
+        +-column_list=[q1.a1#1, q1.a2#2, q1.a3#3, q1.a4#4, q2.a3#5, q2.$col2#6, q2.$col3#7, q2.a1#8, q2.a2#9, q2.a4#10]
+        +-left_scan=
+        | +-ProjectScan
+        |   +-column_list=q1.[a1#1, a2#2, a3#3, a4#4]
+        |   +-expr_list=
+        |   | +-a1#1 := Literal(type=STRING, value="abc")
+        |   | +-a2#2 := Literal(type=INT64, value=123)
+        |   | +-a3#3 := Literal(type=INT64, value=456)
+        |   | +-a4#4 := Literal(type=STRING, value="def")
+        |   +-input_scan=
+        |     +-SingleRowScan
+        +-right_scan=
+        | +-ProjectScan
+        |   +-column_list=q2.[a3#5, $col2#6, $col3#7, a1#8, a2#9, a4#10]
+        |   +-expr_list=
+        |   | +-a3#5 := Literal(type=INT64, value=333)
+        |   | +-$col2#6 := Literal(type=INT64, value=17)
+        |   | +-$col3#7 := Literal(type=STRING, value="xxx")
+        |   | +-a1#8 := Literal(type=STRING, value="aaa")
+        |   | +-a2#9 := Literal(type=STRING, value="def")
+        |   | +-a4#10 := Literal(type=STRING, value="z")
+        |   +-input_scan=
+        |     +-SingleRowScan
+        +-join_expr=
+        | +-FunctionCall(GoogleSQL:$and(BOOL, repeated(2) BOOL) -> BOOL)
+        |   +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+        |   | +-ColumnRef(type=INT64, column=q1.a3#3)
+        |   | +-ColumnRef(type=INT64, column=q2.a3#5)
+        |   +-FunctionCall(GoogleSQL:$equal(STRING, STRING) -> BOOL)
+        |   | +-ColumnRef(type=STRING, column=q1.a1#1)
+        |   | +-ColumnRef(type=STRING, column=q2.a1#8)
+        |   +-FunctionCall(GoogleSQL:$equal(STRING, STRING) -> BOOL)
+        |     +-ColumnRef(type=STRING, column=q1.a4#4)
+        |     +-ColumnRef(type=STRING, column=q2.a4#10)
+        +-has_using=TRUE
+==
+
+# TODO: Should produce an error message that more explicitly calls
+# out the USING clause.
+select *
+from TestTable tt1 join TestTable tt2 using (KitchenSink)
+--
+ERROR: Column 'KitchenSink' in USING has types that do not support equality comparison: googlesql_test.KitchenSinkPB [at 2:46]
+from TestTable tt1 join TestTable tt2 using (KitchenSink)
+                                             ^
+==
+
+SELECT *
+FROM GeoStructTable1 t1 JOIN GeoStructTable2 t2 USING (geo)
+--
+ERROR: Column 'geo' in USING has types that do not support equality comparison: STRUCT<a GEOGRAPHY> [at 2:56]
+FROM GeoStructTable1 t1 JOIN GeoStructTable2 t2 USING (geo)
+                                                       ^
+==
+
+# Path expressions in the USING clause are not allowed.
+select *
+from TestTable tt1 join TestTable tt2 using (KitchenSink.int32_val)
+--
+ERROR: Syntax error: Expected ")" or "," but got "." [at 2:57]
+from TestTable tt1 join TestTable tt2 using (KitchenSink.int32_val)
+                                                        ^
+==
+
+select 1
+from KeyValue kv1
+  join KeyValue kv2 using (kv1)
+--
+ERROR: Name kv1 in USING clause is a table alias, not a column name, on left side of join [at 3:28]
+  join KeyValue kv2 using (kv1)
+                           ^
+==
+
+select 1
+from KeyValue kv0
+ join (select * from KeyValue kv1, KeyValue kv2) using (key)
+--
+ERROR: Column key in USING clause is ambiguous on right side of join [at 3:57]
+ join (select * from KeyValue kv1, KeyValue kv2) using (key)
+                                                        ^
+==
+
+# `key` propagates as the leftmost column through all the joins.
+select *, '--', kv1.*, '--', kv2.*, '--', kv3.*, '--', key
+from KeyValue kv1
+join KeyValue kv2 using (key)
+join KeyValue kv3 using (key)
+--
+QueryStmt
++-output_column_list=
+| +-KeyValue.Key#1 AS key [INT64]
+| +-KeyValue.Value#2 AS Value [STRING]
+| +-KeyValue.Value#4 AS Value [STRING]
+| +-KeyValue.Value#6 AS Value [STRING]
+| +-$query.$col2#7 AS `$col2` [STRING]
+| +-KeyValue.Key#1 AS Key [INT64]
+| +-KeyValue.Value#2 AS Value [STRING]
+| +-$query.$col4#8 AS `$col4` [STRING]
+| +-KeyValue.Key#3 AS Key [INT64]
+| +-KeyValue.Value#4 AS Value [STRING]
+| +-$query.$col6#9 AS `$col6` [STRING]
+| +-KeyValue.Key#5 AS Key [INT64]
+| +-KeyValue.Value#6 AS Value [STRING]
+| +-$query.$col8#10 AS `$col8` [STRING]
+| +-KeyValue.Key#1 AS key [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[KeyValue.Key#1, KeyValue.Value#2, KeyValue.Value#4, KeyValue.Value#6, $query.$col2#7, KeyValue.Key#1, KeyValue.Value#2, $query.$col4#8, KeyValue.Key#3, KeyValue.Value#4, $query.$col6#9, KeyValue.Key#5, KeyValue.Value#6, $query.$col8#10, KeyValue.Key#1]
+    +-expr_list=
+    | +-$col2#7 := Literal(type=STRING, value="--")
+    | +-$col4#8 := Literal(type=STRING, value="--")
+    | +-$col6#9 := Literal(type=STRING, value="--")
+    | +-$col8#10 := Literal(type=STRING, value="--")
+    +-input_scan=
+      +-JoinScan
+        +-column_list=KeyValue.[Key#1, Value#2, Key#3, Value#4, Key#5, Value#6]
+        +-left_scan=
+        | +-JoinScan
+        |   +-column_list=KeyValue.[Key#1, Value#2, Key#3, Value#4]
+        |   +-left_scan=
+        |   | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1], alias="kv1")
+        |   +-right_scan=
+        |   | +-TableScan(column_list=KeyValue.[Key#3, Value#4], table=KeyValue, column_index_list=[0, 1], alias="kv2")
+        |   +-join_expr=
+        |   | +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+        |   |   +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+        |   |   +-ColumnRef(type=INT64, column=KeyValue.Key#3)
+        |   +-has_using=TRUE
+        +-right_scan=
+        | +-TableScan(column_list=KeyValue.[Key#5, Value#6], table=KeyValue, column_index_list=[0, 1], alias="kv3")
+        +-join_expr=
+        | +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+        |   +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+        |   +-ColumnRef(type=INT64, column=KeyValue.Key#5)
+        +-has_using=TRUE
+==
+
+# `key` is the column from the third join since the inner joins take
+# the key from the left.
+select key
+from KeyValue kv1
+join KeyValue kv2 using (key)
+right join KeyValue kv3 using (key)
+join KeyValue kv4 using (key)
+where key = 5
+--
+QueryStmt
++-output_column_list=
+| +-KeyValue.Key#5 AS key [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[KeyValue.Key#5]
+    +-input_scan=
+      +-FilterScan
+        +-column_list=KeyValue.[Key#1, Key#3, Key#5, Key#7]
+        +-input_scan=
+        | +-JoinScan
+        |   +-column_list=KeyValue.[Key#1, Key#3, Key#5, Key#7]
+        |   +-left_scan=
+        |   | +-JoinScan
+        |   |   +-column_list=KeyValue.[Key#1, Key#3, Key#5]
+        |   |   +-join_type=RIGHT
+        |   |   +-left_scan=
+        |   |   | +-JoinScan
+        |   |   |   +-column_list=KeyValue.[Key#1, Key#3]
+        |   |   |   +-left_scan=
+        |   |   |   | +-TableScan(column_list=[KeyValue.Key#1], table=KeyValue, column_index_list=[0], alias="kv1")
+        |   |   |   +-right_scan=
+        |   |   |   | +-TableScan(column_list=[KeyValue.Key#3], table=KeyValue, column_index_list=[0], alias="kv2")
+        |   |   |   +-join_expr=
+        |   |   |   | +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+        |   |   |   |   +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+        |   |   |   |   +-ColumnRef(type=INT64, column=KeyValue.Key#3)
+        |   |   |   +-has_using=TRUE
+        |   |   +-right_scan=
+        |   |   | +-TableScan(column_list=[KeyValue.Key#5], table=KeyValue, column_index_list=[0], alias="kv3")
+        |   |   +-join_expr=
+        |   |   | +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+        |   |   |   +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+        |   |   |   +-ColumnRef(type=INT64, column=KeyValue.Key#5)
+        |   |   +-has_using=TRUE
+        |   +-right_scan=
+        |   | +-TableScan(column_list=[KeyValue.Key#7], table=KeyValue, column_index_list=[0], alias="kv4")
+        |   +-join_expr=
+        |   | +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+        |   |   +-ColumnRef(type=INT64, column=KeyValue.Key#5)
+        |   |   +-ColumnRef(type=INT64, column=KeyValue.Key#7)
+        |   +-has_using=TRUE
+        +-filter_expr=
+          +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+            +-ColumnRef(type=INT64, column=KeyValue.Key#5)
+            +-Literal(type=INT64, value=5)
+==
+
+select *
+from KeyValue kv1
+join KeyValue kv2 using (key)
+join KeyValue kv3 using (value)
+--
+ERROR: Column value in USING clause is ambiguous on left side of join [at 4:26]
+join KeyValue kv3 using (value)
+                         ^
+==
+
+select *
+from KeyValue kv1
+join KeyValue kv2 using (key,key,value,key)
+--
+QueryStmt
++-output_column_list=
+| +-KeyValue.Key#1 AS key [INT64]
+| +-KeyValue.Value#2 AS value [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=KeyValue.[Key#1, Value#2]
+    +-input_scan=
+      +-JoinScan
+        +-column_list=KeyValue.[Key#1, Value#2, Key#3, Value#4]
+        +-left_scan=
+        | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1], alias="kv1")
+        +-right_scan=
+        | +-TableScan(column_list=KeyValue.[Key#3, Value#4], table=KeyValue, column_index_list=[0, 1], alias="kv2")
+        +-join_expr=
+        | +-FunctionCall(GoogleSQL:$and(BOOL, repeated(3) BOOL) -> BOOL)
+        |   +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+        |   | +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+        |   | +-ColumnRef(type=INT64, column=KeyValue.Key#3)
+        |   +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+        |   | +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+        |   | +-ColumnRef(type=INT64, column=KeyValue.Key#3)
+        |   +-FunctionCall(GoogleSQL:$equal(STRING, STRING) -> BOOL)
+        |   | +-ColumnRef(type=STRING, column=KeyValue.Value#2)
+        |   | +-ColumnRef(type=STRING, column=KeyValue.Value#4)
+        |   +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+        |     +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+        |     +-ColumnRef(type=INT64, column=KeyValue.Key#3)
+        +-has_using=TRUE
+==
+
+# We resolve `key` on the lhs of the join, opaquely, and it resolves to a scan.
+# If we forced it to resolve only as a column, then the query would work.
+select 1
+from KeyValue key
+join KeyValue kv2 using(key)
+--
+ERROR: Name key in USING clause is a table alias, not a column name, on left side of join [at 3:25]
+join KeyValue kv2 using(key)
+                        ^
+==
+
+# JOIN USING with a proto value table.
+# The JOIN USING column name 'int32_val1' is not ambiguous on output because it
+# resolves to the USING column, even though it is still accessible as a field
+# name from both sides of the join (lhs.int32_val1, rhs.int32_val1).
+select int32_val1, lhs, '--', rhs, '--', lhs.*, '--', rhs.*, '--', *
+from
+     (select "xxx" xxx, 15 int32_val1) lhs
+  join TestExtraValueTable rhs
+     using (int32_val1)
+--
+QueryStmt
++-output_column_list=
+| +-lhs.int32_val1#2 AS int32_val1 [INT64]
+| +-$query.lhs#8 AS lhs [STRUCT<xxx STRING, int32_val1 INT64>]
+| +-$query.$col3#9 AS `$col3` [STRING]
+| +-TestExtraValueTable.value#3 AS rhs [PROTO<googlesql_test.TestExtraPB>]
+| +-$query.$col5#10 AS `$col5` [STRING]
+| +-lhs.xxx#1 AS xxx [STRING]
+| +-lhs.int32_val1#2 AS int32_val1 [INT64]
+| +-$query.$col7#11 AS `$col7` [STRING]
+| +-$query.int32_val1#12 AS int32_val1 [INT32]
+| +-$query.int32_val2#13 AS int32_val2 [INT32]
+| +-$query.str_value#14 AS str_value [ARRAY<STRING>]
+| +-$query.$col9#15 AS `$col9` [STRING]
+| +-lhs.int32_val1#2 AS int32_val1 [INT64]
+| +-lhs.xxx#1 AS xxx [STRING]
+| +-$query.int32_val2#16 AS int32_val2 [INT32]
+| +-$query.str_value#17 AS str_value [ARRAY<STRING>]
++-query=
+  +-ProjectScan
+    +-column_list=[lhs.int32_val1#2, $query.lhs#8, $query.$col3#9, TestExtraValueTable.value#3, $query.$col5#10, lhs.xxx#1, lhs.int32_val1#2, $query.$col7#11, $query.int32_val1#12, $query.int32_val2#13, $query.str_value#14, $query.$col9#15, lhs.int32_val1#2, lhs.xxx#1, $query.int32_val2#16, $query.str_value#17]
+    +-expr_list=
+    | +-lhs#8 :=
+    | | +-MakeStruct
+    | |   +-type=STRUCT<xxx STRING, int32_val1 INT64>
+    | |   +-field_list=
+    | |     +-ColumnRef(type=STRING, column=lhs.xxx#1)
+    | |     +-ColumnRef(type=INT64, column=lhs.int32_val1#2)
+    | +-$col3#9 := Literal(type=STRING, value="--")
+    | +-$col5#10 := Literal(type=STRING, value="--")
+    | +-$col7#11 := Literal(type=STRING, value="--")
+    | +-int32_val1#12 :=
+    | | +-GetProtoField
+    | |   +-type=INT32
+    | |   +-expr=
+    | |   | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=TestExtraValueTable.value#3)
+    | |   +-field_descriptor=int32_val1
+    | |   +-default_value=0
+    | +-int32_val2#13 :=
+    | | +-GetProtoField
+    | |   +-type=INT32
+    | |   +-expr=
+    | |   | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=TestExtraValueTable.value#3)
+    | |   +-field_descriptor=int32_val2
+    | |   +-default_value=0
+    | +-str_value#14 :=
+    | | +-GetProtoField
+    | |   +-type=ARRAY<STRING>
+    | |   +-expr=
+    | |   | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=TestExtraValueTable.value#3)
+    | |   +-field_descriptor=str_value
+    | |   +-default_value=[]
+    | +-$col9#15 := Literal(type=STRING, value="--")
+    | +-int32_val2#16 :=
+    | | +-GetProtoField
+    | |   +-type=INT32
+    | |   +-expr=
+    | |   | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=TestExtraValueTable.value#3)
+    | |   +-field_descriptor=int32_val2
+    | |   +-default_value=0
+    | +-str_value#17 :=
+    |   +-GetProtoField
+    |     +-type=ARRAY<STRING>
+    |     +-expr=
+    |     | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=TestExtraValueTable.value#3)
+    |     +-field_descriptor=str_value
+    |     +-default_value=[]
+    +-input_scan=
+      +-JoinScan
+        +-column_list=[lhs.xxx#1, lhs.int32_val1#2, TestExtraValueTable.value#3, $join_right.int32_val1#6]
+        +-left_scan=
+        | +-ProjectScan
+        |   +-column_list=lhs.[xxx#1, int32_val1#2]
+        |   +-expr_list=
+        |   | +-xxx#1 := Literal(type=STRING, value="xxx")
+        |   | +-int32_val1#2 := Literal(type=INT64, value=15)
+        |   +-input_scan=
+        |     +-SingleRowScan
+        +-right_scan=
+        | +-ProjectScan
+        |   +-column_list=[TestExtraValueTable.value#3, $join_right.int32_val1#6]
+        |   +-expr_list=
+        |   | +-int32_val1#6 :=
+        |   |   +-GetProtoField
+        |   |     +-type=INT32
+        |   |     +-expr=
+        |   |     | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=TestExtraValueTable.value#3)
+        |   |     +-field_descriptor=int32_val1
+        |   |     +-default_value=0
+        |   +-input_scan=
+        |     +-TableScan(column_list=[TestExtraValueTable.value#3], table=TestExtraValueTable, column_index_list=[0], alias="rhs")
+        +-join_expr=
+        | +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+        |   +-ColumnRef(type=INT64, column=lhs.int32_val1#2)
+        |   +-Cast(INT32 -> INT64)
+        |     +-ColumnRef(type=INT32, column=$join_right.int32_val1#6)
+        +-has_using=TRUE
+==
+
+# JOIN USING between two proto value tables.
+# The JOIN USING column name 'date' is not ambiguous on output because it
+# resolves to the USING column, even though it is still accessible as two field
+# names (k1.date, k2.date).
+select k1, k2, date
+from KitchenSinkValueTable k1 JOIN
+     KitchenSinkValueTable k2 USING (int64_key_1, date, bool_val)
+--
+QueryStmt
++-output_column_list=
+| +-KitchenSinkValueTable.value#1 AS k1 [PROTO<googlesql_test.KitchenSinkPB>]
+| +-KitchenSinkValueTable.value#2 AS k2 [PROTO<googlesql_test.KitchenSinkPB>]
+| +-$join_left.date#5 AS date [DATE]
++-query=
+  +-ProjectScan
+    +-column_list=[KitchenSinkValueTable.value#1, KitchenSinkValueTable.value#2, $join_left.date#5]
+    +-input_scan=
+      +-JoinScan
+        +-column_list=[KitchenSinkValueTable.value#1, $join_left.int64_key_1#3, $join_left.date#5, $join_left.bool_val#7, KitchenSinkValueTable.value#2, $join_right.int64_key_1#4, $join_right.date#6, $join_right.bool_val#8]
+        +-left_scan=
+        | +-ProjectScan
+        |   +-column_list=[KitchenSinkValueTable.value#1, $join_left.int64_key_1#3, $join_left.date#5, $join_left.bool_val#7]
+        |   +-expr_list=
+        |   | +-int64_key_1#3 :=
+        |   | | +-GetProtoField
+        |   | |   +-type=INT64
+        |   | |   +-expr=
+        |   | |   | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=KitchenSinkValueTable.value#1)
+        |   | |   +-field_descriptor=int64_key_1
+        |   | +-date#5 :=
+        |   | | +-GetProtoField
+        |   | |   +-type=DATE
+        |   | |   +-expr=
+        |   | |   | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=KitchenSinkValueTable.value#1)
+        |   | |   +-field_descriptor=date
+        |   | |   +-default_value=1970-01-01
+        |   | |   +-format=DATE
+        |   | +-bool_val#7 :=
+        |   |   +-GetProtoField
+        |   |     +-type=BOOL
+        |   |     +-expr=
+        |   |     | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=KitchenSinkValueTable.value#1)
+        |   |     +-field_descriptor=bool_val
+        |   |     +-default_value=false
+        |   +-input_scan=
+        |     +-TableScan(column_list=[KitchenSinkValueTable.value#1], table=KitchenSinkValueTable, column_index_list=[0], alias="k1")
+        +-right_scan=
+        | +-ProjectScan
+        |   +-column_list=[KitchenSinkValueTable.value#2, $join_right.int64_key_1#4, $join_right.date#6, $join_right.bool_val#8]
+        |   +-expr_list=
+        |   | +-int64_key_1#4 :=
+        |   | | +-GetProtoField
+        |   | |   +-type=INT64
+        |   | |   +-expr=
+        |   | |   | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=KitchenSinkValueTable.value#2)
+        |   | |   +-field_descriptor=int64_key_1
+        |   | +-date#6 :=
+        |   | | +-GetProtoField
+        |   | |   +-type=DATE
+        |   | |   +-expr=
+        |   | |   | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=KitchenSinkValueTable.value#2)
+        |   | |   +-field_descriptor=date
+        |   | |   +-default_value=1970-01-01
+        |   | |   +-format=DATE
+        |   | +-bool_val#8 :=
+        |   |   +-GetProtoField
+        |   |     +-type=BOOL
+        |   |     +-expr=
+        |   |     | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=KitchenSinkValueTable.value#2)
+        |   |     +-field_descriptor=bool_val
+        |   |     +-default_value=false
+        |   +-input_scan=
+        |     +-TableScan(column_list=[KitchenSinkValueTable.value#2], table=KitchenSinkValueTable, column_index_list=[0], alias="k2")
+        +-join_expr=
+        | +-FunctionCall(GoogleSQL:$and(BOOL, repeated(2) BOOL) -> BOOL)
+        |   +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+        |   | +-ColumnRef(type=INT64, column=$join_left.int64_key_1#3)
+        |   | +-ColumnRef(type=INT64, column=$join_right.int64_key_1#4)
+        |   +-FunctionCall(GoogleSQL:$equal(DATE, DATE) -> BOOL)
+        |   | +-ColumnRef(type=DATE, column=$join_left.date#5)
+        |   | +-ColumnRef(type=DATE, column=$join_right.date#6)
+        |   +-FunctionCall(GoogleSQL:$equal(BOOL, BOOL) -> BOOL)
+        |     +-ColumnRef(type=BOOL, column=$join_left.bool_val#7)
+        |     +-ColumnRef(type=BOOL, column=$join_right.bool_val#8)
+        +-has_using=TRUE
+==
+
+select 1
+from KitchenSinkValueTable k1 JOIN
+     KitchenSinkValueTable k2 USING (int64_key_1, bad_field)
+--
+ERROR: Column bad_field in USING clause not found on left side of join [at 3:51]
+     KitchenSinkValueTable k2 USING (int64_key_1, bad_field)
+                                                  ^
+==
+
+[language_features=NONE,{{|+ARRAY_EQUALITY}}]
+select 1
+from KitchenSinkValueTable k1 JOIN
+     KitchenSinkValueTable k2 USING (int64_key_1, repeated_bool_val)
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: Column 'repeated_bool_val' in USING has types that do not support equality comparison: ARRAY<BOOL> [at 3:51]
+     KitchenSinkValueTable k2 USING (int64_key_1, repeated_bool_val)
+                                                  ^
+--
+ALTERNATION GROUP: +ARRAY_EQUALITY
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#7 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#7]
+    +-expr_list=
+    | +-$col1#7 := Literal(type=INT64, value=1)
+    +-input_scan=
+      +-JoinScan
+        +-column_list=[KitchenSinkValueTable.value#1, $join_left.int64_key_1#3, $join_left.repeated_bool_val#5, KitchenSinkValueTable.value#2, $join_right.int64_key_1#4, $join_right.repeated_bool_val#6]
+        +-left_scan=
+        | +-ProjectScan
+        |   +-column_list=[KitchenSinkValueTable.value#1, $join_left.int64_key_1#3, $join_left.repeated_bool_val#5]
+        |   +-expr_list=
+        |   | +-int64_key_1#3 :=
+        |   | | +-GetProtoField
+        |   | |   +-type=INT64
+        |   | |   +-expr=
+        |   | |   | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=KitchenSinkValueTable.value#1)
+        |   | |   +-field_descriptor=int64_key_1
+        |   | +-repeated_bool_val#5 :=
+        |   |   +-GetProtoField
+        |   |     +-type=ARRAY<BOOL>
+        |   |     +-expr=
+        |   |     | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=KitchenSinkValueTable.value#1)
+        |   |     +-field_descriptor=repeated_bool_val
+        |   |     +-default_value=[]
+        |   +-input_scan=
+        |     +-TableScan(column_list=[KitchenSinkValueTable.value#1], table=KitchenSinkValueTable, column_index_list=[0], alias="k1")
+        +-right_scan=
+        | +-ProjectScan
+        |   +-column_list=[KitchenSinkValueTable.value#2, $join_right.int64_key_1#4, $join_right.repeated_bool_val#6]
+        |   +-expr_list=
+        |   | +-int64_key_1#4 :=
+        |   | | +-GetProtoField
+        |   | |   +-type=INT64
+        |   | |   +-expr=
+        |   | |   | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=KitchenSinkValueTable.value#2)
+        |   | |   +-field_descriptor=int64_key_1
+        |   | +-repeated_bool_val#6 :=
+        |   |   +-GetProtoField
+        |   |     +-type=ARRAY<BOOL>
+        |   |     +-expr=
+        |   |     | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=KitchenSinkValueTable.value#2)
+        |   |     +-field_descriptor=repeated_bool_val
+        |   |     +-default_value=[]
+        |   +-input_scan=
+        |     +-TableScan(column_list=[KitchenSinkValueTable.value#2], table=KitchenSinkValueTable, column_index_list=[0], alias="k2")
+        +-join_expr=
+        | +-FunctionCall(GoogleSQL:$and(BOOL, repeated(1) BOOL) -> BOOL)
+        |   +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+        |   | +-ColumnRef(type=INT64, column=$join_left.int64_key_1#3)
+        |   | +-ColumnRef(type=INT64, column=$join_right.int64_key_1#4)
+        |   +-FunctionCall(GoogleSQL:$equal(ARRAY<BOOL>, ARRAY<BOOL>) -> BOOL)
+        |     +-ColumnRef(type=ARRAY<BOOL>, column=$join_left.repeated_bool_val#5)
+        |     +-ColumnRef(type=ARRAY<BOOL>, column=$join_right.repeated_bool_val#6)
+        +-has_using=TRUE
+==
+
+select 1
+from KitchenSinkValueTable k1 JOIN
+     KitchenSinkValueTable k2 USING (nested_value.nested_int64)
+--
+ERROR: Syntax error: Expected ")" or "," but got "." [at 3:50]
+     KitchenSinkValueTable k2 USING (nested_value.nested_int64)
+                                                 ^
+==
+
+# FULL JOIN USING between two struct value tables.
+# We get an extra Project on both join inputs to compute the GetField, and an
+# extra Project after the join to compute the Coalesce for FULL JOIN.
+#
+# The unqualified '*' contains a duplicate column because we get the one
+# introduced by USING, and then we get all columns from the value tables.
+# Unlike the normal case where JOIN USING removes the duplicate column
+# produced by a subquery, we can't strip fields out of struct or proto type.
+select t1, t2, '--', t1.*, '--', t2.*, '--', *
+from TestExtraValueTable t1 FULL JOIN
+     TestExtraValueTable t2 USING (int32_val1)
+--
+QueryStmt
++-output_column_list=
+| +-TestExtraValueTable.value#1 AS t1 [PROTO<googlesql_test.TestExtraPB>]
+| +-TestExtraValueTable.value#4 AS t2 [PROTO<googlesql_test.TestExtraPB>]
+| +-$query.$col3#10 AS `$col3` [STRING]
+| +-$query.int32_val1#11 AS int32_val1 [INT32]
+| +-$query.int32_val2#12 AS int32_val2 [INT32]
+| +-$query.str_value#13 AS str_value [ARRAY<STRING>]
+| +-$query.$col5#14 AS `$col5` [STRING]
+| +-$query.int32_val1#15 AS int32_val1 [INT32]
+| +-$query.int32_val2#16 AS int32_val2 [INT32]
+| +-$query.str_value#17 AS str_value [ARRAY<STRING>]
+| +-$query.$col7#18 AS `$col7` [STRING]
+| +-$full_join.int32_val1#9 AS int32_val1 [INT32]
+| +-$query.int32_val2#19 AS int32_val2 [INT32]
+| +-$query.str_value#20 AS str_value [ARRAY<STRING>]
+| +-$query.int32_val2#21 AS int32_val2 [INT32]
+| +-$query.str_value#22 AS str_value [ARRAY<STRING>]
++-query=
+  +-ProjectScan
+    +-column_list=[TestExtraValueTable.value#1, TestExtraValueTable.value#4, $query.$col3#10, $query.int32_val1#11, $query.int32_val2#12, $query.str_value#13, $query.$col5#14, $query.int32_val1#15, $query.int32_val2#16, $query.str_value#17, $query.$col7#18, $full_join.int32_val1#9, $query.int32_val2#19, $query.str_value#20, $query.int32_val2#21, $query.str_value#22]
+    +-expr_list=
+    | +-$col3#10 := Literal(type=STRING, value="--")
+    | +-int32_val1#11 :=
+    | | +-GetProtoField
+    | |   +-type=INT32
+    | |   +-expr=
+    | |   | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=TestExtraValueTable.value#1)
+    | |   +-field_descriptor=int32_val1
+    | |   +-default_value=0
+    | +-int32_val2#12 :=
+    | | +-GetProtoField
+    | |   +-type=INT32
+    | |   +-expr=
+    | |   | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=TestExtraValueTable.value#1)
+    | |   +-field_descriptor=int32_val2
+    | |   +-default_value=0
+    | +-str_value#13 :=
+    | | +-GetProtoField
+    | |   +-type=ARRAY<STRING>
+    | |   +-expr=
+    | |   | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=TestExtraValueTable.value#1)
+    | |   +-field_descriptor=str_value
+    | |   +-default_value=[]
+    | +-$col5#14 := Literal(type=STRING, value="--")
+    | +-int32_val1#15 :=
+    | | +-GetProtoField
+    | |   +-type=INT32
+    | |   +-expr=
+    | |   | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=TestExtraValueTable.value#4)
+    | |   +-field_descriptor=int32_val1
+    | |   +-default_value=0
+    | +-int32_val2#16 :=
+    | | +-GetProtoField
+    | |   +-type=INT32
+    | |   +-expr=
+    | |   | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=TestExtraValueTable.value#4)
+    | |   +-field_descriptor=int32_val2
+    | |   +-default_value=0
+    | +-str_value#17 :=
+    | | +-GetProtoField
+    | |   +-type=ARRAY<STRING>
+    | |   +-expr=
+    | |   | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=TestExtraValueTable.value#4)
+    | |   +-field_descriptor=str_value
+    | |   +-default_value=[]
+    | +-$col7#18 := Literal(type=STRING, value="--")
+    | +-int32_val2#19 :=
+    | | +-GetProtoField
+    | |   +-type=INT32
+    | |   +-expr=
+    | |   | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=TestExtraValueTable.value#1)
+    | |   +-field_descriptor=int32_val2
+    | |   +-default_value=0
+    | +-str_value#20 :=
+    | | +-GetProtoField
+    | |   +-type=ARRAY<STRING>
+    | |   +-expr=
+    | |   | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=TestExtraValueTable.value#1)
+    | |   +-field_descriptor=str_value
+    | |   +-default_value=[]
+    | +-int32_val2#21 :=
+    | | +-GetProtoField
+    | |   +-type=INT32
+    | |   +-expr=
+    | |   | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=TestExtraValueTable.value#4)
+    | |   +-field_descriptor=int32_val2
+    | |   +-default_value=0
+    | +-str_value#22 :=
+    |   +-GetProtoField
+    |     +-type=ARRAY<STRING>
+    |     +-expr=
+    |     | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=TestExtraValueTable.value#4)
+    |     +-field_descriptor=str_value
+    |     +-default_value=[]
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[TestExtraValueTable.value#1, $join_left.int32_val1#7, TestExtraValueTable.value#4, $join_right.int32_val1#8, $full_join.int32_val1#9]
+        +-expr_list=
+        | +-int32_val1#9 :=
+        |   +-FunctionCall(GoogleSQL:coalesce(repeated(2) INT32) -> INT32)
+        |     +-ColumnRef(type=INT32, column=$join_left.int32_val1#7)
+        |     +-ColumnRef(type=INT32, column=$join_right.int32_val1#8)
+        +-input_scan=
+          +-JoinScan
+            +-column_list=[TestExtraValueTable.value#1, $join_left.int32_val1#7, TestExtraValueTable.value#4, $join_right.int32_val1#8]
+            +-join_type=FULL
+            +-left_scan=
+            | +-ProjectScan
+            |   +-column_list=[TestExtraValueTable.value#1, $join_left.int32_val1#7]
+            |   +-expr_list=
+            |   | +-int32_val1#7 :=
+            |   |   +-GetProtoField
+            |   |     +-type=INT32
+            |   |     +-expr=
+            |   |     | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=TestExtraValueTable.value#1)
+            |   |     +-field_descriptor=int32_val1
+            |   |     +-default_value=0
+            |   +-input_scan=
+            |     +-TableScan(column_list=[TestExtraValueTable.value#1], table=TestExtraValueTable, column_index_list=[0], alias="t1")
+            +-right_scan=
+            | +-ProjectScan
+            |   +-column_list=[TestExtraValueTable.value#4, $join_right.int32_val1#8]
+            |   +-expr_list=
+            |   | +-int32_val1#8 :=
+            |   |   +-GetProtoField
+            |   |     +-type=INT32
+            |   |     +-expr=
+            |   |     | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=TestExtraValueTable.value#4)
+            |   |     +-field_descriptor=int32_val1
+            |   |     +-default_value=0
+            |   +-input_scan=
+            |     +-TableScan(column_list=[TestExtraValueTable.value#4], table=TestExtraValueTable, column_index_list=[0], alias="t2")
+            +-join_expr=
+            | +-FunctionCall(GoogleSQL:$equal(INT32, INT32) -> BOOL)
+            |   +-ColumnRef(type=INT32, column=$join_left.int32_val1#7)
+            |   +-ColumnRef(type=INT32, column=$join_right.int32_val1#8)
+            +-has_using=TRUE
+==
+
+select int32_val1
+from TestExtraValueTable t1 FULL JOIN
+     TestExtraValueTable t2 USING (int32_val1)
+--
+QueryStmt
++-output_column_list=
+| +-$full_join.int32_val1#9 AS int32_val1 [INT32]
++-query=
+  +-ProjectScan
+    +-column_list=[$full_join.int32_val1#9]
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[TestExtraValueTable.value#1, $join_left.int32_val1#7, TestExtraValueTable.value#4, $join_right.int32_val1#8, $full_join.int32_val1#9]
+        +-expr_list=
+        | +-int32_val1#9 :=
+        |   +-FunctionCall(GoogleSQL:coalesce(repeated(2) INT32) -> INT32)
+        |     +-ColumnRef(type=INT32, column=$join_left.int32_val1#7)
+        |     +-ColumnRef(type=INT32, column=$join_right.int32_val1#8)
+        +-input_scan=
+          +-JoinScan
+            +-column_list=[TestExtraValueTable.value#1, $join_left.int32_val1#7, TestExtraValueTable.value#4, $join_right.int32_val1#8]
+            +-join_type=FULL
+            +-left_scan=
+            | +-ProjectScan
+            |   +-column_list=[TestExtraValueTable.value#1, $join_left.int32_val1#7]
+            |   +-expr_list=
+            |   | +-int32_val1#7 :=
+            |   |   +-GetProtoField
+            |   |     +-type=INT32
+            |   |     +-expr=
+            |   |     | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=TestExtraValueTable.value#1)
+            |   |     +-field_descriptor=int32_val1
+            |   |     +-default_value=0
+            |   +-input_scan=
+            |     +-TableScan(column_list=[TestExtraValueTable.value#1], table=TestExtraValueTable, column_index_list=[0], alias="t1")
+            +-right_scan=
+            | +-ProjectScan
+            |   +-column_list=[TestExtraValueTable.value#4, $join_right.int32_val1#8]
+            |   +-expr_list=
+            |   | +-int32_val1#8 :=
+            |   |   +-GetProtoField
+            |   |     +-type=INT32
+            |   |     +-expr=
+            |   |     | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=TestExtraValueTable.value#4)
+            |   |     +-field_descriptor=int32_val1
+            |   |     +-default_value=0
+            |   +-input_scan=
+            |     +-TableScan(column_list=[TestExtraValueTable.value#4], table=TestExtraValueTable, column_index_list=[0], alias="t2")
+            +-join_expr=
+            | +-FunctionCall(GoogleSQL:$equal(INT32, INT32) -> BOOL)
+            |   +-ColumnRef(type=INT32, column=$join_left.int32_val1#7)
+            |   +-ColumnRef(type=INT32, column=$join_right.int32_val1#8)
+            +-has_using=TRUE
+==
+
+# The select * produces duplicate columns called int32_val1.
+# The test below shows the int32_val1 produced by the USING is the only
+# explicit one.
+select *
+from TestExtraValueTable t1 JOIN
+     TestExtraValueTable t2 USING (int32_val1)
+--
+QueryStmt
++-output_column_list=
+| +-$join_left.int32_val1#7 AS int32_val1 [INT32]
+| +-$query.int32_val2#9 AS int32_val2 [INT32]
+| +-$query.str_value#10 AS str_value [ARRAY<STRING>]
+| +-$query.int32_val2#11 AS int32_val2 [INT32]
+| +-$query.str_value#12 AS str_value [ARRAY<STRING>]
++-query=
+  +-ProjectScan
+    +-column_list=[$join_left.int32_val1#7, $query.int32_val2#9, $query.str_value#10, $query.int32_val2#11, $query.str_value#12]
+    +-expr_list=
+    | +-int32_val2#9 :=
+    | | +-GetProtoField
+    | |   +-type=INT32
+    | |   +-expr=
+    | |   | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=TestExtraValueTable.value#1)
+    | |   +-field_descriptor=int32_val2
+    | |   +-default_value=0
+    | +-str_value#10 :=
+    | | +-GetProtoField
+    | |   +-type=ARRAY<STRING>
+    | |   +-expr=
+    | |   | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=TestExtraValueTable.value#1)
+    | |   +-field_descriptor=str_value
+    | |   +-default_value=[]
+    | +-int32_val2#11 :=
+    | | +-GetProtoField
+    | |   +-type=INT32
+    | |   +-expr=
+    | |   | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=TestExtraValueTable.value#4)
+    | |   +-field_descriptor=int32_val2
+    | |   +-default_value=0
+    | +-str_value#12 :=
+    |   +-GetProtoField
+    |     +-type=ARRAY<STRING>
+    |     +-expr=
+    |     | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=TestExtraValueTable.value#4)
+    |     +-field_descriptor=str_value
+    |     +-default_value=[]
+    +-input_scan=
+      +-JoinScan
+        +-column_list=[TestExtraValueTable.value#1, $join_left.int32_val1#7, TestExtraValueTable.value#4, $join_right.int32_val1#8]
+        +-left_scan=
+        | +-ProjectScan
+        |   +-column_list=[TestExtraValueTable.value#1, $join_left.int32_val1#7]
+        |   +-expr_list=
+        |   | +-int32_val1#7 :=
+        |   |   +-GetProtoField
+        |   |     +-type=INT32
+        |   |     +-expr=
+        |   |     | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=TestExtraValueTable.value#1)
+        |   |     +-field_descriptor=int32_val1
+        |   |     +-default_value=0
+        |   +-input_scan=
+        |     +-TableScan(column_list=[TestExtraValueTable.value#1], table=TestExtraValueTable, column_index_list=[0], alias="t1")
+        +-right_scan=
+        | +-ProjectScan
+        |   +-column_list=[TestExtraValueTable.value#4, $join_right.int32_val1#8]
+        |   +-expr_list=
+        |   | +-int32_val1#8 :=
+        |   |   +-GetProtoField
+        |   |     +-type=INT32
+        |   |     +-expr=
+        |   |     | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=TestExtraValueTable.value#4)
+        |   |     +-field_descriptor=int32_val1
+        |   |     +-default_value=0
+        |   +-input_scan=
+        |     +-TableScan(column_list=[TestExtraValueTable.value#4], table=TestExtraValueTable, column_index_list=[0], alias="t2")
+        +-join_expr=
+        | +-FunctionCall(GoogleSQL:$equal(INT32, INT32) -> BOOL)
+        |   +-ColumnRef(type=INT32, column=$join_left.int32_val1#7)
+        |   +-ColumnRef(type=INT32, column=$join_right.int32_val1#8)
+        +-has_using=TRUE
+==
+
+# The select * (above) only produces the JOIN USING int32_val1 column, so we can
+# resolve that column if the select * occurs in a subquery.
+select int32_val1 from (
+  select *
+  from TestExtraValueTable t1 JOIN
+       TestExtraValueTable t2 USING (int32_val1)
+)
+--
+QueryStmt
++-output_column_list=
+| +-$join_left.int32_val1#7 AS int32_val1 [INT32]
++-query=
+  +-ProjectScan
+    +-column_list=[$join_left.int32_val1#7]
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[$join_left.int32_val1#7, $subquery1.int32_val2#9, $subquery1.str_value#10, $subquery1.int32_val2#11, $subquery1.str_value#12]
+        +-expr_list=
+        | +-int32_val2#9 :=
+        | | +-GetProtoField
+        | |   +-type=INT32
+        | |   +-expr=
+        | |   | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=TestExtraValueTable.value#1)
+        | |   +-field_descriptor=int32_val2
+        | |   +-default_value=0
+        | +-str_value#10 :=
+        | | +-GetProtoField
+        | |   +-type=ARRAY<STRING>
+        | |   +-expr=
+        | |   | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=TestExtraValueTable.value#1)
+        | |   +-field_descriptor=str_value
+        | |   +-default_value=[]
+        | +-int32_val2#11 :=
+        | | +-GetProtoField
+        | |   +-type=INT32
+        | |   +-expr=
+        | |   | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=TestExtraValueTable.value#4)
+        | |   +-field_descriptor=int32_val2
+        | |   +-default_value=0
+        | +-str_value#12 :=
+        |   +-GetProtoField
+        |     +-type=ARRAY<STRING>
+        |     +-expr=
+        |     | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=TestExtraValueTable.value#4)
+        |     +-field_descriptor=str_value
+        |     +-default_value=[]
+        +-input_scan=
+          +-JoinScan
+            +-column_list=[TestExtraValueTable.value#1, $join_left.int32_val1#7, TestExtraValueTable.value#4, $join_right.int32_val1#8]
+            +-left_scan=
+            | +-ProjectScan
+            |   +-column_list=[TestExtraValueTable.value#1, $join_left.int32_val1#7]
+            |   +-expr_list=
+            |   | +-int32_val1#7 :=
+            |   |   +-GetProtoField
+            |   |     +-type=INT32
+            |   |     +-expr=
+            |   |     | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=TestExtraValueTable.value#1)
+            |   |     +-field_descriptor=int32_val1
+            |   |     +-default_value=0
+            |   +-input_scan=
+            |     +-TableScan(column_list=[TestExtraValueTable.value#1], table=TestExtraValueTable, column_index_list=[0], alias="t1")
+            +-right_scan=
+            | +-ProjectScan
+            |   +-column_list=[TestExtraValueTable.value#4, $join_right.int32_val1#8]
+            |   +-expr_list=
+            |   | +-int32_val1#8 :=
+            |   |   +-GetProtoField
+            |   |     +-type=INT32
+            |   |     +-expr=
+            |   |     | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=TestExtraValueTable.value#4)
+            |   |     +-field_descriptor=int32_val1
+            |   |     +-default_value=0
+            |   +-input_scan=
+            |     +-TableScan(column_list=[TestExtraValueTable.value#4], table=TestExtraValueTable, column_index_list=[0], alias="t2")
+            +-join_expr=
+            | +-FunctionCall(GoogleSQL:$equal(INT32, INT32) -> BOOL)
+            |   +-ColumnRef(type=INT32, column=$join_left.int32_val1#7)
+            |   +-ColumnRef(type=INT32, column=$join_right.int32_val1#8)
+            +-has_using=TRUE
+==
+
+# As per the specification, SELECT * after JOIN USING returns the USING
+# column first, then all the fields of t1 except the using column, then
+# all the fields of t2 except the using column.  Additionally, we still
+# get all the USING fields of t1 and t2 if we select t1.* and t2.*, and
+# we get the using columns directly as t1.int32_val1 and t2.int32_val1.
+select *, "----------------------------" as separator1,
+       t1.*, "----------------------------" as separator2,
+       t2.*, "----------------------------" as separator3,
+       t1.int32_val1,
+       t2.int32_val1
+from TestExtraValueTable t1 JOIN
+     TestExtraValueTable t2 USING (int32_val1)
+--
+QueryStmt
++-output_column_list=
+| +-$join_left.int32_val1#7 AS int32_val1 [INT32]
+| +-$query.int32_val2#9 AS int32_val2 [INT32]
+| +-$query.str_value#10 AS str_value [ARRAY<STRING>]
+| +-$query.int32_val2#11 AS int32_val2 [INT32]
+| +-$query.str_value#12 AS str_value [ARRAY<STRING>]
+| +-$query.separator1#13 AS separator1 [STRING]
+| +-$query.int32_val1#14 AS int32_val1 [INT32]
+| +-$query.int32_val2#15 AS int32_val2 [INT32]
+| +-$query.str_value#16 AS str_value [ARRAY<STRING>]
+| +-$query.separator2#17 AS separator2 [STRING]
+| +-$query.int32_val1#18 AS int32_val1 [INT32]
+| +-$query.int32_val2#19 AS int32_val2 [INT32]
+| +-$query.str_value#20 AS str_value [ARRAY<STRING>]
+| +-$query.separator3#21 AS separator3 [STRING]
+| +-$query.int32_val1#22 AS int32_val1 [INT32]
+| +-$query.int32_val1#23 AS int32_val1 [INT32]
++-query=
+  +-ProjectScan
+    +-column_list=[$join_left.int32_val1#7, $query.int32_val2#9, $query.str_value#10, $query.int32_val2#11, $query.str_value#12, $query.separator1#13, $query.int32_val1#14, $query.int32_val2#15, $query.str_value#16, $query.separator2#17, $query.int32_val1#18, $query.int32_val2#19, $query.str_value#20, $query.separator3#21, $query.int32_val1#22, $query.int32_val1#23]
+    +-expr_list=
+    | +-int32_val2#9 :=
+    | | +-GetProtoField
+    | |   +-type=INT32
+    | |   +-expr=
+    | |   | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=TestExtraValueTable.value#1)
+    | |   +-field_descriptor=int32_val2
+    | |   +-default_value=0
+    | +-str_value#10 :=
+    | | +-GetProtoField
+    | |   +-type=ARRAY<STRING>
+    | |   +-expr=
+    | |   | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=TestExtraValueTable.value#1)
+    | |   +-field_descriptor=str_value
+    | |   +-default_value=[]
+    | +-int32_val2#11 :=
+    | | +-GetProtoField
+    | |   +-type=INT32
+    | |   +-expr=
+    | |   | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=TestExtraValueTable.value#4)
+    | |   +-field_descriptor=int32_val2
+    | |   +-default_value=0
+    | +-str_value#12 :=
+    | | +-GetProtoField
+    | |   +-type=ARRAY<STRING>
+    | |   +-expr=
+    | |   | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=TestExtraValueTable.value#4)
+    | |   +-field_descriptor=str_value
+    | |   +-default_value=[]
+    | +-separator1#13 := Literal(type=STRING, value="----------------------------")
+    | +-int32_val1#14 :=
+    | | +-GetProtoField
+    | |   +-type=INT32
+    | |   +-expr=
+    | |   | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=TestExtraValueTable.value#1)
+    | |   +-field_descriptor=int32_val1
+    | |   +-default_value=0
+    | +-int32_val2#15 :=
+    | | +-GetProtoField
+    | |   +-type=INT32
+    | |   +-expr=
+    | |   | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=TestExtraValueTable.value#1)
+    | |   +-field_descriptor=int32_val2
+    | |   +-default_value=0
+    | +-str_value#16 :=
+    | | +-GetProtoField
+    | |   +-type=ARRAY<STRING>
+    | |   +-expr=
+    | |   | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=TestExtraValueTable.value#1)
+    | |   +-field_descriptor=str_value
+    | |   +-default_value=[]
+    | +-separator2#17 := Literal(type=STRING, value="----------------------------")
+    | +-int32_val1#18 :=
+    | | +-GetProtoField
+    | |   +-type=INT32
+    | |   +-expr=
+    | |   | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=TestExtraValueTable.value#4)
+    | |   +-field_descriptor=int32_val1
+    | |   +-default_value=0
+    | +-int32_val2#19 :=
+    | | +-GetProtoField
+    | |   +-type=INT32
+    | |   +-expr=
+    | |   | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=TestExtraValueTable.value#4)
+    | |   +-field_descriptor=int32_val2
+    | |   +-default_value=0
+    | +-str_value#20 :=
+    | | +-GetProtoField
+    | |   +-type=ARRAY<STRING>
+    | |   +-expr=
+    | |   | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=TestExtraValueTable.value#4)
+    | |   +-field_descriptor=str_value
+    | |   +-default_value=[]
+    | +-separator3#21 := Literal(type=STRING, value="----------------------------")
+    | +-int32_val1#22 :=
+    | | +-GetProtoField
+    | |   +-type=INT32
+    | |   +-expr=
+    | |   | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=TestExtraValueTable.value#1)
+    | |   +-field_descriptor=int32_val1
+    | |   +-default_value=0
+    | +-int32_val1#23 :=
+    |   +-GetProtoField
+    |     +-type=INT32
+    |     +-expr=
+    |     | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=TestExtraValueTable.value#4)
+    |     +-field_descriptor=int32_val1
+    |     +-default_value=0
+    +-input_scan=
+      +-JoinScan
+        +-column_list=[TestExtraValueTable.value#1, $join_left.int32_val1#7, TestExtraValueTable.value#4, $join_right.int32_val1#8]
+        +-left_scan=
+        | +-ProjectScan
+        |   +-column_list=[TestExtraValueTable.value#1, $join_left.int32_val1#7]
+        |   +-expr_list=
+        |   | +-int32_val1#7 :=
+        |   |   +-GetProtoField
+        |   |     +-type=INT32
+        |   |     +-expr=
+        |   |     | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=TestExtraValueTable.value#1)
+        |   |     +-field_descriptor=int32_val1
+        |   |     +-default_value=0
+        |   +-input_scan=
+        |     +-TableScan(column_list=[TestExtraValueTable.value#1], table=TestExtraValueTable, column_index_list=[0], alias="t1")
+        +-right_scan=
+        | +-ProjectScan
+        |   +-column_list=[TestExtraValueTable.value#4, $join_right.int32_val1#8]
+        |   +-expr_list=
+        |   | +-int32_val1#8 :=
+        |   |   +-GetProtoField
+        |   |     +-type=INT32
+        |   |     +-expr=
+        |   |     | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=TestExtraValueTable.value#4)
+        |   |     +-field_descriptor=int32_val1
+        |   |     +-default_value=0
+        |   +-input_scan=
+        |     +-TableScan(column_list=[TestExtraValueTable.value#4], table=TestExtraValueTable, column_index_list=[0], alias="t2")
+        +-join_expr=
+        | +-FunctionCall(GoogleSQL:$equal(INT32, INT32) -> BOOL)
+        |   +-ColumnRef(type=INT32, column=$join_left.int32_val1#7)
+        |   +-ColumnRef(type=INT32, column=$join_right.int32_val1#8)
+        +-has_using=TRUE
+==
+
+# We can chain an implicit field name through multiple steps of
+# JOIN USING on proto value tables because the name resolves to
+# the USING column on output from the JOIN USING.
+select int32_val1
+from TestExtraValueTable t1
+join TestExtraValueTable t2 using (int32_val1)
+join TestExtraValueTable t3 using (int32_val1)
+--
+QueryStmt
++-output_column_list=
+| +-$join_left.int32_val1#7 AS int32_val1 [INT32]
++-query=
+  +-ProjectScan
+    +-column_list=[$join_left.int32_val1#7]
+    +-input_scan=
+      +-JoinScan
+        +-column_list=[TestExtraValueTable.value#1, $join_left.int32_val1#7, TestExtraValueTable.value#4, $join_right.int32_val1#8, TestExtraValueTable.value#9, $join_right.int32_val1#12]
+        +-left_scan=
+        | +-JoinScan
+        |   +-column_list=[TestExtraValueTable.value#1, $join_left.int32_val1#7, TestExtraValueTable.value#4, $join_right.int32_val1#8]
+        |   +-left_scan=
+        |   | +-ProjectScan
+        |   |   +-column_list=[TestExtraValueTable.value#1, $join_left.int32_val1#7]
+        |   |   +-expr_list=
+        |   |   | +-int32_val1#7 :=
+        |   |   |   +-GetProtoField
+        |   |   |     +-type=INT32
+        |   |   |     +-expr=
+        |   |   |     | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=TestExtraValueTable.value#1)
+        |   |   |     +-field_descriptor=int32_val1
+        |   |   |     +-default_value=0
+        |   |   +-input_scan=
+        |   |     +-TableScan(column_list=[TestExtraValueTable.value#1], table=TestExtraValueTable, column_index_list=[0], alias="t1")
+        |   +-right_scan=
+        |   | +-ProjectScan
+        |   |   +-column_list=[TestExtraValueTable.value#4, $join_right.int32_val1#8]
+        |   |   +-expr_list=
+        |   |   | +-int32_val1#8 :=
+        |   |   |   +-GetProtoField
+        |   |   |     +-type=INT32
+        |   |   |     +-expr=
+        |   |   |     | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=TestExtraValueTable.value#4)
+        |   |   |     +-field_descriptor=int32_val1
+        |   |   |     +-default_value=0
+        |   |   +-input_scan=
+        |   |     +-TableScan(column_list=[TestExtraValueTable.value#4], table=TestExtraValueTable, column_index_list=[0], alias="t2")
+        |   +-join_expr=
+        |   | +-FunctionCall(GoogleSQL:$equal(INT32, INT32) -> BOOL)
+        |   |   +-ColumnRef(type=INT32, column=$join_left.int32_val1#7)
+        |   |   +-ColumnRef(type=INT32, column=$join_right.int32_val1#8)
+        |   +-has_using=TRUE
+        +-right_scan=
+        | +-ProjectScan
+        |   +-column_list=[TestExtraValueTable.value#9, $join_right.int32_val1#12]
+        |   +-expr_list=
+        |   | +-int32_val1#12 :=
+        |   |   +-GetProtoField
+        |   |     +-type=INT32
+        |   |     +-expr=
+        |   |     | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=TestExtraValueTable.value#9)
+        |   |     +-field_descriptor=int32_val1
+        |   |     +-default_value=0
+        |   +-input_scan=
+        |     +-TableScan(column_list=[TestExtraValueTable.value#9], table=TestExtraValueTable, column_index_list=[0], alias="t3")
+        +-join_expr=
+        | +-FunctionCall(GoogleSQL:$equal(INT32, INT32) -> BOOL)
+        |   +-ColumnRef(type=INT32, column=$join_left.int32_val1#7)
+        |   +-ColumnRef(type=INT32, column=$join_right.int32_val1#12)
+        +-has_using=TRUE
+==
+
+# JOIN USING with a scalar value table.
+select *
+from Int32ValueTable join Int32ValueTable using (Int32ValueTable)
+--
+QueryStmt
++-output_column_list=
+| +-Int32ValueTable.value#1 AS Int32ValueTable [INT32]
++-query=
+  +-ProjectScan
+    +-column_list=[Int32ValueTable.value#1]
+    +-input_scan=
+      +-JoinScan
+        +-column_list=Int32ValueTable.[value#1, value#2]
+        +-left_scan=
+        | +-TableScan(column_list=[Int32ValueTable.value#1], table=Int32ValueTable, column_index_list=[0])
+        +-right_scan=
+        | +-TableScan(column_list=[Int32ValueTable.value#2], table=Int32ValueTable, column_index_list=[0])
+        +-join_expr=
+        | +-FunctionCall(GoogleSQL:$equal(INT32, INT32) -> BOOL)
+        |   +-ColumnRef(type=INT32, column=Int32ValueTable.value#1)
+        |   +-ColumnRef(type=INT32, column=Int32ValueTable.value#2)
+        +-has_using=TRUE
+==
+
+# Here, we join an int32 scalar value table to proto value table with an
+# int64 with a matching field name.
+select int64_key_1, KitchenSinkValueTable
+from Int32ValueTable int64_key_1 {{|left}} join KitchenSinkValueTable using (int64_key_1)
+--
+ALTERNATION GROUP: <empty>
+--
+QueryStmt
++-output_column_list=
+| +-Int32ValueTable.value#1 AS int64_key_1 [INT32]
+| +-KitchenSinkValueTable.value#2 AS KitchenSinkValueTable [PROTO<googlesql_test.KitchenSinkPB>]
++-query=
+  +-ProjectScan
+    +-column_list=[Int32ValueTable.value#1, KitchenSinkValueTable.value#2]
+    +-input_scan=
+      +-JoinScan
+        +-column_list=[Int32ValueTable.value#1, KitchenSinkValueTable.value#2, $join_right.int64_key_1#3]
+        +-left_scan=
+        | +-TableScan(column_list=[Int32ValueTable.value#1], table=Int32ValueTable, column_index_list=[0], alias="int64_key_1")
+        +-right_scan=
+        | +-ProjectScan
+        |   +-column_list=[KitchenSinkValueTable.value#2, $join_right.int64_key_1#3]
+        |   +-expr_list=
+        |   | +-int64_key_1#3 :=
+        |   |   +-GetProtoField
+        |   |     +-type=INT64
+        |   |     +-expr=
+        |   |     | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=KitchenSinkValueTable.value#2)
+        |   |     +-field_descriptor=int64_key_1
+        |   +-input_scan=
+        |     +-TableScan(column_list=[KitchenSinkValueTable.value#2], table=KitchenSinkValueTable, column_index_list=[0])
+        +-join_expr=
+        | +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+        |   +-Cast(INT32 -> INT64)
+        |   | +-ColumnRef(type=INT32, column=Int32ValueTable.value#1)
+        |   +-ColumnRef(type=INT64, column=$join_right.int64_key_1#3)
+        +-has_using=TRUE
+--
+ALTERNATION GROUP: left
+--
+QueryStmt
++-output_column_list=
+| +-Int32ValueTable.value#1 AS int64_key_1 [INT32]
+| +-KitchenSinkValueTable.value#2 AS KitchenSinkValueTable [PROTO<googlesql_test.KitchenSinkPB>]
++-query=
+  +-ProjectScan
+    +-column_list=[Int32ValueTable.value#1, KitchenSinkValueTable.value#2]
+    +-input_scan=
+      +-JoinScan
+        +-column_list=[Int32ValueTable.value#1, KitchenSinkValueTable.value#2, $join_right.int64_key_1#3]
+        +-join_type=LEFT
+        +-left_scan=
+        | +-TableScan(column_list=[Int32ValueTable.value#1], table=Int32ValueTable, column_index_list=[0], alias="int64_key_1")
+        +-right_scan=
+        | +-ProjectScan
+        |   +-column_list=[KitchenSinkValueTable.value#2, $join_right.int64_key_1#3]
+        |   +-expr_list=
+        |   | +-int64_key_1#3 :=
+        |   |   +-GetProtoField
+        |   |     +-type=INT64
+        |   |     +-expr=
+        |   |     | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=KitchenSinkValueTable.value#2)
+        |   |     +-field_descriptor=int64_key_1
+        |   +-input_scan=
+        |     +-TableScan(column_list=[KitchenSinkValueTable.value#2], table=KitchenSinkValueTable, column_index_list=[0])
+        +-join_expr=
+        | +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+        |   +-Cast(INT32 -> INT64)
+        |   | +-ColumnRef(type=INT32, column=Int32ValueTable.value#1)
+        |   +-ColumnRef(type=INT64, column=$join_right.int64_key_1#3)
+        +-has_using=TRUE
+==
+
+select int64_key_1, KitchenSinkValueTable int64_key_1
+from Int32ValueTable join_key join KitchenSinkValueTable join_key using (join_key)
+--
+ERROR: Column 'join_key' in USING has incompatible types that cannot be directly compared using equality on either side of the join: INT32 and googlesql_test.KitchenSinkPB [at 2:74]
+...join_key join KitchenSinkValueTable join_key using (join_key)
+                                                       ^
+==
+
+select t1, t2, '--', t2.*, '--', *
+from Int32ValueTable t1 join (select 1 x, 2 t1, 3 y) t2 using (t1)
+--
+QueryStmt
++-output_column_list=
+| +-Int32ValueTable.value#1 AS t1 [INT32]
+| +-$query.t2#6 AS t2 [STRUCT<x INT64, t1 INT64, y INT64>]
+| +-$query.$col3#7 AS `$col3` [STRING]
+| +-t2.x#2 AS x [INT64]
+| +-t2.t1#3 AS t1 [INT64]
+| +-t2.y#4 AS y [INT64]
+| +-$query.$col5#8 AS `$col5` [STRING]
+| +-Int32ValueTable.value#1 AS t1 [INT32]
+| +-t2.x#2 AS x [INT64]
+| +-t2.y#4 AS y [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[Int32ValueTable.value#1, $query.t2#6, $query.$col3#7, t2.x#2, t2.t1#3, t2.y#4, $query.$col5#8, Int32ValueTable.value#1, t2.x#2, t2.y#4]
+    +-expr_list=
+    | +-t2#6 :=
+    | | +-MakeStruct
+    | |   +-type=STRUCT<x INT64, t1 INT64, y INT64>
+    | |   +-field_list=
+    | |     +-ColumnRef(type=INT64, column=t2.x#2)
+    | |     +-ColumnRef(type=INT64, column=t2.t1#3)
+    | |     +-ColumnRef(type=INT64, column=t2.y#4)
+    | +-$col3#7 := Literal(type=STRING, value="--")
+    | +-$col5#8 := Literal(type=STRING, value="--")
+    +-input_scan=
+      +-JoinScan
+        +-column_list=[Int32ValueTable.value#1, t2.x#2, t2.t1#3, t2.y#4]
+        +-left_scan=
+        | +-TableScan(column_list=[Int32ValueTable.value#1], table=Int32ValueTable, column_index_list=[0], alias="t1")
+        +-right_scan=
+        | +-ProjectScan
+        |   +-column_list=t2.[x#2, t1#3, y#4]
+        |   +-expr_list=
+        |   | +-x#2 := Literal(type=INT64, value=1)
+        |   | +-t1#3 := Literal(type=INT64, value=2)
+        |   | +-y#4 := Literal(type=INT64, value=3)
+        |   +-input_scan=
+        |     +-SingleRowScan
+        +-join_expr=
+        | +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+        |   +-Cast(INT32 -> INT64)
+        |   | +-ColumnRef(type=INT32, column=Int32ValueTable.value#1)
+        |   +-ColumnRef(type=INT64, column=t2.t1#3)
+        +-has_using=TRUE
+==
+
+# JOIN USING on UNNESTs, which act like value tables.
+# t1 is not ambiguous even though it is both the rhs field and the
+# JOIN USING output column (but not the lhs range variable which is hidden).
+# t1 resolves as the JOIN USING output column.
+select t1, t2, '--', *
+from UNNEST([1]) t1 JOIN UNNEST([(select AS STRUCT 'x' a, 2 t1)]) t2 USING (t1)
+--
+QueryStmt
++-output_column_list=
+| +-$array.t1#1 AS t1 [INT64]
+| +-$array.t2#5 AS t2 [STRUCT<a STRING, t1 INT64>]
+| +-$query.$col3#7 AS `$col3` [STRING]
+| +-$array.t1#1 AS t1 [INT64]
+| +-$query.a#8 AS a [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$array.t1#1, $array.t2#5, $query.$col3#7, $array.t1#1, $query.a#8]
+    +-expr_list=
+    | +-$col3#7 := Literal(type=STRING, value="--")
+    | +-a#8 :=
+    |   +-GetStructField
+    |     +-type=STRING
+    |     +-expr=
+    |     | +-ColumnRef(type=STRUCT<a STRING, t1 INT64>, column=$array.t2#5)
+    |     +-field_idx=0
+    +-input_scan=
+      +-ArrayScan
+        +-column_list=$array.[t1#1, t2#5]
+        +-input_scan=
+        | +-ArrayScan
+        |   +-column_list=[$array.t1#1]
+        |   +-array_expr_list=
+        |   | +-Literal(type=ARRAY<INT64>, value=[1])
+        |   +-element_column_list=[$array.t1#1]
+        +-array_expr_list=
+        | +-FunctionCall(GoogleSQL:$make_array(repeated(1) STRUCT<a STRING, t1 INT64>) -> ARRAY<STRUCT<a STRING, t1 INT64>>)
+        |   +-SubqueryExpr
+        |     +-type=STRUCT<a STRING, t1 INT64>
+        |     +-subquery_type=SCALAR
+        |     +-subquery=
+        |       +-ProjectScan
+        |         +-column_list=[$make_struct.$struct#4]
+        |         +-expr_list=
+        |         | +-$struct#4 :=
+        |         |   +-MakeStruct
+        |         |     +-type=STRUCT<a STRING, t1 INT64>
+        |         |     +-field_list=
+        |         |       +-ColumnRef(type=STRING, column=$expr_subquery.a#2)
+        |         |       +-ColumnRef(type=INT64, column=$expr_subquery.t1#3)
+        |         +-input_scan=
+        |           +-ProjectScan
+        |             +-column_list=$expr_subquery.[a#2, t1#3]
+        |             +-expr_list=
+        |             | +-a#2 := Literal(type=STRING, value="x")
+        |             | +-t1#3 := Literal(type=INT64, value=2)
+        |             +-input_scan=
+        |               +-SingleRowScan
+        +-element_column_list=[$array.t2#5]
+        +-join_expr=
+          +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+            +-ColumnRef(type=INT64, column=$array.t1#1)
+            +-GetStructField
+              +-type=INT64
+              +-expr=
+              | +-ColumnRef(type=STRUCT<a STRING, t1 INT64>, column=$array.t2#5)
+              +-field_idx=1
+==
+
+select *
+from UNNEST([(select AS STRUCT 'x' a, 2 b)]) JOIN (select 'y' c, 4 b) USING (b)
+--
+QueryStmt
++-output_column_list=
+| +-$join_left.b#7 AS b [INT64]
+| +-$query.a#8 AS a [STRING]
+| +-$subquery1.c#5 AS c [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$join_left.b#7, $query.a#8, $subquery1.c#5]
+    +-expr_list=
+    | +-a#8 :=
+    |   +-GetStructField
+    |     +-type=STRING
+    |     +-expr=
+    |     | +-ColumnRef(type=STRUCT<a STRING, b INT64>, column=$array.$unnest1#4)
+    |     +-field_idx=0
+    +-input_scan=
+      +-JoinScan
+        +-column_list=[$array.$unnest1#4, $join_left.b#7, $subquery1.c#5, $subquery1.b#6]
+        +-left_scan=
+        | +-ProjectScan
+        |   +-column_list=[$array.$unnest1#4, $join_left.b#7]
+        |   +-expr_list=
+        |   | +-b#7 :=
+        |   |   +-GetStructField
+        |   |     +-type=INT64
+        |   |     +-expr=
+        |   |     | +-ColumnRef(type=STRUCT<a STRING, b INT64>, column=$array.$unnest1#4)
+        |   |     +-field_idx=1
+        |   +-input_scan=
+        |     +-ArrayScan
+        |       +-column_list=[$array.$unnest1#4]
+        |       +-array_expr_list=
+        |       | +-FunctionCall(GoogleSQL:$make_array(repeated(1) STRUCT<a STRING, b INT64>) -> ARRAY<STRUCT<a STRING, b INT64>>)
+        |       |   +-SubqueryExpr
+        |       |     +-type=STRUCT<a STRING, b INT64>
+        |       |     +-subquery_type=SCALAR
+        |       |     +-subquery=
+        |       |       +-ProjectScan
+        |       |         +-column_list=[$make_struct.$struct#3]
+        |       |         +-expr_list=
+        |       |         | +-$struct#3 :=
+        |       |         |   +-MakeStruct
+        |       |         |     +-type=STRUCT<a STRING, b INT64>
+        |       |         |     +-field_list=
+        |       |         |       +-ColumnRef(type=STRING, column=$expr_subquery.a#1)
+        |       |         |       +-ColumnRef(type=INT64, column=$expr_subquery.b#2)
+        |       |         +-input_scan=
+        |       |           +-ProjectScan
+        |       |             +-column_list=$expr_subquery.[a#1, b#2]
+        |       |             +-expr_list=
+        |       |             | +-a#1 := Literal(type=STRING, value="x")
+        |       |             | +-b#2 := Literal(type=INT64, value=2)
+        |       |             +-input_scan=
+        |       |               +-SingleRowScan
+        |       +-element_column_list=[$array.$unnest1#4]
+        +-right_scan=
+        | +-ProjectScan
+        |   +-column_list=$subquery1.[c#5, b#6]
+        |   +-expr_list=
+        |   | +-c#5 := Literal(type=STRING, value="y")
+        |   | +-b#6 := Literal(type=INT64, value=4)
+        |   +-input_scan=
+        |     +-SingleRowScan
+        +-join_expr=
+        | +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+        |   +-ColumnRef(type=INT64, column=$join_left.b#7)
+        |   +-ColumnRef(type=INT64, column=$subquery1.b#6)
+        +-has_using=TRUE
+==
+
+# USING clause with column reference that has different (but
+# comparison-compatible) types on either side.
+# This tests INT64/UINT64, INNER join.  The output columns are from
+# the lhs.
+select x1, x2
+from (select cast(1 as int64) x1, cast(2 as uint64) x2) a
+inner join
+     (select cast(1 as uint64) x1, cast(2 as int64) x2) b
+using (x1, x2)
+--
+QueryStmt
++-output_column_list=
+| +-a.x1#1 AS x1 [INT64]
+| +-a.x2#2 AS x2 [UINT64]
++-query=
+  +-ProjectScan
+    +-column_list=a.[x1#1, x2#2]
+    +-input_scan=
+      +-JoinScan
+        +-column_list=[a.x1#1, a.x2#2, b.x1#3, b.x2#4]
+        +-left_scan=
+        | +-ProjectScan
+        |   +-column_list=a.[x1#1, x2#2]
+        |   +-expr_list=
+        |   | +-x1#1 := Literal(type=INT64, value=1, has_explicit_type=TRUE)
+        |   | +-x2#2 := Literal(type=UINT64, value=2, has_explicit_type=TRUE)
+        |   +-input_scan=
+        |     +-SingleRowScan
+        +-right_scan=
+        | +-ProjectScan
+        |   +-column_list=b.[x1#3, x2#4]
+        |   +-expr_list=
+        |   | +-x1#3 := Literal(type=UINT64, value=1, has_explicit_type=TRUE)
+        |   | +-x2#4 := Literal(type=INT64, value=2, has_explicit_type=TRUE)
+        |   +-input_scan=
+        |     +-SingleRowScan
+        +-join_expr=
+        | +-FunctionCall(GoogleSQL:$and(BOOL, repeated(1) BOOL) -> BOOL)
+        |   +-FunctionCall(GoogleSQL:$equal(INT64, UINT64) -> BOOL)
+        |   | +-ColumnRef(type=INT64, column=a.x1#1)
+        |   | +-ColumnRef(type=UINT64, column=b.x1#3)
+        |   +-FunctionCall(GoogleSQL:$equal(UINT64, INT64) -> BOOL)
+        |     +-ColumnRef(type=UINT64, column=a.x2#2)
+        |     +-ColumnRef(type=INT64, column=b.x2#4)
+        +-has_using=TRUE
+==
+
+# This tests INT64/UINT32, LEFT OUTER join.  The output columns are from
+# the lhs.
+select x1, x2
+from (select cast(1 as int64) x1, cast(2 as uint32) x2) a
+left outer join
+     (select cast(1 as uint32) x1, cast(2 as int64) x2) b
+using (x1, x2)
+--
+QueryStmt
++-output_column_list=
+| +-a.x1#1 AS x1 [INT64]
+| +-a.x2#2 AS x2 [UINT32]
++-query=
+  +-ProjectScan
+    +-column_list=a.[x1#1, x2#2]
+    +-input_scan=
+      +-JoinScan
+        +-column_list=[a.x1#1, a.x2#2, b.x1#3, b.x2#4]
+        +-join_type=LEFT
+        +-left_scan=
+        | +-ProjectScan
+        |   +-column_list=a.[x1#1, x2#2]
+        |   +-expr_list=
+        |   | +-x1#1 := Literal(type=INT64, value=1, has_explicit_type=TRUE)
+        |   | +-x2#2 := Literal(type=UINT32, value=2, has_explicit_type=TRUE)
+        |   +-input_scan=
+        |     +-SingleRowScan
+        +-right_scan=
+        | +-ProjectScan
+        |   +-column_list=b.[x1#3, x2#4]
+        |   +-expr_list=
+        |   | +-x1#3 := Literal(type=UINT32, value=1, has_explicit_type=TRUE)
+        |   | +-x2#4 := Literal(type=INT64, value=2, has_explicit_type=TRUE)
+        |   +-input_scan=
+        |     +-SingleRowScan
+        +-join_expr=
+        | +-FunctionCall(GoogleSQL:$and(BOOL, repeated(1) BOOL) -> BOOL)
+        |   +-FunctionCall(GoogleSQL:$equal(INT64, UINT64) -> BOOL)
+        |   | +-ColumnRef(type=INT64, column=a.x1#1)
+        |   | +-Cast(UINT32 -> UINT64)
+        |   |   +-ColumnRef(type=UINT32, column=b.x1#3)
+        |   +-FunctionCall(GoogleSQL:$equal(UINT64, INT64) -> BOOL)
+        |     +-Cast(UINT32 -> UINT64)
+        |     | +-ColumnRef(type=UINT32, column=a.x2#2)
+        |     +-ColumnRef(type=INT64, column=b.x2#4)
+        +-has_using=TRUE
+==
+
+# This tests INT32/UINT64, RIGHT OUTER join.  The output columns are from
+# the rhs.
+select x1, x2
+from (select cast(3 as int32) x1, cast(4 as uint64) x2) a
+right outer join
+     (select cast(3 as uint64) x1, cast(4 as int32) x2) b
+using (x1, x2)
+--
+QueryStmt
++-output_column_list=
+| +-b.x1#3 AS x1 [UINT64]
+| +-b.x2#4 AS x2 [INT32]
++-query=
+  +-ProjectScan
+    +-column_list=b.[x1#3, x2#4]
+    +-input_scan=
+      +-JoinScan
+        +-column_list=[a.x1#1, a.x2#2, b.x1#3, b.x2#4]
+        +-join_type=RIGHT
+        +-left_scan=
+        | +-ProjectScan
+        |   +-column_list=a.[x1#1, x2#2]
+        |   +-expr_list=
+        |   | +-x1#1 := Literal(type=INT32, value=3, has_explicit_type=TRUE)
+        |   | +-x2#2 := Literal(type=UINT64, value=4, has_explicit_type=TRUE)
+        |   +-input_scan=
+        |     +-SingleRowScan
+        +-right_scan=
+        | +-ProjectScan
+        |   +-column_list=b.[x1#3, x2#4]
+        |   +-expr_list=
+        |   | +-x1#3 := Literal(type=UINT64, value=3, has_explicit_type=TRUE)
+        |   | +-x2#4 := Literal(type=INT32, value=4, has_explicit_type=TRUE)
+        |   +-input_scan=
+        |     +-SingleRowScan
+        +-join_expr=
+        | +-FunctionCall(GoogleSQL:$and(BOOL, repeated(1) BOOL) -> BOOL)
+        |   +-FunctionCall(GoogleSQL:$equal(INT64, UINT64) -> BOOL)
+        |   | +-Cast(INT32 -> INT64)
+        |   | | +-ColumnRef(type=INT32, column=a.x1#1)
+        |   | +-ColumnRef(type=UINT64, column=b.x1#3)
+        |   +-FunctionCall(GoogleSQL:$equal(UINT64, INT64) -> BOOL)
+        |     +-ColumnRef(type=UINT64, column=a.x2#2)
+        |     +-Cast(INT32 -> INT64)
+        |       +-ColumnRef(type=INT32, column=b.x2#4)
+        +-has_using=TRUE
+==
+
+# This tests INT32/UINT32, FULL OUTER join.  The output columns are the
+# result of COALESCE-ing the lhs and rhs.
+select x1, x2
+from (select cast(3 as int32) x1, cast(4 as uint32) x2) a
+full outer join
+     (select cast(3 as uint32) x1, cast(4 as int32) x2) b
+using (x1, x2)
+--
+QueryStmt
++-output_column_list=
+| +-$full_join.x1#5 AS x1 [INT64]
+| +-$full_join.x2#6 AS x2 [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=$full_join.[x1#5, x2#6]
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[a.x1#1, a.x2#2, b.x1#3, b.x2#4, $full_join.x1#5, $full_join.x2#6]
+        +-expr_list=
+        | +-x1#5 :=
+        | | +-FunctionCall(GoogleSQL:coalesce(repeated(2) INT64) -> INT64)
+        | |   +-Cast(INT32 -> INT64)
+        | |   | +-ColumnRef(type=INT32, column=a.x1#1)
+        | |   +-Cast(UINT32 -> INT64)
+        | |     +-ColumnRef(type=UINT32, column=b.x1#3)
+        | +-x2#6 :=
+        |   +-FunctionCall(GoogleSQL:coalesce(repeated(2) INT64) -> INT64)
+        |     +-Cast(UINT32 -> INT64)
+        |     | +-ColumnRef(type=UINT32, column=a.x2#2)
+        |     +-Cast(INT32 -> INT64)
+        |       +-ColumnRef(type=INT32, column=b.x2#4)
+        +-input_scan=
+          +-JoinScan
+            +-column_list=[a.x1#1, a.x2#2, b.x1#3, b.x2#4]
+            +-join_type=FULL
+            +-left_scan=
+            | +-ProjectScan
+            |   +-column_list=a.[x1#1, x2#2]
+            |   +-expr_list=
+            |   | +-x1#1 := Literal(type=INT32, value=3, has_explicit_type=TRUE)
+            |   | +-x2#2 := Literal(type=UINT32, value=4, has_explicit_type=TRUE)
+            |   +-input_scan=
+            |     +-SingleRowScan
+            +-right_scan=
+            | +-ProjectScan
+            |   +-column_list=b.[x1#3, x2#4]
+            |   +-expr_list=
+            |   | +-x1#3 := Literal(type=UINT32, value=3, has_explicit_type=TRUE)
+            |   | +-x2#4 := Literal(type=INT32, value=4, has_explicit_type=TRUE)
+            |   +-input_scan=
+            |     +-SingleRowScan
+            +-join_expr=
+            | +-FunctionCall(GoogleSQL:$and(BOOL, repeated(1) BOOL) -> BOOL)
+            |   +-FunctionCall(GoogleSQL:$equal(INT64, UINT64) -> BOOL)
+            |   | +-Cast(INT32 -> INT64)
+            |   | | +-ColumnRef(type=INT32, column=a.x1#1)
+            |   | +-Cast(UINT32 -> UINT64)
+            |   |   +-ColumnRef(type=UINT32, column=b.x1#3)
+            |   +-FunctionCall(GoogleSQL:$equal(UINT64, INT64) -> BOOL)
+            |     +-Cast(UINT32 -> UINT64)
+            |     | +-ColumnRef(type=UINT32, column=a.x2#2)
+            |     +-Cast(INT32 -> INT64)
+            |       +-ColumnRef(type=INT32, column=b.x2#4)
+            +-has_using=TRUE
+==
+
+# If FULL OUTER join and the USING columns do not have a common supertype,
+# then it is an error.
+# TODO: Should provide a better error message here.
+select x1
+from (select cast(3 as int64) x1) a
+full outer join
+     (select cast(3 as uint64) x1) b
+using (x1)
+--
+ERROR: No matching signature for function COALESCE
+  Argument types: INT64, UINT64
+  Signature: COALESCE([T1, ...])
+    Unable to find common supertype for templated argument <T1>
+      Input types for <T1>: {INT64, UINT64} [at 5:8]
+using (x1)
+       ^
+==
+
+# Test case for b/19733978.  This used to fail with an error.
+select int64_val
+from KitchenSinkValueTable t1
+     full join KitchenSinkValueTable t2 using (int64_val)
+--
+QueryStmt
++-output_column_list=
+| +-$full_join.int64_val#5 AS int64_val [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$full_join.int64_val#5]
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[KitchenSinkValueTable.value#1, $join_left.int64_val#3, KitchenSinkValueTable.value#2, $join_right.int64_val#4, $full_join.int64_val#5]
+        +-expr_list=
+        | +-int64_val#5 :=
+        |   +-FunctionCall(GoogleSQL:coalesce(repeated(2) INT64) -> INT64)
+        |     +-ColumnRef(type=INT64, column=$join_left.int64_val#3)
+        |     +-ColumnRef(type=INT64, column=$join_right.int64_val#4)
+        +-input_scan=
+          +-JoinScan
+            +-column_list=[KitchenSinkValueTable.value#1, $join_left.int64_val#3, KitchenSinkValueTable.value#2, $join_right.int64_val#4]
+            +-join_type=FULL
+            +-left_scan=
+            | +-ProjectScan
+            |   +-column_list=[KitchenSinkValueTable.value#1, $join_left.int64_val#3]
+            |   +-expr_list=
+            |   | +-int64_val#3 :=
+            |   |   +-GetProtoField
+            |   |     +-type=INT64
+            |   |     +-expr=
+            |   |     | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=KitchenSinkValueTable.value#1)
+            |   |     +-field_descriptor=int64_val
+            |   |     +-default_value=0
+            |   +-input_scan=
+            |     +-TableScan(column_list=[KitchenSinkValueTable.value#1], table=KitchenSinkValueTable, column_index_list=[0], alias="t1")
+            +-right_scan=
+            | +-ProjectScan
+            |   +-column_list=[KitchenSinkValueTable.value#2, $join_right.int64_val#4]
+            |   +-expr_list=
+            |   | +-int64_val#4 :=
+            |   |   +-GetProtoField
+            |   |     +-type=INT64
+            |   |     +-expr=
+            |   |     | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=KitchenSinkValueTable.value#2)
+            |   |     +-field_descriptor=int64_val
+            |   |     +-default_value=0
+            |   +-input_scan=
+            |     +-TableScan(column_list=[KitchenSinkValueTable.value#2], table=KitchenSinkValueTable, column_index_list=[0], alias="t2")
+            +-join_expr=
+            | +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+            |   +-ColumnRef(type=INT64, column=$join_left.int64_val#3)
+            |   +-ColumnRef(type=INT64, column=$join_right.int64_val#4)
+            +-has_using=TRUE
+==
+
+SELECT t1, '---' as separator1, *, '---' as separator2, t2, t2.t1, t2.t3, t3
+FROM UNNEST([1]) t1
+JOIN UNNEST([(select AS STRUCT 2 t1, 3 t3)]) t2 USING (t1)
+--
+QueryStmt
++-output_column_list=
+| +-$array.t1#1 AS t1 [INT64]
+| +-$query.separator1#7 AS separator1 [STRING]
+| +-$array.t1#1 AS t1 [INT64]
+| +-$query.t3#8 AS t3 [INT64]
+| +-$query.separator2#9 AS separator2 [STRING]
+| +-$array.t2#5 AS t2 [STRUCT<t1 INT64, t3 INT64>]
+| +-$query.t1#10 AS t1 [INT64]
+| +-$query.t3#11 AS t3 [INT64]
+| +-$query.t3#12 AS t3 [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$array.t1#1, $query.separator1#7, $array.t1#1, $query.t3#8, $query.separator2#9, $array.t2#5, $query.t1#10, $query.t3#11, $query.t3#12]
+    +-expr_list=
+    | +-separator1#7 := Literal(type=STRING, value="---")
+    | +-t3#8 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<t1 INT64, t3 INT64>, column=$array.t2#5)
+    | |   +-field_idx=1
+    | +-separator2#9 := Literal(type=STRING, value="---")
+    | +-t1#10 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<t1 INT64, t3 INT64>, column=$array.t2#5)
+    | |   +-field_idx=0
+    | +-t3#11 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<t1 INT64, t3 INT64>, column=$array.t2#5)
+    | |   +-field_idx=1
+    | +-t3#12 :=
+    |   +-GetStructField
+    |     +-type=INT64
+    |     +-expr=
+    |     | +-ColumnRef(type=STRUCT<t1 INT64, t3 INT64>, column=$array.t2#5)
+    |     +-field_idx=1
+    +-input_scan=
+      +-ArrayScan
+        +-column_list=$array.[t1#1, t2#5]
+        +-input_scan=
+        | +-ArrayScan
+        |   +-column_list=[$array.t1#1]
+        |   +-array_expr_list=
+        |   | +-Literal(type=ARRAY<INT64>, value=[1])
+        |   +-element_column_list=[$array.t1#1]
+        +-array_expr_list=
+        | +-FunctionCall(GoogleSQL:$make_array(repeated(1) STRUCT<t1 INT64, t3 INT64>) -> ARRAY<STRUCT<t1 INT64, t3 INT64>>)
+        |   +-SubqueryExpr
+        |     +-type=STRUCT<t1 INT64, t3 INT64>
+        |     +-subquery_type=SCALAR
+        |     +-subquery=
+        |       +-ProjectScan
+        |         +-column_list=[$make_struct.$struct#4]
+        |         +-expr_list=
+        |         | +-$struct#4 :=
+        |         |   +-MakeStruct
+        |         |     +-type=STRUCT<t1 INT64, t3 INT64>
+        |         |     +-field_list=
+        |         |       +-ColumnRef(type=INT64, column=$expr_subquery.t1#2)
+        |         |       +-ColumnRef(type=INT64, column=$expr_subquery.t3#3)
+        |         +-input_scan=
+        |           +-ProjectScan
+        |             +-column_list=$expr_subquery.[t1#2, t3#3]
+        |             +-expr_list=
+        |             | +-t1#2 := Literal(type=INT64, value=2)
+        |             | +-t3#3 := Literal(type=INT64, value=3)
+        |             +-input_scan=
+        |               +-SingleRowScan
+        +-element_column_list=[$array.t2#5]
+        +-join_expr=
+          +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+            +-ColumnRef(type=INT64, column=$array.t1#1)
+            +-GetStructField
+              +-type=INT64
+              +-expr=
+              | +-ColumnRef(type=STRUCT<t1 INT64, t3 INT64>, column=$array.t2#5)
+              +-field_idx=0
+==
+
+# The '*' only resolves to the USING 't1', the lhs and rhs unnested columns
+# are excluded from the '*'.
+SELECT t1, '---' as separator1, *
+FROM UNNEST([1]) t1
+JOIN UNNEST([2]) t1 USING (t1)
+--
+QueryStmt
++-output_column_list=
+| +-$array.t1#1 AS t1 [INT64]
+| +-$query.separator1#3 AS separator1 [STRING]
+| +-$array.t1#1 AS t1 [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$array.t1#1, $query.separator1#3, $array.t1#1]
+    +-expr_list=
+    | +-separator1#3 := Literal(type=STRING, value="---")
+    +-input_scan=
+      +-ArrayScan
+        +-column_list=$array.[t1#1, t1#2]
+        +-input_scan=
+        | +-ArrayScan
+        |   +-column_list=[$array.t1#1]
+        |   +-array_expr_list=
+        |   | +-Literal(type=ARRAY<INT64>, value=[1])
+        |   +-element_column_list=[$array.t1#1]
+        +-array_expr_list=
+        | +-Literal(type=ARRAY<INT64>, value=[2])
+        +-element_column_list=[$array.t1#2]
+        +-join_expr=
+          +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+            +-ColumnRef(type=INT64, column=$array.t1#1)
+            +-ColumnRef(type=INT64, column=$array.t1#2)
+==
+
+# Joining (a,b) and (a,c) using (a) -> (a,b,c)
+# Joining (a,b,c) and (b,d) using (b) -> (b,a,c,d)
+SELECT *
+FROM (select 1 a, 2 b) t1
+JOIN (select 1 a, 3 c) t2 USING (a)
+JOIN (select 2 b, 4 d) t3 USING (b)
+--
+QueryStmt
++-output_column_list=
+| +-t1.b#2 AS b [INT64]
+| +-t1.a#1 AS a [INT64]
+| +-t2.c#4 AS c [INT64]
+| +-t3.d#6 AS d [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[t1.b#2, t1.a#1, t2.c#4, t3.d#6]
+    +-input_scan=
+      +-JoinScan
+        +-column_list=[t1.a#1, t1.b#2, t2.a#3, t2.c#4, t3.b#5, t3.d#6]
+        +-left_scan=
+        | +-JoinScan
+        |   +-column_list=[t1.a#1, t1.b#2, t2.a#3, t2.c#4]
+        |   +-left_scan=
+        |   | +-ProjectScan
+        |   |   +-column_list=t1.[a#1, b#2]
+        |   |   +-expr_list=
+        |   |   | +-a#1 := Literal(type=INT64, value=1)
+        |   |   | +-b#2 := Literal(type=INT64, value=2)
+        |   |   +-input_scan=
+        |   |     +-SingleRowScan
+        |   +-right_scan=
+        |   | +-ProjectScan
+        |   |   +-column_list=t2.[a#3, c#4]
+        |   |   +-expr_list=
+        |   |   | +-a#3 := Literal(type=INT64, value=1)
+        |   |   | +-c#4 := Literal(type=INT64, value=3)
+        |   |   +-input_scan=
+        |   |     +-SingleRowScan
+        |   +-join_expr=
+        |   | +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+        |   |   +-ColumnRef(type=INT64, column=t1.a#1)
+        |   |   +-ColumnRef(type=INT64, column=t2.a#3)
+        |   +-has_using=TRUE
+        +-right_scan=
+        | +-ProjectScan
+        |   +-column_list=t3.[b#5, d#6]
+        |   +-expr_list=
+        |   | +-b#5 := Literal(type=INT64, value=2)
+        |   | +-d#6 := Literal(type=INT64, value=4)
+        |   +-input_scan=
+        |     +-SingleRowScan
+        +-join_expr=
+        | +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+        |   +-ColumnRef(type=INT64, column=t1.b#2)
+        |   +-ColumnRef(type=INT64, column=t3.b#5)
+        +-has_using=TRUE
+==
+
+# Same as previous, with value tables, where we have to manage exclusions.
+# The tests the case in NameList::MergeFromExceptColumns where we union the
+# old and new exclusion list rather than replacing the old with the new.
+# Joining (a,b) and (a,c) using (a) -> (a,b,c)
+# Joining (a,b,c) and (b,d) using (b) -> (b,a,c,d)
+SELECT *
+FROM (select as struct 1 a, 2 b) t1
+JOIN (select as struct 1 a, 3 c) t2 USING (a)
+JOIN (select as struct 2 b, 4 d) t3 USING (b)
+--
+QueryStmt
++-output_column_list=
+| +-$join_left.b#12 AS b [INT64]
+| +-$join_left.a#7 AS a [INT64]
+| +-$query.c#14 AS c [INT64]
+| +-$query.d#15 AS d [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$join_left.b#12, $join_left.a#7, $query.c#14, $query.d#15]
+    +-expr_list=
+    | +-c#14 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<a INT64, c INT64>, column=$make_struct.$struct#6)
+    | |   +-field_idx=1
+    | +-d#15 :=
+    |   +-GetStructField
+    |     +-type=INT64
+    |     +-expr=
+    |     | +-ColumnRef(type=STRUCT<b INT64, d INT64>, column=$make_struct.$struct#11)
+    |     +-field_idx=1
+    +-input_scan=
+      +-JoinScan
+        +-column_list=[$make_struct.$struct#3, $join_left.a#7, $make_struct.$struct#6, $join_right.a#8, $join_left.b#12, $make_struct.$struct#11, $join_right.b#13]
+        +-left_scan=
+        | +-ProjectScan
+        |   +-column_list=[$make_struct.$struct#3, $join_left.a#7, $make_struct.$struct#6, $join_right.a#8, $join_left.b#12]
+        |   +-expr_list=
+        |   | +-b#12 :=
+        |   |   +-GetStructField
+        |   |     +-type=INT64
+        |   |     +-expr=
+        |   |     | +-ColumnRef(type=STRUCT<a INT64, b INT64>, column=$make_struct.$struct#3)
+        |   |     +-field_idx=1
+        |   +-input_scan=
+        |     +-JoinScan
+        |       +-column_list=[$make_struct.$struct#3, $join_left.a#7, $make_struct.$struct#6, $join_right.a#8]
+        |       +-left_scan=
+        |       | +-ProjectScan
+        |       |   +-column_list=[$make_struct.$struct#3, $join_left.a#7]
+        |       |   +-expr_list=
+        |       |   | +-a#7 :=
+        |       |   |   +-GetStructField
+        |       |   |     +-type=INT64
+        |       |   |     +-expr=
+        |       |   |     | +-ColumnRef(type=STRUCT<a INT64, b INT64>, column=$make_struct.$struct#3)
+        |       |   |     +-field_idx=0
+        |       |   +-input_scan=
+        |       |     +-ProjectScan
+        |       |       +-column_list=[$make_struct.$struct#3]
+        |       |       +-expr_list=
+        |       |       | +-$struct#3 :=
+        |       |       |   +-MakeStruct
+        |       |       |     +-type=STRUCT<a INT64, b INT64>
+        |       |       |     +-field_list=
+        |       |       |       +-ColumnRef(type=INT64, column=t1.a#1)
+        |       |       |       +-ColumnRef(type=INT64, column=t1.b#2)
+        |       |       +-input_scan=
+        |       |         +-ProjectScan
+        |       |           +-column_list=t1.[a#1, b#2]
+        |       |           +-expr_list=
+        |       |           | +-a#1 := Literal(type=INT64, value=1)
+        |       |           | +-b#2 := Literal(type=INT64, value=2)
+        |       |           +-input_scan=
+        |       |             +-SingleRowScan
+        |       +-right_scan=
+        |       | +-ProjectScan
+        |       |   +-column_list=[$make_struct.$struct#6, $join_right.a#8]
+        |       |   +-expr_list=
+        |       |   | +-a#8 :=
+        |       |   |   +-GetStructField
+        |       |   |     +-type=INT64
+        |       |   |     +-expr=
+        |       |   |     | +-ColumnRef(type=STRUCT<a INT64, c INT64>, column=$make_struct.$struct#6)
+        |       |   |     +-field_idx=0
+        |       |   +-input_scan=
+        |       |     +-ProjectScan
+        |       |       +-column_list=[$make_struct.$struct#6]
+        |       |       +-expr_list=
+        |       |       | +-$struct#6 :=
+        |       |       |   +-MakeStruct
+        |       |       |     +-type=STRUCT<a INT64, c INT64>
+        |       |       |     +-field_list=
+        |       |       |       +-ColumnRef(type=INT64, column=t2.a#4)
+        |       |       |       +-ColumnRef(type=INT64, column=t2.c#5)
+        |       |       +-input_scan=
+        |       |         +-ProjectScan
+        |       |           +-column_list=t2.[a#4, c#5]
+        |       |           +-expr_list=
+        |       |           | +-a#4 := Literal(type=INT64, value=1)
+        |       |           | +-c#5 := Literal(type=INT64, value=3)
+        |       |           +-input_scan=
+        |       |             +-SingleRowScan
+        |       +-join_expr=
+        |       | +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+        |       |   +-ColumnRef(type=INT64, column=$join_left.a#7)
+        |       |   +-ColumnRef(type=INT64, column=$join_right.a#8)
+        |       +-has_using=TRUE
+        +-right_scan=
+        | +-ProjectScan
+        |   +-column_list=[$make_struct.$struct#11, $join_right.b#13]
+        |   +-expr_list=
+        |   | +-b#13 :=
+        |   |   +-GetStructField
+        |   |     +-type=INT64
+        |   |     +-expr=
+        |   |     | +-ColumnRef(type=STRUCT<b INT64, d INT64>, column=$make_struct.$struct#11)
+        |   |     +-field_idx=0
+        |   +-input_scan=
+        |     +-ProjectScan
+        |       +-column_list=[$make_struct.$struct#11]
+        |       +-expr_list=
+        |       | +-$struct#11 :=
+        |       |   +-MakeStruct
+        |       |     +-type=STRUCT<b INT64, d INT64>
+        |       |     +-field_list=
+        |       |       +-ColumnRef(type=INT64, column=t3.b#9)
+        |       |       +-ColumnRef(type=INT64, column=t3.d#10)
+        |       +-input_scan=
+        |         +-ProjectScan
+        |           +-column_list=t3.[b#9, d#10]
+        |           +-expr_list=
+        |           | +-b#9 := Literal(type=INT64, value=2)
+        |           | +-d#10 := Literal(type=INT64, value=4)
+        |           +-input_scan=
+        |             +-SingleRowScan
+        +-join_expr=
+        | +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+        |   +-ColumnRef(type=INT64, column=$join_left.b#12)
+        |   +-ColumnRef(type=INT64, column=$join_right.b#13)
+        +-has_using=TRUE
+==
+
+[language_features=NONE,{{|+ARRAY_EQUALITY}}]
+select a.key, a.Int32Array, b.Int32Array
+from ComplexTypes a join ComplexTypes b using(Int32Array);
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: Column 'Int32Array' in USING has types that do not support equality comparison: ARRAY<INT32> [at 2:47]
+from ComplexTypes a join ComplexTypes b using(Int32Array);
+                                              ^
+--
+ALTERNATION GROUP: +ARRAY_EQUALITY
+--
+QueryStmt
++-output_column_list=
+| +-ComplexTypes.key#1 AS key [INT32]
+| +-ComplexTypes.Int32Array#4 AS Int32Array [ARRAY<INT32>]
+| +-ComplexTypes.Int32Array#10 AS Int32Array [ARRAY<INT32>]
++-query=
+  +-ProjectScan
+    +-column_list=ComplexTypes.[key#1, Int32Array#4, Int32Array#10]
+    +-input_scan=
+      +-JoinScan
+        +-column_list=ComplexTypes.[key#1, Int32Array#4, Int32Array#10]
+        +-left_scan=
+        | +-TableScan(column_list=ComplexTypes.[key#1, Int32Array#4], table=ComplexTypes, column_index_list=[0, 3], alias="a")
+        +-right_scan=
+        | +-TableScan(column_list=[ComplexTypes.Int32Array#10], table=ComplexTypes, column_index_list=[3], alias="b")
+        +-join_expr=
+        | +-FunctionCall(GoogleSQL:$equal(ARRAY<INT32>, ARRAY<INT32>) -> BOOL)
+        |   +-ColumnRef(type=ARRAY<INT32>, column=ComplexTypes.Int32Array#4)
+        |   +-ColumnRef(type=ARRAY<INT32>, column=ComplexTypes.Int32Array#10)
+        +-has_using=TRUE
+==
+
+# This is the simplest form of the query from b/63513175, which originally
+# failed with an 'invalid ResolvedAST' error.
+select
+  a
+FROM
+  (UNNEST([struct(0 as a)]) t1
+   JOIN
+   UNNEST([struct(0 as a)]) t2
+   USING (a))
+--
+QueryStmt
++-output_column_list=
+| +-$join_left.a#3 AS a [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$join_left.a#3]
+    +-input_scan=
+      +-ArrayScan
+        +-column_list=[$array.t1#1, $array.t2#2, $join_left.a#3]
+        +-input_scan=
+        | +-ProjectScan
+        |   +-column_list=[$array.t1#1, $join_left.a#3]
+        |   +-expr_list=
+        |   | +-a#3 :=
+        |   |   +-GetStructField
+        |   |     +-type=INT64
+        |   |     +-expr=
+        |   |     | +-ColumnRef(type=STRUCT<a INT64>, column=$array.t1#1)
+        |   |     +-field_idx=0
+        |   +-input_scan=
+        |     +-ArrayScan
+        |       +-column_list=[$array.t1#1]
+        |       +-array_expr_list=
+        |       | +-Literal(type=ARRAY<STRUCT<a INT64>>, value=[{a:0}])
+        |       +-element_column_list=[$array.t1#1]
+        +-array_expr_list=
+        | +-Literal(type=ARRAY<STRUCT<a INT64>>, value=[{a:0}])
+        +-element_column_list=[$array.t2#2]
+        +-join_expr=
+          +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+            +-ColumnRef(type=INT64, column=$join_left.a#3)
+            +-GetStructField
+              +-type=INT64
+              +-expr=
+              | +-ColumnRef(type=STRUCT<a INT64>, column=$array.t2#2)
+              +-field_idx=0
+==
+
+# Similar to the previous query (b/63513175), but with an extra layer of
+# JOIN/UNNEST.
+select
+  t1.a
+FROM
+  (UNNEST([struct(0 as a)]) t1
+   JOIN
+   UNNEST([struct(0 as a)]) t2
+   USING (a))
+JOIN
+   UNNEST([struct(0 as a)]) t3
+USING (a);
+--
+QueryStmt
++-output_column_list=
+| +-$query.a#7 AS a [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.a#7]
+    +-expr_list=
+    | +-a#7 :=
+    |   +-GetStructField
+    |     +-type=INT64
+    |     +-expr=
+    |     | +-ColumnRef(type=STRUCT<a INT64>, column=$array.t1#1)
+    |     +-field_idx=0
+    +-input_scan=
+      +-ArrayScan
+        +-column_list=[$array.t1#1, $array.t2#2, $join_left.a#3, $array.t3#5]
+        +-input_scan=
+        | +-ArrayScan
+        |   +-column_list=[$array.t1#1, $array.t2#2, $join_left.a#3]
+        |   +-input_scan=
+        |   | +-ProjectScan
+        |   |   +-column_list=[$array.t1#1, $join_left.a#3]
+        |   |   +-expr_list=
+        |   |   | +-a#3 :=
+        |   |   |   +-GetStructField
+        |   |   |     +-type=INT64
+        |   |   |     +-expr=
+        |   |   |     | +-ColumnRef(type=STRUCT<a INT64>, column=$array.t1#1)
+        |   |   |     +-field_idx=0
+        |   |   +-input_scan=
+        |   |     +-ArrayScan
+        |   |       +-column_list=[$array.t1#1]
+        |   |       +-array_expr_list=
+        |   |       | +-Literal(type=ARRAY<STRUCT<a INT64>>, value=[{a:0}])
+        |   |       +-element_column_list=[$array.t1#1]
+        |   +-array_expr_list=
+        |   | +-Literal(type=ARRAY<STRUCT<a INT64>>, value=[{a:0}])
+        |   +-element_column_list=[$array.t2#2]
+        |   +-join_expr=
+        |     +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+        |       +-ColumnRef(type=INT64, column=$join_left.a#3)
+        |       +-GetStructField
+        |         +-type=INT64
+        |         +-expr=
+        |         | +-ColumnRef(type=STRUCT<a INT64>, column=$array.t2#2)
+        |         +-field_idx=0
+        +-array_expr_list=
+        | +-Literal(type=ARRAY<STRUCT<a INT64>>, value=[{a:0}])
+        +-element_column_list=[$array.t3#5]
+        +-join_expr=
+          +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+            +-ColumnRef(type=INT64, column=$join_left.a#3)
+            +-GetStructField
+              +-type=INT64
+              +-expr=
+              | +-ColumnRef(type=STRUCT<a INT64>, column=$array.t3#5)
+              +-field_idx=0
+==
+
+# A version of the b/63513175 with LEFT JOIN.
+select
+  a, t1.a, t2.a, t3.a
+FROM
+  (UNNEST([struct(0 as a)]) t1
+   LEFT JOIN
+   UNNEST([struct(0 as a)]) t2
+   USING (a))
+LEFT JOIN
+   UNNEST([struct(0 as a)]) t3
+USING (a);
+--
+QueryStmt
++-output_column_list=
+| +-$join_left.a#3 AS a [INT64]
+| +-$query.a#7 AS a [INT64]
+| +-$query.a#8 AS a [INT64]
+| +-$query.a#9 AS a [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$join_left.a#3, $query.a#7, $query.a#8, $query.a#9]
+    +-expr_list=
+    | +-a#7 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<a INT64>, column=$array.t1#1)
+    | |   +-field_idx=0
+    | +-a#8 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<a INT64>, column=$array.t2#2)
+    | |   +-field_idx=0
+    | +-a#9 :=
+    |   +-GetStructField
+    |     +-type=INT64
+    |     +-expr=
+    |     | +-ColumnRef(type=STRUCT<a INT64>, column=$array.t3#5)
+    |     +-field_idx=0
+    +-input_scan=
+      +-ArrayScan
+        +-column_list=[$array.t1#1, $array.t2#2, $join_left.a#3, $array.t3#5]
+        +-input_scan=
+        | +-ArrayScan
+        |   +-column_list=[$array.t1#1, $array.t2#2, $join_left.a#3]
+        |   +-input_scan=
+        |   | +-ProjectScan
+        |   |   +-column_list=[$array.t1#1, $join_left.a#3]
+        |   |   +-expr_list=
+        |   |   | +-a#3 :=
+        |   |   |   +-GetStructField
+        |   |   |     +-type=INT64
+        |   |   |     +-expr=
+        |   |   |     | +-ColumnRef(type=STRUCT<a INT64>, column=$array.t1#1)
+        |   |   |     +-field_idx=0
+        |   |   +-input_scan=
+        |   |     +-ArrayScan
+        |   |       +-column_list=[$array.t1#1]
+        |   |       +-array_expr_list=
+        |   |       | +-Literal(type=ARRAY<STRUCT<a INT64>>, value=[{a:0}])
+        |   |       +-element_column_list=[$array.t1#1]
+        |   +-array_expr_list=
+        |   | +-Literal(type=ARRAY<STRUCT<a INT64>>, value=[{a:0}])
+        |   +-element_column_list=[$array.t2#2]
+        |   +-join_expr=
+        |   | +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+        |   |   +-ColumnRef(type=INT64, column=$join_left.a#3)
+        |   |   +-GetStructField
+        |   |     +-type=INT64
+        |   |     +-expr=
+        |   |     | +-ColumnRef(type=STRUCT<a INT64>, column=$array.t2#2)
+        |   |     +-field_idx=0
+        |   +-is_outer=TRUE
+        +-array_expr_list=
+        | +-Literal(type=ARRAY<STRUCT<a INT64>>, value=[{a:0}])
+        +-element_column_list=[$array.t3#5]
+        +-join_expr=
+        | +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+        |   +-ColumnRef(type=INT64, column=$join_left.a#3)
+        |   +-GetStructField
+        |     +-type=INT64
+        |     +-expr=
+        |     | +-ColumnRef(type=STRUCT<a INT64>, column=$array.t3#5)
+        |     +-field_idx=0
+        +-is_outer=TRUE
+==
+
+# Similar to the b/63513175 query, but with SELECT *
+select *
+from unnest([struct(1 as a)]) as t1
+join unnest([struct(2 as a)]) as t2
+using (a);
+--
+QueryStmt
++-output_column_list=
+| +-$join_left.a#3 AS a [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$join_left.a#3]
+    +-input_scan=
+      +-ArrayScan
+        +-column_list=[$array.t1#1, $array.t2#2, $join_left.a#3]
+        +-input_scan=
+        | +-ProjectScan
+        |   +-column_list=[$array.t1#1, $join_left.a#3]
+        |   +-expr_list=
+        |   | +-a#3 :=
+        |   |   +-GetStructField
+        |   |     +-type=INT64
+        |   |     +-expr=
+        |   |     | +-ColumnRef(type=STRUCT<a INT64>, column=$array.t1#1)
+        |   |     +-field_idx=0
+        |   +-input_scan=
+        |     +-ArrayScan
+        |       +-column_list=[$array.t1#1]
+        |       +-array_expr_list=
+        |       | +-Literal(type=ARRAY<STRUCT<a INT64>>, value=[{a:1}])
+        |       +-element_column_list=[$array.t1#1]
+        +-array_expr_list=
+        | +-Literal(type=ARRAY<STRUCT<a INT64>>, value=[{a:2}])
+        +-element_column_list=[$array.t2#2]
+        +-join_expr=
+          +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+            +-ColumnRef(type=INT64, column=$join_left.a#3)
+            +-GetStructField
+              +-type=INT64
+              +-expr=
+              | +-ColumnRef(type=STRUCT<a INT64>, column=$array.t2#2)
+              +-field_idx=0
+==
+
+# Similar to the previous tests, but with multiple using columns, extra
+# struct fields, and different qualifiers for 'a'.
+select
+  {{|t1.|t2.|t3.}}a, t1.b, {{|t1.}}c, {{|t2.}}d, {{|t3.}}e,
+  "---" as sep1, *,
+  "---" as sep2, t1.*,
+  "---" as sep3, t2.*,
+  "---" as sep4, t3.*
+FROM
+  (UNNEST([struct(0 as a, 1 as b, 2 as c)]) t1
+   JOIN
+   UNNEST([struct(0 as a, 1 as b, 2 as d)]) t2
+   USING (a, b))
+JOIN
+   UNNEST([struct(0 as a, 1 as b, 2 as e)]) t3
+USING (a, b);
+--
+ALTERNATION GROUPS:
+    <empty>
+    t3.
+    t2.,
+    t2.,t3.
+    t1.,,
+    t1.,,t3.
+    t1.,t2.,
+    t1.,t2.,t3.
+--
+QueryStmt
++-output_column_list=
+| +-$join_left.a#3 AS a [INT64]
+| +-$query.b#10 AS b [INT64]
+| +-$query.c#11 AS c [INT64]
+| +-$query.d#12 AS d [INT64]
+| +-$query.e#13 AS e [INT64]
+| +-$query.sep1#14 AS sep1 [STRING]
+| +-$join_left.a#3 AS a [INT64]
+| +-$join_left.b#5 AS b [INT64]
+| +-$query.c#15 AS c [INT64]
+| +-$query.d#16 AS d [INT64]
+| +-$query.e#17 AS e [INT64]
+| +-$query.sep2#18 AS sep2 [STRING]
+| +-$query.a#19 AS a [INT64]
+| +-$query.b#20 AS b [INT64]
+| +-$query.c#21 AS c [INT64]
+| +-$query.sep3#22 AS sep3 [STRING]
+| +-$query.a#23 AS a [INT64]
+| +-$query.b#24 AS b [INT64]
+| +-$query.d#25 AS d [INT64]
+| +-$query.sep4#26 AS sep4 [STRING]
+| +-$query.a#27 AS a [INT64]
+| +-$query.b#28 AS b [INT64]
+| +-$query.e#29 AS e [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$join_left.a#3, $query.b#10, $query.c#11, $query.d#12, $query.e#13, $query.sep1#14, $join_left.a#3, $join_left.b#5, $query.c#15, $query.d#16, $query.e#17, $query.sep2#18, $query.a#19, $query.b#20, $query.c#21, $query.sep3#22, $query.a#23, $query.b#24, $query.d#25, $query.sep4#26, $query.a#27, $query.b#28, $query.e#29]
+    +-expr_list=
+    | +-b#10 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<a INT64, b INT64, c INT64>, column=$array.t1#1)
+    | |   +-field_idx=1
+    | +-c#11 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<a INT64, b INT64, c INT64>, column=$array.t1#1)
+    | |   +-field_idx=2
+    | +-d#12 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<a INT64, b INT64, d INT64>, column=$array.t2#2)
+    | |   +-field_idx=2
+    | +-e#13 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<a INT64, b INT64, e INT64>, column=$array.t3#7)
+    | |   +-field_idx=2
+    | +-sep1#14 := Literal(type=STRING, value="---")
+    | +-c#15 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<a INT64, b INT64, c INT64>, column=$array.t1#1)
+    | |   +-field_idx=2
+    | +-d#16 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<a INT64, b INT64, d INT64>, column=$array.t2#2)
+    | |   +-field_idx=2
+    | +-e#17 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<a INT64, b INT64, e INT64>, column=$array.t3#7)
+    | |   +-field_idx=2
+    | +-sep2#18 := Literal(type=STRING, value="---")
+    | +-a#19 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<a INT64, b INT64, c INT64>, column=$array.t1#1)
+    | |   +-field_idx=0
+    | +-b#20 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<a INT64, b INT64, c INT64>, column=$array.t1#1)
+    | |   +-field_idx=1
+    | +-c#21 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<a INT64, b INT64, c INT64>, column=$array.t1#1)
+    | |   +-field_idx=2
+    | +-sep3#22 := Literal(type=STRING, value="---")
+    | +-a#23 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<a INT64, b INT64, d INT64>, column=$array.t2#2)
+    | |   +-field_idx=0
+    | +-b#24 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<a INT64, b INT64, d INT64>, column=$array.t2#2)
+    | |   +-field_idx=1
+    | +-d#25 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<a INT64, b INT64, d INT64>, column=$array.t2#2)
+    | |   +-field_idx=2
+    | +-sep4#26 := Literal(type=STRING, value="---")
+    | +-a#27 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<a INT64, b INT64, e INT64>, column=$array.t3#7)
+    | |   +-field_idx=0
+    | +-b#28 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<a INT64, b INT64, e INT64>, column=$array.t3#7)
+    | |   +-field_idx=1
+    | +-e#29 :=
+    |   +-GetStructField
+    |     +-type=INT64
+    |     +-expr=
+    |     | +-ColumnRef(type=STRUCT<a INT64, b INT64, e INT64>, column=$array.t3#7)
+    |     +-field_idx=2
+    +-input_scan=
+      +-ArrayScan
+        +-column_list=[$array.t1#1, $array.t2#2, $join_left.a#3, $join_left.b#5, $array.t3#7]
+        +-input_scan=
+        | +-ArrayScan
+        |   +-column_list=[$array.t1#1, $array.t2#2, $join_left.a#3, $join_left.b#5]
+        |   +-input_scan=
+        |   | +-ProjectScan
+        |   |   +-column_list=[$array.t1#1, $join_left.a#3, $join_left.b#5]
+        |   |   +-expr_list=
+        |   |   | +-a#3 :=
+        |   |   | | +-GetStructField
+        |   |   | |   +-type=INT64
+        |   |   | |   +-expr=
+        |   |   | |   | +-ColumnRef(type=STRUCT<a INT64, b INT64, c INT64>, column=$array.t1#1)
+        |   |   | |   +-field_idx=0
+        |   |   | +-b#5 :=
+        |   |   |   +-GetStructField
+        |   |   |     +-type=INT64
+        |   |   |     +-expr=
+        |   |   |     | +-ColumnRef(type=STRUCT<a INT64, b INT64, c INT64>, column=$array.t1#1)
+        |   |   |     +-field_idx=1
+        |   |   +-input_scan=
+        |   |     +-ArrayScan
+        |   |       +-column_list=[$array.t1#1]
+        |   |       +-array_expr_list=
+        |   |       | +-Literal(type=ARRAY<STRUCT<a INT64, b INT64, c INT64>>, value=[{a:0, b:1, c:2}])
+        |   |       +-element_column_list=[$array.t1#1]
+        |   +-array_expr_list=
+        |   | +-Literal(type=ARRAY<STRUCT<a INT64, b INT64, d INT64>>, value=[{a:0, b:1, d:2}])
+        |   +-element_column_list=[$array.t2#2]
+        |   +-join_expr=
+        |     +-FunctionCall(GoogleSQL:$and(BOOL, repeated(1) BOOL) -> BOOL)
+        |       +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+        |       | +-ColumnRef(type=INT64, column=$join_left.a#3)
+        |       | +-GetStructField
+        |       |   +-type=INT64
+        |       |   +-expr=
+        |       |   | +-ColumnRef(type=STRUCT<a INT64, b INT64, d INT64>, column=$array.t2#2)
+        |       |   +-field_idx=0
+        |       +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+        |         +-ColumnRef(type=INT64, column=$join_left.b#5)
+        |         +-GetStructField
+        |           +-type=INT64
+        |           +-expr=
+        |           | +-ColumnRef(type=STRUCT<a INT64, b INT64, d INT64>, column=$array.t2#2)
+        |           +-field_idx=1
+        +-array_expr_list=
+        | +-Literal(type=ARRAY<STRUCT<a INT64, b INT64, e INT64>>, value=[{a:0, b:1, e:2}])
+        +-element_column_list=[$array.t3#7]
+        +-join_expr=
+          +-FunctionCall(GoogleSQL:$and(BOOL, repeated(1) BOOL) -> BOOL)
+            +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+            | +-ColumnRef(type=INT64, column=$join_left.a#3)
+            | +-GetStructField
+            |   +-type=INT64
+            |   +-expr=
+            |   | +-ColumnRef(type=STRUCT<a INT64, b INT64, e INT64>, column=$array.t3#7)
+            |   +-field_idx=0
+            +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+              +-ColumnRef(type=INT64, column=$join_left.b#5)
+              +-GetStructField
+                +-type=INT64
+                +-expr=
+                | +-ColumnRef(type=STRUCT<a INT64, b INT64, e INT64>, column=$array.t3#7)
+                +-field_idx=1
+--
+ALTERNATION GROUPS:
+    t1.,,,
+    t1.,,,t3.
+    t1.,,t2.,
+    t1.,,t2.,t3.
+    t1.,t1.,,
+    t1.,t1.,,t3.
+    t1.,t1.,t2.,
+    t1.,t1.,t2.,t3.
+--
+QueryStmt
++-output_column_list=
+| +-$query.a#10 AS a [INT64]
+| +-$query.b#11 AS b [INT64]
+| +-$query.c#12 AS c [INT64]
+| +-$query.d#13 AS d [INT64]
+| +-$query.e#14 AS e [INT64]
+| +-$query.sep1#15 AS sep1 [STRING]
+| +-$join_left.a#3 AS a [INT64]
+| +-$join_left.b#5 AS b [INT64]
+| +-$query.c#16 AS c [INT64]
+| +-$query.d#17 AS d [INT64]
+| +-$query.e#18 AS e [INT64]
+| +-$query.sep2#19 AS sep2 [STRING]
+| +-$query.a#20 AS a [INT64]
+| +-$query.b#21 AS b [INT64]
+| +-$query.c#22 AS c [INT64]
+| +-$query.sep3#23 AS sep3 [STRING]
+| +-$query.a#24 AS a [INT64]
+| +-$query.b#25 AS b [INT64]
+| +-$query.d#26 AS d [INT64]
+| +-$query.sep4#27 AS sep4 [STRING]
+| +-$query.a#28 AS a [INT64]
+| +-$query.b#29 AS b [INT64]
+| +-$query.e#30 AS e [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.a#10, $query.b#11, $query.c#12, $query.d#13, $query.e#14, $query.sep1#15, $join_left.a#3, $join_left.b#5, $query.c#16, $query.d#17, $query.e#18, $query.sep2#19, $query.a#20, $query.b#21, $query.c#22, $query.sep3#23, $query.a#24, $query.b#25, $query.d#26, $query.sep4#27, $query.a#28, $query.b#29, $query.e#30]
+    +-expr_list=
+    | +-a#10 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<a INT64, b INT64, c INT64>, column=$array.t1#1)
+    | |   +-field_idx=0
+    | +-b#11 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<a INT64, b INT64, c INT64>, column=$array.t1#1)
+    | |   +-field_idx=1
+    | +-c#12 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<a INT64, b INT64, c INT64>, column=$array.t1#1)
+    | |   +-field_idx=2
+    | +-d#13 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<a INT64, b INT64, d INT64>, column=$array.t2#2)
+    | |   +-field_idx=2
+    | +-e#14 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<a INT64, b INT64, e INT64>, column=$array.t3#7)
+    | |   +-field_idx=2
+    | +-sep1#15 := Literal(type=STRING, value="---")
+    | +-c#16 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<a INT64, b INT64, c INT64>, column=$array.t1#1)
+    | |   +-field_idx=2
+    | +-d#17 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<a INT64, b INT64, d INT64>, column=$array.t2#2)
+    | |   +-field_idx=2
+    | +-e#18 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<a INT64, b INT64, e INT64>, column=$array.t3#7)
+    | |   +-field_idx=2
+    | +-sep2#19 := Literal(type=STRING, value="---")
+    | +-a#20 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<a INT64, b INT64, c INT64>, column=$array.t1#1)
+    | |   +-field_idx=0
+    | +-b#21 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<a INT64, b INT64, c INT64>, column=$array.t1#1)
+    | |   +-field_idx=1
+    | +-c#22 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<a INT64, b INT64, c INT64>, column=$array.t1#1)
+    | |   +-field_idx=2
+    | +-sep3#23 := Literal(type=STRING, value="---")
+    | +-a#24 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<a INT64, b INT64, d INT64>, column=$array.t2#2)
+    | |   +-field_idx=0
+    | +-b#25 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<a INT64, b INT64, d INT64>, column=$array.t2#2)
+    | |   +-field_idx=1
+    | +-d#26 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<a INT64, b INT64, d INT64>, column=$array.t2#2)
+    | |   +-field_idx=2
+    | +-sep4#27 := Literal(type=STRING, value="---")
+    | +-a#28 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<a INT64, b INT64, e INT64>, column=$array.t3#7)
+    | |   +-field_idx=0
+    | +-b#29 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<a INT64, b INT64, e INT64>, column=$array.t3#7)
+    | |   +-field_idx=1
+    | +-e#30 :=
+    |   +-GetStructField
+    |     +-type=INT64
+    |     +-expr=
+    |     | +-ColumnRef(type=STRUCT<a INT64, b INT64, e INT64>, column=$array.t3#7)
+    |     +-field_idx=2
+    +-input_scan=
+      +-ArrayScan
+        +-column_list=[$array.t1#1, $array.t2#2, $join_left.a#3, $join_left.b#5, $array.t3#7]
+        +-input_scan=
+        | +-ArrayScan
+        |   +-column_list=[$array.t1#1, $array.t2#2, $join_left.a#3, $join_left.b#5]
+        |   +-input_scan=
+        |   | +-ProjectScan
+        |   |   +-column_list=[$array.t1#1, $join_left.a#3, $join_left.b#5]
+        |   |   +-expr_list=
+        |   |   | +-a#3 :=
+        |   |   | | +-GetStructField
+        |   |   | |   +-type=INT64
+        |   |   | |   +-expr=
+        |   |   | |   | +-ColumnRef(type=STRUCT<a INT64, b INT64, c INT64>, column=$array.t1#1)
+        |   |   | |   +-field_idx=0
+        |   |   | +-b#5 :=
+        |   |   |   +-GetStructField
+        |   |   |     +-type=INT64
+        |   |   |     +-expr=
+        |   |   |     | +-ColumnRef(type=STRUCT<a INT64, b INT64, c INT64>, column=$array.t1#1)
+        |   |   |     +-field_idx=1
+        |   |   +-input_scan=
+        |   |     +-ArrayScan
+        |   |       +-column_list=[$array.t1#1]
+        |   |       +-array_expr_list=
+        |   |       | +-Literal(type=ARRAY<STRUCT<a INT64, b INT64, c INT64>>, value=[{a:0, b:1, c:2}])
+        |   |       +-element_column_list=[$array.t1#1]
+        |   +-array_expr_list=
+        |   | +-Literal(type=ARRAY<STRUCT<a INT64, b INT64, d INT64>>, value=[{a:0, b:1, d:2}])
+        |   +-element_column_list=[$array.t2#2]
+        |   +-join_expr=
+        |     +-FunctionCall(GoogleSQL:$and(BOOL, repeated(1) BOOL) -> BOOL)
+        |       +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+        |       | +-ColumnRef(type=INT64, column=$join_left.a#3)
+        |       | +-GetStructField
+        |       |   +-type=INT64
+        |       |   +-expr=
+        |       |   | +-ColumnRef(type=STRUCT<a INT64, b INT64, d INT64>, column=$array.t2#2)
+        |       |   +-field_idx=0
+        |       +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+        |         +-ColumnRef(type=INT64, column=$join_left.b#5)
+        |         +-GetStructField
+        |           +-type=INT64
+        |           +-expr=
+        |           | +-ColumnRef(type=STRUCT<a INT64, b INT64, d INT64>, column=$array.t2#2)
+        |           +-field_idx=1
+        +-array_expr_list=
+        | +-Literal(type=ARRAY<STRUCT<a INT64, b INT64, e INT64>>, value=[{a:0, b:1, e:2}])
+        +-element_column_list=[$array.t3#7]
+        +-join_expr=
+          +-FunctionCall(GoogleSQL:$and(BOOL, repeated(1) BOOL) -> BOOL)
+            +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+            | +-ColumnRef(type=INT64, column=$join_left.a#3)
+            | +-GetStructField
+            |   +-type=INT64
+            |   +-expr=
+            |   | +-ColumnRef(type=STRUCT<a INT64, b INT64, e INT64>, column=$array.t3#7)
+            |   +-field_idx=0
+            +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+              +-ColumnRef(type=INT64, column=$join_left.b#5)
+              +-GetStructField
+                +-type=INT64
+                +-expr=
+                | +-ColumnRef(type=STRUCT<a INT64, b INT64, e INT64>, column=$array.t3#7)
+                +-field_idx=1
+--
+ALTERNATION GROUPS:
+    t2.,,,
+    t2.,,,t3.
+    t2.,,t2.,
+    t2.,,t2.,t3.
+    t2.,t1.,,
+    t2.,t1.,,t3.
+    t2.,t1.,t2.,
+    t2.,t1.,t2.,t3.
+--
+QueryStmt
++-output_column_list=
+| +-$query.a#10 AS a [INT64]
+| +-$query.b#11 AS b [INT64]
+| +-$query.c#12 AS c [INT64]
+| +-$query.d#13 AS d [INT64]
+| +-$query.e#14 AS e [INT64]
+| +-$query.sep1#15 AS sep1 [STRING]
+| +-$join_left.a#3 AS a [INT64]
+| +-$join_left.b#5 AS b [INT64]
+| +-$query.c#16 AS c [INT64]
+| +-$query.d#17 AS d [INT64]
+| +-$query.e#18 AS e [INT64]
+| +-$query.sep2#19 AS sep2 [STRING]
+| +-$query.a#20 AS a [INT64]
+| +-$query.b#21 AS b [INT64]
+| +-$query.c#22 AS c [INT64]
+| +-$query.sep3#23 AS sep3 [STRING]
+| +-$query.a#24 AS a [INT64]
+| +-$query.b#25 AS b [INT64]
+| +-$query.d#26 AS d [INT64]
+| +-$query.sep4#27 AS sep4 [STRING]
+| +-$query.a#28 AS a [INT64]
+| +-$query.b#29 AS b [INT64]
+| +-$query.e#30 AS e [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.a#10, $query.b#11, $query.c#12, $query.d#13, $query.e#14, $query.sep1#15, $join_left.a#3, $join_left.b#5, $query.c#16, $query.d#17, $query.e#18, $query.sep2#19, $query.a#20, $query.b#21, $query.c#22, $query.sep3#23, $query.a#24, $query.b#25, $query.d#26, $query.sep4#27, $query.a#28, $query.b#29, $query.e#30]
+    +-expr_list=
+    | +-a#10 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<a INT64, b INT64, d INT64>, column=$array.t2#2)
+    | |   +-field_idx=0
+    | +-b#11 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<a INT64, b INT64, c INT64>, column=$array.t1#1)
+    | |   +-field_idx=1
+    | +-c#12 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<a INT64, b INT64, c INT64>, column=$array.t1#1)
+    | |   +-field_idx=2
+    | +-d#13 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<a INT64, b INT64, d INT64>, column=$array.t2#2)
+    | |   +-field_idx=2
+    | +-e#14 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<a INT64, b INT64, e INT64>, column=$array.t3#7)
+    | |   +-field_idx=2
+    | +-sep1#15 := Literal(type=STRING, value="---")
+    | +-c#16 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<a INT64, b INT64, c INT64>, column=$array.t1#1)
+    | |   +-field_idx=2
+    | +-d#17 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<a INT64, b INT64, d INT64>, column=$array.t2#2)
+    | |   +-field_idx=2
+    | +-e#18 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<a INT64, b INT64, e INT64>, column=$array.t3#7)
+    | |   +-field_idx=2
+    | +-sep2#19 := Literal(type=STRING, value="---")
+    | +-a#20 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<a INT64, b INT64, c INT64>, column=$array.t1#1)
+    | |   +-field_idx=0
+    | +-b#21 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<a INT64, b INT64, c INT64>, column=$array.t1#1)
+    | |   +-field_idx=1
+    | +-c#22 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<a INT64, b INT64, c INT64>, column=$array.t1#1)
+    | |   +-field_idx=2
+    | +-sep3#23 := Literal(type=STRING, value="---")
+    | +-a#24 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<a INT64, b INT64, d INT64>, column=$array.t2#2)
+    | |   +-field_idx=0
+    | +-b#25 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<a INT64, b INT64, d INT64>, column=$array.t2#2)
+    | |   +-field_idx=1
+    | +-d#26 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<a INT64, b INT64, d INT64>, column=$array.t2#2)
+    | |   +-field_idx=2
+    | +-sep4#27 := Literal(type=STRING, value="---")
+    | +-a#28 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<a INT64, b INT64, e INT64>, column=$array.t3#7)
+    | |   +-field_idx=0
+    | +-b#29 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<a INT64, b INT64, e INT64>, column=$array.t3#7)
+    | |   +-field_idx=1
+    | +-e#30 :=
+    |   +-GetStructField
+    |     +-type=INT64
+    |     +-expr=
+    |     | +-ColumnRef(type=STRUCT<a INT64, b INT64, e INT64>, column=$array.t3#7)
+    |     +-field_idx=2
+    +-input_scan=
+      +-ArrayScan
+        +-column_list=[$array.t1#1, $array.t2#2, $join_left.a#3, $join_left.b#5, $array.t3#7]
+        +-input_scan=
+        | +-ArrayScan
+        |   +-column_list=[$array.t1#1, $array.t2#2, $join_left.a#3, $join_left.b#5]
+        |   +-input_scan=
+        |   | +-ProjectScan
+        |   |   +-column_list=[$array.t1#1, $join_left.a#3, $join_left.b#5]
+        |   |   +-expr_list=
+        |   |   | +-a#3 :=
+        |   |   | | +-GetStructField
+        |   |   | |   +-type=INT64
+        |   |   | |   +-expr=
+        |   |   | |   | +-ColumnRef(type=STRUCT<a INT64, b INT64, c INT64>, column=$array.t1#1)
+        |   |   | |   +-field_idx=0
+        |   |   | +-b#5 :=
+        |   |   |   +-GetStructField
+        |   |   |     +-type=INT64
+        |   |   |     +-expr=
+        |   |   |     | +-ColumnRef(type=STRUCT<a INT64, b INT64, c INT64>, column=$array.t1#1)
+        |   |   |     +-field_idx=1
+        |   |   +-input_scan=
+        |   |     +-ArrayScan
+        |   |       +-column_list=[$array.t1#1]
+        |   |       +-array_expr_list=
+        |   |       | +-Literal(type=ARRAY<STRUCT<a INT64, b INT64, c INT64>>, value=[{a:0, b:1, c:2}])
+        |   |       +-element_column_list=[$array.t1#1]
+        |   +-array_expr_list=
+        |   | +-Literal(type=ARRAY<STRUCT<a INT64, b INT64, d INT64>>, value=[{a:0, b:1, d:2}])
+        |   +-element_column_list=[$array.t2#2]
+        |   +-join_expr=
+        |     +-FunctionCall(GoogleSQL:$and(BOOL, repeated(1) BOOL) -> BOOL)
+        |       +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+        |       | +-ColumnRef(type=INT64, column=$join_left.a#3)
+        |       | +-GetStructField
+        |       |   +-type=INT64
+        |       |   +-expr=
+        |       |   | +-ColumnRef(type=STRUCT<a INT64, b INT64, d INT64>, column=$array.t2#2)
+        |       |   +-field_idx=0
+        |       +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+        |         +-ColumnRef(type=INT64, column=$join_left.b#5)
+        |         +-GetStructField
+        |           +-type=INT64
+        |           +-expr=
+        |           | +-ColumnRef(type=STRUCT<a INT64, b INT64, d INT64>, column=$array.t2#2)
+        |           +-field_idx=1
+        +-array_expr_list=
+        | +-Literal(type=ARRAY<STRUCT<a INT64, b INT64, e INT64>>, value=[{a:0, b:1, e:2}])
+        +-element_column_list=[$array.t3#7]
+        +-join_expr=
+          +-FunctionCall(GoogleSQL:$and(BOOL, repeated(1) BOOL) -> BOOL)
+            +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+            | +-ColumnRef(type=INT64, column=$join_left.a#3)
+            | +-GetStructField
+            |   +-type=INT64
+            |   +-expr=
+            |   | +-ColumnRef(type=STRUCT<a INT64, b INT64, e INT64>, column=$array.t3#7)
+            |   +-field_idx=0
+            +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+              +-ColumnRef(type=INT64, column=$join_left.b#5)
+              +-GetStructField
+                +-type=INT64
+                +-expr=
+                | +-ColumnRef(type=STRUCT<a INT64, b INT64, e INT64>, column=$array.t3#7)
+                +-field_idx=1
+--
+ALTERNATION GROUPS:
+    t3.,,,
+    t3.,,,t3.
+    t3.,,t2.,
+    t3.,,t2.,t3.
+    t3.,t1.,,
+    t3.,t1.,,t3.
+    t3.,t1.,t2.,
+    t3.,t1.,t2.,t3.
+--
+QueryStmt
++-output_column_list=
+| +-$query.a#10 AS a [INT64]
+| +-$query.b#11 AS b [INT64]
+| +-$query.c#12 AS c [INT64]
+| +-$query.d#13 AS d [INT64]
+| +-$query.e#14 AS e [INT64]
+| +-$query.sep1#15 AS sep1 [STRING]
+| +-$join_left.a#3 AS a [INT64]
+| +-$join_left.b#5 AS b [INT64]
+| +-$query.c#16 AS c [INT64]
+| +-$query.d#17 AS d [INT64]
+| +-$query.e#18 AS e [INT64]
+| +-$query.sep2#19 AS sep2 [STRING]
+| +-$query.a#20 AS a [INT64]
+| +-$query.b#21 AS b [INT64]
+| +-$query.c#22 AS c [INT64]
+| +-$query.sep3#23 AS sep3 [STRING]
+| +-$query.a#24 AS a [INT64]
+| +-$query.b#25 AS b [INT64]
+| +-$query.d#26 AS d [INT64]
+| +-$query.sep4#27 AS sep4 [STRING]
+| +-$query.a#28 AS a [INT64]
+| +-$query.b#29 AS b [INT64]
+| +-$query.e#30 AS e [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.a#10, $query.b#11, $query.c#12, $query.d#13, $query.e#14, $query.sep1#15, $join_left.a#3, $join_left.b#5, $query.c#16, $query.d#17, $query.e#18, $query.sep2#19, $query.a#20, $query.b#21, $query.c#22, $query.sep3#23, $query.a#24, $query.b#25, $query.d#26, $query.sep4#27, $query.a#28, $query.b#29, $query.e#30]
+    +-expr_list=
+    | +-a#10 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<a INT64, b INT64, e INT64>, column=$array.t3#7)
+    | |   +-field_idx=0
+    | +-b#11 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<a INT64, b INT64, c INT64>, column=$array.t1#1)
+    | |   +-field_idx=1
+    | +-c#12 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<a INT64, b INT64, c INT64>, column=$array.t1#1)
+    | |   +-field_idx=2
+    | +-d#13 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<a INT64, b INT64, d INT64>, column=$array.t2#2)
+    | |   +-field_idx=2
+    | +-e#14 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<a INT64, b INT64, e INT64>, column=$array.t3#7)
+    | |   +-field_idx=2
+    | +-sep1#15 := Literal(type=STRING, value="---")
+    | +-c#16 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<a INT64, b INT64, c INT64>, column=$array.t1#1)
+    | |   +-field_idx=2
+    | +-d#17 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<a INT64, b INT64, d INT64>, column=$array.t2#2)
+    | |   +-field_idx=2
+    | +-e#18 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<a INT64, b INT64, e INT64>, column=$array.t3#7)
+    | |   +-field_idx=2
+    | +-sep2#19 := Literal(type=STRING, value="---")
+    | +-a#20 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<a INT64, b INT64, c INT64>, column=$array.t1#1)
+    | |   +-field_idx=0
+    | +-b#21 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<a INT64, b INT64, c INT64>, column=$array.t1#1)
+    | |   +-field_idx=1
+    | +-c#22 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<a INT64, b INT64, c INT64>, column=$array.t1#1)
+    | |   +-field_idx=2
+    | +-sep3#23 := Literal(type=STRING, value="---")
+    | +-a#24 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<a INT64, b INT64, d INT64>, column=$array.t2#2)
+    | |   +-field_idx=0
+    | +-b#25 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<a INT64, b INT64, d INT64>, column=$array.t2#2)
+    | |   +-field_idx=1
+    | +-d#26 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<a INT64, b INT64, d INT64>, column=$array.t2#2)
+    | |   +-field_idx=2
+    | +-sep4#27 := Literal(type=STRING, value="---")
+    | +-a#28 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<a INT64, b INT64, e INT64>, column=$array.t3#7)
+    | |   +-field_idx=0
+    | +-b#29 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<a INT64, b INT64, e INT64>, column=$array.t3#7)
+    | |   +-field_idx=1
+    | +-e#30 :=
+    |   +-GetStructField
+    |     +-type=INT64
+    |     +-expr=
+    |     | +-ColumnRef(type=STRUCT<a INT64, b INT64, e INT64>, column=$array.t3#7)
+    |     +-field_idx=2
+    +-input_scan=
+      +-ArrayScan
+        +-column_list=[$array.t1#1, $array.t2#2, $join_left.a#3, $join_left.b#5, $array.t3#7]
+        +-input_scan=
+        | +-ArrayScan
+        |   +-column_list=[$array.t1#1, $array.t2#2, $join_left.a#3, $join_left.b#5]
+        |   +-input_scan=
+        |   | +-ProjectScan
+        |   |   +-column_list=[$array.t1#1, $join_left.a#3, $join_left.b#5]
+        |   |   +-expr_list=
+        |   |   | +-a#3 :=
+        |   |   | | +-GetStructField
+        |   |   | |   +-type=INT64
+        |   |   | |   +-expr=
+        |   |   | |   | +-ColumnRef(type=STRUCT<a INT64, b INT64, c INT64>, column=$array.t1#1)
+        |   |   | |   +-field_idx=0
+        |   |   | +-b#5 :=
+        |   |   |   +-GetStructField
+        |   |   |     +-type=INT64
+        |   |   |     +-expr=
+        |   |   |     | +-ColumnRef(type=STRUCT<a INT64, b INT64, c INT64>, column=$array.t1#1)
+        |   |   |     +-field_idx=1
+        |   |   +-input_scan=
+        |   |     +-ArrayScan
+        |   |       +-column_list=[$array.t1#1]
+        |   |       +-array_expr_list=
+        |   |       | +-Literal(type=ARRAY<STRUCT<a INT64, b INT64, c INT64>>, value=[{a:0, b:1, c:2}])
+        |   |       +-element_column_list=[$array.t1#1]
+        |   +-array_expr_list=
+        |   | +-Literal(type=ARRAY<STRUCT<a INT64, b INT64, d INT64>>, value=[{a:0, b:1, d:2}])
+        |   +-element_column_list=[$array.t2#2]
+        |   +-join_expr=
+        |     +-FunctionCall(GoogleSQL:$and(BOOL, repeated(1) BOOL) -> BOOL)
+        |       +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+        |       | +-ColumnRef(type=INT64, column=$join_left.a#3)
+        |       | +-GetStructField
+        |       |   +-type=INT64
+        |       |   +-expr=
+        |       |   | +-ColumnRef(type=STRUCT<a INT64, b INT64, d INT64>, column=$array.t2#2)
+        |       |   +-field_idx=0
+        |       +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+        |         +-ColumnRef(type=INT64, column=$join_left.b#5)
+        |         +-GetStructField
+        |           +-type=INT64
+        |           +-expr=
+        |           | +-ColumnRef(type=STRUCT<a INT64, b INT64, d INT64>, column=$array.t2#2)
+        |           +-field_idx=1
+        +-array_expr_list=
+        | +-Literal(type=ARRAY<STRUCT<a INT64, b INT64, e INT64>>, value=[{a:0, b:1, e:2}])
+        +-element_column_list=[$array.t3#7]
+        +-join_expr=
+          +-FunctionCall(GoogleSQL:$and(BOOL, repeated(1) BOOL) -> BOOL)
+            +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+            | +-ColumnRef(type=INT64, column=$join_left.a#3)
+            | +-GetStructField
+            |   +-type=INT64
+            |   +-expr=
+            |   | +-ColumnRef(type=STRUCT<a INT64, b INT64, e INT64>, column=$array.t3#7)
+            |   +-field_idx=0
+            +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+              +-ColumnRef(type=INT64, column=$join_left.b#5)
+              +-GetStructField
+                +-type=INT64
+                +-expr=
+                | +-ColumnRef(type=STRUCT<a INT64, b INT64, e INT64>, column=$array.t3#7)
+                +-field_idx=1
+==
+
+# Similar to the previous, but with multiple USING columns.
+select *
+from unnest([struct(1 as a, 3 as b, 5 as c)]) as t1
+join unnest([struct(2 as a, 4 as b, 6 as d)]) as t2
+using (a, b);
+--
+QueryStmt
++-output_column_list=
+| +-$join_left.a#3 AS a [INT64]
+| +-$join_left.b#5 AS b [INT64]
+| +-$query.c#7 AS c [INT64]
+| +-$query.d#8 AS d [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$join_left.a#3, $join_left.b#5, $query.c#7, $query.d#8]
+    +-expr_list=
+    | +-c#7 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<a INT64, b INT64, c INT64>, column=$array.t1#1)
+    | |   +-field_idx=2
+    | +-d#8 :=
+    |   +-GetStructField
+    |     +-type=INT64
+    |     +-expr=
+    |     | +-ColumnRef(type=STRUCT<a INT64, b INT64, d INT64>, column=$array.t2#2)
+    |     +-field_idx=2
+    +-input_scan=
+      +-ArrayScan
+        +-column_list=[$array.t1#1, $array.t2#2, $join_left.a#3, $join_left.b#5]
+        +-input_scan=
+        | +-ProjectScan
+        |   +-column_list=[$array.t1#1, $join_left.a#3, $join_left.b#5]
+        |   +-expr_list=
+        |   | +-a#3 :=
+        |   | | +-GetStructField
+        |   | |   +-type=INT64
+        |   | |   +-expr=
+        |   | |   | +-ColumnRef(type=STRUCT<a INT64, b INT64, c INT64>, column=$array.t1#1)
+        |   | |   +-field_idx=0
+        |   | +-b#5 :=
+        |   |   +-GetStructField
+        |   |     +-type=INT64
+        |   |     +-expr=
+        |   |     | +-ColumnRef(type=STRUCT<a INT64, b INT64, c INT64>, column=$array.t1#1)
+        |   |     +-field_idx=1
+        |   +-input_scan=
+        |     +-ArrayScan
+        |       +-column_list=[$array.t1#1]
+        |       +-array_expr_list=
+        |       | +-Literal(type=ARRAY<STRUCT<a INT64, b INT64, c INT64>>, value=[{a:1, b:3, c:5}])
+        |       +-element_column_list=[$array.t1#1]
+        +-array_expr_list=
+        | +-Literal(type=ARRAY<STRUCT<a INT64, b INT64, d INT64>>, value=[{a:2, b:4, d:6}])
+        +-element_column_list=[$array.t2#2]
+        +-join_expr=
+          +-FunctionCall(GoogleSQL:$and(BOOL, repeated(1) BOOL) -> BOOL)
+            +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+            | +-ColumnRef(type=INT64, column=$join_left.a#3)
+            | +-GetStructField
+            |   +-type=INT64
+            |   +-expr=
+            |   | +-ColumnRef(type=STRUCT<a INT64, b INT64, d INT64>, column=$array.t2#2)
+            |   +-field_idx=0
+            +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+              +-ColumnRef(type=INT64, column=$join_left.b#5)
+              +-GetStructField
+                +-type=INT64
+                +-expr=
+                | +-ColumnRef(type=STRUCT<a INT64, b INT64, d INT64>, column=$array.t2#2)
+                +-field_idx=1
+==
+
+# Similar to the previous test cases, but using subqueries instead of
+# unnested arrays.
+select *
+from (select 1 as a) as t1
+join (select 2 as a) as t2
+using (a);
+--
+QueryStmt
++-output_column_list=
+| +-t1.a#1 AS a [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[t1.a#1]
+    +-input_scan=
+      +-JoinScan
+        +-column_list=[t1.a#1, t2.a#2]
+        +-left_scan=
+        | +-ProjectScan
+        |   +-column_list=[t1.a#1]
+        |   +-expr_list=
+        |   | +-a#1 := Literal(type=INT64, value=1)
+        |   +-input_scan=
+        |     +-SingleRowScan
+        +-right_scan=
+        | +-ProjectScan
+        |   +-column_list=[t2.a#2]
+        |   +-expr_list=
+        |   | +-a#2 := Literal(type=INT64, value=2)
+        |   +-input_scan=
+        |     +-SingleRowScan
+        +-join_expr=
+        | +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+        |   +-ColumnRef(type=INT64, column=t1.a#1)
+        |   +-ColumnRef(type=INT64, column=t2.a#2)
+        +-has_using=TRUE
+==
+
+# Similar to the previous test cases, but using subqueries instead of
+# unnested arrays.
+select *
+from (select 1 as a, 2 as b, 3 as c) as t1
+join (select 4 as a, 4 as b, 6 as d) as t2
+using (a, b);
+--
+QueryStmt
++-output_column_list=
+| +-t1.a#1 AS a [INT64]
+| +-t1.b#2 AS b [INT64]
+| +-t1.c#3 AS c [INT64]
+| +-t2.d#6 AS d [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[t1.a#1, t1.b#2, t1.c#3, t2.d#6]
+    +-input_scan=
+      +-JoinScan
+        +-column_list=[t1.a#1, t1.b#2, t1.c#3, t2.a#4, t2.b#5, t2.d#6]
+        +-left_scan=
+        | +-ProjectScan
+        |   +-column_list=t1.[a#1, b#2, c#3]
+        |   +-expr_list=
+        |   | +-a#1 := Literal(type=INT64, value=1)
+        |   | +-b#2 := Literal(type=INT64, value=2)
+        |   | +-c#3 := Literal(type=INT64, value=3)
+        |   +-input_scan=
+        |     +-SingleRowScan
+        +-right_scan=
+        | +-ProjectScan
+        |   +-column_list=t2.[a#4, b#5, d#6]
+        |   +-expr_list=
+        |   | +-a#4 := Literal(type=INT64, value=4)
+        |   | +-b#5 := Literal(type=INT64, value=4)
+        |   | +-d#6 := Literal(type=INT64, value=6)
+        |   +-input_scan=
+        |     +-SingleRowScan
+        +-join_expr=
+        | +-FunctionCall(GoogleSQL:$and(BOOL, repeated(1) BOOL) -> BOOL)
+        |   +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+        |   | +-ColumnRef(type=INT64, column=t1.a#1)
+        |   | +-ColumnRef(type=INT64, column=t2.a#4)
+        |   +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+        |     +-ColumnRef(type=INT64, column=t1.b#2)
+        |     +-ColumnRef(type=INT64, column=t2.b#5)
+        +-has_using=TRUE
+==
+
+# JOIN USING for array scans where the USING column must be coerced to
+# a common type.
+select *, t1.a, t2.a
+from unnest([struct(cast(1 as INT64) as a, 3 as b)]) as t1
+join unnest([struct(cast(1 as INT32) as a, 4 as b)]) as t2
+using (a);
+--
+QueryStmt
++-output_column_list=
+| +-$join_left.a#3 AS a [INT64]
+| +-$query.b#5 AS b [INT64]
+| +-$query.b#6 AS b [INT64]
+| +-$query.a#7 AS a [INT64]
+| +-$query.a#8 AS a [INT32]
++-query=
+  +-ProjectScan
+    +-column_list=[$join_left.a#3, $query.b#5, $query.b#6, $query.a#7, $query.a#8]
+    +-expr_list=
+    | +-b#5 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<a INT64, b INT64>, column=$array.t1#1)
+    | |   +-field_idx=1
+    | +-b#6 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<a INT32, b INT64>, column=$array.t2#2)
+    | |   +-field_idx=1
+    | +-a#7 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<a INT64, b INT64>, column=$array.t1#1)
+    | |   +-field_idx=0
+    | +-a#8 :=
+    |   +-GetStructField
+    |     +-type=INT32
+    |     +-expr=
+    |     | +-ColumnRef(type=STRUCT<a INT32, b INT64>, column=$array.t2#2)
+    |     +-field_idx=0
+    +-input_scan=
+      +-ArrayScan
+        +-column_list=[$array.t1#1, $array.t2#2, $join_left.a#3]
+        +-input_scan=
+        | +-ProjectScan
+        |   +-column_list=[$array.t1#1, $join_left.a#3]
+        |   +-expr_list=
+        |   | +-a#3 :=
+        |   |   +-GetStructField
+        |   |     +-type=INT64
+        |   |     +-expr=
+        |   |     | +-ColumnRef(type=STRUCT<a INT64, b INT64>, column=$array.t1#1)
+        |   |     +-field_idx=0
+        |   +-input_scan=
+        |     +-ArrayScan
+        |       +-column_list=[$array.t1#1]
+        |       +-array_expr_list=
+        |       | +-FunctionCall(GoogleSQL:$make_array(repeated(1) STRUCT<a INT64, b INT64>) -> ARRAY<STRUCT<a INT64, b INT64>>)
+        |       |   +-MakeStruct
+        |       |     +-type=STRUCT<a INT64, b INT64>
+        |       |     +-field_list=
+        |       |       +-Literal(type=INT64, value=1, has_explicit_type=TRUE)
+        |       |       +-Literal(type=INT64, value=3)
+        |       +-element_column_list=[$array.t1#1]
+        +-array_expr_list=
+        | +-FunctionCall(GoogleSQL:$make_array(repeated(1) STRUCT<a INT32, b INT64>) -> ARRAY<STRUCT<a INT32, b INT64>>)
+        |   +-MakeStruct
+        |     +-type=STRUCT<a INT32, b INT64>
+        |     +-field_list=
+        |       +-Literal(type=INT32, value=1, has_explicit_type=TRUE)
+        |       +-Literal(type=INT64, value=4)
+        +-element_column_list=[$array.t2#2]
+        +-join_expr=
+          +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+            +-ColumnRef(type=INT64, column=$join_left.a#3)
+            +-Cast(INT32 -> INT64)
+              +-GetStructField
+                +-type=INT32
+                +-expr=
+                | +-ColumnRef(type=STRUCT<a INT32, b INT64>, column=$array.t2#2)
+                +-field_idx=0
+==
+
+# Same as the previous but reversing where the coercion occurs.
+select *, t1.a, t2.a
+from unnest([struct(cast(1 as INT32) as a, 3 as b)]) as t1
+join unnest([struct(cast(1 as INT64) as a, 4 as b)]) as t2
+using (a);
+--
+QueryStmt
++-output_column_list=
+| +-$join_left.a#3 AS a [INT32]
+| +-$query.b#5 AS b [INT64]
+| +-$query.b#6 AS b [INT64]
+| +-$query.a#7 AS a [INT32]
+| +-$query.a#8 AS a [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$join_left.a#3, $query.b#5, $query.b#6, $query.a#7, $query.a#8]
+    +-expr_list=
+    | +-b#5 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<a INT32, b INT64>, column=$array.t1#1)
+    | |   +-field_idx=1
+    | +-b#6 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<a INT64, b INT64>, column=$array.t2#2)
+    | |   +-field_idx=1
+    | +-a#7 :=
+    | | +-GetStructField
+    | |   +-type=INT32
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<a INT32, b INT64>, column=$array.t1#1)
+    | |   +-field_idx=0
+    | +-a#8 :=
+    |   +-GetStructField
+    |     +-type=INT64
+    |     +-expr=
+    |     | +-ColumnRef(type=STRUCT<a INT64, b INT64>, column=$array.t2#2)
+    |     +-field_idx=0
+    +-input_scan=
+      +-ArrayScan
+        +-column_list=[$array.t1#1, $array.t2#2, $join_left.a#3]
+        +-input_scan=
+        | +-ProjectScan
+        |   +-column_list=[$array.t1#1, $join_left.a#3]
+        |   +-expr_list=
+        |   | +-a#3 :=
+        |   |   +-GetStructField
+        |   |     +-type=INT32
+        |   |     +-expr=
+        |   |     | +-ColumnRef(type=STRUCT<a INT32, b INT64>, column=$array.t1#1)
+        |   |     +-field_idx=0
+        |   +-input_scan=
+        |     +-ArrayScan
+        |       +-column_list=[$array.t1#1]
+        |       +-array_expr_list=
+        |       | +-FunctionCall(GoogleSQL:$make_array(repeated(1) STRUCT<a INT32, b INT64>) -> ARRAY<STRUCT<a INT32, b INT64>>)
+        |       |   +-MakeStruct
+        |       |     +-type=STRUCT<a INT32, b INT64>
+        |       |     +-field_list=
+        |       |       +-Literal(type=INT32, value=1, has_explicit_type=TRUE)
+        |       |       +-Literal(type=INT64, value=3)
+        |       +-element_column_list=[$array.t1#1]
+        +-array_expr_list=
+        | +-FunctionCall(GoogleSQL:$make_array(repeated(1) STRUCT<a INT64, b INT64>) -> ARRAY<STRUCT<a INT64, b INT64>>)
+        |   +-MakeStruct
+        |     +-type=STRUCT<a INT64, b INT64>
+        |     +-field_list=
+        |       +-Literal(type=INT64, value=1, has_explicit_type=TRUE)
+        |       +-Literal(type=INT64, value=4)
+        +-element_column_list=[$array.t2#2]
+        +-join_expr=
+          +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+            +-Cast(INT32 -> INT64)
+            | +-ColumnRef(type=INT32, column=$join_left.a#3)
+            +-GetStructField
+              +-type=INT64
+              +-expr=
+              | +-ColumnRef(type=STRUCT<a INT64, b INT64>, column=$array.t2#2)
+              +-field_idx=0
+==
+
+# Same as the previous test cases, but with LEFT/RIGHT/FULL join.
+select *, t1.a, t2.a
+from unnest([struct(cast(1 as INT64) as a, 3 as b)]) as t1
+     {{LEFT|RIGHT|FULL}} join
+     unnest([struct(cast(1 as INT32) as a, 4 as b)]) as t2
+using (a);
+--
+ALTERNATION GROUP: LEFT
+--
+QueryStmt
++-output_column_list=
+| +-$join_left.a#3 AS a [INT64]
+| +-$query.b#5 AS b [INT64]
+| +-$query.b#6 AS b [INT64]
+| +-$query.a#7 AS a [INT64]
+| +-$query.a#8 AS a [INT32]
++-query=
+  +-ProjectScan
+    +-column_list=[$join_left.a#3, $query.b#5, $query.b#6, $query.a#7, $query.a#8]
+    +-expr_list=
+    | +-b#5 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<a INT64, b INT64>, column=$array.t1#1)
+    | |   +-field_idx=1
+    | +-b#6 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<a INT32, b INT64>, column=$array.t2#2)
+    | |   +-field_idx=1
+    | +-a#7 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<a INT64, b INT64>, column=$array.t1#1)
+    | |   +-field_idx=0
+    | +-a#8 :=
+    |   +-GetStructField
+    |     +-type=INT32
+    |     +-expr=
+    |     | +-ColumnRef(type=STRUCT<a INT32, b INT64>, column=$array.t2#2)
+    |     +-field_idx=0
+    +-input_scan=
+      +-ArrayScan
+        +-column_list=[$array.t1#1, $array.t2#2, $join_left.a#3]
+        +-input_scan=
+        | +-ProjectScan
+        |   +-column_list=[$array.t1#1, $join_left.a#3]
+        |   +-expr_list=
+        |   | +-a#3 :=
+        |   |   +-GetStructField
+        |   |     +-type=INT64
+        |   |     +-expr=
+        |   |     | +-ColumnRef(type=STRUCT<a INT64, b INT64>, column=$array.t1#1)
+        |   |     +-field_idx=0
+        |   +-input_scan=
+        |     +-ArrayScan
+        |       +-column_list=[$array.t1#1]
+        |       +-array_expr_list=
+        |       | +-FunctionCall(GoogleSQL:$make_array(repeated(1) STRUCT<a INT64, b INT64>) -> ARRAY<STRUCT<a INT64, b INT64>>)
+        |       |   +-MakeStruct
+        |       |     +-type=STRUCT<a INT64, b INT64>
+        |       |     +-field_list=
+        |       |       +-Literal(type=INT64, value=1, has_explicit_type=TRUE)
+        |       |       +-Literal(type=INT64, value=3)
+        |       +-element_column_list=[$array.t1#1]
+        +-array_expr_list=
+        | +-FunctionCall(GoogleSQL:$make_array(repeated(1) STRUCT<a INT32, b INT64>) -> ARRAY<STRUCT<a INT32, b INT64>>)
+        |   +-MakeStruct
+        |     +-type=STRUCT<a INT32, b INT64>
+        |     +-field_list=
+        |       +-Literal(type=INT32, value=1, has_explicit_type=TRUE)
+        |       +-Literal(type=INT64, value=4)
+        +-element_column_list=[$array.t2#2]
+        +-join_expr=
+        | +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+        |   +-ColumnRef(type=INT64, column=$join_left.a#3)
+        |   +-Cast(INT32 -> INT64)
+        |     +-GetStructField
+        |       +-type=INT32
+        |       +-expr=
+        |       | +-ColumnRef(type=STRUCT<a INT32, b INT64>, column=$array.t2#2)
+        |       +-field_idx=0
+        +-is_outer=TRUE
+--
+ALTERNATION GROUP: RIGHT
+--
+QueryStmt
++-output_column_list=
+| +-$join_right.a#4 AS a [INT32]
+| +-$query.b#5 AS b [INT64]
+| +-$query.b#6 AS b [INT64]
+| +-$query.a#7 AS a [INT64]
+| +-$query.a#8 AS a [INT32]
++-query=
+  +-ProjectScan
+    +-column_list=[$join_right.a#4, $query.b#5, $query.b#6, $query.a#7, $query.a#8]
+    +-expr_list=
+    | +-b#5 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<a INT64, b INT64>, column=$array.t1#1)
+    | |   +-field_idx=1
+    | +-b#6 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<a INT32, b INT64>, column=$array.t2#2)
+    | |   +-field_idx=1
+    | +-a#7 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<a INT64, b INT64>, column=$array.t1#1)
+    | |   +-field_idx=0
+    | +-a#8 :=
+    |   +-GetStructField
+    |     +-type=INT32
+    |     +-expr=
+    |     | +-ColumnRef(type=STRUCT<a INT32, b INT64>, column=$array.t2#2)
+    |     +-field_idx=0
+    +-input_scan=
+      +-JoinScan
+        +-column_list=[$array.t1#1, $join_left.a#3, $array.t2#2, $join_right.a#4]
+        +-join_type=RIGHT
+        +-left_scan=
+        | +-ProjectScan
+        |   +-column_list=[$array.t1#1, $join_left.a#3]
+        |   +-expr_list=
+        |   | +-a#3 :=
+        |   |   +-GetStructField
+        |   |     +-type=INT64
+        |   |     +-expr=
+        |   |     | +-ColumnRef(type=STRUCT<a INT64, b INT64>, column=$array.t1#1)
+        |   |     +-field_idx=0
+        |   +-input_scan=
+        |     +-ArrayScan
+        |       +-column_list=[$array.t1#1]
+        |       +-array_expr_list=
+        |       | +-FunctionCall(GoogleSQL:$make_array(repeated(1) STRUCT<a INT64, b INT64>) -> ARRAY<STRUCT<a INT64, b INT64>>)
+        |       |   +-MakeStruct
+        |       |     +-type=STRUCT<a INT64, b INT64>
+        |       |     +-field_list=
+        |       |       +-Literal(type=INT64, value=1, has_explicit_type=TRUE)
+        |       |       +-Literal(type=INT64, value=3)
+        |       +-element_column_list=[$array.t1#1]
+        +-right_scan=
+        | +-ProjectScan
+        |   +-column_list=[$array.t2#2, $join_right.a#4]
+        |   +-expr_list=
+        |   | +-a#4 :=
+        |   |   +-GetStructField
+        |   |     +-type=INT32
+        |   |     +-expr=
+        |   |     | +-ColumnRef(type=STRUCT<a INT32, b INT64>, column=$array.t2#2)
+        |   |     +-field_idx=0
+        |   +-input_scan=
+        |     +-ArrayScan
+        |       +-column_list=[$array.t2#2]
+        |       +-array_expr_list=
+        |       | +-FunctionCall(GoogleSQL:$make_array(repeated(1) STRUCT<a INT32, b INT64>) -> ARRAY<STRUCT<a INT32, b INT64>>)
+        |       |   +-MakeStruct
+        |       |     +-type=STRUCT<a INT32, b INT64>
+        |       |     +-field_list=
+        |       |       +-Literal(type=INT32, value=1, has_explicit_type=TRUE)
+        |       |       +-Literal(type=INT64, value=4)
+        |       +-element_column_list=[$array.t2#2]
+        +-join_expr=
+        | +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+        |   +-ColumnRef(type=INT64, column=$join_left.a#3)
+        |   +-Cast(INT32 -> INT64)
+        |     +-ColumnRef(type=INT32, column=$join_right.a#4)
+        +-has_using=TRUE
+--
+ALTERNATION GROUP: FULL
+--
+QueryStmt
++-output_column_list=
+| +-$full_join.a#5 AS a [INT64]
+| +-$query.b#6 AS b [INT64]
+| +-$query.b#7 AS b [INT64]
+| +-$query.a#8 AS a [INT64]
+| +-$query.a#9 AS a [INT32]
++-query=
+  +-ProjectScan
+    +-column_list=[$full_join.a#5, $query.b#6, $query.b#7, $query.a#8, $query.a#9]
+    +-expr_list=
+    | +-b#6 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<a INT64, b INT64>, column=$array.t1#1)
+    | |   +-field_idx=1
+    | +-b#7 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<a INT32, b INT64>, column=$array.t2#2)
+    | |   +-field_idx=1
+    | +-a#8 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<a INT64, b INT64>, column=$array.t1#1)
+    | |   +-field_idx=0
+    | +-a#9 :=
+    |   +-GetStructField
+    |     +-type=INT32
+    |     +-expr=
+    |     | +-ColumnRef(type=STRUCT<a INT32, b INT64>, column=$array.t2#2)
+    |     +-field_idx=0
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[$array.t1#1, $join_left.a#3, $array.t2#2, $join_right.a#4, $full_join.a#5]
+        +-expr_list=
+        | +-a#5 :=
+        |   +-FunctionCall(GoogleSQL:coalesce(repeated(2) INT64) -> INT64)
+        |     +-ColumnRef(type=INT64, column=$join_left.a#3)
+        |     +-Cast(INT32 -> INT64)
+        |       +-ColumnRef(type=INT32, column=$join_right.a#4)
+        +-input_scan=
+          +-JoinScan
+            +-column_list=[$array.t1#1, $join_left.a#3, $array.t2#2, $join_right.a#4]
+            +-join_type=FULL
+            +-left_scan=
+            | +-ProjectScan
+            |   +-column_list=[$array.t1#1, $join_left.a#3]
+            |   +-expr_list=
+            |   | +-a#3 :=
+            |   |   +-GetStructField
+            |   |     +-type=INT64
+            |   |     +-expr=
+            |   |     | +-ColumnRef(type=STRUCT<a INT64, b INT64>, column=$array.t1#1)
+            |   |     +-field_idx=0
+            |   +-input_scan=
+            |     +-ArrayScan
+            |       +-column_list=[$array.t1#1]
+            |       +-array_expr_list=
+            |       | +-FunctionCall(GoogleSQL:$make_array(repeated(1) STRUCT<a INT64, b INT64>) -> ARRAY<STRUCT<a INT64, b INT64>>)
+            |       |   +-MakeStruct
+            |       |     +-type=STRUCT<a INT64, b INT64>
+            |       |     +-field_list=
+            |       |       +-Literal(type=INT64, value=1, has_explicit_type=TRUE)
+            |       |       +-Literal(type=INT64, value=3)
+            |       +-element_column_list=[$array.t1#1]
+            +-right_scan=
+            | +-ProjectScan
+            |   +-column_list=[$array.t2#2, $join_right.a#4]
+            |   +-expr_list=
+            |   | +-a#4 :=
+            |   |   +-GetStructField
+            |   |     +-type=INT32
+            |   |     +-expr=
+            |   |     | +-ColumnRef(type=STRUCT<a INT32, b INT64>, column=$array.t2#2)
+            |   |     +-field_idx=0
+            |   +-input_scan=
+            |     +-ArrayScan
+            |       +-column_list=[$array.t2#2]
+            |       +-array_expr_list=
+            |       | +-FunctionCall(GoogleSQL:$make_array(repeated(1) STRUCT<a INT32, b INT64>) -> ARRAY<STRUCT<a INT32, b INT64>>)
+            |       |   +-MakeStruct
+            |       |     +-type=STRUCT<a INT32, b INT64>
+            |       |     +-field_list=
+            |       |       +-Literal(type=INT32, value=1, has_explicit_type=TRUE)
+            |       |       +-Literal(type=INT64, value=4)
+            |       +-element_column_list=[$array.t2#2]
+            +-join_expr=
+            | +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+            |   +-ColumnRef(type=INT64, column=$join_left.a#3)
+            |   +-Cast(INT32 -> INT64)
+            |     +-ColumnRef(type=INT32, column=$join_right.a#4)
+            +-has_using=TRUE
+==
+
+# Same as the previous but reversing where the coercion occurs.
+select *, t1.a, t2.a
+from unnest([struct(cast(1 as INT32) as a, 3 as b)]) as t1
+     {{LEFT|RIGHT|FULL}} join
+     unnest([struct(cast(1 as INT64) as a, 4 as b)]) as t2
+using (a);
+--
+ALTERNATION GROUP: LEFT
+--
+QueryStmt
++-output_column_list=
+| +-$join_left.a#3 AS a [INT32]
+| +-$query.b#5 AS b [INT64]
+| +-$query.b#6 AS b [INT64]
+| +-$query.a#7 AS a [INT32]
+| +-$query.a#8 AS a [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$join_left.a#3, $query.b#5, $query.b#6, $query.a#7, $query.a#8]
+    +-expr_list=
+    | +-b#5 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<a INT32, b INT64>, column=$array.t1#1)
+    | |   +-field_idx=1
+    | +-b#6 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<a INT64, b INT64>, column=$array.t2#2)
+    | |   +-field_idx=1
+    | +-a#7 :=
+    | | +-GetStructField
+    | |   +-type=INT32
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<a INT32, b INT64>, column=$array.t1#1)
+    | |   +-field_idx=0
+    | +-a#8 :=
+    |   +-GetStructField
+    |     +-type=INT64
+    |     +-expr=
+    |     | +-ColumnRef(type=STRUCT<a INT64, b INT64>, column=$array.t2#2)
+    |     +-field_idx=0
+    +-input_scan=
+      +-ArrayScan
+        +-column_list=[$array.t1#1, $array.t2#2, $join_left.a#3]
+        +-input_scan=
+        | +-ProjectScan
+        |   +-column_list=[$array.t1#1, $join_left.a#3]
+        |   +-expr_list=
+        |   | +-a#3 :=
+        |   |   +-GetStructField
+        |   |     +-type=INT32
+        |   |     +-expr=
+        |   |     | +-ColumnRef(type=STRUCT<a INT32, b INT64>, column=$array.t1#1)
+        |   |     +-field_idx=0
+        |   +-input_scan=
+        |     +-ArrayScan
+        |       +-column_list=[$array.t1#1]
+        |       +-array_expr_list=
+        |       | +-FunctionCall(GoogleSQL:$make_array(repeated(1) STRUCT<a INT32, b INT64>) -> ARRAY<STRUCT<a INT32, b INT64>>)
+        |       |   +-MakeStruct
+        |       |     +-type=STRUCT<a INT32, b INT64>
+        |       |     +-field_list=
+        |       |       +-Literal(type=INT32, value=1, has_explicit_type=TRUE)
+        |       |       +-Literal(type=INT64, value=3)
+        |       +-element_column_list=[$array.t1#1]
+        +-array_expr_list=
+        | +-FunctionCall(GoogleSQL:$make_array(repeated(1) STRUCT<a INT64, b INT64>) -> ARRAY<STRUCT<a INT64, b INT64>>)
+        |   +-MakeStruct
+        |     +-type=STRUCT<a INT64, b INT64>
+        |     +-field_list=
+        |       +-Literal(type=INT64, value=1, has_explicit_type=TRUE)
+        |       +-Literal(type=INT64, value=4)
+        +-element_column_list=[$array.t2#2]
+        +-join_expr=
+        | +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+        |   +-Cast(INT32 -> INT64)
+        |   | +-ColumnRef(type=INT32, column=$join_left.a#3)
+        |   +-GetStructField
+        |     +-type=INT64
+        |     +-expr=
+        |     | +-ColumnRef(type=STRUCT<a INT64, b INT64>, column=$array.t2#2)
+        |     +-field_idx=0
+        +-is_outer=TRUE
+--
+ALTERNATION GROUP: RIGHT
+--
+QueryStmt
++-output_column_list=
+| +-$join_right.a#4 AS a [INT64]
+| +-$query.b#5 AS b [INT64]
+| +-$query.b#6 AS b [INT64]
+| +-$query.a#7 AS a [INT32]
+| +-$query.a#8 AS a [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$join_right.a#4, $query.b#5, $query.b#6, $query.a#7, $query.a#8]
+    +-expr_list=
+    | +-b#5 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<a INT32, b INT64>, column=$array.t1#1)
+    | |   +-field_idx=1
+    | +-b#6 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<a INT64, b INT64>, column=$array.t2#2)
+    | |   +-field_idx=1
+    | +-a#7 :=
+    | | +-GetStructField
+    | |   +-type=INT32
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<a INT32, b INT64>, column=$array.t1#1)
+    | |   +-field_idx=0
+    | +-a#8 :=
+    |   +-GetStructField
+    |     +-type=INT64
+    |     +-expr=
+    |     | +-ColumnRef(type=STRUCT<a INT64, b INT64>, column=$array.t2#2)
+    |     +-field_idx=0
+    +-input_scan=
+      +-JoinScan
+        +-column_list=[$array.t1#1, $join_left.a#3, $array.t2#2, $join_right.a#4]
+        +-join_type=RIGHT
+        +-left_scan=
+        | +-ProjectScan
+        |   +-column_list=[$array.t1#1, $join_left.a#3]
+        |   +-expr_list=
+        |   | +-a#3 :=
+        |   |   +-GetStructField
+        |   |     +-type=INT32
+        |   |     +-expr=
+        |   |     | +-ColumnRef(type=STRUCT<a INT32, b INT64>, column=$array.t1#1)
+        |   |     +-field_idx=0
+        |   +-input_scan=
+        |     +-ArrayScan
+        |       +-column_list=[$array.t1#1]
+        |       +-array_expr_list=
+        |       | +-FunctionCall(GoogleSQL:$make_array(repeated(1) STRUCT<a INT32, b INT64>) -> ARRAY<STRUCT<a INT32, b INT64>>)
+        |       |   +-MakeStruct
+        |       |     +-type=STRUCT<a INT32, b INT64>
+        |       |     +-field_list=
+        |       |       +-Literal(type=INT32, value=1, has_explicit_type=TRUE)
+        |       |       +-Literal(type=INT64, value=3)
+        |       +-element_column_list=[$array.t1#1]
+        +-right_scan=
+        | +-ProjectScan
+        |   +-column_list=[$array.t2#2, $join_right.a#4]
+        |   +-expr_list=
+        |   | +-a#4 :=
+        |   |   +-GetStructField
+        |   |     +-type=INT64
+        |   |     +-expr=
+        |   |     | +-ColumnRef(type=STRUCT<a INT64, b INT64>, column=$array.t2#2)
+        |   |     +-field_idx=0
+        |   +-input_scan=
+        |     +-ArrayScan
+        |       +-column_list=[$array.t2#2]
+        |       +-array_expr_list=
+        |       | +-FunctionCall(GoogleSQL:$make_array(repeated(1) STRUCT<a INT64, b INT64>) -> ARRAY<STRUCT<a INT64, b INT64>>)
+        |       |   +-MakeStruct
+        |       |     +-type=STRUCT<a INT64, b INT64>
+        |       |     +-field_list=
+        |       |       +-Literal(type=INT64, value=1, has_explicit_type=TRUE)
+        |       |       +-Literal(type=INT64, value=4)
+        |       +-element_column_list=[$array.t2#2]
+        +-join_expr=
+        | +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+        |   +-Cast(INT32 -> INT64)
+        |   | +-ColumnRef(type=INT32, column=$join_left.a#3)
+        |   +-ColumnRef(type=INT64, column=$join_right.a#4)
+        +-has_using=TRUE
+--
+ALTERNATION GROUP: FULL
+--
+QueryStmt
++-output_column_list=
+| +-$full_join.a#5 AS a [INT64]
+| +-$query.b#6 AS b [INT64]
+| +-$query.b#7 AS b [INT64]
+| +-$query.a#8 AS a [INT32]
+| +-$query.a#9 AS a [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$full_join.a#5, $query.b#6, $query.b#7, $query.a#8, $query.a#9]
+    +-expr_list=
+    | +-b#6 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<a INT32, b INT64>, column=$array.t1#1)
+    | |   +-field_idx=1
+    | +-b#7 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<a INT64, b INT64>, column=$array.t2#2)
+    | |   +-field_idx=1
+    | +-a#8 :=
+    | | +-GetStructField
+    | |   +-type=INT32
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<a INT32, b INT64>, column=$array.t1#1)
+    | |   +-field_idx=0
+    | +-a#9 :=
+    |   +-GetStructField
+    |     +-type=INT64
+    |     +-expr=
+    |     | +-ColumnRef(type=STRUCT<a INT64, b INT64>, column=$array.t2#2)
+    |     +-field_idx=0
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[$array.t1#1, $join_left.a#3, $array.t2#2, $join_right.a#4, $full_join.a#5]
+        +-expr_list=
+        | +-a#5 :=
+        |   +-FunctionCall(GoogleSQL:coalesce(repeated(2) INT64) -> INT64)
+        |     +-Cast(INT32 -> INT64)
+        |     | +-ColumnRef(type=INT32, column=$join_left.a#3)
+        |     +-ColumnRef(type=INT64, column=$join_right.a#4)
+        +-input_scan=
+          +-JoinScan
+            +-column_list=[$array.t1#1, $join_left.a#3, $array.t2#2, $join_right.a#4]
+            +-join_type=FULL
+            +-left_scan=
+            | +-ProjectScan
+            |   +-column_list=[$array.t1#1, $join_left.a#3]
+            |   +-expr_list=
+            |   | +-a#3 :=
+            |   |   +-GetStructField
+            |   |     +-type=INT32
+            |   |     +-expr=
+            |   |     | +-ColumnRef(type=STRUCT<a INT32, b INT64>, column=$array.t1#1)
+            |   |     +-field_idx=0
+            |   +-input_scan=
+            |     +-ArrayScan
+            |       +-column_list=[$array.t1#1]
+            |       +-array_expr_list=
+            |       | +-FunctionCall(GoogleSQL:$make_array(repeated(1) STRUCT<a INT32, b INT64>) -> ARRAY<STRUCT<a INT32, b INT64>>)
+            |       |   +-MakeStruct
+            |       |     +-type=STRUCT<a INT32, b INT64>
+            |       |     +-field_list=
+            |       |       +-Literal(type=INT32, value=1, has_explicit_type=TRUE)
+            |       |       +-Literal(type=INT64, value=3)
+            |       +-element_column_list=[$array.t1#1]
+            +-right_scan=
+            | +-ProjectScan
+            |   +-column_list=[$array.t2#2, $join_right.a#4]
+            |   +-expr_list=
+            |   | +-a#4 :=
+            |   |   +-GetStructField
+            |   |     +-type=INT64
+            |   |     +-expr=
+            |   |     | +-ColumnRef(type=STRUCT<a INT64, b INT64>, column=$array.t2#2)
+            |   |     +-field_idx=0
+            |   +-input_scan=
+            |     +-ArrayScan
+            |       +-column_list=[$array.t2#2]
+            |       +-array_expr_list=
+            |       | +-FunctionCall(GoogleSQL:$make_array(repeated(1) STRUCT<a INT64, b INT64>) -> ARRAY<STRUCT<a INT64, b INT64>>)
+            |       |   +-MakeStruct
+            |       |     +-type=STRUCT<a INT64, b INT64>
+            |       |     +-field_list=
+            |       |       +-Literal(type=INT64, value=1, has_explicit_type=TRUE)
+            |       |       +-Literal(type=INT64, value=4)
+            |       +-element_column_list=[$array.t2#2]
+            +-join_expr=
+            | +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+            |   +-Cast(INT32 -> INT64)
+            |   | +-ColumnRef(type=INT32, column=$join_left.a#3)
+            |   +-ColumnRef(type=INT64, column=$join_right.a#4)
+            +-has_using=TRUE

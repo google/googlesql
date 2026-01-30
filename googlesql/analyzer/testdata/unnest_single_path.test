@@ -1,0 +1,991 @@
+[default language_features=MAXIMUM,+UNNEST_AND_FLATTEN_ARRAYS,+SINGLE_TABLE_NAME_ARRAY_PATH]
+
+# Path expression pattern:
+#   table.invalid_path
+#   fake_catalog.table.invalid_path
+SELECT 1 FROM {{|catalog.}}TestTable.fake.array
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: Name fake not found inside TestTable [at 4:25]
+SELECT 1 FROM TestTable.fake.array
+                        ^
+--
+ALTERNATION GROUP: catalog.
+--
+ERROR: Table not found: catalog.TestTable.fake.`array` [at 4:15]
+SELECT 1 FROM catalog.TestTable.fake.array
+              ^
+==
+
+# Path expression pattern: catalog.table.invalid_path
+SELECT 1 FROM nested_catalog.KeyValueNested.fake.array
+--
+ERROR: Name fake not found inside KeyValueNested [at 1:45]
+SELECT 1 FROM nested_catalog.KeyValueNested.fake.array
+                                            ^
+==
+
+# Path expression pattern:
+#   table.proto.invalid_path
+SELECT 1 FROM TestTable.KitchenSink.fake.array
+--
+ERROR: Protocol buffer googlesql_test.KitchenSinkPB does not have a field called fake; Did you mean date? [at 1:37]
+SELECT 1 FROM TestTable.KitchenSink.fake.array
+                                    ^
+==
+
+# Path expression pattern:
+#   table.struct.invalid_path
+SELECT 1 FROM StructWithKitchenSinkTable.t.fake
+--
+ERROR: Field name fake does not exist in STRUCT<a INT64, b ARRAY<STRUCT<kitchen_sink googlesql_test.KitchenSinkPB>>> [at 1:44]
+SELECT 1 FROM StructWithKitchenSinkTable.t.fake
+                                           ^
+==
+
+# Path expression pattern: table.proto.non_array
+SELECT 1 FROM TestTable.KitchenSink.nested_value.nested_int64
+--
+ERROR: Values referenced in FROM clause must be arrays. TestTable.KitchenSink.nested_value.nested_int64 has type INT64 [at 1:15]
+SELECT 1 FROM TestTable.KitchenSink.nested_value.nested_int64
+              ^
+==
+
+# Path expression pattern: catalog.catalog.table.non_array
+SELECT 1 FROM nested_catalog.nested.nested.value
+--
+ERROR: Values referenced in FROM clause must be arrays. nested.value has type STRING [at 1:37]
+SELECT 1 FROM nested_catalog.nested.nested.value
+                                    ^
+==
+
+# Path expression pattern: table.struct.non_array
+SELECT 1 FROM StructWithKitchenSinkTable.t.a
+--
+ERROR: Values referenced in FROM clause must be arrays. StructWithKitchenSinkTable.t.a has type INT64 [at 1:15]
+SELECT 1 FROM StructWithKitchenSinkTable.t.a
+              ^
+==
+
+# Path expression pattern:
+#   table.struct.array
+SELECT {{1|e}} FROM StructWithKitchenSinkTable.t.b AS e
+--
+ALTERNATION GROUP: 1
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#5 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#5]
+    +-expr_list=
+    | +-$col1#5 := Literal(type=INT64, value=1)
+    +-input_scan=
+      +-ArrayScan
+        +-node_source="single_table_array_name_path"
+        +-input_scan=
+        | +-TableScan(column_list=[StructWithKitchenSinkTable.t#3], table=StructWithKitchenSinkTable, column_index_list=[2], alias="StructWithKitchenSinkTable")
+        +-array_expr_list=
+        | +-GetStructField
+        |   +-type=ARRAY<STRUCT<kitchen_sink PROTO<googlesql_test.KitchenSinkPB>>>
+        |   +-expr=
+        |   | +-ColumnRef(type=STRUCT<a INT64, b ARRAY<STRUCT<kitchen_sink PROTO<googlesql_test.KitchenSinkPB>>>>, column=StructWithKitchenSinkTable.t#3)
+        |   +-field_idx=1
+        +-element_column_list=[$array.e#4]
+--
+ALTERNATION GROUP: e
+--
+QueryStmt
++-output_column_list=
+| +-$array.e#4 AS e [STRUCT<kitchen_sink PROTO<googlesql_test.KitchenSinkPB>>]
++-query=
+  +-ProjectScan
+    +-column_list=[$array.e#4]
+    +-input_scan=
+      +-ArrayScan
+        +-column_list=[$array.e#4]
+        +-node_source="single_table_array_name_path"
+        +-input_scan=
+        | +-TableScan(column_list=[StructWithKitchenSinkTable.t#3], table=StructWithKitchenSinkTable, column_index_list=[2], alias="StructWithKitchenSinkTable")
+        +-array_expr_list=
+        | +-GetStructField
+        |   +-type=ARRAY<STRUCT<kitchen_sink PROTO<googlesql_test.KitchenSinkPB>>>
+        |   +-expr=
+        |   | +-ColumnRef(type=STRUCT<a INT64, b ARRAY<STRUCT<kitchen_sink PROTO<googlesql_test.KitchenSinkPB>>>>, column=StructWithKitchenSinkTable.t#3)
+        |   +-field_idx=1
+        +-element_column_list=[$array.e#4]
+==
+
+# Path expression pattern: table.proto.array.invalid_path
+SELECT 1 FROM TestTable.KitchenSink.nested_repeated_value.fake
+--
+ERROR: Protocol buffer googlesql_test.KitchenSinkPB.Nested does not have a field called fake [at 1:59]
+SELECT 1 FROM TestTable.KitchenSink.nested_repeated_value.fake
+                                                          ^
+==
+
+# Path expression pattern: table.struct.array.invalid_path
+SELECT 1 FROM MoreComplexTypes.StructOfArrayOfStruct.z.fake
+--
+ERROR: Field name fake does not exist in STRUCT<a INT32, b STRING> [at 1:56]
+SELECT 1 FROM MoreComplexTypes.StructOfArrayOfStruct.z.fake
+                                                       ^
+==
+
+# Path expression pattern: table.proto.array
+SELECT * FROM TestTable.KitchenSink.repeated_int32_val
+--
+QueryStmt
++-output_column_list=
+| +-$array.repeated_int32_val#4 AS repeated_int32_val [INT32]
++-query=
+  +-ProjectScan
+    +-column_list=[$array.repeated_int32_val#4]
+    +-input_scan=
+      +-ArrayScan
+        +-column_list=[$array.repeated_int32_val#4]
+        +-node_source="single_table_array_name_path"
+        +-input_scan=
+        | +-TableScan(column_list=[TestTable.KitchenSink#3], table=TestTable, column_index_list=[2])
+        +-array_expr_list=
+        | +-GetProtoField
+        |   +-type=ARRAY<INT32>
+        |   +-expr=
+        |   | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=TestTable.KitchenSink#3)
+        |   +-field_descriptor=repeated_int32_val
+        |   +-default_value=[]
+        +-element_column_list=[$array.repeated_int32_val#4]
+==
+
+# Path expression pattern:
+#   catalog.table.proto.field.array
+# Java does not support recursive catalog.
+[no_java]
+select ri
+from recursive_catalog.recursive_catalog.TestTable.KitchenSink.nested_value.nested_repeated_int64 ri;
+--
+QueryStmt
++-output_column_list=
+| +-$array.ri#4 AS ri [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$array.ri#4]
+    +-input_scan=
+      +-ArrayScan
+        +-column_list=[$array.ri#4]
+        +-node_source="single_table_array_name_path"
+        +-input_scan=
+        | +-TableScan(column_list=[TestTable.KitchenSink#3], table=TestTable, column_index_list=[2], alias="TestTable")
+        +-array_expr_list=
+        | +-GetProtoField
+        |   +-type=ARRAY<INT64>
+        |   +-expr=
+        |   | +-GetProtoField
+        |   |   +-type=PROTO<googlesql_test.KitchenSinkPB.Nested>
+        |   |   +-expr=
+        |   |   | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=TestTable.KitchenSink#3)
+        |   |   +-field_descriptor=nested_value
+        |   |   +-default_value=NULL
+        |   +-field_descriptor=nested_repeated_int64
+        |   +-default_value=[]
+        +-element_column_list=[$array.ri#4]
+==
+
+# Path expression pattern:
+#   table.proto.field.array
+select *
+from TestTable.KitchenSink.nested_value.nested_repeated_int64;
+--
+QueryStmt
++-output_column_list=
+| +-$array.nested_repeated_int64#4 AS nested_repeated_int64 [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$array.nested_repeated_int64#4]
+    +-input_scan=
+      +-ArrayScan
+        +-column_list=[$array.nested_repeated_int64#4]
+        +-node_source="single_table_array_name_path"
+        +-input_scan=
+        | +-TableScan(column_list=[TestTable.KitchenSink#3], table=TestTable, column_index_list=[2])
+        +-array_expr_list=
+        | +-GetProtoField
+        |   +-type=ARRAY<INT64>
+        |   +-expr=
+        |   | +-GetProtoField
+        |   |   +-type=PROTO<googlesql_test.KitchenSinkPB.Nested>
+        |   |   +-expr=
+        |   |   | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=TestTable.KitchenSink#3)
+        |   |   +-field_descriptor=nested_value
+        |   |   +-default_value=NULL
+        |   +-field_descriptor=nested_repeated_int64
+        |   +-default_value=[]
+        +-element_column_list=[$array.nested_repeated_int64#4]
+==
+
+# Path expression pattern:
+#   table.proto.array.array
+select *
+from TestTable.KitchenSink.nested_repeated_value.nested_repeated_int64;
+--
+QueryStmt
++-output_column_list=
+| +-$array.nested_repeated_int64#4 AS nested_repeated_int64 [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$array.nested_repeated_int64#4]
+    +-input_scan=
+      +-ArrayScan
+        +-column_list=[$array.nested_repeated_int64#4]
+        +-node_source="single_table_array_name_path"
+        +-input_scan=
+        | +-TableScan(column_list=[TestTable.KitchenSink#3], table=TestTable, column_index_list=[2])
+        +-array_expr_list=
+        | +-Flatten
+        |   +-type=ARRAY<INT64>
+        |   +-expr=
+        |   | +-GetProtoField
+        |   |   +-type=ARRAY<PROTO<googlesql_test.KitchenSinkPB.Nested>>
+        |   |   +-expr=
+        |   |   | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=TestTable.KitchenSink#3)
+        |   |   +-field_descriptor=nested_repeated_value
+        |   |   +-default_value=[]
+        |   +-get_field_list=
+        |     +-GetProtoField
+        |       +-type=ARRAY<INT64>
+        |       +-expr=
+        |       | +-FlattenedArg(type=PROTO<googlesql_test.KitchenSinkPB.Nested>)
+        |       +-field_descriptor=nested_repeated_int64
+        |       +-default_value=[]
+        +-element_column_list=[$array.nested_repeated_int64#4]
+==
+
+# Name scoping against array scan's output value table column.
+# Path expression pattern:
+#   table.proto.array
+select nested_repeated_int64
+from TestTable.KitchenSink.nested_repeated_value
+--
+QueryStmt
++-output_column_list=
+| +-$query.nested_repeated_int64#5 AS nested_repeated_int64 [ARRAY<INT64>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.nested_repeated_int64#5]
+    +-expr_list=
+    | +-nested_repeated_int64#5 :=
+    |   +-GetProtoField
+    |     +-type=ARRAY<INT64>
+    |     +-expr=
+    |     | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB.Nested>, column=$array.nested_repeated_value#4)
+    |     +-field_descriptor=nested_repeated_int64
+    |     +-default_value=[]
+    +-input_scan=
+      +-ArrayScan
+        +-column_list=[$array.nested_repeated_value#4]
+        +-node_source="single_table_array_name_path"
+        +-input_scan=
+        | +-TableScan(column_list=[TestTable.KitchenSink#3], table=TestTable, column_index_list=[2])
+        +-array_expr_list=
+        | +-GetProtoField
+        |   +-type=ARRAY<PROTO<googlesql_test.KitchenSinkPB.Nested>>
+        |   +-expr=
+        |   | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=TestTable.KitchenSink#3)
+        |   +-field_descriptor=nested_repeated_value
+        |   +-default_value=[]
+        +-element_column_list=[$array.nested_repeated_value#4]
+==
+
+# Path expression pattern: table.array
+select *
+from ArrayTypes.ProtoArray
+--
+QueryStmt
++-output_column_list=
+| +-$query.int32_val1#22 AS int32_val1 [INT32]
+| +-$query.int32_val2#23 AS int32_val2 [INT32]
+| +-$query.str_value#24 AS str_value [ARRAY<STRING>]
++-query=
+  +-ProjectScan
+    +-column_list=$query.[int32_val1#22, int32_val2#23, str_value#24]
+    +-expr_list=
+    | +-int32_val1#22 :=
+    | | +-GetProtoField
+    | |   +-type=INT32
+    | |   +-expr=
+    | |   | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=$array.ProtoArray#21)
+    | |   +-field_descriptor=int32_val1
+    | |   +-default_value=0
+    | +-int32_val2#23 :=
+    | | +-GetProtoField
+    | |   +-type=INT32
+    | |   +-expr=
+    | |   | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=$array.ProtoArray#21)
+    | |   +-field_descriptor=int32_val2
+    | |   +-default_value=0
+    | +-str_value#24 :=
+    |   +-GetProtoField
+    |     +-type=ARRAY<STRING>
+    |     +-expr=
+    |     | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=$array.ProtoArray#21)
+    |     +-field_descriptor=str_value
+    |     +-default_value=[]
+    +-input_scan=
+      +-ArrayScan
+        +-column_list=[$array.ProtoArray#21]
+        +-node_source="single_table_array_name_path"
+        +-input_scan=
+        | +-TableScan(column_list=[ArrayTypes.ProtoArray#15], table=ArrayTypes, column_index_list=[14])
+        +-array_expr_list=
+        | +-ColumnRef(type=ARRAY<PROTO<googlesql_test.TestExtraPB>>, column=ArrayTypes.ProtoArray#15)
+        +-element_column_list=[$array.ProtoArray#21]
+==
+
+# Path expression pattern: table.array.json_field
+select *
+from ArrayTypes.JsonArray.json_field
+--
+QueryStmt
++-output_column_list=
+| +-$array.json_field#21 AS json_field [JSON]
++-query=
+  +-ProjectScan
+    +-column_list=[$array.json_field#21]
+    +-input_scan=
+      +-ArrayScan
+        +-column_list=[$array.json_field#21]
+        +-node_source="single_table_array_name_path"
+        +-input_scan=
+        | +-TableScan(column_list=[ArrayTypes.JsonArray#17], table=ArrayTypes, column_index_list=[16])
+        +-array_expr_list=
+        | +-Flatten
+        |   +-type=ARRAY<JSON>
+        |   +-expr=
+        |   | +-ColumnRef(type=ARRAY<JSON>, column=ArrayTypes.JsonArray#17)
+        |   +-get_field_list=
+        |     +-GetJsonField
+        |       +-type=JSON
+        |       +-expr=
+        |       | +-FlattenedArg(type=JSON)
+        |       +-field_name="json_field"
+        +-element_column_list=[$array.json_field#21]
+==
+
+# Path expression pattern:
+#   table.array.has_field
+#   table.array.field
+select *
+from ArrayTypes.ProtoArray.{{has_int32_val1|int32_val1}}
+--
+ALTERNATION GROUP: has_int32_val1
+--
+QueryStmt
++-output_column_list=
+| +-$array.has_int32_val1#21 AS has_int32_val1 [BOOL]
++-query=
+  +-ProjectScan
+    +-column_list=[$array.has_int32_val1#21]
+    +-input_scan=
+      +-ArrayScan
+        +-column_list=[$array.has_int32_val1#21]
+        +-node_source="single_table_array_name_path"
+        +-input_scan=
+        | +-TableScan(column_list=[ArrayTypes.ProtoArray#15], table=ArrayTypes, column_index_list=[14])
+        +-array_expr_list=
+        | +-Flatten
+        |   +-type=ARRAY<BOOL>
+        |   +-expr=
+        |   | +-ColumnRef(type=ARRAY<PROTO<googlesql_test.TestExtraPB>>, column=ArrayTypes.ProtoArray#15)
+        |   +-get_field_list=
+        |     +-GetProtoField
+        |       +-type=BOOL
+        |       +-expr=
+        |       | +-FlattenedArg(type=PROTO<googlesql_test.TestExtraPB>)
+        |       +-field_descriptor=int32_val1
+        |       +-get_has_bit=TRUE
+        +-element_column_list=[$array.has_int32_val1#21]
+--
+ALTERNATION GROUP: int32_val1
+--
+QueryStmt
++-output_column_list=
+| +-$array.int32_val1#21 AS int32_val1 [INT32]
++-query=
+  +-ProjectScan
+    +-column_list=[$array.int32_val1#21]
+    +-input_scan=
+      +-ArrayScan
+        +-column_list=[$array.int32_val1#21]
+        +-node_source="single_table_array_name_path"
+        +-input_scan=
+        | +-TableScan(column_list=[ArrayTypes.ProtoArray#15], table=ArrayTypes, column_index_list=[14])
+        +-array_expr_list=
+        | +-Flatten
+        |   +-type=ARRAY<INT32>
+        |   +-expr=
+        |   | +-ColumnRef(type=ARRAY<PROTO<googlesql_test.TestExtraPB>>, column=ArrayTypes.ProtoArray#15)
+        |   +-get_field_list=
+        |     +-GetProtoField
+        |       +-type=INT32
+        |       +-expr=
+        |       | +-FlattenedArg(type=PROTO<googlesql_test.TestExtraPB>)
+        |       +-field_descriptor=int32_val1
+        |       +-default_value=0
+        +-element_column_list=[$array.int32_val1#21]
+==
+
+# Name scoping against array scan's output value table column that has an
+# assigned alias.
+# Path expression pattern:
+#   table.proto.array.array.field
+select {{int32_val1|*}}
+from TestTable.KitchenSink.repeated_holder.repeated_field.int32_val1 value
+--
+ALTERNATION GROUP: int32_val1
+--
+ERROR: Unrecognized name: int32_val1 [at 1:8]
+select int32_val1
+       ^
+--
+ALTERNATION GROUP: *
+--
+QueryStmt
++-output_column_list=
+| +-$array.value#4 AS value [INT32]
++-query=
+  +-ProjectScan
+    +-column_list=[$array.value#4]
+    +-input_scan=
+      +-ArrayScan
+        +-column_list=[$array.value#4]
+        +-node_source="single_table_array_name_path"
+        +-input_scan=
+        | +-TableScan(column_list=[TestTable.KitchenSink#3], table=TestTable, column_index_list=[2], alias="TestTable")
+        +-array_expr_list=
+        | +-Flatten
+        |   +-type=ARRAY<INT32>
+        |   +-expr=
+        |   | +-GetProtoField
+        |   |   +-type=ARRAY<PROTO<googlesql_test.RepeatedHolderPB>>
+        |   |   +-expr=
+        |   |   | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=TestTable.KitchenSink#3)
+        |   |   +-field_descriptor=repeated_holder
+        |   |   +-default_value=[]
+        |   +-get_field_list=
+        |     +-GetProtoField
+        |     | +-type=ARRAY<PROTO<googlesql_test.TestExtraPB>>
+        |     | +-expr=
+        |     | | +-FlattenedArg(type=PROTO<googlesql_test.RepeatedHolderPB>)
+        |     | +-field_descriptor=repeated_field
+        |     | +-default_value=[]
+        |     +-GetProtoField
+        |       +-type=INT32
+        |       +-expr=
+        |       | +-FlattenedArg(type=PROTO<googlesql_test.TestExtraPB>)
+        |       +-field_descriptor=int32_val1
+        |       +-default_value=0
+        +-element_column_list=[$array.value#4]
+==
+
+# We should not be able to select range variable name that is not exposed in
+# in the array scan name scope.
+# Path expression pattern:
+#   table.proto.array.array.field
+SELECT TestTable{{|.*}}
+FROM TestTable.KitchenSink.repeated_holder.repeated_field.int32_val1 value
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: Unrecognized name: TestTable [at 1:8]
+SELECT TestTable
+       ^
+--
+ALTERNATION GROUP: .*
+--
+ERROR: Unrecognized name: TestTable [at 1:8]
+SELECT TestTable.*
+       ^
+==
+
+select value
+from unnest(ArrayTypes.ProtoArray) value
+--
+ERROR: UNNEST cannot be applied on path expression with non-correlated table name prefix ArrayTypes [at 2:13]
+from unnest(ArrayTypes.ProtoArray) value
+            ^
+==
+
+[enabled_ast_rewrites=DEFAULTS]
+# Path expression pattern that is arbitrary long:
+#   table.proto.array.array.array.field.array.field
+select value
+from RecursivePBTable.RecursivePB.repeated_recursive_pb.repeated_recursive_pb.repeated_recursive_pb.recursive_pb.repeated_recursive_pb.int64_val value
+--
+QueryStmt
++-output_column_list=
+| +-$array.value#2 AS value [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$array.value#2]
+    +-input_scan=
+      +-ArrayScan
+        +-column_list=[$array.value#2]
+        +-node_source="single_table_array_name_path"
+        +-input_scan=
+        | +-TableScan(column_list=[RecursivePBTable.RecursivePB#1], table=RecursivePBTable, column_index_list=[0], alias="RecursivePBTable")
+        +-array_expr_list=
+        | +-Flatten
+        |   +-type=ARRAY<INT64>
+        |   +-expr=
+        |   | +-GetProtoField
+        |   |   +-type=ARRAY<PROTO<googlesql_test.RecursivePB>>
+        |   |   +-expr=
+        |   |   | +-ColumnRef(type=PROTO<googlesql_test.RecursivePB>, column=RecursivePBTable.RecursivePB#1)
+        |   |   +-field_descriptor=repeated_recursive_pb
+        |   |   +-default_value=[]
+        |   +-get_field_list=
+        |     +-GetProtoField
+        |     | +-type=ARRAY<PROTO<googlesql_test.RecursivePB>>
+        |     | +-expr=
+        |     | | +-FlattenedArg(type=PROTO<googlesql_test.RecursivePB>)
+        |     | +-field_descriptor=repeated_recursive_pb
+        |     | +-default_value=[]
+        |     +-GetProtoField
+        |     | +-type=ARRAY<PROTO<googlesql_test.RecursivePB>>
+        |     | +-expr=
+        |     | | +-FlattenedArg(type=PROTO<googlesql_test.RecursivePB>)
+        |     | +-field_descriptor=repeated_recursive_pb
+        |     | +-default_value=[]
+        |     +-GetProtoField
+        |     | +-type=PROTO<googlesql_test.RecursivePB>
+        |     | +-expr=
+        |     | | +-FlattenedArg(type=PROTO<googlesql_test.RecursivePB>)
+        |     | +-field_descriptor=recursive_pb
+        |     | +-default_value=NULL
+        |     +-GetProtoField
+        |     | +-type=ARRAY<PROTO<googlesql_test.RecursivePB>>
+        |     | +-expr=
+        |     | | +-FlattenedArg(type=PROTO<googlesql_test.RecursivePB>)
+        |     | +-field_descriptor=repeated_recursive_pb
+        |     | +-default_value=[]
+        |     +-GetProtoField
+        |       +-type=INT64
+        |       +-expr=
+        |       | +-FlattenedArg(type=PROTO<googlesql_test.RecursivePB>)
+        |       +-field_descriptor=int64_val
+        |       +-default_value=0
+        +-element_column_list=[$array.value#2]
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$array.value#2 AS value [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$array.value#2]
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[$array.value#2]
+        +-expr_list=
+        | +-value#2 := ColumnRef(type=INT64, column=$flatten.injected#7)
+        +-input_scan=
+          +-ProjectScan
+            +-column_list=[RecursivePBTable.RecursivePB#1, $flatten.injected#3, $flatten.injected#4, $flatten.injected#5, $flatten.injected#6, $flatten.injected#7]
+            +-expr_list=
+            | +-injected#7 :=
+            |   +-GetProtoField
+            |     +-type=INT64
+            |     +-expr=
+            |     | +-ColumnRef(type=PROTO<googlesql_test.RecursivePB>, column=$flatten.injected#6)
+            |     +-field_descriptor=int64_val
+            |     +-default_value=0
+            +-input_scan=
+              +-ArrayScan
+                +-column_list=[RecursivePBTable.RecursivePB#1, $flatten.injected#3, $flatten.injected#4, $flatten.injected#5, $flatten.injected#6]
+                +-input_scan=
+                | +-ArrayScan
+                |   +-column_list=[RecursivePBTable.RecursivePB#1, $flatten.injected#3, $flatten.injected#4, $flatten.injected#5]
+                |   +-input_scan=
+                |   | +-ArrayScan
+                |   |   +-column_list=[RecursivePBTable.RecursivePB#1, $flatten.injected#3, $flatten.injected#4]
+                |   |   +-input_scan=
+                |   |   | +-ArrayScan
+                |   |   |   +-column_list=[RecursivePBTable.RecursivePB#1, $flatten.injected#3]
+                |   |   |   +-input_scan=
+                |   |   |   | +-TableScan(column_list=[RecursivePBTable.RecursivePB#1], table=RecursivePBTable, column_index_list=[0], alias="RecursivePBTable")
+                |   |   |   +-array_expr_list=
+                |   |   |   | +-GetProtoField
+                |   |   |   |   +-type=ARRAY<PROTO<googlesql_test.RecursivePB>>
+                |   |   |   |   +-expr=
+                |   |   |   |   | +-ColumnRef(type=PROTO<googlesql_test.RecursivePB>, column=RecursivePBTable.RecursivePB#1)
+                |   |   |   |   +-field_descriptor=repeated_recursive_pb
+                |   |   |   |   +-default_value=[]
+                |   |   |   +-element_column_list=[$flatten.injected#3]
+                |   |   +-array_expr_list=
+                |   |   | +-GetProtoField
+                |   |   |   +-type=ARRAY<PROTO<googlesql_test.RecursivePB>>
+                |   |   |   +-expr=
+                |   |   |   | +-ColumnRef(type=PROTO<googlesql_test.RecursivePB>, column=$flatten.injected#3)
+                |   |   |   +-field_descriptor=repeated_recursive_pb
+                |   |   |   +-default_value=[]
+                |   |   +-element_column_list=[$flatten.injected#4]
+                |   +-array_expr_list=
+                |   | +-GetProtoField
+                |   |   +-type=ARRAY<PROTO<googlesql_test.RecursivePB>>
+                |   |   +-expr=
+                |   |   | +-ColumnRef(type=PROTO<googlesql_test.RecursivePB>, column=$flatten.injected#4)
+                |   |   +-field_descriptor=repeated_recursive_pb
+                |   |   +-default_value=[]
+                |   +-element_column_list=[$flatten.injected#5]
+                +-array_expr_list=
+                | +-GetProtoField
+                |   +-type=ARRAY<PROTO<googlesql_test.RecursivePB>>
+                |   +-expr=
+                |   | +-GetProtoField
+                |   |   +-type=PROTO<googlesql_test.RecursivePB>
+                |   |   +-expr=
+                |   |   | +-ColumnRef(type=PROTO<googlesql_test.RecursivePB>, column=$flatten.injected#5)
+                |   |   +-field_descriptor=recursive_pb
+                |   |   +-default_value=NULL
+                |   +-field_descriptor=repeated_recursive_pb
+                |   +-default_value=[]
+                +-element_column_list=[$flatten.injected#6]
+==
+
+# Path expression that contains invalid pattern:
+#   table.proto.array.array.array.array_element_access_operator...
+select value
+from RecursivePBTable.RecursivePB.repeated_recursive_pb.repeated_recursive_pb.repeated_recursive_pb[OFFSET(0)].repeated_recursive_pb.int64_val value
+--
+ERROR: Syntax error: Array element access is not allowed in the FROM clause without UNNEST; Use UNNEST(<expression>) [at 2:100]
+...repeated_recursive_pb.repeated_recursive_pb[OFFSET(0)].repeated_recursive_...
+                                              ^
+
+==
+
+# Path expression that contains invalid pattern:
+#   table.proto.array.array.array.generalized_field_access...
+select value
+from ArrayTypes.ProtoArray.(googlesql_test.TestExtraPBExtensionHolder.test_extra_proto_extension).ext_value value
+--
+ERROR: Syntax error: Generalized field access is not allowed in the FROM clause without UNNEST; Use UNNEST(<expression>) [at 2:28]
+from ArrayTypes.ProtoArray.(googlesql_test.TestExtraPBExtensionHolder.test_ex...
+                           ^
+==
+
+[enabled_ast_rewrites=DEFAULTS]
+[language_features=NONE,+SINGLE_TABLE_NAME_ARRAY_PATH,+UNNEST_AND_FLATTEN_ARRAYS,+PIVOT{{|,+DISALLOW_PIVOT_AND_UNPIVOT_ON_ARRAY_SCANS}}]
+SELECT * FROM ArrayTypes.ProtoArray.int32_val1 AS Value PIVOT(COUNT(Value) FOR int32_val1 IN (0, 1));
+--
+ALTERNATION GROUP: <empty>
+--
+QueryStmt
++-output_column_list=
+| +-$array.Value#21 AS Value [INT32]
++-query=
+  +-ProjectScan
+    +-column_list=[$array.Value#21]
+    +-input_scan=
+      +-ArrayScan
+        +-column_list=[$array.Value#21]
+        +-node_source="single_table_array_name_path"
+        +-input_scan=
+        | +-TableScan(column_list=[ArrayTypes.ProtoArray#15], table=ArrayTypes, column_index_list=[14], alias="ArrayTypes")
+        +-array_expr_list=
+        | +-Flatten
+        |   +-type=ARRAY<INT32>
+        |   +-expr=
+        |   | +-ColumnRef(type=ARRAY<PROTO<googlesql_test.TestExtraPB>>, column=ArrayTypes.ProtoArray#15)
+        |   +-get_field_list=
+        |     +-GetProtoField
+        |       +-type=INT32
+        |       +-expr=
+        |       | +-FlattenedArg(type=PROTO<googlesql_test.TestExtraPB>)
+        |       +-field_descriptor=int32_val1
+        |       +-default_value=0
+        +-element_column_list=[$array.Value#21]
+
+
+DEPRECATION WARNING:
+PIVOT is not allowed with array scans. This will become an error [at 1:57]
+...FROM ArrayTypes.ProtoArray.int32_val1 AS Value PIVOT(COUNT(Value) FOR int3...
+                                                  ^
+[googlesql.DeprecationWarning] { kind: PIVOT_OR_UNPIVOT_ON_ARRAY_SCAN }
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$array.Value#21 AS Value [INT32]
++-query=
+  +-ProjectScan
+    +-column_list=[$array.Value#21]
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[$array.Value#21]
+        +-expr_list=
+        | +-Value#21 := ColumnRef(type=INT32, column=$flatten.injected#23)
+        +-input_scan=
+          +-ProjectScan
+            +-column_list=[ArrayTypes.ProtoArray#15, $flatten.injected#22, $flatten.injected#23]
+            +-expr_list=
+            | +-injected#23 :=
+            |   +-GetProtoField
+            |     +-type=INT32
+            |     +-expr=
+            |     | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=$flatten.injected#22)
+            |     +-field_descriptor=int32_val1
+            |     +-default_value=0
+            +-input_scan=
+              +-ArrayScan
+                +-column_list=[ArrayTypes.ProtoArray#15, $flatten.injected#22]
+                +-input_scan=
+                | +-TableScan(column_list=[ArrayTypes.ProtoArray#15], table=ArrayTypes, column_index_list=[14], alias="ArrayTypes")
+                +-array_expr_list=
+                | +-ColumnRef(type=ARRAY<PROTO<googlesql_test.TestExtraPB>>, column=ArrayTypes.ProtoArray#15)
+                +-element_column_list=[$flatten.injected#22]
+--
+ALTERNATION GROUP: ,+DISALLOW_PIVOT_AND_UNPIVOT_ON_ARRAY_SCANS
+--
+ERROR: PIVOT is not allowed with array scans [at 1:57]
+...FROM ArrayTypes.ProtoArray.int32_val1 AS Value PIVOT(COUNT(Value) FOR int3...
+                                                  ^
+==
+
+[enabled_ast_rewrites=DEFAULTS]
+[language_features=NONE,+SINGLE_TABLE_NAME_ARRAY_PATH,+UNNEST_AND_FLATTEN_ARRAYS,+PIVOT{{|,+DISALLOW_PIVOT_AND_UNPIVOT_ON_ARRAY_SCANS}}]
+SELECT * FROM ArrayTypes.ProtoArray.int32_val1 UNPIVOT(a FOR b IN (int32_val1));
+--
+ALTERNATION GROUP: <empty>
+--
+QueryStmt
++-output_column_list=
+| +-$array.int32_val1#21 AS int32_val1 [INT32]
++-query=
+  +-ProjectScan
+    +-column_list=[$array.int32_val1#21]
+    +-input_scan=
+      +-ArrayScan
+        +-column_list=[$array.int32_val1#21]
+        +-node_source="single_table_array_name_path"
+        +-input_scan=
+        | +-TableScan(column_list=[ArrayTypes.ProtoArray#15], table=ArrayTypes, column_index_list=[14])
+        +-array_expr_list=
+        | +-Flatten
+        |   +-type=ARRAY<INT32>
+        |   +-expr=
+        |   | +-ColumnRef(type=ARRAY<PROTO<googlesql_test.TestExtraPB>>, column=ArrayTypes.ProtoArray#15)
+        |   +-get_field_list=
+        |     +-GetProtoField
+        |       +-type=INT32
+        |       +-expr=
+        |       | +-FlattenedArg(type=PROTO<googlesql_test.TestExtraPB>)
+        |       +-field_descriptor=int32_val1
+        |       +-default_value=0
+        +-element_column_list=[$array.int32_val1#21]
+
+
+DEPRECATION WARNING:
+UNPIVOT is not allowed with array scans. This will become an error [at 1:48]
+SELECT * FROM ArrayTypes.ProtoArray.int32_val1 UNPIVOT(a FOR b IN (int32_val1));
+                                               ^
+[googlesql.DeprecationWarning] { kind: PIVOT_OR_UNPIVOT_ON_ARRAY_SCAN }
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$array.int32_val1#21 AS int32_val1 [INT32]
++-query=
+  +-ProjectScan
+    +-column_list=[$array.int32_val1#21]
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[$array.int32_val1#21]
+        +-expr_list=
+        | +-int32_val1#21 := ColumnRef(type=INT32, column=$flatten.injected#23)
+        +-input_scan=
+          +-ProjectScan
+            +-column_list=[ArrayTypes.ProtoArray#15, $flatten.injected#22, $flatten.injected#23]
+            +-expr_list=
+            | +-injected#23 :=
+            |   +-GetProtoField
+            |     +-type=INT32
+            |     +-expr=
+            |     | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=$flatten.injected#22)
+            |     +-field_descriptor=int32_val1
+            |     +-default_value=0
+            +-input_scan=
+              +-ArrayScan
+                +-column_list=[ArrayTypes.ProtoArray#15, $flatten.injected#22]
+                +-input_scan=
+                | +-TableScan(column_list=[ArrayTypes.ProtoArray#15], table=ArrayTypes, column_index_list=[14])
+                +-array_expr_list=
+                | +-ColumnRef(type=ARRAY<PROTO<googlesql_test.TestExtraPB>>, column=ArrayTypes.ProtoArray#15)
+                +-element_column_list=[$flatten.injected#22]
+--
+ALTERNATION GROUP: ,+DISALLOW_PIVOT_AND_UNPIVOT_ON_ARRAY_SCANS
+--
+ERROR: UNPIVOT is not allowed with array scans [at 1:48]
+SELECT * FROM ArrayTypes.ProtoArray.int32_val1 UNPIVOT(a FOR b IN (int32_val1));
+                                               ^
+==
+
+[language_features=NONE,+SINGLE_TABLE_NAME_ARRAY_PATH,+UNNEST_AND_FLATTEN_ARRAYS,+TABLESAMPLE]
+SELECT * FROM ArrayTypes.ProtoArray.int32_val1 AS Value
+TABLESAMPLE RESERVOIR (100 ROWS);
+--
+ERROR: TABLESAMPLE is not allowed with array scans [at 2:1]
+TABLESAMPLE RESERVOIR (100 ROWS);
+^
+==
+
+# This is to test backward compatibility.
+# Path expression pattern with JOIN condition:
+#   table JOIN table.valid_array_path
+[language_features=NONE,{{|+SINGLE_TABLE_NAME_ARRAY_PATH}}]
+SELECT *
+FROM
+  TestTable{{| as TestTable}}{{,| CROSS JOIN}}
+  TestTable.KitchenSink.repeated_int32_val
+--
+ALTERNATION GROUPS:
+    ,
+     CROSS JOIN
+    +SINGLE_TABLE_NAME_ARRAY_PATH,,,
+    +SINGLE_TABLE_NAME_ARRAY_PATH,, CROSS JOIN
+--
+QueryStmt
++-output_column_list=
+| +-TestTable.key#1 AS key [INT32]
+| +-TestTable.TestEnum#2 AS TestEnum [ENUM<googlesql_test.TestEnum>]
+| +-TestTable.KitchenSink#3 AS KitchenSink [PROTO<googlesql_test.KitchenSinkPB>]
+| +-$array.repeated_int32_val#4 AS repeated_int32_val [INT32]
++-query=
+  +-ProjectScan
+    +-column_list=[TestTable.key#1, TestTable.TestEnum#2, TestTable.KitchenSink#3, $array.repeated_int32_val#4]
+    +-input_scan=
+      +-ArrayScan
+        +-column_list=[TestTable.key#1, TestTable.TestEnum#2, TestTable.KitchenSink#3, $array.repeated_int32_val#4]
+        +-input_scan=
+        | +-TableScan(column_list=TestTable.[key#1, TestEnum#2, KitchenSink#3], table=TestTable, column_index_list=[0, 1, 2])
+        +-array_expr_list=
+        | +-GetProtoField
+        |   +-type=ARRAY<INT32>
+        |   +-expr=
+        |   | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=TestTable.KitchenSink#3)
+        |   +-field_descriptor=repeated_int32_val
+        |   +-default_value=[]
+        +-element_column_list=[$array.repeated_int32_val#4]
+--
+ALTERNATION GROUPS:
+     as TestTable,,
+     as TestTable, CROSS JOIN
+    +SINGLE_TABLE_NAME_ARRAY_PATH, as TestTable,,
+    +SINGLE_TABLE_NAME_ARRAY_PATH, as TestTable, CROSS JOIN
+--
+QueryStmt
++-output_column_list=
+| +-TestTable.key#1 AS key [INT32]
+| +-TestTable.TestEnum#2 AS TestEnum [ENUM<googlesql_test.TestEnum>]
+| +-TestTable.KitchenSink#3 AS KitchenSink [PROTO<googlesql_test.KitchenSinkPB>]
+| +-$array.repeated_int32_val#4 AS repeated_int32_val [INT32]
++-query=
+  +-ProjectScan
+    +-column_list=[TestTable.key#1, TestTable.TestEnum#2, TestTable.KitchenSink#3, $array.repeated_int32_val#4]
+    +-input_scan=
+      +-ArrayScan
+        +-column_list=[TestTable.key#1, TestTable.TestEnum#2, TestTable.KitchenSink#3, $array.repeated_int32_val#4]
+        +-input_scan=
+        | +-TableScan(column_list=TestTable.[key#1, TestEnum#2, KitchenSink#3], table=TestTable, column_index_list=[0, 1, 2], alias="TestTable")
+        +-array_expr_list=
+        | +-GetProtoField
+        |   +-type=ARRAY<INT32>
+        |   +-expr=
+        |   | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=TestTable.KitchenSink#3)
+        |   +-field_descriptor=repeated_int32_val
+        |   +-default_value=[]
+        +-element_column_list=[$array.repeated_int32_val#4]
+==
+
+# This is to test how this feature works with subquery.
+SELECT original_alias FROM (
+ SELECT *
+ FROM TestTable.KitchenSink.repeated_int32_val AS original_alias
+)
+--
+QueryStmt
++-output_column_list=
+| +-$array.original_alias#4 AS original_alias [INT32]
++-query=
+  +-ProjectScan
+    +-column_list=[$array.original_alias#4]
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[$array.original_alias#4]
+        +-input_scan=
+          +-ArrayScan
+            +-column_list=[$array.original_alias#4]
+            +-node_source="single_table_array_name_path"
+            +-input_scan=
+            | +-TableScan(column_list=[TestTable.KitchenSink#3], table=TestTable, column_index_list=[2], alias="TestTable")
+            +-array_expr_list=
+            | +-GetProtoField
+            |   +-type=ARRAY<INT32>
+            |   +-expr=
+            |   | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=TestTable.KitchenSink#3)
+            |   +-field_descriptor=repeated_int32_val
+            |   +-default_value=[]
+            +-element_column_list=[$array.original_alias#4]
+==
+
+# This is to demontrate that this feature does not work with correlated subquery.
+select (select e from KeyValue, subq.KitchenSink.nested_repeated_value.nested_repeated_int64 AS e)
+from (select KitchenSink from TestTable) subq
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#7 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#7]
+    +-expr_list=
+    | +-$col1#7 :=
+    |   +-SubqueryExpr
+    |     +-type=INT64
+    |     +-subquery_type=SCALAR
+    |     +-parameter_list=
+    |     | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=TestTable.KitchenSink#3)
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$array.e#6]
+    |         +-input_scan=
+    |           +-ArrayScan
+    |             +-column_list=[$array.e#6]
+    |             +-input_scan=
+    |             | +-TableScan(table=KeyValue)
+    |             +-array_expr_list=
+    |             | +-Flatten
+    |             |   +-type=ARRAY<INT64>
+    |             |   +-expr=
+    |             |   | +-GetProtoField
+    |             |   |   +-type=ARRAY<PROTO<googlesql_test.KitchenSinkPB.Nested>>
+    |             |   |   +-expr=
+    |             |   |   | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=TestTable.KitchenSink#3, is_correlated=TRUE)
+    |             |   |   +-field_descriptor=nested_repeated_value
+    |             |   |   +-default_value=[]
+    |             |   +-get_field_list=
+    |             |     +-GetProtoField
+    |             |       +-type=ARRAY<INT64>
+    |             |       +-expr=
+    |             |       | +-FlattenedArg(type=PROTO<googlesql_test.KitchenSinkPB.Nested>)
+    |             |       +-field_descriptor=nested_repeated_int64
+    |             |       +-default_value=[]
+    |             +-element_column_list=[$array.e#6]
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[TestTable.KitchenSink#3]
+        +-input_scan=
+          +-TableScan(column_list=[TestTable.KitchenSink#3], table=TestTable, column_index_list=[2])
+==
+

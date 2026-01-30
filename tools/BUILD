@@ -18,7 +18,7 @@ load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 
 licenses(["notice"])
 
-package(default_visibility = ["//zetasql/base:zetasql_implementation"])
+package(default_visibility = ["//googlesql/base:googlesql_implementation"])
 
 exports_files([
     "pom-template.xml",

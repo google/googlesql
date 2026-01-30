@@ -1,0 +1,455 @@
+# Tests for VECTOR_SEARCH TVF.
+#
+# Similar to approx_distance_functions for supplied arguments, we would Nested
+# serilization logic to run Java tests.
+[default no_java]
+[default language_features=MAXIMUM,+VECTOR_SEARCH_TVF]
+[default no_enable_literal_replacement]
+# Disable literal replacement for VECTOR_SEARCH_TVF because arguments like
+# column_to_search, query_column_to_search, and distance_type must be constant
+# string literals.
+
+# The test catalog contains:
+# base_table(id INT64, embedding ARRAY<DOUBLE>, string_col STRING)
+# query_table(id INT64, query_embedding ARRAY<DOUBLE>, embedding ARRAY<DOUBLE>)
+# base_table_wrong_type(id INT64, embedding ARRAY<STRING>)
+
+# Basic call with positional arguments
+SELECT * FROM vector_search(TABLE base_table, 'embedding', TABLE query_table, 'query_embedding')
+--
+QueryStmt
++-output_column_list=
+| +-vector_search.query#9 AS query [STRUCT<id INT64, query_embedding ARRAY<DOUBLE>, embedding ARRAY<DOUBLE>, float_embedding ARRAY<FLOAT>, string_query_col STRING>]
+| +-vector_search.base#10 AS base [STRUCT<id INT64, embedding ARRAY<DOUBLE>, string_col STRING>]
+| +-vector_search.distance#11 AS distance [DOUBLE]
++-query=
+  +-ProjectScan
+    +-column_list=vector_search.[query#9, base#10, distance#11]
+    +-input_scan=
+      +-TVFScan
+        +-column_list=vector_search.[query#9, base#10, distance#11]
+        +-tvf=GoogleSQL:vector_search((ANY TABLE, STRING {must_be_constant: true, must_be_non_null: true} column_to_search, ANY TABLE, optional STRING {must_be_constant: true} query_column_to_search, optional PROTO<googlesql_test.TestApproxDistanceFunctionOptionsProto> {must_be_immutable_constant: true} options, optional INT64 {must_be_constant: true, default_value: 10} top_k, optional STRING {must_be_constant: true, default_value: "EUCLIDEAN"} distance_type, optional DOUBLE {must_be_constant: true, default_value: NULL} max_distance) -> ANY TABLE)
+        +-signature=(TABLE<id INT64, embedding ARRAY<DOUBLE>, string_col STRING>, literal STRING, TABLE<id INT64, query_embedding ARRAY<DOUBLE>, embedding ARRAY<DOUBLE>, float_embedding ARRAY<FLOAT>, string_query_col STRING>, literal STRING, null PROTO<googlesql_test.TestApproxDistanceFunctionOptionsProto>, literal INT64, literal STRING, null DOUBLE) -> TABLE<query STRUCT<id INT64, query_embedding ARRAY<DOUBLE>, embedding ARRAY<DOUBLE>, float_embedding ARRAY<FLOAT>, string_query_col STRING>, base STRUCT<id INT64, embedding ARRAY<DOUBLE>, string_col STRING>, distance DOUBLE>
+        +-argument_list=
+        | +-FunctionArgument
+        | | +-scan=
+        | | | +-TableScan(column_list=base_table.[id#1, embedding#2, string_col#3], node_source="table_clause", table=base_table, column_index_list=[0, 1, 2])
+        | | +-argument_column_list=base_table.[id#1, embedding#2, string_col#3]
+        | +-FunctionArgument
+        | | +-expr=
+        | |   +-Literal(type=STRING, value="embedding")
+        | +-FunctionArgument
+        | | +-scan=
+        | | | +-TableScan(column_list=query_table.[id#4, query_embedding#5, embedding#6, float_embedding#7, string_query_col#8], node_source="table_clause", table=query_table, column_index_list=[0, 1, 2, 3, 4])
+        | | +-argument_column_list=query_table.[id#4, query_embedding#5, embedding#6, float_embedding#7, string_query_col#8]
+        | +-FunctionArgument
+        | | +-expr=
+        | |   +-Literal(type=STRING, value="query_embedding")
+        | +-FunctionArgument
+        | | +-expr=
+        | |   +-Literal(type=PROTO<googlesql_test.TestApproxDistanceFunctionOptionsProto>, value=NULL, preserve_in_literal_remover=TRUE)
+        | +-FunctionArgument
+        | | +-expr=
+        | |   +-Literal(type=INT64, value=10)
+        | +-FunctionArgument
+        | | +-expr=
+        | |   +-Literal(type=STRING, value="EUCLIDEAN")
+        | +-FunctionArgument
+        |   +-expr=
+        |     +-Literal(type=DOUBLE, value=NULL)
+        +-column_index_list=[0, 1, 2]
+        +-function_call_signature=(ANY TABLE, STRING column_to_search, ANY TABLE, optional(1) STRING query_column_to_search, optional(1) PROTO<googlesql_test.TestApproxDistanceFunctionOptionsProto> options, optional(1) INT64 top_k, optional(1) STRING distance_type, optional(1) DOUBLE max_distance) -> ANY TABLE
+==
+
+# Call with all arguments
+SELECT * FROM vector_search(
+  TABLE base_table,
+  'embedding',
+  TABLE query_table,
+  'query_embedding',
+  top_k => 5,
+  distance_type => 'COSINE',
+  max_distance => 0.8,
+  options => new googlesql_test.TestApproxDistanceFunctionOptionsProto(1 as key, "value2" as value)
+)
+--
+QueryStmt
++-output_column_list=
+| +-vector_search.query#9 AS query [STRUCT<id INT64, query_embedding ARRAY<DOUBLE>, embedding ARRAY<DOUBLE>, float_embedding ARRAY<FLOAT>, string_query_col STRING>]
+| +-vector_search.base#10 AS base [STRUCT<id INT64, embedding ARRAY<DOUBLE>, string_col STRING>]
+| +-vector_search.distance#11 AS distance [DOUBLE]
++-query=
+  +-ProjectScan
+    +-column_list=vector_search.[query#9, base#10, distance#11]
+    +-input_scan=
+      +-TVFScan
+        +-column_list=vector_search.[query#9, base#10, distance#11]
+        +-tvf=GoogleSQL:vector_search((ANY TABLE, STRING {must_be_constant: true, must_be_non_null: true} column_to_search, ANY TABLE, optional STRING {must_be_constant: true} query_column_to_search, optional PROTO<googlesql_test.TestApproxDistanceFunctionOptionsProto> {must_be_immutable_constant: true} options, optional INT64 {must_be_constant: true, default_value: 10} top_k, optional STRING {must_be_constant: true, default_value: "EUCLIDEAN"} distance_type, optional DOUBLE {must_be_constant: true, default_value: NULL} max_distance) -> ANY TABLE)
+        +-signature=(TABLE<id INT64, embedding ARRAY<DOUBLE>, string_col STRING>, literal STRING, TABLE<id INT64, query_embedding ARRAY<DOUBLE>, embedding ARRAY<DOUBLE>, float_embedding ARRAY<FLOAT>, string_query_col STRING>, literal STRING, PROTO<googlesql_test.TestApproxDistanceFunctionOptionsProto>, literal INT64, literal STRING, literal DOUBLE) -> TABLE<query STRUCT<id INT64, query_embedding ARRAY<DOUBLE>, embedding ARRAY<DOUBLE>, float_embedding ARRAY<FLOAT>, string_query_col STRING>, base STRUCT<id INT64, embedding ARRAY<DOUBLE>, string_col STRING>, distance DOUBLE>
+        +-argument_list=
+        | +-FunctionArgument
+        | | +-scan=
+        | | | +-TableScan(column_list=base_table.[id#1, embedding#2, string_col#3], node_source="table_clause", table=base_table, column_index_list=[0, 1, 2])
+        | | +-argument_column_list=base_table.[id#1, embedding#2, string_col#3]
+        | +-FunctionArgument
+        | | +-expr=
+        | |   +-Literal(type=STRING, value="embedding")
+        | +-FunctionArgument
+        | | +-scan=
+        | | | +-TableScan(column_list=query_table.[id#4, query_embedding#5, embedding#6, float_embedding#7, string_query_col#8], node_source="table_clause", table=query_table, column_index_list=[0, 1, 2, 3, 4])
+        | | +-argument_column_list=query_table.[id#4, query_embedding#5, embedding#6, float_embedding#7, string_query_col#8]
+        | +-FunctionArgument
+        | | +-expr=
+        | |   +-Literal(type=STRING, value="query_embedding")
+        | +-FunctionArgument
+        | | +-expr=
+        | |   +-MakeProto
+        | |     +-type=PROTO<googlesql_test.TestApproxDistanceFunctionOptionsProto>
+        | |     +-field_list=
+        | |       +-key := Literal(type=INT64, value=1)
+        | |       +-value := Literal(type=STRING, value="value2")
+        | +-FunctionArgument
+        | | +-expr=
+        | |   +-Literal(type=INT64, value=5)
+        | +-FunctionArgument
+        | | +-expr=
+        | |   +-Literal(type=STRING, value="COSINE")
+        | +-FunctionArgument
+        |   +-expr=
+        |     +-Literal(type=DOUBLE, value=0.8, float_literal_id=1)
+        +-column_index_list=[0, 1, 2]
+        +-function_call_signature=(ANY TABLE, STRING column_to_search, ANY TABLE, optional(1) STRING query_column_to_search, optional(1) PROTO<googlesql_test.TestApproxDistanceFunctionOptionsProto> options, optional(1) INT64 top_k, optional(1) STRING distance_type, optional(1) DOUBLE max_distance) -> ANY TABLE
+==
+
+# query table as SELECT query
+SELECT * FROM vector_search(
+  TABLE base_table,
+  'embedding',
+  (SELECT query_embedding FROM query_table),
+  'query_embedding',
+  options => new googlesql_test.TestApproxDistanceFunctionOptionsProto(),
+  top_k => 5,
+  distance_type => 'COSINE',
+  max_distance => 0.8
+)
+--
+QueryStmt
++-output_column_list=
+| +-vector_search.query#9 AS query [STRUCT<query_embedding ARRAY<DOUBLE>>]
+| +-vector_search.base#10 AS base [STRUCT<id INT64, embedding ARRAY<DOUBLE>, string_col STRING>]
+| +-vector_search.distance#11 AS distance [DOUBLE]
++-query=
+  +-ProjectScan
+    +-column_list=vector_search.[query#9, base#10, distance#11]
+    +-input_scan=
+      +-TVFScan
+        +-column_list=vector_search.[query#9, base#10, distance#11]
+        +-tvf=GoogleSQL:vector_search((ANY TABLE, STRING {must_be_constant: true, must_be_non_null: true} column_to_search, ANY TABLE, optional STRING {must_be_constant: true} query_column_to_search, optional PROTO<googlesql_test.TestApproxDistanceFunctionOptionsProto> {must_be_immutable_constant: true} options, optional INT64 {must_be_constant: true, default_value: 10} top_k, optional STRING {must_be_constant: true, default_value: "EUCLIDEAN"} distance_type, optional DOUBLE {must_be_constant: true, default_value: NULL} max_distance) -> ANY TABLE)
+        +-signature=(TABLE<id INT64, embedding ARRAY<DOUBLE>, string_col STRING>, literal STRING, TABLE<query_embedding ARRAY<DOUBLE>>, literal STRING, PROTO<googlesql_test.TestApproxDistanceFunctionOptionsProto>, literal INT64, literal STRING, literal DOUBLE) -> TABLE<query STRUCT<query_embedding ARRAY<DOUBLE>>, base STRUCT<id INT64, embedding ARRAY<DOUBLE>, string_col STRING>, distance DOUBLE>
+        +-argument_list=
+        | +-FunctionArgument
+        | | +-scan=
+        | | | +-TableScan(column_list=base_table.[id#1, embedding#2, string_col#3], node_source="table_clause", table=base_table, column_index_list=[0, 1, 2])
+        | | +-argument_column_list=base_table.[id#1, embedding#2, string_col#3]
+        | +-FunctionArgument
+        | | +-expr=
+        | |   +-Literal(type=STRING, value="embedding")
+        | +-FunctionArgument
+        | | +-scan=
+        | | | +-ProjectScan
+        | | |   +-column_list=[query_table.query_embedding#5]
+        | | |   +-input_scan=
+        | | |     +-TableScan(column_list=[query_table.query_embedding#5], table=query_table, column_index_list=[1])
+        | | +-argument_column_list=[query_table.query_embedding#5]
+        | +-FunctionArgument
+        | | +-expr=
+        | |   +-Literal(type=STRING, value="query_embedding")
+        | +-FunctionArgument
+        | | +-expr=
+        | |   +-MakeProto(type=PROTO<googlesql_test.TestApproxDistanceFunctionOptionsProto>)
+        | +-FunctionArgument
+        | | +-expr=
+        | |   +-Literal(type=INT64, value=5)
+        | +-FunctionArgument
+        | | +-expr=
+        | |   +-Literal(type=STRING, value="COSINE")
+        | +-FunctionArgument
+        |   +-expr=
+        |     +-Literal(type=DOUBLE, value=0.8, float_literal_id=1)
+        +-column_index_list=[0, 1, 2]
+        +-function_call_signature=(ANY TABLE, STRING column_to_search, ANY TABLE, optional(1) STRING query_column_to_search, optional(1) PROTO<googlesql_test.TestApproxDistanceFunctionOptionsProto> options, optional(1) INT64 top_k, optional(1) STRING distance_type, optional(1) DOUBLE max_distance) -> ANY TABLE
+==
+
+# implicit query_column_to_search
+SELECT * FROM vector_search(TABLE base_table, 'embedding', TABLE query_table)
+--
+QueryStmt
++-output_column_list=
+| +-vector_search.query#9 AS query [STRUCT<id INT64, query_embedding ARRAY<DOUBLE>, embedding ARRAY<DOUBLE>, float_embedding ARRAY<FLOAT>, string_query_col STRING>]
+| +-vector_search.base#10 AS base [STRUCT<id INT64, embedding ARRAY<DOUBLE>, string_col STRING>]
+| +-vector_search.distance#11 AS distance [DOUBLE]
++-query=
+  +-ProjectScan
+    +-column_list=vector_search.[query#9, base#10, distance#11]
+    +-input_scan=
+      +-TVFScan
+        +-column_list=vector_search.[query#9, base#10, distance#11]
+        +-tvf=GoogleSQL:vector_search((ANY TABLE, STRING {must_be_constant: true, must_be_non_null: true} column_to_search, ANY TABLE, optional STRING {must_be_constant: true} query_column_to_search, optional PROTO<googlesql_test.TestApproxDistanceFunctionOptionsProto> {must_be_immutable_constant: true} options, optional INT64 {must_be_constant: true, default_value: 10} top_k, optional STRING {must_be_constant: true, default_value: "EUCLIDEAN"} distance_type, optional DOUBLE {must_be_constant: true, default_value: NULL} max_distance) -> ANY TABLE)
+        +-signature=(TABLE<id INT64, embedding ARRAY<DOUBLE>, string_col STRING>, literal STRING, TABLE<id INT64, query_embedding ARRAY<DOUBLE>, embedding ARRAY<DOUBLE>, float_embedding ARRAY<FLOAT>, string_query_col STRING>, null STRING, null PROTO<googlesql_test.TestApproxDistanceFunctionOptionsProto>, literal INT64, literal STRING, null DOUBLE) -> TABLE<query STRUCT<id INT64, query_embedding ARRAY<DOUBLE>, embedding ARRAY<DOUBLE>, float_embedding ARRAY<FLOAT>, string_query_col STRING>, base STRUCT<id INT64, embedding ARRAY<DOUBLE>, string_col STRING>, distance DOUBLE>
+        +-argument_list=
+        | +-FunctionArgument
+        | | +-scan=
+        | | | +-TableScan(column_list=base_table.[id#1, embedding#2, string_col#3], node_source="table_clause", table=base_table, column_index_list=[0, 1, 2])
+        | | +-argument_column_list=base_table.[id#1, embedding#2, string_col#3]
+        | +-FunctionArgument
+        | | +-expr=
+        | |   +-Literal(type=STRING, value="embedding")
+        | +-FunctionArgument
+        | | +-scan=
+        | | | +-TableScan(column_list=query_table.[id#4, query_embedding#5, embedding#6, float_embedding#7, string_query_col#8], node_source="table_clause", table=query_table, column_index_list=[0, 1, 2, 3, 4])
+        | | +-argument_column_list=query_table.[id#4, query_embedding#5, embedding#6, float_embedding#7, string_query_col#8]
+        | +-FunctionArgument
+        | | +-expr=
+        | |   +-Literal(type=STRING, value=NULL)
+        | +-FunctionArgument
+        | | +-expr=
+        | |   +-Literal(type=PROTO<googlesql_test.TestApproxDistanceFunctionOptionsProto>, value=NULL, preserve_in_literal_remover=TRUE)
+        | +-FunctionArgument
+        | | +-expr=
+        | |   +-Literal(type=INT64, value=10)
+        | +-FunctionArgument
+        | | +-expr=
+        | |   +-Literal(type=STRING, value="EUCLIDEAN")
+        | +-FunctionArgument
+        |   +-expr=
+        |     +-Literal(type=DOUBLE, value=NULL)
+        +-column_index_list=[0, 1, 2]
+        +-function_call_signature=(ANY TABLE, STRING column_to_search, ANY TABLE, optional(1) STRING query_column_to_search, optional(1) PROTO<googlesql_test.TestApproxDistanceFunctionOptionsProto> options, optional(1) INT64 top_k, optional(1) STRING distance_type, optional(1) DOUBLE max_distance) -> ANY TABLE
+==
+
+# options argument is a JSON literal
+SELECT * FROM vector_search(TABLE base_table, 'embedding', TABLE query_table, options => IFNULL(NULL, JSON '{"key1": 1, "key2": 2}'))
+--
+ERROR: No matching signature for vector_search
+  Argument types: TABLE<id INT64, embedding ARRAY<DOUBLE>, string_col STRING>, STRING, TABLE<id INT64, query_embedding ARRAY<DOUBLE>, embedding ARRAY<DOUBLE>, float_embedding ARRAY<FLOAT>, string_query_col STRING>, STRING, JSON, INT64, STRING, DOUBLE
+  Signature: VECTOR_SEARCH(TABLE, column_to_search => STRING, TABLE, [query_column_to_search => STRING], [options => googlesql_test.TestApproxDistanceFunctionOptionsProto], [top_k => INT64], [distance_type => STRING], [max_distance => DOUBLE])
+    Argument 5: Unable to coerce type JSON to expected type googlesql_test.TestApproxDistanceFunctionOptionsProto [at 1:15]
+SELECT * FROM vector_search(TABLE base_table, 'embedding', TABLE query_table,...
+              ^
+==
+
+# options argument is not a proto
+SELECT * FROM vector_search(TABLE base_table, 'embedding', TABLE query_table, options => CAST(1 AS STRING))
+--
+ERROR: No matching signature for vector_search
+  Argument types: TABLE<id INT64, embedding ARRAY<DOUBLE>, string_col STRING>, STRING, TABLE<id INT64, query_embedding ARRAY<DOUBLE>, embedding ARRAY<DOUBLE>, float_embedding ARRAY<FLOAT>, string_query_col STRING>, STRING, STRING, INT64, STRING, DOUBLE
+  Signature: VECTOR_SEARCH(TABLE, column_to_search => STRING, TABLE, [query_column_to_search => STRING], [options => googlesql_test.TestApproxDistanceFunctionOptionsProto], [top_k => INT64], [distance_type => STRING], [max_distance => DOUBLE])
+    Argument 5: Unable to coerce type STRING to expected type googlesql_test.TestApproxDistanceFunctionOptionsProto [at 1:15]
+SELECT * FROM vector_search(TABLE base_table, 'embedding', TABLE query_table,...
+              ^
+==
+
+# column_to_search does not exist
+SELECT * FROM vector_search(TABLE base_table, 'non_existent_col', TABLE query_table, 'query_embedding')
+--
+ERROR: Unrecognized name: non_existent_col in table TABLE<id INT64, embedding ARRAY<DOUBLE>, string_col STRING> [at 1:15]
+SELECT * FROM vector_search(TABLE base_table, 'non_existent_col', TABLE query...
+              ^
+==
+
+# column_to_search is not ARRAY<DOUBLE>
+SELECT * FROM vector_search(TABLE base_table_wrong_type, 'embedding', TABLE query_table, 'query_embedding')
+--
+ERROR: The column specified by the `column_to_search` argument of vector_search TVF must be of type ARRAY<DOUBLE> or ARRAY<FLOAT> or STRING [at 1:15]
+SELECT * FROM vector_search(TABLE base_table_wrong_type, 'embedding', TABLE q...
+              ^
+==
+
+# query_column_to_search does not exist
+SELECT * FROM vector_search(TABLE base_table, 'embedding', TABLE query_table, 'non_existent_col')
+--
+ERROR: Unrecognized name: non_existent_col in table TABLE<id INT64, query_embedding ARRAY<DOUBLE>, embedding ARRAY<DOUBLE>, float_embedding ARRAY<FLOAT>, string_query_col STRING> [at 1:15]
+SELECT * FROM vector_search(TABLE base_table, 'embedding', TABLE query_table,...
+              ^
+==
+
+# query_column_to_search is not ARRAY<DOUBLE> or ARRAY<FLOAT> or STRING
+SELECT * FROM vector_search(TABLE base_table, 'embedding', TABLE base_table_wrong_type, 'embedding')
+--
+ERROR: The column specified by the `query_column_to_search` argument of vector_search TVF must be of type ARRAY<DOUBLE> or ARRAY<FLOAT> or STRING [at 1:15]
+SELECT * FROM vector_search(TABLE base_table, 'embedding', TABLE base_table_w...
+              ^
+==
+
+# Mismatched column types between base and query tables
+SELECT * FROM vector_search(TABLE base_table, 'embedding', TABLE query_table, 'string_query_col')
+--
+ERROR: The column types of argument `column_to_search` in the base table and argument `query_column_to_search` in the query table must be the same [at 1:15]
+SELECT * FROM vector_search(TABLE base_table, 'embedding', TABLE query_table,...
+              ^
+==
+
+# Mismatched array element types between base and query tables
+SELECT * FROM vector_search(TABLE base_table, 'embedding', TABLE query_table, 'float_embedding')
+--
+ERROR: The column types of argument `column_to_search` in the base table and argument `query_column_to_search` in the query table must be the same [at 1:15]
+SELECT * FROM vector_search(TABLE base_table, 'embedding', TABLE query_table,...
+              ^
+==
+
+# Invalid distance_type value
+SELECT * FROM vector_search(
+  TABLE base_table,
+  'embedding',
+  TABLE query_table,
+  'query_embedding',
+  distance_type => 'MANHATTAN'
+)
+--
+ERROR: `distance_type` argument of vector_search TVF must be set to one of COSINE or DOT_PRODUCT or EUCLIDEAN [at 1:15]
+SELECT * FROM vector_search(
+              ^
+==
+
+# Invalid options value
+SELECT * FROM vector_search(
+  TABLE base_table,
+  'embedding',
+  TABLE query_table,
+  'query_embedding',
+  options => 'invalid_json'
+)
+--
+ERROR: Could not cast literal "invalid_json" to type googlesql_test.TestApproxDistanceFunctionOptionsProto (Error parsing proto: Message type "googlesql_test.TestApproxDistanceFunctionOptionsProto" has no field named "invalid_json". [1:13]) [at 6:14]
+  options => 'invalid_json'
+             ^
+==
+
+# NULL column_to_search argument
+SELECT * FROM vector_search(TABLE base_table, NULL, TABLE query_table, 'query_embedding')
+--
+ERROR: Argument 2 to table-valued function VECTOR_SEARCH must be non-NULL [at 1:47]
+SELECT * FROM vector_search(TABLE base_table, NULL, TABLE query_table, 'query...
+                                              ^
+==
+
+# column_to_search argument is not constant
+SELECT * FROM vector_search(TABLE base_table, CONCAT('a', 'b'), TABLE query_table, 'query_embedding')
+--
+ERROR: Argument 2 to table-valued function VECTOR_SEARCH must be a literal or query parameter [at 1:47]
+SELECT * FROM vector_search(TABLE base_table, CONCAT('a', 'b'), TABLE query_t...
+                                              ^
+==
+
+# top_k argument is not a literal or query parameter
+SELECT * FROM vector_search(
+  TABLE base_table,
+  'embedding',
+  TABLE query_table,
+  'query_embedding',
+  top_k => 5 + 6,
+  distance_type => 'COSINE',
+  max_distance => 0.8,
+  options => new googlesql_test.TestApproxDistanceFunctionOptionsProto(1 as key, "value2" as value)
+)
+--
+ERROR: Argument 'top_k' to table-valued function VECTOR_SEARCH must be a literal or query parameter [at 6:3]
+  top_k => 5 + 6,
+  ^
+==
+
+# max_distance argument is not a literal or query parameter
+SELECT * FROM vector_search(
+  TABLE base_table,
+  'embedding',
+  TABLE query_table,
+  'query_embedding',
+  max_distance => 0.8 + 0.9,
+  distance_type => 'COSINE',
+  options => new googlesql_test.TestApproxDistanceFunctionOptionsProto(1 as key, "value2" as value)
+)
+--
+ERROR: Argument 'max_distance' to table-valued function VECTOR_SEARCH must be a literal or query parameter [at 6:3]
+  max_distance => 0.8 + 0.9,
+  ^
+==
+
+# Batch Vector_SEARCH, options proto not passed with named argument
+SELECT * FROM vector_search(
+  TABLE base_table,
+  'embedding',
+  TABLE query_table,
+  'query_embedding',
+  new googlesql_test.TestApproxDistanceFunctionOptionsProto(1 as key, "value2" as value),
+  max_distance => 0.8,
+  distance_type => 'COSINE'
+)
+
+--
+ERROR: No matching signature for vector_search
+  Argument types: TABLE<id INT64, embedding ARRAY<DOUBLE>, string_col STRING>, STRING, TABLE<id INT64, query_embedding ARRAY<DOUBLE>, embedding ARRAY<DOUBLE>, float_embedding ARRAY<FLOAT>, string_query_col STRING>, STRING, googlesql_test.TestApproxDistanceFunctionOptionsProto, DOUBLE, STRING
+  Signature: VECTOR_SEARCH(TABLE, column_to_search => STRING, TABLE, [query_column_to_search => STRING], [options => googlesql_test.TestApproxDistanceFunctionOptionsProto], [top_k => INT64], [distance_type => STRING], [max_distance => DOUBLE])
+    Positional argument at 5 is invalid because argument `options` can only be referred to by name [at 1:15]
+SELECT * FROM vector_search(
+              ^
+==
+
+# top_k argument is 0
+SELECT * FROM vector_search(
+  TABLE base_table,
+  'embedding',
+  TABLE query_table,
+  'query_embedding',
+  top_k => 0
+)
+--
+ERROR: Argument 'top_k' to table-valued function VECTOR_SEARCH must be at least 1 [at 6:3]
+  top_k => 0
+  ^
+==
+
+# top_k argument is negative
+SELECT * FROM vector_search(
+  TABLE base_table,
+  'embedding',
+  TABLE query_table,
+  'query_embedding',
+  top_k => -1
+)
+--
+ERROR: Argument 'top_k' to table-valued function VECTOR_SEARCH must be at least 1 [at 6:3]
+  top_k => -1
+  ^
+==
+
+# Implicit query column by name, but type mismatch
+SELECT * FROM vector_search(TABLE base_table, 'embedding', (SELECT [1, 2] AS embedding))
+--
+ERROR: The column types of argument `column_to_search` in the base table and the query table must be the same [at 1:15]
+SELECT * FROM vector_search(TABLE base_table, 'embedding', (SELECT [1, 2] AS ...
+              ^
+==
+
+# Implicit query column (single column), but type mismatch
+SELECT * FROM vector_search(TABLE base_table, 'embedding', (SELECT [1, 2] AS other_col))
+--
+ERROR: The column type of argument `column_to_search` in the base table and the only column in the query table must be the same when `query_column_to_search` is neither explicitly provided nor does it contain the `column_to_search` column [at 1:15]
+SELECT * FROM vector_search(TABLE base_table, 'embedding', (SELECT [1, 2] AS ...
+              ^
+==
+
+# Implicit query column ambiguous (no name match, multiple columns)
+SELECT * FROM vector_search(TABLE base_table, 'embedding', (SELECT [1.0, 2.0] AS col1, [3.0, 4.0] AS col2))
+--
+ERROR: The `query_table` argument to the vector_search TVF must contain only 1 column if the `query_column_to_search` argument is not explicitly provided [at 1:15]
+SELECT * FROM vector_search(TABLE base_table, 'embedding', (SELECT [1.0, 2.0]...
+              ^
+==
+
+[language_features=MAXIMUM]
+# VECTOR_SEARCH_TVF language feature disabled
+SELECT * FROM vector_search(TABLE base_table, 'embedding', TABLE query_table, 'query_embedding')
+--
+ERROR: Table-valued function not found: vector_search [at 2:15]
+SELECT * FROM vector_search(TABLE base_table, 'embedding', TABLE query_table,...
+              ^

@@ -1,0 +1,1182 @@
+[default language_features=NONE]
+[default show_sqlbuilder_output]
+
+# Ensure the resolver checks for the language option.
+SELECT *
+  FROM KeyValue AS t1
+  JOIN LATERAL (select * from KeyValue t2 where t2.key < t1.key) AS t2 TABLESAMPLE bernoulli (10 percent)
+--
+
+ERROR: LATERAL join is not supported [at 4:8]
+  JOIN LATERAL (select * from KeyValue t2 where t2.key < t1.key) AS t2 TABLES...
+       ^
+==
+
+SELECT *
+  FROM KeyValue AS t1
+  LEFT JOIN LATERAL tvf_one_int64_arg_one_relation_arg(t1.key, TABLE KeyValue) AS t2 TABLESAMPLE bernoulli (10 percent)
+--
+
+ERROR: LATERAL join is not supported [at 3:13]
+  LEFT JOIN LATERAL tvf_one_int64_arg_one_relation_arg(t1.key, TABLE KeyValue...
+            ^
+==
+
+[language_features=NONE,+SQL_GRAPH]
+SELECT *
+  FROM KeyValue AS t1
+  LEFT JOIN LATERAL GRAPH_TABLE(aml MATCH (n) RETURN n.name) AS g TABLESAMPLE bernoulli (10 percent)
+--
+
+ERROR: Syntax error: Unexpected keyword GRAPH_TABLE [at 3:21]
+  LEFT JOIN LATERAL GRAPH_TABLE(aml MATCH (n) RETURN n.name) AS g TABLESAMPLE...
+                    ^
+==
+
+[default language_features=NONE,+LATERAL_JOIN,+TABLE_VALUED_FUNCTIONS,+TABLESAMPLE,+TABLESAMPLE_FROM_TABLE_VALUED_FUNCTIONS,+MATCH_RECOGNIZE,+SQL_GRAPH,+SQL_GRAPH_ADVANCED_QUERY]
+
+# LATERAL on the leftmost item is accepted in the parser and caught as a resolver error.
+SELECT * FROM LATERAL (select * from KeyValue) AS t1 JOIN KeyValue AS t2 USING (key)
+--
+ERROR: First item in the parenthesized join or at the top level of the FROM clause cannot be LATERAL [at 2:15]
+SELECT * FROM LATERAL (select * from KeyValue) AS t1 JOIN KeyValue AS t2 USIN...
+              ^
+==
+
+# Lateral joins cannot be FULL or RIGHT
+SELECT *
+  FROM KeyValue AS t1
+  {{FULL|RIGHT}}
+  {{|OUTER}}
+  JOIN LATERAL (select * from KeyValue) AS t2 USING (key)
+--
+
+ERROR: LATERAL items cannot be on the RHS of a RIGHT or FULL JOIN [at 5:8]
+  JOIN LATERAL (select * from KeyValue) AS t2 USING (key)
+       ^
+==
+
+# LATERAL join where the RHS does not reference any columns
+SELECT *
+  FROM KeyValue AS t1
+  CROSS JOIN LATERAL (select *, rand() AS r from KeyValue) AS t2
+--
+QueryStmt
++-output_column_list=
+| +-KeyValue.Key#1 AS Key [INT64]
+| +-KeyValue.Value#2 AS Value [STRING]
+| +-KeyValue.Key#3 AS Key [INT64]
+| +-KeyValue.Value#4 AS Value [STRING]
+| +-t2.r#5 AS r [DOUBLE]
++-query=
+  +-ProjectScan
+    +-column_list=[KeyValue.Key#1, KeyValue.Value#2, KeyValue.Key#3, KeyValue.Value#4, t2.r#5]
+    +-input_scan=
+      +-JoinScan
+        +-column_list=[KeyValue.Key#1, KeyValue.Value#2, KeyValue.Key#3, KeyValue.Value#4, t2.r#5]
+        +-left_scan=
+        | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1], alias="t1")
+        +-right_scan=
+        | +-ProjectScan
+        |   +-column_list=[KeyValue.Key#3, KeyValue.Value#4, t2.r#5]
+        |   +-expr_list=
+        |   | +-r#5 := FunctionCall(GoogleSQL:rand() -> DOUBLE)
+        |   +-input_scan=
+        |     +-TableScan(column_list=KeyValue.[Key#3, Value#4], table=KeyValue, column_index_list=[0, 1])
+        +-is_lateral=TRUE
+
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+SELECT
+  keyvalue_3.a_1 AS Key,
+  keyvalue_3.a_2 AS Value,
+  projectscan_8.a_4 AS Key,
+  projectscan_8.a_5 AS Value,
+  projectscan_8.a_7 AS r
+FROM
+  (
+    SELECT
+      KeyValue.Key AS a_1,
+      KeyValue.Value AS a_2
+    FROM
+      KeyValue
+  ) AS keyvalue_3
+  CROSS JOIN
+  LATERAL
+  (
+    SELECT
+      keyvalue_6.a_4 AS a_4,
+      keyvalue_6.a_5 AS a_5,
+      RAND() AS a_7
+    FROM
+      (
+        SELECT
+          KeyValue.Key AS a_4,
+          KeyValue.Value AS a_5
+        FROM
+          KeyValue
+      ) AS keyvalue_6
+  ) AS projectscan_8;
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+FROM
+  KeyValue
+|> SELECT
+     KeyValue.Key AS a_1,
+     KeyValue.Value AS a_2
+|> AS keyvalue_3
+|> CROSS JOIN
+   LATERAL
+   (
+     FROM
+       KeyValue
+     |> SELECT
+          KeyValue.Key AS a_4,
+          KeyValue.Value AS a_5
+     |> AS keyvalue_6
+     |> SELECT
+          keyvalue_6.a_4 AS a_4,
+          keyvalue_6.a_5 AS a_5,
+          RAND() AS a_7
+     |> AS projectscan_8
+   )
+|> SELECT
+     keyvalue_3.a_1 AS Key,
+     keyvalue_3.a_2 AS Value,
+     projectscan_8.a_4 AS Key,
+     projectscan_8.a_5 AS Value,
+     projectscan_8.a_7 AS r;
+==
+
+# LATERAL cannot be combined with postfix operators.
+SELECT *
+  FROM KeyValue AS t1
+  JOIN LATERAL
+  {{tvf_one_int64_arg_one_relation_arg(t1.key, TABLE t1)|(select * from KeyValue t2 where t2.key < t1.key)}}
+  AS t2
+  TABLESAMPLE bernoulli (10 percent)
+  ON t1.key = t2.key
+--
+ERROR: LATERAL cannot be combined with suffix table operators [at 6:3]
+  TABLESAMPLE bernoulli (10 percent)
+  ^
+==
+
+# LATERAL without any correlated references.
+SELECT *
+  FROM
+    KeyValue AS t1
+    {{,|CROSS JOIN}} LATERAL (select *, rand() AS r from KeyValue) AS t2
+--
+QueryStmt
++-output_column_list=
+| +-KeyValue.Key#1 AS Key [INT64]
+| +-KeyValue.Value#2 AS Value [STRING]
+| +-KeyValue.Key#3 AS Key [INT64]
+| +-KeyValue.Value#4 AS Value [STRING]
+| +-t2.r#5 AS r [DOUBLE]
++-query=
+  +-ProjectScan
+    +-column_list=[KeyValue.Key#1, KeyValue.Value#2, KeyValue.Key#3, KeyValue.Value#4, t2.r#5]
+    +-input_scan=
+      +-JoinScan
+        +-column_list=[KeyValue.Key#1, KeyValue.Value#2, KeyValue.Key#3, KeyValue.Value#4, t2.r#5]
+        +-left_scan=
+        | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1], alias="t1")
+        +-right_scan=
+        | +-ProjectScan
+        |   +-column_list=[KeyValue.Key#3, KeyValue.Value#4, t2.r#5]
+        |   +-expr_list=
+        |   | +-r#5 := FunctionCall(GoogleSQL:rand() -> DOUBLE)
+        |   +-input_scan=
+        |     +-TableScan(column_list=KeyValue.[Key#3, Value#4], table=KeyValue, column_index_list=[0, 1])
+        +-is_lateral=TRUE
+
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+SELECT
+  keyvalue_3.a_1 AS Key,
+  keyvalue_3.a_2 AS Value,
+  projectscan_8.a_4 AS Key,
+  projectscan_8.a_5 AS Value,
+  projectscan_8.a_7 AS r
+FROM
+  (
+    SELECT
+      KeyValue.Key AS a_1,
+      KeyValue.Value AS a_2
+    FROM
+      KeyValue
+  ) AS keyvalue_3
+  CROSS JOIN
+  LATERAL
+  (
+    SELECT
+      keyvalue_6.a_4 AS a_4,
+      keyvalue_6.a_5 AS a_5,
+      RAND() AS a_7
+    FROM
+      (
+        SELECT
+          KeyValue.Key AS a_4,
+          KeyValue.Value AS a_5
+        FROM
+          KeyValue
+      ) AS keyvalue_6
+  ) AS projectscan_8;
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+FROM
+  KeyValue
+|> SELECT
+     KeyValue.Key AS a_1,
+     KeyValue.Value AS a_2
+|> AS keyvalue_3
+|> CROSS JOIN
+   LATERAL
+   (
+     FROM
+       KeyValue
+     |> SELECT
+          KeyValue.Key AS a_4,
+          KeyValue.Value AS a_5
+     |> AS keyvalue_6
+     |> SELECT
+          keyvalue_6.a_4 AS a_4,
+          keyvalue_6.a_5 AS a_5,
+          RAND() AS a_7
+     |> AS projectscan_8
+   )
+|> SELECT
+     keyvalue_3.a_1 AS Key,
+     keyvalue_3.a_2 AS Value,
+     projectscan_8.a_4 AS Key,
+     projectscan_8.a_5 AS Value,
+     projectscan_8.a_7 AS r;
+==
+
+# Ensure the scoping visibility for LATERAL on an LHS of a join that itself is
+# not the first item in the FROM clause.
+SELECT *
+  FROM
+    KeyValue AS t1
+    CROSS JOIN
+    (LATERAL (select * from KeyValue AS t2 WHERE t2.key < t1.key)
+    {{RIGHT|}} JOIN KeyValue AS t3 ON t3.key = t1.key)
+--
+ERROR: First item in the parenthesized join or at the top level of the FROM clause cannot be LATERAL [at 5:6]
+    (LATERAL (select * from KeyValue AS t2 WHERE t2.key < t1.key)
+     ^
+==
+
+# LATERAL cannot be on the RHS of a join
+SELECT *
+  FROM
+    KeyValue AS t1 {{RIGHT|FULL}}{{| OUTER}} JOIN
+    LATERAL (select * from KeyValue AS t2 WHERE t2.key < t1.key) AS t2
+    ON t1.key = t2.key
+--
+ERROR: LATERAL items cannot be on the RHS of a RIGHT or FULL JOIN [at 4:5]
+    LATERAL (select * from KeyValue AS t2 WHERE t2.key < t1.key) AS t2
+    ^
+==
+
+# LATERAL cannot be on the RHS of a join, even if there are local parentheses.
+SELECT *
+  FROM
+    KeyValue AS t1 {{RIGHT|FULL}}{{| OUTER}} JOIN
+    (KeyValue AS t2 INNER JOIN
+    LATERAL (select * from KeyValue AS t3 WHERE t3.key < t1.key + t2.key) AS t3
+    ON t2.key = t3.key
+    )
+    ON t1.key = t3.key
+--
+ERROR: LATERAL items cannot be on the RHS of a RIGHT or FULL JOIN [at 5:5]
+    LATERAL (select * from KeyValue AS t3 WHERE t3.key < t1.key + t2.key) AS t3
+    ^
+==
+
+# However, this is OK because it is not under the right join.
+SELECT *
+  FROM
+    KeyValue AS t1 {{RIGHT|FULL}}{{| OUTER}} JOIN
+    KeyValue AS t2
+    ON t1.key = t2.key,
+    LATERAL (select * from KeyValue AS t3 WHERE t3.key < t1.key + t2.key) AS t3
+--
+
+ALTERNATION GROUPS:
+    RIGHT,
+    RIGHT, OUTER
+--
+QueryStmt
++-output_column_list=
+| +-KeyValue.Key#1 AS Key [INT64]
+| +-KeyValue.Value#2 AS Value [STRING]
+| +-KeyValue.Key#3 AS Key [INT64]
+| +-KeyValue.Value#4 AS Value [STRING]
+| +-KeyValue.Key#5 AS Key [INT64]
+| +-KeyValue.Value#6 AS Value [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=KeyValue.[Key#1, Value#2, Key#3, Value#4, Key#5, Value#6]
+    +-input_scan=
+      +-JoinScan
+        +-column_list=KeyValue.[Key#1, Value#2, Key#3, Value#4, Key#5, Value#6]
+        +-left_scan=
+        | +-JoinScan
+        |   +-column_list=KeyValue.[Key#1, Value#2, Key#3, Value#4]
+        |   +-join_type=RIGHT
+        |   +-left_scan=
+        |   | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1], alias="t1")
+        |   +-right_scan=
+        |   | +-TableScan(column_list=KeyValue.[Key#3, Value#4], table=KeyValue, column_index_list=[0, 1], alias="t2")
+        |   +-join_expr=
+        |     +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+        |       +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+        |       +-ColumnRef(type=INT64, column=KeyValue.Key#3)
+        +-right_scan=
+        | +-ProjectScan
+        |   +-column_list=KeyValue.[Key#5, Value#6]
+        |   +-input_scan=
+        |     +-FilterScan
+        |       +-column_list=KeyValue.[Key#5, Value#6]
+        |       +-input_scan=
+        |       | +-TableScan(column_list=KeyValue.[Key#5, Value#6], table=KeyValue, column_index_list=[0, 1], alias="t3")
+        |       +-filter_expr=
+        |         +-FunctionCall(GoogleSQL:$less(INT64, INT64) -> BOOL)
+        |           +-ColumnRef(type=INT64, column=KeyValue.Key#5)
+        |           +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+        |             +-ColumnRef(type=INT64, column=KeyValue.Key#1, is_correlated=TRUE)
+        |             +-ColumnRef(type=INT64, column=KeyValue.Key#3, is_correlated=TRUE)
+        +-is_lateral=TRUE
+        +-parameter_list=
+          +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+          +-ColumnRef(type=INT64, column=KeyValue.Key#3)
+
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+SELECT
+  joinscan_7.a_1 AS Key,
+  joinscan_7.a_2 AS Value,
+  joinscan_7.a_4 AS Key,
+  joinscan_7.a_5 AS Value,
+  projectscan_10.a_8 AS Key,
+  projectscan_10.a_9 AS Value
+FROM
+  (
+    SELECT
+      keyvalue_3.a_1 AS a_1,
+      keyvalue_3.a_2 AS a_2,
+      keyvalue_6.a_4 AS a_4,
+      keyvalue_6.a_5 AS a_5
+    FROM
+      (
+        SELECT
+          KeyValue.Key AS a_1,
+          KeyValue.Value AS a_2
+        FROM
+          KeyValue
+      ) AS keyvalue_3
+      RIGHT JOIN
+      (
+        SELECT
+          KeyValue.Key AS a_4,
+          KeyValue.Value AS a_5
+        FROM
+          KeyValue
+      ) AS keyvalue_6
+      ON (keyvalue_3.a_1) = (keyvalue_6.a_4)
+  ) AS joinscan_7
+  CROSS JOIN
+  LATERAL
+  (
+    SELECT
+      KeyValue.Key AS a_8,
+      KeyValue.Value AS a_9
+    FROM
+      KeyValue
+    WHERE
+      (KeyValue.Key) < ((joinscan_7.a_1) + (joinscan_7.a_4))
+  ) AS projectscan_10;
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+FROM
+  KeyValue
+|> SELECT
+     KeyValue.Key AS a_1,
+     KeyValue.Value AS a_2
+|> AS keyvalue_3
+|> RIGHT JOIN
+   (
+     FROM
+       KeyValue
+     |> SELECT
+          KeyValue.Key AS a_4,
+          KeyValue.Value AS a_5
+     |> AS keyvalue_6
+   )
+   ON (keyvalue_3.a_1) = (keyvalue_6.a_4)
+|> SELECT
+     keyvalue_3.a_1 AS a_1,
+     keyvalue_3.a_2 AS a_2,
+     keyvalue_6.a_4 AS a_4,
+     keyvalue_6.a_5 AS a_5
+|> AS joinscan_7
+|> CROSS JOIN
+   LATERAL
+   (
+     FROM
+       KeyValue
+     |> WHERE
+          (KeyValue.Key) < ((joinscan_7.a_1) + (joinscan_7.a_4))
+     |> SELECT
+          KeyValue.Key AS a_8,
+          KeyValue.Value AS a_9
+     |> AS projectscan_10
+   )
+|> SELECT
+     joinscan_7.a_1 AS Key,
+     joinscan_7.a_2 AS Value,
+     joinscan_7.a_4 AS Key,
+     joinscan_7.a_5 AS Value,
+     projectscan_10.a_8 AS Key,
+     projectscan_10.a_9 AS Value;
+--
+ALTERNATION GROUPS:
+    FULL,
+    FULL, OUTER
+--
+QueryStmt
++-output_column_list=
+| +-KeyValue.Key#1 AS Key [INT64]
+| +-KeyValue.Value#2 AS Value [STRING]
+| +-KeyValue.Key#3 AS Key [INT64]
+| +-KeyValue.Value#4 AS Value [STRING]
+| +-KeyValue.Key#5 AS Key [INT64]
+| +-KeyValue.Value#6 AS Value [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=KeyValue.[Key#1, Value#2, Key#3, Value#4, Key#5, Value#6]
+    +-input_scan=
+      +-JoinScan
+        +-column_list=KeyValue.[Key#1, Value#2, Key#3, Value#4, Key#5, Value#6]
+        +-left_scan=
+        | +-JoinScan
+        |   +-column_list=KeyValue.[Key#1, Value#2, Key#3, Value#4]
+        |   +-join_type=FULL
+        |   +-left_scan=
+        |   | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1], alias="t1")
+        |   +-right_scan=
+        |   | +-TableScan(column_list=KeyValue.[Key#3, Value#4], table=KeyValue, column_index_list=[0, 1], alias="t2")
+        |   +-join_expr=
+        |     +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+        |       +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+        |       +-ColumnRef(type=INT64, column=KeyValue.Key#3)
+        +-right_scan=
+        | +-ProjectScan
+        |   +-column_list=KeyValue.[Key#5, Value#6]
+        |   +-input_scan=
+        |     +-FilterScan
+        |       +-column_list=KeyValue.[Key#5, Value#6]
+        |       +-input_scan=
+        |       | +-TableScan(column_list=KeyValue.[Key#5, Value#6], table=KeyValue, column_index_list=[0, 1], alias="t3")
+        |       +-filter_expr=
+        |         +-FunctionCall(GoogleSQL:$less(INT64, INT64) -> BOOL)
+        |           +-ColumnRef(type=INT64, column=KeyValue.Key#5)
+        |           +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+        |             +-ColumnRef(type=INT64, column=KeyValue.Key#1, is_correlated=TRUE)
+        |             +-ColumnRef(type=INT64, column=KeyValue.Key#3, is_correlated=TRUE)
+        +-is_lateral=TRUE
+        +-parameter_list=
+          +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+          +-ColumnRef(type=INT64, column=KeyValue.Key#3)
+
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+SELECT
+  joinscan_7.a_1 AS Key,
+  joinscan_7.a_2 AS Value,
+  joinscan_7.a_4 AS Key,
+  joinscan_7.a_5 AS Value,
+  projectscan_10.a_8 AS Key,
+  projectscan_10.a_9 AS Value
+FROM
+  (
+    SELECT
+      keyvalue_3.a_1 AS a_1,
+      keyvalue_3.a_2 AS a_2,
+      keyvalue_6.a_4 AS a_4,
+      keyvalue_6.a_5 AS a_5
+    FROM
+      (
+        SELECT
+          KeyValue.Key AS a_1,
+          KeyValue.Value AS a_2
+        FROM
+          KeyValue
+      ) AS keyvalue_3
+      FULL JOIN
+      (
+        SELECT
+          KeyValue.Key AS a_4,
+          KeyValue.Value AS a_5
+        FROM
+          KeyValue
+      ) AS keyvalue_6
+      ON (keyvalue_3.a_1) = (keyvalue_6.a_4)
+  ) AS joinscan_7
+  CROSS JOIN
+  LATERAL
+  (
+    SELECT
+      KeyValue.Key AS a_8,
+      KeyValue.Value AS a_9
+    FROM
+      KeyValue
+    WHERE
+      (KeyValue.Key) < ((joinscan_7.a_1) + (joinscan_7.a_4))
+  ) AS projectscan_10;
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+FROM
+  KeyValue
+|> SELECT
+     KeyValue.Key AS a_1,
+     KeyValue.Value AS a_2
+|> AS keyvalue_3
+|> FULL JOIN
+   (
+     FROM
+       KeyValue
+     |> SELECT
+          KeyValue.Key AS a_4,
+          KeyValue.Value AS a_5
+     |> AS keyvalue_6
+   )
+   ON (keyvalue_3.a_1) = (keyvalue_6.a_4)
+|> SELECT
+     keyvalue_3.a_1 AS a_1,
+     keyvalue_3.a_2 AS a_2,
+     keyvalue_6.a_4 AS a_4,
+     keyvalue_6.a_5 AS a_5
+|> AS joinscan_7
+|> CROSS JOIN
+   LATERAL
+   (
+     FROM
+       KeyValue
+     |> WHERE
+          (KeyValue.Key) < ((joinscan_7.a_1) + (joinscan_7.a_4))
+     |> SELECT
+          KeyValue.Key AS a_8,
+          KeyValue.Value AS a_9
+     |> AS projectscan_10
+   )
+|> SELECT
+     joinscan_7.a_1 AS Key,
+     joinscan_7.a_2 AS Value,
+     joinscan_7.a_4 AS Key,
+     joinscan_7.a_5 AS Value,
+     projectscan_10.a_8 AS Key,
+     projectscan_10.a_9 AS Value;
+==
+
+# LATERAL after RIGHT/FULL JOIN, but not underneath it.
+SELECT *
+  FROM
+    KeyValue AS t1 {{RIGHT|FULL}} {{| OUTER}} JOIN KeyValue AS t2 ON t1.key < t2.key
+    INNER JOIN
+    LATERAL (select * from KeyValue AS t3 WHERE t3.key < t1.key + t2.key) AS t3
+    ON t1.key = t3.key
+--
+ALTERNATION GROUPS:
+    RIGHT,
+    RIGHT, OUTER
+--
+QueryStmt
++-output_column_list=
+| +-KeyValue.Key#1 AS Key [INT64]
+| +-KeyValue.Value#2 AS Value [STRING]
+| +-KeyValue.Key#3 AS Key [INT64]
+| +-KeyValue.Value#4 AS Value [STRING]
+| +-KeyValue.Key#5 AS Key [INT64]
+| +-KeyValue.Value#6 AS Value [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=KeyValue.[Key#1, Value#2, Key#3, Value#4, Key#5, Value#6]
+    +-input_scan=
+      +-JoinScan
+        +-column_list=KeyValue.[Key#1, Value#2, Key#3, Value#4, Key#5, Value#6]
+        +-left_scan=
+        | +-JoinScan
+        |   +-column_list=KeyValue.[Key#1, Value#2, Key#3, Value#4]
+        |   +-join_type=RIGHT
+        |   +-left_scan=
+        |   | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1], alias="t1")
+        |   +-right_scan=
+        |   | +-TableScan(column_list=KeyValue.[Key#3, Value#4], table=KeyValue, column_index_list=[0, 1], alias="t2")
+        |   +-join_expr=
+        |     +-FunctionCall(GoogleSQL:$less(INT64, INT64) -> BOOL)
+        |       +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+        |       +-ColumnRef(type=INT64, column=KeyValue.Key#3)
+        +-right_scan=
+        | +-ProjectScan
+        |   +-column_list=KeyValue.[Key#5, Value#6]
+        |   +-input_scan=
+        |     +-FilterScan
+        |       +-column_list=KeyValue.[Key#5, Value#6]
+        |       +-input_scan=
+        |       | +-TableScan(column_list=KeyValue.[Key#5, Value#6], table=KeyValue, column_index_list=[0, 1], alias="t3")
+        |       +-filter_expr=
+        |         +-FunctionCall(GoogleSQL:$less(INT64, INT64) -> BOOL)
+        |           +-ColumnRef(type=INT64, column=KeyValue.Key#5)
+        |           +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+        |             +-ColumnRef(type=INT64, column=KeyValue.Key#1, is_correlated=TRUE)
+        |             +-ColumnRef(type=INT64, column=KeyValue.Key#3, is_correlated=TRUE)
+        +-join_expr=
+        | +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+        |   +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+        |   +-ColumnRef(type=INT64, column=KeyValue.Key#5)
+        +-is_lateral=TRUE
+        +-parameter_list=
+          +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+          +-ColumnRef(type=INT64, column=KeyValue.Key#3)
+
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+SELECT
+  joinscan_7.a_1 AS Key,
+  joinscan_7.a_2 AS Value,
+  joinscan_7.a_4 AS Key,
+  joinscan_7.a_5 AS Value,
+  projectscan_10.a_8 AS Key,
+  projectscan_10.a_9 AS Value
+FROM
+  (
+    SELECT
+      keyvalue_3.a_1 AS a_1,
+      keyvalue_3.a_2 AS a_2,
+      keyvalue_6.a_4 AS a_4,
+      keyvalue_6.a_5 AS a_5
+    FROM
+      (
+        SELECT
+          KeyValue.Key AS a_1,
+          KeyValue.Value AS a_2
+        FROM
+          KeyValue
+      ) AS keyvalue_3
+      RIGHT JOIN
+      (
+        SELECT
+          KeyValue.Key AS a_4,
+          KeyValue.Value AS a_5
+        FROM
+          KeyValue
+      ) AS keyvalue_6
+      ON (keyvalue_3.a_1) < (keyvalue_6.a_4)
+  ) AS joinscan_7
+  INNER JOIN
+  LATERAL
+  (
+    SELECT
+      KeyValue.Key AS a_8,
+      KeyValue.Value AS a_9
+    FROM
+      KeyValue
+    WHERE
+      (KeyValue.Key) < ((joinscan_7.a_1) + (joinscan_7.a_4))
+  ) AS projectscan_10
+  ON (joinscan_7.a_1) = (projectscan_10.a_8);
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+FROM
+  KeyValue
+|> SELECT
+     KeyValue.Key AS a_1,
+     KeyValue.Value AS a_2
+|> AS keyvalue_3
+|> RIGHT JOIN
+   (
+     FROM
+       KeyValue
+     |> SELECT
+          KeyValue.Key AS a_4,
+          KeyValue.Value AS a_5
+     |> AS keyvalue_6
+   )
+   ON (keyvalue_3.a_1) < (keyvalue_6.a_4)
+|> SELECT
+     keyvalue_3.a_1 AS a_1,
+     keyvalue_3.a_2 AS a_2,
+     keyvalue_6.a_4 AS a_4,
+     keyvalue_6.a_5 AS a_5
+|> AS joinscan_7
+|> INNER JOIN
+   LATERAL
+   (
+     FROM
+       KeyValue
+     |> WHERE
+          (KeyValue.Key) < ((joinscan_7.a_1) + (joinscan_7.a_4))
+     |> SELECT
+          KeyValue.Key AS a_8,
+          KeyValue.Value AS a_9
+     |> AS projectscan_10
+   )
+   ON (joinscan_7.a_1) = (projectscan_10.a_8)
+|> SELECT
+     joinscan_7.a_1 AS Key,
+     joinscan_7.a_2 AS Value,
+     joinscan_7.a_4 AS Key,
+     joinscan_7.a_5 AS Value,
+     projectscan_10.a_8 AS Key,
+     projectscan_10.a_9 AS Value;
+--
+ALTERNATION GROUPS:
+    FULL,
+    FULL, OUTER
+--
+QueryStmt
++-output_column_list=
+| +-KeyValue.Key#1 AS Key [INT64]
+| +-KeyValue.Value#2 AS Value [STRING]
+| +-KeyValue.Key#3 AS Key [INT64]
+| +-KeyValue.Value#4 AS Value [STRING]
+| +-KeyValue.Key#5 AS Key [INT64]
+| +-KeyValue.Value#6 AS Value [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=KeyValue.[Key#1, Value#2, Key#3, Value#4, Key#5, Value#6]
+    +-input_scan=
+      +-JoinScan
+        +-column_list=KeyValue.[Key#1, Value#2, Key#3, Value#4, Key#5, Value#6]
+        +-left_scan=
+        | +-JoinScan
+        |   +-column_list=KeyValue.[Key#1, Value#2, Key#3, Value#4]
+        |   +-join_type=FULL
+        |   +-left_scan=
+        |   | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1], alias="t1")
+        |   +-right_scan=
+        |   | +-TableScan(column_list=KeyValue.[Key#3, Value#4], table=KeyValue, column_index_list=[0, 1], alias="t2")
+        |   +-join_expr=
+        |     +-FunctionCall(GoogleSQL:$less(INT64, INT64) -> BOOL)
+        |       +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+        |       +-ColumnRef(type=INT64, column=KeyValue.Key#3)
+        +-right_scan=
+        | +-ProjectScan
+        |   +-column_list=KeyValue.[Key#5, Value#6]
+        |   +-input_scan=
+        |     +-FilterScan
+        |       +-column_list=KeyValue.[Key#5, Value#6]
+        |       +-input_scan=
+        |       | +-TableScan(column_list=KeyValue.[Key#5, Value#6], table=KeyValue, column_index_list=[0, 1], alias="t3")
+        |       +-filter_expr=
+        |         +-FunctionCall(GoogleSQL:$less(INT64, INT64) -> BOOL)
+        |           +-ColumnRef(type=INT64, column=KeyValue.Key#5)
+        |           +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+        |             +-ColumnRef(type=INT64, column=KeyValue.Key#1, is_correlated=TRUE)
+        |             +-ColumnRef(type=INT64, column=KeyValue.Key#3, is_correlated=TRUE)
+        +-join_expr=
+        | +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+        |   +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+        |   +-ColumnRef(type=INT64, column=KeyValue.Key#5)
+        +-is_lateral=TRUE
+        +-parameter_list=
+          +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+          +-ColumnRef(type=INT64, column=KeyValue.Key#3)
+
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+SELECT
+  joinscan_7.a_1 AS Key,
+  joinscan_7.a_2 AS Value,
+  joinscan_7.a_4 AS Key,
+  joinscan_7.a_5 AS Value,
+  projectscan_10.a_8 AS Key,
+  projectscan_10.a_9 AS Value
+FROM
+  (
+    SELECT
+      keyvalue_3.a_1 AS a_1,
+      keyvalue_3.a_2 AS a_2,
+      keyvalue_6.a_4 AS a_4,
+      keyvalue_6.a_5 AS a_5
+    FROM
+      (
+        SELECT
+          KeyValue.Key AS a_1,
+          KeyValue.Value AS a_2
+        FROM
+          KeyValue
+      ) AS keyvalue_3
+      FULL JOIN
+      (
+        SELECT
+          KeyValue.Key AS a_4,
+          KeyValue.Value AS a_5
+        FROM
+          KeyValue
+      ) AS keyvalue_6
+      ON (keyvalue_3.a_1) < (keyvalue_6.a_4)
+  ) AS joinscan_7
+  INNER JOIN
+  LATERAL
+  (
+    SELECT
+      KeyValue.Key AS a_8,
+      KeyValue.Value AS a_9
+    FROM
+      KeyValue
+    WHERE
+      (KeyValue.Key) < ((joinscan_7.a_1) + (joinscan_7.a_4))
+  ) AS projectscan_10
+  ON (joinscan_7.a_1) = (projectscan_10.a_8);
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+FROM
+  KeyValue
+|> SELECT
+     KeyValue.Key AS a_1,
+     KeyValue.Value AS a_2
+|> AS keyvalue_3
+|> FULL JOIN
+   (
+     FROM
+       KeyValue
+     |> SELECT
+          KeyValue.Key AS a_4,
+          KeyValue.Value AS a_5
+     |> AS keyvalue_6
+   )
+   ON (keyvalue_3.a_1) < (keyvalue_6.a_4)
+|> SELECT
+     keyvalue_3.a_1 AS a_1,
+     keyvalue_3.a_2 AS a_2,
+     keyvalue_6.a_4 AS a_4,
+     keyvalue_6.a_5 AS a_5
+|> AS joinscan_7
+|> INNER JOIN
+   LATERAL
+   (
+     FROM
+       KeyValue
+     |> WHERE
+          (KeyValue.Key) < ((joinscan_7.a_1) + (joinscan_7.a_4))
+     |> SELECT
+          KeyValue.Key AS a_8,
+          KeyValue.Value AS a_9
+     |> AS projectscan_10
+   )
+   ON (joinscan_7.a_1) = (projectscan_10.a_8)
+|> SELECT
+     joinscan_7.a_1 AS Key,
+     joinscan_7.a_2 AS Value,
+     joinscan_7.a_4 AS Key,
+     joinscan_7.a_5 AS Value,
+     projectscan_10.a_8 AS Key,
+     projectscan_10.a_9 AS Value;
+==
+
+# LATERAL join referencing an outer correlated column.
+# The JoinScan needs to list such columns as "already correlated", just like
+# how correlated subqueries and lambdas do with their `parameter_list`.
+# Remember that within such correlated scopes, in this case the LATERAL rhs,
+# all correlated columns refer to those lists. Note that the outer correlated
+# columns in the list are listed as "CORRELATED=true", unlike those epxosed
+# from the LHS. Again, this mirrors the behavior of correlated subqueries and
+# lambdas.
+SELECT
+  EXISTS(SELECT *
+    FROM
+      KeyValue AS t1, LATERAL (select * from KeyValue AS t2 WHERE t2.key < t1.key AND t2.value < outer_tbl.value) AS t2
+  ) AS e
+FROM KeyValue outer_tbl
+--
+QueryStmt
++-output_column_list=
+| +-$query.e#7 AS e [BOOL]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.e#7]
+    +-expr_list=
+    | +-e#7 :=
+    |   +-SubqueryExpr
+    |     +-type=BOOL
+    |     +-subquery_type=EXISTS
+    |     +-parameter_list=
+    |     | +-ColumnRef(type=STRING, column=KeyValue.Value#2)
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=KeyValue.[Key#3, Value#4, Key#5, Value#6]
+    |         +-input_scan=
+    |           +-JoinScan
+    |             +-column_list=KeyValue.[Key#3, Value#4, Key#5, Value#6]
+    |             +-left_scan=
+    |             | +-TableScan(column_list=KeyValue.[Key#3, Value#4], table=KeyValue, column_index_list=[0, 1], alias="t1")
+    |             +-right_scan=
+    |             | +-ProjectScan
+    |             |   +-column_list=KeyValue.[Key#5, Value#6]
+    |             |   +-input_scan=
+    |             |     +-FilterScan
+    |             |       +-column_list=KeyValue.[Key#5, Value#6]
+    |             |       +-input_scan=
+    |             |       | +-TableScan(column_list=KeyValue.[Key#5, Value#6], table=KeyValue, column_index_list=[0, 1], alias="t2")
+    |             |       +-filter_expr=
+    |             |         +-FunctionCall(GoogleSQL:$and(BOOL, repeated(1) BOOL) -> BOOL)
+    |             |           +-FunctionCall(GoogleSQL:$less(INT64, INT64) -> BOOL)
+    |             |           | +-ColumnRef(type=INT64, column=KeyValue.Key#5)
+    |             |           | +-ColumnRef(type=INT64, column=KeyValue.Key#3, is_correlated=TRUE)
+    |             |           +-FunctionCall(GoogleSQL:$less(STRING, STRING) -> BOOL)
+    |             |             +-ColumnRef(type=STRING, column=KeyValue.Value#6)
+    |             |             +-ColumnRef(type=STRING, column=KeyValue.Value#2, is_correlated=TRUE)
+    |             +-is_lateral=TRUE
+    |             +-parameter_list=
+    |               +-ColumnRef(type=STRING, column=KeyValue.Value#2, is_correlated=TRUE)
+    |               +-ColumnRef(type=INT64, column=KeyValue.Key#3)
+    +-input_scan=
+      +-TableScan(column_list=[KeyValue.Value#2], table=KeyValue, column_index_list=[1], alias="outer_tbl")
+
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+SELECT
+  EXISTS(
+    SELECT
+      keyvalue_6.a_4 AS a_4,
+      keyvalue_6.a_5 AS a_5,
+      projectscan_9.a_7 AS a_7,
+      projectscan_9.a_8 AS a_8
+    FROM
+      (
+        SELECT
+          KeyValue.Key AS a_4,
+          KeyValue.Value AS a_5
+        FROM
+          KeyValue
+      ) AS keyvalue_6
+      CROSS JOIN
+      LATERAL
+      (
+        SELECT
+          KeyValue.Key AS a_7,
+          KeyValue.Value AS a_8
+        FROM
+          KeyValue
+        WHERE
+          ((KeyValue.Key) < (keyvalue_6.a_4)) AND ((KeyValue.Value) < (keyvalue_2.a_1))
+      ) AS projectscan_9
+  ) AS e
+FROM
+  (
+    SELECT
+      KeyValue.Value AS a_1
+    FROM
+      KeyValue
+  ) AS keyvalue_2;
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+FROM
+  KeyValue
+|> SELECT
+     KeyValue.Value AS a_1
+|> AS keyvalue_2
+|> SELECT
+     EXISTS(
+       FROM
+         KeyValue
+       |> SELECT
+            KeyValue.Key AS a_4,
+            KeyValue.Value AS a_5
+       |> AS keyvalue_6
+       |> CROSS JOIN
+          LATERAL
+          (
+            FROM
+              KeyValue
+            |> WHERE
+                 ((KeyValue.Key) < (keyvalue_6.a_4)) AND ((KeyValue.Value) < (keyvalue_2.a_1))
+            |> SELECT
+                 KeyValue.Key AS a_7,
+                 KeyValue.Value AS a_8
+            |> AS projectscan_9
+          )
+       |> SELECT
+            keyvalue_6.a_4 AS a_4,
+            keyvalue_6.a_5 AS a_5,
+            projectscan_9.a_7 AS a_7,
+            projectscan_9.a_8 AS a_8
+     ) AS e;
+==
+
+# LEFT JOIN LATERAL can still specify the ON clause.
+[no_show_sqlbuilder_output]
+select * from KeyValue t1 left join lateral (select * from KeyValue t2 WHERE t2.value < t1.value) AS t2 on t1.key = t2.key
+--
+
+QueryStmt
++-output_column_list=
+| +-KeyValue.Key#1 AS Key [INT64]
+| +-KeyValue.Value#2 AS Value [STRING]
+| +-KeyValue.Key#3 AS Key [INT64]
+| +-KeyValue.Value#4 AS Value [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=KeyValue.[Key#1, Value#2, Key#3, Value#4]
+    +-input_scan=
+      +-JoinScan
+        +-column_list=KeyValue.[Key#1, Value#2, Key#3, Value#4]
+        +-join_type=LEFT
+        +-left_scan=
+        | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1], alias="t1")
+        +-right_scan=
+        | +-ProjectScan
+        |   +-column_list=KeyValue.[Key#3, Value#4]
+        |   +-input_scan=
+        |     +-FilterScan
+        |       +-column_list=KeyValue.[Key#3, Value#4]
+        |       +-input_scan=
+        |       | +-TableScan(column_list=KeyValue.[Key#3, Value#4], table=KeyValue, column_index_list=[0, 1], alias="t2")
+        |       +-filter_expr=
+        |         +-FunctionCall(GoogleSQL:$less(STRING, STRING) -> BOOL)
+        |           +-ColumnRef(type=STRING, column=KeyValue.Value#4)
+        |           +-ColumnRef(type=STRING, column=KeyValue.Value#2, is_correlated=TRUE)
+        +-join_expr=
+        | +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+        |   +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+        |   +-ColumnRef(type=INT64, column=KeyValue.Key#3)
+        +-is_lateral=TRUE
+        +-parameter_list=
+          +-ColumnRef(type=STRING, column=KeyValue.Value#2)
+==
+
+# ON can be omitted on LEFT LATERAL join
+[no_show_sqlbuilder_output]
+select * from KeyValue t1 left join lateral (select * from KeyValue t2 WHERE t2.value < t1.value)
+--
+
+QueryStmt
++-output_column_list=
+| +-KeyValue.Key#1 AS Key [INT64]
+| +-KeyValue.Value#2 AS Value [STRING]
+| +-KeyValue.Key#3 AS Key [INT64]
+| +-KeyValue.Value#4 AS Value [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=KeyValue.[Key#1, Value#2, Key#3, Value#4]
+    +-input_scan=
+      +-JoinScan
+        +-column_list=KeyValue.[Key#1, Value#2, Key#3, Value#4]
+        +-join_type=LEFT
+        +-left_scan=
+        | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1], alias="t1")
+        +-right_scan=
+        | +-ProjectScan
+        |   +-column_list=KeyValue.[Key#3, Value#4]
+        |   +-input_scan=
+        |     +-FilterScan
+        |       +-column_list=KeyValue.[Key#3, Value#4]
+        |       +-input_scan=
+        |       | +-TableScan(column_list=KeyValue.[Key#3, Value#4], table=KeyValue, column_index_list=[0, 1], alias="t2")
+        |       +-filter_expr=
+        |         +-FunctionCall(GoogleSQL:$less(STRING, STRING) -> BOOL)
+        |           +-ColumnRef(type=STRING, column=KeyValue.Value#4)
+        |           +-ColumnRef(type=STRING, column=KeyValue.Value#2, is_correlated=TRUE)
+        +-is_lateral=TRUE
+        +-parameter_list=
+          +-ColumnRef(type=STRING, column=KeyValue.Value#2)
+==
+
+# ON can be omitted on LEFT LATERAL join
+[no_show_sqlbuilder_output]
+select * from
+  KeyValue t1
+  LEFT JOIN LATERAL (select * from KeyValue t2)
+  LEFT JOIN LATERAL (select * from KeyValue t3)
+--
+
+QueryStmt
++-output_column_list=
+| +-KeyValue.Key#1 AS Key [INT64]
+| +-KeyValue.Value#2 AS Value [STRING]
+| +-KeyValue.Key#3 AS Key [INT64]
+| +-KeyValue.Value#4 AS Value [STRING]
+| +-KeyValue.Key#5 AS Key [INT64]
+| +-KeyValue.Value#6 AS Value [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=KeyValue.[Key#1, Value#2, Key#3, Value#4, Key#5, Value#6]
+    +-input_scan=
+      +-JoinScan
+        +-column_list=KeyValue.[Key#1, Value#2, Key#3, Value#4, Key#5, Value#6]
+        +-join_type=LEFT
+        +-left_scan=
+        | +-JoinScan
+        |   +-column_list=KeyValue.[Key#1, Value#2, Key#3, Value#4]
+        |   +-join_type=LEFT
+        |   +-left_scan=
+        |   | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1], alias="t1")
+        |   +-right_scan=
+        |   | +-ProjectScan
+        |   |   +-column_list=KeyValue.[Key#3, Value#4]
+        |   |   +-input_scan=
+        |   |     +-TableScan(column_list=KeyValue.[Key#3, Value#4], table=KeyValue, column_index_list=[0, 1], alias="t2")
+        |   +-is_lateral=TRUE
+        +-right_scan=
+        | +-ProjectScan
+        |   +-column_list=KeyValue.[Key#5, Value#6]
+        |   +-input_scan=
+        |     +-TableScan(column_list=KeyValue.[Key#5, Value#6], table=KeyValue, column_index_list=[0, 1], alias="t3")
+        +-is_lateral=TRUE
+==
+
+# ON can be omitted on LEFT LATERAL join
+[no_show_sqlbuilder_output]
+select * from KeyValue t1, KeyValue t2 LEFT JOIN LATERAL (select * from KeyValue t3 WHERE t3.value < t2.value)
+--
+
+# ON can be omitted on LEFT LATERAL join
+QueryStmt
++-output_column_list=
+| +-KeyValue.Key#1 AS Key [INT64]
+| +-KeyValue.Value#2 AS Value [STRING]
+| +-KeyValue.Key#3 AS Key [INT64]
+| +-KeyValue.Value#4 AS Value [STRING]
+| +-KeyValue.Key#5 AS Key [INT64]
+| +-KeyValue.Value#6 AS Value [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=KeyValue.[Key#1, Value#2, Key#3, Value#4, Key#5, Value#6]
+    +-input_scan=
+      +-JoinScan
+        +-column_list=KeyValue.[Key#1, Value#2, Key#3, Value#4, Key#5, Value#6]
+        +-join_type=LEFT
+        +-left_scan=
+        | +-JoinScan
+        |   +-column_list=KeyValue.[Key#1, Value#2, Key#3, Value#4]
+        |   +-left_scan=
+        |   | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1], alias="t1")
+        |   +-right_scan=
+        |     +-TableScan(column_list=KeyValue.[Key#3, Value#4], table=KeyValue, column_index_list=[0, 1], alias="t2")
+        +-right_scan=
+        | +-ProjectScan
+        |   +-column_list=KeyValue.[Key#5, Value#6]
+        |   +-input_scan=
+        |     +-FilterScan
+        |       +-column_list=KeyValue.[Key#5, Value#6]
+        |       +-input_scan=
+        |       | +-TableScan(column_list=KeyValue.[Key#5, Value#6], table=KeyValue, column_index_list=[0, 1], alias="t3")
+        |       +-filter_expr=
+        |         +-FunctionCall(GoogleSQL:$less(STRING, STRING) -> BOOL)
+        |           +-ColumnRef(type=STRING, column=KeyValue.Value#6)
+        |           +-ColumnRef(type=STRING, column=KeyValue.Value#4, is_correlated=TRUE)
+        +-is_lateral=TRUE
+        +-parameter_list=
+          +-ColumnRef(type=STRING, column=KeyValue.Value#4)

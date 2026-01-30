@@ -1,0 +1,2086 @@
+# NOTE: CREATE VIEW tests are identical to those for
+# CREATE TABLE AS SELECT tests, except for the keyword and some error messages.
+
+[default language_features=NONE]
+create view tt
+as select 1 a, 2 b
+--
+CreateViewStmt
++-name_path=tt
++-output_column_list=
+| +-$view.a#1 AS a [INT64]
+| +-$view.b#2 AS b [INT64]
++-query=
+| +-ProjectScan
+|   +-column_list=$view.[a#1, b#2]
+|   +-expr_list=
+|   | +-a#1 := Literal(type=INT64, value=1)
+|   | +-b#2 := Literal(type=INT64, value=2)
+|   +-input_scan=
+|     +-SingleRowScan
++-sql="select 1 a, 2 b"
++-column_definition_list=
+  +-ColumnDefinition(name="a", type=INT64, column=tt.a#3)
+  +-ColumnDefinition(name="b", type=INT64, column=tt.b#4)
+==
+
+create temp view MyView as select * from KeyValue
+--
+CreateViewStmt
++-name_path=MyView
++-create_scope=CREATE_TEMP
++-output_column_list=
+| +-KeyValue.Key#1 AS Key [INT64]
+| +-KeyValue.Value#2 AS Value [STRING]
++-query=
+| +-ProjectScan
+|   +-column_list=KeyValue.[Key#1, Value#2]
+|   +-input_scan=
+|     +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
++-sql="select * from KeyValue"
++-column_definition_list=
+  +-ColumnDefinition(name="Key", type=INT64, column=MyView.Key#3)
+  +-ColumnDefinition(name="Value", type=STRING, column=MyView.Value#4)
+==
+
+[statement_context={{|module}}]
+create {{public|private}} view MyView as select * from KeyValue
+--
+ALTERNATION GROUP: public
+--
+ERROR: CREATE VIEW with PUBLIC or PRIVATE modifiers is not supported [at 1:1]
+create public view MyView as select * from KeyValue
+^
+--
+ALTERNATION GROUP: private
+--
+ERROR: CREATE VIEW with PUBLIC or PRIVATE modifiers is not supported [at 1:1]
+create private view MyView as select * from KeyValue
+^
+--
+ALTERNATION GROUP: module,public
+--
+ERROR: CREATE VIEW statement is not supported inside modules [at 1:1]
+create public view MyView as select * from KeyValue
+^
+--
+ALTERNATION GROUP: module,private
+--
+ERROR: CREATE VIEW statement is not supported inside modules [at 1:1]
+create private view MyView as select * from KeyValue
+^
+==
+
+[statement_context=module]
+[language_features=NONE,+VIEWS_IN_MODULES]
+create {{|temp|public|private}} view MyView as select * from KeyValue
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: CREATE VIEW requires the PUBLIC or PRIVATE modifier when used inside a module [at 1:1]
+create  view MyView as select * from KeyValue
+^
+--
+ALTERNATION GROUP: temp
+--
+ERROR: CREATE VIEW requires the PUBLIC or PRIVATE modifier when used inside a module [at 1:1]
+create temp view MyView as select * from KeyValue
+^
+--
+ALTERNATION GROUP: public
+--
+CreateViewStmt
++-name_path=MyView
++-create_scope=CREATE_PUBLIC
++-output_column_list=
+| +-KeyValue.Key#1 AS Key [INT64]
+| +-KeyValue.Value#2 AS Value [STRING]
++-query=
+| +-ProjectScan
+|   +-column_list=KeyValue.[Key#1, Value#2]
+|   +-input_scan=
+|     +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
++-sql="select * from KeyValue"
++-column_definition_list=
+  +-ColumnDefinition(name="Key", type=INT64, column=MyView.Key#3)
+  +-ColumnDefinition(name="Value", type=STRING, column=MyView.Value#4)
+--
+ALTERNATION GROUP: private
+--
+CreateViewStmt
++-name_path=MyView
++-create_scope=CREATE_PRIVATE
++-output_column_list=
+| +-KeyValue.Key#1 AS Key [INT64]
+| +-KeyValue.Value#2 AS Value [STRING]
++-query=
+| +-ProjectScan
+|   +-column_list=KeyValue.[Key#1, Value#2]
+|   +-input_scan=
+|     +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
++-sql="select * from KeyValue"
++-column_definition_list=
+  +-ColumnDefinition(name="Key", type=INT64, column=MyView.Key#3)
+  +-ColumnDefinition(name="Value", type=STRING, column=MyView.Value#4)
+==
+
+[statement_context=module]
+[language_features=NONE,+VIEWS_IN_MODULES]
+create {{public|private}} view MyView {{|SQL SECURITY DEFINER|SQL SECURITY INVOKER}} as select * from KeyValue
+--
+ALTERNATION GROUP: public,
+--
+CreateViewStmt
++-name_path=MyView
++-create_scope=CREATE_PUBLIC
++-output_column_list=
+| +-KeyValue.Key#1 AS Key [INT64]
+| +-KeyValue.Value#2 AS Value [STRING]
++-query=
+| +-ProjectScan
+|   +-column_list=KeyValue.[Key#1, Value#2]
+|   +-input_scan=
+|     +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
++-sql="select * from KeyValue"
++-column_definition_list=
+  +-ColumnDefinition(name="Key", type=INT64, column=MyView.Key#3)
+  +-ColumnDefinition(name="Value", type=STRING, column=MyView.Value#4)
+--
+ALTERNATION GROUP: public,SQL SECURITY DEFINER
+--
+ERROR: SQL SECURITY clause is not supported on statements with the PUBLIC modifier. [at 1:1]
+create public view MyView SQL SECURITY DEFINER as select * from KeyValue
+^
+--
+ALTERNATION GROUP: public,SQL SECURITY INVOKER
+--
+ERROR: SQL SECURITY clause is not supported on statements with the PUBLIC modifier. [at 1:1]
+create public view MyView SQL SECURITY INVOKER as select * from KeyValue
+^
+--
+ALTERNATION GROUP: private,
+--
+CreateViewStmt
++-name_path=MyView
++-create_scope=CREATE_PRIVATE
++-output_column_list=
+| +-KeyValue.Key#1 AS Key [INT64]
+| +-KeyValue.Value#2 AS Value [STRING]
++-query=
+| +-ProjectScan
+|   +-column_list=KeyValue.[Key#1, Value#2]
+|   +-input_scan=
+|     +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
++-sql="select * from KeyValue"
++-column_definition_list=
+  +-ColumnDefinition(name="Key", type=INT64, column=MyView.Key#3)
+  +-ColumnDefinition(name="Value", type=STRING, column=MyView.Value#4)
+--
+ALTERNATION GROUP: private,SQL SECURITY DEFINER
+--
+ERROR: SQL SECURITY clause is not supported on statements with the PRIVATE modifier. [at 1:1]
+create private view MyView SQL SECURITY DEFINER as select * from KeyValue
+^
+--
+ALTERNATION GROUP: private,SQL SECURITY INVOKER
+--
+ERROR: SQL SECURITY clause is not supported on statements with the PRIVATE modifier. [at 1:1]
+create private view MyView SQL SECURITY INVOKER as select * from KeyValue
+^
+==
+
+[statement_context=module]
+[language_features=NONE,+VIEWS_IN_MODULES]
+create or replace {{public|private}} view MyView as select * from KeyValue
+--
+ALTERNATION GROUP: public
+--
+ERROR: Modules do not support CREATE OR REPLACE for CREATE VIEW [at 1:1]
+create or replace public view MyView as select * from KeyValue
+^
+--
+ALTERNATION GROUP: private
+--
+ERROR: Modules do not support CREATE OR REPLACE for CREATE VIEW [at 1:1]
+create or replace private view MyView as select * from KeyValue
+^
+==
+
+[statement_context=module]
+[language_features=NONE,+VIEWS_IN_MODULES]
+create {{public|private}} view if not exists MyView as select * from KeyValue
+--
+ALTERNATION GROUP: public
+--
+ERROR: Modules do not support IF NOT EXISTS for CREATE VIEW [at 1:1]
+create public view if not exists MyView as select * from KeyValue
+^
+--
+ALTERNATION GROUP: private
+--
+ERROR: Modules do not support IF NOT EXISTS for CREATE VIEW [at 1:1]
+create private view if not exists MyView as select * from KeyValue
+^
+==
+
+[statement_context=module]
+[language_features=NONE,+VIEWS_IN_MODULES]
+create {{materialized|approx}} view MyView as select * from KeyValue
+--
+ALTERNATION GROUP: materialized
+--
+ERROR: Statement not supported inside modules: CreateMaterializedViewStatement [at 1:1]
+create materialized view MyView as select * from KeyValue
+^
+--
+ALTERNATION GROUP: approx
+--
+ERROR: Statement not supported inside modules: CreateApproxViewStatement [at 1:1]
+create approx view MyView as select * from KeyValue
+^
+==
+
+# Query parameter in view body.
+create {{|materialized|approx}} view v as select @x a;
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: Query parameters cannot be used inside SQL view bodies [at 1:26]
+create  view v as select @x a;
+                         ^
+--
+ALTERNATION GROUP: materialized
+--
+ERROR: Query parameters cannot be used inside SQL view bodies [at 1:38]
+create materialized view v as select @x a;
+                                     ^
+--
+ALTERNATION GROUP: approx
+--
+ERROR: Query parameters cannot be used inside SQL view bodies [at 1:32]
+create approx view v as select @x a;
+                               ^
+==
+
+# Same for positional parameters.
+[parameter_mode=positional]
+create {{|materialized|approx}} view v as select ? a;
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: Query parameters cannot be used inside SQL view bodies [at 1:26]
+create  view v as select ? a;
+                         ^
+--
+ALTERNATION GROUP: materialized
+--
+ERROR: Query parameters cannot be used inside SQL view bodies [at 1:38]
+create materialized view v as select ? a;
+                                     ^
+--
+ALTERNATION GROUP: approx
+--
+ERROR: Query parameters cannot be used inside SQL view bodies [at 1:32]
+create approx view v as select ? a;
+                               ^
+==
+
+# Query parameter in options.
+create {{|temporary|materialized|approx}} view X
+options(x=5, y='abc', z=@test_param_array, z=abc)
+as
+select key, key k1, key k2, key+1 k3 from keYvalue limit 5
+--
+ALTERNATION GROUP: <empty>
+--
+CreateViewStmt
++-name_path=X
++-option_list=
+| +-x := Literal(type=INT64, value=5)
+| +-y := Literal(type=STRING, value="abc")
+| +-z := Parameter(type=ARRAY<INT32>, name="test_param_array")
+| +-z := Literal(type=STRING, value="abc")
++-output_column_list=
+| +-KeyValue.Key#1 AS key [INT64]
+| +-KeyValue.Key#1 AS k1 [INT64]
+| +-KeyValue.Key#1 AS k2 [INT64]
+| +-$view.k3#3 AS k3 [INT64]
++-query=
+| +-LimitOffsetScan
+|   +-column_list=[KeyValue.Key#1, KeyValue.Key#1, KeyValue.Key#1, $view.k3#3]
+|   +-input_scan=
+|   | +-ProjectScan
+|   |   +-column_list=[KeyValue.Key#1, KeyValue.Key#1, KeyValue.Key#1, $view.k3#3]
+|   |   +-expr_list=
+|   |   | +-k3#3 :=
+|   |   |   +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+|   |   |     +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+|   |   |     +-Literal(type=INT64, value=1)
+|   |   +-input_scan=
+|   |     +-TableScan(column_list=[KeyValue.Key#1], table=KeyValue, column_index_list=[0])
+|   +-limit=
+|     +-Literal(type=INT64, value=5)
++-sql="select key, key k1, key k2, key+1 k3 from keYvalue limit 5"
++-column_definition_list=
+  +-ColumnDefinition(name="key", type=INT64, column=X.key#4)
+  +-ColumnDefinition(name="k1", type=INT64, column=X.k1#5)
+  +-ColumnDefinition(name="k2", type=INT64, column=X.k2#6)
+  +-ColumnDefinition(name="k3", type=INT64, column=X.k3#7)
+--
+ALTERNATION GROUP: temporary
+--
+CreateViewStmt
++-name_path=X
++-create_scope=CREATE_TEMP
++-option_list=
+| +-x := Literal(type=INT64, value=5)
+| +-y := Literal(type=STRING, value="abc")
+| +-z := Parameter(type=ARRAY<INT32>, name="test_param_array")
+| +-z := Literal(type=STRING, value="abc")
++-output_column_list=
+| +-KeyValue.Key#1 AS key [INT64]
+| +-KeyValue.Key#1 AS k1 [INT64]
+| +-KeyValue.Key#1 AS k2 [INT64]
+| +-$view.k3#3 AS k3 [INT64]
++-query=
+| +-LimitOffsetScan
+|   +-column_list=[KeyValue.Key#1, KeyValue.Key#1, KeyValue.Key#1, $view.k3#3]
+|   +-input_scan=
+|   | +-ProjectScan
+|   |   +-column_list=[KeyValue.Key#1, KeyValue.Key#1, KeyValue.Key#1, $view.k3#3]
+|   |   +-expr_list=
+|   |   | +-k3#3 :=
+|   |   |   +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+|   |   |     +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+|   |   |     +-Literal(type=INT64, value=1)
+|   |   +-input_scan=
+|   |     +-TableScan(column_list=[KeyValue.Key#1], table=KeyValue, column_index_list=[0])
+|   +-limit=
+|     +-Literal(type=INT64, value=5)
++-sql="select key, key k1, key k2, key+1 k3 from keYvalue limit 5"
++-column_definition_list=
+  +-ColumnDefinition(name="key", type=INT64, column=X.key#4)
+  +-ColumnDefinition(name="k1", type=INT64, column=X.k1#5)
+  +-ColumnDefinition(name="k2", type=INT64, column=X.k2#6)
+  +-ColumnDefinition(name="k3", type=INT64, column=X.k3#7)
+--
+ALTERNATION GROUP: materialized
+--
+CreateMaterializedViewStmt
++-name_path=X
++-option_list=
+| +-x := Literal(type=INT64, value=5)
+| +-y := Literal(type=STRING, value="abc")
+| +-z := Parameter(type=ARRAY<INT32>, name="test_param_array")
+| +-z := Literal(type=STRING, value="abc")
++-output_column_list=
+| +-KeyValue.Key#1 AS key [INT64]
+| +-KeyValue.Key#1 AS k1 [INT64]
+| +-KeyValue.Key#1 AS k2 [INT64]
+| +-$view.k3#3 AS k3 [INT64]
++-query=
+| +-LimitOffsetScan
+|   +-column_list=[KeyValue.Key#1, KeyValue.Key#1, KeyValue.Key#1, $view.k3#3]
+|   +-input_scan=
+|   | +-ProjectScan
+|   |   +-column_list=[KeyValue.Key#1, KeyValue.Key#1, KeyValue.Key#1, $view.k3#3]
+|   |   +-expr_list=
+|   |   | +-k3#3 :=
+|   |   |   +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+|   |   |     +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+|   |   |     +-Literal(type=INT64, value=1)
+|   |   +-input_scan=
+|   |     +-TableScan(column_list=[KeyValue.Key#1], table=KeyValue, column_index_list=[0])
+|   +-limit=
+|     +-Literal(type=INT64, value=5)
++-sql="select key, key k1, key k2, key+1 k3 from keYvalue limit 5"
++-column_definition_list=
+  +-ColumnDefinition(name="key", type=INT64, column=X.key#4)
+  +-ColumnDefinition(name="k1", type=INT64, column=X.k1#5)
+  +-ColumnDefinition(name="k2", type=INT64, column=X.k2#6)
+  +-ColumnDefinition(name="k3", type=INT64, column=X.k3#7)
+--
+ALTERNATION GROUP: approx
+--
+CreateApproxViewStmt
++-name_path=X
++-option_list=
+| +-x := Literal(type=INT64, value=5)
+| +-y := Literal(type=STRING, value="abc")
+| +-z := Parameter(type=ARRAY<INT32>, name="test_param_array")
+| +-z := Literal(type=STRING, value="abc")
++-output_column_list=
+| +-KeyValue.Key#1 AS key [INT64]
+| +-KeyValue.Key#1 AS k1 [INT64]
+| +-KeyValue.Key#1 AS k2 [INT64]
+| +-$view.k3#3 AS k3 [INT64]
++-query=
+| +-LimitOffsetScan
+|   +-column_list=[KeyValue.Key#1, KeyValue.Key#1, KeyValue.Key#1, $view.k3#3]
+|   +-input_scan=
+|   | +-ProjectScan
+|   |   +-column_list=[KeyValue.Key#1, KeyValue.Key#1, KeyValue.Key#1, $view.k3#3]
+|   |   +-expr_list=
+|   |   | +-k3#3 :=
+|   |   |   +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+|   |   |     +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+|   |   |     +-Literal(type=INT64, value=1)
+|   |   +-input_scan=
+|   |     +-TableScan(column_list=[KeyValue.Key#1], table=KeyValue, column_index_list=[0])
+|   +-limit=
+|     +-Literal(type=INT64, value=5)
++-sql="select key, key k1, key k2, key+1 k3 from keYvalue limit 5"
++-column_definition_list=
+  +-ColumnDefinition(name="key", type=INT64, column=X.key#4)
+  +-ColumnDefinition(name="k1", type=INT64, column=X.k1#5)
+  +-ColumnDefinition(name="k2", type=INT64, column=X.k2#6)
+  +-ColumnDefinition(name="k3", type=INT64, column=X.k3#7)
+==
+
+create {{|materialized|approx}} view Z
+options ()
+as select 1 c;
+--
+ALTERNATION GROUP: <empty>
+--
+CreateViewStmt
++-name_path=Z
++-output_column_list=
+| +-$view.c#1 AS c [INT64]
++-query=
+| +-ProjectScan
+|   +-column_list=[$view.c#1]
+|   +-expr_list=
+|   | +-c#1 := Literal(type=INT64, value=1)
+|   +-input_scan=
+|     +-SingleRowScan
++-sql="select 1 c"
++-column_definition_list=
+  +-ColumnDefinition(name="c", type=INT64, column=Z.c#2)
+--
+ALTERNATION GROUP: materialized
+--
+CreateMaterializedViewStmt
++-name_path=Z
++-output_column_list=
+| +-$view.c#1 AS c [INT64]
++-query=
+| +-ProjectScan
+|   +-column_list=[$view.c#1]
+|   +-expr_list=
+|   | +-c#1 := Literal(type=INT64, value=1)
+|   +-input_scan=
+|     +-SingleRowScan
++-sql="select 1 c"
++-column_definition_list=
+  +-ColumnDefinition(name="c", type=INT64, column=Z.c#2)
+--
+ALTERNATION GROUP: approx
+--
+CreateApproxViewStmt
++-name_path=Z
++-output_column_list=
+| +-$view.c#1 AS c [INT64]
++-query=
+| +-ProjectScan
+|   +-column_list=[$view.c#1]
+|   +-expr_list=
+|   | +-c#1 := Literal(type=INT64, value=1)
+|   +-input_scan=
+|     +-SingleRowScan
++-sql="select 1 c"
++-column_definition_list=
+  +-ColumnDefinition(name="c", type=INT64, column=Z.c#2)
+==
+
+create {{|materialized|approx}} view Z
+options (abc=def, xyz=@bad_param)
+as select 1 c;
+--
+ERROR: Query parameter 'bad_param' not found [at 2:23]
+options (abc=def, xyz=@bad_param)
+                      ^
+==
+
+create view a.b.`c.d`.`e f g`.kk
+as select 1 c
+--
+CreateViewStmt
++-name_path=a.b.`c.d`.`e f g`.kk
++-output_column_list=
+| +-$view.c#1 AS c [INT64]
++-query=
+| +-ProjectScan
+|   +-column_list=[$view.c#1]
+|   +-expr_list=
+|   | +-c#1 := Literal(type=INT64, value=1)
+|   +-input_scan=
+|     +-SingleRowScan
++-sql="select 1 c"
++-column_definition_list=
+  +-ColumnDefinition(name="c", type=INT64, column=a.b.`c.d`.`e f g`.kk.c#2)
+==
+
+# Anonymous columns not allowed.
+create {{|materialized|approx}} view tt
+as select 1
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: CREATE VIEW columns must be named, but column 1 has no name [at 2:4]
+as select 1
+   ^
+--
+ALTERNATION GROUP: materialized
+--
+ERROR: CREATE MATERIALIZED VIEW columns must be named, but column 1 has no name [at 2:4]
+as select 1
+   ^
+--
+ALTERNATION GROUP: approx
+--
+ERROR: CREATE APPROX VIEW columns must be named, but column 1 has no name [at 2:4]
+as select 1
+   ^
+==
+
+# Duplicate column names not allowed.
+create {{|materialized|approx}} view tt
+options (abc=def)
+as select 1 aaA, 2 Aaa
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: CREATE VIEW has columns with duplicate name Aaa [at 3:4]
+as select 1 aaA, 2 Aaa
+   ^
+--
+ALTERNATION GROUP: materialized
+--
+ERROR: CREATE MATERIALIZED VIEW has columns with duplicate name Aaa [at 3:4]
+as select 1 aaA, 2 Aaa
+   ^
+--
+ALTERNATION GROUP: approx
+--
+ERROR: CREATE APPROX VIEW has columns with duplicate name Aaa [at 3:4]
+as select 1 aaA, 2 Aaa
+   ^
+==
+
+# Create a value view with SELECT AS STRUCT.
+# Duplicate and anonymous fields are allowed inside the struct.
+create {{|materialized|approx}} view tt
+as select as struct 1 a, 2, 3 c, 4 c
+--
+ALTERNATION GROUP: <empty>
+--
+CreateViewStmt
++-name_path=tt
++-output_column_list=
+| +-$make_struct.$struct#5 AS `$struct` [STRUCT<a INT64, INT64, c INT64, c INT64>]
++-query=
+| +-ProjectScan
+|   +-column_list=[$make_struct.$struct#5]
+|   +-expr_list=
+|   | +-$struct#5 :=
+|   |   +-MakeStruct
+|   |     +-type=STRUCT<a INT64, INT64, c INT64, c INT64>
+|   |     +-field_list=
+|   |       +-ColumnRef(type=INT64, column=$view.a#1)
+|   |       +-ColumnRef(type=INT64, column=$view.$col2#2)
+|   |       +-ColumnRef(type=INT64, column=$view.c#3)
+|   |       +-ColumnRef(type=INT64, column=$view.c#4)
+|   +-input_scan=
+|     +-ProjectScan
+|       +-column_list=$view.[a#1, $col2#2, c#3, c#4]
+|       +-expr_list=
+|       | +-a#1 := Literal(type=INT64, value=1)
+|       | +-$col2#2 := Literal(type=INT64, value=2)
+|       | +-c#3 := Literal(type=INT64, value=3)
+|       | +-c#4 := Literal(type=INT64, value=4)
+|       +-input_scan=
+|         +-SingleRowScan
++-sql="select as struct 1 a, 2, 3 c, 4 c"
++-is_value_table=TRUE
++-column_definition_list=
+  +-ColumnDefinition(name="$struct", type=STRUCT<a INT64, INT64, c INT64, c INT64>, column=tt.$struct#6)
+--
+ALTERNATION GROUP: materialized
+--
+CreateMaterializedViewStmt
++-name_path=tt
++-output_column_list=
+| +-$make_struct.$struct#5 AS `$struct` [STRUCT<a INT64, INT64, c INT64, c INT64>]
++-query=
+| +-ProjectScan
+|   +-column_list=[$make_struct.$struct#5]
+|   +-expr_list=
+|   | +-$struct#5 :=
+|   |   +-MakeStruct
+|   |     +-type=STRUCT<a INT64, INT64, c INT64, c INT64>
+|   |     +-field_list=
+|   |       +-ColumnRef(type=INT64, column=$view.a#1)
+|   |       +-ColumnRef(type=INT64, column=$view.$col2#2)
+|   |       +-ColumnRef(type=INT64, column=$view.c#3)
+|   |       +-ColumnRef(type=INT64, column=$view.c#4)
+|   +-input_scan=
+|     +-ProjectScan
+|       +-column_list=$view.[a#1, $col2#2, c#3, c#4]
+|       +-expr_list=
+|       | +-a#1 := Literal(type=INT64, value=1)
+|       | +-$col2#2 := Literal(type=INT64, value=2)
+|       | +-c#3 := Literal(type=INT64, value=3)
+|       | +-c#4 := Literal(type=INT64, value=4)
+|       +-input_scan=
+|         +-SingleRowScan
++-sql="select as struct 1 a, 2, 3 c, 4 c"
++-is_value_table=TRUE
++-column_definition_list=
+  +-ColumnDefinition(name="$struct", type=STRUCT<a INT64, INT64, c INT64, c INT64>, column=tt.$struct#6)
+--
+ALTERNATION GROUP: approx
+--
+CreateApproxViewStmt
++-name_path=tt
++-output_column_list=
+| +-$make_struct.$struct#5 AS `$struct` [STRUCT<a INT64, INT64, c INT64, c INT64>]
++-query=
+| +-ProjectScan
+|   +-column_list=[$make_struct.$struct#5]
+|   +-expr_list=
+|   | +-$struct#5 :=
+|   |   +-MakeStruct
+|   |     +-type=STRUCT<a INT64, INT64, c INT64, c INT64>
+|   |     +-field_list=
+|   |       +-ColumnRef(type=INT64, column=$view.a#1)
+|   |       +-ColumnRef(type=INT64, column=$view.$col2#2)
+|   |       +-ColumnRef(type=INT64, column=$view.c#3)
+|   |       +-ColumnRef(type=INT64, column=$view.c#4)
+|   +-input_scan=
+|     +-ProjectScan
+|       +-column_list=$view.[a#1, $col2#2, c#3, c#4]
+|       +-expr_list=
+|       | +-a#1 := Literal(type=INT64, value=1)
+|       | +-$col2#2 := Literal(type=INT64, value=2)
+|       | +-c#3 := Literal(type=INT64, value=3)
+|       | +-c#4 := Literal(type=INT64, value=4)
+|       +-input_scan=
+|         +-SingleRowScan
++-sql="select as struct 1 a, 2, 3 c, 4 c"
++-is_value_table=TRUE
++-column_definition_list=
+  +-ColumnDefinition(name="$struct", type=STRUCT<a INT64, INT64, c INT64, c INT64>, column=tt.$struct#6)
+==
+
+# Create a value view with SELECT AS ProtoName.
+create {{|materialized|approx}} view tt
+as select as `googlesql_test.TestExtraPB` 55 int32_val1
+--
+ALTERNATION GROUP: <empty>
+--
+CreateViewStmt
++-name_path=tt
++-output_column_list=
+| +-$make_proto.$proto#2 AS `$proto` [PROTO<googlesql_test.TestExtraPB>]
++-query=
+| +-ProjectScan
+|   +-column_list=[$make_proto.$proto#2]
+|   +-expr_list=
+|   | +-$proto#2 :=
+|   |   +-MakeProto
+|   |     +-type=PROTO<googlesql_test.TestExtraPB>
+|   |     +-field_list=
+|   |       +-int32_val1 := Literal(type=INT32, value=55)
+|   +-input_scan=
+|     +-ProjectScan
+|       +-column_list=[$view.int32_val1#1]
+|       +-expr_list=
+|       | +-int32_val1#1 := Literal(type=INT64, value=55)
+|       +-input_scan=
+|         +-SingleRowScan
++-sql="select as `googlesql_test.TestExtraPB` 55 int32_val1"
++-is_value_table=TRUE
++-column_definition_list=
+  +-ColumnDefinition(name="$proto", type=PROTO<googlesql_test.TestExtraPB>, column=tt.$proto#3)
+--
+ALTERNATION GROUP: materialized
+--
+CreateMaterializedViewStmt
++-name_path=tt
++-output_column_list=
+| +-$make_proto.$proto#2 AS `$proto` [PROTO<googlesql_test.TestExtraPB>]
++-query=
+| +-ProjectScan
+|   +-column_list=[$make_proto.$proto#2]
+|   +-expr_list=
+|   | +-$proto#2 :=
+|   |   +-MakeProto
+|   |     +-type=PROTO<googlesql_test.TestExtraPB>
+|   |     +-field_list=
+|   |       +-int32_val1 := Literal(type=INT32, value=55)
+|   +-input_scan=
+|     +-ProjectScan
+|       +-column_list=[$view.int32_val1#1]
+|       +-expr_list=
+|       | +-int32_val1#1 := Literal(type=INT64, value=55)
+|       +-input_scan=
+|         +-SingleRowScan
++-sql="select as `googlesql_test.TestExtraPB` 55 int32_val1"
++-is_value_table=TRUE
++-column_definition_list=
+  +-ColumnDefinition(name="$proto", type=PROTO<googlesql_test.TestExtraPB>, column=tt.$proto#3)
+--
+ALTERNATION GROUP: approx
+--
+CreateApproxViewStmt
++-name_path=tt
++-output_column_list=
+| +-$make_proto.$proto#2 AS `$proto` [PROTO<googlesql_test.TestExtraPB>]
++-query=
+| +-ProjectScan
+|   +-column_list=[$make_proto.$proto#2]
+|   +-expr_list=
+|   | +-$proto#2 :=
+|   |   +-MakeProto
+|   |     +-type=PROTO<googlesql_test.TestExtraPB>
+|   |     +-field_list=
+|   |       +-int32_val1 := Literal(type=INT32, value=55)
+|   +-input_scan=
+|     +-ProjectScan
+|       +-column_list=[$view.int32_val1#1]
+|       +-expr_list=
+|       | +-int32_val1#1 := Literal(type=INT64, value=55)
+|       +-input_scan=
+|         +-SingleRowScan
++-sql="select as `googlesql_test.TestExtraPB` 55 int32_val1"
++-is_value_table=TRUE
++-column_definition_list=
+  +-ColumnDefinition(name="$proto", type=PROTO<googlesql_test.TestExtraPB>, column=tt.$proto#3)
+==
+
+create or replace {{|materialized|approx}} view x.y as (select 1 a)
+--
+ALTERNATION GROUP: <empty>
+--
+CreateViewStmt
++-name_path=x.y
++-create_mode=CREATE_OR_REPLACE
++-output_column_list=
+| +-$view.a#1 AS a [INT64]
++-query=
+| +-ProjectScan
+|   +-column_list=[$view.a#1]
+|   +-expr_list=
+|   | +-a#1 := Literal(type=INT64, value=1)
+|   +-input_scan=
+|     +-SingleRowScan
++-sql="select 1 a"
++-column_definition_list=
+  +-ColumnDefinition(name="a", type=INT64, column=x.y.a#2)
+--
+ALTERNATION GROUP: materialized
+--
+CreateMaterializedViewStmt
++-name_path=x.y
++-create_mode=CREATE_OR_REPLACE
++-output_column_list=
+| +-$view.a#1 AS a [INT64]
++-query=
+| +-ProjectScan
+|   +-column_list=[$view.a#1]
+|   +-expr_list=
+|   | +-a#1 := Literal(type=INT64, value=1)
+|   +-input_scan=
+|     +-SingleRowScan
++-sql="select 1 a"
++-column_definition_list=
+  +-ColumnDefinition(name="a", type=INT64, column=x.y.a#2)
+--
+ALTERNATION GROUP: approx
+--
+CreateApproxViewStmt
++-name_path=x.y
++-create_mode=CREATE_OR_REPLACE
++-output_column_list=
+| +-$view.a#1 AS a [INT64]
++-query=
+| +-ProjectScan
+|   +-column_list=[$view.a#1]
+|   +-expr_list=
+|   | +-a#1 := Literal(type=INT64, value=1)
+|   +-input_scan=
+|     +-SingleRowScan
++-sql="select 1 a"
++-column_definition_list=
+  +-ColumnDefinition(name="a", type=INT64, column=x.y.a#2)
+==
+
+create view if not exists x.y options (x=y) as (select 1 a)
+--
+CreateViewStmt
++-name_path=x.y
++-create_mode=CREATE_IF_NOT_EXISTS
++-option_list=
+| +-x := Literal(type=STRING, value="y")
++-output_column_list=
+| +-$view.a#1 AS a [INT64]
++-query=
+| +-ProjectScan
+|   +-column_list=[$view.a#1]
+|   +-expr_list=
+|   | +-a#1 := Literal(type=INT64, value=1)
+|   +-input_scan=
+|     +-SingleRowScan
++-sql="select 1 a"
++-column_definition_list=
+  +-ColumnDefinition(name="a", type=INT64, column=x.y.a#2)
+==
+
+create or replace {{|materialized|approx}} view if not exists T as (select 1 a)
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: CREATE VIEW cannot have both OR REPLACE and IF NOT EXISTS [at 1:1]
+create or replace  view if not exists T as (select 1 a)
+^
+--
+ALTERNATION GROUP: materialized
+--
+ERROR: CREATE MATERIALIZED VIEW cannot have both OR REPLACE and IF NOT EXISTS [at 1:1]
+create or replace materialized view if not exists T as (select 1 a)
+^
+--
+ALTERNATION GROUP: approx
+--
+ERROR: CREATE APPROX VIEW cannot have both OR REPLACE and IF NOT EXISTS [at 1:1]
+create or replace approx view if not exists T as (select 1 a)
+^
+==
+
+# Create view with a WITH statement.
+create temp view T as
+WITH t1 as (select 1 key),
+     t2 as (select key from KeyValue),
+     t3 as (select * from t1 union all select * from t2)
+select * from t3 where key=5
+--
+CreateViewStmt
++-name_path=T
++-create_scope=CREATE_TEMP
++-output_column_list=
+| +-t3.key#7 AS key [INT64]
++-query=
+| +-WithScan
+|   +-column_list=[t3.key#7]
+|   +-with_entry_list=
+|   | +-WithEntry
+|   | | +-with_query_name="t1"
+|   | | +-with_subquery=
+|   | |   +-ProjectScan
+|   | |     +-column_list=[t1.key#1]
+|   | |     +-expr_list=
+|   | |     | +-key#1 := Literal(type=INT64, value=1)
+|   | |     +-input_scan=
+|   | |       +-SingleRowScan
+|   | +-WithEntry
+|   | | +-with_query_name="t2"
+|   | | +-with_subquery=
+|   | |   +-ProjectScan
+|   | |     +-column_list=[KeyValue.Key#2]
+|   | |     +-input_scan=
+|   | |       +-TableScan(column_list=[KeyValue.Key#2], table=KeyValue, column_index_list=[0])
+|   | +-WithEntry
+|   |   +-with_query_name="t3"
+|   |   +-with_subquery=
+|   |     +-SetOperationScan
+|   |       +-column_list=[$union_all.key#6]
+|   |       +-op_type=UNION_ALL
+|   |       +-input_item_list=
+|   |         +-SetOperationItem
+|   |         | +-scan=
+|   |         | | +-ProjectScan
+|   |         | |   +-column_list=[t1.key#4]
+|   |         | |   +-input_scan=
+|   |         | |     +-WithRefScan(column_list=[t1.key#4], with_query_name="t1")
+|   |         | +-output_column_list=[t1.key#4]
+|   |         +-SetOperationItem
+|   |           +-scan=
+|   |           | +-ProjectScan
+|   |           |   +-column_list=[t2.key#5]
+|   |           |   +-input_scan=
+|   |           |     +-WithRefScan(column_list=[t2.key#5], with_query_name="t2")
+|   |           +-output_column_list=[t2.key#5]
+|   +-query=
+|     +-ProjectScan
+|       +-column_list=[t3.key#7]
+|       +-input_scan=
+|         +-FilterScan
+|           +-column_list=[t3.key#7]
+|           +-input_scan=
+|           | +-WithRefScan(column_list=[t3.key#7], with_query_name="t3")
+|           +-filter_expr=
+|             +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+|               +-ColumnRef(type=INT64, column=t3.key#7)
+|               +-Literal(type=INT64, value=5)
++-sql="WITH t1 as (select 1 key),\n     t2 as (select key from KeyValue),\n     t3 as (select * from t1 union all select * from t2)\nselect * from t3 where key=5"
++-column_definition_list=
+  +-ColumnDefinition(name="key", type=INT64, column=T.key#8)
+==
+
+# Create view with a WITH statement with an error in a with subquery.
+create temp view T as
+WITH t1 as (select 1 key),
+     t2 as (select key from xxx),
+     t3 as (select * from t2)
+select * from t3
+--
+ERROR: Table not found: xxx [at 3:29]
+     t2 as (select key from xxx),
+                            ^
+==
+
+# Create view with a WITH statement with an error in the final query.
+create temp view T as
+WITH t1 as (select 1 key)
+select * from xxx
+--
+ERROR: Table not found: xxx [at 3:15]
+select * from xxx
+              ^
+==
+
+[parse_multiple]
+select 1;
+select 2;
+create {{|materialized|approx}} view T as select 1 a
+--
+ALTERNATION GROUP: <empty>
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 := Literal(type=INT64, value=1)
+    +-input_scan=
+      +-SingleRowScan
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 := Literal(type=INT64, value=2)
+    +-input_scan=
+      +-SingleRowScan
+--
+CreateViewStmt
++-name_path=T
++-output_column_list=
+| +-$view.a#1 AS a [INT64]
++-query=
+| +-ProjectScan
+|   +-column_list=[$view.a#1]
+|   +-expr_list=
+|   | +-a#1 := Literal(type=INT64, value=1)
+|   +-input_scan=
+|     +-SingleRowScan
++-sql="select 1 a"
++-column_definition_list=
+  +-ColumnDefinition(name="a", type=INT64, column=T.a#2)
+--
+ALTERNATION GROUP: materialized
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 := Literal(type=INT64, value=1)
+    +-input_scan=
+      +-SingleRowScan
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 := Literal(type=INT64, value=2)
+    +-input_scan=
+      +-SingleRowScan
+--
+CreateMaterializedViewStmt
++-name_path=T
++-output_column_list=
+| +-$view.a#1 AS a [INT64]
++-query=
+| +-ProjectScan
+|   +-column_list=[$view.a#1]
+|   +-expr_list=
+|   | +-a#1 := Literal(type=INT64, value=1)
+|   +-input_scan=
+|     +-SingleRowScan
++-sql="select 1 a"
++-column_definition_list=
+  +-ColumnDefinition(name="a", type=INT64, column=T.a#2)
+--
+ALTERNATION GROUP: approx
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 := Literal(type=INT64, value=1)
+    +-input_scan=
+      +-SingleRowScan
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 := Literal(type=INT64, value=2)
+    +-input_scan=
+      +-SingleRowScan
+--
+CreateApproxViewStmt
++-name_path=T
++-output_column_list=
+| +-$view.a#1 AS a [INT64]
++-query=
+| +-ProjectScan
+|   +-column_list=[$view.a#1]
+|   +-expr_list=
+|   | +-a#1 := Literal(type=INT64, value=1)
+|   +-input_scan=
+|     +-SingleRowScan
++-sql="select 1 a"
++-column_definition_list=
+  +-ColumnDefinition(name="a", type=INT64, column=T.a#2)
+==
+
+[parse_multiple]
+select 1;
+select 2;
+create view T as /* comment */ select 1 a
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 := Literal(type=INT64, value=1)
+    +-input_scan=
+      +-SingleRowScan
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 := Literal(type=INT64, value=2)
+    +-input_scan=
+      +-SingleRowScan
+--
+CreateViewStmt
++-name_path=T
++-output_column_list=
+| +-$view.a#1 AS a [INT64]
++-query=
+| +-ProjectScan
+|   +-column_list=[$view.a#1]
+|   +-expr_list=
+|   | +-a#1 := Literal(type=INT64, value=1)
+|   +-input_scan=
+|     +-SingleRowScan
++-sql="select 1 a"
++-column_definition_list=
+  +-ColumnDefinition(name="a", type=INT64, column=T.a#2)
+==
+
+[parse_multiple]
+select 1;
+select 2;
+create view T1 as select 1 a;
+select 3;
+select 4;
+create view T2 as select 2 a;
+select 5
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 := Literal(type=INT64, value=1)
+    +-input_scan=
+      +-SingleRowScan
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 := Literal(type=INT64, value=2)
+    +-input_scan=
+      +-SingleRowScan
+--
+CreateViewStmt
++-name_path=T1
++-output_column_list=
+| +-$view.a#1 AS a [INT64]
++-query=
+| +-ProjectScan
+|   +-column_list=[$view.a#1]
+|   +-expr_list=
+|   | +-a#1 := Literal(type=INT64, value=1)
+|   +-input_scan=
+|     +-SingleRowScan
++-sql="select 1 a"
++-column_definition_list=
+  +-ColumnDefinition(name="a", type=INT64, column=T1.a#2)
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 := Literal(type=INT64, value=3)
+    +-input_scan=
+      +-SingleRowScan
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 := Literal(type=INT64, value=4)
+    +-input_scan=
+      +-SingleRowScan
+--
+CreateViewStmt
++-name_path=T2
++-output_column_list=
+| +-$view.a#1 AS a [INT64]
++-query=
+| +-ProjectScan
+|   +-column_list=[$view.a#1]
+|   +-expr_list=
+|   | +-a#1 := Literal(type=INT64, value=2)
+|   +-input_scan=
+|     +-SingleRowScan
++-sql="select 2 a"
++-column_definition_list=
+  +-ColumnDefinition(name="a", type=INT64, column=T2.a#2)
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 := Literal(type=INT64, value=5)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# 'table' is not a valid type for 'select as ...' bodies of 'create view'
+# statements.
+create view tt
+as select as table 1 a, 2, 3 c, 4 c
+--
+ERROR: Type not found: table [at 2:14]
+as select as table 1 a, 2, 3 c, 4 c
+             ^
+==
+
+create {{materialized|approx|}} recursive view tt
+as select 1 a, 2 b
+--
+ALTERNATION GROUP: materialized
+--
+ERROR: Recursive views are not supported [at 1:1]
+create materialized recursive view tt
+^
+--
+ALTERNATION GROUP: approx
+--
+ERROR: Recursive views are not supported [at 1:1]
+create approx recursive view tt
+^
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: Recursive views are not supported [at 1:1]
+create  recursive view tt
+^
+==
+
+create {{materialized|approx|}} view tt(a, b)
+as select 1, 2
+--
+ALTERNATION GROUP: materialized
+--
+ERROR: CREATE MATERIALIZED VIEW with explicit column list is not supported [at 1:28]
+create materialized view tt(a, b)
+                           ^
+--
+ALTERNATION GROUP: approx
+--
+ERROR: CREATE APPROX VIEW with explicit column list is not supported [at 1:22]
+create approx view tt(a, b)
+                     ^
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: CREATE VIEW with explicit column list is not supported [at 1:16]
+create  view tt(a, b)
+               ^
+==
+
+# Create view with explicit column list with column options.
+[default language_features=NONE,{{+CREATE_VIEW_WITH_COLUMN_LIST,+CREATE_VIEWS_WITH_COLUMN_OPTIONS|+CREATE_VIEW_WITH_COLUMN_LIST}}]
+create {{materialized|approx|}} view tt(c1 OPTIONS(description="col1"), c2, c3 OPTIONS())
+as select 1, 2, 3
+--
+ALTERNATION GROUP: +CREATE_VIEW_WITH_COLUMN_LIST,+CREATE_VIEWS_WITH_COLUMN_OPTIONS,materialized
+--
+CreateMaterializedViewStmt
++-name_path=tt
++-output_column_list=
+| +-$view.$col1#1 AS c1 [INT64]
+| +-$view.$col2#2 AS c2 [INT64]
+| +-$view.$col3#3 AS c3 [INT64]
++-has_explicit_columns=TRUE
++-query=
+| +-ProjectScan
+|   +-column_list=$view.[$col1#1, $col2#2, $col3#3]
+|   +-expr_list=
+|   | +-$col1#1 := Literal(type=INT64, value=1)
+|   | +-$col2#2 := Literal(type=INT64, value=2)
+|   | +-$col3#3 := Literal(type=INT64, value=3)
+|   +-input_scan=
+|     +-SingleRowScan
++-sql="select 1, 2, 3"
++-column_definition_list=
+  +-ColumnDefinition
+  | +-name="c1"
+  | +-type=INT64
+  | +-annotations=
+  | | +-ColumnAnnotations
+  | |   +-option_list=
+  | |     +-description := Literal(type=STRING, value="col1")
+  | +-column=tt.$col1#4
+  +-ColumnDefinition(name="c2", type=INT64, column=tt.$col2#5)
+  +-ColumnDefinition(name="c3", type=INT64, column=tt.$col3#6)
+--
+ALTERNATION GROUP: +CREATE_VIEW_WITH_COLUMN_LIST,+CREATE_VIEWS_WITH_COLUMN_OPTIONS,approx
+--
+CreateApproxViewStmt
++-name_path=tt
++-output_column_list=
+| +-$view.$col1#1 AS c1 [INT64]
+| +-$view.$col2#2 AS c2 [INT64]
+| +-$view.$col3#3 AS c3 [INT64]
++-has_explicit_columns=TRUE
++-query=
+| +-ProjectScan
+|   +-column_list=$view.[$col1#1, $col2#2, $col3#3]
+|   +-expr_list=
+|   | +-$col1#1 := Literal(type=INT64, value=1)
+|   | +-$col2#2 := Literal(type=INT64, value=2)
+|   | +-$col3#3 := Literal(type=INT64, value=3)
+|   +-input_scan=
+|     +-SingleRowScan
++-sql="select 1, 2, 3"
++-column_definition_list=
+  +-ColumnDefinition
+  | +-name="c1"
+  | +-type=INT64
+  | +-annotations=
+  | | +-ColumnAnnotations
+  | |   +-option_list=
+  | |     +-description := Literal(type=STRING, value="col1")
+  | +-column=tt.$col1#4
+  +-ColumnDefinition(name="c2", type=INT64, column=tt.$col2#5)
+  +-ColumnDefinition(name="c3", type=INT64, column=tt.$col3#6)
+--
+ALTERNATION GROUP: +CREATE_VIEW_WITH_COLUMN_LIST,+CREATE_VIEWS_WITH_COLUMN_OPTIONS,
+--
+CreateViewStmt
++-name_path=tt
++-output_column_list=
+| +-$view.$col1#1 AS c1 [INT64]
+| +-$view.$col2#2 AS c2 [INT64]
+| +-$view.$col3#3 AS c3 [INT64]
++-has_explicit_columns=TRUE
++-query=
+| +-ProjectScan
+|   +-column_list=$view.[$col1#1, $col2#2, $col3#3]
+|   +-expr_list=
+|   | +-$col1#1 := Literal(type=INT64, value=1)
+|   | +-$col2#2 := Literal(type=INT64, value=2)
+|   | +-$col3#3 := Literal(type=INT64, value=3)
+|   +-input_scan=
+|     +-SingleRowScan
++-sql="select 1, 2, 3"
++-column_definition_list=
+  +-ColumnDefinition
+  | +-name="c1"
+  | +-type=INT64
+  | +-annotations=
+  | | +-ColumnAnnotations
+  | |   +-option_list=
+  | |     +-description := Literal(type=STRING, value="col1")
+  | +-column=tt.$col1#4
+  +-ColumnDefinition(name="c2", type=INT64, column=tt.$col2#5)
+  +-ColumnDefinition(name="c3", type=INT64, column=tt.$col3#6)
+--
+ALTERNATION GROUP: +CREATE_VIEW_WITH_COLUMN_LIST,materialized
+--
+ERROR: CREATE MATERIALIZED VIEW with column options not supported [at 1:39]
+create materialized view tt(c1 OPTIONS(description="col1"), c2, c3 OPTIONS())
+                                      ^
+--
+ALTERNATION GROUP: +CREATE_VIEW_WITH_COLUMN_LIST,approx
+--
+ERROR: CREATE APPROX VIEW with column options not supported [at 1:33]
+create approx view tt(c1 OPTIONS(description="col1"), c2, c3 OPTIONS())
+                                ^
+--
+ALTERNATION GROUP: +CREATE_VIEW_WITH_COLUMN_LIST,
+--
+ERROR: CREATE VIEW with column options not supported [at 1:27]
+create  view tt(c1 OPTIONS(description="col1"), c2, c3 OPTIONS())
+                          ^
+==
+
+# Create view with or without explicit column.
+# Results for the alternations should be the same except has_explicit_columns.
+[default language_features=NONE,+CREATE_VIEW_WITH_COLUMN_LIST]
+create view v {{|(a,b)}}
+as select 1 a, 2 b;
+
+--
+ALTERNATION GROUP: <empty>
+--
+CreateViewStmt
++-name_path=v
++-output_column_list=
+| +-$view.a#1 AS a [INT64]
+| +-$view.b#2 AS b [INT64]
++-query=
+| +-ProjectScan
+|   +-column_list=$view.[a#1, b#2]
+|   +-expr_list=
+|   | +-a#1 := Literal(type=INT64, value=1)
+|   | +-b#2 := Literal(type=INT64, value=2)
+|   +-input_scan=
+|     +-SingleRowScan
++-sql="select 1 a, 2 b"
++-column_definition_list=
+  +-ColumnDefinition(name="a", type=INT64, column=v.a#3)
+  +-ColumnDefinition(name="b", type=INT64, column=v.b#4)
+--
+ALTERNATION GROUP: (a,b)
+--
+CreateViewStmt
++-name_path=v
++-output_column_list=
+| +-$view.a#1 AS a [INT64]
+| +-$view.b#2 AS b [INT64]
++-has_explicit_columns=TRUE
++-query=
+| +-ProjectScan
+|   +-column_list=$view.[a#1, b#2]
+|   +-expr_list=
+|   | +-a#1 := Literal(type=INT64, value=1)
+|   | +-b#2 := Literal(type=INT64, value=2)
+|   +-input_scan=
+|     +-SingleRowScan
++-sql="select 1 a, 2 b"
++-column_definition_list=
+  +-ColumnDefinition(name="a", type=INT64, column=v.a#3)
+  +-ColumnDefinition(name="b", type=INT64, column=v.b#4)
+==
+
+# Create view with column name list, view sql columns have no name.
+create {{materialized|approx|}} view tt(a, `b`)
+as select 1, 2
+--
+ALTERNATION GROUP: materialized
+
+--
+CreateMaterializedViewStmt
++-name_path=tt
++-output_column_list=
+| +-$view.$col1#1 AS a [INT64]
+| +-$view.$col2#2 AS b [INT64]
++-has_explicit_columns=TRUE
++-query=
+| +-ProjectScan
+|   +-column_list=$view.[$col1#1, $col2#2]
+|   +-expr_list=
+|   | +-$col1#1 := Literal(type=INT64, value=1)
+|   | +-$col2#2 := Literal(type=INT64, value=2)
+|   +-input_scan=
+|     +-SingleRowScan
++-sql="select 1, 2"
++-column_definition_list=
+  +-ColumnDefinition(name="a", type=INT64, column=tt.$col1#3)
+  +-ColumnDefinition(name="b", type=INT64, column=tt.$col2#4)
+--
+ALTERNATION GROUP: approx
+--
+CreateApproxViewStmt
++-name_path=tt
++-output_column_list=
+| +-$view.$col1#1 AS a [INT64]
+| +-$view.$col2#2 AS b [INT64]
++-has_explicit_columns=TRUE
++-query=
+| +-ProjectScan
+|   +-column_list=$view.[$col1#1, $col2#2]
+|   +-expr_list=
+|   | +-$col1#1 := Literal(type=INT64, value=1)
+|   | +-$col2#2 := Literal(type=INT64, value=2)
+|   +-input_scan=
+|     +-SingleRowScan
++-sql="select 1, 2"
++-column_definition_list=
+  +-ColumnDefinition(name="a", type=INT64, column=tt.$col1#3)
+  +-ColumnDefinition(name="b", type=INT64, column=tt.$col2#4)
+--
+ALTERNATION GROUP: <empty>
+--
+CreateViewStmt
++-name_path=tt
++-output_column_list=
+| +-$view.$col1#1 AS a [INT64]
+| +-$view.$col2#2 AS b [INT64]
++-has_explicit_columns=TRUE
++-query=
+| +-ProjectScan
+|   +-column_list=$view.[$col1#1, $col2#2]
+|   +-expr_list=
+|   | +-$col1#1 := Literal(type=INT64, value=1)
+|   | +-$col2#2 := Literal(type=INT64, value=2)
+|   +-input_scan=
+|     +-SingleRowScan
++-sql="select 1, 2"
++-column_definition_list=
+  +-ColumnDefinition(name="a", type=INT64, column=tt.$col1#3)
+  +-ColumnDefinition(name="b", type=INT64, column=tt.$col2#4)
+==
+
+# Create view with column name list size < view sql column count
+create {{materialized|approx|}} view tt(a)
+as select 1, 2
+--
+ALTERNATION GROUP: materialized
+
+--
+ERROR: The number of view column names (1) must be equal to the number of columns from the view query (2) [at 1:28]
+create materialized view tt(a)
+                           ^
+--
+ALTERNATION GROUP: approx
+--
+ERROR: The number of view column names (1) must be equal to the number of columns from the view query (2) [at 1:22]
+create approx view tt(a)
+                     ^
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: The number of view column names (1) must be equal to the number of columns from the view query (2) [at 1:16]
+create  view tt(a)
+               ^
+==
+
+# Create view with column name list size < view sql column count as expanded from select *
+create {{materialized|approx|}} view tt(a)
+as select * from KeyValue
+--
+ALTERNATION GROUP: materialized
+
+--
+ERROR: The number of view column names (1) must be equal to the number of columns from the view query (2) [at 1:28]
+create materialized view tt(a)
+                           ^
+--
+ALTERNATION GROUP: approx
+--
+ERROR: The number of view column names (1) must be equal to the number of columns from the view query (2) [at 1:22]
+create approx view tt(a)
+                     ^
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: The number of view column names (1) must be equal to the number of columns from the view query (2) [at 1:16]
+create  view tt(a)
+               ^
+==
+
+# Create view with column name list size < view sql column count
+create {{materialized|approx|}} view tt(a, b)
+as select 1
+--
+ALTERNATION GROUP: materialized
+
+--
+ERROR: The number of view column names (2) must be equal to the number of columns from the view query (1) [at 1:28]
+create materialized view tt(a, b)
+                           ^
+--
+ALTERNATION GROUP: approx
+--
+ERROR: The number of view column names (2) must be equal to the number of columns from the view query (1) [at 1:22]
+create approx view tt(a, b)
+                     ^
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: The number of view column names (2) must be equal to the number of columns from the view query (1) [at 1:16]
+create  view tt(a, b)
+               ^
+==
+
+# Create view with empty column name list
+create {{materialized|approx|}} view tt()
+as select 1, 2
+--
+ALTERNATION GROUP: materialized
+--
+ERROR: Syntax error: Unexpected ")" [at 1:29]
+create materialized view tt()
+                            ^
+--
+ALTERNATION GROUP: approx
+--
+ERROR: Syntax error: Unexpected ")" [at 1:23]
+create approx view tt()
+                      ^
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: Syntax error: Unexpected ")" [at 1:17]
+create  view tt()
+                ^
+==
+
+
+# Create view with duplicate column names
+create {{materialized|approx|}} view tt(a, a)
+as select 1, 2
+--
+ALTERNATION GROUP: materialized
+
+--
+ERROR: CREATE MATERIALIZED VIEW has columns with duplicate name a [at 1:32]
+create materialized view tt(a, a)
+                               ^
+--
+ALTERNATION GROUP: approx
+--
+ERROR: CREATE APPROX VIEW has columns with duplicate name a [at 1:26]
+create approx view tt(a, a)
+                         ^
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: CREATE VIEW has columns with duplicate name a [at 1:20]
+create  view tt(a, a)
+                   ^
+
+==
+
+# Create view with column names differing only in upper/lower case.
+create {{materialized|approx|}} view tt(aB, Ab)
+as select 1, 2
+--
+ALTERNATION GROUP: materialized
+--
+ERROR: CREATE MATERIALIZED VIEW has columns with duplicate name Ab [at 1:33]
+create materialized view tt(aB, Ab)
+                                ^
+--
+ALTERNATION GROUP: approx
+--
+ERROR: CREATE APPROX VIEW has columns with duplicate name Ab [at 1:27]
+create approx view tt(aB, Ab)
+                          ^
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: CREATE VIEW has columns with duplicate name Ab [at 1:21]
+create  view tt(aB, Ab)
+                    ^
+==
+
+# Create view with internal column name
+create {{materialized|approx|}} view tt(`$foo`, `$2`)
+as select 1, 2
+--
+ALTERNATION GROUP: materialized
+
+--
+ERROR: Illegal column name: $foo [at 1:29]
+create materialized view tt(`$foo`, `$2`)
+                            ^
+--
+ALTERNATION GROUP: approx
+--
+ERROR: Illegal column name: $foo [at 1:23]
+create approx view tt(`$foo`, `$2`)
+                      ^
+--
+ALTERNATION GROUP: <empty>
+--
+
+ERROR: Illegal column name: $foo [at 1:17]
+create  view tt(`$foo`, `$2`)
+                ^
+==
+
+
+# Create view with column name list on top of select * view sql.
+create {{materialized|approx|}} view tt(k, v)
+as select * from KeyValue
+--
+ALTERNATION GROUP: materialized
+--
+CreateMaterializedViewStmt
++-name_path=tt
++-output_column_list=
+| +-KeyValue.Key#1 AS k [INT64]
+| +-KeyValue.Value#2 AS v [STRING]
++-has_explicit_columns=TRUE
++-query=
+| +-ProjectScan
+|   +-column_list=KeyValue.[Key#1, Value#2]
+|   +-input_scan=
+|     +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
++-sql="select * from KeyValue"
++-column_definition_list=
+  +-ColumnDefinition(name="k", type=INT64, column=tt.Key#3)
+  +-ColumnDefinition(name="v", type=STRING, column=tt.Value#4)
+--
+ALTERNATION GROUP: approx
+--
+CreateApproxViewStmt
++-name_path=tt
++-output_column_list=
+| +-KeyValue.Key#1 AS k [INT64]
+| +-KeyValue.Value#2 AS v [STRING]
++-has_explicit_columns=TRUE
++-query=
+| +-ProjectScan
+|   +-column_list=KeyValue.[Key#1, Value#2]
+|   +-input_scan=
+|     +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
++-sql="select * from KeyValue"
++-column_definition_list=
+  +-ColumnDefinition(name="k", type=INT64, column=tt.Key#3)
+  +-ColumnDefinition(name="v", type=STRING, column=tt.Value#4)
+--
+ALTERNATION GROUP: <empty>
+--
+CreateViewStmt
++-name_path=tt
++-output_column_list=
+| +-KeyValue.Key#1 AS k [INT64]
+| +-KeyValue.Value#2 AS v [STRING]
++-has_explicit_columns=TRUE
++-query=
+| +-ProjectScan
+|   +-column_list=KeyValue.[Key#1, Value#2]
+|   +-input_scan=
+|     +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
++-sql="select * from KeyValue"
++-column_definition_list=
+  +-ColumnDefinition(name="k", type=INT64, column=tt.Key#3)
+  +-ColumnDefinition(name="v", type=STRING, column=tt.Value#4)
+
+==
+
+# Create view with column names swapping the output column names from view sql.
+create {{materialized|approx|}} view tt(key, value)
+as select key AS value, value AS key from KeyValue
+--
+ALTERNATION GROUP: materialized
+--
+CreateMaterializedViewStmt
++-name_path=tt
++-output_column_list=
+| +-KeyValue.Key#1 AS key [INT64]
+| +-KeyValue.Value#2 AS value [STRING]
++-has_explicit_columns=TRUE
++-query=
+| +-ProjectScan
+|   +-column_list=KeyValue.[Key#1, Value#2]
+|   +-input_scan=
+|     +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
++-sql="select key AS value, value AS key from KeyValue"
++-column_definition_list=
+  +-ColumnDefinition(name="key", type=INT64, column=tt.value#3)
+  +-ColumnDefinition(name="value", type=STRING, column=tt.key#4)
+--
+ALTERNATION GROUP: approx
+--
+CreateApproxViewStmt
++-name_path=tt
++-output_column_list=
+| +-KeyValue.Key#1 AS key [INT64]
+| +-KeyValue.Value#2 AS value [STRING]
++-has_explicit_columns=TRUE
++-query=
+| +-ProjectScan
+|   +-column_list=KeyValue.[Key#1, Value#2]
+|   +-input_scan=
+|     +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
++-sql="select key AS value, value AS key from KeyValue"
++-column_definition_list=
+  +-ColumnDefinition(name="key", type=INT64, column=tt.value#3)
+  +-ColumnDefinition(name="value", type=STRING, column=tt.key#4)
+--
+ALTERNATION GROUP: <empty>
+--
+CreateViewStmt
++-name_path=tt
++-output_column_list=
+| +-KeyValue.Key#1 AS key [INT64]
+| +-KeyValue.Value#2 AS value [STRING]
++-has_explicit_columns=TRUE
++-query=
+| +-ProjectScan
+|   +-column_list=KeyValue.[Key#1, Value#2]
+|   +-input_scan=
+|     +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
++-sql="select key AS value, value AS key from KeyValue"
++-column_definition_list=
+  +-ColumnDefinition(name="key", type=INT64, column=tt.value#3)
+  +-ColumnDefinition(name="value", type=STRING, column=tt.key#4)
+
+==
+
+# Create view with duplicate view sql column names (renamed by the column name list).
+create {{materialized|approx|}} view tt(key, value)
+as select key AS value, value from KeyValue
+--
+ALTERNATION GROUP: materialized
+--
+CreateMaterializedViewStmt
++-name_path=tt
++-output_column_list=
+| +-KeyValue.Key#1 AS key [INT64]
+| +-KeyValue.Value#2 AS value [STRING]
++-has_explicit_columns=TRUE
++-query=
+| +-ProjectScan
+|   +-column_list=KeyValue.[Key#1, Value#2]
+|   +-input_scan=
+|     +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
++-sql="select key AS value, value from KeyValue"
++-column_definition_list=
+  +-ColumnDefinition(name="key", type=INT64, column=tt.value#3)
+  +-ColumnDefinition(name="value", type=STRING, column=tt.value#4)
+--
+ALTERNATION GROUP: approx
+--
+CreateApproxViewStmt
++-name_path=tt
++-output_column_list=
+| +-KeyValue.Key#1 AS key [INT64]
+| +-KeyValue.Value#2 AS value [STRING]
++-has_explicit_columns=TRUE
++-query=
+| +-ProjectScan
+|   +-column_list=KeyValue.[Key#1, Value#2]
+|   +-input_scan=
+|     +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
++-sql="select key AS value, value from KeyValue"
++-column_definition_list=
+  +-ColumnDefinition(name="key", type=INT64, column=tt.value#3)
+  +-ColumnDefinition(name="value", type=STRING, column=tt.value#4)
+--
+ALTERNATION GROUP: <empty>
+--
+CreateViewStmt
++-name_path=tt
++-output_column_list=
+| +-KeyValue.Key#1 AS key [INT64]
+| +-KeyValue.Value#2 AS value [STRING]
++-has_explicit_columns=TRUE
++-query=
+| +-ProjectScan
+|   +-column_list=KeyValue.[Key#1, Value#2]
+|   +-input_scan=
+|     +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
++-sql="select key AS value, value from KeyValue"
++-column_definition_list=
+  +-ColumnDefinition(name="key", type=INT64, column=tt.value#3)
+  +-ColumnDefinition(name="value", type=STRING, column=tt.value#4)
+==
+
+[disallow_duplicate_options]
+create {{|temporary|materialized|approx}} view X
+options(x=5, y='abc', y=7) as select 1, 2, 3
+--
+ERROR: Duplicate option specified for 'y' [at 2:23]
+options(x=5, y='abc', y=7) as select 1, 2, 3
+                      ^
+==
+
+# Create view with sql security.
+create {{materialized|approx|}} view tt sql security {{invoker|definer}}
+as select key, value from KeyValue
+--
+ALTERNATION GROUP: materialized,invoker
+--
+CreateMaterializedViewStmt
++-name_path=tt
++-output_column_list=
+| +-KeyValue.Key#1 AS key [INT64]
+| +-KeyValue.Value#2 AS value [STRING]
++-query=
+| +-ProjectScan
+|   +-column_list=KeyValue.[Key#1, Value#2]
+|   +-input_scan=
+|     +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
++-sql="select key, value from KeyValue"
++-sql_security=SQL_SECURITY_INVOKER
++-column_definition_list=
+  +-ColumnDefinition(name="key", type=INT64, column=tt.key#3)
+  +-ColumnDefinition(name="value", type=STRING, column=tt.value#4)
+--
+ALTERNATION GROUP: materialized,definer
+--
+CreateMaterializedViewStmt
++-name_path=tt
++-output_column_list=
+| +-KeyValue.Key#1 AS key [INT64]
+| +-KeyValue.Value#2 AS value [STRING]
++-query=
+| +-ProjectScan
+|   +-column_list=KeyValue.[Key#1, Value#2]
+|   +-input_scan=
+|     +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
++-sql="select key, value from KeyValue"
++-sql_security=SQL_SECURITY_DEFINER
++-column_definition_list=
+  +-ColumnDefinition(name="key", type=INT64, column=tt.key#3)
+  +-ColumnDefinition(name="value", type=STRING, column=tt.value#4)
+--
+ALTERNATION GROUP: approx,invoker
+--
+CreateApproxViewStmt
++-name_path=tt
++-output_column_list=
+| +-KeyValue.Key#1 AS key [INT64]
+| +-KeyValue.Value#2 AS value [STRING]
++-query=
+| +-ProjectScan
+|   +-column_list=KeyValue.[Key#1, Value#2]
+|   +-input_scan=
+|     +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
++-sql="select key, value from KeyValue"
++-sql_security=SQL_SECURITY_INVOKER
++-column_definition_list=
+  +-ColumnDefinition(name="key", type=INT64, column=tt.key#3)
+  +-ColumnDefinition(name="value", type=STRING, column=tt.value#4)
+--
+ALTERNATION GROUP: approx,definer
+--
+CreateApproxViewStmt
++-name_path=tt
++-output_column_list=
+| +-KeyValue.Key#1 AS key [INT64]
+| +-KeyValue.Value#2 AS value [STRING]
++-query=
+| +-ProjectScan
+|   +-column_list=KeyValue.[Key#1, Value#2]
+|   +-input_scan=
+|     +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
++-sql="select key, value from KeyValue"
++-sql_security=SQL_SECURITY_DEFINER
++-column_definition_list=
+  +-ColumnDefinition(name="key", type=INT64, column=tt.key#3)
+  +-ColumnDefinition(name="value", type=STRING, column=tt.value#4)
+--
+ALTERNATION GROUP: invoker
+--
+CreateViewStmt
++-name_path=tt
++-output_column_list=
+| +-KeyValue.Key#1 AS key [INT64]
+| +-KeyValue.Value#2 AS value [STRING]
++-query=
+| +-ProjectScan
+|   +-column_list=KeyValue.[Key#1, Value#2]
+|   +-input_scan=
+|     +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
++-sql="select key, value from KeyValue"
++-sql_security=SQL_SECURITY_INVOKER
++-column_definition_list=
+  +-ColumnDefinition(name="key", type=INT64, column=tt.key#3)
+  +-ColumnDefinition(name="value", type=STRING, column=tt.value#4)
+--
+ALTERNATION GROUP: definer
+--
+CreateViewStmt
++-name_path=tt
++-output_column_list=
+| +-KeyValue.Key#1 AS key [INT64]
+| +-KeyValue.Value#2 AS value [STRING]
++-query=
+| +-ProjectScan
+|   +-column_list=KeyValue.[Key#1, Value#2]
+|   +-input_scan=
+|     +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
++-sql="select key, value from KeyValue"
++-sql_security=SQL_SECURITY_DEFINER
++-column_definition_list=
+  +-ColumnDefinition(name="key", type=INT64, column=tt.key#3)
+  +-ColumnDefinition(name="value", type=STRING, column=tt.value#4)
+==
+
+# Same name as table
+create view {{KeyValue|kEYvALUE}} sql security invoker
+as select key as a, value as b from TwoIntegers
+--
+ALTERNATION GROUP: KeyValue
+--
+CreateViewStmt
++-name_path=KeyValue
++-output_column_list=
+| +-TwoIntegers.key#1 AS a [INT64]
+| +-TwoIntegers.value#2 AS b [INT64]
++-query=
+| +-ProjectScan
+|   +-column_list=TwoIntegers.[key#1, value#2]
+|   +-input_scan=
+|     +-TableScan(column_list=TwoIntegers.[key#1, value#2], table=TwoIntegers, column_index_list=[0, 1])
++-sql="select key as a, value as b from TwoIntegers"
++-sql_security=SQL_SECURITY_INVOKER
++-column_definition_list=
+  +-ColumnDefinition(name="a", type=INT64, column=KeyValue.a#3)
+  +-ColumnDefinition(name="b", type=INT64, column=KeyValue.b#4)
+--
+ALTERNATION GROUP: kEYvALUE
+--
+CreateViewStmt
++-name_path=kEYvALUE
++-output_column_list=
+| +-TwoIntegers.key#1 AS a [INT64]
+| +-TwoIntegers.value#2 AS b [INT64]
++-query=
+| +-ProjectScan
+|   +-column_list=TwoIntegers.[key#1, value#2]
+|   +-input_scan=
+|     +-TableScan(column_list=TwoIntegers.[key#1, value#2], table=TwoIntegers, column_index_list=[0, 1])
++-sql="select key as a, value as b from TwoIntegers"
++-sql_security=SQL_SECURITY_INVOKER
++-column_definition_list=
+  +-ColumnDefinition(name="a", type=INT64, column=kEYvALUE.a#3)
+  +-ColumnDefinition(name="b", type=INT64, column=kEYvALUE.b#4)
+==
+
+# Same name as view
+create view {{ScanTableView|sCANtABLEvIEW}} sql security invoker
+as select key as a, value as b from TwoIntegers
+--
+ALTERNATION GROUP: ScanTableView
+--
+CreateViewStmt
++-name_path=ScanTableView
++-output_column_list=
+| +-TwoIntegers.key#1 AS a [INT64]
+| +-TwoIntegers.value#2 AS b [INT64]
++-query=
+| +-ProjectScan
+|   +-column_list=TwoIntegers.[key#1, value#2]
+|   +-input_scan=
+|     +-TableScan(column_list=TwoIntegers.[key#1, value#2], table=TwoIntegers, column_index_list=[0, 1])
++-sql="select key as a, value as b from TwoIntegers"
++-sql_security=SQL_SECURITY_INVOKER
++-column_definition_list=
+  +-ColumnDefinition(name="a", type=INT64, column=ScanTableView.a#3)
+  +-ColumnDefinition(name="b", type=INT64, column=ScanTableView.b#4)
+--
+ALTERNATION GROUP: sCANtABLEvIEW
+--
+CreateViewStmt
++-name_path=sCANtABLEvIEW
++-output_column_list=
+| +-TwoIntegers.key#1 AS a [INT64]
+| +-TwoIntegers.value#2 AS b [INT64]
++-query=
+| +-ProjectScan
+|   +-column_list=TwoIntegers.[key#1, value#2]
+|   +-input_scan=
+|     +-TableScan(column_list=TwoIntegers.[key#1, value#2], table=TwoIntegers, column_index_list=[0, 1])
++-sql="select key as a, value as b from TwoIntegers"
++-sql_security=SQL_SECURITY_INVOKER
++-column_definition_list=
+  +-ColumnDefinition(name="a", type=INT64, column=sCANtABLEvIEW.a#3)
+  +-ColumnDefinition(name="b", type=INT64, column=sCANtABLEvIEW.b#4)
+
+==
+
+[language_features=NONE,+SQL_GRAPH,+SQL_GRAPH_ADVANCED_QUERY]
+CREATE TEMP VIEW v AS
+GRAPH aml
+RETURN 1 as x
+--
+CreateViewStmt
++-name_path=v
++-create_scope=CREATE_TEMP
++-output_column_list=
+| +-$graph_table.x#1 AS x [INT64]
++-query=
+| +-GraphTableScan
+|   +-column_list=[$graph_table.x#1]
+|   +-property_graph=aml
+|   +-input_scan=
+|     +-GraphLinearScan
+|       +-column_list=[$graph_table.x#1]
+|       +-scan_list=
+|         +-GraphLinearScan
+|           +-column_list=[$graph_table.x#1]
+|           +-scan_list=
+|             +-ProjectScan
+|               +-column_list=[$graph_table.x#1]
+|               +-expr_list=
+|               | +-x#1 := Literal(type=INT64, value=1)
+|               +-input_scan=
+|                 +-SingleRowScan
++-sql="GRAPH aml\nRETURN 1 as x"
++-column_definition_list=
+  +-ColumnDefinition(name="x", type=INT64, column=v.x#2)

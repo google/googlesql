@@ -1,0 +1,2818 @@
+[default enabled_ast_rewrites=DEFAULTS]
+[default language_features=MAXIMUM,+UNPIVOT,+TABLESAMPLE,+TABLE_VALUED_FUNCTIONS]
+
+[language_features=NONE,{{|+UNPIVOT}}]
+SELECT * FROM KeyValue UNPIVOT(a for b in (Key));
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: UNPIVOT is not supported [at 1:24]
+SELECT * FROM KeyValue UNPIVOT(a for b in (Key));
+                       ^
+--
+ALTERNATION GROUP: +UNPIVOT
+--
+QueryStmt
++-output_column_list=
+| +-$unpivot.Value#5 AS Value [STRING]
+| +-$unpivot.a#3 AS a [INT64]
+| +-$unpivot.b#4 AS b [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=$unpivot.[Value#5, a#3, b#4]
+    +-input_scan=
+      +-UnpivotScan
+        +-column_list=$unpivot.[Value#5, a#3, b#4]
+        +-input_scan=
+        | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+        +-value_column_list=[$unpivot.a#3]
+        +-label_column=$unpivot.b#4
+        +-label_list=
+        | +-Literal(type=STRING, value="Key")
+        +-unpivot_arg_list=
+        | +-UnpivotArg
+        |   +-column_list=
+        |     +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+        +-projected_input_column_list=
+        | +-Value#5 := ColumnRef(type=STRING, column=KeyValue.Value#2)
+        +-include_nulls=FALSE
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$unpivot.Value#5 AS Value [STRING]
+| +-$unpivot.a#3 AS a [INT64]
+| +-$unpivot.b#4 AS b [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=$unpivot.[Value#5, a#3, b#4]
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=$unpivot.[Value#5, a#3, b#4]
+        +-expr_list=
+        | +-Value#5 := ColumnRef(type=STRING, column=KeyValue.Value#2)
+        | +-a#3 :=
+        | | +-GetStructField
+        | |   +-type=INT64
+        | |   +-expr=
+        | |   | +-ColumnRef(type=STRUCT<a INT64, b STRING>, column=unpivot_array_0.unpivot_unnest#6)
+        | |   +-field_idx=0
+        | +-b#4 :=
+        |   +-GetStructField
+        |     +-type=STRING
+        |     +-expr=
+        |     | +-ColumnRef(type=STRUCT<a INT64, b STRING>, column=unpivot_array_0.unpivot_unnest#6)
+        |     +-field_idx=1
+        +-input_scan=
+          +-FilterScan
+            +-column_list=[KeyValue.Key#1, KeyValue.Value#2, unpivot_array_0.unpivot_unnest#6]
+            +-input_scan=
+            | +-ArrayScan
+            |   +-column_list=[KeyValue.Key#1, KeyValue.Value#2, unpivot_array_0.unpivot_unnest#6]
+            |   +-input_scan=
+            |   | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+            |   +-array_expr_list=
+            |   | +-FunctionCall(GoogleSQL:$make_array(repeated(1) STRUCT<a INT64, b STRING>) -> ARRAY<STRUCT<a INT64, b STRING>>)
+            |   |   +-MakeStruct
+            |   |     +-type=STRUCT<a INT64, b STRING>
+            |   |     +-field_list=
+            |   |       +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+            |   |       +-Literal(type=STRING, value="Key", has_explicit_type=TRUE)
+            |   +-element_column_list=[unpivot_array_0.unpivot_unnest#6]
+            +-filter_expr=
+              +-FunctionCall(GoogleSQL:$not(BOOL) -> BOOL)
+                +-FunctionCall(GoogleSQL:$is_null(INT64) -> BOOL)
+                  +-GetStructField
+                    +-type=INT64
+                    +-expr=
+                    | +-ColumnRef(type=STRUCT<a INT64, b STRING>, column=unpivot_array_0.unpivot_unnest#6)
+                    +-field_idx=0
+==
+
+SELECT * FROM MultipleColumns UNPIVOT INCLUDE NULLS((a, b) for c in ((int_a, int_b)));
+--
+QueryStmt
++-output_column_list=
+| +-$unpivot.string_a#10 AS string_a [STRING]
+| +-$unpivot.string_b#11 AS string_b [STRING]
+| +-$unpivot.int_c#12 AS int_c [INT64]
+| +-$unpivot.int_d#13 AS int_d [INT64]
+| +-$unpivot.a#7 AS a [INT64]
+| +-$unpivot.b#8 AS b [INT64]
+| +-$unpivot.c#9 AS c [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=$unpivot.[string_a#10, string_b#11, int_c#12, int_d#13, a#7, b#8, c#9]
+    +-input_scan=
+      +-UnpivotScan
+        +-column_list=$unpivot.[string_a#10, string_b#11, int_c#12, int_d#13, a#7, b#8, c#9]
+        +-input_scan=
+        | +-TableScan(column_list=MultipleColumns.[int_a#1, string_a#2, int_b#3, string_b#4, int_c#5, int_d#6], table=MultipleColumns, column_index_list=[0, 1, 2, 3, 4, 5])
+        +-value_column_list=$unpivot.[a#7, b#8]
+        +-label_column=$unpivot.c#9
+        +-label_list=
+        | +-Literal(type=STRING, value="int_a_int_b")
+        +-unpivot_arg_list=
+        | +-UnpivotArg
+        |   +-column_list=
+        |     +-ColumnRef(type=INT64, column=MultipleColumns.int_a#1)
+        |     +-ColumnRef(type=INT64, column=MultipleColumns.int_b#3)
+        +-projected_input_column_list=
+        | +-string_a#10 := ColumnRef(type=STRING, column=MultipleColumns.string_a#2)
+        | +-string_b#11 := ColumnRef(type=STRING, column=MultipleColumns.string_b#4)
+        | +-int_c#12 := ColumnRef(type=INT64, column=MultipleColumns.int_c#5)
+        | +-int_d#13 := ColumnRef(type=INT64, column=MultipleColumns.int_d#6)
+        +-include_nulls=TRUE
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$unpivot.string_a#10 AS string_a [STRING]
+| +-$unpivot.string_b#11 AS string_b [STRING]
+| +-$unpivot.int_c#12 AS int_c [INT64]
+| +-$unpivot.int_d#13 AS int_d [INT64]
+| +-$unpivot.a#7 AS a [INT64]
+| +-$unpivot.b#8 AS b [INT64]
+| +-$unpivot.c#9 AS c [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=$unpivot.[string_a#10, string_b#11, int_c#12, int_d#13, a#7, b#8, c#9]
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=$unpivot.[string_a#10, string_b#11, int_c#12, int_d#13, a#7, b#8, c#9]
+        +-expr_list=
+        | +-string_a#10 := ColumnRef(type=STRING, column=MultipleColumns.string_a#2)
+        | +-string_b#11 := ColumnRef(type=STRING, column=MultipleColumns.string_b#4)
+        | +-int_c#12 := ColumnRef(type=INT64, column=MultipleColumns.int_c#5)
+        | +-int_d#13 := ColumnRef(type=INT64, column=MultipleColumns.int_d#6)
+        | +-a#7 :=
+        | | +-GetStructField
+        | |   +-type=INT64
+        | |   +-expr=
+        | |   | +-ColumnRef(type=STRUCT<a INT64, b INT64, c STRING>, column=unpivot_array_0.unpivot_unnest#14)
+        | |   +-field_idx=0
+        | +-b#8 :=
+        | | +-GetStructField
+        | |   +-type=INT64
+        | |   +-expr=
+        | |   | +-ColumnRef(type=STRUCT<a INT64, b INT64, c STRING>, column=unpivot_array_0.unpivot_unnest#14)
+        | |   +-field_idx=1
+        | +-c#9 :=
+        |   +-GetStructField
+        |     +-type=STRING
+        |     +-expr=
+        |     | +-ColumnRef(type=STRUCT<a INT64, b INT64, c STRING>, column=unpivot_array_0.unpivot_unnest#14)
+        |     +-field_idx=2
+        +-input_scan=
+          +-ArrayScan
+            +-column_list=[MultipleColumns.int_a#1, MultipleColumns.string_a#2, MultipleColumns.int_b#3, MultipleColumns.string_b#4, MultipleColumns.int_c#5, MultipleColumns.int_d#6, unpivot_array_0.unpivot_unnest#14]
+            +-input_scan=
+            | +-TableScan(column_list=MultipleColumns.[int_a#1, string_a#2, int_b#3, string_b#4, int_c#5, int_d#6], table=MultipleColumns, column_index_list=[0, 1, 2, 3, 4, 5])
+            +-array_expr_list=
+            | +-FunctionCall(GoogleSQL:$make_array(repeated(1) STRUCT<a INT64, b INT64, c STRING>) -> ARRAY<STRUCT<a INT64, b INT64, c STRING>>)
+            |   +-MakeStruct
+            |     +-type=STRUCT<a INT64, b INT64, c STRING>
+            |     +-field_list=
+            |       +-ColumnRef(type=INT64, column=MultipleColumns.int_a#1)
+            |       +-ColumnRef(type=INT64, column=MultipleColumns.int_b#3)
+            |       +-Literal(type=STRING, value="int_a_int_b", has_explicit_type=TRUE)
+            +-element_column_list=[unpivot_array_0.unpivot_unnest#14]
+==
+
+SELECT * FROM MultipleColumns UNPIVOT EXCLUDE NULLS((a, b) for c in ((int_a, int_b)));
+--
+QueryStmt
++-output_column_list=
+| +-$unpivot.string_a#10 AS string_a [STRING]
+| +-$unpivot.string_b#11 AS string_b [STRING]
+| +-$unpivot.int_c#12 AS int_c [INT64]
+| +-$unpivot.int_d#13 AS int_d [INT64]
+| +-$unpivot.a#7 AS a [INT64]
+| +-$unpivot.b#8 AS b [INT64]
+| +-$unpivot.c#9 AS c [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=$unpivot.[string_a#10, string_b#11, int_c#12, int_d#13, a#7, b#8, c#9]
+    +-input_scan=
+      +-UnpivotScan
+        +-column_list=$unpivot.[string_a#10, string_b#11, int_c#12, int_d#13, a#7, b#8, c#9]
+        +-input_scan=
+        | +-TableScan(column_list=MultipleColumns.[int_a#1, string_a#2, int_b#3, string_b#4, int_c#5, int_d#6], table=MultipleColumns, column_index_list=[0, 1, 2, 3, 4, 5])
+        +-value_column_list=$unpivot.[a#7, b#8]
+        +-label_column=$unpivot.c#9
+        +-label_list=
+        | +-Literal(type=STRING, value="int_a_int_b")
+        +-unpivot_arg_list=
+        | +-UnpivotArg
+        |   +-column_list=
+        |     +-ColumnRef(type=INT64, column=MultipleColumns.int_a#1)
+        |     +-ColumnRef(type=INT64, column=MultipleColumns.int_b#3)
+        +-projected_input_column_list=
+        | +-string_a#10 := ColumnRef(type=STRING, column=MultipleColumns.string_a#2)
+        | +-string_b#11 := ColumnRef(type=STRING, column=MultipleColumns.string_b#4)
+        | +-int_c#12 := ColumnRef(type=INT64, column=MultipleColumns.int_c#5)
+        | +-int_d#13 := ColumnRef(type=INT64, column=MultipleColumns.int_d#6)
+        +-include_nulls=FALSE
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$unpivot.string_a#10 AS string_a [STRING]
+| +-$unpivot.string_b#11 AS string_b [STRING]
+| +-$unpivot.int_c#12 AS int_c [INT64]
+| +-$unpivot.int_d#13 AS int_d [INT64]
+| +-$unpivot.a#7 AS a [INT64]
+| +-$unpivot.b#8 AS b [INT64]
+| +-$unpivot.c#9 AS c [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=$unpivot.[string_a#10, string_b#11, int_c#12, int_d#13, a#7, b#8, c#9]
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=$unpivot.[string_a#10, string_b#11, int_c#12, int_d#13, a#7, b#8, c#9]
+        +-expr_list=
+        | +-string_a#10 := ColumnRef(type=STRING, column=MultipleColumns.string_a#2)
+        | +-string_b#11 := ColumnRef(type=STRING, column=MultipleColumns.string_b#4)
+        | +-int_c#12 := ColumnRef(type=INT64, column=MultipleColumns.int_c#5)
+        | +-int_d#13 := ColumnRef(type=INT64, column=MultipleColumns.int_d#6)
+        | +-a#7 :=
+        | | +-GetStructField
+        | |   +-type=INT64
+        | |   +-expr=
+        | |   | +-ColumnRef(type=STRUCT<a INT64, b INT64, c STRING>, column=unpivot_array_0.unpivot_unnest#14)
+        | |   +-field_idx=0
+        | +-b#8 :=
+        | | +-GetStructField
+        | |   +-type=INT64
+        | |   +-expr=
+        | |   | +-ColumnRef(type=STRUCT<a INT64, b INT64, c STRING>, column=unpivot_array_0.unpivot_unnest#14)
+        | |   +-field_idx=1
+        | +-c#9 :=
+        |   +-GetStructField
+        |     +-type=STRING
+        |     +-expr=
+        |     | +-ColumnRef(type=STRUCT<a INT64, b INT64, c STRING>, column=unpivot_array_0.unpivot_unnest#14)
+        |     +-field_idx=2
+        +-input_scan=
+          +-FilterScan
+            +-column_list=[MultipleColumns.int_a#1, MultipleColumns.string_a#2, MultipleColumns.int_b#3, MultipleColumns.string_b#4, MultipleColumns.int_c#5, MultipleColumns.int_d#6, unpivot_array_0.unpivot_unnest#14]
+            +-input_scan=
+            | +-ArrayScan
+            |   +-column_list=[MultipleColumns.int_a#1, MultipleColumns.string_a#2, MultipleColumns.int_b#3, MultipleColumns.string_b#4, MultipleColumns.int_c#5, MultipleColumns.int_d#6, unpivot_array_0.unpivot_unnest#14]
+            |   +-input_scan=
+            |   | +-TableScan(column_list=MultipleColumns.[int_a#1, string_a#2, int_b#3, string_b#4, int_c#5, int_d#6], table=MultipleColumns, column_index_list=[0, 1, 2, 3, 4, 5])
+            |   +-array_expr_list=
+            |   | +-FunctionCall(GoogleSQL:$make_array(repeated(1) STRUCT<a INT64, b INT64, c STRING>) -> ARRAY<STRUCT<a INT64, b INT64, c STRING>>)
+            |   |   +-MakeStruct
+            |   |     +-type=STRUCT<a INT64, b INT64, c STRING>
+            |   |     +-field_list=
+            |   |       +-ColumnRef(type=INT64, column=MultipleColumns.int_a#1)
+            |   |       +-ColumnRef(type=INT64, column=MultipleColumns.int_b#3)
+            |   |       +-Literal(type=STRING, value="int_a_int_b", has_explicit_type=TRUE)
+            |   +-element_column_list=[unpivot_array_0.unpivot_unnest#14]
+            +-filter_expr=
+              +-FunctionCall(GoogleSQL:$or(repeated(2) BOOL) -> BOOL)
+                +-FunctionCall(GoogleSQL:$not(BOOL) -> BOOL)
+                | +-FunctionCall(GoogleSQL:$is_null(INT64) -> BOOL)
+                |   +-GetStructField
+                |     +-type=INT64
+                |     +-expr=
+                |     | +-ColumnRef(type=STRUCT<a INT64, b INT64, c STRING>, column=unpivot_array_0.unpivot_unnest#14)
+                |     +-field_idx=0
+                +-FunctionCall(GoogleSQL:$not(BOOL) -> BOOL)
+                  +-FunctionCall(GoogleSQL:$is_null(INT64) -> BOOL)
+                    +-GetStructField
+                      +-type=INT64
+                      +-expr=
+                      | +-ColumnRef(type=STRUCT<a INT64, b INT64, c STRING>, column=unpivot_array_0.unpivot_unnest#14)
+                      +-field_idx=1
+==
+
+# Unpivot on arrays
+SELECT * FROM UNNEST([1,2]) AS Value UNPIVOT(a for b in (Key));
+--
+ERROR: UNPIVOT is not allowed with array scans [at 1:38]
+SELECT * FROM UNNEST([1,2]) AS Value UNPIVOT(a for b in (Key));
+                                     ^
+==
+
+[language_features=NONE,+UNPIVOT,+TABLESAMPLE,+TABLE_VALUED_FUNCTIONS{{|,+DISALLOW_PIVOT_AND_UNPIVOT_ON_ARRAY_SCANS}}]
+# 2 UNNESTs
+SELECT * FROM UNNEST(['a', 'b']) AS k, UNNEST([1,2]) AS Value UNPIVOT(a for b in (Key));
+--
+ALTERNATION GROUP: <empty>
+--
+QueryStmt
++-output_column_list=
+| +-$array.k#1 AS k [STRING]
+| +-$array.Value#2 AS Value [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=$array.[k#1, Value#2]
+    +-input_scan=
+      +-ArrayScan
+        +-column_list=$array.[k#1, Value#2]
+        +-input_scan=
+        | +-ArrayScan
+        |   +-column_list=[$array.k#1]
+        |   +-array_expr_list=
+        |   | +-Literal(type=ARRAY<STRING>, value=["a", "b"])
+        |   +-element_column_list=[$array.k#1]
+        +-array_expr_list=
+        | +-Literal(type=ARRAY<INT64>, value=[1, 2])
+        +-element_column_list=[$array.Value#2]
+
+
+DEPRECATION WARNING:
+UNPIVOT is not allowed with array scans. This will become an error [at 2:63]
+...UNNEST(['a', 'b']) AS k, UNNEST([1,2]) AS Value UNPIVOT(a for b in (Key));
+                                                   ^
+[googlesql.DeprecationWarning] { kind: PIVOT_OR_UNPIVOT_ON_ARRAY_SCAN }
+--
+ALTERNATION GROUP: ,+DISALLOW_PIVOT_AND_UNPIVOT_ON_ARRAY_SCANS
+--
+ERROR: UNPIVOT is not allowed with array scans [at 2:63]
+...UNNEST(['a', 'b']) AS k, UNNEST([1,2]) AS Value UNPIVOT(a for b in (Key));
+                                                   ^
+==
+
+[language_features=NONE,+UNPIVOT,+TABLESAMPLE,+TABLE_VALUED_FUNCTIONS{{|,+DISALLOW_PIVOT_AND_UNPIVOT_ON_ARRAY_SCANS}}]
+# Table with UNNEST
+SELECT * FROM KeyValue, UNNEST([1,2]) AS Value UNPIVOT(a for b in (Key));
+--
+ALTERNATION GROUP: <empty>
+--
+QueryStmt
++-output_column_list=
+| +-KeyValue.Key#1 AS Key [INT64]
+| +-KeyValue.Value#2 AS Value [STRING]
+| +-$array.Value#3 AS Value [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[KeyValue.Key#1, KeyValue.Value#2, $array.Value#3]
+    +-input_scan=
+      +-ArrayScan
+        +-column_list=[KeyValue.Key#1, KeyValue.Value#2, $array.Value#3]
+        +-input_scan=
+        | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+        +-array_expr_list=
+        | +-Literal(type=ARRAY<INT64>, value=[1, 2])
+        +-element_column_list=[$array.Value#3]
+
+
+DEPRECATION WARNING:
+UNPIVOT is not allowed with array scans. This will become an error [at 2:48]
+SELECT * FROM KeyValue, UNNEST([1,2]) AS Value UNPIVOT(a for b in (Key));
+                                               ^
+[googlesql.DeprecationWarning] { kind: PIVOT_OR_UNPIVOT_ON_ARRAY_SCAN }
+--
+ALTERNATION GROUP: ,+DISALLOW_PIVOT_AND_UNPIVOT_ON_ARRAY_SCANS
+--
+ERROR: UNPIVOT is not allowed with array scans [at 2:48]
+SELECT * FROM KeyValue, UNNEST([1,2]) AS Value UNPIVOT(a for b in (Key));
+                                               ^
+==
+
+[language_features=NONE,+UNPIVOT,+TABLESAMPLE,+TABLE_VALUED_FUNCTIONS{{|,+DISALLOW_PIVOT_AND_UNPIVOT_ON_ARRAY_SCANS}}]
+# Table with 2 UNNESTs
+SELECT * FROM KeyValue, UNNEST(['a', 'b']) AS k, UNNEST([1,2]) AS Value UNPIVOT(a for b in (Key));
+--
+ALTERNATION GROUP: <empty>
+--
+QueryStmt
++-output_column_list=
+| +-KeyValue.Key#1 AS Key [INT64]
+| +-KeyValue.Value#2 AS Value [STRING]
+| +-$array.k#3 AS k [STRING]
+| +-$array.Value#4 AS Value [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[KeyValue.Key#1, KeyValue.Value#2, $array.k#3, $array.Value#4]
+    +-input_scan=
+      +-ArrayScan
+        +-column_list=[KeyValue.Key#1, KeyValue.Value#2, $array.k#3, $array.Value#4]
+        +-input_scan=
+        | +-ArrayScan
+        |   +-column_list=[KeyValue.Key#1, KeyValue.Value#2, $array.k#3]
+        |   +-input_scan=
+        |   | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+        |   +-array_expr_list=
+        |   | +-Literal(type=ARRAY<STRING>, value=["a", "b"])
+        |   +-element_column_list=[$array.k#3]
+        +-array_expr_list=
+        | +-Literal(type=ARRAY<INT64>, value=[1, 2])
+        +-element_column_list=[$array.Value#4]
+
+
+DEPRECATION WARNING:
+UNPIVOT is not allowed with array scans. This will become an error [at 2:73]
+...UNNEST(['a', 'b']) AS k, UNNEST([1,2]) AS Value UNPIVOT(a for b in (Key));
+                                                   ^
+[googlesql.DeprecationWarning] { kind: PIVOT_OR_UNPIVOT_ON_ARRAY_SCAN }
+--
+ALTERNATION GROUP: ,+DISALLOW_PIVOT_AND_UNPIVOT_ON_ARRAY_SCANS
+--
+ERROR: UNPIVOT is not allowed with array scans [at 2:73]
+...UNNEST(['a', 'b']) AS k, UNNEST([1,2]) AS Value UNPIVOT(a for b in (Key));
+                                                   ^
+==
+
+# Unpivot with column not present in input source
+SELECT * FROM KeyValue UNPIVOT(a for b in (x));
+--
+ERROR: Unrecognized name: x [at 1:44]
+SELECT * FROM KeyValue UNPIVOT(a for b in (x));
+                                           ^
+==
+
+# Select certain columns from input table and new unpivot columns.
+SELECT a , int_a FROM MultipleColumns UNPIVOT((a , b) for c in (( int_c, int_d ) AS "Label" ));
+--
+QueryStmt
++-output_column_list=
+| +-$unpivot.a#7 AS a [INT64]
+| +-$unpivot.int_a#10 AS int_a [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=$unpivot.[a#7, int_a#10]
+    +-input_scan=
+      +-UnpivotScan
+        +-column_list=$unpivot.[int_a#10, a#7]
+        +-input_scan=
+        | +-TableScan(column_list=MultipleColumns.[int_a#1, string_a#2, int_b#3, string_b#4, int_c#5, int_d#6], table=MultipleColumns, column_index_list=[0, 1, 2, 3, 4, 5])
+        +-value_column_list=$unpivot.[a#7, b#8]
+        +-label_column=$unpivot.c#9
+        +-label_list=
+        | +-Literal(type=STRING, value="Label")
+        +-unpivot_arg_list=
+        | +-UnpivotArg
+        |   +-column_list=
+        |     +-ColumnRef(type=INT64, column=MultipleColumns.int_c#5)
+        |     +-ColumnRef(type=INT64, column=MultipleColumns.int_d#6)
+        +-projected_input_column_list=
+        | +-int_a#10 := ColumnRef(type=INT64, column=MultipleColumns.int_a#1)
+        | +-string_a#11 := ColumnRef(type=STRING, column=MultipleColumns.string_a#2)
+        | +-int_b#12 := ColumnRef(type=INT64, column=MultipleColumns.int_b#3)
+        | +-string_b#13 := ColumnRef(type=STRING, column=MultipleColumns.string_b#4)
+        +-include_nulls=FALSE
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$unpivot.a#7 AS a [INT64]
+| +-$unpivot.int_a#10 AS int_a [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=$unpivot.[a#7, int_a#10]
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=$unpivot.[int_a#10, a#7]
+        +-expr_list=
+        | +-int_a#10 := ColumnRef(type=INT64, column=MultipleColumns.int_a#1)
+        | +-a#7 :=
+        |   +-GetStructField
+        |     +-type=INT64
+        |     +-expr=
+        |     | +-ColumnRef(type=STRUCT<a INT64, b INT64, c STRING>, column=unpivot_array_0.unpivot_unnest#14)
+        |     +-field_idx=0
+        +-input_scan=
+          +-FilterScan
+            +-column_list=[MultipleColumns.int_a#1, MultipleColumns.string_a#2, MultipleColumns.int_b#3, MultipleColumns.string_b#4, MultipleColumns.int_c#5, MultipleColumns.int_d#6, unpivot_array_0.unpivot_unnest#14]
+            +-input_scan=
+            | +-ArrayScan
+            |   +-column_list=[MultipleColumns.int_a#1, MultipleColumns.string_a#2, MultipleColumns.int_b#3, MultipleColumns.string_b#4, MultipleColumns.int_c#5, MultipleColumns.int_d#6, unpivot_array_0.unpivot_unnest#14]
+            |   +-input_scan=
+            |   | +-TableScan(column_list=MultipleColumns.[int_a#1, string_a#2, int_b#3, string_b#4, int_c#5, int_d#6], table=MultipleColumns, column_index_list=[0, 1, 2, 3, 4, 5])
+            |   +-array_expr_list=
+            |   | +-FunctionCall(GoogleSQL:$make_array(repeated(1) STRUCT<a INT64, b INT64, c STRING>) -> ARRAY<STRUCT<a INT64, b INT64, c STRING>>)
+            |   |   +-MakeStruct
+            |   |     +-type=STRUCT<a INT64, b INT64, c STRING>
+            |   |     +-field_list=
+            |   |       +-ColumnRef(type=INT64, column=MultipleColumns.int_c#5)
+            |   |       +-ColumnRef(type=INT64, column=MultipleColumns.int_d#6)
+            |   |       +-Literal(type=STRING, value="Label", has_explicit_type=TRUE)
+            |   +-element_column_list=[unpivot_array_0.unpivot_unnest#14]
+            +-filter_expr=
+              +-FunctionCall(GoogleSQL:$or(repeated(2) BOOL) -> BOOL)
+                +-FunctionCall(GoogleSQL:$not(BOOL) -> BOOL)
+                | +-FunctionCall(GoogleSQL:$is_null(INT64) -> BOOL)
+                |   +-GetStructField
+                |     +-type=INT64
+                |     +-expr=
+                |     | +-ColumnRef(type=STRUCT<a INT64, b INT64, c STRING>, column=unpivot_array_0.unpivot_unnest#14)
+                |     +-field_idx=0
+                +-FunctionCall(GoogleSQL:$not(BOOL) -> BOOL)
+                  +-FunctionCall(GoogleSQL:$is_null(INT64) -> BOOL)
+                    +-GetStructField
+                      +-type=INT64
+                      +-expr=
+                      | +-ColumnRef(type=STRUCT<a INT64, b INT64, c STRING>, column=unpivot_array_0.unpivot_unnest#14)
+                      +-field_idx=1
+==
+
+# Selecting columns which are in unpivot IN clause is not allowed
+SELECT int_c FROM MultipleColumns UNPIVOT((a , b) for c in ((int_c, int_d)));
+--
+ERROR: Unrecognized name: int_c; Did you mean int_a? [at 1:8]
+SELECT int_c FROM MultipleColumns UNPIVOT((a , b) for c in ((int_c, int_d)));
+       ^
+==
+
+# Unpivot with subquery
+SELECT * FROM (SELECT Key, Value FROM KeyValue) UNPIVOT(a for b in (Key));
+--
+QueryStmt
++-output_column_list=
+| +-$unpivot.Value#5 AS Value [STRING]
+| +-$unpivot.a#3 AS a [INT64]
+| +-$unpivot.b#4 AS b [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=$unpivot.[Value#5, a#3, b#4]
+    +-input_scan=
+      +-UnpivotScan
+        +-column_list=$unpivot.[Value#5, a#3, b#4]
+        +-input_scan=
+        | +-ProjectScan
+        |   +-column_list=KeyValue.[Key#1, Value#2]
+        |   +-input_scan=
+        |     +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+        +-value_column_list=[$unpivot.a#3]
+        +-label_column=$unpivot.b#4
+        +-label_list=
+        | +-Literal(type=STRING, value="Key")
+        +-unpivot_arg_list=
+        | +-UnpivotArg
+        |   +-column_list=
+        |     +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+        +-projected_input_column_list=
+        | +-Value#5 := ColumnRef(type=STRING, column=KeyValue.Value#2)
+        +-include_nulls=FALSE
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$unpivot.Value#5 AS Value [STRING]
+| +-$unpivot.a#3 AS a [INT64]
+| +-$unpivot.b#4 AS b [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=$unpivot.[Value#5, a#3, b#4]
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=$unpivot.[Value#5, a#3, b#4]
+        +-expr_list=
+        | +-Value#5 := ColumnRef(type=STRING, column=KeyValue.Value#2)
+        | +-a#3 :=
+        | | +-GetStructField
+        | |   +-type=INT64
+        | |   +-expr=
+        | |   | +-ColumnRef(type=STRUCT<a INT64, b STRING>, column=unpivot_array_0.unpivot_unnest#6)
+        | |   +-field_idx=0
+        | +-b#4 :=
+        |   +-GetStructField
+        |     +-type=STRING
+        |     +-expr=
+        |     | +-ColumnRef(type=STRUCT<a INT64, b STRING>, column=unpivot_array_0.unpivot_unnest#6)
+        |     +-field_idx=1
+        +-input_scan=
+          +-FilterScan
+            +-column_list=[KeyValue.Key#1, KeyValue.Value#2, unpivot_array_0.unpivot_unnest#6]
+            +-input_scan=
+            | +-ArrayScan
+            |   +-column_list=[KeyValue.Key#1, KeyValue.Value#2, unpivot_array_0.unpivot_unnest#6]
+            |   +-input_scan=
+            |   | +-ProjectScan
+            |   |   +-column_list=KeyValue.[Key#1, Value#2]
+            |   |   +-input_scan=
+            |   |     +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+            |   +-array_expr_list=
+            |   | +-FunctionCall(GoogleSQL:$make_array(repeated(1) STRUCT<a INT64, b STRING>) -> ARRAY<STRUCT<a INT64, b STRING>>)
+            |   |   +-MakeStruct
+            |   |     +-type=STRUCT<a INT64, b STRING>
+            |   |     +-field_list=
+            |   |       +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+            |   |       +-Literal(type=STRING, value="Key", has_explicit_type=TRUE)
+            |   +-element_column_list=[unpivot_array_0.unpivot_unnest#6]
+            +-filter_expr=
+              +-FunctionCall(GoogleSQL:$not(BOOL) -> BOOL)
+                +-FunctionCall(GoogleSQL:$is_null(INT64) -> BOOL)
+                  +-GetStructField
+                    +-type=INT64
+                    +-expr=
+                    | +-ColumnRef(type=STRUCT<a INT64, b STRING>, column=unpivot_array_0.unpivot_unnest#6)
+                    +-field_idx=0
+==
+
+# Unpivot with join
+SELECT * FROM KeyValue, KeyValue UNPIVOT(a for b in (Key));
+--
+QueryStmt
++-output_column_list=
+| +-KeyValue.Key#1 AS Key [INT64]
+| +-KeyValue.Value#2 AS Value [STRING]
+| +-$unpivot.Value#7 AS Value [STRING]
+| +-$unpivot.a#5 AS a [INT64]
+| +-$unpivot.b#6 AS b [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[KeyValue.Key#1, KeyValue.Value#2, $unpivot.Value#7, $unpivot.a#5, $unpivot.b#6]
+    +-input_scan=
+      +-JoinScan
+        +-column_list=[KeyValue.Key#1, KeyValue.Value#2, $unpivot.Value#7, $unpivot.a#5, $unpivot.b#6]
+        +-left_scan=
+        | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+        +-right_scan=
+          +-UnpivotScan
+            +-column_list=$unpivot.[Value#7, a#5, b#6]
+            +-input_scan=
+            | +-TableScan(column_list=KeyValue.[Key#3, Value#4], table=KeyValue, column_index_list=[0, 1])
+            +-value_column_list=[$unpivot.a#5]
+            +-label_column=$unpivot.b#6
+            +-label_list=
+            | +-Literal(type=STRING, value="Key")
+            +-unpivot_arg_list=
+            | +-UnpivotArg
+            |   +-column_list=
+            |     +-ColumnRef(type=INT64, column=KeyValue.Key#3)
+            +-projected_input_column_list=
+            | +-Value#7 := ColumnRef(type=STRING, column=KeyValue.Value#4)
+            +-include_nulls=FALSE
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-KeyValue.Key#1 AS Key [INT64]
+| +-KeyValue.Value#2 AS Value [STRING]
+| +-$unpivot.Value#7 AS Value [STRING]
+| +-$unpivot.a#5 AS a [INT64]
+| +-$unpivot.b#6 AS b [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[KeyValue.Key#1, KeyValue.Value#2, $unpivot.Value#7, $unpivot.a#5, $unpivot.b#6]
+    +-input_scan=
+      +-JoinScan
+        +-column_list=[KeyValue.Key#1, KeyValue.Value#2, $unpivot.Value#7, $unpivot.a#5, $unpivot.b#6]
+        +-left_scan=
+        | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+        +-right_scan=
+          +-ProjectScan
+            +-column_list=$unpivot.[Value#7, a#5, b#6]
+            +-expr_list=
+            | +-Value#7 := ColumnRef(type=STRING, column=KeyValue.Value#4)
+            | +-a#5 :=
+            | | +-GetStructField
+            | |   +-type=INT64
+            | |   +-expr=
+            | |   | +-ColumnRef(type=STRUCT<a INT64, b STRING>, column=unpivot_array_0.unpivot_unnest#8)
+            | |   +-field_idx=0
+            | +-b#6 :=
+            |   +-GetStructField
+            |     +-type=STRING
+            |     +-expr=
+            |     | +-ColumnRef(type=STRUCT<a INT64, b STRING>, column=unpivot_array_0.unpivot_unnest#8)
+            |     +-field_idx=1
+            +-input_scan=
+              +-FilterScan
+                +-column_list=[KeyValue.Key#3, KeyValue.Value#4, unpivot_array_0.unpivot_unnest#8]
+                +-input_scan=
+                | +-ArrayScan
+                |   +-column_list=[KeyValue.Key#3, KeyValue.Value#4, unpivot_array_0.unpivot_unnest#8]
+                |   +-input_scan=
+                |   | +-TableScan(column_list=KeyValue.[Key#3, Value#4], table=KeyValue, column_index_list=[0, 1])
+                |   +-array_expr_list=
+                |   | +-FunctionCall(GoogleSQL:$make_array(repeated(1) STRUCT<a INT64, b STRING>) -> ARRAY<STRUCT<a INT64, b STRING>>)
+                |   |   +-MakeStruct
+                |   |     +-type=STRUCT<a INT64, b STRING>
+                |   |     +-field_list=
+                |   |       +-ColumnRef(type=INT64, column=KeyValue.Key#3)
+                |   |       +-Literal(type=STRING, value="Key", has_explicit_type=TRUE)
+                |   +-element_column_list=[unpivot_array_0.unpivot_unnest#8]
+                +-filter_expr=
+                  +-FunctionCall(GoogleSQL:$not(BOOL) -> BOOL)
+                    +-FunctionCall(GoogleSQL:$is_null(INT64) -> BOOL)
+                      +-GetStructField
+                        +-type=INT64
+                        +-expr=
+                        | +-ColumnRef(type=STRUCT<a INT64, b STRING>, column=unpivot_array_0.unpivot_unnest#8)
+                        +-field_idx=0
+==
+
+# Unpivot columns of struct type.
+WITH t AS (
+  SELECT STRUCT(
+    1 AS a,
+    2 as b
+  ) AS s1,
+  STRUCT(
+    3 as a,
+    4 as b
+  ) AS s2
+) SELECT * FROM t UNPIVOT(x FOR y IN({{s1.a,s1.b|s1,s2}}));
+--
+ALTERNATION GROUP: s1.a,s1.b
+--
+ERROR: UNPIVOT IN clause cannot have expressions, only column names are allowed [at 10:38]
+) SELECT * FROM t UNPIVOT(x FOR y IN(s1.a,s1.b));
+                                     ^
+--
+ALTERNATION GROUP: s1,s2
+--
+QueryStmt
++-output_column_list=
+| +-$unpivot.x#5 AS x [STRUCT<a INT64, b INT64>]
+| +-$unpivot.y#6 AS y [STRING]
++-query=
+  +-WithScan
+    +-column_list=$unpivot.[x#5, y#6]
+    +-with_entry_list=
+    | +-WithEntry
+    |   +-with_query_name="t"
+    |   +-with_subquery=
+    |     +-ProjectScan
+    |       +-column_list=t.[s1#1, s2#2]
+    |       +-expr_list=
+    |       | +-s1#1 := Literal(type=STRUCT<a INT64, b INT64>, value={a:1, b:2})
+    |       | +-s2#2 := Literal(type=STRUCT<a INT64, b INT64>, value={a:3, b:4})
+    |       +-input_scan=
+    |         +-SingleRowScan
+    +-query=
+      +-ProjectScan
+        +-column_list=$unpivot.[x#5, y#6]
+        +-input_scan=
+          +-UnpivotScan
+            +-column_list=$unpivot.[x#5, y#6]
+            +-input_scan=
+            | +-WithRefScan(column_list=t.[s1#3, s2#4], with_query_name="t")
+            +-value_column_list=[$unpivot.x#5]
+            +-label_column=$unpivot.y#6
+            +-label_list=
+            | +-Literal(type=STRING, value="s1")
+            | +-Literal(type=STRING, value="s2")
+            +-unpivot_arg_list=
+            | +-UnpivotArg
+            | | +-column_list=
+            | |   +-ColumnRef(type=STRUCT<a INT64, b INT64>, column=t.s1#3)
+            | +-UnpivotArg
+            |   +-column_list=
+            |     +-ColumnRef(type=STRUCT<a INT64, b INT64>, column=t.s2#4)
+            +-include_nulls=FALSE
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$unpivot.x#5 AS x [STRUCT<a INT64, b INT64>]
+| +-$unpivot.y#6 AS y [STRING]
++-query=
+  +-WithScan
+    +-column_list=$unpivot.[x#5, y#6]
+    +-with_entry_list=
+    | +-WithEntry
+    |   +-with_query_name="t"
+    |   +-with_subquery=
+    |     +-ProjectScan
+    |       +-column_list=t.[s1#1, s2#2]
+    |       +-expr_list=
+    |       | +-s1#1 := Literal(type=STRUCT<a INT64, b INT64>, value={a:1, b:2})
+    |       | +-s2#2 := Literal(type=STRUCT<a INT64, b INT64>, value={a:3, b:4})
+    |       +-input_scan=
+    |         +-SingleRowScan
+    +-query=
+      +-ProjectScan
+        +-column_list=$unpivot.[x#5, y#6]
+        +-input_scan=
+          +-ProjectScan
+            +-column_list=$unpivot.[x#5, y#6]
+            +-expr_list=
+            | +-x#5 :=
+            | | +-GetStructField
+            | |   +-type=STRUCT<a INT64, b INT64>
+            | |   +-expr=
+            | |   | +-ColumnRef(type=STRUCT<x STRUCT<a INT64, b INT64>, y STRING>, column=unpivot_array_0.unpivot_unnest#7)
+            | |   +-field_idx=0
+            | +-y#6 :=
+            |   +-GetStructField
+            |     +-type=STRING
+            |     +-expr=
+            |     | +-ColumnRef(type=STRUCT<x STRUCT<a INT64, b INT64>, y STRING>, column=unpivot_array_0.unpivot_unnest#7)
+            |     +-field_idx=1
+            +-input_scan=
+              +-FilterScan
+                +-column_list=[t.s1#3, t.s2#4, unpivot_array_0.unpivot_unnest#7]
+                +-input_scan=
+                | +-ArrayScan
+                |   +-column_list=[t.s1#3, t.s2#4, unpivot_array_0.unpivot_unnest#7]
+                |   +-input_scan=
+                |   | +-WithRefScan(column_list=t.[s1#3, s2#4], with_query_name="t")
+                |   +-array_expr_list=
+                |   | +-FunctionCall(GoogleSQL:$make_array(repeated(2) STRUCT<x STRUCT<a INT64, b INT64>, y STRING>) -> ARRAY<STRUCT<x STRUCT<a INT64, b INT64>, y STRING>>)
+                |   |   +-MakeStruct
+                |   |   | +-type=STRUCT<x STRUCT<a INT64, b INT64>, y STRING>
+                |   |   | +-field_list=
+                |   |   |   +-ColumnRef(type=STRUCT<a INT64, b INT64>, column=t.s1#3)
+                |   |   |   +-Literal(type=STRING, value="s1", has_explicit_type=TRUE)
+                |   |   +-MakeStruct
+                |   |     +-type=STRUCT<x STRUCT<a INT64, b INT64>, y STRING>
+                |   |     +-field_list=
+                |   |       +-ColumnRef(type=STRUCT<a INT64, b INT64>, column=t.s2#4)
+                |   |       +-Literal(type=STRING, value="s2", has_explicit_type=TRUE)
+                |   +-element_column_list=[unpivot_array_0.unpivot_unnest#7]
+                +-filter_expr=
+                  +-FunctionCall(GoogleSQL:$not(BOOL) -> BOOL)
+                    +-FunctionCall(GoogleSQL:$is_null(STRUCT<a INT64, b INT64>) -> BOOL)
+                      +-GetStructField
+                        +-type=STRUCT<a INT64, b INT64>
+                        +-expr=
+                        | +-ColumnRef(type=STRUCT<x STRUCT<a INT64, b INT64>, y STRING>, column=unpivot_array_0.unpivot_unnest#7)
+                        +-field_idx=0
+==
+
+# Columns with equivalent datatypes (structs with different field names of same
+# datatype) in IN clause are not allowed (only equal datatypes are allowed).
+WITH t AS (
+  SELECT STRUCT(
+    1 AS a,
+    2 as b
+  ) AS s1,
+  STRUCT(
+    3 as c,
+    4 as d
+  ) AS s2
+) SELECT * FROM t UNPIVOT(x FOR y IN(s1,s2));
+--
+ERROR: The datatype of column does not match with other datatypes in the IN clause. Expected STRUCT, Found STRUCT [at 10:41]
+) SELECT * FROM t UNPIVOT(x FOR y IN(s1,s2));
+                                        ^
+==
+
+# Columns with equivalent datatypes in IN clause are not allowed (only equal
+# datatypes are allowed).
+WITH t AS (
+  SELECT CAST(
+    1 AS INT64) AS s1,
+  CAST(
+    2 AS INT32) AS s2
+) SELECT * FROM t UNPIVOT(x FOR y IN(s1,s2));
+--
+ERROR: The datatype of column does not match with other datatypes in the IN clause. Expected INT64, Found INT32 [at 6:41]
+) SELECT * FROM t UNPIVOT(x FOR y IN(s1,s2));
+                                        ^
+==
+
+# Unpivot valid columns that are in unpivot input source
+SELECT
+    (SELECT Count(*) FROM KeyValue UNPIVOT(a for b IN (Key, {{x|input.x}})))
+    FROM (
+      SELECT 1 AS x
+    ) AS input;
+
+--
+ALTERNATION GROUP: x
+--
+ERROR: Correlated column references in UNPIVOT IN clause is not allowed [at 2:61]
+    (SELECT Count(*) FROM KeyValue UNPIVOT(a for b IN (Key, x)))
+                                                            ^
+--
+ALTERNATION GROUP: input.x
+--
+ERROR: Correlated column references in UNPIVOT IN clause is not allowed [at 2:61]
+    (SELECT Count(*) FROM KeyValue UNPIVOT(a for b IN (Key, input.x)))
+                                                            ^
+==
+
+# Use qualified names and input source alias in unpivot IN clause.
+SELECT * FROM KeyValue AS kv UNPIVOT(a FOR b IN ({{kv.Key|KeyValue.Key}}))
+
+--
+ALTERNATION GROUP: kv.Key
+--
+QueryStmt
++-output_column_list=
+| +-$unpivot.Value#5 AS Value [STRING]
+| +-$unpivot.a#3 AS a [INT64]
+| +-$unpivot.b#4 AS b [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=$unpivot.[Value#5, a#3, b#4]
+    +-input_scan=
+      +-UnpivotScan
+        +-column_list=$unpivot.[Value#5, a#3, b#4]
+        +-input_scan=
+        | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1], alias="kv")
+        +-value_column_list=[$unpivot.a#3]
+        +-label_column=$unpivot.b#4
+        +-label_list=
+        | +-Literal(type=STRING, value="Key")
+        +-unpivot_arg_list=
+        | +-UnpivotArg
+        |   +-column_list=
+        |     +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+        +-projected_input_column_list=
+        | +-Value#5 := ColumnRef(type=STRING, column=KeyValue.Value#2)
+        +-include_nulls=FALSE
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$unpivot.Value#5 AS Value [STRING]
+| +-$unpivot.a#3 AS a [INT64]
+| +-$unpivot.b#4 AS b [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=$unpivot.[Value#5, a#3, b#4]
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=$unpivot.[Value#5, a#3, b#4]
+        +-expr_list=
+        | +-Value#5 := ColumnRef(type=STRING, column=KeyValue.Value#2)
+        | +-a#3 :=
+        | | +-GetStructField
+        | |   +-type=INT64
+        | |   +-expr=
+        | |   | +-ColumnRef(type=STRUCT<a INT64, b STRING>, column=unpivot_array_0.unpivot_unnest#6)
+        | |   +-field_idx=0
+        | +-b#4 :=
+        |   +-GetStructField
+        |     +-type=STRING
+        |     +-expr=
+        |     | +-ColumnRef(type=STRUCT<a INT64, b STRING>, column=unpivot_array_0.unpivot_unnest#6)
+        |     +-field_idx=1
+        +-input_scan=
+          +-FilterScan
+            +-column_list=[KeyValue.Key#1, KeyValue.Value#2, unpivot_array_0.unpivot_unnest#6]
+            +-input_scan=
+            | +-ArrayScan
+            |   +-column_list=[KeyValue.Key#1, KeyValue.Value#2, unpivot_array_0.unpivot_unnest#6]
+            |   +-input_scan=
+            |   | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1], alias="kv")
+            |   +-array_expr_list=
+            |   | +-FunctionCall(GoogleSQL:$make_array(repeated(1) STRUCT<a INT64, b STRING>) -> ARRAY<STRUCT<a INT64, b STRING>>)
+            |   |   +-MakeStruct
+            |   |     +-type=STRUCT<a INT64, b STRING>
+            |   |     +-field_list=
+            |   |       +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+            |   |       +-Literal(type=STRING, value="Key", has_explicit_type=TRUE)
+            |   +-element_column_list=[unpivot_array_0.unpivot_unnest#6]
+            +-filter_expr=
+              +-FunctionCall(GoogleSQL:$not(BOOL) -> BOOL)
+                +-FunctionCall(GoogleSQL:$is_null(INT64) -> BOOL)
+                  +-GetStructField
+                    +-type=INT64
+                    +-expr=
+                    | +-ColumnRef(type=STRUCT<a INT64, b STRING>, column=unpivot_array_0.unpivot_unnest#6)
+                    +-field_idx=0
+--
+ALTERNATION GROUP: KeyValue.Key
+--
+ERROR: Unrecognized name: KeyValue; Did you mean Value? [at 1:50]
+SELECT * FROM KeyValue AS kv UNPIVOT(a FOR b IN (KeyValue.Key))
+                                                 ^
+==
+
+SELECT * FROM KeyValue UNPIVOT(KeyValue.a FOR b IN (Key))
+
+--
+ERROR: Only names of the new columns are accepted as value columns in UNPIVOT. Qualified names are not allowed [at 1:32]
+SELECT * FROM KeyValue UNPIVOT(KeyValue.a FOR b IN (Key))
+                               ^
+==
+
+SELECT * FROM KeyValue UNPIVOT(a FOR KeyValue.b IN (Key))
+
+--
+ERROR: Only name of the new column is accepted as label column in UNPIVOT. Qualified names are not allowed [at 1:38]
+SELECT * FROM KeyValue UNPIVOT(a FOR KeyValue.b IN (Key))
+                                     ^
+==
+
+# Unpivot on value tables
+SELECT * FROM (SELECT AS STRUCT 1 AS x, 2 AS y) UNPIVOT(a FOR b IN (x,y));
+--
+ERROR: UNPIVOT is not allowed on value tables [at 1:49]
+SELECT * FROM (SELECT AS STRUCT 1 AS x, 2 AS y) UNPIVOT(a FOR b IN (x,y));
+                                                ^
+==
+
+# Unpivot IN clause with non-integer columns and tvf
+select * from tvf_no_args() UNPIVOT(a for b in (column_bytes));
+--
+QueryStmt
++-output_column_list=
+| +-$unpivot.column_bool#5 AS column_bool [BOOL]
+| +-$unpivot.a#3 AS a [BYTES]
+| +-$unpivot.b#4 AS b [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=$unpivot.[column_bool#5, a#3, b#4]
+    +-input_scan=
+      +-UnpivotScan
+        +-column_list=$unpivot.[column_bool#5, a#3, b#4]
+        +-input_scan=
+        | +-TVFScan(column_list=tvf_no_args.[column_bool#1, column_bytes#2], tvf=tvf_no_args(() -> TABLE<column_bool BOOL, column_bytes BYTES>), signature=() -> TABLE<column_bool BOOL, column_bytes BYTES>, column_index_list=[0, 1], function_call_signature=() -> TABLE<column_bool BOOL, column_bytes BYTES>)
+        +-value_column_list=[$unpivot.a#3]
+        +-label_column=$unpivot.b#4
+        +-label_list=
+        | +-Literal(type=STRING, value="column_bytes")
+        +-unpivot_arg_list=
+        | +-UnpivotArg
+        |   +-column_list=
+        |     +-ColumnRef(type=BYTES, column=tvf_no_args.column_bytes#2)
+        +-projected_input_column_list=
+        | +-column_bool#5 := ColumnRef(type=BOOL, column=tvf_no_args.column_bool#1)
+        +-include_nulls=FALSE
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$unpivot.column_bool#5 AS column_bool [BOOL]
+| +-$unpivot.a#3 AS a [BYTES]
+| +-$unpivot.b#4 AS b [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=$unpivot.[column_bool#5, a#3, b#4]
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=$unpivot.[column_bool#5, a#3, b#4]
+        +-expr_list=
+        | +-column_bool#5 := ColumnRef(type=BOOL, column=tvf_no_args.column_bool#1)
+        | +-a#3 :=
+        | | +-GetStructField
+        | |   +-type=BYTES
+        | |   +-expr=
+        | |   | +-ColumnRef(type=STRUCT<a BYTES, b STRING>, column=unpivot_array_0.unpivot_unnest#6)
+        | |   +-field_idx=0
+        | +-b#4 :=
+        |   +-GetStructField
+        |     +-type=STRING
+        |     +-expr=
+        |     | +-ColumnRef(type=STRUCT<a BYTES, b STRING>, column=unpivot_array_0.unpivot_unnest#6)
+        |     +-field_idx=1
+        +-input_scan=
+          +-FilterScan
+            +-column_list=[tvf_no_args.column_bool#1, tvf_no_args.column_bytes#2, unpivot_array_0.unpivot_unnest#6]
+            +-input_scan=
+            | +-ArrayScan
+            |   +-column_list=[tvf_no_args.column_bool#1, tvf_no_args.column_bytes#2, unpivot_array_0.unpivot_unnest#6]
+            |   +-input_scan=
+            |   | +-TVFScan(column_list=tvf_no_args.[column_bool#1, column_bytes#2], tvf=tvf_no_args(() -> TABLE<column_bool BOOL, column_bytes BYTES>), signature=() -> TABLE<column_bool BOOL, column_bytes BYTES>, column_index_list=[0, 1], function_call_signature=() -> TABLE<column_bool BOOL, column_bytes BYTES>)
+            |   +-array_expr_list=
+            |   | +-FunctionCall(GoogleSQL:$make_array(repeated(1) STRUCT<a BYTES, b STRING>) -> ARRAY<STRUCT<a BYTES, b STRING>>)
+            |   |   +-MakeStruct
+            |   |     +-type=STRUCT<a BYTES, b STRING>
+            |   |     +-field_list=
+            |   |       +-ColumnRef(type=BYTES, column=tvf_no_args.column_bytes#2)
+            |   |       +-Literal(type=STRING, value="column_bytes", has_explicit_type=TRUE)
+            |   +-element_column_list=[unpivot_array_0.unpivot_unnest#6]
+            +-filter_expr=
+              +-FunctionCall(GoogleSQL:$not(BOOL) -> BOOL)
+                +-FunctionCall(GoogleSQL:$is_null(BYTES) -> BOOL)
+                  +-GetStructField
+                    +-type=BYTES
+                    +-expr=
+                    | +-ColumnRef(type=STRUCT<a BYTES, b STRING>, column=unpivot_array_0.unpivot_unnest#6)
+                    +-field_idx=0
+==
+
+# Unpivot with SELECT 1 and a column from unpivot output.
+select 1, Value from KeyValue UNPIVOT(a for b in (Key));
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#6 AS `$col1` [INT64]
+| +-$unpivot.Value#5 AS Value [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#6, $unpivot.Value#5]
+    +-expr_list=
+    | +-$col1#6 := Literal(type=INT64, value=1)
+    +-input_scan=
+      +-UnpivotScan
+        +-column_list=[$unpivot.Value#5]
+        +-input_scan=
+        | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+        +-value_column_list=[$unpivot.a#3]
+        +-label_column=$unpivot.b#4
+        +-label_list=
+        | +-Literal(type=STRING, value="Key")
+        +-unpivot_arg_list=
+        | +-UnpivotArg
+        |   +-column_list=
+        |     +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+        +-projected_input_column_list=
+        | +-Value#5 := ColumnRef(type=STRING, column=KeyValue.Value#2)
+        +-include_nulls=FALSE
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$query.$col1#6 AS `$col1` [INT64]
+| +-$unpivot.Value#5 AS Value [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#6, $unpivot.Value#5]
+    +-expr_list=
+    | +-$col1#6 := Literal(type=INT64, value=1)
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[$unpivot.Value#5]
+        +-expr_list=
+        | +-Value#5 := ColumnRef(type=STRING, column=KeyValue.Value#2)
+        +-input_scan=
+          +-FilterScan
+            +-column_list=[KeyValue.Key#1, KeyValue.Value#2, unpivot_array_0.unpivot_unnest#7]
+            +-input_scan=
+            | +-ArrayScan
+            |   +-column_list=[KeyValue.Key#1, KeyValue.Value#2, unpivot_array_0.unpivot_unnest#7]
+            |   +-input_scan=
+            |   | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+            |   +-array_expr_list=
+            |   | +-FunctionCall(GoogleSQL:$make_array(repeated(1) STRUCT<a INT64, b STRING>) -> ARRAY<STRUCT<a INT64, b STRING>>)
+            |   |   +-MakeStruct
+            |   |     +-type=STRUCT<a INT64, b STRING>
+            |   |     +-field_list=
+            |   |       +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+            |   |       +-Literal(type=STRING, value="Key", has_explicit_type=TRUE)
+            |   +-element_column_list=[unpivot_array_0.unpivot_unnest#7]
+            +-filter_expr=
+              +-FunctionCall(GoogleSQL:$not(BOOL) -> BOOL)
+                +-FunctionCall(GoogleSQL:$is_null(INT64) -> BOOL)
+                  +-GetStructField
+                    +-type=INT64
+                    +-expr=
+                    | +-ColumnRef(type=STRUCT<a INT64, b STRING>, column=unpivot_array_0.unpivot_unnest#7)
+                    +-field_idx=0
+==
+
+# Unpivot as arg of tvf
+select * from tvf_one_relation_arg_with_fixed_output(
+    (SELECT * FROM (SELECT Key, Value FROM KeyValue) UNPIVOT(a
+    for b in (Key))));
+--
+QueryStmt
++-output_column_list=
+| +-tvf_one_relation_arg_with_fixed_output.column_bool#6 AS column_bool [BOOL]
+| +-tvf_one_relation_arg_with_fixed_output.column_bytes#7 AS column_bytes [BYTES]
++-query=
+  +-ProjectScan
+    +-column_list=tvf_one_relation_arg_with_fixed_output.[column_bool#6, column_bytes#7]
+    +-input_scan=
+      +-TVFScan
+        +-column_list=tvf_one_relation_arg_with_fixed_output.[column_bool#6, column_bytes#7]
+        +-tvf=tvf_one_relation_arg_with_fixed_output((ANY TABLE) -> TABLE<column_bool BOOL, column_bytes BYTES>)
+        +-signature=(TABLE<Value STRING, a INT64, b STRING>) -> TABLE<column_bool BOOL, column_bytes BYTES>
+        +-argument_list=
+        | +-FunctionArgument
+        |   +-scan=
+        |   | +-ProjectScan
+        |   |   +-column_list=$unpivot.[Value#5, a#3, b#4]
+        |   |   +-input_scan=
+        |   |     +-UnpivotScan
+        |   |       +-column_list=$unpivot.[Value#5, a#3, b#4]
+        |   |       +-input_scan=
+        |   |       | +-ProjectScan
+        |   |       |   +-column_list=KeyValue.[Key#1, Value#2]
+        |   |       |   +-input_scan=
+        |   |       |     +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+        |   |       +-value_column_list=[$unpivot.a#3]
+        |   |       +-label_column=$unpivot.b#4
+        |   |       +-label_list=
+        |   |       | +-Literal(type=STRING, value="Key")
+        |   |       +-unpivot_arg_list=
+        |   |       | +-UnpivotArg
+        |   |       |   +-column_list=
+        |   |       |     +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+        |   |       +-projected_input_column_list=
+        |   |       | +-Value#5 := ColumnRef(type=STRING, column=KeyValue.Value#2)
+        |   |       +-include_nulls=FALSE
+        |   +-argument_column_list=$unpivot.[Value#5, a#3, b#4]
+        +-column_index_list=[0, 1]
+        +-function_call_signature=(ANY TABLE) -> TABLE<column_bool BOOL, column_bytes BYTES>
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-tvf_one_relation_arg_with_fixed_output.column_bool#6 AS column_bool [BOOL]
+| +-tvf_one_relation_arg_with_fixed_output.column_bytes#7 AS column_bytes [BYTES]
++-query=
+  +-ProjectScan
+    +-column_list=tvf_one_relation_arg_with_fixed_output.[column_bool#6, column_bytes#7]
+    +-input_scan=
+      +-TVFScan
+        +-column_list=tvf_one_relation_arg_with_fixed_output.[column_bool#6, column_bytes#7]
+        +-tvf=tvf_one_relation_arg_with_fixed_output((ANY TABLE) -> TABLE<column_bool BOOL, column_bytes BYTES>)
+        +-signature=(TABLE<Value STRING, a INT64, b STRING>) -> TABLE<column_bool BOOL, column_bytes BYTES>
+        +-argument_list=
+        | +-FunctionArgument
+        |   +-scan=
+        |   | +-ProjectScan
+        |   |   +-column_list=$unpivot.[Value#5, a#3, b#4]
+        |   |   +-input_scan=
+        |   |     +-ProjectScan
+        |   |       +-column_list=$unpivot.[Value#5, a#3, b#4]
+        |   |       +-expr_list=
+        |   |       | +-Value#5 := ColumnRef(type=STRING, column=KeyValue.Value#2)
+        |   |       | +-a#3 :=
+        |   |       | | +-GetStructField
+        |   |       | |   +-type=INT64
+        |   |       | |   +-expr=
+        |   |       | |   | +-ColumnRef(type=STRUCT<a INT64, b STRING>, column=unpivot_array_0.unpivot_unnest#8)
+        |   |       | |   +-field_idx=0
+        |   |       | +-b#4 :=
+        |   |       |   +-GetStructField
+        |   |       |     +-type=STRING
+        |   |       |     +-expr=
+        |   |       |     | +-ColumnRef(type=STRUCT<a INT64, b STRING>, column=unpivot_array_0.unpivot_unnest#8)
+        |   |       |     +-field_idx=1
+        |   |       +-input_scan=
+        |   |         +-FilterScan
+        |   |           +-column_list=[KeyValue.Key#1, KeyValue.Value#2, unpivot_array_0.unpivot_unnest#8]
+        |   |           +-input_scan=
+        |   |           | +-ArrayScan
+        |   |           |   +-column_list=[KeyValue.Key#1, KeyValue.Value#2, unpivot_array_0.unpivot_unnest#8]
+        |   |           |   +-input_scan=
+        |   |           |   | +-ProjectScan
+        |   |           |   |   +-column_list=KeyValue.[Key#1, Value#2]
+        |   |           |   |   +-input_scan=
+        |   |           |   |     +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+        |   |           |   +-array_expr_list=
+        |   |           |   | +-FunctionCall(GoogleSQL:$make_array(repeated(1) STRUCT<a INT64, b STRING>) -> ARRAY<STRUCT<a INT64, b STRING>>)
+        |   |           |   |   +-MakeStruct
+        |   |           |   |     +-type=STRUCT<a INT64, b STRING>
+        |   |           |   |     +-field_list=
+        |   |           |   |       +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+        |   |           |   |       +-Literal(type=STRING, value="Key", has_explicit_type=TRUE)
+        |   |           |   +-element_column_list=[unpivot_array_0.unpivot_unnest#8]
+        |   |           +-filter_expr=
+        |   |             +-FunctionCall(GoogleSQL:$not(BOOL) -> BOOL)
+        |   |               +-FunctionCall(GoogleSQL:$is_null(INT64) -> BOOL)
+        |   |                 +-GetStructField
+        |   |                   +-type=INT64
+        |   |                   +-expr=
+        |   |                   | +-ColumnRef(type=STRUCT<a INT64, b STRING>, column=unpivot_array_0.unpivot_unnest#8)
+        |   |                   +-field_idx=0
+        |   +-argument_column_list=$unpivot.[Value#5, a#3, b#4]
+        +-column_index_list=[0, 1]
+        +-function_call_signature=(ANY TABLE) -> TABLE<column_bool BOOL, column_bytes BYTES>
+==
+
+# Unpivot combined with TABLESAMPLE
+SELECT * FROM KeyValue UNPIVOT(a for b in (Key))
+    TABLESAMPLE SYSTEM (1 ROWS) REPEATABLE(10);
+--
+QueryStmt
++-output_column_list=
+| +-$unpivot.Value#5 AS Value [STRING]
+| +-$unpivot.a#3 AS a [INT64]
+| +-$unpivot.b#4 AS b [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=$unpivot.[Value#5, a#3, b#4]
+    +-input_scan=
+      +-SampleScan
+        +-column_list=$unpivot.[Value#5, a#3, b#4]
+        +-input_scan=
+        | +-UnpivotScan
+        |   +-column_list=$unpivot.[Value#5, a#3, b#4]
+        |   +-input_scan=
+        |   | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+        |   +-value_column_list=[$unpivot.a#3]
+        |   +-label_column=$unpivot.b#4
+        |   +-label_list=
+        |   | +-Literal(type=STRING, value="Key")
+        |   +-unpivot_arg_list=
+        |   | +-UnpivotArg
+        |   |   +-column_list=
+        |   |     +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+        |   +-projected_input_column_list=
+        |   | +-Value#5 := ColumnRef(type=STRING, column=KeyValue.Value#2)
+        |   +-include_nulls=FALSE
+        +-method="system"
+        +-size=
+        | +-Literal(type=INT64, value=1)
+        +-unit=ROWS
+        +-repeatable_argument=
+          +-Literal(type=INT64, value=10)
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$unpivot.Value#5 AS Value [STRING]
+| +-$unpivot.a#3 AS a [INT64]
+| +-$unpivot.b#4 AS b [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=$unpivot.[Value#5, a#3, b#4]
+    +-input_scan=
+      +-SampleScan
+        +-column_list=$unpivot.[Value#5, a#3, b#4]
+        +-input_scan=
+        | +-ProjectScan
+        |   +-column_list=$unpivot.[Value#5, a#3, b#4]
+        |   +-expr_list=
+        |   | +-Value#5 := ColumnRef(type=STRING, column=KeyValue.Value#2)
+        |   | +-a#3 :=
+        |   | | +-GetStructField
+        |   | |   +-type=INT64
+        |   | |   +-expr=
+        |   | |   | +-ColumnRef(type=STRUCT<a INT64, b STRING>, column=unpivot_array_0.unpivot_unnest#6)
+        |   | |   +-field_idx=0
+        |   | +-b#4 :=
+        |   |   +-GetStructField
+        |   |     +-type=STRING
+        |   |     +-expr=
+        |   |     | +-ColumnRef(type=STRUCT<a INT64, b STRING>, column=unpivot_array_0.unpivot_unnest#6)
+        |   |     +-field_idx=1
+        |   +-input_scan=
+        |     +-FilterScan
+        |       +-column_list=[KeyValue.Key#1, KeyValue.Value#2, unpivot_array_0.unpivot_unnest#6]
+        |       +-input_scan=
+        |       | +-ArrayScan
+        |       |   +-column_list=[KeyValue.Key#1, KeyValue.Value#2, unpivot_array_0.unpivot_unnest#6]
+        |       |   +-input_scan=
+        |       |   | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+        |       |   +-array_expr_list=
+        |       |   | +-FunctionCall(GoogleSQL:$make_array(repeated(1) STRUCT<a INT64, b STRING>) -> ARRAY<STRUCT<a INT64, b STRING>>)
+        |       |   |   +-MakeStruct
+        |       |   |     +-type=STRUCT<a INT64, b STRING>
+        |       |   |     +-field_list=
+        |       |   |       +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+        |       |   |       +-Literal(type=STRING, value="Key", has_explicit_type=TRUE)
+        |       |   +-element_column_list=[unpivot_array_0.unpivot_unnest#6]
+        |       +-filter_expr=
+        |         +-FunctionCall(GoogleSQL:$not(BOOL) -> BOOL)
+        |           +-FunctionCall(GoogleSQL:$is_null(INT64) -> BOOL)
+        |             +-GetStructField
+        |               +-type=INT64
+        |               +-expr=
+        |               | +-ColumnRef(type=STRUCT<a INT64, b STRING>, column=unpivot_array_0.unpivot_unnest#6)
+        |               +-field_idx=0
+        +-method="system"
+        +-size=
+        | +-Literal(type=INT64, value=1)
+        +-unit=ROWS
+        +-repeatable_argument=
+          +-Literal(type=INT64, value=10)
+==
+
+# Unpivot combined with TABLESAMPLE, but error because a 3rd operator follows
+SELECT * FROM KeyValue UNPIVOT(a for b in (Key))
+    TABLESAMPLE SYSTEM (1 ROWS) REPEATABLE(10)
+    TABLESAMPLE SYSTEM (2 ROWS)
+--
+ERROR: Unsupported combination of table operators. The only allowed combination is PIVOT/UNPIVOT followed by TABLESAMPLE.  [at 3:5]
+    TABLESAMPLE SYSTEM (2 ROWS)
+    ^
+==
+
+# Unpivot with multiple output value columns, labels are auto-generated by concatenating column names
+SELECT * FROM MultipleColumns UNPIVOT((x,y) for z in ((int_a,int_b), (int_c,int_d)));
+--
+QueryStmt
++-output_column_list=
+| +-$unpivot.string_a#10 AS string_a [STRING]
+| +-$unpivot.string_b#11 AS string_b [STRING]
+| +-$unpivot.x#7 AS x [INT64]
+| +-$unpivot.y#8 AS y [INT64]
+| +-$unpivot.z#9 AS z [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=$unpivot.[string_a#10, string_b#11, x#7, y#8, z#9]
+    +-input_scan=
+      +-UnpivotScan
+        +-column_list=$unpivot.[string_a#10, string_b#11, x#7, y#8, z#9]
+        +-input_scan=
+        | +-TableScan(column_list=MultipleColumns.[int_a#1, string_a#2, int_b#3, string_b#4, int_c#5, int_d#6], table=MultipleColumns, column_index_list=[0, 1, 2, 3, 4, 5])
+        +-value_column_list=$unpivot.[x#7, y#8]
+        +-label_column=$unpivot.z#9
+        +-label_list=
+        | +-Literal(type=STRING, value="int_a_int_b")
+        | +-Literal(type=STRING, value="int_c_int_d")
+        +-unpivot_arg_list=
+        | +-UnpivotArg
+        | | +-column_list=
+        | |   +-ColumnRef(type=INT64, column=MultipleColumns.int_a#1)
+        | |   +-ColumnRef(type=INT64, column=MultipleColumns.int_b#3)
+        | +-UnpivotArg
+        |   +-column_list=
+        |     +-ColumnRef(type=INT64, column=MultipleColumns.int_c#5)
+        |     +-ColumnRef(type=INT64, column=MultipleColumns.int_d#6)
+        +-projected_input_column_list=
+        | +-string_a#10 := ColumnRef(type=STRING, column=MultipleColumns.string_a#2)
+        | +-string_b#11 := ColumnRef(type=STRING, column=MultipleColumns.string_b#4)
+        +-include_nulls=FALSE
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$unpivot.string_a#10 AS string_a [STRING]
+| +-$unpivot.string_b#11 AS string_b [STRING]
+| +-$unpivot.x#7 AS x [INT64]
+| +-$unpivot.y#8 AS y [INT64]
+| +-$unpivot.z#9 AS z [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=$unpivot.[string_a#10, string_b#11, x#7, y#8, z#9]
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=$unpivot.[string_a#10, string_b#11, x#7, y#8, z#9]
+        +-expr_list=
+        | +-string_a#10 := ColumnRef(type=STRING, column=MultipleColumns.string_a#2)
+        | +-string_b#11 := ColumnRef(type=STRING, column=MultipleColumns.string_b#4)
+        | +-x#7 :=
+        | | +-GetStructField
+        | |   +-type=INT64
+        | |   +-expr=
+        | |   | +-ColumnRef(type=STRUCT<x INT64, y INT64, z STRING>, column=unpivot_array_0.unpivot_unnest#12)
+        | |   +-field_idx=0
+        | +-y#8 :=
+        | | +-GetStructField
+        | |   +-type=INT64
+        | |   +-expr=
+        | |   | +-ColumnRef(type=STRUCT<x INT64, y INT64, z STRING>, column=unpivot_array_0.unpivot_unnest#12)
+        | |   +-field_idx=1
+        | +-z#9 :=
+        |   +-GetStructField
+        |     +-type=STRING
+        |     +-expr=
+        |     | +-ColumnRef(type=STRUCT<x INT64, y INT64, z STRING>, column=unpivot_array_0.unpivot_unnest#12)
+        |     +-field_idx=2
+        +-input_scan=
+          +-FilterScan
+            +-column_list=[MultipleColumns.int_a#1, MultipleColumns.string_a#2, MultipleColumns.int_b#3, MultipleColumns.string_b#4, MultipleColumns.int_c#5, MultipleColumns.int_d#6, unpivot_array_0.unpivot_unnest#12]
+            +-input_scan=
+            | +-ArrayScan
+            |   +-column_list=[MultipleColumns.int_a#1, MultipleColumns.string_a#2, MultipleColumns.int_b#3, MultipleColumns.string_b#4, MultipleColumns.int_c#5, MultipleColumns.int_d#6, unpivot_array_0.unpivot_unnest#12]
+            |   +-input_scan=
+            |   | +-TableScan(column_list=MultipleColumns.[int_a#1, string_a#2, int_b#3, string_b#4, int_c#5, int_d#6], table=MultipleColumns, column_index_list=[0, 1, 2, 3, 4, 5])
+            |   +-array_expr_list=
+            |   | +-FunctionCall(GoogleSQL:$make_array(repeated(2) STRUCT<x INT64, y INT64, z STRING>) -> ARRAY<STRUCT<x INT64, y INT64, z STRING>>)
+            |   |   +-MakeStruct
+            |   |   | +-type=STRUCT<x INT64, y INT64, z STRING>
+            |   |   | +-field_list=
+            |   |   |   +-ColumnRef(type=INT64, column=MultipleColumns.int_a#1)
+            |   |   |   +-ColumnRef(type=INT64, column=MultipleColumns.int_b#3)
+            |   |   |   +-Literal(type=STRING, value="int_a_int_b", has_explicit_type=TRUE)
+            |   |   +-MakeStruct
+            |   |     +-type=STRUCT<x INT64, y INT64, z STRING>
+            |   |     +-field_list=
+            |   |       +-ColumnRef(type=INT64, column=MultipleColumns.int_c#5)
+            |   |       +-ColumnRef(type=INT64, column=MultipleColumns.int_d#6)
+            |   |       +-Literal(type=STRING, value="int_c_int_d", has_explicit_type=TRUE)
+            |   +-element_column_list=[unpivot_array_0.unpivot_unnest#12]
+            +-filter_expr=
+              +-FunctionCall(GoogleSQL:$or(repeated(2) BOOL) -> BOOL)
+                +-FunctionCall(GoogleSQL:$not(BOOL) -> BOOL)
+                | +-FunctionCall(GoogleSQL:$is_null(INT64) -> BOOL)
+                |   +-GetStructField
+                |     +-type=INT64
+                |     +-expr=
+                |     | +-ColumnRef(type=STRUCT<x INT64, y INT64, z STRING>, column=unpivot_array_0.unpivot_unnest#12)
+                |     +-field_idx=0
+                +-FunctionCall(GoogleSQL:$not(BOOL) -> BOOL)
+                  +-FunctionCall(GoogleSQL:$is_null(INT64) -> BOOL)
+                    +-GetStructField
+                      +-type=INT64
+                      +-expr=
+                      | +-ColumnRef(type=STRUCT<x INT64, y INT64, z STRING>, column=unpivot_array_0.unpivot_unnest#12)
+                      +-field_idx=1
+==
+
+# Unpivot with multiple output value columns of different datatypes(int and string)
+SELECT * FROM MultipleColumns UNPIVOT((x,y) for z in ((int_a,string_a), (int_b,string_b)));
+--
+QueryStmt
++-output_column_list=
+| +-$unpivot.int_c#10 AS int_c [INT64]
+| +-$unpivot.int_d#11 AS int_d [INT64]
+| +-$unpivot.x#7 AS x [INT64]
+| +-$unpivot.y#8 AS y [STRING]
+| +-$unpivot.z#9 AS z [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=$unpivot.[int_c#10, int_d#11, x#7, y#8, z#9]
+    +-input_scan=
+      +-UnpivotScan
+        +-column_list=$unpivot.[int_c#10, int_d#11, x#7, y#8, z#9]
+        +-input_scan=
+        | +-TableScan(column_list=MultipleColumns.[int_a#1, string_a#2, int_b#3, string_b#4, int_c#5, int_d#6], table=MultipleColumns, column_index_list=[0, 1, 2, 3, 4, 5])
+        +-value_column_list=$unpivot.[x#7, y#8]
+        +-label_column=$unpivot.z#9
+        +-label_list=
+        | +-Literal(type=STRING, value="int_a_string_a")
+        | +-Literal(type=STRING, value="int_b_string_b")
+        +-unpivot_arg_list=
+        | +-UnpivotArg
+        | | +-column_list=
+        | |   +-ColumnRef(type=INT64, column=MultipleColumns.int_a#1)
+        | |   +-ColumnRef(type=STRING, column=MultipleColumns.string_a#2)
+        | +-UnpivotArg
+        |   +-column_list=
+        |     +-ColumnRef(type=INT64, column=MultipleColumns.int_b#3)
+        |     +-ColumnRef(type=STRING, column=MultipleColumns.string_b#4)
+        +-projected_input_column_list=
+        | +-int_c#10 := ColumnRef(type=INT64, column=MultipleColumns.int_c#5)
+        | +-int_d#11 := ColumnRef(type=INT64, column=MultipleColumns.int_d#6)
+        +-include_nulls=FALSE
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$unpivot.int_c#10 AS int_c [INT64]
+| +-$unpivot.int_d#11 AS int_d [INT64]
+| +-$unpivot.x#7 AS x [INT64]
+| +-$unpivot.y#8 AS y [STRING]
+| +-$unpivot.z#9 AS z [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=$unpivot.[int_c#10, int_d#11, x#7, y#8, z#9]
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=$unpivot.[int_c#10, int_d#11, x#7, y#8, z#9]
+        +-expr_list=
+        | +-int_c#10 := ColumnRef(type=INT64, column=MultipleColumns.int_c#5)
+        | +-int_d#11 := ColumnRef(type=INT64, column=MultipleColumns.int_d#6)
+        | +-x#7 :=
+        | | +-GetStructField
+        | |   +-type=INT64
+        | |   +-expr=
+        | |   | +-ColumnRef(type=STRUCT<x INT64, y STRING, z STRING>, column=unpivot_array_0.unpivot_unnest#12)
+        | |   +-field_idx=0
+        | +-y#8 :=
+        | | +-GetStructField
+        | |   +-type=STRING
+        | |   +-expr=
+        | |   | +-ColumnRef(type=STRUCT<x INT64, y STRING, z STRING>, column=unpivot_array_0.unpivot_unnest#12)
+        | |   +-field_idx=1
+        | +-z#9 :=
+        |   +-GetStructField
+        |     +-type=STRING
+        |     +-expr=
+        |     | +-ColumnRef(type=STRUCT<x INT64, y STRING, z STRING>, column=unpivot_array_0.unpivot_unnest#12)
+        |     +-field_idx=2
+        +-input_scan=
+          +-FilterScan
+            +-column_list=[MultipleColumns.int_a#1, MultipleColumns.string_a#2, MultipleColumns.int_b#3, MultipleColumns.string_b#4, MultipleColumns.int_c#5, MultipleColumns.int_d#6, unpivot_array_0.unpivot_unnest#12]
+            +-input_scan=
+            | +-ArrayScan
+            |   +-column_list=[MultipleColumns.int_a#1, MultipleColumns.string_a#2, MultipleColumns.int_b#3, MultipleColumns.string_b#4, MultipleColumns.int_c#5, MultipleColumns.int_d#6, unpivot_array_0.unpivot_unnest#12]
+            |   +-input_scan=
+            |   | +-TableScan(column_list=MultipleColumns.[int_a#1, string_a#2, int_b#3, string_b#4, int_c#5, int_d#6], table=MultipleColumns, column_index_list=[0, 1, 2, 3, 4, 5])
+            |   +-array_expr_list=
+            |   | +-FunctionCall(GoogleSQL:$make_array(repeated(2) STRUCT<x INT64, y STRING, z STRING>) -> ARRAY<STRUCT<x INT64, y STRING, z STRING>>)
+            |   |   +-MakeStruct
+            |   |   | +-type=STRUCT<x INT64, y STRING, z STRING>
+            |   |   | +-field_list=
+            |   |   |   +-ColumnRef(type=INT64, column=MultipleColumns.int_a#1)
+            |   |   |   +-ColumnRef(type=STRING, column=MultipleColumns.string_a#2)
+            |   |   |   +-Literal(type=STRING, value="int_a_string_a", has_explicit_type=TRUE)
+            |   |   +-MakeStruct
+            |   |     +-type=STRUCT<x INT64, y STRING, z STRING>
+            |   |     +-field_list=
+            |   |       +-ColumnRef(type=INT64, column=MultipleColumns.int_b#3)
+            |   |       +-ColumnRef(type=STRING, column=MultipleColumns.string_b#4)
+            |   |       +-Literal(type=STRING, value="int_b_string_b", has_explicit_type=TRUE)
+            |   +-element_column_list=[unpivot_array_0.unpivot_unnest#12]
+            +-filter_expr=
+              +-FunctionCall(GoogleSQL:$or(repeated(2) BOOL) -> BOOL)
+                +-FunctionCall(GoogleSQL:$not(BOOL) -> BOOL)
+                | +-FunctionCall(GoogleSQL:$is_null(INT64) -> BOOL)
+                |   +-GetStructField
+                |     +-type=INT64
+                |     +-expr=
+                |     | +-ColumnRef(type=STRUCT<x INT64, y STRING, z STRING>, column=unpivot_array_0.unpivot_unnest#12)
+                |     +-field_idx=0
+                +-FunctionCall(GoogleSQL:$not(BOOL) -> BOOL)
+                  +-FunctionCall(GoogleSQL:$is_null(STRING) -> BOOL)
+                    +-GetStructField
+                      +-type=STRING
+                      +-expr=
+                      | +-ColumnRef(type=STRUCT<x INT64, y STRING, z STRING>, column=unpivot_array_0.unpivot_unnest#12)
+                      +-field_idx=1
+==
+
+# Unpivot where datatype of value columns does not match with columns in IN
+# clause.
+SELECT * FROM MultipleColumns UNPIVOT(x for y in (int_a, string_a, int_b));
+--
+ERROR: The datatype of column does not match with other datatypes in the IN clause. Expected INT64, Found STRING [at 1:58]
+SELECT * FROM MultipleColumns UNPIVOT(x for y in (int_a, string_a, int_b));
+                                                         ^
+==
+
+# Unpivot with multiple value columns, where datatype does not match with
+# columns group in IN clause.
+SELECT * FROM MultipleColumns UNPIVOT((x,y) for z in ((int_a, int_b), (string_a, string_b)));
+--
+ERROR: The datatype of column does not match with other datatypes in the IN clause. Expected INT64, Found STRING [at 1:72]
+...UNPIVOT((x,y) for z in ((int_a, int_b), (string_a, string_b)));
+                                            ^
+==
+
+# Unpivot with multiple value columns, where sizes of column groups in IN clause
+# are different.
+SELECT * FROM MultipleColumns UNPIVOT((x,y) for z in ((int_a, int_b), (int_c)));
+--
+ERROR: All column groups in UNPIVOT IN clause must have the same number of columns [at 1:72]
+SELECT * FROM MultipleColumns UNPIVOT((x,y) for z in ((int_a, int_b), (int_c)));
+                                                                       ^
+==
+
+# Unpivot with multiple value columns, where sizes of column groups in IN clause
+# are different.
+SELECT * FROM MultipleColumns UNPIVOT(x for z in ((int_a, int_b)));
+--
+ERROR: The number of new columns introduced as value columns must be the same as the number of columns in the column groups of UNPIVOT IN clause [at 1:39]
+SELECT * FROM MultipleColumns UNPIVOT(x for z in ((int_a, int_b)));
+                                      ^
+==
+
+# Unpivot with explicit label assigns the label value correctly.
+SELECT * FROM KeyValue UNPIVOT(a for b in (Key AS "Label"));
+--
+QueryStmt
++-output_column_list=
+| +-$unpivot.Value#5 AS Value [STRING]
+| +-$unpivot.a#3 AS a [INT64]
+| +-$unpivot.b#4 AS b [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=$unpivot.[Value#5, a#3, b#4]
+    +-input_scan=
+      +-UnpivotScan
+        +-column_list=$unpivot.[Value#5, a#3, b#4]
+        +-input_scan=
+        | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+        +-value_column_list=[$unpivot.a#3]
+        +-label_column=$unpivot.b#4
+        +-label_list=
+        | +-Literal(type=STRING, value="Label")
+        +-unpivot_arg_list=
+        | +-UnpivotArg
+        |   +-column_list=
+        |     +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+        +-projected_input_column_list=
+        | +-Value#5 := ColumnRef(type=STRING, column=KeyValue.Value#2)
+        +-include_nulls=FALSE
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$unpivot.Value#5 AS Value [STRING]
+| +-$unpivot.a#3 AS a [INT64]
+| +-$unpivot.b#4 AS b [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=$unpivot.[Value#5, a#3, b#4]
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=$unpivot.[Value#5, a#3, b#4]
+        +-expr_list=
+        | +-Value#5 := ColumnRef(type=STRING, column=KeyValue.Value#2)
+        | +-a#3 :=
+        | | +-GetStructField
+        | |   +-type=INT64
+        | |   +-expr=
+        | |   | +-ColumnRef(type=STRUCT<a INT64, b STRING>, column=unpivot_array_0.unpivot_unnest#6)
+        | |   +-field_idx=0
+        | +-b#4 :=
+        |   +-GetStructField
+        |     +-type=STRING
+        |     +-expr=
+        |     | +-ColumnRef(type=STRUCT<a INT64, b STRING>, column=unpivot_array_0.unpivot_unnest#6)
+        |     +-field_idx=1
+        +-input_scan=
+          +-FilterScan
+            +-column_list=[KeyValue.Key#1, KeyValue.Value#2, unpivot_array_0.unpivot_unnest#6]
+            +-input_scan=
+            | +-ArrayScan
+            |   +-column_list=[KeyValue.Key#1, KeyValue.Value#2, unpivot_array_0.unpivot_unnest#6]
+            |   +-input_scan=
+            |   | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+            |   +-array_expr_list=
+            |   | +-FunctionCall(GoogleSQL:$make_array(repeated(1) STRUCT<a INT64, b STRING>) -> ARRAY<STRUCT<a INT64, b STRING>>)
+            |   |   +-MakeStruct
+            |   |     +-type=STRUCT<a INT64, b STRING>
+            |   |     +-field_list=
+            |   |       +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+            |   |       +-Literal(type=STRING, value="Label", has_explicit_type=TRUE)
+            |   +-element_column_list=[unpivot_array_0.unpivot_unnest#6]
+            +-filter_expr=
+              +-FunctionCall(GoogleSQL:$not(BOOL) -> BOOL)
+                +-FunctionCall(GoogleSQL:$is_null(INT64) -> BOOL)
+                  +-GetStructField
+                    +-type=INT64
+                    +-expr=
+                    | +-ColumnRef(type=STRUCT<a INT64, b STRING>, column=unpivot_array_0.unpivot_unnest#6)
+                    +-field_idx=0
+==
+
+# Unpivot with integer labels.
+SELECT * FROM MultipleColumns UNPIVOT(a for b in (int_a AS 1, int_b as 2));
+--
+QueryStmt
++-output_column_list=
+| +-$unpivot.string_a#9 AS string_a [STRING]
+| +-$unpivot.string_b#10 AS string_b [STRING]
+| +-$unpivot.int_c#11 AS int_c [INT64]
+| +-$unpivot.int_d#12 AS int_d [INT64]
+| +-$unpivot.a#7 AS a [INT64]
+| +-$unpivot.b#8 AS b [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=$unpivot.[string_a#9, string_b#10, int_c#11, int_d#12, a#7, b#8]
+    +-input_scan=
+      +-UnpivotScan
+        +-column_list=$unpivot.[string_a#9, string_b#10, int_c#11, int_d#12, a#7, b#8]
+        +-input_scan=
+        | +-TableScan(column_list=MultipleColumns.[int_a#1, string_a#2, int_b#3, string_b#4, int_c#5, int_d#6], table=MultipleColumns, column_index_list=[0, 1, 2, 3, 4, 5])
+        +-value_column_list=[$unpivot.a#7]
+        +-label_column=$unpivot.b#8
+        +-label_list=
+        | +-Literal(type=INT64, value=1)
+        | +-Literal(type=INT64, value=2)
+        +-unpivot_arg_list=
+        | +-UnpivotArg
+        | | +-column_list=
+        | |   +-ColumnRef(type=INT64, column=MultipleColumns.int_a#1)
+        | +-UnpivotArg
+        |   +-column_list=
+        |     +-ColumnRef(type=INT64, column=MultipleColumns.int_b#3)
+        +-projected_input_column_list=
+        | +-string_a#9 := ColumnRef(type=STRING, column=MultipleColumns.string_a#2)
+        | +-string_b#10 := ColumnRef(type=STRING, column=MultipleColumns.string_b#4)
+        | +-int_c#11 := ColumnRef(type=INT64, column=MultipleColumns.int_c#5)
+        | +-int_d#12 := ColumnRef(type=INT64, column=MultipleColumns.int_d#6)
+        +-include_nulls=FALSE
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$unpivot.string_a#9 AS string_a [STRING]
+| +-$unpivot.string_b#10 AS string_b [STRING]
+| +-$unpivot.int_c#11 AS int_c [INT64]
+| +-$unpivot.int_d#12 AS int_d [INT64]
+| +-$unpivot.a#7 AS a [INT64]
+| +-$unpivot.b#8 AS b [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=$unpivot.[string_a#9, string_b#10, int_c#11, int_d#12, a#7, b#8]
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=$unpivot.[string_a#9, string_b#10, int_c#11, int_d#12, a#7, b#8]
+        +-expr_list=
+        | +-string_a#9 := ColumnRef(type=STRING, column=MultipleColumns.string_a#2)
+        | +-string_b#10 := ColumnRef(type=STRING, column=MultipleColumns.string_b#4)
+        | +-int_c#11 := ColumnRef(type=INT64, column=MultipleColumns.int_c#5)
+        | +-int_d#12 := ColumnRef(type=INT64, column=MultipleColumns.int_d#6)
+        | +-a#7 :=
+        | | +-GetStructField
+        | |   +-type=INT64
+        | |   +-expr=
+        | |   | +-ColumnRef(type=STRUCT<a INT64, b INT64>, column=unpivot_array_0.unpivot_unnest#13)
+        | |   +-field_idx=0
+        | +-b#8 :=
+        |   +-GetStructField
+        |     +-type=INT64
+        |     +-expr=
+        |     | +-ColumnRef(type=STRUCT<a INT64, b INT64>, column=unpivot_array_0.unpivot_unnest#13)
+        |     +-field_idx=1
+        +-input_scan=
+          +-FilterScan
+            +-column_list=[MultipleColumns.int_a#1, MultipleColumns.string_a#2, MultipleColumns.int_b#3, MultipleColumns.string_b#4, MultipleColumns.int_c#5, MultipleColumns.int_d#6, unpivot_array_0.unpivot_unnest#13]
+            +-input_scan=
+            | +-ArrayScan
+            |   +-column_list=[MultipleColumns.int_a#1, MultipleColumns.string_a#2, MultipleColumns.int_b#3, MultipleColumns.string_b#4, MultipleColumns.int_c#5, MultipleColumns.int_d#6, unpivot_array_0.unpivot_unnest#13]
+            |   +-input_scan=
+            |   | +-TableScan(column_list=MultipleColumns.[int_a#1, string_a#2, int_b#3, string_b#4, int_c#5, int_d#6], table=MultipleColumns, column_index_list=[0, 1, 2, 3, 4, 5])
+            |   +-array_expr_list=
+            |   | +-FunctionCall(GoogleSQL:$make_array(repeated(2) STRUCT<a INT64, b INT64>) -> ARRAY<STRUCT<a INT64, b INT64>>)
+            |   |   +-MakeStruct
+            |   |   | +-type=STRUCT<a INT64, b INT64>
+            |   |   | +-field_list=
+            |   |   |   +-ColumnRef(type=INT64, column=MultipleColumns.int_a#1)
+            |   |   |   +-Literal(type=INT64, value=1, has_explicit_type=TRUE)
+            |   |   +-MakeStruct
+            |   |     +-type=STRUCT<a INT64, b INT64>
+            |   |     +-field_list=
+            |   |       +-ColumnRef(type=INT64, column=MultipleColumns.int_b#3)
+            |   |       +-Literal(type=INT64, value=2, has_explicit_type=TRUE)
+            |   +-element_column_list=[unpivot_array_0.unpivot_unnest#13]
+            +-filter_expr=
+              +-FunctionCall(GoogleSQL:$not(BOOL) -> BOOL)
+                +-FunctionCall(GoogleSQL:$is_null(INT64) -> BOOL)
+                  +-GetStructField
+                    +-type=INT64
+                    +-expr=
+                    | +-ColumnRef(type=STRUCT<a INT64, b INT64>, column=unpivot_array_0.unpivot_unnest#13)
+                    +-field_idx=0
+==
+
+# Unpivot with integer labels which are out of range for int64 are upgraded to
+# uint64.
+SELECT * FROM KeyValue UNPIVOT(a for b in (Key as 9223372036854775808));
+--
+QueryStmt
++-output_column_list=
+| +-$unpivot.Value#5 AS Value [STRING]
+| +-$unpivot.a#3 AS a [INT64]
+| +-$unpivot.b#4 AS b [UINT64]
++-query=
+  +-ProjectScan
+    +-column_list=$unpivot.[Value#5, a#3, b#4]
+    +-input_scan=
+      +-UnpivotScan
+        +-column_list=$unpivot.[Value#5, a#3, b#4]
+        +-input_scan=
+        | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+        +-value_column_list=[$unpivot.a#3]
+        +-label_column=$unpivot.b#4
+        +-label_list=
+        | +-Literal(type=UINT64, value=9223372036854775808)
+        +-unpivot_arg_list=
+        | +-UnpivotArg
+        |   +-column_list=
+        |     +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+        +-projected_input_column_list=
+        | +-Value#5 := ColumnRef(type=STRING, column=KeyValue.Value#2)
+        +-include_nulls=FALSE
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$unpivot.Value#5 AS Value [STRING]
+| +-$unpivot.a#3 AS a [INT64]
+| +-$unpivot.b#4 AS b [UINT64]
++-query=
+  +-ProjectScan
+    +-column_list=$unpivot.[Value#5, a#3, b#4]
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=$unpivot.[Value#5, a#3, b#4]
+        +-expr_list=
+        | +-Value#5 := ColumnRef(type=STRING, column=KeyValue.Value#2)
+        | +-a#3 :=
+        | | +-GetStructField
+        | |   +-type=INT64
+        | |   +-expr=
+        | |   | +-ColumnRef(type=STRUCT<a INT64, b UINT64>, column=unpivot_array_0.unpivot_unnest#6)
+        | |   +-field_idx=0
+        | +-b#4 :=
+        |   +-GetStructField
+        |     +-type=UINT64
+        |     +-expr=
+        |     | +-ColumnRef(type=STRUCT<a INT64, b UINT64>, column=unpivot_array_0.unpivot_unnest#6)
+        |     +-field_idx=1
+        +-input_scan=
+          +-FilterScan
+            +-column_list=[KeyValue.Key#1, KeyValue.Value#2, unpivot_array_0.unpivot_unnest#6]
+            +-input_scan=
+            | +-ArrayScan
+            |   +-column_list=[KeyValue.Key#1, KeyValue.Value#2, unpivot_array_0.unpivot_unnest#6]
+            |   +-input_scan=
+            |   | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+            |   +-array_expr_list=
+            |   | +-FunctionCall(GoogleSQL:$make_array(repeated(1) STRUCT<a INT64, b UINT64>) -> ARRAY<STRUCT<a INT64, b UINT64>>)
+            |   |   +-MakeStruct
+            |   |     +-type=STRUCT<a INT64, b UINT64>
+            |   |     +-field_list=
+            |   |       +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+            |   |       +-Literal(type=UINT64, value=9223372036854775808, has_explicit_type=TRUE)
+            |   +-element_column_list=[unpivot_array_0.unpivot_unnest#6]
+            +-filter_expr=
+              +-FunctionCall(GoogleSQL:$not(BOOL) -> BOOL)
+                +-FunctionCall(GoogleSQL:$is_null(INT64) -> BOOL)
+                  +-GetStructField
+                    +-type=INT64
+                    +-expr=
+                    | +-ColumnRef(type=STRUCT<a INT64, b UINT64>, column=unpivot_array_0.unpivot_unnest#6)
+                    +-field_idx=0
+==
+
+# Unpivot with integer labels that are out of range.
+SELECT * FROM KeyValue UNPIVOT(a for b in (Key as 18446744073709551617));
+--
+ERROR: Invalid integer label for UNPIVOT clause [at 1:51]
+SELECT * FROM KeyValue UNPIVOT(a for b in (Key as 18446744073709551617));
+                                                  ^
+==
+
+# Unpivot with with integer labels where all labels are not specified gives
+# error.
+SELECT * FROM MultipleColumns UNPIVOT(a for b in (int_a AS 1, int_b));
+--
+ERROR: All UNPIVOT labels must be the same type; when non-string labels are present then all labels must be explicitly provided [at 1:63]
+SELECT * FROM MultipleColumns UNPIVOT(a for b in (int_a AS 1, int_b));
+                                                              ^
+==
+
+# Unpivot with labels of mixed datatypes gives error.
+SELECT * FROM MultipleColumns UNPIVOT(a for b in (int_a AS "Label", int_b as 1));
+--
+ERROR: All UNPIVOT labels must be the same type; when non-string labels are present then all labels must be explicitly provided [at 1:69]
+...UNPIVOT(a for b in (int_a AS "Label", int_b as 1));
+                                         ^
+==
+
+# Duplicate columns from input-table cannot be referenced in UNPIVOT IN clause.
+SELECT * FROM (SELECT int_a col1, int_b col1 FROM MultipleColumns) UNPIVOT(x for z in (col1));
+--
+ERROR: Column name col1 is ambiguous [at 1:88]
+...col1 FROM MultipleColumns) UNPIVOT(x for z in (col1));
+                                                  ^
+==
+
+# Unpivot value-columns or unpivot name-columns can have the same name as
+# columns from the input tables (whether or not those columns are also present
+# in the UNPIVOT IN clause). This means the output table will have columns with
+# duplicate names, which is ok.
+SELECT * FROM (SELECT int_a, int_b, int_c FROM MultipleColumns) UNPIVOT(int_a for int_c in (int_a, int_b));
+--
+QueryStmt
++-output_column_list=
+| +-$unpivot.int_c#9 AS int_c [INT64]
+| +-$unpivot.int_a#7 AS int_a [INT64]
+| +-$unpivot.int_c#8 AS int_c [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=$unpivot.[int_c#9, int_a#7, int_c#8]
+    +-input_scan=
+      +-UnpivotScan
+        +-column_list=$unpivot.[int_c#9, int_a#7, int_c#8]
+        +-input_scan=
+        | +-ProjectScan
+        |   +-column_list=MultipleColumns.[int_a#1, int_b#3, int_c#5]
+        |   +-input_scan=
+        |     +-TableScan(column_list=MultipleColumns.[int_a#1, int_b#3, int_c#5], table=MultipleColumns, column_index_list=[0, 2, 4])
+        +-value_column_list=[$unpivot.int_a#7]
+        +-label_column=$unpivot.int_c#8
+        +-label_list=
+        | +-Literal(type=STRING, value="int_a")
+        | +-Literal(type=STRING, value="int_b")
+        +-unpivot_arg_list=
+        | +-UnpivotArg
+        | | +-column_list=
+        | |   +-ColumnRef(type=INT64, column=MultipleColumns.int_a#1)
+        | +-UnpivotArg
+        |   +-column_list=
+        |     +-ColumnRef(type=INT64, column=MultipleColumns.int_b#3)
+        +-projected_input_column_list=
+        | +-int_c#9 := ColumnRef(type=INT64, column=MultipleColumns.int_c#5)
+        +-include_nulls=FALSE
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$unpivot.int_c#9 AS int_c [INT64]
+| +-$unpivot.int_a#7 AS int_a [INT64]
+| +-$unpivot.int_c#8 AS int_c [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=$unpivot.[int_c#9, int_a#7, int_c#8]
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=$unpivot.[int_c#9, int_a#7, int_c#8]
+        +-expr_list=
+        | +-int_c#9 := ColumnRef(type=INT64, column=MultipleColumns.int_c#5)
+        | +-int_a#7 :=
+        | | +-GetStructField
+        | |   +-type=INT64
+        | |   +-expr=
+        | |   | +-ColumnRef(type=STRUCT<int_a INT64, int_c STRING>, column=unpivot_array_0.unpivot_unnest#10)
+        | |   +-field_idx=0
+        | +-int_c#8 :=
+        |   +-GetStructField
+        |     +-type=STRING
+        |     +-expr=
+        |     | +-ColumnRef(type=STRUCT<int_a INT64, int_c STRING>, column=unpivot_array_0.unpivot_unnest#10)
+        |     +-field_idx=1
+        +-input_scan=
+          +-FilterScan
+            +-column_list=[MultipleColumns.int_a#1, MultipleColumns.int_b#3, MultipleColumns.int_c#5, unpivot_array_0.unpivot_unnest#10]
+            +-input_scan=
+            | +-ArrayScan
+            |   +-column_list=[MultipleColumns.int_a#1, MultipleColumns.int_b#3, MultipleColumns.int_c#5, unpivot_array_0.unpivot_unnest#10]
+            |   +-input_scan=
+            |   | +-ProjectScan
+            |   |   +-column_list=MultipleColumns.[int_a#1, int_b#3, int_c#5]
+            |   |   +-input_scan=
+            |   |     +-TableScan(column_list=MultipleColumns.[int_a#1, int_b#3, int_c#5], table=MultipleColumns, column_index_list=[0, 2, 4])
+            |   +-array_expr_list=
+            |   | +-FunctionCall(GoogleSQL:$make_array(repeated(2) STRUCT<int_a INT64, int_c STRING>) -> ARRAY<STRUCT<int_a INT64, int_c STRING>>)
+            |   |   +-MakeStruct
+            |   |   | +-type=STRUCT<int_a INT64, int_c STRING>
+            |   |   | +-field_list=
+            |   |   |   +-ColumnRef(type=INT64, column=MultipleColumns.int_a#1)
+            |   |   |   +-Literal(type=STRING, value="int_a", has_explicit_type=TRUE)
+            |   |   +-MakeStruct
+            |   |     +-type=STRUCT<int_a INT64, int_c STRING>
+            |   |     +-field_list=
+            |   |       +-ColumnRef(type=INT64, column=MultipleColumns.int_b#3)
+            |   |       +-Literal(type=STRING, value="int_b", has_explicit_type=TRUE)
+            |   +-element_column_list=[unpivot_array_0.unpivot_unnest#10]
+            +-filter_expr=
+              +-FunctionCall(GoogleSQL:$not(BOOL) -> BOOL)
+                +-FunctionCall(GoogleSQL:$is_null(INT64) -> BOOL)
+                  +-GetStructField
+                    +-type=INT64
+                    +-expr=
+                    | +-ColumnRef(type=STRUCT<int_a INT64, int_c STRING>, column=unpivot_array_0.unpivot_unnest#10)
+                    +-field_idx=0
+==
+
+# Duplicate output value columns are allowed.
+SELECT * from MultipleColumns UNPIVOT((x,x) FOR y IN ((int_a, int_b)));
+--
+QueryStmt
++-output_column_list=
+| +-$unpivot.string_a#10 AS string_a [STRING]
+| +-$unpivot.string_b#11 AS string_b [STRING]
+| +-$unpivot.int_c#12 AS int_c [INT64]
+| +-$unpivot.int_d#13 AS int_d [INT64]
+| +-$unpivot.x#7 AS x [INT64]
+| +-$unpivot.x#8 AS x [INT64]
+| +-$unpivot.y#9 AS y [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=$unpivot.[string_a#10, string_b#11, int_c#12, int_d#13, x#7, x#8, y#9]
+    +-input_scan=
+      +-UnpivotScan
+        +-column_list=$unpivot.[string_a#10, string_b#11, int_c#12, int_d#13, x#7, x#8, y#9]
+        +-input_scan=
+        | +-TableScan(column_list=MultipleColumns.[int_a#1, string_a#2, int_b#3, string_b#4, int_c#5, int_d#6], table=MultipleColumns, column_index_list=[0, 1, 2, 3, 4, 5])
+        +-value_column_list=$unpivot.[x#7, x#8]
+        +-label_column=$unpivot.y#9
+        +-label_list=
+        | +-Literal(type=STRING, value="int_a_int_b")
+        +-unpivot_arg_list=
+        | +-UnpivotArg
+        |   +-column_list=
+        |     +-ColumnRef(type=INT64, column=MultipleColumns.int_a#1)
+        |     +-ColumnRef(type=INT64, column=MultipleColumns.int_b#3)
+        +-projected_input_column_list=
+        | +-string_a#10 := ColumnRef(type=STRING, column=MultipleColumns.string_a#2)
+        | +-string_b#11 := ColumnRef(type=STRING, column=MultipleColumns.string_b#4)
+        | +-int_c#12 := ColumnRef(type=INT64, column=MultipleColumns.int_c#5)
+        | +-int_d#13 := ColumnRef(type=INT64, column=MultipleColumns.int_d#6)
+        +-include_nulls=FALSE
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$unpivot.string_a#10 AS string_a [STRING]
+| +-$unpivot.string_b#11 AS string_b [STRING]
+| +-$unpivot.int_c#12 AS int_c [INT64]
+| +-$unpivot.int_d#13 AS int_d [INT64]
+| +-$unpivot.x#7 AS x [INT64]
+| +-$unpivot.x#8 AS x [INT64]
+| +-$unpivot.y#9 AS y [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=$unpivot.[string_a#10, string_b#11, int_c#12, int_d#13, x#7, x#8, y#9]
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=$unpivot.[string_a#10, string_b#11, int_c#12, int_d#13, x#7, x#8, y#9]
+        +-expr_list=
+        | +-string_a#10 := ColumnRef(type=STRING, column=MultipleColumns.string_a#2)
+        | +-string_b#11 := ColumnRef(type=STRING, column=MultipleColumns.string_b#4)
+        | +-int_c#12 := ColumnRef(type=INT64, column=MultipleColumns.int_c#5)
+        | +-int_d#13 := ColumnRef(type=INT64, column=MultipleColumns.int_d#6)
+        | +-x#7 :=
+        | | +-GetStructField
+        | |   +-type=INT64
+        | |   +-expr=
+        | |   | +-ColumnRef(type=STRUCT<x INT64, x INT64, y STRING>, column=unpivot_array_0.unpivot_unnest#14)
+        | |   +-field_idx=0
+        | +-x#8 :=
+        | | +-GetStructField
+        | |   +-type=INT64
+        | |   +-expr=
+        | |   | +-ColumnRef(type=STRUCT<x INT64, x INT64, y STRING>, column=unpivot_array_0.unpivot_unnest#14)
+        | |   +-field_idx=1
+        | +-y#9 :=
+        |   +-GetStructField
+        |     +-type=STRING
+        |     +-expr=
+        |     | +-ColumnRef(type=STRUCT<x INT64, x INT64, y STRING>, column=unpivot_array_0.unpivot_unnest#14)
+        |     +-field_idx=2
+        +-input_scan=
+          +-FilterScan
+            +-column_list=[MultipleColumns.int_a#1, MultipleColumns.string_a#2, MultipleColumns.int_b#3, MultipleColumns.string_b#4, MultipleColumns.int_c#5, MultipleColumns.int_d#6, unpivot_array_0.unpivot_unnest#14]
+            +-input_scan=
+            | +-ArrayScan
+            |   +-column_list=[MultipleColumns.int_a#1, MultipleColumns.string_a#2, MultipleColumns.int_b#3, MultipleColumns.string_b#4, MultipleColumns.int_c#5, MultipleColumns.int_d#6, unpivot_array_0.unpivot_unnest#14]
+            |   +-input_scan=
+            |   | +-TableScan(column_list=MultipleColumns.[int_a#1, string_a#2, int_b#3, string_b#4, int_c#5, int_d#6], table=MultipleColumns, column_index_list=[0, 1, 2, 3, 4, 5])
+            |   +-array_expr_list=
+            |   | +-FunctionCall(GoogleSQL:$make_array(repeated(1) STRUCT<x INT64, x INT64, y STRING>) -> ARRAY<STRUCT<x INT64, x INT64, y STRING>>)
+            |   |   +-MakeStruct
+            |   |     +-type=STRUCT<x INT64, x INT64, y STRING>
+            |   |     +-field_list=
+            |   |       +-ColumnRef(type=INT64, column=MultipleColumns.int_a#1)
+            |   |       +-ColumnRef(type=INT64, column=MultipleColumns.int_b#3)
+            |   |       +-Literal(type=STRING, value="int_a_int_b", has_explicit_type=TRUE)
+            |   +-element_column_list=[unpivot_array_0.unpivot_unnest#14]
+            +-filter_expr=
+              +-FunctionCall(GoogleSQL:$or(repeated(2) BOOL) -> BOOL)
+                +-FunctionCall(GoogleSQL:$not(BOOL) -> BOOL)
+                | +-FunctionCall(GoogleSQL:$is_null(INT64) -> BOOL)
+                |   +-GetStructField
+                |     +-type=INT64
+                |     +-expr=
+                |     | +-ColumnRef(type=STRUCT<x INT64, x INT64, y STRING>, column=unpivot_array_0.unpivot_unnest#14)
+                |     +-field_idx=0
+                +-FunctionCall(GoogleSQL:$not(BOOL) -> BOOL)
+                  +-FunctionCall(GoogleSQL:$is_null(INT64) -> BOOL)
+                    +-GetStructField
+                      +-type=INT64
+                      +-expr=
+                      | +-ColumnRef(type=STRUCT<x INT64, x INT64, y STRING>, column=unpivot_array_0.unpivot_unnest#14)
+                      +-field_idx=1
+==
+
+# Duplicate unpivot value and name columns are allowed.
+SELECT * from MultipleColumns UNPIVOT(x FOR x IN ((int_a)));
+--
+QueryStmt
++-output_column_list=
+| +-$unpivot.string_a#9 AS string_a [STRING]
+| +-$unpivot.int_b#10 AS int_b [INT64]
+| +-$unpivot.string_b#11 AS string_b [STRING]
+| +-$unpivot.int_c#12 AS int_c [INT64]
+| +-$unpivot.int_d#13 AS int_d [INT64]
+| +-$unpivot.x#7 AS x [INT64]
+| +-$unpivot.x#8 AS x [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=$unpivot.[string_a#9, int_b#10, string_b#11, int_c#12, int_d#13, x#7, x#8]
+    +-input_scan=
+      +-UnpivotScan
+        +-column_list=$unpivot.[string_a#9, int_b#10, string_b#11, int_c#12, int_d#13, x#7, x#8]
+        +-input_scan=
+        | +-TableScan(column_list=MultipleColumns.[int_a#1, string_a#2, int_b#3, string_b#4, int_c#5, int_d#6], table=MultipleColumns, column_index_list=[0, 1, 2, 3, 4, 5])
+        +-value_column_list=[$unpivot.x#7]
+        +-label_column=$unpivot.x#8
+        +-label_list=
+        | +-Literal(type=STRING, value="int_a")
+        +-unpivot_arg_list=
+        | +-UnpivotArg
+        |   +-column_list=
+        |     +-ColumnRef(type=INT64, column=MultipleColumns.int_a#1)
+        +-projected_input_column_list=
+        | +-string_a#9 := ColumnRef(type=STRING, column=MultipleColumns.string_a#2)
+        | +-int_b#10 := ColumnRef(type=INT64, column=MultipleColumns.int_b#3)
+        | +-string_b#11 := ColumnRef(type=STRING, column=MultipleColumns.string_b#4)
+        | +-int_c#12 := ColumnRef(type=INT64, column=MultipleColumns.int_c#5)
+        | +-int_d#13 := ColumnRef(type=INT64, column=MultipleColumns.int_d#6)
+        +-include_nulls=FALSE
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$unpivot.string_a#9 AS string_a [STRING]
+| +-$unpivot.int_b#10 AS int_b [INT64]
+| +-$unpivot.string_b#11 AS string_b [STRING]
+| +-$unpivot.int_c#12 AS int_c [INT64]
+| +-$unpivot.int_d#13 AS int_d [INT64]
+| +-$unpivot.x#7 AS x [INT64]
+| +-$unpivot.x#8 AS x [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=$unpivot.[string_a#9, int_b#10, string_b#11, int_c#12, int_d#13, x#7, x#8]
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=$unpivot.[string_a#9, int_b#10, string_b#11, int_c#12, int_d#13, x#7, x#8]
+        +-expr_list=
+        | +-string_a#9 := ColumnRef(type=STRING, column=MultipleColumns.string_a#2)
+        | +-int_b#10 := ColumnRef(type=INT64, column=MultipleColumns.int_b#3)
+        | +-string_b#11 := ColumnRef(type=STRING, column=MultipleColumns.string_b#4)
+        | +-int_c#12 := ColumnRef(type=INT64, column=MultipleColumns.int_c#5)
+        | +-int_d#13 := ColumnRef(type=INT64, column=MultipleColumns.int_d#6)
+        | +-x#7 :=
+        | | +-GetStructField
+        | |   +-type=INT64
+        | |   +-expr=
+        | |   | +-ColumnRef(type=STRUCT<x INT64, x STRING>, column=unpivot_array_0.unpivot_unnest#14)
+        | |   +-field_idx=0
+        | +-x#8 :=
+        |   +-GetStructField
+        |     +-type=STRING
+        |     +-expr=
+        |     | +-ColumnRef(type=STRUCT<x INT64, x STRING>, column=unpivot_array_0.unpivot_unnest#14)
+        |     +-field_idx=1
+        +-input_scan=
+          +-FilterScan
+            +-column_list=[MultipleColumns.int_a#1, MultipleColumns.string_a#2, MultipleColumns.int_b#3, MultipleColumns.string_b#4, MultipleColumns.int_c#5, MultipleColumns.int_d#6, unpivot_array_0.unpivot_unnest#14]
+            +-input_scan=
+            | +-ArrayScan
+            |   +-column_list=[MultipleColumns.int_a#1, MultipleColumns.string_a#2, MultipleColumns.int_b#3, MultipleColumns.string_b#4, MultipleColumns.int_c#5, MultipleColumns.int_d#6, unpivot_array_0.unpivot_unnest#14]
+            |   +-input_scan=
+            |   | +-TableScan(column_list=MultipleColumns.[int_a#1, string_a#2, int_b#3, string_b#4, int_c#5, int_d#6], table=MultipleColumns, column_index_list=[0, 1, 2, 3, 4, 5])
+            |   +-array_expr_list=
+            |   | +-FunctionCall(GoogleSQL:$make_array(repeated(1) STRUCT<x INT64, x STRING>) -> ARRAY<STRUCT<x INT64, x STRING>>)
+            |   |   +-MakeStruct
+            |   |     +-type=STRUCT<x INT64, x STRING>
+            |   |     +-field_list=
+            |   |       +-ColumnRef(type=INT64, column=MultipleColumns.int_a#1)
+            |   |       +-Literal(type=STRING, value="int_a", has_explicit_type=TRUE)
+            |   +-element_column_list=[unpivot_array_0.unpivot_unnest#14]
+            +-filter_expr=
+              +-FunctionCall(GoogleSQL:$not(BOOL) -> BOOL)
+                +-FunctionCall(GoogleSQL:$is_null(INT64) -> BOOL)
+                  +-GetStructField
+                    +-type=INT64
+                    +-expr=
+                    | +-ColumnRef(type=STRUCT<x INT64, x STRING>, column=unpivot_array_0.unpivot_unnest#14)
+                    +-field_idx=0
+==
+
+# Duplicate column aliases
+select 1 as Value, * from KeyValue UNPIVOT(Value for b in (Key));
+--
+QueryStmt
++-output_column_list=
+| +-$query.Value#6 AS Value [INT64]
+| +-$unpivot.Value#5 AS Value [STRING]
+| +-$unpivot.Value#3 AS Value [INT64]
+| +-$unpivot.b#4 AS b [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.Value#6, $unpivot.Value#5, $unpivot.Value#3, $unpivot.b#4]
+    +-expr_list=
+    | +-Value#6 := Literal(type=INT64, value=1)
+    +-input_scan=
+      +-UnpivotScan
+        +-column_list=$unpivot.[Value#5, Value#3, b#4]
+        +-input_scan=
+        | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+        +-value_column_list=[$unpivot.Value#3]
+        +-label_column=$unpivot.b#4
+        +-label_list=
+        | +-Literal(type=STRING, value="Key")
+        +-unpivot_arg_list=
+        | +-UnpivotArg
+        |   +-column_list=
+        |     +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+        +-projected_input_column_list=
+        | +-Value#5 := ColumnRef(type=STRING, column=KeyValue.Value#2)
+        +-include_nulls=FALSE
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$query.Value#6 AS Value [INT64]
+| +-$unpivot.Value#5 AS Value [STRING]
+| +-$unpivot.Value#3 AS Value [INT64]
+| +-$unpivot.b#4 AS b [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.Value#6, $unpivot.Value#5, $unpivot.Value#3, $unpivot.b#4]
+    +-expr_list=
+    | +-Value#6 := Literal(type=INT64, value=1)
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=$unpivot.[Value#5, Value#3, b#4]
+        +-expr_list=
+        | +-Value#5 := ColumnRef(type=STRING, column=KeyValue.Value#2)
+        | +-Value#3 :=
+        | | +-GetStructField
+        | |   +-type=INT64
+        | |   +-expr=
+        | |   | +-ColumnRef(type=STRUCT<Value INT64, b STRING>, column=unpivot_array_0.unpivot_unnest#7)
+        | |   +-field_idx=0
+        | +-b#4 :=
+        |   +-GetStructField
+        |     +-type=STRING
+        |     +-expr=
+        |     | +-ColumnRef(type=STRUCT<Value INT64, b STRING>, column=unpivot_array_0.unpivot_unnest#7)
+        |     +-field_idx=1
+        +-input_scan=
+          +-FilterScan
+            +-column_list=[KeyValue.Key#1, KeyValue.Value#2, unpivot_array_0.unpivot_unnest#7]
+            +-input_scan=
+            | +-ArrayScan
+            |   +-column_list=[KeyValue.Key#1, KeyValue.Value#2, unpivot_array_0.unpivot_unnest#7]
+            |   +-input_scan=
+            |   | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+            |   +-array_expr_list=
+            |   | +-FunctionCall(GoogleSQL:$make_array(repeated(1) STRUCT<Value INT64, b STRING>) -> ARRAY<STRUCT<Value INT64, b STRING>>)
+            |   |   +-MakeStruct
+            |   |     +-type=STRUCT<Value INT64, b STRING>
+            |   |     +-field_list=
+            |   |       +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+            |   |       +-Literal(type=STRING, value="Key", has_explicit_type=TRUE)
+            |   +-element_column_list=[unpivot_array_0.unpivot_unnest#7]
+            +-filter_expr=
+              +-FunctionCall(GoogleSQL:$not(BOOL) -> BOOL)
+                +-FunctionCall(GoogleSQL:$is_null(INT64) -> BOOL)
+                  +-GetStructField
+                    +-type=INT64
+                    +-expr=
+                    | +-ColumnRef(type=STRUCT<Value INT64, b STRING>, column=unpivot_array_0.unpivot_unnest#7)
+                    +-field_idx=0
+==
+
+# Duplicate output value columns are allowed, but cannot be accessed by name
+# since the column name is ambiguous (this is same as how SQL treats tables
+# with duplicate column names).
+SELECT x from MultipleColumns UNPIVOT((x,x) FOR y IN ((int_a, int_b)));
+--
+ERROR: Column name x is ambiguous [at 1:8]
+SELECT x from MultipleColumns UNPIVOT((x,x) FOR y IN ((int_a, int_b)));
+       ^
+==
+
+# Duplicate columns in IN clause.
+SELECT * from MultipleColumns UNPIVOT(x FOR y IN (int_a, int_a));
+--
+ERROR: Column names in UNPIVOT IN clause cannot be repeated [at 1:58]
+SELECT * from MultipleColumns UNPIVOT(x FOR y IN (int_a, int_a));
+                                                         ^
+==
+
+# Duplicate columns in IN clause with different labels.
+SELECT * from MultipleColumns UNPIVOT(x FOR y IN (int_a AS "Label1", int_a AS "Label2"));
+--
+ERROR: Column names in UNPIVOT IN clause cannot be repeated [at 1:70]
+...UNPIVOT(x FOR y IN (int_a AS "Label1", int_a AS "Label2"));
+                                          ^
+==
+
+# Duplicate columns in IN clause with in different column groups.
+SELECT * from MultipleColumns UNPIVOT((x,y) FOR z IN ((int_a, int_b), (int_a, int_c)));
+--
+ERROR: Column names in UNPIVOT IN clause cannot be repeated [at 1:72]
+...UNPIVOT((x,y) FOR z IN ((int_a, int_b), (int_a, int_c)));
+                                            ^
+==
+
+# Duplicates of the same column reference in the input table.
+# TODO : This could be allowed since though these columns refer to
+# the same input table column, they are projected to separate columns in the
+# unpivot source.
+SELECT * FROM (SELECT Key as a, Key as b FROM KeyValue) UNPIVOT(x FOR y IN (a, b));
+--
+ERROR: Column names in UNPIVOT IN clause cannot be repeated [at 1:80]
+...a, Key as b FROM KeyValue) UNPIVOT(x FOR y IN (a, b));
+                                                     ^
+==
+
+# Duplicate labels are allowed.
+SELECT * from MultipleColumns UNPIVOT(x for y in (int_a AS "Label1", int_b AS "Label1"));
+--
+QueryStmt
++-output_column_list=
+| +-$unpivot.string_a#9 AS string_a [STRING]
+| +-$unpivot.string_b#10 AS string_b [STRING]
+| +-$unpivot.int_c#11 AS int_c [INT64]
+| +-$unpivot.int_d#12 AS int_d [INT64]
+| +-$unpivot.x#7 AS x [INT64]
+| +-$unpivot.y#8 AS y [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=$unpivot.[string_a#9, string_b#10, int_c#11, int_d#12, x#7, y#8]
+    +-input_scan=
+      +-UnpivotScan
+        +-column_list=$unpivot.[string_a#9, string_b#10, int_c#11, int_d#12, x#7, y#8]
+        +-input_scan=
+        | +-TableScan(column_list=MultipleColumns.[int_a#1, string_a#2, int_b#3, string_b#4, int_c#5, int_d#6], table=MultipleColumns, column_index_list=[0, 1, 2, 3, 4, 5])
+        +-value_column_list=[$unpivot.x#7]
+        +-label_column=$unpivot.y#8
+        +-label_list=
+        | +-Literal(type=STRING, value="Label1")
+        | +-Literal(type=STRING, value="Label1")
+        +-unpivot_arg_list=
+        | +-UnpivotArg
+        | | +-column_list=
+        | |   +-ColumnRef(type=INT64, column=MultipleColumns.int_a#1)
+        | +-UnpivotArg
+        |   +-column_list=
+        |     +-ColumnRef(type=INT64, column=MultipleColumns.int_b#3)
+        +-projected_input_column_list=
+        | +-string_a#9 := ColumnRef(type=STRING, column=MultipleColumns.string_a#2)
+        | +-string_b#10 := ColumnRef(type=STRING, column=MultipleColumns.string_b#4)
+        | +-int_c#11 := ColumnRef(type=INT64, column=MultipleColumns.int_c#5)
+        | +-int_d#12 := ColumnRef(type=INT64, column=MultipleColumns.int_d#6)
+        +-include_nulls=FALSE
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$unpivot.string_a#9 AS string_a [STRING]
+| +-$unpivot.string_b#10 AS string_b [STRING]
+| +-$unpivot.int_c#11 AS int_c [INT64]
+| +-$unpivot.int_d#12 AS int_d [INT64]
+| +-$unpivot.x#7 AS x [INT64]
+| +-$unpivot.y#8 AS y [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=$unpivot.[string_a#9, string_b#10, int_c#11, int_d#12, x#7, y#8]
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=$unpivot.[string_a#9, string_b#10, int_c#11, int_d#12, x#7, y#8]
+        +-expr_list=
+        | +-string_a#9 := ColumnRef(type=STRING, column=MultipleColumns.string_a#2)
+        | +-string_b#10 := ColumnRef(type=STRING, column=MultipleColumns.string_b#4)
+        | +-int_c#11 := ColumnRef(type=INT64, column=MultipleColumns.int_c#5)
+        | +-int_d#12 := ColumnRef(type=INT64, column=MultipleColumns.int_d#6)
+        | +-x#7 :=
+        | | +-GetStructField
+        | |   +-type=INT64
+        | |   +-expr=
+        | |   | +-ColumnRef(type=STRUCT<x INT64, y STRING>, column=unpivot_array_0.unpivot_unnest#13)
+        | |   +-field_idx=0
+        | +-y#8 :=
+        |   +-GetStructField
+        |     +-type=STRING
+        |     +-expr=
+        |     | +-ColumnRef(type=STRUCT<x INT64, y STRING>, column=unpivot_array_0.unpivot_unnest#13)
+        |     +-field_idx=1
+        +-input_scan=
+          +-FilterScan
+            +-column_list=[MultipleColumns.int_a#1, MultipleColumns.string_a#2, MultipleColumns.int_b#3, MultipleColumns.string_b#4, MultipleColumns.int_c#5, MultipleColumns.int_d#6, unpivot_array_0.unpivot_unnest#13]
+            +-input_scan=
+            | +-ArrayScan
+            |   +-column_list=[MultipleColumns.int_a#1, MultipleColumns.string_a#2, MultipleColumns.int_b#3, MultipleColumns.string_b#4, MultipleColumns.int_c#5, MultipleColumns.int_d#6, unpivot_array_0.unpivot_unnest#13]
+            |   +-input_scan=
+            |   | +-TableScan(column_list=MultipleColumns.[int_a#1, string_a#2, int_b#3, string_b#4, int_c#5, int_d#6], table=MultipleColumns, column_index_list=[0, 1, 2, 3, 4, 5])
+            |   +-array_expr_list=
+            |   | +-FunctionCall(GoogleSQL:$make_array(repeated(2) STRUCT<x INT64, y STRING>) -> ARRAY<STRUCT<x INT64, y STRING>>)
+            |   |   +-MakeStruct
+            |   |   | +-type=STRUCT<x INT64, y STRING>
+            |   |   | +-field_list=
+            |   |   |   +-ColumnRef(type=INT64, column=MultipleColumns.int_a#1)
+            |   |   |   +-Literal(type=STRING, value="Label1", has_explicit_type=TRUE)
+            |   |   +-MakeStruct
+            |   |     +-type=STRUCT<x INT64, y STRING>
+            |   |     +-field_list=
+            |   |       +-ColumnRef(type=INT64, column=MultipleColumns.int_b#3)
+            |   |       +-Literal(type=STRING, value="Label1", has_explicit_type=TRUE)
+            |   +-element_column_list=[unpivot_array_0.unpivot_unnest#13]
+            +-filter_expr=
+              +-FunctionCall(GoogleSQL:$not(BOOL) -> BOOL)
+                +-FunctionCall(GoogleSQL:$is_null(INT64) -> BOOL)
+                  +-GetStructField
+                    +-type=INT64
+                    +-expr=
+                    | +-ColumnRef(type=STRUCT<x INT64, y STRING>, column=unpivot_array_0.unpivot_unnest#13)
+                    +-field_idx=0
+==
+
+# Unnamed column from input table cannot be unpivoted since UNPIVOT requires
+# column names in the IN clause to unpivot.
+SELECT * FROM (SELECT int_a + 1, int_b FROM MultipleColumns) UNPIVOT(x for y in (int_a, int_b));
+--
+ERROR: Unrecognized name: int_a; Did you mean int_b? [at 1:82]
+...1, int_b FROM MultipleColumns) UNPIVOT(x for y in (int_a, int_b));
+                                                      ^
+==
+
+# Unnamed column from input table ( int_a + 1 ) can appear in output of UNPIVOT.
+SELECT * FROM (SELECT int_a + 1, int_b FROM MultipleColumns) UNPIVOT(x for y in (int_b));
+--
+QueryStmt
++-output_column_list=
+| +-$unpivot.$col1#10 AS `$col1` [INT64]
+| +-$unpivot.x#8 AS x [INT64]
+| +-$unpivot.y#9 AS y [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=$unpivot.[$col1#10, x#8, y#9]
+    +-input_scan=
+      +-UnpivotScan
+        +-column_list=$unpivot.[$col1#10, x#8, y#9]
+        +-input_scan=
+        | +-ProjectScan
+        |   +-column_list=[$subquery1.$col1#7, MultipleColumns.int_b#3]
+        |   +-expr_list=
+        |   | +-$col1#7 :=
+        |   |   +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+        |   |     +-ColumnRef(type=INT64, column=MultipleColumns.int_a#1)
+        |   |     +-Literal(type=INT64, value=1)
+        |   +-input_scan=
+        |     +-TableScan(column_list=MultipleColumns.[int_a#1, int_b#3], table=MultipleColumns, column_index_list=[0, 2])
+        +-value_column_list=[$unpivot.x#8]
+        +-label_column=$unpivot.y#9
+        +-label_list=
+        | +-Literal(type=STRING, value="int_b")
+        +-unpivot_arg_list=
+        | +-UnpivotArg
+        |   +-column_list=
+        |     +-ColumnRef(type=INT64, column=MultipleColumns.int_b#3)
+        +-projected_input_column_list=
+        | +-$col1#10 := ColumnRef(type=INT64, column=$subquery1.$col1#7)
+        +-include_nulls=FALSE
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$unpivot.$col1#10 AS `$col1` [INT64]
+| +-$unpivot.x#8 AS x [INT64]
+| +-$unpivot.y#9 AS y [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=$unpivot.[$col1#10, x#8, y#9]
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=$unpivot.[$col1#10, x#8, y#9]
+        +-expr_list=
+        | +-$col1#10 := ColumnRef(type=INT64, column=$subquery1.$col1#7)
+        | +-x#8 :=
+        | | +-GetStructField
+        | |   +-type=INT64
+        | |   +-expr=
+        | |   | +-ColumnRef(type=STRUCT<x INT64, y STRING>, column=unpivot_array_0.unpivot_unnest#11)
+        | |   +-field_idx=0
+        | +-y#9 :=
+        |   +-GetStructField
+        |     +-type=STRING
+        |     +-expr=
+        |     | +-ColumnRef(type=STRUCT<x INT64, y STRING>, column=unpivot_array_0.unpivot_unnest#11)
+        |     +-field_idx=1
+        +-input_scan=
+          +-FilterScan
+            +-column_list=[$subquery1.$col1#7, MultipleColumns.int_b#3, unpivot_array_0.unpivot_unnest#11]
+            +-input_scan=
+            | +-ArrayScan
+            |   +-column_list=[$subquery1.$col1#7, MultipleColumns.int_b#3, unpivot_array_0.unpivot_unnest#11]
+            |   +-input_scan=
+            |   | +-ProjectScan
+            |   |   +-column_list=[$subquery1.$col1#7, MultipleColumns.int_b#3]
+            |   |   +-expr_list=
+            |   |   | +-$col1#7 :=
+            |   |   |   +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+            |   |   |     +-ColumnRef(type=INT64, column=MultipleColumns.int_a#1)
+            |   |   |     +-Literal(type=INT64, value=1)
+            |   |   +-input_scan=
+            |   |     +-TableScan(column_list=MultipleColumns.[int_a#1, int_b#3], table=MultipleColumns, column_index_list=[0, 2])
+            |   +-array_expr_list=
+            |   | +-FunctionCall(GoogleSQL:$make_array(repeated(1) STRUCT<x INT64, y STRING>) -> ARRAY<STRUCT<x INT64, y STRING>>)
+            |   |   +-MakeStruct
+            |   |     +-type=STRUCT<x INT64, y STRING>
+            |   |     +-field_list=
+            |   |       +-ColumnRef(type=INT64, column=MultipleColumns.int_b#3)
+            |   |       +-Literal(type=STRING, value="int_b", has_explicit_type=TRUE)
+            |   +-element_column_list=[unpivot_array_0.unpivot_unnest#11]
+            +-filter_expr=
+              +-FunctionCall(GoogleSQL:$not(BOOL) -> BOOL)
+                +-FunctionCall(GoogleSQL:$is_null(INT64) -> BOOL)
+                  +-GetStructField
+                    +-type=INT64
+                    +-expr=
+                    | +-ColumnRef(type=STRUCT<x INT64, y STRING>, column=unpivot_array_0.unpivot_unnest#11)
+                    +-field_idx=0
+==
+
+# Two unpivots, one inside a sub-query (with both include and exclude nulls)
+SELECT * FROM (SELECT * FROM KeyValue
+UNPIVOT INCLUDE NULLS(a for b in (Key AS "Label"))) UNPIVOT EXCLUDE NULLS(x for y in (a));
+
+--
+QueryStmt
++-output_column_list=
+| +-$unpivot.Value#8 AS Value [STRING]
+| +-$unpivot.b#9 AS b [STRING]
+| +-$unpivot.x#6 AS x [INT64]
+| +-$unpivot.y#7 AS y [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=$unpivot.[Value#8, b#9, x#6, y#7]
+    +-input_scan=
+      +-UnpivotScan
+        +-column_list=$unpivot.[Value#8, b#9, x#6, y#7]
+        +-input_scan=
+        | +-ProjectScan
+        |   +-column_list=$unpivot.[Value#5, a#3, b#4]
+        |   +-input_scan=
+        |     +-UnpivotScan
+        |       +-column_list=$unpivot.[Value#5, a#3, b#4]
+        |       +-input_scan=
+        |       | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+        |       +-value_column_list=[$unpivot.a#3]
+        |       +-label_column=$unpivot.b#4
+        |       +-label_list=
+        |       | +-Literal(type=STRING, value="Label")
+        |       +-unpivot_arg_list=
+        |       | +-UnpivotArg
+        |       |   +-column_list=
+        |       |     +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+        |       +-projected_input_column_list=
+        |       | +-Value#5 := ColumnRef(type=STRING, column=KeyValue.Value#2)
+        |       +-include_nulls=TRUE
+        +-value_column_list=[$unpivot.x#6]
+        +-label_column=$unpivot.y#7
+        +-label_list=
+        | +-Literal(type=STRING, value="a")
+        +-unpivot_arg_list=
+        | +-UnpivotArg
+        |   +-column_list=
+        |     +-ColumnRef(type=INT64, column=$unpivot.a#3)
+        +-projected_input_column_list=
+        | +-Value#8 := ColumnRef(type=STRING, column=$unpivot.Value#5)
+        | +-b#9 := ColumnRef(type=STRING, column=$unpivot.b#4)
+        +-include_nulls=FALSE
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$unpivot.Value#8 AS Value [STRING]
+| +-$unpivot.b#9 AS b [STRING]
+| +-$unpivot.x#6 AS x [INT64]
+| +-$unpivot.y#7 AS y [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=$unpivot.[Value#8, b#9, x#6, y#7]
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=$unpivot.[Value#8, b#9, x#6, y#7]
+        +-expr_list=
+        | +-Value#8 := ColumnRef(type=STRING, column=$unpivot.Value#5)
+        | +-b#9 := ColumnRef(type=STRING, column=$unpivot.b#4)
+        | +-x#6 :=
+        | | +-GetStructField
+        | |   +-type=INT64
+        | |   +-expr=
+        | |   | +-ColumnRef(type=STRUCT<x INT64, y STRING>, column=unpivot_array_1.unpivot_unnest#11)
+        | |   +-field_idx=0
+        | +-y#7 :=
+        |   +-GetStructField
+        |     +-type=STRING
+        |     +-expr=
+        |     | +-ColumnRef(type=STRUCT<x INT64, y STRING>, column=unpivot_array_1.unpivot_unnest#11)
+        |     +-field_idx=1
+        +-input_scan=
+          +-FilterScan
+            +-column_list=[$unpivot.Value#5, $unpivot.a#3, $unpivot.b#4, unpivot_array_1.unpivot_unnest#11]
+            +-input_scan=
+            | +-ArrayScan
+            |   +-column_list=[$unpivot.Value#5, $unpivot.a#3, $unpivot.b#4, unpivot_array_1.unpivot_unnest#11]
+            |   +-input_scan=
+            |   | +-ProjectScan
+            |   |   +-column_list=$unpivot.[Value#5, a#3, b#4]
+            |   |   +-input_scan=
+            |   |     +-ProjectScan
+            |   |       +-column_list=$unpivot.[Value#5, a#3, b#4]
+            |   |       +-expr_list=
+            |   |       | +-Value#5 := ColumnRef(type=STRING, column=KeyValue.Value#2)
+            |   |       | +-a#3 :=
+            |   |       | | +-GetStructField
+            |   |       | |   +-type=INT64
+            |   |       | |   +-expr=
+            |   |       | |   | +-ColumnRef(type=STRUCT<a INT64, b STRING>, column=unpivot_array_0.unpivot_unnest#10)
+            |   |       | |   +-field_idx=0
+            |   |       | +-b#4 :=
+            |   |       |   +-GetStructField
+            |   |       |     +-type=STRING
+            |   |       |     +-expr=
+            |   |       |     | +-ColumnRef(type=STRUCT<a INT64, b STRING>, column=unpivot_array_0.unpivot_unnest#10)
+            |   |       |     +-field_idx=1
+            |   |       +-input_scan=
+            |   |         +-ArrayScan
+            |   |           +-column_list=[KeyValue.Key#1, KeyValue.Value#2, unpivot_array_0.unpivot_unnest#10]
+            |   |           +-input_scan=
+            |   |           | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+            |   |           +-array_expr_list=
+            |   |           | +-FunctionCall(GoogleSQL:$make_array(repeated(1) STRUCT<a INT64, b STRING>) -> ARRAY<STRUCT<a INT64, b STRING>>)
+            |   |           |   +-MakeStruct
+            |   |           |     +-type=STRUCT<a INT64, b STRING>
+            |   |           |     +-field_list=
+            |   |           |       +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+            |   |           |       +-Literal(type=STRING, value="Label", has_explicit_type=TRUE)
+            |   |           +-element_column_list=[unpivot_array_0.unpivot_unnest#10]
+            |   +-array_expr_list=
+            |   | +-FunctionCall(GoogleSQL:$make_array(repeated(1) STRUCT<x INT64, y STRING>) -> ARRAY<STRUCT<x INT64, y STRING>>)
+            |   |   +-MakeStruct
+            |   |     +-type=STRUCT<x INT64, y STRING>
+            |   |     +-field_list=
+            |   |       +-ColumnRef(type=INT64, column=$unpivot.a#3)
+            |   |       +-Literal(type=STRING, value="a", has_explicit_type=TRUE)
+            |   +-element_column_list=[unpivot_array_1.unpivot_unnest#11]
+            +-filter_expr=
+              +-FunctionCall(GoogleSQL:$not(BOOL) -> BOOL)
+                +-FunctionCall(GoogleSQL:$is_null(INT64) -> BOOL)
+                  +-GetStructField
+                    +-type=INT64
+                    +-expr=
+                    | +-ColumnRef(type=STRUCT<x INT64, y STRING>, column=unpivot_array_1.unpivot_unnest#11)
+                    +-field_idx=0
+==
+
+[mode=expression]
+[enabled_ast_rewrites=ALL]
+ARRAY(
+  SELECT AS STRUCT * FROM KeyValue UNPIVOT(a for b in (Key))
+)
+--
+SubqueryExpr
++-type=ARRAY<STRUCT<Value STRING, a INT64, b STRING>>
++-subquery_type=ARRAY
++-subquery=
+  +-ProjectScan
+    +-column_list=[$make_struct.$struct#6]
+    +-expr_list=
+    | +-$struct#6 :=
+    |   +-MakeStruct
+    |     +-type=STRUCT<Value STRING, a INT64, b STRING>
+    |     +-field_list=
+    |       +-ColumnRef(type=STRING, column=$unpivot.Value#5)
+    |       +-ColumnRef(type=INT64, column=$unpivot.a#3)
+    |       +-ColumnRef(type=STRING, column=$unpivot.b#4)
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=$unpivot.[Value#5, a#3, b#4]
+        +-input_scan=
+          +-UnpivotScan
+            +-column_list=$unpivot.[Value#5, a#3, b#4]
+            +-input_scan=
+            | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+            +-value_column_list=[$unpivot.a#3]
+            +-label_column=$unpivot.b#4
+            +-label_list=
+            | +-Literal(type=STRING, value="Key")
+            +-unpivot_arg_list=
+            | +-UnpivotArg
+            |   +-column_list=
+            |     +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+            +-projected_input_column_list=
+            | +-Value#5 := ColumnRef(type=STRING, column=KeyValue.Value#2)
+            +-include_nulls=FALSE
+
+[REWRITTEN AST]
+SubqueryExpr
++-type=ARRAY<STRUCT<Value STRING, a INT64, b STRING>>
++-subquery_type=ARRAY
++-subquery=
+  +-ProjectScan
+    +-column_list=[$make_struct.$struct#6]
+    +-expr_list=
+    | +-$struct#6 :=
+    |   +-MakeStruct
+    |     +-type=STRUCT<Value STRING, a INT64, b STRING>
+    |     +-field_list=
+    |       +-ColumnRef(type=STRING, column=$unpivot.Value#5)
+    |       +-ColumnRef(type=INT64, column=$unpivot.a#3)
+    |       +-ColumnRef(type=STRING, column=$unpivot.b#4)
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=$unpivot.[Value#5, a#3, b#4]
+        +-input_scan=
+          +-ProjectScan
+            +-column_list=$unpivot.[Value#5, a#3, b#4]
+            +-expr_list=
+            | +-Value#5 := ColumnRef(type=STRING, column=KeyValue.Value#2)
+            | +-a#3 :=
+            | | +-GetStructField
+            | |   +-type=INT64
+            | |   +-expr=
+            | |   | +-ColumnRef(type=STRUCT<a INT64, b STRING>, column=unpivot_array_0.unpivot_unnest#7)
+            | |   +-field_idx=0
+            | +-b#4 :=
+            |   +-GetStructField
+            |     +-type=STRING
+            |     +-expr=
+            |     | +-ColumnRef(type=STRUCT<a INT64, b STRING>, column=unpivot_array_0.unpivot_unnest#7)
+            |     +-field_idx=1
+            +-input_scan=
+              +-FilterScan
+                +-column_list=[KeyValue.Key#1, KeyValue.Value#2, unpivot_array_0.unpivot_unnest#7]
+                +-input_scan=
+                | +-ArrayScan
+                |   +-column_list=[KeyValue.Key#1, KeyValue.Value#2, unpivot_array_0.unpivot_unnest#7]
+                |   +-input_scan=
+                |   | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+                |   +-array_expr_list=
+                |   | +-FunctionCall(GoogleSQL:$make_array(repeated(1) STRUCT<a INT64, b STRING>) -> ARRAY<STRUCT<a INT64, b STRING>>)
+                |   |   +-MakeStruct
+                |   |     +-type=STRUCT<a INT64, b STRING>
+                |   |     +-field_list=
+                |   |       +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+                |   |       +-Literal(type=STRING, value="Key", has_explicit_type=TRUE)
+                |   +-element_column_list=[unpivot_array_0.unpivot_unnest#7]
+                +-filter_expr=
+                  +-FunctionCall(GoogleSQL:$not(BOOL) -> BOOL)
+                    +-FunctionCall(GoogleSQL:$is_null(INT64) -> BOOL)
+                      +-GetStructField
+                        +-type=INT64
+                        +-expr=
+                        | +-ColumnRef(type=STRUCT<a INT64, b STRING>, column=unpivot_array_0.unpivot_unnest#7)
+                        +-field_idx=0
+==
+
+# Regression test for b/309024915
+WITH Produce AS (
+  SELECT 'Kale' as product, 51 as Q1, 23 as Q2, 45 as Q3, 3 as Q4 UNION ALL
+  SELECT 'Apple', 77, 0, 25, 2),
+  T AS (SELECT 1 AS a)
+SELECT * FROM Produce, T
+UNPIVOT(sales FOR quarter IN (Q1, Q2, Q3, Q4))
+--
+ERROR: Unrecognized name: Q1 [at 6:31]
+UNPIVOT(sales FOR quarter IN (Q1, Q2, Q3, Q4))
+                              ^
+==
+
+SELECT * FROM UNNEST([1, 2, 3]) {{WITH OFFSET|WITH OFFSET x|WITH OFFSET AS x}}
+UNPIVOT(a for b in (c)) AS x;
+--
+ERROR: UNPIVOT is not allowed with array scans [at 2:1]
+UNPIVOT(a for b in (c)) AS x;
+^

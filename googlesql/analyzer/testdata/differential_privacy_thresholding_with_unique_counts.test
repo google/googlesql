@@ -1,0 +1,3322 @@
+# All uses cases in this file are for enabled ANONYMIZATION_THRESHOLDING feature.
+# Which replaces group_selection_threshold_expr with the user defined function
+# counting unique user counts.
+# More details are in (broken link).
+[default language_features=NONE,+DIFFERENTIAL_PRIVACY,+TABLE_VALUED_FUNCTIONS,+TEMPLATE_FUNCTIONS,+CREATE_TABLE_FUNCTION,+DIFFERENTIAL_PRIVACY_THRESHOLDING,+DIFFERENTIAL_PRIVACY_REPORT_FUNCTIONS,+NAMED_ARGUMENTS,+JSON_TYPE,+JSON_VALUE_EXTRACTION_FUNCTIONS,+PIPE_AGGREGATE_WITH_DIFFERENTIAL_PRIVACY]
+[default enabled_ast_rewrites=DEFAULTS,+ANONYMIZATION]
+
+#########################################
+########## COUNT(*) ################
+#########################################
+
+# Count star counting unique users.
+# We should use this count for group_selection_threshold_expr.
+select with differential_privacy count(*, contribution_bounds_per_group => (0, 1))
+from SimpleTypesWithAnonymizationUid;
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-TableScan(table=SimpleTypesWithAnonymizationUid)
+        +-aggregate_list=
+          +-$agg1#13 :=
+            +-AggregateFunctionCall(GoogleSQL:$differential_privacy_count_star(optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+              +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-AggregateScan
+        |   +-column_list=[$aggregate.$agg1_partial#16, $group_by.$uid#17]
+        |   +-input_scan=
+        |   | +-TableScan(column_list=[SimpleTypesWithAnonymizationUid.uid#14], table=SimpleTypesWithAnonymizationUid, column_index_list=[10])
+        |   +-group_by_list=
+        |   | +-$uid#17 := ColumnRef(type=INT64, column=SimpleTypesWithAnonymizationUid.uid#14)
+        |   +-aggregate_list=
+        |     +-$agg1_partial#16 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+        +-aggregate_list=
+        | +-$agg1#13 :=
+        |   +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+        |     +-ColumnRef(type=INT64, column=$aggregate.$agg1_partial#16)
+        |     +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+        +-group_selection_threshold_expr=
+          +-ColumnRef(type=INT64, column=$aggregate.$agg1#13)
+==
+
+# Count star counting unique users with PROTO result.
+# We should use this count (extracted from the result PROTO) for
+# group_selection_threshold.
+[no_enable_literal_replacement]
+select with differential_privacy count(*, contribution_bounds_per_group => (0, 1),  report_format => "PROTO")
+from SimpleTypesWithAnonymizationUid;
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [PROTO<googlesql.functions.DifferentialPrivacyOutputWithReport>]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-TableScan(table=SimpleTypesWithAnonymizationUid)
+        +-aggregate_list=
+          +-$agg1#13 :=
+            +-AggregateFunctionCall(GoogleSQL:$differential_privacy_count_star(ENUM<DIFFERENTIAL_PRIVACY_REPORT_FORMAT> report_format, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> PROTO<googlesql.functions.DifferentialPrivacyOutputWithReport>)
+              +-Literal(type=ENUM<DIFFERENTIAL_PRIVACY_REPORT_FORMAT>, value=PROTO)
+              +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [PROTO<googlesql.functions.DifferentialPrivacyOutputWithReport>]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-AggregateScan
+        |   +-column_list=[$aggregate.$agg1_partial#16, $group_by.$uid#17]
+        |   +-input_scan=
+        |   | +-TableScan(column_list=[SimpleTypesWithAnonymizationUid.uid#14], table=SimpleTypesWithAnonymizationUid, column_index_list=[10])
+        |   +-group_by_list=
+        |   | +-$uid#17 := ColumnRef(type=INT64, column=SimpleTypesWithAnonymizationUid.uid#14)
+        |   +-aggregate_list=
+        |     +-$agg1_partial#16 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+        +-aggregate_list=
+        | +-$agg1#13 :=
+        |   +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, ENUM<DIFFERENTIAL_PRIVACY_REPORT_FORMAT> report_format, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> PROTO<googlesql.functions.DifferentialPrivacyOutputWithReport>)
+        |     +-ColumnRef(type=INT64, column=$aggregate.$agg1_partial#16)
+        |     +-Literal(type=ENUM<DIFFERENTIAL_PRIVACY_REPORT_FORMAT>, value=PROTO)
+        |     +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+        +-group_selection_threshold_expr=
+          +-GetProtoField
+            +-type=INT64
+            +-expr=
+            | +-GetProtoField
+            |   +-type=PROTO<googlesql.functions.DifferentialPrivacyOutputValue>
+            |   +-expr=
+            |   | +-ColumnRef(type=PROTO<googlesql.functions.DifferentialPrivacyOutputWithReport>, column=$aggregate.$agg1#13)
+            |   +-field_descriptor=value
+            |   +-default_value=NULL
+            +-field_descriptor=int_value
+            +-default_value=NULL
+==
+
+# Count star counting unique users with JSON result.
+# We should use this count (extracted from the result JSON) for
+# group_selection_threshold.
+[no_enable_literal_replacement]
+select with differential_privacy count(*, contribution_bounds_per_group => (0, 1),  report_format => "JSON")
+from SimpleTypesWithAnonymizationUid;
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [JSON]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-TableScan(table=SimpleTypesWithAnonymizationUid)
+        +-aggregate_list=
+          +-$agg1#13 :=
+            +-AggregateFunctionCall(GoogleSQL:$differential_privacy_count_star(ENUM<DIFFERENTIAL_PRIVACY_REPORT_FORMAT> report_format, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> JSON)
+              +-Literal(type=ENUM<DIFFERENTIAL_PRIVACY_REPORT_FORMAT>, value=JSON)
+              +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [JSON]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-AggregateScan
+        |   +-column_list=[$aggregate.$agg1_partial#16, $group_by.$uid#17]
+        |   +-input_scan=
+        |   | +-TableScan(column_list=[SimpleTypesWithAnonymizationUid.uid#14], table=SimpleTypesWithAnonymizationUid, column_index_list=[10])
+        |   +-group_by_list=
+        |   | +-$uid#17 := ColumnRef(type=INT64, column=SimpleTypesWithAnonymizationUid.uid#14)
+        |   +-aggregate_list=
+        |     +-$agg1_partial#16 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+        +-aggregate_list=
+        | +-$agg1#13 :=
+        |   +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, ENUM<DIFFERENTIAL_PRIVACY_REPORT_FORMAT> report_format, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> JSON)
+        |     +-ColumnRef(type=INT64, column=$aggregate.$agg1_partial#16)
+        |     +-Literal(type=ENUM<DIFFERENTIAL_PRIVACY_REPORT_FORMAT>, value=JSON)
+        |     +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+        +-group_selection_threshold_expr=
+          +-FunctionCall(GoogleSQL:int64(JSON) -> INT64)
+            +-FunctionCall(GoogleSQL:json_query(JSON, STRING) -> JSON)
+              +-ColumnRef(type=JSON, column=$aggregate.$agg1#13)
+              +-Literal(type=STRING, value="$.result.value", has_explicit_type=TRUE)
+==
+
+[no_enable_literal_replacement]
+# Incorrect bounds for count star function. It doesn't correspond to
+# unique users count, therefore we shouldn't replace group_selection_threshold
+# with this count.
+select with differential_privacy count(*, contribution_bounds_per_group => (0, 2), report_format => "PROTO")
+from SimpleTypesWithAnonymizationUid;
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [PROTO<googlesql.functions.DifferentialPrivacyOutputWithReport>]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-TableScan(table=SimpleTypesWithAnonymizationUid)
+        +-aggregate_list=
+          +-$agg1#13 :=
+            +-AggregateFunctionCall(GoogleSQL:$differential_privacy_count_star(ENUM<DIFFERENTIAL_PRIVACY_REPORT_FORMAT> report_format, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> PROTO<googlesql.functions.DifferentialPrivacyOutputWithReport>)
+              +-Literal(type=ENUM<DIFFERENTIAL_PRIVACY_REPORT_FORMAT>, value=PROTO)
+              +-Literal(type=STRUCT<INT64, INT64>, value={0, 2})
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [PROTO<googlesql.functions.DifferentialPrivacyOutputWithReport>]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-AggregateScan
+        |   +-column_list=[$aggregate.$agg1_partial#16, $group_by.$uid#17]
+        |   +-input_scan=
+        |   | +-TableScan(column_list=[SimpleTypesWithAnonymizationUid.uid#14], table=SimpleTypesWithAnonymizationUid, column_index_list=[10])
+        |   +-group_by_list=
+        |   | +-$uid#17 := ColumnRef(type=INT64, column=SimpleTypesWithAnonymizationUid.uid#14)
+        |   +-aggregate_list=
+        |     +-$agg1_partial#16 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+        +-aggregate_list=
+        | +-$agg1#13 :=
+        | | +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, ENUM<DIFFERENTIAL_PRIVACY_REPORT_FORMAT> report_format, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> PROTO<googlesql.functions.DifferentialPrivacyOutputWithReport>)
+        | |   +-ColumnRef(type=INT64, column=$aggregate.$agg1_partial#16)
+        | |   +-Literal(type=ENUM<DIFFERENTIAL_PRIVACY_REPORT_FORMAT>, value=PROTO)
+        | |   +-Literal(type=STRUCT<INT64, INT64>, value={0, 2})
+        | +-$group_selection_threshold_col#20 :=
+        |   +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+        |     +-Literal(type=INT64, value=1)
+        |     +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+        +-group_selection_threshold_expr=
+          +-ColumnRef(type=INT64, column=$differential_privacy.$group_selection_threshold_col#20)
+==
+
+[no_enable_literal_replacement]
+# Incorrect bounds for count star function. It doesn't correspond to
+# unique users count, therefore we shouldn't replace group_selection_threshold
+# with this count.
+select with differential_privacy count(*, contribution_bounds_per_group => (0, 2), report_format => "JSON")
+from SimpleTypesWithAnonymizationUid;
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [JSON]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-TableScan(table=SimpleTypesWithAnonymizationUid)
+        +-aggregate_list=
+          +-$agg1#13 :=
+            +-AggregateFunctionCall(GoogleSQL:$differential_privacy_count_star(ENUM<DIFFERENTIAL_PRIVACY_REPORT_FORMAT> report_format, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> JSON)
+              +-Literal(type=ENUM<DIFFERENTIAL_PRIVACY_REPORT_FORMAT>, value=JSON)
+              +-Literal(type=STRUCT<INT64, INT64>, value={0, 2})
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [JSON]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-AggregateScan
+        |   +-column_list=[$aggregate.$agg1_partial#16, $group_by.$uid#17]
+        |   +-input_scan=
+        |   | +-TableScan(column_list=[SimpleTypesWithAnonymizationUid.uid#14], table=SimpleTypesWithAnonymizationUid, column_index_list=[10])
+        |   +-group_by_list=
+        |   | +-$uid#17 := ColumnRef(type=INT64, column=SimpleTypesWithAnonymizationUid.uid#14)
+        |   +-aggregate_list=
+        |     +-$agg1_partial#16 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+        +-aggregate_list=
+        | +-$agg1#13 :=
+        | | +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, ENUM<DIFFERENTIAL_PRIVACY_REPORT_FORMAT> report_format, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> JSON)
+        | |   +-ColumnRef(type=INT64, column=$aggregate.$agg1_partial#16)
+        | |   +-Literal(type=ENUM<DIFFERENTIAL_PRIVACY_REPORT_FORMAT>, value=JSON)
+        | |   +-Literal(type=STRUCT<INT64, INT64>, value={0, 2})
+        | +-$group_selection_threshold_col#20 :=
+        |   +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+        |     +-Literal(type=INT64, value=1)
+        |     +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+        +-group_selection_threshold_expr=
+          +-ColumnRef(type=INT64, column=$differential_privacy.$group_selection_threshold_col#20)
+==
+
+# Incorrect bounds for count star function. It doesn't correspond to
+# unique users count, therefore we shouldn't replace group_selection_threshold_expr
+# with this count.
+select with differential_privacy count(*, contribution_bounds_per_group => (-1, 1))
+from SimpleTypesWithAnonymizationUid;
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-TableScan(table=SimpleTypesWithAnonymizationUid)
+        +-aggregate_list=
+          +-$agg1#13 :=
+            +-AggregateFunctionCall(GoogleSQL:$differential_privacy_count_star(optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+              +-Literal(type=STRUCT<INT64, INT64>, value={-1, 1})
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-AggregateScan
+        |   +-column_list=[$aggregate.$agg1_partial#16, $group_by.$uid#17]
+        |   +-input_scan=
+        |   | +-TableScan(column_list=[SimpleTypesWithAnonymizationUid.uid#14], table=SimpleTypesWithAnonymizationUid, column_index_list=[10])
+        |   +-group_by_list=
+        |   | +-$uid#17 := ColumnRef(type=INT64, column=SimpleTypesWithAnonymizationUid.uid#14)
+        |   +-aggregate_list=
+        |     +-$agg1_partial#16 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+        +-aggregate_list=
+        | +-$agg1#13 :=
+        | | +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+        | |   +-ColumnRef(type=INT64, column=$aggregate.$agg1_partial#16)
+        | |   +-Literal(type=STRUCT<INT64, INT64>, value={-1, 1})
+        | +-$group_selection_threshold_col#20 :=
+        |   +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+        |     +-Literal(type=INT64, value=1)
+        |     +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+        +-group_selection_threshold_expr=
+          +-ColumnRef(type=INT64, column=$differential_privacy.$group_selection_threshold_col#20)
+==
+
+# Incorrect bounds for count star function. It doesn't correspond to
+# unique users count, therefore we shouldn't replace group_selection_threshold_expr
+# with this count.
+select with differential_privacy count(*, contribution_bounds_per_group => (0, 2))
+from SimpleTypesWithAnonymizationUid;
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-TableScan(table=SimpleTypesWithAnonymizationUid)
+        +-aggregate_list=
+          +-$agg1#13 :=
+            +-AggregateFunctionCall(GoogleSQL:$differential_privacy_count_star(optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+              +-Literal(type=STRUCT<INT64, INT64>, value={0, 2})
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-AggregateScan
+        |   +-column_list=[$aggregate.$agg1_partial#16, $group_by.$uid#17]
+        |   +-input_scan=
+        |   | +-TableScan(column_list=[SimpleTypesWithAnonymizationUid.uid#14], table=SimpleTypesWithAnonymizationUid, column_index_list=[10])
+        |   +-group_by_list=
+        |   | +-$uid#17 := ColumnRef(type=INT64, column=SimpleTypesWithAnonymizationUid.uid#14)
+        |   +-aggregate_list=
+        |     +-$agg1_partial#16 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+        +-aggregate_list=
+        | +-$agg1#13 :=
+        | | +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+        | |   +-ColumnRef(type=INT64, column=$aggregate.$agg1_partial#16)
+        | |   +-Literal(type=STRUCT<INT64, INT64>, value={0, 2})
+        | +-$group_selection_threshold_col#20 :=
+        |   +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+        |     +-Literal(type=INT64, value=1)
+        |     +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+        +-group_selection_threshold_expr=
+          +-ColumnRef(type=INT64, column=$differential_privacy.$group_selection_threshold_col#20)
+==
+
+# Incorrect bounds for count star function. It doesn't correspond to
+# unique users count, therefore we shouldn't replace group_selection_threshold_expr
+# with this count.
+select with differential_privacy count(*, contribution_bounds_per_group => (-2, -1))
+from SimpleTypesWithAnonymizationUid;
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-TableScan(table=SimpleTypesWithAnonymizationUid)
+        +-aggregate_list=
+          +-$agg1#13 :=
+            +-AggregateFunctionCall(GoogleSQL:$differential_privacy_count_star(optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+              +-Literal(type=STRUCT<INT64, INT64>, value={-2, -1})
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-AggregateScan
+        |   +-column_list=[$aggregate.$agg1_partial#16, $group_by.$uid#17]
+        |   +-input_scan=
+        |   | +-TableScan(column_list=[SimpleTypesWithAnonymizationUid.uid#14], table=SimpleTypesWithAnonymizationUid, column_index_list=[10])
+        |   +-group_by_list=
+        |   | +-$uid#17 := ColumnRef(type=INT64, column=SimpleTypesWithAnonymizationUid.uid#14)
+        |   +-aggregate_list=
+        |     +-$agg1_partial#16 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+        +-aggregate_list=
+        | +-$agg1#13 :=
+        | | +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+        | |   +-ColumnRef(type=INT64, column=$aggregate.$agg1_partial#16)
+        | |   +-Literal(type=STRUCT<INT64, INT64>, value={-2, -1})
+        | +-$group_selection_threshold_col#20 :=
+        |   +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+        |     +-Literal(type=INT64, value=1)
+        |     +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+        +-group_selection_threshold_expr=
+          +-ColumnRef(type=INT64, column=$differential_privacy.$group_selection_threshold_col#20)
+==
+
+# Uses privacy_unit_column rather than table metadata to identify the column containing the privacy unit.
+
+select with differential_privacy options(privacy_unit_column=`int64`)
+count(*, contribution_bounds_per_group => (0, 1))
+from SimpleTypes;
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#20 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#20]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#20]
+        +-input_scan=
+        | +-TableScan(column_list=[SimpleTypes.int64#2], table=SimpleTypes, column_index_list=[1])
+        +-aggregate_list=
+        | +-$agg1#20 :=
+        |   +-AggregateFunctionCall(GoogleSQL:$differential_privacy_count_star(optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+        |     +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+        +-option_list=
+          +-privacy_unit_column := ColumnRef(type=INT64, column=SimpleTypes.int64#2)
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#20 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#20]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#20]
+        +-input_scan=
+        | +-AggregateScan
+        |   +-column_list=[$aggregate.$agg1_partial#22, $group_by.$uid#23]
+        |   +-input_scan=
+        |   | +-TableScan(column_list=[SimpleTypes.int64#2], table=SimpleTypes, column_index_list=[1])
+        |   +-group_by_list=
+        |   | +-$uid#23 := ColumnRef(type=INT64, column=SimpleTypes.int64#2)
+        |   +-aggregate_list=
+        |     +-$agg1_partial#22 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+        +-aggregate_list=
+        | +-$agg1#20 :=
+        |   +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+        |     +-ColumnRef(type=INT64, column=$aggregate.$agg1_partial#22)
+        |     +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+        +-group_selection_threshold_expr=
+          +-ColumnRef(type=INT64, column=$aggregate.$agg1#20)
+
+==
+
+[language_features=NONE,+DIFFERENTIAL_PRIVACY,+DIFFERENTIAL_PRIVACY_MAX_ROWS_CONTRIBUTED,+DIFFERENTIAL_PRIVACY_THRESHOLDING,+NAMED_ARGUMENTS,+TABLESAMPLE,+STRATIFIED_RESERVOIR_TABLESAMPLE,+PIPE_AGGREGATE_WITH_DIFFERENTIAL_PRIVACY]
+# Count star with max_groups_contributed or max_rows_contributed
+# We should use this count for group_selection_threshold_expr.
+select with differential_privacy options ({{max_groups_contributed|max_rows_contributed}}=5)
+count(*, contribution_bounds_per_group => (0, 1))
+from SimpleTypesWithAnonymizationUid;
+--
+ALTERNATION GROUP: max_groups_contributed
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-TableScan(table=SimpleTypesWithAnonymizationUid)
+        +-aggregate_list=
+        | +-$agg1#13 :=
+        |   +-AggregateFunctionCall(GoogleSQL:$differential_privacy_count_star(optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+        |     +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+        +-option_list=
+          +-max_groups_contributed := Literal(type=INT64, value=5)
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-SampleScan
+        |   +-column_list=[$aggregate.$agg1_partial#16, $group_by.$uid#17]
+        |   +-input_scan=
+        |   | +-AggregateScan
+        |   |   +-column_list=[$aggregate.$agg1_partial#16, $group_by.$uid#17]
+        |   |   +-input_scan=
+        |   |   | +-TableScan(column_list=[SimpleTypesWithAnonymizationUid.uid#14], table=SimpleTypesWithAnonymizationUid, column_index_list=[10])
+        |   |   +-group_by_list=
+        |   |   | +-$uid#17 := ColumnRef(type=INT64, column=SimpleTypesWithAnonymizationUid.uid#14)
+        |   |   +-aggregate_list=
+        |   |     +-$agg1_partial#16 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+        |   +-method="RESERVOIR"
+        |   +-size=
+        |   | +-Literal(type=INT64, value=5)
+        |   +-unit=ROWS
+        |   +-partition_by_list=
+        |     +-ColumnRef(type=INT64, column=$group_by.$uid#17)
+        +-aggregate_list=
+        | +-$agg1#13 :=
+        |   +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+        |     +-ColumnRef(type=INT64, column=$aggregate.$agg1_partial#16)
+        |     +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+        +-group_selection_threshold_expr=
+        | +-ColumnRef(type=INT64, column=$aggregate.$agg1#13)
+        +-option_list=
+          +-max_groups_contributed := Literal(type=INT64, value=5)
+--
+ALTERNATION GROUP: max_rows_contributed
+--
+[PRE-REWRITE AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-TableScan(table=SimpleTypesWithAnonymizationUid)
+        +-aggregate_list=
+        | +-$agg1#13 :=
+        |   +-AggregateFunctionCall(GoogleSQL:$differential_privacy_count_star(optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+        |     +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+        +-option_list=
+          +-max_rows_contributed := Literal(type=INT64, value=5)
+
+Rewrite ERROR: generic::unimplemented: Unimplemented aggregation: COUNT(*) while using max_rows_contributed
+==
+
+#########################################
+########## COUNT($X) ###############
+#########################################
+
+[language_features=NONE,+DIFFERENTIAL_PRIVACY,+DIFFERENTIAL_PRIVACY_THRESHOLDING,+NAMED_ARGUMENTS,+NUMERIC_TYPE,+PIPE_AGGREGATE_WITH_DIFFERENTIAL_PRIVACY]
+[enabled_ast_rewrites=DEFAULTS,+ANONYMIZATION]
+# Count(non-NULL literal) counting unique users.
+# We should use this count for group_selection_threshold_expr.
+select with differential_privacy count({{1|123.456e-67|"1"|true|DATE '2022-11-17'|NUMERIC '0'|[1, 2, 3]}}, contribution_bounds_per_group => (0, 1))
+from SimpleTypesWithAnonymizationUid;
+--
+ALTERNATION GROUP: 1
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-TableScan(table=SimpleTypesWithAnonymizationUid)
+        +-aggregate_list=
+          +-$agg1#13 :=
+            +-AggregateFunctionCall(GoogleSQL:$differential_privacy_count(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+              +-Literal(type=INT64, value=1)
+              +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-AggregateScan
+        |   +-column_list=[$aggregate.$agg1_partial#16, $group_by.$uid#17]
+        |   +-input_scan=
+        |   | +-TableScan(column_list=[SimpleTypesWithAnonymizationUid.uid#14], table=SimpleTypesWithAnonymizationUid, column_index_list=[10])
+        |   +-group_by_list=
+        |   | +-$uid#17 := ColumnRef(type=INT64, column=SimpleTypesWithAnonymizationUid.uid#14)
+        |   +-aggregate_list=
+        |     +-$agg1_partial#16 :=
+        |       +-AggregateFunctionCall(GoogleSQL:count(INT64) -> INT64)
+        |         +-Literal(type=INT64, value=1)
+        +-aggregate_list=
+        | +-$agg1#13 :=
+        |   +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+        |     +-ColumnRef(type=INT64, column=$aggregate.$agg1_partial#16)
+        |     +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+        +-group_selection_threshold_expr=
+          +-ColumnRef(type=INT64, column=$aggregate.$agg1#13)
+--
+ALTERNATION GROUP: 123.456e-67
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-TableScan(table=SimpleTypesWithAnonymizationUid)
+        +-aggregate_list=
+          +-$agg1#13 :=
+            +-AggregateFunctionCall(GoogleSQL:$differential_privacy_count(DOUBLE, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+              +-Literal(type=DOUBLE, value=1.23456e-65, float_literal_id=1)
+              +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-AggregateScan
+        |   +-column_list=[$aggregate.$agg1_partial#16, $group_by.$uid#17]
+        |   +-input_scan=
+        |   | +-TableScan(column_list=[SimpleTypesWithAnonymizationUid.uid#14], table=SimpleTypesWithAnonymizationUid, column_index_list=[10])
+        |   +-group_by_list=
+        |   | +-$uid#17 := ColumnRef(type=INT64, column=SimpleTypesWithAnonymizationUid.uid#14)
+        |   +-aggregate_list=
+        |     +-$agg1_partial#16 :=
+        |       +-AggregateFunctionCall(GoogleSQL:count(DOUBLE) -> INT64)
+        |         +-Literal(type=DOUBLE, value=1.23456e-65, float_literal_id=1)
+        +-aggregate_list=
+        | +-$agg1#13 :=
+        |   +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+        |     +-ColumnRef(type=INT64, column=$aggregate.$agg1_partial#16)
+        |     +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+        +-group_selection_threshold_expr=
+          +-ColumnRef(type=INT64, column=$aggregate.$agg1#13)
+--
+ALTERNATION GROUP: "1"
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-TableScan(table=SimpleTypesWithAnonymizationUid)
+        +-aggregate_list=
+          +-$agg1#13 :=
+            +-AggregateFunctionCall(GoogleSQL:$differential_privacy_count(STRING, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+              +-Literal(type=STRING, value="1")
+              +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-AggregateScan
+        |   +-column_list=[$aggregate.$agg1_partial#16, $group_by.$uid#17]
+        |   +-input_scan=
+        |   | +-TableScan(column_list=[SimpleTypesWithAnonymizationUid.uid#14], table=SimpleTypesWithAnonymizationUid, column_index_list=[10])
+        |   +-group_by_list=
+        |   | +-$uid#17 := ColumnRef(type=INT64, column=SimpleTypesWithAnonymizationUid.uid#14)
+        |   +-aggregate_list=
+        |     +-$agg1_partial#16 :=
+        |       +-AggregateFunctionCall(GoogleSQL:count(STRING) -> INT64)
+        |         +-Literal(type=STRING, value="1")
+        +-aggregate_list=
+        | +-$agg1#13 :=
+        |   +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+        |     +-ColumnRef(type=INT64, column=$aggregate.$agg1_partial#16)
+        |     +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+        +-group_selection_threshold_expr=
+          +-ColumnRef(type=INT64, column=$aggregate.$agg1#13)
+--
+ALTERNATION GROUP: true
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-TableScan(table=SimpleTypesWithAnonymizationUid)
+        +-aggregate_list=
+          +-$agg1#13 :=
+            +-AggregateFunctionCall(GoogleSQL:$differential_privacy_count(BOOL, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+              +-Literal(type=BOOL, value=true)
+              +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-AggregateScan
+        |   +-column_list=[$aggregate.$agg1_partial#16, $group_by.$uid#17]
+        |   +-input_scan=
+        |   | +-TableScan(column_list=[SimpleTypesWithAnonymizationUid.uid#14], table=SimpleTypesWithAnonymizationUid, column_index_list=[10])
+        |   +-group_by_list=
+        |   | +-$uid#17 := ColumnRef(type=INT64, column=SimpleTypesWithAnonymizationUid.uid#14)
+        |   +-aggregate_list=
+        |     +-$agg1_partial#16 :=
+        |       +-AggregateFunctionCall(GoogleSQL:count(BOOL) -> INT64)
+        |         +-Literal(type=BOOL, value=true)
+        +-aggregate_list=
+        | +-$agg1#13 :=
+        |   +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+        |     +-ColumnRef(type=INT64, column=$aggregate.$agg1_partial#16)
+        |     +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+        +-group_selection_threshold_expr=
+          +-ColumnRef(type=INT64, column=$aggregate.$agg1#13)
+--
+ALTERNATION GROUP: DATE '2022-11-17'
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-TableScan(table=SimpleTypesWithAnonymizationUid)
+        +-aggregate_list=
+          +-$agg1#13 :=
+            +-AggregateFunctionCall(GoogleSQL:$differential_privacy_count(DATE, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+              +-Literal(type=DATE, value=2022-11-17, has_explicit_type=TRUE)
+              +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-AggregateScan
+        |   +-column_list=[$aggregate.$agg1_partial#16, $group_by.$uid#17]
+        |   +-input_scan=
+        |   | +-TableScan(column_list=[SimpleTypesWithAnonymizationUid.uid#14], table=SimpleTypesWithAnonymizationUid, column_index_list=[10])
+        |   +-group_by_list=
+        |   | +-$uid#17 := ColumnRef(type=INT64, column=SimpleTypesWithAnonymizationUid.uid#14)
+        |   +-aggregate_list=
+        |     +-$agg1_partial#16 :=
+        |       +-AggregateFunctionCall(GoogleSQL:count(DATE) -> INT64)
+        |         +-Literal(type=DATE, value=2022-11-17, has_explicit_type=TRUE)
+        +-aggregate_list=
+        | +-$agg1#13 :=
+        |   +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+        |     +-ColumnRef(type=INT64, column=$aggregate.$agg1_partial#16)
+        |     +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+        +-group_selection_threshold_expr=
+          +-ColumnRef(type=INT64, column=$aggregate.$agg1#13)
+--
+ALTERNATION GROUP: NUMERIC '0'
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-TableScan(table=SimpleTypesWithAnonymizationUid)
+        +-aggregate_list=
+          +-$agg1#13 :=
+            +-AggregateFunctionCall(GoogleSQL:$differential_privacy_count(NUMERIC, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+              +-Literal(type=NUMERIC, value=0, has_explicit_type=TRUE)
+              +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-AggregateScan
+        |   +-column_list=[$aggregate.$agg1_partial#16, $group_by.$uid#17]
+        |   +-input_scan=
+        |   | +-TableScan(column_list=[SimpleTypesWithAnonymizationUid.uid#14], table=SimpleTypesWithAnonymizationUid, column_index_list=[10])
+        |   +-group_by_list=
+        |   | +-$uid#17 := ColumnRef(type=INT64, column=SimpleTypesWithAnonymizationUid.uid#14)
+        |   +-aggregate_list=
+        |     +-$agg1_partial#16 :=
+        |       +-AggregateFunctionCall(GoogleSQL:count(NUMERIC) -> INT64)
+        |         +-Literal(type=NUMERIC, value=0, has_explicit_type=TRUE)
+        +-aggregate_list=
+        | +-$agg1#13 :=
+        |   +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+        |     +-ColumnRef(type=INT64, column=$aggregate.$agg1_partial#16)
+        |     +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+        +-group_selection_threshold_expr=
+          +-ColumnRef(type=INT64, column=$aggregate.$agg1#13)
+--
+ALTERNATION GROUP: [1, 2, 3]
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-TableScan(table=SimpleTypesWithAnonymizationUid)
+        +-aggregate_list=
+          +-$agg1#13 :=
+            +-AggregateFunctionCall(GoogleSQL:$differential_privacy_count(ARRAY<INT64>, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+              +-Literal(type=ARRAY<INT64>, value=[1, 2, 3])
+              +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-AggregateScan
+        |   +-column_list=[$aggregate.$agg1_partial#16, $group_by.$uid#17]
+        |   +-input_scan=
+        |   | +-TableScan(column_list=[SimpleTypesWithAnonymizationUid.uid#14], table=SimpleTypesWithAnonymizationUid, column_index_list=[10])
+        |   +-group_by_list=
+        |   | +-$uid#17 := ColumnRef(type=INT64, column=SimpleTypesWithAnonymizationUid.uid#14)
+        |   +-aggregate_list=
+        |     +-$agg1_partial#16 :=
+        |       +-AggregateFunctionCall(GoogleSQL:count(ARRAY<INT64>) -> INT64)
+        |         +-Literal(type=ARRAY<INT64>, value=[1, 2, 3])
+        +-aggregate_list=
+        | +-$agg1#13 :=
+        |   +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+        |     +-ColumnRef(type=INT64, column=$aggregate.$agg1_partial#16)
+        |     +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+        +-group_selection_threshold_expr=
+          +-ColumnRef(type=INT64, column=$aggregate.$agg1#13)
+==
+
+# Count(1) counting unique users with PROTO result.
+# We should use this count (extracted from the result PROTO) for
+# group_selection_threshold.
+[no_enable_literal_replacement]
+select with differential_privacy count(1, contribution_bounds_per_group => (0, 1),  report_format => "PROTO")
+from SimpleTypesWithAnonymizationUid;
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [PROTO<googlesql.functions.DifferentialPrivacyOutputWithReport>]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-TableScan(table=SimpleTypesWithAnonymizationUid)
+        +-aggregate_list=
+          +-$agg1#13 :=
+            +-AggregateFunctionCall(GoogleSQL:$differential_privacy_count(INT64, ENUM<DIFFERENTIAL_PRIVACY_REPORT_FORMAT> report_format, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> PROTO<googlesql.functions.DifferentialPrivacyOutputWithReport>)
+              +-Literal(type=INT64, value=1)
+              +-Literal(type=ENUM<DIFFERENTIAL_PRIVACY_REPORT_FORMAT>, value=PROTO)
+              +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [PROTO<googlesql.functions.DifferentialPrivacyOutputWithReport>]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-AggregateScan
+        |   +-column_list=[$aggregate.$agg1_partial#16, $group_by.$uid#17]
+        |   +-input_scan=
+        |   | +-TableScan(column_list=[SimpleTypesWithAnonymizationUid.uid#14], table=SimpleTypesWithAnonymizationUid, column_index_list=[10])
+        |   +-group_by_list=
+        |   | +-$uid#17 := ColumnRef(type=INT64, column=SimpleTypesWithAnonymizationUid.uid#14)
+        |   +-aggregate_list=
+        |     +-$agg1_partial#16 :=
+        |       +-AggregateFunctionCall(GoogleSQL:count(INT64) -> INT64)
+        |         +-Literal(type=INT64, value=1)
+        +-aggregate_list=
+        | +-$agg1#13 :=
+        |   +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, ENUM<DIFFERENTIAL_PRIVACY_REPORT_FORMAT> report_format, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> PROTO<googlesql.functions.DifferentialPrivacyOutputWithReport>)
+        |     +-ColumnRef(type=INT64, column=$aggregate.$agg1_partial#16)
+        |     +-Literal(type=ENUM<DIFFERENTIAL_PRIVACY_REPORT_FORMAT>, value=PROTO)
+        |     +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+        +-group_selection_threshold_expr=
+          +-GetProtoField
+            +-type=INT64
+            +-expr=
+            | +-GetProtoField
+            |   +-type=PROTO<googlesql.functions.DifferentialPrivacyOutputValue>
+            |   +-expr=
+            |   | +-ColumnRef(type=PROTO<googlesql.functions.DifferentialPrivacyOutputWithReport>, column=$aggregate.$agg1#13)
+            |   +-field_descriptor=value
+            |   +-default_value=NULL
+            +-field_descriptor=int_value
+            +-default_value=NULL
+==
+
+[no_enable_literal_replacement]
+# Count(1) counting unique users with JSON result.
+# We should use this count (extracted from the result JSON) for
+# group_selection_threshold.
+select with differential_privacy count(1, contribution_bounds_per_group => (0, 1),  report_format => "JSON")
+from SimpleTypesWithAnonymizationUid;
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [JSON]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-TableScan(table=SimpleTypesWithAnonymizationUid)
+        +-aggregate_list=
+          +-$agg1#13 :=
+            +-AggregateFunctionCall(GoogleSQL:$differential_privacy_count(INT64, ENUM<DIFFERENTIAL_PRIVACY_REPORT_FORMAT> report_format, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> JSON)
+              +-Literal(type=INT64, value=1)
+              +-Literal(type=ENUM<DIFFERENTIAL_PRIVACY_REPORT_FORMAT>, value=JSON)
+              +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [JSON]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-AggregateScan
+        |   +-column_list=[$aggregate.$agg1_partial#16, $group_by.$uid#17]
+        |   +-input_scan=
+        |   | +-TableScan(column_list=[SimpleTypesWithAnonymizationUid.uid#14], table=SimpleTypesWithAnonymizationUid, column_index_list=[10])
+        |   +-group_by_list=
+        |   | +-$uid#17 := ColumnRef(type=INT64, column=SimpleTypesWithAnonymizationUid.uid#14)
+        |   +-aggregate_list=
+        |     +-$agg1_partial#16 :=
+        |       +-AggregateFunctionCall(GoogleSQL:count(INT64) -> INT64)
+        |         +-Literal(type=INT64, value=1)
+        +-aggregate_list=
+        | +-$agg1#13 :=
+        |   +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, ENUM<DIFFERENTIAL_PRIVACY_REPORT_FORMAT> report_format, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> JSON)
+        |     +-ColumnRef(type=INT64, column=$aggregate.$agg1_partial#16)
+        |     +-Literal(type=ENUM<DIFFERENTIAL_PRIVACY_REPORT_FORMAT>, value=JSON)
+        |     +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+        +-group_selection_threshold_expr=
+          +-FunctionCall(GoogleSQL:int64(JSON) -> INT64)
+            +-FunctionCall(GoogleSQL:json_query(JSON, STRING) -> JSON)
+              +-ColumnRef(type=JSON, column=$aggregate.$agg1#13)
+              +-Literal(type=STRING, value="$.result.value", has_explicit_type=TRUE)
+==
+
+[no_enable_literal_replacement]
+# Incorrect bounds for count function. It doesn't correspond to
+# unique users count, therefore we shouldn't replace group_selection_threshold
+# with this count.
+select with differential_privacy count(1, contribution_bounds_per_group => (0, 2), report_format => "PROTO")
+from SimpleTypesWithAnonymizationUid;
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [PROTO<googlesql.functions.DifferentialPrivacyOutputWithReport>]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-TableScan(table=SimpleTypesWithAnonymizationUid)
+        +-aggregate_list=
+          +-$agg1#13 :=
+            +-AggregateFunctionCall(GoogleSQL:$differential_privacy_count(INT64, ENUM<DIFFERENTIAL_PRIVACY_REPORT_FORMAT> report_format, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> PROTO<googlesql.functions.DifferentialPrivacyOutputWithReport>)
+              +-Literal(type=INT64, value=1)
+              +-Literal(type=ENUM<DIFFERENTIAL_PRIVACY_REPORT_FORMAT>, value=PROTO)
+              +-Literal(type=STRUCT<INT64, INT64>, value={0, 2})
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [PROTO<googlesql.functions.DifferentialPrivacyOutputWithReport>]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-AggregateScan
+        |   +-column_list=[$aggregate.$agg1_partial#16, $group_by.$uid#17]
+        |   +-input_scan=
+        |   | +-TableScan(column_list=[SimpleTypesWithAnonymizationUid.uid#14], table=SimpleTypesWithAnonymizationUid, column_index_list=[10])
+        |   +-group_by_list=
+        |   | +-$uid#17 := ColumnRef(type=INT64, column=SimpleTypesWithAnonymizationUid.uid#14)
+        |   +-aggregate_list=
+        |     +-$agg1_partial#16 :=
+        |       +-AggregateFunctionCall(GoogleSQL:count(INT64) -> INT64)
+        |         +-Literal(type=INT64, value=1)
+        +-aggregate_list=
+        | +-$agg1#13 :=
+        | | +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, ENUM<DIFFERENTIAL_PRIVACY_REPORT_FORMAT> report_format, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> PROTO<googlesql.functions.DifferentialPrivacyOutputWithReport>)
+        | |   +-ColumnRef(type=INT64, column=$aggregate.$agg1_partial#16)
+        | |   +-Literal(type=ENUM<DIFFERENTIAL_PRIVACY_REPORT_FORMAT>, value=PROTO)
+        | |   +-Literal(type=STRUCT<INT64, INT64>, value={0, 2})
+        | +-$group_selection_threshold_col#20 :=
+        |   +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+        |     +-Literal(type=INT64, value=1)
+        |     +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+        +-group_selection_threshold_expr=
+          +-ColumnRef(type=INT64, column=$differential_privacy.$group_selection_threshold_col#20)
+==
+
+[no_enable_literal_replacement]
+# Incorrect bounds for count function. It doesn't correspond to
+# unique users count, therefore we shouldn't replace group_selection_threshold
+# with this count.
+select with differential_privacy count(1, contribution_bounds_per_group => (0, 2), report_format => "JSON")
+from SimpleTypesWithAnonymizationUid;
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [JSON]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-TableScan(table=SimpleTypesWithAnonymizationUid)
+        +-aggregate_list=
+          +-$agg1#13 :=
+            +-AggregateFunctionCall(GoogleSQL:$differential_privacy_count(INT64, ENUM<DIFFERENTIAL_PRIVACY_REPORT_FORMAT> report_format, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> JSON)
+              +-Literal(type=INT64, value=1)
+              +-Literal(type=ENUM<DIFFERENTIAL_PRIVACY_REPORT_FORMAT>, value=JSON)
+              +-Literal(type=STRUCT<INT64, INT64>, value={0, 2})
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [JSON]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-AggregateScan
+        |   +-column_list=[$aggregate.$agg1_partial#16, $group_by.$uid#17]
+        |   +-input_scan=
+        |   | +-TableScan(column_list=[SimpleTypesWithAnonymizationUid.uid#14], table=SimpleTypesWithAnonymizationUid, column_index_list=[10])
+        |   +-group_by_list=
+        |   | +-$uid#17 := ColumnRef(type=INT64, column=SimpleTypesWithAnonymizationUid.uid#14)
+        |   +-aggregate_list=
+        |     +-$agg1_partial#16 :=
+        |       +-AggregateFunctionCall(GoogleSQL:count(INT64) -> INT64)
+        |         +-Literal(type=INT64, value=1)
+        +-aggregate_list=
+        | +-$agg1#13 :=
+        | | +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, ENUM<DIFFERENTIAL_PRIVACY_REPORT_FORMAT> report_format, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> JSON)
+        | |   +-ColumnRef(type=INT64, column=$aggregate.$agg1_partial#16)
+        | |   +-Literal(type=ENUM<DIFFERENTIAL_PRIVACY_REPORT_FORMAT>, value=JSON)
+        | |   +-Literal(type=STRUCT<INT64, INT64>, value={0, 2})
+        | +-$group_selection_threshold_col#20 :=
+        |   +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+        |     +-Literal(type=INT64, value=1)
+        |     +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+        +-group_selection_threshold_expr=
+          +-ColumnRef(type=INT64, column=$differential_privacy.$group_selection_threshold_col#20)
+==
+
+# Incorrect bounds for count function. It doesn't correspond to
+# unique users count, therefore we shouldn't replace group_selection_threshold_expr
+# with this count.
+select with differential_privacy count(1, contribution_bounds_per_group => (-1, 1))
+from SimpleTypesWithAnonymizationUid;
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-TableScan(table=SimpleTypesWithAnonymizationUid)
+        +-aggregate_list=
+          +-$agg1#13 :=
+            +-AggregateFunctionCall(GoogleSQL:$differential_privacy_count(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+              +-Literal(type=INT64, value=1)
+              +-Literal(type=STRUCT<INT64, INT64>, value={-1, 1})
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-AggregateScan
+        |   +-column_list=[$aggregate.$agg1_partial#16, $group_by.$uid#17]
+        |   +-input_scan=
+        |   | +-TableScan(column_list=[SimpleTypesWithAnonymizationUid.uid#14], table=SimpleTypesWithAnonymizationUid, column_index_list=[10])
+        |   +-group_by_list=
+        |   | +-$uid#17 := ColumnRef(type=INT64, column=SimpleTypesWithAnonymizationUid.uid#14)
+        |   +-aggregate_list=
+        |     +-$agg1_partial#16 :=
+        |       +-AggregateFunctionCall(GoogleSQL:count(INT64) -> INT64)
+        |         +-Literal(type=INT64, value=1)
+        +-aggregate_list=
+        | +-$agg1#13 :=
+        | | +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+        | |   +-ColumnRef(type=INT64, column=$aggregate.$agg1_partial#16)
+        | |   +-Literal(type=STRUCT<INT64, INT64>, value={-1, 1})
+        | +-$group_selection_threshold_col#20 :=
+        |   +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+        |     +-Literal(type=INT64, value=1)
+        |     +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+        +-group_selection_threshold_expr=
+          +-ColumnRef(type=INT64, column=$differential_privacy.$group_selection_threshold_col#20)
+==
+
+# Incorrect bounds for count function. It doesn't correspond to
+# unique users count, therefore we shouldn't replace group_selection_threshold_expr
+# with this count.
+select with differential_privacy count(1, contribution_bounds_per_group => (0, 2))
+from SimpleTypesWithAnonymizationUid;
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-TableScan(table=SimpleTypesWithAnonymizationUid)
+        +-aggregate_list=
+          +-$agg1#13 :=
+            +-AggregateFunctionCall(GoogleSQL:$differential_privacy_count(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+              +-Literal(type=INT64, value=1)
+              +-Literal(type=STRUCT<INT64, INT64>, value={0, 2})
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-AggregateScan
+        |   +-column_list=[$aggregate.$agg1_partial#16, $group_by.$uid#17]
+        |   +-input_scan=
+        |   | +-TableScan(column_list=[SimpleTypesWithAnonymizationUid.uid#14], table=SimpleTypesWithAnonymizationUid, column_index_list=[10])
+        |   +-group_by_list=
+        |   | +-$uid#17 := ColumnRef(type=INT64, column=SimpleTypesWithAnonymizationUid.uid#14)
+        |   +-aggregate_list=
+        |     +-$agg1_partial#16 :=
+        |       +-AggregateFunctionCall(GoogleSQL:count(INT64) -> INT64)
+        |         +-Literal(type=INT64, value=1)
+        +-aggregate_list=
+        | +-$agg1#13 :=
+        | | +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+        | |   +-ColumnRef(type=INT64, column=$aggregate.$agg1_partial#16)
+        | |   +-Literal(type=STRUCT<INT64, INT64>, value={0, 2})
+        | +-$group_selection_threshold_col#20 :=
+        |   +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+        |     +-Literal(type=INT64, value=1)
+        |     +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+        +-group_selection_threshold_expr=
+          +-ColumnRef(type=INT64, column=$differential_privacy.$group_selection_threshold_col#20)
+==
+
+# Incorrect bounds for count function. It doesn't correspond to
+# unique users count, therefore we shouldn't replace group_selection_threshold_expr
+# with this count.
+select with differential_privacy count(1, contribution_bounds_per_group => (-2, -1))
+from SimpleTypesWithAnonymizationUid;
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-TableScan(table=SimpleTypesWithAnonymizationUid)
+        +-aggregate_list=
+          +-$agg1#13 :=
+            +-AggregateFunctionCall(GoogleSQL:$differential_privacy_count(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+              +-Literal(type=INT64, value=1)
+              +-Literal(type=STRUCT<INT64, INT64>, value={-2, -1})
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-AggregateScan
+        |   +-column_list=[$aggregate.$agg1_partial#16, $group_by.$uid#17]
+        |   +-input_scan=
+        |   | +-TableScan(column_list=[SimpleTypesWithAnonymizationUid.uid#14], table=SimpleTypesWithAnonymizationUid, column_index_list=[10])
+        |   +-group_by_list=
+        |   | +-$uid#17 := ColumnRef(type=INT64, column=SimpleTypesWithAnonymizationUid.uid#14)
+        |   +-aggregate_list=
+        |     +-$agg1_partial#16 :=
+        |       +-AggregateFunctionCall(GoogleSQL:count(INT64) -> INT64)
+        |         +-Literal(type=INT64, value=1)
+        +-aggregate_list=
+        | +-$agg1#13 :=
+        | | +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+        | |   +-ColumnRef(type=INT64, column=$aggregate.$agg1_partial#16)
+        | |   +-Literal(type=STRUCT<INT64, INT64>, value={-2, -1})
+        | +-$group_selection_threshold_col#20 :=
+        |   +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+        |     +-Literal(type=INT64, value=1)
+        |     +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+        +-group_selection_threshold_expr=
+          +-ColumnRef(type=INT64, column=$differential_privacy.$group_selection_threshold_col#20)
+==
+
+# Count of the expressions (equivalent to unqiue users count) might be Ok
+# for replacement, but we've decided not support any expressions for now.
+# group_selection_threshold_col shouldn't be substituted with such count.
+select with differential_privacy count(1 + 1, contribution_bounds_per_group => (0, 1))
+from SimpleTypesWithAnonymizationUid;
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-TableScan(table=SimpleTypesWithAnonymizationUid)
+        +-aggregate_list=
+          +-$agg1#13 :=
+            +-AggregateFunctionCall(GoogleSQL:$differential_privacy_count(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+              +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+              | +-Literal(type=INT64, value=1)
+              | +-Literal(type=INT64, value=1)
+              +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-AggregateScan
+        |   +-column_list=[$aggregate.$agg1_partial#16, $group_by.$uid#17]
+        |   +-input_scan=
+        |   | +-TableScan(column_list=[SimpleTypesWithAnonymizationUid.uid#14], table=SimpleTypesWithAnonymizationUid, column_index_list=[10])
+        |   +-group_by_list=
+        |   | +-$uid#17 := ColumnRef(type=INT64, column=SimpleTypesWithAnonymizationUid.uid#14)
+        |   +-aggregate_list=
+        |     +-$agg1_partial#16 :=
+        |       +-AggregateFunctionCall(GoogleSQL:count(INT64) -> INT64)
+        |         +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+        |           +-Literal(type=INT64, value=1)
+        |           +-Literal(type=INT64, value=1)
+        +-aggregate_list=
+        | +-$agg1#13 :=
+        | | +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+        | |   +-ColumnRef(type=INT64, column=$aggregate.$agg1_partial#16)
+        | |   +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+        | +-$group_selection_threshold_col#20 :=
+        |   +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+        |     +-Literal(type=INT64, value=1)
+        |     +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+        +-group_selection_threshold_expr=
+          +-ColumnRef(type=INT64, column=$differential_privacy.$group_selection_threshold_col#20)
+==
+
+# Count of NULL always equals to 0. It doesn't correspond to
+# unique users count, therefore we shouldn't replace group_selection_threshold_expr
+# with this count.
+select with differential_privacy count(NULL, contribution_bounds_per_group => (0, 1))
+from SimpleTypesWithAnonymizationUid;
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-TableScan(table=SimpleTypesWithAnonymizationUid)
+        +-aggregate_list=
+          +-$agg1#13 :=
+            +-AggregateFunctionCall(GoogleSQL:$differential_privacy_count(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+              +-Literal(type=INT64, value=NULL)
+              +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-AggregateScan
+        |   +-column_list=[$aggregate.$agg1_partial#16, $group_by.$uid#17]
+        |   +-input_scan=
+        |   | +-TableScan(column_list=[SimpleTypesWithAnonymizationUid.uid#14], table=SimpleTypesWithAnonymizationUid, column_index_list=[10])
+        |   +-group_by_list=
+        |   | +-$uid#17 := ColumnRef(type=INT64, column=SimpleTypesWithAnonymizationUid.uid#14)
+        |   +-aggregate_list=
+        |     +-$agg1_partial#16 :=
+        |       +-AggregateFunctionCall(GoogleSQL:count(INT64) -> INT64)
+        |         +-Literal(type=INT64, value=NULL)
+        +-aggregate_list=
+        | +-$agg1#13 :=
+        | | +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+        | |   +-ColumnRef(type=INT64, column=$aggregate.$agg1_partial#16)
+        | |   +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+        | +-$group_selection_threshold_col#20 :=
+        |   +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+        |     +-Literal(type=INT64, value=1)
+        |     +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+        +-group_selection_threshold_expr=
+          +-ColumnRef(type=INT64, column=$differential_privacy.$group_selection_threshold_col#20)
+==
+
+#########################################
+########## COUNT(uid) ##############
+#########################################
+
+# Count(uid) counting unique users.
+# We should use this count for group_selection_threshold_expr.
+select with differential_privacy count(uid, contribution_bounds_per_group => (0, 1))
+from SimpleTypesWithAnonymizationUid;
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-TableScan(column_list=[SimpleTypesWithAnonymizationUid.uid#11], table=SimpleTypesWithAnonymizationUid, column_index_list=[10])
+        +-aggregate_list=
+          +-$agg1#13 :=
+            +-AggregateFunctionCall(GoogleSQL:$differential_privacy_count(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+              +-ColumnRef(type=INT64, column=SimpleTypesWithAnonymizationUid.uid#11)
+              +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-AggregateScan
+        |   +-column_list=[$aggregate.$agg1_partial#15, $group_by.$uid#16]
+        |   +-input_scan=
+        |   | +-TableScan(column_list=[SimpleTypesWithAnonymizationUid.uid#11], table=SimpleTypesWithAnonymizationUid, column_index_list=[10])
+        |   +-group_by_list=
+        |   | +-$uid#16 := ColumnRef(type=INT64, column=SimpleTypesWithAnonymizationUid.uid#11)
+        |   +-aggregate_list=
+        |     +-$agg1_partial#15 :=
+        |       +-AggregateFunctionCall(GoogleSQL:count(INT64) -> INT64)
+        |         +-ColumnRef(type=INT64, column=SimpleTypesWithAnonymizationUid.uid#11)
+        +-aggregate_list=
+        | +-$agg1#13 :=
+        |   +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+        |     +-ColumnRef(type=INT64, column=$aggregate.$agg1_partial#15)
+        |     +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+        +-group_selection_threshold_expr=
+          +-ColumnRef(type=INT64, column=$aggregate.$agg1#13)
+==
+
+# Count(alias for uid) counting unique users.
+# We should use this count for group_selection_threshold_expr.
+select with differential_privacy count(b, contribution_bounds_per_group => (0, 1))
+  from (
+    select a as b
+      from (
+        select a
+          from (
+            select uid as a
+              from SimpleTypesWithAnonymizationUid
+          )
+      )
+ );
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-ProjectScan
+        |   +-column_list=[SimpleTypesWithAnonymizationUid.uid#11]
+        |   +-input_scan=
+        |     +-ProjectScan
+        |       +-column_list=[SimpleTypesWithAnonymizationUid.uid#11]
+        |       +-input_scan=
+        |         +-ProjectScan
+        |           +-column_list=[SimpleTypesWithAnonymizationUid.uid#11]
+        |           +-input_scan=
+        |             +-TableScan(column_list=[SimpleTypesWithAnonymizationUid.uid#11], table=SimpleTypesWithAnonymizationUid, column_index_list=[10])
+        +-aggregate_list=
+          +-$agg1#13 :=
+            +-AggregateFunctionCall(GoogleSQL:$differential_privacy_count(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+              +-ColumnRef(type=INT64, column=SimpleTypesWithAnonymizationUid.uid#11)
+              +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-AggregateScan
+        |   +-column_list=[$aggregate.$agg1_partial#15, $group_by.$uid#16]
+        |   +-input_scan=
+        |   | +-ProjectScan
+        |   |   +-column_list=[SimpleTypesWithAnonymizationUid.uid#11]
+        |   |   +-input_scan=
+        |   |     +-ProjectScan
+        |   |       +-column_list=[SimpleTypesWithAnonymizationUid.uid#11]
+        |   |       +-input_scan=
+        |   |         +-ProjectScan
+        |   |           +-column_list=[SimpleTypesWithAnonymizationUid.uid#11]
+        |   |           +-input_scan=
+        |   |             +-TableScan(column_list=[SimpleTypesWithAnonymizationUid.uid#11], table=SimpleTypesWithAnonymizationUid, column_index_list=[10])
+        |   +-group_by_list=
+        |   | +-$uid#16 := ColumnRef(type=INT64, column=SimpleTypesWithAnonymizationUid.uid#11)
+        |   +-aggregate_list=
+        |     +-$agg1_partial#15 :=
+        |       +-AggregateFunctionCall(GoogleSQL:count(INT64) -> INT64)
+        |         +-ColumnRef(type=INT64, column=SimpleTypesWithAnonymizationUid.uid#11)
+        +-aggregate_list=
+        | +-$agg1#13 :=
+        |   +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+        |     +-ColumnRef(type=INT64, column=$aggregate.$agg1_partial#15)
+        |     +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+        +-group_selection_threshold_expr=
+          +-ColumnRef(type=INT64, column=$aggregate.$agg1#13)
+==
+
+# Count(uid) counting unique users, using privacy_unit_column.
+# We should use this count for group_selection_threshold_expr.
+select with differential_privacy options(privacy_unit_column=`int64`)
+count(int64, contribution_bounds_per_group => (0, 1))
+from SimpleTypes;
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#20 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#20]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#20]
+        +-input_scan=
+        | +-TableScan(column_list=[SimpleTypes.int64#2], table=SimpleTypes, column_index_list=[1])
+        +-aggregate_list=
+        | +-$agg1#20 :=
+        |   +-AggregateFunctionCall(GoogleSQL:$differential_privacy_count(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+        |     +-ColumnRef(type=INT64, column=SimpleTypes.int64#2)
+        |     +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+        +-option_list=
+          +-privacy_unit_column := ColumnRef(type=INT64, column=SimpleTypes.int64#2)
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#20 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#20]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#20]
+        +-input_scan=
+        | +-AggregateScan
+        |   +-column_list=[$aggregate.$agg1_partial#22, $group_by.$uid#23]
+        |   +-input_scan=
+        |   | +-TableScan(column_list=[SimpleTypes.int64#2], table=SimpleTypes, column_index_list=[1])
+        |   +-group_by_list=
+        |   | +-$uid#23 := ColumnRef(type=INT64, column=SimpleTypes.int64#2)
+        |   +-aggregate_list=
+        |     +-$agg1_partial#22 :=
+        |       +-AggregateFunctionCall(GoogleSQL:count(INT64) -> INT64)
+        |         +-ColumnRef(type=INT64, column=SimpleTypes.int64#2)
+        +-aggregate_list=
+        | +-$agg1#20 :=
+        |   +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+        |     +-ColumnRef(type=INT64, column=$aggregate.$agg1_partial#22)
+        |     +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+        +-group_selection_threshold_expr=
+          +-ColumnRef(type=INT64, column=$aggregate.$agg1#20)
+==
+
+# Count(uid) counting unique users with PROTO result.
+# We should use this count (extracted from the result PROTO) for
+# group_selection_threshold.
+[no_enable_literal_replacement]
+select with differential_privacy count(uid, contribution_bounds_per_group => (0, 1),  report_format => "PROTO")
+from SimpleTypesWithAnonymizationUid;
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [PROTO<googlesql.functions.DifferentialPrivacyOutputWithReport>]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-TableScan(column_list=[SimpleTypesWithAnonymizationUid.uid#11], table=SimpleTypesWithAnonymizationUid, column_index_list=[10])
+        +-aggregate_list=
+          +-$agg1#13 :=
+            +-AggregateFunctionCall(GoogleSQL:$differential_privacy_count(INT64, ENUM<DIFFERENTIAL_PRIVACY_REPORT_FORMAT> report_format, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> PROTO<googlesql.functions.DifferentialPrivacyOutputWithReport>)
+              +-ColumnRef(type=INT64, column=SimpleTypesWithAnonymizationUid.uid#11)
+              +-Literal(type=ENUM<DIFFERENTIAL_PRIVACY_REPORT_FORMAT>, value=PROTO)
+              +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [PROTO<googlesql.functions.DifferentialPrivacyOutputWithReport>]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-AggregateScan
+        |   +-column_list=[$aggregate.$agg1_partial#15, $group_by.$uid#16]
+        |   +-input_scan=
+        |   | +-TableScan(column_list=[SimpleTypesWithAnonymizationUid.uid#11], table=SimpleTypesWithAnonymizationUid, column_index_list=[10])
+        |   +-group_by_list=
+        |   | +-$uid#16 := ColumnRef(type=INT64, column=SimpleTypesWithAnonymizationUid.uid#11)
+        |   +-aggregate_list=
+        |     +-$agg1_partial#15 :=
+        |       +-AggregateFunctionCall(GoogleSQL:count(INT64) -> INT64)
+        |         +-ColumnRef(type=INT64, column=SimpleTypesWithAnonymizationUid.uid#11)
+        +-aggregate_list=
+        | +-$agg1#13 :=
+        |   +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, ENUM<DIFFERENTIAL_PRIVACY_REPORT_FORMAT> report_format, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> PROTO<googlesql.functions.DifferentialPrivacyOutputWithReport>)
+        |     +-ColumnRef(type=INT64, column=$aggregate.$agg1_partial#15)
+        |     +-Literal(type=ENUM<DIFFERENTIAL_PRIVACY_REPORT_FORMAT>, value=PROTO)
+        |     +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+        +-group_selection_threshold_expr=
+          +-GetProtoField
+            +-type=INT64
+            +-expr=
+            | +-GetProtoField
+            |   +-type=PROTO<googlesql.functions.DifferentialPrivacyOutputValue>
+            |   +-expr=
+            |   | +-ColumnRef(type=PROTO<googlesql.functions.DifferentialPrivacyOutputWithReport>, column=$aggregate.$agg1#13)
+            |   +-field_descriptor=value
+            |   +-default_value=NULL
+            +-field_descriptor=int_value
+            +-default_value=NULL
+==
+
+[no_enable_literal_replacement]
+# Count(uid) counting unique users with JSON result.
+# We should use this count (extracted from the result JSON) for
+# group_selection_threshold.
+select with differential_privacy count(uid, contribution_bounds_per_group => (0, 1),  report_format => "JSON")
+from SimpleTypesWithAnonymizationUid;
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [JSON]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-TableScan(column_list=[SimpleTypesWithAnonymizationUid.uid#11], table=SimpleTypesWithAnonymizationUid, column_index_list=[10])
+        +-aggregate_list=
+          +-$agg1#13 :=
+            +-AggregateFunctionCall(GoogleSQL:$differential_privacy_count(INT64, ENUM<DIFFERENTIAL_PRIVACY_REPORT_FORMAT> report_format, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> JSON)
+              +-ColumnRef(type=INT64, column=SimpleTypesWithAnonymizationUid.uid#11)
+              +-Literal(type=ENUM<DIFFERENTIAL_PRIVACY_REPORT_FORMAT>, value=JSON)
+              +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [JSON]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-AggregateScan
+        |   +-column_list=[$aggregate.$agg1_partial#15, $group_by.$uid#16]
+        |   +-input_scan=
+        |   | +-TableScan(column_list=[SimpleTypesWithAnonymizationUid.uid#11], table=SimpleTypesWithAnonymizationUid, column_index_list=[10])
+        |   +-group_by_list=
+        |   | +-$uid#16 := ColumnRef(type=INT64, column=SimpleTypesWithAnonymizationUid.uid#11)
+        |   +-aggregate_list=
+        |     +-$agg1_partial#15 :=
+        |       +-AggregateFunctionCall(GoogleSQL:count(INT64) -> INT64)
+        |         +-ColumnRef(type=INT64, column=SimpleTypesWithAnonymizationUid.uid#11)
+        +-aggregate_list=
+        | +-$agg1#13 :=
+        |   +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, ENUM<DIFFERENTIAL_PRIVACY_REPORT_FORMAT> report_format, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> JSON)
+        |     +-ColumnRef(type=INT64, column=$aggregate.$agg1_partial#15)
+        |     +-Literal(type=ENUM<DIFFERENTIAL_PRIVACY_REPORT_FORMAT>, value=JSON)
+        |     +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+        +-group_selection_threshold_expr=
+          +-FunctionCall(GoogleSQL:int64(JSON) -> INT64)
+            +-FunctionCall(GoogleSQL:json_query(JSON, STRING) -> JSON)
+              +-ColumnRef(type=JSON, column=$aggregate.$agg1#13)
+              +-Literal(type=STRING, value="$.result.value", has_explicit_type=TRUE)
+==
+
+[no_enable_literal_replacement]
+# Incorrect bounds for count(uid) function. It doesn't correspond to
+# unique users count, therefore we shouldn't replace group_selection_threshold
+# with this count.
+select with differential_privacy count(uid, contribution_bounds_per_group => (0, 2), report_format => "PROTO")
+from SimpleTypesWithAnonymizationUid;
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [PROTO<googlesql.functions.DifferentialPrivacyOutputWithReport>]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-TableScan(column_list=[SimpleTypesWithAnonymizationUid.uid#11], table=SimpleTypesWithAnonymizationUid, column_index_list=[10])
+        +-aggregate_list=
+          +-$agg1#13 :=
+            +-AggregateFunctionCall(GoogleSQL:$differential_privacy_count(INT64, ENUM<DIFFERENTIAL_PRIVACY_REPORT_FORMAT> report_format, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> PROTO<googlesql.functions.DifferentialPrivacyOutputWithReport>)
+              +-ColumnRef(type=INT64, column=SimpleTypesWithAnonymizationUid.uid#11)
+              +-Literal(type=ENUM<DIFFERENTIAL_PRIVACY_REPORT_FORMAT>, value=PROTO)
+              +-Literal(type=STRUCT<INT64, INT64>, value={0, 2})
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [PROTO<googlesql.functions.DifferentialPrivacyOutputWithReport>]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-AggregateScan
+        |   +-column_list=[$aggregate.$agg1_partial#15, $group_by.$uid#16]
+        |   +-input_scan=
+        |   | +-TableScan(column_list=[SimpleTypesWithAnonymizationUid.uid#11], table=SimpleTypesWithAnonymizationUid, column_index_list=[10])
+        |   +-group_by_list=
+        |   | +-$uid#16 := ColumnRef(type=INT64, column=SimpleTypesWithAnonymizationUid.uid#11)
+        |   +-aggregate_list=
+        |     +-$agg1_partial#15 :=
+        |       +-AggregateFunctionCall(GoogleSQL:count(INT64) -> INT64)
+        |         +-ColumnRef(type=INT64, column=SimpleTypesWithAnonymizationUid.uid#11)
+        +-aggregate_list=
+        | +-$agg1#13 :=
+        | | +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, ENUM<DIFFERENTIAL_PRIVACY_REPORT_FORMAT> report_format, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> PROTO<googlesql.functions.DifferentialPrivacyOutputWithReport>)
+        | |   +-ColumnRef(type=INT64, column=$aggregate.$agg1_partial#15)
+        | |   +-Literal(type=ENUM<DIFFERENTIAL_PRIVACY_REPORT_FORMAT>, value=PROTO)
+        | |   +-Literal(type=STRUCT<INT64, INT64>, value={0, 2})
+        | +-$group_selection_threshold_col#19 :=
+        |   +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+        |     +-Literal(type=INT64, value=1)
+        |     +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+        +-group_selection_threshold_expr=
+          +-ColumnRef(type=INT64, column=$differential_privacy.$group_selection_threshold_col#19)
+==
+
+[no_enable_literal_replacement]
+# Incorrect bounds for count(uid) function. It doesn't correspond to
+# unique users count, therefore we shouldn't replace group_selection_threshold
+# with this count.
+select with differential_privacy count(uid, contribution_bounds_per_group => (0, 2), report_format => "JSON")
+from SimpleTypesWithAnonymizationUid;
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [JSON]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-TableScan(column_list=[SimpleTypesWithAnonymizationUid.uid#11], table=SimpleTypesWithAnonymizationUid, column_index_list=[10])
+        +-aggregate_list=
+          +-$agg1#13 :=
+            +-AggregateFunctionCall(GoogleSQL:$differential_privacy_count(INT64, ENUM<DIFFERENTIAL_PRIVACY_REPORT_FORMAT> report_format, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> JSON)
+              +-ColumnRef(type=INT64, column=SimpleTypesWithAnonymizationUid.uid#11)
+              +-Literal(type=ENUM<DIFFERENTIAL_PRIVACY_REPORT_FORMAT>, value=JSON)
+              +-Literal(type=STRUCT<INT64, INT64>, value={0, 2})
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [JSON]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-AggregateScan
+        |   +-column_list=[$aggregate.$agg1_partial#15, $group_by.$uid#16]
+        |   +-input_scan=
+        |   | +-TableScan(column_list=[SimpleTypesWithAnonymizationUid.uid#11], table=SimpleTypesWithAnonymizationUid, column_index_list=[10])
+        |   +-group_by_list=
+        |   | +-$uid#16 := ColumnRef(type=INT64, column=SimpleTypesWithAnonymizationUid.uid#11)
+        |   +-aggregate_list=
+        |     +-$agg1_partial#15 :=
+        |       +-AggregateFunctionCall(GoogleSQL:count(INT64) -> INT64)
+        |         +-ColumnRef(type=INT64, column=SimpleTypesWithAnonymizationUid.uid#11)
+        +-aggregate_list=
+        | +-$agg1#13 :=
+        | | +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, ENUM<DIFFERENTIAL_PRIVACY_REPORT_FORMAT> report_format, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> JSON)
+        | |   +-ColumnRef(type=INT64, column=$aggregate.$agg1_partial#15)
+        | |   +-Literal(type=ENUM<DIFFERENTIAL_PRIVACY_REPORT_FORMAT>, value=JSON)
+        | |   +-Literal(type=STRUCT<INT64, INT64>, value={0, 2})
+        | +-$group_selection_threshold_col#19 :=
+        |   +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+        |     +-Literal(type=INT64, value=1)
+        |     +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+        +-group_selection_threshold_expr=
+          +-ColumnRef(type=INT64, column=$differential_privacy.$group_selection_threshold_col#19)
+==
+
+# Incorrect bounds for count(uid) function (doesn't correspond to
+# unique users count, therefore we shouldn't replace group_selection_threshold_expr
+# with this count).
+select with differential_privacy count(uid, contribution_bounds_per_group => (-1, 1))
+from SimpleTypesWithAnonymizationUid;
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-TableScan(column_list=[SimpleTypesWithAnonymizationUid.uid#11], table=SimpleTypesWithAnonymizationUid, column_index_list=[10])
+        +-aggregate_list=
+          +-$agg1#13 :=
+            +-AggregateFunctionCall(GoogleSQL:$differential_privacy_count(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+              +-ColumnRef(type=INT64, column=SimpleTypesWithAnonymizationUid.uid#11)
+              +-Literal(type=STRUCT<INT64, INT64>, value={-1, 1})
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-AggregateScan
+        |   +-column_list=[$aggregate.$agg1_partial#15, $group_by.$uid#16]
+        |   +-input_scan=
+        |   | +-TableScan(column_list=[SimpleTypesWithAnonymizationUid.uid#11], table=SimpleTypesWithAnonymizationUid, column_index_list=[10])
+        |   +-group_by_list=
+        |   | +-$uid#16 := ColumnRef(type=INT64, column=SimpleTypesWithAnonymizationUid.uid#11)
+        |   +-aggregate_list=
+        |     +-$agg1_partial#15 :=
+        |       +-AggregateFunctionCall(GoogleSQL:count(INT64) -> INT64)
+        |         +-ColumnRef(type=INT64, column=SimpleTypesWithAnonymizationUid.uid#11)
+        +-aggregate_list=
+        | +-$agg1#13 :=
+        | | +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+        | |   +-ColumnRef(type=INT64, column=$aggregate.$agg1_partial#15)
+        | |   +-Literal(type=STRUCT<INT64, INT64>, value={-1, 1})
+        | +-$group_selection_threshold_col#19 :=
+        |   +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+        |     +-Literal(type=INT64, value=1)
+        |     +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+        +-group_selection_threshold_expr=
+          +-ColumnRef(type=INT64, column=$differential_privacy.$group_selection_threshold_col#19)
+==
+
+# Incorrect bounds for count(uid) function (doesn't correspond to
+# unique users count, therefore we shouldn't replace group_selection_threshold_expr
+# with this count).
+select with differential_privacy count(uid, contribution_bounds_per_group => (0, 2))
+from SimpleTypesWithAnonymizationUid;
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-TableScan(column_list=[SimpleTypesWithAnonymizationUid.uid#11], table=SimpleTypesWithAnonymizationUid, column_index_list=[10])
+        +-aggregate_list=
+          +-$agg1#13 :=
+            +-AggregateFunctionCall(GoogleSQL:$differential_privacy_count(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+              +-ColumnRef(type=INT64, column=SimpleTypesWithAnonymizationUid.uid#11)
+              +-Literal(type=STRUCT<INT64, INT64>, value={0, 2})
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-AggregateScan
+        |   +-column_list=[$aggregate.$agg1_partial#15, $group_by.$uid#16]
+        |   +-input_scan=
+        |   | +-TableScan(column_list=[SimpleTypesWithAnonymizationUid.uid#11], table=SimpleTypesWithAnonymizationUid, column_index_list=[10])
+        |   +-group_by_list=
+        |   | +-$uid#16 := ColumnRef(type=INT64, column=SimpleTypesWithAnonymizationUid.uid#11)
+        |   +-aggregate_list=
+        |     +-$agg1_partial#15 :=
+        |       +-AggregateFunctionCall(GoogleSQL:count(INT64) -> INT64)
+        |         +-ColumnRef(type=INT64, column=SimpleTypesWithAnonymizationUid.uid#11)
+        +-aggregate_list=
+        | +-$agg1#13 :=
+        | | +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+        | |   +-ColumnRef(type=INT64, column=$aggregate.$agg1_partial#15)
+        | |   +-Literal(type=STRUCT<INT64, INT64>, value={0, 2})
+        | +-$group_selection_threshold_col#19 :=
+        |   +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+        |     +-Literal(type=INT64, value=1)
+        |     +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+        +-group_selection_threshold_expr=
+          +-ColumnRef(type=INT64, column=$differential_privacy.$group_selection_threshold_col#19)
+==
+
+# Incorrect bounds for count(uid) function (doesn't correspond to
+# unique users count, therefore we shouldn't replace group_selection_threshold_expr
+# with this count).
+select with differential_privacy count(uid, contribution_bounds_per_group => (-2, -1))
+from SimpleTypesWithAnonymizationUid;
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-TableScan(column_list=[SimpleTypesWithAnonymizationUid.uid#11], table=SimpleTypesWithAnonymizationUid, column_index_list=[10])
+        +-aggregate_list=
+          +-$agg1#13 :=
+            +-AggregateFunctionCall(GoogleSQL:$differential_privacy_count(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+              +-ColumnRef(type=INT64, column=SimpleTypesWithAnonymizationUid.uid#11)
+              +-Literal(type=STRUCT<INT64, INT64>, value={-2, -1})
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-AggregateScan
+        |   +-column_list=[$aggregate.$agg1_partial#15, $group_by.$uid#16]
+        |   +-input_scan=
+        |   | +-TableScan(column_list=[SimpleTypesWithAnonymizationUid.uid#11], table=SimpleTypesWithAnonymizationUid, column_index_list=[10])
+        |   +-group_by_list=
+        |   | +-$uid#16 := ColumnRef(type=INT64, column=SimpleTypesWithAnonymizationUid.uid#11)
+        |   +-aggregate_list=
+        |     +-$agg1_partial#15 :=
+        |       +-AggregateFunctionCall(GoogleSQL:count(INT64) -> INT64)
+        |         +-ColumnRef(type=INT64, column=SimpleTypesWithAnonymizationUid.uid#11)
+        +-aggregate_list=
+        | +-$agg1#13 :=
+        | | +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+        | |   +-ColumnRef(type=INT64, column=$aggregate.$agg1_partial#15)
+        | |   +-Literal(type=STRUCT<INT64, INT64>, value={-2, -1})
+        | +-$group_selection_threshold_col#19 :=
+        |   +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+        |     +-Literal(type=INT64, value=1)
+        |     +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+        +-group_selection_threshold_expr=
+          +-ColumnRef(type=INT64, column=$differential_privacy.$group_selection_threshold_col#19)
+==
+
+#########################################
+########## SUM($X) #################
+#########################################
+
+# sum(1) calculating unique users.
+# We should use this sum for group_selection_threshold_expr.
+select with differential_privacy sum(1, contribution_bounds_per_group => (0, 1))
+from SimpleTypesWithAnonymizationUid;
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-TableScan(table=SimpleTypesWithAnonymizationUid)
+        +-aggregate_list=
+          +-$agg1#13 :=
+            +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+              +-Literal(type=INT64, value=1)
+              +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-AggregateScan
+        |   +-column_list=[$aggregate.$agg1_partial#16, $group_by.$uid#17]
+        |   +-input_scan=
+        |   | +-TableScan(column_list=[SimpleTypesWithAnonymizationUid.uid#14], table=SimpleTypesWithAnonymizationUid, column_index_list=[10])
+        |   +-group_by_list=
+        |   | +-$uid#17 := ColumnRef(type=INT64, column=SimpleTypesWithAnonymizationUid.uid#14)
+        |   +-aggregate_list=
+        |     +-$agg1_partial#16 :=
+        |       +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+        |         +-Literal(type=INT64, value=1)
+        +-aggregate_list=
+        | +-$agg1#13 :=
+        |   +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+        |     +-ColumnRef(type=INT64, column=$aggregate.$agg1_partial#16)
+        |     +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+        +-group_selection_threshold_expr=
+          +-ColumnRef(type=INT64, column=$aggregate.$agg1#13)
+==
+
+# Sum(1) counting unique users with PROTO result.
+# We should use this count (extracted from the result PROTO) for
+# group_selection_threshold.
+[no_enable_literal_replacement]
+select with differential_privacy sum(1, contribution_bounds_per_group => (0, 1),  report_format => "PROTO")
+from SimpleTypesWithAnonymizationUid;
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [PROTO<googlesql.functions.DifferentialPrivacyOutputWithReport>]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-TableScan(table=SimpleTypesWithAnonymizationUid)
+        +-aggregate_list=
+          +-$agg1#13 :=
+            +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, ENUM<DIFFERENTIAL_PRIVACY_REPORT_FORMAT> report_format, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> PROTO<googlesql.functions.DifferentialPrivacyOutputWithReport>)
+              +-Literal(type=INT64, value=1)
+              +-Literal(type=ENUM<DIFFERENTIAL_PRIVACY_REPORT_FORMAT>, value=PROTO)
+              +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [PROTO<googlesql.functions.DifferentialPrivacyOutputWithReport>]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-AggregateScan
+        |   +-column_list=[$aggregate.$agg1_partial#16, $group_by.$uid#17]
+        |   +-input_scan=
+        |   | +-TableScan(column_list=[SimpleTypesWithAnonymizationUid.uid#14], table=SimpleTypesWithAnonymizationUid, column_index_list=[10])
+        |   +-group_by_list=
+        |   | +-$uid#17 := ColumnRef(type=INT64, column=SimpleTypesWithAnonymizationUid.uid#14)
+        |   +-aggregate_list=
+        |     +-$agg1_partial#16 :=
+        |       +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+        |         +-Literal(type=INT64, value=1)
+        +-aggregate_list=
+        | +-$agg1#13 :=
+        |   +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, ENUM<DIFFERENTIAL_PRIVACY_REPORT_FORMAT> report_format, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> PROTO<googlesql.functions.DifferentialPrivacyOutputWithReport>)
+        |     +-ColumnRef(type=INT64, column=$aggregate.$agg1_partial#16)
+        |     +-Literal(type=ENUM<DIFFERENTIAL_PRIVACY_REPORT_FORMAT>, value=PROTO)
+        |     +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+        +-group_selection_threshold_expr=
+          +-GetProtoField
+            +-type=INT64
+            +-expr=
+            | +-GetProtoField
+            |   +-type=PROTO<googlesql.functions.DifferentialPrivacyOutputValue>
+            |   +-expr=
+            |   | +-ColumnRef(type=PROTO<googlesql.functions.DifferentialPrivacyOutputWithReport>, column=$aggregate.$agg1#13)
+            |   +-field_descriptor=value
+            |   +-default_value=NULL
+            +-field_descriptor=int_value
+            +-default_value=NULL
+==
+
+[no_enable_literal_replacement]
+# Sum(1) counting unique users with JSON result.
+# We should use this count (extracted from the result JSON) for
+# group_selection_threshold.
+select with differential_privacy sum(1, contribution_bounds_per_group => (0, 1),  report_format => "JSON")
+from SimpleTypesWithAnonymizationUid;
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [JSON]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-TableScan(table=SimpleTypesWithAnonymizationUid)
+        +-aggregate_list=
+          +-$agg1#13 :=
+            +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, ENUM<DIFFERENTIAL_PRIVACY_REPORT_FORMAT> report_format, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> JSON)
+              +-Literal(type=INT64, value=1)
+              +-Literal(type=ENUM<DIFFERENTIAL_PRIVACY_REPORT_FORMAT>, value=JSON)
+              +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [JSON]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-AggregateScan
+        |   +-column_list=[$aggregate.$agg1_partial#16, $group_by.$uid#17]
+        |   +-input_scan=
+        |   | +-TableScan(column_list=[SimpleTypesWithAnonymizationUid.uid#14], table=SimpleTypesWithAnonymizationUid, column_index_list=[10])
+        |   +-group_by_list=
+        |   | +-$uid#17 := ColumnRef(type=INT64, column=SimpleTypesWithAnonymizationUid.uid#14)
+        |   +-aggregate_list=
+        |     +-$agg1_partial#16 :=
+        |       +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+        |         +-Literal(type=INT64, value=1)
+        +-aggregate_list=
+        | +-$agg1#13 :=
+        |   +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, ENUM<DIFFERENTIAL_PRIVACY_REPORT_FORMAT> report_format, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> JSON)
+        |     +-ColumnRef(type=INT64, column=$aggregate.$agg1_partial#16)
+        |     +-Literal(type=ENUM<DIFFERENTIAL_PRIVACY_REPORT_FORMAT>, value=JSON)
+        |     +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+        +-group_selection_threshold_expr=
+          +-FunctionCall(GoogleSQL:int64(JSON) -> INT64)
+            +-FunctionCall(GoogleSQL:json_query(JSON, STRING) -> JSON)
+              +-ColumnRef(type=JSON, column=$aggregate.$agg1#13)
+              +-Literal(type=STRING, value="$.result.value", has_explicit_type=TRUE)
+==
+
+[no_enable_literal_replacement]
+# Incorrect bounds for sum(1) function. It doesn't correspond to
+# unique users count, therefore we shouldn't replace group_selection_threshold
+# with this count.
+select with differential_privacy sum(1, contribution_bounds_per_group => (0, 2), report_format => "PROTO")
+from SimpleTypesWithAnonymizationUid;
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [PROTO<googlesql.functions.DifferentialPrivacyOutputWithReport>]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-TableScan(table=SimpleTypesWithAnonymizationUid)
+        +-aggregate_list=
+          +-$agg1#13 :=
+            +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, ENUM<DIFFERENTIAL_PRIVACY_REPORT_FORMAT> report_format, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> PROTO<googlesql.functions.DifferentialPrivacyOutputWithReport>)
+              +-Literal(type=INT64, value=1)
+              +-Literal(type=ENUM<DIFFERENTIAL_PRIVACY_REPORT_FORMAT>, value=PROTO)
+              +-Literal(type=STRUCT<INT64, INT64>, value={0, 2})
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [PROTO<googlesql.functions.DifferentialPrivacyOutputWithReport>]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-AggregateScan
+        |   +-column_list=[$aggregate.$agg1_partial#16, $group_by.$uid#17]
+        |   +-input_scan=
+        |   | +-TableScan(column_list=[SimpleTypesWithAnonymizationUid.uid#14], table=SimpleTypesWithAnonymizationUid, column_index_list=[10])
+        |   +-group_by_list=
+        |   | +-$uid#17 := ColumnRef(type=INT64, column=SimpleTypesWithAnonymizationUid.uid#14)
+        |   +-aggregate_list=
+        |     +-$agg1_partial#16 :=
+        |       +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+        |         +-Literal(type=INT64, value=1)
+        +-aggregate_list=
+        | +-$agg1#13 :=
+        | | +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, ENUM<DIFFERENTIAL_PRIVACY_REPORT_FORMAT> report_format, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> PROTO<googlesql.functions.DifferentialPrivacyOutputWithReport>)
+        | |   +-ColumnRef(type=INT64, column=$aggregate.$agg1_partial#16)
+        | |   +-Literal(type=ENUM<DIFFERENTIAL_PRIVACY_REPORT_FORMAT>, value=PROTO)
+        | |   +-Literal(type=STRUCT<INT64, INT64>, value={0, 2})
+        | +-$group_selection_threshold_col#20 :=
+        |   +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+        |     +-Literal(type=INT64, value=1)
+        |     +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+        +-group_selection_threshold_expr=
+          +-ColumnRef(type=INT64, column=$differential_privacy.$group_selection_threshold_col#20)
+==
+
+[no_enable_literal_replacement]
+# Incorrect bounds for sum(1) function. It doesn't correspond to
+# unique users count, therefore we shouldn't replace group_selection_threshold
+# with this count.
+select with differential_privacy sum(1, contribution_bounds_per_group => (0, 2), report_format => "JSON")
+from SimpleTypesWithAnonymizationUid;
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [JSON]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-TableScan(table=SimpleTypesWithAnonymizationUid)
+        +-aggregate_list=
+          +-$agg1#13 :=
+            +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, ENUM<DIFFERENTIAL_PRIVACY_REPORT_FORMAT> report_format, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> JSON)
+              +-Literal(type=INT64, value=1)
+              +-Literal(type=ENUM<DIFFERENTIAL_PRIVACY_REPORT_FORMAT>, value=JSON)
+              +-Literal(type=STRUCT<INT64, INT64>, value={0, 2})
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [JSON]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-AggregateScan
+        |   +-column_list=[$aggregate.$agg1_partial#16, $group_by.$uid#17]
+        |   +-input_scan=
+        |   | +-TableScan(column_list=[SimpleTypesWithAnonymizationUid.uid#14], table=SimpleTypesWithAnonymizationUid, column_index_list=[10])
+        |   +-group_by_list=
+        |   | +-$uid#17 := ColumnRef(type=INT64, column=SimpleTypesWithAnonymizationUid.uid#14)
+        |   +-aggregate_list=
+        |     +-$agg1_partial#16 :=
+        |       +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+        |         +-Literal(type=INT64, value=1)
+        +-aggregate_list=
+        | +-$agg1#13 :=
+        | | +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, ENUM<DIFFERENTIAL_PRIVACY_REPORT_FORMAT> report_format, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> JSON)
+        | |   +-ColumnRef(type=INT64, column=$aggregate.$agg1_partial#16)
+        | |   +-Literal(type=ENUM<DIFFERENTIAL_PRIVACY_REPORT_FORMAT>, value=JSON)
+        | |   +-Literal(type=STRUCT<INT64, INT64>, value={0, 2})
+        | +-$group_selection_threshold_col#20 :=
+        |   +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+        |     +-Literal(type=INT64, value=1)
+        |     +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+        +-group_selection_threshold_expr=
+          +-ColumnRef(type=INT64, column=$differential_privacy.$group_selection_threshold_col#20)
+==
+
+# sum(1) with uint64 type calculating unique users.
+# We should not use this count for group_selection_threshold because for the
+# new syntax group_selection_threshold is expected to be int64.
+select with differential_privacy SUM(cast(1 as uint64), contribution_bounds_per_group => (0, 1))
+from SimpleTypesWithAnonymizationUid;
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [UINT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-TableScan(table=SimpleTypesWithAnonymizationUid)
+        +-aggregate_list=
+          +-$agg1#13 :=
+            +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(UINT64, optional(1) STRUCT<UINT64, UINT64> contribution_bounds_per_group) -> UINT64)
+              +-Literal(type=UINT64, value=1, has_explicit_type=TRUE)
+              +-Literal(type=STRUCT<UINT64, UINT64>, value={0, 1})
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [UINT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-AggregateScan
+        |   +-column_list=[$aggregate.$agg1_partial#16, $group_by.$uid#17]
+        |   +-input_scan=
+        |   | +-TableScan(column_list=[SimpleTypesWithAnonymizationUid.uid#14], table=SimpleTypesWithAnonymizationUid, column_index_list=[10])
+        |   +-group_by_list=
+        |   | +-$uid#17 := ColumnRef(type=INT64, column=SimpleTypesWithAnonymizationUid.uid#14)
+        |   +-aggregate_list=
+        |     +-$agg1_partial#16 :=
+        |       +-AggregateFunctionCall(GoogleSQL:sum(UINT64) -> UINT64)
+        |         +-Literal(type=UINT64, value=1, has_explicit_type=TRUE)
+        +-aggregate_list=
+        | +-$agg1#13 :=
+        | | +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(UINT64, optional(1) STRUCT<UINT64, UINT64> contribution_bounds_per_group) -> UINT64)
+        | |   +-ColumnRef(type=UINT64, column=$aggregate.$agg1_partial#16)
+        | |   +-Literal(type=STRUCT<UINT64, UINT64>, value={0, 1})
+        | +-$group_selection_threshold_col#20 :=
+        |   +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+        |     +-Literal(type=INT64, value=1)
+        |     +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+        +-group_selection_threshold_expr=
+          +-ColumnRef(type=INT64, column=$differential_privacy.$group_selection_threshold_col#20)
+==
+
+# Sum(1) with uint64 type counting unique users with PROTO result.
+# We should not use this count for group_selection_threshold because for the
+# new syntax group_selection_threshold is expected to be int64.
+[no_enable_literal_replacement]
+select with differential_privacy sum(cast(1 as uint64), contribution_bounds_per_group => (0, 1),  report_format => "PROTO")
+from SimpleTypesWithAnonymizationUid;
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [PROTO<googlesql.functions.DifferentialPrivacyOutputWithReport>]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-TableScan(table=SimpleTypesWithAnonymizationUid)
+        +-aggregate_list=
+          +-$agg1#13 :=
+            +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(UINT64, ENUM<DIFFERENTIAL_PRIVACY_REPORT_FORMAT> report_format, optional(1) STRUCT<UINT64, UINT64> contribution_bounds_per_group) -> PROTO<googlesql.functions.DifferentialPrivacyOutputWithReport>)
+              +-Literal(type=UINT64, value=1, has_explicit_type=TRUE)
+              +-Literal(type=ENUM<DIFFERENTIAL_PRIVACY_REPORT_FORMAT>, value=PROTO)
+              +-Literal(type=STRUCT<UINT64, UINT64>, value={0, 1})
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [PROTO<googlesql.functions.DifferentialPrivacyOutputWithReport>]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-AggregateScan
+        |   +-column_list=[$aggregate.$agg1_partial#16, $group_by.$uid#17]
+        |   +-input_scan=
+        |   | +-TableScan(column_list=[SimpleTypesWithAnonymizationUid.uid#14], table=SimpleTypesWithAnonymizationUid, column_index_list=[10])
+        |   +-group_by_list=
+        |   | +-$uid#17 := ColumnRef(type=INT64, column=SimpleTypesWithAnonymizationUid.uid#14)
+        |   +-aggregate_list=
+        |     +-$agg1_partial#16 :=
+        |       +-AggregateFunctionCall(GoogleSQL:sum(UINT64) -> UINT64)
+        |         +-Literal(type=UINT64, value=1, has_explicit_type=TRUE)
+        +-aggregate_list=
+        | +-$agg1#13 :=
+        | | +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(UINT64, ENUM<DIFFERENTIAL_PRIVACY_REPORT_FORMAT> report_format, optional(1) STRUCT<UINT64, UINT64> contribution_bounds_per_group) -> PROTO<googlesql.functions.DifferentialPrivacyOutputWithReport>)
+        | |   +-ColumnRef(type=UINT64, column=$aggregate.$agg1_partial#16)
+        | |   +-Literal(type=ENUM<DIFFERENTIAL_PRIVACY_REPORT_FORMAT>, value=PROTO)
+        | |   +-Literal(type=STRUCT<UINT64, UINT64>, value={0, 1})
+        | +-$group_selection_threshold_col#20 :=
+        |   +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+        |     +-Literal(type=INT64, value=1)
+        |     +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+        +-group_selection_threshold_expr=
+          +-ColumnRef(type=INT64, column=$differential_privacy.$group_selection_threshold_col#20)
+==
+
+[no_enable_literal_replacement]
+# Sum(1) with uint64 type counting unique users with JSON result.
+# We should not use this count for group_selection_threshold because for the
+# new syntax group_selection_threshold is expected to be int64.
+select with differential_privacy sum(cast(1 as uint64), contribution_bounds_per_group => (0, 1),  report_format => "JSON")
+from SimpleTypesWithAnonymizationUid;
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [JSON]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-TableScan(table=SimpleTypesWithAnonymizationUid)
+        +-aggregate_list=
+          +-$agg1#13 :=
+            +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(UINT64, ENUM<DIFFERENTIAL_PRIVACY_REPORT_FORMAT> report_format, optional(1) STRUCT<UINT64, UINT64> contribution_bounds_per_group) -> JSON)
+              +-Literal(type=UINT64, value=1, has_explicit_type=TRUE)
+              +-Literal(type=ENUM<DIFFERENTIAL_PRIVACY_REPORT_FORMAT>, value=JSON)
+              +-Literal(type=STRUCT<UINT64, UINT64>, value={0, 1})
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [JSON]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-AggregateScan
+        |   +-column_list=[$aggregate.$agg1_partial#16, $group_by.$uid#17]
+        |   +-input_scan=
+        |   | +-TableScan(column_list=[SimpleTypesWithAnonymizationUid.uid#14], table=SimpleTypesWithAnonymizationUid, column_index_list=[10])
+        |   +-group_by_list=
+        |   | +-$uid#17 := ColumnRef(type=INT64, column=SimpleTypesWithAnonymizationUid.uid#14)
+        |   +-aggregate_list=
+        |     +-$agg1_partial#16 :=
+        |       +-AggregateFunctionCall(GoogleSQL:sum(UINT64) -> UINT64)
+        |         +-Literal(type=UINT64, value=1, has_explicit_type=TRUE)
+        +-aggregate_list=
+        | +-$agg1#13 :=
+        | | +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(UINT64, ENUM<DIFFERENTIAL_PRIVACY_REPORT_FORMAT> report_format, optional(1) STRUCT<UINT64, UINT64> contribution_bounds_per_group) -> JSON)
+        | |   +-ColumnRef(type=UINT64, column=$aggregate.$agg1_partial#16)
+        | |   +-Literal(type=ENUM<DIFFERENTIAL_PRIVACY_REPORT_FORMAT>, value=JSON)
+        | |   +-Literal(type=STRUCT<UINT64, UINT64>, value={0, 1})
+        | +-$group_selection_threshold_col#20 :=
+        |   +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+        |     +-Literal(type=INT64, value=1)
+        |     +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+        +-group_selection_threshold_expr=
+          +-ColumnRef(type=INT64, column=$differential_privacy.$group_selection_threshold_col#20)
+==
+
+# sum(1) with NUMERIC type calculating unique users.
+# We should not use this count for group_selection_threshold because for the
+# new syntax group_selection_threshold is expected to be int64.
+[language_features=NONE,+DIFFERENTIAL_PRIVACY,+DIFFERENTIAL_PRIVACY_THRESHOLDING,+NAMED_ARGUMENTS,+NUMERIC_TYPE,+PIPE_AGGREGATE_WITH_DIFFERENTIAL_PRIVACY]
+select with differential_privacy SUM(cast(1 as NUMERIC), contribution_bounds_per_group => (0, 1))
+from SimpleTypesWithAnonymizationUid;
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [NUMERIC]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-TableScan(table=SimpleTypesWithAnonymizationUid)
+        +-aggregate_list=
+          +-$agg1#13 :=
+            +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(NUMERIC, optional(1) STRUCT<NUMERIC, NUMERIC> contribution_bounds_per_group) -> NUMERIC)
+              +-Literal(type=NUMERIC, value=1, has_explicit_type=TRUE)
+              +-Literal(type=STRUCT<NUMERIC, NUMERIC>, value={0, 1})
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [NUMERIC]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-AggregateScan
+        |   +-column_list=[$aggregate.$agg1_partial#16, $group_by.$uid#17]
+        |   +-input_scan=
+        |   | +-TableScan(column_list=[SimpleTypesWithAnonymizationUid.uid#14], table=SimpleTypesWithAnonymizationUid, column_index_list=[10])
+        |   +-group_by_list=
+        |   | +-$uid#17 := ColumnRef(type=INT64, column=SimpleTypesWithAnonymizationUid.uid#14)
+        |   +-aggregate_list=
+        |     +-$agg1_partial#16 :=
+        |       +-AggregateFunctionCall(GoogleSQL:sum(NUMERIC) -> NUMERIC)
+        |         +-Literal(type=NUMERIC, value=1, has_explicit_type=TRUE)
+        +-aggregate_list=
+        | +-$agg1#13 :=
+        | | +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(NUMERIC, optional(1) STRUCT<NUMERIC, NUMERIC> contribution_bounds_per_group) -> NUMERIC)
+        | |   +-ColumnRef(type=NUMERIC, column=$aggregate.$agg1_partial#16)
+        | |   +-Literal(type=STRUCT<NUMERIC, NUMERIC>, value={0, 1})
+        | +-$group_selection_threshold_col#20 :=
+        |   +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+        |     +-Literal(type=INT64, value=1)
+        |     +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+        +-group_selection_threshold_expr=
+          +-ColumnRef(type=INT64, column=$differential_privacy.$group_selection_threshold_col#20)
+==
+
+# Incorrect bounds for sum(1) function. It doesn't correspond to
+# unique users count, therefore we shouldn't replace group_selection_threshold_expr
+# with this count.
+select with differential_privacy sum(1, contribution_bounds_per_group => (-1, 1))
+from SimpleTypesWithAnonymizationUid;
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-TableScan(table=SimpleTypesWithAnonymizationUid)
+        +-aggregate_list=
+          +-$agg1#13 :=
+            +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+              +-Literal(type=INT64, value=1)
+              +-Literal(type=STRUCT<INT64, INT64>, value={-1, 1})
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-AggregateScan
+        |   +-column_list=[$aggregate.$agg1_partial#16, $group_by.$uid#17]
+        |   +-input_scan=
+        |   | +-TableScan(column_list=[SimpleTypesWithAnonymizationUid.uid#14], table=SimpleTypesWithAnonymizationUid, column_index_list=[10])
+        |   +-group_by_list=
+        |   | +-$uid#17 := ColumnRef(type=INT64, column=SimpleTypesWithAnonymizationUid.uid#14)
+        |   +-aggregate_list=
+        |     +-$agg1_partial#16 :=
+        |       +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+        |         +-Literal(type=INT64, value=1)
+        +-aggregate_list=
+        | +-$agg1#13 :=
+        | | +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+        | |   +-ColumnRef(type=INT64, column=$aggregate.$agg1_partial#16)
+        | |   +-Literal(type=STRUCT<INT64, INT64>, value={-1, 1})
+        | +-$group_selection_threshold_col#20 :=
+        |   +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+        |     +-Literal(type=INT64, value=1)
+        |     +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+        +-group_selection_threshold_expr=
+          +-ColumnRef(type=INT64, column=$differential_privacy.$group_selection_threshold_col#20)
+==
+
+# Incorrect bounds for sum(1) function. It doesn't correspond to
+# unique users count, therefore we shouldn't replace group_selection_threshold_expr
+# with this count.
+select with differential_privacy sum(1, contribution_bounds_per_group => (0, 2))
+from SimpleTypesWithAnonymizationUid;
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-TableScan(table=SimpleTypesWithAnonymizationUid)
+        +-aggregate_list=
+          +-$agg1#13 :=
+            +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+              +-Literal(type=INT64, value=1)
+              +-Literal(type=STRUCT<INT64, INT64>, value={0, 2})
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-AggregateScan
+        |   +-column_list=[$aggregate.$agg1_partial#16, $group_by.$uid#17]
+        |   +-input_scan=
+        |   | +-TableScan(column_list=[SimpleTypesWithAnonymizationUid.uid#14], table=SimpleTypesWithAnonymizationUid, column_index_list=[10])
+        |   +-group_by_list=
+        |   | +-$uid#17 := ColumnRef(type=INT64, column=SimpleTypesWithAnonymizationUid.uid#14)
+        |   +-aggregate_list=
+        |     +-$agg1_partial#16 :=
+        |       +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+        |         +-Literal(type=INT64, value=1)
+        +-aggregate_list=
+        | +-$agg1#13 :=
+        | | +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+        | |   +-ColumnRef(type=INT64, column=$aggregate.$agg1_partial#16)
+        | |   +-Literal(type=STRUCT<INT64, INT64>, value={0, 2})
+        | +-$group_selection_threshold_col#20 :=
+        |   +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+        |     +-Literal(type=INT64, value=1)
+        |     +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+        +-group_selection_threshold_expr=
+          +-ColumnRef(type=INT64, column=$differential_privacy.$group_selection_threshold_col#20)
+==
+
+# Incorrect bounds for sum(1) function. It doesn't correspond to
+# unique users count, therefore we shouldn't replace group_selection_threshold_expr
+# with this count.
+select with differential_privacy sum(1, contribution_bounds_per_group => (-2, -1))
+from SimpleTypesWithAnonymizationUid;
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-TableScan(table=SimpleTypesWithAnonymizationUid)
+        +-aggregate_list=
+          +-$agg1#13 :=
+            +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+              +-Literal(type=INT64, value=1)
+              +-Literal(type=STRUCT<INT64, INT64>, value={-2, -1})
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-AggregateScan
+        |   +-column_list=[$aggregate.$agg1_partial#16, $group_by.$uid#17]
+        |   +-input_scan=
+        |   | +-TableScan(column_list=[SimpleTypesWithAnonymizationUid.uid#14], table=SimpleTypesWithAnonymizationUid, column_index_list=[10])
+        |   +-group_by_list=
+        |   | +-$uid#17 := ColumnRef(type=INT64, column=SimpleTypesWithAnonymizationUid.uid#14)
+        |   +-aggregate_list=
+        |     +-$agg1_partial#16 :=
+        |       +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+        |         +-Literal(type=INT64, value=1)
+        +-aggregate_list=
+        | +-$agg1#13 :=
+        | | +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+        | |   +-ColumnRef(type=INT64, column=$aggregate.$agg1_partial#16)
+        | |   +-Literal(type=STRUCT<INT64, INT64>, value={-2, -1})
+        | +-$group_selection_threshold_col#20 :=
+        |   +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+        |     +-Literal(type=INT64, value=1)
+        |     +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+        +-group_selection_threshold_expr=
+          +-ColumnRef(type=INT64, column=$differential_privacy.$group_selection_threshold_col#20)
+==
+
+# Sum always equals to 0. It doesn't correspond to
+# unique users count, therefore we shouldn't replace group_selection_threshold_expr
+# with this count.
+select with differential_privacy sum(0, contribution_bounds_per_group => (0, 1))
+from SimpleTypesWithAnonymizationUid;
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-TableScan(table=SimpleTypesWithAnonymizationUid)
+        +-aggregate_list=
+          +-$agg1#13 :=
+            +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+              +-Literal(type=INT64, value=0)
+              +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-AggregateScan
+        |   +-column_list=[$aggregate.$agg1_partial#16, $group_by.$uid#17]
+        |   +-input_scan=
+        |   | +-TableScan(column_list=[SimpleTypesWithAnonymizationUid.uid#14], table=SimpleTypesWithAnonymizationUid, column_index_list=[10])
+        |   +-group_by_list=
+        |   | +-$uid#17 := ColumnRef(type=INT64, column=SimpleTypesWithAnonymizationUid.uid#14)
+        |   +-aggregate_list=
+        |     +-$agg1_partial#16 :=
+        |       +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+        |         +-Literal(type=INT64, value=0)
+        +-aggregate_list=
+        | +-$agg1#13 :=
+        | | +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+        | |   +-ColumnRef(type=INT64, column=$aggregate.$agg1_partial#16)
+        | |   +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+        | +-$group_selection_threshold_col#20 :=
+        |   +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+        |     +-Literal(type=INT64, value=1)
+        |     +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+        +-group_selection_threshold_expr=
+          +-ColumnRef(type=INT64, column=$differential_privacy.$group_selection_threshold_col#20)
+==
+
+# Sum always equals to 0 after clamping. It doesn't correspond to
+# unique users count, therefore we shouldn't replace group_selection_threshold_expr
+# with this count.
+select with differential_privacy sum(-1, contribution_bounds_per_group => (0, 1))
+from SimpleTypesWithAnonymizationUid;
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-TableScan(table=SimpleTypesWithAnonymizationUid)
+        +-aggregate_list=
+          +-$agg1#13 :=
+            +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+              +-Literal(type=INT64, value=-1)
+              +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-AggregateScan
+        |   +-column_list=[$aggregate.$agg1_partial#16, $group_by.$uid#17]
+        |   +-input_scan=
+        |   | +-TableScan(column_list=[SimpleTypesWithAnonymizationUid.uid#14], table=SimpleTypesWithAnonymizationUid, column_index_list=[10])
+        |   +-group_by_list=
+        |   | +-$uid#17 := ColumnRef(type=INT64, column=SimpleTypesWithAnonymizationUid.uid#14)
+        |   +-aggregate_list=
+        |     +-$agg1_partial#16 :=
+        |       +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+        |         +-Literal(type=INT64, value=-1)
+        +-aggregate_list=
+        | +-$agg1#13 :=
+        | | +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+        | |   +-ColumnRef(type=INT64, column=$aggregate.$agg1_partial#16)
+        | |   +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+        | +-$group_selection_threshold_col#20 :=
+        |   +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+        |     +-Literal(type=INT64, value=1)
+        |     +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+        +-group_selection_threshold_expr=
+          +-ColumnRef(type=INT64, column=$differential_privacy.$group_selection_threshold_col#20)
+==
+
+# Sum of NULL don't make sense for counting unique users,
+# therefore we shouldn't replace group_selection_threshold_expr with this count.
+select with differential_privacy sum(NULL, contribution_bounds_per_group => (0, 1))
+from SimpleTypesWithAnonymizationUid;
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-TableScan(table=SimpleTypesWithAnonymizationUid)
+        +-aggregate_list=
+          +-$agg1#13 :=
+            +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+              +-Literal(type=INT64, value=NULL)
+              +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-AggregateScan
+        |   +-column_list=[$aggregate.$agg1_partial#16, $group_by.$uid#17]
+        |   +-input_scan=
+        |   | +-TableScan(column_list=[SimpleTypesWithAnonymizationUid.uid#14], table=SimpleTypesWithAnonymizationUid, column_index_list=[10])
+        |   +-group_by_list=
+        |   | +-$uid#17 := ColumnRef(type=INT64, column=SimpleTypesWithAnonymizationUid.uid#14)
+        |   +-aggregate_list=
+        |     +-$agg1_partial#16 :=
+        |       +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+        |         +-Literal(type=INT64, value=NULL)
+        +-aggregate_list=
+        | +-$agg1#13 :=
+        | | +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+        | |   +-ColumnRef(type=INT64, column=$aggregate.$agg1_partial#16)
+        | |   +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+        | +-$group_selection_threshold_col#20 :=
+        |   +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+        |     +-Literal(type=INT64, value=1)
+        |     +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+        +-group_selection_threshold_expr=
+          +-ColumnRef(type=INT64, column=$differential_privacy.$group_selection_threshold_col#20)
+==
+
+# Sum of doubles. We are not supporting these functions for group_selection_threshold_expr
+# replacement due to possible accumulation of floating point errors.
+select with differential_privacy SUM(1.0, contribution_bounds_per_group => (0.0, 1.0))
+from SimpleTypesWithAnonymizationUid;
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [DOUBLE]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-TableScan(table=SimpleTypesWithAnonymizationUid)
+        +-aggregate_list=
+          +-$agg1#13 :=
+            +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(DOUBLE, optional(1) STRUCT<DOUBLE, DOUBLE> contribution_bounds_per_group) -> DOUBLE)
+              +-Literal(type=DOUBLE, value=1)
+              +-Literal(type=STRUCT<DOUBLE, DOUBLE>, value={0, 1})
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [DOUBLE]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-AggregateScan
+        |   +-column_list=[$aggregate.$agg1_partial#16, $group_by.$uid#17]
+        |   +-input_scan=
+        |   | +-TableScan(column_list=[SimpleTypesWithAnonymizationUid.uid#14], table=SimpleTypesWithAnonymizationUid, column_index_list=[10])
+        |   +-group_by_list=
+        |   | +-$uid#17 := ColumnRef(type=INT64, column=SimpleTypesWithAnonymizationUid.uid#14)
+        |   +-aggregate_list=
+        |     +-$agg1_partial#16 :=
+        |       +-AggregateFunctionCall(GoogleSQL:sum(DOUBLE) -> DOUBLE)
+        |         +-Literal(type=DOUBLE, value=1)
+        +-aggregate_list=
+        | +-$agg1#13 :=
+        | | +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(DOUBLE, optional(1) STRUCT<DOUBLE, DOUBLE> contribution_bounds_per_group) -> DOUBLE)
+        | |   +-ColumnRef(type=DOUBLE, column=$aggregate.$agg1_partial#16)
+        | |   +-Literal(type=STRUCT<DOUBLE, DOUBLE>, value={0, 1})
+        | +-$group_selection_threshold_col#20 :=
+        |   +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+        |     +-Literal(type=INT64, value=1)
+        |     +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+        +-group_selection_threshold_expr=
+          +-ColumnRef(type=INT64, column=$differential_privacy.$group_selection_threshold_col#20)
+==
+
+# Sum of doubles with PROTO result. We are not supporting these functions for
+# group_selection_threshold_expr replacement due to possible accumulation of floating point errors.
+[no_enable_literal_replacement]
+select with differential_privacy sum(1.0, contribution_bounds_per_group => (0.0, 1.0),  report_format => "PROTO")
+from SimpleTypesWithAnonymizationUid;
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [PROTO<googlesql.functions.DifferentialPrivacyOutputWithReport>]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-TableScan(table=SimpleTypesWithAnonymizationUid)
+        +-aggregate_list=
+          +-$agg1#13 :=
+            +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(DOUBLE, ENUM<DIFFERENTIAL_PRIVACY_REPORT_FORMAT> report_format, optional(1) STRUCT<DOUBLE, DOUBLE> contribution_bounds_per_group) -> PROTO<googlesql.functions.DifferentialPrivacyOutputWithReport>)
+              +-Literal(type=DOUBLE, value=1)
+              +-Literal(type=ENUM<DIFFERENTIAL_PRIVACY_REPORT_FORMAT>, value=PROTO)
+              +-Literal(type=STRUCT<DOUBLE, DOUBLE>, value={0, 1})
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [PROTO<googlesql.functions.DifferentialPrivacyOutputWithReport>]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-AggregateScan
+        |   +-column_list=[$aggregate.$agg1_partial#16, $group_by.$uid#17]
+        |   +-input_scan=
+        |   | +-TableScan(column_list=[SimpleTypesWithAnonymizationUid.uid#14], table=SimpleTypesWithAnonymizationUid, column_index_list=[10])
+        |   +-group_by_list=
+        |   | +-$uid#17 := ColumnRef(type=INT64, column=SimpleTypesWithAnonymizationUid.uid#14)
+        |   +-aggregate_list=
+        |     +-$agg1_partial#16 :=
+        |       +-AggregateFunctionCall(GoogleSQL:sum(DOUBLE) -> DOUBLE)
+        |         +-Literal(type=DOUBLE, value=1)
+        +-aggregate_list=
+        | +-$agg1#13 :=
+        | | +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(DOUBLE, ENUM<DIFFERENTIAL_PRIVACY_REPORT_FORMAT> report_format, optional(1) STRUCT<DOUBLE, DOUBLE> contribution_bounds_per_group) -> PROTO<googlesql.functions.DifferentialPrivacyOutputWithReport>)
+        | |   +-ColumnRef(type=DOUBLE, column=$aggregate.$agg1_partial#16)
+        | |   +-Literal(type=ENUM<DIFFERENTIAL_PRIVACY_REPORT_FORMAT>, value=PROTO)
+        | |   +-Literal(type=STRUCT<DOUBLE, DOUBLE>, value={0, 1})
+        | +-$group_selection_threshold_col#20 :=
+        |   +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+        |     +-Literal(type=INT64, value=1)
+        |     +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+        +-group_selection_threshold_expr=
+          +-ColumnRef(type=INT64, column=$differential_privacy.$group_selection_threshold_col#20)
+==
+
+[no_enable_literal_replacement]
+# Sum of doubles with JSON result. We are not supporting these functions for
+# group_selection_threshold_expr replacement due to possible accumulation of floating point errors.
+select with differential_privacy sum(1.0, contribution_bounds_per_group => (0.0, 1.0),  report_format => "JSON")
+from SimpleTypesWithAnonymizationUid;
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [JSON]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-TableScan(table=SimpleTypesWithAnonymizationUid)
+        +-aggregate_list=
+          +-$agg1#13 :=
+            +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(DOUBLE, ENUM<DIFFERENTIAL_PRIVACY_REPORT_FORMAT> report_format, optional(1) STRUCT<DOUBLE, DOUBLE> contribution_bounds_per_group) -> JSON)
+              +-Literal(type=DOUBLE, value=1)
+              +-Literal(type=ENUM<DIFFERENTIAL_PRIVACY_REPORT_FORMAT>, value=JSON)
+              +-Literal(type=STRUCT<DOUBLE, DOUBLE>, value={0, 1})
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [JSON]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-AggregateScan
+        |   +-column_list=[$aggregate.$agg1_partial#16, $group_by.$uid#17]
+        |   +-input_scan=
+        |   | +-TableScan(column_list=[SimpleTypesWithAnonymizationUid.uid#14], table=SimpleTypesWithAnonymizationUid, column_index_list=[10])
+        |   +-group_by_list=
+        |   | +-$uid#17 := ColumnRef(type=INT64, column=SimpleTypesWithAnonymizationUid.uid#14)
+        |   +-aggregate_list=
+        |     +-$agg1_partial#16 :=
+        |       +-AggregateFunctionCall(GoogleSQL:sum(DOUBLE) -> DOUBLE)
+        |         +-Literal(type=DOUBLE, value=1)
+        +-aggregate_list=
+        | +-$agg1#13 :=
+        | | +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(DOUBLE, ENUM<DIFFERENTIAL_PRIVACY_REPORT_FORMAT> report_format, optional(1) STRUCT<DOUBLE, DOUBLE> contribution_bounds_per_group) -> JSON)
+        | |   +-ColumnRef(type=DOUBLE, column=$aggregate.$agg1_partial#16)
+        | |   +-Literal(type=ENUM<DIFFERENTIAL_PRIVACY_REPORT_FORMAT>, value=JSON)
+        | |   +-Literal(type=STRUCT<DOUBLE, DOUBLE>, value={0, 1})
+        | +-$group_selection_threshold_col#20 :=
+        |   +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+        |     +-Literal(type=INT64, value=1)
+        |     +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+        +-group_selection_threshold_expr=
+          +-ColumnRef(type=INT64, column=$differential_privacy.$group_selection_threshold_col#20)
+==
+
+# Since JSON_VALUE_EXTRACTION_FUNCTIONS isn't enabled we can't replace
+# group_selection_threshold_expr with provided unique users count, therefore
+# we will replace it with an artificially added function which
+# counts unique users.
+[no_enable_literal_replacement]
+select with differential_privacy sum(1, contribution_bounds_per_group => (0, 1),  report_format => "JSON")
+from SimpleTypesWithAnonymizationUid;
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [JSON]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-TableScan(table=SimpleTypesWithAnonymizationUid)
+        +-aggregate_list=
+          +-$agg1#13 :=
+            +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, ENUM<DIFFERENTIAL_PRIVACY_REPORT_FORMAT> report_format, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> JSON)
+              +-Literal(type=INT64, value=1)
+              +-Literal(type=ENUM<DIFFERENTIAL_PRIVACY_REPORT_FORMAT>, value=JSON)
+              +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [JSON]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-AggregateScan
+        |   +-column_list=[$aggregate.$agg1_partial#16, $group_by.$uid#17]
+        |   +-input_scan=
+        |   | +-TableScan(column_list=[SimpleTypesWithAnonymizationUid.uid#14], table=SimpleTypesWithAnonymizationUid, column_index_list=[10])
+        |   +-group_by_list=
+        |   | +-$uid#17 := ColumnRef(type=INT64, column=SimpleTypesWithAnonymizationUid.uid#14)
+        |   +-aggregate_list=
+        |     +-$agg1_partial#16 :=
+        |       +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+        |         +-Literal(type=INT64, value=1)
+        +-aggregate_list=
+        | +-$agg1#13 :=
+        |   +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, ENUM<DIFFERENTIAL_PRIVACY_REPORT_FORMAT> report_format, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> JSON)
+        |     +-ColumnRef(type=INT64, column=$aggregate.$agg1_partial#16)
+        |     +-Literal(type=ENUM<DIFFERENTIAL_PRIVACY_REPORT_FORMAT>, value=JSON)
+        |     +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+        +-group_selection_threshold_expr=
+          +-FunctionCall(GoogleSQL:int64(JSON) -> INT64)
+            +-FunctionCall(GoogleSQL:json_query(JSON, STRING) -> JSON)
+              +-ColumnRef(type=JSON, column=$aggregate.$agg1#13)
+              +-Literal(type=STRING, value="$.result.value", has_explicit_type=TRUE)
+==
+
+# Sum of the expressions (equivalent to unqiue users count) might be Ok
+# for replacement, but we've decided not to support any expressions for now.
+# group_selection_threshold_col shouldn't be substituted with such sum.
+select with differential_privacy sum(1 + 1, contribution_bounds_per_group => (0, 1))
+from SimpleTypesWithAnonymizationUid;
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-TableScan(table=SimpleTypesWithAnonymizationUid)
+        +-aggregate_list=
+          +-$agg1#13 :=
+            +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+              +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+              | +-Literal(type=INT64, value=1)
+              | +-Literal(type=INT64, value=1)
+              +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#13 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#13]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#13]
+        +-input_scan=
+        | +-AggregateScan
+        |   +-column_list=[$aggregate.$agg1_partial#16, $group_by.$uid#17]
+        |   +-input_scan=
+        |   | +-TableScan(column_list=[SimpleTypesWithAnonymizationUid.uid#14], table=SimpleTypesWithAnonymizationUid, column_index_list=[10])
+        |   +-group_by_list=
+        |   | +-$uid#17 := ColumnRef(type=INT64, column=SimpleTypesWithAnonymizationUid.uid#14)
+        |   +-aggregate_list=
+        |     +-$agg1_partial#16 :=
+        |       +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+        |         +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+        |           +-Literal(type=INT64, value=1)
+        |           +-Literal(type=INT64, value=1)
+        +-aggregate_list=
+        | +-$agg1#13 :=
+        | | +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+        | |   +-ColumnRef(type=INT64, column=$aggregate.$agg1_partial#16)
+        | |   +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+        | +-$group_selection_threshold_col#20 :=
+        |   +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+        |     +-Literal(type=INT64, value=1)
+        |     +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+        +-group_selection_threshold_expr=
+          +-ColumnRef(type=INT64, column=$differential_privacy.$group_selection_threshold_col#20)
+==
+
+#########################################
+########## Multiple functions ###########
+#########################################
+
+# Two counters counting unique users.
+# We should use the first such counter for group_selection_threshold_expr.
+select with differential_privacy count(*, contribution_bounds_per_group => (0, 1)) as count1,
+count(1, contribution_bounds_per_group => (0, 1)) as count2
+from SimpleTypesWithAnonymizationUid;
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.count1#13 AS count1 [INT64]
+| +-$aggregate.count2#14 AS count2 [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=$aggregate.[count1#13, count2#14]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=$aggregate.[count1#13, count2#14]
+        +-input_scan=
+        | +-TableScan(table=SimpleTypesWithAnonymizationUid)
+        +-aggregate_list=
+          +-count1#13 :=
+          | +-AggregateFunctionCall(GoogleSQL:$differential_privacy_count_star(optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+          |   +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+          +-count2#14 :=
+            +-AggregateFunctionCall(GoogleSQL:$differential_privacy_count(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+              +-Literal(type=INT64, value=1)
+              +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.count1#13 AS count1 [INT64]
+| +-$aggregate.count2#14 AS count2 [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=$aggregate.[count1#13, count2#14]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=$aggregate.[count1#13, count2#14]
+        +-input_scan=
+        | +-AggregateScan
+        |   +-column_list=[$aggregate.count1_partial#17, $aggregate.count2_partial#19, $group_by.$uid#20]
+        |   +-input_scan=
+        |   | +-TableScan(column_list=[SimpleTypesWithAnonymizationUid.uid#15], table=SimpleTypesWithAnonymizationUid, column_index_list=[10])
+        |   +-group_by_list=
+        |   | +-$uid#20 := ColumnRef(type=INT64, column=SimpleTypesWithAnonymizationUid.uid#15)
+        |   +-aggregate_list=
+        |     +-count1_partial#17 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+        |     +-count2_partial#19 :=
+        |       +-AggregateFunctionCall(GoogleSQL:count(INT64) -> INT64)
+        |         +-Literal(type=INT64, value=1)
+        +-aggregate_list=
+        | +-count1#13 :=
+        | | +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+        | |   +-ColumnRef(type=INT64, column=$aggregate.count1_partial#17)
+        | |   +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+        | +-count2#14 :=
+        |   +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+        |     +-ColumnRef(type=INT64, column=$aggregate.count2_partial#19)
+        |     +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+        +-group_selection_threshold_expr=
+          +-ColumnRef(type=INT64, column=$aggregate.count1#13)

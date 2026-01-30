@@ -1,0 +1,1514 @@
+[default enabled_ast_rewrites=DEFAULTS]
+[default show_sqlbuilder_output]
+[default language_features=MAXIMUM,+WITH_EXPRESSION]
+
+select WITH(a AS 2, b AS 3 * 4, a + b)
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#3 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#3]
+    +-expr_list=
+    | +-$col1#3 :=
+    |   +-WithExpr
+    |     +-type=INT64
+    |     +-assignment_list=
+    |     | +-a#1 := Literal(type=INT64, value=2)
+    |     | +-b#2 :=
+    |     |   +-FunctionCall(GoogleSQL:$multiply(INT64, INT64) -> INT64)
+    |     |     +-Literal(type=INT64, value=3)
+    |     |     +-Literal(type=INT64, value=4)
+    |     +-expr=
+    |       +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |         +-ColumnRef(type=INT64, column=$with_expr.a#1)
+    |         +-ColumnRef(type=INT64, column=$with_expr.b#2)
+    +-input_scan=
+      +-SingleRowScan
+
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+SELECT
+  WITH(a_2 AS 2, a_3 AS 3 * 4, a_2 + a_3) AS a_1;
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+SELECT
+  WITH(a_2 AS 2, a_3 AS 3 * 4, a_2 + a_3) AS a_1;
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$query.$col1#3 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#3]
+    +-expr_list=
+    | +-$col1#3 :=
+    |   +-SubqueryExpr
+    |     +-type=INT64
+    |     +-subquery_type=SCALAR
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$with_expr.injected#4]
+    |         +-expr_list=
+    |         | +-injected#4 :=
+    |         |   +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |         |     +-ColumnRef(type=INT64, column=$with_expr.a#1)
+    |         |     +-ColumnRef(type=INT64, column=$with_expr.b#2)
+    |         +-input_scan=
+    |           +-ProjectScan
+    |             +-column_list=$with_expr.[a#1, b#2]
+    |             +-expr_list=
+    |             | +-b#2 :=
+    |             |   +-FunctionCall(GoogleSQL:$multiply(INT64, INT64) -> INT64)
+    |             |     +-Literal(type=INT64, value=3)
+    |             |     +-Literal(type=INT64, value=4)
+    |             +-input_scan=
+    |               +-ProjectScan
+    |                 +-column_list=[$with_expr.a#1]
+    |                 +-expr_list=
+    |                 | +-a#1 := Literal(type=INT64, value=2)
+    |                 +-input_scan=
+    |                   +-SingleRowScan
+    +-input_scan=
+      +-SingleRowScan
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+SELECT
+  (
+    SELECT
+      (projectscan_5.a_2) + (projectscan_5.a_4) AS a_6
+    FROM
+      (
+        SELECT
+          projectscan_3.a_2 AS a_2,
+          3 * 4 AS a_4
+        FROM
+          (
+            SELECT
+              2 AS a_2
+          ) AS projectscan_3
+      ) AS projectscan_5
+  ) AS a_1;
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+SELECT
+  (
+    SELECT
+      2 AS a_2
+    |> AS projectscan_3
+    |> SELECT
+         projectscan_3.a_2 AS a_2,
+         3 * 4 AS a_4
+    |> AS projectscan_5
+    |> SELECT
+         (projectscan_5.a_2) + (projectscan_5.a_4) AS a_6
+  ) AS a_1;
+==
+
+# Names introduced in WITH should take precedence over names from the
+# environment. In this test, value is in scope from KeyValue, but we only
+# reference that version of value when it is fully qualified.
+select WITH(value AS 2, key + value + LENGTH(KeyValue.value)) from KeyValue
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#4 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#4]
+    +-expr_list=
+    | +-$col1#4 :=
+    |   +-WithExpr
+    |     +-type=INT64
+    |     +-assignment_list=
+    |     | +-value#3 := Literal(type=INT64, value=2)
+    |     +-expr=
+    |       +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |         +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |         | +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+    |         | +-ColumnRef(type=INT64, column=$with_expr.value#3)
+    |         +-FunctionCall(GoogleSQL:length(STRING) -> INT64)
+    |           +-ColumnRef(type=STRING, column=KeyValue.Value#2)
+    +-input_scan=
+      +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+SELECT
+  WITH(a_5 AS 2, ((keyvalue_3.a_1) + a_5) + (LENGTH(keyvalue_3.a_2))) AS a_4
+FROM
+  (
+    SELECT
+      KeyValue.Key AS a_1,
+      KeyValue.Value AS a_2
+    FROM
+      KeyValue
+  ) AS keyvalue_3;
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+FROM
+  KeyValue
+|> SELECT
+     KeyValue.Key AS a_1,
+     KeyValue.Value AS a_2
+|> AS keyvalue_3
+|> SELECT
+     WITH(a_5 AS 2, ((keyvalue_3.a_1) + a_5) + (LENGTH(keyvalue_3.a_2))) AS a_4;
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$query.$col1#4 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#4]
+    +-expr_list=
+    | +-$col1#4 :=
+    |   +-SubqueryExpr
+    |     +-type=INT64
+    |     +-subquery_type=SCALAR
+    |     +-parameter_list=
+    |     | +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+    |     | +-ColumnRef(type=STRING, column=KeyValue.Value#2)
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$with_expr.injected#5]
+    |         +-expr_list=
+    |         | +-injected#5 :=
+    |         |   +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |         |     +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |         |     | +-ColumnRef(type=INT64, column=KeyValue.Key#1, is_correlated=TRUE)
+    |         |     | +-ColumnRef(type=INT64, column=$with_expr.value#3)
+    |         |     +-FunctionCall(GoogleSQL:length(STRING) -> INT64)
+    |         |       +-ColumnRef(type=STRING, column=KeyValue.Value#2, is_correlated=TRUE)
+    |         +-input_scan=
+    |           +-ProjectScan
+    |             +-column_list=[$with_expr.value#3]
+    |             +-expr_list=
+    |             | +-value#3 := Literal(type=INT64, value=2)
+    |             +-input_scan=
+    |               +-SingleRowScan
+    +-input_scan=
+      +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+SELECT
+  (
+    SELECT
+      ((keyvalue_3.a_1) + (projectscan_6.a_5)) + (LENGTH(keyvalue_3.a_2)) AS a_7
+    FROM
+      (
+        SELECT
+          2 AS a_5
+      ) AS projectscan_6
+  ) AS a_4
+FROM
+  (
+    SELECT
+      KeyValue.Key AS a_1,
+      KeyValue.Value AS a_2
+    FROM
+      KeyValue
+  ) AS keyvalue_3;
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+FROM
+  KeyValue
+|> SELECT
+     KeyValue.Key AS a_1,
+     KeyValue.Value AS a_2
+|> AS keyvalue_3
+|> SELECT
+     (
+       SELECT
+         2 AS a_5
+       |> AS projectscan_6
+       |> SELECT
+            ((keyvalue_3.a_1) + (projectscan_6.a_5)) + (LENGTH(keyvalue_3.a_2)) AS a_7
+     ) AS a_4;
+==
+
+# We can reference expressions computed in one stage of a WITH expression
+# in later stages.
+SELECT WITH(a AS 1, b AS a + 2, c AS b + 3, d AS a * 2, a + c + d)
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#5 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#5]
+    +-expr_list=
+    | +-$col1#5 :=
+    |   +-WithExpr
+    |     +-type=INT64
+    |     +-assignment_list=
+    |     | +-a#1 := Literal(type=INT64, value=1)
+    |     | +-b#2 :=
+    |     | | +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |     | |   +-ColumnRef(type=INT64, column=$with_expr.a#1)
+    |     | |   +-Literal(type=INT64, value=2)
+    |     | +-c#3 :=
+    |     | | +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |     | |   +-ColumnRef(type=INT64, column=$with_expr.b#2)
+    |     | |   +-Literal(type=INT64, value=3)
+    |     | +-d#4 :=
+    |     |   +-FunctionCall(GoogleSQL:$multiply(INT64, INT64) -> INT64)
+    |     |     +-ColumnRef(type=INT64, column=$with_expr.a#1)
+    |     |     +-Literal(type=INT64, value=2)
+    |     +-expr=
+    |       +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |         +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |         | +-ColumnRef(type=INT64, column=$with_expr.a#1)
+    |         | +-ColumnRef(type=INT64, column=$with_expr.c#3)
+    |         +-ColumnRef(type=INT64, column=$with_expr.d#4)
+    +-input_scan=
+      +-SingleRowScan
+
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+SELECT
+  WITH(a_2 AS 1, a_5 AS a_2 + 2, a_3 AS a_5 + 3, a_4 AS a_2 * 2, (a_2 + a_3) + a_4) AS a_1;
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+SELECT
+  WITH(a_2 AS 1, a_5 AS a_2 + 2, a_3 AS a_5 + 3, a_4 AS a_2 * 2, (a_2 + a_3) + a_4) AS a_1;
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$query.$col1#5 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#5]
+    +-expr_list=
+    | +-$col1#5 :=
+    |   +-SubqueryExpr
+    |     +-type=INT64
+    |     +-subquery_type=SCALAR
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$with_expr.injected#6]
+    |         +-expr_list=
+    |         | +-injected#6 :=
+    |         |   +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |         |     +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |         |     | +-ColumnRef(type=INT64, column=$with_expr.a#1)
+    |         |     | +-ColumnRef(type=INT64, column=$with_expr.c#3)
+    |         |     +-ColumnRef(type=INT64, column=$with_expr.d#4)
+    |         +-input_scan=
+    |           +-ProjectScan
+    |             +-column_list=$with_expr.[a#1, b#2, c#3, d#4]
+    |             +-expr_list=
+    |             | +-d#4 :=
+    |             |   +-FunctionCall(GoogleSQL:$multiply(INT64, INT64) -> INT64)
+    |             |     +-ColumnRef(type=INT64, column=$with_expr.a#1)
+    |             |     +-Literal(type=INT64, value=2)
+    |             +-input_scan=
+    |               +-ProjectScan
+    |                 +-column_list=$with_expr.[a#1, b#2, c#3]
+    |                 +-expr_list=
+    |                 | +-c#3 :=
+    |                 |   +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |                 |     +-ColumnRef(type=INT64, column=$with_expr.b#2)
+    |                 |     +-Literal(type=INT64, value=3)
+    |                 +-input_scan=
+    |                   +-ProjectScan
+    |                     +-column_list=$with_expr.[a#1, b#2]
+    |                     +-expr_list=
+    |                     | +-b#2 :=
+    |                     |   +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |                     |     +-ColumnRef(type=INT64, column=$with_expr.a#1)
+    |                     |     +-Literal(type=INT64, value=2)
+    |                     +-input_scan=
+    |                       +-ProjectScan
+    |                         +-column_list=[$with_expr.a#1]
+    |                         +-expr_list=
+    |                         | +-a#1 := Literal(type=INT64, value=1)
+    |                         +-input_scan=
+    |                           +-SingleRowScan
+    +-input_scan=
+      +-SingleRowScan
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+SELECT
+  (
+    SELECT
+      ((projectscan_9.a_2) + (projectscan_9.a_6)) + (projectscan_9.a_8) AS a_10
+    FROM
+      (
+        SELECT
+          projectscan_7.a_2 AS a_2,
+          projectscan_7.a_4 AS a_4,
+          projectscan_7.a_6 AS a_6,
+          (projectscan_7.a_2) * 2 AS a_8
+        FROM
+          (
+            SELECT
+              projectscan_5.a_2 AS a_2,
+              projectscan_5.a_4 AS a_4,
+              (projectscan_5.a_4) + 3 AS a_6
+            FROM
+              (
+                SELECT
+                  projectscan_3.a_2 AS a_2,
+                  (projectscan_3.a_2) + 2 AS a_4
+                FROM
+                  (
+                    SELECT
+                      1 AS a_2
+                  ) AS projectscan_3
+              ) AS projectscan_5
+          ) AS projectscan_7
+      ) AS projectscan_9
+  ) AS a_1;
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+SELECT
+  (
+    SELECT
+      1 AS a_2
+    |> AS projectscan_3
+    |> SELECT
+         projectscan_3.a_2 AS a_2,
+         (projectscan_3.a_2) + 2 AS a_4
+    |> AS projectscan_5
+    |> SELECT
+         projectscan_5.a_2 AS a_2,
+         projectscan_5.a_4 AS a_4,
+         (projectscan_5.a_4) + 3 AS a_6
+    |> AS projectscan_7
+    |> SELECT
+         projectscan_7.a_2 AS a_2,
+         projectscan_7.a_4 AS a_4,
+         projectscan_7.a_6 AS a_6,
+         (projectscan_7.a_2) * 2 AS a_8
+    |> AS projectscan_9
+    |> SELECT
+         ((projectscan_9.a_2) + (projectscan_9.a_6)) + (projectscan_9.a_8) AS a_10
+  ) AS a_1;
+==
+
+# Nested WITH expressions resolve correctly.
+SELECT WITH(a AS "abc", b AS WITH(a AS "def", b AS "ghi", CONCAT(a, b)), CONCAT(a, b))
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#5 AS `$col1` [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#5]
+    +-expr_list=
+    | +-$col1#5 :=
+    |   +-WithExpr
+    |     +-type=STRING
+    |     +-assignment_list=
+    |     | +-a#1 := Literal(type=STRING, value="abc")
+    |     | +-b#4 :=
+    |     |   +-WithExpr
+    |     |     +-type=STRING
+    |     |     +-assignment_list=
+    |     |     | +-a#2 := Literal(type=STRING, value="def")
+    |     |     | +-b#3 := Literal(type=STRING, value="ghi")
+    |     |     +-expr=
+    |     |       +-FunctionCall(GoogleSQL:concat(STRING, repeated(1) STRING) -> STRING)
+    |     |         +-ColumnRef(type=STRING, column=$with_expr.a#2)
+    |     |         +-ColumnRef(type=STRING, column=$with_expr.b#3)
+    |     +-expr=
+    |       +-FunctionCall(GoogleSQL:concat(STRING, repeated(1) STRING) -> STRING)
+    |         +-ColumnRef(type=STRING, column=$with_expr.a#1)
+    |         +-ColumnRef(type=STRING, column=$with_expr.b#4)
+    +-input_scan=
+      +-SingleRowScan
+
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+SELECT
+  WITH(a_2 AS "abc", a_3 AS WITH(a_4 AS "def", a_5 AS "ghi", CONCAT(a_4, a_5)), CONCAT(a_2, a_3)) AS a_1;
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+SELECT
+  WITH(a_2 AS "abc", a_3 AS WITH(a_4 AS "def", a_5 AS "ghi", CONCAT(a_4, a_5)), CONCAT(a_2, a_3)) AS a_1;
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$query.$col1#5 AS `$col1` [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#5]
+    +-expr_list=
+    | +-$col1#5 :=
+    |   +-SubqueryExpr
+    |     +-type=STRING
+    |     +-subquery_type=SCALAR
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$with_expr.injected#7]
+    |         +-expr_list=
+    |         | +-injected#7 :=
+    |         |   +-FunctionCall(GoogleSQL:concat(STRING, repeated(1) STRING) -> STRING)
+    |         |     +-ColumnRef(type=STRING, column=$with_expr.a#1)
+    |         |     +-ColumnRef(type=STRING, column=$with_expr.b#4)
+    |         +-input_scan=
+    |           +-ProjectScan
+    |             +-column_list=$with_expr.[a#1, b#4]
+    |             +-expr_list=
+    |             | +-b#4 :=
+    |             |   +-SubqueryExpr
+    |             |     +-type=STRING
+    |             |     +-subquery_type=SCALAR
+    |             |     +-subquery=
+    |             |       +-ProjectScan
+    |             |         +-column_list=[$with_expr.injected#6]
+    |             |         +-expr_list=
+    |             |         | +-injected#6 :=
+    |             |         |   +-FunctionCall(GoogleSQL:concat(STRING, repeated(1) STRING) -> STRING)
+    |             |         |     +-ColumnRef(type=STRING, column=$with_expr.a#2)
+    |             |         |     +-ColumnRef(type=STRING, column=$with_expr.b#3)
+    |             |         +-input_scan=
+    |             |           +-ProjectScan
+    |             |             +-column_list=$with_expr.[a#2, b#3]
+    |             |             +-expr_list=
+    |             |             | +-b#3 := Literal(type=STRING, value="ghi")
+    |             |             +-input_scan=
+    |             |               +-ProjectScan
+    |             |                 +-column_list=[$with_expr.a#2]
+    |             |                 +-expr_list=
+    |             |                 | +-a#2 := Literal(type=STRING, value="def")
+    |             |                 +-input_scan=
+    |             |                   +-SingleRowScan
+    |             +-input_scan=
+    |               +-ProjectScan
+    |                 +-column_list=[$with_expr.a#1]
+    |                 +-expr_list=
+    |                 | +-a#1 := Literal(type=STRING, value="abc")
+    |                 +-input_scan=
+    |                   +-SingleRowScan
+    +-input_scan=
+      +-SingleRowScan
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+SELECT
+  (
+    SELECT
+      CONCAT(projectscan_10.a_2, projectscan_10.a_4) AS a_11
+    FROM
+      (
+        SELECT
+          projectscan_3.a_2 AS a_2,
+          (
+            SELECT
+              CONCAT(projectscan_8.a_5, projectscan_8.a_7) AS a_9
+            FROM
+              (
+                SELECT
+                  projectscan_6.a_5 AS a_5,
+                  "ghi" AS a_7
+                FROM
+                  (
+                    SELECT
+                      "def" AS a_5
+                  ) AS projectscan_6
+              ) AS projectscan_8
+          ) AS a_4
+        FROM
+          (
+            SELECT
+              "abc" AS a_2
+          ) AS projectscan_3
+      ) AS projectscan_10
+  ) AS a_1;
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+SELECT
+  (
+    SELECT
+      "abc" AS a_2
+    |> AS projectscan_3
+    |> SELECT
+         projectscan_3.a_2 AS a_2,
+         (
+           SELECT
+             "def" AS a_5
+           |> AS projectscan_6
+           |> SELECT
+                projectscan_6.a_5 AS a_5,
+                "ghi" AS a_7
+           |> AS projectscan_8
+           |> SELECT
+                CONCAT(projectscan_8.a_5, projectscan_8.a_7) AS a_9
+         ) AS a_4
+    |> AS projectscan_10
+    |> SELECT
+         CONCAT(projectscan_10.a_2, projectscan_10.a_4) AS a_11
+  ) AS a_1;
+==
+
+[language_features=NONE]
+select WITH(a AS 2, b AS 3 * 4, a + b)
+--
+ERROR: WITH expressions are not enabled. [at 1:8]
+select WITH(a AS 2, b AS 3 * 4, a + b)
+       ^
+==
+
+# We can reference aggregates within WITH expressions.
+SELECT WITH(len AS LENGTH(KeyValue.value),
+            sumk AS SUM(KeyValue.key),
+            len * sumk)
+FROM KeyValue GROUP BY value;
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#9 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#9]
+    +-expr_list=
+    | +-$col1#9 :=
+    |   +-WithExpr
+    |     +-type=INT64
+    |     +-assignment_list=
+    |     | +-len#7 :=
+    |     | | +-FunctionCall(GoogleSQL:length(STRING) -> INT64)
+    |     | |   +-ColumnRef(type=STRING, column=$groupby.value#6)
+    |     | +-sumk#8 := ColumnRef(type=INT64, column=$aggregate.$agg1#4)
+    |     +-expr=
+    |       +-FunctionCall(GoogleSQL:$multiply(INT64, INT64) -> INT64)
+    |         +-ColumnRef(type=INT64, column=$with_expr.len#7)
+    |         +-ColumnRef(type=INT64, column=$with_expr.sumk#8)
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$groupby.value#6, $aggregate.$agg1#4]
+        +-input_scan=
+        | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+        +-group_by_list=
+        | +-value#6 := ColumnRef(type=STRING, column=KeyValue.Value#2)
+        +-aggregate_list=
+          +-$agg1#4 :=
+            +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+              +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+SELECT
+  WITH(a_8 AS LENGTH(aggregatescan_6.a_4), a_9 AS aggregatescan_6.a_5, a_8 * a_9) AS a_7
+FROM
+  (
+    SELECT
+      keyvalue_3.a_2 AS a_4,
+      SUM(keyvalue_3.a_1) AS a_5
+    FROM
+      (
+        SELECT
+          KeyValue.Key AS a_1,
+          KeyValue.Value AS a_2
+        FROM
+          KeyValue
+      ) AS keyvalue_3
+    GROUP BY 1
+  ) AS aggregatescan_6;
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+FROM
+  KeyValue
+|> SELECT
+     KeyValue.Key AS a_1,
+     KeyValue.Value AS a_2
+|> AS keyvalue_3
+|> EXTEND
+     keyvalue_3.a_2 AS a_4
+|> AGGREGATE
+     SUM(keyvalue_3.a_1) AS a_5
+   GROUP BY a_4
+|> AS aggregatescan_6
+|> SELECT
+     WITH(a_8 AS LENGTH(aggregatescan_6.a_4), a_9 AS aggregatescan_6.a_5, a_8 * a_9) AS a_7;
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$query.$col1#9 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#9]
+    +-expr_list=
+    | +-$col1#9 :=
+    |   +-SubqueryExpr
+    |     +-type=INT64
+    |     +-subquery_type=SCALAR
+    |     +-parameter_list=
+    |     | +-ColumnRef(type=INT64, column=$aggregate.$agg1#4)
+    |     | +-ColumnRef(type=STRING, column=$groupby.value#6)
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$with_expr.injected#10]
+    |         +-expr_list=
+    |         | +-injected#10 :=
+    |         |   +-FunctionCall(GoogleSQL:$multiply(INT64, INT64) -> INT64)
+    |         |     +-ColumnRef(type=INT64, column=$with_expr.len#7)
+    |         |     +-ColumnRef(type=INT64, column=$with_expr.sumk#8)
+    |         +-input_scan=
+    |           +-ProjectScan
+    |             +-column_list=$with_expr.[len#7, sumk#8]
+    |             +-expr_list=
+    |             | +-sumk#8 := ColumnRef(type=INT64, column=$aggregate.$agg1#4, is_correlated=TRUE)
+    |             +-input_scan=
+    |               +-ProjectScan
+    |                 +-column_list=[$with_expr.len#7]
+    |                 +-expr_list=
+    |                 | +-len#7 :=
+    |                 |   +-FunctionCall(GoogleSQL:length(STRING) -> INT64)
+    |                 |     +-ColumnRef(type=STRING, column=$groupby.value#6, is_correlated=TRUE)
+    |                 +-input_scan=
+    |                   +-SingleRowScan
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$groupby.value#6, $aggregate.$agg1#4]
+        +-input_scan=
+        | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+        +-group_by_list=
+        | +-value#6 := ColumnRef(type=STRING, column=KeyValue.Value#2)
+        +-aggregate_list=
+          +-$agg1#4 :=
+            +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+              +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+SELECT
+  (
+    SELECT
+      (projectscan_11.a_8) * (projectscan_11.a_10) AS a_12
+    FROM
+      (
+        SELECT
+          projectscan_9.a_8 AS a_8,
+          aggregatescan_6.a_5 AS a_10
+        FROM
+          (
+            SELECT
+              LENGTH(aggregatescan_6.a_4) AS a_8
+          ) AS projectscan_9
+      ) AS projectscan_11
+  ) AS a_7
+FROM
+  (
+    SELECT
+      keyvalue_3.a_2 AS a_4,
+      SUM(keyvalue_3.a_1) AS a_5
+    FROM
+      (
+        SELECT
+          KeyValue.Key AS a_1,
+          KeyValue.Value AS a_2
+        FROM
+          KeyValue
+      ) AS keyvalue_3
+    GROUP BY 1
+  ) AS aggregatescan_6;
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+FROM
+  KeyValue
+|> SELECT
+     KeyValue.Key AS a_1,
+     KeyValue.Value AS a_2
+|> AS keyvalue_3
+|> EXTEND
+     keyvalue_3.a_2 AS a_4
+|> AGGREGATE
+     SUM(keyvalue_3.a_1) AS a_5
+   GROUP BY a_4
+|> AS aggregatescan_6
+|> SELECT
+     (
+       SELECT
+         LENGTH(aggregatescan_6.a_4) AS a_8
+       |> AS projectscan_9
+       |> SELECT
+            projectscan_9.a_8 AS a_8,
+            aggregatescan_6.a_5 AS a_10
+       |> AS projectscan_11
+       |> SELECT
+            (projectscan_11.a_8) * (projectscan_11.a_10) AS a_12
+     ) AS a_7;
+==
+
+[language_features=NONE,+ANALYTIC_FUNCTIONS,+WITH_EXPRESSION]
+select WITH(k AS key, a AS afn_agg(k) over (), a * 2)
+from KeyValue;
+--
+ERROR: Column 'k' is introduced by WITH. Columns introduced by WITH cannot be used in the arguments to aggregate or analytic functions. [at 1:36]
+select WITH(k AS key, a AS afn_agg(k) over (), a * 2)
+                                   ^
+==
+
+[language_features=NONE,+ANALYTIC_FUNCTIONS,+WITH_EXPRESSION]
+select sum(WITH(s AS sum(key) over (), s * 2)) over ()
+from KeyValue;
+--
+ERROR: Analytic function cannot be an argument of another analytic function [at 1:8]
+select sum(WITH(s AS sum(key) over (), s * 2)) over ()
+       ^
+==
+
+[language_features=NONE,+WITH_EXPRESSION]
+select sum(WITH(s AS sum(key), s * 2))
+from KeyValue;
+--
+ERROR: Aggregations of aggregations are not allowed [at 1:8]
+select sum(WITH(s AS sum(key), s * 2))
+       ^
+==
+
+SELECT WITH(thecount AS COUNT(KeyValue.key),
+            thesum AS SUM(KeyValue.key),
+            thesum / thecount)
+FROM KeyValue GROUP BY value;
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#10 AS `$col1` [DOUBLE]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#10]
+    +-expr_list=
+    | +-$col1#10 :=
+    |   +-WithExpr
+    |     +-type=DOUBLE
+    |     +-assignment_list=
+    |     | +-thecount#8 := ColumnRef(type=INT64, column=$aggregate.$agg1#3)
+    |     | +-thesum#9 := ColumnRef(type=INT64, column=$aggregate.$agg2#5)
+    |     +-expr=
+    |       +-FunctionCall(GoogleSQL:$divide(DOUBLE, DOUBLE) -> DOUBLE)
+    |         +-Cast(INT64 -> DOUBLE)
+    |         | +-ColumnRef(type=INT64, column=$with_expr.thesum#9)
+    |         +-Cast(INT64 -> DOUBLE)
+    |           +-ColumnRef(type=INT64, column=$with_expr.thecount#8)
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=$aggregate.[$agg1#3, $agg2#5]
+        +-input_scan=
+        | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+        +-group_by_list=
+        | +-value#7 := ColumnRef(type=STRING, column=KeyValue.Value#2)
+        +-aggregate_list=
+          +-$agg1#3 :=
+          | +-AggregateFunctionCall(GoogleSQL:count(INT64) -> INT64)
+          |   +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+          +-$agg2#5 :=
+            +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+              +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+SELECT
+  WITH(a_9 AS aggregatescan_6.a_4, a_8 AS aggregatescan_6.a_5, CAST(a_8 AS DOUBLE) / CAST(a_9 AS DOUBLE)) AS a_7
+FROM
+  (
+    SELECT
+      COUNT(keyvalue_3.a_1) AS a_4,
+      SUM(keyvalue_3.a_1) AS a_5
+    FROM
+      (
+        SELECT
+          KeyValue.Key AS a_1,
+          KeyValue.Value AS a_2
+        FROM
+          KeyValue
+      ) AS keyvalue_3
+    GROUP BY keyvalue_3.a_2
+  ) AS aggregatescan_6;
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+SELECT
+  COUNT(keyvalue_3.a_1) AS a_4,
+  SUM(keyvalue_3.a_1) AS a_5
+FROM
+  (
+    FROM
+      KeyValue
+    |> SELECT
+         KeyValue.Key AS a_1,
+         KeyValue.Value AS a_2
+    |> AS keyvalue_3
+  )
+GROUP BY keyvalue_3.a_2
+|> AS aggregatescan_6
+|> SELECT
+     WITH(a_9 AS aggregatescan_6.a_4, a_8 AS aggregatescan_6.a_5, CAST(a_8 AS DOUBLE) / CAST(a_9 AS DOUBLE)) AS a_7;
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$query.$col1#10 AS `$col1` [DOUBLE]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#10]
+    +-expr_list=
+    | +-$col1#10 :=
+    |   +-SubqueryExpr
+    |     +-type=DOUBLE
+    |     +-subquery_type=SCALAR
+    |     +-parameter_list=
+    |     | +-ColumnRef(type=INT64, column=$aggregate.$agg1#3)
+    |     | +-ColumnRef(type=INT64, column=$aggregate.$agg2#5)
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$with_expr.injected#11]
+    |         +-expr_list=
+    |         | +-injected#11 :=
+    |         |   +-FunctionCall(GoogleSQL:$divide(DOUBLE, DOUBLE) -> DOUBLE)
+    |         |     +-Cast(INT64 -> DOUBLE)
+    |         |     | +-ColumnRef(type=INT64, column=$with_expr.thesum#9)
+    |         |     +-Cast(INT64 -> DOUBLE)
+    |         |       +-ColumnRef(type=INT64, column=$with_expr.thecount#8)
+    |         +-input_scan=
+    |           +-ProjectScan
+    |             +-column_list=$with_expr.[thecount#8, thesum#9]
+    |             +-expr_list=
+    |             | +-thesum#9 := ColumnRef(type=INT64, column=$aggregate.$agg2#5, is_correlated=TRUE)
+    |             +-input_scan=
+    |               +-ProjectScan
+    |                 +-column_list=[$with_expr.thecount#8]
+    |                 +-expr_list=
+    |                 | +-thecount#8 := ColumnRef(type=INT64, column=$aggregate.$agg1#3, is_correlated=TRUE)
+    |                 +-input_scan=
+    |                   +-SingleRowScan
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=$aggregate.[$agg1#3, $agg2#5]
+        +-input_scan=
+        | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+        +-group_by_list=
+        | +-value#7 := ColumnRef(type=STRING, column=KeyValue.Value#2)
+        +-aggregate_list=
+          +-$agg1#3 :=
+          | +-AggregateFunctionCall(GoogleSQL:count(INT64) -> INT64)
+          |   +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+          +-$agg2#5 :=
+            +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+              +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+SELECT
+  (
+    SELECT
+      CAST(projectscan_11.a_10 AS DOUBLE) / CAST(projectscan_11.a_8 AS DOUBLE) AS a_12
+    FROM
+      (
+        SELECT
+          projectscan_9.a_8 AS a_8,
+          aggregatescan_6.a_5 AS a_10
+        FROM
+          (
+            SELECT
+              aggregatescan_6.a_4 AS a_8
+          ) AS projectscan_9
+      ) AS projectscan_11
+  ) AS a_7
+FROM
+  (
+    SELECT
+      COUNT(keyvalue_3.a_1) AS a_4,
+      SUM(keyvalue_3.a_1) AS a_5
+    FROM
+      (
+        SELECT
+          KeyValue.Key AS a_1,
+          KeyValue.Value AS a_2
+        FROM
+          KeyValue
+      ) AS keyvalue_3
+    GROUP BY keyvalue_3.a_2
+  ) AS aggregatescan_6;
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+SELECT
+  COUNT(keyvalue_3.a_1) AS a_4,
+  SUM(keyvalue_3.a_1) AS a_5
+FROM
+  (
+    FROM
+      KeyValue
+    |> SELECT
+         KeyValue.Key AS a_1,
+         KeyValue.Value AS a_2
+    |> AS keyvalue_3
+  )
+GROUP BY keyvalue_3.a_2
+|> AS aggregatescan_6
+|> SELECT
+     (
+       SELECT
+         aggregatescan_6.a_4 AS a_8
+       |> AS projectscan_9
+       |> SELECT
+            projectscan_9.a_8 AS a_8,
+            aggregatescan_6.a_5 AS a_10
+       |> AS projectscan_11
+       |> SELECT
+            CAST(projectscan_11.a_10 AS DOUBLE) / CAST(projectscan_11.a_8 AS DOUBLE) AS a_12
+     ) AS a_7;
+==
+
+SELECT WITH(sumk AS SUM(KeyValue.key),
+            countsum AS COUNT(sumk),
+            countsum * 2)
+FROM KeyValue GROUP BY value;
+--
+ERROR: Column 'sumk' is introduced by WITH. Columns introduced by WITH cannot be used in the arguments to aggregate or analytic functions. [at 2:31]
+            countsum AS COUNT(sumk),
+                              ^
+==
+
+SELECT WITH(len AS LENGTH(KeyValue.value),
+            len * SUM(KeyValue.key))
+FROM KeyValue GROUP BY value;
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#7 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#7]
+    +-expr_list=
+    | +-$col1#7 :=
+    |   +-WithExpr
+    |     +-type=INT64
+    |     +-assignment_list=
+    |     | +-len#6 :=
+    |     |   +-FunctionCall(GoogleSQL:length(STRING) -> INT64)
+    |     |     +-ColumnRef(type=STRING, column=$groupby.value#5)
+    |     +-expr=
+    |       +-FunctionCall(GoogleSQL:$multiply(INT64, INT64) -> INT64)
+    |         +-ColumnRef(type=INT64, column=$with_expr.len#6)
+    |         +-ColumnRef(type=INT64, column=$aggregate.$agg1#4)
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$groupby.value#5, $aggregate.$agg1#4]
+        +-input_scan=
+        | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+        +-group_by_list=
+        | +-value#5 := ColumnRef(type=STRING, column=KeyValue.Value#2)
+        +-aggregate_list=
+          +-$agg1#4 :=
+            +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+              +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+SELECT
+  WITH(a_8 AS LENGTH(aggregatescan_6.a_4), a_8 * (aggregatescan_6.a_5)) AS a_7
+FROM
+  (
+    SELECT
+      keyvalue_3.a_2 AS a_4,
+      SUM(keyvalue_3.a_1) AS a_5
+    FROM
+      (
+        SELECT
+          KeyValue.Key AS a_1,
+          KeyValue.Value AS a_2
+        FROM
+          KeyValue
+      ) AS keyvalue_3
+    GROUP BY 1
+  ) AS aggregatescan_6;
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+FROM
+  KeyValue
+|> SELECT
+     KeyValue.Key AS a_1,
+     KeyValue.Value AS a_2
+|> AS keyvalue_3
+|> EXTEND
+     keyvalue_3.a_2 AS a_4
+|> AGGREGATE
+     SUM(keyvalue_3.a_1) AS a_5
+   GROUP BY a_4
+|> AS aggregatescan_6
+|> SELECT
+     WITH(a_8 AS LENGTH(aggregatescan_6.a_4), a_8 * (aggregatescan_6.a_5)) AS a_7;
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$query.$col1#7 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#7]
+    +-expr_list=
+    | +-$col1#7 :=
+    |   +-SubqueryExpr
+    |     +-type=INT64
+    |     +-subquery_type=SCALAR
+    |     +-parameter_list=
+    |     | +-ColumnRef(type=INT64, column=$aggregate.$agg1#4)
+    |     | +-ColumnRef(type=STRING, column=$groupby.value#5)
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$with_expr.injected#8]
+    |         +-expr_list=
+    |         | +-injected#8 :=
+    |         |   +-FunctionCall(GoogleSQL:$multiply(INT64, INT64) -> INT64)
+    |         |     +-ColumnRef(type=INT64, column=$with_expr.len#6)
+    |         |     +-ColumnRef(type=INT64, column=$aggregate.$agg1#4, is_correlated=TRUE)
+    |         +-input_scan=
+    |           +-ProjectScan
+    |             +-column_list=[$with_expr.len#6]
+    |             +-expr_list=
+    |             | +-len#6 :=
+    |             |   +-FunctionCall(GoogleSQL:length(STRING) -> INT64)
+    |             |     +-ColumnRef(type=STRING, column=$groupby.value#5, is_correlated=TRUE)
+    |             +-input_scan=
+    |               +-SingleRowScan
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$groupby.value#5, $aggregate.$agg1#4]
+        +-input_scan=
+        | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+        +-group_by_list=
+        | +-value#5 := ColumnRef(type=STRING, column=KeyValue.Value#2)
+        +-aggregate_list=
+          +-$agg1#4 :=
+            +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+              +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+SELECT
+  (
+    SELECT
+      (projectscan_9.a_8) * (aggregatescan_6.a_5) AS a_10
+    FROM
+      (
+        SELECT
+          LENGTH(aggregatescan_6.a_4) AS a_8
+      ) AS projectscan_9
+  ) AS a_7
+FROM
+  (
+    SELECT
+      keyvalue_3.a_2 AS a_4,
+      SUM(keyvalue_3.a_1) AS a_5
+    FROM
+      (
+        SELECT
+          KeyValue.Key AS a_1,
+          KeyValue.Value AS a_2
+        FROM
+          KeyValue
+      ) AS keyvalue_3
+    GROUP BY 1
+  ) AS aggregatescan_6;
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+FROM
+  KeyValue
+|> SELECT
+     KeyValue.Key AS a_1,
+     KeyValue.Value AS a_2
+|> AS keyvalue_3
+|> EXTEND
+     keyvalue_3.a_2 AS a_4
+|> AGGREGATE
+     SUM(keyvalue_3.a_1) AS a_5
+   GROUP BY a_4
+|> AS aggregatescan_6
+|> SELECT
+     (
+       SELECT
+         LENGTH(aggregatescan_6.a_4) AS a_8
+       |> AS projectscan_9
+       |> SELECT
+            (projectscan_9.a_8) * (aggregatescan_6.a_5) AS a_10
+     ) AS a_7;
+
+==
+
+SELECT WITH(keylocal AS KeyValue.key,
+            len AS LENGTH(KeyValue.value),
+            len * SUM(keylocal))
+FROM KeyValue GROUP BY value;
+--
+ERROR: Column 'keylocal' is introduced by WITH. Columns introduced by WITH cannot be used in the arguments to aggregate or analytic functions. [at 3:23]
+            len * SUM(keylocal))
+                      ^
+==
+
+SELECT WITH(keylocal AS KeyValue.key + 1,
+            len AS LENGTH(KeyValue.value),
+            len * SUM(keylocal))
+FROM KeyValue GROUP BY value;
+--
+ERROR: Column 'keylocal' is introduced by WITH. Columns introduced by WITH cannot be used in the arguments to aggregate or analytic functions. [at 3:23]
+            len * SUM(keylocal))
+                      ^
+==
+
+SELECT WITH(thecount AS COUNT(KeyValue.key),
+            SUM(KeyValue.key) / thecount)
+FROM KeyValue GROUP BY value;
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#8 AS `$col1` [DOUBLE]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#8]
+    +-expr_list=
+    | +-$col1#8 :=
+    |   +-WithExpr
+    |     +-type=DOUBLE
+    |     +-assignment_list=
+    |     | +-thecount#7 := ColumnRef(type=INT64, column=$aggregate.$agg1#3)
+    |     +-expr=
+    |       +-FunctionCall(GoogleSQL:$divide(DOUBLE, DOUBLE) -> DOUBLE)
+    |         +-Cast(INT64 -> DOUBLE)
+    |         | +-ColumnRef(type=INT64, column=$aggregate.$agg2#5)
+    |         +-Cast(INT64 -> DOUBLE)
+    |           +-ColumnRef(type=INT64, column=$with_expr.thecount#7)
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=$aggregate.[$agg1#3, $agg2#5]
+        +-input_scan=
+        | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+        +-group_by_list=
+        | +-value#6 := ColumnRef(type=STRING, column=KeyValue.Value#2)
+        +-aggregate_list=
+          +-$agg1#3 :=
+          | +-AggregateFunctionCall(GoogleSQL:count(INT64) -> INT64)
+          |   +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+          +-$agg2#5 :=
+            +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+              +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+SELECT
+  WITH(a_8 AS aggregatescan_6.a_4, CAST(aggregatescan_6.a_5 AS DOUBLE) / CAST(a_8 AS DOUBLE)) AS a_7
+FROM
+  (
+    SELECT
+      COUNT(keyvalue_3.a_1) AS a_4,
+      SUM(keyvalue_3.a_1) AS a_5
+    FROM
+      (
+        SELECT
+          KeyValue.Key AS a_1,
+          KeyValue.Value AS a_2
+        FROM
+          KeyValue
+      ) AS keyvalue_3
+    GROUP BY keyvalue_3.a_2
+  ) AS aggregatescan_6;
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+SELECT
+  COUNT(keyvalue_3.a_1) AS a_4,
+  SUM(keyvalue_3.a_1) AS a_5
+FROM
+  (
+    FROM
+      KeyValue
+    |> SELECT
+         KeyValue.Key AS a_1,
+         KeyValue.Value AS a_2
+    |> AS keyvalue_3
+  )
+GROUP BY keyvalue_3.a_2
+|> AS aggregatescan_6
+|> SELECT
+     WITH(a_8 AS aggregatescan_6.a_4, CAST(aggregatescan_6.a_5 AS DOUBLE) / CAST(a_8 AS DOUBLE)) AS a_7;
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$query.$col1#8 AS `$col1` [DOUBLE]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#8]
+    +-expr_list=
+    | +-$col1#8 :=
+    |   +-SubqueryExpr
+    |     +-type=DOUBLE
+    |     +-subquery_type=SCALAR
+    |     +-parameter_list=
+    |     | +-ColumnRef(type=INT64, column=$aggregate.$agg1#3)
+    |     | +-ColumnRef(type=INT64, column=$aggregate.$agg2#5)
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$with_expr.injected#9]
+    |         +-expr_list=
+    |         | +-injected#9 :=
+    |         |   +-FunctionCall(GoogleSQL:$divide(DOUBLE, DOUBLE) -> DOUBLE)
+    |         |     +-Cast(INT64 -> DOUBLE)
+    |         |     | +-ColumnRef(type=INT64, column=$aggregate.$agg2#5, is_correlated=TRUE)
+    |         |     +-Cast(INT64 -> DOUBLE)
+    |         |       +-ColumnRef(type=INT64, column=$with_expr.thecount#7)
+    |         +-input_scan=
+    |           +-ProjectScan
+    |             +-column_list=[$with_expr.thecount#7]
+    |             +-expr_list=
+    |             | +-thecount#7 := ColumnRef(type=INT64, column=$aggregate.$agg1#3, is_correlated=TRUE)
+    |             +-input_scan=
+    |               +-SingleRowScan
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=$aggregate.[$agg1#3, $agg2#5]
+        +-input_scan=
+        | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+        +-group_by_list=
+        | +-value#6 := ColumnRef(type=STRING, column=KeyValue.Value#2)
+        +-aggregate_list=
+          +-$agg1#3 :=
+          | +-AggregateFunctionCall(GoogleSQL:count(INT64) -> INT64)
+          |   +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+          +-$agg2#5 :=
+            +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+              +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+SELECT
+  (
+    SELECT
+      CAST(aggregatescan_6.a_5 AS DOUBLE) / CAST(projectscan_9.a_8 AS DOUBLE) AS a_10
+    FROM
+      (
+        SELECT
+          aggregatescan_6.a_4 AS a_8
+      ) AS projectscan_9
+  ) AS a_7
+FROM
+  (
+    SELECT
+      COUNT(keyvalue_3.a_1) AS a_4,
+      SUM(keyvalue_3.a_1) AS a_5
+    FROM
+      (
+        SELECT
+          KeyValue.Key AS a_1,
+          KeyValue.Value AS a_2
+        FROM
+          KeyValue
+      ) AS keyvalue_3
+    GROUP BY keyvalue_3.a_2
+  ) AS aggregatescan_6;
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+SELECT
+  COUNT(keyvalue_3.a_1) AS a_4,
+  SUM(keyvalue_3.a_1) AS a_5
+FROM
+  (
+    FROM
+      KeyValue
+    |> SELECT
+         KeyValue.Key AS a_1,
+         KeyValue.Value AS a_2
+    |> AS keyvalue_3
+  )
+GROUP BY keyvalue_3.a_2
+|> AS aggregatescan_6
+|> SELECT
+     (
+       SELECT
+         aggregatescan_6.a_4 AS a_8
+       |> AS projectscan_9
+       |> SELECT
+            CAST(aggregatescan_6.a_5 AS DOUBLE) / CAST(projectscan_9.a_8 AS DOUBLE) AS a_10
+     ) AS a_7;
+==
+
+SELECT WITH(sumk AS SUM(KeyValue.key),
+            COUNT(sumk) * 2)
+FROM KeyValue GROUP BY value;
+--
+ERROR: Column 'sumk' is introduced by WITH. Columns introduced by WITH cannot be used in the arguments to aggregate or analytic functions. [at 2:19]
+            COUNT(sumk) * 2)
+                  ^
+==
+
+SELECT WITH(sumk AS SUM(KeyValue.key),
+            COUNT(sumk * 2))
+FROM KeyValue GROUP BY value;
+--
+ERROR: Column 'sumk' is introduced by WITH. Columns introduced by WITH cannot be used in the arguments to aggregate or analytic functions. [at 2:19]
+            COUNT(sumk * 2))
+                  ^
+==
+
+[language_features=NONE,+WITH_EXPRESSION,+PIPES,+MULTIWAY_UNNEST]
+SELECT
+     [1, 2, 3] AS a_1
+|> SELECT
+     ARRAY(
+       FROM
+         UNNEST(WITH(a_6 AS a_1, a_6)
+         )
+        ) AS unnest_scan2
+--
+QueryStmt
++-output_column_list=
+| +-$pipe_select.unnest_scan2#4 AS unnest_scan2 [ARRAY<INT64>]
++-query=
+  +-ProjectScan
+    +-column_list=[$pipe_select.unnest_scan2#4]
+    +-expr_list=
+    | +-unnest_scan2#4 :=
+    |   +-SubqueryExpr
+    |     +-type=ARRAY<INT64>
+    |     +-subquery_type=ARRAY
+    |     +-parameter_list=
+    |     | +-ColumnRef(type=ARRAY<INT64>, column=$query.a_1#1)
+    |     +-subquery=
+    |       +-ArrayScan
+    |         +-column_list=[$array.$unnest1#3]
+    |         +-array_expr_list=
+    |         | +-WithExpr
+    |         |   +-type=ARRAY<INT64>
+    |         |   +-assignment_list=
+    |         |   | +-a_6#2 := ColumnRef(type=ARRAY<INT64>, column=$query.a_1#1, is_correlated=TRUE)
+    |         |   +-expr=
+    |         |     +-ColumnRef(type=ARRAY<INT64>, column=$with_expr.a_6#2)
+    |         +-element_column_list=[$array.$unnest1#3]
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[$query.a_1#1]
+        +-expr_list=
+        | +-a_1#1 := Literal(type=ARRAY<INT64>, value=[1, 2, 3])
+        +-input_scan=
+          +-SingleRowScan
+
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+SELECT
+  ARRAY(
+    SELECT
+      a_5 AS a_5
+    FROM
+      UNNEST(WITH(a_4 AS projectscan_2.a_1, a_4) AS a_5)
+  ) AS unnest_scan2
+FROM
+  (
+    SELECT
+      ARRAY< INT64 >[1, 2, 3] AS a_1
+  ) AS projectscan_2;
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+SELECT
+  ARRAY< INT64 >[1, 2, 3] AS a_1
+|> AS projectscan_2
+|> SELECT
+     ARRAY(
+       FROM
+         UNNEST(WITH(a_4 AS projectscan_2.a_1, a_4) AS a_5)
+       |> SELECT
+            a_5 AS a_5
+     ) AS unnest_scan2;
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$pipe_select.unnest_scan2#4 AS unnest_scan2 [ARRAY<INT64>]
++-query=
+  +-ProjectScan
+    +-column_list=[$pipe_select.unnest_scan2#4]
+    +-expr_list=
+    | +-unnest_scan2#4 :=
+    |   +-SubqueryExpr
+    |     +-type=ARRAY<INT64>
+    |     +-subquery_type=ARRAY
+    |     +-parameter_list=
+    |     | +-ColumnRef(type=ARRAY<INT64>, column=$query.a_1#1)
+    |     +-subquery=
+    |       +-ArrayScan
+    |         +-column_list=[$array.$unnest1#3]
+    |         +-array_expr_list=
+    |         | +-SubqueryExpr
+    |         |   +-type=ARRAY<INT64>
+    |         |   +-subquery_type=SCALAR
+    |         |   +-parameter_list=
+    |         |   | +-ColumnRef(type=ARRAY<INT64>, column=$query.a_1#1, is_correlated=TRUE)
+    |         |   +-subquery=
+    |         |     +-ProjectScan
+    |         |       +-column_list=[$with_expr.injected#5]
+    |         |       +-expr_list=
+    |         |       | +-injected#5 := ColumnRef(type=ARRAY<INT64>, column=$with_expr.a_6#2)
+    |         |       +-input_scan=
+    |         |         +-ProjectScan
+    |         |           +-column_list=[$with_expr.a_6#2]
+    |         |           +-expr_list=
+    |         |           | +-a_6#2 := ColumnRef(type=ARRAY<INT64>, column=$query.a_1#1, is_correlated=TRUE)
+    |         |           +-input_scan=
+    |         |             +-SingleRowScan
+    |         +-element_column_list=[$array.$unnest1#3]
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[$query.a_1#1]
+        +-expr_list=
+        | +-a_1#1 := Literal(type=ARRAY<INT64>, value=[1, 2, 3])
+        +-input_scan=
+          +-SingleRowScan
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+SELECT
+  ARRAY(
+    SELECT
+      a_7 AS a_7
+    FROM
+      UNNEST((
+        SELECT
+          projectscan_5.a_4 AS a_6
+        FROM
+          (
+            SELECT
+              projectscan_2.a_1 AS a_4
+          ) AS projectscan_5
+      ) AS a_7)
+  ) AS unnest_scan2
+FROM
+  (
+    SELECT
+      ARRAY< INT64 >[1, 2, 3] AS a_1
+  ) AS projectscan_2;
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+SELECT
+  ARRAY< INT64 >[1, 2, 3] AS a_1
+|> AS projectscan_2
+|> SELECT
+     ARRAY(
+       FROM
+         UNNEST((
+           SELECT
+             projectscan_2.a_1 AS a_4
+           |> AS projectscan_5
+           |> SELECT
+                projectscan_5.a_4 AS a_6
+         ) AS a_7)
+       |> SELECT
+            a_7 AS a_7
+     ) AS unnest_scan2;

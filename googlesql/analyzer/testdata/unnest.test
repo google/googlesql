@@ -1,0 +1,1233 @@
+[default language_features=MAXIMUM]
+select 1 from unnest( ARRAY(select 2) )
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#3 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#3]
+    +-expr_list=
+    | +-$col1#3 := Literal(type=INT64, value=1)
+    +-input_scan=
+      +-ArrayScan
+        +-array_expr_list=
+        | +-SubqueryExpr
+        |   +-type=ARRAY<INT64>
+        |   +-subquery_type=ARRAY
+        |   +-subquery=
+        |     +-ProjectScan
+        |       +-column_list=[$expr_subquery.$col1#1]
+        |       +-expr_list=
+        |       | +-$col1#1 := Literal(type=INT64, value=2)
+        |       +-input_scan=
+        |         +-SingleRowScan
+        +-element_column_list=[$array.$unnest1#2]
+==
+
+select 1
+from UNNEST([1, 2]) a, UNNEST(ARRAY[1, 2]) b, UNNEST(ARRAY<int32>[1, 2]) c
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#4 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#4]
+    +-expr_list=
+    | +-$col1#4 := Literal(type=INT64, value=1)
+    +-input_scan=
+      +-ArrayScan
+        +-input_scan=
+        | +-ArrayScan
+        |   +-input_scan=
+        |   | +-ArrayScan
+        |   |   +-array_expr_list=
+        |   |   | +-Literal(type=ARRAY<INT64>, value=[1, 2])
+        |   |   +-element_column_list=[$array.a#1]
+        |   +-array_expr_list=
+        |   | +-Literal(type=ARRAY<INT64>, value=[1, 2])
+        |   +-element_column_list=[$array.b#2]
+        +-array_expr_list=
+        | +-Literal(type=ARRAY<INT32>, value=[1, 2], has_explicit_type=TRUE)
+        +-element_column_list=[$array.c#3]
+==
+
+# Using UNNEST with an alias and with WITH OFFSET.
+# The subquery returns an array of structs.
+select arr, arr.x, pos, '--', arr.*, '--', *
+from unnest( ARRAY( select AS STRUCT 1 x, 2 y ) ) as arr with offset pos
+--
+QueryStmt
++-output_column_list=
+| +-$array.arr#4 AS arr [STRUCT<x INT64, y INT64>]
+| +-$query.x#6 AS x [INT64]
+| +-$array_offset.pos#5 AS pos [INT64]
+| +-$query.$col4#7 AS `$col4` [STRING]
+| +-$query.x#8 AS x [INT64]
+| +-$query.y#9 AS y [INT64]
+| +-$query.$col6#10 AS `$col6` [STRING]
+| +-$query.x#11 AS x [INT64]
+| +-$query.y#12 AS y [INT64]
+| +-$array_offset.pos#5 AS pos [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$array.arr#4, $query.x#6, $array_offset.pos#5, $query.$col4#7, $query.x#8, $query.y#9, $query.$col6#10, $query.x#11, $query.y#12, $array_offset.pos#5]
+    +-expr_list=
+    | +-x#6 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<x INT64, y INT64>, column=$array.arr#4)
+    | |   +-field_idx=0
+    | +-$col4#7 := Literal(type=STRING, value="--")
+    | +-x#8 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<x INT64, y INT64>, column=$array.arr#4)
+    | |   +-field_idx=0
+    | +-y#9 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<x INT64, y INT64>, column=$array.arr#4)
+    | |   +-field_idx=1
+    | +-$col6#10 := Literal(type=STRING, value="--")
+    | +-x#11 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<x INT64, y INT64>, column=$array.arr#4)
+    | |   +-field_idx=0
+    | +-y#12 :=
+    |   +-GetStructField
+    |     +-type=INT64
+    |     +-expr=
+    |     | +-ColumnRef(type=STRUCT<x INT64, y INT64>, column=$array.arr#4)
+    |     +-field_idx=1
+    +-input_scan=
+      +-ArrayScan
+        +-column_list=[$array.arr#4, $array_offset.pos#5]
+        +-array_expr_list=
+        | +-SubqueryExpr
+        |   +-type=ARRAY<STRUCT<x INT64, y INT64>>
+        |   +-subquery_type=ARRAY
+        |   +-subquery=
+        |     +-ProjectScan
+        |       +-column_list=[$make_struct.$struct#3]
+        |       +-expr_list=
+        |       | +-$struct#3 :=
+        |       |   +-MakeStruct
+        |       |     +-type=STRUCT<x INT64, y INT64>
+        |       |     +-field_list=
+        |       |       +-ColumnRef(type=INT64, column=$expr_subquery.x#1)
+        |       |       +-ColumnRef(type=INT64, column=$expr_subquery.y#2)
+        |       +-input_scan=
+        |         +-ProjectScan
+        |           +-column_list=$expr_subquery.[x#1, y#2]
+        |           +-expr_list=
+        |           | +-x#1 := Literal(type=INT64, value=1)
+        |           | +-y#2 := Literal(type=INT64, value=2)
+        |           +-input_scan=
+        |             +-SingleRowScan
+        +-element_column_list=[$array.arr#4]
+        +-array_offset_column=
+          +-ColumnHolder(column=$array_offset.pos#5)
+==
+
+select pos.*
+from unnest( ARRAY( select AS STRUCT 1 x, 2 y ) ) as arr with offset pos
+--
+ERROR: Dot-star is not supported for type INT64 [at 1:8]
+select pos.*
+       ^
+==
+
+select * from UNNEST([])
+--
+QueryStmt
++-output_column_list=
+| +-$array.$unnest1#1 AS `$unnest1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$array.$unnest1#1]
+    +-input_scan=
+      +-ArrayScan
+        +-column_list=[$array.$unnest1#1]
+        +-array_expr_list=
+        | +-Literal(type=ARRAY<INT64>, value=[])
+        +-element_column_list=[$array.$unnest1#1]
+==
+
+select * from UNNEST([1, 2]) with offset
+--
+QueryStmt
++-output_column_list=
+| +-$array.$unnest1#1 AS `$unnest1` [INT64]
+| +-$array_offset.offset#2 AS offset [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$array.$unnest1#1, $array_offset.offset#2]
+    +-input_scan=
+      +-ArrayScan
+        +-column_list=[$array.$unnest1#1, $array_offset.offset#2]
+        +-array_expr_list=
+        | +-Literal(type=ARRAY<INT64>, value=[1, 2])
+        +-element_column_list=[$array.$unnest1#1]
+        +-array_offset_column=
+          +-ColumnHolder(column=$array_offset.offset#2)
+==
+
+select count(*) from UNNEST(ARRAY<int64>[cast(NULL as uint32)])
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#2 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#2]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$aggregate.$agg1#2]
+        +-input_scan=
+        | +-ArrayScan
+        |   +-array_expr_list=
+        |   | +-Literal(type=ARRAY<INT64>, value=[NULL], has_explicit_type=TRUE)
+        |   +-element_column_list=[$array.$unnest1#1]
+        +-aggregate_list=
+          +-$agg1#2 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+==
+
+select * from unnest(@test_param_array)
+--
+QueryStmt
++-output_column_list=
+| +-$array.$unnest1#1 AS `$unnest1` [INT32]
++-query=
+  +-ProjectScan
+    +-column_list=[$array.$unnest1#1]
+    +-input_scan=
+      +-ArrayScan
+        +-column_list=[$array.$unnest1#1]
+        +-array_expr_list=
+        | +-Parameter(type=ARRAY<INT32>, name="test_param_array")
+        +-element_column_list=[$array.$unnest1#1]
+==
+
+select *
+from unnest(@test_param_array) a1,
+     unnest(@test_param_array) a2 join unnest(@test_param_array) a3 on a2 < a3
+--
+QueryStmt
++-output_column_list=
+| +-$array.a1#1 AS a1 [INT32]
+| +-$array.a2#2 AS a2 [INT32]
+| +-$array.a3#3 AS a3 [INT32]
++-query=
+  +-ProjectScan
+    +-column_list=$array.[a1#1, a2#2, a3#3]
+    +-input_scan=
+      +-ArrayScan
+        +-column_list=$array.[a1#1, a2#2, a3#3]
+        +-input_scan=
+        | +-ArrayScan
+        |   +-column_list=$array.[a1#1, a2#2]
+        |   +-input_scan=
+        |   | +-ArrayScan
+        |   |   +-column_list=[$array.a1#1]
+        |   |   +-array_expr_list=
+        |   |   | +-Parameter(type=ARRAY<INT32>, name="test_param_array")
+        |   |   +-element_column_list=[$array.a1#1]
+        |   +-array_expr_list=
+        |   | +-Parameter(type=ARRAY<INT32>, name="test_param_array")
+        |   +-element_column_list=[$array.a2#2]
+        +-array_expr_list=
+        | +-Parameter(type=ARRAY<INT32>, name="test_param_array")
+        +-element_column_list=[$array.a3#3]
+        +-join_expr=
+          +-FunctionCall(GoogleSQL:$less(INT32, INT32) -> BOOL)
+            +-ColumnRef(type=INT32, column=$array.a2#2)
+            +-ColumnRef(type=INT32, column=$array.a3#3)
+==
+
+select * from unnest(@test_param_array) a1 with offset,
+              unnest(@test_param_array) a2 with offset
+--
+ERROR: Duplicate alias offset found [at 2:44]
+              unnest(@test_param_array) a2 with offset
+                                           ^
+==
+
+select * from unnest(@test_param_array) a1 with offset pos
+         join unnest(@test_param_array) a2 with offset pos using(pos)
+--
+QueryStmt
++-output_column_list=
+| +-$array_offset.pos#2 AS pos [INT64]
+| +-$array.a1#1 AS a1 [INT32]
+| +-$array.a2#3 AS a2 [INT32]
++-query=
+  +-ProjectScan
+    +-column_list=[$array_offset.pos#2, $array.a1#1, $array.a2#3]
+    +-input_scan=
+      +-ArrayScan
+        +-column_list=[$array.a1#1, $array_offset.pos#2, $array.a2#3, $array_offset.pos#4]
+        +-input_scan=
+        | +-ArrayScan
+        |   +-column_list=[$array.a1#1, $array_offset.pos#2]
+        |   +-array_expr_list=
+        |   | +-Parameter(type=ARRAY<INT32>, name="test_param_array")
+        |   +-element_column_list=[$array.a1#1]
+        |   +-array_offset_column=
+        |     +-ColumnHolder(column=$array_offset.pos#2)
+        +-array_expr_list=
+        | +-Parameter(type=ARRAY<INT32>, name="test_param_array")
+        +-element_column_list=[$array.a2#3]
+        +-array_offset_column=
+        | +-ColumnHolder(column=$array_offset.pos#4)
+        +-join_expr=
+          +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+            +-ColumnRef(type=INT64, column=$array_offset.pos#2)
+            +-ColumnRef(type=INT64, column=$array_offset.pos#4)
+==
+
+select * from unnest(@test_param_array) a1 with offset pos1
+         join unnest(@test_param_array) a2 with offset pos2 on pos1=pos2
+where a1 != a2
+--
+QueryStmt
++-output_column_list=
+| +-$array.a1#1 AS a1 [INT32]
+| +-$array_offset.pos1#2 AS pos1 [INT64]
+| +-$array.a2#3 AS a2 [INT32]
+| +-$array_offset.pos2#4 AS pos2 [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$array.a1#1, $array_offset.pos1#2, $array.a2#3, $array_offset.pos2#4]
+    +-input_scan=
+      +-FilterScan
+        +-column_list=[$array.a1#1, $array_offset.pos1#2, $array.a2#3, $array_offset.pos2#4]
+        +-input_scan=
+        | +-ArrayScan
+        |   +-column_list=[$array.a1#1, $array_offset.pos1#2, $array.a2#3, $array_offset.pos2#4]
+        |   +-input_scan=
+        |   | +-ArrayScan
+        |   |   +-column_list=[$array.a1#1, $array_offset.pos1#2]
+        |   |   +-array_expr_list=
+        |   |   | +-Parameter(type=ARRAY<INT32>, name="test_param_array")
+        |   |   +-element_column_list=[$array.a1#1]
+        |   |   +-array_offset_column=
+        |   |     +-ColumnHolder(column=$array_offset.pos1#2)
+        |   +-array_expr_list=
+        |   | +-Parameter(type=ARRAY<INT32>, name="test_param_array")
+        |   +-element_column_list=[$array.a2#3]
+        |   +-array_offset_column=
+        |   | +-ColumnHolder(column=$array_offset.pos2#4)
+        |   +-join_expr=
+        |     +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+        |       +-ColumnRef(type=INT64, column=$array_offset.pos1#2)
+        |       +-ColumnRef(type=INT64, column=$array_offset.pos2#4)
+        +-filter_expr=
+          +-FunctionCall(GoogleSQL:$not_equal(INT32, INT32) -> BOOL)
+            +-ColumnRef(type=INT32, column=$array.a1#1)
+            +-ColumnRef(type=INT32, column=$array.a2#3)
+==
+
+select 1 from unnest(5)
+--
+ERROR: Values referenced in UNNEST must be arrays. UNNEST contains expression of type INT64 [at 1:22]
+select 1 from unnest(5)
+                     ^
+==
+
+# No aggregation functions inside unnest.
+select 1 from unnest( count(*) )
+--
+ERROR: Aggregate function COUNT(*) not allowed in UNNEST [at 1:23]
+select 1 from unnest( count(*) )
+                      ^
+==
+
+# Using UNNEST inside a correlated expression subquery to scan an array value.
+select arr,
+       (select count(x) from unnest(arr) x),
+       ARRAY(select x from unnest(arr) x where x>0)
+from (select ARRAY(select 1) arr)
+--
+QueryStmt
++-output_column_list=
+| +-$subquery1.arr#2 AS arr [ARRAY<INT64>]
+| +-$query.$col2#6 AS `$col2` [INT64]
+| +-$query.$col3#7 AS `$col3` [ARRAY<INT64>]
++-query=
+  +-ProjectScan
+    +-column_list=[$subquery1.arr#2, $query.$col2#6, $query.$col3#7]
+    +-expr_list=
+    | +-$col2#6 :=
+    | | +-SubqueryExpr
+    | |   +-type=INT64
+    | |   +-subquery_type=SCALAR
+    | |   +-parameter_list=
+    | |   | +-ColumnRef(type=ARRAY<INT64>, column=$subquery1.arr#2)
+    | |   +-subquery=
+    | |     +-ProjectScan
+    | |       +-column_list=[$aggregate.$agg1#4]
+    | |       +-input_scan=
+    | |         +-AggregateScan
+    | |           +-column_list=[$aggregate.$agg1#4]
+    | |           +-input_scan=
+    | |           | +-ArrayScan
+    | |           |   +-column_list=[$array.x#3]
+    | |           |   +-array_expr_list=
+    | |           |   | +-ColumnRef(type=ARRAY<INT64>, column=$subquery1.arr#2, is_correlated=TRUE)
+    | |           |   +-element_column_list=[$array.x#3]
+    | |           +-aggregate_list=
+    | |             +-$agg1#4 :=
+    | |               +-AggregateFunctionCall(GoogleSQL:count(INT64) -> INT64)
+    | |                 +-ColumnRef(type=INT64, column=$array.x#3)
+    | +-$col3#7 :=
+    |   +-SubqueryExpr
+    |     +-type=ARRAY<INT64>
+    |     +-subquery_type=ARRAY
+    |     +-parameter_list=
+    |     | +-ColumnRef(type=ARRAY<INT64>, column=$subquery1.arr#2)
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$array.x#5]
+    |         +-input_scan=
+    |           +-FilterScan
+    |             +-column_list=[$array.x#5]
+    |             +-input_scan=
+    |             | +-ArrayScan
+    |             |   +-column_list=[$array.x#5]
+    |             |   +-array_expr_list=
+    |             |   | +-ColumnRef(type=ARRAY<INT64>, column=$subquery1.arr#2, is_correlated=TRUE)
+    |             |   +-element_column_list=[$array.x#5]
+    |             +-filter_expr=
+    |               +-FunctionCall(GoogleSQL:$greater(INT64, INT64) -> BOOL)
+    |                 +-ColumnRef(type=INT64, column=$array.x#5)
+    |                 +-Literal(type=INT64, value=0)
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[$subquery1.arr#2]
+        +-expr_list=
+        | +-arr#2 :=
+        |   +-SubqueryExpr
+        |     +-type=ARRAY<INT64>
+        |     +-subquery_type=ARRAY
+        |     +-subquery=
+        |       +-ProjectScan
+        |         +-column_list=[$expr_subquery.$col1#1]
+        |         +-expr_list=
+        |         | +-$col1#1 := Literal(type=INT64, value=1)
+        |         +-input_scan=
+        |           +-SingleRowScan
+        +-input_scan=
+          +-SingleRowScan
+==
+
+# Scoping: UNNEST can see a column introduced on the left.
+# We get the same thing with and without UNNEST for those cases.
+select *
+from TestTable tt,
+     tt.KitchenSink.repeated_date d
+--
+QueryStmt
++-output_column_list=
+| +-TestTable.key#1 AS key [INT32]
+| +-TestTable.TestEnum#2 AS TestEnum [ENUM<googlesql_test.TestEnum>]
+| +-TestTable.KitchenSink#3 AS KitchenSink [PROTO<googlesql_test.KitchenSinkPB>]
+| +-$array.d#4 AS d [DATE]
++-query=
+  +-ProjectScan
+    +-column_list=[TestTable.key#1, TestTable.TestEnum#2, TestTable.KitchenSink#3, $array.d#4]
+    +-input_scan=
+      +-ArrayScan
+        +-column_list=[TestTable.key#1, TestTable.TestEnum#2, TestTable.KitchenSink#3, $array.d#4]
+        +-input_scan=
+        | +-TableScan(column_list=TestTable.[key#1, TestEnum#2, KitchenSink#3], table=TestTable, column_index_list=[0, 1, 2], alias="tt")
+        +-array_expr_list=
+        | +-GetProtoField
+        |   +-type=ARRAY<DATE>
+        |   +-expr=
+        |   | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=TestTable.KitchenSink#3)
+        |   +-field_descriptor=repeated_date
+        |   +-default_value=[]
+        |   +-format=DATE
+        +-element_column_list=[$array.d#4]
+==
+
+select *
+from TestTable tt,
+     UNNEST(tt.KitchenSink.repeated_date) d
+--
+[SAME AS PREVIOUS]
+==
+
+[language_features=NONE,{{|+SINGLETON_UNNEST_INFERS_ALIAS}}]
+select *
+from TestTable tt,
+     UNNEST(tt.KitchenSink.nested_repeated_value) nrv,
+     UNNEST(nrv.nested_repeated_int64)
+--
+ALTERNATION GROUP: <empty>
+--
+QueryStmt
++-output_column_list=
+| +-TestTable.key#1 AS key [INT32]
+| +-TestTable.TestEnum#2 AS TestEnum [ENUM<googlesql_test.TestEnum>]
+| +-TestTable.KitchenSink#3 AS KitchenSink [PROTO<googlesql_test.KitchenSinkPB>]
+| +-$query.nested_int64#6 AS nested_int64 [INT64]
+| +-$query.nested_repeated_int64#7 AS nested_repeated_int64 [ARRAY<INT64>]
+| +-$query.nested_repeated_int32#8 AS nested_repeated_int32 [ARRAY<INT32>]
+| +-$query.value#9 AS value [ARRAY<INT32>]
+| +-$array.$unnest1#5 AS `$unnest1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[TestTable.key#1, TestTable.TestEnum#2, TestTable.KitchenSink#3, $query.nested_int64#6, $query.nested_repeated_int64#7, $query.nested_repeated_int32#8, $query.value#9, $array.$unnest1#5]
+    +-expr_list=
+    | +-nested_int64#6 :=
+    | | +-GetProtoField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB.Nested>, column=$array.nrv#4)
+    | |   +-field_descriptor=nested_int64
+    | |   +-default_value=88
+    | +-nested_repeated_int64#7 :=
+    | | +-GetProtoField
+    | |   +-type=ARRAY<INT64>
+    | |   +-expr=
+    | |   | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB.Nested>, column=$array.nrv#4)
+    | |   +-field_descriptor=nested_repeated_int64
+    | |   +-default_value=[]
+    | +-nested_repeated_int32#8 :=
+    | | +-GetProtoField
+    | |   +-type=ARRAY<INT32>
+    | |   +-expr=
+    | |   | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB.Nested>, column=$array.nrv#4)
+    | |   +-field_descriptor=nested_repeated_int32
+    | |   +-default_value=[]
+    | +-value#9 :=
+    |   +-GetProtoField
+    |     +-type=ARRAY<INT32>
+    |     +-expr=
+    |     | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB.Nested>, column=$array.nrv#4)
+    |     +-field_descriptor=value
+    |     +-default_value=[]
+    +-input_scan=
+      +-ArrayScan
+        +-column_list=[TestTable.key#1, TestTable.TestEnum#2, TestTable.KitchenSink#3, $array.nrv#4, $array.$unnest1#5]
+        +-input_scan=
+        | +-ArrayScan
+        |   +-column_list=[TestTable.key#1, TestTable.TestEnum#2, TestTable.KitchenSink#3, $array.nrv#4]
+        |   +-input_scan=
+        |   | +-TableScan(column_list=TestTable.[key#1, TestEnum#2, KitchenSink#3], table=TestTable, column_index_list=[0, 1, 2], alias="tt")
+        |   +-array_expr_list=
+        |   | +-GetProtoField
+        |   |   +-type=ARRAY<PROTO<googlesql_test.KitchenSinkPB.Nested>>
+        |   |   +-expr=
+        |   |   | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=TestTable.KitchenSink#3)
+        |   |   +-field_descriptor=nested_repeated_value
+        |   |   +-default_value=[]
+        |   +-element_column_list=[$array.nrv#4]
+        +-array_expr_list=
+        | +-GetProtoField
+        |   +-type=ARRAY<INT64>
+        |   +-expr=
+        |   | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB.Nested>, column=$array.nrv#4)
+        |   +-field_descriptor=nested_repeated_int64
+        |   +-default_value=[]
+        +-element_column_list=[$array.$unnest1#5]
+--
+ALTERNATION GROUP: +SINGLETON_UNNEST_INFERS_ALIAS
+--
+QueryStmt
++-output_column_list=
+| +-TestTable.key#1 AS key [INT32]
+| +-TestTable.TestEnum#2 AS TestEnum [ENUM<googlesql_test.TestEnum>]
+| +-TestTable.KitchenSink#3 AS KitchenSink [PROTO<googlesql_test.KitchenSinkPB>]
+| +-$query.nested_int64#6 AS nested_int64 [INT64]
+| +-$query.nested_repeated_int64#7 AS nested_repeated_int64 [ARRAY<INT64>]
+| +-$query.nested_repeated_int32#8 AS nested_repeated_int32 [ARRAY<INT32>]
+| +-$query.value#9 AS value [ARRAY<INT32>]
+| +-$array.nested_repeated_int64#5 AS nested_repeated_int64 [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[TestTable.key#1, TestTable.TestEnum#2, TestTable.KitchenSink#3, $query.nested_int64#6, $query.nested_repeated_int64#7, $query.nested_repeated_int32#8, $query.value#9, $array.nested_repeated_int64#5]
+    +-expr_list=
+    | +-nested_int64#6 :=
+    | | +-GetProtoField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB.Nested>, column=$array.nrv#4)
+    | |   +-field_descriptor=nested_int64
+    | |   +-default_value=88
+    | +-nested_repeated_int64#7 :=
+    | | +-GetProtoField
+    | |   +-type=ARRAY<INT64>
+    | |   +-expr=
+    | |   | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB.Nested>, column=$array.nrv#4)
+    | |   +-field_descriptor=nested_repeated_int64
+    | |   +-default_value=[]
+    | +-nested_repeated_int32#8 :=
+    | | +-GetProtoField
+    | |   +-type=ARRAY<INT32>
+    | |   +-expr=
+    | |   | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB.Nested>, column=$array.nrv#4)
+    | |   +-field_descriptor=nested_repeated_int32
+    | |   +-default_value=[]
+    | +-value#9 :=
+    |   +-GetProtoField
+    |     +-type=ARRAY<INT32>
+    |     +-expr=
+    |     | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB.Nested>, column=$array.nrv#4)
+    |     +-field_descriptor=value
+    |     +-default_value=[]
+    +-input_scan=
+      +-ArrayScan
+        +-column_list=[TestTable.key#1, TestTable.TestEnum#2, TestTable.KitchenSink#3, $array.nrv#4, $array.nested_repeated_int64#5]
+        +-input_scan=
+        | +-ArrayScan
+        |   +-column_list=[TestTable.key#1, TestTable.TestEnum#2, TestTable.KitchenSink#3, $array.nrv#4]
+        |   +-input_scan=
+        |   | +-TableScan(column_list=TestTable.[key#1, TestEnum#2, KitchenSink#3], table=TestTable, column_index_list=[0, 1, 2], alias="tt")
+        |   +-array_expr_list=
+        |   | +-GetProtoField
+        |   |   +-type=ARRAY<PROTO<googlesql_test.KitchenSinkPB.Nested>>
+        |   |   +-expr=
+        |   |   | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=TestTable.KitchenSink#3)
+        |   |   +-field_descriptor=nested_repeated_value
+        |   |   +-default_value=[]
+        |   +-element_column_list=[$array.nrv#4]
+        +-array_expr_list=
+        | +-GetProtoField
+        |   +-type=ARRAY<INT64>
+        |   +-expr=
+        |   | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB.Nested>, column=$array.nrv#4)
+        |   +-field_descriptor=nested_repeated_int64
+        |   +-default_value=[]
+        +-element_column_list=[$array.nested_repeated_int64#5]
+==
+
+# Unlike with path expressions to reference arrays, UNNEST expressions can
+# be resolved without a table qualifier.
+# The nrv. qualifier is still needed though because nrv is a struct.
+[language_features=NONE,{{|+SINGLETON_UNNEST_INFERS_ALIAS}}]
+select *
+from TestTable tt,
+     UNNEST(KitchenSink.nested_repeated_value) nrv,
+     UNNEST(nrv.nested_repeated_int64)
+--
+[SAME AS PREVIOUS]
+==
+
+# Inside the ARRAY subquery inside UNNEST, scoping goes back to FROM-clause
+# rules, where the array must be qualified with a table name.
+select *
+from TestTable tt,
+     UNNEST( ARRAY(select * from KitchenSink.repeated_int32_val ) )
+--
+ERROR: Aliases referenced in the from clause must refer to preceding scans, and cannot refer to columns on those scans. KitchenSink refers to a column and must be qualified with a table name. [at 3:34]
+     UNNEST( ARRAY(select * from KitchenSink.repeated_int32_val ) )
+                                 ^
+==
+
+select *
+from TestTable tt,
+     UNNEST( ARRAY(select * from tt.KitchenSink.repeated_int32_val ) )
+--
+QueryStmt
++-output_column_list=
+| +-TestTable.key#1 AS key [INT32]
+| +-TestTable.TestEnum#2 AS TestEnum [ENUM<googlesql_test.TestEnum>]
+| +-TestTable.KitchenSink#3 AS KitchenSink [PROTO<googlesql_test.KitchenSinkPB>]
+| +-$array.$unnest1#5 AS `$unnest1` [INT32]
++-query=
+  +-ProjectScan
+    +-column_list=[TestTable.key#1, TestTable.TestEnum#2, TestTable.KitchenSink#3, $array.$unnest1#5]
+    +-input_scan=
+      +-ArrayScan
+        +-column_list=[TestTable.key#1, TestTable.TestEnum#2, TestTable.KitchenSink#3, $array.$unnest1#5]
+        +-input_scan=
+        | +-TableScan(column_list=TestTable.[key#1, TestEnum#2, KitchenSink#3], table=TestTable, column_index_list=[0, 1, 2], alias="tt")
+        +-array_expr_list=
+        | +-SubqueryExpr
+        |   +-type=ARRAY<INT32>
+        |   +-subquery_type=ARRAY
+        |   +-parameter_list=
+        |   | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=TestTable.KitchenSink#3)
+        |   +-subquery=
+        |     +-ProjectScan
+        |       +-column_list=[$array.repeated_int32_val#4]
+        |       +-input_scan=
+        |         +-ArrayScan
+        |           +-column_list=[$array.repeated_int32_val#4]
+        |           +-array_expr_list=
+        |           | +-GetProtoField
+        |           |   +-type=ARRAY<INT32>
+        |           |   +-expr=
+        |           |   | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=TestTable.KitchenSink#3, is_correlated=TRUE)
+        |           |   +-field_descriptor=repeated_int32_val
+        |           |   +-default_value=[]
+        |           +-element_column_list=[$array.repeated_int32_val#4]
+        +-element_column_list=[$array.$unnest1#5]
+==
+
+select (select count(*) from KitchenSink.repeated_int32_val)
+from TestTable
+--
+ERROR: Aliases referenced in the from clause must refer to preceding scans, and cannot refer to columns on those scans. KitchenSink refers to a column and must be qualified with a table name. [at 1:30]
+select (select count(*) from KitchenSink.repeated_int32_val)
+                             ^
+==
+
+[language_features=NONE,{{|+SINGLETON_UNNEST_INFERS_ALIAS}}]
+select (select count(*) from UNNEST(KitchenSink.repeated_int32_val))
+from TestTable
+--
+ALTERNATION GROUP: <empty>
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#6 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#6]
+    +-expr_list=
+    | +-$col1#6 :=
+    |   +-SubqueryExpr
+    |     +-type=INT64
+    |     +-subquery_type=SCALAR
+    |     +-parameter_list=
+    |     | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=TestTable.KitchenSink#3)
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$aggregate.$agg1#5]
+    |         +-input_scan=
+    |           +-AggregateScan
+    |             +-column_list=[$aggregate.$agg1#5]
+    |             +-input_scan=
+    |             | +-ArrayScan
+    |             |   +-array_expr_list=
+    |             |   | +-GetProtoField
+    |             |   |   +-type=ARRAY<INT32>
+    |             |   |   +-expr=
+    |             |   |   | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=TestTable.KitchenSink#3, is_correlated=TRUE)
+    |             |   |   +-field_descriptor=repeated_int32_val
+    |             |   |   +-default_value=[]
+    |             |   +-element_column_list=[$array.$unnest1#4]
+    |             +-aggregate_list=
+    |               +-$agg1#5 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+    +-input_scan=
+      +-TableScan(column_list=[TestTable.KitchenSink#3], table=TestTable, column_index_list=[2])
+--
+ALTERNATION GROUP: +SINGLETON_UNNEST_INFERS_ALIAS
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#6 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#6]
+    +-expr_list=
+    | +-$col1#6 :=
+    |   +-SubqueryExpr
+    |     +-type=INT64
+    |     +-subquery_type=SCALAR
+    |     +-parameter_list=
+    |     | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=TestTable.KitchenSink#3)
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$aggregate.$agg1#5]
+    |         +-input_scan=
+    |           +-AggregateScan
+    |             +-column_list=[$aggregate.$agg1#5]
+    |             +-input_scan=
+    |             | +-ArrayScan
+    |             |   +-array_expr_list=
+    |             |   | +-GetProtoField
+    |             |   |   +-type=ARRAY<INT32>
+    |             |   |   +-expr=
+    |             |   |   | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=TestTable.KitchenSink#3, is_correlated=TRUE)
+    |             |   |   +-field_descriptor=repeated_int32_val
+    |             |   |   +-default_value=[]
+    |             |   +-element_column_list=[$array.repeated_int32_val#4]
+    |             +-aggregate_list=
+    |               +-$agg1#5 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+    +-input_scan=
+      +-TableScan(column_list=[TestTable.KitchenSink#3], table=TestTable, column_index_list=[2])
+==
+
+[language_features=NONE,{{|+SINGLETON_UNNEST_INFERS_ALIAS}}]
+select * from TestTable, UNNEST(KitchenSink.repeated_int32_val)
+--
+ALTERNATION GROUP: <empty>
+--
+QueryStmt
++-output_column_list=
+| +-TestTable.key#1 AS key [INT32]
+| +-TestTable.TestEnum#2 AS TestEnum [ENUM<googlesql_test.TestEnum>]
+| +-TestTable.KitchenSink#3 AS KitchenSink [PROTO<googlesql_test.KitchenSinkPB>]
+| +-$array.$unnest1#4 AS `$unnest1` [INT32]
++-query=
+  +-ProjectScan
+    +-column_list=[TestTable.key#1, TestTable.TestEnum#2, TestTable.KitchenSink#3, $array.$unnest1#4]
+    +-input_scan=
+      +-ArrayScan
+        +-column_list=[TestTable.key#1, TestTable.TestEnum#2, TestTable.KitchenSink#3, $array.$unnest1#4]
+        +-input_scan=
+        | +-TableScan(column_list=TestTable.[key#1, TestEnum#2, KitchenSink#3], table=TestTable, column_index_list=[0, 1, 2])
+        +-array_expr_list=
+        | +-GetProtoField
+        |   +-type=ARRAY<INT32>
+        |   +-expr=
+        |   | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=TestTable.KitchenSink#3)
+        |   +-field_descriptor=repeated_int32_val
+        |   +-default_value=[]
+        +-element_column_list=[$array.$unnest1#4]
+--
+ALTERNATION GROUP: +SINGLETON_UNNEST_INFERS_ALIAS
+--
+QueryStmt
++-output_column_list=
+| +-TestTable.key#1 AS key [INT32]
+| +-TestTable.TestEnum#2 AS TestEnum [ENUM<googlesql_test.TestEnum>]
+| +-TestTable.KitchenSink#3 AS KitchenSink [PROTO<googlesql_test.KitchenSinkPB>]
+| +-$array.repeated_int32_val#4 AS repeated_int32_val [INT32]
++-query=
+  +-ProjectScan
+    +-column_list=[TestTable.key#1, TestTable.TestEnum#2, TestTable.KitchenSink#3, $array.repeated_int32_val#4]
+    +-input_scan=
+      +-ArrayScan
+        +-column_list=[TestTable.key#1, TestTable.TestEnum#2, TestTable.KitchenSink#3, $array.repeated_int32_val#4]
+        +-input_scan=
+        | +-TableScan(column_list=TestTable.[key#1, TestEnum#2, KitchenSink#3], table=TestTable, column_index_list=[0, 1, 2])
+        +-array_expr_list=
+        | +-GetProtoField
+        |   +-type=ARRAY<INT32>
+        |   +-expr=
+        |   | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=TestTable.KitchenSink#3)
+        |   +-field_descriptor=repeated_int32_val
+        |   +-default_value=[]
+        +-element_column_list=[$array.repeated_int32_val#4]
+==
+
+# Scoping: Column names that show up in two preceding tables will be ambiguous.
+select *
+from
+  (select 1 x, 2 y) t1,
+  (select 3 x, 4 z) t2,
+  UNNEST( ARRAY(select y) ),  # Not ambiguous
+  UNNEST( ARRAY(select x) )   # Ambiguous
+--
+ERROR: Column name x is ambiguous [at 6:24]
+  UNNEST( ARRAY(select x) )   # Ambiguous
+                       ^
+==
+
+# Unnesting a table doesn't make sense.
+# We get a custom error message for this case.
+select * from unnest(KeyValue)
+--
+ERROR: UNNEST cannot be applied on a table: KeyValue [at 1:22]
+select * from unnest(KeyValue)
+                     ^
+==
+
+select * from unnest(NotATableName)
+--
+ERROR: Unrecognized name: NotATableName [at 1:22]
+select * from unnest(NotATableName)
+                     ^
+==
+
+# kv gets resolved as a range variable in an expression context, so it gets turned
+# into a struct, which cannot be used in unnest.
+select * from KeyValue kv, unnest(kv)
+--
+ERROR: Values referenced in UNNEST must be arrays. UNNEST contains expression of type STRUCT<Key INT64, Value STRING> [at 1:35]
+select * from KeyValue kv, unnest(kv)
+                                  ^
+==
+
+select * from KeyValue kv, unnest(kv.key)
+--
+ERROR: Values referenced in UNNEST must be arrays. UNNEST contains expression of type INT64 [at 1:35]
+select * from KeyValue kv, unnest(kv.key)
+                                  ^
+==
+
+with w as (select * from KeyValue)
+select * from unnest(w)
+--
+ERROR: Unrecognized name: w [at 2:22]
+select * from unnest(w)
+                     ^
+==
+
+select * from unnest(null)
+--
+ERROR: Values referenced in UNNEST must be arrays. UNNEST contains expression of type INT64 [at 1:22]
+select * from unnest(null)
+                     ^
+==
+
+select t from unnest(cast(null as array<string>)) t
+--
+QueryStmt
++-output_column_list=
+| +-$array.t#1 AS t [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$array.t#1]
+    +-input_scan=
+      +-ArrayScan
+        +-column_list=[$array.t#1]
+        +-array_expr_list=
+        | +-Literal(type=ARRAY<STRING>, value=NULL, has_explicit_type=TRUE)
+        +-element_column_list=[$array.t#1]
+==
+
+select *
+from KeyValue kv,
+     UNNEST([kv.key, @test_param_int32, kv.key + @test_param_int32])
+--
+QueryStmt
++-output_column_list=
+| +-KeyValue.Key#1 AS Key [INT64]
+| +-KeyValue.Value#2 AS Value [STRING]
+| +-$array.$unnest1#3 AS `$unnest1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[KeyValue.Key#1, KeyValue.Value#2, $array.$unnest1#3]
+    +-input_scan=
+      +-ArrayScan
+        +-column_list=[KeyValue.Key#1, KeyValue.Value#2, $array.$unnest1#3]
+        +-input_scan=
+        | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1], alias="kv")
+        +-array_expr_list=
+        | +-FunctionCall(GoogleSQL:$make_array(repeated(3) INT64) -> ARRAY<INT64>)
+        |   +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+        |   +-Cast(INT32 -> INT64)
+        |   | +-Parameter(type=INT32, name="test_param_int32")
+        |   +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+        |     +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+        |     +-Cast(INT32 -> INT64)
+        |       +-Parameter(type=INT32, name="test_param_int32")
+        +-element_column_list=[$array.$unnest1#3]
+==
+
+# Test case for b/18945421, we provide a normal (non-INTERNAL) error message
+# now.
+select x, array_agg(y)
+from unnest([struct(1 as x, 10 as y), struct(1 as x, 20 as y)])
+--
+ERROR: SELECT list expression references column x which is neither grouped nor aggregated [at 1:8]
+select x, array_agg(y)
+       ^
+==
+
+select (select arr from UNNEST(T.KitchenSink.nested_repeated_value[offset(1)].nested_repeated_int64) arr)
+from TestTable T;
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#5 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#5]
+    +-expr_list=
+    | +-$col1#5 :=
+    |   +-SubqueryExpr
+    |     +-type=INT64
+    |     +-subquery_type=SCALAR
+    |     +-parameter_list=
+    |     | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=TestTable.KitchenSink#3)
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$array.arr#4]
+    |         +-input_scan=
+    |           +-ArrayScan
+    |             +-column_list=[$array.arr#4]
+    |             +-array_expr_list=
+    |             | +-GetProtoField
+    |             |   +-type=ARRAY<INT64>
+    |             |   +-expr=
+    |             |   | +-FunctionCall(GoogleSQL:$array_at_offset(ARRAY<PROTO<googlesql_test.KitchenSinkPB.Nested>>, INT64) -> PROTO<googlesql_test.KitchenSinkPB.Nested>)
+    |             |   |   +-GetProtoField
+    |             |   |   | +-type=ARRAY<PROTO<googlesql_test.KitchenSinkPB.Nested>>
+    |             |   |   | +-expr=
+    |             |   |   | | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=TestTable.KitchenSink#3, is_correlated=TRUE)
+    |             |   |   | +-field_descriptor=nested_repeated_value
+    |             |   |   | +-default_value=[]
+    |             |   |   +-Literal(type=INT64, value=1)
+    |             |   +-field_descriptor=nested_repeated_int64
+    |             |   +-default_value=[]
+    |             +-element_column_list=[$array.arr#4]
+    +-input_scan=
+      +-TableScan(column_list=[TestTable.KitchenSink#3], table=TestTable, column_index_list=[2], alias="T")
+==
+
+[language_features=NONE,{{|+SINGLETON_UNNEST_INFERS_ALIAS}}]
+select (select nested_repeated_int64 from UNNEST(T.KitchenSink.nested_repeated_value[offset(1)].nested_repeated_int64))
+from TestTable T;
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: Unrecognized name: nested_repeated_int64 [at 1:16]
+select (select nested_repeated_int64 from UNNEST(T.KitchenSink.nested_repeate...
+               ^
+--
+ALTERNATION GROUP: +SINGLETON_UNNEST_INFERS_ALIAS
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#5 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#5]
+    +-expr_list=
+    | +-$col1#5 :=
+    |   +-SubqueryExpr
+    |     +-type=INT64
+    |     +-subquery_type=SCALAR
+    |     +-parameter_list=
+    |     | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=TestTable.KitchenSink#3)
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$array.nested_repeated_int64#4]
+    |         +-input_scan=
+    |           +-ArrayScan
+    |             +-column_list=[$array.nested_repeated_int64#4]
+    |             +-array_expr_list=
+    |             | +-GetProtoField
+    |             |   +-type=ARRAY<INT64>
+    |             |   +-expr=
+    |             |   | +-FunctionCall(GoogleSQL:$array_at_offset(ARRAY<PROTO<googlesql_test.KitchenSinkPB.Nested>>, INT64) -> PROTO<googlesql_test.KitchenSinkPB.Nested>)
+    |             |   |   +-GetProtoField
+    |             |   |   | +-type=ARRAY<PROTO<googlesql_test.KitchenSinkPB.Nested>>
+    |             |   |   | +-expr=
+    |             |   |   | | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=TestTable.KitchenSink#3, is_correlated=TRUE)
+    |             |   |   | +-field_descriptor=nested_repeated_value
+    |             |   |   | +-default_value=[]
+    |             |   |   +-Literal(type=INT64, value=1)
+    |             |   +-field_descriptor=nested_repeated_int64
+    |             |   +-default_value=[]
+    |             +-element_column_list=[$array.nested_repeated_int64#4]
+    +-input_scan=
+      +-TableScan(column_list=[TestTable.KitchenSink#3], table=TestTable, column_index_list=[2], alias="T")
+==
+
+# To get to an array in a path after a array element access, we have to
+# use UNNEST or we get a parse error.
+select v
+from TestTable,
+     UNNEST(TestTable.KitchenSink.nested_repeated_value[OFFSET(0)].nested_repeated_int64) v
+--
+QueryStmt
++-output_column_list=
+| +-$array.v#4 AS v [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$array.v#4]
+    +-input_scan=
+      +-ArrayScan
+        +-column_list=[TestTable.KitchenSink#3, $array.v#4]
+        +-input_scan=
+        | +-TableScan(column_list=[TestTable.KitchenSink#3], table=TestTable, column_index_list=[2])
+        +-array_expr_list=
+        | +-GetProtoField
+        |   +-type=ARRAY<INT64>
+        |   +-expr=
+        |   | +-FunctionCall(GoogleSQL:$array_at_offset(ARRAY<PROTO<googlesql_test.KitchenSinkPB.Nested>>, INT64) -> PROTO<googlesql_test.KitchenSinkPB.Nested>)
+        |   |   +-GetProtoField
+        |   |   | +-type=ARRAY<PROTO<googlesql_test.KitchenSinkPB.Nested>>
+        |   |   | +-expr=
+        |   |   | | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=TestTable.KitchenSink#3)
+        |   |   | +-field_descriptor=nested_repeated_value
+        |   |   | +-default_value=[]
+        |   |   +-Literal(type=INT64, value=0)
+        |   +-field_descriptor=nested_repeated_int64
+        |   +-default_value=[]
+        +-element_column_list=[$array.v#4]
+==
+
+select nested_repeated_int64
+from TestTable,
+     TestTable.KitchenSink.nested_repeated_value[OFFSET(0)].nested_repeated_int64
+--
+ERROR: Syntax error: Array element access is not allowed in the FROM clause without UNNEST; Use UNNEST(<expression>) [at 3:49]
+     TestTable.KitchenSink.nested_repeated_value[OFFSET(0)].nested_repeated_i...
+                                                ^
+==
+
+select v
+from TestTable,
+     UNNEST(TestTable.KitchenSink
+                     .(googlesql_test.KitchenSinkExtension.optional_extension)
+                     .repeated_value) v
+--
+QueryStmt
++-output_column_list=
+| +-$array.v#4 AS v [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$array.v#4]
+    +-input_scan=
+      +-ArrayScan
+        +-column_list=[TestTable.KitchenSink#3, $array.v#4]
+        +-input_scan=
+        | +-TableScan(column_list=[TestTable.KitchenSink#3], table=TestTable, column_index_list=[2])
+        +-array_expr_list=
+        | +-GetProtoField
+        |   +-type=ARRAY<STRING>
+        |   +-expr=
+        |   | +-GetProtoField
+        |   |   +-type=PROTO<googlesql_test.KitchenSinkExtension>
+        |   |   +-expr=
+        |   |   | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=TestTable.KitchenSink#3)
+        |   |   +-field_descriptor=[googlesql_test.KitchenSinkExtension.optional_extension]
+        |   |   +-default_value=NULL
+        |   +-field_descriptor=repeated_value
+        |   +-default_value=[]
+        +-element_column_list=[$array.v#4]
+==
+
+select v
+from TestTable,
+     TestTable.KitchenSink
+         .(googlesql_test.KitchenSinkExtension.optional_extension)
+         .repeated_value v
+--
+ERROR: Syntax error: Generalized field access is not allowed in the FROM clause without UNNEST; Use UNNEST(<expression>) [at 4:11]
+         .(googlesql_test.KitchenSinkExtension.optional_extension)
+          ^
+==
+
+# Using combination of extension fields and array elements inside UNNEST.
+# This will not parse as a normal path without UNNEST.
+select v
+from TestTable,
+     UNNEST(TestTable.KitchenSink
+                     .(googlesql_test.KitchenSinkExtension.repeated_extension)
+                     [OFFSET(2)]
+                     .repeated_value) v
+--
+QueryStmt
++-output_column_list=
+| +-$array.v#4 AS v [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$array.v#4]
+    +-input_scan=
+      +-ArrayScan
+        +-column_list=[TestTable.KitchenSink#3, $array.v#4]
+        +-input_scan=
+        | +-TableScan(column_list=[TestTable.KitchenSink#3], table=TestTable, column_index_list=[2])
+        +-array_expr_list=
+        | +-GetProtoField
+        |   +-type=ARRAY<STRING>
+        |   +-expr=
+        |   | +-FunctionCall(GoogleSQL:$array_at_offset(ARRAY<PROTO<googlesql_test.KitchenSinkExtension>>, INT64) -> PROTO<googlesql_test.KitchenSinkExtension>)
+        |   |   +-GetProtoField
+        |   |   | +-type=ARRAY<PROTO<googlesql_test.KitchenSinkExtension>>
+        |   |   | +-expr=
+        |   |   | | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=TestTable.KitchenSink#3)
+        |   |   | +-field_descriptor=[googlesql_test.KitchenSinkExtension.repeated_extension]
+        |   |   | +-default_value=[]
+        |   |   +-Literal(type=INT64, value=2)
+        |   +-field_descriptor=repeated_value
+        |   +-default_value=[]
+        +-element_column_list=[$array.v#4]
+==
+
+# When UNNEST expression is not a path expression, there is no alias to be inferred.
+[language_features=NONE,+SINGLETON_UNNEST_INFERS_ALIAS]
+SELECT *
+FROM UNNEST([1,2])
+--
+QueryStmt
++-output_column_list=
+| +-$array.$unnest1#1 AS `$unnest1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$array.$unnest1#1]
+    +-input_scan=
+      +-ArrayScan
+        +-column_list=[$array.$unnest1#1]
+        +-array_expr_list=
+        | +-Literal(type=ARRAY<INT64>, value=[1, 2])
+        +-element_column_list=[$array.$unnest1#1]
+==
+
+# Legacy table_alias allowed when there is exactly one expression in UNNEST and
+# the expression does not have column alias.
+SELECT *
+FROM UNNEST([1,2]) AS legacy_alias
+--
+QueryStmt
++-output_column_list=
+| +-$array.legacy_alias#1 AS legacy_alias [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$array.legacy_alias#1]
+    +-input_scan=
+      +-ArrayScan
+        +-column_list=[$array.legacy_alias#1]
+        +-array_expr_list=
+        | +-Literal(type=ARRAY<INT64>, value=[1, 2])
+        +-element_column_list=[$array.legacy_alias#1]
+==
+
+# Tests implicit coercion from STRING literal to BYTES.
+[language_features=NONE,{{|+IMPLICIT_COERCION_STRING_LITERAL_TO_BYTES}}]
+SELECT 'abc' IN UNNEST([b'abc', b'def'])
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: No matching signature for operator IN UNNEST for argument types: STRING, ARRAY<BYTES>. STRING and BYTES are different types that are not directly comparable. To write a BYTES literal, use a b-prefixed literal such as b'bytes value' [at 1:14]
+SELECT 'abc' IN UNNEST([b'abc', b'def'])
+             ^
+--
+ALTERNATION GROUP: +IMPLICIT_COERCION_STRING_LITERAL_TO_BYTES
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [BOOL]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(GoogleSQL:$in_array(BYTES, ARRAY<BYTES>) -> BOOL)
+    |     +-Literal(type=BYTES, value=b"abc")
+    |     +-Literal(type=ARRAY<BYTES>, value=[b"abc", b"def"])
+    +-input_scan=
+      +-SingleRowScan
+==
+
+[language_features=NONE,{{+IMPLICIT_COERCION_STRING_LITERAL_TO_BYTES,+CAST_DIFFERENT_ARRAY_TYPES|}}]
+SELECT b'abc' IN UNNEST (['abc', 'def'])
+--
+ALTERNATION GROUP: +IMPLICIT_COERCION_STRING_LITERAL_TO_BYTES,+CAST_DIFFERENT_ARRAY_TYPES
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [BOOL]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(GoogleSQL:$in_array(BYTES, ARRAY<BYTES>) -> BOOL)
+    |     +-Literal(type=BYTES, value=b"abc")
+    |     +-Literal(type=ARRAY<BYTES>, value=[b"abc", b"def"])
+    +-input_scan=
+      +-SingleRowScan
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: No matching signature for operator IN UNNEST for argument types: BYTES, ARRAY<STRING>. STRING and BYTES are different types that are not directly comparable. To write a BYTES literal, use a b-prefixed literal such as b'bytes value' [at 1:15]
+SELECT b'abc' IN UNNEST (['abc', 'def'])
+              ^

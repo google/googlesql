@@ -1,0 +1,2189 @@
+# This test shows the name scoping behavior of FROM queries and other pipe
+# query operations when used as table subqueries.
+#
+# Pipe queries differ from normal subqueries because they don't have a
+# SELECT, which normally sets the output row schema and erases all other
+# range variables, pseudo-columns, etc.
+#
+# FROM queries produce the same names as the FROM clause, so range variables
+# and pseudo-columns can still be referenced.  Then there's an additional
+# detail if a new alias (range variable) is assigned for a table subquery.
+# Assigning a new alias hides any previously existing aliases.  This is similar
+# to how aliases for parenthesized joins would behave, if supported.
+# See comment in Resolver::ResolveJoinRhs.
+#
+# This test covers the following cases in FROM:
+#   1) Single regular table
+#   2) Single value table
+#   3) Multiple regular tables
+#   4) Regular table plus value table
+#   5) Regular table plus projected columns
+#   6) Value table plus projected columns
+#   7) An additional case demonstrating behavior of WITH
+#   8) Some cases with multi-level nesting of table subqueries
+#
+# For each of these, we use the same table subquery multiple times, and
+# with and without an alias on the sbuquery, showing
+#   A) The NameList visible after just the FROM query
+#   B) The NameList visible for the query as a table subquery
+#   B) Which names can resolve unqualified
+#   C) Which names can resolve with range variables from the subquery
+#   D) Which names can resolve with the table subquery's alias (if present)
+#
+# A and B are shown using STATIC_DESCRIBE to print the NameList and NameScope,
+# The NameList columns are also in the output_column_list for the QueryStmt.
+# B,C,D are shown with queries probing which selected names work or don't.
+# Those probing queries may be redundant now with the STATIC_DESCRIBE outputs.
+
+[default language_features=MAXIMUM,+PIPES,+PIPE_STATIC_DESCRIBE]
+
+# CASE 1) Single regular table
+# EnumTable has a column Key and a pseudo-column Filename.
+from EnumTable t
+|> STATIC_DESCRIBE
+--
+QueryStmt
++-output_column_list=
+| +-EnumTable.key#1 AS key [INT32]
+| +-EnumTable.TestEnum#2 AS TestEnum [ENUM<googlesql_test.TestEnum>]
+| +-EnumTable.AnotherTestEnum#3 AS AnotherTestEnum [ENUM<googlesql_test.AnotherTestEnum>]
++-query=
+  +-StaticDescribeScan
+    +-column_list=EnumTable.[key#1, TestEnum#2, AnotherTestEnum#3]
+    +-describe_text=
+    |   """
+    |   NameList:
+    |     key INT32 EnumTable.key#1
+    |     TestEnum googlesql_test.TestEnum EnumTable.TestEnum#2
+    |     AnotherTestEnum googlesql_test.AnotherTestEnum EnumTable.AnotherTestEnum#3
+    |   NameScope:
+    |     Names:
+    |       AnotherTestEnum -> googlesql_test.AnotherTestEnum (EnumTable.AnotherTestEnum#3) (implicit)
+    |       Filename -> STRING (EnumTable.Filename#4) (implicit) (pseudo-column)
+    |       RowId -> BYTES (EnumTable.RowId#5) (implicit) (pseudo-column)
+    |       TestEnum -> googlesql_test.TestEnum (EnumTable.TestEnum#2) (implicit)
+    |       key -> INT32 (EnumTable.key#1) (implicit)
+    |     Range variables:
+    |       t -> RANGE_VARIABLE<key#1,TestEnum#2,AnotherTestEnum#3, pseudo_columns: Filename#4,RowId#5>
+    |   """
+    +-input_scan=
+      +-TableScan(column_list=EnumTable.[key#1, TestEnum#2, AnotherTestEnum#3], table=EnumTable, column_index_list=[0, 1, 2], alias="t")
+==
+
+from (from EnumTable t) {{AS row|}}
+|> STATIC_DESCRIBE
+--
+ALTERNATION GROUP: AS row
+--
+QueryStmt
++-output_column_list=
+| +-EnumTable.key#1 AS key [INT32]
+| +-EnumTable.TestEnum#2 AS TestEnum [ENUM<googlesql_test.TestEnum>]
+| +-EnumTable.AnotherTestEnum#3 AS AnotherTestEnum [ENUM<googlesql_test.AnotherTestEnum>]
++-query=
+  +-StaticDescribeScan
+    +-column_list=EnumTable.[key#1, TestEnum#2, AnotherTestEnum#3]
+    +-describe_text=
+    |   """
+    |   NameList:
+    |     key INT32 EnumTable.key#1
+    |     TestEnum googlesql_test.TestEnum EnumTable.TestEnum#2
+    |     AnotherTestEnum googlesql_test.AnotherTestEnum EnumTable.AnotherTestEnum#3
+    |   NameScope:
+    |     Names:
+    |       AnotherTestEnum -> googlesql_test.AnotherTestEnum (EnumTable.AnotherTestEnum#3) (implicit)
+    |       Filename -> STRING (EnumTable.Filename#4) (implicit) (pseudo-column)
+    |       RowId -> BYTES (EnumTable.RowId#5) (implicit) (pseudo-column)
+    |       TestEnum -> googlesql_test.TestEnum (EnumTable.TestEnum#2) (implicit)
+    |       key -> INT32 (EnumTable.key#1) (implicit)
+    |     Range variables:
+    |       row -> RANGE_VARIABLE<key#1,TestEnum#2,AnotherTestEnum#3, pseudo_columns: Filename#4,RowId#5>
+    |   """
+    +-input_scan=
+      +-TableScan(column_list=EnumTable.[key#1, TestEnum#2, AnotherTestEnum#3], table=EnumTable, column_index_list=[0, 1, 2], alias="t")
+--
+ALTERNATION GROUP: <empty>
+--
+QueryStmt
++-output_column_list=
+| +-EnumTable.key#1 AS key [INT32]
+| +-EnumTable.TestEnum#2 AS TestEnum [ENUM<googlesql_test.TestEnum>]
+| +-EnumTable.AnotherTestEnum#3 AS AnotherTestEnum [ENUM<googlesql_test.AnotherTestEnum>]
++-query=
+  +-StaticDescribeScan
+    +-column_list=EnumTable.[key#1, TestEnum#2, AnotherTestEnum#3]
+    +-describe_text=
+    |   """
+    |   NameList:
+    |     key INT32 EnumTable.key#1
+    |     TestEnum googlesql_test.TestEnum EnumTable.TestEnum#2
+    |     AnotherTestEnum googlesql_test.AnotherTestEnum EnumTable.AnotherTestEnum#3
+    |   NameScope:
+    |     Names:
+    |       AnotherTestEnum -> googlesql_test.AnotherTestEnum (EnumTable.AnotherTestEnum#3) (implicit)
+    |       Filename -> STRING (EnumTable.Filename#4) (implicit) (pseudo-column)
+    |       RowId -> BYTES (EnumTable.RowId#5) (implicit) (pseudo-column)
+    |       TestEnum -> googlesql_test.TestEnum (EnumTable.TestEnum#2) (implicit)
+    |       key -> INT32 (EnumTable.key#1) (implicit)
+    |     Range variables:
+    |       t -> RANGE_VARIABLE<key#1,TestEnum#2,AnotherTestEnum#3, pseudo_columns: Filename#4,RowId#5>
+    |   """
+    +-input_scan=
+      +-TableScan(column_list=EnumTable.[key#1, TestEnum#2, AnotherTestEnum#3], table=EnumTable, column_index_list=[0, 1, 2], alias="t")
+==
+
+select *
+from (from EnumTable t) {{|AS row}}
+--
+QueryStmt
++-output_column_list=
+| +-EnumTable.key#1 AS key [INT32]
+| +-EnumTable.TestEnum#2 AS TestEnum [ENUM<googlesql_test.TestEnum>]
+| +-EnumTable.AnotherTestEnum#3 AS AnotherTestEnum [ENUM<googlesql_test.AnotherTestEnum>]
++-query=
+  +-ProjectScan
+    +-column_list=EnumTable.[key#1, TestEnum#2, AnotherTestEnum#3]
+    +-input_scan=
+      +-TableScan(column_list=EnumTable.[key#1, TestEnum#2, AnotherTestEnum#3], table=EnumTable, column_index_list=[0, 1, 2], alias="t")
+==
+
+select key, t.key, Filename, t.Filename, t
+from (from EnumTable t)
+--
+QueryStmt
++-output_column_list=
+| +-EnumTable.key#1 AS key [INT32]
+| +-EnumTable.key#1 AS key [INT32]
+| +-EnumTable.Filename#4 AS Filename [STRING]
+| +-EnumTable.Filename#4 AS Filename [STRING]
+| +-$query.t#7 AS t [STRUCT<key INT32, TestEnum ENUM<googlesql_test.TestEnum>, AnotherTestEnum ENUM<googlesql_test.AnotherTestEnum>>]
++-query=
+  +-ProjectScan
+    +-column_list=[EnumTable.key#1, EnumTable.key#1, EnumTable.Filename#4, EnumTable.Filename#4, $query.t#7]
+    +-expr_list=
+    | +-t#7 :=
+    |   +-MakeStruct
+    |     +-type=STRUCT<key INT32, TestEnum ENUM<googlesql_test.TestEnum>, AnotherTestEnum ENUM<googlesql_test.AnotherTestEnum>>
+    |     +-field_list=
+    |       +-ColumnRef(type=INT32, column=EnumTable.key#1)
+    |       +-ColumnRef(type=ENUM<googlesql_test.TestEnum>, column=EnumTable.TestEnum#2)
+    |       +-ColumnRef(type=ENUM<googlesql_test.AnotherTestEnum>, column=EnumTable.AnotherTestEnum#3)
+    +-input_scan=
+      +-TableScan(column_list=EnumTable.[key#1, TestEnum#2, AnotherTestEnum#3, Filename#4], table=EnumTable, column_index_list=[0, 1, 2, 3], alias="t")
+==
+
+select key, row.key, row
+from (from EnumTable t) AS row
+--
+QueryStmt
++-output_column_list=
+| +-EnumTable.key#1 AS key [INT32]
+| +-EnumTable.key#1 AS key [INT32]
+| +-$query.row#7 AS `row` [STRUCT<key INT32, TestEnum ENUM<googlesql_test.TestEnum>, AnotherTestEnum ENUM<googlesql_test.AnotherTestEnum>>]
++-query=
+  +-ProjectScan
+    +-column_list=[EnumTable.key#1, EnumTable.key#1, $query.row#7]
+    +-expr_list=
+    | +-row#7 :=
+    |   +-MakeStruct
+    |     +-type=STRUCT<key INT32, TestEnum ENUM<googlesql_test.TestEnum>, AnotherTestEnum ENUM<googlesql_test.AnotherTestEnum>>
+    |     +-field_list=
+    |       +-ColumnRef(type=INT32, column=EnumTable.key#1)
+    |       +-ColumnRef(type=ENUM<googlesql_test.TestEnum>, column=EnumTable.TestEnum#2)
+    |       +-ColumnRef(type=ENUM<googlesql_test.AnotherTestEnum>, column=EnumTable.AnotherTestEnum#3)
+    +-input_scan=
+      +-TableScan(column_list=EnumTable.[key#1, TestEnum#2, AnotherTestEnum#3], table=EnumTable, column_index_list=[0, 1, 2], alias="t")
+==
+
+# Inner range variables aren't visible when the subquery has an alias.
+# Pseudo-columns are still visible.
+select {{t|row.t|row.t.key|row.t.filename|filename|row.filename}}
+from (from EnumTable t) AS row
+--
+ALTERNATION GROUP: t
+--
+ERROR: Unrecognized name: t [at 1:8]
+select t
+       ^
+--
+ALTERNATION GROUP: row.t
+--
+ERROR: Name t not found inside row [at 1:12]
+select row.t
+           ^
+--
+ALTERNATION GROUP: row.t.key
+--
+ERROR: Name t not found inside row [at 1:12]
+select row.t.key
+           ^
+--
+ALTERNATION GROUP: row.t.filename
+--
+ERROR: Name t not found inside row [at 1:12]
+select row.t.filename
+           ^
+--
+ALTERNATION GROUPS:
+    filename
+    row.filename
+--
+QueryStmt
++-output_column_list=
+| +-EnumTable.Filename#4 AS filename [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[EnumTable.Filename#4]
+    +-input_scan=
+      +-TableScan(column_list=[EnumTable.Filename#4], table=EnumTable, column_index_list=[3], alias="t")
+==
+
+# CASE 2) Single value table
+# TextExtraValueTable has a field str_value and a pseudo-column Filename.
+from TestExtraValueTable t
+|> STATIC_DESCRIBE
+--
+QueryStmt
++-output_column_list=
+| +-TestExtraValueTable.value#1 AS `$value` [PROTO<googlesql_test.TestExtraPB>]
++-is_value_table=TRUE
++-query=
+  +-StaticDescribeScan
+    +-column_list=[TestExtraValueTable.value#1]
+    +-describe_text=
+    |   """
+    |   NameList (is_value_table = true):
+    |     t googlesql_test.TestExtraPB TestExtraValueTable.value#1 (value table)
+    |   NameScope:
+    |     Names:
+    |       Filename -> STRING (TestExtraValueTable.Filename#2) (implicit) (pseudo-column)
+    |       RowId -> BYTES (TestExtraValueTable.RowId#3) (implicit) (pseudo-column)
+    |     Range variables:
+    |       t -> RANGE_VARIABLE<value#1, pseudo_columns: Filename#2,RowId#3> (value table)
+    |     Value table columns:
+    |       TestExtraValueTable.value#1
+    |   """
+    +-input_scan=
+      +-TableScan(column_list=[TestExtraValueTable.value#1], table=TestExtraValueTable, column_index_list=[0], alias="t")
+==
+
+from (from TestExtraValueTable t) {{|AS row}}
+|> STATIC_DESCRIBE
+--
+ALTERNATION GROUP: <empty>
+--
+QueryStmt
++-output_column_list=
+| +-TestExtraValueTable.value#1 AS `$value` [PROTO<googlesql_test.TestExtraPB>]
++-is_value_table=TRUE
++-query=
+  +-StaticDescribeScan
+    +-column_list=[TestExtraValueTable.value#1]
+    +-describe_text=
+    |   """
+    |   NameList (is_value_table = true):
+    |     t googlesql_test.TestExtraPB TestExtraValueTable.value#1 (value table)
+    |   NameScope:
+    |     Names:
+    |       Filename -> STRING (TestExtraValueTable.Filename#2) (implicit) (pseudo-column)
+    |       RowId -> BYTES (TestExtraValueTable.RowId#3) (implicit) (pseudo-column)
+    |     Range variables:
+    |       t -> RANGE_VARIABLE<value#1, pseudo_columns: Filename#2,RowId#3> (value table)
+    |     Value table columns:
+    |       TestExtraValueTable.value#1
+    |   """
+    +-input_scan=
+      +-TableScan(column_list=[TestExtraValueTable.value#1], table=TestExtraValueTable, column_index_list=[0], alias="t")
+--
+ALTERNATION GROUP: AS row
+--
+QueryStmt
++-output_column_list=
+| +-TestExtraValueTable.value#1 AS `$value` [PROTO<googlesql_test.TestExtraPB>]
++-is_value_table=TRUE
++-query=
+  +-StaticDescribeScan
+    +-column_list=[TestExtraValueTable.value#1]
+    +-describe_text=
+    |   """
+    |   NameList (is_value_table = true):
+    |     `row` googlesql_test.TestExtraPB TestExtraValueTable.value#1 (value table)
+    |   NameScope:
+    |     Names:
+    |       Filename -> STRING (TestExtraValueTable.Filename#2) (implicit) (pseudo-column)
+    |       RowId -> BYTES (TestExtraValueTable.RowId#3) (implicit) (pseudo-column)
+    |     Range variables:
+    |       row -> RANGE_VARIABLE<value#1, pseudo_columns: Filename#2,RowId#3> (value table)
+    |     Value table columns:
+    |       TestExtraValueTable.value#1
+    |   """
+    +-input_scan=
+      +-TableScan(column_list=[TestExtraValueTable.value#1], table=TestExtraValueTable, column_index_list=[0], alias="t")
+==
+
+# SELECT * expands fields of the value table.
+select *
+from (from TestExtraValueTable t) {{|AS row}}
+--
+QueryStmt
++-output_column_list=
+| +-$query.int32_val1#4 AS int32_val1 [INT32]
+| +-$query.int32_val2#5 AS int32_val2 [INT32]
+| +-$query.str_value#6 AS str_value [ARRAY<STRING>]
++-query=
+  +-ProjectScan
+    +-column_list=$query.[int32_val1#4, int32_val2#5, str_value#6]
+    +-expr_list=
+    | +-int32_val1#4 :=
+    | | +-GetProtoField
+    | |   +-type=INT32
+    | |   +-expr=
+    | |   | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=TestExtraValueTable.value#1)
+    | |   +-field_descriptor=int32_val1
+    | |   +-default_value=0
+    | +-int32_val2#5 :=
+    | | +-GetProtoField
+    | |   +-type=INT32
+    | |   +-expr=
+    | |   | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=TestExtraValueTable.value#1)
+    | |   +-field_descriptor=int32_val2
+    | |   +-default_value=0
+    | +-str_value#6 :=
+    |   +-GetProtoField
+    |     +-type=ARRAY<STRING>
+    |     +-expr=
+    |     | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=TestExtraValueTable.value#1)
+    |     +-field_descriptor=str_value
+    |     +-default_value=[]
+    +-input_scan=
+      +-TableScan(column_list=[TestExtraValueTable.value#1], table=TestExtraValueTable, column_index_list=[0], alias="t")
+==
+
+select {{t.str_value|t.Filename|Filename|t}}
+from (from TestExtraValueTable t)
+--
+ALTERNATION GROUP: t.str_value
+--
+QueryStmt
++-output_column_list=
+| +-$query.str_value#4 AS str_value [ARRAY<STRING>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.str_value#4]
+    +-expr_list=
+    | +-str_value#4 :=
+    |   +-GetProtoField
+    |     +-type=ARRAY<STRING>
+    |     +-expr=
+    |     | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=TestExtraValueTable.value#1)
+    |     +-field_descriptor=str_value
+    |     +-default_value=[]
+    +-input_scan=
+      +-TableScan(column_list=[TestExtraValueTable.value#1], table=TestExtraValueTable, column_index_list=[0], alias="t")
+--
+ALTERNATION GROUPS:
+    t.Filename
+    Filename
+--
+QueryStmt
++-output_column_list=
+| +-TestExtraValueTable.Filename#2 AS Filename [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[TestExtraValueTable.Filename#2]
+    +-input_scan=
+      +-TableScan(column_list=[TestExtraValueTable.Filename#2], table=TestExtraValueTable, column_index_list=[1], alias="t")
+--
+ALTERNATION GROUP: t
+--
+QueryStmt
++-output_column_list=
+| +-TestExtraValueTable.value#1 AS t [PROTO<googlesql_test.TestExtraPB>]
++-query=
+  +-ProjectScan
+    +-column_list=[TestExtraValueTable.value#1]
+    +-input_scan=
+      +-TableScan(column_list=[TestExtraValueTable.value#1], table=TestExtraValueTable, column_index_list=[0], alias="t")
+==
+
+# Fields and psuedo-columns of the value table are queryable, since the
+# alias becomes the new alias of the value table.
+select str_value, row.str_value, Filename, row.Filename, row
+from (from TestExtraValueTable t) AS row
+--
+QueryStmt
++-output_column_list=
+| +-$query.str_value#4 AS str_value [ARRAY<STRING>]
+| +-$query.str_value#5 AS str_value [ARRAY<STRING>]
+| +-TestExtraValueTable.Filename#2 AS Filename [STRING]
+| +-TestExtraValueTable.Filename#2 AS Filename [STRING]
+| +-TestExtraValueTable.value#1 AS `row` [PROTO<googlesql_test.TestExtraPB>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.str_value#4, $query.str_value#5, TestExtraValueTable.Filename#2, TestExtraValueTable.Filename#2, TestExtraValueTable.value#1]
+    +-expr_list=
+    | +-str_value#4 :=
+    | | +-GetProtoField
+    | |   +-type=ARRAY<STRING>
+    | |   +-expr=
+    | |   | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=TestExtraValueTable.value#1)
+    | |   +-field_descriptor=str_value
+    | |   +-default_value=[]
+    | +-str_value#5 :=
+    |   +-GetProtoField
+    |     +-type=ARRAY<STRING>
+    |     +-expr=
+    |     | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=TestExtraValueTable.value#1)
+    |     +-field_descriptor=str_value
+    |     +-default_value=[]
+    +-input_scan=
+      +-TableScan(column_list=TestExtraValueTable.[value#1, Filename#2], table=TestExtraValueTable, column_index_list=[0, 1], alias="t")
+==
+
+# Inner range variables aren't visible when the subquery has an alias.
+select {{t|row.t|row.t.key|row.t.filename|t.key}}
+from (from TestExtraValueTable t) AS row
+--
+ALTERNATION GROUP: t
+--
+ERROR: Unrecognized name: t [at 1:8]
+select t
+       ^
+--
+ALTERNATION GROUP: row.t
+--
+ERROR: Protocol buffer googlesql_test.TestExtraPB does not have a field called t [at 1:12]
+select row.t
+           ^
+--
+ALTERNATION GROUP: row.t.key
+--
+ERROR: Protocol buffer googlesql_test.TestExtraPB does not have a field called t [at 1:12]
+select row.t.key
+           ^
+--
+ALTERNATION GROUP: row.t.filename
+--
+ERROR: Protocol buffer googlesql_test.TestExtraPB does not have a field called t [at 1:12]
+select row.t.filename
+           ^
+--
+ALTERNATION GROUP: t.key
+--
+ERROR: Unrecognized name: t [at 1:8]
+select t.key
+       ^
+==
+
+# CASE 3) Multiple regular tables
+# Both tables have a column called `key`.
+from EnumTable t, KeyValue kv
+|> STATIC_DESCRIBE
+--
+QueryStmt
++-output_column_list=
+| +-EnumTable.key#1 AS key [INT32]
+| +-EnumTable.TestEnum#2 AS TestEnum [ENUM<googlesql_test.TestEnum>]
+| +-EnumTable.AnotherTestEnum#3 AS AnotherTestEnum [ENUM<googlesql_test.AnotherTestEnum>]
+| +-KeyValue.Key#6 AS Key [INT64]
+| +-KeyValue.Value#7 AS Value [STRING]
++-query=
+  +-StaticDescribeScan
+    +-column_list=[EnumTable.key#1, EnumTable.TestEnum#2, EnumTable.AnotherTestEnum#3, KeyValue.Key#6, KeyValue.Value#7]
+    +-describe_text=
+    |   """
+    |   NameList:
+    |     key INT32 EnumTable.key#1
+    |     TestEnum googlesql_test.TestEnum EnumTable.TestEnum#2
+    |     AnotherTestEnum googlesql_test.AnotherTestEnum EnumTable.AnotherTestEnum#3
+    |     Key INT64 KeyValue.Key#6
+    |     Value STRING KeyValue.Value#7
+    |   NameScope:
+    |     Names:
+    |       AnotherTestEnum -> googlesql_test.AnotherTestEnum (EnumTable.AnotherTestEnum#3) (implicit)
+    |       Filename -> STRING (EnumTable.Filename#4) (implicit) (pseudo-column)
+    |       RowId -> BYTES (EnumTable.RowId#5) (implicit) (pseudo-column)
+    |       TestEnum -> googlesql_test.TestEnum (EnumTable.TestEnum#2) (implicit)
+    |       Value -> STRING (KeyValue.Value#7) (implicit)
+    |       key -> ambiguous
+    |     Range variables:
+    |       kv -> RANGE_VARIABLE<Key#6,Value#7>
+    |       t -> RANGE_VARIABLE<key#1,TestEnum#2,AnotherTestEnum#3, pseudo_columns: Filename#4,RowId#5>
+    |   """
+    +-input_scan=
+      +-JoinScan
+        +-column_list=[EnumTable.key#1, EnumTable.TestEnum#2, EnumTable.AnotherTestEnum#3, KeyValue.Key#6, KeyValue.Value#7]
+        +-left_scan=
+        | +-TableScan(column_list=EnumTable.[key#1, TestEnum#2, AnotherTestEnum#3], table=EnumTable, column_index_list=[0, 1, 2], alias="t")
+        +-right_scan=
+          +-TableScan(column_list=KeyValue.[Key#6, Value#7], table=KeyValue, column_index_list=[0, 1], alias="kv")
+==
+
+from (from EnumTable t, KeyValue kv) {{|AS row}}
+|> STATIC_DESCRIBE
+--
+ALTERNATION GROUP: <empty>
+--
+QueryStmt
++-output_column_list=
+| +-EnumTable.key#1 AS key [INT32]
+| +-EnumTable.TestEnum#2 AS TestEnum [ENUM<googlesql_test.TestEnum>]
+| +-EnumTable.AnotherTestEnum#3 AS AnotherTestEnum [ENUM<googlesql_test.AnotherTestEnum>]
+| +-KeyValue.Key#6 AS Key [INT64]
+| +-KeyValue.Value#7 AS Value [STRING]
++-query=
+  +-StaticDescribeScan
+    +-column_list=[EnumTable.key#1, EnumTable.TestEnum#2, EnumTable.AnotherTestEnum#3, KeyValue.Key#6, KeyValue.Value#7]
+    +-describe_text=
+    |   """
+    |   NameList:
+    |     key INT32 EnumTable.key#1
+    |     TestEnum googlesql_test.TestEnum EnumTable.TestEnum#2
+    |     AnotherTestEnum googlesql_test.AnotherTestEnum EnumTable.AnotherTestEnum#3
+    |     Key INT64 KeyValue.Key#6
+    |     Value STRING KeyValue.Value#7
+    |   NameScope:
+    |     Names:
+    |       AnotherTestEnum -> googlesql_test.AnotherTestEnum (EnumTable.AnotherTestEnum#3) (implicit)
+    |       Filename -> STRING (EnumTable.Filename#4) (implicit) (pseudo-column)
+    |       RowId -> BYTES (EnumTable.RowId#5) (implicit) (pseudo-column)
+    |       TestEnum -> googlesql_test.TestEnum (EnumTable.TestEnum#2) (implicit)
+    |       Value -> STRING (KeyValue.Value#7) (implicit)
+    |       key -> ambiguous
+    |     Range variables:
+    |       kv -> RANGE_VARIABLE<Key#6,Value#7>
+    |       t -> RANGE_VARIABLE<key#1,TestEnum#2,AnotherTestEnum#3, pseudo_columns: Filename#4,RowId#5>
+    |   """
+    +-input_scan=
+      +-JoinScan
+        +-column_list=[EnumTable.key#1, EnumTable.TestEnum#2, EnumTable.AnotherTestEnum#3, KeyValue.Key#6, KeyValue.Value#7]
+        +-left_scan=
+        | +-TableScan(column_list=EnumTable.[key#1, TestEnum#2, AnotherTestEnum#3], table=EnumTable, column_index_list=[0, 1, 2], alias="t")
+        +-right_scan=
+          +-TableScan(column_list=KeyValue.[Key#6, Value#7], table=KeyValue, column_index_list=[0, 1], alias="kv")
+--
+ALTERNATION GROUP: AS row
+--
+QueryStmt
++-output_column_list=
+| +-EnumTable.key#1 AS key [INT32]
+| +-EnumTable.TestEnum#2 AS TestEnum [ENUM<googlesql_test.TestEnum>]
+| +-EnumTable.AnotherTestEnum#3 AS AnotherTestEnum [ENUM<googlesql_test.AnotherTestEnum>]
+| +-KeyValue.Key#6 AS Key [INT64]
+| +-KeyValue.Value#7 AS Value [STRING]
++-query=
+  +-StaticDescribeScan
+    +-column_list=[EnumTable.key#1, EnumTable.TestEnum#2, EnumTable.AnotherTestEnum#3, KeyValue.Key#6, KeyValue.Value#7]
+    +-describe_text=
+    |   """
+    |   NameList:
+    |     key INT32 EnumTable.key#1
+    |     TestEnum googlesql_test.TestEnum EnumTable.TestEnum#2
+    |     AnotherTestEnum googlesql_test.AnotherTestEnum EnumTable.AnotherTestEnum#3
+    |     Key INT64 KeyValue.Key#6
+    |     Value STRING KeyValue.Value#7
+    |   NameScope:
+    |     Names:
+    |       AnotherTestEnum -> googlesql_test.AnotherTestEnum (EnumTable.AnotherTestEnum#3) (implicit)
+    |       Filename -> STRING (EnumTable.Filename#4) (implicit) (pseudo-column)
+    |       RowId -> BYTES (EnumTable.RowId#5) (implicit) (pseudo-column)
+    |       TestEnum -> googlesql_test.TestEnum (EnumTable.TestEnum#2) (implicit)
+    |       Value -> STRING (KeyValue.Value#7) (implicit)
+    |       key -> ambiguous
+    |     Range variables:
+    |       row -> RANGE_VARIABLE<key#1,TestEnum#2,AnotherTestEnum#3,Key#6,Value#7, pseudo_columns: Filename#4,RowId#5>
+    |   """
+    +-input_scan=
+      +-JoinScan
+        +-column_list=[EnumTable.key#1, EnumTable.TestEnum#2, EnumTable.AnotherTestEnum#3, KeyValue.Key#6, KeyValue.Value#7]
+        +-left_scan=
+        | +-TableScan(column_list=EnumTable.[key#1, TestEnum#2, AnotherTestEnum#3], table=EnumTable, column_index_list=[0, 1, 2], alias="t")
+        +-right_scan=
+          +-TableScan(column_list=KeyValue.[Key#6, Value#7], table=KeyValue, column_index_list=[0, 1], alias="kv")
+==
+
+select *
+from (from EnumTable t, KeyValue kv) {{|AS row}}
+--
+QueryStmt
++-output_column_list=
+| +-EnumTable.key#1 AS key [INT32]
+| +-EnumTable.TestEnum#2 AS TestEnum [ENUM<googlesql_test.TestEnum>]
+| +-EnumTable.AnotherTestEnum#3 AS AnotherTestEnum [ENUM<googlesql_test.AnotherTestEnum>]
+| +-KeyValue.Key#6 AS Key [INT64]
+| +-KeyValue.Value#7 AS Value [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[EnumTable.key#1, EnumTable.TestEnum#2, EnumTable.AnotherTestEnum#3, KeyValue.Key#6, KeyValue.Value#7]
+    +-input_scan=
+      +-JoinScan
+        +-column_list=[EnumTable.key#1, EnumTable.TestEnum#2, EnumTable.AnotherTestEnum#3, KeyValue.Key#6, KeyValue.Value#7]
+        +-left_scan=
+        | +-TableScan(column_list=EnumTable.[key#1, TestEnum#2, AnotherTestEnum#3], table=EnumTable, column_index_list=[0, 1, 2], alias="t")
+        +-right_scan=
+          +-TableScan(column_list=KeyValue.[Key#6, Value#7], table=KeyValue, column_index_list=[0, 1], alias="kv")
+==
+
+# We can query the range variables of the inner tables.
+select TestEnum, value, t.key, kv.key, Filename, t.Filename, t, kv
+from (from EnumTable t, KeyValue kv)
+--
+QueryStmt
++-output_column_list=
+| +-EnumTable.TestEnum#2 AS TestEnum [ENUM<googlesql_test.TestEnum>]
+| +-KeyValue.Value#7 AS value [STRING]
+| +-EnumTable.key#1 AS key [INT32]
+| +-KeyValue.Key#6 AS key [INT64]
+| +-EnumTable.Filename#4 AS Filename [STRING]
+| +-EnumTable.Filename#4 AS Filename [STRING]
+| +-$query.t#10 AS t [STRUCT<key INT32, TestEnum ENUM<googlesql_test.TestEnum>, AnotherTestEnum ENUM<googlesql_test.AnotherTestEnum>>]
+| +-$query.kv#11 AS kv [STRUCT<Key INT64, Value STRING>]
++-query=
+  +-ProjectScan
+    +-column_list=[EnumTable.TestEnum#2, KeyValue.Value#7, EnumTable.key#1, KeyValue.Key#6, EnumTable.Filename#4, EnumTable.Filename#4, $query.t#10, $query.kv#11]
+    +-expr_list=
+    | +-t#10 :=
+    | | +-MakeStruct
+    | |   +-type=STRUCT<key INT32, TestEnum ENUM<googlesql_test.TestEnum>, AnotherTestEnum ENUM<googlesql_test.AnotherTestEnum>>
+    | |   +-field_list=
+    | |     +-ColumnRef(type=INT32, column=EnumTable.key#1)
+    | |     +-ColumnRef(type=ENUM<googlesql_test.TestEnum>, column=EnumTable.TestEnum#2)
+    | |     +-ColumnRef(type=ENUM<googlesql_test.AnotherTestEnum>, column=EnumTable.AnotherTestEnum#3)
+    | +-kv#11 :=
+    |   +-MakeStruct
+    |     +-type=STRUCT<Key INT64, Value STRING>
+    |     +-field_list=
+    |       +-ColumnRef(type=INT64, column=KeyValue.Key#6)
+    |       +-ColumnRef(type=STRING, column=KeyValue.Value#7)
+    +-input_scan=
+      +-JoinScan
+        +-column_list=[EnumTable.key#1, EnumTable.TestEnum#2, EnumTable.AnotherTestEnum#3, EnumTable.Filename#4, KeyValue.Key#6, KeyValue.Value#7]
+        +-left_scan=
+        | +-TableScan(column_list=EnumTable.[key#1, TestEnum#2, AnotherTestEnum#3, Filename#4], table=EnumTable, column_index_list=[0, 1, 2, 3], alias="t")
+        +-right_scan=
+          +-TableScan(column_list=KeyValue.[Key#6, Value#7], table=KeyValue, column_index_list=[0, 1], alias="kv")
+==
+
+select key
+from (from EnumTable t, KeyValue kv)
+--
+ERROR: Column name key is ambiguous [at 1:8]
+select key
+       ^
+==
+
+# With an alias, we can query all unambiguous columns via the alias.
+select TestEnum, row.TestEnum, value, row.Value
+from (from EnumTable t, KeyValue kv) AS row
+--
+QueryStmt
++-output_column_list=
+| +-EnumTable.TestEnum#2 AS TestEnum [ENUM<googlesql_test.TestEnum>]
+| +-EnumTable.TestEnum#2 AS TestEnum [ENUM<googlesql_test.TestEnum>]
+| +-KeyValue.Value#7 AS value [STRING]
+| +-KeyValue.Value#7 AS Value [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[EnumTable.TestEnum#2, EnumTable.TestEnum#2, KeyValue.Value#7, KeyValue.Value#7]
+    +-input_scan=
+      +-JoinScan
+        +-column_list=[EnumTable.TestEnum#2, KeyValue.Value#7]
+        +-left_scan=
+        | +-TableScan(column_list=[EnumTable.TestEnum#2], table=EnumTable, column_index_list=[1], alias="t")
+        +-right_scan=
+          +-TableScan(column_list=[KeyValue.Value#7], table=KeyValue, column_index_list=[1], alias="kv")
+==
+
+# Duplicate names are from joined tables are ambiguous.
+# Pseudo-columns are still visible.
+select {{key|row.key|filename|row.filename}}
+from (from EnumTable t, KeyValue kv) AS row
+--
+ALTERNATION GROUP: key
+--
+ERROR: Column name key is ambiguous [at 1:8]
+select key
+       ^
+--
+ALTERNATION GROUP: row.key
+--
+ERROR: Name key is ambiguous inside row [at 1:12]
+select row.key
+           ^
+--
+ALTERNATION GROUPS:
+    filename
+    row.filename
+--
+QueryStmt
++-output_column_list=
+| +-EnumTable.Filename#4 AS filename [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[EnumTable.Filename#4]
+    +-input_scan=
+      +-JoinScan
+        +-column_list=[EnumTable.Filename#4]
+        +-left_scan=
+        | +-TableScan(column_list=[EnumTable.Filename#4], table=EnumTable, column_index_list=[3], alias="t")
+        +-right_scan=
+          +-TableScan(table=KeyValue, alias="kv")
+==
+
+# Inner range variables aren't visible when the subquery has an alias.
+select {{t|kv|row.t|row.t.key|row.kv|row.kv.value}}
+from (from EnumTable t, KeyValue kv) AS row
+--
+ALTERNATION GROUP: t
+--
+ERROR: Unrecognized name: t [at 1:8]
+select t
+       ^
+--
+ALTERNATION GROUP: kv
+--
+ERROR: Unrecognized name: kv [at 1:8]
+select kv
+       ^
+--
+ALTERNATION GROUP: row.t
+--
+ERROR: Name t not found inside row [at 1:12]
+select row.t
+           ^
+--
+ALTERNATION GROUP: row.t.key
+--
+ERROR: Name t not found inside row [at 1:12]
+select row.t.key
+           ^
+--
+ALTERNATION GROUP: row.kv
+--
+ERROR: Name kv not found inside row [at 1:12]
+select row.kv
+           ^
+--
+ALTERNATION GROUP: row.kv.value
+--
+ERROR: Name kv not found inside row [at 1:12]
+select row.kv.value
+           ^
+==
+
+# CASE 4) Regular table plus value table
+from EnumTable t, TestExtraValueTable vt
+|> STATIC_DESCRIBE
+--
+QueryStmt
++-output_column_list=
+| +-EnumTable.key#1 AS key [INT32]
+| +-EnumTable.TestEnum#2 AS TestEnum [ENUM<googlesql_test.TestEnum>]
+| +-EnumTable.AnotherTestEnum#3 AS AnotherTestEnum [ENUM<googlesql_test.AnotherTestEnum>]
+| +-TestExtraValueTable.value#6 AS vt [PROTO<googlesql_test.TestExtraPB>]
++-query=
+  +-StaticDescribeScan
+    +-column_list=[EnumTable.key#1, EnumTable.TestEnum#2, EnumTable.AnotherTestEnum#3, TestExtraValueTable.value#6]
+    +-describe_text=
+    |   """
+    |   NameList:
+    |     key INT32 EnumTable.key#1
+    |     TestEnum googlesql_test.TestEnum EnumTable.TestEnum#2
+    |     AnotherTestEnum googlesql_test.AnotherTestEnum EnumTable.AnotherTestEnum#3
+    |     vt googlesql_test.TestExtraPB TestExtraValueTable.value#6 (value table)
+    |   NameScope:
+    |     Names:
+    |       AnotherTestEnum -> googlesql_test.AnotherTestEnum (EnumTable.AnotherTestEnum#3) (implicit)
+    |       Filename -> ambiguous
+    |       RowId -> ambiguous
+    |       TestEnum -> googlesql_test.TestEnum (EnumTable.TestEnum#2) (implicit)
+    |       key -> INT32 (EnumTable.key#1) (implicit)
+    |     Range variables:
+    |       t -> RANGE_VARIABLE<key#1,TestEnum#2,AnotherTestEnum#3, pseudo_columns: Filename#4,RowId#5>
+    |       vt -> RANGE_VARIABLE<value#6, pseudo_columns: Filename#7,RowId#8> (value table)
+    |     Value table columns:
+    |       TestExtraValueTable.value#6
+    |   """
+    +-input_scan=
+      +-JoinScan
+        +-column_list=[EnumTable.key#1, EnumTable.TestEnum#2, EnumTable.AnotherTestEnum#3, TestExtraValueTable.value#6]
+        +-left_scan=
+        | +-TableScan(column_list=EnumTable.[key#1, TestEnum#2, AnotherTestEnum#3], table=EnumTable, column_index_list=[0, 1, 2], alias="t")
+        +-right_scan=
+          +-TableScan(column_list=[TestExtraValueTable.value#6], table=TestExtraValueTable, column_index_list=[0], alias="vt")
+==
+
+from (from EnumTable t, TestExtraValueTable vt) {{|AS row}}
+|> STATIC_DESCRIBE
+--
+ALTERNATION GROUP: <empty>
+--
+QueryStmt
++-output_column_list=
+| +-EnumTable.key#1 AS key [INT32]
+| +-EnumTable.TestEnum#2 AS TestEnum [ENUM<googlesql_test.TestEnum>]
+| +-EnumTable.AnotherTestEnum#3 AS AnotherTestEnum [ENUM<googlesql_test.AnotherTestEnum>]
+| +-TestExtraValueTable.value#6 AS vt [PROTO<googlesql_test.TestExtraPB>]
++-query=
+  +-StaticDescribeScan
+    +-column_list=[EnumTable.key#1, EnumTable.TestEnum#2, EnumTable.AnotherTestEnum#3, TestExtraValueTable.value#6]
+    +-describe_text=
+    |   """
+    |   NameList:
+    |     key INT32 EnumTable.key#1
+    |     TestEnum googlesql_test.TestEnum EnumTable.TestEnum#2
+    |     AnotherTestEnum googlesql_test.AnotherTestEnum EnumTable.AnotherTestEnum#3
+    |     vt googlesql_test.TestExtraPB TestExtraValueTable.value#6 (value table)
+    |   NameScope:
+    |     Names:
+    |       AnotherTestEnum -> googlesql_test.AnotherTestEnum (EnumTable.AnotherTestEnum#3) (implicit)
+    |       Filename -> ambiguous
+    |       RowId -> ambiguous
+    |       TestEnum -> googlesql_test.TestEnum (EnumTable.TestEnum#2) (implicit)
+    |       key -> INT32 (EnumTable.key#1) (implicit)
+    |     Range variables:
+    |       t -> RANGE_VARIABLE<key#1,TestEnum#2,AnotherTestEnum#3, pseudo_columns: Filename#4,RowId#5>
+    |       vt -> RANGE_VARIABLE<value#6, pseudo_columns: Filename#7,RowId#8> (value table)
+    |     Value table columns:
+    |       TestExtraValueTable.value#6
+    |   """
+    +-input_scan=
+      +-JoinScan
+        +-column_list=[EnumTable.key#1, EnumTable.TestEnum#2, EnumTable.AnotherTestEnum#3, TestExtraValueTable.value#6]
+        +-left_scan=
+        | +-TableScan(column_list=EnumTable.[key#1, TestEnum#2, AnotherTestEnum#3], table=EnumTable, column_index_list=[0, 1, 2], alias="t")
+        +-right_scan=
+          +-TableScan(column_list=[TestExtraValueTable.value#6], table=TestExtraValueTable, column_index_list=[0], alias="vt")
+--
+ALTERNATION GROUP: AS row
+--
+QueryStmt
++-output_column_list=
+| +-EnumTable.key#1 AS key [INT32]
+| +-EnumTable.TestEnum#2 AS TestEnum [ENUM<googlesql_test.TestEnum>]
+| +-EnumTable.AnotherTestEnum#3 AS AnotherTestEnum [ENUM<googlesql_test.AnotherTestEnum>]
+| +-TestExtraValueTable.value#6 AS vt [PROTO<googlesql_test.TestExtraPB>]
++-query=
+  +-StaticDescribeScan
+    +-column_list=[EnumTable.key#1, EnumTable.TestEnum#2, EnumTable.AnotherTestEnum#3, TestExtraValueTable.value#6]
+    +-describe_text=
+    |   """
+    |   NameList:
+    |     key INT32 EnumTable.key#1
+    |     TestEnum googlesql_test.TestEnum EnumTable.TestEnum#2
+    |     AnotherTestEnum googlesql_test.AnotherTestEnum EnumTable.AnotherTestEnum#3
+    |     vt googlesql_test.TestExtraPB TestExtraValueTable.value#6 (value table)
+    |   NameScope:
+    |     Names:
+    |       AnotherTestEnum -> googlesql_test.AnotherTestEnum (EnumTable.AnotherTestEnum#3) (implicit)
+    |       Filename -> ambiguous
+    |       RowId -> ambiguous
+    |       TestEnum -> googlesql_test.TestEnum (EnumTable.TestEnum#2) (implicit)
+    |       key -> INT32 (EnumTable.key#1) (implicit)
+    |       vt -> googlesql_test.TestExtraPB (TestExtraValueTable.value#6)
+    |     Range variables:
+    |       row -> RANGE_VARIABLE<key#1,TestEnum#2,AnotherTestEnum#3,value#6 AS vt>
+    |   """
+    +-input_scan=
+      +-JoinScan
+        +-column_list=[EnumTable.key#1, EnumTable.TestEnum#2, EnumTable.AnotherTestEnum#3, TestExtraValueTable.value#6]
+        +-left_scan=
+        | +-TableScan(column_list=EnumTable.[key#1, TestEnum#2, AnotherTestEnum#3], table=EnumTable, column_index_list=[0, 1, 2], alias="t")
+        +-right_scan=
+          +-TableScan(column_list=[TestExtraValueTable.value#6], table=TestExtraValueTable, column_index_list=[0], alias="vt")
+==
+
+# The value table fields still get expanded by *.
+select *
+from (from EnumTable t, TestExtraValueTable vt) {{|AS row}}
+--
+QueryStmt
++-output_column_list=
+| +-EnumTable.key#1 AS key [INT32]
+| +-EnumTable.TestEnum#2 AS TestEnum [ENUM<googlesql_test.TestEnum>]
+| +-EnumTable.AnotherTestEnum#3 AS AnotherTestEnum [ENUM<googlesql_test.AnotherTestEnum>]
+| +-$query.int32_val1#9 AS int32_val1 [INT32]
+| +-$query.int32_val2#10 AS int32_val2 [INT32]
+| +-$query.str_value#11 AS str_value [ARRAY<STRING>]
++-query=
+  +-ProjectScan
+    +-column_list=[EnumTable.key#1, EnumTable.TestEnum#2, EnumTable.AnotherTestEnum#3, $query.int32_val1#9, $query.int32_val2#10, $query.str_value#11]
+    +-expr_list=
+    | +-int32_val1#9 :=
+    | | +-GetProtoField
+    | |   +-type=INT32
+    | |   +-expr=
+    | |   | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=TestExtraValueTable.value#6)
+    | |   +-field_descriptor=int32_val1
+    | |   +-default_value=0
+    | +-int32_val2#10 :=
+    | | +-GetProtoField
+    | |   +-type=INT32
+    | |   +-expr=
+    | |   | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=TestExtraValueTable.value#6)
+    | |   +-field_descriptor=int32_val2
+    | |   +-default_value=0
+    | +-str_value#11 :=
+    |   +-GetProtoField
+    |     +-type=ARRAY<STRING>
+    |     +-expr=
+    |     | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=TestExtraValueTable.value#6)
+    |     +-field_descriptor=str_value
+    |     +-default_value=[]
+    +-input_scan=
+      +-JoinScan
+        +-column_list=[EnumTable.key#1, EnumTable.TestEnum#2, EnumTable.AnotherTestEnum#3, TestExtraValueTable.value#6]
+        +-left_scan=
+        | +-TableScan(column_list=EnumTable.[key#1, TestEnum#2, AnotherTestEnum#3], table=EnumTable, column_index_list=[0, 1, 2], alias="t")
+        +-right_scan=
+          +-TableScan(column_list=[TestExtraValueTable.value#6], table=TestExtraValueTable, column_index_list=[0], alias="vt")
+==
+
+select key, t.key, t.Filename, vt.Filename, t, vt
+from (from EnumTable t, TestExtraValueTable vt)
+--
+QueryStmt
++-output_column_list=
+| +-EnumTable.key#1 AS key [INT32]
+| +-EnumTable.key#1 AS key [INT32]
+| +-EnumTable.Filename#4 AS Filename [STRING]
+| +-TestExtraValueTable.Filename#7 AS Filename [STRING]
+| +-$query.t#10 AS t [STRUCT<key INT32, TestEnum ENUM<googlesql_test.TestEnum>, AnotherTestEnum ENUM<googlesql_test.AnotherTestEnum>>]
+| +-TestExtraValueTable.value#6 AS vt [PROTO<googlesql_test.TestExtraPB>]
++-query=
+  +-ProjectScan
+    +-column_list=[EnumTable.key#1, EnumTable.key#1, EnumTable.Filename#4, TestExtraValueTable.Filename#7, $query.t#10, TestExtraValueTable.value#6]
+    +-expr_list=
+    | +-t#10 :=
+    |   +-MakeStruct
+    |     +-type=STRUCT<key INT32, TestEnum ENUM<googlesql_test.TestEnum>, AnotherTestEnum ENUM<googlesql_test.AnotherTestEnum>>
+    |     +-field_list=
+    |       +-ColumnRef(type=INT32, column=EnumTable.key#1)
+    |       +-ColumnRef(type=ENUM<googlesql_test.TestEnum>, column=EnumTable.TestEnum#2)
+    |       +-ColumnRef(type=ENUM<googlesql_test.AnotherTestEnum>, column=EnumTable.AnotherTestEnum#3)
+    +-input_scan=
+      +-JoinScan
+        +-column_list=[EnumTable.key#1, EnumTable.TestEnum#2, EnumTable.AnotherTestEnum#3, EnumTable.Filename#4, TestExtraValueTable.value#6, TestExtraValueTable.Filename#7]
+        +-left_scan=
+        | +-TableScan(column_list=EnumTable.[key#1, TestEnum#2, AnotherTestEnum#3, Filename#4], table=EnumTable, column_index_list=[0, 1, 2, 3], alias="t")
+        +-right_scan=
+          +-TableScan(column_list=TestExtraValueTable.[value#6, Filename#7], table=TestExtraValueTable, column_index_list=[0, 1], alias="vt")
+==
+
+select Filename
+from (from EnumTable t, TestExtraValueTable vt)
+--
+ERROR: Column name Filename is ambiguous [at 1:8]
+select Filename
+       ^
+==
+
+select key, row.key, vt, row.vt, row, vt.str_value, row.vt.str_value
+from (from EnumTable t, TestExtraValueTable vt) AS row
+--
+QueryStmt
++-output_column_list=
+| +-EnumTable.key#1 AS key [INT32]
+| +-EnumTable.key#1 AS key [INT32]
+| +-TestExtraValueTable.value#6 AS vt [PROTO<googlesql_test.TestExtraPB>]
+| +-TestExtraValueTable.value#6 AS vt [PROTO<googlesql_test.TestExtraPB>]
+| +-$query.row#10 AS `row` [STRUCT<key INT32, TestEnum ENUM<googlesql_test.TestEnum>, AnotherTestEnum ENUM<googlesql_test.AnotherTestEnum>, vt PROTO<googlesql_test.TestExtraPB>>]
+| +-$query.str_value#11 AS str_value [ARRAY<STRING>]
+| +-$query.str_value#12 AS str_value [ARRAY<STRING>]
++-query=
+  +-ProjectScan
+    +-column_list=[EnumTable.key#1, EnumTable.key#1, TestExtraValueTable.value#6, TestExtraValueTable.value#6, $query.row#10, $query.str_value#11, $query.str_value#12]
+    +-expr_list=
+    | +-row#10 :=
+    | | +-MakeStruct
+    | |   +-type=STRUCT<key INT32, TestEnum ENUM<googlesql_test.TestEnum>, AnotherTestEnum ENUM<googlesql_test.AnotherTestEnum>, vt PROTO<googlesql_test.TestExtraPB>>
+    | |   +-field_list=
+    | |     +-ColumnRef(type=INT32, column=EnumTable.key#1)
+    | |     +-ColumnRef(type=ENUM<googlesql_test.TestEnum>, column=EnumTable.TestEnum#2)
+    | |     +-ColumnRef(type=ENUM<googlesql_test.AnotherTestEnum>, column=EnumTable.AnotherTestEnum#3)
+    | |     +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=TestExtraValueTable.value#6)
+    | +-str_value#11 :=
+    | | +-GetProtoField
+    | |   +-type=ARRAY<STRING>
+    | |   +-expr=
+    | |   | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=TestExtraValueTable.value#6)
+    | |   +-field_descriptor=str_value
+    | |   +-default_value=[]
+    | +-str_value#12 :=
+    |   +-GetProtoField
+    |     +-type=ARRAY<STRING>
+    |     +-expr=
+    |     | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=TestExtraValueTable.value#6)
+    |     +-field_descriptor=str_value
+    |     +-default_value=[]
+    +-input_scan=
+      +-JoinScan
+        +-column_list=[EnumTable.key#1, EnumTable.TestEnum#2, EnumTable.AnotherTestEnum#3, TestExtraValueTable.value#6]
+        +-left_scan=
+        | +-TableScan(column_list=EnumTable.[key#1, TestEnum#2, AnotherTestEnum#3], table=EnumTable, column_index_list=[0, 1, 2], alias="t")
+        +-right_scan=
+          +-TableScan(column_list=[TestExtraValueTable.value#6], table=TestExtraValueTable, column_index_list=[0], alias="vt")
+==
+
+# vt.str_value not visible with an alias because `vt` just acts like a column,
+# not a value table, after `row` alias is added.
+select str_value
+from (from EnumTable t, TestExtraValueTable vt) AS row
+--
+ERROR: Unrecognized name: str_value [at 1:8]
+select str_value
+       ^
+==
+
+# Pseudo-column from the value table is still visible on the output
+# table, but not on the column `vt`, which is now just a proto value.
+# Here, Filename is ambiguous because it existed on both input tables.
+# The range variable `t` is no longer visible.
+select {{Filename|row.Filename|vt.Filename|row.vt.Filename|t.Filename|row.t.Filename}}
+from (from EnumTable t, TestExtraValueTable vt) AS row
+--
+ALTERNATION GROUP: Filename
+--
+ERROR: Column name Filename is ambiguous [at 1:8]
+select Filename
+       ^
+--
+ALTERNATION GROUP: row.Filename
+--
+ERROR: Name Filename is ambiguous inside row [at 1:12]
+select row.Filename
+           ^
+--
+ALTERNATION GROUP: vt.Filename
+--
+ERROR: Protocol buffer googlesql_test.TestExtraPB does not have a field called Filename [at 1:11]
+select vt.Filename
+          ^
+--
+ALTERNATION GROUP: row.vt.Filename
+--
+ERROR: Protocol buffer googlesql_test.TestExtraPB does not have a field called Filename [at 1:15]
+select row.vt.Filename
+              ^
+--
+ALTERNATION GROUP: t.Filename
+--
+ERROR: Unrecognized name: t [at 1:8]
+select t.Filename
+       ^
+--
+ALTERNATION GROUP: row.t.Filename
+--
+ERROR: Name t not found inside row [at 1:12]
+select row.t.Filename
+           ^
+==
+
+# Same as the previous query, except the pseudo-column only exists
+# on the value table, so it's readable without ambiguity.
+select {{Filename|row.Filename}}
+from (from (select 1 x, 2 y) t, TestExtraValueTable vt) AS row
+--
+QueryStmt
++-output_column_list=
+| +-TestExtraValueTable.Filename#4 AS Filename [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[TestExtraValueTable.Filename#4]
+    +-input_scan=
+      +-JoinScan
+        +-column_list=[t.x#1, t.y#2, TestExtraValueTable.Filename#4]
+        +-left_scan=
+        | +-ProjectScan
+        |   +-column_list=t.[x#1, y#2]
+        |   +-expr_list=
+        |   | +-x#1 := Literal(type=INT64, value=1)
+        |   | +-y#2 := Literal(type=INT64, value=2)
+        |   +-input_scan=
+        |     +-SingleRowScan
+        +-right_scan=
+          +-TableScan(column_list=[TestExtraValueTable.Filename#4], table=TestExtraValueTable, column_index_list=[1], alias="vt")
+==
+
+# Special case for ambiguity between a regular table column
+# and a value table field.
+# When the `row` alias is present, `str_value` is only implicitly visible from
+# the first subquery, making `str_value` not ambiguous. Also, `t` is not visible.
+select {{str_value|t.str_value|vt.str_value|row.str_value|row.t.str_value|row.vt.str_value}}
+from
+  (
+    from (select 1 x, 2 str_value) t,
+         TestExtraValueTable vt
+  ) {{|AS row}}
+--
+ALTERNATION GROUP: str_value,
+--
+ERROR: Column name str_value is ambiguous [at 1:8]
+select str_value
+       ^
+--
+ALTERNATION GROUPS:
+    str_value,AS row
+    t.str_value,
+    row.str_value,AS row
+--
+QueryStmt
++-output_column_list=
+| +-t.str_value#2 AS str_value [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[t.str_value#2]
+    +-input_scan=
+      +-JoinScan
+        +-column_list=t.[x#1, str_value#2]
+        +-left_scan=
+        | +-ProjectScan
+        |   +-column_list=t.[x#1, str_value#2]
+        |   +-expr_list=
+        |   | +-x#1 := Literal(type=INT64, value=1)
+        |   | +-str_value#2 := Literal(type=INT64, value=2)
+        |   +-input_scan=
+        |     +-SingleRowScan
+        +-right_scan=
+          +-TableScan(table=TestExtraValueTable, alias="vt")
+--
+ALTERNATION GROUP: t.str_value,AS row
+--
+ERROR: Unrecognized name: t [at 1:8]
+select t.str_value
+       ^
+--
+ALTERNATION GROUPS:
+    vt.str_value,
+    vt.str_value,AS row
+    row.vt.str_value,AS row
+--
+QueryStmt
++-output_column_list=
+| +-$query.str_value#6 AS str_value [ARRAY<STRING>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.str_value#6]
+    +-expr_list=
+    | +-str_value#6 :=
+    |   +-GetProtoField
+    |     +-type=ARRAY<STRING>
+    |     +-expr=
+    |     | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=TestExtraValueTable.value#3)
+    |     +-field_descriptor=str_value
+    |     +-default_value=[]
+    +-input_scan=
+      +-JoinScan
+        +-column_list=[t.x#1, t.str_value#2, TestExtraValueTable.value#3]
+        +-left_scan=
+        | +-ProjectScan
+        |   +-column_list=t.[x#1, str_value#2]
+        |   +-expr_list=
+        |   | +-x#1 := Literal(type=INT64, value=1)
+        |   | +-str_value#2 := Literal(type=INT64, value=2)
+        |   +-input_scan=
+        |     +-SingleRowScan
+        +-right_scan=
+          +-TableScan(column_list=[TestExtraValueTable.value#3], table=TestExtraValueTable, column_index_list=[0], alias="vt")
+--
+ALTERNATION GROUP: row.str_value,
+--
+ERROR: Unrecognized name: `row` [at 1:8]
+select row.str_value
+       ^
+--
+ALTERNATION GROUP: row.t.str_value,
+--
+ERROR: Unrecognized name: `row` [at 1:8]
+select row.t.str_value
+       ^
+--
+ALTERNATION GROUP: row.t.str_value,AS row
+--
+ERROR: Name t not found inside row [at 1:12]
+select row.t.str_value
+           ^
+--
+ALTERNATION GROUP: row.vt.str_value,
+--
+ERROR: Unrecognized name: `row` [at 1:8]
+select row.vt.str_value
+       ^
+==
+
+# CASE 5) Regular table plus projected columns
+from EnumTable t |> extend 1 AS col, 2 AS key
+|> STATIC_DESCRIBE
+--
+QueryStmt
++-output_column_list=
+| +-EnumTable.key#1 AS key [INT32]
+| +-EnumTable.TestEnum#2 AS TestEnum [ENUM<googlesql_test.TestEnum>]
+| +-EnumTable.AnotherTestEnum#3 AS AnotherTestEnum [ENUM<googlesql_test.AnotherTestEnum>]
+| +-$pipe_extend.col#6 AS col [INT64]
+| +-$pipe_extend.key#7 AS key [INT64]
++-query=
+  +-StaticDescribeScan
+    +-column_list=[EnumTable.key#1, EnumTable.TestEnum#2, EnumTable.AnotherTestEnum#3, $pipe_extend.col#6, $pipe_extend.key#7]
+    +-describe_text=
+    |   """
+    |   NameList:
+    |     key INT32 EnumTable.key#1
+    |     TestEnum googlesql_test.TestEnum EnumTable.TestEnum#2
+    |     AnotherTestEnum googlesql_test.AnotherTestEnum EnumTable.AnotherTestEnum#3
+    |     col INT64 $pipe_extend.col#6
+    |     key INT64 $pipe_extend.key#7
+    |   NameScope:
+    |     Names:
+    |       AnotherTestEnum -> googlesql_test.AnotherTestEnum (EnumTable.AnotherTestEnum#3) (implicit)
+    |       Filename -> STRING (EnumTable.Filename#4) (implicit) (pseudo-column)
+    |       RowId -> BYTES (EnumTable.RowId#5) (implicit) (pseudo-column)
+    |       TestEnum -> googlesql_test.TestEnum (EnumTable.TestEnum#2) (implicit)
+    |       col -> INT64 ($pipe_extend.col#6)
+    |       key -> ambiguous
+    |     Range variables:
+    |       t -> RANGE_VARIABLE<key#1,TestEnum#2,AnotherTestEnum#3, pseudo_columns: Filename#4,RowId#5>
+    |   """
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[EnumTable.key#1, EnumTable.TestEnum#2, EnumTable.AnotherTestEnum#3, $pipe_extend.col#6, $pipe_extend.key#7]
+        +-expr_list=
+        | +-col#6 := Literal(type=INT64, value=1)
+        | +-key#7 := Literal(type=INT64, value=2)
+        +-input_scan=
+          +-TableScan(column_list=EnumTable.[key#1, TestEnum#2, AnotherTestEnum#3], table=EnumTable, column_index_list=[0, 1, 2], alias="t")
+==
+
+from (from EnumTable t |> extend 1 AS col, 2 AS key) {{|AS row}}
+|> STATIC_DESCRIBE
+--
+ALTERNATION GROUP: <empty>
+--
+QueryStmt
++-output_column_list=
+| +-EnumTable.key#1 AS key [INT32]
+| +-EnumTable.TestEnum#2 AS TestEnum [ENUM<googlesql_test.TestEnum>]
+| +-EnumTable.AnotherTestEnum#3 AS AnotherTestEnum [ENUM<googlesql_test.AnotherTestEnum>]
+| +-$pipe_extend.col#6 AS col [INT64]
+| +-$pipe_extend.key#7 AS key [INT64]
++-query=
+  +-StaticDescribeScan
+    +-column_list=[EnumTable.key#1, EnumTable.TestEnum#2, EnumTable.AnotherTestEnum#3, $pipe_extend.col#6, $pipe_extend.key#7]
+    +-describe_text=
+    |   """
+    |   NameList:
+    |     key INT32 EnumTable.key#1
+    |     TestEnum googlesql_test.TestEnum EnumTable.TestEnum#2
+    |     AnotherTestEnum googlesql_test.AnotherTestEnum EnumTable.AnotherTestEnum#3
+    |     col INT64 $pipe_extend.col#6
+    |     key INT64 $pipe_extend.key#7
+    |   NameScope:
+    |     Names:
+    |       AnotherTestEnum -> googlesql_test.AnotherTestEnum (EnumTable.AnotherTestEnum#3) (implicit)
+    |       Filename -> STRING (EnumTable.Filename#4) (implicit) (pseudo-column)
+    |       RowId -> BYTES (EnumTable.RowId#5) (implicit) (pseudo-column)
+    |       TestEnum -> googlesql_test.TestEnum (EnumTable.TestEnum#2) (implicit)
+    |       col -> INT64 ($pipe_extend.col#6)
+    |       key -> ambiguous
+    |     Range variables:
+    |       t -> RANGE_VARIABLE<key#1,TestEnum#2,AnotherTestEnum#3, pseudo_columns: Filename#4,RowId#5>
+    |   """
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[EnumTable.key#1, EnumTable.TestEnum#2, EnumTable.AnotherTestEnum#3, $pipe_extend.col#6, $pipe_extend.key#7]
+        +-expr_list=
+        | +-col#6 := Literal(type=INT64, value=1)
+        | +-key#7 := Literal(type=INT64, value=2)
+        +-input_scan=
+          +-TableScan(column_list=EnumTable.[key#1, TestEnum#2, AnotherTestEnum#3], table=EnumTable, column_index_list=[0, 1, 2], alias="t")
+--
+ALTERNATION GROUP: AS row
+--
+QueryStmt
++-output_column_list=
+| +-EnumTable.key#1 AS key [INT32]
+| +-EnumTable.TestEnum#2 AS TestEnum [ENUM<googlesql_test.TestEnum>]
+| +-EnumTable.AnotherTestEnum#3 AS AnotherTestEnum [ENUM<googlesql_test.AnotherTestEnum>]
+| +-$pipe_extend.col#6 AS col [INT64]
+| +-$pipe_extend.key#7 AS key [INT64]
++-query=
+  +-StaticDescribeScan
+    +-column_list=[EnumTable.key#1, EnumTable.TestEnum#2, EnumTable.AnotherTestEnum#3, $pipe_extend.col#6, $pipe_extend.key#7]
+    +-describe_text=
+    |   """
+    |   NameList:
+    |     key INT32 EnumTable.key#1
+    |     TestEnum googlesql_test.TestEnum EnumTable.TestEnum#2
+    |     AnotherTestEnum googlesql_test.AnotherTestEnum EnumTable.AnotherTestEnum#3
+    |     col INT64 $pipe_extend.col#6
+    |     key INT64 $pipe_extend.key#7
+    |   NameScope:
+    |     Names:
+    |       AnotherTestEnum -> googlesql_test.AnotherTestEnum (EnumTable.AnotherTestEnum#3) (implicit)
+    |       Filename -> STRING (EnumTable.Filename#4) (implicit) (pseudo-column)
+    |       RowId -> BYTES (EnumTable.RowId#5) (implicit) (pseudo-column)
+    |       TestEnum -> googlesql_test.TestEnum (EnumTable.TestEnum#2) (implicit)
+    |       col -> INT64 ($pipe_extend.col#6)
+    |       key -> ambiguous
+    |     Range variables:
+    |       row -> RANGE_VARIABLE<key#1,TestEnum#2,AnotherTestEnum#3,col#6,key#7, pseudo_columns: Filename#4,RowId#5>
+    |   """
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[EnumTable.key#1, EnumTable.TestEnum#2, EnumTable.AnotherTestEnum#3, $pipe_extend.col#6, $pipe_extend.key#7]
+        +-expr_list=
+        | +-col#6 := Literal(type=INT64, value=1)
+        | +-key#7 := Literal(type=INT64, value=2)
+        +-input_scan=
+          +-TableScan(column_list=EnumTable.[key#1, TestEnum#2, AnotherTestEnum#3], table=EnumTable, column_index_list=[0, 1, 2], alias="t")
+==
+
+select *
+from (from EnumTable t |> extend 1 AS col, 2 AS key) {{|AS row}}
+--
+QueryStmt
++-output_column_list=
+| +-EnumTable.key#1 AS key [INT32]
+| +-EnumTable.TestEnum#2 AS TestEnum [ENUM<googlesql_test.TestEnum>]
+| +-EnumTable.AnotherTestEnum#3 AS AnotherTestEnum [ENUM<googlesql_test.AnotherTestEnum>]
+| +-$pipe_extend.col#6 AS col [INT64]
+| +-$pipe_extend.key#7 AS key [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[EnumTable.key#1, EnumTable.TestEnum#2, EnumTable.AnotherTestEnum#3, $pipe_extend.col#6, $pipe_extend.key#7]
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[EnumTable.key#1, EnumTable.TestEnum#2, EnumTable.AnotherTestEnum#3, $pipe_extend.col#6, $pipe_extend.key#7]
+        +-expr_list=
+        | +-col#6 := Literal(type=INT64, value=1)
+        | +-key#7 := Literal(type=INT64, value=2)
+        +-input_scan=
+          +-TableScan(column_list=EnumTable.[key#1, TestEnum#2, AnotherTestEnum#3], table=EnumTable, column_index_list=[0, 1, 2], alias="t")
+==
+
+select TestEnum, t.TestEnum, col, t.key
+from (from EnumTable t |> extend 1 AS col, 2 AS key)
+--
+QueryStmt
++-output_column_list=
+| +-EnumTable.TestEnum#2 AS TestEnum [ENUM<googlesql_test.TestEnum>]
+| +-EnumTable.TestEnum#2 AS TestEnum [ENUM<googlesql_test.TestEnum>]
+| +-$pipe_extend.col#6 AS col [INT64]
+| +-EnumTable.key#1 AS key [INT32]
++-query=
+  +-ProjectScan
+    +-column_list=[EnumTable.TestEnum#2, EnumTable.TestEnum#2, $pipe_extend.col#6, EnumTable.key#1]
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[EnumTable.key#1, EnumTable.TestEnum#2, $pipe_extend.col#6, $pipe_extend.key#7]
+        +-expr_list=
+        | +-col#6 := Literal(type=INT64, value=1)
+        | +-key#7 := Literal(type=INT64, value=2)
+        +-input_scan=
+          +-TableScan(column_list=EnumTable.[key#1, TestEnum#2], table=EnumTable, column_index_list=[0, 1], alias="t")
+==
+
+# Ambiguous column name across the table and a computed column.
+select key
+from (from EnumTable t |> extend 1 AS col, 2 AS key)
+--
+ERROR: Column name key is ambiguous [at 1:8]
+select key
+       ^
+==
+
+select TestEnum, row.TestEnum, col, row.col
+from (from EnumTable t |> extend 1 AS col, 2 AS key) AS row
+--
+QueryStmt
++-output_column_list=
+| +-EnumTable.TestEnum#2 AS TestEnum [ENUM<googlesql_test.TestEnum>]
+| +-EnumTable.TestEnum#2 AS TestEnum [ENUM<googlesql_test.TestEnum>]
+| +-$pipe_extend.col#6 AS col [INT64]
+| +-$pipe_extend.col#6 AS col [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[EnumTable.TestEnum#2, EnumTable.TestEnum#2, $pipe_extend.col#6, $pipe_extend.col#6]
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[EnumTable.TestEnum#2, $pipe_extend.col#6, $pipe_extend.key#7]
+        +-expr_list=
+        | +-col#6 := Literal(type=INT64, value=1)
+        | +-key#7 := Literal(type=INT64, value=2)
+        +-input_scan=
+          +-TableScan(column_list=[EnumTable.TestEnum#2], table=EnumTable, column_index_list=[1], alias="t")
+==
+
+select {{t|row.t|row.t.key|row.key}}
+from (from EnumTable t |> extend 1 AS col, 2 AS key) AS row
+--
+ALTERNATION GROUP: t
+--
+ERROR: Unrecognized name: t [at 1:8]
+select t
+       ^
+--
+ALTERNATION GROUP: row.t
+--
+ERROR: Name t not found inside row [at 1:12]
+select row.t
+           ^
+--
+ALTERNATION GROUP: row.t.key
+--
+ERROR: Name t not found inside row [at 1:12]
+select row.t.key
+           ^
+--
+ALTERNATION GROUP: row.key
+--
+ERROR: Name key is ambiguous inside row [at 1:12]
+select row.key
+           ^
+==
+
+# CASE 6) Value table plus projected columns
+from TestExtraValueTable vt |> extend 1 AS col, 2 AS str_value
+|> STATIC_DESCRIBE
+--
+QueryStmt
++-output_column_list=
+| +-TestExtraValueTable.value#1 AS vt [PROTO<googlesql_test.TestExtraPB>]
+| +-$pipe_extend.col#4 AS col [INT64]
+| +-$pipe_extend.str_value#5 AS str_value [INT64]
++-query=
+  +-StaticDescribeScan
+    +-column_list=[TestExtraValueTable.value#1, $pipe_extend.col#4, $pipe_extend.str_value#5]
+    +-describe_text=
+    |   """
+    |   NameList:
+    |     vt googlesql_test.TestExtraPB TestExtraValueTable.value#1 (value table)
+    |     col INT64 $pipe_extend.col#4
+    |     str_value INT64 $pipe_extend.str_value#5
+    |   NameScope:
+    |     Names:
+    |       Filename -> STRING (TestExtraValueTable.Filename#2) (implicit) (pseudo-column)
+    |       RowId -> BYTES (TestExtraValueTable.RowId#3) (implicit) (pseudo-column)
+    |       col -> INT64 ($pipe_extend.col#4)
+    |       str_value -> INT64 ($pipe_extend.str_value#5)
+    |     Range variables:
+    |       vt -> RANGE_VARIABLE<value#1, pseudo_columns: Filename#2,RowId#3> (value table)
+    |     Value table columns:
+    |       TestExtraValueTable.value#1
+    |   """
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[TestExtraValueTable.value#1, $pipe_extend.col#4, $pipe_extend.str_value#5]
+        +-expr_list=
+        | +-col#4 := Literal(type=INT64, value=1)
+        | +-str_value#5 := Literal(type=INT64, value=2)
+        +-input_scan=
+          +-TableScan(column_list=[TestExtraValueTable.value#1], table=TestExtraValueTable, column_index_list=[0], alias="vt")
+==
+
+from (from TestExtraValueTable vt |> extend 1 AS col, 2 AS str_value) {{|AS row}}
+|> STATIC_DESCRIBE
+--
+ALTERNATION GROUP: <empty>
+--
+QueryStmt
++-output_column_list=
+| +-TestExtraValueTable.value#1 AS vt [PROTO<googlesql_test.TestExtraPB>]
+| +-$pipe_extend.col#4 AS col [INT64]
+| +-$pipe_extend.str_value#5 AS str_value [INT64]
++-query=
+  +-StaticDescribeScan
+    +-column_list=[TestExtraValueTable.value#1, $pipe_extend.col#4, $pipe_extend.str_value#5]
+    +-describe_text=
+    |   """
+    |   NameList:
+    |     vt googlesql_test.TestExtraPB TestExtraValueTable.value#1 (value table)
+    |     col INT64 $pipe_extend.col#4
+    |     str_value INT64 $pipe_extend.str_value#5
+    |   NameScope:
+    |     Names:
+    |       Filename -> STRING (TestExtraValueTable.Filename#2) (implicit) (pseudo-column)
+    |       RowId -> BYTES (TestExtraValueTable.RowId#3) (implicit) (pseudo-column)
+    |       col -> INT64 ($pipe_extend.col#4)
+    |       str_value -> INT64 ($pipe_extend.str_value#5)
+    |     Range variables:
+    |       vt -> RANGE_VARIABLE<value#1, pseudo_columns: Filename#2,RowId#3> (value table)
+    |     Value table columns:
+    |       TestExtraValueTable.value#1
+    |   """
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[TestExtraValueTable.value#1, $pipe_extend.col#4, $pipe_extend.str_value#5]
+        +-expr_list=
+        | +-col#4 := Literal(type=INT64, value=1)
+        | +-str_value#5 := Literal(type=INT64, value=2)
+        +-input_scan=
+          +-TableScan(column_list=[TestExtraValueTable.value#1], table=TestExtraValueTable, column_index_list=[0], alias="vt")
+--
+ALTERNATION GROUP: AS row
+--
+QueryStmt
++-output_column_list=
+| +-TestExtraValueTable.value#1 AS vt [PROTO<googlesql_test.TestExtraPB>]
+| +-$pipe_extend.col#4 AS col [INT64]
+| +-$pipe_extend.str_value#5 AS str_value [INT64]
++-query=
+  +-StaticDescribeScan
+    +-column_list=[TestExtraValueTable.value#1, $pipe_extend.col#4, $pipe_extend.str_value#5]
+    +-describe_text=
+    |   """
+    |   NameList:
+    |     vt googlesql_test.TestExtraPB TestExtraValueTable.value#1 (value table)
+    |     col INT64 $pipe_extend.col#4
+    |     str_value INT64 $pipe_extend.str_value#5
+    |   NameScope:
+    |     Names:
+    |       Filename -> STRING (TestExtraValueTable.Filename#2) (implicit) (pseudo-column)
+    |       RowId -> BYTES (TestExtraValueTable.RowId#3) (implicit) (pseudo-column)
+    |       col -> INT64 ($pipe_extend.col#4)
+    |       str_value -> INT64 ($pipe_extend.str_value#5)
+    |       vt -> googlesql_test.TestExtraPB (TestExtraValueTable.value#1)
+    |     Range variables:
+    |       row -> RANGE_VARIABLE<value#1 AS vt,col#4,str_value#5, pseudo_columns: Filename#2,RowId#3>
+    |   """
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[TestExtraValueTable.value#1, $pipe_extend.col#4, $pipe_extend.str_value#5]
+        +-expr_list=
+        | +-col#4 := Literal(type=INT64, value=1)
+        | +-str_value#5 := Literal(type=INT64, value=2)
+        +-input_scan=
+          +-TableScan(column_list=[TestExtraValueTable.value#1], table=TestExtraValueTable, column_index_list=[0], alias="vt")
+==
+
+select *
+from (from TestExtraValueTable vt |> extend 1 AS col, 2 AS str_value) {{|AS row}}
+--
+QueryStmt
++-output_column_list=
+| +-$query.int32_val1#6 AS int32_val1 [INT32]
+| +-$query.int32_val2#7 AS int32_val2 [INT32]
+| +-$query.str_value#8 AS str_value [ARRAY<STRING>]
+| +-$pipe_extend.col#4 AS col [INT64]
+| +-$pipe_extend.str_value#5 AS str_value [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.int32_val1#6, $query.int32_val2#7, $query.str_value#8, $pipe_extend.col#4, $pipe_extend.str_value#5]
+    +-expr_list=
+    | +-int32_val1#6 :=
+    | | +-GetProtoField
+    | |   +-type=INT32
+    | |   +-expr=
+    | |   | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=TestExtraValueTable.value#1)
+    | |   +-field_descriptor=int32_val1
+    | |   +-default_value=0
+    | +-int32_val2#7 :=
+    | | +-GetProtoField
+    | |   +-type=INT32
+    | |   +-expr=
+    | |   | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=TestExtraValueTable.value#1)
+    | |   +-field_descriptor=int32_val2
+    | |   +-default_value=0
+    | +-str_value#8 :=
+    |   +-GetProtoField
+    |     +-type=ARRAY<STRING>
+    |     +-expr=
+    |     | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=TestExtraValueTable.value#1)
+    |     +-field_descriptor=str_value
+    |     +-default_value=[]
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[TestExtraValueTable.value#1, $pipe_extend.col#4, $pipe_extend.str_value#5]
+        +-expr_list=
+        | +-col#4 := Literal(type=INT64, value=1)
+        | +-str_value#5 := Literal(type=INT64, value=2)
+        +-input_scan=
+          +-TableScan(column_list=[TestExtraValueTable.value#1], table=TestExtraValueTable, column_index_list=[0], alias="vt")
+==
+
+select Filename, vt.Filename, vt, vt.str_value, col
+from (from TestExtraValueTable vt |> extend 1 AS col, 2 AS str_value)
+--
+QueryStmt
++-output_column_list=
+| +-TestExtraValueTable.Filename#2 AS Filename [STRING]
+| +-TestExtraValueTable.Filename#2 AS Filename [STRING]
+| +-TestExtraValueTable.value#1 AS vt [PROTO<googlesql_test.TestExtraPB>]
+| +-$query.str_value#6 AS str_value [ARRAY<STRING>]
+| +-$pipe_extend.col#4 AS col [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[TestExtraValueTable.Filename#2, TestExtraValueTable.Filename#2, TestExtraValueTable.value#1, $query.str_value#6, $pipe_extend.col#4]
+    +-expr_list=
+    | +-str_value#6 :=
+    |   +-GetProtoField
+    |     +-type=ARRAY<STRING>
+    |     +-expr=
+    |     | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=TestExtraValueTable.value#1)
+    |     +-field_descriptor=str_value
+    |     +-default_value=[]
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[TestExtraValueTable.value#1, TestExtraValueTable.Filename#2, $pipe_extend.col#4, $pipe_extend.str_value#5]
+        +-expr_list=
+        | +-col#4 := Literal(type=INT64, value=1)
+        | +-str_value#5 := Literal(type=INT64, value=2)
+        +-input_scan=
+          +-TableScan(column_list=TestExtraValueTable.[value#1, Filename#2], table=TestExtraValueTable, column_index_list=[0, 1], alias="vt")
+==
+
+# Ambiguous name across a value table field and a computed column.
+select str_value
+from (from TestExtraValueTable vt |> extend 1 AS col, 2 AS str_value)
+--
+ERROR: Column name str_value is ambiguous [at 1:8]
+select str_value
+       ^
+==
+
+select col, row.col
+from (from TestExtraValueTable vt |> extend 1 AS col, 2 AS str_value) AS row
+--
+QueryStmt
++-output_column_list=
+| +-$pipe_extend.col#4 AS col [INT64]
+| +-$pipe_extend.col#4 AS col [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=$pipe_extend.[col#4, col#4]
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=$pipe_extend.[col#4, str_value#5]
+        +-expr_list=
+        | +-col#4 := Literal(type=INT64, value=1)
+        | +-str_value#5 := Literal(type=INT64, value=2)
+        +-input_scan=
+          +-TableScan(table=TestExtraValueTable, alias="vt")
+==
+
+# `str_value` finds the computed column, not the field, since the value table
+# just becomes a regular column when the subquery alias is added.
+# Other value table fields are also not readable.
+# Value table pseudo-columns (Filename) are still visible.
+select {{str_value|row.str_value|row.int32_val1|int32_val1|Filename|row.Filename}}
+from (from TestExtraValueTable vt |> extend 1 AS col, 2 AS str_value) AS row
+--
+ALTERNATION GROUPS:
+    str_value
+    row.str_value
+--
+QueryStmt
++-output_column_list=
+| +-$pipe_extend.str_value#5 AS str_value [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$pipe_extend.str_value#5]
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=$pipe_extend.[col#4, str_value#5]
+        +-expr_list=
+        | +-col#4 := Literal(type=INT64, value=1)
+        | +-str_value#5 := Literal(type=INT64, value=2)
+        +-input_scan=
+          +-TableScan(table=TestExtraValueTable, alias="vt")
+--
+ALTERNATION GROUP: row.int32_val1
+--
+ERROR: Name int32_val1 not found inside row [at 1:12]
+select row.int32_val1
+           ^
+--
+ALTERNATION GROUP: int32_val1
+--
+ERROR: Unrecognized name: int32_val1 [at 1:8]
+select int32_val1
+       ^
+--
+ALTERNATION GROUPS:
+    Filename
+    row.Filename
+--
+QueryStmt
++-output_column_list=
+| +-TestExtraValueTable.Filename#2 AS Filename [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[TestExtraValueTable.Filename#2]
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[TestExtraValueTable.Filename#2, $pipe_extend.col#4, $pipe_extend.str_value#5]
+        +-expr_list=
+        | +-col#4 := Literal(type=INT64, value=1)
+        | +-str_value#5 := Literal(type=INT64, value=2)
+        +-input_scan=
+          +-TableScan(column_list=[TestExtraValueTable.Filename#2], table=TestExtraValueTable, column_index_list=[1], alias="vt")
+==
+
+# The `vt` alias becomes just a regular column.
+# The `filename` pseudo-column is not available.
+select {{vt, row.vt, row.vt.str_value|row.vt.filename}}
+from (from TestExtraValueTable vt |> extend 1 AS col, 2 AS str_value) AS row
+--
+ALTERNATION GROUP: vt, row.vt, row.vt.str_value
+--
+QueryStmt
++-output_column_list=
+| +-TestExtraValueTable.value#1 AS vt [PROTO<googlesql_test.TestExtraPB>]
+| +-TestExtraValueTable.value#1 AS vt [PROTO<googlesql_test.TestExtraPB>]
+| +-$query.str_value#6 AS str_value [ARRAY<STRING>]
++-query=
+  +-ProjectScan
+    +-column_list=[TestExtraValueTable.value#1, TestExtraValueTable.value#1, $query.str_value#6]
+    +-expr_list=
+    | +-str_value#6 :=
+    |   +-GetProtoField
+    |     +-type=ARRAY<STRING>
+    |     +-expr=
+    |     | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=TestExtraValueTable.value#1)
+    |     +-field_descriptor=str_value
+    |     +-default_value=[]
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[TestExtraValueTable.value#1, $pipe_extend.col#4, $pipe_extend.str_value#5]
+        +-expr_list=
+        | +-col#4 := Literal(type=INT64, value=1)
+        | +-str_value#5 := Literal(type=INT64, value=2)
+        +-input_scan=
+          +-TableScan(column_list=[TestExtraValueTable.value#1], table=TestExtraValueTable, column_index_list=[0], alias="vt")
+--
+ALTERNATION GROUP: row.vt.filename
+--
+ERROR: Protocol buffer googlesql_test.TestExtraPB does not have a field called filename [at 1:15]
+select row.vt.filename
+              ^
+==
+
+# CASE 7) An additional case demonstrating behavior of WITH
+# The value table in a WITH CTE is just treated as a regular column.
+WITH q AS (from EnumTable t, TestExtraValueTable vt)
+FROM q
+|> STATIC_DESCRIBE
+--
+QueryStmt
++-output_column_list=
+| +-q.key#9 AS key [INT32]
+| +-q.TestEnum#10 AS TestEnum [ENUM<googlesql_test.TestEnum>]
+| +-q.AnotherTestEnum#11 AS AnotherTestEnum [ENUM<googlesql_test.AnotherTestEnum>]
+| +-q.vt#12 AS vt [PROTO<googlesql_test.TestExtraPB>]
++-query=
+  +-WithScan
+    +-column_list=q.[key#9, TestEnum#10, AnotherTestEnum#11, vt#12]
+    +-with_entry_list=
+    | +-WithEntry
+    |   +-with_query_name="q"
+    |   +-with_subquery=
+    |     +-ProjectScan
+    |       +-column_list=[EnumTable.key#1, EnumTable.TestEnum#2, EnumTable.AnotherTestEnum#3, TestExtraValueTable.value#6]
+    |       +-input_scan=
+    |         +-JoinScan
+    |           +-column_list=[EnumTable.key#1, EnumTable.TestEnum#2, EnumTable.AnotherTestEnum#3, TestExtraValueTable.value#6]
+    |           +-left_scan=
+    |           | +-TableScan(column_list=EnumTable.[key#1, TestEnum#2, AnotherTestEnum#3], table=EnumTable, column_index_list=[0, 1, 2], alias="t")
+    |           +-right_scan=
+    |             +-TableScan(column_list=[TestExtraValueTable.value#6], table=TestExtraValueTable, column_index_list=[0], alias="vt")
+    +-query=
+      +-StaticDescribeScan
+        +-column_list=q.[key#9, TestEnum#10, AnotherTestEnum#11, vt#12]
+        +-describe_text=
+        |   """
+        |   NameList:
+        |     key INT32 q.key#9
+        |     TestEnum googlesql_test.TestEnum q.TestEnum#10
+        |     AnotherTestEnum googlesql_test.AnotherTestEnum q.AnotherTestEnum#11
+        |     vt googlesql_test.TestExtraPB q.vt#12
+        |   NameScope:
+        |     Names:
+        |       AnotherTestEnum -> googlesql_test.AnotherTestEnum (q.AnotherTestEnum#11) (implicit)
+        |       TestEnum -> googlesql_test.TestEnum (q.TestEnum#10) (implicit)
+        |       key -> INT32 (q.key#9) (implicit)
+        |       vt -> googlesql_test.TestExtraPB (q.vt#12) (implicit)
+        |     Range variables:
+        |       q -> RANGE_VARIABLE<key#9,TestEnum#10,AnotherTestEnum#11,vt#12>
+        |
+        |   **Common table expressions**:
+        |   Name  Columns
+        |   ----  ----------------------------------
+        |   q     key, TestEnum, AnotherTestEnum, vt
+        |   """
+        +-input_scan=
+          +-WithRefScan(column_list=q.[key#9, TestEnum#10, AnotherTestEnum#11, vt#12], with_query_name="q")
+==
+
+# SELECT * does not see `vt` as a value table, so does not expand its fields.
+WITH q AS (from EnumTable t, TestExtraValueTable vt)
+SELECT * FROM q
+--
+QueryStmt
++-output_column_list=
+| +-q.key#9 AS key [INT32]
+| +-q.TestEnum#10 AS TestEnum [ENUM<googlesql_test.TestEnum>]
+| +-q.AnotherTestEnum#11 AS AnotherTestEnum [ENUM<googlesql_test.AnotherTestEnum>]
+| +-q.vt#12 AS vt [PROTO<googlesql_test.TestExtraPB>]
++-query=
+  +-WithScan
+    +-column_list=q.[key#9, TestEnum#10, AnotherTestEnum#11, vt#12]
+    +-with_entry_list=
+    | +-WithEntry
+    |   +-with_query_name="q"
+    |   +-with_subquery=
+    |     +-ProjectScan
+    |       +-column_list=[EnumTable.key#1, EnumTable.TestEnum#2, EnumTable.AnotherTestEnum#3, TestExtraValueTable.value#6]
+    |       +-input_scan=
+    |         +-JoinScan
+    |           +-column_list=[EnumTable.key#1, EnumTable.TestEnum#2, EnumTable.AnotherTestEnum#3, TestExtraValueTable.value#6]
+    |           +-left_scan=
+    |           | +-TableScan(column_list=EnumTable.[key#1, TestEnum#2, AnotherTestEnum#3], table=EnumTable, column_index_list=[0, 1, 2], alias="t")
+    |           +-right_scan=
+    |             +-TableScan(column_list=[TestExtraValueTable.value#6], table=TestExtraValueTable, column_index_list=[0], alias="vt")
+    +-query=
+      +-ProjectScan
+        +-column_list=q.[key#9, TestEnum#10, AnotherTestEnum#11, vt#12]
+        +-input_scan=
+          +-WithRefScan(column_list=q.[key#9, TestEnum#10, AnotherTestEnum#11, vt#12], with_query_name="q")
+==
+
+WITH q AS (from EnumTable t, TestExtraValueTable vt)
+SELECT q, vt, q.vt, TestEnum, q.TestEnum, vt.str_value, q.vt.str_value
+FROM q
+--
+QueryStmt
++-output_column_list=
+| +-$query.q#14 AS q [STRUCT<key INT32, TestEnum ENUM<googlesql_test.TestEnum>, AnotherTestEnum ENUM<googlesql_test.AnotherTestEnum>, vt PROTO<googlesql_test.TestExtraPB>>]
+| +-q.vt#12 AS vt [PROTO<googlesql_test.TestExtraPB>]
+| +-q.vt#12 AS vt [PROTO<googlesql_test.TestExtraPB>]
+| +-q.TestEnum#10 AS TestEnum [ENUM<googlesql_test.TestEnum>]
+| +-q.TestEnum#10 AS TestEnum [ENUM<googlesql_test.TestEnum>]
+| +-$query.str_value#15 AS str_value [ARRAY<STRING>]
+| +-$query.str_value#16 AS str_value [ARRAY<STRING>]
++-query=
+  +-WithScan
+    +-column_list=[$query.q#14, q.vt#12, q.vt#12, q.TestEnum#10, q.TestEnum#10, $query.str_value#15, $query.str_value#16]
+    +-with_entry_list=
+    | +-WithEntry
+    |   +-with_query_name="q"
+    |   +-with_subquery=
+    |     +-ProjectScan
+    |       +-column_list=[EnumTable.key#1, EnumTable.TestEnum#2, EnumTable.AnotherTestEnum#3, TestExtraValueTable.value#6]
+    |       +-input_scan=
+    |         +-JoinScan
+    |           +-column_list=[EnumTable.key#1, EnumTable.TestEnum#2, EnumTable.AnotherTestEnum#3, TestExtraValueTable.value#6]
+    |           +-left_scan=
+    |           | +-TableScan(column_list=EnumTable.[key#1, TestEnum#2, AnotherTestEnum#3], table=EnumTable, column_index_list=[0, 1, 2], alias="t")
+    |           +-right_scan=
+    |             +-TableScan(column_list=[TestExtraValueTable.value#6], table=TestExtraValueTable, column_index_list=[0], alias="vt")
+    +-query=
+      +-ProjectScan
+        +-column_list=[$query.q#14, q.vt#12, q.vt#12, q.TestEnum#10, q.TestEnum#10, $query.str_value#15, $query.str_value#16]
+        +-expr_list=
+        | +-q#14 :=
+        | | +-MakeStruct
+        | |   +-type=STRUCT<key INT32, TestEnum ENUM<googlesql_test.TestEnum>, AnotherTestEnum ENUM<googlesql_test.AnotherTestEnum>, vt PROTO<googlesql_test.TestExtraPB>>
+        | |   +-field_list=
+        | |     +-ColumnRef(type=INT32, column=q.key#9)
+        | |     +-ColumnRef(type=ENUM<googlesql_test.TestEnum>, column=q.TestEnum#10)
+        | |     +-ColumnRef(type=ENUM<googlesql_test.AnotherTestEnum>, column=q.AnotherTestEnum#11)
+        | |     +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=q.vt#12)
+        | +-str_value#15 :=
+        | | +-GetProtoField
+        | |   +-type=ARRAY<STRING>
+        | |   +-expr=
+        | |   | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=q.vt#12)
+        | |   +-field_descriptor=str_value
+        | |   +-default_value=[]
+        | +-str_value#16 :=
+        |   +-GetProtoField
+        |     +-type=ARRAY<STRING>
+        |     +-expr=
+        |     | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=q.vt#12)
+        |     +-field_descriptor=str_value
+        |     +-default_value=[]
+        +-input_scan=
+          +-WithRefScan(column_list=q.[key#9, TestEnum#10, AnotherTestEnum#11, vt#12], with_query_name="q")
+==
+
+# Range variables and pseudo-columns from inside the CTE are not visible.
+WITH q AS (from EnumTable t, TestExtraValueTable vt)
+SELECT {{t|t.TestEnum|str_value|q.str_value|t.Filename|vt.Filename|q.Filename}}
+FROM q
+--
+ALTERNATION GROUP: t
+--
+ERROR: Unrecognized name: t [at 2:8]
+SELECT t
+       ^
+--
+ALTERNATION GROUP: t.TestEnum
+--
+ERROR: Unrecognized name: t [at 2:8]
+SELECT t.TestEnum
+       ^
+--
+ALTERNATION GROUP: str_value
+--
+ERROR: Unrecognized name: str_value [at 2:8]
+SELECT str_value
+       ^
+--
+ALTERNATION GROUP: q.str_value
+--
+ERROR: Name str_value not found inside q [at 2:10]
+SELECT q.str_value
+         ^
+--
+ALTERNATION GROUP: t.Filename
+--
+ERROR: Unrecognized name: t [at 2:8]
+SELECT t.Filename
+       ^
+--
+ALTERNATION GROUP: vt.Filename
+--
+ERROR: Protocol buffer googlesql_test.TestExtraPB does not have a field called Filename [at 2:11]
+SELECT vt.Filename
+          ^
+--
+ALTERNATION GROUP: q.Filename
+--
+ERROR: Name Filename not found inside q [at 2:10]
+SELECT q.Filename
+         ^
+==
+
+# CASE 8) Some cases with multi-level nesting of table subqueries.
+FROM (FROM (FROM TestExtraValueTable vt, UNNEST([1]) x) AS row)
+|> STATIC_DESCRIBE
+--
+QueryStmt
++-output_column_list=
+| +-TestExtraValueTable.value#1 AS vt [PROTO<googlesql_test.TestExtraPB>]
+| +-$array.x#4 AS x [INT64]
++-query=
+  +-StaticDescribeScan
+    +-column_list=[TestExtraValueTable.value#1, $array.x#4]
+    +-describe_text=
+    |   """
+    |   NameList:
+    |     vt googlesql_test.TestExtraPB TestExtraValueTable.value#1 (value table)
+    |     x INT64 $array.x#4 (value table)
+    |   NameScope:
+    |     Names:
+    |       Filename -> STRING (TestExtraValueTable.Filename#2) (implicit) (pseudo-column)
+    |       RowId -> BYTES (TestExtraValueTable.RowId#3) (implicit) (pseudo-column)
+    |       vt -> googlesql_test.TestExtraPB (TestExtraValueTable.value#1)
+    |       x -> INT64 ($array.x#4)
+    |     Range variables:
+    |       row -> RANGE_VARIABLE<value#1 AS vt,x#4, pseudo_columns: Filename#2,RowId#3>
+    |   """
+    +-input_scan=
+      +-ArrayScan
+        +-column_list=[TestExtraValueTable.value#1, $array.x#4]
+        +-input_scan=
+        | +-TableScan(column_list=[TestExtraValueTable.value#1], table=TestExtraValueTable, column_index_list=[0], alias="vt")
+        +-array_expr_list=
+        | +-Literal(type=ARRAY<INT64>, value=[1])
+        +-element_column_list=[$array.x#4]
+==
+
+SELECT *
+FROM (FROM (FROM TestExtraValueTable vt, UNNEST([1]) x) AS row)
+--
+QueryStmt
++-output_column_list=
+| +-$query.int32_val1#5 AS int32_val1 [INT32]
+| +-$query.int32_val2#6 AS int32_val2 [INT32]
+| +-$query.str_value#7 AS str_value [ARRAY<STRING>]
+| +-$array.x#4 AS x [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.int32_val1#5, $query.int32_val2#6, $query.str_value#7, $array.x#4]
+    +-expr_list=
+    | +-int32_val1#5 :=
+    | | +-GetProtoField
+    | |   +-type=INT32
+    | |   +-expr=
+    | |   | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=TestExtraValueTable.value#1)
+    | |   +-field_descriptor=int32_val1
+    | |   +-default_value=0
+    | +-int32_val2#6 :=
+    | | +-GetProtoField
+    | |   +-type=INT32
+    | |   +-expr=
+    | |   | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=TestExtraValueTable.value#1)
+    | |   +-field_descriptor=int32_val2
+    | |   +-default_value=0
+    | +-str_value#7 :=
+    |   +-GetProtoField
+    |     +-type=ARRAY<STRING>
+    |     +-expr=
+    |     | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=TestExtraValueTable.value#1)
+    |     +-field_descriptor=str_value
+    |     +-default_value=[]
+    +-input_scan=
+      +-ArrayScan
+        +-column_list=[TestExtraValueTable.value#1, $array.x#4]
+        +-input_scan=
+        | +-TableScan(column_list=[TestExtraValueTable.value#1], table=TestExtraValueTable, column_index_list=[0], alias="vt")
+        +-array_expr_list=
+        | +-Literal(type=ARRAY<INT64>, value=[1])
+        +-element_column_list=[$array.x#4]
+==
+
+SELECT vt, row.vt, x, row.x, row
+FROM (FROM (FROM TestExtraValueTable vt, UNNEST([1]) x) AS row)
+--
+QueryStmt
++-output_column_list=
+| +-TestExtraValueTable.value#1 AS vt [PROTO<googlesql_test.TestExtraPB>]
+| +-TestExtraValueTable.value#1 AS vt [PROTO<googlesql_test.TestExtraPB>]
+| +-$array.x#4 AS x [INT64]
+| +-$array.x#4 AS x [INT64]
+| +-$query.row#6 AS `row` [STRUCT<vt PROTO<googlesql_test.TestExtraPB>, x INT64>]
++-query=
+  +-ProjectScan
+    +-column_list=[TestExtraValueTable.value#1, TestExtraValueTable.value#1, $array.x#4, $array.x#4, $query.row#6]
+    +-expr_list=
+    | +-row#6 :=
+    |   +-MakeStruct
+    |     +-type=STRUCT<vt PROTO<googlesql_test.TestExtraPB>, x INT64>
+    |     +-field_list=
+    |       +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=TestExtraValueTable.value#1)
+    |       +-ColumnRef(type=INT64, column=$array.x#4)
+    +-input_scan=
+      +-ArrayScan
+        +-column_list=[TestExtraValueTable.value#1, $array.x#4]
+        +-input_scan=
+        | +-TableScan(column_list=[TestExtraValueTable.value#1], table=TestExtraValueTable, column_index_list=[0], alias="vt")
+        +-array_expr_list=
+        | +-Literal(type=ARRAY<INT64>, value=[1])
+        +-element_column_list=[$array.x#4]
+==
+
+FROM (FROM (FROM TestExtraValueTable vt, UNNEST([1]) x) AS row) AS row2
+--
+QueryStmt
++-output_column_list=
+| +-TestExtraValueTable.value#1 AS vt [PROTO<googlesql_test.TestExtraPB>]
+| +-$array.x#4 AS x [INT64]
++-query=
+  +-ArrayScan
+    +-column_list=[TestExtraValueTable.value#1, $array.x#4]
+    +-input_scan=
+    | +-TableScan(column_list=[TestExtraValueTable.value#1], table=TestExtraValueTable, column_index_list=[0], alias="vt")
+    +-array_expr_list=
+    | +-Literal(type=ARRAY<INT64>, value=[1])
+    +-element_column_list=[$array.x#4]
+==
+
+SELECT *
+FROM (FROM (FROM TestExtraValueTable vt, UNNEST([1]) x) AS row) AS row2
+--
+QueryStmt
++-output_column_list=
+| +-$query.int32_val1#5 AS int32_val1 [INT32]
+| +-$query.int32_val2#6 AS int32_val2 [INT32]
+| +-$query.str_value#7 AS str_value [ARRAY<STRING>]
+| +-$array.x#4 AS x [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.int32_val1#5, $query.int32_val2#6, $query.str_value#7, $array.x#4]
+    +-expr_list=
+    | +-int32_val1#5 :=
+    | | +-GetProtoField
+    | |   +-type=INT32
+    | |   +-expr=
+    | |   | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=TestExtraValueTable.value#1)
+    | |   +-field_descriptor=int32_val1
+    | |   +-default_value=0
+    | +-int32_val2#6 :=
+    | | +-GetProtoField
+    | |   +-type=INT32
+    | |   +-expr=
+    | |   | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=TestExtraValueTable.value#1)
+    | |   +-field_descriptor=int32_val2
+    | |   +-default_value=0
+    | +-str_value#7 :=
+    |   +-GetProtoField
+    |     +-type=ARRAY<STRING>
+    |     +-expr=
+    |     | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=TestExtraValueTable.value#1)
+    |     +-field_descriptor=str_value
+    |     +-default_value=[]
+    +-input_scan=
+      +-ArrayScan
+        +-column_list=[TestExtraValueTable.value#1, $array.x#4]
+        +-input_scan=
+        | +-TableScan(column_list=[TestExtraValueTable.value#1], table=TestExtraValueTable, column_index_list=[0], alias="vt")
+        +-array_expr_list=
+        | +-Literal(type=ARRAY<INT64>, value=[1])
+        +-element_column_list=[$array.x#4]
+==
+
+# `row2` is visible, but `row` has been hidden.
+SELECT vt, row2.vt, x, row2.x, row2
+FROM (FROM (FROM TestExtraValueTable vt, UNNEST([1]) x) AS row) AS row2
+--
+QueryStmt
++-output_column_list=
+| +-TestExtraValueTable.value#1 AS vt [PROTO<googlesql_test.TestExtraPB>]
+| +-TestExtraValueTable.value#1 AS vt [PROTO<googlesql_test.TestExtraPB>]
+| +-$array.x#4 AS x [INT64]
+| +-$array.x#4 AS x [INT64]
+| +-$query.row2#6 AS row2 [STRUCT<vt PROTO<googlesql_test.TestExtraPB>, x INT64>]
++-query=
+  +-ProjectScan
+    +-column_list=[TestExtraValueTable.value#1, TestExtraValueTable.value#1, $array.x#4, $array.x#4, $query.row2#6]
+    +-expr_list=
+    | +-row2#6 :=
+    |   +-MakeStruct
+    |     +-type=STRUCT<vt PROTO<googlesql_test.TestExtraPB>, x INT64>
+    |     +-field_list=
+    |       +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=TestExtraValueTable.value#1)
+    |       +-ColumnRef(type=INT64, column=$array.x#4)
+    +-input_scan=
+      +-ArrayScan
+        +-column_list=[TestExtraValueTable.value#1, $array.x#4]
+        +-input_scan=
+        | +-TableScan(column_list=[TestExtraValueTable.value#1], table=TestExtraValueTable, column_index_list=[0], alias="vt")
+        +-array_expr_list=
+        | +-Literal(type=ARRAY<INT64>, value=[1])
+        +-element_column_list=[$array.x#4]
+==
+
+# All references to `row` fail since `row` has been hidden.
+SELECT {{row|row.vt|row.x|row2.row|row2.row.vt}}
+FROM (FROM (FROM TestExtraValueTable vt, UNNEST([1]) x) AS row) AS row2
+--
+ALTERNATION GROUP: row
+--
+ERROR: Unrecognized name: `row`; Did you mean row2? [at 1:8]
+SELECT row
+       ^
+--
+ALTERNATION GROUP: row.vt
+--
+ERROR: Unrecognized name: `row`; Did you mean row2? [at 1:8]
+SELECT row.vt
+       ^
+--
+ALTERNATION GROUP: row.x
+--
+ERROR: Unrecognized name: `row`; Did you mean row2? [at 1:8]
+SELECT row.x
+       ^
+--
+ALTERNATION GROUP: row2.row
+--
+ERROR: Name row not found inside row2 [at 1:13]
+SELECT row2.row
+            ^
+--
+ALTERNATION GROUP: row2.row.vt
+--
+ERROR: Name row not found inside row2 [at 1:13]
+SELECT row2.row.vt
+            ^

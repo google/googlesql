@@ -1,0 +1,567 @@
+[load_proto_files=googlesql/testdata/test_schema.proto]
+[load_proto_names=googlesql_test.KitchenSinkPB, googlesql_test.TestExtraPB, googlesql_test.RecursivePB, googlesql_test.RepeatedHolderPB]
+[default required_features=UNNEST_AND_FLATTEN_ARRAYS]
+
+[name=array_path_top_level_struct_array]
+SELECT v
+FROM UNNEST([STRUCT(1 AS x), STRUCT(2), STRUCT(3)].x) AS v
+ORDER BY v
+--
+ARRAY<STRUCT<v INT64>>[known order:{1}, {2}, {3}]
+==
+
+[name=array_path_top_level_proto_array]
+SELECT v
+FROM UNNEST([CAST('int64_val: 1' AS googlesql_test.RecursivePB),
+             CAST('int64_val: 2' AS googlesql_test.RecursivePB)].int64_val) AS v
+ORDER BY v
+--
+ARRAY<STRUCT<v INT64>>[known order:{1}, {2}]
+==
+
+[name=array_path_through_struct_array]
+SELECT v
+FROM UNNEST(STRUCT([STRUCT(1 AS y), STRUCT(2), STRUCT(3)] AS x).x.y) AS v
+ORDER BY v
+--
+ARRAY<STRUCT<v INT64>>[known order:{1}, {2}, {3}]
+==
+
+[name=array_path_through_proto_array]
+SELECT v
+FROM UNNEST([
+  CAST('recursive_pb { int64_val: 1 }' AS googlesql_test.RecursivePB),
+  CAST('recursive_pb { int64_val: 2 }' AS googlesql_test.RecursivePB)
+].recursive_pb.int64_val) AS v
+ORDER BY v
+--
+ARRAY<STRUCT<v INT64>>[known order:{1}, {2}]
+==
+
+[name=array_path_through_two_struct_arrays]
+SELECT v
+FROM UNNEST([
+  STRUCT([STRUCT(2 AS y), STRUCT(1)] AS x),
+  STRUCT([STRUCT(4 AS y)] AS x),
+  STRUCT([STRUCT(3 AS y)] AS x)
+].x.y) AS v
+ORDER BY v
+--
+ARRAY<STRUCT<v INT64>>[known order:{1}, {2}, {3}, {4}]
+==
+
+[name=array_path_through_two_struct_arrays_order_by_offset]
+SELECT v, o
+FROM UNNEST([
+  STRUCT([STRUCT(2 AS y), STRUCT(1)] AS x),
+  STRUCT([STRUCT(4 AS y)] AS x),
+  STRUCT([STRUCT(3 AS y)] AS x)
+].x.y) AS v WITH OFFSET o
+ORDER BY o
+--
+ARRAY<STRUCT<v INT64, o INT64>>[known order:{2, 0}, {1, 1}, {4, 2}, {3, 3}]
+==
+
+[name=array_path_through_two_struct_arrays_select_offset]
+SELECT v, o
+FROM UNNEST([
+  STRUCT([STRUCT(2 AS y), STRUCT(1)] AS x),
+  STRUCT([STRUCT(4 AS y)] AS x),
+  STRUCT([STRUCT(3 AS y)] AS x)
+].x.y) AS v WITH OFFSET o
+ORDER BY v
+--
+ARRAY<STRUCT<v INT64, o INT64>>[known order:{1, 1}, {2, 0}, {3, 3}, {4, 2}]
+==
+
+[name=array_path_through_two_proto_arrays]
+SELECT v
+FROM UNNEST([
+  CAST('repeated_recursive_pb { int64_val: 1 }' AS googlesql_test.RecursivePB),
+  CAST('repeated_recursive_pb { int64_val: 2 } repeated_recursive_pb { int64_val: 3 }' AS googlesql_test.RecursivePB)
+].repeated_recursive_pb.int64_val) AS v
+ORDER BY v
+--
+ARRAY<STRUCT<v INT64>>[known order:{1}, {2}, {3}]
+==
+
+[name=array_path_through_intermediate_empty_repeat]
+SELECT v
+FROM UNNEST([
+  CAST('int64_val: 3' AS googlesql_test.RecursivePB),
+  CAST('repeated_recursive_pb { repeated_recursive_pb { int64_val: 1 }}' AS googlesql_test.RecursivePB)
+].repeated_recursive_pb.repeated_recursive_pb.int64_val) AS v
+ORDER BY v
+--
+ARRAY<STRUCT<v INT64>>[{1}]
+==
+
+[name=array_path_through_struct_and_proto_array]
+SELECT v
+FROM UNNEST([
+  STRUCT([CAST('repeated_recursive_pb { int64_val: 1 } repeated_recursive_pb { int64_val: 2 }' AS googlesql_test.RecursivePB),
+          CAST('repeated_recursive_pb { int64_val: 3 }' AS googlesql_test.RecursivePB)] AS x),
+  STRUCT([CAST('repeated_recursive_pb { int64_val: 4 }' AS googlesql_test.RecursivePB),
+          CAST('repeated_recursive_pb { int64_val: 5 } repeated_recursive_pb { int64_val: 6 }' AS googlesql_test.RecursivePB)])
+].x.repeated_recursive_pb.int64_val) AS v
+ORDER BY v
+--
+ARRAY<STRUCT<v INT64>>[known order:{1}, {2}, {3}, {4}, {5}, {6}]
+==
+
+[name=array_path_with_leaf_array]
+SELECT v
+FROM UNNEST(
+  CAST('int64_key_1: 1 int64_key_2: 2 repeated_holder { repeated_field { str_value: "a" str_value: "b" } repeated_field { str_value: "c" } } repeated_holder { repeated_field { str_value: "d" } }'
+       AS googlesql_test.KitchenSinkPB)
+  .repeated_holder.repeated_field.str_value) AS v
+ORDER BY v
+--
+ARRAY<STRUCT<v STRING>>[known order:{"a"}, {"b"}, {"c"}, {"d"}]
+==
+
+[name=array_path_to_has_field]
+SELECT v
+FROM UNNEST([CAST('int64_val: 1' AS googlesql_test.RecursivePB),
+             CAST('int64_val: 2' AS googlesql_test.RecursivePB)].has_int64_val) AS v
+ORDER BY v
+--
+ARRAY<STRUCT<v BOOL>>[known order:{true}, {true}]
+==
+
+[name=flatten_as_a_function]
+SELECT FLATTEN([
+  CAST('repeated_recursive_pb { int64_val: 1 }' AS googlesql_test.RecursivePB),
+  CAST('repeated_recursive_pb { int64_val: 2 } repeated_recursive_pb { int64_val: 3 }' AS googlesql_test.RecursivePB)
+].repeated_recursive_pb.int64_val) AS v
+--
+ARRAY<STRUCT<v ARRAY<>>>[{ARRAY<INT64>[known order:1, 2, 3]}]
+==
+
+[name=array_path_unnest_null_flatten_path]
+[required_features=UNNEST_AND_FLATTEN_ARRAYS]
+SELECT v
+FROM UNNEST(
+  CAST('' AS googlesql_test.RecursivePB).recursive_pb.repeated_recursive_pb.int64_val
+) AS v
+ORDER BY v
+--
+ARRAY<STRUCT<v INT64>>[]
+==
+
+[name=array_path_flatten_null_flatten_path]
+[required_features=UNNEST_AND_FLATTEN_ARRAYS]
+SELECT FLATTEN(
+  CAST('' AS googlesql_test.RecursivePB).recursive_pb.repeated_recursive_pb.int64_val
+) AS my_array
+--
+ARRAY<STRUCT<my_array ARRAY<>>>[{ARRAY<INT64>(NULL)}]
+==
+
+[name=array_path_empty_proto_array]
+SELECT v
+FROM UNNEST(CAST([] AS ARRAY<googlesql_test.RecursivePB>).int64_val) AS v
+--
+ARRAY<STRUCT<v INT64>>[]
+==
+
+[name=array_path_flatten_generalized_dot_operator]
+SELECT FLATTEN([
+  CAST("""[googlesql_test.TestExtraPBExtensionHolder.test_extra_proto_extension] {
+            ext_value: 1
+            ext_value: 2
+          }""" AS googlesql_test.TestExtraPB),
+  CAST("" AS googlesql_test.TestExtraPB),
+  CAST("""[googlesql_test.TestExtraPBExtensionHolder.test_extra_proto_extension] {
+            ext_value: 3
+          }""" AS googlesql_test.TestExtraPB)
+].(googlesql_test.TestExtraPBExtensionHolder.test_extra_proto_extension).ext_value)
+--
+ARRAY<STRUCT<ARRAY<>>>[{ARRAY<INT32>[known order:1, 2, 3]}]
+==
+
+[name=array_path_null_proto_array]
+SELECT v
+FROM UNNEST(CAST(NULL AS ARRAY<googlesql_test.RecursivePB>).int64_val) AS v
+--
+ARRAY<STRUCT<v INT64>>[]
+==
+
+[name=array_path_top_level_struct_array_with_nulls_in_array]
+SELECT v
+FROM UNNEST([STRUCT(1 AS x), STRUCT(2), NULL, STRUCT(3), STRUCT(NULL as x)].x) AS v
+ORDER BY v
+--
+ARRAY<STRUCT<v INT64>>[known order:{NULL}, {NULL}, {1}, {2}, {3}]
+==
+
+[name=array_path_top_level_proto_array_with_nulls_in_array]
+SELECT v
+FROM UNNEST([CAST('int64_val: 1' AS googlesql_test.RecursivePB),
+             CAST(NULL AS googlesql_test.RecursivePB),
+             CAST('int64_val: 2' AS googlesql_test.RecursivePB)].int64_val) AS v
+ORDER BY v
+--
+ARRAY<STRUCT<v INT64>>[known order:{NULL}, {1}, {2}]
+==
+
+[name=array_path_nulls_1]
+SELECT v
+FROM UNNEST([
+  STRUCT( STRUCT(5 AS y) AS x ),
+  STRUCT( NULL ),
+  STRUCT( STRUCT(6) )
+  ].x.y) AS v
+ORDER BY v
+--
+ARRAY<STRUCT<v INT64>>[known order:{NULL}, {5}, {6}]
+==
+
+[name=array_path_nulls_from_flatten_1]
+SELECT FLATTEN([
+  STRUCT( STRUCT(5 AS y) AS x ),
+  STRUCT( NULL ),
+  STRUCT( STRUCT(6) )
+  ].x.y) AS my_array
+--
+ARRAY<STRUCT<my_array ARRAY<>>>[{ARRAY<INT64>[known order:5, NULL, 6]}]
+==
+
+[name=array_path_nulls_2]
+SELECT v
+FROM UNNEST([
+  STRUCT( [STRUCT(5 AS y)] AS x ),
+  STRUCT( [STRUCT(NULL AS y)] ),
+  STRUCT( [STRUCT(6)] )
+  ].x.y) AS v
+ORDER BY v
+--
+ARRAY<STRUCT<v INT64>>[known order:{NULL}, {5}, {6}]
+==
+
+[name=array_path_nulls_from_flatten_2]
+SELECT FLATTEN([
+  STRUCT( [STRUCT(5 AS y)] AS x ),
+  STRUCT( [STRUCT(NULL AS y)] ),
+  STRUCT( [STRUCT(6)] )
+  ].x.y) AS my_array
+--
+ARRAY<STRUCT<my_array ARRAY<>>>[{ARRAY<INT64>[known order:5, NULL, 6]}]
+==
+
+[name=array_path_nulls_3]
+SELECT v
+FROM UNNEST([
+  STRUCT( [STRUCT(5 AS y)] AS x ),
+  STRUCT( CAST(NULL AS ARRAY<STRUCT<y INT64>>) AS x ),
+  STRUCT( [STRUCT(6)] )
+  ].x.y) AS v
+ORDER BY v
+--
+ARRAY<STRUCT<v INT64>>[known order:{5}, {6}]
+==
+
+[name=array_path_nulls_from_flatten_3]
+SELECT FLATTEN([
+  STRUCT( [STRUCT(5 AS y)] AS x ),
+  STRUCT( CAST(NULL AS ARRAY<STRUCT<y INT64>>) AS x ),
+  STRUCT( [STRUCT(6)] )
+  ].x.y) AS my_array
+--
+ARRAY<STRUCT<my_array ARRAY<>>>[{ARRAY<INT64>[known order:5, 6]}]
+==
+
+[name=array_path_nulls_4]
+SELECT v
+FROM UNNEST([
+  STRUCT( [STRUCT(STRUCT([STRUCT(5 AS zz)] AS z) AS y)] AS x ),
+  STRUCT( [STRUCT(CAST(NULL AS STRUCT<z ARRAY<STRUCT<zz INT64>>>))] ),
+  STRUCT( [STRUCT(STRUCT([STRUCT(6)]))] )
+  ].x.y.z.zz) AS v
+ORDER BY v
+--
+ARRAY<STRUCT<v INT64>>[known order:{5}, {6}]
+==
+
+[name=array_path_nulls_from_flatten_4]
+SELECT FLATTEN([
+  STRUCT( [STRUCT(STRUCT([STRUCT(5 AS zz)] AS z) AS y)] AS x ),
+  STRUCT( [STRUCT(CAST(NULL AS STRUCT<z ARRAY<STRUCT<zz INT64>>>))] ),
+  STRUCT( [STRUCT(STRUCT([STRUCT(6)]))] )
+  ].x.y.z.zz) AS my_array
+--
+ARRAY<STRUCT<my_array ARRAY<>>>[{ARRAY<INT64>[known order:5, 6]}]
+==
+
+[name=array_path_nulls_5]
+SELECT v
+FROM UNNEST([
+  CAST('''repeated_recursive_pb { recursive_pb { int64_val: 1 } }
+          repeated_recursive_pb { recursive_pb { } }
+          repeated_recursive_pb { }''' AS googlesql_test.RecursivePB)
+  ].repeated_recursive_pb.recursive_pb.int64_val) AS v
+ORDER BY v
+--
+ARRAY<STRUCT<v INT64>>[known order:{NULL}, {0}, {1}]
+==
+
+[name=array_path_nulls_from_flatten_5]
+SELECT FLATTEN([
+  CAST('''repeated_recursive_pb { recursive_pb { int64_val: 1 } }
+          repeated_recursive_pb { recursive_pb { } }
+          repeated_recursive_pb { }''' AS googlesql_test.RecursivePB)
+  ].repeated_recursive_pb.recursive_pb.int64_val) AS my_array
+--
+ARRAY<STRUCT<my_array ARRAY<>>>[{ARRAY<INT64>[known order:1, 0, NULL]}]
+==
+
+[name=array_path_nulls_6]
+SELECT v
+FROM UNNEST([
+  CAST('''repeated_recursive_pb { recursive_pb { repeated_recursive_pb { int64_val: 1 } } }
+          repeated_recursive_pb { recursive_pb { repeated_recursive_pb { } } }
+          repeated_recursive_pb { recursive_pb { } }
+          repeated_recursive_pb { }''' AS googlesql_test.RecursivePB)
+  ].repeated_recursive_pb.recursive_pb.repeated_recursive_pb.int64_val) AS v
+ORDER BY v
+--
+ARRAY<STRUCT<v INT64>>[known order:{0}, {1}]
+==
+
+[name=array_path_nulls_from_flatten_6]
+SELECT FLATTEN([
+  CAST('''repeated_recursive_pb { recursive_pb { repeated_recursive_pb { int64_val: 1 } } }
+          repeated_recursive_pb { recursive_pb { repeated_recursive_pb { } } }
+          repeated_recursive_pb { recursive_pb { } }
+          repeated_recursive_pb { }''' AS googlesql_test.RecursivePB)
+  ].repeated_recursive_pb.recursive_pb.repeated_recursive_pb.int64_val) AS my_array
+--
+ARRAY<STRUCT<my_array ARRAY<>>>[{ARRAY<INT64>[known order:1, 0]}]
+==
+
+[name=array_path_nulls_7]
+SELECT v
+FROM UNNEST([
+  CAST('''int64_key_1: 1 int64_key_2: 2
+          nested_value { nested_repeated_int32: 1 nested_repeated_int32: 2 }
+       ''' AS googlesql_test.KitchenSinkPB),
+  CAST('''int64_key_1: 3 int64_key_2: 4''' AS googlesql_test.KitchenSinkPB)
+  ].nested_value.nested_repeated_int32) AS v
+--
+ARRAY<STRUCT<v INT32>>[unknown order:{1}, {2}]
+==
+
+[name=array_path_nulls_from_flatten_7]
+SELECT FLATTEN([
+  CAST('''int64_key_1: 1 int64_key_2: 2
+          nested_value { nested_repeated_int32: 1 nested_repeated_int32: 2 }
+       ''' AS googlesql_test.KitchenSinkPB),
+  CAST('''int64_key_1: 3 int64_key_2: 4''' AS googlesql_test.KitchenSinkPB)
+  ].nested_value.nested_repeated_int32) AS my_array
+--
+ARRAY<STRUCT<my_array ARRAY<>>>[{ARRAY<INT32>[known order:1, 2]}]
+==
+
+[name=array_path_flatten_on_offset]
+SELECT FLATTEN([
+  STRUCT([1, 2, 3] AS a),
+  STRUCT([4, 5] AS a)
+][OFFSET(1)].a)
+--
+ARRAY<STRUCT<ARRAY<>>>[{ARRAY<INT64>[known order:4, 5]}]
+==
+
+[name=array_path_flatten_on_offset_2]
+SELECT FLATTEN(
+  (STRUCT([
+     STRUCT([1, 2, 3] AS b),
+     STRUCT([4, 5] AS b)
+  ] AS a).a[OFFSET(0)]).b
+) AS v
+--
+ARRAY<STRUCT<v ARRAY<>>>[{ARRAY<INT64>[known order:1, 2, 3]}]
+==
+
+[name=array_path_flatten_on_offset_3]
+SELECT FLATTEN(
+  STRUCT([
+     STRUCT([1, 2, 3] AS b),
+     STRUCT([4, 5] AS b)
+  ] AS a).a[OFFSET(0)].b
+) AS v
+--
+ARRAY<STRUCT<v ARRAY<>>>[{ARRAY<INT64>[known order:1, 2, 3]}]
+==
+
+[name=array_path_flatten_in_flatten]
+SELECT FLATTEN(
+    ARRAY_CONCAT(FLATTEN([STRUCT([STRUCT(1 AS b)] AS a)].a),
+                 FLATTEN([STRUCT([STRUCT(2 AS b)] AS a)].a)).b)
+--
+ARRAY<STRUCT<ARRAY<>>>[{ARRAY<INT64>[known order:1, 2]}]
+==
+
+[required_features=UNNEST_AND_FLATTEN_ARRAYS]
+[name=array_path_empty_array]
+SELECT FLATTEN(ARRAY<STRUCT<int64_val INT64>>[].int64_val)
+--
+ARRAY<STRUCT<ARRAY<>>>[{ARRAY<INT64>[]}]
+==
+
+[required_features=UNNEST_AND_FLATTEN_ARRAYS,JSON_TYPE]
+[name=array_path_through_struct_array_and_json_field]
+SELECT FLATTEN([STRUCT(JSON '1' AS x, 2 AS y), (JSON '11', 22)].x)
+--
+ARRAY<STRUCT<ARRAY<>>>[{ARRAY<JSON>[known order:1, 11]}]
+==
+
+[required_features=UNNEST_AND_FLATTEN_ARRAYS,JSON_TYPE]
+[name=array_path_through_struct_array_and_nested_json_fields]
+SELECT FLATTEN([STRUCT(JSON '{"field": 1}' AS x, 2 AS y), (JSON '{"field": "foo"}', 22), (JSON '"test"', 33)].x.field)
+--
+ARRAY<STRUCT<ARRAY<>>>[{ARRAY<JSON>[known order:1, "foo", NULL]}]
+==
+
+[required_features=UNNEST_AND_FLATTEN_ARRAYS,JSON_TYPE]
+[name=array_path_through_struct_array_and_json_array_leaf]
+SELECT FLATTEN([STRUCT(JSON '["foo", "bar"]' AS x, 2 AS y), (JSON '["baz"]', 22)].x)
+--
+ARRAY<STRUCT<ARRAY<>>>[{ARRAY<JSON>[known order:["foo","bar"], ["baz"]]}]
+==
+
+[required_features=UNNEST_AND_FLATTEN_ARRAYS,JSON_TYPE]
+[name=array_path_through_struct_array_and_json_arrays]
+SELECT FLATTEN([STRUCT(JSON '[{"field": 1}]' AS x, 2 AS y), (JSON '{"field": 11}', 22)].x.field)
+--
+ARRAY<STRUCT<ARRAY<>>>[{ARRAY<JSON>[known order:NULL, 11]}]
+==
+
+[name=array_path_flatten_with_offset_at_end]
+SELECT FLATTEN([
+    STRUCT([1, 2, 3] AS a),
+    STRUCT([4, 5] AS a)
+  ].a[OFFSET(1)]
+)
+--
+ARRAY<STRUCT<ARRAY<>>>[{ARRAY<INT64>[known order:2, 5]}]
+==
+
+[name=array_path_flatten_with_offset_after]
+SELECT FLATTEN([
+    STRUCT([1, 2, 3] AS a),
+    STRUCT([4, 5] AS a)
+  ].a
+)[OFFSET(0)]
+--
+ARRAY<STRUCT<INT64>>[{1}]
+==
+
+[name=array_path_flatten_with_offset_at_end_and_after]
+SELECT FLATTEN([
+    STRUCT([1, 2, 3] AS a),
+    STRUCT([4, 5] AS a)
+  ].a[OFFSET(1)]
+)[OFFSET(0)]
+--
+ARRAY<STRUCT<INT64>>[{2}]
+==
+
+[name=array_path_flatten_with_partially_invalid_internal_offset]
+SELECT FLATTEN([
+    STRUCT([1, 2, 3] AS a),
+    STRUCT([4, 5] AS a)
+  ].a[OFFSET(2)]
+)
+--
+ERROR: generic::out_of_range: Array index 2 is out of bounds
+==
+
+[name=array_path_flatten_with_partially_invalid_internal_safe_offset]
+SELECT FLATTEN([
+    STRUCT([1, 2, 3] AS a),
+    STRUCT([4, 5] AS a)
+  ].a[SAFE_OFFSET(2)]
+)
+--
+ARRAY<STRUCT<ARRAY<>>>[{ARRAY<INT64>[known order:3, NULL]}]
+==
+
+[name=array_path_flatten_with_offset_at_end_proto]
+SELECT FLATTEN([
+  CAST('''repeated_recursive_pb { int64_val: 1 }
+          repeated_recursive_pb { int64_val: 2 }''' AS googlesql_test.RecursivePB),
+  CAST('''repeated_recursive_pb { int64_val: 3 }
+          repeated_recursive_pb { int64_val: 4 }''' AS googlesql_test.RecursivePB)
+  ].repeated_recursive_pb[OFFSET(1)].int64_val) AS my_array
+--
+ARRAY<STRUCT<my_array ARRAY<>>>[{ARRAY<INT64>[known order:2, 4]}]
+==
+
+[name=array_path_flatten_with_offset_in_middle_proto]
+SELECT FLATTEN([
+  CAST('''repeated_recursive_pb { repeated_recursive_pb { int64_val: 1 } }
+          repeated_recursive_pb { repeated_recursive_pb { int64_val: 2 } }''' AS googlesql_test.RecursivePB),
+  CAST('''repeated_recursive_pb { repeated_recursive_pb { int64_val: 3 } }
+          repeated_recursive_pb { repeated_recursive_pb { int64_val: 4 } }''' AS googlesql_test.RecursivePB)
+  ].repeated_recursive_pb[OFFSET(1)].repeated_recursive_pb.int64_val) AS my_array
+--
+ARRAY<STRUCT<my_array ARRAY<>>>[{ARRAY<INT64>[known order:2, 4]}]
+==
+
+[default required_features=]
+[name=array_path_in_unnest]
+SELECT 3 IN UNNEST([STRUCT([1, 2] AS a), STRUCT([3, 4, 5] AS a)].a)
+--
+ARRAY<STRUCT<BOOL>>[{true}]
+==
+
+[default required_features=UNNEST_AND_FLATTEN_ARRAYS]
+[name=flatten_in_flatten]
+SELECT
+  FLATTEN((SELECT [STRUCT(['A','B'] AS f11)])
+    .f11[ORDINAL(FLATTEN([STRUCT([3,4] AS f21), STRUCT([1,2] AS f21)].f21)
+      [OFFSET(3)])]) AS col
+--
+ARRAY<STRUCT<col ARRAY<>>>[{ARRAY<STRING>["B"]}]
+==
+
+[name=flatten_inner_join]
+SELECT
+  a, b
+FROM
+  (SELECT 1 AS a, ARRAY<STRUCT<int64_val INT64>>[] AS b)
+INNER JOIN
+  UNNEST(FLATTEN(b.int64_val)) b;
+--
+ARRAY<STRUCT<a INT64, b INT64>>[]
+==
+
+[name=flatten_left_join]
+SELECT
+  a, b
+FROM
+  (SELECT 1 AS a, ARRAY<STRUCT<int64_val INT64>>[] AS b)
+LEFT JOIN
+  UNNEST(FLATTEN(b.int64_val)) b;
+--
+ARRAY<STRUCT<a INT64, b INT64>>[{1, NULL}]
+==
+
+[name=flatten_left_join_with_offset]
+SELECT
+  a, b
+FROM
+  (SELECT 1 AS a, ARRAY<STRUCT<int64_val INT64>>[] AS b)
+LEFT JOIN
+  UNNEST(FLATTEN(b.int64_val)) b WITH OFFSET o
+ORDER BY o;
+--
+ARRAY<STRUCT<a INT64, b INT64>>[{1, NULL}]
+==
+
+# FLATTEN can be unordered even if the top-level array is ordered, if the
+# nested array is not.
+[name=flatten_deeply_nested_unordered_array]
+SELECT FLATTEN([( SELECT AS STRUCT ARRAY_AGG(n) AS arr FROM UNNEST([1, 2, 3, 4, 5]) AS n )].arr)
+--
+ARRAY<STRUCT<ARRAY<>>>[{ARRAY<INT64>[unknown order:2, 4, 1, 3, 5]}]

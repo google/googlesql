@@ -1,0 +1,441 @@
+# Testing KLL_QUANTILES.EXTRACT_RELATIVE_RANK and KLL_QUANTILES.MERGE_RELATIVE_RANK.
+# Tests include:
+# - Passing a null sketch / value / rank_type.
+# - Compare default rank_type with 'FRACTION_LESS_THAN' rank_type.
+# - Passing sketches that have no / one / multiple elements.
+# - For double, passing a sketch that has NaN / Inf.
+
+[default required_features=NAMED_ARGUMENTS,KLL_QUANTILES_EXTRACT_RELATIVE_RANK]
+[name=extract_relative_rank_empty_sketch]
+SELECT
+  KLL_QUANTILES.EXTRACT_RELATIVE_RANK_INT64(sketch, value => 1) as rank,
+FROM (
+  SELECT KLL_QUANTILES.INIT_INT64(x) as sketch FROM UNNEST([]) as x
+)
+--
+ARRAY<STRUCT<rank DOUBLE>>[{NULL}]
+==
+
+[name=extract_relative_rank_null_sketch]
+SELECT KLL_QUANTILES.EXTRACT_RELATIVE_RANK_INT64(NULL, value => 1)
+--
+ARRAY<STRUCT<DOUBLE>>[{NULL}]
+==
+
+[name=extract_relative_rank_null_value]
+SELECT KLL_QUANTILES.EXTRACT_RELATIVE_RANK_INT64(sketch, value => NULL)
+FROM (
+  SELECT KLL_QUANTILES.INIT_INT64(x) as sketch FROM UNNEST([1,2,3]) as x
+)
+--
+ARRAY<STRUCT<DOUBLE>>[{NULL}]
+==
+
+[name=extract_relative_rank_null_rank_type]
+SELECT KLL_QUANTILES.EXTRACT_RELATIVE_RANK_INT64(sketch, value => 1, rank_type => NULL)
+FROM (
+  SELECT KLL_QUANTILES.INIT_INT64(x) as sketch FROM UNNEST([1,2,3]) as x
+)
+--
+ARRAY<STRUCT<DOUBLE>>[{NULL}]
+==
+
+[name=extract_relative_rank_default_rank_type]
+SELECT
+  KLL_QUANTILES.EXTRACT_RELATIVE_RANK_INT64(sketch, value => 2) as default_rank,
+  KLL_QUANTILES.EXTRACT_RELATIVE_RANK_INT64(sketch, value => 2, rank_type => 'FRACTION_LESS_THAN') as first_rank
+FROM (
+  SELECT KLL_QUANTILES.INIT_INT64(x) as sketch FROM UNNEST([1, 2, 2, 3]) as x
+)
+--
+ARRAY<STRUCT<default_rank DOUBLE, first_rank DOUBLE>>[{0.25, 0.25}]
+==
+
+[name=extract_relative_rank_all_rank_types]
+SELECT
+  KLL_QUANTILES.EXTRACT_RELATIVE_RANK_INT64(sketch, value => 2, rank_type => 'FRACTION_LESS_THAN') as first_rank,
+  KLL_QUANTILES.EXTRACT_RELATIVE_RANK_INT64(sketch, value => 2, rank_type => 'MIDPOINT') as midpoint_rank,
+  KLL_QUANTILES.EXTRACT_RELATIVE_RANK_INT64(sketch, value => 2, rank_type => 'FRACTION_LESS_THAN_OR_EQUAL') as last_rank
+FROM (
+  SELECT KLL_QUANTILES.INIT_INT64(x) as sketch FROM UNNEST([1, 2, 2, 3]) as x
+)
+--
+ARRAY<STRUCT<first_rank DOUBLE, midpoint_rank DOUBLE, last_rank DOUBLE>>[
+  {0.25, 0.5, 0.75}
+]
+==
+
+[name=extract_relative_rank_single_element]
+SELECT
+  KLL_QUANTILES.EXTRACT_RELATIVE_RANK_INT64(sketch, value => 10, rank_type => 'FRACTION_LESS_THAN') as first_rank,
+  KLL_QUANTILES.EXTRACT_RELATIVE_RANK_INT64(sketch, value => 10, rank_type => 'MIDPOINT') as midpoint_rank,
+  KLL_QUANTILES.EXTRACT_RELATIVE_RANK_INT64(sketch, value => 10, rank_type => 'FRACTION_LESS_THAN_OR_EQUAL') as last_rank
+FROM (
+  SELECT KLL_QUANTILES.INIT_INT64(x) as sketch FROM UNNEST([10]) as x
+)
+--
+ARRAY<STRUCT<first_rank DOUBLE, midpoint_rank DOUBLE, last_rank DOUBLE>>[
+  {0, 0.5, 1}
+]
+==
+
+[name=extract_relative_rank_repeated_elements]
+SELECT
+  KLL_QUANTILES.EXTRACT_RELATIVE_RANK_INT64(sketch, value => 2, rank_type => 'FRACTION_LESS_THAN') as first_rank,
+  KLL_QUANTILES.EXTRACT_RELATIVE_RANK_INT64(sketch, value => 2, rank_type => 'MIDPOINT') as midpoint_rank,
+  KLL_QUANTILES.EXTRACT_RELATIVE_RANK_INT64(sketch, value => 2, rank_type => 'FRACTION_LESS_THAN_OR_EQUAL') as last_rank
+FROM (
+  SELECT KLL_QUANTILES.INIT_INT64(x, 1000) as sketch
+  FROM UNNEST([0, 1, 2, 2, 2, 2, 2, 2, 4, 5]) as x
+)
+--
+ARRAY<STRUCT<first_rank DOUBLE, midpoint_rank DOUBLE, last_rank DOUBLE>>[
+  {0.2, 0.5, 0.8}
+]
+==
+
+[name=extract_relative_rank_all_same_elements]
+SELECT
+  KLL_QUANTILES.EXTRACT_RELATIVE_RANK_INT64(sketch, value => 5, rank_type => 'FRACTION_LESS_THAN') as first_rank_5,
+  KLL_QUANTILES.EXTRACT_RELATIVE_RANK_INT64(sketch, value => 5, rank_type => 'MIDPOINT') as midpoint_rank_5,
+  KLL_QUANTILES.EXTRACT_RELATIVE_RANK_INT64(sketch, value => 5, rank_type => 'FRACTION_LESS_THAN_OR_EQUAL') as last_rank_5,
+  KLL_QUANTILES.EXTRACT_RELATIVE_RANK_INT64(sketch, value => 4, rank_type => 'FRACTION_LESS_THAN') as first_rank_4,
+  KLL_QUANTILES.EXTRACT_RELATIVE_RANK_INT64(sketch, value => 6, rank_type => 'FRACTION_LESS_THAN') as first_rank_6
+FROM (
+  SELECT KLL_QUANTILES.INIT_INT64(x) as sketch FROM UNNEST([5, 5, 5, 5, 5]) as x
+)
+--
+ARRAY<STRUCT<
+        first_rank_5 DOUBLE,
+        midpoint_rank_5 DOUBLE,
+        last_rank_5 DOUBLE,
+        first_rank_4 DOUBLE,
+        first_rank_6 DOUBLE
+      >>[{0, 0.5, 1, 0, 1}]
+==
+
+[name=extract_relative_rank_not_hit]
+SELECT
+  KLL_QUANTILES.EXTRACT_RELATIVE_RANK_INT64(sketch, value => 3, rank_type => 'FRACTION_LESS_THAN') as first_rank,
+  KLL_QUANTILES.EXTRACT_RELATIVE_RANK_INT64(sketch, value => 3, rank_type => 'FRACTION_LESS_THAN_OR_EQUAL') as last_rank
+FROM (
+  SELECT KLL_QUANTILES.INIT_INT64(x) as sketch FROM UNNEST([1, 2, 4, 5]) as x
+)
+--
+ARRAY<STRUCT<first_rank DOUBLE, last_rank DOUBLE>>[{0.5, 0.5}]
+==
+
+[name=extract_relative_rank_outside_range]
+SELECT
+  KLL_QUANTILES.EXTRACT_RELATIVE_RANK_INT64(sketch, value => 0) as smaller_rank,
+  KLL_QUANTILES.EXTRACT_RELATIVE_RANK_INT64(sketch, value => 10) as larger_rank
+FROM (
+  SELECT KLL_QUANTILES.INIT_INT64(x) as sketch FROM UNNEST([1, 2, 3, 4, 5]) as x
+)
+--
+ARRAY<STRUCT<smaller_rank DOUBLE, larger_rank DOUBLE>>[{0, 1}]
+==
+
+[name=extract_relative_rank_uint64]
+SELECT
+  KLL_QUANTILES.EXTRACT_RELATIVE_RANK_UINT64(sketch, value => 2, rank_type => 'FRACTION_LESS_THAN') as first_rank,
+  KLL_QUANTILES.EXTRACT_RELATIVE_RANK_UINT64(sketch, value => 2, rank_type => 'MIDPOINT') as midpoint_rank,
+  KLL_QUANTILES.EXTRACT_RELATIVE_RANK_UINT64(sketch, value => 2, rank_type => 'FRACTION_LESS_THAN_OR_EQUAL') as last_rank
+FROM (
+  SELECT KLL_QUANTILES.INIT_UINT64(x) as sketch
+  FROM UNNEST(ARRAY<UINT64>[0, 1, 2, 3]) as x
+)
+--
+ARRAY<STRUCT<first_rank DOUBLE, midpoint_rank DOUBLE, last_rank DOUBLE>>[
+  {0.5, 0.625, 0.75}
+]
+==
+
+[name=extract_relative_rank_double]
+SELECT
+  KLL_QUANTILES.EXTRACT_RELATIVE_RANK_DOUBLE(sketch, value => 2.3, rank_type => 'FRACTION_LESS_THAN') as first_rank,
+  KLL_QUANTILES.EXTRACT_RELATIVE_RANK_DOUBLE(sketch, value => 2.3, rank_type => 'MIDPOINT') as midpoint_rank,
+  KLL_QUANTILES.EXTRACT_RELATIVE_RANK_DOUBLE(sketch, value => 2.3, rank_type => 'FRACTION_LESS_THAN_OR_EQUAL') as last_rank
+FROM (
+  SELECT KLL_QUANTILES.INIT_DOUBLE(x) as sketch
+  FROM UNNEST(ARRAY<DOUBLE>[0.1, 1.2, 2.3, 3.4]) as x
+)
+--
+ARRAY<STRUCT<first_rank DOUBLE, midpoint_rank DOUBLE, last_rank DOUBLE>>[
+  {0.5, 0.625, 0.75}
+]
+==
+
+[name=extract_relative_rank_double_with_nan]
+SELECT
+  KLL_QUANTILES.EXTRACT_RELATIVE_RANK_DOUBLE(sketch, value => CAST('NaN' AS DOUBLE), rank_type => 'FRACTION_LESS_THAN') as nan_first,
+  KLL_QUANTILES.EXTRACT_RELATIVE_RANK_DOUBLE(sketch, value => CAST('NaN' AS DOUBLE), rank_type => 'FRACTION_LESS_THAN_OR_EQUAL') as nan_last,
+  KLL_QUANTILES.EXTRACT_RELATIVE_RANK_DOUBLE(sketch, value => 0, rank_type => 'FRACTION_LESS_THAN') as zero_first
+FROM (
+  SELECT KLL_QUANTILES.INIT_DOUBLE(x) as sketch
+  FROM UNNEST([CAST('NaN' AS DOUBLE), CAST('NaN' AS DOUBLE), 0, 1, 2]) as x
+)
+--
+ARRAY<STRUCT<nan_first DOUBLE, nan_last DOUBLE, zero_first DOUBLE>>[
+  {0, 0.4, 0.4}
+]
+==
+
+[name=extract_relative_rank_double_with_pos_inf]
+SELECT
+  KLL_QUANTILES.EXTRACT_RELATIVE_RANK_DOUBLE(sketch, value => CAST('+inf' AS DOUBLE), rank_type => 'FRACTION_LESS_THAN') as pos_inf_first,
+  KLL_QUANTILES.EXTRACT_RELATIVE_RANK_DOUBLE(sketch, value => CAST('+inf' AS DOUBLE), rank_type => 'MIDPOINT') as pos_inf_midpoint,
+  KLL_QUANTILES.EXTRACT_RELATIVE_RANK_DOUBLE(sketch, value => CAST('+inf' AS DOUBLE), rank_type => 'FRACTION_LESS_THAN_OR_EQUAL') as pos_inf_last
+FROM (
+  SELECT KLL_QUANTILES.INIT_DOUBLE(x) as sketch
+  FROM UNNEST([1.0, 2.0, 3.0, CAST('+inf' AS DOUBLE)]) as x
+)
+--
+ARRAY<STRUCT<
+        pos_inf_first DOUBLE,
+        pos_inf_midpoint DOUBLE,
+        pos_inf_last DOUBLE
+      >>[{0.75, 0.875, 1}]
+==
+
+[name=extract_relative_rank_double_with_neg_inf]
+SELECT
+  KLL_QUANTILES.EXTRACT_RELATIVE_RANK_DOUBLE(sketch, value => CAST('-inf' AS DOUBLE), rank_type => 'FRACTION_LESS_THAN') as neg_inf_first,
+  KLL_QUANTILES.EXTRACT_RELATIVE_RANK_DOUBLE(sketch, value => CAST('-inf' AS DOUBLE), rank_type => 'MIDPOINT') as neg_inf_midpoint,
+  KLL_QUANTILES.EXTRACT_RELATIVE_RANK_DOUBLE(sketch, value => CAST('-inf' AS DOUBLE), rank_type => 'FRACTION_LESS_THAN_OR_EQUAL') as neg_inf_last
+FROM (
+  SELECT KLL_QUANTILES.INIT_DOUBLE(x) as sketch
+  FROM UNNEST([CAST('-inf' AS DOUBLE), 1.0, 2.0]) as x
+)
+--
+ARRAY<STRUCT<
+        neg_inf_first DOUBLE,
+        neg_inf_midpoint DOUBLE,
+        neg_inf_last DOUBLE
+      >>[{0, 0.16666666666666666, 0.33333333333333331}]
+==
+
+[name=extract_relative_rank_double_with_infs_and_nan]
+SELECT
+  KLL_QUANTILES.EXTRACT_RELATIVE_RANK_DOUBLE(sketch, value => CAST('NaN' AS DOUBLE), rank_type => 'FRACTION_LESS_THAN_OR_EQUAL') as nan_last,
+  KLL_QUANTILES.EXTRACT_RELATIVE_RANK_DOUBLE(sketch, value => CAST('-inf' AS DOUBLE), rank_type => 'FRACTION_LESS_THAN_OR_EQUAL') as neg_inf_last,
+  KLL_QUANTILES.EXTRACT_RELATIVE_RANK_DOUBLE(sketch, value => CAST('+inf' AS DOUBLE), rank_type => 'FRACTION_LESS_THAN_OR_EQUAL') as pos_inf_last
+FROM (
+  SELECT KLL_QUANTILES.INIT_DOUBLE(x) as sketch
+  FROM UNNEST([CAST('NaN' AS DOUBLE), CAST('-inf' AS DOUBLE), 1.0, CAST('+inf' AS DOUBLE)]) as x
+)
+--
+ARRAY<STRUCT<nan_last DOUBLE, neg_inf_last DOUBLE, pos_inf_last DOUBLE>>[
+  {0.25, 0.5, 1}
+]
+==
+
+[name=merge_relative_rank_empty_sketches]
+SELECT KLL_QUANTILES.MERGE_RELATIVE_RANK_INT64(sketch, value => 1)
+FROM (
+  SELECT KLL_QUANTILES.INIT_INT64(x) AS sketch FROM UNNEST(ARRAY<INT64>[]) AS x
+  UNION ALL
+  SELECT KLL_QUANTILES.INIT_INT64(y) AS sketch FROM UNNEST(ARRAY<INT64>[]) AS y
+)
+--
+ARRAY<STRUCT<DOUBLE>>[{NULL}]
+==
+
+[name=merge_relative_rank_all_null_sketches]
+SELECT KLL_QUANTILES.MERGE_RELATIVE_RANK_INT64(sketch, value => 1)
+FROM UNNEST(ARRAY<BYTES>[NULL, NULL]) as sketch
+--
+ARRAY<STRUCT<DOUBLE>>[{NULL}]
+==
+
+[name=merge_relative_rank_null_value]
+SELECT KLL_QUANTILES.MERGE_RELATIVE_RANK_INT64(sketch, value => NULL)
+FROM (
+  SELECT KLL_QUANTILES.INIT_INT64(x) as sketch FROM UNNEST([1,2,3]) as x
+)
+--
+ARRAY<STRUCT<DOUBLE>>[{NULL}]
+==
+
+[name=merge_relative_rank_null_rank_type]
+SELECT KLL_QUANTILES.MERGE_RELATIVE_RANK_INT64(sketch, value => 1, rank_type => NULL)
+FROM (
+  SELECT KLL_QUANTILES.INIT_INT64(x) as sketch FROM UNNEST([1,2,3]) as x
+)
+--
+ARRAY<STRUCT<DOUBLE>>[{NULL}]
+==
+
+[name=merge_relative_rank_default_rank_type]
+SELECT
+  KLL_QUANTILES.MERGE_RELATIVE_RANK_INT64(sketch, value => 3) as default_rank,
+  KLL_QUANTILES.MERGE_RELATIVE_RANK_INT64(sketch, value => 3, rank_type => 'FRACTION_LESS_THAN') as first_rank
+FROM (
+  SELECT KLL_QUANTILES.INIT_INT64(x) as sketch FROM UNNEST([1, 3, 4]) as x
+  UNION ALL
+  SELECT KLL_QUANTILES.INIT_INT64(y) as sketch FROM UNNEST([3, 5]) as y
+)
+--
+ARRAY<STRUCT<default_rank DOUBLE, first_rank DOUBLE>>[{0.2, 0.2}]
+==
+
+[name=merge_relative_rank_single_with_empty]
+SELECT KLL_QUANTILES.MERGE_RELATIVE_RANK_INT64(sketch, value => 10, rank_type => 'MIDPOINT')
+FROM (
+  SELECT KLL_QUANTILES.INIT_INT64(x) as sketch FROM UNNEST([10]) as x
+  UNION ALL
+  SELECT KLL_QUANTILES.INIT_INT64(y) as sketch FROM UNNEST(ARRAY<INT64>[]) as y
+)
+--
+ARRAY<STRUCT<DOUBLE>>[{0.5}]
+==
+
+[name=merge_relative_rank_single_with_null]
+SELECT KLL_QUANTILES.MERGE_RELATIVE_RANK_INT64(sketch, value => 10, rank_type => 'MIDPOINT')
+FROM (
+  SELECT KLL_QUANTILES.INIT_INT64(x) as sketch FROM UNNEST([10]) as x
+  UNION ALL
+  SELECT NULL as sketch
+)
+--
+ARRAY<STRUCT<DOUBLE>>[{0.5}]
+==
+
+[name=merge_relative_rank_double_with_nan]
+SELECT
+  KLL_QUANTILES.MERGE_RELATIVE_RANK_DOUBLE(sketch, value => CAST('NaN' AS DOUBLE), rank_type => 'FRACTION_LESS_THAN_OR_EQUAL') as nan_last,
+  KLL_QUANTILES.MERGE_RELATIVE_RANK_DOUBLE(sketch, value => 0, rank_type => 'FRACTION_LESS_THAN') as zero_first
+FROM (
+  SELECT KLL_QUANTILES.INIT_DOUBLE(x) as sketch FROM UNNEST([CAST('NaN' AS DOUBLE), 0]) as x
+  UNION ALL
+  SELECT KLL_QUANTILES.INIT_DOUBLE(y) as sketch FROM UNNEST([CAST('NaN' AS DOUBLE), 1]) as y
+)
+--
+ARRAY<STRUCT<nan_last DOUBLE, zero_first DOUBLE>>[{0.5, 0.5}]
+==
+
+[name=merge_relative_rank_int64_all_rank_types]
+SELECT
+  KLL_QUANTILES.MERGE_RELATIVE_RANK_INT64(sketch, value => 4, rank_type => 'FRACTION_LESS_THAN') as first_rank,
+  KLL_QUANTILES.MERGE_RELATIVE_RANK_INT64(sketch, value => 4, rank_type => 'MIDPOINT') as midpoint_rank,
+  KLL_QUANTILES.MERGE_RELATIVE_RANK_INT64(sketch, value => 4, rank_type => 'FRACTION_LESS_THAN_OR_EQUAL') as last_rank
+FROM (
+  SELECT KLL_QUANTILES.INIT_INT64(x) as sketch FROM UNNEST([1, 2, 4]) as x
+  UNION ALL
+  SELECT KLL_QUANTILES.INIT_INT64(y) as sketch FROM UNNEST([4, 5, 6]) as y
+)
+--
+ARRAY<STRUCT<first_rank DOUBLE, midpoint_rank DOUBLE, last_rank DOUBLE>>[
+  {0.33333333333333331, 0.5, 0.66666666666666663}
+]
+==
+
+[name=merge_relative_rank_uint64_all_rank_types]
+SELECT
+  KLL_QUANTILES.MERGE_RELATIVE_RANK_UINT64(sketch, value => 4, rank_type => 'FRACTION_LESS_THAN') as first_rank,
+  KLL_QUANTILES.MERGE_RELATIVE_RANK_UINT64(sketch, value => 4, rank_type => 'MIDPOINT') as midpoint_rank,
+  KLL_QUANTILES.MERGE_RELATIVE_RANK_UINT64(sketch, value => 4, rank_type => 'FRACTION_LESS_THAN_OR_EQUAL') as last_rank
+FROM (
+  SELECT KLL_QUANTILES.INIT_UINT64(x) as sketch FROM UNNEST(ARRAY<UINT64>[1, 2, 4]) as x
+  UNION ALL
+  SELECT KLL_QUANTILES.INIT_UINT64(y) as sketch FROM UNNEST(ARRAY<UINT64>[4, 5, 6]) as y
+)
+--
+ARRAY<STRUCT<first_rank DOUBLE, midpoint_rank DOUBLE, last_rank DOUBLE>>[
+  {0.33333333333333331, 0.5, 0.66666666666666663}
+]
+==
+
+[name=merge_relative_rank_double_all_rank_types]
+SELECT
+  KLL_QUANTILES.MERGE_RELATIVE_RANK_DOUBLE(sketch, value => 4.0, rank_type => 'FRACTION_LESS_THAN') as first_rank,
+  KLL_QUANTILES.MERGE_RELATIVE_RANK_DOUBLE(sketch, value => 4.0, rank_type => 'MIDPOINT') as midpoint_rank,
+  KLL_QUANTILES.MERGE_RELATIVE_RANK_DOUBLE(sketch, value => 4.0, rank_type => 'FRACTION_LESS_THAN_OR_EQUAL') as last_rank
+FROM (
+  SELECT KLL_QUANTILES.INIT_DOUBLE(x) as sketch FROM UNNEST([1.0, 2.0, 4.0]) as x
+  UNION ALL
+  SELECT KLL_QUANTILES.INIT_DOUBLE(y) as sketch FROM UNNEST([4.0, 5.0, 6.0]) as y
+)
+--
+ARRAY<STRUCT<first_rank DOUBLE, midpoint_rank DOUBLE, last_rank DOUBLE>>[
+  {0.33333333333333331, 0.5, 0.66666666666666663}
+]
+==
+
+[name=merge_relative_rank_double_with_pos_inf]
+SELECT
+  KLL_QUANTILES.MERGE_RELATIVE_RANK_DOUBLE(sketch, value => CAST('+inf' AS DOUBLE), rank_type => 'FRACTION_LESS_THAN') as pos_inf_first,
+  KLL_QUANTILES.MERGE_RELATIVE_RANK_DOUBLE(sketch, value => CAST('+inf' AS DOUBLE), rank_type => 'MIDPOINT') as pos_inf_midpoint,
+  KLL_QUANTILES.MERGE_RELATIVE_RANK_DOUBLE(sketch, value => CAST('+inf' AS DOUBLE), rank_type => 'FRACTION_LESS_THAN_OR_EQUAL') as pos_inf_last
+FROM (
+  SELECT KLL_QUANTILES.INIT_DOUBLE(x) as sketch FROM UNNEST([1.0, CAST('+inf' AS DOUBLE)]) as x
+  UNION ALL
+  SELECT KLL_QUANTILES.INIT_DOUBLE(y) as sketch FROM UNNEST([2.0]) as y
+)
+--
+ARRAY<STRUCT<
+        pos_inf_first DOUBLE,
+        pos_inf_midpoint DOUBLE,
+        pos_inf_last DOUBLE
+      >>[{0.66666666666666663, 0.83333333333333326, 1}]
+==
+
+[name=merge_relative_rank_double_with_neg_inf]
+SELECT
+  KLL_QUANTILES.MERGE_RELATIVE_RANK_DOUBLE(sketch, value => CAST('-inf' AS DOUBLE), rank_type => 'FRACTION_LESS_THAN') as neg_inf_first,
+  KLL_QUANTILES.MERGE_RELATIVE_RANK_DOUBLE(sketch, value => CAST('-inf' AS DOUBLE), rank_type => 'MIDPOINT') as neg_inf_midpoint,
+  KLL_QUANTILES.MERGE_RELATIVE_RANK_DOUBLE(sketch, value => CAST('-inf' AS DOUBLE), rank_type => 'FRACTION_LESS_THAN_OR_EQUAL') as neg_inf_last
+FROM (
+  SELECT KLL_QUANTILES.INIT_DOUBLE(x) as sketch FROM UNNEST([CAST('-inf' AS DOUBLE), 2.0]) as x
+  UNION ALL
+  SELECT KLL_QUANTILES.INIT_DOUBLE(y) as sketch FROM UNNEST([1.0]) as y
+)
+--
+ARRAY<STRUCT<
+        neg_inf_first DOUBLE,
+        neg_inf_midpoint DOUBLE,
+        neg_inf_last DOUBLE
+      >>[{0, 0.16666666666666666, 0.33333333333333331}]
+==
+
+[name=merge_relative_rank_double_with_infs_and_nan]
+SELECT
+  KLL_QUANTILES.MERGE_RELATIVE_RANK_DOUBLE(sketch, value => CAST('NaN' AS DOUBLE), rank_type => 'FRACTION_LESS_THAN_OR_EQUAL') as nan_last,
+  KLL_QUANTILES.MERGE_RELATIVE_RANK_DOUBLE(sketch, value => CAST('-inf' AS DOUBLE), rank_type => 'FRACTION_LESS_THAN_OR_EQUAL') as neg_inf_last,
+  KLL_QUANTILES.MERGE_RELATIVE_RANK_DOUBLE(sketch, value => CAST('+inf' AS DOUBLE), rank_type => 'FRACTION_LESS_THAN_OR_EQUAL') as pos_inf_last
+FROM (
+  SELECT KLL_QUANTILES.INIT_DOUBLE(x) as sketch FROM UNNEST([CAST('NaN' AS DOUBLE), 1.0]) as x
+  UNION ALL
+  SELECT KLL_QUANTILES.INIT_DOUBLE(y) as sketch FROM UNNEST([CAST('-inf' AS DOUBLE), CAST('+inf' AS DOUBLE)]) as y
+)
+--
+ARRAY<STRUCT<nan_last DOUBLE, neg_inf_last DOUBLE, pos_inf_last DOUBLE>>[
+  {0.25, 0.5, 1}
+]
+==
+
+[name=merge_relative_rank_incompatible_types]
+SELECT
+  KLL_QUANTILES.MERGE_RELATIVE_RANK_UINT64(sketch, value => 4) as rank,
+FROM (
+  SELECT KLL_QUANTILES.INIT_INT64(x) as sketch FROM UNNEST(ARRAY<INT64>[1, 2, 4]) as x
+  UNION ALL
+  SELECT KLL_QUANTILES.INIT_UINT64(y) as sketch FROM UNNEST(ARRAY<UINT64>[4, 5, 6]) as y
+)
+--
+ERROR: generic::out_of_range: KLL failed: ValueOps in this and the serialized aggregator must be compatible. Instead, this aggregator has value type DefaultOpsType::UINT64, while the serialized aggregator has value type DefaultOpsType::INT64
+==
+
+[required_features=NAMED_ARGUMENTS,KLL_QUANTILES_EXTRACT_RELATIVE_RANK,ANALYTIC_FUNCTIONS]
+[name=merge_relative_rank_as_window_function]
+SELECT
+  KLL_QUANTILES.MERGE_RELATIVE_RANK_INT64(sketch, value => 3) OVER (PARTITION BY window_key) as default_rank,
+FROM (
+  SELECT KLL_QUANTILES.INIT_INT64(x) as sketch, 'a' as window_key FROM UNNEST([1, 2]) as x
+  UNION ALL
+  SELECT KLL_QUANTILES.INIT_INT64(y) as sketch, 'a' as window_key FROM UNNEST([3, 4]) as y
+  UNION ALL
+  SELECT KLL_QUANTILES.INIT_INT64(z) as sketch, 'b' as window_key FROM UNNEST([5, 6]) as z
+)
+--
+ARRAY<STRUCT<default_rank DOUBLE>>[unknown order:{0.5}, {0.5}, {0}]

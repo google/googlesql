@@ -1,0 +1,514 @@
+# For more information on COLLATE semantics in GoogleSQL,
+# see (broken link).
+
+# Base tables for order by collate test.
+[prepare_database]
+CREATE TABLE StringTable AS
+SELECT 1 primary_Key, "" col UNION ALL
+SELECT 2, "hello" UNION ALL
+SELECT 3, "Case sensitive" UNION ALL
+SELECT 4, "@" UNION ALL
+SELECT 5, "\u205Fabc" UNION ALL
+SELECT 6, "B" UNION ALL
+SELECT 7, NULL UNION ALL
+SELECT 8, "aa" UNION ALL
+SELECT 9, "@" UNION ALL
+SELECT 10, "" UNION ALL
+SELECT 11, "a" UNION ALL
+SELECT 12, "case sensitive" UNION ALL
+SELECT 13, NULL UNION ALL
+SELECT 14, "hello" UNION ALL
+select 15, "\u0413"
+--
+ARRAY<STRUCT<primary_Key INT64, col STRING>>[
+  {1, ""},
+  {2, "hello"},
+  {3, "Case sensitive"},
+  {4, "@"},
+  {5, " abc"},
+  {6, "B"},
+  {7, NULL},
+  {8, "aa"},
+  {9, "@"},
+  {10, ""},
+  {11, "a"},
+  {12, "case sensitive"},
+  {13, NULL},
+  {14, "hello"},
+  {15, "Г"}
+]
+==
+
+[name=orderby_without_collate]
+select primary_key, col from StringTable ORDER BY col
+--
+ARRAY<STRUCT<primary_key INT64, col STRING>>[unknown order:
+  {7, NULL},
+  {13, NULL},
+  {10, ""},
+  {1, ""},
+  {4, "@"},
+  {9, "@"},
+  {6, "B"},
+  {3, "Case sensitive"},
+  {11, "a"},
+  {8, "aa"},
+  {12, "case sensitive"},
+  {2, "hello"},
+  {14, "hello"},
+  {15, "Г"},
+  {5, " abc"}
+]
+==
+
+# Unicode binary (codepoint) collation. Results are same as the label
+# orderby_without_collate.
+[name=orderby_collate_binary]
+[default required_features=ORDER_BY_COLLATE]
+select primary_key, col from StringTable ORDER BY col COLLATE "binary"
+--
+ARRAY<STRUCT<primary_key INT64, col STRING>>[unknown order:
+  {7, NULL},
+  {13, NULL},
+  {10, ""},
+  {1, ""},
+  {4, "@"},
+  {9, "@"},
+  {6, "B"},
+  {3, "Case sensitive"},
+  {11, "a"},
+  {8, "aa"},
+  {12, "case sensitive"},
+  {2, "hello"},
+  {14, "hello"},
+  {15, "Г"},
+  {5, " abc"}
+]
+==
+
+# NOTE: In the default UTF-8 ascii comparison (see label
+# orderby_without_collate) upper case comes first (i.e. 'B' < 'a') whereas in
+# the collation defined order lower case comes first (i.e. 'B' > 'a').
+[name=order_by_collate_english]
+select primary_key, col from StringTable ORDER BY col COLLATE "en", 1 ASC
+--
+ARRAY<STRUCT<primary_key INT64, col STRING>>[known order:
+  {7, NULL},
+  {13, NULL},
+  {1, ""},
+  {10, ""},
+  {5, " abc"},
+  {4, "@"},
+  {9, "@"},
+  {11, "a"},
+  {8, "aa"},
+  {6, "B"},
+  {12, "case sensitive"},
+  {3, "Case sensitive"},
+  {2, "hello"},
+  {14, "hello"},
+  {15, "Г"}
+]
+==
+
+[name=orderby_collate_english_US]
+select primary_key, col
+from StringTable
+ORDER BY col COLLATE "en_US" DESC, primary_key ASC
+--
+ARRAY<STRUCT<primary_key INT64, col STRING>>[known order:
+  {15, "Г"},
+  {2, "hello"},
+  {14, "hello"},
+  {3, "Case sensitive"},
+  {12, "case sensitive"},
+  {6, "B"},
+  {8, "aa"},
+  {11, "a"},
+  {4, "@"},
+  {9, "@"},
+  {5, " abc"},
+  {1, ""},
+  {10, ""},
+  {7, NULL},
+  {13, NULL}
+]
+==
+
+# All of aa/aA/Aa/AA orders before all of ab/aB/Ab/AB regardless of case.
+# Within aa/aA/Aa/AA, lower case 'a' orders before upper case 'A'.
+# Test ASC.
+[name=orderby_collate_english_US_case_sensitive_ascending]
+SELECT s.str, s.int
+FROM
+UNNEST(ARRAY<STRUCT<str STRING, int INT64>>[
+       ("aB", 6),
+       ("AB", 11),
+       ("AC", 2),
+       ("aA", 3),
+       ("a", 8),
+       ("ac", 4),
+       ("ab", 9),
+       ("Ac", 12),
+       ("Aa", 5),
+       ("Ab", 1),
+       ("aC", 7),
+       ("aa", 13),
+       ("AA", 10)]) AS s
+ORDER BY 1 COLLATE "en_US:cs" ASC, 2 ASC
+--
+ARRAY<STRUCT<str STRING, int INT64>>[known order:
+  {"a", 8},
+  {"aa", 13},
+  {"aA", 3},
+  {"Aa", 5},
+  {"AA", 10},
+  {"ab", 9},
+  {"aB", 6},
+  {"Ab", 1},
+  {"AB", 11},
+  {"ac", 4},
+  {"aC", 7},
+  {"Ac", 12},
+  {"AC", 2}
+]
+==
+
+# Test DESC.
+[name=orderby_collate_english_US_case_sensitive_descending]
+SELECT s.str, s.int
+FROM
+UNNEST(ARRAY<STRUCT<str STRING, int INT64>>[
+       ("aB", 6),
+       ("AB", 11),
+       ("AC", 2),
+       ("aA", 3),
+       ("a", 8),
+       ("ac", 4),
+       ("ab", 9),
+       ("Ac", 12),
+       ("Aa", 5),
+       ("Ab", 1),
+       ("aC", 7),
+       ("aa", 13),
+       ("AA", 10)]) AS s
+ORDER BY 1 COLLATE "en_US:cs" DESC, 2 ASC
+--
+ARRAY<STRUCT<str STRING, int INT64>>[known order:
+  {"AC", 2},
+  {"Ac", 12},
+  {"aC", 7},
+  {"ac", 4},
+  {"AB", 11},
+  {"Ab", 1},
+  {"aB", 6},
+  {"ab", 9},
+  {"AA", 10},
+  {"Aa", 5},
+  {"aA", 3},
+  {"aa", 13},
+  {"a", 8}
+]
+==
+
+# The default "en_US" in this test is the same as "en_US:cs" in the previous
+# tests.
+# Test ASC.
+[name=orderby_collate_english_US_default_is_case_sensitive_ascending]
+SELECT s.str, s.int
+FROM
+UNNEST(ARRAY<STRUCT<str STRING, int INT64>>[
+       ("aB", 6),
+       ("AB", 11),
+       ("AC", 2),
+       ("aA", 3),
+       ("a", 8),
+       ("ac", 4),
+       ("ab", 9),
+       ("Ac", 12),
+       ("Aa", 5),
+       ("Ab", 1),
+       ("aC", 7),
+       ("aa", 13),
+       ("AA", 10)]) AS s
+ORDER BY 1 COLLATE "en_US" ASC, 2 ASC
+--
+ARRAY<STRUCT<str STRING, int INT64>>[known order:
+  {"a", 8},
+  {"aa", 13},
+  {"aA", 3},
+  {"Aa", 5},
+  {"AA", 10},
+  {"ab", 9},
+  {"aB", 6},
+  {"Ab", 1},
+  {"AB", 11},
+  {"ac", 4},
+  {"aC", 7},
+  {"Ac", 12},
+  {"AC", 2}
+]
+==
+
+# Test DESC.
+[name=orderby_collate_english_US_default_is_case_sensitive_descending]
+SELECT s.str, s.int
+FROM
+UNNEST(ARRAY<STRUCT<str STRING, int INT64>>[
+       ("aB", 6),
+       ("AB", 11),
+       ("AC", 2),
+       ("aA", 3),
+       ("a", 8),
+       ("ac", 4),
+       ("ab", 9),
+       ("Ac", 12),
+       ("Aa", 5),
+       ("Ab", 1),
+       ("aC", 7),
+       ("aa", 13),
+       ("AA", 10)]) AS s
+ORDER BY 1 COLLATE "en_US" DESC, 2 ASC
+--
+ARRAY<STRUCT<str STRING, int INT64>>[known order:
+  {"AC", 2},
+  {"Ac", 12},
+  {"aC", 7},
+  {"ac", 4},
+  {"AB", 11},
+  {"Ab", 1},
+  {"aB", 6},
+  {"ab", 9},
+  {"AA", 10},
+  {"Aa", 5},
+  {"aA", 3},
+  {"aa", 13},
+  {"a", 8}
+]
+==
+
+[name=orderby_collate_english_US_case_insensitive_ascending]
+SELECT s.str, s.int
+FROM
+UNNEST(ARRAY<STRUCT<str STRING, int INT64>>[
+       ("aB", 6),
+       ("AB", 11),
+       ("AC", 2),
+       ("aA", 3),
+       ("a", 8),
+       ("ac", 4),
+       ("ab", 9),
+       ("Ac", 12),
+       ("Aa", 5),
+       ("Ab", 1),
+       ("aC", 7),
+       ("aa", 13),
+       ("AA", 10)]) AS s
+ORDER BY 1 COLLATE "en_US:ci" ASC, 2 ASC
+--
+ARRAY<STRUCT<str STRING, int INT64>>[known order:
+  {"a", 8},
+  {"aA", 3},
+  {"Aa", 5},
+  {"AA", 10},
+  {"aa", 13},
+  {"Ab", 1},
+  {"aB", 6},
+  {"ab", 9},
+  {"AB", 11},
+  {"AC", 2},
+  {"ac", 4},
+  {"aC", 7},
+  {"Ac", 12}
+]
+==
+
+[name=orderby_collate_english_US_case_insensitive_descending]
+SELECT s.str, s.int
+FROM
+UNNEST(ARRAY<STRUCT<str STRING, int INT64>>[
+       ("Ab", 1),
+       ("aA", 3),
+       ("Ac", 12),
+       ("AB", 11),
+       ("a", 8),
+       ("ac", 4),
+       ("Aa", 5),
+       ("aC", 7),
+       ("aB", 6),
+       ("AC", 2),
+       ("aa", 13),
+       ("ab", 9),
+       ("AA", 10)]) AS s
+ORDER BY 1 COLLATE "en_US:ci" DESC, 2 ASC
+--
+ARRAY<STRUCT<str STRING, int INT64>>[known order:
+  {"AC", 2},
+  {"ac", 4},
+  {"aC", 7},
+  {"Ac", 12},
+  {"Ab", 1},
+  {"aB", 6},
+  {"ab", 9},
+  {"AB", 11},
+  {"aA", 3},
+  {"Aa", 5},
+  {"AA", 10},
+  {"aa", 13},
+  {"a", 8}
+]
+==
+
+[name=orderby_collate_czech]
+select primary_key, col
+from (select 1 primary_key, "c" col UNION ALL
+      select 2, "cg" UNION ALL
+      select 3, "ch" UNION ALL
+      select 4, "ci" UNION ALL
+      select 5, "h")
+ORDER BY col COLLATE "cs"
+--
+ARRAY<STRUCT<primary_key INT64, col STRING>>[known order:
+  {1, "c"},
+  {2, "cg"},
+  {4, "ci"},
+  {5, "h"},
+  {3, "ch"}
+]
+==
+
+# In german language 'ss' is equal to 'ß'.
+[name=orderby_collate_german]
+select primary_key, col
+from (select 1 primary_key, "ßd" col UNION ALL
+      select 2, "ssc" UNION ALL
+      select 3, "ßb" UNION ALL
+      select 4, "ssa")
+ORDER BY col COLLATE "de"
+--
+ARRAY<STRUCT<primary_key INT64, col STRING>>[known order:
+  {4, "ssa"},
+  {3, "ßb"},
+  {2, "ssc"},
+  {1, "ßd"}
+]
+==
+
+[name=orderby_collate_german_parameter]
+[parameters="de" collation_name]
+select primary_key, col
+from (select 1 primary_key, "ßd" col UNION ALL
+      select 2, "ssc" UNION ALL
+      select 3, "ßb" UNION ALL
+      select 4, "ssa")
+ORDER BY col COLLATE @collation_name
+--
+ARRAY<STRUCT<primary_key INT64, col STRING>>[known order:
+  {4, "ssa"},
+  {3, "ßb"},
+  {2, "ssc"},
+  {1, "ßd"}
+]
+==
+
+[name=orderby_collate_german_english]
+select primary_key, col
+from (select 1 primary_key, "ßß" col UNION ALL
+      select 2, "ßss" UNION ALL
+      select 3, "ssß" UNION ALL
+      select 4, "ssss")
+ORDER BY col COLLATE "de", col COLLATE "en"
+--
+ARRAY<STRUCT<primary_key INT64, col STRING>>[known order:
+  {4, "ssss"},
+  {3, "ssß"},
+  {2, "ßss"},
+  {1, "ßß"}
+]
+==
+[name=orderby_collate_und_ci]
+select primary_key, col
+from (select 1 primary_key, "Ca" col UNION ALL
+      select 2, "ca" UNION ALL
+      select 3, "Cb" UNION ALL
+      select 4, "cb")
+ORDER BY col COLLATE "und:ci"
+--
+ARRAY<STRUCT<primary_key INT64, col STRING>>[unknown order:
+  {2, "ca"},
+  {1, "Ca"},
+  {4, "cb"},
+  {3, "Cb"}
+]
+==
+
+[name=orderby_collate_und_ci_parameter]
+[parameters="und:ci" collation_name]
+select primary_key, col
+from (select 1 primary_key, "Ca" col UNION ALL
+      select 2, "ca" UNION ALL
+      select 3, "Cb" UNION ALL
+      select 4, "cb")
+ORDER BY col COLLATE @collation_name
+--
+ARRAY<STRUCT<primary_key INT64, col STRING>>[unknown order:
+  {2, "ca"},
+  {1, "Ca"},
+  {4, "cb"},
+  {3, "Cb"}
+]
+==
+
+[name=orderby_collate_binary_cs_is_an_error]
+select primary_key, col
+from (select 1 primary_key, "Ca" col UNION ALL
+      select 2, "ca" UNION ALL
+      select 3, "Cb" UNION ALL
+      select 4, "cb")
+ORDER BY col COLLATE "binary:cs"
+--
+ERROR: generic::out_of_range: COLLATE has invalid collation name 'binary:cs':binary cannot be combined with a suffix
+==
+
+[name=orderby_collate_und_cs_cs_is_an_error]
+select primary_key, col
+from (select 1 primary_key, "Ca" col UNION ALL
+      select 2, "ca" UNION ALL
+      select 3, "Cb" UNION ALL
+      select 4, "cb")
+ORDER BY col COLLATE "und:cs:cs"
+--
+ERROR: generic::out_of_range: COLLATE has invalid collation name 'und:cs:cs':only case sensitivity attribute is supported
+==
+
+[name=orderby_collate_disallow_legacy_unicode_collation_with_feature]
+[required_features=ORDER_BY_COLLATE,DISALLOW_LEGACY_UNICODE_COLLATION]
+select primary_key, col
+from (select 1 primary_key, "Ca" col UNION ALL
+      select 2, "ca" UNION ALL
+      select 3, "Cb" UNION ALL
+      select 4, "cb")
+ORDER BY col COLLATE "unicode:ci"
+--
+ERROR: generic::out_of_range: COLLATE has invalid collation name 'unicode:ci'
+==
+[name=orderby_collate_disallow_legacy_unicode_collation_without_feature]
+[required_features=ORDER_BY_COLLATE]
+[forbidden_features=DISALLOW_LEGACY_UNICODE_COLLATION]
+select primary_key, col
+from (select 1 primary_key, "Ca" col UNION ALL
+      select 2, "ca" UNION ALL
+      select 3, "Cb" UNION ALL
+      select 4, "cb")
+ORDER BY col COLLATE "unicode:ci"
+--
+ARRAY<STRUCT<primary_key INT64, col STRING>>[unknown order:
+  {2, "ca"},
+  {1, "Ca"},
+  {4, "cb"},
+  {3, "Cb"}
+]
+==
+
+# TODO: Add more non-english language cases.
+

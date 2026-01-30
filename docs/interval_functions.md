@@ -4,7 +4,7 @@
 
 # Interval functions
 
-ZetaSQL supports the following interval functions.
+GoogleSQL supports the following interval functions.
 
 ## Function list
 
@@ -18,7 +18,7 @@ ZetaSQL supports the following interval functions.
   <tbody>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/interval_functions.md#extract"><code>EXTRACT</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/interval_functions.md#extract"><code>EXTRACT</code></a>
 </td>
   <td>
     Extracts part of an <code>INTERVAL</code> value.
@@ -26,7 +26,7 @@ ZetaSQL supports the following interval functions.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/interval_functions.md#justify_days"><code>JUSTIFY_DAYS</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/interval_functions.md#justify_days"><code>JUSTIFY_DAYS</code></a>
 </td>
   <td>
     Normalizes the day part of an <code>INTERVAL</code> value.
@@ -34,7 +34,7 @@ ZetaSQL supports the following interval functions.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/interval_functions.md#justify_hours"><code>JUSTIFY_HOURS</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/interval_functions.md#justify_hours"><code>JUSTIFY_HOURS</code></a>
 </td>
   <td>
     Normalizes the time part of an <code>INTERVAL</code> value.
@@ -42,7 +42,7 @@ ZetaSQL supports the following interval functions.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/interval_functions.md#justify_interval"><code>JUSTIFY_INTERVAL</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/interval_functions.md#justify_interval"><code>JUSTIFY_INTERVAL</code></a>
 </td>
   <td>
     Normalizes the day and time parts of an <code>INTERVAL</code> value.
@@ -50,7 +50,7 @@ ZetaSQL supports the following interval functions.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/interval_functions.md#make_interval"><code>MAKE_INTERVAL</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/interval_functions.md#make_interval"><code>MAKE_INTERVAL</code></a>
 </td>
   <td>
     Constructs an <code>INTERVAL</code> value.
@@ -62,7 +62,7 @@ ZetaSQL supports the following interval functions.
 
 ## `EXTRACT`
 
-```zetasql
+```googlesql
 EXTRACT(part FROM interval_expression)
 ```
 
@@ -80,7 +80,7 @@ one of `YEAR`, `MONTH`, `DAY`, `HOUR`, `MINUTE`, `SECOND`, `MILLISECOND` or
 
 In the following example, different parts of two intervals are extracted.
 
-```zetasql
+```googlesql
 SELECT
   EXTRACT(YEAR FROM i) AS year,
   EXTRACT(MONTH FROM i) AS month,
@@ -105,7 +105,7 @@ FROM
 When a negative sign precedes the time part in an interval, the negative sign
 distributes over the hours, minutes, and seconds. For example:
 
-```zetasql
+```googlesql
 SELECT
   EXTRACT(HOUR FROM i) AS hour,
   EXTRACT(MINUTE FROM i) AS minute
@@ -122,7 +122,7 @@ FROM
 When a negative sign precedes the year and month part in an interval, the
 negative sign distributes over the years and months. For example:
 
-```zetasql
+```googlesql
 SELECT
   EXTRACT(YEAR FROM i) AS year,
   EXTRACT(MONTH FROM i) AS month
@@ -138,7 +138,7 @@ FROM
 
 ## `JUSTIFY_DAYS`
 
-```zetasql
+```googlesql
 JUSTIFY_DAYS(interval_expression)
 ```
 
@@ -153,7 +153,7 @@ incrementing/decrementing the month or year part of the interval.
 
 **Example**
 
-```zetasql
+```googlesql
 SELECT
   JUSTIFY_DAYS(INTERVAL 29 DAY) AS i1,
   JUSTIFY_DAYS(INTERVAL -30 DAY) AS i2,
@@ -170,7 +170,7 @@ SELECT
 
 ## `JUSTIFY_HOURS`
 
-```zetasql
+```googlesql
 JUSTIFY_HOURS(interval_expression)
 ```
 
@@ -185,7 +185,7 @@ Normalizes the time part of the interval to the range from -23:59:59.999999 to
 
 **Example**
 
-```zetasql
+```googlesql
 SELECT
   JUSTIFY_HOURS(INTERVAL 23 HOUR) AS i1,
   JUSTIFY_HOURS(INTERVAL -24 HOUR) AS i2,
@@ -201,7 +201,7 @@ SELECT
 
 ## `JUSTIFY_INTERVAL`
 
-```zetasql
+```googlesql
 JUSTIFY_INTERVAL(interval_expression)
 ```
 
@@ -215,7 +215,7 @@ Normalizes the days and time parts of the interval.
 
 **Example**
 
-```zetasql
+```googlesql
 SELECT JUSTIFY_INTERVAL(INTERVAL '29 49:00:00' DAY TO SECOND) AS i
 
 /*-------------+
@@ -227,7 +227,7 @@ SELECT JUSTIFY_INTERVAL(INTERVAL '29 49:00:00' DAY TO SECOND) AS i
 
 ## `MAKE_INTERVAL`
 
-```zetasql
+```googlesql
 MAKE_INTERVAL(
   [ [ year => ] value ]
   [, [ month => ] value ]
@@ -250,7 +250,7 @@ optional, `0` by default, and can be [named arguments][named-arguments].
 
 **Example**
 
-```zetasql
+```googlesql
 SELECT
   MAKE_INTERVAL(1, 6, 15) AS i1,
   MAKE_INTERVAL(hour => 10, second => 20) AS i2,
@@ -263,7 +263,7 @@ SELECT
  +--------------+---------------+-------------*/
 ```
 
-[interval-type]: https://github.com/google/zetasql/blob/master/docs/data-types.md#interval_type
+[interval-type]: https://github.com/google/googlesql/blob/master/docs/data-types.md#interval_type
 
-[named-arguments]: https://github.com/google/zetasql/blob/master/docs/functions-reference.md#named_arguments
+[named-arguments]: https://github.com/google/googlesql/blob/master/docs/functions-reference.md#named_arguments
 

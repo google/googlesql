@@ -1,0 +1,217 @@
+//
+// Copyright 2019 Google LLC
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+//
+
+// parse_tree_generated.h is generated from parse_tree_generated.h.template
+// by gen_parse_tree.py. It should never be #included directly. Include
+// parse_tree.h instead.
+
+
+
+#ifndef GOOGLESQL_PARSER_PARSE_TREE_GENERATED_H_
+#define GOOGLESQL_PARSER_PARSE_TREE_GENERATED_H_
+
+#include "googlesql/parser/ast_enums.pb.h"
+#include "googlesql/parser/ast_node.h"
+#include "googlesql/parser/parse_tree_decls.h"
+#include "googlesql/public/id_string.h"
+#include "googlesql/public/type.pb.h"
+
+// NOLINTBEGIN(whitespace/line_length)
+
+namespace googlesql {
+
+# for node in nodes
+ # if node.comment
+{{node.comment}}
+ # endif
+class {{node.name}} {{node.class_final}}: public {{node.parent}} {
+ public:
+ # if node.is_abstract
+  explicit {{node.name}}(ASTNodeKind kind) : {{node.parent}}(kind) {}
+ # else
+  static constexpr ASTNodeKind kConcreteNodeKind = {{node.node_kind}};
+{{blank_line}}
+  {{node.name}}() : {{node.parent}}(kConcreteNodeKind) {}
+ # endif
+
+ # if not node.is_abstract
+  void Accept(ParseTreeVisitor* visitor, void* data) const override;
+  absl::Status Accept(ParseTreeStatusVisitor& visitor, std::any& output) const override;
+  absl::StatusOr<VisitResult> Accept(
+      NonRecursiveParseTreeVisitor* visitor) const override;
+ # endif
+
+ # if node.use_custom_debug_string
+{{blank_line}}
+  # if node.custom_debug_string_comment
+  {{node.custom_debug_string_comment}}
+  # endif
+  std::string SingleNodeDebugString() const override;
+ # endif
+ # for enum_def in node.enum_defs
+{{blank_line}}
+  {{enum_def}}
+ # endfor
+
+ {# setters and getters for primitives and enums #}
+ {% set ns = namespace(section_blank_line=true) %}
+ # for field in node.fields
+  # if field.gen_setters_and_getters and not field.is_node_ptr and not field.is_vector
+   # if ns.section_blank_line
+{{blank_line}}
+   # set ns.section_blank_line = false
+   # endif
+   # if field.comment
+{{blank_line}}
+{{field.comment}}
+   # set ns.section_blank_line = true
+   # endif
+  void set_{{field.name}}({{field.member_type}} {{field.name}}) { {{field.member_name}} = {{field.name}}; }
+  {{field.member_type}} {{field.name}}() const { return {{field.member_name}}; }
+  # endif
+ # endfor
+
+
+ {# getters for non-primitives scalars.. #}
+ {% set ns = namespace(section_blank_line=true) %}
+ # for field in node.fields
+  # if field.gen_setters_and_getters and field.is_node_ptr and not field.is_vector
+   # if ns.section_blank_line
+{{blank_line}}
+   # set ns.section_blank_line = false
+   # endif
+   # if field.comment
+{{blank_line}}
+{{field.comment}}
+   # set ns.section_blank_line = true
+   # endif
+  {{field.member_type}} {{field.name}}() const {{field.getter_override}}{ return {{field.member_name}}; }
+  # endif
+ # endfor
+
+{# getters for non-primitive vectors.. #}
+ {% set ns = namespace(section_blank_line=true) %}
+ # for field in node.fields
+  # if field.gen_setters_and_getters and field.is_vector
+   # if ns.section_blank_line
+{{blank_line}}
+   # set ns.section_blank_line = false
+   # endif
+   # if field.comment
+{{blank_line}}
+{{field.comment}}
+   # set ns.section_blank_line = true
+   # endif
+  const {{field.member_type}}& {{field.name}}() const {
+    return {{field.member_name}};
+  }
+  {{field.element_storage_type}} {{field.name}}(int i) const { return {{field.member_name}}[i]; }
+{{blank_line}}
+  # endif
+ # endfor
+
+ # if node.extra_public_defs
+{{blank_line}}
+{{node.extra_public_defs}}
+ # endif
+{{blank_line}}
+  friend class ParseTreeSerializer;
+ # if node.has_protected_fields or node.extra_protected_defs
+{{blank_line}}
+ protected:
+  # set ns.section_blank_line = false
+  # for field in node.fields if field.visibility == 'PROTECTED'
+   # if ns.section_blank_line
+{{blank_line}}
+   # set ns.section_blank_line = false
+   # endif
+   # if field.private_comment
+{{blank_line}}
+{{field.private_comment}}
+   # set ns.section_blank_line = true
+   # endif
+  {{field.member_type}} {{field.member_name}}{%if field.cpp_default%} = {{field.cpp_default}}{%endif%};
+  # endfor
+  # if node.extra_protected_defs
+   # if node.has_protected_fields
+{{blank_line}}
+   # endif
+{{node.extra_protected_defs}}
+  # endif
+ # endif
+
+
+ # if node.has_private_fields or node.extra_private_defs or node.gen_init_fields
+{{blank_line}}
+ private:
+  # if node.gen_init_fields
+  absl::Status InitFields() final {
+    FieldLoader fl(this);
+   # for field in node.init_fields
+    # if field.field_loader == 'REQUIRED'
+    GOOGLESQL_RETURN_IF_ERROR(fl.AddRequired(&{{field.member_name}}));
+     # elif field.field_loader == 'OPTIONAL'
+    fl.AddOptional(&{{field.member_name}}, {{field.node_kind}});
+     # elif field.field_loader == 'REST_AS_REPEATED'
+    fl.AddRestAsRepeated(&{{field.member_name}});
+     # elif field.field_loader == 'OPTIONAL_EXPRESSION'
+    fl.AddOptionalExpression(&{{field.member_name}});
+     # elif field.field_loader == 'REPEATING_WHILE_IS_NODE_KIND'
+    fl.AddRepeatedWhileIsNodeKind(&{{field.member_name}}, {{field.node_kind}});
+     # elif field.field_loader == 'REPEATING_WHILE_IS_EXPRESSION'
+    fl.AddRepeatedWhileIsExpression(&{{field.member_name}});
+     # elif field.field_loader == 'OPTIONAL_TYPE'
+    fl.AddOptionalType(&{{field.member_name}});
+     # elif field.field_loader == 'OPTIONAL_QUANTIFIER'
+    fl.AddOptionalQuantifier(&{{field.member_name}});
+     # elif field.field_loader == 'OPTIONAL_SUBKIND'
+    fl.AddOptionalIfSubkind<{{field.ctype}}>(&{{field.member_name}});
+    # endif
+   # endfor
+    return fl.Finalize();
+  }
+  # endif
+  # if node.gen_init_fields and node.fields
+{{blank_line}}
+  # endif
+{% set ns = namespace(section_blank_line=false) %}
+  # for field in node.fields if field.visibility == 'PRIVATE'
+   # if ns.section_blank_line
+{{blank_line}}
+   # set ns.section_blank_line = false
+   # endif
+   # if field.private_comment
+{{blank_line}}
+{{field.private_comment}}
+   # set ns.section_blank_line = true
+   # endif
+  {{field.member_type}} {{field.member_name}}{%if field.cpp_default%} = {{field.cpp_default}}{%endif%};
+  # endfor
+  # if node.extra_private_defs
+   # if node.has_private_fields
+{{blank_line}}
+   # endif
+{{node.extra_private_defs}}
+  # endif
+ # endif
+};
+
+# endfor
+
+}  // namespace googlesql
+// NOLINTEND(whitespace/line_length)
+#endif  // GOOGLESQL_PARSER_PARSE_TREE_GENERATED_H_
+{{blank_line}}

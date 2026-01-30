@@ -1,0 +1,1298 @@
+[default language_features=MAXIMUM,+CREATE_AGGREGATE_FUNCTION,+TEMPLATE_FUNCTIONS,+MULTILEVEL_AGGREGATION,+AGGREGATE_FILTERING,+MULTILEVEL_AGGREGATION_ON_UDAS]
+[default show_sqlbuilder_output]
+[default enabled_ast_rewrites=ALL,-WITH_EXPR]
+
+# Inlining a UDA with a WHERE modifier should fail.
+SELECT
+  SumOfAggregateArgs(int64 WHERE int64 > 10)
+FROM SimpleTypes;
+--
+[PRE-REWRITE AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#20 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#20]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$aggregate.$agg1#20]
+        +-input_scan=
+        | +-TableScan(column_list=[SimpleTypes.int64#2], table=SimpleTypes, column_index_list=[1])
+        +-aggregate_list=
+          +-$agg1#20 :=
+            +-AggregateFunctionCall(Lazy_resolution_function:SumOfAggregateArgs(INT64 agg_arg) -> INT64)
+              +-ColumnRef(type=INT64, column=SimpleTypes.int64#2)
+              +-where_expr=
+                +-FunctionCall(GoogleSQL:$greater(INT64, INT64) -> BOOL)
+                  +-ColumnRef(type=INT64, column=SimpleTypes.int64#2)
+                  +-Literal(type=INT64, value=10)
+
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+SELECT
+  SumOfAggregateArgs(simpletypes_2.a_1
+    WHERE
+      (simpletypes_2.a_1) > 10) AS a_3
+FROM
+  (
+    SELECT
+      SimpleTypes.int64 AS a_1
+    FROM
+      SimpleTypes
+  ) AS simpletypes_2;
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+FROM
+  SimpleTypes
+|> SELECT
+     SimpleTypes.int64 AS a_1
+|> AS simpletypes_2
+|> AGGREGATE
+     SumOfAggregateArgs(simpletypes_2.a_1
+       WHERE
+         (simpletypes_2.a_1) > 10) AS a_3;
+
+Rewrite ERROR: SQL function inliner cannot inline aggregate function Lazy_resolution_function:SumOfAggregateArgs with WHERE filter modifier
+==
+
+# Inlining a UDA with a HAVING modifier should fail. The error message currently
+# specifies GROUP BY, since GROUP BY is required for HAVING and is also not
+# supported in the inliner.
+SELECT
+  SumOfAggregateArgs(MAX(int64) GROUP BY string HAVING MIN(int64) > 10)
+FROM SimpleTypes;
+--
+[PRE-REWRITE AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#23 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#23]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$aggregate.$agg1#23]
+        +-input_scan=
+        | +-TableScan(column_list=SimpleTypes.[int64#2, string#5], table=SimpleTypes, column_index_list=[1, 4])
+        +-aggregate_list=
+          +-$agg1#23 :=
+            +-AggregateFunctionCall(Lazy_resolution_function:SumOfAggregateArgs(INT64 agg_arg) -> INT64)
+              +-ColumnRef(type=INT64, column=$aggregate.$agg1#21)
+              +-group_by_list=
+              | +-$groupbymod#20 := ColumnRef(type=STRING, column=SimpleTypes.string#5)
+              +-group_by_aggregate_list=
+              | +-$agg1#21 :=
+              | | +-AggregateFunctionCall(GoogleSQL:max(INT64) -> INT64)
+              | |   +-ColumnRef(type=INT64, column=SimpleTypes.int64#2)
+              | +-$agg2#22 :=
+              |   +-AggregateFunctionCall(GoogleSQL:min(INT64) -> INT64)
+              |     +-ColumnRef(type=INT64, column=SimpleTypes.int64#2)
+              +-having_expr=
+                +-FunctionCall(GoogleSQL:$greater(INT64, INT64) -> BOOL)
+                  +-ColumnRef(type=INT64, column=$aggregate.$agg2#22)
+                  +-Literal(type=INT64, value=10)
+
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+SELECT
+  SumOfAggregateArgs(MAX(simpletypes_3.a_1)
+    GROUP BY simpletypes_3.a_2
+    HAVING(MIN(simpletypes_3.a_1)) > 10) AS a_4
+FROM
+  (
+    SELECT
+      SimpleTypes.int64 AS a_1,
+      SimpleTypes.string AS a_2
+    FROM
+      SimpleTypes
+  ) AS simpletypes_3;
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+FROM
+  SimpleTypes
+|> SELECT
+     SimpleTypes.int64 AS a_1,
+     SimpleTypes.string AS a_2
+|> AS simpletypes_3
+|> AGGREGATE
+     SumOfAggregateArgs(MAX(simpletypes_3.a_1)
+       GROUP BY simpletypes_3.a_2
+       HAVING(MIN(simpletypes_3.a_1)) > 10) AS a_4;
+
+Rewrite ERROR: SQL function inliner cannot inline aggregate function Lazy_resolution_function:SumOfAggregateArgs with GROUP BY modifier
+==
+
+CREATE AGGREGATE FUNCTION WrappedMultiLevel(e {{INT64|ANY TYPE}}) AS (
+  SUM(e WHERE e > 10)
+);
+--
+
+
+ALTERNATION GROUP: INT64
+--
+CreateFunctionStmt
++-name_path=WrappedMultiLevel
++-return_type=INT64
++-argument_name_list=[e]
++-signature=(INT64 e) -> INT64
++-is_aggregate=TRUE
++-language="SQL"
++-code="SUM(e WHERE e > 10)"
++-aggregate_expression_list=
+| +-$agg1#1 :=
+|   +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+|     +-ArgumentRef(parse_location=64-65, type=INT64, name="e", argument_kind=AGGREGATE)
+|     +-where_expr=
+|       +-FunctionCall(GoogleSQL:$greater(INT64, INT64) -> BOOL)
+|         +-ArgumentRef(parse_location=72-73, type=INT64, name="e", argument_kind=AGGREGATE)
+|         +-Literal(type=INT64, value=10)
++-function_expression=
+  +-ColumnRef(type=INT64, column=$aggregate.$agg1#1)
+
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+CREATE AGGREGATE FUNCTION WrappedMultiLevel(e INT64)
+RETURNS INT64 AS (
+  SUM(e
+    WHERE
+      e > 10)
+);
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+CREATE AGGREGATE FUNCTION WrappedMultiLevel(e INT64)
+RETURNS INT64 AS (
+  SUM(e
+    WHERE
+      e > 10)
+);
+--
+ALTERNATION GROUP: ANY TYPE
+--
+CreateFunctionStmt(name_path=WrappedMultiLevel, return_type=STRUCT<>, argument_name_list=[e], signature=(ANY TYPE e) -> ANY TYPE, is_aggregate=TRUE, language="SQL", code="SUM(e WHERE e > 10)")
+
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+CREATE AGGREGATE FUNCTION WrappedMultiLevel(e ANY TYPE)
+AS (
+  SUM(e
+    WHERE
+      e > 10)
+);
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+CREATE AGGREGATE FUNCTION WrappedMultiLevel(e ANY TYPE)
+AS (
+  SUM(e
+    WHERE
+      e > 10)
+);
+==
+
+# Test inlining a templated UDA with a WHERE modifier.
+SELECT WrappedAggWithWhereModifier(e) FROM UNNEST([1, 2, 3]) AS e
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#2 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#2]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$aggregate.$agg1#2]
+        +-input_scan=
+        | +-ArrayScan
+        |   +-column_list=[$array.e#1]
+        |   +-array_expr_list=
+        |   | +-Literal(type=ARRAY<INT64>, value=[1, 2, 3])
+        |   +-element_column_list=[$array.e#1]
+        +-aggregate_list=
+          +-$agg1#2 :=
+            +-AggregateFunctionCall(Templated_SQL_Function:WrappedAggWithWhereModifier(INT64) -> INT64)
+              +-ColumnRef(type=INT64, column=$array.e#1)
+
+With Templated SQL function call:
+  Templated_SQL_Function:WrappedAggWithWhereModifier(INT64) -> INT64
+containing resolved templated expression:
+ColumnRef(type=INT64, column=$aggregate.$agg1#1)
+
+  $agg1#1 :=
+    +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+      +-ArgumentRef(parse_location=4-5, type=INT64, name="e", argument_kind=AGGREGATE)
+      +-where_expr=
+        +-FunctionCall(GoogleSQL:$greater(INT64, INT64) -> BOOL)
+          +-ArgumentRef(parse_location=12-13, type=INT64, name="e", argument_kind=AGGREGATE)
+          +-Literal(type=INT64, value=10)
+
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+SELECT
+  WRAPPEDAGGWITHWHEREMODIFIER(a_1) AS a_2
+FROM
+  UNNEST(ARRAY< INT64 >[1, 2, 3] AS a_1);
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+FROM
+  UNNEST(ARRAY< INT64 >[1, 2, 3] AS a_1)
+|> AGGREGATE
+     WRAPPEDAGGWITHWHEREMODIFIER(a_1) AS a_2;
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#2 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#2]
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[$aggregate.$agg1#2]
+        +-expr_list=
+        | +-$agg1#2 := ColumnRef(type=INT64, column=$aggregate.$agg1#4)
+        +-input_scan=
+          +-AggregateScan
+            +-column_list=[$aggregate.$agg1#4]
+            +-input_scan=
+            | +-ProjectScan
+            |   +-column_list=[$array.e#1, $inlined_WrappedAggWithWhereModifier.e#3]
+            |   +-expr_list=
+            |   | +-e#3 := ColumnRef(type=INT64, column=$array.e#1)
+            |   +-input_scan=
+            |     +-ArrayScan
+            |       +-column_list=[$array.e#1]
+            |       +-array_expr_list=
+            |       | +-Literal(type=ARRAY<INT64>, value=[1, 2, 3])
+            |       +-element_column_list=[$array.e#1]
+            +-aggregate_list=
+              +-$agg1#4 :=
+                +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+                  +-ColumnRef(type=INT64, column=$inlined_WrappedAggWithWhereModifier.e#3)
+                  +-where_expr=
+                    +-FunctionCall(GoogleSQL:$greater(INT64, INT64) -> BOOL)
+                      +-ColumnRef(type=INT64, column=$inlined_WrappedAggWithWhereModifier.e#3)
+                      +-Literal(type=INT64, value=10)
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+SELECT
+  aggregatescan_5.a_4 AS a_6
+FROM
+  (
+    SELECT
+      SUM(projectscan_3.a_2
+        WHERE
+          (projectscan_3.a_2) > 10) AS a_4
+    FROM
+      (
+        SELECT
+          a_1 AS a_1,
+          a_1 AS a_2
+        FROM
+          UNNEST(ARRAY< INT64 >[1, 2, 3] AS a_1)
+      ) AS projectscan_3
+  ) AS aggregatescan_5;
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+FROM
+  UNNEST(ARRAY< INT64 >[1, 2, 3] AS a_1)
+|> SELECT
+     a_1 AS a_1,
+     a_1 AS a_2
+|> AS projectscan_3
+|> AGGREGATE
+     SUM(projectscan_3.a_2
+       WHERE
+         (projectscan_3.a_2) > 10) AS a_4
+|> AS aggregatescan_5
+|> SELECT
+     aggregatescan_5.a_4 AS a_6;
+
+==
+
+SELECT
+  SumOfAggregateArgs(MAX(int64) GROUP BY bool HAVING COUNT(*) > 10)
+FROM SimpleTypes;
+--
+
+[PRE-REWRITE AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#23 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#23]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$aggregate.$agg1#23]
+        +-input_scan=
+        | +-TableScan(column_list=SimpleTypes.[int64#2, bool#7], table=SimpleTypes, column_index_list=[1, 6])
+        +-aggregate_list=
+          +-$agg1#23 :=
+            +-AggregateFunctionCall(Lazy_resolution_function:SumOfAggregateArgs(INT64 agg_arg) -> INT64)
+              +-ColumnRef(type=INT64, column=$aggregate.$agg1#21)
+              +-group_by_list=
+              | +-$groupbymod#20 := ColumnRef(type=BOOL, column=SimpleTypes.bool#7)
+              +-group_by_aggregate_list=
+              | +-$agg1#21 :=
+              | | +-AggregateFunctionCall(GoogleSQL:max(INT64) -> INT64)
+              | |   +-ColumnRef(type=INT64, column=SimpleTypes.int64#2)
+              | +-$agg2#22 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+              +-having_expr=
+                +-FunctionCall(GoogleSQL:$greater(INT64, INT64) -> BOOL)
+                  +-ColumnRef(type=INT64, column=$aggregate.$agg2#22)
+                  +-Literal(type=INT64, value=10)
+
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+SELECT
+  SumOfAggregateArgs(MAX(simpletypes_3.a_1)
+    GROUP BY simpletypes_3.a_2
+    HAVING(COUNT(*)) > 10) AS a_4
+FROM
+  (
+    SELECT
+      SimpleTypes.int64 AS a_1,
+      SimpleTypes.bool AS a_2
+    FROM
+      SimpleTypes
+  ) AS simpletypes_3;
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+FROM
+  SimpleTypes
+|> SELECT
+     SimpleTypes.int64 AS a_1,
+     SimpleTypes.bool AS a_2
+|> AS simpletypes_3
+|> AGGREGATE
+     SumOfAggregateArgs(MAX(simpletypes_3.a_1)
+       GROUP BY simpletypes_3.a_2
+       HAVING(COUNT(*)) > 10) AS a_4;
+
+Rewrite ERROR: SQL function inliner cannot inline aggregate function Lazy_resolution_function:SumOfAggregateArgs with GROUP BY modifier
+==
+
+CREATE AGGREGATE FUNCTION WrappedMultiLevel(e {{INT64|ANY TYPE}}) AS (
+  SUM(e GROUP BY e HAVING COUNT(*) > 10)
+);
+--
+ALTERNATION GROUP: INT64
+--
+CreateFunctionStmt
++-name_path=WrappedMultiLevel
++-return_type=INT64
++-argument_name_list=[e]
++-signature=(INT64 e) -> INT64
++-is_aggregate=TRUE
++-language="SQL"
++-code="SUM(e GROUP BY e HAVING COUNT(*) > 10)"
++-aggregate_expression_list=
+| +-$agg1#3 :=
+|   +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+|     +-ColumnRef(type=INT64, column=$group_by_list.$groupbymod#1)
+|     +-group_by_list=
+|     | +-$groupbymod#1 := ArgumentRef(parse_location=75-76, type=INT64, name="e", argument_kind=AGGREGATE)
+|     +-group_by_aggregate_list=
+|     | +-$agg1#2 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+|     +-having_expr=
+|       +-FunctionCall(GoogleSQL:$greater(INT64, INT64) -> BOOL)
+|         +-ColumnRef(type=INT64, column=$aggregate.$agg1#2)
+|         +-Literal(type=INT64, value=10)
++-function_expression=
+  +-ColumnRef(type=INT64, column=$aggregate.$agg1#3)
+
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+CREATE AGGREGATE FUNCTION WrappedMultiLevel(e INT64)
+RETURNS INT64 AS (
+  SUM(e
+    GROUP BY e
+    HAVING(COUNT(*)) > 10)
+);
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+CREATE AGGREGATE FUNCTION WrappedMultiLevel(e INT64)
+RETURNS INT64 AS (
+  SUM(e
+    GROUP BY e
+    HAVING(COUNT(*)) > 10)
+);
+--
+ALTERNATION GROUP: ANY TYPE
+--
+CreateFunctionStmt(name_path=WrappedMultiLevel, return_type=STRUCT<>, argument_name_list=[e], signature=(ANY TYPE e) -> ANY TYPE, is_aggregate=TRUE, language="SQL", code="SUM(e GROUP BY e HAVING COUNT(*) > 10)")
+
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+CREATE AGGREGATE FUNCTION WrappedMultiLevel(e ANY TYPE)
+AS (
+  SUM(e
+    GROUP BY e
+    HAVING COUNT(*) > 10)
+);
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+CREATE AGGREGATE FUNCTION WrappedMultiLevel(e ANY TYPE)
+AS (
+  SUM(e
+    GROUP BY e
+    HAVING COUNT(*) > 10)
+);
+
+==
+
+# Test inlining a templated UDA with a HAVING modifier.
+SELECT WrappedAggWithHavingModifier(e) FROM UNNEST([1, 2, 3]) AS e
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#2 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#2]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$aggregate.$agg1#2]
+        +-input_scan=
+        | +-ArrayScan
+        |   +-column_list=[$array.e#1]
+        |   +-array_expr_list=
+        |   | +-Literal(type=ARRAY<INT64>, value=[1, 2, 3])
+        |   +-element_column_list=[$array.e#1]
+        +-aggregate_list=
+          +-$agg1#2 :=
+            +-AggregateFunctionCall(Templated_SQL_Function:WrappedAggWithHavingModifier(INT64) -> INT64)
+              +-ColumnRef(type=INT64, column=$array.e#1)
+
+With Templated SQL function call:
+  Templated_SQL_Function:WrappedAggWithHavingModifier(INT64) -> INT64
+containing resolved templated expression:
+ColumnRef(type=INT64, column=$aggregate.$agg1#3)
+
+  $agg1#3 :=
+    +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+      +-ColumnRef(type=INT64, column=$group_by_list.$groupbymod#1)
+      +-group_by_list=
+      | +-$groupbymod#1 := ArgumentRef(parse_location=15-16, type=INT64, name="e", argument_kind=AGGREGATE)
+      +-group_by_aggregate_list=
+      | +-$agg1#2 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+      +-having_expr=
+        +-FunctionCall(GoogleSQL:$greater(INT64, INT64) -> BOOL)
+          +-ColumnRef(type=INT64, column=$aggregate.$agg1#2)
+          +-Literal(type=INT64, value=10)
+
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+SELECT
+  WRAPPEDAGGWITHHAVINGMODIFIER(a_1) AS a_2
+FROM
+  UNNEST(ARRAY< INT64 >[1, 2, 3] AS a_1);
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+FROM
+  UNNEST(ARRAY< INT64 >[1, 2, 3] AS a_1)
+|> AGGREGATE
+     WRAPPEDAGGWITHHAVINGMODIFIER(a_1) AS a_2;
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#2 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#2]
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[$aggregate.$agg1#2]
+        +-expr_list=
+        | +-$agg1#2 := ColumnRef(type=INT64, column=$aggregate.$agg1#4)
+        +-input_scan=
+          +-AggregateScan
+            +-column_list=[$aggregate.$agg1#4]
+            +-input_scan=
+            | +-ProjectScan
+            |   +-column_list=[$array.e#1, $inlined_WrappedAggWithHavingModifier.e#3]
+            |   +-expr_list=
+            |   | +-e#3 := ColumnRef(type=INT64, column=$array.e#1)
+            |   +-input_scan=
+            |     +-ArrayScan
+            |       +-column_list=[$array.e#1]
+            |       +-array_expr_list=
+            |       | +-Literal(type=ARRAY<INT64>, value=[1, 2, 3])
+            |       +-element_column_list=[$array.e#1]
+            +-aggregate_list=
+              +-$agg1#4 :=
+                +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+                  +-ColumnRef(type=INT64, column=$group_by_list.$groupbymod#5)
+                  +-group_by_list=
+                  | +-$groupbymod#5 := ColumnRef(type=INT64, column=$inlined_WrappedAggWithHavingModifier.e#3)
+                  +-group_by_aggregate_list=
+                  | +-$agg1#6 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+                  +-having_expr=
+                    +-FunctionCall(GoogleSQL:$greater(INT64, INT64) -> BOOL)
+                      +-ColumnRef(type=INT64, column=$aggregate.$agg1#6)
+                      +-Literal(type=INT64, value=10)
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+SELECT
+  aggregatescan_5.a_4 AS a_6
+FROM
+  (
+    SELECT
+      SUM(projectscan_3.a_2
+        GROUP BY projectscan_3.a_2
+        HAVING(COUNT(*)) > 10) AS a_4
+    FROM
+      (
+        SELECT
+          a_1 AS a_1,
+          a_1 AS a_2
+        FROM
+          UNNEST(ARRAY< INT64 >[1, 2, 3] AS a_1)
+      ) AS projectscan_3
+  ) AS aggregatescan_5;
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+FROM
+  UNNEST(ARRAY< INT64 >[1, 2, 3] AS a_1)
+|> SELECT
+     a_1 AS a_1,
+     a_1 AS a_2
+|> AS projectscan_3
+|> AGGREGATE
+     SUM(projectscan_3.a_2
+       GROUP BY projectscan_3.a_2
+       HAVING(COUNT(*)) > 10) AS a_4
+|> AS aggregatescan_5
+|> SELECT
+     aggregatescan_5.a_4 AS a_6;
+==
+
+# Test inlining a non-templated UDA with a WHERE modifier and a non-templated
+# UDA with a HAVING modifier.
+SELECT
+  UdaWithWhereFilterModifier(int64, int64 - 1),
+  UdaWithHavingFilterModifier(int64, int64 - 1)
+FROM SimpleTypes
+GROUP BY bool;
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#20 AS `$col1` [INT64]
+| +-$aggregate.$agg2#21 AS `$col2` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=$aggregate.[$agg1#20, $agg2#21]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=$aggregate.[$agg1#20, $agg2#21]
+        +-input_scan=
+        | +-TableScan(column_list=SimpleTypes.[int64#2, bool#7], table=SimpleTypes, column_index_list=[1, 6])
+        +-group_by_list=
+        | +-bool#22 := ColumnRef(type=BOOL, column=SimpleTypes.bool#7)
+        +-aggregate_list=
+          +-$agg1#20 :=
+          | +-AggregateFunctionCall(Lazy_resolution_function:UdaWithWhereFilterModifier(INT64 arg1, INT64 arg2) -> INT64)
+          |   +-ColumnRef(type=INT64, column=SimpleTypes.int64#2)
+          |   +-FunctionCall(GoogleSQL:$subtract(INT64, INT64) -> INT64)
+          |     +-ColumnRef(type=INT64, column=SimpleTypes.int64#2)
+          |     +-Literal(type=INT64, value=1)
+          +-$agg2#21 :=
+            +-AggregateFunctionCall(Lazy_resolution_function:UdaWithHavingFilterModifier(INT64 arg1, INT64 arg2) -> INT64)
+              +-ColumnRef(type=INT64, column=SimpleTypes.int64#2)
+              +-FunctionCall(GoogleSQL:$subtract(INT64, INT64) -> INT64)
+                +-ColumnRef(type=INT64, column=SimpleTypes.int64#2)
+                +-Literal(type=INT64, value=1)
+
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+SELECT
+  UdaWithWhereFilterModifier(simpletypes_3.a_1, (simpletypes_3.a_1) - 1) AS a_4,
+  UdaWithHavingFilterModifier(simpletypes_3.a_1, (simpletypes_3.a_1) - 1) AS a_5
+FROM
+  (
+    SELECT
+      SimpleTypes.int64 AS a_1,
+      SimpleTypes.bool AS a_2
+    FROM
+      SimpleTypes
+  ) AS simpletypes_3
+GROUP BY simpletypes_3.a_2;
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+SELECT
+  UdaWithWhereFilterModifier(simpletypes_3.a_1, (simpletypes_3.a_1) - 1) AS a_4,
+  UdaWithHavingFilterModifier(simpletypes_3.a_1, (simpletypes_3.a_1) - 1) AS a_5
+FROM
+  (
+    FROM
+      SimpleTypes
+    |> SELECT
+         SimpleTypes.int64 AS a_1,
+         SimpleTypes.bool AS a_2
+    |> AS simpletypes_3
+  )
+GROUP BY simpletypes_3.a_2
+|> AS aggregatescan_6
+|> SELECT
+     aggregatescan_6.a_4 AS a_4,
+     aggregatescan_6.a_5 AS a_5;
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#20 AS `$col1` [INT64]
+| +-$aggregate.$agg2#21 AS `$col2` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=$aggregate.[$agg1#20, $agg2#21]
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=$aggregate.[$agg1#20, $agg2#21]
+        +-expr_list=
+        | +-$agg1#20 := ColumnRef(type=INT64, column=$aggregate.$agg1#25)
+        | +-$agg2#21 := ColumnRef(type=INT64, column=$aggregate.$agg1#28)
+        +-input_scan=
+          +-AggregateScan
+            +-column_list=$aggregate.[$agg1#25, $agg1#28]
+            +-input_scan=
+            | +-ProjectScan
+            |   +-column_list=[SimpleTypes.int64#2, SimpleTypes.bool#7, $inlined_UdaWithWhereFilterModifier.arg1#23, $inlined_UdaWithWhereFilterModifier.arg2#24, $inlined_UdaWithHavingFilterModifier.arg1#26, $inlined_UdaWithHavingFilterModifier.arg2#27]
+            |   +-expr_list=
+            |   | +-arg1#23 := ColumnRef(type=INT64, column=SimpleTypes.int64#2)
+            |   | +-arg2#24 :=
+            |   | | +-FunctionCall(GoogleSQL:$subtract(INT64, INT64) -> INT64)
+            |   | |   +-ColumnRef(type=INT64, column=SimpleTypes.int64#2)
+            |   | |   +-Literal(type=INT64, value=1)
+            |   | +-arg1#26 := ColumnRef(type=INT64, column=SimpleTypes.int64#2)
+            |   | +-arg2#27 :=
+            |   |   +-FunctionCall(GoogleSQL:$subtract(INT64, INT64) -> INT64)
+            |   |     +-ColumnRef(type=INT64, column=SimpleTypes.int64#2)
+            |   |     +-Literal(type=INT64, value=1)
+            |   +-input_scan=
+            |     +-TableScan(column_list=SimpleTypes.[int64#2, bool#7], table=SimpleTypes, column_index_list=[1, 6])
+            +-group_by_list=
+            | +-bool#22 := ColumnRef(type=BOOL, column=SimpleTypes.bool#7)
+            +-aggregate_list=
+              +-$agg1#25 :=
+              | +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+              |   +-ColumnRef(type=INT64, column=$inlined_UdaWithWhereFilterModifier.arg1#23)
+              |   +-where_expr=
+              |     +-FunctionCall(GoogleSQL:$greater(INT64, INT64) -> BOOL)
+              |       +-ColumnRef(type=INT64, column=$inlined_UdaWithWhereFilterModifier.arg1#23)
+              |       +-ColumnRef(type=INT64, column=$inlined_UdaWithWhereFilterModifier.arg2#24)
+              +-$agg1#28 :=
+                +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+                  +-ColumnRef(type=INT64, column=$aggregate.$agg1#30)
+                  +-group_by_list=
+                  | +-$groupbymod#29 := ColumnRef(type=INT64, column=$inlined_UdaWithHavingFilterModifier.arg2#27)
+                  +-group_by_aggregate_list=
+                  | +-$agg1#30 :=
+                  | | +-AggregateFunctionCall(GoogleSQL:max(INT64) -> INT64)
+                  | |   +-ColumnRef(type=INT64, column=$inlined_UdaWithHavingFilterModifier.arg1#26)
+                  | +-$agg2#31 :=
+                  |   +-AggregateFunctionCall(GoogleSQL:min(INT64) -> INT64)
+                  |     +-ColumnRef(type=INT64, column=$inlined_UdaWithHavingFilterModifier.arg1#26)
+                  +-having_expr=
+                    +-FunctionCall(GoogleSQL:$greater(INT64, INT64) -> BOOL)
+                      +-ColumnRef(type=INT64, column=$aggregate.$agg2#31)
+                      +-Literal(type=INT64, value=10)
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+SELECT
+  aggregatescan_11.a_9 AS a_12,
+  aggregatescan_11.a_10 AS a_13
+FROM
+  (
+    SELECT
+      SUM(projectscan_8.a_4
+        WHERE
+          (projectscan_8.a_4) > (projectscan_8.a_5)) AS a_9,
+      SUM(MAX(projectscan_8.a_6)
+        GROUP BY projectscan_8.a_7
+        HAVING(MIN(projectscan_8.a_6)) > 10) AS a_10
+    FROM
+      (
+        SELECT
+          simpletypes_3.a_1 AS a_1,
+          simpletypes_3.a_2 AS a_2,
+          simpletypes_3.a_1 AS a_4,
+          (simpletypes_3.a_1) - 1 AS a_5,
+          simpletypes_3.a_1 AS a_6,
+          (simpletypes_3.a_1) - 1 AS a_7
+        FROM
+          (
+            SELECT
+              SimpleTypes.int64 AS a_1,
+              SimpleTypes.bool AS a_2
+            FROM
+              SimpleTypes
+          ) AS simpletypes_3
+      ) AS projectscan_8
+    GROUP BY projectscan_8.a_2
+  ) AS aggregatescan_11;
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+SELECT
+  SUM(projectscan_8.a_4
+    WHERE
+      (projectscan_8.a_4) > (projectscan_8.a_5)) AS a_9,
+  SUM(MAX(projectscan_8.a_6)
+    GROUP BY projectscan_8.a_7
+    HAVING(MIN(projectscan_8.a_6)) > 10) AS a_10
+FROM
+  (
+    FROM
+      SimpleTypes
+    |> SELECT
+         SimpleTypes.int64 AS a_1,
+         SimpleTypes.bool AS a_2
+    |> AS simpletypes_3
+    |> SELECT
+         simpletypes_3.a_1 AS a_1,
+         simpletypes_3.a_2 AS a_2,
+         simpletypes_3.a_1 AS a_4,
+         (simpletypes_3.a_1) - 1 AS a_5,
+         simpletypes_3.a_1 AS a_6,
+         (simpletypes_3.a_1) - 1 AS a_7
+    |> AS projectscan_8
+  )
+GROUP BY projectscan_8.a_2
+|> AS aggregatescan_11
+|> SELECT
+     aggregatescan_11.a_9 AS a_12,
+     aggregatescan_11.a_10 AS a_13;
+==
+
+# Test inlining a TVF with a filter.
+# Doesn't seem to work in Java; the TVF is not found in the catalog.
+# TODO: b/382275859 - Remove no_java tag once aggregate filtering is no longer
+# in development.
+[no_java]
+SELECT * FROM no_arg_tvf_containing_filter_returns_one();
+--
+QueryStmt
++-output_column_list=
+| +-no_arg_tvf_containing_filter_returns_one.result#1 AS result [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[no_arg_tvf_containing_filter_returns_one.result#1]
+    +-input_scan=
+      +-TVFScan(column_list=[no_arg_tvf_containing_filter_returns_one.result#1], tvf=no_arg_tvf_containing_filter_returns_one(() -> TABLE<result INT64>), signature=() -> TABLE<result INT64>, column_index_list=[0], function_call_signature=() -> TABLE<result INT64>)
+
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+SELECT
+  tvfscan_1.result AS result
+FROM
+  NO_ARG_TVF_CONTAINING_FILTER_RETURNS_ONE() AS tvfscan_1;
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+FROM
+  NO_ARG_TVF_CONTAINING_FILTER_RETURNS_ONE() AS tvfscan_1
+|> SELECT
+     tvfscan_1.result AS result;
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-no_arg_tvf_containing_filter_returns_one.result#1 AS result [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[no_arg_tvf_containing_filter_returns_one.result#1]
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[no_arg_tvf_containing_filter_returns_one.result#1]
+        +-input_scan=
+          +-AggregateScan
+            +-column_list=[no_arg_tvf_containing_filter_returns_one.result#1]
+            +-input_scan=
+            | +-ArrayScan
+            |   +-column_list=[$array.x#2]
+            |   +-array_expr_list=
+            |   | +-Literal(type=ARRAY<INT64>, value=[1, 2, 3])
+            |   +-element_column_list=[$array.x#2]
+            +-aggregate_list=
+              +-result#1 :=
+                +-AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+                  +-where_expr=
+                    +-FunctionCall(GoogleSQL:$greater(INT64, INT64) -> BOOL)
+                      +-ColumnRef(type=INT64, column=$array.x#2)
+                      +-Literal(type=INT64, value=2)
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+SELECT
+  COUNT(*
+    WHERE
+      a_1 > 2) AS result
+FROM
+  UNNEST(ARRAY< INT64 >[1, 2, 3] AS a_1);
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+FROM
+  UNNEST(ARRAY< INT64 >[1, 2, 3] AS a_1)
+|> AGGREGATE
+     COUNT(*
+       WHERE
+         a_1 > 2) AS result;
+==
+
+# Test inlining a templated TVF with a filter.
+SELECT * FROM templated_tvf_containing_filter_returns_one(TABLE SimpleTypes);
+--
+QueryStmt
++-output_column_list=
+| +-templated_tvf_containing_filter_returns_one.result#20 AS result [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[templated_tvf_containing_filter_returns_one.result#20]
+    +-input_scan=
+      +-TVFScan
+        +-column_list=[templated_tvf_containing_filter_returns_one.result#20]
+        +-tvf=templated_tvf_containing_filter_returns_one((ANY TABLE unused) -> ANY TABLE)
+        +-signature=(TABLE<int32 INT32, int64 INT64, uint32 UINT32, uint64 UINT64, string STRING, bytes BYTES, bool BOOL, float FLOAT, double DOUBLE, date DATE, timestamp_seconds TIMESTAMP, timestamp_millis TIMESTAMP, timestamp_micros TIMESTAMP, timestamp_nanos TIMESTAMP, timestamp TIMESTAMP, numeric NUMERIC, bignumeric BIGNUMERIC, json JSON, uuid UUID>) -> TABLE<result INT64>
+        +-argument_list=
+        | +-FunctionArgument
+        |   +-scan=
+        |   | +-TableScan(column_list=SimpleTypes.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, timestamp_seconds#11, timestamp_millis#12, timestamp_micros#13, timestamp_nanos#14, timestamp#15, numeric#16, bignumeric#17, json#18, uuid#19], node_source="table_clause", table=SimpleTypes, column_index_list=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18])
+        |   +-argument_column_list=SimpleTypes.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, timestamp_seconds#11, timestamp_millis#12, timestamp_micros#13, timestamp_nanos#14, timestamp#15, numeric#16, bignumeric#17, json#18, uuid#19]
+        +-column_index_list=[0]
+        +-function_call_signature=(ANY TABLE unused) -> ANY TABLE
+
+With Templated SQL TVF signature:
+  templated_tvf_containing_filter_returns_one(TABLE<int32 INT32, int64 INT64, uint32 UINT32, uint64 UINT64, string STRING, bytes BYTES, bool BOOL, float FLOAT, double DOUBLE, date DATE, timestamp_seconds TIMESTAMP, timestamp_millis TIMESTAMP, timestamp_micros TIMESTAMP, timestamp_nanos TIMESTAMP, timestamp TIMESTAMP, numeric NUMERIC, bignumeric BIGNUMERIC, json JSON, uuid UUID>) -> TABLE<result INT64>
+containing resolved templated query:
+QueryStmt
++-output_column_list=
+| +-$aggregate.result#2 AS result [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.result#2]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$aggregate.result#2]
+        +-input_scan=
+        | +-ArrayScan
+        |   +-column_list=[$array.x#1]
+        |   +-array_expr_list=
+        |   | +-Literal(type=ARRAY<INT64>, value=[1, 2, 3])
+        |   +-element_column_list=[$array.x#1]
+        +-aggregate_list=
+          +-result#2 :=
+            +-AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+              +-where_expr=
+                +-FunctionCall(GoogleSQL:$greater(INT64, INT64) -> BOOL)
+                  +-ColumnRef(type=INT64, column=$array.x#1)
+                  +-Literal(type=INT64, value=2)
+
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+SELECT
+  tvfscan_21.result AS result
+FROM
+  TEMPLATED_TVF_CONTAINING_FILTER_RETURNS_ONE((
+    SELECT
+      a_1 AS int32,
+      a_2 AS int64,
+      a_3 AS uint32,
+      a_4 AS uint64,
+      a_5 AS string,
+      a_6 AS bytes,
+      a_7 AS bool,
+      a_8 AS float,
+      a_9 AS double,
+      a_10 AS date,
+      a_11 AS timestamp_seconds,
+      a_12 AS timestamp_millis,
+      a_13 AS timestamp_micros,
+      a_14 AS timestamp_nanos,
+      a_15 AS timestamp,
+      a_16 AS numeric,
+      a_17 AS bignumeric,
+      a_18 AS json,
+      a_19 AS uuid
+    FROM
+      (
+        SELECT
+          SimpleTypes.int32 AS a_1,
+          SimpleTypes.int64 AS a_2,
+          SimpleTypes.uint32 AS a_3,
+          SimpleTypes.uint64 AS a_4,
+          SimpleTypes.string AS a_5,
+          SimpleTypes.bytes AS a_6,
+          SimpleTypes.bool AS a_7,
+          SimpleTypes.float AS a_8,
+          SimpleTypes.double AS a_9,
+          SimpleTypes.date AS a_10,
+          SimpleTypes.timestamp_seconds AS a_11,
+          SimpleTypes.timestamp_millis AS a_12,
+          SimpleTypes.timestamp_micros AS a_13,
+          SimpleTypes.timestamp_nanos AS a_14,
+          SimpleTypes.timestamp AS a_15,
+          SimpleTypes.numeric AS a_16,
+          SimpleTypes.bignumeric AS a_17,
+          SimpleTypes.json AS a_18,
+          SimpleTypes.uuid AS a_19
+        FROM
+          SimpleTypes
+      ) AS simpletypes_20
+  )) AS tvfscan_21;
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+FROM
+  SimpleTypes
+|> SELECT
+     SimpleTypes.int32 AS a_1,
+     SimpleTypes.int64 AS a_2,
+     SimpleTypes.uint32 AS a_3,
+     SimpleTypes.uint64 AS a_4,
+     SimpleTypes.string AS a_5,
+     SimpleTypes.bytes AS a_6,
+     SimpleTypes.bool AS a_7,
+     SimpleTypes.float AS a_8,
+     SimpleTypes.double AS a_9,
+     SimpleTypes.date AS a_10,
+     SimpleTypes.timestamp_seconds AS a_11,
+     SimpleTypes.timestamp_millis AS a_12,
+     SimpleTypes.timestamp_micros AS a_13,
+     SimpleTypes.timestamp_nanos AS a_14,
+     SimpleTypes.timestamp AS a_15,
+     SimpleTypes.numeric AS a_16,
+     SimpleTypes.bignumeric AS a_17,
+     SimpleTypes.json AS a_18,
+     SimpleTypes.uuid AS a_19
+|> AS simpletypes_20
+|> SELECT
+     a_1 AS int32,
+     a_2 AS int64,
+     a_3 AS uint32,
+     a_4 AS uint64,
+     a_5 AS string,
+     a_6 AS bytes,
+     a_7 AS bool,
+     a_8 AS float,
+     a_9 AS double,
+     a_10 AS date,
+     a_11 AS timestamp_seconds,
+     a_12 AS timestamp_millis,
+     a_13 AS timestamp_micros,
+     a_14 AS timestamp_nanos,
+     a_15 AS timestamp,
+     a_16 AS numeric,
+     a_17 AS bignumeric,
+     a_18 AS json,
+     a_19 AS uuid
+|> CALL TEMPLATED_TVF_CONTAINING_FILTER_RETURNS_ONE() AS tvfscan_21
+|> SELECT
+     tvfscan_21.result AS result;
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-templated_tvf_containing_filter_returns_one.result#20 AS result [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[templated_tvf_containing_filter_returns_one.result#20]
+    +-input_scan=
+      +-WithScan
+        +-column_list=[templated_tvf_containing_filter_returns_one.result#20]
+        +-with_entry_list=
+        | +-WithEntry
+        |   +-with_query_name="unused"
+        |   +-with_subquery=
+        |     +-TableScan(column_list=SimpleTypes.[int32#1, int64#2, uint32#3, uint64#4, string#5, bytes#6, bool#7, float#8, double#9, date#10, timestamp_seconds#11, timestamp_millis#12, timestamp_micros#13, timestamp_nanos#14, timestamp#15, numeric#16, bignumeric#17, json#18, uuid#19], node_source="table_clause", table=SimpleTypes, column_index_list=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18])
+        +-query=
+          +-ProjectScan
+            +-column_list=[templated_tvf_containing_filter_returns_one.result#20]
+            +-input_scan=
+              +-AggregateScan
+                +-column_list=[templated_tvf_containing_filter_returns_one.result#20]
+                +-input_scan=
+                | +-ArrayScan
+                |   +-column_list=[$array.x#21]
+                |   +-array_expr_list=
+                |   | +-Literal(type=ARRAY<INT64>, value=[1, 2, 3])
+                |   +-element_column_list=[$array.x#21]
+                +-aggregate_list=
+                  +-result#20 :=
+                    +-AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+                      +-where_expr=
+                        +-FunctionCall(GoogleSQL:$greater(INT64, INT64) -> BOOL)
+                          +-ColumnRef(type=INT64, column=$array.x#21)
+                          +-Literal(type=INT64, value=2)
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+WITH
+  unused AS (
+    SELECT
+      SimpleTypes.int32 AS a_1,
+      SimpleTypes.int64 AS a_2,
+      SimpleTypes.uint32 AS a_3,
+      SimpleTypes.uint64 AS a_4,
+      SimpleTypes.string AS a_5,
+      SimpleTypes.bytes AS a_6,
+      SimpleTypes.bool AS a_7,
+      SimpleTypes.float AS a_8,
+      SimpleTypes.double AS a_9,
+      SimpleTypes.date AS a_10,
+      SimpleTypes.timestamp_seconds AS a_11,
+      SimpleTypes.timestamp_millis AS a_12,
+      SimpleTypes.timestamp_micros AS a_13,
+      SimpleTypes.timestamp_nanos AS a_14,
+      SimpleTypes.timestamp AS a_15,
+      SimpleTypes.numeric AS a_16,
+      SimpleTypes.bignumeric AS a_17,
+      SimpleTypes.json AS a_18,
+      SimpleTypes.uuid AS a_19
+    FROM
+      SimpleTypes
+  )
+SELECT
+  COUNT(*
+    WHERE
+      a_20 > 2) AS result
+FROM
+  UNNEST(ARRAY< INT64 >[1, 2, 3] AS a_20);
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+WITH
+  unused AS (
+    FROM
+      SimpleTypes
+    |> SELECT
+         SimpleTypes.int32 AS a_1,
+         SimpleTypes.int64 AS a_2,
+         SimpleTypes.uint32 AS a_3,
+         SimpleTypes.uint64 AS a_4,
+         SimpleTypes.string AS a_5,
+         SimpleTypes.bytes AS a_6,
+         SimpleTypes.bool AS a_7,
+         SimpleTypes.float AS a_8,
+         SimpleTypes.double AS a_9,
+         SimpleTypes.date AS a_10,
+         SimpleTypes.timestamp_seconds AS a_11,
+         SimpleTypes.timestamp_millis AS a_12,
+         SimpleTypes.timestamp_micros AS a_13,
+         SimpleTypes.timestamp_nanos AS a_14,
+         SimpleTypes.timestamp AS a_15,
+         SimpleTypes.numeric AS a_16,
+         SimpleTypes.bignumeric AS a_17,
+         SimpleTypes.json AS a_18,
+         SimpleTypes.uuid AS a_19
+  )
+FROM
+  UNNEST(ARRAY< INT64 >[1, 2, 3] AS a_20)
+|> AGGREGATE
+     COUNT(*
+       WHERE
+         a_20 > 2) AS result;
+==
+
+# Test inlining a UDF with a filter.
+SELECT NullaryUdfContainingFilterReturnsZero();
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 := FunctionCall(Lazy_resolution_function:NullaryUdfContainingFilterReturnsZero() -> INT64)
+    +-input_scan=
+      +-SingleRowScan
+
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+SELECT
+  NullaryUdfContainingFilterReturnsZero() AS a_1;
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+SELECT
+  NullaryUdfContainingFilterReturnsZero() AS a_1;
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-SubqueryExpr
+    |     +-type=INT64
+    |     +-subquery_type=SCALAR
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$aggregate.$agg1#2]
+    |         +-input_scan=
+    |           +-AggregateScan
+    |             +-column_list=[$aggregate.$agg1#2]
+    |             +-input_scan=
+    |             | +-ArrayScan
+    |             |   +-column_list=[$array.$unnest1#3]
+    |             |   +-array_expr_list=
+    |             |   | +-Literal(type=ARRAY<INT64>, value=[1])
+    |             |   +-element_column_list=[$array.$unnest1#3]
+    |             +-aggregate_list=
+    |               +-$agg1#2 :=
+    |                 +-AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+    |                   +-where_expr=
+    |                     +-Literal(type=BOOL, value=false)
+    +-input_scan=
+      +-SingleRowScan
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+SELECT
+  (
+    SELECT
+      COUNT(*
+        WHERE
+          false) AS a_3
+    FROM
+      UNNEST(ARRAY< INT64 >[1] AS a_2)
+  ) AS a_1;
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+SELECT
+  (
+    FROM
+      UNNEST(ARRAY< INT64 >[1] AS a_2)
+    |> AGGREGATE
+         COUNT(*
+           WHERE
+             false) AS a_3) AS a_1;
+==
+
+# Test inlining a templated UDF with a filter.
+SELECT TemplatedUdfContainingFilterReturnsCount(1);
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(Templated_SQL_Function:TemplatedUdfContainingFilterReturnsCount(INT64 arg) -> INT64)
+    |     +-Literal(type=INT64, value=1)
+    +-input_scan=
+      +-SingleRowScan
+
+With Templated SQL function call:
+  Templated_SQL_Function:TemplatedUdfContainingFilterReturnsCount(INT64 arg) -> INT64
+containing resolved templated expression:
+SubqueryExpr
++-type=INT64
++-subquery_type=SCALAR
++-subquery=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#2]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$aggregate.$agg1#2]
+        +-input_scan=
+        | +-ArrayScan
+        |   +-column_list=[$array.$unnest1#1]
+        |   +-array_expr_list=
+        |   | +-Literal(type=ARRAY<INT64>, value=[1])
+        |   +-element_column_list=[$array.$unnest1#1]
+        +-aggregate_list=
+          +-$agg1#2 :=
+            +-AggregateFunctionCall(GoogleSQL:count(INT64) -> INT64)
+              +-ArgumentRef(type=INT64, name="arg")
+              +-where_expr=
+                +-Literal(type=BOOL, value=true)
+
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+SELECT
+  TemplatedUdfContainingFilterReturnsCount(1) AS a_1;
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+SELECT
+  TemplatedUdfContainingFilterReturnsCount(1) AS a_1;
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-WithExpr
+    |     +-type=INT64
+    |     +-assignment_list=
+    |     | +-arg#4 := Literal(type=INT64, value=1)
+    |     +-expr=
+    |       +-SubqueryExpr
+    |         +-type=INT64
+    |         +-subquery_type=SCALAR
+    |         +-parameter_list=
+    |         | +-ColumnRef(type=INT64, column=$inlined_TemplatedUdfContainingFilterReturnsCount.arg#4)
+    |         +-subquery=
+    |           +-ProjectScan
+    |             +-column_list=[$aggregate.$agg1#2]
+    |             +-input_scan=
+    |               +-AggregateScan
+    |                 +-column_list=[$aggregate.$agg1#2]
+    |                 +-input_scan=
+    |                 | +-ArrayScan
+    |                 |   +-column_list=[$array.$unnest1#3]
+    |                 |   +-array_expr_list=
+    |                 |   | +-Literal(type=ARRAY<INT64>, value=[1])
+    |                 |   +-element_column_list=[$array.$unnest1#3]
+    |                 +-aggregate_list=
+    |                   +-$agg1#2 :=
+    |                     +-AggregateFunctionCall(GoogleSQL:count(INT64) -> INT64)
+    |                       +-ColumnRef(type=INT64, column=$inlined_TemplatedUdfContainingFilterReturnsCount.arg#4, is_correlated=TRUE)
+    |                       +-where_expr=
+    |                         +-Literal(type=BOOL, value=true)
+    +-input_scan=
+      +-SingleRowScan
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+SELECT
+  WITH(a_3 AS 1, (
+    SELECT
+      COUNT(a_3
+        WHERE
+          true) AS a_4
+    FROM
+      UNNEST(ARRAY< INT64 >[1] AS a_2)
+  )) AS a_1;
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+SELECT
+  WITH(a_3 AS 1, (
+    FROM
+      UNNEST(ARRAY< INT64 >[1] AS a_2)
+    |> AGGREGATE
+         COUNT(a_3
+           WHERE
+             true) AS a_4)) AS a_1;

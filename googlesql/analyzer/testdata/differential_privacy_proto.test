@@ -1,0 +1,472 @@
+# Tests for SELECT WITH DIFFERENTIAL_PRIVACY queries on PROTO value tables.
+[default language_features=NONE,+DIFFERENTIAL_PRIVACY,+NAMED_ARGUMENTS,+PIPE_AGGREGATE_WITH_DIFFERENTIAL_PRIVACY]
+
+[enabled_ast_rewrites=DEFAULTS,+ANONYMIZATION]
+SELECT WITH DIFFERENTIAL_PRIVACY count(*)
+FROM KitchenSinkWithUidValueTable;
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#2 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#2]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#2]
+        +-input_scan=
+        | +-TableScan(table=KitchenSinkWithUidValueTable)
+        +-aggregate_list=
+          +-$agg1#2 :=
+            +-AggregateFunctionCall(GoogleSQL:$differential_privacy_count_star(optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+              +-Literal(type=STRUCT<INT64, INT64>, value=NULL)
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#2 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#2]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#2]
+        +-input_scan=
+        | +-AggregateScan
+        |   +-column_list=[$aggregate.$agg1_partial#6, $group_by.$uid#7]
+        |   +-input_scan=
+        |   | +-ProjectScan
+        |   |   +-column_list=[$table_scan.$value#3, $project.$string_val#4]
+        |   |   +-expr_list=
+        |   |   | +-$string_val#4 :=
+        |   |   |   +-GetProtoField
+        |   |   |     +-type=STRING
+        |   |   |     +-expr=
+        |   |   |     | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=$table_scan.$value#3)
+        |   |   |     +-field_descriptor=string_val
+        |   |   |     +-default_value="default_name"
+        |   |   +-input_scan=
+        |   |     +-TableScan(column_list=[$table_scan.$value#3], table=KitchenSinkWithUidValueTable, column_index_list=[0])
+        |   +-group_by_list=
+        |   | +-$uid#7 := ColumnRef(type=STRING, column=$project.$string_val#4)
+        |   +-aggregate_list=
+        |     +-$agg1_partial#6 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+        +-aggregate_list=
+        | +-$agg1#2 :=
+        | | +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+        | |   +-ColumnRef(type=INT64, column=$aggregate.$agg1_partial#6)
+        | |   +-Literal(type=STRUCT<INT64, INT64>, value=NULL)
+        | +-$group_selection_threshold_col#10 :=
+        |   +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+        |     +-Literal(type=INT64, value=1)
+        |     +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+        +-group_selection_threshold_expr=
+          +-ColumnRef(type=INT64, column=$differential_privacy.$group_selection_threshold_col#10)
+==
+
+# Anonymized query against a PROTO value table that explicitly references
+# non-userid columns (the userid column is 'string_val').
+[enabled_ast_rewrites=DEFAULTS,+ANONYMIZATION]
+SELECT WITH DIFFERENTIAL_PRIVACY int32_val, SUM(int64_val)
+FROM KitchenSinkWithUidValueTable
+GROUP BY int32_val;
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.int32_val#3 AS int32_val [INT32]
+| +-$aggregate.$agg1#2 AS `$col2` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$groupby.int32_val#3, $aggregate.$agg1#2]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$groupby.int32_val#3, $aggregate.$agg1#2]
+        +-input_scan=
+        | +-TableScan(column_list=[KitchenSinkWithUidValueTable.value#1], table=KitchenSinkWithUidValueTable, column_index_list=[0])
+        +-group_by_list=
+        | +-int32_val#3 :=
+        |   +-GetProtoField
+        |     +-type=INT32
+        |     +-expr=
+        |     | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=KitchenSinkWithUidValueTable.value#1)
+        |     +-field_descriptor=int32_val
+        |     +-default_value=77
+        +-aggregate_list=
+          +-$agg1#2 :=
+            +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+              +-GetProtoField
+              | +-type=INT64
+              | +-expr=
+              | | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=KitchenSinkWithUidValueTable.value#1)
+              | +-field_descriptor=int64_val
+              | +-default_value=0
+              +-Literal(type=STRUCT<INT64, INT64>, value=NULL)
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$groupby.int32_val#3 AS int32_val [INT32]
+| +-$aggregate.$agg1#2 AS `$col2` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$groupby.int32_val#3, $aggregate.$agg1#2]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$groupby.int32_val#3, $aggregate.$agg1#2]
+        +-input_scan=
+        | +-AggregateScan
+        |   +-column_list=[$aggregate.$agg1_partial#6, $groupby.int32_val_partial#7, $group_by.$uid#8]
+        |   +-input_scan=
+        |   | +-ProjectScan
+        |   |   +-column_list=[KitchenSinkWithUidValueTable.value#1, $project.$string_val#4]
+        |   |   +-expr_list=
+        |   |   | +-$string_val#4 :=
+        |   |   |   +-GetProtoField
+        |   |   |     +-type=STRING
+        |   |   |     +-expr=
+        |   |   |     | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=KitchenSinkWithUidValueTable.value#1)
+        |   |   |     +-field_descriptor=string_val
+        |   |   |     +-default_value="default_name"
+        |   |   +-input_scan=
+        |   |     +-TableScan(column_list=[KitchenSinkWithUidValueTable.value#1], table=KitchenSinkWithUidValueTable, column_index_list=[0])
+        |   +-group_by_list=
+        |   | +-int32_val_partial#7 :=
+        |   | | +-GetProtoField
+        |   | |   +-type=INT32
+        |   | |   +-expr=
+        |   | |   | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=KitchenSinkWithUidValueTable.value#1)
+        |   | |   +-field_descriptor=int32_val
+        |   | |   +-default_value=77
+        |   | +-$uid#8 := ColumnRef(type=STRING, column=$project.$string_val#4)
+        |   +-aggregate_list=
+        |     +-$agg1_partial#6 :=
+        |       +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+        |         +-GetProtoField
+        |           +-type=INT64
+        |           +-expr=
+        |           | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=KitchenSinkWithUidValueTable.value#1)
+        |           +-field_descriptor=int64_val
+        |           +-default_value=0
+        +-group_by_list=
+        | +-int32_val#3 := ColumnRef(type=INT32, column=$groupby.int32_val_partial#7)
+        +-aggregate_list=
+        | +-$agg1#2 :=
+        | | +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+        | |   +-ColumnRef(type=INT64, column=$aggregate.$agg1_partial#6)
+        | |   +-Literal(type=STRUCT<INT64, INT64>, value=NULL)
+        | +-$group_selection_threshold_col#11 :=
+        |   +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+        |     +-Literal(type=INT64, value=1)
+        |     +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+        +-group_selection_threshold_expr=
+          +-ColumnRef(type=INT64, column=$differential_privacy.$group_selection_threshold_col#11)
+==
+
+# Anonymized query against a PROTO value table that explicitly references
+# userid and non-userid columns (the userid column is 'string_val').
+[enabled_ast_rewrites=DEFAULTS,+ANONYMIZATION]
+SELECT WITH DIFFERENTIAL_PRIVACY int64_val, COUNT(string_val)
+FROM KitchenSinkWithUidValueTable
+GROUP BY int64_val;
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.int64_val#3 AS int64_val [INT64]
+| +-$aggregate.$agg1#2 AS `$col2` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$groupby.int64_val#3, $aggregate.$agg1#2]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$groupby.int64_val#3, $aggregate.$agg1#2]
+        +-input_scan=
+        | +-TableScan(column_list=[KitchenSinkWithUidValueTable.value#1], table=KitchenSinkWithUidValueTable, column_index_list=[0])
+        +-group_by_list=
+        | +-int64_val#3 :=
+        |   +-GetProtoField
+        |     +-type=INT64
+        |     +-expr=
+        |     | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=KitchenSinkWithUidValueTable.value#1)
+        |     +-field_descriptor=int64_val
+        |     +-default_value=0
+        +-aggregate_list=
+          +-$agg1#2 :=
+            +-AggregateFunctionCall(GoogleSQL:$differential_privacy_count(STRING, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+              +-GetProtoField
+              | +-type=STRING
+              | +-expr=
+              | | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=KitchenSinkWithUidValueTable.value#1)
+              | +-field_descriptor=string_val
+              | +-default_value="default_name"
+              +-Literal(type=STRUCT<INT64, INT64>, value=NULL)
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$groupby.int64_val#3 AS int64_val [INT64]
+| +-$aggregate.$agg1#2 AS `$col2` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$groupby.int64_val#3, $aggregate.$agg1#2]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$groupby.int64_val#3, $aggregate.$agg1#2]
+        +-input_scan=
+        | +-AggregateScan
+        |   +-column_list=[$aggregate.$agg1_partial#6, $groupby.int64_val_partial#7, $group_by.$uid#8]
+        |   +-input_scan=
+        |   | +-ProjectScan
+        |   |   +-column_list=[KitchenSinkWithUidValueTable.value#1, $project.$string_val#4]
+        |   |   +-expr_list=
+        |   |   | +-$string_val#4 :=
+        |   |   |   +-GetProtoField
+        |   |   |     +-type=STRING
+        |   |   |     +-expr=
+        |   |   |     | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=KitchenSinkWithUidValueTable.value#1)
+        |   |   |     +-field_descriptor=string_val
+        |   |   |     +-default_value="default_name"
+        |   |   +-input_scan=
+        |   |     +-TableScan(column_list=[KitchenSinkWithUidValueTable.value#1], table=KitchenSinkWithUidValueTable, column_index_list=[0])
+        |   +-group_by_list=
+        |   | +-int64_val_partial#7 :=
+        |   | | +-GetProtoField
+        |   | |   +-type=INT64
+        |   | |   +-expr=
+        |   | |   | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=KitchenSinkWithUidValueTable.value#1)
+        |   | |   +-field_descriptor=int64_val
+        |   | |   +-default_value=0
+        |   | +-$uid#8 := ColumnRef(type=STRING, column=$project.$string_val#4)
+        |   +-aggregate_list=
+        |     +-$agg1_partial#6 :=
+        |       +-AggregateFunctionCall(GoogleSQL:count(STRING) -> INT64)
+        |         +-GetProtoField
+        |           +-type=STRING
+        |           +-expr=
+        |           | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=KitchenSinkWithUidValueTable.value#1)
+        |           +-field_descriptor=string_val
+        |           +-default_value="default_name"
+        +-group_by_list=
+        | +-int64_val#3 := ColumnRef(type=INT64, column=$groupby.int64_val_partial#7)
+        +-aggregate_list=
+        | +-$agg1#2 :=
+        | | +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+        | |   +-ColumnRef(type=INT64, column=$aggregate.$agg1_partial#6)
+        | |   +-Literal(type=STRUCT<INT64, INT64>, value=NULL)
+        | +-$group_selection_threshold_col#11 :=
+        |   +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+        |     +-Literal(type=INT64, value=1)
+        |     +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+        +-group_selection_threshold_expr=
+          +-ColumnRef(type=INT64, column=$differential_privacy.$group_selection_threshold_col#11)
+==
+
+# Anonymized query against a PROTO value table that explicitly projects userid
+# columns (the userid column is 'string_val').
+[enabled_ast_rewrites=DEFAULTS,+ANONYMIZATION]
+SELECT WITH DIFFERENTIAL_PRIVACY count(*)
+FROM (SELECT string_val
+  FROM KitchenSinkWithUidValueTable);
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#3 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#3]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#3]
+        +-input_scan=
+        | +-ProjectScan
+        |   +-column_list=[$subquery1.string_val#2]
+        |   +-expr_list=
+        |   | +-string_val#2 :=
+        |   |   +-GetProtoField
+        |   |     +-type=STRING
+        |   |     +-expr=
+        |   |     | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=KitchenSinkWithUidValueTable.value#1)
+        |   |     +-field_descriptor=string_val
+        |   |     +-default_value="default_name"
+        |   +-input_scan=
+        |     +-TableScan(column_list=[KitchenSinkWithUidValueTable.value#1], table=KitchenSinkWithUidValueTable, column_index_list=[0])
+        +-aggregate_list=
+          +-$agg1#3 :=
+            +-AggregateFunctionCall(GoogleSQL:$differential_privacy_count_star(optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+              +-Literal(type=STRUCT<INT64, INT64>, value=NULL)
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#3 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#3]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#3]
+        +-input_scan=
+        | +-AggregateScan
+        |   +-column_list=[$aggregate.$agg1_partial#6, $group_by.$uid#7]
+        |   +-input_scan=
+        |   | +-ProjectScan
+        |   |   +-column_list=[$subquery1.string_val#2]
+        |   |   +-expr_list=
+        |   |   | +-string_val#2 := ColumnRef(type=STRING, column=$project.$string_val#4)
+        |   |   +-input_scan=
+        |   |     +-ProjectScan
+        |   |       +-column_list=[KitchenSinkWithUidValueTable.value#1, $project.$string_val#4]
+        |   |       +-expr_list=
+        |   |       | +-$string_val#4 :=
+        |   |       |   +-GetProtoField
+        |   |       |     +-type=STRING
+        |   |       |     +-expr=
+        |   |       |     | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=KitchenSinkWithUidValueTable.value#1)
+        |   |       |     +-field_descriptor=string_val
+        |   |       |     +-default_value="default_name"
+        |   |       +-input_scan=
+        |   |         +-TableScan(column_list=[KitchenSinkWithUidValueTable.value#1], table=KitchenSinkWithUidValueTable, column_index_list=[0])
+        |   +-group_by_list=
+        |   | +-$uid#7 := ColumnRef(type=STRING, column=$subquery1.string_val#2)
+        |   +-aggregate_list=
+        |     +-$agg1_partial#6 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+        +-aggregate_list=
+        | +-$agg1#3 :=
+        | | +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+        | |   +-ColumnRef(type=INT64, column=$aggregate.$agg1_partial#6)
+        | |   +-Literal(type=STRUCT<INT64, INT64>, value=NULL)
+        | +-$group_selection_threshold_col#10 :=
+        |   +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+        |     +-Literal(type=INT64, value=1)
+        |     +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+        +-group_selection_threshold_expr=
+          +-ColumnRef(type=INT64, column=$differential_privacy.$group_selection_threshold_col#10)
+==
+
+# Anonymized query against a PROTO value table that explicitly aggregates userid
+# columns (the userid column is 'string_val').
+[enabled_ast_rewrites=DEFAULTS,+ANONYMIZATION]
+SELECT WITH DIFFERENTIAL_PRIVACY count(*)
+FROM (SELECT count(*), string_val
+  FROM KitchenSinkWithUidValueTable
+  GROUP BY string_val);
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#4 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#4]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#4]
+        +-input_scan=
+        | +-ProjectScan
+        |   +-column_list=[$aggregate.$agg1#2, $groupby.string_val#3]
+        |   +-input_scan=
+        |     +-AggregateScan
+        |       +-column_list=[$groupby.string_val#3, $aggregate.$agg1#2]
+        |       +-input_scan=
+        |       | +-TableScan(column_list=[KitchenSinkWithUidValueTable.value#1], table=KitchenSinkWithUidValueTable, column_index_list=[0])
+        |       +-group_by_list=
+        |       | +-string_val#3 :=
+        |       |   +-GetProtoField
+        |       |     +-type=STRING
+        |       |     +-expr=
+        |       |     | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=KitchenSinkWithUidValueTable.value#1)
+        |       |     +-field_descriptor=string_val
+        |       |     +-default_value="default_name"
+        |       +-aggregate_list=
+        |         +-$agg1#2 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+        +-aggregate_list=
+          +-$agg1#4 :=
+            +-AggregateFunctionCall(GoogleSQL:$differential_privacy_count_star(optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+              +-Literal(type=STRUCT<INT64, INT64>, value=NULL)
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#4 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#4]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#4]
+        +-input_scan=
+        | +-AggregateScan
+        |   +-column_list=[$aggregate.$agg1_partial#7, $group_by.$uid#8]
+        |   +-input_scan=
+        |   | +-ProjectScan
+        |   |   +-column_list=[$aggregate.$agg1#2, $groupby.string_val#3]
+        |   |   +-input_scan=
+        |   |     +-AggregateScan
+        |   |       +-column_list=[$groupby.string_val#3, $aggregate.$agg1#2]
+        |   |       +-input_scan=
+        |   |       | +-ProjectScan
+        |   |       |   +-column_list=[KitchenSinkWithUidValueTable.value#1, $project.$string_val#5]
+        |   |       |   +-expr_list=
+        |   |       |   | +-$string_val#5 :=
+        |   |       |   |   +-GetProtoField
+        |   |       |   |     +-type=STRING
+        |   |       |   |     +-expr=
+        |   |       |   |     | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=KitchenSinkWithUidValueTable.value#1)
+        |   |       |   |     +-field_descriptor=string_val
+        |   |       |   |     +-default_value="default_name"
+        |   |       |   +-input_scan=
+        |   |       |     +-TableScan(column_list=[KitchenSinkWithUidValueTable.value#1], table=KitchenSinkWithUidValueTable, column_index_list=[0])
+        |   |       +-group_by_list=
+        |   |       | +-string_val#3 := ColumnRef(type=STRING, column=$project.$string_val#5)
+        |   |       +-aggregate_list=
+        |   |         +-$agg1#2 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+        |   +-group_by_list=
+        |   | +-$uid#8 := ColumnRef(type=STRING, column=$groupby.string_val#3)
+        |   +-aggregate_list=
+        |     +-$agg1_partial#7 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+        +-aggregate_list=
+        | +-$agg1#4 :=
+        | | +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+        | |   +-ColumnRef(type=INT64, column=$aggregate.$agg1_partial#7)
+        | |   +-Literal(type=STRUCT<INT64, INT64>, value=NULL)
+        | +-$group_selection_threshold_col#11 :=
+        |   +-AggregateFunctionCall(GoogleSQL:$differential_privacy_sum(INT64, optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+        |     +-Literal(type=INT64, value=1)
+        |     +-Literal(type=STRUCT<INT64, INT64>, value={0, 1})
+        +-group_selection_threshold_expr=
+          +-ColumnRef(type=INT64, column=$differential_privacy.$group_selection_threshold_col#11)
+==
+
+# Anonymized query against a PROTO value table qualifies userid column errors.
+[enabled_ast_rewrites=DEFAULTS,+ANONYMIZATION]
+SELECT WITH DIFFERENTIAL_PRIVACY count(*)
+FROM (SELECT WITH DIFFERENTIAL_PRIVACY count(*)
+  FROM KitchenSinkWithUidValueTable AS t);
+--
+[PRE-REWRITE AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#3 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#3]
+    +-input_scan=
+      +-DifferentialPrivacyAggregateScan
+        +-column_list=[$aggregate.$agg1#3]
+        +-input_scan=
+        | +-ProjectScan
+        |   +-column_list=[$aggregate.$agg1#2]
+        |   +-input_scan=
+        |     +-DifferentialPrivacyAggregateScan
+        |       +-column_list=[$aggregate.$agg1#2]
+        |       +-input_scan=
+        |       | +-TableScan(table=KitchenSinkWithUidValueTable, alias="t")
+        |       +-aggregate_list=
+        |         +-$agg1#2 :=
+        |           +-AggregateFunctionCall(GoogleSQL:$differential_privacy_count_star(optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+        |             +-Literal(type=STRUCT<INT64, INT64>, value=NULL)
+        +-aggregate_list=
+          +-$agg1#3 :=
+            +-AggregateFunctionCall(GoogleSQL:$differential_privacy_count_star(optional(1) STRUCT<INT64, INT64> contribution_bounds_per_group) -> INT64)
+              +-Literal(type=STRUCT<INT64, INT64>, value=NULL)
+
+Rewrite ERROR: Subqueries of differential_privacy queries must explicitly SELECT the userid column 't.string_val'
+==

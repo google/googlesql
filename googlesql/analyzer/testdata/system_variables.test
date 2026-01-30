@@ -1,0 +1,785 @@
+# Simple retrieval of system variable
+[default language_features=NONE]
+SELECT @@int64_system_variable;
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 := SystemVariable(int64_system_variable, type=INT64)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# This test is here to document current behavior and notice regressions in case
+# some customer has started doing this. We suspect the authors never intended
+# the `@@` token to be separated from the variable name by whitespace.
+SELECT @@ int64_system_variable;
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 := SystemVariable(int64_system_variable, type=INT64)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# This test is here to document current behavior and notice regressions in case
+# some customer has started doing this. We suspect the authors never intended
+# the `@@` token to be separated from the variable name by whitespace.
+SELECT all @@
+FROM t;
+--
+QueryStmt
++-output_column_list=
+| +-$query.t#1 AS t [STRUCT<c INT32, d STRUCT<a INT32, b STRING>>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.t#1]
+    +-expr_list=
+    | +-t#1 := SystemVariable(`FROM`, type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+SELECT @@FROM;
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [STRUCT<c INT32, d STRUCT<a INT32, b STRING>>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 := SystemVariable(`FROM`, type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+SELECT @@FROM{{|x}}.d.a;
+--
+ALTERNATION GROUP: <empty>
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [INT32]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-GetStructField
+    |     +-type=INT32
+    |     +-expr=
+    |     | +-GetStructField
+    |     |   +-type=STRUCT<a INT32, b STRING>
+    |     |   +-expr=
+    |     |   | +-SystemVariable(`FROM`, type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>)
+    |     |   +-field_idx=1
+    |     +-field_idx=0
+    +-input_scan=
+      +-SingleRowScan
+--
+ALTERNATION GROUP: x
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [INT32]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-GetStructField
+    |     +-type=INT32
+    |     +-expr=
+    |     | +-GetStructField
+    |     |   +-type=STRUCT<a INT32, b STRING>
+    |     |   +-expr=
+    |     |   | +-SystemVariable(FROMx, type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>)
+    |     |   +-field_idx=1
+    |     +-field_idx=0
+    +-input_scan=
+      +-SingleRowScan
+==
+
+SELECT @@UNION{{|x}}.d.with.with;
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: Unrecognized name: @@`UNION` [at 1:8]
+SELECT @@UNION.d.with.with;
+       ^
+--
+ALTERNATION GROUP: x
+--
+ERROR: Unrecognized name: @@UNIONx [at 1:8]
+SELECT @@UNIONx.d.with.with;
+       ^
+==
+
+SELECT @@WHERE{{|x}}.d.d.a;
+--
+ALTERNATION GROUP: <empty>
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [INT32]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-GetStructField
+    |     +-type=INT32
+    |     +-expr=
+    |     | +-GetStructField
+    |     |   +-type=STRUCT<a INT32, b STRING>
+    |     |   +-expr=
+    |     |   | +-SystemVariable(`WHERE`.d, type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>)
+    |     |   +-field_idx=1
+    |     +-field_idx=0
+    +-input_scan=
+      +-SingleRowScan
+--
+ALTERNATION GROUP: x
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [INT32]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-GetStructField
+    |     +-type=INT32
+    |     +-expr=
+    |     | +-GetStructField
+    |     |   +-type=STRUCT<a INT32, b STRING>
+    |     |   +-expr=
+    |     |   | +-SystemVariable(WHEREx.d, type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>)
+    |     |   +-field_idx=1
+    |     +-field_idx=0
+    +-input_scan=
+      +-SingleRowScan
+==
+
+SELECT @@GROUP{{|x}}.with_dots.d.a;
+--
+ALTERNATION GROUP: <empty>
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [INT32]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-GetStructField
+    |     +-type=INT32
+    |     +-expr=
+    |     | +-GetStructField
+    |     |   +-type=STRUCT<a INT32, b STRING>
+    |     |   +-expr=
+    |     |   | +-SystemVariable(`GROUP`.with_dots, type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>)
+    |     |   +-field_idx=1
+    |     +-field_idx=0
+    +-input_scan=
+      +-SingleRowScan
+--
+ALTERNATION GROUP: x
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [INT32]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-GetStructField
+    |     +-type=INT32
+    |     +-expr=
+    |     | +-GetStructField
+    |     |   +-type=STRUCT<a INT32, b STRING>
+    |     |   +-expr=
+    |     |   | +-SystemVariable(GROUPx.with_dots, type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>)
+    |     |   +-field_idx=1
+    |     +-field_idx=0
+    +-input_scan=
+      +-SingleRowScan
+==
+
+SELECT @@HAVING{{|x}}.with;
+--
+ALTERNATION GROUP: <empty>
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [INT32]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-GetStructField
+    |     +-type=INT32
+    |     +-expr=
+    |     | +-SystemVariable(`HAVING`, type=STRUCT<`with` INT32>)
+    |     +-field_idx=0
+    +-input_scan=
+      +-SingleRowScan
+--
+ALTERNATION GROUP: x
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [INT32]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-GetStructField
+    |     +-type=INT32
+    |     +-expr=
+    |     | +-SystemVariable(HAVINGx, type=STRUCT<`with` INT32>)
+    |     +-field_idx=0
+    +-input_scan=
+      +-SingleRowScan
+==
+
+SELECT @@ORDER{{|x}}{{|.d}}.with.dots.d.a;
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: Unrecognized name: @@`ORDER` [at 1:8]
+SELECT @@ORDER.with.dots.d.a;
+       ^
+--
+ALTERNATION GROUP: .d
+--
+ERROR: Unrecognized name: @@`ORDER` [at 1:8]
+SELECT @@ORDER.d.with.dots.d.a;
+       ^
+--
+ALTERNATION GROUP: x,
+--
+ERROR: Unrecognized name: @@ORDERx [at 1:8]
+SELECT @@ORDERx.with.dots.d.a;
+       ^
+--
+ALTERNATION GROUP: x,.d
+--
+ERROR: Unrecognized name: @@ORDERx [at 1:8]
+SELECT @@ORDERx.d.with.dots.d.a;
+       ^
+==
+
+# Select a system variable more than once.
+SELECT
+  @@int64_system_variable,
+  @@int64_system_variable;
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [INT64]
+| +-$query.$col2#2 AS `$col2` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=$query.[$col1#1, $col2#2]
+    +-expr_list=
+    | +-$col1#1 := SystemVariable(int64_system_variable, type=INT64)
+    | +-$col2#2 := SystemVariable(int64_system_variable, type=INT64)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Use a system variable in a larger expression
+SELECT @@int64_system_variable + 1 AS one_plus_sys_var;
+--
+QueryStmt
++-output_column_list=
+| +-$query.one_plus_sys_var#1 AS one_plus_sys_var [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.one_plus_sys_var#1]
+    +-expr_list=
+    | +-one_plus_sys_var#1 :=
+    |   +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |     +-SystemVariable(int64_system_variable, type=INT64)
+    |     +-Literal(type=INT64, value=1)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# System variables cannot referenced in the LIMIT clause.
+SELECT 1 FROM KeyValue limit @@int64_system_variable OFFSET @@int64_system_variable;
+--
+ERROR: LIMIT expects an integer literal or parameter [at 1:30]
+SELECT 1 FROM KeyValue limit @@int64_system_variable OFFSET @@int64_system_va...
+                             ^
+==
+
+# References to STRUCT system variables resolve correctly.
+SELECT @@struct_system_variable,
+       @@struct_system_variable.c,
+       @@struct_system_variable.d,
+       @@struct_system_variable.d.a,
+       @@struct_system_variable.d.b;
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [STRUCT<c INT32, d STRUCT<a INT32, b STRING>>]
+| +-$query.$col2#2 AS `$col2` [INT32]
+| +-$query.$col3#3 AS `$col3` [STRUCT<a INT32, b STRING>]
+| +-$query.$col4#4 AS `$col4` [INT32]
+| +-$query.$col5#5 AS `$col5` [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=$query.[$col1#1, $col2#2, $col3#3, $col4#4, $col5#5]
+    +-expr_list=
+    | +-$col1#1 := SystemVariable(struct_system_variable, type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>)
+    | +-$col2#2 :=
+    | | +-GetStructField
+    | |   +-type=INT32
+    | |   +-expr=
+    | |   | +-SystemVariable(struct_system_variable, type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>)
+    | |   +-field_idx=0
+    | +-$col3#3 :=
+    | | +-GetStructField
+    | |   +-type=STRUCT<a INT32, b STRING>
+    | |   +-expr=
+    | |   | +-SystemVariable(struct_system_variable, type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>)
+    | |   +-field_idx=1
+    | +-$col4#4 :=
+    | | +-GetStructField
+    | |   +-type=INT32
+    | |   +-expr=
+    | |   | +-GetStructField
+    | |   |   +-type=STRUCT<a INT32, b STRING>
+    | |   |   +-expr=
+    | |   |   | +-SystemVariable(struct_system_variable, type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>)
+    | |   |   +-field_idx=1
+    | |   +-field_idx=0
+    | +-$col5#5 :=
+    |   +-GetStructField
+    |     +-type=STRING
+    |     +-expr=
+    |     | +-GetStructField
+    |     |   +-type=STRUCT<a INT32, b STRING>
+    |     |   +-expr=
+    |     |   | +-SystemVariable(struct_system_variable, type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>)
+    |     |   +-field_idx=1
+    |     +-field_idx=1
+    +-input_scan=
+      +-SingleRowScan
+
+==
+
+
+# References to nonexistent fields in STRUCT system variables fail
+SELECT @@struct_system_variable.not_a_field;
+--
+ERROR: Field name not_a_field does not exist in STRUCT<c INT32, d STRUCT<a INT32, b STRING>> [at 1:33]
+SELECT @@struct_system_variable.not_a_field;
+                                ^
+==
+
+# Attempting to treat a non-STRUCT as a STRUCT fails.
+SELECT @@int64_system_variable.not_a_field;
+--
+ERROR: Cannot access field not_a_field on a value with type INT64 [at 1:32]
+SELECT @@int64_system_variable.not_a_field;
+                               ^
+==
+
+# References to fields of known proto-valued system_variables resolve correctly.
+SELECT @@proto_system_variable.int64_key_1 - @@proto_system_variable.int64_key_2;
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(GoogleSQL:$subtract(INT64, INT64) -> INT64)
+    |     +-GetProtoField
+    |     | +-type=INT64
+    |     | +-expr=
+    |     | | +-SystemVariable(proto_system_variable, type=PROTO<googlesql_test.KitchenSinkPB>)
+    |     | +-field_descriptor=int64_key_1
+    |     +-GetProtoField
+    |       +-type=INT64
+    |       +-expr=
+    |       | +-SystemVariable(proto_system_variable, type=PROTO<googlesql_test.KitchenSinkPB>)
+    |       +-field_descriptor=int64_key_2
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Multiple SELECT items involving proto system variables
+SELECT @@proto_system_variable, @@proto_system_variable.int64_key_1;
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [PROTO<googlesql_test.KitchenSinkPB>]
+| +-$query.$col2#2 AS `$col2` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=$query.[$col1#1, $col2#2]
+    +-expr_list=
+    | +-$col1#1 := SystemVariable(proto_system_variable, type=PROTO<googlesql_test.KitchenSinkPB>)
+    | +-$col2#2 :=
+    |   +-GetProtoField
+    |     +-type=INT64
+    |     +-expr=
+    |     | +-SystemVariable(proto_system_variable, type=PROTO<googlesql_test.KitchenSinkPB>)
+    |     +-field_descriptor=int64_key_1
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Name suggestion works for system variables
+SELECT @@int64_system_variabl;
+--
+ERROR: Unrecognized name: @@int64_system_variabl; Did you mean @@int64_system_variable? [at 1:8]
+SELECT @@int64_system_variabl;
+       ^
+==
+
+# When a system variable is similar to an alias, make sure that the suggestion
+# for the alias does not include "@@".
+SELECT @@qwert FROM (SELECT 1 AS qwerty);
+--
+ERROR: Unrecognized name: @@qwert; Did you mean qwerty? [at 1:8]
+SELECT @@qwert FROM (SELECT 1 AS qwerty);
+       ^
+==
+
+# When a system variable is similar to a named constant, make sure the
+# suggestion for the named constant does not include "@@".
+SELECT @@TestConstantStrin;
+--
+ERROR: Unrecognized name: @@TestConstantStrin; Did you mean TestConstantString? [at 1:8]
+SELECT @@TestConstantStrin;
+       ^
+==
+
+# Make sure error messages include backticks in the right places
+SELECT @@`sysvar.with.dot`;
+--
+ERROR: Unrecognized name: @@`sysvar.with.dot`; Did you mean @@`sysvar.with.dots`? [at 1:8]
+SELECT @@`sysvar.with.dot`;
+       ^
+==
+
+# Forgetting to include the "@@" should suggest the system variable, assuming
+# no named constant in the regular catalog exists with a closer name.
+SELECT error.message;
+--
+ERROR: Unrecognized name: error.message; Did you mean @@error.message? [at 1:8]
+SELECT error.message;
+       ^
+==
+
+# If '@@' is added by mistake, the resolver should suggest the catalog constant
+# without the @@.
+SELECT @@TestConstantInt64;
+--
+ERROR: Unrecognized name: @@TestConstantInt64; Did you mean TestConstantInt64? [at 1:8]
+SELECT @@TestConstantInt64;
+       ^
+==
+
+# System variables should be unnamed if they are not assigned a name.
+SELECT * FROM (SELECT @@int64_system_variable);
+--
+QueryStmt
++-output_column_list=
+| +-$subquery1.$col1#1 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$subquery1.$col1#1]
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[$subquery1.$col1#1]
+        +-expr_list=
+        | +-$col1#1 := SystemVariable(int64_system_variable, type=INT64)
+        +-input_scan=
+          +-SingleRowScan
+==
+
+# Column names can begin with "@@" when in backticks.
+SELECT `@@foo` FROM (SELECT @@int64_system_variable AS `@@foo`);
+--
+QueryStmt
++-output_column_list=
+| +-$subquery1.@@foo#1 AS `@@foo` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$subquery1.@@foo#1]
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[$subquery1.@@foo#1]
+        +-expr_list=
+        | +-@@foo#1 := SystemVariable(int64_system_variable, type=INT64)
+        +-input_scan=
+          +-SingleRowScan
+==
+
+# Backticked column name overrides system variable of the same name.
+SELECT `@@struct_system_variable` FROM (SELECT @@int64_system_variable + 1 AS `@@struct_system_variable`);
+--
+QueryStmt
++-output_column_list=
+| +-$subquery1.@@struct_system_variable#1 AS `@@struct_system_variable` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$subquery1.@@struct_system_variable#1]
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[$subquery1.@@struct_system_variable#1]
+        +-expr_list=
+        | +-@@struct_system_variable#1 :=
+        |   +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+        |     +-SystemVariable(int64_system_variable, type=INT64)
+        |     +-Literal(type=INT64, value=1)
+        +-input_scan=
+          +-SingleRowScan
+==
+
+# System variables are case-insensitive.
+SELECT @@INT64_SYSTEM_VARIABLE;
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 := SystemVariable(INT64_SYSTEM_VARIABLE, type=INT64)
+    +-input_scan=
+      +-SingleRowScan
+
+==
+
+# System variables in namespaces resolve correctly.
+SELECT @@sysvar_foo.bar;
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 := SystemVariable(sysvar_foo.bar, type=INT64)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# The parentheses mean we select field bar of struct system variable foo,
+# instead of INT64 system variable foo.bar.
+SELECT (@@sysvar_foo).bar;
+--
+QueryStmt
++-output_column_list=
+| +-$query.bar#1 AS bar [INT32]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.bar#1]
+    +-expr_list=
+    | +-bar#1 :=
+    |   +-GetStructField
+    |     +-type=INT32
+    |     +-expr=
+    |     | +-SystemVariable(sysvar_foo, type=STRUCT<bar INT32>)
+    |     +-field_idx=0
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Selecting just a system variable namespace, by itself, doesn't work.
+SELECT @@error;
+--
+ERROR: Unrecognized name: @@error; Did you mean @@`from`? [at 1:8]
+SELECT @@error;
+       ^
+==
+
+# Enclosing the name of a system variable in backticks is ok
+SELECT @@`sysvar_foo`;
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [STRUCT<bar INT32>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 := SystemVariable(sysvar_foo, type=STRUCT<bar INT32>)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Enclosing the name of a system variable in backticks works for variables in
+# namespaces
+SELECT @@error.message, @@`error`.`message`;
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [STRING]
+| +-$query.$col2#2 AS `$col2` [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=$query.[$col1#1, $col2#2]
+    +-expr_list=
+    | +-$col1#1 := SystemVariable(error.message, type=STRING)
+    | +-$col2#2 := SystemVariable(error.message, type=STRING)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# But, enclosing the entire qualified part is not ok.
+SELECT @@`error.message`;
+--
+ERROR: Unrecognized name: @@`error.message` [at 1:8]
+SELECT @@`error.message`;
+       ^
+==
+
+# Access a system variable whose name, itself, has dots (as opposed to being in
+# a namespace)
+SELECT {{@@`sysvar.with.dots`|@@sysvar.with.dots}};
+--
+ALTERNATION GROUP: @@`sysvar.with.dots`
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 := SystemVariable(`sysvar.with.dots`, type=STRING)
+    +-input_scan=
+      +-SingleRowScan
+--
+ALTERNATION GROUP: @@sysvar.with.dots
+--
+ERROR: Unrecognized name: @@sysvar [at 1:8]
+SELECT @@sysvar.with.dots;
+       ^
+==
+
+# Access a system variable in a namespace with dots
+SELECT {{@@`namespace.with.dots`.sysvar|@@`namespace.with.dots.sysvar`|@@`namespace`.`with`.`dots`.`sysvar`}};
+--
+ALTERNATION GROUP: @@`namespace.with.dots`.sysvar
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 := SystemVariable(`namespace.with.dots`.sysvar, type=STRING)
+    +-input_scan=
+      +-SingleRowScan
+--
+ALTERNATION GROUP: @@`namespace.with.dots.sysvar`
+--
+ERROR: Unrecognized name: @@`namespace.with.dots.sysvar` [at 1:8]
+SELECT @@`namespace.with.dots.sysvar`;
+       ^
+--
+ALTERNATION GROUP: @@`namespace`.`with`.`dots`.`sysvar`
+--
+ERROR: Unrecognized name: @@namespace [at 1:8]
+SELECT @@`namespace`.`with`.`dots`.`sysvar`;
+       ^
+==
+
+# ERROR: Enclose system variable with backticks, so it becomes a named constant
+SELECT `@@sysvar_foo`;
+--
+ERROR: Unrecognized name: `@@sysvar_foo`; Did you mean `@@sysvar1`? [at 1:8]
+SELECT `@@sysvar_foo`;
+       ^
+==
+
+# Select a named constant that starts with the @@ prefix
+# This is allowed, since a named constant with this name is in the catalog.
+SELECT `@@sysvar1`;
+--
+QueryStmt
++-output_column_list=
+| +-$query.@@sysvar1#1 AS `@@sysvar1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.@@sysvar1#1]
+    +-expr_list=
+    | +-@@sysvar1#1 := Constant(@@sysvar1, type=INT64, value=8)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Select a named constant in a namespace that starts with the @@ prefix.
+# This is allowed, since the catalog actually has a named constant with this
+# name.
+SELECT `@@nested_catalog`.sysvar2;
+--
+QueryStmt
++-output_column_list=
+| +-$query.sysvar2#1 AS sysvar2 [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.sysvar2#1]
+    +-expr_list=
+    | +-sysvar2#1 := Constant(@@nested_catalog.sysvar2, type=INT64, value=8)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# ERROR: Use system variable of wrong type
+SELECT STARTS_WITH(@@int64_system_variable, 'a');
+--
+ERROR: No matching signature for function STARTS_WITH
+  Argument types: INT64, STRING
+  Signature: STARTS_WITH(STRING, STRING)
+    Argument 1: Unable to coerce type INT64 to expected type STRING
+  Signature: STARTS_WITH(BYTES, BYTES)
+    Argument 1: Unable to coerce type INT64 to expected type BYTES [at 1:8]
+SELECT STARTS_WITH(@@int64_system_variable, 'a');
+       ^
+==
+
+# System variables with three-part name (including backtick corner cases)
+SELECT @@sysvar.part1.part2, @@`sysvar.part1.part2`;
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [STRING]
+| +-$query.$col2#2 AS `$col2` [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=$query.[$col1#1, $col2#2]
+    +-expr_list=
+    | +-$col1#1 := SystemVariable(sysvar.part1.part2, type=STRING)
+    | +-$col2#2 := SystemVariable(`sysvar.part1.part2`, type=STRING)
+    +-input_scan=
+      +-SingleRowScan

@@ -2,7 +2,7 @@
 
 We are not currently accepting external code contributions to this project.
 Please feel free to file bugs and feature requests using
-[GitHub's issue tracker](https://github.com/google/zetasql/issues/new).
+[GitHub's issue tracker](https://github.com/google/googlesql/issues/new).
 
 ## Contributor License Agreement
 

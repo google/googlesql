@@ -5,7 +5,7 @@
 # Table-valued functions 
 <a id="tvfs"></a>
 
-ZetaSQL supports table-valued functions (TVFs).
+GoogleSQL supports table-valued functions (TVFs).
 A TVF returns an entire output table instead of
 a single scalar value, and appears in the `FROM` clause like a table subquery.
 
@@ -13,7 +13,7 @@ a single scalar value, and appears in the `FROM` clause like a table subquery.
 
 You can create a TVF using the following syntax:
 
-```zetasql
+```googlesql
 CREATE
   [ OR REPLACE ]
   { TEMPORARY | TEMP } TABLE FUNCTION
@@ -43,7 +43,7 @@ column_declaration:
 
     + `parameter_name`: The name of the parameter.
 
-    + `data_type`: A ZetaSQL [data type][data-types].
+    + `data_type`: A GoogleSQL [data type][data-types].
 
     + `ANY TYPE`: The function will accept an argument of any type for this
       function parameter. If more than one parameter includes `ANY TYPE`,
@@ -68,7 +68,7 @@ column_declaration:
     function parameters must also have default values.
 +   `RETURNS TABLE`: Specifies the schema of the table that a table-valued
     function returns as a comma-separated list of `column_name` and `TYPE`
-    pairs. If `RETURNS TABLE` is absent, ZetaSQL infers the
+    pairs. If `RETURNS TABLE` is absent, GoogleSQL infers the
     output schema from the `AS query` statement in the function body.
 +   `AS query`: If you want to create a SQL TVF, specifies the SQL query to run.
 +   `LANGUAGE ... AS`: If you want to create an external TVF, specifies the
@@ -81,7 +81,7 @@ column_declaration:
 
 When a TVF with function parameters is called, arguments must be passed in for
 all function parameters that don't have default values. An argument can be of
-any supported ZetaSQL type or table, but must be coercible to the
+any supported GoogleSQL type or table, but must be coercible to the
 related function parameter's type.
 
 For non-table arguments, you can optionally include default arguments with the
@@ -94,7 +94,7 @@ arguments that have default values.
 Specify a table argument the same way you specify the fields of a
 [STRUCT][data-types-struct].
 
-```zetasql
+```googlesql
 parameter_name TABLE<column_name data_type [, ...]>
 ```
 
@@ -103,14 +103,14 @@ in which each row
 is a single column of a specific type. To specify a value table as an argument,
 include only the `data_type`, leaving out the `column_name`:
 
-```zetasql
+```googlesql
 parameter_name TABLE<data_type>
 ```
 
 In many cases, the `data_type` of the single column in the value table is a
 protocol buffer; for example:
 
-```zetasql
+```googlesql
 CREATE TEMP TABLE FUNCTION AggregatedMovieLogs(
   TicketPurchases TABLE<analysis_conduit.codelab.MovieTicketPurchase>)
 ```
@@ -128,7 +128,7 @@ of a range of rows from the Customer table. The first returns all rows for a
 range of `CustomerIds`; the second calls the first function and applies an
 additional filter based on `CustomerType`.
 
-```zetasql
+```googlesql
 CREATE TEMP TABLE FUNCTION CustomerRange(MinID INT64, MaxID INT64)
 AS (
   SELECT *
@@ -152,7 +152,7 @@ AS (
 The following function returns all rows from the input table if the first
 argument is greater than the second argument; otherwise it returns no rows.
 
-```zetasql
+```googlesql
 CREATE TEMP TABLE FUNCTION MyFunction(
      first_value ANY TYPE,
      second_value ANY TYPE,
@@ -168,7 +168,7 @@ and returns rows from the table where the predicate evaluates to true. The input
 table `SelectedCustomers` must contain a column named `creation_time`, and
 `creation_time` must be a numeric type, or the function will return an error.
 
-```zetasql
+```googlesql
 CREATE TEMP TABLE FUNCTION CustomerCreationTimeRange(
     min_creation_time INT64,
     max_creation_time INT64,
@@ -188,7 +188,7 @@ To call a TVF, see [Table function calls][table-function-calls].
 
 A templated function parameter can match more than one argument type at
 function call time. If a function signature includes a
-templated function parameter, ZetaSQL allows function calls
+templated function parameter, GoogleSQL allows function calls
 to pass to the function any argument type as long as the function body is
 valid for that argument type.
 
@@ -198,15 +198,15 @@ valid for that argument type.
 
 [tvf-syntax]: #tvf_structure
 
-[table-function-calls]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#table_function_calls
+[table-function-calls]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#table_function_calls
 
 [templated-parameters]: #templated_function_parameters
 
-[data-types]: https://github.com/google/zetasql/blob/master/docs/data-types.md
+[data-types]: https://github.com/google/googlesql/blob/master/docs/data-types.md
 
-[data-types-struct]: https://github.com/google/zetasql/blob/master/docs/data-types.md#struct_type
+[data-types-struct]: https://github.com/google/googlesql/blob/master/docs/data-types.md#struct_type
 
-[datamodel-value-tables]: https://github.com/google/zetasql/blob/master/docs/data-model.md#value_tables
+[datamodel-value-tables]: https://github.com/google/googlesql/blob/master/docs/data-model.md#value_tables
 
 <!-- mdlint on -->
 

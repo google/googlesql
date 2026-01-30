@@ -4,7 +4,7 @@
 
 # Mathematical functions
 
-ZetaSQL supports mathematical functions.
+GoogleSQL supports mathematical functions.
 All mathematical functions have the following behaviors:
 
 +  They return `NULL` if any of the input parameters is `NULL`.
@@ -170,7 +170,7 @@ All mathematical functions have the following behaviors:
   <tbody>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/mathematical_functions.md#abs"><code>ABS</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/mathematical_functions.md#abs"><code>ABS</code></a>
 </td>
   <td>
     Computes the absolute value of <code>X</code>.
@@ -178,7 +178,7 @@ All mathematical functions have the following behaviors:
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/mathematical_functions.md#acos"><code>ACOS</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/mathematical_functions.md#acos"><code>ACOS</code></a>
 </td>
   <td>
     Computes the inverse cosine of <code>X</code>.
@@ -186,7 +186,7 @@ All mathematical functions have the following behaviors:
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/mathematical_functions.md#acosh"><code>ACOSH</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/mathematical_functions.md#acosh"><code>ACOSH</code></a>
 </td>
   <td>
     Computes the inverse hyperbolic cosine of <code>X</code>.
@@ -194,7 +194,7 @@ All mathematical functions have the following behaviors:
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/mathematical_functions.md#asin"><code>ASIN</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/mathematical_functions.md#asin"><code>ASIN</code></a>
 </td>
   <td>
     Computes the inverse sine of <code>X</code>.
@@ -202,7 +202,7 @@ All mathematical functions have the following behaviors:
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/mathematical_functions.md#asinh"><code>ASINH</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/mathematical_functions.md#asinh"><code>ASINH</code></a>
 </td>
   <td>
     Computes the inverse hyperbolic sine of <code>X</code>.
@@ -210,7 +210,7 @@ All mathematical functions have the following behaviors:
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/mathematical_functions.md#atan"><code>ATAN</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/mathematical_functions.md#atan"><code>ATAN</code></a>
 </td>
   <td>
     Computes the inverse tangent of <code>X</code>.
@@ -218,7 +218,7 @@ All mathematical functions have the following behaviors:
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/mathematical_functions.md#atan2"><code>ATAN2</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/mathematical_functions.md#atan2"><code>ATAN2</code></a>
 </td>
   <td>
     Computes the inverse tangent of <code>X/Y</code>, using the signs of
@@ -227,7 +227,7 @@ All mathematical functions have the following behaviors:
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/mathematical_functions.md#atanh"><code>ATANH</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/mathematical_functions.md#atanh"><code>ATANH</code></a>
 </td>
   <td>
     Computes the inverse hyperbolic tangent of <code>X</code>.
@@ -235,30 +235,30 @@ All mathematical functions have the following behaviors:
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/aggregate_functions.md#avg"><code>AVG</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/aggregate_functions.md#avg"><code>AVG</code></a>
 </td>
   <td>
     Gets the average of non-<code>NULL</code> values.
-    <br>For more information, see <a href="https://github.com/google/zetasql/blob/master/docs/aggregate_functions.md">Aggregate functions</a>.
+    <br>For more information, see <a href="https://github.com/google/googlesql/blob/master/docs/aggregate_functions.md">Aggregate functions</a>.
 
   </td>
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/aggregate-dp-functions.md#dp_avg"><code>AVG</code> (Differential Privacy)</a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/aggregate-dp-functions.md#dp_avg"><code>AVG</code> (Differential Privacy)</a>
 </td>
   <td>
     <code>DIFFERENTIAL_PRIVACY</code>-supported <code>AVG</code>.<br/><br/>
     Gets the differentially-private average of non-<code>NULL</code>,
     non-<code>NaN</code> values in a query with a
     <code>DIFFERENTIAL_PRIVACY</code> clause.
-    <br><br>For more information, see <a href="https://github.com/google/zetasql/blob/master/docs/aggregate-dp-functions.md">Differential privacy functions</a>.
+    <br><br>For more information, see <a href="https://github.com/google/googlesql/blob/master/docs/aggregate-dp-functions.md">Differential privacy functions</a>.
 
   </td>
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/mathematical_functions.md#cbrt"><code>CBRT</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/mathematical_functions.md#cbrt"><code>CBRT</code></a>
 </td>
   <td>
     Computes the cube root of <code>X</code>.
@@ -266,7 +266,7 @@ All mathematical functions have the following behaviors:
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/mathematical_functions.md#ceil"><code>CEIL</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/mathematical_functions.md#ceil"><code>CEIL</code></a>
 </td>
   <td>
     Gets the smallest integral value that isn't less than <code>X</code>.
@@ -274,7 +274,7 @@ All mathematical functions have the following behaviors:
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/mathematical_functions.md#ceiling"><code>CEILING</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/mathematical_functions.md#ceiling"><code>CEILING</code></a>
 </td>
   <td>
     Synonym of <code>CEIL</code>.
@@ -282,7 +282,7 @@ All mathematical functions have the following behaviors:
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/mathematical_functions.md#cos"><code>COS</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/mathematical_functions.md#cos"><code>COS</code></a>
 </td>
   <td>
     Computes the cosine of <code>X</code>.
@@ -290,7 +290,7 @@ All mathematical functions have the following behaviors:
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/mathematical_functions.md#cosh"><code>COSH</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/mathematical_functions.md#cosh"><code>COSH</code></a>
 </td>
   <td>
     Computes the hyperbolic cosine of <code>X</code>.
@@ -298,13 +298,13 @@ All mathematical functions have the following behaviors:
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/mathematical_functions.md#cosine_distance"><code>COSINE_DISTANCE</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/mathematical_functions.md#cosine_distance"><code>COSINE_DISTANCE</code></a>
 </td>
   <td>Computes the cosine distance between two vectors.</td>
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/mathematical_functions.md#cot"><code>COT</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/mathematical_functions.md#cot"><code>COT</code></a>
 </td>
   <td>
     Computes the cotangent of <code>X</code>.
@@ -312,7 +312,7 @@ All mathematical functions have the following behaviors:
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/mathematical_functions.md#coth"><code>COTH</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/mathematical_functions.md#coth"><code>COTH</code></a>
 </td>
   <td>
     Computes the hyperbolic cotangent of <code>X</code>.
@@ -320,7 +320,7 @@ All mathematical functions have the following behaviors:
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/mathematical_functions.md#csc"><code>CSC</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/mathematical_functions.md#csc"><code>CSC</code></a>
 </td>
   <td>
     Computes the cosecant of <code>X</code>.
@@ -328,7 +328,7 @@ All mathematical functions have the following behaviors:
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/mathematical_functions.md#csch"><code>CSCH</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/mathematical_functions.md#csch"><code>CSCH</code></a>
 </td>
   <td>
     Computes the hyperbolic cosecant of <code>X</code>.
@@ -336,7 +336,7 @@ All mathematical functions have the following behaviors:
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/mathematical_functions.md#div"><code>DIV</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/mathematical_functions.md#div"><code>DIV</code></a>
 </td>
   <td>
     Divides integer <code>X</code> by integer <code>Y</code>.
@@ -344,7 +344,7 @@ All mathematical functions have the following behaviors:
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/mathematical_functions.md#exp"><code>EXP</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/mathematical_functions.md#exp"><code>EXP</code></a>
 </td>
   <td>
     Computes <code>e</code> to the power of <code>X</code>.
@@ -352,13 +352,13 @@ All mathematical functions have the following behaviors:
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/mathematical_functions.md#euclidean_distance"><code>EUCLIDEAN_DISTANCE</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/mathematical_functions.md#euclidean_distance"><code>EUCLIDEAN_DISTANCE</code></a>
 </td>
   <td>Computes the Euclidean distance between two vectors.</td>
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/mathematical_functions.md#floor"><code>FLOOR</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/mathematical_functions.md#floor"><code>FLOOR</code></a>
 </td>
   <td>
     Gets the largest integral value that isn't greater than <code>X</code>.
@@ -366,7 +366,7 @@ All mathematical functions have the following behaviors:
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/mathematical_functions.md#greatest"><code>GREATEST</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/mathematical_functions.md#greatest"><code>GREATEST</code></a>
 </td>
   <td>
     Gets the greatest value among <code>X1,...,XN</code>.
@@ -374,7 +374,7 @@ All mathematical functions have the following behaviors:
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/mathematical_functions.md#ieee_divide"><code>IEEE_DIVIDE</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/mathematical_functions.md#ieee_divide"><code>IEEE_DIVIDE</code></a>
 </td>
   <td>
     Divides <code>X</code> by <code>Y</code>, but doesn't generate errors for
@@ -383,7 +383,7 @@ All mathematical functions have the following behaviors:
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/mathematical_functions.md#is_inf"><code>IS_INF</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/mathematical_functions.md#is_inf"><code>IS_INF</code></a>
 </td>
   <td>
     Checks if <code>X</code> is positive or negative infinity.
@@ -391,7 +391,7 @@ All mathematical functions have the following behaviors:
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/mathematical_functions.md#is_nan"><code>IS_NAN</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/mathematical_functions.md#is_nan"><code>IS_NAN</code></a>
 </td>
   <td>
     Checks if <code>X</code> is a <code>NaN</code> value.
@@ -399,7 +399,7 @@ All mathematical functions have the following behaviors:
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/mathematical_functions.md#least"><code>LEAST</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/mathematical_functions.md#least"><code>LEAST</code></a>
 </td>
   <td>
     Gets the least value among <code>X1,...,XN</code>.
@@ -407,7 +407,7 @@ All mathematical functions have the following behaviors:
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/mathematical_functions.md#ln"><code>LN</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/mathematical_functions.md#ln"><code>LN</code></a>
 </td>
   <td>
     Computes the natural logarithm of <code>X</code>.
@@ -415,7 +415,7 @@ All mathematical functions have the following behaviors:
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/mathematical_functions.md#log"><code>LOG</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/mathematical_functions.md#log"><code>LOG</code></a>
 </td>
   <td>
    Computes the natural logarithm of <code>X</code> or the logarithm of
@@ -424,7 +424,7 @@ All mathematical functions have the following behaviors:
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/mathematical_functions.md#log10"><code>LOG10</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/mathematical_functions.md#log10"><code>LOG10</code></a>
 </td>
   <td>
     Computes the natural logarithm of <code>X</code> to base 10.
@@ -432,17 +432,17 @@ All mathematical functions have the following behaviors:
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/aggregate_functions.md#max"><code>MAX</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/aggregate_functions.md#max"><code>MAX</code></a>
 </td>
   <td>
     Gets the maximum non-<code>NULL</code> value.
-    <br>For more information, see <a href="https://github.com/google/zetasql/blob/master/docs/aggregate_functions.md">Aggregate functions</a>.
+    <br>For more information, see <a href="https://github.com/google/googlesql/blob/master/docs/aggregate_functions.md">Aggregate functions</a>.
 
   </td>
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/mathematical_functions.md#mod"><code>MOD</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/mathematical_functions.md#mod"><code>MOD</code></a>
 </td>
   <td>
     Gets the remainder of the division of <code>X</code> by <code>Y</code>.
@@ -450,7 +450,7 @@ All mathematical functions have the following behaviors:
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/mathematical_functions.md#pi"><code>PI</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/mathematical_functions.md#pi"><code>PI</code></a>
 </td>
   <td>
     Produces the mathematical constant π as a
@@ -459,7 +459,7 @@ All mathematical functions have the following behaviors:
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/mathematical_functions.md#pi_bignumeric"><code>PI_BIGNUMERIC</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/mathematical_functions.md#pi_bignumeric"><code>PI_BIGNUMERIC</code></a>
 </td>
   <td>
     Produces the mathematical constant π as a <code>BIGNUMERIC</code> value.
@@ -467,7 +467,7 @@ All mathematical functions have the following behaviors:
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/mathematical_functions.md#pi_numeric"><code>PI_NUMERIC</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/mathematical_functions.md#pi_numeric"><code>PI_NUMERIC</code></a>
 </td>
   <td>
     Produces the mathematical constant π as a <code>NUMERIC</code> value.
@@ -475,7 +475,7 @@ All mathematical functions have the following behaviors:
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/mathematical_functions.md#pow"><code>POW</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/mathematical_functions.md#pow"><code>POW</code></a>
 </td>
   <td>
     Produces the value of <code>X</code> raised to the power of <code>Y</code>.
@@ -483,7 +483,7 @@ All mathematical functions have the following behaviors:
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/mathematical_functions.md#power"><code>POWER</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/mathematical_functions.md#power"><code>POWER</code></a>
 </td>
   <td>
     Synonym of <code>POW</code>.
@@ -491,7 +491,7 @@ All mathematical functions have the following behaviors:
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/mathematical_functions.md#rand"><code>RAND</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/mathematical_functions.md#rand"><code>RAND</code></a>
 </td>
   <td>
     Generates a pseudo-random value of type
@@ -501,7 +501,7 @@ All mathematical functions have the following behaviors:
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/mathematical_functions.md#range_bucket"><code>RANGE_BUCKET</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/mathematical_functions.md#range_bucket"><code>RANGE_BUCKET</code></a>
 </td>
   <td>
     Scans through a sorted array and returns the 0-based position
@@ -511,7 +511,7 @@ All mathematical functions have the following behaviors:
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/mathematical_functions.md#round"><code>ROUND</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/mathematical_functions.md#round"><code>ROUND</code></a>
 </td>
   <td>
     Rounds <code>X</code> to the nearest integer or rounds <code>X</code>
@@ -520,7 +520,7 @@ All mathematical functions have the following behaviors:
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/mathematical_functions.md#safe_add"><code>SAFE_ADD</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/mathematical_functions.md#safe_add"><code>SAFE_ADD</code></a>
 </td>
   <td>
     Equivalent to the addition operator (<code>X + Y</code>), but returns
@@ -529,7 +529,7 @@ All mathematical functions have the following behaviors:
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/mathematical_functions.md#safe_divide"><code>SAFE_DIVIDE</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/mathematical_functions.md#safe_divide"><code>SAFE_DIVIDE</code></a>
 </td>
   <td>
     Equivalent to the division operator (<code>X / Y</code>), but returns
@@ -538,7 +538,7 @@ All mathematical functions have the following behaviors:
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/mathematical_functions.md#safe_multiply"><code>SAFE_MULTIPLY</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/mathematical_functions.md#safe_multiply"><code>SAFE_MULTIPLY</code></a>
 </td>
   <td>
     Equivalent to the multiplication operator (<code>X * Y</code>),
@@ -547,7 +547,7 @@ All mathematical functions have the following behaviors:
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/mathematical_functions.md#safe_negate"><code>SAFE_NEGATE</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/mathematical_functions.md#safe_negate"><code>SAFE_NEGATE</code></a>
 </td>
   <td>
     Equivalent to the unary minus operator (<code>-X</code>), but returns
@@ -556,7 +556,7 @@ All mathematical functions have the following behaviors:
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/mathematical_functions.md#safe_subtract"><code>SAFE_SUBTRACT</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/mathematical_functions.md#safe_subtract"><code>SAFE_SUBTRACT</code></a>
 </td>
   <td>
     Equivalent to the subtraction operator (<code>X - Y</code>), but
@@ -565,7 +565,7 @@ All mathematical functions have the following behaviors:
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/mathematical_functions.md#sec"><code>SEC</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/mathematical_functions.md#sec"><code>SEC</code></a>
 </td>
   <td>
     Computes the secant of <code>X</code>.
@@ -573,7 +573,7 @@ All mathematical functions have the following behaviors:
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/mathematical_functions.md#sech"><code>SECH</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/mathematical_functions.md#sech"><code>SECH</code></a>
 </td>
   <td>
     Computes the hyperbolic secant of <code>X</code>.
@@ -581,7 +581,7 @@ All mathematical functions have the following behaviors:
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/mathematical_functions.md#sign"><code>SIGN</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/mathematical_functions.md#sign"><code>SIGN</code></a>
 </td>
   <td>
     Produces -1 , 0, or +1 for negative, zero, and positive arguments
@@ -590,7 +590,7 @@ All mathematical functions have the following behaviors:
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/mathematical_functions.md#sin"><code>SIN</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/mathematical_functions.md#sin"><code>SIN</code></a>
 </td>
   <td>
     Computes the sine of <code>X</code>.
@@ -598,7 +598,7 @@ All mathematical functions have the following behaviors:
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/mathematical_functions.md#sinh"><code>SINH</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/mathematical_functions.md#sinh"><code>SINH</code></a>
 </td>
   <td>
     Computes the hyperbolic sine of <code>X</code>.
@@ -606,7 +606,7 @@ All mathematical functions have the following behaviors:
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/mathematical_functions.md#sqrt"><code>SQRT</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/mathematical_functions.md#sqrt"><code>SQRT</code></a>
 </td>
   <td>
     Computes the square root of <code>X</code>.
@@ -614,30 +614,30 @@ All mathematical functions have the following behaviors:
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/aggregate_functions.md#sum"><code>SUM</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/aggregate_functions.md#sum"><code>SUM</code></a>
 </td>
   <td>
     Gets the sum of non-<code>NULL</code> values.
-    <br>For more information, see <a href="https://github.com/google/zetasql/blob/master/docs/aggregate_functions.md">Aggregate functions</a>.
+    <br>For more information, see <a href="https://github.com/google/googlesql/blob/master/docs/aggregate_functions.md">Aggregate functions</a>.
 
   </td>
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/aggregate-dp-functions.md#dp_sum"><code>SUM</code> (Differential Privacy)</a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/aggregate-dp-functions.md#dp_sum"><code>SUM</code> (Differential Privacy)</a>
 </td>
   <td>
     <code>DIFFERENTIAL_PRIVACY</code>-supported <code>SUM</code>.<br/><br/>
     Gets the differentially-private sum of non-<code>NULL</code>,
     non-<code>NaN</code> values in a query with a
     <code>DIFFERENTIAL_PRIVACY</code> clause.
-    <br><br>For more information, see <a href="https://github.com/google/zetasql/blob/master/docs/aggregate-dp-functions.md">Differential privacy functions</a>.
+    <br><br>For more information, see <a href="https://github.com/google/googlesql/blob/master/docs/aggregate-dp-functions.md">Differential privacy functions</a>.
 
   </td>
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/mathematical_functions.md#tan"><code>TAN</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/mathematical_functions.md#tan"><code>TAN</code></a>
 </td>
   <td>
     Computes the tangent of <code>X</code>.
@@ -645,7 +645,7 @@ All mathematical functions have the following behaviors:
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/mathematical_functions.md#tanh"><code>TANH</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/mathematical_functions.md#tanh"><code>TANH</code></a>
 </td>
   <td>
     Computes the hyperbolic tangent of <code>X</code>.
@@ -653,7 +653,7 @@ All mathematical functions have the following behaviors:
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/mathematical_functions.md#trunc"><code>TRUNC</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/mathematical_functions.md#trunc"><code>TRUNC</code></a>
 </td>
   <td>
     Rounds a number like <code>ROUND(X)</code> or <code>ROUND(X, N)</code>,
@@ -1084,7 +1084,7 @@ Supports the `SAFE.` prefix.
 
 **Example**
 
-```zetasql
+```googlesql
 SELECT CBRT(27) AS cube_root;
 
 /*--------------------+
@@ -1094,7 +1094,7 @@ SELECT CBRT(27) AS cube_root;
  +--------------------*/
 ```
 
-[conversion-rules]: https://github.com/google/zetasql/blob/master/docs/conversion_rules.md
+[conversion-rules]: https://github.com/google/googlesql/blob/master/docs/conversion_rules.md
 
 ## `CEIL`
 
@@ -1255,7 +1255,7 @@ Generates an error if overflow occurs.
 
 ## `COSINE_DISTANCE`
 
-```zetasql
+```googlesql
 COSINE_DISTANCE(vector1, vector2)
 ```
 
@@ -1324,12 +1324,12 @@ Computes the [cosine distance][wiki-cosine-distance] between two vectors.
     sparse vector. For example, the following sparse vector and
     non-sparse vector are equivalent:
 
-    ```zetasql
+    ```googlesql
     -- sparse vector ARRAY<STRUCT<INT64, DOUBLE>>
     [(1, 10.0), (2, 30.0), (5, 40.0)]
     ```
 
-    ```zetasql
+    ```googlesql
     -- vector ARRAY<DOUBLE>
     [0.0, 10.0, 30.0, 0.0, 0.0, 40.0]
     ```
@@ -1337,11 +1337,11 @@ Computes the [cosine distance][wiki-cosine-distance] between two vectors.
     In a sparse vector, dimension-magnitude pairs don't need to be in any
     particular order. The following sparse vectors are equivalent:
 
-    ```zetasql
+    ```googlesql
     [('a', 10.0), ('b', 30.0), ('d', 40.0)]
     ```
 
-    ```zetasql
+    ```googlesql
     [('d', 40.0), ('a', 10.0), ('b', 30.0)]
     ```
 +   Both non-sparse vectors
@@ -1362,7 +1362,7 @@ Computes the [cosine distance][wiki-cosine-distance] between two vectors.
 In the following example, non-sparsevectors
 are used to compute the cosine distance:
 
-```zetasql
+```googlesql
 SELECT COSINE_DISTANCE([1.0, 2.0], [3.0, 4.0]) AS results;
 
 /*----------+
@@ -1375,7 +1375,7 @@ SELECT COSINE_DISTANCE([1.0, 2.0], [3.0, 4.0]) AS results;
 In the following example, sparse vectors are used to compute the
 cosine distance:
 
-```zetasql
+```googlesql
 SELECT COSINE_DISTANCE(
  [(1, 1.0), (2, 2.0)],
  [(2, 4.0), (1, 3.0)]) AS results;
@@ -1391,19 +1391,19 @@ The ordering of numeric values in a vector doesn't impact the results
 produced by this function. For example these queries produce the same results
 even though the numeric values in each vector is in a different order:
 
-```zetasql
+```googlesql
 SELECT COSINE_DISTANCE([1.0, 2.0], [3.0, 4.0]) AS results;
 ```
 
-```zetasql
+```googlesql
 SELECT COSINE_DISTANCE([2.0, 1.0], [4.0, 3.0]) AS results;
 ```
 
-```zetasql
+```googlesql
 SELECT COSINE_DISTANCE([(1, 1.0), (2, 2.0)], [(1, 3.0), (2, 4.0)]) AS results;
 ```
 
-```zetasql
+```googlesql
  /*----------+
   | results  |
   +----------+
@@ -1414,12 +1414,12 @@ SELECT COSINE_DISTANCE([(1, 1.0), (2, 2.0)], [(1, 3.0), (2, 4.0)]) AS results;
 In the following example, the function can't compute cosine distance against
 the first vector, which is a zero vector:
 
-```zetasql
+```googlesql
 -- ERROR
 SELECT COSINE_DISTANCE([0.0, 0.0], [3.0, 4.0]) AS results;
 ```
 
-```zetasql
+```googlesql
 -- ERROR
 SELECT COSINE_DISTANCE([(1, 0.0), (2, 0.0)], [(1, 3.0), (2, 4.0)]) AS results;
 ```
@@ -1428,7 +1428,7 @@ Both non-sparse vectors must have the same
 dimensions. If not, an error is produced. In the following example, the
 first vector has two dimensions and the second vector has three:
 
-```zetasql
+```googlesql
 -- ERROR
 SELECT COSINE_DISTANCE([9.0, 7.0], [8.0, 4.0, 5.0]) AS results;
 ```
@@ -1436,7 +1436,7 @@ SELECT COSINE_DISTANCE([9.0, 7.0], [8.0, 4.0, 5.0]) AS results;
 If you use sparse vectors and you repeat a dimension, an error is
 produced:
 
-```zetasql
+```googlesql
 -- ERROR
 SELECT COSINE_DISTANCE(
   [(1, 9.0), (2, 7.0), (2, 8.0)], [(1, 8.0), (2, 4.0), (3, 5.0)]) AS results;
@@ -1494,7 +1494,7 @@ Supports the `SAFE.` prefix.
 
 **Example**
 
-```zetasql
+```googlesql
 SELECT COT(1) AS a, SAFE.COT(0) AS b;
 
 /*---------------------+------+
@@ -1504,7 +1504,7 @@ SELECT COT(1) AS a, SAFE.COT(0) AS b;
  +---------------------+------*/
 ```
 
-[conversion-rules]: https://github.com/google/zetasql/blob/master/docs/conversion_rules.md
+[conversion-rules]: https://github.com/google/googlesql/blob/master/docs/conversion_rules.md
 
 ## `COTH`
 
@@ -1556,7 +1556,7 @@ Supports the `SAFE.` prefix.
 
 **Example**
 
-```zetasql
+```googlesql
 SELECT COTH(1) AS a, SAFE.COTH(0) AS b;
 
 /*----------------+------+
@@ -1566,7 +1566,7 @@ SELECT COTH(1) AS a, SAFE.COTH(0) AS b;
  +----------------+------*/
 ```
 
-[conversion-rules]: https://github.com/google/zetasql/blob/master/docs/conversion_rules.md
+[conversion-rules]: https://github.com/google/googlesql/blob/master/docs/conversion_rules.md
 
 ## `CSC`
 
@@ -1618,7 +1618,7 @@ Supports the `SAFE.` prefix.
 
 **Example**
 
-```zetasql
+```googlesql
 SELECT CSC(100) AS a, CSC(-1) AS b, SAFE.CSC(0) AS c;
 
 /*----------------+-----------------+------+
@@ -1628,7 +1628,7 @@ SELECT CSC(100) AS a, CSC(-1) AS b, SAFE.CSC(0) AS c;
  +----------------+-----------------+------*/
 ```
 
-[conversion-rules]: https://github.com/google/zetasql/blob/master/docs/conversion_rules.md
+[conversion-rules]: https://github.com/google/googlesql/blob/master/docs/conversion_rules.md
 
 ## `CSCH`
 
@@ -1680,7 +1680,7 @@ Supports the `SAFE.` prefix.
 
 **Example**
 
-```zetasql
+```googlesql
 SELECT CSCH(0.5) AS a, CSCH(-2) AS b, SAFE.CSCH(0) AS c;
 
 /*----------------+----------------+------+
@@ -1690,7 +1690,7 @@ SELECT CSCH(0.5) AS a, CSCH(-2) AS b, SAFE.CSCH(0) AS c;
  +----------------+----------------+------*/
 ```
 
-[conversion-rules]: https://github.com/google/zetasql/blob/master/docs/conversion_rules.md
+[conversion-rules]: https://github.com/google/googlesql/blob/master/docs/conversion_rules.md
 
 ## `DIV`
 
@@ -1814,7 +1814,7 @@ result overflows.
 
 ## `EUCLIDEAN_DISTANCE`
 
-```zetasql
+```googlesql
 EUCLIDEAN_DISTANCE(vector1, vector2)
 ```
 
@@ -1883,12 +1883,12 @@ Computes the [Euclidean distance][wiki-euclidean-distance] between two vectors.
     sparse vector. For example, the following sparse vector and
     non-sparse vector are equivalent:
 
-    ```zetasql
+    ```googlesql
     -- sparse vector ARRAY<STRUCT<INT64, DOUBLE>>
     [(1, 10.0), (2, 30.0), (5, 40.0)]
     ```
 
-    ```zetasql
+    ```googlesql
     -- vector ARRAY<DOUBLE>
     [0.0, 10.0, 30.0, 0.0, 0.0, 40.0]
     ```
@@ -1896,11 +1896,11 @@ Computes the [Euclidean distance][wiki-euclidean-distance] between two vectors.
     In a sparse vector, dimension-magnitude pairs don't need to be in any
     particular order. The following sparse vectors are equivalent:
 
-    ```zetasql
+    ```googlesql
     [('a', 10.0), ('b', 30.0), ('d', 40.0)]
     ```
 
-    ```zetasql
+    ```googlesql
     [('d', 40.0), ('a', 10.0), ('b', 30.0)]
     ```
 +   Both non-sparse vectors
@@ -1921,7 +1921,7 @@ Computes the [Euclidean distance][wiki-euclidean-distance] between two vectors.
 In the following example, non-sparse vectors
 are used to compute the Euclidean distance:
 
-```zetasql
+```googlesql
 SELECT EUCLIDEAN_DISTANCE([1.0, 2.0], [3.0, 4.0]) AS results;
 
 /*----------+
@@ -1934,7 +1934,7 @@ SELECT EUCLIDEAN_DISTANCE([1.0, 2.0], [3.0, 4.0]) AS results;
 In the following example, sparse vectors are used to compute the
 Euclidean distance:
 
-```zetasql
+```googlesql
 SELECT EUCLIDEAN_DISTANCE(
  [(1, 1.0), (2, 2.0)],
  [(2, 4.0), (1, 3.0)]) AS results;
@@ -1950,19 +1950,19 @@ The ordering of magnitudes in a vector doesn't impact the results
 produced by this function. For example these queries produce the same results
 even though the magnitudes in each vector is in a different order:
 
-```zetasql
+```googlesql
 SELECT EUCLIDEAN_DISTANCE([1.0, 2.0], [3.0, 4.0]);
 ```
 
-```zetasql
+```googlesql
 SELECT EUCLIDEAN_DISTANCE([2.0, 1.0], [4.0, 3.0]);
 ```
 
-```zetasql
+```googlesql
 SELECT EUCLIDEAN_DISTANCE([(1, 1.0), (2, 2.0)], [(1, 3.0), (2, 4.0)]) AS results;
 ```
 
-```zetasql
+```googlesql
  /*----------+
   | results  |
   +----------+
@@ -1974,7 +1974,7 @@ Both non-sparse vectors must have the same
 dimensions. If not, an error is produced. In the following example, the first
 vector has two dimensions and the second vector has three:
 
-```zetasql
+```googlesql
 -- ERROR
 SELECT EUCLIDEAN_DISTANCE([9.0, 7.0], [8.0, 4.0, 5.0]) AS results;
 ```
@@ -1982,7 +1982,7 @@ SELECT EUCLIDEAN_DISTANCE([9.0, 7.0], [8.0, 4.0, 5.0]) AS results;
 If you use sparse vectors and you repeat a dimension, an error is
 produced:
 
-```zetasql
+```googlesql
 -- ERROR
 SELECT EUCLIDEAN_DISTANCE(
   [(1, 9.0), (2, 7.0), (2, 8.0)], [(1, 8.0), (2, 4.0), (3, 5.0)]) AS results;
@@ -2102,7 +2102,7 @@ the supertype must support ordering.
 
 This function supports specifying [collation][collation].
 
-[collation]: https://github.com/google/zetasql/blob/master/docs/collation-concepts.md
+[collation]: https://github.com/google/googlesql/blob/master/docs/collation-concepts.md
 
 **Return Data Types**
 
@@ -2283,7 +2283,7 @@ the supertype must support ordering.
 
 This function supports specifying [collation][collation].
 
-[collation]: https://github.com/google/zetasql/blob/master/docs/collation-concepts.md
+[collation]: https://github.com/google/googlesql/blob/master/docs/collation-concepts.md
 
 **Return Data Types**
 
@@ -2532,7 +2532,7 @@ table.
 
 ## `PI`
 
-```zetasql
+```googlesql
 PI()
 ```
 
@@ -2547,7 +2547,7 @@ value.
 
 **Example**
 
-```zetasql
+```googlesql
 SELECT PI() AS pi
 
 /*--------------------+
@@ -2559,7 +2559,7 @@ SELECT PI() AS pi
 
 ## `PI_BIGNUMERIC`
 
-```zetasql
+```googlesql
 PI_BIGNUMERIC()
 ```
 
@@ -2573,7 +2573,7 @@ Returns the mathematical constant `π` as a `BIGNUMERIC` value.
 
 **Example**
 
-```zetasql
+```googlesql
 SELECT PI_BIGNUMERIC() AS pi
 
 /*-----------------------------------------+
@@ -2585,7 +2585,7 @@ SELECT PI_BIGNUMERIC() AS pi
 
 ## `PI_NUMERIC`
 
-```zetasql
+```googlesql
 PI_NUMERIC()
 ```
 
@@ -2599,7 +2599,7 @@ Returns the mathematical constant `π` as a `NUMERIC` value.
 
 **Example**
 
-```zetasql
+```googlesql
 SELECT PI_NUMERIC() AS pi
 
 /*-------------+
@@ -2757,7 +2757,7 @@ the range of [0, 1), inclusive of 0 and exclusive of 1.
 
 ## `RANGE_BUCKET`
 
-```zetasql
+```googlesql
 RANGE_BUCKET(point, boundaries_array)
 ```
 
@@ -2771,40 +2771,40 @@ build partitions, histograms, business-defined rules, and more.
 
 +  If the point exists in the array, returns the index of the next larger value.
 
-   ```zetasql
+   ```googlesql
    RANGE_BUCKET(20, [0, 10, 20, 30, 40]) -- 3 is return value
    RANGE_BUCKET(20, [0, 10, 20, 20, 40, 40]) -- 4 is return value
    ```
 +  If the point doesn't exist in the array, but it falls between two values,
    returns the index of the larger value.
 
-   ```zetasql
+   ```googlesql
    RANGE_BUCKET(25, [0, 10, 20, 30, 40]) -- 3 is return value
    ```
 +  If the point is smaller than the first value in the array, returns 0.
 
-   ```zetasql
+   ```googlesql
    RANGE_BUCKET(-10, [5, 10, 20, 30, 40]) -- 0 is return value
    ```
 +  If the point is greater than or equal to the last value in the array,
    returns the length of the array.
 
-   ```zetasql
+   ```googlesql
    RANGE_BUCKET(80, [0, 10, 20, 30, 40]) -- 5 is return value
    ```
 +  If the array is empty, returns 0.
 
-   ```zetasql
+   ```googlesql
    RANGE_BUCKET(80, []) -- 0 is return value
    ```
 +  If the point is `NULL` or `NaN`, returns `NULL`.
 
-   ```zetasql
+   ```googlesql
    RANGE_BUCKET(NULL, [0, 10, 20, 30, 40]) -- NULL is return value
    ```
 +  The data type for the point and array must be compatible.
 
-   ```zetasql
+   ```googlesql
    RANGE_BUCKET('a', ['a', 'b', 'c', 'd']) -- 1 is return value
    RANGE_BUCKET(1.2, [1, 1.2, 1.4, 1.6]) -- 2 is return value
    RANGE_BUCKET(1.2, [1, 2, 4, 6]) -- execution failure
@@ -2814,12 +2814,12 @@ Execution failure occurs when:
 
 +  The array has a `NaN` or `NULL` value in it.
 
-   ```zetasql
+   ```googlesql
    RANGE_BUCKET(80, [NULL, 10, 20, 30, 40]) -- execution failure
    ```
 +  The array isn't sorted in ascending order.
 
-   ```zetasql
+   ```googlesql
    RANGE_BUCKET(30, [10, 30, 20, 40, 50]) -- execution failure
    ```
 
@@ -2845,7 +2845,7 @@ exist in each `age_group` bucket, based on a student's age:
 +  age_group 2 (age >= 20, age < 30)
 +  age_group 3 (age >= 30)
 
-```zetasql
+```googlesql
 WITH students AS
 (
   SELECT 9 AS age UNION ALL
@@ -2868,7 +2868,7 @@ GROUP BY 1
  +--------------+-------*/
 ```
 
-[data-type-properties]: https://github.com/google/zetasql/blob/master/docs/data-types.md#data_type_properties
+[data-type-properties]: https://github.com/google/googlesql/blob/master/docs/data-types.md#data_type_properties
 
 ## `ROUND`
 
@@ -3306,7 +3306,7 @@ that [coerces to `DOUBLE`][conversion-rules].
 
 **Example**
 
-```zetasql
+```googlesql
 SELECT SEC(100) AS a, SEC(-1) AS b;
 
 /*----------------+---------------+
@@ -3316,7 +3316,7 @@ SELECT SEC(100) AS a, SEC(-1) AS b;
  +----------------+---------------*/
 ```
 
-[conversion-rules]: https://github.com/google/zetasql/blob/master/docs/conversion_rules.md
+[conversion-rules]: https://github.com/google/googlesql/blob/master/docs/conversion_rules.md
 
 ## `SECH`
 
@@ -3364,7 +3364,7 @@ Never produces an error.
 
 **Example**
 
-```zetasql
+```googlesql
 SELECT SECH(0.5) AS a, SECH(-2) AS b, SECH(100) AS c;
 
 /*----------------+----------------+---------------------+
@@ -3374,7 +3374,7 @@ SELECT SECH(0.5) AS a, SECH(-2) AS b, SECH(100) AS c;
  +----------------+----------------+---------------------*/
 ```
 
-[conversion-rules]: https://github.com/google/zetasql/blob/master/docs/conversion_rules.md
+[conversion-rules]: https://github.com/google/googlesql/blob/master/docs/conversion_rules.md
 
 ## `SIGN`
 

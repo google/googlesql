@@ -1,0 +1,664 @@
+[load_proto_files=googlesql/testdata/test_schema.proto]
+[load_proto_names=googlesql_test.KitchenSinkPB]
+[prepare_database]
+CREATE TABLE Table1 AS
+SELECT cast(1 as int64) as primary_key, 1 AS key, ['one'] AS values  UNION ALL
+SELECT 2, 2, ['c', 'a']                UNION ALL
+SELECT 3, 3, ['y', 'z', 'x']           UNION ALL
+SELECT 4, 4, ['w', 'w', 'w', 'w']      UNION ALL
+SELECT 5, 0, ARRAY<STRING> []          UNION ALL
+SELECT 6, NULL, [CAST(NULL AS STRING)]
+--
+ARRAY<STRUCT<primary_key INT64, key INT64, values ARRAY<>>>[
+  {1, 1, ARRAY<STRING>["one"]},
+  {
+    2,
+    2,
+    ARRAY<STRING>["c", "a"]
+  },
+  {
+    3,
+    3,
+    ARRAY<STRING>["y", "z", "x"]
+  },
+  {
+    4,
+    4,
+    ARRAY<STRING>["w", "w", "w", "w"]
+  },
+  {5, 0, ARRAY<STRING>[]},
+  {6, NULL, ARRAY<STRING>[NULL]}
+]
+==
+
+# -----
+# LIMIT
+# -----
+
+[name=limit_0]
+SELECT a FROM (SELECT 1 a UNION ALL SELECT 2 UNION ALL SELECT 3) LIMIT 0
+--
+ARRAY<STRUCT<a INT64>>[]
+==
+[name=limit_1]
+SELECT COUNT(a) FROM (
+SELECT a FROM (SELECT 1.2 a UNION ALL SELECT 2.3 UNION ALL SELECT 3.4) LIMIT 1)
+--
+ARRAY<STRUCT<INT64>>[{1}]
+
+NOTE: Reference implementation reports non-determinism.
+==
+[name=limit_2]
+SELECT COUNT(a) FROM (
+SELECT a FROM (SELECT 1.2 a UNION ALL SELECT 2.3 UNION ALL SELECT 3.4) LIMIT 2)
+--
+ARRAY<STRUCT<INT64>>[{2}]
+
+NOTE: Reference implementation reports non-determinism.
+==
+[name=limit_1_same_values]
+SELECT a FROM (SELECT 'x' a UNION ALL SELECT 'x' UNION ALL SELECT 'x') LIMIT 1
+--
+ARRAY<STRUCT<a STRING>>[{"x"}]
+
+NOTE: Reference implementation reports non-determinism.
+==
+[name=limit_10_one_element]
+SELECT a FROM (SELECT "Hello, world!" a) LIMIT 10
+--
+ARRAY<STRUCT<a STRING>>[{"Hello, world!"}]
+==
+[name=limit_10_two_element]
+SELECT COUNT(a) FROM (
+SELECT a FROM (SELECT 'x' a UNION ALL SELECT 'y') LIMIT 10)
+--
+ARRAY<STRUCT<INT64>>[{2}]
+==
+[name=limit_1_empty_input]
+SELECT a FROM (SELECT 1 a) WHERE a > 10 LIMIT 1
+--
+ARRAY<STRUCT<a INT64>>[]
+==
+
+# ------------
+# LIMIT OFFSET
+# ------------
+
+[name=limit_0_offset_0]
+SELECT a FROM (SELECT 1 a) LIMIT 0 OFFSET 0
+--
+ARRAY<STRUCT<a INT64>>[]
+==
+[name=limit_1_offset_0]
+SELECT COUNT(a) FROM (
+SELECT a FROM (SELECT 1 a UNION ALL SELECT 2 UNION ALL SELECT 3) LIMIT 0 OFFSET 0)
+--
+ARRAY<STRUCT<INT64>>[{0}]
+==
+[name=limit_3_offset_0]
+SELECT COUNT(a) FROM (
+SELECT a FROM (SELECT 1 a UNION ALL SELECT 2 UNION ALL SELECT 3) LIMIT 3 OFFSET 0)
+--
+ARRAY<STRUCT<INT64>>[{3}]
+
+NOTE: Reference implementation reports non-determinism.
+==
+[name=limit_3_offset_1]
+SELECT COUNT(a) FROM (
+SELECT a FROM (SELECT 1 a UNION ALL SELECT 2 UNION ALL SELECT 3) LIMIT 3 OFFSET 1)
+--
+ARRAY<STRUCT<INT64>>[{2}]
+
+NOTE: Reference implementation reports non-determinism.
+==
+[name=limit_3_offset_2]
+SELECT COUNT(a) FROM (
+SELECT a FROM (SELECT 1 a UNION ALL SELECT 2 UNION ALL SELECT 3) LIMIT 3 OFFSET 2)
+--
+ARRAY<STRUCT<INT64>>[{1}]
+
+NOTE: Reference implementation reports non-determinism.
+==
+[name=limit_3_offset_3]
+SELECT a FROM (SELECT 'x' a UNION ALL SELECT 'y' UNION ALL SELECT 'z') LIMIT 3 OFFSET 3
+--
+ARRAY<STRUCT<a STRING>>[]
+==
+[name=limit_3_offset_4]
+SELECT a FROM (SELECT 1.1 a UNION ALL SELECT 2.2 UNION ALL SELECT 3.3) LIMIT 3 OFFSET 4
+--
+ARRAY<STRUCT<a DOUBLE>>[]
+==
+
+# --------------
+# ORDER BY LIMIT
+# --------------
+
+[name=orderby_limit_0]
+SELECT a FROM (SELECT 2.2 a UNION ALL SELECT 1.1 UNION ALL SELECT 3.3) ORDER BY a LIMIT 0
+--
+ARRAY<STRUCT<a DOUBLE>>[]
+==
+[name=orderby_limit_1]
+SELECT a FROM (SELECT 2.2 a UNION ALL SELECT 1.1 UNION ALL SELECT 3.3) ORDER BY a LIMIT 1
+--
+ARRAY<STRUCT<a DOUBLE>>[{1.1}]
+==
+[name=orderby_limit_2]
+SELECT a FROM (SELECT 2.2 a UNION ALL SELECT 1.1 UNION ALL SELECT 3.3) ORDER BY a LIMIT 2
+--
+ARRAY<STRUCT<a DOUBLE>>[known order:{1.1}, {2.2}]
+==
+[name=orderby_limit_3]
+SELECT a FROM (SELECT 3.3 a UNION ALL SELECT 1.1 UNION ALL SELECT 2.2) ORDER BY a LIMIT 3
+--
+ARRAY<STRUCT<a DOUBLE>>[known order:{1.1}, {2.2}, {3.3}]
+==
+[name=orderby_limit_4]
+SELECT a FROM (SELECT 3.3 a UNION ALL SELECT 1.1 UNION ALL SELECT 2.2) ORDER BY a LIMIT 4
+--
+ARRAY<STRUCT<a DOUBLE>>[known order:{1.1}, {2.2}, {3.3}]
+==
+[name=orderby_desc_limit_1]
+SELECT a FROM (SELECT 3.3 a UNION ALL SELECT 1.1 UNION ALL SELECT 2.2) ORDER BY a DESC LIMIT 1
+--
+ARRAY<STRUCT<a DOUBLE>>[{3.3}]
+==
+
+# ---------------------
+# ORDER BY LIMIT OFFSET
+# ---------------------
+
+[name=orderby_limit_1_offset_0]
+SELECT a FROM (SELECT 'b' a UNION ALL SELECT 'c' UNION ALL SELECT 'a') ORDER BY a LIMIT 1 OFFSET 0
+--
+ARRAY<STRUCT<a STRING>>[{"a"}]
+==
+[name=orderby_limit_1_offset_1]
+SELECT a FROM (SELECT 'b' a UNION ALL SELECT 'c' UNION ALL SELECT 'a') ORDER BY a LIMIT 1 OFFSET 1
+--
+ARRAY<STRUCT<a STRING>>[{"b"}]
+==
+[name=orderby_limit_1_offset_2]
+SELECT a FROM (SELECT 'b' a UNION ALL SELECT 'c' UNION ALL SELECT 'a') ORDER BY a LIMIT 1 OFFSET 2
+--
+ARRAY<STRUCT<a STRING>>[{"c"}]
+==
+[name=orderby_limit_1_offset_3]
+SELECT a FROM (SELECT 'b' a UNION ALL SELECT 'c' UNION ALL SELECT 'a') ORDER BY a LIMIT 1 OFFSET 3
+--
+ARRAY<STRUCT<a STRING>>[]
+==
+[name=orderby_limit_2_offset_0]
+SELECT a FROM (SELECT 'b' a UNION ALL SELECT 'c' UNION ALL SELECT 'a') ORDER BY a LIMIT 2 OFFSET 0
+--
+ARRAY<STRUCT<a STRING>>[known order:{"a"}, {"b"}]
+==
+[name=orderby_limit_2_offset_1]
+SELECT a FROM (SELECT 'b' a UNION ALL SELECT 'c' UNION ALL SELECT 'a') ORDER BY a LIMIT 2 OFFSET 1
+--
+ARRAY<STRUCT<a STRING>>[known order:{"b"}, {"c"}]
+==
+[name=orderby_limit_2_offset_2]
+SELECT a FROM (SELECT 'b' a UNION ALL SELECT 'c' UNION ALL SELECT 'a') ORDER BY a LIMIT 2 OFFSET 2
+--
+ARRAY<STRUCT<a STRING>>[{"c"}]
+==
+[name=orderby_limit_2_offset_3]
+SELECT a FROM (SELECT 'b' a UNION ALL SELECT 'c' UNION ALL SELECT 'a') ORDER BY a LIMIT 2 OFFSET 3
+--
+ARRAY<STRUCT<a STRING>>[]
+==
+
+# ---------------------------
+# LIMIT in map of CROSS APPLY
+# ---------------------------
+
+[name=cross_apply_limit_0]
+SELECT key, ARRAY(SELECT v FROM t.values v LIMIT 0) FROM Table1 t ORDER BY key
+--
+ARRAY<STRUCT<key INT64, ARRAY<>>>[known order:
+  {NULL, ARRAY<STRING>[]},
+  {0, ARRAY<STRING>[]},
+  {1, ARRAY<STRING>[]},
+  {2, ARRAY<STRING>[]},
+  {3, ARRAY<STRING>[]},
+  {4, ARRAY<STRING>[]}
+]
+==
+[name=cross_apply_limit_1]
+SELECT key, ARRAY(SELECT v FROM t.values v ORDER BY v LIMIT 1) FROM Table1 t ORDER BY key
+--
+ARRAY<STRUCT<key INT64, ARRAY<>>>[known order:
+  {NULL, ARRAY<STRING>[NULL]},
+  {0, ARRAY<STRING>[]},
+  {1, ARRAY<STRING>["one"]},
+  {2, ARRAY<STRING>["a"]},
+  {3, ARRAY<STRING>["x"]},
+  {4, ARRAY<STRING>["w"]}
+]
+==
+[name=cross_apply_limit_2]
+SELECT key, ARRAY(SELECT v FROM t.values v ORDER BY v LIMIT 2) FROM Table1 t ORDER BY key
+--
+ARRAY<STRUCT<key INT64, ARRAY<>>>[known order:
+  {NULL, ARRAY<STRING>[NULL]},
+  {0, ARRAY<STRING>[]},
+  {1, ARRAY<STRING>["one"]},
+  {
+    2,
+    ARRAY<STRING>[known order:"a", "c"]
+  },
+  {
+    3,
+    ARRAY<STRING>[known order:"x", "y"]
+  },
+  {
+    4,
+    ARRAY<STRING>[known order:"w", "w"]
+  }
+]
+==
+[name=cross_apply_limit_100]
+SELECT key, ARRAY(SELECT v FROM t.values v ORDER BY v LIMIT 100) FROM Table1 t ORDER BY key
+--
+ARRAY<STRUCT<key INT64, ARRAY<>>>[known order:
+  {NULL, ARRAY<STRING>[NULL]},
+  {0, ARRAY<STRING>[]},
+  {1, ARRAY<STRING>["one"]},
+  {
+    2,
+    ARRAY<STRING>[known order:"a", "c"]
+  },
+  {
+    3,
+    ARRAY<STRING>[known order:"x", "y", "z"]
+  },
+  {
+    4,
+    ARRAY<STRING>[known order:"w", "w", "w", "w"]
+  }
+]
+==
+
+# ---------------------------
+# LIMIT OFFSET in map of CROSS APPLY
+# ---------------------------
+
+[name=cross_apply_limit_1_offset_1]
+SELECT key, ARRAY(SELECT v FROM t.values v ORDER BY v LIMIT 1 OFFSET 1) FROM Table1 t ORDER BY key
+--
+ARRAY<STRUCT<key INT64, ARRAY<>>>[known order:
+  {NULL, ARRAY<STRING>[]},
+  {0, ARRAY<STRING>[]},
+  {1, ARRAY<STRING>[]},
+  {2, ARRAY<STRING>["c"]},
+  {3, ARRAY<STRING>["y"]},
+  {4, ARRAY<STRING>["w"]}
+]
+==
+[name=cross_apply_limit_100_offset_1]
+SELECT key, ARRAY(SELECT v FROM t.values v ORDER BY v LIMIT 100 OFFSET 1) FROM Table1 t ORDER BY key
+--
+ARRAY<STRUCT<key INT64, ARRAY<>>>[known order:
+  {NULL, ARRAY<STRING>[]},
+  {0, ARRAY<STRING>[]},
+  {1, ARRAY<STRING>[]},
+  {2, ARRAY<STRING>["c"]},
+  {
+    3,
+    ARRAY<STRING>[known order:"y", "z"]
+  },
+  {
+    4,
+    ARRAY<STRING>[known order:"w", "w", "w"]
+  }
+]
+==
+[name=cross_apply_limit_1_offset_100]
+SELECT key, ARRAY(SELECT v FROM t.values v ORDER BY v LIMIT 1 OFFSET 100) FROM Table1 t ORDER BY key
+--
+ARRAY<STRUCT<key INT64, ARRAY<>>>[known order:
+  {NULL, ARRAY<STRING>[]},
+  {0, ARRAY<STRING>[]},
+  {1, ARRAY<STRING>[]},
+  {2, ARRAY<STRING>[]},
+  {3, ARRAY<STRING>[]},
+  {4, ARRAY<STRING>[]}
+]
+==
+
+# ----------
+# Data types
+# ----------
+
+[name=type_bool]
+SELECT a FROM (SELECT TRUE a) LIMIT 1
+--
+ARRAY<STRUCT<a BOOL>>[{true}]
+==
+[name=type_int32]
+SELECT a FROM (SELECT CAST(-1 AS INT32) a) LIMIT 1
+--
+ARRAY<STRUCT<a INT32>>[{-1}]
+==
+[name=type_uint32]
+SELECT a FROM (SELECT CAST(1 AS UINT32) a) LIMIT 1
+--
+ARRAY<STRUCT<a UINT32>>[{1}]
+==
+[name=type_int64]
+SELECT a FROM (SELECT CAST(-10000000000 AS INT64) a) LIMIT 1
+--
+ARRAY<STRUCT<a INT64>>[{-10000000000}]
+==
+[name=type_uint64]
+SELECT a FROM (SELECT CAST(99999999999 AS UINT64) a) LIMIT 1
+--
+ARRAY<STRUCT<a UINT64>>[{99999999999}]
+==
+[name=type_float]
+SELECT a FROM (SELECT CAST(3.14159 AS FLOAT) a) LIMIT 1
+--
+ARRAY<STRUCT<a FLOAT>>[{3.14159}]
+==
+[name=type_double]
+SELECT a FROM (SELECT CAST(1.2345e100 AS DOUBLE) a) LIMIT 1
+--
+ARRAY<STRUCT<a DOUBLE>>[{1.2345e+100}]
+==
+[name=type_string]
+SELECT a FROM (SELECT 'I am a string' a) LIMIT 1
+--
+ARRAY<STRUCT<a STRING>>[{"I am a string"}]
+==
+[name=type_bytes]
+SELECT a FROM (SELECT b'I am binary' a) LIMIT 1
+--
+ARRAY<STRUCT<a BYTES>>[{b"I am binary"}]
+==
+[name=type_date]
+SELECT a FROM (SELECT DATE '1961-04-12' a) LIMIT 1
+--
+ARRAY<STRUCT<a DATE>>[{1961-04-12}]
+==
+[name=type_timestamp]
+SELECT a FROM (SELECT TIMESTAMP '2000-01-23 12:13:14.123456+00' a) LIMIT 1
+--
+ARRAY<STRUCT<a TIMESTAMP>>[{2000-01-23 12:13:14.123456+00}]
+==
+[name=type_array_int64]
+SELECT a FROM (SELECT [1,2,3] a) LIMIT 1
+--
+ARRAY<STRUCT<a ARRAY<>>>[{ARRAY<INT64>[known order:1, 2, 3]}]
+==
+[name=type_array_string]
+SELECT a FROM (SELECT ARRAY(SELECT 'x' UNION ALL SELECT 'y') a) LIMIT 1
+--
+ARRAY<STRUCT<a ARRAY<>>>[{ARRAY<STRING>[unknown order:"x", "y"]}]
+==
+[name=type_struct]
+SELECT (SELECT s FROM (SELECT 'x' a, 5 b) s) LIMIT 1
+--
+ARRAY<STRUCT<STRUCT<a STRING, b INT64>>>[{{"x", 5}}]
+==
+[name=type_proto]
+SELECT p FROM (SELECT (SELECT AS `googlesql_test.KitchenSinkPB` 5 int64_key_1, 6 int64_key_2) p) LIMIT 1
+--
+ARRAY<STRUCT<p PROTO<googlesql_test.KitchenSinkPB>>>[
+  {{
+     int64_key_1: 5
+     int64_key_2: 6
+   }}
+]
+==
+[name=many_columns]
+SELECT * FROM (SELECT false, CAST(1 AS INT32), 'foo', 9.18, [1., -2e-5], (SELECT AS `googlesql_test.KitchenSinkPB` 7 int64_key_1, 8 int64_key_2)) LIMIT 1
+--
+ARRAY<STRUCT<
+        BOOL,
+        INT32,
+        STRING,
+        DOUBLE,
+        ARRAY<>,
+        PROTO<googlesql_test.KitchenSinkPB>
+      >>
+[{false,
+  1,
+  "foo",
+  9.18,
+  ARRAY<DOUBLE>[known order:1, -2e-05],
+  {
+    int64_key_1: 7
+    int64_key_2: 8
+  }}]
+==
+[name=limit_in_parethesis]
+SELECT a FROM (SELECT 1 a) LIMIT (1)
+--
+ARRAY<STRUCT<a INT64>>[{1}]
+==
+[required_features=LIMIT_OFFSET_EXPRESSIONS]
+[name=limit_null]
+SELECT a FROM (SELECT 1 a) LIMIT NULL
+--
+ERROR: generic::out_of_range: Limit requires non-null count and offset
+==
+[name=offset_in_parethesis]
+SELECT a FROM (SELECT 1 a) LIMIT 1 OFFSET (1)
+--
+ARRAY<STRUCT<a INT64>>[]
+==
+[required_features=LIMIT_OFFSET_EXPRESSIONS]
+[name=offset_null]
+SELECT a FROM (SELECT 1 a) LIMIT 1 OFFSET NULL
+--
+ERROR: generic::out_of_range: Limit requires non-null count and offset
+==
+
+# ----------
+# Parameters
+# ----------
+
+[name=param_limit_0]
+[parameters=0 as lmt]
+SELECT a FROM (SELECT 1 a) LIMIT @lmt
+--
+ARRAY<STRUCT<a INT64>>[]
+==
+[name=param_limit_1]
+[parameters=1 as lmt]
+SELECT a FROM (SELECT 1 a) LIMIT @lmt
+--
+ARRAY<STRUCT<a INT64>>[{1}]
+==
+[name=param_limit_int32_1]
+[parameters=cast(1 as int32) lmt]
+SELECT a FROM (SELECT 1 a) LIMIT @lmt
+--
+ARRAY<STRUCT<a INT64>>[{1}]
+==
+[name=param_limit_uint32_1]
+[parameters=cast(1 as uint32) lmt]
+SELECT a FROM (SELECT 1 a) LIMIT @lmt
+--
+ARRAY<STRUCT<a INT64>>[{1}]
+==
+[name=param_limit_uint64_1]
+[parameters=cast(1 as uint64) lmt]
+SELECT a FROM (SELECT 1 a) LIMIT @lmt
+--
+ARRAY<STRUCT<a INT64>>[{1}]
+==
+[name=param_limit_cast_uint32_1]
+[parameters=cast(1 as uint32) lmt]
+SELECT a FROM (SELECT 1 a) LIMIT cast(@lmt as int64)
+--
+ARRAY<STRUCT<a INT64>>[{1}]
+==
+[name=param_limit_negative]
+[parameters=-1 as lmt]
+SELECT a FROM (SELECT 1 a) LIMIT @lmt
+--
+ERROR: generic::out_of_range: Limit requires non-negative count and offset
+==
+[name=param_limit_null]
+[parameters=NULL as lmt]
+SELECT a FROM (SELECT 1 a) LIMIT @lmt
+--
+ERROR: generic::out_of_range: Limit requires non-null count and offset
+==
+[name=param_offset_0]
+[parameters=0 as ofst]
+SELECT a FROM (SELECT 1 a) LIMIT 1 OFFSET @ofst
+--
+ARRAY<STRUCT<a INT64>>[{1}]
+==
+[name=param_offset_int32_0]
+[parameters=cast(0 as int32) ofst]
+SELECT a FROM (SELECT 1 a) LIMIT 1 OFFSET @ofst
+--
+ARRAY<STRUCT<a INT64>>[{1}]
+==
+[name=param_offset_uint32_0]
+[parameters=cast(0 as uint32) ofst]
+SELECT a FROM (SELECT 1 a) LIMIT 1 OFFSET @ofst
+--
+ARRAY<STRUCT<a INT64>>[{1}]
+==
+[name=param_offset_uint64_0]
+[parameters=cast(0 as uint64) ofst]
+SELECT a FROM (SELECT 1 a) LIMIT 1 OFFSET @ofst
+--
+ARRAY<STRUCT<a INT64>>[{1}]
+==
+[name=param_offset_cast_uint32_0]
+[parameters=cast(0 as uint32) ofst]
+SELECT a FROM (SELECT 1 a) LIMIT 1 OFFSET cast(@ofst as int64)
+--
+ARRAY<STRUCT<a INT64>>[{1}]
+==
+[name=param_limit_1_offset_0_cast_literals]
+SELECT a FROM (SELECT 1 a) LIMIT cast(1 as uint64) OFFSET cast(0 as int32)
+--
+ARRAY<STRUCT<a INT64>>[{1}]
+==
+[name=param_offset_negative]
+[parameters=-1 as ofst]
+SELECT a FROM (SELECT 1 a) LIMIT 1 OFFSET @ofst
+--
+ERROR: generic::out_of_range: Limit requires non-negative count and offset
+==
+[name=param_offset_null]
+[parameters=NULL as ofst]
+SELECT a FROM (SELECT 1 a) LIMIT 1 OFFSET @ofst
+--
+ERROR: generic::out_of_range: Limit requires non-null count and offset
+==
+[name=param_limit_1_offset_0]
+[parameters=1 as lmt, 0 as ofst]
+SELECT a FROM (SELECT '*' a) LIMIT @lmt OFFSET @ofst
+--
+ARRAY<STRUCT<a STRING>>[{"*"}]
+==
+[name=param_limit_max_offset]
+[parameters=9223372036854775807 as lmt, 2 as ofst]
+SELECT a FROM (SELECT '*' a) LIMIT @lmt OFFSET @ofst
+--
+ARRAY<STRUCT<a STRING>>[]
+==
+
+# ----------
+# Expressions
+# ----------
+
+[name=expr_limit_0]
+[required_features=LIMIT_OFFSET_EXPRESSIONS]
+[parameters=0 as lmt]
+SELECT a FROM (SELECT 1 a) LIMIT MOD(@lmt, 2)
+--
+ARRAY<STRUCT<a INT64>>[]
+==
+[name=expr_limit_1]
+[required_features=LIMIT_OFFSET_EXPRESSIONS]
+[parameters=1 as lmt]
+SELECT a FROM (SELECT 1 a) LIMIT MOD(@lmt, 2)
+--
+ARRAY<STRUCT<a INT64>>[{1}]
+==
+[name=expr_limit_negative]
+[required_features=LIMIT_OFFSET_EXPRESSIONS]
+[parameters=1 as lmt]
+SELECT a FROM (SELECT 1 a) LIMIT MOD(@lmt, 2) - 2
+--
+ERROR: generic::out_of_range: Limit requires non-negative count and offset
+==
+[name=expr_limit_null]
+[required_features=LIMIT_OFFSET_EXPRESSIONS]
+[parameters=NULL as lmt]
+SELECT a FROM (SELECT 1 a) LIMIT COALESCE(@lmt, NULL)
+--
+ERROR: generic::out_of_range: Limit requires non-null count and offset
+==
+[name=expr_offset_0]
+[required_features=LIMIT_OFFSET_EXPRESSIONS]
+[parameters=0 as ofst]
+SELECT a FROM (SELECT 1 a) LIMIT 1 OFFSET MOD(@ofst, 2)
+--
+ARRAY<STRUCT<a INT64>>[{1}]
+==
+[name=expr_offset_negative]
+[required_features=LIMIT_OFFSET_EXPRESSIONS]
+[parameters=1 as ofst]
+SELECT a FROM (SELECT 1 a) LIMIT 1 OFFSET MOD(@ofst, 2) - 2
+--
+ERROR: generic::out_of_range: Limit requires non-negative count and offset
+==
+[name=expr_offset_null]
+[required_features=LIMIT_OFFSET_EXPRESSIONS]
+[parameters=NULL as ofst]
+SELECT a FROM (SELECT 1 a) LIMIT 1 OFFSET COALESCE(@ofst, NULL)
+--
+ERROR: generic::out_of_range: Limit requires non-null count and offset
+==
+[name=expr_limit_1_offset_0]
+[required_features=LIMIT_OFFSET_EXPRESSIONS]
+[parameters=1 as lmt, 0 as ofst]
+SELECT a FROM (SELECT '*' a) LIMIT MOD(@lmt, 2) OFFSET MOD(@ofst, 2)
+--
+ARRAY<STRUCT<a STRING>>[{"*"}]
+==
+[name=expr_limit_max_offset]
+[required_features=LIMIT_OFFSET_EXPRESSIONS]
+[parameters=9223372036854775806 as lmt, 2 as ofst]
+SELECT a FROM (SELECT '*' a) LIMIT MOD(@lmt, 9223372036854775807) + 1 OFFSET @ofst
+--
+ARRAY<STRUCT<a STRING>>[]
+==
+
+[required_features=ORDER_BY_COLLATE]
+[name=nondeterminism_detected_with_collation]
+SELECT count(*)
+FROM (
+  SELECT s
+  FROM UNNEST(["a", "A"]) AS s
+  ORDER BY s COLLATE "und:ci"
+  LIMIT 1
+)
+--
+ARRAY<STRUCT<INT64>>[{1}]
+
+NOTE: Reference implementation reports non-determinism.
+==
+
+[required_features=ORDER_BY_COLLATE]
+[name=collation_does_not_cause_nondeterminism_for_identical_strings]
+SELECT count(*)
+FROM (
+  SELECT s
+  FROM UNNEST(["a", "a"]) AS s
+  ORDER BY s COLLATE "und:ci"
+  LIMIT 1
+)
+--
+ARRAY<STRUCT<INT64>>[{1}]

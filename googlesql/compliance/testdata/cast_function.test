@@ -1,0 +1,1716 @@
+[load_proto_files=googlesql/testdata/test_schema.proto,googlesql/testdata/test_proto3.proto]
+[load_proto_names=googlesql_test.NullableDate,googlesql_test.NullableInt,googlesql_test.NullableEnum,googlesql_test.PackedRepeatablePB,googlesql_test.KitchenSinkPB,googlesql_test.Proto3KitchenSink,googlesql_test.MessageWithMapField]
+[prepare_database]
+CREATE TABLE TableAllTypes AS
+SELECT CAST(1 AS int64) as row_id,
+       CAST(true AS bool) as bool_val,
+       CAST(-1 AS int32) as int32_val,
+       CAST(-2 AS int64) as int64_val,
+       CAST(1 AS uint32) as uint32_val,
+       CAST(2 AS uint64) as uint64_val,
+       CAST(0.1 AS float) as float_val,
+       CAST(0.5 AS double) as double_val,
+       CAST("1" AS string) as str_val,
+       CAST("1" AS BYTES) as bytes_val,
+       CAST('2014-01-01' AS DATE) as date_val,
+       TIMESTAMP '2014-01-01 00:00:01 UTC' as timestamp_val,
+       cast(null as `googlesql_test.TestEnum`) as enum_val,
+       cast(struct(2, 4) as struct<a int64, b int64>) as struct_val,
+       NEW googlesql_test.KitchenSinkPB(5 AS int64_key_1,
+                                        7 AS int64_key_2) as proto_val UNION ALL
+SELECT 2, false, CAST(1 AS int32), CAST(2 AS int64), CAST(0 AS uint32),
+       CAST(200 AS uint64), CAST(-0.1 AS float), CAST(-0.2 AS double),
+       "A", CAST("124" AS BYTES), CAST('2015-07-01' AS DATE),
+       TIMESTAMP '2015-04-01 00:00:01 UTC',
+       1, struct(4, 5),
+       NEW googlesql_test.KitchenSinkPB(8 AS int64_key_1,
+                                        9 AS int64_key_2)
+--
+ARRAY<STRUCT<
+        row_id INT64,
+        bool_val BOOL,
+        int32_val INT32,
+        int64_val INT64,
+        uint32_val UINT32,
+        uint64_val UINT64,
+        float_val FLOAT,
+        double_val DOUBLE,
+        str_val STRING,
+        bytes_val BYTES,
+        date_val DATE,
+        timestamp_val TIMESTAMP,
+        enum_val ENUM<googlesql_test.TestEnum>,
+        struct_val STRUCT<a INT64, b INT64>,
+        proto_val PROTO<googlesql_test.KitchenSinkPB>
+      >>
+[{1,
+  true,
+  -1,
+  -2,
+  1,
+  2,
+  0.1,
+  0.5,
+  "1",
+  b"1",
+  2014-01-01,
+  2014-01-01 00:00:01+00,
+  NULL,
+  {2, 4},
+  {
+    int64_key_1: 5
+    int64_key_2: 7
+  }},
+ {2,
+  false,
+  1,
+  2,
+  0,
+  200,
+  -0.1,
+  -0.2,
+  "A",
+  b"124",
+  2015-07-01,
+  2015-04-01 00:00:01+00,
+  TESTENUM1,
+  {4, 5},
+  {
+    int64_key_1: 8
+    int64_key_2: 9
+  }}]
+==
+
+# TODO: port the tests from functions/convert_test.cc here once
+# the parser/analyzer supports parameters.
+[name=cast_function_1]
+SELECT CAST(3.7 as int32)
+--
+ARRAY<STRUCT<INT32>>[{4}]
+==
+[name=cast_function_2]
+SELECT CAST(1 as int64)
+--
+ARRAY<STRUCT<INT64>>[{1}]
+==
+[name=cast_function_3]
+SELECT CAST(3.7 as uint32)
+--
+ARRAY<STRUCT<UINT32>>[{4}]
+==
+[name=cast_function_4]
+SELECT CAST(1 as uint64)
+--
+ARRAY<STRUCT<UINT64>>[{1}]
+==
+[name=cast_function_5]
+SELECT CAST(3.7 as float)
+--
+ARRAY<STRUCT<FLOAT>>[{3.7}]
+==
+[name=cast_function_6]
+SELECT CAST(3 as double)
+--
+ARRAY<STRUCT<DOUBLE>>[{3}]
+==
+[name=cast_function_7]
+SELECT CAST('a' as bytes)
+--
+ARRAY<STRUCT<BYTES>>[{b"a"}]
+==
+[name=cast_function_8]
+SELECT CAST(CAST('a' as bytes) as string)
+--
+ARRAY<STRUCT<STRING>>[{"a"}]
+==
+[name=cast_bounds_int32_too_small]
+SELECT CAST(-2147483649 AS INT32)
+--
+ERROR: generic::out_of_range: int32 out of range: -2147483649
+==
+[name=cast_bounds_int32_min]
+SELECT CAST(-2147483648 AS INT32)
+--
+ARRAY<STRUCT<INT32>>[{-2147483648}]
+==
+[name=cast_bounds_int32_max]
+SELECT CAST(2147483647 AS INT32)
+--
+ARRAY<STRUCT<INT32>>[{2147483647}]
+==
+[name=cast_bounds_int32_too_big]
+SELECT CAST(2147483648 AS INT32)
+--
+ERROR: generic::out_of_range: int32 out of range: 2147483648
+==
+[name=cast_bounds_uint32_too_small]
+SELECT CAST(-1 AS UINT32)
+--
+ERROR: generic::out_of_range: uint32 out of range: -1
+==
+[name=cast_bounds_uint32_min]
+SELECT CAST(0 AS UINT32)
+--
+ARRAY<STRUCT<UINT32>>[{0}]
+==
+[name=cast_bounds_uint32_max]
+SELECT CAST(4294967295 AS UINT32)
+--
+ARRAY<STRUCT<UINT32>>[{4294967295}]
+==
+[name=cast_bounds_uint32_too_big]
+SELECT CAST(4294967296 AS UINT32)
+--
+ERROR: generic::out_of_range: uint32 out of range: 4294967296
+==
+[name=cast_bounds_int64_min]
+SELECT CAST(-9223372036854775808 AS INT64)
+--
+ARRAY<STRUCT<INT64>>[{-9223372036854775808}]
+==
+[name=cast_bounds_int64_max]
+SELECT CAST(9223372036854775807 AS INT64)
+--
+ARRAY<STRUCT<INT64>>[{9223372036854775807}]
+==
+[name=cast_bounds_int64_too_big]
+SELECT CAST(9223372036854775808 AS INT64)
+--
+ERROR: generic::out_of_range: int64 out of range: 9223372036854775808
+==
+[name=cast_bounds_unit64_too_small]
+SELECT CAST(-1 AS uint64)
+--
+ERROR: generic::out_of_range: uint64 out of range: -1
+==
+[name=cast_bounds_uint64_max]
+SELECT CAST(18446744073709551615 AS UINT64)
+--
+ARRAY<STRUCT<UINT64>>[{18446744073709551615}]
+==
+# We get an inaccurate CAST result because double precision cannot represent
+# the given number precisely. The string is represented as closely as possible,
+# as a double. But that representation is larger than what can be represented by
+# INT64 so it overflows when cast to INT64.
+# Note that a different FPU may handle the original string differently leading
+# to a different result.
+[name=cast_bounds_double_overflows_int64]
+SELECT CAST(9223372036854775754.5 AS INT64)
+--
+ERROR: generic::out_of_range: int64 out of range: 9.22337e+18
+==
+# We get an inaccurate CAST result because double precision cannot represent
+# the given number precisely. The string is represented as closely as possible,
+# as a double. But that representation is larger than what can be represented by
+# UINT64 so it overflows when cast to UINT64.
+# Note that a different FPU may handle the original string differently leading
+# to a different result.
+[name=cast_bounds_double_overflows_uint64]
+SELECT CAST(18446744073709551562.5 AS UINT64)
+--
+ERROR: generic::out_of_range: uint64 out of range: 1.84467e+19
+==
+[name=boolean_1]
+SELECT CAST(1 > 0 AS BOOLEAN)
+--
+ARRAY<STRUCT<BOOL>>[{true}]
+==
+[name=int0_is_false]
+SELECT CAST(0 AS BOOLEAN)
+--
+ARRAY<STRUCT<BOOL>>[{false}]
+==
+[name=int1_is_true]
+SELECT CAST(1 AS BOOLEAN)
+--
+ARRAY<STRUCT<BOOL>>[{true}]
+==
+[name=int_neg1_is_true]
+SELECT CAST(-1 AS BOOLEAN)
+--
+ARRAY<STRUCT<BOOL>>[{true}]
+==
+[name=int_anynon0_is_true]
+SELECT CAST(42 AS BOOLEAN)
+--
+ARRAY<STRUCT<BOOL>>[{true}]
+==
+[name=string_true_to_true]
+SELECT CAST('true' AS BOOLEAN)
+--
+ARRAY<STRUCT<BOOL>>[{true}]
+==
+[name=string_TRUE_to_true]
+SELECT CAST('TRUE' AS BOOLEAN)
+--
+ARRAY<STRUCT<BOOL>>[{true}]
+==
+[name=string_TrUe_to_true]
+SELECT CAST('TrUe' AS BOOLEAN)
+--
+ARRAY<STRUCT<BOOL>>[{true}]
+==
+[name=string_false_to_false]
+SELECT CAST('false' AS BOOLEAN)
+--
+ARRAY<STRUCT<BOOL>>[{false}]
+==
+[name=string_FALSE_to_false]
+SELECT CAST('FALSE' AS BOOLEAN)
+--
+ARRAY<STRUCT<BOOL>>[{false}]
+==
+[name=string_fAlSe_to_false]
+SELECT CAST('fAlSe' AS BOOLEAN)
+--
+ARRAY<STRUCT<BOOL>>[{false}]
+==
+[name=true_to_string]
+SELECT CAST(true AS STRING)
+--
+ARRAY<STRUCT<STRING>>[{"true"}]
+==
+[name=false_to_string]
+SELECT CAST(false AS STRING)
+--
+ARRAY<STRUCT<STRING>>[{"false"}]
+==
+[name=string_to_timestamp]
+SELECT CAST('2000-01-23 12:13:14+05' AS TIMESTAMP)
+--
+ARRAY<STRUCT<TIMESTAMP>>[{2000-01-23 07:13:14+00}]
+==
+[name=string_to_timestamp_2]
+SELECT CAST('2000-01-22 23:13:14-08' AS TIMESTAMP)
+--
+ARRAY<STRUCT<TIMESTAMP>>[{2000-01-23 07:13:14+00}]
+==
+[name=timestamp_to_string]
+SELECT CAST(timestamp '2000-01-23 12:13:14+05' AS string)
+--
+ARRAY<STRUCT<STRING>>[{"2000-01-22 23:13:14-08"}]
+==
+[name=timestamp_to_string_2]
+SELECT CAST(timestamp '2000-01-23 07:13:14+00' AS string)
+--
+ARRAY<STRUCT<STRING>>[{"2000-01-22 23:13:14-08"}]
+==
+[name=null_to_datetime]
+[required_features=CIVIL_TIME]
+SELECT CAST(null AS datetime)
+--
+ARRAY<STRUCT<DATETIME>>[{NULL}]
+==
+[name=null_to_time]
+[required_features=CIVIL_TIME]
+SELECT CAST(null AS time)
+--
+ARRAY<STRUCT<TIME>>[{NULL}]
+==
+[name=cast_string_to_time_and_back]
+[required_features=CIVIL_TIME]
+SELECT CAST(null AS TIME),
+       CAST('12:34:56.123456' AS TIME),
+       CAST(CAST(null AS TIME) AS STRING),
+       CAST(CAST('12:34:56.123456' AS TIME) AS STRING),
+       CAST(TIME '12:34:56.123456' AS STRING),
+       CAST(CAST(TIME '12:34:56.123456' AS STRING) AS TIME)
+--
+ARRAY<STRUCT<TIME, TIME, STRING, STRING, STRING, TIME>>[
+  {NULL,
+   12:34:56.123456,
+   NULL,
+   "12:34:56.123456",
+   "12:34:56.123456",
+   12:34:56.123456}
+]
+==
+[name=cast_string_to_time_and_back_nanos]
+[required_features=CIVIL_TIME,TIMESTAMP_NANOS]
+SELECT CAST(null AS TIME),
+       CAST('12:34:56.123456789' AS TIME),
+       CAST(CAST(null AS TIME) AS STRING),
+       CAST(CAST('12:34:56.123456789' AS TIME) AS STRING),
+       CAST(TIME '12:34:56.123456789' AS STRING),
+       CAST(CAST(TIME '12:34:56.123456789' AS STRING) AS TIME)
+--
+ARRAY<STRUCT<TIME, TIME, STRING, STRING, STRING, TIME>>[
+  {NULL,
+   12:34:56.123456789,
+   NULL,
+   "12:34:56.123456789",
+   "12:34:56.123456789",
+   12:34:56.123456789}
+]
+==
+[name=cast_string_to_datetime_and_back]
+[required_features=CIVIL_TIME]
+SELECT CAST(null AS DATETIME),
+       CAST('2006-01-02 03:04:05.123456' AS DATETIME),
+       CAST(CAST(null AS DATETIME) AS STRING),
+       CAST(CAST('2006-01-02 03:04:05.123456' AS DATETIME) AS STRING),
+       CAST(DATETIME '2006-01-02 03:04:05.123456' AS STRING),
+       CAST(CAST(DATETIME '2006-01-02 03:04:05.123456' AS STRING) AS DATETIME)
+--
+ARRAY<STRUCT<DATETIME, DATETIME, STRING, STRING, STRING, DATETIME>>[
+  {
+    NULL,
+    2006-01-02 03:04:05.123456,
+    NULL,
+    "2006-01-02 03:04:05.123456",
+    "2006-01-02 03:04:05.123456",
+    2006-01-02 03:04:05.123456
+  }
+]
+==
+[name=cast_string_to_datetime_and_back_nanos]
+[required_features=CIVIL_TIME,TIMESTAMP_NANOS]
+SELECT CAST(null AS DATETIME),
+       CAST('2006-01-02 03:04:05.123456789' AS DATETIME),
+       CAST(CAST(null AS DATETIME) AS STRING),
+       CAST(CAST('2006-01-02 03:04:05.123456789' AS DATETIME) AS STRING),
+       CAST(DATETIME '2006-01-02 03:04:05.123456789' AS STRING),
+       CAST(CAST(DATETIME '2006-01-02 03:04:05.123456789' AS STRING) AS DATETIME)
+--
+ARRAY<STRUCT<DATETIME, DATETIME, STRING, STRING, STRING, DATETIME>>[
+  {
+    NULL,
+    2006-01-02 03:04:05.123456789,
+    NULL,
+    "2006-01-02 03:04:05.123456789",
+    "2006-01-02 03:04:05.123456789",
+    2006-01-02 03:04:05.123456789
+  }
+]
+==
+
+[name=cast_invalid_utf8_bytes_to_string_1]
+SELECT CAST(b'\xe2\x28\xa1' AS STRING)
+--
+ERROR: generic::out_of_range: Invalid cast of bytes to UTF8 string
+==
+
+[name=safe_convert_bytes_to_string_1]
+SELECT SAFE_CONVERT_BYTES_TO_STRING(b'\xe2\x28\xa1')
+--
+ARRAY<STRUCT<STRING>>[{"�(�"}]
+==
+
+[name=cast_invalid_utf8_bytes_to_string_2]
+SELECT CAST(b'𐌼₡\xc2𐌼₡\xa0\xa1𐌼₡\xf0\x28\x8c\x28𐌼₡' AS STRING)
+--
+ERROR: generic::out_of_range: Invalid cast of bytes to UTF8 string
+==
+
+[name=safe_convert_bytes_to_string_2]
+SELECT SAFE_CONVERT_BYTES_TO_STRING(b'𐌼₡\xc2𐌼₡\xa0\xa1𐌼₡\xf0\x28\x8c\x28𐌼₡')
+--
+ARRAY<STRUCT<STRING>>[{"𐌼₡�𐌼₡��𐌼₡�(�(𐌼₡"}]
+
+==
+
+[name=cast_hex_string_integers_1]
+SELECT CAST('0x121' AS INT32),
+       CAST('-0x121' AS INT32),
+       CAST('+0x121' AS INT32),
+       CAST('   +0x121   ' AS INT32),
+       CAST('0x121' AS UINT32),
+       CAST('0xFFFFFFFF' AS UINT32),
+       CAST('0x121abc' AS INT64),
+       CAST('-0x121abc' AS INT64),
+       CAST('0x121abc' AS UINT64),
+       CAST('0X121abc' AS UINT64),
+       CAST('0x121ABCDEF' AS UINT64),
+       CAST('0xFFFFFFFFFFFFFFFF' AS UINT64)
+--
+ARRAY<STRUCT<INT32,
+             INT32,
+             INT32,
+             INT32,
+             UINT32,
+             UINT32,
+             INT64,
+             INT64,
+             UINT64,
+             UINT64,
+             UINT64,
+             UINT64>>
+[{289,
+  -289,
+  289,
+  289,
+  289,
+  4294967295,
+  1186492,
+  -1186492,
+  1186492,
+  1186492,
+  4859874799,
+  18446744073709551615}]
+==
+
+# Set this in subqueryies to keep literals from being converted prior to
+# execution.
+[name=cast_hex_string_integers_from_subquery]
+SELECT CAST(A AS INT32),
+       CAST(B AS INT32),
+       CAST(C AS INT32),
+       CAST(D AS INT32),
+       CAST(E AS UINT32),
+       CAST(F AS UINT32),
+       CAST(G AS INT64),
+       CAST(H AS INT64),
+       CAST(I AS UINT64),
+       CAST(J AS UINT64),
+       CAST(K AS UINT64),
+       CAST(L AS UINT64)
+FROM (
+    SELECT '0x121' AS A,
+           '-0x121' AS B,
+           '+0x121' AS C,
+           '   +0x121   ' AS D,
+           '0x121' AS E,
+           '0xFFFFFFFF' AS F,
+           '0x121abc' AS G,
+           '-0x121abc' AS H,
+           '0x121abc' AS I,
+           '0X121abc' AS J,
+           '0x121ABCDEF' AS K,
+           '0xFFFFFFFFFFFFFFFF' AS L
+)
+--
+ARRAY<STRUCT<INT32,
+             INT32,
+             INT32,
+             INT32,
+             UINT32,
+             UINT32,
+             INT64,
+             INT64,
+             UINT64,
+             UINT64,
+             UINT64,
+             UINT64>>
+[{289,
+  -289,
+  289,
+  289,
+  289,
+  4294967295,
+  1186492,
+  -1186492,
+  1186492,
+  1186492,
+  4859874799,
+  18446744073709551615}]
+==
+
+[name=cast_hex_string_integers_mid_space]
+SELECT CAST('- 0x121' AS INT32)
+--
+ERROR: generic::out_of_range: Bad int32 value: - 0x121
+==
+
+[name=cast_hex_string_integers_overflow_int32]
+SELECT CAST('0xFFFFFFFF' AS INT32)
+--
+ERROR: generic::out_of_range: Bad int32 value: 0xFFFFFFFF
+==
+
+[name=cast_hex_string_integers_overflow_int64]
+SELECT CAST('0xFFFFFFFFFFFFFFFF' AS INT64)
+--
+ERROR: generic::out_of_range: Bad int64 value: 0xFFFFFFFFFFFFFFFF
+==
+
+[name=cast_proto_to_bytes]
+SELECT CAST(NEW googlesql_test.NullableDate(DATE "1707-04-05" AS value)
+            AS BYTES)
+--
+ARRAY<STRUCT<BYTES>>[{b"\x08\xa3\x92\xfa\xff\xff\xff\xff\xff\xff\x01"}]
+==
+
+[name=cast_negative_one_to_int32]
+SELECT CAST(New googlesql_test.NullableInt(-1 AS value) AS BYTES)
+--
+ARRAY<STRUCT<BYTES>>[{b"\x08\xff\xff\xff\xff\xff\xff\xff\xff\xff\x01"}]
+==
+
+[name=make_proto_with_negative_enum]
+SELECT CAST(NEW googlesql_test.NullableEnum(
+                CAST(-1 AS googlesql_test.TestEnum) AS value) AS BYTES)
+--
+ARRAY<STRUCT<BYTES>>[{b"\x08\xff\xff\xff\xff\xff\xff\xff\xff\xff\x01"}]
+==
+
+# the enum value is supposed to be all capitals.
+[name=enums_are_case_sensitive]
+SELECT CAST(CAST('TestEnum1' as `googlesql_test.TestEnum`) as STRING)
+--
+ERROR: generic::out_of_range: Out of range cast of string 'TestEnum1' to enum type googlesql_test.TestEnum; Did you mean 'TESTENUM1'? (Note: ENUM values are case sensitive)
+==
+# This test is more of a recommendation than a requirement, since proto allows
+# ignoring the packed annotation. We should eventually add framework support
+# for recommended tests. b/75304074
+[name=cast_to_bytes_packed_repeated]
+SELECT CAST(NEW `googlesql_test.PackedRepeatablePB`(
+    ARRAY<BOOL>[true] AS repeated_bool_packed) AS BYTES);
+--
+ARRAY<STRUCT<BYTES>>[{b":\x01\x01"}]
+
+NOTE: Reference implementation reports non-determinism.
+==
+
+# This test is more of a recommendation than a requirement, since proto allows
+# ignoring the packed annotation. We should eventually add framework support
+# for recommended tests. b/75304074
+[name=cast_to_bytes_packed_repeated_multiple]
+SELECT CAST(NEW `googlesql_test.PackedRepeatablePB`(
+    ARRAY<BOOL>[true, false, true] AS repeated_bool_packed) AS BYTES);
+--
+ARRAY<STRUCT<BYTES>>[{b":\x03\x01\x00\x01"}]
+
+NOTE: Reference implementation reports non-determinism.
+==
+
+[required_features=FORMAT_IN_CAST]
+[name=cast_bytes_to_string_all_formats]
+SELECT CAST(b'abc' as string FORMAT 'base2'),
+       CAST(b'abc' as string FORMAT 'base8'),
+       CAST(b'abc' as string FORMAT 'base16'),
+       CAST(b'abc' as string FORMAT 'hex'),
+       CAST(REPEAT(b'abc', 30) as string FORMAT 'base64'),
+       CAST(REPEAT(b'abc', 30) as string FORMAT 'base64m'),
+       CAST(b'abc' as string FORMAT 'ascii'),
+       CAST(b'àbc' as string FORMAT 'utf8'),
+       CAST(b'àbc' as string FORMAT 'utf-8'),
+--
+ARRAY<STRUCT<STRING, STRING, STRING, STRING, STRING, STRING, STRING, STRING, STRING>>[
+  {
+    "011000010110001001100011",
+    "30261143",
+    "616263",
+    "616263",
+    "YWJjYWJjYWJjYWJjYWJjYWJjYWJjYWJjYWJjYWJjYWJjYWJjYWJjYWJjYWJjYWJjYWJjYWJjYWJjYWJjYWJjYWJjYWJjYWJjYWJjYWJjYWJjYWJjYWJjYWJj",
+    "YWJjYWJjYWJjYWJjYWJjYWJjYWJjYWJjYWJjYWJjYWJjYWJjYWJjYWJjYWJjYWJjYWJjYWJjYWJj\nYWJjYWJjYWJjYWJjYWJjYWJjYWJjYWJjYWJjYWJjYWJj",
+    "abc",
+    "àbc",
+    "àbc"
+  }
+]
+==
+[required_features=FORMAT_IN_CAST]
+[name=cast_bytes_to_string_base32]
+SELECT CAST(b'abc' as string FORMAT 'base32')
+--
+ARRAY<STRUCT<STRING>>[{"MFRGG==="}]
+==
+# Test that the error when evaluating the format string expression is propagated
+# correctly.
+[required_features=FORMAT_IN_CAST]
+[name=cast_bytes_to_string_format_string_error_propagation]
+SELECT CAST(b'abc' as string FORMAT CAST(1/0 AS STRING))
+--
+ERROR: generic::out_of_range: division by zero: 1 / 0
+==
+
+# Test that input containing non-ascii characters fail for format 'ascii'.
+[required_features=FORMAT_IN_CAST]
+[name=cast_bytes_to_string_format_ascii_with_invalid_input]
+SELECT CAST(b'àbc' as string FORMAT 'ascii');
+--
+ERROR: generic::out_of_range: Failed to decode invalid ASCII string
+==
+
+# Test when the format string is null.
+[required_features=FORMAT_IN_CAST]
+[name=cast_bytes_to_string_format_is_null]
+SELECT CAST(b'abc' as string FORMAT CAST(NULL as STRING))
+--
+ARRAY<STRUCT<STRING>>[{NULL}]
+==
+
+# Test when the input is null.
+[required_features=FORMAT_IN_CAST]
+[name=cast_bytes_to_string_input_is_null]
+SELECT CAST(CAST(NULL as BYTES) as string FORMAT 'utf8')
+--
+ARRAY<STRUCT<STRING>>[{NULL}]
+==
+
+# Test the case when format is invalid. Note that the format is an expression,
+# not a literal. When the format is a literal, the validation is done at
+# analysis time.
+[required_features=FORMAT_IN_CAST]
+[name=cast_bytes_to_string_format_is_invalid]
+SELECT CAST(b'abc' as string FORMAT 'x' || 'y' || 'z')
+--
+ERROR: generic::out_of_range: Invalid format 'xyz'
+==
+
+# Test that the format is case insensitive
+[required_features=FORMAT_IN_CAST]
+[name=cast_bytes_to_string_format_is_case_insensitive]
+SELECT CAST(b'abc' as string FORMAT 'bAsE2')
+--
+ARRAY<STRUCT<STRING>>[{"011000010110001001100011"}]
+==
+
+# Test that an error is generated when the input cannot be converted
+# to string using the given format
+[required_features=FORMAT_IN_CAST]
+[name=cast_bytes_to_string_invalid_input_for_format_ut8]
+SELECT CAST(b'\xe2\x28\xa1' AS STRING FORMAT 'utf8')
+--
+ERROR: generic::out_of_range: A string is not valid UTF-8.
+==
+
+# Test that null is returned by SAFE_CAST when the input cannot be converted
+# to string using the given format
+[required_features=FORMAT_IN_CAST]
+[name=cast_bytes_to_string_safe_cast_with_invalid_input]
+SELECT SAFE_CAST(b'\xe2\x28\xa1' AS STRING FORMAT 'utf8')
+--
+ARRAY<STRUCT<STRING>>[{NULL}]
+==
+
+# Test that null is returned by SAFE_CAST when the format string is invalid.
+[required_features=FORMAT_IN_CAST]
+[name=cast_bytes_to_string_safe_cast_with_invalid_format]
+SELECT SAFE_CAST(b'abc' AS STRING FORMAT 'x' || 'y' || 'z')
+--
+ARRAY<STRUCT<STRING>>[{NULL}]
+==
+
+# Test that the format can be an expression.
+[required_features=FORMAT_IN_CAST]
+[name=cast_bytes_to_string_expression_as_format]
+SELECT CAST(b'abc' as string FORMAT 'b' || 'A' || 'sE2')
+--
+ARRAY<STRUCT<STRING>>[{"011000010110001001100011"}]
+
+==
+
+# Test scanning a table.
+[required_features=FORMAT_IN_CAST]
+[name=cast_bytes_to_string_with_format_table_scan]
+SELECT CAST(input as string FORMAT format_string), format_string
+FROM (
+    SELECT b'abc' as input, 'base2' as format_string
+    UNION ALL
+    SELECT b'abc', 'base8'
+    UNION ALL
+    SELECT b'def', 'base8'
+    UNION ALL
+    SELECT b'xyz', 'base64'
+)
+ORDER BY format_string, input
+--
+
+ARRAY<STRUCT<STRING, format_string STRING>>[known order:
+  {
+    "011000010110001001100011",
+    "base2"
+  },
+  {"eHl6", "base64"},
+  {"30261143", "base8"},
+  {"31062546", "base8"}
+]
+
+==
+
+# Test using a parameter as the format string
+[required_features=FORMAT_IN_CAST]
+[name=cast_bytes_to_string_with_parameter_as_format]
+[parameters='base2' f]
+SELECT CAST(b'abc' as string FORMAT @f)
+--
+ARRAY<STRUCT<STRING>>[{"011000010110001001100011"}]
+==
+
+[required_features=FORMAT_IN_CAST]
+[name=cast_string_to_bytes_all_formats]
+SELECT CAST('011000010110001001100011' as bytes FORMAT 'base2'),
+       CAST('30261143' as bytes FORMAT 'base8'),
+       CAST('616263' as bytes FORMAT 'base16'),
+       CAST('616263' as bytes FORMAT 'hex'),
+       CAST('YWJjYWJj' as bytes FORMAT 'base64'),
+       CAST('YWJj\nYWJj' as bytes FORMAT 'base64m'),
+       CAST('abc' as bytes FORMAT 'ascii'),
+       CAST('abc' as bytes FORMAT 'utf8'),
+       CAST('abc' as bytes FORMAT 'utf-8'),
+--
+ARRAY<STRUCT<BYTES, BYTES, BYTES, BYTES, BYTES, BYTES, BYTES, BYTES, BYTES>>[
+  {b"abc", b"abc", b"abc", b"abc", b"abcabc", b"abcabc", b"abc", b"abc", b"abc"}
+]
+==
+
+[required_features=FORMAT_IN_CAST]
+[name=cast_string_to_bytes_base32]
+SELECT CAST('MFRGG===' as bytes FORMAT 'base32'),
+--
+ARRAY<STRUCT<BYTES>>[{b"abc"}]
+==
+
+# Test that cast using format 'ascii' fails for input containing non-ascii characters.
+[required_features=FORMAT_IN_CAST]
+[name=cast_string_to_bytes_format_ascii_with_invalid_input]
+SELECT CAST('àbc' as bytes FORMAT 'ascii')
+--
+ERROR: generic::out_of_range: Failed to decode invalid ASCII string
+==
+
+# Test when the format string is null.
+[required_features=FORMAT_IN_CAST]
+[name=cast_string_to_bytes_format_is_null]
+SELECT CAST('abc' as bytes FORMAT CAST(NULL as STRING)),
+       CAST('abc' as bytes FORMAT NULL)
+--
+ARRAY<STRUCT<BYTES, BYTES>>[{NULL, NULL}]
+==
+
+# Test when the input string is null.
+[required_features=FORMAT_IN_CAST]
+[name=cast_string_to_bytes_input_is_null]
+SELECT CAST(CAST(NULL as STRING) as bytes FORMAT 'utf8')
+--
+ARRAY<STRUCT<BYTES>>[{NULL}]
+==
+
+# Test when the format string is invalid.
+[required_features=FORMAT_IN_CAST]
+[name=cast_string_to_bytes_format_is_invalid]
+SELECT CAST('abc' as bytes FORMAT 'x' || 'y' || 'z')
+--
+ERROR: generic::out_of_range: Invalid format 'xyz'
+==
+
+# Test that the format is case insensitive
+[required_features=FORMAT_IN_CAST]
+[name=cast_string_to_bytes_format_is_case_insensitive]
+SELECT CAST('011000010110001001100011' as bytes FORMAT 'BaSe2')
+--
+ARRAY<STRUCT<BYTES>>[{b"abc"}]
+==
+
+# Test that an error is generated when the input cannot be converted
+# to bytes using the given format
+[required_features=FORMAT_IN_CAST]
+[name=cast_string_to_bytes_invalid_input_with_format]
+SELECT CAST('123' as bytes FORMAT 'base2')
+--
+ERROR: generic::out_of_range: Failed to decode invalid base2 string due to character '2' at offset 1
+==
+
+# Test that null is returned by SAFE_CAST when the input cannot be converted
+# to bytes using the given format
+[required_features=FORMAT_IN_CAST]
+[name=cast_string_to_bytes_safe_cast_invalid_input]
+SELECT SAFE_CAST('123' as bytes FORMAT 'base2')
+--
+ARRAY<STRUCT<BYTES>>[{NULL}]
+==
+
+# Test that null is returned by SAFE_CAST when the format string is invalid.
+# to bytes using the given format
+[required_features=FORMAT_IN_CAST]
+[name=cast_string_to_bytes_safe_cast_invalid_format]
+SELECT SAFE_CAST('123' as bytes FORMAT 'x' || 'y' || 'z')
+--
+ARRAY<STRUCT<BYTES>>[{NULL}]
+
+==
+
+# Test scanning a table.
+[required_features=FORMAT_IN_CAST]
+[name=cast_string_to_bytes_with_format_table_scan]
+SELECT CAST(input as bytes FORMAT format_string), format_string
+FROM (
+    SELECT '30261143' as input, 'base8' as format_string
+    UNION ALL
+    SELECT 'eHl6', 'base64'
+    UNION ALL
+    SELECT '011000010110001001100011', 'base2'
+    UNION ALL
+    SELECT '31062546', 'base8'
+)
+ORDER BY format_string, input
+--
+ARRAY<STRUCT<BYTES, format_string STRING>>[known order:
+  {b"abc", "base2"},
+  {b"xyz", "base64"},
+  {b"abc", "base8"},
+  {b"def", "base8"}
+]
+==
+
+# Test using a parameter as the format string
+[required_features=FORMAT_IN_CAST]
+[name=cast_string_to_bytes_with_parameter_as_format]
+[parameters='base8' f]
+SELECT CAST('30261143' as bytes FORMAT @f)
+--
+ARRAY<STRUCT<BYTES>>[{b"abc"}]
+==
+
+# null is returned if the format string is null.
+[required_features=FORMAT_IN_CAST]
+[name=cast_string_to_timestamp_format_is_null]
+SELECT CAST('1234' as timestamp FORMAT CAST(NULL as STRING)),
+       CAST('1234' as timestamp FORMAT NULL)
+--
+ARRAY<STRUCT<TIMESTAMP, TIMESTAMP>>[{NULL, NULL}]
+==
+
+# null is returned if the time zone expression is null.
+[required_features=FORMAT_IN_CAST]
+[name=cast_string_to_timestamp_time_zone_is_null]
+SELECT CAST('1234' as timestamp FORMAT 'yyyy' AT TIME ZONE CAST(NULL as STRING)),
+       CAST('1234' as timestamp FORMAT 'yyyy' AT TIME ZONE NULL)
+--
+ARRAY<STRUCT<TIMESTAMP, TIMESTAMP>>[{NULL, NULL}]
+==
+
+# Test that errror is returned when given an invalid time zone. Note that the
+# time zone is an expression, not a literal. If it is a literal, the error
+# would have been caught at the analysis time.
+[required_features=FORMAT_IN_CAST]
+[name=cast_string_to_timestamp_invalid_time_zone]
+SELECT CAST('1234' as timestamp FORMAT 'yyyy' at time zone 'a' || 'b' || 'c')
+--
+ERROR: generic::out_of_range: Invalid time zone: abc
+==
+
+# Test a simple case of string to date/datetime/time/timestamp with format.
+# For the case where time zone is not specified, it's covered by file
+# cast_timestamp_with_timezone.test.
+[required_features=FORMAT_IN_CAST,CIVIL_TIME]
+[name=cast_string_to_date_and_time_simple]
+SELECT
+  CAST('1234-05-06' as date FORMAT 'yyyy-mm-dd'),
+  CAST('1234-05-06 07:08:09' as datetime FORMAT 'yyyy-mm-dd hh24:mi:ss'),
+  CAST('07:08:09' as time FORMAT 'hh24:mi:ss'),
+  CAST('1234-05-06 07:08:09' as timestamp
+    FORMAT 'yyyy-mm-dd hh24:mi:ss' at time zone '+7:00'),
+--
+ARRAY<STRUCT<DATE, DATETIME, TIME, TIMESTAMP>>[
+  {
+    1234-05-06,
+    1234-05-06 07:08:09,
+    07:08:09,
+    1234-05-06 00:08:09+00
+  }
+]
+
+==
+
+# Test default value when casting string to date with format.
+[required_features=FORMAT_IN_CAST]
+[name=cast_string_to_default_value_date]
+SELECT
+  extract(year from d) = extract(year from CURRENT_DATE()),
+  extract(month from d) = extract(month from CURRENT_DATE()),
+  CAST(d as string FORMAT 'dd')
+FROM (SELECT CAST('' as date format '') as d)
+--
+ARRAY<STRUCT<BOOL, BOOL, STRING>>[{true, true, "01"}]
+==
+
+# Test default value when casting string to datetime with format.
+[required_features=FORMAT_IN_CAST,CIVIL_TIME]
+[name=cast_string_to_default_value_datetime]
+SELECT
+  extract(year from d) = extract(year from CURRENT_DATE()),
+  extract(month from d) = extract(month from CURRENT_DATE()),
+  CAST(d as string FORMAT 'dd hh24:mi:ss.ff6')
+FROM (SELECT CAST('' as datetime format '') as d)
+--
+ARRAY<STRUCT<BOOL, BOOL, STRING>>[{true, true, "01 00:00:00.000000"}]
+==
+
+# Test default value when casting string to time with format.
+[required_features=FORMAT_IN_CAST,CIVIL_TIME]
+[name=cast_string_to_default_value_time]
+SELECT CAST('' as time format '')
+--
+ARRAY<STRUCT<TIME>>[{00:00:00}]
+==
+
+# Test default value when casting string to timestamp with format.
+[required_features=FORMAT_IN_CAST]
+[name=cast_string_to_default_value_timestamp]
+SELECT
+  extract(year from d) = extract(year from CURRENT_DATE()),
+  extract(month from d) = extract(month from CURRENT_DATE()),
+  CAST(d as string FORMAT 'dd hh24:mi:ss.ff6')
+FROM (SELECT CAST('' as timestamp format '') as d)
+--
+ARRAY<STRUCT<BOOL, BOOL, STRING>>[{true, true, "01 00:00:00.000000"}]
+==
+
+# Test daylight saving time is correctly handled when casting string to
+# timestamp with format.
+# For time zone 'America/Los_Angeles', on 2021-11-01, the hour offset is -07,
+# while on 2021-11-21, the hour offset is -08.
+[required_features=FORMAT_IN_CAST]
+[name=cast_string_to_timestamp_dst]
+SELECT
+  CAST('2021-11-01' as timestamp FORMAT 'YYYY-MM-DD' at time zone 'America/Los_Angeles'),
+  CAST('2021-11-21' as timestamp FORMAT 'YYYY-MM-DD' at time zone 'America/Los_Angeles');
+--
+ARRAY<STRUCT<TIMESTAMP, TIMESTAMP>>[
+  {
+    2021-11-01 07:00:00+00,
+    2021-11-21 08:00:00+00
+  }
+]
+==
+
+[required_features=FORMAT_IN_CAST]
+[name=cast_string_to_date_invalid_format]
+SELECT CAST('1234-05-06' as date FORMAT 'yyyy' || 'mi')
+--
+ERROR: generic::out_of_range: Format element in category MINUTE ('MI') is not allowed for output type DATE
+==
+
+[required_features=FORMAT_IN_CAST,CIVIL_TIME]
+[name=cast_string_to_datetime_invalid_format]
+SELECT CAST('1234-05-06' as datetime FORMAT 'yyyy' || 'mi' || 'tzh')
+--
+ERROR: generic::out_of_range: Format element in category TIME_ZONE ('TZH') is not allowed for output type DATETIME
+==
+
+[required_features=FORMAT_IN_CAST,CIVIL_TIME]
+[name=cast_string_to_time_invalid_format]
+SELECT CAST('1234-05-06' as time FORMAT 'yyyy' || 'mi')
+--
+ERROR: generic::out_of_range: Format element in category YEAR ('YYYY') is not allowed for output type TIME
+==
+
+[required_features=FORMAT_IN_CAST]
+[name=cast_string_to_timestamp_invalid_format]
+SELECT CAST('1234-05-06' as timestamp FORMAT 'yyyy' || 'yyyy')
+--
+ERROR: generic::out_of_range: Format element 'YYYY' appears more than once in the format string
+==
+
+# Test the success case of cast date/time to string with format
+[required_features=FORMAT_IN_CAST,CIVIL_TIME]
+[name=cast_date_and_time_to_string_success]
+select cast(date'1234-05-06' as string format 'DD-MM YYYY'),
+       cast(datetime '1234-05-06 07:08:09' as string
+            format 'HH12:MI:SS PM DD/MM/YYYY'),
+       cast(time '07:08:09' as string format 'HH24:MI:SS'),
+       cast(timestamp '1234-05-06 07:08:09-10' as string
+            format 'HH12:MI:SS PM DD/MM/YYYY  TZH:TZM' at time zone '-08:00');
+--
+ARRAY<STRUCT<STRING, STRING, STRING, STRING>>[
+  {
+    "06-05 1234",
+    "07:08:09 AM 06/05/1234",
+    "07:08:09",
+    "09:08:09 AM 06/05/1234  -08:00"
+  }
+]
+==
+
+# Test the success case of cast date/time to string with null format
+[required_features=FORMAT_IN_CAST,CIVIL_TIME]
+[name=cast_date_and_time_to_string_with_null_format]
+select cast(date'1234-05-06' as string format cast(null as string)),
+       cast(datetime '1234-05-06 07:08:09' as string format cast(null as string)),
+       cast(time '07:08:09' as string format cast(null as string)),
+       cast(timestamp '1234-05-06 07:08:09-10' as string format cast(null as string));
+--
+ARRAY<STRUCT<STRING, STRING, STRING, STRING>>[{NULL, NULL, NULL, NULL}]
+
+==
+
+# Test the case when timezone is null
+[required_features=FORMAT_IN_CAST]
+[name=cast_timestamp_to_string_with_null_time_zone]
+select cast(timestamp '1234-05-06 07:08:09-10' as string
+            format 'HH12:MI:SS PM DD/MM/YYYY  TZH:TZM' at time zone cast(null as string));
+--
+ARRAY<STRUCT<STRING>>[{NULL}]
+==
+
+[required_features=FORMAT_IN_CAST]
+[name=cast_date_to_string_invalid_format]
+SELECT CAST(DATE'1234-05-06' as string FORMAT 'yyyy' || 'mi')
+--
+ERROR: generic::out_of_range: DATE does not support 'MI'
+==
+
+[required_features=FORMAT_IN_CAST,CIVIL_TIME]
+[name=cast_datetime_to_string_invalid_format]
+SELECT CAST(DATETIME'1234-05-06' as string FORMAT 'yyyy' || 'mi' || 'tzh')
+--
+ERROR: generic::out_of_range: DATETIME does not support 'TZH'
+==
+
+[required_features=FORMAT_IN_CAST,CIVIL_TIME]
+[name=cast_time_to_string_invalid_format]
+SELECT CAST(TIME'01:02:03' as string FORMAT 'yyyy' || 'mi')
+--
+ERROR: generic::out_of_range: TIME does not support 'YYYY'
+==
+
+[required_features=FORMAT_IN_CAST]
+[name=cast_timestamp_to_string_invalid_format]
+SELECT CAST(TIMESTAMP'1234-05-06' as string FORMAT 'a' || 'b')
+--
+ERROR: generic::out_of_range: Cannot find matched format element at 0
+==
+
+# Test that when casting number to string, the output is null is the input is null, or
+# the format string is null.
+[required_features=FORMAT_IN_CAST]
+[name=cast_number_to_string_null]
+SELECT CAST(CAST(null as INT64) as string FORMAT '99'),
+       CAST(1.23 as string FORMAT CAST(NULL as STRING));
+--
+ARRAY<STRUCT<STRING, STRING>>[{NULL, NULL}]
+==
+
+# Test that the implementation is invoked.
+[required_features=FORMAT_IN_CAST,NUMERIC_TYPE,BIGNUMERIC_TYPE]
+[name=cast_number_to_string_simple]
+select cast(cast(1.23 as int32) as STRING format '99.9'),
+       cast(cast(1.23 as uint32) as STRING format '99.9'),
+       cast(cast(1.23 as int64) as STRING format '99.9'),
+       cast(cast(1.23 as uint64) as STRING format '99.9'),
+       cast(cast(1.23 as float) as STRING format '99.9'),
+       cast(cast(1.23 as double) as STRING format '99.9'),
+       cast(cast(1.23 as numeric) as STRING format '99.9'),
+       cast(cast(1.23 as bignumeric) as STRING format '99.9');
+--
+ARRAY<STRUCT<STRING, STRING, STRING, STRING, STRING, STRING, STRING, STRING>>[
+  {"  1.0", "  1.0", "  1.0", "  1.0", "  1.2", "  1.2", "  1.2", "  1.2"}
+]
+
+NOTE: Reference implementation reports non-determinism.
+==
+
+# Casting with type parameters succeeds.
+[required_features=PARAMETERIZED_TYPES,BIGNUMERIC_TYPE,NUMERIC_TYPE]
+[name=cast_struct_type_parameters_valid_input]
+select cast(([(BIGNUMERIC '0.12345', 'hey', null), (0.9876, 'hi', NUMERIC '0.55')], b'hello')
+as STRUCT<ARRAY<STRUCT<BIGNUMERIC(2, 2), STRING(4), NUMERIC(2, 1)>>, BYTES(5)>);
+--
+ARRAY<STRUCT<STRUCT<ARRAY<>, BYTES>>>[
+  {{ARRAY<STRUCT<BIGNUMERIC, STRING, NUMERIC>>[known order:
+      {0.12, "hey", NULL},
+      {0.99, "hi", 0.6}
+    ],
+    b"hello"}}
+]
+==
+
+# Casting to STRING(L) fails if the casted string is longer than L.
+[required_features=PARAMETERIZED_TYPES]
+[name=cast_string_type_parameters_invalid_input]
+select cast(123456 as STRING(5));
+--
+ERROR: generic::out_of_range: STRING(5) has maximum length 5 but got a value with length 6
+==
+
+# Casting to NUMERIC(P) fails if the casted numeric has more than P digits.
+[required_features=PARAMETERIZED_TYPES,NUMERIC_TYPE]
+[name=cast_numeric_type_parameters_invalid_input]
+select cast(123456 as NUMERIC(5));
+--
+ERROR: generic::out_of_range: NUMERIC(5) has precision 5 and scale 0 but got a value that is not in range of [-99999, 99999]
+==
+
+# Casting to an ARRAY fails if the elements of the ARRAY have type parameters
+# that are violated.
+[required_features=PARAMETERIZED_TYPES]
+[name=cast_array_type_parameters_invalid_input]
+select cast(['hello', 'hi'] as ARRAY<STRING(2)>);
+--
+ERROR: generic::out_of_range: STRING(2) has maximum length 2 but got a value with length 5
+==
+
+[required_features=PARAMETERIZED_TYPES]
+[name=cast_struct_type_parameters_invalid_input]
+select cast((b'hey', 2) as STRUCT<BYTES(2), INT64>);
+--
+ERROR: generic::out_of_range: BYTES(2) has maximum length 2 but got a value with length 3
+==
+
+[required_features=NUMERIC_TYPE]
+[name=cast_large_numeric_succeeds]
+select CAST(9999999999999999999999999999.999999999 as numeric);
+--
+ARRAY<STRUCT<NUMERIC>>[{9999999999999999999999999999.999999999}]
+==
+
+[required_features=NUMERIC_TYPE]
+[name=cast_numeric_max_value_succeeds]
+select CAST(99999999999999999999999999999.999999999 as numeric);
+--
+ARRAY<STRUCT<NUMERIC>>[{99999999999999999999999999999.999999999}]
+==
+
+# Struct fields with large floating points are not implicitly coerced.
+[required_features=NUMERIC_TYPE,BIGNUMERIC_TYPE]
+[name=cast_struct_with_large_floating_point]
+select cast((99999999999999999999999999.999999999, 99999999999999999999999999.999999999) as struct<numeric, bignumeric>);
+--
+ARRAY<STRUCT<STRUCT<NUMERIC, BIGNUMERIC>>>[
+  {{
+     100000000000000004764729344,
+     100000000000000004764729344
+   }}
+]
+==
+
+# Struct fields with large floating points and type parameters are not
+# implicitly coerced.
+[required_features=PARAMETERIZED_TYPES,NUMERIC_TYPE,BIGNUMERIC_TYPE]
+[name=cast_struct_with_large_floating_point_with_type_parameters]
+select cast((99999999999999999999999999.999999999, 99999999999999999999999999.999999999) as struct<numeric(29,1), bignumeric(29,1)>);
+--
+ARRAY<STRUCT<STRUCT<NUMERIC, BIGNUMERIC>>>[
+  {{
+     100000000000000004764729344,
+     100000000000000004764729344
+   }}
+]
+==
+
+# Arrays containing large floating point elements are implicitly coerced.
+[required_features=NUMERIC_TYPE]
+[name=cast_array_with_large_floating_point]
+select cast([numeric '99999999999999999999999999.999999999'] as array<numeric>);
+--
+ARRAY<STRUCT<ARRAY<>>>[{ARRAY<NUMERIC>[99999999999999999999999999.999999999]}]
+==
+
+# Arrays containing large floating point elements with type parameters are
+# implicitly coerced.
+[required_features=PARAMETERIZED_TYPES,NUMERIC_TYPE]
+[name=cast_array_with_large_floating_point_with_type_parameters]
+select cast([numeric '99999999999999999999999999.999999999'] as array<numeric(29,1)>);
+--
+ARRAY<STRUCT<ARRAY<>>>[{ARRAY<NUMERIC>[100000000000000000000000000]}]
+==
+
+[required_features=PARAMETERIZED_TYPES,NUMERIC_TYPE]
+[name=cast_numeric_max_value_with_type_parameters_invalid_input]
+select CAST(9999999999999999999999999999.999999999 as numeric(29, 1));
+--
+ERROR: generic::out_of_range: NUMERIC(29, 1) has precision 29 and scale 1 but got a value that is not in range of [-9999999999999999999999999999.9, 9999999999999999999999999999.9]
+==
+
+# When a singular numeric field appears more than once in an encoded proto, the
+# last occurrence should be accepted.
+[name=cast_bytes_as_proto_overwrites_singular_numeric_field]
+SELECT CAST(
+  CONCAT(
+    CAST(CAST("int64_key_1:11 int64_key_2:22" AS googlesql_test.KitchenSinkPB) AS BYTES),
+    CAST(CAST("int64_key_1:1111 int64_key_2:2222" AS googlesql_test.KitchenSinkPB) AS BYTES)
+  )
+AS googlesql_test.KitchenSinkPB).int64_key_1;
+--
+ARRAY<STRUCT<int64_key_1 INT64>>[{1111}]
+
+NOTE: Reference implementation reports non-determinism.
+==
+
+# When a singular embedded message field appears more than once in a serialized
+# proto, the multiple occurrences should be merged.
+[name=cast_bytes_as_proto_merges_singular_nested_proto_non_repeated_field]
+SELECT CAST(
+  CONCAT(
+    CAST(CAST("int64_key_1:11 int64_key_2:22 nested_value: {nested_int64: 123}" AS googlesql_test.KitchenSinkPB) AS BYTES),
+    CAST(CAST("int64_key_1:1111 int64_key_2:2222 nested_value: {}" AS googlesql_test.KitchenSinkPB) AS BYTES)
+  )
+AS googlesql_test.KitchenSinkPB).nested_value.nested_int64;
+--
+ARRAY<STRUCT<nested_int64 INT64>>[{123}]
+
+NOTE: Reference implementation reports non-determinism.
+==
+
+# When a singular embedded message field appears more than once in a serialized
+# proto, the multiple occurrences should be merged.
+[name=cast_bytes_as_proto_merges_singular_nested_proto_repeated_field]
+SELECT CAST(
+  CONCAT(
+    CAST(CAST("int64_key_1:11 int64_key_2:22 nested_value: {nested_repeated_int64: 100 nested_repeated_int64: 200}" AS googlesql_test.KitchenSinkPB) AS BYTES),
+    CAST(CAST("int64_key_1:1111 int64_key_2:2222 nested_value: {nested_repeated_int64: 300 nested_repeated_int64: 400}" AS googlesql_test.KitchenSinkPB) AS BYTES)
+  )
+AS googlesql_test.KitchenSinkPB).nested_value.nested_repeated_int64;
+--
+ARRAY<STRUCT<nested_repeated_int64 ARRAY<>>>[
+  {ARRAY<INT64>[known order:100, 200, 300, 400]}
+]
+
+NOTE: Reference implementation reports non-determinism.
+==
+
+# When a singular group appears more than once in a serialized proto, the
+# multiple occurrences should be merged.
+[name=cast_bytes_as_proto_merges_singular_group_non_repeated_field]
+SELECT CAST(
+  CONCAT(
+    CAST(CAST("int64_key_1:11 int64_key_2:22 OptionalGroup: {int64_val: 123 string_val: 'a'}" AS googlesql_test.KitchenSinkPB) AS BYTES),
+    CAST(CAST("int64_key_1:1111 int64_key_2:2222 OptionalGroup: {int64_val: 123123}" AS googlesql_test.KitchenSinkPB) AS BYTES)
+  )
+AS googlesql_test.KitchenSinkPB).OptionalGroup.string_val;
+--
+ARRAY<STRUCT<string_val STRING>>[{"a"}]
+
+NOTE: Reference implementation reports non-determinism.
+==
+
+# When a singular group appears more than once in a serialized proto, the
+# multiple occurrences should be merged.
+[name=cast_bytes_as_proto_merges_singular_group_repeated_field]
+SELECT CAST(
+  CONCAT(
+    CAST(CAST("int64_key_1:11 int64_key_2:22 OptionalGroup: {int64_val: 123 OptionalGroupNested: {int64_val: 12} }" AS googlesql_test.KitchenSinkPB) AS BYTES),
+    CAST(CAST("int64_key_1:1111 int64_key_2:2222 OptionalGroup: {int64_val: 123123 OptionalGroupNested: {int64_val: 1212} }" AS googlesql_test.KitchenSinkPB) AS BYTES)
+  )
+AS googlesql_test.KitchenSinkPB).OptionalGroup.OptionalGroupNested;
+--
+ARRAY<STRUCT<OptionalGroupNested ARRAY<>>>[
+  {
+    ARRAY<PROTO<googlesql_test.KitchenSinkPB.OptionalGroup.OptionalGroupNested>>[known order:
+      {int64_val: 12},
+      {int64_val: 1212}
+    ]
+  }
+]
+
+NOTE: Reference implementation reports non-determinism.
+==
+
+[name=cast_string_as_bool]
+select CAST("abc" as BOOL);
+--
+ERROR: generic::out_of_range: Bad bool value: abc
+==
+
+[name=cast_string_as_bool_1]
+select CAST("true" as BOOL);
+--
+ARRAY<STRUCT<BOOL>>[{true}]
+==
+
+[name=cast_string_as_bool_2]
+select CAST(string_val as BOOL)
+FROM (SELECT "abc" as string_val);
+--
+ERROR: generic::out_of_range: Bad bool value: abc
+==
+
+[name=cast_string_as_bool_3]
+select CAST(string_val as BOOL)
+FROM (SELECT "true" as string_val);
+--
+ARRAY<STRUCT<BOOL>>[{true}]
+==
+
+[name=cast_string_as_bool_4]
+select CAST(string_val as BOOL)
+FROM unnest(["true", "abc"]) as string_val;
+--
+ERROR: generic::out_of_range: Bad bool value: abc
+==
+
+[name=cast_string_as_bool_5]
+select CAST('abc' as BOOL);
+--
+ERROR: generic::out_of_range: Bad bool value: abc
+==
+
+[name=cast_string_as_bool_6]
+select CAST('true' as BOOL);
+--
+ARRAY<STRUCT<BOOL>>[{true}]
+==
+
+[name=cast_string_as_bool_7]
+select CAST(str_val as BOOL) FROM TableAllTypes;
+--
+ERROR: generic::out_of_range: Bad bool value: A
+==
+
+[name=cast_invalid_int_to_enum]
+select cast(1000 AS `googlesql_test.TestEnum`);
+--
+ERROR: generic::out_of_range: Out of range cast of integer 1000 to enum type googlesql_test.TestEnum
+==
+
+[name=safe_cast_invalid_int_to_enum]
+select safe_cast(1000 AS `googlesql_test.TestEnum`);
+--
+ARRAY<STRUCT<ENUM<googlesql_test.TestEnum>>>[{NULL}]
+==
+
+[name=cast_string_to_enum_with_different_case]
+select cast('TestEnum0' AS `googlesql_test.TestEnum`)
+--
+ERROR: generic::out_of_range: Out of range cast of string 'TestEnum0' to enum type googlesql_test.TestEnum; Did you mean 'TESTENUM0'? (Note: ENUM values are case sensitive)
+==
+
+[name=cast_invalid_string_literal_to_enum]
+select cast('TESTENUM1000' AS `googlesql_test.TestEnum`)
+--
+ERROR: generic::out_of_range: Out of range cast of string 'TESTENUM1000' to enum type googlesql_test.TestEnum; Did you mean 'TESTENUM0'?
+==
+
+[name=safe_cast_invalid_string_literal_to_enum]
+select safe_cast('TESTENUM1000' AS `googlesql_test.TestEnum`)
+--
+ARRAY<STRUCT<ENUM<googlesql_test.TestEnum>>>[{NULL}]
+==
+
+[name=cast_invalid_string_to_int32]
+select cast("abc" as int32) + cast("def" as int32)
+--
+ERROR: generic::out_of_range: Bad int32 value: abc
+==
+
+[name=cast_int_into_proto3_unknown_enum]
+select cast(7 as `googlesql_test.TestProto3Enum`) AS e
+--
+ARRAY<STRUCT<e ENUM<googlesql_test.TestProto3Enum>>>[{7}]
+==
+
+[name=cast_out_of_range_int_into_proto3_unknown_enum]
+select cast(7777777777 as `googlesql_test.TestProto3Enum`) AS e
+--
+ERROR: generic::out_of_range: Out of range cast of integer 7777777777 to enum type googlesql_test.TestProto3Enum
+==
+
+[name=invalid_cast_nested_inside_a_function]
+select SQRT(cast(9999999999 as int32))
+--
+ERROR: generic::out_of_range: int32 out of range: 9999999999
+==
+
+[name=invalid_safe_cast_nested_inside_a_function]
+select SQRT(safe_cast(9999999999 as int32))
+--
+ARRAY<STRUCT<DOUBLE>>[{NULL}]
+==
+
+[name=cast_overflowing_literal_into_int64]
+# INT64_MAX + 1 => 9223372036854775808
+select cast(9223372036854775808 as int64), 9223372036854775808
+--
+ERROR: generic::out_of_range: int64 out of range: 9223372036854775808
+==
+
+[name=safe_cast_overflowing_literal_into_int64]
+# INT64_MAX + 1 => 9223372036854775808
+select safe_cast(9223372036854775808 as int64), 9223372036854775808
+--
+ARRAY<STRUCT<INT64, UINT64>>[{NULL, 9223372036854775808}]
+==
+[name=cast_invalid_literal_to_civil_time]
+[required_features=CIVIL_TIME]
+select cast('abc' as time)
+--
+ERROR: generic::out_of_range: Invalid time string "abc"
+==
+
+[name=cast_overflowing_literal_to_civil_time]
+[required_features=CIVIL_TIME]
+select cast('24:00:00' as time)
+--
+ERROR: generic::out_of_range: Invalid time string "24:00:00"
+==
+
+[name=cast_invalid_literal_to_datetime_with_civil_time_enabled]
+[required_features=CIVIL_TIME]
+select cast('abc' as datetime)
+--
+ERROR: generic::out_of_range: Invalid datetime string "abc"
+==
+
+[name=cast_timestamp_to_datetime_with_civil_time_enabled]
+[required_features=CIVIL_TIME]
+select cast('2015-13-05 01:02:03' as datetime)
+--
+ERROR: generic::out_of_range: Invalid datetime string "2015-13-05 01:02:03"
+==
+
+[name=cast_utc_timestamp_to_datetime_with_civil_time_enabled]
+[required_features=CIVIL_TIME]
+select cast('2006-01-02 01:02:03.123456 UTC' as datetime)
+--
+ERROR: generic::out_of_range: Invalid datetime string "2006-01-02 01:02:03.123456 UTC"
+==
+
+[name=cast_array_with_literals_larger_than_target_element_type]
+[required_features=CAST_DIFFERENT_ARRAY_TYPES]
+select cast(ARRAY<INT64>[-21474836480|21474836470] as ARRAY<INT32>)
+--
+ARRAY<STRUCT<ARRAY<>>>[{ARRAY<INT32>[-10]}]
+==
+
+[name=cast_invalid_string_to_int64]
+select cast("abc" as INT64)
+--
+ERROR: generic::out_of_range: Bad int64 value: abc
+==
+
+[name=safe_cast_invalid_string_to_int64]
+select safe_cast("abc" as INT64)
+--
+ARRAY<STRUCT<INT64>>[{NULL}]
+==
+
+[name=cast_array_with_invalid_string_literals]
+[required_features=CAST_DIFFERENT_ARRAY_TYPES]
+select cast(["100", "abc"] as ARRAY<INT64>);
+--
+ERROR: generic::out_of_range: Error casting element at index 1 in ARRAY: Bad int64 value: abc
+==
+
+[name=safe_cast_array_with_invalid_string_literals]
+[required_features=CAST_DIFFERENT_ARRAY_TYPES]
+select safe_cast(["100", "abc"] as ARRAY<INT64>);
+--
+ARRAY<STRUCT<ARRAY<>>>[{ARRAY<INT64>(NULL)}]
+==
+
+[name=cast_string_hex_literal_into_int32]
+select cast('-0x100' AS INT32)
+--
+ARRAY<STRUCT<INT32>>[{-256}]
+==
+
+[name=cast_string_hex_literal_into_uint32]
+select cast('-0x100' AS UINT32)
+--
+ERROR: generic::out_of_range: Bad uint32 value: -0x100
+==
+
+[name=cast_string_hex_literal_into_int64]
+select cast('-0x100' AS INT64)
+--
+ARRAY<STRUCT<INT64>>[{-256}]
+==
+
+[name=cast_string_hex_literal_into_uint64]
+select cast('-0x100' AS UINT64)
+--
+ERROR: generic::out_of_range: Bad uint64 value: -0x100
+==
+
+[name=cast_invalid_string_literal_into_numeric]
+[required_features=NUMERIC_TYPE]
+select cast("abc" as NUMERIC)
+--
+ERROR: generic::out_of_range: Invalid NUMERIC value: abc
+==
+
+[name=cast_invalid_string_literal_into_big_numeric]
+[required_features=BIGNUMERIC_TYPE]
+select cast("abc" as BIGNUMERIC)
+--
+ERROR: generic::out_of_range: Invalid BIGNUMERIC value: abc
+==
+
+# Test case from b/79755993 (now fixed).
+[name=nested_casts_of_invalid_literals]
+select CAST(CAST(- 1769384439 AS INT32) AS UINT32)
+       & CAST(1834360097 AS UINT32);
+--
+ERROR: generic::out_of_range: uint32 out of range: -1769384439
+==
+# Test case from b/79755993 (now fixed).
+[name=safe_nested_casts_of_invalid_literals]
+select SAFE_CAST(CAST(- 1769384439 AS INT32) AS UINT32)
+       & CAST(1834360097 AS UINT32);
+--
+ARRAY<STRUCT<UINT32>>[{NULL}]
+==
+
+# Test case for CAST-ing and FORMAT-ing to canonicalized integer-type 0.
+[name=roundtrip_cast_negative_integer_zero_to_string]
+SELECT
+  CAST(-0 AS STRING),
+  CAST(-0 AS INT32),
+  CAST(-0 AS INT64),
+  CAST(CAST('-0' AS INT32) AS STRING),
+  CAST(-CAST('0' AS INT32) AS STRING),
+  CAST(CAST('-0' AS INT64) AS STRING),
+  CAST(-CAST('0' AS INT64) AS STRING);
+--
+ARRAY<STRUCT<STRING, INT32, INT64, STRING, STRING, STRING, STRING>>[
+  {"0", 0, 0, "0", "0", "0", "0"}
+]
+==
+
+[required_features=NUMERIC_TYPE,BIGNUMERIC_TYPE]
+[name=roundtrip_cast_negative_numeric_zero_to_string]
+SELECT
+  CAST(-0 AS NUMERIC),
+  CAST(-0 AS BIGNUMERIC),
+  CAST(CAST(-0 AS NUMERIC) AS STRING),
+  CAST(-CAST(0 AS NUMERIC) AS STRING),
+  CAST(CAST(-0 AS BIGNUMERIC) AS STRING),
+  CAST(-CAST(0 AS BIGNUMERIC) AS STRING);
+--
+ARRAY<STRUCT<NUMERIC, BIGNUMERIC, STRING, STRING, STRING, STRING>>[
+  {0, 0, "0", "0", "0", "0"}
+]
+==
+
+[name=cast_negative_numeric_zero_to_uint32]
+SELECT CAST(-0 AS UINT32);
+--
+ARRAY<STRUCT<UINT32>>[{0}]
+==
+
+[name=cast_negative_numeric_zero_to_uint64]
+SELECT CAST(-0 AS UINT64);
+--
+ARRAY<STRUCT<UINT64>>[{0}]
+==
+
+[name=roundtrip_cast_negative_numeric_zero_to_uint32_1]
+SELECT CAST(CAST(-0 AS UINT32) AS STRING);
+--
+ARRAY<STRUCT<STRING>>[{"0"}]
+==
+
+[name=roundtrip_cast_negative_numeric_zero_to_uint64_1]
+SELECT CAST(CAST(-0 AS UINT64) AS STRING);
+--
+ARRAY<STRUCT<STRING>>[{"0"}]
+==
+
+# Casting with type parameters and collation name succeeds.
+[required_features=PARAMETERIZED_TYPES,COLLATION_SUPPORT,ANNOTATION_FRAMEWORK,COLLATION_IN_EXPLICIT_CAST]
+[name=cast_string_type_parameters_and_collation_valid_input]
+select
+  cast('abcde' as STRING(5) COLLATE 'und:ci') = 'ABCDE',
+  cast('abcde' as STRING(5) COLLATE 'binary') = 'ABCDE';
+--
+ARRAY<STRUCT<BOOL, BOOL>>[{true, false}]
+==
+
+# Casting to STRING(L) fails if the casted string is longer than L.
+[required_features=PARAMETERIZED_TYPES,COLLATION_SUPPORT,ANNOTATION_FRAMEWORK,COLLATION_IN_EXPLICIT_CAST]
+[name=cast_string_type_parameters_and_collation_invalid_input]
+select cast('abcdef' as STRING(5) COLLATE 'und:ci');
+--
+ERROR: generic::out_of_range: STRING(5) has maximum length 5 but got a value with length 6
+==
+
+# Casting with type parameters and collation name succeeds.
+[required_features=PARAMETERIZED_TYPES,COLLATION_SUPPORT,ANNOTATION_FRAMEWORK,COLLATION_IN_EXPLICIT_CAST]
+[name=cast_array_type_parameters_and_collation_valid_input]
+select
+  'hi' in unnest(cast(['h', 'HI'] as ARRAY<STRING(2) COLLATE 'und:ci'>)),
+  'hi' in unnest(cast(['h', 'HI'] as ARRAY<STRING(2) COLLATE 'binary'>)),
+--
+ARRAY<STRUCT<BOOL, BOOL>>[{true, false}]
+==
+
+# Casting to an ARRAY fails if the elements of the ARRAY have type parameters
+# that are violated.
+[required_features=PARAMETERIZED_TYPES,COLLATION_SUPPORT,ANNOTATION_FRAMEWORK,COLLATION_IN_EXPLICIT_CAST]
+[name=cast_array_type_parameters_and_collation_invalid_input]
+select cast(['hello', 'hi'] as ARRAY<STRING(2) COLLATE 'und:ci'>);
+--
+ERROR: generic::out_of_range: STRING(2) has maximum length 2 but got a value with length 5
+==
+
+# Casting with type parameters and collation name succeeds.
+[required_features=PARAMETERIZED_TYPES,COLLATION_SUPPORT,ANNOTATION_FRAMEWORK,COLLATION_IN_EXPLICIT_CAST]
+[name=cast_struct_type_parameters_and_collation_valid_input]
+select
+  cast(STRUCT<a BYTES, b STRING>(b'hey', 'abc') as STRUCT<a BYTES(4), b STRING COLLATE 'und:ci'>).b = 'ABC',
+  cast(STRUCT<a BYTES, b STRING>(b'hey', 'abc') as STRUCT<a BYTES(4), b STRING COLLATE 'binary'>).b = 'ABC';
+--
+ARRAY<STRUCT<BOOL, BOOL>>[{true, false}]
+==
+
+# Casting to an STRUCT fails if the field of the STRUCT have type parameters
+# that are violated.
+[required_features=PARAMETERIZED_TYPES,COLLATION_SUPPORT,ANNOTATION_FRAMEWORK,COLLATION_IN_EXPLICIT_CAST]
+[name=cast_struct_type_parameters_and_collation_invalid_input]
+select
+  cast((b'hey', 'abc') as STRUCT<BYTES(2), STRING COLLATE 'und:ci'>);
+--
+ERROR: generic::out_of_range: BYTES(2) has maximum length 2 but got a value with length 3
+==
+[name=cast_date_to_timestamp]
+SELECT CAST(x.date AS TIMESTAMP) as result FROM (SELECT DATE '2023-05-23' AS date) as x;
+--
+ARRAY<STRUCT<result TIMESTAMP>>[{2023-05-23 07:00:00+00}]
+==
+[name=cast_struct_to_struct]
+SELECT my_struct.a as result FROM
+(SELECT CAST(x AS STRUCT<a INT64>) as my_struct FROM (SELECT STRUCT(1 as b) AS x))
+--
+ARRAY<STRUCT<result INT64>>[{1}]
+==
+
+[required_features=RANGE_TYPE,PARAMETERIZED_TYPES,TIMESTAMP_PRECISION]
+[name=cast_range_with_truncation]
+SELECT CAST(x AS RANGE<TIMESTAMP(0)>)
+FROM (SELECT RANGE<TIMESTAMP> '[1970-01-01 00:00:00.123456+00, 2025-01-01 00:00:00.123456+00)' AS x)
+--
+ARRAY<STRUCT<RANGE<TIMESTAMP>>>[
+  {[
+     1970-01-01 00:00:00+00,
+     2025-01-01 00:00:00+00
+   )}
+]
+==
+
+[required_features=CAST_DIFFERENT_ARRAY_TYPES]
+[name=cast_array_of_float_to_string]
+SELECT CAST(ARRAY<DOUBLE>[1.0 + 0.1, 2.2, 3.3] AS ARRAY<STRING>)
+--
+ARRAY<STRUCT<ARRAY<>>>[{ARRAY<STRING>[known order:"1.1", "2.2", "3.3"]}]
+
+NOTE: Reference implementation reports non-determinism.
+==
+
+[required_features=]
+[name=struct_with_float_to_struct_with_string]
+SELECT CAST(STRUCT<DOUBLE, DOUBLE>(1.0 + 0.1, 2.2) AS STRUCT<STRING, STRING>)
+--
+ARRAY<STRUCT<STRUCT<STRING, STRING>>>[{{"1.1", "2.2"}}]
+
+NOTE: Reference implementation reports non-determinism.
+==
+
+[required_features=MAP_TYPE]
+[name=map_with_float_to_map_with_string]
+SELECT CAST(MAP_FROM_ARRAY([STRUCT(1, 1.0 + 0.1), STRUCT(2, 2.2)]) AS MAP<STRING, STRING>)
+--
+
+ARRAY<STRUCT<MAP<STRING, STRING>>>[{{"1": "1.1", "2": "2.2"}}]
+
+NOTE: Reference implementation reports non-determinism.
+==
+
+[name=cast_structs_with_floats_in_different_fields]
+SELECT CAST(STRUCT<STRING, DOUBLE>("1.1", 1.0 + 0.1) AS STRUCT<DOUBLE, STRING>);
+--
+ARRAY<STRUCT<STRUCT<DOUBLE, STRING>>>[{{1.1, "1.1"}}]
+
+NOTE: Reference implementation reports non-determinism.
+==
+
+[required_features=MAP_TYPE]
+[name=cast_map_with_floats_in_different_fields]
+# This case should be marked as non-deterministic because the DOUBLE in the
+# value field potentially contains precision loss that is encoded in the string.
+SELECT CAST(MAP_FROM_ARRAY([STRUCT<STRING, DOUBLE>("1.1", 1.0 + 0.1)]) AS MAP<DOUBLE, STRING>);
+--
+ARRAY<STRUCT<MAP<DOUBLE, STRING>>>[{{1.1: "1.1"}}]
+
+NOTE: Reference implementation reports non-determinism.

@@ -1,0 +1,208 @@
+# Analyzer tests for GoogleSQL's untyped argument coercion behavior.
+
+# An untyped null passed as a templated array will resolve to ARRAY<INT64> if there is no templated any type.
+[default language_features=MAXIMUM]
+SELECT fn_req_any_array_returns_any_arg({{NULL|['a']}});
+--
+ALTERNATION GROUP: NULL
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(sample_functions:fn_req_any_array_returns_any_arg(ARRAY<INT64>) -> INT64)
+    |     +-Literal(type=ARRAY<INT64>, value=NULL)
+    +-input_scan=
+      +-SingleRowScan
+--
+ALTERNATION GROUP: ['a']
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(sample_functions:fn_req_any_array_returns_any_arg(ARRAY<STRING>) -> STRING)
+    |     +-Literal(type=ARRAY<STRING>, value=["a"])
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# An untyped null passed as a templated array will resolve depending on the templated any type.
+SELECT fn_req_any_array_optional_any_arg_returns_any_arg({{NULL|NULL, NULL|NULL, 'a'|['a'], NULL|['a'], 'b'}});
+--
+ALTERNATION GROUP: NULL
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(sample_functions:fn_req_any_array_optional_any_arg_returns_any_arg(ARRAY<INT64>, optional(0) INT64) -> INT64)
+    |     +-Literal(type=ARRAY<INT64>, value=NULL)
+    +-input_scan=
+      +-SingleRowScan
+--
+ALTERNATION GROUP: NULL, NULL
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(sample_functions:fn_req_any_array_optional_any_arg_returns_any_arg(ARRAY<INT64>, optional(1) INT64) -> INT64)
+    |     +-Literal(type=ARRAY<INT64>, value=NULL)
+    |     +-Literal(type=INT64, value=NULL)
+    +-input_scan=
+      +-SingleRowScan
+--
+ALTERNATION GROUP: NULL, 'a'
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(sample_functions:fn_req_any_array_optional_any_arg_returns_any_arg(ARRAY<STRING>, optional(1) STRING) -> STRING)
+    |     +-Literal(type=ARRAY<STRING>, value=NULL)
+    |     +-Literal(type=STRING, value="a")
+    +-input_scan=
+      +-SingleRowScan
+--
+ALTERNATION GROUP: ['a'], NULL
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(sample_functions:fn_req_any_array_optional_any_arg_returns_any_arg(ARRAY<STRING>, optional(1) STRING) -> STRING)
+    |     +-Literal(type=ARRAY<STRING>, value=["a"])
+    |     +-Literal(type=STRING, value=NULL)
+    +-input_scan=
+      +-SingleRowScan
+--
+ALTERNATION GROUP: ['a'], 'b'
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(sample_functions:fn_req_any_array_optional_any_arg_returns_any_arg(ARRAY<STRING>, optional(1) STRING) -> STRING)
+    |     +-Literal(type=ARRAY<STRING>, value=["a"])
+    |     +-Literal(type=STRING, value="b")
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# TODO: b/330392311 - Optional ARG_TYPE_ANY_N has odd behavior if not provided.
+
+# If an optional ANY arg is not provided, it will result in an error (b/330392311).
+# If an optional ANY arg is provided as null, the null will coerce to INT64.
+# If an optional ANY arg is provided with a concrete type, the ANY will take that type.
+SELECT fn_optional_any_arg_returns_any({{|NULL|'a'}});
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: No matching signature for function SAMPLE_FUNCTIONS:FN_OPTIONAL_ANY_ARG_RETURNS_ANY with no arguments
+  Signature: FN_OPTIONAL_ANY_ARG_RETURNS_ANY([T1])
+    Unable to determine type for function return type of kind T1 [at 1:8]
+SELECT fn_optional_any_arg_returns_any();
+       ^
+--
+ALTERNATION GROUP: NULL
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(sample_functions:fn_optional_any_arg_returns_any(optional(1) INT64) -> INT64)
+    |     +-Literal(type=INT64, value=NULL)
+    +-input_scan=
+      +-SingleRowScan
+--
+ALTERNATION GROUP: 'a'
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(sample_functions:fn_optional_any_arg_returns_any(optional(1) STRING) -> STRING)
+    |     +-Literal(type=STRING, value="a")
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# If an optional ANY arg is not provided, it will result in an error (b/330392311).
+# If an optional ANY arg is provided as null, the null will coerce to INT64.
+# If an optional ANY arg is provided with a concrete type, the ANY will take that type.
+SELECT fn_optional_any_arg_returns_any_array({{|NULL|'a'}});
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: No matching signature for function SAMPLE_FUNCTIONS:FN_OPTIONAL_ANY_ARG_RETURNS_ANY_ARRAY with no arguments
+  Signature: FN_OPTIONAL_ANY_ARG_RETURNS_ANY_ARRAY([T1])
+    Unable to determine type for function return type of kind ARRAY<T1> [at 1:8]
+SELECT fn_optional_any_arg_returns_any_array();
+       ^
+--
+ALTERNATION GROUP: NULL
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [ARRAY<INT64>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(sample_functions:fn_optional_any_arg_returns_any_array(optional(1) INT64) -> ARRAY<INT64>)
+    |     +-Literal(type=INT64, value=NULL)
+    +-input_scan=
+      +-SingleRowScan
+--
+ALTERNATION GROUP: 'a'
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [ARRAY<STRING>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(sample_functions:fn_optional_any_arg_returns_any_array(optional(1) STRING) -> ARRAY<STRING>)
+    |     +-Literal(type=STRING, value="a")
+    +-input_scan=
+      +-SingleRowScan

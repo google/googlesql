@@ -1,0 +1,79 @@
+[default required_features=WITH_EXPRESSION]
+[prepare_database]
+CREATE TABLE InputTable AS
+SELECT *
+FROM (
+    SELECT 123 AS Key, "value" AS Value
+)
+--
+ARRAY<STRUCT<Key INT64, Value STRING>>[{123, "value"}]
+==
+
+[name=with_expr_1]
+select WITH(a AS 2, b AS 3 * 4, a + b)
+--
+ARRAY<STRUCT<INT64>>[{14}]
+==
+
+[name=with_expr_name_scoping]
+# Names introduced in WITH should take precedence over names from the
+# environment (e.g. from a selected table).
+#
+# 123 + 2 + LENGTH("value")=5 => 130
+select WITH(Value AS 2, Key + Value + LENGTH(InputTable.Value)) from InputTable
+--
+ARRAY<STRUCT<INT64>>[{130}]
+==
+
+[name=with_expr_names_visible_to_later_columns]
+# We can reference expressions computed in one stage of a WITH expression
+# in later stages.
+SELECT WITH(a AS 1, b AS a + 2, c AS b + 3, d AS a * 2, a + c + d)
+--
+ARRAY<STRUCT<INT64>>[{9}]
+==
+
+[name=with_expr_nested]
+# Nested WITH expressions resolve correctly.
+SELECT WITH(a AS "abc", b AS WITH(a AS "def", b AS "ghi", CONCAT(a, b)), CONCAT(a, b))
+--
+ARRAY<STRUCT<STRING>>[{"abcdefghi"}]
+==
+
+[name=with_aggregates]
+SELECT
+  WITH(valuelen AS LENGTH(KeyValue.value),  -- LENGTH("abc") = 3
+       keysum   AS SUM(KeyValue.key),       -- 1 + 4 = 5
+       valuelen + keysum)                   -- 3 + 5 = 8
+FROM
+  (SELECT 1 AS key, "abc" AS value
+   UNION ALL
+   SELECT 4 AS key, "abc" AS value) KeyValue
+GROUP BY value
+--
+ARRAY<STRUCT<INT64>>[{8}]
+==
+
+[name=with_aggregates_avg]
+SELECT
+  WITH(thecount AS COUNT(KeyValue.key),
+       thesum   AS SUM(KeyValue.key),
+       CAST(thesum AS DOUBLE)/thecount)  -- avg 1,4=2.5
+FROM
+  (SELECT 1 AS key, "abc" AS value
+   UNION ALL
+   SELECT 4 AS key, "abc" AS value) KeyValue
+GROUP BY value
+--
+ARRAY<STRUCT<DOUBLE>>[{2.5}]
+==
+
+[name=conditional_evaluation_in_with_expr]
+[required_features=WITH_EXPRESSION,ENFORCE_CONDITIONAL_EVALUATION]
+SELECT
+  WITH (s AS IF(sum(x) = 0, sum(x), SUM(1/x)),
+        s)
+FROM
+  (SELECT 0 AS x)
+--
+ARRAY<STRUCT<DOUBLE>>[{0}]

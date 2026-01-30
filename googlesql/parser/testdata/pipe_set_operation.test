@@ -1,0 +1,995 @@
+select 1
+|> union all (select 2)
+--
+QueryStatement [0-32] [select 1 |...(select 2)]
+  Query [0-32] [select 1 |...(select 2)]
+    Select [0-8] [select 1]
+      SelectList [7-8] [1]
+        SelectColumn [7-8] [1]
+          IntLiteral(1) [7-8] [1]
+    PipeSetOperation [9-32] [|> union all (select 2)]
+      SetOperationMetadata [12-21] [union all]
+        SetOperationType [12-17] [union]
+        SetOperationAllOrDistinct [18-21] [all]
+      Query [23-31] [select 2]
+        Select [23-31] [select 2]
+          SelectList [30-31] [2]
+            SelectColumn [30-31] [2]
+              IntLiteral(2) [30-31] [2]
+--
+SELECT
+  1
+|> UNION ALL
+   (
+   SELECT
+     2
+   )
+==
+
+# Hints, and multiple rhs tables.
+select 1
+|> union @{hint=1} all (select 2), (select 3)
+--
+QueryStatement [0-54] [select 1 |...(select 3)]
+  Query [0-53] [select 1 |...(select 3]
+    Select [0-8] [select 1]
+      SelectList [7-8] [1]
+        SelectColumn [7-8] [1]
+          IntLiteral(1) [7-8] [1]
+    PipeSetOperation [9-53] [|> union @...(select 3]
+      SetOperationMetadata [12-31] [union @{hint=1} all]
+        SetOperationType [12-17] [union]
+        SetOperationAllOrDistinct [28-31] [all]
+        Hint [18-27] [@{hint=1}]
+          HintEntry [20-26] [hint=1]
+            Identifier(hint) [20-24] [hint]
+            IntLiteral(1) [25-26] [1]
+      Query [33-41] [select 2]
+        Select [33-41] [select 2]
+          SelectList [40-41] [2]
+            SelectColumn [40-41] [2]
+              IntLiteral(2) [40-41] [2]
+      Query [45-53] [select 3]
+        Select [45-53] [select 3]
+          SelectList [52-53] [3]
+            SelectColumn [52-53] [3]
+              IntLiteral(3) [52-53] [3]
+--
+SELECT
+  1
+|> UNION @{ hint = 1 } ALL
+   (
+   SELECT
+     2
+   ),
+   (
+   SELECT
+     3
+   )
+==
+
+# Complex queries on the rhs, with pipes or without.
+select 1
+|> union all
+(select * from t where x),
+(select 1 |> where y)
+--
+QueryStatement [0-70] [select 1 |...> where y)]
+  Query [0-69] [select 1 |...|> where y]
+    Select [0-8] [select 1]
+      SelectList [7-8] [1]
+        SelectColumn [7-8] [1]
+          IntLiteral(1) [7-8] [1]
+    PipeSetOperation [9-69] [|> union all...|> where y]
+      SetOperationMetadata [12-21] [union all]
+        SetOperationType [12-17] [union]
+        SetOperationAllOrDistinct [18-21] [all]
+      Query [23-46] [select * from t where x]
+        Select [23-46] [select * from t where x]
+          SelectList [30-31] [*]
+            SelectColumn [30-31] [*]
+              Star(*) [30-31] [*]
+          FromClause [32-38] [from t]
+            TablePathExpression [37-38] [t]
+              PathExpression [37-38] [t]
+                Identifier(t) [37-38] [t]
+          WhereClause [39-46] [where x]
+            PathExpression [45-46] [x]
+              Identifier(x) [45-46] [x]
+      Query [50-69] [select 1 |> where y]
+        Select [50-58] [select 1]
+          SelectList [57-58] [1]
+            SelectColumn [57-58] [1]
+              IntLiteral(1) [57-58] [1]
+        PipeWhere [59-69] [|> where y]
+          WhereClause [62-69] [where y]
+            PathExpression [68-69] [y]
+              Identifier(y) [68-69] [y]
+--
+SELECT
+  1
+|> UNION ALL
+   (
+   SELECT
+     *
+   FROM
+     t
+   WHERE
+     x
+   ),
+   (
+   SELECT
+     1
+   |> WHERE
+        y)
+==
+
+select 1
+|> union (select 2)
+--
+ERROR: Syntax error: Expected keyword ALL or keyword DISTINCT but got "(" [at 2:10]
+|> union (select 2)
+         ^
+==
+
+select 1
+|> union all (select 2) union all (select 3)
+--
+ERROR: Syntax error: Expected end of input but got keyword UNION [at 2:25]
+|> union all (select 2) union all (select 3)
+                        ^
+==
+
+select 1
+|> union all select 2
+--
+ERROR: Syntax error: Expected "(" or keyword TABLE but got keyword SELECT [at 2:14]
+|> union all select 2
+             ^
+==
+
+select 1
+|> union all other_table
+--
+ERROR: Syntax error: Expected "(" or keyword TABLE but got identifier "other_table" [at 2:14]
+|> union all other_table
+             ^
+==
+
+# All combinations of simple set ops work as pipe operator keywords.
+select 1
+|> {{union|intersect|except}} {{all|distinct}} (select 2)
+--
+ALTERNATION GROUP: union,all
+--
+QueryStatement [0-32] [select 1 |...(select 2)]
+  Query [0-32] [select 1 |...(select 2)]
+    Select [0-8] [select 1]
+      SelectList [7-8] [1]
+        SelectColumn [7-8] [1]
+          IntLiteral(1) [7-8] [1]
+    PipeSetOperation [9-32] [|> union all (select 2)]
+      SetOperationMetadata [12-21] [union all]
+        SetOperationType [12-17] [union]
+        SetOperationAllOrDistinct [18-21] [all]
+      Query [23-31] [select 2]
+        Select [23-31] [select 2]
+          SelectList [30-31] [2]
+            SelectColumn [30-31] [2]
+              IntLiteral(2) [30-31] [2]
+--
+SELECT
+  1
+|> UNION ALL
+   (
+   SELECT
+     2
+   )
+--
+ALTERNATION GROUP: union,distinct
+--
+QueryStatement [0-37] [select 1 |...(select 2)]
+  Query [0-37] [select 1 |...(select 2)]
+    Select [0-8] [select 1]
+      SelectList [7-8] [1]
+        SelectColumn [7-8] [1]
+          IntLiteral(1) [7-8] [1]
+    PipeSetOperation [9-37] [|> union distinct (select 2)]
+      SetOperationMetadata [12-26] [union distinct]
+        SetOperationType [12-17] [union]
+        SetOperationAllOrDistinct [18-26] [distinct]
+      Query [28-36] [select 2]
+        Select [28-36] [select 2]
+          SelectList [35-36] [2]
+            SelectColumn [35-36] [2]
+              IntLiteral(2) [35-36] [2]
+--
+SELECT
+  1
+|> UNION DISTINCT
+   (
+   SELECT
+     2
+   )
+--
+ALTERNATION GROUP: intersect,all
+--
+QueryStatement [0-36] [select 1 |...(select 2)]
+  Query [0-36] [select 1 |...(select 2)]
+    Select [0-8] [select 1]
+      SelectList [7-8] [1]
+        SelectColumn [7-8] [1]
+          IntLiteral(1) [7-8] [1]
+    PipeSetOperation [9-36] [|> intersect all (select 2)]
+      SetOperationMetadata [12-25] [intersect all]
+        SetOperationType [12-21] [intersect]
+        SetOperationAllOrDistinct [22-25] [all]
+      Query [27-35] [select 2]
+        Select [27-35] [select 2]
+          SelectList [34-35] [2]
+            SelectColumn [34-35] [2]
+              IntLiteral(2) [34-35] [2]
+--
+SELECT
+  1
+|> INTERSECT ALL
+   (
+   SELECT
+     2
+   )
+--
+ALTERNATION GROUP: intersect,distinct
+--
+QueryStatement [0-41] [select 1 |...(select 2)]
+  Query [0-41] [select 1 |...(select 2)]
+    Select [0-8] [select 1]
+      SelectList [7-8] [1]
+        SelectColumn [7-8] [1]
+          IntLiteral(1) [7-8] [1]
+    PipeSetOperation [9-41] [|> intersect...(select 2)]
+      SetOperationMetadata [12-30] [intersect distinct]
+        SetOperationType [12-21] [intersect]
+        SetOperationAllOrDistinct [22-30] [distinct]
+      Query [32-40] [select 2]
+        Select [32-40] [select 2]
+          SelectList [39-40] [2]
+            SelectColumn [39-40] [2]
+              IntLiteral(2) [39-40] [2]
+--
+SELECT
+  1
+|> INTERSECT DISTINCT
+   (
+   SELECT
+     2
+   )
+--
+ALTERNATION GROUP: except,all
+--
+QueryStatement [0-33] [select 1 |...(select 2)]
+  Query [0-33] [select 1 |...(select 2)]
+    Select [0-8] [select 1]
+      SelectList [7-8] [1]
+        SelectColumn [7-8] [1]
+          IntLiteral(1) [7-8] [1]
+    PipeSetOperation [9-33] [|> except all (select 2)]
+      SetOperationMetadata [12-22] [except all]
+        SetOperationType [12-18] [except]
+        SetOperationAllOrDistinct [19-22] [all]
+      Query [24-32] [select 2]
+        Select [24-32] [select 2]
+          SelectList [31-32] [2]
+            SelectColumn [31-32] [2]
+              IntLiteral(2) [31-32] [2]
+--
+SELECT
+  1
+|> EXCEPT ALL
+   (
+   SELECT
+     2
+   )
+--
+ALTERNATION GROUP: except,distinct
+--
+QueryStatement [0-38] [select 1 |...(select 2)]
+  Query [0-38] [select 1 |...(select 2)]
+    Select [0-8] [select 1]
+      SelectList [7-8] [1]
+        SelectColumn [7-8] [1]
+          IntLiteral(1) [7-8] [1]
+    PipeSetOperation [9-38] [|> except distinct (select 2)]
+      SetOperationMetadata [12-27] [except distinct]
+        SetOperationType [12-18] [except]
+        SetOperationAllOrDistinct [19-27] [distinct]
+      Query [29-37] [select 2]
+        Select [29-37] [select 2]
+          SelectList [36-37] [2]
+            SelectColumn [36-37] [2]
+              IntLiteral(2) [36-37] [2]
+--
+SELECT
+  1
+|> EXCEPT DISTINCT
+   (
+   SELECT
+     2
+   )
+==
+
+# CORRESPONDING modifiers work.
+select 1
+|> UNION ALL CORRESPONDING (select 2)
+|> INTERSECT DISTINCT CORRESPONDING BY (x) (select 3)
+|> EXCEPT ALL STRICT CORRESPONDING BY (x) (select 4)
+--
+QueryStatement [0-153] [select 1 |...(select 4)]
+  Query [0-153] [select 1 |...(select 4)]
+    Select [0-8] [select 1]
+      SelectList [7-8] [1]
+        SelectColumn [7-8] [1]
+          IntLiteral(1) [7-8] [1]
+    PipeSetOperation [9-46] [|> UNION ALL...(select 2)]
+      SetOperationMetadata [12-35] [UNION ALL CORRESPONDING]
+        SetOperationType [12-17] [UNION]
+        SetOperationAllOrDistinct [18-21] [ALL]
+        SetOperationColumnMatchMode [22-35] [CORRESPONDING]
+      Query [37-45] [select 2]
+        Select [37-45] [select 2]
+          SelectList [44-45] [2]
+            SelectColumn [44-45] [2]
+              IntLiteral(2) [44-45] [2]
+    PipeSetOperation [47-100] [|> INTERSECT...(select 3)]
+      SetOperationMetadata [50-89] [INTERSECT...RRESPONDING BY (x)]
+        SetOperationType [50-59] [INTERSECT]
+        SetOperationAllOrDistinct [60-68] [DISTINCT]
+        SetOperationColumnMatchMode [69-85] [CORRESPONDING BY]
+        ColumnList [86-89] [(x)]
+          Identifier(x) [87-88] [x]
+      Query [91-99] [select 3]
+        Select [91-99] [select 3]
+          SelectList [98-99] [3]
+            SelectColumn [98-99] [3]
+              IntLiteral(3) [98-99] [3]
+    PipeSetOperation [101-153] [|> EXCEPT...(select 4)]
+      SetOperationMetadata [104-142] [EXCEPT ALL...RESPONDING BY (x)]
+        SetOperationType [104-110] [EXCEPT]
+        SetOperationAllOrDistinct [111-114] [ALL]
+        SetOperationColumnMatchMode [122-138] [CORRESPONDING BY]
+        SetOperationColumnPropagationMode [115-121] [STRICT]
+        ColumnList [139-142] [(x)]
+          Identifier(x) [140-141] [x]
+      Query [144-152] [select 4]
+        Select [144-152] [select 4]
+          SelectList [151-152] [4]
+            SelectColumn [151-152] [4]
+              IntLiteral(4) [151-152] [4]
+--
+SELECT
+  1
+|> UNION ALL CORRESPONDING
+   (
+   SELECT
+     2
+   )
+|> INTERSECT DISTINCT CORRESPONDING BY (x)
+   (
+   SELECT
+     3
+   )
+|> EXCEPT ALL STRICT CORRESPONDING BY (x)
+   (
+   SELECT
+     4
+   )
+==
+
+# BY NAME modifiers work.
+select 1
+|> UNION ALL BY NAME (select 2)
+|> INTERSECT DISTINCT BY NAME ON (x) (select 3)
+|> EXCEPT ALL BY NAME ON (x) (select 4)
+--
+QueryStatement [0-128] [select 1 |...(select 4)]
+  Query [0-128] [select 1 |...(select 4)]
+    Select [0-8] [select 1]
+      SelectList [7-8] [1]
+        SelectColumn [7-8] [1]
+          IntLiteral(1) [7-8] [1]
+    PipeSetOperation [9-40] [|> UNION ALL...(select 2)]
+      SetOperationMetadata [12-29] [UNION ALL BY NAME]
+        SetOperationType [12-17] [UNION]
+        SetOperationAllOrDistinct [18-21] [ALL]
+        SetOperationColumnMatchMode [22-29] [BY NAME]
+      Query [31-39] [select 2]
+        Select [31-39] [select 2]
+          SelectList [38-39] [2]
+            SelectColumn [38-39] [2]
+              IntLiteral(2) [38-39] [2]
+    PipeSetOperation [41-88] [|> INTERSECT...(select 3)]
+      SetOperationMetadata [44-77] [INTERSECT...NAME ON (x)]
+        SetOperationType [44-53] [INTERSECT]
+        SetOperationAllOrDistinct [54-62] [DISTINCT]
+        SetOperationColumnMatchMode [63-73] [BY NAME ON]
+        ColumnList [74-77] [(x)]
+          Identifier(x) [75-76] [x]
+      Query [79-87] [select 3]
+        Select [79-87] [select 3]
+          SelectList [86-87] [3]
+            SelectColumn [86-87] [3]
+              IntLiteral(3) [86-87] [3]
+    PipeSetOperation [89-128] [|> EXCEPT...(select 4)]
+      SetOperationMetadata [92-117] [EXCEPT ALL BY NAME ON (x)]
+        SetOperationType [92-98] [EXCEPT]
+        SetOperationAllOrDistinct [99-102] [ALL]
+        SetOperationColumnMatchMode [103-113] [BY NAME ON]
+        ColumnList [114-117] [(x)]
+          Identifier(x) [115-116] [x]
+      Query [119-127] [select 4]
+        Select [119-127] [select 4]
+          SelectList [126-127] [4]
+            SelectColumn [126-127] [4]
+              IntLiteral(4) [126-127] [4]
+--
+SELECT
+  1
+|> UNION ALL BY NAME
+   (
+   SELECT
+     2
+   )
+|> INTERSECT DISTINCT BY NAME ON (x)
+   (
+   SELECT
+     3
+   )
+|> EXCEPT ALL BY NAME ON (x)
+   (
+   SELECT
+     4
+   )
+==
+
+select 1
+|> UNION ALL STRICT BY NAME (select 2)
+--
+ERROR: Syntax error: STRICT cannot be used with BY NAME in set operations [at 2:14]
+|> UNION ALL STRICT BY NAME (select 2)
+             ^
+==
+
+select 1
+|> UNION ALL BY NAME BY (a,b) (select 2)
+--
+ERROR: Syntax error: Expected "(" or keyword TABLE but got keyword BY [at 2:22]
+|> UNION ALL BY NAME BY (a,b) (select 2)
+                     ^
+==
+
+# FULL/LEFT modifiers work at the start of the pipe operator
+select 1
+|> {{FULL|FULL OUTER|LEFT|LEFT OUTER|INNER}} UNION ALL (select 2)
+--
+ALTERNATION GROUP: FULL
+--
+QueryStatement [0-37] [select 1 |...(select 2)]
+  Query [0-37] [select 1 |...(select 2)]
+    Select [0-8] [select 1]
+      SelectList [7-8] [1]
+        SelectColumn [7-8] [1]
+          IntLiteral(1) [7-8] [1]
+    PipeSetOperation [9-37] [|> FULL UNION ALL (select 2)]
+      SetOperationMetadata [12-26] [FULL UNION ALL]
+        SetOperationType [17-22] [UNION]
+        SetOperationAllOrDistinct [23-26] [ALL]
+        SetOperationColumnPropagationMode [12-16] [FULL]
+      Query [28-36] [select 2]
+        Select [28-36] [select 2]
+          SelectList [35-36] [2]
+            SelectColumn [35-36] [2]
+              IntLiteral(2) [35-36] [2]
+--
+SELECT
+  1
+|> FULL UNION ALL
+   (
+   SELECT
+     2
+   )
+--
+ALTERNATION GROUP: FULL OUTER
+--
+QueryStatement [0-43] [select 1 |...(select 2)]
+  Query [0-43] [select 1 |...(select 2)]
+    Select [0-8] [select 1]
+      SelectList [7-8] [1]
+        SelectColumn [7-8] [1]
+          IntLiteral(1) [7-8] [1]
+    PipeSetOperation [9-43] [|> FULL OUTER...(select 2)]
+      SetOperationMetadata [12-32] [FULL OUTER UNION ALL]
+        SetOperationType [23-28] [UNION]
+        SetOperationAllOrDistinct [29-32] [ALL]
+        SetOperationColumnPropagationMode [12-22] [FULL OUTER]
+      Query [34-42] [select 2]
+        Select [34-42] [select 2]
+          SelectList [41-42] [2]
+            SelectColumn [41-42] [2]
+              IntLiteral(2) [41-42] [2]
+--
+SELECT
+  1
+|> FULL UNION ALL
+   (
+   SELECT
+     2
+   )
+--
+ALTERNATION GROUP: LEFT
+--
+QueryStatement [0-37] [select 1 |...(select 2)]
+  Query [0-37] [select 1 |...(select 2)]
+    Select [0-8] [select 1]
+      SelectList [7-8] [1]
+        SelectColumn [7-8] [1]
+          IntLiteral(1) [7-8] [1]
+    PipeSetOperation [9-37] [|> LEFT UNION ALL (select 2)]
+      SetOperationMetadata [12-26] [LEFT UNION ALL]
+        SetOperationType [17-22] [UNION]
+        SetOperationAllOrDistinct [23-26] [ALL]
+        SetOperationColumnPropagationMode [12-16] [LEFT]
+      Query [28-36] [select 2]
+        Select [28-36] [select 2]
+          SelectList [35-36] [2]
+            SelectColumn [35-36] [2]
+              IntLiteral(2) [35-36] [2]
+--
+SELECT
+  1
+|> LEFT UNION ALL
+   (
+   SELECT
+     2
+   )
+--
+ALTERNATION GROUP: LEFT OUTER
+--
+QueryStatement [0-43] [select 1 |...(select 2)]
+  Query [0-43] [select 1 |...(select 2)]
+    Select [0-8] [select 1]
+      SelectList [7-8] [1]
+        SelectColumn [7-8] [1]
+          IntLiteral(1) [7-8] [1]
+    PipeSetOperation [9-43] [|> LEFT OUTER...(select 2)]
+      SetOperationMetadata [12-32] [LEFT OUTER UNION ALL]
+        SetOperationType [23-28] [UNION]
+        SetOperationAllOrDistinct [29-32] [ALL]
+        SetOperationColumnPropagationMode [12-22] [LEFT OUTER]
+      Query [34-42] [select 2]
+        Select [34-42] [select 2]
+          SelectList [41-42] [2]
+            SelectColumn [41-42] [2]
+              IntLiteral(2) [41-42] [2]
+--
+SELECT
+  1
+|> LEFT UNION ALL
+   (
+   SELECT
+     2
+   )
+--
+ALTERNATION GROUP: INNER
+--
+QueryStatement [0-38] [select 1 |...(select 2)]
+  Query [0-38] [select 1 |...(select 2)]
+    Select [0-8] [select 1]
+      SelectList [7-8] [1]
+        SelectColumn [7-8] [1]
+          IntLiteral(1) [7-8] [1]
+    PipeSetOperation [9-38] [|> INNER UNION ALL (select 2)]
+      SetOperationMetadata [12-27] [INNER UNION ALL]
+        SetOperationType [18-23] [UNION]
+        SetOperationAllOrDistinct [24-27] [ALL]
+        SetOperationColumnPropagationMode [12-17] [INNER]
+      Query [29-37] [select 2]
+        Select [29-37] [select 2]
+          SelectList [36-37] [2]
+            SelectColumn [36-37] [2]
+              IntLiteral(2) [36-37] [2]
+--
+SELECT
+  1
+|> INNER UNION ALL
+   (
+   SELECT
+     2
+   )
+==
+
+# Zero inputs with trailing comma is not allowed.
+select 1
+|> union all,
+--
+ERROR: Syntax error: Expected "(" or keyword TABLE but got "," [at 2:13]
+|> union all,
+            ^
+==
+
+# Trailing comma is allowed, single input.
+select 1
+|> union all (select 2),
+--
+QueryStatement [0-33] [select 1 |...select 2),]
+  Query [0-32] [select 1 |...(select 2)]
+    Select [0-8] [select 1]
+      SelectList [7-8] [1]
+        SelectColumn [7-8] [1]
+          IntLiteral(1) [7-8] [1]
+    PipeSetOperation [9-32] [|> union all (select 2)]
+      SetOperationMetadata [12-21] [union all]
+        SetOperationType [12-17] [union]
+        SetOperationAllOrDistinct [18-21] [all]
+      Query [23-31] [select 2]
+        Select [23-31] [select 2]
+          SelectList [30-31] [2]
+            SelectColumn [30-31] [2]
+              IntLiteral(2) [30-31] [2]
+--
+SELECT
+  1
+|> UNION ALL
+   (
+   SELECT
+     2
+   )
+==
+
+# Trailing comma is allowed, multiple inputs.
+select 1
+|> intersect distinct (select 2), (select 2),
+--
+QueryStatement [0-54] [select 1 |...select 2),]
+  Query [0-52] [select 1 |...(select 2]
+    Select [0-8] [select 1]
+      SelectList [7-8] [1]
+        SelectColumn [7-8] [1]
+          IntLiteral(1) [7-8] [1]
+    PipeSetOperation [9-52] [|> intersect...(select 2]
+      SetOperationMetadata [12-30] [intersect distinct]
+        SetOperationType [12-21] [intersect]
+        SetOperationAllOrDistinct [22-30] [distinct]
+      Query [32-40] [select 2]
+        Select [32-40] [select 2]
+          SelectList [39-40] [2]
+            SelectColumn [39-40] [2]
+              IntLiteral(2) [39-40] [2]
+      Query [44-52] [select 2]
+        Select [44-52] [select 2]
+          SelectList [51-52] [2]
+            SelectColumn [51-52] [2]
+              IntLiteral(2) [51-52] [2]
+--
+SELECT
+  1
+|> INTERSECT DISTINCT
+   (
+   SELECT
+     2
+   ),
+   (
+   SELECT
+     2
+   )
+==
+
+# Unparenthesized TABLE clauses in pipe set operations should work.
+[language_features=NONE,+PIPES]
+TABLE t1
+|> {{UNION|INTERSECT|EXCEPT}} {{ALL|DISTINCT}}
+    TABLE t2,
+    TABLE t3,
+    (FROM t4 |> WHERE condition),
+    (TABLE t5)
+--
+ALTERNATION GROUP: UNION,ALL
+--
+QueryStatement [0-98] [TABLE t1 |...(TABLE t5)]
+  Query [0-97] [TABLE t1 |...(TABLE t5]
+    TableClause [0-8] [TABLE t1]
+      PathExpression [6-8] [t1]
+        Identifier(t1) [6-8] [t1]
+    PipeSetOperation [9-97] [|> UNION ALL...(TABLE t5]
+      SetOperationMetadata [12-21] [UNION ALL]
+        SetOperationType [12-17] [UNION]
+        SetOperationAllOrDistinct [18-21] [ALL]
+      TableClause [26-34] [TABLE t2]
+        PathExpression [32-34] [t2]
+          Identifier(t2) [32-34] [t2]
+      TableClause [40-48] [TABLE t3]
+        PathExpression [46-48] [t3]
+          Identifier(t3) [46-48] [t3]
+      Query [55-81] [FROM t4 |> WHERE condition]
+        FromQuery [55-62] [FROM t4]
+          FromClause [55-62] [FROM t4]
+            TablePathExpression [60-62] [t4]
+              PathExpression [60-62] [t4]
+                Identifier(t4) [60-62] [t4]
+        PipeWhere [63-81] [|> WHERE condition]
+          WhereClause [66-81] [WHERE condition]
+            PathExpression [72-81] [condition]
+              Identifier(condition) [72-81] [condition]
+      Query [89-97] [TABLE t5]
+        TableClause [89-97] [TABLE t5]
+          PathExpression [95-97] [t5]
+            Identifier(t5) [95-97] [t5]
+--
+TABLE t1
+|> UNION ALL
+   TABLE t2,
+   TABLE t3,
+   (
+   FROM
+     t4
+   |> WHERE
+        condition),
+   (TABLE t5)
+--
+ALTERNATION GROUP: UNION,DISTINCT
+--
+QueryStatement [0-103] [TABLE t1 |...(TABLE t5)]
+  Query [0-102] [TABLE t1 |...(TABLE t5]
+    TableClause [0-8] [TABLE t1]
+      PathExpression [6-8] [t1]
+        Identifier(t1) [6-8] [t1]
+    PipeSetOperation [9-102] [|> UNION DISTINCT...(TABLE t5]
+      SetOperationMetadata [12-26] [UNION DISTINCT]
+        SetOperationType [12-17] [UNION]
+        SetOperationAllOrDistinct [18-26] [DISTINCT]
+      TableClause [31-39] [TABLE t2]
+        PathExpression [37-39] [t2]
+          Identifier(t2) [37-39] [t2]
+      TableClause [45-53] [TABLE t3]
+        PathExpression [51-53] [t3]
+          Identifier(t3) [51-53] [t3]
+      Query [60-86] [FROM t4 |> WHERE condition]
+        FromQuery [60-67] [FROM t4]
+          FromClause [60-67] [FROM t4]
+            TablePathExpression [65-67] [t4]
+              PathExpression [65-67] [t4]
+                Identifier(t4) [65-67] [t4]
+        PipeWhere [68-86] [|> WHERE condition]
+          WhereClause [71-86] [WHERE condition]
+            PathExpression [77-86] [condition]
+              Identifier(condition) [77-86] [condition]
+      Query [94-102] [TABLE t5]
+        TableClause [94-102] [TABLE t5]
+          PathExpression [100-102] [t5]
+            Identifier(t5) [100-102] [t5]
+--
+TABLE t1
+|> UNION DISTINCT
+   TABLE t2,
+   TABLE t3,
+   (
+   FROM
+     t4
+   |> WHERE
+        condition),
+   (TABLE t5)
+--
+ALTERNATION GROUP: INTERSECT,ALL
+--
+QueryStatement [0-102] [TABLE t1 |...(TABLE t5)]
+  Query [0-101] [TABLE t1 |...(TABLE t5]
+    TableClause [0-8] [TABLE t1]
+      PathExpression [6-8] [t1]
+        Identifier(t1) [6-8] [t1]
+    PipeSetOperation [9-101] [|> INTERSECT...(TABLE t5]
+      SetOperationMetadata [12-25] [INTERSECT ALL]
+        SetOperationType [12-21] [INTERSECT]
+        SetOperationAllOrDistinct [22-25] [ALL]
+      TableClause [30-38] [TABLE t2]
+        PathExpression [36-38] [t2]
+          Identifier(t2) [36-38] [t2]
+      TableClause [44-52] [TABLE t3]
+        PathExpression [50-52] [t3]
+          Identifier(t3) [50-52] [t3]
+      Query [59-85] [FROM t4 |> WHERE condition]
+        FromQuery [59-66] [FROM t4]
+          FromClause [59-66] [FROM t4]
+            TablePathExpression [64-66] [t4]
+              PathExpression [64-66] [t4]
+                Identifier(t4) [64-66] [t4]
+        PipeWhere [67-85] [|> WHERE condition]
+          WhereClause [70-85] [WHERE condition]
+            PathExpression [76-85] [condition]
+              Identifier(condition) [76-85] [condition]
+      Query [93-101] [TABLE t5]
+        TableClause [93-101] [TABLE t5]
+          PathExpression [99-101] [t5]
+            Identifier(t5) [99-101] [t5]
+--
+TABLE t1
+|> INTERSECT ALL
+   TABLE t2,
+   TABLE t3,
+   (
+   FROM
+     t4
+   |> WHERE
+        condition),
+   (TABLE t5)
+--
+ALTERNATION GROUP: INTERSECT,DISTINCT
+--
+QueryStatement [0-107] [TABLE t1 |...(TABLE t5)]
+  Query [0-106] [TABLE t1 |...(TABLE t5]
+    TableClause [0-8] [TABLE t1]
+      PathExpression [6-8] [t1]
+        Identifier(t1) [6-8] [t1]
+    PipeSetOperation [9-106] [|> INTERSECT...(TABLE t5]
+      SetOperationMetadata [12-30] [INTERSECT DISTINCT]
+        SetOperationType [12-21] [INTERSECT]
+        SetOperationAllOrDistinct [22-30] [DISTINCT]
+      TableClause [35-43] [TABLE t2]
+        PathExpression [41-43] [t2]
+          Identifier(t2) [41-43] [t2]
+      TableClause [49-57] [TABLE t3]
+        PathExpression [55-57] [t3]
+          Identifier(t3) [55-57] [t3]
+      Query [64-90] [FROM t4 |> WHERE condition]
+        FromQuery [64-71] [FROM t4]
+          FromClause [64-71] [FROM t4]
+            TablePathExpression [69-71] [t4]
+              PathExpression [69-71] [t4]
+                Identifier(t4) [69-71] [t4]
+        PipeWhere [72-90] [|> WHERE condition]
+          WhereClause [75-90] [WHERE condition]
+            PathExpression [81-90] [condition]
+              Identifier(condition) [81-90] [condition]
+      Query [98-106] [TABLE t5]
+        TableClause [98-106] [TABLE t5]
+          PathExpression [104-106] [t5]
+            Identifier(t5) [104-106] [t5]
+--
+TABLE t1
+|> INTERSECT DISTINCT
+   TABLE t2,
+   TABLE t3,
+   (
+   FROM
+     t4
+   |> WHERE
+        condition),
+   (TABLE t5)
+--
+ALTERNATION GROUP: EXCEPT,ALL
+--
+QueryStatement [0-99] [TABLE t1 |...(TABLE t5)]
+  Query [0-98] [TABLE t1 |...(TABLE t5]
+    TableClause [0-8] [TABLE t1]
+      PathExpression [6-8] [t1]
+        Identifier(t1) [6-8] [t1]
+    PipeSetOperation [9-98] [|> EXCEPT...(TABLE t5]
+      SetOperationMetadata [12-22] [EXCEPT ALL]
+        SetOperationType [12-18] [EXCEPT]
+        SetOperationAllOrDistinct [19-22] [ALL]
+      TableClause [27-35] [TABLE t2]
+        PathExpression [33-35] [t2]
+          Identifier(t2) [33-35] [t2]
+      TableClause [41-49] [TABLE t3]
+        PathExpression [47-49] [t3]
+          Identifier(t3) [47-49] [t3]
+      Query [56-82] [FROM t4 |> WHERE condition]
+        FromQuery [56-63] [FROM t4]
+          FromClause [56-63] [FROM t4]
+            TablePathExpression [61-63] [t4]
+              PathExpression [61-63] [t4]
+                Identifier(t4) [61-63] [t4]
+        PipeWhere [64-82] [|> WHERE condition]
+          WhereClause [67-82] [WHERE condition]
+            PathExpression [73-82] [condition]
+              Identifier(condition) [73-82] [condition]
+      Query [90-98] [TABLE t5]
+        TableClause [90-98] [TABLE t5]
+          PathExpression [96-98] [t5]
+            Identifier(t5) [96-98] [t5]
+--
+TABLE t1
+|> EXCEPT ALL
+   TABLE t2,
+   TABLE t3,
+   (
+   FROM
+     t4
+   |> WHERE
+        condition),
+   (TABLE t5)
+--
+ALTERNATION GROUP: EXCEPT,DISTINCT
+--
+QueryStatement [0-104] [TABLE t1 |...(TABLE t5)]
+  Query [0-103] [TABLE t1 |...(TABLE t5]
+    TableClause [0-8] [TABLE t1]
+      PathExpression [6-8] [t1]
+        Identifier(t1) [6-8] [t1]
+    PipeSetOperation [9-103] [|> EXCEPT...(TABLE t5]
+      SetOperationMetadata [12-27] [EXCEPT DISTINCT]
+        SetOperationType [12-18] [EXCEPT]
+        SetOperationAllOrDistinct [19-27] [DISTINCT]
+      TableClause [32-40] [TABLE t2]
+        PathExpression [38-40] [t2]
+          Identifier(t2) [38-40] [t2]
+      TableClause [46-54] [TABLE t3]
+        PathExpression [52-54] [t3]
+          Identifier(t3) [52-54] [t3]
+      Query [61-87] [FROM t4 |> WHERE condition]
+        FromQuery [61-68] [FROM t4]
+          FromClause [61-68] [FROM t4]
+            TablePathExpression [66-68] [t4]
+              PathExpression [66-68] [t4]
+                Identifier(t4) [66-68] [t4]
+        PipeWhere [69-87] [|> WHERE condition]
+          WhereClause [72-87] [WHERE condition]
+            PathExpression [78-87] [condition]
+              Identifier(condition) [78-87] [condition]
+      Query [95-103] [TABLE t5]
+        TableClause [95-103] [TABLE t5]
+          PathExpression [101-103] [t5]
+            Identifier(t5) [101-103] [t5]
+--
+TABLE t1
+|> EXCEPT DISTINCT
+   TABLE t2,
+   TABLE t3,
+   (
+   FROM
+     t4
+   |> WHERE
+        condition),
+   (TABLE t5)
+==
+
+# TABLE clause at end with or without trailing comma
+[language_features=NONE,+PIPES]
+TABLE t1
+|>  UNION ALL
+    TABLE t2 {{|,}}
+--
+ALTERNATION GROUP: <empty>
+--
+QueryStatement [0-35] [TABLE t1 |...TABLE t2]
+  Query [0-35] [TABLE t1 |...TABLE t2]
+    TableClause [0-8] [TABLE t1]
+      PathExpression [6-8] [t1]
+        Identifier(t1) [6-8] [t1]
+    PipeSetOperation [9-35] [|>  UNION ALL     TABLE t2]
+      SetOperationMetadata [13-22] [UNION ALL]
+        SetOperationType [13-18] [UNION]
+        SetOperationAllOrDistinct [19-22] [ALL]
+      TableClause [27-35] [TABLE t2]
+        PathExpression [33-35] [t2]
+          Identifier(t2) [33-35] [t2]
+--
+TABLE t1
+|> UNION ALL
+   TABLE t2
+--
+ALTERNATION GROUP: ,
+--
+QueryStatement [0-37] [TABLE t1 |...TABLE t2 ,]
+  Query [0-35] [TABLE t1 |...TABLE t2]
+    TableClause [0-8] [TABLE t1]
+      PathExpression [6-8] [t1]
+        Identifier(t1) [6-8] [t1]
+    PipeSetOperation [9-35] [|>  UNION ALL     TABLE t2]
+      SetOperationMetadata [13-22] [UNION ALL]
+        SetOperationType [13-18] [UNION]
+        SetOperationAllOrDistinct [19-22] [ALL]
+      TableClause [27-35] [TABLE t2]
+        PathExpression [33-35] [t2]
+          Identifier(t2) [33-35] [t2]
+--
+TABLE t1
+|> UNION ALL
+   TABLE t2

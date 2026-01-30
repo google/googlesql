@@ -1,0 +1,562 @@
+[default required_features=JSON_TYPE,JSON_TYPE_COMPARISON]
+[prepare_database]
+CREATE TABLE JsonTable AS
+SELECT cast(1 as int64) as id, cast(JSON '1' as json) as json_col
+        UNION ALL
+  SELECT 2, JSON 'null' UNION ALL
+  SELECT 3, JSON '1.00' UNION ALL
+  SELECT 4, JSON '"abc"' UNION ALL
+  SELECT 5, JSON '{"a": 1}' UNION ALL
+  SELECT 6, JSON '{"a": 1, "b": 2}' UNION ALL
+  SELECT 7, JSON '[[1, 2], 3]' UNION ALL
+  SELECT 8, JSON 'true' UNION ALL
+  SELECT 9, JSON '9' UNION ALL
+  SELECT 10, JSON '9.0' UNION ALL
+  SELECT 11, JSON '[[2]]' UNION ALL
+  SELECT 12, JSON '[1]' UNION ALL
+  SELECT 13, JSON '{"a": null, "b": 2}';
+--
+ARRAY<STRUCT<id INT64, json_col JSON>>[
+  {1, 1},
+  {2, null},
+  {3, 1.0},
+  {4, "abc"},
+  {5, {"a":1}},
+  {6, {"a":1,"b":2}},
+  {7, [[1,2],3]},
+  {8, true},
+  {9, 9},
+  {10, 9.0},
+  {11, [[2]]},
+  {12, [1]},
+  {13, {"a":null,"b":2}}
+]
+==
+
+[name=basic]
+SELECT
+  # True cases
+  JSON 'null' = JSON 'null' AND
+  JSON 'null' < JSON '"abc"' AND
+  JSON '"abc"' = JSON '"abc"' AND
+  JSON '"abc"' < JSON '1' AND
+  JSON '1' = JSON '1' AND
+  JSON '1' = JSON '1.0' AND
+  JSON '1' < JSON '1.1' AND
+  JSON '1.1' < JSON 'false' AND
+  JSON 'false' = JSON 'false' AND
+  JSON 'false' < JSON 'true' AND
+  JSON 'true' = JSON 'true' AND
+  JSON 'true' < JSON '[1, 2]' AND
+  JSON '[1, 2]' = JSON '[1, 2]' AND
+  JSON '[1, 2]' < JSON '{"a": 1}' AND
+  JSON '{"a": 1}' = JSON '{"a": 1}' AND
+  JSON '{"a": 1}' < JSON '{"b": 1}' AND
+  JSON '{"a": 1}' < JSON '{"a": 2}',
+  # False cases
+  JSON '1' = JSON '"1"' OR
+  JSON '1' = JSON '1.1';
+
+--
+ARRAY<STRUCT<BOOL, BOOL>>[{true, false}]
+
+==
+
+[name=scalar_string]
+SELECT
+  JSON '""' = JSON '""' AND
+  JSON '"a"' >= JSON '"a"' AND
+  JSON '"a"' < JSON '"b"' AND
+  JSON '"aa"' < JSON '"b"' AND
+  JSON '"b"' < JSON '"cc"',
+  # False cases
+  JSON '"a"' > JSON '"b"' OR
+  JSON '"b"' > JSON '"cc"' OR
+  JSON '"bb"' > JSON '"c"';
+--
+ARRAY<STRUCT<BOOL, BOOL>>[{true, false}]
+
+==
+
+[name=scalar_number_basic]
+SELECT
+  JSON '-1' < JSON '0' AND
+  JSON '0' < JSON '10' AND
+  JSON '3' = JSON '3' AND
+  JSON '1.1' <= JSON '1.2' AND
+  JSON '-1.7976931348623157e+308' < JSON '1.7976931348623157e+308' AND
+  JSON '1.7976931348623157e+308' = JSON '1.7976931348623157e+308' AND
+  # Integer like floats
+  JSON '0' = JSON '-0' AND JSON '0' = JSON '0.0' AND
+  JSON '0' = JSON '0E0' AND JSON '0.0' = JSON '0.0000' AND
+  JSON '-0' = JSON '-0.00' AND JSON '-0.0' = JSON '-0E0' AND
+  JSON '1' = JSON '1.0' AND JSON '1' = JSON '1E0' AND
+  JSON '1.0' = JSON '1.00' AND JSON '1.00' = JSON '1E0' AND
+  JSON '-1' = JSON '-1.0' AND JSON '-1' = JSON '-1E0' AND
+  JSON '-1.0' = JSON '-1.00' AND JSON '-1.00' = JSON '-1E0',
+  # False cases
+  JSON '-1' > JSON '0' OR JSON '0' > JSON '10' OR JSON '3' > JSON '3' OR
+  JSON '1.1' > JSON '1.2',
+--
+ARRAY<STRUCT<BOOL, BOOL>>[{true, false}]
+
+==
+[name=scalar_number_mixed_types]
+
+SELECT * FROM UNNEST ([
+  JSON '-1.7976931348623157e+308',
+  JSON '-2.681785270209696e+30',
+  JSON '-2.68178527013099e+30',
+  JSON '-2.6817852698214124e+30',
+  JSON '-1.1805916207174113e+21',
+  JSON '-9.223372036854778e+18',
+  JSON '-9.223372036854776e+18',
+  JSON '-9223372036854775808',
+  JSON '-9.223372036854775e+18',
+  JSON '-9.007199254740994e+15',
+  JSON '-9007199254740994',
+  JSON '-9007199254740993',
+  JSON '-9.007199254740992e+15',
+  JSON '-9007199254740992',
+  JSON '-9.007199254740991e+15',
+  JSON '-9007199254740991',
+  JSON '-6',
+  JSON '-1.0',
+  JSON '-1',
+  JSON '-2.2250738585072014e-308',
+  JSON '-5e-324',
+  JSON '-0.0',
+  JSON '0.0',
+  JSON '0',
+  JSON '5e-324',
+  JSON '2.2250738585072014e-308',
+  JSON '1.0',
+  JSON '1',
+  JSON '9.007199254740991e+15',
+  JSON '9007199254740991',
+  JSON '9.007199254740992e+15',
+  JSON '9007199254740992',
+  JSON '9007199254740993',
+  JSON '9.007199254740994e+15',
+  JSON '9007199254740994',
+  JSON '9.223372036854775e+18',
+  JSON '9223372036854775807',
+  JSON '9.223372036854776e+18',
+  JSON '9223372036854775808',
+  JSON '9.223372036854778e+18',
+  JSON '1.844674407370955e+19',
+  JSON '18446744073709551610',
+  JSON '18446744073709551615',
+  JSON '1.8446744073709552e+19',
+  JSON '1.8446744073709556e+19',
+  JSON '1.1805916207174113e+21',
+  JSON '2.6817852698214124e+30',
+  JSON '2.68178527013099e+30',
+  JSON '2.681785270209696e+30',
+  JSON '1.7976931348623157e+308'
+  ]) as numbers WITH OFFSET AS offset ORDER BY numbers, offset DESC;
+
+--
+ARRAY<STRUCT<numbers JSON, offset INT64>>[known order:
+  {
+    -1.7976931348623157e+308,
+    0
+  },
+  {
+    -2.681785270209696e+30,
+    1
+  },
+  {
+    -2.68178527013099e+30,
+    2
+  },
+  {
+    -2.6817852698214124e+30,
+    3
+  },
+  {
+    -1.1805916207174113e+21,
+    4
+  },
+  {
+    -9.223372036854778e+18,
+    5
+  },
+  {-9223372036854775808, 7},
+  {
+    -9.223372036854776e+18,
+    6
+  },
+  {
+    -9.223372036854775e+18,
+    8
+  },
+  {-9007199254740994, 10},
+  {
+    -9.007199254740994e+15,
+    9
+  },
+  {-9007199254740993, 11},
+  {-9007199254740992, 13},
+  {
+    -9.007199254740992e+15,
+    12
+  },
+  {-9007199254740991, 15},
+  {
+    -9.007199254740991e+15,
+    14
+  },
+  {-6, 16},
+  {-1, 18},
+  {-1.0, 17},
+  {
+    -2.2250738585072014e-308,
+    19
+  },
+  {-5e-324, 20},
+  {0, 23},
+  {0.0, 22},
+  {-0.0, 21},
+  {5e-324, 24},
+  {
+    2.2250738585072014e-308,
+    25
+  },
+  {1, 27},
+  {1.0, 26},
+  {9007199254740991, 29},
+  {
+    9.007199254740991e+15,
+    28
+  },
+  {9007199254740992, 31},
+  {
+    9.007199254740992e+15,
+    30
+  },
+  {9007199254740993, 32},
+  {9007199254740994, 34},
+  {
+    9.007199254740994e+15,
+    33
+  },
+  {
+    9.223372036854775e+18,
+    35
+  },
+  {9223372036854775807, 36},
+  {9223372036854775808, 38},
+  {
+    9.223372036854776e+18,
+    37
+  },
+  {
+    9.223372036854778e+18,
+    39
+  },
+  {
+    1.844674407370955e+19,
+    40
+  },
+  {18446744073709551610, 41},
+  {18446744073709551615, 42},
+  {
+    1.8446744073709552e+19,
+    43
+  },
+  {
+    1.8446744073709556e+19,
+    44
+  },
+  {
+    1.1805916207174113e+21,
+    45
+  },
+  {
+    2.6817852698214124e+30,
+    46
+  },
+  {2.68178527013099e+30, 47},
+  {
+    2.681785270209696e+30,
+    48
+  },
+  {
+    1.7976931348623157e+308,
+    49
+  }
+]
+==
+[name=scalar_boolean]
+SELECT
+  JSON 'false' = JSON 'false' AND
+  JSON 'false' < JSON 'true' AND
+  JSON 'true' = JSON 'true',
+  # False cases
+  JSON 'true' < JSON 'false';
+--
+ARRAY<STRUCT<BOOL, BOOL>>[{true, false}]
+==
+
+[name=scalar_mixed_types]
+SELECT
+  # Mixed types: JSON strings
+  JSON '"a"' < JSON '0' AND
+  JSON '"a"' < JSON 'true' AND
+  # Mixed types: JSON numbers
+  JSON '0.1' = JSON '1E-1' AND JSON '0.1' < JSON 'true' AND
+  JSON '0.1' < JSON '[]' AND JSON '0.1' < JSON '[null]' AND
+  JSON '0.1' < JSON '{"a": 1}' AND JSON '0.1' < JSON '10' AND
+  JSON '10' < JSON '[null]' AND JSON '10' < JSON '{"a": 1}' AND
+  # Mixed types: JSON booleans
+  JSON 'false' < JSON '[]' AND JSON 'false' < JSON '[null]' AND
+  JSON 'true' < JSON '{"a": 1}',
+  # False cases
+  JSON '"a"' > JSON '[]' OR
+  JSON '[null]' < JSON '"a"' OR
+  JSON '"a"' = JSON '{"a": 1}' OR
+  JSON '10' = JSON 'false' OR
+  JSON 'true' < JSON '10' OR
+  JSON 'false' > JSON '{"a": 1}' OR
+  JSON 'true' > JSON '[]' OR
+  JSON 'true' > JSON '[null]' OR
+  JSON '10' > JSON '[]';
+--
+ARRAY<STRUCT<BOOL, BOOL>>[{true, false}]
+==
+
+[name=array_basic]
+SELECT
+  # Empty arrays.
+  JSON '[]' = JSON '[]' AND JSON '[]' < JSON '[null]' AND
+  JSON '[]' < JSON '[1]' AND
+  # Top level Arrays.
+  JSON '[null]' = JSON '[null]' AND JSON '[null]' < JSON '[1]' AND
+  JSON '[null]' < JSON '[null, null]' AND
+  JSON '[1]' = JSON '[1]' AND JSON '[1]' < JSON '[1, 1]' AND
+  JSON '[1]' < JSON '[1, 2]' AND
+  JSON '[0, 1]' < JSON '[1]' AND  JSON '[1, 2]' = JSON '[1, 2]' AND
+  JSON '[1, 2]' < JSON '[2]' AND JSON '[1, 2]' < JSON '[2, 1]' AND
+  JSON '[1, 1]' < JSON '[2, 1]',
+  # False cases
+  JSON '[1]' < JSON '[]' OR
+  JSON '[1, 2]' >= JSON '[1, 3]' OR
+  JSON '[1, 2, 3]' < JSON '[1, 2]';
+--
+ARRAY<STRUCT<BOOL, BOOL>>[{true, false}]
+==
+
+[name=array_nested]
+SELECT
+  # Nested arrays.
+  JSON '[[null]]' = JSON '[[null]]' AND
+  JSON '[[null]]' < JSON '[[null, null]]' AND
+  JSON '[[1]]' = JSON '[[1]]' AND
+  JSON '[[1]]' < JSON '[[1, 1]]' AND
+  JSON '[[1]]' < JSON '[[1, 2]]' AND
+
+  JSON '[[1, 2]]' = JSON '[[1.0, 2]]' AND
+  JSON '[[1, 2]]' < JSON '[[1, 3]]' AND
+  JSON '[[1, 2]]' < JSON '[[1, 2, 3]]' AND
+  JSON '[[1, 2]]' < JSON '[[2]]' AND
+  JSON '[[1, 2]]' < JSON '[[2, 1]]' AND
+  JSON '[[1, 1]]' < JSON '[[2, 1]]' AND
+
+  JSON '[[1, 2], 3]' < JSON '[[1, 2], 4]' AND
+  JSON '[[1, 2], 3]' = JSON '[[1, 2.00], 3]' AND
+  JSON '[[1, 2], 3]' < JSON '[[1, 2], 4, 5]' AND
+  JSON '[[1, 2], 3]' < JSON '[[2], 3]' AND
+  JSON '[[1, 2], 3]' < JSON '[[2, 1], 3]' AND
+  JSON '[[1, 1], 3]' < JSON '[[2, 1], 3]' AND
+  JSON '[1, [2]]' = JSON '[1, [2]]',
+
+  # False cases
+  JSON '[1]' > JSON '[[null]]' OR
+  JSON '[1]' > JSON '[[1]]' AND
+  JSON '[1]' >= JSON '[[1], 1]' OR
+  JSON '[1]' > JSON '[1, [1]]' OR
+  JSON '[1, [2]]' > JSON '[1, [2, 3]]' OR
+  JSON '[1, [2]]' > JSON '[1, [2], 3]';
+--
+ARRAY<STRUCT<BOOL, BOOL>>[{true, false}]
+==
+
+[name=array_objects]
+SELECT
+  # Array with Objects.
+  JSON '[2]' < JSON '[2, {"a": 1}]' AND
+  JSON '[{"a": 1}, 2]' = JSON '[{"a": 1}, 2]' AND
+  JSON '[{"a": 1}, 2]' < JSON '[{"a": 2}, 2]' AND
+  JSON '[{"a": 1}, 2]' < JSON '[{"a": 1}, 3]',
+  # False cases
+  JSON '[{"a": 1}]' < JSON '[{"b": 1}, 3]' OR
+  JSON '[{"a": 1}]' > JSON '[{"a": 1}, 3]';
+--
+ARRAY<STRUCT<BOOL, BOOL>>[{true, true}]
+==
+
+[name=object_basic]
+SELECT
+  # JSON empty objects.
+  JSON '{}' = JSON '{}' AND
+  JSON '{}' < JSON '{"": 1}' AND
+  JSON '{}' < JSON '{"a": 1}' AND
+  JSON '{}' < JSON '{"a": 1, "b": 2}' AND
+
+  # JSON objects with empty keys.
+  JSON '{"": 1}' = JSON '{"": 1}' AND
+  JSON '{"": 1}' < JSON '{"a": 1}' AND
+  JSON '{"": 1}' < JSON '{"": 2}',
+
+  # False cases
+  JSON '{"a": 1}' < JSON '{}' OR
+  JSON '{"b": 2}' < JSON '{"a": 1, "b": 2}' OR
+  JSON '{"b": 1}' < JSON '{"a": 1, "b": 2}';
+--
+ARRAY<STRUCT<BOOL, BOOL>>[{true, false}]
+==
+
+[name=object_keys]
+SELECT
+  # JSON objects with single key.
+  JSON '{"a": 1}' = JSON '{"a": 1.0}' AND
+  JSON '{"a": 1}' < JSON '{"a": 2}' AND
+  JSON '{"a": 1}' < JSON '{"b": 1}' AND
+  JSON '{"a": 2}' < JSON '{"b": 1}' AND
+  JSON '{"aa": 1}' < JSON '{"b": 1}' AND
+
+  # JSON objects with multiple keys.
+  JSON '{"a": 1}' < JSON '{"a": 1, "b": 2}' AND
+  JSON '{"a": 1}' < JSON '{"b": 2, "a": 1}' AND
+  JSON '{"a": 1, "b": 2}' < JSON '{"b": 2}' AND
+  JSON '{"b": 2, "a": 1}' < JSON '{"b": 2}',
+
+  # False cases
+  JSON '{"a": 1}' > JSON '{"a": 1, "b": 2}' OR
+  JSON '{"a": 1, "b": 2}' <= JSON '{"a": 1}' OR
+  JSON '{"b": 2, "a": 1}' > JSON '{"b": 2}';
+--
+ARRAY<STRUCT<BOOL, BOOL>>[{true, false}]
+==
+
+[name=object_nested]
+SELECT
+  # JSON nested objects .
+  JSON '{"a": {"b": 1}}' = JSON '{"a": {"b": 1}}' AND
+  JSON '{"a": {"b": 1}}' < JSON '{"a": {"b": 2}}' AND
+  JSON '{"a": {"b": 1}}' < JSON '{"a": {"c": 1}}' AND
+  JSON '{"a": {"b": 1}}' < JSON '{"a": {"b": 1, "c": 2}}' AND
+  JSON '{"a": {"b": 1, "c": 1}}' < JSON '{"a": {"c": 1}}' AND
+  JSON '{"a": {"b": 1, "c": 2}}' < JSON '{"a": {"c": 1}}',
+  # False cases
+  JSON '{"a": {"b": 1}}' > JSON '{"a": {"b": 1, "c": 2}}' OR
+  JSON '{"a": {"b": 1, "c": 2}}' > JSON '{"a": {"c": 1}}';
+--
+ARRAY<STRUCT<BOOL, BOOL>>[{true, false}]
+==
+[name=object_with_null_values]
+SELECT
+  # JSON objects with null values.
+  JSON '{"a": null}' = JSON '{"a": null}' AND
+  JSON '{"a": null}' < JSON '{"a": 1}' AND
+  JSON '{"a": null}' < JSON '{"b": null}' AND
+  JSON '{"a": null}' < JSON '{"a": null, "b": 1}',
+  # False cases
+  JSON '{"a": null}' > JSON '{"a": 1}' OR
+  JSON '{"a": null}' > JSON '{"b": null}';
+--
+ARRAY<STRUCT<BOOL, BOOL>>[{true, false}]
+==
+
+[name=order_by]
+SELECT id, json_col FROM JSONTable ORDER BY json_col, id;
+--
+ARRAY<STRUCT<id INT64, json_col JSON>>[known order:
+  {2, null},
+  {4, "abc"},
+  {1, 1},
+  {3, 1.0},
+  {9, 9},
+  {10, 9.0},
+  {8, true},
+  {12, [1]},
+  {7, [[1,2],3]},
+  {11, [[2]]},
+  {13, {"a":null,"b":2}},
+  {5, {"a":1}},
+  {6, {"a":1,"b":2}}
+]
+==
+
+[name=group_by]
+[required_features=JSON_TYPE,JSON_TYPE_COMPARISON,JSON_LAX_VALUE_EXTRACTION_FUNCTIONS,JSON_VALUE_EXTRACTION_FUNCTIONS]
+# JSON value '9.0' and '9' are considered equal values, any of them can be
+# returned as the result.
+SELECT
+  CASE JSON_TYPE(json_col)
+    WHEN "number" THEN TO_JSON(LAX_INT64(json_col))
+        ELSE json_col
+  END AS json_col,
+  COUNT(*) FROM JSONTable GROUP BY json_col ORDER BY json_col;
+--
+ARRAY<STRUCT<json_col JSON, INT64>>[known order:
+  {null, 1},
+  {"abc", 1},
+  {1, 2},
+  {9, 2},
+  {true, 1},
+  {[1], 1},
+  {[[1,2],3], 1},
+  {[[2]], 1},
+  {{"a":null,"b":2}, 1},
+  {{"a":1}, 1},
+  {{"a":1,"b":2}, 1}
+]
+==
+
+[name=partition_by]
+[required_features=JSON_TYPE,JSON_TYPE_COMPARISON,ANALYTIC_FUNCTIONS]
+select json_col, count(*) over (partition by json_col) from JSONTable;
+--
+ARRAY<STRUCT<json_col JSON, INT64>>[unknown order:
+  {null, 1},
+  {"abc", 1},
+  {1.0, 2},
+  {1, 2},
+  {9, 2},
+  {9.0, 2},
+  {true, 1},
+  {[1], 1},
+  {[[1,2],3], 1},
+  {[[2]], 1},
+  {{"a":null,"b":2}, 1},
+  {{"a":1}, 1},
+  {{"a":1,"b":2}, 1}
+]
+==
+
+[name=join_on]
+SELECT t1.id, t1.json_col, t2.id, t2.json_col FROM JSONTable AS t1 JOIN JSONTable AS t2 ON t1.json_col = t2.json_col order by t1.json_col, t1.id;
+--
+ARRAY<STRUCT<id INT64, json_col JSON, id INT64, json_col JSON>>[unknown order:
+  {2, null, 2, null},
+  {4, "abc", 4, "abc"},
+  {1, 1, 1, 1},
+  {1, 1, 3, 1.0},
+  {3, 1.0, 1, 1},
+  {3, 1.0, 3, 1.0},
+  {9, 9, 10, 9.0},
+  {9, 9, 9, 9},
+  {10, 9.0, 9, 9},
+  {10, 9.0, 10, 9.0},
+  {8, true, 8, true},
+  {12, [1], 12, [1]},
+  {7, [[1,2],3], 7, [[1,2],3]},
+  {11, [[2]], 11, [[2]]},
+  {13, {"a":null,"b":2}, 13, {"a":null,"b":2}},
+  {5, {"a":1}, 5, {"a":1}},
+  {6, {"a":1,"b":2}, 6, {"a":1,"b":2}}
+]
+==
+

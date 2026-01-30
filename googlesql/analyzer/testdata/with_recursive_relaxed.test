@@ -1,0 +1,1100 @@
+# out-of-order WITH entries without actual recursion
+[default language_features=MAXIMUM,+WITH_RECURSIVE,+ANALYTIC_FUNCTIONS,+TABLE_VALUED_FUNCTIONS,+TABLESAMPLE,+WITH_ON_SUBQUERY,+NUMERIC_TYPE,+ANNOTATION_FRAMEWORK,+COLLATION_SUPPORT,+PIPES,+RELAXED_WITH_RECURSIVE]
+# Aggregation in WITH RECURSIVE is allowed in relaxed mode (no grouping)
+WITH RECURSIVE
+  t AS (
+    SELECT Key, Value FROM KeyValue
+    UNION ALL
+    SELECT ANY_VALUE(Key), STRING_AGG(Value)
+    FROM t
+  )
+SELECT * FROM t;
+--
+QueryStmt
++-output_column_list=
+| +-t.Key#9 AS Key [INT64]
+| +-t.Value#10 AS Value [STRING]
++-query=
+  +-WithScan
+    +-column_list=t.[Key#9, Value#10]
+    +-with_entry_list=
+    | +-WithEntry
+    |   +-with_query_name="t"
+    |   +-with_subquery=
+    |     +-RecursiveScan
+    |       +-column_list=$union_all.[Key#3, Value#4]
+    |       +-op_type=UNION_ALL
+    |       +-non_recursive_term=
+    |       | +-SetOperationItem
+    |       |   +-scan=
+    |       |   | +-ProjectScan
+    |       |   |   +-column_list=KeyValue.[Key#1, Value#2]
+    |       |   |   +-input_scan=
+    |       |   |     +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+    |       |   +-output_column_list=KeyValue.[Key#1, Value#2]
+    |       +-recursive_term=
+    |         +-SetOperationItem
+    |           +-scan=
+    |           | +-ProjectScan
+    |           |   +-column_list=$aggregate.[$agg1#7, $agg2#8]
+    |           |   +-input_scan=
+    |           |     +-AggregateScan
+    |           |       +-column_list=$aggregate.[$agg1#7, $agg2#8]
+    |           |       +-input_scan=
+    |           |       | +-RecursiveRefScan(column_list=t.[Key#5, Value#6])
+    |           |       +-aggregate_list=
+    |           |         +-$agg1#7 :=
+    |           |         | +-AggregateFunctionCall(GoogleSQL:any_value(INT64) -> INT64)
+    |           |         |   +-ColumnRef(type=INT64, column=t.Key#5)
+    |           |         +-$agg2#8 :=
+    |           |           +-AggregateFunctionCall(GoogleSQL:string_agg(STRING) -> STRING)
+    |           |             +-ColumnRef(type=STRING, column=t.Value#6)
+    |           +-output_column_list=$aggregate.[$agg1#7, $agg2#8]
+    +-query=
+    | +-ProjectScan
+    |   +-column_list=t.[Key#9, Value#10]
+    |   +-input_scan=
+    |     +-WithRefScan(column_list=t.[Key#9, Value#10], with_query_name="t")
+    +-recursive=TRUE
+==
+
+# Aggregation in WITH RECURSIVE is allowed in relaxed mode (with grouping)
+WITH RECURSIVE
+  t AS (
+    SELECT Key, Value FROM KeyValue
+    UNION ALL
+    SELECT Key, STRING_AGG(Value)
+    FROM t
+    GROUP BY Key
+  )
+SELECT * FROM t;
+--
+QueryStmt
++-output_column_list=
+| +-t.Key#9 AS Key [INT64]
+| +-t.Value#10 AS Value [STRING]
++-query=
+  +-WithScan
+    +-column_list=t.[Key#9, Value#10]
+    +-with_entry_list=
+    | +-WithEntry
+    |   +-with_query_name="t"
+    |   +-with_subquery=
+    |     +-RecursiveScan
+    |       +-column_list=$union_all.[Key#3, Value#4]
+    |       +-op_type=UNION_ALL
+    |       +-non_recursive_term=
+    |       | +-SetOperationItem
+    |       |   +-scan=
+    |       |   | +-ProjectScan
+    |       |   |   +-column_list=KeyValue.[Key#1, Value#2]
+    |       |   |   +-input_scan=
+    |       |   |     +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+    |       |   +-output_column_list=KeyValue.[Key#1, Value#2]
+    |       +-recursive_term=
+    |         +-SetOperationItem
+    |           +-scan=
+    |           | +-ProjectScan
+    |           |   +-column_list=[$groupby.Key#8, $aggregate.$agg1#7]
+    |           |   +-input_scan=
+    |           |     +-AggregateScan
+    |           |       +-column_list=[$groupby.Key#8, $aggregate.$agg1#7]
+    |           |       +-input_scan=
+    |           |       | +-RecursiveRefScan(column_list=t.[Key#5, Value#6])
+    |           |       +-group_by_list=
+    |           |       | +-Key#8 := ColumnRef(type=INT64, column=t.Key#5)
+    |           |       +-aggregate_list=
+    |           |         +-$agg1#7 :=
+    |           |           +-AggregateFunctionCall(GoogleSQL:string_agg(STRING) -> STRING)
+    |           |             +-ColumnRef(type=STRING, column=t.Value#6)
+    |           +-output_column_list=[$groupby.Key#8, $aggregate.$agg1#7]
+    +-query=
+    | +-ProjectScan
+    |   +-column_list=t.[Key#9, Value#10]
+    |   +-input_scan=
+    |     +-WithRefScan(column_list=t.[Key#9, Value#10], with_query_name="t")
+    +-recursive=TRUE
+==
+
+# DISTINCT in WITH RECURSIVE is allowed in relaxed mode
+WITH RECURSIVE
+  t AS (
+    SELECT Key, Value FROM KeyValue
+    UNION ALL
+    SELECT DISTINCT Key + 1, Value
+    FROM t
+    WHERE Key < 10
+  )
+SELECT * FROM t;
+--
+QueryStmt
++-output_column_list=
+| +-t.Key#10 AS Key [INT64]
+| +-t.Value#11 AS Value [STRING]
++-query=
+  +-WithScan
+    +-column_list=t.[Key#10, Value#11]
+    +-with_entry_list=
+    | +-WithEntry
+    |   +-with_query_name="t"
+    |   +-with_subquery=
+    |     +-RecursiveScan
+    |       +-column_list=$union_all.[Key#3, Value#4]
+    |       +-op_type=UNION_ALL
+    |       +-non_recursive_term=
+    |       | +-SetOperationItem
+    |       |   +-scan=
+    |       |   | +-ProjectScan
+    |       |   |   +-column_list=KeyValue.[Key#1, Value#2]
+    |       |   |   +-input_scan=
+    |       |   |     +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+    |       |   +-output_column_list=KeyValue.[Key#1, Value#2]
+    |       +-recursive_term=
+    |         +-SetOperationItem
+    |           +-scan=
+    |           | +-AggregateScan
+    |           |   +-column_list=$distinct.[$col1#8, Value#9]
+    |           |   +-input_scan=
+    |           |   | +-ProjectScan
+    |           |   |   +-column_list=[t.Key#5, t.Value#6, $union_all2.$col1#7]
+    |           |   |   +-expr_list=
+    |           |   |   | +-$col1#7 :=
+    |           |   |   |   +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |           |   |   |     +-ColumnRef(type=INT64, column=t.Key#5)
+    |           |   |   |     +-Literal(type=INT64, value=1)
+    |           |   |   +-input_scan=
+    |           |   |     +-FilterScan
+    |           |   |       +-column_list=t.[Key#5, Value#6]
+    |           |   |       +-input_scan=
+    |           |   |       | +-RecursiveRefScan(column_list=t.[Key#5, Value#6])
+    |           |   |       +-filter_expr=
+    |           |   |         +-FunctionCall(GoogleSQL:$less(INT64, INT64) -> BOOL)
+    |           |   |           +-ColumnRef(type=INT64, column=t.Key#5)
+    |           |   |           +-Literal(type=INT64, value=10)
+    |           |   +-group_by_list=
+    |           |     +-$col1#8 := ColumnRef(type=INT64, column=$union_all2.$col1#7)
+    |           |     +-Value#9 := ColumnRef(type=STRING, column=t.Value#6)
+    |           +-output_column_list=$distinct.[$col1#8, Value#9]
+    +-query=
+    | +-ProjectScan
+    |   +-column_list=t.[Key#10, Value#11]
+    |   +-input_scan=
+    |     +-WithRefScan(column_list=t.[Key#10, Value#11], with_query_name="t")
+    +-recursive=TRUE
+==
+
+# Analytic function in WITH RECURSIVE is allowed in relaxed mode
+WITH RECURSIVE
+  t AS (
+    SELECT Key, Value FROM KeyValue
+    UNION ALL
+    SELECT RANK() OVER(ORDER BY Key ASC), Value
+    FROM t
+    WHERE Key < 10
+  )
+SELECT * FROM t;
+--
+QueryStmt
++-output_column_list=
+| +-t.Key#9 AS Key [INT64]
+| +-t.Value#10 AS Value [STRING]
++-query=
+  +-WithScan
+    +-column_list=t.[Key#9, Value#10]
+    +-with_entry_list=
+    | +-WithEntry
+    |   +-with_query_name="t"
+    |   +-with_subquery=
+    |     +-RecursiveScan
+    |       +-column_list=$union_all.[Key#3, Value#4]
+    |       +-op_type=UNION_ALL
+    |       +-non_recursive_term=
+    |       | +-SetOperationItem
+    |       |   +-scan=
+    |       |   | +-ProjectScan
+    |       |   |   +-column_list=KeyValue.[Key#1, Value#2]
+    |       |   |   +-input_scan=
+    |       |   |     +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+    |       |   +-output_column_list=KeyValue.[Key#1, Value#2]
+    |       +-recursive_term=
+    |         +-SetOperationItem
+    |           +-scan=
+    |           | +-ProjectScan
+    |           |   +-column_list=[$analytic.$analytic1#8, t.Value#6]
+    |           |   +-input_scan=
+    |           |     +-AnalyticScan
+    |           |       +-column_list=[t.Key#5, t.Value#6, $analytic.$analytic1#8]
+    |           |       +-input_scan=
+    |           |       | +-FilterScan
+    |           |       |   +-column_list=t.[Key#5, Value#6]
+    |           |       |   +-input_scan=
+    |           |       |   | +-RecursiveRefScan(column_list=t.[Key#5, Value#6])
+    |           |       |   +-filter_expr=
+    |           |       |     +-FunctionCall(GoogleSQL:$less(INT64, INT64) -> BOOL)
+    |           |       |       +-ColumnRef(type=INT64, column=t.Key#5)
+    |           |       |       +-Literal(type=INT64, value=10)
+    |           |       +-function_group_list=
+    |           |         +-AnalyticFunctionGroup
+    |           |           +-order_by=
+    |           |           | +-WindowOrdering
+    |           |           |   +-order_by_item_list=
+    |           |           |     +-OrderByItem
+    |           |           |       +-column_ref=
+    |           |           |         +-ColumnRef(type=INT64, column=t.Key#5)
+    |           |           +-analytic_function_list=
+    |           |             +-$analytic1#8 := AnalyticFunctionCall(GoogleSQL:rank() -> INT64)
+    |           +-output_column_list=[$analytic.$analytic1#8, t.Value#6]
+    +-query=
+    | +-ProjectScan
+    |   +-column_list=t.[Key#9, Value#10]
+    |   +-input_scan=
+    |     +-WithRefScan(column_list=t.[Key#9, Value#10], with_query_name="t")
+    +-recursive=TRUE
+==
+
+# Analytic function in WITH RECURSIVE is allowed in relaxed mode (bounded window)
+WITH RECURSIVE
+  t AS (
+    SELECT Key, Value FROM KeyValue
+    UNION ALL
+    SELECT SUM(Key) OVER(ORDER BY Key ASC ROWS BETWEEN 2 PRECEDING AND 3 FOLLOWING), Value
+    FROM t
+    WHERE Key < 10
+  )
+SELECT * FROM t;
+--
+QueryStmt
++-output_column_list=
+| +-t.Key#9 AS Key [INT64]
+| +-t.Value#10 AS Value [STRING]
++-query=
+  +-WithScan
+    +-column_list=t.[Key#9, Value#10]
+    +-with_entry_list=
+    | +-WithEntry
+    |   +-with_query_name="t"
+    |   +-with_subquery=
+    |     +-RecursiveScan
+    |       +-column_list=$union_all.[Key#3, Value#4]
+    |       +-op_type=UNION_ALL
+    |       +-non_recursive_term=
+    |       | +-SetOperationItem
+    |       |   +-scan=
+    |       |   | +-ProjectScan
+    |       |   |   +-column_list=KeyValue.[Key#1, Value#2]
+    |       |   |   +-input_scan=
+    |       |   |     +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+    |       |   +-output_column_list=KeyValue.[Key#1, Value#2]
+    |       +-recursive_term=
+    |         +-SetOperationItem
+    |           +-scan=
+    |           | +-ProjectScan
+    |           |   +-column_list=[$analytic.$analytic1#8, t.Value#6]
+    |           |   +-input_scan=
+    |           |     +-AnalyticScan
+    |           |       +-column_list=[t.Key#5, t.Value#6, $analytic.$analytic1#8]
+    |           |       +-input_scan=
+    |           |       | +-FilterScan
+    |           |       |   +-column_list=t.[Key#5, Value#6]
+    |           |       |   +-input_scan=
+    |           |       |   | +-RecursiveRefScan(column_list=t.[Key#5, Value#6])
+    |           |       |   +-filter_expr=
+    |           |       |     +-FunctionCall(GoogleSQL:$less(INT64, INT64) -> BOOL)
+    |           |       |       +-ColumnRef(type=INT64, column=t.Key#5)
+    |           |       |       +-Literal(type=INT64, value=10)
+    |           |       +-function_group_list=
+    |           |         +-AnalyticFunctionGroup
+    |           |           +-order_by=
+    |           |           | +-WindowOrdering
+    |           |           |   +-order_by_item_list=
+    |           |           |     +-OrderByItem
+    |           |           |       +-column_ref=
+    |           |           |         +-ColumnRef(type=INT64, column=t.Key#5)
+    |           |           +-analytic_function_list=
+    |           |             +-$analytic1#8 :=
+    |           |               +-AnalyticFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+    |           |                 +-ColumnRef(type=INT64, column=t.Key#5)
+    |           |                 +-window_frame=
+    |           |                   +-WindowFrame(frame_unit=ROWS)
+    |           |                     +-start_expr=
+    |           |                     | +-WindowFrameExpr(boundary_type=OFFSET PRECEDING)
+    |           |                     |   +-Literal(type=INT64, value=2)
+    |           |                     +-end_expr=
+    |           |                       +-WindowFrameExpr(boundary_type=OFFSET FOLLOWING)
+    |           |                         +-Literal(type=INT64, value=3)
+    |           +-output_column_list=[$analytic.$analytic1#8, t.Value#6]
+    +-query=
+    | +-ProjectScan
+    |   +-column_list=t.[Key#9, Value#10]
+    |   +-input_scan=
+    |     +-WithRefScan(column_list=t.[Key#9, Value#10], with_query_name="t")
+    +-recursive=TRUE
+==
+
+# Relaxed WITH RECURSIVE with pipes
+with recursive t as (
+  (
+    select 1 AS col
+    limit 10
+  )
+  |> union all (select SUM(col) from t where col < 3)
+)
+select * from t;
+--
+QueryStmt
++-output_column_list=
+| +-t.col#5 AS col [INT64]
++-query=
+  +-WithScan
+    +-column_list=[t.col#5]
+    +-with_entry_list=
+    | +-WithEntry
+    |   +-with_query_name="t"
+    |   +-with_subquery=
+    |     +-RecursiveScan
+    |       +-column_list=[$union_all.col#2]
+    |       +-op_type=UNION_ALL
+    |       +-non_recursive_term=
+    |       | +-SetOperationItem
+    |       |   +-scan=
+    |       |   | +-LimitOffsetScan
+    |       |   |   +-column_list=[$union_all1.col#1]
+    |       |   |   +-input_scan=
+    |       |   |   | +-ProjectScan
+    |       |   |   |   +-column_list=[$union_all1.col#1]
+    |       |   |   |   +-expr_list=
+    |       |   |   |   | +-col#1 := Literal(type=INT64, value=1)
+    |       |   |   |   +-input_scan=
+    |       |   |   |     +-SingleRowScan
+    |       |   |   +-limit=
+    |       |   |     +-Literal(type=INT64, value=10)
+    |       |   +-output_column_list=[$union_all1.col#1]
+    |       +-recursive_term=
+    |         +-SetOperationItem
+    |           +-scan=
+    |           | +-ProjectScan
+    |           |   +-column_list=[$aggregate.$agg1#4]
+    |           |   +-input_scan=
+    |           |     +-AggregateScan
+    |           |       +-column_list=[$aggregate.$agg1#4]
+    |           |       +-input_scan=
+    |           |       | +-FilterScan
+    |           |       |   +-column_list=[t.col#3]
+    |           |       |   +-input_scan=
+    |           |       |   | +-RecursiveRefScan(column_list=[t.col#3])
+    |           |       |   +-filter_expr=
+    |           |       |     +-FunctionCall(GoogleSQL:$less(INT64, INT64) -> BOOL)
+    |           |       |       +-ColumnRef(type=INT64, column=t.col#3)
+    |           |       |       +-Literal(type=INT64, value=3)
+    |           |       +-aggregate_list=
+    |           |         +-$agg1#4 :=
+    |           |           +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+    |           |             +-ColumnRef(type=INT64, column=t.col#3)
+    |           +-output_column_list=[$aggregate.$agg1#4]
+    +-query=
+    | +-ProjectScan
+    |   +-column_list=[t.col#5]
+    |   +-input_scan=
+    |     +-WithRefScan(column_list=[t.col#5], with_query_name="t")
+    +-recursive=TRUE
+==
+
+# Joins not relaxed yet
+WITH RECURSIVE
+  t_other AS (SELECT * FROM UNNEST([1,2,3,4]) AS n),
+  t AS (SELECT 1 AS n UNION ALL SELECT n FROM t
+    FULL OUTER JOIN t_other USING (n))
+SELECT * FROM t;
+--
+QueryStmt
++-output_column_list=
+| +-t.n#7 AS n [INT64]
++-query=
+  +-WithScan
+    +-column_list=[t.n#7]
+    +-with_entry_list=
+    | +-WithEntry
+    | | +-with_query_name="t_other"
+    | | +-with_subquery=
+    | |   +-ProjectScan
+    | |     +-column_list=[$array.n#1]
+    | |     +-input_scan=
+    | |       +-ArrayScan
+    | |         +-column_list=[$array.n#1]
+    | |         +-array_expr_list=
+    | |         | +-Literal(type=ARRAY<INT64>, value=[1, 2, 3, 4])
+    | |         +-element_column_list=[$array.n#1]
+    | +-WithEntry
+    |   +-with_query_name="t"
+    |   +-with_subquery=
+    |     +-RecursiveScan
+    |       +-column_list=[$union_all.n#3]
+    |       +-op_type=UNION_ALL
+    |       +-non_recursive_term=
+    |       | +-SetOperationItem
+    |       |   +-scan=
+    |       |   | +-ProjectScan
+    |       |   |   +-column_list=[$union_all1.n#2]
+    |       |   |   +-expr_list=
+    |       |   |   | +-n#2 := Literal(type=INT64, value=1)
+    |       |   |   +-input_scan=
+    |       |   |     +-SingleRowScan
+    |       |   +-output_column_list=[$union_all1.n#2]
+    |       +-recursive_term=
+    |         +-SetOperationItem
+    |           +-scan=
+    |           | +-ProjectScan
+    |           |   +-column_list=[$full_join.n#6]
+    |           |   +-input_scan=
+    |           |     +-ProjectScan
+    |           |       +-column_list=[t.n#4, t_other.n#5, $full_join.n#6]
+    |           |       +-expr_list=
+    |           |       | +-n#6 :=
+    |           |       |   +-FunctionCall(GoogleSQL:coalesce(repeated(2) INT64) -> INT64)
+    |           |       |     +-ColumnRef(type=INT64, column=t.n#4)
+    |           |       |     +-ColumnRef(type=INT64, column=t_other.n#5)
+    |           |       +-input_scan=
+    |           |         +-JoinScan
+    |           |           +-column_list=[t.n#4, t_other.n#5]
+    |           |           +-join_type=FULL
+    |           |           +-left_scan=
+    |           |           | +-RecursiveRefScan(column_list=[t.n#4])
+    |           |           +-right_scan=
+    |           |           | +-WithRefScan(column_list=[t_other.n#5], with_query_name="t_other")
+    |           |           +-join_expr=
+    |           |           | +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+    |           |           |   +-ColumnRef(type=INT64, column=t.n#4)
+    |           |           |   +-ColumnRef(type=INT64, column=t_other.n#5)
+    |           |           +-has_using=TRUE
+    |           +-output_column_list=[$full_join.n#6]
+    +-query=
+    | +-ProjectScan
+    |   +-column_list=[t.n#7]
+    |   +-input_scan=
+    |     +-WithRefScan(column_list=[t.n#7], with_query_name="t")
+    +-recursive=TRUE
+==
+
+# TVF not relaxed yet
+WITH RECURSIVE t AS (
+    SELECT 1.0 AS n
+  UNION ALL
+    SELECT 1 FROM tvf_one_relation_arg_with_fixed_output((SELECT * FROM t))
+  )
+  SELECT n FROM t;
+--
+ERROR: A query containing a recursive reference must not be used as an argument to a table-valued function [at 4:73]
+    SELECT 1 FROM tvf_one_relation_arg_with_fixed_output((SELECT * FROM t))
+                                                                        ^
+==
+
+# EXCEPT not relaxed yet
+WITH RECURSIVE
+  t0 AS (SELECT 1 AS n),
+  t1 AS (SELECT 1 AS n),
+  t AS ((SELECT 1 AS n)
+  UNION ALL
+  (SELECT n + 1 FROM t0
+   EXCEPT {{ALL|DISTINCT}} SELECT * FROM t))
+SELECT * FROM t;
+--
+ALTERNATION GROUP: ALL
+--
+ERROR: A subquery containing a recursive reference must not be used as the right operand of EXCEPT [at 7:29]
+   EXCEPT ALL SELECT * FROM t))
+                            ^
+--
+ALTERNATION GROUP: DISTINCT
+--
+ERROR: A subquery containing a recursive reference must not use INTERSECT, UNION, or EXCEPT with the DISTINCT modifier [at 7:34]
+   EXCEPT DISTINCT SELECT * FROM t))
+                                 ^
+==
+
+# TABLESAMPLE not relaxed yet
+WITH RECURSIVE t AS (
+  SELECT 1 AS n UNION ALL
+  SELECT n FROM t TABLESAMPLE RESERVOIR (100 ROWS)
+) SELECT * FROM t;
+--
+ERROR: A subquery containing a recursive reference must not use the TABLESAMPLE operator [at 3:17]
+  SELECT n FROM t TABLESAMPLE RESERVOIR (100 ROWS)
+                ^
+==
+
+# Expression subqueries not relaxed yet
+WITH RECURSIVE
+  t_other1 AS (SELECT * FROM UNNEST([1,2,3,4]) AS n1),
+  t_other2 AS (SELECT * FROM UNNEST([5,6,7,8]) AS n2),
+  t AS (SELECT 1 AS n UNION ALL SELECT n1 FROM t_other1
+    INNER JOIN t_other2 ON (SELECT n FROM t) = 1)
+SELECT * FROM t;
+--
+ERROR: A recursive reference from inside an expression subquery is not allowed [at 5:43]
+    INNER JOIN t_other2 ON (SELECT n FROM t) = 1)
+                                          ^
+==
+
+# Inner recursive query reference outer CTE not allowed, even in relaxed mode.
+WITH RECURSIVE
+  t1 AS (
+    SELECT 1 AS n
+    UNION ALL (
+      WITH {{|RECURSIVE}} t2 AS (SELECT * FROM t1)
+      SELECT * FROM t1 INNER JOIN t2 USING (n)
+    )
+) SELECT * FROM t1;
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: Table 't1' must not be recursively referenced from inside an inner recursive query [at 5:34]
+      WITH  t2 AS (SELECT * FROM t1)
+                                 ^
+--
+ALTERNATION GROUP: RECURSIVE
+--
+ERROR: Table 't1' must not be recursively referenced from inside an inner recursive query [at 5:43]
+      WITH RECURSIVE t2 AS (SELECT * FROM t1)
+                                          ^
+==
+
+# Multiple recursive references are not allowed in relaxed mode
+WITH RECURSIVE t AS (
+  SELECT 1 AS n UNION ALL
+  SELECT t1.n + t2.n FROM t AS t1 CROSS JOIN t AS t2
+) SELECT * FROM t;
+--
+ERROR: Multiple recursive references to table 't' are not allowed [at 3:46]
+  SELECT t1.n + t2.n FROM t AS t1 CROSS JOIN t AS t2
+                                             ^
+==
+
+# Recursive reference in right operand of join. In relaxed mode, allowed for all
+# join types. Test both direct and indirect reference.
+WITH RECURSIVE
+  t_other AS (SELECT * FROM UNNEST([1,2,3,4]) AS n),
+  t AS (SELECT 1 AS n UNION ALL SELECT n FROM t_other
+    {{INNER|LEFT|RIGHT|FULL OUTER}} JOIN {{t|(SELECT * FROM t)}} USING (n))
+SELECT * FROM t;
+--
+ALTERNATION GROUP: INNER,t
+--
+QueryStmt
++-output_column_list=
+| +-t.n#6 AS n [INT64]
++-query=
+  +-WithScan
+    +-column_list=[t.n#6]
+    +-with_entry_list=
+    | +-WithEntry
+    | | +-with_query_name="t_other"
+    | | +-with_subquery=
+    | |   +-ProjectScan
+    | |     +-column_list=[$array.n#1]
+    | |     +-input_scan=
+    | |       +-ArrayScan
+    | |         +-column_list=[$array.n#1]
+    | |         +-array_expr_list=
+    | |         | +-Literal(type=ARRAY<INT64>, value=[1, 2, 3, 4])
+    | |         +-element_column_list=[$array.n#1]
+    | +-WithEntry
+    |   +-with_query_name="t"
+    |   +-with_subquery=
+    |     +-RecursiveScan
+    |       +-column_list=[$union_all.n#3]
+    |       +-op_type=UNION_ALL
+    |       +-non_recursive_term=
+    |       | +-SetOperationItem
+    |       |   +-scan=
+    |       |   | +-ProjectScan
+    |       |   |   +-column_list=[$union_all1.n#2]
+    |       |   |   +-expr_list=
+    |       |   |   | +-n#2 := Literal(type=INT64, value=1)
+    |       |   |   +-input_scan=
+    |       |   |     +-SingleRowScan
+    |       |   +-output_column_list=[$union_all1.n#2]
+    |       +-recursive_term=
+    |         +-SetOperationItem
+    |           +-scan=
+    |           | +-ProjectScan
+    |           |   +-column_list=[t_other.n#4]
+    |           |   +-input_scan=
+    |           |     +-JoinScan
+    |           |       +-column_list=[t_other.n#4, t.n#5]
+    |           |       +-left_scan=
+    |           |       | +-WithRefScan(column_list=[t_other.n#4], with_query_name="t_other")
+    |           |       +-right_scan=
+    |           |       | +-RecursiveRefScan(column_list=[t.n#5])
+    |           |       +-join_expr=
+    |           |       | +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+    |           |       |   +-ColumnRef(type=INT64, column=t_other.n#4)
+    |           |       |   +-ColumnRef(type=INT64, column=t.n#5)
+    |           |       +-has_using=TRUE
+    |           +-output_column_list=[t_other.n#4]
+    +-query=
+    | +-ProjectScan
+    |   +-column_list=[t.n#6]
+    |   +-input_scan=
+    |     +-WithRefScan(column_list=[t.n#6], with_query_name="t")
+    +-recursive=TRUE
+--
+ALTERNATION GROUP: INNER,(SELECT * FROM t)
+--
+QueryStmt
++-output_column_list=
+| +-t.n#6 AS n [INT64]
++-query=
+  +-WithScan
+    +-column_list=[t.n#6]
+    +-with_entry_list=
+    | +-WithEntry
+    | | +-with_query_name="t_other"
+    | | +-with_subquery=
+    | |   +-ProjectScan
+    | |     +-column_list=[$array.n#1]
+    | |     +-input_scan=
+    | |       +-ArrayScan
+    | |         +-column_list=[$array.n#1]
+    | |         +-array_expr_list=
+    | |         | +-Literal(type=ARRAY<INT64>, value=[1, 2, 3, 4])
+    | |         +-element_column_list=[$array.n#1]
+    | +-WithEntry
+    |   +-with_query_name="t"
+    |   +-with_subquery=
+    |     +-RecursiveScan
+    |       +-column_list=[$union_all.n#3]
+    |       +-op_type=UNION_ALL
+    |       +-non_recursive_term=
+    |       | +-SetOperationItem
+    |       |   +-scan=
+    |       |   | +-ProjectScan
+    |       |   |   +-column_list=[$union_all1.n#2]
+    |       |   |   +-expr_list=
+    |       |   |   | +-n#2 := Literal(type=INT64, value=1)
+    |       |   |   +-input_scan=
+    |       |   |     +-SingleRowScan
+    |       |   +-output_column_list=[$union_all1.n#2]
+    |       +-recursive_term=
+    |         +-SetOperationItem
+    |           +-scan=
+    |           | +-ProjectScan
+    |           |   +-column_list=[t_other.n#4]
+    |           |   +-input_scan=
+    |           |     +-JoinScan
+    |           |       +-column_list=[t_other.n#4, t.n#5]
+    |           |       +-left_scan=
+    |           |       | +-WithRefScan(column_list=[t_other.n#4], with_query_name="t_other")
+    |           |       +-right_scan=
+    |           |       | +-ProjectScan
+    |           |       |   +-column_list=[t.n#5]
+    |           |       |   +-input_scan=
+    |           |       |     +-RecursiveRefScan(column_list=[t.n#5])
+    |           |       +-join_expr=
+    |           |       | +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+    |           |       |   +-ColumnRef(type=INT64, column=t_other.n#4)
+    |           |       |   +-ColumnRef(type=INT64, column=t.n#5)
+    |           |       +-has_using=TRUE
+    |           +-output_column_list=[t_other.n#4]
+    +-query=
+    | +-ProjectScan
+    |   +-column_list=[t.n#6]
+    |   +-input_scan=
+    |     +-WithRefScan(column_list=[t.n#6], with_query_name="t")
+    +-recursive=TRUE
+--
+ALTERNATION GROUP: LEFT,t
+--
+QueryStmt
++-output_column_list=
+| +-t.n#6 AS n [INT64]
++-query=
+  +-WithScan
+    +-column_list=[t.n#6]
+    +-with_entry_list=
+    | +-WithEntry
+    | | +-with_query_name="t_other"
+    | | +-with_subquery=
+    | |   +-ProjectScan
+    | |     +-column_list=[$array.n#1]
+    | |     +-input_scan=
+    | |       +-ArrayScan
+    | |         +-column_list=[$array.n#1]
+    | |         +-array_expr_list=
+    | |         | +-Literal(type=ARRAY<INT64>, value=[1, 2, 3, 4])
+    | |         +-element_column_list=[$array.n#1]
+    | +-WithEntry
+    |   +-with_query_name="t"
+    |   +-with_subquery=
+    |     +-RecursiveScan
+    |       +-column_list=[$union_all.n#3]
+    |       +-op_type=UNION_ALL
+    |       +-non_recursive_term=
+    |       | +-SetOperationItem
+    |       |   +-scan=
+    |       |   | +-ProjectScan
+    |       |   |   +-column_list=[$union_all1.n#2]
+    |       |   |   +-expr_list=
+    |       |   |   | +-n#2 := Literal(type=INT64, value=1)
+    |       |   |   +-input_scan=
+    |       |   |     +-SingleRowScan
+    |       |   +-output_column_list=[$union_all1.n#2]
+    |       +-recursive_term=
+    |         +-SetOperationItem
+    |           +-scan=
+    |           | +-ProjectScan
+    |           |   +-column_list=[t_other.n#4]
+    |           |   +-input_scan=
+    |           |     +-JoinScan
+    |           |       +-column_list=[t_other.n#4, t.n#5]
+    |           |       +-join_type=LEFT
+    |           |       +-left_scan=
+    |           |       | +-WithRefScan(column_list=[t_other.n#4], with_query_name="t_other")
+    |           |       +-right_scan=
+    |           |       | +-RecursiveRefScan(column_list=[t.n#5])
+    |           |       +-join_expr=
+    |           |       | +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+    |           |       |   +-ColumnRef(type=INT64, column=t_other.n#4)
+    |           |       |   +-ColumnRef(type=INT64, column=t.n#5)
+    |           |       +-has_using=TRUE
+    |           +-output_column_list=[t_other.n#4]
+    +-query=
+    | +-ProjectScan
+    |   +-column_list=[t.n#6]
+    |   +-input_scan=
+    |     +-WithRefScan(column_list=[t.n#6], with_query_name="t")
+    +-recursive=TRUE
+--
+ALTERNATION GROUP: LEFT,(SELECT * FROM t)
+--
+QueryStmt
++-output_column_list=
+| +-t.n#6 AS n [INT64]
++-query=
+  +-WithScan
+    +-column_list=[t.n#6]
+    +-with_entry_list=
+    | +-WithEntry
+    | | +-with_query_name="t_other"
+    | | +-with_subquery=
+    | |   +-ProjectScan
+    | |     +-column_list=[$array.n#1]
+    | |     +-input_scan=
+    | |       +-ArrayScan
+    | |         +-column_list=[$array.n#1]
+    | |         +-array_expr_list=
+    | |         | +-Literal(type=ARRAY<INT64>, value=[1, 2, 3, 4])
+    | |         +-element_column_list=[$array.n#1]
+    | +-WithEntry
+    |   +-with_query_name="t"
+    |   +-with_subquery=
+    |     +-RecursiveScan
+    |       +-column_list=[$union_all.n#3]
+    |       +-op_type=UNION_ALL
+    |       +-non_recursive_term=
+    |       | +-SetOperationItem
+    |       |   +-scan=
+    |       |   | +-ProjectScan
+    |       |   |   +-column_list=[$union_all1.n#2]
+    |       |   |   +-expr_list=
+    |       |   |   | +-n#2 := Literal(type=INT64, value=1)
+    |       |   |   +-input_scan=
+    |       |   |     +-SingleRowScan
+    |       |   +-output_column_list=[$union_all1.n#2]
+    |       +-recursive_term=
+    |         +-SetOperationItem
+    |           +-scan=
+    |           | +-ProjectScan
+    |           |   +-column_list=[t_other.n#4]
+    |           |   +-input_scan=
+    |           |     +-JoinScan
+    |           |       +-column_list=[t_other.n#4, t.n#5]
+    |           |       +-join_type=LEFT
+    |           |       +-left_scan=
+    |           |       | +-WithRefScan(column_list=[t_other.n#4], with_query_name="t_other")
+    |           |       +-right_scan=
+    |           |       | +-ProjectScan
+    |           |       |   +-column_list=[t.n#5]
+    |           |       |   +-input_scan=
+    |           |       |     +-RecursiveRefScan(column_list=[t.n#5])
+    |           |       +-join_expr=
+    |           |       | +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+    |           |       |   +-ColumnRef(type=INT64, column=t_other.n#4)
+    |           |       |   +-ColumnRef(type=INT64, column=t.n#5)
+    |           |       +-has_using=TRUE
+    |           +-output_column_list=[t_other.n#4]
+    +-query=
+    | +-ProjectScan
+    |   +-column_list=[t.n#6]
+    |   +-input_scan=
+    |     +-WithRefScan(column_list=[t.n#6], with_query_name="t")
+    +-recursive=TRUE
+--
+ALTERNATION GROUP: RIGHT,t
+--
+QueryStmt
++-output_column_list=
+| +-t.n#6 AS n [INT64]
++-query=
+  +-WithScan
+    +-column_list=[t.n#6]
+    +-with_entry_list=
+    | +-WithEntry
+    | | +-with_query_name="t_other"
+    | | +-with_subquery=
+    | |   +-ProjectScan
+    | |     +-column_list=[$array.n#1]
+    | |     +-input_scan=
+    | |       +-ArrayScan
+    | |         +-column_list=[$array.n#1]
+    | |         +-array_expr_list=
+    | |         | +-Literal(type=ARRAY<INT64>, value=[1, 2, 3, 4])
+    | |         +-element_column_list=[$array.n#1]
+    | +-WithEntry
+    |   +-with_query_name="t"
+    |   +-with_subquery=
+    |     +-RecursiveScan
+    |       +-column_list=[$union_all.n#3]
+    |       +-op_type=UNION_ALL
+    |       +-non_recursive_term=
+    |       | +-SetOperationItem
+    |       |   +-scan=
+    |       |   | +-ProjectScan
+    |       |   |   +-column_list=[$union_all1.n#2]
+    |       |   |   +-expr_list=
+    |       |   |   | +-n#2 := Literal(type=INT64, value=1)
+    |       |   |   +-input_scan=
+    |       |   |     +-SingleRowScan
+    |       |   +-output_column_list=[$union_all1.n#2]
+    |       +-recursive_term=
+    |         +-SetOperationItem
+    |           +-scan=
+    |           | +-ProjectScan
+    |           |   +-column_list=[t.n#5]
+    |           |   +-input_scan=
+    |           |     +-JoinScan
+    |           |       +-column_list=[t_other.n#4, t.n#5]
+    |           |       +-join_type=RIGHT
+    |           |       +-left_scan=
+    |           |       | +-WithRefScan(column_list=[t_other.n#4], with_query_name="t_other")
+    |           |       +-right_scan=
+    |           |       | +-RecursiveRefScan(column_list=[t.n#5])
+    |           |       +-join_expr=
+    |           |       | +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+    |           |       |   +-ColumnRef(type=INT64, column=t_other.n#4)
+    |           |       |   +-ColumnRef(type=INT64, column=t.n#5)
+    |           |       +-has_using=TRUE
+    |           +-output_column_list=[t.n#5]
+    +-query=
+    | +-ProjectScan
+    |   +-column_list=[t.n#6]
+    |   +-input_scan=
+    |     +-WithRefScan(column_list=[t.n#6], with_query_name="t")
+    +-recursive=TRUE
+--
+ALTERNATION GROUP: RIGHT,(SELECT * FROM t)
+--
+QueryStmt
++-output_column_list=
+| +-t.n#6 AS n [INT64]
++-query=
+  +-WithScan
+    +-column_list=[t.n#6]
+    +-with_entry_list=
+    | +-WithEntry
+    | | +-with_query_name="t_other"
+    | | +-with_subquery=
+    | |   +-ProjectScan
+    | |     +-column_list=[$array.n#1]
+    | |     +-input_scan=
+    | |       +-ArrayScan
+    | |         +-column_list=[$array.n#1]
+    | |         +-array_expr_list=
+    | |         | +-Literal(type=ARRAY<INT64>, value=[1, 2, 3, 4])
+    | |         +-element_column_list=[$array.n#1]
+    | +-WithEntry
+    |   +-with_query_name="t"
+    |   +-with_subquery=
+    |     +-RecursiveScan
+    |       +-column_list=[$union_all.n#3]
+    |       +-op_type=UNION_ALL
+    |       +-non_recursive_term=
+    |       | +-SetOperationItem
+    |       |   +-scan=
+    |       |   | +-ProjectScan
+    |       |   |   +-column_list=[$union_all1.n#2]
+    |       |   |   +-expr_list=
+    |       |   |   | +-n#2 := Literal(type=INT64, value=1)
+    |       |   |   +-input_scan=
+    |       |   |     +-SingleRowScan
+    |       |   +-output_column_list=[$union_all1.n#2]
+    |       +-recursive_term=
+    |         +-SetOperationItem
+    |           +-scan=
+    |           | +-ProjectScan
+    |           |   +-column_list=[t.n#5]
+    |           |   +-input_scan=
+    |           |     +-JoinScan
+    |           |       +-column_list=[t_other.n#4, t.n#5]
+    |           |       +-join_type=RIGHT
+    |           |       +-left_scan=
+    |           |       | +-WithRefScan(column_list=[t_other.n#4], with_query_name="t_other")
+    |           |       +-right_scan=
+    |           |       | +-ProjectScan
+    |           |       |   +-column_list=[t.n#5]
+    |           |       |   +-input_scan=
+    |           |       |     +-RecursiveRefScan(column_list=[t.n#5])
+    |           |       +-join_expr=
+    |           |       | +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+    |           |       |   +-ColumnRef(type=INT64, column=t_other.n#4)
+    |           |       |   +-ColumnRef(type=INT64, column=t.n#5)
+    |           |       +-has_using=TRUE
+    |           +-output_column_list=[t.n#5]
+    +-query=
+    | +-ProjectScan
+    |   +-column_list=[t.n#6]
+    |   +-input_scan=
+    |     +-WithRefScan(column_list=[t.n#6], with_query_name="t")
+    +-recursive=TRUE
+--
+ALTERNATION GROUP: FULL OUTER,t
+--
+QueryStmt
++-output_column_list=
+| +-t.n#7 AS n [INT64]
++-query=
+  +-WithScan
+    +-column_list=[t.n#7]
+    +-with_entry_list=
+    | +-WithEntry
+    | | +-with_query_name="t_other"
+    | | +-with_subquery=
+    | |   +-ProjectScan
+    | |     +-column_list=[$array.n#1]
+    | |     +-input_scan=
+    | |       +-ArrayScan
+    | |         +-column_list=[$array.n#1]
+    | |         +-array_expr_list=
+    | |         | +-Literal(type=ARRAY<INT64>, value=[1, 2, 3, 4])
+    | |         +-element_column_list=[$array.n#1]
+    | +-WithEntry
+    |   +-with_query_name="t"
+    |   +-with_subquery=
+    |     +-RecursiveScan
+    |       +-column_list=[$union_all.n#3]
+    |       +-op_type=UNION_ALL
+    |       +-non_recursive_term=
+    |       | +-SetOperationItem
+    |       |   +-scan=
+    |       |   | +-ProjectScan
+    |       |   |   +-column_list=[$union_all1.n#2]
+    |       |   |   +-expr_list=
+    |       |   |   | +-n#2 := Literal(type=INT64, value=1)
+    |       |   |   +-input_scan=
+    |       |   |     +-SingleRowScan
+    |       |   +-output_column_list=[$union_all1.n#2]
+    |       +-recursive_term=
+    |         +-SetOperationItem
+    |           +-scan=
+    |           | +-ProjectScan
+    |           |   +-column_list=[$full_join.n#6]
+    |           |   +-input_scan=
+    |           |     +-ProjectScan
+    |           |       +-column_list=[t_other.n#4, t.n#5, $full_join.n#6]
+    |           |       +-expr_list=
+    |           |       | +-n#6 :=
+    |           |       |   +-FunctionCall(GoogleSQL:coalesce(repeated(2) INT64) -> INT64)
+    |           |       |     +-ColumnRef(type=INT64, column=t_other.n#4)
+    |           |       |     +-ColumnRef(type=INT64, column=t.n#5)
+    |           |       +-input_scan=
+    |           |         +-JoinScan
+    |           |           +-column_list=[t_other.n#4, t.n#5]
+    |           |           +-join_type=FULL
+    |           |           +-left_scan=
+    |           |           | +-WithRefScan(column_list=[t_other.n#4], with_query_name="t_other")
+    |           |           +-right_scan=
+    |           |           | +-RecursiveRefScan(column_list=[t.n#5])
+    |           |           +-join_expr=
+    |           |           | +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+    |           |           |   +-ColumnRef(type=INT64, column=t_other.n#4)
+    |           |           |   +-ColumnRef(type=INT64, column=t.n#5)
+    |           |           +-has_using=TRUE
+    |           +-output_column_list=[$full_join.n#6]
+    +-query=
+    | +-ProjectScan
+    |   +-column_list=[t.n#7]
+    |   +-input_scan=
+    |     +-WithRefScan(column_list=[t.n#7], with_query_name="t")
+    +-recursive=TRUE
+--
+ALTERNATION GROUP: FULL OUTER,(SELECT * FROM t)
+--
+QueryStmt
++-output_column_list=
+| +-t.n#7 AS n [INT64]
++-query=
+  +-WithScan
+    +-column_list=[t.n#7]
+    +-with_entry_list=
+    | +-WithEntry
+    | | +-with_query_name="t_other"
+    | | +-with_subquery=
+    | |   +-ProjectScan
+    | |     +-column_list=[$array.n#1]
+    | |     +-input_scan=
+    | |       +-ArrayScan
+    | |         +-column_list=[$array.n#1]
+    | |         +-array_expr_list=
+    | |         | +-Literal(type=ARRAY<INT64>, value=[1, 2, 3, 4])
+    | |         +-element_column_list=[$array.n#1]
+    | +-WithEntry
+    |   +-with_query_name="t"
+    |   +-with_subquery=
+    |     +-RecursiveScan
+    |       +-column_list=[$union_all.n#3]
+    |       +-op_type=UNION_ALL
+    |       +-non_recursive_term=
+    |       | +-SetOperationItem
+    |       |   +-scan=
+    |       |   | +-ProjectScan
+    |       |   |   +-column_list=[$union_all1.n#2]
+    |       |   |   +-expr_list=
+    |       |   |   | +-n#2 := Literal(type=INT64, value=1)
+    |       |   |   +-input_scan=
+    |       |   |     +-SingleRowScan
+    |       |   +-output_column_list=[$union_all1.n#2]
+    |       +-recursive_term=
+    |         +-SetOperationItem
+    |           +-scan=
+    |           | +-ProjectScan
+    |           |   +-column_list=[$full_join.n#6]
+    |           |   +-input_scan=
+    |           |     +-ProjectScan
+    |           |       +-column_list=[t_other.n#4, t.n#5, $full_join.n#6]
+    |           |       +-expr_list=
+    |           |       | +-n#6 :=
+    |           |       |   +-FunctionCall(GoogleSQL:coalesce(repeated(2) INT64) -> INT64)
+    |           |       |     +-ColumnRef(type=INT64, column=t_other.n#4)
+    |           |       |     +-ColumnRef(type=INT64, column=t.n#5)
+    |           |       +-input_scan=
+    |           |         +-JoinScan
+    |           |           +-column_list=[t_other.n#4, t.n#5]
+    |           |           +-join_type=FULL
+    |           |           +-left_scan=
+    |           |           | +-WithRefScan(column_list=[t_other.n#4], with_query_name="t_other")
+    |           |           +-right_scan=
+    |           |           | +-ProjectScan
+    |           |           |   +-column_list=[t.n#5]
+    |           |           |   +-input_scan=
+    |           |           |     +-RecursiveRefScan(column_list=[t.n#5])
+    |           |           +-join_expr=
+    |           |           | +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+    |           |           |   +-ColumnRef(type=INT64, column=t_other.n#4)
+    |           |           |   +-ColumnRef(type=INT64, column=t.n#5)
+    |           |           +-has_using=TRUE
+    |           +-output_column_list=[$full_join.n#6]
+    +-query=
+    | +-ProjectScan
+    |   +-column_list=[t.n#7]
+    |   +-input_scan=
+    |     +-WithRefScan(column_list=[t.n#7], with_query_name="t")
+    +-recursive=TRUE

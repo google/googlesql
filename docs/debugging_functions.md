@@ -4,7 +4,7 @@
 
 # Debugging functions
 
-ZetaSQL supports the following debugging functions.
+GoogleSQL supports the following debugging functions.
 
 ## Function list
 
@@ -18,7 +18,7 @@ ZetaSQL supports the following debugging functions.
   <tbody>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/debugging_functions.md#error"><code>ERROR</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/debugging_functions.md#error"><code>ERROR</code></a>
 </td>
   <td>
     Produces an error with a custom error message.
@@ -26,7 +26,7 @@ ZetaSQL supports the following debugging functions.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/debugging_functions.md#iferror"><code>IFERROR</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/debugging_functions.md#iferror"><code>IFERROR</code></a>
 </td>
   <td>
     Evaluates a try expression, and if an evaluation error is produced, returns
@@ -35,7 +35,7 @@ ZetaSQL supports the following debugging functions.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/debugging_functions.md#iserror"><code>ISERROR</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/debugging_functions.md#iserror"><code>ISERROR</code></a>
 </td>
   <td>
     Evaluates a try expression, and if an evaluation error is produced, returns
@@ -44,7 +44,7 @@ ZetaSQL supports the following debugging functions.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/debugging_functions.md#nulliferror"><code>NULLIFERROR</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/debugging_functions.md#nulliferror"><code>NULLIFERROR</code></a>
 </td>
   <td>
     Evaluates a try expression, and if an evaluation error is produced, returns
@@ -57,7 +57,7 @@ ZetaSQL supports the following debugging functions.
 
 ## `ERROR`
 
-```zetasql
+```googlesql
 ERROR(error_message)
 ```
 
@@ -78,13 +78,13 @@ result in an error: there is no special guarantee of evaluation order.
 
 **Return Data Type**
 
-ZetaSQL infers the return type in context.
+GoogleSQL infers the return type in context.
 
 **Examples**
 
 In the following example, the query produces an error message:
 
-```zetasql
+```googlesql
 -- ERROR: Show this error message (while evaluating error("Show this error message"))
 SELECT ERROR('Show this error message')
 ```
@@ -92,7 +92,7 @@ SELECT ERROR('Show this error message')
 In the following example, the query returns an error message if the value of the
 row doesn't match one of two defined values.
 
-```zetasql
+```googlesql
 SELECT
   CASE
     WHEN value = 'foo' THEN 'Value is foo.'
@@ -108,22 +108,22 @@ FROM (
 ```
 
 The following example demonstrates bad usage of the `ERROR` function. In this
-example, ZetaSQL might evaluate the `ERROR` function before or after
-the <nobr>`x > 0`</nobr> condition, because ZetaSQL doesn't guarantee
+example, GoogleSQL might evaluate the `ERROR` function before or after
+the <nobr>`x > 0`</nobr> condition, because GoogleSQL doesn't guarantee
 ordering between `WHERE` clause conditions. Therefore, the results with the
 `ERROR` function might vary.
 
-```zetasql{.bad}
+```googlesql{.bad}
 SELECT *
 FROM (SELECT -1 AS x)
 WHERE x > 0 AND ERROR('Example error');
 ```
 
 In the next example, the `WHERE` clause evaluates an `IF` condition, which
-ensures that ZetaSQL only evaluates the `ERROR` function if the
+ensures that GoogleSQL only evaluates the `ERROR` function if the
 condition fails.
 
-```zetasql
+```googlesql
 SELECT *
 FROM (SELECT -1 AS x)
 WHERE IF(x > 0, true, ERROR(FORMAT('Error: x must be positive but is %t', x)));
@@ -133,7 +133,7 @@ WHERE IF(x > 0, true, ERROR(FORMAT('Error: x must be positive but is %t', x)));
 
 ## `IFERROR`
 
-```zetasql
+```googlesql
 IFERROR(try_expression, catch_expression)
 ```
 
@@ -175,7 +175,7 @@ The [supertype][supertype] for `try_expression` and
 
 In the following example, the query successfully evaluates `try_expression`.
 
-```zetasql
+```googlesql
 SELECT IFERROR('a', 'b') AS result
 
 /*--------+
@@ -188,7 +188,7 @@ SELECT IFERROR('a', 'b') AS result
 In the following example, the query successfully evaluates the
 `try_expression` subquery.
 
-```zetasql
+```googlesql
 SELECT IFERROR((SELECT [1,2,3][OFFSET(0)]), -1) AS result
 
 /*--------+
@@ -201,7 +201,7 @@ SELECT IFERROR((SELECT [1,2,3][OFFSET(0)]), -1) AS result
 In the following example, `IFERROR` catches an evaluation error in the
 `try_expression` and successfully evaluates `catch_expression`.
 
-```zetasql
+```googlesql
 SELECT IFERROR(ERROR('a'), 'b') AS result
 
 /*--------+
@@ -214,7 +214,7 @@ SELECT IFERROR(ERROR('a'), 'b') AS result
 In the following example, `IFERROR` catches an evaluation error in the
 `try_expression` subquery and successfully evaluates `catch_expression`.
 
-```zetasql
+```googlesql
 SELECT IFERROR((SELECT [1,2,3][OFFSET(9)]), -1) AS result
 
 /*--------+
@@ -227,7 +227,7 @@ SELECT IFERROR((SELECT [1,2,3][OFFSET(9)]), -1) AS result
 In the following query, the error is handled by the innermost `IFERROR`
 operation, `IFERROR(ERROR('a'), 'b')`.
 
-```zetasql
+```googlesql
 SELECT IFERROR(IFERROR(ERROR('a'), 'b'), 'c') AS result
 
 /*--------+
@@ -240,7 +240,7 @@ SELECT IFERROR(IFERROR(ERROR('a'), 'b'), 'c') AS result
 In the following query, the error is handled by the outermost `IFERROR`
 operation, `IFERROR(..., 'c')`.
 
-```zetasql
+```googlesql
 SELECT IFERROR(IFERROR(ERROR('a'), ERROR('b')), 'c') AS result
 
 /*--------+
@@ -253,7 +253,7 @@ SELECT IFERROR(IFERROR(ERROR('a'), ERROR('b')), 'c') AS result
 In the following example, an evaluation error is produced because the subquery
 passed in as the `try_expression` evaluates to a table, not a scalar value.
 
-```zetasql
+```googlesql
 SELECT IFERROR((SELECT e FROM UNNEST([1, 2]) AS e), 3) AS result
 
 /*--------+
@@ -267,17 +267,17 @@ In the following example, `IFERROR` catches an evaluation error in `ERROR('a')`
 and then evaluates `ERROR('b')`. Because there is also an evaluation error in
 `ERROR('b')`, `IFERROR` produces an evaluation error for `ERROR('b')`.
 
-```zetasql
+```googlesql
 SELECT IFERROR(ERROR('a'), ERROR('b')) AS result
 
 --ERROR: OUT_OF_RANGE 'b'
 ```
 
-[supertype]: https://github.com/google/zetasql/blob/master/docs/conversion_rules.md#supertypes
+[supertype]: https://github.com/google/googlesql/blob/master/docs/conversion_rules.md#supertypes
 
 ## `ISERROR`
 
-```zetasql
+```googlesql
 ISERROR(try_expression)
 ```
 
@@ -304,7 +304,7 @@ Evaluates `try_expression`.
 
 In the following examples, `ISERROR` successfully evaluates `try_expression`.
 
-```zetasql
+```googlesql
 SELECT ISERROR('a') AS is_error
 
 /*----------+
@@ -314,7 +314,7 @@ SELECT ISERROR('a') AS is_error
  +----------*/
 ```
 
-```zetasql
+```googlesql
 SELECT ISERROR(2/1) AS is_error
 
 /*----------+
@@ -324,7 +324,7 @@ SELECT ISERROR(2/1) AS is_error
  +----------*/
 ```
 
-```zetasql
+```googlesql
 SELECT ISERROR((SELECT [1,2,3][OFFSET(0)])) AS is_error
 
 /*----------+
@@ -337,7 +337,7 @@ SELECT ISERROR((SELECT [1,2,3][OFFSET(0)])) AS is_error
 In the following examples, `ISERROR` catches an evaluation error in
 `try_expression`.
 
-```zetasql
+```googlesql
 SELECT ISERROR(ERROR('a')) AS is_error
 
 /*----------+
@@ -347,7 +347,7 @@ SELECT ISERROR(ERROR('a')) AS is_error
  +----------*/
 ```
 
-```zetasql
+```googlesql
 SELECT ISERROR(2/0) AS is_error
 
 /*----------+
@@ -357,7 +357,7 @@ SELECT ISERROR(2/0) AS is_error
  +----------*/
 ```
 
-```zetasql
+```googlesql
 SELECT ISERROR((SELECT [1,2,3][OFFSET(9)])) AS is_error
 
 /*----------+
@@ -370,7 +370,7 @@ SELECT ISERROR((SELECT [1,2,3][OFFSET(9)])) AS is_error
 In the following example, an evaluation error is produced because the subquery
 passed in as `try_expression` evaluates to a table, not a scalar value.
 
-```zetasql
+```googlesql
 SELECT ISERROR((SELECT e FROM UNNEST([1, 2]) AS e)) AS is_error
 
 /*----------+
@@ -382,7 +382,7 @@ SELECT ISERROR((SELECT e FROM UNNEST([1, 2]) AS e)) AS is_error
 
 ## `NULLIFERROR`
 
-```zetasql
+```googlesql
 NULLIFERROR(try_expression)
 ```
 
@@ -411,7 +411,7 @@ The data type for `try_expression` or `NULL`
 In the following example, `NULLIFERROR` successfully evaluates
 `try_expression`.
 
-```zetasql
+```googlesql
 SELECT NULLIFERROR('a') AS result
 
 /*--------+
@@ -424,7 +424,7 @@ SELECT NULLIFERROR('a') AS result
 In the following example, `NULLIFERROR` successfully evaluates
 the `try_expression` subquery.
 
-```zetasql
+```googlesql
 SELECT NULLIFERROR((SELECT [1,2,3][OFFSET(0)])) AS result
 
 /*--------+
@@ -437,7 +437,7 @@ SELECT NULLIFERROR((SELECT [1,2,3][OFFSET(0)])) AS result
 In the following example, `NULLIFERROR` catches an evaluation error in
 `try_expression`.
 
-```zetasql
+```googlesql
 SELECT NULLIFERROR(ERROR('a')) AS result
 
 /*--------+
@@ -450,7 +450,7 @@ SELECT NULLIFERROR(ERROR('a')) AS result
 In the following example, `NULLIFERROR` catches an evaluation error in
 the `try_expression` subquery.
 
-```zetasql
+```googlesql
 SELECT NULLIFERROR((SELECT [1,2,3][OFFSET(9)])) AS result
 
 /*--------+
@@ -463,7 +463,7 @@ SELECT NULLIFERROR((SELECT [1,2,3][OFFSET(9)])) AS result
 In the following example, an evaluation error is produced because the subquery
 passed in as `try_expression` evaluates to a table, not a scalar value.
 
-```zetasql
+```googlesql
 SELECT NULLIFERROR((SELECT e FROM UNNEST([1, 2]) AS e)) AS result
 
 /*--------+

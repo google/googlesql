@@ -1,0 +1,3954 @@
+# Multiple set operations of {UNION, EXCEPT} {ALL, DISTINCT} type in a single
+# query statement is not supported.
+[default language_features=NONE]
+select 1
+UNION ALL
+select 2
+UNION DISTINCT
+select 4
+--
+ERROR: Syntax error: Different set operations cannot be used in the same query without using parentheses for grouping [at 4:1]
+UNION DISTINCT
+^
+==
+
+select 1
+UNION ALL
+select 2
+EXCEPT ALL
+select 3
+--
+ERROR: Syntax error: Different set operations cannot be used in the same query without using parentheses for grouping [at 4:1]
+EXCEPT ALL
+^
+==
+
+# Multiple set operations of INTERSECT {ALL, DISTINCT} types in a single query
+# statement is not supported.
+select 1
+INTERSECT ALL
+select 2
+INTERSECT DISTINCT
+select 3
+--
+ERROR: Syntax error: Different set operations cannot be used in the same query without using parentheses for grouping [at 4:1]
+INTERSECT DISTINCT
+^
+==
+
+select 1
+INTERSECT ALL
+select 2
+UNION DISTINCT
+select 3
+--
+ERROR: Syntax error: Different set operations cannot be used in the same query without using parentheses for grouping [at 4:1]
+UNION DISTINCT
+^
+==
+
+# No precedence for INTERSECT over UNION/EXCEPT.
+select 1
+UNION ALL
+select 2
+INTERSECT ALL
+select 3
+UNION ALL
+select 4
+--
+ERROR: Syntax error: Different set operations cannot be used in the same query without using parentheses for grouping [at 4:1]
+INTERSECT ALL
+^
+==
+
+select 1
+EXCEPT ALL
+select 2
+INTERSECT ALL
+select 3
+EXCEPT ALL
+select 4
+--
+ERROR: Syntax error: Different set operations cannot be used in the same query without using parentheses for grouping [at 4:1]
+INTERSECT ALL
+^
+==
+
+# Both UNION and EXCEPT operations in a single query statement not supported.
+select 1
+UNION ALL
+select 2
+EXCEPT ALL
+select 3
+--
+ERROR: Syntax error: Different set operations cannot be used in the same query without using parentheses for grouping [at 4:1]
+EXCEPT ALL
+^
+==
+
+# Error: 3 children and 2 simple hints
+select 1
+UNION @{ key = 3 } ALL
+select 2
+UNION @{ key = 5 } ALL
+select 3
+--
+ERROR: Syntax error: Hints on set operations must appear on the first  operation. [at 4:7]
+UNION @{ key = 5 } ALL
+      ^
+==
+
+# Error: 3 children and 1 simple hint in the wrong location
+select 1
+UNION ALL
+select 2
+UNION @{ key = 5 } ALL
+select 3
+--
+ERROR: Syntax error: Hints on set operations must appear on the first  operation. [at 4:7]
+UNION @{ key = 5 } ALL
+      ^
+==
+
+select 1
+union all
+select 2
+union all
+select 3
+--
+QueryStmt
++-output_column_list=
+| +-$union_all.$col1#4 AS `$col1` [INT64]
++-query=
+  +-SetOperationScan
+    +-column_list=[$union_all.$col1#4]
+    +-op_type=UNION_ALL
+    +-input_item_list=
+      +-SetOperationItem
+      | +-scan=
+      | | +-ProjectScan
+      | |   +-column_list=[$union_all1.$col1#1]
+      | |   +-expr_list=
+      | |   | +-$col1#1 := Literal(type=INT64, value=1)
+      | |   +-input_scan=
+      | |     +-SingleRowScan
+      | +-output_column_list=[$union_all1.$col1#1]
+      +-SetOperationItem
+      | +-scan=
+      | | +-ProjectScan
+      | |   +-column_list=[$union_all2.$col1#2]
+      | |   +-expr_list=
+      | |   | +-$col1#2 := Literal(type=INT64, value=2)
+      | |   +-input_scan=
+      | |     +-SingleRowScan
+      | +-output_column_list=[$union_all2.$col1#2]
+      +-SetOperationItem
+        +-scan=
+        | +-ProjectScan
+        |   +-column_list=[$union_all3.$col1#3]
+        |   +-expr_list=
+        |   | +-$col1#3 := Literal(type=INT64, value=3)
+        |   +-input_scan=
+        |     +-SingleRowScan
+        +-output_column_list=[$union_all3.$col1#3]
+==
+
+# UNION that isn't UNION ALL/DISTINCT is not supported.
+select 1
+union
+select 2
+--
+ERROR: Syntax error: Expected keyword ALL or keyword DISTINCT but got keyword SELECT [at 3:1]
+select 2
+^
+==
+
+select 1
+union all
+(select 2
+ union all
+ select 3
+ limit 5)
+limit 6
+--
+QueryStmt
++-output_column_list=
+| +-$union_all.$col1#5 AS `$col1` [INT64]
++-query=
+  +-LimitOffsetScan
+    +-column_list=[$union_all.$col1#5]
+    +-input_scan=
+    | +-SetOperationScan
+    |   +-column_list=[$union_all.$col1#5]
+    |   +-op_type=UNION_ALL
+    |   +-input_item_list=
+    |     +-SetOperationItem
+    |     | +-scan=
+    |     | | +-ProjectScan
+    |     | |   +-column_list=[$union_all1.$col1#1]
+    |     | |   +-expr_list=
+    |     | |   | +-$col1#1 := Literal(type=INT64, value=1)
+    |     | |   +-input_scan=
+    |     | |     +-SingleRowScan
+    |     | +-output_column_list=[$union_all1.$col1#1]
+    |     +-SetOperationItem
+    |       +-scan=
+    |       | +-LimitOffsetScan
+    |       |   +-column_list=[$union_all.$col1#4]
+    |       |   +-input_scan=
+    |       |   | +-SetOperationScan
+    |       |   |   +-column_list=[$union_all.$col1#4]
+    |       |   |   +-op_type=UNION_ALL
+    |       |   |   +-input_item_list=
+    |       |   |     +-SetOperationItem
+    |       |   |     | +-scan=
+    |       |   |     | | +-ProjectScan
+    |       |   |     | |   +-column_list=[$union_all1.$col1#2]
+    |       |   |     | |   +-expr_list=
+    |       |   |     | |   | +-$col1#2 := Literal(type=INT64, value=2)
+    |       |   |     | |   +-input_scan=
+    |       |   |     | |     +-SingleRowScan
+    |       |   |     | +-output_column_list=[$union_all1.$col1#2]
+    |       |   |     +-SetOperationItem
+    |       |   |       +-scan=
+    |       |   |       | +-ProjectScan
+    |       |   |       |   +-column_list=[$union_all2.$col1#3]
+    |       |   |       |   +-expr_list=
+    |       |   |       |   | +-$col1#3 := Literal(type=INT64, value=3)
+    |       |   |       |   +-input_scan=
+    |       |   |       |     +-SingleRowScan
+    |       |   |       +-output_column_list=[$union_all2.$col1#3]
+    |       |   +-limit=
+    |       |     +-Literal(type=INT64, value=5)
+    |       +-output_column_list=[$union_all.$col1#4]
+    +-limit=
+      +-Literal(type=INT64, value=6)
+==
+
+select * from
+(select 'abc' union all select 'def')
+--
+QueryStmt
++-output_column_list=
+| +-$union_all.$col1#3 AS `$col1` [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$union_all.$col1#3]
+    +-input_scan=
+      +-SetOperationScan
+        +-column_list=[$union_all.$col1#3]
+        +-op_type=UNION_ALL
+        +-input_item_list=
+          +-SetOperationItem
+          | +-scan=
+          | | +-ProjectScan
+          | |   +-column_list=[$union_all1.$col1#1]
+          | |   +-expr_list=
+          | |   | +-$col1#1 := Literal(type=STRING, value="abc")
+          | |   +-input_scan=
+          | |     +-SingleRowScan
+          | +-output_column_list=[$union_all1.$col1#1]
+          +-SetOperationItem
+            +-scan=
+            | +-ProjectScan
+            |   +-column_list=[$union_all2.$col1#2]
+            |   +-expr_list=
+            |   | +-$col1#2 := Literal(type=STRING, value="def")
+            |   +-input_scan=
+            |     +-SingleRowScan
+            +-output_column_list=[$union_all2.$col1#2]
+==
+
+select 1 union all select 1,2
+--
+ERROR: Queries in UNION ALL have mismatched column count; query 1 has 1 column, query 2 has 2 columns [at 1:20]
+select 1 union all select 1,2
+                   ^
+==
+
+select 1,2
+union all
+select 3,4
+union all
+select 5
+union all
+select 6,7
+--
+ERROR: Queries in UNION ALL have mismatched column count; query 1 has 2 columns, query 3 has 1 column [at 5:1]
+select 5
+^
+==
+
+select 1
+union all
+select 'abc'
+--
+ERROR: Column 1 in UNION ALL has incompatible types: INT64, STRING [at 3:1]
+select 'abc'
+^
+==
+
+# Different (non-literal) types coerce to a common supertype.
+# We wrap an extra ProjectScan around the first query to coerce it to double.
+select 'a' a, 1 + 1 v1
+union all
+select 'a' b, 1.0 + 1.0
+--
+QueryStmt
++-output_column_list=
+| +-$union_all.a#5 AS a [STRING]
+| +-$union_all.v1#6 AS v1 [DOUBLE]
++-query=
+  +-SetOperationScan
+    +-column_list=$union_all.[a#5, v1#6]
+    +-op_type=UNION_ALL
+    +-input_item_list=
+      +-SetOperationItem
+      | +-scan=
+      | | +-ProjectScan
+      | |   +-column_list=[$union_all1.a#1, $union_all1_cast.v1#7]
+      | |   +-expr_list=
+      | |   | +-v1#7 :=
+      | |   |   +-Cast(INT64 -> DOUBLE)
+      | |   |     +-ColumnRef(type=INT64, column=$union_all1.v1#2)
+      | |   +-input_scan=
+      | |     +-ProjectScan
+      | |       +-column_list=$union_all1.[a#1, v1#2]
+      | |       +-expr_list=
+      | |       | +-a#1 := Literal(type=STRING, value="a")
+      | |       | +-v1#2 :=
+      | |       |   +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+      | |       |     +-Literal(type=INT64, value=1)
+      | |       |     +-Literal(type=INT64, value=1)
+      | |       +-input_scan=
+      | |         +-SingleRowScan
+      | +-output_column_list=[$union_all1.a#1, $union_all1_cast.v1#7]
+      +-SetOperationItem
+        +-scan=
+        | +-ProjectScan
+        |   +-column_list=$union_all2.[b#3, $col2#4]
+        |   +-expr_list=
+        |   | +-b#3 := Literal(type=STRING, value="a")
+        |   | +-$col2#4 :=
+        |   |   +-FunctionCall(GoogleSQL:$add(DOUBLE, DOUBLE) -> DOUBLE)
+        |   |     +-Literal(type=DOUBLE, value=1)
+        |   |     +-Literal(type=DOUBLE, value=1)
+        |   +-input_scan=
+        |     +-SingleRowScan
+        +-output_column_list=$union_all2.[b#3, $col2#4]
+==
+
+# Different literal types coercing to a common supertype.
+select 1.0
+union all
+select 2
+--
+QueryStmt
++-output_column_list=
+| +-$union_all.$col1#3 AS `$col1` [DOUBLE]
++-query=
+  +-SetOperationScan
+    +-column_list=[$union_all.$col1#3]
+    +-op_type=UNION_ALL
+    +-input_item_list=
+      +-SetOperationItem
+      | +-scan=
+      | | +-ProjectScan
+      | |   +-column_list=[$union_all1.$col1#1]
+      | |   +-expr_list=
+      | |   | +-$col1#1 := Literal(type=DOUBLE, value=1)
+      | |   +-input_scan=
+      | |     +-SingleRowScan
+      | +-output_column_list=[$union_all1.$col1#1]
+      +-SetOperationItem
+        +-scan=
+        | +-ProjectScan
+        |   +-column_list=[$union_all2_cast.$col1#4]
+        |   +-expr_list=
+        |   | +-$col1#4 := Literal(type=DOUBLE, value=2)
+        |   +-input_scan=
+        |     +-ProjectScan
+        |       +-column_list=[$union_all2.$col1#2]
+        |       +-expr_list=
+        |       | +-$col1#2 := Literal(type=INT64, value=2)
+        |       +-input_scan=
+        |         +-SingleRowScan
+        +-output_column_list=[$union_all2_cast.$col1#4]
+==
+
+# Union two of the same proto.
+select KitchenSink from TestTable
+union all
+select KitchenSink from TestTable
+--
+QueryStmt
++-output_column_list=
+| +-$union_all.KitchenSink#7 AS KitchenSink [PROTO<googlesql_test.KitchenSinkPB>]
++-query=
+  +-SetOperationScan
+    +-column_list=[$union_all.KitchenSink#7]
+    +-op_type=UNION_ALL
+    +-input_item_list=
+      +-SetOperationItem
+      | +-scan=
+      | | +-ProjectScan
+      | |   +-column_list=[TestTable.KitchenSink#3]
+      | |   +-input_scan=
+      | |     +-TableScan(column_list=[TestTable.KitchenSink#3], table=TestTable, column_index_list=[2])
+      | +-output_column_list=[TestTable.KitchenSink#3]
+      +-SetOperationItem
+        +-scan=
+        | +-ProjectScan
+        |   +-column_list=[TestTable.KitchenSink#6]
+        |   +-input_scan=
+        |     +-TableScan(column_list=[TestTable.KitchenSink#6], table=TestTable, column_index_list=[2])
+        +-output_column_list=[TestTable.KitchenSink#6]
+==
+
+# Union of proto and string literal.
+select KitchenSink from TestTable
+union all
+select "int64_key_1: 1, int64_key_2: 2"
+--
+QueryStmt
++-output_column_list=
+| +-$union_all.KitchenSink#5 AS KitchenSink [PROTO<googlesql_test.KitchenSinkPB>]
++-query=
+  +-SetOperationScan
+    +-column_list=[$union_all.KitchenSink#5]
+    +-op_type=UNION_ALL
+    +-input_item_list=
+      +-SetOperationItem
+      | +-scan=
+      | | +-ProjectScan
+      | |   +-column_list=[TestTable.KitchenSink#3]
+      | |   +-input_scan=
+      | |     +-TableScan(column_list=[TestTable.KitchenSink#3], table=TestTable, column_index_list=[2])
+      | +-output_column_list=[TestTable.KitchenSink#3]
+      +-SetOperationItem
+        +-scan=
+        | +-ProjectScan
+        |   +-column_list=[$union_all2_cast.$col1#6]
+        |   +-expr_list=
+        |   | +-$col1#6 := Literal(type=PROTO<googlesql_test.KitchenSinkPB>, value={int64_key_1: 1 int64_key_2: 2})
+        |   +-input_scan=
+        |     +-ProjectScan
+        |       +-column_list=[$union_all2.$col1#4]
+        |       +-expr_list=
+        |       | +-$col1#4 := Literal(type=STRING, value="int64_key_1: 1, int64_key_2: 2")
+        |       +-input_scan=
+        |         +-SingleRowScan
+        +-output_column_list=[$union_all2_cast.$col1#6]
+==
+
+# Union of proto and string literal.
+select KitchenSink from TestTable
+union all
+select "aaa"
+--
+ERROR: Could not cast literal "aaa" to type googlesql_test.KitchenSinkPB (Error parsing proto: Message type "googlesql_test.KitchenSinkPB" has no field named "aaa". [1:4]) [at 3:8]
+select "aaa"
+       ^
+==
+
+# Union of proto and bytes literal is allowed.
+select KitchenSink from TestTable
+union all
+select b"aaa"
+--
+QueryStmt
++-output_column_list=
+| +-$union_all.KitchenSink#5 AS KitchenSink [PROTO<googlesql_test.KitchenSinkPB>]
++-query=
+  +-SetOperationScan
+    +-column_list=[$union_all.KitchenSink#5]
+    +-op_type=UNION_ALL
+    +-input_item_list=
+      +-SetOperationItem
+      | +-scan=
+      | | +-ProjectScan
+      | |   +-column_list=[TestTable.KitchenSink#3]
+      | |   +-input_scan=
+      | |     +-TableScan(column_list=[TestTable.KitchenSink#3], table=TestTable, column_index_list=[2])
+      | +-output_column_list=[TestTable.KitchenSink#3]
+      +-SetOperationItem
+        +-scan=
+        | +-ProjectScan
+        |   +-column_list=[$union_all2_cast.$col1#6]
+        |   +-expr_list=
+        |   | +-$col1#6 := Literal(type=PROTO<googlesql_test.KitchenSinkPB>, value={<unparseable>})
+        |   +-input_scan=
+        |     +-ProjectScan
+        |       +-column_list=[$union_all2.$col1#4]
+        |       +-expr_list=
+        |       | +-$col1#4 := Literal(type=BYTES, value=b"aaa")
+        |       +-input_scan=
+        |         +-SingleRowScan
+        +-output_column_list=[$union_all2_cast.$col1#6]
+==
+
+# Union two different protos.
+select KitchenSink.message_with_nulls from TestTable
+union all
+select KitchenSink.nested_value from TestTable
+--
+ERROR: Column 1 in UNION ALL has incompatible types: googlesql_test.MessageWithNulls, googlesql_test.KitchenSinkPB.Nested [at 3:1]
+select KitchenSink.nested_value from TestTable
+^
+==
+
+# string and bytes have no common supertype.
+select `string` from SimpleTypes
+union all
+select `bytes` from SimpleTypes
+--
+ERROR: Column 1 in UNION ALL has incompatible types: STRING, BYTES [at 3:1]
+select `bytes` from SimpleTypes
+^
+==
+
+select key from KeyValue union all
+select key from KeyValue union all
+select key from KeyValue union all
+select key from KeyValue union all
+select cast(5 as int64) union all
+select cast(5 as int32) union all
+select 5 union all
+select value from KeyValue union all
+select key from KeyValue
+--
+ERROR: Column 1 in UNION ALL has incompatible types: INT64, INT64, INT64, INT64, INT64, INT32, INT64, STRING, INT64 [at 2:1]
+select key from KeyValue union all
+^
+==
+
+# Multiple columns, some of which have to get widened in either direction.
+select `int32`, `uint32`, `string` from SimpleTypes s1
+union all
+select `int64`, `int32`, `string` from SimpleTypes s2
+--
+QueryStmt
++-output_column_list=
+| +-$union_all.int32#39 AS int32 [INT64]
+| +-$union_all.uint32#40 AS uint32 [INT64]
+| +-$union_all.string#41 AS string [STRING]
++-query=
+  +-SetOperationScan
+    +-column_list=$union_all.[int32#39, uint32#40, string#41]
+    +-op_type=UNION_ALL
+    +-input_item_list=
+      +-SetOperationItem
+      | +-scan=
+      | | +-ProjectScan
+      | |   +-column_list=[$union_all1_cast.int32#42, $union_all1_cast.uint32#43, SimpleTypes.string#5]
+      | |   +-expr_list=
+      | |   | +-int32#42 :=
+      | |   | | +-Cast(INT32 -> INT64)
+      | |   | |   +-ColumnRef(type=INT32, column=SimpleTypes.int32#1)
+      | |   | +-uint32#43 :=
+      | |   |   +-Cast(UINT32 -> INT64)
+      | |   |     +-ColumnRef(type=UINT32, column=SimpleTypes.uint32#3)
+      | |   +-input_scan=
+      | |     +-ProjectScan
+      | |       +-column_list=SimpleTypes.[int32#1, uint32#3, string#5]
+      | |       +-input_scan=
+      | |         +-TableScan(column_list=SimpleTypes.[int32#1, uint32#3, string#5], table=SimpleTypes, column_index_list=[0, 2, 4], alias="s1")
+      | +-output_column_list=[$union_all1_cast.int32#42, $union_all1_cast.uint32#43, SimpleTypes.string#5]
+      +-SetOperationItem
+        +-scan=
+        | +-ProjectScan
+        |   +-column_list=[SimpleTypes.int64#21, $union_all2_cast.int32#44, SimpleTypes.string#24]
+        |   +-expr_list=
+        |   | +-int32#44 :=
+        |   |   +-Cast(INT32 -> INT64)
+        |   |     +-ColumnRef(type=INT32, column=SimpleTypes.int32#20)
+        |   +-input_scan=
+        |     +-ProjectScan
+        |       +-column_list=SimpleTypes.[int64#21, int32#20, string#24]
+        |       +-input_scan=
+        |         +-TableScan(column_list=SimpleTypes.[int32#20, int64#21, string#24], table=SimpleTypes, column_index_list=[0, 1, 4], alias="s2")
+        +-output_column_list=[SimpleTypes.int64#21, $union_all2_cast.int32#44, SimpleTypes.string#24]
+==
+
+# Names from one child of the union aren't visible in another.
+select key from KeyValue kv1
+union all
+select kv1.key from KeyValue kv2
+--
+ERROR: Unrecognized name: kv1; Did you mean kv2? [at 3:8]
+select kv1.key from KeyValue kv2
+       ^
+==
+
+# Output column names for the union always come from the first query.
+select k1, k3, '--', *
+from
+  (select 1 k1, 2,    3 k3
+   union all
+   select 4,    5 k2, 6 k4)
+--
+QueryStmt
++-output_column_list=
+| +-$union_all.k1#7 AS k1 [INT64]
+| +-$union_all.k3#9 AS k3 [INT64]
+| +-$query.$col3#10 AS `$col3` [STRING]
+| +-$union_all.k1#7 AS k1 [INT64]
+| +-$union_all.$col2#8 AS `$col2` [INT64]
+| +-$union_all.k3#9 AS k3 [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$union_all.k1#7, $union_all.k3#9, $query.$col3#10, $union_all.k1#7, $union_all.$col2#8, $union_all.k3#9]
+    +-expr_list=
+    | +-$col3#10 := Literal(type=STRING, value="--")
+    +-input_scan=
+      +-SetOperationScan
+        +-column_list=$union_all.[k1#7, $col2#8, k3#9]
+        +-op_type=UNION_ALL
+        +-input_item_list=
+          +-SetOperationItem
+          | +-scan=
+          | | +-ProjectScan
+          | |   +-column_list=$union_all1.[k1#1, $col2#2, k3#3]
+          | |   +-expr_list=
+          | |   | +-k1#1 := Literal(type=INT64, value=1)
+          | |   | +-$col2#2 := Literal(type=INT64, value=2)
+          | |   | +-k3#3 := Literal(type=INT64, value=3)
+          | |   +-input_scan=
+          | |     +-SingleRowScan
+          | +-output_column_list=$union_all1.[k1#1, $col2#2, k3#3]
+          +-SetOperationItem
+            +-scan=
+            | +-ProjectScan
+            |   +-column_list=$union_all2.[$col1#4, k2#5, k4#6]
+            |   +-expr_list=
+            |   | +-$col1#4 := Literal(type=INT64, value=4)
+            |   | +-k2#5 := Literal(type=INT64, value=5)
+            |   | +-k4#6 := Literal(type=INT64, value=6)
+            |   +-input_scan=
+            |     +-SingleRowScan
+            +-output_column_list=$union_all2.[$col1#4, k2#5, k4#6]
+==
+
+# Name k2 from the second query is never visible.
+select k1,k2
+from
+  (select 1 k1, 2
+   union all
+   select 4,    5 k2)
+--
+ERROR: Unrecognized name: k2 [at 1:11]
+select k1,k2
+          ^
+==
+
+# Table names inside the union don't leak out.
+select key, kv.key
+from
+  (select kv.key from KeyValue AS kv
+   union all
+   select 2)
+--
+ERROR: Unrecognized name: kv [at 1:13]
+select key, kv.key
+            ^
+==
+
+# Coercing nulls to the non-null arg type, or to int64 if there is none.
+select `string`, null, null,    null from SimpleTypes
+union all
+select null,     15,   null,    null from SimpleTypes
+union all
+select null,     null, `int32`, null from SimpleTypes
+--
+QueryStmt
++-output_column_list=
+| +-$union_all.string#68 AS string [STRING]
+| +-$union_all.$col2#69 AS `$col2` [INT64]
+| +-$union_all.$col3#70 AS `$col3` [INT32]
+| +-$union_all.$col4#71 AS `$col4` [INT64]
++-query=
+  +-SetOperationScan
+    +-column_list=$union_all.[string#68, $col2#69, $col3#70, $col4#71]
+    +-op_type=UNION_ALL
+    +-input_item_list=
+      +-SetOperationItem
+      | +-scan=
+      | | +-ProjectScan
+      | |   +-column_list=[SimpleTypes.string#5, $union_all1.$col2#20, $union_all1_cast.$col3#72, $union_all1.$col4#22]
+      | |   +-expr_list=
+      | |   | +-$col3#72 := Literal(type=INT32, value=NULL)
+      | |   +-input_scan=
+      | |     +-ProjectScan
+      | |       +-column_list=[SimpleTypes.string#5, $union_all1.$col2#20, $union_all1.$col3#21, $union_all1.$col4#22]
+      | |       +-expr_list=
+      | |       | +-$col2#20 := Literal(type=INT64, value=NULL)
+      | |       | +-$col3#21 := Literal(type=INT64, value=NULL)
+      | |       | +-$col4#22 := Literal(type=INT64, value=NULL)
+      | |       +-input_scan=
+      | |         +-TableScan(column_list=[SimpleTypes.string#5], table=SimpleTypes, column_index_list=[4])
+      | +-output_column_list=[SimpleTypes.string#5, $union_all1.$col2#20, $union_all1_cast.$col3#72, $union_all1.$col4#22]
+      +-SetOperationItem
+      | +-scan=
+      | | +-ProjectScan
+      | |   +-column_list=[$union_all2_cast.$col1#73, $union_all2.$col2#43, $union_all2_cast.$col3#74, $union_all2.$col4#45]
+      | |   +-expr_list=
+      | |   | +-$col1#73 := Literal(type=STRING, value=NULL)
+      | |   | +-$col3#74 := Literal(type=INT32, value=NULL)
+      | |   +-input_scan=
+      | |     +-ProjectScan
+      | |       +-column_list=$union_all2.[$col1#42, $col2#43, $col3#44, $col4#45]
+      | |       +-expr_list=
+      | |       | +-$col1#42 := Literal(type=INT64, value=NULL)
+      | |       | +-$col2#43 := Literal(type=INT64, value=15)
+      | |       | +-$col3#44 := Literal(type=INT64, value=NULL)
+      | |       | +-$col4#45 := Literal(type=INT64, value=NULL)
+      | |       +-input_scan=
+      | |         +-TableScan(table=SimpleTypes)
+      | +-output_column_list=[$union_all2_cast.$col1#73, $union_all2.$col2#43, $union_all2_cast.$col3#74, $union_all2.$col4#45]
+      +-SetOperationItem
+        +-scan=
+        | +-ProjectScan
+        |   +-column_list=[$union_all3_cast.$col1#75, $union_all3.$col2#66, SimpleTypes.int32#46, $union_all3.$col4#67]
+        |   +-expr_list=
+        |   | +-$col1#75 := Literal(type=STRING, value=NULL)
+        |   +-input_scan=
+        |     +-ProjectScan
+        |       +-column_list=[$union_all3.$col1#65, $union_all3.$col2#66, SimpleTypes.int32#46, $union_all3.$col4#67]
+        |       +-expr_list=
+        |       | +-$col1#65 := Literal(type=INT64, value=NULL)
+        |       | +-$col2#66 := Literal(type=INT64, value=NULL)
+        |       | +-$col4#67 := Literal(type=INT64, value=NULL)
+        |       +-input_scan=
+        |         +-TableScan(column_list=[SimpleTypes.int32#46], table=SimpleTypes, column_index_list=[0])
+        +-output_column_list=[$union_all3_cast.$col1#75, $union_all3.$col2#66, SimpleTypes.int32#46, $union_all3.$col4#67]
+==
+
+select null from SimpleTypes
+union all
+select timestamp from SimpleTypes
+--
+QueryStmt
++-output_column_list=
+| +-$union_all.$col1#40 AS `$col1` [TIMESTAMP]
++-query=
+  +-SetOperationScan
+    +-column_list=[$union_all.$col1#40]
+    +-op_type=UNION_ALL
+    +-input_item_list=
+      +-SetOperationItem
+      | +-scan=
+      | | +-ProjectScan
+      | |   +-column_list=[$union_all1_cast.$col1#41]
+      | |   +-expr_list=
+      | |   | +-$col1#41 := Literal(type=TIMESTAMP, value=NULL)
+      | |   +-input_scan=
+      | |     +-ProjectScan
+      | |       +-column_list=[$union_all1.$col1#20]
+      | |       +-expr_list=
+      | |       | +-$col1#20 := Literal(type=INT64, value=NULL)
+      | |       +-input_scan=
+      | |         +-TableScan(table=SimpleTypes)
+      | +-output_column_list=[$union_all1_cast.$col1#41]
+      +-SetOperationItem
+        +-scan=
+        | +-ProjectScan
+        |   +-column_list=[SimpleTypes.timestamp#35]
+        |   +-input_scan=
+        |     +-TableScan(column_list=[SimpleTypes.timestamp#35], table=SimpleTypes, column_index_list=[14])
+        +-output_column_list=[SimpleTypes.timestamp#35]
+==
+
+select `int64` from SimpleTypes
+UNION ALL
+select `uint64` from SimpleTypes
+--
+ERROR: Column 1 in UNION ALL has incompatible types: INT64, UINT64 [at 3:1]
+select `uint64` from SimpleTypes
+^
+==
+
+select `int64` from SimpleTypes
+UNION ALL
+select `uint64` from SimpleTypes
+UNION ALL
+select `float` from SimpleTypes
+--
+QueryStmt
++-output_column_list=
+| +-$union_all.int64#58 AS int64 [DOUBLE]
++-query=
+  +-SetOperationScan
+    +-column_list=[$union_all.int64#58]
+    +-op_type=UNION_ALL
+    +-input_item_list=
+      +-SetOperationItem
+      | +-scan=
+      | | +-ProjectScan
+      | |   +-column_list=[$union_all1_cast.int64#59]
+      | |   +-expr_list=
+      | |   | +-int64#59 :=
+      | |   |   +-Cast(INT64 -> DOUBLE)
+      | |   |     +-ColumnRef(type=INT64, column=SimpleTypes.int64#2)
+      | |   +-input_scan=
+      | |     +-ProjectScan
+      | |       +-column_list=[SimpleTypes.int64#2]
+      | |       +-input_scan=
+      | |         +-TableScan(column_list=[SimpleTypes.int64#2], table=SimpleTypes, column_index_list=[1])
+      | +-output_column_list=[$union_all1_cast.int64#59]
+      +-SetOperationItem
+      | +-scan=
+      | | +-ProjectScan
+      | |   +-column_list=[$union_all2_cast.uint64#60]
+      | |   +-expr_list=
+      | |   | +-uint64#60 :=
+      | |   |   +-Cast(UINT64 -> DOUBLE)
+      | |   |     +-ColumnRef(type=UINT64, column=SimpleTypes.uint64#23)
+      | |   +-input_scan=
+      | |     +-ProjectScan
+      | |       +-column_list=[SimpleTypes.uint64#23]
+      | |       +-input_scan=
+      | |         +-TableScan(column_list=[SimpleTypes.uint64#23], table=SimpleTypes, column_index_list=[3])
+      | +-output_column_list=[$union_all2_cast.uint64#60]
+      +-SetOperationItem
+        +-scan=
+        | +-ProjectScan
+        |   +-column_list=[$union_all3_cast.float#61]
+        |   +-expr_list=
+        |   | +-float#61 :=
+        |   |   +-Cast(FLOAT -> DOUBLE)
+        |   |     +-ColumnRef(type=FLOAT, column=SimpleTypes.float#46)
+        |   +-input_scan=
+        |     +-ProjectScan
+        |       +-column_list=[SimpleTypes.float#46]
+        |       +-input_scan=
+        |         +-TableScan(column_list=[SimpleTypes.float#46], table=SimpleTypes, column_index_list=[7])
+        +-output_column_list=[$union_all3_cast.float#61]
+==
+
+# Union of two identical structs works.
+# Field names are determined from the first leg of the union.
+select (select AS STRUCT 1 a, 2 bbB)
+union all
+select (select AS STRUCT 3 a, 4 Bbb)
+--
+QueryStmt
++-output_column_list=
+| +-$union_all.$col1#9 AS `$col1` [STRUCT<a INT64, bbB INT64>]
++-query=
+  +-SetOperationScan
+    +-column_list=[$union_all.$col1#9]
+    +-op_type=UNION_ALL
+    +-input_item_list=
+      +-SetOperationItem
+      | +-scan=
+      | | +-ProjectScan
+      | |   +-column_list=[$union_all1.$col1#4]
+      | |   +-expr_list=
+      | |   | +-$col1#4 :=
+      | |   |   +-SubqueryExpr
+      | |   |     +-type=STRUCT<a INT64, bbB INT64>
+      | |   |     +-subquery_type=SCALAR
+      | |   |     +-subquery=
+      | |   |       +-ProjectScan
+      | |   |         +-column_list=[$make_struct.$struct#3]
+      | |   |         +-expr_list=
+      | |   |         | +-$struct#3 :=
+      | |   |         |   +-MakeStruct
+      | |   |         |     +-type=STRUCT<a INT64, bbB INT64>
+      | |   |         |     +-field_list=
+      | |   |         |       +-ColumnRef(type=INT64, column=$expr_subquery.a#1)
+      | |   |         |       +-ColumnRef(type=INT64, column=$expr_subquery.bbB#2)
+      | |   |         +-input_scan=
+      | |   |           +-ProjectScan
+      | |   |             +-column_list=$expr_subquery.[a#1, bbB#2]
+      | |   |             +-expr_list=
+      | |   |             | +-a#1 := Literal(type=INT64, value=1)
+      | |   |             | +-bbB#2 := Literal(type=INT64, value=2)
+      | |   |             +-input_scan=
+      | |   |               +-SingleRowScan
+      | |   +-input_scan=
+      | |     +-SingleRowScan
+      | +-output_column_list=[$union_all1.$col1#4]
+      +-SetOperationItem
+        +-scan=
+        | +-ProjectScan
+        |   +-column_list=[$union_all2.$col1#8]
+        |   +-expr_list=
+        |   | +-$col1#8 :=
+        |   |   +-SubqueryExpr
+        |   |     +-type=STRUCT<a INT64, Bbb INT64>
+        |   |     +-subquery_type=SCALAR
+        |   |     +-subquery=
+        |   |       +-ProjectScan
+        |   |         +-column_list=[$make_struct.$struct#7]
+        |   |         +-expr_list=
+        |   |         | +-$struct#7 :=
+        |   |         |   +-MakeStruct
+        |   |         |     +-type=STRUCT<a INT64, Bbb INT64>
+        |   |         |     +-field_list=
+        |   |         |       +-ColumnRef(type=INT64, column=$expr_subquery.a#5)
+        |   |         |       +-ColumnRef(type=INT64, column=$expr_subquery.Bbb#6)
+        |   |         +-input_scan=
+        |   |           +-ProjectScan
+        |   |             +-column_list=$expr_subquery.[a#5, Bbb#6]
+        |   |             +-expr_list=
+        |   |             | +-a#5 := Literal(type=INT64, value=3)
+        |   |             | +-Bbb#6 := Literal(type=INT64, value=4)
+        |   |             +-input_scan=
+        |   |               +-SingleRowScan
+        |   +-input_scan=
+        |     +-SingleRowScan
+        +-output_column_list=[$union_all2.$col1#8]
+==
+
+# Union of two STRUCTs with different column/field names.
+#
+# The output_column_list column/field names are inherited from the
+# first leg of the union.  Note that the second input to the union
+# has the STRUCT field casted to a STRUCT with the same field names
+# as the STRUCT from the first input to the union.
+select (select AS STRUCT 1 a, 2 b)
+union all
+select (select AS STRUCT 3 b, 4 c) as foo
+--
+QueryStmt
++-output_column_list=
+| +-$union_all.$col1#9 AS `$col1` [STRUCT<a INT64, b INT64>]
++-query=
+  +-SetOperationScan
+    +-column_list=[$union_all.$col1#9]
+    +-op_type=UNION_ALL
+    +-input_item_list=
+      +-SetOperationItem
+      | +-scan=
+      | | +-ProjectScan
+      | |   +-column_list=[$union_all1.$col1#4]
+      | |   +-expr_list=
+      | |   | +-$col1#4 :=
+      | |   |   +-SubqueryExpr
+      | |   |     +-type=STRUCT<a INT64, b INT64>
+      | |   |     +-subquery_type=SCALAR
+      | |   |     +-subquery=
+      | |   |       +-ProjectScan
+      | |   |         +-column_list=[$make_struct.$struct#3]
+      | |   |         +-expr_list=
+      | |   |         | +-$struct#3 :=
+      | |   |         |   +-MakeStruct
+      | |   |         |     +-type=STRUCT<a INT64, b INT64>
+      | |   |         |     +-field_list=
+      | |   |         |       +-ColumnRef(type=INT64, column=$expr_subquery.a#1)
+      | |   |         |       +-ColumnRef(type=INT64, column=$expr_subquery.b#2)
+      | |   |         +-input_scan=
+      | |   |           +-ProjectScan
+      | |   |             +-column_list=$expr_subquery.[a#1, b#2]
+      | |   |             +-expr_list=
+      | |   |             | +-a#1 := Literal(type=INT64, value=1)
+      | |   |             | +-b#2 := Literal(type=INT64, value=2)
+      | |   |             +-input_scan=
+      | |   |               +-SingleRowScan
+      | |   +-input_scan=
+      | |     +-SingleRowScan
+      | +-output_column_list=[$union_all1.$col1#4]
+      +-SetOperationItem
+        +-scan=
+        | +-ProjectScan
+        |   +-column_list=[$union_all2_cast.foo#10]
+        |   +-expr_list=
+        |   | +-foo#10 :=
+        |   |   +-Cast(STRUCT<b INT64, c INT64> -> STRUCT<a INT64, b INT64>)
+        |   |     +-ColumnRef(type=STRUCT<b INT64, c INT64>, column=$union_all2.foo#8)
+        |   +-input_scan=
+        |     +-ProjectScan
+        |       +-column_list=[$union_all2.foo#8]
+        |       +-expr_list=
+        |       | +-foo#8 :=
+        |       |   +-SubqueryExpr
+        |       |     +-type=STRUCT<b INT64, c INT64>
+        |       |     +-subquery_type=SCALAR
+        |       |     +-subquery=
+        |       |       +-ProjectScan
+        |       |         +-column_list=[$make_struct.$struct#7]
+        |       |         +-expr_list=
+        |       |         | +-$struct#7 :=
+        |       |         |   +-MakeStruct
+        |       |         |     +-type=STRUCT<b INT64, c INT64>
+        |       |         |     +-field_list=
+        |       |         |       +-ColumnRef(type=INT64, column=$expr_subquery.b#5)
+        |       |         |       +-ColumnRef(type=INT64, column=$expr_subquery.c#6)
+        |       |         +-input_scan=
+        |       |           +-ProjectScan
+        |       |             +-column_list=$expr_subquery.[b#5, c#6]
+        |       |             +-expr_list=
+        |       |             | +-b#5 := Literal(type=INT64, value=3)
+        |       |             | +-c#6 := Literal(type=INT64, value=4)
+        |       |             +-input_scan=
+        |       |               +-SingleRowScan
+        |       +-input_scan=
+        |         +-SingleRowScan
+        +-output_column_list=[$union_all2_cast.foo#10]
+==
+
+# Test the UNION of two STRUCT value tables.  Note that the value-tabled-ness
+# of the query output is determined by the first input of the union, so for
+# this test the output is also a value table (with one anonymous column).
+select AS STRUCT 1 a, 2 b
+union all
+select AS STRUCT 3 c, 4 d
+--
+QueryStmt
++-output_column_list=
+| +-$union_all.$struct#7 AS `$struct` [STRUCT<a INT64, b INT64>]
++-is_value_table=TRUE
++-query=
+  +-SetOperationScan
+    +-column_list=[$union_all.$struct#7]
+    +-op_type=UNION_ALL
+    +-input_item_list=
+      +-SetOperationItem
+      | +-scan=
+      | | +-ProjectScan
+      | |   +-column_list=[$make_struct.$struct#3]
+      | |   +-expr_list=
+      | |   | +-$struct#3 :=
+      | |   |   +-MakeStruct
+      | |   |     +-type=STRUCT<a INT64, b INT64>
+      | |   |     +-field_list=
+      | |   |       +-ColumnRef(type=INT64, column=$union_all1.a#1)
+      | |   |       +-ColumnRef(type=INT64, column=$union_all1.b#2)
+      | |   +-input_scan=
+      | |     +-ProjectScan
+      | |       +-column_list=$union_all1.[a#1, b#2]
+      | |       +-expr_list=
+      | |       | +-a#1 := Literal(type=INT64, value=1)
+      | |       | +-b#2 := Literal(type=INT64, value=2)
+      | |       +-input_scan=
+      | |         +-SingleRowScan
+      | +-output_column_list=[$make_struct.$struct#3]
+      +-SetOperationItem
+        +-scan=
+        | +-ProjectScan
+        |   +-column_list=[$union_all2_cast.$struct#8]
+        |   +-expr_list=
+        |   | +-$struct#8 :=
+        |   |   +-Cast(STRUCT<c INT64, d INT64> -> STRUCT<a INT64, b INT64>)
+        |   |     +-ColumnRef(type=STRUCT<c INT64, d INT64>, column=$make_struct.$struct#6)
+        |   +-input_scan=
+        |     +-ProjectScan
+        |       +-column_list=[$make_struct.$struct#6]
+        |       +-expr_list=
+        |       | +-$struct#6 :=
+        |       |   +-MakeStruct
+        |       |     +-type=STRUCT<c INT64, d INT64>
+        |       |     +-field_list=
+        |       |       +-ColumnRef(type=INT64, column=$union_all2.c#4)
+        |       |       +-ColumnRef(type=INT64, column=$union_all2.d#5)
+        |       +-input_scan=
+        |         +-ProjectScan
+        |           +-column_list=$union_all2.[c#4, d#5]
+        |           +-expr_list=
+        |           | +-c#4 := Literal(type=INT64, value=3)
+        |           | +-d#5 := Literal(type=INT64, value=4)
+        |           +-input_scan=
+        |             +-SingleRowScan
+        +-output_column_list=[$union_all2_cast.$struct#8]
+==
+
+# A set operation on value tables acts as value table when used as a
+# table subquery.
+select *, a, b
+from (
+  select AS STRUCT 1 a, 2 b
+  union all
+  select AS STRUCT 3 c, 4 d
+)
+where b = 2
+--
+QueryStmt
++-output_column_list=
+| +-$query.a#9 AS a [INT64]
+| +-$query.b#10 AS b [INT64]
+| +-$query.a#11 AS a [INT64]
+| +-$query.b#12 AS b [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=$query.[a#9, b#10, a#11, b#12]
+    +-expr_list=
+    | +-a#9 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<a INT64, b INT64>, column=$union_all.$struct#7)
+    | |   +-field_idx=0
+    | +-b#10 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<a INT64, b INT64>, column=$union_all.$struct#7)
+    | |   +-field_idx=1
+    | +-a#11 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<a INT64, b INT64>, column=$union_all.$struct#7)
+    | |   +-field_idx=0
+    | +-b#12 :=
+    |   +-GetStructField
+    |     +-type=INT64
+    |     +-expr=
+    |     | +-ColumnRef(type=STRUCT<a INT64, b INT64>, column=$union_all.$struct#7)
+    |     +-field_idx=1
+    +-input_scan=
+      +-FilterScan
+        +-column_list=[$union_all.$struct#7]
+        +-input_scan=
+        | +-SetOperationScan
+        |   +-column_list=[$union_all.$struct#7]
+        |   +-op_type=UNION_ALL
+        |   +-input_item_list=
+        |     +-SetOperationItem
+        |     | +-scan=
+        |     | | +-ProjectScan
+        |     | |   +-column_list=[$make_struct.$struct#3]
+        |     | |   +-expr_list=
+        |     | |   | +-$struct#3 :=
+        |     | |   |   +-MakeStruct
+        |     | |   |     +-type=STRUCT<a INT64, b INT64>
+        |     | |   |     +-field_list=
+        |     | |   |       +-ColumnRef(type=INT64, column=$union_all1.a#1)
+        |     | |   |       +-ColumnRef(type=INT64, column=$union_all1.b#2)
+        |     | |   +-input_scan=
+        |     | |     +-ProjectScan
+        |     | |       +-column_list=$union_all1.[a#1, b#2]
+        |     | |       +-expr_list=
+        |     | |       | +-a#1 := Literal(type=INT64, value=1)
+        |     | |       | +-b#2 := Literal(type=INT64, value=2)
+        |     | |       +-input_scan=
+        |     | |         +-SingleRowScan
+        |     | +-output_column_list=[$make_struct.$struct#3]
+        |     +-SetOperationItem
+        |       +-scan=
+        |       | +-ProjectScan
+        |       |   +-column_list=[$union_all2_cast.$struct#8]
+        |       |   +-expr_list=
+        |       |   | +-$struct#8 :=
+        |       |   |   +-Cast(STRUCT<c INT64, d INT64> -> STRUCT<a INT64, b INT64>)
+        |       |   |     +-ColumnRef(type=STRUCT<c INT64, d INT64>, column=$make_struct.$struct#6)
+        |       |   +-input_scan=
+        |       |     +-ProjectScan
+        |       |       +-column_list=[$make_struct.$struct#6]
+        |       |       +-expr_list=
+        |       |       | +-$struct#6 :=
+        |       |       |   +-MakeStruct
+        |       |       |     +-type=STRUCT<c INT64, d INT64>
+        |       |       |     +-field_list=
+        |       |       |       +-ColumnRef(type=INT64, column=$union_all2.c#4)
+        |       |       |       +-ColumnRef(type=INT64, column=$union_all2.d#5)
+        |       |       +-input_scan=
+        |       |         +-ProjectScan
+        |       |           +-column_list=$union_all2.[c#4, d#5]
+        |       |           +-expr_list=
+        |       |           | +-c#4 := Literal(type=INT64, value=3)
+        |       |           | +-d#5 := Literal(type=INT64, value=4)
+        |       |           +-input_scan=
+        |       |             +-SingleRowScan
+        |       +-output_column_list=[$union_all2_cast.$struct#8]
+        +-filter_expr=
+          +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+            +-GetStructField
+            | +-type=INT64
+            | +-expr=
+            | | +-ColumnRef(type=STRUCT<a INT64, b INT64>, column=$union_all.$struct#7)
+            | +-field_idx=1
+            +-Literal(type=INT64, value=2)
+==
+
+# A set operation on value tables acts as value table when used as a
+# table subquery, with an alias on the subquery.
+[language_features=NONE,+GROUP_BY_STRUCT]
+select *, input.*, a, input.a
+from (
+  select AS STRUCT 1 a, 2 b
+  intersect all
+  select AS STRUCT 3 c, 4 d
+) as input
+where b = 2 and input.b = 2
+--
+QueryStmt
++-output_column_list=
+| +-$query.a#9 AS a [INT64]
+| +-$query.b#10 AS b [INT64]
+| +-$query.a#11 AS a [INT64]
+| +-$query.b#12 AS b [INT64]
+| +-$query.a#13 AS a [INT64]
+| +-$query.a#14 AS a [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=$query.[a#9, b#10, a#11, b#12, a#13, a#14]
+    +-expr_list=
+    | +-a#9 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<a INT64, b INT64>, column=$intersect_all.$struct#7)
+    | |   +-field_idx=0
+    | +-b#10 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<a INT64, b INT64>, column=$intersect_all.$struct#7)
+    | |   +-field_idx=1
+    | +-a#11 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<a INT64, b INT64>, column=$intersect_all.$struct#7)
+    | |   +-field_idx=0
+    | +-b#12 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<a INT64, b INT64>, column=$intersect_all.$struct#7)
+    | |   +-field_idx=1
+    | +-a#13 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<a INT64, b INT64>, column=$intersect_all.$struct#7)
+    | |   +-field_idx=0
+    | +-a#14 :=
+    |   +-GetStructField
+    |     +-type=INT64
+    |     +-expr=
+    |     | +-ColumnRef(type=STRUCT<a INT64, b INT64>, column=$intersect_all.$struct#7)
+    |     +-field_idx=0
+    +-input_scan=
+      +-FilterScan
+        +-column_list=[$intersect_all.$struct#7]
+        +-input_scan=
+        | +-SetOperationScan
+        |   +-column_list=[$intersect_all.$struct#7]
+        |   +-op_type=INTERSECT_ALL
+        |   +-input_item_list=
+        |     +-SetOperationItem
+        |     | +-scan=
+        |     | | +-ProjectScan
+        |     | |   +-column_list=[$make_struct.$struct#3]
+        |     | |   +-expr_list=
+        |     | |   | +-$struct#3 :=
+        |     | |   |   +-MakeStruct
+        |     | |   |     +-type=STRUCT<a INT64, b INT64>
+        |     | |   |     +-field_list=
+        |     | |   |       +-ColumnRef(type=INT64, column=$intersect_all1.a#1)
+        |     | |   |       +-ColumnRef(type=INT64, column=$intersect_all1.b#2)
+        |     | |   +-input_scan=
+        |     | |     +-ProjectScan
+        |     | |       +-column_list=$intersect_all1.[a#1, b#2]
+        |     | |       +-expr_list=
+        |     | |       | +-a#1 := Literal(type=INT64, value=1)
+        |     | |       | +-b#2 := Literal(type=INT64, value=2)
+        |     | |       +-input_scan=
+        |     | |         +-SingleRowScan
+        |     | +-output_column_list=[$make_struct.$struct#3]
+        |     +-SetOperationItem
+        |       +-scan=
+        |       | +-ProjectScan
+        |       |   +-column_list=[$intersect_all2_cast.$struct#8]
+        |       |   +-expr_list=
+        |       |   | +-$struct#8 :=
+        |       |   |   +-Cast(STRUCT<c INT64, d INT64> -> STRUCT<a INT64, b INT64>)
+        |       |   |     +-ColumnRef(type=STRUCT<c INT64, d INT64>, column=$make_struct.$struct#6)
+        |       |   +-input_scan=
+        |       |     +-ProjectScan
+        |       |       +-column_list=[$make_struct.$struct#6]
+        |       |       +-expr_list=
+        |       |       | +-$struct#6 :=
+        |       |       |   +-MakeStruct
+        |       |       |     +-type=STRUCT<c INT64, d INT64>
+        |       |       |     +-field_list=
+        |       |       |       +-ColumnRef(type=INT64, column=$intersect_all2.c#4)
+        |       |       |       +-ColumnRef(type=INT64, column=$intersect_all2.d#5)
+        |       |       +-input_scan=
+        |       |         +-ProjectScan
+        |       |           +-column_list=$intersect_all2.[c#4, d#5]
+        |       |           +-expr_list=
+        |       |           | +-c#4 := Literal(type=INT64, value=3)
+        |       |           | +-d#5 := Literal(type=INT64, value=4)
+        |       |           +-input_scan=
+        |       |             +-SingleRowScan
+        |       +-output_column_list=[$intersect_all2_cast.$struct#8]
+        +-filter_expr=
+          +-FunctionCall(GoogleSQL:$and(BOOL, repeated(1) BOOL) -> BOOL)
+            +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+            | +-GetStructField
+            | | +-type=INT64
+            | | +-expr=
+            | | | +-ColumnRef(type=STRUCT<a INT64, b INT64>, column=$intersect_all.$struct#7)
+            | | +-field_idx=1
+            | +-Literal(type=INT64, value=2)
+            +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+              +-GetStructField
+              | +-type=INT64
+              | +-expr=
+              | | +-ColumnRef(type=STRUCT<a INT64, b INT64>, column=$intersect_all.$struct#7)
+              | +-field_idx=1
+              +-Literal(type=INT64, value=2)
+==
+
+# UNION of a STRUCT value table and non-value table.  The result is a value
+# table since the first input to the union is a value table.
+select AS STRUCT 1 a, 2 b
+union all
+select STRUCT<c int64, d int64>(3, 4) as e
+--
+QueryStmt
++-output_column_list=
+| +-$union_all.$struct#5 AS `$struct` [STRUCT<a INT64, b INT64>]
++-is_value_table=TRUE
++-query=
+  +-SetOperationScan
+    +-column_list=[$union_all.$struct#5]
+    +-op_type=UNION_ALL
+    +-input_item_list=
+      +-SetOperationItem
+      | +-scan=
+      | | +-ProjectScan
+      | |   +-column_list=[$make_struct.$struct#3]
+      | |   +-expr_list=
+      | |   | +-$struct#3 :=
+      | |   |   +-MakeStruct
+      | |   |     +-type=STRUCT<a INT64, b INT64>
+      | |   |     +-field_list=
+      | |   |       +-ColumnRef(type=INT64, column=$union_all1.a#1)
+      | |   |       +-ColumnRef(type=INT64, column=$union_all1.b#2)
+      | |   +-input_scan=
+      | |     +-ProjectScan
+      | |       +-column_list=$union_all1.[a#1, b#2]
+      | |       +-expr_list=
+      | |       | +-a#1 := Literal(type=INT64, value=1)
+      | |       | +-b#2 := Literal(type=INT64, value=2)
+      | |       +-input_scan=
+      | |         +-SingleRowScan
+      | +-output_column_list=[$make_struct.$struct#3]
+      +-SetOperationItem
+        +-scan=
+        | +-ProjectScan
+        |   +-column_list=[$union_all2_cast.e#6]
+        |   +-expr_list=
+        |   | +-e#6 := Literal(type=STRUCT<a INT64, b INT64>, value={a:3, b:4}, has_explicit_type=TRUE)
+        |   +-input_scan=
+        |     +-ProjectScan
+        |       +-column_list=[$union_all2.e#4]
+        |       +-expr_list=
+        |       | +-e#4 := Literal(type=STRUCT<c INT64, d INT64>, value={c:3, d:4}, has_explicit_type=TRUE)
+        |       +-input_scan=
+        |         +-SingleRowScan
+        +-output_column_list=[$union_all2_cast.e#6]
+==
+
+# UNION of a non-value table and STRUCT value table.  The result is not a value
+# table since the first input to the union is not a value table.
+select STRUCT<c int64, d int64>(3, 4) as e
+union all
+select AS STRUCT 1 a, 2 b
+--
+QueryStmt
++-output_column_list=
+| +-$union_all.e#5 AS e [STRUCT<c INT64, d INT64>]
++-query=
+  +-SetOperationScan
+    +-column_list=[$union_all.e#5]
+    +-op_type=UNION_ALL
+    +-input_item_list=
+      +-SetOperationItem
+      | +-scan=
+      | | +-ProjectScan
+      | |   +-column_list=[$union_all1.e#1]
+      | |   +-expr_list=
+      | |   | +-e#1 := Literal(type=STRUCT<c INT64, d INT64>, value={c:3, d:4}, has_explicit_type=TRUE)
+      | |   +-input_scan=
+      | |     +-SingleRowScan
+      | +-output_column_list=[$union_all1.e#1]
+      +-SetOperationItem
+        +-scan=
+        | +-ProjectScan
+        |   +-column_list=[$union_all2_cast.$struct#6]
+        |   +-expr_list=
+        |   | +-$struct#6 :=
+        |   |   +-Cast(STRUCT<a INT64, b INT64> -> STRUCT<c INT64, d INT64>)
+        |   |     +-ColumnRef(type=STRUCT<a INT64, b INT64>, column=$make_struct.$struct#4)
+        |   +-input_scan=
+        |     +-ProjectScan
+        |       +-column_list=[$make_struct.$struct#4]
+        |       +-expr_list=
+        |       | +-$struct#4 :=
+        |       |   +-MakeStruct
+        |       |     +-type=STRUCT<a INT64, b INT64>
+        |       |     +-field_list=
+        |       |       +-ColumnRef(type=INT64, column=$union_all2.a#2)
+        |       |       +-ColumnRef(type=INT64, column=$union_all2.b#3)
+        |       +-input_scan=
+        |         +-ProjectScan
+        |           +-column_list=$union_all2.[a#2, b#3]
+        |           +-expr_list=
+        |           | +-a#2 := Literal(type=INT64, value=1)
+        |           | +-b#3 := Literal(type=INT64, value=2)
+        |           +-input_scan=
+        |             +-SingleRowScan
+        +-output_column_list=[$union_all2_cast.$struct#6]
+==
+
+# Union of two coercible structs types.
+select (select AS STRUCT 1 a, 2 b)
+union all
+select (select AS STRUCT 3 a, 4.5 b)
+--
+QueryStmt
++-output_column_list=
+| +-$union_all.$col1#9 AS `$col1` [STRUCT<a INT64, b DOUBLE>]
++-query=
+  +-SetOperationScan
+    +-column_list=[$union_all.$col1#9]
+    +-op_type=UNION_ALL
+    +-input_item_list=
+      +-SetOperationItem
+      | +-scan=
+      | | +-ProjectScan
+      | |   +-column_list=[$union_all1_cast.$col1#10]
+      | |   +-expr_list=
+      | |   | +-$col1#10 :=
+      | |   |   +-Cast(STRUCT<a INT64, b INT64> -> STRUCT<a INT64, b DOUBLE>)
+      | |   |     +-ColumnRef(type=STRUCT<a INT64, b INT64>, column=$union_all1.$col1#4)
+      | |   +-input_scan=
+      | |     +-ProjectScan
+      | |       +-column_list=[$union_all1.$col1#4]
+      | |       +-expr_list=
+      | |       | +-$col1#4 :=
+      | |       |   +-SubqueryExpr
+      | |       |     +-type=STRUCT<a INT64, b INT64>
+      | |       |     +-subquery_type=SCALAR
+      | |       |     +-subquery=
+      | |       |       +-ProjectScan
+      | |       |         +-column_list=[$make_struct.$struct#3]
+      | |       |         +-expr_list=
+      | |       |         | +-$struct#3 :=
+      | |       |         |   +-MakeStruct
+      | |       |         |     +-type=STRUCT<a INT64, b INT64>
+      | |       |         |     +-field_list=
+      | |       |         |       +-ColumnRef(type=INT64, column=$expr_subquery.a#1)
+      | |       |         |       +-ColumnRef(type=INT64, column=$expr_subquery.b#2)
+      | |       |         +-input_scan=
+      | |       |           +-ProjectScan
+      | |       |             +-column_list=$expr_subquery.[a#1, b#2]
+      | |       |             +-expr_list=
+      | |       |             | +-a#1 := Literal(type=INT64, value=1)
+      | |       |             | +-b#2 := Literal(type=INT64, value=2)
+      | |       |             +-input_scan=
+      | |       |               +-SingleRowScan
+      | |       +-input_scan=
+      | |         +-SingleRowScan
+      | +-output_column_list=[$union_all1_cast.$col1#10]
+      +-SetOperationItem
+        +-scan=
+        | +-ProjectScan
+        |   +-column_list=[$union_all2.$col1#8]
+        |   +-expr_list=
+        |   | +-$col1#8 :=
+        |   |   +-SubqueryExpr
+        |   |     +-type=STRUCT<a INT64, b DOUBLE>
+        |   |     +-subquery_type=SCALAR
+        |   |     +-subquery=
+        |   |       +-ProjectScan
+        |   |         +-column_list=[$make_struct.$struct#7]
+        |   |         +-expr_list=
+        |   |         | +-$struct#7 :=
+        |   |         |   +-MakeStruct
+        |   |         |     +-type=STRUCT<a INT64, b DOUBLE>
+        |   |         |     +-field_list=
+        |   |         |       +-ColumnRef(type=INT64, column=$expr_subquery.a#5)
+        |   |         |       +-ColumnRef(type=DOUBLE, column=$expr_subquery.b#6)
+        |   |         +-input_scan=
+        |   |           +-ProjectScan
+        |   |             +-column_list=$expr_subquery.[a#5, b#6]
+        |   |             +-expr_list=
+        |   |             | +-a#5 := Literal(type=INT64, value=3)
+        |   |             | +-b#6 := Literal(type=DOUBLE, value=4.5)
+        |   |             +-input_scan=
+        |   |               +-SingleRowScan
+        |   +-input_scan=
+        |     +-SingleRowScan
+        +-output_column_list=[$union_all2.$col1#8]
+==
+
+# Union of two non-coercible struct types.
+select (select AS STRUCT cast(1 as uint64) a, 2 b)
+union all
+select (select AS STRUCT cast(1 as int32) a, 2 b)
+--
+ERROR: Column 1 in UNION ALL has incompatible types: STRUCT<a UINT64, b INT64>, STRUCT<a INT32, b INT64> [at 3:1]
+select (select AS STRUCT cast(1 as int32) a, 2 b)
+^
+==
+
+# Only field names of the first struct will determine the field names of
+# supertyped struct.
+select (select AS STRUCT 1 a, 2 b)
+union all
+select (select AS STRUCT 3 b, 4 a);
+--
+QueryStmt
++-output_column_list=
+| +-$union_all.$col1#9 AS `$col1` [STRUCT<a INT64, b INT64>]
++-query=
+  +-SetOperationScan
+    +-column_list=[$union_all.$col1#9]
+    +-op_type=UNION_ALL
+    +-input_item_list=
+      +-SetOperationItem
+      | +-scan=
+      | | +-ProjectScan
+      | |   +-column_list=[$union_all1.$col1#4]
+      | |   +-expr_list=
+      | |   | +-$col1#4 :=
+      | |   |   +-SubqueryExpr
+      | |   |     +-type=STRUCT<a INT64, b INT64>
+      | |   |     +-subquery_type=SCALAR
+      | |   |     +-subquery=
+      | |   |       +-ProjectScan
+      | |   |         +-column_list=[$make_struct.$struct#3]
+      | |   |         +-expr_list=
+      | |   |         | +-$struct#3 :=
+      | |   |         |   +-MakeStruct
+      | |   |         |     +-type=STRUCT<a INT64, b INT64>
+      | |   |         |     +-field_list=
+      | |   |         |       +-ColumnRef(type=INT64, column=$expr_subquery.a#1)
+      | |   |         |       +-ColumnRef(type=INT64, column=$expr_subquery.b#2)
+      | |   |         +-input_scan=
+      | |   |           +-ProjectScan
+      | |   |             +-column_list=$expr_subquery.[a#1, b#2]
+      | |   |             +-expr_list=
+      | |   |             | +-a#1 := Literal(type=INT64, value=1)
+      | |   |             | +-b#2 := Literal(type=INT64, value=2)
+      | |   |             +-input_scan=
+      | |   |               +-SingleRowScan
+      | |   +-input_scan=
+      | |     +-SingleRowScan
+      | +-output_column_list=[$union_all1.$col1#4]
+      +-SetOperationItem
+        +-scan=
+        | +-ProjectScan
+        |   +-column_list=[$union_all2_cast.$col1#10]
+        |   +-expr_list=
+        |   | +-$col1#10 :=
+        |   |   +-Cast(STRUCT<b INT64, a INT64> -> STRUCT<a INT64, b INT64>)
+        |   |     +-ColumnRef(type=STRUCT<b INT64, a INT64>, column=$union_all2.$col1#8)
+        |   +-input_scan=
+        |     +-ProjectScan
+        |       +-column_list=[$union_all2.$col1#8]
+        |       +-expr_list=
+        |       | +-$col1#8 :=
+        |       |   +-SubqueryExpr
+        |       |     +-type=STRUCT<b INT64, a INT64>
+        |       |     +-subquery_type=SCALAR
+        |       |     +-subquery=
+        |       |       +-ProjectScan
+        |       |         +-column_list=[$make_struct.$struct#7]
+        |       |         +-expr_list=
+        |       |         | +-$struct#7 :=
+        |       |         |   +-MakeStruct
+        |       |         |     +-type=STRUCT<b INT64, a INT64>
+        |       |         |     +-field_list=
+        |       |         |       +-ColumnRef(type=INT64, column=$expr_subquery.b#5)
+        |       |         |       +-ColumnRef(type=INT64, column=$expr_subquery.a#6)
+        |       |         +-input_scan=
+        |       |           +-ProjectScan
+        |       |             +-column_list=$expr_subquery.[b#5, a#6]
+        |       |             +-expr_list=
+        |       |             | +-b#5 := Literal(type=INT64, value=3)
+        |       |             | +-a#6 := Literal(type=INT64, value=4)
+        |       |             +-input_scan=
+        |       |               +-SingleRowScan
+        |       +-input_scan=
+        |         +-SingleRowScan
+        +-output_column_list=[$union_all2_cast.$col1#10]
+==
+
+select (select AS STRUCT 1, 2)
+union all
+select (select AS STRUCT 3 a, 4 b)
+--
+QueryStmt
++-output_column_list=
+| +-$union_all.$col1#9 AS `$col1` [STRUCT<INT64, INT64>]
++-query=
+  +-SetOperationScan
+    +-column_list=[$union_all.$col1#9]
+    +-op_type=UNION_ALL
+    +-input_item_list=
+      +-SetOperationItem
+      | +-scan=
+      | | +-ProjectScan
+      | |   +-column_list=[$union_all1.$col1#4]
+      | |   +-expr_list=
+      | |   | +-$col1#4 :=
+      | |   |   +-SubqueryExpr
+      | |   |     +-type=STRUCT<INT64, INT64>
+      | |   |     +-subquery_type=SCALAR
+      | |   |     +-subquery=
+      | |   |       +-ProjectScan
+      | |   |         +-column_list=[$make_struct.$struct#3]
+      | |   |         +-expr_list=
+      | |   |         | +-$struct#3 :=
+      | |   |         |   +-MakeStruct
+      | |   |         |     +-type=STRUCT<INT64, INT64>
+      | |   |         |     +-field_list=
+      | |   |         |       +-ColumnRef(type=INT64, column=$expr_subquery.$col1#1)
+      | |   |         |       +-ColumnRef(type=INT64, column=$expr_subquery.$col2#2)
+      | |   |         +-input_scan=
+      | |   |           +-ProjectScan
+      | |   |             +-column_list=$expr_subquery.[$col1#1, $col2#2]
+      | |   |             +-expr_list=
+      | |   |             | +-$col1#1 := Literal(type=INT64, value=1)
+      | |   |             | +-$col2#2 := Literal(type=INT64, value=2)
+      | |   |             +-input_scan=
+      | |   |               +-SingleRowScan
+      | |   +-input_scan=
+      | |     +-SingleRowScan
+      | +-output_column_list=[$union_all1.$col1#4]
+      +-SetOperationItem
+        +-scan=
+        | +-ProjectScan
+        |   +-column_list=[$union_all2_cast.$col1#10]
+        |   +-expr_list=
+        |   | +-$col1#10 :=
+        |   |   +-Cast(STRUCT<a INT64, b INT64> -> STRUCT<INT64, INT64>)
+        |   |     +-ColumnRef(type=STRUCT<a INT64, b INT64>, column=$union_all2.$col1#8)
+        |   +-input_scan=
+        |     +-ProjectScan
+        |       +-column_list=[$union_all2.$col1#8]
+        |       +-expr_list=
+        |       | +-$col1#8 :=
+        |       |   +-SubqueryExpr
+        |       |     +-type=STRUCT<a INT64, b INT64>
+        |       |     +-subquery_type=SCALAR
+        |       |     +-subquery=
+        |       |       +-ProjectScan
+        |       |         +-column_list=[$make_struct.$struct#7]
+        |       |         +-expr_list=
+        |       |         | +-$struct#7 :=
+        |       |         |   +-MakeStruct
+        |       |         |     +-type=STRUCT<a INT64, b INT64>
+        |       |         |     +-field_list=
+        |       |         |       +-ColumnRef(type=INT64, column=$expr_subquery.a#5)
+        |       |         |       +-ColumnRef(type=INT64, column=$expr_subquery.b#6)
+        |       |         +-input_scan=
+        |       |           +-ProjectScan
+        |       |             +-column_list=$expr_subquery.[a#5, b#6]
+        |       |             +-expr_list=
+        |       |             | +-a#5 := Literal(type=INT64, value=3)
+        |       |             | +-b#6 := Literal(type=INT64, value=4)
+        |       |             +-input_scan=
+        |       |               +-SingleRowScan
+        |       +-input_scan=
+        |         +-SingleRowScan
+        +-output_column_list=[$union_all2_cast.$col1#10]
+==
+
+select (select AS STRUCT 1 a, 2 b)
+union all
+select (select AS STRUCT 3, 4)
+--
+QueryStmt
++-output_column_list=
+| +-$union_all.$col1#9 AS `$col1` [STRUCT<a INT64, b INT64>]
++-query=
+  +-SetOperationScan
+    +-column_list=[$union_all.$col1#9]
+    +-op_type=UNION_ALL
+    +-input_item_list=
+      +-SetOperationItem
+      | +-scan=
+      | | +-ProjectScan
+      | |   +-column_list=[$union_all1.$col1#4]
+      | |   +-expr_list=
+      | |   | +-$col1#4 :=
+      | |   |   +-SubqueryExpr
+      | |   |     +-type=STRUCT<a INT64, b INT64>
+      | |   |     +-subquery_type=SCALAR
+      | |   |     +-subquery=
+      | |   |       +-ProjectScan
+      | |   |         +-column_list=[$make_struct.$struct#3]
+      | |   |         +-expr_list=
+      | |   |         | +-$struct#3 :=
+      | |   |         |   +-MakeStruct
+      | |   |         |     +-type=STRUCT<a INT64, b INT64>
+      | |   |         |     +-field_list=
+      | |   |         |       +-ColumnRef(type=INT64, column=$expr_subquery.a#1)
+      | |   |         |       +-ColumnRef(type=INT64, column=$expr_subquery.b#2)
+      | |   |         +-input_scan=
+      | |   |           +-ProjectScan
+      | |   |             +-column_list=$expr_subquery.[a#1, b#2]
+      | |   |             +-expr_list=
+      | |   |             | +-a#1 := Literal(type=INT64, value=1)
+      | |   |             | +-b#2 := Literal(type=INT64, value=2)
+      | |   |             +-input_scan=
+      | |   |               +-SingleRowScan
+      | |   +-input_scan=
+      | |     +-SingleRowScan
+      | +-output_column_list=[$union_all1.$col1#4]
+      +-SetOperationItem
+        +-scan=
+        | +-ProjectScan
+        |   +-column_list=[$union_all2_cast.$col1#10]
+        |   +-expr_list=
+        |   | +-$col1#10 :=
+        |   |   +-Cast(STRUCT<INT64, INT64> -> STRUCT<a INT64, b INT64>)
+        |   |     +-ColumnRef(type=STRUCT<INT64, INT64>, column=$union_all2.$col1#8)
+        |   +-input_scan=
+        |     +-ProjectScan
+        |       +-column_list=[$union_all2.$col1#8]
+        |       +-expr_list=
+        |       | +-$col1#8 :=
+        |       |   +-SubqueryExpr
+        |       |     +-type=STRUCT<INT64, INT64>
+        |       |     +-subquery_type=SCALAR
+        |       |     +-subquery=
+        |       |       +-ProjectScan
+        |       |         +-column_list=[$make_struct.$struct#7]
+        |       |         +-expr_list=
+        |       |         | +-$struct#7 :=
+        |       |         |   +-MakeStruct
+        |       |         |     +-type=STRUCT<INT64, INT64>
+        |       |         |     +-field_list=
+        |       |         |       +-ColumnRef(type=INT64, column=$expr_subquery.$col1#5)
+        |       |         |       +-ColumnRef(type=INT64, column=$expr_subquery.$col2#6)
+        |       |         +-input_scan=
+        |       |           +-ProjectScan
+        |       |             +-column_list=$expr_subquery.[$col1#5, $col2#6]
+        |       |             +-expr_list=
+        |       |             | +-$col1#5 := Literal(type=INT64, value=3)
+        |       |             | +-$col2#6 := Literal(type=INT64, value=4)
+        |       |             +-input_scan=
+        |       |               +-SingleRowScan
+        |       +-input_scan=
+        |         +-SingleRowScan
+        +-output_column_list=[$union_all2_cast.$col1#10]
+==
+
+select NULL
+union all
+select (select AS STRUCT 1 a, 2 b)
+--
+QueryStmt
++-output_column_list=
+| +-$union_all.$col1#6 AS `$col1` [STRUCT<a INT64, b INT64>]
++-query=
+  +-SetOperationScan
+    +-column_list=[$union_all.$col1#6]
+    +-op_type=UNION_ALL
+    +-input_item_list=
+      +-SetOperationItem
+      | +-scan=
+      | | +-ProjectScan
+      | |   +-column_list=[$union_all1_cast.$col1#7]
+      | |   +-expr_list=
+      | |   | +-$col1#7 := Literal(type=STRUCT<a INT64, b INT64>, value=NULL)
+      | |   +-input_scan=
+      | |     +-ProjectScan
+      | |       +-column_list=[$union_all1.$col1#1]
+      | |       +-expr_list=
+      | |       | +-$col1#1 := Literal(type=INT64, value=NULL)
+      | |       +-input_scan=
+      | |         +-SingleRowScan
+      | +-output_column_list=[$union_all1_cast.$col1#7]
+      +-SetOperationItem
+        +-scan=
+        | +-ProjectScan
+        |   +-column_list=[$union_all2.$col1#5]
+        |   +-expr_list=
+        |   | +-$col1#5 :=
+        |   |   +-SubqueryExpr
+        |   |     +-type=STRUCT<a INT64, b INT64>
+        |   |     +-subquery_type=SCALAR
+        |   |     +-subquery=
+        |   |       +-ProjectScan
+        |   |         +-column_list=[$make_struct.$struct#4]
+        |   |         +-expr_list=
+        |   |         | +-$struct#4 :=
+        |   |         |   +-MakeStruct
+        |   |         |     +-type=STRUCT<a INT64, b INT64>
+        |   |         |     +-field_list=
+        |   |         |       +-ColumnRef(type=INT64, column=$expr_subquery.a#2)
+        |   |         |       +-ColumnRef(type=INT64, column=$expr_subquery.b#3)
+        |   |         +-input_scan=
+        |   |           +-ProjectScan
+        |   |             +-column_list=$expr_subquery.[a#2, b#3]
+        |   |             +-expr_list=
+        |   |             | +-a#2 := Literal(type=INT64, value=1)
+        |   |             | +-b#3 := Literal(type=INT64, value=2)
+        |   |             +-input_scan=
+        |   |               +-SingleRowScan
+        |   +-input_scan=
+        |     +-SingleRowScan
+        +-output_column_list=[$union_all2.$col1#5]
+==
+
+select s from (select struct(1 as x) as s)
+union all
+select null
+--
+QueryStmt
++-output_column_list=
+| +-$union_all.s#3 AS s [STRUCT<x INT64>]
++-query=
+  +-SetOperationScan
+    +-column_list=[$union_all.s#3]
+    +-op_type=UNION_ALL
+    +-input_item_list=
+      +-SetOperationItem
+      | +-scan=
+      | | +-ProjectScan
+      | |   +-column_list=[$subquery1.s#1]
+      | |   +-input_scan=
+      | |     +-ProjectScan
+      | |       +-column_list=[$subquery1.s#1]
+      | |       +-expr_list=
+      | |       | +-s#1 := Literal(type=STRUCT<x INT64>, value={x:1})
+      | |       +-input_scan=
+      | |         +-SingleRowScan
+      | +-output_column_list=[$subquery1.s#1]
+      +-SetOperationItem
+        +-scan=
+        | +-ProjectScan
+        |   +-column_list=[$union_all2_cast.$col1#4]
+        |   +-expr_list=
+        |   | +-$col1#4 := Literal(type=STRUCT<x INT64>, value=NULL)
+        |   +-input_scan=
+        |     +-ProjectScan
+        |       +-column_list=[$union_all2.$col1#2]
+        |       +-expr_list=
+        |       | +-$col1#2 := Literal(type=INT64, value=NULL)
+        |       +-input_scan=
+        |         +-SingleRowScan
+        +-output_column_list=[$union_all2_cast.$col1#4]
+==
+
+select null
+union all
+select s from (select struct(1 as x) as s)
+--
+QueryStmt
++-output_column_list=
+| +-$union_all.$col1#3 AS `$col1` [STRUCT<x INT64>]
++-query=
+  +-SetOperationScan
+    +-column_list=[$union_all.$col1#3]
+    +-op_type=UNION_ALL
+    +-input_item_list=
+      +-SetOperationItem
+      | +-scan=
+      | | +-ProjectScan
+      | |   +-column_list=[$union_all1_cast.$col1#4]
+      | |   +-expr_list=
+      | |   | +-$col1#4 := Literal(type=STRUCT<x INT64>, value=NULL)
+      | |   +-input_scan=
+      | |     +-ProjectScan
+      | |       +-column_list=[$union_all1.$col1#1]
+      | |       +-expr_list=
+      | |       | +-$col1#1 := Literal(type=INT64, value=NULL)
+      | |       +-input_scan=
+      | |         +-SingleRowScan
+      | +-output_column_list=[$union_all1_cast.$col1#4]
+      +-SetOperationItem
+        +-scan=
+        | +-ProjectScan
+        |   +-column_list=[$subquery1.s#2]
+        |   +-input_scan=
+        |     +-ProjectScan
+        |       +-column_list=[$subquery1.s#2]
+        |       +-expr_list=
+        |       | +-s#2 := Literal(type=STRUCT<x INT64>, value={x:1})
+        |       +-input_scan=
+        |         +-SingleRowScan
+        +-output_column_list=[$subquery1.s#2]
+==
+
+select 1
+union all
+select (1, 2)
+--
+ERROR: Column 1 in UNION ALL has incompatible types: INT64, STRUCT<INT64, INT64> [at 3:1]
+select (1, 2)
+^
+==
+
+select cast(NULL as STRUCT<b INT64, a INT64>)
+union all
+select (select AS STRUCT 1 a, 2 b)
+--
+QueryStmt
++-output_column_list=
+| +-$union_all.$col1#6 AS `$col1` [STRUCT<b INT64, a INT64>]
++-query=
+  +-SetOperationScan
+    +-column_list=[$union_all.$col1#6]
+    +-op_type=UNION_ALL
+    +-input_item_list=
+      +-SetOperationItem
+      | +-scan=
+      | | +-ProjectScan
+      | |   +-column_list=[$union_all1.$col1#1]
+      | |   +-expr_list=
+      | |   | +-$col1#1 := Literal(type=STRUCT<b INT64, a INT64>, value=NULL, has_explicit_type=TRUE)
+      | |   +-input_scan=
+      | |     +-SingleRowScan
+      | +-output_column_list=[$union_all1.$col1#1]
+      +-SetOperationItem
+        +-scan=
+        | +-ProjectScan
+        |   +-column_list=[$union_all2_cast.$col1#7]
+        |   +-expr_list=
+        |   | +-$col1#7 :=
+        |   |   +-Cast(STRUCT<a INT64, b INT64> -> STRUCT<b INT64, a INT64>)
+        |   |     +-ColumnRef(type=STRUCT<a INT64, b INT64>, column=$union_all2.$col1#5)
+        |   +-input_scan=
+        |     +-ProjectScan
+        |       +-column_list=[$union_all2.$col1#5]
+        |       +-expr_list=
+        |       | +-$col1#5 :=
+        |       |   +-SubqueryExpr
+        |       |     +-type=STRUCT<a INT64, b INT64>
+        |       |     +-subquery_type=SCALAR
+        |       |     +-subquery=
+        |       |       +-ProjectScan
+        |       |         +-column_list=[$make_struct.$struct#4]
+        |       |         +-expr_list=
+        |       |         | +-$struct#4 :=
+        |       |         |   +-MakeStruct
+        |       |         |     +-type=STRUCT<a INT64, b INT64>
+        |       |         |     +-field_list=
+        |       |         |       +-ColumnRef(type=INT64, column=$expr_subquery.a#2)
+        |       |         |       +-ColumnRef(type=INT64, column=$expr_subquery.b#3)
+        |       |         +-input_scan=
+        |       |           +-ProjectScan
+        |       |             +-column_list=$expr_subquery.[a#2, b#3]
+        |       |             +-expr_list=
+        |       |             | +-a#2 := Literal(type=INT64, value=1)
+        |       |             | +-b#3 := Literal(type=INT64, value=2)
+        |       |             +-input_scan=
+        |       |               +-SingleRowScan
+        |       +-input_scan=
+        |         +-SingleRowScan
+        +-output_column_list=[$union_all2_cast.$col1#7]
+==
+
+(select struct(1, "abc"))
+union all
+(select @test_param_struct limit 1)
+--
+QueryStmt
++-output_column_list=
+| +-$union_all.$col1#3 AS `$col1` [STRUCT<INT32, STRING>]
++-query=
+  +-SetOperationScan
+    +-column_list=[$union_all.$col1#3]
+    +-op_type=UNION_ALL
+    +-input_item_list=
+      +-SetOperationItem
+      | +-scan=
+      | | +-ProjectScan
+      | |   +-column_list=[$union_all1_cast.$col1#4]
+      | |   +-expr_list=
+      | |   | +-$col1#4 := Literal(type=STRUCT<INT32, STRING>, value={1, "abc"})
+      | |   +-input_scan=
+      | |     +-ProjectScan
+      | |       +-column_list=[$union_all1.$col1#1]
+      | |       +-expr_list=
+      | |       | +-$col1#1 := Literal(type=STRUCT<INT64, STRING>, value={1, "abc"})
+      | |       +-input_scan=
+      | |         +-SingleRowScan
+      | +-output_column_list=[$union_all1_cast.$col1#4]
+      +-SetOperationItem
+        +-scan=
+        | +-ProjectScan
+        |   +-column_list=[$union_all2_cast.$col1#5]
+        |   +-expr_list=
+        |   | +-$col1#5 :=
+        |   |   +-Cast(STRUCT<a INT32, b STRING> -> STRUCT<INT32, STRING>)
+        |   |     +-ColumnRef(type=STRUCT<a INT32, b STRING>, column=$union_all2.$col1#2)
+        |   +-input_scan=
+        |     +-LimitOffsetScan
+        |       +-column_list=[$union_all2.$col1#2]
+        |       +-input_scan=
+        |       | +-ProjectScan
+        |       |   +-column_list=[$union_all2.$col1#2]
+        |       |   +-expr_list=
+        |       |   | +-$col1#2 := Parameter(type=STRUCT<a INT32, b STRING>, name="test_param_struct")
+        |       |   +-input_scan=
+        |       |     +-SingleRowScan
+        |       +-limit=
+        |         +-Literal(type=INT64, value=1)
+        +-output_column_list=[$union_all2_cast.$col1#5]
+==
+
+select `uint64` from SimpleTypes
+union all
+select 1 as a from SimpleTypes
+--
+QueryStmt
++-output_column_list=
+| +-$union_all.uint64#40 AS uint64 [UINT64]
++-query=
+  +-SetOperationScan
+    +-column_list=[$union_all.uint64#40]
+    +-op_type=UNION_ALL
+    +-input_item_list=
+      +-SetOperationItem
+      | +-scan=
+      | | +-ProjectScan
+      | |   +-column_list=[SimpleTypes.uint64#4]
+      | |   +-input_scan=
+      | |     +-TableScan(column_list=[SimpleTypes.uint64#4], table=SimpleTypes, column_index_list=[3])
+      | +-output_column_list=[SimpleTypes.uint64#4]
+      +-SetOperationItem
+        +-scan=
+        | +-ProjectScan
+        |   +-column_list=[$union_all2_cast.a#41]
+        |   +-expr_list=
+        |   | +-a#41 := Literal(type=UINT64, value=1)
+        |   +-input_scan=
+        |     +-ProjectScan
+        |       +-column_list=[$union_all2.a#39]
+        |       +-expr_list=
+        |       | +-a#39 := Literal(type=INT64, value=1)
+        |       +-input_scan=
+        |         +-TableScan(table=SimpleTypes)
+        +-output_column_list=[$union_all2_cast.a#41]
+==
+
+# Same basic query as previous, but with a group by.  The group by introduces
+# a new scan whose output columns are not literals.  Implicit literal coercion
+# does not happen which causes the implicit cast of the non-literal column
+# reference to fail.  TODO: Should we make this query work?  ProjectScan is
+# logically 'supposed' to happen after grouping/having.
+# TODO: Add another test similar to this that includes a having clause
+# (which introduces an additional filter scan) when it is enabled:
+# 'having a + int64(1) = int64(2)'
+select `uint64` from SimpleTypes
+union all
+select 1 as a from SimpleTypes
+group by a
+--
+ERROR: Column 1 in UNION ALL has incompatible types: UINT64, INT64 [at 3:1]
+select 1 as a from SimpleTypes
+^
+==
+
+select `uint64` from SimpleTypes
+union all
+select -1 as a from SimpleTypes
+--
+ERROR: Could not cast literal -1 to type UINT64 [at 3:8]
+select -1 as a from SimpleTypes
+       ^
+==
+
+select 1
+UNION DISTINCT
+select 2
+UNION DISTINCT
+select 3
+--
+QueryStmt
++-output_column_list=
+| +-$union_distinct.$col1#4 AS `$col1` [INT64]
++-query=
+  +-SetOperationScan
+    +-column_list=[$union_distinct.$col1#4]
+    +-op_type=UNION_DISTINCT
+    +-input_item_list=
+      +-SetOperationItem
+      | +-scan=
+      | | +-ProjectScan
+      | |   +-column_list=[$union_distinct1.$col1#1]
+      | |   +-expr_list=
+      | |   | +-$col1#1 := Literal(type=INT64, value=1)
+      | |   +-input_scan=
+      | |     +-SingleRowScan
+      | +-output_column_list=[$union_distinct1.$col1#1]
+      +-SetOperationItem
+      | +-scan=
+      | | +-ProjectScan
+      | |   +-column_list=[$union_distinct2.$col1#2]
+      | |   +-expr_list=
+      | |   | +-$col1#2 := Literal(type=INT64, value=2)
+      | |   +-input_scan=
+      | |     +-SingleRowScan
+      | +-output_column_list=[$union_distinct2.$col1#2]
+      +-SetOperationItem
+        +-scan=
+        | +-ProjectScan
+        |   +-column_list=[$union_distinct3.$col1#3]
+        |   +-expr_list=
+        |   | +-$col1#3 := Literal(type=INT64, value=3)
+        |   +-input_scan=
+        |     +-SingleRowScan
+        +-output_column_list=[$union_distinct3.$col1#3]
+==
+
+select 1
+EXCEPT ALL
+select 2
+EXCEPT ALL
+select 3
+--
+QueryStmt
++-output_column_list=
+| +-$except_all.$col1#4 AS `$col1` [INT64]
++-query=
+  +-SetOperationScan
+    +-column_list=[$except_all.$col1#4]
+    +-op_type=EXCEPT_ALL
+    +-input_item_list=
+      +-SetOperationItem
+      | +-scan=
+      | | +-ProjectScan
+      | |   +-column_list=[$except_all1.$col1#1]
+      | |   +-expr_list=
+      | |   | +-$col1#1 := Literal(type=INT64, value=1)
+      | |   +-input_scan=
+      | |     +-SingleRowScan
+      | +-output_column_list=[$except_all1.$col1#1]
+      +-SetOperationItem
+      | +-scan=
+      | | +-ProjectScan
+      | |   +-column_list=[$except_all2.$col1#2]
+      | |   +-expr_list=
+      | |   | +-$col1#2 := Literal(type=INT64, value=2)
+      | |   +-input_scan=
+      | |     +-SingleRowScan
+      | +-output_column_list=[$except_all2.$col1#2]
+      +-SetOperationItem
+        +-scan=
+        | +-ProjectScan
+        |   +-column_list=[$except_all3.$col1#3]
+        |   +-expr_list=
+        |   | +-$col1#3 := Literal(type=INT64, value=3)
+        |   +-input_scan=
+        |     +-SingleRowScan
+        +-output_column_list=[$except_all3.$col1#3]
+==
+
+select 1
+EXCEPT DISTINCT
+select 2
+EXCEPT DISTINCT
+select 3
+--
+QueryStmt
++-output_column_list=
+| +-$except_distinct.$col1#4 AS `$col1` [INT64]
++-query=
+  +-SetOperationScan
+    +-column_list=[$except_distinct.$col1#4]
+    +-op_type=EXCEPT_DISTINCT
+    +-input_item_list=
+      +-SetOperationItem
+      | +-scan=
+      | | +-ProjectScan
+      | |   +-column_list=[$except_distinct1.$col1#1]
+      | |   +-expr_list=
+      | |   | +-$col1#1 := Literal(type=INT64, value=1)
+      | |   +-input_scan=
+      | |     +-SingleRowScan
+      | +-output_column_list=[$except_distinct1.$col1#1]
+      +-SetOperationItem
+      | +-scan=
+      | | +-ProjectScan
+      | |   +-column_list=[$except_distinct2.$col1#2]
+      | |   +-expr_list=
+      | |   | +-$col1#2 := Literal(type=INT64, value=2)
+      | |   +-input_scan=
+      | |     +-SingleRowScan
+      | +-output_column_list=[$except_distinct2.$col1#2]
+      +-SetOperationItem
+        +-scan=
+        | +-ProjectScan
+        |   +-column_list=[$except_distinct3.$col1#3]
+        |   +-expr_list=
+        |   | +-$col1#3 := Literal(type=INT64, value=3)
+        |   +-input_scan=
+        |     +-SingleRowScan
+        +-output_column_list=[$except_distinct3.$col1#3]
+==
+
+select 1
+INTERSECT ALL
+select 2
+INTERSECT ALL
+select 3
+--
+QueryStmt
++-output_column_list=
+| +-$intersect_all.$col1#4 AS `$col1` [INT64]
++-query=
+  +-SetOperationScan
+    +-column_list=[$intersect_all.$col1#4]
+    +-op_type=INTERSECT_ALL
+    +-input_item_list=
+      +-SetOperationItem
+      | +-scan=
+      | | +-ProjectScan
+      | |   +-column_list=[$intersect_all1.$col1#1]
+      | |   +-expr_list=
+      | |   | +-$col1#1 := Literal(type=INT64, value=1)
+      | |   +-input_scan=
+      | |     +-SingleRowScan
+      | +-output_column_list=[$intersect_all1.$col1#1]
+      +-SetOperationItem
+      | +-scan=
+      | | +-ProjectScan
+      | |   +-column_list=[$intersect_all2.$col1#2]
+      | |   +-expr_list=
+      | |   | +-$col1#2 := Literal(type=INT64, value=2)
+      | |   +-input_scan=
+      | |     +-SingleRowScan
+      | +-output_column_list=[$intersect_all2.$col1#2]
+      +-SetOperationItem
+        +-scan=
+        | +-ProjectScan
+        |   +-column_list=[$intersect_all3.$col1#3]
+        |   +-expr_list=
+        |   | +-$col1#3 := Literal(type=INT64, value=3)
+        |   +-input_scan=
+        |     +-SingleRowScan
+        +-output_column_list=[$intersect_all3.$col1#3]
+==
+
+select 1
+INTERSECT DISTINCT
+select 2
+INTERSECT DISTINCT
+select 3
+--
+QueryStmt
++-output_column_list=
+| +-$intersect_distinct.$col1#4 AS `$col1` [INT64]
++-query=
+  +-SetOperationScan
+    +-column_list=[$intersect_distinct.$col1#4]
+    +-op_type=INTERSECT_DISTINCT
+    +-input_item_list=
+      +-SetOperationItem
+      | +-scan=
+      | | +-ProjectScan
+      | |   +-column_list=[$intersect_distinct1.$col1#1]
+      | |   +-expr_list=
+      | |   | +-$col1#1 := Literal(type=INT64, value=1)
+      | |   +-input_scan=
+      | |     +-SingleRowScan
+      | +-output_column_list=[$intersect_distinct1.$col1#1]
+      +-SetOperationItem
+      | +-scan=
+      | | +-ProjectScan
+      | |   +-column_list=[$intersect_distinct2.$col1#2]
+      | |   +-expr_list=
+      | |   | +-$col1#2 := Literal(type=INT64, value=2)
+      | |   +-input_scan=
+      | |     +-SingleRowScan
+      | +-output_column_list=[$intersect_distinct2.$col1#2]
+      +-SetOperationItem
+        +-scan=
+        | +-ProjectScan
+        |   +-column_list=[$intersect_distinct3.$col1#3]
+        |   +-expr_list=
+        |   | +-$col1#3 := Literal(type=INT64, value=3)
+        |   +-input_scan=
+        |     +-SingleRowScan
+        +-output_column_list=[$intersect_distinct3.$col1#3]
+==
+
+select *
+from (select 1 EXCEPT ALL select 2 EXCEPT ALL select 3)
+--
+QueryStmt
++-output_column_list=
+| +-$except_all.$col1#4 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$except_all.$col1#4]
+    +-input_scan=
+      +-SetOperationScan
+        +-column_list=[$except_all.$col1#4]
+        +-op_type=EXCEPT_ALL
+        +-input_item_list=
+          +-SetOperationItem
+          | +-scan=
+          | | +-ProjectScan
+          | |   +-column_list=[$except_all1.$col1#1]
+          | |   +-expr_list=
+          | |   | +-$col1#1 := Literal(type=INT64, value=1)
+          | |   +-input_scan=
+          | |     +-SingleRowScan
+          | +-output_column_list=[$except_all1.$col1#1]
+          +-SetOperationItem
+          | +-scan=
+          | | +-ProjectScan
+          | |   +-column_list=[$except_all2.$col1#2]
+          | |   +-expr_list=
+          | |   | +-$col1#2 := Literal(type=INT64, value=2)
+          | |   +-input_scan=
+          | |     +-SingleRowScan
+          | +-output_column_list=[$except_all2.$col1#2]
+          +-SetOperationItem
+            +-scan=
+            | +-ProjectScan
+            |   +-column_list=[$except_all3.$col1#3]
+            |   +-expr_list=
+            |   | +-$col1#3 := Literal(type=INT64, value=3)
+            |   +-input_scan=
+            |     +-SingleRowScan
+            +-output_column_list=[$except_all3.$col1#3]
+==
+
+select 1,2
+EXCEPT ALL
+select 2,3
+--
+QueryStmt
++-output_column_list=
+| +-$except_all.$col1#5 AS `$col1` [INT64]
+| +-$except_all.$col2#6 AS `$col2` [INT64]
++-query=
+  +-SetOperationScan
+    +-column_list=$except_all.[$col1#5, $col2#6]
+    +-op_type=EXCEPT_ALL
+    +-input_item_list=
+      +-SetOperationItem
+      | +-scan=
+      | | +-ProjectScan
+      | |   +-column_list=$except_all1.[$col1#1, $col2#2]
+      | |   +-expr_list=
+      | |   | +-$col1#1 := Literal(type=INT64, value=1)
+      | |   | +-$col2#2 := Literal(type=INT64, value=2)
+      | |   +-input_scan=
+      | |     +-SingleRowScan
+      | +-output_column_list=$except_all1.[$col1#1, $col2#2]
+      +-SetOperationItem
+        +-scan=
+        | +-ProjectScan
+        |   +-column_list=$except_all2.[$col1#3, $col2#4]
+        |   +-expr_list=
+        |   | +-$col1#3 := Literal(type=INT64, value=2)
+        |   | +-$col2#4 := Literal(type=INT64, value=3)
+        |   +-input_scan=
+        |     +-SingleRowScan
+        +-output_column_list=$except_all2.[$col1#3, $col2#4]
+==
+
+select 1
+EXCEPT ALL
+select 1,2
+--
+ERROR: Queries in EXCEPT ALL have mismatched column count; query 1 has 1 column, query 2 has 2 columns [at 3:1]
+select 1,2
+^
+==
+
+# Different simple types coercing to a common supertype.
+select `uint32` from SimpleTypes s1
+EXCEPT ALL
+select `int32` from SimpleTypes s2
+EXCEPT ALL
+select `float` from SimpleTypes s3
+--
+QueryStmt
++-output_column_list=
+| +-$except_all.uint32#58 AS uint32 [DOUBLE]
++-query=
+  +-SetOperationScan
+    +-column_list=[$except_all.uint32#58]
+    +-op_type=EXCEPT_ALL
+    +-input_item_list=
+      +-SetOperationItem
+      | +-scan=
+      | | +-ProjectScan
+      | |   +-column_list=[$except_all1_cast.uint32#59]
+      | |   +-expr_list=
+      | |   | +-uint32#59 :=
+      | |   |   +-Cast(UINT32 -> DOUBLE)
+      | |   |     +-ColumnRef(type=UINT32, column=SimpleTypes.uint32#3)
+      | |   +-input_scan=
+      | |     +-ProjectScan
+      | |       +-column_list=[SimpleTypes.uint32#3]
+      | |       +-input_scan=
+      | |         +-TableScan(column_list=[SimpleTypes.uint32#3], table=SimpleTypes, column_index_list=[2], alias="s1")
+      | +-output_column_list=[$except_all1_cast.uint32#59]
+      +-SetOperationItem
+      | +-scan=
+      | | +-ProjectScan
+      | |   +-column_list=[$except_all2_cast.int32#60]
+      | |   +-expr_list=
+      | |   | +-int32#60 :=
+      | |   |   +-Cast(INT32 -> DOUBLE)
+      | |   |     +-ColumnRef(type=INT32, column=SimpleTypes.int32#20)
+      | |   +-input_scan=
+      | |     +-ProjectScan
+      | |       +-column_list=[SimpleTypes.int32#20]
+      | |       +-input_scan=
+      | |         +-TableScan(column_list=[SimpleTypes.int32#20], table=SimpleTypes, column_index_list=[0], alias="s2")
+      | +-output_column_list=[$except_all2_cast.int32#60]
+      +-SetOperationItem
+        +-scan=
+        | +-ProjectScan
+        |   +-column_list=[$except_all3_cast.float#61]
+        |   +-expr_list=
+        |   | +-float#61 :=
+        |   |   +-Cast(FLOAT -> DOUBLE)
+        |   |     +-ColumnRef(type=FLOAT, column=SimpleTypes.float#46)
+        |   +-input_scan=
+        |     +-ProjectScan
+        |       +-column_list=[SimpleTypes.float#46]
+        |       +-input_scan=
+        |         +-TableScan(column_list=[SimpleTypes.float#46], table=SimpleTypes, column_index_list=[7], alias="s3")
+        +-output_column_list=[$except_all3_cast.float#61]
+==
+
+select * from
+(select 1 UNION ALL (select 2 INTERSECT ALL select 3));
+--
+QueryStmt
++-output_column_list=
+| +-$union_all.$col1#5 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$union_all.$col1#5]
+    +-input_scan=
+      +-SetOperationScan
+        +-column_list=[$union_all.$col1#5]
+        +-op_type=UNION_ALL
+        +-input_item_list=
+          +-SetOperationItem
+          | +-scan=
+          | | +-ProjectScan
+          | |   +-column_list=[$union_all1.$col1#1]
+          | |   +-expr_list=
+          | |   | +-$col1#1 := Literal(type=INT64, value=1)
+          | |   +-input_scan=
+          | |     +-SingleRowScan
+          | +-output_column_list=[$union_all1.$col1#1]
+          +-SetOperationItem
+            +-scan=
+            | +-SetOperationScan
+            |   +-column_list=[$intersect_all.$col1#4]
+            |   +-op_type=INTERSECT_ALL
+            |   +-input_item_list=
+            |     +-SetOperationItem
+            |     | +-scan=
+            |     | | +-ProjectScan
+            |     | |   +-column_list=[$intersect_all1.$col1#2]
+            |     | |   +-expr_list=
+            |     | |   | +-$col1#2 := Literal(type=INT64, value=2)
+            |     | |   +-input_scan=
+            |     | |     +-SingleRowScan
+            |     | +-output_column_list=[$intersect_all1.$col1#2]
+            |     +-SetOperationItem
+            |       +-scan=
+            |       | +-ProjectScan
+            |       |   +-column_list=[$intersect_all2.$col1#3]
+            |       |   +-expr_list=
+            |       |   | +-$col1#3 := Literal(type=INT64, value=3)
+            |       |   +-input_scan=
+            |       |     +-SingleRowScan
+            |       +-output_column_list=[$intersect_all2.$col1#3]
+            +-output_column_list=[$intersect_all.$col1#4]
+==
+
+select `uint32` from SimpleTypes s1
+UNION ALL
+(select `int32` from SimpleTypes s2
+ INTERSECT ALL
+ (select `float` from SimpleTypes s3 EXCEPT ALL select 1));
+--
+QueryStmt
++-output_column_list=
+| +-$union_all.uint32#64 AS uint32 [DOUBLE]
++-query=
+  +-SetOperationScan
+    +-column_list=[$union_all.uint32#64]
+    +-op_type=UNION_ALL
+    +-input_item_list=
+      +-SetOperationItem
+      | +-scan=
+      | | +-ProjectScan
+      | |   +-column_list=[$union_all1_cast.uint32#65]
+      | |   +-expr_list=
+      | |   | +-uint32#65 :=
+      | |   |   +-Cast(UINT32 -> DOUBLE)
+      | |   |     +-ColumnRef(type=UINT32, column=SimpleTypes.uint32#3)
+      | |   +-input_scan=
+      | |     +-ProjectScan
+      | |       +-column_list=[SimpleTypes.uint32#3]
+      | |       +-input_scan=
+      | |         +-TableScan(column_list=[SimpleTypes.uint32#3], table=SimpleTypes, column_index_list=[2], alias="s1")
+      | +-output_column_list=[$union_all1_cast.uint32#65]
+      +-SetOperationItem
+        +-scan=
+        | +-SetOperationScan
+        |   +-column_list=[$intersect_all.int32#61]
+        |   +-op_type=INTERSECT_ALL
+        |   +-input_item_list=
+        |     +-SetOperationItem
+        |     | +-scan=
+        |     | | +-ProjectScan
+        |     | |   +-column_list=[$intersect_all1_cast.int32#62]
+        |     | |   +-expr_list=
+        |     | |   | +-int32#62 :=
+        |     | |   |   +-Cast(INT32 -> DOUBLE)
+        |     | |   |     +-ColumnRef(type=INT32, column=SimpleTypes.int32#20)
+        |     | |   +-input_scan=
+        |     | |     +-ProjectScan
+        |     | |       +-column_list=[SimpleTypes.int32#20]
+        |     | |       +-input_scan=
+        |     | |         +-TableScan(column_list=[SimpleTypes.int32#20], table=SimpleTypes, column_index_list=[0], alias="s2")
+        |     | +-output_column_list=[$intersect_all1_cast.int32#62]
+        |     +-SetOperationItem
+        |       +-scan=
+        |       | +-ProjectScan
+        |       |   +-column_list=[$intersect_all2_cast.float#63]
+        |       |   +-expr_list=
+        |       |   | +-float#63 :=
+        |       |   |   +-Cast(FLOAT -> DOUBLE)
+        |       |   |     +-ColumnRef(type=FLOAT, column=$except_all.float#59)
+        |       |   +-input_scan=
+        |       |     +-SetOperationScan
+        |       |       +-column_list=[$except_all.float#59]
+        |       |       +-op_type=EXCEPT_ALL
+        |       |       +-input_item_list=
+        |       |         +-SetOperationItem
+        |       |         | +-scan=
+        |       |         | | +-ProjectScan
+        |       |         | |   +-column_list=[SimpleTypes.float#46]
+        |       |         | |   +-input_scan=
+        |       |         | |     +-TableScan(column_list=[SimpleTypes.float#46], table=SimpleTypes, column_index_list=[7], alias="s3")
+        |       |         | +-output_column_list=[SimpleTypes.float#46]
+        |       |         +-SetOperationItem
+        |       |           +-scan=
+        |       |           | +-ProjectScan
+        |       |           |   +-column_list=[$except_all2_cast.$col1#60]
+        |       |           |   +-expr_list=
+        |       |           |   | +-$col1#60 := Literal(type=FLOAT, value=1)
+        |       |           |   +-input_scan=
+        |       |           |     +-ProjectScan
+        |       |           |       +-column_list=[$except_all2.$col1#58]
+        |       |           |       +-expr_list=
+        |       |           |       | +-$col1#58 := Literal(type=INT64, value=1)
+        |       |           |       +-input_scan=
+        |       |           |         +-SingleRowScan
+        |       |           +-output_column_list=[$except_all2_cast.$col1#60]
+        |       +-output_column_list=[$intersect_all2_cast.float#63]
+        +-output_column_list=[$intersect_all.int32#61]
+==
+
+# TODO: Remove the extra wrapper scan placed on top of string literal
+# "2014-01-01" and have it as a date literal in place.
+select `date` from SimpleTypes s1
+UNION ALL
+select "2014-01-01"
+--
+QueryStmt
++-output_column_list=
+| +-$union_all.date#21 AS date [DATE]
++-query=
+  +-SetOperationScan
+    +-column_list=[$union_all.date#21]
+    +-op_type=UNION_ALL
+    +-input_item_list=
+      +-SetOperationItem
+      | +-scan=
+      | | +-ProjectScan
+      | |   +-column_list=[SimpleTypes.date#10]
+      | |   +-input_scan=
+      | |     +-TableScan(column_list=[SimpleTypes.date#10], table=SimpleTypes, column_index_list=[9], alias="s1")
+      | +-output_column_list=[SimpleTypes.date#10]
+      +-SetOperationItem
+        +-scan=
+        | +-ProjectScan
+        |   +-column_list=[$union_all2_cast.$col1#22]
+        |   +-expr_list=
+        |   | +-$col1#22 := Literal(type=DATE, value=2014-01-01)
+        |   +-input_scan=
+        |     +-ProjectScan
+        |       +-column_list=[$union_all2.$col1#20]
+        |       +-expr_list=
+        |       | +-$col1#20 := Literal(type=STRING, value="2014-01-01")
+        |       +-input_scan=
+        |         +-SingleRowScan
+        +-output_column_list=[$union_all2_cast.$col1#22]
+==
+
+select timestamp from SimpleTypes s1
+UNION ALL
+(select date from SimpleTypes s1
+ INTERSECT ALL
+ select timestamp from SimpleTypes s1)
+--
+ERROR: Column 1 in INTERSECT ALL has incompatible types: DATE, TIMESTAMP [at 5:2]
+ select timestamp from SimpleTypes s1)
+ ^
+==
+
+# b/16799835
+select [1,2] as y union all select NULL having y is null
+--
+ERROR: Query without FROM clause cannot have a HAVING clause [at 1:41]
+select [1,2] as y union all select NULL having y is null
+                                        ^
+==
+
+# Union between a value table and a regular table with one column with
+# matching type.
+# Output is a value table because the first input is a value table.
+select as `googlesql_test.KitchenSinkPB` 1 int64_key_1, 2 int64_key_2
+union all
+select KitchenSink out from TestTable
+--
+QueryStmt
++-output_column_list=
+| +-$union_all.$proto#7 AS `$proto` [PROTO<googlesql_test.KitchenSinkPB>]
++-is_value_table=TRUE
++-query=
+  +-SetOperationScan
+    +-column_list=[$union_all.$proto#7]
+    +-op_type=UNION_ALL
+    +-input_item_list=
+      +-SetOperationItem
+      | +-scan=
+      | | +-ProjectScan
+      | |   +-column_list=[$make_proto.$proto#3]
+      | |   +-expr_list=
+      | |   | +-$proto#3 :=
+      | |   |   +-MakeProto
+      | |   |     +-type=PROTO<googlesql_test.KitchenSinkPB>
+      | |   |     +-field_list=
+      | |   |       +-int64_key_1 := ColumnRef(type=INT64, column=$union_all1.int64_key_1#1)
+      | |   |       +-int64_key_2 := ColumnRef(type=INT64, column=$union_all1.int64_key_2#2)
+      | |   +-input_scan=
+      | |     +-ProjectScan
+      | |       +-column_list=$union_all1.[int64_key_1#1, int64_key_2#2]
+      | |       +-expr_list=
+      | |       | +-int64_key_1#1 := Literal(type=INT64, value=1)
+      | |       | +-int64_key_2#2 := Literal(type=INT64, value=2)
+      | |       +-input_scan=
+      | |         +-SingleRowScan
+      | +-output_column_list=[$make_proto.$proto#3]
+      +-SetOperationItem
+        +-scan=
+        | +-ProjectScan
+        |   +-column_list=[TestTable.KitchenSink#6]
+        |   +-input_scan=
+        |     +-TableScan(column_list=[TestTable.KitchenSink#6], table=TestTable, column_index_list=[2])
+        +-output_column_list=[TestTable.KitchenSink#6]
+==
+
+# Same thing in the other order.
+# Output is a regular table because the first input is a regular table.
+select KitchenSink out from TestTable
+union all
+select as `googlesql_test.KitchenSinkPB` 1 int64_key_1, 2 int64_key_2
+--
+QueryStmt
++-output_column_list=
+| +-$union_all.out#7 AS `out` [PROTO<googlesql_test.KitchenSinkPB>]
++-query=
+  +-SetOperationScan
+    +-column_list=[$union_all.out#7]
+    +-op_type=UNION_ALL
+    +-input_item_list=
+      +-SetOperationItem
+      | +-scan=
+      | | +-ProjectScan
+      | |   +-column_list=[TestTable.KitchenSink#3]
+      | |   +-input_scan=
+      | |     +-TableScan(column_list=[TestTable.KitchenSink#3], table=TestTable, column_index_list=[2])
+      | +-output_column_list=[TestTable.KitchenSink#3]
+      +-SetOperationItem
+        +-scan=
+        | +-ProjectScan
+        |   +-column_list=[$make_proto.$proto#6]
+        |   +-expr_list=
+        |   | +-$proto#6 :=
+        |   |   +-MakeProto
+        |   |     +-type=PROTO<googlesql_test.KitchenSinkPB>
+        |   |     +-field_list=
+        |   |       +-int64_key_1 := ColumnRef(type=INT64, column=$union_all2.int64_key_1#4)
+        |   |       +-int64_key_2 := ColumnRef(type=INT64, column=$union_all2.int64_key_2#5)
+        |   +-input_scan=
+        |     +-ProjectScan
+        |       +-column_list=$union_all2.[int64_key_1#4, int64_key_2#5]
+        |       +-expr_list=
+        |       | +-int64_key_1#4 := Literal(type=INT64, value=1)
+        |       | +-int64_key_2#5 := Literal(type=INT64, value=2)
+        |       +-input_scan=
+        |         +-SingleRowScan
+        +-output_column_list=[$make_proto.$proto#6]
+==
+
+# UNION ALL allows all compatible types, even those that do not support
+# grouping.
+select (1, 1) union all select (1, 1);
+--
+QueryStmt
++-output_column_list=
+| +-$union_all.$col1#3 AS `$col1` [STRUCT<INT64, INT64>]
++-query=
+  +-SetOperationScan
+    +-column_list=[$union_all.$col1#3]
+    +-op_type=UNION_ALL
+    +-input_item_list=
+      +-SetOperationItem
+      | +-scan=
+      | | +-ProjectScan
+      | |   +-column_list=[$union_all1.$col1#1]
+      | |   +-expr_list=
+      | |   | +-$col1#1 := Literal(type=STRUCT<INT64, INT64>, value={1, 1})
+      | |   +-input_scan=
+      | |     +-SingleRowScan
+      | +-output_column_list=[$union_all1.$col1#1]
+      +-SetOperationItem
+        +-scan=
+        | +-ProjectScan
+        |   +-column_list=[$union_all2.$col1#2]
+        |   +-expr_list=
+        |   | +-$col1#2 := Literal(type=STRUCT<INT64, INT64>, value={1, 1})
+        |   +-input_scan=
+        |     +-SingleRowScan
+        +-output_column_list=[$union_all2.$col1#2]
+==
+
+select [1, 1] union all select [2, 3, 4];
+--
+QueryStmt
++-output_column_list=
+| +-$union_all.$col1#3 AS `$col1` [ARRAY<INT64>]
++-query=
+  +-SetOperationScan
+    +-column_list=[$union_all.$col1#3]
+    +-op_type=UNION_ALL
+    +-input_item_list=
+      +-SetOperationItem
+      | +-scan=
+      | | +-ProjectScan
+      | |   +-column_list=[$union_all1.$col1#1]
+      | |   +-expr_list=
+      | |   | +-$col1#1 := Literal(type=ARRAY<INT64>, value=[1, 1])
+      | |   +-input_scan=
+      | |     +-SingleRowScan
+      | +-output_column_list=[$union_all1.$col1#1]
+      +-SetOperationItem
+        +-scan=
+        | +-ProjectScan
+        |   +-column_list=[$union_all2.$col1#2]
+        |   +-expr_list=
+        |   | +-$col1#2 := Literal(type=ARRAY<INT64>, value=[2, 3, 4])
+        |   +-input_scan=
+        |     +-SingleRowScan
+        +-output_column_list=[$union_all2.$col1#2]
+==
+
+select cast(null as googlesql_test.TestInvalidTypeAnnotations)
+union all
+select cast(null as googlesql_test.TestInvalidTypeAnnotations)
+--
+QueryStmt
++-output_column_list=
+| +-$union_all.$col1#3 AS `$col1` [PROTO<googlesql_test.TestInvalidTypeAnnotations>]
++-query=
+  +-SetOperationScan
+    +-column_list=[$union_all.$col1#3]
+    +-op_type=UNION_ALL
+    +-input_item_list=
+      +-SetOperationItem
+      | +-scan=
+      | | +-ProjectScan
+      | |   +-column_list=[$union_all1.$col1#1]
+      | |   +-expr_list=
+      | |   | +-$col1#1 := Literal(type=PROTO<googlesql_test.TestInvalidTypeAnnotations>, value=NULL, has_explicit_type=TRUE)
+      | |   +-input_scan=
+      | |     +-SingleRowScan
+      | +-output_column_list=[$union_all1.$col1#1]
+      +-SetOperationItem
+        +-scan=
+        | +-ProjectScan
+        |   +-column_list=[$union_all2.$col1#2]
+        |   +-expr_list=
+        |   | +-$col1#2 := Literal(type=PROTO<googlesql_test.TestInvalidTypeAnnotations>, value=NULL, has_explicit_type=TRUE)
+        |   +-input_scan=
+        |     +-SingleRowScan
+        +-output_column_list=[$union_all2.$col1#2]
+==
+
+[language_features=NONE,{{+GROUP_BY_STRUCT|}}]
+select (1, 1)
+ {{union|intersect|except}} {{all|distinct}}
+select (1, 1);
+--
+ALTERNATION GROUPS:
+    +GROUP_BY_STRUCT,union,all
+    union,all
+--
+QueryStmt
++-output_column_list=
+| +-$union_all.$col1#3 AS `$col1` [STRUCT<INT64, INT64>]
++-query=
+  +-SetOperationScan
+    +-column_list=[$union_all.$col1#3]
+    +-op_type=UNION_ALL
+    +-input_item_list=
+      +-SetOperationItem
+      | +-scan=
+      | | +-ProjectScan
+      | |   +-column_list=[$union_all1.$col1#1]
+      | |   +-expr_list=
+      | |   | +-$col1#1 := Literal(type=STRUCT<INT64, INT64>, value={1, 1})
+      | |   +-input_scan=
+      | |     +-SingleRowScan
+      | +-output_column_list=[$union_all1.$col1#1]
+      +-SetOperationItem
+        +-scan=
+        | +-ProjectScan
+        |   +-column_list=[$union_all2.$col1#2]
+        |   +-expr_list=
+        |   | +-$col1#2 := Literal(type=STRUCT<INT64, INT64>, value={1, 1})
+        |   +-input_scan=
+        |     +-SingleRowScan
+        +-output_column_list=[$union_all2.$col1#2]
+--
+ALTERNATION GROUP: +GROUP_BY_STRUCT,union,distinct
+--
+QueryStmt
++-output_column_list=
+| +-$union_distinct.$col1#3 AS `$col1` [STRUCT<INT64, INT64>]
++-query=
+  +-SetOperationScan
+    +-column_list=[$union_distinct.$col1#3]
+    +-op_type=UNION_DISTINCT
+    +-input_item_list=
+      +-SetOperationItem
+      | +-scan=
+      | | +-ProjectScan
+      | |   +-column_list=[$union_distinct1.$col1#1]
+      | |   +-expr_list=
+      | |   | +-$col1#1 := Literal(type=STRUCT<INT64, INT64>, value={1, 1})
+      | |   +-input_scan=
+      | |     +-SingleRowScan
+      | +-output_column_list=[$union_distinct1.$col1#1]
+      +-SetOperationItem
+        +-scan=
+        | +-ProjectScan
+        |   +-column_list=[$union_distinct2.$col1#2]
+        |   +-expr_list=
+        |   | +-$col1#2 := Literal(type=STRUCT<INT64, INT64>, value={1, 1})
+        |   +-input_scan=
+        |     +-SingleRowScan
+        +-output_column_list=[$union_distinct2.$col1#2]
+--
+ALTERNATION GROUP: +GROUP_BY_STRUCT,intersect,all
+--
+QueryStmt
++-output_column_list=
+| +-$intersect_all.$col1#3 AS `$col1` [STRUCT<INT64, INT64>]
++-query=
+  +-SetOperationScan
+    +-column_list=[$intersect_all.$col1#3]
+    +-op_type=INTERSECT_ALL
+    +-input_item_list=
+      +-SetOperationItem
+      | +-scan=
+      | | +-ProjectScan
+      | |   +-column_list=[$intersect_all1.$col1#1]
+      | |   +-expr_list=
+      | |   | +-$col1#1 := Literal(type=STRUCT<INT64, INT64>, value={1, 1})
+      | |   +-input_scan=
+      | |     +-SingleRowScan
+      | +-output_column_list=[$intersect_all1.$col1#1]
+      +-SetOperationItem
+        +-scan=
+        | +-ProjectScan
+        |   +-column_list=[$intersect_all2.$col1#2]
+        |   +-expr_list=
+        |   | +-$col1#2 := Literal(type=STRUCT<INT64, INT64>, value={1, 1})
+        |   +-input_scan=
+        |     +-SingleRowScan
+        +-output_column_list=[$intersect_all2.$col1#2]
+--
+ALTERNATION GROUP: +GROUP_BY_STRUCT,intersect,distinct
+--
+QueryStmt
++-output_column_list=
+| +-$intersect_distinct.$col1#3 AS `$col1` [STRUCT<INT64, INT64>]
++-query=
+  +-SetOperationScan
+    +-column_list=[$intersect_distinct.$col1#3]
+    +-op_type=INTERSECT_DISTINCT
+    +-input_item_list=
+      +-SetOperationItem
+      | +-scan=
+      | | +-ProjectScan
+      | |   +-column_list=[$intersect_distinct1.$col1#1]
+      | |   +-expr_list=
+      | |   | +-$col1#1 := Literal(type=STRUCT<INT64, INT64>, value={1, 1})
+      | |   +-input_scan=
+      | |     +-SingleRowScan
+      | +-output_column_list=[$intersect_distinct1.$col1#1]
+      +-SetOperationItem
+        +-scan=
+        | +-ProjectScan
+        |   +-column_list=[$intersect_distinct2.$col1#2]
+        |   +-expr_list=
+        |   | +-$col1#2 := Literal(type=STRUCT<INT64, INT64>, value={1, 1})
+        |   +-input_scan=
+        |     +-SingleRowScan
+        +-output_column_list=[$intersect_distinct2.$col1#2]
+--
+ALTERNATION GROUP: +GROUP_BY_STRUCT,except,all
+--
+QueryStmt
++-output_column_list=
+| +-$except_all.$col1#3 AS `$col1` [STRUCT<INT64, INT64>]
++-query=
+  +-SetOperationScan
+    +-column_list=[$except_all.$col1#3]
+    +-op_type=EXCEPT_ALL
+    +-input_item_list=
+      +-SetOperationItem
+      | +-scan=
+      | | +-ProjectScan
+      | |   +-column_list=[$except_all1.$col1#1]
+      | |   +-expr_list=
+      | |   | +-$col1#1 := Literal(type=STRUCT<INT64, INT64>, value={1, 1})
+      | |   +-input_scan=
+      | |     +-SingleRowScan
+      | +-output_column_list=[$except_all1.$col1#1]
+      +-SetOperationItem
+        +-scan=
+        | +-ProjectScan
+        |   +-column_list=[$except_all2.$col1#2]
+        |   +-expr_list=
+        |   | +-$col1#2 := Literal(type=STRUCT<INT64, INT64>, value={1, 1})
+        |   +-input_scan=
+        |     +-SingleRowScan
+        +-output_column_list=[$except_all2.$col1#2]
+--
+ALTERNATION GROUP: +GROUP_BY_STRUCT,except,distinct
+--
+QueryStmt
++-output_column_list=
+| +-$except_distinct.$col1#3 AS `$col1` [STRUCT<INT64, INT64>]
++-query=
+  +-SetOperationScan
+    +-column_list=[$except_distinct.$col1#3]
+    +-op_type=EXCEPT_DISTINCT
+    +-input_item_list=
+      +-SetOperationItem
+      | +-scan=
+      | | +-ProjectScan
+      | |   +-column_list=[$except_distinct1.$col1#1]
+      | |   +-expr_list=
+      | |   | +-$col1#1 := Literal(type=STRUCT<INT64, INT64>, value={1, 1})
+      | |   +-input_scan=
+      | |     +-SingleRowScan
+      | +-output_column_list=[$except_distinct1.$col1#1]
+      +-SetOperationItem
+        +-scan=
+        | +-ProjectScan
+        |   +-column_list=[$except_distinct2.$col1#2]
+        |   +-expr_list=
+        |   | +-$col1#2 := Literal(type=STRUCT<INT64, INT64>, value={1, 1})
+        |   +-input_scan=
+        |     +-SingleRowScan
+        +-output_column_list=[$except_distinct2.$col1#2]
+--
+ALTERNATION GROUP: union,distinct
+--
+ERROR: Column 1 in UNION DISTINCT has type that does not support set operation comparisons: STRUCT [at 3:1]
+select (1, 1);
+^
+--
+ALTERNATION GROUP: intersect,all
+--
+ERROR: Column 1 in INTERSECT ALL has type that does not support set operation comparisons: STRUCT [at 3:1]
+select (1, 1);
+^
+--
+ALTERNATION GROUP: intersect,distinct
+--
+ERROR: Column 1 in INTERSECT DISTINCT has type that does not support set operation comparisons: STRUCT [at 3:1]
+select (1, 1);
+^
+--
+ALTERNATION GROUP: except,all
+--
+ERROR: Column 1 in EXCEPT ALL has type that does not support set operation comparisons: STRUCT [at 3:1]
+select (1, 1);
+^
+--
+ALTERNATION GROUP: except,distinct
+--
+ERROR: Column 1 in EXCEPT DISTINCT has type that does not support set operation comparisons: STRUCT [at 3:1]
+select (1, 1);
+^
+
+==
+
+# Allow group by struct, but invalid because the struct contains array
+[language_features=NONE,+GROUP_BY_STRUCT]
+select (1, [1])
+ {{union|intersect|except}} {{all|distinct}}
+select (1, [1]);
+--
+ALTERNATION GROUP: union,all
+--
+QueryStmt
++-output_column_list=
+| +-$union_all.$col1#3 AS `$col1` [STRUCT<INT64, ARRAY<INT64>>]
++-query=
+  +-SetOperationScan
+    +-column_list=[$union_all.$col1#3]
+    +-op_type=UNION_ALL
+    +-input_item_list=
+      +-SetOperationItem
+      | +-scan=
+      | | +-ProjectScan
+      | |   +-column_list=[$union_all1.$col1#1]
+      | |   +-expr_list=
+      | |   | +-$col1#1 := Literal(type=STRUCT<INT64, ARRAY<INT64>>, value={1, [1]})
+      | |   +-input_scan=
+      | |     +-SingleRowScan
+      | +-output_column_list=[$union_all1.$col1#1]
+      +-SetOperationItem
+        +-scan=
+        | +-ProjectScan
+        |   +-column_list=[$union_all2.$col1#2]
+        |   +-expr_list=
+        |   | +-$col1#2 := Literal(type=STRUCT<INT64, ARRAY<INT64>>, value={1, [1]})
+        |   +-input_scan=
+        |     +-SingleRowScan
+        +-output_column_list=[$union_all2.$col1#2]
+--
+ALTERNATION GROUP: union,distinct
+--
+ERROR: Column 1 in UNION DISTINCT has type that does not support set operation comparisons: STRUCT containing ARRAY [at 3:1]
+select (1, [1]);
+^
+--
+ALTERNATION GROUP: intersect,all
+--
+ERROR: Column 1 in INTERSECT ALL has type that does not support set operation comparisons: STRUCT containing ARRAY [at 3:1]
+select (1, [1]);
+^
+--
+ALTERNATION GROUP: intersect,distinct
+--
+ERROR: Column 1 in INTERSECT DISTINCT has type that does not support set operation comparisons: STRUCT containing ARRAY [at 3:1]
+select (1, [1]);
+^
+--
+ALTERNATION GROUP: except,all
+--
+ERROR: Column 1 in EXCEPT ALL has type that does not support set operation comparisons: STRUCT containing ARRAY [at 3:1]
+select (1, [1]);
+^
+--
+ALTERNATION GROUP: except,distinct
+--
+ERROR: Column 1 in EXCEPT DISTINCT has type that does not support set operation comparisons: STRUCT containing ARRAY [at 3:1]
+select (1, [1]);
+^
+==
+
+# Allow group by struct, but invalid because the struct contains floating point
+[language_features=NONE,+GROUP_BY_STRUCT{{|,+DISALLOW_GROUP_BY_FLOAT}}]
+select (1, 1.123)
+ {{union|intersect|except}} {{all|distinct}}
+select (1, 1.123);
+--
+ALTERNATION GROUPS:
+    union,all
+    ,+DISALLOW_GROUP_BY_FLOAT,union,all
+--
+QueryStmt
++-output_column_list=
+| +-$union_all.$col1#3 AS `$col1` [STRUCT<INT64, DOUBLE>]
++-query=
+  +-SetOperationScan
+    +-column_list=[$union_all.$col1#3]
+    +-op_type=UNION_ALL
+    +-input_item_list=
+      +-SetOperationItem
+      | +-scan=
+      | | +-ProjectScan
+      | |   +-column_list=[$union_all1.$col1#1]
+      | |   +-expr_list=
+      | |   | +-$col1#1 := Literal(type=STRUCT<INT64, DOUBLE>, value={1, 1.123})
+      | |   +-input_scan=
+      | |     +-SingleRowScan
+      | +-output_column_list=[$union_all1.$col1#1]
+      +-SetOperationItem
+        +-scan=
+        | +-ProjectScan
+        |   +-column_list=[$union_all2.$col1#2]
+        |   +-expr_list=
+        |   | +-$col1#2 := Literal(type=STRUCT<INT64, DOUBLE>, value={1, 1.123})
+        |   +-input_scan=
+        |     +-SingleRowScan
+        +-output_column_list=[$union_all2.$col1#2]
+--
+ALTERNATION GROUP: union,distinct
+--
+QueryStmt
++-output_column_list=
+| +-$union_distinct.$col1#3 AS `$col1` [STRUCT<INT64, DOUBLE>]
++-query=
+  +-SetOperationScan
+    +-column_list=[$union_distinct.$col1#3]
+    +-op_type=UNION_DISTINCT
+    +-input_item_list=
+      +-SetOperationItem
+      | +-scan=
+      | | +-ProjectScan
+      | |   +-column_list=[$union_distinct1.$col1#1]
+      | |   +-expr_list=
+      | |   | +-$col1#1 := Literal(type=STRUCT<INT64, DOUBLE>, value={1, 1.123})
+      | |   +-input_scan=
+      | |     +-SingleRowScan
+      | +-output_column_list=[$union_distinct1.$col1#1]
+      +-SetOperationItem
+        +-scan=
+        | +-ProjectScan
+        |   +-column_list=[$union_distinct2.$col1#2]
+        |   +-expr_list=
+        |   | +-$col1#2 := Literal(type=STRUCT<INT64, DOUBLE>, value={1, 1.123})
+        |   +-input_scan=
+        |     +-SingleRowScan
+        +-output_column_list=[$union_distinct2.$col1#2]
+--
+ALTERNATION GROUP: intersect,all
+--
+QueryStmt
++-output_column_list=
+| +-$intersect_all.$col1#3 AS `$col1` [STRUCT<INT64, DOUBLE>]
++-query=
+  +-SetOperationScan
+    +-column_list=[$intersect_all.$col1#3]
+    +-op_type=INTERSECT_ALL
+    +-input_item_list=
+      +-SetOperationItem
+      | +-scan=
+      | | +-ProjectScan
+      | |   +-column_list=[$intersect_all1.$col1#1]
+      | |   +-expr_list=
+      | |   | +-$col1#1 := Literal(type=STRUCT<INT64, DOUBLE>, value={1, 1.123})
+      | |   +-input_scan=
+      | |     +-SingleRowScan
+      | +-output_column_list=[$intersect_all1.$col1#1]
+      +-SetOperationItem
+        +-scan=
+        | +-ProjectScan
+        |   +-column_list=[$intersect_all2.$col1#2]
+        |   +-expr_list=
+        |   | +-$col1#2 := Literal(type=STRUCT<INT64, DOUBLE>, value={1, 1.123})
+        |   +-input_scan=
+        |     +-SingleRowScan
+        +-output_column_list=[$intersect_all2.$col1#2]
+--
+ALTERNATION GROUP: intersect,distinct
+--
+QueryStmt
++-output_column_list=
+| +-$intersect_distinct.$col1#3 AS `$col1` [STRUCT<INT64, DOUBLE>]
++-query=
+  +-SetOperationScan
+    +-column_list=[$intersect_distinct.$col1#3]
+    +-op_type=INTERSECT_DISTINCT
+    +-input_item_list=
+      +-SetOperationItem
+      | +-scan=
+      | | +-ProjectScan
+      | |   +-column_list=[$intersect_distinct1.$col1#1]
+      | |   +-expr_list=
+      | |   | +-$col1#1 := Literal(type=STRUCT<INT64, DOUBLE>, value={1, 1.123})
+      | |   +-input_scan=
+      | |     +-SingleRowScan
+      | +-output_column_list=[$intersect_distinct1.$col1#1]
+      +-SetOperationItem
+        +-scan=
+        | +-ProjectScan
+        |   +-column_list=[$intersect_distinct2.$col1#2]
+        |   +-expr_list=
+        |   | +-$col1#2 := Literal(type=STRUCT<INT64, DOUBLE>, value={1, 1.123})
+        |   +-input_scan=
+        |     +-SingleRowScan
+        +-output_column_list=[$intersect_distinct2.$col1#2]
+--
+ALTERNATION GROUP: except,all
+--
+QueryStmt
++-output_column_list=
+| +-$except_all.$col1#3 AS `$col1` [STRUCT<INT64, DOUBLE>]
++-query=
+  +-SetOperationScan
+    +-column_list=[$except_all.$col1#3]
+    +-op_type=EXCEPT_ALL
+    +-input_item_list=
+      +-SetOperationItem
+      | +-scan=
+      | | +-ProjectScan
+      | |   +-column_list=[$except_all1.$col1#1]
+      | |   +-expr_list=
+      | |   | +-$col1#1 := Literal(type=STRUCT<INT64, DOUBLE>, value={1, 1.123})
+      | |   +-input_scan=
+      | |     +-SingleRowScan
+      | +-output_column_list=[$except_all1.$col1#1]
+      +-SetOperationItem
+        +-scan=
+        | +-ProjectScan
+        |   +-column_list=[$except_all2.$col1#2]
+        |   +-expr_list=
+        |   | +-$col1#2 := Literal(type=STRUCT<INT64, DOUBLE>, value={1, 1.123})
+        |   +-input_scan=
+        |     +-SingleRowScan
+        +-output_column_list=[$except_all2.$col1#2]
+--
+ALTERNATION GROUP: except,distinct
+--
+QueryStmt
++-output_column_list=
+| +-$except_distinct.$col1#3 AS `$col1` [STRUCT<INT64, DOUBLE>]
++-query=
+  +-SetOperationScan
+    +-column_list=[$except_distinct.$col1#3]
+    +-op_type=EXCEPT_DISTINCT
+    +-input_item_list=
+      +-SetOperationItem
+      | +-scan=
+      | | +-ProjectScan
+      | |   +-column_list=[$except_distinct1.$col1#1]
+      | |   +-expr_list=
+      | |   | +-$col1#1 := Literal(type=STRUCT<INT64, DOUBLE>, value={1, 1.123})
+      | |   +-input_scan=
+      | |     +-SingleRowScan
+      | +-output_column_list=[$except_distinct1.$col1#1]
+      +-SetOperationItem
+        +-scan=
+        | +-ProjectScan
+        |   +-column_list=[$except_distinct2.$col1#2]
+        |   +-expr_list=
+        |   | +-$col1#2 := Literal(type=STRUCT<INT64, DOUBLE>, value={1, 1.123})
+        |   +-input_scan=
+        |     +-SingleRowScan
+        +-output_column_list=[$except_distinct2.$col1#2]
+--
+ALTERNATION GROUP: ,+DISALLOW_GROUP_BY_FLOAT,union,distinct
+--
+ERROR: Column 1 in UNION DISTINCT has type that does not support set operation comparisons: STRUCT containing DOUBLE [at 3:1]
+select (1, 1.123);
+^
+--
+ALTERNATION GROUP: ,+DISALLOW_GROUP_BY_FLOAT,intersect,all
+--
+ERROR: Column 1 in INTERSECT ALL has type that does not support set operation comparisons: STRUCT containing DOUBLE [at 3:1]
+select (1, 1.123);
+^
+--
+ALTERNATION GROUP: ,+DISALLOW_GROUP_BY_FLOAT,intersect,distinct
+--
+ERROR: Column 1 in INTERSECT DISTINCT has type that does not support set operation comparisons: STRUCT containing DOUBLE [at 3:1]
+select (1, 1.123);
+^
+--
+ALTERNATION GROUP: ,+DISALLOW_GROUP_BY_FLOAT,except,all
+--
+ERROR: Column 1 in EXCEPT ALL has type that does not support set operation comparisons: STRUCT containing DOUBLE [at 3:1]
+select (1, 1.123);
+^
+--
+ALTERNATION GROUP: ,+DISALLOW_GROUP_BY_FLOAT,except,distinct
+--
+ERROR: Column 1 in EXCEPT DISTINCT has type that does not support set operation comparisons: STRUCT containing DOUBLE [at 3:1]
+select (1, 1.123);
+^
+==
+
+# Other set operations do not allow types that do not support grouping.
+select [1, 1] intersect all select [2, 3, 4];
+--
+ERROR: Column 1 in INTERSECT ALL has type that does not support set operation comparisons: ARRAY [at 1:29]
+select [1, 1] intersect all select [2, 3, 4];
+                            ^
+==
+
+select cast(null as googlesql_test.TestInvalidTypeAnnotations)
+except all
+select cast(null as googlesql_test.TestInvalidTypeAnnotations)
+--
+
+ERROR: Column 1 in EXCEPT ALL has type that does not support set operation comparisons: PROTO [at 3:1]
+select cast(null as googlesql_test.TestInvalidTypeAnnotations)
+^
+==
+
+# Set ops other than UNION ALL aren't allowed on floating point types if
+# DISALLOW_GROUP_BY_FLOAT is set.
+[language_features=NONE,{{+DISALLOW_GROUP_BY_FLOAT|}}]
+select int64, double from SimpleTypes
+{{union|intersect|except}} {{all|distinct}}
+select int64, double from SimpleTypes
+--
+ALTERNATION GROUPS:
+    +DISALLOW_GROUP_BY_FLOAT,union,all
+    union,all
+--
+QueryStmt
++-output_column_list=
+| +-$union_all.int64#39 AS int64 [INT64]
+| +-$union_all.double#40 AS double [DOUBLE]
++-query=
+  +-SetOperationScan
+    +-column_list=$union_all.[int64#39, double#40]
+    +-op_type=UNION_ALL
+    +-input_item_list=
+      +-SetOperationItem
+      | +-scan=
+      | | +-ProjectScan
+      | |   +-column_list=SimpleTypes.[int64#2, double#9]
+      | |   +-input_scan=
+      | |     +-TableScan(column_list=SimpleTypes.[int64#2, double#9], table=SimpleTypes, column_index_list=[1, 8])
+      | +-output_column_list=SimpleTypes.[int64#2, double#9]
+      +-SetOperationItem
+        +-scan=
+        | +-ProjectScan
+        |   +-column_list=SimpleTypes.[int64#21, double#28]
+        |   +-input_scan=
+        |     +-TableScan(column_list=SimpleTypes.[int64#21, double#28], table=SimpleTypes, column_index_list=[1, 8])
+        +-output_column_list=SimpleTypes.[int64#21, double#28]
+--
+ALTERNATION GROUP: +DISALLOW_GROUP_BY_FLOAT,union,distinct
+--
+ERROR: Column 2 in UNION DISTINCT has type that does not support set operation comparisons: DOUBLE [at 3:1]
+select int64, double from SimpleTypes
+^
+--
+ALTERNATION GROUP: +DISALLOW_GROUP_BY_FLOAT,intersect,all
+--
+ERROR: Column 2 in INTERSECT ALL has type that does not support set operation comparisons: DOUBLE [at 3:1]
+select int64, double from SimpleTypes
+^
+--
+ALTERNATION GROUP: +DISALLOW_GROUP_BY_FLOAT,intersect,distinct
+--
+ERROR: Column 2 in INTERSECT DISTINCT has type that does not support set operation comparisons: DOUBLE [at 3:1]
+select int64, double from SimpleTypes
+^
+--
+ALTERNATION GROUP: +DISALLOW_GROUP_BY_FLOAT,except,all
+--
+ERROR: Column 2 in EXCEPT ALL has type that does not support set operation comparisons: DOUBLE [at 3:1]
+select int64, double from SimpleTypes
+^
+--
+ALTERNATION GROUP: +DISALLOW_GROUP_BY_FLOAT,except,distinct
+--
+ERROR: Column 2 in EXCEPT DISTINCT has type that does not support set operation comparisons: DOUBLE [at 3:1]
+select int64, double from SimpleTypes
+^
+--
+ALTERNATION GROUP: union,distinct
+--
+QueryStmt
++-output_column_list=
+| +-$union_distinct.int64#39 AS int64 [INT64]
+| +-$union_distinct.double#40 AS double [DOUBLE]
++-query=
+  +-SetOperationScan
+    +-column_list=$union_distinct.[int64#39, double#40]
+    +-op_type=UNION_DISTINCT
+    +-input_item_list=
+      +-SetOperationItem
+      | +-scan=
+      | | +-ProjectScan
+      | |   +-column_list=SimpleTypes.[int64#2, double#9]
+      | |   +-input_scan=
+      | |     +-TableScan(column_list=SimpleTypes.[int64#2, double#9], table=SimpleTypes, column_index_list=[1, 8])
+      | +-output_column_list=SimpleTypes.[int64#2, double#9]
+      +-SetOperationItem
+        +-scan=
+        | +-ProjectScan
+        |   +-column_list=SimpleTypes.[int64#21, double#28]
+        |   +-input_scan=
+        |     +-TableScan(column_list=SimpleTypes.[int64#21, double#28], table=SimpleTypes, column_index_list=[1, 8])
+        +-output_column_list=SimpleTypes.[int64#21, double#28]
+--
+ALTERNATION GROUP: intersect,all
+--
+QueryStmt
++-output_column_list=
+| +-$intersect_all.int64#39 AS int64 [INT64]
+| +-$intersect_all.double#40 AS double [DOUBLE]
++-query=
+  +-SetOperationScan
+    +-column_list=$intersect_all.[int64#39, double#40]
+    +-op_type=INTERSECT_ALL
+    +-input_item_list=
+      +-SetOperationItem
+      | +-scan=
+      | | +-ProjectScan
+      | |   +-column_list=SimpleTypes.[int64#2, double#9]
+      | |   +-input_scan=
+      | |     +-TableScan(column_list=SimpleTypes.[int64#2, double#9], table=SimpleTypes, column_index_list=[1, 8])
+      | +-output_column_list=SimpleTypes.[int64#2, double#9]
+      +-SetOperationItem
+        +-scan=
+        | +-ProjectScan
+        |   +-column_list=SimpleTypes.[int64#21, double#28]
+        |   +-input_scan=
+        |     +-TableScan(column_list=SimpleTypes.[int64#21, double#28], table=SimpleTypes, column_index_list=[1, 8])
+        +-output_column_list=SimpleTypes.[int64#21, double#28]
+--
+ALTERNATION GROUP: intersect,distinct
+--
+QueryStmt
++-output_column_list=
+| +-$intersect_distinct.int64#39 AS int64 [INT64]
+| +-$intersect_distinct.double#40 AS double [DOUBLE]
++-query=
+  +-SetOperationScan
+    +-column_list=$intersect_distinct.[int64#39, double#40]
+    +-op_type=INTERSECT_DISTINCT
+    +-input_item_list=
+      +-SetOperationItem
+      | +-scan=
+      | | +-ProjectScan
+      | |   +-column_list=SimpleTypes.[int64#2, double#9]
+      | |   +-input_scan=
+      | |     +-TableScan(column_list=SimpleTypes.[int64#2, double#9], table=SimpleTypes, column_index_list=[1, 8])
+      | +-output_column_list=SimpleTypes.[int64#2, double#9]
+      +-SetOperationItem
+        +-scan=
+        | +-ProjectScan
+        |   +-column_list=SimpleTypes.[int64#21, double#28]
+        |   +-input_scan=
+        |     +-TableScan(column_list=SimpleTypes.[int64#21, double#28], table=SimpleTypes, column_index_list=[1, 8])
+        +-output_column_list=SimpleTypes.[int64#21, double#28]
+--
+ALTERNATION GROUP: except,all
+--
+QueryStmt
++-output_column_list=
+| +-$except_all.int64#39 AS int64 [INT64]
+| +-$except_all.double#40 AS double [DOUBLE]
++-query=
+  +-SetOperationScan
+    +-column_list=$except_all.[int64#39, double#40]
+    +-op_type=EXCEPT_ALL
+    +-input_item_list=
+      +-SetOperationItem
+      | +-scan=
+      | | +-ProjectScan
+      | |   +-column_list=SimpleTypes.[int64#2, double#9]
+      | |   +-input_scan=
+      | |     +-TableScan(column_list=SimpleTypes.[int64#2, double#9], table=SimpleTypes, column_index_list=[1, 8])
+      | +-output_column_list=SimpleTypes.[int64#2, double#9]
+      +-SetOperationItem
+        +-scan=
+        | +-ProjectScan
+        |   +-column_list=SimpleTypes.[int64#21, double#28]
+        |   +-input_scan=
+        |     +-TableScan(column_list=SimpleTypes.[int64#21, double#28], table=SimpleTypes, column_index_list=[1, 8])
+        +-output_column_list=SimpleTypes.[int64#21, double#28]
+--
+ALTERNATION GROUP: except,distinct
+--
+QueryStmt
++-output_column_list=
+| +-$except_distinct.int64#39 AS int64 [INT64]
+| +-$except_distinct.double#40 AS double [DOUBLE]
++-query=
+  +-SetOperationScan
+    +-column_list=$except_distinct.[int64#39, double#40]
+    +-op_type=EXCEPT_DISTINCT
+    +-input_item_list=
+      +-SetOperationItem
+      | +-scan=
+      | | +-ProjectScan
+      | |   +-column_list=SimpleTypes.[int64#2, double#9]
+      | |   +-input_scan=
+      | |     +-TableScan(column_list=SimpleTypes.[int64#2, double#9], table=SimpleTypes, column_index_list=[1, 8])
+      | +-output_column_list=SimpleTypes.[int64#2, double#9]
+      +-SetOperationItem
+        +-scan=
+        | +-ProjectScan
+        |   +-column_list=SimpleTypes.[int64#21, double#28]
+        |   +-input_scan=
+        |     +-TableScan(column_list=SimpleTypes.[int64#21, double#28], table=SimpleTypes, column_index_list=[1, 8])
+        +-output_column_list=SimpleTypes.[int64#21, double#28]
+==
+
+# This was http://b/22000298.  We use GetASTNodeForColumn(column_idx) to get
+# an ASTLocation for a column that we are casting during a set operation, but
+# that function wasn't accounting for SELECT * changing column indexes.
+select "abc" c1, cast(1 as int64) c2
+union all
+select * from (
+  select "def" c1, cast(1 as int32) c2
+)
+--
+QueryStmt
++-output_column_list=
+| +-$union_all.c1#5 AS c1 [STRING]
+| +-$union_all.c2#6 AS c2 [INT64]
++-query=
+  +-SetOperationScan
+    +-column_list=$union_all.[c1#5, c2#6]
+    +-op_type=UNION_ALL
+    +-input_item_list=
+      +-SetOperationItem
+      | +-scan=
+      | | +-ProjectScan
+      | |   +-column_list=$union_all1.[c1#1, c2#2]
+      | |   +-expr_list=
+      | |   | +-c1#1 := Literal(type=STRING, value="abc")
+      | |   | +-c2#2 := Literal(type=INT64, value=1, has_explicit_type=TRUE)
+      | |   +-input_scan=
+      | |     +-SingleRowScan
+      | +-output_column_list=$union_all1.[c1#1, c2#2]
+      +-SetOperationItem
+        +-scan=
+        | +-ProjectScan
+        |   +-column_list=[$subquery1.c1#3, $union_all2_cast.c2#7]
+        |   +-expr_list=
+        |   | +-c2#7 :=
+        |   |   +-Cast(INT32 -> INT64)
+        |   |     +-ColumnRef(type=INT32, column=$subquery1.c2#4)
+        |   +-input_scan=
+        |     +-ProjectScan
+        |       +-column_list=$subquery1.[c1#3, c2#4]
+        |       +-input_scan=
+        |         +-ProjectScan
+        |           +-column_list=$subquery1.[c1#3, c2#4]
+        |           +-expr_list=
+        |           | +-c1#3 := Literal(type=STRING, value="def")
+        |           | +-c2#4 := Literal(type=INT32, value=1, has_explicit_type=TRUE)
+        |           +-input_scan=
+        |             +-SingleRowScan
+        +-output_column_list=[$subquery1.c1#3, $union_all2_cast.c2#7]
+==
+
+# Another case for http://b/22000298, where we actually get an error.
+# Note that the error cannot find a specific column because of the *,
+# so the error just points at the select.
+select key, key, key, KitchenSink from TestTable
+union all
+select *, "abc" from (select 1, 2, 3)
+--
+ERROR: Could not cast literal "abc" to type googlesql_test.KitchenSinkPB (Error parsing proto: Message type "googlesql_test.KitchenSinkPB" has no field named "abc". [1:4]) [at 3:1]
+select *, "abc" from (select 1, 2, 3)
+^
+==
+
+# Same as above, except the * expands to only one column, so the column
+# list still matches 1:1 and we still figure out a select list entry to
+# attach the error to.
+select key, KitchenSink from TestTable
+union all
+select *, "abc" from (select 1)
+--
+ERROR: Could not cast literal "abc" to type googlesql_test.KitchenSinkPB (Error parsing proto: Message type "googlesql_test.KitchenSinkPB" has no field named "abc". [1:4]) [at 3:11]
+select *, "abc" from (select 1)
+          ^
+==
+
+# Test cases where the column_list sizes of the union inputs may not match
+# because of deduplication.
+select key, key, 1 from TestTable
+union all
+select key, 2, 3 from TestTable
+--
+QueryStmt
++-output_column_list=
+| +-$union_all.key#10 AS key [INT32]
+| +-$union_all.key#11 AS key [INT32]
+| +-$union_all.$col3#12 AS `$col3` [INT64]
++-query=
+  +-SetOperationScan
+    +-column_list=$union_all.[key#10, key#11, $col3#12]
+    +-op_type=UNION_ALL
+    +-input_item_list=
+      +-SetOperationItem
+      | +-scan=
+      | | +-ProjectScan
+      | |   +-column_list=[TestTable.key#1, TestTable.key#1, $union_all1.$col3#4]
+      | |   +-expr_list=
+      | |   | +-$col3#4 := Literal(type=INT64, value=1)
+      | |   +-input_scan=
+      | |     +-TableScan(column_list=[TestTable.key#1], table=TestTable, column_index_list=[0])
+      | +-output_column_list=[TestTable.key#1, TestTable.key#1, $union_all1.$col3#4]
+      +-SetOperationItem
+        +-scan=
+        | +-ProjectScan
+        |   +-column_list=[TestTable.key#5, $union_all2_cast.$col2#13, $union_all2.$col3#9]
+        |   +-expr_list=
+        |   | +-$col2#13 := Literal(type=INT32, value=2)
+        |   +-input_scan=
+        |     +-ProjectScan
+        |       +-column_list=[TestTable.key#5, $union_all2.$col2#8, $union_all2.$col3#9]
+        |       +-expr_list=
+        |       | +-$col2#8 := Literal(type=INT64, value=2)
+        |       | +-$col3#9 := Literal(type=INT64, value=3)
+        |       +-input_scan=
+        |         +-TableScan(column_list=[TestTable.key#5], table=TestTable, column_index_list=[0])
+        +-output_column_list=[TestTable.key#5, $union_all2_cast.$col2#13, $union_all2.$col3#9]
+==
+
+select key, key from TestTable
+union all
+select key+1, key+2 from TestTable
+union all
+select key, key+0 from TestTable
+--
+QueryStmt
++-output_column_list=
+| +-$union_all.key#13 AS key [INT64]
+| +-$union_all.key#14 AS key [INT64]
++-query=
+  +-SetOperationScan
+    +-column_list=$union_all.[key#13, key#14]
+    +-op_type=UNION_ALL
+    +-input_item_list=
+      +-SetOperationItem
+      | +-scan=
+      | | +-ProjectScan
+      | |   +-column_list=$union_all1_cast.[key#15, key#16]
+      | |   +-expr_list=
+      | |   | +-key#15 :=
+      | |   | | +-Cast(INT32 -> INT64)
+      | |   | |   +-ColumnRef(type=INT32, column=TestTable.key#1)
+      | |   | +-key#16 :=
+      | |   |   +-Cast(INT32 -> INT64)
+      | |   |     +-ColumnRef(type=INT32, column=TestTable.key#1)
+      | |   +-input_scan=
+      | |     +-ProjectScan
+      | |       +-column_list=TestTable.[key#1, key#1]
+      | |       +-input_scan=
+      | |         +-TableScan(column_list=[TestTable.key#1], table=TestTable, column_index_list=[0])
+      | +-output_column_list=$union_all1_cast.[key#15, key#16]
+      +-SetOperationItem
+      | +-scan=
+      | | +-ProjectScan
+      | |   +-column_list=$union_all2.[$col1#7, $col2#8]
+      | |   +-expr_list=
+      | |   | +-$col1#7 :=
+      | |   | | +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+      | |   | |   +-Cast(INT32 -> INT64)
+      | |   | |   | +-ColumnRef(type=INT32, column=TestTable.key#4)
+      | |   | |   +-Literal(type=INT64, value=1)
+      | |   | +-$col2#8 :=
+      | |   |   +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+      | |   |     +-Cast(INT32 -> INT64)
+      | |   |     | +-ColumnRef(type=INT32, column=TestTable.key#4)
+      | |   |     +-Literal(type=INT64, value=2)
+      | |   +-input_scan=
+      | |     +-TableScan(column_list=[TestTable.key#4], table=TestTable, column_index_list=[0])
+      | +-output_column_list=$union_all2.[$col1#7, $col2#8]
+      +-SetOperationItem
+        +-scan=
+        | +-ProjectScan
+        |   +-column_list=[$union_all3_cast.key#17, $union_all3.$col2#12]
+        |   +-expr_list=
+        |   | +-key#17 :=
+        |   |   +-Cast(INT32 -> INT64)
+        |   |     +-ColumnRef(type=INT32, column=TestTable.key#9)
+        |   +-input_scan=
+        |     +-ProjectScan
+        |       +-column_list=[TestTable.key#9, $union_all3.$col2#12]
+        |       +-expr_list=
+        |       | +-$col2#12 :=
+        |       |   +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+        |       |     +-Cast(INT32 -> INT64)
+        |       |     | +-ColumnRef(type=INT32, column=TestTable.key#9)
+        |       |     +-Literal(type=INT64, value=0)
+        |       +-input_scan=
+        |         +-TableScan(column_list=[TestTable.key#9], table=TestTable, column_index_list=[0])
+        +-output_column_list=[$union_all3_cast.key#17, $union_all3.$col2#12]
+==
+
+select key+1, key+2, 1 from TestTable
+union all
+select key, key, 0 from TestTable
+--
+QueryStmt
++-output_column_list=
+| +-$union_all.$col1#11 AS `$col1` [INT64]
+| +-$union_all.$col2#12 AS `$col2` [INT64]
+| +-$union_all.$col3#13 AS `$col3` [INT64]
++-query=
+  +-SetOperationScan
+    +-column_list=$union_all.[$col1#11, $col2#12, $col3#13]
+    +-op_type=UNION_ALL
+    +-input_item_list=
+      +-SetOperationItem
+      | +-scan=
+      | | +-ProjectScan
+      | |   +-column_list=$union_all1.[$col1#4, $col2#5, $col3#6]
+      | |   +-expr_list=
+      | |   | +-$col1#4 :=
+      | |   | | +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+      | |   | |   +-Cast(INT32 -> INT64)
+      | |   | |   | +-ColumnRef(type=INT32, column=TestTable.key#1)
+      | |   | |   +-Literal(type=INT64, value=1)
+      | |   | +-$col2#5 :=
+      | |   | | +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+      | |   | |   +-Cast(INT32 -> INT64)
+      | |   | |   | +-ColumnRef(type=INT32, column=TestTable.key#1)
+      | |   | |   +-Literal(type=INT64, value=2)
+      | |   | +-$col3#6 := Literal(type=INT64, value=1)
+      | |   +-input_scan=
+      | |     +-TableScan(column_list=[TestTable.key#1], table=TestTable, column_index_list=[0])
+      | +-output_column_list=$union_all1.[$col1#4, $col2#5, $col3#6]
+      +-SetOperationItem
+        +-scan=
+        | +-ProjectScan
+        |   +-column_list=[$union_all2_cast.key#14, $union_all2_cast.key#15, $union_all2.$col3#10]
+        |   +-expr_list=
+        |   | +-key#14 :=
+        |   | | +-Cast(INT32 -> INT64)
+        |   | |   +-ColumnRef(type=INT32, column=TestTable.key#7)
+        |   | +-key#15 :=
+        |   |   +-Cast(INT32 -> INT64)
+        |   |     +-ColumnRef(type=INT32, column=TestTable.key#7)
+        |   +-input_scan=
+        |     +-ProjectScan
+        |       +-column_list=[TestTable.key#7, TestTable.key#7, $union_all2.$col3#10]
+        |       +-expr_list=
+        |       | +-$col3#10 := Literal(type=INT64, value=0)
+        |       +-input_scan=
+        |         +-TableScan(column_list=[TestTable.key#7], table=TestTable, column_index_list=[0])
+        +-output_column_list=[$union_all2_cast.key#14, $union_all2_cast.key#15, $union_all2.$col3#10]
+==
+
+select key, 0, 1 from TestTable
+union all
+select key, key, 2 from TestTable
+--
+QueryStmt
++-output_column_list=
+| +-$union_all.key#10 AS key [INT32]
+| +-$union_all.$col2#11 AS `$col2` [INT32]
+| +-$union_all.$col3#12 AS `$col3` [INT64]
++-query=
+  +-SetOperationScan
+    +-column_list=$union_all.[key#10, $col2#11, $col3#12]
+    +-op_type=UNION_ALL
+    +-input_item_list=
+      +-SetOperationItem
+      | +-scan=
+      | | +-ProjectScan
+      | |   +-column_list=[TestTable.key#1, $union_all1_cast.$col2#13, $union_all1.$col3#5]
+      | |   +-expr_list=
+      | |   | +-$col2#13 := Literal(type=INT32, value=0)
+      | |   +-input_scan=
+      | |     +-ProjectScan
+      | |       +-column_list=[TestTable.key#1, $union_all1.$col2#4, $union_all1.$col3#5]
+      | |       +-expr_list=
+      | |       | +-$col2#4 := Literal(type=INT64, value=0)
+      | |       | +-$col3#5 := Literal(type=INT64, value=1)
+      | |       +-input_scan=
+      | |         +-TableScan(column_list=[TestTable.key#1], table=TestTable, column_index_list=[0])
+      | +-output_column_list=[TestTable.key#1, $union_all1_cast.$col2#13, $union_all1.$col3#5]
+      +-SetOperationItem
+        +-scan=
+        | +-ProjectScan
+        |   +-column_list=[TestTable.key#6, TestTable.key#6, $union_all2.$col3#9]
+        |   +-expr_list=
+        |   | +-$col3#9 := Literal(type=INT64, value=2)
+        |   +-input_scan=
+        |     +-TableScan(column_list=[TestTable.key#6], table=TestTable, column_index_list=[0])
+        +-output_column_list=[TestTable.key#6, TestTable.key#6, $union_all2.$col3#9]
+==
+
+select 1
+UNION @{ key = 5 } ALL
+select 2
+UNION ALL
+select 3
+--
+QueryStmt
++-output_column_list=
+| +-$union_all.$col1#4 AS `$col1` [INT64]
++-query=
+  +-SetOperationScan
+    +-column_list=[$union_all.$col1#4]
+    +-hint_list=
+    | +-key := Literal(type=INT64, value=5)
+    +-op_type=UNION_ALL
+    +-input_item_list=
+      +-SetOperationItem
+      | +-scan=
+      | | +-ProjectScan
+      | |   +-column_list=[$union_all1.$col1#1]
+      | |   +-expr_list=
+      | |   | +-$col1#1 := Literal(type=INT64, value=1)
+      | |   +-input_scan=
+      | |     +-SingleRowScan
+      | +-output_column_list=[$union_all1.$col1#1]
+      +-SetOperationItem
+      | +-scan=
+      | | +-ProjectScan
+      | |   +-column_list=[$union_all2.$col1#2]
+      | |   +-expr_list=
+      | |   | +-$col1#2 := Literal(type=INT64, value=2)
+      | |   +-input_scan=
+      | |     +-SingleRowScan
+      | +-output_column_list=[$union_all2.$col1#2]
+      +-SetOperationItem
+        +-scan=
+        | +-ProjectScan
+        |   +-column_list=[$union_all3.$col1#3]
+        |   +-expr_list=
+        |   | +-$col1#3 := Literal(type=INT64, value=3)
+        |   +-input_scan=
+        |     +-SingleRowScan
+        +-output_column_list=[$union_all3.$col1#3]
+==
+
+SELECT bool_val FROM (SELECT true AS bool_val)
+UNION DISTINCT
+SELECT str_val FROM (SELECT 'abc' AS str_val)
+--
+ERROR: Column 1 in UNION DISTINCT has incompatible types: BOOL, STRING [at 3:1]
+SELECT str_val FROM (SELECT 'abc' AS str_val)
+^
+==
+
+# Type coercions between value tables and NULL literals.
+# The output is a value table iff the first input is a value table.
+[language_features=NONE,+PIPES,+PIPE_STATIC_DESCRIBE]
+SELECT NULL
+UNION ALL
+SELECT AS STRUCT 1 a, 2 b
+|> static_describe
+--
+QueryStmt
++-output_column_list=
+| +-$union_all.$col1#5 AS `$col1` [STRUCT<a INT64, b INT64>]
++-query=
+  +-StaticDescribeScan
+    +-column_list=[$union_all.$col1#5]
+    +-describe_text=
+    |   """
+    |   NameList:
+    |     <unnamed> STRUCT<a INT64, b INT64> $union_all.$col1#5
+    |   NameScope:
+    |   """
+    +-input_scan=
+      +-SetOperationScan
+        +-column_list=[$union_all.$col1#5]
+        +-op_type=UNION_ALL
+        +-input_item_list=
+          +-SetOperationItem
+          | +-scan=
+          | | +-ProjectScan
+          | |   +-column_list=[$union_all1_cast.$col1#6]
+          | |   +-expr_list=
+          | |   | +-$col1#6 := Literal(type=STRUCT<a INT64, b INT64>, value=NULL)
+          | |   +-input_scan=
+          | |     +-ProjectScan
+          | |       +-column_list=[$union_all1.$col1#1]
+          | |       +-expr_list=
+          | |       | +-$col1#1 := Literal(type=INT64, value=NULL)
+          | |       +-input_scan=
+          | |         +-SingleRowScan
+          | +-output_column_list=[$union_all1_cast.$col1#6]
+          +-SetOperationItem
+            +-scan=
+            | +-ProjectScan
+            |   +-column_list=[$make_struct.$struct#4]
+            |   +-expr_list=
+            |   | +-$struct#4 :=
+            |   |   +-MakeStruct
+            |   |     +-type=STRUCT<a INT64, b INT64>
+            |   |     +-field_list=
+            |   |       +-ColumnRef(type=INT64, column=$union_all2.a#2)
+            |   |       +-ColumnRef(type=INT64, column=$union_all2.b#3)
+            |   +-input_scan=
+            |     +-ProjectScan
+            |       +-column_list=$union_all2.[a#2, b#3]
+            |       +-expr_list=
+            |       | +-a#2 := Literal(type=INT64, value=1)
+            |       | +-b#3 := Literal(type=INT64, value=2)
+            |       +-input_scan=
+            |         +-SingleRowScan
+            +-output_column_list=[$make_struct.$struct#4]
+==
+
+# Type coercions between value tables and NULL literals.
+# The output is a value table iff the first input is a value table.
+[language_features=NONE,+PIPES,+PIPE_STATIC_DESCRIBE]
+SELECT AS STRUCT 1 a, 2 b
+UNION ALL
+SELECT NULL
+|> static_describe
+--
+QueryStmt
++-output_column_list=
+| +-$union_all.$struct#5 AS `$struct` [STRUCT<a INT64, b INT64>]
++-is_value_table=TRUE
++-query=
+  +-StaticDescribeScan
+    +-column_list=[$union_all.$struct#5]
+    +-describe_text=
+    |   """
+    |   NameList (is_value_table = true):
+    |     <unnamed> STRUCT<a INT64, b INT64> $union_all.$struct#5 (value table)
+    |   NameScope:
+    |     Value table columns:
+    |       $union_all.$struct#5
+    |   """
+    +-input_scan=
+      +-SetOperationScan
+        +-column_list=[$union_all.$struct#5]
+        +-op_type=UNION_ALL
+        +-input_item_list=
+          +-SetOperationItem
+          | +-scan=
+          | | +-ProjectScan
+          | |   +-column_list=[$make_struct.$struct#3]
+          | |   +-expr_list=
+          | |   | +-$struct#3 :=
+          | |   |   +-MakeStruct
+          | |   |     +-type=STRUCT<a INT64, b INT64>
+          | |   |     +-field_list=
+          | |   |       +-ColumnRef(type=INT64, column=$union_all1.a#1)
+          | |   |       +-ColumnRef(type=INT64, column=$union_all1.b#2)
+          | |   +-input_scan=
+          | |     +-ProjectScan
+          | |       +-column_list=$union_all1.[a#1, b#2]
+          | |       +-expr_list=
+          | |       | +-a#1 := Literal(type=INT64, value=1)
+          | |       | +-b#2 := Literal(type=INT64, value=2)
+          | |       +-input_scan=
+          | |         +-SingleRowScan
+          | +-output_column_list=[$make_struct.$struct#3]
+          +-SetOperationItem
+            +-scan=
+            | +-ProjectScan
+            |   +-column_list=[$union_all2_cast.$col1#6]
+            |   +-expr_list=
+            |   | +-$col1#6 := Literal(type=STRUCT<a INT64, b INT64>, value=NULL)
+            |   +-input_scan=
+            |     +-ProjectScan
+            |       +-column_list=[$union_all2.$col1#4]
+            |       +-expr_list=
+            |       | +-$col1#4 := Literal(type=INT64, value=NULL)
+            |       +-input_scan=
+            |         +-SingleRowScan
+            +-output_column_list=[$union_all2_cast.$col1#6]

@@ -4,7 +4,7 @@
 
 # Time series functions
 
-ZetaSQL supports the following time series functions.
+GoogleSQL supports the following time series functions.
 
 ## Function list
 
@@ -18,7 +18,7 @@ ZetaSQL supports the following time series functions.
   <tbody>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/time-series-functions.md#date_bucket"><code>DATE_BUCKET</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/time-series-functions.md#date_bucket"><code>DATE_BUCKET</code></a>
 </td>
   <td>
     Gets the lower bound of the date bucket that contains a date.
@@ -26,7 +26,7 @@ ZetaSQL supports the following time series functions.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/time-series-functions.md#datetime_bucket"><code>DATETIME_BUCKET</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/time-series-functions.md#datetime_bucket"><code>DATETIME_BUCKET</code></a>
 </td>
   <td>
     Gets the lower bound of the datetime bucket that contains a datetime.
@@ -34,7 +34,7 @@ ZetaSQL supports the following time series functions.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/time-series-functions.md#timestamp_bucket"><code>TIMESTAMP_BUCKET</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/time-series-functions.md#timestamp_bucket"><code>TIMESTAMP_BUCKET</code></a>
 </td>
   <td>
     Gets the lower bound of the timestamp bucket that contains a timestamp.
@@ -46,11 +46,11 @@ ZetaSQL supports the following time series functions.
 
 ## `DATE_BUCKET`
 
-```zetasql
+```googlesql
 DATE_BUCKET(date_in_bucket, bucket_width)
 ```
 
-```zetasql
+```googlesql
 DATE_BUCKET(date_in_bucket, bucket_width, bucket_origin_date)
 ```
 
@@ -79,7 +79,7 @@ In the following example, the origin is omitted and the default origin,
 and the size of each bucket is two days. The lower bound of the bucket in
 which `my_date` belongs is returned.
 
-```zetasql
+```googlesql
 WITH some_dates AS (
   SELECT DATE '1949-12-29' AS my_date UNION ALL
   SELECT DATE '1949-12-30' UNION ALL
@@ -117,7 +117,7 @@ and all buckets expand in both directions from this point. The size of each
 bucket is seven days. The lower bound of the bucket in which `my_date` belongs
 is returned:
 
-```zetasql
+```googlesql
 WITH some_dates AS (
   SELECT DATE '2000-12-20' AS my_date UNION ALL
   SELECT DATE '2000-12-21' UNION ALL
@@ -153,19 +153,19 @@ FROM some_dates;
 -- + Bucket: ...
 ```
 
-[interval-single]: https://github.com/google/zetasql/blob/master/docs/data-types.md#single_datetime_part_interval
+[interval-single]: https://github.com/google/googlesql/blob/master/docs/data-types.md#single_datetime_part_interval
 
-[interval-range]: https://github.com/google/zetasql/blob/master/docs/data-types.md#range_datetime_part_interval
+[interval-range]: https://github.com/google/googlesql/blob/master/docs/data-types.md#range_datetime_part_interval
 
-[interval-parts]: https://github.com/google/zetasql/blob/master/docs/data-types.md#interval_datetime_parts
+[interval-parts]: https://github.com/google/googlesql/blob/master/docs/data-types.md#interval_datetime_parts
 
 ## `DATETIME_BUCKET`
 
-```zetasql
+```googlesql
 DATETIME_BUCKET(datetime_in_bucket, bucket_width)
 ```
 
-```zetasql
+```googlesql
 DATETIME_BUCKET(datetime_in_bucket, bucket_width, bucket_origin_datetime)
 ```
 
@@ -195,7 +195,7 @@ In the following example, the origin is omitted and the default origin,
 origin, and the size of each bucket is 12 hours. The lower bound of the bucket
 in which `my_datetime` belongs is returned:
 
-```zetasql
+```googlesql
 WITH some_datetimes AS (
   SELECT DATETIME '1949-12-30 13:00:00' AS my_datetime UNION ALL
   SELECT DATETIME '1949-12-31 00:00:00' UNION ALL
@@ -233,7 +233,7 @@ and all buckets expand in both directions from this point. The size of each
 bucket is seven days. The lower bound of the bucket in which `my_datetime`
 belongs is returned:
 
-```zetasql
+```googlesql
 WITH some_datetimes AS (
   SELECT DATETIME '2000-12-20 00:00:00' AS my_datetime UNION ALL
   SELECT DATETIME '2000-12-21 00:00:00' UNION ALL
@@ -269,17 +269,17 @@ FROM some_datetimes;
 -- + Bucket: ...
 ```
 
-[interval-single]: https://github.com/google/zetasql/blob/master/docs/data-types.md#single_datetime_part_interval
+[interval-single]: https://github.com/google/googlesql/blob/master/docs/data-types.md#single_datetime_part_interval
 
-[interval-parts]: https://github.com/google/zetasql/blob/master/docs/data-types.md#interval_datetime_parts
+[interval-parts]: https://github.com/google/googlesql/blob/master/docs/data-types.md#interval_datetime_parts
 
 ## `TIMESTAMP_BUCKET`
 
-```zetasql
+```googlesql
 TIMESTAMP_BUCKET(timestamp_in_bucket, bucket_width)
 ```
 
-```zetasql
+```googlesql
 TIMESTAMP_BUCKET(timestamp_in_bucket, bucket_width, bucket_origin_timestamp)
 ```
 
@@ -310,7 +310,7 @@ origin, and the size of each bucket is 12 hours. The default time zone,
 which is implementation defined, is included in the results. The lower bound of the
 bucket in which `my_timestamp` belongs is returned:
 
-```zetasql
+```googlesql
 WITH some_timestamps AS (
   SELECT TIMESTAMP '1949-12-30 13:00:00.00' AS my_timestamp UNION ALL
   SELECT TIMESTAMP '1949-12-31 00:00:00.00' UNION ALL
@@ -351,7 +351,7 @@ bucket is seven days. The default time zone, which is implementation defined, is
 in the results. The lower bound of the bucket in which `my_timestamp`
 belongs is returned:
 
-```zetasql
+```googlesql
 WITH some_timestamps AS (
   SELECT TIMESTAMP '2000-12-20 00:00:00.00' AS my_timestamp UNION ALL
   SELECT TIMESTAMP '2000-12-21 00:00:00.00' UNION ALL
@@ -389,7 +389,7 @@ FROM some_timestamps;
 -- + Bucket: ...
 ```
 
-[interval-single]: https://github.com/google/zetasql/blob/master/docs/data-types.md#single_datetime_part_interval
+[interval-single]: https://github.com/google/googlesql/blob/master/docs/data-types.md#single_datetime_part_interval
 
-[interval-parts]: https://github.com/google/zetasql/blob/master/docs/data-types.md#interval_datetime_parts
+[interval-parts]: https://github.com/google/googlesql/blob/master/docs/data-types.md#interval_datetime_parts
 

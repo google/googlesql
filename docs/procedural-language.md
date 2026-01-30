@@ -4,7 +4,7 @@
 
 # Procedural language
 
-The ZetaSQL procedural language lets you execute multiple statements
+The GoogleSQL procedural language lets you execute multiple statements
 in one query as a multi-statement query. You can use
 a multi-statement query to:
 
@@ -19,7 +19,7 @@ DECLARE variable_name[, ...] [variable_type] [DEFAULT expression];
 </pre>
 
 `variable_name` must be a valid identifier, and `variable_type` is any
-ZetaSQL [type](data-types).
+GoogleSQL [type](data-types).
 
 **Description**
 
@@ -144,7 +144,7 @@ Found 151 occurrences of "methinks" across 38 Shakespeare works
 
 **Syntax**
 
-```zetasql
+```googlesql
 EXECUTE IMMEDIATE sql_expression [ INTO variable[, ...] ] [ USING identifier[, ...] ];
 
 sql_expression:
@@ -187,7 +187,7 @@ referenced in the `USING` clause:
 +  `?`: The value for this placeholder is bound to an identifier in the `USING`
    clause by index.
 
-   ```zetasql
+   ```googlesql
    DECLARE y INT64;
    -- y = 1 * (3 + 2) = 5
    EXECUTE IMMEDIATE "SELECT ? * (? + 2)" INTO y USING 1, 3;
@@ -196,7 +196,7 @@ referenced in the `USING` clause:
    the `USING` clause by name. This syntax is identical to
    the query parameter syntax.
 
-   ```zetasql
+   ```googlesql
    DECLARE y INT64;
    -- y = 1 * (3 + 2) = 5
    EXECUTE IMMEDIATE "SELECT @a * (@b + 2)" INTO y USING 1 as a, 3 as b;
@@ -227,7 +227,7 @@ In this example, we create a table of books and populate it with data. Note
 the different ways that you can reference variables, save values to
 variables, and use expressions.
 
-```zetasql
+```googlesql
 -- Create some variables.
 DECLARE book_name STRING DEFAULT 'Ulysses';
 DECLARE book_year INT64 DEFAULT 1922;
@@ -363,7 +363,7 @@ You can use a label with this statement. To learn more, see [Labels][labels].
 **Examples**
 
 In this example, when the division by zero error occurs, instead of
-stopping the entire multi-statement query, ZetaSQL stops
+stopping the entire multi-statement query, GoogleSQL stops
 `schema1.proc1()` and `schema1.proc2()` and execute the `SELECT` statement in
 the exception handler.
 
@@ -572,7 +572,7 @@ the end of the block or loop associated with that label. To use a label with a
 block or loop, the label must appear at the beginning of the block or loop, and
 optionally at the end.
 
-+ A label name may consist of any ZetaSQL identifier, including the
++ A label name may consist of any GoogleSQL identifier, including the
   use of backticks to include reserved characters or keywords.
 + Multipart path names can be used, but only as quoted identifiers.
 
@@ -762,7 +762,7 @@ SELECT x;
 
 This example outputs the following:
 
-```zetasql
+```googlesql
 /*----+
  | x  |
  +----+
@@ -811,7 +811,7 @@ END <span class="kwd">REPEAT</span>;
 
 This example outputs the following:
 
-```zetasql
+```googlesql
 /*---+
  | x |
  +---+
@@ -1165,7 +1165,7 @@ SELECT retCode;
 
 <!-- mdlint off(WHITESPACE_LINE_LENGTH) -->
 
-[procedures]: https://github.com/google/zetasql/blob/master/docs/data-definition-language.md#create-procedure
+[procedures]: https://github.com/google/googlesql/blob/master/docs/data-definition-language.md#create-procedure
 
 [begin-transaction]: #begin_transaction
 
@@ -1181,17 +1181,17 @@ SELECT retCode;
 
 [declare]: #declare
 
-[query-syntax]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md
+[query-syntax]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md
 
-[functions]: https://github.com/google/zetasql/blob/master/docs/functions-and-operators.md
+[functions]: https://github.com/google/googlesql/blob/master/docs/functions-and-operators.md
 
-[conditional-expressions]: https://github.com/google/zetasql/blob/master/docs/conditional_expressions.md
+[conditional-expressions]: https://github.com/google/googlesql/blob/master/docs/conditional_expressions.md
 
-[expression-subqueries]: https://github.com/google/zetasql/blob/master/docs/subqueries.md#expression_subquery_concepts
+[expression-subqueries]: https://github.com/google/googlesql/blob/master/docs/subqueries.md#expression_subquery_concepts
 
-[ddl]: https://github.com/google/zetasql/blob/master/docs/data-definition-language.md
+[ddl]: https://github.com/google/googlesql/blob/master/docs/data-definition-language.md
 
-[dml]: https://github.com/google/zetasql/blob/master/docs/data-manipulation-language.md
+[dml]: https://github.com/google/googlesql/blob/master/docs/data-manipulation-language.md
 
 <!-- mdlint on -->
 

@@ -1,0 +1,1118 @@
+# This file contains tests for window framing clause in analytic functions. The
+# test analytic functions afn_agg, afn_order and afn_no_order_no_frame are
+# described in analytic_functions.test.
+
+#
+# General rules for one-sided window frame boundary specification.
+#
+
+[default language_features=NONE,+ANALYTIC_FUNCTIONS]
+select afn_agg() over (rows unbounded preceding) from keyvalue
+--
+QueryStmt
++-output_column_list=
+| +-$analytic.$analytic1#4 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$analytic.$analytic1#4]
+    +-input_scan=
+      +-AnalyticScan
+        +-column_list=[$analytic.$analytic1#4]
+        +-input_scan=
+        | +-TableScan(table=KeyValue)
+        +-function_group_list=
+          +-AnalyticFunctionGroup
+            +-analytic_function_list=
+              +-$analytic1#4 :=
+                +-AnalyticFunctionCall(sample_functions:afn_agg() -> INT64)
+                  +-window_frame=
+                    +-WindowFrame(frame_unit=ROWS)
+                      +-start_expr=
+                      | +-WindowFrameExpr(boundary_type=UNBOUNDED PRECEDING)
+                      +-end_expr=
+                        +-WindowFrameExpr(boundary_type=CURRENT ROW)
+==
+
+select afn_agg() over (rows 2 preceding) from keyvalue
+--
+QueryStmt
++-output_column_list=
+| +-$analytic.$analytic1#4 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$analytic.$analytic1#4]
+    +-input_scan=
+      +-AnalyticScan
+        +-column_list=[$analytic.$analytic1#4]
+        +-input_scan=
+        | +-TableScan(table=KeyValue)
+        +-function_group_list=
+          +-AnalyticFunctionGroup
+            +-analytic_function_list=
+              +-$analytic1#4 :=
+                +-AnalyticFunctionCall(sample_functions:afn_agg() -> INT64)
+                  +-window_frame=
+                    +-WindowFrame(frame_unit=ROWS)
+                      +-start_expr=
+                      | +-WindowFrameExpr(boundary_type=OFFSET PRECEDING)
+                      |   +-Literal(type=INT64, value=2)
+                      +-end_expr=
+                        +-WindowFrameExpr(boundary_type=CURRENT ROW)
+==
+
+select afn_agg() over (order by key range current row) from keyvalue
+--
+QueryStmt
++-output_column_list=
+| +-$analytic.$analytic1#4 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$analytic.$analytic1#4]
+    +-input_scan=
+      +-AnalyticScan
+        +-column_list=[KeyValue.Key#1, $analytic.$analytic1#4]
+        +-input_scan=
+        | +-TableScan(column_list=[KeyValue.Key#1], table=KeyValue, column_index_list=[0])
+        +-function_group_list=
+          +-AnalyticFunctionGroup
+            +-order_by=
+            | +-WindowOrdering
+            |   +-order_by_item_list=
+            |     +-OrderByItem
+            |       +-column_ref=
+            |         +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+            +-analytic_function_list=
+              +-$analytic1#4 :=
+                +-AnalyticFunctionCall(sample_functions:afn_agg() -> INT64)
+                  +-window_frame=
+                    +-WindowFrame(frame_unit=RANGE)
+                      +-start_expr=
+                      | +-WindowFrameExpr(boundary_type=CURRENT ROW)
+                      +-end_expr=
+                        +-WindowFrameExpr(boundary_type=CURRENT ROW)
+==
+
+# OFFSET FOLLOWING cannot be the starting boundary, because the implicit ending
+# boundary is CURRENT ROW if omitted.
+select afn_agg() over (rows 2 following) from keyvalue
+--
+ERROR: Starting window framing expression cannot be OFFSET FOLLOWING because the implicit ending window framing expression is CURRENT ROW [at 1:29]
+select afn_agg() over (rows 2 following) from keyvalue
+                            ^
+==
+
+# UNBOUNDED FOLLOWING cannot be the starting boundary.
+select afn_agg() over (order by key range unbounded following) from keyvalue
+--
+ERROR: Starting window framing expression cannot be UNBOUNDED FOLLOWING [at 1:43]
+select afn_agg() over (order by key range unbounded following) from keyvalue
+                                          ^
+==
+
+#
+# General rules for two sided window boundary specification.
+#
+
+# UNBOUNDED PRECEDING cannot be the ending boundary.
+select afn_agg() over (rows between unbounded preceding and unbounded preceding)
+from keyvalue
+--
+ERROR: Ending window framing expression cannot be UNBOUNDED PRECEDING [at 1:61]
+select afn_agg() over (rows between unbounded preceding and unbounded preceding)
+                                                            ^
+==
+
+select afn_agg() over (rows between current row and 2 preceding)
+from keyvalue
+--
+ERROR: Starting window framing expression cannot be CURRENT ROW when the ending window framing expression is OFFSET PRECEDING [at 1:53]
+select afn_agg() over (rows between current row and 2 preceding)
+                                                    ^
+==
+
+select afn_agg() over (order by key range between current row and current row)
+from keyvalue
+--
+QueryStmt
++-output_column_list=
+| +-$analytic.$analytic1#4 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$analytic.$analytic1#4]
+    +-input_scan=
+      +-AnalyticScan
+        +-column_list=[KeyValue.Key#1, $analytic.$analytic1#4]
+        +-input_scan=
+        | +-TableScan(column_list=[KeyValue.Key#1], table=KeyValue, column_index_list=[0])
+        +-function_group_list=
+          +-AnalyticFunctionGroup
+            +-order_by=
+            | +-WindowOrdering
+            |   +-order_by_item_list=
+            |     +-OrderByItem
+            |       +-column_ref=
+            |         +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+            +-analytic_function_list=
+              +-$analytic1#4 :=
+                +-AnalyticFunctionCall(sample_functions:afn_agg() -> INT64)
+                  +-window_frame=
+                    +-WindowFrame(frame_unit=RANGE)
+                      +-start_expr=
+                      | +-WindowFrameExpr(boundary_type=CURRENT ROW)
+                      +-end_expr=
+                        +-WindowFrameExpr(boundary_type=CURRENT ROW)
+==
+
+select afn_agg() over (rows between 2 preceding and unbounded preceding)
+from keyvalue
+--
+ERROR: Ending window framing expression cannot be UNBOUNDED PRECEDING [at 1:53]
+select afn_agg() over (rows between 2 preceding and unbounded preceding)
+                                                    ^
+==
+
+select afn_agg() over (rows between 2 following and 2 preceding)
+from keyvalue
+--
+ERROR: Ending window framing expression cannot be OFFSET PRECEDING when the starting window framing expression is OFFSET FOLLOWING [at 1:53]
+select afn_agg() over (rows between 2 following and 2 preceding)
+                                                    ^
+==
+
+select afn_agg() over (rows between 2 following and current row)
+from keyvalue
+--
+ERROR: Ending window framing expression cannot be CURRENT ROW when the starting window framing expression is OFFSET FOLLOWING [at 1:53]
+select afn_agg() over (rows between 2 following and current row)
+                                                    ^
+==
+
+select afn_agg() over (rows between 2 following and 3 following)
+from keyvalue
+--
+QueryStmt
++-output_column_list=
+| +-$analytic.$analytic1#4 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$analytic.$analytic1#4]
+    +-input_scan=
+      +-AnalyticScan
+        +-column_list=[$analytic.$analytic1#4]
+        +-input_scan=
+        | +-TableScan(table=KeyValue)
+        +-function_group_list=
+          +-AnalyticFunctionGroup
+            +-analytic_function_list=
+              +-$analytic1#4 :=
+                +-AnalyticFunctionCall(sample_functions:afn_agg() -> INT64)
+                  +-window_frame=
+                    +-WindowFrame(frame_unit=ROWS)
+                      +-start_expr=
+                      | +-WindowFrameExpr(boundary_type=OFFSET FOLLOWING)
+                      |   +-Literal(type=INT64, value=2)
+                      +-end_expr=
+                        +-WindowFrameExpr(boundary_type=OFFSET FOLLOWING)
+                          +-Literal(type=INT64, value=3)
+==
+
+# UNBOUNDED FOLLOWING cannot be the starting boundary.
+select afn_agg() over (rows between unbounded following and unbounded following)
+from keyvalue
+--
+ERROR: Starting window framing expression cannot be UNBOUNDED FOLLOWING [at 1:37]
+select afn_agg() over (rows between unbounded following and unbounded following)
+                                    ^
+==
+
+# We compare the boundary expressions if both expressions are literals.
+# If both are preceding, the starting cannot be smaller than the ending.
+select afn_agg() over (rows between 3 preceding and 2 preceding)
+from keyvalue
+--
+QueryStmt
++-output_column_list=
+| +-$analytic.$analytic1#4 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$analytic.$analytic1#4]
+    +-input_scan=
+      +-AnalyticScan
+        +-column_list=[$analytic.$analytic1#4]
+        +-input_scan=
+        | +-TableScan(table=KeyValue)
+        +-function_group_list=
+          +-AnalyticFunctionGroup
+            +-analytic_function_list=
+              +-$analytic1#4 :=
+                +-AnalyticFunctionCall(sample_functions:afn_agg() -> INT64)
+                  +-window_frame=
+                    +-WindowFrame(frame_unit=ROWS)
+                      +-start_expr=
+                      | +-WindowFrameExpr(boundary_type=OFFSET PRECEDING)
+                      |   +-Literal(type=INT64, value=3)
+                      +-end_expr=
+                        +-WindowFrameExpr(boundary_type=OFFSET PRECEDING)
+                          +-Literal(type=INT64, value=2)
+==
+
+# The window frame clause always generates empty windows for all tuples,
+# but we allow this as per the standard.
+select afn_agg() over (rows between 2 preceding and 3 preceding)
+from keyvalue
+--
+QueryStmt
++-output_column_list=
+| +-$analytic.$analytic1#4 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$analytic.$analytic1#4]
+    +-input_scan=
+      +-AnalyticScan
+        +-column_list=[$analytic.$analytic1#4]
+        +-input_scan=
+        | +-TableScan(table=KeyValue)
+        +-function_group_list=
+          +-AnalyticFunctionGroup
+            +-analytic_function_list=
+              +-$analytic1#4 :=
+                +-AnalyticFunctionCall(sample_functions:afn_agg() -> INT64)
+                  +-window_frame=
+                    +-WindowFrame(frame_unit=ROWS)
+                      +-start_expr=
+                      | +-WindowFrameExpr(boundary_type=OFFSET PRECEDING)
+                      |   +-Literal(type=INT64, value=2)
+                      +-end_expr=
+                        +-WindowFrameExpr(boundary_type=OFFSET PRECEDING)
+                          +-Literal(type=INT64, value=3)
+==
+
+# The window frame clause does not always generate empty windows.
+# The tuples with null, NaN or inf order keys will have a non-empty window.
+select afn_agg() over (order by `double` range between 3.0 following and
+                                                       2.0 following)
+from SimpleTypes
+--
+QueryStmt
++-output_column_list=
+| +-$analytic.$analytic1#21 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$analytic.$analytic1#21]
+    +-input_scan=
+      +-AnalyticScan
+        +-column_list=[SimpleTypes.double#9, $analytic.$analytic1#21]
+        +-input_scan=
+        | +-TableScan(column_list=[SimpleTypes.double#9], table=SimpleTypes, column_index_list=[8])
+        +-function_group_list=
+          +-AnalyticFunctionGroup
+            +-order_by=
+            | +-WindowOrdering
+            |   +-order_by_item_list=
+            |     +-OrderByItem
+            |       +-column_ref=
+            |         +-ColumnRef(type=DOUBLE, column=SimpleTypes.double#9)
+            +-analytic_function_list=
+              +-$analytic1#21 :=
+                +-AnalyticFunctionCall(sample_functions:afn_agg() -> INT64)
+                  +-window_frame=
+                    +-WindowFrame(frame_unit=RANGE)
+                      +-start_expr=
+                      | +-WindowFrameExpr(boundary_type=OFFSET FOLLOWING)
+                      |   +-Literal(type=DOUBLE, value=3)
+                      +-end_expr=
+                        +-WindowFrameExpr(boundary_type=OFFSET FOLLOWING)
+                          +-Literal(type=DOUBLE, value=2)
+==
+
+# This is incorrect. Casting from uint64 to double loses precision.
+# TODO: We should capture the error.
+select afn_agg() over (order by `double`
+                       range between 0xFFFFFFFFFFFFFFFE preceding and
+                                     0xFFFFFFFFFFFFFFFF preceding),
+       afn_agg() over (order by `double`
+                       range between 0xFFFFFFFFFFFFFFFF following and
+                                     0xFFFFFFFFFFFFFFFE following)
+from SimpleTypes
+--
+QueryStmt
++-output_column_list=
+| +-$analytic.$analytic1#22 AS `$col1` [INT64]
+| +-$analytic.$analytic2#23 AS `$col2` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=$analytic.[$analytic1#22, $analytic2#23]
+    +-input_scan=
+      +-AnalyticScan
+        +-column_list=[SimpleTypes.double#9, $analytic.$analytic1#22, $analytic.$analytic2#23]
+        +-input_scan=
+        | +-TableScan(column_list=[SimpleTypes.double#9], table=SimpleTypes, column_index_list=[8])
+        +-function_group_list=
+          +-AnalyticFunctionGroup
+          | +-order_by=
+          | | +-WindowOrdering
+          | |   +-order_by_item_list=
+          | |     +-OrderByItem
+          | |       +-column_ref=
+          | |         +-ColumnRef(type=DOUBLE, column=SimpleTypes.double#9)
+          | +-analytic_function_list=
+          |   +-$analytic1#22 :=
+          |     +-AnalyticFunctionCall(sample_functions:afn_agg() -> INT64)
+          |       +-window_frame=
+          |         +-WindowFrame(frame_unit=RANGE)
+          |           +-start_expr=
+          |           | +-WindowFrameExpr(boundary_type=OFFSET PRECEDING)
+          |           |   +-Literal(type=DOUBLE, value=1.8446744073709552e+19)
+          |           +-end_expr=
+          |             +-WindowFrameExpr(boundary_type=OFFSET PRECEDING)
+          |               +-Literal(type=DOUBLE, value=1.8446744073709552e+19)
+          +-AnalyticFunctionGroup
+            +-order_by=
+            | +-WindowOrdering
+            |   +-order_by_item_list=
+            |     +-OrderByItem
+            |       +-column_ref=
+            |         +-ColumnRef(type=DOUBLE, column=SimpleTypes.double#9)
+            +-analytic_function_list=
+              +-$analytic2#23 :=
+                +-AnalyticFunctionCall(sample_functions:afn_agg() -> INT64)
+                  +-window_frame=
+                    +-WindowFrame(frame_unit=RANGE)
+                      +-start_expr=
+                      | +-WindowFrameExpr(boundary_type=OFFSET FOLLOWING)
+                      |   +-Literal(type=DOUBLE, value=1.8446744073709552e+19)
+                      +-end_expr=
+                        +-WindowFrameExpr(boundary_type=OFFSET FOLLOWING)
+                          +-Literal(type=DOUBLE, value=1.8446744073709552e+19)
+==
+
+# Window frame offset expression must be a literal or a parameter.
+select afn_agg() over (rows between 2 preceding and @test_param_int32 following)
+from keyvalue
+--
+QueryStmt
++-output_column_list=
+| +-$analytic.$analytic1#4 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$analytic.$analytic1#4]
+    +-input_scan=
+      +-AnalyticScan
+        +-column_list=[$analytic.$analytic1#4]
+        +-input_scan=
+        | +-TableScan(table=KeyValue)
+        +-function_group_list=
+          +-AnalyticFunctionGroup
+            +-analytic_function_list=
+              +-$analytic1#4 :=
+                +-AnalyticFunctionCall(sample_functions:afn_agg() -> INT64)
+                  +-window_frame=
+                    +-WindowFrame(frame_unit=ROWS)
+                      +-start_expr=
+                      | +-WindowFrameExpr(boundary_type=OFFSET PRECEDING)
+                      |   +-Literal(type=INT64, value=2)
+                      +-end_expr=
+                        +-WindowFrameExpr(boundary_type=OFFSET FOLLOWING)
+                          +-Cast(INT32 -> INT64)
+                            +-Parameter(type=INT32, name="test_param_int32")
+==
+
+select afn_agg() over (order by `uint64`
+                       range between @test_param_int32 preceding and
+                                     current row)
+from SimpleTypes
+--
+ERROR: Window framing expression has type INT32 that cannot coerce to the type of the ORDER BY expression, which is UINT64 [at 2:38]
+                       range between @test_param_int32 preceding and
+                                     ^
+==
+
+select afn_agg() over (rows 1+1 preceding)
+from keyvalue
+--
+ERROR: Window framing expression must be a literal or parameter [at 1:29]
+select afn_agg() over (rows 1+1 preceding)
+                            ^
+==
+
+# The offset value cannot be negative. This rule is examined only when the
+# expression is a literal.
+select afn_agg() over (rows between 2 preceding and -1 following)
+from keyvalue
+--
+ERROR: Window framing expression cannot evaluate to a negative value [at 1:53]
+select afn_agg() over (rows between 2 preceding and -1 following)
+                                                    ^
+==
+
+select afn_agg() over (order by key RANGE between 2 preceding and -1 following)
+from keyvalue
+--
+ERROR: Window framing expression cannot evaluate to a negative value [at 1:67]
+select afn_agg() over (order by key RANGE between 2 preceding and -1 following)
+                                                                  ^
+==
+
+select afn_agg() over (order by `double` RANGE between -1.0 preceding and
+                                                        1 following)
+from SimpleTypes
+--
+ERROR: Window framing expression cannot evaluate to a negative value [at 1:56]
+select afn_agg() over (order by `double` RANGE between -1.0 preceding and
+                                                       ^
+==
+
+# The offset value cannot be NULL.
+select afn_agg() over (rows between 2 preceding and null following)
+from keyvalue
+--
+ERROR: Window framing expression cannot be NULL [at 1:53]
+select afn_agg() over (rows between 2 preceding and null following)
+                                                    ^
+==
+
+# If there is ORDER BY and no window frame but window frame is allowed,
+# an implicit window of unbounded preceding to current row is generated.
+select afn_agg() over (order by key) from keyvalue
+--
+QueryStmt
++-output_column_list=
+| +-$analytic.$analytic1#4 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$analytic.$analytic1#4]
+    +-input_scan=
+      +-AnalyticScan
+        +-column_list=[KeyValue.Key#1, $analytic.$analytic1#4]
+        +-input_scan=
+        | +-TableScan(column_list=[KeyValue.Key#1], table=KeyValue, column_index_list=[0])
+        +-function_group_list=
+          +-AnalyticFunctionGroup
+            +-order_by=
+            | +-WindowOrdering
+            |   +-order_by_item_list=
+            |     +-OrderByItem
+            |       +-column_ref=
+            |         +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+            +-analytic_function_list=
+              +-$analytic1#4 :=
+                +-AnalyticFunctionCall(sample_functions:afn_agg() -> INT64)
+                  +-window_frame=
+                    +-WindowFrame(frame_unit=RANGE)
+                      +-start_expr=
+                      | +-WindowFrameExpr(boundary_type=UNBOUNDED PRECEDING)
+                      +-end_expr=
+                        +-WindowFrameExpr(boundary_type=CURRENT ROW)
+==
+
+# If there is neither ORDER BY nor window frame, an implicit window of
+# unbounded preceding to unbounded following is generated if the window frame
+# is supported by the analytic function.
+select afn_agg() over () from keyvalue
+--
+QueryStmt
++-output_column_list=
+| +-$analytic.$analytic1#4 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$analytic.$analytic1#4]
+    +-input_scan=
+      +-AnalyticScan
+        +-column_list=[$analytic.$analytic1#4]
+        +-input_scan=
+        | +-TableScan(table=KeyValue)
+        +-function_group_list=
+          +-AnalyticFunctionGroup
+            +-analytic_function_list=
+              +-$analytic1#4 :=
+                +-AnalyticFunctionCall(sample_functions:afn_agg() -> INT64)
+                  +-window_frame=
+                    +-WindowFrame(frame_unit=ROWS)
+                      +-start_expr=
+                      | +-WindowFrameExpr(boundary_type=UNBOUNDED PRECEDING)
+                      +-end_expr=
+                        +-WindowFrameExpr(boundary_type=UNBOUNDED FOLLOWING)
+==
+
+# This test query does not generate the implicit window frame clause, because
+# afn_order does not support window frame.
+select afn_order() over (order by key) from keyvalue
+--
+QueryStmt
++-output_column_list=
+| +-$analytic.$analytic1#4 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$analytic.$analytic1#4]
+    +-input_scan=
+      +-AnalyticScan
+        +-column_list=[KeyValue.Key#1, $analytic.$analytic1#4]
+        +-input_scan=
+        | +-TableScan(column_list=[KeyValue.Key#1], table=KeyValue, column_index_list=[0])
+        +-function_group_list=
+          +-AnalyticFunctionGroup
+            +-order_by=
+            | +-WindowOrdering
+            |   +-order_by_item_list=
+            |     +-OrderByItem
+            |       +-column_ref=
+            |         +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+            +-analytic_function_list=
+              +-$analytic1#4 := AnalyticFunctionCall(sample_functions:afn_order() -> INT64)
+==
+
+# We generate the implicit window frame clause for DISTINCT analytic functions.
+select afn_agg(key) over(),
+       afn_agg(distinct key) over () from keyvalue
+--
+QueryStmt
++-output_column_list=
+| +-$analytic.$analytic1#5 AS `$col1` [INT64]
+| +-$analytic.$analytic2#6 AS `$col2` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=$analytic.[$analytic1#5, $analytic2#6]
+    +-input_scan=
+      +-AnalyticScan
+        +-column_list=[KeyValue.Key#1, $analytic.$analytic1#5, $analytic.$analytic2#6]
+        +-input_scan=
+        | +-TableScan(column_list=[KeyValue.Key#1], table=KeyValue, column_index_list=[0])
+        +-function_group_list=
+          +-AnalyticFunctionGroup
+            +-analytic_function_list=
+              +-$analytic1#5 :=
+              | +-AnalyticFunctionCall(sample_functions:afn_agg(INT64) -> INT64)
+              |   +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+              |   +-window_frame=
+              |     +-WindowFrame(frame_unit=ROWS)
+              |       +-start_expr=
+              |       | +-WindowFrameExpr(boundary_type=UNBOUNDED PRECEDING)
+              |       +-end_expr=
+              |         +-WindowFrameExpr(boundary_type=UNBOUNDED FOLLOWING)
+              +-$analytic2#6 :=
+                +-AnalyticFunctionCall(sample_functions:afn_agg(INT64) -> INT64)
+                  +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+                  +-distinct=TRUE
+                  +-window_frame=
+                    +-WindowFrame(frame_unit=ROWS)
+                      +-start_expr=
+                      | +-WindowFrameExpr(boundary_type=UNBOUNDED PRECEDING)
+                      +-end_expr=
+                        +-WindowFrameExpr(boundary_type=UNBOUNDED FOLLOWING)
+==
+
+#
+# Rules for boundary expression types.
+#
+
+# Non-integer expression for rows.
+select afn_agg() over (rows '2' preceding) from keyvalue
+--
+ERROR: Window framing expression for ROWS can only be of integer type, but has type STRING [at 1:29]
+select afn_agg() over (rows '2' preceding) from keyvalue
+                            ^
+==
+
+select afn_agg() over (rows 2.5 preceding) from keyvalue
+--
+ERROR: Window framing expression for ROWS can only be of integer type, but has type DOUBLE [at 1:29]
+select afn_agg() over (rows 2.5 preceding) from keyvalue
+                            ^
+==
+
+select afn_agg() over (rows between 2 preceding and '3' following)
+from keyvalue
+--
+ERROR: Window framing expression for ROWS can only be of integer type, but has type STRING [at 1:53]
+select afn_agg() over (rows between 2 preceding and '3' following)
+                                                    ^
+==
+
+select afn_agg() over (rows between 2 preceding and 3.5 following)
+from keyvalue
+--
+ERROR: Window framing expression for ROWS can only be of integer type, but has type DOUBLE [at 1:53]
+select afn_agg() over (rows between 2 preceding and 3.5 following)
+                                                    ^
+==
+
+# Try a number too big to fit in INT64
+select afn_agg() over (rows between 2 preceding and 18446744073709551615 following)
+from keyvalue
+--
+ERROR: Could not cast literal 18446744073709551615 to type INT64 [at 1:53]
+select afn_agg() over (rows between 2 preceding and 18446744073709551615 foll...
+                                                    ^
+==
+
+# Floating point values are allowed for RANGE.
+select afn_agg() over (order by key range 3.5 preceding) from keyvalue
+--
+ERROR: Window framing expression has type DOUBLE that cannot coerce to the type of the ORDER BY expression, which is INT64 [at 1:43]
+select afn_agg() over (order by key range 3.5 preceding) from keyvalue
+                                          ^
+==
+
+# Non-numeric ordering expression for range.
+select afn_agg() over (order by value range 3 preceding) from keyvalue
+--
+ERROR: ORDER BY key must be numeric in a RANGE-based window with OFFSET PRECEDING or OFFSET FOLLOWING boundaries, but has type STRING [at 1:24]
+select afn_agg() over (order by value range 3 preceding) from keyvalue
+                       ^
+==
+
+select afn_agg() over (order by key
+                       range between unbounded preceding and '3' preceding)
+from keyvalue
+--
+ERROR: Window framing expression has type STRING that cannot coerce to the type of the ORDER BY expression, which is INT64 [at 2:62]
+                       range between unbounded preceding and '3' preceding)
+                                                             ^
+==
+
+# The frame expression must have a type coercible to the ordering expression
+# for RANGE.
+select afn_agg() over (order by key range between 2 preceding and 2.2 following)
+from keyvalue
+--
+ERROR: Window framing expression has type DOUBLE that cannot coerce to the type of the ORDER BY expression, which is INT64 [at 1:67]
+select afn_agg() over (order by key range between 2 preceding and 2.2 following)
+                                                                  ^
+==
+
+select afn_agg() over (order by `double` range 3.3 preceding)
+from SimpleTypes
+--
+QueryStmt
++-output_column_list=
+| +-$analytic.$analytic1#21 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$analytic.$analytic1#21]
+    +-input_scan=
+      +-AnalyticScan
+        +-column_list=[SimpleTypes.double#9, $analytic.$analytic1#21]
+        +-input_scan=
+        | +-TableScan(column_list=[SimpleTypes.double#9], table=SimpleTypes, column_index_list=[8])
+        +-function_group_list=
+          +-AnalyticFunctionGroup
+            +-order_by=
+            | +-WindowOrdering
+            |   +-order_by_item_list=
+            |     +-OrderByItem
+            |       +-column_ref=
+            |         +-ColumnRef(type=DOUBLE, column=SimpleTypes.double#9)
+            +-analytic_function_list=
+              +-$analytic1#21 :=
+                +-AnalyticFunctionCall(sample_functions:afn_agg() -> INT64)
+                  +-window_frame=
+                    +-WindowFrame(frame_unit=RANGE)
+                      +-start_expr=
+                      | +-WindowFrameExpr(boundary_type=OFFSET PRECEDING)
+                      |   +-Literal(type=DOUBLE, value=3.3)
+                      +-end_expr=
+                        +-WindowFrameExpr(boundary_type=CURRENT ROW)
+==
+
+# Coercion is performed if the framing expression type is not equal to the
+# target type (INT64 for ROWS and the ordering expression type for RANGE).
+select afn_agg() over (rows @test_param_uint32 preceding),
+       afn_agg() over (order by `int64` range @test_param_uint32 preceding),
+       afn_agg() over (order by `uint64` range 1 preceding),
+       afn_agg() over (order by `double` range @test_param_uint64 preceding),
+       afn_agg() over (order by `double` range 1 preceding)
+from SimpleTypes
+--
+QueryStmt
++-output_column_list=
+| +-$analytic.$analytic1#25 AS `$col1` [INT64]
+| +-$analytic.$analytic2#26 AS `$col2` [INT64]
+| +-$analytic.$analytic3#27 AS `$col3` [INT64]
+| +-$analytic.$analytic4#28 AS `$col4` [INT64]
+| +-$analytic.$analytic5#29 AS `$col5` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=$analytic.[$analytic1#25, $analytic2#26, $analytic3#27, $analytic4#28, $analytic5#29]
+    +-input_scan=
+      +-AnalyticScan
+        +-column_list=[SimpleTypes.int64#2, SimpleTypes.uint64#4, SimpleTypes.double#9, $analytic.$analytic1#25, $analytic.$analytic2#26, $analytic.$analytic3#27, $analytic.$analytic4#28, $analytic.$analytic5#29]
+        +-input_scan=
+        | +-TableScan(column_list=SimpleTypes.[int64#2, uint64#4, double#9], table=SimpleTypes, column_index_list=[1, 3, 8])
+        +-function_group_list=
+          +-AnalyticFunctionGroup
+          | +-analytic_function_list=
+          |   +-$analytic1#25 :=
+          |     +-AnalyticFunctionCall(sample_functions:afn_agg() -> INT64)
+          |       +-window_frame=
+          |         +-WindowFrame(frame_unit=ROWS)
+          |           +-start_expr=
+          |           | +-WindowFrameExpr(boundary_type=OFFSET PRECEDING)
+          |           |   +-Cast(UINT32 -> INT64)
+          |           |     +-Parameter(type=UINT32, name="test_param_uint32")
+          |           +-end_expr=
+          |             +-WindowFrameExpr(boundary_type=CURRENT ROW)
+          +-AnalyticFunctionGroup
+          | +-order_by=
+          | | +-WindowOrdering
+          | |   +-order_by_item_list=
+          | |     +-OrderByItem
+          | |       +-column_ref=
+          | |         +-ColumnRef(type=INT64, column=SimpleTypes.int64#2)
+          | +-analytic_function_list=
+          |   +-$analytic2#26 :=
+          |     +-AnalyticFunctionCall(sample_functions:afn_agg() -> INT64)
+          |       +-window_frame=
+          |         +-WindowFrame(frame_unit=RANGE)
+          |           +-start_expr=
+          |           | +-WindowFrameExpr(boundary_type=OFFSET PRECEDING)
+          |           |   +-Cast(UINT32 -> INT64)
+          |           |     +-Parameter(type=UINT32, name="test_param_uint32")
+          |           +-end_expr=
+          |             +-WindowFrameExpr(boundary_type=CURRENT ROW)
+          +-AnalyticFunctionGroup
+          | +-order_by=
+          | | +-WindowOrdering
+          | |   +-order_by_item_list=
+          | |     +-OrderByItem
+          | |       +-column_ref=
+          | |         +-ColumnRef(type=UINT64, column=SimpleTypes.uint64#4)
+          | +-analytic_function_list=
+          |   +-$analytic3#27 :=
+          |     +-AnalyticFunctionCall(sample_functions:afn_agg() -> INT64)
+          |       +-window_frame=
+          |         +-WindowFrame(frame_unit=RANGE)
+          |           +-start_expr=
+          |           | +-WindowFrameExpr(boundary_type=OFFSET PRECEDING)
+          |           |   +-Literal(type=UINT64, value=1)
+          |           +-end_expr=
+          |             +-WindowFrameExpr(boundary_type=CURRENT ROW)
+          +-AnalyticFunctionGroup
+          | +-order_by=
+          | | +-WindowOrdering
+          | |   +-order_by_item_list=
+          | |     +-OrderByItem
+          | |       +-column_ref=
+          | |         +-ColumnRef(type=DOUBLE, column=SimpleTypes.double#9)
+          | +-analytic_function_list=
+          |   +-$analytic4#28 :=
+          |     +-AnalyticFunctionCall(sample_functions:afn_agg() -> INT64)
+          |       +-window_frame=
+          |         +-WindowFrame(frame_unit=RANGE)
+          |           +-start_expr=
+          |           | +-WindowFrameExpr(boundary_type=OFFSET PRECEDING)
+          |           |   +-Cast(UINT64 -> DOUBLE)
+          |           |     +-Parameter(type=UINT64, name="test_param_uint64")
+          |           +-end_expr=
+          |             +-WindowFrameExpr(boundary_type=CURRENT ROW)
+          +-AnalyticFunctionGroup
+            +-order_by=
+            | +-WindowOrdering
+            |   +-order_by_item_list=
+            |     +-OrderByItem
+            |       +-column_ref=
+            |         +-ColumnRef(type=DOUBLE, column=SimpleTypes.double#9)
+            +-analytic_function_list=
+              +-$analytic5#29 :=
+                +-AnalyticFunctionCall(sample_functions:afn_agg() -> INT64)
+                  +-window_frame=
+                    +-WindowFrame(frame_unit=RANGE)
+                      +-start_expr=
+                      | +-WindowFrameExpr(boundary_type=OFFSET PRECEDING)
+                      |   +-Literal(type=DOUBLE, value=1)
+                      +-end_expr=
+                        +-WindowFrameExpr(boundary_type=CURRENT ROW)
+==
+
+select afn_agg() over (rows 0xFFFFFFFFFFFFFFFF preceding)
+from keyvalue
+--
+ERROR: Could not cast literal 18446744073709551615 to type INT64 [at 1:29]
+select afn_agg() over (rows 0xFFFFFFFFFFFFFFFF preceding)
+                            ^
+==
+
+select afn_agg() over (order by value range 3 preceding) from keyvalue
+--
+ERROR: ORDER BY key must be numeric in a RANGE-based window with OFFSET PRECEDING or OFFSET FOLLOWING boundaries, but has type STRING [at 1:24]
+select afn_agg() over (order by value range 3 preceding) from keyvalue
+                       ^
+==
+
+# Timestamp is currently not allowed in the window ORDER BY for range.
+select afn_agg() over (order by timestamp range 3 preceding)
+from SimpleTypes
+--
+ERROR: ORDER BY key must be numeric in a RANGE-based window with OFFSET PRECEDING or OFFSET FOLLOWING boundaries, but has type TIMESTAMP [at 1:24]
+select afn_agg() over (order by timestamp range 3 preceding)
+                       ^
+==
+
+# Date is currently not allowed in the window ORDER BY for range.
+select afn_agg() over (order by `date` range 3 preceding)
+from SimpleTypes
+--
+ERROR: ORDER BY key must be numeric in a RANGE-based window with OFFSET PRECEDING or OFFSET FOLLOWING boundaries, but has type DATE [at 1:24]
+select afn_agg() over (order by `date` range 3 preceding)
+                       ^
+==
+
+# Window framing expression must be constant.
+select afn_agg() over (rows key preceding)
+from keyvalue
+--
+ERROR: Window framing expression must be a literal or parameter [at 1:29]
+select afn_agg() over (rows key preceding)
+                            ^
+==
+
+select afn_agg() over (rows between 2 preceding and key following)
+from keyvalue
+--
+ERROR: Window framing expression must be a literal or parameter [at 1:53]
+select afn_agg() over (rows between 2 preceding and key following)
+                                                    ^
+==
+
+#
+# Additional rules for RANGE.
+#
+
+# RANGE-based window without ORDER BY only allows UNBOUNDED PRECEDING TO
+# UNBOUNDED FOLLOWING
+select afn_agg() over (range between unbounded preceding
+                                 and unbounded following)
+from keyvalue
+--
+QueryStmt
++-output_column_list=
+| +-$analytic.$analytic1#4 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$analytic.$analytic1#4]
+    +-input_scan=
+      +-AnalyticScan
+        +-column_list=[$analytic.$analytic1#4]
+        +-input_scan=
+        | +-TableScan(table=KeyValue)
+        +-function_group_list=
+          +-AnalyticFunctionGroup
+            +-analytic_function_list=
+              +-$analytic1#4 :=
+                +-AnalyticFunctionCall(sample_functions:afn_agg() -> INT64)
+                  +-window_frame=
+                    +-WindowFrame(frame_unit=RANGE)
+                      +-start_expr=
+                      | +-WindowFrameExpr(boundary_type=UNBOUNDED PRECEDING)
+                      +-end_expr=
+                        +-WindowFrameExpr(boundary_type=UNBOUNDED FOLLOWING)
+==
+
+# RANGE-based window without ORDER BY does not allow OFFSET PRECEDING or
+# OFFSET FOLLOWING in the window frame.
+select afn_agg() over (range between 5 preceding and unbounded following)
+from keyvalue
+--
+ERROR: A RANGE-based window including an OFFSET PRECEDING or OFFSET FOLLOWING window frame boundary requires an ORDER BY [at 1:24]
+select afn_agg() over (range between 5 preceding and unbounded following)
+                       ^
+==
+
+select afn_agg() over (range between unbounded preceding and 5 following)
+from keyvalue
+--
+ERROR: A RANGE-based window including an OFFSET PRECEDING or OFFSET FOLLOWING window frame boundary requires an ORDER BY [at 1:24]
+select afn_agg() over (range between unbounded preceding and 5 following)
+                       ^
+==
+
+# RANGE-based window requires ORDER BY if CURRENT ROW is present in the frame.
+select afn_agg() over (range current row) from keyvalue
+--
+ERROR: A RANGE-based window without ORDER BY includes all rows in the window frame so only RANGE BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING syntax is supported [at 1:24]
+select afn_agg() over (range current row) from keyvalue
+                       ^
+==
+
+select afn_agg() over (range between current row and current row) from keyvalue
+--
+ERROR: A RANGE-based window without ORDER BY cannot include a CURRENT ROW window frame boundary since all rows are included in the window frame. Remove the RANGE clause or use RANGE BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING [at 1:24]
+select afn_agg() over (range between current row and current row) from keyvalue
+                       ^
+==
+
+select afn_agg() over (range between current row and unbounded following)
+from keyvalue
+--
+ERROR: A RANGE-based window without ORDER BY cannot include a CURRENT ROW window frame boundary since all rows are included in the window frame. Remove the RANGE clause or use RANGE BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING [at 1:24]
+select afn_agg() over (range between current row and unbounded following)
+                       ^
+==
+
+select afn_agg() over (range between unbounded preceding and current row)
+from keyvalue
+--
+ERROR: A RANGE-based window without ORDER BY cannot include a CURRENT ROW window frame boundary since all rows are included in the window frame. Remove the RANGE clause or use RANGE BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING [at 1:24]
+select afn_agg() over (range between unbounded preceding and current row)
+                       ^
+==
+
+# RANGE-based window requires ORDER BY if CURRENT ROW is present in the frame.
+# This window frame is implicitly UNBOUNDED PRECEDING TO CURRENT ROW.
+select afn_agg() over (range unbounded preceding) from keyvalue
+--
+ERROR: A RANGE-based window without ORDER BY includes all rows in the window frame so only RANGE BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING syntax is supported [at 1:24]
+select afn_agg() over (range unbounded preceding) from keyvalue
+                       ^
+==
+
+# Cannot have more than one ordering item when OFFSET PRECEDING/FOLLOWING is
+# present for a RANGE-based window.
+select afn_agg() over (order by key, value range 2 preceding) from keyvalue
+--
+ERROR: A RANGE-based window with OFFSET PRECEDING or OFFSET FOLLOWING boundaries must have exactly one ORDER BY key [at 1:24]
+select afn_agg() over (order by key, value range 2 preceding) from keyvalue
+                       ^
+==
+
+select afn_agg() over (order by key, value
+                       range between unbounded preceding and 2 following)
+from keyvalue
+--
+ERROR: A RANGE-based window with OFFSET PRECEDING or OFFSET FOLLOWING boundaries must have exactly one ORDER BY key [at 1:24]
+select afn_agg() over (order by key, value
+                       ^
+==
+
+# It is valid to have multiple ordering items if neither OFFSET PRECEDING
+# nor OFFSET FOLLOWING is present.
+select afn_agg() over (order by key, value
+                       range between unbounded preceding and current row)
+from keyvalue
+--
+QueryStmt
++-output_column_list=
+| +-$analytic.$analytic1#4 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$analytic.$analytic1#4]
+    +-input_scan=
+      +-AnalyticScan
+        +-column_list=[KeyValue.Key#1, KeyValue.Value#2, $analytic.$analytic1#4]
+        +-input_scan=
+        | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+        +-function_group_list=
+          +-AnalyticFunctionGroup
+            +-order_by=
+            | +-WindowOrdering
+            |   +-order_by_item_list=
+            |     +-OrderByItem
+            |     | +-column_ref=
+            |     |   +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+            |     +-OrderByItem
+            |       +-column_ref=
+            |         +-ColumnRef(type=STRING, column=KeyValue.Value#2)
+            +-analytic_function_list=
+              +-$analytic1#4 :=
+                +-AnalyticFunctionCall(sample_functions:afn_agg() -> INT64)
+                  +-window_frame=
+                    +-WindowFrame(frame_unit=RANGE)
+                      +-start_expr=
+                      | +-WindowFrameExpr(boundary_type=UNBOUNDED PRECEDING)
+                      +-end_expr=
+                        +-WindowFrameExpr(boundary_type=CURRENT ROW)
+==
+
+[language_features=NONE,+ANALYTIC_FUNCTIONS{{|,+NULLS_FIRST_LAST_IN_ORDER_BY}}]
+select
+  row_number() over (
+    order by key nulls {{first|last}}, mod(key, 2) desc nulls last
+  )
+from keyvalue
+--
+ALTERNATION GROUP: first
+--
+ERROR: NULLS FIRST and NULLS LAST are not supported [at 3:18]
+    order by key nulls first, mod(key, 2) desc nulls last
+                 ^
+--
+ALTERNATION GROUP: last
+--
+ERROR: NULLS FIRST and NULLS LAST are not supported [at 3:18]
+    order by key nulls last, mod(key, 2) desc nulls last
+                 ^
+--
+ALTERNATION GROUP: ,+NULLS_FIRST_LAST_IN_ORDER_BY,first
+--
+QueryStmt
++-output_column_list=
+| +-$analytic.$analytic1#4 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$analytic.$analytic1#4]
+    +-input_scan=
+      +-AnalyticScan
+        +-column_list=[KeyValue.Key#1, $analytic.$analytic1#4]
+        +-input_scan=
+        | +-ProjectScan
+        |   +-column_list=[KeyValue.Key#1, $orderby.$orderbycol2#5]
+        |   +-expr_list=
+        |   | +-$orderbycol2#5 :=
+        |   |   +-FunctionCall(GoogleSQL:mod(INT64, INT64) -> INT64)
+        |   |     +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+        |   |     +-Literal(type=INT64, value=2)
+        |   +-input_scan=
+        |     +-TableScan(column_list=[KeyValue.Key#1], table=KeyValue, column_index_list=[0])
+        +-function_group_list=
+          +-AnalyticFunctionGroup
+            +-order_by=
+            | +-WindowOrdering
+            |   +-order_by_item_list=
+            |     +-OrderByItem
+            |     | +-column_ref=
+            |     | | +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+            |     | +-null_order=NULLS_FIRST
+            |     +-OrderByItem
+            |       +-column_ref=
+            |       | +-ColumnRef(type=INT64, column=$orderby.$orderbycol2#5)
+            |       +-is_descending=TRUE
+            |       +-null_order=NULLS_LAST
+            +-analytic_function_list=
+              +-$analytic1#4 := AnalyticFunctionCall(GoogleSQL:row_number() -> INT64)
+--
+ALTERNATION GROUP: ,+NULLS_FIRST_LAST_IN_ORDER_BY,last
+--
+QueryStmt
++-output_column_list=
+| +-$analytic.$analytic1#4 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$analytic.$analytic1#4]
+    +-input_scan=
+      +-AnalyticScan
+        +-column_list=[KeyValue.Key#1, $analytic.$analytic1#4]
+        +-input_scan=
+        | +-ProjectScan
+        |   +-column_list=[KeyValue.Key#1, $orderby.$orderbycol2#5]
+        |   +-expr_list=
+        |   | +-$orderbycol2#5 :=
+        |   |   +-FunctionCall(GoogleSQL:mod(INT64, INT64) -> INT64)
+        |   |     +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+        |   |     +-Literal(type=INT64, value=2)
+        |   +-input_scan=
+        |     +-TableScan(column_list=[KeyValue.Key#1], table=KeyValue, column_index_list=[0])
+        +-function_group_list=
+          +-AnalyticFunctionGroup
+            +-order_by=
+            | +-WindowOrdering
+            |   +-order_by_item_list=
+            |     +-OrderByItem
+            |     | +-column_ref=
+            |     | | +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+            |     | +-null_order=NULLS_LAST
+            |     +-OrderByItem
+            |       +-column_ref=
+            |       | +-ColumnRef(type=INT64, column=$orderby.$orderbycol2#5)
+            |       +-is_descending=TRUE
+            |       +-null_order=NULLS_LAST
+            +-analytic_function_list=
+              +-$analytic1#4 := AnalyticFunctionCall(GoogleSQL:row_number() -> INT64)

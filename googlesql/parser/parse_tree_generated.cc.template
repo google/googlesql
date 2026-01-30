@@ -1,0 +1,71 @@
+//
+// Copyright 2019 Google LLC
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+//
+
+#include "googlesql/parser/parse_tree.h"
+
+#include <string>
+
+#include "googlesql/base/logging.h"
+#include "googlesql/parser/ast_node_kind.h"
+#include "absl/container/flat_hash_map.h"
+#include "googlesql/base/map_util.h"
+
+namespace googlesql {
+
+// Creates a map of ASTNodeKind to a string representation of the node type's
+// name. Access this map through GetNodeNamesMap().
+static absl::flat_hash_map<ASTNodeKind, absl::string_view>
+CreateNodeNamesMap() {
+  static constexpr std::pair<ASTNodeKind, absl::string_view> kMap[] = {
+      {AST_FAKE, "Fake"},  // For testing purposes only.
+# for node in nodes
+  # if not node.is_abstract
+      { {{node.node_kind}}, "{{node.name[3:]}}" },
+  # endif
+# endfor
+  };
+
+{{blank_line}}
+  auto map = absl::flat_hash_map<ASTNodeKind, absl::string_view>(
+                std::begin(kMap), std::end(kMap));
+
+  for (int kind = kFirstASTNodeKind; kind <= kLastASTNodeKind;
+       ++kind) {
+    ABSL_DCHECK(map.contains(static_cast<ASTNodeKind>(kind))) << "kind=" << kind;
+  }
+  return map;
+}
+
+// Returns a map of ASTNodeKind to a string representation of the node type's
+// name.
+static const absl::flat_hash_map<ASTNodeKind, absl::string_view>&
+GetNodeNamesMap() {
+  static const absl::flat_hash_map<ASTNodeKind, absl::string_view>& map =
+      *new auto(CreateNodeNamesMap());
+  return map;
+}
+
+std::string ASTNode::NodeKindToString(ASTNodeKind node_kind) {
+  // Subtle: we must ensure that default_value outlives the FindWithDefault
+  // call.
+  absl::string_view default_value = "<UNKNOWN NODE KIND>";
+
+  return std::string(
+googlesql_base::FindWithDefault(
+      GetNodeNamesMap(), node_kind, default_value));
+}
+
+}  // namespace googlesql

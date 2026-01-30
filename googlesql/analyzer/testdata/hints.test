@@ -1,0 +1,2253 @@
+# Tests for hints.
+#
+# We first test hints on SELECT, and test various hint syntaxes and error cases.
+# Then we test all places hints can attach, without retesting all the syntaxes
+# and errors inside the hint itself.
+#
+# For each hint location, we do need to test at least one error case to make
+# sure the return cases after errors work correctly.  @{k=@bad_param} will
+# generate an error.
+#
+# Syntactic errors are covered in parser/testdata/hints.test.
+
+[default language_features=NONE]
+select @{ key = 5 } 123
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-hint_list=
+    | +-key := Literal(type=INT64, value=5)
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[$query.$col1#1]
+        +-expr_list=
+        | +-$col1#1 := Literal(type=INT64, value=123)
+        +-input_scan=
+          +-SingleRowScan
+==
+
+# Hints can have duplicate key names.
+select @{ h='value', k=5.0, h='h2', neg=-5 } key from KeyValue
+--
+QueryStmt
++-output_column_list=
+| +-KeyValue.Key#1 AS key [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[KeyValue.Key#1]
+    +-hint_list=
+    | +-h := Literal(type=STRING, value="value")
+    | +-k := Literal(type=DOUBLE, value=5)
+    | +-h := Literal(type=STRING, value="h2")
+    | +-neg := Literal(type=INT64, value=-5)
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[KeyValue.Key#1]
+        +-input_scan=
+          +-TableScan(column_list=[KeyValue.Key#1], table=KeyValue, column_index_list=[0])
+==
+
+# Identifiers are accepted as hint values, and stored as strings.
+# The output is the same as if a literal string was used in the hint.
+# Note that when parentheses are used, the identifier is treated as an identifier,
+# not a literal
+select @{ h=v, h='v', k=(TestConstantString)} 123
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-hint_list=
+    | +-h := Literal(type=STRING, value="v")
+    | +-h := Literal(type=STRING, value="v")
+    | +-k := Constant(TestConstantString, type=STRING, value="foo")
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[$query.$col1#1]
+        +-expr_list=
+        | +-$col1#1 := Literal(type=INT64, value=123)
+        +-input_scan=
+          +-SingleRowScan
+==
+
+# Hints have an optional qualifier that indicates which database engine
+# should interpret them.
+select @{ key=1, db1.key='x', `db2`.key=y } 123
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-hint_list=
+    | +-key := Literal(type=INT64, value=1)
+    | +-db1.key := Literal(type=STRING, value="x")
+    | +-db2.key := Literal(type=STRING, value="y")
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[$query.$col1#1]
+        +-expr_list=
+        | +-$col1#1 := Literal(type=INT64, value=123)
+        +-input_scan=
+          +-SingleRowScan
+==
+
+select @{ `a b`.`c d`=`e f` } 123
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-hint_list=
+    | +-`a b`.`c d` := Literal(type=STRING, value="e f")
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[$query.$col1#1]
+        +-expr_list=
+        | +-$col1#1 := Literal(type=INT64, value=123)
+        +-input_scan=
+          +-SingleRowScan
+==
+
+# Constant expressions are allowed in hints.
+select @{ key=1+2,
+          key2=concat('a',@test_param_string),
+          key3=[STRUCT(1 as x, 2 as y)][offset(0)].y } 5
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-hint_list=
+    | +-key :=
+    | | +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    | |   +-Literal(type=INT64, value=1)
+    | |   +-Literal(type=INT64, value=2)
+    | +-key2 :=
+    | | +-FunctionCall(GoogleSQL:concat(STRING, repeated(1) STRING) -> STRING)
+    | |   +-Literal(type=STRING, value="a")
+    | |   +-Parameter(type=STRING, name="test_param_string")
+    | +-key3 :=
+    |   +-GetStructField
+    |     +-type=INT64
+    |     +-expr=
+    |     | +-FunctionCall(GoogleSQL:$array_at_offset(ARRAY<STRUCT<x INT64, y INT64>>, INT64) -> STRUCT<x INT64, y INT64>)
+    |     |   +-Literal(type=ARRAY<STRUCT<x INT64, y INT64>>, value=[{x:1, y:2}])
+    |     |   +-Literal(type=INT64, value=0)
+    |     +-field_idx=1
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[$query.$col1#1]
+        +-expr_list=
+        | +-$col1#1 := Literal(type=INT64, value=5)
+        +-input_scan=
+          +-SingleRowScan
+==
+
+# We can use @num_shards as a hint.
+select @123 5
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-hint_list=
+    | +-num_shards := Literal(type=INT64, value=123)
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[$query.$col1#1]
+        +-expr_list=
+        | +-$col1#1 := Literal(type=INT64, value=5)
+        +-input_scan=
+          +-SingleRowScan
+==
+
+# We can have both @num_shards and @{...}.
+select @1234567890123456 @{a=b} 5
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-hint_list=
+    | +-num_shards := Literal(type=INT64, value=1234567890123456)
+    | +-a := Literal(type=STRING, value="b")
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[$query.$col1#1]
+        +-expr_list=
+        | +-$col1#1 := Literal(type=INT64, value=5)
+        +-input_scan=
+          +-SingleRowScan
+==
+
+# @0 works, but may not make sense.
+select @0 1
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-hint_list=
+    | +-num_shards := Literal(type=INT64, value=0)
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[$query.$col1#1]
+        +-expr_list=
+        | +-$col1#1 := Literal(type=INT64, value=1)
+        +-input_scan=
+          +-SingleRowScan
+==
+
+# Integer overflow in @num_shards hint.
+select @1111111111111111111111111111111111111111111111 5
+--
+ERROR: Invalid INT64 literal in @num_shards hint: 1111111111111111111111111111111111111111111111 [at 1:9]
+select @1111111111111111111111111111111111111111111111 5
+        ^
+==
+
+# This fits in a uint64 but not an int64.
+select @18446744073709551615 5
+--
+ERROR: Invalid INT64 literal in @num_shards hint: 18446744073709551615 [at 1:9]
+select @18446744073709551615 5
+        ^
+==
+
+# Overlapping implicit and explicit num_shards hints.
+select @10 @{ num_shards=20, engine.num_shards=30 } 5
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-hint_list=
+    | +-num_shards := Literal(type=INT64, value=10)
+    | +-num_shards := Literal(type=INT64, value=20)
+    | +-engine.num_shards := Literal(type=INT64, value=30)
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[$query.$col1#1]
+        +-expr_list=
+        | +-$col1#1 := Literal(type=INT64, value=5)
+        +-input_scan=
+          +-SingleRowScan
+==
+
+select @{ key1=sum(1) } 5
+--
+ERROR: Aggregate function SUM not allowed in hint [at 1:16]
+select @{ key1=sum(1) } 5
+               ^
+==
+
+# The identifier in the hint resolves as a string literal, not a column.
+select @{ key1=KitchenSink } KitchenSink from TestTable
+--
+QueryStmt
++-output_column_list=
+| +-TestTable.KitchenSink#3 AS KitchenSink [PROTO<googlesql_test.KitchenSinkPB>]
++-query=
+  +-ProjectScan
+    +-column_list=[TestTable.KitchenSink#3]
+    +-hint_list=
+    | +-key1 := Literal(type=STRING, value="KitchenSink")
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[TestTable.KitchenSink#3]
+        +-input_scan=
+          +-TableScan(column_list=[TestTable.KitchenSink#3], table=TestTable, column_index_list=[2])
+==
+
+select @{ key1=t.KitchenSink } 1 from TestTable t
+--
+ERROR: Unrecognized name: t [at 1:16]
+select @{ key1=t.KitchenSink } 1 from TestTable t
+               ^
+==
+
+select @{ key1=TestTable.KitchenSink } 1 from TestTable
+--
+ERROR: Unrecognized name: TestTable [at 1:16]
+select @{ key1=TestTable.KitchenSink } 1 from TestTable
+               ^
+==
+
+select @{ key1=1+KitchenSink } 1 from TestTable
+--
+ERROR: Unrecognized name: KitchenSink [at 1:18]
+select @{ key1=1+KitchenSink } 1 from TestTable
+                 ^
+==
+
+# The value in () is interpreted as an expression, not a string.
+select @{ key1=KitchenSink, key2=(KitchenSink) } KitchenSink from TestTable
+--
+ERROR: Unrecognized name: KitchenSink [at 1:35]
+select @{ key1=KitchenSink, key2=(KitchenSink) } KitchenSink from TestTable
+                                  ^
+==
+
+# The value in () is interpreted as an expression, not a string.
+# This time, it resolves.
+select @{ key1=KitchenSink, key2=(TestConstantString) } KitchenSink from TestTable
+--
+QueryStmt
++-output_column_list=
+| +-TestTable.KitchenSink#3 AS KitchenSink [PROTO<googlesql_test.KitchenSinkPB>]
++-query=
+  +-ProjectScan
+    +-column_list=[TestTable.KitchenSink#3]
+    +-hint_list=
+    | +-key1 := Literal(type=STRING, value="KitchenSink")
+    | +-key2 := Constant(TestConstantString, type=STRING, value="foo")
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[TestTable.KitchenSink#3]
+        +-input_scan=
+          +-TableScan(column_list=[TestTable.KitchenSink#3], table=TestTable, column_index_list=[2])
+==
+
+# The value in () is interpreted as an expression, not a string.
+# Make sure we can read non-standard constant names via backticks.
+select @{ key1=KitchenSink,
+          key2=(`Test Constant-String`),
+          key3=(nested_catalog.TestConstantBool),
+          key4=nested_catalog.TestConstantBool,
+          key5=(nested_catalog.`Test Constant-String`),
+          key6=nested_catalog.`Test Constant-String` }
+       KitchenSink from TestTable
+--
+QueryStmt
++-output_column_list=
+| +-TestTable.KitchenSink#3 AS KitchenSink [PROTO<googlesql_test.KitchenSinkPB>]
++-query=
+  +-ProjectScan
+    +-column_list=[TestTable.KitchenSink#3]
+    +-hint_list=
+    | +-key1 := Literal(type=STRING, value="KitchenSink")
+    | +-key2 := Constant(Test Constant-String, type=STRING, value="foo bar")
+    | +-key3 := Constant(nested_catalog.TestConstantBool, type=BOOL, value=false)
+    | +-key4 := Constant(nested_catalog.TestConstantBool, type=BOOL, value=false)
+    | +-key5 := Constant(nested_catalog.Test Constant-String, type=STRING, value="Test constant in nested catalog")
+    | +-key6 := Constant(nested_catalog.Test Constant-String, type=STRING, value="Test constant in nested catalog")
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[TestTable.KitchenSink#3]
+        +-input_scan=
+          +-TableScan(column_list=[TestTable.KitchenSink#3], table=TestTable, column_index_list=[2])
+==
+
+# An ambiguous hint value, which can be either a literal string, or a symbol
+# name, results in an error.
+select @{ key1=KitchenSink, key2=TestConstantString } KitchenSink from TestTable
+--
+ERROR: Unable to determine if TestConstantString is a string or expression.  If a string is intended, please enclose it with quotation marks.  If an expression is intended, please enclose it with parentheses. [at 1:34]
+select @{ key1=KitchenSink, key2=TestConstantString } KitchenSink from TestTable
+                                 ^
+==
+
+# The value in coalesce() parses as an expression, and cannot be resolved.
+select @{ key1=coalesce(KitchenSink) } KitchenSink from TestTable
+--
+ERROR: Unrecognized name: KitchenSink [at 1:25]
+select @{ key1=coalesce(KitchenSink) } KitchenSink from TestTable
+                        ^
+==
+
+
+select @{ key1=(select 1) } 5
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-hint_list=
+    | +-key1 :=
+    |   +-SubqueryExpr
+    |     +-type=INT64
+    |     +-subquery_type=SCALAR
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$expr_subquery.$col1#2]
+    |         +-expr_list=
+    |         | +-$col1#2 := Literal(type=INT64, value=1)
+    |         +-input_scan=
+    |           +-SingleRowScan
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[$query.$col1#1]
+        +-expr_list=
+        | +-$col1#1 := Literal(type=INT64, value=5)
+        +-input_scan=
+          +-SingleRowScan
+==
+
+# Subqueries are allowed inside hints. We'd probably prefer that
+# they wouldn't be able to reference tables, but we don't have
+# a way to prevent that right now, so we allow it.
+# ExtractTableNames doesn't currently look inside hints.
+[no_test_extract_table_names]
+select @{ key1=(select count(*) from TestTable) } 1
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-hint_list=
+    | +-key1 :=
+    |   +-SubqueryExpr
+    |     +-type=INT64
+    |     +-subquery_type=SCALAR
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$aggregate.$agg1#5]
+    |         +-input_scan=
+    |           +-AggregateScan
+    |             +-column_list=[$aggregate.$agg1#5]
+    |             +-input_scan=
+    |             | +-TableScan(table=TestTable)
+    |             +-aggregate_list=
+    |               +-$agg1#5 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[$query.$col1#1]
+        +-expr_list=
+        | +-$col1#1 := Literal(type=INT64, value=1)
+        +-input_scan=
+          +-SingleRowScan
+==
+
+select @{ key1=(1), key2=((1)) } 5
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-hint_list=
+    | +-key1 := Literal(type=INT64, value=1)
+    | +-key2 := Literal(type=INT64, value=1)
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[$query.$col1#1]
+        +-expr_list=
+        | +-$col1#1 := Literal(type=INT64, value=5)
+        +-input_scan=
+          +-SingleRowScan
+==
+
+select @{ key1=(1, 2) } 5
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-hint_list=
+    | +-key1 := Literal(type=STRUCT<INT64, INT64>, value={1, 2})
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[$query.$col1#1]
+        +-expr_list=
+        | +-$col1#1 := Literal(type=INT64, value=5)
+        +-input_scan=
+          +-SingleRowScan
+==
+
+select @{ key1=((1, 2)) } 5
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-hint_list=
+    | +-key1 := Literal(type=STRUCT<INT64, INT64>, value={1, 2})
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[$query.$col1#1]
+        +-expr_list=
+        | +-$col1#1 := Literal(type=INT64, value=5)
+        +-input_scan=
+          +-SingleRowScan
+==
+
+select @{ key1=(1, [2], [(2,3), (4,5)]) } 5
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-hint_list=
+    | +-key1 := Literal(type=STRUCT<INT64, ARRAY<INT64>, ARRAY<STRUCT<INT64, INT64>>>, value={1, [2], [{2, 3}, {4, 5}]})
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[$query.$col1#1]
+        +-expr_list=
+        | +-$col1#1 := Literal(type=INT64, value=5)
+        +-input_scan=
+          +-SingleRowScan
+==
+
+select @{ key=@test_param_bool } 5
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-hint_list=
+    | +-key := Parameter(type=BOOL, name="test_param_bool")
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[$query.$col1#1]
+        +-expr_list=
+        | +-$col1#1 := Literal(type=INT64, value=5)
+        +-input_scan=
+          +-SingleRowScan
+==
+
+select @{ key=@bad_param } 5
+--
+ERROR: Query parameter 'bad_param' not found [at 1:15]
+select @{ key=@bad_param } 5
+              ^
+==
+
+# NULL as a value is allowed, and comes through as int64.
+select @{ key=null } 5
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-hint_list=
+    | +-key := Literal(type=INT64, value=NULL)
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[$query.$col1#1]
+        +-expr_list=
+        | +-$col1#1 := Literal(type=INT64, value=5)
+        +-input_scan=
+          +-SingleRowScan
+==
+
+# These reversed keywords are allowed in hints.
+select @{ proto=1, proto.hash=2, hash.proto=3 } 123
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-hint_list=
+    | +-`proto` := Literal(type=INT64, value=1)
+    | +-`proto`.`hash` := Literal(type=INT64, value=2)
+    | +-`hash`.`proto` := Literal(type=INT64, value=3)
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[$query.$col1#1]
+        +-expr_list=
+        | +-$col1#1 := Literal(type=INT64, value=123)
+        +-input_scan=
+          +-SingleRowScan
+==
+
+select @{ h1=[1, 'a', null] } key from Keyvalue
+--
+ERROR: Array elements of types {INT64, NULL, STRING} do not have a common supertype [at 1:14]
+select @{ h1=[1, 'a', null] } key from Keyvalue
+             ^
+==
+
+select @{ h1=[1, 2], h2=ARRAY<int32>[1, 2], h3=ARRAY[1, 2] } key
+from KeyValue
+--
+QueryStmt
++-output_column_list=
+| +-KeyValue.Key#1 AS key [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[KeyValue.Key#1]
+    +-hint_list=
+    | +-h1 := Literal(type=ARRAY<INT64>, value=[1, 2])
+    | +-h2 := Literal(type=ARRAY<INT32>, value=[1, 2], has_explicit_type=TRUE)
+    | +-h3 := Literal(type=ARRAY<INT64>, value=[1, 2])
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[KeyValue.Key#1]
+        +-input_scan=
+          +-TableScan(column_list=[KeyValue.Key#1], table=KeyValue, column_index_list=[0])
+==
+
+select @{ h=[] } key from KeyValue
+--
+QueryStmt
++-output_column_list=
+| +-KeyValue.Key#1 AS key [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[KeyValue.Key#1]
+    +-hint_list=
+    | +-h := Literal(type=ARRAY<INT64>, value=[])
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[KeyValue.Key#1]
+        +-input_scan=
+          +-TableScan(column_list=[KeyValue.Key#1], table=KeyValue, column_index_list=[0])
+==
+
+select @{ h1 = ARRAY<float>[], h2=ARRAY<date>["2011-01-01"] } key from KeyValue
+--
+QueryStmt
++-output_column_list=
+| +-KeyValue.Key#1 AS key [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[KeyValue.Key#1]
+    +-hint_list=
+    | +-h1 := Literal(type=ARRAY<FLOAT>, value=[], has_explicit_type=TRUE)
+    | +-h2 := Literal(type=ARRAY<DATE>, value=[2011-01-01], has_explicit_type=TRUE)
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[KeyValue.Key#1]
+        +-input_scan=
+          +-TableScan(column_list=[KeyValue.Key#1], table=KeyValue, column_index_list=[0])
+==
+
+select @{ h1 = NEW googlesql_test.TestExtraPB() } key from KeyValue
+--
+QueryStmt
++-output_column_list=
+| +-KeyValue.Key#1 AS key [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[KeyValue.Key#1]
+    +-hint_list=
+    | +-h1 := MakeProto(type=PROTO<googlesql_test.TestExtraPB>)
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[KeyValue.Key#1]
+        +-input_scan=
+          +-TableScan(column_list=[KeyValue.Key#1], table=KeyValue, column_index_list=[0])
+==
+
+select @{ h1 = STRUCT(1, 2 as y, struct<f uint32>(5)) } key from KeyValue
+--
+QueryStmt
++-output_column_list=
+| +-KeyValue.Key#1 AS key [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[KeyValue.Key#1]
+    +-hint_list=
+    | +-h1 := Literal(type=STRUCT<INT64, y INT64, STRUCT<f UINT32>>, value={1, y:2, {f:5}})
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[KeyValue.Key#1]
+        +-input_scan=
+          +-TableScan(column_list=[KeyValue.Key#1], table=KeyValue, column_index_list=[0])
+==
+
+select @{ h1 = STRUCT<x int32, y uint32>(1, 2) } key from KeyValue
+--
+QueryStmt
++-output_column_list=
+| +-KeyValue.Key#1 AS key [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[KeyValue.Key#1]
+    +-hint_list=
+    | +-h1 := Literal(type=STRUCT<x INT32, y UINT32>, value={x:1, y:2}, has_explicit_type=TRUE)
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[KeyValue.Key#1]
+        +-input_scan=
+          +-TableScan(column_list=[KeyValue.Key#1], table=KeyValue, column_index_list=[0])
+==
+
+select @{ h=struct(array[struct(5)]) } 5
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-hint_list=
+    | +-h := Literal(type=STRUCT<ARRAY<STRUCT<INT64>>>, value={[{5}]})
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[$query.$col1#1]
+        +-expr_list=
+        | +-$col1#1 := Literal(type=INT64, value=5)
+        +-input_scan=
+          +-SingleRowScan
+==
+
+#
+# Hints on JOIN
+#
+
+select 1
+from KeyValue kv1
+join @{a=b} KeyValue kv2 using (key)
+left join @{c=d} KeyValue kv3 on true
+right join @123 KeyValue kv4 on true
+cross join @155 @{e=f} KeyValue kv5
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#11 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#11]
+    +-expr_list=
+    | +-$col1#11 := Literal(type=INT64, value=1)
+    +-input_scan=
+      +-JoinScan
+        +-column_list=KeyValue.[Key#1, Key#3]
+        +-hint_list=
+        | +-num_shards := Literal(type=INT64, value=155)
+        | +-e := Literal(type=STRING, value="f")
+        +-left_scan=
+        | +-JoinScan
+        |   +-column_list=KeyValue.[Key#1, Key#3]
+        |   +-hint_list=
+        |   | +-num_shards := Literal(type=INT64, value=123)
+        |   +-join_type=RIGHT
+        |   +-left_scan=
+        |   | +-JoinScan
+        |   |   +-column_list=KeyValue.[Key#1, Key#3]
+        |   |   +-hint_list=
+        |   |   | +-c := Literal(type=STRING, value="d")
+        |   |   +-join_type=LEFT
+        |   |   +-left_scan=
+        |   |   | +-JoinScan
+        |   |   |   +-column_list=KeyValue.[Key#1, Key#3]
+        |   |   |   +-hint_list=
+        |   |   |   | +-a := Literal(type=STRING, value="b")
+        |   |   |   +-left_scan=
+        |   |   |   | +-TableScan(column_list=[KeyValue.Key#1], table=KeyValue, column_index_list=[0], alias="kv1")
+        |   |   |   +-right_scan=
+        |   |   |   | +-TableScan(column_list=[KeyValue.Key#3], table=KeyValue, column_index_list=[0], alias="kv2")
+        |   |   |   +-join_expr=
+        |   |   |   | +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+        |   |   |   |   +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+        |   |   |   |   +-ColumnRef(type=INT64, column=KeyValue.Key#3)
+        |   |   |   +-has_using=TRUE
+        |   |   +-right_scan=
+        |   |   | +-TableScan(table=KeyValue, alias="kv3")
+        |   |   +-join_expr=
+        |   |     +-Literal(type=BOOL, value=true)
+        |   +-right_scan=
+        |   | +-TableScan(table=KeyValue, alias="kv4")
+        |   +-join_expr=
+        |     +-Literal(type=BOOL, value=true)
+        +-right_scan=
+          +-TableScan(table=KeyValue, alias="kv5")
+==
+
+select 1 from KeyValue kv1 cross join @{x=@bad_param} KeyValue kv2
+--
+ERROR: Query parameter 'bad_param' not found [at 1:43]
+select 1 from KeyValue kv1 cross join @{x=@bad_param} KeyValue kv2
+                                          ^
+==
+
+select 1
+from KeyValue kv1
+HASH JOIN KeyValue kv2 on true
+LOOKUP JOIN KeyValue kv3 on true
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#7 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#7]
+    +-expr_list=
+    | +-$col1#7 := Literal(type=INT64, value=1)
+    +-input_scan=
+      +-JoinScan
+        +-hint_list=
+        | +-join_type := Literal(type=STRING, value="LOOKUP_JOIN")
+        +-left_scan=
+        | +-JoinScan
+        |   +-hint_list=
+        |   | +-join_type := Literal(type=STRING, value="HASH_JOIN")
+        |   +-left_scan=
+        |   | +-TableScan(table=KeyValue, alias="kv1")
+        |   +-right_scan=
+        |   | +-TableScan(table=KeyValue, alias="kv2")
+        |   +-join_expr=
+        |     +-Literal(type=BOOL, value=true)
+        +-right_scan=
+        | +-TableScan(table=KeyValue, alias="kv3")
+        +-join_expr=
+          +-Literal(type=BOOL, value=true)
+==
+
+# Mixing join keyword hint with long-form hints, including one named join_type.
+select 1
+from KeyValue kv1
+LEFT HASH JOIN @{x=y, join_type=OTHER} KeyValue kv2 on true
+CROSS LOOKUP JOIN @123 KeyValue kv3
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#7 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#7]
+    +-expr_list=
+    | +-$col1#7 := Literal(type=INT64, value=1)
+    +-input_scan=
+      +-JoinScan
+        +-hint_list=
+        | +-join_type := Literal(type=STRING, value="LOOKUP_JOIN")
+        | +-num_shards := Literal(type=INT64, value=123)
+        +-left_scan=
+        | +-JoinScan
+        |   +-hint_list=
+        |   | +-join_type := Literal(type=STRING, value="HASH_JOIN")
+        |   | +-x := Literal(type=STRING, value="y")
+        |   | +-join_type := Literal(type=STRING, value="OTHER")
+        |   +-join_type=LEFT
+        |   +-left_scan=
+        |   | +-TableScan(table=KeyValue, alias="kv1")
+        |   +-right_scan=
+        |   | +-TableScan(table=KeyValue, alias="kv2")
+        |   +-join_expr=
+        |     +-Literal(type=BOOL, value=true)
+        +-right_scan=
+          +-TableScan(table=KeyValue, alias="kv3")
+==
+
+#
+# Hints on array JOINs (hints get attached to ArrayScan nodes)
+#
+
+select 1
+from TestTable
+join @{j1=1} TestTable.KitchenSink.nested_repeated_value
+left join @123 nested_repeated_value.nested_repeated_int64
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#6 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#6]
+    +-expr_list=
+    | +-$col1#6 := Literal(type=INT64, value=1)
+    +-input_scan=
+      +-ArrayScan
+        +-column_list=[TestTable.KitchenSink#3, $array.nested_repeated_value#4]
+        +-hint_list=
+        | +-num_shards := Literal(type=INT64, value=123)
+        +-input_scan=
+        | +-ArrayScan
+        |   +-column_list=[TestTable.KitchenSink#3, $array.nested_repeated_value#4]
+        |   +-hint_list=
+        |   | +-j1 := Literal(type=INT64, value=1)
+        |   +-input_scan=
+        |   | +-TableScan(column_list=[TestTable.KitchenSink#3], table=TestTable, column_index_list=[2])
+        |   +-array_expr_list=
+        |   | +-GetProtoField
+        |   |   +-type=ARRAY<PROTO<googlesql_test.KitchenSinkPB.Nested>>
+        |   |   +-expr=
+        |   |   | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=TestTable.KitchenSink#3)
+        |   |   +-field_descriptor=nested_repeated_value
+        |   |   +-default_value=[]
+        |   +-element_column_list=[$array.nested_repeated_value#4]
+        +-array_expr_list=
+        | +-GetProtoField
+        |   +-type=ARRAY<INT64>
+        |   +-expr=
+        |   | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB.Nested>, column=$array.nested_repeated_value#4)
+        |   +-field_descriptor=nested_repeated_int64
+        |   +-default_value=[]
+        +-element_column_list=[$array.nested_repeated_int64#5]
+        +-is_outer=TRUE
+==
+
+select 1
+from TestTable
+left hash join @555 @{j1=1} TestTable.KitchenSink.nested_repeated_value
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#5 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#5]
+    +-expr_list=
+    | +-$col1#5 := Literal(type=INT64, value=1)
+    +-input_scan=
+      +-ArrayScan
+        +-column_list=[TestTable.KitchenSink#3]
+        +-hint_list=
+        | +-join_type := Literal(type=STRING, value="HASH_JOIN")
+        | +-num_shards := Literal(type=INT64, value=555)
+        | +-j1 := Literal(type=INT64, value=1)
+        +-input_scan=
+        | +-TableScan(column_list=[TestTable.KitchenSink#3], table=TestTable, column_index_list=[2])
+        +-array_expr_list=
+        | +-GetProtoField
+        |   +-type=ARRAY<PROTO<googlesql_test.KitchenSinkPB.Nested>>
+        |   +-expr=
+        |   | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=TestTable.KitchenSink#3)
+        |   +-field_descriptor=nested_repeated_value
+        |   +-default_value=[]
+        +-element_column_list=[$array.nested_repeated_value#4]
+        +-is_outer=TRUE
+==
+
+select 1
+from TestTable
+left hash join @{j1=@bad_param} TestTable.KitchenSink.nested_repeated_value
+--
+ERROR: Query parameter 'bad_param' not found [at 3:21]
+left hash join @{j1=@bad_param} TestTable.KitchenSink.nested_repeated_value
+                    ^
+==
+
+#
+# Hints in ORDER BY
+#
+
+select key from KeyValue
+order @{abc=1} by 1
+--
+QueryStmt
++-output_column_list=
+| +-KeyValue.Key#1 AS key [INT64]
++-query=
+  +-OrderByScan
+    +-column_list=[KeyValue.Key#1]
+    +-hint_list=
+    | +-abc := Literal(type=INT64, value=1)
+    +-is_ordered=TRUE
+    +-input_scan=
+    | +-TableScan(column_list=[KeyValue.Key#1], table=KeyValue, column_index_list=[0])
+    +-order_by_item_list=
+      +-OrderByItem
+        +-column_ref=
+          +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+==
+
+select key from KeyValue
+order @777 by 1
+--
+QueryStmt
++-output_column_list=
+| +-KeyValue.Key#1 AS key [INT64]
++-query=
+  +-OrderByScan
+    +-column_list=[KeyValue.Key#1]
+    +-hint_list=
+    | +-num_shards := Literal(type=INT64, value=777)
+    +-is_ordered=TRUE
+    +-input_scan=
+    | +-TableScan(column_list=[KeyValue.Key#1], table=KeyValue, column_index_list=[0])
+    +-order_by_item_list=
+      +-OrderByItem
+        +-column_ref=
+          +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+==
+
+select key from KeyValue
+order @777 @{a=5} by 1
+--
+QueryStmt
++-output_column_list=
+| +-KeyValue.Key#1 AS key [INT64]
++-query=
+  +-OrderByScan
+    +-column_list=[KeyValue.Key#1]
+    +-hint_list=
+    | +-num_shards := Literal(type=INT64, value=777)
+    | +-a := Literal(type=INT64, value=5)
+    +-is_ordered=TRUE
+    +-input_scan=
+    | +-TableScan(column_list=[KeyValue.Key#1], table=KeyValue, column_index_list=[0])
+    +-order_by_item_list=
+      +-OrderByItem
+        +-column_ref=
+          +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+==
+
+select key from KeyValue
+order @{abc=@bad_param} by 1
+--
+ERROR: Query parameter 'bad_param' not found [at 2:13]
+order @{abc=@bad_param} by 1
+            ^
+==
+
+# ORDER BY after set operations
+select key from KeyValue
+union all
+select key from KeyValue
+order @{abc=1} by 1
+--
+QueryStmt
++-output_column_list=
+| +-$union_all.key#5 AS key [INT64]
++-query=
+  +-OrderByScan
+    +-column_list=[$union_all.key#5]
+    +-hint_list=
+    | +-abc := Literal(type=INT64, value=1)
+    +-is_ordered=TRUE
+    +-input_scan=
+    | +-SetOperationScan
+    |   +-column_list=[$union_all.key#5]
+    |   +-op_type=UNION_ALL
+    |   +-input_item_list=
+    |     +-SetOperationItem
+    |     | +-scan=
+    |     | | +-ProjectScan
+    |     | |   +-column_list=[KeyValue.Key#1]
+    |     | |   +-input_scan=
+    |     | |     +-TableScan(column_list=[KeyValue.Key#1], table=KeyValue, column_index_list=[0])
+    |     | +-output_column_list=[KeyValue.Key#1]
+    |     +-SetOperationItem
+    |       +-scan=
+    |       | +-ProjectScan
+    |       |   +-column_list=[KeyValue.Key#3]
+    |       |   +-input_scan=
+    |       |     +-TableScan(column_list=[KeyValue.Key#3], table=KeyValue, column_index_list=[0])
+    |       +-output_column_list=[KeyValue.Key#3]
+    +-order_by_item_list=
+      +-OrderByItem
+        +-column_ref=
+          +-ColumnRef(type=INT64, column=$union_all.key#5)
+==
+
+select key from KeyValue
+union all
+select key from KeyValue
+order @{abc=@bad_param} by 1
+--
+ERROR: Query parameter 'bad_param' not found [at 4:13]
+order @{abc=@bad_param} by 1
+            ^
+==
+
+#
+# Hints in GROUP BY
+#
+
+select key from KeyValue
+group @{abc=1} by 1
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.key#3 AS key [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$groupby.key#3]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$groupby.key#3]
+        +-hint_list=
+        | +-abc := Literal(type=INT64, value=1)
+        +-input_scan=
+        | +-TableScan(column_list=[KeyValue.Key#1], table=KeyValue, column_index_list=[0])
+        +-group_by_list=
+          +-key#3 := ColumnRef(type=INT64, column=KeyValue.Key#1)
+==
+
+select key from KeyValue
+group @100 by 1
+union all
+select key from KeyValue
+group @200 @{num_shards=300} by 1
+--
+QueryStmt
++-output_column_list=
+| +-$union_all.key#7 AS key [INT64]
++-query=
+  +-SetOperationScan
+    +-column_list=[$union_all.key#7]
+    +-op_type=UNION_ALL
+    +-input_item_list=
+      +-SetOperationItem
+      | +-scan=
+      | | +-ProjectScan
+      | |   +-column_list=[$groupby.key#3]
+      | |   +-input_scan=
+      | |     +-AggregateScan
+      | |       +-column_list=[$groupby.key#3]
+      | |       +-hint_list=
+      | |       | +-num_shards := Literal(type=INT64, value=100)
+      | |       +-input_scan=
+      | |       | +-TableScan(column_list=[KeyValue.Key#1], table=KeyValue, column_index_list=[0])
+      | |       +-group_by_list=
+      | |         +-key#3 := ColumnRef(type=INT64, column=KeyValue.Key#1)
+      | +-output_column_list=[$groupby.key#3]
+      +-SetOperationItem
+        +-scan=
+        | +-ProjectScan
+        |   +-column_list=[$groupby.key#6]
+        |   +-input_scan=
+        |     +-AggregateScan
+        |       +-column_list=[$groupby.key#6]
+        |       +-hint_list=
+        |       | +-num_shards := Literal(type=INT64, value=200)
+        |       | +-num_shards := Literal(type=INT64, value=300)
+        |       +-input_scan=
+        |       | +-TableScan(column_list=[KeyValue.Key#4], table=KeyValue, column_index_list=[0])
+        |       +-group_by_list=
+        |         +-key#6 := ColumnRef(type=INT64, column=KeyValue.Key#4)
+        +-output_column_list=[$groupby.key#6]
+==
+
+# This was b/21856852.  We were attaching GROUP BY hints to the DISTINCT.
+select distinct key
+from KeyValue
+group @123 by key
+--
+QueryStmt
++-output_column_list=
+| +-$distinct.key#4 AS key [INT64]
++-query=
+  +-AggregateScan
+    +-column_list=[$distinct.key#4]
+    +-input_scan=
+    | +-AggregateScan
+    |   +-column_list=[$groupby.key#3]
+    |   +-hint_list=
+    |   | +-num_shards := Literal(type=INT64, value=123)
+    |   +-input_scan=
+    |   | +-TableScan(column_list=[KeyValue.Key#1], table=KeyValue, column_index_list=[0])
+    |   +-group_by_list=
+    |     +-key#3 := ColumnRef(type=INT64, column=KeyValue.Key#1)
+    +-group_by_list=
+      +-key#4 := ColumnRef(type=INT64, column=$groupby.key#3)
+==
+
+#
+# Hints in FROM clause (table_path_expression)
+# These show up on ResolvedTableScan, ResolvedArrayScan, ResolvedWithRefScan.
+#
+
+select key from KeyValue
+group @{abc=@bad_param} by 1
+--
+ERROR: Query parameter 'bad_param' not found [at 2:13]
+group @{abc=@bad_param} by 1
+            ^
+==
+
+select 1
+from KeyValue @{hint=kv1},
+     KeyValue @{hint=kv2} as kv2,
+     KeyValue @3 as kv3
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#7 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#7]
+    +-expr_list=
+    | +-$col1#7 := Literal(type=INT64, value=1)
+    +-input_scan=
+      +-JoinScan
+        +-left_scan=
+        | +-JoinScan
+        |   +-left_scan=
+        |   | +-TableScan
+        |   |   +-hint_list=
+        |   |   | +-hint := Literal(type=STRING, value="kv1")
+        |   |   +-table=KeyValue
+        |   +-right_scan=
+        |     +-TableScan
+        |       +-hint_list=
+        |       | +-hint := Literal(type=STRING, value="kv2")
+        |       +-table=KeyValue
+        |       +-alias="kv2"
+        +-right_scan=
+          +-TableScan
+            +-hint_list=
+            | +-num_shards := Literal(type=INT64, value=3)
+            +-table=KeyValue
+            +-alias="kv3"
+==
+
+select k1.key
+from KeyValue @{hint=kv2} k1 join @10 KeyValue @20 on true, TestTable @30 as t3
+--
+QueryStmt
++-output_column_list=
+| +-KeyValue.Key#1 AS key [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[KeyValue.Key#1]
+    +-input_scan=
+      +-JoinScan
+        +-column_list=[KeyValue.Key#1]
+        +-left_scan=
+        | +-JoinScan
+        |   +-column_list=[KeyValue.Key#1]
+        |   +-hint_list=
+        |   | +-num_shards := Literal(type=INT64, value=10)
+        |   +-left_scan=
+        |   | +-TableScan
+        |   |   +-column_list=[KeyValue.Key#1]
+        |   |   +-hint_list=
+        |   |   | +-hint := Literal(type=STRING, value="kv2")
+        |   |   +-table=KeyValue
+        |   |   +-column_index_list=[0]
+        |   |   +-alias="k1"
+        |   +-right_scan=
+        |   | +-TableScan
+        |   |   +-hint_list=
+        |   |   | +-num_shards := Literal(type=INT64, value=20)
+        |   |   +-table=KeyValue
+        |   +-join_expr=
+        |     +-Literal(type=BOOL, value=true)
+        +-right_scan=
+          +-TableScan
+            +-hint_list=
+            | +-num_shards := Literal(type=INT64, value=30)
+            +-table=TestTable
+            +-alias="t3"
+==
+
+select 1 from TestTable
+left hash join TestTable.KitchenSink.nested_repeated_value @12 @{abc=123}
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#5 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#5]
+    +-expr_list=
+    | +-$col1#5 := Literal(type=INT64, value=1)
+    +-input_scan=
+      +-ArrayScan
+        +-column_list=[TestTable.KitchenSink#3]
+        +-hint_list=
+        | +-join_type := Literal(type=STRING, value="HASH_JOIN")
+        | +-num_shards := Literal(type=INT64, value=12)
+        | +-abc := Literal(type=INT64, value=123)
+        +-input_scan=
+        | +-TableScan(column_list=[TestTable.KitchenSink#3], table=TestTable, column_index_list=[2])
+        +-array_expr_list=
+        | +-GetProtoField
+        |   +-type=ARRAY<PROTO<googlesql_test.KitchenSinkPB.Nested>>
+        |   +-expr=
+        |   | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=TestTable.KitchenSink#3)
+        |   +-field_descriptor=nested_repeated_value
+        |   +-default_value=[]
+        +-element_column_list=[$array.nested_repeated_value#4]
+        +-is_outer=TRUE
+==
+
+# Hints on array scans in correlated expression subqueries.
+select (select count(*) from tt.KitchenSink.repeated_date @10),
+       ARRAY(select d from tt.KitchenSink.repeated_date @{a=2} d)
+from TestTable tt
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#7 AS `$col1` [INT64]
+| +-$query.$col2#8 AS `$col2` [ARRAY<DATE>]
++-query=
+  +-ProjectScan
+    +-column_list=$query.[$col1#7, $col2#8]
+    +-expr_list=
+    | +-$col1#7 :=
+    | | +-SubqueryExpr
+    | |   +-type=INT64
+    | |   +-subquery_type=SCALAR
+    | |   +-parameter_list=
+    | |   | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=TestTable.KitchenSink#3)
+    | |   +-subquery=
+    | |     +-ProjectScan
+    | |       +-column_list=[$aggregate.$agg1#5]
+    | |       +-input_scan=
+    | |         +-AggregateScan
+    | |           +-column_list=[$aggregate.$agg1#5]
+    | |           +-input_scan=
+    | |           | +-ArrayScan
+    | |           |   +-hint_list=
+    | |           |   | +-num_shards := Literal(type=INT64, value=10)
+    | |           |   +-array_expr_list=
+    | |           |   | +-GetProtoField
+    | |           |   |   +-type=ARRAY<DATE>
+    | |           |   |   +-expr=
+    | |           |   |   | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=TestTable.KitchenSink#3, is_correlated=TRUE)
+    | |           |   |   +-field_descriptor=repeated_date
+    | |           |   |   +-default_value=[]
+    | |           |   |   +-format=DATE
+    | |           |   +-element_column_list=[$array.repeated_date#4]
+    | |           +-aggregate_list=
+    | |             +-$agg1#5 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+    | +-$col2#8 :=
+    |   +-SubqueryExpr
+    |     +-type=ARRAY<DATE>
+    |     +-subquery_type=ARRAY
+    |     +-parameter_list=
+    |     | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=TestTable.KitchenSink#3)
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$array.d#6]
+    |         +-input_scan=
+    |           +-ArrayScan
+    |             +-column_list=[$array.d#6]
+    |             +-hint_list=
+    |             | +-a := Literal(type=INT64, value=2)
+    |             +-array_expr_list=
+    |             | +-GetProtoField
+    |             |   +-type=ARRAY<DATE>
+    |             |   +-expr=
+    |             |   | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=TestTable.KitchenSink#3, is_correlated=TRUE)
+    |             |   +-field_descriptor=repeated_date
+    |             |   +-default_value=[]
+    |             |   +-format=DATE
+    |             +-element_column_list=[$array.d#6]
+    +-input_scan=
+      +-TableScan(column_list=[TestTable.KitchenSink#3], table=TestTable, column_index_list=[2], alias="tt")
+==
+
+select 1 from TestTable @{k=@bad_param}
+--
+ERROR: Query parameter 'bad_param' not found [at 1:29]
+select 1 from TestTable @{k=@bad_param}
+                            ^
+==
+
+select 1 from TestTable
+join TestTable.KitchenSink.nested_repeated_value @{abc=@bad_param}
+--
+ERROR: Query parameter 'bad_param' not found [at 2:56]
+join TestTable.KitchenSink.nested_repeated_value @{abc=@bad_param}
+                                                       ^
+==
+
+# Array joins can have hints attached to both the JOIN keyword
+# and the table name.  Both get attached to the ResolvedArrayScan.
+select 1 from TestTable @555
+  lookup join @1 @{array_hint=true}
+     TestTable.KitchenSink.nested_repeated_value @2 @{table_hint=true}
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#5 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#5]
+    +-expr_list=
+    | +-$col1#5 := Literal(type=INT64, value=1)
+    +-input_scan=
+      +-ArrayScan
+        +-column_list=[TestTable.KitchenSink#3]
+        +-hint_list=
+        | +-join_type := Literal(type=STRING, value="LOOKUP_JOIN")
+        | +-num_shards := Literal(type=INT64, value=1)
+        | +-array_hint := Literal(type=BOOL, value=true)
+        | +-num_shards := Literal(type=INT64, value=2)
+        | +-table_hint := Literal(type=BOOL, value=true)
+        +-input_scan=
+        | +-TableScan
+        |   +-column_list=[TestTable.KitchenSink#3]
+        |   +-hint_list=
+        |   | +-num_shards := Literal(type=INT64, value=555)
+        |   +-table=TestTable
+        |   +-column_index_list=[2]
+        +-array_expr_list=
+        | +-GetProtoField
+        |   +-type=ARRAY<PROTO<googlesql_test.KitchenSinkPB.Nested>>
+        |   +-expr=
+        |   | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=TestTable.KitchenSink#3)
+        |   +-field_descriptor=nested_repeated_value
+        |   +-default_value=[]
+        +-element_column_list=[$array.nested_repeated_value#4]
+==
+
+with w as (select * from KeyValue @123)
+select key from w @456
+--
+QueryStmt
++-output_column_list=
+| +-w.Key#3 AS key [INT64]
++-query=
+  +-WithScan
+    +-column_list=[w.Key#3]
+    +-with_entry_list=
+    | +-WithEntry
+    |   +-with_query_name="w"
+    |   +-with_subquery=
+    |     +-ProjectScan
+    |       +-column_list=KeyValue.[Key#1, Value#2]
+    |       +-input_scan=
+    |         +-TableScan
+    |           +-column_list=KeyValue.[Key#1, Value#2]
+    |           +-hint_list=
+    |           | +-num_shards := Literal(type=INT64, value=123)
+    |           +-table=KeyValue
+    |           +-column_index_list=[0, 1]
+    +-query=
+      +-ProjectScan
+        +-column_list=[w.Key#3]
+        +-input_scan=
+          +-WithRefScan
+            +-column_list=w.[Key#3, Value#4]
+            +-hint_list=
+            | +-num_shards := Literal(type=INT64, value=456)
+            +-with_query_name="w"
+==
+
+with w as (select * from KeyValue @123)
+select key from w @{k=@bad_param}
+--
+ERROR: Query parameter 'bad_param' not found [at 2:23]
+select key from w @{k=@bad_param}
+                      ^
+==
+
+#
+# Hints on Statements.
+# These show up attached to the ResolvedStatement for all statement subclasses.
+#
+
+@{ h1 = 4 } select 1
+--
+QueryStmt
++-hint_list=
+| +-h1 := Literal(type=INT64, value=4)
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 := Literal(type=INT64, value=1)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+@{a=b,b=c} create table t as select 1 c;
+--
+CreateTableAsSelectStmt
++-hint_list=
+| +-a := Literal(type=STRING, value="b")
+| +-b := Literal(type=STRING, value="c")
++-name_path=t
++-column_definition_list=
+| +-ColumnDefinition(name="c", type=INT64, column=t.c#2)
++-output_column_list=
+| +-$create_as.c#1 AS c [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$create_as.c#1]
+    +-expr_list=
+    | +-c#1 := Literal(type=INT64, value=1)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Explain supports both a statement-level hint on the explain and a hint
+# on the statement being explained.
+@{ h1 = 1 } explain @{ h2 = 2 } select 2;
+--
+ExplainStmt
++-hint_list=
+| +-h1 := Literal(type=INT64, value=1)
++-statement=
+  +-QueryStmt
+    +-hint_list=
+    | +-h2 := Literal(type=INT64, value=2)
+    +-output_column_list=
+    | +-$query.$col1#1 AS `$col1` [INT64]
+    +-query=
+      +-ProjectScan
+        +-column_list=[$query.$col1#1]
+        +-expr_list=
+        | +-$col1#1 := Literal(type=INT64, value=2)
+        +-input_scan=
+          +-SingleRowScan
+==
+
+@{ h1 = @bad_param } select 1;
+--
+ERROR: Query parameter 'bad_param' not found [at 1:9]
+@{ h1 = @bad_param } select 1;
+        ^
+==
+
+#
+# Hints on the OVER clause
+#
+
+[default language_features=NONE,+ANALYTIC_FUNCTIONS]
+select afn_agg() over (partition @123 @{a=1, b=2} by key
+                       order @567 @{c=3, d=4} by value)
+from keyvalue
+--
+QueryStmt
++-output_column_list=
+| +-$analytic.$analytic1#4 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$analytic.$analytic1#4]
+    +-input_scan=
+      +-AnalyticScan
+        +-column_list=[KeyValue.Key#1, KeyValue.Value#2, $analytic.$analytic1#4]
+        +-input_scan=
+        | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+        +-function_group_list=
+          +-AnalyticFunctionGroup
+            +-partition_by=
+            | +-WindowPartitioning
+            |   +-partition_by_list=
+            |   | +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+            |   +-hint_list=
+            |     +-num_shards := Literal(type=INT64, value=123)
+            |     +-a := Literal(type=INT64, value=1)
+            |     +-b := Literal(type=INT64, value=2)
+            +-order_by=
+            | +-WindowOrdering
+            |   +-order_by_item_list=
+            |   | +-OrderByItem
+            |   |   +-column_ref=
+            |   |     +-ColumnRef(type=STRING, column=KeyValue.Value#2)
+            |   +-hint_list=
+            |     +-num_shards := Literal(type=INT64, value=567)
+            |     +-c := Literal(type=INT64, value=3)
+            |     +-d := Literal(type=INT64, value=4)
+            +-analytic_function_list=
+              +-$analytic1#4 :=
+                +-AnalyticFunctionCall(sample_functions:afn_agg() -> INT64)
+                  +-window_frame=
+                    +-WindowFrame(frame_unit=RANGE)
+                      +-start_expr=
+                      | +-WindowFrameExpr(boundary_type=UNBOUNDED PRECEDING)
+                      +-end_expr=
+                        +-WindowFrameExpr(boundary_type=CURRENT ROW)
+==
+
+select afn_agg() over (partition @{ h1 = @bad_param } by key)
+from keyvalue
+--
+ERROR: Query parameter 'bad_param' not found [at 1:42]
+select afn_agg() over (partition @{ h1 = @bad_param } by key)
+                                         ^
+==
+
+select afn_agg() over (order @{ h1 = @bad_param } by key)
+from keyvalue
+--
+ERROR: Query parameter 'bad_param' not found [at 1:38]
+select afn_agg() over (order @{ h1 = @bad_param } by key)
+                                     ^
+==
+
+#
+# Hints on IN clause with sub query RHS
+#
+
+select 1
+from TestTable T
+where T.KitchenSink.int32_val
+      IN @{a = 1,b = c}
+      (select * from T.KitchenSink.repeated_int32_val)
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#5 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#5]
+    +-expr_list=
+    | +-$col1#5 := Literal(type=INT64, value=1)
+    +-input_scan=
+      +-FilterScan
+        +-column_list=[TestTable.KitchenSink#3]
+        +-input_scan=
+        | +-TableScan(column_list=[TestTable.KitchenSink#3], table=TestTable, column_index_list=[2], alias="T")
+        +-filter_expr=
+          +-SubqueryExpr
+            +-type=BOOL
+            +-subquery_type=IN
+            +-parameter_list=
+            | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=TestTable.KitchenSink#3)
+            +-in_expr=
+            | +-GetProtoField
+            |   +-type=INT32
+            |   +-expr=
+            |   | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=TestTable.KitchenSink#3)
+            |   +-field_descriptor=int32_val
+            |   +-default_value=77
+            +-subquery=
+            | +-ProjectScan
+            |   +-column_list=[$array.repeated_int32_val#4]
+            |   +-input_scan=
+            |     +-ArrayScan
+            |       +-column_list=[$array.repeated_int32_val#4]
+            |       +-array_expr_list=
+            |       | +-GetProtoField
+            |       |   +-type=ARRAY<INT32>
+            |       |   +-expr=
+            |       |   | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=TestTable.KitchenSink#3, is_correlated=TRUE)
+            |       |   +-field_descriptor=repeated_int32_val
+            |       |   +-default_value=[]
+            |       +-element_column_list=[$array.repeated_int32_val#4]
+            +-hint_list=
+              +-a := Literal(type=INT64, value=1)
+              +-b := Literal(type=STRING, value="c")
+
+==
+
+select 1 IN @{a = 1,b = c} (select 1)
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#2 AS `$col1` [BOOL]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#2]
+    +-expr_list=
+    | +-$col1#2 :=
+    |   +-SubqueryExpr
+    |     +-type=BOOL
+    |     +-subquery_type=IN
+    |     +-in_expr=
+    |     | +-Literal(type=INT64, value=1)
+    |     +-subquery=
+    |     | +-ProjectScan
+    |     |   +-column_list=[$expr_subquery.$col1#1]
+    |     |   +-expr_list=
+    |     |   | +-$col1#1 := Literal(type=INT64, value=1)
+    |     |   +-input_scan=
+    |     |     +-SingleRowScan
+    |     +-hint_list=
+    |       +-a := Literal(type=INT64, value=1)
+    |       +-b := Literal(type=STRING, value="c")
+    +-input_scan=
+      +-SingleRowScan
+
+==
+
+select 1
+from TestTable T
+where T.KitchenSink.int32_val
+      IN @{a = 1, b = c}
+      (select 1 UNION ALL select 2)
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#7 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#7]
+    +-expr_list=
+    | +-$col1#7 := Literal(type=INT64, value=1)
+    +-input_scan=
+      +-FilterScan
+        +-column_list=[TestTable.KitchenSink#3]
+        +-input_scan=
+        | +-TableScan(column_list=[TestTable.KitchenSink#3], table=TestTable, column_index_list=[2], alias="T")
+        +-filter_expr=
+          +-SubqueryExpr
+            +-type=BOOL
+            +-subquery_type=IN
+            +-in_expr=
+            | +-Cast(INT32 -> INT64)
+            |   +-GetProtoField
+            |     +-type=INT32
+            |     +-expr=
+            |     | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=TestTable.KitchenSink#3)
+            |     +-field_descriptor=int32_val
+            |     +-default_value=77
+            +-subquery=
+            | +-SetOperationScan
+            |   +-column_list=[$union_all.$col1#6]
+            |   +-op_type=UNION_ALL
+            |   +-input_item_list=
+            |     +-SetOperationItem
+            |     | +-scan=
+            |     | | +-ProjectScan
+            |     | |   +-column_list=[$union_all1.$col1#4]
+            |     | |   +-expr_list=
+            |     | |   | +-$col1#4 := Literal(type=INT64, value=1)
+            |     | |   +-input_scan=
+            |     | |     +-SingleRowScan
+            |     | +-output_column_list=[$union_all1.$col1#4]
+            |     +-SetOperationItem
+            |       +-scan=
+            |       | +-ProjectScan
+            |       |   +-column_list=[$union_all2.$col1#5]
+            |       |   +-expr_list=
+            |       |   | +-$col1#5 := Literal(type=INT64, value=2)
+            |       |   +-input_scan=
+            |       |     +-SingleRowScan
+            |       +-output_column_list=[$union_all2.$col1#5]
+            +-hint_list=
+              +-a := Literal(type=INT64, value=1)
+              +-b := Literal(type=STRING, value="c")
+
+==
+
+select 1
+from TestTable T
+where T.KitchenSink.int32_val
+      IN @{ h1 = @bad_param }
+      (select 1 UNION ALL select 2)
+--
+ERROR: Query parameter 'bad_param' not found [at 4:18]
+      IN @{ h1 = @bad_param }
+                 ^
+
+==
+
+select 1 IN @{ h1 = @bad_param } (select 1)
+--
+ERROR: Query parameter 'bad_param' not found [at 1:21]
+select 1 IN @{ h1 = @bad_param } (select 1)
+                    ^
+
+==
+
+select 1
+from TestTable T
+where T.KitchenSink.int32_val
+      NOT IN @{ a = 1, b = c}
+      (select * from T.KitchenSink.repeated_int32_val)
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#5 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#5]
+    +-expr_list=
+    | +-$col1#5 := Literal(type=INT64, value=1)
+    +-input_scan=
+      +-FilterScan
+        +-column_list=[TestTable.KitchenSink#3]
+        +-input_scan=
+        | +-TableScan(column_list=[TestTable.KitchenSink#3], table=TestTable, column_index_list=[2], alias="T")
+        +-filter_expr=
+          +-FunctionCall(GoogleSQL:$not(BOOL) -> BOOL)
+            +-SubqueryExpr
+              +-type=BOOL
+              +-subquery_type=IN
+              +-parameter_list=
+              | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=TestTable.KitchenSink#3)
+              +-in_expr=
+              | +-GetProtoField
+              |   +-type=INT32
+              |   +-expr=
+              |   | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=TestTable.KitchenSink#3)
+              |   +-field_descriptor=int32_val
+              |   +-default_value=77
+              +-subquery=
+              | +-ProjectScan
+              |   +-column_list=[$array.repeated_int32_val#4]
+              |   +-input_scan=
+              |     +-ArrayScan
+              |       +-column_list=[$array.repeated_int32_val#4]
+              |       +-array_expr_list=
+              |       | +-GetProtoField
+              |       |   +-type=ARRAY<INT32>
+              |       |   +-expr=
+              |       |   | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=TestTable.KitchenSink#3, is_correlated=TRUE)
+              |       |   +-field_descriptor=repeated_int32_val
+              |       |   +-default_value=[]
+              |       +-element_column_list=[$array.repeated_int32_val#4]
+              +-hint_list=
+                +-a := Literal(type=INT64, value=1)
+                +-b := Literal(type=STRING, value="c")
+
+==
+
+select 1 NOT IN @{ a = 1 ,b = c} (select 1)
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#2 AS `$col1` [BOOL]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#2]
+    +-expr_list=
+    | +-$col1#2 :=
+    |   +-FunctionCall(GoogleSQL:$not(BOOL) -> BOOL)
+    |     +-SubqueryExpr
+    |       +-type=BOOL
+    |       +-subquery_type=IN
+    |       +-in_expr=
+    |       | +-Literal(type=INT64, value=1)
+    |       +-subquery=
+    |       | +-ProjectScan
+    |       |   +-column_list=[$expr_subquery.$col1#1]
+    |       |   +-expr_list=
+    |       |   | +-$col1#1 := Literal(type=INT64, value=1)
+    |       |   +-input_scan=
+    |       |     +-SingleRowScan
+    |       +-hint_list=
+    |         +-a := Literal(type=INT64, value=1)
+    |         +-b := Literal(type=STRING, value="c")
+    +-input_scan=
+      +-SingleRowScan
+
+==
+
+select 1
+from TestTable T
+where T.KitchenSink.int32_val
+      NOT IN @{a=1,b=c}
+      (select 1 UNION ALL select 2)
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#7 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#7]
+    +-expr_list=
+    | +-$col1#7 := Literal(type=INT64, value=1)
+    +-input_scan=
+      +-FilterScan
+        +-column_list=[TestTable.KitchenSink#3]
+        +-input_scan=
+        | +-TableScan(column_list=[TestTable.KitchenSink#3], table=TestTable, column_index_list=[2], alias="T")
+        +-filter_expr=
+          +-FunctionCall(GoogleSQL:$not(BOOL) -> BOOL)
+            +-SubqueryExpr
+              +-type=BOOL
+              +-subquery_type=IN
+              +-in_expr=
+              | +-Cast(INT32 -> INT64)
+              |   +-GetProtoField
+              |     +-type=INT32
+              |     +-expr=
+              |     | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=TestTable.KitchenSink#3)
+              |     +-field_descriptor=int32_val
+              |     +-default_value=77
+              +-subquery=
+              | +-SetOperationScan
+              |   +-column_list=[$union_all.$col1#6]
+              |   +-op_type=UNION_ALL
+              |   +-input_item_list=
+              |     +-SetOperationItem
+              |     | +-scan=
+              |     | | +-ProjectScan
+              |     | |   +-column_list=[$union_all1.$col1#4]
+              |     | |   +-expr_list=
+              |     | |   | +-$col1#4 := Literal(type=INT64, value=1)
+              |     | |   +-input_scan=
+              |     | |     +-SingleRowScan
+              |     | +-output_column_list=[$union_all1.$col1#4]
+              |     +-SetOperationItem
+              |       +-scan=
+              |       | +-ProjectScan
+              |       |   +-column_list=[$union_all2.$col1#5]
+              |       |   +-expr_list=
+              |       |   | +-$col1#5 := Literal(type=INT64, value=2)
+              |       |   +-input_scan=
+              |       |     +-SingleRowScan
+              |       +-output_column_list=[$union_all2.$col1#5]
+              +-hint_list=
+                +-a := Literal(type=INT64, value=1)
+                +-b := Literal(type=STRING, value="c")
+
+==
+
+select 1
+from TestTable T
+where T.KitchenSink.int32_val
+      NOT IN @{ h1 = @bad_param }
+      (select 1 UNION ALL select 2)
+--
+ERROR: Query parameter 'bad_param' not found [at 4:22]
+      NOT IN @{ h1 = @bad_param }
+                     ^
+
+==
+
+select 1 NOT IN @{ h1 = @bad_param } (select 1)
+--
+ERROR: Query parameter 'bad_param' not found [at 1:25]
+select 1 NOT IN @{ h1 = @bad_param } (select 1)
+                        ^
+
+==
+
+select 'a' in @{a=1} ('a', 'b', 'c')
+--
+ERROR: Syntax error: HINTs cannot be specified on IN clause with value list [at 1:15]
+select 'a' in @{a=1} ('a', 'b', 'c')
+              ^
+
+==
+
+select 'a' not in @{a=1} ('a', 'b', 'c')
+--
+ERROR: Syntax error: HINTs cannot be specified on IN clause with value list [at 1:19]
+select 'a' not in @{a=1} ('a', 'b', 'c')
+                  ^
+
+==
+
+select col1 from T1 where col2 in @{a=1}
+UNNEST(ARRAY(select col3 from T2 where col4 > 5))
+--
+ERROR: Syntax error: HINTs cannot be specified on IN clause with UNNEST [at 1:35]
+select col1 from T1 where col2 in @{a=1}
+                                  ^
+
+==
+
+select col1 from T1 where col2 not in @{a=1}
+UNNEST(ARRAY(select col3 from T2 where col4 > 5))
+--
+ERROR: Syntax error: HINTs cannot be specified on IN clause with UNNEST [at 1:39]
+select col1 from T1 where col2 not in @{a=1}
+                                      ^
+
+==
+
+#
+# Hints on EXISTS clause
+#
+
+select 1
+from TestTable T
+where EXISTS @{ a = 1, b = c}
+      (select * from T.KitchenSink.repeated_int32_val)
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#5 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#5]
+    +-expr_list=
+    | +-$col1#5 := Literal(type=INT64, value=1)
+    +-input_scan=
+      +-FilterScan
+        +-column_list=[TestTable.KitchenSink#3]
+        +-input_scan=
+        | +-TableScan(column_list=[TestTable.KitchenSink#3], table=TestTable, column_index_list=[2], alias="T")
+        +-filter_expr=
+          +-SubqueryExpr
+            +-type=BOOL
+            +-subquery_type=EXISTS
+            +-parameter_list=
+            | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=TestTable.KitchenSink#3)
+            +-subquery=
+            | +-ProjectScan
+            |   +-column_list=[$array.repeated_int32_val#4]
+            |   +-input_scan=
+            |     +-ArrayScan
+            |       +-column_list=[$array.repeated_int32_val#4]
+            |       +-array_expr_list=
+            |       | +-GetProtoField
+            |       |   +-type=ARRAY<INT32>
+            |       |   +-expr=
+            |       |   | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=TestTable.KitchenSink#3, is_correlated=TRUE)
+            |       |   +-field_descriptor=repeated_int32_val
+            |       |   +-default_value=[]
+            |       +-element_column_list=[$array.repeated_int32_val#4]
+            +-hint_list=
+              +-a := Literal(type=INT64, value=1)
+              +-b := Literal(type=STRING, value="c")
+
+==
+
+select EXISTS @{ a = 1 , b = c}(select 1, 2)
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#3 AS `$col1` [BOOL]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#3]
+    +-expr_list=
+    | +-$col1#3 :=
+    |   +-SubqueryExpr
+    |     +-type=BOOL
+    |     +-subquery_type=EXISTS
+    |     +-subquery=
+    |     | +-ProjectScan
+    |     |   +-column_list=$expr_subquery.[$col1#1, $col2#2]
+    |     |   +-expr_list=
+    |     |   | +-$col1#1 := Literal(type=INT64, value=1)
+    |     |   | +-$col2#2 := Literal(type=INT64, value=2)
+    |     |   +-input_scan=
+    |     |     +-SingleRowScan
+    |     +-hint_list=
+    |       +-a := Literal(type=INT64, value=1)
+    |       +-b := Literal(type=STRING, value="c")
+    +-input_scan=
+      +-SingleRowScan
+
+==
+
+select 1
+from TestTable T
+where EXISTS @{ h1= @bad_param }
+      (select * from T.KitchenSink.repeated_int32_val)
+--
+ERROR: Query parameter 'bad_param' not found [at 3:21]
+where EXISTS @{ h1= @bad_param }
+                    ^
+
+==
+
+select EXISTS @{ h1= @bad_param }(select 1, 2)
+--
+ERROR: Query parameter 'bad_param' not found [at 1:22]
+select EXISTS @{ h1= @bad_param }(select 1, 2)
+                     ^
+
+==
+
+#
+# Hints on function calls
+#
+
+select fn_on_int64(kv1.Key) @{ a = 1 , b = c } from KeyValue as kv1
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#3 AS `$col1` [BOOL]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#3]
+    +-expr_list=
+    | +-$col1#3 :=
+    |   +-FunctionCall(sample_functions:fn_on_int64(INT64) -> BOOL)
+    |     +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+    |     +-hint_list=
+    |       +-a := Literal(type=INT64, value=1)
+    |       +-b := Literal(type=STRING, value="c")
+    +-input_scan=
+      +-TableScan(column_list=[KeyValue.Key#1], table=KeyValue, column_index_list=[0], alias="kv1")
+
+==
+
+select count(*) @{a=b} cnt from KeyValue
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.cnt#3 AS cnt [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.cnt#3]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$aggregate.cnt#3]
+        +-input_scan=
+        | +-TableScan(table=KeyValue)
+        +-aggregate_list=
+          +-cnt#3 :=
+            +-AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+              +-hint_list=
+                +-a := Literal(type=STRING, value="b")
+
+==
+
+# Demonstration that the hint on analytical COUNT is dropped
+# TODO: Fix this hint to show the hints.
+select key, count(*) @{a=b} OVER () cnt from KeyValue GROUP BY 1;
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.key#4 AS key [INT64]
+| +-$analytic.cnt#5 AS cnt [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$groupby.key#4, $analytic.cnt#5]
+    +-input_scan=
+      +-AnalyticScan
+        +-column_list=[$groupby.key#4, $analytic.cnt#5]
+        +-input_scan=
+        | +-AggregateScan
+        |   +-column_list=[$groupby.key#4]
+        |   +-input_scan=
+        |   | +-TableScan(column_list=[KeyValue.Key#1], table=KeyValue, column_index_list=[0])
+        |   +-group_by_list=
+        |     +-key#4 := ColumnRef(type=INT64, column=KeyValue.Key#1)
+        +-function_group_list=
+          +-AnalyticFunctionGroup
+            +-analytic_function_list=
+              +-cnt#5 :=
+                +-AnalyticFunctionCall(GoogleSQL:$count_star() -> INT64)
+                  +-window_frame=
+                    +-WindowFrame(frame_unit=ROWS)
+                      +-start_expr=
+                      | +-WindowFrameExpr(boundary_type=UNBOUNDED PRECEDING)
+                      +-end_expr=
+                        +-WindowFrameExpr(boundary_type=UNBOUNDED FOLLOWING)
+
+==
+
+select fn_on_int64(kv1.Key) @{ h1= @bad_param } from KeyValue as kv1
+--
+ERROR: Query parameter 'bad_param' not found [at 1:36]
+select fn_on_int64(kv1.Key) @{ h1= @bad_param } from KeyValue as kv1
+                                   ^
+==
+
+#
+# Hints on LIKE ANY/SOME/ALL
+#
+[language_features=NONE,+LIKE_ANY_SOME_ALL,+LIKE_ANY_SOME_ALL_SUBQUERY]
+select '1' LIKE {{ANY|SOME|ALL}} @{a = d,b = c} (select '1')
+--
+ALTERNATION GROUPS:
+    ANY
+    SOME
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#2 AS `$col1` [BOOL]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#2]
+    +-expr_list=
+    | +-$col1#2 :=
+    |   +-SubqueryExpr
+    |     +-type=BOOL
+    |     +-subquery_type=LIKE_ANY
+    |     +-in_expr=
+    |     | +-Literal(type=STRING, value="1")
+    |     +-subquery=
+    |     | +-ProjectScan
+    |     |   +-column_list=[$expr_subquery.$col1#1]
+    |     |   +-expr_list=
+    |     |   | +-$col1#1 := Literal(type=STRING, value="1")
+    |     |   +-input_scan=
+    |     |     +-SingleRowScan
+    |     +-hint_list=
+    |       +-a := Literal(type=STRING, value="d")
+    |       +-b := Literal(type=STRING, value="c")
+    +-input_scan=
+      +-SingleRowScan
+--
+ALTERNATION GROUP: ALL
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#2 AS `$col1` [BOOL]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#2]
+    +-expr_list=
+    | +-$col1#2 :=
+    |   +-SubqueryExpr
+    |     +-type=BOOL
+    |     +-subquery_type=LIKE_ALL
+    |     +-in_expr=
+    |     | +-Literal(type=STRING, value="1")
+    |     +-subquery=
+    |     | +-ProjectScan
+    |     |   +-column_list=[$expr_subquery.$col1#1]
+    |     |   +-expr_list=
+    |     |   | +-$col1#1 := Literal(type=STRING, value="1")
+    |     |   +-input_scan=
+    |     |     +-SingleRowScan
+    |     +-hint_list=
+    |       +-a := Literal(type=STRING, value="d")
+    |       +-b := Literal(type=STRING, value="c")
+    +-input_scan=
+      +-SingleRowScan
+==
+
+[language_features=NONE,+LIKE_ANY_SOME_ALL,+LIKE_ANY_SOME_ALL_SUBQUERY]
+select *
+from TestTable T
+where T.KitchenSink.string_val
+      LIKE ANY @{ a = d, b = c}
+      (select * from T.KitchenSink.repeated_string_val)
+--
+QueryStmt
++-output_column_list=
+| +-TestTable.key#1 AS key [INT32]
+| +-TestTable.TestEnum#2 AS TestEnum [ENUM<googlesql_test.TestEnum>]
+| +-TestTable.KitchenSink#3 AS KitchenSink [PROTO<googlesql_test.KitchenSinkPB>]
++-query=
+  +-ProjectScan
+    +-column_list=TestTable.[key#1, TestEnum#2, KitchenSink#3]
+    +-input_scan=
+      +-FilterScan
+        +-column_list=TestTable.[key#1, TestEnum#2, KitchenSink#3]
+        +-input_scan=
+        | +-TableScan(column_list=TestTable.[key#1, TestEnum#2, KitchenSink#3], table=TestTable, column_index_list=[0, 1, 2], alias="T")
+        +-filter_expr=
+          +-SubqueryExpr
+            +-type=BOOL
+            +-subquery_type=LIKE_ANY
+            +-parameter_list=
+            | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=TestTable.KitchenSink#3)
+            +-in_expr=
+            | +-GetProtoField
+            |   +-type=STRING
+            |   +-expr=
+            |   | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=TestTable.KitchenSink#3)
+            |   +-field_descriptor=string_val
+            |   +-default_value="default_name"
+            +-subquery=
+            | +-ProjectScan
+            |   +-column_list=[$array.repeated_string_val#4]
+            |   +-input_scan=
+            |     +-ArrayScan
+            |       +-column_list=[$array.repeated_string_val#4]
+            |       +-array_expr_list=
+            |       | +-GetProtoField
+            |       |   +-type=ARRAY<STRING>
+            |       |   +-expr=
+            |       |   | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=TestTable.KitchenSink#3, is_correlated=TRUE)
+            |       |   +-field_descriptor=repeated_string_val
+            |       |   +-default_value=[]
+            |       +-element_column_list=[$array.repeated_string_val#4]
+            +-hint_list=
+              +-a := Literal(type=STRING, value="d")
+              +-b := Literal(type=STRING, value="c")
+==
+
+#
+# Tests should be added in appropriate sections above or a new section below.
+#

@@ -1,0 +1,2772 @@
+[default language_features=MAXIMUM,+GROUP_BY_ALL]
+
+# SELECT clause contains non-aggregate column only
+select key{{| + 1}}
+from TestTable
+group by all
+--
+ALTERNATION GROUP: <empty>
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.key#4 AS key [INT32]
++-query=
+  +-ProjectScan
+    +-column_list=[$groupby.key#4]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$groupby.key#4]
+        +-input_scan=
+        | +-TableScan(column_list=[TestTable.key#1], table=TestTable, column_index_list=[0])
+        +-group_by_list=
+          +-key#4 := ColumnRef(type=INT32, column=TestTable.key#1)
+--
+ALTERNATION GROUP:  + 1
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.$col1#4 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$groupby.$col1#4]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$groupby.$col1#4]
+        +-input_scan=
+        | +-TableScan(column_list=[TestTable.key#1], table=TestTable, column_index_list=[0])
+        +-group_by_list=
+          +-$col1#4 :=
+            +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+              +-Cast(INT32 -> INT64)
+              | +-ColumnRef(type=INT32, column=TestTable.key#1)
+              +-Literal(type=INT64, value=1)
+==
+
+# SELECT clause contains duplicate non-aggregate columns.
+select key, key
+from TestTable
+group by all
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.key#4 AS key [INT32]
+| +-$groupby.key#4 AS key [INT32]
++-query=
+  +-ProjectScan
+    +-column_list=$groupby.[key#4, key#4]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$groupby.key#4]
+        +-input_scan=
+        | +-TableScan(column_list=[TestTable.key#1], table=TestTable, column_index_list=[0])
+        +-group_by_list=
+          +-key#4 := ColumnRef(type=INT32, column=TestTable.key#1)
+==
+
+# SELECT clause contains duplicate non-aggregate columns.
+select DISTINCT key, key
+from TestTable
+{{|GROUP BY ALL}}
+--
+ALTERNATION GROUP: <empty>
+--
+QueryStmt
++-output_column_list=
+| +-$distinct.key#4 AS key [INT32]
+| +-$distinct.key#4 AS key [INT32]
++-query=
+  +-AggregateScan
+    +-column_list=[$distinct.key#4]
+    +-input_scan=
+    | +-TableScan(column_list=[TestTable.key#1], table=TestTable, column_index_list=[0])
+    +-group_by_list=
+      +-key#4 := ColumnRef(type=INT32, column=TestTable.key#1)
+--
+ALTERNATION GROUP: GROUP BY ALL
+--
+QueryStmt
++-output_column_list=
+| +-$distinct.key#5 AS key [INT32]
+| +-$distinct.key#5 AS key [INT32]
++-query=
+  +-AggregateScan
+    +-column_list=[$distinct.key#5]
+    +-input_scan=
+    | +-AggregateScan
+    |   +-column_list=[$groupby.key#4]
+    |   +-input_scan=
+    |   | +-TableScan(column_list=[TestTable.key#1], table=TestTable, column_index_list=[0])
+    |   +-group_by_list=
+    |     +-key#4 := ColumnRef(type=INT32, column=TestTable.key#1)
+    +-group_by_list=
+      +-key#5 := ColumnRef(type=INT32, column=$groupby.key#4)
+==
+
+# SELECT clause contains expression that does not come from its current FROM
+# scope. We expect the group_by_list to be empty.
+SELECT {{1|CAST("int64_key_1: 1 int64_key_2: 2" AS googlesql_test.KitchenSinkPB)}} AS x, COUNT(*)
+FROM (
+  SELECT 1 AS a, 2 AS b
+)
+GROUP BY ALL
+--
+ALTERNATION GROUP: 1
+--
+QueryStmt
++-output_column_list=
+| +-$query.x#4 AS x [INT64]
+| +-$aggregate.$agg1#3 AS `$col2` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.x#4, $aggregate.$agg1#3]
+    +-expr_list=
+    | +-x#4 := Literal(type=INT64, value=1)
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$aggregate.$agg1#3]
+        +-input_scan=
+        | +-ProjectScan
+        |   +-column_list=$subquery1.[a#1, b#2]
+        |   +-expr_list=
+        |   | +-a#1 := Literal(type=INT64, value=1)
+        |   | +-b#2 := Literal(type=INT64, value=2)
+        |   +-input_scan=
+        |     +-SingleRowScan
+        +-aggregate_list=
+          +-$agg1#3 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+--
+ALTERNATION GROUP: CAST("int64_key_1: 1 int64_key_2: 2" AS googlesql_test.KitchenSinkPB)
+--
+QueryStmt
++-output_column_list=
+| +-$query.x#4 AS x [PROTO<googlesql_test.KitchenSinkPB>]
+| +-$aggregate.$agg1#3 AS `$col2` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.x#4, $aggregate.$agg1#3]
+    +-expr_list=
+    | +-x#4 :=
+    |   +-Cast(STRING -> PROTO<googlesql_test.KitchenSinkPB>)
+    |     +-Literal(type=STRING, value="int64_key_1: 1 int64_key_2: 2")
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$aggregate.$agg1#3]
+        +-input_scan=
+        | +-ProjectScan
+        |   +-column_list=$subquery1.[a#1, b#2]
+        |   +-expr_list=
+        |   | +-a#1 := Literal(type=INT64, value=1)
+        |   | +-b#2 := Literal(type=INT64, value=2)
+        |   +-input_scan=
+        |     +-SingleRowScan
+        +-aggregate_list=
+          +-$agg1#3 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+==
+
+# SELECT expr list with volatile function
+SELECT rand() AS x, a, COUNT(*)
+FROM (
+  SELECT 1 AS a, 2 AS b
+)
+GROUP BY ALL
+--
+QueryStmt
++-output_column_list=
+| +-$query.x#5 AS x [DOUBLE]
+| +-$groupby.a#4 AS a [INT64]
+| +-$aggregate.$agg1#3 AS `$col3` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.x#5, $groupby.a#4, $aggregate.$agg1#3]
+    +-expr_list=
+    | +-x#5 := FunctionCall(GoogleSQL:rand() -> DOUBLE)
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$groupby.a#4, $aggregate.$agg1#3]
+        +-input_scan=
+        | +-ProjectScan
+        |   +-column_list=$subquery1.[a#1, b#2]
+        |   +-expr_list=
+        |   | +-a#1 := Literal(type=INT64, value=1)
+        |   | +-b#2 := Literal(type=INT64, value=2)
+        |   +-input_scan=
+        |     +-SingleRowScan
+        +-group_by_list=
+        | +-a#4 := ColumnRef(type=INT64, column=$subquery1.a#1)
+        +-aggregate_list=
+          +-$agg1#3 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+==
+
+# SELECT list item with volatile function that IS NOT chosen as group by column
+SELECT a + rand() AS x, a, COUNT(*)
+FROM (
+  SELECT 1 AS a, 2 AS b
+)
+GROUP BY ALL
+--
+QueryStmt
++-output_column_list=
+| +-$query.x#5 AS x [DOUBLE]
+| +-$groupby.a#4 AS a [INT64]
+| +-$aggregate.$agg1#3 AS `$col3` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.x#5, $groupby.a#4, $aggregate.$agg1#3]
+    +-expr_list=
+    | +-x#5 :=
+    |   +-FunctionCall(GoogleSQL:$add(DOUBLE, DOUBLE) -> DOUBLE)
+    |     +-Cast(INT64 -> DOUBLE)
+    |     | +-ColumnRef(type=INT64, column=$groupby.a#4)
+    |     +-FunctionCall(GoogleSQL:rand() -> DOUBLE)
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$groupby.a#4, $aggregate.$agg1#3]
+        +-input_scan=
+        | +-ProjectScan
+        |   +-column_list=$subquery1.[a#1, b#2]
+        |   +-expr_list=
+        |   | +-a#1 := Literal(type=INT64, value=1)
+        |   | +-b#2 := Literal(type=INT64, value=2)
+        |   +-input_scan=
+        |     +-SingleRowScan
+        +-group_by_list=
+        | +-a#4 := ColumnRef(type=INT64, column=$subquery1.a#1)
+        +-aggregate_list=
+          +-$agg1#3 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+==
+
+# SELECT list item with volatile function that IS chosen as group by column
+SELECT b + rand() AS x, a, COUNT(*)
+FROM (
+  SELECT 1 AS a, 2 AS b
+)
+GROUP BY ALL
+--
+ERROR: Column `x`, which is included in the grouping list by GROUP BY ALL, contains a volatile expression which must be explicitly listed as a group by key. To include this expression in GROUP BY, explicitly enumerate group by columns [at 1:8]
+SELECT b + rand() AS x, a, COUNT(*)
+       ^
+==
+
+# SELECT * contains non-groupable non-aggregate column.
+SELECT *, COUNT(*)
+FROM (
+  SELECT 1 AS a, CAST("int64_key_1: 1 int64_key_2: 2" AS googlesql_test.KitchenSinkPB){{| AS b}}
+)
+GROUP BY ALL
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: Column in position 2, which is included in the grouping list by GROUP BY ALL, has type PROTO which cannot be used in a grouping key [at 1:8]
+SELECT *, COUNT(*)
+       ^
+--
+ALTERNATION GROUP:  AS b
+--
+ERROR: Column `b`, which is included in the grouping list by GROUP BY ALL, has type PROTO which cannot be used in a grouping key [at 1:8]
+SELECT *, COUNT(*)
+       ^
+==
+
+# SELECT clause contains non-groupable non-aggregate column.
+SELECT KitchenSink,
+       COUNT(*)
+FROM ComplexTypes
+GROUP BY ALL
+--
+ERROR: Column `KitchenSink`, which is included in the grouping list by GROUP BY ALL, has type PROTO which cannot be used in a grouping key [at 1:8]
+SELECT KitchenSink,
+       ^
+==
+
+# SELECT clause contains non-groupable non-aggregate column.
+[language_features=NONE,+GROUP_BY_ALL{{|,+GROUP_BY_ARRAY}}]
+SELECT {{KitchenSink.repeated_int32_val|Int32Array}},
+       COUNT(*)
+FROM ComplexTypes
+GROUP BY ALL
+--
+ALTERNATION GROUP: KitchenSink.repeated_int32_val
+--
+ERROR: Column `repeated_int32_val`, which is included in the grouping list by GROUP BY ALL, has type ARRAY which cannot be used in a grouping key [at 1:8]
+SELECT KitchenSink.repeated_int32_val,
+       ^
+--
+ALTERNATION GROUP: Int32Array
+--
+ERROR: Column `Int32Array`, which is included in the grouping list by GROUP BY ALL, has type ARRAY which cannot be used in a grouping key [at 1:8]
+SELECT Int32Array,
+       ^
+--
+ALTERNATION GROUP: ,+GROUP_BY_ARRAY,KitchenSink.repeated_int32_val
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.repeated_int32_val#8 AS repeated_int32_val [ARRAY<INT32>]
+| +-$aggregate.$agg1#7 AS `$col2` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$groupby.repeated_int32_val#8, $aggregate.$agg1#7]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$groupby.repeated_int32_val#8, $aggregate.$agg1#7]
+        +-input_scan=
+        | +-TableScan(column_list=[ComplexTypes.KitchenSink#3], table=ComplexTypes, column_index_list=[2])
+        +-group_by_list=
+        | +-repeated_int32_val#8 :=
+        |   +-GetProtoField
+        |     +-type=ARRAY<INT32>
+        |     +-expr=
+        |     | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=ComplexTypes.KitchenSink#3)
+        |     +-field_descriptor=repeated_int32_val
+        |     +-default_value=[]
+        +-aggregate_list=
+          +-$agg1#7 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+--
+ALTERNATION GROUP: ,+GROUP_BY_ARRAY,Int32Array
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.Int32Array#8 AS Int32Array [ARRAY<INT32>]
+| +-$aggregate.$agg1#7 AS `$col2` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$groupby.Int32Array#8, $aggregate.$agg1#7]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$groupby.Int32Array#8, $aggregate.$agg1#7]
+        +-input_scan=
+        | +-TableScan(column_list=[ComplexTypes.Int32Array#4], table=ComplexTypes, column_index_list=[3])
+        +-group_by_list=
+        | +-Int32Array#8 := ColumnRef(type=ARRAY<INT32>, column=ComplexTypes.Int32Array#4)
+        +-aggregate_list=
+          +-$agg1#7 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+==
+
+# SELECT clause contains non-groupable non-aggregate column.
+[language_features=NONE,+GROUP_BY_ALL{{|,+GROUP_BY_STRUCT}}]
+SELECT TestStruct,
+       COUNT(*)
+FROM ComplexTypes
+GROUP BY ALL
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: Column `TestStruct`, which is included in the grouping list by GROUP BY ALL, has type STRUCT which cannot be used in a grouping key [at 1:8]
+SELECT TestStruct,
+       ^
+--
+ALTERNATION GROUP: ,+GROUP_BY_STRUCT
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.TestStruct#8 AS TestStruct [STRUCT<c INT32, d STRUCT<a INT32, b STRING>>]
+| +-$aggregate.$agg1#7 AS `$col2` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$groupby.TestStruct#8, $aggregate.$agg1#7]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$groupby.TestStruct#8, $aggregate.$agg1#7]
+        +-input_scan=
+        | +-TableScan(column_list=[ComplexTypes.TestStruct#5], table=ComplexTypes, column_index_list=[4])
+        +-group_by_list=
+        | +-TestStruct#8 := ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#5)
+        +-aggregate_list=
+          +-$agg1#7 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+==
+
+# SELECT clause contains groupable non-aggregate column and aggregate column.
+SELECT {{KitchenSink.nested_value.nested_int64|TestStruct.d.a}},
+       COUNT(*)
+FROM ComplexTypes
+GROUP BY ALL
+--
+ALTERNATION GROUP: KitchenSink.nested_value.nested_int64
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.nested_int64#8 AS nested_int64 [INT64]
+| +-$aggregate.$agg1#7 AS `$col2` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$groupby.nested_int64#8, $aggregate.$agg1#7]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$groupby.nested_int64#8, $aggregate.$agg1#7]
+        +-input_scan=
+        | +-TableScan(column_list=[ComplexTypes.KitchenSink#3], table=ComplexTypes, column_index_list=[2])
+        +-group_by_list=
+        | +-nested_int64#8 :=
+        |   +-GetProtoField
+        |     +-type=INT64
+        |     +-expr=
+        |     | +-GetProtoField
+        |     |   +-type=PROTO<googlesql_test.KitchenSinkPB.Nested>
+        |     |   +-expr=
+        |     |   | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=ComplexTypes.KitchenSink#3)
+        |     |   +-field_descriptor=nested_value
+        |     |   +-default_value=NULL
+        |     +-field_descriptor=nested_int64
+        |     +-default_value=88
+        +-aggregate_list=
+          +-$agg1#7 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+--
+ALTERNATION GROUP: TestStruct.d.a
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.a#8 AS a [INT32]
+| +-$aggregate.$agg1#7 AS `$col2` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$groupby.a#8, $aggregate.$agg1#7]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$groupby.a#8, $aggregate.$agg1#7]
+        +-input_scan=
+        | +-TableScan(column_list=[ComplexTypes.TestStruct#5], table=ComplexTypes, column_index_list=[4])
+        +-group_by_list=
+        | +-a#8 :=
+        |   +-GetStructField
+        |     +-type=INT32
+        |     +-expr=
+        |     | +-GetStructField
+        |     |   +-type=STRUCT<a INT32, b STRING>
+        |     |   +-expr=
+        |     |   | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#5)
+        |     |   +-field_idx=1
+        |     +-field_idx=0
+        +-aggregate_list=
+          +-$agg1#7 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+==
+
+# SELECT clause contains groupable non-aggregate column and aggregate column
+select `int64`{{| AS a}}, sum(`int32`)
+from SimpleTypes
+group by all
+--
+ALTERNATION GROUP: <empty>
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.int64#21 AS int64 [INT64]
+| +-$aggregate.$agg1#20 AS `$col2` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$groupby.int64#21, $aggregate.$agg1#20]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$groupby.int64#21, $aggregate.$agg1#20]
+        +-input_scan=
+        | +-TableScan(column_list=SimpleTypes.[int32#1, int64#2], table=SimpleTypes, column_index_list=[0, 1])
+        +-group_by_list=
+        | +-int64#21 := ColumnRef(type=INT64, column=SimpleTypes.int64#2)
+        +-aggregate_list=
+          +-$agg1#20 :=
+            +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+              +-Cast(INT32 -> INT64)
+                +-ColumnRef(type=INT32, column=SimpleTypes.int32#1)
+--
+ALTERNATION GROUP:  AS a
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.a#21 AS a [INT64]
+| +-$aggregate.$agg1#20 AS `$col2` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$groupby.a#21, $aggregate.$agg1#20]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$groupby.a#21, $aggregate.$agg1#20]
+        +-input_scan=
+        | +-TableScan(column_list=SimpleTypes.[int32#1, int64#2], table=SimpleTypes, column_index_list=[0, 1])
+        +-group_by_list=
+        | +-a#21 := ColumnRef(type=INT64, column=SimpleTypes.int64#2)
+        +-aggregate_list=
+          +-$agg1#20 :=
+            +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+              +-Cast(INT32 -> INT64)
+                +-ColumnRef(type=INT32, column=SimpleTypes.int32#1)
+==
+
+# Repro for b/323439034: When SELECT clause does not contain aggregate column
+# and no grouping keys are chosen, it should produce AggregateScan with no
+# aggregate_list and no group_by_list.
+[language_features=NONE,+GROUP_BY_ALL,+GROUPING_SETS]
+SELECT 'a' AS x
+FROM KeyValue
+GROUP BY {{ALL|()}}
+--
+QueryStmt
++-output_column_list=
+| +-$query.x#3 AS x [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.x#3]
+    +-expr_list=
+    | +-x#3 := Literal(type=STRING, value="a")
+    +-input_scan=
+      +-AggregateScan
+        +-input_scan=
+          +-TableScan(table=KeyValue)
+==
+
+# Repro for b/323567303:
+# When SELECT clause does not contain aggregate column and no grouping keys are
+# chosen, HAVING should not inject group_by_list.
+[language_features=NONE,+GROUP_BY_ALL,+GROUPING_SETS]
+SELECT 'a' AS x
+FROM KeyValue
+GROUP BY {{ALL|()}}
+HAVING TRUE
+--
+QueryStmt
++-output_column_list=
+| +-$query.x#4 AS x [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.x#4]
+    +-input_scan=
+      +-FilterScan
+        +-column_list=[$query.x#4]
+        +-input_scan=
+        | +-ProjectScan
+        |   +-column_list=[$query.x#4]
+        |   +-expr_list=
+        |   | +-x#4 := Literal(type=STRING, value="a")
+        |   +-input_scan=
+        |     +-AggregateScan
+        |       +-input_scan=
+        |         +-ProjectScan
+        |           +-column_list=[$pre_groupby.x#3]
+        |           +-expr_list=
+        |           | +-x#3 := Literal(type=STRING, value="a")
+        |           +-input_scan=
+        |             +-TableScan(table=KeyValue)
+        +-filter_expr=
+          +-Literal(type=BOOL, value=true)
+==
+
+# Repro for b/323567303:
+# When SELECT clause contains only constant computed exprs and no grouping keys
+# are chosen, HAVING should not inject group_by_list.
+[language_features=NONE,+GROUP_BY_ALL,+GROUPING_SETS]
+SELECT (1 + 3) AS x, COUNT(*)
+FROM KeyValue
+GROUP BY ALL
+HAVING TRUE
+--
+QueryStmt
++-output_column_list=
+| +-$query.x#5 AS x [INT64]
+| +-$aggregate.$agg1#3 AS `$col2` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.x#5, $aggregate.$agg1#3]
+    +-input_scan=
+      +-FilterScan
+        +-column_list=[$aggregate.$agg1#3, $query.x#5]
+        +-input_scan=
+        | +-ProjectScan
+        |   +-column_list=[$aggregate.$agg1#3, $query.x#5]
+        |   +-expr_list=
+        |   | +-x#5 :=
+        |   |   +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+        |   |     +-Literal(type=INT64, value=1)
+        |   |     +-Literal(type=INT64, value=3)
+        |   +-input_scan=
+        |     +-AggregateScan
+        |       +-column_list=[$aggregate.$agg1#3]
+        |       +-input_scan=
+        |       | +-ProjectScan
+        |       |   +-column_list=[$pre_groupby.x#4]
+        |       |   +-expr_list=
+        |       |   | +-x#4 :=
+        |       |   |   +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+        |       |   |     +-Literal(type=INT64, value=1)
+        |       |   |     +-Literal(type=INT64, value=3)
+        |       |   +-input_scan=
+        |       |     +-TableScan(table=KeyValue)
+        |       +-aggregate_list=
+        |         +-$agg1#3 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+        +-filter_expr=
+          +-Literal(type=BOOL, value=true)
+==
+
+# SELECT clause only contains aggregate column.
+# GROUP BY ALL behaves as if no GROUP BY clause is specified.
+select sum(`int32`)
+from SimpleTypes
+group by all
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#20 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#20]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$aggregate.$agg1#20]
+        +-input_scan=
+        | +-TableScan(column_list=[SimpleTypes.int32#1], table=SimpleTypes, column_index_list=[0])
+        +-aggregate_list=
+          +-$agg1#20 :=
+            +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+              +-Cast(INT32 -> INT64)
+                +-ColumnRef(type=INT32, column=SimpleTypes.int32#1)
+==
+
+# SELECT clause only contains aggregate column.
+# GROUP BY ALL behaves as if no GROUP BY clause is specified.
+select sum(`int32`) + COUNT(*)
+from SimpleTypes
+group by all
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#22 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#22]
+    +-expr_list=
+    | +-$col1#22 :=
+    |   +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |     +-ColumnRef(type=INT64, column=$aggregate.$agg1#20)
+    |     +-ColumnRef(type=INT64, column=$aggregate.$agg2#21)
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=$aggregate.[$agg1#20, $agg2#21]
+        +-input_scan=
+        | +-TableScan(column_list=[SimpleTypes.int32#1], table=SimpleTypes, column_index_list=[0])
+        +-aggregate_list=
+          +-$agg1#20 :=
+          | +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+          |   +-Cast(INT32 -> INT64)
+          |     +-ColumnRef(type=INT32, column=SimpleTypes.int32#1)
+          +-$agg2#21 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+==
+
+# SELECT clause contains a correlated expression, with references to names in
+# external scope.
+# But since GROUP BY ALL does not exist in the "correlated scope" and exist in
+# the "external scope", the expression will still be included by GROUP BY ALL.
+SELECT
+  (
+    SELECT T.expr AS correlated_expr
+  ) AS x, a, SUM(b)
+FROM (
+  SELECT 1 AS expr, 1 AS a, 1 AS b
+) T
+GROUP BY ALL
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.x#6 AS x [INT64]
+| +-$groupby.a#7 AS a [INT64]
+| +-$aggregate.$agg1#5 AS `$col3` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$groupby.x#6, $groupby.a#7, $aggregate.$agg1#5]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$groupby.x#6, $groupby.a#7, $aggregate.$agg1#5]
+        +-input_scan=
+        | +-ProjectScan
+        |   +-column_list=T.[expr#1, a#2, b#3]
+        |   +-expr_list=
+        |   | +-expr#1 := Literal(type=INT64, value=1)
+        |   | +-a#2 := Literal(type=INT64, value=1)
+        |   | +-b#3 := Literal(type=INT64, value=1)
+        |   +-input_scan=
+        |     +-SingleRowScan
+        +-group_by_list=
+        | +-x#6 :=
+        | | +-SubqueryExpr
+        | |   +-type=INT64
+        | |   +-subquery_type=SCALAR
+        | |   +-parameter_list=
+        | |   | +-ColumnRef(type=INT64, column=T.expr#1)
+        | |   +-subquery=
+        | |     +-ProjectScan
+        | |       +-column_list=[$expr_subquery.correlated_expr#4]
+        | |       +-expr_list=
+        | |       | +-correlated_expr#4 := ColumnRef(type=INT64, column=T.expr#1, is_correlated=TRUE)
+        | |       +-input_scan=
+        | |         +-SingleRowScan
+        | +-a#7 := ColumnRef(type=INT64, column=T.a#2)
+        +-aggregate_list=
+          +-$agg1#5 :=
+            +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+              +-ColumnRef(type=INT64, column=T.b#3)
+==
+
+# SELECT clause contains an correlated expression, with references to names in
+# external scope.
+# GROUP BY ALL should exclude such expression with no references to current FROM
+# clause name scope.
+SELECT
+  (
+    SELECT AS STRUCT
+      T.expr AS correlated_expr, SUM(e)
+    FROM UNNEST([1, 2, 3, 4, 5]) AS e
+    GROUP BY ALL
+  ) AS x
+FROM (
+  SELECT 1 AS expr, 1 AS a, 1 AS b
+) T
+--
+QueryStmt
++-output_column_list=
+| +-$query.x#8 AS x [STRUCT<correlated_expr INT64, INT64>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.x#8]
+    +-expr_list=
+    | +-x#8 :=
+    |   +-SubqueryExpr
+    |     +-type=STRUCT<correlated_expr INT64, INT64>
+    |     +-subquery_type=SCALAR
+    |     +-parameter_list=
+    |     | +-ColumnRef(type=INT64, column=T.expr#1)
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$make_struct.$struct#7]
+    |         +-expr_list=
+    |         | +-$struct#7 :=
+    |         |   +-MakeStruct
+    |         |     +-type=STRUCT<correlated_expr INT64, INT64>
+    |         |     +-field_list=
+    |         |       +-ColumnRef(type=INT64, column=$expr_subquery.correlated_expr#6)
+    |         |       +-ColumnRef(type=INT64, column=$aggregate.$agg1#5)
+    |         +-input_scan=
+    |           +-ProjectScan
+    |             +-column_list=[$expr_subquery.correlated_expr#6, $aggregate.$agg1#5]
+    |             +-expr_list=
+    |             | +-correlated_expr#6 := ColumnRef(type=INT64, column=T.expr#1, is_correlated=TRUE)
+    |             +-input_scan=
+    |               +-AggregateScan
+    |                 +-column_list=[$aggregate.$agg1#5]
+    |                 +-input_scan=
+    |                 | +-ArrayScan
+    |                 |   +-column_list=[$array.e#4]
+    |                 |   +-array_expr_list=
+    |                 |   | +-Literal(type=ARRAY<INT64>, value=[1, 2, 3, 4, 5])
+    |                 |   +-element_column_list=[$array.e#4]
+    |                 +-aggregate_list=
+    |                   +-$agg1#5 :=
+    |                     +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+    |                       +-ColumnRef(type=INT64, column=$array.e#4)
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=T.[expr#1, a#2, b#3]
+        +-expr_list=
+        | +-expr#1 := Literal(type=INT64, value=1)
+        | +-a#2 := Literal(type=INT64, value=1)
+        | +-b#3 := Literal(type=INT64, value=1)
+        +-input_scan=
+          +-SingleRowScan
+==
+
+# SELECT clause contains an correlated expression, with references to names in
+# external scope.
+# GROUP BY ALL should exclude such expression with no references to current FROM
+# clause name scope.
+# When the select list contains `current_key` or `current_array`, we expect it
+# to show up in the group by list. Otherwise, we do not.
+[language_features=NONE,+GROUP_BY_ALL,+INLINE_LAMBDA_ARGUMENT,+GROUP_BY_ARRAY]
+SELECT
+  (
+    SELECT AS STRUCT
+      current_key,
+      ARRAY_FILTER({{current_array|external_array}}, e -> e > a)
+    FROM (
+      SELECT 1 AS current_key, [3, 4, 5] AS current_array
+    ) AS current_table
+    GROUP BY ALL
+  ) AS x
+FROM (
+  SELECT 1 AS a, 1 AS b, [1, 2] AS external_array
+) AS external_table
+--
+ALTERNATION GROUP: current_array
+--
+QueryStmt
++-output_column_list=
+| +-$query.x#10 AS x [STRUCT<current_key INT64, ARRAY<INT64>>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.x#10]
+    +-expr_list=
+    | +-x#10 :=
+    |   +-SubqueryExpr
+    |     +-type=STRUCT<current_key INT64, ARRAY<INT64>>
+    |     +-subquery_type=SCALAR
+    |     +-parameter_list=
+    |     | +-ColumnRef(type=INT64, column=external_table.a#1)
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$make_struct.$struct#9]
+    |         +-expr_list=
+    |         | +-$struct#9 :=
+    |         |   +-MakeStruct
+    |         |     +-type=STRUCT<current_key INT64, ARRAY<INT64>>
+    |         |     +-field_list=
+    |         |       +-ColumnRef(type=INT64, column=$groupby.current_key#7)
+    |         |       +-ColumnRef(type=ARRAY<INT64>, column=$groupby.$col2#8)
+    |         +-input_scan=
+    |           +-ProjectScan
+    |             +-column_list=$groupby.[current_key#7, $col2#8]
+    |             +-input_scan=
+    |               +-AggregateScan
+    |                 +-column_list=$groupby.[current_key#7, $col2#8]
+    |                 +-input_scan=
+    |                 | +-ProjectScan
+    |                 |   +-column_list=current_table.[current_key#4, current_array#5]
+    |                 |   +-expr_list=
+    |                 |   | +-current_key#4 := Literal(type=INT64, value=1)
+    |                 |   | +-current_array#5 := Literal(type=ARRAY<INT64>, value=[3, 4, 5])
+    |                 |   +-input_scan=
+    |                 |     +-SingleRowScan
+    |                 +-group_by_list=
+    |                   +-current_key#7 := ColumnRef(type=INT64, column=current_table.current_key#4)
+    |                   +-$col2#8 :=
+    |                     +-FunctionCall(GoogleSQL:array_filter(ARRAY<INT64> array_to_filter, FUNCTION<INT64->BOOL> condition) -> ARRAY<INT64>)
+    |                       +-FunctionArgument
+    |                       | +-expr=
+    |                       |   +-ColumnRef(type=ARRAY<INT64>, column=current_table.current_array#5)
+    |                       +-FunctionArgument
+    |                         +-inline_lambda=
+    |                           +-InlineLambda
+    |                             +-argument_list=[$lambda_arg.e#6]
+    |                             +-parameter_list=
+    |                             | +-ColumnRef(type=INT64, column=external_table.a#1, is_correlated=TRUE)
+    |                             +-body=
+    |                               +-FunctionCall(GoogleSQL:$greater(INT64, INT64) -> BOOL)
+    |                                 +-ColumnRef(type=INT64, column=$lambda_arg.e#6)
+    |                                 +-ColumnRef(type=INT64, column=external_table.a#1, is_correlated=TRUE)
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=external_table.[a#1, b#2, external_array#3]
+        +-expr_list=
+        | +-a#1 := Literal(type=INT64, value=1)
+        | +-b#2 := Literal(type=INT64, value=1)
+        | +-external_array#3 := Literal(type=ARRAY<INT64>, value=[1, 2])
+        +-input_scan=
+          +-SingleRowScan
+--
+ALTERNATION GROUP: external_array
+--
+QueryStmt
++-output_column_list=
+| +-$query.x#11 AS x [STRUCT<current_key INT64, ARRAY<INT64>>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.x#11]
+    +-expr_list=
+    | +-x#11 :=
+    |   +-SubqueryExpr
+    |     +-type=STRUCT<current_key INT64, ARRAY<INT64>>
+    |     +-subquery_type=SCALAR
+    |     +-parameter_list=
+    |     | +-ColumnRef(type=INT64, column=external_table.a#1)
+    |     | +-ColumnRef(type=ARRAY<INT64>, column=external_table.external_array#3)
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$make_struct.$struct#10]
+    |         +-expr_list=
+    |         | +-$struct#10 :=
+    |         |   +-MakeStruct
+    |         |     +-type=STRUCT<current_key INT64, ARRAY<INT64>>
+    |         |     +-field_list=
+    |         |       +-ColumnRef(type=INT64, column=$groupby.current_key#7)
+    |         |       +-ColumnRef(type=ARRAY<INT64>, column=$expr_subquery.$col2#9)
+    |         +-input_scan=
+    |           +-ProjectScan
+    |             +-column_list=[$groupby.current_key#7, $expr_subquery.$col2#9]
+    |             +-expr_list=
+    |             | +-$col2#9 :=
+    |             |   +-FunctionCall(GoogleSQL:array_filter(ARRAY<INT64> array_to_filter, FUNCTION<INT64->BOOL> condition) -> ARRAY<INT64>)
+    |             |     +-FunctionArgument
+    |             |     | +-expr=
+    |             |     |   +-ColumnRef(type=ARRAY<INT64>, column=external_table.external_array#3, is_correlated=TRUE)
+    |             |     +-FunctionArgument
+    |             |       +-inline_lambda=
+    |             |         +-InlineLambda
+    |             |           +-argument_list=[$lambda_arg.e#8]
+    |             |           +-parameter_list=
+    |             |           | +-ColumnRef(type=INT64, column=external_table.a#1, is_correlated=TRUE)
+    |             |           +-body=
+    |             |             +-FunctionCall(GoogleSQL:$greater(INT64, INT64) -> BOOL)
+    |             |               +-ColumnRef(type=INT64, column=$lambda_arg.e#8)
+    |             |               +-ColumnRef(type=INT64, column=external_table.a#1, is_correlated=TRUE)
+    |             +-input_scan=
+    |               +-AggregateScan
+    |                 +-column_list=[$groupby.current_key#7]
+    |                 +-input_scan=
+    |                 | +-ProjectScan
+    |                 |   +-column_list=current_table.[current_key#4, current_array#5]
+    |                 |   +-expr_list=
+    |                 |   | +-current_key#4 := Literal(type=INT64, value=1)
+    |                 |   | +-current_array#5 := Literal(type=ARRAY<INT64>, value=[3, 4, 5])
+    |                 |   +-input_scan=
+    |                 |     +-SingleRowScan
+    |                 +-group_by_list=
+    |                   +-current_key#7 := ColumnRef(type=INT64, column=current_table.current_key#4)
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=external_table.[a#1, b#2, external_array#3]
+        +-expr_list=
+        | +-a#1 := Literal(type=INT64, value=1)
+        | +-b#2 := Literal(type=INT64, value=1)
+        | +-external_array#3 := Literal(type=ARRAY<INT64>, value=[1, 2])
+        +-input_scan=
+          +-SingleRowScan
+==
+
+# SELECT clause contains a lambda expression, with references to names in other
+# path expression select item.
+# ColumnRef's that show up in lambda body will be checked. The detection of path
+# should work for any path expression with arbitrary lengths.
+# GROUP BY ALL should exclude such expression with no references to current FROM
+# clause name scope.
+[language_features=NONE,+GROUP_BY_ALL,+GROUP_BY_STRUCT,+INLINE_LAMBDA_ARGUMENT,+GROUP_BY_ARRAY]
+WITH T AS (
+  SELECT STRUCT(1 AS a1,
+                STRUCT(STRUCT(1 AS c1, 1 AS c2) AS b1, 1 AS b2) AS a2) AS x,
+         1 AS y,
+         [1, 2, 3] AS z
+)
+SELECT x.a2, {{ARRAY_FILTER(z, e -> e > x.a2.b2)|ARRAY_TRANSFORM(z, e -> x.a2.b1)}}, SUM(y)
+FROM T
+GROUP BY ALL
+--
+ALTERNATION GROUP: ARRAY_FILTER(z, e -> e > x.a2.b2)
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.a2#9 AS a2 [STRUCT<b1 STRUCT<c1 INT64, c2 INT64>, b2 INT64>]
+| +-$groupby.$col2#10 AS `$col2` [ARRAY<INT64>]
+| +-$aggregate.$agg1#8 AS `$col3` [INT64]
++-query=
+  +-WithScan
+    +-column_list=[$groupby.a2#9, $groupby.$col2#10, $aggregate.$agg1#8]
+    +-with_entry_list=
+    | +-WithEntry
+    |   +-with_query_name="T"
+    |   +-with_subquery=
+    |     +-ProjectScan
+    |       +-column_list=T.[x#1, y#2, z#3]
+    |       +-expr_list=
+    |       | +-x#1 := Literal(type=STRUCT<a1 INT64, a2 STRUCT<b1 STRUCT<c1 INT64, c2 INT64>, b2 INT64>>, value={a1:1, a2:{b1:{c1:1, c2:1}, b2:1}})
+    |       | +-y#2 := Literal(type=INT64, value=1)
+    |       | +-z#3 := Literal(type=ARRAY<INT64>, value=[1, 2, 3])
+    |       +-input_scan=
+    |         +-SingleRowScan
+    +-query=
+      +-ProjectScan
+        +-column_list=[$groupby.a2#9, $groupby.$col2#10, $aggregate.$agg1#8]
+        +-input_scan=
+          +-AggregateScan
+            +-column_list=[$groupby.a2#9, $groupby.$col2#10, $aggregate.$agg1#8]
+            +-input_scan=
+            | +-WithRefScan(column_list=T.[x#4, y#5, z#6], with_query_name="T")
+            +-group_by_list=
+            | +-a2#9 :=
+            | | +-GetStructField
+            | |   +-type=STRUCT<b1 STRUCT<c1 INT64, c2 INT64>, b2 INT64>
+            | |   +-expr=
+            | |   | +-ColumnRef(type=STRUCT<a1 INT64, a2 STRUCT<b1 STRUCT<c1 INT64, c2 INT64>, b2 INT64>>, column=T.x#4)
+            | |   +-field_idx=1
+            | +-$col2#10 :=
+            |   +-FunctionCall(GoogleSQL:array_filter(ARRAY<INT64> array_to_filter, FUNCTION<INT64->BOOL> condition) -> ARRAY<INT64>)
+            |     +-FunctionArgument
+            |     | +-expr=
+            |     |   +-ColumnRef(type=ARRAY<INT64>, column=T.z#6)
+            |     +-FunctionArgument
+            |       +-inline_lambda=
+            |         +-InlineLambda
+            |           +-argument_list=[$lambda_arg.e#7]
+            |           +-parameter_list=
+            |           | +-ColumnRef(type=STRUCT<a1 INT64, a2 STRUCT<b1 STRUCT<c1 INT64, c2 INT64>, b2 INT64>>, column=T.x#4)
+            |           +-body=
+            |             +-FunctionCall(GoogleSQL:$greater(INT64, INT64) -> BOOL)
+            |               +-ColumnRef(type=INT64, column=$lambda_arg.e#7)
+            |               +-GetStructField
+            |                 +-type=INT64
+            |                 +-expr=
+            |                 | +-GetStructField
+            |                 |   +-type=STRUCT<b1 STRUCT<c1 INT64, c2 INT64>, b2 INT64>
+            |                 |   +-expr=
+            |                 |   | +-ColumnRef(type=STRUCT<a1 INT64, a2 STRUCT<b1 STRUCT<c1 INT64, c2 INT64>, b2 INT64>>, column=T.x#4, is_correlated=TRUE)
+            |                 |   +-field_idx=1
+            |                 +-field_idx=1
+            +-aggregate_list=
+              +-$agg1#8 :=
+                +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+                  +-ColumnRef(type=INT64, column=T.y#5)
+--
+ALTERNATION GROUP: ARRAY_TRANSFORM(z, e -> x.a2.b1)
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.a2#9 AS a2 [STRUCT<b1 STRUCT<c1 INT64, c2 INT64>, b2 INT64>]
+| +-$groupby.$col2#10 AS `$col2` [ARRAY<STRUCT<c1 INT64, c2 INT64>>]
+| +-$aggregate.$agg1#8 AS `$col3` [INT64]
++-query=
+  +-WithScan
+    +-column_list=[$groupby.a2#9, $groupby.$col2#10, $aggregate.$agg1#8]
+    +-with_entry_list=
+    | +-WithEntry
+    |   +-with_query_name="T"
+    |   +-with_subquery=
+    |     +-ProjectScan
+    |       +-column_list=T.[x#1, y#2, z#3]
+    |       +-expr_list=
+    |       | +-x#1 := Literal(type=STRUCT<a1 INT64, a2 STRUCT<b1 STRUCT<c1 INT64, c2 INT64>, b2 INT64>>, value={a1:1, a2:{b1:{c1:1, c2:1}, b2:1}})
+    |       | +-y#2 := Literal(type=INT64, value=1)
+    |       | +-z#3 := Literal(type=ARRAY<INT64>, value=[1, 2, 3])
+    |       +-input_scan=
+    |         +-SingleRowScan
+    +-query=
+      +-ProjectScan
+        +-column_list=[$groupby.a2#9, $groupby.$col2#10, $aggregate.$agg1#8]
+        +-input_scan=
+          +-AggregateScan
+            +-column_list=[$groupby.a2#9, $groupby.$col2#10, $aggregate.$agg1#8]
+            +-input_scan=
+            | +-WithRefScan(column_list=T.[x#4, y#5, z#6], with_query_name="T")
+            +-group_by_list=
+            | +-a2#9 :=
+            | | +-GetStructField
+            | |   +-type=STRUCT<b1 STRUCT<c1 INT64, c2 INT64>, b2 INT64>
+            | |   +-expr=
+            | |   | +-ColumnRef(type=STRUCT<a1 INT64, a2 STRUCT<b1 STRUCT<c1 INT64, c2 INT64>, b2 INT64>>, column=T.x#4)
+            | |   +-field_idx=1
+            | +-$col2#10 :=
+            |   +-FunctionCall(GoogleSQL:array_transform(ARRAY<INT64> array_to_transform, FUNCTION<INT64->STRUCT<c1 INT64, c2 INT64>> transformation) -> ARRAY<STRUCT<c1 INT64, c2 INT64>>)
+            |     +-FunctionArgument
+            |     | +-expr=
+            |     |   +-ColumnRef(type=ARRAY<INT64>, column=T.z#6)
+            |     +-FunctionArgument
+            |       +-inline_lambda=
+            |         +-InlineLambda
+            |           +-argument_list=[$lambda_arg.e#7]
+            |           +-parameter_list=
+            |           | +-ColumnRef(type=STRUCT<a1 INT64, a2 STRUCT<b1 STRUCT<c1 INT64, c2 INT64>, b2 INT64>>, column=T.x#4)
+            |           +-body=
+            |             +-GetStructField
+            |               +-type=STRUCT<c1 INT64, c2 INT64>
+            |               +-expr=
+            |               | +-GetStructField
+            |               |   +-type=STRUCT<b1 STRUCT<c1 INT64, c2 INT64>, b2 INT64>
+            |               |   +-expr=
+            |               |   | +-ColumnRef(type=STRUCT<a1 INT64, a2 STRUCT<b1 STRUCT<c1 INT64, c2 INT64>, b2 INT64>>, column=T.x#4, is_correlated=TRUE)
+            |               |   +-field_idx=1
+            |               +-field_idx=0
+            +-aggregate_list=
+              +-$agg1#8 :=
+                +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+                  +-ColumnRef(type=INT64, column=T.y#5)
+==
+
+# SELECT clause contains a lambda expression, with references to names in other
+# path expression select item.
+# ColumnRef's that show up in lambda body will be checked. The detection of path
+# should work for any path expression with arbitrary lengths.
+# GROUP BY ALL should exclude such expression with no references to current FROM
+# clause name scope.
+[language_features=NONE,+GROUP_BY_ALL,+GROUP_BY_STRUCT,+INLINE_LAMBDA_ARGUMENT,+GROUP_BY_ARRAY]
+WITH T AS (
+  SELECT STRUCT(1 AS a1,
+                STRUCT(STRUCT(1 AS c1, 1 AS c2) AS b1, 1 AS b2) AS a2) AS x,
+         1 AS y,
+         [1, 2, 3] AS z
+)
+SELECT y, {{ARRAY_FILTER(z, e -> e > y)|ARRAY_TRANSFORM(z, e -> y)}}, SUM(1)
+FROM T
+GROUP BY ALL
+--
+ALTERNATION GROUP: ARRAY_FILTER(z, e -> e > y)
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.y#9 AS y [INT64]
+| +-$groupby.$col2#10 AS `$col2` [ARRAY<INT64>]
+| +-$aggregate.$agg1#8 AS `$col3` [INT64]
++-query=
+  +-WithScan
+    +-column_list=[$groupby.y#9, $groupby.$col2#10, $aggregate.$agg1#8]
+    +-with_entry_list=
+    | +-WithEntry
+    |   +-with_query_name="T"
+    |   +-with_subquery=
+    |     +-ProjectScan
+    |       +-column_list=T.[x#1, y#2, z#3]
+    |       +-expr_list=
+    |       | +-x#1 := Literal(type=STRUCT<a1 INT64, a2 STRUCT<b1 STRUCT<c1 INT64, c2 INT64>, b2 INT64>>, value={a1:1, a2:{b1:{c1:1, c2:1}, b2:1}})
+    |       | +-y#2 := Literal(type=INT64, value=1)
+    |       | +-z#3 := Literal(type=ARRAY<INT64>, value=[1, 2, 3])
+    |       +-input_scan=
+    |         +-SingleRowScan
+    +-query=
+      +-ProjectScan
+        +-column_list=[$groupby.y#9, $groupby.$col2#10, $aggregate.$agg1#8]
+        +-input_scan=
+          +-AggregateScan
+            +-column_list=[$groupby.y#9, $groupby.$col2#10, $aggregate.$agg1#8]
+            +-input_scan=
+            | +-WithRefScan(column_list=T.[x#4, y#5, z#6], with_query_name="T")
+            +-group_by_list=
+            | +-y#9 := ColumnRef(type=INT64, column=T.y#5)
+            | +-$col2#10 :=
+            |   +-FunctionCall(GoogleSQL:array_filter(ARRAY<INT64> array_to_filter, FUNCTION<INT64->BOOL> condition) -> ARRAY<INT64>)
+            |     +-FunctionArgument
+            |     | +-expr=
+            |     |   +-ColumnRef(type=ARRAY<INT64>, column=T.z#6)
+            |     +-FunctionArgument
+            |       +-inline_lambda=
+            |         +-InlineLambda
+            |           +-argument_list=[$lambda_arg.e#7]
+            |           +-parameter_list=
+            |           | +-ColumnRef(type=INT64, column=T.y#5)
+            |           +-body=
+            |             +-FunctionCall(GoogleSQL:$greater(INT64, INT64) -> BOOL)
+            |               +-ColumnRef(type=INT64, column=$lambda_arg.e#7)
+            |               +-ColumnRef(type=INT64, column=T.y#5, is_correlated=TRUE)
+            +-aggregate_list=
+              +-$agg1#8 :=
+                +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+                  +-Literal(type=INT64, value=1)
+--
+ALTERNATION GROUP: ARRAY_TRANSFORM(z, e -> y)
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.y#9 AS y [INT64]
+| +-$groupby.$col2#10 AS `$col2` [ARRAY<INT64>]
+| +-$aggregate.$agg1#8 AS `$col3` [INT64]
++-query=
+  +-WithScan
+    +-column_list=[$groupby.y#9, $groupby.$col2#10, $aggregate.$agg1#8]
+    +-with_entry_list=
+    | +-WithEntry
+    |   +-with_query_name="T"
+    |   +-with_subquery=
+    |     +-ProjectScan
+    |       +-column_list=T.[x#1, y#2, z#3]
+    |       +-expr_list=
+    |       | +-x#1 := Literal(type=STRUCT<a1 INT64, a2 STRUCT<b1 STRUCT<c1 INT64, c2 INT64>, b2 INT64>>, value={a1:1, a2:{b1:{c1:1, c2:1}, b2:1}})
+    |       | +-y#2 := Literal(type=INT64, value=1)
+    |       | +-z#3 := Literal(type=ARRAY<INT64>, value=[1, 2, 3])
+    |       +-input_scan=
+    |         +-SingleRowScan
+    +-query=
+      +-ProjectScan
+        +-column_list=[$groupby.y#9, $groupby.$col2#10, $aggregate.$agg1#8]
+        +-input_scan=
+          +-AggregateScan
+            +-column_list=[$groupby.y#9, $groupby.$col2#10, $aggregate.$agg1#8]
+            +-input_scan=
+            | +-WithRefScan(column_list=T.[x#4, y#5, z#6], with_query_name="T")
+            +-group_by_list=
+            | +-y#9 := ColumnRef(type=INT64, column=T.y#5)
+            | +-$col2#10 :=
+            |   +-FunctionCall(GoogleSQL:array_transform(ARRAY<INT64> array_to_transform, FUNCTION<INT64->INT64> transformation) -> ARRAY<INT64>)
+            |     +-FunctionArgument
+            |     | +-expr=
+            |     |   +-ColumnRef(type=ARRAY<INT64>, column=T.z#6)
+            |     +-FunctionArgument
+            |       +-inline_lambda=
+            |         +-InlineLambda
+            |           +-argument_list=[$lambda_arg.e#7]
+            |           +-parameter_list=
+            |           | +-ColumnRef(type=INT64, column=T.y#5)
+            |           +-body=
+            |             +-ColumnRef(type=INT64, column=T.y#5, is_correlated=TRUE)
+            +-aggregate_list=
+              +-$agg1#8 :=
+                +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+                  +-Literal(type=INT64, value=1)
+==
+
+# SELECT clause contains an aggregate column, but with a groupable non-aggregate
+# column inside the same expression.
+# GROUP BY ALL behaves as if no GROUP BY clause is specified. So this is an
+# invalid query.
+select `int64` + sum(`int32`)
+from SimpleTypes
+group by all
+--
+ERROR: SELECT list expression references column int64 which is neither grouped nor aggregated [at 1:8]
+select `int64` + sum(`int32`)
+       ^
+==
+
+# FROM clause reference table with column named "ALL".
+SELECT *
+FROM (
+  SELECT 1 AS `ALL`, "a" AS anothercol
+) AS T
+GROUP BY {{ALL|`ALL`}}
+--
+ALTERNATION GROUP: ALL
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.ALL#3 AS `ALL` [INT64]
+| +-$groupby.anothercol#4 AS anothercol [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=$groupby.[ALL#3, anothercol#4]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=$groupby.[ALL#3, anothercol#4]
+        +-input_scan=
+        | +-ProjectScan
+        |   +-column_list=T.[ALL#1, anothercol#2]
+        |   +-expr_list=
+        |   | +-ALL#1 := Literal(type=INT64, value=1)
+        |   | +-anothercol#2 := Literal(type=STRING, value="a")
+        |   +-input_scan=
+        |     +-SingleRowScan
+        +-group_by_list=
+          +-ALL#3 := ColumnRef(type=INT64, column=T.ALL#1)
+          +-anothercol#4 := ColumnRef(type=STRING, column=T.anothercol#2)
+--
+ALTERNATION GROUP: `ALL`
+--
+ERROR: Star expansion expression references column anothercol which is neither grouped nor aggregated [at 1:8]
+SELECT *
+       ^
+==
+
+[language_features=NONE,+GROUP_BY_ALL,+QUALIFY,+ANALYTIC_FUNCTIONS]
+# Window function with QUALIFY clause. No groupable or aggregate column. This is
+# equivalent to no GROUP BY clause is specified at all.
+SELECT row_number() over () AS a
+FROM KeyValue WHERE true
+GROUP BY ALL
+QUALIFY a = 1
+--
+QueryStmt
++-output_column_list=
+| +-$analytic.a#4 AS a [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$analytic.a#4]
+    +-input_scan=
+      +-FilterScan
+        +-column_list=[$analytic.a#4]
+        +-input_scan=
+        | +-AnalyticScan
+        |   +-column_list=[$analytic.a#4]
+        |   +-input_scan=
+        |   | +-AggregateScan
+        |   |   +-input_scan=
+        |   |     +-FilterScan
+        |   |       +-input_scan=
+        |   |       | +-TableScan(table=KeyValue)
+        |   |       +-filter_expr=
+        |   |         +-Literal(type=BOOL, value=true)
+        |   +-function_group_list=
+        |     +-AnalyticFunctionGroup
+        |       +-analytic_function_list=
+        |         +-a#4 := AnalyticFunctionCall(GoogleSQL:row_number() -> INT64)
+        +-filter_expr=
+          +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+            +-ColumnRef(type=INT64, column=$analytic.a#4)
+            +-Literal(type=INT64, value=1)
+==
+
+[language_features=NONE,+GROUP_BY_ALL,+QUALIFY,+ANALYTIC_FUNCTIONS]
+# Window function with QUALIFY clause. Only groupable column or aggregate column.
+SELECT {{`int64`|SUM(`int64`)}}, row_number() over () AS a
+FROM SimpleTypes WHERE true
+GROUP BY ALL
+QUALIFY a = 1
+--
+ALTERNATION GROUP: `int64`
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.int64#21 AS int64 [INT64]
+| +-$analytic.a#22 AS a [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$groupby.int64#21, $analytic.a#22]
+    +-input_scan=
+      +-FilterScan
+        +-column_list=[$groupby.int64#21, $analytic.a#22]
+        +-input_scan=
+        | +-AnalyticScan
+        |   +-column_list=[$groupby.int64#21, $analytic.a#22]
+        |   +-input_scan=
+        |   | +-AggregateScan
+        |   |   +-column_list=[$groupby.int64#21]
+        |   |   +-input_scan=
+        |   |   | +-FilterScan
+        |   |   |   +-column_list=[SimpleTypes.int64#2]
+        |   |   |   +-input_scan=
+        |   |   |   | +-TableScan(column_list=[SimpleTypes.int64#2], table=SimpleTypes, column_index_list=[1])
+        |   |   |   +-filter_expr=
+        |   |   |     +-Literal(type=BOOL, value=true)
+        |   |   +-group_by_list=
+        |   |     +-int64#21 := ColumnRef(type=INT64, column=SimpleTypes.int64#2)
+        |   +-function_group_list=
+        |     +-AnalyticFunctionGroup
+        |       +-analytic_function_list=
+        |         +-a#22 := AnalyticFunctionCall(GoogleSQL:row_number() -> INT64)
+        +-filter_expr=
+          +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+            +-ColumnRef(type=INT64, column=$analytic.a#22)
+            +-Literal(type=INT64, value=1)
+--
+ALTERNATION GROUP: SUM(`int64`)
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#20 AS `$col1` [INT64]
+| +-$analytic.a#22 AS a [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#20, $analytic.a#22]
+    +-input_scan=
+      +-FilterScan
+        +-column_list=[$aggregate.$agg1#20, $analytic.a#22]
+        +-input_scan=
+        | +-AnalyticScan
+        |   +-column_list=[$aggregate.$agg1#20, $analytic.a#22]
+        |   +-input_scan=
+        |   | +-AggregateScan
+        |   |   +-column_list=[$aggregate.$agg1#20]
+        |   |   +-input_scan=
+        |   |   | +-FilterScan
+        |   |   |   +-column_list=[SimpleTypes.int64#2]
+        |   |   |   +-input_scan=
+        |   |   |   | +-TableScan(column_list=[SimpleTypes.int64#2], table=SimpleTypes, column_index_list=[1])
+        |   |   |   +-filter_expr=
+        |   |   |     +-Literal(type=BOOL, value=true)
+        |   |   +-aggregate_list=
+        |   |     +-$agg1#20 :=
+        |   |       +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+        |   |         +-ColumnRef(type=INT64, column=SimpleTypes.int64#2)
+        |   +-function_group_list=
+        |     +-AnalyticFunctionGroup
+        |       +-analytic_function_list=
+        |         +-a#22 := AnalyticFunctionCall(GoogleSQL:row_number() -> INT64)
+        +-filter_expr=
+          +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+            +-ColumnRef(type=INT64, column=$analytic.a#22)
+            +-Literal(type=INT64, value=1)
+==
+
+[language_features=NONE,+GROUP_BY_ALL,+QUALIFY,+ANALYTIC_FUNCTIONS]
+# Window function with QUALIFY clause, along with groupable column and aggregate
+# column.
+SELECT `int64`, SUM(`int32`), row_number() over () AS a
+FROM SimpleTypes WHERE true
+GROUP BY ALL
+QUALIFY a = 1
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.int64#22 AS int64 [INT64]
+| +-$aggregate.$agg1#20 AS `$col2` [INT64]
+| +-$analytic.a#23 AS a [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$groupby.int64#22, $aggregate.$agg1#20, $analytic.a#23]
+    +-input_scan=
+      +-FilterScan
+        +-column_list=[$groupby.int64#22, $aggregate.$agg1#20, $analytic.a#23]
+        +-input_scan=
+        | +-AnalyticScan
+        |   +-column_list=[$groupby.int64#22, $aggregate.$agg1#20, $analytic.a#23]
+        |   +-input_scan=
+        |   | +-AggregateScan
+        |   |   +-column_list=[$groupby.int64#22, $aggregate.$agg1#20]
+        |   |   +-input_scan=
+        |   |   | +-FilterScan
+        |   |   |   +-column_list=SimpleTypes.[int32#1, int64#2]
+        |   |   |   +-input_scan=
+        |   |   |   | +-TableScan(column_list=SimpleTypes.[int32#1, int64#2], table=SimpleTypes, column_index_list=[0, 1])
+        |   |   |   +-filter_expr=
+        |   |   |     +-Literal(type=BOOL, value=true)
+        |   |   +-group_by_list=
+        |   |   | +-int64#22 := ColumnRef(type=INT64, column=SimpleTypes.int64#2)
+        |   |   +-aggregate_list=
+        |   |     +-$agg1#20 :=
+        |   |       +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+        |   |         +-Cast(INT32 -> INT64)
+        |   |           +-ColumnRef(type=INT32, column=SimpleTypes.int32#1)
+        |   +-function_group_list=
+        |     +-AnalyticFunctionGroup
+        |       +-analytic_function_list=
+        |         +-a#23 := AnalyticFunctionCall(GoogleSQL:row_number() -> INT64)
+        +-filter_expr=
+          +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+            +-ColumnRef(type=INT64, column=$analytic.a#23)
+            +-Literal(type=INT64, value=1)
+==
+
+[language_features=NONE,+GROUP_BY_ALL,+SELECT_STAR_EXCEPT_REPLACE]
+# SELECT with EXCEPT
+SELECT * EXCEPT (a)
+FROM (
+  SELECT 1 AS a {{|, 2 AS b}}
+)
+GROUP BY ALL
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: SELECT * expands to zero columns after applying EXCEPT [at 2:8]
+SELECT * EXCEPT (a)
+       ^
+--
+ALTERNATION GROUP: , 2 AS b
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.b#3 AS b [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$groupby.b#3]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$groupby.b#3]
+        +-input_scan=
+        | +-ProjectScan
+        |   +-column_list=$subquery1.[a#1, b#2]
+        |   +-expr_list=
+        |   | +-a#1 := Literal(type=INT64, value=1)
+        |   | +-b#2 := Literal(type=INT64, value=2)
+        |   +-input_scan=
+        |     +-SingleRowScan
+        +-group_by_list=
+          +-b#3 := ColumnRef(type=INT64, column=$subquery1.b#2)
+==
+
+[language_features=NONE,+GROUP_BY_ALL,+SELECT_STAR_EXCEPT_REPLACE]
+# SELECT with REPLACE
+SELECT * REPLACE (0 AS a)
+FROM (
+  SELECT 1 AS a, 2 AS `all`
+)
+GROUP BY {{`all`|ALL}}
+--
+QueryStmt
++-output_column_list=
+| +-$query.a#4 AS a [INT64]
+| +-$groupby.all#3 AS `all` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.a#4, $groupby.all#3]
+    +-expr_list=
+    | +-a#4 := Literal(type=INT64, value=0)
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$groupby.all#3]
+        +-input_scan=
+        | +-ProjectScan
+        |   +-column_list=$subquery1.[a#1, all#2]
+        |   +-expr_list=
+        |   | +-a#1 := Literal(type=INT64, value=1)
+        |   | +-all#2 := Literal(type=INT64, value=2)
+        |   +-input_scan=
+        |     +-SingleRowScan
+        +-group_by_list=
+          +-all#3 := ColumnRef(type=INT64, column=$subquery1.all#2)
+==
+
+[language_features=NONE,+GROUP_BY_ALL,+SELECT_STAR_EXCEPT_REPLACE]
+# SELECT with REPLACE
+WITH t1 AS (SELECT 0 AS a, 1 AS b),
+     t2 AS (SELECT 3 AS c)
+SELECT {{t1.|}}* REPLACE (c AS b)
+FROM t1 CROSS JOIN t2
+GROUP BY ALL
+--
+ALTERNATION GROUP: t1.
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.a#7 AS a [INT64]
+| +-$groupby.b#8 AS b [INT64]
++-query=
+  +-WithScan
+    +-column_list=$groupby.[a#7, b#8]
+    +-with_entry_list=
+    | +-WithEntry
+    | | +-with_query_name="t1"
+    | | +-with_subquery=
+    | |   +-ProjectScan
+    | |     +-column_list=t1.[a#1, b#2]
+    | |     +-expr_list=
+    | |     | +-a#1 := Literal(type=INT64, value=0)
+    | |     | +-b#2 := Literal(type=INT64, value=1)
+    | |     +-input_scan=
+    | |       +-SingleRowScan
+    | +-WithEntry
+    |   +-with_query_name="t2"
+    |   +-with_subquery=
+    |     +-ProjectScan
+    |       +-column_list=[t2.c#3]
+    |       +-expr_list=
+    |       | +-c#3 := Literal(type=INT64, value=3)
+    |       +-input_scan=
+    |         +-SingleRowScan
+    +-query=
+      +-ProjectScan
+        +-column_list=$groupby.[a#7, b#8]
+        +-input_scan=
+          +-AggregateScan
+            +-column_list=$groupby.[a#7, b#8]
+            +-input_scan=
+            | +-JoinScan
+            |   +-column_list=[t1.a#4, t1.b#5, t2.c#6]
+            |   +-left_scan=
+            |   | +-WithRefScan(column_list=t1.[a#4, b#5], with_query_name="t1")
+            |   +-right_scan=
+            |     +-WithRefScan(column_list=[t2.c#6], with_query_name="t2")
+            +-group_by_list=
+              +-a#7 := ColumnRef(type=INT64, column=t1.a#4)
+              +-b#8 := ColumnRef(type=INT64, column=t2.c#6)
+--
+ALTERNATION GROUP: <empty>
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.a#7 AS a [INT64]
+| +-$groupby.b#8 AS b [INT64]
+| +-$groupby.b#8 AS c [INT64]
++-query=
+  +-WithScan
+    +-column_list=$groupby.[a#7, b#8, b#8]
+    +-with_entry_list=
+    | +-WithEntry
+    | | +-with_query_name="t1"
+    | | +-with_subquery=
+    | |   +-ProjectScan
+    | |     +-column_list=t1.[a#1, b#2]
+    | |     +-expr_list=
+    | |     | +-a#1 := Literal(type=INT64, value=0)
+    | |     | +-b#2 := Literal(type=INT64, value=1)
+    | |     +-input_scan=
+    | |       +-SingleRowScan
+    | +-WithEntry
+    |   +-with_query_name="t2"
+    |   +-with_subquery=
+    |     +-ProjectScan
+    |       +-column_list=[t2.c#3]
+    |       +-expr_list=
+    |       | +-c#3 := Literal(type=INT64, value=3)
+    |       +-input_scan=
+    |         +-SingleRowScan
+    +-query=
+      +-ProjectScan
+        +-column_list=$groupby.[a#7, b#8, b#8]
+        +-input_scan=
+          +-AggregateScan
+            +-column_list=$groupby.[a#7, b#8]
+            +-input_scan=
+            | +-JoinScan
+            |   +-column_list=[t1.a#4, t1.b#5, t2.c#6]
+            |   +-left_scan=
+            |   | +-WithRefScan(column_list=t1.[a#4, b#5], with_query_name="t1")
+            |   +-right_scan=
+            |     +-WithRefScan(column_list=[t2.c#6], with_query_name="t2")
+            +-group_by_list=
+              +-a#7 := ColumnRef(type=INT64, column=t1.a#4)
+              +-b#8 := ColumnRef(type=INT64, column=t2.c#6)
+==
+
+[language_features=NONE,+GROUP_BY_ALL,+SELECT_STAR_EXCEPT_REPLACE]
+# SELECT with REPLACE
+WITH t1 AS (SELECT 0 AS a, 1 AS b),
+     t2 AS (SELECT 3 AS c)
+SELECT * REPLACE (b AS c)
+FROM t1 CROSS JOIN t2
+GROUP BY ALL
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.a#7 AS a [INT64]
+| +-$groupby.b#8 AS b [INT64]
+| +-$groupby.b#8 AS c [INT64]
++-query=
+  +-WithScan
+    +-column_list=$groupby.[a#7, b#8, b#8]
+    +-with_entry_list=
+    | +-WithEntry
+    | | +-with_query_name="t1"
+    | | +-with_subquery=
+    | |   +-ProjectScan
+    | |     +-column_list=t1.[a#1, b#2]
+    | |     +-expr_list=
+    | |     | +-a#1 := Literal(type=INT64, value=0)
+    | |     | +-b#2 := Literal(type=INT64, value=1)
+    | |     +-input_scan=
+    | |       +-SingleRowScan
+    | +-WithEntry
+    |   +-with_query_name="t2"
+    |   +-with_subquery=
+    |     +-ProjectScan
+    |       +-column_list=[t2.c#3]
+    |       +-expr_list=
+    |       | +-c#3 := Literal(type=INT64, value=3)
+    |       +-input_scan=
+    |         +-SingleRowScan
+    +-query=
+      +-ProjectScan
+        +-column_list=$groupby.[a#7, b#8, b#8]
+        +-input_scan=
+          +-AggregateScan
+            +-column_list=$groupby.[a#7, b#8]
+            +-input_scan=
+            | +-JoinScan
+            |   +-column_list=[t1.a#4, t1.b#5, t2.c#6]
+            |   +-left_scan=
+            |   | +-WithRefScan(column_list=t1.[a#4, b#5], with_query_name="t1")
+            |   +-right_scan=
+            |     +-WithRefScan(column_list=[t2.c#6], with_query_name="t2")
+            +-group_by_list=
+              +-a#7 := ColumnRef(type=INT64, column=t1.a#4)
+              +-b#8 := ColumnRef(type=INT64, column=t1.b#5)
+==
+
+# SELECT DISTINCT used with GROUP BY ALL
+SELECT DISTINCT {{*|1}}
+FROM (
+  SELECT 1 AS a
+)
+GROUP BY ALL
+--
+ALTERNATION GROUP: *
+--
+QueryStmt
++-output_column_list=
+| +-$distinct.a#3 AS a [INT64]
++-query=
+  +-AggregateScan
+    +-column_list=[$distinct.a#3]
+    +-input_scan=
+    | +-AggregateScan
+    |   +-column_list=[$groupby.a#2]
+    |   +-input_scan=
+    |   | +-ProjectScan
+    |   |   +-column_list=[$subquery1.a#1]
+    |   |   +-expr_list=
+    |   |   | +-a#1 := Literal(type=INT64, value=1)
+    |   |   +-input_scan=
+    |   |     +-SingleRowScan
+    |   +-group_by_list=
+    |     +-a#2 := ColumnRef(type=INT64, column=$subquery1.a#1)
+    +-group_by_list=
+      +-a#3 := ColumnRef(type=INT64, column=$groupby.a#2)
+--
+ALTERNATION GROUP: 1
+--
+QueryStmt
++-output_column_list=
+| +-$distinct.$col1#3 AS `$col1` [INT64]
++-query=
+  +-AggregateScan
+    +-column_list=[$distinct.$col1#3]
+    +-input_scan=
+    | +-ProjectScan
+    |   +-column_list=[$query.$col1#2]
+    |   +-expr_list=
+    |   | +-$col1#2 := Literal(type=INT64, value=1)
+    |   +-input_scan=
+    |     +-AggregateScan
+    |       +-input_scan=
+    |         +-ProjectScan
+    |           +-column_list=[$subquery1.a#1]
+    |           +-expr_list=
+    |           | +-a#1 := Literal(type=INT64, value=1)
+    |           +-input_scan=
+    |             +-SingleRowScan
+    +-group_by_list=
+      +-$col1#3 := ColumnRef(type=INT64, column=$query.$col1#2)
+==
+
+# Having clause that references a non-selected column
+SELECT {{a|*}}
+FROM (
+  SELECT 1 AS a, 2 AS b
+)
+GROUP BY ALL
+HAVING SUM(b) > 1
+--
+ALTERNATION GROUP: a
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.a#3 AS a [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$groupby.a#3]
+    +-input_scan=
+      +-FilterScan
+        +-column_list=[$groupby.a#3, $aggregate.$agg1#4]
+        +-input_scan=
+        | +-AggregateScan
+        |   +-column_list=[$groupby.a#3, $aggregate.$agg1#4]
+        |   +-input_scan=
+        |   | +-ProjectScan
+        |   |   +-column_list=$subquery1.[a#1, b#2]
+        |   |   +-expr_list=
+        |   |   | +-a#1 := Literal(type=INT64, value=1)
+        |   |   | +-b#2 := Literal(type=INT64, value=2)
+        |   |   +-input_scan=
+        |   |     +-SingleRowScan
+        |   +-group_by_list=
+        |   | +-a#3 := ColumnRef(type=INT64, column=$subquery1.a#1)
+        |   +-aggregate_list=
+        |     +-$agg1#4 :=
+        |       +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+        |         +-ColumnRef(type=INT64, column=$subquery1.b#2)
+        +-filter_expr=
+          +-FunctionCall(GoogleSQL:$greater(INT64, INT64) -> BOOL)
+            +-ColumnRef(type=INT64, column=$aggregate.$agg1#4)
+            +-Literal(type=INT64, value=1)
+--
+ALTERNATION GROUP: *
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.a#3 AS a [INT64]
+| +-$groupby.b#4 AS b [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=$groupby.[a#3, b#4]
+    +-input_scan=
+      +-FilterScan
+        +-column_list=[$groupby.a#3, $groupby.b#4, $aggregate.$agg1#5]
+        +-input_scan=
+        | +-AggregateScan
+        |   +-column_list=[$groupby.a#3, $groupby.b#4, $aggregate.$agg1#5]
+        |   +-input_scan=
+        |   | +-ProjectScan
+        |   |   +-column_list=$subquery1.[a#1, b#2]
+        |   |   +-expr_list=
+        |   |   | +-a#1 := Literal(type=INT64, value=1)
+        |   |   | +-b#2 := Literal(type=INT64, value=2)
+        |   |   +-input_scan=
+        |   |     +-SingleRowScan
+        |   +-group_by_list=
+        |   | +-a#3 := ColumnRef(type=INT64, column=$subquery1.a#1)
+        |   | +-b#4 := ColumnRef(type=INT64, column=$subquery1.b#2)
+        |   +-aggregate_list=
+        |     +-$agg1#5 :=
+        |       +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+        |         +-ColumnRef(type=INT64, column=$subquery1.b#2)
+        +-filter_expr=
+          +-FunctionCall(GoogleSQL:$greater(INT64, INT64) -> BOOL)
+            +-ColumnRef(type=INT64, column=$aggregate.$agg1#5)
+            +-Literal(type=INT64, value=1)
+==
+
+# GROUP BY ALL in table subquery
+SELECT *
+FROM (
+  SELECT *, COUNT(*)
+  FROM (
+    SELECT 1 AS a, 2 AS b
+  )
+  GROUP BY ALL
+)
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.a#4 AS a [INT64]
+| +-$groupby.b#5 AS b [INT64]
+| +-$aggregate.$agg1#3 AS `$col2` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$groupby.a#4, $groupby.b#5, $aggregate.$agg1#3]
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[$groupby.a#4, $groupby.b#5, $aggregate.$agg1#3]
+        +-input_scan=
+          +-AggregateScan
+            +-column_list=[$groupby.a#4, $groupby.b#5, $aggregate.$agg1#3]
+            +-input_scan=
+            | +-ProjectScan
+            |   +-column_list=$subquery2.[a#1, b#2]
+            |   +-expr_list=
+            |   | +-a#1 := Literal(type=INT64, value=1)
+            |   | +-b#2 := Literal(type=INT64, value=2)
+            |   +-input_scan=
+            |     +-SingleRowScan
+            +-group_by_list=
+            | +-a#4 := ColumnRef(type=INT64, column=$subquery2.a#1)
+            | +-b#5 := ColumnRef(type=INT64, column=$subquery2.b#2)
+            +-aggregate_list=
+              +-$agg1#3 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+==
+
+# GROUP BY ALL in both inner subquery and outermost query
+SELECT *
+FROM (
+  SELECT *
+  FROM (
+    SELECT *, COUNT(*)
+    FROM (
+      SELECT 1 AS a, 2 AS b
+    )
+    GROUP BY ALL
+  )
+)
+GROUP BY ALL
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.a#6 AS a [INT64]
+| +-$groupby.b#7 AS b [INT64]
+| +-$groupby.$col2#8 AS `$col2` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=$groupby.[a#6, b#7, $col2#8]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=$groupby.[a#6, b#7, $col2#8]
+        +-input_scan=
+        | +-ProjectScan
+        |   +-column_list=[$groupby.a#4, $groupby.b#5, $aggregate.$agg1#3]
+        |   +-input_scan=
+        |     +-ProjectScan
+        |       +-column_list=[$groupby.a#4, $groupby.b#5, $aggregate.$agg1#3]
+        |       +-input_scan=
+        |         +-AggregateScan
+        |           +-column_list=[$groupby.a#4, $groupby.b#5, $aggregate.$agg1#3]
+        |           +-input_scan=
+        |           | +-ProjectScan
+        |           |   +-column_list=$subquery3.[a#1, b#2]
+        |           |   +-expr_list=
+        |           |   | +-a#1 := Literal(type=INT64, value=1)
+        |           |   | +-b#2 := Literal(type=INT64, value=2)
+        |           |   +-input_scan=
+        |           |     +-SingleRowScan
+        |           +-group_by_list=
+        |           | +-a#4 := ColumnRef(type=INT64, column=$subquery3.a#1)
+        |           | +-b#5 := ColumnRef(type=INT64, column=$subquery3.b#2)
+        |           +-aggregate_list=
+        |             +-$agg1#3 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+        +-group_by_list=
+          +-a#6 := ColumnRef(type=INT64, column=$groupby.a#4)
+          +-b#7 := ColumnRef(type=INT64, column=$groupby.b#5)
+          +-$col2#8 := ColumnRef(type=INT64, column=$aggregate.$agg1#3)
+==
+
+# GROUP BY ALL in CTE
+WITH cte AS (
+  SELECT *, COUNT(*)
+  FROM (
+    SELECT 1 AS a, 2 AS b
+  )
+  GROUP BY ALL
+)
+SELECT *
+FROM cte
+--
+QueryStmt
++-output_column_list=
+| +-cte.a#6 AS a [INT64]
+| +-cte.b#7 AS b [INT64]
+| +-cte.$col2#8 AS `$col2` [INT64]
++-query=
+  +-WithScan
+    +-column_list=cte.[a#6, b#7, $col2#8]
+    +-with_entry_list=
+    | +-WithEntry
+    |   +-with_query_name="cte"
+    |   +-with_subquery=
+    |     +-ProjectScan
+    |       +-column_list=[$groupby.a#4, $groupby.b#5, $aggregate.$agg1#3]
+    |       +-input_scan=
+    |         +-AggregateScan
+    |           +-column_list=[$groupby.a#4, $groupby.b#5, $aggregate.$agg1#3]
+    |           +-input_scan=
+    |           | +-ProjectScan
+    |           |   +-column_list=$subquery1.[a#1, b#2]
+    |           |   +-expr_list=
+    |           |   | +-a#1 := Literal(type=INT64, value=1)
+    |           |   | +-b#2 := Literal(type=INT64, value=2)
+    |           |   +-input_scan=
+    |           |     +-SingleRowScan
+    |           +-group_by_list=
+    |           | +-a#4 := ColumnRef(type=INT64, column=$subquery1.a#1)
+    |           | +-b#5 := ColumnRef(type=INT64, column=$subquery1.b#2)
+    |           +-aggregate_list=
+    |             +-$agg1#3 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+    +-query=
+      +-ProjectScan
+        +-column_list=cte.[a#6, b#7, $col2#8]
+        +-input_scan=
+          +-WithRefScan(column_list=cte.[a#6, b#7, $col2#8], with_query_name="cte")
+==
+
+# GROUP BY ALL in CTE and outermost query
+WITH cte AS (
+  SELECT *, COUNT(*)
+  FROM (
+    SELECT 1 AS a, 2 AS b
+  )
+  GROUP BY ALL
+)
+SELECT *, SUM(1)
+FROM cte
+GROUP BY ALL
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.a#10 AS a [INT64]
+| +-$groupby.b#11 AS b [INT64]
+| +-$groupby.$col2#12 AS `$col2` [INT64]
+| +-$aggregate.$agg1#9 AS `$col2` [INT64]
++-query=
+  +-WithScan
+    +-column_list=[$groupby.a#10, $groupby.b#11, $groupby.$col2#12, $aggregate.$agg1#9]
+    +-with_entry_list=
+    | +-WithEntry
+    |   +-with_query_name="cte"
+    |   +-with_subquery=
+    |     +-ProjectScan
+    |       +-column_list=[$groupby.a#4, $groupby.b#5, $aggregate.$agg1#3]
+    |       +-input_scan=
+    |         +-AggregateScan
+    |           +-column_list=[$groupby.a#4, $groupby.b#5, $aggregate.$agg1#3]
+    |           +-input_scan=
+    |           | +-ProjectScan
+    |           |   +-column_list=$subquery1.[a#1, b#2]
+    |           |   +-expr_list=
+    |           |   | +-a#1 := Literal(type=INT64, value=1)
+    |           |   | +-b#2 := Literal(type=INT64, value=2)
+    |           |   +-input_scan=
+    |           |     +-SingleRowScan
+    |           +-group_by_list=
+    |           | +-a#4 := ColumnRef(type=INT64, column=$subquery1.a#1)
+    |           | +-b#5 := ColumnRef(type=INT64, column=$subquery1.b#2)
+    |           +-aggregate_list=
+    |             +-$agg1#3 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+    +-query=
+      +-ProjectScan
+        +-column_list=[$groupby.a#10, $groupby.b#11, $groupby.$col2#12, $aggregate.$agg1#9]
+        +-input_scan=
+          +-AggregateScan
+            +-column_list=[$groupby.a#10, $groupby.b#11, $groupby.$col2#12, $aggregate.$agg1#9]
+            +-input_scan=
+            | +-WithRefScan(column_list=cte.[a#6, b#7, $col2#8], with_query_name="cte")
+            +-group_by_list=
+            | +-a#10 := ColumnRef(type=INT64, column=cte.a#6)
+            | +-b#11 := ColumnRef(type=INT64, column=cte.b#7)
+            | +-$col2#12 := ColumnRef(type=INT64, column=cte.$col2#8)
+            +-aggregate_list=
+              +-$agg1#9 :=
+                +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+                  +-Literal(type=INT64, value=1)
+==
+
+# SELECT list item with non-correlated column references in current FROM clause
+# name scope. For such select item, if all of its column references are selected
+# and can be used as grouping keys, it is not added to the group by list.
+[language_features=NONE,+GROUP_BY_ALL,+GROUP_BY_ARRAY]
+WITH T AS (SELECT 1 AS a, 2 AS b, 3 AS c)
+SELECT a, T.b, {{[T.a, T.b]|[T.b, T.c]|[T.c]}}
+FROM T
+GROUP BY ALL
+--
+ALTERNATION GROUP: [T.a, T.b]
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.a#7 AS a [INT64]
+| +-$groupby.b#8 AS b [INT64]
+| +-$query.$col3#9 AS `$col3` [ARRAY<INT64>]
++-query=
+  +-WithScan
+    +-column_list=[$groupby.a#7, $groupby.b#8, $query.$col3#9]
+    +-with_entry_list=
+    | +-WithEntry
+    |   +-with_query_name="T"
+    |   +-with_subquery=
+    |     +-ProjectScan
+    |       +-column_list=T.[a#1, b#2, c#3]
+    |       +-expr_list=
+    |       | +-a#1 := Literal(type=INT64, value=1)
+    |       | +-b#2 := Literal(type=INT64, value=2)
+    |       | +-c#3 := Literal(type=INT64, value=3)
+    |       +-input_scan=
+    |         +-SingleRowScan
+    +-query=
+      +-ProjectScan
+        +-column_list=[$groupby.a#7, $groupby.b#8, $query.$col3#9]
+        +-expr_list=
+        | +-$col3#9 :=
+        |   +-FunctionCall(GoogleSQL:$make_array(repeated(2) INT64) -> ARRAY<INT64>)
+        |     +-ColumnRef(type=INT64, column=$groupby.a#7)
+        |     +-ColumnRef(type=INT64, column=$groupby.b#8)
+        +-input_scan=
+          +-AggregateScan
+            +-column_list=$groupby.[a#7, b#8]
+            +-input_scan=
+            | +-WithRefScan(column_list=T.[a#4, b#5, c#6], with_query_name="T")
+            +-group_by_list=
+              +-a#7 := ColumnRef(type=INT64, column=T.a#4)
+              +-b#8 := ColumnRef(type=INT64, column=T.b#5)
+--
+ALTERNATION GROUP: [T.b, T.c]
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.a#7 AS a [INT64]
+| +-$groupby.b#8 AS b [INT64]
+| +-$groupby.$col3#9 AS `$col3` [ARRAY<INT64>]
++-query=
+  +-WithScan
+    +-column_list=$groupby.[a#7, b#8, $col3#9]
+    +-with_entry_list=
+    | +-WithEntry
+    |   +-with_query_name="T"
+    |   +-with_subquery=
+    |     +-ProjectScan
+    |       +-column_list=T.[a#1, b#2, c#3]
+    |       +-expr_list=
+    |       | +-a#1 := Literal(type=INT64, value=1)
+    |       | +-b#2 := Literal(type=INT64, value=2)
+    |       | +-c#3 := Literal(type=INT64, value=3)
+    |       +-input_scan=
+    |         +-SingleRowScan
+    +-query=
+      +-ProjectScan
+        +-column_list=$groupby.[a#7, b#8, $col3#9]
+        +-input_scan=
+          +-AggregateScan
+            +-column_list=$groupby.[a#7, b#8, $col3#9]
+            +-input_scan=
+            | +-WithRefScan(column_list=T.[a#4, b#5, c#6], with_query_name="T")
+            +-group_by_list=
+              +-a#7 := ColumnRef(type=INT64, column=T.a#4)
+              +-b#8 := ColumnRef(type=INT64, column=T.b#5)
+              +-$col3#9 :=
+                +-FunctionCall(GoogleSQL:$make_array(repeated(2) INT64) -> ARRAY<INT64>)
+                  +-ColumnRef(type=INT64, column=T.b#5)
+                  +-ColumnRef(type=INT64, column=T.c#6)
+--
+ALTERNATION GROUP: [T.c]
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.a#7 AS a [INT64]
+| +-$groupby.b#8 AS b [INT64]
+| +-$groupby.$col3#9 AS `$col3` [ARRAY<INT64>]
++-query=
+  +-WithScan
+    +-column_list=$groupby.[a#7, b#8, $col3#9]
+    +-with_entry_list=
+    | +-WithEntry
+    |   +-with_query_name="T"
+    |   +-with_subquery=
+    |     +-ProjectScan
+    |       +-column_list=T.[a#1, b#2, c#3]
+    |       +-expr_list=
+    |       | +-a#1 := Literal(type=INT64, value=1)
+    |       | +-b#2 := Literal(type=INT64, value=2)
+    |       | +-c#3 := Literal(type=INT64, value=3)
+    |       +-input_scan=
+    |         +-SingleRowScan
+    +-query=
+      +-ProjectScan
+        +-column_list=$groupby.[a#7, b#8, $col3#9]
+        +-input_scan=
+          +-AggregateScan
+            +-column_list=$groupby.[a#7, b#8, $col3#9]
+            +-input_scan=
+            | +-WithRefScan(column_list=T.[a#4, b#5, c#6], with_query_name="T")
+            +-group_by_list=
+              +-a#7 := ColumnRef(type=INT64, column=T.a#4)
+              +-b#8 := ColumnRef(type=INT64, column=T.b#5)
+              +-$col3#9 :=
+                +-FunctionCall(GoogleSQL:$make_array(repeated(1) INT64) -> ARRAY<INT64>)
+                  +-ColumnRef(type=INT64, column=T.c#6)
+==
+
+# SELECT list item with non-correlated column references in current FROM clause
+# name scope. For such select item, if all of its column references are selected
+# and can be used as grouping keys, it is not added to the group by list.
+SELECT a, COUNT(*), (
+  SELECT AS `googlesql_test.KeyValueStruct`
+    'key' AS key,
+    {{a|current_value|b}} AS value
+  FROM (
+    SELECT 100 AS current_value
+  ) AS current_table
+) AS proto_col
+FROM (
+  SELECT 1 AS a, 2 AS b
+) external
+GROUP BY ALL
+--
+ALTERNATION GROUP: a
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.a#8 AS a [INT64]
+| +-$aggregate.$agg1#3 AS `$col2` [INT64]
+| +-$query.proto_col#13 AS proto_col [PROTO<googlesql_test.KeyValueStruct>]
++-query=
+  +-ProjectScan
+    +-column_list=[$groupby.a#8, $aggregate.$agg1#3, $query.proto_col#13]
+    +-expr_list=
+    | +-proto_col#13 :=
+    |   +-SubqueryExpr
+    |     +-type=PROTO<googlesql_test.KeyValueStruct>
+    |     +-subquery_type=SCALAR
+    |     +-parameter_list=
+    |     | +-ColumnRef(type=INT64, column=$groupby.a#8)
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$make_proto.$proto#12]
+    |         +-expr_list=
+    |         | +-$proto#12 :=
+    |         |   +-MakeProto
+    |         |     +-type=PROTO<googlesql_test.KeyValueStruct>
+    |         |     +-field_list=
+    |         |       +-key := ColumnRef(type=STRING, column=$expr_subquery.key#10)
+    |         |       +-value := ColumnRef(type=INT64, column=$expr_subquery.value#11)
+    |         +-input_scan=
+    |           +-ProjectScan
+    |             +-column_list=$expr_subquery.[key#10, value#11]
+    |             +-expr_list=
+    |             | +-key#10 := Literal(type=STRING, value="key")
+    |             | +-value#11 := ColumnRef(type=INT64, column=$groupby.a#8, is_correlated=TRUE)
+    |             +-input_scan=
+    |               +-ProjectScan
+    |                 +-column_list=[current_table.current_value#9]
+    |                 +-expr_list=
+    |                 | +-current_value#9 := Literal(type=INT64, value=100)
+    |                 +-input_scan=
+    |                   +-SingleRowScan
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$groupby.a#8, $aggregate.$agg1#3]
+        +-input_scan=
+        | +-ProjectScan
+        |   +-column_list=external.[a#1, b#2]
+        |   +-expr_list=
+        |   | +-a#1 := Literal(type=INT64, value=1)
+        |   | +-b#2 := Literal(type=INT64, value=2)
+        |   +-input_scan=
+        |     +-SingleRowScan
+        +-group_by_list=
+        | +-a#8 := ColumnRef(type=INT64, column=external.a#1)
+        +-aggregate_list=
+          +-$agg1#3 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+--
+ALTERNATION GROUP: current_value
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.a#7 AS a [INT64]
+| +-$aggregate.$agg1#3 AS `$col2` [INT64]
+| +-$query.proto_col#11 AS proto_col [PROTO<googlesql_test.KeyValueStruct>]
++-query=
+  +-ProjectScan
+    +-column_list=[$groupby.a#7, $aggregate.$agg1#3, $query.proto_col#11]
+    +-expr_list=
+    | +-proto_col#11 :=
+    |   +-SubqueryExpr
+    |     +-type=PROTO<googlesql_test.KeyValueStruct>
+    |     +-subquery_type=SCALAR
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$make_proto.$proto#10]
+    |         +-expr_list=
+    |         | +-$proto#10 :=
+    |         |   +-MakeProto
+    |         |     +-type=PROTO<googlesql_test.KeyValueStruct>
+    |         |     +-field_list=
+    |         |       +-key := ColumnRef(type=STRING, column=$expr_subquery.key#9)
+    |         |       +-value := ColumnRef(type=INT64, column=current_table.current_value#8)
+    |         +-input_scan=
+    |           +-ProjectScan
+    |             +-column_list=[$expr_subquery.key#9, current_table.current_value#8]
+    |             +-expr_list=
+    |             | +-key#9 := Literal(type=STRING, value="key")
+    |             +-input_scan=
+    |               +-ProjectScan
+    |                 +-column_list=[current_table.current_value#8]
+    |                 +-expr_list=
+    |                 | +-current_value#8 := Literal(type=INT64, value=100)
+    |                 +-input_scan=
+    |                   +-SingleRowScan
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$groupby.a#7, $aggregate.$agg1#3]
+        +-input_scan=
+        | +-ProjectScan
+        |   +-column_list=external.[a#1, b#2]
+        |   +-expr_list=
+        |   | +-a#1 := Literal(type=INT64, value=1)
+        |   | +-b#2 := Literal(type=INT64, value=2)
+        |   +-input_scan=
+        |     +-SingleRowScan
+        +-group_by_list=
+        | +-a#7 := ColumnRef(type=INT64, column=external.a#1)
+        +-aggregate_list=
+          +-$agg1#3 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+--
+ALTERNATION GROUP: b
+--
+ERROR: Column `proto_col`, which is included in the grouping list by GROUP BY ALL, has type PROTO which cannot be used in a grouping key [at 1:21]
+SELECT a, COUNT(*), (
+                    ^
+==
+
+# SELECT list item with non-correlated column references in current FROM clause
+# name scope. For such select item, if all of its column references are selected
+# and the expression that contains those column references can be used as a
+# grouping keys, such select item is not added to the group by list.
+# The pre-existing grouping keys is computed as the shortest prefix, a single
+# column ref.
+[language_features=NONE,+GROUP_BY_ALL,+GROUP_BY_STRUCT]
+WITH T AS (
+  SELECT STRUCT(1 AS a1, STRUCT(STRUCT(1 AS c1, 1 AS c2) AS b1, 1 AS b2) AS a2) AS x, 1 AS y
+)
+SELECT x.a2.b1, {{|T.}}x, T.x.a1, SUM(y)
+FROM T
+GROUP BY ALL
+--
+QueryStmt
++-output_column_list=
+| +-$query.b1#7 AS b1 [STRUCT<c1 INT64, c2 INT64>]
+| +-$groupby.x#6 AS x [STRUCT<a1 INT64, a2 STRUCT<b1 STRUCT<c1 INT64, c2 INT64>, b2 INT64>>]
+| +-$query.a1#8 AS a1 [INT64]
+| +-$aggregate.$agg1#5 AS `$col4` [INT64]
++-query=
+  +-WithScan
+    +-column_list=[$query.b1#7, $groupby.x#6, $query.a1#8, $aggregate.$agg1#5]
+    +-with_entry_list=
+    | +-WithEntry
+    |   +-with_query_name="T"
+    |   +-with_subquery=
+    |     +-ProjectScan
+    |       +-column_list=T.[x#1, y#2]
+    |       +-expr_list=
+    |       | +-x#1 := Literal(type=STRUCT<a1 INT64, a2 STRUCT<b1 STRUCT<c1 INT64, c2 INT64>, b2 INT64>>, value={a1:1, a2:{b1:{c1:1, c2:1}, b2:1}})
+    |       | +-y#2 := Literal(type=INT64, value=1)
+    |       +-input_scan=
+    |         +-SingleRowScan
+    +-query=
+      +-ProjectScan
+        +-column_list=[$query.b1#7, $groupby.x#6, $query.a1#8, $aggregate.$agg1#5]
+        +-expr_list=
+        | +-b1#7 :=
+        | | +-GetStructField
+        | |   +-type=STRUCT<c1 INT64, c2 INT64>
+        | |   +-expr=
+        | |   | +-GetStructField
+        | |   |   +-type=STRUCT<b1 STRUCT<c1 INT64, c2 INT64>, b2 INT64>
+        | |   |   +-expr=
+        | |   |   | +-ColumnRef(type=STRUCT<a1 INT64, a2 STRUCT<b1 STRUCT<c1 INT64, c2 INT64>, b2 INT64>>, column=$groupby.x#6)
+        | |   |   +-field_idx=1
+        | |   +-field_idx=0
+        | +-a1#8 :=
+        |   +-GetStructField
+        |     +-type=INT64
+        |     +-expr=
+        |     | +-ColumnRef(type=STRUCT<a1 INT64, a2 STRUCT<b1 STRUCT<c1 INT64, c2 INT64>, b2 INT64>>, column=$groupby.x#6)
+        |     +-field_idx=0
+        +-input_scan=
+          +-AggregateScan
+            +-column_list=[$groupby.x#6, $aggregate.$agg1#5]
+            +-input_scan=
+            | +-WithRefScan(column_list=T.[x#3, y#4], with_query_name="T")
+            +-group_by_list=
+            | +-x#6 := ColumnRef(type=STRUCT<a1 INT64, a2 STRUCT<b1 STRUCT<c1 INT64, c2 INT64>, b2 INT64>>, column=T.x#3)
+            +-aggregate_list=
+              +-$agg1#5 :=
+                +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+                  +-ColumnRef(type=INT64, column=T.y#4)
+==
+
+# SELECT list item with non-correlated column references in current FROM clause
+# name scope. For such select item, if all of its column references are selected
+# and the expression that contains those column references can be used as a
+# grouping keys, such select item is not added to the group by list.
+# The pre-existing grouping keys is computed as the shortest prefix, a path
+# expression with multiple names.
+[language_features=NONE,+GROUP_BY_ALL,+GROUP_BY_STRUCT]
+WITH T AS (
+  SELECT STRUCT(1 AS a1, STRUCT(STRUCT(1 AS c1, 1 AS c2) AS b1, 1 AS b2) AS a2) AS x, 1 AS y
+)
+SELECT x.a2.b1, x.a1, x.a2, SUM(y)
+FROM T
+GROUP BY ALL
+--
+QueryStmt
++-output_column_list=
+| +-$query.b1#8 AS b1 [STRUCT<c1 INT64, c2 INT64>]
+| +-$groupby.a1#6 AS a1 [INT64]
+| +-$groupby.a2#7 AS a2 [STRUCT<b1 STRUCT<c1 INT64, c2 INT64>, b2 INT64>]
+| +-$aggregate.$agg1#5 AS `$col4` [INT64]
++-query=
+  +-WithScan
+    +-column_list=[$query.b1#8, $groupby.a1#6, $groupby.a2#7, $aggregate.$agg1#5]
+    +-with_entry_list=
+    | +-WithEntry
+    |   +-with_query_name="T"
+    |   +-with_subquery=
+    |     +-ProjectScan
+    |       +-column_list=T.[x#1, y#2]
+    |       +-expr_list=
+    |       | +-x#1 := Literal(type=STRUCT<a1 INT64, a2 STRUCT<b1 STRUCT<c1 INT64, c2 INT64>, b2 INT64>>, value={a1:1, a2:{b1:{c1:1, c2:1}, b2:1}})
+    |       | +-y#2 := Literal(type=INT64, value=1)
+    |       +-input_scan=
+    |         +-SingleRowScan
+    +-query=
+      +-ProjectScan
+        +-column_list=[$query.b1#8, $groupby.a1#6, $groupby.a2#7, $aggregate.$agg1#5]
+        +-expr_list=
+        | +-b1#8 :=
+        |   +-GetStructField
+        |     +-type=STRUCT<c1 INT64, c2 INT64>
+        |     +-expr=
+        |     | +-ColumnRef(type=STRUCT<b1 STRUCT<c1 INT64, c2 INT64>, b2 INT64>, column=$groupby.a2#7)
+        |     +-field_idx=0
+        +-input_scan=
+          +-AggregateScan
+            +-column_list=[$groupby.a1#6, $groupby.a2#7, $aggregate.$agg1#5]
+            +-input_scan=
+            | +-WithRefScan(column_list=T.[x#3, y#4], with_query_name="T")
+            +-group_by_list=
+            | +-a1#6 :=
+            | | +-GetStructField
+            | |   +-type=INT64
+            | |   +-expr=
+            | |   | +-ColumnRef(type=STRUCT<a1 INT64, a2 STRUCT<b1 STRUCT<c1 INT64, c2 INT64>, b2 INT64>>, column=T.x#3)
+            | |   +-field_idx=0
+            | +-a2#7 :=
+            |   +-GetStructField
+            |     +-type=STRUCT<b1 STRUCT<c1 INT64, c2 INT64>, b2 INT64>
+            |     +-expr=
+            |     | +-ColumnRef(type=STRUCT<a1 INT64, a2 STRUCT<b1 STRUCT<c1 INT64, c2 INT64>, b2 INT64>>, column=T.x#3)
+            |     +-field_idx=1
+            +-aggregate_list=
+              +-$agg1#5 :=
+                +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+                  +-ColumnRef(type=INT64, column=T.y#4)
+==
+
+# SELECT list item with non-correlated column references in current FROM clause
+# name scope. For such select item, if all of its column references are selected
+# and the expression that contains those column references can be used as a
+# grouping keys, such select item is not added to the group by list.
+# The pre-existing grouping keys is computed as the shortest prefix, a path
+# expression with multiple names.
+[language_features=NONE,+GROUP_BY_ALL,+GROUP_BY_STRUCT]
+WITH T AS (
+  SELECT STRUCT(1 AS a1, STRUCT(STRUCT(1 AS c1, 1 AS c2) AS b1, 1 AS b2) AS a2) AS x, 1 AS y
+)
+SELECT (SELECT x.a2.b1), [x.a2.b1.c1, x.a2.b2], x.a2, SUM(y)
+FROM T
+GROUP BY ALL
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#9 AS `$col1` [STRUCT<c1 INT64, c2 INT64>]
+| +-$query.$col2#10 AS `$col2` [ARRAY<INT64>]
+| +-$groupby.a2#7 AS a2 [STRUCT<b1 STRUCT<c1 INT64, c2 INT64>, b2 INT64>]
+| +-$aggregate.$agg1#6 AS `$col4` [INT64]
++-query=
+  +-WithScan
+    +-column_list=[$query.$col1#9, $query.$col2#10, $groupby.a2#7, $aggregate.$agg1#6]
+    +-with_entry_list=
+    | +-WithEntry
+    |   +-with_query_name="T"
+    |   +-with_subquery=
+    |     +-ProjectScan
+    |       +-column_list=T.[x#1, y#2]
+    |       +-expr_list=
+    |       | +-x#1 := Literal(type=STRUCT<a1 INT64, a2 STRUCT<b1 STRUCT<c1 INT64, c2 INT64>, b2 INT64>>, value={a1:1, a2:{b1:{c1:1, c2:1}, b2:1}})
+    |       | +-y#2 := Literal(type=INT64, value=1)
+    |       +-input_scan=
+    |         +-SingleRowScan
+    +-query=
+      +-ProjectScan
+        +-column_list=[$query.$col1#9, $query.$col2#10, $groupby.a2#7, $aggregate.$agg1#6]
+        +-expr_list=
+        | +-$col1#9 :=
+        | | +-SubqueryExpr
+        | |   +-type=STRUCT<c1 INT64, c2 INT64>
+        | |   +-subquery_type=SCALAR
+        | |   +-parameter_list=
+        | |   | +-ColumnRef(type=STRUCT<b1 STRUCT<c1 INT64, c2 INT64>, b2 INT64>, column=$groupby.a2#7)
+        | |   +-subquery=
+        | |     +-ProjectScan
+        | |       +-column_list=[$expr_subquery.b1#8]
+        | |       +-expr_list=
+        | |       | +-b1#8 :=
+        | |       |   +-GetStructField
+        | |       |     +-type=STRUCT<c1 INT64, c2 INT64>
+        | |       |     +-expr=
+        | |       |     | +-ColumnRef(type=STRUCT<b1 STRUCT<c1 INT64, c2 INT64>, b2 INT64>, column=$groupby.a2#7, is_correlated=TRUE)
+        | |       |     +-field_idx=0
+        | |       +-input_scan=
+        | |         +-SingleRowScan
+        | +-$col2#10 :=
+        |   +-FunctionCall(GoogleSQL:$make_array(repeated(2) INT64) -> ARRAY<INT64>)
+        |     +-GetStructField
+        |     | +-type=INT64
+        |     | +-expr=
+        |     | | +-GetStructField
+        |     | |   +-type=STRUCT<c1 INT64, c2 INT64>
+        |     | |   +-expr=
+        |     | |   | +-ColumnRef(type=STRUCT<b1 STRUCT<c1 INT64, c2 INT64>, b2 INT64>, column=$groupby.a2#7)
+        |     | |   +-field_idx=0
+        |     | +-field_idx=0
+        |     +-GetStructField
+        |       +-type=INT64
+        |       +-expr=
+        |       | +-ColumnRef(type=STRUCT<b1 STRUCT<c1 INT64, c2 INT64>, b2 INT64>, column=$groupby.a2#7)
+        |       +-field_idx=1
+        +-input_scan=
+          +-AggregateScan
+            +-column_list=[$groupby.a2#7, $aggregate.$agg1#6]
+            +-input_scan=
+            | +-WithRefScan(column_list=T.[x#3, y#4], with_query_name="T")
+            +-group_by_list=
+            | +-a2#7 :=
+            |   +-GetStructField
+            |     +-type=STRUCT<b1 STRUCT<c1 INT64, c2 INT64>, b2 INT64>
+            |     +-expr=
+            |     | +-ColumnRef(type=STRUCT<a1 INT64, a2 STRUCT<b1 STRUCT<c1 INT64, c2 INT64>, b2 INT64>>, column=T.x#3)
+            |     +-field_idx=1
+            +-aggregate_list=
+              +-$agg1#6 :=
+                +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+                  +-ColumnRef(type=INT64, column=T.y#4)
+==
+
+# SELECT list item with non-correlated column references in current FROM clause
+# name scope. For such select item, if all of its column references are selected
+# and the expression that contains those column references can be used as a
+# grouping keys, such select item is not added to the group by list.
+# However, the detection of those pre-existing grouping keys only works for as
+# complicated as path expression, instead of any other more general / complex
+# expression.
+[language_features=NONE,+GROUP_BY_ALL,+GROUP_BY_STRUCT]
+WITH T AS (
+  SELECT STRUCT(1 AS a1, STRUCT(STRUCT(1 AS c1, 1 AS c2) AS b1, 1 AS b2) AS a2) AS x, 1 AS y
+)
+SELECT x.a2.b1, (SELECT x), SUM(y)
+FROM T
+GROUP BY ALL
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.b1#7 AS b1 [STRUCT<c1 INT64, c2 INT64>]
+| +-$groupby.$col2#8 AS `$col2` [STRUCT<a1 INT64, a2 STRUCT<b1 STRUCT<c1 INT64, c2 INT64>, b2 INT64>>]
+| +-$aggregate.$agg1#6 AS `$col3` [INT64]
++-query=
+  +-WithScan
+    +-column_list=[$groupby.b1#7, $groupby.$col2#8, $aggregate.$agg1#6]
+    +-with_entry_list=
+    | +-WithEntry
+    |   +-with_query_name="T"
+    |   +-with_subquery=
+    |     +-ProjectScan
+    |       +-column_list=T.[x#1, y#2]
+    |       +-expr_list=
+    |       | +-x#1 := Literal(type=STRUCT<a1 INT64, a2 STRUCT<b1 STRUCT<c1 INT64, c2 INT64>, b2 INT64>>, value={a1:1, a2:{b1:{c1:1, c2:1}, b2:1}})
+    |       | +-y#2 := Literal(type=INT64, value=1)
+    |       +-input_scan=
+    |         +-SingleRowScan
+    +-query=
+      +-ProjectScan
+        +-column_list=[$groupby.b1#7, $groupby.$col2#8, $aggregate.$agg1#6]
+        +-input_scan=
+          +-AggregateScan
+            +-column_list=[$groupby.b1#7, $groupby.$col2#8, $aggregate.$agg1#6]
+            +-input_scan=
+            | +-WithRefScan(column_list=T.[x#3, y#4], with_query_name="T")
+            +-group_by_list=
+            | +-b1#7 :=
+            | | +-GetStructField
+            | |   +-type=STRUCT<c1 INT64, c2 INT64>
+            | |   +-expr=
+            | |   | +-GetStructField
+            | |   |   +-type=STRUCT<b1 STRUCT<c1 INT64, c2 INT64>, b2 INT64>
+            | |   |   +-expr=
+            | |   |   | +-ColumnRef(type=STRUCT<a1 INT64, a2 STRUCT<b1 STRUCT<c1 INT64, c2 INT64>, b2 INT64>>, column=T.x#3)
+            | |   |   +-field_idx=1
+            | |   +-field_idx=0
+            | +-$col2#8 :=
+            |   +-SubqueryExpr
+            |     +-type=STRUCT<a1 INT64, a2 STRUCT<b1 STRUCT<c1 INT64, c2 INT64>, b2 INT64>>
+            |     +-subquery_type=SCALAR
+            |     +-parameter_list=
+            |     | +-ColumnRef(type=STRUCT<a1 INT64, a2 STRUCT<b1 STRUCT<c1 INT64, c2 INT64>, b2 INT64>>, column=T.x#3)
+            |     +-subquery=
+            |       +-ProjectScan
+            |         +-column_list=[$expr_subquery.x#5]
+            |         +-expr_list=
+            |         | +-x#5 := ColumnRef(type=STRUCT<a1 INT64, a2 STRUCT<b1 STRUCT<c1 INT64, c2 INT64>, b2 INT64>>, column=T.x#3, is_correlated=TRUE)
+            |         +-input_scan=
+            |           +-SingleRowScan
+            +-aggregate_list=
+              +-$agg1#6 :=
+                +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+                  +-ColumnRef(type=INT64, column=T.y#4)
+==
+
+# Regression test for b/310705631
+[language_features=NONE,+GROUP_BY_ARRAY,+GROUP_BY_ALL]
+WITH Table5 AS (SELECT [1, 2, 3] AS arr_col)
+SELECT
+  ( SELECT e FROM t5.arr_col AS e ) AS scalar_subq_col,
+  t5.arr_col
+FROM Table5 AS t5
+GROUP BY {{1,2|ALL}}
+--
+ALTERNATION GROUP: 1,2
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.scalar_subq_col#4 AS scalar_subq_col [INT64]
+| +-$groupby.arr_col#5 AS arr_col [ARRAY<INT64>]
++-query=
+  +-WithScan
+    +-column_list=$groupby.[scalar_subq_col#4, arr_col#5]
+    +-with_entry_list=
+    | +-WithEntry
+    |   +-with_query_name="Table5"
+    |   +-with_subquery=
+    |     +-ProjectScan
+    |       +-column_list=[Table5.arr_col#1]
+    |       +-expr_list=
+    |       | +-arr_col#1 := Literal(type=ARRAY<INT64>, value=[1, 2, 3])
+    |       +-input_scan=
+    |         +-SingleRowScan
+    +-query=
+      +-ProjectScan
+        +-column_list=$groupby.[scalar_subq_col#4, arr_col#5]
+        +-input_scan=
+          +-AggregateScan
+            +-column_list=$groupby.[scalar_subq_col#4, arr_col#5]
+            +-input_scan=
+            | +-WithRefScan(column_list=[Table5.arr_col#2], with_query_name="Table5")
+            +-group_by_list=
+              +-scalar_subq_col#4 :=
+              | +-SubqueryExpr
+              |   +-type=INT64
+              |   +-subquery_type=SCALAR
+              |   +-parameter_list=
+              |   | +-ColumnRef(type=ARRAY<INT64>, column=Table5.arr_col#2)
+              |   +-subquery=
+              |     +-ProjectScan
+              |       +-column_list=[$array.e#3]
+              |       +-input_scan=
+              |         +-ArrayScan
+              |           +-column_list=[$array.e#3]
+              |           +-array_expr_list=
+              |           | +-ColumnRef(type=ARRAY<INT64>, column=Table5.arr_col#2, is_correlated=TRUE)
+              |           +-element_column_list=[$array.e#3]
+              +-arr_col#5 := ColumnRef(type=ARRAY<INT64>, column=Table5.arr_col#2)
+--
+ALTERNATION GROUP: ALL
+--
+QueryStmt
++-output_column_list=
+| +-$query.scalar_subq_col#6 AS scalar_subq_col [INT64]
+| +-$groupby.arr_col#4 AS arr_col [ARRAY<INT64>]
++-query=
+  +-WithScan
+    +-column_list=[$query.scalar_subq_col#6, $groupby.arr_col#4]
+    +-with_entry_list=
+    | +-WithEntry
+    |   +-with_query_name="Table5"
+    |   +-with_subquery=
+    |     +-ProjectScan
+    |       +-column_list=[Table5.arr_col#1]
+    |       +-expr_list=
+    |       | +-arr_col#1 := Literal(type=ARRAY<INT64>, value=[1, 2, 3])
+    |       +-input_scan=
+    |         +-SingleRowScan
+    +-query=
+      +-ProjectScan
+        +-column_list=[$query.scalar_subq_col#6, $groupby.arr_col#4]
+        +-expr_list=
+        | +-scalar_subq_col#6 :=
+        |   +-SubqueryExpr
+        |     +-type=INT64
+        |     +-subquery_type=SCALAR
+        |     +-parameter_list=
+        |     | +-ColumnRef(type=ARRAY<INT64>, column=$groupby.arr_col#4)
+        |     +-subquery=
+        |       +-ProjectScan
+        |         +-column_list=[$array.e#5]
+        |         +-input_scan=
+        |           +-ArrayScan
+        |             +-column_list=[$array.e#5]
+        |             +-array_expr_list=
+        |             | +-ColumnRef(type=ARRAY<INT64>, column=$groupby.arr_col#4, is_correlated=TRUE)
+        |             +-element_column_list=[$array.e#5]
+        +-input_scan=
+          +-AggregateScan
+            +-column_list=[$groupby.arr_col#4]
+            +-input_scan=
+            | +-WithRefScan(column_list=[Table5.arr_col#2], with_query_name="Table5")
+            +-group_by_list=
+              +-arr_col#4 := ColumnRef(type=ARRAY<INT64>, column=Table5.arr_col#2)
+==
+
+# Regression test for b/310705631
+[language_features=NONE,+GROUP_BY_ARRAY,+GROUP_BY_ALL]
+WITH Table5 AS (SELECT [1, 2, 3] AS arr_col)
+SELECT
+  ( SELECT t5.arr_col ) AS scalar_subq_col,
+  t5.arr_col
+FROM Table5 AS t5
+GROUP BY 2
+--
+QueryStmt
++-output_column_list=
+| +-$query.scalar_subq_col#6 AS scalar_subq_col [ARRAY<INT64>]
+| +-$groupby.arr_col#4 AS arr_col [ARRAY<INT64>]
++-query=
+  +-WithScan
+    +-column_list=[$query.scalar_subq_col#6, $groupby.arr_col#4]
+    +-with_entry_list=
+    | +-WithEntry
+    |   +-with_query_name="Table5"
+    |   +-with_subquery=
+    |     +-ProjectScan
+    |       +-column_list=[Table5.arr_col#1]
+    |       +-expr_list=
+    |       | +-arr_col#1 := Literal(type=ARRAY<INT64>, value=[1, 2, 3])
+    |       +-input_scan=
+    |         +-SingleRowScan
+    +-query=
+      +-ProjectScan
+        +-column_list=[$query.scalar_subq_col#6, $groupby.arr_col#4]
+        +-expr_list=
+        | +-scalar_subq_col#6 :=
+        |   +-SubqueryExpr
+        |     +-type=ARRAY<INT64>
+        |     +-subquery_type=SCALAR
+        |     +-parameter_list=
+        |     | +-ColumnRef(type=ARRAY<INT64>, column=$groupby.arr_col#4)
+        |     +-subquery=
+        |       +-ProjectScan
+        |         +-column_list=[$expr_subquery.arr_col#5]
+        |         +-expr_list=
+        |         | +-arr_col#5 := ColumnRef(type=ARRAY<INT64>, column=$groupby.arr_col#4, is_correlated=TRUE)
+        |         +-input_scan=
+        |           +-SingleRowScan
+        +-input_scan=
+          +-AggregateScan
+            +-column_list=[$groupby.arr_col#4]
+            +-input_scan=
+            | +-WithRefScan(column_list=[Table5.arr_col#2], with_query_name="Table5")
+            +-group_by_list=
+              +-arr_col#4 := ColumnRef(type=ARRAY<INT64>, column=Table5.arr_col#2)
+==
+
+# Regression test for b/310705631
+[language_features=NONE,+GROUP_BY_ARRAY,+GROUP_BY_ALL]
+WITH Table5 AS (SELECT [1, 2, 3] AS arr_col)
+SELECT
+  ( SELECT e FROM UNNEST(t5.arr_col) AS e ) AS scalar_subq_col,
+  t5.arr_col
+FROM Table5 AS t5
+GROUP BY 2
+--
+QueryStmt
++-output_column_list=
+| +-$query.scalar_subq_col#6 AS scalar_subq_col [INT64]
+| +-$groupby.arr_col#4 AS arr_col [ARRAY<INT64>]
++-query=
+  +-WithScan
+    +-column_list=[$query.scalar_subq_col#6, $groupby.arr_col#4]
+    +-with_entry_list=
+    | +-WithEntry
+    |   +-with_query_name="Table5"
+    |   +-with_subquery=
+    |     +-ProjectScan
+    |       +-column_list=[Table5.arr_col#1]
+    |       +-expr_list=
+    |       | +-arr_col#1 := Literal(type=ARRAY<INT64>, value=[1, 2, 3])
+    |       +-input_scan=
+    |         +-SingleRowScan
+    +-query=
+      +-ProjectScan
+        +-column_list=[$query.scalar_subq_col#6, $groupby.arr_col#4]
+        +-expr_list=
+        | +-scalar_subq_col#6 :=
+        |   +-SubqueryExpr
+        |     +-type=INT64
+        |     +-subquery_type=SCALAR
+        |     +-parameter_list=
+        |     | +-ColumnRef(type=ARRAY<INT64>, column=$groupby.arr_col#4)
+        |     +-subquery=
+        |       +-ProjectScan
+        |         +-column_list=[$array.e#5]
+        |         +-input_scan=
+        |           +-ArrayScan
+        |             +-column_list=[$array.e#5]
+        |             +-array_expr_list=
+        |             | +-ColumnRef(type=ARRAY<INT64>, column=$groupby.arr_col#4, is_correlated=TRUE)
+        |             +-element_column_list=[$array.e#5]
+        +-input_scan=
+          +-AggregateScan
+            +-column_list=[$groupby.arr_col#4]
+            +-input_scan=
+            | +-WithRefScan(column_list=[Table5.arr_col#2], with_query_name="Table5")
+            +-group_by_list=
+              +-arr_col#4 := ColumnRef(type=ARRAY<INT64>, column=Table5.arr_col#2)
+==
+
+# Non-path expression is not deduplicated by GROUP BY ALL yet.
+SELECT a + b, a + b, COUNT(*)
+FROM (
+  SELECT 1 AS expr, 1 AS a, 1 AS b
+) T
+GROUP BY ALL
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.$col1#5 AS `$col1` [INT64]
+| +-$groupby.$col2#6 AS `$col2` [INT64]
+| +-$aggregate.$agg1#4 AS `$col3` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$groupby.$col1#5, $groupby.$col2#6, $aggregate.$agg1#4]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$groupby.$col1#5, $groupby.$col2#6, $aggregate.$agg1#4]
+        +-input_scan=
+        | +-ProjectScan
+        |   +-column_list=T.[expr#1, a#2, b#3]
+        |   +-expr_list=
+        |   | +-expr#1 := Literal(type=INT64, value=1)
+        |   | +-a#2 := Literal(type=INT64, value=1)
+        |   | +-b#3 := Literal(type=INT64, value=1)
+        |   +-input_scan=
+        |     +-SingleRowScan
+        +-group_by_list=
+        | +-$col1#5 :=
+        | | +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+        | |   +-ColumnRef(type=INT64, column=T.a#2)
+        | |   +-ColumnRef(type=INT64, column=T.b#3)
+        | +-$col2#6 :=
+        |   +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+        |     +-ColumnRef(type=INT64, column=T.a#2)
+        |     +-ColumnRef(type=INT64, column=T.b#3)
+        +-aggregate_list=
+          +-$agg1#4 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+==
+

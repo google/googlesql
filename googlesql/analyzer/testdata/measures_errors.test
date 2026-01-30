@@ -1,0 +1,1321 @@
+# Error tests for MEASURE type. Cases which are supposed to be errors should
+# be here (even if they currently succeed), while cases that are supposed to
+# succeed should be in measures.test (even if they currently error).
+#
+# Set `no_run_sqlbuilder` as there is no syntax for specifying measures, so some
+# intended (but not yet) invalid queries cannot be handled by SQL Builder.
+# TODO: b/350555383 - Java support requires the ability to serialize and
+# deserialize the measure type. This means serializing and deserializing the
+# measure expression, which is tricky to do given circular dependencies. We
+# workaround this by disabling java support for now. This should be removed
+# once the serialization/deserialization is implemented.
+[default no_java]
+[default language_features=MAXIMUM,+ENABLE_MEASURES,+MULTILEVEL_AGGREGATION,+GROUP_BY_STRUCT,+AGGREGATE_FILTERING,+MEASURES_TVF]
+[default enabled_ast_rewrites=DEFAULTS,+MEASURE_TYPE]
+[default no_run_sqlbuilder]
+
+# Measures cannot be output by top-level queries.
+SELECT key, measure_sum_quantity
+FROM {{MeasureTable_SingleKey|tvf_lookup_table("MeasureTable_SingleKey")}};
+--
+ERROR: Returning expressions of type MEASURE is not allowed [at 2:1]
+SELECT key, measure_sum_quantity
+^
+
+==
+
+# Measures cannot be returned from VIEWs
+CREATE VIEW MeasureView AS
+SELECT measure_sum_price FROM MeasureTable_SingleKey;
+--
+ERROR: Returning expressions of type MEASURE is not allowed [at 1:1]
+CREATE VIEW MeasureView AS
+^
+==
+
+CREATE FUNCTION MeasureUdf() AS
+((SELECT measure_sum_price FROM MeasureTable_SingleKey));
+--
+ERROR: Returning expressions of type MEASURE is not allowed [at 1:1]
+CREATE FUNCTION MeasureUdf() AS
+^
+==
+
+[language_features=NONE,+CREATE_AGGREGATE_FUNCTION,+ENABLE_MEASURES]
+CREATE AGGREGATE FUNCTION MeasureUda() AS
+((SELECT measure_sum_price FROM MeasureTable_SingleKey));
+--
+ERROR: Returning expressions of type MEASURE is not allowed [at 1:1]
+CREATE AGGREGATE FUNCTION MeasureUda() AS
+^
+==
+
+[language_features=NONE,+TABLE_VALUED_FUNCTIONS,+CREATE_TABLE_FUNCTION,+ENABLE_MEASURES]
+# Measures cannot be returned from TVFs
+CREATE TABLE FUNCTION MeasureTvf() AS
+SELECT measure_sum_price FROM MeasureTable_SingleKey;
+--
+ERROR: Returning expressions of type MEASURE is not allowed [at 2:1]
+CREATE TABLE FUNCTION MeasureTvf() AS
+^
+==
+
+# Measure rewriter should fail if multi-level aggregation is disabled.
+[language_features=NONE,+ENABLE_MEASURES,+GROUP_BY_STRUCT]
+SELECT AGG(measure_sum_quantity) FROM MeasureTable_SingleKey;
+--
+[PRE-REWRITE AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#15 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#15]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$aggregate.$agg1#15]
+        +-input_scan=
+        | +-TableScan(column_list=[MeasureTable_SingleKey.measure_sum_quantity#9], table=MeasureTable_SingleKey, column_index_list=[8])
+        +-aggregate_list=
+          +-$agg1#15 :=
+            +-AggregateFunctionCall(GoogleSQL:AGG(MEASURE<INT64>) -> INT64)
+              +-ColumnRef(type=MEASURE<INT64>, column=MeasureTable_SingleKey.measure_sum_quantity#9)
+
+
+Rewrite ERROR: generic::unimplemented: Multi-level aggregation is needed to rewrite measures.
+==
+
+# Measure rewriter should fail if grouping by STRUCT is disabled.
+[language_features=NONE,+ENABLE_MEASURES,+MULTILEVEL_AGGREGATION]
+SELECT AGG(measure_sum_quantity) FROM MeasureTable_SingleKey;
+--
+[PRE-REWRITE AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#15 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#15]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$aggregate.$agg1#15]
+        +-input_scan=
+        | +-TableScan(column_list=[MeasureTable_SingleKey.measure_sum_quantity#9], table=MeasureTable_SingleKey, column_index_list=[8])
+        +-aggregate_list=
+          +-$agg1#15 :=
+            +-AggregateFunctionCall(GoogleSQL:AGG(MEASURE<INT64>) -> INT64)
+              +-ColumnRef(type=MEASURE<INT64>, column=MeasureTable_SingleKey.measure_sum_quantity#9)
+
+
+Rewrite ERROR: generic::unimplemented: Grouping by STRUCT types is needed to rewrite measures.
+==
+
+EXPORT DATA
+AS
+SELECT key, measure_count_star
+FROM MeasureTable_SingleKey
+--
+ERROR: Returning expressions of type MEASURE is not allowed [at 1:1]
+EXPORT DATA
+^
+==
+
+CREATE TABLE t2
+AS
+SELECT key, measure_count_star
+FROM MeasureTable_SingleKey
+--
+ERROR: Returning expressions of type MEASURE is not allowed [at 1:1]
+CREATE TABLE t2
+^
+==
+
+# MEASURE type is not accepted for ANY TYPE or other templated types besides
+# ARG_MEASURE_ANY_1.
+SELECT fn_on_any_element_returns_array(measure_sum_quantity) FROM MeasureTable_SingleKey;
+--
+ERROR: MEASURE-typed arguments are only permitted in the AGG function [at 1:40]
+SELECT fn_on_any_element_returns_array(measure_sum_quantity) FROM MeasureTabl...
+                                       ^
+==
+
+# MEASURE type is not accepted for ANY TYPE or other templated types besides
+# ARG_MEASURE_ANY_1.
+SELECT IF(true, measure_sum_price, 1) FROM MeasureTable_SingleKey;
+--
+ERROR: MEASURE-typed arguments are only permitted in the AGG function [at 1:17]
+SELECT IF(true, measure_sum_price, 1) FROM MeasureTable_SingleKey;
+                ^
+==
+
+SELECT 1 AS x
+FROM (SELECT STRUCT(measure_sum_quantity AS m) FROM MeasureTable_SingleKey);
+--
+ERROR: STRUCT type cannot contain MEASURE [at 2:14]
+FROM (SELECT STRUCT(measure_sum_quantity AS m) FROM MeasureTable_SingleKey);
+             ^
+
+==
+
+SELECT 1 AS x
+FROM (SELECT AS STRUCT measure_sum_quantity AS m FROM MeasureTable_SingleKey);
+--
+ERROR: SELECT AS STRUCT cannot contain MEASURE [at 2:14]
+FROM (SELECT AS STRUCT measure_sum_quantity AS m FROM MeasureTable_SingleKey);
+             ^
+
+==
+
+# MEASURE type cannot be stored in an ARRAY constructed with [] syntax.
+SELECT [measure_sum_quantity] AS arr FROM MeasureTable_SingleKey;
+--
+ERROR: No matching signature for operator ARRAY[...]
+  Argument types: MEASURE<INT64>
+  Signature: [T1, ...][]
+    Argument 1: expected T1, found MEASURE<INT64>: which is not allowed for ANY arguments [at 1:8]
+SELECT [measure_sum_quantity] AS arr FROM MeasureTable_SingleKey;
+       ^
+==
+
+# MEASURE type cannot be stored in an ARRAY constructed with ARRAY() syntax.
+SELECT 1
+FROM (
+  SELECT
+  ARRAY(SELECT measure_sum_quantity FROM MeasureTable_SingleKey)
+);
+--
+ERROR: Cannot use array subquery with column of type MEASURE<INT64> [at 4:3]
+  ARRAY(SELECT measure_sum_quantity FROM MeasureTable_SingleKey)
+  ^
+==
+
+# MEASURE type cannot be stored in an ARRAY constructed with ARRAY_AGG().
+SELECT ARRAY_AGG(measure_sum_quantity) AS arr FROM MeasureTable_SingleKey;
+--
+ERROR: MEASURE-typed arguments are only permitted in the AGG function [at 1:18]
+SELECT ARRAY_AGG(measure_sum_quantity) AS arr FROM MeasureTable_SingleKey;
+                 ^
+==
+
+SELECT COUNT(*)
+FROM MeasureTable_SingleKey
+GROUP BY measure_sum_quantity;
+--
+ERROR: Grouping by expressions of type MEASURE is not allowed [at 3:10]
+GROUP BY measure_sum_quantity;
+         ^
+
+==
+
+# Measures cannot be used as a grouping column in a PIVOT clause.
+[language_features=NONE,+ENABLE_MEASURES,+PIVOT]
+SELECT key, the_count_US, the_count_CA
+FROM MeasureTable_SingleKey
+PIVOT(COUNT(*) AS the_count FOR country_code IN ('US', 'CA'));
+--
+ERROR: Unrecognized name: country_code [at 3:33]
+PIVOT(COUNT(*) AS the_count FOR country_code IN ('US', 'CA'));
+                                ^
+
+==
+
+# Measures cannot be aggregated by a PIVOT clause. We may want to allow this in
+# the future, but is currently disallowed since the PIVOT rewriter needs to
+# pass the measure-typed column as an argument to an IF function, and the
+# measure type is currently not permitted to be an argument to any function
+# other than AGG.
+[language_features=NONE,+ENABLE_MEASURES,+PIVOT]
+SELECT key, measure_agg_US, measure_agg_CA
+FROM MeasureTable_SingleKey
+PIVOT(AGG(measure_sum_quantity) AS measure_agg FOR country_code IN ('US', 'CA'));
+--
+ERROR: PIVOT expression cannot be a measure type AGG function call [at 3:7]
+PIVOT(AGG(measure_sum_quantity) AS measure_agg FOR country_code IN ('US', 'CA...
+      ^
+==
+
+# Measures cannot propagate past SetOperationScans.
+SELECT 1 FROM (
+  SELECT measure_sum_quantity FROM MeasureTable_SingleKey
+  UNION ALL
+  SELECT measure_sum_quantity FROM MeasureTable_SingleKey
+)
+--
+ERROR: Column 1 in UNION ALL has incompatible types: MEASURE<INT64>, MEASURE<INT64>; each MEASURE type is unique and does not coerce to other MEASURE types [at 4:3]
+  SELECT measure_sum_quantity FROM MeasureTable_SingleKey
+  ^
+==
+
+# Another set operation scan test case for measure propagation, but this time
+# with a WITH CTE.
+WITH T AS (
+  SELECT measure_sum_quantity AS measure_renamed FROM MeasureTable_SingleKey
+)
+SELECT 1 FROM (
+  SELECT * FROM T
+  UNION ALL
+  SELECT * FROM T
+)
+--
+ERROR: Column measure_renamed of type MEASURE<INT64> cannot propagate through UNION_ALL [at 5:3]
+  SELECT * FROM T
+  ^
+==
+
+# An internal alias should not be returned in the user error message
+# Here the subquery of type MEASURE is not aliased, so its ResolvedColumn
+# generates an internal alias (`$col1`).
+SELECT 1 FROM (
+  SELECT (SELECT measure_sum_quantity FROM MeasureTable_SingleKey LIMIT 1)
+  UNION ALL
+  SELECT measure_sum_quantity FROM MeasureTable_SingleKey
+)
+--
+ERROR: Column 1 in UNION ALL has incompatible types: MEASURE<INT64>, MEASURE<INT64>; each MEASURE type is unique and does not coerce to other MEASURE types [at 4:3]
+  SELECT measure_sum_quantity FROM MeasureTable_SingleKey
+  ^
+==
+
+SELECT 1 FROM (
+  SELECT 1, 2, (SELECT measure_sum_quantity FROM MeasureTable_SingleKey LIMIT 1), 10
+  UNION ALL
+  SELECT 3, 4, measure_sum_quantity, 20 FROM MeasureTable_SingleKey
+)
+--
+ERROR: Column 3 in UNION ALL has incompatible types: MEASURE<INT64>, MEASURE<INT64>; each MEASURE type is unique and does not coerce to other MEASURE types [at 4:3]
+  SELECT 3, 4, measure_sum_quantity, 20 FROM MeasureTable_SingleKey
+  ^
+==
+
+# Measures cannot propagate past WITH RECURSIVE scans due to existing
+# MeasureType characteristics
+[language_features=NONE,+WITH_RECURSIVE,+ENABLE_MEASURES]
+with recursive t as (
+      select 1 as n, (select measure_sum_quantity from MeasureTable_SingleKey)
+      union {{all|distinct}}
+      select n+1, (select measure_sum_quantity from MeasureTable_SingleKey) from t
+      where n < 10
+)
+select * from t;
+--
+ALTERNATION GROUP: all
+--
+ERROR: Cannot coerce type (MEASURE<INT64>) of column 2 in the recursive term to type (MEASURE<INT64>) of column 2 in non-recursive term [at 4:7]
+      select n+1, (select measure_sum_quantity from MeasureTable_SingleKey) f...
+      ^
+--
+ALTERNATION GROUP: distinct
+--
+ERROR: Column 2 in UNION DISTINCT has type that does not support set operation comparisons: MEASURE [at 4:7]
+      select n+1, (select measure_sum_quantity from MeasureTable_SingleKey) f...
+      ^
+==
+
+# Measures cannot propagate past WITH RECURSIVE scans due to existing
+# MeasureType characteristics
+[language_features=NONE,+WITH_RECURSIVE,+ENABLE_MEASURES]
+with recursive t1 as (
+      select (select measure_sum_quantity from MeasureTable_SingleKey limit 1) as col
+),
+t2 as (
+      select 1 as n, col from t1
+      union {{all|distinct}}
+      select n+1, col
+      from t2
+      where n < 10
+)
+select agg(t2.col) from t2;
+--
+ALTERNATION GROUP: all
+--
+ERROR: Cannot coerce type (MEASURE<INT64>) of column 2 in the recursive term to type (MEASURE<INT64>) of column 2 in non-recursive term [at 7:7]
+      select n+1, col
+      ^
+--
+ALTERNATION GROUP: distinct
+--
+ERROR: Column 2 in UNION DISTINCT has type that does not support set operation comparisons: MEASURE [at 7:7]
+      select n+1, col
+      ^
+==
+
+# Measures cannot propagate past AssertScans.
+[language_features=NONE,+ENABLE_MEASURES,+PIPES,+PIPE_ASSERT]
+FROM MeasureTable_SingleKey
+|> ASSERT key != 0
+|> SELECT key, measure_sum_quantity
+|> SELECT key
+--
+ERROR: Column measure_count_star of type MEASURE<INT64> cannot propagate through pipe ASSERT [at 2:1]
+|> ASSERT key != 0
+^
+==
+
+# AGG function cannot be used when measures are disabled.
+[language_features=NONE]
+SELECT AGG(int64) FROM SimpleTypes;
+--
+ERROR: Function not found: AGG; Did you mean avg? [at 1:8]
+SELECT AGG(int64) FROM SimpleTypes;
+       ^
+==
+
+# Measure types are disallowed when the language feature is disabled.
+[language_features=NONE]
+SELECT key, AGG(measure_sum_quantity) FROM MeasureTable_SingleKey;
+--
+ERROR: Column measure_count_star in table MeasureTable_SingleKey has unsupported type MEASURE<INT64> [at 1:44]
+SELECT key, AGG(measure_sum_quantity) FROM MeasureTable_SingleKey;
+                                           ^
+==
+
+# AGG only accepts MEASURE<T> input types.
+SELECT AGG(1);
+--
+ERROR: No matching signature for aggregate function AGG
+  Argument types: INT64
+  Signature: AGG(MEASURE<T1>)
+    Argument 1: expected MEASURE<T1>, found INT64 [at 1:8]
+SELECT AGG(1);
+       ^
+==
+
+# AGG doesn't accept an untyped NULL.
+SELECT AGG(NULL);
+--
+ERROR: No matching signature for aggregate function AGG
+  Argument types: NULL
+  Signature: AGG(MEASURE<T1>)
+    Argument 1: Measure cannot be inferred from untyped argument: NULL [at 1:8]
+SELECT AGG(NULL);
+       ^
+==
+
+# AGG doesn't accept an untyped empty array.
+SELECT AGG([]);
+--
+ERROR: No matching signature for aggregate function AGG
+  Argument types: []
+  Signature: AGG(MEASURE<T1>)
+    Argument 1: Measure cannot be inferred from untyped argument: [] [at 1:8]
+SELECT AGG([]);
+       ^
+==
+
+SELECT AGG(DISTINCT measure_sum_quantity) FROM MeasureTable_SingleKey;
+--
+ERROR: Aggregate function AGG does not support DISTINCT in arguments [at 1:8]
+SELECT AGG(DISTINCT measure_sum_quantity) FROM MeasureTable_SingleKey;
+       ^
+==
+
+[language_features=NONE,+ENABLE_MEASURES,+MULTILEVEL_AGGREGATION,+GROUP_BY_STRUCT,+NULL_HANDLING_MODIFIER_IN_AGGREGATE]
+SELECT AGG(measure_sum_quantity {{IGNORE|RESPECT}} NULLS) FROM MeasureTable_SingleKey;
+--
+ALTERNATION GROUP: IGNORE
+--
+ERROR: IGNORE NULLS and RESPECT NULLS are not allowed for aggregate function AGG [at 1:8]
+SELECT AGG(measure_sum_quantity IGNORE NULLS) FROM MeasureTable_SingleKey;
+       ^
+--
+ALTERNATION GROUP: RESPECT
+--
+ERROR: IGNORE NULLS and RESPECT NULLS are not allowed for aggregate function AGG [at 1:8]
+SELECT AGG(measure_sum_quantity RESPECT NULLS) FROM MeasureTable_SingleKey;
+       ^
+==
+
+[language_features=NONE,+ENABLE_MEASURES,+MULTILEVEL_AGGREGATION,+GROUP_BY_STRUCT,+HAVING_IN_AGGREGATE]
+SELECT AGG(measure_sum_quantity HAVING {{MIN|MAX}} key) FROM MeasureTable_SingleKey;
+--
+ALTERNATION GROUP: MIN
+--
+ERROR: Aggregate function AGG does not support HAVING in arguments [at 1:33]
+SELECT AGG(measure_sum_quantity HAVING MIN key) FROM MeasureTable_SingleKey;
+                                ^
+--
+ALTERNATION GROUP: MAX
+--
+ERROR: Aggregate function AGG does not support HAVING in arguments [at 1:33]
+SELECT AGG(measure_sum_quantity HAVING MAX key) FROM MeasureTable_SingleKey;
+                                ^
+==
+
+SELECT AGG(measure_sum_quantity GROUP BY key) FROM MeasureTable_SingleKey;
+--
+ERROR: AGG Function does not support GROUP BY modifiers [at 1:8]
+SELECT AGG(measure_sum_quantity GROUP BY key) FROM MeasureTable_SingleKey;
+       ^
+==
+
+[language_features=NONE,+ENABLE_MEASURES,+MULTILEVEL_AGGREGATION,+GROUP_BY_STRUCT,+ANONYMIZATION]
+SELECT AGG(measure_sum_quantity CLAMPED BETWEEN 1 AND 2) FROM MeasureTable_SingleKey;
+--
+ERROR: The CLAMPED BETWEEN clause is not allowed in the function call arguments for function AGG [at 1:8]
+SELECT AGG(measure_sum_quantity CLAMPED BETWEEN 1 AND 2) FROM MeasureTable_Si...
+       ^
+==
+
+[language_features=NONE,+ENABLE_MEASURES,+MULTILEVEL_AGGREGATION,+GROUP_BY_STRUCT,+ANALYTIC_FUNCTIONS]
+SELECT AGG(measure_sum_quantity) OVER () FROM MeasureTable_SingleKey;
+--
+ERROR: AGG function cannot be used as an analytic function [at 1:8]
+SELECT AGG(measure_sum_quantity) OVER () FROM MeasureTable_SingleKey;
+       ^
+==
+
+[language_features=NONE,+ENABLE_MEASURES,+MULTILEVEL_AGGREGATION,+GROUP_BY_STRUCT,+SAFE_FUNCTION_CALL]
+SELECT SAFE.AGG(measure_sum_quantity) FROM MeasureTable_SingleKey;
+--
+ERROR: Function AGG does not support SAFE error mode [at 1:8]
+SELECT SAFE.AGG(measure_sum_quantity) FROM MeasureTable_SingleKey;
+       ^
+==
+
+SELECT AGGREGATE(measure_sum_quantity ORDER BY key) FROM MeasureTable_SingleKey;
+--
+ERROR: Function not found: AGGREGATE; Did you mean notaggregate? [at 1:8]
+SELECT AGGREGATE(measure_sum_quantity ORDER BY key) FROM MeasureTable_SingleKey;
+       ^
+==
+
+[language_features=NONE,+ENABLE_MEASURES,+MULTILEVEL_AGGREGATION,+GROUP_BY_STRUCT,+LIMIT_IN_AGGREGATE]
+SELECT AGG(measure_sum_quantity LIMIT 1) FROM MeasureTable_SingleKey;
+--
+ERROR: Aggregate function AGG does not support LIMIT in arguments [at 1:33]
+SELECT AGG(measure_sum_quantity LIMIT 1) FROM MeasureTable_SingleKey;
+                                ^
+==
+
+[language_features=NONE,+ENABLE_MEASURES,+ANALYTIC_FUNCTIONS]
+SELECT AGG(measure_sum_quantity) OVER() FROM MeasureTable_SingleKey;
+--
+ERROR: AGG function cannot be used as an analytic function [at 1:8]
+SELECT AGG(measure_sum_quantity) OVER() FROM MeasureTable_SingleKey;
+       ^
+==
+
+[language_features=NONE,+ENABLE_MEASURES,+MULTILEVEL_AGGREGATION]
+SELECT
+  SUM(AGG(measure_sum_quantity) GROUP BY key)
+FROM MeasureTable_SingleKey;
+--
+ERROR: AGG cannot be nested inside another aggregate function. [at 2:7]
+  SUM(AGG(measure_sum_quantity) GROUP BY key)
+      ^
+==
+
+SELECT fn_optional_any_arg_returns_any(measure_sum_quantity) FROM MeasureTable_SingleKey;
+--
+ERROR: MEASURE-typed arguments are only permitted in the AGG function [at 1:40]
+SELECT fn_optional_any_arg_returns_any(measure_sum_quantity) FROM MeasureTabl...
+                                       ^
+==
+
+# Measure table must have at least one row identity column.
+SELECT AGG(measure_count_star) FROM MeasureTable_NoRowIdentity;
+--
+ERROR: Table MeasureTable_NoRowIdentity must have at least one row identity column if it contains a measure column. [at 1:37]
+SELECT AGG(measure_count_star) FROM MeasureTable_NoRowIdentity;
+                                    ^
+==
+
+# Measure table row identity columns must be groupable.
+[language_features=MAXIMUM,+AGGREGATE_FILTERING,-JSON_TYPE_COMPARISON]
+SELECT AGG(measure_count_star) FROM MeasureTable_NonGroupableRowIdentity;
+--
+ERROR: Table MeasureTable_NonGroupableRowIdentity has row identity column json_col with type JSON which is not groupable. [at 1:37]
+SELECT AGG(measure_count_star) FROM MeasureTable_NonGroupableRowIdentity;
+                                    ^
+==
+
+[language_features=MAXIMUM,-AGGREGATE_FILTERING]
+# Measures cannot propagate through OUTER JOINs when aggregate filtering is not
+# enabled.
+SELECT 1
+FROM (
+  SELECT
+    T1.measure_sum_quantity,
+  FROM MeasureTable_SingleKey AS T1
+  {{LEFT|RIGHT|FULL}} JOIN MeasureTable_SingleKey AS T2 USING (key)
+)
+--
+ALTERNATION GROUP: LEFT
+--
+ERROR: Column measure_count_star of type MEASURE<INT64> cannot propagate through LEFT JOIN [at 8:3]
+  LEFT JOIN MeasureTable_SingleKey AS T2 USING (key)
+  ^
+--
+ALTERNATION GROUP: RIGHT
+--
+ERROR: Column measure_count_star of type MEASURE<INT64> cannot propagate through RIGHT JOIN [at 8:3]
+  RIGHT JOIN MeasureTable_SingleKey AS T2 USING (key)
+  ^
+--
+ALTERNATION GROUP: FULL
+--
+ERROR: Column measure_count_star of type MEASURE<INT64> cannot propagate through FULL JOIN [at 8:3]
+  FULL JOIN MeasureTable_SingleKey AS T2 USING (key)
+  ^
+==
+
+[language_features=MAXIMUM,-AGGREGATE_FILTERING]
+# Measures cannot propagate through an OUTER JOIN against an ArrayScan when
+# aggregate filtering is not enabled.
+SELECT 1
+FROM (
+  SELECT
+    T1.measure_sum_quantity,
+  FROM MeasureTable_SingleKey AS T1
+  LEFT JOIN UNNEST([1]) AS T2
+)
+--
+ERROR: Column measure_count_star of type MEASURE<INT64> cannot propagate through LEFT JOIN [at 8:13]
+  LEFT JOIN UNNEST([1]) AS T2
+            ^
+==
+
+[language_features=MAXIMUM,-AGGREGATE_FILTERING]
+# Measures cannot propagate through an OUTER JOIN against an ArrayScan when
+# aggregate filtering is not enabled.
+SELECT 1
+FROM (
+  SELECT
+    T1.measure_sum_quantity,
+  FROM MeasureTable_SingleKey AS T1
+  {{RIGHT|FULL}} JOIN UNNEST([1]) AS T2 ON (true)
+)
+--
+ALTERNATION GROUP: RIGHT
+--
+ERROR: Column measure_count_star of type MEASURE<INT64> cannot propagate through RIGHT JOIN [at 8:3]
+  RIGHT JOIN UNNEST([1]) AS T2 ON (true)
+  ^
+--
+ALTERNATION GROUP: FULL
+--
+ERROR: Column measure_count_star of type MEASURE<INT64> cannot propagate through FULL JOIN [at 8:3]
+  FULL JOIN UNNEST([1]) AS T2 ON (true)
+  ^
+==
+
+# Measures cannot propagate through OUTER JOINs when aggregate filtering is not
+# enabled.
+[language_features=MAXIMUM,-AGGREGATE_FILTERING]
+WITH T1 AS (SELECT (SELECT measure_sum_quantity FROM MeasureTable_SingleKey LIMIT 1)),
+     T2 AS (SELECT (SELECT measure_sum_quantity FROM MeasureTable_SingleKey LIMIT 1))
+SELECT 1
+FROM (
+  SELECT * FROM T1
+  {{LEFT|RIGHT|FULL}} JOIN T2 ON true
+)
+--
+ALTERNATION GROUP: LEFT
+--
+ERROR: Column at position 1 of type MEASURE<INT64> cannot propagate through LEFT JOIN [at 6:3]
+  LEFT JOIN T2 ON true
+  ^
+--
+ALTERNATION GROUP: RIGHT
+--
+ERROR: Column at position 1 of type MEASURE<INT64> cannot propagate through RIGHT JOIN [at 6:3]
+  RIGHT JOIN T2 ON true
+  ^
+--
+ALTERNATION GROUP: FULL
+--
+ERROR: Column at position 1 of type MEASURE<INT64> cannot propagate through FULL JOIN [at 6:3]
+  FULL JOIN T2 ON true
+  ^
+==
+
+# Measures cannot yet propagate through PGQ graph table scan
+[enabled_ast_rewrites=DEFAULTS]
+[language_features=NONE,+ENABLE_MEASURES,+MULTILEVEL_AGGREGATION,+SQL_GRAPH,+GROUP_BY_STRUCT]
+SELECT AGG(col) FROM GRAPH_TABLE(
+  aml
+  MATCH (n)
+  COLUMNS ((select T1.measure_sum_quantity from MeasureTable_SingleKey as T1 ) as col)
+)
+--
+ERROR: Column col of type MEASURE<INT64> cannot propagate through graph queries [at 1:22]
+SELECT AGG(col) FROM GRAPH_TABLE(
+                     ^
+
+==
+
+# Measures cannot yet propagate through GQL graph table scan (GraphRefScan, GraphLinearScan)
+[enabled_ast_rewrites=DEFAULTS]
+[language_features=NONE,+ENABLE_MEASURES,+MULTILEVEL_AGGREGATION,+SQL_GRAPH,+GROUP_BY_STRUCT,+SQL_GRAPH_ADVANCED_QUERY]
+
+SELECT AGG(m1), AGG(m2) FROM GRAPH_TABLE(
+  aml
+  MATCH (n)
+  LET m1 = (select T1.measure_sum_quantity from MeasureTable_SingleKey as T1 )
+  RETURN m1, (select T1.measure_ratio_price_to_quantity from MeasureTable_SingleKey as T1 ) as m2
+)
+--
+ERROR: Column m1 of type MEASURE<INT64> cannot propagate through graph queries [at 4:3]
+  LET m1 = (select T1.measure_sum_quantity from MeasureTable_SingleKey as T1 )
+  ^
+==
+
+# Measures cannot yet propagate through GQL linear operator even if the final
+# output column list does not contain any measure columns.
+[enabled_ast_rewrites=DEFAULTS]
+[language_features=NONE,+ENABLE_MEASURES,+MULTILEVEL_AGGREGATION,+SQL_GRAPH,+GROUP_BY_STRUCT,+SQL_GRAPH_ADVANCED_QUERY]
+
+SELECT * FROM GRAPH_TABLE(
+  aml
+  MATCH (n)
+  LET m1 = (select T1.measure_sum_quantity from MeasureTable_SingleKey as T1 )
+  RETURN m1
+  NEXT
+  RETURN 1 as col
+)
+--
+ERROR: Column m1 of type MEASURE<INT64> cannot propagate through graph queries [at 4:3]
+  LET m1 = (select T1.measure_sum_quantity from MeasureTable_SingleKey as T1 )
+  ^
+==
+
+# Measures cannot yet propagate through GQL composite queries
+[enabled_ast_rewrites=DEFAULTS]
+[language_features=NONE,+ENABLE_MEASURES,+MULTILEVEL_AGGREGATION,+SQL_GRAPH,+GROUP_BY_STRUCT,+SQL_GRAPH_ADVANCED_QUERY]
+select gt.* from
+graph_table(aml
+  match (n)
+  LET m1 = (select T1.measure_sum_quantity from MeasureTable_SingleKey as T1 )
+  RETURN m1
+  UNION ALL
+  match (n)
+  RETURN n.name) gt
+--
+ERROR: Column m1 of type MEASURE<INT64> cannot propagate through graph queries [at 4:3]
+  LET m1 = (select T1.measure_sum_quantity from MeasureTable_SingleKey as T1 )
+  ^
+==
+
+# Measures cannot yet propagate through UnpivotScan
+[enabled_ast_rewrites=DEFAULTS]
+[language_features=NONE,+ENABLE_MEASURES,+MULTILEVEL_AGGREGATION,+SQL_GRAPH,+GROUP_BY_STRUCT,+UNPIVOT]
+SELECT AGG(X.measure_sum_price) FROM MeasureTable_SingleKey UNPIVOT(price FOR col in (country)) as X
+--
+ERROR: Column measure_count_star of type MEASURE<INT64> cannot propagate through UNPIVOT [at 1:61]
+...X.measure_sum_price) FROM MeasureTable_SingleKey UNPIVOT(price FOR col in ...
+                                                    ^
+==
+
+# Measures cannot propagate through a pipe ASSERT. We may want to support
+# the future, but is currently disallowed since the rewriter for pipe ASSERT
+# relies on BarrierScan which disallows measure column propagation.
+[language_features=NONE,+ENABLE_MEASURES,+MULTILEVEL_AGGREGATION,+SQL_GRAPH,+GROUP_BY_STRUCT,+PIPES,+PIPE_ASSERT]
+FROM MeasureTable_SingleKey
+|> ASSERT true
+|> AGGREGATE AGG(measure_sum_quantity) as col
+--
+ERROR: Column measure_count_star of type MEASURE<INT64> cannot propagate through pipe ASSERT [at 2:1]
+|> ASSERT true
+^
+==
+
+[language_features=NONE,+ANONYMIZATION,+ENABLE_MEASURES]
+SELECT WITH ANONYMIZATION
+  ANON_SUM(int64),
+  AGG(measure_sum_quantity)
+FROM SimpleTypesWithAnonymizationUid, MeasureTable_SingleKey;
+--
+ERROR: Anonymized Aggregation does not support the AGG function [at 3:3]
+  AGG(measure_sum_quantity)
+  ^
+==
+
+[language_features=NONE,+DIFFERENTIAL_PRIVACY,+ENABLE_MEASURES]
+SELECT WITH DIFFERENTIAL_PRIVACY
+  COUNT(int64),
+  AGG(measure_sum_quantity)
+from SimpleTypesWithAnonymizationUid, MeasureTable_SingleKey;
+--
+ERROR: Differential Privacy Aggregation does not support the AGG function [at 3:3]
+  AGG(measure_sum_quantity)
+  ^
+==
+
+[language_features=NONE,+AGGREGATION_THRESHOLD,+ENABLE_MEASURES]
+SELECT WITH AGGREGATION_THRESHOLD
+OPTIONS (threshold = 50, privacy_unit_column = key)
+  COUNT(key),
+  AGG(measure_sum_quantity)
+from MeasureTable_SingleKey;
+--
+ERROR: Aggregation Threshold Aggregation does not support the AGG function [at 4:3]
+  AGG(measure_sum_quantity)
+  ^
+==
+
+# ExecuteAsRoleScan is a product of the inlining rewriter for definer rights
+# TVFs/VIEWs. Here, we confirm that TVFs and VIEWs cannot return measures
+# regardless of the SQL SECURITY settings.
+CREATE VIEW MeasureViewDefinerRights SQL SECURITY DEFINER AS
+SELECT measure_sum_price FROM MeasureTable_SingleKey;
+--
+ERROR: Returning expressions of type MEASURE is not allowed [at 1:1]
+CREATE VIEW MeasureViewDefinerRights SQL SECURITY DEFINER AS
+^
+==
+
+[language_features=NONE,+TABLE_VALUED_FUNCTIONS,+CREATE_TABLE_FUNCTION,+ENABLE_MEASURES]
+CREATE TABLE FUNCTION MeasureTvfDefinerRights() SQL SECURITY DEFINER AS
+SELECT measure_sum_price FROM MeasureTable_SingleKey;
+--
+ERROR: Returning expressions of type MEASURE is not allowed [at 1:1]
+CREATE TABLE FUNCTION MeasureTvfDefinerRights() SQL SECURITY DEFINER AS
+^
+==
+
+[language_features=NONE,+TABLE_VALUED_FUNCTIONS,+ENABLE_MEASURES]
+# RelationArgumentScan should not propagate measures.
+SELECT * from tvf_templated_select_relation_arg_columns_unused((select measure_sum_quantity from MeasureTable_SingleKey))
+--
+ERROR: Invalid table-valued function tvf_templated_select_relation_arg_columns_unused [at 2:15]
+SELECT * from tvf_templated_select_relation_arg_columns_unused((select measur...
+              ^
+Analysis of table-valued function tvf_templated_select_relation_arg_columns_unused failed [at 1:25]
+select 1 as result from t
+                        ^
+Column measure_sum_quantity of type MEASURE<INT64> cannot propagate through RELATION ARGUMENT [at 1:25]
+select 1 as result from t
+                        ^
+==
+
+# Measures cannot be used as an implicit grouping column of pivot
+[language_features=NONE,+ENABLE_MEASURES,+MULTILEVEL_AGGREGATION,+GROUP_BY_STRUCT,+PIVOT]
+SELECT * FROM MeasureTable_SingleKey PIVOT(COUNT(*) FOR Key IN (0, 1));
+--
+ERROR: Column measure_count_star of type MEASURE cannot be used as an implicit grouping column of a PIVOT clause [at 1:38]
+SELECT * FROM MeasureTable_SingleKey PIVOT(COUNT(*) FOR Key IN (0, 1));
+                                     ^
+==
+
+# ANY_VALUE(MEASURE) is not allowed
+[language_features=NONE,+ENABLE_MEASURES,+MULTILEVEL_AGGREGATION,+GROUP_BY_STRUCT,+PIVOT]
+SELECT * FROM MeasureTable_SingleKey PIVOT(ANY_VALUE(measure_sum_quantity) FOR Key IN (0, 1));
+--
+ERROR: MEASURE-typed arguments are only permitted in the AGG function [at 1:54]
+SELECT * FROM MeasureTable_SingleKey PIVOT(ANY_VALUE(measure_sum_quantity) FO...
+                                                     ^
+==
+
+# Measure cannot be returned from EXPORT DATA since they are not a
+# returnable type
+[language_features=NONE,+ENABLE_MEASURES,+MULTILEVEL_AGGREGATION,+PIPES,+PIPE_EXPORT_DATA]
+[supported_statement_kinds=QUERY,GENERALIZED_QUERY]
+[no_run_sqlbuilder]
+FROM MeasureTable_SingleKey
+|> EXPORT DATA
+--
+ERROR: Returning expressions of type MEASURE is not allowed [at 2:4]
+|> EXPORT DATA
+   ^
+==
+
+# Measure cannot be used with pipe INSERT because MEASURE columns are
+# not writable
+[language_features=NONE,+ENABLE_MEASURES,+MULTILEVEL_AGGREGATION,+PIPES,+PIPE_INSERT]
+[supported_statement_kinds=QUERY,GENERALIZED_QUERY]
+[no_run_sqlbuilder]
+FROM MeasureTable_SingleKey
+|> SELECT measure_count_star
+|> INSERT INTO MeasureTable_SingleKey(measure_count_star)
+--
+ERROR: Cannot INSERT value on non-writable column: measure_count_star [at 3:39]
+|> INSERT INTO MeasureTable_SingleKey(measure_count_star)
+                                      ^
+==
+
+# Range variable with MEASURE cannot propagate through UNION_ALL
+SELECT 1 FROM (
+SELECT rv FROM MeasureTable_SingleKey AS rv
+UNION ALL
+SELECT rv FROM MeasureTable_SingleKey AS rv
+)
+--
+ERROR: Column 1 in UNION ALL has incompatible types: STRUCT<key INT64, country STRING, quantity INT64, ...>, STRUCT<key INT64, country STRING, quantity INT64, ...> [at 4:1]
+SELECT rv FROM MeasureTable_SingleKey AS rv
+^
+==
+
+# Range variable field access on a measure
+SELECT 1 FROM (
+SELECT rv.measure_count_star FROM MeasureTable_SingleKey AS rv
+UNION ALL
+SELECT rv.measure_count_star FROM MeasureTable_SingleKey AS rv
+)
+--
+ERROR: Column 1 in UNION ALL has incompatible types: MEASURE<INT64>, MEASURE<INT64>; each MEASURE type is unique and does not coerce to other MEASURE types [at 4:1]
+SELECT rv.measure_count_star FROM MeasureTable_SingleKey AS rv
+^
+==
+
+# Range variable containing measures dot star
+SELECT 1 FROM (
+SELECT rv.* FROM MeasureTable_SingleKey AS rv
+UNION ALL
+SELECT rv.* FROM MeasureTable_SingleKey AS rv
+)
+--
+ERROR: Column 5 in UNION ALL has incompatible types: MEASURE<INT64>, MEASURE<INT64>; each MEASURE type is unique and does not coerce to other MEASURE types [at 4:1]
+SELECT rv.* FROM MeasureTable_SingleKey AS rv
+^
+==
+
+# Measure pseudo columns cannot propagate past AssertScans.
+[language_features=NONE,+ENABLE_MEASURES,+PIPES,+PIPE_ASSERT]
+FROM MeasureTable_WithPseudoColumns
+|> ASSERT key != 0
+|> SELECT key, measure_sum_quantity
+|> SELECT key
+--
+ERROR: Pseudo-column measure_count_star of type MEASURE<INT64> cannot propagate through pipe ASSERT [at 2:1]
+|> ASSERT key != 0
+^
+==
+
+# Measure pseudo columns cannot propagate past OUTER JOINs when aggregate
+# filtering is not enabled.
+[language_features=MAXIMUM,-AGGREGATE_FILTERING]
+SELECT 1
+FROM (
+  SELECT
+    T1.measure_count_star,
+  FROM MeasureTable_WithPseudoColumns AS T1
+  {{LEFT|RIGHT|FULL}} JOIN MeasureTable_SingleKey AS T2 USING (key)
+)
+--
+ALTERNATION GROUP: LEFT
+--
+ERROR: Pseudo-column measure_count_star of type MEASURE<INT64> cannot propagate through LEFT JOIN [at 6:3]
+  LEFT JOIN MeasureTable_SingleKey AS T2 USING (key)
+  ^
+--
+ALTERNATION GROUP: RIGHT
+--
+ERROR: Pseudo-column measure_count_star of type MEASURE<INT64> cannot propagate through RIGHT JOIN [at 6:3]
+  RIGHT JOIN MeasureTable_SingleKey AS T2 USING (key)
+  ^
+--
+ALTERNATION GROUP: FULL
+--
+ERROR: Pseudo-column measure_count_star of type MEASURE<INT64> cannot propagate through FULL JOIN [at 6:3]
+  FULL JOIN MeasureTable_SingleKey AS T2 USING (key)
+  ^
+==
+
+[language_features=NONE,+ENABLE_MEASURES,+MAP_TYPE]
+# Measure in map type
+SELECT MAP_FROM_ARRAY([(select measure_sum_quantity from MeasureTable_SingleKey limit 1), (select measure_sum_quantity from MeasureTable_SingleKey limit 1)]);
+--
+ERROR: Array elements of types {MEASURE<INT64>, MEASURE<INT64>} do not have a common supertype; each MEASURE type is unique and does not coerce to other MEASURE types [at 2:23]
+SELECT MAP_FROM_ARRAY([(select measure_sum_quantity from MeasureTable_SingleK...
+                      ^
+==
+
+[language_features=NONE,+ENABLE_MEASURES,+MAP_TYPE]
+# Measure in map type
+SELECT MAP_FROM_ARRAY(ARRAY(select measure_sum_quantity from MeasureTable_SingleKey limit 1), (select measure_sum_quantity from MeasureTable_SingleKey limit 1));
+--
+ERROR: Cannot use array subquery with column of type MEASURE<INT64> [at 2:23]
+SELECT MAP_FROM_ARRAY(ARRAY(select measure_sum_quantity from MeasureTable_Sin...
+                      ^
+==
+
+# The measure type rewriter cannot handle aggregating measure columns from
+# scalar subqueries. This is a known limitation; adding support is tricky, hence
+# this functionality is omitted for now.
+[language_features=NONE,+ENABLE_MEASURES,+MULTILEVEL_AGGREGATION,+GROUP_BY_STRUCT,+WITH_EXPRESSION]
+SELECT 1 FROM (
+SELECT
+  AGG(measure_sum_price),
+  (SELECT measure_sum_price FROM MeasureTable_SingleKey)
+FROM MeasureTable_SingleKey)
+--
+[PRE-REWRITE AST]
+QueryStmt
++-output_column_list=
+| +-$query.$col1#45 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#45]
+    +-expr_list=
+    | +-$col1#45 := Literal(type=INT64, value=1)
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[$aggregate.$agg1#15, $subquery1.$col2#44]
+        +-expr_list=
+        | +-$col2#44 :=
+        |   +-SubqueryExpr
+        |     +-type=MEASURE<INT64>
+        |     +-subquery_type=SCALAR
+        |     +-subquery=
+        |       +-ProjectScan
+        |         +-column_list=[MeasureTable_SingleKey.measure_sum_price#39]
+        |         +-input_scan=
+        |           +-TableScan(column_list=[MeasureTable_SingleKey.measure_sum_price#39], table=MeasureTable_SingleKey, column_index_list=[9])
+        +-input_scan=
+          +-AggregateScan
+            +-column_list=[$aggregate.$agg1#15]
+            +-input_scan=
+            | +-TableScan(column_list=[MeasureTable_SingleKey.measure_sum_price#10], table=MeasureTable_SingleKey, column_index_list=[9])
+            +-aggregate_list=
+              +-$agg1#15 :=
+                +-AggregateFunctionCall(GoogleSQL:AGG(MEASURE<INT64>) -> INT64)
+                  +-ColumnRef(type=MEASURE<INT64>, column=MeasureTable_SingleKey.measure_sum_price#10)
+
+
+Rewrite ERROR: generic::unimplemented: Measure type rewriter does not support scalar subqueries that emit measure columns
+==
+
+[language_features=NONE,+ENABLE_MEASURES,+MULTILEVEL_AGGREGATION,+GROUP_BY_STRUCT,+WITH_EXPRESSION]
+SELECT
+  AGG(measure_renamed)
+FROM (
+  SELECT
+    WITH(
+      measure_renamed AS (
+        SELECT InnerTable.measure_sum_price
+        FROM MeasureTable_SingleKey AS InnerTable
+      ),
+      measure_renamed
+    ) AS measure_renamed
+  FROM MeasureTable_SingleKey AS OuterTable
+)
+--
+[PRE-REWRITE AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#31 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#31]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$aggregate.$agg1#31]
+        +-input_scan=
+        | +-ProjectScan
+        |   +-column_list=[$subquery1.measure_renamed#30]
+        |   +-expr_list=
+        |   | +-measure_renamed#30 :=
+        |   |   +-WithExpr
+        |   |     +-type=MEASURE<INT64>
+        |   |     +-assignment_list=
+        |   |     | +-measure_renamed#29 :=
+        |   |     |   +-SubqueryExpr
+        |   |     |     +-type=MEASURE<INT64>
+        |   |     |     +-subquery_type=SCALAR
+        |   |     |     +-subquery=
+        |   |     |       +-ProjectScan
+        |   |     |         +-column_list=[MeasureTable_SingleKey.measure_sum_price#24]
+        |   |     |         +-input_scan=
+        |   |     |           +-TableScan(column_list=[MeasureTable_SingleKey.measure_sum_price#24], table=MeasureTable_SingleKey, column_index_list=[9], alias="InnerTable")
+        |   |     +-expr=
+        |   |       +-ColumnRef(type=MEASURE<INT64>, column=$with_expr.measure_renamed#29)
+        |   +-input_scan=
+        |     +-TableScan(table=MeasureTable_SingleKey, alias="OuterTable")
+        +-aggregate_list=
+          +-$agg1#31 :=
+            +-AggregateFunctionCall(GoogleSQL:AGG(MEASURE<INT64>) -> INT64)
+              +-ColumnRef(type=MEASURE<INT64>, column=$subquery1.measure_renamed#30)
+
+
+Rewrite ERROR: generic::unimplemented: Measure type rewriter does not support WITH expressions emitting a measure type
+==
+
+WITH wq0 AS (
+  SELECT
+    key,
+    measure_sum_price,
+    measure_sum_price AS measure_sum_price_repeated
+  FROM MeasureTable_SingleKey
+)
+SELECT
+  key,
+  AGG(measure_sum_price)
+FROM wq0
+GROUP BY 1
+--
+[PRE-REWRITE AST]
+QueryStmt
++-output_column_list=
+| +-$groupby.key#19 AS key [INT64]
+| +-$aggregate.$agg1#18 AS `$col2` [INT64]
++-query=
+  +-WithScan
+    +-column_list=[$groupby.key#19, $aggregate.$agg1#18]
+    +-with_entry_list=
+    | +-WithEntry
+    |   +-with_query_name="wq0"
+    |   +-with_subquery=
+    |     +-ProjectScan
+    |       +-column_list=MeasureTable_SingleKey.[key#1, measure_sum_price#10, measure_sum_price#10]
+    |       +-input_scan=
+    |         +-TableScan(column_list=MeasureTable_SingleKey.[key#1, measure_sum_price#10], table=MeasureTable_SingleKey, column_index_list=[0, 9])
+    +-query=
+      +-ProjectScan
+        +-column_list=[$groupby.key#19, $aggregate.$agg1#18]
+        +-input_scan=
+          +-AggregateScan
+            +-column_list=[$groupby.key#19, $aggregate.$agg1#18]
+            +-input_scan=
+            | +-WithRefScan(column_list=wq0.[key#15, measure_sum_price#16, measure_sum_price#17], with_query_name="wq0")
+            +-group_by_list=
+            | +-key#19 := ColumnRef(type=INT64, column=wq0.key#15)
+            +-aggregate_list=
+              +-$agg1#18 :=
+                +-AggregateFunctionCall(GoogleSQL:AGG(MEASURE<INT64>) -> INT64)
+                  +-ColumnRef(type=MEASURE<INT64>, column=wq0.measure_sum_price#17)
+
+
+Rewrite ERROR: generic::unimplemented: Measure type rewriter does not support WITH scans emitting duplicate measure columns
+==
+
+[language_features=NONE,+ENABLE_MEASURES,+WITH_EXPRESSION,+MULTILEVEL_AGGREGATION,+GROUP_BY_STRUCT]
+# measure from with expr from column ref
+SELECT
+  AGG(renamed_measure)
+FROM (
+  SELECT
+    WITH(
+      a_10 AS 1 + 2,
+      Table.measure_sum_price
+    ) AS renamed_measure
+  FROM MeasureTable_SingleKey AS Table
+)
+--
+[PRE-REWRITE AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#17 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#17]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$aggregate.$agg1#17]
+        +-input_scan=
+        | +-ProjectScan
+        |   +-column_list=[$subquery1.renamed_measure#16]
+        |   +-expr_list=
+        |   | +-renamed_measure#16 :=
+        |   |   +-WithExpr
+        |   |     +-type=MEASURE<INT64>
+        |   |     +-assignment_list=
+        |   |     | +-a_10#15 :=
+        |   |     |   +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+        |   |     |     +-Literal(type=INT64, value=1)
+        |   |     |     +-Literal(type=INT64, value=2)
+        |   |     +-expr=
+        |   |       +-ColumnRef(type=MEASURE<INT64>, column=MeasureTable_SingleKey.measure_sum_price#10)
+        |   +-input_scan=
+        |     +-TableScan(column_list=[MeasureTable_SingleKey.measure_sum_price#10], table=MeasureTable_SingleKey, column_index_list=[9], alias="Table")
+        +-aggregate_list=
+          +-$agg1#17 :=
+            +-AggregateFunctionCall(GoogleSQL:AGG(MEASURE<INT64>) -> INT64)
+              +-ColumnRef(type=MEASURE<INT64>, column=$subquery1.renamed_measure#16)
+
+
+Rewrite ERROR: generic::unimplemented: Measure type rewriter does not support WITH expressions emitting a measure type
+==
+
+[language_features=NONE,+ENABLE_MEASURES,+WITH_EXPRESSION,+MULTILEVEL_AGGREGATION,+GROUP_BY_STRUCT]
+# measure from with expr assignment list as column_ref
+SELECT
+  AGG(a_10)
+FROM (
+  SELECT
+    WITH(a_11 AS alias_1.a_8, a_11) AS a_10
+  FROM (
+    SELECT
+      measure_sum_price AS a_8
+    FROM
+      MeasureTable_SingleKey
+  ) AS alias_1
+)
+--
+[PRE-REWRITE AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#17 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#17]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$aggregate.$agg1#17]
+        +-input_scan=
+        | +-ProjectScan
+        |   +-column_list=[$subquery1.a_10#16]
+        |   +-expr_list=
+        |   | +-a_10#16 :=
+        |   |   +-WithExpr
+        |   |     +-type=MEASURE<INT64>
+        |   |     +-assignment_list=
+        |   |     | +-a_11#15 := ColumnRef(type=MEASURE<INT64>, column=MeasureTable_SingleKey.measure_sum_price#10)
+        |   |     +-expr=
+        |   |       +-ColumnRef(type=MEASURE<INT64>, column=$with_expr.a_11#15)
+        |   +-input_scan=
+        |     +-ProjectScan
+        |       +-column_list=[MeasureTable_SingleKey.measure_sum_price#10]
+        |       +-input_scan=
+        |         +-TableScan(column_list=[MeasureTable_SingleKey.measure_sum_price#10], table=MeasureTable_SingleKey, column_index_list=[9])
+        +-aggregate_list=
+          +-$agg1#17 :=
+            +-AggregateFunctionCall(GoogleSQL:AGG(MEASURE<INT64>) -> INT64)
+              +-ColumnRef(type=MEASURE<INT64>, column=$subquery1.a_10#16)
+
+
+Rewrite ERROR: generic::unimplemented: Measure type rewriter does not support WITH expressions emitting a measure type
+==
+
+# The rewriter does not support measures emitted from a LATERAL join.
+[language_features=NONE,+ENABLE_MEASURES,+LATERAL_JOIN,+MULTILEVEL_AGGREGATION,+GROUP_BY_STRUCT]
+[enabled_ast_rewrites=DEFAULTS,+MEASURE_TYPE]
+SELECT AGG(t1.measure_count_star)
+FROM
+  (SELECT key, measure_count_star from MeasureTable_SingleKey) t1
+  INNER JOIN LATERAL (SELECT key, measure_count_star from MeasureTable_SingleKey) t2 USING (key)
+--
+[PRE-REWRITE AST]
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#29 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#29]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$aggregate.$agg1#29]
+        +-input_scan=
+        | +-JoinScan
+        |   +-column_list=MeasureTable_SingleKey.[key#1, measure_count_star#5, key#15, measure_count_star#19]
+        |   +-left_scan=
+        |   | +-ProjectScan
+        |   |   +-column_list=MeasureTable_SingleKey.[key#1, measure_count_star#5]
+        |   |   +-input_scan=
+        |   |     +-TableScan(column_list=MeasureTable_SingleKey.[key#1, measure_count_star#5], table=MeasureTable_SingleKey, column_index_list=[0, 4])
+        |   +-right_scan=
+        |   | +-ProjectScan
+        |   |   +-column_list=MeasureTable_SingleKey.[key#15, measure_count_star#19]
+        |   |   +-input_scan=
+        |   |     +-TableScan(column_list=MeasureTable_SingleKey.[key#15, measure_count_star#19], table=MeasureTable_SingleKey, column_index_list=[0, 4])
+        |   +-join_expr=
+        |   | +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+        |   |   +-ColumnRef(type=INT64, column=MeasureTable_SingleKey.key#1)
+        |   |   +-ColumnRef(type=INT64, column=MeasureTable_SingleKey.key#15)
+        |   +-has_using=TRUE
+        |   +-is_lateral=TRUE
+        +-aggregate_list=
+          +-$agg1#29 :=
+            +-AggregateFunctionCall(GoogleSQL:AGG(MEASURE<INT64>) -> INT64)
+              +-ColumnRef(type=MEASURE<INT64>, column=MeasureTable_SingleKey.measure_count_star#5)
+
+
+Rewrite ERROR: generic::unimplemented: Measure type rewriter does not support LATERAL joins that emit measure columns
+==
+
+# Without FEATURE_MULTILEVEL_AGGREGATION_ON_UDAS, measures with UDA are not supported.
+[language_features=NONE,+ENABLE_MEASURES,+MULTILEVEL_AGGREGATION,+GROUP_BY_STRUCT]
+[no_expect_error_location]
+SELECT
+  key,
+  AGG(measure_uda_sum_price)
+FROM MeasureTable_WithUdas GROUP BY key;
+--
+ERROR: Measure expression for column measure_uda_sum_price must not reference UDA; found: SumOfAggregateArgs
+==
+
+# The SQL Function inliner cannot inline UDAs with GROUP BY modifiers.
+# If an expanded measure references a UDA, then the corresponding rewritten
+# ResolvedAST will contain a UDA with a GROUP BY modifier,
+# which the SQL Function inliner will fail to inline
+[language_features=NONE,+ENABLE_MEASURES,+MULTILEVEL_AGGREGATION,+GROUP_BY_STRUCT,+MULTILEVEL_AGGREGATION_ON_UDAS]
+[enabled_ast_rewrites=ALL,-WITH_EXPR]
+SELECT
+  key,
+  AGG(measure_uda_sum_price)
+FROM MeasureTable_WithUdas GROUP BY key;
+--
+[PRE-REWRITE AST]
+QueryStmt
++-output_column_list=
+| +-$groupby.key#9 AS key [INT64]
+| +-$aggregate.$agg1#8 AS `$col2` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$groupby.key#9, $aggregate.$agg1#8]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$groupby.key#9, $aggregate.$agg1#8]
+        +-input_scan=
+        | +-TableScan(column_list=MeasureTable_WithUdas.[key#1, measure_uda_sum_price#5], table=MeasureTable_WithUdas, column_index_list=[0, 4])
+        +-group_by_list=
+        | +-key#9 := ColumnRef(type=INT64, column=MeasureTable_WithUdas.key#1)
+        +-aggregate_list=
+          +-$agg1#8 :=
+            +-AggregateFunctionCall(GoogleSQL:AGG(MEASURE<INT64>) -> INT64)
+              +-ColumnRef(type=MEASURE<INT64>, column=MeasureTable_WithUdas.measure_uda_sum_price#5)
+
+
+Rewrite ERROR: SQL function inliner cannot inline aggregate function Lazy_resolution_function:SumOfAggregateArgs with GROUP BY modifier
+==
+
+# Measure with column-level row identity columns requires at least one row
+# identity column.
+SELECT AGG(measure_count)
+FROM {{MeasureTable_ColumnEmptyRowIdentities|tvf_lookup_table("MeasureTable_ColumnEmptyRowIdentities")}};
+--
+ALTERNATION GROUP: MeasureTable_ColumnEmptyRowIdentities
+--
+ERROR: Measure column measure_count must have at least one row identity column. [at 2:6]
+FROM MeasureTable_ColumnEmptyRowIdentities;
+     ^
+--
+ALTERNATION GROUP: tvf_lookup_table("MeasureTable_ColumnEmptyRowIdentities")
+--
+ERROR: Measure column measure_count must have at least one row identity column. [at 2:6]
+FROM tvf_lookup_table("MeasureTable_ColumnEmptyRowIdentities");
+     ^
+==
+
+# Measure with column-level row identity columns cannot have index out of bound.
+SELECT AGG(measure_count)
+FROM {{MeasureTable_ColumnInvalidRowIdentityIndex|tvf_lookup_table("MeasureTable_ColumnInvalidRowIdentityIndex")}};
+--
+ALTERNATION GROUP: MeasureTable_ColumnInvalidRowIdentityIndex
+--
+ERROR: Table MeasureTable_ColumnInvalidRowIdentityIndex has invalid index for row identity column for measure column measure_count. Index: 100 [at 2:6]
+FROM MeasureTable_ColumnInvalidRowIdentityIndex;
+     ^
+--
+ALTERNATION GROUP: tvf_lookup_table("MeasureTable_ColumnInvalidRowIdentityIndex")
+--
+ERROR: The output of the table valued function tvf_lookup_table has invalid index for row identity column for measure column measure_count. Index: 100 [at 2:6]
+FROM tvf_lookup_table("MeasureTable_ColumnInvalidRowIdentityIndex");
+     ^
+==
+
+# Measure with column-level row identity columns cannot be non-groupable.
+[language_features=MAXIMUM,+AGGREGATE_FILTERING,-JSON_TYPE_COMPARISON,+MEASURES_TVF]
+SELECT AGG(measure_count)
+FROM {{MeasureTable_ColumnNonGroupableRowIdentity|tvf_lookup_table("MeasureTable_ColumnNonGroupableRowIdentity")}};
+--
+ALTERNATION GROUP: MeasureTable_ColumnNonGroupableRowIdentity
+--
+ERROR: Table MeasureTable_ColumnNonGroupableRowIdentity has row identity column json_col for measure column measure_count with type JSON which is not groupable. [at 2:6]
+FROM MeasureTable_ColumnNonGroupableRowIdentity;
+     ^
+--
+ALTERNATION GROUP: tvf_lookup_table("MeasureTable_ColumnNonGroupableRowIdentity")
+--
+ERROR: The output of the table valued function tvf_lookup_table has row identity column json_col for measure column measure_count with type JSON which is not groupable. [at 2:6]
+FROM tvf_lookup_table("MeasureTable_ColumnNonGroupableRowIdentity");
+     ^

@@ -1,0 +1,2065 @@
+[default reserve_graph_table]
+[default required_features=SQL_GRAPH]
+[load_proto_files=googlesql/testdata/test_schema.proto]
+[load_proto_names=googlesql_test.KitchenSinkPB]
+[prepare_database]
+CREATE TABLE person AS
+(SELECT 1 AS id, "name1" AS name) UNION ALL
+(SELECT 2 AS id, "name2" AS name)
+--
+ARRAY<STRUCT<id INT64, name STRING>>[{1, "name1"}, {2, "name2"}]
+==
+[prepare_database]
+CREATE TABLE person_knows_person AS
+(SELECT 100 AS id, 1 AS from_person_id, 1 AS to_person_id, TIMESTAMP '2000-01-01 00:00:00' AS since)  UNION ALL
+(SELECT 200 AS id, 1 AS from_person_id, 2 AS to_person_id, TIMESTAMP '2000-01-02 00:00:00' AS since)  UNION ALL
+# Test the case when user input doesn't have NOT NULL constraints
+(SELECT 300 AS id, null AS from_person_id, null AS to_person_id, TIMESTAMP '2000-01-02 00:00:00' AS since)
+--
+ARRAY<STRUCT<id INT64, from_person_id INT64, to_person_id INT64, since TIMESTAMP>>[
+  {
+    100,
+    1,
+    1,
+    2000-01-01 08:00:00+00
+  },
+  {
+    200,
+    1,
+    2,
+    2000-01-02 08:00:00+00
+  },
+  {
+    300,
+    NULL,
+    NULL,
+    2000-01-02 08:00:00+00
+  }
+]
+==
+[prepare_database]
+CREATE TABLE account AS
+(SELECT 10 AS acct_id, cast('''
+  int64_key_1: 1
+  int64_key_2: 1
+''' as `googlesql_test.KitchenSinkPB`) AS owner_id, "checking" AS kind
+) UNION ALL
+(SELECT 20 AS acct_id, cast('''
+  int64_key_1: 1
+  int64_key_2: 1
+''' as `googlesql_test.KitchenSinkPB`) AS owner_id, "savings" AS kind
+) UNION ALL
+(SELECT 30 AS acct_id, cast('''
+  int64_key_1: 2
+  int64_key_2: 2
+''' as `googlesql_test.KitchenSinkPB`) AS owner_id, "checking" AS kind
+)UNION ALL
+(SELECT 40 AS acct_id, cast('''
+  int64_key_1: 2
+  int64_key_2: 2
+''' as `googlesql_test.KitchenSinkPB`) AS owner_id, "savings" as kind)
+--
+ARRAY<STRUCT<
+        acct_id INT64,
+        owner_id PROTO<googlesql_test.KitchenSinkPB>,
+        kind STRING
+      >>
+[{10,
+  {
+    int64_key_1: 1
+    int64_key_2: 1
+  },
+  "checking"},
+ {20,
+  {
+    int64_key_1: 1
+    int64_key_2: 1
+  },
+  "savings"},
+ {30,
+  {
+    int64_key_1: 2
+    int64_key_2: 2
+  },
+  "checking"},
+ {40,
+  {
+    int64_key_1: 2
+    int64_key_2: 2
+  },
+  "savings"}]
+==
+
+[prepare_database]
+CREATE TABLE transfer AS
+(SELECT 1 AS id, 10 AS from_account_id, 20 AS to_account_id, 100 AS amount) UNION ALL
+(SELECT 2 AS id, 10 AS from_account_id, 20 AS to_account_id, 200 AS amount) UNION ALL
+(SELECT 3 AS id, 20 AS from_account_id, 30 AS to_account_id, 300 AS amount) UNION ALL
+(SELECT 4 AS id, 20 AS from_account_id, 30 AS to_account_id, 400 AS amount) UNION ALL
+(SELECT 5 AS id, 30 AS from_account_id, 10 AS to_account_id, 500 AS amount) UNION ALL
+(SELECT 6 AS id, 10 AS from_account_id, 10 AS to_account_id, 600 AS amount)
+--
+ARRAY<STRUCT<
+        id INT64,
+        from_account_id INT64,
+        to_account_id INT64,
+        amount INT64
+      >>
+[{1, 10, 20, 100},
+ {2, 10, 20, 200},
+ {3, 20, 30, 300},
+ {4, 20, 30, 400},
+ {5, 30, 10, 500},
+ {6, 10, 10, 600}]
+==
+[prepare_database]
+CREATE TABLE login AS
+(SELECT 1 AS person_id, 10 AS account_id, TIMESTAMP "2023-01-01 00:00:00 UTC" AS timestamp) UNION ALL
+(SELECT 2 AS person_id, 30 AS account_id, TIMESTAMP "2023-01-04 00:00:00 UTC" AS timestamp)
+--
+ARRAY<STRUCT<person_id INT64, account_id INT64, timestamp TIMESTAMP>>[
+  {
+    1,
+    10,
+    2023-01-01 00:00:00+00
+  },
+  {
+    2,
+    30,
+    2023-01-04 00:00:00+00
+  }
+]
+==
+# This edge table is "compressed". Each row represents M*N edges from M nodes
+# to N nodes.
+[prepare_database]
+CREATE TABLE can_transfer AS
+(SELECT "checking" AS src_acct_kind, "savings" AS dest_acct_kind)
+--
+ARRAY<STRUCT<
+        src_acct_kind STRING,
+        dest_acct_kind STRING
+      >>[{"checking", "savings"}]
+==
+[prepare_database]
+CREATE PROPERTY GRAPH aml
+  NODE TABLES (
+    Account KEY(acct_id)
+    DEFAULT LABEL PROPERTIES(
+      1000 + acct_id AS account_id,
+      owner_id AS owner_id_proto,
+      owner_id.int64_key_1 AS owner_id,
+      kind AS account_kind),
+    Person KEY(id)
+    LABEL Human PROPERTIES(
+      100 AS id,
+      name)
+    LABEL dummy_lowercased_label PROPERTIES(
+      NULL AS DUMMY_UPPERCASED_PROPERTY))
+  EDGE TABLES (
+    person_knows_person AS Knows KEY(id)
+              SOURCE KEY(from_person_id) REFERENCES Person(id)
+              DESTINATION KEY(to_person_id) REFERENCES Person(id)
+              DEFAULT LABEL PROPERTIES(since),
+    Transfer KEY(id, from_account_id, to_account_id)
+              SOURCE KEY(from_account_id) REFERENCES Account(acct_id)
+              DESTINATION KEY(to_account_id) REFERENCES Account(acct_id)
+              DEFAULT LABEL PROPERTIES(amount),
+    Login KEY(person_id, account_id, timestamp)
+          SOURCE KEY(person_id) REFERENCES Person(id)
+          DESTINATION KEY(account_id) REFERENCES Account(acct_id)
+          DEFAULT LABEL PROPERTIES(timestamp),
+    can_transfer AS CanTransfer KEY(src_acct_kind, dest_acct_kind)
+                  SOURCE KEY(src_acct_kind) REFERENCES Account(kind)
+                  DESTINATION KEY(dest_acct_kind) REFERENCES Account(kind)
+                  LABEL can_transfer
+  )
+==
+# This is a case with zero edge in property graph.
+[prepare_database]
+CREATE PROPERTY GRAPH aml2
+  NODE TABLES (Account KEY(acct_id))
+==
+[prepare_database]
+# This is a case table has a column with the same name
+CREATE TABLE table_with_same_name_column AS
+(SELECT 1 as id, "1" as table_with_same_name_column) UNION ALL
+(SELECT 2 as id, "2" as table_with_same_name_column)
+--
+ARRAY<STRUCT<
+        id INT64,
+        table_with_same_name_column STRING
+      >>
+[{1, "1"}, {2, "2"}]
+==
+[prepare_database]
+CREATE PROPERTY GRAPH aml3
+  NODE TABLES (
+    table_with_same_name_column
+      KEY(id)
+      PROPERTIES(table_with_same_name_column AS table_with_same_name_column)
+  )
+==
+[name=can_run_node_patterns]
+select gt.* from
+graph_table(aml
+  match (n)
+  columns(n.name, n.owner_id_proto, n.owner_id, n.account_kind, 1 AS number, CONCAT("str", "_suffix") AS concat_str)
+) gt
+order by 1, 3, 4, 5, 6
+--
+ARRAY<STRUCT<
+        name STRING,
+        owner_id_proto PROTO<googlesql_test.KitchenSinkPB>,
+        owner_id INT64,
+        account_kind STRING,
+        number INT64,
+        concat_str STRING
+      >>
+[known order:{NULL,
+              {
+                int64_key_1: 1
+                int64_key_2: 1
+              },
+              1,
+              "checking",
+              1,
+              "str_suffix"},
+             {NULL,
+              {
+                int64_key_1: 1
+                int64_key_2: 1
+              },
+              1,
+              "savings",
+              1,
+              "str_suffix"},
+             {NULL,
+              {
+                int64_key_1: 2
+                int64_key_2: 2
+              },
+              2,
+              "checking",
+              1,
+              "str_suffix"},
+             {NULL,
+              {
+                int64_key_1: 2
+                int64_key_2: 2
+              },
+              2,
+              "savings",
+              1,
+              "str_suffix"},
+             {"name1", NULL, NULL, NULL, 1, "str_suffix"},
+             {"name2", NULL, NULL, NULL, 1, "str_suffix"}]
+==
+[name=can_return_valid_proto_value]
+select gt.owner_id_proto.int64_key_1 AS owner_id from
+graph_table(aml
+  match (n:Account)
+  columns(n.owner_id_proto)
+) gt
+order by 1
+--
+ARRAY<STRUCT<owner_id INT64>>[known order:{1}, {1}, {2}, {2}]
+==
+[name=node_patterns_with_labels]
+select gt.* from
+graph_table(aml
+  match (n IS human)
+  columns(n.*)
+) gt
+order by 1, 2, 3
+--
+ARRAY<STRUCT<
+        DUMMY_UPPERCASED_PROPERTY INT64,
+        id INT64,
+        name STRING
+      >>
+[known order:{NULL, 100, "name1"}, {NULL, 100, "name2"}]
+==
+[name=node_patterns_with_filters]
+select gt.* from
+graph_table(aml
+  match (n WHERE ENDS_WITH(n.name, "1") OR n.owner_id = 2)
+  columns(n.name, n.id, n.account_kind)
+) gt
+order by 1, 2, 3
+--
+ARRAY<STRUCT<name STRING, id INT64, account_kind STRING>>[known order:
+  {NULL, NULL, "checking"},
+  {NULL, NULL, "savings"},
+  {"name1", 100, NULL}
+]
+==
+[name=node_patterns_with_labels_and_filters]
+select gt.* from
+graph_table(aml
+  match (n IS human WHERE ENDS_WITH(n.name, "1"))
+  columns(n.name, n.id)
+) gt
+order by 1, 2
+--
+ARRAY<STRUCT<name STRING, id INT64>>[{"name1", 100}]
+==
+[name=property_graph_with_no_edge_tables]
+select gt.* from
+graph_table(aml2
+  match -[n]->
+  columns(1 AS number, CONCAT("str", "_suffix") AS concat_str)
+) gt
+order by 1, 2
+--
+ARRAY<STRUCT<number INT64, concat_str STRING>>[]
+==
+[name=no_target_element_tables]
+select gt.* from
+graph_table(aml
+  match (n IS Human & !Human)
+  columns(1 AS number, CONCAT("str", "_suffix") AS concat_str)
+) gt
+order by 1, 2
+--
+ARRAY<STRUCT<number INT64, concat_str STRING>>[]
+==
+[name=no_target_element_tables_with_filter]
+select gt.* from
+graph_table(aml
+  match (n IS Human & !Human WHERE 1+1=2)
+  columns(1 AS number, CONCAT("str", "_suffix") AS concat_str)
+) gt
+order by 1, 2
+--
+ARRAY<STRUCT<number INT64, concat_str STRING>>[]
+==
+# These are all the edges in the graph. Note that each row in `can_transfer`
+# represents more than 1 edge.
+[name=can_run_edge_patterns]
+select SUM(one) AS edge_count_as_sum, COUNT(*) AS edge_count, ANY_VALUE(concat_str)
+from graph_table(aml
+  match -[e]->
+  columns(1 AS one, CONCAT("str", "_suffix") AS concat_str)
+) gt
+order by 1, 2
+--
+ARRAY<STRUCT<
+        edge_count_as_sum INT64,
+        edge_count INT64,
+        STRING
+      >>[{14, 14, "str_suffix"}]
+==
+[name=edge_patterns_with_labels]
+select gt.* from
+graph_table(aml
+  match -[e IS transfer]->
+  columns(1 AS number, CONCAT("str", "_suffix") AS concat_str)
+) gt
+order by 1, 2
+--
+ARRAY<STRUCT<number INT64, concat_str STRING>>[known order:
+  {1, "str_suffix"},
+  {1, "str_suffix"},
+  {1, "str_suffix"},
+  {1, "str_suffix"},
+  {1, "str_suffix"},
+  {1, "str_suffix"}
+]
+==
+[name=edge_patterns_from_compressed_edge_rows]
+select count(*) from
+graph_table(aml
+  match -[e IS can_transfer]->
+  columns(1 AS number, CONCAT("str", "_suffix") AS concat_str)
+) gt
+order by 1
+--
+ARRAY<STRUCT<INT64>>[{4}]
+==
+[name=edge_patterns_with_labels_and_filters]
+select gt.* from
+graph_table(aml
+  match -[e IS transfer WHERE e.amount > 200]->
+  columns(e.*)
+) gt
+order by 1
+--
+ARRAY<STRUCT<amount INT64>>[known order:{300}, {400}, {500}, {600}]
+==
+[required_features=ANALYTIC_FUNCTIONS,SQL_GRAPH]
+[name=window_function_over_graph_table]
+select COUNT(gt.number) OVER (ROWS BETWEEN 1 PRECEDING AND 1 FOLLOWING) AS x1
+from
+graph_table(aml
+  match (n IS human | ! human)
+  columns(1 AS number, CONCAT("str", "_suffix") AS concat_str)
+) gt
+order by 1
+--
+ARRAY<STRUCT<x1 INT64>>[known order:{2}, {2}, {3}, {3}, {3}, {3}]
+
+NOTE: Reference implementation reports non-determinism.
+==
+[name=property_exists_predicate]
+select *
+from
+graph_table(aml
+  match (n)
+  columns(n.name, property_exists(n, name) as name_exists, n.account_id, property_exists(n, account_id) as account_id_exists)
+) gt
+order by 1, 2, 3, 4
+--
+ARRAY<STRUCT<
+        name STRING,
+        name_exists BOOL,
+        account_id INT64,
+        account_id_exists BOOL
+      >>
+[known order:
+  {NULL, false, 1010, true},
+  {NULL, false, 1020, true},
+  {NULL, false, 1030, true},
+  {NULL, false, 1040, true},
+  {"name1", true, NULL, false},
+  {"name2", true, NULL, false}
+]
+==
+[name=graph_expression_functions_same_node]
+select gt.*
+from
+graph_table(aml
+  match (n) -[e]-> (m)
+  columns(n.id as src_id, n.account_id as src_acct_id, m.id as dest_id,
+  m.account_id as dest_account_id, same(n, n) as same_node, same(n, m) as different_node)
+) gt
+order by 1, 2, 3, 4, 5, 6
+--
+ARRAY<STRUCT<
+        src_id INT64,
+        src_acct_id INT64,
+        dest_id INT64,
+        dest_account_id INT64,
+        same_node BOOL,
+        different_node BOOL
+      >>
+[known order:
+  {NULL, 1010, NULL, 1010, true, true},
+  {NULL, 1010, NULL, 1020, true, false},
+  {NULL, 1010, NULL, 1020, true, false},
+  {NULL, 1010, NULL, 1020, true, false},
+  {NULL, 1010, NULL, 1040, true, false},
+  {NULL, 1020, NULL, 1030, true, false},
+  {NULL, 1020, NULL, 1030, true, false},
+  {NULL, 1030, NULL, 1010, true, false},
+  {NULL, 1030, NULL, 1020, true, false},
+  {NULL, 1030, NULL, 1040, true, false},
+  {100, NULL, NULL, 1010, true, false},
+  {100, NULL, NULL, 1030, true, false},
+  {100, NULL, 100, NULL, true, false},
+  {100, NULL, 100, NULL, true, true}
+]
+==
+# Regression test for b/277961055
+[name=graph_filter_expr_referencing_node_pattern_with_no_target_element_tables]
+select gt.*
+from
+graph_table(aml
+  match (n IS % & !% WHERE SAME(n, n))
+  columns(1 as id)
+) gt
+order by 1
+--
+ARRAY<STRUCT<id INT64>>[]
+==
+[name=graph_expression_functions_same_edge]
+select gt.*
+from
+graph_table(aml
+  match (n)-[e IS transfer WHERE e.amount > 200]->(m)-[e2 is transfer WHERE e2.amount > 200]-
+  columns(e.amount as amount1, e2.amount as amount2,
+  same(e, e, e, e) as same_edge, same(e, e2) as different_edge)
+) gt
+order by 1, 2, 3, 4
+--
+ARRAY<STRUCT<amount1 INT64, amount2 INT64, same_edge BOOL, different_edge BOOL>>[known order:
+  {300, 300, true, true},
+  {300, 400, true, false},
+  {300, 500, true, false},
+  {400, 300, true, false},
+  {400, 400, true, true},
+  {400, 500, true, false},
+  {500, 500, true, true},
+  {500, 600, true, false},
+  {600, 500, true, false},
+  {600, 600, true, true}
+]
+==
+[name=graph_expression_functions_is_source_node]
+select gt.* from graph_table(
+  aml
+  match (a) -[b]-> (c)
+  columns((a IS SOURCE OF b) AS val0,
+          (a IS SOURCE b) AS val1,
+          (a IS NOT SOURCE OF b) AS val2,
+          (a IS NOT SOURCE b) AS val3,
+          (c IS SOURCE OF b) AS val4,
+          (c IS SOURCE b) AS val5,
+          (c IS NOT SOURCE OF b) AS val6,
+          (c IS NOT SOURCE b) AS val7)
+) gt
+order by 1, 2, 3, 4, 5, 6, 7, 8
+--
+ARRAY<STRUCT<val0 BOOL,
+             val1 BOOL,
+             val2 BOOL,
+             val3 BOOL,
+             val4 BOOL,
+             val5 BOOL,
+             val6 BOOL,
+             val7 BOOL>>
+[known order:
+  {true, true, false, false, false, false, true, true},
+  {true, true, false, false, false, false, true, true},
+  {true, true, false, false, false, false, true, true},
+  {true, true, false, false, false, false, true, true},
+  {true, true, false, false, false, false, true, true},
+  {true, true, false, false, false, false, true, true},
+  {true, true, false, false, false, false, true, true},
+  {true, true, false, false, false, false, true, true},
+  {true, true, false, false, false, false, true, true},
+  {true, true, false, false, false, false, true, true},
+  {true, true, false, false, false, false, true, true},
+  {true, true, false, false, false, false, true, true},
+  {true, true, false, false, true, true, false, false},
+  {true, true, false, false, true, true, false, false}
+]
+==
+[name=graph_expression_functions_is_dest_node]
+select gt.* from graph_table(
+  aml
+  match (a) -[b]-> (c)
+  columns((a IS DESTINATION OF b) AS val0,
+          (a IS DESTINATION b) AS val1,
+          (a IS NOT DESTINATION OF b) AS val2,
+          (a IS NOT DESTINATION b) AS val3,
+          (c IS DESTINATION OF b) AS val4,
+          (c IS DESTINATION b) AS val5,
+          (c IS NOT DESTINATION OF b) AS val6,
+          (c IS NOT DESTINATION b) AS val7)
+) gt
+order by 1, 2, 3, 4, 5, 6, 7, 8
+--
+ARRAY<STRUCT<val0 BOOL,
+             val1 BOOL,
+             val2 BOOL,
+             val3 BOOL,
+             val4 BOOL,
+             val5 BOOL,
+             val6 BOOL,
+             val7 BOOL>>
+[known order:
+  {false, false, true, true, true, true, false, false},
+  {false, false, true, true, true, true, false, false},
+  {false, false, true, true, true, true, false, false},
+  {false, false, true, true, true, true, false, false},
+  {false, false, true, true, true, true, false, false},
+  {false, false, true, true, true, true, false, false},
+  {false, false, true, true, true, true, false, false},
+  {false, false, true, true, true, true, false, false},
+  {false, false, true, true, true, true, false, false},
+  {false, false, true, true, true, true, false, false},
+  {false, false, true, true, true, true, false, false},
+  {false, false, true, true, true, true, false, false},
+  {true, true, false, false, true, true, false, false},
+  {true, true, false, false, true, true, false, false}
+]
+==
+[name=fixed_path_patterns]
+select * from
+graph_table(aml
+  match (acct1 IS account)-[t1 IS transfer]->(acct2 IS account)-[t2 IS transfer]->(acct3 IS account)
+  columns(acct1.account_id AS src, t1.amount AS amount1, acct2.account_id AS mid, t2.amount AS amount2, acct3.account_id AS dest)
+) gt
+ORDER BY src, amount1, mid, amount2, dest
+--
+ARRAY<STRUCT<src INT64, amount1 INT64, mid INT64, amount2 INT64, dest INT64>>[known order:
+  {1010, 100, 1020, 300, 1030},
+  {1010, 100, 1020, 400, 1030},
+  {1010, 200, 1020, 300, 1030},
+  {1010, 200, 1020, 400, 1030},
+  {1010, 600, 1010, 100, 1020},
+  {1010, 600, 1010, 200, 1020},
+  {1010, 600, 1010, 600, 1010},
+  {1020, 300, 1030, 500, 1010},
+  {1020, 400, 1030, 500, 1010},
+  {1030, 500, 1010, 100, 1020},
+  {1030, 500, 1010, 200, 1020},
+  {1030, 500, 1010, 600, 1010}
+]
+==
+[name=fixed_path_patterns_backwards]
+select * from
+graph_table(aml
+  match (acct3 IS account)<-[t2 IS transfer]-(acct2 IS account)<-[t1 IS transfer]-(acct1 IS account)
+  columns(acct1.account_id AS src, t1.amount AS amount1, acct2.account_id AS mid, t2.amount AS amount2, acct3.account_id AS dest)
+) gt
+order by dest, amount1, src, mid, amount2
+--
+ARRAY<STRUCT<src INT64, amount1 INT64, mid INT64, amount2 INT64, dest INT64>>[known order:
+  {1020, 300, 1030, 500, 1010},
+  {1020, 400, 1030, 500, 1010},
+  {1030, 500, 1010, 600, 1010},
+  {1010, 600, 1010, 600, 1010},
+  {1030, 500, 1010, 100, 1020},
+  {1030, 500, 1010, 200, 1020},
+  {1010, 600, 1010, 100, 1020},
+  {1010, 600, 1010, 200, 1020},
+  {1010, 100, 1020, 300, 1030},
+  {1010, 100, 1020, 400, 1030},
+  {1010, 200, 1020, 300, 1030},
+  {1010, 200, 1020, 400, 1030}
+]
+==
+# TODO: Implement multuiply-declared variables and [NOT] SAME and
+# ALL_DIFFERENT() predicates.
+[name=fixed_path_patterns_mixed_directions]
+select * from
+graph_table(aml
+  match ()<-[t1 IS transfer]-(acct IS account)-[t2 IS transfer]->()
+  columns(t1.amount AS amount1, acct.account_id AS mid, t2.amount AS amount2)
+) gt
+order by 1, 2, 3
+--
+ARRAY<STRUCT<amount1 INT64, mid INT64, amount2 INT64>>[known order:
+  {100, 1010, 100},
+  {100, 1010, 200},
+  {100, 1010, 600},
+  {200, 1010, 100},
+  {200, 1010, 200},
+  {200, 1010, 600},
+  {300, 1020, 300},
+  {300, 1020, 400},
+  {400, 1020, 300},
+  {400, 1020, 400},
+  {500, 1030, 500},
+  {600, 1010, 100},
+  {600, 1010, 200},
+  {600, 1010, 600}
+]
+==
+[name=fixed_path_patterns_correlated]
+select * from
+ (SELECT 100 AS target_amount UNION ALL
+  SELECT 200 AS target_amount) AS tmp
+  WHERE
+  EXISTS(
+    SELECT * FROM graph_table(aml
+      match (acct1 IS account)-[t1 IS transfer WHERE t1.amount = target_amount]->(acct2 IS account)-[t2 IS transfer]->(acct3 IS account)
+      columns(t1.amount)
+    )
+  )
+order by 1
+--
+ARRAY<STRUCT<target_amount INT64>>[known order:{100}, {200}]
+==
+[name=fixed_path_patterns_aggregated]
+select array_agg(distinct owner_name) from graph_table(aml
+  MATCH (bad_acct IS Account WHERE bad_acct.account_id = 1020) -[ IS Transfer]-> ( IS Account) <-[ IS Login]- (u IS Human)
+  COLUMNS (u.name AS owner_name)
+)
+--
+ARRAY<STRUCT<ARRAY<>>>[{ARRAY<STRING>["name2"]}]
+==
+[name=multiply_declared_node_variable_single_path]
+select * from graph_table(aml
+  MATCH (a IS Account Where a.account_id = 1010) -[t1 IS Transfer]- (b) -[t2 IS Transfer]- (a)
+  COLUMNS(a.account_id as aid, t1.amount as amount1, b.account_id as bid, t2.amount as amount2, a.account_id as cid)
+)
+ORDER BY 1,3,5,2,4
+--
+ARRAY<STRUCT<aid INT64, amount1 INT64, bid INT64, amount2 INT64, cid INT64>>[known order:
+  {1010, 600, 1010, 600, 1010},
+  {1010, 100, 1020, 100, 1010},
+  {1010, 100, 1020, 200, 1010},
+  {1010, 200, 1020, 100, 1010},
+  {1010, 200, 1020, 200, 1010},
+  {1010, 500, 1030, 500, 1010}
+]
+==
+[name=multiply_declared_node_variable_single_path_with_cycle]
+select * from graph_table(aml
+  MATCH (a IS Account Where a.account_id = 1010) -[t1 IS Transfer]-> (b) -[t2 IS Transfer]- (c) -[t3 IS Transfer]-> (a)
+  COLUMNS(a.account_id as aid, t1.amount as amount1, b.account_id as bid, t2.amount as amount2, c.account_id as cid, t3.amount as amount3, a.account_id as aid2)
+)
+ORDER BY 1,3,5,7,2,4,6
+--
+ARRAY<STRUCT<aid INT64,
+             amount1 INT64,
+             bid INT64,
+             amount2 INT64,
+             cid INT64,
+             amount3 INT64,
+             aid2 INT64>>
+[known order:
+  {1010, 600, 1010, 600, 1010, 600, 1010},
+  {1010, 600, 1010, 500, 1030, 500, 1010},
+  {1010, 100, 1020, 100, 1010, 600, 1010},
+  {1010, 100, 1020, 200, 1010, 600, 1010},
+  {1010, 200, 1020, 100, 1010, 600, 1010},
+  {1010, 200, 1020, 200, 1010, 600, 1010},
+  {1010, 100, 1020, 300, 1030, 500, 1010},
+  {1010, 100, 1020, 400, 1030, 500, 1010},
+  {1010, 200, 1020, 300, 1030, 500, 1010},
+  {1010, 200, 1020, 400, 1030, 500, 1010}
+]
+==
+[name=multiply_declared_edge_variable_single_path]
+select * from graph_table(aml
+  MATCH (a IS Account Where a.account_id = 1010) -[t IS Transfer]- (b) -[t IS Transfer]- (c)
+  COLUMNS(a.account_id as aid, t.amount as amount1, b.account_id as bid, t.amount as amount2, c.account_id as cid)
+)
+ORDER BY 1,3,5,2,4
+--
+ARRAY<STRUCT<aid INT64, amount1 INT64, bid INT64, amount2 INT64, cid INT64>>[known order:
+  {1010, 600, 1010, 600, 1010},
+  {1010, 100, 1020, 100, 1010},
+  {1010, 200, 1020, 200, 1010},
+  {1010, 500, 1030, 500, 1010}
+]
+==
+[name=graph_pattern_without_where_clause]
+select * from graph_table(aml
+  MATCH (a IS Account Where a.account_id = 1010) -[t1 IS Transfer]-> (b),
+        (b) -[t2 IS Transfer]-> (c),
+        (c) -[t3 IS Transfer]-> (a)
+  COLUMNS(a.account_id as aid, t1.amount as amount1, b.account_id as bid, t2.amount as amount2, c.account_id as cid, t3.amount as amount3, a.account_id as aid2)
+)
+ORDER BY 1,3,5,7,2,4,6
+--
+ARRAY<STRUCT<aid INT64,
+             amount1 INT64,
+             bid INT64,
+             amount2 INT64,
+             cid INT64,
+             amount3 INT64,
+             aid2 INT64>>
+[known order:
+  {1010, 600, 1010, 600, 1010, 600, 1010},
+  {1010, 100, 1020, 300, 1030, 500, 1010},
+  {1010, 100, 1020, 400, 1030, 500, 1010},
+  {1010, 200, 1020, 300, 1030, 500, 1010},
+  {1010, 200, 1020, 400, 1030, 500, 1010}
+]
+==
+[name=graph_pattern_with_where_clause]
+select * from graph_table(aml
+  MATCH (a IS Account Where a.account_id = 1010) -[t1 IS Transfer]-> (b),
+        (b) -[t2 IS Transfer]-> (c),
+        (c) -[t3 IS Transfer]-> (a)
+  WHERE t1.amount + t2.amount = t3.amount
+  COLUMNS(a.account_id as aid, t1.amount as amount1, b.account_id as bid, t2.amount as amount2, c.account_id as cid, t3.amount as amount3, a.account_id as aid2)
+)
+ORDER BY 1,3,5,7,2,4,6
+--
+ARRAY<STRUCT<aid INT64,
+             amount1 INT64,
+             bid INT64,
+             amount2 INT64,
+             cid INT64,
+             amount3 INT64,
+             aid2 INT64>>
+[known order:
+  {1010, 100, 1020, 400, 1030, 500, 1010},
+  {1010, 200, 1020, 300, 1030, 500, 1010}
+]
+==
+[name=self_edge_deduped]
+select * from graph_table(aml
+  MATCH (a) -[k IS Knows]- (b)
+  COLUMNS(a.name as person_name, k.since, b.name as friend_name)
+)
+order by 1, 2, 3
+--
+ARRAY<STRUCT<person_name STRING, since TIMESTAMP, friend_name STRING>>[known order:
+  {
+    "name1",
+    2000-01-01 08:00:00+00,
+    "name1"
+  },
+  {
+    "name1",
+    2000-01-02 08:00:00+00,
+    "name2"
+  },
+  {
+    "name2",
+    2000-01-02 08:00:00+00,
+    "name1"
+  }
+]
+==
+[name=self_edge_pointing_right]
+select * from graph_table(aml
+  MATCH (a) -[k IS Knows]-> (b)
+  COLUMNS(a.name as person_name, k.since, b.name as friend_name)
+)
+order by 1, 2, 3
+--
+ARRAY<STRUCT<person_name STRING, since TIMESTAMP, friend_name STRING>>[known order:
+  {
+    "name1",
+    2000-01-01 08:00:00+00,
+    "name1"
+  },
+  {
+    "name1",
+    2000-01-02 08:00:00+00,
+    "name2"
+  }
+]
+==
+[name=self_edge_pointing_left]
+select * from graph_table(aml
+  MATCH (a) <-[k IS Knows]- (b)
+  COLUMNS(a.name as person_name, k.since, b.name as friend_name)
+)
+order by 1, 2, 3
+--
+ARRAY<STRUCT<person_name STRING, since TIMESTAMP, friend_name STRING>>[known order:
+  {
+    "name1",
+    2000-01-01 08:00:00+00,
+    "name1"
+  },
+  {
+    "name2",
+    2000-01-02 08:00:00+00,
+    "name1"
+  }
+]
+==
+[name=cross_graph_identity]
+select count(*) as num_cross_graph_edges
+from graph_table(aml2
+  match (a)
+  columns (exists (
+    select one from graph_table(aml
+      match -[e where a is source of e]->
+      columns (1 as one)
+    )
+  ) as has_cross_graph_edge)
+) where has_cross_graph_edge
+--
+ARRAY<STRUCT<num_cross_graph_edges INT64>>[{0}]
+==
+[name=subpath_multiply_declared]
+select * from graph_table(aml
+  MATCH (a) (<-[k IS Knows]- WHERE true) ((b) <-[k IS Knows]- (a))
+  COLUMNS(a.name as person_name, k.since, b.name as friend_name)
+)
+order by 1, 2, 3
+--
+ARRAY<STRUCT<person_name STRING, since TIMESTAMP, friend_name STRING>>[
+  {
+    "name1",
+    2000-01-01 08:00:00+00,
+    "name1"
+  }
+]
+==
+[name=subpath_nested]
+select * from graph_table(aml
+  MATCH (((a) <-[k IS Knows]- (b)) (<-[k IS Knows]-) (a))
+  COLUMNS(a.name as person_name, k.since, b.name as friend_name)
+)
+order by 1, 2, 3
+--
+ARRAY<STRUCT<person_name STRING, since TIMESTAMP, friend_name STRING>>[
+  {
+    "name1",
+    2000-01-01 08:00:00+00,
+    "name1"
+  }
+]
+==
+[name=subpath_where_clase]
+select * from graph_table(aml
+  MATCH (a IS Account) -[t1 IS Transfer]-> ((b) (-[t2 IS Transfer]-) (c) -[t3 IS Transfer]-> (a) Where a.account_id = 1010)
+  COLUMNS(a.account_id as aid, t1.amount as amount1, b.account_id as bid, t2.amount as amount2, c.account_id as cid, t3.amount as amount3, a.account_id as aid2)
+)
+ORDER BY 1,3,5,7,2,4,6
+--
+ARRAY<STRUCT<aid INT64,
+             amount1 INT64,
+             bid INT64,
+             amount2 INT64,
+             cid INT64,
+             amount3 INT64,
+             aid2 INT64>>
+[known order:
+  {1010, 600, 1010, 600, 1010, 600, 1010},
+  {1010, 600, 1010, 500, 1030, 500, 1010},
+  {1010, 100, 1020, 100, 1010, 600, 1010},
+  {1010, 100, 1020, 200, 1010, 600, 1010},
+  {1010, 200, 1020, 100, 1010, 600, 1010},
+  {1010, 200, 1020, 200, 1010, 600, 1010},
+  {1010, 100, 1020, 300, 1030, 500, 1010},
+  {1010, 100, 1020, 400, 1030, 500, 1010},
+  {1010, 200, 1020, 300, 1030, 500, 1010},
+  {1010, 200, 1020, 400, 1030, 500, 1010}
+]
+==
+[name=subpath_with_graph_pattern]
+select * from graph_table(aml
+  MATCH (a IS Account Where a.account_id = 1010) (-[t1 IS Transfer]-> (b) -[t2 IS Transfer]-> WHERE t1.amount*2 > t2.amount) (c),
+        (c) -[t3 IS Transfer]-> (a)
+  WHERE t1.amount + t2.amount = t3.amount
+  COLUMNS(a.account_id as aid, t1.amount as amount1, b.account_id as bid, t2.amount as amount2, c.account_id as cid, t3.amount as amount3, a.account_id as aid2)
+)
+ORDER BY 1,3,5,7,2,4,6
+--
+ARRAY<STRUCT<aid INT64,
+             amount1 INT64,
+             bid INT64,
+             amount2 INT64,
+             cid INT64,
+             amount3 INT64,
+             aid2 INT64>>[{1010, 200, 1020, 300, 1030, 500, 1010}]
+==
+
+[required_features=SQL_GRAPH,SQL_GRAPH_EXPOSE_GRAPH_ELEMENT]
+[name=optional_columns]
+select a.account_id as id, a IS SOURCE OF t as is_src from
+graph_table(aml
+  MATCH (a IS Account)-[t IS Transfer]->
+)
+order by 1, 2
+--
+ARRAY<STRUCT<id INT64, is_src BOOL>>[known order:
+  {1010, true},
+  {1010, true},
+  {1010, true},
+  {1020, true},
+  {1020, true},
+  {1030, true}
+]
+==
+
+[required_features=SQL_GRAPH,SQL_GRAPH_EXPOSE_GRAPH_ELEMENT]
+[name=optional_columns_nested_subquery]
+select a.account_id from
+(
+select a from
+(
+select a from
+graph_table(aml
+  MATCH (a IS Account)-[t IS Transfer]->
+)))
+order by 1
+--
+ARRAY<STRUCT<account_id INT64>>[known order:
+  {1010},
+  {1010},
+  {1010},
+  {1020},
+  {1020},
+  {1030}
+]
+==
+
+[required_features=SQL_GRAPH,SQL_GRAPH_EXPOSE_GRAPH_ELEMENT]
+[name=optional_columns_select_star_in_subquery]
+select PROPERTY_EXISTS(t, amount) as has_amount from
+(
+select * from
+graph_table(aml
+  MATCH (a IS Account)-[t IS Transfer]->
+))
+order by 1
+--
+ARRAY<STRUCT<has_amount BOOL>>[known order:
+  {true},
+  {true},
+  {true},
+  {true},
+  {true},
+  {true}
+]
+==
+
+[required_features=SQL_GRAPH,SQL_GRAPH_EXPOSE_GRAPH_ELEMENT]
+[name=optional_columns_element_dotstar]
+select a.*,t.* from
+graph_table(aml
+  MATCH (a IS Account)-[t IS Transfer]->
+)
+order by 1,2,3,5
+--
+ARRAY<STRUCT<
+        account_id INT64,
+        account_kind STRING,
+        owner_id INT64,
+        owner_id_proto PROTO<googlesql_test.KitchenSinkPB>,
+        amount INT64
+      >>
+[known order:{1010,
+              "checking",
+              1,
+              {
+                int64_key_1: 1
+                int64_key_2: 1
+              },
+              100},
+             {1010,
+              "checking",
+              1,
+              {
+                int64_key_1: 1
+                int64_key_2: 1
+              },
+              200},
+             {1010,
+              "checking",
+              1,
+              {
+                int64_key_1: 1
+                int64_key_2: 1
+              },
+              600},
+             {1020,
+              "savings",
+              1,
+              {
+                int64_key_1: 1
+                int64_key_2: 1
+              },
+              300},
+             {1020,
+              "savings",
+              1,
+              {
+                int64_key_1: 1
+                int64_key_2: 1
+              },
+              400},
+             {1030,
+              "checking",
+              2,
+              {
+                int64_key_1: 2
+                int64_key_2: 2
+              },
+              500}]
+==
+
+[required_features=SQL_GRAPH,SQL_GRAPH_EXPOSE_GRAPH_ELEMENT]
+[name=optional_columns_multiply_declared]
+select a.account_id, a.account_kind, t.amount from
+(
+select * from
+graph_table(aml
+  MATCH (a)-[t IS Transfer]-(a)
+))
+order by 1,2,3
+--
+ARRAY<STRUCT<account_id INT64, account_kind STRING, amount INT64>>[
+  {1010, "checking", 600}
+]
+==
+
+[required_features=SQL_GRAPH,SQL_GRAPH_EXPOSE_GRAPH_ELEMENT]
+[name=optional_columns_graph_element_in_columns_clause]
+select acct1.account_id, acct1.account_kind from
+graph_table(aml
+  match (acct1 IS account where exists(select acct1))-[t1 IS transfer]->(acct2 IS account)-[t2 IS transfer]->(acct3 IS account)
+  columns(acct1, acct2)
+) gt
+WHERE SAME(acct1,acct2)
+order by 1, 2
+--
+ARRAY<STRUCT<account_id INT64, account_kind STRING>>[known order:
+  {1010, "checking"},
+  {1010, "checking"},
+  {1010, "checking"}
+]
+==
+
+[required_features=SQL_GRAPH,SQL_GRAPH_EXPOSE_GRAPH_ELEMENT]
+[name=optional_columns_union]
+SELECT a.name, a.account_kind FROM
+(
+SELECT a, e, b FROM GRAPH_TABLE(
+aml
+MATCH (a IS Human)-[e]->(b)
+)
+UNION ALL
+SELECT x, y, z FROM GRAPH_TABLE(
+aml
+MATCH (x IS Account)-[y]->(z))
+)
+order by 1,2
+--
+ARRAY<STRUCT<name STRING, account_kind STRING>>[known order:
+  {NULL, "checking"},
+  {NULL, "checking"},
+  {NULL, "checking"},
+  {NULL, "checking"},
+  {NULL, "checking"},
+  {NULL, "checking"},
+  {NULL, "checking"},
+  {NULL, "checking"},
+  {NULL, "savings"},
+  {NULL, "savings"},
+  {"name1", NULL},
+  {"name1", NULL},
+  {"name1", NULL},
+  {"name2", NULL}
+]
+==
+
+[required_features=SQL_GRAPH,SQL_GRAPH_EXPOSE_GRAPH_ELEMENT]
+[name=optional_columns_group_by_graph_element]
+SELECT a.name, SUM(a.id) as total FROM
+graph_table(
+  aml
+  match (a is Human)
+)
+GROUP BY a
+order by 1,2
+--
+ARRAY<STRUCT<name STRING, total INT64>>[known order:
+  {"name1", 100},
+  {"name2", 100}
+]
+
+==
+
+[required_features=SQL_GRAPH,SQL_GRAPH_EXPOSE_GRAPH_ELEMENT]
+[name=optional_columns_group_by_graph_element_count_star]
+SELECT COUNT(*) as count FROM
+graph_table(
+  aml
+  match (a)
+)
+GROUP BY a
+order by 1
+--
+ARRAY<STRUCT<count INT64>>[known order:{1}, {1}, {1}, {1}, {1}, {1}]
+
+==
+[required_features=SQL_GRAPH,SQL_GRAPH_EXPOSE_GRAPH_ELEMENT]
+[name=graph_expression_functions_all_different_with_null_input]
+
+select all_different(gt.n, gt.m)
+FROM graph_table(aml
+  match (n IS Account) -[e]-> (m IS Account)
+) gt
+RIGHT JOIN (SELECT 1)
+ON FALSE
+--
+
+ERROR: generic::out_of_range: Input to the function ALL_DIFFERENT must not be null
+==
+[required_features=SQL_GRAPH,SQL_GRAPH_EXPOSE_GRAPH_ELEMENT]
+[name=graph_expression_functions_same_with_null_input]
+
+select same(gt.n, gt.m)
+FROM graph_table(aml
+  match (n IS Account) -[e]-> (m IS Account)
+) gt
+RIGHT JOIN (SELECT 1)
+ON FALSE
+--
+
+ERROR: generic::out_of_range: Input to the function SAME must not be null
+==
+[required_features=SQL_GRAPH,SQL_GRAPH_EXPOSE_GRAPH_ELEMENT]
+[name=graph_expression_functions_property_exists_with_null_input]
+
+select property_exists(gt.n, account_id)
+FROM graph_table(aml
+  match (n IS Account) -[e]-> (m IS Account)
+) gt
+RIGHT JOIN (SELECT 1)
+ON FALSE
+
+--
+ARRAY<STRUCT<BOOL>>[{NULL}]
+==
+[required_features=SQL_GRAPH,SQL_GRAPH_EXPOSE_GRAPH_ELEMENT]
+[name=graph_expression_functions_is_source_of_with_null_input]
+
+select gt.n is source of gt.e
+FROM graph_table(aml
+  match (n IS Account) -[e]-> (m IS Account)
+) gt
+RIGHT JOIN (SELECT 1)
+ON FALSE
+--
+
+ERROR: generic::out_of_range: Input to the operator SOURCE must not be null
+==
+[required_features=SQL_GRAPH,SQL_GRAPH_EXPOSE_GRAPH_ELEMENT]
+[name=graph_expression_functions_is_destination_of_with_null_input]
+
+select m is destination of e
+FROM graph_table(aml
+  match (n IS Account) -[e]-> (m IS Account)
+) gt
+RIGHT JOIN (SELECT 1)
+ON FALSE
+--
+
+ERROR: generic::out_of_range: Input to the operator DEST must not be null
+==
+[name=graph_expression_functions_all_different_node]
+select gt.*
+from
+graph_table(aml
+  match (n IS Account WHERE n.account_id = 1010) -[IS Transfer]-> (m IS Account) -[IS Transfer]-> (k IS Account)
+  columns(n.account_id AS n_id, m.account_id AS m_id, k.account_id AS k_id, ALL_DIFFERENT(n, m, k) as all_node_different)
+) gt
+order by 1, 2, 3, 4
+--
+ARRAY<STRUCT<
+        n_id INT64,
+        m_id INT64,
+        k_id INT64,
+        all_node_different BOOL
+      >>
+[known order:
+  {1010, 1010, 1010, false},
+  {1010, 1010, 1020, false},
+  {1010, 1010, 1020, false},
+  {1010, 1020, 1030, true},
+  {1010, 1020, 1030, true},
+  {1010, 1020, 1030, true},
+  {1010, 1020, 1030, true}
+]
+==
+
+[name=graph_expression_functions_all_different_edge]
+select gt.*
+from
+graph_table(aml
+  match (Is Account)-[t1:Transfer]->(IS Account)-[t2:Transfer]->(IS Account)
+  columns(t1.amount as t1_amount, t2.amount as t2_amount, ALL_DIFFERENT(t1, t2) as all_different)
+) gt
+order by 1, 2, 3
+--
+ARRAY<STRUCT<t1_amount INT64, t2_amount INT64, all_different BOOL>>[known order:
+  {100, 300, true},
+  {100, 400, true},
+  {200, 300, true},
+  {200, 400, true},
+  {300, 500, true},
+  {400, 500, true},
+  {500, 100, true},
+  {500, 200, true},
+  {500, 600, true},
+  {600, 100, true},
+  {600, 200, true},
+  {600, 600, false}
+]
+
+==
+
+[name=graph_equal_nodes]
+select gt.*
+from
+graph_table(aml
+  match (Is Account)-[t1:Transfer]->(IS Account)-[t2:Transfer]->(IS Account), (Is Account)-[t1_ditto:Transfer]->(IS Account)-[t2_ditto:Transfer]->(IS Account)
+  columns(t1 = t1_ditto and t2 = t2_ditto as valid, t1.amount as t1_amount, t2.amount as t2_amount, ALL_DIFFERENT(t1, t2) as all_different)
+) gt
+where gt.valid
+order by 1, 2, 3, 4
+--
+ARRAY<STRUCT<valid BOOL, t1_amount INT64, t2_amount INT64, all_different BOOL>>[known order:
+  {true, 100, 300, true},
+  {true, 100, 400, true},
+  {true, 200, 300, true},
+  {true, 200, 400, true},
+  {true, 300, 500, true},
+  {true, 400, 500, true},
+  {true, 500, 100, true},
+  {true, 500, 200, true},
+  {true, 500, 600, true},
+  {true, 600, 100, true},
+  {true, 600, 200, true},
+  {true, 600, 600, false}
+]
+
+==
+
+[name=graph_equal_nodes_different_types]
+select distinct gt.*
+from
+graph_table(aml
+  match (a:Account), (h:Human)
+  columns(a = h as human_is_account)
+) gt
+order by 1
+--
+ARRAY<STRUCT<human_is_account BOOL>>[{false}]
+==
+
+[required_features=SQL_GRAPH,JSON_TYPE,SQL_GRAPH_EXPOSE_GRAPH_ELEMENT]
+[name=graph_edge_to_json]
+# The exact format/content of identifier is engine dependent.
+select
+  js.identifier is not null,
+  TO_JSON_STRING(js.kind) as kind,
+  TO_JSON_STRING(js.labels) as labels,
+  TO_JSON_STRING(js.properties) as properties,
+  js.source_node_identifier is not null,
+  js.destination_node_identifier is not null
+from
+graph_table(aml
+  match -[e]->
+  columns(TO_JSON(e) as js)
+)
+ORDER BY 1, 2, 3, 4, 5, 6
+--
+ARRAY<STRUCT<BOOL, kind STRING, labels STRING, properties STRING, BOOL, BOOL>>[known order:
+  {
+    true,
+    '"edge"',
+    '["Knows"]',
+    '{"since":"2000-01-01T08:00:00Z"}',
+    true,
+    true
+  },
+  {
+    true,
+    '"edge"',
+    '["Knows"]',
+    '{"since":"2000-01-02T08:00:00Z"}',
+    true,
+    true
+  },
+  {
+    true,
+    '"edge"',
+    '["Login"]',
+    '{"timestamp":"2023-01-01T00:00:00Z"}',
+    true,
+    true
+  },
+  {
+    true,
+    '"edge"',
+    '["Login"]',
+    '{"timestamp":"2023-01-04T00:00:00Z"}',
+    true,
+    true
+  },
+  {true, '"edge"', '["Transfer"]', '{"amount":100}', true, true},
+  {true, '"edge"', '["Transfer"]', '{"amount":200}', true, true},
+  {true, '"edge"', '["Transfer"]', '{"amount":300}', true, true},
+  {true, '"edge"', '["Transfer"]', '{"amount":400}', true, true},
+  {true, '"edge"', '["Transfer"]', '{"amount":500}', true, true},
+  {true, '"edge"', '["Transfer"]', '{"amount":600}', true, true},
+  {
+    true,
+    '"edge"',
+    '["can_transfer"]',
+    '{"dest_acct_kind":"savings","src_acct_kind":"checking"}',
+    true,
+    true
+  },
+  {
+    true,
+    '"edge"',
+    '["can_transfer"]',
+    '{"dest_acct_kind":"savings","src_acct_kind":"checking"}',
+    true,
+    true
+  },
+  {
+    true,
+    '"edge"',
+    '["can_transfer"]',
+    '{"dest_acct_kind":"savings","src_acct_kind":"checking"}',
+    true,
+    true
+  },
+  {
+    true,
+    '"edge"',
+    '["can_transfer"]',
+    '{"dest_acct_kind":"savings","src_acct_kind":"checking"}',
+    true,
+    true
+  }
+]
+==
+
+[required_features=SQL_GRAPH,JSON_TYPE,JSON_VALUE_EXTRACTION_FUNCTIONS,SQL_GRAPH_EXPOSE_GRAPH_ELEMENT]
+[name=graph_edge_to_json_identifier_is_unique]
+select ARRAY_IS_DISTINCT(ARRAY(
+  select id from
+  graph_table(aml
+    match -[e]->
+    columns(STRING(TO_JSON(e).identifier) as id)
+  )
+  order by id))
+--
+ARRAY<STRUCT<BOOL>>[{true}]
+==
+
+[required_features=SQL_GRAPH]
+[name=graph_node_labels_function]
+select id, account_id, node_labels from
+graph_table(aml
+  match (n)
+  columns(n.id, n.account_id, LABELS(n) as node_labels)
+)
+order by id, account_id;
+--
+ARRAY<STRUCT<id INT64, account_id INT64, node_labels ARRAY<>>>[known order:
+  {
+    NULL,
+    1010,
+    ARRAY<STRING>["Account"]
+  },
+  {
+    NULL,
+    1020,
+    ARRAY<STRING>["Account"]
+  },
+  {
+    NULL,
+    1030,
+    ARRAY<STRING>["Account"]
+  },
+  {
+    NULL,
+    1040,
+    ARRAY<STRING>["Account"]
+  },
+  {100,
+   NULL,
+   ARRAY<STRING>[known order:
+     "dummy_lowercased_label",
+     "Human"
+   ]},
+  {100,
+   NULL,
+   ARRAY<STRING>[known order:
+     "dummy_lowercased_label",
+     "Human"
+   ]}
+]
+==
+
+[required_features=SQL_GRAPH]
+[name=graph_edge_labels_function]
+select id, account_id, edge_labels from
+graph_table(aml
+  match (n)-[e]->
+  columns(n.id, n.account_id, LABELS(e) as edge_labels)
+)
+order by id, account_id, ARRAY_TO_STRING(edge_labels, ', ');
+--
+ARRAY<STRUCT<id INT64, account_id INT64, edge_labels ARRAY<>>>[known order:
+  {
+    NULL,
+    1010,
+    ARRAY<STRING>["Transfer"]
+  },
+  {
+    NULL,
+    1010,
+    ARRAY<STRING>["Transfer"]
+  },
+  {
+    NULL,
+    1010,
+    ARRAY<STRING>["Transfer"]
+  },
+  {
+    NULL,
+    1010,
+    ARRAY<STRING>["can_transfer"]
+  },
+  {
+    NULL,
+    1010,
+    ARRAY<STRING>["can_transfer"]
+  },
+  {
+    NULL,
+    1020,
+    ARRAY<STRING>["Transfer"]
+  },
+  {
+    NULL,
+    1020,
+    ARRAY<STRING>["Transfer"]
+  },
+  {
+    NULL,
+    1030,
+    ARRAY<STRING>["Transfer"]
+  },
+  {
+    NULL,
+    1030,
+    ARRAY<STRING>["can_transfer"]
+  },
+  {
+    NULL,
+    1030,
+    ARRAY<STRING>["can_transfer"]
+  },
+  {
+    100,
+    NULL,
+    ARRAY<STRING>["Knows"]
+  },
+  {
+    100,
+    NULL,
+    ARRAY<STRING>["Knows"]
+  },
+  {
+    100,
+    NULL,
+    ARRAY<STRING>["Login"]
+  },
+  {
+    100,
+    NULL,
+    ARRAY<STRING>["Login"]
+  }
+]
+==
+
+[name=graph_labels_function_null_input]
+[required_features=SQL_GRAPH,SQL_GRAPH_EXPOSE_GRAPH_ELEMENT]
+select LABELS(gt.n)
+FROM graph_table(aml
+  match (n IS Account) -[e]-> (m IS Account)
+) gt
+RIGHT JOIN (SELECT 1)
+ON FALSE;
+--
+ARRAY<STRUCT<ARRAY<>>>[{ARRAY<STRING>(NULL)}]
+==
+
+[name=graph_node_property_names_function]
+select id, account_id, node_props from
+graph_table(aml
+  match (n)
+  columns(n.id, n.account_id, PROPERTY_NAMES(n) as node_props)
+)
+order by id, account_id;
+--
+ARRAY<STRUCT<id INT64, account_id INT64, node_props ARRAY<>>>[known order:
+  {NULL,
+   1010,
+   ARRAY<STRING>[known order:
+     "account_id",
+     "account_kind",
+     "owner_id",
+     "owner_id_proto"
+   ]},
+  {NULL,
+   1020,
+   ARRAY<STRING>[known order:
+     "account_id",
+     "account_kind",
+     "owner_id",
+     "owner_id_proto"
+   ]},
+  {NULL,
+   1030,
+   ARRAY<STRING>[known order:
+     "account_id",
+     "account_kind",
+     "owner_id",
+     "owner_id_proto"
+   ]},
+  {NULL,
+   1040,
+   ARRAY<STRING>[known order:
+     "account_id",
+     "account_kind",
+     "owner_id",
+     "owner_id_proto"
+   ]},
+  {100,
+   NULL,
+   ARRAY<STRING>[known order:
+     "DUMMY_UPPERCASED_PROPERTY",
+     "id",
+     "name"
+   ]},
+  {100,
+   NULL,
+   ARRAY<STRING>[known order:
+     "DUMMY_UPPERCASED_PROPERTY",
+     "id",
+     "name"
+   ]}
+]
+==
+
+[required_features=SQL_GRAPH]
+[name=graph_edge_property_names_function]
+select id, account_id, edge_props from
+graph_table(aml
+  match (n)-[e]->
+  columns(n.id, n.account_id, PROPERTY_NAMES(e) as edge_props)
+)
+order by id, account_id, ARRAY_TO_STRING(edge_props, ', ');
+--
+ARRAY<STRUCT<id INT64, account_id INT64, edge_props ARRAY<>>>[known order:
+  {
+    NULL,
+    1010,
+    ARRAY<STRING>["amount"]
+  },
+  {
+    NULL,
+    1010,
+    ARRAY<STRING>["amount"]
+  },
+  {
+    NULL,
+    1010,
+    ARRAY<STRING>["amount"]
+  },
+  {
+    NULL,
+    1010,
+    ARRAY<STRING>[known order:"dest_acct_kind", "src_acct_kind"]
+  },
+  {
+    NULL,
+    1010,
+    ARRAY<STRING>[known order:"dest_acct_kind", "src_acct_kind"]
+  },
+  {
+    NULL,
+    1020,
+    ARRAY<STRING>["amount"]
+  },
+  {
+    NULL,
+    1020,
+    ARRAY<STRING>["amount"]
+  },
+  {
+    NULL,
+    1030,
+    ARRAY<STRING>["amount"]
+  },
+  {
+    NULL,
+    1030,
+    ARRAY<STRING>[known order:"dest_acct_kind", "src_acct_kind"]
+  },
+  {
+    NULL,
+    1030,
+    ARRAY<STRING>[known order:"dest_acct_kind", "src_acct_kind"]
+  },
+  {
+    100,
+    NULL,
+    ARRAY<STRING>["since"]
+  },
+  {
+    100,
+    NULL,
+    ARRAY<STRING>["since"]
+  },
+  {
+    100,
+    NULL,
+    ARRAY<STRING>["timestamp"]
+  },
+  {
+    100,
+    NULL,
+    ARRAY<STRING>["timestamp"]
+  }
+]
+==
+
+[name=graph_property_names_function_null_input]
+[required_features=SQL_GRAPH,SQL_GRAPH_EXPOSE_GRAPH_ELEMENT]
+select PROPERTY_NAMES(gt.n)
+FROM graph_table(aml
+  match (n IS Account) -[e]-> (m IS Account)
+) gt
+RIGHT JOIN (SELECT 1)
+ON FALSE;
+--
+ARRAY<STRUCT<ARRAY<>>>[{ARRAY<STRING>(NULL)}]
+==
+
+[required_features=SQL_GRAPH]
+[name=graph_node_element_definition_name_function]
+select distinct node_names from
+graph_table(aml
+  match (n)-[e]->
+  columns( ELEMENT_DEFINITION_NAME(n) as node_names)
+)
+order by node_names;
+--
+ARRAY<STRUCT<node_names STRING>>[known order:{"Account"}, {"Person"}]
+==
+
+[required_features=SQL_GRAPH]
+[name=graph_edge_element_definition_name_function]
+select distinct edge_names from
+graph_table(aml
+  match (n)-[e]->
+  columns(ELEMENT_DEFINITION_NAME(e) as edge_names)
+)
+order by edge_names;
+--
+ARRAY<STRUCT<edge_names STRING>>[known order:
+  {"CanTransfer"},
+  {"Knows"},
+  {"Login"},
+  {"Transfer"}
+]
+==
+
+[name=graph_element_definition_name_function_null_input]
+[required_features=SQL_GRAPH,SQL_GRAPH_EXPOSE_GRAPH_ELEMENT]
+select ELEMENT_DEFINITION_NAME(gt.n)
+FROM graph_table(aml
+  match (n IS Account) -[e]-> (m IS Account)
+) gt
+RIGHT JOIN (SELECT 1)
+ON FALSE;
+--
+ARRAY<STRUCT<STRING>>[{NULL}]
+
+==
+
+[required_features=TYPEOF_FUNCTION,SQL_GRAPH]
+[name=graph_typeof]
+select distinct *
+from
+graph_table(aml
+  match (a)-[e]->(b),
+        (human:Human)-[knows:Knows]-
+  columns(typeof(a) as a, typeof(e) as e,
+          typeof(human) as human, typeof(knows) as knows)
+)
+--
+ARRAY<STRUCT<a STRING, e STRING, human STRING, knows STRING>>[
+  {
+    "GRAPH_NODE(aml)<account_id INT64, account_kind STRING, DUMMY_UPPERCASED_PROPERTY INT64, id INT64, name STRING, owner_id INT64, owner_id_proto googlesql_test.KitchenSinkPB>",
+    "GRAPH_EDGE(aml)<amount INT64, dest_acct_kind STRING, since TIMESTAMP, src_acct_kind STRING, timestamp TIMESTAMP>",
+    "GRAPH_NODE(aml)<DUMMY_UPPERCASED_PROPERTY INT64, id INT64, name STRING>",
+    "GRAPH_EDGE(aml)<since TIMESTAMP>"
+  }
+]
+==
+
+[required_features=SQL_GRAPH,SQL_GRAPH_EXPOSE_GRAPH_ELEMENT]
+[name=graph_is_labeled_null_node]
+select n is labeled Account
+FROM graph_table(aml
+  match (n IS Account) -[e]-> (m IS Account)
+) gt
+RIGHT JOIN (SELECT 1)
+ON FALSE
+--
+ARRAY<STRUCT<BOOL>>[{NULL}]
+==
+
+[required_features=SQL_GRAPH,SQL_GRAPH_EXPOSE_GRAPH_ELEMENT]
+[name=graph_is_labeled_null_edge]
+select e is labeled % | ! %
+FROM graph_table(aml
+  match (n IS Account) -[e]-> (m IS Account)
+) gt
+RIGHT JOIN (SELECT 1)
+ON FALSE
+--
+ARRAY<STRUCT<BOOL>>[{NULL}]
+
+==
+
+[required_features=SQL_GRAPH]
+[name=graph_is_labeled_node]
+SELECT labels, always_true, always_false, is_human, is_account
+FROM GRAPH_TABLE(
+  aml
+  MATCH (a)-[e]->(b)
+  COLUMNS(a.account_id,
+          labels(a) as labels,
+          a is labeled % | (account & human) as always_true,
+          a is not labeled %|!% as always_false,
+          a is labeled human as is_human,
+          a is labeled account as is_account)
+  )
+ORDER BY account_id
+--
+ARRAY<STRUCT<labels ARRAY<>,
+             always_true BOOL,
+             always_false BOOL,
+             is_human BOOL,
+             is_account BOOL>>
+[known order:{ARRAY<STRING>[known order:
+                "dummy_lowercased_label",
+                "Human"
+              ],
+              true,
+              false,
+              true,
+              false},
+             {ARRAY<STRING>[known order:
+                "dummy_lowercased_label",
+                "Human"
+              ],
+              true,
+              false,
+              true,
+              false},
+             {ARRAY<STRING>[known order:
+                "dummy_lowercased_label",
+                "Human"
+              ],
+              true,
+              false,
+              true,
+              false},
+             {ARRAY<STRING>[known order:
+                "dummy_lowercased_label",
+                "Human"
+              ],
+              true,
+              false,
+              true,
+              false},
+             {
+               ARRAY<STRING>["Account"],
+               true,
+               false,
+               false,
+               true
+             },
+             {
+               ARRAY<STRING>["Account"],
+               true,
+               false,
+               false,
+               true
+             },
+             {
+               ARRAY<STRING>["Account"],
+               true,
+               false,
+               false,
+               true
+             },
+             {
+               ARRAY<STRING>["Account"],
+               true,
+               false,
+               false,
+               true
+             },
+             {
+               ARRAY<STRING>["Account"],
+               true,
+               false,
+               false,
+               true
+             },
+             {
+               ARRAY<STRING>["Account"],
+               true,
+               false,
+               false,
+               true
+             },
+             {
+               ARRAY<STRING>["Account"],
+               true,
+               false,
+               false,
+               true
+             },
+             {
+               ARRAY<STRING>["Account"],
+               true,
+               false,
+               false,
+               true
+             },
+             {
+               ARRAY<STRING>["Account"],
+               true,
+               false,
+               false,
+               true
+             },
+             {
+               ARRAY<STRING>["Account"],
+               true,
+               false,
+               false,
+               true
+             }]
+==
+
+[required_features=SQL_GRAPH]
+[name=graph_is_labeled_edge]
+SELECT *
+FROM GRAPH_TABLE(
+  aml
+  MATCH (a)-[e: Transfer]->(b)
+  COLUMNS(a.account_id, labels(e) as labels, e is labeled Transfer as is_labeled)
+  )
+ORDER BY 1
+--
+ARRAY<STRUCT<account_id INT64, labels ARRAY<>, is_labeled BOOL>>[known order:
+  {
+    1010,
+    ARRAY<STRING>["Transfer"],
+    true
+  },
+  {
+    1010,
+    ARRAY<STRING>["Transfer"],
+    true
+  },
+  {
+    1010,
+    ARRAY<STRING>["Transfer"],
+    true
+  },
+  {
+    1020,
+    ARRAY<STRING>["Transfer"],
+    true
+  },
+  {
+    1020,
+    ARRAY<STRING>["Transfer"],
+    true
+  },
+  {
+    1030,
+    ARRAY<STRING>["Transfer"],
+    true
+  }
+]
+==
+[required_features=SQL_GRAPH,SQL_GRAPH_EXPOSE_GRAPH_ELEMENT]
+[name=graph_element_id_null_input]
+
+select element_id(n), element_id(e)
+FROM graph_table(aml
+  match (n IS Account) -[e]-> (m IS Account)
+) gt
+RIGHT JOIN (SELECT 1)
+ON FALSE
+--
+ARRAY<STRUCT<STRING, STRING>>[{NULL, NULL}]
+==
+[required_features=SQL_GRAPH,SQL_GRAPH_EXPOSE_GRAPH_ELEMENT]
+[name=graph_source_node_id_null_input]
+
+select source_node_id(e)
+FROM graph_table(aml
+  match (n IS Account) -[e]-> (m IS Account)
+) gt
+RIGHT JOIN (SELECT 1)
+ON FALSE
+--
+ARRAY<STRUCT<STRING>>[{NULL}]
+==
+[required_features=SQL_GRAPH,SQL_GRAPH_EXPOSE_GRAPH_ELEMENT]
+[name=graph_destination_node_id_null_input]
+
+select destination_node_id(e)
+FROM graph_table(aml
+  match (n IS Account) -[e]-> (m IS Account)
+) gt
+RIGHT JOIN (SELECT 1)
+ON FALSE
+--
+ARRAY<STRUCT<STRING>>[{NULL}]
+==
+
+[required_features=SQL_GRAPH]
+[name=graph_element_id_node_is_unique]
+SELECT
+  ARRAY_IS_DISTINCT(
+    ARRAY(
+      SELECT id FROM
+      GRAPH_TABLE(aml
+                  MATCH(n)
+                  COLUMNS(ELEMENT_ID(n) AS id))
+      ORDER BY id
+    ));
+--
+ARRAY<STRUCT<BOOL>>[{true}]
+==
+
+[required_features=SQL_GRAPH]
+[name=graph_element_id_edge_is_unique]
+SELECT
+  ARRAY_IS_DISTINCT(
+    ARRAY(
+      SELECT CONCAT(id, src_id, dest_id) as composite_id FROM
+      GRAPH_TABLE(aml
+                  MATCH -[e]->
+                  COLUMNS(ELEMENT_ID(e) AS id,
+                          SOURCE_NODE_ID(e) AS src_id,
+                          DESTINATION_NODE_ID(e) AS dest_id))
+      ORDER BY 1
+    ));
+--
+ARRAY<STRUCT<BOOL>>[{true}]
+==
+
+[required_features=SQL_GRAPH]
+[name=graph_ddl_with_table_with_same_name_column]
+select table_with_same_name_column
+from graph_table( aml3
+  match (n:table_with_same_name_column {table_with_same_name_column:"1"})
+  columns (n.table_with_same_name_column)
+)
+--
+ARRAY<STRUCT<table_with_same_name_column STRING>>[{"1"}]
+==
+
+[required_features=SQL_GRAPH,SQL_GRAPH_ADVANCED_QUERY]
+[name=edge_element_definition_name]
+SELECT name FROM
+GRAPH_TABLE(aml
+  MATCH -[e]->
+  RETURN ELEMENT_DEFINITION_NAME(e) AS name)
+GROUP BY name
+ORDER BY name
+--
+ARRAY<STRUCT<name STRING>>[known order:
+  {"CanTransfer"},
+  {"Knows"},
+  {"Login"},
+  {"Transfer"}
+]
+==
+
+[required_features=SQL_GRAPH,SQL_GRAPH_ADVANCED_QUERY]
+[name=node_element_definition_name]
+SELECT name FROM
+GRAPH_TABLE(aml
+  MATCH (n)
+  RETURN ELEMENT_DEFINITION_NAME(n) AS name)
+GROUP BY name
+ORDER BY name
+--
+ARRAY<STRUCT<name STRING>>[known order:{"Account"}, {"Person"}]

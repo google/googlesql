@@ -1,0 +1,99 @@
+[load_proto_files=googlesql/testdata/test_schema.proto]
+[load_proto_names=googlesql_test.KitchenSinkPB]
+[load_enum_names=googlesql_test.TestEnum]
+[default required_features=CONCAT_MIXED_TYPES]
+
+[name=concat_null]
+SELECT CONCAT(x) FROM UNNEST([NULL]) x
+--
+ARRAY<STRUCT<STRING>>[{NULL}]
+==
+[name=concat_bool]
+SELECT CONCAT(x, NOT x) FROM UNNEST([true]) x
+--
+ARRAY<STRUCT<STRING>>[{"truefalse"}]
+==
+[name=concat_int64]
+SELECT CONCAT(x, -x) FROM UNNEST([239]) x
+--
+ARRAY<STRUCT<STRING>>[{"239-239"}]
+==
+[name=concat_uint32]
+SELECT CONCAT("uint", x) FROM UNNEST([CAST(32 AS UINT32)]) x
+--
+ARRAY<STRUCT<STRING>>[{"uint32"}]
+==
+[name=concat_numeric]
+[required_features=CONCAT_MIXED_TYPES,NUMERIC_TYPE]
+SELECT CONCAT(x) FROM UNNEST([CAST('99999999999999999999999.87654321' AS NUMERIC)]) x
+--
+ARRAY<STRUCT<STRING>>[{"99999999999999999999999.87654321"}]
+==
+[name=concat_double]
+SELECT CONCAT(1.23456789, -8765432.1, 1e55)
+--
+ARRAY<STRUCT<STRING>>[{"1.23456789-8765432.11e+55"}]
+==
+[name=concat_timestamp]
+SELECT CONCAT(x) FROM UNNEST([TIMESTAMP '2000-01-02 03:04:05.678']) x
+--
+ARRAY<STRUCT<STRING>>[{"2000-01-02 03:04:05.678-08"}]
+==
+[name=concat_date]
+SELECT CONCAT(x) FROM UNNEST([DATE '2020-10-10']) x
+--
+ARRAY<STRUCT<STRING>>[{"2020-10-10"}]
+==
+[name=concat_datetime]
+[required_features=CONCAT_MIXED_TYPES,CIVIL_TIME]
+SELECT CONCAT(x) FROM UNNEST([DATETIME '2015-12-21 23:54:32']) x
+--
+ARRAY<STRUCT<STRING>>[{"2015-12-21 23:54:32"}]
+==
+[name=concat_time]
+[required_features=CONCAT_MIXED_TYPES,CIVIL_TIME]
+SELECT CONCAT(x) FROM UNNEST([TIME '01:02:03.456789']) x
+--
+ARRAY<STRUCT<STRING>>[{"01:02:03.456789"}]
+==
+[name=concat_interval]
+[required_Features=CONCAT_MIXED_TYPES,INTERVAL_TYPE]
+SELECT CONCAT(x), CONCAT('a', x)  FROM UNNEST([INTERVAL '1 2 3' MONTH TO HOUR]) x
+--
+ARRAY<STRUCT<STRING, STRING>>[{"0-1 2 3:0:0", "a0-1 2 3:0:0"}]
+==
+[name=concat_proto]
+SELECT CONCAT(x.int64_key_1, x) FROM UNNEST([NEW googlesql_test.KitchenSinkPB(5 AS int64_key_1, 6 AS int64_key_2)]) x;
+--
+ARRAY<STRUCT<STRING>>[{"5int64_key_1: 5 int64_key_2: 6"}]
+
+NOTE: Reference implementation reports non-determinism.
+==
+[name=concat_enum]
+SELECT CONCAT(
+  CAST(1 AS googlesql_test.TestEnum),
+  CAST(2 AS googlesql_test.TestEnum),
+  CAST(2147483647 AS googlesql_test.TestEnum));
+--
+ARRAY<STRUCT<STRING>>[{"TESTENUM1TESTENUM2TESTENUM2147483647"}]
+==
+[name=concat_all_basic_types]
+SELECT CONCAT(0.1, 'A', -5, DATE '0001-01-01', true, TIMESTAMP '1999-12-31 23:59:59.999')
+--
+ARRAY<STRUCT<STRING>>[{"0.1A-50001-01-01true1999-12-31 23:59:59.999-08"}]
+==
+[name=concat_parameters]
+[parameters=false as pbool, -321 as pint, 9.876 as pdouble, DATE '1999-11-22' as pdate]
+SELECT CONCAT(@pbool, @pint, @pdouble, @pdate)
+--
+ARRAY<STRUCT<STRING>>[{"false-3219.8761999-11-22"}]
+
+NOTE: Reference implementation reports non-determinism.
+==
+[name=concat_operator]
+[parameters=123 as num]
+SELECT date '2000-01-01' || ' ' || (1 > 0) || @num || ' ,pi=' || round(acos(0.0)*2,8)
+--
+ARRAY<STRUCT<STRING>>[{"2000-01-01 true123 ,pi=3.14159265"}]
+
+NOTE: Reference implementation reports non-determinism.

@@ -4,7 +4,7 @@
 
 # Timestamp functions
 
-ZetaSQL supports the following timestamp functions.
+GoogleSQL supports the following timestamp functions.
 
 IMPORTANT: Before working with these functions, you need to understand
 the difference between the formats in which timestamps are stored and displayed,
@@ -28,7 +28,7 @@ and [`TIMESTAMP` range][data-types-link-to-timestamp_type].
   <tbody>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/timestamp_functions.md#current_timestamp"><code>CURRENT_TIMESTAMP</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/timestamp_functions.md#current_timestamp"><code>CURRENT_TIMESTAMP</code></a>
 </td>
   <td>
     Returns the current date and time as a <code>TIMESTAMP</code> object.
@@ -36,7 +36,7 @@ and [`TIMESTAMP` range][data-types-link-to-timestamp_type].
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/timestamp_functions.md#extract"><code>EXTRACT</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/timestamp_functions.md#extract"><code>EXTRACT</code></a>
 </td>
   <td>
     Extracts part of a <code>TIMESTAMP</code> value.
@@ -44,7 +44,7 @@ and [`TIMESTAMP` range][data-types-link-to-timestamp_type].
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/timestamp_functions.md#format_timestamp"><code>FORMAT_TIMESTAMP</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/timestamp_functions.md#format_timestamp"><code>FORMAT_TIMESTAMP</code></a>
 </td>
   <td>
     Formats a <code>TIMESTAMP</code> value according to the specified
@@ -53,17 +53,17 @@ and [`TIMESTAMP` range][data-types-link-to-timestamp_type].
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/array_functions.md#generate_timestamp_array"><code>GENERATE_TIMESTAMP_ARRAY</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/array_functions.md#generate_timestamp_array"><code>GENERATE_TIMESTAMP_ARRAY</code></a>
 </td>
   <td>
     Generates an array of timestamps in a range.
-    <br>For more information, see <a href="https://github.com/google/zetasql/blob/master/docs/array_functions.md">Array functions</a>.
+    <br>For more information, see <a href="https://github.com/google/googlesql/blob/master/docs/array_functions.md">Array functions</a>.
 
   </td>
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/timestamp_functions.md#parse_timestamp"><code>PARSE_TIMESTAMP</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/timestamp_functions.md#parse_timestamp"><code>PARSE_TIMESTAMP</code></a>
 </td>
   <td>
     Converts a <code>STRING</code> value to a <code>TIMESTAMP</code> value.
@@ -72,7 +72,7 @@ and [`TIMESTAMP` range][data-types-link-to-timestamp_type].
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/timestamp_functions.md#string"><code>STRING</code> (Timestamp)</a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/timestamp_functions.md#string"><code>STRING</code> (Timestamp)</a>
 </td>
   <td>
     Converts a <code>TIMESTAMP</code> value to a <code>STRING</code> value.
@@ -81,7 +81,7 @@ and [`TIMESTAMP` range][data-types-link-to-timestamp_type].
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/timestamp_functions.md#timestamp"><code>TIMESTAMP</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/timestamp_functions.md#timestamp"><code>TIMESTAMP</code></a>
 </td>
   <td>
     Constructs a <code>TIMESTAMP</code> value.
@@ -89,7 +89,7 @@ and [`TIMESTAMP` range][data-types-link-to-timestamp_type].
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/timestamp_functions.md#timestamp_add"><code>TIMESTAMP_ADD</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/timestamp_functions.md#timestamp_add"><code>TIMESTAMP_ADD</code></a>
 </td>
   <td>
     Adds a specified time interval to a <code>TIMESTAMP</code> value.
@@ -97,7 +97,7 @@ and [`TIMESTAMP` range][data-types-link-to-timestamp_type].
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/timestamp_functions.md#timestamp_diff"><code>TIMESTAMP_DIFF</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/timestamp_functions.md#timestamp_diff"><code>TIMESTAMP_DIFF</code></a>
 </td>
   <td>
     Gets the number of unit boundaries between two <code>TIMESTAMP</code> values
@@ -106,7 +106,7 @@ and [`TIMESTAMP` range][data-types-link-to-timestamp_type].
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/timestamp_functions.md#timestamp_from_unix_micros"><code>TIMESTAMP_FROM_UNIX_MICROS</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/timestamp_functions.md#timestamp_from_unix_micros"><code>TIMESTAMP_FROM_UNIX_MICROS</code></a>
 </td>
   <td>
     Similar to <code>TIMESTAMP_MICROS</code>, except that additionally, a
@@ -115,7 +115,7 @@ and [`TIMESTAMP` range][data-types-link-to-timestamp_type].
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/timestamp_functions.md#timestamp_from_unix_millis"><code>TIMESTAMP_FROM_UNIX_MILLIS</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/timestamp_functions.md#timestamp_from_unix_millis"><code>TIMESTAMP_FROM_UNIX_MILLIS</code></a>
 </td>
   <td>
     Similar to <code>TIMESTAMP_MILLIS</code>, except that additionally, a
@@ -124,7 +124,7 @@ and [`TIMESTAMP` range][data-types-link-to-timestamp_type].
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/timestamp_functions.md#timestamp_from_unix_seconds"><code>TIMESTAMP_FROM_UNIX_SECONDS</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/timestamp_functions.md#timestamp_from_unix_seconds"><code>TIMESTAMP_FROM_UNIX_SECONDS</code></a>
 </td>
   <td>
     Similar to <code>TIMESTAMP_SECONDS</code>, except that additionally, a
@@ -133,7 +133,7 @@ and [`TIMESTAMP` range][data-types-link-to-timestamp_type].
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/timestamp_functions.md#timestamp_micros"><code>TIMESTAMP_MICROS</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/timestamp_functions.md#timestamp_micros"><code>TIMESTAMP_MICROS</code></a>
 </td>
   <td>
     Converts the number of microseconds since
@@ -143,7 +143,7 @@ and [`TIMESTAMP` range][data-types-link-to-timestamp_type].
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/timestamp_functions.md#timestamp_millis"><code>TIMESTAMP_MILLIS</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/timestamp_functions.md#timestamp_millis"><code>TIMESTAMP_MILLIS</code></a>
 </td>
   <td>
     Converts the number of milliseconds since
@@ -153,7 +153,7 @@ and [`TIMESTAMP` range][data-types-link-to-timestamp_type].
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/timestamp_functions.md#timestamp_seconds"><code>TIMESTAMP_SECONDS</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/timestamp_functions.md#timestamp_seconds"><code>TIMESTAMP_SECONDS</code></a>
 </td>
   <td>
     Converts the number of seconds since
@@ -163,7 +163,7 @@ and [`TIMESTAMP` range][data-types-link-to-timestamp_type].
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/timestamp_functions.md#timestamp_sub"><code>TIMESTAMP_SUB</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/timestamp_functions.md#timestamp_sub"><code>TIMESTAMP_SUB</code></a>
 </td>
   <td>
     Subtracts a specified time interval from a <code>TIMESTAMP</code> value.
@@ -171,7 +171,7 @@ and [`TIMESTAMP` range][data-types-link-to-timestamp_type].
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/timestamp_functions.md#timestamp_trunc"><code>TIMESTAMP_TRUNC</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/timestamp_functions.md#timestamp_trunc"><code>TIMESTAMP_TRUNC</code></a>
 </td>
   <td>
     
@@ -183,7 +183,7 @@ and [`TIMESTAMP` range][data-types-link-to-timestamp_type].
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/timestamp_functions.md#unix_micros"><code>UNIX_MICROS</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/timestamp_functions.md#unix_micros"><code>UNIX_MICROS</code></a>
 </td>
   <td>
     Converts a <code>TIMESTAMP</code> value to the number of microseconds since
@@ -193,7 +193,7 @@ and [`TIMESTAMP` range][data-types-link-to-timestamp_type].
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/timestamp_functions.md#unix_millis"><code>UNIX_MILLIS</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/timestamp_functions.md#unix_millis"><code>UNIX_MILLIS</code></a>
 </td>
   <td>
     Converts a <code>TIMESTAMP</code> value to the number of milliseconds
@@ -203,7 +203,7 @@ and [`TIMESTAMP` range][data-types-link-to-timestamp_type].
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/timestamp_functions.md#unix_seconds"><code>UNIX_SECONDS</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/timestamp_functions.md#unix_seconds"><code>UNIX_SECONDS</code></a>
 </td>
   <td>
     Converts a <code>TIMESTAMP</code> value to the number of seconds since
@@ -217,11 +217,11 @@ and [`TIMESTAMP` range][data-types-link-to-timestamp_type].
 
 ## `CURRENT_TIMESTAMP`
 
-```zetasql
+```googlesql
 CURRENT_TIMESTAMP()
 ```
 
-```zetasql
+```googlesql
 CURRENT_TIMESTAMP
 ```
 
@@ -248,7 +248,7 @@ Not applicable
 
 **Examples**
 
-```zetasql
+```googlesql
 SELECT CURRENT_TIMESTAMP() AS now;
 
 /*---------------------------------------------+
@@ -260,7 +260,7 @@ SELECT CURRENT_TIMESTAMP() AS now;
 
 ## `EXTRACT`
 
-```zetasql
+```googlesql
 EXTRACT(part FROM timestamp_expression [AT TIME ZONE time_zone])
 ```
 
@@ -320,7 +320,7 @@ seconds, `EXTRACT` truncates the millisecond and microsecond values.
 In the following example, `EXTRACT` returns a value corresponding to the `DAY`
 time part.
 
-```zetasql
+```googlesql
 SELECT
   EXTRACT(
     DAY
@@ -341,7 +341,7 @@ SELECT
 In the following examples, `EXTRACT` returns values corresponding to different
 time parts from a column of type `TIMESTAMP`.
 
-```zetasql
+```googlesql
 SELECT
   EXTRACT(ISOYEAR FROM TIMESTAMP("2005-01-03 12:34:56+00")) AS isoyear,
   EXTRACT(ISOWEEK FROM TIMESTAMP("2005-01-03 12:34:56+00")) AS isoweek,
@@ -357,7 +357,7 @@ SELECT
  +---------+---------+------+------*/
 ```
 
-```zetasql
+```googlesql
 SELECT
   TIMESTAMP("2007-12-31 12:00:00+00") AS timestamp_value,
   EXTRACT(ISOYEAR FROM TIMESTAMP("2007-12-31 12:00:00+00")) AS isoyear,
@@ -374,7 +374,7 @@ SELECT
  +---------+---------+------+------*/
 ```
 
-```zetasql
+```googlesql
 SELECT
   TIMESTAMP("2009-01-01 12:00:00+00") AS timestamp_value,
   EXTRACT(ISOYEAR FROM TIMESTAMP("2009-01-01 12:00:00+00")) AS isoyear,
@@ -391,7 +391,7 @@ SELECT
  +---------+---------+------+------*/
 ```
 
-```zetasql
+```googlesql
 SELECT
   TIMESTAMP("2009-12-31 12:00:00+00") AS timestamp_value,
   EXTRACT(ISOYEAR FROM TIMESTAMP("2009-12-31 12:00:00+00")) AS isoyear,
@@ -408,7 +408,7 @@ SELECT
  +---------+---------+------+------*/
 ```
 
-```zetasql
+```googlesql
 SELECT
   TIMESTAMP("2017-01-02 12:00:00+00") AS timestamp_value,
   EXTRACT(ISOYEAR FROM TIMESTAMP("2017-01-02 12:00:00+00")) AS isoyear,
@@ -425,7 +425,7 @@ SELECT
  +---------+---------+------+------*/
 ```
 
-```zetasql
+```googlesql
 SELECT
   TIMESTAMP("2017-05-26 12:00:00+00") AS timestamp_value,
   EXTRACT(ISOYEAR FROM TIMESTAMP("2017-05-26 12:00:00+00")) AS isoyear,
@@ -446,7 +446,7 @@ In the following example, `timestamp_expression` falls on a Monday. `EXTRACT`
 calculates the first column using weeks that begin on Sunday, and it calculates
 the second column using weeks that begin on Monday.
 
-```zetasql
+```googlesql
 SELECT
   EXTRACT(WEEK(SUNDAY) FROM TIMESTAMP("2017-11-06 00:00:00+00")) AS week_sunday,
   EXTRACT(WEEK(MONDAY) FROM TIMESTAMP("2017-11-06 00:00:00+00")) AS week_monday
@@ -468,7 +468,7 @@ SELECT
 
 ## `FORMAT_TIMESTAMP`
 
-```zetasql
+```googlesql
 FORMAT_TIMESTAMP(format_string, timestamp_expr[, time_zone])
 ```
 
@@ -492,7 +492,7 @@ Formats a `TIMESTAMP` value according to the specified format string.
 
 **Examples**
 
-```zetasql
+```googlesql
 SELECT FORMAT_TIMESTAMP("%c", TIMESTAMP "2050-12-25 15:30:55+00", "UTC")
   AS formatted;
 
@@ -503,7 +503,7 @@ SELECT FORMAT_TIMESTAMP("%c", TIMESTAMP "2050-12-25 15:30:55+00", "UTC")
  +--------------------------*/
 ```
 
-```zetasql
+```googlesql
 SELECT FORMAT_TIMESTAMP("%b-%d-%Y", TIMESTAMP "2050-12-25 15:30:55+00")
   AS formatted;
 
@@ -514,7 +514,7 @@ SELECT FORMAT_TIMESTAMP("%b-%d-%Y", TIMESTAMP "2050-12-25 15:30:55+00")
  +-------------*/
 ```
 
-```zetasql
+```googlesql
 SELECT FORMAT_TIMESTAMP("%b %Y", TIMESTAMP "2050-12-25 15:30:55+00")
   AS formatted;
 
@@ -525,7 +525,7 @@ SELECT FORMAT_TIMESTAMP("%b %Y", TIMESTAMP "2050-12-25 15:30:55+00")
  +-------------*/
 ```
 
-```zetasql
+```googlesql
 SELECT FORMAT_TIMESTAMP("%Y-%m-%dT%H:%M:%S%Z", TIMESTAMP "2050-12-25 15:30:55", "UTC")
   AS formatted;
 
@@ -536,13 +536,13 @@ SELECT FORMAT_TIMESTAMP("%Y-%m-%dT%H:%M:%S%Z", TIMESTAMP "2050-12-25 15:30:55", 
  +------------------------*/
 ```
 
-[timestamp-format-elements]: https://github.com/google/zetasql/blob/master/docs/format-elements.md#format_elements_date_time
+[timestamp-format-elements]: https://github.com/google/googlesql/blob/master/docs/format-elements.md#format_elements_date_time
 
 [timestamp-link-to-timezone-definitions]: #timezone_definitions
 
 ## `PARSE_TIMESTAMP`
 
-```zetasql
+```googlesql
 PARSE_TIMESTAMP(format_string, timestamp_string[, time_zone])
 ```
 
@@ -565,7 +565,7 @@ Each element in `timestamp_string` must have a corresponding element in
 `format_string`. The location of each element in `format_string` must match the
 location of each element in `timestamp_string`.
 
-```zetasql
+```googlesql
 -- This works because elements on both sides match.
 SELECT PARSE_TIMESTAMP("%a %b %e %I:%M:%S %Y", "Thu Dec 25 07:30:00 2008");
 
@@ -607,7 +607,7 @@ function:
 +   Numeric values after `%G` input values. Any input string value that
     corresponds to the `%G` format element requires a whitespace or non-digit
     character as a separator from numeric values that follow. This is a known
-    issue in ZetaSQL. For example, the function arguments `('%G
+    issue in GoogleSQL. For example, the function arguments `('%G
     %V','2020 50')` or `('%G-%V','2020-50')` work, but not `('%G%V','202050')`.
     For input values before the corresponding `%G` value, no separator is
     needed. For example, the arguments `('%V%G','502020')` work. The separator
@@ -620,7 +620,7 @@ function:
 
 **Example**
 
-```zetasql
+```googlesql
 SELECT PARSE_TIMESTAMP("%c", "Thu Dec 25 07:30:00 2008") AS parsed;
 
 -- Display of results may differ, depending upon the environment and time zone where this query was executed.
@@ -631,13 +631,13 @@ SELECT PARSE_TIMESTAMP("%c", "Thu Dec 25 07:30:00 2008") AS parsed;
  +---------------------------------------------*/
 ```
 
-[timestamp-format-elements]: https://github.com/google/zetasql/blob/master/docs/format-elements.md#format_elements_date_time
+[timestamp-format-elements]: https://github.com/google/googlesql/blob/master/docs/format-elements.md#format_elements_date_time
 
 [timestamp-link-to-timezone-definitions]: #timezone_definitions
 
 ## `STRING`
 
-```zetasql
+```googlesql
 STRING(timestamp_expression[, time_zone])
 ```
 
@@ -654,7 +654,7 @@ on how to specify a time zone.
 
 **Example**
 
-```zetasql
+```googlesql
 SELECT STRING(TIMESTAMP "2008-12-25 15:30:00+00", "UTC") AS string;
 
 /*-------------------------------+
@@ -668,7 +668,7 @@ SELECT STRING(TIMESTAMP "2008-12-25 15:30:00+00", "UTC") AS string;
 
 ## `TIMESTAMP`
 
-```zetasql
+```googlesql
 TIMESTAMP(string_expression[, time_zone])
 TIMESTAMP(date_expression[, time_zone])
 TIMESTAMP(datetime_expression[, time_zone])
@@ -699,7 +699,7 @@ is used.
 
 **Examples**
 
-```zetasql
+```googlesql
 SELECT TIMESTAMP("2008-12-25 15:30:00+00") AS timestamp_str;
 
 -- Display of results may differ, depending upon the environment and time zone where this query was executed.
@@ -710,7 +710,7 @@ SELECT TIMESTAMP("2008-12-25 15:30:00+00") AS timestamp_str;
  +---------------------------------------------*/
 ```
 
-```zetasql
+```googlesql
 SELECT TIMESTAMP("2008-12-25 15:30:00", "America/Los_Angeles") AS timestamp_str;
 
 -- Display of results may differ, depending upon the environment and time zone where this query was executed.
@@ -721,7 +721,7 @@ SELECT TIMESTAMP("2008-12-25 15:30:00", "America/Los_Angeles") AS timestamp_str;
  +---------------------------------------------*/
 ```
 
-```zetasql
+```googlesql
 SELECT TIMESTAMP("2008-12-25 15:30:00 UTC") AS timestamp_str;
 
 -- Display of results may differ, depending upon the environment and time zone where this query was executed.
@@ -732,7 +732,7 @@ SELECT TIMESTAMP("2008-12-25 15:30:00 UTC") AS timestamp_str;
  +---------------------------------------------*/
 ```
 
-```zetasql
+```googlesql
 SELECT TIMESTAMP(DATETIME "2008-12-25 15:30:00") AS timestamp_datetime;
 
 -- Display of results may differ, depending upon the environment and time zone where this query was executed.
@@ -743,7 +743,7 @@ SELECT TIMESTAMP(DATETIME "2008-12-25 15:30:00") AS timestamp_datetime;
  +---------------------------------------------*/
 ```
 
-```zetasql
+```googlesql
 SELECT TIMESTAMP(DATE "2008-12-25") AS timestamp_date;
 
 -- Display of results may differ, depending upon the environment and time zone where this query was executed.
@@ -758,7 +758,7 @@ SELECT TIMESTAMP(DATE "2008-12-25") AS timestamp_date;
 
 ## `TIMESTAMP_ADD`
 
-```zetasql
+```googlesql
 TIMESTAMP_ADD(timestamp_expression, INTERVAL int64_expression date_part)
 ```
 
@@ -784,7 +784,7 @@ any time zone.
 
 **Example**
 
-```zetasql
+```googlesql
 SELECT
   TIMESTAMP("2008-12-25 15:30:00+00") AS original,
   TIMESTAMP_ADD(TIMESTAMP "2008-12-25 15:30:00+00", INTERVAL 10 MINUTE) AS later;
@@ -799,7 +799,7 @@ SELECT
 
 ## `TIMESTAMP_DIFF`
 
-```zetasql
+```googlesql
 TIMESTAMP_DIFF(end_timestamp, start_timestamp, granularity)
 ```
 
@@ -843,7 +843,7 @@ behaves like `DATE_DIFF(DATE, DATE, PART)`.
 
 **Example**
 
-```zetasql
+```googlesql
 SELECT
   TIMESTAMP("2010-07-07 10:20:00+00") AS later_timestamp,
   TIMESTAMP("2008-12-25 15:30:00+00") AS earlier_timestamp,
@@ -860,7 +860,7 @@ SELECT
 In the following example, the first timestamp occurs before the
 second timestamp, resulting in a negative output.
 
-```zetasql
+```googlesql
 SELECT TIMESTAMP_DIFF(TIMESTAMP "2018-08-14", TIMESTAMP "2018-10-14", DAY) AS negative_diff;
 
 /*---------------+
@@ -873,7 +873,7 @@ SELECT TIMESTAMP_DIFF(TIMESTAMP "2018-08-14", TIMESTAMP "2018-10-14", DAY) AS ne
 In this example, the result is 0 because only the number of whole specified
 `HOUR` intervals are included.
 
-```zetasql
+```googlesql
 SELECT TIMESTAMP_DIFF("2001-02-01 01:00:00", "2001-02-01 00:00:01", HOUR) AS diff;
 
 /*---------------+
@@ -885,11 +885,11 @@ SELECT TIMESTAMP_DIFF("2001-02-01 01:00:00", "2001-02-01 00:00:01", HOUR) AS dif
 
 ## `TIMESTAMP_FROM_UNIX_MICROS`
 
-```zetasql
+```googlesql
 TIMESTAMP_FROM_UNIX_MICROS(int64_expression)
 ```
 
-```zetasql
+```googlesql
 TIMESTAMP_FROM_UNIX_MICROS(timestamp_expression)
 ```
 
@@ -905,7 +905,7 @@ the same timestamp is returned.
 
 **Example**
 
-```zetasql
+```googlesql
 SELECT TIMESTAMP_FROM_UNIX_MICROS(1230219000000000) AS timestamp_value;
 
 -- Display of results may differ, depending upon the environment and time zone where this query was executed.
@@ -918,11 +918,11 @@ SELECT TIMESTAMP_FROM_UNIX_MICROS(1230219000000000) AS timestamp_value;
 
 ## `TIMESTAMP_FROM_UNIX_MILLIS`
 
-```zetasql
+```googlesql
 TIMESTAMP_FROM_UNIX_MILLIS(int64_expression)
 ```
 
-```zetasql
+```googlesql
 TIMESTAMP_FROM_UNIX_MILLIS(timestamp_expression)
 ```
 
@@ -938,7 +938,7 @@ the same timestamp is returned.
 
 **Example**
 
-```zetasql
+```googlesql
 SELECT TIMESTAMP_FROM_UNIX_MILLIS(1230219000000) AS timestamp_value;
 
 -- Display of results may differ, depending upon the environment and time zone where this query was executed.
@@ -951,11 +951,11 @@ SELECT TIMESTAMP_FROM_UNIX_MILLIS(1230219000000) AS timestamp_value;
 
 ## `TIMESTAMP_FROM_UNIX_SECONDS`
 
-```zetasql
+```googlesql
 TIMESTAMP_FROM_UNIX_SECONDS(int64_expression)
 ```
 
-```zetasql
+```googlesql
 TIMESTAMP_FROM_UNIX_SECONDS(timestamp_expression)
 ```
 
@@ -971,7 +971,7 @@ the same timestamp is returned.
 
 **Example**
 
-```zetasql
+```googlesql
 SELECT TIMESTAMP_FROM_UNIX_SECONDS(1230219000) AS timestamp_value;
 
 -- Display of results may differ, depending upon the environment and time zone where this query was executed.
@@ -984,7 +984,7 @@ SELECT TIMESTAMP_FROM_UNIX_SECONDS(1230219000) AS timestamp_value;
 
 ## `TIMESTAMP_MICROS`
 
-```zetasql
+```googlesql
 TIMESTAMP_MICROS(int64_expression)
 ```
 
@@ -999,7 +999,7 @@ Interprets `int64_expression` as the number of microseconds since 1970-01-01
 
 **Example**
 
-```zetasql
+```googlesql
 SELECT TIMESTAMP_MICROS(1230219000000000) AS timestamp_value;
 
 -- Display of results may differ, depending upon the environment and time zone where this query was executed.
@@ -1012,7 +1012,7 @@ SELECT TIMESTAMP_MICROS(1230219000000000) AS timestamp_value;
 
 ## `TIMESTAMP_MILLIS`
 
-```zetasql
+```googlesql
 TIMESTAMP_MILLIS(int64_expression)
 ```
 
@@ -1027,7 +1027,7 @@ Interprets `int64_expression` as the number of milliseconds since 1970-01-01
 
 **Example**
 
-```zetasql
+```googlesql
 SELECT TIMESTAMP_MILLIS(1230219000000) AS timestamp_value;
 
 -- Display of results may differ, depending upon the environment and time zone where this query was executed.
@@ -1040,7 +1040,7 @@ SELECT TIMESTAMP_MILLIS(1230219000000) AS timestamp_value;
 
 ## `TIMESTAMP_SECONDS`
 
-```zetasql
+```googlesql
 TIMESTAMP_SECONDS(int64_expression)
 ```
 
@@ -1055,7 +1055,7 @@ UTC and returns a timestamp.
 
 **Example**
 
-```zetasql
+```googlesql
 SELECT TIMESTAMP_SECONDS(1230219000) AS timestamp_value;
 
 -- Display of results may differ, depending upon the environment and time zone where this query was executed.
@@ -1068,7 +1068,7 @@ SELECT TIMESTAMP_SECONDS(1230219000) AS timestamp_value;
 
 ## `TIMESTAMP_SUB`
 
-```zetasql
+```googlesql
 TIMESTAMP_SUB(timestamp_expression, INTERVAL int64_expression date_part)
 ```
 
@@ -1094,7 +1094,7 @@ independent of any time zone.
 
 **Example**
 
-```zetasql
+```googlesql
 SELECT
   TIMESTAMP("2008-12-25 15:30:00+00") AS original,
   TIMESTAMP_SUB(TIMESTAMP "2008-12-25 15:30:00+00", INTERVAL 10 MINUTE) AS earlier;
@@ -1109,11 +1109,11 @@ SELECT
 
 ## `TIMESTAMP_TRUNC`
 
-```zetasql
+```googlesql
 TIMESTAMP_TRUNC(timestamp_value, timestamp_granularity[, time_zone])
 ```
 
-```zetasql
+```googlesql
 TIMESTAMP_TRUNC(datetime_value, datetime_granularity)
 ```
 
@@ -1231,7 +1231,7 @@ The same data type as the first argument passed into this function.
 
 **Examples**
 
-```zetasql
+```googlesql
 SELECT
   TIMESTAMP_TRUNC(TIMESTAMP "2008-12-25 15:30:00+00", DAY, "UTC") AS utc,
   TIMESTAMP_TRUNC(TIMESTAMP "2008-12-25 15:30:00+00", DAY, "America/Los_Angeles") AS la;
@@ -1254,7 +1254,7 @@ argument 'Pacific/Auckland'. Here, the function truncates the
 `timestamp_expression` using New Zealand Daylight Time, where it falls on a
 Monday.
 
-```zetasql
+```googlesql
 SELECT
   timestamp_value AS timestamp_value,
   TIMESTAMP_TRUNC(timestamp_value, WEEK(MONDAY), "UTC") AS utc_truncated,
@@ -1277,7 +1277,7 @@ the Gregorian calendar year. The first Thursday of the 2015 calendar year was
 Therefore the ISO year boundary preceding the `timestamp_expression`
 2015-06-15 00:00:00+00 is 2014-12-29.
 
-```zetasql
+```googlesql
 SELECT
   TIMESTAMP_TRUNC("2015-06-15 00:00:00+00", ISOYEAR) AS isoyear_boundary,
   EXTRACT(ISOYEAR FROM TIMESTAMP "2015-06-15 00:00:00+00") AS isoyear_number;
@@ -1300,7 +1300,7 @@ SELECT
 
 ## `UNIX_MICROS`
 
-```zetasql
+```googlesql
 UNIX_MICROS(timestamp_expression)
 ```
 
@@ -1316,7 +1316,7 @@ rounding down to the beginning of the microsecond.
 
 **Examples**
 
-```zetasql
+```googlesql
 SELECT UNIX_MICROS(TIMESTAMP "2008-12-25 15:30:00+00") AS micros;
 
 /*------------------+
@@ -1326,7 +1326,7 @@ SELECT UNIX_MICROS(TIMESTAMP "2008-12-25 15:30:00+00") AS micros;
  +------------------*/
 ```
 
-```zetasql
+```googlesql
 SELECT UNIX_MICROS(TIMESTAMP "1970-01-01 00:00:00.0000018+00") AS micros;
 
 /*------------------+
@@ -1338,7 +1338,7 @@ SELECT UNIX_MICROS(TIMESTAMP "1970-01-01 00:00:00.0000018+00") AS micros;
 
 ## `UNIX_MILLIS`
 
-```zetasql
+```googlesql
 UNIX_MILLIS(timestamp_expression)
 ```
 
@@ -1353,7 +1353,7 @@ higher levels of precision by rounding down to the beginning of the millisecond.
 
 **Examples**
 
-```zetasql
+```googlesql
 SELECT UNIX_MILLIS(TIMESTAMP "2008-12-25 15:30:00+00") AS millis;
 
 /*---------------+
@@ -1363,7 +1363,7 @@ SELECT UNIX_MILLIS(TIMESTAMP "2008-12-25 15:30:00+00") AS millis;
  +---------------*/
 ```
 
-```zetasql
+```googlesql
 SELECT UNIX_MILLIS(TIMESTAMP "1970-01-01 00:00:00.0018+00") AS millis;
 
 /*---------------+
@@ -1375,7 +1375,7 @@ SELECT UNIX_MILLIS(TIMESTAMP "1970-01-01 00:00:00.0018+00") AS millis;
 
 ## `UNIX_SECONDS`
 
-```zetasql
+```googlesql
 UNIX_SECONDS(timestamp_expression)
 ```
 
@@ -1390,7 +1390,7 @@ levels of precision by rounding down to the beginning of the second.
 
 **Examples**
 
-```zetasql
+```googlesql
 SELECT UNIX_SECONDS(TIMESTAMP "2008-12-25 15:30:00+00") AS seconds;
 
 /*------------+
@@ -1400,7 +1400,7 @@ SELECT UNIX_SECONDS(TIMESTAMP "2008-12-25 15:30:00+00") AS seconds;
  +------------*/
 ```
 
-```zetasql
+```googlesql
 SELECT UNIX_SECONDS(TIMESTAMP "1970-01-01 00:00:01.8+00") AS seconds;
 
 /*------------+
@@ -1442,13 +1442,13 @@ or time zone offset from UTC (for example, -08).
 To learn more about how time zones work with the `TIMESTAMP` type, see
 [Time zones][data-types-timezones].
 
-[data-types-timezones]: https://github.com/google/zetasql/blob/master/docs/data-types.md#time_zones
+[data-types-timezones]: https://github.com/google/googlesql/blob/master/docs/data-types.md#time_zones
 
-[data-types-timezones]: https://github.com/google/zetasql/blob/master/docs/data-types.md#time_zones
+[data-types-timezones]: https://github.com/google/googlesql/blob/master/docs/data-types.md#time_zones
 
 [timestamp-link-to-timezone-definitions]: #timezone_definitions
 
-[data-types-link-to-date_type]: https://github.com/google/zetasql/blob/master/docs/data-types.md#date_type
+[data-types-link-to-date_type]: https://github.com/google/googlesql/blob/master/docs/data-types.md#date_type
 
-[data-types-link-to-timestamp_type]: https://github.com/google/zetasql/blob/master/docs/data-types.md#timestamp_type
+[data-types-link-to-timestamp_type]: https://github.com/google/googlesql/blob/master/docs/data-types.md#timestamp_type
 

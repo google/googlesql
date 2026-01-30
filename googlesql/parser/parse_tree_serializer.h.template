@@ -1,0 +1,134 @@
+//
+// Copyright 2019 Google LLC
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+//
+
+#ifndef GOOGLESQL_PARSER_PARSE_TREE_SERIALIZER_H_
+#define GOOGLESQL_PARSER_PARSE_TREE_SERIALIZER_H_
+
+#include "googlesql/parser/parse_tree.h"
+#include "googlesql/parser/parse_tree.pb.h"
+#include "googlesql/parser/parser.h"
+#include "googlesql/base/status.h"
+
+// NOLINTBEGIN(whitespace/line_length)
+
+namespace googlesql {
+
+class ParseTreeSerializer {
+ public:
+  // Serialize an ASTStatement to proto.
+  static absl::Status Serialize(const ASTStatement* node,
+                                AnyASTStatementProto* proto);
+
+  // Serialize an ASTExpression to proto.
+  static absl::Status Serialize(const ASTExpression* node,
+                                AnyASTExpressionProto* proto);
+
+  // Serialize an ASTType to proto.
+  static absl::Status Serialize(const ASTType* node, AnyASTTypeProto* proto);
+
+  // Serialize an ASTScript to proto.
+  static absl::Status Serialize(const ASTScript* node, ASTScriptProto* proto);
+
+  // Deserialize a proto back to an ASTStatement, which can be retrieved
+  // from output->statement().
+  // ParserOptions can be used to set the Arena and IdStringPool to use.
+  // LanguageOptions has no effect. The ParserOutput holds the output AST
+  // and references to allocated memory pools and should be kept alive as
+  // long as the output AST is used.
+  static absl::StatusOr<std::unique_ptr<ParserOutput>> Deserialize(
+      const AnyASTStatementProto& proto,
+      const ParserOptions& parser_options_in);
+
+  // Deserialize a proto back to an ASTExpression, which can be retrieved
+  // from output->expression().
+  // ParserOptions can be used to set the Arena and IdStringPool to use.
+  // LanguageOptions has no effect. The ParserOutput holds the output AST
+  // and references to allocated memory pools and should be kept alive as
+  // long as the output AST is used.
+  static absl::StatusOr<std::unique_ptr<ParserOutput>> Deserialize(
+      const AnyASTExpressionProto& proto,
+      const ParserOptions& parser_options_in);
+
+ private:
+  // Every class ASTFoo, whether abstract or final, has a corresponding
+  // static method in ParseTreeSerializer class with signature:
+  //   Serialize(const ASTFoo*, ASTFooProto* proto).
+  //
+  // Additionally, for each abstract parent class ASTBar below ASTNode
+  // in ASTFoo's ancestry there is a method with signature:
+  //   Serialize(const ASTFoo*, AnyASTBarProto* proto).
+  //
+  // If ASTFoo is abstract, it also has a method with signature:
+  //   Serialize(const ASTFoo*, AnyASTFooProto* proto)
+  //
+  // The public API comprises only the Serialize() and Deserialize() methods
+  // for ASTStatements, ASTExpressions, ASTTypes and ASTScript.
+  //
+  // Each class ASTFoo also has a Deserialize() method. If ASTFoo is abstract,
+  // the signature takes AnyASTFooProto&, if final it uses ASTFooProto&.
+  // Each class also has a DeserializeFields() method, and abstract classes
+  // have an additional DeserializeAbstract() method.
+
+  static absl::Status Serialize(const ASTNode* node,
+                                ASTNodeProto* proto);
+  static absl::Status DeserializeAbstract(
+      ASTNode* node, const ASTNodeProto& proto, IdStringPool* id_string_pool,
+      googlesql_base::UnsafeArena* arena,
+      std::vector<std::unique_ptr<ASTNode>>* allocated_ast_nodes);
+# for node in nodes
+{{blank_line}}
+ # if node.name not in ['ASTScript']
+  static absl::Status Serialize(const {{node.name}}* node,
+                                {{node.proto_type}}* proto);
+ # endif
+ # for tag_id, ancestor in node.ancestors|dictsort
+  static absl::Status Serialize(const {{node.name}}* node,
+                                {{ancestor.proto_field_type}}* proto);
+ # endfor
+  static absl::Status DeserializeFields(
+      {{node.name}}* node, const {{node.proto_type}}& proto,
+      IdStringPool* id_string_pool, googlesql_base::UnsafeArena* arena,
+      std::vector<std::unique_ptr<ASTNode>>* allocated_ast_nodes);
+ # if node.is_abstract
+  # if not node.name in ['ASTStatement', 'ASTExpression', 'ASTType']
+  static absl::Status Serialize(const {{node.name}}* node,
+                                {{node.proto_field_type}}* proto);
+  # endif
+  static absl::StatusOr<{{node.name}}*> Deserialize(
+      const {{node.proto_field_type}}& proto,
+      IdStringPool* id_string_pool, googlesql_base::UnsafeArena* arena,
+      std::vector<std::unique_ptr<ASTNode>>* allocated_ast_nodes);
+  {# DeserializeAbstract deserializes fields of an abstract class into a node #}
+  {# instantiated in a Deserialize() method, after first invoking             #}
+  {# DeserializeAbstract for its own parent.                                  #}
+  static absl::Status DeserializeAbstract(
+      {{node.name}}* node, const {{node.proto_type}}& proto,
+      IdStringPool* id_string_pool,
+      googlesql_base::UnsafeArena* arena,
+      std::vector<std::unique_ptr<ASTNode>>* allocated_ast_nodes);
+ # else
+  static absl::StatusOr<{{node.name}}*> Deserialize(
+      const {{node.proto_type}}& proto,
+      IdStringPool* id_string_pool,
+      googlesql_base::UnsafeArena* arena,
+      std::vector<std::unique_ptr<ASTNode>>* allocated_ast_nodes);
+ # endif
+# endfor
+};
+}  // namespace googlesql
+// NOLINTEND
+#endif  // GOOGLESQL_PARSER_PARSE_TREE_SERIALIZER_H_
+{{blank_line}}

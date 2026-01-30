@@ -4,7 +4,7 @@
 
 # Sketches
 
-ZetaSQL supports data sketches.
+GoogleSQL supports data sketches.
 A data sketch is a compact summary of a data aggregation. It captures all the
 necessary information to either extract an aggregation result, continue a
 data aggregation, or merge it with another sketch, enabling re-aggregation.
@@ -154,16 +154,16 @@ For a list of functions that you can use with HLL++ sketches, see
 You can integrate HLL++ sketches with other systems. For example, you can build
 sketches in external applications, like [Dataflow][dataflow]{: .external},
 [Apache Spark][spark]{: .external}, and [ZetaSketch][zetasketch]{: .external}
-and then consume them in ZetaSQL or vice versa.
+and then consume them in GoogleSQL or vice versa.
 
-In addition to ZetaSQL, you can use HLL++ sketches
+In addition to GoogleSQL, you can use HLL++ sketches
 with [Java][java-zetasketch]{: .external}.
 
 ## Approximate aggregate functions 
 <a id="approx_functions"></a>
 
 As an alternative to specific sketch-based approximation functions,
-ZetaSQL provides predefined approximate aggregate
+GoogleSQL provides predefined approximate aggregate
 functions. These approximate aggregate functions support sketches for common
 estimations such as distinct count, quantiles, and top count, but they don't
 allow custom precision. They also don't expose and store the sketch for
@@ -195,11 +195,11 @@ sketch-based approximation, see
 
 [hll-sketch]: #sketches_hll
 
-[hll-functions]: https://github.com/google/zetasql/blob/master/docs/hll_functions.md
+[hll-functions]: https://github.com/google/googlesql/blob/master/docs/hll_functions.md
 
-[hll-init]: https://github.com/google/zetasql/blob/master/docs/hll_functions.md#hll_countinit
+[hll-init]: https://github.com/google/googlesql/blob/master/docs/hll_functions.md#hll_countinit
 
-[approx-aggregate-functions]: https://github.com/google/zetasql/blob/master/docs/approximate_aggregate_functions.md
+[approx-aggregate-functions]: https://github.com/google/googlesql/blob/master/docs/approximate_aggregate_functions.md
 
 [approx-functions]: #approx_functions
 

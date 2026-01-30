@@ -14,13 +14,13 @@
 # limitations under the License.
 #
 """
-Bazel build files for ZetaSQL.
+Bazel build files for GoogleSQL.
 """
 
 licenses(["notice"])  # Apache v2.0
 
 package(
-    default_visibility = ["//zetasql/base:zetasql_implementation"],
+    default_visibility = ["//googlesql/base:googlesql_implementation"],
 )
 
 exports_files([

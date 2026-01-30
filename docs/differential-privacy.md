@@ -8,7 +8,7 @@
 <!-- BEGIN CONTENT -->
 
 This document provides general information about differential privacy for
-ZetaSQL. For syntax, see the [differential privacy clause][dp-clause].
+GoogleSQL. For syntax, see the [differential privacy clause][dp-clause].
 For a list of functions that you can use with this syntax, see
 [differentially private aggregate functions][dp-functions].
 
@@ -72,7 +72,7 @@ a dataset. Differential privacy balances the need to safeguard privacy
 against the need for statistical analytical utility. As privacy increases,
 statistical analytical utility decreases, and vice versa.
 
-With ZetaSQL, you can transform the results of a query with
+With GoogleSQL, you can transform the results of a query with
 differentially private aggregations. When the query is executed, it performs
 the following:
 
@@ -93,7 +93,7 @@ the following:
 The final result is a dataset where each group has noisy aggregate results
 and small groups have been eliminated.
 
-Note: ZetaSQL relies on
+Note: GoogleSQL relies on
 [Google's open source differential privacy library][dp-library]{: .external}
 to implement differential privacy functionality. The library
 provides low-level differential privacy primitives that you can use to
@@ -143,7 +143,7 @@ In the following example, a privacy unit column,
 `anonymization_userid_column='id'`, is added to a view. `id` represents a
 privacy unit column in a table called `students`.
 
-```zetasql
+```googlesql
 CREATE OR REPLACE VIEW view_on_students
 OPTIONS(anonymization_userid_column='id')
 AS (SELECT * FROM students);
@@ -153,7 +153,7 @@ In the following examples, a privacy unit column is added to a
 differential privacy clause. `id` represents a column that originates from a
 table called `students`.
 
-```zetasql
+```googlesql
 SELECT WITH DIFFERENTIAL_PRIVACY
   OPTIONS (epsilon=10, delta=.01, privacy_unit_column=id)
   item,
@@ -161,7 +161,7 @@ SELECT WITH DIFFERENTIAL_PRIVACY
 FROM students;
 ```
 
-```zetasql
+```googlesql
 SELECT WITH DIFFERENTIAL_PRIVACY
   OPTIONS (epsilon=10, delta=.01, privacy_unit_column=members.id)
   item,
@@ -176,7 +176,7 @@ privacy unit column and so does
 `FROM` clause rules, see [Review `FROM` clause rules for differentially private
 table expressions][dp-from-rules].
 
-```zetasql {.bad}
+```googlesql {.bad}
 -- This produces an error
 SELECT WITH DIFFERENTIAL_PRIVACY
   OPTIONS(epsilon=10, delta=.01, max_groups_contributed=2)
@@ -239,7 +239,7 @@ your differentially private queries.
 
 The performance profiles of the following queries aren't similar:
 
-```zetasql
+```googlesql
 SELECT
   WITH DIFFERENTIAL_PRIVACY OPTIONS(epsilon=1, delta=1e-10, privacy_unit_column=id)
   column_a, COUNT(column_b)
@@ -247,7 +247,7 @@ FROM table_a
 GROUP BY column_a;
 ```
 
-```zetasql
+```googlesql
 SELECT column_a, COUNT(column_b)
 FROM table_a
 GROUP BY column_a;
@@ -261,7 +261,7 @@ performed.
 The performance profiles of the following queries should be similar,
 although the differentially private query is slightly slower:
 
-```zetasql
+```googlesql
 SELECT
   WITH DIFFERENTIAL_PRIVACY OPTIONS(epsilon=1, delta=1e-10, privacy_unit_column=id)
   column_a, COUNT(column_b)
@@ -269,7 +269,7 @@ FROM table_a
 GROUP BY column_a;
 ```
 
-```zetasql
+```googlesql
 SELECT column_a, id, COUNT(column_b)
 FROM table_a
 GROUP BY column_a, id;
@@ -299,7 +299,7 @@ basic statistics like sums, due to arithmetic limitations.
 #### Limitations on privacy guarantees 
 <a id="privacy_guarantees"></a>
 
-While ZetaSQL differential privacy applies the
+While GoogleSQL differential privacy applies the
 [differential privacy algorithm][dp-paper]{: .external}, it doesn't make a
 guarantee regarding the privacy properties of the resulting dataset.
 
@@ -353,31 +353,31 @@ individual's ID, you could expose sensitive data.
 
 [dp-privacy-guarantees]: #privacy_guarantees
 
-[dp-example-views]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#dp_example_views
+[dp-example-views]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#dp_example_views
 
-[dp-clause]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#dp_clause
+[dp-clause]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#dp_clause
 
-[dp-from]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#from_clause
+[dp-from]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#from_clause
 
-[qs-add-noise]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#add_noise
+[qs-add-noise]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#add_noise
 
-[qs-remove-noise]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#eliminate_noise
+[qs-remove-noise]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#eliminate_noise
 
-[qs-limit-groups]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#limit_groups_for_privacy_unit
+[qs-limit-groups]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#limit_groups_for_privacy_unit
 
-[data-types-groupable]: https://github.com/google/zetasql/blob/master/docs/data-types.md#groupable_data_types
+[data-types-groupable]: https://github.com/google/googlesql/blob/master/docs/data-types.md#groupable_data_types
 
-[dp-functions]: https://github.com/google/zetasql/blob/master/docs/aggregate-dp-functions.md
+[dp-functions]: https://github.com/google/googlesql/blob/master/docs/aggregate-dp-functions.md
 
-[dp-clamping]: https://github.com/google/zetasql/blob/master/docs/aggregate-dp-functions.md#dp_clamping
+[dp-clamping]: https://github.com/google/googlesql/blob/master/docs/aggregate-dp-functions.md#dp_clamping
 
-[dp-chart-a]: https://cloud.google.com/docs/images/zetasql-dp-chart-a.png
+[dp-chart-a]: https://cloud.google.com/docs/images/googlesql-dp-chart-a.png
 
-[dp-chart-b]: https://cloud.google.com/docs/images/zetasql-dp-chart-b.png
+[dp-chart-b]: https://cloud.google.com/docs/images/googlesql-dp-chart-b.png
 
-[dp-chart-c]: https://cloud.google.com/docs/images/zetasql-dp-chart-c.png
+[dp-chart-c]: https://cloud.google.com/docs/images/googlesql-dp-chart-c.png
 
-[dp-chart-d]: https://cloud.google.com/docs/images/zetasql-dp-chart-d.gif
+[dp-chart-d]: https://cloud.google.com/docs/images/googlesql-dp-chart-d.gif
 
 <!-- mdlint on -->
 

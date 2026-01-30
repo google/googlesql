@@ -1,0 +1,630 @@
+[default language_features=MAXIMUM,+PIPES,+PIPE_STATIC_DESCRIBE]
+from KeyValue
+|> STATIC_DESCRIBE
+|> drop keY
+|> STATIC_DESCRIBE
+|> where value is null
+|> where KeyValue.value is null
+|> where KeyValue.key is null
+--
+QueryStmt
++-output_column_list=
+| +-KeyValue.Value#2 AS Value [STRING]
++-query=
+  +-FilterScan
+    +-column_list=KeyValue.[Key#1, Value#2]
+    +-input_scan=
+    | +-FilterScan
+    |   +-column_list=KeyValue.[Key#1, Value#2]
+    |   +-input_scan=
+    |   | +-FilterScan
+    |   |   +-column_list=KeyValue.[Key#1, Value#2]
+    |   |   +-input_scan=
+    |   |   | +-StaticDescribeScan
+    |   |   |   +-column_list=KeyValue.[Key#1, Value#2]
+    |   |   |   +-describe_text=
+    |   |   |   |   """
+    |   |   |   |   NameList:
+    |   |   |   |     Value STRING KeyValue.Value#2
+    |   |   |   |   NameScope:
+    |   |   |   |     Names:
+    |   |   |   |       Value -> STRING (KeyValue.Value#2) (implicit)
+    |   |   |   |     Range variables:
+    |   |   |   |       KeyValue -> RANGE_VARIABLE<Key#1,Value#2>
+    |   |   |   |   """
+    |   |   |   +-input_scan=
+    |   |   |     +-StaticDescribeScan
+    |   |   |       +-column_list=KeyValue.[Key#1, Value#2]
+    |   |   |       +-describe_text=
+    |   |   |       |   """
+    |   |   |       |   NameList:
+    |   |   |       |     Key INT64 KeyValue.Key#1
+    |   |   |       |     Value STRING KeyValue.Value#2
+    |   |   |       |   NameScope:
+    |   |   |       |     Names:
+    |   |   |       |       Key -> INT64 (KeyValue.Key#1) (implicit)
+    |   |   |       |       Value -> STRING (KeyValue.Value#2) (implicit)
+    |   |   |       |     Range variables:
+    |   |   |       |       KeyValue -> RANGE_VARIABLE<Key#1,Value#2>
+    |   |   |       |   """
+    |   |   |       +-input_scan=
+    |   |   |         +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+    |   |   +-filter_expr=
+    |   |     +-FunctionCall(GoogleSQL:$is_null(STRING) -> BOOL)
+    |   |       +-ColumnRef(type=STRING, column=KeyValue.Value#2)
+    |   +-filter_expr=
+    |     +-FunctionCall(GoogleSQL:$is_null(STRING) -> BOOL)
+    |       +-ColumnRef(type=STRING, column=KeyValue.Value#2)
+    +-filter_expr=
+      +-FunctionCall(GoogleSQL:$is_null(INT64) -> BOOL)
+        +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+==
+
+from KeyValue
+|> drop KEy, keY
+--
+ERROR: Duplicate column name in pipe DROP: keY [at 2:14]
+|> drop KEy, keY
+             ^
+==
+
+from KeyValue
+|> drop key, value
+--
+ERROR: Pipe DROP dropped all columns in the input table [at 2:1]
+|> drop key, value
+^
+==
+
+from KeyValue
+|> drop key, something, value
+--
+ERROR: Column name in pipe DROP not found in input table: something [at 2:14]
+|> drop key, something, value
+             ^
+==
+
+from KeyValue
+|> drop `$abc`
+--
+ERROR: Cannot use pipe DROP with internal alias `$abc` [at 2:9]
+|> drop `$abc`
+        ^
+==
+
+# Drop both copies of 'key', but keep the copies under the
+# existing range variables.
+FROM KeyValue kv1 CROSS JOIN KeyValue kv2
+|> STATIC_DESCRIBE
+|> DROP key
+|> STATIC_DESCRIBE
+|> WHERE {{key|kv1.key}} = 5
+|> SELECT *, '--', kv1.*, '--', kv2.*
+--
+ALTERNATION GROUP: key
+--
+ERROR: Unrecognized name: key [at 5:10]
+|> WHERE key = 5
+         ^
+--
+ALTERNATION GROUP: kv1.key
+--
+QueryStmt
++-output_column_list=
+| +-KeyValue.Value#2 AS Value [STRING]
+| +-KeyValue.Value#4 AS Value [STRING]
+| +-$pipe_select.$col2#5 AS `$col2` [STRING]
+| +-KeyValue.Key#1 AS Key [INT64]
+| +-KeyValue.Value#2 AS Value [STRING]
+| +-$pipe_select.$col4#6 AS `$col4` [STRING]
+| +-KeyValue.Key#3 AS Key [INT64]
+| +-KeyValue.Value#4 AS Value [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[KeyValue.Value#2, KeyValue.Value#4, $pipe_select.$col2#5, KeyValue.Key#1, KeyValue.Value#2, $pipe_select.$col4#6, KeyValue.Key#3, KeyValue.Value#4]
+    +-expr_list=
+    | +-$col2#5 := Literal(type=STRING, value="--")
+    | +-$col4#6 := Literal(type=STRING, value="--")
+    +-input_scan=
+      +-FilterScan
+        +-column_list=KeyValue.[Key#1, Value#2, Key#3, Value#4]
+        +-input_scan=
+        | +-StaticDescribeScan
+        |   +-column_list=KeyValue.[Key#1, Value#2, Key#3, Value#4]
+        |   +-describe_text=
+        |   |   """
+        |   |   NameList:
+        |   |     Value STRING KeyValue.Value#2
+        |   |     Value STRING KeyValue.Value#4
+        |   |   NameScope:
+        |   |     Names:
+        |   |       Value -> ambiguous
+        |   |     Range variables:
+        |   |       kv1 -> RANGE_VARIABLE<Key#1,Value#2>
+        |   |       kv2 -> RANGE_VARIABLE<Key#3,Value#4>
+        |   |   """
+        |   +-input_scan=
+        |     +-StaticDescribeScan
+        |       +-column_list=KeyValue.[Key#1, Value#2, Key#3, Value#4]
+        |       +-describe_text=
+        |       |   """
+        |       |   NameList:
+        |       |     Key INT64 KeyValue.Key#1
+        |       |     Value STRING KeyValue.Value#2
+        |       |     Key INT64 KeyValue.Key#3
+        |       |     Value STRING KeyValue.Value#4
+        |       |   NameScope:
+        |       |     Names:
+        |       |       Key -> ambiguous
+        |       |       Value -> ambiguous
+        |       |     Range variables:
+        |       |       kv1 -> RANGE_VARIABLE<Key#1,Value#2>
+        |       |       kv2 -> RANGE_VARIABLE<Key#3,Value#4>
+        |       |   """
+        |       +-input_scan=
+        |         +-JoinScan
+        |           +-column_list=KeyValue.[Key#1, Value#2, Key#3, Value#4]
+        |           +-left_scan=
+        |           | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1], alias="kv1")
+        |           +-right_scan=
+        |             +-TableScan(column_list=KeyValue.[Key#3, Value#4], table=KeyValue, column_index_list=[0, 1], alias="kv2")
+        +-filter_expr=
+          +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+            +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+            +-Literal(type=INT64, value=5)
+==
+
+# We can't drop a range variable for a non-value table.
+FROM KeyValue kv
+|> DROP kv
+--
+ERROR: Name in pipe DROP is a table alias; DROP can only drop columns: kv [at 2:9]
+|> DROP kv
+        ^
+==
+
+# This is allowed because there's a column key.
+# The range variable key is also dropped.
+FROM KeyValue key
+|> STATIC_DESCRIBE
+|> DROP key
+|> STATIC_DESCRIBE
+|> SELECT {{key|key.key|value}}
+--
+ALTERNATION GROUP: key
+--
+ERROR: Unrecognized name: key [at 5:11]
+|> SELECT key
+          ^
+--
+ALTERNATION GROUP: key.key
+--
+ERROR: Unrecognized name: key [at 5:11]
+|> SELECT key.key
+          ^
+--
+ALTERNATION GROUP: value
+--
+QueryStmt
++-output_column_list=
+| +-KeyValue.Value#2 AS value [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[KeyValue.Value#2]
+    +-input_scan=
+      +-StaticDescribeScan
+        +-column_list=[KeyValue.Value#2]
+        +-describe_text=
+        |   """
+        |   NameList:
+        |     Value STRING KeyValue.Value#2
+        |   NameScope:
+        |     Names:
+        |       Value -> STRING (KeyValue.Value#2) (implicit)
+        |   """
+        +-input_scan=
+          +-StaticDescribeScan
+            +-column_list=[KeyValue.Value#2]
+            +-describe_text=
+            |   """
+            |   NameList:
+            |     Key INT64 KeyValue.Key#1
+            |     Value STRING KeyValue.Value#2
+            |   NameScope:
+            |     Names:
+            |       Value -> STRING (KeyValue.Value#2) (implicit)
+            |     Range variables:
+            |       key -> RANGE_VARIABLE<Key#1,Value#2>
+            |   """
+            +-input_scan=
+              +-TableScan(column_list=[KeyValue.Value#2], table=KeyValue, column_index_list=[1], alias="key")
+==
+
+# Dropping a pseudo-column doesn't work.
+FROM EnumTable
+|> WHERE Filename is not null
+|> DROP Filename
+--
+ERROR: Name in pipe DROP is present but is not a column on the pipe input table; DROP can only drop columns: Filename [at 3:9]
+|> DROP Filename
+        ^
+==
+
+# DROP works because there is a real column Filename.
+# The pseudo-column Filename is also dropped.
+FROM EnumTable
+|> EXTEND 'abc' AS Filename
+|> STATIC_DESCRIBE
+|> DROP Filename
+|> STATIC_DESCRIBE
+--
+QueryStmt
++-output_column_list=
+| +-EnumTable.key#1 AS key [INT32]
+| +-EnumTable.TestEnum#2 AS TestEnum [ENUM<googlesql_test.TestEnum>]
+| +-EnumTable.AnotherTestEnum#3 AS AnotherTestEnum [ENUM<googlesql_test.AnotherTestEnum>]
++-query=
+  +-StaticDescribeScan
+    +-column_list=[EnumTable.key#1, EnumTable.TestEnum#2, EnumTable.AnotherTestEnum#3, $pipe_extend.Filename#6]
+    +-describe_text=
+    |   """
+    |   NameList:
+    |     key INT32 EnumTable.key#1
+    |     TestEnum googlesql_test.TestEnum EnumTable.TestEnum#2
+    |     AnotherTestEnum googlesql_test.AnotherTestEnum EnumTable.AnotherTestEnum#3
+    |   NameScope:
+    |     Names:
+    |       AnotherTestEnum -> googlesql_test.AnotherTestEnum (EnumTable.AnotherTestEnum#3) (implicit)
+    |       RowId -> BYTES (EnumTable.RowId#5) (implicit) (pseudo-column)
+    |       TestEnum -> googlesql_test.TestEnum (EnumTable.TestEnum#2) (implicit)
+    |       key -> INT32 (EnumTable.key#1) (implicit)
+    |     Range variables:
+    |       EnumTable -> RANGE_VARIABLE<key#1,TestEnum#2,AnotherTestEnum#3, pseudo_columns: Filename#4,RowId#5>
+    |   """
+    +-input_scan=
+      +-StaticDescribeScan
+        +-column_list=[EnumTable.key#1, EnumTable.TestEnum#2, EnumTable.AnotherTestEnum#3, $pipe_extend.Filename#6]
+        +-describe_text=
+        |   """
+        |   NameList:
+        |     key INT32 EnumTable.key#1
+        |     TestEnum googlesql_test.TestEnum EnumTable.TestEnum#2
+        |     AnotherTestEnum googlesql_test.AnotherTestEnum EnumTable.AnotherTestEnum#3
+        |     Filename STRING $pipe_extend.Filename#6
+        |   NameScope:
+        |     Names:
+        |       AnotherTestEnum -> googlesql_test.AnotherTestEnum (EnumTable.AnotherTestEnum#3) (implicit)
+        |       Filename -> ambiguous
+        |       RowId -> BYTES (EnumTable.RowId#5) (implicit) (pseudo-column)
+        |       TestEnum -> googlesql_test.TestEnum (EnumTable.TestEnum#2) (implicit)
+        |       key -> INT32 (EnumTable.key#1) (implicit)
+        |     Range variables:
+        |       EnumTable -> RANGE_VARIABLE<key#1,TestEnum#2,AnotherTestEnum#3, pseudo_columns: Filename#4,RowId#5>
+        |   """
+        +-input_scan=
+          +-ProjectScan
+            +-column_list=[EnumTable.key#1, EnumTable.TestEnum#2, EnumTable.AnotherTestEnum#3, $pipe_extend.Filename#6]
+            +-expr_list=
+            | +-Filename#6 := Literal(type=STRING, value="abc")
+            +-input_scan=
+              +-TableScan(column_list=EnumTable.[key#1, TestEnum#2, AnotherTestEnum#3], table=EnumTable, column_index_list=[0, 1, 2])
+==
+
+FROM KeyValue, UNNEST([1]) elem WITH OFFSET
+|> STATIC_DESCRIBE
+|> DROP elem, offset
+|> STATIC_DESCRIBE
+--
+QueryStmt
++-output_column_list=
+| +-KeyValue.Key#1 AS Key [INT64]
+| +-KeyValue.Value#2 AS Value [STRING]
++-query=
+  +-StaticDescribeScan
+    +-column_list=KeyValue.[Key#1, Value#2]
+    +-describe_text=
+    |   """
+    |   NameList:
+    |     Key INT64 KeyValue.Key#1
+    |     Value STRING KeyValue.Value#2
+    |   NameScope:
+    |     Names:
+    |       Key -> INT64 (KeyValue.Key#1) (implicit)
+    |       Value -> STRING (KeyValue.Value#2) (implicit)
+    |     Range variables:
+    |       KeyValue -> RANGE_VARIABLE<Key#1,Value#2>
+    |   """
+    +-input_scan=
+      +-StaticDescribeScan
+        +-column_list=KeyValue.[Key#1, Value#2]
+        +-describe_text=
+        |   """
+        |   NameList:
+        |     Key INT64 KeyValue.Key#1
+        |     Value STRING KeyValue.Value#2
+        |     elem INT64 $array.elem#3 (value table)
+        |     offset INT64 $array_offset.offset#4 (value table)
+        |   NameScope:
+        |     Names:
+        |       Key -> INT64 (KeyValue.Key#1) (implicit)
+        |       Value -> STRING (KeyValue.Value#2) (implicit)
+        |     Range variables:
+        |       KeyValue -> RANGE_VARIABLE<Key#1,Value#2>
+        |       elem -> RANGE_VARIABLE<elem#3> (value table)
+        |       offset -> RANGE_VARIABLE<offset#4> (value table)
+        |     Value table columns:
+        |       $array.elem#3
+        |       $array_offset.offset#4
+        |   """
+        +-input_scan=
+          +-ArrayScan
+            +-column_list=KeyValue.[Key#1, Value#2]
+            +-input_scan=
+            | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+            +-array_expr_list=
+            | +-Literal(type=ARRAY<INT64>, value=[1])
+            +-element_column_list=[$array.elem#3]
+            +-array_offset_column=
+              +-ColumnHolder(column=$array_offset.offset#4)
+==
+
+# We can't drop field names or pseudo-columns for the value table
+# input.  We can drop the value column, but not if it's the
+# only column.
+FROM TestExtraValueTable vt
+|> DROP {{vt|int32_val1|Filename}}
+--
+ALTERNATION GROUP: vt
+--
+ERROR: Pipe DROP dropped all columns in the input table [at 2:1]
+|> DROP vt
+^
+--
+ALTERNATION GROUP: int32_val1
+--
+ERROR: Name in pipe DROP is a field inside a value table; DROP can only drop columns: int32_val1 [at 2:9]
+|> DROP int32_val1
+        ^
+--
+ALTERNATION GROUP: Filename
+--
+ERROR: Name in pipe DROP is present but is not a column on the pipe input table; DROP can only drop columns: Filename [at 2:9]
+|> DROP Filename
+        ^
+==
+
+# We can drop value table columns (which are also range variables).
+# The remaining value table then works unambiguously as a value table.
+FROM TestExtraValueTable vt1, TestExtraValueTable vt2
+|> STATIC_DESCRIBE
+|> DROP vt1
+|> STATIC_DESCRIBE
+|> WHERE int32_val1 = 1
+--
+QueryStmt
++-output_column_list=
+| +-TestExtraValueTable.value#4 AS vt2 [PROTO<googlesql_test.TestExtraPB>]
++-query=
+  +-FilterScan
+    +-column_list=[TestExtraValueTable.value#4]
+    +-input_scan=
+    | +-StaticDescribeScan
+    |   +-column_list=[TestExtraValueTable.value#4]
+    |   +-describe_text=
+    |   |   """
+    |   |   NameList:
+    |   |     vt2 googlesql_test.TestExtraPB TestExtraValueTable.value#4 (value table) (excluded_field_names vt1)
+    |   |   NameScope:
+    |   |     Names:
+    |   |       Filename -> ambiguous
+    |   |       RowId -> ambiguous
+    |   |     Range variables:
+    |   |       vt2 -> RANGE_VARIABLE<value#4, pseudo_columns: Filename#5,RowId#6> (value table)
+    |   |     Value table columns:
+    |   |       TestExtraValueTable.value#4 (excluded_field_names vt1)
+    |   |   """
+    |   +-input_scan=
+    |     +-StaticDescribeScan
+    |       +-column_list=[TestExtraValueTable.value#4]
+    |       +-describe_text=
+    |       |   """
+    |       |   NameList:
+    |       |     vt1 googlesql_test.TestExtraPB TestExtraValueTable.value#1 (value table)
+    |       |     vt2 googlesql_test.TestExtraPB TestExtraValueTable.value#4 (value table)
+    |       |   NameScope:
+    |       |     Names:
+    |       |       Filename -> ambiguous
+    |       |       RowId -> ambiguous
+    |       |     Range variables:
+    |       |       vt1 -> RANGE_VARIABLE<value#1, pseudo_columns: Filename#2,RowId#3> (value table)
+    |       |       vt2 -> RANGE_VARIABLE<value#4, pseudo_columns: Filename#5,RowId#6> (value table)
+    |       |     Value table columns:
+    |       |       TestExtraValueTable.value#1
+    |       |       TestExtraValueTable.value#4
+    |       |   """
+    |       +-input_scan=
+    |         +-JoinScan
+    |           +-column_list=[TestExtraValueTable.value#4]
+    |           +-left_scan=
+    |           | +-TableScan(table=TestExtraValueTable, alias="vt1")
+    |           +-right_scan=
+    |             +-TableScan(column_list=[TestExtraValueTable.value#4], table=TestExtraValueTable, column_index_list=[0], alias="vt2")
+    +-filter_expr=
+      +-FunctionCall(GoogleSQL:$equal(INT32, INT32) -> BOOL)
+        +-GetProtoField
+        | +-type=INT32
+        | +-expr=
+        | | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=TestExtraValueTable.value#4)
+        | +-field_descriptor=int32_val1
+        | +-default_value=0
+        +-Literal(type=INT32, value=1)
+
+==
+
+# Tricky case where we drop a column that is also a field of a value
+# table.  This adds an exclusion on the value table so the column
+# works as expected after DROP.  Before the DROP, reading
+# int32_val1 is ambiguous, since it is both a column and a field.
+# SELECT * also omits the int32_val1 after the DROP.
+FROM TestExtraValueTable vt1
+|> EXTEND vt1.int32_val1
+|> WHERE {{int32_val1=1|true}}
+|> STATIC_DESCRIBE
+|> DROP int32_val1
+|> STATIC_DESCRIBE
+|> WHERE {{int32_val1=2|true}}
+|> SELECT *
+--
+ALTERNATION GROUPS:
+    int32_val1=1,int32_val1=2
+    int32_val1=1,true
+--
+ERROR: Column name int32_val1 is ambiguous [at 3:10]
+|> WHERE int32_val1=1
+         ^
+--
+ALTERNATION GROUP: true,int32_val1=2
+--
+ERROR: Unrecognized name: int32_val1 [at 7:10]
+|> WHERE int32_val1=2
+         ^
+--
+ALTERNATION GROUP: true,true
+--
+QueryStmt
++-output_column_list=
+| +-$pipe_select.int32_val2#5 AS int32_val2 [INT32]
+| +-$pipe_select.str_value#6 AS str_value [ARRAY<STRING>]
++-query=
+  +-ProjectScan
+    +-column_list=$pipe_select.[int32_val2#5, str_value#6]
+    +-expr_list=
+    | +-int32_val2#5 :=
+    | | +-GetProtoField
+    | |   +-type=INT32
+    | |   +-expr=
+    | |   | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=TestExtraValueTable.value#1)
+    | |   +-field_descriptor=int32_val2
+    | |   +-default_value=0
+    | +-str_value#6 :=
+    |   +-GetProtoField
+    |     +-type=ARRAY<STRING>
+    |     +-expr=
+    |     | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=TestExtraValueTable.value#1)
+    |     +-field_descriptor=str_value
+    |     +-default_value=[]
+    +-input_scan=
+      +-FilterScan
+        +-column_list=[TestExtraValueTable.value#1, $pipe_extend.int32_val1#4]
+        +-input_scan=
+        | +-StaticDescribeScan
+        |   +-column_list=[TestExtraValueTable.value#1, $pipe_extend.int32_val1#4]
+        |   +-describe_text=
+        |   |   """
+        |   |   NameList:
+        |   |     vt1 googlesql_test.TestExtraPB TestExtraValueTable.value#1 (value table) (excluded_field_names int32_val1)
+        |   |   NameScope:
+        |   |     Names:
+        |   |       Filename -> STRING (TestExtraValueTable.Filename#2) (implicit) (pseudo-column)
+        |   |       RowId -> BYTES (TestExtraValueTable.RowId#3) (implicit) (pseudo-column)
+        |   |     Range variables:
+        |   |       vt1 -> RANGE_VARIABLE<value#1, pseudo_columns: Filename#2,RowId#3> (value table)
+        |   |     Value table columns:
+        |   |       TestExtraValueTable.value#1 (excluded_field_names int32_val1)
+        |   |   """
+        |   +-input_scan=
+        |     +-StaticDescribeScan
+        |       +-column_list=[TestExtraValueTable.value#1, $pipe_extend.int32_val1#4]
+        |       +-describe_text=
+        |       |   """
+        |       |   NameList:
+        |       |     vt1 googlesql_test.TestExtraPB TestExtraValueTable.value#1 (value table)
+        |       |     int32_val1 INT32 $pipe_extend.int32_val1#4
+        |       |   NameScope:
+        |       |     Names:
+        |       |       Filename -> STRING (TestExtraValueTable.Filename#2) (implicit) (pseudo-column)
+        |       |       RowId -> BYTES (TestExtraValueTable.RowId#3) (implicit) (pseudo-column)
+        |       |       int32_val1 -> INT32 ($pipe_extend.int32_val1#4)
+        |       |     Range variables:
+        |       |       vt1 -> RANGE_VARIABLE<value#1, pseudo_columns: Filename#2,RowId#3> (value table)
+        |       |     Value table columns:
+        |       |       TestExtraValueTable.value#1
+        |       |   """
+        |       +-input_scan=
+        |         +-FilterScan
+        |           +-column_list=[TestExtraValueTable.value#1, $pipe_extend.int32_val1#4]
+        |           +-input_scan=
+        |           | +-ProjectScan
+        |           |   +-column_list=[TestExtraValueTable.value#1, $pipe_extend.int32_val1#4]
+        |           |   +-expr_list=
+        |           |   | +-int32_val1#4 :=
+        |           |   |   +-GetProtoField
+        |           |   |     +-type=INT32
+        |           |   |     +-expr=
+        |           |   |     | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=TestExtraValueTable.value#1)
+        |           |   |     +-field_descriptor=int32_val1
+        |           |   |     +-default_value=0
+        |           |   +-input_scan=
+        |           |     +-TableScan(column_list=[TestExtraValueTable.value#1], table=TestExtraValueTable, column_index_list=[0], alias="vt1")
+        |           +-filter_expr=
+        |             +-Literal(type=BOOL, value=true)
+        +-filter_expr=
+          +-Literal(type=BOOL, value=true)
+==
+
+# Try to use DROP on an outer correlated column.
+from KeyValue
+|> extend (
+     select 1 x
+     |> DROP key
+    )
+--
+ERROR: Name in pipe DROP is present but is not a column on the pipe input table; DROP can only drop columns: key [at 4:14]
+     |> DROP key
+             ^
+==
+
+# Try to use DROP on an outer correlated name that is ambiguous.
+from KeyValue
+|> extend key
+|> extend (
+     select 1 x
+     |> DROP key
+    )
+--
+ERROR: Name in pipe DROP is ambiguous; DROP can only drop columns: key [at 5:14]
+     |> DROP key
+             ^
+==
+
+# This shows an artifact where the value table gets an
+# excluded_field_name `abc` even though it has no field of that name.
+FROM TestStructValueTable
+|> EXTEND 1 abc
+|> DROP abc
+|> STATIC_DESCRIBE
+--
+QueryStmt
++-output_column_list=
+| +-TestStructValueTable.value#1 AS TestStructValueTable [STRUCT<a INT32, b STRING>]
++-query=
+  +-StaticDescribeScan
+    +-column_list=[TestStructValueTable.value#1, $pipe_extend.abc#2]
+    +-describe_text=
+    |   """
+    |   NameList:
+    |     TestStructValueTable STRUCT<a INT32, b STRING> TestStructValueTable.value#1 (value table) (excluded_field_names abc)
+    |   NameScope:
+    |     Range variables:
+    |       TestStructValueTable -> RANGE_VARIABLE<value#1> (value table)
+    |     Value table columns:
+    |       TestStructValueTable.value#1 (excluded_field_names abc)
+    |   """
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[TestStructValueTable.value#1, $pipe_extend.abc#2]
+        +-expr_list=
+        | +-abc#2 := Literal(type=INT64, value=1)
+        +-input_scan=
+          +-TableScan(column_list=[TestStructValueTable.value#1], table=TestStructValueTable, column_index_list=[0])
+==

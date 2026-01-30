@@ -1,0 +1,1726 @@
+# Flipping FOR UPDATE feature on and off.
+[default language_features=NONE,{{|+FOR_UPDATE}}]
+select * from KeyValue
+for update
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: FOR UPDATE is not supported [at 2:1]
+for update
+^
+--
+ALTERNATION GROUP: +FOR_UPDATE
+--
+QueryStmt
++-output_column_list=
+| +-KeyValue.Key#1 AS Key [INT64]
+| +-KeyValue.Value#2 AS Value [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=KeyValue.[Key#1, Value#2]
+    +-input_scan=
+      +-TableScan
+        +-column_list=KeyValue.[Key#1, Value#2]
+        +-table=KeyValue
+        +-column_index_list=[0, 1]
+        +-lock_mode=
+          +-LockMode(strength=UPDATE)
+==
+
+# FOR UPDATE is invalid if no FROM clause in the query.
+select 1
+for update
+--
+ERROR: Query without FROM clause cannot have a lock mode clause [at 2:1]
+for update
+^
+==
+
+select key
+from KeyValue
+where key > 0
+for update
+--
+QueryStmt
++-output_column_list=
+| +-KeyValue.Key#1 AS key [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[KeyValue.Key#1]
+    +-input_scan=
+      +-FilterScan
+        +-column_list=[KeyValue.Key#1]
+        +-input_scan=
+        | +-TableScan
+        |   +-column_list=[KeyValue.Key#1]
+        |   +-table=KeyValue
+        |   +-column_index_list=[0]
+        |   +-lock_mode=
+        |     +-LockMode(strength=UPDATE)
+        +-filter_expr=
+          +-FunctionCall(GoogleSQL:$greater(INT64, INT64) -> BOOL)
+            +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+            +-Literal(type=INT64, value=0)
+==
+
+# No LockMode node in unnest queries
+select * from unnest ([10,20,30]) as numbers with offset
+for update
+--
+QueryStmt
++-output_column_list=
+| +-$array.numbers#1 AS numbers [INT64]
+| +-$array_offset.offset#2 AS offset [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$array.numbers#1, $array_offset.offset#2]
+    +-input_scan=
+      +-ArrayScan
+        +-column_list=[$array.numbers#1, $array_offset.offset#2]
+        +-array_expr_list=
+        | +-Literal(type=ARRAY<INT64>, value=[10, 20, 30])
+        +-element_column_list=[$array.numbers#1]
+        +-array_offset_column=
+          +-ColumnHolder(column=$array_offset.offset#2)
+==
+
+# LockMode is not propagated to expression subquery in UNNEST even though its
+# in the FROM clause.
+select
+  *
+from
+  unnest(ARRAY(select key from KeyValue))
+for update
+--
+QueryStmt
++-output_column_list=
+| +-$array.$unnest1#3 AS `$unnest1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$array.$unnest1#3]
+    +-input_scan=
+      +-ArrayScan
+        +-column_list=[$array.$unnest1#3]
+        +-array_expr_list=
+        | +-SubqueryExpr
+        |   +-type=ARRAY<INT64>
+        |   +-subquery_type=ARRAY
+        |   +-subquery=
+        |     +-ProjectScan
+        |       +-column_list=[KeyValue.Key#1]
+        |       +-input_scan=
+        |         +-TableScan(column_list=[KeyValue.Key#1], table=KeyValue, column_index_list=[0])
+        +-element_column_list=[$array.$unnest1#3]
+==
+
+# LockMode is not propagated to expression subquery in UNNEST even though its
+# in the FROM clause.
+select
+  *
+from
+  KeyValue,
+  unnest(ARRAY(select key from TestTable where KeyValue.key = TestTable.key))
+for update
+--
+QueryStmt
++-output_column_list=
+| +-KeyValue.Key#1 AS Key [INT64]
+| +-KeyValue.Value#2 AS Value [STRING]
+| +-$array.$unnest1#6 AS `$unnest1` [INT32]
++-query=
+  +-ProjectScan
+    +-column_list=[KeyValue.Key#1, KeyValue.Value#2, $array.$unnest1#6]
+    +-input_scan=
+      +-ArrayScan
+        +-column_list=[KeyValue.Key#1, KeyValue.Value#2, $array.$unnest1#6]
+        +-input_scan=
+        | +-TableScan
+        |   +-column_list=KeyValue.[Key#1, Value#2]
+        |   +-table=KeyValue
+        |   +-column_index_list=[0, 1]
+        |   +-lock_mode=
+        |     +-LockMode(strength=UPDATE)
+        +-array_expr_list=
+        | +-SubqueryExpr
+        |   +-type=ARRAY<INT32>
+        |   +-subquery_type=ARRAY
+        |   +-parameter_list=
+        |   | +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+        |   +-subquery=
+        |     +-ProjectScan
+        |       +-column_list=[TestTable.key#3]
+        |       +-input_scan=
+        |         +-FilterScan
+        |           +-column_list=[TestTable.key#3]
+        |           +-input_scan=
+        |           | +-TableScan(column_list=[TestTable.key#3], table=TestTable, column_index_list=[0])
+        |           +-filter_expr=
+        |             +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+        |               +-ColumnRef(type=INT64, column=KeyValue.Key#1, is_correlated=TRUE)
+        |               +-Cast(INT32 -> INT64)
+        |                 +-ColumnRef(type=INT32, column=TestTable.key#3)
+        +-element_column_list=[$array.$unnest1#6]
+==
+
+# FOR UPDATE on a query with GROUP BY
+select
+  key,
+  value
+from
+  KeyValue
+group by key, value
+for update
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.key#3 AS key [INT64]
+| +-$groupby.value#4 AS value [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=$groupby.[key#3, value#4]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=$groupby.[key#3, value#4]
+        +-input_scan=
+        | +-TableScan
+        |   +-column_list=KeyValue.[Key#1, Value#2]
+        |   +-table=KeyValue
+        |   +-column_index_list=[0, 1]
+        |   +-lock_mode=
+        |     +-LockMode(strength=UPDATE)
+        +-group_by_list=
+          +-key#3 := ColumnRef(type=INT64, column=KeyValue.Key#1)
+          +-value#4 := ColumnRef(type=STRING, column=KeyValue.Value#2)
+==
+
+# FOR UPDATE on a query with GROUP BY and HAVING
+select
+  key,
+  sum(CAST(value AS INT64)) as values
+from
+  KeyValue
+group by key
+having values > 10
+for update
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.key#4 AS key [INT64]
+| +-$aggregate.values#3 AS values [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$groupby.key#4, $aggregate.values#3]
+    +-input_scan=
+      +-FilterScan
+        +-column_list=[$groupby.key#4, $aggregate.values#3]
+        +-input_scan=
+        | +-AggregateScan
+        |   +-column_list=[$groupby.key#4, $aggregate.values#3]
+        |   +-input_scan=
+        |   | +-TableScan
+        |   |   +-column_list=KeyValue.[Key#1, Value#2]
+        |   |   +-table=KeyValue
+        |   |   +-column_index_list=[0, 1]
+        |   |   +-lock_mode=
+        |   |     +-LockMode(strength=UPDATE)
+        |   +-group_by_list=
+        |   | +-key#4 := ColumnRef(type=INT64, column=KeyValue.Key#1)
+        |   +-aggregate_list=
+        |     +-values#3 :=
+        |       +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+        |         +-Cast(STRING -> INT64)
+        |           +-ColumnRef(type=STRING, column=KeyValue.Value#2)
+        +-filter_expr=
+          +-FunctionCall(GoogleSQL:$greater(INT64, INT64) -> BOOL)
+            +-ColumnRef(type=INT64, column=$aggregate.values#3)
+            +-Literal(type=INT64, value=10)
+==
+
+# FOR UPDATE on a query with Comma/CROSS JOIN.
+select
+  kv1.key,
+  kv2.key
+from
+  KeyValue kv1{{,| cross join}} KeyValue kv2
+for update
+--
+QueryStmt
++-output_column_list=
+| +-KeyValue.Key#1 AS key [INT64]
+| +-KeyValue.Key#3 AS key [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=KeyValue.[Key#1, Key#3]
+    +-input_scan=
+      +-JoinScan
+        +-column_list=KeyValue.[Key#1, Key#3]
+        +-left_scan=
+        | +-TableScan
+        |   +-column_list=[KeyValue.Key#1]
+        |   +-table=KeyValue
+        |   +-column_index_list=[0]
+        |   +-alias="kv1"
+        |   +-lock_mode=
+        |     +-LockMode(strength=UPDATE)
+        +-right_scan=
+          +-TableScan
+            +-column_list=[KeyValue.Key#3]
+            +-table=KeyValue
+            +-column_index_list=[0]
+            +-alias="kv2"
+            +-lock_mode=
+              +-LockMode(strength=UPDATE)
+==
+
+# FOR UPDATE on queries with join conditions.
+select
+  kv1.key
+from
+  KeyValue kv1
+  {{join|left join|right join|full join}}
+  KeyValue kv2
+  on kv1.key = kv2.key
+for update
+--
+ALTERNATION GROUP: join
+--
+QueryStmt
++-output_column_list=
+| +-KeyValue.Key#1 AS key [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[KeyValue.Key#1]
+    +-input_scan=
+      +-JoinScan
+        +-column_list=KeyValue.[Key#1, Key#3]
+        +-left_scan=
+        | +-TableScan
+        |   +-column_list=[KeyValue.Key#1]
+        |   +-table=KeyValue
+        |   +-column_index_list=[0]
+        |   +-alias="kv1"
+        |   +-lock_mode=
+        |     +-LockMode(strength=UPDATE)
+        +-right_scan=
+        | +-TableScan
+        |   +-column_list=[KeyValue.Key#3]
+        |   +-table=KeyValue
+        |   +-column_index_list=[0]
+        |   +-alias="kv2"
+        |   +-lock_mode=
+        |     +-LockMode(strength=UPDATE)
+        +-join_expr=
+          +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+            +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+            +-ColumnRef(type=INT64, column=KeyValue.Key#3)
+--
+ALTERNATION GROUP: left join
+--
+QueryStmt
++-output_column_list=
+| +-KeyValue.Key#1 AS key [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[KeyValue.Key#1]
+    +-input_scan=
+      +-JoinScan
+        +-column_list=KeyValue.[Key#1, Key#3]
+        +-join_type=LEFT
+        +-left_scan=
+        | +-TableScan
+        |   +-column_list=[KeyValue.Key#1]
+        |   +-table=KeyValue
+        |   +-column_index_list=[0]
+        |   +-alias="kv1"
+        |   +-lock_mode=
+        |     +-LockMode(strength=UPDATE)
+        +-right_scan=
+        | +-TableScan
+        |   +-column_list=[KeyValue.Key#3]
+        |   +-table=KeyValue
+        |   +-column_index_list=[0]
+        |   +-alias="kv2"
+        |   +-lock_mode=
+        |     +-LockMode(strength=UPDATE)
+        +-join_expr=
+          +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+            +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+            +-ColumnRef(type=INT64, column=KeyValue.Key#3)
+--
+ALTERNATION GROUP: right join
+--
+QueryStmt
++-output_column_list=
+| +-KeyValue.Key#1 AS key [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[KeyValue.Key#1]
+    +-input_scan=
+      +-JoinScan
+        +-column_list=KeyValue.[Key#1, Key#3]
+        +-join_type=RIGHT
+        +-left_scan=
+        | +-TableScan
+        |   +-column_list=[KeyValue.Key#1]
+        |   +-table=KeyValue
+        |   +-column_index_list=[0]
+        |   +-alias="kv1"
+        |   +-lock_mode=
+        |     +-LockMode(strength=UPDATE)
+        +-right_scan=
+        | +-TableScan
+        |   +-column_list=[KeyValue.Key#3]
+        |   +-table=KeyValue
+        |   +-column_index_list=[0]
+        |   +-alias="kv2"
+        |   +-lock_mode=
+        |     +-LockMode(strength=UPDATE)
+        +-join_expr=
+          +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+            +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+            +-ColumnRef(type=INT64, column=KeyValue.Key#3)
+--
+ALTERNATION GROUP: full join
+--
+QueryStmt
++-output_column_list=
+| +-KeyValue.Key#1 AS key [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[KeyValue.Key#1]
+    +-input_scan=
+      +-JoinScan
+        +-column_list=KeyValue.[Key#1, Key#3]
+        +-join_type=FULL
+        +-left_scan=
+        | +-TableScan
+        |   +-column_list=[KeyValue.Key#1]
+        |   +-table=KeyValue
+        |   +-column_index_list=[0]
+        |   +-alias="kv1"
+        |   +-lock_mode=
+        |     +-LockMode(strength=UPDATE)
+        +-right_scan=
+        | +-TableScan
+        |   +-column_list=[KeyValue.Key#3]
+        |   +-table=KeyValue
+        |   +-column_index_list=[0]
+        |   +-alias="kv2"
+        |   +-lock_mode=
+        |     +-LockMode(strength=UPDATE)
+        +-join_expr=
+          +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+            +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+            +-ColumnRef(type=INT64, column=KeyValue.Key#3)
+==
+
+# FOR UPDATE on a query with ORDER BY.
+select
+  key,
+  value
+from
+  KeyValue
+order by key
+for update
+--
+QueryStmt
++-output_column_list=
+| +-KeyValue.Key#1 AS key [INT64]
+| +-KeyValue.Value#2 AS value [STRING]
++-query=
+  +-OrderByScan
+    +-column_list=KeyValue.[Key#1, Value#2]
+    +-is_ordered=TRUE
+    +-input_scan=
+    | +-TableScan
+    |   +-column_list=KeyValue.[Key#1, Value#2]
+    |   +-table=KeyValue
+    |   +-column_index_list=[0, 1]
+    |   +-lock_mode=
+    |     +-LockMode(strength=UPDATE)
+    +-order_by_item_list=
+      +-OrderByItem
+        +-column_ref=
+          +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+==
+
+# FOR UPDATE on a query with LIMIT.
+select
+  key,
+  value
+from
+  KeyValue
+limit 3
+for update
+--
+QueryStmt
++-output_column_list=
+| +-KeyValue.Key#1 AS key [INT64]
+| +-KeyValue.Value#2 AS value [STRING]
++-query=
+  +-LimitOffsetScan
+    +-column_list=KeyValue.[Key#1, Value#2]
+    +-input_scan=
+    | +-ProjectScan
+    |   +-column_list=KeyValue.[Key#1, Value#2]
+    |   +-input_scan=
+    |     +-TableScan
+    |       +-column_list=KeyValue.[Key#1, Value#2]
+    |       +-table=KeyValue
+    |       +-column_index_list=[0, 1]
+    |       +-lock_mode=
+    |         +-LockMode(strength=UPDATE)
+    +-limit=
+      +-Literal(type=INT64, value=3)
+==
+
+# FOR UPDATE on a query with LIMIT and OFFSET.
+select
+  key,
+  value
+from
+  KeyValue
+limit 3 offset 1
+for update
+--
+QueryStmt
++-output_column_list=
+| +-KeyValue.Key#1 AS key [INT64]
+| +-KeyValue.Value#2 AS value [STRING]
++-query=
+  +-LimitOffsetScan
+    +-column_list=KeyValue.[Key#1, Value#2]
+    +-input_scan=
+    | +-ProjectScan
+    |   +-column_list=KeyValue.[Key#1, Value#2]
+    |   +-input_scan=
+    |     +-TableScan
+    |       +-column_list=KeyValue.[Key#1, Value#2]
+    |       +-table=KeyValue
+    |       +-column_index_list=[0, 1]
+    |       +-lock_mode=
+    |         +-LockMode(strength=UPDATE)
+    +-limit=
+    | +-Literal(type=INT64, value=3)
+    +-offset=
+      +-Literal(type=INT64, value=1)
+==
+
+# FOR UPDATE on a query with LIMIT, OFFSET and ORDER BY.
+select
+  key,
+  value
+from
+  KeyValue
+order by key
+limit 3 offset 1
+for update
+--
+QueryStmt
++-output_column_list=
+| +-KeyValue.Key#1 AS key [INT64]
+| +-KeyValue.Value#2 AS value [STRING]
++-query=
+  +-LimitOffsetScan
+    +-column_list=KeyValue.[Key#1, Value#2]
+    +-is_ordered=TRUE
+    +-input_scan=
+    | +-OrderByScan
+    |   +-column_list=KeyValue.[Key#1, Value#2]
+    |   +-is_ordered=TRUE
+    |   +-input_scan=
+    |   | +-TableScan
+    |   |   +-column_list=KeyValue.[Key#1, Value#2]
+    |   |   +-table=KeyValue
+    |   |   +-column_index_list=[0, 1]
+    |   |   +-lock_mode=
+    |   |     +-LockMode(strength=UPDATE)
+    |   +-order_by_item_list=
+    |     +-OrderByItem
+    |       +-column_ref=
+    |         +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+    +-limit=
+    | +-Literal(type=INT64, value=3)
+    +-offset=
+      +-Literal(type=INT64, value=1)
+==
+
+# Set operation with FOR UPDATE in LHS query
+(select key from KeyValue kv1 for update)
+union all
+select key from KeyValue kv2
+--
+QueryStmt
++-output_column_list=
+| +-$union_all.key#5 AS key [INT64]
++-query=
+  +-SetOperationScan
+    +-column_list=[$union_all.key#5]
+    +-op_type=UNION_ALL
+    +-input_item_list=
+      +-SetOperationItem
+      | +-scan=
+      | | +-ProjectScan
+      | |   +-column_list=[KeyValue.Key#1]
+      | |   +-input_scan=
+      | |     +-TableScan
+      | |       +-column_list=[KeyValue.Key#1]
+      | |       +-table=KeyValue
+      | |       +-column_index_list=[0]
+      | |       +-alias="kv1"
+      | |       +-lock_mode=
+      | |         +-LockMode(strength=UPDATE)
+      | +-output_column_list=[KeyValue.Key#1]
+      +-SetOperationItem
+        +-scan=
+        | +-ProjectScan
+        |   +-column_list=[KeyValue.Key#3]
+        |   +-input_scan=
+        |     +-TableScan(column_list=[KeyValue.Key#3], table=KeyValue, column_index_list=[0], alias="kv2")
+        +-output_column_list=[KeyValue.Key#3]
+==
+
+# Set operation with FOR UPDATE in RHS query
+select key from KeyValue kv1
+union all
+(select key from KeyValue kv2 for update)
+--
+QueryStmt
++-output_column_list=
+| +-$union_all.key#5 AS key [INT64]
++-query=
+  +-SetOperationScan
+    +-column_list=[$union_all.key#5]
+    +-op_type=UNION_ALL
+    +-input_item_list=
+      +-SetOperationItem
+      | +-scan=
+      | | +-ProjectScan
+      | |   +-column_list=[KeyValue.Key#1]
+      | |   +-input_scan=
+      | |     +-TableScan(column_list=[KeyValue.Key#1], table=KeyValue, column_index_list=[0], alias="kv1")
+      | +-output_column_list=[KeyValue.Key#1]
+      +-SetOperationItem
+        +-scan=
+        | +-ProjectScan
+        |   +-column_list=[KeyValue.Key#3]
+        |   +-input_scan=
+        |     +-TableScan
+        |       +-column_list=[KeyValue.Key#3]
+        |       +-table=KeyValue
+        |       +-column_index_list=[0]
+        |       +-alias="kv2"
+        |       +-lock_mode=
+        |         +-LockMode(strength=UPDATE)
+        +-output_column_list=[KeyValue.Key#3]
+==
+
+# FOR UPDATE binding to the outer query representing the set operation.
+# Therefore all inner TableScan nodes have the LockMode node propagated to
+# them.
+select key from KeyValue kv1
+union all
+select key from KeyValue kv2
+for update
+--
+QueryStmt
++-output_column_list=
+| +-$union_all.key#5 AS key [INT64]
++-query=
+  +-SetOperationScan
+    +-column_list=[$union_all.key#5]
+    +-op_type=UNION_ALL
+    +-input_item_list=
+      +-SetOperationItem
+      | +-scan=
+      | | +-ProjectScan
+      | |   +-column_list=[KeyValue.Key#1]
+      | |   +-input_scan=
+      | |     +-TableScan
+      | |       +-column_list=[KeyValue.Key#1]
+      | |       +-table=KeyValue
+      | |       +-column_index_list=[0]
+      | |       +-alias="kv1"
+      | |       +-lock_mode=
+      | |         +-LockMode(strength=UPDATE)
+      | +-output_column_list=[KeyValue.Key#1]
+      +-SetOperationItem
+        +-scan=
+        | +-ProjectScan
+        |   +-column_list=[KeyValue.Key#3]
+        |   +-input_scan=
+        |     +-TableScan
+        |       +-column_list=[KeyValue.Key#3]
+        |       +-table=KeyValue
+        |       +-column_index_list=[0]
+        |       +-alias="kv2"
+        |       +-lock_mode=
+        |         +-LockMode(strength=UPDATE)
+        +-output_column_list=[KeyValue.Key#3]
+==
+
+# Equivalent to previous query but with explicit parenthesis.
+(
+   select key from KeyValue kv1
+   union all
+   select key from KeyValue kv2
+)
+for update
+--
+QueryStmt
++-output_column_list=
+| +-$union_all.key#5 AS key [INT64]
++-query=
+  +-SetOperationScan
+    +-column_list=[$union_all.key#5]
+    +-op_type=UNION_ALL
+    +-input_item_list=
+      +-SetOperationItem
+      | +-scan=
+      | | +-ProjectScan
+      | |   +-column_list=[KeyValue.Key#1]
+      | |   +-input_scan=
+      | |     +-TableScan
+      | |       +-column_list=[KeyValue.Key#1]
+      | |       +-table=KeyValue
+      | |       +-column_index_list=[0]
+      | |       +-alias="kv1"
+      | |       +-lock_mode=
+      | |         +-LockMode(strength=UPDATE)
+      | +-output_column_list=[KeyValue.Key#1]
+      +-SetOperationItem
+        +-scan=
+        | +-ProjectScan
+        |   +-column_list=[KeyValue.Key#3]
+        |   +-input_scan=
+        |     +-TableScan
+        |       +-column_list=[KeyValue.Key#3]
+        |       +-table=KeyValue
+        |       +-column_index_list=[0]
+        |       +-alias="kv2"
+        |       +-lock_mode=
+        |         +-LockMode(strength=UPDATE)
+        +-output_column_list=[KeyValue.Key#3]
+==
+
+# FOR UPDATE binding to the outer query representing the set operation.
+# The lock mode will propagate to the inner queries but ORDER BY and LIMIT will
+# apply to the output of the query.
+select key from KeyValue kv1
+union all
+select key from KeyValue kv2
+order by key
+limit 5
+for update
+--
+QueryStmt
++-output_column_list=
+| +-$union_all.key#5 AS key [INT64]
++-query=
+  +-LimitOffsetScan
+    +-column_list=[$union_all.key#5]
+    +-is_ordered=TRUE
+    +-input_scan=
+    | +-OrderByScan
+    |   +-column_list=[$union_all.key#5]
+    |   +-is_ordered=TRUE
+    |   +-input_scan=
+    |   | +-SetOperationScan
+    |   |   +-column_list=[$union_all.key#5]
+    |   |   +-op_type=UNION_ALL
+    |   |   +-input_item_list=
+    |   |     +-SetOperationItem
+    |   |     | +-scan=
+    |   |     | | +-ProjectScan
+    |   |     | |   +-column_list=[KeyValue.Key#1]
+    |   |     | |   +-input_scan=
+    |   |     | |     +-TableScan
+    |   |     | |       +-column_list=[KeyValue.Key#1]
+    |   |     | |       +-table=KeyValue
+    |   |     | |       +-column_index_list=[0]
+    |   |     | |       +-alias="kv1"
+    |   |     | |       +-lock_mode=
+    |   |     | |         +-LockMode(strength=UPDATE)
+    |   |     | +-output_column_list=[KeyValue.Key#1]
+    |   |     +-SetOperationItem
+    |   |       +-scan=
+    |   |       | +-ProjectScan
+    |   |       |   +-column_list=[KeyValue.Key#3]
+    |   |       |   +-input_scan=
+    |   |       |     +-TableScan
+    |   |       |       +-column_list=[KeyValue.Key#3]
+    |   |       |       +-table=KeyValue
+    |   |       |       +-column_index_list=[0]
+    |   |       |       +-alias="kv2"
+    |   |       |       +-lock_mode=
+    |   |       |         +-LockMode(strength=UPDATE)
+    |   |       +-output_column_list=[KeyValue.Key#3]
+    |   +-order_by_item_list=
+    |     +-OrderByItem
+    |       +-column_ref=
+    |         +-ColumnRef(type=INT64, column=$union_all.key#5)
+    +-limit=
+      +-Literal(type=INT64, value=5)
+==
+
+# FOR UPDATE binding to the outer query representing three set operations.
+# The lock mode will propagate to all the inner TableScans.
+select key from KeyValue kv1
+union all
+select key from KeyValue kv2
+union all
+select key from TestTable
+for update
+--
+QueryStmt
++-output_column_list=
+| +-$union_all.key#8 AS key [INT64]
++-query=
+  +-SetOperationScan
+    +-column_list=[$union_all.key#8]
+    +-op_type=UNION_ALL
+    +-input_item_list=
+      +-SetOperationItem
+      | +-scan=
+      | | +-ProjectScan
+      | |   +-column_list=[KeyValue.Key#1]
+      | |   +-input_scan=
+      | |     +-TableScan
+      | |       +-column_list=[KeyValue.Key#1]
+      | |       +-table=KeyValue
+      | |       +-column_index_list=[0]
+      | |       +-alias="kv1"
+      | |       +-lock_mode=
+      | |         +-LockMode(strength=UPDATE)
+      | +-output_column_list=[KeyValue.Key#1]
+      +-SetOperationItem
+      | +-scan=
+      | | +-ProjectScan
+      | |   +-column_list=[KeyValue.Key#3]
+      | |   +-input_scan=
+      | |     +-TableScan
+      | |       +-column_list=[KeyValue.Key#3]
+      | |       +-table=KeyValue
+      | |       +-column_index_list=[0]
+      | |       +-alias="kv2"
+      | |       +-lock_mode=
+      | |         +-LockMode(strength=UPDATE)
+      | +-output_column_list=[KeyValue.Key#3]
+      +-SetOperationItem
+        +-scan=
+        | +-ProjectScan
+        |   +-column_list=[$union_all3_cast.key#9]
+        |   +-expr_list=
+        |   | +-key#9 :=
+        |   |   +-Cast(INT32 -> INT64)
+        |   |     +-ColumnRef(type=INT32, column=TestTable.key#5)
+        |   +-input_scan=
+        |     +-ProjectScan
+        |       +-column_list=[TestTable.key#5]
+        |       +-input_scan=
+        |         +-TableScan
+        |           +-column_list=[TestTable.key#5]
+        |           +-table=TestTable
+        |           +-column_index_list=[0]
+        |           +-lock_mode=
+        |             +-LockMode(strength=UPDATE)
+        +-output_column_list=[$union_all3_cast.key#9]
+==
+
+# FOR UPDATE binding to the outer query representing three set operations.
+# The lock mode will propagate to all the inner TableScans.
+(select key from KeyValue kv1
+ union all
+ select key from KeyValue kv2
+)
+except all
+select key from TestTable
+for update
+--
+QueryStmt
++-output_column_list=
+| +-$except_all.key#9 AS key [INT64]
++-query=
+  +-SetOperationScan
+    +-column_list=[$except_all.key#9]
+    +-op_type=EXCEPT_ALL
+    +-input_item_list=
+      +-SetOperationItem
+      | +-scan=
+      | | +-SetOperationScan
+      | |   +-column_list=[$union_all.key#5]
+      | |   +-op_type=UNION_ALL
+      | |   +-input_item_list=
+      | |     +-SetOperationItem
+      | |     | +-scan=
+      | |     | | +-ProjectScan
+      | |     | |   +-column_list=[KeyValue.Key#1]
+      | |     | |   +-input_scan=
+      | |     | |     +-TableScan
+      | |     | |       +-column_list=[KeyValue.Key#1]
+      | |     | |       +-table=KeyValue
+      | |     | |       +-column_index_list=[0]
+      | |     | |       +-alias="kv1"
+      | |     | |       +-lock_mode=
+      | |     | |         +-LockMode(strength=UPDATE)
+      | |     | +-output_column_list=[KeyValue.Key#1]
+      | |     +-SetOperationItem
+      | |       +-scan=
+      | |       | +-ProjectScan
+      | |       |   +-column_list=[KeyValue.Key#3]
+      | |       |   +-input_scan=
+      | |       |     +-TableScan
+      | |       |       +-column_list=[KeyValue.Key#3]
+      | |       |       +-table=KeyValue
+      | |       |       +-column_index_list=[0]
+      | |       |       +-alias="kv2"
+      | |       |       +-lock_mode=
+      | |       |         +-LockMode(strength=UPDATE)
+      | |       +-output_column_list=[KeyValue.Key#3]
+      | +-output_column_list=[$union_all.key#5]
+      +-SetOperationItem
+        +-scan=
+        | +-ProjectScan
+        |   +-column_list=[$except_all2_cast.key#10]
+        |   +-expr_list=
+        |   | +-key#10 :=
+        |   |   +-Cast(INT32 -> INT64)
+        |   |     +-ColumnRef(type=INT32, column=TestTable.key#6)
+        |   +-input_scan=
+        |     +-ProjectScan
+        |       +-column_list=[TestTable.key#6]
+        |       +-input_scan=
+        |         +-TableScan
+        |           +-column_list=[TestTable.key#6]
+        |           +-table=TestTable
+        |           +-column_index_list=[0]
+        |           +-lock_mode=
+        |             +-LockMode(strength=UPDATE)
+        +-output_column_list=[$except_all2_cast.key#10]
+==
+
+# FOR UPDATE binding to the parenthesized query of set operations.
+# The lock mode will propagate to all the inner TableScans of the parenthesized
+# query but not to the set operation in the outer query.
+(select key from KeyValue kv1
+ union all
+ select key from KeyValue kv2
+ for update
+)
+except all
+select key from TestTable
+--
+QueryStmt
++-output_column_list=
+| +-$except_all.key#9 AS key [INT64]
++-query=
+  +-SetOperationScan
+    +-column_list=[$except_all.key#9]
+    +-op_type=EXCEPT_ALL
+    +-input_item_list=
+      +-SetOperationItem
+      | +-scan=
+      | | +-SetOperationScan
+      | |   +-column_list=[$union_all.key#5]
+      | |   +-op_type=UNION_ALL
+      | |   +-input_item_list=
+      | |     +-SetOperationItem
+      | |     | +-scan=
+      | |     | | +-ProjectScan
+      | |     | |   +-column_list=[KeyValue.Key#1]
+      | |     | |   +-input_scan=
+      | |     | |     +-TableScan
+      | |     | |       +-column_list=[KeyValue.Key#1]
+      | |     | |       +-table=KeyValue
+      | |     | |       +-column_index_list=[0]
+      | |     | |       +-alias="kv1"
+      | |     | |       +-lock_mode=
+      | |     | |         +-LockMode(strength=UPDATE)
+      | |     | +-output_column_list=[KeyValue.Key#1]
+      | |     +-SetOperationItem
+      | |       +-scan=
+      | |       | +-ProjectScan
+      | |       |   +-column_list=[KeyValue.Key#3]
+      | |       |   +-input_scan=
+      | |       |     +-TableScan
+      | |       |       +-column_list=[KeyValue.Key#3]
+      | |       |       +-table=KeyValue
+      | |       |       +-column_index_list=[0]
+      | |       |       +-alias="kv2"
+      | |       |       +-lock_mode=
+      | |       |         +-LockMode(strength=UPDATE)
+      | |       +-output_column_list=[KeyValue.Key#3]
+      | +-output_column_list=[$union_all.key#5]
+      +-SetOperationItem
+        +-scan=
+        | +-ProjectScan
+        |   +-column_list=[$except_all2_cast.key#10]
+        |   +-expr_list=
+        |   | +-key#10 :=
+        |   |   +-Cast(INT32 -> INT64)
+        |   |     +-ColumnRef(type=INT32, column=TestTable.key#6)
+        |   +-input_scan=
+        |     +-ProjectScan
+        |       +-column_list=[TestTable.key#6]
+        |       +-input_scan=
+        |         +-TableScan(column_list=[TestTable.key#6], table=TestTable, column_index_list=[0])
+        +-output_column_list=[$except_all2_cast.key#10]
+==
+
+# FOR UPDATE on a query that joins a table to the output of a set operation.
+# The LockMode in the outer query is propagated to all the TableScan nodes
+# below.
+select kv4.key, kv3.key
+from
+  (
+    select key from KeyValue kv1
+    union all
+    select key from KeyValue kv2
+  ) as kv3,
+  KeyValue as kv4
+for update
+--
+QueryStmt
++-output_column_list=
+| +-KeyValue.Key#6 AS key [INT64]
+| +-$union_all.key#5 AS key [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[KeyValue.Key#6, $union_all.key#5]
+    +-input_scan=
+      +-JoinScan
+        +-column_list=[$union_all.key#5, KeyValue.Key#6]
+        +-left_scan=
+        | +-SetOperationScan
+        |   +-column_list=[$union_all.key#5]
+        |   +-op_type=UNION_ALL
+        |   +-input_item_list=
+        |     +-SetOperationItem
+        |     | +-scan=
+        |     | | +-ProjectScan
+        |     | |   +-column_list=[KeyValue.Key#1]
+        |     | |   +-input_scan=
+        |     | |     +-TableScan
+        |     | |       +-column_list=[KeyValue.Key#1]
+        |     | |       +-table=KeyValue
+        |     | |       +-column_index_list=[0]
+        |     | |       +-alias="kv1"
+        |     | |       +-lock_mode=
+        |     | |         +-LockMode(strength=UPDATE)
+        |     | +-output_column_list=[KeyValue.Key#1]
+        |     +-SetOperationItem
+        |       +-scan=
+        |       | +-ProjectScan
+        |       |   +-column_list=[KeyValue.Key#3]
+        |       |   +-input_scan=
+        |       |     +-TableScan
+        |       |       +-column_list=[KeyValue.Key#3]
+        |       |       +-table=KeyValue
+        |       |       +-column_index_list=[0]
+        |       |       +-alias="kv2"
+        |       |       +-lock_mode=
+        |       |         +-LockMode(strength=UPDATE)
+        |       +-output_column_list=[KeyValue.Key#3]
+        +-right_scan=
+          +-TableScan
+            +-column_list=[KeyValue.Key#6]
+            +-table=KeyValue
+            +-column_index_list=[0]
+            +-alias="kv4"
+            +-lock_mode=
+              +-LockMode(strength=UPDATE)
+==
+
+# FOR UPDATE scoped to correlated subquery.
+select
+  key,
+  value
+from
+  KeyValue as kv
+where
+  key >= (
+    select key from KeyValue where key = kv.key for update
+  )
+--
+QueryStmt
++-output_column_list=
+| +-KeyValue.Key#1 AS key [INT64]
+| +-KeyValue.Value#2 AS value [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=KeyValue.[Key#1, Value#2]
+    +-input_scan=
+      +-FilterScan
+        +-column_list=KeyValue.[Key#1, Value#2]
+        +-input_scan=
+        | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1], alias="kv")
+        +-filter_expr=
+          +-FunctionCall(GoogleSQL:$greater_or_equal(INT64, INT64) -> BOOL)
+            +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+            +-SubqueryExpr
+              +-type=INT64
+              +-subquery_type=SCALAR
+              +-parameter_list=
+              | +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+              +-subquery=
+                +-ProjectScan
+                  +-column_list=[KeyValue.Key#3]
+                  +-input_scan=
+                    +-FilterScan
+                      +-column_list=[KeyValue.Key#3]
+                      +-input_scan=
+                      | +-TableScan
+                      |   +-column_list=[KeyValue.Key#3]
+                      |   +-table=KeyValue
+                      |   +-column_index_list=[0]
+                      |   +-lock_mode=
+                      |     +-LockMode(strength=UPDATE)
+                      +-filter_expr=
+                        +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+                          +-ColumnRef(type=INT64, column=KeyValue.Key#3)
+                          +-ColumnRef(type=INT64, column=KeyValue.Key#1, is_correlated=TRUE)
+==
+
+# FOR UPDATE on the outer query with a correlated subquery. LockMode doesn't
+# propagate to inner TableScans of expression subqueries.
+select
+  key,
+  value
+from
+  KeyValue as kv
+where
+  key >= (
+    select key from KeyValue where key = kv.key
+  )
+for update
+--
+QueryStmt
++-output_column_list=
+| +-KeyValue.Key#1 AS key [INT64]
+| +-KeyValue.Value#2 AS value [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=KeyValue.[Key#1, Value#2]
+    +-input_scan=
+      +-FilterScan
+        +-column_list=KeyValue.[Key#1, Value#2]
+        +-input_scan=
+        | +-TableScan
+        |   +-column_list=KeyValue.[Key#1, Value#2]
+        |   +-table=KeyValue
+        |   +-column_index_list=[0, 1]
+        |   +-alias="kv"
+        |   +-lock_mode=
+        |     +-LockMode(strength=UPDATE)
+        +-filter_expr=
+          +-FunctionCall(GoogleSQL:$greater_or_equal(INT64, INT64) -> BOOL)
+            +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+            +-SubqueryExpr
+              +-type=INT64
+              +-subquery_type=SCALAR
+              +-parameter_list=
+              | +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+              +-subquery=
+                +-ProjectScan
+                  +-column_list=[KeyValue.Key#3]
+                  +-input_scan=
+                    +-FilterScan
+                      +-column_list=[KeyValue.Key#3]
+                      +-input_scan=
+                      | +-TableScan(column_list=[KeyValue.Key#3], table=KeyValue, column_index_list=[0])
+                      +-filter_expr=
+                        +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+                          +-ColumnRef(type=INT64, column=KeyValue.Key#3)
+                          +-ColumnRef(type=INT64, column=KeyValue.Key#1, is_correlated=TRUE)
+==
+
+# FOR UPDATE scoped to a subquery of a FROM clause.
+select
+  key
+from
+  (
+    select * from KeyValue for update
+  ) as kv
+--
+QueryStmt
++-output_column_list=
+| +-KeyValue.Key#1 AS key [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[KeyValue.Key#1]
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=KeyValue.[Key#1, Value#2]
+        +-input_scan=
+          +-TableScan
+            +-column_list=KeyValue.[Key#1, Value#2]
+            +-table=KeyValue
+            +-column_index_list=[0, 1]
+            +-lock_mode=
+              +-LockMode(strength=UPDATE)
+==
+
+# FOR UPDATE scoped to the outer query with a subquery should propagate to the
+# inner TableScan.
+select
+  key
+from
+  (
+    select * from KeyValue
+  ) as kv
+for update
+--
+QueryStmt
++-output_column_list=
+| +-KeyValue.Key#1 AS key [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[KeyValue.Key#1]
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=KeyValue.[Key#1, Value#2]
+        +-input_scan=
+          +-TableScan
+            +-column_list=KeyValue.[Key#1, Value#2]
+            +-table=KeyValue
+            +-column_index_list=[0, 1]
+            +-lock_mode=
+              +-LockMode(strength=UPDATE)
+==
+
+# FOR UPDATE on the outer query should apply LockMode to outer TableScan and
+# also propagate to inner TableScan as it's a table subquery.
+select
+  kv1.key,
+  kv2.key
+from
+  (
+    select key from KeyValue
+  ) as kv1,
+  keyValue kv2
+for update
+--
+QueryStmt
++-output_column_list=
+| +-KeyValue.Key#1 AS key [INT64]
+| +-KeyValue.Key#3 AS key [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=KeyValue.[Key#1, Key#3]
+    +-input_scan=
+      +-JoinScan
+        +-column_list=KeyValue.[Key#1, Key#3]
+        +-left_scan=
+        | +-ProjectScan
+        |   +-column_list=[KeyValue.Key#1]
+        |   +-input_scan=
+        |     +-TableScan
+        |       +-column_list=[KeyValue.Key#1]
+        |       +-table=KeyValue
+        |       +-column_index_list=[0]
+        |       +-lock_mode=
+        |         +-LockMode(strength=UPDATE)
+        +-right_scan=
+          +-TableScan
+            +-column_list=[KeyValue.Key#3]
+            +-table=KeyValue
+            +-column_index_list=[0]
+            +-alias="kv2"
+            +-lock_mode=
+              +-LockMode(strength=UPDATE)
+==
+
+# FOR UPDATE is scoped to an expression subquery in the WHERE clause.
+select
+  *
+from
+  KeyValue
+where
+  key = (
+    select key from TestTable where key > 10 for update
+  )
+--
+QueryStmt
++-output_column_list=
+| +-KeyValue.Key#1 AS Key [INT64]
+| +-KeyValue.Value#2 AS Value [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=KeyValue.[Key#1, Value#2]
+    +-input_scan=
+      +-FilterScan
+        +-column_list=KeyValue.[Key#1, Value#2]
+        +-input_scan=
+        | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+        +-filter_expr=
+          +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+            +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+            +-Cast(INT32 -> INT64)
+              +-SubqueryExpr
+                +-type=INT32
+                +-subquery_type=SCALAR
+                +-subquery=
+                  +-ProjectScan
+                    +-column_list=[TestTable.key#3]
+                    +-input_scan=
+                      +-FilterScan
+                        +-column_list=[TestTable.key#3]
+                        +-input_scan=
+                        | +-TableScan
+                        |   +-column_list=[TestTable.key#3]
+                        |   +-table=TestTable
+                        |   +-column_index_list=[0]
+                        |   +-lock_mode=
+                        |     +-LockMode(strength=UPDATE)
+                        +-filter_expr=
+                          +-FunctionCall(GoogleSQL:$greater(INT32, INT32) -> BOOL)
+                            +-ColumnRef(type=INT32, column=TestTable.key#3)
+                            +-Literal(type=INT32, value=10)
+==
+
+# FOR UPDATE is scoped to the outer query with an expression subquery on the
+# WHERE clause. The LockMode node shouldn't propagate to the inner TableScan of
+# the expression subquery.
+select
+  *
+from
+  KeyValue
+where
+  key = (
+    select key from TestTable where key > 10
+  )
+for update
+--
+QueryStmt
++-output_column_list=
+| +-KeyValue.Key#1 AS Key [INT64]
+| +-KeyValue.Value#2 AS Value [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=KeyValue.[Key#1, Value#2]
+    +-input_scan=
+      +-FilterScan
+        +-column_list=KeyValue.[Key#1, Value#2]
+        +-input_scan=
+        | +-TableScan
+        |   +-column_list=KeyValue.[Key#1, Value#2]
+        |   +-table=KeyValue
+        |   +-column_index_list=[0, 1]
+        |   +-lock_mode=
+        |     +-LockMode(strength=UPDATE)
+        +-filter_expr=
+          +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+            +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+            +-Cast(INT32 -> INT64)
+              +-SubqueryExpr
+                +-type=INT32
+                +-subquery_type=SCALAR
+                +-subquery=
+                  +-ProjectScan
+                    +-column_list=[TestTable.key#3]
+                    +-input_scan=
+                      +-FilterScan
+                        +-column_list=[TestTable.key#3]
+                        +-input_scan=
+                        | +-TableScan(column_list=[TestTable.key#3], table=TestTable, column_index_list=[0])
+                        +-filter_expr=
+                          +-FunctionCall(GoogleSQL:$greater(INT32, INT32) -> BOOL)
+                            +-ColumnRef(type=INT32, column=TestTable.key#3)
+                            +-Literal(type=INT32, value=10)
+==
+
+# FOR UPDATE in outer query shouldn't propagate to expression subquery SELECT
+# clause.
+select
+  key,
+  (select value from TestTable where TestTable.key = KeyValue.key) as value
+from
+  KeyValue
+for update
+--
+QueryStmt
++-output_column_list=
+| +-KeyValue.Key#1 AS key [INT64]
+| +-$query.value#7 AS value [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[KeyValue.Key#1, $query.value#7]
+    +-expr_list=
+    | +-value#7 :=
+    |   +-SubqueryExpr
+    |     +-type=STRING
+    |     +-subquery_type=SCALAR
+    |     +-parameter_list=
+    |     | +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+    |     | +-ColumnRef(type=STRING, column=KeyValue.Value#2)
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$expr_subquery.value#6]
+    |         +-expr_list=
+    |         | +-value#6 := ColumnRef(type=STRING, column=KeyValue.Value#2, is_correlated=TRUE)
+    |         +-input_scan=
+    |           +-FilterScan
+    |             +-column_list=[TestTable.key#3]
+    |             +-input_scan=
+    |             | +-TableScan(column_list=[TestTable.key#3], table=TestTable, column_index_list=[0])
+    |             +-filter_expr=
+    |               +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+    |                 +-Cast(INT32 -> INT64)
+    |                 | +-ColumnRef(type=INT32, column=TestTable.key#3)
+    |                 +-ColumnRef(type=INT64, column=KeyValue.Key#1, is_correlated=TRUE)
+    +-input_scan=
+      +-TableScan
+        +-column_list=KeyValue.[Key#1, Value#2]
+        +-table=KeyValue
+        +-column_index_list=[0, 1]
+        +-lock_mode=
+          +-LockMode(strength=UPDATE)
+==
+
+# FOR UPDATE in the CTE subquery.
+with t as (
+  select key from KeyValue for update
+)
+select * from t
+--
+QueryStmt
++-output_column_list=
+| +-t.key#3 AS key [INT64]
++-query=
+  +-WithScan
+    +-column_list=[t.key#3]
+    +-with_entry_list=
+    | +-WithEntry
+    |   +-with_query_name="t"
+    |   +-with_subquery=
+    |     +-ProjectScan
+    |       +-column_list=[KeyValue.Key#1]
+    |       +-input_scan=
+    |         +-TableScan
+    |           +-column_list=[KeyValue.Key#1]
+    |           +-table=KeyValue
+    |           +-column_index_list=[0]
+    |           +-lock_mode=
+    |             +-LockMode(strength=UPDATE)
+    +-query=
+      +-ProjectScan
+        +-column_list=[t.key#3]
+        +-input_scan=
+          +-WithRefScan(column_list=[t.key#3], with_query_name="t")
+==
+
+# FOR UPDATE in the outer query shouldn't propagate down to TableScan nodes.
+with t as (
+  select key from KeyValue
+)
+select * from t
+for update
+--
+QueryStmt
++-output_column_list=
+| +-t.key#3 AS key [INT64]
++-query=
+  +-WithScan
+    +-column_list=[t.key#3]
+    +-with_entry_list=
+    | +-WithEntry
+    |   +-with_query_name="t"
+    |   +-with_subquery=
+    |     +-ProjectScan
+    |       +-column_list=[KeyValue.Key#1]
+    |       +-input_scan=
+    |         +-TableScan(column_list=[KeyValue.Key#1], table=KeyValue, column_index_list=[0])
+    +-query=
+      +-ProjectScan
+        +-column_list=[t.key#3]
+        +-input_scan=
+          +-WithRefScan(column_list=[t.key#3], with_query_name="t")
+==
+
+# FOR UPDATE in the CTE query and outer query is equivalent to not having FOR
+# UPDATE in the outer query.
+with t as (
+  select key from KeyValue
+  for update
+)
+select * from t
+for update
+--
+QueryStmt
++-output_column_list=
+| +-t.key#3 AS key [INT64]
++-query=
+  +-WithScan
+    +-column_list=[t.key#3]
+    +-with_entry_list=
+    | +-WithEntry
+    |   +-with_query_name="t"
+    |   +-with_subquery=
+    |     +-ProjectScan
+    |       +-column_list=[KeyValue.Key#1]
+    |       +-input_scan=
+    |         +-TableScan
+    |           +-column_list=[KeyValue.Key#1]
+    |           +-table=KeyValue
+    |           +-column_index_list=[0]
+    |           +-lock_mode=
+    |             +-LockMode(strength=UPDATE)
+    +-query=
+      +-ProjectScan
+        +-column_list=[t.key#3]
+        +-input_scan=
+          +-WithRefScan(column_list=[t.key#3], with_query_name="t")
+==
+
+# FOR UPDATE should apply to kv2 TableScan but not to the TableScan in the CTE
+# query.
+with kv1 as (
+  select key from KeyValue
+)
+select
+  kv1.key
+from
+  KeyValue kv2
+  join
+  kv1
+  on kv1.key = kv2.key
+for update
+--
+QueryStmt
++-output_column_list=
+| +-kv1.key#5 AS key [INT64]
++-query=
+  +-WithScan
+    +-column_list=[kv1.key#5]
+    +-with_entry_list=
+    | +-WithEntry
+    |   +-with_query_name="kv1"
+    |   +-with_subquery=
+    |     +-ProjectScan
+    |       +-column_list=[KeyValue.Key#1]
+    |       +-input_scan=
+    |         +-TableScan(column_list=[KeyValue.Key#1], table=KeyValue, column_index_list=[0])
+    +-query=
+      +-ProjectScan
+        +-column_list=[kv1.key#5]
+        +-input_scan=
+          +-JoinScan
+            +-column_list=[KeyValue.Key#3, kv1.key#5]
+            +-left_scan=
+            | +-TableScan
+            |   +-column_list=[KeyValue.Key#3]
+            |   +-table=KeyValue
+            |   +-column_index_list=[0]
+            |   +-alias="kv2"
+            |   +-lock_mode=
+            |     +-LockMode(strength=UPDATE)
+            +-right_scan=
+            | +-WithRefScan(column_list=[kv1.key#5], with_query_name="kv1")
+            +-join_expr=
+              +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+                +-ColumnRef(type=INT64, column=kv1.key#5)
+                +-ColumnRef(type=INT64, column=KeyValue.Key#3)
+==
+
+# FOR UPDATE shouldn't apply to any TableScan nodes as all TableScan nodes are
+# below the WITH statement.
+[language_features=NONE,+FOR_UPDATE,+WITH_ON_SUBQUERY]
+select
+  *
+from (
+  with kv1 as (
+    select key from KeyValue
+  )
+  select * from kv1
+)
+for update
+--
+QueryStmt
++-output_column_list=
+| +-kv1.key#3 AS key [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[kv1.key#3]
+    +-input_scan=
+      +-WithScan
+        +-column_list=[kv1.key#3]
+        +-with_entry_list=
+        | +-WithEntry
+        |   +-with_query_name="kv1"
+        |   +-with_subquery=
+        |     +-ProjectScan
+        |       +-column_list=[KeyValue.Key#1]
+        |       +-input_scan=
+        |         +-TableScan(column_list=[KeyValue.Key#1], table=KeyValue, column_index_list=[0])
+        +-query=
+          +-ProjectScan
+            +-column_list=[kv1.key#3]
+            +-input_scan=
+              +-WithRefScan(column_list=[kv1.key#3], with_query_name="kv1")
+==
+
+[default language_features=NONE,+FOR_UPDATE,+PIPES]
+
+# FOR UPDATE with pipe syntax.
+from
+  KeyValue
+for update
+|> where key = 5
+|> select key, value
+--
+QueryStmt
++-output_column_list=
+| +-KeyValue.Key#1 AS key [INT64]
+| +-KeyValue.Value#2 AS value [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=KeyValue.[Key#1, Value#2]
+    +-input_scan=
+      +-FilterScan
+        +-column_list=KeyValue.[Key#1, Value#2]
+        +-input_scan=
+        | +-TableScan
+        |   +-column_list=KeyValue.[Key#1, Value#2]
+        |   +-table=KeyValue
+        |   +-column_index_list=[0, 1]
+        |   +-lock_mode=
+        |     +-LockMode(strength=UPDATE)
+        +-filter_expr=
+          +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+            +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+            +-Literal(type=INT64, value=5)
+==
+
+with
+  q1 as (
+    from KeyValue
+    for update
+    |> where key = 5
+    |> select key, value
+  ),
+  q2 as (
+    from q1
+    |> extend
+         cast(value as int64)*2 as y
+  )
+from q2
+|> aggregate sum(y)
+   group by key;
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.key#10 AS key [INT64]
+| +-$aggregate.$agg1#9 AS `$col1` [INT64]
++-query=
+  +-WithScan
+    +-column_list=[$groupby.key#10, $aggregate.$agg1#9]
+    +-with_entry_list=
+    | +-WithEntry
+    | | +-with_query_name="q1"
+    | | +-with_subquery=
+    | |   +-ProjectScan
+    | |     +-column_list=KeyValue.[Key#1, Value#2]
+    | |     +-input_scan=
+    | |       +-FilterScan
+    | |         +-column_list=KeyValue.[Key#1, Value#2]
+    | |         +-input_scan=
+    | |         | +-TableScan
+    | |         |   +-column_list=KeyValue.[Key#1, Value#2]
+    | |         |   +-table=KeyValue
+    | |         |   +-column_index_list=[0, 1]
+    | |         |   +-lock_mode=
+    | |         |     +-LockMode(strength=UPDATE)
+    | |         +-filter_expr=
+    | |           +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+    | |             +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+    | |             +-Literal(type=INT64, value=5)
+    | +-WithEntry
+    |   +-with_query_name="q2"
+    |   +-with_subquery=
+    |     +-ProjectScan
+    |       +-column_list=[q1.key#3, q1.value#4, $pipe_extend.y#5]
+    |       +-expr_list=
+    |       | +-y#5 :=
+    |       |   +-FunctionCall(GoogleSQL:$multiply(INT64, INT64) -> INT64)
+    |       |     +-Cast(STRING -> INT64)
+    |       |     | +-ColumnRef(type=STRING, column=q1.value#4)
+    |       |     +-Literal(type=INT64, value=2)
+    |       +-input_scan=
+    |         +-WithRefScan(column_list=q1.[key#3, value#4], with_query_name="q1")
+    +-query=
+      +-AggregateScan
+        +-column_list=[$groupby.key#10, $aggregate.$agg1#9]
+        +-input_scan=
+        | +-WithRefScan(column_list=q2.[key#6, value#7, y#8], with_query_name="q2")
+        +-group_by_list=
+        | +-key#10 := ColumnRef(type=INT64, column=q2.key#6)
+        +-aggregate_list=
+          +-$agg1#9 :=
+            +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+              +-ColumnRef(type=INT64, column=q2.y#8)
+==
+
+# Same as above but FOR UPDATE is on the WITH statement so won't be propagated
+# to the CTE subquery.
+with
+  q1 as (
+    from KeyValue
+    |> where key = 5
+    |> select key, value
+  ),
+  q2 as (
+    from q1
+    |> extend
+         cast(value as int64)*2 as y
+  )
+from q2
+for update
+|> aggregate sum(y)
+   group by key;
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.key#10 AS key [INT64]
+| +-$aggregate.$agg1#9 AS `$col1` [INT64]
++-query=
+  +-WithScan
+    +-column_list=[$groupby.key#10, $aggregate.$agg1#9]
+    +-with_entry_list=
+    | +-WithEntry
+    | | +-with_query_name="q1"
+    | | +-with_subquery=
+    | |   +-ProjectScan
+    | |     +-column_list=KeyValue.[Key#1, Value#2]
+    | |     +-input_scan=
+    | |       +-FilterScan
+    | |         +-column_list=KeyValue.[Key#1, Value#2]
+    | |         +-input_scan=
+    | |         | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+    | |         +-filter_expr=
+    | |           +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+    | |             +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+    | |             +-Literal(type=INT64, value=5)
+    | +-WithEntry
+    |   +-with_query_name="q2"
+    |   +-with_subquery=
+    |     +-ProjectScan
+    |       +-column_list=[q1.key#3, q1.value#4, $pipe_extend.y#5]
+    |       +-expr_list=
+    |       | +-y#5 :=
+    |       |   +-FunctionCall(GoogleSQL:$multiply(INT64, INT64) -> INT64)
+    |       |     +-Cast(STRING -> INT64)
+    |       |     | +-ColumnRef(type=STRING, column=q1.value#4)
+    |       |     +-Literal(type=INT64, value=2)
+    |       +-input_scan=
+    |         +-WithRefScan(column_list=q1.[key#3, value#4], with_query_name="q1")
+    +-query=
+      +-AggregateScan
+        +-column_list=[$groupby.key#10, $aggregate.$agg1#9]
+        +-input_scan=
+        | +-WithRefScan(column_list=q2.[key#6, value#7, y#8], with_query_name="q2")
+        +-group_by_list=
+        | +-key#10 := ColumnRef(type=INT64, column=q2.key#6)
+        +-aggregate_list=
+          +-$agg1#9 :=
+            +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+              +-ColumnRef(type=INT64, column=q2.y#8)

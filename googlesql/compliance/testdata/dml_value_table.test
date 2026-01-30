@@ -1,0 +1,937 @@
+# Note that the test framework does not allow any way to specify a primary key
+# constraint on a value table, although some engines may support using an
+# extracted proto field for that. This is relevant for INSERT because some
+# of the semantics depend on whether we are trying to insert rows with duplicate
+# primary keys. For now, we simply trust that it is good enough to test value
+# tables without primary keys and non-value tables with/without primary keys.
+[load_proto_files=googlesql/testdata/test_schema.proto]
+[load_proto_names=googlesql_test.KitchenSinkPB]
+
+[prepare_database]
+CREATE TABLE Int64ValueTable AS
+SELECT AS VALUE 10
+UNION ALL
+SELECT 20
+--
+ARRAY<INT64>[10, 20]
+==
+
+[prepare_database]
+CREATE TABLE KitchenSinkValueTable AS
+SELECT AS `googlesql_test.KitchenSinkPB` 10 int64_key_1, 11 int64_key_2
+UNION ALL
+SELECT AS `googlesql_test.KitchenSinkPB` 20 int64_key_1, 21 int64_key_2,
+  true bool_val
+--
+ARRAY<PROTO<googlesql_test.KitchenSinkPB>>[
+  {
+    int64_key_1: 10
+    int64_key_2: 11
+  },
+  {
+    int64_key_1: 20
+    int64_key_2: 21
+    bool_val: true
+  }
+]
+==
+
+[prepare_database]
+CREATE TABLE StructValueTable AS
+SELECT AS STRUCT 55 foo, "fifty five" bar
+UNION ALL
+SELECT AS STRUCT 77 foo, "seventy seven" bar
+--
+ARRAY<STRUCT<foo INT64, bar STRING>>[
+  {55, "fifty five"},
+  {77, "seventy seven"}
+]
+==
+
+[name=int64_delete_nothing_with_assertion]
+DELETE Int64ValueTable WHERE FALSE
+ASSERT_ROWS_MODIFIED 0
+--
+STRUCT<
+  num_rows_modified INT64,
+  all_rows ARRAY<>
+>{
+  0,
+  ARRAY<INT64>[unknown order:10, 20]
+}
+==
+
+[name=proto_delete_nothing_with_assertion]
+DELETE KitchenSinkValueTable WHERE FALSE
+ASSERT_ROWS_MODIFIED 0
+--
+STRUCT<
+  num_rows_modified INT64,
+  all_rows ARRAY<>
+>{0,
+  ARRAY<PROTO<googlesql_test.KitchenSinkPB>>[unknown order:
+    {
+      int64_key_1: 10
+      int64_key_2: 11
+    },
+    {
+      int64_key_1: 20
+      int64_key_2: 21
+      bool_val: true
+    }
+  ]}
+==
+
+[name=struct_delete_nothing_with_assertion]
+DELETE StructValueTable WHERE FALSE
+ASSERT_ROWS_MODIFIED 0
+--
+STRUCT<
+  num_rows_modified INT64,
+  all_rows ARRAY<>
+>{0,
+  ARRAY<STRUCT<foo INT64, bar STRING>>[unknown order:
+    {55, "fifty five"},
+    {77, "seventy seven"}
+  ]}
+==
+
+[name=int64_delete_nothing_with_failed_assertion]
+DELETE Int64ValueTable WHERE False
+ASSERT_ROWS_MODIFIED 100
+--
+ERROR: generic::out_of_range: ASSERT_ROWS_MODIFIED expected 100 rows modified, but found 0
+==
+
+[name=proto_delete_nothing_with_failed_assertion]
+DELETE KitchenSinkValueTable WHERE False
+ASSERT_ROWS_MODIFIED 100
+--
+ERROR: generic::out_of_range: ASSERT_ROWS_MODIFIED expected 100 rows modified, but found 0
+==
+
+[name=struct_delete_nothing_with_failed_assertion]
+DELETE StructValueTable WHERE False
+ASSERT_ROWS_MODIFIED 100
+--
+ERROR: generic::out_of_range: ASSERT_ROWS_MODIFIED expected 100 rows modified, but found 0
+==
+
+[name=int64_delete_everything_with_assertion]
+DELETE Int64ValueTable WHERE True
+ASSERT_ROWS_MODIFIED 2
+--
+STRUCT<
+  num_rows_modified INT64,
+  all_rows ARRAY<>
+>{2, ARRAY<INT64>[]}
+==
+
+[name=proto_delete_everything_with_assertion]
+DELETE KitchenSinkValueTable WHERE True
+ASSERT_ROWS_MODIFIED 2
+--
+STRUCT<
+  num_rows_modified INT64,
+  all_rows ARRAY<>
+>{
+  2,
+  ARRAY<PROTO<googlesql_test.KitchenSinkPB>>[]
+}
+==
+
+[name=int64_delete_everything_with_failed_assertion]
+DELETE Int64ValueTable WHERE True
+ASSERT_ROWS_MODIFIED 100
+--
+ERROR: generic::out_of_range: ASSERT_ROWS_MODIFIED expected 100 rows modified, but found 2
+==
+
+[name=proto_delete_everything_with_failed_assertion]
+DELETE KitchenSinkValueTable WHERE True
+ASSERT_ROWS_MODIFIED 100
+--
+ERROR: generic::out_of_range: ASSERT_ROWS_MODIFIED expected 100 rows modified, but found 2
+==
+
+[name=struct_delete_everything_with_failed_assertion]
+DELETE StructValueTable WHERE True
+ASSERT_ROWS_MODIFIED 100
+--
+ERROR: generic::out_of_range: ASSERT_ROWS_MODIFIED expected 100 rows modified, but found 2
+==
+
+[name=int64_delete_half_with_assertion]
+DELETE Int64ValueTable AS value WHERE value = 10
+ASSERT_ROWS_MODIFIED 1
+--
+STRUCT<
+  num_rows_modified INT64,
+  all_rows ARRAY<>
+>{1, ARRAY<INT64>[20]}
+==
+
+[name=proto_delete_half_with_assertion]
+DELETE KitchenSinkValueTable WHERE int64_key_1 = 10
+ASSERT_ROWS_MODIFIED 1
+--
+STRUCT<
+  num_rows_modified INT64,
+  all_rows ARRAY<>
+>{1,
+  ARRAY<PROTO<googlesql_test.KitchenSinkPB>>[
+    {
+      int64_key_1: 20
+      int64_key_2: 21
+      bool_val: true
+    }
+  ]}
+==
+
+[name=int64_delete_half_with_failed_assertion]
+DELETE Int64ValueTable AS value WHERE value = 10
+ASSERT_ROWS_MODIFIED 100
+--
+ERROR: generic::out_of_range: ASSERT_ROWS_MODIFIED expected 100 rows modified, but found 1
+==
+
+[name=proto_delete_half_with_failed_assertion]
+DELETE KitchenSinkValueTable WHERE int64_key_1 = 10
+ASSERT_ROWS_MODIFIED 100
+--
+ERROR: generic::out_of_range: ASSERT_ROWS_MODIFIED expected 100 rows modified, but found 1
+==
+
+[name=struct_delete_half_with_failed_assertion]
+DELETE StructValueTable WHERE foo = 55
+ASSERT_ROWS_MODIFIED 100
+--
+ERROR: generic::out_of_range: ASSERT_ROWS_MODIFIED expected 100 rows modified, but found 1
+==
+
+[name=int64_update_nothing_with_assertion]
+UPDATE Int64ValueTable AS value SET value = 100 WHERE False
+ASSERT_ROWS_MODIFIED 0
+--
+STRUCT<
+  num_rows_modified INT64,
+  all_rows ARRAY<>
+>{
+  0,
+  ARRAY<INT64>[unknown order:10, 20]
+}
+==
+
+[name=proto_update_nothing_with_assertion]
+UPDATE KitchenSinkValueTable SET int64_key_1 = 100 WHERE False
+ASSERT_ROWS_MODIFIED 0
+--
+STRUCT<
+  num_rows_modified INT64,
+  all_rows ARRAY<>
+>{0,
+  ARRAY<PROTO<googlesql_test.KitchenSinkPB>>[unknown order:
+    {
+      int64_key_1: 10
+      int64_key_2: 11
+    },
+    {
+      int64_key_1: 20
+      int64_key_2: 21
+      bool_val: true
+    }
+  ]}
+==
+
+[name=struct_update_nothing_with_assertion]
+UPDATE StructValueTable SET foo = 1000 WHERE False
+ASSERT_ROWS_MODIFIED 0
+--
+STRUCT<
+  num_rows_modified INT64,
+  all_rows ARRAY<>
+>{0,
+  ARRAY<STRUCT<foo INT64, bar STRING>>[unknown order:
+    {55, "fifty five"},
+    {77, "seventy seven"}
+  ]}
+==
+
+[name=int64_update_nothing_with_failed_assertion]
+UPDATE Int64ValueTable AS value SET value = 100 WHERE False
+ASSERT_ROWS_MODIFIED 100
+--
+ERROR: generic::out_of_range: ASSERT_ROWS_MODIFIED expected 100 rows modified, but found 0
+==
+
+[name=proto_update_nothing_with_failed_assertion]
+UPDATE KitchenSinkValueTable SET int64_key_1 = 100 WHERE False
+ASSERT_ROWS_MODIFIED 100
+--
+ERROR: generic::out_of_range: ASSERT_ROWS_MODIFIED expected 100 rows modified, but found 0
+==
+
+[name=struct_update_nothing_with_failed_assertion]
+UPDATE StructValueTable SET foo = 1000 WHERE False
+ASSERT_ROWS_MODIFIED 100
+--
+ERROR: generic::out_of_range: ASSERT_ROWS_MODIFIED expected 100 rows modified, but found 0
+==
+
+[name=int64_update_everything_with_assertion]
+UPDATE Int64ValueTable AS value SET value = 100 WHERE True
+ASSERT_ROWS_MODIFIED 2
+--
+STRUCT<
+  num_rows_modified INT64,
+  all_rows ARRAY<>
+>{
+  2,
+  ARRAY<INT64>[unknown order:100, 100]
+}
+==
+
+[name=proto_update_everything_with_assertion]
+UPDATE KitchenSinkValueTable SET int64_key_1 = 100 WHERE True
+ASSERT_ROWS_MODIFIED 2
+--
+STRUCT<
+  num_rows_modified INT64,
+  all_rows ARRAY<>
+>{2,
+  ARRAY<PROTO<googlesql_test.KitchenSinkPB>>[unknown order:
+    {
+      int64_key_1: 100
+      int64_key_2: 11
+    },
+    {
+      int64_key_1: 100
+      int64_key_2: 21
+      bool_val: true
+    }
+  ]}
+==
+
+[name=struct_update_everything_with_assertion]
+UPDATE StructValueTable SET foo = 100 WHERE True
+ASSERT_ROWS_MODIFIED 2
+--
+STRUCT<
+  num_rows_modified INT64,
+  all_rows ARRAY<>
+>{2,
+  ARRAY<STRUCT<foo INT64, bar STRING>>[unknown order:
+    {100, "fifty five"},
+    {100, "seventy seven"}
+  ]}
+==
+
+[name=int64_update_everything_with_failed_assertion]
+UPDATE KitchenSinkValueTable SET int64_key_1 = 100 WHERE True
+ASSERT_ROWS_MODIFIED 100
+--
+ERROR: generic::out_of_range: ASSERT_ROWS_MODIFIED expected 100 rows modified, but found 2
+==
+
+[name=proto_update_everything_with_failed_assertion]
+UPDATE KitchenSinkValueTable SET int64_key_1 = 100 WHERE True
+ASSERT_ROWS_MODIFIED 100
+--
+ERROR: generic::out_of_range: ASSERT_ROWS_MODIFIED expected 100 rows modified, but found 2
+==
+
+[name=struct_update_everything_with_failed_assertion]
+UPDATE StructValueTable SET foo = 100 WHERE True
+ASSERT_ROWS_MODIFIED 100
+--
+ERROR: generic::out_of_range: ASSERT_ROWS_MODIFIED expected 100 rows modified, but found 2
+==
+
+[name=int64_update_half_with_assertion]
+UPDATE Int64ValueTable AS value SET value = 100 WHERE value = 10
+ASSERT_ROWS_MODIFIED 1
+--
+STRUCT<
+  num_rows_modified INT64,
+  all_rows ARRAY<>
+>{
+  1,
+  ARRAY<INT64>[unknown order:100, 20]
+}
+==
+
+[name=proto_update_half_with_assertion]
+UPDATE KitchenSinkValueTable SET int64_key_1 = 100 WHERE int64_key_1 = 10
+ASSERT_ROWS_MODIFIED 1
+--
+STRUCT<
+  num_rows_modified INT64,
+  all_rows ARRAY<>
+>{1,
+  ARRAY<PROTO<googlesql_test.KitchenSinkPB>>[unknown order:
+    {
+      int64_key_1: 100
+      int64_key_2: 11
+    },
+    {
+      int64_key_1: 20
+      int64_key_2: 21
+      bool_val: true
+    }
+  ]}
+==
+
+[name=struct_update_half_with_assertion]
+UPDATE StructValueTable SET foo = 100 WHERE foo = 55
+ASSERT_ROWS_MODIFIED 1
+--
+STRUCT<
+  num_rows_modified INT64,
+  all_rows ARRAY<>
+>{1,
+  ARRAY<STRUCT<foo INT64, bar STRING>>[unknown order:
+    {100, "fifty five"},
+    {77, "seventy seven"}
+  ]}
+==
+
+[name=int64_update_half_with_failed_assertion]
+UPDATE Int64ValueTable AS value SET value = 100 WHERE value = 10
+ASSERT_ROWS_MODIFIED 100
+--
+ERROR: generic::out_of_range: ASSERT_ROWS_MODIFIED expected 100 rows modified, but found 1
+==
+
+[name=proto_update_half_with_failed_assertion]
+UPDATE KitchenSinkValueTable SET int64_key_1 = 100 WHERE int64_key_1 = 10
+ASSERT_ROWS_MODIFIED 100
+--
+ERROR: generic::out_of_range: ASSERT_ROWS_MODIFIED expected 100 rows modified, but found 1
+==
+
+[name=struct_update_half_with_failed_assertion]
+UPDATE StructValueTable SET foo = 100 WHERE foo = 55
+ASSERT_ROWS_MODIFIED 100
+--
+ERROR: generic::out_of_range: ASSERT_ROWS_MODIFIED expected 100 rows modified, but found 1
+==
+
+[name=int64_insert_null]
+INSERT Int64ValueTable VALUES (NULL)
+--
+STRUCT<
+  num_rows_modified INT64,
+  all_rows ARRAY<>
+>{
+  1,
+  ARRAY<INT64>[unknown order:10, 20, NULL]
+}
+==
+
+[name=proto_insert_null]
+INSERT KitchenSinkValueTable VALUES (NULL)
+--
+STRUCT<
+  num_rows_modified INT64,
+  all_rows ARRAY<>
+>{1,
+  ARRAY<PROTO<googlesql_test.KitchenSinkPB>>[unknown order:
+    {
+      int64_key_1: 10
+      int64_key_2: 11
+    },
+    {
+      int64_key_1: 20
+      int64_key_2: 21
+      bool_val: true
+    },
+    NULL
+  ]}
+==
+
+[name=struct_insert_null]
+INSERT StructValueTable VALUES (NULL)
+--
+STRUCT<
+  num_rows_modified INT64,
+  all_rows ARRAY<>
+>{1,
+  ARRAY<STRUCT<foo INT64, bar STRING>>[unknown order:
+    {55, "fifty five"},
+    {77, "seventy seven"},
+    NULL
+  ]}
+==
+
+[name=int64_insert_null_query]
+INSERT Int64ValueTable SELECT NULL
+--
+STRUCT<
+  num_rows_modified INT64,
+  all_rows ARRAY<>
+>{
+  1,
+  ARRAY<INT64>[unknown order:10, 20, NULL]
+}
+==
+
+[name=proto_insert_null_query]
+INSERT KitchenSinkValueTable SELECT CAST(NULL AS googlesql_test.KitchenSinkPB)
+--
+STRUCT<
+  num_rows_modified INT64,
+  all_rows ARRAY<>
+>{1,
+  ARRAY<PROTO<googlesql_test.KitchenSinkPB>>[unknown order:
+    {
+      int64_key_1: 10
+      int64_key_2: 11
+    },
+    {
+      int64_key_1: 20
+      int64_key_2: 21
+      bool_val: true
+    },
+    NULL
+  ]}
+==
+
+[name=struct_insert_null_query]
+INSERT StructValueTable SELECT NULL
+--
+STRUCT<
+  num_rows_modified INT64,
+  all_rows ARRAY<>
+>{1,
+  ARRAY<STRUCT<foo INT64, bar STRING>>[unknown order:
+    {55, "fifty five"},
+    {77, "seventy seven"},
+    NULL
+  ]}
+==
+
+[name=int64_insert_default]
+INSERT Int64ValueTable VALUES (DEFAULT)
+--
+STRUCT<
+  num_rows_modified INT64,
+  all_rows ARRAY<>
+>{
+  1,
+  ARRAY<INT64>[unknown order:10, 20, NULL]
+}
+==
+
+[name=proto_insert_default]
+INSERT KitchenSinkValueTable VALUES (DEFAULT)
+--
+STRUCT<
+  num_rows_modified INT64,
+  all_rows ARRAY<>
+>{1,
+  ARRAY<PROTO<googlesql_test.KitchenSinkPB>>[unknown order:
+    {
+      int64_key_1: 10
+      int64_key_2: 11
+    },
+    {
+      int64_key_1: 20
+      int64_key_2: 21
+      bool_val: true
+    },
+    NULL
+  ]}
+==
+
+[name=struct_insert_default]
+INSERT StructValueTable VALUES (DEFAULT)
+--
+STRUCT<
+  num_rows_modified INT64,
+  all_rows ARRAY<>
+>{1,
+  ARRAY<STRUCT<foo INT64, bar STRING>>[unknown order:
+    {55, "fifty five"},
+    {77, "seventy seven"},
+    NULL
+  ]}
+==
+
+[name=int64_insert]
+INSERT Int64ValueTable VALUES (30)
+--
+STRUCT<
+  num_rows_modified INT64,
+  all_rows ARRAY<>
+>{
+  1,
+  ARRAY<INT64>[unknown order:10, 20, 30]
+}
+==
+
+[name=proto_insert]
+INSERT KitchenSinkValueTable VALUES ("int64_key_1: 30 int64_key_2: 31")
+--
+STRUCT<
+  num_rows_modified INT64,
+  all_rows ARRAY<>
+>{1,
+  ARRAY<PROTO<googlesql_test.KitchenSinkPB>>[unknown order:
+    {
+      int64_key_1: 10
+      int64_key_2: 11
+    },
+    {
+      int64_key_1: 20
+      int64_key_2: 21
+      bool_val: true
+    },
+    {
+      int64_key_1: 30
+      int64_key_2: 31
+    }
+  ]}
+==
+
+[name=struct_insert]
+INSERT StructValueTable VALUES ((100, "one hundred"))
+--
+STRUCT<
+  num_rows_modified INT64,
+  all_rows ARRAY<>
+>{1,
+  ARRAY<STRUCT<foo INT64, bar STRING>>[unknown order:
+    {55, "fifty five"},
+    {77, "seventy seven"},
+    {100, "one hundred"}
+  ]}
+==
+
+[name=int64_insert_query]
+INSERT Int64ValueTable SELECT 30
+--
+STRUCT<
+  num_rows_modified INT64,
+  all_rows ARRAY<>
+>{
+  1,
+  ARRAY<INT64>[unknown order:10, 20, 30]
+}
+==
+
+[name=proto_insert_query]
+INSERT KitchenSinkValueTable
+  SELECT CAST("int64_key_1: 30 int64_key_2: 31" AS googlesql_test.KitchenSinkPB)
+--
+STRUCT<
+  num_rows_modified INT64,
+  all_rows ARRAY<>
+>{1,
+  ARRAY<PROTO<googlesql_test.KitchenSinkPB>>[unknown order:
+    {
+      int64_key_1: 10
+      int64_key_2: 11
+    },
+    {
+      int64_key_1: 20
+      int64_key_2: 21
+      bool_val: true
+    },
+    {
+      int64_key_1: 30
+      int64_key_2: 31
+    }
+  ]}
+==
+
+[name=struct_insert_query]
+INSERT StructValueTable SELECT (100, "one hundred")
+--
+STRUCT<
+  num_rows_modified INT64,
+  all_rows ARRAY<>
+>{1,
+  ARRAY<STRUCT<foo INT64, bar STRING>>[unknown order:
+    {55, "fifty five"},
+    {77, "seventy seven"},
+    {100, "one hundred"}
+  ]}
+==
+
+# An insertion involving multiple rows. The query should run before the insert.
+[name=int64_insert_query_multiple_rows]
+INSERT Int64ValueTable (SELECT v FROM Int64ValueTable v)
+--
+STRUCT<
+  num_rows_modified INT64,
+  all_rows ARRAY<>
+>{
+  2,
+  ARRAY<INT64>[unknown order:10, 20, 10, 20]
+}
+==
+
+[name=proto_insert_query_multiple_rows]
+INSERT KitchenSinkValueTable (SELECT k FROM KitchenSinkValueTable k)
+--
+STRUCT<
+  num_rows_modified INT64,
+  all_rows ARRAY<>
+>{2,
+  ARRAY<PROTO<googlesql_test.KitchenSinkPB>>[unknown order:
+    {
+      int64_key_1: 10
+      int64_key_2: 11
+    },
+    {
+      int64_key_1: 20
+      int64_key_2: 21
+      bool_val: true
+    },
+    {
+      int64_key_1: 10
+      int64_key_2: 11
+    },
+    {
+      int64_key_1: 20
+      int64_key_2: 21
+      bool_val: true
+    }
+  ]}
+==
+
+[name=struct_insert_query_multiple_rows]
+INSERT StructValueTable (SELECT s FROM StructValueTable s)
+--
+STRUCT<
+  num_rows_modified INT64,
+  all_rows ARRAY<>
+>{2,
+  ARRAY<STRUCT<foo INT64, bar STRING>>[unknown order:
+    {55, "fifty five"},
+    {77, "seventy seven"},
+    {55, "fifty five"},
+    {77, "seventy seven"}
+  ]}
+==
+
+[name=int64_insert_duplicate_value]
+INSERT Int64ValueTable VALUES (10)
+--
+STRUCT<
+  num_rows_modified INT64,
+  all_rows ARRAY<>
+>{
+  1,
+  ARRAY<INT64>[unknown order:10, 20, 10]
+}
+==
+
+[name=proto_insert_duplicate_value]
+INSERT KitchenSinkValueTable VALUES ("int64_key_1: 10 int64_key_2: 11")
+--
+STRUCT<
+  num_rows_modified INT64,
+  all_rows ARRAY<>
+>{1,
+  ARRAY<PROTO<googlesql_test.KitchenSinkPB>>[unknown order:
+    {
+      int64_key_1: 10
+      int64_key_2: 11
+    },
+    {
+      int64_key_1: 20
+      int64_key_2: 21
+      bool_val: true
+    },
+    {
+      int64_key_1: 10
+      int64_key_2: 11
+    }
+  ]}
+==
+
+[name=struct_insert_duplicate_value]
+INSERT StructValueTable VALUES ((55, "fifty five"))
+--
+STRUCT<
+  num_rows_modified INT64,
+  all_rows ARRAY<>
+>{1,
+  ARRAY<STRUCT<foo INT64, bar STRING>>[unknown order:
+    {55, "fifty five"},
+    {77, "seventy seven"},
+    {55, "fifty five"}
+  ]}
+==
+
+[name=int64_insert_ignore_duplicate_value]
+INSERT IGNORE Int64ValueTable VALUES (10)
+--
+ERROR: generic::out_of_range: INSERT OR IGNORE is not allowed because the table does not have a primary key
+==
+
+[name=proto_insert_ignore_duplicate_value]
+INSERT IGNORE KitchenSinkValueTable VALUES ("int64_key_1: 10 int64_key_2: 11")
+--
+ERROR: generic::out_of_range: INSERT OR IGNORE is not allowed because the table does not have a primary key
+==
+
+[name=struct_insert_ignore_duplicate_value]
+INSERT IGNORE StructValueTable VALUES ((55, "fifty five"))
+--
+ERROR: generic::out_of_range: INSERT OR IGNORE is not allowed because the table does not have a primary key
+==
+
+[name=int64_insert_replace_duplicate_value]
+INSERT REPLACE Int64ValueTable VALUES (10)
+--
+ERROR: generic::out_of_range: INSERT OR REPLACE is not allowed because the table does not have a primary key
+==
+
+[name=proto_insert_replace_duplicate_value]
+INSERT REPLACE KitchenSinkValueTable VALUES ("int64_key_1: 10 int64_key_2: 11")
+--
+ERROR: generic::out_of_range: INSERT OR REPLACE is not allowed because the table does not have a primary key
+==
+
+[name=struct_insert_replace_duplicate_value]
+INSERT REPLACE StructValueTable VALUES ((55, "fifty five"))
+--
+ERROR: generic::out_of_range: INSERT OR REPLACE is not allowed because the table does not have a primary key
+==
+
+[name=int64_insert_update_duplicate_value]
+INSERT UPDATE Int64ValueTable VALUES (10)
+--
+ERROR: generic::out_of_range: INSERT OR UPDATE is not allowed because the table does not have a primary key
+==
+
+[name=proto_insert_update_duplicate_value]
+INSERT UPDATE KitchenSinkValueTable VALUES ("int64_key_1: 10 int64_key_2: 11")
+--
+ERROR: generic::out_of_range: INSERT OR UPDATE is not allowed because the table does not have a primary key
+==
+
+[name=struct_insert_update_duplicate_value]
+INSERT UPDATE StructValueTable VALUES ((55, "fifty five"))
+--
+ERROR: generic::out_of_range: INSERT OR UPDATE is not allowed because the table does not have a primary key
+==
+
+[name=int64_insert_two_values]
+INSERT Int64ValueTable VALUES (30), (40)
+--
+STRUCT<
+  num_rows_modified INT64,
+  all_rows ARRAY<>
+>{
+  2,
+  ARRAY<INT64>[unknown order:10, 20, 30, 40]
+}
+==
+
+[name=proto_insert_two_values]
+INSERT KitchenSinkValueTable VALUES
+  ("int64_key_1: 30 int64_key_2: 31"),
+  ("int64_key_1: 40 int64_key_2: 41")
+--
+STRUCT<
+  num_rows_modified INT64,
+  all_rows ARRAY<>
+>{2,
+  ARRAY<PROTO<googlesql_test.KitchenSinkPB>>[unknown order:
+    {
+      int64_key_1: 10
+      int64_key_2: 11
+    },
+    {
+      int64_key_1: 20
+      int64_key_2: 21
+      bool_val: true
+    },
+    {
+      int64_key_1: 30
+      int64_key_2: 31
+    },
+    {
+      int64_key_1: 40
+      int64_key_2: 41
+    }
+  ]}
+==
+
+[name=struct_insert_two_values]
+INSERT StructValueTable VALUES
+  ((100, "one hundred")),
+  ((200, "two hundred"))
+--
+STRUCT<
+  num_rows_modified INT64,
+  all_rows ARRAY<>
+>{2,
+  ARRAY<STRUCT<foo INT64, bar STRING>>[unknown order:
+    {55, "fifty five"},
+    {77, "seventy seven"},
+    {100, "one hundred"},
+    {200, "two hundred"}
+  ]}
+==
+
+[name=int64_insert_two_identical_new_values]
+INSERT Int64ValueTable VALUES (30), (30)
+--
+STRUCT<
+  num_rows_modified INT64,
+  all_rows ARRAY<>
+>{
+  2,
+  ARRAY<INT64>[unknown order:10, 20, 30, 30]
+}
+==
+
+[name=proto_insert_two_identical_new_values]
+INSERT KitchenSinkValueTable VALUES
+  ("int64_key_1: 30 int64_key_2: 31"),
+  ("int64_key_1: 30 int64_key_2: 31")
+--
+STRUCT<
+  num_rows_modified INT64,
+  all_rows ARRAY<>
+>{2,
+  ARRAY<PROTO<googlesql_test.KitchenSinkPB>>[unknown order:
+    {
+      int64_key_1: 10
+      int64_key_2: 11
+    },
+    {
+      int64_key_1: 20
+      int64_key_2: 21
+      bool_val: true
+    },
+    {
+      int64_key_1: 30
+      int64_key_2: 31
+    },
+    {
+      int64_key_1: 30
+      int64_key_2: 31
+    }
+  ]}
+==
+
+[name=struct_insert_two_identical_new_values]
+INSERT StructValueTable VALUES
+  ((100, "one hundred")),
+  ((100, "one hundred"))
+--
+STRUCT<
+  num_rows_modified INT64,
+  all_rows ARRAY<>
+>{2,
+  ARRAY<STRUCT<foo INT64, bar STRING>>[unknown order:
+    {55, "fifty five"},
+    {77, "seventy seven"},
+    {100, "one hundred"},
+    {100, "one hundred"}
+  ]}

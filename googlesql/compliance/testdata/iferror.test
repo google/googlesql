@@ -1,0 +1,244 @@
+[prepare_database]
+CREATE TABLE T AS
+SELECT 0 AS A,  0 AS B,  0.0 AS C UNION ALL
+SELECT 1,      10,      100.0     UNION ALL
+SELECT 2,      20,      200.0
+--
+ARRAY<STRUCT<A INT64, B INT64, C DOUBLE>>[
+  {0, 0, 0},
+  {1, 10, 100},
+  {2, 20, 200}
+]
+==
+[prepare_database]
+CREATE TABLE TestTable AS
+SELECT 1 AS id, TRUE AS bool_val, 'a' AS str_val
+  UNION ALL
+  SELECT 2, NULL, 'b'
+  UNION ALL
+  SELECT 3, NULL, 'c'
+  UNION ALL
+  SELECT 4, NULL, NULL
+--
+ARRAY<STRUCT<id INT64, bool_val BOOL, str_val STRING>>[
+  {1, true, "a"},
+  {2, NULL, "b"},
+  {3, NULL, "c"},
+  {4, NULL, NULL}
+]
+==
+[name=no_error]
+SELECT IFERROR(1, NULL);
+--
+ARRAY<STRUCT<INT64>>[{1}]
+==
+# handle_expr isn't triggered when there's no error in the try_expr
+[name=error_in_handle_only]
+SELECT IFERROR(A, 2/0) FROM T;
+--
+ARRAY<STRUCT<DOUBLE>>[unknown order:{1}, {0}, {2}]
+==
+[name=try_expr_has_constant_folding_error]
+SELECT IFERROR(CAST('a' AS DATE), NULL);
+--
+ARRAY<STRUCT<DATE>>[{NULL}]
+==
+[name=handle_expr_has_constant_folding_error]
+SELECT IFERROR(NULL, CAST('b' AS DATE));
+--
+ARRAY<STRUCT<DATE>>[{NULL}]
+==
+[name=both_expressions_have_constant_folding_errors]
+SELECT IFERROR(CAST('a' AS DATE), CAST('b' AS DATE));
+--
+ERROR: generic::out_of_range: Invalid date: 'b'
+==
+[name=nested_try_expr_has_constant_folding_error]
+SELECT IFERROR(IFERROR(CAST('inner_1' AS DATE), CAST('inner_2' AS DATE)), CAST('outer' AS DATE));
+--
+ERROR: generic::out_of_range: Invalid date: 'outer'
+==
+[name=nested_try_expr_has_constant_folding_error_conditioned_on_aggregation]
+SELECT IFERROR(IFERROR(IF(SUM(C) > 0, NULL, CAST('inner_1' AS DATE)), CAST('inner_2' AS DATE)), CAST('outer' AS DATE)) FROM T GROUP BY A;
+--
+ERROR: generic::out_of_range: Invalid date: 'outer'
+==
+[name=try_has_error_should_still_be_foldable]
+SELECT IFERROR(1/0, NULL);
+--
+ARRAY<STRUCT<DOUBLE>>[{NULL}]
+==
+
+[name=try_has_error_non_foldable]
+SELECT IFERROR(A/0, NULL) FROM T;
+--
+ARRAY<STRUCT<DOUBLE>>[unknown order:{NULL}, {NULL}, {NULL}]
+==
+
+[name=both_try_and_handle_exprs_have_error_non_foldable]
+SELECT IFERROR(A/0, A/0) FROM T;
+--
+ERROR: generic::out_of_range: division by zero: 1 / 0
+==
+
+[name=reference_to_subquery_with_error_not_absorbed]
+SELECT IFERROR(Y, 0) FROM (SELECT 1/0 AS Y)
+--
+ERROR: generic::out_of_range: division by zero: 1 / 0
+==
+
+[name=arithmetic_reference_to_subquery_with_error_not_absorbed]
+SELECT IFERROR(Y+Y, Z-Z) FROM (SELECT 1/0 AS Y, 0 AS Z)
+--
+ERROR: generic::out_of_range: division by zero: 1 / 0
+==
+
+# handle_expr isn't invoked if there's no error raised by try_expr
+[name=handle_expr_error_not_invoked_if_try_expr_is_good]
+SELECT IFERROR(1, A/0) FROM T;
+--
+ARRAY<STRUCT<DOUBLE>>[unknown order:{1}, {1}, {1}]
+==
+
+# -1 means it was handled by the inner IFERROR, -2 means it was the outer one
+[name=nested_iferror_absorbs_errors]
+SELECT IFERROR(IFERROR(A/0, -1), -2) FROM T;
+--
+ARRAY<STRUCT<DOUBLE>>[unknown order:{-1}, {-1}, {-1}]
+==
+
+# -1 means it was handled by the inner IFERROR, -2 means it was the outer one
+[name=nested_iferror_raises_another_error]
+SELECT IFERROR(IFERROR(2/0, A/0), -2) FROM T;
+--
+ARRAY<STRUCT<DOUBLE>>[unknown order:{-2}, {-2}, {-2}]
+==
+# handle_expr isn't invoked if there's no error raised by try_expr
+[name=aggregate_handle_expr_error_not_invoked_when_no_error_in_try_with_explicit_inline_grouping]
+SELECT IFERROR((SELECT SUM(A) FROM T), (SELECT SUM(A/0) FROM T)) FROM T GROUP BY B;
+--
+ARRAY<STRUCT<DOUBLE>>[unknown order:{3}, {3}, {3}]
+==
+[name=iferror_on_aggregate_expressions_error_in_try_with_another_aggregate_fallback_with_explicit_inline_grouping]
+SELECT IFERROR((SELECT SUM(A/0) FROM T), (SELECT SUM(A) FROM T)) FROM T GROUP BY B
+--
+ARRAY<STRUCT<DOUBLE>>[unknown order:{3}, {3}, {3}]
+==
+[name=iferror_on_aggregate_expressions_error_in_try_with_literal_fallback_with_explicit_inline_grouping]
+SELECT IFERROR((SELECT SUM(A/0) FROM T), -1) FROM T GROUP BY B
+--
+ARRAY<STRUCT<DOUBLE>>[unknown order:{-1}, {-1}, {-1}]
+==
+[name=iferror_on_aggregate_expressions_error_in_try_with_grouping_column_fallback_with_explicit_inline_grouping]
+SELECT IFERROR((SELECT SUM(A/0) FROM T), B) FROM T GROUP BY B
+--
+ARRAY<STRUCT<DOUBLE>>[unknown order:{10}, {0}, {20}]
+==
+[name=iferror_with_alias_to_aggregate_divide_by_zero]
+SELECT IFERROR(Y, -1) FROM (SELECT SUM(10/A) AS Y FROM T)
+--
+ERROR: generic::out_of_range: division by zero: 10 / 0
+==
+[name=iferror_can_handle_lambda_with_error_in_arg]
+[required_features=INLINE_LAMBDA_ARGUMENT]
+SELECT IFERROR(ARRAY_FILTER([B, B/0], e -> e > 1)[OFFSET(0)], B*100) FROM T GROUP BY B
+--
+ARRAY<STRUCT<DOUBLE>>[unknown order:{1000}, {0}, {2000}]
+==
+[name=iferror_can_handle_lambda_with_error_in_body]
+[required_features=INLINE_LAMBDA_ARGUMENT]
+SELECT IFERROR(ARRAY_FILTER([A, A*2], e -> 1/e > 1)[OFFSET(0)], A*100) FROM T GROUP BY A
+--
+ARRAY<STRUCT<INT64>>[unknown order:{100}, {0}, {200}]
+==
+# handle_expr isn't invoked if there's no error raised by try_expr
+[name=aggregate_handle_expr_error_not_invoked_if_try_expr_is_good]
+[required_features=ENFORCE_CONDITIONAL_EVALUATION]
+SELECT IFERROR(SUM(A), SUM(A/0)) FROM T;
+--
+ARRAY<STRUCT<DOUBLE>>[{3}]
+==
+[name=iferror_on_aggregate_expressions_error_in_try_with_another_aggregate_fallback]
+[required_features=ENFORCE_CONDITIONAL_EVALUATION]
+SELECT IFERROR(SUM(A/0), SUM(A)) FROM T
+--
+ARRAY<STRUCT<DOUBLE>>[{3}]
+==
+[name=iferror_on_aggregate_expressions_error_in_try_with_literal_fallback]
+[required_features=ENFORCE_CONDITIONAL_EVALUATION]
+SELECT IFERROR(SUM(A/0), -1) FROM T
+--
+ARRAY<STRUCT<DOUBLE>>[{-1}]
+==
+[name=iferror_on_aggregate_expressions_error_in_try_with_grouping_column_fallback]
+[required_features=ENFORCE_CONDITIONAL_EVALUATION]
+SELECT IFERROR(SUM(A/0), B) FROM T GROUP BY B
+--
+ARRAY<STRUCT<DOUBLE>>[unknown order:{10}, {0}, {20}]
+==
+[name=iferror_on_uninlined_aggregated_subquery_with_error_in_both_try_and_handle]
+SELECT IFERROR(A, A) FROM (SELECT MAX(A/0) AS A FROM T)
+--
+ERROR: generic::out_of_range: division by zero: 1 / 0
+==
+[name=iferror_on_aggregate_expressions_error_in_both_try_and_handle]
+SELECT IFERROR(SUM(A/0), SUM(A/0)) FROM T
+--
+ERROR: generic::out_of_range: division by zero: 1 / 0
+==
+[name=iferror_on_aggregate_expressions_error_in_both_try_and_handle_with_another_aggregate_fallback]
+[required_features=ENFORCE_CONDITIONAL_EVALUATION]
+SELECT IFERROR(SUM(A/0), SUM(A)) FROM T
+--
+ARRAY<STRUCT<DOUBLE>>[{3}]
+==
+[name=iferror_on_inlined_scalar_subquery_with_error_handled_by_literal]
+SELECT IFERROR((SELECT 1/0 AS X), B) FROM T GROUP BY B
+--
+ARRAY<STRUCT<DOUBLE>>[unknown order:{10}, {0}, {20}]
+==
+[name=iferror_on_inlined_scalar_subquery_with_error_in_both_try_and_handle]
+SELECT IFERROR((SELECT 1/0 AS A), (SELECT 1/0 AS A))
+--
+ERROR: generic::out_of_range: division by zero: 1 / 0
+==
+[name=iferror_as_group_by_expression]
+SELECT MAX(B) FROM T GROUP BY IFERROR(1/A, 0)
+--
+ARRAY<STRUCT<INT64>>[unknown order:{0}, {20}, {10}]
+
+NOTE: Reference implementation reports non-determinism.
+==
+[name=iferror_as_having_expression]
+SELECT MAX(B) FROM T GROUP BY A HAVING IFERROR(A + 1/A, 0) >= 0
+--
+ARRAY<STRUCT<INT64>>[unknown order:{10}, {0}, {20}]
+==
+[name=iferror_as_order_by_expression]
+SELECT C FROM T ORDER BY IFERROR(1/A, 0)
+--
+ARRAY<STRUCT<C DOUBLE>>[known order:{0}, {200}, {100}]
+==
+# This is a non-computation error: the subquery returns mutliple rows instead
+# of one.
+[name=iferror_in_where_clause_handles_scalar_subquery_returning_multiple_rows]
+SELECT C FROM T WHERE IFERROR(B = (SELECT 10*A FROM T), FALSE)
+--
+ARRAY<STRUCT<C DOUBLE>>[]
+==
+[name=iferror_is_not_affected_by_neighboring_safe_calls]
+SELECT AVG(safe_divide(1, 0)), SUM(IFERROR(1, -1)) FROM T
+--
+ARRAY<STRUCT<DOUBLE, INT64>>[{NULL, 3}]
+==
+[name=safe_mode_both_try_and_handle_exprs_have_error_non_foldable]
+[required_features=SAFE_FUNCTION_CALL]
+SELECT SAFE.IFERROR(A/0, A/0) FROM T;
+--
+ERROR: generic::out_of_range: division by zero: 1 / 0
+==
+[name=safe_mode_no_error]
+[required_features=SAFE_FUNCTION_CALL]
+SELECT SAFE.IFERROR(A, A) FROM T;
+--
+ARRAY<STRUCT<INT64>>[unknown order:{1}, {0}, {2}]

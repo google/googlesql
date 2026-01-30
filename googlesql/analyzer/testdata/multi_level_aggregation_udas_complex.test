@@ -1,0 +1,446 @@
+[default language_features=MAXIMUM,+CREATE_AGGREGATE_FUNCTION,+TEMPLATE_FUNCTIONS,+MULTILEVEL_AGGREGATION,+GROUP_BY_STRUCT,+INLINE_LAMBDA_ARGUMENT]
+[default show_sqlbuilder_output]
+[default enabled_ast_rewrites=ALL]
+
+CREATE AGGREGATE FUNCTION ComplexUda(value1 {{INT64|ANY TYPE}}, value2 {{INT64|ANY TYPE}}, key {{INT64|ANY TYPE}}, struct_arg STRUCT<e INT32, f STRUCT<c INT32, d STRUCT<a INT32, b STRING>>>) AS (
+  CORR(
+    key + CORR(key, value2 + MAX(value1) GROUP BY value2) + struct_arg.f.c +
+      (SELECT key),
+    AVG(
+      value2 + MIN(value1) + (SELECT key + value2) + struct_arg.f.c + struct_arg.f.d.a
+      GROUP BY value2, struct_arg.f.d
+    )
+    GROUP BY key, struct_arg.f
+  )
+);
+--
+ALTERNATION GROUP: INT64,INT64,INT64
+--
+CreateFunctionStmt
++-name_path=ComplexUda
++-return_type=DOUBLE
++-argument_name_list=[value1, value2, key, struct_arg]
++-signature=(INT64 value1, INT64 value2, INT64 key, STRUCT<e INT32, f STRUCT<c INT32, d STRUCT<a INT32, b STRING>>> struct_arg) -> DOUBLE
++-is_aggregate=TRUE
++-language="SQL"
++-code="CORR(\n    key + CORR(key, value2 + MAX(value1) GROUP BY value2) + struct_arg.f.c +\n      (SELECT key),\n    AVG(\n      value2 + MIN(value1) + (SELECT key + value2) + struct_arg.f.c + struct_arg.f.d.a\n      GROUP BY value2, struct_arg.f.d\n    )\n    GROUP BY key, struct_arg.f\n  )"
++-aggregate_expression_list=
+| +-$agg1#16 :=
+|   +-AggregateFunctionCall(GoogleSQL:corr(DOUBLE, DOUBLE) -> DOUBLE)
+|     +-FunctionCall(GoogleSQL:$add(DOUBLE, DOUBLE) -> DOUBLE)
+|     | +-FunctionCall(GoogleSQL:$add(DOUBLE, DOUBLE) -> DOUBLE)
+|     | | +-FunctionCall(GoogleSQL:$add(DOUBLE, DOUBLE) -> DOUBLE)
+|     | | | +-Cast(INT64 -> DOUBLE)
+|     | | | | +-ColumnRef(type=INT64, column=$group_by_list.$groupbymod#1)
+|     | | | +-ColumnRef(type=DOUBLE, column=$aggregate.$agg1#7)
+|     | | +-Cast(INT32 -> DOUBLE)
+|     | |   +-GetStructField
+|     | |     +-type=INT32
+|     | |     +-expr=
+|     | |     | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=$group_by_list.$groupbymod#2)
+|     | |     +-field_idx=0
+|     | +-Cast(INT64 -> DOUBLE)
+|     |   +-SubqueryExpr
+|     |     +-type=INT64
+|     |     +-subquery_type=SCALAR
+|     |     +-parameter_list=
+|     |     | +-ColumnRef(type=INT64, column=$group_by_list.$groupbymod#1)
+|     |     +-subquery=
+|     |       +-ProjectScan
+|     |         +-column_list=[$expr_subquery.key#8]
+|     |         +-expr_list=
+|     |         | +-key#8 := ColumnRef(type=INT64, column=$group_by_list.$groupbymod#1, is_correlated=TRUE)
+|     |         +-input_scan=
+|     |           +-SingleRowScan
+|     +-ColumnRef(type=DOUBLE, column=$aggregate.$agg2#15)
+|     +-group_by_list=
+|     | +-$groupbymod#1 := ArgumentRef(parse_location=415-418, type=INT64, name="key", argument_kind=AGGREGATE)
+|     | +-$groupbymod#2 :=
+|     |   +-GetStructField
+|     |     +-type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>
+|     |     +-expr=
+|     |     | +-ArgumentRef(parse_location=420-430, type=STRUCT<e INT32, f STRUCT<c INT32, d STRUCT<a INT32, b STRING>>>, name="struct_arg", argument_kind=AGGREGATE)
+|     |     +-field_idx=1
+|     +-group_by_aggregate_list=
+|       +-$agg1#7 :=
+|       | +-AggregateFunctionCall(GoogleSQL:corr(DOUBLE, DOUBLE) -> DOUBLE)
+|       |   +-Cast(INT64 -> DOUBLE)
+|       |   | +-ColumnRef(type=INT64, column=$group_by_list.$groupbymod#3)
+|       |   +-Cast(INT64 -> DOUBLE)
+|       |   | +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+|       |   |   +-ColumnRef(type=INT64, column=$group_by_list.$groupbymod#5)
+|       |   |   +-ColumnRef(type=INT64, column=$aggregate.$agg1#6)
+|       |   +-group_by_list=
+|       |   | +-$groupbymod#3 := ArgumentRef(parse_location=415-418, type=INT64, name="key", argument_kind=AGGREGATE)
+|       |   | +-$groupbymod#4 :=
+|       |   | | +-GetStructField
+|       |   | |   +-type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>
+|       |   | |   +-expr=
+|       |   | |   | +-ArgumentRef(parse_location=420-430, type=STRUCT<e INT32, f STRUCT<c INT32, d STRUCT<a INT32, b STRING>>>, name="struct_arg", argument_kind=AGGREGATE)
+|       |   | |   +-field_idx=1
+|       |   | +-$groupbymod#5 := ArgumentRef(parse_location=215-221, type=INT64, name="value2", argument_kind=AGGREGATE)
+|       |   +-group_by_aggregate_list=
+|       |     +-$agg1#6 :=
+|       |       +-AggregateFunctionCall(GoogleSQL:max(INT64) -> INT64)
+|       |         +-ArgumentRef(parse_location=198-204, type=INT64, name="value1", argument_kind=AGGREGATE)
+|       +-$agg2#15 :=
+|         +-AggregateFunctionCall(GoogleSQL:avg(INT64) -> DOUBLE)
+|           +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+|           | +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+|           | | +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+|           | | | +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+|           | | | | +-ColumnRef(type=INT64, column=$group_by_list.$groupbymod#11)
+|           | | | | +-ColumnRef(type=INT64, column=$aggregate.$agg1#13)
+|           | | | +-SubqueryExpr
+|           | | |   +-type=INT64
+|           | | |   +-subquery_type=SCALAR
+|           | | |   +-parameter_list=
+|           | | |   | +-ColumnRef(type=INT64, column=$group_by_list.$groupbymod#9)
+|           | | |   | +-ColumnRef(type=INT64, column=$group_by_list.$groupbymod#11)
+|           | | |   +-subquery=
+|           | | |     +-ProjectScan
+|           | | |       +-column_list=[$expr_subquery.$col1#14]
+|           | | |       +-expr_list=
+|           | | |       | +-$col1#14 :=
+|           | | |       |   +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+|           | | |       |     +-ColumnRef(type=INT64, column=$group_by_list.$groupbymod#9, is_correlated=TRUE)
+|           | | |       |     +-ColumnRef(type=INT64, column=$group_by_list.$groupbymod#11, is_correlated=TRUE)
+|           | | |       +-input_scan=
+|           | | |         +-SingleRowScan
+|           | | +-Cast(INT32 -> INT64)
+|           | |   +-GetStructField
+|           | |     +-type=INT32
+|           | |     +-expr=
+|           | |     | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=$group_by_list.$groupbymod#10)
+|           | |     +-field_idx=0
+|           | +-Cast(INT32 -> INT64)
+|           |   +-GetStructField
+|           |     +-type=INT32
+|           |     +-expr=
+|           |     | +-ColumnRef(type=STRUCT<a INT32, b STRING>, column=$group_by_list.$groupbymod#12)
+|           |     +-field_idx=0
+|           +-group_by_list=
+|           | +-$groupbymod#9 := ArgumentRef(parse_location=415-418, type=INT64, name="key", argument_kind=AGGREGATE)
+|           | +-$groupbymod#10 :=
+|           | | +-GetStructField
+|           | |   +-type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>
+|           | |   +-expr=
+|           | |   | +-ArgumentRef(parse_location=420-430, type=STRUCT<e INT32, f STRUCT<c INT32, d STRUCT<a INT32, b STRING>>>, name="struct_arg", argument_kind=AGGREGATE)
+|           | |   +-field_idx=1
+|           | +-$groupbymod#11 := ArgumentRef(parse_location=373-379, type=INT64, name="value2", argument_kind=AGGREGATE)
+|           | +-$groupbymod#12 :=
+|           |   +-GetStructField
+|           |     +-type=STRUCT<a INT32, b STRING>
+|           |     +-expr=
+|           |     | +-GetStructField
+|           |     |   +-type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>
+|           |     |   +-expr=
+|           |     |   | +-ArgumentRef(parse_location=381-391, type=STRUCT<e INT32, f STRUCT<c INT32, d STRUCT<a INT32, b STRING>>>, name="struct_arg", argument_kind=AGGREGATE)
+|           |     |   +-field_idx=1
+|           |     +-field_idx=1
+|           +-group_by_aggregate_list=
+|             +-$agg1#13 :=
+|               +-AggregateFunctionCall(GoogleSQL:min(INT64) -> INT64)
+|                 +-ArgumentRef(parse_location=290-296, type=INT64, name="value1", argument_kind=AGGREGATE)
++-function_expression=
+  +-ColumnRef(type=DOUBLE, column=$aggregate.$agg1#16)
+
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+CREATE AGGREGATE FUNCTION ComplexUda(value1 INT64, value2 INT64, key INT64, struct_arg STRUCT< e INT32,
+f STRUCT< c INT32, d STRUCT< a INT32, b STRING > > >)
+RETURNS DOUBLE AS (
+  CORR(((CAST(key AS DOUBLE) + (CORR(CAST(key AS DOUBLE), CAST(value2 + (MAX(value1)) AS DOUBLE)
+      GROUP BY key, struct_arg.f, value2))) + CAST(struct_arg.f.c AS DOUBLE)) + CAST((
+      SELECT
+        key AS a_2
+    ) AS DOUBLE), AVG((((value2 + (MIN(value1))) + (
+        SELECT
+          key + value2 AS a_1
+      )) + CAST(struct_arg.f.c AS INT64)) + CAST(struct_arg.f.d.a AS INT64)
+      GROUP BY key, struct_arg.f, value2, struct_arg.f.d)
+    GROUP BY key, struct_arg.f)
+);
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+CREATE AGGREGATE FUNCTION ComplexUda(value1 INT64, value2 INT64, key INT64, struct_arg STRUCT< e INT32,
+f STRUCT< c INT32, d STRUCT< a INT32, b STRING > > >)
+RETURNS DOUBLE AS (
+  CORR(((CAST(key AS DOUBLE) + (CORR(CAST(key AS DOUBLE), CAST(value2 + (MAX(value1)) AS DOUBLE)
+      GROUP BY key, struct_arg.f, value2))) + CAST(struct_arg.f.c AS DOUBLE)) + CAST((
+      SELECT
+        key AS a_2
+    ) AS DOUBLE), AVG((((value2 + (MIN(value1))) + (
+        SELECT
+          key + value2 AS a_1
+      )) + CAST(struct_arg.f.c AS INT64)) + CAST(struct_arg.f.d.a AS INT64)
+      GROUP BY key, struct_arg.f, value2, struct_arg.f.d)
+    GROUP BY key, struct_arg.f)
+);
+--
+ALTERNATION GROUP: INT64,INT64,ANY TYPE
+--
+CreateFunctionStmt(name_path=ComplexUda, return_type=STRUCT<>, argument_name_list=[value1, value2, key, struct_arg], signature=(INT64 value1, INT64 value2, ANY TYPE key, STRUCT<e INT32, f STRUCT<c INT32, d STRUCT<a INT32, b STRING>>> struct_arg) -> ANY TYPE, is_aggregate=TRUE, language="SQL", code="CORR(\n    key + CORR(key, value2 + MAX(value1) GROUP BY value2) + struct_arg.f.c +\n      (SELECT key),\n    AVG(\n      value2 + MIN(value1) + (SELECT key + value2) + struct_arg.f.c + struct_arg.f.d.a\n      GROUP BY value2, struct_arg.f.d\n    )\n    GROUP BY key, struct_arg.f\n  )")
+
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+CREATE AGGREGATE FUNCTION ComplexUda(value1 INT64, value2 INT64, key ANY TYPE, struct_arg STRUCT< e INT32,
+f STRUCT< c INT32, d STRUCT< a INT32, b STRING > > >)
+AS (
+  CORR(key + CORR(key, value2 + MAX(value1)
+      GROUP BY value2) + struct_arg.f.c + (
+      SELECT
+        key
+    ), AVG(value2 + MIN(value1) + (
+        SELECT
+          key + value2
+      ) + struct_arg.f.c + struct_arg.f.d.a
+      GROUP BY value2, struct_arg.f.d)
+    GROUP BY key, struct_arg.f)
+);
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+CREATE AGGREGATE FUNCTION ComplexUda(value1 INT64, value2 INT64, key ANY TYPE, struct_arg STRUCT< e INT32,
+f STRUCT< c INT32, d STRUCT< a INT32, b STRING > > >)
+AS (
+  CORR(key + CORR(key, value2 + MAX(value1)
+      GROUP BY value2) + struct_arg.f.c + (
+      SELECT
+        key
+    ), AVG(value2 + MIN(value1) + (
+        SELECT
+          key + value2
+      ) + struct_arg.f.c + struct_arg.f.d.a
+      GROUP BY value2, struct_arg.f.d)
+    GROUP BY key, struct_arg.f)
+);
+--
+ALTERNATION GROUP: INT64,ANY TYPE,INT64
+--
+CreateFunctionStmt(name_path=ComplexUda, return_type=STRUCT<>, argument_name_list=[value1, value2, key, struct_arg], signature=(INT64 value1, ANY TYPE value2, INT64 key, STRUCT<e INT32, f STRUCT<c INT32, d STRUCT<a INT32, b STRING>>> struct_arg) -> ANY TYPE, is_aggregate=TRUE, language="SQL", code="CORR(\n    key + CORR(key, value2 + MAX(value1) GROUP BY value2) + struct_arg.f.c +\n      (SELECT key),\n    AVG(\n      value2 + MIN(value1) + (SELECT key + value2) + struct_arg.f.c + struct_arg.f.d.a\n      GROUP BY value2, struct_arg.f.d\n    )\n    GROUP BY key, struct_arg.f\n  )")
+
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+CREATE AGGREGATE FUNCTION ComplexUda(value1 INT64, value2 ANY TYPE, key INT64, struct_arg STRUCT< e INT32,
+f STRUCT< c INT32, d STRUCT< a INT32, b STRING > > >)
+AS (
+  CORR(key + CORR(key, value2 + MAX(value1)
+      GROUP BY value2) + struct_arg.f.c + (
+      SELECT
+        key
+    ), AVG(value2 + MIN(value1) + (
+        SELECT
+          key + value2
+      ) + struct_arg.f.c + struct_arg.f.d.a
+      GROUP BY value2, struct_arg.f.d)
+    GROUP BY key, struct_arg.f)
+);
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+CREATE AGGREGATE FUNCTION ComplexUda(value1 INT64, value2 ANY TYPE, key INT64, struct_arg STRUCT< e INT32,
+f STRUCT< c INT32, d STRUCT< a INT32, b STRING > > >)
+AS (
+  CORR(key + CORR(key, value2 + MAX(value1)
+      GROUP BY value2) + struct_arg.f.c + (
+      SELECT
+        key
+    ), AVG(value2 + MIN(value1) + (
+        SELECT
+          key + value2
+      ) + struct_arg.f.c + struct_arg.f.d.a
+      GROUP BY value2, struct_arg.f.d)
+    GROUP BY key, struct_arg.f)
+);
+--
+ALTERNATION GROUP: INT64,ANY TYPE,ANY TYPE
+--
+CreateFunctionStmt(name_path=ComplexUda, return_type=STRUCT<>, argument_name_list=[value1, value2, key, struct_arg], signature=(INT64 value1, ANY TYPE value2, ANY TYPE key, STRUCT<e INT32, f STRUCT<c INT32, d STRUCT<a INT32, b STRING>>> struct_arg) -> ANY TYPE, is_aggregate=TRUE, language="SQL", code="CORR(\n    key + CORR(key, value2 + MAX(value1) GROUP BY value2) + struct_arg.f.c +\n      (SELECT key),\n    AVG(\n      value2 + MIN(value1) + (SELECT key + value2) + struct_arg.f.c + struct_arg.f.d.a\n      GROUP BY value2, struct_arg.f.d\n    )\n    GROUP BY key, struct_arg.f\n  )")
+
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+CREATE AGGREGATE FUNCTION ComplexUda(value1 INT64, value2 ANY TYPE, key ANY TYPE, struct_arg STRUCT<
+e INT32, f STRUCT< c INT32, d STRUCT< a INT32, b STRING > > >)
+AS (
+  CORR(key + CORR(key, value2 + MAX(value1)
+      GROUP BY value2) + struct_arg.f.c + (
+      SELECT
+        key
+    ), AVG(value2 + MIN(value1) + (
+        SELECT
+          key + value2
+      ) + struct_arg.f.c + struct_arg.f.d.a
+      GROUP BY value2, struct_arg.f.d)
+    GROUP BY key, struct_arg.f)
+);
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+CREATE AGGREGATE FUNCTION ComplexUda(value1 INT64, value2 ANY TYPE, key ANY TYPE, struct_arg STRUCT<
+e INT32, f STRUCT< c INT32, d STRUCT< a INT32, b STRING > > >)
+AS (
+  CORR(key + CORR(key, value2 + MAX(value1)
+      GROUP BY value2) + struct_arg.f.c + (
+      SELECT
+        key
+    ), AVG(value2 + MIN(value1) + (
+        SELECT
+          key + value2
+      ) + struct_arg.f.c + struct_arg.f.d.a
+      GROUP BY value2, struct_arg.f.d)
+    GROUP BY key, struct_arg.f)
+);
+--
+ALTERNATION GROUP: ANY TYPE,INT64,INT64
+--
+CreateFunctionStmt(name_path=ComplexUda, return_type=STRUCT<>, argument_name_list=[value1, value2, key, struct_arg], signature=(ANY TYPE value1, INT64 value2, INT64 key, STRUCT<e INT32, f STRUCT<c INT32, d STRUCT<a INT32, b STRING>>> struct_arg) -> ANY TYPE, is_aggregate=TRUE, language="SQL", code="CORR(\n    key + CORR(key, value2 + MAX(value1) GROUP BY value2) + struct_arg.f.c +\n      (SELECT key),\n    AVG(\n      value2 + MIN(value1) + (SELECT key + value2) + struct_arg.f.c + struct_arg.f.d.a\n      GROUP BY value2, struct_arg.f.d\n    )\n    GROUP BY key, struct_arg.f\n  )")
+
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+CREATE AGGREGATE FUNCTION ComplexUda(value1 ANY TYPE, value2 INT64, key INT64, struct_arg STRUCT< e INT32,
+f STRUCT< c INT32, d STRUCT< a INT32, b STRING > > >)
+AS (
+  CORR(key + CORR(key, value2 + MAX(value1)
+      GROUP BY value2) + struct_arg.f.c + (
+      SELECT
+        key
+    ), AVG(value2 + MIN(value1) + (
+        SELECT
+          key + value2
+      ) + struct_arg.f.c + struct_arg.f.d.a
+      GROUP BY value2, struct_arg.f.d)
+    GROUP BY key, struct_arg.f)
+);
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+CREATE AGGREGATE FUNCTION ComplexUda(value1 ANY TYPE, value2 INT64, key INT64, struct_arg STRUCT< e INT32,
+f STRUCT< c INT32, d STRUCT< a INT32, b STRING > > >)
+AS (
+  CORR(key + CORR(key, value2 + MAX(value1)
+      GROUP BY value2) + struct_arg.f.c + (
+      SELECT
+        key
+    ), AVG(value2 + MIN(value1) + (
+        SELECT
+          key + value2
+      ) + struct_arg.f.c + struct_arg.f.d.a
+      GROUP BY value2, struct_arg.f.d)
+    GROUP BY key, struct_arg.f)
+);
+--
+ALTERNATION GROUP: ANY TYPE,INT64,ANY TYPE
+--
+CreateFunctionStmt(name_path=ComplexUda, return_type=STRUCT<>, argument_name_list=[value1, value2, key, struct_arg], signature=(ANY TYPE value1, INT64 value2, ANY TYPE key, STRUCT<e INT32, f STRUCT<c INT32, d STRUCT<a INT32, b STRING>>> struct_arg) -> ANY TYPE, is_aggregate=TRUE, language="SQL", code="CORR(\n    key + CORR(key, value2 + MAX(value1) GROUP BY value2) + struct_arg.f.c +\n      (SELECT key),\n    AVG(\n      value2 + MIN(value1) + (SELECT key + value2) + struct_arg.f.c + struct_arg.f.d.a\n      GROUP BY value2, struct_arg.f.d\n    )\n    GROUP BY key, struct_arg.f\n  )")
+
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+CREATE AGGREGATE FUNCTION ComplexUda(value1 ANY TYPE, value2 INT64, key ANY TYPE, struct_arg STRUCT<
+e INT32, f STRUCT< c INT32, d STRUCT< a INT32, b STRING > > >)
+AS (
+  CORR(key + CORR(key, value2 + MAX(value1)
+      GROUP BY value2) + struct_arg.f.c + (
+      SELECT
+        key
+    ), AVG(value2 + MIN(value1) + (
+        SELECT
+          key + value2
+      ) + struct_arg.f.c + struct_arg.f.d.a
+      GROUP BY value2, struct_arg.f.d)
+    GROUP BY key, struct_arg.f)
+);
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+CREATE AGGREGATE FUNCTION ComplexUda(value1 ANY TYPE, value2 INT64, key ANY TYPE, struct_arg STRUCT<
+e INT32, f STRUCT< c INT32, d STRUCT< a INT32, b STRING > > >)
+AS (
+  CORR(key + CORR(key, value2 + MAX(value1)
+      GROUP BY value2) + struct_arg.f.c + (
+      SELECT
+        key
+    ), AVG(value2 + MIN(value1) + (
+        SELECT
+          key + value2
+      ) + struct_arg.f.c + struct_arg.f.d.a
+      GROUP BY value2, struct_arg.f.d)
+    GROUP BY key, struct_arg.f)
+);
+--
+ALTERNATION GROUP: ANY TYPE,ANY TYPE,INT64
+--
+CreateFunctionStmt(name_path=ComplexUda, return_type=STRUCT<>, argument_name_list=[value1, value2, key, struct_arg], signature=(ANY TYPE value1, ANY TYPE value2, INT64 key, STRUCT<e INT32, f STRUCT<c INT32, d STRUCT<a INT32, b STRING>>> struct_arg) -> ANY TYPE, is_aggregate=TRUE, language="SQL", code="CORR(\n    key + CORR(key, value2 + MAX(value1) GROUP BY value2) + struct_arg.f.c +\n      (SELECT key),\n    AVG(\n      value2 + MIN(value1) + (SELECT key + value2) + struct_arg.f.c + struct_arg.f.d.a\n      GROUP BY value2, struct_arg.f.d\n    )\n    GROUP BY key, struct_arg.f\n  )")
+
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+CREATE AGGREGATE FUNCTION ComplexUda(value1 ANY TYPE, value2 ANY TYPE, key INT64, struct_arg STRUCT<
+e INT32, f STRUCT< c INT32, d STRUCT< a INT32, b STRING > > >)
+AS (
+  CORR(key + CORR(key, value2 + MAX(value1)
+      GROUP BY value2) + struct_arg.f.c + (
+      SELECT
+        key
+    ), AVG(value2 + MIN(value1) + (
+        SELECT
+          key + value2
+      ) + struct_arg.f.c + struct_arg.f.d.a
+      GROUP BY value2, struct_arg.f.d)
+    GROUP BY key, struct_arg.f)
+);
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+CREATE AGGREGATE FUNCTION ComplexUda(value1 ANY TYPE, value2 ANY TYPE, key INT64, struct_arg STRUCT<
+e INT32, f STRUCT< c INT32, d STRUCT< a INT32, b STRING > > >)
+AS (
+  CORR(key + CORR(key, value2 + MAX(value1)
+      GROUP BY value2) + struct_arg.f.c + (
+      SELECT
+        key
+    ), AVG(value2 + MIN(value1) + (
+        SELECT
+          key + value2
+      ) + struct_arg.f.c + struct_arg.f.d.a
+      GROUP BY value2, struct_arg.f.d)
+    GROUP BY key, struct_arg.f)
+);
+--
+ALTERNATION GROUP: ANY TYPE,ANY TYPE,ANY TYPE
+--
+CreateFunctionStmt(name_path=ComplexUda, return_type=STRUCT<>, argument_name_list=[value1, value2, key, struct_arg], signature=(ANY TYPE value1, ANY TYPE value2, ANY TYPE key, STRUCT<e INT32, f STRUCT<c INT32, d STRUCT<a INT32, b STRING>>> struct_arg) -> ANY TYPE, is_aggregate=TRUE, language="SQL", code="CORR(\n    key + CORR(key, value2 + MAX(value1) GROUP BY value2) + struct_arg.f.c +\n      (SELECT key),\n    AVG(\n      value2 + MIN(value1) + (SELECT key + value2) + struct_arg.f.c + struct_arg.f.d.a\n      GROUP BY value2, struct_arg.f.d\n    )\n    GROUP BY key, struct_arg.f\n  )")
+
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+CREATE AGGREGATE FUNCTION ComplexUda(value1 ANY TYPE, value2 ANY TYPE, key ANY TYPE, struct_arg STRUCT<
+e INT32, f STRUCT< c INT32, d STRUCT< a INT32, b STRING > > >)
+AS (
+  CORR(key + CORR(key, value2 + MAX(value1)
+      GROUP BY value2) + struct_arg.f.c + (
+      SELECT
+        key
+    ), AVG(value2 + MIN(value1) + (
+        SELECT
+          key + value2
+      ) + struct_arg.f.c + struct_arg.f.d.a
+      GROUP BY value2, struct_arg.f.d)
+    GROUP BY key, struct_arg.f)
+);
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+CREATE AGGREGATE FUNCTION ComplexUda(value1 ANY TYPE, value2 ANY TYPE, key ANY TYPE, struct_arg STRUCT<
+e INT32, f STRUCT< c INT32, d STRUCT< a INT32, b STRING > > >)
+AS (
+  CORR(key + CORR(key, value2 + MAX(value1)
+      GROUP BY value2) + struct_arg.f.c + (
+      SELECT
+        key
+    ), AVG(value2 + MIN(value1) + (
+        SELECT
+          key + value2
+      ) + struct_arg.f.c + struct_arg.f.d.a
+      GROUP BY value2, struct_arg.f.d)
+    GROUP BY key, struct_arg.f)
+);

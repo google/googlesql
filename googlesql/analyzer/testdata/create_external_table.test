@@ -1,0 +1,652 @@
+[default language_features=NONE]
+[default ddl_pseudo_column_mode=none]
+
+create external table a.b.c.T
+options (x = 5, y = abc, z = ("def", 1))
+--
+CreateExternalTableStmt
++-name_path=a.b.c.T
++-option_list=
+  +-x := Literal(type=INT64, value=5)
+  +-y := Literal(type=STRING, value="abc")
+  +-z := Literal(type=STRUCT<STRING, INT64>, value={"def", 1})
+==
+
+create temp external table a.T
+options ()
+--
+CreateExternalTableStmt(name_path=a.T, create_scope=CREATE_TEMP)
+==
+
+[statement_context={{|module}}]
+create {{public|private}} external table a.T
+options ()
+--
+ALTERNATION GROUP: public
+--
+ERROR: CREATE EXTERNAL TABLE with PUBLIC or PRIVATE modifiers is not supported [at 1:1]
+create public external table a.T
+^
+--
+ALTERNATION GROUP: private
+--
+ERROR: CREATE EXTERNAL TABLE with PUBLIC or PRIVATE modifiers is not supported [at 1:1]
+create private external table a.T
+^
+--
+ALTERNATION GROUP: module,public
+--
+ERROR: Statement not supported inside modules: CreateExternalTableStatement [at 1:1]
+create public external table a.T
+^
+--
+ALTERNATION GROUP: module,private
+--
+ERROR: Statement not supported inside modules: CreateExternalTableStatement [at 1:1]
+create private external table a.T
+^
+==
+
+create {{|or replace}} {{|temporary|temp}} external table {{|if not exists}} T
+options ()
+--
+ALTERNATION GROUP: <empty>
+--
+CreateExternalTableStmt(name_path=T)
+--
+ALTERNATION GROUP: if not exists
+--
+CreateExternalTableStmt(name_path=T, create_mode=CREATE_IF_NOT_EXISTS)
+--
+ALTERNATION GROUPS:
+    temporary,
+    temp,
+--
+CreateExternalTableStmt(name_path=T, create_scope=CREATE_TEMP)
+--
+ALTERNATION GROUPS:
+    temporary,if not exists
+    temp,if not exists
+--
+CreateExternalTableStmt(name_path=T, create_scope=CREATE_TEMP, create_mode=CREATE_IF_NOT_EXISTS)
+--
+ALTERNATION GROUP: or replace,,
+--
+CreateExternalTableStmt(name_path=T, create_mode=CREATE_OR_REPLACE)
+--
+ALTERNATION GROUP: or replace,,if not exists
+--
+ERROR: CREATE EXTERNAL TABLE cannot have both OR REPLACE and IF NOT EXISTS [at 1:1]
+create or replace  external table if not exists T
+^
+--
+ALTERNATION GROUPS:
+    or replace,temporary,
+    or replace,temp,
+--
+CreateExternalTableStmt(name_path=T, create_scope=CREATE_TEMP, create_mode=CREATE_OR_REPLACE)
+--
+ALTERNATION GROUP: or replace,temporary,if not exists
+--
+ERROR: CREATE EXTERNAL TABLE cannot have both OR REPLACE and IF NOT EXISTS [at 1:1]
+create or replace temporary external table if not exists T
+^
+--
+ALTERNATION GROUP: or replace,temp,if not exists
+--
+ERROR: CREATE EXTERNAL TABLE cannot have both OR REPLACE and IF NOT EXISTS [at 1:1]
+create or replace temp external table if not exists T
+^
+==
+
+create external table a.b.c.T(y string)
+options (x = 5, y = abc, z = ['uri', 'uri2'])
+--
+ERROR: CREATE EXTERNAL TABLE with column definition list is unsupported [at 1:30]
+create external table a.b.c.T(y string)
+                             ^
+==
+
+[language_features=NONE,+CREATE_EXTERNAL_TABLE_WITH_TABLE_ELEMENT_LIST]
+create external table a.b.c.T(x int64 options(description="integer field"), y string)
+options (x = 5, y = abc, z = ['uri', 'uri2'])
+--
+CreateExternalTableStmt
++-name_path=a.b.c.T
++-option_list=
+| +-x := Literal(type=INT64, value=5)
+| +-y := Literal(type=STRING, value="abc")
+| +-z := Literal(type=ARRAY<STRING>, value=["uri", "uri2"])
++-column_definition_list=
+  +-ColumnDefinition
+  | +-name="x"
+  | +-type=INT64
+  | +-annotations=
+  | | +-ColumnAnnotations
+  | |   +-option_list=
+  | |     +-description := Literal(type=STRING, value="integer field")
+  | +-column=a.b.c.T.x#1
+  +-ColumnDefinition(name="y", type=STRING, column=a.b.c.T.y#2)
+==
+
+[language_features=NONE,+CREATE_TABLE_NOT_NULL,+CREATE_EXTERNAL_TABLE_WITH_TABLE_ELEMENT_LIST]
+create external table a.b.c.T(x int64 NOT NULL)
+options ()
+--
+CreateExternalTableStmt
++-name_path=a.b.c.T
++-column_definition_list=
+  +-ColumnDefinition
+    +-name="x"
+    +-type=INT64
+    +-annotations=
+    | +-ColumnAnnotations(not_null=TRUE)
+    +-column=a.b.c.T.x#1
+==
+
+[language_features=NONE,+CREATE_EXTERNAL_TABLE_WITH_TABLE_ELEMENT_LIST]
+create external table a.b.c.T(x int64 HIDDEN)
+options ()
+--
+CreateExternalTableStmt
++-name_path=a.b.c.T
++-column_definition_list=
+  +-ColumnDefinition(name="x", type=INT64, is_hidden=TRUE, column=a.b.c.T.x#1)
+==
+
+[language_features=NONE,+CREATE_EXTERNAL_TABLE_WITH_TABLE_ELEMENT_LIST]
+create external table a.b.c.T(x int64, y string, PRIMARY KEY(x))
+options (x = 5, y = abc, z = ['uri', 'uri2'])
+--
+CreateExternalTableStmt
++-name_path=a.b.c.T
++-option_list=
+| +-x := Literal(type=INT64, value=5)
+| +-y := Literal(type=STRING, value="abc")
+| +-z := Literal(type=ARRAY<STRING>, value=["uri", "uri2"])
++-column_definition_list=
+| +-ColumnDefinition(name="x", type=INT64, column=a.b.c.T.x#1)
+| +-ColumnDefinition(name="y", type=STRING, column=a.b.c.T.y#2)
++-primary_key=
+  +-PrimaryKey(column_offset_list=[0], column_name_list=[x])
+==
+
+[language_features=NONE,+CREATE_EXTERNAL_TABLE_WITH_TABLE_ELEMENT_LIST,+CHECK_CONSTRAINT]
+create external table t(a int64, b int64, check (a > b))
+options (x = 5)
+--
+CreateExternalTableStmt
++-name_path=t
++-option_list=
+| +-x := Literal(type=INT64, value=5)
++-column_definition_list=
+| +-ColumnDefinition(name="a", type=INT64, column=t.a#1)
+| +-ColumnDefinition(name="b", type=INT64, column=t.b#2)
++-check_constraint_list=
+  +-CheckConstraint
+    +-constraint_name=""
+    +-expression=
+    | +-FunctionCall(GoogleSQL:$greater(INT64, INT64) -> BOOL)
+    |   +-ColumnRef(type=INT64, column=t.a#1)
+    |   +-ColumnRef(type=INT64, column=t.b#2)
+    +-enforced=TRUE
+==
+
+[language_features=NONE,+CREATE_EXTERNAL_TABLE_WITH_TABLE_ELEMENT_LIST,+FOREIGN_KEYS]
+create external table a.b.c.T(first int64, second string, FOREIGN KEY (first) REFERENCES Value (value))
+options (x = 5, y = abc, z = ['uri', 'uri2'])
+--
+CreateExternalTableStmt
++-name_path=a.b.c.T
++-option_list=
+| +-x := Literal(type=INT64, value=5)
+| +-y := Literal(type=STRING, value="abc")
+| +-z := Literal(type=ARRAY<STRING>, value=["uri", "uri2"])
++-column_definition_list=
+| +-ColumnDefinition(name="first", type=INT64, column=a.b.c.T.first#1)
+| +-ColumnDefinition(name="second", type=STRING, column=a.b.c.T.second#2)
++-foreign_key_list=
+  +-ForeignKey(constraint_name="", referencing_column_offset_list=[0], referenced_table=Value, referenced_column_offset_list=[0], match_mode=SIMPLE, update_action=NO_ACTION, delete_action=NO_ACTION, enforced=TRUE, referencing_column_list=first)
+==
+
+[language_features=NONE,+CREATE_EXTERNAL_TABLE_WITH_TABLE_ELEMENT_LIST]
+create {{|or replace}} {{|temporary|temp}} external table {{|if not exists}}
+a.b.c.T(x int64) options (a=b)
+--
+ALTERNATION GROUP: <empty>
+--
+CreateExternalTableStmt
++-name_path=a.b.c.T
++-option_list=
+| +-a := Literal(type=STRING, value="b")
++-column_definition_list=
+  +-ColumnDefinition(name="x", type=INT64, column=a.b.c.T.x#1)
+--
+ALTERNATION GROUP: if not exists
+--
+CreateExternalTableStmt
++-name_path=a.b.c.T
++-create_mode=CREATE_IF_NOT_EXISTS
++-option_list=
+| +-a := Literal(type=STRING, value="b")
++-column_definition_list=
+  +-ColumnDefinition(name="x", type=INT64, column=a.b.c.T.x#1)
+--
+ALTERNATION GROUPS:
+    temporary,
+    temp,
+--
+CreateExternalTableStmt
++-name_path=a.b.c.T
++-create_scope=CREATE_TEMP
++-option_list=
+| +-a := Literal(type=STRING, value="b")
++-column_definition_list=
+  +-ColumnDefinition(name="x", type=INT64, column=a.b.c.T.x#1)
+--
+ALTERNATION GROUPS:
+    temporary,if not exists
+    temp,if not exists
+--
+CreateExternalTableStmt
++-name_path=a.b.c.T
++-create_scope=CREATE_TEMP
++-create_mode=CREATE_IF_NOT_EXISTS
++-option_list=
+| +-a := Literal(type=STRING, value="b")
++-column_definition_list=
+  +-ColumnDefinition(name="x", type=INT64, column=a.b.c.T.x#1)
+--
+ALTERNATION GROUP: or replace,,
+--
+CreateExternalTableStmt
++-name_path=a.b.c.T
++-create_mode=CREATE_OR_REPLACE
++-option_list=
+| +-a := Literal(type=STRING, value="b")
++-column_definition_list=
+  +-ColumnDefinition(name="x", type=INT64, column=a.b.c.T.x#1)
+--
+ALTERNATION GROUP: or replace,,if not exists
+--
+ERROR: CREATE EXTERNAL TABLE cannot have both OR REPLACE and IF NOT EXISTS [at 1:1]
+create or replace  external table if not exists
+^
+--
+ALTERNATION GROUPS:
+    or replace,temporary,
+    or replace,temp,
+--
+CreateExternalTableStmt
++-name_path=a.b.c.T
++-create_scope=CREATE_TEMP
++-create_mode=CREATE_OR_REPLACE
++-option_list=
+| +-a := Literal(type=STRING, value="b")
++-column_definition_list=
+  +-ColumnDefinition(name="x", type=INT64, column=a.b.c.T.x#1)
+--
+ALTERNATION GROUP: or replace,temporary,if not exists
+--
+ERROR: CREATE EXTERNAL TABLE cannot have both OR REPLACE and IF NOT EXISTS [at 1:1]
+create or replace temporary external table if not exists
+^
+--
+ALTERNATION GROUP: or replace,temp,if not exists
+--
+ERROR: CREATE EXTERNAL TABLE cannot have both OR REPLACE and IF NOT EXISTS [at 1:1]
+create or replace temp external table if not exists
+^
+==
+
+[language_features=NONE,+CREATE_EXTERNAL_TABLE_WITH_TABLE_ELEMENT_LIST]
+create external table a.b.c.T(x int64)
+partition by x
+options ()
+--
+ERROR: Syntax error: Expected keyword DEFAULT or keyword LIKE or keyword OPTIONS or keyword WITH but got keyword PARTITION [at 2:1]
+partition by x
+^
+==
+
+[language_features=NONE,+CREATE_EXTERNAL_TABLE_WITH_TABLE_ELEMENT_LIST]
+create external table a.b.c.T(x int64)
+cluster by x
+options ()
+--
+ERROR: Syntax error: Expected keyword DEFAULT or keyword LIKE or keyword OPTIONS or keyword WITH but got keyword CLUSTER [at 2:1]
+cluster by x
+^
+==
+
+[language_features=NONE,+CREATE_EXTERNAL_TABLE_WITH_TABLE_ELEMENT_LIST,+CHECK_CONSTRAINT]
+create external table t(a int64, check (a > b))
+options (x = 5)
+--
+ERROR: Unrecognized name: b [at 1:45]
+create external table t(a int64, check (a > b))
+                                            ^
+==
+
+create external table t
+with partition columns
+options (x = 5)
+--
+ERROR: WITH PARTITION COLUMNS clause is unsupported for CREATE EXTERNAL TABLE [at 2:1]
+with partition columns
+^
+==
+
+[language_features=NONE,+CREATE_EXTERNAL_TABLE_WITH_TABLE_ELEMENT_LIST,+CREATE_EXTERNAL_TABLE_WITH_PARTITION_COLUMNS]
+create external table t(a int64)
+with partition columns
+options (x = 5)
+--
+CreateExternalTableStmt
++-name_path=t
++-option_list=
+| +-x := Literal(type=INT64, value=5)
++-column_definition_list=
+| +-ColumnDefinition(name="a", type=INT64, column=t.a#1)
++-with_partition_columns=
+  +-WithPartitionColumns
+==
+
+[language_features=NONE,+CREATE_EXTERNAL_TABLE_WITH_PARTITION_COLUMNS]
+create external table t
+with partition columns
+options (x = 5)
+--
+CreateExternalTableStmt
++-name_path=t
++-option_list=
+| +-x := Literal(type=INT64, value=5)
++-with_partition_columns=
+  +-WithPartitionColumns
+==
+
+[language_features=NONE,+CREATE_EXTERNAL_TABLE_WITH_PARTITION_COLUMNS]
+create external table t
+with partition columns()
+options (x = 5)
+--
+ERROR: A table must define at least one column. [at 2:24]
+with partition columns()
+                       ^
+==
+
+[language_features=NONE,+CREATE_EXTERNAL_TABLE_WITH_PARTITION_COLUMNS]
+create external table t
+with partition columns(x int64)
+options (x = 5)
+--
+CreateExternalTableStmt
++-name_path=t
++-option_list=
+| +-x := Literal(type=INT64, value=5)
++-with_partition_columns=
+  +-WithPartitionColumns
+    +-column_definition_list=
+      +-ColumnDefinition(name="x", type=INT64, column=t.x#1)
+==
+
+[language_features=NONE,+CREATE_EXTERNAL_TABLE_WITH_TABLE_ELEMENT_LIST,+CREATE_EXTERNAL_TABLE_WITH_PARTITION_COLUMNS]
+create external table t(a int64)
+with partition columns(y int64, z string)
+options (x = 5)
+--
+CreateExternalTableStmt
++-name_path=t
++-option_list=
+| +-x := Literal(type=INT64, value=5)
++-column_definition_list=
+| +-ColumnDefinition(name="a", type=INT64, column=t.a#1)
++-with_partition_columns=
+  +-WithPartitionColumns
+    +-column_definition_list=
+      +-ColumnDefinition(name="y", type=INT64, column=t.y#2)
+      +-ColumnDefinition(name="z", type=STRING, column=t.z#3)
+==
+
+[language_features=NONE,+CREATE_EXTERNAL_TABLE_WITH_TABLE_ELEMENT_LIST,+CREATE_EXTERNAL_TABLE_WITH_PARTITION_COLUMNS]
+create external table t(a int64)
+with partition columns(a int64, z string)
+options (x = 5)
+--
+ERROR: Duplicate column name a in CREATE EXTERNAL TABLE [at 2:24]
+with partition columns(a int64, z string)
+                       ^
+==
+
+[language_features=NONE,+CREATE_EXTERNAL_TABLE_WITH_TABLE_ELEMENT_LIST,+CREATE_EXTERNAL_TABLE_WITH_PARTITION_COLUMNS]
+create external table t(a int64, primary key (b))
+with partition columns(b int64)
+options (x = 5)
+--
+ERROR: Unsupported primary key column b either does not exist or is a pseudocolumn [at 1:47]
+create external table t(a int64, primary key (b))
+                                              ^
+
+==
+
+[language_features=NONE,+CREATE_EXTERNAL_TABLE_WITH_TABLE_ELEMENT_LIST,+CHECK_CONSTRAINT,+CREATE_EXTERNAL_TABLE_WITH_PARTITION_COLUMNS]
+create external table t(a int64, check (b > 0))
+with partition columns(b int64)
+options (x = 5)
+--
+ERROR: Unrecognized name: b [at 1:41]
+create external table t(a int64, check (b > 0))
+                                        ^
+
+==
+
+[language_features=NONE,+CREATE_EXTERNAL_TABLE_WITH_TABLE_ELEMENT_LIST,+CREATE_EXTERNAL_TABLE_WITH_PARTITION_COLUMNS]
+create external table t(a int64)
+with partition columns(b int64 primary key)
+options (x = 5)
+--
+ERROR: column attributes are unsupported for columns in WITH PARTITION COLUMNS clause [at 2:24]
+with partition columns(b int64 primary key)
+                       ^
+==
+
+[language_features=NONE,+CREATE_EXTERNAL_TABLE_WITH_TABLE_ELEMENT_LIST,+CREATE_EXTERNAL_TABLE_WITH_PARTITION_COLUMNS]
+create external table t(a int64)
+with partition columns(b int64 options(description="partition column"))
+options (x = 5)
+--
+ERROR: column options are unsupported for columns in WITH PARTITION COLUMNS clause [at 2:24]
+with partition columns(b int64 options(description="partition column"))
+                       ^
+==
+
+[language_features=NONE,+CREATE_EXTERNAL_TABLE_WITH_TABLE_ELEMENT_LIST,+CREATE_EXTERNAL_TABLE_WITH_PARTITION_COLUMNS]
+create external table t(a int64)
+with partition columns(b int64, primary key (b))
+options (x = 5)
+--
+ERROR: PrimaryKey is unsupported [at 2:33]
+with partition columns(b int64, primary key (b))
+                                ^
+==
+
+[language_features=NONE,+CREATE_EXTERNAL_TABLE_WITH_TABLE_ELEMENT_LIST,+CREATE_TABLE_NOT_NULL,+CREATE_EXTERNAL_TABLE_WITH_PARTITION_COLUMNS]
+create external table t(a int64)
+with partition columns(b int64 not null)
+options (x = 5)
+--
+ERROR: column attributes are unsupported for columns in WITH PARTITION COLUMNS clause [at 2:24]
+with partition columns(b int64 not null)
+                       ^
+==
+
+[language_features=NONE,+CREATE_EXTERNAL_TABLE_WITH_TABLE_ELEMENT_LIST,+FOREIGN_KEYS,+CREATE_EXTERNAL_TABLE_WITH_PARTITION_COLUMNS]
+create external table t(FOREIGN KEY (b) REFERENCES Value (value))
+with partition columns(b int64)
+options (x = 5)
+--
+ERROR: Foreign key definition is only allowed with explicit column definitions in CREATE EXTERNAL TABLE [at 1:1]
+create external table t(FOREIGN KEY (b) REFERENCES Value (value))
+^
+==
+
+[language_features=NONE,+CREATE_EXTERNAL_TABLE_WITH_TABLE_ELEMENT_LIST,+FOREIGN_KEYS,+CREATE_EXTERNAL_TABLE_WITH_PARTITION_COLUMNS]
+create external table t(a int64, FOREIGN KEY (b) REFERENCES Value (value))
+with partition columns(b int64)
+options (x = 5)
+--
+ERROR: Unsupported foreign key column b either does not exist or is a pseudocolumn [at 1:47]
+create external table t(a int64, FOREIGN KEY (b) REFERENCES Value (value))
+                                              ^
+==
+
+[language_features=NONE,+CREATE_EXTERNAL_TABLE_WITH_CONNECTION,+CREATE_EXTERNAL_TABLE_WITH_TABLE_ELEMENT_LIST,+CREATE_EXTERNAL_TABLE_WITH_PARTITION_COLUMNS]
+create external table projectid.datasetid.tablename(x int64)
+with partition columns
+with connection conn
+options (x=f1)
+--
+ERROR: Connection not found: conn [at 3:17]
+with connection conn
+                ^
+==
+
+[language_features=NONE,+CREATE_EXTERNAL_TABLE_WITH_CONNECTION,+CREATE_EXTERNAL_TABLE_WITH_TABLE_ELEMENT_LIST,+CREATE_EXTERNAL_TABLE_WITH_PARTITION_COLUMNS]
+create external table projectid.datasetid.tablename(x int64)
+with connection default
+options (x=foo)
+--
+
+CreateExternalTableStmt
++-name_path=projectid.datasetid.tablename
++-option_list=
+| +-x := Literal(type=STRING, value="foo")
++-column_definition_list=
+| +-ColumnDefinition(name="x", type=INT64, column=projectid.datasetid.tablename.x#1)
++-connection=
+  +-Connection(connection=$connection_default)
+==
+
+[no_java]
+[use_database=SpecialCatalog]
+[language_features=NONE,+CREATE_EXTERNAL_TABLE_WITH_CONNECTION,+CREATE_EXTERNAL_TABLE_WITH_TABLE_ELEMENT_LIST,+CREATE_EXTERNAL_TABLE_WITH_PARTITION_COLUMNS]
+create external table projectid.datasetid.tablename(x int64)
+with connection default
+options (x=foo)
+--
+ERROR: Default connection not found [at 2:17]
+with connection default
+                ^
+==
+
+[language_features=NONE,+CREATE_EXTERNAL_TABLE_WITH_CONNECTION,+CREATE_EXTERNAL_TABLE_WITH_TABLE_ELEMENT_LIST,+CREATE_EXTERNAL_TABLE_WITH_PARTITION_COLUMNS]
+create external table projectid.datasetid.tablename(x int64)
+with connection ``
+options (x=foo)
+--
+
+ERROR: Syntax error: Invalid empty identifier [at 2:17]
+with connection ``
+                ^
+==
+
+[language_features=NONE,+CREATE_EXTERNAL_TABLE_WITH_CONNECTION,+CREATE_EXTERNAL_TABLE_WITH_TABLE_ELEMENT_LIST,+CREATE_EXTERNAL_TABLE_WITH_PARTITION_COLUMNS]
+create external table projectid.datasetid.tablename(x int64)
+with connection connection1
+options (x=foo)
+--
+
+CreateExternalTableStmt
++-name_path=projectid.datasetid.tablename
++-option_list=
+| +-x := Literal(type=STRING, value="foo")
++-column_definition_list=
+| +-ColumnDefinition(name="x", type=INT64, column=projectid.datasetid.tablename.x#1)
++-connection=
+  +-Connection(connection=connection1)
+==
+
+[language_features=NONE,+CREATE_EXTERNAL_TABLE_WITH_CONNECTION,+CREATE_EXTERNAL_TABLE_WITH_TABLE_ELEMENT_LIST,+CREATE_EXTERNAL_TABLE_WITH_PARTITION_COLUMNS]
+create external table projectid.datasetid.tablename(x int64)
+with connection `connection2`
+with partition columns
+options (x=bar)
+--
+
+ERROR: Syntax error: Expected keyword OPTIONS but got keyword WITH [at 3:1]
+with partition columns
+^
+==
+
+[language_features=NONE,+CREATE_EXTERNAL_TABLE_WITH_CONNECTION,+CREATE_EXTERNAL_TABLE_WITH_TABLE_ELEMENT_LIST,+CREATE_EXTERNAL_TABLE_WITH_PARTITION_COLUMNS]
+create external table projectid.datasetid.tablename(x int64)
+with partition columns
+with connection `connection2`
+options (x=bar)
+--
+
+CreateExternalTableStmt
++-name_path=projectid.datasetid.tablename
++-option_list=
+| +-x := Literal(type=STRING, value="bar")
++-column_definition_list=
+| +-ColumnDefinition(name="x", type=INT64, column=projectid.datasetid.tablename.x#1)
++-connection=
+| +-Connection(connection=connection2)
++-with_partition_columns=
+  +-WithPartitionColumns
+==
+
+[language_features=NONE,+CREATE_EXTERNAL_TABLE_WITH_CONNECTION,+CREATE_EXTERNAL_TABLE_WITH_TABLE_ELEMENT_LIST,+CREATE_EXTERNAL_TABLE_WITH_PARTITION_COLUMNS]
+create external table t(x int64)
+with partition columns (
+  y int64
+)
+with connection connection2
+options (x=baz)
+--
+
+CreateExternalTableStmt
++-name_path=t
++-option_list=
+| +-x := Literal(type=STRING, value="baz")
++-column_definition_list=
+| +-ColumnDefinition(name="x", type=INT64, column=t.x#1)
++-connection=
+| +-Connection(connection=connection2)
++-with_partition_columns=
+  +-WithPartitionColumns
+    +-column_definition_list=
+      +-ColumnDefinition(name="y", type=INT64, column=t.y#2)
+==
+
+[language_features=NONE,+CREATE_EXTERNAL_TABLE_WITH_CONNECTION,+CREATE_EXTERNAL_TABLE_WITH_TABLE_ELEMENT_LIST,+CREATE_EXTERNAL_TABLE_WITH_PARTITION_COLUMNS]
+create external table t(x int64)
+with partition columns (
+  y int64
+)
+with connection nested_catalog.connection2
+options (x=baz)
+--
+
+CreateExternalTableStmt
++-name_path=t
++-option_list=
+| +-x := Literal(type=STRING, value="baz")
++-column_definition_list=
+| +-ColumnDefinition(name="x", type=INT64, column=t.x#1)
++-connection=
+| +-Connection(connection=connection2)
++-with_partition_columns=
+  +-WithPartitionColumns
+    +-column_definition_list=
+      +-ColumnDefinition(name="y", type=INT64, column=t.y#2)
+==
+
+[disallow_duplicate_options]
+create external table a.b.c.T
+options (x = 5, x = abc)
+--
+ERROR: Duplicate option specified for 'x' [at 2:17]
+options (x = 5, x = abc)
+                ^

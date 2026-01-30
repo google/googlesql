@@ -1,0 +1,990 @@
+# This file is for testing the output of pipe DESCRIBE.
+# Resolved ASTs and rewrites are tested in `pipe_describe.test`.
+[default no_show_resolved_ast]
+[default language_features=MAXIMUM,+PIPES,+PIPE_DESCRIBE,+PIPE_STATIC_DESCRIBE,+PIPE_WITH,+WITH_ON_SUBQUERY]
+# Just a single anonymous column.
+select 123
+|> DESCRIBE
+--
+[DESCRIBE output]
+**Columns**:
+Column Name  Type
+\-----------  -----
+<unnamed>    INT64
+==
+
+from KeyValue
+|> DESCRIBE
+--
+[DESCRIBE output]
+**Columns**:
+Table Alias  Column Name  Type
+\-----------  -----------  ------
+KeyValue     Key          INT64
+KeyValue     Value        STRING
+
+**Table Aliases**:
+Table Alias  Columns
+\-----------  ----------
+KeyValue     Key, Value
+==
+
+from KeyValue AS kv
+|> DESCRIBE
+|> DESCRIBE
+--
+[DESCRIBE output]
+**Columns**:
+Column Name  Type
+\-----------  ------
+Describe     STRING
+
+
+[DESCRIBE output]
+**Columns**:
+Table Alias  Column Name  Type
+\-----------  -----------  ------
+kv           Key          INT64
+kv           Value        STRING
+
+**Table Aliases**:
+Table Alias  Columns
+\-----------  ----------
+kv           Key, Value
+==
+
+# DESCRIBE on a value table includes `is_value_table`.
+from TestExtraValueTable vt
+|> DESCRIBE
+--
+[DESCRIBE output]
+**Columns**:
+Table Alias  Column Name  Type
+\-----------  -----------  --------------------------
+vt           <value>      googlesql_test.TestExtraPB
+
+**Pseudo-columns**:
+Table Alias  Column Name  Type
+\-----------  -----------  ------
+vt           Filename     STRING
+vt           RowId        BYTES
+
+**Table Aliases**:
+Table Alias  Columns  Pseudo-columns
+\-----------  -------  ---------------
+vt           <value>  Filename, RowId
+
+Result is a value table.
+
+==
+
+# The whole table isn't `is_value_table` but `vt` is.
+FROM TestExtraValueTable vt
+|> EXTEND 123
+|> DESCRIBE
+--
+[DESCRIBE output]
+**Columns**:
+Table Alias  Column Name  Type
+\-----------  -----------  --------------------------
+vt           <value>      googlesql_test.TestExtraPB
+             <unnamed>    INT64
+
+**Pseudo-columns**:
+Table Alias  Column Name  Type
+\-----------  -----------  ------
+vt           Filename     STRING
+vt           RowId        BYTES
+
+**Table Aliases**:
+Table Alias  Columns  Pseudo-columns
+\-----------  -------  ---------------
+vt           <value>  Filename, RowId
+==
+
+# A value table without an alias.
+SELECT AS STRUCT 123, "abc" ff
+|> DESCRIBE
+--
+[DESCRIBE output]
+**Columns**:
+Column Name  Type
+\-----------  ------------------------
+<value>      STRUCT<INT64, ff STRING>
+
+Result is a value table.
+==
+
+# Mixing type types, plus added named and unnamed columns.
+from KeyValue as kv
+|> CROSS JOIN TestExtraValueTable vt
+|> EXTEND 123  # anonymous column
+|> EXTEND 456 named_column
+|> DESCRIBE
+--
+[DESCRIBE output]
+**Columns**:
+Table Alias  Column Name   Type
+\-----------  ------------  --------------------------
+kv           Key           INT64
+kv           Value         STRING
+vt           <value>       googlesql_test.TestExtraPB
+             <unnamed>     INT64
+             named_column  INT64
+
+**Pseudo-columns**:
+Table Alias  Column Name  Type
+\-----------  -----------  ------
+vt           Filename     STRING
+vt           RowId        BYTES
+
+**Table Aliases**:
+Table Alias  Columns     Pseudo-columns
+\-----------  ----------  ---------------
+kv           Key, Value
+vt           <value>     Filename, RowId
+==
+
+# The DESCRIBE content includes `is_ordered` when the input is ordered.
+# The output of DESCRIBE itself is not ordered.
+# DESCRIBE itself is not order-preserving.
+FROM KeyValue
+|> ORDER BY key
+|> DESCRIBE
+|> DESCRIBE
+--
+[DESCRIBE output]
+**Columns**:
+Column Name  Type
+\-----------  ------
+Describe     STRING
+
+
+[DESCRIBE output]
+**Columns**:
+Table Alias  Column Name  Type
+\-----------  -----------  ------
+KeyValue     Key          INT64
+KeyValue     Value        STRING
+
+**Table Aliases**:
+Table Alias  Columns
+\-----------  ----------
+KeyValue     Key, Value
+
+Result is ordered.
+==
+
+# A table with just columns, with no table aliases.
+select 111 xxx, 222
+|> DESCRIBE
+--
+[DESCRIBE output]
+**Columns**:
+Column Name  Type
+\-----------  -----
+xxx          INT64
+<unnamed>    INT64
+==
+
+# Table alias added, and covers one column that was dropped.
+select 111 xxx, 222, 333 zzz
+|> AS t
+|> DROP xxx
+|> EXTEND 444 aaa, 555
+|> DESCRIBE
+--
+[DESCRIBE output]
+**Columns**:
+Table Alias  Column Name  Type
+\-----------  -----------  -----
+t            <unnamed>    INT64
+t            zzz          INT64
+             aaa          INT64
+             <unnamed>    INT64
+
+**Table Aliases**:
+Table Alias  Columns
+\-----------  -------------------
+t            xxx, <unnamed>, zzz
+==
+
+# Table alias exists but covers no remaining columns.
+select 111 xxx, 222, 333 zzz
+|> AS t
+|> DROP xxx, zzz
+|> DESCRIBE
+--
+[DESCRIBE output]
+**Columns**:
+Table Alias  Column Name  Type
+\-----------  -----------  -----
+t            <unnamed>    INT64
+
+**Table Aliases**:
+Table Alias  Columns
+\-----------  -------------------
+t            xxx, <unnamed>, zzz
+==
+
+# Show how output differs for different join types.
+# The case on the USING column differs but we still attach the
+# table aliases.
+from KeyValue kv1
+|> {{|LEFT|RIGHT|FULL}} JOIN KeyValue kv2 USING (kEy)
+|> DESCRIBE
+--
+ALTERNATION GROUPS:
+    <empty>
+    LEFT
+--
+[DESCRIBE output]
+**Columns**:
+Table Alias  Column Name  Type
+\-----------  -----------  ------
+kv1          kEy          INT64
+kv1          Value        STRING
+kv2          Value        STRING
+
+**Table Aliases**:
+Table Alias  Columns
+\-----------  ----------
+kv1          Key, Value
+kv2          Key, Value
+--
+ALTERNATION GROUP: RIGHT
+--
+[DESCRIBE output]
+**Columns**:
+Table Alias  Column Name  Type
+\-----------  -----------  ------
+kv2          kEy          INT64
+kv1          Value        STRING
+kv2          Value        STRING
+
+**Table Aliases**:
+Table Alias  Columns
+\-----------  ----------
+kv1          Key, Value
+kv2          Key, Value
+--
+ALTERNATION GROUP: FULL
+--
+[DESCRIBE output]
+**Columns**:
+Table Alias  Column Name  Type
+\-----------  -----------  ------
+             kEy          INT64
+kv1          Value        STRING
+kv2          Value        STRING
+
+**Table Aliases**:
+Table Alias  Columns
+\-----------  ----------
+kv1          Key, Value
+kv2          Key, Value
+==
+
+# A complex example with a FULL JOIN and with other columns.
+from KeyValue kv
+|> extend 123
+|> extend "abc" abc
+|> full JOIN KeyValue kv2 USING (key)
+|> cross join (
+    select 9.5, 10 xxxxx
+  ) as t3
+|> DESCRIBE
+--
+[DESCRIBE output]
+**Columns**:
+Table Alias  Column Name  Type
+\-----------  -----------  ------
+             key          INT64
+kv           Value        STRING
+             <unnamed>    INT64
+             abc          STRING
+kv2          Value        STRING
+t3           <unnamed>    DOUBLE
+t3           xxxxx        INT64
+
+**Table Aliases**:
+Table Alias  Columns
+\-----------  ----------------
+kv           Key, Value
+kv2          Key, Value
+t3           <unnamed>, xxxxx
+==
+
+# A table, with its alias overridden by a pipe AS alias.
+from KeyValue kv
+|> extend 123
+|> as ttt
+|> extend 456
+|> extend ttt
+|> DESCRIBE
+--
+[DESCRIBE output]
+**Columns**:
+Table Alias  Column Name  Type
+\-----------  -----------  --------------------------------------
+ttt          Key          INT64
+ttt          Value        STRING
+ttt          <unnamed>    INT64
+             <unnamed>    INT64
+             ttt          STRUCT<Key INT64, Value STRING, INT64>
+
+**Table Aliases**:
+Table Alias  Columns
+\-----------  ---------------------
+ttt          Key, Value, <unnamed>
+==
+
+# An example with some duplicate column names.
+select 1 x
+|> select x y, x z
+|> as t
+|> drop y
+|> extend 123 as y
+|> DESCRIBE
+--
+[DESCRIBE output]
+**Columns**:
+Table Alias  Column Name  Type
+\-----------  -----------  -----
+t            z            INT64
+             y            INT64
+
+**Table Aliases**:
+Table Alias  Columns
+\-----------  -------
+t            y, z
+==
+
+# A copy of a column exists outside the range variable.
+from KeyValue kv
+|> extend key as key2
+|> DROP value
+|> DESCRIBE
+--
+[DESCRIBE output]
+**Columns**:
+Table Alias  Column Name  Type
+\-----------  -----------  -----
+kv           Key          INT64
+             key2         INT64
+
+**Table Aliases**:
+Table Alias  Columns
+\-----------  ----------
+kv           Key, Value
+==
+
+# This has a pseudo-column that's ambiguous with a real column.
+from EnumTable
+|> extend 123
+|> drop key,TestEnum,AnotherTestEnum
+|> extend 555 rowid
+|> DESCRIBE
+--
+[DESCRIBE output]
+**Columns**:
+Table Alias  Column Name  Type
+\-----------  -----------  -----
+             <unnamed>    INT64
+             rowid        INT64
+
+**Pseudo-columns**:
+Table Alias  Column Name  Type
+\-----------  -----------  ------
+EnumTable    Filename     STRING
+EnumTable    RowId        BYTES
+
+**Table Aliases**:
+Table Alias  Columns                         Pseudo-columns
+\-----------  ------------------------------  ---------------
+EnumTable    key, TestEnum, AnotherTestEnum  Filename, RowId
+==
+
+# This has a pseudo-column `Filename` that's dropped from the top-level table
+# but is still available as `t.Filename`.  It's still shown.
+FROM EnumTable t
+|> EXTEND filename
+|> DROP filename
+|> DESCRIBE
+--
+[DESCRIBE output]
+**Columns**:
+Table Alias  Column Name      Type
+\-----------  ---------------  ------------------------------
+t            key              INT32
+t            TestEnum         googlesql_test.TestEnum
+t            AnotherTestEnum  googlesql_test.AnotherTestEnum
+
+**Pseudo-columns**:
+Table Alias  Column Name  Type
+\-----------  -----------  ------
+t            Filename     STRING
+t            RowId        BYTES
+
+**Table Aliases**:
+Table Alias  Columns                         Pseudo-columns
+\-----------  ------------------------------  ---------------
+t            key, TestEnum, AnotherTestEnum  Filename, RowId
+==
+
+# This has a pseudo-column `Filename` that's dropped from the top-level table
+# and is not available under a range variable, since that's also been dropped.
+# Now it's shown in the pseudo-columns list without a table_alias.
+FROM EnumTable t
+|> CROSS JOIN (select 1 xxx) {{|AS other}}
+|> EXTEND filename, 1 as t
+|> DROP filename, t
+|> DESCRIBE
+--
+ALTERNATION GROUP: <empty>
+--
+[DESCRIBE output]
+**Columns**:
+Column Name      Type
+\---------------  ------------------------------
+key              INT32
+TestEnum         googlesql_test.TestEnum
+AnotherTestEnum  googlesql_test.AnotherTestEnum
+xxx              INT64
+
+**Pseudo-columns**:
+Column Name  Type
+\-----------  -----
+RowId        BYTES
+--
+ALTERNATION GROUP: AS other
+--
+[DESCRIBE output]
+**Columns**:
+Table Alias  Column Name      Type
+\-----------  ---------------  ------------------------------
+             key              INT32
+             TestEnum         googlesql_test.TestEnum
+             AnotherTestEnum  googlesql_test.AnotherTestEnum
+other        xxx              INT64
+
+**Pseudo-columns**:
+Table Alias  Column Name  Type
+\-----------  -----------  -----
+             RowId        BYTES
+
+**Table Aliases**:
+Table Alias  Columns
+\-----------  -------
+other        xxx
+==
+
+# This has pseudo-columns from two tables.
+# Drop one of them from one table to show the difference between
+# a pseudo-column in one table and in two tables.
+# Because we still show the pseudo-column under the table alias,
+# it's not actually visible that the pseudo-column is avaiable
+# uniquely once on the top-level table.
+FROM EnumTable t1
+|> EXTEND 1 RowId
+|> DROP RowId
+|> JOIN EnumTable t2 USING (key)
+# We have RowId columns on both tables, but only one is still on the top-level
+# table, so it's unambiguous there.
+|> WHERE t1.RowId = t2.RowId
+|> WHERE RowId IS NOT NULL
+|> DESCRIBE
+--
+[DESCRIBE output]
+**Columns**:
+Table Alias  Column Name      Type
+\-----------  ---------------  ------------------------------
+t1           key              INT32
+t1           TestEnum         googlesql_test.TestEnum
+t1           AnotherTestEnum  googlesql_test.AnotherTestEnum
+t2           TestEnum         googlesql_test.TestEnum
+t2           AnotherTestEnum  googlesql_test.AnotherTestEnum
+
+**Pseudo-columns**:
+Table Alias  Column Name  Type
+\-----------  -----------  ------
+t1           Filename     STRING
+t1           RowId        BYTES
+t2           Filename     STRING
+t2           RowId        BYTES
+
+**Table Aliases**:
+Table Alias  Columns                         Pseudo-columns
+\-----------  ------------------------------  ---------------
+t1           key, TestEnum, AnotherTestEnum  Filename, RowId
+t2           key, TestEnum, AnotherTestEnum  Filename, RowId
+==
+
+# This has two real columns that are ambiguous.
+# We "incorrectly" report that the second copy of `value` is also
+# under the `KeyValue` alias.  It's the same ResolvedColumn so we
+# can't tell the difference.
+FROM KeyValue
+|> EXTEND value
+|> DESCRIBE
+--
+[DESCRIBE output]
+**Columns**:
+Table Alias  Column Name  Type
+\-----------  -----------  ------
+KeyValue     Key          INT64
+KeyValue     Value        STRING
+KeyValue     value        STRING
+
+**Table Aliases**:
+Table Alias  Columns
+\-----------  ----------
+KeyValue     Key, Value
+==
+
+# This includes an unnamed column under a table alias.
+# The table alias is not shown in the Columns table.
+select 1 abc, 2
+|> AS ttt
+|> DESCRIBE
+--
+[DESCRIBE output]
+**Columns**:
+Table Alias  Column Name  Type
+\-----------  -----------  -----
+ttt          abc          INT64
+ttt          <unnamed>    INT64
+
+**Table Aliases**:
+Table Alias  Columns
+\-----------  --------------
+ttt          abc, <unnamed>
+==
+
+# This tests the case where the same ResolvedColumn occurs twice in the
+# NameList.  This exercises the multi-map cases in the column mapping code
+# in NameList::Describe.
+[show_resolved_ast]
+SELECT 1 AS abc
+|> SELECT abc AS c1, abc AS c2, "xyz" AS xyz, "anon"
+|> AS t
+|> STATIC_DESCRIBE
+|> DESCRIBE
+--
+QueryStmt
++-output_column_list=
+| +-$pipe_describe.Describe#4 AS Describe [STRING]
++-query=
+  +-DescribeScan
+    +-column_list=[$pipe_describe.Describe#4]
+    +-input_scan=
+    | +-StaticDescribeScan
+    |   +-column_list=[$query.abc#1, $query.abc#1, $pipe_select.xyz#2, $pipe_select.$col4#3]
+    |   +-describe_text=
+    |   |   """
+    |   |   NameList:
+    |   |     c1 INT64 $query.abc#1
+    |   |     c2 INT64 $query.abc#1
+    |   |     xyz STRING $pipe_select.xyz#2
+    |   |     <unnamed> STRING $pipe_select.$col4#3
+    |   |   NameScope:
+    |   |     Names:
+    |   |       c1 -> INT64 ($query.abc#1)
+    |   |       c2 -> INT64 ($query.abc#1)
+    |   |       xyz -> STRING ($pipe_select.xyz#2)
+    |   |     Range variables:
+    |   |       t -> RANGE_VARIABLE<abc#1 AS c1,abc#1 AS c2,xyz#2,$col4#3>
+    |   |   """
+    |   +-input_scan=
+    |     +-ProjectScan
+    |       +-column_list=[$query.abc#1, $query.abc#1, $pipe_select.xyz#2, $pipe_select.$col4#3]
+    |       +-expr_list=
+    |       | +-xyz#2 := Literal(type=STRING, value="xyz")
+    |       | +-$col4#3 := Literal(type=STRING, value="anon")
+    |       +-input_scan=
+    |         +-ProjectScan
+    |           +-column_list=[$query.abc#1]
+    |           +-expr_list=
+    |           | +-abc#1 := Literal(type=INT64, value=1)
+    |           +-input_scan=
+    |             +-SingleRowScan
+    +-describe_expr=
+      +-Describe#4 := Literal(type=STRING, value="**Columns**:\nTable Alias  Column Name  Type\n-----------  -----------  ------\nt            c1           INT64\nt            c2           INT64\nt            xyz          STRING\nt            <unnamed>    STRING\n\n**Table Aliases**:\nTable Alias  Columns\n-----------  ----------------------\nt            c1, c2, xyz, <unnamed>\n")
+
+[DESCRIBE output]
+**Columns**:
+Table Alias  Column Name  Type
+\-----------  -----------  ------
+t            c1           INT64
+t            c2           INT64
+t            xyz          STRING
+t            <unnamed>    STRING
+
+**Table Aliases**:
+Table Alias  Columns
+\-----------  ----------------------
+t            c1, c2, xyz, <unnamed>
+==
+
+# Show CTEs.
+# Note difference in how anonymous columns are show for the value table.
+WITH abc AS (select 1 x, 2 y, 3, "abc" z),
+     anon AS (select 111),
+     anon_vt AS (select as value "abc"),
+     eT AS (FROM EnumTable),
+     teVT AS (FROM TestExtraValueTable)
+select 1.0 col
+|> DESCRIBE
+--
+[DESCRIBE output]
+**Columns**:
+Column Name  Type
+\-----------  ------
+col          DOUBLE
+
+**Common table expressions**:
+Name     Columns
+\-------  ------------------------------
+abc      x, y, <unnamed>, z
+anon     <unnamed>
+anon_vt  <value>
+eT       key, TestEnum, AnotherTestEnum
+teVT     <value>
+==
+
+# Comparing the display for value tables in the CTE, range variable,
+# and final result.
+# TODO Try showing the value table column with
+# table_alias,"<value>",type rather than "",table_alias,type.
+WITH teVT AS (FROM TestExtraValueTable)
+FROM teVT
+|> DESCRIBE
+--
+[DESCRIBE output]
+**Columns**:
+Table Alias  Column Name  Type
+\-----------  -----------  --------------------------
+teVT         <value>      googlesql_test.TestExtraPB
+
+**Table Aliases**:
+Table Alias  Columns
+\-----------  -------
+teVT         <value>
+
+**Common table expressions**:
+Name  Columns
+\----  -------
+teVT  <value>
+
+Result is a value table.
+==
+
+# Show only the latest CTE with the same name.
+WITH aBc AS (select 1 x, 2 y),
+     xxx AS (select 1 xxx)
+FROM aBc
+|> WITH def AS (select "def")
+|> WITH dEF AS (from def |> EXTEND 123)
+|> WITH Abc AS (select 1.5 abc)
+|> DESCRIBE
+--
+[DESCRIBE output]
+**Columns**:
+Table Alias  Column Name  Type
+\-----------  -----------  -----
+aBc          x            INT64
+aBc          y            INT64
+
+**Table Aliases**:
+Table Alias  Columns
+\-----------  -------
+aBc          x, y
+
+**Common table expressions**:
+Name  Columns
+\----  --------------------
+aBc   abc
+def   <unnamed>, <unnamed>
+xxx   xxx
+==
+
+# The subquery sees the subquery's CTE.
+WITH cte AS (select 1 outer_col),
+     outer_cte AS (FROM cte)
+FROM (
+  WITH cte AS (select 1 inner_col),
+       inner_cte AS (FROM cte)
+  select 1 query, 2 columns
+  |> DESCRIBE
+)
+--
+[DESCRIBE output]
+**Columns**:
+Column Name  Type
+\-----------  -----
+query        INT64
+columns      INT64
+
+**Common table expressions**:
+Name       Columns
+\---------  ---------
+cte        inner_col
+inner_cte  inner_col
+outer_cte  outer_col
+==
+
+# Test with names that require identifier quoting.
+WITH `e f` AS (select 1, "abc" `x y`, true b)
+SELECT 1 `a b`, 2 cd, struct(1 as c1, 2 as `c 2 .dot`)
+|> AS `e f`
+|> DESCRIBE
+--
+[DESCRIBE output]
+**Columns**:
+Table Alias  Column Name  Type
+\-----------  -----------  ----------------------------------
+`e f`        `a b`        INT64
+`e f`        cd           INT64
+`e f`        <unnamed>    STRUCT<c1 INT64, `c 2 .dot` INT64>
+
+**Table Aliases**:
+Table Alias  Columns
+\-----------  --------------------
+`e f`        `a b`, cd, <unnamed>
+
+**Common table expressions**:
+Name   Columns
+\-----  -------------------
+`e f`  <unnamed>, `x y`, b
+==
+
+# Long range variable lists and CTE column lists get wrapped.
+WITH t AS (SELECT 1 aaaaaaaaaa, 2 bbbbbbbbbbbbbb, 3 ccccccccccccccc,
+                  4 dddddddddd, 5 `eee ee e ee`, 6 ffffffffffff),
+     ttt AS (FROM t AS t1, t AS t2, t AS t3, t AS t4)
+FROM ttt
+|> DESCRIBE
+--
+[DESCRIBE output]
+**Columns**:
+Table Alias  Column Name      Type
+\-----------  ---------------  -----
+ttt          aaaaaaaaaa       INT64
+ttt          bbbbbbbbbbbbbb   INT64
+ttt          ccccccccccccccc  INT64
+ttt          dddddddddd       INT64
+ttt          `eee ee e ee`    INT64
+ttt          ffffffffffff     INT64
+ttt          aaaaaaaaaa       INT64
+ttt          bbbbbbbbbbbbbb   INT64
+ttt          ccccccccccccccc  INT64
+ttt          dddddddddd       INT64
+ttt          `eee ee e ee`    INT64
+ttt          ffffffffffff     INT64
+ttt          aaaaaaaaaa       INT64
+ttt          bbbbbbbbbbbbbb   INT64
+ttt          ccccccccccccccc  INT64
+ttt          dddddddddd       INT64
+ttt          `eee ee e ee`    INT64
+ttt          ffffffffffff     INT64
+ttt          aaaaaaaaaa       INT64
+ttt          bbbbbbbbbbbbbb   INT64
+ttt          ccccccccccccccc  INT64
+ttt          dddddddddd       INT64
+ttt          `eee ee e ee`    INT64
+ttt          ffffffffffff     INT64
+
+**Table Aliases**:
+Table Alias  Columns
+\-----------  -------------------------------------------------------------------------
+ttt          aaaaaaaaaa, bbbbbbbbbbbbbb, ccccccccccccccc, dddddddddd, `eee ee e ee`,
+             ffffffffffff, aaaaaaaaaa, bbbbbbbbbbbbbb, ccccccccccccccc, dddddddddd,
+             `eee ee e ee`, ffffffffffff, aaaaaaaaaa, bbbbbbbbbbbbbb, ccccccccccccccc,
+             dddddddddd, `eee ee e ee`, ffffffffffff, aaaaaaaaaa, bbbbbbbbbbbbbb,
+             ccccccccccccccc, dddddddddd, `eee ee e ee`, ffffffffffff
+
+**Common table expressions**:
+Name  Columns
+\----  -------------------------------------------------------------------------
+t     aaaaaaaaaa, bbbbbbbbbbbbbb, ccccccccccccccc, dddddddddd, `eee ee e ee`,
+      ffffffffffff
+ttt   aaaaaaaaaa, bbbbbbbbbbbbbb, ccccccccccccccc, dddddddddd, `eee ee e ee`,
+      ffffffffffff, aaaaaaaaaa, bbbbbbbbbbbbbb, ccccccccccccccc, dddddddddd,
+      `eee ee e ee`, ffffffffffff, aaaaaaaaaa, bbbbbbbbbbbbbb, ccccccccccccccc,
+      dddddddddd, `eee ee e ee`, ffffffffffff, aaaaaaaaaa, bbbbbbbbbbbbbb,
+      ccccccccccccccc, dddddddddd, `eee ee e ee`, ffffffffffff
+==
+
+# Long type names don't get wrapped but they are getting truncated, at least
+# for STRUCTs.
+WITH t AS (SELECT 1 aaaaaaaaaa, 2 bbbbbbbbbbbbbb, 3 ccccccccccccccc,
+                  4 dddddddddd, 5 `eee ee e ee`, 6 ffffffffffff)
+FROM t AS t1, t AS t2, t AS t3, t AS t4
+|> SELECT AS STRUCT *
+|> DESCRIBE
+--
+[DESCRIBE output]
+**Columns**:
+Column Name  Type
+\-----------  --------------------------------------------------------------------------
+<value>      STRUCT<aaaaaaaaaa INT64, bbbbbbbbbbbbbb INT64, ccccccccccccccc INT64, ...>
+
+**Common table expressions**:
+Name  Columns
+\----  -----------------------------------------------------------------------
+t     aaaaaaaaaa, bbbbbbbbbbbbbb, ccccccccccccccc, dddddddddd, `eee ee e ee`,
+      ffffffffffff
+
+Result is a value table.
+==
+
+# With column names longer than the desired cell width, we get formatting with
+# wider cells.
+WITH t AS (SELECT 1 a10000000002000000000300000000040000000005000000000600000000070000000008000000000900000000010000000001100000000,
+                  4 dddddddddd, 5 `eee ee e ee`, 6 ffffffffffff,
+                  7 b10000000002000000000300000000040000000005000000000600000000070000000008000000000900000000010000000001100000000,
+                  8 dddddddddd, 9 `eee ee e ee`, 10 ffffffffffff,
+                  11 c10000000002000000000300000000040000000005000000000600000000070000000008000000000900000000010000000001100000000
+          )
+FROM t AS widetable
+|> DESCRIBE
+--
+[DESCRIBE output]
+**Columns**:
+Table Alias  Column Name                                                                                                      Type
+\-----------  ---------------------------------------------------------------------------------------------------------------  -----
+widetable    a10000000002000000000300000000040000000005000000000600000000070000000008000000000900000000010000000001100000000  INT64
+widetable    dddddddddd                                                                                                       INT64
+widetable    `eee ee e ee`                                                                                                    INT64
+widetable    ffffffffffff                                                                                                     INT64
+widetable    b10000000002000000000300000000040000000005000000000600000000070000000008000000000900000000010000000001100000000  INT64
+widetable    dddddddddd                                                                                                       INT64
+widetable    `eee ee e ee`                                                                                                    INT64
+widetable    ffffffffffff                                                                                                     INT64
+widetable    c10000000002000000000300000000040000000005000000000600000000070000000008000000000900000000010000000001100000000  INT64
+
+**Table Aliases**:
+Table Alias  Columns
+\-----------  ----------------------------------------------------------------------------------------------------------------
+widetable    a10000000002000000000300000000040000000005000000000600000000070000000008000000000900000000010000000001100000000,
+             dddddddddd, `eee ee e ee`, ffffffffffff,
+             b10000000002000000000300000000040000000005000000000600000000070000000008000000000900000000010000000001100000000,
+             dddddddddd, `eee ee e ee`, ffffffffffff,
+             c10000000002000000000300000000040000000005000000000600000000070000000008000000000900000000010000000001100000000
+
+**Common table expressions**:
+Name  Columns
+\----  ----------------------------------------------------------------------------------------------------------------
+t     a10000000002000000000300000000040000000005000000000600000000070000000008000000000900000000010000000001100000000,
+      dddddddddd, `eee ee e ee`, ffffffffffff,
+      b10000000002000000000300000000040000000005000000000600000000070000000008000000000900000000010000000001100000000,
+      dddddddddd, `eee ee e ee`, ffffffffffff,
+      c10000000002000000000300000000040000000005000000000600000000070000000008000000000900000000010000000001100000000
+==
+
+# Show output for WITH OFFSET columns.
+# The unnested array and the offset column both become range variables.
+FROM TestTable tt
+|> JOIN tt.KitchenSink.repeated_bytes_val WITH OFFSET
+|> JOIN tt.KitchenSink.nested_repeated_value WITH OFFSET o2
+|> JOIN UNNEST(["a","b"]) WITH OFFSET o3
+|> DESCRIBE
+--
+[DESCRIBE output]
+**Columns**:
+Table Alias            Column Name  Type
+\---------------------  -----------  -----------------------------------
+tt                     key          INT32
+tt                     TestEnum     googlesql_test.TestEnum
+tt                     KitchenSink  googlesql_test.KitchenSinkPB
+repeated_bytes_val     <value>      BYTES
+offset                 <value>      INT64
+nested_repeated_value  <value>      googlesql_test.KitchenSinkPB.Nested
+o2                     <value>      INT64
+                       <value>      STRING
+o3                     <value>      INT64
+
+**Table Aliases**:
+Table Alias            Columns
+\---------------------  --------------------------
+nested_repeated_value  <value>
+o2                     <value>
+o3                     <value>
+offset                 <value>
+repeated_bytes_val     <value>
+tt                     key, TestEnum, KitchenSink
+==
+
+# Show output for duplicate WITH OFFSET columns - it can't happen.
+FROM TestTable tt
+|> JOIN tt.KitchenSink.repeated_bytes_val WITH OFFSET
+|> JOIN tt.KitchenSink.nested_repeated_value WITH OFFSET
+|> DESCRIBE
+--
+
+ERROR: Duplicate alias offset found [at 3:46]
+|> JOIN tt.KitchenSink.nested_repeated_value WITH OFFSET
+                                             ^
+==
+
+# Show output there's a WITH OFFSET and a normal `offset` column.
+FROM TestTable tt
+|> JOIN tt.KitchenSink.repeated_bytes_val WITH OFFSET
+|> EXTEND 123 AS offset
+|> DESCRIBE
+--
+
+[DESCRIBE output]
+**Columns**:
+Table Alias         Column Name  Type
+\------------------  -----------  ----------------------------
+tt                  key          INT32
+tt                  TestEnum     googlesql_test.TestEnum
+tt                  KitchenSink  googlesql_test.KitchenSinkPB
+repeated_bytes_val  <value>      BYTES
+offset              <value>      INT64
+                    offset       INT64
+
+**Table Aliases**:
+Table Alias         Columns
+\------------------  --------------------------
+offset              <value>
+repeated_bytes_val  <value>
+tt                  key, TestEnum, KitchenSink
+==
+
+# Show output after RENAME moves a column from under a range variable.
+FROM KeyValue AS kv
+|> RENAME key AS new_key
+|> DESCRIBE
+--
+[DESCRIBE output]
+**Columns**:
+Table Alias  Column Name  Type
+\-----------  -----------  ------
+             new_key      INT64
+kv           Value        STRING
+
+**Table Aliases**:
+Table Alias  Columns
+\-----------  ----------
+kv           Key, Value
+==
+
+# Rename a column to the same name, and one that differs only in case.
+FROM KeyValue AS kv
+|> RENAME Key AS Key,
+          Value AS vALue
+|> DESCRIBE
+--
+[DESCRIBE output]
+**Columns**:
+Table Alias  Column Name  Type
+\-----------  -----------  ------
+kv           Key          INT64
+kv           vALue        STRING
+
+**Table Aliases**:
+Table Alias  Columns
+\-----------  ----------
+kv           Key, Value

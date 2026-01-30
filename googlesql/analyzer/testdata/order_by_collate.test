@@ -1,0 +1,497 @@
+[default language_features=MAXIMUM,+ORDER_BY_COLLATE,+ANALYTIC_FUNCTIONS]
+
+select `string` col from SimpleTypes
+order by col COLLATE {{"en_US"|@test_param_string|r"en_US"}}
+--
+ALTERNATION GROUPS:
+    "en_US"
+    r"en_US"
+--
+QueryStmt
++-output_column_list=
+| +-SimpleTypes.string#5 AS col [STRING]
++-query=
+  +-OrderByScan
+    +-column_list=[SimpleTypes.string#5]
+    +-is_ordered=TRUE
+    +-input_scan=
+    | +-TableScan(column_list=[SimpleTypes.string#5], table=SimpleTypes, column_index_list=[4])
+    +-order_by_item_list=
+      +-OrderByItem
+        +-column_ref=
+        | +-ColumnRef(type=STRING, column=SimpleTypes.string#5)
+        +-collation_name=
+          +-Literal(type=STRING, value="en_US")
+--
+ALTERNATION GROUP: @test_param_string
+--
+QueryStmt
++-output_column_list=
+| +-SimpleTypes.string#5 AS col [STRING]
++-query=
+  +-OrderByScan
+    +-column_list=[SimpleTypes.string#5]
+    +-is_ordered=TRUE
+    +-input_scan=
+    | +-TableScan(column_list=[SimpleTypes.string#5], table=SimpleTypes, column_index_list=[4])
+    +-order_by_item_list=
+      +-OrderByItem
+        +-column_ref=
+        | +-ColumnRef(type=STRING, column=SimpleTypes.string#5)
+        +-collation_name=
+          +-Parameter(type=STRING, name="test_param_string")
+==
+
+# COLLATE must be followed by a string literal or a string parameter.
+select `string` col from SimpleTypes
+order by col COLLATE {{`string`|@test_param_int32|@test_param_bytes|@test_param_enum}}
+--
+ALTERNATION GROUP: `string`
+--
+ERROR: Syntax error: Expected "@" or "@@" or string literal but got identifier `string` [at 2:22]
+order by col COLLATE `string`
+                     ^
+--
+ALTERNATION GROUP: @test_param_int32
+--
+ERROR: COLLATE must be followed by a string literal or a string parameter [at 2:22]
+order by col COLLATE @test_param_int32
+                     ^
+--
+ALTERNATION GROUP: @test_param_bytes
+--
+ERROR: COLLATE must be followed by a string literal or a string parameter [at 2:22]
+order by col COLLATE @test_param_bytes
+                     ^
+--
+ALTERNATION GROUP: @test_param_enum
+--
+ERROR: COLLATE must be followed by a string literal or a string parameter [at 2:22]
+order by col COLLATE @test_param_enum
+                     ^
+==
+
+select {{`int32`|`bytes`|`date`}} col from SimpleTypes order by col COLLATE "en_US"
+--
+ALTERNATION GROUP: `int32`
+--
+ERROR: COLLATE can only be applied to expressions of type STRING, but was applied to INT32 [at 1:46]
+select `int32` col from SimpleTypes order by col COLLATE "en_US"
+                                             ^
+--
+ALTERNATION GROUP: `bytes`
+--
+ERROR: COLLATE can only be applied to expressions of type STRING, but was applied to BYTES [at 1:46]
+select `bytes` col from SimpleTypes order by col COLLATE "en_US"
+                                             ^
+--
+ALTERNATION GROUP: `date`
+--
+ERROR: COLLATE can only be applied to expressions of type STRING, but was applied to DATE [at 1:45]
+select `date` col from SimpleTypes order by col COLLATE "en_US"
+                                            ^
+==
+
+select value from KeyValue order by concat(value, "b") COLLATE "en_US"
+--
+QueryStmt
++-output_column_list=
+| +-KeyValue.Value#2 AS value [STRING]
++-query=
+  +-OrderByScan
+    +-column_list=[KeyValue.Value#2]
+    +-is_ordered=TRUE
+    +-input_scan=
+    | +-ProjectScan
+    |   +-column_list=[KeyValue.Value#2, $orderby.$orderbycol1#3]
+    |   +-expr_list=
+    |   | +-$orderbycol1#3 :=
+    |   |   +-FunctionCall(GoogleSQL:concat(STRING, repeated(1) STRING) -> STRING)
+    |   |     +-ColumnRef(type=STRING, column=KeyValue.Value#2)
+    |   |     +-Literal(type=STRING, value="b")
+    |   +-input_scan=
+    |     +-TableScan(column_list=[KeyValue.Value#2], table=KeyValue, column_index_list=[1])
+    +-order_by_item_list=
+      +-OrderByItem
+        +-column_ref=
+        | +-ColumnRef(type=STRING, column=$orderby.$orderbycol1#3)
+        +-collation_name=
+          +-Literal(type=STRING, value="en_US")
+==
+
+select value from KeyValue
+order by {{(value="a")|length(value)}} COLLATE "en_US"
+--
+ALTERNATION GROUP: (value="a")
+--
+ERROR: COLLATE can only be applied to expressions of type STRING, but was applied to BOOL [at 2:10]
+order by (value="a") COLLATE "en_US"
+         ^
+--
+ALTERNATION GROUP: length(value)
+--
+ERROR: COLLATE can only be applied to expressions of type STRING, but was applied to INT64 [at 2:10]
+order by length(value) COLLATE "en_US"
+         ^
+==
+
+select `string` a, `string` b, `string` c, int32 from SimpleTypes
+order by a COLLATE "s1" ASC,
+         b COLLATE "s2" DESC,
+         3 COLLATE @test_param_string ASC,
+         4 DESC
+--
+QueryStmt
++-output_column_list=
+| +-SimpleTypes.string#5 AS a [STRING]
+| +-SimpleTypes.string#5 AS b [STRING]
+| +-SimpleTypes.string#5 AS c [STRING]
+| +-SimpleTypes.int32#1 AS int32 [INT32]
++-query=
+  +-OrderByScan
+    +-column_list=SimpleTypes.[string#5, string#5, string#5, int32#1]
+    +-is_ordered=TRUE
+    +-input_scan=
+    | +-TableScan(column_list=SimpleTypes.[int32#1, string#5], table=SimpleTypes, column_index_list=[0, 4])
+    +-order_by_item_list=
+      +-OrderByItem
+      | +-column_ref=
+      | | +-ColumnRef(type=STRING, column=SimpleTypes.string#5)
+      | +-collation_name=
+      |   +-Literal(type=STRING, value="s1")
+      +-OrderByItem
+      | +-column_ref=
+      | | +-ColumnRef(type=STRING, column=SimpleTypes.string#5)
+      | +-collation_name=
+      | | +-Literal(type=STRING, value="s2")
+      | +-is_descending=TRUE
+      +-OrderByItem
+      | +-column_ref=
+      | | +-ColumnRef(type=STRING, column=SimpleTypes.string#5)
+      | +-collation_name=
+      |   +-Parameter(type=STRING, name="test_param_string")
+      +-OrderByItem
+        +-column_ref=
+        | +-ColumnRef(type=INT32, column=SimpleTypes.int32#1)
+        +-is_descending=TRUE
+==
+
+# It is up to the engine to fail if the collation name is invalid or NULL.
+select `string` a
+from SimpleTypes
+order by a COLLATE "",
+         a COLLATE "NULL",
+         a COLLATE "some_random"
+--
+QueryStmt
++-output_column_list=
+| +-SimpleTypes.string#5 AS a [STRING]
++-query=
+  +-OrderByScan
+    +-column_list=[SimpleTypes.string#5]
+    +-is_ordered=TRUE
+    +-input_scan=
+    | +-TableScan(column_list=[SimpleTypes.string#5], table=SimpleTypes, column_index_list=[4])
+    +-order_by_item_list=
+      +-OrderByItem
+      | +-column_ref=
+      | | +-ColumnRef(type=STRING, column=SimpleTypes.string#5)
+      | +-collation_name=
+      |   +-Literal(type=STRING, value="")
+      +-OrderByItem
+      | +-column_ref=
+      | | +-ColumnRef(type=STRING, column=SimpleTypes.string#5)
+      | +-collation_name=
+      |   +-Literal(type=STRING, value="NULL")
+      +-OrderByItem
+        +-column_ref=
+        | +-ColumnRef(type=STRING, column=SimpleTypes.string#5)
+        +-collation_name=
+          +-Literal(type=STRING, value="some_random")
+==
+
+select afn_agg()
+       over (order by value COLLATE "en_US",
+                      value COLLATE @test_param_string)
+from KeyValue
+--
+QueryStmt
++-output_column_list=
+| +-$analytic.$analytic1#4 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$analytic.$analytic1#4]
+    +-input_scan=
+      +-AnalyticScan
+        +-column_list=[KeyValue.Value#2, $analytic.$analytic1#4]
+        +-input_scan=
+        | +-TableScan(column_list=[KeyValue.Value#2], table=KeyValue, column_index_list=[1])
+        +-function_group_list=
+          +-AnalyticFunctionGroup
+            +-order_by=
+            | +-WindowOrdering
+            |   +-order_by_item_list=
+            |     +-OrderByItem
+            |     | +-column_ref=
+            |     | | +-ColumnRef(type=STRING, column=KeyValue.Value#2)
+            |     | +-collation_name=
+            |     |   +-Literal(type=STRING, value="en_US")
+            |     +-OrderByItem
+            |       +-column_ref=
+            |       | +-ColumnRef(type=STRING, column=KeyValue.Value#2)
+            |       +-collation_name=
+            |         +-Parameter(type=STRING, name="test_param_string")
+            +-analytic_function_list=
+              +-$analytic1#4 :=
+                +-AnalyticFunctionCall(sample_functions:afn_agg() -> INT64)
+                  +-window_frame=
+                    +-WindowFrame(frame_unit=RANGE)
+                      +-start_expr=
+                      | +-WindowFrameExpr(boundary_type=UNBOUNDED PRECEDING)
+                      +-end_expr=
+                        +-WindowFrameExpr(boundary_type=CURRENT ROW)
+==
+
+select afn_agg() over (order by value
+                       COLLATE {{@test_param_int32|@test_param_bytes| @test_param_enum}})
+from KeyValue
+--
+ALTERNATION GROUP: @test_param_int32
+--
+ERROR: COLLATE must be followed by a string literal or a string parameter [at 2:32]
+                       COLLATE @test_param_int32)
+                               ^
+--
+ALTERNATION GROUP: @test_param_bytes
+--
+ERROR: COLLATE must be followed by a string literal or a string parameter [at 2:32]
+                       COLLATE @test_param_bytes)
+                               ^
+--
+ALTERNATION GROUP:  @test_param_enum
+--
+ERROR: COLLATE must be followed by a string literal or a string parameter [at 2:33]
+                       COLLATE  @test_param_enum)
+                                ^
+==
+
+select afn_agg() over (order by {{`int32`|`bytes`|`date`}} COLLATE "en_US")
+from SimpleTypes
+--
+ALTERNATION GROUP: `int32`
+--
+ERROR: COLLATE can only be applied to expressions of type STRING, but was applied to INT32 [at 1:33]
+select afn_agg() over (order by `int32` COLLATE "en_US")
+                                ^
+--
+ALTERNATION GROUP: `bytes`
+--
+ERROR: COLLATE can only be applied to expressions of type STRING, but was applied to BYTES [at 1:33]
+select afn_agg() over (order by `bytes` COLLATE "en_US")
+                                ^
+--
+ALTERNATION GROUP: `date`
+--
+ERROR: COLLATE can only be applied to expressions of type STRING, but was applied to DATE [at 1:33]
+select afn_agg() over (order by `date` COLLATE "en_US")
+                                ^
+==
+
+select afn_agg() over (partition by key
+                       order by concat(value, "b") COLLATE "en_US")
+from KeyValue
+--
+QueryStmt
++-output_column_list=
+| +-$analytic.$analytic1#4 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$analytic.$analytic1#4]
+    +-input_scan=
+      +-AnalyticScan
+        +-column_list=[KeyValue.Key#1, KeyValue.Value#2, $analytic.$analytic1#4]
+        +-input_scan=
+        | +-ProjectScan
+        |   +-column_list=[KeyValue.Key#1, KeyValue.Value#2, $orderby.$orderbycol1#5]
+        |   +-expr_list=
+        |   | +-$orderbycol1#5 :=
+        |   |   +-FunctionCall(GoogleSQL:concat(STRING, repeated(1) STRING) -> STRING)
+        |   |     +-ColumnRef(type=STRING, column=KeyValue.Value#2)
+        |   |     +-Literal(type=STRING, value="b")
+        |   +-input_scan=
+        |     +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+        +-function_group_list=
+          +-AnalyticFunctionGroup
+            +-partition_by=
+            | +-WindowPartitioning
+            |   +-partition_by_list=
+            |     +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+            +-order_by=
+            | +-WindowOrdering
+            |   +-order_by_item_list=
+            |     +-OrderByItem
+            |       +-column_ref=
+            |       | +-ColumnRef(type=STRING, column=$orderby.$orderbycol1#5)
+            |       +-collation_name=
+            |         +-Literal(type=STRING, value="en_US")
+            +-analytic_function_list=
+              +-$analytic1#4 :=
+                +-AnalyticFunctionCall(sample_functions:afn_agg() -> INT64)
+                  +-window_frame=
+                    +-WindowFrame(frame_unit=RANGE)
+                      +-start_expr=
+                      | +-WindowFrameExpr(boundary_type=UNBOUNDED PRECEDING)
+                      +-end_expr=
+                        +-WindowFrameExpr(boundary_type=CURRENT ROW)
+==
+
+select afn_agg() over (order by {{(value="a")|length(value)}} COLLATE "en_US")
+from KeyValue
+--
+ALTERNATION GROUP: (value="a")
+--
+ERROR: COLLATE can only be applied to expressions of type STRING, but was applied to BOOL [at 1:33]
+select afn_agg() over (order by (value="a") COLLATE "en_US")
+                                ^
+--
+ALTERNATION GROUP: length(value)
+--
+ERROR: COLLATE can only be applied to expressions of type STRING, but was applied to INT64 [at 1:33]
+select afn_agg() over (order by length(value) COLLATE "en_US")
+                                ^
+==
+
+select afn_agg() over(partition by key
+                      order by value COLLATE "a" ASC,
+                               value COLLATE "b" DESC,
+                               value COLLATE @test_param_string ASC,
+                               value)
+from KeyValue
+--
+QueryStmt
++-output_column_list=
+| +-$analytic.$analytic1#4 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$analytic.$analytic1#4]
+    +-input_scan=
+      +-AnalyticScan
+        +-column_list=[KeyValue.Key#1, KeyValue.Value#2, $analytic.$analytic1#4]
+        +-input_scan=
+        | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+        +-function_group_list=
+          +-AnalyticFunctionGroup
+            +-partition_by=
+            | +-WindowPartitioning
+            |   +-partition_by_list=
+            |     +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+            +-order_by=
+            | +-WindowOrdering
+            |   +-order_by_item_list=
+            |     +-OrderByItem
+            |     | +-column_ref=
+            |     | | +-ColumnRef(type=STRING, column=KeyValue.Value#2)
+            |     | +-collation_name=
+            |     |   +-Literal(type=STRING, value="a")
+            |     +-OrderByItem
+            |     | +-column_ref=
+            |     | | +-ColumnRef(type=STRING, column=KeyValue.Value#2)
+            |     | +-collation_name=
+            |     | | +-Literal(type=STRING, value="b")
+            |     | +-is_descending=TRUE
+            |     +-OrderByItem
+            |     | +-column_ref=
+            |     | | +-ColumnRef(type=STRING, column=KeyValue.Value#2)
+            |     | +-collation_name=
+            |     |   +-Parameter(type=STRING, name="test_param_string")
+            |     +-OrderByItem
+            |       +-column_ref=
+            |         +-ColumnRef(type=STRING, column=KeyValue.Value#2)
+            +-analytic_function_list=
+              +-$analytic1#4 :=
+                +-AnalyticFunctionCall(sample_functions:afn_agg() -> INT64)
+                  +-window_frame=
+                    +-WindowFrame(frame_unit=RANGE)
+                      +-start_expr=
+                      | +-WindowFrameExpr(boundary_type=UNBOUNDED PRECEDING)
+                      +-end_expr=
+                        +-WindowFrameExpr(boundary_type=CURRENT ROW)
+==
+
+[language_features=NONE,{{+ORDER_BY_COLLATE|}}]
+select `string` from SimpleTypes order by 1 COLLATE "en_US"
+--
+ALTERNATION GROUP: +ORDER_BY_COLLATE
+--
+QueryStmt
++-output_column_list=
+| +-SimpleTypes.string#5 AS string [STRING]
++-query=
+  +-OrderByScan
+    +-column_list=[SimpleTypes.string#5]
+    +-is_ordered=TRUE
+    +-input_scan=
+    | +-TableScan(column_list=[SimpleTypes.string#5], table=SimpleTypes, column_index_list=[4])
+    +-order_by_item_list=
+      +-OrderByItem
+        +-column_ref=
+        | +-ColumnRef(type=STRING, column=SimpleTypes.string#5)
+        +-collation_name=
+          +-Literal(type=STRING, value="en_US")
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: COLLATE is not supported [at 1:45]
+select `string` from SimpleTypes order by 1 COLLATE "en_US"
+                                            ^
+==
+
+[language_features=NONE,{{+ORDER_BY_COLLATE,+ANALYTIC_FUNCTIONS|+ORDER_BY_COLLATE|+ANALYTIC_FUNCTIONS|}}]
+select afn_agg() over (order by value COLLATE "en_US") from KeyValue
+--
+ALTERNATION GROUP: +ORDER_BY_COLLATE,+ANALYTIC_FUNCTIONS
+--
+QueryStmt
++-output_column_list=
+| +-$analytic.$analytic1#4 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$analytic.$analytic1#4]
+    +-input_scan=
+      +-AnalyticScan
+        +-column_list=[KeyValue.Value#2, $analytic.$analytic1#4]
+        +-input_scan=
+        | +-TableScan(column_list=[KeyValue.Value#2], table=KeyValue, column_index_list=[1])
+        +-function_group_list=
+          +-AnalyticFunctionGroup
+            +-order_by=
+            | +-WindowOrdering
+            |   +-order_by_item_list=
+            |     +-OrderByItem
+            |       +-column_ref=
+            |       | +-ColumnRef(type=STRING, column=KeyValue.Value#2)
+            |       +-collation_name=
+            |         +-Literal(type=STRING, value="en_US")
+            +-analytic_function_list=
+              +-$analytic1#4 :=
+                +-AnalyticFunctionCall(sample_functions:afn_agg() -> INT64)
+                  +-window_frame=
+                    +-WindowFrame(frame_unit=RANGE)
+                      +-start_expr=
+                      | +-WindowFrameExpr(boundary_type=UNBOUNDED PRECEDING)
+                      +-end_expr=
+                        +-WindowFrameExpr(boundary_type=CURRENT ROW)
+--
+ALTERNATION GROUPS:
+    +ORDER_BY_COLLATE
+    <empty>
+--
+ERROR: Analytic functions not supported [at 1:8]
+select afn_agg() over (order by value COLLATE "en_US") from KeyValue
+       ^
+--
+ALTERNATION GROUP: +ANALYTIC_FUNCTIONS
+--
+ERROR: COLLATE is not supported [at 1:39]
+select afn_agg() over (order by value COLLATE "en_US") from KeyValue
+                                      ^

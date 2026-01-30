@@ -1,0 +1,511 @@
+//
+// Copyright 2019 Google LLC
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+//
+
+// LINT: LEGACY_NAMES
+syntax = "proto2";
+
+package googlesql;
+
+option java_package = "com.google.googlesql.parser";
+option java_multiple_files = true;
+
+// Defines schema object kinds used by a parser rule to indicate the parsed
+// object kind for ALTER and DROP statements.  These enum values are also
+// used in the generic ASTDropStatement to identify what type of object is
+// being dropped.
+//
+// Note that this list excludes ROW POLICY for practical reasons - it is not
+// needed in the parser rules and it is not needed for the ASTDropStatement
+// (DROP ROW POLICY has its own ASTDropRowPolicyStatement).
+enum SchemaObjectKind {
+  __SchemaObjectKind__switch_must_have_a_default__ = -1;
+  // 0 reserved for future NOT_SET. See b/186246331.
+  kInvalidSchemaObjectKind = 1;
+  kAggregateFunction = 2;
+  kApproxView = 17;
+  kConnection = 19;
+  kConstant = 3;
+  kDatabase = 4;
+  kExternalTable = 5;
+  kFunction = 6;
+  kIndex = 7;
+  kMaterializedView = 8;
+  kModel = 9;
+  kProcedure = 10;
+  kSchema = 11;
+  kTable = 12;
+  kTableFunction = 13;
+  kView = 14;
+  kSnapshotTable = 15;
+  kPropertyGraph = 16;
+  kExternalSchema = 18;
+  kSequence = 20;
+}
+
+message ASTBinaryExpressionEnums {
+  // All supported operators.
+  enum Op {
+    NOT_SET = 0;
+    LIKE = 1;             // "LIKE"
+    IS = 2;               // "IS"
+    EQ = 3;               // "="
+    NE = 4;               // "!="
+    NE2 = 5;              // "<>"
+    GT = 6;               // ">"
+    LT = 7;               // "<"
+    GE = 8;               // ">="
+    LE = 9;               // "<="
+    BITWISE_OR = 10;      // "|"
+    BITWISE_XOR = 11;     // "^"
+    BITWISE_AND = 12;     // "&"
+    PLUS = 13;            // "+"
+    MINUS = 14;           // "-"
+    MULTIPLY = 15;        // "*"
+    DIVIDE = 16;          // "/"
+    CONCAT_OP = 17;       // "||"
+    DISTINCT = 18;        // "IS DISTINCT FROM"
+    IS_SOURCE_NODE = 19;  // "IS SOURCE [OF]"
+    IS_DEST_NODE = 20;    // "IS DESTINATION [OF]"
+  }
+}
+
+message ASTOptionsEntryEnums {
+  enum AssignmentOp {
+    NOT_SET = 0;
+    ASSIGN = 1;      // "="
+    ADD_ASSIGN = 2;  // "+="
+    SUB_ASSIGN = 3;  // "-="
+  }
+}
+
+message ASTOrderingExpressionEnums {
+  enum OrderingSpec {
+    NOT_SET = 0;
+    ASC = 1;
+    DESC = 2;
+    UNSPECIFIED = 3;
+  }
+}
+message ASTJoinEnums {
+  enum JoinType {
+    DEFAULT_JOIN_TYPE = 0;
+    COMMA = 1;
+    CROSS = 2;
+    FULL = 3;
+    INNER = 4;
+    LEFT = 5;
+    RIGHT = 6;
+  }
+  enum JoinHint {
+    NO_JOIN_HINT = 0;
+    HASH = 1;
+    LOOKUP = 2;
+  }
+}
+message ASTSelectAsEnums {
+  // AS <mode> kind.
+  enum AsMode {
+    NOT_SET = 0;
+    STRUCT = 1;     // AS STRUCT
+    VALUE = 2;      // AS VALUE
+    TYPE_NAME = 3;  // AS <type name>
+  }
+}
+message ASTFunctionCallEnums {
+  enum NullHandlingModifier {
+    DEFAULT_NULL_HANDLING = 0;
+    IGNORE_NULLS = 1;
+    RESPECT_NULLS = 2;
+  }
+}
+message ASTExpressionSubqueryEnums {
+  enum Modifier {
+    NONE = 0;    // (select ...)
+    ARRAY = 1;   // ARRAY(select ...)
+                 // or ARRAY{graph ...}
+    EXISTS = 2;  // EXISTS(select ...)
+                 // or EXISTS{graph ...}
+    VALUE = 3;   // VALUE{graph ...}
+  }
+}
+message ASTHavingModifierEnums {
+  enum ModifierKind {
+    NOT_SET = 0;
+    MIN = 1;
+    MAX = 2;
+  }
+}
+message ASTSetOperationEnums {
+  enum OperationType {
+    NOT_SET = 0;
+    UNION = 1;      // UNION ALL/DISTINCT
+    EXCEPT = 2;     // EXCEPT ALL/DISTINCT
+    INTERSECT = 4;  // INTERSECT ALL/DISTINCT
+  }
+  enum AllOrDistinct {
+    ALL_OR_DISTINCT_NOT_SET = 0;
+    ALL = 1;
+    DISTINCT = 2;
+  }
+  // Determines how columns from the set operation inputs are matched.
+  enum ColumnMatchMode {
+    // TODO: 0 reserved for future NOT_SET.
+    BY_POSITION = 1;       // Match by index
+    CORRESPONDING = 2;     // Match by implicit column names
+    CORRESPONDING_BY = 3;  // Match by the provided column name list
+    BY_NAME = 4;           // Match by all column names
+    BY_NAME_ON = 5;        // Match by selected column names
+  }
+  // Determines how non-matching columns are treated in a set operation: <left
+  // query> <set_op> <right_query>
+  enum ColumnPropagationMode {
+    // TODO: 0 reserved for future NOT_SET.
+    STRICT = 1;  // Non-matching columns are not allowed.
+    INNER = 2;   // All non-matching columns are dropped.
+    LEFT = 3;    // The non-matching columns from <right_query> are dropped.
+    FULL = 4;    // All columns of <left_query> and <right_query> are projected.
+  }
+}
+message ASTUnaryExpressionEnums {
+  enum Op {
+    NOT_SET = 0;
+    NOT = 1;             // "NOT"
+    BITWISE_NOT = 2;     // "-"
+    MINUS = 3;           // Unary "-"
+    PLUS = 4;            // Unary "+"
+    IS_UNKNOWN = 5;      // "IS UNKNOWN"
+    IS_NOT_UNKNOWN = 6;  // "IS NOT UNKNOWN"
+  }
+}
+message ASTWindowFrameEnums {
+  enum FrameUnit {
+    // 0 reserved for future NOT_SET. See b/186246331.
+    ROWS = 1;
+    RANGE = 2;
+  }
+}
+message ASTWindowFrameExprEnums {
+  enum BoundaryType {
+    // 0 reserved for future NOT_SET. See b/186246331.
+    UNBOUNDED_PRECEDING = 1;
+    OFFSET_PRECEDING = 2;
+    CURRENT_ROW = 3;
+    OFFSET_FOLLOWING = 4;
+    UNBOUNDED_FOLLOWING = 5;
+  }
+}
+message ASTAnySomeAllOpEnums {
+  enum Op {
+    // 0 reserved for future NOT_SET. See b/186246331.
+    kUninitialized = 1;
+    kAny = 2;
+    kSome = 3;
+    kAll = 4;
+  }
+}
+message ASTTransactionReadWriteModeEnums {
+  enum Mode {
+    INVALID = 0;
+    READ_ONLY = 1;
+    READ_WRITE = 2;
+  }
+}
+message ASTImportStatementEnums {
+  enum ImportKind {
+    // 0 reserved for future NOT_SET. See b/186246331.
+    MODULE = 1;
+    PROTO = 2;
+  }
+}
+message ASTUnpivotClauseEnums {
+  enum NullFilter {
+    // 0 reserved for future NOT_SET. See b/186246331.
+    kUnspecified = 1;
+    kInclude = 2;
+    kExclude = 3;
+  }
+}
+message ASTCreateStatementEnums {
+  enum Scope {
+    DEFAULT_SCOPE = 0;
+    PRIVATE = 1;
+    PUBLIC = 2;
+    TEMPORARY = 3;
+  }
+  enum SqlSecurity {
+    SQL_SECURITY_UNSPECIFIED = 0;
+    SQL_SECURITY_DEFINER = 1;
+    SQL_SECURITY_INVOKER = 2;
+  }
+}
+message ASTFunctionParameterEnums {
+  enum ProcedureParameterMode {
+    NOT_SET = 0;
+    IN = 1;
+    OUT = 2;
+    INOUT = 3;
+  }
+}
+message ASTTemplatedParameterTypeEnums {
+  enum TemplatedTypeKind {
+    // 0 reserved for future NOT_SET. See b/186246331.
+    UNINITIALIZED = 1;
+    ANY_TYPE = 2;
+    ANY_PROTO = 3;
+    ANY_ENUM = 4;
+    ANY_STRUCT = 5;
+    ANY_ARRAY = 6;
+    ANY_TABLE = 7;
+  }
+}
+message ASTGeneratedColumnInfoEnums {
+  enum StoredMode {
+    NON_STORED = 0;
+    STORED = 1;
+    STORED_VOLATILE = 2;
+  }
+  enum GeneratedMode {
+    ALWAYS = 0;
+    BY_DEFAULT = 1;
+  }
+}
+message ASTColumnPositionEnums {
+  enum RelativePositionType {
+    // 0 reserved for future NOT_SET. See b/186246331.
+    PRECEDING = 1;
+    FOLLOWING = 2;
+  }
+}
+message ASTInsertStatementEnums {
+  enum InsertMode {
+    // 0 reserved for future NOT_SET. See b/186246331.
+    DEFAULT_MODE = 0;  // plain INSERT
+    REPLACE = 1;       // INSERT OR REPLACE
+    UPDATE = 2;        // INSERT OR UPDATE
+    IGNORE = 3;        // INSERT OR IGNORE
+  }
+  enum ParseProgress {
+    // 0 reserved for future NOT_SET. See b/186246331.
+    kInitial = 1;
+    kSeenOrIgnoreReplaceUpdate = 2;
+    kSeenTargetPath = 3;
+    kSeenColumnList = 4;
+    kSeenValuesList = 5;
+  }
+}
+message ASTOnConflictClauseEnums {
+  enum ConflictAction {
+    NOT_SET = 0;
+    NOTHING = 1;
+    UPDATE = 2;
+  }
+}
+message ASTMergeActionEnums {
+  enum ActionType {
+    NOT_SET = 0;
+    INSERT = 1;
+    UPDATE = 2;
+    DELETE = 3;
+  }
+}
+message ASTMergeWhenClauseEnums {
+  enum MatchType {
+    NOT_SET = 0;
+    MATCHED = 1;
+    NOT_MATCHED_BY_SOURCE = 2;
+    NOT_MATCHED_BY_TARGET = 3;
+  }
+}
+message ASTFilterFieldsArgEnums {
+  enum FilterType {
+    NOT_SET = 0;
+    INCLUDE = 1;
+    EXCLUDE = 2;
+  }
+}
+message ASTSampleSizeEnums {
+  enum Unit {
+    NOT_SET = 0;
+    ROWS = 1;
+    PERCENT = 2;
+  }
+}
+message ASTForeignKeyActionsEnums {
+  enum Action {
+    NO_ACTION = 0;
+    RESTRICT = 1;
+    CASCADE = 2;
+    SET_NULL = 3;
+  }
+}
+message ASTForeignKeyReferenceEnums {
+  enum Match {
+    // 0 reserved for future NOT_SET. See b/186246331.
+    SIMPLE = 1;
+    FULL = 2;
+    NOT_DISTINCT = 3;
+  }
+}
+message ASTBreakContinueStatementEnums {
+  enum BreakContinueKeyword {
+    // 0 reserved for future NOT_SET. See b/186246331.
+    BREAK = 1;
+    LEAVE = 2;
+    CONTINUE = 3;
+    ITERATE = 4;
+  }
+}
+message ASTDropStatementEnums {
+  enum DropMode {
+    DROP_MODE_UNSPECIFIED = 0;
+    RESTRICT = 1;
+    CASCADE = 2;
+  }
+}
+message ASTCreateFunctionStmtBaseEnums {
+  enum DeterminismLevel {
+    DETERMINISM_UNSPECIFIED = 0;
+    DETERMINISTIC = 1;
+    NOT_DETERMINISTIC = 2;
+    IMMUTABLE = 3;
+    STABLE = 4;
+    VOLATILE = 5;
+  }
+}
+message ASTAuxLoadDataStatementEnums {
+  enum InsertionMode {
+    NOT_SET = 0;
+    APPEND = 1;
+    OVERWRITE = 2;
+  }
+}
+message ASTSpannerInterleaveClauseEnums {
+  enum Type {
+    NOT_SET = 0;
+    IN = 1;
+    IN_PARENT = 2;
+  }
+}
+
+message ASTAfterMatchSkipClauseEnums {
+  enum AfterMatchSkipTargetType {
+    AFTER_MATCH_SKIP_TARGET_UNSPECIFIED = 0;
+    PAST_LAST_ROW = 1;
+    TO_NEXT_ROW = 2;
+  }
+}
+
+message ASTRowPatternAnchorEnums {
+  enum Anchor {
+    ANCHOR_UNSPECIFIED = 0;
+    START = 1;  // The `^` anchor, representing the start of the partition.
+    END = 2;    // The `$` anchor, representing the end of the partition.
+  }
+}
+
+message ASTRowPatternOperationEnums {
+  enum OperationType {
+    OPERATION_TYPE_UNSPECIFIED = 0;
+    CONCAT = 1;
+    ALTERNATE = 2;
+    PERMUTE = 3;
+    EXCLUDE = 4;  // {- ... -}
+  }
+}
+
+message ASTSymbolQuantifierEnums {
+  enum Symbol {
+    SYMBOL_UNSPECIFIED = 0;
+    QUESTION_MARK = 1;
+    PLUS = 2;
+    STAR = 3;
+  }
+}
+
+message ASTGraphNodeTableReferenceEnums {
+  enum NodeReferenceType {
+    NODE_REFERENCE_TYPE_UNSPECIFIED = 0;
+    SOURCE = 1;
+    DESTINATION = 2;
+  }
+}
+
+message ASTGraphLabelOperationEnums {
+  enum OperationType {
+    OPERATION_TYPE_UNSPECIFIED = 0;
+    NOT = 1;
+    AND = 2;
+    OR = 3;
+  }
+}
+
+message ASTGraphEdgePatternEnums {
+  enum EdgeOrientation {
+    EDGE_ORIENTATION_NOT_SET = 0;
+    ANY = 1;
+    LEFT = 2;
+    RIGHT = 3;
+  }
+}
+
+message ASTGraphPathModeEnums {
+  enum PathMode {
+    PATH_MODE_UNSPECIFIED = 0;
+    WALK = 1;
+    TRAIL = 2;
+    SIMPLE = 3;
+    ACYCLIC = 4;
+  }
+}
+
+message ASTGraphPathSearchPrefixEnums {
+  enum PathSearchPrefixType {
+    PATH_SEARCH_PREFIX_TYPE_UNSPECIFIED = 0;
+    ANY = 1;
+    SHORTEST = 2;
+    ALL = 3;
+    ALL_SHORTEST = 4;
+    CHEAPEST = 5;
+    ALL_CHEAPEST = 6;
+  }
+}
+
+message ASTLockModeEnums {
+  enum LockStrengthSpec {
+    NOT_SET = 0;
+    // Acquire exclusive locks on the data selected by the query so it can be
+    // updated in a subsequent statement within the same transaction. The scope
+    // of lock acquisition is engine-dependent.
+    UPDATE = 1;
+  }
+}
+
+message ASTBracedConstructorLhsEnums {
+  // See comments at ResolvedUpdateFieldItemEnums::Operation.
+  enum Operation {
+    UPDATE_SINGLE = 0;
+    UPDATE_MANY = 1;
+    UPDATE_SINGLE_NO_CREATION = 2;
+  }
+}
+
+message ASTAlterIndexStatementEnums {
+  enum IndexType {
+    INDEX_DEFAULT = 0;
+    INDEX_SEARCH = 1;
+    INDEX_VECTOR = 2;
+  }
+}

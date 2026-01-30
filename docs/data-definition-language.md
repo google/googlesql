@@ -5,7 +5,7 @@
 # Data definition language
 
 Data definition language (DDL) statements let you create, alter, and delete
-ZetaSQL resources.
+GoogleSQL resources.
 
 ## `CREATE DATABASE`
 
@@ -20,12 +20,12 @@ CREATE
 
 The `CREATE DATABASE` statement creates a database. If you have schema
 options, you can add them when you create the database. These options are
-system-specific and follow the ZetaSQL
+system-specific and follow the GoogleSQL
 [`HINT` syntax][hints].
 
 **Example**
 
-```zetasql
+```googlesql
 CREATE DATABASE library OPTIONS(
   base_dir=`/city/orgs`,
   owner='libadmin'
@@ -38,7 +38,7 @@ CREATE DATABASE library OPTIONS(
  +--------------------*/
 ```
 
-[hints]: https://github.com/google/zetasql/blob/master/docs/lexical.md#hints
+[hints]: https://github.com/google/googlesql/blob/master/docs/lexical.md#hints
 
 ## `CREATE TABLE`
 
@@ -108,32 +108,32 @@ A column is assignable if:
    If the table wasn't partitioned, co-location occurs within the table.
 +  `OPTIONS`: If you have schema options, you can add them when you create
    the table. These options are system-specific and follow the
-   ZetaSQL[`HINT` syntax][hints]
+   GoogleSQL[`HINT` syntax][hints]
 +  `AS query`: Materializes the result of `query` into the new table.
 
 **Examples**
 
 Create a table.
 
-```zetasql
+```googlesql
 CREATE TABLE books (title STRING, author STRING);
 ```
 
 Create a table in a schema called `library`.
 
-```zetasql
+```googlesql
 CREATE TABLE library.books (title STRING, author STRING);
 ```
 
 Create a table that contains schema options.
 
-```zetasql
+```googlesql
 CREATE TABLE books (title STRING, author STRING) OPTIONS (storage_kind=FLASH_MEMORY);
 ```
 
 Partition a table.
 
-```zetasql
+```googlesql
 CREATE TABLE books (title STRING, author STRING, publisher STRING, release_date DATE)
 PARTITION BY publisher, author;
 ```
@@ -142,14 +142,14 @@ Partition a table with a pseudocolumn. In the example below, SYSDATE represents
 the date when the book was added to the database. Replace SYSDATE with a
 psuedocolumn supported by your SQL service.
 
-```zetasql
+```googlesql
 CREATE TABLE books (title STRING, author STRING)
 PARTITION BY sysdate;
 ```
 
 Cluster a table.
 
-```zetasql
+```googlesql
 CREATE TABLE books (
   title STRING,
   first_name STRING,
@@ -190,7 +190,7 @@ some sorts of SQL statements such as `SELECT * FROM Table` and
 
 +   `column_name`: The name of the column. The name of a column must be unique
     within a table.
-+   `column_type`: The ZetaSQL data type of the column.
++   `column_type`: The GoogleSQL data type of the column.
 +   `generated_column_clause`:  A generated column. To learn more, see
     [Defining the generated column clause][generated-column-clause].
 +   `column_attribute`: A characteristic of the column. This can be:
@@ -215,20 +215,20 @@ some sorts of SQL statements such as `SELECT * FROM Table` and
        the generated names of table constraints.
 +  `OPTIONS`: If you have schema options, you can add them when you create
    the column. These options are system-specific and follow the
-   ZetaSQL[`HINT` syntax][hints]
+   GoogleSQL[`HINT` syntax][hints]
 
 **Examples**
 
 Create a table with a primary key that can't be `NULL`.
 
-```zetasql
+```googlesql
 CREATE TABLE books (title STRING, author STRING, isbn INT64 PRIMARY KEY NOT NULL);
 ```
 
 Create a table with a generated column. In this example,
 the generated column holds the first and last name of an author.
 
-```zetasql
+```googlesql
 CREATE TABLE Authors (
   first_name STRING HIDDEN,
   last_name STRING HIDDEN,
@@ -237,7 +237,7 @@ CREATE TABLE Authors (
 
 Create a table that contains schema options on column definitions.
 
-```zetasql
+```googlesql
 CREATE TABLE books (
   title STRING NOT NULL PRIMARY KEY,
   author STRING
@@ -300,21 +300,21 @@ A `constraint_definition` is a rule enforced on the columns of a table.
    is enforced.
 +  `OPTIONS`: If you have schema options, you can add them when you create
    the constraint. These options are system-specific and follow the
-   ZetaSQL[`HINT` syntax][hints]
+   GoogleSQL[`HINT` syntax][hints]
 
 **Examples**
 
 Create a primary key constraint, using the `title` and `author` columns
 in a table called `books`.
 
-```zetasql
+```googlesql
 CREATE TABLE books (title STRING, author STRING, PRIMARY KEY (title ASC, author ASC));
 ```
 
 Create a foreign key constraint. When data in the `top_authors` table
 is updated or deleted, make the same change in the `authors` table.
 
-```zetasql
+```googlesql
 CREATE TABLE top_authors (
   author_first_name STRING,
   author_last_name STRING,
@@ -328,7 +328,7 @@ Create a check constraint. A row that contains values for `words_per_chapter`
 and `words_per_book` can only only be inserted into the `page_count_average`
 table if the `words_per_chapter` value is less than the `words_per_book` value.
 
-```zetasql
+```googlesql
 CREATE TABLE page_count_average (
   words_per_chapter INT64,
   words_per_book INT64,
@@ -402,7 +402,7 @@ to a foreign key and to give a foreign key a unique name.
 When data in the `top_books` table is updated or deleted, make the
 same change in the `books` table.
 
-```zetasql
+```googlesql
 CREATE TABLE top_books (
   book_name STRING,
   CONSTRAINT fk_top_books_name
@@ -430,7 +430,7 @@ function of other columns in the same row.
 
 **Definitions**
 
-+   `column_type`: The ZetaSQL data type of the column.
++   `column_type`: The GoogleSQL data type of the column.
 +   `generated_column_expression`: A scalar expression that produces the
     content for the generated column. Subqueries aren't allowed. This expression
     can:
@@ -486,7 +486,7 @@ written, the write operation fails.
 This query creates a table with a generated column. The generated column holds
 the first and last name of an author.
 
-```zetasql
+```googlesql
 CREATE TABLE Authors (
   first_name STRING HIDDEN,
   last_name STRING HIDDEN,
@@ -511,14 +511,14 @@ statement, see [`CREATE TABLE`][create-table].
 Copy all rows from a table called `old_books` to a new table called
 `books`.
 
-```zetasql
+```googlesql
 CREATE TABLE books AS (SELECT * FROM old_books);
 ```
 
 Copy rows from a table called `old_books` to a new table called `books`.
 If a book was published before 1900, don't add it to `books`.
 
-```zetasql
+```googlesql
 CREATE TABLE books
 AS (SELECT * FROM old_books where year >= 1900)
 ```
@@ -526,14 +526,14 @@ AS (SELECT * FROM old_books where year >= 1900)
 Copy rows from a table called `old_books` to a new table called `books`.
 Only copy the `title` column into `books`.
 
-```zetasql
+```googlesql
 CREATE TABLE books AS (SELECT title FROM old_books);
 ```
 
 Copy rows from `old_books` and `ancient_books` to a new table called
 `books`.
 
-```zetasql
+```googlesql
 CREATE TABLE books AS (
   SELECT * FROM old_books UNION ALL
   SELECT * FROM ancient_books);
@@ -541,7 +541,7 @@ CREATE TABLE books AS (
 
 [create-table]: #create_table
 
-[hints]: https://github.com/google/zetasql/blob/master/docs/lexical.md#hints
+[hints]: https://github.com/google/googlesql/blob/master/docs/lexical.md#hints
 
 [defining-columns]: #defining_columns
 
@@ -675,125 +675,125 @@ values computed from expressions in a table.
     to materialize with the index entry.
 +  `OPTIONS`: If you have schema options, you can add them when you create the
     index. These options are system-specific and follow the
-    ZetaSQL[`HINT` syntax][hints].
+    GoogleSQL[`HINT` syntax][hints].
 
 **Examples**
 
 Create an index on a column in a table.
 
-```zetasql
+```googlesql
 CREATE INDEX i1 ON KeyValue (Key);
 ```
 
 Create an index on multiple columns in a table.
 
-```zetasql
+```googlesql
 CREATE INDEX i1 ON KeyValue (Key, Value);
 ```
 
 If the index already exists, replace it.
 
-```zetasql
+```googlesql
 CREATE OR REPLACE INDEX i1 ON KeyValue (Key, Value);
 ```
 
 If the index already exists, don't replace it.
 
-```zetasql
+```googlesql
 CREATE INDEX IF NOT EXISTS i1 ON KeyValue (Key, Value);
 ```
 
 Create an index that contains unique values.
 
-```zetasql
+```googlesql
 CREATE UNIQUE INDEX i1 ON Books (Title);
 ```
 
 Create an index that contains a schema option.
 
-```zetasql
+```googlesql
 CREATE INDEX i1 ON KeyValue (Value) OPTIONS (page_count=1);
 ```
 
 Reference the table name for a column.
 
-```zetasql
+```googlesql
 CREATE INDEX i1 ON KeyValue (KeyValue.Key, KeyValue.Value);
 ```
 
-```zetasql
+```googlesql
 CREATE INDEX i1 on KeyValue AS foo (foo.Key, foo.Value);
 ```
 
 Use the path expression for a key.
 
-```zetasql
+```googlesql
 CREATE INDEX i1 ON KeyValue (Key.sub_field1.sub_field2);
 ```
 
 Choose the sort order for the columns assigned to an index.
 
-```zetasql
+```googlesql
 CREATE INDEX i1 ON KeyValue (Key DESC, Value ASC);
 ```
 
 Create an index on an array, but not the elements in an array.
 
-```zetasql
+```googlesql
 CREATE INDEX i1 ON Books (BookList);
 ```
 
 Create an index for the elements in an array.
 
-```zetasql
+```googlesql
 CREATE INDEX i1 ON Books UNNEST (BookList) (BookList);
 ```
 
-```zetasql
+```googlesql
 CREATE INDEX i1 ON Books UNNEST (BookListA) AS a UNNEST (BookListB) AS b (a, b);
 ```
 
 Create an index for the elements in an array using an offset.
 
-```zetasql
+```googlesql
 CREATE index i1 on Books UNNEST(BookList) WITH OFFSET (BookList, offset);
 ```
 
-```zetasql
+```googlesql
 CREATE index i1 on Books UNNEST(BookList) WITH OFFSET AS foo (BookList, foo);
 ```
 
 Store an additional column but don't sort it.
 
-```zetasql
+```googlesql
 CREATE INDEX i1 ON KeyValue (Value) STORING (Key);
 ```
 
 Store multiple additional columns and don't sort them.
 
-```zetasql
+```googlesql
 CREATE INDEX i1 ON Books (Title) STORING (First_Name, Last_Name);
 ```
 
 Store a column but don't sort it. Reference a table name.
 
-```zetasql
+```googlesql
 CREATE INDEX i1 ON Books (InStock) STORING (Books.Title);
 ```
 
 Use an expression in the `STORING` clause.
 
-```zetasql
+```googlesql
 CREATE INDEX i1 ON KeyValue (Key) STORING (Key+1);
 ```
 
 Use an implicit alias in the `STORING` clause.
 
-```zetasql
+```googlesql
 CREATE INDEX i1 ON KeyValue (Key) STORING (KeyValue);
 ```
 
-[hints]: https://github.com/google/zetasql/blob/master/docs/lexical.md#hints
+[hints]: https://github.com/google/googlesql/blob/master/docs/lexical.md#hints
 
 ## `CREATE_SCHEMA`
 
@@ -842,13 +842,13 @@ user-defined functions (UDFs).
 
 Create a constant, `DEFAULT_HEIGHT`:
 
-```zetasql
+```googlesql
 CREATE TEMPORARY CONSTANT DEFAULT_HEIGHT = 25;
 ```
 
 Use it in a statement:
 
-```zetasql
+```googlesql
 SELECT (DEFAULT_HEIGHT + 5) AS result;
 
 /*--------+
@@ -865,7 +865,7 @@ using another SQL expression or another programming language. These functions
 accept arguments and perform actions, returning the result of those actions as a
 value. To create a UDA, see [UDAs][udas].
 
-[udas]: https://github.com/google/zetasql/blob/master/docs/user-defined-aggregates.md#udas
+[udas]: https://github.com/google/googlesql/blob/master/docs/user-defined-aggregates.md#udas
 
 ## `CREATE FUNCTION`
 
@@ -874,7 +874,7 @@ SQL expression or another programming language. These functions accept arguments
 and perform actions, returning the result of those actions as a value. To create
 a UDF, see [UDFs][udfs].
 
-[udfs]: https://github.com/google/zetasql/blob/master/docs/user-defined-functions.md
+[udfs]: https://github.com/google/googlesql/blob/master/docs/user-defined-functions.md
 
 ## `CREATE MODEL`
 
@@ -930,10 +930,10 @@ supports arguments.
         +   `OUT`: The parameter is an output parameter.
         +   `INOUT`: The parameter is both an input and an output parameter.
     +   `parameter_name`: The name of the parameter.
-    +   `type`: The ZetaSQL data type of the parameter.
+    +   `type`: The GoogleSQL data type of the parameter.
     +   `DEFAULT default_value`: The default value for the parameter.
 +   `OPTIONS`: If you have schema options, you can add them when you create the
-    procedure. These options are system specific and follow the ZetaSQL[`HINT`
+    procedure. These options are system specific and follow the GoogleSQL[`HINT`
     syntax][hints].
 +   `BEGIN ... END`: The block of SQL statements that make up the procedure.
 
@@ -1013,7 +1013,7 @@ denied from exercising these privileges on the object.
 Creates a property graph. For more information, see
 [`CREATE PROPERTY GRAPH`][create-property-graph] in the GQL reference.
 
-[create-property-graph]: https://github.com/google/zetasql/blob/master/docs/graph-schema-statements.md#create_property_graph
+[create-property-graph]: https://github.com/google/googlesql/blob/master/docs/graph-schema-statements.md#create_property_graph
 
 ## `CREATE TABLE FUNCTION`
 
@@ -1021,7 +1021,7 @@ A table function, also known as a table-valued function (TVF), returns a table. 
 TVF is called in the `FROM` clause like a table subquery. To create a TVF, see
 [TVFs][tvfs].
 
-[tvfs]: https://github.com/google/zetasql/blob/master/docs/table-functions.md#tvfs
+[tvfs]: https://github.com/google/googlesql/blob/master/docs/table-functions.md#tvfs
 
 ## `DEFINE TABLE`
 
@@ -1060,7 +1060,7 @@ The `ALTER` statement modifies metadata for a table or a view.
 
 `table_name` is any identifier or dotted path.
 
-The option entries are system-specific. These follow the ZetaSQL
+The option entries are system-specific. These follow the GoogleSQL
 [`HINT` syntax][hints].
 
 SET OPTIONS action raises an error under these conditions:
@@ -1086,21 +1086,21 @@ The following examples illustrate ways to use the `ALTER SET OPTIONS` statement:
 
 Update table description.
 
-```zetasql
+```googlesql
 ALTER TABLE my_dataset.my_table
 SET OPTIONS (description='my table');
 ```
 
 Remove table description.
 
-```zetasql
+```googlesql
 ALTER TABLE my_dataset.my_table
 SET OPTIONS (description=NULL);
 ```
 
 The following example illustrates using the `ALTER ADD COLUMN` statement:
 
-```zetasql
+```googlesql
 ALTER TABLE mydataset.mytable
     ADD COLUMN A STRING,
     ADD COLUMN IF NOT EXISTS B GEOGRAPHY,
@@ -1110,7 +1110,7 @@ ALTER TABLE mydataset.mytable
 
 Add column A of type STRUCT.
 
-```zetasql
+```googlesql
 ALTER TABLE mydataset.mytable
 ADD COLUMN A STRUCT<
                B GEOGRAPHY,
@@ -1120,7 +1120,7 @@ ADD COLUMN A STRUCT<
              >
 ```
 
-[hints]: https://github.com/google/zetasql/blob/master/docs/lexical.md#hints
+[hints]: https://github.com/google/googlesql/blob/master/docs/lexical.md#hints
 
 ## `RENAME`
 
@@ -1156,7 +1156,7 @@ object to drop.
 Deletes a property graph. For more information, see
 [`DROP PROPERTY GRAPH`][drop-property-graph] in the GQL reference.
 
-[drop-property-graph]: https://github.com/google/zetasql/blob/master/docs/graph-schema-statements.md#drop_property_graph
+[drop-property-graph]: https://github.com/google/googlesql/blob/master/docs/graph-schema-statements.md#drop_property_graph
 
 ## Terminology
 
@@ -1175,7 +1175,7 @@ In this example, a column in a table called `books` is assigned to a primary
 key. For each row in this table, the value in the `id` column must be distinct
 from the value in the `id` column of all other rows in the table.
 
-```zetasql
+```googlesql
 CREATE TABLE books (title STRING, id STRING, PRIMARY KEY (id));
 ```
 
@@ -1184,7 +1184,7 @@ primary key. For each row in this table, the tuple of values in the `title` and
 `name` columns must together be distinct from the values in the respective
 `title` and `name` columns of all other rows in the table.
 
-```zetasql
+```googlesql
 CREATE TABLE books (title STRING, name STRING, PRIMARY KEY (title, name));
 ```
 

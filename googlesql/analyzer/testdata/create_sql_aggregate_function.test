@@ -1,0 +1,1004 @@
+[default language_features=NONE]
+create function myfunc() as (count(*));
+--
+ERROR: Aggregate function COUNT(*) not allowed in SQL function body [at 1:30]
+create function myfunc() as (count(*));
+                             ^
+==
+
+create function myfunc(x int32 NOT AGGREGATE) as (x)
+--
+ERROR: Parameters can only be marked NOT AGGREGATE in functions created with CREATE AGGREGATE FUNCTION [at 1:24]
+create function myfunc(x int32 NOT AGGREGATE) as (x)
+                       ^
+==
+
+create aggregate function myfunc() as (count(*));
+--
+ERROR: Aggregate functions are not supported [at 1:1]
+create aggregate function myfunc() as (count(*));
+^
+==
+
+[default language_features=NONE,+CREATE_AGGREGATE_FUNCTION,+ANALYTIC_FUNCTIONS,+TEMPLATE_FUNCTIONS]
+
+create function myfunc() as (count(*));
+--
+ERROR: Aggregate function COUNT(*) not allowed in SQL function body for non-AGGREGATE function [at 1:30]
+create function myfunc() as (count(*));
+                             ^
+==
+
+create function myfunc(x int32 NOT AGGREGATE) as (x)
+--
+ERROR: Parameters can only be marked NOT AGGREGATE in functions created with CREATE AGGREGATE FUNCTION [at 1:24]
+create function myfunc(x int32 NOT AGGREGATE) as (x)
+                       ^
+==
+
+create aggregate function myfunc() as (count(*));
+--
+CreateFunctionStmt
++-name_path=myfunc
++-return_type=INT64
++-signature=() -> INT64
++-is_aggregate=TRUE
++-language="SQL"
++-code="count(*)"
++-aggregate_expression_list=
+| +-$agg1#1 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
++-function_expression=
+  +-ColumnRef(type=INT64, column=$aggregate.$agg1#1)
+==
+
+create or replace temp aggregate function mysum(x int32) as (sum(x));
+--
+CreateFunctionStmt
++-name_path=mysum
++-create_scope=CREATE_TEMP
++-create_mode=CREATE_OR_REPLACE
++-return_type=INT64
++-argument_name_list=[x]
++-signature=(INT32 x) -> INT64
++-is_aggregate=TRUE
++-language="SQL"
++-code="sum(x)"
++-aggregate_expression_list=
+| +-$agg1#1 :=
+|   +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+|     +-Cast(INT32 -> INT64)
+|       +-ArgumentRef(parse_location=65-66, type=INT32, name="x", argument_kind=AGGREGATE)
++-function_expression=
+  +-ColumnRef(type=INT64, column=$aggregate.$agg1#1)
+==
+
+[language_features=NONE,+CREATE_AGGREGATE_FUNCTION]
+[statement_context={{|module}}]
+create {{public|private}} aggregate function myfunc() as (count(*));
+--
+ALTERNATION GROUP: public
+--
+ERROR: CREATE FUNCTION with PUBLIC or PRIVATE modifiers is not supported [at 1:1]
+create public aggregate function myfunc() as (count(*));
+^
+--
+ALTERNATION GROUP: private
+--
+ERROR: CREATE FUNCTION with PUBLIC or PRIVATE modifiers is not supported [at 1:1]
+create private aggregate function myfunc() as (count(*));
+^
+--
+ALTERNATION GROUP: module,public
+--
+CreateFunctionStmt
++-name_path=myfunc
++-create_scope=CREATE_PUBLIC
++-return_type=INT64
++-signature=() -> INT64
++-is_aggregate=TRUE
++-language="SQL"
++-code="count(*)"
++-aggregate_expression_list=
+| +-$agg1#1 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
++-function_expression=
+  +-ColumnRef(type=INT64, column=$aggregate.$agg1#1)
+--
+ALTERNATION GROUP: module,private
+--
+CreateFunctionStmt
++-name_path=myfunc
++-create_scope=CREATE_PRIVATE
++-return_type=INT64
++-signature=() -> INT64
++-is_aggregate=TRUE
++-language="SQL"
++-code="count(*)"
++-aggregate_expression_list=
+| +-$agg1#1 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
++-function_expression=
+  +-ColumnRef(type=INT64, column=$aggregate.$agg1#1)
+==
+
+# This aggregate function just returns a constant value and doesn't actually
+# aggregate anything.
+create aggregate function myfunc(x int32 NOT AGGREGATE) as (x)
+--
+CreateFunctionStmt
++-name_path=myfunc
++-return_type=INT32
++-argument_name_list=[x]
++-signature=(INT32 {is_not_aggregate: true} x) -> INT32
++-is_aggregate=TRUE
++-language="SQL"
++-code="x"
++-function_expression=
+  +-ArgumentRef(type=INT32, name="x", argument_kind=NOT_AGGREGATE)
+==
+
+create aggregate function sumcount(x int64) as (sum(x) + count(*))
+--
+CreateFunctionStmt
++-name_path=sumcount
++-return_type=INT64
++-argument_name_list=[x]
++-signature=(INT64 x) -> INT64
++-is_aggregate=TRUE
++-language="SQL"
++-code="sum(x) + count(*)"
++-aggregate_expression_list=
+| +-$agg1#1 :=
+| | +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+| |   +-ArgumentRef(parse_location=52-53, type=INT64, name="x", argument_kind=AGGREGATE)
+| +-$agg2#2 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
++-function_expression=
+  +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    +-ColumnRef(type=INT64, column=$aggregate.$agg1#1)
+    +-ColumnRef(type=INT64, column=$aggregate.$agg2#2)
+==
+
+create aggregate function avg(x int64) as (sum(x) / count(x))
+--
+CreateFunctionStmt
++-name_path=avg
++-return_type=DOUBLE
++-argument_name_list=[x]
++-signature=(INT64 x) -> DOUBLE
++-is_aggregate=TRUE
++-language="SQL"
++-code="sum(x) / count(x)"
++-aggregate_expression_list=
+| +-$agg1#1 :=
+| | +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+| |   +-ArgumentRef(parse_location=47-48, type=INT64, name="x", argument_kind=AGGREGATE)
+| +-$agg2#2 :=
+|   +-AggregateFunctionCall(GoogleSQL:count(INT64) -> INT64)
+|     +-ArgumentRef(parse_location=58-59, type=INT64, name="x", argument_kind=AGGREGATE)
++-function_expression=
+  +-FunctionCall(GoogleSQL:$divide(DOUBLE, DOUBLE) -> DOUBLE)
+    +-Cast(INT64 -> DOUBLE)
+    | +-ColumnRef(type=INT64, column=$aggregate.$agg1#1)
+    +-Cast(INT64 -> DOUBLE)
+      +-ColumnRef(type=INT64, column=$aggregate.$agg2#2)
+==
+
+create aggregate function f(x int64) as (x)
+--
+ERROR: Function argument x cannot be referenced outside aggregate function calls unless marked as NOT AGGREGATE [at 1:42]
+create aggregate function f(x int64) as (x)
+                                         ^
+==
+
+create aggregate function f(x int64 NOT AGGREGATE) as (sum(x) + x)
+--
+CreateFunctionStmt
++-name_path=f
++-return_type=INT64
++-argument_name_list=[x]
++-signature=(INT64 {is_not_aggregate: true} x) -> INT64
++-is_aggregate=TRUE
++-language="SQL"
++-code="sum(x) + x"
++-aggregate_expression_list=
+| +-$agg1#1 :=
+|   +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+|     +-ArgumentRef(type=INT64, name="x", argument_kind=NOT_AGGREGATE)
++-function_expression=
+  +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    +-ColumnRef(type=INT64, column=$aggregate.$agg1#1)
+    +-ArgumentRef(type=INT64, name="x", argument_kind=NOT_AGGREGATE)
+==
+
+create aggregate function f(x int64) as (sum(x) + x)
+--
+ERROR: Function argument x cannot be referenced outside aggregate function calls unless marked as NOT AGGREGATE [at 1:51]
+create aggregate function f(x int64) as (sum(x) + x)
+                                                  ^
+==
+
+# When we call the same aggregate twice, we don't uniquify it in the
+# aggregate_expression_list.
+[show_sqlbuilder_output]
+create aggregate function sum_squared(x int64, y double) as
+(
+  sqrt(sum(x)*sum(X) + sum(y)*sum(y))
+)
+--
+CreateFunctionStmt
++-name_path=sum_squared
++-return_type=DOUBLE
++-argument_name_list=[x, y]
++-signature=(INT64 x, DOUBLE y) -> DOUBLE
++-is_aggregate=TRUE
++-language="SQL"
++-code="sqrt(sum(x)*sum(X) + sum(y)*sum(y))"
++-aggregate_expression_list=
+| +-$agg1#1 :=
+| | +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+| |   +-ArgumentRef(parse_location=73-74, type=INT64, name="x", argument_kind=AGGREGATE)
+| +-$agg2#2 :=
+| | +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+| |   +-ArgumentRef(parse_location=80-81, type=INT64, name="x", argument_kind=AGGREGATE)
+| +-$agg3#3 :=
+| | +-AggregateFunctionCall(GoogleSQL:sum(DOUBLE) -> DOUBLE)
+| |   +-ArgumentRef(parse_location=89-90, type=DOUBLE, name="y", argument_kind=AGGREGATE)
+| +-$agg4#4 :=
+|   +-AggregateFunctionCall(GoogleSQL:sum(DOUBLE) -> DOUBLE)
+|     +-ArgumentRef(parse_location=96-97, type=DOUBLE, name="y", argument_kind=AGGREGATE)
++-function_expression=
+  +-FunctionCall(GoogleSQL:sqrt(DOUBLE) -> DOUBLE)
+    +-FunctionCall(GoogleSQL:$add(DOUBLE, DOUBLE) -> DOUBLE)
+      +-Cast(INT64 -> DOUBLE)
+      | +-FunctionCall(GoogleSQL:$multiply(INT64, INT64) -> INT64)
+      |   +-ColumnRef(type=INT64, column=$aggregate.$agg1#1)
+      |   +-ColumnRef(type=INT64, column=$aggregate.$agg2#2)
+      +-FunctionCall(GoogleSQL:$multiply(DOUBLE, DOUBLE) -> DOUBLE)
+        +-ColumnRef(type=DOUBLE, column=$aggregate.$agg3#3)
+        +-ColumnRef(type=DOUBLE, column=$aggregate.$agg4#4)
+
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+CREATE AGGREGATE FUNCTION sum_squared(x INT64, y DOUBLE)
+RETURNS DOUBLE AS (
+  SQRT(CAST((SUM(x)) * (SUM(x)) AS DOUBLE) + ((SUM(y)) * (SUM(y))))
+);
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+CREATE AGGREGATE FUNCTION sum_squared(x INT64, y DOUBLE)
+RETURNS DOUBLE AS (
+  SQRT(CAST((SUM(x)) * (SUM(x)) AS DOUBLE) + ((SUM(y)) * (SUM(y))))
+);
+==
+
+# This is not aggregating over x.  The aggregation is inside a scalar subquery
+# running on the constant value.
+create aggregate function non_agg(x int64 {{NOT AGGREGATE|}}) as (
+  (select sum(x) from (select 1))
+)
+--
+ALTERNATION GROUP: NOT AGGREGATE
+--
+CreateFunctionStmt
++-name_path=non_agg
++-return_type=INT64
++-argument_name_list=[x]
++-signature=(INT64 {is_not_aggregate: true} x) -> INT64
++-is_aggregate=TRUE
++-language="SQL"
++-code="(select sum(x) from (select 1))"
++-function_expression=
+  +-SubqueryExpr
+    +-type=INT64
+    +-subquery_type=SCALAR
+    +-subquery=
+      +-ProjectScan
+        +-column_list=[$aggregate.$agg1#2]
+        +-input_scan=
+          +-AggregateScan
+            +-column_list=[$aggregate.$agg1#2]
+            +-input_scan=
+            | +-ProjectScan
+            |   +-column_list=[$subquery1.$col1#1]
+            |   +-expr_list=
+            |   | +-$col1#1 := Literal(type=INT64, value=1)
+            |   +-input_scan=
+            |     +-SingleRowScan
+            +-aggregate_list=
+              +-$agg1#2 :=
+                +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+                  +-ArgumentRef(type=INT64, name="x", argument_kind=NOT_AGGREGATE)
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: Function argument x cannot be referenced outside aggregate function calls unless marked as NOT AGGREGATE [at 2:15]
+  (select sum(x) from (select 1))
+              ^
+==
+
+# This is not aggregating over a.  The aggregation is inside a scalar subquery
+# running on the constant value.
+create aggregate function non_agg(a array<int64> {{NOT AGGREGATE|}}) as (
+  (select count(*) from unnest(a))
+)
+--
+ALTERNATION GROUP: NOT AGGREGATE
+--
+CreateFunctionStmt
++-name_path=non_agg
++-return_type=INT64
++-argument_name_list=[a]
++-signature=(ARRAY<INT64> {is_not_aggregate: true} a) -> INT64
++-is_aggregate=TRUE
++-language="SQL"
++-code="(select count(*) from unnest(a))"
++-function_expression=
+  +-SubqueryExpr
+    +-type=INT64
+    +-subquery_type=SCALAR
+    +-subquery=
+      +-ProjectScan
+        +-column_list=[$aggregate.$agg1#2]
+        +-input_scan=
+          +-AggregateScan
+            +-column_list=[$aggregate.$agg1#2]
+            +-input_scan=
+            | +-ArrayScan
+            |   +-array_expr_list=
+            |   | +-ArgumentRef(type=ARRAY<INT64>, name="a", argument_kind=NOT_AGGREGATE)
+            |   +-element_column_list=[$array.$unnest1#1]
+            +-aggregate_list=
+              +-$agg1#2 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: Function argument a cannot be referenced outside aggregate function calls unless marked as NOT AGGREGATE [at 2:32]
+  (select count(*) from unnest(a))
+                               ^
+==
+
+# This can work either aggregating or not over a.  The initial unnest and
+# count(*) is just accessing a as a value, in a scalar subquery, but then
+# the outer SUM does aggregation over values of that subquery.
+create aggregate function non_agg(a array<int64> {{NOT AGGREGATE|}},
+                                  b int64) as (
+  sum((select count(*) from unnest(a)) + b)
+)
+--
+ALTERNATION GROUP: NOT AGGREGATE
+--
+CreateFunctionStmt
++-name_path=non_agg
++-return_type=INT64
++-argument_name_list=[a, b]
++-signature=(ARRAY<INT64> {is_not_aggregate: true} a, INT64 b) -> INT64
++-is_aggregate=TRUE
++-language="SQL"
++-code="sum((select count(*) from unnest(a)) + b)"
++-aggregate_expression_list=
+| +-$agg1#3 :=
+|   +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+|     +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+|       +-SubqueryExpr
+|       | +-type=INT64
+|       | +-subquery_type=SCALAR
+|       | +-subquery=
+|       |   +-ProjectScan
+|       |     +-column_list=[$aggregate.$agg1#2]
+|       |     +-input_scan=
+|       |       +-AggregateScan
+|       |         +-column_list=[$aggregate.$agg1#2]
+|       |         +-input_scan=
+|       |         | +-ArrayScan
+|       |         |   +-array_expr_list=
+|       |         |   | +-ArgumentRef(type=ARRAY<INT64>, name="a", argument_kind=NOT_AGGREGATE)
+|       |         |   +-element_column_list=[$array.$unnest1#1]
+|       |         +-aggregate_list=
+|       |           +-$agg1#2 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+|       +-ArgumentRef(parse_location=153-154, type=INT64, name="b", argument_kind=AGGREGATE)
++-function_expression=
+  +-ColumnRef(type=INT64, column=$aggregate.$agg1#3)
+--
+ALTERNATION GROUP: <empty>
+--
+CreateFunctionStmt
++-name_path=non_agg
++-return_type=INT64
++-argument_name_list=[a, b]
++-signature=(ARRAY<INT64> a, INT64 b) -> INT64
++-is_aggregate=TRUE
++-language="SQL"
++-code="sum((select count(*) from unnest(a)) + b)"
++-aggregate_expression_list=
+| +-$agg1#3 :=
+|   +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+|     +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+|       +-SubqueryExpr
+|       | +-type=INT64
+|       | +-subquery_type=SCALAR
+|       | +-subquery=
+|       |   +-ProjectScan
+|       |     +-column_list=[$aggregate.$agg1#2]
+|       |     +-input_scan=
+|       |       +-AggregateScan
+|       |         +-column_list=[$aggregate.$agg1#2]
+|       |         +-input_scan=
+|       |         | +-ArrayScan
+|       |         |   +-array_expr_list=
+|       |         |   | +-ArgumentRef(parse_location=134-135, type=ARRAY<INT64>, name="a", argument_kind=AGGREGATE)
+|       |         |   +-element_column_list=[$array.$unnest1#1]
+|       |         +-aggregate_list=
+|       |           +-$agg1#2 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+|       +-ArgumentRef(parse_location=140-141, type=INT64, name="b", argument_kind=AGGREGATE)
++-function_expression=
+  +-ColumnRef(type=INT64, column=$aggregate.$agg1#3)
+==
+
+# This is illegal because the second sum(x) is not actually referenced as
+# an aggregate parameter in the context of this UDF.  It is used as an
+# aggregate over rows in the subquery, but not as an aggregate over input
+# rows to the UDF itself.
+create aggregate function bad(x int64) as (
+  sum(x) + (select sum(x) from (select 1))
+)
+--
+ERROR: Function argument x cannot be referenced outside aggregate function calls unless marked as NOT AGGREGATE [at 2:24]
+  sum(x) + (select sum(x) from (select 1))
+                       ^
+==
+
+create aggregate function analytic(x int64) as (
+  count(*) over ()
+)
+--
+ERROR: Analytic function not allowed in SQL function body [at 2:3]
+  count(*) over ()
+  ^
+==
+
+# An aggregate function that doesn't actually do any aggregation.
+create aggregate function analytic(x int64) as (5)
+--
+CreateFunctionStmt
++-name_path=analytic
++-return_type=INT64
++-argument_name_list=[x]
++-signature=(INT64 x) -> INT64
++-is_aggregate=TRUE
++-language="SQL"
++-code="5"
++-function_expression=
+  +-Literal(type=INT64, value=5)
+==
+
+# An aggregate function that doesn't actually do any aggregation.
+create aggregate function analytic(y string NOT AGGREGATE, x int64) as (y)
+--
+CreateFunctionStmt
++-name_path=analytic
++-return_type=STRING
++-argument_name_list=[y, x]
++-signature=(STRING {is_not_aggregate: true} y, INT64 x) -> STRING
++-is_aggregate=TRUE
++-language="SQL"
++-code="y"
++-function_expression=
+  +-ArgumentRef(type=STRING, name="y", argument_kind=NOT_AGGREGATE)
+==
+
+
+# This is allowed because the analytic function is inside a scalar subquery.
+create aggregate function analytic(x int64) as (
+  (select count(*) over () from (select 1))
+)
+--
+CreateFunctionStmt
++-name_path=analytic
++-return_type=INT64
++-argument_name_list=[x]
++-signature=(INT64 x) -> INT64
++-is_aggregate=TRUE
++-language="SQL"
++-code="(select count(*) over () from (select 1))"
++-function_expression=
+  +-SubqueryExpr
+    +-type=INT64
+    +-subquery_type=SCALAR
+    +-subquery=
+      +-ProjectScan
+        +-column_list=[$analytic.$analytic1#3]
+        +-input_scan=
+          +-AnalyticScan
+            +-column_list=[$subquery1.$col1#1, $analytic.$analytic1#3]
+            +-input_scan=
+            | +-ProjectScan
+            |   +-column_list=[$subquery1.$col1#1]
+            |   +-expr_list=
+            |   | +-$col1#1 := Literal(type=INT64, value=1)
+            |   +-input_scan=
+            |     +-SingleRowScan
+            +-function_group_list=
+              +-AnalyticFunctionGroup
+                +-analytic_function_list=
+                  +-$analytic1#3 :=
+                    +-AnalyticFunctionCall(GoogleSQL:$count_star() -> INT64)
+                      +-window_frame=
+                        +-WindowFrame(frame_unit=ROWS)
+                          +-start_expr=
+                          | +-WindowFrameExpr(boundary_type=UNBOUNDED PRECEDING)
+                          +-end_expr=
+                            +-WindowFrameExpr(boundary_type=UNBOUNDED FOLLOWING)
+==
+
+# Aggregate UDF using ORDER BY modifiers on the aggregate.
+# Currently not supported, so we give an error.
+[language_features=NONE,+CREATE_AGGREGATE_FUNCTION,+ANALYTIC_FUNCTIONS,+ORDER_BY_IN_AGGREGATE]
+create aggregate function myfunc(x bytes) as ( array_agg(x order by x) )
+--
+ERROR: Function body with aggregate functions with ORDER BY not currently supported [at 1:48]
+create aggregate function myfunc(x bytes) as ( array_agg(x order by x) )
+                                               ^
+==
+
+[language_features=NONE,+CREATE_AGGREGATE_FUNCTION,+ANALYTIC_FUNCTIONS,+ORDER_BY_IN_AGGREGATE,+ORDER_BY_COLLATE]
+create aggregate function myfunc(x bytes, y string) as (
+  array_agg(x order by y collate 'EN-US' desc)
+)
+--
+ERROR: Function body with aggregate functions with ORDER BY not currently supported [at 2:3]
+  array_agg(x order by y collate 'EN-US' desc)
+  ^
+==
+
+# Aggregate UDF using LIMIT modifiers on the aggregate.
+[language_features=NONE,+CREATE_AGGREGATE_FUNCTION,+ANALYTIC_FUNCTIONS,+LIMIT_IN_AGGREGATE]
+create aggregate function myfunc(x bytes) as ( array_agg(x limit 10) )
+--
+CreateFunctionStmt
++-name_path=myfunc
++-return_type=ARRAY<BYTES>
++-argument_name_list=[x]
++-signature=(BYTES x) -> ARRAY<BYTES>
++-is_aggregate=TRUE
++-language="SQL"
++-code="array_agg(x limit 10)"
++-aggregate_expression_list=
+| +-$agg1#1 :=
+|   +-AggregateFunctionCall(GoogleSQL:array_agg(BYTES) -> ARRAY<BYTES>)
+|     +-ArgumentRef(parse_location=57-58, type=BYTES, name="x", argument_kind=AGGREGATE)
+|     +-limit=
+|       +-Literal(type=INT64, value=10)
++-function_expression=
+  +-ColumnRef(type=ARRAY<BYTES>, column=$aggregate.$agg1#1)
+==
+
+# Limit only accepts constants, which doesn't include arguments currently.
+[language_features=NONE,{{+CREATE_AGGREGATE_FUNCTION,+ANALYTIC_FUNCTIONS,+LIMIT_IN_AGGREGATE|+CREATE_AGGREGATE_FUNCTION,+ANALYTIC_FUNCTIONS,+LIMIT_IN_AGGREGATE,+LIMIT_OFFSET_EXPRESSIONS}}]
+create aggregate function myfunc(x bytes, y int64 NOT AGGREGATE) as
+( array_agg(x limit y) )
+--
+ALTERNATION GROUP: +CREATE_AGGREGATE_FUNCTION,+ANALYTIC_FUNCTIONS,+LIMIT_IN_AGGREGATE
+--
+ERROR: LIMIT expects an integer literal or parameter [at 2:21]
+( array_agg(x limit y) )
+                    ^
+--
+ALTERNATION GROUP: +CREATE_AGGREGATE_FUNCTION,+ANALYTIC_FUNCTIONS,+LIMIT_IN_AGGREGATE,+LIMIT_OFFSET_EXPRESSIONS
+--
+CreateFunctionStmt
++-name_path=myfunc
++-return_type=ARRAY<BYTES>
++-argument_name_list=[x, y]
++-signature=(BYTES x, INT64 {is_not_aggregate: true} y) -> ARRAY<BYTES>
++-is_aggregate=TRUE
++-language="SQL"
++-code="array_agg(x limit y)"
++-aggregate_expression_list=
+| +-$agg1#1 :=
+|   +-AggregateFunctionCall(GoogleSQL:array_agg(BYTES) -> ARRAY<BYTES>)
+|     +-ArgumentRef(parse_location=80-81, type=BYTES, name="x", argument_kind=AGGREGATE)
+|     +-limit=
+|       +-ArgumentRef(type=INT64, name="y", argument_kind=NOT_AGGREGATE)
++-function_expression=
+  +-ColumnRef(type=ARRAY<BYTES>, column=$aggregate.$agg1#1)
+==
+
+# Aggregate UDF using DISTINCT modifiers on the aggregates.
+create aggregate function myfunc(x int64, y string, z double) as (
+  count(distinct x) + count(distinct y) + array_length(array_agg(distinct z))
+)
+--
+CreateFunctionStmt
++-name_path=myfunc
++-return_type=INT64
++-argument_name_list=[x, y, z]
++-signature=(INT64 x, STRING y, DOUBLE z) -> INT64
++-is_aggregate=TRUE
++-language="SQL"
++-code="count(distinct x) + count(distinct y) + array_length(array_agg(distinct z))"
++-aggregate_expression_list=
+| +-$agg1#1 :=
+| | +-AggregateFunctionCall(GoogleSQL:count(INT64) -> INT64)
+| |   +-ArgumentRef(parse_location=84-85, type=INT64, name="x", argument_kind=AGGREGATE)
+| |   +-distinct=TRUE
+| +-$agg2#2 :=
+| | +-AggregateFunctionCall(GoogleSQL:count(STRING) -> INT64)
+| |   +-ArgumentRef(parse_location=104-105, type=STRING, name="y", argument_kind=AGGREGATE)
+| |   +-distinct=TRUE
+| +-$agg3#3 :=
+|   +-AggregateFunctionCall(GoogleSQL:array_agg(DOUBLE) -> ARRAY<DOUBLE>)
+|     +-ArgumentRef(parse_location=141-142, type=DOUBLE, name="z", argument_kind=AGGREGATE)
+|     +-distinct=TRUE
++-function_expression=
+  +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    | +-ColumnRef(type=INT64, column=$aggregate.$agg1#1)
+    | +-ColumnRef(type=INT64, column=$aggregate.$agg2#2)
+    +-FunctionCall(GoogleSQL:array_length(ARRAY<DOUBLE>) -> INT64)
+      +-ColumnRef(type=ARRAY<DOUBLE>, column=$aggregate.$agg3#3)
+==
+
+create aggregate function myfunc(x int64) as (
+  sum(x + @test_param_int64)
+)
+--
+ERROR: Query parameter is not allowed in the body of SQL function 'myfunc': @test_param_int64 [at 2:11]
+  sum(x + @test_param_int64)
+          ^
+==
+
+# Mixed aggregate and non-aggregate arguments.
+[show_sqlbuilder_output]
+create aggregate function if not exists myfunc
+     (x int64, y int64 NOT AGGREGATE, z int64 NOT AGGREGATE) as (
+  sum(x*y) + z
+)
+--
+CreateFunctionStmt
++-name_path=myfunc
++-create_mode=CREATE_IF_NOT_EXISTS
++-return_type=INT64
++-argument_name_list=[x, y, z]
++-signature=(INT64 x, INT64 {is_not_aggregate: true} y, INT64 {is_not_aggregate: true} z) -> INT64
++-is_aggregate=TRUE
++-language="SQL"
++-code="sum(x*y) + z"
++-aggregate_expression_list=
+| +-$agg1#1 :=
+|   +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+|     +-FunctionCall(GoogleSQL:$multiply(INT64, INT64) -> INT64)
+|       +-ArgumentRef(parse_location=119-120, type=INT64, name="x", argument_kind=AGGREGATE)
+|       +-ArgumentRef(type=INT64, name="y", argument_kind=NOT_AGGREGATE)
++-function_expression=
+  +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    +-ColumnRef(type=INT64, column=$aggregate.$agg1#1)
+    +-ArgumentRef(type=INT64, name="z", argument_kind=NOT_AGGREGATE)
+
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+CREATE AGGREGATE FUNCTION IF NOT EXISTS myfunc(x INT64, y INT64 NOT AGGREGATE, z INT64 NOT AGGREGATE)
+RETURNS INT64 AS (
+  (SUM(x * y)) + z
+);
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+CREATE AGGREGATE FUNCTION IF NOT EXISTS myfunc(x INT64, y INT64 NOT AGGREGATE, z INT64 NOT AGGREGATE)
+RETURNS INT64 AS (
+  (SUM(x * y)) + z
+);
+==
+
+# Test RETURNS type.
+create aggregate function f()
+RETURNS {{int64|double|string|int32}}
+as (count(*))
+--
+ALTERNATION GROUP: int64
+--
+CreateFunctionStmt
++-name_path=f
++-has_explicit_return_type=TRUE
++-return_type=INT64
++-signature=() -> INT64
++-is_aggregate=TRUE
++-language="SQL"
++-code="count(*)"
++-aggregate_expression_list=
+| +-$agg1#1 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
++-function_expression=
+  +-ColumnRef(type=INT64, column=$aggregate.$agg1#1)
+--
+ALTERNATION GROUP: double
+--
+CreateFunctionStmt
++-name_path=f
++-has_explicit_return_type=TRUE
++-return_type=DOUBLE
++-signature=() -> DOUBLE
++-is_aggregate=TRUE
++-language="SQL"
++-code="count(*)"
++-aggregate_expression_list=
+| +-$agg1#1 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
++-function_expression=
+  +-Cast(INT64 -> DOUBLE)
+    +-ColumnRef(type=INT64, column=$aggregate.$agg1#1)
+--
+ALTERNATION GROUP: string
+--
+ERROR: Function declared to return STRING but the function body produces incompatible type INT64 [at 3:5]
+as (count(*))
+    ^
+--
+ALTERNATION GROUP: int32
+--
+ERROR: Function declared to return INT32 but the function body produces incompatible type INT64 [at 3:5]
+as (count(*))
+    ^
+==
+
+# This shows that we can pass a NOT AGGREGATE argument on as a
+# constant argument to another function, so we can create a
+# wrapper around a function like STRING_AGG.
+create aggregate function my_string_agg(s string, sep string NOT AGGREGATE)
+as (string_agg(s, sep))
+--
+CreateFunctionStmt
++-name_path=my_string_agg
++-return_type=STRING
++-argument_name_list=[s, sep]
++-signature=(STRING s, STRING {is_not_aggregate: true} sep) -> STRING
++-is_aggregate=TRUE
++-language="SQL"
++-code="string_agg(s, sep)"
++-aggregate_expression_list=
+| +-$agg1#1 :=
+|   +-AggregateFunctionCall(GoogleSQL:string_agg(STRING, STRING) -> STRING)
+|     +-ArgumentRef(parse_location=91-92, type=STRING, name="s", argument_kind=AGGREGATE)
+|     +-ArgumentRef(type=STRING, name="sep", argument_kind=NOT_AGGREGATE)
++-function_expression=
+  +-ColumnRef(type=STRING, column=$aggregate.$agg1#1)
+==
+
+# This shows that the case above applies only to aggregate functions.
+# We cannot pass a scalar argument to a NOT_AGGREGATE argument
+# of an aggregate function.  The call-site of the scalar function would
+# not have enforced the same constant-ness constraint that an aggregate
+# call-site would have.
+create function my_string_agg(s array<string>, sep string)
+as ((select string_agg(s, sep) from unnest(s) s))
+--
+ERROR: Argument 2 to STRING_AGG must be a literal or query parameter [at 2:27]
+as ((select string_agg(s, sep) from unnest(s) s))
+                          ^
+==
+
+# Initial tests with AS alias, showing that the statement fails resolution
+# if present.
+create aggregate function fn(r int64 as T, s int64 NOT AGGREGATE)
+as (sum(r) * s);
+--
+ERROR: Non-templated arguments in function declarations do not support type aliases [at 1:38]
+create aggregate function fn(r int64 as T, s int64 NOT AGGREGATE)
+                                     ^
+==
+
+create aggregate function fn(r int64, s int64 as T NOT AGGREGATE)
+as (sum(r) * s);
+--
+ERROR: Non-templated arguments in function declarations do not support type aliases [at 1:47]
+create aggregate function fn(r int64, s int64 as T NOT AGGREGATE)
+                                              ^
+==
+
+create aggregate function fn(r ANY TYPE as T, s ANY TYPE as T2 NOT AGGREGATE)
+as (sum(r) * s);
+--
+ERROR: Templated arguments with type aliases are not supported yet [at 1:41]
+create aggregate function fn(r ANY TYPE as T, s ANY TYPE as T2 NOT AGGREGATE)
+                                        ^
+==
+
+# ANY TYPE is supported when the function has a SQL body. GoogleSQL sets the
+# language field to "SQL" and the "code" field to contain the SQL body in this
+# case.
+create aggregate function f(x any type) as (count(*));
+--
+CreateFunctionStmt(name_path=f, return_type=STRUCT<>, argument_name_list=[x], signature=(ANY TYPE x) -> ANY TYPE, is_aggregate=TRUE, language="SQL", code="count(*)")
+==
+
+# Multiple arguments of type ANY TYPE.
+create aggregate function f(x any type, y any type) as (count(*));
+--
+CreateFunctionStmt(name_path=f, return_type=STRUCT<>, argument_name_list=[x, y], signature=(ANY TYPE x, ANY TYPE y) -> ANY TYPE, is_aggregate=TRUE, language="SQL", code="count(*)")
+==
+
+# The SQL body can refer to the names of function arguments of type ANY TYPE.
+create aggregate function f(x any type, y int64) as (count(x + y));
+--
+CreateFunctionStmt(name_path=f, return_type=STRUCT<>, argument_name_list=[x, y], signature=(ANY TYPE x, INT64 y) -> ANY TYPE, is_aggregate=TRUE, language="SQL", code="count(x + y)")
+==
+
+# ANY TYPE parameters are allowed with the RETURNS clause.
+create aggregate function f(x any type, y int64)
+  returns int64
+  as (count(x + y));
+--
+CreateFunctionStmt(name_path=f, has_explicit_return_type=TRUE, return_type=INT64, argument_name_list=[x, y], signature=(ANY TYPE x, INT64 y) -> INT64, is_aggregate=TRUE, language="SQL", code="count(x + y)")
+==
+
+# ANY TYPE parameters are allowed with the LANGUAGE clause.
+create aggregate function f(x any type)
+  returns string language testlang
+    as """ return
+      "presto!" + s + '\n';
+    """
+--
+CreateFunctionStmt(name_path=f, has_explicit_return_type=TRUE, return_type=STRING, argument_name_list=[x], signature=(ANY TYPE x) -> STRING, is_aggregate=TRUE, language="testlang", code=" return\n      \"presto!\" + s + '\n';\n    ")
+==
+
+# ANY TYPE parameters are allowed with CREATE OR REPLACE and the LANGUAGE
+# clause.
+create or replace aggregate function f(x any type)
+  returns string language testlang
+    as """ return
+      "presto!" + s + '\n';
+    """
+--
+CreateFunctionStmt(name_path=f, create_mode=CREATE_OR_REPLACE, has_explicit_return_type=TRUE, return_type=STRING, argument_name_list=[x], signature=(ANY TYPE x) -> STRING, is_aggregate=TRUE, language="testlang", code=" return\n      \"presto!\" + s + '\n';\n    ")
+==
+
+# ANY TYPE parameters are allowed with IF NOT EXISTS and the LANGUAGE
+# clause.
+create aggregate function if not exists f(x any type)
+  returns string language testlang
+    as """ return
+      "presto!" + s + '\n';
+    """
+--
+CreateFunctionStmt(name_path=f, create_mode=CREATE_IF_NOT_EXISTS, has_explicit_return_type=TRUE, return_type=STRING, argument_name_list=[x], signature=(ANY TYPE x) -> STRING, is_aggregate=TRUE, language="testlang", code=" return\n      \"presto!\" + s + '\n';\n    ")
+==
+
+# ANY TYPE parameters are allowed with the OPTIONS clause and the LANGUAGE
+# clause.
+create aggregate function f(x any type)
+  returns string language testlang
+    as """ return
+      "presto!" + s + '\n';
+    """
+   options ( a=b, bruce=lee ) ;
+--
+CreateFunctionStmt
++-name_path=f
++-has_explicit_return_type=TRUE
++-return_type=STRING
++-argument_name_list=[x]
++-signature=(ANY TYPE x) -> STRING
++-is_aggregate=TRUE
++-language="testlang"
++-code=" return\n      \"presto!\" + s + '\n';\n    "
++-option_list=
+  +-a := Literal(type=STRING, value="b")
+  +-bruce := Literal(type=STRING, value="lee")
+==
+
+# The LANGUAGE clause is not allowed without the RETURNS <type> clause.
+create aggregate function f(x any type)
+  language testlang
+    as """ return
+      "presto!" + s + '\n';
+    """
+--
+ERROR: Non-SQL functions must specify a return type [at 1:1]
+create aggregate function f(x any type)
+^
+==
+
+# ANY TYPE parameters with type aliases are not supported yet.
+create aggregate function f(x any type as type_alias, y type_alias);
+--
+ERROR: Templated arguments with type aliases are not supported yet [at 1:40]
+create aggregate function f(x any type as type_alias, y type_alias);
+                                       ^
+==
+
+# Function with options that tries to reference a function parameter.
+create aggregate function f(x int64) returns int64 AS (COUNT(x))
+options ( a=x+x ) ;
+--
+ERROR: Unrecognized name: x [at 2:13]
+options ( a=x+x ) ;
+            ^
+==
+
+# Function with options where option value is a string that looks like a
+# function parameter name.
+#
+create aggregate function f(x int64) returns int64 AS (COUNT(x))
+options ( a=x ) ;
+--
+CreateFunctionStmt
++-name_path=f
++-has_explicit_return_type=TRUE
++-return_type=INT64
++-argument_name_list=[x]
++-signature=(INT64 x) -> INT64
++-is_aggregate=TRUE
++-language="SQL"
++-code="COUNT(x)"
++-aggregate_expression_list=
+| +-$agg1#1 :=
+|   +-AggregateFunctionCall(GoogleSQL:count(INT64) -> INT64)
+|     +-ArgumentRef(parse_location=61-62, type=INT64, name="x", argument_kind=AGGREGATE)
++-function_expression=
+| +-ColumnRef(type=INT64, column=$aggregate.$agg1#1)
++-option_list=
+  +-a := Literal(type=STRING, value="x")
+==
+
+# A SQL body is not allowed with the LANGUAGE clause.
+create aggregate function f(x any type, y int64)
+  returns string language testlang
+  as (count(x + y));
+--
+ERROR: Function cannot specify a LANGUAGE and include a SQL body [at 1:1]
+create aggregate function f(x any type, y int64)
+^
+==
+
+# GoogleSQL returns an error in the presence of ANY TYPE parameters if the
+# language feature is disabled.
+[default language_features=NONE,+CREATE_AGGREGATE_FUNCTION]
+create aggregate function f(x any type, y int64) as (count(x + y));
+--
+ERROR: Functions with templated arguments are not supported [at 1:31]
+create aggregate function f(x any type, y int64) as (count(x + y));
+                              ^
+==
+
+# We don't allow explicit LANGUAGE SQL.
+create aggregate function myfunc()
+  returns int64
+  language SQL
+    as """5""";
+--
+ERROR: To write SQL functions, omit the LANGUAGE clause and write the function body using 'AS (expression)' [at 3:12]
+  language SQL
+           ^
+==
+
+[language_features=NONE,+CREATE_AGGREGATE_FUNCTION,+ORDER_BY_IN_AGGREGATE]
+# Shows b/199542166
+CREATE TEMP AGGREGATE FUNCTION PackInOrder(foo STRING, delimiter STRING)
+RETURNS STRING
+AS (
+  ARRAY_TO_STRING(ARRAY_AGG(DISTINCT foo ORDER BY foo), delimiter)
+);
+--
+ERROR: An aggregate function that has both DISTINCT and ORDER BY arguments can only ORDER BY expressions that are arguments to the function [at 5:51]
+  ARRAY_TO_STRING(ARRAY_AGG(DISTINCT foo ORDER BY foo), delimiter)
+                                                  ^
+==
+
+[language_features=NONE,+CREATE_AGGREGATE_FUNCTION,+GROUPING_BUILTIN]
+CREATE TEMP AGGREGATE FUNCTION MyGroupingFunc(x STRING)
+RETURNS BOOL
+AS (
+  GROUPING(x)
+);
+--
+ERROR: GROUPING function is not supported in SQL function body. [at 1:1]
+CREATE TEMP AGGREGATE FUNCTION MyGroupingFunc(x STRING)
+^
+==
+
+[language_features=NONE,+CREATE_AGGREGATE_FUNCTION,+GROUPING_BUILTIN]
+CREATE TEMP AGGREGATE FUNCTION MyAggFunc(x STRING, y INT64, z int32 NOT AGGREGATE)
+RETURNS BOOL
+AS (
+  GROUPING(x) + MAX(y) + z
+);
+--
+ERROR: GROUPING function is not supported in SQL function body. [at 1:1]
+CREATE TEMP AGGREGATE FUNCTION MyAggFunc(x STRING, y INT64, z int32 NOT AGGRE...
+^

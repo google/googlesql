@@ -4,7 +4,7 @@
 
 # String functions
 
-ZetaSQL supports string functions.
+GoogleSQL supports string functions.
 These string functions work on two different values:
 `STRING` and `BYTES` data types. `STRING` values must be well-formed UTF-8.
 
@@ -29,18 +29,18 @@ canonical equivalence.
   <tbody>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/array_functions.md#array_to_string"><code>ARRAY_TO_STRING</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/array_functions.md#array_to_string"><code>ARRAY_TO_STRING</code></a>
 </td>
   <td>
     Produces a concatenation of the elements in an array as a
     <code>STRING</code> value.
-    <br>For more information, see <a href="https://github.com/google/zetasql/blob/master/docs/array_functions.md">Array functions</a>.
+    <br>For more information, see <a href="https://github.com/google/googlesql/blob/master/docs/array_functions.md">Array functions</a>.
 
   </td>
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/string_functions.md#ascii"><code>ASCII</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/string_functions.md#ascii"><code>ASCII</code></a>
 </td>
   <td>
     Gets the ASCII code for the first character or byte in a <code>STRING</code>
@@ -49,7 +49,7 @@ canonical equivalence.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/string_functions.md#byte_length"><code>BYTE_LENGTH</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/string_functions.md#byte_length"><code>BYTE_LENGTH</code></a>
 </td>
   <td>
     Gets the number of <code>BYTES</code> in a <code>STRING</code> or
@@ -58,7 +58,7 @@ canonical equivalence.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/string_functions.md#char_length"><code>CHAR_LENGTH</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/string_functions.md#char_length"><code>CHAR_LENGTH</code></a>
 </td>
   <td>
     Gets the number of characters in a <code>STRING</code> value.
@@ -66,7 +66,7 @@ canonical equivalence.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/string_functions.md#character_length"><code>CHARACTER_LENGTH</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/string_functions.md#character_length"><code>CHARACTER_LENGTH</code></a>
 </td>
   <td>
     Synonym for <code>CHAR_LENGTH</code>.
@@ -74,7 +74,7 @@ canonical equivalence.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/string_functions.md#chr"><code>CHR</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/string_functions.md#chr"><code>CHR</code></a>
 </td>
   <td>
     Converts a Unicode code point to a character.
@@ -83,7 +83,7 @@ canonical equivalence.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/string_functions.md#code_points_to_bytes"><code>CODE_POINTS_TO_BYTES</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/string_functions.md#code_points_to_bytes"><code>CODE_POINTS_TO_BYTES</code></a>
 </td>
   <td>
     Converts an array of extended ASCII code points to a
@@ -93,7 +93,7 @@ canonical equivalence.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/string_functions.md#code_points_to_string"><code>CODE_POINTS_TO_STRING</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/string_functions.md#code_points_to_string"><code>CODE_POINTS_TO_STRING</code></a>
 </td>
   <td>
     Converts an array of extended ASCII code points to a
@@ -103,7 +103,7 @@ canonical equivalence.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/string_functions.md#collate"><code>COLLATE</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/string_functions.md#collate"><code>COLLATE</code></a>
 </td>
   <td>
     Combines a <code>STRING</code> value and a collation specification into a
@@ -112,7 +112,7 @@ canonical equivalence.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/string_functions.md#concat"><code>CONCAT</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/string_functions.md#concat"><code>CONCAT</code></a>
 </td>
   <td>
     Concatenates one or more <code>STRING</code> or <code>BYTES</code>
@@ -121,7 +121,7 @@ canonical equivalence.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/string_functions.md#edit_distance"><code>EDIT_DISTANCE</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/string_functions.md#edit_distance"><code>EDIT_DISTANCE</code></a>
 </td>
   <td>
     Computes the Levenshtein distance between two <code>STRING</code>
@@ -130,7 +130,7 @@ canonical equivalence.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/string_functions.md#ends_with"><code>ENDS_WITH</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/string_functions.md#ends_with"><code>ENDS_WITH</code></a>
 </td>
   <td>
     Checks if a <code>STRING</code> or <code>BYTES</code> value is the suffix
@@ -139,7 +139,7 @@ canonical equivalence.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/string_functions.md#format_string"><code>FORMAT</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/string_functions.md#format_string"><code>FORMAT</code></a>
 </td>
   <td>
     Formats data and produces the results as a <code>STRING</code> value.
@@ -147,7 +147,7 @@ canonical equivalence.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/string_functions.md#from_base32"><code>FROM_BASE32</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/string_functions.md#from_base32"><code>FROM_BASE32</code></a>
 </td>
   <td>
     Converts a base32-encoded <code>STRING</code> value into a
@@ -157,7 +157,7 @@ canonical equivalence.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/string_functions.md#from_base64"><code>FROM_BASE64</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/string_functions.md#from_base64"><code>FROM_BASE64</code></a>
 </td>
   <td>
     Converts a base64-encoded <code>STRING</code> value into a
@@ -168,7 +168,7 @@ canonical equivalence.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/string_functions.md#from_hex"><code>FROM_HEX</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/string_functions.md#from_hex"><code>FROM_HEX</code></a>
 </td>
   <td>
     Converts a hexadecimal-encoded <code>STRING</code> value into a
@@ -178,7 +178,7 @@ canonical equivalence.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/string_functions.md#initcap"><code>INITCAP</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/string_functions.md#initcap"><code>INITCAP</code></a>
 </td>
   <td>
     Formats a <code>STRING</code> as proper case, which means that the first
@@ -187,7 +187,7 @@ canonical equivalence.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/string_functions.md#instr"><code>INSTR</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/string_functions.md#instr"><code>INSTR</code></a>
 </td>
   <td>
     Finds the position of a subvalue inside another value, optionally starting
@@ -196,28 +196,28 @@ canonical equivalence.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/json_functions.md#lax_string"><code>LAX_STRING</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/json_functions.md#lax_string"><code>LAX_STRING</code></a>
 </td>
   <td>
     Attempts to convert a JSON value to a SQL <code>STRING</code> value.
-    <br>For more information, see <a href="https://github.com/google/zetasql/blob/master/docs/json_functions.md">JSON functions</a>.
+    <br>For more information, see <a href="https://github.com/google/googlesql/blob/master/docs/json_functions.md">JSON functions</a>.
 
   </td>
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/json_functions.md#lax_string_array"><code>LAX_STRING_ARRAY</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/json_functions.md#lax_string_array"><code>LAX_STRING_ARRAY</code></a>
 </td>
   <td>
     Attempts to convert a JSON value to a
     SQL <code>ARRAY&lt;STRING&gt;</code>value.
-    <br>For more information, see <a href="https://github.com/google/zetasql/blob/master/docs/json_functions.md">JSON functions</a>.
+    <br>For more information, see <a href="https://github.com/google/googlesql/blob/master/docs/json_functions.md">JSON functions</a>.
 
   </td>
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/string_functions.md#left"><code>LEFT</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/string_functions.md#left"><code>LEFT</code></a>
 </td>
   <td>
     Gets the specified leftmost portion from a <code>STRING</code> or
@@ -226,7 +226,7 @@ canonical equivalence.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/string_functions.md#length"><code>LENGTH</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/string_functions.md#length"><code>LENGTH</code></a>
 </td>
   <td>
     Gets the length of a <code>STRING</code> or <code>BYTES</code> value.
@@ -234,7 +234,7 @@ canonical equivalence.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/string_functions.md#lower"><code>LOWER</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/string_functions.md#lower"><code>LOWER</code></a>
 </td>
   <td>
     Formats alphabetic characters in a <code>STRING</code> value as
@@ -246,7 +246,7 @@ canonical equivalence.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/string_functions.md#lpad"><code>LPAD</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/string_functions.md#lpad"><code>LPAD</code></a>
 </td>
   <td>
     Prepends a <code>STRING</code> or <code>BYTES</code> value with a pattern.
@@ -254,7 +254,7 @@ canonical equivalence.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/string_functions.md#ltrim"><code>LTRIM</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/string_functions.md#ltrim"><code>LTRIM</code></a>
 </td>
   <td>
     Identical to the <code>TRIM</code> function, but only removes leading
@@ -263,7 +263,7 @@ canonical equivalence.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/string_functions.md#normalize"><code>NORMALIZE</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/string_functions.md#normalize"><code>NORMALIZE</code></a>
 </td>
   <td>
     Case-sensitively normalizes the characters in a <code>STRING</code> value.
@@ -271,7 +271,7 @@ canonical equivalence.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/string_functions.md#normalize_and_casefold"><code>NORMALIZE_AND_CASEFOLD</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/string_functions.md#normalize_and_casefold"><code>NORMALIZE_AND_CASEFOLD</code></a>
 </td>
   <td>
     Case-insensitively normalizes the characters in a <code>STRING</code> value.
@@ -279,7 +279,7 @@ canonical equivalence.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/string_functions.md#octet_length"><code>OCTET_LENGTH</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/string_functions.md#octet_length"><code>OCTET_LENGTH</code></a>
 </td>
   <td>
     Alias for <code>BYTE_LENGTH</code>.
@@ -287,7 +287,7 @@ canonical equivalence.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/string_functions.md#regexp_contains"><code>REGEXP_CONTAINS</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/string_functions.md#regexp_contains"><code>REGEXP_CONTAINS</code></a>
 </td>
   <td>
     Checks if a value is a partial match for a regular expression.
@@ -295,7 +295,7 @@ canonical equivalence.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/string_functions.md#regexp_extract"><code>REGEXP_EXTRACT</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/string_functions.md#regexp_extract"><code>REGEXP_EXTRACT</code></a>
 </td>
   <td>
     Produces a substring that matches a regular expression.
@@ -303,7 +303,7 @@ canonical equivalence.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/string_functions.md#regexp_extract_groups"><code>REGEXP_EXTRACT_GROUPS</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/string_functions.md#regexp_extract_groups"><code>REGEXP_EXTRACT_GROUPS</code></a>
 </td>
   <td>
     Produces substrings that match multiple capturing groups in a regular expression.
@@ -311,7 +311,7 @@ canonical equivalence.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/string_functions.md#regexp_extract_all"><code>REGEXP_EXTRACT_ALL</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/string_functions.md#regexp_extract_all"><code>REGEXP_EXTRACT_ALL</code></a>
 </td>
   <td>
     Produces an array of all substrings that match a
@@ -320,7 +320,7 @@ canonical equivalence.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/string_functions.md#regexp_instr"><code>REGEXP_INSTR</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/string_functions.md#regexp_instr"><code>REGEXP_INSTR</code></a>
 </td>
   <td>
     Finds the position of a regular expression match in a value, optionally
@@ -329,7 +329,7 @@ canonical equivalence.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/string_functions.md#regexp_match"><code>REGEXP_MATCH</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/string_functions.md#regexp_match"><code>REGEXP_MATCH</code></a>
 </td>
   <td>
     (Deprecated) Checks if a value is a full match for a regular expression.
@@ -337,7 +337,7 @@ canonical equivalence.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/string_functions.md#regexp_replace"><code>REGEXP_REPLACE</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/string_functions.md#regexp_replace"><code>REGEXP_REPLACE</code></a>
 </td>
   <td>
     Produces a <code>STRING</code> value where all substrings that match a
@@ -346,7 +346,7 @@ canonical equivalence.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/string_functions.md#regexp_substr"><code>REGEXP_SUBSTR</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/string_functions.md#regexp_substr"><code>REGEXP_SUBSTR</code></a>
 </td>
   <td>
     Synonym for <code>REGEXP_EXTRACT</code>.
@@ -354,7 +354,7 @@ canonical equivalence.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/string_functions.md#repeat"><code>REPEAT</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/string_functions.md#repeat"><code>REPEAT</code></a>
 </td>
   <td>
     Produces a <code>STRING</code> or <code>BYTES</code> value that consists of
@@ -363,7 +363,7 @@ canonical equivalence.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/string_functions.md#replace"><code>REPLACE</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/string_functions.md#replace"><code>REPLACE</code></a>
 </td>
   <td>
     Replaces all occurrences of a pattern with another pattern in a
@@ -372,7 +372,7 @@ canonical equivalence.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/string_functions.md#reverse"><code>REVERSE</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/string_functions.md#reverse"><code>REVERSE</code></a>
 </td>
   <td>
     Reverses a <code>STRING</code> or <code>BYTES</code> value.
@@ -380,7 +380,7 @@ canonical equivalence.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/string_functions.md#right"><code>RIGHT</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/string_functions.md#right"><code>RIGHT</code></a>
 </td>
   <td>
     Gets the specified rightmost portion from a <code>STRING</code> or
@@ -389,7 +389,7 @@ canonical equivalence.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/string_functions.md#rpad"><code>RPAD</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/string_functions.md#rpad"><code>RPAD</code></a>
 </td>
   <td>
     Appends a <code>STRING</code> or <code>BYTES</code> value with a pattern.
@@ -397,7 +397,7 @@ canonical equivalence.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/string_functions.md#rtrim"><code>RTRIM</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/string_functions.md#rtrim"><code>RTRIM</code></a>
 </td>
   <td>
     Identical to the <code>TRIM</code> function, but only removes trailing
@@ -406,7 +406,7 @@ canonical equivalence.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/string_functions.md#safe_convert_bytes_to_string"><code>SAFE_CONVERT_BYTES_TO_STRING</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/string_functions.md#safe_convert_bytes_to_string"><code>SAFE_CONVERT_BYTES_TO_STRING</code></a>
 </td>
   <td>
     Converts a <code>BYTES</code> value to a <code>STRING</code> value and
@@ -417,7 +417,7 @@ canonical equivalence.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/string_functions.md#soundex"><code>SOUNDEX</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/string_functions.md#soundex"><code>SOUNDEX</code></a>
 </td>
   <td>
     Gets the Soundex codes for words in a <code>STRING</code> value.
@@ -425,7 +425,7 @@ canonical equivalence.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/string_functions.md#split"><code>SPLIT</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/string_functions.md#split"><code>SPLIT</code></a>
 </td>
   <td>
     Splits a <code>STRING</code> or <code>BYTES</code> value, using a delimiter.
@@ -433,7 +433,7 @@ canonical equivalence.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/string_functions.md#split_substr"><code>SPLIT_SUBSTR</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/string_functions.md#split_substr"><code>SPLIT_SUBSTR</code></a>
 </td>
   <td>
     Returns the substring from an input string that's determined by a delimiter, a
@@ -443,7 +443,7 @@ canonical equivalence.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/string_functions.md#starts_with"><code>STARTS_WITH</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/string_functions.md#starts_with"><code>STARTS_WITH</code></a>
 </td>
   <td>
     Checks if a <code>STRING</code> or <code>BYTES</code> value is a
@@ -452,49 +452,49 @@ canonical equivalence.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/json_functions.md#string_for_json"><code>STRING</code> (JSON)</a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/json_functions.md#string_for_json"><code>STRING</code> (JSON)</a>
 </td>
   <td>
     Converts a JSON string to a SQL <code>STRING</code> value.
-    <br>For more information, see <a href="https://github.com/google/zetasql/blob/master/docs/json_functions.md">JSON functions</a>.
+    <br>For more information, see <a href="https://github.com/google/googlesql/blob/master/docs/json_functions.md">JSON functions</a>.
 
   </td>
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/json_functions.md#string_array_for_json"><code>STRING_ARRAY</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/json_functions.md#string_array_for_json"><code>STRING_ARRAY</code></a>
 </td>
   <td>
     Converts a JSON array of strings to a SQL <code>ARRAY&lt;STRING&gt;</code>
     value.
-    <br>For more information, see <a href="https://github.com/google/zetasql/blob/master/docs/json_functions.md">JSON functions</a>.
+    <br>For more information, see <a href="https://github.com/google/googlesql/blob/master/docs/json_functions.md">JSON functions</a>.
 
   </td>
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/timestamp_functions.md#string"><code>STRING</code> (Timestamp)</a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/timestamp_functions.md#string"><code>STRING</code> (Timestamp)</a>
 </td>
   <td>
     Converts a <code>TIMESTAMP</code> value to a <code>STRING</code> value.
-    <br>For more information, see <a href="https://github.com/google/zetasql/blob/master/docs/timestamp_functions.md">Timestamp functions</a>.
+    <br>For more information, see <a href="https://github.com/google/googlesql/blob/master/docs/timestamp_functions.md">Timestamp functions</a>.
 
   </td>
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/aggregate_functions.md#string_agg"><code>STRING_AGG</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/aggregate_functions.md#string_agg"><code>STRING_AGG</code></a>
 </td>
   <td>
     Concatenates non-<code>NULL</code> <code>STRING</code> or
     <code>BYTES</code> values.
-    <br>For more information, see <a href="https://github.com/google/zetasql/blob/master/docs/aggregate_functions.md">Aggregate functions</a>.
+    <br>For more information, see <a href="https://github.com/google/googlesql/blob/master/docs/aggregate_functions.md">Aggregate functions</a>.
 
   </td>
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/string_functions.md#strpos"><code>STRPOS</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/string_functions.md#strpos"><code>STRPOS</code></a>
 </td>
   <td>
     Finds the position of the first occurrence of a subvalue inside another
@@ -503,7 +503,7 @@ canonical equivalence.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/string_functions.md#substr"><code>SUBSTR</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/string_functions.md#substr"><code>SUBSTR</code></a>
 </td>
   <td>
     Gets a portion of a <code>STRING</code> or <code>BYTES</code> value.
@@ -511,13 +511,13 @@ canonical equivalence.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/string_functions.md#substring"><code>SUBSTRING</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/string_functions.md#substring"><code>SUBSTRING</code></a>
 </td>
   <td>Alias for <code>SUBSTR</code></td>
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/string_functions.md#to_base32"><code>TO_BASE32</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/string_functions.md#to_base32"><code>TO_BASE32</code></a>
 </td>
   <td>
     Converts a <code>BYTES</code> value to a
@@ -527,7 +527,7 @@ canonical equivalence.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/string_functions.md#to_base64"><code>TO_BASE64</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/string_functions.md#to_base64"><code>TO_BASE64</code></a>
 </td>
   <td>
     Converts a <code>BYTES</code> value to a
@@ -537,7 +537,7 @@ canonical equivalence.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/string_functions.md#to_code_points"><code>TO_CODE_POINTS</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/string_functions.md#to_code_points"><code>TO_CODE_POINTS</code></a>
 </td>
   <td>
     Converts a <code>STRING</code> or <code>BYTES</code> value into an array of
@@ -547,7 +547,7 @@ canonical equivalence.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/string_functions.md#to_hex"><code>TO_HEX</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/string_functions.md#to_hex"><code>TO_HEX</code></a>
 </td>
   <td>
     Converts a <code>BYTES</code> value to a
@@ -557,7 +557,7 @@ canonical equivalence.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/string_functions.md#translate"><code>TRANSLATE</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/string_functions.md#translate"><code>TRANSLATE</code></a>
 </td>
   <td>
     Within a value, replaces each source character with the corresponding
@@ -566,7 +566,7 @@ canonical equivalence.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/string_functions.md#trim"><code>TRIM</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/string_functions.md#trim"><code>TRIM</code></a>
 </td>
   <td>
     Removes the specified leading and trailing Unicode code points or bytes
@@ -575,7 +575,7 @@ canonical equivalence.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/string_functions.md#unicode"><code>UNICODE</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/string_functions.md#unicode"><code>UNICODE</code></a>
 </td>
   <td>
     Gets the Unicode code point for the first character in a value.
@@ -583,7 +583,7 @@ canonical equivalence.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/string_functions.md#upper"><code>UPPER</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/string_functions.md#upper"><code>UPPER</code></a>
 </td>
   <td>
     Formats alphabetic characters in a <code>STRING</code> value as
@@ -599,7 +599,7 @@ canonical equivalence.
 
 ## `ASCII`
 
-```zetasql
+```googlesql
 ASCII(value)
 ```
 
@@ -615,7 +615,7 @@ or byte.
 
 **Examples**
 
-```zetasql
+```googlesql
 SELECT ASCII('abcd') as A, ASCII('a') as B, ASCII('') as C, ASCII(NULL) as D;
 
 /*-------+-------+-------+-------+
@@ -627,7 +627,7 @@ SELECT ASCII('abcd') as A, ASCII('a') as B, ASCII('') as C, ASCII(NULL) as D;
 
 ## `BYTE_LENGTH`
 
-```zetasql
+```googlesql
 BYTE_LENGTH(value)
 ```
 
@@ -642,7 +642,7 @@ regardless of whether the value is a `STRING` or `BYTES` type.
 
 **Examples**
 
-```zetasql
+```googlesql
 SELECT BYTE_LENGTH('абвгд') AS string_example;
 
 /*----------------+
@@ -652,7 +652,7 @@ SELECT BYTE_LENGTH('абвгд') AS string_example;
  +----------------*/
 ```
 
-```zetasql
+```googlesql
 SELECT BYTE_LENGTH(b'абвгд') AS bytes_example;
 
 /*----------------+
@@ -664,7 +664,7 @@ SELECT BYTE_LENGTH(b'абвгд') AS bytes_example;
 
 ## `CHAR_LENGTH`
 
-```zetasql
+```googlesql
 CHAR_LENGTH(value)
 ```
 
@@ -678,7 +678,7 @@ Gets the number of characters in a `STRING` value.
 
 **Examples**
 
-```zetasql
+```googlesql
 SELECT CHAR_LENGTH('абвгд') AS char_length;
 
 /*-------------+
@@ -690,7 +690,7 @@ SELECT CHAR_LENGTH('абвгд') AS char_length;
 
 ## `CHARACTER_LENGTH`
 
-```zetasql
+```googlesql
 CHARACTER_LENGTH(value)
 ```
 
@@ -704,7 +704,7 @@ Synonym for [CHAR_LENGTH][string-link-to-char-length].
 
 **Examples**
 
-```zetasql
+```googlesql
 SELECT
   'абвгд' AS characters,
   CHARACTER_LENGTH('абвгд') AS char_length_example
@@ -720,7 +720,7 @@ SELECT
 
 ## `CHR`
 
-```zetasql
+```googlesql
 CHR(value)
 ```
 
@@ -741,7 +741,7 @@ To work with an array of Unicode code points, see
 
 **Examples**
 
-```zetasql
+```googlesql
 SELECT CHR(65) AS A, CHR(255) AS B, CHR(513) AS C, CHR(1024)  AS D;
 
 /*-------+-------+-------+-------+
@@ -751,7 +751,7 @@ SELECT CHR(65) AS A, CHR(255) AS B, CHR(513) AS C, CHR(1024)  AS D;
  +-------+-------+-------+-------*/
 ```
 
-```zetasql
+```googlesql
 SELECT CHR(97) AS A, CHR(0xF9B5) AS B, CHR(0) AS C, CHR(NULL) AS D;
 
 /*-------+-------+-------+-------+
@@ -767,7 +767,7 @@ SELECT CHR(97) AS A, CHR(0xF9B5) AS B, CHR(0) AS C, CHR(NULL) AS D;
 
 ## `CODE_POINTS_TO_BYTES`
 
-```zetasql
+```googlesql
 CODE_POINTS_TO_BYTES(ascii_code_points)
 ```
 
@@ -788,7 +788,7 @@ To convert from `BYTES` to an array of code points, see
 
 The following is a basic example using `CODE_POINTS_TO_BYTES`.
 
-```zetasql
+```googlesql
 SELECT CODE_POINTS_TO_BYTES([65, 98, 67, 100]) AS bytes;
 
 /*----------+
@@ -801,7 +801,7 @@ SELECT CODE_POINTS_TO_BYTES([65, 98, 67, 100]) AS bytes;
 The following example uses a rotate-by-13 places (ROT13) algorithm to encode a
 string.
 
-```zetasql
+```googlesql
 SELECT CODE_POINTS_TO_BYTES(ARRAY_AGG(
   (SELECT
       CASE
@@ -831,7 +831,7 @@ FROM UNNEST(TO_CODE_POINTS(b'Test String!')) code WITH OFFSET;
 
 ## `CODE_POINTS_TO_STRING`
 
-```zetasql
+```googlesql
 CODE_POINTS_TO_STRING(unicode_code_points)
 ```
 
@@ -851,7 +851,7 @@ To convert from a string to an array of code points, see
 
 The following are basic examples using `CODE_POINTS_TO_STRING`.
 
-```zetasql
+```googlesql
 SELECT CODE_POINTS_TO_STRING([65, 255, 513, 1024]) AS string;
 
 /*--------+
@@ -861,7 +861,7 @@ SELECT CODE_POINTS_TO_STRING([65, 255, 513, 1024]) AS string;
  +--------*/
 ```
 
-```zetasql
+```googlesql
 SELECT CODE_POINTS_TO_STRING([97, 0, 0xF9B5]) AS string;
 
 /*--------+
@@ -871,7 +871,7 @@ SELECT CODE_POINTS_TO_STRING([97, 0, 0xF9B5]) AS string;
  +--------*/
 ```
 
-```zetasql
+```googlesql
 SELECT CODE_POINTS_TO_STRING([65, 255, NULL, 1024]) AS string;
 
 /*--------+
@@ -883,7 +883,7 @@ SELECT CODE_POINTS_TO_STRING([65, 255, NULL, 1024]) AS string;
 
 The following example computes the frequency of letters in a set of words.
 
-```zetasql
+```googlesql
 WITH Words AS (
   SELECT word
   FROM UNNEST(['foo', 'bar', 'baz', 'giraffe', 'llama']) AS word
@@ -919,7 +919,7 @@ ORDER BY 2 DESC;
 
 ## `COLLATE`
 
-```zetasql
+```googlesql
 COLLATE(value, collate_specification)
 ```
 
@@ -944,7 +944,7 @@ and sorted. To learn more, see
 In this example, the weight of `a` is less than the weight of `Z`. This
 is because the collate specification, `und:ci` assigns more weight to `Z`.
 
-```zetasql
+```googlesql
 WITH Words AS (
   SELECT
     COLLATE('a', 'und:ci') AS char1,
@@ -963,7 +963,7 @@ FROM Words;
 In this example, the weight of `a` is greater than the weight of `Z`. This
 is because the default collate specification assigns more weight to `a`.
 
-```zetasql
+```googlesql
 WITH Words AS (
   SELECT
     'a' AS char1,
@@ -979,13 +979,13 @@ FROM Words;
  +----------------*/
 ```
 
-[link-collation-spec]: https://github.com/google/zetasql/blob/master/docs/collation-concepts.md#collate_spec_details
+[link-collation-spec]: https://github.com/google/googlesql/blob/master/docs/collation-concepts.md#collate_spec_details
 
-[link-collation-concepts]: https://github.com/google/zetasql/blob/master/docs/collation-concepts.md
+[link-collation-concepts]: https://github.com/google/googlesql/blob/master/docs/collation-concepts.md
 
 ## `CONCAT`
 
-```zetasql
+```googlesql
 CONCAT(value1[, ...])
 ```
 
@@ -1006,7 +1006,7 @@ values into a string.
 
 **Examples**
 
-```zetasql
+```googlesql
 SELECT CONCAT('T.P.', ' ', 'Bar') as author;
 
 /*---------------------+
@@ -1016,7 +1016,7 @@ SELECT CONCAT('T.P.', ' ', 'Bar') as author;
  +---------------------*/
 ```
 
-```zetasql
+```googlesql
 SELECT CONCAT('Summer', ' ', 1923) as release_date;
 
 /*---------------------+
@@ -1026,7 +1026,7 @@ SELECT CONCAT('Summer', ' ', 1923) as release_date;
  +---------------------*/
 ```
 
-```zetasql
+```googlesql
 
 With Employees AS
   (SELECT
@@ -1055,11 +1055,11 @@ FROM Employees;
  +---------------------*/
 ```
 
-[string-link-to-operators]: https://github.com/google/zetasql/blob/master/docs/operators.md
+[string-link-to-operators]: https://github.com/google/googlesql/blob/master/docs/operators.md
 
 ## `EDIT_DISTANCE`
 
-```zetasql
+```googlesql
 EDIT_DISTANCE(
   value1,
   value2,
@@ -1098,7 +1098,7 @@ You can only compare values of the same type. Otherwise, an error is produced.
 
 In the following example, the first character in both strings is different:
 
-```zetasql
+```googlesql
 SELECT EDIT_DISTANCE('a', 'b') AS results;
 
 /*---------+
@@ -1111,7 +1111,7 @@ SELECT EDIT_DISTANCE('a', 'b') AS results;
 In the following example, the first and second characters in both strings are
 different:
 
-```zetasql
+```googlesql
 SELECT EDIT_DISTANCE('aa', 'b') AS results;
 
 /*---------+
@@ -1124,7 +1124,7 @@ SELECT EDIT_DISTANCE('aa', 'b') AS results;
 In the following example, only the first character in both strings is
 different:
 
-```zetasql
+```googlesql
 SELECT EDIT_DISTANCE('aa', 'ba') AS results;
 
 /*---------+
@@ -1138,7 +1138,7 @@ In the following example, the last six characters are different, but because
 the maximum distance is `2`, this function exits early and returns `2`, the
 maximum distance:
 
-```zetasql
+```googlesql
 SELECT EDIT_DISTANCE('abcdefg', 'a', max_distance => 2) AS results;
 
 /*---------+
@@ -1152,7 +1152,7 @@ SELECT EDIT_DISTANCE('abcdefg', 'a', max_distance => 2) AS results;
 
 ## `ENDS_WITH`
 
-```zetasql
+```googlesql
 ENDS_WITH(value, suffix)
 ```
 
@@ -1163,7 +1163,7 @@ is a suffix of `value`.
 
 This function supports specifying [collation][collation].
 
-[collation]: https://github.com/google/zetasql/blob/master/docs/collation-concepts.md
+[collation]: https://github.com/google/googlesql/blob/master/docs/collation-concepts.md
 
 **Return type**
 
@@ -1171,7 +1171,7 @@ This function supports specifying [collation][collation].
 
 **Examples**
 
-```zetasql
+```googlesql
 SELECT ENDS_WITH('apple', 'e') as example
 
 /*---------+
@@ -1184,7 +1184,7 @@ SELECT ENDS_WITH('apple', 'e') as example
 ## `FORMAT` 
 <a id="format_string"></a>
 
-```zetasql
+```googlesql
 FORMAT(format_string_expression, data_type_expression[, ...])
 ```
 
@@ -1200,7 +1200,7 @@ FORMAT(format_string_expression, data_type_expression[, ...])
   and a signed integer argument. If the number of arguments related to the
   format specifiers isn't the same as the number of arguments, an error occurs.
 + `data_type_expression`: The value to format as a string. This can be any
-  ZetaSQL data type.
+  GoogleSQL data type.
 
 **Return type**
 
@@ -1266,7 +1266,7 @@ If custom formatting is necessary for a type, you must first format it using
 type-specific format functions, such as `FORMAT_DATE()` or `FORMAT_TIMESTAMP()`.
 For example:
 
-```zetasql
+```googlesql
 SELECT FORMAT('date: %s!', FORMAT_DATE('%B %d, %Y', date '2015-01-02'));
 ```
 
@@ -1527,7 +1527,7 @@ month: 10
  <tr>
     <td><code>T</code></td>
     <td>
-      Produces a string that's a valid ZetaSQL constant with a
+      Produces a string that's a valid GoogleSQL constant with a
       similar type to the value's type (maybe wider, or maybe string).
       See <a href="#t_and_t_behavior">%t and %T behavior</a>.
     </td>
@@ -1920,11 +1920,11 @@ If a format specifier is invalid, or isn't compatible with the related
 argument type, or the wrong number or arguments are provided, then an error is
 produced. For example, the following `<format_string>` expressions are invalid:
 
-```zetasql
+```googlesql
 FORMAT('%s', 1)
 ```
 
-```zetasql
+```googlesql
 FORMAT('%')
 ```
 
@@ -1943,13 +1943,13 @@ However, there are some exceptions: if the format specifier is %t or %T
 semantics), a `NULL` value produces 'NULL' (without the quotes) in the result
 `STRING`. For example, the function:
 
-```zetasql
+```googlesql
 FORMAT('00-%t-00', NULL_expression);
 ```
 
 Returns
 
-```zetasql
+```googlesql
 00-NULL-00
 ```
 
@@ -1961,8 +1961,8 @@ Returns
 When an argument has one of those values, the result of the format specifiers
 `%f`, `%F`, `%e`, `%E`, `%g`, `%G`, and `%t` are `inf`, `-inf`, or `nan`
 (or the same in uppercase) as appropriate. This is consistent with how
-ZetaSQL casts these values to `STRING`. For `%T`,
-ZetaSQL returns quoted strings for
+GoogleSQL casts these values to `STRING`. For `%T`,
+GoogleSQL returns quoted strings for
 `DOUBLE` values that don't have non-string literal
 representations.
 
@@ -1990,7 +1990,7 @@ representations.
 
 ## `FROM_BASE32`
 
-```zetasql
+```googlesql
 FROM_BASE32(string_expr)
 ```
 
@@ -2005,7 +2005,7 @@ Converts the base32-encoded input `string_expr` into `BYTES` format. To convert
 
 **Example**
 
-```zetasql
+```googlesql
 SELECT FROM_BASE32('MFRGGZDF74======') AS byte_data;
 
 /*-----------+
@@ -2019,7 +2019,7 @@ SELECT FROM_BASE32('MFRGGZDF74======') AS byte_data;
 
 ## `FROM_BASE64`
 
-```zetasql
+```googlesql
 FROM_BASE64(string_expr)
 ```
 
@@ -2041,7 +2041,7 @@ function expects the alphabet `[A-Za-z0-9+/=]`.
 
 **Example**
 
-```zetasql
+```googlesql
 SELECT FROM_BASE64('/+A=') AS byte_data;
 
 /*-----------+
@@ -2057,7 +2057,7 @@ compose `FROM_BASE64` with the `REPLACE` function. For instance, the
 uses `-_=` as the last characters rather than `+/=`. To decode a
 `base64url`-encoded string, replace `-` and `_` with `+` and `/` respectively.
 
-```zetasql
+```googlesql
 SELECT FROM_BASE64(REPLACE(REPLACE('_-A=', '-', '+'), '_', '/')) AS binary;
 
 /*-----------+
@@ -2073,7 +2073,7 @@ SELECT FROM_BASE64(REPLACE(REPLACE('_-A=', '-', '+'), '_', '/')) AS binary;
 
 ## `FROM_HEX`
 
-```zetasql
+```googlesql
 FROM_HEX(string)
 ```
 
@@ -2092,7 +2092,7 @@ input has an additional leading `0`. To convert `BYTES` to a hexadecimal-encoded
 
 **Example**
 
-```zetasql
+```googlesql
 WITH Input AS (
   SELECT '00010203aaeeefff' AS hex_str UNION ALL
   SELECT '0AF' UNION ALL
@@ -2114,7 +2114,7 @@ FROM Input;
 
 ## `INITCAP`
 
-```zetasql
+```googlesql
 INITCAP(value[, delimiters])
 ```
 
@@ -2137,7 +2137,7 @@ If `value` or `delimiters` is `NULL`, the function returns `NULL`.
 
 **Examples**
 
-```zetasql
+```googlesql
 SELECT
   'Hello World-everyone!' AS value,
   INITCAP('Hello World-everyone!') AS initcap_value
@@ -2149,7 +2149,7 @@ SELECT
  +-------------------------------+-------------------------------*/
 ```
 
-```zetasql
+```googlesql
 SELECT
   'Apples1oranges2pears' as value,
   '12' AS delimiters,
@@ -2164,7 +2164,7 @@ SELECT
 
 ## `INSTR`
 
-```zetasql
+```googlesql
 INSTR(value, subvalue[, position[, occurrence]])
 ```
 
@@ -2188,7 +2188,7 @@ For `occurrence` > `1`, the function includes overlapping occurrences.
 
 This function supports specifying [collation][collation].
 
-[collation]: https://github.com/google/zetasql/blob/master/docs/collation-concepts.md
+[collation]: https://github.com/google/googlesql/blob/master/docs/collation-concepts.md
 
 Returns `0` if:
 
@@ -2211,7 +2211,7 @@ Returns an error if:
 
 **Examples**
 
-```zetasql
+```googlesql
 SELECT
   'banana' AS value, 'an' AS subvalue, 1 AS position, 1 AS occurrence,
   INSTR('banana', 'an', 1, 1) AS instr;
@@ -2223,7 +2223,7 @@ SELECT
  +--------------+--------------+----------+------------+-------*/
 ```
 
-```zetasql
+```googlesql
 SELECT
   'banana' AS value, 'an' AS subvalue, 1 AS position, 2 AS occurrence,
   INSTR('banana', 'an', 1, 2) AS instr;
@@ -2235,7 +2235,7 @@ SELECT
  +--------------+--------------+----------+------------+-------*/
 ```
 
-```zetasql
+```googlesql
 SELECT
   'banana' AS value, 'an' AS subvalue, 1 AS position, 3 AS occurrence,
   INSTR('banana', 'an', 1, 3) AS instr;
@@ -2247,7 +2247,7 @@ SELECT
  +--------------+--------------+----------+------------+-------*/
 ```
 
-```zetasql
+```googlesql
 SELECT
   'banana' AS value, 'an' AS subvalue, 3 AS position, 1 AS occurrence,
   INSTR('banana', 'an', 3, 1) AS instr;
@@ -2259,7 +2259,7 @@ SELECT
  +--------------+--------------+----------+------------+-------*/
 ```
 
-```zetasql
+```googlesql
 SELECT
   'banana' AS value, 'an' AS subvalue, -1 AS position, 1 AS occurrence,
   INSTR('banana', 'an', -1, 1) AS instr;
@@ -2271,7 +2271,7 @@ SELECT
  +--------------+--------------+----------+------------+-------*/
 ```
 
-```zetasql
+```googlesql
 SELECT
   'banana' AS value, 'an' AS subvalue, -3 AS position, 1 AS occurrence,
   INSTR('banana', 'an', -3, 1) AS instr;
@@ -2283,7 +2283,7 @@ SELECT
  +--------------+--------------+----------+------------+-------*/
 ```
 
-```zetasql
+```googlesql
 SELECT
   'banana' AS value, 'ann' AS subvalue, 1 AS position, 1 AS occurrence,
   INSTR('banana', 'ann', 1, 1) AS instr;
@@ -2295,7 +2295,7 @@ SELECT
  +--------------+--------------+----------+------------+-------*/
 ```
 
-```zetasql
+```googlesql
 SELECT
   'helloooo' AS value, 'oo' AS subvalue, 1 AS position, 1 AS occurrence,
   INSTR('helloooo', 'oo', 1, 1) AS instr;
@@ -2307,7 +2307,7 @@ SELECT
  +--------------+--------------+----------+------------+-------*/
 ```
 
-```zetasql
+```googlesql
 SELECT
   'helloooo' AS value, 'oo' AS subvalue, 1 AS position, 2 AS occurrence,
   INSTR('helloooo', 'oo', 1, 2) AS instr;
@@ -2321,7 +2321,7 @@ SELECT
 
 ## `LEFT`
 
-```zetasql
+```googlesql
 LEFT(value, length)
 ```
 
@@ -2345,7 +2345,7 @@ will be returned.
 
 **Examples**
 
-```zetasql
+```googlesql
 SELECT LEFT('banana', 3) AS results
 
 /*---------+
@@ -2355,7 +2355,7 @@ SELECT LEFT('banana', 3) AS results
  +---------*/
 ```
 
-```zetasql
+```googlesql
 SELECT LEFT(b'\xab\xcd\xef\xaa\xbb', 3) AS results
 
 /*--------------+
@@ -2367,7 +2367,7 @@ SELECT LEFT(b'\xab\xcd\xef\xaa\xbb', 3) AS results
 
 ## `LENGTH`
 
-```zetasql
+```googlesql
 LENGTH(value)
 ```
 
@@ -2383,7 +2383,7 @@ argument.
 
 **Examples**
 
-```zetasql
+```googlesql
 SELECT
   LENGTH('абвгд') AS string_example,
   LENGTH(CAST('абвгд' AS BYTES)) AS bytes_example;
@@ -2397,7 +2397,7 @@ SELECT
 
 ## `LOWER`
 
-```zetasql
+```googlesql
 LOWER(value)
 ```
 
@@ -2418,7 +2418,7 @@ greater than 127 left intact.
 
 **Examples**
 
-```zetasql
+```googlesql
 SELECT
   LOWER('FOO BAR BAZ') AS example
 FROM items;
@@ -2434,7 +2434,7 @@ FROM items;
 
 ## `LPAD`
 
-```zetasql
+```googlesql
 LPAD(original_value, return_length[, pattern])
 ```
 
@@ -2468,7 +2468,7 @@ This function returns an error if:
 
 **Examples**
 
-```zetasql
+```googlesql
 SELECT FORMAT('%T', LPAD('c', 5)) AS results
 
 /*---------+
@@ -2478,7 +2478,7 @@ SELECT FORMAT('%T', LPAD('c', 5)) AS results
  +---------*/
 ```
 
-```zetasql
+```googlesql
 SELECT LPAD('b', 5, 'a') AS results
 
 /*---------+
@@ -2488,7 +2488,7 @@ SELECT LPAD('b', 5, 'a') AS results
  +---------*/
 ```
 
-```zetasql
+```googlesql
 SELECT LPAD('abc', 10, 'ghd') AS results
 
 /*------------+
@@ -2498,7 +2498,7 @@ SELECT LPAD('abc', 10, 'ghd') AS results
  +------------*/
 ```
 
-```zetasql
+```googlesql
 SELECT LPAD('abc', 2, 'd') AS results
 
 /*---------+
@@ -2508,7 +2508,7 @@ SELECT LPAD('abc', 2, 'd') AS results
  +---------*/
 ```
 
-```zetasql
+```googlesql
 SELECT FORMAT('%T', LPAD(b'abc', 10, b'ghd')) AS results
 
 /*---------------+
@@ -2520,7 +2520,7 @@ SELECT FORMAT('%T', LPAD(b'abc', 10, b'ghd')) AS results
 
 ## `LTRIM`
 
-```zetasql
+```googlesql
 LTRIM(value1[, value2])
 ```
 
@@ -2534,7 +2534,7 @@ Identical to [TRIM][string-link-to-trim], but only removes leading characters.
 
 **Examples**
 
-```zetasql
+```googlesql
 SELECT CONCAT('#', LTRIM('   apple   '), '#') AS example
 
 /*-------------+
@@ -2544,7 +2544,7 @@ SELECT CONCAT('#', LTRIM('   apple   '), '#') AS example
  +-------------*/
 ```
 
-```zetasql
+```googlesql
 SELECT LTRIM('***apple***', '*') AS example
 
 /*-----------+
@@ -2554,7 +2554,7 @@ SELECT LTRIM('***apple***', '*') AS example
  +-----------*/
 ```
 
-```zetasql
+```googlesql
 SELECT LTRIM('xxxapplexxx', 'xyz') AS example
 
 /*-----------+
@@ -2568,7 +2568,7 @@ SELECT LTRIM('xxxapplexxx', 'xyz') AS example
 
 ## `NORMALIZE`
 
-```zetasql
+```googlesql
 NORMALIZE(value[, normalization_mode])
 ```
 
@@ -2599,7 +2599,7 @@ points.
 
 The following example normalizes different language characters:
 
-```zetasql
+```googlesql
 SELECT
   NORMALIZE('\u00ea') as a,
   NORMALIZE('\u0065\u0302') as b,
@@ -2613,7 +2613,7 @@ SELECT
 ```
 The following examples normalize different space characters:
 
-```zetasql
+```googlesql
 SELECT NORMALIZE('Raha\u2004Mahan', NFKC) AS normalized_name
 
 /*-----------------+
@@ -2623,7 +2623,7 @@ SELECT NORMALIZE('Raha\u2004Mahan', NFKC) AS normalized_name
  +-----------------*/
 ```
 
-```zetasql
+```googlesql
 SELECT NORMALIZE('Raha\u2005Mahan', NFKC) AS normalized_name
 
 /*-----------------+
@@ -2633,7 +2633,7 @@ SELECT NORMALIZE('Raha\u2005Mahan', NFKC) AS normalized_name
  +-----------------*/
 ```
 
-```zetasql
+```googlesql
 SELECT NORMALIZE('Raha\u2006Mahan', NFKC) AS normalized_name
 
 /*-----------------+
@@ -2643,7 +2643,7 @@ SELECT NORMALIZE('Raha\u2006Mahan', NFKC) AS normalized_name
  +-----------------*/
 ```
 
-```zetasql
+```googlesql
 SELECT NORMALIZE('Raha Mahan', NFKC) AS normalized_name
 
 /*-----------------+
@@ -2657,7 +2657,7 @@ SELECT NORMALIZE('Raha Mahan', NFKC) AS normalized_name
 
 ## `NORMALIZE_AND_CASEFOLD`
 
-```zetasql
+```googlesql
 NORMALIZE_AND_CASEFOLD(value[, normalization_mode])
 ```
 
@@ -2691,7 +2691,7 @@ considered, use `NORMALIZE_AND_CASEFOLD`, otherwise use
 
 **Examples**
 
-```zetasql
+```googlesql
 SELECT
   NORMALIZE('The red barn') = NORMALIZE('The Red Barn') AS normalized,
   NORMALIZE_AND_CASEFOLD('The red barn')
@@ -2704,7 +2704,7 @@ SELECT
  +------------+------------------------------*/
 ```
 
-```zetasql
+```googlesql
 SELECT
   '\u2168' AS a,
   'IX' AS b,
@@ -2720,7 +2720,7 @@ SELECT
  +---+----+-------+-------+------+------*/
 ```
 
-```zetasql
+```googlesql
 SELECT
   '\u0041\u030A' AS a,
   '\u00C5' AS b,
@@ -2744,7 +2744,7 @@ SELECT
 
 ## `OCTET_LENGTH`
 
-```zetasql
+```googlesql
 OCTET_LENGTH(value)
 ```
 
@@ -2754,7 +2754,7 @@ Alias for [`BYTE_LENGTH`][byte-length].
 
 ## `REGEXP_CONTAINS`
 
-```zetasql
+```googlesql
 REGEXP_CONTAINS(value, regexp)
 ```
 
@@ -2769,7 +2769,7 @@ You can search for a full match by using `^` (beginning of text) and `$` (end of
 text). Due to regular expression operator precedence, it's good practice to use
 parentheses around everything between `^` and `$`.
 
-Note: ZetaSQL provides regular expression support using the
+Note: GoogleSQL provides regular expression support using the
 [re2][string-link-to-re2] library; see that documentation for its
 regular expression syntax.
 
@@ -2781,7 +2781,7 @@ regular expression syntax.
 
 The following queries check to see if an email is valid:
 
-```zetasql
+```googlesql
 SELECT
   'foo@example.com' AS email,
   REGEXP_CONTAINS('foo@example.com', r'@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+') AS is_valid
@@ -2793,7 +2793,7 @@ SELECT
  +-----------------+----------*/
  ```
 
- ```zetasql
+ ```googlesql
 SELECT
   'www.example.net' AS email,
   REGEXP_CONTAINS('www.example.net', r'@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+') AS is_valid
@@ -2810,7 +2810,7 @@ perform a full match, using `^` and `$`. Due to regular expression operator
 precedence, it's good practice to use parentheses around everything between `^`
 and `$`.
 
-```zetasql
+```googlesql
 SELECT
   'a@foo.com' AS email,
   REGEXP_CONTAINS('a@foo.com', r'^([\w.+-]+@foo\.com|[\w.+-]+@bar\.org)$') AS valid_email_address,
@@ -2823,7 +2823,7 @@ SELECT
  +----------------+---------------------+---------------------*/
 ```
 
-```zetasql
+```googlesql
 SELECT
   'a@foo.computer' AS email,
   REGEXP_CONTAINS('a@foo.computer', r'^([\w.+-]+@foo\.com|[\w.+-]+@bar\.org)$') AS valid_email_address,
@@ -2836,7 +2836,7 @@ SELECT
  +----------------+---------------------+---------------------*/
 ```
 
-```zetasql
+```googlesql
 SELECT
   'b@bar.org' AS email,
   REGEXP_CONTAINS('b@bar.org', r'^([\w.+-]+@foo\.com|[\w.+-]+@bar\.org)$') AS valid_email_address,
@@ -2849,7 +2849,7 @@ SELECT
  +----------------+---------------------+---------------------*/
 ```
 
-```zetasql
+```googlesql
 SELECT
   '!b@bar.org' AS email,
   REGEXP_CONTAINS('!b@bar.org', r'^([\w.+-]+@foo\.com|[\w.+-]+@bar\.org)$') AS valid_email_address,
@@ -2862,7 +2862,7 @@ SELECT
  +----------------+---------------------+---------------------*/
 ```
 
-```zetasql
+```googlesql
 SELECT
   'c@buz.net' AS email,
   REGEXP_CONTAINS('c@buz.net', r'^([\w.+-]+@foo\.com|[\w.+-]+@bar\.org)$') AS valid_email_address,
@@ -2879,7 +2879,7 @@ SELECT
 
 ## `REGEXP_EXTRACT`
 
-```zetasql
+```googlesql
 REGEXP_EXTRACT(value, regexp[, position[, occurrence]])
 ```
 
@@ -2920,7 +2920,7 @@ Returns an error if:
 
 **Examples**
 
-```zetasql
+```googlesql
 SELECT REGEXP_EXTRACT('foo@example.com', r'^[a-zA-Z0-9_.+-]+') AS user_name
 
 /*-----------+
@@ -2930,7 +2930,7 @@ SELECT REGEXP_EXTRACT('foo@example.com', r'^[a-zA-Z0-9_.+-]+') AS user_name
  +-----------*/
 ```
 
-```zetasql
+```googlesql
 SELECT REGEXP_EXTRACT('foo@example.com', r'^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.([a-zA-Z0-9-.]+$)')
 
 /*------------------+
@@ -2940,7 +2940,7 @@ SELECT REGEXP_EXTRACT('foo@example.com', r'^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.([a-
  +------------------*/
 ```
 
-```zetasql
+```googlesql
 SELECT
   REGEXP_EXTRACT('ab', '.b') AS result_a,
   REGEXP_EXTRACT('ab', '(.)b') AS result_b,
@@ -2954,7 +2954,7 @@ SELECT
  +-------------------------------------------*/
 ```
 
-```zetasql
+```googlesql
 WITH example AS
 (SELECT 'Hello Helloo and Hellooo' AS value, 'H?ello+' AS regex, 1 as position,
 1 AS occurrence UNION ALL
@@ -2991,11 +2991,11 @@ position, occurrence) AS regexp_value FROM example;
 
 [string-link-to-re2]: https://github.com/google/re2/wiki/Syntax
 
-[regexp-extract-groups]: https://github.com/google/zetasql/blob/master/docs/string_functions.md#regexp_extract_groups
+[regexp-extract-groups]: https://github.com/google/googlesql/blob/master/docs/string_functions.md#regexp_extract_groups
 
 ## `REGEXP_EXTRACT_GROUPS`
 
-```zetasql
+```googlesql
 REGEXP_EXTRACT_GROUPS(value, regexp)
 ```
 
@@ -3049,7 +3049,7 @@ The fields of the `STRUCT` are generally `STRING` (or `BYTES` if the inputs are
 
 Extract unnamed groups:
 
-```zetasql
+```googlesql
 SELECT REGEXP_EXTRACT_GROUPS('abc123xyz', r'([a-z]+)([0-9]+)([a-z]+)') AS result
 
 /*---------------------------------+
@@ -3061,7 +3061,7 @@ SELECT REGEXP_EXTRACT_GROUPS('abc123xyz', r'([a-z]+)([0-9]+)([a-z]+)') AS result
 
 Extract named groups:
 
-```zetasql
+```googlesql
 SELECT REGEXP_EXTRACT_GROUPS('2025-09-10', r'(?<year>\d{4})-(?<month>\d{2})-(?<day>\d{2})') AS result
 
 /*----------------------------------------------+
@@ -3078,7 +3078,7 @@ in the `SELECT` list to expand the fields of the `STRUCT` into separate columns.
 Expanding `STRUCT` fields into columns is particularly useful when all capturing
 groups are named.
 
-```zetasql
+```googlesql
 SELECT REGEXP_EXTRACT_GROUPS('PROD-WIDGET-1234', r'(?<env>\w+)-(?<product>\w+)-(?<id>\d+)').*
 
 /*-------+-----------+------+
@@ -3090,7 +3090,7 @@ SELECT REGEXP_EXTRACT_GROUPS('PROD-WIDGET-1234', r'(?<env>\w+)-(?<product>\w+)-(
 
 Mix of named and unnamed groups:
 
-```zetasql
+```googlesql
 SELECT REGEXP_EXTRACT_GROUPS('id:123', r'(?<key>[a-z]+):([0-9]+)') AS result
 
 /*-----------------------+
@@ -3102,7 +3102,7 @@ SELECT REGEXP_EXTRACT_GROUPS('id:123', r'(?<key>[a-z]+):([0-9]+)') AS result
 
 No match returns `NULL`:
 
-```zetasql
+```googlesql
 SELECT REGEXP_EXTRACT_GROUPS('abc', r'(\d+)') AS result
 
 /*--------+
@@ -3114,7 +3114,7 @@ SELECT REGEXP_EXTRACT_GROUPS('abc', r'(\d+)') AS result
 
 Optional groups and empty matches:
 
-```zetasql
+```googlesql
 WITH inputs AS (
   SELECT 'id:123:extra' AS t UNION ALL
   SELECT 'id:123:' AS t UNION ALL
@@ -3140,7 +3140,7 @@ results in `NULL`.
 
 Nested groups:
 
-```zetasql
+```googlesql
 SELECT REGEXP_EXTRACT_GROUPS('a=b=c', r'(\w+)=((\w+)=\w+)') AS result
 
 /*-----------------------+
@@ -3152,7 +3152,7 @@ SELECT REGEXP_EXTRACT_GROUPS('a=b=c', r'(\w+)=((\w+)=\w+)') AS result
 
 Alternation with different groups:
 
-```zetasql
+```googlesql
 WITH inputs AS (
   SELECT 'config_id=123' AS t UNION ALL
   SELECT 'option_name=ABC' AS t
@@ -3194,7 +3194,7 @@ cast result is also `NULL`.
 
 **Examples of auto-casting**
 
-```zetasql
+```googlesql
 SELECT REGEXP_EXTRACT_GROUPS('val=0x1a', r'val=(?<val__INT64>0x[0-9a-fA-F]+)') AS result
 
 /*-------------+
@@ -3206,7 +3206,7 @@ SELECT REGEXP_EXTRACT_GROUPS('val=0x1a', r'val=(?<val__INT64>0x[0-9a-fA-F]+)') A
 
 Auto-casted values in expressions with Pipe syntax:
 
-```zetasql
+```googlesql
 FROM UNNEST(['02:30:10', '01:02:03']) AS time_str
 |> EXTEND REGEXP_EXTRACT_GROUPS(time_str, r'(?<h__INT64>\d{2}):(?<m__INT64>\d{2}):(?<s__INT64>\d{2})').*
 |> SELECT time_str, h * 3600 + m * 60 + s AS total_seconds
@@ -3221,7 +3221,7 @@ FROM UNNEST(['02:30:10', '01:02:03']) AS time_str
 
 Expand auto-casted fields into columns:
 
-```zetasql
+```googlesql
 SELECT REGEXP_EXTRACT_GROUPS('2025-09-10', r'(?<year__INT64>\d{4})-(?<month__INT64>\d{2})-(?<day__INT64>\d{2})').*
 
 /*--------+---------+-------+
@@ -3233,21 +3233,21 @@ SELECT REGEXP_EXTRACT_GROUPS('2025-09-10', r'(?<year__INT64>\d{4})-(?<month__INT
 
 Cast failure:
 
-```zetasql {.bad}
+```googlesql {.bad}
 -- Error: Bad INT64 value
 SELECT REGEXP_EXTRACT_GROUPS('ID: ABC', r'ID: (?<item_id__INT64>\w+)')
 ```
 
 Cast failure with empty string:
 
-```zetasql {.bad}
+```googlesql {.bad}
 -- Error: Bad INT64 value
 SELECT REGEXP_EXTRACT_GROUPS('ID: ', r'ID: (?<item_id__INT64>\d*)')
 ```
 
 Workaround for empty string cast failure by making the group optional:
 
-```zetasql
+```googlesql
 SELECT REGEXP_EXTRACT_GROUPS('ID: ', r'ID: (?<item_id__INT64>\d+)?') AS result
 
 /*-----------------+
@@ -3259,11 +3259,11 @@ SELECT REGEXP_EXTRACT_GROUPS('ID: ', r'ID: (?<item_id__INT64>\d+)?') AS result
 
 [string-link-to-re2]: https://github.com/google/re2/wiki/Syntax
 
-[regexp-extract]: https://github.com/google/zetasql/blob/master/docs/string_functions.md#regexp_extract
+[regexp-extract]: https://github.com/google/googlesql/blob/master/docs/string_functions.md#regexp_extract
 
 ## `REGEXP_EXTRACT_ALL`
 
-```zetasql
+```googlesql
 REGEXP_EXTRACT_ALL(value, regexp)
 ```
 
@@ -3291,7 +3291,7 @@ Returns an error if:
 
 **Examples**
 
-```zetasql
+```googlesql
 SELECT REGEXP_EXTRACT_ALL('Try `func(x)` or `func(y)`', '`(.+?)`') AS example
 
 /*--------------------+
@@ -3305,7 +3305,7 @@ SELECT REGEXP_EXTRACT_ALL('Try `func(x)` or `func(y)`', '`(.+?)`') AS example
 
 ## `REGEXP_INSTR`
 
-```zetasql
+```googlesql
 REGEXP_INSTR(source_value, regexp [, position[, occurrence, [occurrence_position]]])
 ```
 
@@ -3359,7 +3359,7 @@ Returns an error if:
 
 **Examples**
 
-```zetasql
+```googlesql
 SELECT
   REGEXP_INSTR('ab@cd-ef',  '@[^-]*') AS instr_a,
   REGEXP_INSTR('ab@d-ef',   '@[^-]*') AS instr_b,
@@ -3373,7 +3373,7 @@ SELECT
  +---------------------------------------*/
 ```
 
-```zetasql
+```googlesql
 SELECT
   REGEXP_INSTR('a@cd-ef b@cd-ef', '@[^-]*', 1) AS instr_a,
   REGEXP_INSTR('a@cd-ef b@cd-ef', '@[^-]*', 2) AS instr_b,
@@ -3387,7 +3387,7 @@ SELECT
  +---------------------------------------*/
 ```
 
-```zetasql
+```googlesql
 SELECT
   REGEXP_INSTR('a@cd-ef b@cd-ef c@cd-ef', '@[^-]*', 1, 1) AS instr_a,
   REGEXP_INSTR('a@cd-ef b@cd-ef c@cd-ef', '@[^-]*', 1, 2) AS instr_b,
@@ -3400,7 +3400,7 @@ SELECT
  +-----------------------------*/
 ```
 
-```zetasql
+```googlesql
 SELECT
   REGEXP_INSTR('a@cd-ef', '@[^-]*', 1, 1, 0) AS instr_a,
   REGEXP_INSTR('a@cd-ef', '@[^-]*', 1, 1, 1) AS instr_b
@@ -3415,7 +3415,7 @@ SELECT
 ## `REGEXP_MATCH` (Deprecated) 
 <a id="regexp_match"></a>
 
-```zetasql
+```googlesql
 REGEXP_MATCH(value, regexp)
 ```
 
@@ -3429,7 +3429,7 @@ This function is deprecated. When possible, use
 [`REGEXP_CONTAINS`][regexp-contains] to find a partial match for a
 regular expression.
 
-Note: ZetaSQL provides regular expression support using the
+Note: GoogleSQL provides regular expression support using the
 [re2][string-link-to-re2] library; see that documentation for its
 regular expression syntax.
 
@@ -3439,7 +3439,7 @@ regular expression syntax.
 
 **Examples**
 
-```zetasql
+```googlesql
 WITH email_addresses AS
   (SELECT 'foo@example.com' as email
   UNION ALL
@@ -3465,11 +3465,11 @@ FROM email_addresses;
 
 [string-link-to-re2]: https://github.com/google/re2/wiki/Syntax
 
-[regexp-contains]: https://github.com/google/zetasql/blob/master/docs/string_functions.md#regexp_contains
+[regexp-contains]: https://github.com/google/googlesql/blob/master/docs/string_functions.md#regexp_contains
 
 ## `REGEXP_REPLACE`
 
-```zetasql
+```googlesql
 REGEXP_REPLACE(value, regexp, replacement)
 ```
 
@@ -3494,7 +3494,7 @@ two.
 If the `regexp` argument isn't a valid regular expression, this function
 returns an error.
 
-Note: ZetaSQL provides regular expression support using the
+Note: GoogleSQL provides regular expression support using the
 [re2][string-link-to-re2] library; see that documentation for its
 regular expression syntax.
 
@@ -3504,7 +3504,7 @@ regular expression syntax.
 
 **Examples**
 
-```zetasql
+```googlesql
 SELECT REGEXP_REPLACE('# Heading', r'^# ([a-zA-Z0-9\s]+$)', '<h1>\\1</h1>') AS html
 
 /*--------------------------+
@@ -3516,11 +3516,11 @@ SELECT REGEXP_REPLACE('# Heading', r'^# ([a-zA-Z0-9\s]+$)', '<h1>\\1</h1>') AS h
 
 [string-link-to-re2]: https://github.com/google/re2/wiki/Syntax
 
-[string-link-to-lexical-literals]: https://github.com/google/zetasql/blob/master/docs/lexical.md#string_and_bytes_literals
+[string-link-to-lexical-literals]: https://github.com/google/googlesql/blob/master/docs/lexical.md#string_and_bytes_literals
 
 ## `REGEXP_SUBSTR`
 
-```zetasql
+```googlesql
 REGEXP_SUBSTR(value, regexp[, position[, occurrence]])
 ```
 
@@ -3534,7 +3534,7 @@ Synonym for [REGEXP_EXTRACT][string-link-to-regex].
 
 **Examples**
 
-```zetasql
+```googlesql
 WITH example AS
 (SELECT 'Hello World Helloo' AS value, 'H?ello+' AS regex, 1 AS position, 1 AS
 occurrence
@@ -3553,7 +3553,7 @@ position, occurrence) AS regexp_value FROM example;
 
 ## `REPEAT`
 
-```zetasql
+```googlesql
 REPEAT(original_value, repetitions)
 ```
 
@@ -3572,7 +3572,7 @@ This function returns an error if the `repetitions` value is negative.
 
 **Examples**
 
-```zetasql
+```googlesql
 SELECT REPEAT('abc', 3) AS results
 
 /*-----------+
@@ -3582,7 +3582,7 @@ SELECT REPEAT('abc', 3) AS results
  +-----------*/
 ```
 
-```zetasql
+```googlesql
 SELECT REPEAT('abc', NULL) AS results
 
 /*---------+
@@ -3592,7 +3592,7 @@ SELECT REPEAT('abc', NULL) AS results
  +---------*/
 ```
 
-```zetasql
+```googlesql
 SELECT REPEAT(NULL, 3) AS results
 
 /*---------+
@@ -3604,7 +3604,7 @@ SELECT REPEAT(NULL, 3) AS results
 
 ## `REPLACE`
 
-```zetasql
+```googlesql
 REPLACE(original_value, from_pattern, to_pattern)
 ```
 
@@ -3615,7 +3615,7 @@ Replaces all occurrences of `from_pattern` with `to_pattern` in
 
 This function supports specifying [collation][collation].
 
-[collation]: https://github.com/google/zetasql/blob/master/docs/collation-concepts.md
+[collation]: https://github.com/google/googlesql/blob/master/docs/collation-concepts.md
 
 **Return type**
 
@@ -3623,7 +3623,7 @@ This function supports specifying [collation][collation].
 
 **Examples**
 
-```zetasql
+```googlesql
 WITH desserts AS
   (SELECT 'apple pie' as dessert
   UNION ALL
@@ -3646,7 +3646,7 @@ FROM desserts;
 
 ## `REVERSE`
 
-```zetasql
+```googlesql
 REVERSE(value)
 ```
 
@@ -3660,7 +3660,7 @@ Returns the reverse of the input `STRING` or `BYTES`.
 
 **Examples**
 
-```zetasql
+```googlesql
 SELECT REVERSE('abc') AS results
 
 /*---------+
@@ -3670,7 +3670,7 @@ SELECT REVERSE('abc') AS results
  +---------*/
 ```
 
-```zetasql
+```googlesql
 SELECT FORMAT('%T', REVERSE(b'1a3')) AS results
 
 /*---------+
@@ -3682,7 +3682,7 @@ SELECT FORMAT('%T', REVERSE(b'1a3')) AS results
 
 ## `RIGHT`
 
-```zetasql
+```googlesql
 RIGHT(value, length)
 ```
 
@@ -3706,7 +3706,7 @@ will be returned.
 
 **Examples**
 
-```zetasql
+```googlesql
 SELECT 'apple' AS example, RIGHT('apple', 3) AS right_example
 
 /*---------+---------------+
@@ -3716,7 +3716,7 @@ SELECT 'apple' AS example, RIGHT('apple', 3) AS right_example
  +---------+---------------*/
 ```
 
-```zetasql
+```googlesql
 SELECT b'apple' AS example, RIGHT(b'apple', 3) AS right_example
 
 /*----------------------+---------------+
@@ -3728,7 +3728,7 @@ SELECT b'apple' AS example, RIGHT(b'apple', 3) AS right_example
 
 ## `RPAD`
 
-```zetasql
+```googlesql
 RPAD(original_value, return_length[, pattern])
 ```
 
@@ -3763,7 +3763,7 @@ This function returns an error if:
 
 **Examples**
 
-```zetasql
+```googlesql
 SELECT FORMAT('%T', RPAD('c', 5)) AS results
 
 /*---------+
@@ -3773,7 +3773,7 @@ SELECT FORMAT('%T', RPAD('c', 5)) AS results
  +---------*/
 ```
 
-```zetasql
+```googlesql
 SELECT RPAD('b', 5, 'a') AS results
 
 /*---------+
@@ -3783,7 +3783,7 @@ SELECT RPAD('b', 5, 'a') AS results
  +---------*/
 ```
 
-```zetasql
+```googlesql
 SELECT RPAD('abc', 10, 'ghd') AS results
 
 /*------------+
@@ -3793,7 +3793,7 @@ SELECT RPAD('abc', 10, 'ghd') AS results
  +------------*/
 ```
 
-```zetasql
+```googlesql
 SELECT RPAD('abc', 2, 'd') AS results
 
 /*---------+
@@ -3803,7 +3803,7 @@ SELECT RPAD('abc', 2, 'd') AS results
  +---------*/
 ```
 
-```zetasql
+```googlesql
 SELECT FORMAT('%T', RPAD(b'abc', 10, b'ghd')) AS results
 
 /*---------------+
@@ -3815,7 +3815,7 @@ SELECT FORMAT('%T', RPAD(b'abc', 10, b'ghd')) AS results
 
 ## `RTRIM`
 
-```zetasql
+```googlesql
 RTRIM(value1[, value2])
 ```
 
@@ -3829,7 +3829,7 @@ Identical to [TRIM][string-link-to-trim], but only removes trailing characters.
 
 **Examples**
 
-```zetasql
+```googlesql
 SELECT RTRIM('***apple***', '*') AS example
 
 /*-----------+
@@ -3839,7 +3839,7 @@ SELECT RTRIM('***apple***', '*') AS example
  +-----------*/
 ```
 
-```zetasql
+```googlesql
 SELECT RTRIM('applexxz', 'xyz') AS example
 
 /*---------+
@@ -3853,7 +3853,7 @@ SELECT RTRIM('applexxz', 'xyz') AS example
 
 ## `SAFE_CONVERT_BYTES_TO_STRING`
 
-```zetasql
+```googlesql
 SAFE_CONVERT_BYTES_TO_STRING(value)
 ```
 
@@ -3870,13 +3870,13 @@ replaced with the Unicode replacement character, `U+FFFD`.
 
 The following statement returns the Unicode replacement character, &#65533;.
 
-```zetasql
+```googlesql
 SELECT SAFE_CONVERT_BYTES_TO_STRING(b'\xc2') as safe_convert;
 ```
 
 ## `SOUNDEX`
 
-```zetasql
+```googlesql
 SOUNDEX(value)
 ```
 
@@ -3900,7 +3900,7 @@ non-Latin characters, an empty `STRING` is returned.
 
 **Examples**
 
-```zetasql
+```googlesql
 SELECT 'Ashcraft' AS value, SOUNDEX('Ashcraft') AS soundex
 
 /*----------------------+---------+
@@ -3914,7 +3914,7 @@ SELECT 'Ashcraft' AS value, SOUNDEX('Ashcraft') AS soundex
 
 ## `SPLIT`
 
-```zetasql
+```googlesql
 SPLIT(value[, delimiter])
 ```
 
@@ -3937,7 +3937,7 @@ Splitting an empty `STRING` returns an
 
 This function supports specifying [collation][collation].
 
-[collation]: https://github.com/google/zetasql/blob/master/docs/collation-concepts.md
+[collation]: https://github.com/google/googlesql/blob/master/docs/collation-concepts.md
 
 **Return type**
 
@@ -3945,7 +3945,7 @@ This function supports specifying [collation][collation].
 
 **Examples**
 
-```zetasql
+```googlesql
 WITH letters AS
   (SELECT '' as letter_group
   UNION ALL
@@ -3967,7 +3967,7 @@ FROM letters;
 
 ## `SPLIT_SUBSTR`
 
-```zetasql
+```googlesql
 SPLIT_SUBSTR(value, delimiter, start_split[, count])
 ```
 
@@ -4018,7 +4018,7 @@ of splits to include in the returned substring.
 
 This function supports specifying [collation][collation].
 
-[collation]: https://github.com/google/zetasql/blob/master/docs/collation-concepts.md
+[collation]: https://github.com/google/googlesql/blob/master/docs/collation-concepts.md
 
 **Return type**
 
@@ -4028,7 +4028,7 @@ This function supports specifying [collation][collation].
 
 The following example returns an empty string because `count` is `0`:
 
-```zetasql
+```googlesql
 SELECT SPLIT_SUBSTR("www.abc.xyz.com", ".", 1, 0) AS example
 
 /*---------+
@@ -4040,7 +4040,7 @@ SELECT SPLIT_SUBSTR("www.abc.xyz.com", ".", 1, 0) AS example
 
 The following example returns two splits starting with the first split:
 
-```zetasql
+```googlesql
 SELECT SPLIT_SUBSTR("www.abc.xyz.com", ".", 1, 2) AS example
 
 /*---------+
@@ -4052,7 +4052,7 @@ SELECT SPLIT_SUBSTR("www.abc.xyz.com", ".", 1, 2) AS example
 
 The following example returns one split starting with the first split:
 
-```zetasql
+```googlesql
 SELECT SPLIT_SUBSTR("www.abc.xyz.com", ".", 1, 1) AS example
 
 /*---------+
@@ -4065,7 +4065,7 @@ SELECT SPLIT_SUBSTR("www.abc.xyz.com", ".", 1, 1) AS example
 The following example returns splits from the right because `start_split` is a
 negative value:
 
-```zetasql
+```googlesql
 SELECT SPLIT_SUBSTR("www.abc.xyz.com", ".", -1, 1) AS example
 
 /*---------+
@@ -4078,7 +4078,7 @@ SELECT SPLIT_SUBSTR("www.abc.xyz.com", ".", -1, 1) AS example
 The following example returns a substring with three splits, starting with the
 first split:
 
-```zetasql
+```googlesql
 SELECT SPLIT_SUBSTR("www.abc.xyz.com", ".", 1, 3) AS example
 
 /*-------------+
@@ -4091,7 +4091,7 @@ SELECT SPLIT_SUBSTR("www.abc.xyz.com", ".", 1, 3) AS example
 If `start_split` is zero, then it's treated as if it's `1`. The following
 example returns three substrings starting with the first split:
 
-```zetasql
+```googlesql
 SELECT SPLIT_SUBSTR("www.abc.xyz.com", ".", 0, 3) AS example
 
 /*-------------+
@@ -4104,7 +4104,7 @@ SELECT SPLIT_SUBSTR("www.abc.xyz.com", ".", 0, 3) AS example
 If `start_split` is greater than the number of splits, then an empty string is
 returned:
 
-```zetasql
+```googlesql
 SELECT SPLIT_SUBSTR("www.abc.xyz.com", ".", 5, 3) AS example
 
 /*---------+
@@ -4117,7 +4117,7 @@ SELECT SPLIT_SUBSTR("www.abc.xyz.com", ".", 5, 3) AS example
 In the following example, the `start_split` value (`-5`) is less than the
 negative of the number of splits (`-4`), so `start_split` is treated as `1`:
 
-```zetasql
+```googlesql
 SELECT SPLIT_SUBSTR("www.abc.xyz.com", ".", -5, 3) AS example
 
 /*-------------+
@@ -4130,7 +4130,7 @@ SELECT SPLIT_SUBSTR("www.abc.xyz.com", ".", -5, 3) AS example
 In the following example, the substring from `start_split` to the end of the
 string is returned because `count` isn't specified:
 
-```zetasql
+```googlesql
 SELECT SPLIT_SUBSTR("www.abc.xyz.com", ".", 3) AS example
 
 /*---------+
@@ -4145,7 +4145,7 @@ multi-character delimiter that has overlapping matches in the input string. In
 each example, the input string contains instances of three asterisks in a row
 (`***`) and the delimiter is two asterisks (`**`).
 
-```zetasql
+```googlesql
 SELECT SPLIT_SUBSTR('aaa***bbb***ccc', '**', 1, 2) AS example
 
 /*-----------+
@@ -4155,7 +4155,7 @@ SELECT SPLIT_SUBSTR('aaa***bbb***ccc', '**', 1, 2) AS example
  +----------*/
 ```
 
-```zetasql
+```googlesql
 SELECT SPLIT_SUBSTR('aaa***bbb***ccc', '**', 2, 2) AS example
 
 /*------------+
@@ -4167,7 +4167,7 @@ SELECT SPLIT_SUBSTR('aaa***bbb***ccc', '**', 2, 2) AS example
 
 ## `STARTS_WITH`
 
-```zetasql
+```googlesql
 STARTS_WITH(value, prefix)
 ```
 
@@ -4178,7 +4178,7 @@ prefix of `value`.
 
 This function supports specifying [collation][collation].
 
-[collation]: https://github.com/google/zetasql/blob/master/docs/collation-concepts.md
+[collation]: https://github.com/google/googlesql/blob/master/docs/collation-concepts.md
 
 **Return type**
 
@@ -4186,7 +4186,7 @@ This function supports specifying [collation][collation].
 
 **Examples**
 
-```zetasql
+```googlesql
 SELECT STARTS_WITH('bar', 'b') AS example
 
 /*---------+
@@ -4198,7 +4198,7 @@ SELECT STARTS_WITH('bar', 'b') AS example
 
 ## `STRPOS`
 
-```zetasql
+```googlesql
 STRPOS(value, subvalue)
 ```
 
@@ -4209,7 +4209,7 @@ occurrence of `subvalue` inside `value`. Returns `0` if `subvalue` isn't found.
 
 This function supports specifying [collation][collation].
 
-[collation]: https://github.com/google/zetasql/blob/master/docs/collation-concepts.md
+[collation]: https://github.com/google/googlesql/blob/master/docs/collation-concepts.md
 
 **Return type**
 
@@ -4217,7 +4217,7 @@ This function supports specifying [collation][collation].
 
 **Examples**
 
-```zetasql
+```googlesql
 SELECT STRPOS('foo@example.com', '@') AS example
 
 /*---------+
@@ -4229,7 +4229,7 @@ SELECT STRPOS('foo@example.com', '@') AS example
 
 ## `SUBSTR`
 
-```zetasql
+```googlesql
 SUBSTR(value, position[, length])
 ```
 
@@ -4265,7 +4265,7 @@ return.
 
 **Examples**
 
-```zetasql
+```googlesql
 SELECT SUBSTR('apple', 2) AS example
 
 /*---------+
@@ -4275,7 +4275,7 @@ SELECT SUBSTR('apple', 2) AS example
  +---------*/
 ```
 
-```zetasql
+```googlesql
 SELECT SUBSTR('apple', 2, 2) AS example
 
 /*---------+
@@ -4285,7 +4285,7 @@ SELECT SUBSTR('apple', 2, 2) AS example
  +---------*/
 ```
 
-```zetasql
+```googlesql
 SELECT SUBSTR('apple', -2) AS example
 
 /*---------+
@@ -4295,7 +4295,7 @@ SELECT SUBSTR('apple', -2) AS example
  +---------*/
 ```
 
-```zetasql
+```googlesql
 SELECT SUBSTR('apple', 1, 123) AS example
 
 /*---------+
@@ -4305,7 +4305,7 @@ SELECT SUBSTR('apple', 1, 123) AS example
  +---------*/
 ```
 
-```zetasql
+```googlesql
 SELECT SUBSTR('apple', 123) AS example
 
 /*---------+
@@ -4315,7 +4315,7 @@ SELECT SUBSTR('apple', 123) AS example
  +---------*/
 ```
 
-```zetasql
+```googlesql
 SELECT SUBSTR('apple', 123, 5) AS example
 
 /*---------+
@@ -4327,7 +4327,7 @@ SELECT SUBSTR('apple', 123, 5) AS example
 
 ## `SUBSTRING`
 
-```zetasql
+```googlesql
 SUBSTRING(value, position[, length])
 ```
 
@@ -4337,7 +4337,7 @@ Alias for [`SUBSTR`][substr].
 
 ## `TO_BASE32`
 
-```zetasql
+```googlesql
 TO_BASE32(bytes_expr)
 ```
 
@@ -4352,7 +4352,7 @@ base32-encoded `STRING` into `BYTES`, use [FROM_BASE32][string-link-to-from-base
 
 **Example**
 
-```zetasql
+```googlesql
 SELECT TO_BASE32(b'abcde\xFF') AS base32_string;
 
 /*------------------+
@@ -4366,7 +4366,7 @@ SELECT TO_BASE32(b'abcde\xFF') AS base32_string;
 
 ## `TO_BASE64`
 
-```zetasql
+```googlesql
 TO_BASE64(bytes_expr)
 ```
 
@@ -4386,7 +4386,7 @@ function adds padding and uses the alphabet `[A-Za-z0-9+/=]`.
 
 **Example**
 
-```zetasql
+```googlesql
 SELECT TO_BASE64(b'\377\340') AS base64_string;
 
 /*---------------+
@@ -4402,7 +4402,7 @@ compose `TO_BASE64` with the `REPLACE` function. For instance, the
 uses `-_=` as the last characters rather than `+/=`. To encode a
 `base64url`-encoded string, replace `+` and `/` with `-` and `_` respectively.
 
-```zetasql
+```googlesql
 SELECT REPLACE(REPLACE(TO_BASE64(b'\377\340'), '+', '-'), '/', '_') as websafe_base64;
 
 /*----------------+
@@ -4418,7 +4418,7 @@ SELECT REPLACE(REPLACE(TO_BASE64(b'\377\340'), '+', '-'), '/', '_') as websafe_b
 
 ## `TO_CODE_POINTS`
 
-```zetasql
+```googlesql
 TO_CODE_POINTS(value)
 ```
 
@@ -4446,7 +4446,7 @@ To convert from an array of code points to a `STRING` or `BYTES`, see
 The following examples get the code points for each element in an array of
 words.
 
-```zetasql
+```googlesql
 SELECT
   'foo' AS word,
   TO_CODE_POINTS('foo') AS code_points
@@ -4458,7 +4458,7 @@ SELECT
  +---------+------------------------------------*/
 ```
 
-```zetasql
+```googlesql
 SELECT
   'bar' AS word,
   TO_CODE_POINTS('bar') AS code_points
@@ -4470,7 +4470,7 @@ SELECT
  +---------+------------------------------------*/
 ```
 
-```zetasql
+```googlesql
 SELECT
   'baz' AS word,
   TO_CODE_POINTS('baz') AS code_points
@@ -4482,7 +4482,7 @@ SELECT
  +---------+------------------------------------*/
 ```
 
-```zetasql
+```googlesql
 SELECT
   'giraffe' AS word,
   TO_CODE_POINTS('giraffe') AS code_points
@@ -4494,7 +4494,7 @@ SELECT
  +---------+------------------------------------*/
 ```
 
-```zetasql
+```googlesql
 SELECT
   'llama' AS word,
   TO_CODE_POINTS('llama') AS code_points
@@ -4509,7 +4509,7 @@ SELECT
 The following examples convert integer representations of `BYTES` to their
 corresponding ASCII character values.
 
-```zetasql
+```googlesql
 SELECT
   b'\x66\x6f\x6f' AS bytes_value,
   TO_CODE_POINTS(b'\x66\x6f\x6f') AS bytes_value_as_integer
@@ -4521,7 +4521,7 @@ SELECT
  +------------------+------------------------*/
 ```
 
-```zetasql
+```googlesql
 SELECT
   b'\x00\x01\x10\xff' AS bytes_value,
   TO_CODE_POINTS(b'\x00\x01\x10\xff') AS bytes_value_as_integer
@@ -4539,7 +4539,7 @@ Unicode sequence. As a result, the `BYTES` version of `TO_CODE_POINTS` returns
 an array with two elements, while the `STRING` version returns an array with a
 single element.
 
-```zetasql
+```googlesql
 SELECT TO_CODE_POINTS(b'Ā') AS b_result, TO_CODE_POINTS('Ā') AS s_result;
 
 /*------------+----------+
@@ -4557,7 +4557,7 @@ SELECT TO_CODE_POINTS(b'Ā') AS b_result, TO_CODE_POINTS('Ā') AS s_result;
 
 ## `TO_HEX`
 
-```zetasql
+```googlesql
 TO_HEX(bytes)
 ```
 
@@ -4574,7 +4574,7 @@ in the `STRING` as two hexadecimal characters in the range
 
 **Example**
 
-```zetasql
+```googlesql
 SELECT
   b'\x00\x01\x02\x03\xAA\xEE\xEF\xFF' AS byte_string,
   TO_HEX(b'\x00\x01\x02\x03\xAA\xEE\xEF\xFF') AS hex_string
@@ -4590,7 +4590,7 @@ SELECT
 
 ## `TRANSLATE`
 
-```zetasql
+```googlesql
 TRANSLATE(expression, source_characters, target_characters)
 ```
 
@@ -4613,7 +4613,7 @@ type, either `STRING` or `BYTES`.
 
 **Examples**
 
-```zetasql
+```googlesql
 SELECT TRANSLATE('This is a cookie', 'sco', 'zku') AS translate
 
 /*------------------+
@@ -4625,7 +4625,7 @@ SELECT TRANSLATE('This is a cookie', 'sco', 'zku') AS translate
 
 ## `TRIM`
 
-```zetasql
+```googlesql
 TRIM(value_to_trim[, set_of_characters_to_remove])
 ```
 
@@ -4652,7 +4652,7 @@ trailing bytes in `set_of_characters_to_remove`. The set of bytes is required.
 In the following example, all leading and trailing whitespace characters are
 removed from `item` because `set_of_characters_to_remove` isn't specified.
 
-```zetasql
+```googlesql
 SELECT CONCAT('#', TRIM( '   apple   '), '#') AS example
 
 /*----------+
@@ -4665,7 +4665,7 @@ SELECT CONCAT('#', TRIM( '   apple   '), '#') AS example
 In the following example, all leading and trailing `*` characters are removed
 from '***apple***'.
 
-```zetasql
+```googlesql
 SELECT TRIM('***apple***', '*') AS example
 
 /*---------+
@@ -4678,7 +4678,7 @@ SELECT TRIM('***apple***', '*') AS example
 In the following example, all leading and trailing `x`, `y`, and `z` characters
 are removed from 'xzxapplexxy'.
 
-```zetasql
+```googlesql
 SELECT TRIM('xzxapplexxy', 'xyz') as example
 
 /*---------+
@@ -4693,7 +4693,7 @@ Unicode code-points. If your trailing character set contains a combining
 diacritic mark over a particular letter, `TRIM` might strip the
 same diacritic mark from a different letter.
 
-```zetasql
+```googlesql
 SELECT
   TRIM('abaW̊', 'Y̊') AS a,
   TRIM('W̊aba', 'Y̊') AS b,
@@ -4710,7 +4710,7 @@ SELECT
 In the following example, all leading and trailing `b'n'`, `b'a'`, `b'\xab'`
 bytes are removed from `item`.
 
-```zetasql
+```googlesql
 SELECT b'apple', TRIM(b'apple', b'na\xab') AS example
 
 /*----------------------+------------------+
@@ -4722,7 +4722,7 @@ SELECT b'apple', TRIM(b'apple', b'na\xab') AS example
 
 ## `UNICODE`
 
-```zetasql
+```googlesql
 UNICODE(value)
 ```
 
@@ -4738,7 +4738,7 @@ point is `0`.
 
 **Examples**
 
-```zetasql
+```googlesql
 SELECT UNICODE('âbcd') as A, UNICODE('â') as B, UNICODE('') as C, UNICODE(NULL) as D;
 
 /*-------+-------+-------+-------+
@@ -4752,7 +4752,7 @@ SELECT UNICODE('âbcd') as A, UNICODE('â') as B, UNICODE('') as C, UNICODE(NULL
 
 ## `UPPER`
 
-```zetasql
+```googlesql
 UPPER(value)
 ```
 
@@ -4773,7 +4773,7 @@ greater than 127 left intact.
 
 **Examples**
 
-```zetasql
+```googlesql
 SELECT UPPER('foo') AS example
 
 /*---------+

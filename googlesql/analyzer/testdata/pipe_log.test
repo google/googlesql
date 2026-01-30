@@ -1,0 +1,802 @@
+[default language_features=NONE]
+[language_features=NONE,+PIPES]
+FROM KeyValue
+|> LOG
+--
+ERROR: Pipe LOG not supported [at 2:1]
+|> LOG
+^
+==
+
+[language_features=NONE,+PIPES]
+FROM KeyValue
+|> LOG ( |> WHERE true )
+--
+ERROR: Pipe LOG not supported [at 2:1]
+|> LOG ( |> WHERE true )
+^
+==
+
+[default language_features=NONE,+PIPES,+PIPE_LOG,+PIPE_STATIC_DESCRIBE]
+
+FROM KeyValue
+|> LOG
+--
+QueryStmt
++-output_column_list=
+| +-KeyValue.Key#1 AS Key [INT64]
+| +-KeyValue.Value#2 AS Value [STRING]
++-query=
+  +-LogScan
+    +-column_list=KeyValue.[Key#1, Value#2]
+    +-input_scan=
+    | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+    +-subpipeline=
+    | +-Subpipeline
+    |   +-scan=
+    |     +-SubpipelineInputScan(column_list=KeyValue.[Key#1, Value#2])
+    +-output_schema=
+      +-OutputSchema
+        +-output_column_list=
+          +-KeyValue.Key#1 AS Key [INT64]
+          +-KeyValue.Value#2 AS Value [STRING]
+==
+
+FROM KeyValue
+|> LOG ()
+--
+QueryStmt
++-output_column_list=
+| +-KeyValue.Key#1 AS Key [INT64]
+| +-KeyValue.Value#2 AS Value [STRING]
++-query=
+  +-LogScan
+    +-column_list=KeyValue.[Key#1, Value#2]
+    +-input_scan=
+    | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+    +-subpipeline=
+    | +-Subpipeline
+    |   +-scan=
+    |     +-SubpipelineInputScan(column_list=KeyValue.[Key#1, Value#2])
+    +-output_schema=
+      +-OutputSchema
+        +-output_column_list=
+          +-KeyValue.Key#1 AS Key [INT64]
+          +-KeyValue.Value#2 AS Value [STRING]
+==
+
+FROM KeyValue
+|> LOG ( |> WHERE key=5 )
+--
+QueryStmt
++-output_column_list=
+| +-KeyValue.Key#1 AS Key [INT64]
+| +-KeyValue.Value#2 AS Value [STRING]
++-query=
+  +-LogScan
+    +-column_list=KeyValue.[Key#1, Value#2]
+    +-input_scan=
+    | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+    +-subpipeline=
+    | +-Subpipeline
+    |   +-scan=
+    |     +-FilterScan
+    |       +-column_list=KeyValue.[Key#1, Value#2]
+    |       +-input_scan=
+    |       | +-SubpipelineInputScan(column_list=KeyValue.[Key#1, Value#2])
+    |       +-filter_expr=
+    |         +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+    |           +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+    |           +-Literal(type=INT64, value=5)
+    +-output_schema=
+      +-OutputSchema
+        +-output_column_list=
+          +-KeyValue.Key#1 AS Key [INT64]
+          +-KeyValue.Value#2 AS Value [STRING]
+==
+
+# The second SELECT can't resole the `value` or `kv` names from the
+# outer query after they have been projected away.
+FROM KeyValue kv
+|> LOG (
+     |> SELECT key
+     |> SELECT {{value|kv}}
+   )
+--
+ALTERNATION GROUP: value
+--
+ERROR: Unrecognized name: value [at 4:16]
+     |> SELECT value
+               ^
+--
+ALTERNATION GROUP: kv
+--
+ERROR: Unrecognized name: kv [at 4:16]
+     |> SELECT kv
+               ^
+==
+
+FROM KeyValue
+|> LOG (
+     |> WHERE key=3
+     |> AGGREGATE COUNT(*)
+   )
+--
+QueryStmt
++-output_column_list=
+| +-KeyValue.Key#1 AS Key [INT64]
+| +-KeyValue.Value#2 AS Value [STRING]
++-query=
+  +-LogScan
+    +-column_list=KeyValue.[Key#1, Value#2]
+    +-input_scan=
+    | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+    +-subpipeline=
+    | +-Subpipeline
+    |   +-scan=
+    |     +-AggregateScan
+    |       +-column_list=[$aggregate.$agg1#3]
+    |       +-input_scan=
+    |       | +-FilterScan
+    |       |   +-column_list=KeyValue.[Key#1, Value#2]
+    |       |   +-input_scan=
+    |       |   | +-SubpipelineInputScan(column_list=KeyValue.[Key#1, Value#2])
+    |       |   +-filter_expr=
+    |       |     +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+    |       |       +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+    |       |       +-Literal(type=INT64, value=3)
+    |       +-aggregate_list=
+    |         +-$agg1#3 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+    +-output_schema=
+      +-OutputSchema
+        +-output_column_list=
+          +-$aggregate.$agg1#3 AS `$col1` [INT64]
+==
+
+# Test schema pass-through. Schema is the same before and after LOG.
+FROM KeyValue
+|> STATIC_DESCRIBE
+|> LOG ( |> WHERE key=5 )
+|> STATIC_DESCRIBE
+|> WHERE key=6
+--
+QueryStmt
++-output_column_list=
+| +-KeyValue.Key#1 AS Key [INT64]
+| +-KeyValue.Value#2 AS Value [STRING]
++-query=
+  +-FilterScan
+    +-column_list=KeyValue.[Key#1, Value#2]
+    +-input_scan=
+    | +-StaticDescribeScan
+    |   +-column_list=KeyValue.[Key#1, Value#2]
+    |   +-describe_text=
+    |   |   """
+    |   |   NameList:
+    |   |     Key INT64 KeyValue.Key#1
+    |   |     Value STRING KeyValue.Value#2
+    |   |   NameScope:
+    |   |     Names:
+    |   |       Key -> INT64 (KeyValue.Key#1) (implicit)
+    |   |       Value -> STRING (KeyValue.Value#2) (implicit)
+    |   |     Range variables:
+    |   |       KeyValue -> RANGE_VARIABLE<Key#1,Value#2>
+    |   |   """
+    |   +-input_scan=
+    |     +-LogScan
+    |       +-column_list=KeyValue.[Key#1, Value#2]
+    |       +-input_scan=
+    |       | +-StaticDescribeScan
+    |       |   +-column_list=KeyValue.[Key#1, Value#2]
+    |       |   +-describe_text=
+    |       |   |   """
+    |       |   |   NameList:
+    |       |   |     Key INT64 KeyValue.Key#1
+    |       |   |     Value STRING KeyValue.Value#2
+    |       |   |   NameScope:
+    |       |   |     Names:
+    |       |   |       Key -> INT64 (KeyValue.Key#1) (implicit)
+    |       |   |       Value -> STRING (KeyValue.Value#2) (implicit)
+    |       |   |     Range variables:
+    |       |   |       KeyValue -> RANGE_VARIABLE<Key#1,Value#2>
+    |       |   |   """
+    |       |   +-input_scan=
+    |       |     +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+    |       +-subpipeline=
+    |       | +-Subpipeline
+    |       |   +-scan=
+    |       |     +-FilterScan
+    |       |       +-column_list=KeyValue.[Key#1, Value#2]
+    |       |       +-input_scan=
+    |       |       | +-SubpipelineInputScan(column_list=KeyValue.[Key#1, Value#2])
+    |       |       +-filter_expr=
+    |       |         +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+    |       |           +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+    |       |           +-Literal(type=INT64, value=5)
+    |       +-output_schema=
+    |         +-OutputSchema
+    |           +-output_column_list=
+    |             +-KeyValue.Key#1 AS Key [INT64]
+    |             +-KeyValue.Value#2 AS Value [STRING]
+    +-filter_expr=
+      +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+        +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+        +-Literal(type=INT64, value=6)
+==
+
+FROM KeyValue
+|> LOG
+|> WHERE key=5
+--
+QueryStmt
++-output_column_list=
+| +-KeyValue.Key#1 AS Key [INT64]
+| +-KeyValue.Value#2 AS Value [STRING]
++-query=
+  +-FilterScan
+    +-column_list=KeyValue.[Key#1, Value#2]
+    +-input_scan=
+    | +-LogScan
+    |   +-column_list=KeyValue.[Key#1, Value#2]
+    |   +-input_scan=
+    |   | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+    |   +-subpipeline=
+    |   | +-Subpipeline
+    |   |   +-scan=
+    |   |     +-SubpipelineInputScan(column_list=KeyValue.[Key#1, Value#2])
+    |   +-output_schema=
+    |     +-OutputSchema
+    |       +-output_column_list=
+    |         +-KeyValue.Key#1 AS Key [INT64]
+    |         +-KeyValue.Value#2 AS Value [STRING]
+    +-filter_expr=
+      +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+        +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+        +-Literal(type=INT64, value=5)
+==
+
+# Order is preserved. The outer scan has is_ordered=true.
+# The subpipeline in LOG also sees is_ordered=true.
+FROM KeyValue
+|> ORDER BY Key
+|> LOG
+--
+QueryStmt
++-output_column_list=
+| +-KeyValue.Key#1 AS Key [INT64]
+| +-KeyValue.Value#2 AS Value [STRING]
++-query=
+  +-LogScan
+    +-column_list=KeyValue.[Key#1, Value#2]
+    +-is_ordered=TRUE
+    +-input_scan=
+    | +-OrderByScan
+    |   +-column_list=KeyValue.[Key#1, Value#2]
+    |   +-is_ordered=TRUE
+    |   +-input_scan=
+    |   | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+    |   +-order_by_item_list=
+    |     +-OrderByItem
+    |       +-column_ref=
+    |         +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+    +-subpipeline=
+    | +-Subpipeline
+    |   +-scan=
+    |     +-SubpipelineInputScan(column_list=KeyValue.[Key#1, Value#2], is_ordered=TRUE)
+    +-output_schema=
+      +-OutputSchema
+        +-output_column_list=
+          +-KeyValue.Key#1 AS Key [INT64]
+          +-KeyValue.Value#2 AS Value [STRING]
+==
+
+# The subpipelines inside the LOG also see is_ordered=true until
+# applying an operator like WHERE that removes order.
+# Even when the LOG subpipeline removes order, the main pipeline
+# after LOG still sees order.
+FROM KeyValue
+|> ORDER BY Key
+|> LOG ( |> WHERE true )
+|> LOG ( |> LIMIT 10 )
+--
+QueryStmt
++-output_column_list=
+| +-KeyValue.Key#1 AS Key [INT64]
+| +-KeyValue.Value#2 AS Value [STRING]
++-query=
+  +-LogScan
+    +-column_list=KeyValue.[Key#1, Value#2]
+    +-is_ordered=TRUE
+    +-input_scan=
+    | +-LogScan
+    |   +-column_list=KeyValue.[Key#1, Value#2]
+    |   +-is_ordered=TRUE
+    |   +-input_scan=
+    |   | +-OrderByScan
+    |   |   +-column_list=KeyValue.[Key#1, Value#2]
+    |   |   +-is_ordered=TRUE
+    |   |   +-input_scan=
+    |   |   | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+    |   |   +-order_by_item_list=
+    |   |     +-OrderByItem
+    |   |       +-column_ref=
+    |   |         +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+    |   +-subpipeline=
+    |   | +-Subpipeline
+    |   |   +-scan=
+    |   |     +-FilterScan
+    |   |       +-column_list=KeyValue.[Key#1, Value#2]
+    |   |       +-input_scan=
+    |   |       | +-SubpipelineInputScan(column_list=KeyValue.[Key#1, Value#2], is_ordered=TRUE)
+    |   |       +-filter_expr=
+    |   |         +-Literal(type=BOOL, value=true)
+    |   +-output_schema=
+    |     +-OutputSchema
+    |       +-output_column_list=
+    |         +-KeyValue.Key#1 AS Key [INT64]
+    |         +-KeyValue.Value#2 AS Value [STRING]
+    +-subpipeline=
+    | +-Subpipeline
+    |   +-scan=
+    |     +-LimitOffsetScan
+    |       +-column_list=KeyValue.[Key#1, Value#2]
+    |       +-is_ordered=TRUE
+    |       +-input_scan=
+    |       | +-SubpipelineInputScan(column_list=KeyValue.[Key#1, Value#2], is_ordered=TRUE)
+    |       +-limit=
+    |         +-Literal(type=INT64, value=10)
+    +-output_schema=
+      +-OutputSchema
+        +-output_column_list=
+          +-KeyValue.Key#1 AS Key [INT64]
+          +-KeyValue.Value#2 AS Value [STRING]
+==
+
+# Log a subset of columns from the source, plus computed columns.
+# Unreferenced columns are pruned from the inner and outer scans.
+FROM TestTable
+|> LOG (|> SELECT KitchenSink, key+1 AS key1)
+|> SELECT 0
+--
+QueryStmt
++-output_column_list=
+| +-$pipe_select.$col1#5 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$pipe_select.$col1#5]
+    +-expr_list=
+    | +-$col1#5 := Literal(type=INT64, value=0)
+    +-input_scan=
+      +-LogScan
+        +-column_list=TestTable.[key#1, KitchenSink#3]
+        +-input_scan=
+        | +-TableScan(column_list=TestTable.[key#1, KitchenSink#3], table=TestTable, column_index_list=[0, 2])
+        +-subpipeline=
+        | +-Subpipeline
+        |   +-scan=
+        |     +-ProjectScan
+        |       +-column_list=[TestTable.KitchenSink#3, $pipe_select.key1#4]
+        |       +-expr_list=
+        |       | +-key1#4 :=
+        |       |   +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+        |       |     +-Cast(INT32 -> INT64)
+        |       |     | +-ColumnRef(type=INT32, column=TestTable.key#1)
+        |       |     +-Literal(type=INT64, value=1)
+        |       +-input_scan=
+        |         +-SubpipelineInputScan(column_list=TestTable.[key#1, KitchenSink#3])
+        +-output_schema=
+          +-OutputSchema
+            +-output_column_list=
+              +-TestTable.KitchenSink#3 AS KitchenSink [PROTO<googlesql_test.KitchenSinkPB>]
+              +-$pipe_select.key1#4 AS key1 [INT64]
+==
+
+# Log output is a constructed value table.
+FROM KeyValue
+|> LOG ( |> SELECT AS STRUCT key )
+--
+QueryStmt
++-output_column_list=
+| +-KeyValue.Key#1 AS Key [INT64]
+| +-KeyValue.Value#2 AS Value [STRING]
++-query=
+  +-LogScan
+    +-column_list=KeyValue.[Key#1, Value#2]
+    +-input_scan=
+    | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+    +-subpipeline=
+    | +-Subpipeline
+    |   +-scan=
+    |     +-ProjectScan
+    |       +-column_list=[$make_struct.$struct#3]
+    |       +-expr_list=
+    |       | +-$struct#3 :=
+    |       |   +-MakeStruct
+    |       |     +-type=STRUCT<key INT64>
+    |       |     +-field_list=
+    |       |       +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+    |       +-input_scan=
+    |         +-ProjectScan
+    |           +-column_list=[KeyValue.Key#1]
+    |           +-input_scan=
+    |             +-SubpipelineInputScan(column_list=KeyValue.[Key#1, Value#2])
+    +-output_schema=
+      +-OutputSchema
+        +-output_column_list=
+        | +-$make_struct.$struct#3 AS `$struct` [STRUCT<key INT64>]
+        +-is_value_table=TRUE
+==
+
+# Log a value table.
+# Both the log output and final query output are value tables.
+# Pseudo-columns are pruned and don't show up in log output.
+FROM TestExtraValueTable
+|> LOG
+--
+QueryStmt
++-output_column_list=
+| +-TestExtraValueTable.value#1 AS `$value` [PROTO<googlesql_test.TestExtraPB>]
++-is_value_table=TRUE
++-query=
+  +-LogScan
+    +-column_list=[TestExtraValueTable.value#1]
+    +-input_scan=
+    | +-TableScan(column_list=[TestExtraValueTable.value#1], table=TestExtraValueTable, column_index_list=[0])
+    +-subpipeline=
+    | +-Subpipeline
+    |   +-scan=
+    |     +-SubpipelineInputScan(column_list=[TestExtraValueTable.value#1])
+    +-output_schema=
+      +-OutputSchema
+        +-output_column_list=
+        | +-TestExtraValueTable.value#1 AS `$value` [PROTO<googlesql_test.TestExtraPB>]
+        +-is_value_table=TRUE
+==
+
+# Log a field of a value table, plus one of its pseudo-columns.
+FROM TestExtraValueTable
+|> LOG (|> SELECT int32_val1, rowid)
+--
+QueryStmt
++-output_column_list=
+| +-TestExtraValueTable.value#1 AS `$value` [PROTO<googlesql_test.TestExtraPB>]
++-is_value_table=TRUE
++-query=
+  +-LogScan
+    +-column_list=TestExtraValueTable.[value#1, RowId#3]
+    +-input_scan=
+    | +-TableScan(column_list=TestExtraValueTable.[value#1, RowId#3], table=TestExtraValueTable, column_index_list=[0, 2])
+    +-subpipeline=
+    | +-Subpipeline
+    |   +-scan=
+    |     +-ProjectScan
+    |       +-column_list=[$pipe_select.int32_val1#4, TestExtraValueTable.RowId#3]
+    |       +-expr_list=
+    |       | +-int32_val1#4 :=
+    |       |   +-GetProtoField
+    |       |     +-type=INT32
+    |       |     +-expr=
+    |       |     | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=TestExtraValueTable.value#1)
+    |       |     +-field_descriptor=int32_val1
+    |       |     +-default_value=0
+    |       +-input_scan=
+    |         +-SubpipelineInputScan(column_list=TestExtraValueTable.[value#1, RowId#3])
+    +-output_schema=
+      +-OutputSchema
+        +-output_column_list=
+          +-$pipe_select.int32_val1#4 AS int32_val1 [INT32]
+          +-TestExtraValueTable.RowId#3 AS rowid [BYTES]
+==
+
+# Test a nested LOG call.
+# This tests validation of a stack of nested subpipelines.
+FROM KeyValue
+|> LOG (
+     |> LOG ( |> SELECT value, 456 AS def )
+     |> SELECT key, 123 AS abc
+   )
+--
+QueryStmt
++-output_column_list=
+| +-KeyValue.Key#1 AS Key [INT64]
+| +-KeyValue.Value#2 AS Value [STRING]
++-query=
+  +-LogScan
+    +-column_list=KeyValue.[Key#1, Value#2]
+    +-input_scan=
+    | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+    +-subpipeline=
+    | +-Subpipeline
+    |   +-scan=
+    |     +-ProjectScan
+    |       +-column_list=[KeyValue.Key#1, $pipe_select.abc#4]
+    |       +-expr_list=
+    |       | +-abc#4 := Literal(type=INT64, value=123)
+    |       +-input_scan=
+    |         +-LogScan
+    |           +-column_list=KeyValue.[Key#1, Value#2]
+    |           +-input_scan=
+    |           | +-SubpipelineInputScan(column_list=KeyValue.[Key#1, Value#2])
+    |           +-subpipeline=
+    |           | +-Subpipeline
+    |           |   +-scan=
+    |           |     +-ProjectScan
+    |           |       +-column_list=[KeyValue.Value#2, $pipe_select.def#3]
+    |           |       +-expr_list=
+    |           |       | +-def#3 := Literal(type=INT64, value=456)
+    |           |       +-input_scan=
+    |           |         +-SubpipelineInputScan(column_list=KeyValue.[Key#1, Value#2])
+    |           +-output_schema=
+    |             +-OutputSchema
+    |               +-output_column_list=
+    |                 +-KeyValue.Value#2 AS value [STRING]
+    |                 +-$pipe_select.def#3 AS def [INT64]
+    +-output_schema=
+      +-OutputSchema
+        +-output_column_list=
+          +-KeyValue.Key#1 AS key [INT64]
+          +-$pipe_select.abc#4 AS abc [INT64]
+==
+
+# Test LOG in a correlated subquery.  It can see names from
+# the outer query.
+# `key` resolves to the column from the inner SELECT, which hides
+# the correlated column of the same name, so `value` is the only
+# correlated parameter passed in.
+FROM KeyValue
+|> SELECT (
+     SELECT 1 x, 2 y, 3.0 key
+     |> LOG (
+          |> SELECT x, key, value
+        )
+     |> SELECT AS STRUCT *
+   )
+--
+QueryStmt
++-output_column_list=
+| +-$pipe_select.$col1#8 AS `$col1` [STRUCT<x INT64, y INT64, key DOUBLE>]
++-query=
+  +-ProjectScan
+    +-column_list=[$pipe_select.$col1#8]
+    +-expr_list=
+    | +-$col1#8 :=
+    |   +-SubqueryExpr
+    |     +-type=STRUCT<x INT64, y INT64, key DOUBLE>
+    |     +-subquery_type=SCALAR
+    |     +-parameter_list=
+    |     | +-ColumnRef(type=STRING, column=KeyValue.Value#2)
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$make_struct.$struct#7]
+    |         +-expr_list=
+    |         | +-$struct#7 :=
+    |         |   +-MakeStruct
+    |         |     +-type=STRUCT<x INT64, y INT64, key DOUBLE>
+    |         |     +-field_list=
+    |         |       +-ColumnRef(type=INT64, column=$expr_subquery.x#3)
+    |         |       +-ColumnRef(type=INT64, column=$expr_subquery.y#4)
+    |         |       +-ColumnRef(type=DOUBLE, column=$expr_subquery.key#5)
+    |         +-input_scan=
+    |           +-ProjectScan
+    |             +-column_list=$expr_subquery.[x#3, y#4, key#5]
+    |             +-input_scan=
+    |               +-LogScan
+    |                 +-column_list=$expr_subquery.[x#3, y#4, key#5]
+    |                 +-input_scan=
+    |                 | +-ProjectScan
+    |                 |   +-column_list=$expr_subquery.[x#3, y#4, key#5]
+    |                 |   +-expr_list=
+    |                 |   | +-x#3 := Literal(type=INT64, value=1)
+    |                 |   | +-y#4 := Literal(type=INT64, value=2)
+    |                 |   | +-key#5 := Literal(type=DOUBLE, value=3)
+    |                 |   +-input_scan=
+    |                 |     +-SingleRowScan
+    |                 +-subpipeline=
+    |                 | +-Subpipeline
+    |                 |   +-scan=
+    |                 |     +-ProjectScan
+    |                 |       +-column_list=[$expr_subquery.x#3, $expr_subquery.key#5, $pipe_select.value#6]
+    |                 |       +-expr_list=
+    |                 |       | +-value#6 := ColumnRef(type=STRING, column=KeyValue.Value#2, is_correlated=TRUE)
+    |                 |       +-input_scan=
+    |                 |         +-SubpipelineInputScan(column_list=$expr_subquery.[x#3, y#4, key#5])
+    |                 +-output_schema=
+    |                   +-OutputSchema
+    |                     +-output_column_list=
+    |                       +-$expr_subquery.x#3 AS x [INT64]
+    |                       +-$expr_subquery.key#5 AS key [DOUBLE]
+    |                       +-$pipe_select.value#6 AS value [STRING]
+    +-input_scan=
+      +-TableScan(column_list=[KeyValue.Value#2], table=KeyValue, column_index_list=[1])
+==
+
+# This shows the hack in SQLBuilder to generate subpipelines.
+# TODO This should be much cleaner once we have a pipe-SQLBuilder.
+[show_sqlbuilder_output]
+FROM KeyValue
+|> LOG (
+      |> WHERE key = 10
+      |> EXTEND key*10 AS k10
+      |> ORDER BY k10
+    )
+|> EXTEND key+1
+--
+QueryStmt
++-output_column_list=
+| +-KeyValue.Key#1 AS Key [INT64]
+| +-KeyValue.Value#2 AS Value [STRING]
+| +-$pipe_extend.$col1#4 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[KeyValue.Key#1, KeyValue.Value#2, $pipe_extend.$col1#4]
+    +-expr_list=
+    | +-$col1#4 :=
+    |   +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |     +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+    |     +-Literal(type=INT64, value=1)
+    +-input_scan=
+      +-LogScan
+        +-column_list=KeyValue.[Key#1, Value#2]
+        +-input_scan=
+        | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+        +-subpipeline=
+        | +-Subpipeline
+        |   +-scan=
+        |     +-OrderByScan
+        |       +-column_list=[KeyValue.Key#1, KeyValue.Value#2, $pipe_extend.k10#3]
+        |       +-is_ordered=TRUE
+        |       +-input_scan=
+        |       | +-ProjectScan
+        |       |   +-column_list=[KeyValue.Key#1, KeyValue.Value#2, $pipe_extend.k10#3]
+        |       |   +-expr_list=
+        |       |   | +-k10#3 :=
+        |       |   |   +-FunctionCall(GoogleSQL:$multiply(INT64, INT64) -> INT64)
+        |       |   |     +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+        |       |   |     +-Literal(type=INT64, value=10)
+        |       |   +-input_scan=
+        |       |     +-FilterScan
+        |       |       +-column_list=KeyValue.[Key#1, Value#2]
+        |       |       +-input_scan=
+        |       |       | +-SubpipelineInputScan(column_list=KeyValue.[Key#1, Value#2])
+        |       |       +-filter_expr=
+        |       |         +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+        |       |           +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+        |       |           +-Literal(type=INT64, value=10)
+        |       +-order_by_item_list=
+        |         +-OrderByItem
+        |           +-column_ref=
+        |             +-ColumnRef(type=INT64, column=$pipe_extend.k10#3)
+        +-output_schema=
+          +-OutputSchema
+            +-output_column_list=
+              +-KeyValue.Key#1 AS Key [INT64]
+              +-KeyValue.Value#2 AS Value [STRING]
+              +-$pipe_extend.k10#3 AS k10 [INT64]
+
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+SELECT
+  logscan_8.a_1 AS Key,
+  logscan_8.a_2 AS Value,
+  (logscan_8.a_1) + 1 AS a_9
+FROM
+  (
+    SELECT
+      keyvalue_3.a_1 AS a_1,
+      keyvalue_3.a_2 AS a_2
+    FROM
+      (
+        SELECT
+          KeyValue.Key AS a_1,
+          KeyValue.Value AS a_2
+        FROM
+          KeyValue
+        |> AS keyvalue_3
+        |> LOG  (
+             |> SELECT AS STRUCT
+                  *
+             |> AS __StructValue__
+             |> AGGREGATE
+                  ARRAY_AGG(__StructValue__) AS __SubpipelineInput__
+             |> JOIN
+                UNNEST(ARRAY(
+                  SELECT
+                    projectscan_6.a_1 AS a_1,
+                    projectscan_6.a_2 AS a_2,
+                    projectscan_6.a_5 AS a_5
+                  FROM
+                    (
+                      SELECT
+                        subpipelineinputscan_4.a_1 AS a_1,
+                        subpipelineinputscan_4.a_2 AS a_2,
+                        (subpipelineinputscan_4.a_1) * 10 AS a_5
+                      FROM
+                        (
+                          SELECT
+                            *
+                          FROM
+                            UNNEST(__SubpipelineInput__)
+                        ) AS subpipelineinputscan_4
+                      WHERE
+                        (subpipelineinputscan_4.a_1) = 10
+                    ) AS projectscan_6
+                  ORDER BY projectscan_6.a_5
+                  |> AS orderbyscan_7
+                  |> SELECT AS STRUCT
+                       *
+                ))
+             |> SELECT
+                  *
+             |> AS orderbyscan_7
+           )
+      )
+  ) AS logscan_8;
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+FROM
+  KeyValue
+|> SELECT
+     KeyValue.Key AS a_1,
+     KeyValue.Value AS a_2
+|> AS keyvalue_3
+|> LOG  (
+     |> SELECT AS STRUCT
+          *
+     |> AS __StructValue__
+     |> AGGREGATE
+          ARRAY_AGG(__StructValue__) AS __SubpipelineInput__
+     |> JOIN
+        UNNEST(ARRAY(
+          FROM
+            UNNEST(__SubpipelineInput__)
+          |> SELECT
+               *
+          |> AS subpipelineinputscan_4
+          |> WHERE
+               (subpipelineinputscan_4.a_1) = 10
+          |> SELECT
+               subpipelineinputscan_4.a_1 AS a_1,
+               subpipelineinputscan_4.a_2 AS a_2,
+               (subpipelineinputscan_4.a_1) * 10 AS a_5
+          |> AS projectscan_6
+          |> ORDER BY projectscan_6.a_5
+          |> SELECT
+               projectscan_6.a_1 AS a_1,
+               projectscan_6.a_2 AS a_2,
+               projectscan_6.a_5 AS a_5
+          |> AS orderbyscan_7
+          |> SELECT AS STRUCT
+               *
+        ))
+     |> SELECT
+          *
+     |> AS orderbyscan_7
+   )
+|> SELECT
+     keyvalue_3.a_1 AS Key,
+     keyvalue_3.a_2 AS Value,
+     (keyvalue_3.a_1) + 1 AS a_8;
+==
+
+# Check for error if we try to log an unretunable type (GRAPH_ELEMENT).
+# If we don't do it in LOG, we get the same error when returning it from
+# the outer query.
+[language_features=NONE,+PIPES,+PIPE_LOG,+SQL_GRAPH,+SQL_GRAPH_EXPOSE_GRAPH_ELEMENT]
+FROM GRAPH_TABLE(
+  aml
+  MATCH (a IS Person) -[e]-> (b IS Account)
+)
+|> LOG ( |> SELECT {{a|0}} )
+--
+ALTERNATION GROUP: a
+--
+ERROR: Returning expressions of type GRAPH_ELEMENT is not allowed [at 5:1]
+|> LOG ( |> SELECT a )
+^
+--
+ALTERNATION GROUP: 0
+--
+ERROR: Returning expressions of type GRAPH_ELEMENT is not allowed [at 1:1]
+FROM GRAPH_TABLE(
+^

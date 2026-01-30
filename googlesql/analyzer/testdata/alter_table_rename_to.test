@@ -1,0 +1,67 @@
+[default language_features=MAXIMUM]
+ALTER TABLE KeyValue RENAME TO {{foo.bar|`foo.bar`}}
+--
+ALTERNATION GROUP: foo.bar
+--
+AlterTableStmt
++-name_path=KeyValue
++-alter_action_list=
+  +-RenameToAction(new_path=foo.bar)
+--
+ALTERNATION GROUP: `foo.bar`
+--
+AlterTableStmt
++-name_path=KeyValue
++-alter_action_list=
+  +-RenameToAction(new_path=`foo.bar`)
+==
+
+# Alter table IF EXISTS, existing table
+ALTER TABLE IF EXISTS KeyValue RENAME TO foo
+--
+AlterTableStmt
++-name_path=KeyValue
++-alter_action_list=
+| +-RenameToAction(new_path=foo)
++-is_if_exists=TRUE
+==
+
+# Alter table non-existing table. Note that analyzer does not
+# generate an error when rename a non-existing table.
+ALTER TABLE {{|IF EXISTS}} foo RENAME TO bar
+--
+ALTERNATION GROUP: <empty>
+--
+AlterTableStmt
++-name_path=foo
++-alter_action_list=
+  +-RenameToAction(new_path=bar)
+--
+ALTERNATION GROUP: IF EXISTS
+--
+AlterTableStmt
++-name_path=foo
++-alter_action_list=
+| +-RenameToAction(new_path=bar)
++-is_if_exists=TRUE
+==
+
+# OK to combine rename with other actions
+ALTER TABLE KeyValue ADD COLUMN bar STRING, RENAME TO foo
+--
+AlterTableStmt
++-name_path=KeyValue
++-alter_action_list=
+  +-AddColumnAction
+  | +-is_if_not_exists=FALSE
+  | +-column_definition=
+  |   +-ColumnDefinition(name="bar", type=STRING, column=KeyValue.bar#1)
+  +-RenameToAction(new_path=foo)
+==
+
+# Multiple renames are not supported
+ALTER TABLE KeyValue RENAME TO foo1, RENAME TO foo2
+--
+ERROR: Multiple RENAME TO actions are not supported [at 1:38]
+ALTER TABLE KeyValue RENAME TO foo1, RENAME TO foo2
+                                     ^

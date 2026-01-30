@@ -29,7 +29,7 @@ GQL query based on the [syntax rules][gql_syntax].
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/graph-query-statements.md#graph_query"><code>GRAPH</code> clause</a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/graph-query-statements.md#graph_query"><code>GRAPH</code> clause</a>
 </td>
   <td>
     Specifies a property graph to query.
@@ -183,17 +183,17 @@ to composite the building blocks of GQL into a query.
 +   `graph_query`: A GQL query that starts with a [`GRAPH` clause][graph-clause],
     then follows with a `multi_linear_query_statement`.
 
-[language-list]: https://github.com/google/zetasql/blob/master/docs/graph-query-statements.md#language-list
+[language-list]: https://github.com/google/googlesql/blob/master/docs/graph-query-statements.md#language-list
 
-[graph-clause]: https://github.com/google/zetasql/blob/master/docs/graph-query-statements.md#graph_query
+[graph-clause]: https://github.com/google/googlesql/blob/master/docs/graph-query-statements.md#graph_query
 
-[set-op]: https://github.com/google/zetasql/blob/master/docs/graph-query-statements.md#gql_set
+[set-op]: https://github.com/google/googlesql/blob/master/docs/graph-query-statements.md#gql_set
 
-[return]: https://github.com/google/zetasql/blob/master/docs/graph-query-statements.md#gql_return
+[return]: https://github.com/google/googlesql/blob/master/docs/graph-query-statements.md#gql_return
 
-[next]: https://github.com/google/zetasql/blob/master/docs/graph-query-statements.md#gql_next
+[next]: https://github.com/google/googlesql/blob/master/docs/graph-query-statements.md#gql_next
 
-[graph-clause]: https://github.com/google/zetasql/blob/master/docs/graph-query-statements.md#graph_query
+[graph-clause]: https://github.com/google/googlesql/blob/master/docs/graph-query-statements.md#graph_query
 
 ## `GRAPH` clause 
 <a id="graph_query"></a>
@@ -219,7 +219,7 @@ linear query statement in a graph query.
 The following example queries the [`FinGraph`][fin-graph] property graph to find
 accounts with incoming transfers and looks up their owners:
 
-```zetasql
+```googlesql
 GRAPH FinGraph
 MATCH (:Account)-[:Transfers]->(account:Account)
 RETURN account, COUNT(*) AS num_incoming_transfers
@@ -241,13 +241,13 @@ RETURN
  +--------------------------------------------------*/
 ```
 
-[graph-query-statements]: https://github.com/google/zetasql/blob/master/docs/graph-query-statements.md
+[graph-query-statements]: https://github.com/google/googlesql/blob/master/docs/graph-query-statements.md
 
-[gql_syntax]: https://github.com/google/zetasql/blob/master/docs/graph-query-statements.md#gql_syntax
+[gql_syntax]: https://github.com/google/googlesql/blob/master/docs/graph-query-statements.md#gql_syntax
 
-[fin-graph]: https://github.com/google/zetasql/blob/master/docs/graph-schema-statements.md#fin_graph
+[fin-graph]: https://github.com/google/googlesql/blob/master/docs/graph-schema-statements.md#fin_graph
 
-[next]: https://github.com/google/zetasql/blob/master/docs/graph-query-statements.md#gql_next
+[next]: https://github.com/google/googlesql/blob/master/docs/graph-query-statements.md#gql_next
 
 ## `CALL` statement 
 <a id="gql_call"></a>
@@ -365,14 +365,14 @@ column-naming rules for uniqueness:
 Note: The examples in this section reference a property graph called
 [`FinGraph`][fin-graph].
 
-[fin-graph]: https://github.com/google/zetasql/blob/master/docs/graph-schema-statements.md#fin_graph
+[fin-graph]: https://github.com/google/googlesql/blob/master/docs/graph-schema-statements.md#fin_graph
 
 **Example: Call a named TVF with `YIELD`**
 
 The following example calls a named TVF and uses the `YIELD` clause to rename a
 column. This example assumes a TVF `graph.neighbors(node)` exists.
 
-```zetasql
+```googlesql
 GRAPH FinGraph
 MATCH (p:Person {Id: 1})
 CALL graph.neighbors(p) YIELD neighbor AS friend
@@ -392,7 +392,7 @@ The following example calls an inline subquery to find accounts owned by each
 matched person `p`. Multiple accounts for the same person are ordered by account
 ID.
 
-```zetasql
+```googlesql
 GRAPH FinGraph
 MATCH (p:Person)
 CALL (p) {
@@ -421,7 +421,7 @@ the `CALL` statement doesn't declare the node variable `p`, then the redeclared
 variable `p` in the subquery is treated as a new variable, independent of the
 outer-scoped variable (not multiply-declared), and returns different results.
 
-```zetasql
+```googlesql
 GRAPH FinGraph
 MATCH (p:Person)  -- Outer-scoped variable `p`
 CALL () {  -- `p` not declared
@@ -450,7 +450,7 @@ Additionally, the following version of the query fails because the declared
 variable `Id` isn't a node or an edge variable. You can redeclare only node or
 edge variables in subqueries.
 
-```zetasql {.bad}
+```googlesql {.bad}
 GRAPH FinGraph
 MATCH (p:Person {Id:2})
 LET Id = p.Id
@@ -473,7 +473,7 @@ ERROR: generic::invalid_argument: Variable name: Id already exists [at 7:3]
 The following query calls an inline subquery that aggregates the number of
 accounts `a` for each matched person `p`:
 
-```zetasql
+```googlesql
 GRAPH FinGraph
 MATCH (p:Person)
 CALL (p) {
@@ -499,7 +499,7 @@ person `p`. The `OPTIONAL` clause includes rows for which the TVF or subquery
 produces no output. Rows with no output return `NULL` values. Without the
 `OPTIONAL` clause, rows with no output are excluded from the results.
 
-```zetasql
+```googlesql
 GRAPH FinGraph
 MATCH (p:Person)
 OPTIONAL CALL (p) {
@@ -527,7 +527,7 @@ ORDER BY p.name, transfer_date DESC;
 The following example uses the `YIELD` clause to rename the `Id` TVF column to
 `tvf_Id` to avoid conflicting with the person `Id` column.
 
-```zetasql
+```googlesql
 GRAPH FinGraph
 MATCH (p:Person {Id: 1})
 CALL my_tvf(p) YIELD Id AS tvf_Id
@@ -541,7 +541,7 @@ RETURN p.Id AS person_Id, tvf_Id;
 The following query uses the `RETURN` alias in the subquery to avoid conflicting
 with the `p.Id` column.
 
-```zetasql
+```googlesql
 GRAPH FinGraph
 MATCH (p:Person {Id: 1})
 CALL (p) {
@@ -562,7 +562,7 @@ RETURN p.Id AS person_Id, account_Id;
 The following query finds the top three largest transfers over 50 dollar amounts
 for each person.
 
-```zetasql
+```googlesql
 GRAPH FinGraph
 MATCH (p:Person)
 CALL (p) {
@@ -593,7 +593,7 @@ The following subquery counts all `Person` nodes. The `total_persons` value is
 the same for all output rows because the subquery in the `CALL ()` statement is
 empty and doesn't depend on any variables from the outer scope.
 
-```zetasql
+```googlesql
 GRAPH FinGraph
 MATCH (p:Person)
 CALL () {
@@ -618,7 +618,7 @@ The following query uses nested subqueries with scoped variables. The query
 finds the number of transfers for each account, but only for transfers to
 accounts owned by the original person `p`.
 
-```zetasql
+```googlesql
 GRAPH FinGraph
 MATCH (p:Person {Id:2})
 CALL (p) {
@@ -646,7 +646,7 @@ the entire working. The query takes the entire graph, including all nodes and
 edges from the input table, and returns a table with each element and its
 calculated `PageRank` score.
 
-```zetasql
+```googlesql
 GRAPH FinGraph
 MATCH (n)
 RETURN n
@@ -709,12 +709,12 @@ The `WHERE` clause is evaluated as part of the containing statement.
 Note: The examples in this section reference a property graph called
 [`FinGraph`][fin-graph].
 
-[fin-graph]: https://github.com/google/zetasql/blob/master/docs/graph-schema-statements.md#fin_graph
+[fin-graph]: https://github.com/google/googlesql/blob/master/docs/graph-schema-statements.md#fin_graph
 
 In the following query, people with `Id = 1` are excluded from the
 results table:
 
-```zetasql
+```googlesql
 GRAPH FinGraph
 MATCH (p:Person)-[o:Owns]->(a:Account)
 FILTER p.Id <> 1
@@ -731,7 +731,7 @@ RETURN p.name, a.Id AS account_id
 `WHERE` is an optional keyword that you can include in a `FILTER` statement.
 The following query is semantically identical to the previous query:
 
-```zetasql
+```googlesql
 GRAPH FinGraph
 MATCH (p:Person)-[o:Owns]->(a:Account)
 FILTER WHERE p.Id <> 1
@@ -748,7 +748,7 @@ RETURN p.name, a.Id AS account_id
 In the following example, `FILTER` follows an aggregation step with
 grouping. Semantically, it's similar to the `HAVING` clause in SQL:
 
-```zetasql
+```googlesql
 GRAPH FinGraph
 MATCH (source:Account)-[e:Transfers]->(dest:Account)
 RETURN source, COUNT(e) AS num_transfers
@@ -770,7 +770,7 @@ RETURN source.id AS source_id, num_transfers
 In the following example, an error is produced because `FILTER` references
 `m`, which isn't in the working table:
 
-```zetasql {.bad}
+```googlesql {.bad}
 -- Error: m doesn't exist
 GRAPH FinGraph
 MATCH (p:Person)-[o:Owns]->(a:Account)
@@ -781,7 +781,7 @@ RETURN p.name
 In the following example, an error is produced because even though `p` is in the
 working table, `p` doesn't have a property called `date_of_birth`:
 
-```zetasql {.bad}
+```googlesql {.bad}
 -- ERROR: date_of_birth isn't a property of p
 GRAPH FinGraph
 MATCH (p:Person)-[o:Owns]->(a:Account)
@@ -789,13 +789,13 @@ FILTER WHERE p.date_of_birth < '1990-01-10'
 RETURN p.name
 ```
 
-[where-clause]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#where_clause
+[where-clause]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#where_clause
 
-[having-clause]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#having_clause
+[having-clause]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#having_clause
 
-[graph-pattern-definition]: https://github.com/google/zetasql/blob/master/docs/graph-patterns.md#graph_pattern_definition
+[graph-pattern-definition]: https://github.com/google/googlesql/blob/master/docs/graph-patterns.md#graph_pattern_definition
 
-[horizontal-aggregation]: https://github.com/google/zetasql/blob/master/docs/graph-gql-functions.md
+[horizontal-aggregation]: https://github.com/google/googlesql/blob/master/docs/graph-gql-functions.md
 
 ## `FOR` statement 
 <a id="gql_for"></a>
@@ -846,13 +846,13 @@ statement.
 Note: The examples in this section reference a property graph called
 [`FinGraph`][fin-graph].
 
-[fin-graph]: https://github.com/google/zetasql/blob/master/docs/graph-schema-statements.md#fin_graph
+[fin-graph]: https://github.com/google/googlesql/blob/master/docs/graph-schema-statements.md#fin_graph
 
 In the following query, there are three rows in the working table prior to the
 `FOR` statement. After the `FOR` statement, each row is expanded into two rows,
 one per `element` value from the array.
 
-```zetasql
+```googlesql
 GRAPH FinGraph
 MATCH (p:Person)-[o:Owns]->(a:Account)
 FOR element in ["all","some"] WITH OFFSET
@@ -875,7 +875,7 @@ In the following query, there are two rows in the working table prior to the
 `FOR` statement. After the `FOR` statement, each row is expanded into a
 different number of rows, based on the value of `array_expression` for that row.
 
-```zetasql
+```googlesql
 GRAPH FinGraph
 MATCH (p:Person)-[o:Owns]->(a:Account)
 FILTER WHERE p.Id <> 1
@@ -898,7 +898,7 @@ In the following query, there are three rows in the working table prior to the
 `FOR` statement. After the `FOR` statement, no row is produced because
 `array_expression` is an empty array.
 
-```zetasql
+```googlesql
 -- No rows produced
 GRAPH FinGraph
 MATCH (p:Person)
@@ -910,7 +910,7 @@ In the following query, there are three rows in the working table prior to the
 `FOR` statement. After the `FOR` statement, no row is produced because
 `array_expression` is a `NULL` array.
 
-```zetasql
+```googlesql
 -- No rows produced
 GRAPH FinGraph
 MATCH (p:Person)
@@ -922,7 +922,7 @@ In the following example, an error is produced because `WITH` is used directly
 After the `FOR` statement. The query can be fixed by adding `WITH OFFSET` after
 the `FOR` statement, or by using `RETURN` directly instead of `WITH`.
 
-```zetasql {.bad}
+```googlesql {.bad}
 -- Error: Expected keyword OFFSET but got identifier "element"
 GRAPH FinGraph
 FOR element in [1,2,3]
@@ -931,7 +931,7 @@ RETURN col
 ORDER BY col
 ```
 
-```zetasql
+```googlesql
 GRAPH FinGraph
 FOR element in [1,2,3] WITH OFFSET
 WITH element as col
@@ -947,7 +947,7 @@ ORDER BY col
  +-----*/
 ```
 
-[unnest-operator]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#unnest_operator
+[unnest-operator]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#unnest_operator
 
 ## `LET` statement 
 <a id="gql_let"></a>
@@ -993,12 +993,12 @@ You can use horizontal aggregate functions in this statement. To learn more, see
 Note: The examples in this section reference a property graph called
 [`FinGraph`][fin-graph].
 
-[fin-graph]: https://github.com/google/zetasql/blob/master/docs/graph-schema-statements.md#fin_graph
+[fin-graph]: https://github.com/google/googlesql/blob/master/docs/graph-schema-statements.md#fin_graph
 
 In the following graph query, the variable `a` is defined and then referenced
 later:
 
-```zetasql
+```googlesql
 GRAPH FinGraph
 MATCH (source:Account)-[e:Transfers]->(destination:Account)
 LET a = source
@@ -1018,7 +1018,7 @@ RETURN a.id AS a_id
 The following `LET` statement in the second linear query statement is valid
 because `a` is defined and returned from the first linear query statement:
 
-```zetasql
+```googlesql
 GRAPH FinGraph
 MATCH (source:Account)-[e:Transfers]->(destination:Account)
 LET a = source
@@ -1043,7 +1043,7 @@ RETURN b.id AS b_id
 The following `LET` statement in the second linear query statement is invalid
 because `a` isn't returned from the first linear query statement.
 
-```zetasql {.bad}
+```googlesql {.bad}
 GRAPH FinGraph
 MATCH (source:Account)-[e:Transfers]->(destination:Account)
 LET a = source
@@ -1058,7 +1058,7 @@ RETURN b.id AS b_id
 The following `LET` statement is invalid because `a` is defined and then
 referenced in the same `LET` statement:
 
-```zetasql {.bad}
+```googlesql {.bad}
 GRAPH FinGraph
 MATCH (source:Account)-[e:Transfers]->(destination:Account)
 LET a = source, b = a -- ERROR: Can't define and reference 'a' in the same operation.
@@ -1068,7 +1068,7 @@ RETURN a
 The following `LET` statement is valid because `a` is defined first and then
 referenced afterwards:
 
-```zetasql
+```googlesql
 GRAPH FinGraph
 MATCH (source:Account)-[e:Transfers]->(destination:Account)
 LET a = source
@@ -1089,14 +1089,14 @@ RETURN b.id AS b_id
 In the following examples, the `LET` statements are invalid because `a` is
 redefined:
 
-```zetasql {.bad}
+```googlesql {.bad}
 GRAPH FinGraph
 MATCH (source:Account)-[e:Transfers]->(destination:Account)
 LET a = source, a = destination -- ERROR: 'a' has already been defined.
 RETURN a.id AS a_id
 ```
 
-```zetasql {.bad}
+```googlesql {.bad}
 GRAPH FinGraph
 MATCH (source:Account)-[e:Transfers]->(destination:Account)
 LET a = source
@@ -1107,7 +1107,7 @@ RETURN a.id AS a_id
 In the following examples, the `LET` statements are invalid because `b` is
 redefined:
 
-```zetasql {.bad}
+```googlesql {.bad}
 GRAPH FinGraph
 MATCH (source:Account)-[e:Transfers]->(destination:Account)
 LET a = source
@@ -1125,7 +1125,7 @@ The following `LET` statement is valid because although `b` is defined in the
 first linear query statement, it's not passed to the second linear query
 statement:
 
-```zetasql
+```googlesql
 GRAPH FinGraph
 MATCH (source:Account)-[e:Transfers]->(destination:Account)
 LET a = source
@@ -1149,7 +1149,7 @@ RETURN b.id
  +------*/
 ```
 
-[horizontal-aggregation]: https://github.com/google/zetasql/blob/master/docs/graph-gql-functions.md
+[horizontal-aggregation]: https://github.com/google/googlesql/blob/master/docs/graph-gql-functions.md
 
 ## `LIMIT` statement 
 <a id="gql_limit"></a>
@@ -1178,12 +1178,12 @@ it as a qualifying clause in the [`RETURN` statement][gql-return].
 Note: The examples in this section reference a property graph called
 [`FinGraph`][fin-graph].
 
-[fin-graph]: https://github.com/google/zetasql/blob/master/docs/graph-schema-statements.md#fin_graph
+[fin-graph]: https://github.com/google/googlesql/blob/master/docs/graph-schema-statements.md#fin_graph
 
 The following example uses the `LIMIT` statement to limit the query results to
 three rows:
 
-```zetasql
+```googlesql
 GRAPH FinGraph
 MATCH (source:Account)-[e:Transfers]->(destination:Account)
 ORDER BY source.Id
@@ -1202,7 +1202,7 @@ RETURN source.Id, source.nick_name
 The following query finds the account and its owner with the most outgoing
 transfers to a blocked account:
 
-```zetasql
+```googlesql
 GRAPH FinGraph
 MATCH (src_account:Account)-[transfer:Transfers]->(dst_account:Account {is_blocked:true})
 RETURN src_account, COUNT(transfer) as total_transfers
@@ -1221,7 +1221,7 @@ RETURN src_account.id AS account_id, owner.name AS owner_name
 
 [gql-return]: #gql_return
 
-[limit-and-offset-clause]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#limit_and_offset_clause
+[limit-and-offset-clause]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#limit_and_offset_clause
 
 ## `MATCH` statement 
 <a id="gql_match"></a>
@@ -1253,7 +1253,7 @@ The `INNER JOIN` semantics is used when the working table and matched result
 have variables in common. In the following example, the `INNER JOIN`
 semantics is used because `friend` is produced by both `MATCH` statements:
 
-```zetasql
+```googlesql
 MATCH (person:Person)-[:knows]->(friend:Person)
 MATCH (friend)-[:knows]->(otherFriend:Person)
 ```
@@ -1263,7 +1263,7 @@ result have no variables in common. In the following example, the `CROSS JOIN`
 semantics is used because `person1` and `friend` exist in the result of the
 first `MATCH` statement, but not the second one:
 
-```zetasql
+```googlesql
 MATCH (person1:Person)-[:knows]->(friend:Person)
 MATCH (person2:Person)-[:knows]->(otherFriend:Person)
 ```
@@ -1273,12 +1273,12 @@ MATCH (person2:Person)-[:knows]->(otherFriend:Person)
 Note: The examples in this section reference a property graph called
 [`FinGraph`][fin-graph].
 
-[fin-graph]: https://github.com/google/zetasql/blob/master/docs/graph-schema-statements.md#fin_graph
+[fin-graph]: https://github.com/google/googlesql/blob/master/docs/graph-schema-statements.md#fin_graph
 
 The following query matches all `Person` nodes and returns the name and ID of
 each person:
 
-```zetasql
+```googlesql
 GRAPH FinGraph
 MATCH (p:Person)
 RETURN p.name, p.id
@@ -1295,7 +1295,7 @@ RETURN p.name, p.id
 The following query matches all `Person` and `Account` nodes and returns their
 labels and ID:
 
-```zetasql
+```googlesql
 GRAPH FinGraph
 MATCH (n:Person|Account)
 RETURN LABELS(n) AS label, n.id
@@ -1314,7 +1314,7 @@ RETURN LABELS(n) AS label, n.id
 
 The following query matches all `Account` nodes that aren't blocked:
 
-```zetasql
+```googlesql
 GRAPH FinGraph
 MATCH (a:Account {is_blocked: false})
 RETURN a.id
@@ -1330,7 +1330,7 @@ RETURN a.id
 The following query matches all `Person` nodes that have a `birthday` less than
 `1990-01-10`:
 
-```zetasql
+```googlesql
 GRAPH FinGraph
 MATCH (p:Person WHERE p.birthday < '1990-01-10')
 RETURN p.name
@@ -1345,7 +1345,7 @@ RETURN p.name
 
 The following query matches all `Owns` edges:
 
-```zetasql
+```googlesql
 GRAPH FinGraph
 MATCH -[e:Owns]->
 RETURN e.id
@@ -1362,7 +1362,7 @@ RETURN e.id
 The following query matches all `Owns` edges created within a specific period of
 time:
 
-```zetasql
+```googlesql
 GRAPH FinGraph
 MATCH -[e:Owns WHERE e.create_time > '2020-01-14' AND e.create_time < '2020-05-14']->
 RETURN e.id
@@ -1378,7 +1378,7 @@ RETURN e.id
 The following query matches all `Transfers` edges where a blocked account is
 involved in any direction:
 
-```zetasql
+```googlesql
 GRAPH FinGraph
 MATCH (account:Account)-[transfer:Transfers]-(:Account {is_blocked:true})
 RETURN transfer.order_number, transfer.amount
@@ -1396,7 +1396,7 @@ RETURN transfer.order_number, transfer.amount
 The following query matches all `Transfers` initiated from an `Account` owned by
 `Person` with `id` equal to `2`:
 
-```zetasql
+```googlesql
 GRAPH FinGraph
 MATCH
   (p:Person {id: 2})-[:Owns]->(account:Account)-[t:Transfers]->
@@ -1415,7 +1415,7 @@ The following query matches all the destination `Accounts` one to three
 transfers away from a source `Account` with `id` equal to `7`, other than the
 source itself:
 
-```zetasql
+```googlesql
 GRAPH FinGraph
 MATCH (src:Account {id: 7})-[e:Transfers]->{1, 3}(dst:Account)
 WHERE src != dst
@@ -1436,7 +1436,7 @@ RETURN ARRAY_LENGTH(e) AS hops, dst.id AS destination_account_id
 The following query matches paths between `Account` nodes with one to two
 `Transfers` edges through intermediate accounts that are blocked:
 
-```zetasql
+```googlesql
 GRAPH FinGraph
 MATCH
   (src:Account)
@@ -1456,7 +1456,7 @@ RETURN src.id AS source_account_id, dst.id AS destination_account_id
 The following query finds unique reachable accounts which are one or two
 transfers away from a given `Account` node:
 
-```zetasql
+```googlesql
 GRAPH FinGraph
 MATCH ANY (src:Account {id: 7})-[e:Transfers]->{1,2}(dst:Account)
 LET ids_in_path = ARRAY_CONCAT(ARRAY_AGG(e.Id), [dst.Id])
@@ -1474,7 +1474,7 @@ The following query matches all `Person` nodes and optionally matches the
 blocked `Account` owned by the `Person`. The missing blocked `Account` is
 represented as `NULL`:
 
-```zetasql
+```googlesql
 GRAPH FinGraph
 MATCH (n:Person)
 OPTIONAL MATCH (n:Person)-[:Owns]->(a:Account {is_blocked: TRUE})
@@ -1489,7 +1489,7 @@ RETURN n.name, a.id AS blocked_account_id
  +--------------*/
 ```
 
-[graph-pattern-definition]: https://github.com/google/zetasql/blob/master/docs/graph-patterns.md#graph_pattern_definition
+[graph-pattern-definition]: https://github.com/google/googlesql/blob/master/docs/graph-patterns.md#graph_pattern_definition
 
 ## `NEXT` statement 
 <a id="gql_next"></a>
@@ -1507,11 +1507,11 @@ Chains multiple linear query statements together.
 Note: The examples in this section reference a property graph called
 [`FinGraph`][fin-graph].
 
-[fin-graph]: https://github.com/google/zetasql/blob/master/docs/graph-schema-statements.md#fin_graph
+[fin-graph]: https://github.com/google/googlesql/blob/master/docs/graph-schema-statements.md#fin_graph
 
 The following linear query statements are chained by the `NEXT` statement:
 
-```zetasql
+```googlesql
 GRAPH FinGraph
 MATCH (:Account)-[:Transfers]->(account:Account)
 RETURN account, COUNT(*) AS num_incoming_transfers
@@ -1564,11 +1564,11 @@ the `RETURN` statement.
 Note: The examples in this section reference a property graph called
 [`FinGraph`][fin-graph].
 
-[fin-graph]: https://github.com/google/zetasql/blob/master/docs/graph-schema-statements.md#fin_graph
+[fin-graph]: https://github.com/google/googlesql/blob/master/docs/graph-schema-statements.md#fin_graph
 
 In the following example, the first two rows aren't included in the results:
 
-```zetasql
+```googlesql
 GRAPH FinGraph
 MATCH (p:Person)
 OFFSET 2
@@ -1581,7 +1581,7 @@ RETURN p.name, p.id
  +-----------*/
 ```
 
-[limit-and-offset-clause]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#limit_and_offset_clause
+[limit-and-offset-clause]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#limit_and_offset_clause
 
 ## `ORDER BY` statement 
 <a id="gql_order_by"></a>
@@ -1636,12 +1636,12 @@ If you would like to apply `ORDER BY` to what is in `RETURN` statement, use the
 Note: The examples in this section reference a property graph called
 [`FinGraph`][fin-graph].
 
-[fin-graph]: https://github.com/google/zetasql/blob/master/docs/graph-schema-statements.md#fin_graph
+[fin-graph]: https://github.com/google/googlesql/blob/master/docs/graph-schema-statements.md#fin_graph
 
 The following query sorts the results by the `transfer.amount`
 values in descending order:
 
-```zetasql
+```googlesql
 GRAPH FinGraph
 MATCH (src_account:Account)-[transfer:Transfers]->(dst_account:Account)
 ORDER BY transfer.amount DESC
@@ -1657,7 +1657,7 @@ RETURN src_account.id AS account_id, transfer.amount AS transfer_amount
  +------------------------------*/
 ```
 
-```zetasql
+```googlesql
 GRAPH FinGraph
 MATCH (src_account:Account)-[transfer:Transfers]->(dst_account:Account)
 ORDER BY transfer.amount DESC
@@ -1678,7 +1678,7 @@ If you don't include the `LIMIT` or `OFFSET` statement right after the
 `ORDER BY` statement, the effect of `ORDER BY` is discarded and the result is
 unordered.
 
-```zetasql
+```googlesql
 -- Warning: The transfer.amount values aren't sorted because the
 -- LIMIT statement is missing.
 GRAPH FinGraph
@@ -1697,7 +1697,7 @@ RETURN src_account.id AS account_id, transfer.amount AS transfer_amount
  +------------------------------*/
 ```
 
-```zetasql
+```googlesql
 -- Warning: Using the LIMIT clause in the RETURN statement, but not immediately
 -- after the ORDER BY statement, also returns the unordered transfer.amount
 -- values.
@@ -1718,7 +1718,7 @@ LIMIT 10
  +------------------------------*/
 ```
 
-[order-by-clause]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#order_by_clause
+[order-by-clause]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#order_by_clause
 
 [return-statement]: #gql_return
 
@@ -1789,11 +1789,11 @@ Ordinals aren't supported in the `ORDER BY` and `GROUP BY` clauses.
 Note: The examples in this section reference a property graph called
 [`FinGraph`][fin-graph].
 
-[fin-graph]: https://github.com/google/zetasql/blob/master/docs/graph-schema-statements.md#fin_graph
+[fin-graph]: https://github.com/google/googlesql/blob/master/docs/graph-schema-statements.md#fin_graph
 
 The following query returns `p.name` and `p.id`:
 
-```zetasql
+```googlesql
 GRAPH FinGraph
 MATCH (p:Person)
 RETURN p.name, p.id
@@ -1811,7 +1811,7 @@ In the following example, the first linear query statement returns all columns
 including `p`, `a`, `b`, and `c`. The second linear query statement returns the
 specified `p.name` and `d` columns:
 
-```zetasql
+```googlesql
 GRAPH FinGraph
 MATCH (p:Person)
 LET a = 1, b = 2, c = 3
@@ -1832,7 +1832,7 @@ RETURN p.name, (a + b + c) AS d
 
 The following query returns distinct rows:
 
-```zetasql
+```googlesql
 GRAPH FinGraph
 MATCH (src:Account {id: 7})-[e:Transfers]->{1, 3}(dst:Account)
 RETURN DISTINCT ARRAY_LENGTH(e) AS hops, dst.id AS destination_account_id
@@ -1851,7 +1851,7 @@ In the following example, the first linear query statement returns `account` and
 aggregated `num_incoming_transfers` per account. The second statement returns
 sorted result.
 
-```zetasql
+```googlesql
 GRAPH FinGraph
 MATCH (:Account)-[:Transfers]->(account:Account)
 RETURN account, COUNT(*) AS num_incoming_transfers
@@ -1875,7 +1875,7 @@ ORDER BY num_incoming_transfers DESC
 In the following example, the `GROUP BY ALL` clause groups rows by inferring
 grouping keys from the return items in the `RETURN` statement.
 
-```zetasql
+```googlesql
 GRAPH FinGraph
 MATCH (:Account)-[:Transfers]->(account:Account)
 RETURN account, COUNT(*) AS num_incoming_transfers
@@ -1899,7 +1899,7 @@ RETURN owner.name AS owner_name, num_incoming_transfers
 In the following example, the `LIMIT` clause in the `RETURN` statement
 reduces the results to one row:
 
-```zetasql
+```googlesql
 GRAPH FinGraph
 MATCH (p:Person)
 RETURN p.name, p.id
@@ -1915,7 +1915,7 @@ LIMIT 1
 In the following example, the `OFFSET` clause in the `RETURN` statement
 skips the first row:
 
-```zetasql
+```googlesql
 GRAPH FinGraph
 MATCH (p:Person)
 RETURN p.name, p.id
@@ -1933,7 +1933,7 @@ In the following example, the `OFFSET` clause in the `RETURN` statement
 skips the first row, then the `LIMIT` clause reduces the
 results to one row:
 
-```zetasql
+```googlesql
 GRAPH FinGraph
 MATCH (p:Person)
 RETURN p.name, p.id
@@ -1951,7 +1951,7 @@ In the following example, an error is produced because the `OFFSET` clause must
 come before the `LIMIT` clause when they are both used in the
 `RETURN` statement:
 
-```zetasql {.bad}
+```googlesql {.bad}
 -- Error: The LIMIT clause must come after the OFFSET clause in a
 -- RETURN operation.
 GRAPH FinGraph
@@ -1964,7 +1964,7 @@ OFFSET 1
 In the following example, the `ORDER BY` clause in the `RETURN` statement sorts
 the results by `hops` and then `destination_account_id`:
 
-```zetasql
+```googlesql
 GRAPH FinGraph
 MATCH (src:Account {id: 7})-[e:Transfers]->{1, 3}(dst:Account)
 RETURN DISTINCT ARRAY_LENGTH(e) AS hops, dst.id AS destination_account_id
@@ -1980,11 +1980,11 @@ ORDER BY hops, destination_account_id
  +-------------------------------*/
 ```
 
-[group-by-clause]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#group_by_clause
+[group-by-clause]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#group_by_clause
 
-[order-by-clause]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#order_by_clause
+[order-by-clause]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#order_by_clause
 
-[limit-and-offset-clause]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#limit_and_offset_clause
+[limit-and-offset-clause]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#limit_and_offset_clause
 
 ## `SKIP` statement 
 <a id="gql_skip"></a>
@@ -2002,11 +2002,11 @@ Synonym for the [`OFFSET` statement][gql-offset].
 Note: The examples in this section reference a property graph called
 [`FinGraph`][fin-graph].
 
-[fin-graph]: https://github.com/google/zetasql/blob/master/docs/graph-schema-statements.md#fin_graph
+[fin-graph]: https://github.com/google/googlesql/blob/master/docs/graph-schema-statements.md#fin_graph
 
 `SKIP` is a synonym for `OFFSET`. Therefore, these queries are equivalent:
 
-```zetasql
+```googlesql
 GRAPH FinGraph
 MATCH (p:Person)
 SKIP 2
@@ -2019,7 +2019,7 @@ RETURN p.name, p.id
  +-----------*/
 ```
 
-```zetasql
+```googlesql
 GRAPH FinGraph
 MATCH (p:Person)
 OFFSET 2
@@ -2032,7 +2032,7 @@ RETURN p.name, p.id
  +-----------*/
 ```
 
-[gql-offset]: https://github.com/google/zetasql/blob/master/docs/graph-query-statements.md#gql_offset
+[gql-offset]: https://github.com/google/googlesql/blob/master/docs/graph-query-statements.md#gql_offset
 
 ## `WITH` statement 
 <a id="gql_with"></a>
@@ -2082,11 +2082,11 @@ Ordinals aren't supported in the `GROUP BY` clause.
 Note: The examples in this section reference a property graph called
 [`FinGraph`][fin-graph].
 
-[fin-graph]: https://github.com/google/zetasql/blob/master/docs/graph-schema-statements.md#fin_graph
+[fin-graph]: https://github.com/google/googlesql/blob/master/docs/graph-schema-statements.md#fin_graph
 
 The following query returns all distinct destination account IDs:
 
-```zetasql
+```googlesql
 GRAPH FinGraph
 MATCH (src:Account)-[transfer:Transfers]->(dst:Account)
 WITH DISTINCT dst
@@ -2105,7 +2105,7 @@ The following query uses `*` to carry over the existing columns of
 the working table in addition to defining a new one for the destination
 account id.
 
-```zetasql
+```googlesql
 GRAPH FinGraph
 MATCH (src:Account)-[transfer:Transfers]->(dst:Account)
 WITH *, dst.id
@@ -2130,7 +2130,7 @@ In this case, the grouping keys inferred are `src.id` and `dst.id`.
 Therefore, this query returns the number of transfers for each
 distinct combination of `src.id` and `dst.id`.
 
-```zetasql
+```googlesql
 GRAPH FinGraph
 MATCH (src:Account)-[transfer:Transfers]->(dst:Account)
 WITH COUNT(*) AS transfer_total, src.id AS source_id, dst.id AS destination_id
@@ -2150,7 +2150,7 @@ In the following example, an error is produced because the `WITH` statement only
 contains `dst`. `src` isn't visible after the `WITH` statement in the `RETURN`
 statement.
 
-```zetasql {.bad}
+```googlesql {.bad}
 -- Error: src doesn't exist
 GRAPH FinGraph
 MATCH (src:Account)-[transfer:Transfers]->(dst:Account)
@@ -2158,7 +2158,7 @@ WITH dst
 RETURN src.id AS source_id
 ```
 
-[group-by-clause]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#group_by_clause
+[group-by-clause]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#group_by_clause
 
 ## Set operation 
 <a id="gql_set"></a>
@@ -2217,7 +2217,7 @@ A set operation between two linear query statements with the same set of
 output column names and types but with different column orders is supported.
 For example:
 
-```zetasql
+```googlesql
 GRAPH FinGraph
 MATCH (p:Person)
 RETURN p.name, 1 AS group_id
@@ -2241,7 +2241,7 @@ In a set operation, chaining the same kind of set operation is supported, but
 chaining different kinds of set operations isn't.
 For example:
 
-```zetasql
+```googlesql
 GRAPH FinGraph
 MATCH (p:Person)
 RETURN p.name, 1 AS group_id
@@ -2267,7 +2267,7 @@ RETURN 3 AS group_id, p.name
  +------+----------*/
 ```
 
-```zetasql {.bad}
+```googlesql {.bad}
 -- ERROR: GQL doesn't allow chaining EXCEPT DISTINCT with UNION ALL
 GRAPH FinGraph
 MATCH (p:Person)
@@ -2280,9 +2280,9 @@ MATCH (p:Person)
 RETURN 3 AS group_id, p.name
 ```
 
-[set-op]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#set_operators
+[set-op]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#set_operators
 
-[supertypes]: https://github.com/google/zetasql/blob/master/docs/conversion_rules.md#supertypes
+[supertypes]: https://github.com/google/googlesql/blob/master/docs/conversion_rules.md#supertypes
 
-[gql_syntax]: https://github.com/google/zetasql/blob/master/docs/graph-query-statements.md#gql_syntax
+[gql_syntax]: https://github.com/google/googlesql/blob/master/docs/graph-query-statements.md#gql_syntax
 

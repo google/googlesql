@@ -1,0 +1,166 @@
+# Text based tests for HLL_COUNT.*. More tests can be found in
+# //googlesql/compliance/functions_testlib_hll_count.cc
+
+# ------------------------------------------------------------------------------
+# HLL_COUNT.INIT
+# ------------------------------------------------------------------------------
+
+[name=hll_count_init_precision_parameter]
+[parameters=15 as precision]
+SELECT HLL_COUNT.INIT(x, @precision) IS NOT NULL
+FROM UNNEST([10, 11, 12]) AS x
+--
+ARRAY<STRUCT<BOOL>>[{true}]
+==
+
+[name=hll_count_init_only_null]
+SELECT HLL_COUNT.INIT(x)
+FROM (
+  SELECT NULL AS x
+  UNION ALL SELECT NULL AS x)
+--
+ARRAY<STRUCT<BYTES>>[{NULL}]
+==
+
+[name=hll_count_init_contains_null]
+SELECT HLL_COUNT.EXTRACT(y)
+FROM (
+  SELECT HLL_COUNT.INIT(x) AS y
+  FROM (
+    SELECT 111 AS x
+    UNION ALL SELECT 222 AS x
+    UNION ALL SELECT NULL AS x))
+--
+ARRAY<STRUCT<INT64>>[{2}]
+==
+
+# ------------------------------------------------------------------------------
+# HLL_COUNT.MERGE
+# ------------------------------------------------------------------------------
+
+[name=hll_count_merge]
+SELECT HLL_COUNT.MERGE(x)
+FROM (
+  SELECT HLL_COUNT.INIT(x) AS x FROM UNNEST([1, 2, 3, 4, 5]) AS x
+  UNION ALL SELECT HLL_COUNT.INIT(x) AS x FROM UNNEST([4, 5, 6]) AS x
+  UNION ALL SELECT HLL_COUNT.INIT(x) AS x FROM UNNEST([6, 7, 8, 9, 10]) AS x)
+--
+ARRAY<STRUCT<INT64>>[{10}]
+==
+
+[required_features=NUMERIC_TYPE]
+[name=hll_count_merge_numeric]
+SELECT HLL_COUNT.MERGE(x)
+FROM (
+  SELECT HLL_COUNT.INIT(x) AS x FROM UNNEST([NUMERIC "1.23", 2.34, 3.45]) AS x
+  UNION ALL SELECT HLL_COUNT.INIT(x) AS x FROM UNNEST([NUMERIC "2.34", -1.23]) AS x
+  UNION ALL SELECT HLL_COUNT.INIT(x) AS x FROM UNNEST([NUMERIC "-1.23", -5.67]) AS x)
+--
+ARRAY<STRUCT<INT64>>[{5}]
+==
+
+[required_features=BIGNUMERIC_TYPE]
+[name=hll_count_merge_bignumeric]
+SELECT HLL_COUNT.MERGE(x)
+FROM (
+  SELECT HLL_COUNT.INIT(x) AS x FROM UNNEST([BIGNUMERIC "1e-30", 2.34000000000001, 3.45]) AS x
+  UNION ALL SELECT HLL_COUNT.INIT(x) AS x FROM UNNEST([BIGNUMERIC "2.34000000000001",BIGNUMERIC "-1e-30"]) AS x
+  UNION ALL SELECT HLL_COUNT.INIT(x) AS x FROM UNNEST([BIGNUMERIC "-1e-30", -5.67]) AS x)
+--
+ARRAY<STRUCT<INT64>>[{5}]
+==
+
+[name=hll_count_merge_only_null]
+SELECT HLL_COUNT.MERGE(x)
+FROM (
+  SELECT CAST(NULL AS BYTES) AS x
+  UNION ALL SELECT CAST(NULL AS BYTES) AS x)
+--
+ARRAY<STRUCT<INT64>>[{0}]
+==
+
+[name=hll_count_merge_invalid_sketch]
+SELECT HLL_COUNT.MERGE(x)
+FROM UNNEST([B""]) AS x
+--
+ERROR: generic::out_of_range: Invalid or incompatible sketch in HLL_COUNT.MERGE
+==
+
+[name=hll_count_merge_different_precisions]
+SELECT HLL_COUNT.MERGE(x)
+FROM (
+  SELECT HLL_COUNT.INIT(x, 15) AS x FROM UNNEST([1, 2, 3, 4, 5]) AS x
+  UNION ALL SELECT HLL_COUNT.INIT(x, 16) AS x FROM UNNEST([4, 5, 6]) AS x
+  UNION ALL SELECT HLL_COUNT.INIT(x, 17) AS x FROM UNNEST([6, 7, 8, 9, 10]) AS x)
+--
+ARRAY<STRUCT<INT64>>[{10}]
+==
+
+[name=hll_count_merge_incompatible_types]
+SELECT HLL_COUNT.MERGE(x)
+FROM (
+  SELECT HLL_COUNT.INIT(x) AS x FROM UNNEST([1, 2, 3]) AS x
+  UNION ALL SELECT HLL_COUNT.INIT(x) AS x FROM UNNEST(["foo", "bar"]) AS x)
+--
+ERROR: generic::out_of_range: Invalid or incompatible sketch in HLL_COUNT.MERGE
+==
+
+# ------------------------------------------------------------------------------
+# HLL_COUNT.EXTRACT
+# ------------------------------------------------------------------------------
+
+[name=hll_count_extract]
+SELECT row_id, HLL_COUNT.EXTRACT(x)
+FROM (
+  SELECT 1 AS row_id, HLL_COUNT.INIT(x) AS x FROM UNNEST([1, 2, 3]) AS x
+  UNION ALL SELECT 2 AS row_id, HLL_COUNT.INIT(x) AS x FROM UNNEST(["foo", "bar"]) AS x
+  UNION ALL SELECT 3 AS row_id, CAST(NULL AS BYTES) AS x)
+ORDER BY row_id
+--
+ARRAY<STRUCT<row_id INT64, INT64>>[known order:{1, 3}, {2, 2}, {3, 0}]
+==
+
+[name=hll_count_extract_invalid_sketch]
+SELECT HLL_COUNT.EXTRACT(x)
+FROM UNNEST([B""]) AS x
+--
+ERROR: generic::out_of_range: Invalid sketch in HLL_COUNT.EXTRACT
+==
+
+[name=safe_hll_count_extract_invalid_sketch]
+[required_features=SAFE_FUNCTION_CALL]
+SELECT SAFE.HLL_COUNT.EXTRACT(x)
+FROM UNNEST([B""]) AS x
+--
+ARRAY<STRUCT<INT64>>[{NULL}]
+==
+
+# ------------------------------------------------------------------------------
+# HLL_COUNT.MERGE_PARTIAL
+# ------------------------------------------------------------------------------
+
+[name=hll_count_merge_partial_only_null]
+SELECT HLL_COUNT.MERGE_PARTIAL(x)
+FROM (
+  SELECT CAST(NULL AS BYTES) AS x
+  UNION ALL SELECT CAST(NULL AS BYTES) AS x)
+--
+ARRAY<STRUCT<BYTES>>[{NULL}]
+==
+
+[name=hll_count_merge_partial_invalid_sketch]
+SELECT HLL_COUNT.MERGE_PARTIAL(x)
+FROM UNNEST([B""]) AS x
+--
+ERROR: generic::out_of_range: Invalid or incompatible sketch in HLL_COUNT.MERGE_PARTIAL
+==
+
+[name=hll_count_merge_partial_incompatible_types]
+SELECT HLL_COUNT.MERGE_PARTIAL(x)
+FROM (
+  SELECT HLL_COUNT.INIT(x) AS x FROM UNNEST([1, 2, 3]) AS x
+  UNION ALL SELECT HLL_COUNT.INIT(x) AS x FROM UNNEST(["foo", "bar"]) AS x)
+--
+ERROR: generic::out_of_range: Invalid or incompatible sketch in HLL_COUNT.MERGE_PARTIAL
+==
+

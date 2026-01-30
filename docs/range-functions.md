@@ -4,7 +4,7 @@
 
 # Range functions
 
-ZetaSQL supports the following range functions.
+GoogleSQL supports the following range functions.
 
 ## Function list
 
@@ -18,7 +18,7 @@ ZetaSQL supports the following range functions.
   <tbody>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/range-functions.md#generate_range_array"><code>GENERATE_RANGE_ARRAY</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/range-functions.md#generate_range_array"><code>GENERATE_RANGE_ARRAY</code></a>
 </td>
   <td>
     Splits a range into an array of subranges.
@@ -27,7 +27,7 @@ ZetaSQL supports the following range functions.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/range-functions.md#range"><code>RANGE</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/range-functions.md#range"><code>RANGE</code></a>
 </td>
   <td>
     Constructs a range of <code>DATE</code>, <code>DATETIME</code>,
@@ -36,18 +36,18 @@ ZetaSQL supports the following range functions.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/mathematical_functions.md#range_bucket"><code>RANGE_BUCKET</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/mathematical_functions.md#range_bucket"><code>RANGE_BUCKET</code></a>
 </td>
   <td>
     Scans through a sorted array and returns the 0-based position
     of a point's upper bound.
-    <br>For more information, see <a href="https://github.com/google/zetasql/blob/master/docs/mathematical_functions.md">Mathematical functions</a>.
+    <br>For more information, see <a href="https://github.com/google/googlesql/blob/master/docs/mathematical_functions.md">Mathematical functions</a>.
 
   </td>
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/range-functions.md#range_contains"><code>RANGE_CONTAINS</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/range-functions.md#range_contains"><code>RANGE_CONTAINS</code></a>
 </td>
   <td>
   Signature 1: Checks if one range is in another range.
@@ -57,25 +57,25 @@ ZetaSQL supports the following range functions.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/range-functions.md#range_end"><code>RANGE_END</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/range-functions.md#range_end"><code>RANGE_END</code></a>
 </td>
   <td>Gets the upper bound of a range.</td>
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/range-functions.md#range_intersect"><code>RANGE_INTERSECT</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/range-functions.md#range_intersect"><code>RANGE_INTERSECT</code></a>
 </td>
   <td>Gets a segment of two ranges that intersect.</td>
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/range-functions.md#range_overlaps"><code>RANGE_OVERLAPS</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/range-functions.md#range_overlaps"><code>RANGE_OVERLAPS</code></a>
 </td>
   <td>Checks if two ranges overlap.</td>
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/range-functions.md#range_sessionize"><code>RANGE_SESSIONIZE</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/range-functions.md#range_sessionize"><code>RANGE_SESSIONIZE</code></a>
 </td>
   <td>
     Produces a table of sessionized ranges.
@@ -84,7 +84,7 @@ ZetaSQL supports the following range functions.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/range-functions.md#range_start"><code>RANGE_START</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/range-functions.md#range_start"><code>RANGE_START</code></a>
 </td>
   <td>Gets the lower bound of a range.</td>
 </tr>
@@ -94,11 +94,11 @@ ZetaSQL supports the following range functions.
 
 ## `GENERATE_RANGE_ARRAY`
 
-```zetasql
+```googlesql
 GENERATE_RANGE_ARRAY(range_to_split, step_interval)
 ```
 
-```zetasql
+```googlesql
 GENERATE_RANGE_ARRAY(range_to_split, step_interval, include_last_partial_range)
 ```
 
@@ -146,7 +146,7 @@ In the following example, a date range between `2020-01-01` and `2020-01-06`
 is split into an array of subranges that are one day long. There are
 no partial ranges.
 
-```zetasql
+```googlesql
 SELECT GENERATE_RANGE_ARRAY(
   RANGE(DATE '2020-01-01', DATE '2020-01-06'),
   INTERVAL 1 DAY) AS results;
@@ -168,7 +168,7 @@ In the following examples, a date range between `2020-01-01` and `2020-01-06`
 is split into an array of subranges that are two days long. The final subrange
 is smaller than two days:
 
-```zetasql
+```googlesql
 SELECT GENERATE_RANGE_ARRAY(
   RANGE(DATE '2020-01-01', DATE '2020-01-06'),
   INTERVAL 2 DAY) AS results;
@@ -184,7 +184,7 @@ SELECT GENERATE_RANGE_ARRAY(
  +----------------------------*/
 ```
 
-```zetasql
+```googlesql
 SELECT GENERATE_RANGE_ARRAY(
   RANGE(DATE '2020-01-01', DATE '2020-01-06'),
   INTERVAL 2 DAY,
@@ -205,7 +205,7 @@ In the following example, a date range between `2020-01-01` and `2020-01-06`
 is split into an array of subranges that are two days long, but the final
 subrange is excluded because it's smaller than two days:
 
-```zetasql
+```googlesql
 SELECT GENERATE_RANGE_ARRAY(
   RANGE(DATE '2020-01-01', DATE '2020-01-06'),
   INTERVAL 2 DAY,
@@ -221,11 +221,11 @@ SELECT GENERATE_RANGE_ARRAY(
  +----------------------------*/
 ```
 
-[interval-single]: https://github.com/google/zetasql/blob/master/docs/data-types.md#single_datetime_part_interval
+[interval-single]: https://github.com/google/googlesql/blob/master/docs/data-types.md#single_datetime_part_interval
 
 ## `RANGE`
 
-```zetasql
+```googlesql
 RANGE(lower_bound, upper_bound)
 ```
 
@@ -258,7 +258,7 @@ To return `NULL` instead, add the `SAFE.` prefix to the function name.
 
 The following query constructs a date range:
 
-```zetasql
+```googlesql
 SELECT RANGE(DATE '2022-12-01', DATE '2022-12-31') AS results;
 
 /*--------------------------+
@@ -270,7 +270,7 @@ SELECT RANGE(DATE '2022-12-01', DATE '2022-12-31') AS results;
 
 The following query constructs a datetime range:
 
-```zetasql
+```googlesql
 SELECT RANGE(DATETIME '2022-10-01 14:53:27',
              DATETIME '2022-10-01 16:00:00') AS results;
 
@@ -283,7 +283,7 @@ SELECT RANGE(DATETIME '2022-10-01 14:53:27',
 
 The following query constructs a timestamp range:
 
-```zetasql
+```googlesql
 SELECT RANGE(TIMESTAMP '2022-10-01 14:53:27 America/Los_Angeles',
              TIMESTAMP '2022-10-01 16:00:00 America/Los_Angeles') AS results;
 
@@ -297,7 +297,7 @@ SELECT RANGE(TIMESTAMP '2022-10-01 14:53:27 America/Los_Angeles',
 
 The following query constructs a date range with no lower bound:
 
-```zetasql
+```googlesql
 SELECT RANGE(NULL, DATE '2022-12-31') AS results;
 
 /*-------------------------+
@@ -309,7 +309,7 @@ SELECT RANGE(NULL, DATE '2022-12-31') AS results;
 
 The following query constructs a date range with no upper bound:
 
-```zetasql
+```googlesql
 SELECT RANGE(DATE '2022-10-01', NULL) AS results;
 
 /*--------------------------+
@@ -319,11 +319,11 @@ SELECT RANGE(DATE '2022-10-01', NULL) AS results;
  +--------------------------*/
 ```
 
-[timestamp-type]: https://github.com/google/zetasql/blob/master/docs/data-types.md#timestamp_type
+[timestamp-type]: https://github.com/google/googlesql/blob/master/docs/data-types.md#timestamp_type
 
-[date-type]: https://github.com/google/zetasql/blob/master/docs/data-types.md#date_type
+[date-type]: https://github.com/google/googlesql/blob/master/docs/data-types.md#date_type
 
-[datetime-type]: https://github.com/google/zetasql/blob/master/docs/data-types.md#datetime_type
+[datetime-type]: https://github.com/google/googlesql/blob/master/docs/data-types.md#datetime_type
 
 ## `RANGE_CONTAINS`
 
@@ -333,7 +333,7 @@ SELECT RANGE(DATE '2022-10-01', NULL) AS results;
 
 #### Signature 1
 
-```zetasql
+```googlesql
 RANGE_CONTAINS(outer_range, inner_range)
 ```
 
@@ -361,7 +361,7 @@ Otherwise, returns `FALSE`.
 
 In the following query, the inner range is in the outer range:
 
-```zetasql
+```googlesql
 SELECT RANGE_CONTAINS(
   RANGE<DATE> '[2022-01-01, 2023-01-01)',
   RANGE<DATE> '[2022-04-01, 2022-07-01)') AS results;
@@ -375,7 +375,7 @@ SELECT RANGE_CONTAINS(
 
 In the following query, the inner range isn't in the outer range:
 
-```zetasql
+```googlesql
 SELECT RANGE_CONTAINS(
   RANGE<DATE> '[2022-01-01, 2023-01-01)',
   RANGE<DATE> '[2023-01-01, 2023-04-01)') AS results;
@@ -389,7 +389,7 @@ SELECT RANGE_CONTAINS(
 
 #### Signature 2
 
-```zetasql
+```googlesql
 RANGE_CONTAINS(range_to_search, value_to_find)
 ```
 
@@ -419,7 +419,7 @@ The data type for `value_to_find` must be the same data type as `T`in
 In the following query, the value `2022-04-01` is found in the range
 `[2022-01-01, 2023-01-01)`:
 
-```zetasql
+```googlesql
 SELECT RANGE_CONTAINS(
   RANGE<DATE> '[2022-01-01, 2023-01-01)',
   DATE '2022-04-01') AS results;
@@ -434,7 +434,7 @@ SELECT RANGE_CONTAINS(
 In the following query, the value `2023-04-01` isn't found in the range
 `[2022-01-01, 2023-01-01)`:
 
-```zetasql
+```googlesql
 SELECT RANGE_CONTAINS(
   RANGE<DATE> '[2022-01-01, 2023-01-01)',
   DATE '2023-04-01') AS results;
@@ -452,7 +452,7 @@ SELECT RANGE_CONTAINS(
 
 ## `RANGE_END`
 
-```zetasql
+```googlesql
 RANGE_END(range_to_check)
 ```
 
@@ -478,7 +478,7 @@ Returns `NULL` if `range_to_check` is `NULL`.
 
 In the following query, the upper bound of the range is retrieved:
 
-```zetasql
+```googlesql
 SELECT RANGE_END(RANGE<DATE> '[2022-12-01, 2022-12-31)') AS results;
 
 /*------------+
@@ -491,7 +491,7 @@ SELECT RANGE_END(RANGE<DATE> '[2022-12-01, 2022-12-31)') AS results;
 In the following query, the upper bound of the range is unbounded, so
 `NULL` is returned:
 
-```zetasql
+```googlesql
 SELECT RANGE_END(RANGE<DATE> '[2022-12-01, UNBOUNDED)') AS results;
 
 /*------------+
@@ -503,7 +503,7 @@ SELECT RANGE_END(RANGE<DATE> '[2022-12-01, UNBOUNDED)') AS results;
 
 ## `RANGE_INTERSECT`
 
-```zetasql
+```googlesql
 RANGE_INTERSECT(range_a, range_b)
 ```
 
@@ -531,7 +531,7 @@ Produces an error if `range_a` and `range_b` don't overlap. To return
 
 **Examples**
 
-```zetasql
+```googlesql
 SELECT RANGE_INTERSECT(
   RANGE<DATE> '[2022-02-01, 2022-09-01)',
   RANGE<DATE> '[2021-06-15, 2022-04-15)') AS results;
@@ -543,7 +543,7 @@ SELECT RANGE_INTERSECT(
  +--------------------------*/
 ```
 
-```zetasql
+```googlesql
 SELECT RANGE_INTERSECT(
   RANGE<DATE> '[2022-02-01, UNBOUNDED)',
   RANGE<DATE> '[2021-06-15, 2022-04-15)') AS results;
@@ -555,7 +555,7 @@ SELECT RANGE_INTERSECT(
  +--------------------------*/
 ```
 
-```zetasql
+```googlesql
 SELECT RANGE_INTERSECT(
   RANGE<DATE> '[2022-02-01, UNBOUNDED)',
   RANGE<DATE> '[2021-06-15, UNBOUNDED)') AS results;
@@ -569,7 +569,7 @@ SELECT RANGE_INTERSECT(
 
 ## `RANGE_OVERLAPS`
 
-```zetasql
+```googlesql
 RANGE_OVERLAPS(range_a, range_b)
 ```
 
@@ -601,7 +601,7 @@ To get the part of the range that overlaps, use the
 In the following query, the first and second ranges overlap between
 `2022-02-01` and `2022-04-15`:
 
-```zetasql
+```googlesql
 SELECT RANGE_OVERLAPS(
   RANGE<DATE> '[2022-02-01, 2022-09-01)',
   RANGE<DATE> '[2021-06-15, 2022-04-15)') AS results;
@@ -615,7 +615,7 @@ SELECT RANGE_OVERLAPS(
 
 In the following query, the first and second ranges don't overlap:
 
-```zetasql
+```googlesql
 SELECT RANGE_OVERLAPS(
   RANGE<DATE> '[2020-02-01, 2020-09-01)',
   RANGE<DATE> '[2021-06-15, 2022-04-15)') AS results;
@@ -630,7 +630,7 @@ SELECT RANGE_OVERLAPS(
 In the following query, the first and second ranges overlap between
 `2022-02-01` and `UNBOUNDED`:
 
-```zetasql
+```googlesql
 SELECT RANGE_OVERLAPS(
   RANGE<DATE> '[2022-02-01, UNBOUNDED)',
   RANGE<DATE> '[2021-06-15, UNBOUNDED)') AS results;
@@ -646,7 +646,7 @@ SELECT RANGE_OVERLAPS(
 
 ## `RANGE_SESSIONIZE`
 
-```zetasql
+```googlesql
 RANGE_SESSIONIZE(
   TABLE table_name,
   range_column,
@@ -654,7 +654,7 @@ RANGE_SESSIONIZE(
 )
 ```
 
-```zetasql
+```googlesql
 RANGE_SESSIONIZE(
   TABLE table_name,
   range_column,
@@ -702,7 +702,7 @@ argument.
 The examples in this section reference the following table called
 `my_sessionized_range_table` in a dataset called `mydataset`:
 
-```zetasql
+```googlesql
 INSERT mydataset.my_sessionized_range_table (emp_id, dept_id, duration)
 VALUES(10, 1000, RANGE<DATE> '[2010-01-10, 2010-03-10)'),
       (10, 2000, RANGE<DATE> '[2010-03-10, 2010-07-15)'),
@@ -727,7 +727,7 @@ In the following query, a table of sessionized data is produced for
 `my_sessionized_range_table`, and only ranges that meet or overlap are
 sessionized:
 
-```zetasql
+```googlesql
 SELECT
   emp_id, duration, session_range
 FROM
@@ -752,7 +752,7 @@ In the following query, a table of sessionized data is produced for
 `my_sessionized_range_table`, and only a range that's overlapped by another
 range is sessionized:
 
-```zetasql
+```googlesql
 SELECT
   emp_id, duration, session_range
 FROM
@@ -777,7 +777,7 @@ ORDER BY emp_id;
 If you need to normalize sessionized data, you can use a query similar to the
 following:
 
-```zetasql
+```googlesql
 SELECT emp_id, session_range AS normalized FROM (
   SELECT emp_id, session_range
   FROM RANGE_SESSIONIZE(
@@ -799,7 +799,7 @@ GROUP BY emp_id, normalized;
 
 ## `RANGE_START`
 
-```zetasql
+```googlesql
 RANGE_START(range_to_check)
 ```
 
@@ -825,7 +825,7 @@ Returns `NULL` if `range_to_check` is `NULL`.
 
 In the following query, the lower bound of the range is retrieved:
 
-```zetasql
+```googlesql
 SELECT RANGE_START(RANGE<DATE> '[2022-12-01, 2022-12-31)') AS results;
 
 /*------------+
@@ -838,7 +838,7 @@ SELECT RANGE_START(RANGE<DATE> '[2022-12-01, 2022-12-31)') AS results;
 In the following query, the lower bound of the range is unbounded, so
 `NULL` is returned:
 
-```zetasql
+```googlesql
 SELECT RANGE_START(RANGE<DATE> '[UNBOUNDED, 2022-12-31)') AS results;
 
 /*------------+

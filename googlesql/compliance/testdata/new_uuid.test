@@ -1,0 +1,61 @@
+# Verify that uuid value returned by NEW_UUID() satisfies the form:
+# xxxxxxxx-xxxx-4xxx-xxxx-xxxxxxxxxxxx
+# where 'x' represents a lowercase hexidecimal digit.
+[default required_features=UUID_TYPE]
+[name=regexp]
+SELECT
+  REGEXP_CONTAINS(
+      CAST(NEW_UUID() AS STRING),
+      '^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$'
+  );
+--
+ARRAY<STRUCT<BOOL>>[{true}]
+==
+
+# When NEW_UUID() is used in WITH clause, the result has to be the same
+# because of run-once behavior
+[default required_features=UUID_TYPE]
+[name=with]
+WITH T AS (
+  SELECT NEW_UUID() AS uuid
+)
+SELECT COUNT(DISTINCT uuid) AS cnt
+FROM (
+  SELECT uuid FROM T
+  UNION ALL
+  SELECT uuid FROM T
+)
+--
+ARRAY<STRUCT<cnt INT64>>[{1}]
+==
+
+# Different columns should have different uuid values
+[default required_features=UUID_TYPE]
+[name=different_columns]
+SELECT (r1 = r2 OR r2 = r3) wrong FROM
+(SELECT NEW_UUID() r1, NEW_UUID() r2, NEW_UUID() r3)
+--
+ARRAY<STRUCT<wrong BOOL>>[{false}]
+==
+
+# Different rows should have different values
+[default required_features=UUID_TYPE]
+[name=different_rows]
+SELECT COUNT(DISTINCT NEW_UUID()) AS cnt
+FROM UNNEST([1, 2, 3])
+--
+ARRAY<STRUCT<cnt INT64>>[{3}]
+==
+
+[default required_features=UUID_TYPE]
+[name=branches_of_union]
+SELECT COUNT(DISTINCT val)
+FROM (
+  SELECT NEW_UUID() val
+  UNION ALL
+  SELECT NEW_UUID() val
+  UNION ALL
+  SELECT NEW_UUID() val
+)
+--
+ARRAY<STRUCT<INT64>>[{3}]

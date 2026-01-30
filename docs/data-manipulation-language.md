@@ -4,7 +4,7 @@
 
 # Data manipulation language
 
-ZetaSQL supports the following statements for manipulating data:
+GoogleSQL supports the following statements for manipulating data:
 
 + `INSERT`
 + `UPDATE`
@@ -63,6 +63,8 @@ The sections in this topic use the following table schemas.
 <td><code>PROTO&lt;Album&gt;</code></td>
 <td>&nbsp;</td>
 </tr>
+<tr>
+
 </tbody>
 </table>
 
@@ -297,7 +299,7 @@ the [Coercion][coercion] of the
 topic for more information.
 + The value can be assigned after applying a narrowing integer or floating point
 cast. For example, if you attempt to add a value of `INT64` into a column that
-supports `INT32`, ZetaSQL automatically adds a narrowing cast to
+supports `INT32`, GoogleSQL automatically adds a narrowing cast to
 `INT32`.
 
 ### Default values
@@ -394,7 +396,7 @@ are arbitrary.
 You can instruct your `INSERT` statement to skip any rows that have duplicate
 primary keys by using the `IGNORE` keyword.
 
-For example, the following statement instructs ZetaSQL to skip the
+For example, the following statement instructs GoogleSQL to skip the
 row if it already exists in the table:
 
 ```
@@ -404,7 +406,7 @@ VALUES ("Catalina", "Smith", "1990-08-17", DEFAULT, "nationality:'U.S.A.'");
 ```
 
 `INSERT OR IGNORE` ignores only duplicate rows that have the same
-primary key. ZetaSQL raises an error if any other constraint
+primary key. GoogleSQL raises an error if any other constraint
 violation occurs, including duplicate keys in unique indexes.
 
 #### `INSERT OR REPLACE` 
@@ -454,17 +456,17 @@ unchanged.
 
 ### `INSERT` and `ASSERT_ROWS_MODIFIED`
 
-With ZetaSQL, you can confirm how many rows are added each time you
+With GoogleSQL, you can confirm how many rows are added each time you
 use an `INSERT` statement by using the `ASSERT_ROWS_MODIFIED` keyword.
 
 With the `ASSERT_ROWS_MODIFIED` keyword, you specify the number of rows you
-expect the command to insert, and ZetaSQL compares that number
+expect the command to insert, and GoogleSQL compares that number
 against the number of rows actually modified. This check occurs before
-ZetaSQL commits the change to the database. If the row count matches,
-ZetaSQL commits the changes.  Otherwise, ZetaSQL returns
+GoogleSQL commits the change to the database. If the row count matches,
+GoogleSQL commits the changes. Otherwise, GoogleSQL returns
 an error and rolls back the statement.
 
-When calculating the number of rows modified, ZetaSQL includes rows
+When calculating the number of rows modified, GoogleSQL includes rows
 that were inserted, updated, or replaced. It doesn't count rows that were
 skipped through the `IGNORE` keyword. To illustrate this, consider the following
 example of a **Singers** table:
@@ -555,7 +557,7 @@ inserted rows that include these parts:
 The following query inserts three rows into a table, and uses `THEN RETURN` to
 fetch these rows and compute a new column called `new_quantity`.
 
-```zetasql
+```googlesql
 INSERT Inventory (product, quantity)
 VALUES ('washer', 20),
        ('dryer', 30),
@@ -575,7 +577,7 @@ The following query tries to insert two rows into a table, but ignores a
 duplicated row. It uses `THEN RETURN` to fetch the inserted row and
 `WITH ACTION` to show the modified row action type.
 
-```zetasql
+```googlesql
 INSERT IGNORE Inventory (product, quantity)
 VALUES ('desk', 40),
        ('desk', 45)
@@ -592,7 +594,7 @@ The following query tries to insert or update a row into a table. It uses
 `THEN RETURN` to fetch the modified row and `WITH ACTION` to show the modified
 row action type.
 
-```zetasql
+```googlesql
 INSERT OR UPDATE Inventory (product, quantity)
 VALUES ('oven', 100)
 THEN RETURN WITH ACTION product, quantity * 10 AS new_quantity;
@@ -650,7 +652,7 @@ now `inactive`. All other values, such as `BirthDate`, remain unchanged.
 
 Add a new row to the `Singers` table and return the `DEFAULT` column value.
 
-```zetasql
+```googlesql
 INSERT INTO Singers (SingerId, FirstName,
 LastName, BirthDate, Status, SingerInfo) VALUES (6, "Michael", "Leon",
 "1958-08-29", DEFAULT, "nationality:'U.S.A.'") THEN RETURN Status;
@@ -705,7 +707,7 @@ WHERE s.LastName = "Sterling";
 ```
 
 Using an identifier can help make your `DELETE` statement more explicit with
-regards to what data ZetaSQL should update.
+regards to what data GoogleSQL should update.
 
 The `WHERE` keyword is mandatory for any `DELETE` statement. However, you can
 set the condition for the `WHERE` keyword to be true, which results in the
@@ -718,7 +720,7 @@ WHERE true;
 
 ### `DELETE` and `ASSERT_ROWS_MODIFIED`
 
-With ZetaSQL, you can confirm how many rows are deleted each time you
+With GoogleSQL, you can confirm how many rows are deleted each time you
 use a `DELETE` statement. You implement this confirmation through the
 `ASSERT_ROWS_MODIFIED` keyword.
 
@@ -730,9 +732,9 @@ ASSERT_ROWS_MODIFIED 1;
 
 With the `ASSERT_ROWS_MODIFIED` keyword, you specify the number of rows you
 expect the command to delete, and compare that number against the number of rows
-actually deleted. This check occurs before ZetaSQL commits the change
-to the database. If the row count matches, ZetaSQL commits the
-changes. Otherwise, ZetaSQL returns an error and rolls back the
+actually deleted. This check occurs before GoogleSQL commits the change
+to the database. If the row count matches, GoogleSQL commits the
+changes. Otherwise, GoogleSQL returns an error and rolls back the
 statement.
 
 ### `DELETE` and `THEN RETURN`
@@ -746,7 +748,7 @@ Example:
 The following query deletes all rows in a table that contains a product called
 `washer` and then returns the deleted rows.
 
-```zetasql
+```googlesql
 DELETE FROM Inventory
 WHERE product = 'washer'
 THEN RETURN *;
@@ -833,7 +835,7 @@ The following example generates a table with inventory totals that include
 existing inventory and inventory from the `NewArrivals` table, and
 marks `supply_constrained` as false.
 
-```zetasql
+```googlesql
 UPDATE dataset.Inventory
 SET quantity = quantity +
   (SELECT quantity FROM dataset.NewArrivals
@@ -844,7 +846,7 @@ WHERE product IN (SELECT product FROM dataset.NewArrivals)
 
 Alternately, you can join the tables.
 
-```zetasql
+```googlesql
 UPDATE dataset.Inventory i
 SET quantity = i.quantity + n.quantity,
     supply_constrained = false
@@ -857,7 +859,7 @@ using the `WHERE` clause.
 
 Before:
 
-```zetasql
+```googlesql
 -- Inventory
 /*-------------------+----------+--------------------+
  |      product      | quantity | supply_constrained |
@@ -883,7 +885,7 @@ Before:
 
 After:
 
-```zetasql
+```googlesql
 /*-------------------+----------+--------------------+
  |      product      | quantity | supply_constrained |
  +-------------------+----------+--------------------+
@@ -920,7 +922,7 @@ WHERE true;
 
 ### `UPDATE` and `ASSERT_ROWS_MODIFIED`
 
-With ZetaSQL, you can confirm how many rows are updated each time you
+With GoogleSQL, you can confirm how many rows are updated each time you
 use an `UPDATE` statement. You implement this confirmation through the
 `ASSERT_ROWS_MODIFIED` keyword.
 
@@ -928,8 +930,8 @@ use an `UPDATE` statement. You implement this confirmation through the
 identical to the previous values.
 
 With the `ASSERT_ROWS_MODIFIED` keyword, you specify the number of rows you
-expect the command to update. If the row count matches, ZetaSQL
-commits the changes. Otherwise, ZetaSQL returns an error and rolls
+expect the command to update. If the row count matches, GoogleSQL
+commits the changes. Otherwise, GoogleSQL returns an error and rolls
 back the statement.
 
 The `ASSERT_ROWS_MODIFIED` keyword is helpful when you want to be sure your
@@ -955,7 +957,7 @@ The following query updates the `supply_constrained` column in this `Inventory`
 table when the quantity of product is zero, and returns all updated product with
 an out of stock message.
 
-```zetasql
+```googlesql
 UPDATE Inventory
 SET supply_constrained = true
 WHERE quantity = 0
@@ -997,7 +999,7 @@ WHERE s.SingerId = 5;
 ```
 
 Using an identifier can help make your `UPDATE` statement more explicit with
-regards to what data ZetaSQL should update.
+regards to what data GoogleSQL should update.
 
 ### Specifying columns
 
@@ -1016,7 +1018,7 @@ WHERE s.SingerId = 5;
 
 You can specify the columns to update in any order; however, you can list each
 column only once. For example, the following statement is invalid and would be
-rejected by ZetaSQL:
+rejected by GoogleSQL:
 
 ```
 UPDATE Singers s
@@ -1132,7 +1134,7 @@ WHERE SingerId = 6;
 
 ### Updating fields
 
-ZetaSQL allows you to update non-repeating or repeating fields within
+GoogleSQL allows you to update non-repeating or repeating fields within
 protocol buffers. To illustrate how to update a non-repeating field, consider
 the [Singers example table][singers-table].  It contains a column, `Albums`, of
 type `PROTO<Albums>`, and `Albums` contains a non-repeating field `tracks`. The
@@ -1230,7 +1232,7 @@ WHERE s.SingerId = 5
 ASSERT_ROWS_MODIFIED 1;
 ```
 
-ZetaSQL treats an array or a repeated field inside a row that matches
+GoogleSQL treats an array or a repeated field inside a row that matches
 an `UPDATE WHERE` clause as a table, with individual elements of the array or field treated like rows. These rows can then have nested DML statements run
 against them, allowing you to delete, update, and insert data as needed.
 
@@ -1304,7 +1306,7 @@ SET
     (INSERT AlbumTitles VALUES ("The Sloth and the Tiger"));
 ```
 
-[from-clause]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#from-clause
+[from-clause]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#from-clause
 
 ## `MERGE` statement
 
@@ -1416,7 +1418,7 @@ In the following example, the query merges items from the `NewArrivals` table
 into the `Inventory` table. If an item is already present in `Inventory`, the
 query increments the quantity field. Otherwise, the query inserts a new row.
 
-```zetasql
+```googlesql
 MERGE dataset.Inventory T
 USING dataset.NewArrivals S
 ON T.product = S.product
@@ -1428,7 +1430,7 @@ WHEN NOT MATCHED THEN
 
 These are the tables before you run the query:
 
-```zetasql
+```googlesql
 -- NewArrivals
 /*-----------------+----------+--------------+
  |     product     | quantity |  warehouse   |
@@ -1454,7 +1456,7 @@ These are the tables before you run the query:
 
 This is the `Inventory` table after you run the query:
 
-```zetasql
+```googlesql
 --Inventory
 /*-------------------+----------+
  |      product      | quantity |
@@ -1471,15 +1473,15 @@ This is the `Inventory` table after you run the query:
 
 <!-- mdlint off(WHITESPACE_LINE_LENGTH) -->
 
-[from-clause]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#from_clause
+[from-clause]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#from_clause
 
-[join-operator]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#join_types
+[join-operator]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#join_types
 
 [dml-then-return-clause]: #dml_then_return_clause
 
-[coercion]: https://github.com/google/zetasql/blob/master/docs/conversion_rules.md#coercion
+[coercion]: https://github.com/google/googlesql/blob/master/docs/conversion_rules.md#coercion
 
-[functions-and-operators]: https://github.com/google/zetasql/blob/master/docs/functions-and-operators.md
+[functions-and-operators]: https://github.com/google/googlesql/blob/master/docs/functions-and-operators.md
 
 [statement-rules]: #statement_rules
 

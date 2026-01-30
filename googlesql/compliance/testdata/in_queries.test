@@ -1,0 +1,1049 @@
+# Queries with IN clause.
+
+[load_proto_files=googlesql/testdata/test_schema.proto]
+[load_proto_names=googlesql_test.TestExtraPB]
+[load_enum_names=googlesql_test.TestEnum]
+
+[prepare_database]
+CREATE TABLE Test AS
+SELECT cast(1 as int64) as x,
+       cast('a' as string) as y,
+       cast(100 as int32) as int32_col,
+       cast(101 as uint32) as uint32_col,
+       cast(102 as uint64) as uint64_col,
+       True as bool_col,
+       cast('bytes' as bytes) as bytes_col,
+       cast('2015-01-30' as date) as date_col,
+       cast('2015-01-29 10:47:20' as timestamp) as timestamp_col,
+       cast(1 as int64) z
+UNION ALL
+SELECT 2, NULL, 200, 201, 202, False,
+       cast('bytes2' as bytes),
+       '2014-01-30', '2014-01-29 10:47:20',
+       2
+UNION ALL
+SELECT 3, 'b', 300, 301, 302, True,
+       cast('bytes3' as bytes),
+       '2013-01-30', '2013-01-29 10:47:20',
+       1;
+--
+ARRAY<STRUCT<
+        x INT64,
+        y STRING,
+        int32_col INT32,
+        uint32_col UINT32,
+        uint64_col UINT64,
+        bool_col BOOL,
+        bytes_col BYTES,
+        date_col DATE,
+        timestamp_col TIMESTAMP,
+        z INT64
+      >>
+[{
+   1,
+   "a",
+   100,
+   101,
+   102,
+   true,
+   b"bytes",
+   2015-01-30,
+   2015-01-29 18:47:20+00,
+   1
+ },
+ {
+   2,
+   NULL,
+   200,
+   201,
+   202,
+   false,
+   b"bytes2",
+   2014-01-30,
+   2014-01-29 18:47:20+00,
+   2
+ },
+ {
+   3,
+   "b",
+   300,
+   301,
+   302,
+   true,
+   b"bytes3",
+   2013-01-30,
+   2013-01-29 18:47:20+00,
+   1
+ }]
+==
+[prepare_database]
+[required_features=NUMERIC_TYPE]
+CREATE TABLE TestNumeric AS
+SELECT 'a' as y,
+       cast(1.23 as numeric) as numeric_col
+UNION ALL
+SELECT 'b',
+       cast(-3.14 as numeric)
+UNION ALL
+SELECT 'c',
+       cast(9999 as numeric)
+--
+ARRAY<STRUCT<y STRING, numeric_col NUMERIC>>[
+  {"a", 1.23},
+  {"b", -3.14},
+  {"c", 9999}
+]
+==
+[prepare_database]
+[required_features=BIGNUMERIC_TYPE]
+CREATE TABLE TestBigNumeric AS
+SELECT 'a' as y,
+       cast(1.234567890123456789 as bignumeric) as bignumeric_col
+UNION ALL
+SELECT 'b',
+       cast(-3.141592653589793238 as bignumeric)
+UNION ALL
+SELECT 'c',
+       cast("999999999999999999999999999" as bignumeric)
+--
+ARRAY<STRUCT<
+        y STRING,
+        bignumeric_col BIGNUMERIC
+      >>
+[{"a", 1.234567890123456789},
+ {
+   "b",
+   -3.141592653589793238
+ },
+ {
+   "c",
+   999999999999999999999999999
+ }]
+==
+[prepare_database]
+[required_features=UUID_TYPE]
+CREATE TABLE TestUuid AS
+SELECT 'a' as str,
+       cast('9d3da323-4c20-360f-bd9b-ec54feec54f0' as uuid) as uuid_col
+UNION ALL
+SELECT 'b',
+       cast('00000000000040008000000000000000' as uuid)
+UNION ALL
+SELECT 'c',
+       cast('ffffffff-ffff-ffff-ffff-ffffffffffff' as uuid)
+--
+ARRAY<STRUCT<str STRING, uuid_col UUID>>[
+  {
+    "a",
+    9d3da323-4c20-360f-bd9b-ec54feec54f0
+  },
+  {
+    "b",
+    00000000-0000-4000-8000-000000000000
+  },
+  {
+    "c",
+    ffffffff-ffff-ffff-ffff-ffffffffffff
+  }
+]
+==
+[prepare_database]
+CREATE TABLE Test2 AS
+SELECT 1 id,
+       (SELECT AS `googlesql_test.TestExtraPB`
+         1 int32_val1, ['a', 'b', 'c'] str_value) Info
+UNION ALL
+SELECT 2 id,
+       (SELECT AS `googlesql_test.TestExtraPB`
+         2 int32_val1, ['d'] str_value) Info;
+--
+ARRAY<STRUCT<
+        id INT64,
+        Info PROTO<googlesql_test.TestExtraPB>
+      >>
+[{1,
+  {
+    int32_val1: 1
+    str_value: "a"
+    str_value: "b"
+    str_value: "c"
+  }},
+ {2,
+  {
+    int32_val1: 2
+    str_value: "d"
+  }}]
+==
+[prepare_database]
+CREATE TABLE TestEnum AS
+SELECT cast(1 as int64) x,
+       cast(0 as `googlesql_test.TestEnum`) as enum_col
+UNION ALL
+SELECT cast(2 as int64) x,
+       cast(1 as `googlesql_test.TestEnum`) as enum_col
+UNION ALL
+SELECT cast(3 as int64) x,
+       cast(2 as `googlesql_test.TestEnum`) as enum_col;
+--
+ARRAY<STRUCT<
+        x INT64,
+        enum_col ENUM<googlesql_test.TestEnum>
+      >>
+[{1, TESTENUM0}, {2, TESTENUM1}, {3, TESTENUM2}]
+==
+[prepare_database]
+CREATE TABLE TestStruct AS
+SELECT cast(1 as int64) x, (1, 2) struct_col
+UNION ALL
+SELECT cast(2 as int64) x, (3, 4) struct_col;
+--
+ARRAY<STRUCT<
+        x INT64,
+        struct_col STRUCT<INT64, INT64>
+      >>
+[{1, {1, 2}}, {2, {3, 4}}]
+==
+[prepare_database]
+[required_features=RANGE_TYPE]
+CREATE TABLE TestRange AS
+SELECT 'a' as y,
+       RANGE<DATE> '[2020-01-01, 2020-12-31)' as range_date_col,
+       RANGE<TIMESTAMP> '[2020-01-01, 2020-12-31)' as range_timestamp_col
+UNION ALL
+SELECT 'b',
+       RANGE<DATE> '[2020-01-01, UNBOUNDED)',
+       RANGE<TIMESTAMP> '[2020-01-01, UNBOUNDED)'
+UNION ALL
+SELECT 'c',
+       RANGE<DATE> '[UNBOUNDED, 2020-12-31)',
+       RANGE<TIMESTAMP> '[UNBOUNDED, 2020-12-31)'
+UNION ALL
+SELECT 'd',
+       RANGE<DATE> '[UNBOUNDED, UNBOUNDED)',
+       RANGE<TIMESTAMP> '[UNBOUNDED, UNBOUNDED)'
+--
+ARRAY<STRUCT<
+        y STRING,
+        range_date_col RANGE<DATE>,
+        range_timestamp_col RANGE<TIMESTAMP>
+      >>
+[{"a",
+  [2020-01-01, 2020-12-31),
+  [
+    2020-01-01 08:00:00+00,
+    2020-12-31 08:00:00+00
+  )},
+ {"b",
+  [2020-01-01, NULL),
+  [
+    2020-01-01 08:00:00+00,
+    NULL
+  )},
+ {"c",
+  [NULL, 2020-12-31),
+  [
+    NULL,
+    2020-12-31 08:00:00+00
+  )},
+ {"d", [NULL, NULL), [NULL, NULL)}]
+==
+[prepare_database]
+[required_features=RANGE_TYPE,CIVIL_TIME]
+CREATE TABLE TestDatetimeRange AS
+SELECT 'a' as y,
+       RANGE<DATETIME> '[2020-01-01, 2020-12-31)' as range_datetime_col
+UNION ALL
+SELECT 'b',
+       RANGE<DATETIME> '[2020-01-01, UNBOUNDED)'
+UNION ALL
+SELECT 'c',
+       RANGE<DATETIME> '[UNBOUNDED, 2020-12-31)'
+UNION ALL
+SELECT 'd',
+       RANGE<DATETIME> '[UNBOUNDED, UNBOUNDED)'
+--
+ARRAY<STRUCT<
+        y STRING,
+        range_datetime_col RANGE<DATETIME>
+      >>
+[{
+   "a",
+   [2020-01-01 00:00:00, 2020-12-31 00:00:00)
+ },
+ {
+   "b",
+   [2020-01-01 00:00:00, NULL)
+ },
+ {
+   "c",
+   [NULL, 2020-12-31 00:00:00)
+ },
+ {"d", [NULL, NULL)}]
+==
+[name=in_clause_simple]
+SELECT y FROM Test WHERE x IN(1, 2) ORDER BY y;
+--
+ARRAY<STRUCT<y STRING>>[known order:{NULL}, {"a"}]
+==
+[name=in_clause_unnest]
+SELECT y FROM Test WHERE x IN UNNEST(ARRAY<INT64>[1,2]) ORDER BY y;
+--
+ARRAY<STRUCT<y STRING>>[known order:{NULL}, {"a"}]
+==
+[name=in_clause_null_selector]
+SELECT x FROM Test WHERE NULL IN (1, 2);
+--
+ARRAY<STRUCT<x INT64>>[]
+==
+[name=in_clause_field_with_null_value]
+SELECT x FROM Test WHERE y IN ('a', 'b') ORDER BY x;
+--
+ARRAY<STRUCT<x INT64>>[known order:{1}, {3}]
+==
+[name=in_clause_unnest_null_array]
+SELECT y FROM Test WHERE x IN UNNEST(CAST(NULL AS ARRAY<INT64>));
+--
+ARRAY<STRUCT<y STRING>>[]
+==
+[name=in_clause_nulls_in_list]
+SELECT y FROM Test WHERE x IN (1, 2, NULL) ORDER BY y;
+--
+ARRAY<STRUCT<y STRING>>[known order:{NULL}, {"a"}]
+==
+[name=in_clause_simple_not_in]
+SELECT y FROM Test WHERE x NOT IN(1, 2);
+--
+ARRAY<STRUCT<y STRING>>[{"b"}]
+==
+[required_features=NUMERIC_TYPE]
+[name=in_clause_simple_not_in_numeric]
+SELECT y FROM TestNumeric
+WHERE numeric_col NOT IN(CAST(1.23 AS NUMERIC), CAST(-3.14 AS NUMERIC));
+--
+ARRAY<STRUCT<y STRING>>[{"c"}]
+==
+[required_features=NUMERIC_TYPE]
+[name=in_clause_simple_in_numeric]
+SELECT y FROM TestNumeric
+WHERE numeric_col IN(CAST(1.23 AS NUMERIC), CAST(-3.14 AS NUMERIC));
+--
+ARRAY<STRUCT<y STRING>>[unknown order:{"b"}, {"a"}]
+==
+[required_features=BIGNUMERIC_TYPE]
+[name=in_clause_simple_not_in_bignumeric]
+SELECT y FROM TestBigNumeric
+WHERE bignumeric_col NOT IN(CAST(1.234567890123456789 AS BIGNUMERIC), CAST(-3.141592653589793238 AS BIGNUMERIC));
+--
+ARRAY<STRUCT<y STRING>>[{"c"}]
+==
+[required_features=BIGNUMERIC_TYPE]
+[name=in_clause_simple_in_bignumeric]
+SELECT y FROM TestBigNumeric
+WHERE bignumeric_col IN(CAST(1.234567890123456789 AS BIGNUMERIC), CAST(-3.141592653589793238 AS BIGNUMERIC));
+--
+ARRAY<STRUCT<y STRING>>[unknown order:{"b"}, {"a"}]
+==
+[required_features=UUID_TYPE]
+[name=in_clause_simple_not_in_uuid]
+SELECT str FROM TestUuid
+WHERE uuid_col NOT IN(CAST('9d3da323-4c20-360f-bd9b-ec54feec54f0' AS UUID), CAST('00000000-0000-4000-8000-000000000000' AS UUID));
+--
+ARRAY<STRUCT<str STRING>>[{"c"}]
+==
+[required_features=UUID_TYPE]
+[name=in_clause_simple_in_uuid]
+SELECT str FROM TestUuid
+WHERE uuid_col IN(CAST('9d3da323-4c20-360f-bd9b-ec54feec54f0' AS UUID), CAST('00000000-0000-4000-8000-000000000000' AS UUID));
+--
+ARRAY<STRUCT<str STRING>>[unknown order:{"b"}, {"a"}]
+==
+[required_features=RANGE_TYPE]
+[name=in_clause_simple_not_in_range_date]
+SELECT y FROM TestRange
+WHERE range_date_col NOT IN(RANGE<DATE> '[2020-01-01, 2020-12-31)', RANGE<DATE> '[UNBOUNDED, UNBOUNDED)');
+--
+ARRAY<STRUCT<y STRING>>[unknown order:{"b"}, {"c"}]
+==
+[required_features=RANGE_TYPE]
+[name=in_clause_simple_in_range_date]
+SELECT y FROM TestRange
+WHERE range_date_col IN(RANGE<DATE> '[2020-01-01, 2020-12-31)', RANGE<DATE> '[UNBOUNDED, UNBOUNDED)');
+--
+ARRAY<STRUCT<y STRING>>[unknown order:{"d"}, {"a"}]
+==
+[required_features=RANGE_TYPE]
+[name=in_clause_simple_not_in_range_timestamp]
+SELECT y FROM TestRange
+WHERE range_timestamp_col NOT IN(RANGE<TIMESTAMP> '[2020-01-01, 2020-12-31)', RANGE<TIMESTAMP> '[UNBOUNDED, UNBOUNDED)');
+--
+ARRAY<STRUCT<y STRING>>[unknown order:{"b"}, {"c"}]
+==
+[required_features=RANGE_TYPE]
+[name=in_clause_simple_in_range_timestamp]
+SELECT y FROM TestRange
+WHERE range_timestamp_col IN(RANGE<TIMESTAMP> '[2020-01-01, 2020-12-31)', RANGE<TIMESTAMP> '[UNBOUNDED, UNBOUNDED)');
+--
+ARRAY<STRUCT<y STRING>>[unknown order:{"d"}, {"a"}]
+==
+[required_features=RANGE_TYPE,CIVIL_TIME]
+[name=in_clause_simple_not_in_range_datetime]
+SELECT y FROM TestDatetimeRange
+WHERE range_datetime_col NOT IN(RANGE<DATETIME> '[2020-01-01, 2020-12-31)', RANGE<DATETIME> '[UNBOUNDED, UNBOUNDED)');
+--
+ARRAY<STRUCT<y STRING>>[unknown order:{"b"}, {"c"}]
+==
+[required_features=RANGE_TYPE,CIVIL_TIME]
+[name=in_clause_simple_in_range_datetime]
+SELECT y FROM TestDatetimeRange
+WHERE range_datetime_col IN(RANGE<DATETIME> '[2020-01-01, 2020-12-31)', RANGE<DATETIME> '[UNBOUNDED, UNBOUNDED)');
+--
+ARRAY<STRUCT<y STRING>>[unknown order:{"d"}, {"a"}]
+==
+[name=in_clause_unnest_not_in]
+SELECT y FROM Test WHERE x NOT IN UNNEST(ARRAY<INT64>[1,2]) ORDER BY y;
+--
+ARRAY<STRUCT<y STRING>>[{"b"}]
+==
+[name=in_clause_not_in_null_selector]
+SELECT x FROM Test WHERE NULL NOT IN (1, 2);
+--
+ARRAY<STRUCT<x INT64>>[]
+==
+[name=in_clause_not_in_nulls_in_list]
+SELECT y FROM Test WHERE x NOT IN (1, 2, NULL);
+--
+ARRAY<STRUCT<y STRING>>[]
+==
+[name=in_clause_function_selector]
+SELECT y FROM Test WHERE x + 1 IN (2, 3) ORDER BY y;
+--
+ARRAY<STRUCT<y STRING>>[known order:{NULL}, {"a"}]
+==
+[name=in_clause_function_selector2]
+SELECT y FROM Test WHERE x + 1 IN (4, NULL);
+--
+ARRAY<STRUCT<y STRING>>[{"b"}]
+==
+[name=in_clause_function_not_in_selector]
+SELECT y FROM Test WHERE x + 1 NOT IN (2, 3);
+--
+ARRAY<STRUCT<y STRING>>[{"b"}]
+==
+[name=in_clause_subquery]
+SELECT y FROM Test WHERE x IN (
+  SELECT CAST(1 AS INT64) t1 UNION ALL SELECT 2) ORDER BY y;
+--
+ARRAY<STRUCT<y STRING>>[known order:{NULL}, {"a"}]
+==
+[name=in_clause_not_in_subquery]
+SELECT y FROM Test WHERE x NOT IN (
+  SELECT CAST(2 AS INT64) UNION ALL SELECT 3);
+--
+ARRAY<STRUCT<y STRING>>[{"a"}]
+==
+[required_features=RANGE_TYPE]
+[name=in_clause_subquery_range_date]
+SELECT y FROM TestRange WHERE range_date_col IN (
+  SELECT RANGE<DATE> '[2020-01-01, 2020-12-31)' t1
+  UNION ALL
+  SELECT RANGE<DATE> '[UNBOUNDED, UNBOUNDED)')
+ORDER BY y;
+--
+ARRAY<STRUCT<y STRING>>[known order:{"a"}, {"d"}]
+==
+[required_features=RANGE_TYPE]
+[name=in_clause_not_in_subquery_range_date]
+SELECT y FROM TestRange WHERE range_date_col NOT IN (
+  SELECT RANGE<DATE> '[2020-01-01, 2020-12-31)' t1
+  UNION ALL
+  SELECT RANGE<DATE> '[UNBOUNDED, UNBOUNDED)')
+ORDER BY y;
+--
+ARRAY<STRUCT<y STRING>>[known order:{"b"}, {"c"}]
+==
+[required_features=RANGE_TYPE]
+[name=in_clause_subquery_range_timestamp]
+SELECT y FROM TestRange WHERE range_timestamp_col IN (
+  SELECT RANGE<TIMESTAMP> '[2020-01-01, 2020-12-31)' t1
+  UNION ALL
+  SELECT RANGE<TIMESTAMP> '[UNBOUNDED, UNBOUNDED)')
+ORDER BY y;
+--
+ARRAY<STRUCT<y STRING>>[known order:{"a"}, {"d"}]
+==
+[required_features=RANGE_TYPE]
+[name=in_clause_not_in_subquery_range_timestamp]
+SELECT y FROM TestRange WHERE range_timestamp_col NOT IN (
+  SELECT RANGE<TIMESTAMP> '[2020-01-01, 2020-12-31)' t1
+  UNION ALL
+  SELECT RANGE<TIMESTAMP> '[UNBOUNDED, UNBOUNDED)')
+ORDER BY y;
+--
+ARRAY<STRUCT<y STRING>>[known order:{"b"}, {"c"}]
+==
+[required_features=RANGE_TYPE,CIVIL_TIME]
+[name=in_clause_subquery_range_datetime]
+SELECT y FROM TestDatetimeRange WHERE range_datetime_col IN (
+  SELECT RANGE<DATETIME> '[2020-01-01, 2020-12-31)' t1
+  UNION ALL
+  SELECT RANGE<DATETIME> '[UNBOUNDED, UNBOUNDED)')
+ORDER BY y;
+--
+ARRAY<STRUCT<y STRING>>[known order:{"a"}, {"d"}]
+==
+[required_features=RANGE_TYPE,CIVIL_TIME]
+[name=in_clause_not_in_subquery_range_datetime]
+SELECT y FROM TestDatetimeRange WHERE range_datetime_col NOT IN (
+  SELECT RANGE<DATETIME> '[2020-01-01, 2020-12-31)' t1
+  UNION ALL
+  SELECT RANGE<DATETIME> '[UNBOUNDED, UNBOUNDED)')
+ORDER BY y;
+--
+ARRAY<STRUCT<y STRING>>[known order:{"b"}, {"c"}]
+==
+[required_features=RANGE_TYPE]
+[name=in_clause_subquery_range_date_unnest]
+SELECT y FROM TestRange WHERE range_date_col IN (
+  SELECT i FROM UNNEST([RANGE<DATE> '[2020-01-01, 2020-12-31)',
+                        RANGE<DATE> '[UNBOUNDED, UNBOUNDED)']) i)
+ORDER BY y;
+--
+ARRAY<STRUCT<y STRING>>[known order:{"a"}, {"d"}]
+==
+[required_features=RANGE_TYPE]
+[name=in_clause_not_in_subquery_range_date_unnest]
+SELECT y FROM TestRange WHERE range_date_col NOT IN (
+  SELECT i FROM UNNEST([RANGE<DATE> '[2020-01-01, 2020-12-31)',
+                        RANGE<DATE> '[UNBOUNDED, UNBOUNDED)']) i)
+ORDER BY y;
+--
+ARRAY<STRUCT<y STRING>>[known order:{"b"}, {"c"}]
+==
+[required_features=RANGE_TYPE]
+[name=in_clause_subquery_range_timestamp_unnest]
+SELECT y FROM TestRange WHERE range_timestamp_col IN (
+  SELECT i FROM UNNEST([RANGE<TIMESTAMP> '[2020-01-01, 2020-12-31)',
+                        RANGE<TIMESTAMP> '[UNBOUNDED, UNBOUNDED)']) i)
+ORDER BY y;
+--
+ARRAY<STRUCT<y STRING>>[known order:{"a"}, {"d"}]
+==
+[required_features=RANGE_TYPE]
+[name=in_clause_not_in_subquery_range_timestamp_unnest]
+SELECT y FROM TestRange WHERE range_timestamp_col NOT IN (
+  SELECT i FROM UNNEST([RANGE<TIMESTAMP> '[2020-01-01, 2020-12-31)',
+                        RANGE<TIMESTAMP> '[UNBOUNDED, UNBOUNDED)']) i)
+ORDER BY y;
+--
+ARRAY<STRUCT<y STRING>>[known order:{"b"}, {"c"}]
+==
+[required_features=RANGE_TYPE,CIVIL_TIME]
+[name=in_clause_subquery_range_datetime_unnest]
+SELECT y FROM TestDatetimeRange WHERE range_datetime_col IN (
+  SELECT i FROM UNNEST([RANGE<DATETIME> '[2020-01-01, 2020-12-31)',
+                        RANGE<DATETIME> '[UNBOUNDED, UNBOUNDED)']) i)
+ORDER BY y;
+--
+ARRAY<STRUCT<y STRING>>[known order:{"a"}, {"d"}]
+==
+[required_features=RANGE_TYPE,CIVIL_TIME]
+[name=in_clause_not_in_subquery_range_datetime_unnest]
+SELECT y FROM TestDatetimeRange WHERE range_datetime_col NOT IN (
+  SELECT i FROM UNNEST([RANGE<DATETIME> '[2020-01-01, 2020-12-31)',
+                        RANGE<DATETIME> '[UNBOUNDED, UNBOUNDED)']) i)
+ORDER BY y;
+--
+ARRAY<STRUCT<y STRING>>[known order:{"b"}, {"c"}]
+==
+[name=in_clause_empty_subquery]
+SELECT y FROM Test WHERE x IN (
+  SELECT x FROM Test WHERE 1=0);
+--
+ARRAY<STRUCT<y STRING>>[]
+==
+[name=in_clause_not_int_empty_subquery]
+SELECT y FROM Test WHERE x NOT IN (
+  SELECT x FROM Test WHERE 1=0) ORDER BY y;
+--
+ARRAY<STRUCT<y STRING>>[known order:{NULL}, {"a"}, {"b"}]
+==
+[name=in_clause_simple_in_select]
+SELECT 1 IN (1, 2);
+--
+ARRAY<STRUCT<BOOL>>[{true}]
+==
+[name=in_clause_unnest_in_select]
+SELECT 1 IN UNNEST(ARRAY<INT64>[1, 2]);
+--
+ARRAY<STRUCT<BOOL>>[{true}]
+==
+[required_features=NUMERIC_TYPE]
+[name=in_clause_unnest_in_select_numeric]
+SELECT CAST(1.23 AS NUMERIC) IN UNNEST(ARRAY<NUMERIC>[1, 2, 3.25, 1.23]);
+--
+ARRAY<STRUCT<BOOL>>[{true}]
+==
+[required_features=BIGNUMERIC_TYPE]
+[name=in_clause_unnest_in_select_bignumeric]
+SELECT CAST(1.234567890123456789 AS BIGNUMERIC) IN UNNEST(ARRAY<BIGNUMERIC>[1, 2, 3.25, 1.234567890123456789]);
+--
+ARRAY<STRUCT<BOOL>>[{true}]
+==
+[required_features=UUID_TYPE]
+[name=in_clause_unnest_in_select_uuid]
+SELECT CAST('9d3da323-4c20-360f-bd9b-ec54feec54f0' AS UUID)
+IN UNNEST(
+  ARRAY<UUID>[CAST('9d3da323-4c20-360f-bd9b-ec54feec54f0' AS UUID),
+              CAST('9d5da323-4c20-360f-bd9b-ec54feec54f0' AS UUID)]);
+--
+ARRAY<STRUCT<BOOL>>[{true}]
+==
+[required_features=RANGE_TYPE]
+[name=in_clause_unnest_in_select_range_date]
+SELECT RANGE<DATE> '[2020-01-01, 2020-02-01)'
+IN UNNEST(
+  ARRAY<RANGE<DATE>>[RANGE<DATE> '[2020-01-01, 2020-02-01)',
+                     RANGE<DATE> '[2020-02-01, 2020-03-01)']);
+--
+ARRAY<STRUCT<BOOL>>[{true}]
+==
+[required_features=RANGE_TYPE]
+[name=in_clause_unnest_in_select_range_timestamp]
+SELECT RANGE<TIMESTAMP> '[2020-01-01, 2020-02-01)'
+IN UNNEST(
+  ARRAY<RANGE<TIMESTAMP>>[RANGE<TIMESTAMP> '[2020-01-01, 2020-02-01)',
+                          RANGE<TIMESTAMP> '[2020-02-01, 2020-03-01)']);
+--
+ARRAY<STRUCT<BOOL>>[{true}]
+==
+[required_features=RANGE_TYPE,CIVIL_TIME]
+[name=in_clause_unnest_in_select_range_datetime]
+SELECT RANGE<DATETIME> '[2020-01-01, 2020-02-01)'
+IN UNNEST(
+  ARRAY<RANGE<DATETIME>>[RANGE<DATETIME> '[2020-01-01, 2020-02-01)',
+                         RANGE<DATETIME> '[2020-02-01, 2020-03-01)']);
+--
+ARRAY<STRUCT<BOOL>>[{true}]
+==
+[name=in_clause_not_int_unnest_in_select]
+SELECT 3 NOT IN UNNEST(ARRAY<INT64>[1, 2]);
+--
+ARRAY<STRUCT<BOOL>>[{true}]
+==
+[name=in_clause_null_selector_in_select]
+SELECT NULL IN (1, 2);
+--
+ARRAY<STRUCT<BOOL>>[{NULL}]
+==
+[name=in_clause_not_in_null_selection_in_select]
+SELECT NULL NOT IN (1, 2);
+--
+ARRAY<STRUCT<BOOL>>[{NULL}]
+==
+[name=in_clause_null_selector_empty_subquery]
+SELECT y FROM Test WHERE y IS NULL AND y IN (
+  SELECT 'foo' FROM Test WHERE FALSE);
+--
+ARRAY<STRUCT<y STRING>>[]
+==
+[name=in_clause_not_in_null_selector_empty_subquery]
+SELECT y FROM Test WHERE y IS NULL AND y NOT IN (
+  SELECT 'foo' FROM Test WHERE FALSE);
+--
+ARRAY<STRUCT<y STRING>>[{NULL}]
+==
+[name=in_clause_null_selector_empty_subquery_is_null]
+SELECT y FROM Test WHERE y IS NULL AND (y IN (
+  SELECT 'foo' FROM Test WHERE FALSE)) IS NULL;
+--
+ARRAY<STRUCT<y STRING>>[]
+==
+[name=in_clause_not_in_null_selector_empty_subquery_is_null]
+SELECT y FROM Test WHERE y IS NULL AND (y NOT IN (
+  SELECT 'foo' FROM Test WHERE FALSE)) IS NULL;
+--
+ARRAY<STRUCT<y STRING>>[]
+==
+[name=in_clause_null_selector_empty_unnest]
+SELECT 1 FROM Test WHERE NULL IN UNNEST(ARRAY<INT64>[]);
+--
+ARRAY<STRUCT<INT64>>[]
+==
+[name=in_clause_not_in_null_selector_empty_unnest]
+SELECT 1 FROM Test WHERE NULL NOT IN UNNEST(ARRAY<INT64>[]);
+--
+ARRAY<STRUCT<INT64>>[unknown order:{1}, {1}, {1}]
+==
+[name=in_clause_null_selector_empty_unnest_is_null]
+SELECT 1 FROM Test WHERE (NULL IN UNNEST(ARRAY<INT64>[])) IS NULL;
+--
+ARRAY<STRUCT<INT64>>[]
+==
+[name=in_clause_not_in_null_selector_empty_unnest_is_null]
+SELECT 1 FROM Test WHERE (NULL NOT IN UNNEST(ARRAY<INT64>[])) IS NULL;
+--
+ARRAY<STRUCT<INT64>>[]
+==
+[name=in_clause_unnest_null_array_in_select]
+SELECT 1 IN UNNEST(CAST(NULL AS ARRAY<INT64>));
+--
+ARRAY<STRUCT<BOOL>>[{false}]
+==
+[name=in_clause_not_in_unnest_null_array_in_select]
+SELECT 1 NOT IN UNNEST(CAST(NULL AS ARRAY<INT64>));
+--
+ARRAY<STRUCT<BOOL>>[{true}]
+==
+[name=in_clause_unnest_empty_array_in_select]
+SELECT 1 IN UNNEST(ARRAY<INT64>[]);
+--
+ARRAY<STRUCT<BOOL>>[{false}]
+==
+[name=in_clause_not_in_unnest_empty_array_in_select]
+SELECT 1 NOT IN UNNEST(ARRAY<INT64>[]);
+--
+ARRAY<STRUCT<BOOL>>[{true}]
+==
+[name=in_clause_in_select]
+SELECT 3 IN (1, 2, NULL);
+--
+ARRAY<STRUCT<BOOL>>[{NULL}]
+==
+[name=in_clause_not_in_select]
+SELECT 3 NOT IN (1, 2, NULL);
+--
+ARRAY<STRUCT<BOOL>>[{NULL}]
+==
+[name=in_clause_in_select2]
+SELECT 2 IN (1, 2, NULL);
+--
+ARRAY<STRUCT<BOOL>>[{true}]
+==
+[name=in_clause_not_in_select2]
+SELECT 2 NOT IN (1, 2, NULL);
+--
+ARRAY<STRUCT<BOOL>>[{false}]
+==
+[name=in_clause_in_select3]
+SELECT NULL IN (1, 2, NULL);
+--
+ARRAY<STRUCT<BOOL>>[{NULL}]
+==
+[name=in_clause_not_in_select3]
+SELECT NULL NOT IN (1, 2, NULL);
+--
+ARRAY<STRUCT<BOOL>>[{NULL}]
+==
+[name=in_clause_in_select4]
+SELECT 1 IN UNNEST(ARRAY<INT64>[]);
+--
+ARRAY<STRUCT<BOOL>>[{false}]
+==
+[name=in_clause_not_in_select4]
+SELECT 1 NOT IN UNNEST(ARRAY<INT64>[]);
+--
+ARRAY<STRUCT<BOOL>>[{true}]
+==
+[name=in_clause_array_scan]
+SELECT id FROM Test2 t WHERE 'b' IN UNNEST(t.Info.str_value);
+--
+ARRAY<STRUCT<id INT64>>[{1}]
+==
+[name=in_clause_correlated_subquery]
+SELECT x FROM Test t WHERE x IN (
+    SELECT t2.id FROM Test2 t2 WHERE (t.int32_col / 100) = t2.id)
+ORDER BY x;
+--
+ARRAY<STRUCT<x INT64>>[known order:{1}, {2}]
+==
+[name=in_clause_correlated_subquery2]
+SELECT x, x IN (
+    SELECT t2.id FROM Test2 t2 WHERE (t.int32_col / 100) = t2.id)
+FROM Test t ORDER BY x;
+--
+ARRAY<STRUCT<x INT64, BOOL>>[known order:{1, true}, {2, true}, {3, false}]
+==
+[name=in_clause_array_scan_not_in]
+SELECT id FROM Test2 t WHERE 'b' NOT IN UNNEST(t.Info.str_value);
+--
+ARRAY<STRUCT<id INT64>>[{2}]
+==
+[name=in_clause_int32_type]
+SELECT x FROM Test WHERE int32_col IN (100, 200) ORDER BY x;
+--
+ARRAY<STRUCT<x INT64>>[known order:{1}, {2}]
+==
+[name=in_clause_uint32_type]
+SELECT x FROM Test WHERE uint32_col IN (101, 201) ORDER BY x;
+--
+ARRAY<STRUCT<x INT64>>[known order:{1}, {2}]
+==
+[name=in_clause_uint64_type]
+SELECT x FROM Test WHERE uint64_col IN (102, 202) ORDER BY x;
+--
+ARRAY<STRUCT<x INT64>>[known order:{1}, {2}]
+==
+[name=in_clause_bool_type]
+SELECT x FROM Test WHERE bool_col IN (True) ORDER BY x;
+--
+ARRAY<STRUCT<x INT64>>[known order:{1}, {3}]
+==
+[name=in_clause_bytes_type]
+SELECT x FROM Test WHERE bytes_col IN (b"bytes", b"bytes2") ORDER BY x;
+--
+ARRAY<STRUCT<x INT64>>[known order:{1}, {2}]
+==
+[name=in_clause_date_type]
+SELECT x FROM Test WHERE date_col IN ('2015-01-30');
+--
+ARRAY<STRUCT<x INT64>>[{1}]
+==
+[name=in_clause_timestmap_type]
+SELECT x FROM Test WHERE timestamp_col IN ('2015-01-29 10:47:20');
+--
+ARRAY<STRUCT<x INT64>>[{1}]
+==
+[name=in_clause_enum_type]
+SELECT x FROM TestEnum WHERE enum_col IN (
+  CAST("TESTENUM0" AS `googlesql_test.TestEnum`),
+  CAST("TESTENUM2" AS `googlesql_test.TestEnum`)) ORDER BY x;
+--
+ARRAY<STRUCT<x INT64>>[known order:{1}, {3}]
+==
+[required_features=ARRAY_EQUALITY]
+[name=in_clause_array_type]
+SELECT id FROM Test2 WHERE Info.str_value IN (['d']);
+--
+ARRAY<STRUCT<id INT64>>[{2}]
+==
+
+[required_features=ARRAY_EQUALITY]
+[name=in_clause_array_type_not_in]
+SELECT id FROM Test2 WHERE Info.str_value NOT IN (['d']);
+--
+ARRAY<STRUCT<id INT64>>[{1}]
+==
+
+[required_features=ARRAY_EQUALITY]
+[name=in_clause_array_type_case]
+SELECT id, CASE WHEN Info.str_value IN (['d']) THEN "yes" END
+FROM Test2;
+--
+ARRAY<STRUCT<id INT64, STRING>>[unknown order:{2, "yes"}, {1, NULL}]
+==
+
+[required_features=ARRAY_EQUALITY]
+[name=in_clause_array_type_join]
+SELECT a.id FROM Test2 a JOIN Test2 b ON a.Info.str_value IN (['d']);
+--
+ARRAY<STRUCT<id INT64>>[unknown order:{2}, {2}]
+==
+
+[required_features=ARRAY_EQUALITY]
+[name=in_clause_struct_array_type]
+SELECT x, x IN ((("test", [1, 2])))
+FROM (SELECT ("test", [1, 2]) x UNION ALL SELECT ("test", [1, 2, 3]))
+--
+ARRAY<STRUCT<
+        x STRUCT<STRING, ARRAY<>>,
+        BOOL
+      >>
+[unknown order:{{
+                  "test",
+                  ARRAY<INT64>[known order:1, 2, 3]
+                },
+                false},
+               {{
+                  "test",
+                  ARRAY<INT64>[known order:1, 2]
+                },
+                true}]
+==
+
+[required_features=ARRAY_EQUALITY]
+[name=in_unnest_clause_struct_array_type]
+SELECT ("test", [1, 2]) IN UNNEST([("test", [1, 2]), ("test", [1, 2, 3])])
+--
+ARRAY<STRUCT<BOOL>>[{true}]
+==
+
+[name=in_clause_struct_type]
+SELECT x FROM TestStruct WHERE struct_col IN ((1, 2));
+--
+ARRAY<STRUCT<x INT64>>[{1}]
+==
+[name=in_clause_having]
+SELECT SUM(x) s FROM Test GROUP BY z HAVING s IN (4);
+--
+ARRAY<STRUCT<s INT64>>[{4}]
+==
+[name=in_clause_if_statement]
+SELECT x, IF(x IN (1, 2), 'included', 'excluded') FROM Test ORDER BY x;
+--
+ARRAY<STRUCT<x INT64, STRING>>[known order:
+  {1, "included"},
+  {2, "included"},
+  {3, "excluded"}
+]
+==
+[name=in_clause_case_statment]
+SELECT x, CASE WHEN x IN (1, 2) THEN "value1or2"
+               WHEN x IN (3) THEN "value3"
+          END FROM Test ORDER BY x;
+--
+ARRAY<STRUCT<x INT64, STRING>>[known order:
+  {1, "value1or2"},
+  {2, "value1or2"},
+  {3, "value3"}
+]
+==
+[name=in_clause_join]
+SELECT x, id FROM Test JOIN Test2 ON x IN (1, 2) ORDER BY x, id;
+--
+ARRAY<STRUCT<x INT64, id INT64>>[known order:{1, 1}, {1, 2}, {2, 1}, {2, 2}]
+==
+[name=in_struct]
+SELECT x, x IN ((1,1), (1,2))
+FROM (SELECT (1,1) x UNION ALL SELECT (2,2))
+--
+ARRAY<STRUCT<
+        x STRUCT<INT64, INT64>,
+        BOOL
+      >>
+[unknown order:{{2, 2}, false}, {{1, 1}, true}]
+==
+[name=in_struct_unnest]
+SELECT x, x IN UNNEST([(1,1), (1,2)])
+FROM (SELECT (1,1) x UNION ALL SELECT (2,2))
+--
+ARRAY<STRUCT<
+        x STRUCT<INT64, INT64>,
+        BOOL
+      >>
+[unknown order:{{2, 2}, false}, {{1, 1}, true}]
+==
+[name=in_struct_subquery]
+SELECT x, x IN (SELECT u FROM UNNEST([(1,1),(1, 2)]) u)
+FROM (SELECT (1,1) x UNION ALL SELECT (2,2))
+--
+ARRAY<STRUCT<
+        x STRUCT<INT64, INT64>,
+        BOOL
+      >>
+[unknown order:{{2, 2}, false}, {{1, 1}, true}]
+==
+[name=in_unnest_struct_match]
+SELECT (1,("this",3)) IN UNNEST([(1,("that",3)), (1,("this",3))])
+--
+ARRAY<STRUCT<BOOL>>[{true}]
+==
+[name=in_unnest_struct_no_match]
+SELECT (1,("this",3)) IN UNNEST([(1,("that",3)), (2,("this",3))])
+--
+ARRAY<STRUCT<BOOL>>[{false}]
+==
+[name=in_unnest_struct_null]
+SELECT CAST(NULL AS STRUCT<INT64, STRUCT<STRING, INT64>>) IN UNNEST([(1,("that",3)), (2,("this",3))])
+--
+ARRAY<STRUCT<BOOL>>[{NULL}]
+==
+[name=in_unnest_struct_null_array_null]
+SELECT CAST(NULL AS STRUCT<INT64, STRUCT<STRING, INT64>>) IN UNNEST([(1,("that",3)), NULL, (2,("this",3))])
+--
+ARRAY<STRUCT<BOOL>>[{NULL}]
+==
+[name=in_unnest_struct_array_null]
+SELECT (5, ("x", 5)) IN UNNEST([(1,("that",3)), NULL, (2,("this",3))])
+--
+ARRAY<STRUCT<BOOL>>[{NULL}]
+==
+[name=in_unnest_struct_null_field_no_match]
+SELECT (1, ("this", NULL)) IN UNNEST([(1,("that",3)), (2,("this",3))])
+--
+ARRAY<STRUCT<BOOL>>[{false}]
+==
+[name=in_unnest_struct_null_field_possible_match]
+SELECT (1, ("this", NULL)) IN UNNEST([(1,("that",3)), (1,("this",3))])
+--
+ARRAY<STRUCT<BOOL>>[{NULL}]
+==
+[name=in_unnest_struct_null_field_array_null]
+SELECT (1, ("this", NULL)) IN UNNEST([(1,("that",3)), NULL])
+--
+ARRAY<STRUCT<BOOL>>[{NULL}]
+==
+[name=in_unnest_struct_null_field_array_null_field]
+SELECT (1, ("this", NULL)) IN UNNEST([(1,("that",3)), (1,("this",NULL))])
+--
+ARRAY<STRUCT<BOOL>>[{NULL}]
+==
+[name=in_unnest_struct_array_null_field]
+SELECT (1, ("this", 3)) IN UNNEST([(1,("that",3)), (1,("this",NULL))])
+--
+ARRAY<STRUCT<BOOL>>[{NULL}]
+==
+[name=not_in_struct_one_null_field_from_table]
+SELECT x, y FROM Test
+WHERE (x, NULL) NOT IN (SELECT (id, id) FROM Test2)
+--
+ARRAY<STRUCT<x INT64, y STRING>>[{3, "b"}]
+==
+
+[name=in_structs_with_different_field_names]
+SELECT x, y FROM Test
+WHERE struct<a int64, b int64>(x, x)
+      IN (SELECT struct<c int64, d int64>(id, id) FROM Test2)
+--
+ARRAY<STRUCT<x INT64, y STRING>>[unknown order:{2, NULL}, {1, "a"}]
+==
+
+[name=not_in_structs_with_different_field_names]
+SELECT x, y FROM Test
+WHERE struct<a int64, b int64>(x, x)
+      NOT IN (SELECT struct<c int64, d int64>(id, id) FROM Test2)
+--
+ARRAY<STRUCT<x INT64, y STRING>>[{3, "b"}]
+==
+
+[name=in_unnest_structs_with_different_field_names]
+SELECT x, y FROM Test
+WHERE struct<a int64, b string>(x, y)
+      IN UNNEST ((SELECT ARRAY_AGG(struct<c int64, d string>(x, y)) FROM Test))
+--
+ARRAY<STRUCT<x INT64, y STRING>>[unknown order:{1, "a"}, {3, "b"}]
+==
+[name=in_unnest_all_array_of_only_null_elements]
+SELECT 1 IN UNNEST([NULL]) x
+UNION ALL
+SELECT 1 NOT IN UNNEST([NULL, NULL]) x;
+--
+ARRAY<STRUCT<x BOOL>>[unknown order:{NULL}, {NULL}]
+==
+[name=in_unnest_all_array_of_only_null_elements_numeric]
+[required_features=NUMERIC_TYPE]
+SELECT CAST(1.1 AS NUMERIC) IN UNNEST([CAST(NULL AS NUMERIC)]) x
+UNION ALL
+SELECT CAST(1.1 AS NUMERIC) NOT IN UNNEST([CAST(NULL AS NUMERIC)]) x;
+--
+ARRAY<STRUCT<x BOOL>>[unknown order:{NULL}, {NULL}]
+==
+[name=in_unnest_all_array_of_null_and_non_null_elements]
+SELECT 1 IN UNNEST([NULL, 2]) x
+UNION ALL
+SELECT 1 NOT IN UNNEST([NULL, 1]) x;
+--
+ARRAY<STRUCT<x BOOL>>[unknown order:{NULL}, {false}]
+==
+[name=filter_by_in_unnest_all_array_of_only_null_elements]
+SELECT e
+FROM (SELECT 1 e)
+WHERE e NOT IN UNNEST([NULL]);
+--
+ARRAY<STRUCT<e INT64>>[]
+==
+[name=filter_by_in_unnest_all_array_of_reversed_null_elements]
+SELECT e
+FROM (SELECT 1 AS e)
+WHERE e NOT IN UNNEST(ARRAY_REVERSE(ARRAY[NULL]))
+--
+ARRAY<STRUCT<e INT64>>[]

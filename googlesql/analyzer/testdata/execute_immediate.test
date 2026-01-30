@@ -1,0 +1,205 @@
+[default language_features=MAXIMUM]
+EXECUTE IMMEDIATE "SELECT 1";
+--
+ExecuteImmediateStmt
++-sql=
+| +-Literal(type=STRING, value="SELECT 1")
++-into_identifier_list=[]
+==
+
+EXECUTE IMMEDIATE CONCAT("SELECT ", "1");
+--
+ExecuteImmediateStmt
++-sql=
+| +-FunctionCall(GoogleSQL:concat(STRING, repeated(1) STRING) -> STRING)
+|   +-Literal(type=STRING, value="SELECT ")
+|   +-Literal(type=STRING, value="1")
++-into_identifier_list=[]
+==
+
+EXECUTE IMMEDIATE TestConstantString;
+--
+ExecuteImmediateStmt
++-sql=
+| +-Constant(TestConstantString, type=STRING, value="foo")
++-into_identifier_list=[]
+==
+
+EXECUTE IMMEDIATE @@`sysvar.with.dots`;
+--
+ExecuteImmediateStmt
++-sql=
+| +-SystemVariable(`sysvar.with.dots`, type=STRING)
++-into_identifier_list=[]
+==
+
+EXECUTE IMMEDIATE {{NULL|"NULL"}};
+--
+ALTERNATION GROUP: NULL
+--
+ExecuteImmediateStmt
++-sql=
+| +-Literal(type=STRING, value=NULL)
++-into_identifier_list=[]
+--
+ALTERNATION GROUP: "NULL"
+--
+ExecuteImmediateStmt
++-sql=
+| +-Literal(type=STRING, value="NULL")
++-into_identifier_list=[]
+==
+
+EXECUTE IMMEDIATE "SELECT 1" INTO string_variable_foo;
+--
+ExecuteImmediateStmt
++-sql=
+| +-Literal(type=STRING, value="SELECT 1")
++-into_identifier_list=[string_variable_foo]
+==
+
+EXECUTE IMMEDIATE "SELECT 1" INTO string_variable_foo, string_variable_bar;
+--
+ExecuteImmediateStmt
++-sql=
+| +-Literal(type=STRING, value="SELECT 1")
++-into_identifier_list=[string_variable_foo, string_variable_bar]
+==
+
+EXECUTE IMMEDIATE "SELECT 1" INTO `string_variable_foo`;
+--
+ExecuteImmediateStmt
++-sql=
+| +-Literal(type=STRING, value="SELECT 1")
++-into_identifier_list=[string_variable_foo]
+==
+
+EXECUTE IMMEDIATE string_variable_foo INTO string_variable_bar USING 0;
+--
+ExecuteImmediateStmt
++-sql=
+| +-Constant(string_variable_foo, type=STRING, value="string_variable_foo_value")
++-into_identifier_list=[string_variable_bar]
++-using_argument_list=
+  +-ExecuteImmediateArgument
+    +-name=""
+    +-expression=
+      +-Literal(type=INT64, value=0)
+==
+
+EXECUTE IMMEDIATE string_variable_bar USING {{NULL AS y|CAST(NULL AS STRING) AS y}};
+--
+ALTERNATION GROUP: NULL AS y
+--
+ExecuteImmediateStmt
++-sql=
+| +-Constant(string_variable_bar, type=STRING, value="string_variable_bar_value")
++-into_identifier_list=[]
++-using_argument_list=
+  +-ExecuteImmediateArgument
+    +-name="y"
+    +-expression=
+      +-Literal(type=INT64, value=NULL)
+--
+ALTERNATION GROUP: CAST(NULL AS STRING) AS y
+--
+ExecuteImmediateStmt
++-sql=
+| +-Constant(string_variable_bar, type=STRING, value="string_variable_bar_value")
++-into_identifier_list=[]
++-using_argument_list=
+  +-ExecuteImmediateArgument
+    +-name="y"
+    +-expression=
+      +-Literal(type=STRING, value=NULL, has_explicit_type=TRUE)
+==
+
+EXECUTE IMMEDIATE string_variable_bar USING {{5 AS y| 5 AS y, 6 AS x|NULL AS x, CAST(NULL AS INT64) AS y|CONCAT("A", "B") as y}};
+--
+ALTERNATION GROUP: 5 AS y
+--
+ExecuteImmediateStmt
++-sql=
+| +-Constant(string_variable_bar, type=STRING, value="string_variable_bar_value")
++-into_identifier_list=[]
++-using_argument_list=
+  +-ExecuteImmediateArgument
+    +-name="y"
+    +-expression=
+      +-Literal(type=INT64, value=5)
+--
+ALTERNATION GROUP:  5 AS y, 6 AS x
+--
+ExecuteImmediateStmt
++-sql=
+| +-Constant(string_variable_bar, type=STRING, value="string_variable_bar_value")
++-into_identifier_list=[]
++-using_argument_list=
+  +-ExecuteImmediateArgument
+  | +-name="y"
+  | +-expression=
+  |   +-Literal(type=INT64, value=5)
+  +-ExecuteImmediateArgument
+    +-name="x"
+    +-expression=
+      +-Literal(type=INT64, value=6)
+--
+ALTERNATION GROUP: NULL AS x, CAST(NULL AS INT64) AS y
+--
+ExecuteImmediateStmt
++-sql=
+| +-Constant(string_variable_bar, type=STRING, value="string_variable_bar_value")
++-into_identifier_list=[]
++-using_argument_list=
+  +-ExecuteImmediateArgument
+  | +-name="x"
+  | +-expression=
+  |   +-Literal(type=INT64, value=NULL)
+  +-ExecuteImmediateArgument
+    +-name="y"
+    +-expression=
+      +-Literal(type=INT64, value=NULL, has_explicit_type=TRUE)
+--
+ALTERNATION GROUP: CONCAT("A", "B") as y
+--
+ExecuteImmediateStmt
++-sql=
+| +-Constant(string_variable_bar, type=STRING, value="string_variable_bar_value")
++-into_identifier_list=[]
++-using_argument_list=
+  +-ExecuteImmediateArgument
+    +-name="y"
+    +-expression=
+      +-FunctionCall(GoogleSQL:concat(STRING, repeated(1) STRING) -> STRING)
+        +-Literal(type=STRING, value="A")
+        +-Literal(type=STRING, value="B")
+==
+
+EXECUTE IMMEDIATE 10;
+--
+ERROR: Dynamic SQL should return type STRING, but returns INT64 [at 1:19]
+EXECUTE IMMEDIATE 10;
+                  ^
+==
+
+EXECUTE IMMEDIATE "select 1" INTO string_variable_foo, string_variable_foo;
+--
+ERROR: The same parameter cannot be assigned multiple times in an INTO clause: string_variable_foo [at 1:56]
+EXECUTE IMMEDIATE "select 1" INTO string_variable_foo, string_variable_foo;
+                                                       ^
+==
+
+EXECUTE IMMEDIATE "select 1" USING 1 AS x, 2 AS x;
+--
+
+
+ERROR: The same parameter cannot be assigned multiple times in a USING clause: x [at 1:49]
+EXECUTE IMMEDIATE "select 1" USING 1 AS x, 2 AS x;
+                                                ^
+==
+
+EXECUTE IMMEDIATE "select 1" USING 1, 2 AS x;
+--
+ERROR: Cannot mix named and positional parameters [at 1:39]
+EXECUTE IMMEDIATE "select 1" USING 1, 2 AS x;
+                                      ^

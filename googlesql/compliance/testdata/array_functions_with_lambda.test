@@ -1,0 +1,200 @@
+[load_proto_files=googlesql/testdata/test_schema.proto]
+[load_proto_names=googlesql_test.TestOptionalFields]
+[default required_features=INLINE_LAMBDA_ARGUMENT]
+
+[prepare_database]
+CREATE TABLE T AS
+  SELECT e AS ele  FROM UNNEST([1,2,3]) AS e;
+--
+ARRAY<STRUCT<ele INT64>>[{1}, {2}, {3}]
+==
+[name=array_filter_null_input]
+SELECT ARRAY_FILTER(CAST(NULL AS ARRAY<INT64>), e->e>1)
+--
+ARRAY<STRUCT<ARRAY<>>>[{ARRAY<INT64>(NULL)}]
+==
+[name=array_filter_empty_array]
+SELECT ARRAY_FILTER(CAST([] AS ARRAY<INT64>), e->e>1)
+--
+ARRAY<STRUCT<ARRAY<>>>[{ARRAY<INT64>[]}]
+==
+[name=array_filter_simple]
+SELECT ARRAY_FILTER([1,2,3], e->e>1)
+--
+ARRAY<STRUCT<ARRAY<>>>[{ARRAY<INT64>[known order:2, 3]}]
+==
+[name=array_filter_null_element]
+SELECT ARRAY_FILTER([1,2,NULL], e->e>1)
+--
+ARRAY<STRUCT<ARRAY<>>>[{ARRAY<INT64>[2]}]
+==
+[name=array_filter_with_offset]
+SELECT ARRAY_FILTER([1,2,3], (e, i)->e>i)
+--
+ARRAY<STRUCT<ARRAY<>>>[{ARRAY<INT64>[known order:1, 2, 3]}]
+==
+[name=array_filter_with_offset_at_end]
+SELECT ARRAY_FILTER([1,2,3], e->e>0)[OFFSET(1)]
+--
+ARRAY<STRUCT<INT64>>[{2}]
+==
+[name=array_filter_null_body]
+SELECT ARRAY_FILTER([1,2,3], e->NULL)
+--
+ARRAY<STRUCT<ARRAY<>>>[{ARRAY<INT64>[]}]
+==
+[name=array_filter_proto]
+SELECT ARRAY_FILTER([
+    CAST('value: 1' AS googlesql_test.TestOptionalFields),
+    CAST('value: 2' AS googlesql_test.TestOptionalFields)], e->e.value > 1)
+--
+ARRAY<STRUCT<ARRAY<>>>[
+  {ARRAY<PROTO<googlesql_test.TestOptionalFields>>[{value: 2}]}
+]
+==
+[name=array_filter_struct]
+SELECT ARRAY_FILTER([STRUCT(1 AS x), STRUCT(2), STRUCT(3)], e->e.x > 1)
+--
+ARRAY<STRUCT<ARRAY<>>>[{ARRAY<STRUCT<x INT64>>[known order:{2}, {3}]}]
+==
+[name=array_filter_query_in_body]
+SELECT ARRAY_FILTER([1,2,3], e -> EXISTS(SELECT ele FROM T where ele = e))
+--
+ARRAY<STRUCT<ARRAY<>>>[{ARRAY<INT64>[known order:1, 2, 3]}]
+==
+[name=array_filter_query_in_body_with_cast]
+SELECT ARRAY_FILTER([1,2,3], e -> CAST((SELECT ele FROM T where ele = e ORDER BY ele LIMIT 1) AS BOOL))
+--
+ARRAY<STRUCT<ARRAY<>>>[{ARRAY<INT64>[known order:1, 2, 3]}]
+==
+[name=array_filter_query_in_body_nested]
+SELECT ARRAY_FILTER([1,2,3], e -> EXISTS(SELECT (SELECT t1.ele from T AS t1 ORDER BY ele LIMIT 1) FROM T AS t2 where t2.ele = e))
+--
+ARRAY<STRUCT<ARRAY<>>>[{ARRAY<INT64>[known order:1, 2, 3]}]
+==
+[name=array_transform_null_input]
+SELECT ARRAY_TRANSFORM(CAST(NULL AS ARRAY<INT64>), e->e>1)
+--
+ARRAY<STRUCT<ARRAY<>>>[{ARRAY<BOOL>(NULL)}]
+==
+[name=array_transform_empty_array]
+SELECT ARRAY_TRANSFORM(CAST([] AS ARRAY<INT64>), e->e>1)
+--
+ARRAY<STRUCT<ARRAY<>>>[{ARRAY<BOOL>[]}]
+==
+[name=array_transform_simple]
+SELECT ARRAY_TRANSFORM([1,2,3], e->e>1)
+--
+ARRAY<STRUCT<ARRAY<>>>[{ARRAY<BOOL>[known order:false, true, true]}]
+==
+[name=array_transform_null_element]
+SELECT ARRAY_TRANSFORM([1,2,NULL], e->e>1)
+--
+ARRAY<STRUCT<ARRAY<>>>[{ARRAY<BOOL>[known order:false, true, NULL]}]
+==
+[name=array_transform_null_body]
+SELECT ARRAY_TRANSFORM([1,2,3], e->NULL)
+--
+ARRAY<STRUCT<ARRAY<>>>[{ARRAY<INT64>[known order:NULL, NULL, NULL]}]
+==
+[name=array_transform_proto]
+SELECT ARRAY_TRANSFORM([
+    CAST('value: 1' AS googlesql_test.TestOptionalFields),
+    CAST('value: 2' AS googlesql_test.TestOptionalFields)],
+    e-> (SELECT AS googlesql_test.TestOptionalFields e.value+1 AS value))
+--
+ARRAY<STRUCT<ARRAY<>>>[
+  {ARRAY<PROTO<googlesql_test.TestOptionalFields>>[known order:
+     {value: 2},
+     {value: 3}
+   ]}
+]
+==
+[name=array_transform_struct]
+SELECT ARRAY_TRANSFORM([STRUCT(1 AS x), STRUCT(2), STRUCT(3)], e->STRUCT(e.x + 1 AS x))
+--
+ARRAY<STRUCT<ARRAY<>>>[{ARRAY<STRUCT<x INT64>>[known order:{2}, {3}, {4}]}]
+==
+[name=array_transform_query_in_body]
+SELECT ARRAY_TRANSFORM([1,2,3], e -> EXISTS(SELECT ele FROM T where ele = e))
+--
+ARRAY<STRUCT<ARRAY<>>>[{ARRAY<BOOL>[known order:true, true, true]}]
+==
+[name=array_transform_query_in_body_with_cast]
+SELECT ARRAY_TRANSFORM([1,2,3], e -> CAST((SELECT ele FROM T where ele = e ORDER BY ele LIMIT  1) AS BOOL))
+--
+ARRAY<STRUCT<ARRAY<>>>[{ARRAY<BOOL>[known order:true, true, true]}]
+==
+[name=array_transform_query_in_body_nested]
+SELECT ARRAY_TRANSFORM([1,2,3], e -> EXISTS(SELECT (SELECT t1.ele from T AS t1 ORDER BY ele LIMIT  1) FROM T AS t2 where t2.ele = e))
+--
+ARRAY<STRUCT<ARRAY<>>>[{ARRAY<BOOL>[known order:true, true, true]}]
+==
+[name=array_transform_with_offset]
+SELECT ARRAY_TRANSFORM([10,10,10], (e, i)->e+i)
+--
+ARRAY<STRUCT<ARRAY<>>>[{ARRAY<INT64>[known order:10, 11, 12]}]
+==
+[name=array_transform_with_offset_at_end]
+SELECT ARRAY_TRANSFORM([10,10,10], (e, i)->e+i)[OFFSET(1)]
+--
+ARRAY<STRUCT<INT64>>[{11}]
+==
+[name=array_transform_with_offset_and_subquery]
+SELECT ARRAY_TRANSFORM([10,10,10], (e, i)->(SELECT e+i))
+--
+ARRAY<STRUCT<ARRAY<>>>[{ARRAY<INT64>[known order:10, 11, 12]}]
+==
+[name=array_filter_with_transform_in_input]
+SELECT ARRAY_FILTER(ARRAY_TRANSFORM([1,2,3], e->e+1), e->e>2)
+--
+ARRAY<STRUCT<ARRAY<>>>[{ARRAY<INT64>[known order:3, 4]}]
+==
+[name=array_filter_with_transform_in_input_and_subquery]
+SELECT ARRAY_FILTER((SELECT ARRAY_TRANSFORM([1,2,3], e->e+1)), e->e>2)
+--
+ARRAY<STRUCT<ARRAY<>>>[{ARRAY<INT64>[known order:3, 4]}]
+==
+[name=array_filter_with_transform_in_lambda]
+SELECT ARRAY_FILTER([1,2,3], e -> e>ARRAY_LENGTH(ARRAY_TRANSFORM([1,e], e->e+1)))
+--
+ARRAY<STRUCT<ARRAY<>>>[{ARRAY<INT64>[3]}]
+==
+[name=array_filter_with_transform_in_lambda_and_subquery]
+SELECT ARRAY_FILTER([1,2,3], e -> e>ARRAY_LENGTH((SELECT ARRAY_TRANSFORM([1,e], e->e+1))))
+--
+ARRAY<STRUCT<ARRAY<>>>[{ARRAY<INT64>[3]}]
+==
+[name=array_filter_query_parameter_in_lambda]
+[parameters=5 as x]
+SELECT ARRAY_FILTER([1,3,5,7], e-> e >= @x);
+--
+ARRAY<STRUCT<ARRAY<>>>[{ARRAY<INT64>[known order:5, 7]}]
+==
+
+[name=array_transform_query_parameter_in_lambda]
+[parameters=5 as x]
+SELECT ARRAY_TRANSFORM([1,3,5,7], e-> STRUCT(e, @x));
+--
+ARRAY<STRUCT<ARRAY<>>>[
+  {ARRAY<STRUCT<e INT64, INT64>>[known order:{1, 5}, {3, 5}, {5, 5}, {7, 5}]}
+]
+==
+
+[name=array_includes_query_parameter_in_lambda]
+[parameters=5 as x]
+SELECT
+  ARRAY_INCLUDES([1,3,5,7], e-> e >= @x),
+  ARRAY_INCLUDES([1,3], e-> e >= @x);
+--
+ARRAY<STRUCT<BOOL, BOOL>>[{true, false}]
+==
+
+# This is a regression test against resolving query parameter @lambda that
+# comes from user input. It detects breakage after removing resolving query
+# parameter in AnalyzeSubstitute as part of fixing b/233941129.
+[name=array_filter_with_user_input_query_parameter_lambda]
+[parameters=[1,2,3] as lambda]
+SELECT ARRAY_FILTER(@lambda, e->e=2)
+--
+ARRAY<STRUCT<ARRAY<>>>[{ARRAY<INT64>[2]}]

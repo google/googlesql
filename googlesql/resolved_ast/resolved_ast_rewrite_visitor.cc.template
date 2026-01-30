@@ -1,0 +1,120 @@
+//
+// Copyright 2019 Google LLC
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+//
+
+
+// resolved_ast_rewrite_visitor.cc GENERATED FROM resolved_ast_rewrite_visitor.cc.template
+
+#include "googlesql/resolved_ast/resolved_ast_rewrite_visitor.h"
+
+#include <algorithm>
+#include <memory>
+#include <stack>
+#include <utility>
+#include <vector>
+
+#include "googlesql/resolved_ast/resolved_ast.h"
+#include "googlesql/resolved_ast/resolved_ast_builder.h"
+#include "googlesql/resolved_ast/resolved_node.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "googlesql/base/ret_check.h"
+#include "googlesql/base/status_macros.h"
+
+namespace googlesql {
+
+# for node in nodes | is_in_shard if not node.is_abstract
+absl::StatusOr<std::unique_ptr<const ResolvedNode>>
+ResolvedASTRewriteVisitor::DefaultVisit(
+    std::unique_ptr<const {{node.name}}> node) {
+  GOOGLESQL_RETURN_IF_ERROR(PreVisit{{node.name}}(*node));
+ {# Use jinja namespace variable to avoid creating a builder if we don't
+  # actually need one
+  #}
+ # set default_visit_ns = namespace(found=false)
+ # for field in (node.fields + node.inherited_fields)
+  {# TODO: Handle enums and other similar things? #}
+  # if (field.is_node_ptr or field.is_node_vector or field.include_scalar_rewriter) and default_visit_ns.found == false
+   {# The first time we actually need a builder, create one. #}
+   # set default_visit_ns.found=true
+  {{node.builder_name}} builder = ToBuilder(std::move(node));
+  # endif
+  # if field.is_node_ptr
+  if (builder.{{field.name}}() != nullptr) {
+    {{field.member_type}} tmp =
+        builder.release_{{field.name}}();
+    absl::StatusOr<{{field.member_type}}> result =
+        Dispatch<{{field.member_type}}::element_type>(
+            std::move(tmp));
+    if (!result.ok()) {
+      return std::move(result).status();
+    }
+    # if field.propagate_order
+    {# Default behavior is to change the existing value. We must prevent this
+       propagation explicitly. Otherwise, a no-op 'copy' will result in changing
+       the ast.
+     #}
+    builder.set_{{field.name}}(*std::move(result), /*propagate_order=*/false);
+    # else
+    builder.set_{{field.name}}(*std::move(result));
+    # endif
+  }
+  # elif field.is_node_vector:
+  if (!builder.{{field.name}}().empty()) {
+    {{field.member_type}} tmp =
+        builder.release_{{field.name}}();
+    GOOGLESQL_ASSIGN_OR_RETURN(
+        tmp, DispatchNodeList<
+                 {{field.element_storage_type}}::element_type>(
+                 std::move(tmp)));
+    builder.set_{{field.name}}(std::move(tmp));
+  }
+  # elif field.include_scalar_rewriter and field.is_vector
+  if (!builder.{{field.name}}().empty()) {
+    {{field.member_type}} tmp = builder.release_{{field.name}}();
+    for (int i = 0; i < tmp.size(); ++i) {
+      GOOGLESQL_ASSIGN_OR_RETURN(tmp[i], DefaultVisit(std::move(tmp[i])));
+    }
+    builder.set_{{field.name}}(std::move(tmp));
+  }
+  # elif field.include_scalar_rewriter and not field.is_vector
+  builder.set_{{field.name}}(DefaultVisit(builder.{{field.name}}()));
+  # endif
+ # endfor
+ # if default_visit_ns.found == true
+  GOOGLESQL_ASSIGN_OR_RETURN(auto built, std::move(builder).Build());
+  return PostVisit{{node.name}}(std::move(built));
+ # else
+  return PostVisit{{node.name}}(std::move(node));
+ # endif
+}
+
+# endfor
+
+# if shard_num == 1
+absl::StatusOr<ResolvedColumn>
+ResolvedASTRewriteVisitor::DefaultVisit(ResolvedColumn column) {
+  GOOGLESQL_RETURN_IF_ERROR(PreVisitResolvedColumn(column));
+  return PostVisitResolvedColumn(std::move(column));
+}
+
+absl::StatusOr<const Type*>
+ResolvedASTRewriteVisitor::DefaultVisit(const Type* type) {
+  GOOGLESQL_RETURN_IF_ERROR(PreVisitType(type));
+  return PostVisitType(type);
+}
+# endif
+
+}  // namespace googlesql

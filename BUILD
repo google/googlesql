@@ -14,11 +14,10 @@
 # limitations under the License.
 #
 
-""" Additional bazel imports for zetasql """
+""" Additional bazel imports for googlesql """
 
 licenses(["notice"])  # Apache 2.0
 
 exports_files([
     "LICENSE",
-    "zetasql_deps.bzl",
 ])

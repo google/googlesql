@@ -1,0 +1,184 @@
+[default language_features=MAXIMUM]
+ASSERT (SELECT TRUE);
+--
+AssertStmt
++-expression=
+  +-SubqueryExpr
+    +-type=BOOL
+    +-subquery_type=SCALAR
+    +-subquery=
+      +-ProjectScan
+        +-column_list=[$expr_subquery.$col1#1]
+        +-expr_list=
+        | +-$col1#1 := Literal(type=BOOL, value=true)
+        +-input_scan=
+          +-SingleRowScan
+==
+
+ASSERT {{TRUE|FALSE}};
+--
+ALTERNATION GROUP: TRUE
+--
+AssertStmt
++-expression=
+  +-Literal(type=BOOL, value=true)
+--
+ALTERNATION GROUP: FALSE
+--
+AssertStmt
++-expression=
+  +-Literal(type=BOOL, value=false)
+==
+
+# ASSERT with a description.
+ASSERT "123" IN ("123", "456") AS "test description";
+--
+AssertStmt
++-expression=
+| +-FunctionCall(GoogleSQL:$in(STRING, repeated(2) STRING) -> BOOL)
+|   +-Literal(type=STRING, value="123")
+|   +-Literal(type=STRING, value="123")
+|   +-Literal(type=STRING, value="456")
++-description="test description"
+==
+
+ASSERT (SELECT max(int32) > 1 FROM SimpleTypes);
+--
+AssertStmt
++-expression=
+  +-SubqueryExpr
+    +-type=BOOL
+    +-subquery_type=SCALAR
+    +-subquery=
+      +-ProjectScan
+        +-column_list=[$expr_subquery.$col1#21]
+        +-expr_list=
+        | +-$col1#21 :=
+        |   +-FunctionCall(GoogleSQL:$greater(INT32, INT32) -> BOOL)
+        |     +-ColumnRef(type=INT32, column=$aggregate.$agg1#20)
+        |     +-Literal(type=INT32, value=1)
+        +-input_scan=
+          +-AggregateScan
+            +-column_list=[$aggregate.$agg1#20]
+            +-input_scan=
+            | +-TableScan(column_list=[SimpleTypes.int32#1], table=SimpleTypes, column_index_list=[0])
+            +-aggregate_list=
+              +-$agg1#20 :=
+                +-AggregateFunctionCall(GoogleSQL:max(INT32) -> INT32)
+                  +-ColumnRef(type=INT32, column=SimpleTypes.int32#1)
+==
+
+ASSERT(SELECT COUNT(*) FROM SimpleTypes) > 0;
+--
+AssertStmt
++-expression=
+  +-FunctionCall(GoogleSQL:$greater(INT64, INT64) -> BOOL)
+    +-SubqueryExpr
+    | +-type=INT64
+    | +-subquery_type=SCALAR
+    | +-subquery=
+    |   +-ProjectScan
+    |     +-column_list=[$aggregate.$agg1#20]
+    |     +-input_scan=
+    |       +-AggregateScan
+    |         +-column_list=[$aggregate.$agg1#20]
+    |         +-input_scan=
+    |         | +-TableScan(table=SimpleTypes)
+    |         +-aggregate_list=
+    |           +-$agg1#20 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+    +-Literal(type=INT64, value=0)
+==
+
+ASSERT NOT EXISTS(SELECT int32
+                  FROM SimpleTypes
+                  WHERE int32 IN (123, 456));
+--
+AssertStmt
++-expression=
+  +-FunctionCall(GoogleSQL:$not(BOOL) -> BOOL)
+    +-SubqueryExpr
+      +-type=BOOL
+      +-subquery_type=EXISTS
+      +-subquery=
+        +-ProjectScan
+          +-column_list=[SimpleTypes.int32#1]
+          +-input_scan=
+            +-FilterScan
+              +-column_list=[SimpleTypes.int32#1]
+              +-input_scan=
+              | +-TableScan(column_list=[SimpleTypes.int32#1], table=SimpleTypes, column_index_list=[0])
+              +-filter_expr=
+                +-FunctionCall(GoogleSQL:$in(INT32, repeated(2) INT32) -> BOOL)
+                  +-ColumnRef(type=INT32, column=SimpleTypes.int32#1)
+                  +-Literal(type=INT32, value=123)
+                  +-Literal(type=INT32, value=456)
+==
+
+# Testing with a query_parameter.
+ASSERT (SELECT COUNT(*) FROM SimpleTypes WHERE int32 > @test_param_int32) > 0;
+--
+AssertStmt
++-expression=
+  +-FunctionCall(GoogleSQL:$greater(INT64, INT64) -> BOOL)
+    +-SubqueryExpr
+    | +-type=INT64
+    | +-subquery_type=SCALAR
+    | +-subquery=
+    |   +-ProjectScan
+    |     +-column_list=[$aggregate.$agg1#20]
+    |     +-input_scan=
+    |       +-AggregateScan
+    |         +-column_list=[$aggregate.$agg1#20]
+    |         +-input_scan=
+    |         | +-FilterScan
+    |         |   +-column_list=[SimpleTypes.int32#1]
+    |         |   +-input_scan=
+    |         |   | +-TableScan(column_list=[SimpleTypes.int32#1], table=SimpleTypes, column_index_list=[0])
+    |         |   +-filter_expr=
+    |         |     +-FunctionCall(GoogleSQL:$greater(INT32, INT32) -> BOOL)
+    |         |       +-ColumnRef(type=INT32, column=SimpleTypes.int32#1)
+    |         |       +-Parameter(type=INT32, name="test_param_int32")
+    |         +-aggregate_list=
+    |           +-$agg1#20 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+    +-Literal(type=INT64, value=0)
+==
+
+# ASSERT with a NULL literal.
+ASSERT NULL;
+--
+AssertStmt
++-expression=
+  +-Literal(type=BOOL, value=NULL)
+==
+
+# This ASSERT statement is not valid as the expected return type of BOOL is not
+# known when the subquery expression is resolved, thus it is given the
+# default return type of INT64.
+ASSERT (SELECT NULL);
+--
+ERROR: ASSERT expression should return type BOOL, but returns INT64 [at 1:8]
+ASSERT (SELECT NULL);
+       ^
+==
+
+ASSERT CAST(NULL as INT64)
+--
+
+ERROR: ASSERT expression should return type BOOL, but returns INT64 [at 1:8]
+ASSERT CAST(NULL as INT64)
+       ^
+==
+
+# Expression that does not return a BOOL.
+ASSERT (SELECT 2 + 3);
+--
+ERROR: ASSERT expression should return type BOOL, but returns INT64 [at 1:8]
+ASSERT (SELECT 2 + 3);
+       ^
+==
+
+ASSERT (SELECT 1, 2)
+--
+ERROR: Scalar subquery cannot have more than one column unless using SELECT AS STRUCT to build STRUCT values [at 1:8]
+ASSERT (SELECT 1, 2)
+       ^

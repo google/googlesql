@@ -7,7 +7,7 @@
 
 Protocol buffers are a flexible mechanism for serializing structured
 data. They are small in size and efficient to send over RPCs.
-Protocol buffers are represented in ZetaSQL using the
+Protocol buffers are represented in GoogleSQL using the
 `PROTO` data type. A column can contain `PROTO` values the same way it can
 contain `INT32` or `STRING` values.
 
@@ -41,14 +41,14 @@ type][proto-data-type-construct].
 You can use the [`CAST AS PROTO`][cast-as-proto] function to cast `PROTO` to or
 from `BYTES`, `STRING`, or `PROTO`.
 
-```zetasql
+```googlesql
 SELECT CAST('first_name: "Alana", last_name: "Yah", customer_no: 1234'
   AS example.CustomerInfo);
 ```
 
 Casting to or from `BYTES` produces or parses [proto2 wire format bytes][proto2-wire-format].
 If there is a failure during the serialization or deserialization process,
-ZetaSQL throws an error. This can happen, for example, if no value is
+GoogleSQL throws an error. This can happen, for example, if no value is
 specified for a required field.
 
 Casting to or from `STRING` produces or parses the [proto2 text format][proto2-text-format].
@@ -85,7 +85,7 @@ message Item {
 }
 ```
 
-```zetasql
+```googlesql
 SELECT
   PROTO_MODIFY_MAP(m.purchased, 'B', 11) AS result_map
 FROM
@@ -101,7 +101,7 @@ FROM
 #### Use a protocol buffer map array 
 <a id="proto_maps_add_array"></a>
 
-ZetaSQL supports adding key-value pairs to a
+GoogleSQL supports adding key-value pairs to a
 protocol buffer map field, using an array of
 [typeless structs][typeless-structs] with this format:
 
@@ -109,7 +109,7 @@ protocol buffer map field, using an array of
 STRUCT<key_type, value_type>(key_expression, value_expression)
 ```
 
-+ `key_type` and `value_type` represent ZetaSQL data types.
++ `key_type` and `value_type` represent GoogleSQL data types.
 + `key_expression` and `value_expression` must be coercible or literal-coercible
   to `key_type` and `value_type`.
 
@@ -124,7 +124,7 @@ message Item {
 }
 ```
 
-```zetasql
+```googlesql
 SELECT NEW Item([('A', 32), ('B', 9)] AS purchased)
 ```
 
@@ -143,7 +143,7 @@ message Item {
 }
 ```
 
-```zetasql
+```googlesql
 SELECT
   PROTO_MODIFY_MAP(m.purchased, 'A', 6) AS result_map
 FROM
@@ -171,7 +171,7 @@ message Item {
 }
 ```
 
-```zetasql
+```googlesql
 SELECT
   PROTO_MODIFY_MAP(m.purchased, 'A', NULL) AS result_map
 FROM
@@ -199,7 +199,7 @@ message Item {
 }
 ```
 
-```zetasql
+```googlesql
 SELECT
   PROTO_MAP_CONTAINS_KEY(m.map, 'B') AS key_is_present
 FROM
@@ -228,7 +228,7 @@ the [`EXTRACT`][proto-extract] function.
 The following example queries for a table called `Customers`. This table
 contains a column `Orders` of type `PROTO`.
 
-```zetasql
+```googlesql
 CREATE TABLE Customers (
   Id INT64,
   Orders examples.shipping.Order,
@@ -244,7 +244,7 @@ package examples.shipping;
 
 message Order {
   optional string order_number = 1;
-  optional int64 date = 2 [( zetasql.format ) = DATE];
+  optional int64 date = 2 [( googlesql.format ) = DATE];
 
   message Address {
     optional string street = 1;
@@ -301,7 +301,7 @@ a top-level or nested field of the message.
 Using our example protocol buffer message, the following query returns all
 protocol buffer values from the `Orders` column:
 
-```zetasql
+```googlesql
 SELECT
   c.Orders
 FROM
@@ -311,7 +311,7 @@ FROM
 This query returns the top-level field `order_number` from all protocol buffer
 messages in the `Orders` column using the [dot operator][dot-operator]:
 
-```zetasql
+```googlesql
 SELECT
   c.Orders.order_number
 FROM
@@ -327,7 +327,7 @@ In the previous example, the `Order` protocol buffer contains another protocol
 buffer message, `Address`, in the `shipping_address` field. You can create a
 query that returns all orders that have a shipping address in the United States:
 
-```zetasql
+```googlesql
 SELECT
   c.Orders.order_number,
   c.Orders.shipping_address
@@ -347,7 +347,7 @@ protocol buffer message contains a repeated field, `line_item`.
 The following query returns a set of `ARRAY`s containing the line items,
 each holding all the line items for one order:
 
-```zetasql
+```googlesql
 SELECT
   c.Orders.line_item
 FROM
@@ -365,7 +365,7 @@ For more information about default field values, see [Default values and
 You can return the number of values in a repeated fields in a protocol buffer
 using the `ARRAY_LENGTH` function.
 
-```zetasql
+```googlesql
 SELECT
   c.Orders.order_number,
   ARRAY_LENGTH(c.Orders.line_item)
@@ -388,7 +388,7 @@ message Item {
 }
 ```
 
-```zetasql
+```googlesql
 SELECT
   m.purchased[KEY('A')] AS map_value
 FROM
@@ -407,7 +407,7 @@ query protocol buffer map fields by querying the underlying repeated field.
 In the following example, the underlying repeated field has `key` and `value`
 fields that can be queried.
 
-```zetasql
+```googlesql
 SELECT
   C.Orders.order_number
 FROM
@@ -465,7 +465,7 @@ contains a field, `foo_field` of type `Foo`.
 A query that returns the value of the `bar` extension field would resemble the
 following:
 
-```zetasql
+```googlesql
 SELECT
   foo_field.(some.package.bar)
 FROM
@@ -477,7 +477,7 @@ These types of extensions are often referred to as *top-level extensions*.
 If you want your statement to return a specific value from a top-level
 extension, you would modify it as follows:
 
-```zetasql
+```googlesql
 SELECT
   foo_field.(some.package.point).y
 FROM
@@ -487,7 +487,7 @@ FROM
 You can refine your statement to look for a specific value of a top-level
 extension as well.
 
-```zetasql
+```googlesql
 SELECT
   foo_field.(some.package.bar)
 FROM
@@ -502,7 +502,7 @@ around individual components, not around multiple components or the entire path.
 
 Correct example:
 
-```zetasql
+```googlesql
 SELECT
   foo_field.(`some`.`package`.`bar`).value = 5
 FROM
@@ -511,14 +511,14 @@ FROM
 
 Incorrect examples:
 
-```zetasql {.bad}
+```googlesql {.bad}
 SELECT
   foo_field.(`some.package`.`bar`).value = 5
 FROM
   Test;
 ```
 
-```zetasql {.bad}
+```googlesql {.bad}
 SELECT
   foo_field.(`some.package.bar`).value = 5
 FROM
@@ -549,7 +549,7 @@ syntax as described in the previous section. To reference a nested extension,
 in addition to specifying the package name, you must also specify the name of
 the message where the extension is declared. For example:
 
-```zetasql
+```googlesql
 SELECT
   foo_field.(some.package.Baz.foo_ext)
 FROM
@@ -559,7 +559,7 @@ FROM
 You can reference a specific field in a nested extension using the same syntax
 described in the previous section. For example:
 
-```zetasql
+```googlesql
 SELECT
   foo_field.(some.package.Baz.foo_ext).a
 FROM
@@ -597,7 +597,7 @@ message Extension {
 The following query uses a standard repeated field, `repeated_value`, in a
 correlated `INNER JOIN` and runs without requiring an explicit `UNNEST`.
 
-```zetasql
+```googlesql
 WITH
   ExampleData AS (
     SELECT
@@ -623,7 +623,7 @@ INNER JOIN
 The following query uses a repeated extension field, `repeated_extension_value`,
 in a correlated `INNER JOIN` and requires an explicit `UNNEST`.
 
-```zetasql
+```googlesql
 WITH
   ExampleData AS (
     SELECT
@@ -650,13 +650,13 @@ INNER JOIN
 <a id="type_mapping"></a>
 
 The following table gives examples of the mapping between various
-protocol buffer field types and the resulting ZetaSQL types.
+protocol buffer field types and the resulting GoogleSQL types.
 
 <table>
   <thead>
     <tr>
       <th>Protocol buffer field type</th>
-      <th style="white-space:nowrap">ZetaSQL type</th>
+      <th style="white-space:nowrap">GoogleSQL type</th>
     </tr>
   </thead>
   <tbody>
@@ -678,7 +678,7 @@ protocol buffer field types and the resulting ZetaSQL types.
     </tr>
     <tr>
       <td>
-      <code>optional int64 int = 1 [( zetasql.use_defaults ) = false];</code><br>
+      <code>optional int64 int = 1 [( googlesql.use_defaults ) = false];</code><br>
       When reading, if this field isn't set, a <code>NULL</code> value is returned.
       This example uses an annotation, which is described in
       <a href="#default_values_and_nulls">Defaults and <code>NULL</code>s</a>.
@@ -688,14 +688,14 @@ protocol buffer field types and the resulting ZetaSQL types.
     
     <tr>
       <td>
-      <code>optional int32 date = 1 [( zetasql.format ) = DATE];</code>
+      <code>optional int32 date = 1 [( googlesql.format ) = DATE];</code>
       
       </td>
       <td><code>DATE</code></td>
     </tr>
     <tr>
       <td>
-      <code>optional int64 time = 1 [( zetasql.format ) = TIMESTAMP_MICROS];</code>
+      <code>optional int64 time = 1 [( googlesql.format ) = TIMESTAMP_MICROS];</code>
       
       </td>
       <td><code>TIMESTAMP</code></td>
@@ -812,10 +812,10 @@ various accessed fields:
 </tbody>
 </table>
 
-### `zetasql.use_defaults` {: #zetasql_use_defaults}
+### `googlesql.use_defaults` {: #googlesql_use_defaults}
 
 You can change this default behavior using a special annotation on your protocol
-message definition, `zetasql.use_defaults`, which you set on an
+message definition, `googlesql.use_defaults`, which you set on an
 individual field to cause `NULL` values to be returned whenever a field value is
 not explicitly set.
 
@@ -828,11 +828,11 @@ The following example shows how you can use the `use_defaults` annotation for an
 optional protocol buffer field.
 
 ```proto
-import "zetasql/public/proto/type_annotation.proto";
+import "googlesql/public/proto/type_annotation.proto";
 
 message SimpleMessage {
-  // String field, where ZetaSQL interprets missing values as NULLs.
-  optional string str = 2 [( zetasql.use_defaults ) = false];
+  // String field, where GoogleSQL interprets missing values as NULLs.
+  optional string str = 2 [( googlesql.use_defaults ) = false];
 }
 ```
 
@@ -846,19 +846,19 @@ treated like any other value of that type. For non-`PROTO` values, such as
 if the value for that field was set explicitly, or if it was read as a default
 value.
 
-### `zetasql.use_field_defaults`
+### `googlesql.use_field_defaults`
 
-The `zetasql.use_field_defaults` annotation is just like
-`zetasql.use_defaults`, but you set it on a message and it applies to
+The `googlesql.use_field_defaults` annotation is just like
+`googlesql.use_defaults`, but you set it on a message and it applies to
 all unset fields within a given protocol buffer message. If both are present,
 the field-level annotation takes precedence.
 
 ```proto
-import "zetasql/public/proto/type_annotation.proto";
+import "googlesql/public/proto/type_annotation.proto";
 
 message AnotherSimpleMessage {
   // Interpret missing value as NULLs for all fields in this message.
-  option ( zetasql.use_field_defaults ) = false;
+  option ( googlesql.use_field_defaults ) = false;
 
   optional int64 nullable_int = 1;
   optional string nullable_string = 2;
@@ -888,7 +888,7 @@ message ShippingAddress {
 }
 ```
 
-```zetasql
+```googlesql
 SELECT
   c.Orders.shipping_address.has_country
 FROM
@@ -913,7 +913,7 @@ any value exists with some desired property. For example, the following query
 returns the name of every customer who has placed an order for the product
 "Foo".
 
-```zetasql
+```googlesql
 SELECT
   C.Id
 FROM
@@ -955,7 +955,7 @@ message OuterMessage {
 Running the following query returns a `5` for `value` because it is
 explicitly defined.
 
-```zetasql
+```googlesql
 SELECT
   proto_field.nested.value
 FROM
@@ -966,7 +966,7 @@ FROM
 If `value` isn't explicitly defined but `nested` is, you get a `0` because
 the annotation on the protocol buffer definition says to use default values.
 
-```zetasql
+```googlesql
 SELECT
   proto_field.nested.value
 FROM
@@ -979,7 +979,7 @@ though the annotation says to use default values for the `value` field. This is
 because the containing message is `NULL`. This behavior applies to both
 repeated and non-repeated fields within a nested message.
 
-```zetasql
+```googlesql
 SELECT
   proto_field.nested.value
 FROM
@@ -990,7 +990,7 @@ FROM
 ### Annotations to extend the type system 
 <a id="proto_annotations"></a>
 
-The ZetaSQL type system contains more types than the protocol buffer
+The GoogleSQL type system contains more types than the protocol buffer
 type system.
 <a href="https://developers.google.com/protocol-buffers/docs/proto?csw=1#options">
 Proto annotations</a> are used to store non-protocol-buffer types inside
@@ -1003,10 +1003,10 @@ using SQL. For instance, a protocol message definition could contain the
 following line:
 
 ```proto
-optional int32 date = 2 [( zetasql.format ) = DATE];
+optional int32 date = 2 [( googlesql.format ) = DATE];
 ```
 
-The `zetasql.format` annotation indicates that this field, which stores
+The `googlesql.format` annotation indicates that this field, which stores
 an `int32` in the protocol buffer, should be interpreted as a `DATE`. Queries
 over the `date` field return a `DATE` type instead of an `INT32` because of the
 annotation.
@@ -1014,7 +1014,7 @@ annotation.
 This result is the equivalent of having an `INT32` column and querying it as
 follows:
 
-```zetasql
+```googlesql
 SELECT
   DATE_FROM_UNIX_DATE(date)...
 ```
@@ -1026,9 +1026,9 @@ Protocol buffers can be coerced into other data types. For more information, see
 
 <!-- mdlint off(WHITESPACE_LINE_LENGTH) -->
 
-[proto-data-type]: https://github.com/google/zetasql/blob/master/docs/data-types.md#protocol_buffer_type
+[proto-data-type]: https://github.com/google/googlesql/blob/master/docs/data-types.md#protocol_buffer_type
 
-[proto-data-type-construct]: https://github.com/google/zetasql/blob/master/docs/data-types.md#constructing_a_proto
+[proto-data-type-construct]: https://github.com/google/googlesql/blob/master/docs/data-types.md#constructing_a_proto
 
 [protocol-buffer-fields]: https://developers.google.com/protocol-buffers/docs/proto3#specifying_field_rules
 
@@ -1038,9 +1038,9 @@ Protocol buffers can be coerced into other data types. For more information, see
 
 [default-values]: #default_values_and_nulls
 
-[zetasql-use-defaults]: #zetasql_use_defaults
+[googlesql-use-defaults]: #googlesql_use_defaults
 
-[conversion-rules]: https://github.com/google/zetasql/blob/master/docs/conversion_rules.md
+[conversion-rules]: https://github.com/google/googlesql/blob/master/docs/conversion_rules.md
 
 [proto2-wire-format]: https://protobuf.dev/programming-guides/encoding
 
@@ -1052,39 +1052,39 @@ Protocol buffers can be coerced into other data types. For more information, see
 
 [unknown-fields-type]: https://protobuf.dev/programming-guides/proto3/#unknowns
 
-[dot-operator]: https://github.com/google/zetasql/blob/master/docs/operators.md#field_access_operator
+[dot-operator]: https://github.com/google/googlesql/blob/master/docs/operators.md#field_access_operator
 
-[correlated-join]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#correlated_join
+[correlated-join]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#correlated_join
 
-[unnest-operator]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#unnest_operator
+[unnest-operator]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#unnest_operator
 
-[new-operator]: https://github.com/google/zetasql/blob/master/docs/operators.md#new_operator
+[new-operator]: https://github.com/google/googlesql/blob/master/docs/operators.md#new_operator
 
-[select-as-typename]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#select_as_typename
+[select-as-typename]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#select_as_typename
 
-[working-with-arrays]: https://github.com/google/zetasql/blob/master/docs/arrays.md#working_with_arrays
+[working-with-arrays]: https://github.com/google/googlesql/blob/master/docs/arrays.md#working_with_arrays
 
-[cast-as-proto]: https://github.com/google/zetasql/blob/master/docs/conversion_functions.md#cast-as-proto
+[cast-as-proto]: https://github.com/google/googlesql/blob/master/docs/conversion_functions.md#cast-as-proto
 
-[link_to_safe_cast]: https://github.com/google/zetasql/blob/master/docs/conversion_functions.md#safe_casting
+[link_to_safe_cast]: https://github.com/google/googlesql/blob/master/docs/conversion_functions.md#safe_casting
 
-[link_to_expression_subquery]: https://github.com/google/zetasql/blob/master/docs/subqueries.md#expression_subquery_concepts
+[link_to_expression_subquery]: https://github.com/google/googlesql/blob/master/docs/subqueries.md#expression_subquery_concepts
 
-[proto-extract]: https://github.com/google/zetasql/blob/master/docs/protocol_buffer_functions.md#proto_extract
+[proto-extract]: https://github.com/google/googlesql/blob/master/docs/protocol_buffer_functions.md#proto_extract
 
 [proto-maps]: https://developers.google.com/protocol-buffers/docs/proto3#maps
 
-[proto-map-cast]: https://github.com/google/zetasql/blob/master/docs/conversion_functions.md#cast
+[proto-map-cast]: https://github.com/google/googlesql/blob/master/docs/conversion_functions.md#cast
 
-[proto-subscript-operator]: https://github.com/google/zetasql/blob/master/docs/operators.md#proto_subscript_operator
+[proto-subscript-operator]: https://github.com/google/googlesql/blob/master/docs/operators.md#proto_subscript_operator
 
-[proto-map-contains-key]: https://github.com/google/zetasql/blob/master/docs/protocol_buffer_functions.md#proto_map_contains_key
+[proto-map-contains-key]: https://github.com/google/googlesql/blob/master/docs/protocol_buffer_functions.md#proto_map_contains_key
 
-[proto-modify-map]: https://github.com/google/zetasql/blob/master/docs/protocol_buffer_functions.md#proto_modify_map
+[proto-modify-map]: https://github.com/google/googlesql/blob/master/docs/protocol_buffer_functions.md#proto_modify_map
 
-[typeless-structs]: https://github.com/google/zetasql/blob/master/docs/data-types.md#typeless_struct_syntax
+[typeless-structs]: https://github.com/google/googlesql/blob/master/docs/data-types.md#typeless_struct_syntax
 
-[proto-functions]: https://github.com/google/zetasql/blob/master/docs/protocol_buffer_functions.md
+[proto-functions]: https://github.com/google/googlesql/blob/master/docs/protocol_buffer_functions.md
 
 <!-- mdlint on -->
 

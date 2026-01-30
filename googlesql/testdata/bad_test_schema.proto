@@ -1,0 +1,195 @@
+//
+// Copyright 2019 Google LLC
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+//
+
+syntax = "proto2";
+
+package googlesql_test;
+
+import "googlesql/public/proto/type_annotation.proto";
+import "googlesql/public/proto/wire_format_annotation.proto";
+
+option java_package = "com.google.googlesqltest";
+option java_outer_classname = "BadTestSchemaProto";
+
+// Fields with invalid type annotations.
+message TestInvalidTypeAnnotations {
+  optional int32 invalid_int32_timestamp_annotation = 1
+      [(googlesql.format) = TIMESTAMP_SECONDS];
+  optional uint32 invalid_uint32_date_annotation = 2
+      [(googlesql.format) = DATE];
+  // Only TIMESTAMP_MICROS is allowed on uint64 fields.
+  optional uint64 invalid_uint64_timestamp_annotation = 3
+      [(googlesql.format) = TIMESTAMP_SECONDS];
+
+  optional string invalid_string_with_date_encoding = 4
+      [(googlesql.encoding) = DATE_DECIMAL];
+  optional string invalid_timestamp_with_date_encoding = 5 [
+    (googlesql.encoding) = DATE_DECIMAL,
+    (googlesql.format) = TIMESTAMP_SECONDS
+  ];
+  optional string invalid_int32_with_date_encoding = 6
+      [(googlesql.encoding) = DATE_DECIMAL];
+
+  // The default annotations are intended only as placeholders in code, and
+  // not as annotations that would actually be written.
+  optional int64 invalid_type_none_annotation = 7
+      [(googlesql.format) = DEFAULT_FORMAT];
+  optional int64 invalid_encoding_default_annotation = 8
+      [(googlesql.encoding) = DEFAULT_ENCODING];
+
+  // We only use the legacy googlesql.encoding annotation if it is valid
+  // for a matching googlesql.format annotation so the 'encoding' annotations
+  // get ignored.
+  optional int32 ignored_date_encoding1 = 9
+      [(googlesql.encoding) = DATE_DECIMAL];
+  optional int64 ignored_date_encoding2 = 10 [
+    (googlesql.format) = TIMESTAMP_SECONDS,
+    (googlesql.encoding) = DATE_DECIMAL
+  ];
+
+  optional int64 valid_int_column = 11;
+
+  optional uint64 invalid_time_micros_uint64 = 12
+      [(googlesql.format) = TIME_MICROS];
+  optional uint64 invalid_time_micros_uint64_default = 13 [
+    (googlesql.format) = TIME_MICROS,
+    // 01:02:03.456789
+    default = 4432787541
+  ];
+
+  optional uint64 invalid_datetime_micros_uint64 = 14
+      [(googlesql.format) = DATETIME_MICROS];
+  optional uint64 invalid_datetime_micros_uint64_default = 15 [
+    (googlesql.format) = DATETIME_MICROS,
+    // 2016-02-16 13:35:57.456789
+    default = 141874441622059093
+  ];
+}
+
+// Repeated fields with use_defaults = true are invalid.
+message TestInvalidDefaultAnnotations {
+  repeated int32 invalid_repeated_int32 = 1 [(googlesql.use_defaults) = true];
+}
+
+// Proto level use_field_defaults = true is ok even if the proto has repeated
+// fields.
+message TestValidDefaultAnnotations {
+  option (googlesql.use_field_defaults) = true;
+
+  repeated int32 repeated_int32 = 1;
+}
+
+message InvalidNoFields {
+  option (googlesql.is_wrapper) = true;
+}
+
+message InvalidIsStructAndWrapper {
+  option (googlesql.is_wrapper) = true;
+  option (googlesql.is_struct) = true;
+
+  required int32 field = 1;
+}
+
+message InvalidMultipleFields {
+  option (googlesql.is_wrapper) = true;
+
+  optional int32 field1 = 1;
+  optional int32 field2 = 2;
+}
+
+message ValidOptionalField {
+  option (googlesql.is_wrapper) = true;
+
+  optional int32 field1 = 1;
+}
+
+message ValidRepeatedField {
+  option (googlesql.is_wrapper) = true;
+
+  repeated int32 field1 = 4;
+}
+
+message ValidRequiredField {
+  option (googlesql.is_wrapper) = true;
+
+  required int32 field1 = 4;
+}
+
+// If is_wrapper = true, then the message must have exactly one field.
+message TestInvalidWrapperAnnotations {
+  optional InvalidNoFields invalid_no_fields = 1;
+  optional InvalidIsStructAndWrapper invalid_is_struct = 2;
+  optional InvalidMultipleFields invalid_multiple_field = 3;
+
+  optional ValidOptionalField valid_wrapper_field1 = 4;
+  repeated ValidRepeatedField valid_wrapper_field2 = 5;
+  required ValidRequiredField valid_wrapper_field3 = 6;
+}
+
+message InvalidNestedAnnotations {
+  optional TestInvalidDefaultAnnotations field = 1;
+}
+
+message InvalidDeeplyNestedAnnotations {
+  optional InvalidNestedAnnotations field = 1;
+}
+
+message TestInvalidDeeplyNestedAnnotations {
+  optional InvalidNestedAnnotations field = 1;
+}
+
+message InvalidExtensionAnnotations {
+  extensions 77777777 to 77777778;
+  optional int32 optional_int32 = 1;
+}
+
+message InvalidSQLTable1 {
+  // Failure case for TableFromProto: Invalid because it's not marked is_struct.
+  option (googlesql.table_type) = SQL_TABLE;
+
+  optional int32 f1 = 1;
+}
+
+message InvalidSQLTable2 {
+  // Failure case for TableFromProto: Invalid because of anonymous columns.
+  option (googlesql.table_type) = SQL_TABLE;
+  option (googlesql.is_struct) = true;
+
+  optional int32 f1 = 1;
+  optional int32 f2 = 2 [(googlesql.struct_field_name) = ""];
+}
+
+message InvalidSQLTable3 {
+  // Failure case for TableFromProto: Invalid because of duplicate columns.
+  option (googlesql.table_type) = SQL_TABLE;
+  option (googlesql.is_struct) = true;
+
+  optional int32 f1 = 1;
+  optional int32 f2 = 2 [(googlesql.struct_field_name) = "f1"];
+}
+
+message InvalidDateTimeDefaults {
+  optional int64 too_big_seconds_default = 1
+      [(googlesql.format) = TIMESTAMP_SECONDS, default = 253402300800];
+  optional int64 too_big_millis_default = 2
+      [(googlesql.format) = TIMESTAMP_MILLIS, default = 253402300800000];
+  optional int64 too_big_micros_default = 3
+      [(googlesql.format) = TIMESTAMP_MICROS, default = 253402300800000000];
+  optional int32 too_big_date_default = 4
+      [(googlesql.format) = DATE, default = 12345678];
+  optional int32 too_big_date_decimal_default = 5
+      [(googlesql.format) = DATE_DECIMAL, default = 20160132];
+}

@@ -70,12 +70,12 @@ wherever a query expression is supported in a GQL query statement.
 Note: The examples in this section reference a property graph called
 [`FinGraph`][fin-graph].
 
-[fin-graph]: https://github.com/google/zetasql/blob/master/docs/graph-schema-statements.md#fin_graph
+[fin-graph]: https://github.com/google/googlesql/blob/master/docs/graph-schema-statements.md#fin_graph
 
 In the following query, an array of transfer amounts is produced for each
 `Account` owned by each `Person` node:
 
-```zetasql
+```googlesql
 GRAPH FinGraph
 MATCH (p:Person)-[:Owns]->(account:Account)
 RETURN
@@ -132,12 +132,12 @@ at least one row is produced, otherwise returns `FALSE`. Never produces `NULL`.
 Note: The examples in this section reference a property graph called
 [`FinGraph`][fin-graph].
 
-[fin-graph]: https://github.com/google/zetasql/blob/master/docs/graph-schema-statements.md#fin_graph
+[fin-graph]: https://github.com/google/googlesql/blob/master/docs/graph-schema-statements.md#fin_graph
 
 The following query checks whether any person named `"Lee"` owns an
 account. The subquery contains a graph query expression.
 
-```zetasql
+```googlesql
 GRAPH FinGraph
 RETURN EXISTS {
   MATCH (p:Person {Name: "Lee"})-[o:Owns]->(a:Account)
@@ -156,7 +156,7 @@ You can include a `MATCH` statement or a graph pattern in an `EXISTS`
 subquery. The following examples include two ways to construct the subquery
 and produce similar results:
 
-```zetasql
+```googlesql
 GRAPH FinGraph
 RETURN EXISTS {
   MATCH (p:Person {Name: "Lee"})-[o:Owns]->(a:Account)
@@ -169,7 +169,7 @@ RETURN EXISTS {
  +---------*/
 ```
 
-```zetasql
+```googlesql
 GRAPH FinGraph
 RETURN EXISTS {
   (p:Person {Name: "Lee"})-[o:Owns]->(a:Account)
@@ -182,9 +182,9 @@ RETURN EXISTS {
  +---------*/
 ```
 
-[match-statement]: https://github.com/google/zetasql/blob/master/docs/graph-query-statements.md#gql_match
+[match-statement]: https://github.com/google/googlesql/blob/master/docs/graph-query-statements.md#gql_match
 
-[graph-pattern-definition]: https://github.com/google/zetasql/blob/master/docs/graph-patterns.md#graph_pattern_definition
+[graph-pattern-definition]: https://github.com/google/googlesql/blob/master/docs/graph-patterns.md#graph_pattern_definition
 
 ## `IN` subquery 
 <a id="in_subquery"></a>
@@ -221,12 +221,12 @@ be comparable to the `value` type. If not, an error is returned.
 Note: The examples in this section reference a property graph called
 [`FinGraph`][fin-graph].
 
-[fin-graph]: https://github.com/google/zetasql/blob/master/docs/graph-schema-statements.md#fin_graph
+[fin-graph]: https://github.com/google/googlesql/blob/master/docs/graph-schema-statements.md#fin_graph
 
 The following query checks if `'Dana'` is a name of a person who owns an
 account.
 
-```zetasql
+```googlesql
 GRAPH FinGraph
 RETURN 'Dana' IN {
   MATCH (p:Person)-[o:Owns]->(a:Account)
@@ -273,12 +273,12 @@ The same as the column type in the subquery result.
 Note: The examples in this section reference a property graph called
 [`FinGraph`][fin-graph].
 
-[fin-graph]: https://github.com/google/zetasql/blob/master/docs/graph-schema-statements.md#fin_graph
+[fin-graph]: https://github.com/google/googlesql/blob/master/docs/graph-schema-statements.md#fin_graph
 
 The following query returns the name of any person whose `country` property
 is `"Australia"`:
 
-```zetasql
+```googlesql
 GRAPH FinGraph
 RETURN VALUE {
   MATCH (p:Person {country: "Australia"})

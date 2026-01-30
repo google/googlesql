@@ -4,7 +4,7 @@
 
 # Hash functions
 
-ZetaSQL supports the following hash functions.
+GoogleSQL supports the following hash functions.
 
 ## Function list
 
@@ -18,7 +18,7 @@ ZetaSQL supports the following hash functions.
   <tbody>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/hash_functions.md#farm_fingerprint"><code>FARM_FINGERPRINT</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/hash_functions.md#farm_fingerprint"><code>FARM_FINGERPRINT</code></a>
 </td>
   <td>
     Computes the fingerprint of a <code>STRING</code> or
@@ -27,7 +27,7 @@ ZetaSQL supports the following hash functions.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/hash_functions.md#highway_fingerprint128"><code>HIGHWAY_FINGERPRINT128</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/hash_functions.md#highway_fingerprint128"><code>HIGHWAY_FINGERPRINT128</code></a>
 </td>
   <td>
     Computes the 128-bit fingerprint of a <code>STRING</code> or
@@ -37,7 +37,7 @@ ZetaSQL supports the following hash functions.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/hash_functions.md#md5"><code>MD5</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/hash_functions.md#md5"><code>MD5</code></a>
 </td>
   <td>
     Computes the hash of a <code>STRING</code> or
@@ -46,7 +46,7 @@ ZetaSQL supports the following hash functions.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/hash_functions.md#sha1"><code>SHA1</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/hash_functions.md#sha1"><code>SHA1</code></a>
 </td>
   <td>
     Computes the hash of a <code>STRING</code> or
@@ -55,7 +55,7 @@ ZetaSQL supports the following hash functions.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/hash_functions.md#sha256"><code>SHA256</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/hash_functions.md#sha256"><code>SHA256</code></a>
 </td>
   <td>
     Computes the hash of a <code>STRING</code> or
@@ -64,7 +64,7 @@ ZetaSQL supports the following hash functions.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/hash_functions.md#sha512"><code>SHA512</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/hash_functions.md#sha512"><code>SHA512</code></a>
 </td>
   <td>
     Computes the hash of a <code>STRING</code> or
@@ -94,7 +94,7 @@ INT64
 
 **Examples**
 
-```zetasql
+```googlesql
 WITH example AS (
   SELECT 1 AS x, "foo" AS y, true AS z UNION ALL
   SELECT 2 AS x, "apple" AS y, false AS z UNION ALL
@@ -148,7 +148,7 @@ BYTES
 
 **Examples**
 
-```zetasql
+```googlesql
 -- Without `key`
 
 SELECT HIGHWAY_FINGERPRINT128('Hello World')
@@ -159,7 +159,7 @@ SELECT HIGHWAY_FINGERPRINT128('Hello World')
 
 ```
 
-```zetasql
+```googlesql
 -- With `key`
 
 SELECT HIGHWAY_FINGERPRINT128(
@@ -199,7 +199,7 @@ For increased security use another hashing function.
 
 **Example**
 
-```zetasql
+```googlesql
 SELECT MD5("Hello World") as md5;
 
 /*-------------------------------------------------+
@@ -234,7 +234,7 @@ For increased security, use another hashing function.
 
 **Example**
 
-```zetasql
+```googlesql
 SELECT SHA1("Hello World") as sha1;
 
 /*-----------------------------------------------------------+
@@ -266,7 +266,7 @@ This function returns 32 bytes.
 
 **Example**
 
-```zetasql
+```googlesql
 SELECT SHA256("Hello World") as sha256;
 ```
 
@@ -292,7 +292,7 @@ This function returns 64 bytes.
 
 **Example**
 
-```zetasql
+```googlesql
 SELECT SHA512("Hello World") as sha512;
 ```
 

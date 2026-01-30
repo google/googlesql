@@ -4,7 +4,7 @@
 
 # Net functions
 
-ZetaSQL supports the following Net functions.
+GoogleSQL supports the following Net functions.
 
 ## Function list
 
@@ -18,7 +18,7 @@ ZetaSQL supports the following Net functions.
   <tbody>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/net_functions.md#net_format_ip"><code>NET.FORMAT_IP</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/net_functions.md#net_format_ip"><code>NET.FORMAT_IP</code></a>
 </td>
   <td>
     (Deprecated) Converts an
@@ -28,7 +28,7 @@ ZetaSQL supports the following Net functions.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/net_functions.md#net_format_packed_ip"><code>NET.FORMAT_PACKED_IP</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/net_functions.md#net_format_packed_ip"><code>NET.FORMAT_PACKED_IP</code></a>
 </td>
   <td>
     (Deprecated) Converts an
@@ -38,7 +38,7 @@ ZetaSQL supports the following Net functions.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/net_functions.md#nethost"><code>NET.HOST</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/net_functions.md#nethost"><code>NET.HOST</code></a>
 </td>
   <td>
    Gets the hostname from a URL.
@@ -46,7 +46,7 @@ ZetaSQL supports the following Net functions.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/net_functions.md#netip_from_string"><code>NET.IP_FROM_STRING</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/net_functions.md#netip_from_string"><code>NET.IP_FROM_STRING</code></a>
 </td>
   <td>
     Converts an IPv4 or IPv6 address from a <code>STRING</code> value to
@@ -55,7 +55,7 @@ ZetaSQL supports the following Net functions.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/net_functions.md#netip_in_net"><code>NET.IP_IN_NET</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/net_functions.md#netip_in_net"><code>NET.IP_IN_NET</code></a>
 </td>
   <td>
     Checks if an IP address is in a subnet.
@@ -63,7 +63,7 @@ ZetaSQL supports the following Net functions.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/net_functions.md#netip_net_mask"><code>NET.IP_NET_MASK</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/net_functions.md#netip_net_mask"><code>NET.IP_NET_MASK</code></a>
 </td>
   <td>
     Gets a network mask.
@@ -71,7 +71,7 @@ ZetaSQL supports the following Net functions.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/net_functions.md#netip_to_string"><code>NET.IP_TO_STRING</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/net_functions.md#netip_to_string"><code>NET.IP_TO_STRING</code></a>
 </td>
   <td>
     Converts an IPv4 or IPv6 address from a <code>BYTES</code> value in
@@ -80,7 +80,7 @@ ZetaSQL supports the following Net functions.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/net_functions.md#netip_trunc"><code>NET.IP_TRUNC</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/net_functions.md#netip_trunc"><code>NET.IP_TRUNC</code></a>
 </td>
   <td>
     Converts a <code>BYTES</code>  IPv4 or IPv6 address in
@@ -89,7 +89,7 @@ ZetaSQL supports the following Net functions.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/net_functions.md#netipv4_from_int64"><code>NET.IPV4_FROM_INT64</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/net_functions.md#netipv4_from_int64"><code>NET.IPV4_FROM_INT64</code></a>
 </td>
   <td>
     Converts an IPv4 address from an <code>INT64</code> value to a
@@ -98,7 +98,7 @@ ZetaSQL supports the following Net functions.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/net_functions.md#netipv4_to_int64"><code>NET.IPV4_TO_INT64</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/net_functions.md#netipv4_to_int64"><code>NET.IPV4_TO_INT64</code></a>
 </td>
   <td>
     Converts an IPv4 address from a <code>BYTES</code> value in network
@@ -107,7 +107,7 @@ ZetaSQL supports the following Net functions.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/net_functions.md#netmake_net"><code>NET.MAKE_NET</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/net_functions.md#netmake_net"><code>NET.MAKE_NET</code></a>
 </td>
   <td>
     Takes a IPv4 or IPv6 address and the prefix length, and produces a
@@ -116,7 +116,7 @@ ZetaSQL supports the following Net functions.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/net_functions.md#net_parse_ip"><code>NET.PARSE_IP</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/net_functions.md#net_parse_ip"><code>NET.PARSE_IP</code></a>
 </td>
   <td>
     (Deprecated) Converts an
@@ -126,7 +126,7 @@ ZetaSQL supports the following Net functions.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/net_functions.md#net_parse_packed_ip"><code>NET.PARSE_PACKED_IP</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/net_functions.md#net_parse_packed_ip"><code>NET.PARSE_PACKED_IP</code></a>
 </td>
   <td>
     (Deprecated) Converts an
@@ -136,7 +136,7 @@ ZetaSQL supports the following Net functions.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/net_functions.md#netpublic_suffix"><code>NET.PUBLIC_SUFFIX</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/net_functions.md#netpublic_suffix"><code>NET.PUBLIC_SUFFIX</code></a>
 </td>
   <td>
     Gets the public suffix from a URL.
@@ -144,7 +144,7 @@ ZetaSQL supports the following Net functions.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/net_functions.md#netreg_domain"><code>NET.REG_DOMAIN</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/net_functions.md#netreg_domain"><code>NET.REG_DOMAIN</code></a>
 </td>
   <td>
     Gets the registered or registrable domain from a URL.
@@ -152,7 +152,7 @@ ZetaSQL supports the following Net functions.
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/net_functions.md#netsafe_ip_from_string"><code>NET.SAFE_IP_FROM_STRING</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/net_functions.md#netsafe_ip_from_string"><code>NET.SAFE_IP_FROM_STRING</code></a>
 </td>
   <td>
     Similar to the <code>NET.IP_FROM_STRING</code>, but returns
@@ -224,7 +224,7 @@ Note: The function doesn't perform any normalization.
 
 **Example**
 
-```zetasql
+```googlesql
 SELECT
   FORMAT("%T", input) AS input,
   description,
@@ -285,7 +285,7 @@ BYTES
 
 **Example**
 
-```zetasql
+```googlesql
 SELECT
   addr_str, FORMAT("%T", NET.IP_FROM_STRING(addr_str)) AS ip_from_string
 FROM UNNEST([
@@ -359,7 +359,7 @@ BYTES
 
 **Example**
 
-```zetasql
+```googlesql
 SELECT x, y, FORMAT("%T", NET.IP_NET_MASK(x, y)) AS ip_net_mask
 FROM UNNEST([
   STRUCT(4 as x, 0 as y),
@@ -404,7 +404,7 @@ STRING
 
 **Example**
 
-```zetasql
+```googlesql
 SELECT FORMAT("%T", x) AS addr_bin, NET.IP_TO_STRING(x) AS ip_to_string
 FROM UNNEST([
   b"0123",
@@ -444,7 +444,7 @@ BYTES
 
 **Example**
 
-```zetasql
+```googlesql
 SELECT
   FORMAT("%T", x) as addr_bin, prefix_length,
   FORMAT("%T", NET.IP_TRUNC(x, prefix_length)) AS ip_trunc
@@ -493,7 +493,7 @@ BYTES
 
 **Example**
 
-```zetasql
+```googlesql
 SELECT x, x_hex, FORMAT("%T", NET.IPV4_FROM_INT64(x)) AS ipv4_from_int64
 FROM (
   SELECT CAST(x_hex AS INT64) x, x_hex
@@ -535,7 +535,7 @@ INT64
 
 **Example**
 
-```zetasql
+```googlesql
 SELECT
   FORMAT("%T", x) AS addr_bin,
   FORMAT("0x%X", NET.IPV4_TO_INT64(x)) AS ipv4_to_int64
@@ -681,7 +681,7 @@ produces a `NULL` result now may produce a non-`NULL` value in the future.
 
 **Example**
 
-```zetasql
+```googlesql
 SELECT
   FORMAT("%T", input) AS input,
   description,
@@ -769,7 +769,7 @@ value in the future.
 
 **Example**
 
-```zetasql
+```googlesql
 SELECT
   FORMAT("%T", input) AS input,
   description,
@@ -824,7 +824,7 @@ BYTES
 
 **Example**
 
-```zetasql
+```googlesql
 SELECT
   addr_str,
   FORMAT("%T", NET.SAFE_IP_FROM_STRING(addr_str)) AS safe_ip_from_string

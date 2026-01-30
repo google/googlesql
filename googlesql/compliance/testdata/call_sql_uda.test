@@ -1,0 +1,435 @@
+[prepare_database]
+CREATE TEMP AGGREGATE FUNCTION NoAggregateAggregate() AS (
+  (SELECT a + a FROM (SELECT 1 + 1 AS a))
+)
+==
+[prepare_database]
+CREATE TEMP AGGREGATE FUNCTION NonDeterministicAggregate() AS (
+  ARRAY(SELECT e FROM UNNEST([1, 2]) AS e LIMIT 1)
+)
+==
+[prepare_database]
+CREATE TEMP AGGREGATE FUNCTION CurrentTimestampAggregate() AS (
+  CURRENT_TIMESTAMP()
+)
+==
+[prepare_database]
+[required_features=JSON_TYPE]
+# This function is interesting because the FORMAT function considers the
+# JSON_TYPE language feature during the runtime evaluation from the
+# EvaluationContext.
+CREATE TEMP AGGREGATE FUNCTION LanguageOptionsSensitiveAgg() AS (
+  FORMAT("%2P", JSON '{"bool":false}')
+)
+==
+[prepare_database]
+CREATE TEMP AGGREGATE FUNCTION CountAllPlusOne() AS (
+  COUNT(*) + 1
+)
+==
+[prepare_database]
+CREATE TEMP AGGREGATE FUNCTION CountAllTwice() AS (
+  COUNT(*) + COUNT(*)
+)
+==
+[prepare_database]
+CREATE TEMP AGGREGATE FUNCTION CountAllPlusTwo() AS (CountAllPlusOne() + 1)
+==
+[prepare_database]
+CREATE TEMP AGGREGATE FUNCTION CountTimesTwoN(n INT64 NOT AGGREGATE) AS (
+  COUNT(*) * (n + n)
+)
+==
+[prepare_database]
+CREATE TEMP AGGREGATE FUNCTION SumSqaures(a INT64) AS (SUM(a * a))
+==
+[prepare_database]
+CREATE TEMP AGGREGATE FUNCTION BunchOfAggs(a INT64) AS (
+  STRUCT(
+    SUM(a) AS asum,
+    AVG(a) AS aavg,
+    COUNT(DISTINCT a) AS acount,
+    COUNTIF(MOD(a, 2) = 0) AS aevens)
+)
+==
+[prepare_database]
+[required_features=WITH_EXPRESSION]
+CREATE TEMP AGGREGATE FUNCTION PipeConcat(a STRING, b STRING) AS (
+  # STRING_AGG is not directly useful because ORDER BY it not allowed in
+  # CREATE AGGREGATE FUNCTION body expressions. This usefully tests the
+  # WITH expression inside these functions which seems like a potential source
+  # of trouble given that in this case it creates an otherwise unreachable
+  # ResolvedAST shape. (You can't trivally convert this to a subquery.)
+  WITH (arr AS ARRAY_AGG(STRUCT(a, b)),
+        ARRAY_TO_STRING(ARRAY(
+          SELECT CONCAT(e.a, ',', e.b)
+          FROM UNNEST(arr) AS e
+          ORDER BY e.b, e.a), '|'))
+)
+==
+[prepare_database]
+CREATE TEMP AGGREGATE FUNCTION BunchOfAggs2(a INT64, b INT64 NOT AGGREGATE) AS (
+  STRUCT(
+    SUM(a) AS asum,
+    SUM(b) AS bsum,
+    b AS b,
+    b + SUM(a) AS b_plus_asum
+  )
+)
+==
+[prepare_database]
+[required_features=WITH_EXPRESSION]
+CREATE TEMP AGGREGATE FUNCTION PipeConcatSep(a STRING, b STRING, sep STRING NOT AGGREGATE) AS (
+  WITH (arr AS ARRAY_AGG(STRUCT(a, b)),
+        ARRAY_TO_STRING(ARRAY(
+          SELECT CONCAT(e.a, ',', e.b)
+          FROM UNNEST(arr) AS e
+          ORDER BY e.b, e.a), sep))
+)
+==
+[prepare_database]
+[required_features=TEMPLATE_FUNCTIONS]
+CREATE TEMP AGGREGATE FUNCTION BunchOfArgsTemplate(a ANY TYPE) AS (
+  STRUCT(
+    ARRAY_AGG(a) AS aarr,
+    COUNT(a) AS acount,
+    MIN(a) AS amin,
+    MAX(a) AS amax
+  )
+)
+==
+[prepare_database]
+CREATE TEMP AGGREGATE FUNCTION UsesArgNameAsInternalAliasIdentity(arg0 STRING) AS (
+  ARRAY_AGG((SELECT arg0 FROM (SELECT arg0 AS arg0)))
+)
+==
+[prepare_database]
+CREATE TEMP AGGREGATE FUNCTION UsesArgNameAsInternalAlias(arg0 STRING) AS (
+  ARRAY_AGG((SELECT arg0 FROM (SELECT "c" AS arg0)))
+)
+==
+[prepare_database]
+[required_features=HAVING_IN_AGGREGATE]
+CREATE TEMP AGGREGATE FUNCTION IgnoresFirstArg(arg0 BOOL NOT AGGREGATE, arg1 STRING)
+RETURNS STRING AS (MIN(arg1 HAVING MIN arg1))
+==
+
+[name=call_non_aggregating_udaf]
+SELECT NoAggregateAggregate()
+FROM UNNEST([1, 2, 3, 4, 5]) e;
+--
+ARRAY<STRUCT<INT64>>[{4}]
+==
+
+[name=call_non_aggregating_udaf_twice_group_all]
+SELECT COUNT(*), NoAggregateAggregate() + NoAggregateAggregate()
+FROM UNNEST([1, 2, 3, 4, 5]) e;
+--
+ARRAY<STRUCT<INT64, INT64>>[{5, 8}]
+==
+
+[name=call_non_aggregating_udaf_twice_multiple_groups]
+SELECT COUNT(*), NoAggregateAggregate() + NoAggregateAggregate()
+FROM UNNEST([1, 2, 3, 4, 5]) e
+GROUP BY MOD(e, 3)
+--
+ARRAY<STRUCT<INT64, INT64>>[unknown order:{2, 8}, {1, 8}, {2, 8}]
+==
+
+[name=call_no_argument_aggregating_udaf]
+SELECT CountAllPlusOne()
+FROM UNNEST([1, 2, 3, 4, 5]) e;
+--
+ARRAY<STRUCT<INT64>>[{6}]
+==
+
+[name=call_several_no_argument_udafs]
+SELECT CountAllTwice() + CountAllTwice(), CountAllTwice(), CountAllPlusOne() - 1
+FROM UNNEST([1, 2, 3, 4, 5]) e;
+--
+ARRAY<STRUCT<INT64, INT64, INT64>>[{20, 10, 5}]
+==
+
+[name=call_several_no_argument_udafs_multiple_groups]
+SELECT CountAllTwice() + CountAllTwice(), CountAllTwice(), CountAllPlusOne() - 1
+FROM UNNEST([1, 2, 3, 4, 5]) e
+GROUP BY MOD(e, 3)
+--
+ARRAY<STRUCT<INT64, INT64, INT64>>[unknown order:
+  {8, 4, 2},
+  {4, 2, 1},
+  {8, 4, 2}
+]
+==
+
+[name=call_no_argument_aggregating_two_levels_deep]
+SELECT CountAllPlusTwo()
+FROM UNNEST([1, 2, 3, 4, 5]) e;
+--
+ARRAY<STRUCT<INT64>>[{7}]
+==
+
+[name=call_no_argument_aggregating_two_levels_deep_from_subquery]
+SELECT (SELECT CountAllPlusTwo() FROM UNNEST(arr))
+FROM (SELECT [1, 2, 3, 4, 5] AS arr)
+GROUP BY 1
+HAVING true;
+--
+ARRAY<STRUCT<INT64>>[{7}]
+==
+
+[name=call_sum_squares_gba]
+SELECT SumSqaures(a)
+FROM UNNEST([1, 2, 3, 4, 5]) AS a
+--
+ARRAY<STRUCT<INT64>>[{55}]
+==
+
+[name=call_sum_squares_gbk]
+SELECT offset < 2, offset < 4, SumSqaures(a)
+FROM UNNEST([1, 2, 3, 4, 5]) AS a WITH OFFSET
+GROUP BY 1, 2
+--
+ARRAY<STRUCT<BOOL, BOOL, INT64>>[unknown order:
+  {false, false, 25},
+  {false, true, 25},
+  {true, true, 5}
+]
+==
+
+[name=call_bunch_of_aggs_gba]
+SELECT BunchOfAggs(a)
+FROM UNNEST([1, 2, 3, 4, 5]) AS a
+--
+ARRAY<STRUCT<STRUCT<asum INT64, aavg DOUBLE, acount INT64, aevens INT64>>>[
+  {{15, 3, 5, 2}}
+]
+==
+
+[name=call_bunch_of_aggs_gbk]
+SELECT offset < 2, offset < 4, BunchOfAggs(a)
+FROM UNNEST([1, 2, 3, 4, 5]) AS a WITH OFFSET
+GROUP BY 1, 2
+--
+ARRAY<STRUCT<
+        BOOL,
+        BOOL,
+        STRUCT<asum INT64, aavg DOUBLE, acount INT64, aevens INT64>
+      >>
+[unknown order:
+  {false, false, {5, 5, 1, 0}},
+  {false, true, {7, 3.5, 2, 1}},
+  {true, true, {3, 1.5, 2, 1}}
+]
+==
+
+[name=call_pipe_concat_gba]
+SELECT PipeConcat(a, UPPER(a))
+FROM UNNEST(['a', 'b', 'c', 'd', 'e', 'f']) AS a
+--
+ARRAY<STRUCT<STRING>>[{"a,A|b,B|c,C|d,D|e,E|f,F"}]
+==
+
+[name=call_pipe_concat_gbk]
+SELECT MOD(offset, 2) = 0, MOD(offset, 3) = 0, PipeConcat(a, UPPER(a))
+FROM UNNEST(['a', 'b', 'c', 'd', 'e', 'f']) AS a WITH OFFSET
+GROUP BY 1, 2
+--
+ARRAY<STRUCT<BOOL, BOOL, STRING>>[unknown order:
+  {false, false, "b,B|f,F"},
+  {false, true, "d,D"},
+  {true, false, "c,C|e,E"},
+  {true, true, "a,A"}
+]
+==
+
+[name=call_count_plus_two_times_n_gba]
+SELECT CountTimesTwoN(0),
+       CountTimesTwoN(1),
+       CountTimesTwoN(2),
+       CountTimesTwoN(5)
+FROM UNNEST([1, 2, 3, 4, 5])
+
+--
+ARRAY<STRUCT<INT64, INT64, INT64, INT64>>[{0, 10, 20, 50}]
+
+==
+[name=call_count_plus_two_times_n_gbk]
+SELECT MOD(offset, 2) = 0, MOD(offset, 3) = 0,
+       CountTimesTwoN(0),
+       CountTimesTwoN(1),
+       CountTimesTwoN(2),
+       CountTimesTwoN(5)
+FROM UNNEST([1, 2, 3, 4, 5]) WITH OFFSET
+GROUP BY 1, 2
+
+--
+ARRAY<STRUCT<BOOL, BOOL, INT64, INT64, INT64, INT64>>[unknown order:
+  {false, false, 0, 2, 4, 10},
+  {false, true, 0, 2, 4, 10},
+  {true, false, 0, 4, 8, 20},
+  {true, true, 0, 2, 4, 10}
+]
+==
+
+[name=call_bunch_of_aggs2_gba]
+SELECT BunchOfAggs2(a, 12)
+FROM UNNEST([1, 2, 3, 4, 5]) AS a
+--
+ARRAY<STRUCT<STRUCT<asum INT64, bsum INT64, b INT64, b_plus_asum INT64>>>[
+  {{15, 60, 12, 27}}
+]
+==
+
+[name=call_bunch_of_aggs2_gbk]
+SELECT offset < 2, offset < 4, BunchOfAggs2(a, 14)
+FROM UNNEST([1, 2, 3, 4, 5]) AS a WITH OFFSET
+GROUP BY 1, 2
+--
+ARRAY<STRUCT<
+        BOOL,
+        BOOL,
+        STRUCT<asum INT64, bsum INT64, b INT64, b_plus_asum INT64>
+      >>
+[unknown order:
+  {false, false, {5, 14, 14, 19}},
+  {false, true, {7, 28, 14, 21}},
+  {true, true, {3, 28, 14, 17}}
+]
+==
+
+[name=call_pipe_concat_sep_gba]
+SELECT PipeConcatSep(a, UPPER(a), '%')
+FROM UNNEST(['a', 'b', 'c', 'd', 'e', 'f']) AS a
+--
+ARRAY<STRUCT<STRING>>[{"a,A%b,B%c,C%d,D%e,E%f,F"}]
+==
+
+[name=call_template_string_gba]
+SELECT BunchOfArgsTemplate(e).*
+FROM UNNEST(['2020-01-01','2000-02-02','2022-03-03']) AS e WITH OFFSET;
+--
+ARRAY<STRUCT<aarr ARRAY<>, acount INT64, amin STRING, amax STRING>>[
+  {
+    ARRAY<STRING>[unknown order:"2020-01-01", "2000-02-02", "2022-03-03"],
+    3,
+    "2000-02-02",
+    "2022-03-03"
+  }
+]
+
+==
+[name=call_template_int_gba]
+SELECT BunchOfArgsTemplate(offset).*
+FROM UNNEST(['2020-01-01','2000-02-02','2022-03-03']) AS e WITH OFFSET;
+--
+ARRAY<STRUCT<aarr ARRAY<>, acount INT64, amin INT64, amax INT64>>[
+  {
+    ARRAY<INT64>[unknown order:0, 1, 2],
+    3,
+    0,
+    2
+  }
+]
+
+==
+[name=call_template_date_gba]
+SELECT BunchOfArgsTemplate(CAST(e AS DATE)).*
+FROM UNNEST(['2020-01-01','2000-02-02','2022-03-03']) AS e WITH OFFSET;
+--
+ARRAY<STRUCT<aarr ARRAY<>, acount INT64, amin DATE, amax DATE>>[
+  {
+    ARRAY<DATE>[unknown order:2020-01-01, 2000-02-02, 2022-03-03],
+    3,
+    2000-02-02,
+    2022-03-03
+  }
+]
+
+==
+[name=call_template_multi_gba]
+SELECT BunchOfArgsTemplate(e),
+       BunchOfArgsTemplate(offset),
+       BunchOfArgsTemplate(CAST(e AS DATE))
+FROM UNNEST(['2020-01-01','2000-02-02','2022-03-03']) AS e WITH OFFSET;
+--
+ARRAY<STRUCT<
+        STRUCT<aarr ARRAY<>, acount INT64, amin STRING, amax STRING>,
+        STRUCT<aarr ARRAY<>, acount INT64, amin INT64, amax INT64>,
+        STRUCT<aarr ARRAY<>, acount INT64, amin DATE, amax DATE>
+      >>
+[{
+   {
+     ARRAY<STRING>[unknown order:"2020-01-01", "2000-02-02", "2022-03-03"],
+     3,
+     "2000-02-02",
+     "2022-03-03"
+   },
+   {
+     ARRAY<INT64>[unknown order:0, 1, 2],
+     3,
+     0,
+     2
+   },
+   {
+     ARRAY<DATE>[unknown order:2020-01-01, 2000-02-02, 2022-03-03],
+     3,
+     2000-02-02,
+     2022-03-03
+   }
+ }]
+==
+
+[name=call_non_deterministic_uda]
+SELECT NonDeterministicAggregate() IS NOT NULL FROM (SELECT 1)
+--
+ARRAY<STRUCT<BOOL>>[{true}]
+
+NOTE: Reference implementation reports non-determinism.
+==
+
+[name=calls_language_options_sensitive_agg]
+[required_features=JSON_TYPE]
+SELECT LanguageOptionsSensitiveAgg() FROM (SELECT 1)
+--
+ARRAY<STRUCT<STRING>>[{'{\n  "bool": false\n}'}]
+==
+
+[name=call_current_timestamp_agg]
+SELECT CurrentTimestampAggregate()=CURRENT_TIMESTAMP() as result FROM (SELECT 1);
+--
+ARRAY<STRUCT<result BOOL>>[{true}]
+==
+[name=repro351956030]
+SELECT UsesArgNameAsInternalAliasIdentity('a') FROM (SELECT 1)
+--
+ARRAY<STRUCT<ARRAY<>>>[{ARRAY<STRING>["a"]}]
+==
+==
+[name=repro351956030_2]
+SELECT UsesArgNameAsInternalAlias('a') FROM (SELECT 1)
+--
+ARRAY<STRUCT<ARRAY<>>>[{ARRAY<STRING>["c"]}]
+==
+[name=repro351956030_3]
+[required_features=HAVING_IN_AGGREGATE]
+SELECT IgnoresFirstArg(false, "abcd"), ANY_VALUE("abcd" HAVING MIN "abcd")
+FROM UNNEST([1])
+--
+ARRAY<STRUCT<STRING, STRING>>[{"abcd", "abcd"}]
+==
+[reserve_match_recognize]
+[required_features=MATCH_RECOGNIZE]
+[name=match_recognize_with_sql_uda]
+SELECT * FROM
+(SELECT x FROM UNNEST([1, 2, 3]) AS x)
+MATCH_RECOGNIZE(
+  ORDER BY x
+  MEASURES
+    SumSqaures(x) AS sum_x
+  PATTERN ( t* )
+  DEFINE
+    t AS TRUE
+)
+--
+ARRAY<STRUCT<sum_x INT64>>[{14}]

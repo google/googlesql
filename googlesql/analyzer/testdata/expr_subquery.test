@@ -1,0 +1,1408 @@
+# This file has tests for non-correlated expression subqueries.
+
+[default language_features=NONE]
+select (select 1)
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#2 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#2]
+    +-expr_list=
+    | +-$col1#2 :=
+    |   +-SubqueryExpr
+    |     +-type=INT64
+    |     +-subquery_type=SCALAR
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$expr_subquery.$col1#1]
+    |         +-expr_list=
+    |         | +-$col1#1 := Literal(type=INT64, value=1)
+    |         +-input_scan=
+    |           +-SingleRowScan
+    +-input_scan=
+      +-SingleRowScan
+==
+
+select (select 1), EXISTS(select 1.5), ARRAY(select 'ab')
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#4 AS `$col1` [INT64]
+| +-$query.$col2#5 AS `$col2` [BOOL]
+| +-$query.$col3#6 AS `$col3` [ARRAY<STRING>]
++-query=
+  +-ProjectScan
+    +-column_list=$query.[$col1#4, $col2#5, $col3#6]
+    +-expr_list=
+    | +-$col1#4 :=
+    | | +-SubqueryExpr
+    | |   +-type=INT64
+    | |   +-subquery_type=SCALAR
+    | |   +-subquery=
+    | |     +-ProjectScan
+    | |       +-column_list=[$expr_subquery.$col1#1]
+    | |       +-expr_list=
+    | |       | +-$col1#1 := Literal(type=INT64, value=1)
+    | |       +-input_scan=
+    | |         +-SingleRowScan
+    | +-$col2#5 :=
+    | | +-SubqueryExpr
+    | |   +-type=BOOL
+    | |   +-subquery_type=EXISTS
+    | |   +-subquery=
+    | |     +-ProjectScan
+    | |       +-column_list=[$expr_subquery.$col1#2]
+    | |       +-expr_list=
+    | |       | +-$col1#2 := Literal(type=DOUBLE, value=1.5)
+    | |       +-input_scan=
+    | |         +-SingleRowScan
+    | +-$col3#6 :=
+    |   +-SubqueryExpr
+    |     +-type=ARRAY<STRING>
+    |     +-subquery_type=ARRAY
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$expr_subquery.$col1#3]
+    |         +-expr_list=
+    |         | +-$col1#3 := Literal(type=STRING, value="ab")
+    |         +-input_scan=
+    |           +-SingleRowScan
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Projecting multiple columns requires struct construction.
+select (select AS STRUCT 1 a,2 b)
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#4 AS `$col1` [STRUCT<a INT64, b INT64>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#4]
+    +-expr_list=
+    | +-$col1#4 :=
+    |   +-SubqueryExpr
+    |     +-type=STRUCT<a INT64, b INT64>
+    |     +-subquery_type=SCALAR
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$make_struct.$struct#3]
+    |         +-expr_list=
+    |         | +-$struct#3 :=
+    |         |   +-MakeStruct
+    |         |     +-type=STRUCT<a INT64, b INT64>
+    |         |     +-field_list=
+    |         |       +-ColumnRef(type=INT64, column=$expr_subquery.a#1)
+    |         |       +-ColumnRef(type=INT64, column=$expr_subquery.b#2)
+    |         +-input_scan=
+    |           +-ProjectScan
+    |             +-column_list=$expr_subquery.[a#1, b#2]
+    |             +-expr_list=
+    |             | +-a#1 := Literal(type=INT64, value=1)
+    |             | +-b#2 := Literal(type=INT64, value=2)
+    |             +-input_scan=
+    |               +-SingleRowScan
+    +-input_scan=
+      +-SingleRowScan
+==
+
+select (select 1, 2)
+--
+ERROR: Scalar subquery cannot have more than one column unless using SELECT AS STRUCT to build STRUCT values [at 1:8]
+select (select 1, 2)
+       ^
+==
+
+select ARRAY(select 1, 2, 3)
+--
+ERROR: ARRAY subquery cannot have more than one column unless using SELECT AS STRUCT to build STRUCT values [at 1:8]
+select ARRAY(select 1, 2, 3)
+       ^
+==
+
+select EXISTS(select 1, 2)
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#3 AS `$col1` [BOOL]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#3]
+    +-expr_list=
+    | +-$col1#3 :=
+    |   +-SubqueryExpr
+    |     +-type=BOOL
+    |     +-subquery_type=EXISTS
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=$expr_subquery.[$col1#1, $col2#2]
+    |         +-expr_list=
+    |         | +-$col1#1 := Literal(type=INT64, value=1)
+    |         | +-$col2#2 := Literal(type=INT64, value=2)
+    |         +-input_scan=
+    |           +-SingleRowScan
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Scalar subqueries.
+select
+  (select 1),
+  (select count(*) from TestTable),
+  (select avg(key) from TestTable where key=4)
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#10 AS `$col1` [INT64]
+| +-$query.$col2#11 AS `$col2` [INT64]
+| +-$query.$col3#12 AS `$col3` [DOUBLE]
++-query=
+  +-ProjectScan
+    +-column_list=$query.[$col1#10, $col2#11, $col3#12]
+    +-expr_list=
+    | +-$col1#10 :=
+    | | +-SubqueryExpr
+    | |   +-type=INT64
+    | |   +-subquery_type=SCALAR
+    | |   +-subquery=
+    | |     +-ProjectScan
+    | |       +-column_list=[$expr_subquery.$col1#1]
+    | |       +-expr_list=
+    | |       | +-$col1#1 := Literal(type=INT64, value=1)
+    | |       +-input_scan=
+    | |         +-SingleRowScan
+    | +-$col2#11 :=
+    | | +-SubqueryExpr
+    | |   +-type=INT64
+    | |   +-subquery_type=SCALAR
+    | |   +-subquery=
+    | |     +-ProjectScan
+    | |       +-column_list=[$aggregate.$agg1#5]
+    | |       +-input_scan=
+    | |         +-AggregateScan
+    | |           +-column_list=[$aggregate.$agg1#5]
+    | |           +-input_scan=
+    | |           | +-TableScan(table=TestTable)
+    | |           +-aggregate_list=
+    | |             +-$agg1#5 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+    | +-$col3#12 :=
+    |   +-SubqueryExpr
+    |     +-type=DOUBLE
+    |     +-subquery_type=SCALAR
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$aggregate.$agg1#9]
+    |         +-input_scan=
+    |           +-AggregateScan
+    |             +-column_list=[$aggregate.$agg1#9]
+    |             +-input_scan=
+    |             | +-FilterScan
+    |             |   +-column_list=[TestTable.key#6]
+    |             |   +-input_scan=
+    |             |   | +-TableScan(column_list=[TestTable.key#6], table=TestTable, column_index_list=[0])
+    |             |   +-filter_expr=
+    |             |     +-FunctionCall(GoogleSQL:$equal(INT32, INT32) -> BOOL)
+    |             |       +-ColumnRef(type=INT32, column=TestTable.key#6)
+    |             |       +-Literal(type=INT32, value=4)
+    |             +-aggregate_list=
+    |               +-$agg1#9 :=
+    |                 +-AggregateFunctionCall(GoogleSQL:avg(INT64) -> DOUBLE)
+    |                   +-Cast(INT32 -> INT64)
+    |                     +-ColumnRef(type=INT32, column=TestTable.key#6)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Array subqueries.
+select
+  ARRAY(select 1 from TestTable),
+  ARRAY(select count(*) from TestTable group by key having count(*)>1),
+  ARRAY(select 1 union all select 2),
+  ARRAY(select * from (select count(*) from TestTable)),
+  ARRAY(select 1 from KeyValue kv1 join KeyValue kv2 using (key)),
+  ARRAY(select value from KeyValue where key=4)
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#25 AS `$col1` [ARRAY<INT64>]
+| +-$query.$col2#26 AS `$col2` [ARRAY<INT64>]
+| +-$query.$col3#27 AS `$col3` [ARRAY<INT64>]
+| +-$query.$col4#28 AS `$col4` [ARRAY<INT64>]
+| +-$query.$col5#29 AS `$col5` [ARRAY<INT64>]
+| +-$query.$col6#30 AS `$col6` [ARRAY<STRING>]
++-query=
+  +-ProjectScan
+    +-column_list=$query.[$col1#25, $col2#26, $col3#27, $col4#28, $col5#29, $col6#30]
+    +-expr_list=
+    | +-$col1#25 :=
+    | | +-SubqueryExpr
+    | |   +-type=ARRAY<INT64>
+    | |   +-subquery_type=ARRAY
+    | |   +-subquery=
+    | |     +-ProjectScan
+    | |       +-column_list=[$expr_subquery.$col1#4]
+    | |       +-expr_list=
+    | |       | +-$col1#4 := Literal(type=INT64, value=1)
+    | |       +-input_scan=
+    | |         +-TableScan(table=TestTable)
+    | +-$col2#26 :=
+    | | +-SubqueryExpr
+    | |   +-type=ARRAY<INT64>
+    | |   +-subquery_type=ARRAY
+    | |   +-subquery=
+    | |     +-ProjectScan
+    | |       +-column_list=[$aggregate.$agg1#8]
+    | |       +-input_scan=
+    | |         +-FilterScan
+    | |           +-column_list=$aggregate.[$agg1#8, $agg2#10]
+    | |           +-input_scan=
+    | |           | +-AggregateScan
+    | |           |   +-column_list=$aggregate.[$agg1#8, $agg2#10]
+    | |           |   +-input_scan=
+    | |           |   | +-TableScan(column_list=[TestTable.key#5], table=TestTable, column_index_list=[0])
+    | |           |   +-group_by_list=
+    | |           |   | +-key#9 := ColumnRef(type=INT32, column=TestTable.key#5)
+    | |           |   +-aggregate_list=
+    | |           |     +-$agg1#8 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+    | |           |     +-$agg2#10 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+    | |           +-filter_expr=
+    | |             +-FunctionCall(GoogleSQL:$greater(INT64, INT64) -> BOOL)
+    | |               +-ColumnRef(type=INT64, column=$aggregate.$agg2#10)
+    | |               +-Literal(type=INT64, value=1)
+    | +-$col3#27 :=
+    | | +-SubqueryExpr
+    | |   +-type=ARRAY<INT64>
+    | |   +-subquery_type=ARRAY
+    | |   +-subquery=
+    | |     +-SetOperationScan
+    | |       +-column_list=[$union_all.$col1#13]
+    | |       +-op_type=UNION_ALL
+    | |       +-input_item_list=
+    | |         +-SetOperationItem
+    | |         | +-scan=
+    | |         | | +-ProjectScan
+    | |         | |   +-column_list=[$union_all1.$col1#11]
+    | |         | |   +-expr_list=
+    | |         | |   | +-$col1#11 := Literal(type=INT64, value=1)
+    | |         | |   +-input_scan=
+    | |         | |     +-SingleRowScan
+    | |         | +-output_column_list=[$union_all1.$col1#11]
+    | |         +-SetOperationItem
+    | |           +-scan=
+    | |           | +-ProjectScan
+    | |           |   +-column_list=[$union_all2.$col1#12]
+    | |           |   +-expr_list=
+    | |           |   | +-$col1#12 := Literal(type=INT64, value=2)
+    | |           |   +-input_scan=
+    | |           |     +-SingleRowScan
+    | |           +-output_column_list=[$union_all2.$col1#12]
+    | +-$col4#28 :=
+    | | +-SubqueryExpr
+    | |   +-type=ARRAY<INT64>
+    | |   +-subquery_type=ARRAY
+    | |   +-subquery=
+    | |     +-ProjectScan
+    | |       +-column_list=[$aggregate.$agg1#17]
+    | |       +-input_scan=
+    | |         +-ProjectScan
+    | |           +-column_list=[$aggregate.$agg1#17]
+    | |           +-input_scan=
+    | |             +-AggregateScan
+    | |               +-column_list=[$aggregate.$agg1#17]
+    | |               +-input_scan=
+    | |               | +-TableScan(table=TestTable)
+    | |               +-aggregate_list=
+    | |                 +-$agg1#17 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+    | +-$col5#29 :=
+    | | +-SubqueryExpr
+    | |   +-type=ARRAY<INT64>
+    | |   +-subquery_type=ARRAY
+    | |   +-subquery=
+    | |     +-ProjectScan
+    | |       +-column_list=[$expr_subquery.$col1#22]
+    | |       +-expr_list=
+    | |       | +-$col1#22 := Literal(type=INT64, value=1)
+    | |       +-input_scan=
+    | |         +-JoinScan
+    | |           +-column_list=KeyValue.[Key#18, Key#20]
+    | |           +-left_scan=
+    | |           | +-TableScan(column_list=[KeyValue.Key#18], table=KeyValue, column_index_list=[0], alias="kv1")
+    | |           +-right_scan=
+    | |           | +-TableScan(column_list=[KeyValue.Key#20], table=KeyValue, column_index_list=[0], alias="kv2")
+    | |           +-join_expr=
+    | |           | +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+    | |           |   +-ColumnRef(type=INT64, column=KeyValue.Key#18)
+    | |           |   +-ColumnRef(type=INT64, column=KeyValue.Key#20)
+    | |           +-has_using=TRUE
+    | +-$col6#30 :=
+    |   +-SubqueryExpr
+    |     +-type=ARRAY<STRING>
+    |     +-subquery_type=ARRAY
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[KeyValue.Value#24]
+    |         +-input_scan=
+    |           +-FilterScan
+    |             +-column_list=KeyValue.[Key#23, Value#24]
+    |             +-input_scan=
+    |             | +-TableScan(column_list=KeyValue.[Key#23, Value#24], table=KeyValue, column_index_list=[0, 1])
+    |             +-filter_expr=
+    |               +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+    |                 +-ColumnRef(type=INT64, column=KeyValue.Key#23)
+    |                 +-Literal(type=INT64, value=4)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+select        (select 1 from TestTable where key=4),
+         ARRAY(select 1 from TestTable where key=4),
+        EXISTS(select 1 from TestTable where key=4)
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#13 AS `$col1` [INT64]
+| +-$query.$col2#14 AS `$col2` [ARRAY<INT64>]
+| +-$query.$col3#15 AS `$col3` [BOOL]
++-query=
+  +-ProjectScan
+    +-column_list=$query.[$col1#13, $col2#14, $col3#15]
+    +-expr_list=
+    | +-$col1#13 :=
+    | | +-SubqueryExpr
+    | |   +-type=INT64
+    | |   +-subquery_type=SCALAR
+    | |   +-subquery=
+    | |     +-ProjectScan
+    | |       +-column_list=[$expr_subquery.$col1#4]
+    | |       +-expr_list=
+    | |       | +-$col1#4 := Literal(type=INT64, value=1)
+    | |       +-input_scan=
+    | |         +-FilterScan
+    | |           +-column_list=[TestTable.key#1]
+    | |           +-input_scan=
+    | |           | +-TableScan(column_list=[TestTable.key#1], table=TestTable, column_index_list=[0])
+    | |           +-filter_expr=
+    | |             +-FunctionCall(GoogleSQL:$equal(INT32, INT32) -> BOOL)
+    | |               +-ColumnRef(type=INT32, column=TestTable.key#1)
+    | |               +-Literal(type=INT32, value=4)
+    | +-$col2#14 :=
+    | | +-SubqueryExpr
+    | |   +-type=ARRAY<INT64>
+    | |   +-subquery_type=ARRAY
+    | |   +-subquery=
+    | |     +-ProjectScan
+    | |       +-column_list=[$expr_subquery.$col1#8]
+    | |       +-expr_list=
+    | |       | +-$col1#8 := Literal(type=INT64, value=1)
+    | |       +-input_scan=
+    | |         +-FilterScan
+    | |           +-column_list=[TestTable.key#5]
+    | |           +-input_scan=
+    | |           | +-TableScan(column_list=[TestTable.key#5], table=TestTable, column_index_list=[0])
+    | |           +-filter_expr=
+    | |             +-FunctionCall(GoogleSQL:$equal(INT32, INT32) -> BOOL)
+    | |               +-ColumnRef(type=INT32, column=TestTable.key#5)
+    | |               +-Literal(type=INT32, value=4)
+    | +-$col3#15 :=
+    |   +-SubqueryExpr
+    |     +-type=BOOL
+    |     +-subquery_type=EXISTS
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$expr_subquery.$col1#12]
+    |         +-expr_list=
+    |         | +-$col1#12 := Literal(type=INT64, value=1)
+    |         +-input_scan=
+    |           +-FilterScan
+    |             +-column_list=[TestTable.key#9]
+    |             +-input_scan=
+    |             | +-TableScan(column_list=[TestTable.key#9], table=TestTable, column_index_list=[0])
+    |             +-filter_expr=
+    |               +-FunctionCall(GoogleSQL:$equal(INT32, INT32) -> BOOL)
+    |                 +-ColumnRef(type=INT32, column=TestTable.key#9)
+    |                 +-Literal(type=INT32, value=4)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# This is a scalar subquery returning an array.
+select (select array_agg(key) from TestTable)
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#5 AS `$col1` [ARRAY<INT32>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#5]
+    +-expr_list=
+    | +-$col1#5 :=
+    |   +-SubqueryExpr
+    |     +-type=ARRAY<INT32>
+    |     +-subquery_type=SCALAR
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$aggregate.$agg1#4]
+    |         +-input_scan=
+    |           +-AggregateScan
+    |             +-column_list=[$aggregate.$agg1#4]
+    |             +-input_scan=
+    |             | +-TableScan(column_list=[TestTable.key#1], table=TestTable, column_index_list=[0])
+    |             +-aggregate_list=
+    |               +-$agg1#4 :=
+    |                 +-AggregateFunctionCall(GoogleSQL:array_agg(INT32) -> ARRAY<INT32>)
+    |                   +-ColumnRef(type=INT32, column=TestTable.key#1)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Can't make an array subquery making nested arrays.
+select ARRAY(select array_agg(key) from TestTable)
+--
+ERROR: Cannot use array subquery with column of type ARRAY<INT32> because nested arrays are not supported [at 1:8]
+select ARRAY(select array_agg(key) from TestTable)
+       ^
+==
+
+# Returning arrays is okay if the result gets wrapped in a struct.
+select ARRAY(select AS STRUCT array_agg(key) c1, array_agg(value) c2
+             from KeyValue group by value)
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#7 AS `$col1` [ARRAY<STRUCT<c1 ARRAY<INT64>, c2 ARRAY<STRING>>>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#7]
+    +-expr_list=
+    | +-$col1#7 :=
+    |   +-SubqueryExpr
+    |     +-type=ARRAY<STRUCT<c1 ARRAY<INT64>, c2 ARRAY<STRING>>>
+    |     +-subquery_type=ARRAY
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$make_struct.$struct#6]
+    |         +-expr_list=
+    |         | +-$struct#6 :=
+    |         |   +-MakeStruct
+    |         |     +-type=STRUCT<c1 ARRAY<INT64>, c2 ARRAY<STRING>>
+    |         |     +-field_list=
+    |         |       +-ColumnRef(type=ARRAY<INT64>, column=$aggregate.c1#3)
+    |         |       +-ColumnRef(type=ARRAY<STRING>, column=$aggregate.c2#4)
+    |         +-input_scan=
+    |           +-ProjectScan
+    |             +-column_list=$aggregate.[c1#3, c2#4]
+    |             +-input_scan=
+    |               +-AggregateScan
+    |                 +-column_list=$aggregate.[c1#3, c2#4]
+    |                 +-input_scan=
+    |                 | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+    |                 +-group_by_list=
+    |                 | +-value#5 := ColumnRef(type=STRING, column=KeyValue.Value#2)
+    |                 +-aggregate_list=
+    |                   +-c1#3 :=
+    |                   | +-AggregateFunctionCall(GoogleSQL:array_agg(INT64) -> ARRAY<INT64>)
+    |                   |   +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+    |                   +-c2#4 :=
+    |                     +-AggregateFunctionCall(GoogleSQL:array_agg(STRING) -> ARRAY<STRING>)
+    |                       +-ColumnRef(type=STRING, column=KeyValue.Value#2)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+select ARRAY(select as struct array_agg(key) c1 from KeyValue group by value)
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#6 AS `$col1` [ARRAY<STRUCT<c1 ARRAY<INT64>>>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#6]
+    +-expr_list=
+    | +-$col1#6 :=
+    |   +-SubqueryExpr
+    |     +-type=ARRAY<STRUCT<c1 ARRAY<INT64>>>
+    |     +-subquery_type=ARRAY
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$make_struct.$struct#5]
+    |         +-expr_list=
+    |         | +-$struct#5 :=
+    |         |   +-MakeStruct
+    |         |     +-type=STRUCT<c1 ARRAY<INT64>>
+    |         |     +-field_list=
+    |         |       +-ColumnRef(type=ARRAY<INT64>, column=$aggregate.c1#3)
+    |         +-input_scan=
+    |           +-ProjectScan
+    |             +-column_list=[$aggregate.c1#3]
+    |             +-input_scan=
+    |               +-AggregateScan
+    |                 +-column_list=[$aggregate.c1#3]
+    |                 +-input_scan=
+    |                 | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+    |                 +-group_by_list=
+    |                 | +-value#4 := ColumnRef(type=STRING, column=KeyValue.Value#2)
+    |                 +-aggregate_list=
+    |                   +-c1#3 :=
+    |                     +-AggregateFunctionCall(GoogleSQL:array_agg(INT64) -> ARRAY<INT64>)
+    |                       +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Projecting multiple columns in array subquery causes array-of-struct construction.
+select ARRAY(select AS STRUCT 1 a,2 b)
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#4 AS `$col1` [ARRAY<STRUCT<a INT64, b INT64>>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#4]
+    +-expr_list=
+    | +-$col1#4 :=
+    |   +-SubqueryExpr
+    |     +-type=ARRAY<STRUCT<a INT64, b INT64>>
+    |     +-subquery_type=ARRAY
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$make_struct.$struct#3]
+    |         +-expr_list=
+    |         | +-$struct#3 :=
+    |         |   +-MakeStruct
+    |         |     +-type=STRUCT<a INT64, b INT64>
+    |         |     +-field_list=
+    |         |       +-ColumnRef(type=INT64, column=$expr_subquery.a#1)
+    |         |       +-ColumnRef(type=INT64, column=$expr_subquery.b#2)
+    |         +-input_scan=
+    |           +-ProjectScan
+    |             +-column_list=$expr_subquery.[a#1, b#2]
+    |             +-expr_list=
+    |             | +-a#1 := Literal(type=INT64, value=1)
+    |             | +-b#2 := Literal(type=INT64, value=2)
+    |             +-input_scan=
+    |               +-SingleRowScan
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Multiple columns have no effect on EXISTS subqueries.
+select EXISTS(select 1,2)
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#3 AS `$col1` [BOOL]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#3]
+    +-expr_list=
+    | +-$col1#3 :=
+    |   +-SubqueryExpr
+    |     +-type=BOOL
+    |     +-subquery_type=EXISTS
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=$expr_subquery.[$col1#1, $col2#2]
+    |         +-expr_list=
+    |         | +-$col1#1 := Literal(type=INT64, value=1)
+    |         | +-$col2#2 := Literal(type=INT64, value=2)
+    |         +-input_scan=
+    |           +-SingleRowScan
+    +-input_scan=
+      +-SingleRowScan
+==
+
+select (select AS STRUCT count(*) cnt, avg(key) avg from KeyValue)
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#6 AS `$col1` [STRUCT<cnt INT64, avg DOUBLE>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#6]
+    +-expr_list=
+    | +-$col1#6 :=
+    |   +-SubqueryExpr
+    |     +-type=STRUCT<cnt INT64, avg DOUBLE>
+    |     +-subquery_type=SCALAR
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$make_struct.$struct#5]
+    |         +-expr_list=
+    |         | +-$struct#5 :=
+    |         |   +-MakeStruct
+    |         |     +-type=STRUCT<cnt INT64, avg DOUBLE>
+    |         |     +-field_list=
+    |         |       +-ColumnRef(type=INT64, column=$aggregate.cnt#3)
+    |         |       +-ColumnRef(type=DOUBLE, column=$aggregate.avg#4)
+    |         +-input_scan=
+    |           +-ProjectScan
+    |             +-column_list=$aggregate.[cnt#3, avg#4]
+    |             +-input_scan=
+    |               +-AggregateScan
+    |                 +-column_list=$aggregate.[cnt#3, avg#4]
+    |                 +-input_scan=
+    |                 | +-TableScan(column_list=[KeyValue.Key#1], table=KeyValue, column_index_list=[0])
+    |                 +-aggregate_list=
+    |                   +-cnt#3 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+    |                   +-avg#4 :=
+    |                     +-AggregateFunctionCall(GoogleSQL:avg(INT64) -> DOUBLE)
+    |                       +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+select ARRAY(select AS STRUCT key, count(*) cnt, avg(key) avg from KeyValue group by 1)
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#7 AS `$col1` [ARRAY<STRUCT<key INT64, cnt INT64, avg DOUBLE>>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#7]
+    +-expr_list=
+    | +-$col1#7 :=
+    |   +-SubqueryExpr
+    |     +-type=ARRAY<STRUCT<key INT64, cnt INT64, avg DOUBLE>>
+    |     +-subquery_type=ARRAY
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$make_struct.$struct#6]
+    |         +-expr_list=
+    |         | +-$struct#6 :=
+    |         |   +-MakeStruct
+    |         |     +-type=STRUCT<key INT64, cnt INT64, avg DOUBLE>
+    |         |     +-field_list=
+    |         |       +-ColumnRef(type=INT64, column=$groupby.key#5)
+    |         |       +-ColumnRef(type=INT64, column=$aggregate.cnt#3)
+    |         |       +-ColumnRef(type=DOUBLE, column=$aggregate.avg#4)
+    |         +-input_scan=
+    |           +-ProjectScan
+    |             +-column_list=[$groupby.key#5, $aggregate.cnt#3, $aggregate.avg#4]
+    |             +-input_scan=
+    |               +-AggregateScan
+    |                 +-column_list=[$groupby.key#5, $aggregate.cnt#3, $aggregate.avg#4]
+    |                 +-input_scan=
+    |                 | +-TableScan(column_list=[KeyValue.Key#1], table=KeyValue, column_index_list=[0])
+    |                 +-group_by_list=
+    |                 | +-key#5 := ColumnRef(type=INT64, column=KeyValue.Key#1)
+    |                 +-aggregate_list=
+    |                   +-cnt#3 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+    |                   +-avg#4 :=
+    |                     +-AggregateFunctionCall(GoogleSQL:avg(INT64) -> DOUBLE)
+    |                       +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+select (select AS STRUCT "abc" c1, "def" c2).c2
+--
+QueryStmt
++-output_column_list=
+| +-$query.c2#4 AS c2 [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.c2#4]
+    +-expr_list=
+    | +-c2#4 :=
+    |   +-GetStructField
+    |     +-type=STRING
+    |     +-expr=
+    |     | +-SubqueryExpr
+    |     |   +-type=STRUCT<c1 STRING, c2 STRING>
+    |     |   +-subquery_type=SCALAR
+    |     |   +-subquery=
+    |     |     +-ProjectScan
+    |     |       +-column_list=[$make_struct.$struct#3]
+    |     |       +-expr_list=
+    |     |       | +-$struct#3 :=
+    |     |       |   +-MakeStruct
+    |     |       |     +-type=STRUCT<c1 STRING, c2 STRING>
+    |     |       |     +-field_list=
+    |     |       |       +-ColumnRef(type=STRING, column=$expr_subquery.c1#1)
+    |     |       |       +-ColumnRef(type=STRING, column=$expr_subquery.c2#2)
+    |     |       +-input_scan=
+    |     |         +-ProjectScan
+    |     |           +-column_list=$expr_subquery.[c1#1, c2#2]
+    |     |           +-expr_list=
+    |     |           | +-c1#1 := Literal(type=STRING, value="abc")
+    |     |           | +-c2#2 := Literal(type=STRING, value="def")
+    |     |           +-input_scan=
+    |     |             +-SingleRowScan
+    |     +-field_idx=1
+    +-input_scan=
+      +-SingleRowScan
+==
+
+select ARRAY(select AS STRUCT "abc" c1, "def" c2 from KeyValue)[OFFSET(3)].c1
+--
+QueryStmt
++-output_column_list=
+| +-$query.c1#6 AS c1 [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.c1#6]
+    +-expr_list=
+    | +-c1#6 :=
+    |   +-GetStructField
+    |     +-type=STRING
+    |     +-expr=
+    |     | +-FunctionCall(GoogleSQL:$array_at_offset(ARRAY<STRUCT<c1 STRING, c2 STRING>>, INT64) -> STRUCT<c1 STRING, c2 STRING>)
+    |     |   +-SubqueryExpr
+    |     |   | +-type=ARRAY<STRUCT<c1 STRING, c2 STRING>>
+    |     |   | +-subquery_type=ARRAY
+    |     |   | +-subquery=
+    |     |   |   +-ProjectScan
+    |     |   |     +-column_list=[$make_struct.$struct#5]
+    |     |   |     +-expr_list=
+    |     |   |     | +-$struct#5 :=
+    |     |   |     |   +-MakeStruct
+    |     |   |     |     +-type=STRUCT<c1 STRING, c2 STRING>
+    |     |   |     |     +-field_list=
+    |     |   |     |       +-ColumnRef(type=STRING, column=$expr_subquery.c1#3)
+    |     |   |     |       +-ColumnRef(type=STRING, column=$expr_subquery.c2#4)
+    |     |   |     +-input_scan=
+    |     |   |       +-ProjectScan
+    |     |   |         +-column_list=$expr_subquery.[c1#3, c2#4]
+    |     |   |         +-expr_list=
+    |     |   |         | +-c1#3 := Literal(type=STRING, value="abc")
+    |     |   |         | +-c2#4 := Literal(type=STRING, value="def")
+    |     |   |         +-input_scan=
+    |     |   |           +-TableScan(table=KeyValue)
+    |     |   +-Literal(type=INT64, value=3)
+    |     +-field_idx=0
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Making structs using selected field names without adding explicit aliases.
+select ARRAY(select AS STRUCT key, value from KeyValue),
+       ARRAY(select AS STRUCT * from KeyValue)
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#7 AS `$col1` [ARRAY<STRUCT<key INT64, value STRING>>]
+| +-$query.$col2#8 AS `$col2` [ARRAY<STRUCT<Key INT64, Value STRING>>]
++-query=
+  +-ProjectScan
+    +-column_list=$query.[$col1#7, $col2#8]
+    +-expr_list=
+    | +-$col1#7 :=
+    | | +-SubqueryExpr
+    | |   +-type=ARRAY<STRUCT<key INT64, value STRING>>
+    | |   +-subquery_type=ARRAY
+    | |   +-subquery=
+    | |     +-ProjectScan
+    | |       +-column_list=[$make_struct.$struct#3]
+    | |       +-expr_list=
+    | |       | +-$struct#3 :=
+    | |       |   +-MakeStruct
+    | |       |     +-type=STRUCT<key INT64, value STRING>
+    | |       |     +-field_list=
+    | |       |       +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+    | |       |       +-ColumnRef(type=STRING, column=KeyValue.Value#2)
+    | |       +-input_scan=
+    | |         +-ProjectScan
+    | |           +-column_list=KeyValue.[Key#1, Value#2]
+    | |           +-input_scan=
+    | |             +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+    | +-$col2#8 :=
+    |   +-SubqueryExpr
+    |     +-type=ARRAY<STRUCT<Key INT64, Value STRING>>
+    |     +-subquery_type=ARRAY
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$make_struct.$struct#6]
+    |         +-expr_list=
+    |         | +-$struct#6 :=
+    |         |   +-MakeStruct
+    |         |     +-type=STRUCT<Key INT64, Value STRING>
+    |         |     +-field_list=
+    |         |       +-ColumnRef(type=INT64, column=KeyValue.Key#4)
+    |         |       +-ColumnRef(type=STRING, column=KeyValue.Value#5)
+    |         +-input_scan=
+    |           +-ProjectScan
+    |             +-column_list=KeyValue.[Key#4, Value#5]
+    |             +-input_scan=
+    |               +-TableScan(column_list=KeyValue.[Key#4, Value#5], table=KeyValue, column_index_list=[0, 1])
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# We can make a struct with duplicate names.
+select (select AS STRUCT 1 aaA, 2 b, 3 Aaa)
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#5 AS `$col1` [STRUCT<aaA INT64, b INT64, Aaa INT64>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#5]
+    +-expr_list=
+    | +-$col1#5 :=
+    |   +-SubqueryExpr
+    |     +-type=STRUCT<aaA INT64, b INT64, Aaa INT64>
+    |     +-subquery_type=SCALAR
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$make_struct.$struct#4]
+    |         +-expr_list=
+    |         | +-$struct#4 :=
+    |         |   +-MakeStruct
+    |         |     +-type=STRUCT<aaA INT64, b INT64, Aaa INT64>
+    |         |     +-field_list=
+    |         |       +-ColumnRef(type=INT64, column=$expr_subquery.aaA#1)
+    |         |       +-ColumnRef(type=INT64, column=$expr_subquery.b#2)
+    |         |       +-ColumnRef(type=INT64, column=$expr_subquery.Aaa#3)
+    |         +-input_scan=
+    |           +-ProjectScan
+    |             +-column_list=$expr_subquery.[aaA#1, b#2, Aaa#3]
+    |             +-expr_list=
+    |             | +-aaA#1 := Literal(type=INT64, value=1)
+    |             | +-b#2 := Literal(type=INT64, value=2)
+    |             | +-Aaa#3 := Literal(type=INT64, value=3)
+    |             +-input_scan=
+    |               +-SingleRowScan
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# We can't extract fields from a struct with duplicate names.
+select (select AS STRUCT 1 aaA, 2 b, 3 Aaa).aAa
+--
+ERROR: Struct field name aAa is ambiguous [at 1:45]
+select (select AS STRUCT 1 aaA, 2 b, 3 Aaa).aAa
+                                            ^
+==
+
+# We can make a struct with anonymous columns.
+select (select AS STRUCT 'abc', 1 x, count(*) from KeyValue).x
+--
+QueryStmt
++-output_column_list=
+| +-$query.x#7 AS x [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.x#7]
+    +-expr_list=
+    | +-x#7 :=
+    |   +-GetStructField
+    |     +-type=INT64
+    |     +-expr=
+    |     | +-SubqueryExpr
+    |     |   +-type=STRUCT<STRING, x INT64, INT64>
+    |     |   +-subquery_type=SCALAR
+    |     |   +-subquery=
+    |     |     +-ProjectScan
+    |     |       +-column_list=[$make_struct.$struct#6]
+    |     |       +-expr_list=
+    |     |       | +-$struct#6 :=
+    |     |       |   +-MakeStruct
+    |     |       |     +-type=STRUCT<STRING, x INT64, INT64>
+    |     |       |     +-field_list=
+    |     |       |       +-ColumnRef(type=STRING, column=$expr_subquery.$col1#4)
+    |     |       |       +-ColumnRef(type=INT64, column=$expr_subquery.x#5)
+    |     |       |       +-ColumnRef(type=INT64, column=$aggregate.$agg1#3)
+    |     |       +-input_scan=
+    |     |         +-ProjectScan
+    |     |           +-column_list=[$expr_subquery.$col1#4, $expr_subquery.x#5, $aggregate.$agg1#3]
+    |     |           +-expr_list=
+    |     |           | +-$col1#4 := Literal(type=STRING, value="abc")
+    |     |           | +-x#5 := Literal(type=INT64, value=1)
+    |     |           +-input_scan=
+    |     |             +-AggregateScan
+    |     |               +-column_list=[$aggregate.$agg1#3]
+    |     |               +-input_scan=
+    |     |               | +-TableScan(table=KeyValue)
+    |     |               +-aggregate_list=
+    |     |                 +-$agg1#3 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+    |     +-field_idx=1
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Scalar subquery inside an aggregation call.
+select sum((select count(*) from TestTable tt2))
+from TestTable tt1
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#8 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#8]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$aggregate.$agg1#8]
+        +-input_scan=
+        | +-TableScan(table=TestTable, alias="tt1")
+        +-aggregate_list=
+          +-$agg1#8 :=
+            +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+              +-SubqueryExpr
+                +-type=INT64
+                +-subquery_type=SCALAR
+                +-subquery=
+                  +-ProjectScan
+                    +-column_list=[$aggregate.$agg1#7]
+                    +-input_scan=
+                      +-AggregateScan
+                        +-column_list=[$aggregate.$agg1#7]
+                        +-input_scan=
+                        | +-TableScan(table=TestTable, alias="tt2")
+                        +-aggregate_list=
+                          +-$agg1#7 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+==
+
+# ARRAY_LENGTH function
+select array_length(array(select 1 union all select 2))
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#4 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#4]
+    +-expr_list=
+    | +-$col1#4 :=
+    |   +-FunctionCall(GoogleSQL:array_length(ARRAY<INT64>) -> INT64)
+    |     +-SubqueryExpr
+    |       +-type=ARRAY<INT64>
+    |       +-subquery_type=ARRAY
+    |       +-subquery=
+    |         +-SetOperationScan
+    |           +-column_list=[$union_all.$col1#3]
+    |           +-op_type=UNION_ALL
+    |           +-input_item_list=
+    |             +-SetOperationItem
+    |             | +-scan=
+    |             | | +-ProjectScan
+    |             | |   +-column_list=[$union_all1.$col1#1]
+    |             | |   +-expr_list=
+    |             | |   | +-$col1#1 := Literal(type=INT64, value=1)
+    |             | |   +-input_scan=
+    |             | |     +-SingleRowScan
+    |             | +-output_column_list=[$union_all1.$col1#1]
+    |             +-SetOperationItem
+    |               +-scan=
+    |               | +-ProjectScan
+    |               |   +-column_list=[$union_all2.$col1#2]
+    |               |   +-expr_list=
+    |               |   | +-$col1#2 := Literal(type=INT64, value=2)
+    |               |   +-input_scan=
+    |               |     +-SingleRowScan
+    |               +-output_column_list=[$union_all2.$col1#2]
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Function call can't take a subquery without extra parentheses.
+select array_length(select 1 union all select 2)
+--
+ERROR: Each function argument is an expression, not a query; to use a query as an expression, the query must be wrapped with additional parentheses to make it a scalar subquery expression [at 1:21]
+select array_length(select 1 union all select 2)
+                    ^
+==
+
+# Scalar subqueries in WHERE and GROUP BY.
+select 1
+from TestTable
+where (select count(*) from KeyValue) = (select key from KeyValue where value='abc')
+group by (select 5)
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#11 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#11]
+    +-expr_list=
+    | +-$col1#11 := Literal(type=INT64, value=1)
+    +-input_scan=
+      +-AggregateScan
+        +-input_scan=
+        | +-FilterScan
+        |   +-input_scan=
+        |   | +-TableScan(table=TestTable)
+        |   +-filter_expr=
+        |     +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+        |       +-SubqueryExpr
+        |       | +-type=INT64
+        |       | +-subquery_type=SCALAR
+        |       | +-subquery=
+        |       |   +-ProjectScan
+        |       |     +-column_list=[$aggregate.$agg1#6]
+        |       |     +-input_scan=
+        |       |       +-AggregateScan
+        |       |         +-column_list=[$aggregate.$agg1#6]
+        |       |         +-input_scan=
+        |       |         | +-TableScan(table=KeyValue)
+        |       |         +-aggregate_list=
+        |       |           +-$agg1#6 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+        |       +-SubqueryExpr
+        |         +-type=INT64
+        |         +-subquery_type=SCALAR
+        |         +-subquery=
+        |           +-ProjectScan
+        |             +-column_list=[KeyValue.Key#7]
+        |             +-input_scan=
+        |               +-FilterScan
+        |                 +-column_list=KeyValue.[Key#7, Value#8]
+        |                 +-input_scan=
+        |                 | +-TableScan(column_list=KeyValue.[Key#7, Value#8], table=KeyValue, column_index_list=[0, 1])
+        |                 +-filter_expr=
+        |                   +-FunctionCall(GoogleSQL:$equal(STRING, STRING) -> BOOL)
+        |                     +-ColumnRef(type=STRING, column=KeyValue.Value#8)
+        |                     +-Literal(type=STRING, value="abc")
+        +-group_by_list=
+          +-$groupbycol1#10 :=
+            +-SubqueryExpr
+              +-type=INT64
+              +-subquery_type=SCALAR
+              +-subquery=
+                +-ProjectScan
+                  +-column_list=[$expr_subquery.$col1#9]
+                  +-expr_list=
+                  | +-$col1#9 := Literal(type=INT64, value=5)
+                  +-input_scan=
+                    +-SingleRowScan
+==
+
+# This is testing that we get the implicit alias for the DotIdentifier
+# production like we do for PathExpressions.
+select float_val
+from (select (select KitchenSink from TestTable).float_val)
+--
+QueryStmt
++-output_column_list=
+| +-$subquery1.float_val#4 AS float_val [FLOAT]
++-query=
+  +-ProjectScan
+    +-column_list=[$subquery1.float_val#4]
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[$subquery1.float_val#4]
+        +-expr_list=
+        | +-float_val#4 :=
+        |   +-GetProtoField
+        |     +-type=FLOAT
+        |     +-expr=
+        |     | +-SubqueryExpr
+        |     |   +-type=PROTO<googlesql_test.KitchenSinkPB>
+        |     |   +-subquery_type=SCALAR
+        |     |   +-subquery=
+        |     |     +-ProjectScan
+        |     |       +-column_list=[TestTable.KitchenSink#3]
+        |     |       +-input_scan=
+        |     |         +-TableScan(column_list=[TestTable.KitchenSink#3], table=TestTable, column_index_list=[2])
+        |     +-field_descriptor=float_val
+        |     +-default_value=0
+        +-input_scan=
+          +-SingleRowScan
+==
+
+# Expression subqueries should have exactly one column.  When we do order by,
+# we add extra columns for computed expressions.  This checks that we end up
+# with only one column coming out of the subquery at the end.
+select (select key from TestTable
+        order by key+key, KitchenSink.int32_val)
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#6 AS `$col1` [INT32]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#6]
+    +-expr_list=
+    | +-$col1#6 :=
+    |   +-SubqueryExpr
+    |     +-type=INT32
+    |     +-subquery_type=SCALAR
+    |     +-subquery=
+    |       +-OrderByScan
+    |         +-column_list=[TestTable.key#1]
+    |         +-input_scan=
+    |         | +-ProjectScan
+    |         |   +-column_list=[TestTable.key#1, TestTable.KitchenSink#3, $orderby.$orderbycol1#4, $orderby.$orderbycol2#5]
+    |         |   +-expr_list=
+    |         |   | +-$orderbycol1#4 :=
+    |         |   | | +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |         |   | |   +-Cast(INT32 -> INT64)
+    |         |   | |   | +-ColumnRef(type=INT32, column=TestTable.key#1)
+    |         |   | |   +-Cast(INT32 -> INT64)
+    |         |   | |     +-ColumnRef(type=INT32, column=TestTable.key#1)
+    |         |   | +-$orderbycol2#5 :=
+    |         |   |   +-GetProtoField
+    |         |   |     +-type=INT32
+    |         |   |     +-expr=
+    |         |   |     | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=TestTable.KitchenSink#3)
+    |         |   |     +-field_descriptor=int32_val
+    |         |   |     +-default_value=77
+    |         |   +-input_scan=
+    |         |     +-TableScan(column_list=TestTable.[key#1, KitchenSink#3], table=TestTable, column_index_list=[0, 2])
+    |         +-order_by_item_list=
+    |           +-OrderByItem
+    |           | +-column_ref=
+    |           |   +-ColumnRef(type=INT64, column=$orderby.$orderbycol1#4)
+    |           +-OrderByItem
+    |             +-column_ref=
+    |               +-ColumnRef(type=INT32, column=$orderby.$orderbycol2#5)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# This tests an expression subquery with a set operation and order by.
+# This uses a different code path that also adds extra computed columns
+# that have to be removed.
+select ARRAY(select KitchenSink from TestTable
+             union all select null
+             order by KitchenSink.int32_val)
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#8 AS `$col1` [ARRAY<PROTO<googlesql_test.KitchenSinkPB>>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#8]
+    +-expr_list=
+    | +-$col1#8 :=
+    |   +-SubqueryExpr
+    |     +-type=ARRAY<PROTO<googlesql_test.KitchenSinkPB>>
+    |     +-subquery_type=ARRAY
+    |     +-subquery=
+    |       +-OrderByScan
+    |         +-column_list=[$union_all.KitchenSink#5]
+    |         +-is_ordered=TRUE
+    |         +-input_scan=
+    |         | +-ProjectScan
+    |         |   +-column_list=[$union_all.KitchenSink#5, $orderby.$orderbycol1#7]
+    |         |   +-expr_list=
+    |         |   | +-$orderbycol1#7 :=
+    |         |   |   +-GetProtoField
+    |         |   |     +-type=INT32
+    |         |   |     +-expr=
+    |         |   |     | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=$union_all.KitchenSink#5)
+    |         |   |     +-field_descriptor=int32_val
+    |         |   |     +-default_value=77
+    |         |   +-input_scan=
+    |         |     +-SetOperationScan
+    |         |       +-column_list=[$union_all.KitchenSink#5]
+    |         |       +-op_type=UNION_ALL
+    |         |       +-input_item_list=
+    |         |         +-SetOperationItem
+    |         |         | +-scan=
+    |         |         | | +-ProjectScan
+    |         |         | |   +-column_list=[TestTable.KitchenSink#3]
+    |         |         | |   +-input_scan=
+    |         |         | |     +-TableScan(column_list=[TestTable.KitchenSink#3], table=TestTable, column_index_list=[2])
+    |         |         | +-output_column_list=[TestTable.KitchenSink#3]
+    |         |         +-SetOperationItem
+    |         |           +-scan=
+    |         |           | +-ProjectScan
+    |         |           |   +-column_list=[$union_all2_cast.$col1#6]
+    |         |           |   +-expr_list=
+    |         |           |   | +-$col1#6 := Literal(type=PROTO<googlesql_test.KitchenSinkPB>, value=NULL)
+    |         |           |   +-input_scan=
+    |         |           |     +-ProjectScan
+    |         |           |       +-column_list=[$union_all2.$col1#4]
+    |         |           |       +-expr_list=
+    |         |           |       | +-$col1#4 := Literal(type=INT64, value=NULL)
+    |         |           |       +-input_scan=
+    |         |           |         +-SingleRowScan
+    |         |           +-output_column_list=[$union_all2_cast.$col1#6]
+    |         +-order_by_item_list=
+    |           +-OrderByItem
+    |             +-column_ref=
+    |               +-ColumnRef(type=INT32, column=$orderby.$orderbycol1#7)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+select cast(5 as int32) IN
+          (select key from TestTable
+           order by key+key, KitchenSink.int32_val)
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#6 AS `$col1` [BOOL]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#6]
+    +-expr_list=
+    | +-$col1#6 :=
+    |   +-SubqueryExpr
+    |     +-type=BOOL
+    |     +-subquery_type=IN
+    |     +-in_expr=
+    |     | +-Literal(type=INT32, value=5, has_explicit_type=TRUE)
+    |     +-subquery=
+    |       +-OrderByScan
+    |         +-column_list=[TestTable.key#1]
+    |         +-input_scan=
+    |         | +-ProjectScan
+    |         |   +-column_list=[TestTable.key#1, TestTable.KitchenSink#3, $orderby.$orderbycol1#4, $orderby.$orderbycol2#5]
+    |         |   +-expr_list=
+    |         |   | +-$orderbycol1#4 :=
+    |         |   | | +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |         |   | |   +-Cast(INT32 -> INT64)
+    |         |   | |   | +-ColumnRef(type=INT32, column=TestTable.key#1)
+    |         |   | |   +-Cast(INT32 -> INT64)
+    |         |   | |     +-ColumnRef(type=INT32, column=TestTable.key#1)
+    |         |   | +-$orderbycol2#5 :=
+    |         |   |   +-GetProtoField
+    |         |   |     +-type=INT32
+    |         |   |     +-expr=
+    |         |   |     | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=TestTable.KitchenSink#3)
+    |         |   |     +-field_descriptor=int32_val
+    |         |   |     +-default_value=77
+    |         |   +-input_scan=
+    |         |     +-TableScan(column_list=TestTable.[key#1, KitchenSink#3], table=TestTable, column_index_list=[0, 2])
+    |         +-order_by_item_list=
+    |           +-OrderByItem
+    |           | +-column_ref=
+    |           |   +-ColumnRef(type=INT64, column=$orderby.$orderbycol1#4)
+    |           +-OrderByItem
+    |             +-column_ref=
+    |               +-ColumnRef(type=INT32, column=$orderby.$orderbycol2#5)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Order by an expression with a correlated column reference in
+# a correlated subquery.
+select (select key from KeyValue
+        union all select null
+        order by t.KitchenSink.int32_val)
+from TestTable t
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#9 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#9]
+    +-expr_list=
+    | +-$col1#9 :=
+    |   +-SubqueryExpr
+    |     +-type=INT64
+    |     +-subquery_type=SCALAR
+    |     +-parameter_list=
+    |     | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=TestTable.KitchenSink#3)
+    |     +-subquery=
+    |       +-OrderByScan
+    |         +-column_list=[$union_all.key#7]
+    |         +-input_scan=
+    |         | +-ProjectScan
+    |         |   +-column_list=[$union_all.key#7, $orderby.$orderbycol1#8]
+    |         |   +-expr_list=
+    |         |   | +-$orderbycol1#8 :=
+    |         |   |   +-GetProtoField
+    |         |   |     +-type=INT32
+    |         |   |     +-expr=
+    |         |   |     | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=TestTable.KitchenSink#3, is_correlated=TRUE)
+    |         |   |     +-field_descriptor=int32_val
+    |         |   |     +-default_value=77
+    |         |   +-input_scan=
+    |         |     +-SetOperationScan
+    |         |       +-column_list=[$union_all.key#7]
+    |         |       +-op_type=UNION_ALL
+    |         |       +-input_item_list=
+    |         |         +-SetOperationItem
+    |         |         | +-scan=
+    |         |         | | +-ProjectScan
+    |         |         | |   +-column_list=[KeyValue.Key#4]
+    |         |         | |   +-input_scan=
+    |         |         | |     +-TableScan(column_list=[KeyValue.Key#4], table=KeyValue, column_index_list=[0])
+    |         |         | +-output_column_list=[KeyValue.Key#4]
+    |         |         +-SetOperationItem
+    |         |           +-scan=
+    |         |           | +-ProjectScan
+    |         |           |   +-column_list=[$union_all2.$col1#6]
+    |         |           |   +-expr_list=
+    |         |           |   | +-$col1#6 := Literal(type=INT64, value=NULL)
+    |         |           |   +-input_scan=
+    |         |           |     +-SingleRowScan
+    |         |           +-output_column_list=[$union_all2.$col1#6]
+    |         +-order_by_item_list=
+    |           +-OrderByItem
+    |             +-column_ref=
+    |               +-ColumnRef(type=INT32, column=$orderby.$orderbycol1#8)
+    +-input_scan=
+      +-TableScan(column_list=[TestTable.KitchenSink#3], table=TestTable, column_index_list=[2], alias="t")
+==
+
+select EXISTS(select key, t.KitchenSink.double_val from KeyValue
+              union all select null, null
+              order by t.KitchenSink.int32_val)
+from TestTable t
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#13 AS `$col1` [BOOL]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#13]
+    +-expr_list=
+    | +-$col1#13 :=
+    |   +-SubqueryExpr
+    |     +-type=BOOL
+    |     +-subquery_type=EXISTS
+    |     +-parameter_list=
+    |     | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=TestTable.KitchenSink#3)
+    |     +-subquery=
+    |       +-OrderByScan
+    |         +-column_list=$union_all.[key#9, double_val#10]
+    |         +-input_scan=
+    |         | +-ProjectScan
+    |         |   +-column_list=[$union_all.key#9, $union_all.double_val#10, $orderby.$orderbycol1#12]
+    |         |   +-expr_list=
+    |         |   | +-$orderbycol1#12 :=
+    |         |   |   +-GetProtoField
+    |         |   |     +-type=INT32
+    |         |   |     +-expr=
+    |         |   |     | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=TestTable.KitchenSink#3, is_correlated=TRUE)
+    |         |   |     +-field_descriptor=int32_val
+    |         |   |     +-default_value=77
+    |         |   +-input_scan=
+    |         |     +-SetOperationScan
+    |         |       +-column_list=$union_all.[key#9, double_val#10]
+    |         |       +-op_type=UNION_ALL
+    |         |       +-input_item_list=
+    |         |         +-SetOperationItem
+    |         |         | +-scan=
+    |         |         | | +-ProjectScan
+    |         |         | |   +-column_list=[KeyValue.Key#4, $union_all1.double_val#6]
+    |         |         | |   +-expr_list=
+    |         |         | |   | +-double_val#6 :=
+    |         |         | |   |   +-GetProtoField
+    |         |         | |   |     +-type=DOUBLE
+    |         |         | |   |     +-expr=
+    |         |         | |   |     | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=TestTable.KitchenSink#3, is_correlated=TRUE)
+    |         |         | |   |     +-field_descriptor=double_val
+    |         |         | |   |     +-default_value=0
+    |         |         | |   +-input_scan=
+    |         |         | |     +-TableScan(column_list=[KeyValue.Key#4], table=KeyValue, column_index_list=[0])
+    |         |         | +-output_column_list=[KeyValue.Key#4, $union_all1.double_val#6]
+    |         |         +-SetOperationItem
+    |         |           +-scan=
+    |         |           | +-ProjectScan
+    |         |           |   +-column_list=[$union_all2.$col1#7, $union_all2_cast.$col2#11]
+    |         |           |   +-expr_list=
+    |         |           |   | +-$col2#11 := Literal(type=DOUBLE, value=NULL)
+    |         |           |   +-input_scan=
+    |         |           |     +-ProjectScan
+    |         |           |       +-column_list=$union_all2.[$col1#7, $col2#8]
+    |         |           |       +-expr_list=
+    |         |           |       | +-$col1#7 := Literal(type=INT64, value=NULL)
+    |         |           |       | +-$col2#8 := Literal(type=INT64, value=NULL)
+    |         |           |       +-input_scan=
+    |         |           |         +-SingleRowScan
+    |         |           +-output_column_list=[$union_all2.$col1#7, $union_all2_cast.$col2#11]
+    |         +-order_by_item_list=
+    |           +-OrderByItem
+    |             +-column_ref=
+    |               +-ColumnRef(type=INT32, column=$orderby.$orderbycol1#12)
+    +-input_scan=
+      +-TableScan(column_list=[TestTable.KitchenSink#3], table=TestTable, column_index_list=[2], alias="t")

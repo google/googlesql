@@ -1,0 +1,150 @@
+MODULE module_test_errors_main;
+
+-- no errors
+IMPORT MODULE googlesql.testdata.modules.module_test_errors_imported_a;
+
+-- parse error
+IMPORT MODULE googlesql.testdata.modules.module_test_errors_imported_b;
+
+-- init errors
+IMPORT MODULE googlesql.testdata.modules.module_test_errors_imported_c;
+
+-- resolution errors
+IMPORT MODULE googlesql.testdata.modules.module_test_errors_imported_d;
+
+-- errors from imports
+IMPORT MODULE googlesql.testdata.modules.module_test_errors_imported_e;
+
+-- evaluation errors
+IMPORT MODULE googlesql.testdata.modules.module_test_errors_imported_f;
+
+-- non-existing module
+IMPORT MODULE foo;
+
+-- Catalog initialization error - SELECT statements are invalid inside modules.
+SELECT * FROM some_table;
+
+----------------- UDFs
+-- Valid UDF
+CREATE PUBLIC FUNCTION udf(a INT64) AS (a);
+
+-- UDF initialization error (not PRIVATE and not PUBLIC)
+CREATE FUNCTION udf_init_error(a INT64) AS (a);
+
+-- UDF resolution error
+-- Note that this will not show up with ModuleCatalog::AppendModuleErrors()
+-- if the function is not resolved.
+CREATE PUBLIC FUNCTION udf_resolution_error(a INT64) AS (a + "a");
+
+-- Private function
+CREATE PRIVATE FUNCTION private_udf(a string) as (a);
+
+----------------- Templated UDFs
+-- Valid templated UDF
+CREATE PUBLIC FUNCTION templated_udf(a ANY TYPE) AS (a);
+
+-- Templated UDF initialization error
+CREATE TEMP FUNCTION templated_udf_init_error(a ANY TYPE) AS (a);
+
+-- Templated UDF resolution error
+CREATE PUBLIC FUNCTION templated_udf_resolution_error(a ANY TYPE) AS (a + "a");
+
+-- Private templated function
+CREATE PRIVATE FUNCTION private_templated_udf(a ANY TYPE) as (a);
+
+----------------- UDAs
+-- Valid UDA
+CREATE PUBLIC AGGREGATE FUNCTION uda(a INT64) AS (SUM(a));
+
+-- UDA initialization error
+CREATE FUNCTION uda_init_error(a INT64) AS (SUM(a));
+
+-- UDA resolution error
+CREATE PUBLIC AGGREGATE FUNCTION uda_resolution_error(a INT64)
+AS (SUM(a) + "b");
+
+-- Private UDA
+CREATE PRIVATE AGGREGATE FUNCTION private_uda(a INT64)
+AS (SUM(a)+1);
+
+----------------- Templated UDAs
+-- Valid templated UDA
+CREATE PUBLIC AGGREGATE FUNCTION templated_uda(a ANY TYPE) AS (SUM(a));
+
+-- Templated UDA initialization error
+CREATE FUNCTION templated_uda_init_error(a ANY TYPE) AS (SUM(a));
+
+-- Templated UDA resolution error
+CREATE PUBLIC AGGREGATE FUNCTION templated_uda_resolution_error(a ANY TYPE)
+AS (SUM(a) + "b");
+
+-- Private templated UDA
+CREATE PRIVATE AGGREGATE FUNCTION private_templated_uda(a ANY TYPE)
+AS (SUM(a)+2);
+
+-- Templated UDA that refers to an aggregate argument outside of an aggregation
+-- function.
+CREATE PUBLIC AGGREGATE FUNCTION templated_uda_error_bad_agg_arg_ref(a ANY TYPE)
+AS ( (SELECT COUNTIF(MOD(val, 2) = 0) FROM UNNEST(a) val) );
+
+----------------- TVFs
+-- Valid TVF
+CREATE PUBLIC TABLE FUNCTION tvf(a INT64) AS (SELECT a);
+
+-- TVF initialization error
+CREATE TABLE FUNCTION tvf_init_error(a INT64) AS (SELECT a);
+
+-- TVF resolution error
+CREATE PUBLIC TABLE FUNCTION tvf_resolution_error(a INT64) AS (SELECT a + "c");
+
+-- Private TVF
+CREATE PRIVATE TABLE FUNCTION private_tvf(a INT64) AS (SELECT a);
+
+----------------- Templated TVFs
+-- Valid templated TVF
+CREATE PUBLIC TABLE FUNCTION templated_tvf(a ANY TYPE) AS (SELECT a);
+
+-- Templated TVF initialization error
+CREATE TABLE FUNCTION templated_tvf_init_error(a ANY TYPE) AS (SELECT a);
+
+-- Templated TVF resolution error
+CREATE PUBLIC TABLE FUNCTION templated_tvf_resolution_error(a ANY TYPE)
+AS (SELECT a + "c");
+
+-- Private templated TVF
+CREATE PRIVATE TABLE FUNCTION private_templated_tvf(a ANY TYPE) AS (SELECT a);
+
+----------------- Constants
+-- Valid constant
+CREATE PUBLIC CONSTANT constant = "constant";
+
+-- Constant initialization error (not PRIVATE and not PUBLIC)
+CREATE CONSTANT constant_init_error = "constant_init_error";
+
+-- Constant resolution error
+CREATE PUBLIC CONSTANT constant_resolution_error =
+    1 + "constant_resolution_error";
+
+-- Private constant
+CREATE PRIVATE CONSTANT private_contant = 1;
+
+-- Constant evaluation error
+-- Used with a mock ConstantEvaluator that returns an error for this expression.
+-- Note that this will not show up with ModuleCatalog::AppendModuleErrors()
+-- if the constant is not evaluated.
+CREATE PUBLIC CONSTANT constant_evaluation_error = 1 / 0;
+
+-- It is not permitted to refer to an aggregate argument outside of an aggregate
+-- function call.
+CREATE PUBLIC AGGREGATE FUNCTION
+  invalid_reference_to_aggregate_argument(aem ANY TYPE)
+AS (
+  IEEE_DIVIDE(SUM(aem), aem)
+);
+
+----------------- Parse error
+CREATE PRIVATE FUNCTINO udf_parse_error(a INT64) AS (a);
+
+-- Other (valid) statement that is currently ignored due to the parse error.
+CREATE PUBLIC FUNCTION good_function_after_parse_error(a INT64) AS (a);
+

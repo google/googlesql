@@ -10,7 +10,7 @@ To learn more, see the next sections.
 
 ## Function call rules
 
-The following rules apply to all built-in ZetaSQL functions unless
+The following rules apply to all built-in GoogleSQL functions unless
 explicitly indicated otherwise in the function description:
 
 + If an operand is `NULL`, the function result is `NULL`.
@@ -19,7 +19,7 @@ explicitly indicated otherwise in the function description:
 
 ## Named arguments
 
-```zetasql
+```googlesql
 named_argument => value
 ```
 
@@ -40,7 +40,7 @@ named is called a _positional argument_.
 These examples reference a function called `CountTokensInText`, which counts
 the number of tokens in a paragraph. The function signature looks like this:
 
-```zetasql
+```googlesql
 CountTokensInText(paragraph STRING, tokens ARRAY<STRING>, delimiters STRING)
 ```
 
@@ -53,7 +53,7 @@ between tokens in the paragraph.
 This is a query that includes `CountTokensInText`
 without named arguments:
 
-```zetasql
+```googlesql
 SELECT token, count
 FROM CountTokensInText(
   'Would you prefer softball, baseball, or tennis? There is also swimming.',
@@ -63,7 +63,7 @@ FROM CountTokensInText(
 
 This is the query with named arguments:
 
-```zetasql
+```googlesql
 SELECT token, count
 FROM CountTokensInText(
   paragraph => 'Would you prefer softball, baseball, or tennis? There is also swimming.',
@@ -74,7 +74,7 @@ FROM CountTokensInText(
 If named arguments are used, the order of the arguments doesn't matter. This
 works:
 
-```zetasql
+```googlesql
 SELECT token, count
 FROM CountTokensInText(
   tokens => ['baseball', 'football', 'tennis'],
@@ -85,7 +85,7 @@ FROM CountTokensInText(
 You can mix positional arguments and named arguments, as long as the positional
 arguments in the function signature come first:
 
-```zetasql
+```googlesql
 SELECT token, count
 FROM CountTokensInText(
   'Would you prefer softball, baseball, or tennis? There is also swimming.',
@@ -95,7 +95,7 @@ FROM CountTokensInText(
 
 This doesn't work because a positional argument appears after a named argument:
 
-```zetasql
+```googlesql
 SELECT token, count
 FROM CountTokensInText(
   paragraph => 'Would you prefer softball, baseball, or tennis? There is also swimming.',
@@ -108,7 +108,7 @@ before it in the function signature must also be positional arguments.
 If you try to use a named argument for `paragraph` and a positional
 argument for `tokens`, this will not work.
 
-```zetasql
+```googlesql
 -- This doesn't work.
 SELECT token, count
 FROM CountTokensInText(
@@ -129,17 +129,17 @@ FROM CountTokensInText(
 
 **Syntax:**
 
-```zetasql
+```googlesql
 (arg[, ...]) -> body_expression
 ```
 
-```zetasql
+```googlesql
 arg -> body_expression
 ```
 
 **Description**
 
-For some functions, ZetaSQL supports lambdas as builtin function
+For some functions, GoogleSQL supports lambdas as builtin function
 arguments. A lambda takes a list of arguments and an expression as the lambda
 body.
 
@@ -188,7 +188,7 @@ negative values. However, the `SAFE.` prefix causes the function to return
 `NULL` instead. The second use of the `SUBSTR` function provides the expected
 output: the `SAFE.` prefix has no effect.
 
-```zetasql
+```googlesql
 SELECT SAFE.SUBSTR('foo', 0, -2) AS safe_output UNION ALL
 SELECT SAFE.SUBSTR('bar', 0, 2) AS safe_output;
 
@@ -204,11 +204,11 @@ SELECT SAFE.SUBSTR('bar', 0, 2) AS safe_output;
 
 [lambdas]: #lambdas
 
-[link-to-operators]: https://github.com/google/zetasql/blob/master/docs/operators.md
+[link-to-operators]: https://github.com/google/googlesql/blob/master/docs/operators.md
 
-[link-to-SAFE_DIVIDE]: https://github.com/google/zetasql/blob/master/docs/mathematical_functions.md#safe_divide
+[link-to-SAFE_DIVIDE]: https://github.com/google/googlesql/blob/master/docs/mathematical_functions.md#safe_divide
 
-[link-to-SAFE_CAST]: https://github.com/google/zetasql/blob/master/docs/conversion_functions.md#safe_casting
+[link-to-SAFE_CAST]: https://github.com/google/googlesql/blob/master/docs/conversion_functions.md#safe_casting
 
 <!-- mdlint on -->
 

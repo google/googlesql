@@ -1,0 +1,313 @@
+[prepare_database]
+CREATE TEMP FUNCTION Thousand() AS ( 1000 );
+==
+[prepare_database]
+CREATE TEMP FUNCTION TimesThousand(value INT64) AS ( value * Thousand() );
+==
+[prepare_database]
+CREATE TEMP FUNCTION StringIdentity(value STRING) AS ( value );
+==
+[prepare_database]
+CREATE TEMP FUNCTION MyStringIsNull(value STRING) AS ( value IS NULL );
+==
+[prepare_database]
+CREATE TEMP FUNCTION IntegerToDouble(value INT64) RETURNS FLOAT64 AS ( value );
+==
+[prepare_database]
+CREATE TEMP FUNCTION IntegerEquals(a INT64, b INT64) AS ( a = b );
+==
+[prepare_database]
+CREATE TEMP FUNCTION FloatReflexiveEquals(a FLOAT64) AS ( a = a );
+==
+[prepare_database]
+[name=skip_failed_reference_setup]
+# This function definition is invalid, but since [prepare_database] statements
+# are not tests, this should not cause compliance test failures. Engine test
+# drivers should make sure this and any other functions that do not compile do
+# not pollute any maintained session state.
+CREATE TEMP FUNCTION ThisShouldNotCompile() RETURNS INT64 AS ( garbage )
+==
+[prepare_database]
+CREATE TEMP FUNCTION OneOverArg(a FLOAT64) AS ( 1 / a );
+==
+[prepare_database]
+CREATE TEMP FUNCTION StringIdentityCorrelated(value STRING)
+AS ( (SELECT value) );
+==
+[prepare_database]
+CREATE TEMP FUNCTION AggregateArray(value ARRAY<INT64>)
+AS ( ARRAY(SELECT elem + 1
+           FROM UNNEST(value) elem WITH OFFSET
+           ORDER BY OFFSET) );
+==
+[prepare_database]
+[required_features=INLINE_LAMBDA_ARGUMENT]
+CREATE TEMP FUNCTION AggregateArrayLambda(value ARRAY<INT64>)
+AS ( ARRAY_TRANSFORM(value, e -> e + 1) );
+==
+[prepare_database]
+[required_features=TEMPLATE_FUNCTIONS]
+CREATE TEMP FUNCTION IdentityTemplate(value ANY TYPE) AS (value);
+==
+[prepare_database]
+[required_features=TEMPLATE_FUNCTIONS]
+CREATE TEMP FUNCTION MyValueIsNull(value ANY TYPE) AS ( value IS NULL );
+==
+[prepare_database]
+[required_features=TEMPLATE_FUNCTIONS]
+# Poor implementation of Element function doesn't check array length.
+CREATE TEMP FUNCTION Element(a ANY TYPE) AS (
+  (SELECT e FROM UNNEST(a) e)
+);
+==
+[prepare_database]
+[required_features=WITH_ON_SUBQUERY]
+CREATE TEMP FUNCTION WithOnSubquery()
+AS ((WITH t AS (SELECT 1 a) SELECT a FROM t));
+==
+[prepare_database]
+[required_features=TEMPLATE_FUNCTIONS]
+CREATE TEMP FUNCTION b290673529(thing_id ANY TYPE) RETURNS BOOL
+AS (
+  thing_id IN (SELECT thing_id FROM (SELECT 1 AS thing_id))
+);
+==
+[prepare_database]
+CREATE TEMP FUNCTION EmptySubqueryFunction() AS (
+  ARRAY(SELECT a FROM (SELECT 1 AS a) WHERE false)
+)
+==
+[prepare_database]
+CREATE TEMP FUNCTION ErrorSubqueryFunction() AS (
+  /* Putting the ERROR in the WHERE clause means it can't be skipped. */
+  ARRAY(SELECT a FROM (SELECT 1 AS a) WHERE ERROR('oops'))
+)
+==
+[prepare_database]
+CREATE TEMP FUNCTION NonDeterministicFunction() AS (
+  ARRAY(SELECT e FROM UNNEST([1, 2, 3]) AS e LIMIT 1)
+)
+==
+[prepare_database]
+CREATE TEMP FUNCTION CurrentTimestampFunction() AS (
+  CURRENT_TIMESTAMP()
+)
+==
+
+[name=call_nullary_function]
+SELECT Thousand() + Thousand()
+UNION ALL
+SELECT 10 * Thousand()
+--
+ARRAY<STRUCT<INT64>>[unknown order:{2000}, {10000}]
+==
+
+[name=call_unary_function_wit_literal]
+SELECT StringIdentity('a')
+UNION ALL
+SELECT StringIdentity('b');
+--
+ARRAY<STRUCT<STRING>>[unknown order:{"a"}, {"b"}]
+==
+
+[name=function_expects_null_inputs_literal]
+SELECT MyStringIsNull('a')
+UNION ALL
+SELECT MyStringIsNull(NULL);
+--
+ARRAY<STRUCT<BOOL>>[unknown order:{false}, {true}]
+==
+
+[name=function_expects_null_inputs_non_literal]
+SELECT MyStringIsNull(CAST(CURRENT_DATE() AS STRING))
+UNION ALL
+SELECT MyStringIsNull(CAST(SAFE_CAST('garbage' AS DATE) AS STRING));
+--
+ARRAY<STRUCT<BOOL>>[unknown order:{false}, {true}]
+==
+
+[name=call_udf_with_explicit_return_type]
+SELECT IntegerToDouble(0)
+UNION ALL
+SELECT IntegerToDouble(1)
+--
+ARRAY<STRUCT<DOUBLE>>[unknown order:{0}, {1}]
+==
+
+[name=call_binary_functions_with_literals]
+SELECT IntegerEquals(1, 2)
+UNION ALL
+SELECT IntegerEquals(2, 2);
+--
+ARRAY<STRUCT<BOOL>>[unknown order:{false}, {true}]
+==
+
+[name=call_binary_functions_with_column]
+WITH t AS (SELECT a, 4 - a AS b, offset
+           FROM UNNEST([0, 1, 2, 3, 4]) AS a WITH OFFSET)
+SELECT IntegerEquals(a, b) FROM t ORDER BY offset;
+--
+ARRAY<STRUCT<BOOL>>[known order:{false}, {false}, {true}, {false}, {false}]
+==
+
+# Regression test for b/234774120
+[name=call_binary_functions_with_same_column_twice]
+WITH t AS (SELECT a, 4 - a AS b, offset
+           FROM UNNEST([0, 1, 2, 3, 4]) AS a WITH OFFSET)
+SELECT IntegerEquals(a, a) FROM t ORDER BY offset;
+--
+ARRAY<STRUCT<BOOL>>[known order:{true}, {true}, {true}, {true}, {true}]
+==
+
+[name=sql_udf_arguments_as_if_once]
+SELECT FloatReflexiveEquals(rand());
+--
+ARRAY<STRUCT<BOOL>>[{true}]
+==
+
+[name=call_function_with_coorelated_argument_ref]
+SELECT StringIdentityCorrelated('a')
+UNION ALL
+SELECT StringIdentityCorrelated('b');
+--
+ARRAY<STRUCT<STRING>>[unknown order:{"a"}, {"b"}]
+==
+
+[name=array_aggregating_function_call]
+SELECT AggregateArray([1, 2, 3]);
+--
+ARRAY<STRUCT<ARRAY<>>>[{ARRAY<INT64>[known order:2, 3, 4]}]
+==
+
+[name=call_sql_udf_calling_sql_udf]
+SELECT TimesThousand(2)
+UNION ALL
+SELECT TimesThousand(10)
+--
+ARRAY<STRUCT<INT64>>[unknown order:{2000}, {10000}]
+==
+
+[name=array_transform_called_inside_udf]
+SELECT AggregateArrayLambda([1, 2, 3]);
+--
+ARRAY<STRUCT<ARRAY<>>>[{ARRAY<INT64>[known order:2, 3, 4]}]
+==
+
+[name=udf_called_inside_array_transform_lambda]
+[required_features=INLINE_LAMBDA_ARGUMENT]
+SELECT ARRAY_TRANSFORM([1, 2, 3], e->e*Thousand());
+--
+ARRAY<STRUCT<ARRAY<>>>[{ARRAY<INT64>[known order:1000, 2000, 3000]}]
+==
+
+[name=call_templated_udf]
+SELECT IdentityTemplate(DATE '2020-01-01');
+--
+ARRAY<STRUCT<DATE>>[{2020-01-01}]
+==
+
+[name=call_templated_udf_with_different_types]
+SELECT IdentityTemplate('abc'),
+       IdentityTemplate(b'abc'),
+       IdentityTemplate(1),
+       IdentityTemplate(false);
+--
+ARRAY<STRUCT<STRING, BYTES, INT64, BOOL>>[{"abc", b"abc", 1, false}]
+==
+
+[name=call_templated_udf_expecting_null_values]
+SELECT MyValueIsNull('a'),
+       MyValueIsNull(EXTRACT(DAY FROM CURRENT_DATE())),
+       MyValueIsNull(NULL),
+       MyValueIsNull(SAFE_DIVIDE(1, 0));
+--
+ARRAY<STRUCT<BOOL, BOOL, BOOL, BOOL>>[{false, false, true, true}]
+==
+
+[name=unsafe_call_sql_udf_division]
+SELECT OneOverArg(0);
+--
+ERROR: generic::out_of_range: division by zero: 1 / 0
+==
+
+[name=safe_call_sql_udf_division]
+[required_features=SAFE_FUNCTION_CALL]
+SELECT SAFE.OneOverArg(0);
+--
+ARRAY<STRUCT<DOUBLE>>[{NULL}]
+==
+
+[name=safe_call_sql_udf_error_argument]
+[required_features=SAFE_FUNCTION_CALL]
+# This checks that safety doesn't cover the argument evaluation.
+SELECT SAFE.OneOverArg(1/(1-1));
+--
+ERROR: generic::out_of_range: division by zero: 1 / 0
+==
+
+[name=ok_call_to_element]
+SELECT Element(['a']);
+--
+ARRAY<STRUCT<STRING>>[{"a"}]
+==
+
+[name=unsafe_call_to_element]
+SELECT Element(['a', 'b']);
+--
+ERROR: generic::out_of_range: More than one element
+==
+
+[name=safe_call_to_element]
+[required_features=SAFE_FUNCTION_CALL]
+SELECT SAFE.Element(['a', 'b']);
+--
+ARRAY<STRUCT<STRING>>[{NULL}]
+==
+
+[name=with_on_subquery_inside_function]
+SELECT WithOnSubquery();
+--
+ARRAY<STRUCT<INT64>>[{1}]
+==
+
+[name=repro_b290673529]
+SELECT *
+FROM (SELECT 1 AS thing_id)
+WHERE b290673529(thing_id);
+--
+ARRAY<STRUCT<thing_id INT64>>[{1}]
+==
+
+[name=empty_subquery_function]
+SELECT
+  EmptySubqueryFunction(),
+  ARRAY(SELECT a FROM (SELECT 1 AS a) WHERE false);
+--
+ARRAY<STRUCT<ARRAY<>, ARRAY<>>>[{ARRAY<INT64>[], ARRAY<INT64>[]}]
+==
+
+[name=error_subquery_function]
+SELECT ErrorSubqueryFunction();
+--
+ERROR: generic::out_of_range: oops
+==
+
+[name=safe_error_subquery_function]
+[required_features=SAFE_FUNCTION_CALL]
+SELECT SAFE.ErrorSubqueryFunction();
+--
+ARRAY<STRUCT<ARRAY<>>>[{ARRAY<INT64>(NULL)}]
+==
+
+[name=call_non_deterministic_sql_udf]
+SELECT NonDeterministicFunction() IS NOT NULL;
+--
+ARRAY<STRUCT<BOOL>>[{true}]
+
+NOTE: Reference implementation reports non-determinism.
+==
+
+[name=call_current_timestamp_sql_udf]
+SELECT CurrentTimestampFunction()=CURRENT_TIMESTAMP() AS result;
+--
+ARRAY<STRUCT<result BOOL>>[{true}]

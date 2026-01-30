@@ -1,0 +1,823 @@
+[default reserve_graph_table]
+[default required_features=SQL_GRAPH,SQL_GRAPH_ADVANCED_QUERY,SQL_GRAPH_CHEAPEST_PATH]
+[load_proto_files=googlesql/testdata/test_schema.proto]
+[load_proto_names=googlesql_test.KitchenSinkPB]
+[prepare_database]
+CREATE TABLE person AS
+(SELECT 1 AS id, "name1" AS name) UNION ALL
+(SELECT 2 AS id, "name2" AS name) UNION ALL
+(SELECT 3 as id, "name3" AS name)
+--
+ARRAY<STRUCT<id INT64, name STRING>>[{1, "name1"}, {2, "name2"}, {3, "name3"}]
+==
+[prepare_database]
+CREATE TABLE person_knows_person AS
+(SELECT 100 AS id, 1 AS from_person_id, 1 AS to_person_id, TIMESTAMP '2000-01-01 00:00:00' AS since) UNION ALL
+(SELECT 200 AS id, 1 AS from_person_id, 2 AS to_person_id, TIMESTAMP '2000-01-02 00:00:00' AS since) UNION ALL
+(SELECT 300 AS id, 2 AS from_person_id, 1 AS to_person_id, TIMESTAMP '2000-01-03 00:00:00' AS since)
+--
+ARRAY<STRUCT<id INT64, from_person_id INT64, to_person_id INT64, since TIMESTAMP>>[
+  {
+    100,
+    1,
+    1,
+    2000-01-01 08:00:00+00
+  },
+  {
+    200,
+    1,
+    2,
+    2000-01-02 08:00:00+00
+  },
+  {
+    300,
+    2,
+    1,
+    2000-01-03 08:00:00+00
+  }
+]
+==
+[prepare_database]
+CREATE TABLE account AS
+(SELECT 10 AS acct_id, cast('''
+  int64_key_1: 1
+  int64_key_2: 1
+''' as `googlesql_test.KitchenSinkPB`) AS owner_id, "checking" AS kind
+) UNION ALL
+(SELECT 20 AS acct_id, cast('''
+  int64_key_1: 1
+  int64_key_2: 1
+''' as `googlesql_test.KitchenSinkPB`) AS owner_id, "savings" AS kind
+) UNION ALL
+(SELECT 30 AS acct_id, cast('''
+  int64_key_1: 2
+  int64_key_2: 2
+''' as `googlesql_test.KitchenSinkPB`) AS owner_id, "checking" AS kind
+)UNION ALL
+(SELECT 40 AS acct_id, cast('''
+  int64_key_1: 2
+  int64_key_2: 2
+''' as `googlesql_test.KitchenSinkPB`) AS owner_id, "savings" as kind)
+--
+ARRAY<STRUCT<
+        acct_id INT64,
+        owner_id PROTO<googlesql_test.KitchenSinkPB>,
+        kind STRING
+      >>
+[{10,
+  {
+    int64_key_1: 1
+    int64_key_2: 1
+  },
+  "checking"},
+ {20,
+  {
+    int64_key_1: 1
+    int64_key_2: 1
+  },
+  "savings"},
+ {30,
+  {
+    int64_key_1: 2
+    int64_key_2: 2
+  },
+  "checking"},
+ {40,
+  {
+    int64_key_1: 2
+    int64_key_2: 2
+  },
+  "savings"}]
+==
+
+[prepare_database]
+CREATE TABLE transfer AS
+(SELECT 1 AS id, 10 AS from_account_id, 20 AS to_account_id, 100 AS amount) UNION ALL
+(SELECT 2 AS id, 10 AS from_account_id, 20 AS to_account_id, 200 AS amount) UNION ALL
+(SELECT 3 AS id, 20 AS from_account_id, 30 AS to_account_id, 300 AS amount) UNION ALL
+(SELECT 4 AS id, 20 AS from_account_id, 30 AS to_account_id, 400 AS amount) UNION ALL
+(SELECT 5 AS id, 30 AS from_account_id, 10 AS to_account_id, 500 AS amount) UNION ALL
+(SELECT 6 AS id, 10 AS from_account_id, 10 AS to_account_id, 600 AS amount)
+--
+ARRAY<STRUCT<
+        id INT64,
+        from_account_id INT64,
+        to_account_id INT64,
+        amount INT64
+      >>
+[{1, 10, 20, 100},
+ {2, 10, 20, 200},
+ {3, 20, 30, 300},
+ {4, 20, 30, 400},
+ {5, 30, 10, 500},
+ {6, 10, 10, 600}]
+==
+[prepare_database]
+CREATE TABLE login AS
+(SELECT 1 AS person_id, 10 AS account_id, TIMESTAMP "2023-01-01 00:00:00 UTC" AS timestamp) UNION ALL
+(SELECT 2 AS person_id, 30 AS account_id, TIMESTAMP "2023-01-04 00:00:00 UTC" AS timestamp)
+--
+ARRAY<STRUCT<person_id INT64, account_id INT64, timestamp TIMESTAMP>>[
+  {
+    1,
+    10,
+    2023-01-01 00:00:00+00
+  },
+  {
+    2,
+    30,
+    2023-01-04 00:00:00+00
+  }
+]
+==
+# This edge table is "compressed". Each row represents M*N edges from M nodes
+# to N nodes.
+[prepare_database]
+CREATE TABLE can_transfer AS
+(SELECT "checking" AS src_acct_kind, "savings" AS dest_acct_kind)
+--
+ARRAY<STRUCT<
+        src_acct_kind STRING,
+        dest_acct_kind STRING
+      >>[{"checking", "savings"}]
+==
+[prepare_database]
+CREATE PROPERTY GRAPH aml
+  NODE TABLES (
+    Account KEY(acct_id)
+    DEFAULT LABEL PROPERTIES(
+      1000 + acct_id AS account_id,
+      owner_id AS owner_id_proto,
+      owner_id.int64_key_1 AS owner_id,
+      kind AS account_kind)
+    LABEL HasId PROPERTIES (acct_id AS key_id),
+    Person KEY(id)
+    LABEL Human PROPERTIES(
+      100 AS id,
+      name)
+    LABEL HasId PROPERTIES (id as key_id))
+  EDGE TABLES (
+    person_knows_person AS Knows KEY(id)
+              SOURCE KEY(from_person_id) REFERENCES Person(id)
+              DESTINATION KEY(to_person_id) REFERENCES Person(id)
+              DEFAULT LABEL PROPERTIES(since),
+    Transfer KEY(id, from_account_id, to_account_id)
+              SOURCE KEY(from_account_id) REFERENCES Account(acct_id)
+              DESTINATION KEY(to_account_id) REFERENCES Account(acct_id)
+              DEFAULT LABEL PROPERTIES(amount),
+    Login KEY(person_id, account_id, timestamp)
+          SOURCE KEY(person_id) REFERENCES Person(id)
+          DESTINATION KEY(account_id) REFERENCES Account(acct_id)
+          DEFAULT LABEL PROPERTIES(timestamp),
+    can_transfer AS CanTransfer KEY(src_acct_kind, dest_acct_kind)
+                  SOURCE KEY(src_acct_kind) REFERENCES Account(kind)
+                  DESTINATION KEY(dest_acct_kind) REFERENCES Account(kind)
+                  LABEL can_transfer
+  )
+==
+[name=any_cheapest_null_cost]
+graph aml
+match any cheapest -[e:Transfer COST if (1 < 2, NULL, e.amount)]->
+return 1 as output
+--
+ERROR: generic::out_of_range: Graph cost expression must not be NULL
+==
+[name=any_cheapest_nan_cost]
+graph aml
+match any cheapest -[e:Transfer COST cast('nan' as double)]->
+return 1 as output
+--
+ERROR: generic::out_of_range: Graph cost expression must not be NaN
+==
+[name=any_cheapest_inf_cost]
+graph aml
+match any cheapest -[e:Transfer COST cast('inf' as double)]->
+return 1 as output
+--
+ERROR: generic::out_of_range: Graph cost expression must not be Inf
+==
+[name=any_cheapest_neg_inf_cost]
+graph aml
+match any cheapest -[e:Transfer COST cast('-inf' as double)]->
+return 1 as output
+--
+ERROR: generic::out_of_range: Graph cost expression must not be Inf
+==
+[name=any_cheapest_zero_cost]
+graph aml
+match any cheapest -[e:Transfer COST 0]->
+return 1 as output
+--
+ERROR: generic::out_of_range: Graph cost expression must be positive
+==
+[name=any_cheapest_negative_cost]
+graph aml
+match any cheapest -[e:Transfer COST -1 * e.amount]->
+return 1 as output
+--
+ERROR: generic::out_of_range: Graph cost expression must be positive
+==
+[name=any_cheapest_total_cost_overflow_int64]
+graph aml
+match any cheapest -[e1:Transfer COST 9223372036854775807]->(n)-[e2:Transfer COST 9223372036854775807]->
+return 1 as output
+--
+ERROR: generic::out_of_range: int64 overflow: 9223372036854775807 + 9223372036854775807
+==
+[name=any_cheapest_total_cost_overflow_uint64]
+graph aml
+match any cheapest -[e1:Transfer COST 18446744073709551615]->(n)-[e2:Transfer COST 18446744073709551615]->
+return 1 as output
+--
+ERROR: generic::out_of_range: uint64 overflow: 18446744073709551615 + 18446744073709551615
+==
+[name=any_cheapest_total_cost_overflow_double]
+graph aml
+match any cheapest -[e1:Transfer COST 1.1e+308]->(n)-[e2:Transfer COST 1.1e+308]->
+return 1 as output
+--
+ERROR: generic::out_of_range: double overflow: 1.1e+308 + 1.1e+308
+==
+[required_features=SQL_GRAPH,SQL_GRAPH_ADVANCED_QUERY,SQL_GRAPH_CHEAPEST_PATH,NUMERIC_TYPE]
+[name=any_cheapest_total_cost_overflow_numeric]
+graph aml
+match any cheapest -[e1:Transfer COST NUMERIC '99999999999999999999999999999.999999999']->
+(n)-[e2:Transfer COST NUMERIC '99999999999999999999999999999.999999999']->
+return 1 as output
+--
+ERROR: generic::out_of_range: numeric overflow: 99999999999999999999999999999.999999999 + 99999999999999999999999999999.999999999
+==
+[name=any_cheapest_total_cost_overflow_bignumeric]
+[required_features=SQL_GRAPH,SQL_GRAPH_ADVANCED_QUERY,SQL_GRAPH_CHEAPEST_PATH,BIGNUMERIC_TYPE]
+graph aml
+match any cheapest -[e1:Transfer COST BIGNUMERIC '578960446186580977117854925043439539266.34992332820282019728792003956564819967']->
+(n)-[e2:Transfer COST BIGNUMERIC '578960446186580977117854925043439539266.34992332820282019728792003956564819967']->
+return 1 as output
+--
+ERROR: generic::out_of_range: BIGNUMERIC overflow: 578960446186580977117854925043439539266.34992332820282019728792003956564819967 + 578960446186580977117854925043439539266.34992332820282019728792003956564819967
+==
+[name=simple_path_cost_without_cheapest]
+[required_features=SQL_GRAPH,SQL_GRAPH_ADVANCED_QUERY,SQL_GRAPH_CHEAPEST_PATH]
+graph aml
+match (a:Account {account_id:1010})-[e1 IS Transfer COST 0.90 * ABS(e1.amount)]->(b:Account)-[e2 IS Transfer COST e2.amount + 1000]->(c:Account)
+return a.account_id as aid, b.account_id as bid, c.account_id as cid, 0.90 * ABS(e1.amount) + e2.amount + 1000 as total_cost
+order by aid, bid, cid, total_cost
+--
+ARRAY<STRUCT<aid INT64, bid INT64, cid INT64, total_cost DOUBLE>>[unknown order:
+  {1010, 1010, 1010, 2140},
+  {1010, 1010, 1020, 1640},
+  {1010, 1010, 1020, 1740},
+  {1010, 1020, 1030, 1390},
+  {1010, 1020, 1030, 1480},
+  {1010, 1020, 1030, 1490},
+  {1010, 1020, 1030, 1580}
+]
+==
+[name=simple_path_cost_any_cheapest]
+[required_features=SQL_GRAPH,SQL_GRAPH_ADVANCED_QUERY,SQL_GRAPH_CHEAPEST_PATH]
+graph aml
+match any cheapest (a:Account {account_id:1010})-[e1 IS Transfer COST 0.90 * ABS(e1.amount)]->(b:Account)-[e2 IS Transfer COST e2.amount + 1000]->(c:Account)
+return a.account_id as aid, b.account_id as bid, c.account_id as cid, 0.90 * ABS(e1.amount) + e2.amount + 1000 as total_cost
+order by aid, bid, cid, total_cost
+--
+ARRAY<STRUCT<aid INT64, bid INT64, cid INT64, total_cost DOUBLE>>[unknown order:
+  {1010, 1010, 1010, 2140},
+  {1010, 1010, 1020, 1640},
+  {1010, 1020, 1030, 1390}
+]
+==
+[name=simple_path_cost_cheapest_k]
+[required_features=SQL_GRAPH,SQL_GRAPH_ADVANCED_QUERY,SQL_GRAPH_CHEAPEST_PATH,SQL_GRAPH_PATH_SEARCH_PREFIX_PATH_COUNT]
+graph aml
+match cheapest 2 (a:Account {account_id:1010})-[e1 IS Transfer COST 0.90 * ABS(e1.amount)]->(b:Account)-[e2 IS Transfer COST e2.amount + 1000]->(c:Account)
+return a.account_id as aid, b.account_id as bid, c.account_id as cid, 0.90 * ABS(e1.amount) + e2.amount + 1000 as total_cost
+order by aid, bid, cid, total_cost
+--
+ARRAY<STRUCT<aid INT64, bid INT64, cid INT64, total_cost DOUBLE>>[unknown order:
+  {1010, 1010, 1010, 2140},
+  {1010, 1010, 1020, 1640},
+  {1010, 1010, 1020, 1740},
+  {1010, 1020, 1030, 1390},
+  {1010, 1020, 1030, 1480}
+]
+==
+[name=simple_quantified_path_cost_without_cheapest]
+[required_features=SQL_GRAPH,SQL_GRAPH_ADVANCED_QUERY,SQL_GRAPH_BOUNDED_PATH_QUANTIFICATION,ARRAY_AGGREGATION_FUNCTIONS,V_1_3_UNNEST_AND_FLATTEN_ARRAYS,SQL_GRAPH_CHEAPEST_PATH]
+graph aml
+match (a:Account {account_id:1010})-[e IS Transfer WHERE e.amount > 1 COST e.amount]->{1,3}(b:Account)
+let amounts = flatten(e.amount)
+return a.account_id as aid, b.account_id as bid, array_length(amounts) as len, array_sum(amounts) as total_cost
+order by aid, bid, total_cost
+--
+ARRAY<STRUCT<aid INT64, bid INT64, len INT64, total_cost INT64>>[unknown order:
+  {1010, 1010, 1, 600},
+  {1010, 1010, 3, 900},
+  {1010, 1010, 3, 1000},
+  {1010, 1010, 3, 1000},
+  {1010, 1010, 3, 1100},
+  {1010, 1010, 2, 1200},
+  {1010, 1010, 3, 1800},
+  {1010, 1020, 1, 100},
+  {1010, 1020, 1, 200},
+  {1010, 1020, 2, 700},
+  {1010, 1020, 2, 800},
+  {1010, 1020, 3, 1300},
+  {1010, 1020, 3, 1400},
+  {1010, 1030, 2, 400},
+  {1010, 1030, 2, 500},
+  {1010, 1030, 2, 500},
+  {1010, 1030, 2, 600},
+  {1010, 1030, 3, 1000},
+  {1010, 1030, 3, 1100},
+  {1010, 1030, 3, 1100},
+  {1010, 1030, 3, 1200}
+]
+==
+[name=simple_quantified_path_cost_any_cheapest]
+[required_features=SQL_GRAPH,SQL_GRAPH_ADVANCED_QUERY,SQL_GRAPH_BOUNDED_PATH_QUANTIFICATION,ARRAY_AGGREGATION_FUNCTIONS,V_1_3_UNNEST_AND_FLATTEN_ARRAYS,SQL_GRAPH_CHEAPEST_PATH]
+graph aml
+match any cheapest (a:Account {account_id:1010})-[e IS Transfer WHERE e.amount > 1 COST e.amount]->{1,3}(b:Account)
+let amounts = flatten(e.amount)
+return a.account_id as aid, b.account_id as bid, array_length(amounts) as len, array_sum(amounts) as total_cost
+order by aid, bid, total_cost
+--
+ARRAY<STRUCT<aid INT64, bid INT64, len INT64, total_cost INT64>>[unknown order:
+  {1010, 1010, 1, 600},
+  {1010, 1020, 1, 100},
+  {1010, 1030, 2, 400}
+]
+==
+[name=simple_quantified_path_cost_cheapest_k]
+[required_features=SQL_GRAPH,SQL_GRAPH_ADVANCED_QUERY,SQL_GRAPH_BOUNDED_PATH_QUANTIFICATION,ARRAY_AGGREGATION_FUNCTIONS,V_1_3_UNNEST_AND_FLATTEN_ARRAYS,SQL_GRAPH_CHEAPEST_PATH,SQL_GRAPH_PATH_SEARCH_PREFIX_PATH_COUNT]
+graph aml
+match cheapest 4 (a:Account {account_id:1010})-[e IS Transfer WHERE e.amount > 1 COST e.amount]->{1,3}(b:Account)
+let amounts = flatten(e.amount)
+return a.account_id as aid, b.account_id as bid, array_length(amounts) as len, array_sum(amounts) as total_cost
+order by aid, bid, total_cost
+--
+ARRAY<STRUCT<aid INT64, bid INT64, len INT64, total_cost INT64>>[unknown order:
+  {1010, 1010, 1, 600},
+  {1010, 1010, 3, 900},
+  {1010, 1010, 3, 1000},
+  {1010, 1010, 3, 1000},
+  {1010, 1020, 1, 100},
+  {1010, 1020, 1, 200},
+  {1010, 1020, 2, 700},
+  {1010, 1020, 2, 800},
+  {1010, 1030, 2, 400},
+  {1010, 1030, 2, 500},
+  {1010, 1030, 2, 500},
+  {1010, 1030, 2, 600}
+]
+==
+# Note that there are two edges from 1010 to 1010 with the same total cost
+# We expect nondeterminism to be detected by the reference implementation in
+# this case and annotated accordingly, although since the result is not
+# deterministic, it will not be evaluated in engine compliance tests.
+[name=simple_quantified_path_cost_cheapest_k_with_tie]
+[required_features=SQL_GRAPH,SQL_GRAPH_ADVANCED_QUERY,SQL_GRAPH_BOUNDED_PATH_QUANTIFICATION,ARRAY_AGGREGATION_FUNCTIONS,V_1_3_UNNEST_AND_FLATTEN_ARRAYS,SQL_GRAPH_CHEAPEST_PATH,SQL_GRAPH_PATH_SEARCH_PREFIX_PATH_COUNT]
+graph aml
+match cheapest 3 (a:Account {account_id:1010})-[e IS Transfer WHERE e.amount > 1 COST e.amount]->{1,3}(b:Account)
+let amounts = flatten(e.amount)
+return a.account_id as aid, b.account_id as bid, array_length(amounts) as len, array_sum(amounts) as total_cost
+order by aid, bid, total_cost
+--
+ARRAY<STRUCT<aid INT64, bid INT64, len INT64, total_cost INT64>>[unknown order:
+  {1010, 1010, 1, 600},
+  {1010, 1010, 3, 900},
+  {1010, 1010, 3, 1000},
+  {1010, 1020, 1, 100},
+  {1010, 1020, 1, 200},
+  {1010, 1020, 2, 700},
+  {1010, 1030, 2, 400},
+  {1010, 1030, 2, 500},
+  {1010, 1030, 2, 500}
+]
+
+NOTE: Reference implementation reports non-determinism.
+==
+[name=mixed_edges_without_cheapest]
+[required_features=SQL_GRAPH,SQL_GRAPH_ADVANCED_QUERY,SQL_GRAPH_BOUNDED_PATH_QUANTIFICATION,SQL_GRAPH_CHEAPEST_PATH]
+graph aml
+match (a:Account {account_id:1010})-[e1 IS Transfer where e1.amount < 500 COST 100]->{1,2}(b:Account {account_id:1030})-[e2 IS Transfer COST e2.amount]->(-[e3:Transfer WHERE e3.amount < 500 COST 1000]->){1,2}(d:Account)
+return a.account_id as aid, d.account_id as did, array_length(e1)*100 + array_length(e3)*1000 + e2.amount as total_cost
+order by aid, did
+--
+ARRAY<STRUCT<aid INT64, did INT64, total_cost INT64>>[unknown order:
+  {1010, 1020, 1700},
+  {1010, 1020, 1700},
+  {1010, 1020, 1700},
+  {1010, 1020, 1700},
+  {1010, 1020, 1700},
+  {1010, 1020, 1700},
+  {1010, 1020, 1700},
+  {1010, 1020, 1700},
+  {1010, 1030, 2700},
+  {1010, 1030, 2700},
+  {1010, 1030, 2700},
+  {1010, 1030, 2700},
+  {1010, 1030, 2700},
+  {1010, 1030, 2700},
+  {1010, 1030, 2700},
+  {1010, 1030, 2700},
+  {1010, 1030, 2700},
+  {1010, 1030, 2700},
+  {1010, 1030, 2700},
+  {1010, 1030, 2700},
+  {1010, 1030, 2700},
+  {1010, 1030, 2700},
+  {1010, 1030, 2700},
+  {1010, 1030, 2700}
+]
+==
+[name=mixed_edges_any_cheapest]
+[required_features=SQL_GRAPH,SQL_GRAPH_ADVANCED_QUERY,SQL_GRAPH_BOUNDED_PATH_QUANTIFICATION,SQL_GRAPH_CHEAPEST_PATH]
+graph aml
+match any cheapest (a:Account {account_id:1010})-[e1 IS Transfer where e1.amount < 500 COST e1.amount]->{1,2}(b:Account {account_id:1030})-[e2 IS Transfer COST e2.amount * 10]->(-[e3:Transfer WHERE e3.amount < 500 COST e3.amount * 100]->){1,2}(d:Account)
+return a.account_id as aid, d.account_id as did
+order by aid, did
+--
+ARRAY<STRUCT<aid INT64, did INT64>>[unknown order:{1010, 1020}, {1010, 1030}]
+==
+[name=mixed_edges_cheapest_k]
+[required_features=SQL_GRAPH,SQL_GRAPH_ADVANCED_QUERY,SQL_GRAPH_BOUNDED_PATH_QUANTIFICATION,SQL_GRAPH_CHEAPEST_PATH,SQL_GRAPH_PATH_SEARCH_PREFIX_PATH_COUNT]
+graph aml
+match cheapest 3 (a:Account {account_id:1010})-[e1 IS Transfer where e1.amount < 500 COST e1.amount]->{1,2}(b:Account {account_id:1030})-[e2 IS Transfer COST e2.amount * 10]->(-[e3:Transfer WHERE e3.amount < 500 COST e3.amount * 100]->){1,2}(d:Account)
+let e1_amounts = sum(e1.amount), e2_amounts = e2.amount * 10, e3_amounts = sum(e3.amount * 100)
+return a.account_id as aid, d.account_id as did, e1_amounts + e2_amounts + e3_amounts as total_cost
+order by aid, did, total_cost
+--
+ARRAY<STRUCT<aid INT64, did INT64, total_cost INT64>>[unknown order:
+  {1010, 1020, 15400},
+  {1010, 1020, 15500},
+  {1010, 1020, 15500},
+  {1010, 1030, 45400},
+  {1010, 1030, 45500},
+  {1010, 1030, 45500}
+]
+==
+[name=subpath_without_cost_any_cheapest]
+[required_features=SQL_GRAPH,SQL_GRAPH_ADVANCED_QUERY,SQL_GRAPH_BOUNDED_PATH_QUANTIFICATION,SQL_GRAPH_CHEAPEST_PATH]
+graph aml
+match any cheapest (a:Account {account_id:1010})-[e1 IS Transfer COST e1.amount]->{1,2}(-[e2:Transfer WHERE e2.amount <= 100]->)(d:Account)
+return count(*) as num_partitions
+--
+ARRAY<STRUCT<num_partitions INT64>>[{1}]
+==
+[name=quantified_subpath_without_cost_any_cheapest]
+[required_features=SQL_GRAPH,SQL_GRAPH_ADVANCED_QUERY,SQL_GRAPH_BOUNDED_PATH_QUANTIFICATION,SQL_GRAPH_CHEAPEST_PATH]
+graph aml
+match any cheapest (a:Account {account_id:1010})-[e1 IS Transfer COST e1.amount]->{1,2}(-[e2:Transfer cost 100]->(n)-[e3:Transfer WHERE e3.amount <= 100]->){1,2}(d:Account)
+return count(*) as num_partitions
+--
+ARRAY<STRUCT<num_partitions INT64>>[{1}]
+==
+[name=simple_path_cost_without_cheapest_optional_columns]
+[required_features=SQL_GRAPH,SQL_GRAPH_ADVANCED_QUERY,SQL_GRAPH_CHEAPEST_PATH,SQL_GRAPH_EXPOSE_GRAPH_ELEMENT]
+select a.account_id as aid, b.account_id as bid, c.account_id as cid, 0.90 * ABS(e1.amount) + e2.amount + 1000 as total_cost from graph_table(
+aml
+match (a:Account {account_id:1010})-[e1 IS Transfer COST 0.90 * ABS(e1.amount)]->(b:Account)-[e2 IS Transfer COST e2.amount + 1000]->(c:Account)
+)
+order by aid, bid, cid, total_cost
+--
+ARRAY<STRUCT<aid INT64, bid INT64, cid INT64, total_cost DOUBLE>>[known order:
+  {1010, 1010, 1010, 2140},
+  {1010, 1010, 1020, 1640},
+  {1010, 1010, 1020, 1740},
+  {1010, 1020, 1030, 1390},
+  {1010, 1020, 1030, 1480},
+  {1010, 1020, 1030, 1490},
+  {1010, 1020, 1030, 1580}
+]
+==
+[name=simple_path_cost_any_cheapest_optional_columns]
+[required_features=SQL_GRAPH,SQL_GRAPH_ADVANCED_QUERY,SQL_GRAPH_CHEAPEST_PATH,SQL_GRAPH_EXPOSE_GRAPH_ELEMENT]
+select a.account_id as aid, b.account_id as bid, c.account_id as cid, 0.90 * ABS(e1.amount) + e2.amount + 1000 as total_cost from graph_table(
+aml
+match any cheapest (a:Account {account_id:1010})-[e1 IS Transfer COST 0.90 * ABS(e1.amount)]->(b:Account)-[e2 IS Transfer COST e2.amount + 1000]->(c:Account)
+)
+order by aid, bid, cid, total_cost
+--
+ARRAY<STRUCT<aid INT64, bid INT64, cid INT64, total_cost DOUBLE>>[known order:
+  {1010, 1010, 1010, 2140},
+  {1010, 1010, 1020, 1640},
+  {1010, 1020, 1030, 1390}
+]
+==
+[name=simple_path_cost_cheapest_k_optional_columns]
+[required_features=SQL_GRAPH,SQL_GRAPH_ADVANCED_QUERY,SQL_GRAPH_CHEAPEST_PATH,SQL_GRAPH_PATH_SEARCH_PREFIX_PATH_COUNT,SQL_GRAPH_EXPOSE_GRAPH_ELEMENT]
+select a.account_id as aid, b.account_id as bid, c.account_id as cid, 0.90 * ABS(e1.amount) + e2.amount + 1000 as total_cost from graph_table(
+aml
+match cheapest 2 (a:Account {account_id:1010})-[e1 IS Transfer COST 0.90 * ABS(e1.amount)]->(b:Account)-[e2 IS Transfer COST e2.amount + 1000]->(c:Account)
+)
+order by aid, bid, cid, total_cost
+--
+ARRAY<STRUCT<aid INT64, bid INT64, cid INT64, total_cost DOUBLE>>[known order:
+  {1010, 1010, 1010, 2140},
+  {1010, 1010, 1020, 1640},
+  {1010, 1010, 1020, 1740},
+  {1010, 1020, 1030, 1390},
+  {1010, 1020, 1030, 1480}
+]
+==
+[name=mixed_edges_without_cheapest_optional_columns]
+[required_features=SQL_GRAPH,SQL_GRAPH_ADVANCED_QUERY,SQL_GRAPH_BOUNDED_PATH_QUANTIFICATION,SQL_GRAPH_CHEAPEST_PATH,SQL_GRAPH_EXPOSE_GRAPH_ELEMENT]
+select a.account_id as aid, d.account_id as did, array_length(e1)*100 + array_length(e3)*1000 + e2.amount as total_cost from graph_table(
+aml
+match (a:Account {account_id:1010})-[e1 IS Transfer where e1.amount < 500 COST 100]->{1,2}(b:Account {account_id:1030})-[e2 IS Transfer COST e2.amount]->(-[e3:Transfer WHERE e3.amount < 500 COST 1000]->){1,2}(d:Account)
+)
+order by aid, did
+--
+ARRAY<STRUCT<aid INT64, did INT64, total_cost INT64>>[known order:
+  {1010, 1020, 1700},
+  {1010, 1020, 1700},
+  {1010, 1020, 1700},
+  {1010, 1020, 1700},
+  {1010, 1020, 1700},
+  {1010, 1020, 1700},
+  {1010, 1020, 1700},
+  {1010, 1020, 1700},
+  {1010, 1030, 2700},
+  {1010, 1030, 2700},
+  {1010, 1030, 2700},
+  {1010, 1030, 2700},
+  {1010, 1030, 2700},
+  {1010, 1030, 2700},
+  {1010, 1030, 2700},
+  {1010, 1030, 2700},
+  {1010, 1030, 2700},
+  {1010, 1030, 2700},
+  {1010, 1030, 2700},
+  {1010, 1030, 2700},
+  {1010, 1030, 2700},
+  {1010, 1030, 2700},
+  {1010, 1030, 2700},
+  {1010, 1030, 2700}
+]
+==
+[name=mixed_edges_any_cheapest_optional_columns]
+[required_features=SQL_GRAPH,SQL_GRAPH_ADVANCED_QUERY,SQL_GRAPH_BOUNDED_PATH_QUANTIFICATION,SQL_GRAPH_CHEAPEST_PATH,SQL_GRAPH_EXPOSE_GRAPH_ELEMENT]
+select a.account_id as aid, d.account_id as did from graph_table(
+aml
+match any cheapest (a:Account {account_id:1010})-[e1 IS Transfer where e1.amount < 500 COST e1.amount]->{1,2}(b:Account {account_id:1030})-[e2 IS Transfer COST e2.amount * 10]->(-[e3:Transfer WHERE e3.amount < 500 COST e3.amount * 100]->){1,2}(d:Account))
+order by aid, did
+--
+ARRAY<STRUCT<aid INT64, did INT64>>[known order:{1010, 1020}, {1010, 1030}]
+==
+[name=simple_path_cost_without_cheapest_with_path_variable]
+[required_features=SQL_GRAPH,SQL_GRAPH_ADVANCED_QUERY,SQL_GRAPH_CHEAPEST_PATH,SQL_GRAPH_PATH_TYPE]
+graph aml
+match p = (a:Account {account_id:1010})-[e1 IS Transfer COST 0.90 * ABS(e1.amount)]->(b:Account)-[e2 IS Transfer COST e2.amount + 1000]->(c:Account)
+return a.account_id as aid, b.account_id as bid, c.account_id as cid, 0.90 * ABS(e1.amount) + e2.amount + 1000 as total_cost
+order by aid, bid, cid, total_cost
+--
+ARRAY<STRUCT<aid INT64, bid INT64, cid INT64, total_cost DOUBLE>>[unknown order:
+  {1010, 1010, 1010, 2140},
+  {1010, 1010, 1020, 1640},
+  {1010, 1010, 1020, 1740},
+  {1010, 1020, 1030, 1390},
+  {1010, 1020, 1030, 1480},
+  {1010, 1020, 1030, 1490},
+  {1010, 1020, 1030, 1580}
+]
+==
+[name=simple_path_cost_any_cheapest_with_path_variable]
+[required_features=SQL_GRAPH,SQL_GRAPH_ADVANCED_QUERY,SQL_GRAPH_CHEAPEST_PATH,SQL_GRAPH_PATH_TYPE]
+graph aml
+match p = any cheapest (a:Account {account_id:1010})-[e1 IS Transfer COST 0.90 * ABS(e1.amount)]->(b:Account)-[e2 IS Transfer COST e2.amount + 1000]->(c:Account)
+return a.account_id as aid, b.account_id as bid, c.account_id as cid, 0.90 * ABS(e1.amount) + e2.amount + 1000 as total_cost
+order by aid, bid, cid, total_cost
+--
+ARRAY<STRUCT<aid INT64, bid INT64, cid INT64, total_cost DOUBLE>>[unknown order:
+  {1010, 1010, 1010, 2140},
+  {1010, 1010, 1020, 1640},
+  {1010, 1020, 1030, 1390}
+]
+==
+[name=simple_path_cost_cheapest_k_with_path_variable]
+[required_features=SQL_GRAPH,SQL_GRAPH_ADVANCED_QUERY,SQL_GRAPH_CHEAPEST_PATH,SQL_GRAPH_PATH_SEARCH_PREFIX_PATH_COUNT,SQL_GRAPH_PATH_TYPE]
+graph aml
+match p = cheapest 2 (a:Account {account_id:1010})-[e1 IS Transfer COST 0.90 * ABS(e1.amount)]->(b:Account)-[e2 IS Transfer COST e2.amount + 1000]->(c:Account)
+return a.account_id as aid, b.account_id as bid, c.account_id as cid, 0.90 * ABS(e1.amount) + e2.amount + 1000 as total_cost
+order by aid, bid, cid, total_cost
+--
+ARRAY<STRUCT<aid INT64, bid INT64, cid INT64, total_cost DOUBLE>>[unknown order:
+  {1010, 1010, 1010, 2140},
+  {1010, 1010, 1020, 1640},
+  {1010, 1010, 1020, 1740},
+  {1010, 1020, 1030, 1390},
+  {1010, 1020, 1030, 1480}
+]
+==
+[name=simple_quantified_path_cost_without_cheapest_with_path_variable]
+[required_features=SQL_GRAPH,SQL_GRAPH_ADVANCED_QUERY,SQL_GRAPH_BOUNDED_PATH_QUANTIFICATION,ARRAY_AGGREGATION_FUNCTIONS,V_1_3_UNNEST_AND_FLATTEN_ARRAYS,SQL_GRAPH_CHEAPEST_PATH,SQL_GRAPH_PATH_TYPE]
+graph aml
+match p = (a:Account {account_id:1010})-[e IS Transfer WHERE e.amount > 1 COST e.amount]->{1,3}(b:Account)
+let amounts = flatten(e.amount)
+return a.account_id as aid, b.account_id as bid, array_length(amounts) as len, array_sum(amounts) as total_cost
+order by aid, bid, total_cost
+--
+ARRAY<STRUCT<aid INT64, bid INT64, len INT64, total_cost INT64>>[unknown order:
+  {1010, 1010, 1, 600},
+  {1010, 1010, 3, 900},
+  {1010, 1010, 3, 1000},
+  {1010, 1010, 3, 1000},
+  {1010, 1010, 3, 1100},
+  {1010, 1010, 2, 1200},
+  {1010, 1010, 3, 1800},
+  {1010, 1020, 1, 100},
+  {1010, 1020, 1, 200},
+  {1010, 1020, 2, 700},
+  {1010, 1020, 2, 800},
+  {1010, 1020, 3, 1300},
+  {1010, 1020, 3, 1400},
+  {1010, 1030, 2, 400},
+  {1010, 1030, 2, 500},
+  {1010, 1030, 2, 500},
+  {1010, 1030, 2, 600},
+  {1010, 1030, 3, 1000},
+  {1010, 1030, 3, 1100},
+  {1010, 1030, 3, 1100},
+  {1010, 1030, 3, 1200}
+]
+==
+[name=simple_quantified_path_cost_any_cheapest_with_path_variable]
+[required_features=SQL_GRAPH,SQL_GRAPH_ADVANCED_QUERY,SQL_GRAPH_BOUNDED_PATH_QUANTIFICATION,ARRAY_AGGREGATION_FUNCTIONS,V_1_3_UNNEST_AND_FLATTEN_ARRAYS,SQL_GRAPH_CHEAPEST_PATH,SQL_GRAPH_PATH_TYPE]
+graph aml
+match p = any cheapest (a:Account {account_id:1010})-[e IS Transfer WHERE e.amount > 1 COST e.amount]->{1,3}(b:Account)
+let amounts = flatten(e.amount)
+return a.account_id as aid, b.account_id as bid, array_length(amounts) as len, array_sum(amounts) as total_cost
+order by aid, bid, total_cost
+--
+ARRAY<STRUCT<aid INT64, bid INT64, len INT64, total_cost INT64>>[unknown order:
+  {1010, 1010, 1, 600},
+  {1010, 1020, 1, 100},
+  {1010, 1030, 2, 400}
+]
+==
+[name=simple_quantified_path_cost_cheapest_k_with_path_variable]
+[required_features=SQL_GRAPH,SQL_GRAPH_ADVANCED_QUERY,SQL_GRAPH_BOUNDED_PATH_QUANTIFICATION,ARRAY_AGGREGATION_FUNCTIONS,V_1_3_UNNEST_AND_FLATTEN_ARRAYS,SQL_GRAPH_CHEAPEST_PATH,SQL_GRAPH_PATH_SEARCH_PREFIX_PATH_COUNT,SQL_GRAPH_PATH_TYPE]
+graph aml
+match p = cheapest 4 (a:Account {account_id:1010})-[e IS Transfer WHERE e.amount > 1 COST e.amount]->{1,3}(b:Account)
+let amounts = flatten(e.amount)
+return a.account_id as aid, b.account_id as bid, array_length(amounts) as len, array_sum(amounts) as total_cost
+order by aid, bid, total_cost
+--
+ARRAY<STRUCT<aid INT64, bid INT64, len INT64, total_cost INT64>>[unknown order:
+  {1010, 1010, 1, 600},
+  {1010, 1010, 3, 900},
+  {1010, 1010, 3, 1000},
+  {1010, 1010, 3, 1000},
+  {1010, 1020, 1, 100},
+  {1010, 1020, 1, 200},
+  {1010, 1020, 2, 700},
+  {1010, 1020, 2, 800},
+  {1010, 1030, 2, 400},
+  {1010, 1030, 2, 500},
+  {1010, 1030, 2, 500},
+  {1010, 1030, 2, 600}
+]
+==
+[name=mixed_edges_without_cheapest_with_path_variable]
+[required_features=SQL_GRAPH,SQL_GRAPH_ADVANCED_QUERY,SQL_GRAPH_BOUNDED_PATH_QUANTIFICATION,SQL_GRAPH_CHEAPEST_PATH,SQL_GRAPH_PATH_TYPE]
+graph aml
+match p = (a:Account {account_id:1010})-[e1 IS Transfer where e1.amount < 500 COST 100]->{1,2}(b:Account {account_id:1030})-[e2 IS Transfer COST e2.amount]->(-[e3:Transfer WHERE e3.amount < 500 COST 1000]->){1,2}(d:Account)
+return a.account_id as aid, d.account_id as did, array_length(e1)*100 + array_length(e3)*1000 + e2.amount as total_cost
+order by aid, did
+--
+ARRAY<STRUCT<aid INT64, did INT64, total_cost INT64>>[unknown order:
+  {1010, 1020, 1700},
+  {1010, 1020, 1700},
+  {1010, 1020, 1700},
+  {1010, 1020, 1700},
+  {1010, 1020, 1700},
+  {1010, 1020, 1700},
+  {1010, 1020, 1700},
+  {1010, 1020, 1700},
+  {1010, 1030, 2700},
+  {1010, 1030, 2700},
+  {1010, 1030, 2700},
+  {1010, 1030, 2700},
+  {1010, 1030, 2700},
+  {1010, 1030, 2700},
+  {1010, 1030, 2700},
+  {1010, 1030, 2700},
+  {1010, 1030, 2700},
+  {1010, 1030, 2700},
+  {1010, 1030, 2700},
+  {1010, 1030, 2700},
+  {1010, 1030, 2700},
+  {1010, 1030, 2700},
+  {1010, 1030, 2700},
+  {1010, 1030, 2700}
+]
+==
+[name=mixed_edges_any_cheapest_with_path_variable]
+[required_features=SQL_GRAPH,SQL_GRAPH_ADVANCED_QUERY,SQL_GRAPH_BOUNDED_PATH_QUANTIFICATION,SQL_GRAPH_CHEAPEST_PATH,SQL_GRAPH_PATH_TYPE]
+graph aml
+match p = any cheapest (a:Account {account_id:1010})-[e1 IS Transfer where e1.amount < 500 COST e1.amount]->{1,2}(b:Account {account_id:1030})-[e2 IS Transfer COST e2.amount * 10]->(-[e3:Transfer WHERE e3.amount < 500 COST e3.amount * 100]->){1,2}(d:Account)
+return a.account_id as aid, d.account_id as did
+order by aid, did
+--
+ARRAY<STRUCT<aid INT64, did INT64>>[unknown order:{1010, 1020}, {1010, 1030}]
+==
+[name=mixed_edges_cheapest_k_with_path_variable]
+[required_features=SQL_GRAPH,SQL_GRAPH_ADVANCED_QUERY,SQL_GRAPH_BOUNDED_PATH_QUANTIFICATION,SQL_GRAPH_CHEAPEST_PATH,SQL_GRAPH_PATH_SEARCH_PREFIX_PATH_COUNT,SQL_GRAPH_PATH_TYPE]
+graph aml
+match p = cheapest 3 (a:Account {account_id:1010})-[e1 IS Transfer where e1.amount < 500 COST e1.amount]->{1,2}(b:Account {account_id:1030})-[e2 IS Transfer COST e2.amount * 10]->(-[e3:Transfer WHERE e3.amount < 500 COST e3.amount * 100]->){1,2}(d:Account)
+let e1_amounts = sum(e1.amount), e2_amounts = e2.amount * 10, e3_amounts = sum(e3.amount * 100)
+return a.account_id as aid, d.account_id as did, e1_amounts + e2_amounts + e3_amounts as total_cost
+order by aid, did, total_cost
+--
+ARRAY<STRUCT<aid INT64, did INT64, total_cost INT64>>[unknown order:
+  {1010, 1020, 15400},
+  {1010, 1020, 15500},
+  {1010, 1020, 15500},
+  {1010, 1030, 45400},
+  {1010, 1030, 45500},
+  {1010, 1030, 45500}
+]
+==
+[name=subpath_without_cost_any_cheapest_with,SQL_GRAPH_PATH_TYPE]
+[required_features=SQL_GRAPH,SQL_GRAPH_ADVANCED_QUERY,SQL_GRAPH_BOUNDED_PATH_QUANTIFICATION,SQL_GRAPH_CHEAPEST_PATH,SQL_GRAPH_PATH_TYPE]
+graph aml
+match p = any cheapest (a:Account {account_id:1010})-[e1 IS Transfer COST e1.amount]->{1,2}(-[e2:Transfer WHERE e2.amount <= 100]->)(d:Account)
+return count(*) as num_partitions
+--
+ARRAY<STRUCT<num_partitions INT64>>[{1}]
+==
+[name=quantified_subpath_without_cost_any_cheapest_with_path_variable]
+[required_features=SQL_GRAPH,SQL_GRAPH_ADVANCED_QUERY,SQL_GRAPH_BOUNDED_PATH_QUANTIFICATION,SQL_GRAPH_CHEAPEST_PATH,SQL_GRAPH_PATH_TYPE]
+graph aml
+match p = any cheapest (a:Account {account_id:1010})-[e1 IS Transfer COST e1.amount]->{1,2}(-[e2:Transfer cost 100]->(n)-[e3:Transfer WHERE e3.amount <= 100]->){1,2}(d:Account)
+return count(*) as num_partitions
+--
+ARRAY<STRUCT<num_partitions INT64>>[{1}]
+==
+[name=complex_with_multiple_path_factors]
+[required_features=SQL_GRAPH,SQL_GRAPH_ADVANCED_QUERY,SQL_GRAPH_BOUNDED_PATH_QUANTIFICATION,SQL_GRAPH_PATH_SEARCH_PREFIX_PATH_COUNT,SQL_GRAPH_CHEAPEST_PATH]
+graph aml
+match any cheapest (a:Account {account_id:1010})-[e1 IS Transfer where e1.amount < 500 COST e1.amount]->{1,2}(b:Account {account_id:1030})-[e2 IS Transfer COST e2.amount * 10]->(-[e3:Transfer WHERE e3.amount < 500 COST e3.amount * 100]->){1,2}(d:Account),
+      cheapest 4 (a7:Account {account_id:1010})-[e7 IS Transfer WHERE e7.amount > 1 COST e7.amount]->{1,3}(b7:Account)
+return count(*) as num_rows
+--
+ARRAY<STRUCT<num_rows INT64>>[{24}]
+==
+[name=complex_with_multiple_path_factors_with_path_variable]
+[required_features=SQL_GRAPH,SQL_GRAPH_ADVANCED_QUERY,SQL_GRAPH_BOUNDED_PATH_QUANTIFICATION,SQL_GRAPH_PATH_SEARCH_PREFIX_PATH_COUNT,SQL_GRAPH_CHEAPEST_PATH,SQL_GRAPH_PATH_TYPE]
+graph aml
+match p = any cheapest (a:Account {account_id:1010})-[e1 IS Transfer where e1.amount < 500 COST e1.amount]->{1,2}(b:Account {account_id:1030})-[e2 IS Transfer COST e2.amount * 10]->(-[e3:Transfer WHERE e3.amount < 500 COST e3.amount * 100]->){1,2}(d:Account),
+      q = cheapest 4 (a7:Account {account_id:1010})-[e7 IS Transfer WHERE e7.amount > 1 COST e7.amount]->{1,3}(b7:Account)
+let result = path_length(p) + path_length(q)
+return count(distinct result) as num_results
+--
+ARRAY<STRUCT<num_results INT64>>[{4}]
+==
+[name=nested_subpaths]
+[required_features=SQL_GRAPH,SQL_GRAPH_ADVANCED_QUERY,SQL_GRAPH_CHEAPEST_PATH,SQL_GRAPH_PATH_SEARCH_PREFIX_PATH_COUNT]
+graph aml
+match cheapest 100 ((a:Account))(-[b COST IFNULL(b.amount,1)]-)
+return count(*) as num_rows
+--
+ARRAY<STRUCT<num_rows INT64>>[{21}]
+==
+[name=nested_quantified_subpaths]
+[required_features=SQL_GRAPH,SQL_GRAPH_ADVANCED_QUERY,SQL_GRAPH_BOUNDED_PATH_QUANTIFICATION,SQL_GRAPH_CHEAPEST_PATH,SQL_GRAPH_PATH_SEARCH_PREFIX_PATH_COUNT]
+graph aml
+match cheapest 100 ((a))(-[e COST 1]->){1, 3}
+return count(*) as num_rows
+--
+ARRAY<STRUCT<num_rows INT64>>[{159}]
+==
+[name=nested_subpaths_with_path_mode]
+[required_features=SQL_GRAPH,SQL_GRAPH_ADVANCED_QUERY,SQL_GRAPH_CHEAPEST_PATH,SQL_GRAPH_PATH_SEARCH_PREFIX_PATH_COUNT,SQL_GRAPH_PATH_MODE]
+graph aml
+match cheapest 100 (TRAIL (a:Account))(ACYCLIC -[b COST IFNULL(b.amount,1)]-)
+return count(*) as num_rows
+--
+ARRAY<STRUCT<num_rows INT64>>[{20}]
+==
+[name=nested_quantified_subpaths_with_path_mode]
+[required_features=SQL_GRAPH,SQL_GRAPH_ADVANCED_QUERY,SQL_GRAPH_BOUNDED_PATH_QUANTIFICATION,SQL_GRAPH_CHEAPEST_PATH,SQL_GRAPH_PATH_SEARCH_PREFIX_PATH_COUNT,SQL_GRAPH_PATH_MODE]
+graph aml
+match cheapest 100 (TRAIL (a))(ACYCLIC -[e COST 1]->){1, 3}
+return count(*) as num_rows
+--
+ARRAY<STRUCT<num_rows INT64>>[{107}]
+==
+[name=optional_match_with_cheapest_k]
+[required_features=SQL_GRAPH,SQL_GRAPH_ADVANCED_QUERY,SQL_GRAPH_CHEAPEST_PATH,SQL_GRAPH_PATH_SEARCH_PREFIX_PATH_COUNT]
+graph aml
+OPTIONAL MATCH CHEAPEST 100 -[e COST (select 1 limit 1)]->
+MATCH SHORTEST 50 (a)-[b:Transfer cost b.amount + 1]->(c), CHEAPEST 70 (x)-[y:Transfer cost abs(y.amount)]->(z)
+return count(*) as num_rows
+--
+ARRAY<STRUCT<num_rows INT64>>[{540}]
+==
+[name=graph_subquery_cost_expression_with_cheapest_k]
+[required_features=SQL_GRAPH,SQL_GRAPH_ADVANCED_QUERY,SQL_GRAPH_CHEAPEST_PATH,SQL_GRAPH_PATH_SEARCH_PREFIX_PATH_COUNT]
+graph aml
+MATCH CHEAPEST 50 (a)-[b:Transfer cost IF(EXISTS {cheapest 100 (x)-[y:Transfer cost abs(y.amount)]->(z)}, 1, 2)]->(c)
+return count(*) as num_rows
+--
+ARRAY<STRUCT<num_rows INT64>>[{6}]

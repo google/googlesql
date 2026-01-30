@@ -1,0 +1,144 @@
+# Tests for truncate statement.
+[default language_features=MAXIMUM]
+TRUNCATE TABLE TestTable;
+--
+TruncateStmt
++-table_scan=
+  +-TableScan(table=TestTable)
+==
+
+TRUNCATE TABLE TestTable WHERE true;
+--
+TruncateStmt
++-table_scan=
+| +-TableScan(table=TestTable)
++-where_expr=
+  +-Literal(type=BOOL, value=true)
+==
+
+TRUNCATE TABLE TestTable
+WHERE NULL;
+--
+TruncateStmt
++-table_scan=
+| +-TableScan(table=TestTable)
++-where_expr=
+  +-Literal(type=BOOL, value=NULL)
+==
+
+TRUNCATE TABLE TestTable WHERE KitchenSink.int32_val = 1
+--
+TruncateStmt
++-table_scan=
+| +-TableScan(column_list=[TestTable.KitchenSink#3], table=TestTable, column_index_list=[2])
++-where_expr=
+  +-FunctionCall(GoogleSQL:$equal(INT32, INT32) -> BOOL)
+    +-GetProtoField
+    | +-type=INT32
+    | +-expr=
+    | | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=TestTable.KitchenSink#3)
+    | +-field_descriptor=int32_val
+    | +-default_value=77
+    +-Literal(type=INT32, value=1)
+==
+
+TRUNCATE TABLE SimpleTypes
+WHERE `int64` IN (select key from KeyValue)
+--
+TruncateStmt
++-table_scan=
+| +-TableScan(column_list=[SimpleTypes.int64#2], table=SimpleTypes, column_index_list=[1])
++-where_expr=
+  +-SubqueryExpr
+    +-type=BOOL
+    +-subquery_type=IN
+    +-in_expr=
+    | +-ColumnRef(type=INT64, column=SimpleTypes.int64#2)
+    +-subquery=
+      +-ProjectScan
+        +-column_list=[KeyValue.Key#20]
+        +-input_scan=
+          +-TableScan(column_list=[KeyValue.Key#20], table=KeyValue, column_index_list=[0])
+==
+
+TRUNCATE TABLE TestTable
+WHERE EXISTS(select 1 from UNNEST(KitchenSink.repeated_int32_val))
+--
+TruncateStmt
++-table_scan=
+| +-TableScan(column_list=[TestTable.KitchenSink#3], table=TestTable, column_index_list=[2])
++-where_expr=
+  +-SubqueryExpr
+    +-type=BOOL
+    +-subquery_type=EXISTS
+    +-parameter_list=
+    | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=TestTable.KitchenSink#3)
+    +-subquery=
+      +-ProjectScan
+        +-column_list=[$expr_subquery.$col1#5]
+        +-expr_list=
+        | +-$col1#5 := Literal(type=INT64, value=1)
+        +-input_scan=
+          +-ArrayScan
+            +-array_expr_list=
+            | +-GetProtoField
+            |   +-type=ARRAY<INT32>
+            |   +-expr=
+            |   | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=TestTable.KitchenSink#3, is_correlated=TRUE)
+            |   +-field_descriptor=repeated_int32_val
+            |   +-default_value=[]
+            +-element_column_list=[$array.$unnest1#4]
+==
+
+# WHERE expresssion should result in a BOOL.
+TRUNCATE TABLE TestTable WHERE 3;
+--
+ERROR: WHERE clause should return type BOOL, but returns INT64 [at 1:32]
+TRUNCATE TABLE TestTable WHERE 3;
+                               ^
+==
+
+TRUNCATE TABLE TestTable.a.b
+--
+ERROR: Table not found: TestTable.a.b [at 1:16]
+TRUNCATE TABLE TestTable.a.b
+               ^
+==
+
+# Tests with a query parameter reference insed the WHERE clause
+TRUNCATE TABLE TestTable WHERE KitchenSink.bool_val = @test_param_bool;
+--
+TruncateStmt
++-table_scan=
+| +-TableScan(column_list=[TestTable.KitchenSink#3], table=TestTable, column_index_list=[2])
++-where_expr=
+  +-FunctionCall(GoogleSQL:$equal(BOOL, BOOL) -> BOOL)
+    +-GetProtoField
+    | +-type=BOOL
+    | +-expr=
+    | | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=TestTable.KitchenSink#3)
+    | +-field_descriptor=bool_val
+    | +-default_value=false
+    +-Parameter(type=BOOL, name="test_param_bool")
+==
+
+TRUNCATE TABLE TestTable WHERE 1 + cast(@test_param_int32 as INT64) = 5;
+--
+TruncateStmt
++-table_scan=
+| +-TableScan(table=TestTable)
++-where_expr=
+  +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+    +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    | +-Literal(type=INT64, value=1)
+    | +-Cast(INT32 -> INT64)
+    |   +-Parameter(type=INT32, name="test_param_int32")
+    +-Literal(type=INT64, value=5)
+==
+
+# Query parameter was not defined.
+TRUNCATE TABLE TestTable WHERE @invalid_param = true;
+--
+ERROR: Query parameter 'invalid_param' not found [at 1:32]
+TRUNCATE TABLE TestTable WHERE @invalid_param = true;
+                               ^

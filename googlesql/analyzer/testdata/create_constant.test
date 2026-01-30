@@ -1,0 +1,391 @@
+# CREATE CONSTANT tests.
+#
+# CREATE CONSTANT statements need to be enabled in order to get resolved.
+# TODO: Enable Java support.
+[default language_features=NONE]
+[default no_java]
+[statement_context=module]
+[supported_statement_kinds=CREATE_FUNCTION]
+CREATE PUBLIC CONSTANT foo = 1;
+--
+ERROR: Statement not supported: CreateConstantStatement [at 1:1]
+CREATE PUBLIC CONSTANT foo = 1;
+^
+==
+
+# CREATE CONSTANT outside of a module resolves correctly.
+[supported_statement_kinds=CREATE_CONSTANT]
+CREATE CONSTANT foo = 1;
+--
+CreateConstantStmt
++-name_path=foo
++-expr=
+  +-Literal(type=INT64, value=1)
+==
+
+# CREATE CONSTANT outside of a module resolves correctly.
+[supported_statement_kinds=CREATE_CONSTANT]
+CREATE CONSTANT foo = @test_param_int64;
+--
+CreateConstantStmt
++-name_path=foo
++-expr=
+  +-Parameter(type=INT64, name="test_param_int64")
+==
+
+# CREATE CONSTANT statements outside of a module requires TEMPORARY or DEFAULT
+# scope.
+[supported_statement_kinds=CREATE_CONSTANT]
+CREATE PUBLIC CONSTANT foo = 1;
+--
+ERROR: CREATE CONSTANT with PUBLIC or PRIVATE modifiers is not supported [at 1:1]
+CREATE PUBLIC CONSTANT foo = 1;
+^
+==
+
+# CREATE CONSTANT statements within modules require either PRIVATE or PUBLIC.
+[statement_context=module]
+[supported_statement_kinds=CREATE_CONSTANT]
+CREATE CONSTANT foo = 1;
+--
+ERROR: CREATE CONSTANT requires the PUBLIC or PRIVATE modifier when used inside a module [at 1:1]
+CREATE CONSTANT foo = 1;
+^
+==
+
+# CREATE CONSTANT statements must not use TEMP within modules.
+[statement_context=module]
+[supported_statement_kinds=CREATE_CONSTANT]
+CREATE TEMP CONSTANT foo = 1;
+--
+ERROR: CREATE CONSTANT requires the PUBLIC or PRIVATE modifier when used inside a module [at 1:1]
+CREATE TEMP CONSTANT foo = 1;
+^
+==
+
+# CREATE OR REPLACE CONSTANT outside of a module resolves correctly.
+[supported_statement_kinds=CREATE_CONSTANT]
+CREATE OR REPLACE CONSTANT foo = 1;
+--
+CreateConstantStmt
++-name_path=foo
++-create_mode=CREATE_OR_REPLACE
++-expr=
+  +-Literal(type=INT64, value=1)
+==
+
+# CREATE CONSTANT statements must not use OR REPLACE within modules.
+[statement_context=module]
+[supported_statement_kinds=CREATE_CONSTANT]
+CREATE OR REPLACE PUBLIC CONSTANT foo = 1;
+--
+ERROR: Modules do not support CREATE OR REPLACE for CREATE CONSTANT [at 1:1]
+CREATE OR REPLACE PUBLIC CONSTANT foo = 1;
+^
+==
+
+# CREATE CONSTANT IF NOT EXISTS outside of a module resolves correctly.
+[supported_statement_kinds=CREATE_CONSTANT]
+CREATE CONSTANT IF NOT EXISTS foo = 1;
+--
+CreateConstantStmt
++-name_path=foo
++-create_mode=CREATE_IF_NOT_EXISTS
++-expr=
+  +-Literal(type=INT64, value=1)
+==
+
+# CREATE CONSTANT statements must not use IF NOT EXISTS within modules.
+[statement_context=module]
+[supported_statement_kinds=CREATE_CONSTANT]
+CREATE PUBLIC CONSTANT IF NOT EXISTS foo = 1;
+--
+ERROR: Modules do not support IF NOT EXISTS for CREATE CONSTANT [at 1:1]
+CREATE PUBLIC CONSTANT IF NOT EXISTS foo = 1;
+^
+==
+
+# CREATE CONSTANT statements within modules resolve correctly.
+[statement_context=module]
+[supported_statement_kinds=CREATE_CONSTANT]
+CREATE {{PUBLIC|PRIVATE}} CONSTANT foo = 1 + 2;
+--
+ALTERNATION GROUP: PUBLIC
+--
+CreateConstantStmt
++-name_path=foo
++-create_scope=CREATE_PUBLIC
++-expr=
+  +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    +-Literal(type=INT64, value=1)
+    +-Literal(type=INT64, value=2)
+--
+ALTERNATION GROUP: PRIVATE
+--
+CreateConstantStmt
++-name_path=foo
++-create_scope=CREATE_PRIVATE
++-expr=
+  +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    +-Literal(type=INT64, value=1)
+    +-Literal(type=INT64, value=2)
+==
+
+# CREATE CONSTANT statements with a name path of length > 1 are not allowed
+# inside modules.
+[statement_context=module]
+[supported_statement_kinds=CREATE_CONSTANT]
+CREATE PRIVATE CONSTANT a.b = 1 + 2;
+--
+ERROR: Modules do not support creating functions with multi-part names or in nested catalogs: a.b [at 1:1]
+CREATE PRIVATE CONSTANT a.b = 1 + 2;
+^
+==
+
+# CREATE CONSTANT with a name path of length > 1 outside of a module resolves correctly.
+[supported_statement_kinds=CREATE_CONSTANT]
+CREATE CONSTANT a.b = 1 + 2;
+--
+CreateConstantStmt
++-name_path=a.b
++-expr=
+  +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    +-Literal(type=INT64, value=1)
+    +-Literal(type=INT64, value=2)
+==
+
+# CREATE CONSTANT statements can reference tables inside modules, although
+# typically no tables are in scope. However, this is decided by the catalog, not
+# the resolver.
+[statement_context=module]
+[supported_statement_kinds=CREATE_CONSTANT]
+CREATE PUBLIC CONSTANT a = (select 1 as foo from KeyValue);
+--
+CreateConstantStmt
++-name_path=a
++-create_scope=CREATE_PUBLIC
++-expr=
+  +-SubqueryExpr
+    +-type=INT64
+    +-subquery_type=SCALAR
+    +-subquery=
+      +-ProjectScan
+        +-column_list=[$expr_subquery.foo#3]
+        +-expr_list=
+        | +-foo#3 := Literal(type=INT64, value=1)
+        +-input_scan=
+          +-TableScan(table=KeyValue)
+==
+
+# CREATE CONSTANT statements which reference query parameters are disallowed in
+# modules. No parameters are in scope inside modules, and there is ambiguity as
+# to when the query parameter should be resolved during query execution.
+[statement_context=module]
+[supported_statement_kinds=CREATE_CONSTANT]
+[parameter_mode=named]
+CREATE PRIVATE CONSTANT a = @test_param_bool;
+--
+ERROR: Query parameters cannot be used inside modules [at 1:29]
+CREATE PRIVATE CONSTANT a = @test_param_bool;
+                            ^
+==
+
+# Same for positional parameters.
+[statement_context=module]
+[supported_statement_kinds=CREATE_CONSTANT]
+[parameter_mode=positional]
+CREATE PRIVATE CONSTANT a = ?;
+--
+ERROR: Query parameters cannot be used inside modules [at 1:29]
+CREATE PRIVATE CONSTANT a = ?;
+                            ^
+==
+
+# CREATE CONSTANT statements that reference another known constant resolve
+# correctly.
+[statement_context=module]
+[supported_statement_kinds=CREATE_CONSTANT]
+CREATE PRIVATE CONSTANT a = 1 + TestConstantInt64;
+--
+CreateConstantStmt
++-name_path=a
++-create_scope=CREATE_PRIVATE
++-expr=
+  +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    +-Literal(type=INT64, value=1)
+    +-Constant(TestConstantInt64, type=INT64, value=1)
+==
+
+# CREATE CONSTANT statements that reference an unknown constant are rejected.
+[statement_context=module]
+[supported_statement_kinds=CREATE_CONSTANT]
+CREATE PRIVATE CONSTANT a = 1 + UnknownConstant;
+--
+ERROR: Unrecognized name: UnknownConstant [at 1:33]
+CREATE PRIVATE CONSTANT a = 1 + UnknownConstant;
+                                ^
+==
+
+# Self-referencing CREATE CONSTANT statements involving new constants are
+# rejected.
+[statement_context=module]
+[supported_statement_kinds=CREATE_CONSTANT]
+CREATE PRIVATE CONSTANT a = 1 + a;
+--
+ERROR: Unrecognized name: a [at 1:33]
+CREATE PRIVATE CONSTANT a = 1 + a;
+                                ^
+==
+
+# Self-referencing CREATE CONSTANT statements involving existing constants are
+# not yet rejected.
+# TODO: Test this with nested catalogs outside modules.
+[statement_context=module]
+[supported_statement_kinds=CREATE_CONSTANT]
+CREATE PRIVATE CONSTANT TestConstantInt64 = 1 + TestConstantInt64
+--
+CreateConstantStmt
++-name_path=TestConstantInt64
++-create_scope=CREATE_PRIVATE
++-expr=
+  +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    +-Literal(type=INT64, value=1)
+    +-Constant(TestConstantInt64, type=INT64, value=1)
+==
+
+# CREATE CONSTANT statements which call built-in functions resolve correctly.
+[statement_context=module]
+[supported_statement_kinds=CREATE_CONSTANT]
+CREATE PRIVATE CONSTANT a = 1 + RAND();
+--
+CreateConstantStmt
++-name_path=a
++-create_scope=CREATE_PRIVATE
++-expr=
+  +-FunctionCall(GoogleSQL:$add(DOUBLE, DOUBLE) -> DOUBLE)
+    +-Literal(type=DOUBLE, value=1)
+    +-FunctionCall(GoogleSQL:rand() -> DOUBLE)
+==
+
+# CREATE CONSTANT statements of type STRUCT resolve correctly.
+[statement_context=module]
+[supported_statement_kinds=CREATE_CONSTANT]
+CREATE PRIVATE CONSTANT bundled_constants =
+  IF(nested_catalog.TestConstantBool,
+     STRUCT<a INT64, b STRING, c BOOL>(1, "foo", false),
+     STRUCT<a INT64, b STRING, c BOOL>(-2, "bar", true));
+--
+CreateConstantStmt
++-name_path=bundled_constants
++-create_scope=CREATE_PRIVATE
++-expr=
+  +-FunctionCall(GoogleSQL:if(BOOL, STRUCT<a INT64, b STRING, c BOOL>, STRUCT<a INT64, b STRING, c BOOL>) -> STRUCT<a INT64, b STRING, c BOOL>)
+    +-Constant(nested_catalog.TestConstantBool, type=BOOL, value=false)
+    +-Literal(type=STRUCT<a INT64, b STRING, c BOOL>, value={a:1, b:"foo", c:false}, has_explicit_type=TRUE)
+    +-Literal(type=STRUCT<a INT64, b STRING, c BOOL>, value={a:-2, b:"bar", c:true}, has_explicit_type=TRUE)
+==
+
+# CREATE CONSTANT statements of type PROTO resolve correctly.
+[statement_context=module]
+[supported_statement_kinds=CREATE_CONSTANT]
+CREATE PRIVATE CONSTANT a = CAST("" AS `googlesql_test.EmptyMessage`);
+--
+CreateConstantStmt
++-name_path=a
++-create_scope=CREATE_PRIVATE
++-expr=
+  +-Cast(STRING -> PROTO<googlesql_test.EmptyMessage>)
+    +-Literal(type=STRING, value="")
+==
+
+# CREATE CONSTANT statements of type ENUM resolve correctly.
+[statement_context=module]
+[supported_statement_kinds=CREATE_CONSTANT]
+CREATE PRIVATE CONSTANT a = CAST("TESTENUM0" AS `googlesql_test.TestEnum`);
+--
+CreateConstantStmt
++-name_path=a
++-create_scope=CREATE_PRIVATE
++-expr=
+  +-Literal(type=ENUM<googlesql_test.TestEnum>, value=TESTENUM0, has_explicit_type=TRUE)
+==
+
+# CREATE CONSTANT statements of type ARRAY resolve correctly.
+[statement_context=module]
+[supported_statement_kinds=CREATE_CONSTANT]
+CREATE PRIVATE CONSTANT a = ARRAY<`googlesql_test.KitchenSinkPB`>[]
+--
+CreateConstantStmt
++-name_path=a
++-create_scope=CREATE_PRIVATE
++-expr=
+  +-Literal(type=ARRAY<PROTO<googlesql_test.KitchenSinkPB>>, value=[], has_explicit_type=TRUE)
+==
+
+# CREATE CONSTANT statements with value NULL resolve correctly.
+[statement_context=module]
+[supported_statement_kinds=CREATE_CONSTANT]
+CREATE PRIVATE CONSTANT a = CAST(NULL AS INT64);
+--
+CreateConstantStmt
++-name_path=a
++-create_scope=CREATE_PRIVATE
++-expr=
+  +-Literal(type=INT64, value=NULL, has_explicit_type=TRUE)
+
+==
+
+# The resolution of the CREATE statement doesn't actually add anything to any
+# catalog, or look for conflicts. So it doesn't matter that the test catalog
+# already contains a named constant TestConstantInt64.
+[statement_context=module]
+[supported_statement_kinds=CREATE_CONSTANT]
+CREATE {{PRIVATE|PUBLIC}} CONSTANT TestConstantInt64 = {{1|0|"foo"}}
+--
+ALTERNATION GROUP: PRIVATE,1
+--
+CreateConstantStmt
++-name_path=TestConstantInt64
++-create_scope=CREATE_PRIVATE
++-expr=
+  +-Literal(type=INT64, value=1)
+--
+ALTERNATION GROUP: PRIVATE,0
+--
+CreateConstantStmt
++-name_path=TestConstantInt64
++-create_scope=CREATE_PRIVATE
++-expr=
+  +-Literal(type=INT64, value=0)
+--
+ALTERNATION GROUP: PRIVATE,"foo"
+--
+CreateConstantStmt
++-name_path=TestConstantInt64
++-create_scope=CREATE_PRIVATE
++-expr=
+  +-Literal(type=STRING, value="foo")
+--
+ALTERNATION GROUP: PUBLIC,1
+--
+CreateConstantStmt
++-name_path=TestConstantInt64
++-create_scope=CREATE_PUBLIC
++-expr=
+  +-Literal(type=INT64, value=1)
+--
+ALTERNATION GROUP: PUBLIC,0
+--
+CreateConstantStmt
++-name_path=TestConstantInt64
++-create_scope=CREATE_PUBLIC
++-expr=
+  +-Literal(type=INT64, value=0)
+--
+ALTERNATION GROUP: PUBLIC,"foo"
+--
+CreateConstantStmt
++-name_path=TestConstantInt64
++-create_scope=CREATE_PUBLIC
++-expr=
+  +-Literal(type=STRING, value="foo")

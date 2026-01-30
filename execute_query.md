@@ -42,10 +42,10 @@ The modes are:
 * `execute`: Executes the query and shows results in a table. In the
   command-line mode, you can also see the results in JSON or textproto format
   using the `--output_mode` flag.
-* `analyze`: Shows the resolved AST, as documented in [ZetaSQL Resolved
-  AST](https://github.com/google/zetasql/blob/master/docs/resolved_ast.md)
+* `analyze`: Shows the resolved AST, as documented in [GoogleSQL Resolved
+  AST](https://github.com/google/googlesql/blob/master/docs/resolved_ast.md)
 * `parse`: Shows the parse tree as defined in
-  [ast_node.h](https://github.com/google/zetasql/blob/master/zetasql/parser/ast_node.h)
+  [ast_node.h](https://github.com/google/googlesql/blob/master/googlesql/parser/ast_node.h)
 * `explain`: Shows the evaluator query plan (for execution in the reference
   implementation)
 * `unparse`: Shows the result of converting the parse tree back to SQL
@@ -62,11 +62,11 @@ The following catalogs are supported:
 
 * `none`: An empty catalog with no tables.
 * `sample`: The sample catalog defined in
-  [sample_catalog.cc](https://github.com/google/zetasql/blob/master/zetasql/testdata/sample_catalog.cc),
-  which is used for most [analyzer tests](https://github.com/google/zetasql/tree/master/zetasql/analyzer/testdata).
+  [sample_catalog.cc](https://github.com/google/googlesql/blob/master/googlesql/testdata/sample_catalog.cc),
+  which is used for most [analyzer tests](https://github.com/google/googlesql/tree/master/googlesql/analyzer/testdata).
   These tables do not have any data.
-* `tpch`: A catalog with the standard 
-  [tables](https://github.com/google/zetasql/tree/master/zetasql/examples/tpch/describe.txt)
+* `tpch`: A catalog with the standard
+  [tables](https://github.com/google/googlesql/tree/master/googlesql/examples/tpch/describe.txt)
   from the TPC-H benchmark, with a 1MB dataset.
 
 For example, the `sample` catalog defines the tables `KeyValue` and
@@ -110,5 +110,5 @@ executed.
 ### Example queries
 
 There are some runnable example queries in
-[`zetasql/examples/tpch`](zetasql/examples/tpch) and
-[`zetasql/examples/pipe_queries`](zetasql/examples/pipe_queries).
+[`googlesql/examples/tpch`](googlesql/examples/tpch) and
+[`googlesql/examples/pipe_queries`](googlesql/examples/pipe_queries).

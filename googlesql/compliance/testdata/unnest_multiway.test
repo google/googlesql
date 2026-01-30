@@ -1,0 +1,904 @@
+# This file covers the following dimensions of tests:
+# 1. UNNEST with 2, 3 or 10 arguments.
+# 2. Multiway UNNEST with different ARRAY_ZIP_MODE values in mode argument.
+# 3. NULL input in array or/and mode argument.
+# 4. Empty array argument.
+# 5. Array inputs of the same length or different lengths.
+# 6. Unordered array input in multiway UNNEST.
+# 7. Array inputs of literals or column references, with and without explicit alias.
+# 8. Array inputs with collation, with the same or different collations.
+[default required_features=MULTIWAY_UNNEST]
+[load_proto_files=googlesql/testdata/test_schema.proto]
+[load_proto_names=googlesql_test.KitchenSinkPB]
+
+[name=multiway_unnest_unequal_literal_arrays_default_mode]
+SELECT *
+FROM UNNEST([1,2], [2]) WITH OFFSET
+--
+ARRAY<STRUCT<INT64, INT64, offset INT64>>[unknown order:
+  {1, 2, 0},
+  {2, NULL, 1}
+]
+==
+
+[name=multiway_unnest_unequal_literal_arrays_strict_mode]
+SELECT *
+FROM UNNEST([1,2], ["a"], mode => "STRICT")
+--
+ERROR: generic::out_of_range: Unnested arrays under STRICT mode must have equal lengths
+==
+
+[name=multiway_unnest_unequal_literal_arrays_truncate_mode]
+SELECT *
+FROM UNNEST([1,2], ["a"], mode => "TRUNCATE")
+--
+ARRAY<STRUCT<INT64, STRING>>[{1, "a"}]
+==
+
+[name=multiway_unnest_unequal_literal_arrays_pad_mode]
+SELECT *
+FROM UNNEST([1,2], [1.0], ["a", "b", "c"], mode => "PAD")
+--
+ARRAY<STRUCT<INT64, DOUBLE, STRING>>[unknown order:
+  {1, 1, "a"},
+  {2, NULL, "b"},
+  {NULL, NULL, "c"}
+]
+==
+
+[name=multiway_unnest_unequal_literal_arrays_null_mode]
+SELECT *
+FROM UNNEST([1,2], [1.0], ["a", "b", "c"], mode => CAST(NULL AS ARRAY_ZIP_MODE))
+--
+ERROR: generic::out_of_range: UNNEST does not allow NULL mode argument
+==
+
+[name=multiway_unnest_empty_literal_arrays_default_mode]
+SELECT *
+FROM UNNEST([1,2], []) WITH OFFSET
+--
+ARRAY<STRUCT<INT64, INT64, offset INT64>>[unknown order:
+  {1, NULL, 0},
+  {2, NULL, 1}
+]
+==
+
+[name=multiway_unnest_empty_literal_arrays_strict_mode]
+SELECT *
+FROM UNNEST([1,2], [], mode => "STRICT")
+--
+ERROR: generic::out_of_range: Unnested arrays under STRICT mode must have equal lengths
+==
+
+[name=multiway_unnest_empty_literal_arrays_truncate_mode]
+SELECT *
+FROM UNNEST([1,2], [], mode => "TRUNCATE")
+--
+ARRAY<STRUCT<INT64, INT64>>[]
+==
+
+[name=multiway_unnest_empty_literal_arrays_pad_mode]
+SELECT *
+FROM UNNEST([1,2], [], ["a", "b", "c"], mode => "PAD")
+--
+ARRAY<STRUCT<INT64, INT64, STRING>>[unknown order:
+  {1, NULL, "a"},
+  {2, NULL, "b"},
+  {NULL, NULL, "c"}
+]
+==
+
+[name=multiway_unnest_empty_literal_arrays_null_mode]
+SELECT *
+FROM UNNEST([1,2], [], ["a", "b", "c"], mode => CAST(NULL AS ARRAY_ZIP_MODE))
+--
+ERROR: generic::out_of_range: UNNEST does not allow NULL mode argument
+==
+
+[name=multiway_unnest_one_null_array_default_mode]
+SELECT *
+FROM UNNEST([1,2], CAST(NULL AS ARRAY<STRING>)) WITH OFFSET
+--
+ARRAY<STRUCT<INT64, STRING, offset INT64>>[unknown order:
+  {1, NULL, 0},
+  {2, NULL, 1}
+]
+==
+
+[name=multiway_unnest_one_null_array_strict_mode]
+SELECT *
+FROM UNNEST([1,2], CAST(NULL AS ARRAY<STRING>), mode => "STRICT")
+--
+ERROR: generic::out_of_range: Unnested arrays under STRICT mode must have equal lengths
+==
+
+[name=multiway_unnest_one_null_array_truncate_mode]
+SELECT *
+FROM UNNEST([1,2], CAST(NULL AS ARRAY<STRING>), mode => "TRUNCATE")
+--
+ARRAY<STRUCT<INT64, STRING>>[]
+==
+
+[name=multiway_unnest_one_null_array_pad_mode]
+SELECT *
+FROM UNNEST([1,2], CAST(NULL AS ARRAY<STRING>), ["a", "b", "c"], mode => "PAD")
+--
+ARRAY<STRUCT<INT64, STRING, STRING>>[unknown order:
+  {1, NULL, "a"},
+  {2, NULL, "b"},
+  {NULL, NULL, "c"}
+]
+==
+
+[name=multiway_unnest_one_null_array_null_mode]
+SELECT *
+FROM UNNEST([1,2], CAST(NULL AS ARRAY<STRING>), ["a", "b", "c"], mode => CAST(NULL AS ARRAY_ZIP_MODE))
+--
+ERROR: generic::out_of_range: UNNEST does not allow NULL mode argument
+==
+
+[name=multiway_unnest_all_null_arrays_default_mode]
+SELECT *
+FROM UNNEST(CAST(NULL AS ARRAY<INT64>), CAST(NULL AS ARRAY<STRING>)) WITH OFFSET
+--
+ARRAY<STRUCT<INT64, STRING, offset INT64>>[]
+==
+
+[name=multiway_unnest_all_null_arrays_strict_mode]
+SELECT *
+FROM UNNEST(CAST(NULL AS ARRAY<INT64>), CAST(NULL AS ARRAY<STRING>), mode => "STRICT")
+--
+ARRAY<STRUCT<INT64, STRING>>[]
+==
+
+[name=multiway_unnest_all_null_arrays_truncate_mode]
+SELECT *
+FROM UNNEST(CAST(NULL AS ARRAY<INT64>), CAST(NULL AS ARRAY<STRING>), mode => "TRUNCATE")
+--
+ARRAY<STRUCT<INT64, STRING>>[]
+==
+
+[name=multiway_unnest_all_null_arrays_pad_mode]
+SELECT *
+FROM UNNEST(CAST(NULL AS ARRAY<INT64>), CAST(NULL AS ARRAY<STRING>), CAST(NULL AS ARRAY<DOUBLE>), mode => "PAD")
+--
+ARRAY<STRUCT<INT64, STRING, DOUBLE>>[]
+==
+
+[name=multiway_unnest_all_null_arrays_null_mode]
+SELECT *
+FROM UNNEST(CAST(NULL AS ARRAY<INT64>), CAST(NULL AS ARRAY<STRING>), CAST(NULL AS ARRAY<DOUBLE>), mode => CAST(NULL AS ARRAY_ZIP_MODE))
+--
+ERROR: generic::out_of_range: UNNEST does not allow NULL mode argument
+==
+
+[name=multiway_unnest_all_empty_arrays_strict_mode]
+SELECT *
+FROM UNNEST([], CAST([] AS ARRAY<STRING>), CAST([] AS ARRAY<DOUBLE>), mode => "STRICT")
+--
+ARRAY<STRUCT<INT64, STRING, DOUBLE>>[]
+==
+
+[name=multiway_unnest_aliased_literal_arrays_strict_mode]
+SELECT *
+FROM UNNEST([1,2] AS arr1, ["a"] AS arr2, mode => "STRICT") WITH OFFSET
+--
+ERROR: generic::out_of_range: Unnested arrays under STRICT mode must have equal lengths
+==
+
+[name=multiway_unnest_aliased_literal_arrays_truncate_mode]
+SELECT *
+FROM UNNEST([1,2] AS arr1, ["a"] AS arr2, mode => "TRUNCATE") WITH OFFSET
+--
+ARRAY<STRUCT<arr1 INT64, arr2 STRING, offset INT64>>[{1, "a", 0}]
+==
+
+[name=multiway_unnest_aliased_literal_arrays_pad_mode]
+SELECT *
+FROM UNNEST([1,2] AS arr1, [1.0] AS arr2, ["a", "b", "c"] AS arr3, mode => "PAD") WITH OFFSET
+ORDER BY offset
+--
+ARRAY<STRUCT<arr1 INT64, arr2 DOUBLE, arr3 STRING, offset INT64>>[known order:
+  {1, 1, "a", 0},
+  {2, NULL, "b", 1},
+  {NULL, NULL, "c", 2}
+]
+==
+
+[name=multiway_unnest_aliased_literal_arrays_null_mode]
+SELECT *
+FROM UNNEST([1,2] AS arr1, [1.0] AS arr2, ["a", "b", "c"] AS arr3, mode => CAST(NULL AS ARRAY_ZIP_MODE)) WITH OFFSET
+ORDER BY offset
+--
+ERROR: generic::out_of_range: UNNEST does not allow NULL mode argument
+==
+
+[name=multiway_unnest_arrays_unordered_default_mode]
+WITH T1 AS (
+  SELECT ARRAY_AGG(x) AS unordered_arr1
+  FROM (
+    SELECT 1 AS x
+    UNION ALL
+    SELECT 2 AS x
+    UNION ALL
+    SELECT 3 AS x
+  )
+), T2 AS (
+  SELECT ["hello", "world"] AS arr2
+)
+SELECT COUNT(*)
+FROM T1, T2, UNNEST(
+  T1.unordered_arr1,
+  T2.arr2 AS arr2)
+--
+ARRAY<STRUCT<INT64>>[{3}]
+
+NOTE: Reference implementation reports non-determinism.
+==
+
+[name=multiway_unnest_all_arrays_unordered_default_mode]
+WITH T1 AS (
+  SELECT ARRAY_AGG(x) AS unordered_arr1
+  FROM (
+    SELECT 1 AS x
+    UNION ALL
+    SELECT 2 AS x
+    UNION ALL
+    SELECT 3 AS x
+  )
+), T2 AS (
+  SELECT ARRAY_AGG(y) AS unordered_arr2
+  FROM (
+    SELECT "hello" AS y
+    UNION ALL
+    SELECT "world" AS y
+  )
+)
+SELECT COUNT(*)
+FROM T1, T2, UNNEST(
+  T1.unordered_arr1,
+  T2.unordered_arr2 AS unordered_arr2)
+--
+ARRAY<STRUCT<INT64>>[{3}]
+
+NOTE: Reference implementation reports non-determinism.
+==
+
+[name=multiway_unnest_arrays_unordered_with_offset_default_mode]
+WITH T1 AS (
+  SELECT ARRAY_AGG(x) AS unordered_arr1
+  FROM (
+    SELECT 1 AS x
+    UNION ALL
+    SELECT 2 AS x
+    UNION ALL
+    SELECT 3 AS x
+  )
+), T2 AS (
+  SELECT ["hello", "world"] AS arr2
+)
+SELECT COUNT(*)
+FROM T1, T2, UNNEST(
+  T1.unordered_arr1 AS unordered_arr1,
+  T2.arr2 AS arr2) WITH OFFSET
+--
+ARRAY<STRUCT<INT64>>[{3}]
+
+NOTE: Reference implementation reports non-determinism.
+==
+
+[name=multiway_unnest_three_unequal_arrays_column_ref_default_mode]
+WITH T AS (
+  SELECT ['a', 'b'] AS str_array, [1] AS int64_array, [1.0, 5.0, 10.0] AS double_array
+)
+SELECT *
+FROM T, UNNEST(
+  T.str_array AS arr1,
+  T.int64_array AS arr2,
+  T.double_array AS arr3) WITH OFFSET
+--
+ARRAY<STRUCT<str_array ARRAY<>,
+             int64_array ARRAY<>,
+             double_array ARRAY<>,
+             arr1 STRING,
+             arr2 INT64,
+             arr3 DOUBLE,
+             offset INT64>>
+[unknown order:{
+                 ARRAY<STRING>[known order:"a", "b"],
+                 ARRAY<INT64>[1],
+                 ARRAY<DOUBLE>[known order:1, 5, 10],
+                 "b",
+                 NULL,
+                 5,
+                 1
+               },
+               {
+                 ARRAY<STRING>[known order:"a", "b"],
+                 ARRAY<INT64>[1],
+                 ARRAY<DOUBLE>[known order:1, 5, 10],
+                 "a",
+                 1,
+                 1,
+                 0
+               },
+               {
+                 ARRAY<STRING>[known order:"a", "b"],
+                 ARRAY<INT64>[1],
+                 ARRAY<DOUBLE>[known order:1, 5, 10],
+                 NULL,
+                 NULL,
+                 10,
+                 2
+               }]
+==
+
+[name=multiway_unnest_three_unequal_arrays_column_ref_strict_mode]
+WITH T AS (
+  SELECT ['a', 'b', 'c'] AS str_array, [1, 2, 3] AS int64_array, [1.0, 5.0] AS double_array
+)
+SELECT *
+FROM T, UNNEST(
+  T.str_array AS arr1,
+  T.int64_array AS arr2,
+  T.double_array AS arr3,
+  mode => "STRICT") WITH OFFSET
+--
+ERROR: generic::out_of_range: Unnested arrays under STRICT mode must have equal lengths
+==
+
+[name=multiway_unnest_three_unequal_arrays_column_ref_truncate_mode]
+WITH T AS (
+  SELECT ['a', 'b', 'c'] AS str_array, [1, 2, 3] AS int64_array, [1.0, 5.0] AS double_array
+)
+SELECT *
+FROM T, UNNEST(
+  T.str_array AS arr1,
+  T.int64_array AS arr2,
+  T.double_array AS arr3,
+  mode => "TRUNCATE") WITH OFFSET
+--
+ARRAY<STRUCT<str_array ARRAY<>,
+             int64_array ARRAY<>,
+             double_array ARRAY<>,
+             arr1 STRING,
+             arr2 INT64,
+             arr3 DOUBLE,
+             offset INT64>>
+[unknown order:{
+                 ARRAY<STRING>[known order:"a", "b", "c"],
+                 ARRAY<INT64>[known order:1, 2, 3],
+                 ARRAY<DOUBLE>[known order:1, 5],
+                 "b",
+                 2,
+                 5,
+                 1
+               },
+               {
+                 ARRAY<STRING>[known order:"a", "b", "c"],
+                 ARRAY<INT64>[known order:1, 2, 3],
+                 ARRAY<DOUBLE>[known order:1, 5],
+                 "a",
+                 1,
+                 1,
+                 0
+               }]
+==
+
+[name=multiway_unnest_three_unequal_arrays_column_ref_pad_mode]
+WITH T AS (
+  SELECT ['a', 'b', 'c'] AS str_array, [1, 2, 3] AS int64_array, [1.0, 5.0] AS double_array
+)
+SELECT *
+FROM T, UNNEST(
+  T.str_array AS arr1,
+  T.int64_array AS arr2,
+  T.double_array AS arr3,
+  mode => "PAD") WITH OFFSET
+--
+ARRAY<STRUCT<str_array ARRAY<>,
+             int64_array ARRAY<>,
+             double_array ARRAY<>,
+             arr1 STRING,
+             arr2 INT64,
+             arr3 DOUBLE,
+             offset INT64>>
+[unknown order:{
+                 ARRAY<STRING>[known order:"a", "b", "c"],
+                 ARRAY<INT64>[known order:1, 2, 3],
+                 ARRAY<DOUBLE>[known order:1, 5],
+                 "b",
+                 2,
+                 5,
+                 1
+               },
+               {
+                 ARRAY<STRING>[known order:"a", "b", "c"],
+                 ARRAY<INT64>[known order:1, 2, 3],
+                 ARRAY<DOUBLE>[known order:1, 5],
+                 "a",
+                 1,
+                 1,
+                 0
+               },
+               {
+                 ARRAY<STRING>[known order:"a", "b", "c"],
+                 ARRAY<INT64>[known order:1, 2, 3],
+                 ARRAY<DOUBLE>[known order:1, 5],
+                 "c",
+                 3,
+                 NULL,
+                 2
+               }]
+==
+
+[name=multiway_unnest_three_unequal_arrays_column_ref_null_mode]
+WITH T AS (
+  SELECT ['a', 'b', 'c'] AS str_array, [1, 2, 3] AS int64_array, [1.0, 5.0] AS double_array
+)
+SELECT *
+FROM T, UNNEST(
+  T.str_array AS arr1,
+  T.int64_array AS arr2,
+  T.double_array AS arr3,
+  mode => CAST(NULL AS ARRAY_ZIP_MODE)) WITH OFFSET
+--
+ERROR: generic::out_of_range: UNNEST does not allow NULL mode argument
+==
+
+[name=multiway_unnest_ten_unequal_arrays_column_ref_default_mode]
+WITH T AS (
+  SELECT
+    ['a', 'b'] AS arr1,
+    [1] AS arr2,
+    ARRAY<INT32>[1, 2] AS arr3,
+    ARRAY<UINT32>[1, 2] AS arr4,
+    ARRAY<UINT64>[1, 2] AS arr5,
+    [1.0] AS arr6,
+    [NEW googlesql_test.KitchenSinkPB(1 AS int64_key_1, 2 AS int64_key_2),
+     NEW googlesql_test.KitchenSinkPB(10 AS int64_key_1, 20 AS int64_key_2)] AS arr7,
+    [STRUCT(1, "a")] AS arr8,
+    [b'a', b'b'] AS arr9,
+    [STRUCT(100 AS field1, "st1" AS field2), STRUCT(200 AS field1, "st2" AS field2)] AS arr10,
+)
+SELECT arr1, arr2, arr3, arr4, arr5, arr6, arr7, arr8, arr9, arr10, offset
+FROM T, UNNEST(
+  T.arr1,
+  T.arr2,
+  T.arr3,
+  T.arr4,
+  T.arr5,
+  T.arr6,
+  T.arr7,
+  T.arr8,
+  T.arr9,
+  T.arr10) WITH OFFSET
+--
+ARRAY<STRUCT<
+        arr1 STRING,
+        arr2 INT64,
+        arr3 INT32,
+        arr4 UINT32,
+        arr5 UINT64,
+        arr6 DOUBLE,
+        arr7 PROTO<googlesql_test.KitchenSinkPB>,
+        arr8 STRUCT<INT64, STRING>,
+        arr9 BYTES,
+        arr10 STRUCT<field1 INT64, field2 STRING>,
+        offset INT64
+      >>
+[unknown order:{"b",
+                NULL,
+                2,
+                2,
+                2,
+                NULL,
+                {
+                  int64_key_1: 10
+                  int64_key_2: 20
+                },
+                NULL,
+                b"b",
+                {200, "st2"},
+                1},
+               {"a",
+                1,
+                1,
+                1,
+                1,
+                1,
+                {
+                  int64_key_1: 1
+                  int64_key_2: 2
+                },
+                {1, "a"},
+                b"a",
+                {100, "st1"},
+                0}]
+==
+
+[name=multiway_unnest_ten_unequal_arrays_column_ref_strict_mode]
+WITH T AS (
+  SELECT
+    ['a', 'b'] AS arr1,
+    [1] AS arr2,
+    ARRAY<INT32>[1, 2] AS arr3,
+    ARRAY<UINT32>[1, 2] AS arr4,
+    ARRAY<UINT64>[1, 2] AS arr5,
+    [1.0] AS arr6,
+    [NEW googlesql_test.KitchenSinkPB(1 AS int64_key_1, 2 AS int64_key_2),
+     NEW googlesql_test.KitchenSinkPB(10 AS int64_key_1, 20 AS int64_key_2)] AS arr7,
+    [STRUCT(1, "a")] AS arr8,
+    [b'a', b'b'] AS arr9,
+    [STRUCT(100 AS field1, "st1" AS field2), STRUCT(200 AS field1, "st2" AS field2)] AS arr10,
+)
+SELECT arr1, arr2, arr3, arr4, arr5, arr6, arr7, arr8, arr9, arr10, offset
+FROM T, UNNEST(
+  T.arr1,
+  T.arr2,
+  T.arr3,
+  T.arr4,
+  T.arr5,
+  T.arr6,
+  T.arr7,
+  T.arr8,
+  T.arr9,
+  T.arr10,
+  mode => "STRICT") WITH OFFSET
+--
+ERROR: generic::out_of_range: Unnested arrays under STRICT mode must have equal lengths
+==
+
+[name=multiway_unnest_ten_unequal_arrays_column_ref_truncate_mode]
+WITH T AS (
+  SELECT
+    ['a', 'b'] AS arr1,
+    [1] AS arr2,
+    ARRAY<INT32>[1, 2] AS arr3,
+    ARRAY<UINT32>[1, 2] AS arr4,
+    ARRAY<UINT64>[1, 2] AS arr5,
+    [1.0] AS arr6,
+    [NEW googlesql_test.KitchenSinkPB(1 AS int64_key_1, 2 AS int64_key_2),
+     NEW googlesql_test.KitchenSinkPB(10 AS int64_key_1, 20 AS int64_key_2)] AS arr7,
+    [STRUCT(1, "a")] AS arr8,
+    [b'a', b'b'] AS arr9,
+    [STRUCT(100 AS field1, "st1" AS field2), STRUCT(200 AS field1, "st2" AS field2)] AS arr10,
+)
+SELECT arr1, arr2, arr3, arr4, arr5, arr6, arr7, arr8, arr9, arr10, offset
+FROM T, UNNEST(
+  T.arr1,
+  T.arr2,
+  T.arr3,
+  T.arr4,
+  T.arr5,
+  T.arr6,
+  T.arr7,
+  T.arr8,
+  T.arr9,
+  T.arr10,
+  mode => "TRUNCATE") WITH OFFSET
+--
+ARRAY<STRUCT<
+        arr1 STRING,
+        arr2 INT64,
+        arr3 INT32,
+        arr4 UINT32,
+        arr5 UINT64,
+        arr6 DOUBLE,
+        arr7 PROTO<googlesql_test.KitchenSinkPB>,
+        arr8 STRUCT<INT64, STRING>,
+        arr9 BYTES,
+        arr10 STRUCT<field1 INT64, field2 STRING>,
+        offset INT64
+      >>
+[{"a",
+  1,
+  1,
+  1,
+  1,
+  1,
+  {
+    int64_key_1: 1
+    int64_key_2: 2
+  },
+  {1, "a"},
+  b"a",
+  {100, "st1"},
+  0}]
+==
+
+[name=multiway_unnest_ten_unequal_arrays_column_ref_pad_mode]
+WITH T AS (
+  SELECT
+    ['a', 'b'] AS arr1,
+    [1] AS arr2,
+    ARRAY<INT32>[1, 2] AS arr3,
+    ARRAY<UINT32>[1, 2] AS arr4,
+    ARRAY<UINT64>[1, 2] AS arr5,
+    [1.0] AS arr6,
+    [NEW googlesql_test.KitchenSinkPB(1 AS int64_key_1, 2 AS int64_key_2),
+     NEW googlesql_test.KitchenSinkPB(10 AS int64_key_1, 20 AS int64_key_2)] AS arr7,
+    [STRUCT(1, "a")] AS arr8,
+    [b'a', b'b'] AS arr9,
+    [STRUCT(100 AS field1, "st1" AS field2), STRUCT(200 AS field1, "st2" AS field2)] AS arr10,
+)
+SELECT arr1, arr2, arr3, arr4, arr5, arr6, arr7, arr8, arr9, arr10, offset
+FROM T, UNNEST(
+  T.arr1,
+  T.arr2,
+  T.arr3,
+  T.arr4,
+  T.arr5,
+  T.arr6,
+  T.arr7,
+  T.arr8,
+  T.arr9,
+  T.arr10,
+  mode => "PAD") WITH OFFSET
+--
+ARRAY<STRUCT<
+        arr1 STRING,
+        arr2 INT64,
+        arr3 INT32,
+        arr4 UINT32,
+        arr5 UINT64,
+        arr6 DOUBLE,
+        arr7 PROTO<googlesql_test.KitchenSinkPB>,
+        arr8 STRUCT<INT64, STRING>,
+        arr9 BYTES,
+        arr10 STRUCT<field1 INT64, field2 STRING>,
+        offset INT64
+      >>
+[unknown order:{"b",
+                NULL,
+                2,
+                2,
+                2,
+                NULL,
+                {
+                  int64_key_1: 10
+                  int64_key_2: 20
+                },
+                NULL,
+                b"b",
+                {200, "st2"},
+                1},
+               {"a",
+                1,
+                1,
+                1,
+                1,
+                1,
+                {
+                  int64_key_1: 1
+                  int64_key_2: 2
+                },
+                {1, "a"},
+                b"a",
+                {100, "st1"},
+                0}]
+==
+
+[name=multiway_unnest_ten_unequal_arrays_column_ref_null_mode]
+WITH T AS (
+  SELECT
+    ['a', 'b'] AS arr1,
+    [1] AS arr2,
+    ARRAY<INT32>[1, 2] AS arr3,
+    ARRAY<UINT32>[1, 2] AS arr4,
+    ARRAY<UINT64>[1, 2] AS arr5,
+    [1.0] AS arr6,
+    [NEW googlesql_test.KitchenSinkPB(1 AS int64_key_1, 2 AS int64_key_2),
+     NEW googlesql_test.KitchenSinkPB(10 AS int64_key_1, 20 AS int64_key_2)] AS arr7,
+    [STRUCT(1, "a")] AS arr8,
+    [b'a', b'b'] AS arr9,
+    [STRUCT(100 AS field1, "st1" AS field2), STRUCT(200 AS field1, "st2" AS field2)] AS arr10,
+)
+SELECT arr1, arr2, arr3, arr4, arr5, arr6, arr7, arr8, arr9, arr10, offset
+FROM T, UNNEST(
+  T.arr1,
+  T.arr2,
+  T.arr3,
+  T.arr4,
+  T.arr5,
+  T.arr6,
+  T.arr7,
+  T.arr8,
+  T.arr9,
+  T.arr10,
+  mode => CAST(NULL AS ARRAY_ZIP_MODE)) WITH OFFSET
+--
+ERROR: generic::out_of_range: UNNEST does not allow NULL mode argument
+==
+
+# Zipping literal arrays with equal length, with only one of the arrays having collation.
+[name=multiway_unnest_two_literal_arrays_equal_length_with_collation_strict_mode]
+[required_features=MULTIWAY_UNNEST,ANNOTATION_FRAMEWORK,COLLATION_SUPPORT]
+SELECT arr1 = 'a', arr2 = 'a'
+FROM UNNEST(
+  [COLLATE('a', 'und:ci'), COLLATE('A', 'und:ci'), COLLATE('B', 'und:ci')] AS arr1,
+  ['a', 'A', 'B'] AS arr2,
+  mode => "STRICT"
+) WITH OFFSET
+ORDER BY offset
+--
+ARRAY<STRUCT<BOOL, BOOL>>[known order:
+  {true, true},
+  {true, false},
+  {false, false}
+]
+==
+
+# Zipping literal arrays with different length, with only one of the arrays having collation.
+[name=multiway_unnest_two_literal_arrays_unequal_length_with_collation_truncate_mode]
+[required_features=MULTIWAY_UNNEST,ANNOTATION_FRAMEWORK,COLLATION_SUPPORT]
+SELECT arr1 = 'a', arr2 = 'a'
+FROM UNNEST(
+  [COLLATE('a', 'und:ci'), COLLATE('A', 'und:ci'), COLLATE('B', 'und:ci')] AS arr1,
+  ['a', 'A'] AS arr2,
+  mode => "TRUNCATE"
+) WITH OFFSET
+ORDER BY offset
+--
+ARRAY<STRUCT<BOOL, BOOL>>[known order:{true, true}, {true, false}]
+==
+
+# Zipping literal arrays with different length, with only one of the arrays having collation.
+[name=multiway_unnest_two_literal_arrays_unequal_length_with_collation_pad_mode]
+[required_features=MULTIWAY_UNNEST,ANNOTATION_FRAMEWORK,COLLATION_SUPPORT]
+SELECT arr1 = 'a', arr2 = 'a'
+FROM UNNEST(
+  [COLLATE('a', 'und:ci'), COLLATE('A', 'und:ci')] AS arr1,
+  ['a', 'A', 'B'] AS arr2,
+  mode => "PAD"
+) WITH OFFSET
+ORDER BY offset
+--
+ARRAY<STRUCT<BOOL, BOOL>>[known order:
+  {true, true},
+  {true, false},
+  {NULL, false}
+]
+==
+
+# Zipping column referenced arrays with different length, with only one of the arrays having collation.
+[name=multiway_unnest_three_unequal_arrays_column_ref_with_collation_strict_mode]
+[required_features=MULTIWAY_UNNEST,ANNOTATION_FRAMEWORK,COLLATION_SUPPORT]
+WITH T AS (
+  SELECT [COLLATE('a', 'und:ci'), COLLATE('b', 'und:ci'), COLLATE('B', 'und:ci')] AS collated_array,
+  ['a', 'b', 'B'] AS str_array,
+  [1.0, 5.0] AS double_array
+)
+SELECT arr1 = 'B', arr2 = 'B', arr3
+FROM T, UNNEST(
+  T.collated_array AS arr1,
+  T.str_array AS arr2,
+  T.double_array AS arr3,
+  mode => "STRICT") WITH OFFSET
+ORDER BY offset
+--
+ERROR: generic::out_of_range: Unnested arrays under STRICT mode must have equal lengths
+==
+
+# Zipping column referenced arrays with different length, with only one of the arrays having collation.
+[name=multiway_unnest_three_unequal_arrays_column_ref_with_collation_truncate_mode]
+[required_features=MULTIWAY_UNNEST,ANNOTATION_FRAMEWORK,COLLATION_SUPPORT]
+WITH T AS (
+  SELECT [COLLATE('a', 'und:ci'), COLLATE('b', 'und:ci'), COLLATE('B', 'und:ci')] AS collated_array,
+  ['a', 'b', 'B'] AS str_array,
+  [1.0, 5.0] AS double_array
+)
+SELECT arr1 = 'B', arr2 = 'B', arr3
+FROM T, UNNEST(
+  T.collated_array AS arr1,
+  T.str_array AS arr2,
+  T.double_array AS arr3,
+  mode => "TRUNCATE") WITH OFFSET
+ORDER BY offset
+--
+ARRAY<STRUCT<BOOL, BOOL, arr3 DOUBLE>>[known order:
+  {false, false, 1},
+  {true, false, 5}
+]
+==
+
+# Zipping column referenced arrays with different length, with only one of the arrays having collation.
+[name=multiway_unnest_three_unequal_arrays_column_ref_with_collation_pad_mode]
+[required_features=MULTIWAY_UNNEST,ANNOTATION_FRAMEWORK,COLLATION_SUPPORT]
+WITH T AS (
+  SELECT [COLLATE('a', 'und:ci'), COLLATE('b', 'und:ci'), COLLATE('B', 'und:ci')] AS collated_array,
+  ['a', 'b', 'B'] AS str_array,
+  [1.0, 5.0] AS double_array
+)
+SELECT arr1 = 'B', arr2 = 'B', arr3
+FROM T, UNNEST(
+  T.collated_array AS arr1,
+  T.str_array AS arr2,
+  T.double_array AS arr3,
+  mode => "PAD") WITH OFFSET
+ORDER BY offset
+--
+ARRAY<STRUCT<BOOL, BOOL, arr3 DOUBLE>>[known order:
+  {false, false, 1},
+  {true, false, 5},
+  {true, true, NULL}
+]
+==
+
+# Zipping column referenced arrays with same length, with the same collation.
+[name=multiway_unnest_three_equal_arrays_column_ref_with_same_collation]
+[required_features=MULTIWAY_UNNEST,ANNOTATION_FRAMEWORK,COLLATION_SUPPORT]
+WITH T AS (
+  SELECT [COLLATE('a', 'und:ci'), COLLATE('b', 'und:ci'), COLLATE('B', 'und:ci')] AS collated_array1,
+  [COLLATE('x', 'und:ci'), COLLATE('Y', 'und:ci'), COLLATE('y', 'und:ci')] AS collated_array2,
+  [COLLATE('m', 'und:ci'), COLLATE('n', 'und:ci'), COLLATE('N', 'und:ci')] AS collated_array3,
+)
+SELECT arr1 = 'B', arr2 = 'Y', arr3 = 'M'
+FROM T, UNNEST(
+  T.collated_array1 AS arr1,
+  T.collated_array2 AS arr2,
+  T.collated_array3 AS arr3) WITH OFFSET
+ORDER BY offset
+--
+ARRAY<STRUCT<BOOL, BOOL, BOOL>>[known order:
+  {false, false, true},
+  {true, true, false},
+  {true, true, false}
+]
+==
+
+# Zipping column referenced arrays with same length, with different collation.
+[name=multiway_unnest_three_equal_arrays_column_ref_with_different_collation]
+[required_features=MULTIWAY_UNNEST,ANNOTATION_FRAMEWORK,COLLATION_SUPPORT]
+WITH T AS (
+  SELECT [COLLATE('a', 'und:ci'), COLLATE('b', 'und:ci'), COLLATE('B', 'und:ci')] AS collated_array1,
+  [COLLATE('x', 'und:cs'), COLLATE('Y', 'und:cs'), COLLATE('y', 'und:cs')] AS collated_array2,
+  [COLLATE('m', 'und:cs'), COLLATE('n', 'und:cs'), COLLATE('N', 'und:cs')] AS collated_array3,
+)
+SELECT arr1 = 'B', arr2 = 'Y', arr3 = 'M'
+FROM T, UNNEST(
+  T.collated_array1 AS arr1,
+  T.collated_array2 AS arr2,
+  T.collated_array3 AS arr3) WITH OFFSET
+ORDER BY offset
+--
+ARRAY<STRUCT<BOOL, BOOL, BOOL>>[known order:
+  {false, false, false},
+  {true, true, false},
+  {true, false, false}
+]
+==
+# b/423700272
+[name=multiway_unnest_with_join_expr]
+SELECT a FROM (SELECT NULL)
+LEFT JOIN UNNEST(ARRAY[1] AS a, ARRAY[0] AS b) ON false
+--
+ARRAY<STRUCT<a INT64>>[{NULL}]
+==
+[name=multiway_unnest_with_join_expr_on_vars]
+select * from (SELECT null) JOIN
+   UNNEST(ARRAY[1] AS a, ARRAY[0] AS b)
+   ON b = 0
+--
+ARRAY<STRUCT<INT64, a INT64, b INT64>>[{NULL, 1, 0}]
+==
+[name=multiway_unnest_with_join_expr_on_vars_and_offset]
+select * from (SELECT null) JOIN
+   UNNEST(ARRAY[1] AS a, ARRAY[0] AS b) with offset
+   ON b = 0 and offset = 0
+--
+ARRAY<STRUCT<INT64, a INT64, b INT64, offset INT64>>[{NULL, 1, 0, 0}]
+==
+[name=multiway_unnest_with_left_join_expr_on_vars_and_offset_no_results]
+select * from (SELECT null) LEFT JOIN
+   UNNEST(ARRAY[1] AS a, ARRAY[0] AS b) with offset
+   ON b = 3 and offset = 0
+--
+ARRAY<STRUCT<INT64, a INT64, b INT64, offset INT64>>[{NULL, NULL, NULL, NULL}]
+==
+[name=multiway_unnest_with_left_join_expr_on_vars_and_offset_with_results]
+select * from (SELECT null) LEFT JOIN
+   UNNEST(ARRAY[1] AS a, ARRAY[0] AS b) with offset
+   ON b = 0 and offset = 0
+--
+ARRAY<STRUCT<INT64, a INT64, b INT64, offset INT64>>[{NULL, 1, 0, 0}]

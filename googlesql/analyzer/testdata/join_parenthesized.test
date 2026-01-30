@@ -1,0 +1,387 @@
+[default language_features=MAXIMUM]
+select *, '--', kv1.*, '--', kv2.*, '--', kv3.*
+from KeyValue kv1 cross join (KeyValue kv2 cross join KeyValue kv3);
+--
+QueryStmt
++-output_column_list=
+| +-KeyValue.Key#1 AS Key [INT64]
+| +-KeyValue.Value#2 AS Value [STRING]
+| +-KeyValue.Key#3 AS Key [INT64]
+| +-KeyValue.Value#4 AS Value [STRING]
+| +-KeyValue.Key#5 AS Key [INT64]
+| +-KeyValue.Value#6 AS Value [STRING]
+| +-$query.$col2#7 AS `$col2` [STRING]
+| +-KeyValue.Key#1 AS Key [INT64]
+| +-KeyValue.Value#2 AS Value [STRING]
+| +-$query.$col4#8 AS `$col4` [STRING]
+| +-KeyValue.Key#3 AS Key [INT64]
+| +-KeyValue.Value#4 AS Value [STRING]
+| +-$query.$col6#9 AS `$col6` [STRING]
+| +-KeyValue.Key#5 AS Key [INT64]
+| +-KeyValue.Value#6 AS Value [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[KeyValue.Key#1, KeyValue.Value#2, KeyValue.Key#3, KeyValue.Value#4, KeyValue.Key#5, KeyValue.Value#6, $query.$col2#7, KeyValue.Key#1, KeyValue.Value#2, $query.$col4#8, KeyValue.Key#3, KeyValue.Value#4, $query.$col6#9, KeyValue.Key#5, KeyValue.Value#6]
+    +-expr_list=
+    | +-$col2#7 := Literal(type=STRING, value="--")
+    | +-$col4#8 := Literal(type=STRING, value="--")
+    | +-$col6#9 := Literal(type=STRING, value="--")
+    +-input_scan=
+      +-JoinScan
+        +-column_list=KeyValue.[Key#1, Value#2, Key#3, Value#4, Key#5, Value#6]
+        +-left_scan=
+        | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1], alias="kv1")
+        +-right_scan=
+          +-JoinScan
+            +-column_list=KeyValue.[Key#3, Value#4, Key#5, Value#6]
+            +-left_scan=
+            | +-TableScan(column_list=KeyValue.[Key#3, Value#4], table=KeyValue, column_index_list=[0, 1], alias="kv2")
+            +-right_scan=
+              +-TableScan(column_list=KeyValue.[Key#5, Value#6], table=KeyValue, column_index_list=[0, 1], alias="kv3")
+==
+
+# If aliasing a bracketed join like this is allowed, it requires special
+# scoping rules that hide kv2 and kv3 outside the brackets.
+select *
+from KeyValue kv1 cross join (KeyValue kv2 cross join KeyValue kv3) as j;
+--
+ERROR: Syntax error: Expected end of input but got keyword AS [at 2:69]
+from KeyValue kv1 cross join (KeyValue kv2 cross join KeyValue kv3) as j;
+                                                                    ^
+==
+
+# Not a legal query.
+select * from (KeyValue)
+--
+ERROR: Syntax error: Expected keyword JOIN but got ")" [at 1:24]
+select * from (KeyValue)
+                       ^
+==
+
+# Duplicate parentheses not supported.
+select * from ((KeyValue kv1 cross join KeyValue kv2))
+--
+ERROR: Syntax error: Expected keyword JOIN but got ")" [at 1:54]
+select * from ((KeyValue kv1 cross join KeyValue kv2))
+                                                     ^
+==
+
+# But double (( does work if the closing ) are separate.
+select * from ((KeyValue kv1 cross join KeyValue kv2) cross join KeyValue kv3)
+--
+QueryStmt
++-output_column_list=
+| +-KeyValue.Key#1 AS Key [INT64]
+| +-KeyValue.Value#2 AS Value [STRING]
+| +-KeyValue.Key#3 AS Key [INT64]
+| +-KeyValue.Value#4 AS Value [STRING]
+| +-KeyValue.Key#5 AS Key [INT64]
+| +-KeyValue.Value#6 AS Value [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=KeyValue.[Key#1, Value#2, Key#3, Value#4, Key#5, Value#6]
+    +-input_scan=
+      +-JoinScan
+        +-column_list=KeyValue.[Key#1, Value#2, Key#3, Value#4, Key#5, Value#6]
+        +-left_scan=
+        | +-JoinScan
+        |   +-column_list=KeyValue.[Key#1, Value#2, Key#3, Value#4]
+        |   +-left_scan=
+        |   | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1], alias="kv1")
+        |   +-right_scan=
+        |     +-TableScan(column_list=KeyValue.[Key#3, Value#4], table=KeyValue, column_index_list=[0, 1], alias="kv2")
+        +-right_scan=
+          +-TableScan(column_list=KeyValue.[Key#5, Value#6], table=KeyValue, column_index_list=[0, 1], alias="kv3")
+==
+
+select key, kv2.value, kv4.value, '--', *
+from
+  (KeyValue kv1 right join KeyValue kv2 using (key))
+  left join
+  (KeyValue kv3 left join KeyValue kv4 using (key))
+  using (key)
+where key = 5 and kv3.value = 'xx'
+--
+QueryStmt
++-output_column_list=
+| +-KeyValue.Key#3 AS key [INT64]
+| +-KeyValue.Value#4 AS value [STRING]
+| +-KeyValue.Value#8 AS value [STRING]
+| +-$query.$col4#9 AS `$col4` [STRING]
+| +-KeyValue.Key#3 AS key [INT64]
+| +-KeyValue.Value#2 AS Value [STRING]
+| +-KeyValue.Value#4 AS Value [STRING]
+| +-KeyValue.Value#6 AS Value [STRING]
+| +-KeyValue.Value#8 AS Value [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[KeyValue.Key#3, KeyValue.Value#4, KeyValue.Value#8, $query.$col4#9, KeyValue.Key#3, KeyValue.Value#2, KeyValue.Value#4, KeyValue.Value#6, KeyValue.Value#8]
+    +-expr_list=
+    | +-$col4#9 := Literal(type=STRING, value="--")
+    +-input_scan=
+      +-FilterScan
+        +-column_list=KeyValue.[Key#1, Value#2, Key#3, Value#4, Key#5, Value#6, Key#7, Value#8]
+        +-input_scan=
+        | +-JoinScan
+        |   +-column_list=KeyValue.[Key#1, Value#2, Key#3, Value#4, Key#5, Value#6, Key#7, Value#8]
+        |   +-join_type=LEFT
+        |   +-left_scan=
+        |   | +-JoinScan
+        |   |   +-column_list=KeyValue.[Key#1, Value#2, Key#3, Value#4]
+        |   |   +-join_type=RIGHT
+        |   |   +-left_scan=
+        |   |   | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1], alias="kv1")
+        |   |   +-right_scan=
+        |   |   | +-TableScan(column_list=KeyValue.[Key#3, Value#4], table=KeyValue, column_index_list=[0, 1], alias="kv2")
+        |   |   +-join_expr=
+        |   |   | +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+        |   |   |   +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+        |   |   |   +-ColumnRef(type=INT64, column=KeyValue.Key#3)
+        |   |   +-has_using=TRUE
+        |   +-right_scan=
+        |   | +-JoinScan
+        |   |   +-column_list=KeyValue.[Key#5, Value#6, Key#7, Value#8]
+        |   |   +-join_type=LEFT
+        |   |   +-left_scan=
+        |   |   | +-TableScan(column_list=KeyValue.[Key#5, Value#6], table=KeyValue, column_index_list=[0, 1], alias="kv3")
+        |   |   +-right_scan=
+        |   |   | +-TableScan(column_list=KeyValue.[Key#7, Value#8], table=KeyValue, column_index_list=[0, 1], alias="kv4")
+        |   |   +-join_expr=
+        |   |   | +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+        |   |   |   +-ColumnRef(type=INT64, column=KeyValue.Key#5)
+        |   |   |   +-ColumnRef(type=INT64, column=KeyValue.Key#7)
+        |   |   +-has_using=TRUE
+        |   +-join_expr=
+        |   | +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+        |   |   +-ColumnRef(type=INT64, column=KeyValue.Key#3)
+        |   |   +-ColumnRef(type=INT64, column=KeyValue.Key#5)
+        |   +-has_using=TRUE
+        +-filter_expr=
+          +-FunctionCall(GoogleSQL:$and(BOOL, repeated(1) BOOL) -> BOOL)
+            +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+            | +-ColumnRef(type=INT64, column=KeyValue.Key#3)
+            | +-Literal(type=INT64, value=5)
+            +-FunctionCall(GoogleSQL:$equal(STRING, STRING) -> BOOL)
+              +-ColumnRef(type=STRING, column=KeyValue.Value#6)
+              +-Literal(type=STRING, value="xx")
+==
+
+# Brackets that still make a left-deep query don't change anything.
+select value2, key, kv1.key, KeyValue2.value2, kv3.value
+from ((KeyValue kv1 join KeyValue2 using (key))
+      join KeyValue kv3 using (key))
+--
+QueryStmt
++-output_column_list=
+| +-KeyValue2.Value2#4 AS value2 [STRING]
+| +-KeyValue.Key#1 AS key [INT64]
+| +-KeyValue.Key#1 AS key [INT64]
+| +-KeyValue2.Value2#4 AS value2 [STRING]
+| +-KeyValue.Value#6 AS value [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[KeyValue2.Value2#4, KeyValue.Key#1, KeyValue.Key#1, KeyValue2.Value2#4, KeyValue.Value#6]
+    +-input_scan=
+      +-JoinScan
+        +-column_list=[KeyValue.Key#1, KeyValue2.Key#3, KeyValue2.Value2#4, KeyValue.Key#5, KeyValue.Value#6]
+        +-left_scan=
+        | +-JoinScan
+        |   +-column_list=[KeyValue.Key#1, KeyValue2.Key#3, KeyValue2.Value2#4]
+        |   +-left_scan=
+        |   | +-TableScan(column_list=[KeyValue.Key#1], table=KeyValue, column_index_list=[0], alias="kv1")
+        |   +-right_scan=
+        |   | +-TableScan(column_list=KeyValue2.[Key#3, Value2#4], table=KeyValue2, column_index_list=[0, 1])
+        |   +-join_expr=
+        |   | +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+        |   |   +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+        |   |   +-ColumnRef(type=INT64, column=KeyValue2.Key#3)
+        |   +-has_using=TRUE
+        +-right_scan=
+        | +-TableScan(column_list=KeyValue.[Key#5, Value#6], table=KeyValue, column_index_list=[0, 1], alias="kv3")
+        +-join_expr=
+        | +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+        |   +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+        |   +-ColumnRef(type=INT64, column=KeyValue.Key#5)
+        +-has_using=TRUE
+==
+
+select 1
+from KeyValue kv1
+     join (KeyValue2 kv2 join (select 1) using (key))
+--
+ERROR: Column key in USING clause not found on right side of join [at 3:49]
+     join (KeyValue2 kv2 join (select 1) using (key))
+                                                ^
+==
+
+select 1
+from KeyValue kv1
+     join ((select 1) join KeyValue2 kv2 using (key))
+--
+ERROR: Column key in USING clause not found on left side of join [at 3:49]
+     join ((select 1) join KeyValue2 kv2 using (key))
+                                                ^
+==
+
+# We can't see kv1 from the lhs inside the parenthesized rhs of the join.
+select 1
+from KeyValue kv1
+     cross join
+     ( (select 1) join KeyValue2 kv2 on kv1.key=kv2.key )
+--
+ERROR: Unrecognized name: kv1; Did you mean kv2? [at 4:41]
+     ( (select 1) join KeyValue2 kv2 on kv1.key=kv2.key )
+                                        ^
+==
+
+# We can't see value from the lhs inside the parenthesized rhs of the join.
+select 1
+from KeyValue kv1
+     cross join
+     ( (select 1) join KeyValue2 kv2 on value=value2 )
+--
+ERROR: Unrecognized name: value; Did you mean Value2? [at 4:41]
+     ( (select 1) join KeyValue2 kv2 on value=value2 )
+                                        ^
+==
+
+# An array defined outside parentheses is not visible inside.
+select 1
+from TestTable tt cross join (KeyValue kv join tt.KitchenSink.repeated_int32_val)
+--
+ERROR: Table not found: tt.KitchenSink.repeated_int32_val [at 2:48]
+from TestTable tt cross join (KeyValue kv join tt.KitchenSink.repeated_int32_...
+                                               ^
+==
+
+# The array from the parenthesized lhs is visible on the rhs.
+select 1
+from (TestTable tt cross join KeyValue kv) join tt.KitchenSink.repeated_int32_val
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#7 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#7]
+    +-expr_list=
+    | +-$col1#7 := Literal(type=INT64, value=1)
+    +-input_scan=
+      +-ArrayScan
+        +-column_list=[TestTable.KitchenSink#3]
+        +-input_scan=
+        | +-JoinScan
+        |   +-column_list=[TestTable.KitchenSink#3]
+        |   +-left_scan=
+        |   | +-TableScan(column_list=[TestTable.KitchenSink#3], table=TestTable, column_index_list=[2], alias="tt")
+        |   +-right_scan=
+        |     +-TableScan(table=KeyValue, alias="kv")
+        +-array_expr_list=
+        | +-GetProtoField
+        |   +-type=ARRAY<INT32>
+        |   +-expr=
+        |   | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=TestTable.KitchenSink#3)
+        |   +-field_descriptor=repeated_int32_val
+        |   +-default_value=[]
+        +-element_column_list=[$array.repeated_int32_val#6]
+==
+
+# Duplicate scan aliases created in different parts of the tree.
+# Note that this error is caught when doing the outermost cross join, after
+# successfully resolving the join on the rhs.
+select 1 from (KeyValue kv1 cross join KeyValue kv2) cross join (KeyValue kv3 cross join KeyValue kv1)
+--
+ERROR: Duplicate table alias kv1 in the same FROM clause [at 1:65]
+...KeyValue kv1 cross join KeyValue kv2) cross join (KeyValue kv3 cross join ...
+                                                    ^
+==
+
+# The parenthesized joins happen first and cannot see names introduced
+# on the left outside the parentheses.
+select 1
+from TestTable tt,
+     tt.KitchenSink.repeated_int32_val val1,
+     (KeyValue join tt.KitchenSink.repeated_int32_val val2)
+--
+ERROR: Table not found: tt.KitchenSink.repeated_int32_val [at 4:21]
+     (KeyValue join tt.KitchenSink.repeated_int32_val val2)
+                    ^
+==
+
+# We give an an error if we have RIGHT or FULL JOIN after a comma join.
+# We generate this error in the parser.
+select 1
+from TestTable A, KeyValue B {{RIGHT|FULL|LEFT}} JOIN KeyValue C USING (value)
+--
+ALTERNATION GROUP: RIGHT
+--
+ERROR: Syntax error: RIGHT JOIN must be parenthesized when following a comma join.  Also, if the preceding comma join is a correlated CROSS JOIN that unnests an array, then CROSS JOIN syntax must be used in place of the comma join [at 2:30]
+from TestTable A, KeyValue B RIGHT JOIN KeyValue C USING (value)
+                             ^
+--
+ALTERNATION GROUP: FULL
+--
+ERROR: Syntax error: FULL JOIN must be parenthesized when following a comma join.  Also, if the preceding comma join is a correlated CROSS JOIN that unnests an array, then CROSS JOIN syntax must be used in place of the comma join [at 2:30]
+from TestTable A, KeyValue B FULL JOIN KeyValue C USING (value)
+                             ^
+--
+ALTERNATION GROUP: LEFT
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#8 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#8]
+    +-expr_list=
+    | +-$col1#8 := Literal(type=INT64, value=1)
+    +-input_scan=
+      +-JoinScan
+        +-column_list=KeyValue.[Value#5, Value#7]
+        +-join_type=LEFT
+        +-left_scan=
+        | +-JoinScan
+        |   +-column_list=[KeyValue.Value#5]
+        |   +-left_scan=
+        |   | +-TableScan(table=TestTable, alias="A")
+        |   +-right_scan=
+        |     +-TableScan(column_list=[KeyValue.Value#5], table=KeyValue, column_index_list=[1], alias="B")
+        +-right_scan=
+        | +-TableScan(column_list=[KeyValue.Value#7], table=KeyValue, column_index_list=[1], alias="C")
+        +-join_expr=
+        | +-FunctionCall(GoogleSQL:$equal(STRING, STRING) -> BOOL)
+        |   +-ColumnRef(type=STRING, column=KeyValue.Value#5)
+        |   +-ColumnRef(type=STRING, column=KeyValue.Value#7)
+        +-has_using=TRUE
+==
+
+# Fix the previous query using parentheses.
+select 1
+from TestTable A, (KeyValue B RIGHT JOIN KeyValue C USING (key))
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#8 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#8]
+    +-expr_list=
+    | +-$col1#8 := Literal(type=INT64, value=1)
+    +-input_scan=
+      +-JoinScan
+        +-column_list=KeyValue.[Key#4, Key#6]
+        +-left_scan=
+        | +-TableScan(table=TestTable, alias="A")
+        +-right_scan=
+          +-JoinScan
+            +-column_list=KeyValue.[Key#4, Key#6]
+            +-join_type=RIGHT
+            +-left_scan=
+            | +-TableScan(column_list=[KeyValue.Key#4], table=KeyValue, column_index_list=[0], alias="B")
+            +-right_scan=
+            | +-TableScan(column_list=[KeyValue.Key#6], table=KeyValue, column_index_list=[0], alias="C")
+            +-join_expr=
+            | +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+            |   +-ColumnRef(type=INT64, column=KeyValue.Key#4)
+            |   +-ColumnRef(type=INT64, column=KeyValue.Key#6)
+            +-has_using=TRUE

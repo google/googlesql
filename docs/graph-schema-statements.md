@@ -4,7 +4,7 @@
 
 # GQL schema statements
 
-Graph Query Language (GQL) supports all ZetaSQL DDL statements,
+Graph Query Language (GQL) supports all GoogleSQL DDL statements,
 including the following GQL-specific DDL statements:
 
 ## Statement list
@@ -77,7 +77,7 @@ Note: all GQL examples in the GQL reference use the
   `CREATE` statement has no effect. Can't appear with `OR REPLACE`.
 + `OPTIONS`: If you have schema options, you can add them when you create
   the property graph. These options are system-specific and follow the
-  ZetaSQL [`HINT` syntax][hints]
+  GoogleSQL [`HINT` syntax][hints]
 + `property_graph_name`: The name of the property graph. This name can be a
   path expression. This name must not conflict with the name of an existing
   table, view, or property graph.
@@ -89,7 +89,7 @@ Note: all GQL examples in the GQL reference use the
   The following example represents three node definitions:
   `Account`, `Customer`, and `GeoLocation`.
 
-  ```zetasql
+  ```googlesql
   NODE TABLES (
     Account,
     Customer
@@ -107,7 +107,7 @@ Note: all GQL examples in the GQL reference use the
   The following example represents two edge definitions:
   `Own` and `Transfer`.
 
-  ```zetasql
+  ```googlesql
   EDGE TABLES (
     Own
       SOURCE KEY (cid) REFERENCES Customer (cid)
@@ -171,7 +171,7 @@ Note: all GQL examples in the GQL reference use the
 
 Adds an element definition to the property graph. For example:
 
-```zetasql
+```googlesql
 Customer
   LABEL Client
     PROPERTIES (cid, name)
@@ -200,13 +200,13 @@ rules:
   
 + `node_element_key`: The element key for a node.
 
-  ```zetasql
+  ```googlesql
   KEY (item1_column, item2_column)
   ```
 + `edge_element_keys`: The element key, source key, and destination key
   for an edge.
 
-  ```zetasql
+  ```googlesql
   KEY (item1_column, item2_column)
   SOURCE KEY (item1_column) REFERENCES item_node (item_node_column)
   DESTINATION KEY (item2_column) REFERENCES item_node (item_node_column)
@@ -214,17 +214,17 @@ rules:
 + `element_key`: An optional key that identifies the node or edge element. If
   `element_key` isn't provided, then the primary key of the table is used.
 
-  ```zetasql
+  ```googlesql
   KEY (item1_column, item2_column)
   ```
 + `source_key`: The key for the source node of the edge.
 
-  ```zetasql
+  ```googlesql
   SOURCE KEY (item1_column) REFERENCES item_node (item_node_column)
   ```
 + `destination_key`: The key for the destination node of the edge.
 
-  ```zetasql
+  ```googlesql
   DESTINATION KEY (item2_column) REFERENCES item_node (item_node_column)
   ```
 + `column_name_list`: One or more columns to assign to a key.
@@ -281,14 +281,14 @@ Adds a list of labels and properties to an element.
 + `label_and_properties`: The label to add to the element and the properties
   exposed by that label. For example:
 
-  ```zetasql
+  ```googlesql
   LABEL Tourist PROPERTIES (home_city, home_country)
   ```
 
   When `label_and_properties` isn't specified, the following is
   applied implicitly:
 
-  ```zetasql
+  ```googlesql
   DEFAULT LABEL PROPERTIES ARE ALL COLUMNS
   ```
 
@@ -338,25 +338,25 @@ Adds properties associated with a label.
   If you don't include this definition, all columns are included by
   default, and the following definition is applied implicitly:
 
-  ```zetasql
+  ```googlesql
   PROPERTIES ARE ALL COLUMNS
   ```
 
   In the following examples, all columns in a table are included as
   element properties:
 
-  ```zetasql
+  ```googlesql
   PROPERTIES ARE ALL COLUMNS
   ```
 
-  ```zetasql
+  ```googlesql
   PROPERTIES ALL COLUMNS
   ```
 
   In the following example, all columns in a table except for `home_city` and
   `home_country` are included as element properties:
 
-  ```zetasql
+  ```googlesql
   PROPERTIES ARE ALL COLUMNS EXCEPT (home_city, home_country)
   ```
 + `column_name_list`: A list of columns to exclude as element properties.
@@ -370,7 +370,7 @@ Adds properties associated with a label.
   properties. Additionally, the result of the `salary + bonus` expression are
   included as the `income` property:
 
-  ```zetasql
+  ```googlesql
   PROPERTIES (id, name, salary + bonus AS income)
   ```
 
@@ -469,7 +469,7 @@ definitions (`Account` and `Person`) and two edge definitions
 Note: all GQL examples in the GQL reference use the
 [`FinGraph`][fin-graph] property graph example.
 
-```zetasql
+```googlesql
 CREATE OR REPLACE PROPERTY GRAPH FinGraph
   NODE TABLES (
     Account,
@@ -491,7 +491,7 @@ Once the property graph is created, you can use it in [GQL][gql] queries. For
 example, the following query matches all nodes labeled `Person` and then returns
 the `name` values in the results.
 
-```zetasql
+```googlesql
 GRAPH FinGraph
 MATCH (p:Person)
 RETURN p.name
@@ -511,7 +511,7 @@ The following property graph, `FinGraph`, contains a unified node and unified
 edge definition with dynamic label and dynamic properties to store all nodes and
 edges.
 
-```zetasql
+```googlesql
 CREATE PROPERTY GRAPH FinGraph
   NODE TABLES (
     GraphNode
@@ -532,7 +532,7 @@ dynamic label model, insert entries into `GraphNode` with the label as `Account`
 or `Person` to indicate which node type that entry specifies. Dynamic properties
 must be added as JSON.
 
-```zetasql
+```googlesql
 INSERT INTO GraphNode (id, label, properties)
 VALUES (1, "person", JSON '{"name": "Alex", "age": 33}');
 ```
@@ -540,7 +540,7 @@ VALUES (1, "person", JSON '{"name": "Alex", "age": 33}');
 Similarly, inserting entries to `GraphEdge` with values like `PersonOwnAccount`
 and `AccountTransferAccount` for the `label` column creates edges.
 
-[hints]: https://github.com/google/zetasql/blob/master/docs/lexical.md#hints
+[hints]: https://github.com/google/googlesql/blob/master/docs/lexical.md#hints
 
 [element-definition]: #element_definition
 
@@ -550,7 +550,7 @@ and `AccountTransferAccount` for the `label` column creates edges.
 
 [fin-graph]: #fin_graph
 
-[gql]: https://github.com/google/zetasql/blob/master/docs/graph-query-statements.md
+[gql]: https://github.com/google/googlesql/blob/master/docs/graph-query-statements.md
 
 [dynamic-label-definition]: #dynamic_label_definition
 
@@ -575,7 +575,7 @@ Deletes a property graph.
 
 **Example**
 
-```zetasql
+```googlesql
 DROP PROPERTY GRAPH FinGraph;
 ```
 

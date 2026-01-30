@@ -1,0 +1,663 @@
+[default required_features=DML_RETURNING]
+[prepare_database]
+CREATE TABLE Table1 AS
+SELECT cast(1 as int64) as primary_key,
+       cast(10 as int64) as value
+UNION ALL
+SELECT 2, 20
+--
+ARRAY<STRUCT<primary_key INT64, value INT64>>[{1, 10}, {2, 20}]
+==
+
+# used for UPDATE tests
+[prepare_database]
+CREATE TABLE TableInt64Values AS
+SELECT cast(1 as int64) as primary_key,
+       cast(10 as int64) as value1,
+       cast(100 as int64) as value2,
+       cast(1000 as int64) as value3
+UNION ALL
+SELECT 2, 20, 200, 2000
+--
+ARRAY<STRUCT<primary_key INT64, value1 INT64, value2 INT64, value3 INT64>>[
+  {1, 10, 100, 1000},
+  {2, 20, 200, 2000}
+]
+==
+
+[name=delete_without_returning]
+DELETE FROM Table1 WHERE False
+--
+STRUCT<
+  num_rows_modified INT64,
+  all_rows ARRAY<>
+>{
+  0,
+  ARRAY<STRUCT<primary_key INT64, value INT64>>[unknown order:{1, 10}, {2, 20}]
+}
+
+==
+
+[name=delete_nothing]
+DELETE FROM Table1 WHERE False THEN RETURN *
+--
+STRUCT<
+  num_rows_modified INT64,
+  all_rows ARRAY<>,
+  returning_rows ARRAY<>
+>{
+  0,
+  ARRAY<STRUCT<primary_key INT64, value INT64>>[unknown order:{1, 10}, {2, 20}],
+  ARRAY<STRUCT<primary_key INT64, value INT64>>[]
+}
+
+==
+
+[name=delete_with_table_alias]
+DELETE FROM Table1 AS T WHERE primary_key = 1 THEN RETURN T.primary_key, T.value as new_value
+--
+STRUCT<
+  num_rows_modified INT64,
+  all_rows ARRAY<>,
+  returning_rows ARRAY<>
+>{
+  1,
+  ARRAY<STRUCT<primary_key INT64, value INT64>>[{2, 20}],
+  ARRAY<STRUCT<primary_key INT64, new_value INT64>>[{1, 10}]
+}
+
+==
+
+[name=delete_everything]
+DELETE FROM Table1 WHERE TRUE THEN RETURN *
+--
+STRUCT<
+  num_rows_modified INT64,
+  all_rows ARRAY<>,
+  returning_rows ARRAY<>
+>{
+  2,
+  ARRAY<STRUCT<primary_key INT64, value INT64>>[],
+  ARRAY<STRUCT<primary_key INT64, value INT64>>[unknown order:{1, 10}, {2, 20}]
+}
+
+==
+
+[name=delete_everything_with_action]
+DELETE FROM Table1 WHERE TRUE THEN RETURN WITH ACTION *
+--
+STRUCT<
+  num_rows_modified INT64,
+  all_rows ARRAY<>,
+  returning_rows ARRAY<>
+>{2,
+  ARRAY<STRUCT<primary_key INT64, value INT64>>[],
+  ARRAY<STRUCT<primary_key INT64, value INT64, ACTION STRING>>[unknown order:
+    {1, 10, "DELETE"},
+    {2, 20, "DELETE"}
+  ]}
+
+==
+[name=with_action_column_alias_exists_in_output_columns]
+DELETE FROM Table1 WHERE FALSE THEN RETURN WITH ACTION AS value *
+--
+STRUCT<
+  num_rows_modified INT64,
+  all_rows ARRAY<>,
+  returning_rows ARRAY<>
+>{
+  0,
+  ARRAY<STRUCT<primary_key INT64, value INT64>>[unknown order:{1, 10}, {2, 20}],
+  ARRAY<STRUCT<primary_key INT64, value INT64, value STRING>>[]
+}
+
+==
+[name=update_empty_rows_with_nested_error_function]
+UPDATE Table1 SET value = 99 WHERE primary_key = 99 AND IF (primary_key = 99, IF (true, error('hello'), true), false);
+--
+STRUCT<
+  num_rows_modified INT64,
+  all_rows ARRAY<>
+>{
+  0,
+  ARRAY<STRUCT<primary_key INT64, value INT64>>[unknown order:{1, 10}, {2, 20}]
+}
+==
+
+[name=select_empty_rows_with_nested_error_function]
+SELECT 1 FROM Table1 WHERE primary_key = 99 AND IF (primary_key = 99, IF (true, error('hello'), true), false);
+--
+ARRAY<STRUCT<INT64>>[]
+==
+
+[name=delete_expression]
+DELETE FROM Table1 WHERE TRUE THEN RETURN primary_key + 5
+--
+STRUCT<
+  num_rows_modified INT64,
+  all_rows ARRAY<>,
+  returning_rows ARRAY<>
+>{
+  2,
+  ARRAY<STRUCT<primary_key INT64, value INT64>>[],
+  ARRAY<STRUCT<INT64>>[unknown order:{6}, {7}]
+}
+
+==
+
+[name=delete_filter_returning_expression]
+DELETE FROM Table1 WHERE value > 10 THEN RETURN primary_key + 5
+--
+STRUCT<
+  num_rows_modified INT64,
+  all_rows ARRAY<>,
+  returning_rows ARRAY<>
+>{
+  1,
+  ARRAY<STRUCT<primary_key INT64, value INT64>>[{1, 10}],
+  ARRAY<STRUCT<INT64>>[{7}]
+}
+
+==
+
+[name=delete_correlated_subquery]
+DELETE FROM Table1 WHERE True THEN RETURN
+(SELECT COUNT(*) FROM TableInt64Values
+  WHERE Table1.primary_key <= TableInt64Values.primary_key), value
+--
+STRUCT<
+  num_rows_modified INT64,
+  all_rows ARRAY<>,
+  returning_rows ARRAY<>
+>{
+  2,
+  ARRAY<STRUCT<primary_key INT64, value INT64>>[],
+  ARRAY<STRUCT<INT64, value INT64>>[unknown order:{2, 10}, {1, 20}]
+}
+
+==
+
+## UPDATE test
+[name=assign_column]
+UPDATE TableInt64Values SET value1 = 5 WHERE True
+--
+STRUCT<
+  num_rows_modified INT64,
+  all_rows ARRAY<>
+>{
+  2,
+  ARRAY<STRUCT<primary_key INT64, value1 INT64, value2 INT64, value3 INT64>>[unknown order:
+    {1, 5, 100, 1000},
+    {2, 5, 200, 2000}
+  ]
+}
+
+==
+
+[name=assign_column_returning]
+UPDATE TableInt64Values SET value1 = 5 WHERE True THEN RETURN *
+--
+STRUCT<
+  num_rows_modified INT64,
+  all_rows ARRAY<>,
+  returning_rows ARRAY<>
+>{
+  2,
+  ARRAY<STRUCT<primary_key INT64, value1 INT64, value2 INT64, value3 INT64>>[unknown order:
+    {1, 5, 100, 1000},
+    {2, 5, 200, 2000}
+  ],
+  ARRAY<STRUCT<primary_key INT64, value1 INT64, value2 INT64, value3 INT64>>[unknown order:
+    {1, 5, 100, 1000},
+    {2, 5, 200, 2000}
+  ]
+}
+
+==
+
+[name=assign_column_returning_row_unchanged]
+UPDATE Table1 SET value = 10 WHERE TRUE THEN RETURN WITH ACTION *;
+--
+STRUCT<
+  num_rows_modified INT64,
+  all_rows ARRAY<>,
+  returning_rows ARRAY<>
+>{
+  2,
+  ARRAY<STRUCT<primary_key INT64, value INT64>>[unknown order:{1, 10}, {2, 10}],
+  ARRAY<STRUCT<primary_key INT64, value INT64, ACTION STRING>>[unknown order:
+    {1, 10, "UPDATE"},
+    {2, 10, "UPDATE"}
+  ]
+}
+==
+
+[name=return_primary_key]
+UPDATE TableInt64Values SET value1 = 5 WHERE True THEN RETURN primary_key
+--
+STRUCT<
+  num_rows_modified INT64,
+  all_rows ARRAY<>,
+  returning_rows ARRAY<>
+>{
+  2,
+  ARRAY<STRUCT<primary_key INT64, value1 INT64, value2 INT64, value3 INT64>>[unknown order:
+    {1, 5, 100, 1000},
+    {2, 5, 200, 2000}
+  ],
+  ARRAY<STRUCT<primary_key INT64>>[unknown order:{1}, {2}]
+}
+
+==
+
+[name=return_primary_key_with_action]
+UPDATE TableInt64Values SET value1 = 5 WHERE True
+THEN RETURN WITH ACTION AS my_action primary_key
+--
+
+STRUCT<
+  num_rows_modified INT64,
+  all_rows ARRAY<>,
+  returning_rows ARRAY<>
+>{
+  2,
+  ARRAY<STRUCT<primary_key INT64, value1 INT64, value2 INT64, value3 INT64>>[unknown order:
+    {1, 5, 100, 1000},
+    {2, 5, 200, 2000}
+  ],
+  ARRAY<STRUCT<primary_key INT64, my_action STRING>>[unknown order:
+    {1, "UPDATE"},
+    {2, "UPDATE"}
+  ]
+}
+
+==
+
+[name=return_expressions]
+UPDATE TableInt64Values SET value1 = 5 WHERE value1 > 0
+THEN RETURN primary_key, ABS(value2) + 1 AS new_value
+--
+STRUCT<
+  num_rows_modified INT64,
+  all_rows ARRAY<>,
+  returning_rows ARRAY<>
+>{
+  2,
+  ARRAY<STRUCT<primary_key INT64, value1 INT64, value2 INT64, value3 INT64>>[unknown order:
+    {1, 5, 100, 1000},
+    {2, 5, 200, 2000}
+  ],
+  ARRAY<STRUCT<primary_key INT64, new_value INT64>>[unknown order:
+    {1, 101},
+    {2, 201}
+  ]
+}
+
+==
+
+[name=filter_return_expressions]
+UPDATE TableInt64Values SET value1 = 5 WHERE value1 > 10
+THEN RETURN primary_key, ABS(value2) + 1 AS new_value
+--
+STRUCT<
+  num_rows_modified INT64,
+  all_rows ARRAY<>,
+  returning_rows ARRAY<>
+>{
+  1,
+  ARRAY<STRUCT<primary_key INT64, value1 INT64, value2 INT64, value3 INT64>>[unknown order:
+    {1, 10, 100, 1000},
+    {2, 5, 200, 2000}
+  ],
+  ARRAY<STRUCT<primary_key INT64, new_value INT64>>[{2, 201}]
+}
+
+==
+
+[name=update_return_with_table_alias]
+UPDATE TableInt64Values AS t SET value1 = 6 WHERE value1 > 10
+THEN RETURN t.primary_key, ABS(value2) + 1 AS t_value2, t.value3 AS t_value3
+--
+STRUCT<
+  num_rows_modified INT64,
+  all_rows ARRAY<>,
+  returning_rows ARRAY<>
+>{
+  1,
+  ARRAY<STRUCT<primary_key INT64, value1 INT64, value2 INT64, value3 INT64>>[unknown order:
+    {1, 10, 100, 1000},
+    {2, 6, 200, 2000}
+  ],
+  ARRAY<STRUCT<primary_key INT64, t_value2 INT64, t_value3 INT64>>[
+    {2, 201, 2000}
+  ]
+}
+
+==
+
+[name=update_correlated_subquery]
+UPDATE TableInt64Values SET value1 = 5 WHERE value1 > 0 THEN RETURN
+(SELECT COUNT(*) FROM Table1
+  WHERE Table1.primary_key <= TableInt64Values.primary_key), value2
+--
+STRUCT<
+  num_rows_modified INT64,
+  all_rows ARRAY<>,
+  returning_rows ARRAY<>
+>{
+  2,
+  ARRAY<STRUCT<primary_key INT64, value1 INT64, value2 INT64, value3 INT64>>[unknown order:
+    {1, 5, 100, 1000},
+    {2, 5, 200, 2000}
+  ],
+  ARRAY<STRUCT<INT64, value2 INT64>>[unknown order:{1, 100}, {2, 200}]
+}
+
+==
+
+[name=insert_null]
+INSERT INTO Table1 (primary_key, value) VALUES (30, NULL)
+--
+STRUCT<
+  num_rows_modified INT64,
+  all_rows ARRAY<>
+>{1,
+  ARRAY<STRUCT<primary_key INT64, value INT64>>[unknown order:
+    {1, 10},
+    {2, 20},
+    {30, NULL}
+  ]}
+
+==
+
+[name=insert_null_returning]
+INSERT INTO Table1 (primary_key, value) VALUES (30, NULL) THEN RETURN *
+--
+STRUCT<
+  num_rows_modified INT64,
+  all_rows ARRAY<>,
+  returning_rows ARRAY<>
+>{1,
+  ARRAY<STRUCT<primary_key INT64, value INT64>>[unknown order:
+    {1, 10},
+    {2, 20},
+    {30, NULL}
+  ],
+  ARRAY<STRUCT<primary_key INT64, value INT64>>[{30, NULL}]}
+
+==
+
+[name=insert_returning_multi_rows]
+INSERT INTO Table1 (primary_key, value) VALUES (30, 3), (40, 4) THEN RETURN *
+--
+STRUCT<
+  num_rows_modified INT64,
+  all_rows ARRAY<>,
+  returning_rows ARRAY<>
+>{
+  2,
+  ARRAY<STRUCT<primary_key INT64, value INT64>>[unknown order:
+    {1, 10},
+    {2, 20},
+    {30, 3},
+    {40, 4}
+  ],
+  ARRAY<STRUCT<primary_key INT64, value INT64>>[unknown order:{30, 3}, {40, 4}]
+}
+
+==
+
+[name=insert_null_query]
+INSERT INTO Table1 (primary_key, value) SELECT 3, 30
+THEN RETURN WITH ACTION primary_key + value
+--
+STRUCT<
+  num_rows_modified INT64,
+  all_rows ARRAY<>,
+  returning_rows ARRAY<>
+>{1,
+  ARRAY<STRUCT<primary_key INT64, value INT64>>[unknown order:
+    {1, 10},
+    {2, 20},
+    {3, 30}
+  ],
+  ARRAY<STRUCT<INT64, ACTION STRING>>[{33, "INSERT"}]}
+
+==
+
+[name=insert_query_multi_rows]
+INSERT INTO Table1 (primary_key, value)
+SELECT primary_key * 10, value1 + 100 FROM TableInt64Values WHERE True
+THEN RETURN WITH ACTION primary_key + value
+--
+STRUCT<
+  num_rows_modified INT64,
+  all_rows ARRAY<>,
+  returning_rows ARRAY<>
+>{2,
+  ARRAY<STRUCT<primary_key INT64, value INT64>>[unknown order:
+    {1, 10},
+    {2, 20},
+    {10, 110},
+    {20, 120}
+  ],
+  ARRAY<STRUCT<INT64, ACTION STRING>>[unknown order:
+    {120, "INSERT"},
+    {140, "INSERT"}
+  ]}
+
+==
+
+[name=insert_update_with_row_unchanged]
+[primary_key_mode=first_column_is_primary_key]
+INSERT OR UPDATE INTO Table1 (primary_key, value)
+VALUES (1, 10), (2, 10) THEN RETURN WITH ACTION *;
+--
+STRUCT<
+  num_rows_modified INT64,
+  all_rows ARRAY<>,
+  returning_rows ARRAY<>
+>{
+  2,
+  ARRAY<STRUCT<primary_key INT64, value INT64>>[unknown order:{1, 10}, {2, 10}],
+  ARRAY<STRUCT<primary_key INT64, value INT64, ACTION STRING>>[unknown order:
+    {1, 10, "UPDATE"},
+    {2, 10, "UPDATE"}
+  ]
+}
+
+==
+
+[name=insert_ignore_returning_nothing]
+[primary_key_mode=first_column_is_primary_key]
+INSERT OR IGNORE INTO Table1 (primary_key, value) VALUES (2, NULL) THEN RETURN *
+--
+STRUCT<
+  num_rows_modified INT64,
+  all_rows ARRAY<>,
+  returning_rows ARRAY<>
+>{
+  0,
+  ARRAY<STRUCT<primary_key INT64, value INT64>>[unknown order:{1, 10}, {2, 20}],
+  ARRAY<STRUCT<primary_key INT64, value INT64>>[]
+}
+
+==
+
+[name=insert_update_assert_rows_modified]
+[primary_key_mode=first_column_is_primary_key]
+INSERT OR UPDATE INTO Table1 (primary_key, value) VALUES (1, 100), (3, 30)
+ASSERT_ROWS_MODIFIED 2
+THEN RETURN WITH ACTION primary_key + 1
+--
+STRUCT<
+  num_rows_modified INT64,
+  all_rows ARRAY<>,
+  returning_rows ARRAY<>
+>{2,
+  ARRAY<STRUCT<primary_key INT64, value INT64>>[unknown order:
+    {1, 100},
+    {2, 20},
+    {3, 30}
+  ],
+  ARRAY<STRUCT<INT64, ACTION STRING>>[unknown order:
+    {2, "UPDATE"},
+    {4, "INSERT"}
+  ]}
+
+==
+
+[name=insert_update_duplicate_keys]
+[primary_key_mode=first_column_is_primary_key]
+INSERT OR UPDATE INTO Table1 (primary_key, value) VALUES (1, 100), (1, 30)
+THEN RETURN WITH ACTION *
+--
+STRUCT<
+  num_rows_modified INT64,
+  all_rows ARRAY<>,
+  returning_rows ARRAY<>
+>{
+  1,
+  ARRAY<STRUCT<primary_key INT64, value INT64>>[unknown order:{1, 30}, {2, 20}],
+  ARRAY<STRUCT<primary_key INT64, value INT64, ACTION STRING>>[
+    {1, 30, "UPDATE"}
+  ]
+}
+
+==
+
+[name=insert_replace_assert_rows_modified]
+[primary_key_mode=first_column_is_primary_key]
+INSERT OR REPLACE INTO Table1 (primary_key, value) VALUES (1, 100), (3, 30)
+ASSERT_ROWS_MODIFIED 2
+THEN RETURN WITH ACTION primary_key, *
+--
+STRUCT<
+  num_rows_modified INT64,
+  all_rows ARRAY<>,
+  returning_rows ARRAY<>
+>{
+  2,
+  ARRAY<STRUCT<primary_key INT64, value INT64>>[unknown order:
+    {1, 100},
+    {2, 20},
+    {3, 30}
+  ],
+  ARRAY<STRUCT<primary_key INT64, primary_key INT64, value INT64, ACTION STRING>>[unknown order:
+    {1, 1, 100, "REPLACE"},
+    {3, 3, 30, "INSERT"}
+  ]
+}
+
+==
+
+[name=insert_replace_assert_rows_modified_query]
+[primary_key_mode=first_column_is_primary_key]
+INSERT OR REPLACE INTO Table1 (primary_key, value)
+SELECT 1, 5 UNION ALL SELECT 3, 30
+ASSERT_ROWS_MODIFIED 2
+THEN RETURN WITH ACTION *
+--
+STRUCT<
+  num_rows_modified INT64,
+  all_rows ARRAY<>,
+  returning_rows ARRAY<>
+>{2,
+  ARRAY<STRUCT<primary_key INT64, value INT64>>[unknown order:
+    {1, 5},
+    {2, 20},
+    {3, 30}
+  ],
+  ARRAY<STRUCT<primary_key INT64, value INT64, ACTION STRING>>[unknown order:
+    {1, 5, "REPLACE"},
+    {3, 30, "INSERT"}
+  ]}
+
+==
+
+[name=insert_replace_duplicate_keys]
+[primary_key_mode=first_column_is_primary_key]
+INSERT OR REPLACE INTO Table1 (primary_key, value)
+SELECT 1, 5 UNION ALL SELECT 1, 6
+THEN RETURN WITH ACTION *
+--
+STRUCT<
+  num_rows_modified INT64,
+  all_rows ARRAY<>,
+  returning_rows ARRAY<>
+>{
+  1,
+  ARRAY<STRUCT<primary_key INT64, value INT64>>[unknown order:{1, 6}, {2, 20}],
+  ARRAY<STRUCT<primary_key INT64, value INT64, ACTION STRING>>[
+    {1, 6, "REPLACE"}
+  ]
+}
+
+==
+
+[name=insert_update_select_query]
+[primary_key_mode=first_column_is_primary_key]
+INSERT OR UPDATE INTO Table1 (primary_key, value)
+SELECT primary_key + 1, value1 + 100 FROM TableInt64Values WHERE True
+THEN RETURN WITH ACTION *
+--
+STRUCT<
+  num_rows_modified INT64,
+  all_rows ARRAY<>,
+  returning_rows ARRAY<>
+>{2,
+  ARRAY<STRUCT<primary_key INT64, value INT64>>[unknown order:
+    {1, 10},
+    {2, 110},
+    {3, 120}
+  ],
+  ARRAY<STRUCT<primary_key INT64, value INT64, ACTION STRING>>[unknown order:
+    {2, 110, "UPDATE"},
+    {3, 120, "INSERT"}
+  ]}
+
+==
+
+[name=insert_replace_select_query]
+[primary_key_mode=first_column_is_primary_key]
+INSERT OR REPLACE INTO Table1 (primary_key, value)
+SELECT primary_key + 1, value1 + 100 FROM TableInt64Values WHERE True
+THEN RETURN WITH ACTION *
+--
+STRUCT<
+  num_rows_modified INT64,
+  all_rows ARRAY<>,
+  returning_rows ARRAY<>
+>{2,
+  ARRAY<STRUCT<primary_key INT64, value INT64>>[unknown order:
+    {1, 10},
+    {2, 110},
+    {3, 120}
+  ],
+  ARRAY<STRUCT<primary_key INT64, value INT64, ACTION STRING>>[unknown order:
+    {2, 110, "REPLACE"},
+    {3, 120, "INSERT"}
+  ]}
+
+==
+
+[name=insert_correlated_subquery]
+[primary_key_mode=first_column_is_primary_key]
+INSERT OR REPLACE INTO Table1 (primary_key, value)
+SELECT 1, 100 UNION ALL SELECT 3, 300
+ASSERT_ROWS_MODIFIED 2 THEN RETURN
+(SELECT SUM(value2) FROM TableInt64Values
+  WHERE Table1.primary_key <= TableInt64Values.primary_key), value
+--
+STRUCT<
+  num_rows_modified INT64,
+  all_rows ARRAY<>,
+  returning_rows ARRAY<>
+>{2,
+  ARRAY<STRUCT<primary_key INT64, value INT64>>[unknown order:
+    {1, 100},
+    {2, 20},
+    {3, 300}
+  ],
+  ARRAY<STRUCT<INT64, value INT64>>[unknown order:{300, 100}, {NULL, 300}]}
+

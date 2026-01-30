@@ -1,0 +1,4047 @@
+# Tests with correlation references in a subquery that contains
+# aggregation.  The tested correlated references can appear as aggregate
+# function arguments, grouping columns, both, or as neither.  In general,
+# correlated references in a subquery with aggregation do not need to
+# be in the GROUP BY or aggregated, since they are treated as constants
+# in the context of the correlated subquery).  Correlated path expressions
+# (i.e., a.b.c.d) are also tested.
+#
+# There are three sets of tests, where the correlated references are:
+# 1) correlated (nested) STRUCT/column references
+# 2) correlated (struct and proto) value table column references
+# 3) correlated (nested) PROTO/field references
+#
+# SELECT and GROUP BY x, without aggregation.
+#
+# Note that the only AST difference between 'FROM UNNEST(y)' and 'FROM t.y'
+# is the ArrayScan element_column alias - '$unnest1' vs. 'y'.
+
+[default language_features=NONE,+GROUP_BY_ROLLUP,+GROUP_BY_STRUCT]
+
+SELECT (
+  SELECT {{t.|}}x FROM {{UNNEST(y)|t.y}} GROUP BY x
+)
+FROM (
+  SELECT 1 as x, [2] AS y
+) t
+--
+ALTERNATION GROUPS:
+    t.,UNNEST(y)
+    UNNEST(y)
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#5 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#5]
+    +-expr_list=
+    | +-$col1#5 :=
+    |   +-SubqueryExpr
+    |     +-type=INT64
+    |     +-subquery_type=SCALAR
+    |     +-parameter_list=
+    |     | +-ColumnRef(type=INT64, column=t.x#1)
+    |     | +-ColumnRef(type=ARRAY<INT64>, column=t.y#2)
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$groupby.x#4]
+    |         +-input_scan=
+    |           +-AggregateScan
+    |             +-column_list=[$groupby.x#4]
+    |             +-input_scan=
+    |             | +-ArrayScan
+    |             |   +-array_expr_list=
+    |             |   | +-ColumnRef(type=ARRAY<INT64>, column=t.y#2, is_correlated=TRUE)
+    |             |   +-element_column_list=[$array.$unnest1#3]
+    |             +-group_by_list=
+    |               +-x#4 := ColumnRef(type=INT64, column=t.x#1, is_correlated=TRUE)
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=t.[x#1, y#2]
+        +-expr_list=
+        | +-x#1 := Literal(type=INT64, value=1)
+        | +-y#2 := Literal(type=ARRAY<INT64>, value=[2])
+        +-input_scan=
+          +-SingleRowScan
+--
+ALTERNATION GROUPS:
+    t.,t.y
+    t.y
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#5 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#5]
+    +-expr_list=
+    | +-$col1#5 :=
+    |   +-SubqueryExpr
+    |     +-type=INT64
+    |     +-subquery_type=SCALAR
+    |     +-parameter_list=
+    |     | +-ColumnRef(type=INT64, column=t.x#1)
+    |     | +-ColumnRef(type=ARRAY<INT64>, column=t.y#2)
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$groupby.x#4]
+    |         +-input_scan=
+    |           +-AggregateScan
+    |             +-column_list=[$groupby.x#4]
+    |             +-input_scan=
+    |             | +-ArrayScan
+    |             |   +-array_expr_list=
+    |             |   | +-ColumnRef(type=ARRAY<INT64>, column=t.y#2, is_correlated=TRUE)
+    |             |   +-element_column_list=[$array.y#3]
+    |             +-group_by_list=
+    |               +-x#4 := ColumnRef(type=INT64, column=t.x#1, is_correlated=TRUE)
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=t.[x#1, y#2]
+        +-expr_list=
+        | +-x#1 := Literal(type=INT64, value=1)
+        | +-y#2 := Literal(type=ARRAY<INT64>, value=[2])
+        +-input_scan=
+          +-SingleRowScan
+==
+
+# SUM(x), without GROUP BY
+SELECT (
+  SELECT SUM({{t.|}}x) FROM t.y
+)
+FROM (
+  SELECT 1 as x, [2] AS y
+) t
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#5 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#5]
+    +-expr_list=
+    | +-$col1#5 :=
+    |   +-SubqueryExpr
+    |     +-type=INT64
+    |     +-subquery_type=SCALAR
+    |     +-parameter_list=
+    |     | +-ColumnRef(type=INT64, column=t.x#1)
+    |     | +-ColumnRef(type=ARRAY<INT64>, column=t.y#2)
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$aggregate.$agg1#4]
+    |         +-input_scan=
+    |           +-AggregateScan
+    |             +-column_list=[$aggregate.$agg1#4]
+    |             +-input_scan=
+    |             | +-ArrayScan
+    |             |   +-array_expr_list=
+    |             |   | +-ColumnRef(type=ARRAY<INT64>, column=t.y#2, is_correlated=TRUE)
+    |             |   +-element_column_list=[$array.y#3]
+    |             +-aggregate_list=
+    |               +-$agg1#4 :=
+    |                 +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+    |                   +-ColumnRef(type=INT64, column=t.x#1, is_correlated=TRUE)
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=t.[x#1, y#2]
+        +-expr_list=
+        | +-x#1 := Literal(type=INT64, value=1)
+        | +-y#2 := Literal(type=ARRAY<INT64>, value=[2])
+        +-input_scan=
+          +-SingleRowScan
+==
+
+# SELECT and GROUP BY x, with SUM(y)
+#
+# Note that we get different behaviors when we GROUP BY 't.x' as
+# compared to just 'x' (or the SELECT list ordinal).  The reason is
+# that 't.x' resolves to the correlation reference, while 'x'
+# resolves to the SELECT list alias.  This manifests in the plan
+# in subtle way.  For GROUP BY 't.x' we add a Project on top of
+# the aggregation for the correlation reference, then create
+# the struct from the projected correlation reference.  But if
+# we GROUP BY 'x' then we have resolved that GROUP BY column
+# to its corresponding SELECT list column so we don't need
+# to project the correlation value and we build the struct
+# directly from the grouped correlation column.
+SELECT (
+  SELECT as struct {{t.|}}x, SUM(y) FROM t.y GROUP BY {{t.|}}x
+)
+FROM (
+  SELECT 1 as x, [2] AS y
+) t
+--
+ALTERNATION GROUPS:
+    t.,t.
+    t.
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#8 AS `$col1` [STRUCT<x INT64, INT64>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#8]
+    +-expr_list=
+    | +-$col1#8 :=
+    |   +-SubqueryExpr
+    |     +-type=STRUCT<x INT64, INT64>
+    |     +-subquery_type=SCALAR
+    |     +-parameter_list=
+    |     | +-ColumnRef(type=INT64, column=t.x#1)
+    |     | +-ColumnRef(type=ARRAY<INT64>, column=t.y#2)
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$make_struct.$struct#7]
+    |         +-expr_list=
+    |         | +-$struct#7 :=
+    |         |   +-MakeStruct
+    |         |     +-type=STRUCT<x INT64, INT64>
+    |         |     +-field_list=
+    |         |       +-ColumnRef(type=INT64, column=$expr_subquery.x#6)
+    |         |       +-ColumnRef(type=INT64, column=$aggregate.$agg1#4)
+    |         +-input_scan=
+    |           +-ProjectScan
+    |             +-column_list=[$expr_subquery.x#6, $aggregate.$agg1#4]
+    |             +-expr_list=
+    |             | +-x#6 := ColumnRef(type=INT64, column=t.x#1, is_correlated=TRUE)
+    |             +-input_scan=
+    |               +-AggregateScan
+    |                 +-column_list=[$aggregate.$agg1#4]
+    |                 +-input_scan=
+    |                 | +-ArrayScan
+    |                 |   +-column_list=[$array.y#3]
+    |                 |   +-array_expr_list=
+    |                 |   | +-ColumnRef(type=ARRAY<INT64>, column=t.y#2, is_correlated=TRUE)
+    |                 |   +-element_column_list=[$array.y#3]
+    |                 +-group_by_list=
+    |                 | +-x#5 := ColumnRef(type=INT64, column=t.x#1, is_correlated=TRUE)
+    |                 +-aggregate_list=
+    |                   +-$agg1#4 :=
+    |                     +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+    |                       +-ColumnRef(type=INT64, column=$array.y#3)
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=t.[x#1, y#2]
+        +-expr_list=
+        | +-x#1 := Literal(type=INT64, value=1)
+        | +-y#2 := Literal(type=ARRAY<INT64>, value=[2])
+        +-input_scan=
+          +-SingleRowScan
+--
+ALTERNATION GROUPS:
+    t.,
+    <empty>
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#7 AS `$col1` [STRUCT<x INT64, INT64>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#7]
+    +-expr_list=
+    | +-$col1#7 :=
+    |   +-SubqueryExpr
+    |     +-type=STRUCT<x INT64, INT64>
+    |     +-subquery_type=SCALAR
+    |     +-parameter_list=
+    |     | +-ColumnRef(type=INT64, column=t.x#1)
+    |     | +-ColumnRef(type=ARRAY<INT64>, column=t.y#2)
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$make_struct.$struct#6]
+    |         +-expr_list=
+    |         | +-$struct#6 :=
+    |         |   +-MakeStruct
+    |         |     +-type=STRUCT<x INT64, INT64>
+    |         |     +-field_list=
+    |         |       +-ColumnRef(type=INT64, column=$groupby.x#5)
+    |         |       +-ColumnRef(type=INT64, column=$aggregate.$agg1#4)
+    |         +-input_scan=
+    |           +-ProjectScan
+    |             +-column_list=[$groupby.x#5, $aggregate.$agg1#4]
+    |             +-input_scan=
+    |               +-AggregateScan
+    |                 +-column_list=[$groupby.x#5, $aggregate.$agg1#4]
+    |                 +-input_scan=
+    |                 | +-ArrayScan
+    |                 |   +-column_list=[$array.y#3]
+    |                 |   +-array_expr_list=
+    |                 |   | +-ColumnRef(type=ARRAY<INT64>, column=t.y#2, is_correlated=TRUE)
+    |                 |   +-element_column_list=[$array.y#3]
+    |                 +-group_by_list=
+    |                 | +-x#5 := ColumnRef(type=INT64, column=t.x#1, is_correlated=TRUE)
+    |                 +-aggregate_list=
+    |                   +-$agg1#4 :=
+    |                     +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+    |                       +-ColumnRef(type=INT64, column=$array.y#3)
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=t.[x#1, y#2]
+        +-expr_list=
+        | +-x#1 := Literal(type=INT64, value=1)
+        | +-y#2 := Literal(type=ARRAY<INT64>, value=[2])
+        +-input_scan=
+          +-SingleRowScan
+==
+
+# GROUP BY x, with SUM(y)
+SELECT (
+  SELECT SUM(y) FROM t.y GROUP BY {{t.|}}x
+)
+FROM (
+  SELECT 1 as x, [2] AS y
+) t
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#6 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#6]
+    +-expr_list=
+    | +-$col1#6 :=
+    |   +-SubqueryExpr
+    |     +-type=INT64
+    |     +-subquery_type=SCALAR
+    |     +-parameter_list=
+    |     | +-ColumnRef(type=INT64, column=t.x#1)
+    |     | +-ColumnRef(type=ARRAY<INT64>, column=t.y#2)
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$aggregate.$agg1#4]
+    |         +-input_scan=
+    |           +-AggregateScan
+    |             +-column_list=[$aggregate.$agg1#4]
+    |             +-input_scan=
+    |             | +-ArrayScan
+    |             |   +-column_list=[$array.y#3]
+    |             |   +-array_expr_list=
+    |             |   | +-ColumnRef(type=ARRAY<INT64>, column=t.y#2, is_correlated=TRUE)
+    |             |   +-element_column_list=[$array.y#3]
+    |             +-group_by_list=
+    |             | +-x#5 := ColumnRef(type=INT64, column=t.x#1, is_correlated=TRUE)
+    |             +-aggregate_list=
+    |               +-$agg1#4 :=
+    |                 +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+    |                   +-ColumnRef(type=INT64, column=$array.y#3)
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=t.[x#1, y#2]
+        +-expr_list=
+        | +-x#1 := Literal(type=INT64, value=1)
+        | +-y#2 := Literal(type=ARRAY<INT64>, value=[2])
+        +-input_scan=
+          +-SingleRowScan
+==
+
+# GROUP BY ROLLUP(x), with SUM(y)
+SELECT (
+  SELECT SUM(y) FROM t.y GROUP BY ROLLUP({{t.|}}x)
+)
+FROM (
+  SELECT 1 as x, [2] AS y
+) t
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#6 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#6]
+    +-expr_list=
+    | +-$col1#6 :=
+    |   +-SubqueryExpr
+    |     +-type=INT64
+    |     +-subquery_type=SCALAR
+    |     +-parameter_list=
+    |     | +-ColumnRef(type=INT64, column=t.x#1)
+    |     | +-ColumnRef(type=ARRAY<INT64>, column=t.y#2)
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$aggregate.$agg1#4]
+    |         +-input_scan=
+    |           +-AggregateScan
+    |             +-column_list=[$aggregate.$agg1#4]
+    |             +-input_scan=
+    |             | +-ArrayScan
+    |             |   +-column_list=[$array.y#3]
+    |             |   +-array_expr_list=
+    |             |   | +-ColumnRef(type=ARRAY<INT64>, column=t.y#2, is_correlated=TRUE)
+    |             |   +-element_column_list=[$array.y#3]
+    |             +-group_by_list=
+    |             | +-x#5 := ColumnRef(type=INT64, column=t.x#1, is_correlated=TRUE)
+    |             +-aggregate_list=
+    |             | +-$agg1#4 :=
+    |             |   +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+    |             |     +-ColumnRef(type=INT64, column=$array.y#3)
+    |             +-grouping_set_list=
+    |             | +-GroupingSet
+    |             | | +-group_by_column_list=
+    |             | |   +-ColumnRef(type=INT64, column=$groupby.x#5)
+    |             | +-GroupingSet
+    |             +-rollup_column_list=
+    |               +-ColumnRef(type=INT64, column=$groupby.x#5)
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=t.[x#1, y#2]
+        +-expr_list=
+        | +-x#1 := Literal(type=INT64, value=1)
+        | +-y#2 := Literal(type=ARRAY<INT64>, value=[2])
+        +-input_scan=
+          +-SingleRowScan
+==
+
+# SELECT x, with SUM(y).  This works because x is constant for the
+# life of each subquery execution.
+SELECT (
+  SELECT as struct {{t.|}}x, SUM(y) FROM t.y
+)
+FROM (
+  SELECT 1 as x, [2] AS y
+) t
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#7 AS `$col1` [STRUCT<x INT64, INT64>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#7]
+    +-expr_list=
+    | +-$col1#7 :=
+    |   +-SubqueryExpr
+    |     +-type=STRUCT<x INT64, INT64>
+    |     +-subquery_type=SCALAR
+    |     +-parameter_list=
+    |     | +-ColumnRef(type=INT64, column=t.x#1)
+    |     | +-ColumnRef(type=ARRAY<INT64>, column=t.y#2)
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$make_struct.$struct#6]
+    |         +-expr_list=
+    |         | +-$struct#6 :=
+    |         |   +-MakeStruct
+    |         |     +-type=STRUCT<x INT64, INT64>
+    |         |     +-field_list=
+    |         |       +-ColumnRef(type=INT64, column=$expr_subquery.x#5)
+    |         |       +-ColumnRef(type=INT64, column=$aggregate.$agg1#4)
+    |         +-input_scan=
+    |           +-ProjectScan
+    |             +-column_list=[$expr_subquery.x#5, $aggregate.$agg1#4]
+    |             +-expr_list=
+    |             | +-x#5 := ColumnRef(type=INT64, column=t.x#1, is_correlated=TRUE)
+    |             +-input_scan=
+    |               +-AggregateScan
+    |                 +-column_list=[$aggregate.$agg1#4]
+    |                 +-input_scan=
+    |                 | +-ArrayScan
+    |                 |   +-column_list=[$array.y#3]
+    |                 |   +-array_expr_list=
+    |                 |   | +-ColumnRef(type=ARRAY<INT64>, column=t.y#2, is_correlated=TRUE)
+    |                 |   +-element_column_list=[$array.y#3]
+    |                 +-aggregate_list=
+    |                   +-$agg1#4 :=
+    |                     +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+    |                       +-ColumnRef(type=INT64, column=$array.y#3)
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=t.[x#1, y#2]
+        +-expr_list=
+        | +-x#1 := Literal(type=INT64, value=1)
+        | +-y#2 := Literal(type=ARRAY<INT64>, value=[2])
+        +-input_scan=
+          +-SingleRowScan
+==
+
+# SELECT t, x, with SUM(y).  This works because t and x are constant for the
+# life of each subquery execution.
+SELECT (
+  SELECT as struct t, {{t.|}}x, SUM(y) FROM t.y
+)
+FROM (
+  SELECT 1 as x, [2] AS y
+) t
+--
+ALTERNATION GROUP: t.
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#10 AS `$col1` [STRUCT<t STRUCT<x INT64, y ARRAY<INT64>>, x INT64, INT64>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#10]
+    +-expr_list=
+    | +-$col1#10 :=
+    |   +-SubqueryExpr
+    |     +-type=STRUCT<t STRUCT<x INT64, y ARRAY<INT64>>, x INT64, INT64>
+    |     +-subquery_type=SCALAR
+    |     +-parameter_list=
+    |     | +-ColumnRef(type=INT64, column=t.x#1)
+    |     | +-ColumnRef(type=ARRAY<INT64>, column=t.y#2)
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$make_struct.$struct#9]
+    |         +-expr_list=
+    |         | +-$struct#9 :=
+    |         |   +-MakeStruct
+    |         |     +-type=STRUCT<t STRUCT<x INT64, y ARRAY<INT64>>, x INT64, INT64>
+    |         |     +-field_list=
+    |         |       +-ColumnRef(type=STRUCT<x INT64, y ARRAY<INT64>>, column=$expr_subquery.t#7)
+    |         |       +-ColumnRef(type=INT64, column=$expr_subquery.x#8)
+    |         |       +-ColumnRef(type=INT64, column=$aggregate.$agg1#5)
+    |         +-input_scan=
+    |           +-ProjectScan
+    |             +-column_list=[$expr_subquery.t#7, $expr_subquery.x#8, $aggregate.$agg1#5]
+    |             +-expr_list=
+    |             | +-t#7 :=
+    |             | | +-MakeStruct
+    |             | |   +-type=STRUCT<x INT64, y ARRAY<INT64>>
+    |             | |   +-field_list=
+    |             | |     +-ColumnRef(type=INT64, column=t.x#1, is_correlated=TRUE)
+    |             | |     +-ColumnRef(type=ARRAY<INT64>, column=t.y#2, is_correlated=TRUE)
+    |             | +-x#8 := ColumnRef(type=INT64, column=t.x#1, is_correlated=TRUE)
+    |             +-input_scan=
+    |               +-AggregateScan
+    |                 +-column_list=[$aggregate.$agg1#5]
+    |                 +-input_scan=
+    |                 | +-ArrayScan
+    |                 |   +-column_list=[$array.y#3]
+    |                 |   +-array_expr_list=
+    |                 |   | +-ColumnRef(type=ARRAY<INT64>, column=t.y#2, is_correlated=TRUE)
+    |                 |   +-element_column_list=[$array.y#3]
+    |                 +-aggregate_list=
+    |                   +-$agg1#5 :=
+    |                     +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+    |                       +-ColumnRef(type=INT64, column=$array.y#3)
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=t.[x#1, y#2]
+        +-expr_list=
+        | +-x#1 := Literal(type=INT64, value=1)
+        | +-y#2 := Literal(type=ARRAY<INT64>, value=[2])
+        +-input_scan=
+          +-SingleRowScan
+
+
+DEPRECATION WARNING:
+Lateral column alias will shadow original target: INT64 (t.x#1) [at 2:23]
+  SELECT as struct t, t.x, SUM(y) FROM t.y
+                      ^
+[googlesql.DeprecationWarning] { kind: LATERAL_COLUMN_REFERENCE }
+--
+ALTERNATION GROUP: <empty>
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#10 AS `$col1` [STRUCT<t STRUCT<x INT64, y ARRAY<INT64>>, x INT64, INT64>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#10]
+    +-expr_list=
+    | +-$col1#10 :=
+    |   +-SubqueryExpr
+    |     +-type=STRUCT<t STRUCT<x INT64, y ARRAY<INT64>>, x INT64, INT64>
+    |     +-subquery_type=SCALAR
+    |     +-parameter_list=
+    |     | +-ColumnRef(type=INT64, column=t.x#1)
+    |     | +-ColumnRef(type=ARRAY<INT64>, column=t.y#2)
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$make_struct.$struct#9]
+    |         +-expr_list=
+    |         | +-$struct#9 :=
+    |         |   +-MakeStruct
+    |         |     +-type=STRUCT<t STRUCT<x INT64, y ARRAY<INT64>>, x INT64, INT64>
+    |         |     +-field_list=
+    |         |       +-ColumnRef(type=STRUCT<x INT64, y ARRAY<INT64>>, column=$expr_subquery.t#7)
+    |         |       +-ColumnRef(type=INT64, column=$expr_subquery.x#8)
+    |         |       +-ColumnRef(type=INT64, column=$aggregate.$agg1#5)
+    |         +-input_scan=
+    |           +-ProjectScan
+    |             +-column_list=[$expr_subquery.t#7, $expr_subquery.x#8, $aggregate.$agg1#5]
+    |             +-expr_list=
+    |             | +-t#7 :=
+    |             | | +-MakeStruct
+    |             | |   +-type=STRUCT<x INT64, y ARRAY<INT64>>
+    |             | |   +-field_list=
+    |             | |     +-ColumnRef(type=INT64, column=t.x#1, is_correlated=TRUE)
+    |             | |     +-ColumnRef(type=ARRAY<INT64>, column=t.y#2, is_correlated=TRUE)
+    |             | +-x#8 := ColumnRef(type=INT64, column=t.x#1, is_correlated=TRUE)
+    |             +-input_scan=
+    |               +-AggregateScan
+    |                 +-column_list=[$aggregate.$agg1#5]
+    |                 +-input_scan=
+    |                 | +-ArrayScan
+    |                 |   +-column_list=[$array.y#3]
+    |                 |   +-array_expr_list=
+    |                 |   | +-ColumnRef(type=ARRAY<INT64>, column=t.y#2, is_correlated=TRUE)
+    |                 |   +-element_column_list=[$array.y#3]
+    |                 +-aggregate_list=
+    |                   +-$agg1#5 :=
+    |                     +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+    |                       +-ColumnRef(type=INT64, column=$array.y#3)
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=t.[x#1, y#2]
+        +-expr_list=
+        | +-x#1 := Literal(type=INT64, value=1)
+        | +-y#2 := Literal(type=ARRAY<INT64>, value=[2])
+        +-input_scan=
+          +-SingleRowScan
+==
+
+# SELECT and GROUP BY t, x, with SUM(y).  This does not work because GoogleSQL
+# does not allow grouping by Array y in struct t.
+SELECT (
+  SELECT as struct t, x, SUM(y) FROM t.y GROUP BY t, x
+)
+FROM (
+  SELECT 1 as x, [2] AS y
+) t
+--
+ERROR: Grouping by expressions of type STRUCT containing ARRAY is not allowed [at 2:51]
+  SELECT as struct t, x, SUM(y) FROM t.y GROUP BY t, x
+                                                  ^
+==
+
+# More deeply nested struct path expression.
+SELECT (
+  SELECT AS STRUCT x {{| as x1}}, x.f1a, x.f1b.f2a, x.f1b.f2b.f3a, SUM(y)
+  FROM t.y
+  {{|GROUP BY x.f1a, x.f1b.f2a, x.f1b.f2b.f3a|GROUP BY ROLLUP(x.f1a, x.f1b.f2a, x.f1b.f2b.f3a)}}
+)
+FROM (
+  SELECT
+    struct<f1a int32,
+           f1b struct<f2a bool,
+                      f2b struct<f3a string>>>(1, (true, struct("a"))) as x,
+    [2] AS y
+) t
+--
+ALTERNATION GROUP: <empty>
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#10 AS `$col1` [STRUCT<x STRUCT<f1a INT32, f1b STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>>, f1a INT32, f2a BOOL, f3a STRING, INT64>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#10]
+    +-expr_list=
+    | +-$col1#10 :=
+    |   +-SubqueryExpr
+    |     +-type=STRUCT<x STRUCT<f1a INT32, f1b STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>>, f1a INT32, f2a BOOL, f3a STRING, INT64>
+    |     +-subquery_type=SCALAR
+    |     +-parameter_list=
+    |     | +-ColumnRef(type=STRUCT<f1a INT32, f1b STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>>, column=t.x#1)
+    |     | +-ColumnRef(type=ARRAY<INT64>, column=t.y#2)
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$make_struct.$struct#9]
+    |         +-expr_list=
+    |         | +-$struct#9 :=
+    |         |   +-MakeStruct
+    |         |     +-type=STRUCT<x STRUCT<f1a INT32, f1b STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>>, f1a INT32, f2a BOOL, f3a STRING, INT64>
+    |         |     +-field_list=
+    |         |       +-ColumnRef(type=STRUCT<f1a INT32, f1b STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>>, column=$expr_subquery.x#5)
+    |         |       +-ColumnRef(type=INT32, column=$expr_subquery.f1a#6)
+    |         |       +-ColumnRef(type=BOOL, column=$expr_subquery.f2a#7)
+    |         |       +-ColumnRef(type=STRING, column=$expr_subquery.f3a#8)
+    |         |       +-ColumnRef(type=INT64, column=$aggregate.$agg1#4)
+    |         +-input_scan=
+    |           +-ProjectScan
+    |             +-column_list=[$expr_subquery.x#5, $expr_subquery.f1a#6, $expr_subquery.f2a#7, $expr_subquery.f3a#8, $aggregate.$agg1#4]
+    |             +-expr_list=
+    |             | +-x#5 := ColumnRef(type=STRUCT<f1a INT32, f1b STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>>, column=t.x#1, is_correlated=TRUE)
+    |             | +-f1a#6 :=
+    |             | | +-GetStructField
+    |             | |   +-type=INT32
+    |             | |   +-expr=
+    |             | |   | +-ColumnRef(type=STRUCT<f1a INT32, f1b STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>>, column=t.x#1, is_correlated=TRUE)
+    |             | |   +-field_idx=0
+    |             | +-f2a#7 :=
+    |             | | +-GetStructField
+    |             | |   +-type=BOOL
+    |             | |   +-expr=
+    |             | |   | +-GetStructField
+    |             | |   |   +-type=STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>
+    |             | |   |   +-expr=
+    |             | |   |   | +-ColumnRef(type=STRUCT<f1a INT32, f1b STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>>, column=t.x#1, is_correlated=TRUE)
+    |             | |   |   +-field_idx=1
+    |             | |   +-field_idx=0
+    |             | +-f3a#8 :=
+    |             |   +-GetStructField
+    |             |     +-type=STRING
+    |             |     +-expr=
+    |             |     | +-GetStructField
+    |             |     |   +-type=STRUCT<f3a STRING>
+    |             |     |   +-expr=
+    |             |     |   | +-GetStructField
+    |             |     |   |   +-type=STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>
+    |             |     |   |   +-expr=
+    |             |     |   |   | +-ColumnRef(type=STRUCT<f1a INT32, f1b STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>>, column=t.x#1, is_correlated=TRUE)
+    |             |     |   |   +-field_idx=1
+    |             |     |   +-field_idx=1
+    |             |     +-field_idx=0
+    |             +-input_scan=
+    |               +-AggregateScan
+    |                 +-column_list=[$aggregate.$agg1#4]
+    |                 +-input_scan=
+    |                 | +-ArrayScan
+    |                 |   +-column_list=[$array.y#3]
+    |                 |   +-array_expr_list=
+    |                 |   | +-ColumnRef(type=ARRAY<INT64>, column=t.y#2, is_correlated=TRUE)
+    |                 |   +-element_column_list=[$array.y#3]
+    |                 +-aggregate_list=
+    |                   +-$agg1#4 :=
+    |                     +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+    |                       +-ColumnRef(type=INT64, column=$array.y#3)
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=t.[x#1, y#2]
+        +-expr_list=
+        | +-x#1 := Literal(type=STRUCT<f1a INT32, f1b STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>>, value={f1a:1, f1b:{f2a:true, f2b:{f3a:"a"}}}, has_explicit_type=TRUE)
+        | +-y#2 := Literal(type=ARRAY<INT64>, value=[2])
+        +-input_scan=
+          +-SingleRowScan
+
+
+DEPRECATION WARNING:
+Lateral column alias will shadow original target: STRUCT<f1a INT32, f1b STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>> (t.x#1) [at 2:24]
+  SELECT AS STRUCT x , x.f1a, x.f1b.f2a, x.f1b.f2b.f3a, SUM(y)
+                       ^
+[googlesql.DeprecationWarning] { kind: LATERAL_COLUMN_REFERENCE }
+--
+ALTERNATION GROUP: GROUP BY x.f1a, x.f1b.f2a, x.f1b.f2b.f3a
+--
+ERROR: Cannot GROUP BY field references from SELECT list alias x [at 4:12]
+  GROUP BY x.f1a, x.f1b.f2a, x.f1b.f2b.f3a
+           ^
+--
+ALTERNATION GROUP: GROUP BY ROLLUP(x.f1a, x.f1b.f2a, x.f1b.f2b.f3a)
+--
+ERROR: Cannot GROUP BY field references from SELECT list alias x [at 4:19]
+  GROUP BY ROLLUP(x.f1a, x.f1b.f2a, x.f1b.f2b.f3a)
+                  ^
+--
+ALTERNATION GROUP:  as x1,
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#10 AS `$col1` [STRUCT<x1 STRUCT<f1a INT32, f1b STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>>, f1a INT32, f2a BOOL, f3a STRING, INT64>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#10]
+    +-expr_list=
+    | +-$col1#10 :=
+    |   +-SubqueryExpr
+    |     +-type=STRUCT<x1 STRUCT<f1a INT32, f1b STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>>, f1a INT32, f2a BOOL, f3a STRING, INT64>
+    |     +-subquery_type=SCALAR
+    |     +-parameter_list=
+    |     | +-ColumnRef(type=STRUCT<f1a INT32, f1b STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>>, column=t.x#1)
+    |     | +-ColumnRef(type=ARRAY<INT64>, column=t.y#2)
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$make_struct.$struct#9]
+    |         +-expr_list=
+    |         | +-$struct#9 :=
+    |         |   +-MakeStruct
+    |         |     +-type=STRUCT<x1 STRUCT<f1a INT32, f1b STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>>, f1a INT32, f2a BOOL, f3a STRING, INT64>
+    |         |     +-field_list=
+    |         |       +-ColumnRef(type=STRUCT<f1a INT32, f1b STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>>, column=$expr_subquery.x1#5)
+    |         |       +-ColumnRef(type=INT32, column=$expr_subquery.f1a#6)
+    |         |       +-ColumnRef(type=BOOL, column=$expr_subquery.f2a#7)
+    |         |       +-ColumnRef(type=STRING, column=$expr_subquery.f3a#8)
+    |         |       +-ColumnRef(type=INT64, column=$aggregate.$agg1#4)
+    |         +-input_scan=
+    |           +-ProjectScan
+    |             +-column_list=[$expr_subquery.x1#5, $expr_subquery.f1a#6, $expr_subquery.f2a#7, $expr_subquery.f3a#8, $aggregate.$agg1#4]
+    |             +-expr_list=
+    |             | +-x1#5 := ColumnRef(type=STRUCT<f1a INT32, f1b STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>>, column=t.x#1, is_correlated=TRUE)
+    |             | +-f1a#6 :=
+    |             | | +-GetStructField
+    |             | |   +-type=INT32
+    |             | |   +-expr=
+    |             | |   | +-ColumnRef(type=STRUCT<f1a INT32, f1b STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>>, column=t.x#1, is_correlated=TRUE)
+    |             | |   +-field_idx=0
+    |             | +-f2a#7 :=
+    |             | | +-GetStructField
+    |             | |   +-type=BOOL
+    |             | |   +-expr=
+    |             | |   | +-GetStructField
+    |             | |   |   +-type=STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>
+    |             | |   |   +-expr=
+    |             | |   |   | +-ColumnRef(type=STRUCT<f1a INT32, f1b STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>>, column=t.x#1, is_correlated=TRUE)
+    |             | |   |   +-field_idx=1
+    |             | |   +-field_idx=0
+    |             | +-f3a#8 :=
+    |             |   +-GetStructField
+    |             |     +-type=STRING
+    |             |     +-expr=
+    |             |     | +-GetStructField
+    |             |     |   +-type=STRUCT<f3a STRING>
+    |             |     |   +-expr=
+    |             |     |   | +-GetStructField
+    |             |     |   |   +-type=STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>
+    |             |     |   |   +-expr=
+    |             |     |   |   | +-ColumnRef(type=STRUCT<f1a INT32, f1b STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>>, column=t.x#1, is_correlated=TRUE)
+    |             |     |   |   +-field_idx=1
+    |             |     |   +-field_idx=1
+    |             |     +-field_idx=0
+    |             +-input_scan=
+    |               +-AggregateScan
+    |                 +-column_list=[$aggregate.$agg1#4]
+    |                 +-input_scan=
+    |                 | +-ArrayScan
+    |                 |   +-column_list=[$array.y#3]
+    |                 |   +-array_expr_list=
+    |                 |   | +-ColumnRef(type=ARRAY<INT64>, column=t.y#2, is_correlated=TRUE)
+    |                 |   +-element_column_list=[$array.y#3]
+    |                 +-aggregate_list=
+    |                   +-$agg1#4 :=
+    |                     +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+    |                       +-ColumnRef(type=INT64, column=$array.y#3)
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=t.[x#1, y#2]
+        +-expr_list=
+        | +-x#1 := Literal(type=STRUCT<f1a INT32, f1b STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>>, value={f1a:1, f1b:{f2a:true, f2b:{f3a:"a"}}}, has_explicit_type=TRUE)
+        | +-y#2 := Literal(type=ARRAY<INT64>, value=[2])
+        +-input_scan=
+          +-SingleRowScan
+--
+ALTERNATION GROUP:  as x1,GROUP BY x.f1a, x.f1b.f2a, x.f1b.f2b.f3a
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#13 AS `$col1` [STRUCT<x1 STRUCT<f1a INT32, f1b STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>>, f1a INT32, f2a BOOL, f3a STRING, INT64>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#13]
+    +-expr_list=
+    | +-$col1#13 :=
+    |   +-SubqueryExpr
+    |     +-type=STRUCT<x1 STRUCT<f1a INT32, f1b STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>>, f1a INT32, f2a BOOL, f3a STRING, INT64>
+    |     +-subquery_type=SCALAR
+    |     +-parameter_list=
+    |     | +-ColumnRef(type=STRUCT<f1a INT32, f1b STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>>, column=t.x#1)
+    |     | +-ColumnRef(type=ARRAY<INT64>, column=t.y#2)
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$make_struct.$struct#12]
+    |         +-expr_list=
+    |         | +-$struct#12 :=
+    |         |   +-MakeStruct
+    |         |     +-type=STRUCT<x1 STRUCT<f1a INT32, f1b STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>>, f1a INT32, f2a BOOL, f3a STRING, INT64>
+    |         |     +-field_list=
+    |         |       +-ColumnRef(type=STRUCT<f1a INT32, f1b STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>>, column=$expr_subquery.x1#8)
+    |         |       +-ColumnRef(type=INT32, column=$expr_subquery.f1a#9)
+    |         |       +-ColumnRef(type=BOOL, column=$expr_subquery.f2a#10)
+    |         |       +-ColumnRef(type=STRING, column=$expr_subquery.f3a#11)
+    |         |       +-ColumnRef(type=INT64, column=$aggregate.$agg1#4)
+    |         +-input_scan=
+    |           +-ProjectScan
+    |             +-column_list=[$expr_subquery.x1#8, $expr_subquery.f1a#9, $expr_subquery.f2a#10, $expr_subquery.f3a#11, $aggregate.$agg1#4]
+    |             +-expr_list=
+    |             | +-x1#8 := ColumnRef(type=STRUCT<f1a INT32, f1b STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>>, column=t.x#1, is_correlated=TRUE)
+    |             | +-f1a#9 :=
+    |             | | +-GetStructField
+    |             | |   +-type=INT32
+    |             | |   +-expr=
+    |             | |   | +-ColumnRef(type=STRUCT<f1a INT32, f1b STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>>, column=t.x#1, is_correlated=TRUE)
+    |             | |   +-field_idx=0
+    |             | +-f2a#10 :=
+    |             | | +-GetStructField
+    |             | |   +-type=BOOL
+    |             | |   +-expr=
+    |             | |   | +-GetStructField
+    |             | |   |   +-type=STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>
+    |             | |   |   +-expr=
+    |             | |   |   | +-ColumnRef(type=STRUCT<f1a INT32, f1b STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>>, column=t.x#1, is_correlated=TRUE)
+    |             | |   |   +-field_idx=1
+    |             | |   +-field_idx=0
+    |             | +-f3a#11 :=
+    |             |   +-GetStructField
+    |             |     +-type=STRING
+    |             |     +-expr=
+    |             |     | +-GetStructField
+    |             |     |   +-type=STRUCT<f3a STRING>
+    |             |     |   +-expr=
+    |             |     |   | +-GetStructField
+    |             |     |   |   +-type=STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>
+    |             |     |   |   +-expr=
+    |             |     |   |   | +-ColumnRef(type=STRUCT<f1a INT32, f1b STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>>, column=t.x#1, is_correlated=TRUE)
+    |             |     |   |   +-field_idx=1
+    |             |     |   +-field_idx=1
+    |             |     +-field_idx=0
+    |             +-input_scan=
+    |               +-AggregateScan
+    |                 +-column_list=[$aggregate.$agg1#4]
+    |                 +-input_scan=
+    |                 | +-ArrayScan
+    |                 |   +-column_list=[$array.y#3]
+    |                 |   +-array_expr_list=
+    |                 |   | +-ColumnRef(type=ARRAY<INT64>, column=t.y#2, is_correlated=TRUE)
+    |                 |   +-element_column_list=[$array.y#3]
+    |                 +-group_by_list=
+    |                 | +-f1a#5 :=
+    |                 | | +-GetStructField
+    |                 | |   +-type=INT32
+    |                 | |   +-expr=
+    |                 | |   | +-ColumnRef(type=STRUCT<f1a INT32, f1b STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>>, column=t.x#1, is_correlated=TRUE)
+    |                 | |   +-field_idx=0
+    |                 | +-f2a#6 :=
+    |                 | | +-GetStructField
+    |                 | |   +-type=BOOL
+    |                 | |   +-expr=
+    |                 | |   | +-GetStructField
+    |                 | |   |   +-type=STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>
+    |                 | |   |   +-expr=
+    |                 | |   |   | +-ColumnRef(type=STRUCT<f1a INT32, f1b STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>>, column=t.x#1, is_correlated=TRUE)
+    |                 | |   |   +-field_idx=1
+    |                 | |   +-field_idx=0
+    |                 | +-f3a#7 :=
+    |                 |   +-GetStructField
+    |                 |     +-type=STRING
+    |                 |     +-expr=
+    |                 |     | +-GetStructField
+    |                 |     |   +-type=STRUCT<f3a STRING>
+    |                 |     |   +-expr=
+    |                 |     |   | +-GetStructField
+    |                 |     |   |   +-type=STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>
+    |                 |     |   |   +-expr=
+    |                 |     |   |   | +-ColumnRef(type=STRUCT<f1a INT32, f1b STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>>, column=t.x#1, is_correlated=TRUE)
+    |                 |     |   |   +-field_idx=1
+    |                 |     |   +-field_idx=1
+    |                 |     +-field_idx=0
+    |                 +-aggregate_list=
+    |                   +-$agg1#4 :=
+    |                     +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+    |                       +-ColumnRef(type=INT64, column=$array.y#3)
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=t.[x#1, y#2]
+        +-expr_list=
+        | +-x#1 := Literal(type=STRUCT<f1a INT32, f1b STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>>, value={f1a:1, f1b:{f2a:true, f2b:{f3a:"a"}}}, has_explicit_type=TRUE)
+        | +-y#2 := Literal(type=ARRAY<INT64>, value=[2])
+        +-input_scan=
+          +-SingleRowScan
+--
+ALTERNATION GROUP:  as x1,GROUP BY ROLLUP(x.f1a, x.f1b.f2a, x.f1b.f2b.f3a)
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#13 AS `$col1` [STRUCT<x1 STRUCT<f1a INT32, f1b STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>>, f1a INT32, f2a BOOL, f3a STRING, INT64>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#13]
+    +-expr_list=
+    | +-$col1#13 :=
+    |   +-SubqueryExpr
+    |     +-type=STRUCT<x1 STRUCT<f1a INT32, f1b STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>>, f1a INT32, f2a BOOL, f3a STRING, INT64>
+    |     +-subquery_type=SCALAR
+    |     +-parameter_list=
+    |     | +-ColumnRef(type=STRUCT<f1a INT32, f1b STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>>, column=t.x#1)
+    |     | +-ColumnRef(type=ARRAY<INT64>, column=t.y#2)
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$make_struct.$struct#12]
+    |         +-expr_list=
+    |         | +-$struct#12 :=
+    |         |   +-MakeStruct
+    |         |     +-type=STRUCT<x1 STRUCT<f1a INT32, f1b STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>>, f1a INT32, f2a BOOL, f3a STRING, INT64>
+    |         |     +-field_list=
+    |         |       +-ColumnRef(type=STRUCT<f1a INT32, f1b STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>>, column=$expr_subquery.x1#8)
+    |         |       +-ColumnRef(type=INT32, column=$expr_subquery.f1a#9)
+    |         |       +-ColumnRef(type=BOOL, column=$expr_subquery.f2a#10)
+    |         |       +-ColumnRef(type=STRING, column=$expr_subquery.f3a#11)
+    |         |       +-ColumnRef(type=INT64, column=$aggregate.$agg1#4)
+    |         +-input_scan=
+    |           +-ProjectScan
+    |             +-column_list=[$expr_subquery.x1#8, $expr_subquery.f1a#9, $expr_subquery.f2a#10, $expr_subquery.f3a#11, $aggregate.$agg1#4]
+    |             +-expr_list=
+    |             | +-x1#8 := ColumnRef(type=STRUCT<f1a INT32, f1b STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>>, column=t.x#1, is_correlated=TRUE)
+    |             | +-f1a#9 :=
+    |             | | +-GetStructField
+    |             | |   +-type=INT32
+    |             | |   +-expr=
+    |             | |   | +-ColumnRef(type=STRUCT<f1a INT32, f1b STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>>, column=t.x#1, is_correlated=TRUE)
+    |             | |   +-field_idx=0
+    |             | +-f2a#10 :=
+    |             | | +-GetStructField
+    |             | |   +-type=BOOL
+    |             | |   +-expr=
+    |             | |   | +-GetStructField
+    |             | |   |   +-type=STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>
+    |             | |   |   +-expr=
+    |             | |   |   | +-ColumnRef(type=STRUCT<f1a INT32, f1b STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>>, column=t.x#1, is_correlated=TRUE)
+    |             | |   |   +-field_idx=1
+    |             | |   +-field_idx=0
+    |             | +-f3a#11 :=
+    |             |   +-GetStructField
+    |             |     +-type=STRING
+    |             |     +-expr=
+    |             |     | +-GetStructField
+    |             |     |   +-type=STRUCT<f3a STRING>
+    |             |     |   +-expr=
+    |             |     |   | +-GetStructField
+    |             |     |   |   +-type=STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>
+    |             |     |   |   +-expr=
+    |             |     |   |   | +-ColumnRef(type=STRUCT<f1a INT32, f1b STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>>, column=t.x#1, is_correlated=TRUE)
+    |             |     |   |   +-field_idx=1
+    |             |     |   +-field_idx=1
+    |             |     +-field_idx=0
+    |             +-input_scan=
+    |               +-AggregateScan
+    |                 +-column_list=[$aggregate.$agg1#4]
+    |                 +-input_scan=
+    |                 | +-ArrayScan
+    |                 |   +-column_list=[$array.y#3]
+    |                 |   +-array_expr_list=
+    |                 |   | +-ColumnRef(type=ARRAY<INT64>, column=t.y#2, is_correlated=TRUE)
+    |                 |   +-element_column_list=[$array.y#3]
+    |                 +-group_by_list=
+    |                 | +-f1a#5 :=
+    |                 | | +-GetStructField
+    |                 | |   +-type=INT32
+    |                 | |   +-expr=
+    |                 | |   | +-ColumnRef(type=STRUCT<f1a INT32, f1b STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>>, column=t.x#1, is_correlated=TRUE)
+    |                 | |   +-field_idx=0
+    |                 | +-f2a#6 :=
+    |                 | | +-GetStructField
+    |                 | |   +-type=BOOL
+    |                 | |   +-expr=
+    |                 | |   | +-GetStructField
+    |                 | |   |   +-type=STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>
+    |                 | |   |   +-expr=
+    |                 | |   |   | +-ColumnRef(type=STRUCT<f1a INT32, f1b STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>>, column=t.x#1, is_correlated=TRUE)
+    |                 | |   |   +-field_idx=1
+    |                 | |   +-field_idx=0
+    |                 | +-f3a#7 :=
+    |                 |   +-GetStructField
+    |                 |     +-type=STRING
+    |                 |     +-expr=
+    |                 |     | +-GetStructField
+    |                 |     |   +-type=STRUCT<f3a STRING>
+    |                 |     |   +-expr=
+    |                 |     |   | +-GetStructField
+    |                 |     |   |   +-type=STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>
+    |                 |     |   |   +-expr=
+    |                 |     |   |   | +-ColumnRef(type=STRUCT<f1a INT32, f1b STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>>, column=t.x#1, is_correlated=TRUE)
+    |                 |     |   |   +-field_idx=1
+    |                 |     |   +-field_idx=1
+    |                 |     +-field_idx=0
+    |                 +-aggregate_list=
+    |                 | +-$agg1#4 :=
+    |                 |   +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+    |                 |     +-ColumnRef(type=INT64, column=$array.y#3)
+    |                 +-grouping_set_list=
+    |                 | +-GroupingSet
+    |                 | | +-group_by_column_list=
+    |                 | |   +-ColumnRef(type=INT32, column=$groupby.f1a#5)
+    |                 | |   +-ColumnRef(type=BOOL, column=$groupby.f2a#6)
+    |                 | |   +-ColumnRef(type=STRING, column=$groupby.f3a#7)
+    |                 | +-GroupingSet
+    |                 | | +-group_by_column_list=
+    |                 | |   +-ColumnRef(type=INT32, column=$groupby.f1a#5)
+    |                 | |   +-ColumnRef(type=BOOL, column=$groupby.f2a#6)
+    |                 | +-GroupingSet
+    |                 | | +-group_by_column_list=
+    |                 | |   +-ColumnRef(type=INT32, column=$groupby.f1a#5)
+    |                 | +-GroupingSet
+    |                 +-rollup_column_list=
+    |                   +-ColumnRef(type=INT32, column=$groupby.f1a#5)
+    |                   +-ColumnRef(type=BOOL, column=$groupby.f2a#6)
+    |                   +-ColumnRef(type=STRING, column=$groupby.f3a#7)
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=t.[x#1, y#2]
+        +-expr_list=
+        | +-x#1 := Literal(type=STRUCT<f1a INT32, f1b STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>>, value={f1a:1, f1b:{f2a:true, f2b:{f3a:"a"}}}, has_explicit_type=TRUE)
+        | +-y#2 := Literal(type=ARRAY<INT64>, value=[2])
+        +-input_scan=
+          +-SingleRowScan
+==
+
+# Tests for correlated value table references start here.
+#
+# SELECT and GROUP BY x, without aggregation
+SELECT (
+  SELECT {{t.|}}x FROM t.y GROUP BY x
+)
+FROM (
+  SELECT as struct 1 as x, [2] AS y
+) t
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#6 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#6]
+    +-expr_list=
+    | +-$col1#6 :=
+    |   +-SubqueryExpr
+    |     +-type=INT64
+    |     +-subquery_type=SCALAR
+    |     +-parameter_list=
+    |     | +-ColumnRef(type=STRUCT<x INT64, y ARRAY<INT64>>, column=$make_struct.$struct#3)
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$groupby.x#5]
+    |         +-input_scan=
+    |           +-AggregateScan
+    |             +-column_list=[$groupby.x#5]
+    |             +-input_scan=
+    |             | +-ArrayScan
+    |             |   +-array_expr_list=
+    |             |   | +-GetStructField
+    |             |   |   +-type=ARRAY<INT64>
+    |             |   |   +-expr=
+    |             |   |   | +-ColumnRef(type=STRUCT<x INT64, y ARRAY<INT64>>, column=$make_struct.$struct#3, is_correlated=TRUE)
+    |             |   |   +-field_idx=1
+    |             |   +-element_column_list=[$array.y#4]
+    |             +-group_by_list=
+    |               +-x#5 :=
+    |                 +-GetStructField
+    |                   +-type=INT64
+    |                   +-expr=
+    |                   | +-ColumnRef(type=STRUCT<x INT64, y ARRAY<INT64>>, column=$make_struct.$struct#3, is_correlated=TRUE)
+    |                   +-field_idx=0
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[$make_struct.$struct#3]
+        +-expr_list=
+        | +-$struct#3 :=
+        |   +-MakeStruct
+        |     +-type=STRUCT<x INT64, y ARRAY<INT64>>
+        |     +-field_list=
+        |       +-ColumnRef(type=INT64, column=t.x#1)
+        |       +-ColumnRef(type=ARRAY<INT64>, column=t.y#2)
+        +-input_scan=
+          +-ProjectScan
+            +-column_list=t.[x#1, y#2]
+            +-expr_list=
+            | +-x#1 := Literal(type=INT64, value=1)
+            | +-y#2 := Literal(type=ARRAY<INT64>, value=[2])
+            +-input_scan=
+              +-SingleRowScan
+==
+
+# SUM(x), without GROUP BY
+SELECT (
+  SELECT SUM({{t.|}}x) FROM t.y
+)
+FROM (
+  SELECT as struct 1 as x, [2] AS y
+) t
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#6 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#6]
+    +-expr_list=
+    | +-$col1#6 :=
+    |   +-SubqueryExpr
+    |     +-type=INT64
+    |     +-subquery_type=SCALAR
+    |     +-parameter_list=
+    |     | +-ColumnRef(type=STRUCT<x INT64, y ARRAY<INT64>>, column=$make_struct.$struct#3)
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$aggregate.$agg1#5]
+    |         +-input_scan=
+    |           +-AggregateScan
+    |             +-column_list=[$aggregate.$agg1#5]
+    |             +-input_scan=
+    |             | +-ArrayScan
+    |             |   +-array_expr_list=
+    |             |   | +-GetStructField
+    |             |   |   +-type=ARRAY<INT64>
+    |             |   |   +-expr=
+    |             |   |   | +-ColumnRef(type=STRUCT<x INT64, y ARRAY<INT64>>, column=$make_struct.$struct#3, is_correlated=TRUE)
+    |             |   |   +-field_idx=1
+    |             |   +-element_column_list=[$array.y#4]
+    |             +-aggregate_list=
+    |               +-$agg1#5 :=
+    |                 +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+    |                   +-GetStructField
+    |                     +-type=INT64
+    |                     +-expr=
+    |                     | +-ColumnRef(type=STRUCT<x INT64, y ARRAY<INT64>>, column=$make_struct.$struct#3, is_correlated=TRUE)
+    |                     +-field_idx=0
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[$make_struct.$struct#3]
+        +-expr_list=
+        | +-$struct#3 :=
+        |   +-MakeStruct
+        |     +-type=STRUCT<x INT64, y ARRAY<INT64>>
+        |     +-field_list=
+        |       +-ColumnRef(type=INT64, column=t.x#1)
+        |       +-ColumnRef(type=ARRAY<INT64>, column=t.y#2)
+        +-input_scan=
+          +-ProjectScan
+            +-column_list=t.[x#1, y#2]
+            +-expr_list=
+            | +-x#1 := Literal(type=INT64, value=1)
+            | +-y#2 := Literal(type=ARRAY<INT64>, value=[2])
+            +-input_scan=
+              +-SingleRowScan
+==
+
+# SELECT and GROUP BY x, with SUM(y)
+SELECT (
+  SELECT as struct {{t.|}}x, SUM(y) FROM t.y GROUP BY {{t.|}}x
+)
+FROM (
+  SELECT as struct 1 as x, [2] AS y
+) t
+--
+ALTERNATION GROUPS:
+    t.,t.
+    t.
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#9 AS `$col1` [STRUCT<x INT64, INT64>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#9]
+    +-expr_list=
+    | +-$col1#9 :=
+    |   +-SubqueryExpr
+    |     +-type=STRUCT<x INT64, INT64>
+    |     +-subquery_type=SCALAR
+    |     +-parameter_list=
+    |     | +-ColumnRef(type=STRUCT<x INT64, y ARRAY<INT64>>, column=$make_struct.$struct#3)
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$make_struct.$struct#8]
+    |         +-expr_list=
+    |         | +-$struct#8 :=
+    |         |   +-MakeStruct
+    |         |     +-type=STRUCT<x INT64, INT64>
+    |         |     +-field_list=
+    |         |       +-ColumnRef(type=INT64, column=$expr_subquery.x#7)
+    |         |       +-ColumnRef(type=INT64, column=$aggregate.$agg1#5)
+    |         +-input_scan=
+    |           +-ProjectScan
+    |             +-column_list=[$expr_subquery.x#7, $aggregate.$agg1#5]
+    |             +-expr_list=
+    |             | +-x#7 :=
+    |             |   +-GetStructField
+    |             |     +-type=INT64
+    |             |     +-expr=
+    |             |     | +-ColumnRef(type=STRUCT<x INT64, y ARRAY<INT64>>, column=$make_struct.$struct#3, is_correlated=TRUE)
+    |             |     +-field_idx=0
+    |             +-input_scan=
+    |               +-AggregateScan
+    |                 +-column_list=[$aggregate.$agg1#5]
+    |                 +-input_scan=
+    |                 | +-ArrayScan
+    |                 |   +-column_list=[$array.y#4]
+    |                 |   +-array_expr_list=
+    |                 |   | +-GetStructField
+    |                 |   |   +-type=ARRAY<INT64>
+    |                 |   |   +-expr=
+    |                 |   |   | +-ColumnRef(type=STRUCT<x INT64, y ARRAY<INT64>>, column=$make_struct.$struct#3, is_correlated=TRUE)
+    |                 |   |   +-field_idx=1
+    |                 |   +-element_column_list=[$array.y#4]
+    |                 +-group_by_list=
+    |                 | +-x#6 :=
+    |                 |   +-GetStructField
+    |                 |     +-type=INT64
+    |                 |     +-expr=
+    |                 |     | +-ColumnRef(type=STRUCT<x INT64, y ARRAY<INT64>>, column=$make_struct.$struct#3, is_correlated=TRUE)
+    |                 |     +-field_idx=0
+    |                 +-aggregate_list=
+    |                   +-$agg1#5 :=
+    |                     +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+    |                       +-ColumnRef(type=INT64, column=$array.y#4)
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[$make_struct.$struct#3]
+        +-expr_list=
+        | +-$struct#3 :=
+        |   +-MakeStruct
+        |     +-type=STRUCT<x INT64, y ARRAY<INT64>>
+        |     +-field_list=
+        |       +-ColumnRef(type=INT64, column=t.x#1)
+        |       +-ColumnRef(type=ARRAY<INT64>, column=t.y#2)
+        +-input_scan=
+          +-ProjectScan
+            +-column_list=t.[x#1, y#2]
+            +-expr_list=
+            | +-x#1 := Literal(type=INT64, value=1)
+            | +-y#2 := Literal(type=ARRAY<INT64>, value=[2])
+            +-input_scan=
+              +-SingleRowScan
+--
+ALTERNATION GROUPS:
+    t.,
+    <empty>
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#8 AS `$col1` [STRUCT<x INT64, INT64>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#8]
+    +-expr_list=
+    | +-$col1#8 :=
+    |   +-SubqueryExpr
+    |     +-type=STRUCT<x INT64, INT64>
+    |     +-subquery_type=SCALAR
+    |     +-parameter_list=
+    |     | +-ColumnRef(type=STRUCT<x INT64, y ARRAY<INT64>>, column=$make_struct.$struct#3)
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$make_struct.$struct#7]
+    |         +-expr_list=
+    |         | +-$struct#7 :=
+    |         |   +-MakeStruct
+    |         |     +-type=STRUCT<x INT64, INT64>
+    |         |     +-field_list=
+    |         |       +-ColumnRef(type=INT64, column=$groupby.x#6)
+    |         |       +-ColumnRef(type=INT64, column=$aggregate.$agg1#5)
+    |         +-input_scan=
+    |           +-ProjectScan
+    |             +-column_list=[$groupby.x#6, $aggregate.$agg1#5]
+    |             +-input_scan=
+    |               +-AggregateScan
+    |                 +-column_list=[$groupby.x#6, $aggregate.$agg1#5]
+    |                 +-input_scan=
+    |                 | +-ArrayScan
+    |                 |   +-column_list=[$array.y#4]
+    |                 |   +-array_expr_list=
+    |                 |   | +-GetStructField
+    |                 |   |   +-type=ARRAY<INT64>
+    |                 |   |   +-expr=
+    |                 |   |   | +-ColumnRef(type=STRUCT<x INT64, y ARRAY<INT64>>, column=$make_struct.$struct#3, is_correlated=TRUE)
+    |                 |   |   +-field_idx=1
+    |                 |   +-element_column_list=[$array.y#4]
+    |                 +-group_by_list=
+    |                 | +-x#6 :=
+    |                 |   +-GetStructField
+    |                 |     +-type=INT64
+    |                 |     +-expr=
+    |                 |     | +-ColumnRef(type=STRUCT<x INT64, y ARRAY<INT64>>, column=$make_struct.$struct#3, is_correlated=TRUE)
+    |                 |     +-field_idx=0
+    |                 +-aggregate_list=
+    |                   +-$agg1#5 :=
+    |                     +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+    |                       +-ColumnRef(type=INT64, column=$array.y#4)
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[$make_struct.$struct#3]
+        +-expr_list=
+        | +-$struct#3 :=
+        |   +-MakeStruct
+        |     +-type=STRUCT<x INT64, y ARRAY<INT64>>
+        |     +-field_list=
+        |       +-ColumnRef(type=INT64, column=t.x#1)
+        |       +-ColumnRef(type=ARRAY<INT64>, column=t.y#2)
+        +-input_scan=
+          +-ProjectScan
+            +-column_list=t.[x#1, y#2]
+            +-expr_list=
+            | +-x#1 := Literal(type=INT64, value=1)
+            | +-y#2 := Literal(type=ARRAY<INT64>, value=[2])
+            +-input_scan=
+              +-SingleRowScan
+==
+
+# GROUP BY x, with SUM(y)
+SELECT (
+  SELECT SUM(y) FROM t.y GROUP BY {{t.|}}x
+)
+FROM (
+  SELECT as struct 1 as x, [2] AS y
+) t
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#7 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#7]
+    +-expr_list=
+    | +-$col1#7 :=
+    |   +-SubqueryExpr
+    |     +-type=INT64
+    |     +-subquery_type=SCALAR
+    |     +-parameter_list=
+    |     | +-ColumnRef(type=STRUCT<x INT64, y ARRAY<INT64>>, column=$make_struct.$struct#3)
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$aggregate.$agg1#5]
+    |         +-input_scan=
+    |           +-AggregateScan
+    |             +-column_list=[$aggregate.$agg1#5]
+    |             +-input_scan=
+    |             | +-ArrayScan
+    |             |   +-column_list=[$array.y#4]
+    |             |   +-array_expr_list=
+    |             |   | +-GetStructField
+    |             |   |   +-type=ARRAY<INT64>
+    |             |   |   +-expr=
+    |             |   |   | +-ColumnRef(type=STRUCT<x INT64, y ARRAY<INT64>>, column=$make_struct.$struct#3, is_correlated=TRUE)
+    |             |   |   +-field_idx=1
+    |             |   +-element_column_list=[$array.y#4]
+    |             +-group_by_list=
+    |             | +-x#6 :=
+    |             |   +-GetStructField
+    |             |     +-type=INT64
+    |             |     +-expr=
+    |             |     | +-ColumnRef(type=STRUCT<x INT64, y ARRAY<INT64>>, column=$make_struct.$struct#3, is_correlated=TRUE)
+    |             |     +-field_idx=0
+    |             +-aggregate_list=
+    |               +-$agg1#5 :=
+    |                 +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+    |                   +-ColumnRef(type=INT64, column=$array.y#4)
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[$make_struct.$struct#3]
+        +-expr_list=
+        | +-$struct#3 :=
+        |   +-MakeStruct
+        |     +-type=STRUCT<x INT64, y ARRAY<INT64>>
+        |     +-field_list=
+        |       +-ColumnRef(type=INT64, column=t.x#1)
+        |       +-ColumnRef(type=ARRAY<INT64>, column=t.y#2)
+        +-input_scan=
+          +-ProjectScan
+            +-column_list=t.[x#1, y#2]
+            +-expr_list=
+            | +-x#1 := Literal(type=INT64, value=1)
+            | +-y#2 := Literal(type=ARRAY<INT64>, value=[2])
+            +-input_scan=
+              +-SingleRowScan
+==
+
+# SELECT x, with SUM(y).  This works because x is constant for the
+# life of each subquery execution.
+SELECT (
+  SELECT as struct {{t.|}}x, SUM(y) FROM t.y
+)
+FROM (
+  SELECT as struct 1 as x, [2] AS y
+) t
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#8 AS `$col1` [STRUCT<x INT64, INT64>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#8]
+    +-expr_list=
+    | +-$col1#8 :=
+    |   +-SubqueryExpr
+    |     +-type=STRUCT<x INT64, INT64>
+    |     +-subquery_type=SCALAR
+    |     +-parameter_list=
+    |     | +-ColumnRef(type=STRUCT<x INT64, y ARRAY<INT64>>, column=$make_struct.$struct#3)
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$make_struct.$struct#7]
+    |         +-expr_list=
+    |         | +-$struct#7 :=
+    |         |   +-MakeStruct
+    |         |     +-type=STRUCT<x INT64, INT64>
+    |         |     +-field_list=
+    |         |       +-ColumnRef(type=INT64, column=$expr_subquery.x#6)
+    |         |       +-ColumnRef(type=INT64, column=$aggregate.$agg1#5)
+    |         +-input_scan=
+    |           +-ProjectScan
+    |             +-column_list=[$expr_subquery.x#6, $aggregate.$agg1#5]
+    |             +-expr_list=
+    |             | +-x#6 :=
+    |             |   +-GetStructField
+    |             |     +-type=INT64
+    |             |     +-expr=
+    |             |     | +-ColumnRef(type=STRUCT<x INT64, y ARRAY<INT64>>, column=$make_struct.$struct#3, is_correlated=TRUE)
+    |             |     +-field_idx=0
+    |             +-input_scan=
+    |               +-AggregateScan
+    |                 +-column_list=[$aggregate.$agg1#5]
+    |                 +-input_scan=
+    |                 | +-ArrayScan
+    |                 |   +-column_list=[$array.y#4]
+    |                 |   +-array_expr_list=
+    |                 |   | +-GetStructField
+    |                 |   |   +-type=ARRAY<INT64>
+    |                 |   |   +-expr=
+    |                 |   |   | +-ColumnRef(type=STRUCT<x INT64, y ARRAY<INT64>>, column=$make_struct.$struct#3, is_correlated=TRUE)
+    |                 |   |   +-field_idx=1
+    |                 |   +-element_column_list=[$array.y#4]
+    |                 +-aggregate_list=
+    |                   +-$agg1#5 :=
+    |                     +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+    |                       +-ColumnRef(type=INT64, column=$array.y#4)
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[$make_struct.$struct#3]
+        +-expr_list=
+        | +-$struct#3 :=
+        |   +-MakeStruct
+        |     +-type=STRUCT<x INT64, y ARRAY<INT64>>
+        |     +-field_list=
+        |       +-ColumnRef(type=INT64, column=t.x#1)
+        |       +-ColumnRef(type=ARRAY<INT64>, column=t.y#2)
+        +-input_scan=
+          +-ProjectScan
+            +-column_list=t.[x#1, y#2]
+            +-expr_list=
+            | +-x#1 := Literal(type=INT64, value=1)
+            | +-y#2 := Literal(type=ARRAY<INT64>, value=[2])
+            +-input_scan=
+              +-SingleRowScan
+==
+
+# SELECT t, x, with SUM(y).  This works because t and x are constant for the
+# life of each subquery execution.
+SELECT (
+  SELECT as struct t, {{t.|}}x, SUM(y) FROM t.y
+)
+FROM (
+  SELECT as struct 1 as x, [2] AS y
+) t
+--
+ALTERNATION GROUP: t.
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#9 AS `$col1` [STRUCT<t STRUCT<x INT64, y ARRAY<INT64>>, x INT64, INT64>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#9]
+    +-expr_list=
+    | +-$col1#9 :=
+    |   +-SubqueryExpr
+    |     +-type=STRUCT<t STRUCT<x INT64, y ARRAY<INT64>>, x INT64, INT64>
+    |     +-subquery_type=SCALAR
+    |     +-parameter_list=
+    |     | +-ColumnRef(type=STRUCT<x INT64, y ARRAY<INT64>>, column=$make_struct.$struct#3)
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$make_struct.$struct#8]
+    |         +-expr_list=
+    |         | +-$struct#8 :=
+    |         |   +-MakeStruct
+    |         |     +-type=STRUCT<t STRUCT<x INT64, y ARRAY<INT64>>, x INT64, INT64>
+    |         |     +-field_list=
+    |         |       +-ColumnRef(type=STRUCT<x INT64, y ARRAY<INT64>>, column=$expr_subquery.t#6)
+    |         |       +-ColumnRef(type=INT64, column=$expr_subquery.x#7)
+    |         |       +-ColumnRef(type=INT64, column=$aggregate.$agg1#5)
+    |         +-input_scan=
+    |           +-ProjectScan
+    |             +-column_list=[$expr_subquery.t#6, $expr_subquery.x#7, $aggregate.$agg1#5]
+    |             +-expr_list=
+    |             | +-t#6 := ColumnRef(type=STRUCT<x INT64, y ARRAY<INT64>>, column=$make_struct.$struct#3, is_correlated=TRUE)
+    |             | +-x#7 :=
+    |             |   +-GetStructField
+    |             |     +-type=INT64
+    |             |     +-expr=
+    |             |     | +-ColumnRef(type=STRUCT<x INT64, y ARRAY<INT64>>, column=$make_struct.$struct#3, is_correlated=TRUE)
+    |             |     +-field_idx=0
+    |             +-input_scan=
+    |               +-AggregateScan
+    |                 +-column_list=[$aggregate.$agg1#5]
+    |                 +-input_scan=
+    |                 | +-ArrayScan
+    |                 |   +-column_list=[$array.y#4]
+    |                 |   +-array_expr_list=
+    |                 |   | +-GetStructField
+    |                 |   |   +-type=ARRAY<INT64>
+    |                 |   |   +-expr=
+    |                 |   |   | +-ColumnRef(type=STRUCT<x INT64, y ARRAY<INT64>>, column=$make_struct.$struct#3, is_correlated=TRUE)
+    |                 |   |   +-field_idx=1
+    |                 |   +-element_column_list=[$array.y#4]
+    |                 +-aggregate_list=
+    |                   +-$agg1#5 :=
+    |                     +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+    |                       +-ColumnRef(type=INT64, column=$array.y#4)
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[$make_struct.$struct#3]
+        +-expr_list=
+        | +-$struct#3 :=
+        |   +-MakeStruct
+        |     +-type=STRUCT<x INT64, y ARRAY<INT64>>
+        |     +-field_list=
+        |       +-ColumnRef(type=INT64, column=t.x#1)
+        |       +-ColumnRef(type=ARRAY<INT64>, column=t.y#2)
+        +-input_scan=
+          +-ProjectScan
+            +-column_list=t.[x#1, y#2]
+            +-expr_list=
+            | +-x#1 := Literal(type=INT64, value=1)
+            | +-y#2 := Literal(type=ARRAY<INT64>, value=[2])
+            +-input_scan=
+              +-SingleRowScan
+
+
+DEPRECATION WARNING:
+Lateral column alias will shadow original target: RANGE_VARIABLE<$struct#3> (value table) [at 2:23]
+  SELECT as struct t, t.x, SUM(y) FROM t.y
+                      ^
+[googlesql.DeprecationWarning] { kind: LATERAL_COLUMN_REFERENCE }
+--
+ALTERNATION GROUP: <empty>
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#9 AS `$col1` [STRUCT<t STRUCT<x INT64, y ARRAY<INT64>>, x INT64, INT64>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#9]
+    +-expr_list=
+    | +-$col1#9 :=
+    |   +-SubqueryExpr
+    |     +-type=STRUCT<t STRUCT<x INT64, y ARRAY<INT64>>, x INT64, INT64>
+    |     +-subquery_type=SCALAR
+    |     +-parameter_list=
+    |     | +-ColumnRef(type=STRUCT<x INT64, y ARRAY<INT64>>, column=$make_struct.$struct#3)
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$make_struct.$struct#8]
+    |         +-expr_list=
+    |         | +-$struct#8 :=
+    |         |   +-MakeStruct
+    |         |     +-type=STRUCT<t STRUCT<x INT64, y ARRAY<INT64>>, x INT64, INT64>
+    |         |     +-field_list=
+    |         |       +-ColumnRef(type=STRUCT<x INT64, y ARRAY<INT64>>, column=$expr_subquery.t#6)
+    |         |       +-ColumnRef(type=INT64, column=$expr_subquery.x#7)
+    |         |       +-ColumnRef(type=INT64, column=$aggregate.$agg1#5)
+    |         +-input_scan=
+    |           +-ProjectScan
+    |             +-column_list=[$expr_subquery.t#6, $expr_subquery.x#7, $aggregate.$agg1#5]
+    |             +-expr_list=
+    |             | +-t#6 := ColumnRef(type=STRUCT<x INT64, y ARRAY<INT64>>, column=$make_struct.$struct#3, is_correlated=TRUE)
+    |             | +-x#7 :=
+    |             |   +-GetStructField
+    |             |     +-type=INT64
+    |             |     +-expr=
+    |             |     | +-ColumnRef(type=STRUCT<x INT64, y ARRAY<INT64>>, column=$make_struct.$struct#3, is_correlated=TRUE)
+    |             |     +-field_idx=0
+    |             +-input_scan=
+    |               +-AggregateScan
+    |                 +-column_list=[$aggregate.$agg1#5]
+    |                 +-input_scan=
+    |                 | +-ArrayScan
+    |                 |   +-column_list=[$array.y#4]
+    |                 |   +-array_expr_list=
+    |                 |   | +-GetStructField
+    |                 |   |   +-type=ARRAY<INT64>
+    |                 |   |   +-expr=
+    |                 |   |   | +-ColumnRef(type=STRUCT<x INT64, y ARRAY<INT64>>, column=$make_struct.$struct#3, is_correlated=TRUE)
+    |                 |   |   +-field_idx=1
+    |                 |   +-element_column_list=[$array.y#4]
+    |                 +-aggregate_list=
+    |                   +-$agg1#5 :=
+    |                     +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+    |                       +-ColumnRef(type=INT64, column=$array.y#4)
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[$make_struct.$struct#3]
+        +-expr_list=
+        | +-$struct#3 :=
+        |   +-MakeStruct
+        |     +-type=STRUCT<x INT64, y ARRAY<INT64>>
+        |     +-field_list=
+        |       +-ColumnRef(type=INT64, column=t.x#1)
+        |       +-ColumnRef(type=ARRAY<INT64>, column=t.y#2)
+        +-input_scan=
+          +-ProjectScan
+            +-column_list=t.[x#1, y#2]
+            +-expr_list=
+            | +-x#1 := Literal(type=INT64, value=1)
+            | +-y#2 := Literal(type=ARRAY<INT64>, value=[2])
+            +-input_scan=
+              +-SingleRowScan
+==
+
+# SELECT and GROUP BY t, x, with SUM(y).  This does not work because GoogleSQL
+# does not allow grouping by Array y in t.
+SELECT (
+  SELECT as struct t, x, SUM(y) FROM t.y GROUP BY t, x
+)
+FROM (
+  SELECT as struct 1 as x, [2] AS y
+) t
+--
+ERROR: Grouping by expressions of type STRUCT containing ARRAY is not allowed [at 2:51]
+  SELECT as struct t, x, SUM(y) FROM t.y GROUP BY t, x
+                                                  ^
+==
+
+SELECT (
+  SELECT as struct x, x.a, SUM(y) FROM t.y GROUP BY x
+)
+FROM (
+  SELECT (SELECT as struct 1 as a, 'a' as b) AS x , [2] AS y
+) t
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#11 AS `$col1` [STRUCT<x STRUCT<a INT64, b STRING>, a INT64, INT64>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#11]
+    +-expr_list=
+    | +-$col1#11 :=
+    |   +-SubqueryExpr
+    |     +-type=STRUCT<x STRUCT<a INT64, b STRING>, a INT64, INT64>
+    |     +-subquery_type=SCALAR
+    |     +-parameter_list=
+    |     | +-ColumnRef(type=STRUCT<a INT64, b STRING>, column=t.x#4)
+    |     | +-ColumnRef(type=ARRAY<INT64>, column=t.y#5)
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$make_struct.$struct#10]
+    |         +-expr_list=
+    |         | +-$struct#10 :=
+    |         |   +-MakeStruct
+    |         |     +-type=STRUCT<x STRUCT<a INT64, b STRING>, a INT64, INT64>
+    |         |     +-field_list=
+    |         |       +-ColumnRef(type=STRUCT<a INT64, b STRING>, column=$groupby.x#8)
+    |         |       +-ColumnRef(type=INT64, column=$expr_subquery.a#9)
+    |         |       +-ColumnRef(type=INT64, column=$aggregate.$agg1#7)
+    |         +-input_scan=
+    |           +-ProjectScan
+    |             +-column_list=[$groupby.x#8, $expr_subquery.a#9, $aggregate.$agg1#7]
+    |             +-expr_list=
+    |             | +-a#9 :=
+    |             |   +-GetStructField
+    |             |     +-type=INT64
+    |             |     +-expr=
+    |             |     | +-ColumnRef(type=STRUCT<a INT64, b STRING>, column=t.x#4, is_correlated=TRUE)
+    |             |     +-field_idx=0
+    |             +-input_scan=
+    |               +-AggregateScan
+    |                 +-column_list=[$groupby.x#8, $aggregate.$agg1#7]
+    |                 +-input_scan=
+    |                 | +-ArrayScan
+    |                 |   +-column_list=[$array.y#6]
+    |                 |   +-array_expr_list=
+    |                 |   | +-ColumnRef(type=ARRAY<INT64>, column=t.y#5, is_correlated=TRUE)
+    |                 |   +-element_column_list=[$array.y#6]
+    |                 +-group_by_list=
+    |                 | +-x#8 := ColumnRef(type=STRUCT<a INT64, b STRING>, column=t.x#4, is_correlated=TRUE)
+    |                 +-aggregate_list=
+    |                   +-$agg1#7 :=
+    |                     +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+    |                       +-ColumnRef(type=INT64, column=$array.y#6)
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=t.[x#4, y#5]
+        +-expr_list=
+        | +-x#4 :=
+        | | +-SubqueryExpr
+        | |   +-type=STRUCT<a INT64, b STRING>
+        | |   +-subquery_type=SCALAR
+        | |   +-subquery=
+        | |     +-ProjectScan
+        | |       +-column_list=[$make_struct.$struct#3]
+        | |       +-expr_list=
+        | |       | +-$struct#3 :=
+        | |       |   +-MakeStruct
+        | |       |     +-type=STRUCT<a INT64, b STRING>
+        | |       |     +-field_list=
+        | |       |       +-ColumnRef(type=INT64, column=$expr_subquery.a#1)
+        | |       |       +-ColumnRef(type=STRING, column=$expr_subquery.b#2)
+        | |       +-input_scan=
+        | |         +-ProjectScan
+        | |           +-column_list=$expr_subquery.[a#1, b#2]
+        | |           +-expr_list=
+        | |           | +-a#1 := Literal(type=INT64, value=1)
+        | |           | +-b#2 := Literal(type=STRING, value="a")
+        | |           +-input_scan=
+        | |             +-SingleRowScan
+        | +-y#5 := Literal(type=ARRAY<INT64>, value=[2])
+        +-input_scan=
+          +-SingleRowScan
+
+
+DEPRECATION WARNING:
+Lateral column alias will shadow original target: STRUCT<a INT64, b STRING> (t.x#4) [at 2:23]
+  SELECT as struct x, x.a, SUM(y) FROM t.y GROUP BY x
+                      ^
+[googlesql.DeprecationWarning] { kind: LATERAL_COLUMN_REFERENCE }
+==
+
+# More deeply nested struct path expression.
+SELECT (
+  SELECT AS STRUCT x {{| as x1}}, x.f1a, x.f1b.f2a, x.f1b.f2b.f3a, SUM(y)
+  FROM t.y
+  {{|GROUP BY x.f1a, x.f1b.f2a, x.f1b.f2b.f3a}}
+)
+FROM (
+  SELECT AS STRUCT
+    struct<f1a int32,
+           f1b struct<f2a bool,
+                      f2b struct<f3a string>>>(1, (true, struct("a"))) as x,
+    [2] AS y
+) t
+--
+ALTERNATION GROUP: <empty>
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#11 AS `$col1` [STRUCT<x STRUCT<f1a INT32, f1b STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>>, f1a INT32, f2a BOOL, f3a STRING, INT64>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#11]
+    +-expr_list=
+    | +-$col1#11 :=
+    |   +-SubqueryExpr
+    |     +-type=STRUCT<x STRUCT<f1a INT32, f1b STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>>, f1a INT32, f2a BOOL, f3a STRING, INT64>
+    |     +-subquery_type=SCALAR
+    |     +-parameter_list=
+    |     | +-ColumnRef(type=STRUCT<x STRUCT<f1a INT32, f1b STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>>, y ARRAY<INT64>>, column=$make_struct.$struct#3)
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$make_struct.$struct#10]
+    |         +-expr_list=
+    |         | +-$struct#10 :=
+    |         |   +-MakeStruct
+    |         |     +-type=STRUCT<x STRUCT<f1a INT32, f1b STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>>, f1a INT32, f2a BOOL, f3a STRING, INT64>
+    |         |     +-field_list=
+    |         |       +-ColumnRef(type=STRUCT<f1a INT32, f1b STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>>, column=$expr_subquery.x#6)
+    |         |       +-ColumnRef(type=INT32, column=$expr_subquery.f1a#7)
+    |         |       +-ColumnRef(type=BOOL, column=$expr_subquery.f2a#8)
+    |         |       +-ColumnRef(type=STRING, column=$expr_subquery.f3a#9)
+    |         |       +-ColumnRef(type=INT64, column=$aggregate.$agg1#5)
+    |         +-input_scan=
+    |           +-ProjectScan
+    |             +-column_list=[$expr_subquery.x#6, $expr_subquery.f1a#7, $expr_subquery.f2a#8, $expr_subquery.f3a#9, $aggregate.$agg1#5]
+    |             +-expr_list=
+    |             | +-x#6 :=
+    |             | | +-GetStructField
+    |             | |   +-type=STRUCT<f1a INT32, f1b STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>>
+    |             | |   +-expr=
+    |             | |   | +-ColumnRef(type=STRUCT<x STRUCT<f1a INT32, f1b STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>>, y ARRAY<INT64>>, column=$make_struct.$struct#3, is_correlated=TRUE)
+    |             | |   +-field_idx=0
+    |             | +-f1a#7 :=
+    |             | | +-GetStructField
+    |             | |   +-type=INT32
+    |             | |   +-expr=
+    |             | |   | +-GetStructField
+    |             | |   |   +-type=STRUCT<f1a INT32, f1b STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>>
+    |             | |   |   +-expr=
+    |             | |   |   | +-ColumnRef(type=STRUCT<x STRUCT<f1a INT32, f1b STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>>, y ARRAY<INT64>>, column=$make_struct.$struct#3, is_correlated=TRUE)
+    |             | |   |   +-field_idx=0
+    |             | |   +-field_idx=0
+    |             | +-f2a#8 :=
+    |             | | +-GetStructField
+    |             | |   +-type=BOOL
+    |             | |   +-expr=
+    |             | |   | +-GetStructField
+    |             | |   |   +-type=STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>
+    |             | |   |   +-expr=
+    |             | |   |   | +-GetStructField
+    |             | |   |   |   +-type=STRUCT<f1a INT32, f1b STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>>
+    |             | |   |   |   +-expr=
+    |             | |   |   |   | +-ColumnRef(type=STRUCT<x STRUCT<f1a INT32, f1b STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>>, y ARRAY<INT64>>, column=$make_struct.$struct#3, is_correlated=TRUE)
+    |             | |   |   |   +-field_idx=0
+    |             | |   |   +-field_idx=1
+    |             | |   +-field_idx=0
+    |             | +-f3a#9 :=
+    |             |   +-GetStructField
+    |             |     +-type=STRING
+    |             |     +-expr=
+    |             |     | +-GetStructField
+    |             |     |   +-type=STRUCT<f3a STRING>
+    |             |     |   +-expr=
+    |             |     |   | +-GetStructField
+    |             |     |   |   +-type=STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>
+    |             |     |   |   +-expr=
+    |             |     |   |   | +-GetStructField
+    |             |     |   |   |   +-type=STRUCT<f1a INT32, f1b STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>>
+    |             |     |   |   |   +-expr=
+    |             |     |   |   |   | +-ColumnRef(type=STRUCT<x STRUCT<f1a INT32, f1b STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>>, y ARRAY<INT64>>, column=$make_struct.$struct#3, is_correlated=TRUE)
+    |             |     |   |   |   +-field_idx=0
+    |             |     |   |   +-field_idx=1
+    |             |     |   +-field_idx=1
+    |             |     +-field_idx=0
+    |             +-input_scan=
+    |               +-AggregateScan
+    |                 +-column_list=[$aggregate.$agg1#5]
+    |                 +-input_scan=
+    |                 | +-ArrayScan
+    |                 |   +-column_list=[$array.y#4]
+    |                 |   +-array_expr_list=
+    |                 |   | +-GetStructField
+    |                 |   |   +-type=ARRAY<INT64>
+    |                 |   |   +-expr=
+    |                 |   |   | +-ColumnRef(type=STRUCT<x STRUCT<f1a INT32, f1b STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>>, y ARRAY<INT64>>, column=$make_struct.$struct#3, is_correlated=TRUE)
+    |                 |   |   +-field_idx=1
+    |                 |   +-element_column_list=[$array.y#4]
+    |                 +-aggregate_list=
+    |                   +-$agg1#5 :=
+    |                     +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+    |                       +-ColumnRef(type=INT64, column=$array.y#4)
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[$make_struct.$struct#3]
+        +-expr_list=
+        | +-$struct#3 :=
+        |   +-MakeStruct
+        |     +-type=STRUCT<x STRUCT<f1a INT32, f1b STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>>, y ARRAY<INT64>>
+        |     +-field_list=
+        |       +-ColumnRef(type=STRUCT<f1a INT32, f1b STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>>, column=t.x#1)
+        |       +-ColumnRef(type=ARRAY<INT64>, column=t.y#2)
+        +-input_scan=
+          +-ProjectScan
+            +-column_list=t.[x#1, y#2]
+            +-expr_list=
+            | +-x#1 := Literal(type=STRUCT<f1a INT32, f1b STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>>, value={f1a:1, f1b:{f2a:true, f2b:{f3a:"a"}}}, has_explicit_type=TRUE)
+            | +-y#2 := Literal(type=ARRAY<INT64>, value=[2])
+            +-input_scan=
+              +-SingleRowScan
+
+
+DEPRECATION WARNING:
+Lateral column alias will shadow original target: FIELD_OF<$make_struct.$struct#3> (id: 0) [at 2:24]
+  SELECT AS STRUCT x , x.f1a, x.f1b.f2a, x.f1b.f2b.f3a, SUM(y)
+                       ^
+[googlesql.DeprecationWarning] { kind: LATERAL_COLUMN_REFERENCE }
+--
+ALTERNATION GROUP: GROUP BY x.f1a, x.f1b.f2a, x.f1b.f2b.f3a
+--
+ERROR: Cannot GROUP BY field references from SELECT list alias x [at 4:12]
+  GROUP BY x.f1a, x.f1b.f2a, x.f1b.f2b.f3a
+           ^
+--
+ALTERNATION GROUP:  as x1,
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#11 AS `$col1` [STRUCT<x1 STRUCT<f1a INT32, f1b STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>>, f1a INT32, f2a BOOL, f3a STRING, INT64>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#11]
+    +-expr_list=
+    | +-$col1#11 :=
+    |   +-SubqueryExpr
+    |     +-type=STRUCT<x1 STRUCT<f1a INT32, f1b STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>>, f1a INT32, f2a BOOL, f3a STRING, INT64>
+    |     +-subquery_type=SCALAR
+    |     +-parameter_list=
+    |     | +-ColumnRef(type=STRUCT<x STRUCT<f1a INT32, f1b STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>>, y ARRAY<INT64>>, column=$make_struct.$struct#3)
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$make_struct.$struct#10]
+    |         +-expr_list=
+    |         | +-$struct#10 :=
+    |         |   +-MakeStruct
+    |         |     +-type=STRUCT<x1 STRUCT<f1a INT32, f1b STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>>, f1a INT32, f2a BOOL, f3a STRING, INT64>
+    |         |     +-field_list=
+    |         |       +-ColumnRef(type=STRUCT<f1a INT32, f1b STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>>, column=$expr_subquery.x1#6)
+    |         |       +-ColumnRef(type=INT32, column=$expr_subquery.f1a#7)
+    |         |       +-ColumnRef(type=BOOL, column=$expr_subquery.f2a#8)
+    |         |       +-ColumnRef(type=STRING, column=$expr_subquery.f3a#9)
+    |         |       +-ColumnRef(type=INT64, column=$aggregate.$agg1#5)
+    |         +-input_scan=
+    |           +-ProjectScan
+    |             +-column_list=[$expr_subquery.x1#6, $expr_subquery.f1a#7, $expr_subquery.f2a#8, $expr_subquery.f3a#9, $aggregate.$agg1#5]
+    |             +-expr_list=
+    |             | +-x1#6 :=
+    |             | | +-GetStructField
+    |             | |   +-type=STRUCT<f1a INT32, f1b STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>>
+    |             | |   +-expr=
+    |             | |   | +-ColumnRef(type=STRUCT<x STRUCT<f1a INT32, f1b STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>>, y ARRAY<INT64>>, column=$make_struct.$struct#3, is_correlated=TRUE)
+    |             | |   +-field_idx=0
+    |             | +-f1a#7 :=
+    |             | | +-GetStructField
+    |             | |   +-type=INT32
+    |             | |   +-expr=
+    |             | |   | +-GetStructField
+    |             | |   |   +-type=STRUCT<f1a INT32, f1b STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>>
+    |             | |   |   +-expr=
+    |             | |   |   | +-ColumnRef(type=STRUCT<x STRUCT<f1a INT32, f1b STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>>, y ARRAY<INT64>>, column=$make_struct.$struct#3, is_correlated=TRUE)
+    |             | |   |   +-field_idx=0
+    |             | |   +-field_idx=0
+    |             | +-f2a#8 :=
+    |             | | +-GetStructField
+    |             | |   +-type=BOOL
+    |             | |   +-expr=
+    |             | |   | +-GetStructField
+    |             | |   |   +-type=STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>
+    |             | |   |   +-expr=
+    |             | |   |   | +-GetStructField
+    |             | |   |   |   +-type=STRUCT<f1a INT32, f1b STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>>
+    |             | |   |   |   +-expr=
+    |             | |   |   |   | +-ColumnRef(type=STRUCT<x STRUCT<f1a INT32, f1b STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>>, y ARRAY<INT64>>, column=$make_struct.$struct#3, is_correlated=TRUE)
+    |             | |   |   |   +-field_idx=0
+    |             | |   |   +-field_idx=1
+    |             | |   +-field_idx=0
+    |             | +-f3a#9 :=
+    |             |   +-GetStructField
+    |             |     +-type=STRING
+    |             |     +-expr=
+    |             |     | +-GetStructField
+    |             |     |   +-type=STRUCT<f3a STRING>
+    |             |     |   +-expr=
+    |             |     |   | +-GetStructField
+    |             |     |   |   +-type=STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>
+    |             |     |   |   +-expr=
+    |             |     |   |   | +-GetStructField
+    |             |     |   |   |   +-type=STRUCT<f1a INT32, f1b STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>>
+    |             |     |   |   |   +-expr=
+    |             |     |   |   |   | +-ColumnRef(type=STRUCT<x STRUCT<f1a INT32, f1b STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>>, y ARRAY<INT64>>, column=$make_struct.$struct#3, is_correlated=TRUE)
+    |             |     |   |   |   +-field_idx=0
+    |             |     |   |   +-field_idx=1
+    |             |     |   +-field_idx=1
+    |             |     +-field_idx=0
+    |             +-input_scan=
+    |               +-AggregateScan
+    |                 +-column_list=[$aggregate.$agg1#5]
+    |                 +-input_scan=
+    |                 | +-ArrayScan
+    |                 |   +-column_list=[$array.y#4]
+    |                 |   +-array_expr_list=
+    |                 |   | +-GetStructField
+    |                 |   |   +-type=ARRAY<INT64>
+    |                 |   |   +-expr=
+    |                 |   |   | +-ColumnRef(type=STRUCT<x STRUCT<f1a INT32, f1b STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>>, y ARRAY<INT64>>, column=$make_struct.$struct#3, is_correlated=TRUE)
+    |                 |   |   +-field_idx=1
+    |                 |   +-element_column_list=[$array.y#4]
+    |                 +-aggregate_list=
+    |                   +-$agg1#5 :=
+    |                     +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+    |                       +-ColumnRef(type=INT64, column=$array.y#4)
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[$make_struct.$struct#3]
+        +-expr_list=
+        | +-$struct#3 :=
+        |   +-MakeStruct
+        |     +-type=STRUCT<x STRUCT<f1a INT32, f1b STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>>, y ARRAY<INT64>>
+        |     +-field_list=
+        |       +-ColumnRef(type=STRUCT<f1a INT32, f1b STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>>, column=t.x#1)
+        |       +-ColumnRef(type=ARRAY<INT64>, column=t.y#2)
+        +-input_scan=
+          +-ProjectScan
+            +-column_list=t.[x#1, y#2]
+            +-expr_list=
+            | +-x#1 := Literal(type=STRUCT<f1a INT32, f1b STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>>, value={f1a:1, f1b:{f2a:true, f2b:{f3a:"a"}}}, has_explicit_type=TRUE)
+            | +-y#2 := Literal(type=ARRAY<INT64>, value=[2])
+            +-input_scan=
+              +-SingleRowScan
+--
+ALTERNATION GROUP:  as x1,GROUP BY x.f1a, x.f1b.f2a, x.f1b.f2b.f3a
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#14 AS `$col1` [STRUCT<x1 STRUCT<f1a INT32, f1b STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>>, f1a INT32, f2a BOOL, f3a STRING, INT64>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#14]
+    +-expr_list=
+    | +-$col1#14 :=
+    |   +-SubqueryExpr
+    |     +-type=STRUCT<x1 STRUCT<f1a INT32, f1b STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>>, f1a INT32, f2a BOOL, f3a STRING, INT64>
+    |     +-subquery_type=SCALAR
+    |     +-parameter_list=
+    |     | +-ColumnRef(type=STRUCT<x STRUCT<f1a INT32, f1b STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>>, y ARRAY<INT64>>, column=$make_struct.$struct#3)
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$make_struct.$struct#13]
+    |         +-expr_list=
+    |         | +-$struct#13 :=
+    |         |   +-MakeStruct
+    |         |     +-type=STRUCT<x1 STRUCT<f1a INT32, f1b STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>>, f1a INT32, f2a BOOL, f3a STRING, INT64>
+    |         |     +-field_list=
+    |         |       +-ColumnRef(type=STRUCT<f1a INT32, f1b STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>>, column=$expr_subquery.x1#9)
+    |         |       +-ColumnRef(type=INT32, column=$expr_subquery.f1a#10)
+    |         |       +-ColumnRef(type=BOOL, column=$expr_subquery.f2a#11)
+    |         |       +-ColumnRef(type=STRING, column=$expr_subquery.f3a#12)
+    |         |       +-ColumnRef(type=INT64, column=$aggregate.$agg1#5)
+    |         +-input_scan=
+    |           +-ProjectScan
+    |             +-column_list=[$expr_subquery.x1#9, $expr_subquery.f1a#10, $expr_subquery.f2a#11, $expr_subquery.f3a#12, $aggregate.$agg1#5]
+    |             +-expr_list=
+    |             | +-x1#9 :=
+    |             | | +-GetStructField
+    |             | |   +-type=STRUCT<f1a INT32, f1b STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>>
+    |             | |   +-expr=
+    |             | |   | +-ColumnRef(type=STRUCT<x STRUCT<f1a INT32, f1b STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>>, y ARRAY<INT64>>, column=$make_struct.$struct#3, is_correlated=TRUE)
+    |             | |   +-field_idx=0
+    |             | +-f1a#10 :=
+    |             | | +-GetStructField
+    |             | |   +-type=INT32
+    |             | |   +-expr=
+    |             | |   | +-GetStructField
+    |             | |   |   +-type=STRUCT<f1a INT32, f1b STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>>
+    |             | |   |   +-expr=
+    |             | |   |   | +-ColumnRef(type=STRUCT<x STRUCT<f1a INT32, f1b STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>>, y ARRAY<INT64>>, column=$make_struct.$struct#3, is_correlated=TRUE)
+    |             | |   |   +-field_idx=0
+    |             | |   +-field_idx=0
+    |             | +-f2a#11 :=
+    |             | | +-GetStructField
+    |             | |   +-type=BOOL
+    |             | |   +-expr=
+    |             | |   | +-GetStructField
+    |             | |   |   +-type=STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>
+    |             | |   |   +-expr=
+    |             | |   |   | +-GetStructField
+    |             | |   |   |   +-type=STRUCT<f1a INT32, f1b STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>>
+    |             | |   |   |   +-expr=
+    |             | |   |   |   | +-ColumnRef(type=STRUCT<x STRUCT<f1a INT32, f1b STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>>, y ARRAY<INT64>>, column=$make_struct.$struct#3, is_correlated=TRUE)
+    |             | |   |   |   +-field_idx=0
+    |             | |   |   +-field_idx=1
+    |             | |   +-field_idx=0
+    |             | +-f3a#12 :=
+    |             |   +-GetStructField
+    |             |     +-type=STRING
+    |             |     +-expr=
+    |             |     | +-GetStructField
+    |             |     |   +-type=STRUCT<f3a STRING>
+    |             |     |   +-expr=
+    |             |     |   | +-GetStructField
+    |             |     |   |   +-type=STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>
+    |             |     |   |   +-expr=
+    |             |     |   |   | +-GetStructField
+    |             |     |   |   |   +-type=STRUCT<f1a INT32, f1b STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>>
+    |             |     |   |   |   +-expr=
+    |             |     |   |   |   | +-ColumnRef(type=STRUCT<x STRUCT<f1a INT32, f1b STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>>, y ARRAY<INT64>>, column=$make_struct.$struct#3, is_correlated=TRUE)
+    |             |     |   |   |   +-field_idx=0
+    |             |     |   |   +-field_idx=1
+    |             |     |   +-field_idx=1
+    |             |     +-field_idx=0
+    |             +-input_scan=
+    |               +-AggregateScan
+    |                 +-column_list=[$aggregate.$agg1#5]
+    |                 +-input_scan=
+    |                 | +-ArrayScan
+    |                 |   +-column_list=[$array.y#4]
+    |                 |   +-array_expr_list=
+    |                 |   | +-GetStructField
+    |                 |   |   +-type=ARRAY<INT64>
+    |                 |   |   +-expr=
+    |                 |   |   | +-ColumnRef(type=STRUCT<x STRUCT<f1a INT32, f1b STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>>, y ARRAY<INT64>>, column=$make_struct.$struct#3, is_correlated=TRUE)
+    |                 |   |   +-field_idx=1
+    |                 |   +-element_column_list=[$array.y#4]
+    |                 +-group_by_list=
+    |                 | +-f1a#6 :=
+    |                 | | +-GetStructField
+    |                 | |   +-type=INT32
+    |                 | |   +-expr=
+    |                 | |   | +-GetStructField
+    |                 | |   |   +-type=STRUCT<f1a INT32, f1b STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>>
+    |                 | |   |   +-expr=
+    |                 | |   |   | +-ColumnRef(type=STRUCT<x STRUCT<f1a INT32, f1b STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>>, y ARRAY<INT64>>, column=$make_struct.$struct#3, is_correlated=TRUE)
+    |                 | |   |   +-field_idx=0
+    |                 | |   +-field_idx=0
+    |                 | +-f2a#7 :=
+    |                 | | +-GetStructField
+    |                 | |   +-type=BOOL
+    |                 | |   +-expr=
+    |                 | |   | +-GetStructField
+    |                 | |   |   +-type=STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>
+    |                 | |   |   +-expr=
+    |                 | |   |   | +-GetStructField
+    |                 | |   |   |   +-type=STRUCT<f1a INT32, f1b STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>>
+    |                 | |   |   |   +-expr=
+    |                 | |   |   |   | +-ColumnRef(type=STRUCT<x STRUCT<f1a INT32, f1b STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>>, y ARRAY<INT64>>, column=$make_struct.$struct#3, is_correlated=TRUE)
+    |                 | |   |   |   +-field_idx=0
+    |                 | |   |   +-field_idx=1
+    |                 | |   +-field_idx=0
+    |                 | +-f3a#8 :=
+    |                 |   +-GetStructField
+    |                 |     +-type=STRING
+    |                 |     +-expr=
+    |                 |     | +-GetStructField
+    |                 |     |   +-type=STRUCT<f3a STRING>
+    |                 |     |   +-expr=
+    |                 |     |   | +-GetStructField
+    |                 |     |   |   +-type=STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>
+    |                 |     |   |   +-expr=
+    |                 |     |   |   | +-GetStructField
+    |                 |     |   |   |   +-type=STRUCT<f1a INT32, f1b STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>>
+    |                 |     |   |   |   +-expr=
+    |                 |     |   |   |   | +-ColumnRef(type=STRUCT<x STRUCT<f1a INT32, f1b STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>>, y ARRAY<INT64>>, column=$make_struct.$struct#3, is_correlated=TRUE)
+    |                 |     |   |   |   +-field_idx=0
+    |                 |     |   |   +-field_idx=1
+    |                 |     |   +-field_idx=1
+    |                 |     +-field_idx=0
+    |                 +-aggregate_list=
+    |                   +-$agg1#5 :=
+    |                     +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+    |                       +-ColumnRef(type=INT64, column=$array.y#4)
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[$make_struct.$struct#3]
+        +-expr_list=
+        | +-$struct#3 :=
+        |   +-MakeStruct
+        |     +-type=STRUCT<x STRUCT<f1a INT32, f1b STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>>, y ARRAY<INT64>>
+        |     +-field_list=
+        |       +-ColumnRef(type=STRUCT<f1a INT32, f1b STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>>, column=t.x#1)
+        |       +-ColumnRef(type=ARRAY<INT64>, column=t.y#2)
+        +-input_scan=
+          +-ProjectScan
+            +-column_list=t.[x#1, y#2]
+            +-expr_list=
+            | +-x#1 := Literal(type=STRUCT<f1a INT32, f1b STRUCT<f2a BOOL, f2b STRUCT<f3a STRING>>>, value={f1a:1, f1b:{f2a:true, f2b:{f3a:"a"}}}, has_explicit_type=TRUE)
+            | +-y#2 := Literal(type=ARRAY<INT64>, value=[2])
+            +-input_scan=
+              +-SingleRowScan
+==
+
+# Test PROTO value table correlation reference.
+SELECT (
+  SELECT AS STRUCT t,
+                   t.nested_value,
+                   t.nested_value.nested_int64,
+                   SUM(y)
+  FROM t.repeated_int64_val y
+)
+FROM KitchenSinkValueTable t
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#8 AS `$col1` [STRUCT<t PROTO<googlesql_test.KitchenSinkPB>, nested_value PROTO<googlesql_test.KitchenSinkPB.Nested>, nested_int64 INT64, INT64>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#8]
+    +-expr_list=
+    | +-$col1#8 :=
+    |   +-SubqueryExpr
+    |     +-type=STRUCT<t PROTO<googlesql_test.KitchenSinkPB>, nested_value PROTO<googlesql_test.KitchenSinkPB.Nested>, nested_int64 INT64, INT64>
+    |     +-subquery_type=SCALAR
+    |     +-parameter_list=
+    |     | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=KitchenSinkValueTable.value#1)
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$make_struct.$struct#7]
+    |         +-expr_list=
+    |         | +-$struct#7 :=
+    |         |   +-MakeStruct
+    |         |     +-type=STRUCT<t PROTO<googlesql_test.KitchenSinkPB>, nested_value PROTO<googlesql_test.KitchenSinkPB.Nested>, nested_int64 INT64, INT64>
+    |         |     +-field_list=
+    |         |       +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=$expr_subquery.t#4)
+    |         |       +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB.Nested>, column=$expr_subquery.nested_value#5)
+    |         |       +-ColumnRef(type=INT64, column=$expr_subquery.nested_int64#6)
+    |         |       +-ColumnRef(type=INT64, column=$aggregate.$agg1#3)
+    |         +-input_scan=
+    |           +-ProjectScan
+    |             +-column_list=[$expr_subquery.t#4, $expr_subquery.nested_value#5, $expr_subquery.nested_int64#6, $aggregate.$agg1#3]
+    |             +-expr_list=
+    |             | +-t#4 := ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=KitchenSinkValueTable.value#1, is_correlated=TRUE)
+    |             | +-nested_value#5 :=
+    |             | | +-GetProtoField
+    |             | |   +-type=PROTO<googlesql_test.KitchenSinkPB.Nested>
+    |             | |   +-expr=
+    |             | |   | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=KitchenSinkValueTable.value#1, is_correlated=TRUE)
+    |             | |   +-field_descriptor=nested_value
+    |             | |   +-default_value=NULL
+    |             | +-nested_int64#6 :=
+    |             |   +-GetProtoField
+    |             |     +-type=INT64
+    |             |     +-expr=
+    |             |     | +-GetProtoField
+    |             |     |   +-type=PROTO<googlesql_test.KitchenSinkPB.Nested>
+    |             |     |   +-expr=
+    |             |     |   | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=KitchenSinkValueTable.value#1, is_correlated=TRUE)
+    |             |     |   +-field_descriptor=nested_value
+    |             |     |   +-default_value=NULL
+    |             |     +-field_descriptor=nested_int64
+    |             |     +-default_value=88
+    |             +-input_scan=
+    |               +-AggregateScan
+    |                 +-column_list=[$aggregate.$agg1#3]
+    |                 +-input_scan=
+    |                 | +-ArrayScan
+    |                 |   +-column_list=[$array.y#2]
+    |                 |   +-array_expr_list=
+    |                 |   | +-GetProtoField
+    |                 |   |   +-type=ARRAY<INT64>
+    |                 |   |   +-expr=
+    |                 |   |   | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=KitchenSinkValueTable.value#1, is_correlated=TRUE)
+    |                 |   |   +-field_descriptor=repeated_int64_val
+    |                 |   |   +-default_value=[]
+    |                 |   +-element_column_list=[$array.y#2]
+    |                 +-aggregate_list=
+    |                   +-$agg1#3 :=
+    |                     +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+    |                       +-ColumnRef(type=INT64, column=$array.y#2)
+    +-input_scan=
+      +-TableScan(column_list=[KitchenSinkValueTable.value#1], table=KitchenSinkValueTable, column_index_list=[0], alias="t")
+
+
+DEPRECATION WARNING:
+Lateral column alias will shadow original target: RANGE_VARIABLE<value#1> (value table) [at 3:20]
+                   t.nested_value,
+                   ^
+[googlesql.DeprecationWarning] { kind: LATERAL_COLUMN_REFERENCE }
+==
+
+# Tests with correlated PROTO references start here.
+#
+# SELECT and GROUP BY correlation reference, without aggregation
+SELECT (
+  SELECT {{ct.|}}KitchenSink.int32_val
+  FROM ct.Int32Array
+  GROUP BY {{ct.|}}KitchenSink.int32_val
+)
+FROM ComplexTypes ct
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#10 AS `$col1` [INT32]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#10]
+    +-expr_list=
+    | +-$col1#10 :=
+    |   +-SubqueryExpr
+    |     +-type=INT32
+    |     +-subquery_type=SCALAR
+    |     +-parameter_list=
+    |     | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=ComplexTypes.KitchenSink#3)
+    |     | +-ColumnRef(type=ARRAY<INT32>, column=ComplexTypes.Int32Array#4)
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$expr_subquery.int32_val#9]
+    |         +-expr_list=
+    |         | +-int32_val#9 :=
+    |         |   +-GetProtoField
+    |         |     +-type=INT32
+    |         |     +-expr=
+    |         |     | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=ComplexTypes.KitchenSink#3, is_correlated=TRUE)
+    |         |     +-field_descriptor=int32_val
+    |         |     +-default_value=77
+    |         +-input_scan=
+    |           +-AggregateScan
+    |             +-input_scan=
+    |             | +-ArrayScan
+    |             |   +-array_expr_list=
+    |             |   | +-ColumnRef(type=ARRAY<INT32>, column=ComplexTypes.Int32Array#4, is_correlated=TRUE)
+    |             |   +-element_column_list=[$array.Int32Array#7]
+    |             +-group_by_list=
+    |               +-int32_val#8 :=
+    |                 +-GetProtoField
+    |                   +-type=INT32
+    |                   +-expr=
+    |                   | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=ComplexTypes.KitchenSink#3, is_correlated=TRUE)
+    |                   +-field_descriptor=int32_val
+    |                   +-default_value=77
+    +-input_scan=
+      +-TableScan(column_list=ComplexTypes.[KitchenSink#3, Int32Array#4], table=ComplexTypes, column_index_list=[2, 3], alias="ct")
+==
+
+# SUM(correlation reference), without GROUP BY
+SELECT (
+  SELECT sum({{ct.|}}KitchenSink.int32_val) FROM ct.Int32Array
+)
+FROM ComplexTypes ct
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#9 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#9]
+    +-expr_list=
+    | +-$col1#9 :=
+    |   +-SubqueryExpr
+    |     +-type=INT64
+    |     +-subquery_type=SCALAR
+    |     +-parameter_list=
+    |     | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=ComplexTypes.KitchenSink#3)
+    |     | +-ColumnRef(type=ARRAY<INT32>, column=ComplexTypes.Int32Array#4)
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$aggregate.$agg1#8]
+    |         +-input_scan=
+    |           +-AggregateScan
+    |             +-column_list=[$aggregate.$agg1#8]
+    |             +-input_scan=
+    |             | +-ArrayScan
+    |             |   +-array_expr_list=
+    |             |   | +-ColumnRef(type=ARRAY<INT32>, column=ComplexTypes.Int32Array#4, is_correlated=TRUE)
+    |             |   +-element_column_list=[$array.Int32Array#7]
+    |             +-aggregate_list=
+    |               +-$agg1#8 :=
+    |                 +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+    |                   +-Cast(INT32 -> INT64)
+    |                     +-GetProtoField
+    |                       +-type=INT32
+    |                       +-expr=
+    |                       | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=ComplexTypes.KitchenSink#3, is_correlated=TRUE)
+    |                       +-field_descriptor=int32_val
+    |                       +-default_value=77
+    +-input_scan=
+      +-TableScan(column_list=ComplexTypes.[KitchenSink#3, Int32Array#4], table=ComplexTypes, column_index_list=[2, 3], alias="ct")
+==
+
+# SELECT and GROUP BY correlation reference, and SUM(correlation reference)
+SELECT (
+  SELECT as struct {{ct.|}}KitchenSink.int32_val,
+                   sum({{ct.|}}KitchenSink.int64_val)
+  FROM ct.Int32Array
+  GROUP BY {{ct.|}}KitchenSink.int32_val
+)
+FROM ComplexTypes ct
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#12 AS `$col1` [STRUCT<int32_val INT32, INT64>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#12]
+    +-expr_list=
+    | +-$col1#12 :=
+    |   +-SubqueryExpr
+    |     +-type=STRUCT<int32_val INT32, INT64>
+    |     +-subquery_type=SCALAR
+    |     +-parameter_list=
+    |     | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=ComplexTypes.KitchenSink#3)
+    |     | +-ColumnRef(type=ARRAY<INT32>, column=ComplexTypes.Int32Array#4)
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$make_struct.$struct#11]
+    |         +-expr_list=
+    |         | +-$struct#11 :=
+    |         |   +-MakeStruct
+    |         |     +-type=STRUCT<int32_val INT32, INT64>
+    |         |     +-field_list=
+    |         |       +-ColumnRef(type=INT32, column=$expr_subquery.int32_val#10)
+    |         |       +-ColumnRef(type=INT64, column=$aggregate.$agg1#8)
+    |         +-input_scan=
+    |           +-ProjectScan
+    |             +-column_list=[$expr_subquery.int32_val#10, $aggregate.$agg1#8]
+    |             +-expr_list=
+    |             | +-int32_val#10 :=
+    |             |   +-GetProtoField
+    |             |     +-type=INT32
+    |             |     +-expr=
+    |             |     | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=ComplexTypes.KitchenSink#3, is_correlated=TRUE)
+    |             |     +-field_descriptor=int32_val
+    |             |     +-default_value=77
+    |             +-input_scan=
+    |               +-AggregateScan
+    |                 +-column_list=[$aggregate.$agg1#8]
+    |                 +-input_scan=
+    |                 | +-ArrayScan
+    |                 |   +-array_expr_list=
+    |                 |   | +-ColumnRef(type=ARRAY<INT32>, column=ComplexTypes.Int32Array#4, is_correlated=TRUE)
+    |                 |   +-element_column_list=[$array.Int32Array#7]
+    |                 +-group_by_list=
+    |                 | +-int32_val#9 :=
+    |                 |   +-GetProtoField
+    |                 |     +-type=INT32
+    |                 |     +-expr=
+    |                 |     | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=ComplexTypes.KitchenSink#3, is_correlated=TRUE)
+    |                 |     +-field_descriptor=int32_val
+    |                 |     +-default_value=77
+    |                 +-aggregate_list=
+    |                   +-$agg1#8 :=
+    |                     +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+    |                       +-GetProtoField
+    |                         +-type=INT64
+    |                         +-expr=
+    |                         | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=ComplexTypes.KitchenSink#3, is_correlated=TRUE)
+    |                         +-field_descriptor=int64_val
+    |                         +-default_value=0
+    +-input_scan=
+      +-TableScan(column_list=ComplexTypes.[KitchenSink#3, Int32Array#4], table=ComplexTypes, column_index_list=[2, 3], alias="ct")
+==
+
+# GROUP BY correlation reference, with SUM(correlation reference)
+SELECT (
+  SELECT sum({{ct.|}}KitchenSink.int64_val)
+  FROM ct.Int32Array
+  GROUP BY {{ct.|}}KitchenSink.int32_val
+)
+FROM ComplexTypes ct
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#10 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#10]
+    +-expr_list=
+    | +-$col1#10 :=
+    |   +-SubqueryExpr
+    |     +-type=INT64
+    |     +-subquery_type=SCALAR
+    |     +-parameter_list=
+    |     | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=ComplexTypes.KitchenSink#3)
+    |     | +-ColumnRef(type=ARRAY<INT32>, column=ComplexTypes.Int32Array#4)
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$aggregate.$agg1#8]
+    |         +-input_scan=
+    |           +-AggregateScan
+    |             +-column_list=[$aggregate.$agg1#8]
+    |             +-input_scan=
+    |             | +-ArrayScan
+    |             |   +-array_expr_list=
+    |             |   | +-ColumnRef(type=ARRAY<INT32>, column=ComplexTypes.Int32Array#4, is_correlated=TRUE)
+    |             |   +-element_column_list=[$array.Int32Array#7]
+    |             +-group_by_list=
+    |             | +-int32_val#9 :=
+    |             |   +-GetProtoField
+    |             |     +-type=INT32
+    |             |     +-expr=
+    |             |     | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=ComplexTypes.KitchenSink#3, is_correlated=TRUE)
+    |             |     +-field_descriptor=int32_val
+    |             |     +-default_value=77
+    |             +-aggregate_list=
+    |               +-$agg1#8 :=
+    |                 +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+    |                   +-GetProtoField
+    |                     +-type=INT64
+    |                     +-expr=
+    |                     | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=ComplexTypes.KitchenSink#3, is_correlated=TRUE)
+    |                     +-field_descriptor=int64_val
+    |                     +-default_value=0
+    +-input_scan=
+      +-TableScan(column_list=ComplexTypes.[KitchenSink#3, Int32Array#4], table=ComplexTypes, column_index_list=[2, 3], alias="ct")
+==
+
+# SELECT correlation reference, with SUM(correlation reference), without
+# GROUP BY.  This works because the correlation reference is constant for
+# the life of each subquery execution.
+SELECT (
+  SELECT as struct {{ct.|}}KitchenSink.int32_val,
+                   SUM({{ct.|}}KitchenSink.int64_val) FROM ct.Int32Array
+)
+FROM ComplexTypes ct
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#11 AS `$col1` [STRUCT<int32_val INT32, INT64>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#11]
+    +-expr_list=
+    | +-$col1#11 :=
+    |   +-SubqueryExpr
+    |     +-type=STRUCT<int32_val INT32, INT64>
+    |     +-subquery_type=SCALAR
+    |     +-parameter_list=
+    |     | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=ComplexTypes.KitchenSink#3)
+    |     | +-ColumnRef(type=ARRAY<INT32>, column=ComplexTypes.Int32Array#4)
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$make_struct.$struct#10]
+    |         +-expr_list=
+    |         | +-$struct#10 :=
+    |         |   +-MakeStruct
+    |         |     +-type=STRUCT<int32_val INT32, INT64>
+    |         |     +-field_list=
+    |         |       +-ColumnRef(type=INT32, column=$expr_subquery.int32_val#9)
+    |         |       +-ColumnRef(type=INT64, column=$aggregate.$agg1#8)
+    |         +-input_scan=
+    |           +-ProjectScan
+    |             +-column_list=[$expr_subquery.int32_val#9, $aggregate.$agg1#8]
+    |             +-expr_list=
+    |             | +-int32_val#9 :=
+    |             |   +-GetProtoField
+    |             |     +-type=INT32
+    |             |     +-expr=
+    |             |     | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=ComplexTypes.KitchenSink#3, is_correlated=TRUE)
+    |             |     +-field_descriptor=int32_val
+    |             |     +-default_value=77
+    |             +-input_scan=
+    |               +-AggregateScan
+    |                 +-column_list=[$aggregate.$agg1#8]
+    |                 +-input_scan=
+    |                 | +-ArrayScan
+    |                 |   +-array_expr_list=
+    |                 |   | +-ColumnRef(type=ARRAY<INT32>, column=ComplexTypes.Int32Array#4, is_correlated=TRUE)
+    |                 |   +-element_column_list=[$array.Int32Array#7]
+    |                 +-aggregate_list=
+    |                   +-$agg1#8 :=
+    |                     +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+    |                       +-GetProtoField
+    |                         +-type=INT64
+    |                         +-expr=
+    |                         | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=ComplexTypes.KitchenSink#3, is_correlated=TRUE)
+    |                         +-field_descriptor=int64_val
+    |                         +-default_value=0
+    +-input_scan=
+      +-TableScan(column_list=ComplexTypes.[KitchenSink#3, Int32Array#4], table=ComplexTypes, column_index_list=[2, 3], alias="ct")
+==
+
+# SELECT correlation references, with SUM(correlation reference), without
+# GROUP BY.  This works because the correlation references are constant for
+# the life of each subquery execution.
+SELECT (
+  SELECT as struct ct, ct.KitchenSink, {{ct.|}}KitchenSink.int32_val,
+                   SUM({{ct.|}}KitchenSink.int64_val) FROM ct.Int32Array
+)
+FROM ComplexTypes ct
+--
+ALTERNATION GROUPS:
+    ct.,ct.
+    ct.,
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#15 AS `$col1` [STRUCT<ct STRUCT<key INT32, TestEnum ENUM<googlesql_test.TestEnum>, KitchenSink PROTO<googlesql_test.KitchenSinkPB>, Int32Array ARRAY<INT32>, TestStruct STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, TestProto PROTO<googlesql_test.TestExtraPB>>, KitchenSink PROTO<googlesql_test.KitchenSinkPB>, int32_val INT32, INT64>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#15]
+    +-expr_list=
+    | +-$col1#15 :=
+    |   +-SubqueryExpr
+    |     +-type=STRUCT<ct STRUCT<key INT32, TestEnum ENUM<googlesql_test.TestEnum>, KitchenSink PROTO<googlesql_test.KitchenSinkPB>, Int32Array ARRAY<INT32>, TestStruct STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, TestProto PROTO<googlesql_test.TestExtraPB>>, KitchenSink PROTO<googlesql_test.KitchenSinkPB>, int32_val INT32, INT64>
+    |     +-subquery_type=SCALAR
+    |     +-parameter_list=
+    |     | +-ColumnRef(type=INT32, column=ComplexTypes.key#1)
+    |     | +-ColumnRef(type=ENUM<googlesql_test.TestEnum>, column=ComplexTypes.TestEnum#2)
+    |     | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=ComplexTypes.KitchenSink#3)
+    |     | +-ColumnRef(type=ARRAY<INT32>, column=ComplexTypes.Int32Array#4)
+    |     | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#5)
+    |     | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=ComplexTypes.TestProto#6)
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$make_struct.$struct#14]
+    |         +-expr_list=
+    |         | +-$struct#14 :=
+    |         |   +-MakeStruct
+    |         |     +-type=STRUCT<ct STRUCT<key INT32, TestEnum ENUM<googlesql_test.TestEnum>, KitchenSink PROTO<googlesql_test.KitchenSinkPB>, Int32Array ARRAY<INT32>, TestStruct STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, TestProto PROTO<googlesql_test.TestExtraPB>>, KitchenSink PROTO<googlesql_test.KitchenSinkPB>, int32_val INT32, INT64>
+    |         |     +-field_list=
+    |         |       +-ColumnRef(type=STRUCT<key INT32, TestEnum ENUM<googlesql_test.TestEnum>, KitchenSink PROTO<googlesql_test.KitchenSinkPB>, Int32Array ARRAY<INT32>, TestStruct STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, TestProto PROTO<googlesql_test.TestExtraPB>>, column=$expr_subquery.ct#11)
+    |         |       +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=$expr_subquery.KitchenSink#12)
+    |         |       +-ColumnRef(type=INT32, column=$expr_subquery.int32_val#13)
+    |         |       +-ColumnRef(type=INT64, column=$aggregate.$agg1#9)
+    |         +-input_scan=
+    |           +-ProjectScan
+    |             +-column_list=[$expr_subquery.ct#11, $expr_subquery.KitchenSink#12, $expr_subquery.int32_val#13, $aggregate.$agg1#9]
+    |             +-expr_list=
+    |             | +-ct#11 :=
+    |             | | +-MakeStruct
+    |             | |   +-type=STRUCT<key INT32, TestEnum ENUM<googlesql_test.TestEnum>, KitchenSink PROTO<googlesql_test.KitchenSinkPB>, Int32Array ARRAY<INT32>, TestStruct STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, TestProto PROTO<googlesql_test.TestExtraPB>>
+    |             | |   +-field_list=
+    |             | |     +-ColumnRef(type=INT32, column=ComplexTypes.key#1, is_correlated=TRUE)
+    |             | |     +-ColumnRef(type=ENUM<googlesql_test.TestEnum>, column=ComplexTypes.TestEnum#2, is_correlated=TRUE)
+    |             | |     +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=ComplexTypes.KitchenSink#3, is_correlated=TRUE)
+    |             | |     +-ColumnRef(type=ARRAY<INT32>, column=ComplexTypes.Int32Array#4, is_correlated=TRUE)
+    |             | |     +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#5, is_correlated=TRUE)
+    |             | |     +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=ComplexTypes.TestProto#6, is_correlated=TRUE)
+    |             | +-KitchenSink#12 := ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=ComplexTypes.KitchenSink#3, is_correlated=TRUE)
+    |             | +-int32_val#13 :=
+    |             |   +-GetProtoField
+    |             |     +-type=INT32
+    |             |     +-expr=
+    |             |     | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=ComplexTypes.KitchenSink#3, is_correlated=TRUE)
+    |             |     +-field_descriptor=int32_val
+    |             |     +-default_value=77
+    |             +-input_scan=
+    |               +-AggregateScan
+    |                 +-column_list=[$aggregate.$agg1#9]
+    |                 +-input_scan=
+    |                 | +-ArrayScan
+    |                 |   +-array_expr_list=
+    |                 |   | +-ColumnRef(type=ARRAY<INT32>, column=ComplexTypes.Int32Array#4, is_correlated=TRUE)
+    |                 |   +-element_column_list=[$array.Int32Array#7]
+    |                 +-aggregate_list=
+    |                   +-$agg1#9 :=
+    |                     +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+    |                       +-GetProtoField
+    |                         +-type=INT64
+    |                         +-expr=
+    |                         | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=ComplexTypes.KitchenSink#3, is_correlated=TRUE)
+    |                         +-field_descriptor=int64_val
+    |                         +-default_value=0
+    +-input_scan=
+      +-TableScan(column_list=ComplexTypes.[key#1, TestEnum#2, KitchenSink#3, Int32Array#4, TestStruct#5, TestProto#6], table=ComplexTypes, column_index_list=[0, 1, 2, 3, 4, 5], alias="ct")
+
+
+DEPRECATION WARNING:
+Lateral column alias will shadow original target: googlesql_test.KitchenSinkPB (ComplexTypes.KitchenSink#3) (implicit) [at 2:24]
+  SELECT as struct ct, ct.KitchenSink, ct.KitchenSink.int32_val,
+                       ^
+[googlesql.DeprecationWarning] { kind: LATERAL_COLUMN_REFERENCE }
+--
+ALTERNATION GROUPS:
+    ct.
+    <empty>
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#15 AS `$col1` [STRUCT<ct STRUCT<key INT32, TestEnum ENUM<googlesql_test.TestEnum>, KitchenSink PROTO<googlesql_test.KitchenSinkPB>, Int32Array ARRAY<INT32>, TestStruct STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, TestProto PROTO<googlesql_test.TestExtraPB>>, KitchenSink PROTO<googlesql_test.KitchenSinkPB>, int32_val INT32, INT64>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#15]
+    +-expr_list=
+    | +-$col1#15 :=
+    |   +-SubqueryExpr
+    |     +-type=STRUCT<ct STRUCT<key INT32, TestEnum ENUM<googlesql_test.TestEnum>, KitchenSink PROTO<googlesql_test.KitchenSinkPB>, Int32Array ARRAY<INT32>, TestStruct STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, TestProto PROTO<googlesql_test.TestExtraPB>>, KitchenSink PROTO<googlesql_test.KitchenSinkPB>, int32_val INT32, INT64>
+    |     +-subquery_type=SCALAR
+    |     +-parameter_list=
+    |     | +-ColumnRef(type=INT32, column=ComplexTypes.key#1)
+    |     | +-ColumnRef(type=ENUM<googlesql_test.TestEnum>, column=ComplexTypes.TestEnum#2)
+    |     | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=ComplexTypes.KitchenSink#3)
+    |     | +-ColumnRef(type=ARRAY<INT32>, column=ComplexTypes.Int32Array#4)
+    |     | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#5)
+    |     | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=ComplexTypes.TestProto#6)
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$make_struct.$struct#14]
+    |         +-expr_list=
+    |         | +-$struct#14 :=
+    |         |   +-MakeStruct
+    |         |     +-type=STRUCT<ct STRUCT<key INT32, TestEnum ENUM<googlesql_test.TestEnum>, KitchenSink PROTO<googlesql_test.KitchenSinkPB>, Int32Array ARRAY<INT32>, TestStruct STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, TestProto PROTO<googlesql_test.TestExtraPB>>, KitchenSink PROTO<googlesql_test.KitchenSinkPB>, int32_val INT32, INT64>
+    |         |     +-field_list=
+    |         |       +-ColumnRef(type=STRUCT<key INT32, TestEnum ENUM<googlesql_test.TestEnum>, KitchenSink PROTO<googlesql_test.KitchenSinkPB>, Int32Array ARRAY<INT32>, TestStruct STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, TestProto PROTO<googlesql_test.TestExtraPB>>, column=$expr_subquery.ct#11)
+    |         |       +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=$expr_subquery.KitchenSink#12)
+    |         |       +-ColumnRef(type=INT32, column=$expr_subquery.int32_val#13)
+    |         |       +-ColumnRef(type=INT64, column=$aggregate.$agg1#9)
+    |         +-input_scan=
+    |           +-ProjectScan
+    |             +-column_list=[$expr_subquery.ct#11, $expr_subquery.KitchenSink#12, $expr_subquery.int32_val#13, $aggregate.$agg1#9]
+    |             +-expr_list=
+    |             | +-ct#11 :=
+    |             | | +-MakeStruct
+    |             | |   +-type=STRUCT<key INT32, TestEnum ENUM<googlesql_test.TestEnum>, KitchenSink PROTO<googlesql_test.KitchenSinkPB>, Int32Array ARRAY<INT32>, TestStruct STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, TestProto PROTO<googlesql_test.TestExtraPB>>
+    |             | |   +-field_list=
+    |             | |     +-ColumnRef(type=INT32, column=ComplexTypes.key#1, is_correlated=TRUE)
+    |             | |     +-ColumnRef(type=ENUM<googlesql_test.TestEnum>, column=ComplexTypes.TestEnum#2, is_correlated=TRUE)
+    |             | |     +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=ComplexTypes.KitchenSink#3, is_correlated=TRUE)
+    |             | |     +-ColumnRef(type=ARRAY<INT32>, column=ComplexTypes.Int32Array#4, is_correlated=TRUE)
+    |             | |     +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=ComplexTypes.TestStruct#5, is_correlated=TRUE)
+    |             | |     +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=ComplexTypes.TestProto#6, is_correlated=TRUE)
+    |             | +-KitchenSink#12 := ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=ComplexTypes.KitchenSink#3, is_correlated=TRUE)
+    |             | +-int32_val#13 :=
+    |             |   +-GetProtoField
+    |             |     +-type=INT32
+    |             |     +-expr=
+    |             |     | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=ComplexTypes.KitchenSink#3, is_correlated=TRUE)
+    |             |     +-field_descriptor=int32_val
+    |             |     +-default_value=77
+    |             +-input_scan=
+    |               +-AggregateScan
+    |                 +-column_list=[$aggregate.$agg1#9]
+    |                 +-input_scan=
+    |                 | +-ArrayScan
+    |                 |   +-array_expr_list=
+    |                 |   | +-ColumnRef(type=ARRAY<INT32>, column=ComplexTypes.Int32Array#4, is_correlated=TRUE)
+    |                 |   +-element_column_list=[$array.Int32Array#7]
+    |                 +-aggregate_list=
+    |                   +-$agg1#9 :=
+    |                     +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+    |                       +-GetProtoField
+    |                         +-type=INT64
+    |                         +-expr=
+    |                         | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=ComplexTypes.KitchenSink#3, is_correlated=TRUE)
+    |                         +-field_descriptor=int64_val
+    |                         +-default_value=0
+    +-input_scan=
+      +-TableScan(column_list=ComplexTypes.[key#1, TestEnum#2, KitchenSink#3, Int32Array#4, TestStruct#5, TestProto#6], table=ComplexTypes, column_index_list=[0, 1, 2, 3, 4, 5], alias="ct")
+
+
+DEPRECATION WARNING:
+Lateral column alias will shadow original target: googlesql_test.KitchenSinkPB (ComplexTypes.KitchenSink#3) (implicit) [at 2:24]
+  SELECT as struct ct, ct.KitchenSink, KitchenSink.int32_val,
+                       ^
+[googlesql.DeprecationWarning] { kind: LATERAL_COLUMN_REFERENCE }
+==
+
+# More deeply nested proto path expression, with and without GROUP BY.
+# Note that GROUP BY proto is not allowed, so the query groups by the
+# nested_int64 field.
+# Without GROUP BY, the query succeeds.
+# With GROUP BY, the query succeeds or fails depending on whether the
+# SELECT list alias 'k' is provided for KitchenSink.  This is because
+# GoogleSQL currently has a rule where we do not allow GROUP BY path
+# expressions that start from SELECT list aliases.  So in the query
+# alternation where we do not explicitly alias KitchenSink, it gets an
+# implicit alias of KitchenSink and therefore GROUP BY
+# KitchenSink.nested_value.nested_int64 is not allowed since 'KitchenSink'
+# resolves to the SELECT list alias.   Which is weird, since if we
+# explicitly alias KitchenSink to 'k' instead then the query works.
+SELECT (
+  SELECT AS STRUCT KitchenSink {{|k}},
+                   KitchenSink.nested_value,
+                   KitchenSink.nested_value.nested_int64,
+                   SUM(y)
+  FROM ct.Int32Array y
+  {{|GROUP BY KitchenSink.nested_value.nested_int64}}
+)
+FROM ComplexTypes ct
+--
+ALTERNATION GROUP: <empty>
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#13 AS `$col1` [STRUCT<KitchenSink PROTO<googlesql_test.KitchenSinkPB>, nested_value PROTO<googlesql_test.KitchenSinkPB.Nested>, nested_int64 INT64, INT64>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#13]
+    +-expr_list=
+    | +-$col1#13 :=
+    |   +-SubqueryExpr
+    |     +-type=STRUCT<KitchenSink PROTO<googlesql_test.KitchenSinkPB>, nested_value PROTO<googlesql_test.KitchenSinkPB.Nested>, nested_int64 INT64, INT64>
+    |     +-subquery_type=SCALAR
+    |     +-parameter_list=
+    |     | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=ComplexTypes.KitchenSink#3)
+    |     | +-ColumnRef(type=ARRAY<INT32>, column=ComplexTypes.Int32Array#4)
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$make_struct.$struct#12]
+    |         +-expr_list=
+    |         | +-$struct#12 :=
+    |         |   +-MakeStruct
+    |         |     +-type=STRUCT<KitchenSink PROTO<googlesql_test.KitchenSinkPB>, nested_value PROTO<googlesql_test.KitchenSinkPB.Nested>, nested_int64 INT64, INT64>
+    |         |     +-field_list=
+    |         |       +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=$expr_subquery.KitchenSink#9)
+    |         |       +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB.Nested>, column=$expr_subquery.nested_value#10)
+    |         |       +-ColumnRef(type=INT64, column=$expr_subquery.nested_int64#11)
+    |         |       +-ColumnRef(type=INT64, column=$aggregate.$agg1#8)
+    |         +-input_scan=
+    |           +-ProjectScan
+    |             +-column_list=[$expr_subquery.KitchenSink#9, $expr_subquery.nested_value#10, $expr_subquery.nested_int64#11, $aggregate.$agg1#8]
+    |             +-expr_list=
+    |             | +-KitchenSink#9 := ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=ComplexTypes.KitchenSink#3, is_correlated=TRUE)
+    |             | +-nested_value#10 :=
+    |             | | +-GetProtoField
+    |             | |   +-type=PROTO<googlesql_test.KitchenSinkPB.Nested>
+    |             | |   +-expr=
+    |             | |   | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=ComplexTypes.KitchenSink#3, is_correlated=TRUE)
+    |             | |   +-field_descriptor=nested_value
+    |             | |   +-default_value=NULL
+    |             | +-nested_int64#11 :=
+    |             |   +-GetProtoField
+    |             |     +-type=INT64
+    |             |     +-expr=
+    |             |     | +-GetProtoField
+    |             |     |   +-type=PROTO<googlesql_test.KitchenSinkPB.Nested>
+    |             |     |   +-expr=
+    |             |     |   | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=ComplexTypes.KitchenSink#3, is_correlated=TRUE)
+    |             |     |   +-field_descriptor=nested_value
+    |             |     |   +-default_value=NULL
+    |             |     +-field_descriptor=nested_int64
+    |             |     +-default_value=88
+    |             +-input_scan=
+    |               +-AggregateScan
+    |                 +-column_list=[$aggregate.$agg1#8]
+    |                 +-input_scan=
+    |                 | +-ArrayScan
+    |                 |   +-column_list=[$array.y#7]
+    |                 |   +-array_expr_list=
+    |                 |   | +-ColumnRef(type=ARRAY<INT32>, column=ComplexTypes.Int32Array#4, is_correlated=TRUE)
+    |                 |   +-element_column_list=[$array.y#7]
+    |                 +-aggregate_list=
+    |                   +-$agg1#8 :=
+    |                     +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+    |                       +-Cast(INT32 -> INT64)
+    |                         +-ColumnRef(type=INT32, column=$array.y#7)
+    +-input_scan=
+      +-TableScan(column_list=ComplexTypes.[KitchenSink#3, Int32Array#4], table=ComplexTypes, column_index_list=[2, 3], alias="ct")
+
+
+DEPRECATION WARNING:
+Lateral column alias will shadow original target: googlesql_test.KitchenSinkPB (ComplexTypes.KitchenSink#3) (implicit) [at 3:20]
+                   KitchenSink.nested_value,
+                   ^
+[googlesql.DeprecationWarning] { kind: LATERAL_COLUMN_REFERENCE }
+--
+ALTERNATION GROUP: GROUP BY KitchenSink.nested_value.nested_int64
+--
+ERROR: Cannot GROUP BY field references from SELECT list alias KitchenSink [at 7:12]
+  GROUP BY KitchenSink.nested_value.nested_int64
+           ^
+--
+ALTERNATION GROUP: k,
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#13 AS `$col1` [STRUCT<k PROTO<googlesql_test.KitchenSinkPB>, nested_value PROTO<googlesql_test.KitchenSinkPB.Nested>, nested_int64 INT64, INT64>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#13]
+    +-expr_list=
+    | +-$col1#13 :=
+    |   +-SubqueryExpr
+    |     +-type=STRUCT<k PROTO<googlesql_test.KitchenSinkPB>, nested_value PROTO<googlesql_test.KitchenSinkPB.Nested>, nested_int64 INT64, INT64>
+    |     +-subquery_type=SCALAR
+    |     +-parameter_list=
+    |     | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=ComplexTypes.KitchenSink#3)
+    |     | +-ColumnRef(type=ARRAY<INT32>, column=ComplexTypes.Int32Array#4)
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$make_struct.$struct#12]
+    |         +-expr_list=
+    |         | +-$struct#12 :=
+    |         |   +-MakeStruct
+    |         |     +-type=STRUCT<k PROTO<googlesql_test.KitchenSinkPB>, nested_value PROTO<googlesql_test.KitchenSinkPB.Nested>, nested_int64 INT64, INT64>
+    |         |     +-field_list=
+    |         |       +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=$expr_subquery.k#9)
+    |         |       +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB.Nested>, column=$expr_subquery.nested_value#10)
+    |         |       +-ColumnRef(type=INT64, column=$expr_subquery.nested_int64#11)
+    |         |       +-ColumnRef(type=INT64, column=$aggregate.$agg1#8)
+    |         +-input_scan=
+    |           +-ProjectScan
+    |             +-column_list=[$expr_subquery.k#9, $expr_subquery.nested_value#10, $expr_subquery.nested_int64#11, $aggregate.$agg1#8]
+    |             +-expr_list=
+    |             | +-k#9 := ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=ComplexTypes.KitchenSink#3, is_correlated=TRUE)
+    |             | +-nested_value#10 :=
+    |             | | +-GetProtoField
+    |             | |   +-type=PROTO<googlesql_test.KitchenSinkPB.Nested>
+    |             | |   +-expr=
+    |             | |   | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=ComplexTypes.KitchenSink#3, is_correlated=TRUE)
+    |             | |   +-field_descriptor=nested_value
+    |             | |   +-default_value=NULL
+    |             | +-nested_int64#11 :=
+    |             |   +-GetProtoField
+    |             |     +-type=INT64
+    |             |     +-expr=
+    |             |     | +-GetProtoField
+    |             |     |   +-type=PROTO<googlesql_test.KitchenSinkPB.Nested>
+    |             |     |   +-expr=
+    |             |     |   | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=ComplexTypes.KitchenSink#3, is_correlated=TRUE)
+    |             |     |   +-field_descriptor=nested_value
+    |             |     |   +-default_value=NULL
+    |             |     +-field_descriptor=nested_int64
+    |             |     +-default_value=88
+    |             +-input_scan=
+    |               +-AggregateScan
+    |                 +-column_list=[$aggregate.$agg1#8]
+    |                 +-input_scan=
+    |                 | +-ArrayScan
+    |                 |   +-column_list=[$array.y#7]
+    |                 |   +-array_expr_list=
+    |                 |   | +-ColumnRef(type=ARRAY<INT32>, column=ComplexTypes.Int32Array#4, is_correlated=TRUE)
+    |                 |   +-element_column_list=[$array.y#7]
+    |                 +-aggregate_list=
+    |                   +-$agg1#8 :=
+    |                     +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+    |                       +-Cast(INT32 -> INT64)
+    |                         +-ColumnRef(type=INT32, column=$array.y#7)
+    +-input_scan=
+      +-TableScan(column_list=ComplexTypes.[KitchenSink#3, Int32Array#4], table=ComplexTypes, column_index_list=[2, 3], alias="ct")
+--
+ALTERNATION GROUP: k,GROUP BY KitchenSink.nested_value.nested_int64
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#14 AS `$col1` [STRUCT<k PROTO<googlesql_test.KitchenSinkPB>, nested_value PROTO<googlesql_test.KitchenSinkPB.Nested>, nested_int64 INT64, INT64>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#14]
+    +-expr_list=
+    | +-$col1#14 :=
+    |   +-SubqueryExpr
+    |     +-type=STRUCT<k PROTO<googlesql_test.KitchenSinkPB>, nested_value PROTO<googlesql_test.KitchenSinkPB.Nested>, nested_int64 INT64, INT64>
+    |     +-subquery_type=SCALAR
+    |     +-parameter_list=
+    |     | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=ComplexTypes.KitchenSink#3)
+    |     | +-ColumnRef(type=ARRAY<INT32>, column=ComplexTypes.Int32Array#4)
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$make_struct.$struct#13]
+    |         +-expr_list=
+    |         | +-$struct#13 :=
+    |         |   +-MakeStruct
+    |         |     +-type=STRUCT<k PROTO<googlesql_test.KitchenSinkPB>, nested_value PROTO<googlesql_test.KitchenSinkPB.Nested>, nested_int64 INT64, INT64>
+    |         |     +-field_list=
+    |         |       +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=$expr_subquery.k#10)
+    |         |       +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB.Nested>, column=$expr_subquery.nested_value#11)
+    |         |       +-ColumnRef(type=INT64, column=$expr_subquery.nested_int64#12)
+    |         |       +-ColumnRef(type=INT64, column=$aggregate.$agg1#8)
+    |         +-input_scan=
+    |           +-ProjectScan
+    |             +-column_list=[$expr_subquery.k#10, $expr_subquery.nested_value#11, $expr_subquery.nested_int64#12, $aggregate.$agg1#8]
+    |             +-expr_list=
+    |             | +-k#10 := ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=ComplexTypes.KitchenSink#3, is_correlated=TRUE)
+    |             | +-nested_value#11 :=
+    |             | | +-GetProtoField
+    |             | |   +-type=PROTO<googlesql_test.KitchenSinkPB.Nested>
+    |             | |   +-expr=
+    |             | |   | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=ComplexTypes.KitchenSink#3, is_correlated=TRUE)
+    |             | |   +-field_descriptor=nested_value
+    |             | |   +-default_value=NULL
+    |             | +-nested_int64#12 :=
+    |             |   +-GetProtoField
+    |             |     +-type=INT64
+    |             |     +-expr=
+    |             |     | +-GetProtoField
+    |             |     |   +-type=PROTO<googlesql_test.KitchenSinkPB.Nested>
+    |             |     |   +-expr=
+    |             |     |   | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=ComplexTypes.KitchenSink#3, is_correlated=TRUE)
+    |             |     |   +-field_descriptor=nested_value
+    |             |     |   +-default_value=NULL
+    |             |     +-field_descriptor=nested_int64
+    |             |     +-default_value=88
+    |             +-input_scan=
+    |               +-AggregateScan
+    |                 +-column_list=[$aggregate.$agg1#8]
+    |                 +-input_scan=
+    |                 | +-ArrayScan
+    |                 |   +-column_list=[$array.y#7]
+    |                 |   +-array_expr_list=
+    |                 |   | +-ColumnRef(type=ARRAY<INT32>, column=ComplexTypes.Int32Array#4, is_correlated=TRUE)
+    |                 |   +-element_column_list=[$array.y#7]
+    |                 +-group_by_list=
+    |                 | +-nested_int64#9 :=
+    |                 |   +-GetProtoField
+    |                 |     +-type=INT64
+    |                 |     +-expr=
+    |                 |     | +-GetProtoField
+    |                 |     |   +-type=PROTO<googlesql_test.KitchenSinkPB.Nested>
+    |                 |     |   +-expr=
+    |                 |     |   | +-ColumnRef(type=PROTO<googlesql_test.KitchenSinkPB>, column=ComplexTypes.KitchenSink#3, is_correlated=TRUE)
+    |                 |     |   +-field_descriptor=nested_value
+    |                 |     |   +-default_value=NULL
+    |                 |     +-field_descriptor=nested_int64
+    |                 |     +-default_value=88
+    |                 +-aggregate_list=
+    |                   +-$agg1#8 :=
+    |                     +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+    |                       +-Cast(INT32 -> INT64)
+    |                         +-ColumnRef(type=INT32, column=$array.y#7)
+    +-input_scan=
+      +-TableScan(column_list=ComplexTypes.[KitchenSink#3, Int32Array#4], table=ComplexTypes, column_index_list=[2, 3], alias="ct")
+==
+
+SELECT 'foo' as foo
+FROM KeyValue kv
+GROUP BY foo, (select kv.key)
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.foo#3 AS foo [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$groupby.foo#3]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$groupby.foo#3]
+        +-input_scan=
+        | +-TableScan(column_list=[KeyValue.Key#1], table=KeyValue, column_index_list=[0], alias="kv")
+        +-group_by_list=
+          +-foo#3 := Literal(type=STRING, value="foo")
+          +-$groupbycol2#5 :=
+            +-SubqueryExpr
+              +-type=INT64
+              +-subquery_type=SCALAR
+              +-parameter_list=
+              | +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+              +-subquery=
+                +-ProjectScan
+                  +-column_list=[$expr_subquery.key#4]
+                  +-expr_list=
+                  | +-key#4 := ColumnRef(type=INT64, column=KeyValue.Key#1, is_correlated=TRUE)
+                  +-input_scan=
+                    +-SingleRowScan
+==
+
+# TODO: This should work, fix it.  The subquery should resolve 'foo'
+# to the SELECT list alias, consistently with the other expressions in the
+# GROUP BY.  This is probably low priority since correlated subqueries in
+# GROUP BY do not seem particularly useful, and this problem does not exist
+# for HAVING or ORDER BY correlated subqueries (aliases there work ok).
+SELECT 'foo' as foo
+FROM KeyValue kv
+GROUP BY foo, (select foo)
+--
+ERROR: Unrecognized name: foo [at 3:23]
+GROUP BY foo, (select foo)
+                      ^
+==
+
+# For correlated query, inner aggregation query is able to select non-grouped
+# outer fields.
+SELECT
+ (
+  SELECT as struct {{t.|}}z, x.a, x.b FROM t.x.b.d GROUP BY {{t.|}}x.a
+ )
+FROM (select as struct
+  (select as struct 1 a, (select as struct 2 c, [3] d) b) x,
+  [3] y,
+  4 z
+) t
+
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#17 AS `$col1` [STRUCT<z INT64, a INT64, b STRUCT<c INT64, d ARRAY<INT64>>>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#17]
+    +-expr_list=
+    | +-$col1#17 :=
+    |   +-SubqueryExpr
+    |     +-type=STRUCT<z INT64, a INT64, b STRUCT<c INT64, d ARRAY<INT64>>>
+    |     +-subquery_type=SCALAR
+    |     +-parameter_list=
+    |     | +-ColumnRef(type=STRUCT<x STRUCT<a INT64, b STRUCT<c INT64, d ARRAY<INT64>>>, y ARRAY<INT64>, z INT64>, column=$make_struct.$struct#10)
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$make_struct.$struct#16]
+    |         +-expr_list=
+    |         | +-$struct#16 :=
+    |         |   +-MakeStruct
+    |         |     +-type=STRUCT<z INT64, a INT64, b STRUCT<c INT64, d ARRAY<INT64>>>
+    |         |     +-field_list=
+    |         |       +-ColumnRef(type=INT64, column=$expr_subquery.z#13)
+    |         |       +-ColumnRef(type=INT64, column=$expr_subquery.a#14)
+    |         |       +-ColumnRef(type=STRUCT<c INT64, d ARRAY<INT64>>, column=$expr_subquery.b#15)
+    |         +-input_scan=
+    |           +-ProjectScan
+    |             +-column_list=$expr_subquery.[z#13, a#14, b#15]
+    |             +-expr_list=
+    |             | +-z#13 :=
+    |             | | +-GetStructField
+    |             | |   +-type=INT64
+    |             | |   +-expr=
+    |             | |   | +-ColumnRef(type=STRUCT<x STRUCT<a INT64, b STRUCT<c INT64, d ARRAY<INT64>>>, y ARRAY<INT64>, z INT64>, column=$make_struct.$struct#10, is_correlated=TRUE)
+    |             | |   +-field_idx=2
+    |             | +-a#14 :=
+    |             | | +-GetStructField
+    |             | |   +-type=INT64
+    |             | |   +-expr=
+    |             | |   | +-GetStructField
+    |             | |   |   +-type=STRUCT<a INT64, b STRUCT<c INT64, d ARRAY<INT64>>>
+    |             | |   |   +-expr=
+    |             | |   |   | +-ColumnRef(type=STRUCT<x STRUCT<a INT64, b STRUCT<c INT64, d ARRAY<INT64>>>, y ARRAY<INT64>, z INT64>, column=$make_struct.$struct#10, is_correlated=TRUE)
+    |             | |   |   +-field_idx=0
+    |             | |   +-field_idx=0
+    |             | +-b#15 :=
+    |             |   +-GetStructField
+    |             |     +-type=STRUCT<c INT64, d ARRAY<INT64>>
+    |             |     +-expr=
+    |             |     | +-GetStructField
+    |             |     |   +-type=STRUCT<a INT64, b STRUCT<c INT64, d ARRAY<INT64>>>
+    |             |     |   +-expr=
+    |             |     |   | +-ColumnRef(type=STRUCT<x STRUCT<a INT64, b STRUCT<c INT64, d ARRAY<INT64>>>, y ARRAY<INT64>, z INT64>, column=$make_struct.$struct#10, is_correlated=TRUE)
+    |             |     |   +-field_idx=0
+    |             |     +-field_idx=1
+    |             +-input_scan=
+    |               +-AggregateScan
+    |                 +-input_scan=
+    |                 | +-ArrayScan
+    |                 |   +-array_expr_list=
+    |                 |   | +-GetStructField
+    |                 |   |   +-type=ARRAY<INT64>
+    |                 |   |   +-expr=
+    |                 |   |   | +-GetStructField
+    |                 |   |   |   +-type=STRUCT<c INT64, d ARRAY<INT64>>
+    |                 |   |   |   +-expr=
+    |                 |   |   |   | +-GetStructField
+    |                 |   |   |   |   +-type=STRUCT<a INT64, b STRUCT<c INT64, d ARRAY<INT64>>>
+    |                 |   |   |   |   +-expr=
+    |                 |   |   |   |   | +-ColumnRef(type=STRUCT<x STRUCT<a INT64, b STRUCT<c INT64, d ARRAY<INT64>>>, y ARRAY<INT64>, z INT64>, column=$make_struct.$struct#10, is_correlated=TRUE)
+    |                 |   |   |   |   +-field_idx=0
+    |                 |   |   |   +-field_idx=1
+    |                 |   |   +-field_idx=1
+    |                 |   +-element_column_list=[$array.d#11]
+    |                 +-group_by_list=
+    |                   +-a#12 :=
+    |                     +-GetStructField
+    |                       +-type=INT64
+    |                       +-expr=
+    |                       | +-GetStructField
+    |                       |   +-type=STRUCT<a INT64, b STRUCT<c INT64, d ARRAY<INT64>>>
+    |                       |   +-expr=
+    |                       |   | +-ColumnRef(type=STRUCT<x STRUCT<a INT64, b STRUCT<c INT64, d ARRAY<INT64>>>, y ARRAY<INT64>, z INT64>, column=$make_struct.$struct#10, is_correlated=TRUE)
+    |                       |   +-field_idx=0
+    |                       +-field_idx=0
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[$make_struct.$struct#10]
+        +-expr_list=
+        | +-$struct#10 :=
+        |   +-MakeStruct
+        |     +-type=STRUCT<x STRUCT<a INT64, b STRUCT<c INT64, d ARRAY<INT64>>>, y ARRAY<INT64>, z INT64>
+        |     +-field_list=
+        |       +-ColumnRef(type=STRUCT<a INT64, b STRUCT<c INT64, d ARRAY<INT64>>>, column=t.x#7)
+        |       +-ColumnRef(type=ARRAY<INT64>, column=t.y#8)
+        |       +-ColumnRef(type=INT64, column=t.z#9)
+        +-input_scan=
+          +-ProjectScan
+            +-column_list=t.[x#7, y#8, z#9]
+            +-expr_list=
+            | +-x#7 :=
+            | | +-SubqueryExpr
+            | |   +-type=STRUCT<a INT64, b STRUCT<c INT64, d ARRAY<INT64>>>
+            | |   +-subquery_type=SCALAR
+            | |   +-subquery=
+            | |     +-ProjectScan
+            | |       +-column_list=[$make_struct.$struct#6]
+            | |       +-expr_list=
+            | |       | +-$struct#6 :=
+            | |       |   +-MakeStruct
+            | |       |     +-type=STRUCT<a INT64, b STRUCT<c INT64, d ARRAY<INT64>>>
+            | |       |     +-field_list=
+            | |       |       +-ColumnRef(type=INT64, column=$expr_subquery.a#4)
+            | |       |       +-ColumnRef(type=STRUCT<c INT64, d ARRAY<INT64>>, column=$expr_subquery.b#5)
+            | |       +-input_scan=
+            | |         +-ProjectScan
+            | |           +-column_list=$expr_subquery.[a#4, b#5]
+            | |           +-expr_list=
+            | |           | +-a#4 := Literal(type=INT64, value=1)
+            | |           | +-b#5 :=
+            | |           |   +-SubqueryExpr
+            | |           |     +-type=STRUCT<c INT64, d ARRAY<INT64>>
+            | |           |     +-subquery_type=SCALAR
+            | |           |     +-subquery=
+            | |           |       +-ProjectScan
+            | |           |         +-column_list=[$make_struct.$struct#3]
+            | |           |         +-expr_list=
+            | |           |         | +-$struct#3 :=
+            | |           |         |   +-MakeStruct
+            | |           |         |     +-type=STRUCT<c INT64, d ARRAY<INT64>>
+            | |           |         |     +-field_list=
+            | |           |         |       +-ColumnRef(type=INT64, column=$expr_subquery.c#1)
+            | |           |         |       +-ColumnRef(type=ARRAY<INT64>, column=$expr_subquery.d#2)
+            | |           |         +-input_scan=
+            | |           |           +-ProjectScan
+            | |           |             +-column_list=$expr_subquery.[c#1, d#2]
+            | |           |             +-expr_list=
+            | |           |             | +-c#1 := Literal(type=INT64, value=2)
+            | |           |             | +-d#2 := Literal(type=ARRAY<INT64>, value=[3])
+            | |           |             +-input_scan=
+            | |           |               +-SingleRowScan
+            | |           +-input_scan=
+            | |             +-SingleRowScan
+            | +-y#8 := Literal(type=ARRAY<INT64>, value=[3])
+            | +-z#9 := Literal(type=INT64, value=4)
+            +-input_scan=
+              +-SingleRowScan
+==
+
+# When outer query has group by, inner query can access all sub_fields under
+# the group by struct.
+SELECT
+ (
+  SELECT as struct {{t.|}}x.a, {{t.|}}x.b.c FROM (select 1) GROUP BY {{t.|}}x.b
+ )
+FROM (select as struct
+  (select as struct 1 a, (select as struct 2 c, 3 d) b) x,
+  [3] y,
+  4 z
+) t
+GROUP BY {{t.|}}x
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#22 AS `$col1` [STRUCT<a INT64, c INT64>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#22]
+    +-expr_list=
+    | +-$col1#22 :=
+    |   +-SubqueryExpr
+    |     +-type=STRUCT<a INT64, c INT64>
+    |     +-subquery_type=SCALAR
+    |     +-parameter_list=
+    |     | +-ColumnRef(type=STRUCT<a INT64, b STRUCT<c INT64, d INT64>>, column=$groupby.x#16)
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$make_struct.$struct#21]
+    |         +-expr_list=
+    |         | +-$struct#21 :=
+    |         |   +-MakeStruct
+    |         |     +-type=STRUCT<a INT64, c INT64>
+    |         |     +-field_list=
+    |         |       +-ColumnRef(type=INT64, column=$expr_subquery.a#19)
+    |         |       +-ColumnRef(type=INT64, column=$expr_subquery.c#20)
+    |         +-input_scan=
+    |           +-ProjectScan
+    |             +-column_list=$expr_subquery.[a#19, c#20]
+    |             +-expr_list=
+    |             | +-a#19 :=
+    |             | | +-GetStructField
+    |             | |   +-type=INT64
+    |             | |   +-expr=
+    |             | |   | +-ColumnRef(type=STRUCT<a INT64, b STRUCT<c INT64, d INT64>>, column=$groupby.x#16, is_correlated=TRUE)
+    |             | |   +-field_idx=0
+    |             | +-c#20 :=
+    |             |   +-GetStructField
+    |             |     +-type=INT64
+    |             |     +-expr=
+    |             |     | +-GetStructField
+    |             |     |   +-type=STRUCT<c INT64, d INT64>
+    |             |     |   +-expr=
+    |             |     |   | +-ColumnRef(type=STRUCT<a INT64, b STRUCT<c INT64, d INT64>>, column=$groupby.x#16, is_correlated=TRUE)
+    |             |     |   +-field_idx=1
+    |             |     +-field_idx=0
+    |             +-input_scan=
+    |               +-AggregateScan
+    |                 +-input_scan=
+    |                 | +-ProjectScan
+    |                 |   +-column_list=[$subquery2.$col1#17]
+    |                 |   +-expr_list=
+    |                 |   | +-$col1#17 := Literal(type=INT64, value=1)
+    |                 |   +-input_scan=
+    |                 |     +-SingleRowScan
+    |                 +-group_by_list=
+    |                   +-b#18 :=
+    |                     +-GetStructField
+    |                       +-type=STRUCT<c INT64, d INT64>
+    |                       +-expr=
+    |                       | +-ColumnRef(type=STRUCT<a INT64, b STRUCT<c INT64, d INT64>>, column=$groupby.x#16, is_correlated=TRUE)
+    |                       +-field_idx=1
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$groupby.x#16]
+        +-input_scan=
+        | +-ProjectScan
+        |   +-column_list=[$make_struct.$struct#10]
+        |   +-expr_list=
+        |   | +-$struct#10 :=
+        |   |   +-MakeStruct
+        |   |     +-type=STRUCT<x STRUCT<a INT64, b STRUCT<c INT64, d INT64>>, y ARRAY<INT64>, z INT64>
+        |   |     +-field_list=
+        |   |       +-ColumnRef(type=STRUCT<a INT64, b STRUCT<c INT64, d INT64>>, column=t.x#7)
+        |   |       +-ColumnRef(type=ARRAY<INT64>, column=t.y#8)
+        |   |       +-ColumnRef(type=INT64, column=t.z#9)
+        |   +-input_scan=
+        |     +-ProjectScan
+        |       +-column_list=t.[x#7, y#8, z#9]
+        |       +-expr_list=
+        |       | +-x#7 :=
+        |       | | +-SubqueryExpr
+        |       | |   +-type=STRUCT<a INT64, b STRUCT<c INT64, d INT64>>
+        |       | |   +-subquery_type=SCALAR
+        |       | |   +-subquery=
+        |       | |     +-ProjectScan
+        |       | |       +-column_list=[$make_struct.$struct#6]
+        |       | |       +-expr_list=
+        |       | |       | +-$struct#6 :=
+        |       | |       |   +-MakeStruct
+        |       | |       |     +-type=STRUCT<a INT64, b STRUCT<c INT64, d INT64>>
+        |       | |       |     +-field_list=
+        |       | |       |       +-ColumnRef(type=INT64, column=$expr_subquery.a#4)
+        |       | |       |       +-ColumnRef(type=STRUCT<c INT64, d INT64>, column=$expr_subquery.b#5)
+        |       | |       +-input_scan=
+        |       | |         +-ProjectScan
+        |       | |           +-column_list=$expr_subquery.[a#4, b#5]
+        |       | |           +-expr_list=
+        |       | |           | +-a#4 := Literal(type=INT64, value=1)
+        |       | |           | +-b#5 :=
+        |       | |           |   +-SubqueryExpr
+        |       | |           |     +-type=STRUCT<c INT64, d INT64>
+        |       | |           |     +-subquery_type=SCALAR
+        |       | |           |     +-subquery=
+        |       | |           |       +-ProjectScan
+        |       | |           |         +-column_list=[$make_struct.$struct#3]
+        |       | |           |         +-expr_list=
+        |       | |           |         | +-$struct#3 :=
+        |       | |           |         |   +-MakeStruct
+        |       | |           |         |     +-type=STRUCT<c INT64, d INT64>
+        |       | |           |         |     +-field_list=
+        |       | |           |         |       +-ColumnRef(type=INT64, column=$expr_subquery.c#1)
+        |       | |           |         |       +-ColumnRef(type=INT64, column=$expr_subquery.d#2)
+        |       | |           |         +-input_scan=
+        |       | |           |           +-ProjectScan
+        |       | |           |             +-column_list=$expr_subquery.[c#1, d#2]
+        |       | |           |             +-expr_list=
+        |       | |           |             | +-c#1 := Literal(type=INT64, value=2)
+        |       | |           |             | +-d#2 := Literal(type=INT64, value=3)
+        |       | |           |             +-input_scan=
+        |       | |           |               +-SingleRowScan
+        |       | |           +-input_scan=
+        |       | |             +-SingleRowScan
+        |       | +-y#8 := Literal(type=ARRAY<INT64>, value=[3])
+        |       | +-z#9 := Literal(type=INT64, value=4)
+        |       +-input_scan=
+        |         +-SingleRowScan
+        +-group_by_list=
+          +-x#16 :=
+            +-GetStructField
+              +-type=STRUCT<a INT64, b STRUCT<c INT64, d INT64>>
+              +-expr=
+              | +-ColumnRef(type=STRUCT<x STRUCT<a INT64, b STRUCT<c INT64, d INT64>>, y ARRAY<INT64>, z INT64>, column=$make_struct.$struct#10)
+              +-field_idx=0
+==
+
+# When outer query has group by, inner query cannot access sibling of the group
+# by struct
+SELECT
+ (
+  SELECT as struct x.b.c FROM (select 1) GROUP BY t.x.a
+ )
+FROM (select as struct
+  (select as struct 1 a, (select as struct 2 c, 3 d) b) x,
+  [3] y,
+  4 z
+) t
+GROUP BY x.b
+--
+ERROR: GROUP BY expression references t.x.a which is neither grouped nor aggregated [at 3:51]
+  SELECT as struct x.b.c FROM (select 1) GROUP BY t.x.a
+                                                  ^
+
+==
+
+# When outer query has group by, inner query cannot access parent of the group
+# by struct
+SELECT
+ (
+  SELECT as struct x, y FROM (select 1) GROUP BY t.x
+ )
+FROM (select as struct
+  (select as struct 1 a, (select as struct 2 c, 3 d) b) x,
+  [3] y,
+  4 z
+) t
+GROUP BY x.b
+--
+ERROR: SELECT expression references column x which is neither grouped nor aggregated [at 3:20]
+  SELECT as struct x, y FROM (select 1) GROUP BY t.x
+                   ^
+==
+
+# 't' is both a SELECT list alias and a correlation reference to range variable
+# 't'. In this query, 't' is resolved to the SELECT list alias and in effect, we
+# group by t.x from the outer query.
+SELECT
+ (
+  SELECT as struct x as t, y, x.b FROM (select 1) GROUP BY t
+ )
+FROM (select as struct
+  (select as struct 1 a, (select as struct 2 c, 3 d) b) x,
+  [3] y,
+  4 z
+) t
+
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#16 AS `$col1` [STRUCT<t STRUCT<a INT64, b STRUCT<c INT64, d INT64>>, y ARRAY<INT64>, b STRUCT<c INT64, d INT64>>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#16]
+    +-expr_list=
+    | +-$col1#16 :=
+    |   +-SubqueryExpr
+    |     +-type=STRUCT<t STRUCT<a INT64, b STRUCT<c INT64, d INT64>>, y ARRAY<INT64>, b STRUCT<c INT64, d INT64>>
+    |     +-subquery_type=SCALAR
+    |     +-parameter_list=
+    |     | +-ColumnRef(type=STRUCT<x STRUCT<a INT64, b STRUCT<c INT64, d INT64>>, y ARRAY<INT64>, z INT64>, column=$make_struct.$struct#10)
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$make_struct.$struct#15]
+    |         +-expr_list=
+    |         | +-$struct#15 :=
+    |         |   +-MakeStruct
+    |         |     +-type=STRUCT<t STRUCT<a INT64, b STRUCT<c INT64, d INT64>>, y ARRAY<INT64>, b STRUCT<c INT64, d INT64>>
+    |         |     +-field_list=
+    |         |       +-ColumnRef(type=STRUCT<a INT64, b STRUCT<c INT64, d INT64>>, column=$groupby.t#12)
+    |         |       +-ColumnRef(type=ARRAY<INT64>, column=$expr_subquery.y#13)
+    |         |       +-ColumnRef(type=STRUCT<c INT64, d INT64>, column=$expr_subquery.b#14)
+    |         +-input_scan=
+    |           +-ProjectScan
+    |             +-column_list=[$groupby.t#12, $expr_subquery.y#13, $expr_subquery.b#14]
+    |             +-expr_list=
+    |             | +-y#13 :=
+    |             | | +-GetStructField
+    |             | |   +-type=ARRAY<INT64>
+    |             | |   +-expr=
+    |             | |   | +-ColumnRef(type=STRUCT<x STRUCT<a INT64, b STRUCT<c INT64, d INT64>>, y ARRAY<INT64>, z INT64>, column=$make_struct.$struct#10, is_correlated=TRUE)
+    |             | |   +-field_idx=1
+    |             | +-b#14 :=
+    |             |   +-GetStructField
+    |             |     +-type=STRUCT<c INT64, d INT64>
+    |             |     +-expr=
+    |             |     | +-GetStructField
+    |             |     |   +-type=STRUCT<a INT64, b STRUCT<c INT64, d INT64>>
+    |             |     |   +-expr=
+    |             |     |   | +-ColumnRef(type=STRUCT<x STRUCT<a INT64, b STRUCT<c INT64, d INT64>>, y ARRAY<INT64>, z INT64>, column=$make_struct.$struct#10, is_correlated=TRUE)
+    |             |     |   +-field_idx=0
+    |             |     +-field_idx=1
+    |             +-input_scan=
+    |               +-AggregateScan
+    |                 +-column_list=[$groupby.t#12]
+    |                 +-input_scan=
+    |                 | +-ProjectScan
+    |                 |   +-column_list=[$subquery1.$col1#11]
+    |                 |   +-expr_list=
+    |                 |   | +-$col1#11 := Literal(type=INT64, value=1)
+    |                 |   +-input_scan=
+    |                 |     +-SingleRowScan
+    |                 +-group_by_list=
+    |                   +-t#12 :=
+    |                     +-GetStructField
+    |                       +-type=STRUCT<a INT64, b STRUCT<c INT64, d INT64>>
+    |                       +-expr=
+    |                       | +-ColumnRef(type=STRUCT<x STRUCT<a INT64, b STRUCT<c INT64, d INT64>>, y ARRAY<INT64>, z INT64>, column=$make_struct.$struct#10, is_correlated=TRUE)
+    |                       +-field_idx=0
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[$make_struct.$struct#10]
+        +-expr_list=
+        | +-$struct#10 :=
+        |   +-MakeStruct
+        |     +-type=STRUCT<x STRUCT<a INT64, b STRUCT<c INT64, d INT64>>, y ARRAY<INT64>, z INT64>
+        |     +-field_list=
+        |       +-ColumnRef(type=STRUCT<a INT64, b STRUCT<c INT64, d INT64>>, column=t.x#7)
+        |       +-ColumnRef(type=ARRAY<INT64>, column=t.y#8)
+        |       +-ColumnRef(type=INT64, column=t.z#9)
+        +-input_scan=
+          +-ProjectScan
+            +-column_list=t.[x#7, y#8, z#9]
+            +-expr_list=
+            | +-x#7 :=
+            | | +-SubqueryExpr
+            | |   +-type=STRUCT<a INT64, b STRUCT<c INT64, d INT64>>
+            | |   +-subquery_type=SCALAR
+            | |   +-subquery=
+            | |     +-ProjectScan
+            | |       +-column_list=[$make_struct.$struct#6]
+            | |       +-expr_list=
+            | |       | +-$struct#6 :=
+            | |       |   +-MakeStruct
+            | |       |     +-type=STRUCT<a INT64, b STRUCT<c INT64, d INT64>>
+            | |       |     +-field_list=
+            | |       |       +-ColumnRef(type=INT64, column=$expr_subquery.a#4)
+            | |       |       +-ColumnRef(type=STRUCT<c INT64, d INT64>, column=$expr_subquery.b#5)
+            | |       +-input_scan=
+            | |         +-ProjectScan
+            | |           +-column_list=$expr_subquery.[a#4, b#5]
+            | |           +-expr_list=
+            | |           | +-a#4 := Literal(type=INT64, value=1)
+            | |           | +-b#5 :=
+            | |           |   +-SubqueryExpr
+            | |           |     +-type=STRUCT<c INT64, d INT64>
+            | |           |     +-subquery_type=SCALAR
+            | |           |     +-subquery=
+            | |           |       +-ProjectScan
+            | |           |         +-column_list=[$make_struct.$struct#3]
+            | |           |         +-expr_list=
+            | |           |         | +-$struct#3 :=
+            | |           |         |   +-MakeStruct
+            | |           |         |     +-type=STRUCT<c INT64, d INT64>
+            | |           |         |     +-field_list=
+            | |           |         |       +-ColumnRef(type=INT64, column=$expr_subquery.c#1)
+            | |           |         |       +-ColumnRef(type=INT64, column=$expr_subquery.d#2)
+            | |           |         +-input_scan=
+            | |           |           +-ProjectScan
+            | |           |             +-column_list=$expr_subquery.[c#1, d#2]
+            | |           |             +-expr_list=
+            | |           |             | +-c#1 := Literal(type=INT64, value=2)
+            | |           |             | +-d#2 := Literal(type=INT64, value=3)
+            | |           |             +-input_scan=
+            | |           |               +-SingleRowScan
+            | |           +-input_scan=
+            | |             +-SingleRowScan
+            | +-y#8 := Literal(type=ARRAY<INT64>, value=[3])
+            | +-z#9 := Literal(type=INT64, value=4)
+            +-input_scan=
+              +-SingleRowScan
+==
+
+# From a value table, all fields are visible to SELECT, regardless of the GROUP
+# BY.
+SELECT (
+  SELECT TestNestedStructValueTable.f
+  FROM (SELECT 1)
+  GROUP BY TestNestedStructValueTable.e
+)
+FROM TestNestedStructValueTable
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#5 AS `$col1` [STRUCT<c INT32, d STRUCT<a INT32, b STRING>>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#5]
+    +-expr_list=
+    | +-$col1#5 :=
+    |   +-SubqueryExpr
+    |     +-type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>
+    |     +-subquery_type=SCALAR
+    |     +-parameter_list=
+    |     | +-ColumnRef(type=STRUCT<e INT32, f STRUCT<c INT32, d STRUCT<a INT32, b STRING>>>, column=TestNestedStructValueTable.value#1)
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$expr_subquery.f#4]
+    |         +-expr_list=
+    |         | +-f#4 :=
+    |         |   +-GetStructField
+    |         |     +-type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>
+    |         |     +-expr=
+    |         |     | +-ColumnRef(type=STRUCT<e INT32, f STRUCT<c INT32, d STRUCT<a INT32, b STRING>>>, column=TestNestedStructValueTable.value#1, is_correlated=TRUE)
+    |         |     +-field_idx=1
+    |         +-input_scan=
+    |           +-AggregateScan
+    |             +-input_scan=
+    |             | +-ProjectScan
+    |             |   +-column_list=[$subquery1.$col1#2]
+    |             |   +-expr_list=
+    |             |   | +-$col1#2 := Literal(type=INT64, value=1)
+    |             |   +-input_scan=
+    |             |     +-SingleRowScan
+    |             +-group_by_list=
+    |               +-e#3 :=
+    |                 +-GetStructField
+    |                   +-type=INT32
+    |                   +-expr=
+    |                   | +-ColumnRef(type=STRUCT<e INT32, f STRUCT<c INT32, d STRUCT<a INT32, b STRING>>>, column=TestNestedStructValueTable.value#1, is_correlated=TRUE)
+    |                   +-field_idx=0
+    +-input_scan=
+      +-TableScan(column_list=[TestNestedStructValueTable.value#1], table=TestNestedStructValueTable, column_index_list=[0])
+==
+
+# From a value table, all fields are visible to SELECT, regardless of the GROUP
+# BY.
+SELECT (
+  SELECT TestNestedStructValueTable.f
+  FROM (SELECT 1)
+  GROUP BY TestNestedStructValueTable
+)
+FROM TestNestedStructValueTable
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#5 AS `$col1` [STRUCT<c INT32, d STRUCT<a INT32, b STRING>>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#5]
+    +-expr_list=
+    | +-$col1#5 :=
+    |   +-SubqueryExpr
+    |     +-type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>
+    |     +-subquery_type=SCALAR
+    |     +-parameter_list=
+    |     | +-ColumnRef(type=STRUCT<e INT32, f STRUCT<c INT32, d STRUCT<a INT32, b STRING>>>, column=TestNestedStructValueTable.value#1)
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$expr_subquery.f#4]
+    |         +-expr_list=
+    |         | +-f#4 :=
+    |         |   +-GetStructField
+    |         |     +-type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>
+    |         |     +-expr=
+    |         |     | +-ColumnRef(type=STRUCT<e INT32, f STRUCT<c INT32, d STRUCT<a INT32, b STRING>>>, column=TestNestedStructValueTable.value#1, is_correlated=TRUE)
+    |         |     +-field_idx=1
+    |         +-input_scan=
+    |           +-AggregateScan
+    |             +-input_scan=
+    |             | +-ProjectScan
+    |             |   +-column_list=[$subquery1.$col1#2]
+    |             |   +-expr_list=
+    |             |   | +-$col1#2 := Literal(type=INT64, value=1)
+    |             |   +-input_scan=
+    |             |     +-SingleRowScan
+    |             +-group_by_list=
+    |               +-TestNestedStructValueTable#3 := ColumnRef(type=STRUCT<e INT32, f STRUCT<c INT32, d STRUCT<a INT32, b STRING>>>, column=TestNestedStructValueTable.value#1, is_correlated=TRUE)
+    +-input_scan=
+      +-TableScan(column_list=[TestNestedStructValueTable.value#1], table=TestNestedStructValueTable, column_index_list=[0])
+==
+
+SELECT (SELECT KeyValue.key FROM (SELECT 1) GROUP BY KeyValue.value)
+FROM KeyValue
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#6 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#6]
+    +-expr_list=
+    | +-$col1#6 :=
+    |   +-SubqueryExpr
+    |     +-type=INT64
+    |     +-subquery_type=SCALAR
+    |     +-parameter_list=
+    |     | +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+    |     | +-ColumnRef(type=STRING, column=KeyValue.Value#2)
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$expr_subquery.key#5]
+    |         +-expr_list=
+    |         | +-key#5 := ColumnRef(type=INT64, column=KeyValue.Key#1, is_correlated=TRUE)
+    |         +-input_scan=
+    |           +-AggregateScan
+    |             +-input_scan=
+    |             | +-ProjectScan
+    |             |   +-column_list=[$subquery1.$col1#3]
+    |             |   +-expr_list=
+    |             |   | +-$col1#3 := Literal(type=INT64, value=1)
+    |             |   +-input_scan=
+    |             |     +-SingleRowScan
+    |             +-group_by_list=
+    |               +-value#4 := ColumnRef(type=STRING, column=KeyValue.Value#2, is_correlated=TRUE)
+    +-input_scan=
+      +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+==
+
+SELECT (SELECT KeyValue.key FROM (SELECT 1) GROUP BY KeyValue)
+FROM KeyValue
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#7 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#7]
+    +-expr_list=
+    | +-$col1#7 :=
+    |   +-SubqueryExpr
+    |     +-type=INT64
+    |     +-subquery_type=SCALAR
+    |     +-parameter_list=
+    |     | +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+    |     | +-ColumnRef(type=STRING, column=KeyValue.Value#2)
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$expr_subquery.key#6]
+    |         +-expr_list=
+    |         | +-key#6 := ColumnRef(type=INT64, column=KeyValue.Key#1, is_correlated=TRUE)
+    |         +-input_scan=
+    |           +-AggregateScan
+    |             +-input_scan=
+    |             | +-ProjectScan
+    |             |   +-column_list=[$subquery1.$col1#3]
+    |             |   +-expr_list=
+    |             |   | +-$col1#3 := Literal(type=INT64, value=1)
+    |             |   +-input_scan=
+    |             |     +-SingleRowScan
+    |             +-group_by_list=
+    |               +-KeyValue#5 :=
+    |                 +-MakeStruct
+    |                   +-type=STRUCT<Key INT64, Value STRING>
+    |                   +-field_list=
+    |                     +-ColumnRef(type=INT64, column=KeyValue.Key#1, is_correlated=TRUE)
+    |                     +-ColumnRef(type=STRING, column=KeyValue.Value#2, is_correlated=TRUE)
+    +-input_scan=
+      +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+==
+
+# Correlated subquery in WHERE.
+SELECT 'foo'
+FROM TestNestedStructValueTable
+WHERE (SELECT TestNestedStructValueTable.e
+  FROM (SELECT 1)
+  GROUP BY TestNestedStructValueTable.f) > 1
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#5 AS `$col1` [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#5]
+    +-expr_list=
+    | +-$col1#5 := Literal(type=STRING, value="foo")
+    +-input_scan=
+      +-FilterScan
+        +-column_list=[TestNestedStructValueTable.value#1]
+        +-input_scan=
+        | +-TableScan(column_list=[TestNestedStructValueTable.value#1], table=TestNestedStructValueTable, column_index_list=[0])
+        +-filter_expr=
+          +-FunctionCall(GoogleSQL:$greater(INT32, INT32) -> BOOL)
+            +-SubqueryExpr
+            | +-type=INT32
+            | +-subquery_type=SCALAR
+            | +-parameter_list=
+            | | +-ColumnRef(type=STRUCT<e INT32, f STRUCT<c INT32, d STRUCT<a INT32, b STRING>>>, column=TestNestedStructValueTable.value#1)
+            | +-subquery=
+            |   +-ProjectScan
+            |     +-column_list=[$expr_subquery.e#4]
+            |     +-expr_list=
+            |     | +-e#4 :=
+            |     |   +-GetStructField
+            |     |     +-type=INT32
+            |     |     +-expr=
+            |     |     | +-ColumnRef(type=STRUCT<e INT32, f STRUCT<c INT32, d STRUCT<a INT32, b STRING>>>, column=TestNestedStructValueTable.value#1, is_correlated=TRUE)
+            |     |     +-field_idx=0
+            |     +-input_scan=
+            |       +-AggregateScan
+            |         +-input_scan=
+            |         | +-ProjectScan
+            |         |   +-column_list=[$subquery1.$col1#2]
+            |         |   +-expr_list=
+            |         |   | +-$col1#2 := Literal(type=INT64, value=1)
+            |         |   +-input_scan=
+            |         |     +-SingleRowScan
+            |         +-group_by_list=
+            |           +-f#3 :=
+            |             +-GetStructField
+            |               +-type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>
+            |               +-expr=
+            |               | +-ColumnRef(type=STRUCT<e INT32, f STRUCT<c INT32, d STRUCT<a INT32, b STRING>>>, column=TestNestedStructValueTable.value#1, is_correlated=TRUE)
+            |               +-field_idx=1
+            +-Literal(type=INT32, value=1)
+==
+
+# Correlated subquery in GROUP BY.
+SELECT 'foo'
+FROM TestNestedStructValueTable
+GROUP BY (SELECT TestNestedStructValueTable.e
+  FROM (SELECT 1)
+  GROUP BY TestNestedStructValueTable.f)
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#6 AS `$col1` [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#6]
+    +-expr_list=
+    | +-$col1#6 := Literal(type=STRING, value="foo")
+    +-input_scan=
+      +-AggregateScan
+        +-input_scan=
+        | +-TableScan(column_list=[TestNestedStructValueTable.value#1], table=TestNestedStructValueTable, column_index_list=[0])
+        +-group_by_list=
+          +-$groupbycol1#5 :=
+            +-SubqueryExpr
+              +-type=INT32
+              +-subquery_type=SCALAR
+              +-parameter_list=
+              | +-ColumnRef(type=STRUCT<e INT32, f STRUCT<c INT32, d STRUCT<a INT32, b STRING>>>, column=TestNestedStructValueTable.value#1)
+              +-subquery=
+                +-ProjectScan
+                  +-column_list=[$expr_subquery.e#4]
+                  +-expr_list=
+                  | +-e#4 :=
+                  |   +-GetStructField
+                  |     +-type=INT32
+                  |     +-expr=
+                  |     | +-ColumnRef(type=STRUCT<e INT32, f STRUCT<c INT32, d STRUCT<a INT32, b STRING>>>, column=TestNestedStructValueTable.value#1, is_correlated=TRUE)
+                  |     +-field_idx=0
+                  +-input_scan=
+                    +-AggregateScan
+                      +-input_scan=
+                      | +-ProjectScan
+                      |   +-column_list=[$subquery1.$col1#2]
+                      |   +-expr_list=
+                      |   | +-$col1#2 := Literal(type=INT64, value=1)
+                      |   +-input_scan=
+                      |     +-SingleRowScan
+                      +-group_by_list=
+                        +-f#3 :=
+                          +-GetStructField
+                            +-type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>
+                            +-expr=
+                            | +-ColumnRef(type=STRUCT<e INT32, f STRUCT<c INT32, d STRUCT<a INT32, b STRING>>>, column=TestNestedStructValueTable.value#1, is_correlated=TRUE)
+                            +-field_idx=1
+==
+
+# Correlated subquery in ORDER BY.
+SELECT 'foo'
+FROM TestNestedStructValueTable
+ORDER BY (SELECT TestNestedStructValueTable.e
+  FROM (SELECT 1)
+  GROUP BY TestNestedStructValueTable.f)
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#2 AS `$col1` [STRING]
++-query=
+  +-OrderByScan
+    +-column_list=[$query.$col1#2]
+    +-is_ordered=TRUE
+    +-input_scan=
+    | +-ProjectScan
+    |   +-column_list=[TestNestedStructValueTable.value#1, $query.$col1#2, $orderby.$orderbycol1#6]
+    |   +-expr_list=
+    |   | +-$orderbycol1#6 :=
+    |   |   +-SubqueryExpr
+    |   |     +-type=INT32
+    |   |     +-subquery_type=SCALAR
+    |   |     +-parameter_list=
+    |   |     | +-ColumnRef(type=STRUCT<e INT32, f STRUCT<c INT32, d STRUCT<a INT32, b STRING>>>, column=TestNestedStructValueTable.value#1)
+    |   |     +-subquery=
+    |   |       +-ProjectScan
+    |   |         +-column_list=[$expr_subquery.e#5]
+    |   |         +-expr_list=
+    |   |         | +-e#5 :=
+    |   |         |   +-GetStructField
+    |   |         |     +-type=INT32
+    |   |         |     +-expr=
+    |   |         |     | +-ColumnRef(type=STRUCT<e INT32, f STRUCT<c INT32, d STRUCT<a INT32, b STRING>>>, column=TestNestedStructValueTable.value#1, is_correlated=TRUE)
+    |   |         |     +-field_idx=0
+    |   |         +-input_scan=
+    |   |           +-AggregateScan
+    |   |             +-input_scan=
+    |   |             | +-ProjectScan
+    |   |             |   +-column_list=[$subquery1.$col1#3]
+    |   |             |   +-expr_list=
+    |   |             |   | +-$col1#3 := Literal(type=INT64, value=1)
+    |   |             |   +-input_scan=
+    |   |             |     +-SingleRowScan
+    |   |             +-group_by_list=
+    |   |               +-f#4 :=
+    |   |                 +-GetStructField
+    |   |                   +-type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>
+    |   |                   +-expr=
+    |   |                   | +-ColumnRef(type=STRUCT<e INT32, f STRUCT<c INT32, d STRUCT<a INT32, b STRING>>>, column=TestNestedStructValueTable.value#1, is_correlated=TRUE)
+    |   |                   +-field_idx=1
+    |   +-input_scan=
+    |     +-ProjectScan
+    |       +-column_list=[TestNestedStructValueTable.value#1, $query.$col1#2]
+    |       +-expr_list=
+    |       | +-$col1#2 := Literal(type=STRING, value="foo")
+    |       +-input_scan=
+    |         +-TableScan(column_list=[TestNestedStructValueTable.value#1], table=TestNestedStructValueTable, column_index_list=[0])
+    +-order_by_item_list=
+      +-OrderByItem
+        +-column_ref=
+          +-ColumnRef(type=INT32, column=$orderby.$orderbycol1#6)
+
+==
+
+# Correlated subquery in SELECT, 'st.key' is resolved as a correlation reference
+# to the outer query.
+SELECT (SELECT st.key FROM (SELECT 1) GROUP BY st)
+FROM SimpleTypesWithStruct st
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#8 AS `$col1` [INT32]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#8]
+    +-expr_list=
+    | +-$col1#8 :=
+    |   +-SubqueryExpr
+    |     +-type=INT32
+    |     +-subquery_type=SCALAR
+    |     +-parameter_list=
+    |     | +-ColumnRef(type=INT32, column=SimpleTypesWithStruct.key#1)
+    |     | +-ColumnRef(type=ENUM<googlesql_test.TestEnum>, column=SimpleTypesWithStruct.TestEnum#2)
+    |     | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=SimpleTypesWithStruct.TestStruct#3)
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$expr_subquery.key#7]
+    |         +-expr_list=
+    |         | +-key#7 := ColumnRef(type=INT32, column=SimpleTypesWithStruct.key#1, is_correlated=TRUE)
+    |         +-input_scan=
+    |           +-AggregateScan
+    |             +-input_scan=
+    |             | +-ProjectScan
+    |             |   +-column_list=[$subquery1.$col1#4]
+    |             |   +-expr_list=
+    |             |   | +-$col1#4 := Literal(type=INT64, value=1)
+    |             |   +-input_scan=
+    |             |     +-SingleRowScan
+    |             +-group_by_list=
+    |               +-st#6 :=
+    |                 +-MakeStruct
+    |                   +-type=STRUCT<key INT32, TestEnum ENUM<googlesql_test.TestEnum>, TestStruct STRUCT<c INT32, d STRUCT<a INT32, b STRING>>>
+    |                   +-field_list=
+    |                     +-ColumnRef(type=INT32, column=SimpleTypesWithStruct.key#1, is_correlated=TRUE)
+    |                     +-ColumnRef(type=ENUM<googlesql_test.TestEnum>, column=SimpleTypesWithStruct.TestEnum#2, is_correlated=TRUE)
+    |                     +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=SimpleTypesWithStruct.TestStruct#3, is_correlated=TRUE)
+    +-input_scan=
+      +-TableScan(column_list=SimpleTypesWithStruct.[key#1, TestEnum#2, TestStruct#3], table=SimpleTypesWithStruct, column_index_list=[0, 1, 2], alias="st")
+==
+
+# Correlated subquery in WHERE, 'st.key' is resolved as a correlation reference
+# to the outer query.
+SELECT 'foo'
+FROM SimpleTypesWithStruct st
+WHERE (SELECT st.key FROM (SELECT 1) GROUP BY st) > 1
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#8 AS `$col1` [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#8]
+    +-expr_list=
+    | +-$col1#8 := Literal(type=STRING, value="foo")
+    +-input_scan=
+      +-FilterScan
+        +-column_list=SimpleTypesWithStruct.[key#1, TestEnum#2, TestStruct#3]
+        +-input_scan=
+        | +-TableScan(column_list=SimpleTypesWithStruct.[key#1, TestEnum#2, TestStruct#3], table=SimpleTypesWithStruct, column_index_list=[0, 1, 2], alias="st")
+        +-filter_expr=
+          +-FunctionCall(GoogleSQL:$greater(INT32, INT32) -> BOOL)
+            +-SubqueryExpr
+            | +-type=INT32
+            | +-subquery_type=SCALAR
+            | +-parameter_list=
+            | | +-ColumnRef(type=INT32, column=SimpleTypesWithStruct.key#1)
+            | | +-ColumnRef(type=ENUM<googlesql_test.TestEnum>, column=SimpleTypesWithStruct.TestEnum#2)
+            | | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=SimpleTypesWithStruct.TestStruct#3)
+            | +-subquery=
+            |   +-ProjectScan
+            |     +-column_list=[$expr_subquery.key#7]
+            |     +-expr_list=
+            |     | +-key#7 := ColumnRef(type=INT32, column=SimpleTypesWithStruct.key#1, is_correlated=TRUE)
+            |     +-input_scan=
+            |       +-AggregateScan
+            |         +-input_scan=
+            |         | +-ProjectScan
+            |         |   +-column_list=[$subquery1.$col1#4]
+            |         |   +-expr_list=
+            |         |   | +-$col1#4 := Literal(type=INT64, value=1)
+            |         |   +-input_scan=
+            |         |     +-SingleRowScan
+            |         +-group_by_list=
+            |           +-st#6 :=
+            |             +-MakeStruct
+            |               +-type=STRUCT<key INT32, TestEnum ENUM<googlesql_test.TestEnum>, TestStruct STRUCT<c INT32, d STRUCT<a INT32, b STRING>>>
+            |               +-field_list=
+            |                 +-ColumnRef(type=INT32, column=SimpleTypesWithStruct.key#1, is_correlated=TRUE)
+            |                 +-ColumnRef(type=ENUM<googlesql_test.TestEnum>, column=SimpleTypesWithStruct.TestEnum#2, is_correlated=TRUE)
+            |                 +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=SimpleTypesWithStruct.TestStruct#3, is_correlated=TRUE)
+            +-Literal(type=INT32, value=1)
+==
+
+# Correlated reference in ORDER BY, 'st.key' is resolved as a correlation
+# reference to the outer query.
+SELECT 'foo'
+FROM SimpleTypesWithStruct st
+ORDER BY (SELECT st.key FROM (SELECT 1) GROUP BY st) > 1
+
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#4 AS `$col1` [STRING]
++-query=
+  +-OrderByScan
+    +-column_list=[$query.$col1#4]
+    +-is_ordered=TRUE
+    +-input_scan=
+    | +-ProjectScan
+    |   +-column_list=[SimpleTypesWithStruct.key#1, SimpleTypesWithStruct.TestEnum#2, SimpleTypesWithStruct.TestStruct#3, $query.$col1#4, $orderby.$orderbycol1#9]
+    |   +-expr_list=
+    |   | +-$orderbycol1#9 :=
+    |   |   +-FunctionCall(GoogleSQL:$greater(INT32, INT32) -> BOOL)
+    |   |     +-SubqueryExpr
+    |   |     | +-type=INT32
+    |   |     | +-subquery_type=SCALAR
+    |   |     | +-parameter_list=
+    |   |     | | +-ColumnRef(type=INT32, column=SimpleTypesWithStruct.key#1)
+    |   |     | | +-ColumnRef(type=ENUM<googlesql_test.TestEnum>, column=SimpleTypesWithStruct.TestEnum#2)
+    |   |     | | +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=SimpleTypesWithStruct.TestStruct#3)
+    |   |     | +-subquery=
+    |   |     |   +-ProjectScan
+    |   |     |     +-column_list=[$expr_subquery.key#8]
+    |   |     |     +-expr_list=
+    |   |     |     | +-key#8 := ColumnRef(type=INT32, column=SimpleTypesWithStruct.key#1, is_correlated=TRUE)
+    |   |     |     +-input_scan=
+    |   |     |       +-AggregateScan
+    |   |     |         +-input_scan=
+    |   |     |         | +-ProjectScan
+    |   |     |         |   +-column_list=[$subquery1.$col1#5]
+    |   |     |         |   +-expr_list=
+    |   |     |         |   | +-$col1#5 := Literal(type=INT64, value=1)
+    |   |     |         |   +-input_scan=
+    |   |     |         |     +-SingleRowScan
+    |   |     |         +-group_by_list=
+    |   |     |           +-st#7 :=
+    |   |     |             +-MakeStruct
+    |   |     |               +-type=STRUCT<key INT32, TestEnum ENUM<googlesql_test.TestEnum>, TestStruct STRUCT<c INT32, d STRUCT<a INT32, b STRING>>>
+    |   |     |               +-field_list=
+    |   |     |                 +-ColumnRef(type=INT32, column=SimpleTypesWithStruct.key#1, is_correlated=TRUE)
+    |   |     |                 +-ColumnRef(type=ENUM<googlesql_test.TestEnum>, column=SimpleTypesWithStruct.TestEnum#2, is_correlated=TRUE)
+    |   |     |                 +-ColumnRef(type=STRUCT<c INT32, d STRUCT<a INT32, b STRING>>, column=SimpleTypesWithStruct.TestStruct#3, is_correlated=TRUE)
+    |   |     +-Literal(type=INT32, value=1)
+    |   +-input_scan=
+    |     +-ProjectScan
+    |       +-column_list=[SimpleTypesWithStruct.key#1, SimpleTypesWithStruct.TestEnum#2, SimpleTypesWithStruct.TestStruct#3, $query.$col1#4]
+    |       +-expr_list=
+    |       | +-$col1#4 := Literal(type=STRING, value="foo")
+    |       +-input_scan=
+    |         +-TableScan(column_list=SimpleTypesWithStruct.[key#1, TestEnum#2, TestStruct#3], table=SimpleTypesWithStruct, column_index_list=[0, 1, 2], alias="st")
+    +-order_by_item_list=
+      +-OrderByItem
+        +-column_ref=
+          +-ColumnRef(type=BOOL, column=$orderby.$orderbycol1#9)

@@ -1,0 +1,311 @@
+[default reserve_graph_table]
+[default required_features=SQL_GRAPH,SQL_GRAPH_ADVANCED_QUERY]
+[load_proto_files=googlesql/testdata/test_schema.proto]
+[load_proto_names=googlesql_test.KitchenSinkPB]
+[prepare_database]
+CREATE TABLE person AS
+(SELECT 1 AS id, "name1" AS name) UNION ALL
+(SELECT 2 AS id, "name2" AS name)
+--
+ARRAY<STRUCT<id INT64, name STRING>>[{1, "name1"}, {2, "name2"}]
+==
+[prepare_database]
+CREATE TABLE person_knows_person AS
+(SELECT 100 AS id, 1 AS from_person_id, 1 AS to_person_id, TIMESTAMP '2000-01-01 00:00:00' AS since)  UNION ALL
+(SELECT 200 AS id, 1 AS from_person_id, 2 AS to_person_id, TIMESTAMP '2000-01-02 00:00:00' AS since)
+--
+ARRAY<STRUCT<id INT64, from_person_id INT64, to_person_id INT64, since TIMESTAMP>>[
+  {
+    100,
+    1,
+    1,
+    2000-01-01 08:00:00+00
+  },
+  {
+    200,
+    1,
+    2,
+    2000-01-02 08:00:00+00
+  }
+]
+==
+[prepare_database]
+CREATE TABLE account AS
+(SELECT 10 AS acct_id, cast('''
+  int64_key_1: 1
+  int64_key_2: 1
+''' as `googlesql_test.KitchenSinkPB`) AS owner_id, "checking" AS kind
+) UNION ALL
+(SELECT 20 AS acct_id, cast('''
+  int64_key_1: 1
+  int64_key_2: 1
+''' as `googlesql_test.KitchenSinkPB`) AS owner_id, "savings" AS kind
+) UNION ALL
+(SELECT 30 AS acct_id, cast('''
+  int64_key_1: 2
+  int64_key_2: 2
+''' as `googlesql_test.KitchenSinkPB`) AS owner_id, "checking" AS kind
+)UNION ALL
+(SELECT 40 AS acct_id, cast('''
+  int64_key_1: 2
+  int64_key_2: 2
+''' as `googlesql_test.KitchenSinkPB`) AS owner_id, "savings" as kind)
+--
+ARRAY<STRUCT<
+        acct_id INT64,
+        owner_id PROTO<googlesql_test.KitchenSinkPB>,
+        kind STRING
+      >>
+[{10,
+  {
+    int64_key_1: 1
+    int64_key_2: 1
+  },
+  "checking"},
+ {20,
+  {
+    int64_key_1: 1
+    int64_key_2: 1
+  },
+  "savings"},
+ {30,
+  {
+    int64_key_1: 2
+    int64_key_2: 2
+  },
+  "checking"},
+ {40,
+  {
+    int64_key_1: 2
+    int64_key_2: 2
+  },
+  "savings"}]
+==
+
+[prepare_database]
+CREATE TABLE transfer AS
+(SELECT 1 AS id, 10 AS from_account_id, 20 AS to_account_id, 100 AS amount) UNION ALL
+(SELECT 2 AS id, 10 AS from_account_id, 20 AS to_account_id, 200 AS amount) UNION ALL
+(SELECT 3 AS id, 20 AS from_account_id, 30 AS to_account_id, 300 AS amount) UNION ALL
+(SELECT 4 AS id, 20 AS from_account_id, 30 AS to_account_id, 400 AS amount) UNION ALL
+(SELECT 5 AS id, 30 AS from_account_id, 10 AS to_account_id, 500 AS amount) UNION ALL
+(SELECT 6 AS id, 10 AS from_account_id, 10 AS to_account_id, 600 AS amount)
+--
+ARRAY<STRUCT<
+        id INT64,
+        from_account_id INT64,
+        to_account_id INT64,
+        amount INT64
+      >>
+[{1, 10, 20, 100},
+ {2, 10, 20, 200},
+ {3, 20, 30, 300},
+ {4, 20, 30, 400},
+ {5, 30, 10, 500},
+ {6, 10, 10, 600}]
+==
+[prepare_database]
+CREATE TABLE login AS
+(SELECT 1 AS person_id, 10 AS account_id, TIMESTAMP "2023-01-01 00:00:00 UTC" AS timestamp) UNION ALL
+(SELECT 2 AS person_id, 30 AS account_id, TIMESTAMP "2023-01-04 00:00:00 UTC" AS timestamp)
+--
+ARRAY<STRUCT<person_id INT64, account_id INT64, timestamp TIMESTAMP>>[
+  {
+    1,
+    10,
+    2023-01-01 00:00:00+00
+  },
+  {
+    2,
+    30,
+    2023-01-04 00:00:00+00
+  }
+]
+==
+# This edge table is "compressed". Each row represents M*N edges from M nodes
+# to N nodes.
+[prepare_database]
+CREATE TABLE can_transfer AS
+(SELECT "checking" AS src_acct_kind, "savings" AS dest_acct_kind)
+--
+ARRAY<STRUCT<
+        src_acct_kind STRING,
+        dest_acct_kind STRING
+      >>[{"checking", "savings"}]
+==
+[prepare_database]
+CREATE PROPERTY GRAPH aml
+  NODE TABLES (
+    Account KEY(acct_id)
+    DEFAULT LABEL PROPERTIES(
+      1000 + acct_id AS account_id,
+      owner_id AS owner_id_proto,
+      owner_id.int64_key_1 AS owner_id,
+      kind AS account_kind),
+    Person KEY(id)
+    LABEL Human PROPERTIES(
+      100 AS id,
+      name))
+  EDGE TABLES (
+    person_knows_person AS Knows KEY(id)
+              SOURCE KEY(from_person_id) REFERENCES Person(id)
+              DESTINATION KEY(to_person_id) REFERENCES Person(id)
+              DEFAULT LABEL PROPERTIES(since),
+    Transfer KEY(id, from_account_id, to_account_id)
+              SOURCE KEY(from_account_id) REFERENCES Account(acct_id)
+              DESTINATION KEY(to_account_id) REFERENCES Account(acct_id)
+              DEFAULT LABEL PROPERTIES(amount),
+    Login KEY(person_id, account_id, timestamp)
+          SOURCE KEY(person_id) REFERENCES Person(id)
+          DESTINATION KEY(account_id) REFERENCES Account(acct_id)
+          DEFAULT LABEL PROPERTIES(timestamp),
+    can_transfer AS CanTransfer KEY(src_acct_kind, dest_acct_kind)
+                  SOURCE KEY(src_acct_kind) REFERENCES Account(kind)
+                  DESTINATION KEY(dest_acct_kind) REFERENCES Account(kind)
+                  LABEL can_transfer
+  )
+==
+[name=single_match_with_return_operation]
+graph aml
+MATCH (a IS Account Where a.account_id = 1010) (-[t1 IS Transfer]-> (b) -[t2 IS Transfer]-> WHERE t1.amount*2 > t2.amount) (c),
+      (c) -[t3 IS Transfer]-> (a)
+WHERE t1.amount + t2.amount = t3.amount
+return a.account_id as aid, t1.amount as amount1, b.account_id as bid, t2.amount as amount2, c.account_id as cid, t3.amount as amount3, a.account_id as aid2
+--
+ARRAY<STRUCT<aid INT64,
+             amount1 INT64,
+             bid INT64,
+             amount2 INT64,
+             cid INT64,
+             amount3 INT64,
+             aid2 INT64>>[{1010, 200, 1020, 300, 1030, 500, 1010}]
+==
+[name=optional_match]
+select * from graph_table(aml
+  MATCH (a IS Account Where a.account_id = 1010)
+  OPTIONAL MATCH (a)-[t1 IS Transfer]->(b)
+  return a.account_id as aid, b.account_id as bid, t1.amount
+)
+ORDER BY 1,2,3
+--
+ARRAY<STRUCT<aid INT64, bid INT64, amount INT64>>[known order:
+  {1010, 1010, 600},
+  {1010, 1020, 100},
+  {1010, 1020, 200}
+]
+==
+[name=linear_queries_without_consecutive_match]
+graph aml
+MATCH (a) (<-[k IS Knows]- WHERE true)
+RETURN a, k
+NEXT
+MATCH ((b) <-[k IS Knows]- (a)), (b) <-[IS Knows]- (b)
+RETURN a.name as person_name, k.since, b.name as friend_name
+--
+ARRAY<STRUCT<person_name STRING, since TIMESTAMP, friend_name STRING>>[
+  {
+    "name1",
+    2000-01-01 08:00:00+00,
+    "name1"
+  }
+]
+==
+[name=consecutive_match_across_linear_queries]
+graph aml
+MATCH (a IS Account Where a.account_id = 1010)
+MATCH (a) (-[t1 IS Transfer]-> (b) -[t2 IS Transfer]-> WHERE t1.amount*2 > t2.amount) (c)
+RETURN *
+NEXT
+MATCH (a) -[t1 IS Transfer]-> (b), (b) (-[t2 IS Transfer]->) (c) WHERE t1.amount*2 > t2.amount
+RETURN a, b, c, t1, t2
+NEXT
+MATCH (c) -[t3 IS Transfer]-> (a) WHERE t1.amount + t2.amount = t3.amount
+return a.account_id as aid, t1.amount as amount1, b.account_id as bid, t2.amount as amount2, c.account_id as cid, t3.amount as amount3, a.account_id as aid2
+NEXT
+RETURN *
+--
+ARRAY<STRUCT<aid INT64,
+             amount1 INT64,
+             bid INT64,
+             amount2 INT64,
+             cid INT64,
+             amount3 INT64,
+             aid2 INT64>>[{1010, 200, 1020, 300, 1030, 500, 1010}]
+==
+[name=consecutive_match_within_linear_query]
+graph aml
+MATCH (a) -[t1 IS Transfer]-> (b)
+MATCH ((b) (-[t2 IS Transfer]-) (c)) Where a.account_id = c.account_id
+MATCH (c IS Account) -[t3 IS Transfer]-> (a)
+RETURN *
+NEXT
+RETURN a.account_id as aid, t1.amount as amount1, b.account_id as bid, t2.amount as amount2, c.account_id as cid, t3.amount as amount3, a.account_id as aid2
+ORDER BY aid, amount1, bid, amount2, cid, amount3, aid2
+--
+ARRAY<STRUCT<aid INT64,
+             amount1 INT64,
+             bid INT64,
+             amount2 INT64,
+             cid INT64,
+             amount3 INT64,
+             aid2 INT64>>
+[unknown order:
+  {1010, 100, 1020, 100, 1010, 600, 1010},
+  {1010, 100, 1020, 200, 1010, 600, 1010},
+  {1010, 200, 1020, 100, 1010, 600, 1010},
+  {1010, 200, 1020, 200, 1010, 600, 1010},
+  {1010, 600, 1010, 600, 1010, 600, 1010}
+]
+==
+[name=casting_graph_element_keeping_all_results]
+graph aml
+MATCH (a IS Account)
+MATCH (a)
+RETURN a.name
+ORDER BY name
+--
+ARRAY<STRUCT<name STRING>>[unknown order:{NULL}, {NULL}, {NULL}, {NULL}]
+==
+[name=casting_graph_element_empty_result]
+graph aml
+MATCH (a IS Account)
+MATCH (a IS Human)
+RETURN a.name
+--
+ARRAY<STRUCT<name STRING>>[]
+==
+[name=nested_linear_query]
+graph aml
+MATCH (a) -[t1 IS Transfer]-> (b)
+MATCH ((b) (-[t2 IS Transfer]-) (c)) Where a.account_id = c.account_id AND EXISTS(
+                                                                                select account_id from graph_table (
+                                                                                  aml MATCH (x) WHERE SAME(x, a)
+                                                                                  RETURN x.account_id
+                                                                                ) limit 1
+                                                                             )
+MATCH (c IS Account) -[t3 IS Transfer]-> (a)
+RETURN *
+NEXT
+RETURN a.account_id as aid, t1.amount as amount1, b.account_id as bid, t2.amount as amount2, c.account_id as cid, t3.amount as amount3, a.account_id as aid2, (
+    select amount from graph_table (
+      aml MATCH -[e]-> WHERE SAME(e, t1)
+      RETURN e.amount
+    ) limit 1
+  ) AS sth
+ORDER BY aid, amount1, bid, amount2, cid, amount3, aid2, sth
+--
+ARRAY<STRUCT<aid INT64,
+             amount1 INT64,
+             bid INT64,
+             amount2 INT64,
+             cid INT64,
+             amount3 INT64,
+             aid2 INT64,
+             sth INT64>>
+[unknown order:
+  {1010, 100, 1020, 100, 1010, 600, 1010, 100},
+  {1010, 100, 1020, 200, 1010, 600, 1010, 100},
+  {1010, 200, 1020, 100, 1010, 600, 1010, 200},
+  {1010, 200, 1020, 200, 1010, 600, 1010, 200},
+  {1010, 600, 1010, 600, 1010, 600, 1010, 600}
+]

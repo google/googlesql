@@ -4,7 +4,7 @@
 
 # Conversion functions
 
-ZetaSQL supports conversion functions. These data type
+GoogleSQL supports conversion functions. These data type
 conversions are explicit, but some conversions can happen implicitly. You can
 learn more about implicit and explicit conversion [here][conversion-rules].
 
@@ -20,79 +20,79 @@ learn more about implicit and explicit conversion [here][conversion-rules].
   <tbody>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/array_functions.md#array_to_string"><code>ARRAY_TO_STRING</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/array_functions.md#array_to_string"><code>ARRAY_TO_STRING</code></a>
 </td>
   <td>
     Produces a concatenation of the elements in an array as a
     <code>STRING</code> value.
-    <br>For more information, see <a href="https://github.com/google/zetasql/blob/master/docs/array_functions.md">Array functions</a>.
+    <br>For more information, see <a href="https://github.com/google/googlesql/blob/master/docs/array_functions.md">Array functions</a>.
 
   </td>
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/bit_functions.md#bit_cast_to_int32"><code>BIT_CAST_TO_INT32</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/bit_functions.md#bit_cast_to_int32"><code>BIT_CAST_TO_INT32</code></a>
 </td>
   <td>
     Cast bits to an <code>INT32</code> value.
-    <br>For more information, see <a href="https://github.com/google/zetasql/blob/master/docs/bit_functions.md">Bit functions</a>.
+    <br>For more information, see <a href="https://github.com/google/googlesql/blob/master/docs/bit_functions.md">Bit functions</a>.
 
   </td>
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/bit_functions.md#bit_cast_to_int64"><code>BIT_CAST_TO_INT64</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/bit_functions.md#bit_cast_to_int64"><code>BIT_CAST_TO_INT64</code></a>
 </td>
   <td>
     Cast bits to an <code>INT64</code> value.
-    <br>For more information, see <a href="https://github.com/google/zetasql/blob/master/docs/bit_functions.md">Bit functions</a>.
+    <br>For more information, see <a href="https://github.com/google/googlesql/blob/master/docs/bit_functions.md">Bit functions</a>.
 
   </td>
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/bit_functions.md#bit_cast_to_uint32"><code>BIT_CAST_TO_UINT32</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/bit_functions.md#bit_cast_to_uint32"><code>BIT_CAST_TO_UINT32</code></a>
 </td>
   <td>
     Cast bits to an <code>UINT32</code> value.
-    <br>For more information, see <a href="https://github.com/google/zetasql/blob/master/docs/bit_functions.md">Bit functions</a>.
+    <br>For more information, see <a href="https://github.com/google/googlesql/blob/master/docs/bit_functions.md">Bit functions</a>.
 
   </td>
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/bit_functions.md#bit_cast_to_uint64"><code>BIT_CAST_TO_UINT64</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/bit_functions.md#bit_cast_to_uint64"><code>BIT_CAST_TO_UINT64</code></a>
 </td>
   <td>
     Cast bits to an <code>UINT64</code> value.
-    <br>For more information, see <a href="https://github.com/google/zetasql/blob/master/docs/bit_functions.md">Bit functions</a>.
+    <br>For more information, see <a href="https://github.com/google/googlesql/blob/master/docs/bit_functions.md">Bit functions</a>.
 
   </td>
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/json_functions.md#bool_for_json"><code>BOOL</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/json_functions.md#bool_for_json"><code>BOOL</code></a>
 </td>
   <td>
     Converts a JSON boolean to a SQL <code>BOOL</code> value.
-    <br>For more information, see <a href="https://github.com/google/zetasql/blob/master/docs/json_functions.md">JSON functions</a>.
+    <br>For more information, see <a href="https://github.com/google/googlesql/blob/master/docs/json_functions.md">JSON functions</a>.
 
   </td>
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/json_functions.md#bool_array_for_json"><code>BOOL_ARRAY</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/json_functions.md#bool_array_for_json"><code>BOOL_ARRAY</code></a>
 </td>
   <td>
     Converts a JSON array of booleans to a
     SQL <code>ARRAY&lt;BOOL&gt;</code> value.
-    <br>For more information, see <a href="https://github.com/google/zetasql/blob/master/docs/json_functions.md">JSON functions</a>.
+    <br>For more information, see <a href="https://github.com/google/googlesql/blob/master/docs/json_functions.md">JSON functions</a>.
 
   </td>
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/conversion_functions.md#cast"><code>CAST</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/conversion_functions.md#cast"><code>CAST</code></a>
 </td>
   <td>
     Convert the results of an expression to the given type.
@@ -100,149 +100,149 @@ learn more about implicit and explicit conversion [here][conversion-rules].
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/string_functions.md#chr"><code>CHR</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/string_functions.md#chr"><code>CHR</code></a>
 </td>
   <td>
     Converts a Unicode code point to a character.
-    <br>For more information, see <a href="https://github.com/google/zetasql/blob/master/docs/string_functions.md">String functions</a>.
+    <br>For more information, see <a href="https://github.com/google/googlesql/blob/master/docs/string_functions.md">String functions</a>.
 
   </td>
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/string_functions.md#code_points_to_bytes"><code>CODE_POINTS_TO_BYTES</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/string_functions.md#code_points_to_bytes"><code>CODE_POINTS_TO_BYTES</code></a>
 </td>
   <td>
     Converts an array of extended ASCII code points to a
     <code>BYTES</code> value.
-    <br>For more information, see <a href="https://github.com/google/zetasql/blob/master/docs/string_functions.md">String aggregate functions</a>.
+    <br>For more information, see <a href="https://github.com/google/googlesql/blob/master/docs/string_functions.md">String aggregate functions</a>.
 
   </td>
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/string_functions.md#code_points_to_string"><code>CODE_POINTS_TO_STRING</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/string_functions.md#code_points_to_string"><code>CODE_POINTS_TO_STRING</code></a>
 </td>
   <td>
     Converts an array of extended ASCII code points to a
     <code>STRING</code> value.
-    <br>For more information, see <a href="https://github.com/google/zetasql/blob/master/docs/string_functions.md">String aggregate functions</a>.
+    <br>For more information, see <a href="https://github.com/google/googlesql/blob/master/docs/string_functions.md">String aggregate functions</a>.
 
   </td>
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/date_functions.md#date_from_unix_date"><code>DATE_FROM_UNIX_DATE</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/date_functions.md#date_from_unix_date"><code>DATE_FROM_UNIX_DATE</code></a>
 </td>
   <td>
     Interprets an <code>INT64</code> expression as the number of days
     since 1970-01-01.
-    <br>For more information, see <a href="https://github.com/google/zetasql/blob/master/docs/date_functions.md">Date functions</a>.
+    <br>For more information, see <a href="https://github.com/google/googlesql/blob/master/docs/date_functions.md">Date functions</a>.
 
   </td>
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/string_functions.md#from_base32"><code>FROM_BASE32</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/string_functions.md#from_base32"><code>FROM_BASE32</code></a>
 </td>
   <td>
     Converts a base32-encoded <code>STRING</code> value into a
     <code>BYTES</code> value.
-    <br>For more information, see <a href="https://github.com/google/zetasql/blob/master/docs/string_functions.md">String functions</a>.
+    <br>For more information, see <a href="https://github.com/google/googlesql/blob/master/docs/string_functions.md">String functions</a>.
 
   </td>
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/string_functions.md#from_base64"><code>FROM_BASE64</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/string_functions.md#from_base64"><code>FROM_BASE64</code></a>
 </td>
   <td>
     Converts a base64-encoded <code>STRING</code> value into a
     <code>BYTES</code> value.
-    <br>For more information, see <a href="https://github.com/google/zetasql/blob/master/docs/string_functions.md">String functions</a>.
+    <br>For more information, see <a href="https://github.com/google/googlesql/blob/master/docs/string_functions.md">String functions</a>.
 
   </td>
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/string_functions.md#from_hex"><code>FROM_HEX</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/string_functions.md#from_hex"><code>FROM_HEX</code></a>
 </td>
   <td>
     Converts a hexadecimal-encoded <code>STRING</code> value into a
     <code>BYTES</code> value.
-    <br>For more information, see <a href="https://github.com/google/zetasql/blob/master/docs/string_functions.md">String functions</a>.
+    <br>For more information, see <a href="https://github.com/google/googlesql/blob/master/docs/string_functions.md">String functions</a>.
 
   </td>
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/protocol_buffer_functions.md#from_proto"><code>FROM_PROTO</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/protocol_buffer_functions.md#from_proto"><code>FROM_PROTO</code></a>
 </td>
   <td>
-    Converts a protocol buffer value into ZetaSQL value.
-    <br>For more information, see <a href="https://github.com/google/zetasql/blob/master/docs/protocol_buffer_functions.md">Protocol buffer functions</a>.
+    Converts a protocol buffer value into GoogleSQL value.
+    <br>For more information, see <a href="https://github.com/google/googlesql/blob/master/docs/protocol_buffer_functions.md">Protocol buffer functions</a>.
 
   </td>
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/json_functions.md#int32_for_json"><code>INT32</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/json_functions.md#int32_for_json"><code>INT32</code></a>
 </td>
   <td>
     Converts a JSON number to a SQL <code>INT32</code> value.
-    <br>For more information, see <a href="https://github.com/google/zetasql/blob/master/docs/json_functions.md">JSON functions</a>.
+    <br>For more information, see <a href="https://github.com/google/googlesql/blob/master/docs/json_functions.md">JSON functions</a>.
 
   </td>
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/json_functions.md#int32_array_for_json"><code>INT32_ARRAY</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/json_functions.md#int32_array_for_json"><code>INT32_ARRAY</code></a>
 </td>
   <td>
     Converts a JSON number to a SQL <code>ARRAY&lt;INT32&gt;</code> value.
-    <br>For more information, see <a href="https://github.com/google/zetasql/blob/master/docs/json_functions.md">JSON functions</a>.
+    <br>For more information, see <a href="https://github.com/google/googlesql/blob/master/docs/json_functions.md">JSON functions</a>.
 
   </td>
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/json_functions.md#int64_for_json"><code>INT64</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/json_functions.md#int64_for_json"><code>INT64</code></a>
 </td>
   <td>
     Converts a JSON number to a SQL <code>INT64</code> value.
-    <br>For more information, see <a href="https://github.com/google/zetasql/blob/master/docs/json_functions.md">JSON functions</a>.
+    <br>For more information, see <a href="https://github.com/google/googlesql/blob/master/docs/json_functions.md">JSON functions</a>.
 
   </td>
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/json_functions.md#int64_array_for_json"><code>INT64_ARRAY</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/json_functions.md#int64_array_for_json"><code>INT64_ARRAY</code></a>
 </td>
   <td>
     Converts a JSON array of numbers to a
     SQL <code>ARRAY&lt;INT64&gt;</code> value.
-    <br>For more information, see <a href="https://github.com/google/zetasql/blob/master/docs/json_functions.md">JSON functions</a>.
+    <br>For more information, see <a href="https://github.com/google/googlesql/blob/master/docs/json_functions.md">JSON functions</a>.
 
   </td>
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/json_functions.md#lax_bool"><code>LAX_BOOL</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/json_functions.md#lax_bool"><code>LAX_BOOL</code></a>
 </td>
   <td>
     Attempts to convert a JSON value to a SQL <code>BOOL</code> value.
-    <br>For more information, see <a href="https://github.com/google/zetasql/blob/master/docs/json_functions.md">JSON functions</a>.
+    <br>For more information, see <a href="https://github.com/google/googlesql/blob/master/docs/json_functions.md">JSON functions</a>.
 
   </td>
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/json_functions.md#lax_bool_array"><code>LAX_BOOL_ARRAY</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/json_functions.md#lax_bool_array"><code>LAX_BOOL_ARRAY</code></a>
 </td>
   <td>
     Attempts to convert a JSON value to a
     SQL <code>ARRAY&lt;BOOL&gt;</code> value.
-    <br>For more information, see <a href="https://github.com/google/zetasql/blob/master/docs/json_functions.md">JSON functions</a>.
+    <br>For more information, see <a href="https://github.com/google/googlesql/blob/master/docs/json_functions.md">JSON functions</a>.
 
   </td>
 </tr>
@@ -250,14 +250,14 @@ learn more about implicit and explicit conversion [here][conversion-rules].
 <tr>
   <td>
   
-  <a href="https://github.com/google/zetasql/blob/master/docs/json_functions.md#lax_double"><code>LAX_DOUBLE</code></a>
+  <a href="https://github.com/google/googlesql/blob/master/docs/json_functions.md#lax_double"><code>LAX_DOUBLE</code></a>
 
   
   </td>
   <td>
     Attempts to convert a JSON value to a
     SQL <code>DOUBLE</code> value.
-    <br>For more information, see <a href="https://github.com/google/zetasql/blob/master/docs/json_functions.md">JSON functions</a>.
+    <br>For more information, see <a href="https://github.com/google/googlesql/blob/master/docs/json_functions.md">JSON functions</a>.
 
   </td>
 </tr>
@@ -265,14 +265,14 @@ learn more about implicit and explicit conversion [here][conversion-rules].
 <tr>
   <td>
     
-      <a href="https://github.com/google/zetasql/blob/master/docs/json_functions.md#lax_double_array"><code>LAX_DOUBLE_ARRAY</code></a>
+      <a href="https://github.com/google/googlesql/blob/master/docs/json_functions.md#lax_double_array"><code>LAX_DOUBLE_ARRAY</code></a>
 
     
   </td>
   <td>
     Attempts to convert a JSON value to a
     SQL <code>ARRAY&lt;DOUBLE&gt;</code> value.
-    <br>For more information, see <a href="https://github.com/google/zetasql/blob/master/docs/json_functions.md">JSON functions</a>.
+    <br>For more information, see <a href="https://github.com/google/googlesql/blob/master/docs/json_functions.md">JSON functions</a>.
 
   </td>
 </tr>
@@ -280,14 +280,14 @@ learn more about implicit and explicit conversion [here][conversion-rules].
 <tr>
   <td>
     
-      <a href="https://github.com/google/zetasql/blob/master/docs/json_functions.md#lax_float"><code>LAX_FLOAT</code></a>
+      <a href="https://github.com/google/googlesql/blob/master/docs/json_functions.md#lax_float"><code>LAX_FLOAT</code></a>
 
     
   </td>
   <td>
     Attempts to convert a JSON value to a
     SQL <code>FLOAT</code> value.
-    <br>For more information, see <a href="https://github.com/google/zetasql/blob/master/docs/json_functions.md">JSON functions</a>.
+    <br>For more information, see <a href="https://github.com/google/googlesql/blob/master/docs/json_functions.md">JSON functions</a>.
 
   </td>
 </tr>
@@ -295,114 +295,114 @@ learn more about implicit and explicit conversion [here][conversion-rules].
 <tr>
   <td>
     
-      <a href="https://github.com/google/zetasql/blob/master/docs/json_functions.md#lax_float_array"><code>LAX_FLOAT_ARRAY</code></a>
+      <a href="https://github.com/google/googlesql/blob/master/docs/json_functions.md#lax_float_array"><code>LAX_FLOAT_ARRAY</code></a>
 
     
   </td>
   <td>
     Attempts to convert a JSON value to a
     SQL <code>ARRAY&gt;FLOAT&lt;</code> value.
-    <br>For more information, see <a href="https://github.com/google/zetasql/blob/master/docs/json_functions.md">JSON functions</a>.
+    <br>For more information, see <a href="https://github.com/google/googlesql/blob/master/docs/json_functions.md">JSON functions</a>.
 
   </td>
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/json_functions.md#lax_int32"><code>LAX_INT32</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/json_functions.md#lax_int32"><code>LAX_INT32</code></a>
 </td>
   <td>
     Attempts to convert a JSON value to a SQL <code>INT32</code> value.
-    <br>For more information, see <a href="https://github.com/google/zetasql/blob/master/docs/json_functions.md">JSON functions</a>.
+    <br>For more information, see <a href="https://github.com/google/googlesql/blob/master/docs/json_functions.md">JSON functions</a>.
 
   </td>
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/json_functions.md#lax_int32_array"><code>LAX_INT32_ARRAY</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/json_functions.md#lax_int32_array"><code>LAX_INT32_ARRAY</code></a>
 </td>
   <td>
     Attempts to convert a JSON value to a
     SQL <code>ARRAY&lt;INT32&gt;</code> value.
-    <br>For more information, see <a href="https://github.com/google/zetasql/blob/master/docs/json_functions.md">JSON functions</a>.
+    <br>For more information, see <a href="https://github.com/google/googlesql/blob/master/docs/json_functions.md">JSON functions</a>.
 
   </td>
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/json_functions.md#lax_int64"><code>LAX_INT64</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/json_functions.md#lax_int64"><code>LAX_INT64</code></a>
 </td>
   <td>
     Attempts to convert a JSON value to a SQL <code>INT64</code> value.
-    <br>For more information, see <a href="https://github.com/google/zetasql/blob/master/docs/json_functions.md">JSON functions</a>.
+    <br>For more information, see <a href="https://github.com/google/googlesql/blob/master/docs/json_functions.md">JSON functions</a>.
 
   </td>
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/json_functions.md#lax_int64_array"><code>LAX_INT64_ARRAY</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/json_functions.md#lax_int64_array"><code>LAX_INT64_ARRAY</code></a>
 </td>
   <td>
     Attempts to convert a JSON value to a
     SQL <code>ARRAY&lt;INT64&gt;</code> value.
-    <br>For more information, see <a href="https://github.com/google/zetasql/blob/master/docs/json_functions.md">JSON functions</a>.
+    <br>For more information, see <a href="https://github.com/google/googlesql/blob/master/docs/json_functions.md">JSON functions</a>.
 
   </td>
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/json_functions.md#lax_string"><code>LAX_STRING</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/json_functions.md#lax_string"><code>LAX_STRING</code></a>
 </td>
   <td>
     Attempts to convert a JSON value to a SQL <code>STRING</code> value.
-    <br>For more information, see <a href="https://github.com/google/zetasql/blob/master/docs/json_functions.md">JSON functions</a>.
+    <br>For more information, see <a href="https://github.com/google/googlesql/blob/master/docs/json_functions.md">JSON functions</a>.
 
   </td>
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/json_functions.md#lax_string_array"><code>LAX_STRING_ARRAY</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/json_functions.md#lax_string_array"><code>LAX_STRING_ARRAY</code></a>
 </td>
   <td>
     Attempts to convert a JSON value to a
     SQL <code>ARRAY&lt;STRING&gt;</code>value.
-    <br>For more information, see <a href="https://github.com/google/zetasql/blob/master/docs/json_functions.md">JSON functions</a>.
+    <br>For more information, see <a href="https://github.com/google/googlesql/blob/master/docs/json_functions.md">JSON functions</a>.
 
   </td>
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/json_functions.md#lax_uint32"><code>LAX_UINT32</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/json_functions.md#lax_uint32"><code>LAX_UINT32</code></a>
 </td>
   <td>
     Attempts to convert a JSON value to a SQL <code>UINT32</code> value.
-    <br>For more information, see <a href="https://github.com/google/zetasql/blob/master/docs/json_functions.md">JSON functions</a>.
+    <br>For more information, see <a href="https://github.com/google/googlesql/blob/master/docs/json_functions.md">JSON functions</a>.
 
   </td>
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/json_functions.md#lax_uint64"><code>LAX_UINT64</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/json_functions.md#lax_uint64"><code>LAX_UINT64</code></a>
 </td>
   <td>
     Attempts to convert a JSON value to a SQL <code>UINT64</code> value.
-    <br>For more information, see <a href="https://github.com/google/zetasql/blob/master/docs/json_functions.md">JSON functions</a>.
+    <br>For more information, see <a href="https://github.com/google/googlesql/blob/master/docs/json_functions.md">JSON functions</a>.
 
   </td>
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/json_functions.md#lax_uint64_array"><code>LAX_UINT64_ARRAY</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/json_functions.md#lax_uint64_array"><code>LAX_UINT64_ARRAY</code></a>
 </td>
   <td>
     Attempts to convert a JSON value to a
     SQL <code>ARRAY&lt;UINT64&gt;</code> value.
-    <br>For more information, see <a href="https://github.com/google/zetasql/blob/master/docs/json_functions.md">JSON functions</a>.
+    <br>For more information, see <a href="https://github.com/google/googlesql/blob/master/docs/json_functions.md">JSON functions</a>.
 
   </td>
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/conversion_functions.md#parse_bignumeric"><code>PARSE_BIGNUMERIC</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/conversion_functions.md#parse_bignumeric"><code>PARSE_BIGNUMERIC</code></a>
 </td>
   <td>
     Converts a <code>STRING</code> value to a <code>BIGNUMERIC</code> value.
@@ -410,38 +410,38 @@ learn more about implicit and explicit conversion [here][conversion-rules].
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/date_functions.md#parse_date"><code>PARSE_DATE</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/date_functions.md#parse_date"><code>PARSE_DATE</code></a>
 </td>
   <td>
     Converts a <code>STRING</code> value to a <code>DATE</code> value.
-    <br>For more information, see <a href="https://github.com/google/zetasql/blob/master/docs/date_functions.md">Date functions</a>.
+    <br>For more information, see <a href="https://github.com/google/googlesql/blob/master/docs/date_functions.md">Date functions</a>.
 
   </td>
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/datetime_functions.md#parse_datetime"><code>PARSE_DATETIME</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/datetime_functions.md#parse_datetime"><code>PARSE_DATETIME</code></a>
 </td>
   <td>
     Converts a <code>STRING</code> value to a <code>DATETIME</code> value.
-    <br>For more information, see <a href="https://github.com/google/zetasql/blob/master/docs/datetime_functions.md">Datetime functions</a>.
+    <br>For more information, see <a href="https://github.com/google/googlesql/blob/master/docs/datetime_functions.md">Datetime functions</a>.
 
   </td>
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/json_functions.md#parse_json"><code>PARSE_JSON</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/json_functions.md#parse_json"><code>PARSE_JSON</code></a>
 </td>
   <td>
     Converts a JSON-formatted <code>STRING</code> value to a
     <code>JSON</code> value.
-    <br>For more information, see <a href="https://github.com/google/zetasql/blob/master/docs/json_functions.md">JSON functions</a>.
+    <br>For more information, see <a href="https://github.com/google/googlesql/blob/master/docs/json_functions.md">JSON functions</a>.
 
   </td>
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/conversion_functions.md#parse_numeric"><code>PARSE_NUMERIC</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/conversion_functions.md#parse_numeric"><code>PARSE_NUMERIC</code></a>
 </td>
   <td>
     Converts a <code>STRING</code> value to a <code>NUMERIC</code> value.
@@ -449,27 +449,27 @@ learn more about implicit and explicit conversion [here][conversion-rules].
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/time_functions.md#parse_time"><code>PARSE_TIME</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/time_functions.md#parse_time"><code>PARSE_TIME</code></a>
 </td>
   <td>
     Converts a <code>STRING</code> value to a <code>TIME</code> value.
-    <br>For more information, see <a href="https://github.com/google/zetasql/blob/master/docs/time_functions.md">Time functions</a>.
+    <br>For more information, see <a href="https://github.com/google/googlesql/blob/master/docs/time_functions.md">Time functions</a>.
 
   </td>
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/timestamp_functions.md#parse_timestamp"><code>PARSE_TIMESTAMP</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/timestamp_functions.md#parse_timestamp"><code>PARSE_TIMESTAMP</code></a>
 </td>
   <td>
     Converts a <code>STRING</code> value to a <code>TIMESTAMP</code> value.
-    <br>For more information, see <a href="https://github.com/google/zetasql/blob/master/docs/timestamp_functions.md">Timestamp functions</a>.
+    <br>For more information, see <a href="https://github.com/google/googlesql/blob/master/docs/timestamp_functions.md">Timestamp functions</a>.
 
   </td>
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/conversion_functions.md#safe_casting"><code>SAFE_CAST</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/conversion_functions.md#safe_casting"><code>SAFE_CAST</code></a>
 </td>
   <td>
     Similar to the <code>CAST</code> function, but returns <code>NULL</code>
@@ -478,235 +478,235 @@ learn more about implicit and explicit conversion [here][conversion-rules].
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/string_functions.md#safe_convert_bytes_to_string"><code>SAFE_CONVERT_BYTES_TO_STRING</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/string_functions.md#safe_convert_bytes_to_string"><code>SAFE_CONVERT_BYTES_TO_STRING</code></a>
 </td>
   <td>
     Converts a <code>BYTES</code> value to a <code>STRING</code> value and
     replace any invalid UTF-8 characters with the Unicode replacement character,
     <code>U+FFFD</code>.
-    <br>For more information, see <a href="https://github.com/google/zetasql/blob/master/docs/string_functions.md">String functions</a>.
+    <br>For more information, see <a href="https://github.com/google/googlesql/blob/master/docs/string_functions.md">String functions</a>.
 
   </td>
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/json_functions.md#string_for_json"><code>STRING</code> (JSON)</a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/json_functions.md#string_for_json"><code>STRING</code> (JSON)</a>
 </td>
   <td>
     Converts a JSON string to a SQL <code>STRING</code> value.
-    <br>For more information, see <a href="https://github.com/google/zetasql/blob/master/docs/json_functions.md">JSON functions</a>.
+    <br>For more information, see <a href="https://github.com/google/googlesql/blob/master/docs/json_functions.md">JSON functions</a>.
 
   </td>
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/json_functions.md#string_array_for_json"><code>STRING_ARRAY</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/json_functions.md#string_array_for_json"><code>STRING_ARRAY</code></a>
 </td>
   <td>
     Converts a JSON array of strings to a SQL <code>ARRAY&lt;STRING&gt;</code>
     value.
-    <br>For more information, see <a href="https://github.com/google/zetasql/blob/master/docs/json_functions.md">JSON functions</a>.
+    <br>For more information, see <a href="https://github.com/google/googlesql/blob/master/docs/json_functions.md">JSON functions</a>.
 
   </td>
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/timestamp_functions.md#string"><code>STRING</code> (Timestamp)</a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/timestamp_functions.md#string"><code>STRING</code> (Timestamp)</a>
 </td>
   <td>
     Converts a <code>TIMESTAMP</code> value to a <code>STRING</code> value.
-    <br>For more information, see <a href="https://github.com/google/zetasql/blob/master/docs/timestamp_functions.md">Timestamp functions</a>.
+    <br>For more information, see <a href="https://github.com/google/googlesql/blob/master/docs/timestamp_functions.md">Timestamp functions</a>.
 
   </td>
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/timestamp_functions.md#timestamp_micros"><code>TIMESTAMP_MICROS</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/timestamp_functions.md#timestamp_micros"><code>TIMESTAMP_MICROS</code></a>
 </td>
   <td>
     Converts the number of microseconds since
     1970-01-01 00:00:00 UTC to a <code>TIMESTAMP</code>.
-    <br>For more information, see <a href="https://github.com/google/zetasql/blob/master/docs/timestamp_functions.md">Timestamp functions</a>.
+    <br>For more information, see <a href="https://github.com/google/googlesql/blob/master/docs/timestamp_functions.md">Timestamp functions</a>.
 
   </td>
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/timestamp_functions.md#timestamp_millis"><code>TIMESTAMP_MILLIS</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/timestamp_functions.md#timestamp_millis"><code>TIMESTAMP_MILLIS</code></a>
 </td>
   <td>
     Converts the number of milliseconds since
     1970-01-01 00:00:00 UTC to a <code>TIMESTAMP</code>.
-    <br>For more information, see <a href="https://github.com/google/zetasql/blob/master/docs/timestamp_functions.md">Timestamp functions</a>.
+    <br>For more information, see <a href="https://github.com/google/googlesql/blob/master/docs/timestamp_functions.md">Timestamp functions</a>.
 
   </td>
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/timestamp_functions.md#timestamp_seconds"><code>TIMESTAMP_SECONDS</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/timestamp_functions.md#timestamp_seconds"><code>TIMESTAMP_SECONDS</code></a>
 </td>
   <td>
     Converts the number of seconds since
     1970-01-01 00:00:00 UTC to a <code>TIMESTAMP</code>.
-    <br>For more information, see <a href="https://github.com/google/zetasql/blob/master/docs/timestamp_functions.md">Timestamp functions</a>.
+    <br>For more information, see <a href="https://github.com/google/googlesql/blob/master/docs/timestamp_functions.md">Timestamp functions</a>.
 
   </td>
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/string_functions.md#to_base32"><code>TO_BASE32</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/string_functions.md#to_base32"><code>TO_BASE32</code></a>
 </td>
   <td>
     Converts a <code>BYTES</code> value to a
     base32-encoded <code>STRING</code> value.
-    <br>For more information, see <a href="https://github.com/google/zetasql/blob/master/docs/string_functions.md">String functions</a>.
+    <br>For more information, see <a href="https://github.com/google/googlesql/blob/master/docs/string_functions.md">String functions</a>.
 
   </td>
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/string_functions.md#to_base64"><code>TO_BASE64</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/string_functions.md#to_base64"><code>TO_BASE64</code></a>
 </td>
   <td>
     Converts a <code>BYTES</code> value to a
     base64-encoded <code>STRING</code> value.
-    <br>For more information, see <a href="https://github.com/google/zetasql/blob/master/docs/string_functions.md">String functions</a>.
+    <br>For more information, see <a href="https://github.com/google/googlesql/blob/master/docs/string_functions.md">String functions</a>.
 
   </td>
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/string_functions.md#to_code_points"><code>TO_CODE_POINTS</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/string_functions.md#to_code_points"><code>TO_CODE_POINTS</code></a>
 </td>
   <td>
     Converts a <code>STRING</code> or <code>BYTES</code> value into an array of
     extended ASCII code points.
-    <br>For more information, see <a href="https://github.com/google/zetasql/blob/master/docs/string_functions.md">String functions</a>.
+    <br>For more information, see <a href="https://github.com/google/googlesql/blob/master/docs/string_functions.md">String functions</a>.
 
   </td>
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/string_functions.md#to_hex"><code>TO_HEX</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/string_functions.md#to_hex"><code>TO_HEX</code></a>
 </td>
   <td>
     Converts a <code>BYTES</code> value to a
     hexadecimal <code>STRING</code> value.
-    <br>For more information, see <a href="https://github.com/google/zetasql/blob/master/docs/string_functions.md">String functions</a>.
+    <br>For more information, see <a href="https://github.com/google/googlesql/blob/master/docs/string_functions.md">String functions</a>.
 
   </td>
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/json_functions.md#to_json"><code>TO_JSON</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/json_functions.md#to_json"><code>TO_JSON</code></a>
 </td>
   <td>
     Converts a SQL value to a JSON value.
-    <br>For more information, see <a href="https://github.com/google/zetasql/blob/master/docs/json_functions.md">JSON functions</a>.
+    <br>For more information, see <a href="https://github.com/google/googlesql/blob/master/docs/json_functions.md">JSON functions</a>.
 
   </td>
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/json_functions.md#to_json_string"><code>TO_JSON_STRING</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/json_functions.md#to_json_string"><code>TO_JSON_STRING</code></a>
 </td>
   <td>
     Converts a SQL value to a JSON-formatted <code>STRING</code> value.
-    <br>For more information, see <a href="https://github.com/google/zetasql/blob/master/docs/json_functions.md">JSON functions</a>.
+    <br>For more information, see <a href="https://github.com/google/googlesql/blob/master/docs/json_functions.md">JSON functions</a>.
 
   </td>
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/protocol_buffer_functions.md#to_proto"><code>TO_PROTO</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/protocol_buffer_functions.md#to_proto"><code>TO_PROTO</code></a>
 </td>
   <td>
-    Converts a ZetaSQL value into a protocol buffer value.
-    <br>For more information, see <a href="https://github.com/google/zetasql/blob/master/docs/protocol_buffer_functions.md">Protocol buffer functions</a>.
+    Converts a GoogleSQL value into a protocol buffer value.
+    <br>For more information, see <a href="https://github.com/google/googlesql/blob/master/docs/protocol_buffer_functions.md">Protocol buffer functions</a>.
 
   </td>
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/json_functions.md#uint32_for_json"><code>UINT32</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/json_functions.md#uint32_for_json"><code>UINT32</code></a>
 </td>
   <td>
     Converts a JSON number to a SQL <code>UINT32</code> value.
-    <br>For more information, see <a href="https://github.com/google/zetasql/blob/master/docs/json_functions.md">JSON functions</a>.
+    <br>For more information, see <a href="https://github.com/google/googlesql/blob/master/docs/json_functions.md">JSON functions</a>.
 
   </td>
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/json_functions.md#uint32_array_for_json"><code>UINT32_ARRAY</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/json_functions.md#uint32_array_for_json"><code>UINT32_ARRAY</code></a>
 </td>
   <td>
     Converts a JSON number to a
     SQL <code>ARRAY&lt;UINT32&gt;</code> value.
-    <br>For more information, see <a href="https://github.com/google/zetasql/blob/master/docs/json_functions.md">JSON functions</a>.
+    <br>For more information, see <a href="https://github.com/google/googlesql/blob/master/docs/json_functions.md">JSON functions</a>.
 
   </td>
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/json_functions.md#uint64_for_json"><code>UINT64</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/json_functions.md#uint64_for_json"><code>UINT64</code></a>
 </td>
   <td>
     Converts a JSON number to a SQL <code>UINT64</code> value.
-    <br>For more information, see <a href="https://github.com/google/zetasql/blob/master/docs/json_functions.md">JSON functions</a>.
+    <br>For more information, see <a href="https://github.com/google/googlesql/blob/master/docs/json_functions.md">JSON functions</a>.
 
   </td>
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/json_functions.md#uint64_array_for_json"><code>UINT64_ARRAY</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/json_functions.md#uint64_array_for_json"><code>UINT64_ARRAY</code></a>
 </td>
   <td>
     Converts a JSON number to a SQL <code>ARRAY&lt;UINT64&gt;</code> value.
-    <br>For more information, see <a href="https://github.com/google/zetasql/blob/master/docs/json_functions.md">JSON functions</a>.
+    <br>For more information, see <a href="https://github.com/google/googlesql/blob/master/docs/json_functions.md">JSON functions</a>.
 
   </td>
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/date_functions.md#unix_date"><code>UNIX_DATE</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/date_functions.md#unix_date"><code>UNIX_DATE</code></a>
 </td>
   <td>
     Converts a <code>DATE</code> value to the number of days since 1970-01-01.
-    <br>For more information, see <a href="https://github.com/google/zetasql/blob/master/docs/date_functions.md">Date functions</a>.
+    <br>For more information, see <a href="https://github.com/google/googlesql/blob/master/docs/date_functions.md">Date functions</a>.
 
   </td>
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/timestamp_functions.md#unix_micros"><code>UNIX_MICROS</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/timestamp_functions.md#unix_micros"><code>UNIX_MICROS</code></a>
 </td>
   <td>
     Converts a <code>TIMESTAMP</code> value to the number of microseconds since
     1970-01-01 00:00:00 UTC.
-    <br>For more information, see <a href="https://github.com/google/zetasql/blob/master/docs/timestamp_functions.md">Timestamp functions</a>.
+    <br>For more information, see <a href="https://github.com/google/googlesql/blob/master/docs/timestamp_functions.md">Timestamp functions</a>.
 
   </td>
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/timestamp_functions.md#unix_millis"><code>UNIX_MILLIS</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/timestamp_functions.md#unix_millis"><code>UNIX_MILLIS</code></a>
 </td>
   <td>
     Converts a <code>TIMESTAMP</code> value to the number of milliseconds
     since 1970-01-01 00:00:00 UTC.
-    <br>For more information, see <a href="https://github.com/google/zetasql/blob/master/docs/timestamp_functions.md">Timestamp functions</a>.
+    <br>For more information, see <a href="https://github.com/google/googlesql/blob/master/docs/timestamp_functions.md">Timestamp functions</a>.
 
   </td>
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/timestamp_functions.md#unix_seconds"><code>UNIX_SECONDS</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/timestamp_functions.md#unix_seconds"><code>UNIX_SECONDS</code></a>
 </td>
   <td>
     Converts a <code>TIMESTAMP</code> value to the number of seconds since
     1970-01-01 00:00:00 UTC.
-    <br>For more information, see <a href="https://github.com/google/zetasql/blob/master/docs/timestamp_functions.md">Timestamp functions</a>.
+    <br>For more information, see <a href="https://github.com/google/googlesql/blob/master/docs/timestamp_functions.md">Timestamp functions</a>.
 
   </td>
 </tr>
@@ -716,13 +716,13 @@ learn more about implicit and explicit conversion [here][conversion-rules].
 
 ## `BIT_CAST_TO_INT32`
 
-```zetasql
+```googlesql
 BIT_CAST_TO_INT32(value)
 ```
 
 **Description**
 
-ZetaSQL supports bit casting to `INT32`. A bit
+GoogleSQL supports bit casting to `INT32`. A bit
 cast is a cast in which the order of bits is preserved instead of the value
 those bytes represent.
 
@@ -737,7 +737,7 @@ The `value` parameter can represent:
 
 **Examples**
 
-```zetasql
+```googlesql
 SELECT BIT_CAST_TO_UINT32(-1) as UINT32_value, BIT_CAST_TO_INT32(BIT_CAST_TO_UINT32(-1)) as bit_cast_value;
 
 /*---------------+----------------------+
@@ -749,13 +749,13 @@ SELECT BIT_CAST_TO_UINT32(-1) as UINT32_value, BIT_CAST_TO_INT32(BIT_CAST_TO_UIN
 
 ## `BIT_CAST_TO_INT64`
 
-```zetasql
+```googlesql
 BIT_CAST_TO_INT64(value)
 ```
 
 **Description**
 
-ZetaSQL supports bit casting to `INT64`. A bit
+GoogleSQL supports bit casting to `INT64`. A bit
 cast is a cast in which the order of bits is preserved instead of the value
 those bytes represent.
 
@@ -770,7 +770,7 @@ The `value` parameter can represent:
 
 **Example**
 
-```zetasql
+```googlesql
 SELECT BIT_CAST_TO_UINT64(-1) as UINT64_value, BIT_CAST_TO_INT64(BIT_CAST_TO_UINT64(-1)) as bit_cast_value;
 
 /*-----------------------+----------------------+
@@ -782,13 +782,13 @@ SELECT BIT_CAST_TO_UINT64(-1) as UINT64_value, BIT_CAST_TO_INT64(BIT_CAST_TO_UIN
 
 ## `BIT_CAST_TO_UINT32`
 
-```zetasql
+```googlesql
 BIT_CAST_TO_UINT32(value)
 ```
 
 **Description**
 
-ZetaSQL supports bit casting to `UINT32`. A bit
+GoogleSQL supports bit casting to `UINT32`. A bit
 cast is a cast in which the order of bits is preserved instead of the value
 those bytes represent.
 
@@ -803,7 +803,7 @@ The `value` parameter can represent:
 
 **Examples**
 
-```zetasql
+```googlesql
 SELECT -1 as UINT32_value, BIT_CAST_TO_UINT32(-1) as bit_cast_value;
 
 /*--------------+----------------------+
@@ -815,13 +815,13 @@ SELECT -1 as UINT32_value, BIT_CAST_TO_UINT32(-1) as bit_cast_value;
 
 ## `BIT_CAST_TO_UINT64`
 
-```zetasql
+```googlesql
 BIT_CAST_TO_UINT64(value)
 ```
 
 **Description**
 
-ZetaSQL supports bit casting to `UINT64`. A bit
+GoogleSQL supports bit casting to `UINT64`. A bit
 cast is a cast in which the order of bits is preserved instead of the value
 those bytes represent.
 
@@ -836,7 +836,7 @@ The `value` parameter can represent:
 
 **Example**
 
-```zetasql
+```googlesql
 SELECT -1 as INT64_value, BIT_CAST_TO_UINT64(-1) as bit_cast_value;
 
 /*--------------+----------------------+
@@ -849,7 +849,7 @@ SELECT -1 as INT64_value, BIT_CAST_TO_UINT64(-1) as bit_cast_value;
 ## `CAST` 
 <a id="cast"></a>
 
-```zetasql
+```googlesql
 CAST(expression AS typename [format_clause])
 ```
 
@@ -858,7 +858,7 @@ CAST(expression AS typename [format_clause])
 Cast syntax is used in a query to indicate that the result type of an
 expression should be converted to some other type.
 
-When using `CAST`, a query can fail if ZetaSQL is unable to perform
+When using `CAST`, a query can fail if GoogleSQL is unable to perform
 the cast. If you want to protect your queries from these types of errors, you
 can use [SAFE_CAST][con-func-safecast].
 
@@ -886,19 +886,19 @@ information is available in the section for that cast.
 The following query results in `"true"` if `x` is `1`, `"false"` for any other
 non-`NULL` value, and `NULL` if `x` is `NULL`.
 
-```zetasql
+```googlesql
 CAST(x=1 AS STRING)
 ```
 
 ### CAST AS ARRAY
 
-```zetasql
+```googlesql
 CAST(expression AS ARRAY<element_type>)
 ```
 
 **Description**
 
-ZetaSQL supports [casting][con-func-cast] to `ARRAY`. The
+GoogleSQL supports [casting][con-func-cast] to `ARRAY`. The
 `expression` parameter can represent an expression for these data types:
 
 + `ARRAY`
@@ -933,13 +933,13 @@ ZetaSQL supports [casting][con-func-cast] to `ARRAY`. The
 ### CAST AS BIGNUMERIC 
 <a id="cast_bignumeric"></a>
 
-```zetasql
+```googlesql
 CAST(expression AS BIGNUMERIC)
 ```
 
 **Description**
 
-ZetaSQL supports [casting][con-func-cast] to `BIGNUMERIC`. The
+GoogleSQL supports [casting][con-func-cast] to `BIGNUMERIC`. The
 `expression` parameter can represent an expression for these data types:
 
 + `INT32`
@@ -990,13 +990,13 @@ ZetaSQL supports [casting][con-func-cast] to `BIGNUMERIC`. The
 
 ### CAST AS BOOL
 
-```zetasql
+```googlesql
 CAST(expression AS BOOL)
 ```
 
 **Description**
 
-ZetaSQL supports [casting][con-func-cast] to `BOOL`. The
+GoogleSQL supports [casting][con-func-cast] to `BOOL`. The
 `expression` parameter can represent an expression for these data types:
 
 + `INT32`
@@ -1038,13 +1038,13 @@ ZetaSQL supports [casting][con-func-cast] to `BOOL`. The
 
 ### CAST AS BYTES
 
-```zetasql
+```googlesql
 CAST(expression AS BYTES [format_clause])
 ```
 
 **Description**
 
-ZetaSQL supports [casting][con-func-cast] to `BYTES`. The
+GoogleSQL supports [casting][con-func-cast] to `BYTES`. The
 `expression` parameter can represent an expression for these data types:
 
 + `BYTES`
@@ -1092,13 +1092,13 @@ the cast. You can use the format clause in this section if `expression` is a
 
 ### CAST AS DATE
 
-```zetasql
+```googlesql
 CAST(expression AS DATE [format_clause])
 ```
 
 **Description**
 
-ZetaSQL supports [casting][con-func-cast] to `DATE`. The `expression`
+GoogleSQL supports [casting][con-func-cast] to `DATE`. The `expression`
 parameter can represent an expression for these data types:
 
 + `STRING`
@@ -1146,13 +1146,13 @@ the cast. You can use the format clause in this section if `expression` is a
 
 ### CAST AS DATETIME
 
-```zetasql
+```googlesql
 CAST(expression AS DATETIME [format_clause])
 ```
 
 **Description**
 
-ZetaSQL supports [casting][con-func-cast] to `DATETIME`. The
+GoogleSQL supports [casting][con-func-cast] to `DATETIME`. The
 `expression` parameter can represent an expression for these data types:
 
 + `STRING`
@@ -1200,13 +1200,13 @@ the cast. You can use the format clause in this section if `expression` is a
 
 ### CAST AS ENUM
 
-```zetasql
+```googlesql
 CAST(expression AS ENUM)
 ```
 
 **Description**
 
-ZetaSQL supports [casting][con-func-cast] to `ENUM`. The `expression`
+GoogleSQL supports [casting][con-func-cast] to `ENUM`. The `expression`
 parameter can represent an expression for these data types:
 
 + `INT32`
@@ -1234,17 +1234,17 @@ parameter can represent an expression for these data types:
 ### CAST AS Floating Point 
 <a id="cast_as_floating_point"></a>
 
-```zetasql
+```googlesql
 CAST(expression AS DOUBLE)
 ```
 
-```zetasql
+```googlesql
 CAST(expression AS FLOAT)
 ```
 
 **Description**
 
-ZetaSQL supports [casting][con-func-cast] to floating point types.
+GoogleSQL supports [casting][con-func-cast] to floating point types.
 The `expression` parameter can represent an expression for these data types:
 
 + `INT32`
@@ -1310,25 +1310,25 @@ The `expression` parameter can represent an expression for these data types:
 ### CAST AS Integer 
 <a id="cast_as_integer"></a>
 
-```zetasql
+```googlesql
 CAST(expression AS INT32)
 ```
 
-```zetasql
+```googlesql
 CAST(expression AS UINT32)
 ```
 
-```zetasql
+```googlesql
 CAST(expression AS INT64)
 ```
 
-```zetasql
+```googlesql
 CAST(expression AS UINT64)
 ```
 
 **Description**
 
-ZetaSQL supports [casting][con-func-cast] to integer types.
+GoogleSQL supports [casting][con-func-cast] to integer types.
 The `expression` parameter can represent an expression for these data types:
 
 + `INT32`
@@ -1390,7 +1390,7 @@ The `expression` parameter can represent an expression for these data types:
 If you are working with hex strings (`0x123`), you can cast those strings as
 integers:
 
-```zetasql
+```googlesql
 SELECT '0x123' as hex_value, CAST('0x123' as INT64) as hex_to_int;
 
 /*-----------+------------+
@@ -1400,7 +1400,7 @@ SELECT '0x123' as hex_value, CAST('0x123' as INT64) as hex_to_int;
  +-----------+------------*/
 ```
 
-```zetasql
+```googlesql
 SELECT '-0x123' as hex_value, CAST('-0x123' as INT64) as hex_to_int;
 
 /*-----------+------------+
@@ -1412,13 +1412,13 @@ SELECT '-0x123' as hex_value, CAST('-0x123' as INT64) as hex_to_int;
 
 ### CAST AS INTERVAL
 
-```zetasql
+```googlesql
 CAST(expression AS INTERVAL)
 ```
 
 **Description**
 
-ZetaSQL supports [casting][con-func-cast] to `INTERVAL`. The
+GoogleSQL supports [casting][con-func-cast] to `INTERVAL`. The
 `expression` parameter can represent an expression for these data types:
 
 + `STRING`
@@ -1449,7 +1449,7 @@ ZetaSQL supports [casting][con-func-cast] to `INTERVAL`. The
 
 **Examples**
 
-```zetasql
+```googlesql
 SELECT input, CAST(input AS INTERVAL) AS output
 FROM UNNEST([
   '1-2 3 10:20:30.456',
@@ -1473,13 +1473,13 @@ FROM UNNEST([
 ### CAST AS NUMERIC 
 <a id="cast_numeric"></a>
 
-```zetasql
+```googlesql
 CAST(expression AS NUMERIC)
 ```
 
 **Description**
 
-ZetaSQL supports [casting][con-func-cast] to `NUMERIC`. The
+GoogleSQL supports [casting][con-func-cast] to `NUMERIC`. The
 `expression` parameter can represent an expression for these data types:
 
 + `INT32`
@@ -1530,13 +1530,13 @@ ZetaSQL supports [casting][con-func-cast] to `NUMERIC`. The
 
 ### CAST AS PROTO
 
-```zetasql
+```googlesql
 CAST(expression AS PROTO)
 ```
 
 **Description**
 
-ZetaSQL supports [casting][con-func-cast] to `PROTO`. The
+GoogleSQL supports [casting][con-func-cast] to `PROTO`. The
 `expression` parameter can represent an expression for these data types:
 
 + `STRING`
@@ -1595,7 +1595,7 @@ message Award {
 }
 ```
 
-```zetasql
+```googlesql
 SELECT
   CAST(
     '''
@@ -1604,7 +1604,7 @@ SELECT
     type { award_name: 'Best Artist' category: 'Artist' }
     type { award_name: 'Best Album' category: 'Album' }
     '''
-    AS zetasql.examples.music.Award)
+    AS googlesql.examples.music.Award)
   AS award_col
 
 /*---------------------------------------------------------+
@@ -1621,13 +1621,13 @@ SELECT
 
 ### CAST AS RANGE
 
-```zetasql
+```googlesql
 CAST(expression AS RANGE)
 ```
 
 **Description**
 
-ZetaSQL supports [casting][con-func-cast] to `RANGE`. The
+GoogleSQL supports [casting][con-func-cast] to `RANGE`. The
 `expression` parameter can represent an expression for these data types:
 
 + `STRING`
@@ -1654,7 +1654,7 @@ ZetaSQL supports [casting][con-func-cast] to `RANGE`. The
 
 **Examples**
 
-```zetasql
+```googlesql
 SELECT CAST(
   '[2020-01-01, 2020-01-02)'
   AS RANGE<DATE>) AS string_to_range
@@ -1666,7 +1666,7 @@ SELECT CAST(
  +----------------------------------------*/
 ```
 
-```zetasql
+```googlesql
 SELECT CAST(
   '[2014-09-27 12:30:00.45, 2016-10-17 11:15:00.33)'
   AS RANGE<DATETIME>) AS string_to_range
@@ -1678,7 +1678,7 @@ SELECT CAST(
  +------------------------------------------------------------------------*/
 ```
 
-```zetasql
+```googlesql
 SELECT CAST(
   '[2014-09-27 12:30:00+08, 2016-10-17 11:15:00+08)'
   AS RANGE<TIMESTAMP>) AS string_to_range
@@ -1691,7 +1691,7 @@ SELECT CAST(
  +--------------------------------------------------------------------------*/
 ```
 
-```zetasql
+```googlesql
 SELECT CAST(
   '[UNBOUNDED, 2020-01-02)'
   AS RANGE<DATE>) AS string_to_range
@@ -1703,7 +1703,7 @@ SELECT CAST(
  +--------------------------------*/
 ```
 
-```zetasql
+```googlesql
 SELECT CAST(
   '[2020-01-01, NULL)'
   AS RANGE<DATE>) AS string_to_range
@@ -1718,13 +1718,13 @@ SELECT CAST(
 ### CAST AS STRING 
 <a id="cast_as_string"></a>
 
-```zetasql
+```googlesql
 CAST(expression AS STRING [format_clause [AT TIME ZONE timezone_expr]])
 ```
 
 **Description**
 
-ZetaSQL supports [casting][con-func-cast] to `STRING`. The
+GoogleSQL supports [casting][con-func-cast] to `STRING`. The
 `expression` parameter can represent an expression for these data types:
 
 + `INT32`
@@ -1886,7 +1886,7 @@ For more information, see the following topics:
 
 **Examples**
 
-```zetasql
+```googlesql
 SELECT CAST(CURRENT_DATE() AS STRING) AS current_date
 
 /*---------------+
@@ -1896,7 +1896,7 @@ SELECT CAST(CURRENT_DATE() AS STRING) AS current_date
  +---------------*/
 ```
 
-```zetasql
+```googlesql
 SELECT CAST(CURRENT_DATE() AS STRING FORMAT 'DAY') AS current_day
 
 /*-------------+
@@ -1906,7 +1906,7 @@ SELECT CAST(CURRENT_DATE() AS STRING FORMAT 'DAY') AS current_day
  +-------------*/
 ```
 
-```zetasql
+```googlesql
 SELECT CAST(
   TIMESTAMP '2008-12-25 00:00:00+00:00'
   AS STRING FORMAT 'YYYY-MM-DD HH24:MI:SS TZH:TZM') AS date_time_to_string
@@ -1919,7 +1919,7 @@ SELECT CAST(
  +------------------------------*/
 ```
 
-```zetasql
+```googlesql
 SELECT CAST(
   TIMESTAMP '2008-12-25 00:00:00+00:00'
   AS STRING FORMAT 'YYYY-MM-DD HH24:MI:SS TZH:TZM'
@@ -1933,7 +1933,7 @@ SELECT CAST(
  +------------------------------*/
 ```
 
-```zetasql
+```googlesql
 SELECT CAST(INTERVAL 3 DAY AS STRING) AS interval_to_string
 
 /*--------------------+
@@ -1943,7 +1943,7 @@ SELECT CAST(INTERVAL 3 DAY AS STRING) AS interval_to_string
  +--------------------*/
 ```
 
-```zetasql
+```googlesql
 SELECT CAST(
   INTERVAL "1-2 3 4:5:6.789" YEAR TO SECOND
   AS STRING) AS interval_to_string
@@ -1957,13 +1957,13 @@ SELECT CAST(
 
 ### CAST AS STRUCT
 
-```zetasql
+```googlesql
 CAST(expression AS STRUCT)
 ```
 
 **Description**
 
-ZetaSQL supports [casting][con-func-cast] to `STRUCT`. The
+GoogleSQL supports [casting][con-func-cast] to `STRUCT`. The
 `expression` parameter can represent an expression for these data types:
 
 + `STRUCT`
@@ -1999,13 +1999,13 @@ ZetaSQL supports [casting][con-func-cast] to `STRUCT`. The
 
 ### CAST AS TIME
 
-```zetasql
+```googlesql
 CAST(expression AS TIME [format_clause])
 ```
 
 **Description**
 
-ZetaSQL supports [casting][con-func-cast] to TIME. The `expression`
+GoogleSQL supports [casting][con-func-cast] to TIME. The `expression`
 parameter can represent an expression for these data types:
 
 + `STRING`
@@ -2044,13 +2044,13 @@ the cast. You can use the format clause in this section if `expression` is a
 
 ### CAST AS TIMESTAMP
 
-```zetasql
+```googlesql
 CAST(expression AS TIMESTAMP [format_clause [AT TIME ZONE timezone_expr]])
 ```
 
 **Description**
 
-ZetaSQL supports [casting][con-func-cast] to `TIMESTAMP`. The
+GoogleSQL supports [casting][con-func-cast] to `TIMESTAMP`. The
 `expression` parameter can represent an expression for these data types:
 
 + `STRING`
@@ -2136,7 +2136,7 @@ time zone, which is implementation defined, is used.
 
 The following example casts a string-formatted timestamp as a timestamp:
 
-```zetasql
+```googlesql
 SELECT CAST("2020-06-02 17:00:53.110+00:00" AS TIMESTAMP) AS as_timestamp
 
 -- Results depend upon where this query was executed.
@@ -2150,29 +2150,29 @@ SELECT CAST("2020-06-02 17:00:53.110+00:00" AS TIMESTAMP) AS as_timestamp
 The following examples cast a string-formatted date and time as a timestamp.
 These examples return the same output as the previous example.
 
-```zetasql
+```googlesql
 SELECT CAST('06/02/2020 17:00:53.110' AS TIMESTAMP FORMAT 'MM/DD/YYYY HH24:MI:SS.FF3' AT TIME ZONE 'UTC') AS as_timestamp
 ```
 
-```zetasql
+```googlesql
 SELECT CAST('06/02/2020 17:00:53.110' AS TIMESTAMP FORMAT 'MM/DD/YYYY HH24:MI:SS.FF3' AT TIME ZONE '+00') AS as_timestamp
 ```
 
-```zetasql
+```googlesql
 SELECT CAST('06/02/2020 17:00:53.110 +00' AS TIMESTAMP FORMAT 'MM/DD/YYYY HH24:MI:SS.FF3 TZH') AS as_timestamp
 ```
 
-[formatting-syntax]: https://github.com/google/zetasql/blob/master/docs/format-elements.md#formatting_syntax
+[formatting-syntax]: https://github.com/google/googlesql/blob/master/docs/format-elements.md#formatting_syntax
 
-[format-string-as-bytes]: https://github.com/google/zetasql/blob/master/docs/format-elements.md#format_string_as_bytes
+[format-string-as-bytes]: https://github.com/google/googlesql/blob/master/docs/format-elements.md#format_string_as_bytes
 
-[format-bytes-as-string]: https://github.com/google/zetasql/blob/master/docs/format-elements.md#format_bytes_as_string
+[format-bytes-as-string]: https://github.com/google/googlesql/blob/master/docs/format-elements.md#format_bytes_as_string
 
-[format-date-time-as-string]: https://github.com/google/zetasql/blob/master/docs/format-elements.md#format_date_time_as_string
+[format-date-time-as-string]: https://github.com/google/googlesql/blob/master/docs/format-elements.md#format_date_time_as_string
 
-[format-string-as-date-time]: https://github.com/google/zetasql/blob/master/docs/format-elements.md#format_string_as_datetime
+[format-string-as-date-time]: https://github.com/google/googlesql/blob/master/docs/format-elements.md#format_string_as_datetime
 
-[format-numeric-type-as-string]: https://github.com/google/zetasql/blob/master/docs/format-elements.md#format_numeric_type_as_string
+[format-numeric-type-as-string]: https://github.com/google/googlesql/blob/master/docs/format-elements.md#format_numeric_type_as_string
 
 [con-func-cast]: #cast
 
@@ -2181,7 +2181,7 @@ SELECT CAST('06/02/2020 17:00:53.110 +00' AS TIMESTAMP FORMAT 'MM/DD/YYYY HH24:M
 ## `PARSE_BIGNUMERIC` 
 <a id="parse_bignumeric"></a>
 
-```zetasql
+```googlesql
 PARSE_BIGNUMERIC(string_expression)
 ```
 
@@ -2196,7 +2196,7 @@ the resulting `BIGNUMERIC` value rounds
 [half away from zero][half-from-zero-wikipedia] to have 38 digits after the
 decimal point.
 
-```zetasql
+```googlesql
 
 -- This example shows how a string with a decimal point is parsed.
 SELECT PARSE_BIGNUMERIC("123.45") AS parsed;
@@ -2317,7 +2317,7 @@ Rules for valid input strings:
 This example shows an input with spaces before, after, and between the
 sign and the number:
 
-```zetasql
+```googlesql
 SELECT PARSE_BIGNUMERIC("  -  12.34 ") as parsed;
 
 /*--------+
@@ -2330,7 +2330,7 @@ SELECT PARSE_BIGNUMERIC("  -  12.34 ") as parsed;
 This example shows an input with an exponent as well as the sign after the
 number:
 
-```zetasql
+```googlesql
 SELECT PARSE_BIGNUMERIC("12.34e-1-") as parsed;
 
 /*--------+
@@ -2343,7 +2343,7 @@ SELECT PARSE_BIGNUMERIC("12.34e-1-") as parsed;
 This example shows an input with multiple commas in the integer part of the
 number:
 
-```zetasql
+```googlesql
 SELECT PARSE_BIGNUMERIC("  1,2,,3,.45 + ") as parsed;
 
 /*--------+
@@ -2356,7 +2356,7 @@ SELECT PARSE_BIGNUMERIC("  1,2,,3,.45 + ") as parsed;
 This example shows an input with a decimal point and no digits in the whole
 number part:
 
-```zetasql
+```googlesql
 SELECT PARSE_BIGNUMERIC(".1234  ") as parsed;
 
 /*--------+
@@ -2370,38 +2370,38 @@ SELECT PARSE_BIGNUMERIC(".1234  ") as parsed;
 
 This example is invalid because the whole number part contains no digits:
 
-```zetasql
+```googlesql
 SELECT PARSE_BIGNUMERIC(",,,.1234  ") as parsed;
 ```
 
 This example is invalid because there are whitespaces between digits:
 
-```zetasql
+```googlesql
 SELECT PARSE_BIGNUMERIC("1  23.4 5  ") as parsed;
 ```
 
 This example is invalid because the number is empty except for an exponent:
 
-```zetasql
+```googlesql
 SELECT PARSE_BIGNUMERIC("  e1 ") as parsed;
 ```
 
 This example is invalid because the string contains multiple signs:
 
-```zetasql
+```googlesql
 SELECT PARSE_BIGNUMERIC("  - 12.3 - ") as parsed;
 ```
 
 This example is invalid because the value of the number falls outside the range
 of `BIGNUMERIC`:
 
-```zetasql
+```googlesql
 SELECT PARSE_BIGNUMERIC("12.34E100 ") as parsed;
 ```
 
 This example is invalid because the string contains invalid characters:
 
-```zetasql
+```googlesql
 SELECT PARSE_BIGNUMERIC("$12.34") as parsed;
 ```
 
@@ -2409,11 +2409,11 @@ SELECT PARSE_BIGNUMERIC("$12.34") as parsed;
 
 [cast-bignumeric]: #cast_bignumeric
 
-[bignumeric-type]: https://github.com/google/zetasql/blob/master/docs/data-types.md#decimal_types
+[bignumeric-type]: https://github.com/google/googlesql/blob/master/docs/data-types.md#decimal_types
 
 ## `PARSE_NUMERIC`
 
-```zetasql
+```googlesql
 PARSE_NUMERIC(string_expression)
 ```
 
@@ -2428,7 +2428,7 @@ resulting `NUMERIC` value rounds
 [half away from zero][half-from-zero-wikipedia] to have nine digits after the
 decimal point.
 
-```zetasql
+```googlesql
 
 -- This example shows how a string with a decimal point is parsed.
 SELECT PARSE_NUMERIC("123.45") AS parsed;
@@ -2550,7 +2550,7 @@ Rules for valid input strings:
 This example shows an input with spaces before, after, and between the
 sign and the number:
 
-```zetasql
+```googlesql
 SELECT PARSE_NUMERIC("  -  12.34 ") as parsed;
 
 /*--------+
@@ -2563,7 +2563,7 @@ SELECT PARSE_NUMERIC("  -  12.34 ") as parsed;
 This example shows an input with an exponent as well as the sign after the
 number:
 
-```zetasql
+```googlesql
 SELECT PARSE_NUMERIC("12.34e-1-") as parsed;
 
 /*--------+
@@ -2576,7 +2576,7 @@ SELECT PARSE_NUMERIC("12.34e-1-") as parsed;
 This example shows an input with multiple commas in the integer part of the
 number:
 
-```zetasql
+```googlesql
 SELECT PARSE_NUMERIC("  1,2,,3,.45 + ") as parsed;
 
 /*--------+
@@ -2589,7 +2589,7 @@ SELECT PARSE_NUMERIC("  1,2,,3,.45 + ") as parsed;
 This example shows an input with a decimal point and no digits in the whole
 number part:
 
-```zetasql
+```googlesql
 SELECT PARSE_NUMERIC(".1234  ") as parsed;
 
 /*--------+
@@ -2603,38 +2603,38 @@ SELECT PARSE_NUMERIC(".1234  ") as parsed;
 
 This example is invalid because the whole number part contains no digits:
 
-```zetasql
+```googlesql
 SELECT PARSE_NUMERIC(",,,.1234  ") as parsed;
 ```
 
 This example is invalid because there are whitespaces between digits:
 
-```zetasql
+```googlesql
 SELECT PARSE_NUMERIC("1  23.4 5  ") as parsed;
 ```
 
 This example is invalid because the number is empty except for an exponent:
 
-```zetasql
+```googlesql
 SELECT PARSE_NUMERIC("  e1 ") as parsed;
 ```
 
 This example is invalid because the string contains multiple signs:
 
-```zetasql
+```googlesql
 SELECT PARSE_NUMERIC("  - 12.3 - ") as parsed;
 ```
 
 This example is invalid because the value of the number falls outside the range
 of `BIGNUMERIC`:
 
-```zetasql
+```googlesql
 SELECT PARSE_NUMERIC("12.34E100 ") as parsed;
 ```
 
 This example is invalid because the string contains invalid characters:
 
-```zetasql
+```googlesql
 SELECT PARSE_NUMERIC("$12.34") as parsed;
 ```
 
@@ -2642,7 +2642,7 @@ SELECT PARSE_NUMERIC("$12.34") as parsed;
 
 [cast-numeric]: #cast_numeric
 
-[numeric-type]: https://github.com/google/zetasql/blob/master/docs/data-types.md#decimal_types
+[numeric-type]: https://github.com/google/googlesql/blob/master/docs/data-types.md#decimal_types
 
 ## `SAFE_CAST` 
 <a id="safe_casting"></a>
@@ -2653,10 +2653,10 @@ SELECT PARSE_NUMERIC("$12.34") as parsed;
 
 **Description**
 
-When using `CAST`, a query can fail if ZetaSQL is unable to perform
+When using `CAST`, a query can fail if GoogleSQL is unable to perform
 the cast. For example, the following query generates an error:
 
-```zetasql
+```googlesql
 SELECT CAST("apple" AS INT64) AS not_a_number;
 ```
 
@@ -2665,7 +2665,7 @@ If you want to protect your queries from these types of errors, you can use
 static analysis, impossible casts between two non-castable types still produce
 an error because the query is invalid.
 
-```zetasql
+```googlesql
 SELECT SAFE_CAST("apple" AS INT64) AS not_a_number;
 
 /*--------------+
@@ -2688,9 +2688,9 @@ If you are casting from bytes to strings, you can also use the
 function, [`SAFE_CONVERT_BYTES_TO_STRING`][SC_BTS]. Any invalid UTF-8 characters
 are replaced with the unicode replacement character, `U+FFFD`.
 
-[SC_BTS]: https://github.com/google/zetasql/blob/master/docs/string_functions.md#safe_convert_bytes_to_string
+[SC_BTS]: https://github.com/google/googlesql/blob/master/docs/string_functions.md#safe_convert_bytes_to_string
 
-[formatting-syntax]: https://github.com/google/zetasql/blob/master/docs/format-elements.md#formatting_syntax
+[formatting-syntax]: https://github.com/google/googlesql/blob/master/docs/format-elements.md#formatting_syntax
 
-[conversion-rules]: https://github.com/google/zetasql/blob/master/docs/conversion_rules.md
+[conversion-rules]: https://github.com/google/googlesql/blob/master/docs/conversion_rules.md
 

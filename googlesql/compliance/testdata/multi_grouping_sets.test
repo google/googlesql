@@ -1,0 +1,449 @@
+# Testing grouping by multi grouping sets.
+# Tests included:
+# 1. Common multi grouping sets cases(including rollup, cube, grouping sets and expressions)
+# 2. Multi grouping sets with struct.
+# 3. Column deduplication in multi grouping sets.
+# 4. Multi grouping sets with arithmetic expressions.
+# 5. Multi grouping sets with grouping function.
+
+[default required_features=GROUPING_SETS,MULTI_GROUPING_SETS,GROUP_BY_ROLLUP]
+[name=grouping_sets_product_single_column_grouping_set]
+WITH TestData AS (
+  SELECT 10 AS a, 'foo' AS b, false AS c UNION ALL
+  SELECT 10 AS a, 'bar' AS b, true AS c UNION ALL
+  SELECT 20 AS a, 'foo' AS b, true AS c
+)
+SELECT a, b, c, COUNT(*)
+FROM TestData
+GROUP BY GROUPING SETS(a), ROLLUP(b, c)
+--
+ARRAY<STRUCT<a INT64, b STRING, c BOOL, INT64>>[unknown order:
+  {10, NULL, NULL, 2},
+  {10, "bar", NULL, 1},
+  {10, "bar", true, 1},
+  {10, "foo", NULL, 1},
+  {10, "foo", false, 1},
+  {20, NULL, NULL, 1},
+  {20, "foo", NULL, 1},
+  {20, "foo", true, 1}
+]
+==
+
+[name=grouping_sets_product_multiple_columns_grouping_set]
+WITH TestData AS (
+  SELECT 10 AS a, 'foo' AS b, false AS c, 90 AS d UNION ALL
+  SELECT 10 AS a, 'foo' AS b, true AS c, 90 AS d UNION ALL
+  SELECT 10 AS a, 'bar' AS b, true AS c, 91 AS d UNION ALL
+  SELECT 20 AS a, 'bar' AS b, false AS c, 91 AS d UNION ALL
+  SELECT 20 AS a, 'foo' AS b, true AS c, 92 AS d
+)
+SELECT a, b, c, d, COUNT(*)
+FROM TestData
+GROUP BY GROUPING SETS(CUBE(a, b), ROLLUP(c)), ROLLUP(d)
+--
+ARRAY<STRUCT<a INT64, b STRING, c BOOL, d INT64, INT64>>[unknown order:
+  {NULL, NULL, NULL, NULL, 5},
+  {NULL, NULL, NULL, NULL, 5},
+  {NULL, NULL, NULL, 90, 2},
+  {NULL, NULL, NULL, 90, 2},
+  {NULL, NULL, NULL, 91, 2},
+  {NULL, NULL, NULL, 91, 2},
+  {NULL, NULL, NULL, 92, 1},
+  {NULL, NULL, NULL, 92, 1},
+  {NULL, NULL, false, NULL, 2},
+  {NULL, NULL, false, 90, 1},
+  {NULL, NULL, false, 91, 1},
+  {NULL, NULL, true, NULL, 3},
+  {NULL, NULL, true, 90, 1},
+  {NULL, NULL, true, 91, 1},
+  {NULL, NULL, true, 92, 1},
+  {NULL, "bar", NULL, NULL, 2},
+  {NULL, "bar", NULL, 91, 2},
+  {NULL, "foo", NULL, NULL, 3},
+  {NULL, "foo", NULL, 90, 2},
+  {NULL, "foo", NULL, 92, 1},
+  {10, NULL, NULL, NULL, 3},
+  {10, NULL, NULL, 90, 2},
+  {10, NULL, NULL, 91, 1},
+  {10, "bar", NULL, NULL, 1},
+  {10, "bar", NULL, 91, 1},
+  {10, "foo", NULL, NULL, 2},
+  {10, "foo", NULL, 90, 2},
+  {20, NULL, NULL, NULL, 2},
+  {20, NULL, NULL, 91, 1},
+  {20, NULL, NULL, 92, 1},
+  {20, "bar", NULL, NULL, 1},
+  {20, "bar", NULL, 91, 1},
+  {20, "foo", NULL, NULL, 1},
+  {20, "foo", NULL, 92, 1}
+]
+==
+
+[required_features=GROUPING_SETS,MULTI_GROUPING_SETS]
+[name=grouping_sets_product_dedupe_product_columns]
+WITH TestData AS (
+  SELECT 10 AS a, 'foo' AS b UNION ALL
+  SELECT 10 AS a, 'bar' AS b UNION ALL
+  SELECT 20 AS a, 'bar' AS b UNION ALL
+  SELECT 20 AS a, 'foo' AS b
+)
+SELECT a, COUNT(*)
+FROM TestData
+GROUP BY GROUPING SETS(a), GROUPING SETS(a)
+--
+ARRAY<STRUCT<a INT64, INT64>>[unknown order:{10, 2}, {20, 2}]
+==
+
+[required_features=GROUPING_SETS,MULTI_GROUPING_SETS]
+[name=grouping_sets_product_and_expression]
+WITH TestData AS (
+  SELECT 10 AS a, 'foo' AS b, false AS c UNION ALL
+  SELECT 10 AS a, 'bar' AS b, false AS c UNION ALL
+  SELECT 20 AS a, 'bar' AS b, true AS c UNION ALL
+  SELECT 20 AS a, 'foo' AS b, true AS c
+)
+SELECT a, c, COUNT(*)
+FROM TestData
+GROUP BY GROUPING SETS(a, b), c
+--
+ARRAY<STRUCT<a INT64, c BOOL, INT64>>[unknown order:
+  {NULL, false, 1},
+  {NULL, true, 1},
+  {NULL, false, 1},
+  {NULL, true, 1},
+  {10, false, 2},
+  {20, true, 2}
+]
+==
+
+[name=grouping_sets_product_only_rollups]
+WITH TestData AS (
+  SELECT 10 AS a, 'foo' AS b, false AS c, 90 AS d UNION ALL
+  SELECT 10 AS a, 'foo' AS b, true AS c, 90 AS d UNION ALL
+  SELECT 10 AS a, 'bar' AS b, true AS c, 91 AS d UNION ALL
+  SELECT 20 AS a, 'bar' AS b, false AS c, 91 AS d UNION ALL
+  SELECT 20 AS a, 'foo' AS b, true AS c, 92 AS d
+)
+SELECT a, b, c, d, COUNT(*)
+FROM TestData
+GROUP BY ROLLUP(a, b), ROLLUP(c, d)
+--
+ARRAY<STRUCT<a INT64, b STRING, c BOOL, d INT64, INT64>>[unknown order:
+  {NULL, NULL, NULL, NULL, 5},
+  {NULL, NULL, false, NULL, 2},
+  {NULL, NULL, false, 90, 1},
+  {NULL, NULL, false, 91, 1},
+  {NULL, NULL, true, NULL, 3},
+  {NULL, NULL, true, 90, 1},
+  {NULL, NULL, true, 91, 1},
+  {NULL, NULL, true, 92, 1},
+  {10, NULL, NULL, NULL, 3},
+  {10, NULL, false, NULL, 1},
+  {10, NULL, false, 90, 1},
+  {10, NULL, true, NULL, 2},
+  {10, NULL, true, 90, 1},
+  {10, NULL, true, 91, 1},
+  {10, "bar", NULL, NULL, 1},
+  {10, "bar", true, NULL, 1},
+  {10, "bar", true, 91, 1},
+  {10, "foo", NULL, NULL, 2},
+  {10, "foo", false, NULL, 1},
+  {10, "foo", false, 90, 1},
+  {10, "foo", true, NULL, 1},
+  {10, "foo", true, 90, 1},
+  {20, NULL, NULL, NULL, 2},
+  {20, NULL, false, NULL, 1},
+  {20, NULL, false, 91, 1},
+  {20, NULL, true, NULL, 1},
+  {20, NULL, true, 92, 1},
+  {20, "bar", NULL, NULL, 1},
+  {20, "bar", false, NULL, 1},
+  {20, "bar", false, 91, 1},
+  {20, "foo", NULL, NULL, 1},
+  {20, "foo", true, NULL, 1},
+  {20, "foo", true, 92, 1}
+]
+==
+
+[required_features=GROUPING_SETS,MULTI_GROUPING_SETS]
+[name=grouping_sets_product_only_cubes]
+WITH TestData AS (
+  SELECT 10 AS a, 'foo' AS b, false AS c, 90 AS d UNION ALL
+  SELECT 10 AS a, 'foo' AS b, true AS c, 90 AS d UNION ALL
+  SELECT 10 AS a, 'bar' AS b, true AS c, 91 AS d
+)
+SELECT a, b, c, d, COUNT(*)
+FROM TestData
+GROUP BY CUBE(a, b), CUBE(c, d)
+--
+ARRAY<STRUCT<a INT64, b STRING, c BOOL, d INT64, INT64>>[unknown order:
+  {NULL, NULL, NULL, NULL, 3},
+  {NULL, NULL, NULL, 90, 2},
+  {NULL, NULL, NULL, 91, 1},
+  {NULL, NULL, false, NULL, 1},
+  {NULL, NULL, false, 90, 1},
+  {NULL, NULL, true, NULL, 2},
+  {NULL, NULL, true, 90, 1},
+  {NULL, NULL, true, 91, 1},
+  {NULL, "bar", NULL, NULL, 1},
+  {NULL, "bar", NULL, 91, 1},
+  {NULL, "bar", true, NULL, 1},
+  {NULL, "bar", true, 91, 1},
+  {NULL, "foo", NULL, NULL, 2},
+  {NULL, "foo", NULL, 90, 2},
+  {NULL, "foo", false, NULL, 1},
+  {NULL, "foo", false, 90, 1},
+  {NULL, "foo", true, NULL, 1},
+  {NULL, "foo", true, 90, 1},
+  {10, NULL, NULL, NULL, 3},
+  {10, NULL, NULL, 90, 2},
+  {10, NULL, NULL, 91, 1},
+  {10, NULL, false, NULL, 1},
+  {10, NULL, false, 90, 1},
+  {10, NULL, true, NULL, 2},
+  {10, NULL, true, 90, 1},
+  {10, NULL, true, 91, 1},
+  {10, "bar", NULL, NULL, 1},
+  {10, "bar", NULL, 91, 1},
+  {10, "bar", true, NULL, 1},
+  {10, "bar", true, 91, 1},
+  {10, "foo", NULL, NULL, 2},
+  {10, "foo", NULL, 90, 2},
+  {10, "foo", false, NULL, 1},
+  {10, "foo", false, 90, 1},
+  {10, "foo", true, NULL, 1},
+  {10, "foo", true, 90, 1}
+]
+==
+
+[required_features=GROUPING_SETS,MULTI_GROUPING_SETS]
+[name=grouping_sets_product_only_grouping_sets]
+WITH TestData AS (
+  SELECT 10 AS a, 'foo' AS b, false AS c, 90 AS d UNION ALL
+  SELECT 10 AS a, 'foo' AS b, true AS c, 90 AS d UNION ALL
+  SELECT 10 AS a, 'bar' AS b, true AS c, 91 AS d UNION ALL
+  SELECT 20 AS a, 'bar' AS b, false AS c, 91 AS d UNION ALL
+  SELECT 20 AS a, 'foo' AS b, true AS c, 92 AS d
+)
+SELECT a, b, c, d, COUNT(*)
+FROM TestData
+GROUP BY GROUPING SETS(a, b), GROUPING SETS(c, d)
+--
+ARRAY<STRUCT<a INT64, b STRING, c BOOL, d INT64, INT64>>[unknown order:
+  {NULL, "bar", NULL, 91, 2},
+  {NULL, "bar", false, NULL, 1},
+  {NULL, "bar", true, NULL, 1},
+  {NULL, "foo", NULL, 90, 2},
+  {NULL, "foo", NULL, 92, 1},
+  {NULL, "foo", false, NULL, 1},
+  {NULL, "foo", true, NULL, 2},
+  {10, NULL, NULL, 90, 2},
+  {10, NULL, NULL, 91, 1},
+  {10, NULL, false, NULL, 1},
+  {10, NULL, true, NULL, 2},
+  {20, NULL, NULL, 91, 1},
+  {20, NULL, NULL, 92, 1},
+  {20, NULL, false, NULL, 1},
+  {20, NULL, true, NULL, 1}
+]
+==
+
+[name=grouping_sets_product_null_data]
+WITH TestData AS (
+  SELECT 10 AS a, 'foo' AS b, false AS c, 90 AS d UNION ALL
+  SELECT 10 AS a, 'foo' AS b, true AS c, 90 AS d UNION ALL
+  SELECT CAST(NULL AS int64) AS a, CAST(NULL AS STRING) AS b, CAST(NULL AS BOOL) AS c, 91 AS d UNION ALL
+  SELECT 20 AS a, 'bar' AS b, false AS c, 91 AS d UNION ALL
+  SELECT 20 AS a, 'foo' AS b, true AS c, 92 AS d
+)
+SELECT a, c, d, COUNT(*)
+FROM TestData
+GROUP BY GROUPING SETS(CUBE(a), ROLLUP(c)), ROLLUP(d)
+--
+ARRAY<STRUCT<a INT64, c BOOL, d INT64, INT64>>[unknown order:
+  {NULL, NULL, NULL, 5},
+  {NULL, NULL, NULL, 5},
+  {NULL, NULL, NULL, 1},
+  {NULL, NULL, NULL, 1},
+  {NULL, NULL, 90, 2},
+  {NULL, NULL, 90, 2},
+  {NULL, NULL, 91, 2},
+  {NULL, NULL, 91, 2},
+  {NULL, NULL, 91, 1},
+  {NULL, NULL, 91, 1},
+  {NULL, NULL, 92, 1},
+  {NULL, NULL, 92, 1},
+  {NULL, false, NULL, 2},
+  {NULL, false, 90, 1},
+  {NULL, false, 91, 1},
+  {NULL, true, NULL, 2},
+  {NULL, true, 90, 1},
+  {NULL, true, 92, 1},
+  {10, NULL, NULL, 2},
+  {10, NULL, 90, 2},
+  {20, NULL, NULL, 2},
+  {20, NULL, 91, 1},
+  {20, NULL, 92, 1}
+]
+==
+
+[name=grouping_sets_product_with_expression_in_rollup]
+WITH TestData AS (
+  SELECT 10 AS a, 8 AS b, false AS c UNION ALL
+  SELECT 11 AS a, 7 AS b, true AS c UNION ALL
+  SELECT 20 AS a, 6 AS b, true AS c
+)
+SELECT a + b, b, c, COUNT(*)
+FROM TestData
+GROUP BY ROLLUP(a + b, b), ROLLUP(c)
+--
+ARRAY<STRUCT<INT64, b INT64, c BOOL, INT64>>[unknown order:
+  {NULL, NULL, NULL, 3},
+  {NULL, NULL, false, 1},
+  {NULL, NULL, true, 2},
+  {18, NULL, NULL, 2},
+  {18, NULL, false, 1},
+  {18, NULL, true, 1},
+  {18, 7, NULL, 1},
+  {18, 7, true, 1},
+  {18, 8, NULL, 1},
+  {18, 8, false, 1},
+  {26, NULL, NULL, 1},
+  {26, NULL, true, 1},
+  {26, 6, NULL, 1},
+  {26, 6, true, 1}
+]
+==
+
+[name=grouping_sets_product_with_expression_in_grouping_sets]
+WITH TestData AS (
+  SELECT 10 AS a, 8 AS b, false AS c UNION ALL
+  SELECT 11 AS a, 7 AS b, true AS c UNION ALL
+  SELECT 20 AS a, 6 AS b, true AS c
+)
+SELECT a + b, b, c, COUNT(*)
+FROM TestData
+GROUP BY GROUPING SETS(a + b, b), ROLLUP(c)
+--
+ARRAY<STRUCT<INT64, b INT64, c BOOL, INT64>>[unknown order:
+  {NULL, 6, NULL, 1},
+  {NULL, 6, true, 1},
+  {NULL, 7, NULL, 1},
+  {NULL, 7, true, 1},
+  {NULL, 8, NULL, 1},
+  {NULL, 8, false, 1},
+  {18, NULL, NULL, 2},
+  {18, NULL, false, 1},
+  {18, NULL, true, 1},
+  {26, NULL, NULL, 1},
+  {26, NULL, true, 1}
+]
+==
+
+[required_features=GROUPING_BUILTIN,GROUPING_SETS,MULTI_GROUPING_SETS,GROUP_BY_ROLLUP]
+[name=grouping_sets_product_grouping_function]
+WITH TestData AS (
+  SELECT 10 AS a, 'foo' AS b, false AS c UNION ALL
+  SELECT 10 AS a, 'bar' AS b, true AS c UNION ALL
+  SELECT 20 AS a, 'foo' AS b, true AS c
+)
+SELECT b, c, COUNT(*), GROUPING(a), GROUPING(b)
+FROM TestData
+GROUP BY GROUPING SETS(a), ROLLUP(b, c)
+--
+ARRAY<STRUCT<b STRING, c BOOL, INT64, INT64, INT64>>[unknown order:
+  {NULL, NULL, 2, 0, 1},
+  {"bar", NULL, 1, 0, 0},
+  {"bar", true, 1, 0, 0},
+  {"foo", NULL, 1, 0, 0},
+  {"foo", false, 1, 0, 0},
+  {NULL, NULL, 1, 0, 1},
+  {"foo", NULL, 1, 0, 0},
+  {"foo", true, 1, 0, 0}
+]
+==
+
+[name=grouping_sets_product_with_implicit_struct]
+WITH TestData AS (
+  SELECT 10 AS a, 'foo' AS b, false AS c UNION ALL
+  SELECT 10 AS a, 'bar' AS b, true AS c UNION ALL
+  SELECT 20 AS a, 'foo' AS b, true AS c UNION ALL
+  SELECT 30 AS a, 'foo' AS b, true AS c
+)
+SELECT a, (b, c), COUNT(*)
+FROM TestData
+GROUP BY ROLLUP(a), ROLLUP((b, c))
+--
+ARRAY<STRUCT<a INT64, STRUCT<STRING, BOOL>, INT64>>[unknown order:
+  {NULL, {"bar", true}, 1},
+  {NULL, {"foo", true}, 2},
+  {10, {"bar", true}, 1},
+  {20, {NULL, NULL}, 1},
+  {30, {NULL, NULL}, 1},
+  {NULL, {NULL, NULL}, 4},
+  {NULL, {"foo", false}, 1},
+  {10, {NULL, NULL}, 2},
+  {10, {"foo", false}, 1},
+  {20, {"foo", true}, 1},
+  {30, {"foo", true}, 1}
+]
+==
+
+[required_features=GROUPING_SETS,MULTI_GROUPING_SETS,GROUP_BY_ROLLUP,GROUP_BY_STRUCT]
+[name=grouping_sets_product_with_explicit_struct]
+WITH TestData AS (
+  SELECT 10 AS a, 'foo' AS b, false AS c UNION ALL
+  SELECT 10 AS a, 'bar' AS b, true AS c UNION ALL
+  SELECT 20 AS a, 'foo' AS b, true AS c UNION ALL
+  SELECT 30 AS a, 'foo' AS b, true AS c
+)
+SELECT a, STRUCT(b, c) as bc, COUNT(*)
+FROM TestData
+GROUP BY ROLLUP(a), ROLLUP(bc)
+--
+ARRAY<STRUCT<
+        a INT64,
+        bc STRUCT<b STRING, c BOOL>,
+        INT64
+      >>
+[unknown order:
+  {NULL, NULL, 4},
+  {NULL, {"bar", true}, 1},
+  {NULL, {"foo", false}, 1},
+  {NULL, {"foo", true}, 2},
+  {10, NULL, 2},
+  {10, {"bar", true}, 1},
+  {10, {"foo", false}, 1},
+  {20, NULL, 1},
+  {20, {"foo", true}, 1},
+  {30, NULL, 1},
+  {30, {"foo", true}, 1}
+]
+==
+
+[name=grouping_sets_product_empty_grouping_sets]
+WITH TestData AS (
+  SELECT 10 AS a, 'foo' AS b, false AS c UNION ALL
+  SELECT 10 AS a, 'bar' AS b, true AS c UNION ALL
+  SELECT 20 AS a, 'foo' AS b, true AS c
+)
+SELECT a, b, c, COUNT(*)
+FROM TestData
+GROUP BY GROUPING SETS((), a), ROLLUP(b, c)
+--
+ARRAY<STRUCT<a INT64, b STRING, c BOOL, INT64>>[unknown order:
+  {NULL, NULL, NULL, 3},
+  {NULL, "bar", NULL, 1},
+  {NULL, "bar", true, 1},
+  {NULL, "foo", NULL, 2},
+  {NULL, "foo", false, 1},
+  {NULL, "foo", true, 1},
+  {10, NULL, NULL, 2},
+  {10, "bar", NULL, 1},
+  {10, "bar", true, 1},
+  {10, "foo", NULL, 1},
+  {10, "foo", false, 1},
+  {20, NULL, NULL, 1},
+  {20, "foo", NULL, 1},
+  {20, "foo", true, 1}
+]

@@ -1,0 +1,1566 @@
+# The "civil_time_types_and_functions" label applies to all queries in this
+# file related to the GoogleSQL V1.2 civil time types: TIME and DATETIME.
+[default global_labels=civil_time_types_and_functions]
+[default required_features=CIVIL_TIME]
+
+[load_proto_files=googlesql/testdata/test_schema.proto]
+[load_proto_names=googlesql_test.CivilTimeTypesSinkPB]
+
+[name=civil_time_literals]
+SELECT TIME '01:02:03.123456',
+       DATETIME '2006-01-02 03:04:05.123456'
+--
+ARRAY<STRUCT<TIME, DATETIME>>[
+  {
+    01:02:03.123456,
+    2006-01-02 03:04:05.123456
+  }
+]
+==
+
+[name=civil_time_nano_literals]
+[required_features=CIVIL_TIME,TIMESTAMP_NANOS]
+SELECT TIME '01:02:03.123456789',
+       DATETIME '2006-01-02 03:04:05.123456789'
+--
+ARRAY<STRUCT<TIME, DATETIME>>[
+  {
+    01:02:03.123456789,
+    2006-01-02 03:04:05.123456789
+  }
+]
+==
+
+[name=roundtrip_cast_between_string_and_time_common]
+SELECT
+    CAST(CAST(TIME "00:00:00" as STRING) as TIME),
+    CAST(CAST(TIME "23:59:59.999999" as STRING) as TIME),
+    CAST(CAST(TIME "01:02:03.123456" as STRING) as TIME),
+    CAST(CAST(TIME "01:02:03.12345" as STRING) as TIME),
+    CAST(CAST(TIME "01:02:03.120000" as STRING) as TIME),
+    CAST(CAST(TIME "01:02:3" as STRING) as TIME),
+    CAST(CAST(TIME "01:2:03" as STRING) as TIME),
+    CAST(CAST(TIME "1:02:03" as STRING) as TIME),
+    #Leap second cases
+    CAST(CAST(TIME "23:59:60" as STRING) as TIME),
+    CAST(CAST(TIME "12:59:60" as STRING) as TIME),
+    CAST(CAST(TIME "12:59:60.123456" as STRING) as TIME),
+
+    CAST(CAST("00:00:00" as TIME) as STRING),
+    CAST(CAST("23:59:59.999999" as TIME) as STRING),
+    CAST(CAST("01:02:03.123456" as TIME) as STRING),
+    CAST(CAST("01:02:03.12345" as TIME) as STRING),
+    CAST(CAST("01:02:03.120000" as TIME) as STRING),
+    CAST(CAST("01:02:3" as TIME) as STRING),
+    CAST(CAST("01:2:03" as TIME) as STRING),
+    CAST(CAST("1:02:03" as TIME) as STRING),
+    #Leap second cases
+    CAST(CAST("23:59:60" as TIME) as STRING),
+    CAST(CAST("12:59:60" as TIME) as STRING),
+    CAST(CAST("12:59:60.123456" as TIME) as STRING)
+--
+ARRAY<STRUCT<TIME,
+             TIME,
+             TIME,
+             TIME,
+             TIME,
+             TIME,
+             TIME,
+             TIME,
+             TIME,
+             TIME,
+             TIME,
+             STRING,
+             STRING,
+             STRING,
+             STRING,
+             STRING,
+             STRING,
+             STRING,
+             STRING,
+             STRING,
+             STRING,
+             STRING>>
+[{00:00:00,
+  23:59:59.999999,
+  01:02:03.123456,
+  01:02:03.123450,
+  01:02:03.120,
+  01:02:03,
+  01:02:03,
+  01:02:03,
+  00:00:00,
+  13:00:00,
+  13:00:00,
+  "00:00:00",
+  "23:59:59.999999",
+  "01:02:03.123456",
+  "01:02:03.123450",
+  "01:02:03.120",
+  "01:02:03",
+  "01:02:03",
+  "01:02:03",
+  "00:00:00",
+  "13:00:00",
+  "13:00:00"}]
+==
+
+[name=roundtrip_cast_between_string_and_time_nano]
+[required_features=CIVIL_TIME,TIMESTAMP_NANOS]
+SELECT
+    CAST(CAST(TIME "23:59:59.999999999" as STRING) as TIME),
+    CAST(CAST(TIME "01:02:03.123456789" as STRING) as TIME),
+    CAST(CAST(TIME "01:02:03.12345678" as STRING) as TIME),
+    CAST(CAST(TIME "01:02:03.123450000" as STRING) as TIME),
+    CAST(CAST(TIME "01:02:03.120000000" as STRING) as TIME),
+    #Leap second case
+    CAST(CAST(TIME "12:59:60.123456789" as STRING) as TIME),
+
+    CAST(CAST("23:59:59.999999999" as TIME) as STRING),
+    CAST(CAST("01:02:03.123456789" as TIME) as STRING),
+    CAST(CAST("01:02:03.12345678" as TIME) as STRING),
+    CAST(CAST("01:02:03.123450000" as TIME) as STRING),
+    CAST(CAST("01:02:03.120000000" as TIME) as STRING),
+    #Leap second case
+    CAST(CAST("12:59:60.123456789" as TIME) as STRING)
+--
+ARRAY<STRUCT<TIME,
+             TIME,
+             TIME,
+             TIME,
+             TIME,
+             TIME,
+             STRING,
+             STRING,
+             STRING,
+             STRING,
+             STRING,
+             STRING>>
+[{23:59:59.999999999,
+  01:02:03.123456789,
+  01:02:03.123456780,
+  01:02:03.123450,
+  01:02:03.120,
+  13:00:00,
+  "23:59:59.999999999",
+  "01:02:03.123456789",
+  "01:02:03.123456780",
+  "01:02:03.123450",
+  "01:02:03.120",
+  "13:00:00"}]
+==
+[name=roundtrip_cast_between_string_and_datetime_common]
+SELECT
+    CAST(CAST(DATETIME "0001-01-01 00:00:00" as STRING) as DATETIME),
+    CAST(CAST(DATETIME "9999-12-31 23:59:59.999999" as STRING) as DATETIME),
+    CAST(CAST(DATETIME "2006-01-02" as STRING) as DATETIME),
+    CAST(CAST(DATETIME "2006-01-02 01:02:03.123456" as STRING) as DATETIME),
+    CAST(CAST(DATETIME "2006-01-02 01:02:03.12345" as STRING) as DATETIME),
+    CAST(CAST(DATETIME "2006-01-02 01:02:03.120000" as STRING) as DATETIME),
+    CAST(CAST(DATETIME "2006-01-02 01:02:3" as STRING) as DATETIME),
+    CAST(CAST(DATETIME "2006-01-02 01:2:03" as STRING) as DATETIME),
+    CAST(CAST(DATETIME "2006-01-02 1:02:03" as STRING) as DATETIME),
+    CAST(CAST(DATETIME "2006-01-2 01:02:03" as STRING) as DATETIME),
+    CAST(CAST(DATETIME "2006-1-02 01:02:03" as STRING) as DATETIME),
+    # Leap second cases
+    CAST(CAST(DATETIME "2015-11-06 23:59:60" as STRING) as DATETIME),
+    CAST(CAST(DATETIME "2015-11-06 12:59:60" as STRING) as DATETIME),
+    CAST(CAST(DATETIME "2015-11-06 12:59:60.123456" as STRING) as DATETIME),
+
+    CAST(CAST("0001-01-01 00:00:00" as DATETIME) as STRING),
+    CAST(CAST("9999-12-31 23:59:59.999999" as DATETIME) as STRING),
+    CAST(CAST("2006-01-02" as DATETIME) as STRING),
+    CAST(CAST("2006-01-02 01:02:03.123456" as DATETIME) as STRING),
+    CAST(CAST("2006-01-02 01:02:03.12345" as DATETIME) as STRING),
+    CAST(CAST("2006-01-02 01:02:03.120000" as DATETIME) as STRING),
+    CAST(CAST("2006-01-02 01:02:3" as DATETIME) as STRING),
+    CAST(CAST("2006-01-02 01:2:03" as DATETIME) as STRING),
+    CAST(CAST("2006-01-02 1:02:03" as DATETIME) as STRING),
+    CAST(CAST("2006-01-2 01:02:03" as DATETIME) as STRING),
+    CAST(CAST("2006-1-02 01:02:03" as DATETIME) as STRING),
+    # Leap second cases
+    CAST(CAST("2015-11-06 23:59:60" as DATETIME) as STRING),
+    CAST(CAST("2015-11-06 12:59:60" as DATETIME) as STRING),
+    CAST(CAST("2015-11-06 12:59:60.123456" as DATETIME) as STRING)
+--
+ARRAY<STRUCT<DATETIME,
+             DATETIME,
+             DATETIME,
+             DATETIME,
+             DATETIME,
+             DATETIME,
+             DATETIME,
+             DATETIME,
+             DATETIME,
+             DATETIME,
+             DATETIME,
+             DATETIME,
+             DATETIME,
+             DATETIME,
+             STRING,
+             STRING,
+             STRING,
+             STRING,
+             STRING,
+             STRING,
+             STRING,
+             STRING,
+             STRING,
+             STRING,
+             STRING,
+             STRING,
+             STRING,
+             STRING>>
+[{
+   0001-01-01 00:00:00,
+   9999-12-31 23:59:59.999999,
+   2006-01-02 00:00:00,
+   2006-01-02 01:02:03.123456,
+   2006-01-02 01:02:03.123450,
+   2006-01-02 01:02:03.120,
+   2006-01-02 01:02:03,
+   2006-01-02 01:02:03,
+   2006-01-02 01:02:03,
+   2006-01-02 01:02:03,
+   2006-01-02 01:02:03,
+   2015-11-07 00:00:00,
+   2015-11-06 13:00:00,
+   2015-11-06 13:00:00,
+   "0001-01-01 00:00:00",
+   "9999-12-31 23:59:59.999999",
+   "2006-01-02 00:00:00",
+   "2006-01-02 01:02:03.123456",
+   "2006-01-02 01:02:03.123450",
+   "2006-01-02 01:02:03.120",
+   "2006-01-02 01:02:03",
+   "2006-01-02 01:02:03",
+   "2006-01-02 01:02:03",
+   "2006-01-02 01:02:03",
+   "2006-01-02 01:02:03",
+   "2015-11-07 00:00:00",
+   "2015-11-06 13:00:00",
+   "2015-11-06 13:00:00"
+ }]
+==
+[name=roundtrip_cast_between_string_and_datetime_nano]
+[required_features=CIVIL_TIME,TIMESTAMP_NANOS]
+SELECT
+    CAST(CAST(DATETIME "9999-12-31 23:59:59.999999999" as STRING) as DATETIME),
+    CAST(CAST(DATETIME "2006-01-02 01:02:03.123456789" as STRING) as DATETIME),
+    CAST(CAST(DATETIME "2006-01-02 01:02:03.12345678" as STRING) as DATETIME),
+    CAST(CAST(DATETIME "2006-01-02 01:02:03.123450000" as STRING) as DATETIME),
+    CAST(CAST(DATETIME "2006-01-02 01:02:03.120000000" as STRING) as DATETIME),
+    # Leap second case
+    CAST(CAST(DATETIME "2015-11-06 12:59:60.123456789" as STRING) as DATETIME),
+
+    CAST(CAST("9999-12-31 23:59:59.999999999" as DATETIME) as STRING),
+    CAST(CAST("2006-01-02 01:02:03.123456789" as DATETIME) as STRING),
+    CAST(CAST("2006-01-02 01:02:03.12345678" as DATETIME) as STRING),
+    CAST(CAST("2006-01-02 01:02:03.123450000" as DATETIME) as STRING),
+    CAST(CAST("2006-01-02 01:02:03.120000000" as DATETIME) as STRING),
+    # Leap second case
+    CAST(CAST("2015-11-06 12:59:60.123456789" as DATETIME) as STRING)
+--
+ARRAY<STRUCT<DATETIME,
+             DATETIME,
+             DATETIME,
+             DATETIME,
+             DATETIME,
+             DATETIME,
+             STRING,
+             STRING,
+             STRING,
+             STRING,
+             STRING,
+             STRING>>
+[{
+   9999-12-31 23:59:59.999999999,
+   2006-01-02 01:02:03.123456789,
+   2006-01-02 01:02:03.123456780,
+   2006-01-02 01:02:03.123450,
+   2006-01-02 01:02:03.120,
+   2015-11-06 13:00:00,
+   "9999-12-31 23:59:59.999999999",
+   "2006-01-02 01:02:03.123456789",
+   "2006-01-02 01:02:03.123456780",
+   "2006-01-02 01:02:03.123450",
+   "2006-01-02 01:02:03.120",
+   "2015-11-06 13:00:00"
+ }]
+==
+[name=roundtrip_cast_between_timestamp_and_datetime_common]
+SELECT
+    CAST(CAST(DATETIME "0001-01-01 00:00:00" as TIMESTAMP) as DATETIME),
+    CAST(CAST(DATETIME "9999-12-31 15:59:59.999999" as TIMESTAMP) as DATETIME),
+    CAST(CAST(DATETIME "2006-01-02" as TIMESTAMP) as DATETIME),
+    CAST(CAST(DATETIME "2006-01-02 01:02:03.123456" as TIMESTAMP) as DATETIME),
+    CAST(CAST(DATETIME "2006-01-02 01:02:03.12345" as TIMESTAMP) as DATETIME),
+    CAST(CAST(DATETIME "2006-01-02 01:02:03.120000" as TIMESTAMP) as DATETIME),
+    CAST(CAST(DATETIME "2006-01-02 01:02:3" as TIMESTAMP) as DATETIME),
+    CAST(CAST(DATETIME "2006-01-02 01:2:03" as TIMESTAMP) as DATETIME),
+    CAST(CAST(DATETIME "2006-01-02 1:02:03" as TIMESTAMP) as DATETIME),
+    CAST(CAST(DATETIME "2006-01-2 01:02:03" as TIMESTAMP) as DATETIME),
+    CAST(CAST(DATETIME "2006-1-02 01:02:03" as TIMESTAMP) as DATETIME),
+    # Leap second cases
+    CAST(CAST(DATETIME "2015-11-06 23:59:60" as TIMESTAMP) as DATETIME),
+    CAST(CAST(DATETIME "2015-11-06 12:59:60" as TIMESTAMP) as DATETIME),
+    CAST(CAST(DATETIME "2015-11-06 12:59:60.123456" as TIMESTAMP) as DATETIME),
+
+    CAST(CAST("0001-01-01 00:00:00" as DATETIME) as TIMESTAMP),
+    CAST(CAST("9999-12-31 15:59:59.999999" as DATETIME) as TIMESTAMP),
+    CAST(CAST("2006-01-02" as DATETIME) as TIMESTAMP),
+    CAST(CAST("2006-01-02 01:02:03.123456" as DATETIME) as TIMESTAMP),
+    CAST(CAST("2006-01-02 01:02:03.12345" as DATETIME) as TIMESTAMP),
+    CAST(CAST("2006-01-02 01:02:03.120000" as DATETIME) as TIMESTAMP),
+    CAST(CAST("2006-01-02 01:02:3" as DATETIME) as TIMESTAMP),
+    CAST(CAST("2006-01-02 01:2:03" as DATETIME) as TIMESTAMP),
+    CAST(CAST("2006-01-02 1:02:03" as DATETIME) as TIMESTAMP),
+    CAST(CAST("2006-01-2 01:02:03" as DATETIME) as TIMESTAMP),
+    CAST(CAST("2006-1-02 01:02:03" as DATETIME) as TIMESTAMP),
+    # Leap second cases
+    CAST(CAST("2015-11-06 23:59:60" as DATETIME) as TIMESTAMP),
+    CAST(CAST("2015-11-06 12:59:60" as DATETIME) as TIMESTAMP),
+    CAST(CAST("2015-11-06 12:59:60.123456" as DATETIME) as TIMESTAMP)
+--
+ARRAY<STRUCT<DATETIME,
+             DATETIME,
+             DATETIME,
+             DATETIME,
+             DATETIME,
+             DATETIME,
+             DATETIME,
+             DATETIME,
+             DATETIME,
+             DATETIME,
+             DATETIME,
+             DATETIME,
+             DATETIME,
+             DATETIME,
+             TIMESTAMP,
+             TIMESTAMP,
+             TIMESTAMP,
+             TIMESTAMP,
+             TIMESTAMP,
+             TIMESTAMP,
+             TIMESTAMP,
+             TIMESTAMP,
+             TIMESTAMP,
+             TIMESTAMP,
+             TIMESTAMP,
+             TIMESTAMP,
+             TIMESTAMP,
+             TIMESTAMP>>
+[{
+   0001-01-01 00:00:00,
+   9999-12-31 15:59:59.999999,
+   2006-01-02 00:00:00,
+   2006-01-02 01:02:03.123456,
+   2006-01-02 01:02:03.123450,
+   2006-01-02 01:02:03.120,
+   2006-01-02 01:02:03,
+   2006-01-02 01:02:03,
+   2006-01-02 01:02:03,
+   2006-01-02 01:02:03,
+   2006-01-02 01:02:03,
+   2015-11-07 00:00:00,
+   2015-11-06 13:00:00,
+   2015-11-06 13:00:00,
+   0001-01-01 07:52:58+00,
+   9999-12-31 23:59:59.999999+00,
+   2006-01-02 08:00:00+00,
+   2006-01-02 09:02:03.123456+00,
+   2006-01-02 09:02:03.123450+00,
+   2006-01-02 09:02:03.120+00,
+   2006-01-02 09:02:03+00,
+   2006-01-02 09:02:03+00,
+   2006-01-02 09:02:03+00,
+   2006-01-02 09:02:03+00,
+   2006-01-02 09:02:03+00,
+   2015-11-07 08:00:00+00,
+   2015-11-06 21:00:00+00,
+   2015-11-06 21:00:00+00
+ }]
+==
+[name=cast_from_timestamp_to_time]
+SELECT
+    CAST(TIMESTAMP "0001-01-01 00:00:00" as TIME),
+    CAST(TIMESTAMP "9999-12-31 15:59:59.999999" as TIME),
+    CAST(TIMESTAMP "2006-01-02" as TIME),
+    # Leap second cases
+    CAST(TIMESTAMP "2015-11-06 23:59:60" as TIME),
+    CAST(TIMESTAMP "2015-11-06 12:59:60" as TIME),
+    CAST(TIMESTAMP "2015-11-06 12:59:60.123456" as TIME)
+--
+ARRAY<STRUCT<TIME, TIME, TIME, TIME, TIME, TIME>>[
+  {00:00:00, 15:59:59.999999, 00:00:00, 00:00:00, 13:00:00, 13:00:00.123456}
+]
+==
+[name=roundtrip_lossy_cast_between_date_and_datetime_common]
+SELECT
+    CAST(CAST(DATETIME "0001-01-01 00:00:00" as DATE) as DATETIME),
+    CAST(CAST(DATETIME "9999-12-31 15:59:59.999999" as DATE) as DATETIME),
+    CAST(CAST(DATETIME "2006-01-02" as DATE) as DATETIME),
+    CAST(CAST(DATETIME "2006-01-02 01:02:03.123456" as DATE) as DATETIME),
+    CAST(CAST(DATETIME "2006-01-02 01:02:03.12345" as DATE) as DATETIME),
+    CAST(CAST(DATETIME "2006-01-02 01:02:03.120000" as DATE) as DATETIME),
+    CAST(CAST(DATETIME "2006-01-02 01:02:3" as DATE) as DATETIME),
+    CAST(CAST(DATETIME "2006-01-02 01:2:03" as DATE) as DATETIME),
+    CAST(CAST(DATETIME "2006-01-02 1:02:03" as DATE) as DATETIME),
+    CAST(CAST(DATETIME "2006-01-2 01:02:03" as DATE) as DATETIME),
+    CAST(CAST(DATETIME "2006-1-02 01:02:03" as DATE) as DATETIME),
+    # Leap second cases
+    CAST(CAST(DATETIME "2015-11-06 23:59:60" as DATE) as DATETIME),
+    CAST(CAST(DATETIME "2015-11-06 12:59:60" as DATE) as DATETIME),
+    CAST(CAST(DATETIME "2015-11-06 12:59:60.123456" as DATE) as DATETIME),
+
+    CAST(CAST("0001-01-01 00:00:00" as DATETIME) as DATE),
+    CAST(CAST("9999-12-31 15:59:59.999999" as DATETIME) as DATE),
+    CAST(CAST("2006-01-02" as DATETIME) as DATE),
+    CAST(CAST("2006-01-02 01:02:03.123456" as DATETIME) as DATE),
+    CAST(CAST("2006-01-02 01:02:03.12345" as DATETIME) as DATE),
+    CAST(CAST("2006-01-02 01:02:03.120000" as DATETIME) as DATE),
+    CAST(CAST("2006-01-02 01:02:3" as DATETIME) as DATE),
+    CAST(CAST("2006-01-02 01:2:03" as DATETIME) as DATE),
+    CAST(CAST("2006-01-02 1:02:03" as DATETIME) as DATE),
+    CAST(CAST("2006-01-2 01:02:03" as DATETIME) as DATE),
+    CAST(CAST("2006-1-02 01:02:03" as DATETIME) as DATE),
+    # Leap second cases
+    CAST(CAST("2015-11-06 23:59:60" as DATETIME) as DATE),
+    CAST(CAST("2015-11-06 12:59:60" as DATETIME) as DATE),
+    CAST(CAST("2015-11-06 12:59:60.123456" as DATETIME) as DATE)
+--
+ARRAY<STRUCT<DATETIME,
+             DATETIME,
+             DATETIME,
+             DATETIME,
+             DATETIME,
+             DATETIME,
+             DATETIME,
+             DATETIME,
+             DATETIME,
+             DATETIME,
+             DATETIME,
+             DATETIME,
+             DATETIME,
+             DATETIME,
+             DATE,
+             DATE,
+             DATE,
+             DATE,
+             DATE,
+             DATE,
+             DATE,
+             DATE,
+             DATE,
+             DATE,
+             DATE,
+             DATE,
+             DATE,
+             DATE>>
+[{0001-01-01 00:00:00,
+  9999-12-31 00:00:00,
+  2006-01-02 00:00:00,
+  2006-01-02 00:00:00,
+  2006-01-02 00:00:00,
+  2006-01-02 00:00:00,
+  2006-01-02 00:00:00,
+  2006-01-02 00:00:00,
+  2006-01-02 00:00:00,
+  2006-01-02 00:00:00,
+  2006-01-02 00:00:00,
+  2015-11-07 00:00:00,
+  2015-11-06 00:00:00,
+  2015-11-06 00:00:00,
+  0001-01-01,
+  9999-12-31,
+  2006-01-02,
+  2006-01-02,
+  2006-01-02,
+  2006-01-02,
+  2006-01-02,
+  2006-01-02,
+  2006-01-02,
+  2006-01-02,
+  2006-01-02,
+  2015-11-07,
+  2015-11-06,
+  2015-11-06}]
+==
+
+[name=roundtrip_cast_between_string_and_time_nested]
+SELECT
+    CAST(str_time_col_2 as TIME) as time_col_3,
+    CAST(time_col_2 as STRING) as str_time_col_3
+FROM (
+SELECT
+    CAST(str_time_col as TIME) as time_col_2,
+    CAST(time_col as STRING) as str_time_col_2
+FROM (
+SELECT
+    "12:34:56.123456" as str_time_col,
+    TIME "12:34:56.123456" as time_col
+))
+--
+ARRAY<STRUCT<
+        time_col_3 TIME,
+        str_time_col_3 STRING
+      >>[{12:34:56.123456, "12:34:56.123456"}]
+==
+
+[name=cast_string_to_civil_time_zero_row]
+SELECT
+  k, CAST(str as TIME)
+FROM (SELECT 0 as k, 'a' as str)
+WHERE k > 0;
+--
+ARRAY<STRUCT<k INT64, TIME>>[]
+==
+
+[name=convert_datetime_to_timestamp]
+SELECT
+  timestamp(DATETIME '2015-12-28 15:42:56'),
+  timestamp(DATETIME '2015-12-28 15:42:56', 'America/Los_Angeles'),
+  timestamp(DATETIME '2015-12-28 15:42:56', '-08:00'),
+  timestamp(DATETIME '2015-12-28 15:42:56', 'Asia/Shanghai'),
+  timestamp(DATETIME '2015-12-28 15:42:56', 'UTC');
+--
+ARRAY<STRUCT<TIMESTAMP, TIMESTAMP, TIMESTAMP, TIMESTAMP, TIMESTAMP>>[
+  {
+    2015-12-28 23:42:56+00,
+    2015-12-28 23:42:56+00,
+    2015-12-28 23:42:56+00,
+    2015-12-28 07:42:56+00,
+    2015-12-28 15:42:56+00
+  }
+]
+==
+
+[name=cast_from_datetime_to_time]
+SELECT
+    CAST(DATETIME "0001-01-01 08:00:00" as TIME),
+    CAST(DATETIME "0001-01-01 11:22:33.123456" as TIME),
+    CAST(DATETIME "9999-12-31 13:59:59.999999" as TIME),
+    CAST(DATETIME "2006-01-02" as TIME),
+    # Leap second cases
+    CAST(DATETIME "2015-11-06 23:59:60" as TIME),
+    CAST(DATETIME "2015-11-06 12:59:60" as TIME),
+    CAST(DATETIME "2015-11-06 12:59:60.123456" as TIME)
+--
+ARRAY<STRUCT<TIME, TIME, TIME, TIME, TIME, TIME, TIME>>[
+  {08:00:00,
+   11:22:33.123456,
+   13:59:59.999999,
+   00:00:00,
+   00:00:00,
+   13:00:00,
+   13:00:00}
+]
+==
+
+[name=convert_timestamp_to_time]
+SELECT
+  time(TIMESTAMP '2015-12-28 15:42:56-08:00'),
+  time(TIMESTAMP '2015-12-28 15:42:56-08:00', 'America/Los_Angeles'),
+  time(TIMESTAMP '2015-12-28 15:42:56-08:00', '+08:00'),
+  time(TIMESTAMP '2015-12-28 15:42:56-08:00', 'Asia/Shanghai'),
+  time(TIMESTAMP '2015-12-28 15:42:56-08:00', 'UTC'),
+  time(TIMESTAMP '2015-12-28 15:42:56+00:00'),
+  time(TIMESTAMP '2015-12-28 15:42:56+00:00', 'America/Los_Angeles'),
+  time(TIMESTAMP '2015-12-28 15:42:56+00:00', '+08:00'),
+  time(TIMESTAMP '2015-12-28 15:42:56+00:00', 'Asia/Shanghai'),
+  time(TIMESTAMP '2015-12-28 15:42:56+00:00', 'UTC'),
+  time(TIMESTAMP '2015-12-28 15:42:56'),
+  time(TIMESTAMP '2015-12-28 15:42:56', 'America/Los_Angeles'),
+  time(TIMESTAMP '2015-12-28 15:42:56', '+08:00'),
+  time(TIMESTAMP '2015-12-28 15:42:56', 'Asia/Shanghai'),
+  time(TIMESTAMP '2015-12-28 15:42:56', 'UTC');
+--
+ARRAY<STRUCT<TIME,
+             TIME,
+             TIME,
+             TIME,
+             TIME,
+             TIME,
+             TIME,
+             TIME,
+             TIME,
+             TIME,
+             TIME,
+             TIME,
+             TIME,
+             TIME,
+             TIME>>
+[{15:42:56,
+  15:42:56,
+  07:42:56,
+  07:42:56,
+  23:42:56,
+  07:42:56,
+  07:42:56,
+  23:42:56,
+  23:42:56,
+  15:42:56,
+  15:42:56,
+  15:42:56,
+  07:42:56,
+  07:42:56,
+  23:42:56}]
+==
+
+[name=convert_datetime_to_time]
+SELECT
+  time(DATETIME '2015-12-28 15:42:56'),
+  time(dt)
+FROM (
+  SELECT DATETIME '2017-05-18 09:30:00' AS dt UNION ALL
+  SELECT DATETIME '0001-01-01 00:00:00' UNION ALL
+  SELECT DATETIME '2014-12-31 12:34:56.123456' UNION ALL
+  SELECT CAST(NULL AS DATETIME)
+)
+ORDER BY dt
+--
+ARRAY<STRUCT<TIME, TIME>>[known order:
+  {15:42:56, NULL},
+  {15:42:56, 00:00:00},
+  {15:42:56, 12:34:56.123456},
+  {15:42:56, 09:30:00}
+]
+==
+
+[name=convert_timestamp_to_date]
+[required_features=]
+SELECT
+  DATE(TIMESTAMP '2015-12-28 15:42:56.123456'),
+  DATE(ts)
+FROM (
+  SELECT TIMESTAMP '2017-05-18 09:30:00.987654' AS ts UNION ALL
+  SELECT TIMESTAMP '0001-01-01 00:00:00' UNION ALL
+  SELECT TIMESTAMP '2014-12-31 12:34:56.123456' UNION ALL
+  SELECT CAST(NULL AS TIMESTAMP)
+)
+ORDER BY ts
+--
+ARRAY<STRUCT<DATE, DATE>>[known order:
+  {2015-12-28, NULL},
+  {2015-12-28, 0001-01-01},
+  {2015-12-28, 2014-12-31},
+  {2015-12-28, 2017-05-18}
+]
+==
+
+[name=convert_datetime_to_date]
+SELECT
+  DATE(DATETIME '2015-12-28 15:42:56.123456'),
+  DATE(dt)
+FROM (
+  SELECT DATETIME '2017-05-18 09:30:00.987654' AS dt UNION ALL
+  SELECT DATETIME '0001-01-01 00:00:00' UNION ALL
+  SELECT DATETIME '2014-12-31 12:34:56.123456' UNION ALL
+  SELECT CAST(NULL AS DATETIME)
+)
+ORDER BY dt
+--
+ARRAY<STRUCT<DATE, DATE>>[known order:
+  {2015-12-28, NULL},
+  {2015-12-28, 0001-01-01},
+  {2015-12-28, 2014-12-31},
+  {2015-12-28, 2017-05-18}
+]
+==
+
+[name=convert_timestamp_to_datetime]
+SELECT
+  datetime(TIMESTAMP '2015-12-28 15:42:56-08:00'),
+  datetime(TIMESTAMP '2015-12-28 15:42:56-08:00', 'America/Los_Angeles'),
+  datetime(TIMESTAMP '2015-12-28 15:42:56-08:00', '+08:00'),
+  datetime(TIMESTAMP '2015-12-28 15:42:56-08:00', 'Asia/Shanghai'),
+  datetime(TIMESTAMP '2015-12-28 15:42:56-08:00', 'UTC'),
+  datetime(TIMESTAMP '2015-12-28 15:42:56+00:00'),
+  datetime(TIMESTAMP '2015-12-28 15:42:56+00:00', 'America/Los_Angeles'),
+  datetime(TIMESTAMP '2015-12-28 15:42:56+00:00', '+08:00'),
+  datetime(TIMESTAMP '2015-12-28 15:42:56+00:00', 'Asia/Shanghai'),
+  datetime(TIMESTAMP '2015-12-28 15:42:56+00:00', 'UTC'),
+  datetime(TIMESTAMP '2015-12-28 15:42:56'),
+  datetime(TIMESTAMP '2015-12-28 15:42:56', 'America/Los_Angeles'),
+  datetime(TIMESTAMP '2015-12-28 15:42:56', '+08:00'),
+  datetime(TIMESTAMP '2015-12-28 15:42:56', 'Asia/Shanghai'),
+  datetime(TIMESTAMP '2015-12-28 15:42:56', 'UTC');
+--
+ARRAY<STRUCT<DATETIME,
+             DATETIME,
+             DATETIME,
+             DATETIME,
+             DATETIME,
+             DATETIME,
+             DATETIME,
+             DATETIME,
+             DATETIME,
+             DATETIME,
+             DATETIME,
+             DATETIME,
+             DATETIME,
+             DATETIME,
+             DATETIME>>
+[{2015-12-28 15:42:56,
+  2015-12-28 15:42:56,
+  2015-12-29 07:42:56,
+  2015-12-29 07:42:56,
+  2015-12-28 23:42:56,
+  2015-12-28 07:42:56,
+  2015-12-28 07:42:56,
+  2015-12-28 23:42:56,
+  2015-12-28 23:42:56,
+  2015-12-28 15:42:56,
+  2015-12-28 15:42:56,
+  2015-12-28 15:42:56,
+  2015-12-29 07:42:56,
+  2015-12-29 07:42:56,
+  2015-12-28 23:42:56}]
+==
+
+[name=convert_date_to_datetime]
+SELECT
+  datetime(DATE '2015-12-28'),
+  datetime(d)
+FROM (
+  SELECT DATE '2017-05-18' AS d UNION ALL
+  SELECT DATE '0001-01-01' UNION ALL
+  SELECT DATE '9999-12-31' UNION ALL
+  SELECT CAST(NULL AS DATE)
+)
+ORDER BY d
+--
+ARRAY<STRUCT<DATETIME, DATETIME>>[known order:
+  {2015-12-28 00:00:00, NULL},
+  {2015-12-28 00:00:00, 0001-01-01 00:00:00},
+  {2015-12-28 00:00:00, 2017-05-18 00:00:00},
+  {2015-12-28 00:00:00, 9999-12-31 00:00:00}
+]
+==
+
+[name=current_datetime]
+SELECT
+  current_datetime >= datetime '2016-01-08 12:02:00';
+--
+ARRAY<STRUCT<BOOL>>[{true}]
+==
+
+[name=current_datetime_2]
+SELECT
+  current_datetime() = current_datetime,
+  current_datetime('+01:00') != current_datetime('-01:00'),
+  current_datetime = datetime(current_date, current_time),
+  current_datetime = datetime(current_timestamp),
+  current_datetime('UTC') = datetime(current_timestamp, 'UTC');
+--
+ARRAY<STRUCT<BOOL, BOOL, BOOL, BOOL, BOOL>>[{true, true, true, true, true}]
+==
+
+# The format for TIME, DATETIME and TIMESTAMP when casted string are:
+#            12345678901234567890123456789
+# TIMESTAMP: 2016-01-11 17:54:36.149111-08
+# DATETIME:  2016-01-11 17:54:36.149111
+# TIME:      17:54:36.149111
+[name=current_time_datetime_timestamp_cast_to_string]
+SELECT
+  substr(string(current_timestamp), 1, 19) =
+    substr(cast(current_datetime as STRING), 1, 19),
+  substr(string(current_timestamp, 'UTC'), 1, 19) =
+    substr(cast(current_datetime('UTC') as STRING), 1, 19),
+
+  substr(string(current_timestamp), 12, 8) =
+    substr(cast(current_time as STRING), 1, 8),
+  substr(string(current_timestamp, 'UTC'), 12, 8) =
+    substr(cast(current_time('UTC') as STRING), 1, 8),
+
+  substr(cast(current_datetime as STRING), 12, 8) =
+    substr(cast(current_time as STRING), 1, 8),
+  substr(cast(current_datetime('UTC') as STRING), 12, 8) =
+    substr(cast(current_time('UTC') as STRING), 1, 8);
+--
+ARRAY<STRUCT<BOOL, BOOL, BOOL, BOOL, BOOL, BOOL>>[
+  {true, true, true, true, true, true}
+]
+==
+
+[name=current_time_micros]
+SELECT
+  current_time >= time '00:00:00',
+  current_time <= time '23:59:59.999999';
+--
+ARRAY<STRUCT<BOOL, BOOL>>[{true, true}]
+==
+
+[name=current_time_nanos]
+[required_features=CIVIL_TIME,TIMESTAMP_NANOS]
+SELECT
+  current_time >= time '00:00:00',
+  current_time <= time '23:59:59.999999999';
+--
+ARRAY<STRUCT<BOOL, BOOL>>[{true, true}]
+==
+
+[name=current_time_2]
+SELECT
+  current_time() = current_time,
+  current_time('+01:00') != current_time('-01:00'),
+  current_time = time(current_timestamp),
+  current_time('UTC') = time(current_timestamp, 'UTC');
+--
+ARRAY<STRUCT<BOOL, BOOL, BOOL, BOOL>>[{true, true, true, true}]
+==
+
+[name=extract_from_time]
+SELECT
+  EXTRACT(HOUR FROM time),
+  EXTRACT(MINUTE FROM time),
+  EXTRACT(SECOND FROM time),
+  EXTRACT(MILLISECOND FROM time),
+  EXTRACT(MICROSECOND FROM time)
+FROM
+  (SELECT time '12:34:56.999999' as time);
+--
+ARRAY<STRUCT<INT64, INT64, INT64, INT64, INT64>>[{12, 34, 56, 999, 999999}]
+==
+
+[name=extract_from_time_with_nano]
+[required_features=CIVIL_TIME,TIMESTAMP_NANOS]
+SELECT
+  EXTRACT(HOUR FROM time),
+  EXTRACT(MINUTE FROM time),
+  EXTRACT(SECOND FROM time),
+  EXTRACT(MILLISECOND FROM time),
+  EXTRACT(MICROSECOND FROM time)
+FROM
+  (SELECT time '12:34:56.999999999' as time);
+--
+ARRAY<STRUCT<INT64, INT64, INT64, INT64, INT64>>[{12, 34, 56, 999, 999999}]
+==
+
+[name=extract_from_date]
+[required_features=]
+SELECT
+  EXTRACT(YEAR FROM date),
+  EXTRACT(QUARTER FROM date),
+  EXTRACT(MONTH FROM date),
+  EXTRACT(DAY FROM date),
+  EXTRACT(WEEK FROM date),
+  EXTRACT(DAYOFWEEK FROM date),
+  EXTRACT(DAYOFYEAR FROM date),
+  EXTRACT(ISOYEAR FROM date),
+  EXTRACT(ISOWEEK FROM date)
+FROM
+  (SELECT date '2016-01-21' as date);
+--
+ARRAY<STRUCT<INT64, INT64, INT64, INT64, INT64, INT64, INT64, INT64, INT64>>[
+  {2016, 1, 1, 21, 3, 5, 21, 2016, 3}
+]
+==
+
+[name=extract_from_datetime]
+SELECT
+  EXTRACT(YEAR FROM datetime),
+  EXTRACT(QUARTER FROM datetime),
+  EXTRACT(MONTH FROM datetime),
+  EXTRACT(DAY FROM datetime),
+  EXTRACT(WEEK FROM datetime),
+  EXTRACT(DAYOFWEEK FROM datetime),
+  EXTRACT(DAYOFYEAR FROM datetime),
+  EXTRACT(ISOYEAR FROM datetime),
+  EXTRACT(ISOWEEK FROM datetime),
+  EXTRACT(HOUR FROM datetime),
+  EXTRACT(MINUTE FROM datetime),
+  EXTRACT(SECOND FROM datetime),
+  EXTRACT(MILLISECOND FROM datetime),
+  EXTRACT(MICROSECOND FROM datetime),
+
+  EXTRACT(DATE FROM datetime),
+  EXTRACT(TIME FROM datetime)
+FROM
+  (SELECT datetime '2016-01-21 12:34:56.999999' as datetime);
+--
+ARRAY<STRUCT<INT64,
+             INT64,
+             INT64,
+             INT64,
+             INT64,
+             INT64,
+             INT64,
+             INT64,
+             INT64,
+             INT64,
+             INT64,
+             INT64,
+             INT64,
+             INT64,
+             DATE,
+             TIME>>
+[{2016,
+  1,
+  1,
+  21,
+  3,
+  5,
+  21,
+  2016,
+  3,
+  12,
+  34,
+  56,
+  999,
+  999999,
+  2016-01-21,
+  12:34:56.999999}]
+==
+
+[name=extract_from_datetime_nano]
+[required_features=CIVIL_TIME,TIMESTAMP_NANOS]
+SELECT
+  EXTRACT(YEAR FROM datetime),
+  EXTRACT(QUARTER FROM datetime),
+  EXTRACT(MONTH FROM datetime),
+  EXTRACT(DAY FROM datetime),
+  EXTRACT(WEEK FROM datetime),
+  EXTRACT(DAYOFWEEK FROM datetime),
+  EXTRACT(DAYOFYEAR FROM datetime),
+  EXTRACT(ISOYEAR FROM datetime),
+  EXTRACT(ISOWEEK FROM datetime),
+  EXTRACT(HOUR FROM datetime),
+  EXTRACT(MINUTE FROM datetime),
+  EXTRACT(SECOND FROM datetime),
+  EXTRACT(MILLISECOND FROM datetime),
+  EXTRACT(MICROSECOND FROM datetime),
+
+  EXTRACT(DATE FROM datetime),
+  EXTRACT(TIME FROM datetime)
+FROM
+  (SELECT datetime '2016-01-21 12:34:56.999999999' as datetime);
+--
+ARRAY<STRUCT<INT64,
+             INT64,
+             INT64,
+             INT64,
+             INT64,
+             INT64,
+             INT64,
+             INT64,
+             INT64,
+             INT64,
+             INT64,
+             INT64,
+             INT64,
+             INT64,
+             DATE,
+             TIME>>
+[{2016,
+  1,
+  1,
+  21,
+  3,
+  5,
+  21,
+  2016,
+  3,
+  12,
+  34,
+  56,
+  999,
+  999999,
+  2016-01-21,
+  12:34:56.999999999}]
+==
+
+[name=extract_date_from_timestamp]
+[required_features=]
+select extract(DATE FROM timestamp '2017-01-01 12:34:56 UTC'
+               AT TIME ZONE "UTC");
+--
+ARRAY<STRUCT<DATE>>[{2017-01-01}]
+==
+
+[name=extract_time_from_timestamp]
+select extract(TIME FROM timestamp '2017-01-01 12:34:56 UTC'
+               AT TIME ZONE "UTC");
+--
+ARRAY<STRUCT<TIME>>[{12:34:56}]
+==
+
+[name=extract_datetime_from_timestamp]
+select extract(DATETIME FROM timestamp '2017-01-01 12:34:56 UTC'
+               AT TIME ZONE "UTC");
+--
+ARRAY<STRUCT<DATETIME>>[{2017-01-01 12:34:56}]
+==
+
+[name=extract_date_from_timestamp_with_invalid_time_zone]
+[required_features=]
+select extract(DATE FROM timestamp '2017-01-01'
+               AT TIME ZONE "invalid_time_zone");
+--
+ERROR: generic::out_of_range: Invalid time zone: invalid_time_zone
+==
+
+[name=extract_date_from_timestamp_with_invalid_empty_time_zone]
+[required_features=]
+select extract(DATE FROM timestamp '2017-01-01'
+               AT TIME ZONE "");
+--
+ERROR: generic::out_of_range: Invalid empty time zone
+==
+
+[name=extract_time_from_timestamp_with_invalid_time_zone]
+select extract(TIME FROM timestamp '2017-01-01'
+               AT TIME ZONE "invalid_time_zone");
+--
+ERROR: generic::out_of_range: Invalid time zone: invalid_time_zone
+==
+
+[name=extract_time_from_timestamp_with_invalid_empty_time_zone]
+select extract(TIME FROM timestamp '2017-01-01'
+               AT TIME ZONE "");
+--
+ERROR: generic::out_of_range: Invalid empty time zone
+==
+
+[name=extract_datetime_from_timestamp_with_invalid_time_zone]
+select extract(DATETIME FROM timestamp '2017-01-01'
+               AT TIME ZONE "invalid_time_zone");
+--
+ERROR: generic::out_of_range: Invalid time zone: invalid_time_zone
+==
+
+[name=extract_datetime_from_timestamp_with_invalid_empty_time_zone]
+select extract(DATETIME FROM timestamp '2017-01-01'
+               AT TIME ZONE "");
+--
+ERROR: generic::out_of_range: Invalid empty time zone
+==
+
+[name=datetime_add_positive_overflow]
+SELECT
+  DATETIME_ADD(DATETIME '9999-12-31 23:59:59.999999', interval 1 MICROSECOND);
+--
+ERROR: generic::out_of_range: Adding 1 MICROSECOND to datetime 9999-12-31 23:59:59.999999 causes overflow
+==
+
+[name=datetime_add_nanos_positive_overflow]
+[required_features=CIVIL_TIME,TIMESTAMP_NANOS]
+SELECT
+  DATETIME_ADD(DATETIME '9999-12-31 23:59:59.999999', interval 1000 NANOSECOND);
+--
+ERROR: generic::out_of_range: Adding 1000 NANOSECOND to datetime 9999-12-31 23:59:59.999999 causes overflow
+==
+
+[name=datetime_add_negative_overflow]
+SELECT
+  DATETIME_ADD(DATETIME '0001-01-01 00:00:00.000000', interval -1 MICROSECOND);
+--
+ERROR: generic::out_of_range: Adding -1 MICROSECOND to datetime 0001-01-01 00:00:00 causes overflow
+==
+
+[name=datetime_add_nanos_negative_overflow]
+[required_features=CIVIL_TIME,TIMESTAMP_NANOS]
+SELECT
+  DATETIME_ADD(DATETIME '0001-01-01 00:00:00', interval -1 NANOSECOND);
+--
+ERROR: generic::out_of_range: Adding -1 NANOSECOND to datetime 0001-01-01 00:00:00 causes overflow
+==
+
+[name=datetime_sub_positive_overflow]
+SELECT
+  DATETIME_SUB(DATETIME '0001-01-01 00:00:00.000000', interval 1 MICROSECOND);
+--
+ERROR: generic::out_of_range: Subtracting 1 MICROSECOND from datetime 0001-01-01 00:00:00 causes overflow
+==
+
+[name=datetime_sub_negative_overflow]
+SELECT
+  DATETIME_SUB(DATETIME '9999-12-31 23:59:59.999999', interval -1 MICROSECOND);
+--
+ERROR: generic::out_of_range: Subtracting -1 MICROSECOND from datetime 9999-12-31 23:59:59.999999 causes overflow
+==
+
+[name=datetime_sub_int64min_plus_1_ok]
+[required_features=CIVIL_TIME,TIMESTAMP_NANOS]
+SELECT
+  DATETIME_SUB(DATETIME '9707-09-22 00:12:43.145224192', interval (-9223372036854775808+1) NANOSECOND);
+--
+ARRAY<STRUCT<DATETIME>>[{9999-12-31 23:59:59.999999999}]
+==
+
+[name=datetime_sub_int64min_ok]
+[required_features=CIVIL_TIME,TIMESTAMP_NANOS]
+SELECT
+  DATETIME_SUB(DATETIME '9707-09-22 00:12:43.145224191', interval -9223372036854775808 NANOSECOND);
+--
+ARRAY<STRUCT<DATETIME>>[{9999-12-31 23:59:59.999999999}]
+==
+
+[name=datetime_sub_int64min_overflow]
+[required_features=CIVIL_TIME,TIMESTAMP_NANOS]
+SELECT
+  DATETIME_SUB(DATETIME '9707-09-22 00:12:43.145224192', interval -9223372036854775808 NANOSECOND);
+--
+ERROR: generic::out_of_range: Subtracting -9223372036854775808 NANOSECOND from datetime 9707-09-22 00:12:43.145224192 causes overflow
+==
+
+[name=current_functions_consistent]
+SELECT
+  LOGICAL_AND(
+    (CURRENT_DATE(tz) = EXTRACT(DATE FROM CURRENT_TIMESTAMP AT TIME ZONE tz)) AND
+    (CURRENT_TIME(tz) = EXTRACT(TIME FROM CURRENT_TIMESTAMP AT TIME ZONE tz)) AND
+    (CURRENT_DATETIME(tz) = EXTRACT(DATETIME FROM CURRENT_TIMESTAMP AT TIME ZONE tz)))
+FROM UNNEST(["-09", "-04", "-01", "UTC", "+01", "+04", "+09"]) tz
+--
+ARRAY<STRUCT<BOOL>>[{true}]
+==
+
+[name=datetime_with_t_separator]
+
+select dt, cast(dt as DATETIME)
+from UNNEST(["2016-11-06T00:30:00",
+             "2016-11-06t00:30:00",
+             "2016-11-06T00:30:41.123456",
+             "2016-11-06t00:30:41.123456"]) as dt WITH OFFSET
+ORDER BY OFFSET;
+--
+ARRAY<STRUCT<dt STRING, DATETIME>>[known order:
+  {
+    "2016-11-06T00:30:00",
+    2016-11-06 00:30:00
+  },
+  {
+    "2016-11-06t00:30:00",
+    2016-11-06 00:30:00
+  },
+  {
+    "2016-11-06T00:30:41.123456",
+    2016-11-06 00:30:41.123456
+  },
+  {
+    "2016-11-06t00:30:41.123456",
+    2016-11-06 00:30:41.123456
+  }
+]
+==
+
+[name=datetime_timestamp_date_time_casts]
+
+SELECT
+  CAST(CAST(t AS DATETIME) AS STRING),
+  CAST(CAST(t AS TIME) AS STRING),
+  CAST(CAST(dt AS TIMESTAMP) AS STRING),
+  CAST(CAST(dt AS TIME) AS STRING),
+  CAST(CAST(dt AS DATE) AS STRING),
+  CAST(CAST(d AS DATETIME) AS STRING)
+FROM (
+  SELECT
+    TIMESTAMP '2017-02-28 12:34:56' AS t,
+    DATETIME '2017-02-28 12:34:56' AS dt,
+    DATE '2017-02-28' AS d UNION ALL
+  SELECT
+    TIMESTAMP '2016-09-01 04:03:02.123456' AS t,
+    DATETIME '2016-09-01 04:03:02.123456' AS dt,
+    DATE '2016-09-01' AS d
+);
+--
+ARRAY<STRUCT<STRING, STRING, STRING, STRING, STRING, STRING>>[unknown order:
+  {
+    "2016-09-01 04:03:02.123456",
+    "04:03:02.123456",
+    "2016-09-01 04:03:02.123456-07",
+    "04:03:02.123456",
+    "2016-09-01",
+    "2016-09-01 00:00:00"
+  },
+  {
+    "2017-02-28 12:34:56",
+    "12:34:56",
+    "2017-02-28 12:34:56-08",
+    "12:34:56",
+    "2017-02-28",
+    "2017-02-28 00:00:00"
+  }
+]
+==
+[required_features=CIVIL_TIME,DATE_TIME_CONSTRUCTORS]
+[name=datetime_constructor]
+select datetime(datetime '9876-12-31 18:19:20.567'),
+       datetime('2000-01-01' || ' ' || '18:17:16'),
+       string(datetime '1234-01-02 21:22:23'),
+       string(datetime '1234-01-02 21:22:23.123456');
+--
+ARRAY<STRUCT<DATETIME, DATETIME, STRING, STRING>>[
+  {
+    9876-12-31 18:19:20.567,
+    2000-01-01 18:17:16,
+    "1234-01-02 21:22:23",
+    "1234-01-02 21:22:23.123456"
+  }
+]
+==
+[required_features=CIVIL_TIME,DATE_TIME_CONSTRUCTORS]
+[name=time_constructor]
+select time(time '11:22:33.444555'), string(time '01:02:03.456789')
+--
+ARRAY<STRUCT<TIME, STRING>>[{11:22:33.444555, "01:02:03.456789"}]
+==
+[required_features=CIVIL_TIME]
+[parameters='2010-11-12 01:02:03.456-05' as p1]
+[name=time_on_string_literal_or_parameter]
+select time('2010-11-12 01:02:03.456'), time('2010-11-12 01:02:03.456+08'), time(@p1)
+--
+ARRAY<STRUCT<TIME, TIME, TIME>>[{01:02:03.456, 09:02:03.456, 22:02:03.456}]
+==
+[required_features=TIMESTAMP_NANOS,CIVIL_TIME,DATE_TIME_CONSTRUCTORS]
+[name=constructors_nanos]
+select datetime(datetime '2001-02-03 04:05:06.789789789'),
+       string(datetime '1987-12-31 12:34:56.789789789'),
+       time(time '11:22:33.123456789'),
+       string(time '01:02:03.987654321')
+--
+ARRAY<STRUCT<DATETIME, STRING, TIME, STRING>>[
+  {
+    2001-02-03 04:05:06.789789789,
+    "1987-12-31 12:34:56.789789789",
+    11:22:33.123456789,
+    "01:02:03.987654321"
+  }
+]
+==
+[required_features=CIVIL_TIME,EXTENDED_DATE_TIME_SIGNATURES]
+[name=datetime_in_date_add_sub]
+select
+  date_add(dt, interval 1 year),        date_sub(dt, interval 1 year),
+  date_add(dt, interval 1 month),       date_sub(dt, interval 1 month),
+  date_add(dt, interval 1 week),        date_sub(dt, interval 1 week),
+  date_add(dt, interval 1 day),         date_sub(dt, interval 1 day),
+  date_add(dt, interval 1 hour),        date_sub(dt, interval 1 hour),
+  date_add(dt, interval 1 minute),      date_sub(dt, interval 1 minute),
+  date_add(dt, interval 1 second),      date_sub(dt, interval 1 second),
+  date_add(dt, interval 1 microsecond), date_sub(dt, interval 1 microsecond),
+from (select datetime '2000-01-01 00:00:00.000000' dt)
+--
+ARRAY<STRUCT<DATETIME,
+             DATETIME,
+             DATETIME,
+             DATETIME,
+             DATETIME,
+             DATETIME,
+             DATETIME,
+             DATETIME,
+             DATETIME,
+             DATETIME,
+             DATETIME,
+             DATETIME,
+             DATETIME,
+             DATETIME,
+             DATETIME,
+             DATETIME>>
+[{
+   2001-01-01 00:00:00,
+   1999-01-01 00:00:00,
+   2000-02-01 00:00:00,
+   1999-12-01 00:00:00,
+   2000-01-08 00:00:00,
+   1999-12-25 00:00:00,
+   2000-01-02 00:00:00,
+   1999-12-31 00:00:00,
+   2000-01-01 01:00:00,
+   1999-12-31 23:00:00,
+   2000-01-01 00:01:00,
+   1999-12-31 23:59:00,
+   2000-01-01 00:00:01,
+   1999-12-31 23:59:59,
+   2000-01-01 00:00:00.000001,
+   1999-12-31 23:59:59.999999
+ }]
+==
+[required_features=CIVIL_TIME,EXTENDED_DATE_TIME_SIGNATURES]
+[name=datetime_in_date_diff]
+select
+  date_diff(dt1, dt2, year),
+  date_diff(dt1, dt2, quarter),
+  date_diff(dt1, dt2, month),
+  date_diff(dt1, dt2, week),
+  date_diff(dt1, dt2, day),
+  date_diff(dt1, dt2, hour),
+  date_diff(dt1, dt2, minute),
+  date_diff(dt1, dt2, second),
+  date_diff(dt1, dt2, millisecond),
+  date_diff(dt1, dt2, microsecond),
+from (select datetime '2000-01-01 00:00:00.000000' dt1, datetime '1998-12-31 23:59:59.999999' dt2)
+--
+ARRAY<STRUCT<INT64, INT64, INT64, INT64, INT64, INT64, INT64, INT64, INT64, INT64>>[
+  {2, 5, 13, 52, 366, 8761, 525601, 31536001, 31536000001, 31536000000001}
+]
+==
+[required_features=CIVIL_TIME,EXTENDED_DATE_TIME_SIGNATURES]
+[name=datetime_in_date_trunc]
+select
+  date_trunc(dt, year),
+  date_trunc(dt, quarter),
+  date_trunc(dt, month),
+  date_trunc(dt, week),
+  date_trunc(dt, day),
+  date_trunc(dt, hour),
+  date_trunc(dt, minute),
+  date_trunc(dt, second),
+  date_trunc(dt, millisecond),
+  date_trunc(dt, microsecond),
+from (select datetime '1987-08-07 12:34:56.789123' dt)
+--
+ARRAY<STRUCT<DATETIME,
+             DATETIME,
+             DATETIME,
+             DATETIME,
+             DATETIME,
+             DATETIME,
+             DATETIME,
+             DATETIME,
+             DATETIME,
+             DATETIME>>
+[{
+   1987-01-01 00:00:00,
+   1987-07-01 00:00:00,
+   1987-08-01 00:00:00,
+   1987-08-02 00:00:00,
+   1987-08-07 00:00:00,
+   1987-08-07 12:00:00,
+   1987-08-07 12:34:00,
+   1987-08-07 12:34:56,
+   1987-08-07 12:34:56.789,
+   1987-08-07 12:34:56.789123
+ }]
+==
+[required_features=CIVIL_TIME,EXTENDED_DATE_TIME_SIGNATURES]
+[name=datetime_in_format_date]
+select
+  format_date("%D %T", dt),
+  format_date("%j %g", dt)
+from (select datetime '1987-08-07 12:34:56.789123' dt)
+--
+ARRAY<STRUCT<STRING, STRING>>[{"08/07/87 12:34:56", "219 87"}]
+==
+
+[required_features=CIVIL_TIME,EXTENDED_DATE_TIME_SIGNATURES]
+[name=timestamp_in_datetime_add_sub]
+select
+  datetime_add(ts, interval 1 day),         datetime_sub(ts, interval 1 day),
+  datetime_add(ts, interval 1 hour),        datetime_sub(ts, interval 1 hour),
+  datetime_add(ts, interval 1 minute),      datetime_sub(ts, interval 1 minute),
+  datetime_add(ts, interval 1 second),      datetime_sub(ts, interval 1 second),
+  datetime_add(ts, interval 1 microsecond), datetime_sub(ts, interval 1 microsecond),
+from (select timestamp '2000-01-01 00:00:00.000000' ts)
+--
+ARRAY<STRUCT<TIMESTAMP,
+             TIMESTAMP,
+             TIMESTAMP,
+             TIMESTAMP,
+             TIMESTAMP,
+             TIMESTAMP,
+             TIMESTAMP,
+             TIMESTAMP,
+             TIMESTAMP,
+             TIMESTAMP>>
+[{
+   2000-01-02 08:00:00+00,
+   1999-12-31 08:00:00+00,
+   2000-01-01 09:00:00+00,
+   2000-01-01 07:00:00+00,
+   2000-01-01 08:01:00+00,
+   2000-01-01 07:59:00+00,
+   2000-01-01 08:00:01+00,
+   2000-01-01 07:59:59+00,
+   2000-01-01 08:00:00.000001+00,
+   2000-01-01 07:59:59.999999+00
+ }]
+==
+
+[required_features=CIVIL_TIME,EXTENDED_DATE_TIME_SIGNATURES]
+[name=timestamp_in_datetime_diff]
+select
+  datetime_diff(ts2, ts1, day),
+  datetime_diff(ts2, ts1, hour),
+  datetime_diff(ts2, ts1, minute),
+  datetime_diff(ts2, ts1, second),
+  datetime_diff(ts2, ts1, microsecond),
+from (select timestamp '2000-01-01' ts1, timestamp '2001-02-03 04:05:06.789' ts2)
+--
+ARRAY<STRUCT<INT64, INT64, INT64, INT64, INT64>>[
+  {399, 9580, 574805, 34488306, 34488306789000}
+]
+==
+
+[required_features=CIVIL_TIME,EXTENDED_DATE_TIME_SIGNATURES]
+[name=timestamp_in_datetime_trunc]
+select
+  datetime_trunc(ts, year),
+  datetime_trunc(ts, quarter),
+  datetime_trunc(ts, month),
+  datetime_trunc(ts, week),
+  datetime_trunc(ts, day),
+  datetime_trunc(ts, hour),
+  datetime_trunc(ts, minute),
+  datetime_trunc(ts, second),
+  datetime_trunc(ts, microsecond),
+from (select timestamp '2001-02-03 04:05:06.789' ts)
+--
+ARRAY<STRUCT<TIMESTAMP,
+             TIMESTAMP,
+             TIMESTAMP,
+             TIMESTAMP,
+             TIMESTAMP,
+             TIMESTAMP,
+             TIMESTAMP,
+             TIMESTAMP,
+             TIMESTAMP>>
+[{
+   2001-01-01 08:00:00+00,
+   2001-01-01 08:00:00+00,
+   2001-02-01 08:00:00+00,
+   2001-01-28 08:00:00+00,
+   2001-02-03 08:00:00+00,
+   2001-02-03 12:00:00+00,
+   2001-02-03 12:05:00+00,
+   2001-02-03 12:05:06+00,
+   2001-02-03 12:05:06.789+00
+ }]
+==
+
+[required_features=CIVIL_TIME,EXTENDED_DATE_TIME_SIGNATURES]
+[name=timestamp_in_format_datetime]
+select
+  format_datetime("%D %T", ts),
+  format_datetime("%D %T", ts, 'America/New_York'),
+  format_datetime("%D %T", ts, 'UTC+08'),
+from (select timestamp '2001-02-03 04:05:06.789' ts)
+--
+ARRAY<STRUCT<STRING, STRING, STRING>>[
+  {"02/03/01 04:05:06", "02/03/01 07:05:06", "02/03/01 20:05:06"}
+]
+==
+
+[required_features=TIME_BUCKET_FUNCTIONS,INTERVAL_TYPE,CIVIL_TIME]
+[name=datetime_bucket]
+select
+  datetime_bucket(dt, INTERVAL '0.0005' SECOND),
+  datetime_bucket(dt, INTERVAL '0.1' SECOND),
+  datetime_bucket(dt, INTERVAL 15 SECOND),
+  datetime_bucket(dt, INTERVAL 20 MINUTE),
+  datetime_bucket(dt, INTERVAL 3 HOUR),
+  datetime_bucket(dt, INTERVAL 7 DAY)
+from (select datetime '2020-02-15 14:57:39.646565' dt)
+--
+ARRAY<STRUCT<DATETIME, DATETIME, DATETIME, DATETIME, DATETIME, DATETIME>>[
+  {
+    2020-02-15 14:57:39.646500,
+    2020-02-15 14:57:39.600,
+    2020-02-15 14:57:30,
+    2020-02-15 14:40:00,
+    2020-02-15 12:00:00,
+    2020-02-09 00:00:00
+  }
+]
+==
+
+[required_features=TIME_BUCKET_FUNCTIONS,INTERVAL_TYPE,CIVIL_TIME]
+[name=datetime_bucket_custom_origin]
+select
+  datetime_bucket(dt, INTERVAL '0.0005' SECOND, origin),
+  datetime_bucket(dt, INTERVAL '0.1' SECOND, origin),
+  datetime_bucket(dt, INTERVAL 15 SECOND, origin),
+  datetime_bucket(dt, INTERVAL 20 MINUTE, origin),
+  datetime_bucket(dt, INTERVAL 3 HOUR, origin),
+  datetime_bucket(dt, INTERVAL 7 DAY, origin)
+from (select datetime '2020-02-15 14:57:39.646565' dt,
+             datetime '2150-12-11 07:00:00' origin)
+--
+ARRAY<STRUCT<DATETIME, DATETIME, DATETIME, DATETIME, DATETIME, DATETIME>>[
+  {
+    2020-02-15 14:57:39.646500,
+    2020-02-15 14:57:39.600,
+    2020-02-15 14:57:30,
+    2020-02-15 14:40:00,
+    2020-02-15 13:00:00,
+    2020-02-14 07:00:00
+  }
+]
+==
+
+[required_features=TIME_BUCKET_FUNCTIONS,INTERVAL_TYPE,CIVIL_TIME,TIMESTAMP_NANOS]
+[name=datetime_bucket_nanos]
+select
+  datetime_bucket('2020-02-15 14:57:39.123456789',
+                   INTERVAL '0.000000005' SECOND),
+  datetime_bucket('2020-02-15 14:57:39', INTERVAL 7 DAY,
+                   '2100-01-12 07:31:55.123456789')
+--
+ARRAY<STRUCT<DATETIME, DATETIME>>[
+  {
+    2020-02-15 14:57:39.123456785,
+    2020-02-11 07:31:55.123456789
+  }
+]
+==
+
+[required_features=TIME_BUCKET_FUNCTIONS,INTERVAL_TYPE,CIVIL_TIME,EXTENDED_DATE_TIME_SIGNATURES]
+[name=datetime_in_timestamp_bucket]
+select
+  timestamp_bucket(dt, INTERVAL 7 DAY),
+  timestamp_bucket(dt, INTERVAL 7 DAY, datetime '2150-12-11 07:00:00')
+from (select datetime '2020-02-15 14:57:39.646565' dt)
+--
+ARRAY<STRUCT<DATETIME, DATETIME>>[{2020-02-09 00:00:00, 2020-02-14 07:00:00}]
+==
+
+[required_features=TIME_BUCKET_FUNCTIONS,INTERVAL_TYPE,CIVIL_TIME,EXTENDED_DATE_TIME_SIGNATURES]
+[name=datetime_in_date_bucket]
+select
+  date_bucket(dt, INTERVAL 7 DAY),
+  date_bucket(dt, INTERVAL 7 DAY, datetime '2150-12-11 07:00:00')
+from (select datetime '2020-02-15 14:57:39.646565' dt)
+--
+ARRAY<STRUCT<DATETIME, DATETIME>>[{2020-02-09 00:00:00, 2020-02-14 07:00:00}]
+==
+
+[required_features=TIME_BUCKET_FUNCTIONS,INTERVAL_TYPE,CIVIL_TIME]
+[name=datetime_bucket_null_inputs]
+select
+  datetime_bucket(NULL, INTERVAL 3 HOUR),
+  datetime_bucket(NULL, INTERVAL 3 HOUR, '2150-12-11 07:00:00'),
+  datetime_bucket('2020-02-15 14:57:39', NULL),
+  datetime_bucket('2020-02-15 14:57:39', NULL, '2150-12-11 07:00:00'),
+  datetime_bucket('2020-02-15 14:57:39', INTERVAL 3 HOUR, NULL)
+--
+ARRAY<STRUCT<DATETIME, DATETIME, DATETIME, DATETIME, DATETIME>>[
+  {NULL, NULL, NULL, NULL, NULL}
+]
+==
+
+[required_features=CIVIL_TIME,INTERVAL_TYPE,TIME_BUCKET_FUNCTIONS]
+[name=datetime_bucket_no_civil_time]
+select
+  datetime_bucket('2020-02-15 14:57:39', INTERVAL 1 DAY)
+--
+ARRAY<STRUCT<DATETIME>>[{2020-02-15 00:00:00}]
+==
+
+# A proto with a DATETIME_MICROS type annotation should produce an error when
+# an explicit-0 value is encoded for the field, as this is not valid.
+[required_features=CIVIL_TIME]
+[name=datetime_micros_annotation_explicit_0_value]
+select
+  CAST(b'\x18\x00' AS googlesql_test.CivilTimeTypesSinkPB).datetime_micros AS datetime_micros
+--
+ERROR: generic::out_of_range: Corrupted protocol buffer: Failed to interpret value for field googlesql_test.CivilTimeTypesSinkPB.datetime_micros with field format DATETIME_MICROS: 0
+==
+
+# A proto with a DATETIME_MICROS type annotation should produce a NULL when
+# a default-0 value is encoded for the field.
+[required_features=CIVIL_TIME]
+[name=datetime_micros_annotation_default_0_value]
+select
+  CAST(b'' AS googlesql_test.CivilTimeTypesSinkPB).datetime_micros AS datetime_micros
+--
+ARRAY<STRUCT<datetime_micros DATETIME>>[{NULL}]

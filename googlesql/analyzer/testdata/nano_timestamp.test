@@ -1,0 +1,291 @@
+# This test file only includes tests for the new TIMESTAMP literal (nano
+# precision).
+
+[default language_features=MAXIMUM,+TIMESTAMP_NANOS,-TIMESTAMP_PICOS]
+[language_features=NONE,{{+TIMESTAMP_NANOS|}}]
+select timestamp, timestamp '2014-01-01 00:00:00.123456789' from SimpleTypes;
+--
+ALTERNATION GROUP: +TIMESTAMP_NANOS
+--
+QueryStmt
++-output_column_list=
+| +-SimpleTypes.timestamp#15 AS timestamp [TIMESTAMP]
+| +-$query.$col2#20 AS `$col2` [TIMESTAMP]
++-query=
+  +-ProjectScan
+    +-column_list=[SimpleTypes.timestamp#15, $query.$col2#20]
+    +-expr_list=
+    | +-$col2#20 := Literal(type=TIMESTAMP, value=2014-01-01 08:00:00.123456789+00, has_explicit_type=TRUE)
+    +-input_scan=
+      +-TableScan(column_list=[SimpleTypes.timestamp#15], table=SimpleTypes, column_index_list=[14])
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: Invalid TIMESTAMP literal [at 1:19]
+select timestamp, timestamp '2014-01-01 00:00:00.123456789' from SimpleTypes;
+                  ^
+==
+
+# Maximum supported timestamp.
+select timestamp
+from SimpleTypes
+where timestamp = timestamp '9999-12-31 23:59:59.999999999+00'
+  and timestamp = '9999-12-31 23:59:59.999999999+00'
+--
+QueryStmt
++-output_column_list=
+| +-SimpleTypes.timestamp#15 AS timestamp [TIMESTAMP]
++-query=
+  +-ProjectScan
+    +-column_list=[SimpleTypes.timestamp#15]
+    +-input_scan=
+      +-FilterScan
+        +-column_list=[SimpleTypes.timestamp#15]
+        +-input_scan=
+        | +-TableScan(column_list=[SimpleTypes.timestamp#15], table=SimpleTypes, column_index_list=[14])
+        +-filter_expr=
+          +-FunctionCall(GoogleSQL:$and(BOOL, repeated(1) BOOL) -> BOOL)
+            +-FunctionCall(GoogleSQL:$equal(TIMESTAMP, TIMESTAMP) -> BOOL)
+            | +-ColumnRef(type=TIMESTAMP, column=SimpleTypes.timestamp#15)
+            | +-Literal(type=TIMESTAMP, value=9999-12-31 23:59:59.999999999+00, has_explicit_type=TRUE)
+            +-FunctionCall(GoogleSQL:$equal(TIMESTAMP, TIMESTAMP) -> BOOL)
+              +-ColumnRef(type=TIMESTAMP, column=SimpleTypes.timestamp#15)
+              +-Literal(type=TIMESTAMP, value=9999-12-31 23:59:59.999999999+00)
+==
+
+# All the formats (except for the different date separators).
+# 1) Date only
+# 2) Date and time
+# 3) Date and time with varying number of subsecond digits
+# 4) Each of these, with and without explicit time zone (the default is
+#    America/Los_Angeles)
+select case key when 0 then "2000-09-03"
+                when 1 then "2000-09-03 00:00:01"
+                when 2 then "2000-09-03 00:00:01.001"
+                when 3 then "2000-09-03 00:00:01.001001001"
+                when 5 then "2000-09-03 00:00:01.999999999"
+                when 6 then "2000-09-03 00:00:02"
+                when 7 then "2000-09-03 -01"
+                when 8 then "2000-09-03 00:00:01-01"
+                when 9 then "2000-09-03 00:00:01.001-01"
+                when 10 then "2000-09-03 00:00:01.001001001-01"
+                when 12 then "2000-09-03 00:00:01.999999999-01"
+                when 13 then "2000-09-03 00:00:02-01"
+                when 14 then timestamp('2000-01-01')
+                else null end
+from KeyValue
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#3 AS `$col1` [TIMESTAMP]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#3]
+    +-expr_list=
+    | +-$col1#3 :=
+    |   +-FunctionCall(GoogleSQL:$case_with_value(INT64, repeated(13) INT64, repeated(13) TIMESTAMP, TIMESTAMP) -> TIMESTAMP)
+    |     +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+    |     +-Literal(type=INT64, value=0)
+    |     +-Literal(type=TIMESTAMP, value=2000-09-03 07:00:00+00)
+    |     +-Literal(type=INT64, value=1)
+    |     +-Literal(type=TIMESTAMP, value=2000-09-03 07:00:01+00)
+    |     +-Literal(type=INT64, value=2)
+    |     +-Literal(type=TIMESTAMP, value=2000-09-03 07:00:01.001+00)
+    |     +-Literal(type=INT64, value=3)
+    |     +-Literal(type=TIMESTAMP, value=2000-09-03 07:00:01.001001001+00)
+    |     +-Literal(type=INT64, value=5)
+    |     +-Literal(type=TIMESTAMP, value=2000-09-03 07:00:01.999999999+00)
+    |     +-Literal(type=INT64, value=6)
+    |     +-Literal(type=TIMESTAMP, value=2000-09-03 07:00:02+00)
+    |     +-Literal(type=INT64, value=7)
+    |     +-Literal(type=TIMESTAMP, value=2000-09-03 01:00:00+00)
+    |     +-Literal(type=INT64, value=8)
+    |     +-Literal(type=TIMESTAMP, value=2000-09-03 01:00:01+00)
+    |     +-Literal(type=INT64, value=9)
+    |     +-Literal(type=TIMESTAMP, value=2000-09-03 01:00:01.001+00)
+    |     +-Literal(type=INT64, value=10)
+    |     +-Literal(type=TIMESTAMP, value=2000-09-03 01:00:01.001001001+00)
+    |     +-Literal(type=INT64, value=12)
+    |     +-Literal(type=TIMESTAMP, value=2000-09-03 01:00:01.999999999+00)
+    |     +-Literal(type=INT64, value=13)
+    |     +-Literal(type=TIMESTAMP, value=2000-09-03 01:00:02+00)
+    |     +-Literal(type=INT64, value=14)
+    |     +-FunctionCall(GoogleSQL:timestamp(STRING, optional(0) STRING) -> TIMESTAMP)
+    |     | +-Literal(type=STRING, value="2000-01-01")
+    |     +-Literal(type=TIMESTAMP, value=NULL)
+    +-input_scan=
+      +-TableScan(column_list=[KeyValue.Key#1], table=KeyValue, column_index_list=[0])
+==
+
+select if (int32 > 0, timestamp, "2001-01-01 12:34:56.7890000123")
+from simpletypes
+--
+ERROR: Could not cast literal "2001-01-01 12:34:56.7890000123" to type TIMESTAMP [at 1:34]
+select if (int32 > 0, timestamp, "2001-01-01 12:34:56.7890000123")
+                                 ^
+==
+
+select timestamp '2015-09-23 12:34:56.1234567'
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [TIMESTAMP]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 := Literal(type=TIMESTAMP, value=2015-09-23 19:34:56.123456700+00, has_explicit_type=TRUE)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+select timestamp '2015-09-23 12:34:56.12345678'
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [TIMESTAMP]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 := Literal(type=TIMESTAMP, value=2015-09-23 19:34:56.123456780+00, has_explicit_type=TRUE)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+select timestamp '2015-09-23 12:34:56.123456789'
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [TIMESTAMP]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 := Literal(type=TIMESTAMP, value=2015-09-23 19:34:56.123456789+00, has_explicit_type=TRUE)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Too many digits.
+select timestamp '2011-01-01 12:34:56.0123456789 UTC'
+--
+ERROR: Invalid TIMESTAMP literal [at 1:8]
+select timestamp '2011-01-01 12:34:56.0123456789 UTC'
+       ^
+==
+
+# TIMESTAMP only allows 9 digits of precision (nanoseconds). More digits will
+# result in error.
+select timestamp '2003-12-05 08:30:15.0987654321 UTC'
+--
+ERROR: Invalid TIMESTAMP literal [at 1:8]
+select timestamp '2003-12-05 08:30:15.0987654321 UTC'
+       ^
+==
+
+# Even zeros after 9 digits of precision cause an error
+select timestamp '2003-12-05 08:30:15.0000000000 UTC'
+--
+ERROR: Invalid TIMESTAMP literal [at 1:8]
+select timestamp '2003-12-05 08:30:15.0000000000 UTC'
+       ^
+==
+
+# Timestamp add for nano.
+select timestamp_add(timestamp_seconds(1), INTERVAL 1 NANOSECOND)
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [TIMESTAMP]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(GoogleSQL:timestamp_add(TIMESTAMP, INT64, ENUM<googlesql.functions.DateTimestampPart>) -> TIMESTAMP)
+    |     +-FunctionCall(GoogleSQL:timestamp_seconds(INT64) -> TIMESTAMP)
+    |     | +-Literal(type=INT64, value=1)
+    |     +-Literal(type=INT64, value=1)
+    |     +-Literal(type=ENUM<googlesql.functions.DateTimestampPart>, value=NANOSECOND)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Timestamp sub for nano.
+select timestamp_sub(timestamp_seconds(1), INTERVAL 1 NANOSECOND)
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [TIMESTAMP]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(GoogleSQL:timestamp_sub(TIMESTAMP, INT64, ENUM<googlesql.functions.DateTimestampPart>) -> TIMESTAMP)
+    |     +-FunctionCall(GoogleSQL:timestamp_seconds(INT64) -> TIMESTAMP)
+    |     | +-Literal(type=INT64, value=1)
+    |     +-Literal(type=INT64, value=1)
+    |     +-Literal(type=ENUM<googlesql.functions.DateTimestampPart>, value=NANOSECOND)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Timestamp diff for nano.
+select timestamp_diff(timestamp_seconds(1), timestamp_seconds(1), NANOSECOND)
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(GoogleSQL:timestamp_diff(TIMESTAMP, TIMESTAMP, ENUM<googlesql.functions.DateTimestampPart>) -> INT64)
+    |     +-FunctionCall(GoogleSQL:timestamp_seconds(INT64) -> TIMESTAMP)
+    |     | +-Literal(type=INT64, value=1)
+    |     +-FunctionCall(GoogleSQL:timestamp_seconds(INT64) -> TIMESTAMP)
+    |     | +-Literal(type=INT64, value=1)
+    |     +-Literal(type=ENUM<googlesql.functions.DateTimestampPart>, value=NANOSECOND)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Timestamp trunc for nano.
+select timestamp_trunc(timestamp_seconds(1), NANOSECOND)
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [TIMESTAMP]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(GoogleSQL:timestamp_trunc(TIMESTAMP, ENUM<googlesql.functions.DateTimestampPart>, optional(0) STRING) -> TIMESTAMP)
+    |     +-FunctionCall(GoogleSQL:timestamp_seconds(INT64) -> TIMESTAMP)
+    |     | +-Literal(type=INT64, value=1)
+    |     +-Literal(type=ENUM<googlesql.functions.DateTimestampPart>, value=NANOSECOND)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Timestamp extract for nano.
+select extract(NANOSECOND FROM timestamp_seconds(1))
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(GoogleSQL:$extract(TIMESTAMP, ENUM<googlesql.functions.DateTimestampPart>, optional(0) STRING) -> INT64)
+    |     +-FunctionCall(GoogleSQL:timestamp_seconds(INT64) -> TIMESTAMP)
+    |     | +-Literal(type=INT64, value=1)
+    |     +-Literal(type=ENUM<googlesql.functions.DateTimestampPart>, value=NANOSECOND)
+    +-input_scan=
+      +-SingleRowScan

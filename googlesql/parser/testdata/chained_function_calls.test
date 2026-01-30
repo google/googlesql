@@ -1,0 +1,1170 @@
+select f(1).g().h(2,3)
+--
+QueryStatement [0-22] [select f(1).g().h(2,3)]
+  Query [0-22] [select f(1).g().h(2,3)]
+    Select [0-22] [select f(1).g().h(2,3)]
+      SelectList [7-22] [f(1).g().h(2,3)]
+        SelectColumn [7-22] [f(1).g().h(2,3)]
+          FunctionCall(is_chained_call=true) [7-22] [f(1).g().h(2,3)]
+            PathExpression [16-17] [h]
+              Identifier(h) [16-17] [h]
+            FunctionCall(is_chained_call=true) [7-15] [f(1).g()]
+              PathExpression [12-13] [g]
+                Identifier(g) [12-13] [g]
+              FunctionCall [7-11] [f(1)]
+                PathExpression [7-8] [f]
+                  Identifier(f) [7-8] [f]
+                IntLiteral(1) [9-10] [1]
+            IntLiteral(2) [18-19] [2]
+            IntLiteral(3) [20-21] [3]
+--
+SELECT
+  f(1).g().h(2, 3)
+==
+
+select (5).f(1).g(2)
+--
+QueryStatement [0-20] [select (5).f(1).g(2)]
+  Query [0-20] [select (5).f(1).g(2)]
+    Select [0-20] [select (5).f(1).g(2)]
+      SelectList [7-20] [(5).f(1).g(2)]
+        SelectColumn [7-20] [(5).f(1).g(2)]
+          FunctionCall(is_chained_call=true) [7-20] [(5).f(1).g(2)]
+            PathExpression [16-17] [g]
+              Identifier(g) [16-17] [g]
+            FunctionCall(is_chained_call=true) [7-15] [(5).f(1)]
+              PathExpression [11-12] [f]
+                Identifier(f) [11-12] [f]
+              IntLiteral(5) [8-9] [5]
+              IntLiteral(1) [13-14] [1]
+            IntLiteral(2) [18-19] [2]
+--
+SELECT
+  (5).f(1).g(2)
+==
+
+SELECT a.b.c(),
+       (a).b(),
+       (a.b).c(),
+       (a.b).(c.d)(),
+       a.b.(c.d)()
+--
+QueryStatement [0-90] [SELECT a.b....b.(c.d)()]
+  Query [0-90] [SELECT a.b....b.(c.d)()]
+    Select [0-90] [SELECT a.b....b.(c.d)()]
+      SelectList [7-90] [a.b.c(),....b.(c.d)()]
+        SelectColumn [7-14] [a.b.c()]
+          FunctionCall [7-14] [a.b.c()]
+            PathExpression [7-12] [a.b.c]
+              Identifier(a) [7-8] [a]
+              Identifier(b) [9-10] [b]
+              Identifier(c) [11-12] [c]
+        SelectColumn [23-30] [(a).b()]
+          FunctionCall(is_chained_call=true) [23-30] [(a).b()]
+            PathExpression [27-28] [b]
+              Identifier(b) [27-28] [b]
+            PathExpression [24-25] [a]
+              Identifier(a) [24-25] [a]
+        SelectColumn [39-48] [(a.b).c()]
+          FunctionCall(is_chained_call=true) [39-48] [(a.b).c()]
+            PathExpression [45-46] [c]
+              Identifier(c) [45-46] [c]
+            PathExpression [40-43] [a.b]
+              Identifier(a) [40-41] [a]
+              Identifier(b) [42-43] [b]
+        SelectColumn [57-70] [(a.b).(c.d)()]
+          FunctionCall(is_chained_call=true) [57-70] [(a.b).(c.d)()]
+            PathExpression [64-67] [c.d]
+              Identifier(c) [64-65] [c]
+              Identifier(d) [66-67] [d]
+            PathExpression [58-61] [a.b]
+              Identifier(a) [58-59] [a]
+              Identifier(b) [60-61] [b]
+        SelectColumn [79-90] [a.b.(c.d)()]
+          FunctionCall(is_chained_call=true) [79-90] [a.b.(c.d)()]
+            PathExpression [84-87] [c.d]
+              Identifier(c) [84-85] [c]
+              Identifier(d) [86-87] [d]
+            PathExpression [79-82] [a.b]
+              Identifier(a) [79-80] [a]
+              Identifier(b) [81-82] [b]
+--
+SELECT
+  a.b.c(),
+  (a).b(),
+  (a.b).c(),
+  (a.b).(c.d)(),
+  a.b.(c.d)()
+==
+
+SELECT (1+2).abs()
+--
+QueryStatement [0-18] [SELECT (1+2).abs()]
+  Query [0-18] [SELECT (1+2).abs()]
+    Select [0-18] [SELECT (1+2).abs()]
+      SelectList [7-18] [(1+2).abs()]
+        SelectColumn [7-18] [(1+2).abs()]
+          FunctionCall(is_chained_call=true) [7-18] [(1+2).abs()]
+            PathExpression [13-16] [abs]
+              Identifier(abs) [13-16] [abs]
+            BinaryExpression(+) [8-11] [1+2]
+              IntLiteral(1) [8-9] [1]
+              IntLiteral(2) [10-11] [2]
+--
+SELECT
+  (1 + 2).abs()
+==
+
+# Almost all leaf expressions (literals, keywords, etc) work before chained
+# function calls, including those with spaces.
+[language_features=NONE,+BRACED_PROTO_CONSTRUCTORS]
+SELECT
+  true.x(),
+  null.x(),
+  "abc".x(),
+  "abc" "def".x(),       # Concatenated literals.
+  b"abc" b"def".x(),
+  DATE "2021-02-02".x(), # DATE and other prefixed literals.
+  NUMERIC "123".x(),
+  BIGNUMERIC "123".x(),
+  @param.x(),
+  ?.x(),
+  [2].x(),
+  a[2].x(),
+  ARRAY<INT64>[1,2].x(),
+  (x,y).x(),
+  STRUCT<INT64>(5).x(),
+  {f: 123}.x(),
+  NEW MyStruct().x(),
+  NEW MyProto{}.x(),
+  CASE WHEN true THEN 5 END.x(),
+  CAST(5 AS int32).x(),
+  WITH(y AS 5, y).x(),
+  INTERVAL 5 YEAR.x(),
+  UPDATE(myproto) {f:10}.x(),  # UPDATE constructor
+  (1).x(),               # Ints and floats only work inside parentheses.
+  (2.).x(),
+  (3.4).x(),
+  (1 + 2).x(),
+  (1+2).x(),             # Parenthesized expression
+  (select 1).x(),        # Scalar subquery
+  ARRAY(select 1).x(),   # Scalar ARRAY subquery
+--
+QueryStatement [0-773] [SELECT   true...select 1).x(),]
+  Query [0-773] [SELECT   true...select 1).x(),]
+    Select [0-773] [SELECT   true...select 1).x(),]
+      SelectList [9-773] [true.x(),...select 1).x(),]
+        SelectColumn [9-17] [true.x()]
+          FunctionCall(is_chained_call=true) [9-17] [true.x()]
+            PathExpression [14-15] [x]
+              Identifier(x) [14-15] [x]
+            BooleanLiteral(true) [9-13] [true]
+        SelectColumn [21-29] [null.x()]
+          FunctionCall(is_chained_call=true) [21-29] [null.x()]
+            PathExpression [26-27] [x]
+              Identifier(x) [26-27] [x]
+            NullLiteral(null) [21-25] [null]
+        SelectColumn [33-42] ["abc".x()]
+          FunctionCall(is_chained_call=true) [33-42] ["abc".x()]
+            PathExpression [39-40] [x]
+              Identifier(x) [39-40] [x]
+            StringLiteral [33-38] ["abc"]
+              StringLiteralComponent("abc") [33-38] ["abc"]
+        SelectColumn [46-61] ["abc" "def".x()]
+          FunctionCall(is_chained_call=true) [46-61] ["abc" "def".x()]
+            PathExpression [58-59] [x]
+              Identifier(x) [58-59] [x]
+            StringLiteral [46-57] ["abc" "def"]
+              StringLiteralComponent("abc") [46-51] ["abc"]
+              StringLiteralComponent("def") [52-57] ["def"]
+        SelectColumn [96-113] [b"abc" b"def".x()]
+          FunctionCall(is_chained_call=true) [96-113] [b"abc" b"def".x()]
+            PathExpression [110-111] [x]
+              Identifier(x) [110-111] [x]
+            BytesLiteral [96-109] [b"abc" b"def"]
+              BytesLiteralComponent(b"abc") [96-102] [b"abc"]
+              BytesLiteralComponent(b"def") [103-109] [b"def"]
+        SelectColumn [117-138] [DATE "2021-02-02".x()]
+          FunctionCall(is_chained_call=true) [117-138] [DATE "2021-02-02".x()]
+            PathExpression [135-136] [x]
+              Identifier(x) [135-136] [x]
+            DateOrTimeLiteral(TYPE_DATE) [117-134] [DATE "2021-02-02"]
+              StringLiteral [122-134] ["2021-02-02"]
+                StringLiteralComponent("2021-02-02") [122-134] ["2021-02-02"]
+        SelectColumn [178-195] [NUMERIC "123".x()]
+          FunctionCall(is_chained_call=true) [178-195] [NUMERIC "123".x()]
+            PathExpression [192-193] [x]
+              Identifier(x) [192-193] [x]
+            NumericLiteral [178-191] [NUMERIC "123"]
+              StringLiteral [186-191] ["123"]
+                StringLiteralComponent("123") [186-191] ["123"]
+        SelectColumn [199-219] [BIGNUMERIC "123".x()]
+          FunctionCall(is_chained_call=true) [199-219] [BIGNUMERIC "123".x()]
+            PathExpression [216-217] [x]
+              Identifier(x) [216-217] [x]
+            BigNumericLiteral [199-215] [BIGNUMERIC "123"]
+              StringLiteral [210-215] ["123"]
+                StringLiteralComponent("123") [210-215] ["123"]
+        SelectColumn [223-233] [@param.x()]
+          FunctionCall(is_chained_call=true) [223-233] [@param.x()]
+            PathExpression [230-231] [x]
+              Identifier(x) [230-231] [x]
+            ParameterExpr [223-229] [@param]
+              Identifier(param) [224-229] [param]
+        SelectColumn [237-242] [?.x()]
+          FunctionCall(is_chained_call=true) [237-242] [?.x()]
+            PathExpression [239-240] [x]
+              Identifier(x) [239-240] [x]
+            ParameterExpr(1) [237-238] [?]
+        SelectColumn [246-253] [[2].x()]
+          FunctionCall(is_chained_call=true) [246-253] [[2].x()]
+            PathExpression [250-251] [x]
+              Identifier(x) [250-251] [x]
+            ArrayConstructor [246-249] [[2]]
+              IntLiteral(2) [247-248] [2]
+        SelectColumn [257-265] [a[2].x()]
+          FunctionCall(is_chained_call=true) [257-265] [a[2].x()]
+            PathExpression [262-263] [x]
+              Identifier(x) [262-263] [x]
+            ArrayElement [257-261] [a[2]]
+              PathExpression [257-258] [a]
+                Identifier(a) [257-258] [a]
+              Location [258-259] [[]
+              IntLiteral(2) [259-260] [2]
+        SelectColumn [269-290] [ARRAY<INT64>[1,2].x()]
+          FunctionCall(is_chained_call=true) [269-290] [ARRAY<INT64>[1,2].x()]
+            PathExpression [287-288] [x]
+              Identifier(x) [287-288] [x]
+            ArrayConstructor [269-286] [ARRAY<INT64>[1,2]]
+              ArrayType [269-281] [ARRAY<INT64>]
+                SimpleType [275-280] [INT64]
+                  PathExpression [275-280] [INT64]
+                    Identifier(INT64) [275-280] [INT64]
+              IntLiteral(1) [282-283] [1]
+              IntLiteral(2) [284-285] [2]
+        SelectColumn [294-303] [(x,y).x()]
+          FunctionCall(is_chained_call=true) [294-303] [(x,y).x()]
+            PathExpression [300-301] [x]
+              Identifier(x) [300-301] [x]
+            StructConstructorWithParens [294-299] [(x,y)]
+              PathExpression [295-296] [x]
+                Identifier(x) [295-296] [x]
+              PathExpression [297-298] [y]
+                Identifier(y) [297-298] [y]
+        SelectColumn [307-327] [STRUCT<INT64>(5).x()]
+          FunctionCall(is_chained_call=true) [307-327] [STRUCT<INT64>(5).x()]
+            PathExpression [324-325] [x]
+              Identifier(x) [324-325] [x]
+            StructConstructorWithKeyword [307-323] [STRUCT<INT64>(5)]
+              StructType [307-320] [STRUCT<INT64>]
+                StructField [314-319] [INT64]
+                  SimpleType [314-319] [INT64]
+                    PathExpression [314-319] [INT64]
+                      Identifier(INT64) [314-319] [INT64]
+              StructConstructorArg [321-322] [5]
+                IntLiteral(5) [321-322] [5]
+        SelectColumn [331-343] [{f: 123}.x()]
+          FunctionCall(is_chained_call=true) [331-343] [{f: 123}.x()]
+            PathExpression [340-341] [x]
+              Identifier(x) [340-341] [x]
+            BracedConstructor [331-339] [{f: 123}]
+              BracedConstructorField [332-338] [f: 123]
+                BracedConstructorLhs [332-333] [f]
+                  PathExpression [332-333] [f]
+                    Identifier(f) [332-333] [f]
+                BracedConstructorFieldValue [335-338] [123]
+                  IntLiteral(123) [335-338] [123]
+        SelectColumn [347-365] [NEW MyStruct().x()]
+          FunctionCall(is_chained_call=true) [347-365] [NEW MyStruct().x()]
+            PathExpression [362-363] [x]
+              Identifier(x) [362-363] [x]
+            NewConstructor [347-361] [NEW MyStruct()]
+              SimpleType [351-359] [MyStruct]
+                PathExpression [351-359] [MyStruct]
+                  Identifier(MyStruct) [351-359] [MyStruct]
+        SelectColumn [369-386] [NEW MyProto{}.x()]
+          FunctionCall(is_chained_call=true) [369-386] [NEW MyProto{}.x()]
+            PathExpression [383-384] [x]
+              Identifier(x) [383-384] [x]
+            BracedNewConstructor [369-382] [NEW MyProto{}]
+              SimpleType [373-380] [MyProto]
+                PathExpression [373-380] [MyProto]
+                  Identifier(MyProto) [373-380] [MyProto]
+              BracedConstructor [380-382] [{}]
+        SelectColumn [390-419] [CASE WHEN true THEN 5 END.x()]
+          FunctionCall(is_chained_call=true) [390-419] [CASE WHEN true THEN 5 END.x()]
+            PathExpression [416-417] [x]
+              Identifier(x) [416-417] [x]
+            CaseNoValueExpression [390-415] [CASE WHEN true THEN 5 END]
+              BooleanLiteral(true) [400-404] [true]
+              IntLiteral(5) [410-411] [5]
+        SelectColumn [423-443] [CAST(5 AS int32).x()]
+          FunctionCall(is_chained_call=true) [423-443] [CAST(5 AS int32).x()]
+            PathExpression [440-441] [x]
+              Identifier(x) [440-441] [x]
+            CastExpression [423-439] [CAST(5 AS int32)]
+              IntLiteral(5) [428-429] [5]
+              SimpleType [433-438] [int32]
+                PathExpression [433-438] [int32]
+                  Identifier(int32) [433-438] [int32]
+        SelectColumn [447-466] [WITH(y AS 5, y).x()]
+          FunctionCall(is_chained_call=true) [447-466] [WITH(y AS 5, y).x()]
+            PathExpression [463-464] [x]
+              Identifier(x) [463-464] [x]
+            WithExpression [447-462] [WITH(y AS 5, y)]
+              SelectList [452-458] [y AS 5]
+                SelectColumn [452-458] [y AS 5]
+                  IntLiteral(5) [457-458] [5]
+                  Alias [452-456] [y AS]
+                    Identifier(y) [452-453] [y]
+              PathExpression [460-461] [y]
+                Identifier(y) [460-461] [y]
+        SelectColumn [470-489] [INTERVAL 5 YEAR.x()]
+          FunctionCall(is_chained_call=true) [470-489] [INTERVAL 5 YEAR.x()]
+            PathExpression [486-487] [x]
+              Identifier(x) [486-487] [x]
+            IntervalExpr [470-485] [INTERVAL 5 YEAR]
+              IntLiteral(5) [479-480] [5]
+              Identifier(YEAR) [481-485] [YEAR]
+        SelectColumn [493-519] [UPDATE(myproto) {f:10}.x()]
+          FunctionCall(is_chained_call=true) [493-519] [UPDATE(myproto) {f:10}.x()]
+            PathExpression [516-517] [x]
+              Identifier(x) [516-517] [x]
+            UpdateConstructor [493-515] [UPDATE(myproto) {f:10}]
+              FunctionCall [493-508] [UPDATE(myproto)]
+                PathExpression [493-499] [UPDATE]
+                  Identifier(`UPDATE`) [493-499] [UPDATE]
+                PathExpression [500-507] [myproto]
+                  Identifier(myproto) [500-507] [myproto]
+              BracedConstructor [509-515] [{f:10}]
+                BracedConstructorField [510-514] [f:10]
+                  BracedConstructorLhs [510-511] [f]
+                    PathExpression [510-511] [f]
+                      Identifier(f) [510-511] [f]
+                  BracedConstructorFieldValue [512-514] [10]
+                    IntLiteral(10) [512-514] [10]
+        SelectColumn [545-552] [(1).x()]
+          FunctionCall(is_chained_call=true) [545-552] [(1).x()]
+            PathExpression [549-550] [x]
+              Identifier(x) [549-550] [x]
+            IntLiteral(1) [546-547] [1]
+        SelectColumn [618-626] [(2.).x()]
+          FunctionCall(is_chained_call=true) [618-626] [(2.).x()]
+            PathExpression [623-624] [x]
+              Identifier(x) [623-624] [x]
+            FloatLiteral(2.) [619-621] [2.]
+        SelectColumn [630-639] [(3.4).x()]
+          FunctionCall(is_chained_call=true) [630-639] [(3.4).x()]
+            PathExpression [636-637] [x]
+              Identifier(x) [636-637] [x]
+            FloatLiteral(3.4) [631-634] [3.4]
+        SelectColumn [643-654] [(1 + 2).x()]
+          FunctionCall(is_chained_call=true) [643-654] [(1 + 2).x()]
+            PathExpression [651-652] [x]
+              Identifier(x) [651-652] [x]
+            BinaryExpression(+) [644-649] [1 + 2]
+              IntLiteral(1) [644-645] [1]
+              IntLiteral(2) [648-649] [2]
+        SelectColumn [658-667] [(1+2).x()]
+          FunctionCall(is_chained_call=true) [658-667] [(1+2).x()]
+            PathExpression [664-665] [x]
+              Identifier(x) [664-665] [x]
+            BinaryExpression(+) [659-662] [1+2]
+              IntLiteral(1) [659-660] [1]
+              IntLiteral(2) [661-662] [2]
+        SelectColumn [710-724] [(select 1).x()]
+          FunctionCall(is_chained_call=true) [710-724] [(select 1).x()]
+            PathExpression [721-722] [x]
+              Identifier(x) [721-722] [x]
+            ExpressionSubquery [710-720] [(select 1)]
+              Query [711-719] [select 1]
+                Select [711-719] [select 1]
+                  SelectList [718-719] [1]
+                    SelectColumn [718-719] [1]
+                      IntLiteral(1) [718-719] [1]
+        SelectColumn [753-772] [ARRAY(select 1).x()]
+          FunctionCall(is_chained_call=true) [753-772] [ARRAY(select 1).x()]
+            PathExpression [769-770] [x]
+              Identifier(x) [769-770] [x]
+            ExpressionSubquery(modifier=ARRAY) [753-768] [ARRAY(select 1)]
+              Query [759-767] [select 1]
+                Select [759-767] [select 1]
+                  SelectList [766-767] [1]
+                    SelectColumn [766-767] [1]
+                      IntLiteral(1) [766-767] [1]
+--
+SELECT
+  true.x(),
+  null.x(),
+  "abc".x(),
+  "abc" "def".x(),
+  b"abc" b"def".x(),
+  DATE "2021-02-02".x(),
+  NUMERIC "123".x(),
+  BIGNUMERIC "123".x(),
+  @param.x(),
+  ?.x(),
+  ARRAY[2].x(),
+  a[2].x(),
+  ARRAY< INT64 >[1, 2].x(),
+  (x, y).x(),
+  STRUCT< INT64 > (5).x(),
+  {
+    f : 123
+  }.x(),
+  NEW MyStruct().x(),
+  NEW MyProto { }.x(),
+  CASE
+    WHEN true THEN 5
+  END.x(),
+  CAST(5 AS int32).x(),
+  WITH(y AS 5, y).x(),
+  INTERVAL 5 YEAR.x(),
+  `UPDATE`(myproto) {
+    f : 10
+  }.x(),
+  (1).x(),
+  (2.).x(),
+  (3.4).x(),
+  (1 + 2).x(),
+  (1 + 2).x(),
+  (
+    SELECT
+      1
+  ).x(),
+  ARRAY(
+    SELECT
+      1
+  ).x()
+==
+
+# Expressions that don't work before a chained function call.
+# It's just the ones that would consume the dot or dot-identifier.
+# Integer and float literals are disallowed because of weirdness with the dot.
+SELECT {{@@sysvar|(x->x+1)|123|-123|123.|123.0|123e10|123.1e-2}}.x()
+--
+ALTERNATION GROUP: @@sysvar
+--
+ERROR: Syntax error: Function call cannot be applied to this expression. Function calls require a path, e.g. a.b.c() [at 1:18]
+SELECT @@sysvar.x()
+                 ^
+--
+ALTERNATION GROUP: (x->x+1)
+--
+ERROR: Syntax error: Expected "," but got "->" [at 1:10]
+SELECT (x->x+1).x()
+         ^
+--
+ALTERNATION GROUP: 123
+--
+ERROR: Syntax error: Expected end of input but got "(" [at 1:13]
+SELECT 123.x()
+            ^
+--
+ALTERNATION GROUP: -123
+--
+ERROR: Syntax error: Expected end of input but got "(" [at 1:14]
+SELECT -123.x()
+             ^
+--
+ALTERNATION GROUP: 123.
+--
+ERROR: Syntax error: Unexpected "(" [at 1:14]
+SELECT 123..x()
+             ^
+--
+ALTERNATION GROUP: 123.0
+--
+ERROR: Syntax error: Unexpected "(" [at 1:15]
+SELECT 123.0.x()
+              ^
+--
+ALTERNATION GROUP: 123e10
+--
+ERROR: Syntax error: Unexpected "(" [at 1:16]
+SELECT 123e10.x()
+               ^
+--
+ALTERNATION GROUP: 123.1e-2
+--
+ERROR: Syntax error: Unexpected "(" [at 1:18]
+SELECT 123.1e-2.x()
+                 ^
+==
+
+# Integer with a space after is also blocked, even though the space splits
+# the token, to avoid making whitespace meaningful.
+SELECT 123 .f()
+--
+ERROR: Syntax error: Unexpected "(" [at 1:14]
+SELECT 123 .f()
+             ^
+==
+
+# Literals that work with chained calls don't work when followed with () directly.
+# The errors come from a special case error in the grammar.
+SELECT {{5|true|"abc"|NULL}}()
+--
+ALTERNATION GROUP: 5
+--
+ERROR: Syntax error: Function call cannot be applied to this expression. Function calls require a path, e.g. a.b.c() [at 1:9]
+SELECT 5()
+        ^
+--
+ALTERNATION GROUP: true
+--
+ERROR: Syntax error: Function call cannot be applied to this expression. Function calls require a path, e.g. a.b.c() [at 1:12]
+SELECT true()
+           ^
+--
+ALTERNATION GROUP: "abc"
+--
+ERROR: Syntax error: Function call cannot be applied to this expression. Function calls require a path, e.g. a.b.c() [at 1:13]
+SELECT "abc"()
+            ^
+--
+ALTERNATION GROUP: NULL
+--
+ERROR: Syntax error: Function call cannot be applied to this expression. Function calls require a path, e.g. a.b.c() [at 1:12]
+SELECT NULL()
+           ^
+==
+
+select f(1,2).g(3)
+--
+QueryStatement [0-18] [select f(1,2).g(3)]
+  Query [0-18] [select f(1,2).g(3)]
+    Select [0-18] [select f(1,2).g(3)]
+      SelectList [7-18] [f(1,2).g(3)]
+        SelectColumn [7-18] [f(1,2).g(3)]
+          FunctionCall(is_chained_call=true) [7-18] [f(1,2).g(3)]
+            PathExpression [14-15] [g]
+              Identifier(g) [14-15] [g]
+            FunctionCall [7-13] [f(1,2)]
+              PathExpression [7-8] [f]
+                Identifier(f) [7-8] [f]
+              IntLiteral(1) [9-10] [1]
+              IntLiteral(2) [11-12] [2]
+            IntLiteral(3) [16-17] [3]
+--
+SELECT
+  f(1, 2).g(3)
+==
+
+select a.b().c.d()
+--
+QueryStatement [0-18] [select a.b().c.d()]
+  Query [0-18] [select a.b().c.d()]
+    Select [0-18] [select a.b().c.d()]
+      SelectList [7-18] [a.b().c.d()]
+        SelectColumn [7-18] [a.b().c.d()]
+          FunctionCall(is_chained_call=true) [7-18] [a.b().c.d()]
+            PathExpression [15-16] [d]
+              Identifier(d) [15-16] [d]
+            DotIdentifier [7-14] [a.b().c]
+              FunctionCall [7-12] [a.b()]
+                PathExpression [7-10] [a.b]
+                  Identifier(a) [7-8] [a]
+                  Identifier(b) [9-10] [b]
+              Identifier(c) [13-14] [c]
+--
+SELECT
+  a.b().c.d()
+==
+
+select a.(b.c).d.e().f.g()
+--
+QueryStatement [0-26] [select a.(b.c).d.e().f.g()]
+  Query [0-26] [select a.(b.c).d.e().f.g()]
+    Select [0-26] [select a.(b.c).d.e().f.g()]
+      SelectList [7-26] [a.(b.c).d.e().f.g()]
+        SelectColumn [7-26] [a.(b.c).d.e().f.g()]
+          FunctionCall(is_chained_call=true) [7-26] [a.(b.c).d.e().f.g()]
+            PathExpression [23-24] [g]
+              Identifier(g) [23-24] [g]
+            DotIdentifier [7-22] [a.(b.c).d.e().f]
+              FunctionCall(is_chained_call=true) [7-20] [a.(b.c).d.e()]
+                PathExpression [17-18] [e]
+                  Identifier(e) [17-18] [e]
+                DotIdentifier [7-16] [a.(b.c).d]
+                  DotGeneralizedField [7-14] [a.(b.c)]
+                    PathExpression [7-8] [a]
+                      Identifier(a) [7-8] [a]
+                    PathExpression [10-13] [b.c]
+                      Identifier(b) [10-11] [b]
+                      Identifier(c) [12-13] [c]
+                  Identifier(d) [15-16] [d]
+              Identifier(f) [21-22] [f]
+--
+SELECT
+  a.(b.c).d.e().f.g()
+==
+
+SELECT a.(b.c)(1,2)
+--
+QueryStatement [0-19] [SELECT a.(b.c)(1,2)]
+  Query [0-19] [SELECT a.(b.c)(1,2)]
+    Select [0-19] [SELECT a.(b.c)(1,2)]
+      SelectList [7-19] [a.(b.c)(1,2)]
+        SelectColumn [7-19] [a.(b.c)(1,2)]
+          FunctionCall(is_chained_call=true) [7-19] [a.(b.c)(1,2)]
+            PathExpression [10-13] [b.c]
+              Identifier(b) [10-11] [b]
+              Identifier(c) [12-13] [c]
+            PathExpression [7-8] [a]
+              Identifier(a) [7-8] [a]
+            IntLiteral(1) [15-16] [1]
+            IntLiteral(2) [17-18] [2]
+--
+SELECT
+  a.(b.c)(1, 2)
+==
+
+select (1)(2)
+--
+ERROR: Syntax error: Function call cannot be applied to this expression. Function calls require a path, e.g. a.b.c() [at 1:11]
+select (1)(2)
+          ^
+==
+
+select a.b()()
+--
+ERROR: Syntax error: Double function call parentheses [at 1:13]
+select a.b()()
+            ^
+==
+
+# Precedence relative to unary operators (minus or NOT).
+# They don't get included in the function call.
+SELECT -true.f(),
+       NOT true.f()
+--
+QueryStatement [0-37] [SELECT -true...NOT true.f()]
+  Query [0-37] [SELECT -true...NOT true.f()]
+    Select [0-37] [SELECT -true...NOT true.f()]
+      SelectList [7-37] [-true.f(),        NOT true.f()]
+        SelectColumn [7-16] [-true.f()]
+          UnaryExpression(-) [7-16] [-true.f()]
+            FunctionCall(is_chained_call=true) [8-16] [true.f()]
+              PathExpression [13-14] [f]
+                Identifier(f) [13-14] [f]
+              BooleanLiteral(true) [8-12] [true]
+        SelectColumn [25-37] [NOT true.f()]
+          UnaryExpression(NOT) [25-37] [NOT true.f()]
+            FunctionCall(is_chained_call=true) [29-37] [true.f()]
+              PathExpression [34-35] [f]
+                Identifier(f) [34-35] [f]
+              BooleanLiteral(true) [29-33] [true]
+--
+SELECT
+  -true.f(),
+  NOT true.f()
+==
+
+# If this worked, it could be confusing how the - binds, as a unary
+# operator after the function call rather than as part of the number.
+SELECT -5.0.f()
+--
+ERROR: Syntax error: Unexpected "(" [at 1:14]
+SELECT -5.0.f()
+             ^
+==
+
+# Precedence relative to AND and OR.
+select true.coalesce() OR false.coalesce() AND null.coalesce()
+--
+QueryStatement [0-62] [select true...coalesce()]
+  Query [0-62] [select true...coalesce()]
+    Select [0-62] [select true...coalesce()]
+      SelectList [7-62] [true.coalesce...coalesce()]
+        SelectColumn [7-62] [true.coalesce...coalesce()]
+          OrExpr [7-62] [true.coalesce...coalesce()]
+            FunctionCall(is_chained_call=true) [7-22] [true.coalesce()]
+              PathExpression [12-20] [coalesce]
+                Identifier(coalesce) [12-20] [coalesce]
+              BooleanLiteral(true) [7-11] [true]
+            AndExpr [26-62] [false.coalesce...coalesce()]
+              FunctionCall(is_chained_call=true) [26-42] [false.coalesce()]
+                PathExpression [32-40] [coalesce]
+                  Identifier(coalesce) [32-40] [coalesce]
+                BooleanLiteral(false) [26-31] [false]
+              FunctionCall(is_chained_call=true) [47-62] [null.coalesce()]
+                PathExpression [52-60] [coalesce]
+                  Identifier(coalesce) [52-60] [coalesce]
+                NullLiteral(null) [47-51] [null]
+--
+SELECT
+  true.coalesce() OR false.coalesce() AND null.coalesce()
+==
+
+# Precedence relative to + and =.
+select x.coalesce() = y.coalesce() + z.coalesce()
+--
+QueryStatement [0-49] [select x.coalesce...coalesce()]
+  Query [0-49] [select x.coalesce...coalesce()]
+    Select [0-49] [select x.coalesce...coalesce()]
+      SelectList [7-49] [x.coalesce...coalesce()]
+        SelectColumn [7-49] [x.coalesce...coalesce()]
+          BinaryExpression(=) [7-49] [x.coalesce...coalesce()]
+            FunctionCall [7-19] [x.coalesce()]
+              PathExpression [7-17] [x.coalesce]
+                Identifier(x) [7-8] [x]
+                Identifier(coalesce) [9-17] [coalesce]
+            BinaryExpression(+) [22-49] [y.coalesce() + z.coalesce()]
+              FunctionCall [22-34] [y.coalesce()]
+                PathExpression [22-32] [y.coalesce]
+                  Identifier(y) [22-23] [y]
+                  Identifier(coalesce) [24-32] [coalesce]
+              FunctionCall [37-49] [z.coalesce()]
+                PathExpression [37-47] [z.coalesce]
+                  Identifier(z) [37-38] [z]
+                  Identifier(coalesce) [39-47] [coalesce]
+--
+SELECT
+  x.coalesce() = y.coalesce() + z.coalesce()
+==
+
+# Precedence for postfix operators like IS NOT NULL.
+SELECT x().y() IS NOT NULL.z()
+--
+QueryStatement [0-30] [SELECT x().y() IS NOT NULL.z()]
+  Query [0-30] [SELECT x().y() IS NOT NULL.z()]
+    Select [0-30] [SELECT x().y() IS NOT NULL.z()]
+      SelectList [7-30] [x().y() IS NOT NULL.z()]
+        SelectColumn [7-30] [x().y() IS NOT NULL.z()]
+          FunctionCall(is_chained_call=true) [7-30] [x().y() IS NOT NULL.z()]
+            PathExpression [27-28] [z]
+              Identifier(z) [27-28] [z]
+            BinaryExpression(IS NOT) [7-26] [x().y() IS NOT NULL]
+              FunctionCall(is_chained_call=true) [7-14] [x().y()]
+                PathExpression [11-12] [y]
+                  Identifier(y) [11-12] [y]
+                FunctionCall [7-10] [x()]
+                  PathExpression [7-8] [x]
+                    Identifier(x) [7-8] [x]
+              NullLiteral(NULL) [22-26] [NULL]
+--
+SELECT
+  x().y() IS NOT NULL.z()
+==
+
+# Precedence for binary operators LIKE, IS DISTINCT FROM.
+[language_features=NONE,+IS_DISTINCT]
+SELECT (x).y() LIKE (y).z(),
+       (x).y() IS DISTINCT FROM (y).z(),
+--
+QueryStatement [0-69] [SELECT (x)...FROM (y).z(),]
+  Query [0-69] [SELECT (x)...FROM (y).z(),]
+    Select [0-69] [SELECT (x)...FROM (y).z(),]
+      SelectList [7-69] [(x).y() LIKE...FROM (y).z(),]
+        SelectColumn [7-27] [(x).y() LIKE (y).z()]
+          BinaryExpression(LIKE) [7-27] [(x).y() LIKE (y).z()]
+            FunctionCall(is_chained_call=true) [7-14] [(x).y()]
+              PathExpression [11-12] [y]
+                Identifier(y) [11-12] [y]
+              PathExpression [8-9] [x]
+                Identifier(x) [8-9] [x]
+            FunctionCall(is_chained_call=true) [20-27] [(y).z()]
+              PathExpression [24-25] [z]
+                Identifier(z) [24-25] [z]
+              PathExpression [21-22] [y]
+                Identifier(y) [21-22] [y]
+        SelectColumn [36-68] [(x).y() IS...FROM (y).z()]
+          BinaryExpression(IS DISTINCT FROM) [36-68] [(x).y() IS...FROM (y).z()]
+            FunctionCall(is_chained_call=true) [36-43] [(x).y()]
+              PathExpression [40-41] [y]
+                Identifier(y) [40-41] [y]
+              PathExpression [37-38] [x]
+                Identifier(x) [37-38] [x]
+            FunctionCall(is_chained_call=true) [61-68] [(y).z()]
+              PathExpression [65-66] [z]
+                Identifier(z) [65-66] [z]
+              PathExpression [62-63] [y]
+                Identifier(y) [62-63] [y]
+--
+SELECT
+  (x).y() LIKE(y).z(),
+  (x).y() IS DISTINCT FROM(y).z()
+==
+
+# Precedence for BETWEEN.
+SELECT (x).y() BETWEEN (y).z() AND z().a()
+--
+QueryStatement [0-42] [SELECT (x)...AND z().a()]
+  Query [0-42] [SELECT (x)...AND z().a()]
+    Select [0-42] [SELECT (x)...AND z().a()]
+      SelectList [7-42] [(x).y() BETWEEN...AND z().a()]
+        SelectColumn [7-42] [(x).y() BETWEEN...AND z().a()]
+          BetweenExpression(BETWEEN) [7-42] [(x).y() BETWEEN...AND z().a()]
+            FunctionCall(is_chained_call=true) [7-14] [(x).y()]
+              PathExpression [11-12] [y]
+                Identifier(y) [11-12] [y]
+              PathExpression [8-9] [x]
+                Identifier(x) [8-9] [x]
+            Location [15-22] [BETWEEN]
+            FunctionCall(is_chained_call=true) [23-30] [(y).z()]
+              PathExpression [27-28] [z]
+                Identifier(z) [27-28] [z]
+              PathExpression [24-25] [y]
+                Identifier(y) [24-25] [y]
+            FunctionCall(is_chained_call=true) [35-42] [z().a()]
+              PathExpression [39-40] [a]
+                Identifier(a) [39-40] [a]
+              FunctionCall [35-38] [z()]
+                PathExpression [35-36] [z]
+                  Identifier(z) [35-36] [z]
+--
+SELECT
+  (x).y() BETWEEN(y).z() AND z().a()
+==
+
+# Precedence for IN.
+SELECT (x).y() IN (1,2).z(),
+       (x).y() IN (SELECT 123).z(),
+       (x).y() IN UNNEST(arr).z(),
+--
+QueryStatement [0-99] [SELECT (x)...(arr).z(),]
+  Query [0-99] [SELECT (x)...(arr).z(),]
+    Select [0-99] [SELECT (x)...(arr).z(),]
+      SelectList [7-99] [(x).y() IN...(arr).z(),]
+        SelectColumn [7-27] [(x).y() IN (1,2).z()]
+          FunctionCall(is_chained_call=true) [7-27] [(x).y() IN (1,2).z()]
+            PathExpression [24-25] [z]
+              Identifier(z) [24-25] [z]
+            InExpression(IN) [7-23] [(x).y() IN (1,2)]
+              FunctionCall(is_chained_call=true) [7-14] [(x).y()]
+                PathExpression [11-12] [y]
+                  Identifier(y) [11-12] [y]
+                PathExpression [8-9] [x]
+                  Identifier(x) [8-9] [x]
+              Location [15-17] [IN]
+              InList [19-22] [1,2]
+                IntLiteral(1) [19-20] [1]
+                IntLiteral(2) [21-22] [2]
+        SelectColumn [36-63] [(x).y() IN (SELECT 123).z()]
+          FunctionCall(is_chained_call=true) [36-63] [(x).y() IN (SELECT 123).z()]
+            PathExpression [60-61] [z]
+              Identifier(z) [60-61] [z]
+            InExpression(IN) [36-59] [(x).y() IN (SELECT 123)]
+              FunctionCall(is_chained_call=true) [36-43] [(x).y()]
+                PathExpression [40-41] [y]
+                  Identifier(y) [40-41] [y]
+                PathExpression [37-38] [x]
+                  Identifier(x) [37-38] [x]
+              Location [44-46] [IN]
+              Query [48-58] [SELECT 123]
+                Select [48-58] [SELECT 123]
+                  SelectList [55-58] [123]
+                    SelectColumn [55-58] [123]
+                      IntLiteral(123) [55-58] [123]
+        SelectColumn [72-98] [(x).y() IN UNNEST(arr).z()]
+          FunctionCall(is_chained_call=true) [72-98] [(x).y() IN UNNEST(arr).z()]
+            PathExpression [95-96] [z]
+              Identifier(z) [95-96] [z]
+            InExpression(IN) [72-94] [(x).y() IN UNNEST(arr)]
+              FunctionCall(is_chained_call=true) [72-79] [(x).y()]
+                PathExpression [76-77] [y]
+                  Identifier(y) [76-77] [y]
+                PathExpression [73-74] [x]
+                  Identifier(x) [73-74] [x]
+              Location [80-82] [IN]
+              UnnestExpression [83-94] [UNNEST(arr)]
+                ExpressionWithOptAlias [90-93] [arr]
+                  PathExpression [90-93] [arr]
+                    Identifier(arr) [90-93] [arr]
+--
+SELECT
+  (x).y() IN (1, 2).z(),
+  (x).y() IN (
+    SELECT
+      123
+  ).z(),
+  (x).y() IN UNNEST(arr).z()
+==
+
+# If the lhs has parens around an ASTDotIdentifier, it's not a chained call.
+select ((x).func)(y)
+--
+ERROR: Syntax error: Function call cannot be applied to this expression. Function calls require a path, e.g. a.b.c() [at 1:18]
+select ((x).func)(y)
+                 ^
+==
+
+# If the lhs has parens around a generalized path, it's not a chained call.
+select ((x).(func))(y)
+--
+ERROR: Syntax error: Function call cannot be applied to this expression. Function calls require a path, e.g. a.b.c() [at 1:20]
+select ((x).(func))(y)
+                   ^
+==
+
+# Empty generalized path is not valid.
+SELECT x.()(y)
+--
+ERROR: Syntax error: Unexpected ")" [at 1:11]
+SELECT x.()(y)
+          ^
+==
+
+# DESCRIPTOR(abc) as a TVF argument parses as a special AST node rather
+# than as a function call.  This doesn't happen for chained syntax,
+# or in non-argument expressions, or in function arguments.
+select descriptor(abc), abc.descriptor(),
+       func(descriptor(abc), abc.descriptor()),
+from func(descriptor(abc), abc.descriptor())
+--
+QueryStatement [0-134] [select descriptor...criptor())]
+  Query [0-134] [select descriptor...criptor())]
+    Select [0-134] [select descriptor...criptor())]
+      SelectList [7-89] [descriptor...descriptor()),]
+        SelectColumn [7-22] [descriptor(abc)]
+          FunctionCall [7-22] [descriptor(abc)]
+            PathExpression [7-17] [descriptor]
+              Identifier(descriptor) [7-17] [descriptor]
+            PathExpression [18-21] [abc]
+              Identifier(abc) [18-21] [abc]
+        SelectColumn [24-40] [abc.descriptor()]
+          FunctionCall [24-40] [abc.descriptor()]
+            PathExpression [24-38] [abc.descriptor]
+              Identifier(abc) [24-27] [abc]
+              Identifier(descriptor) [28-38] [descriptor]
+        SelectColumn [49-88] [func(descriptor...escriptor())]
+          FunctionCall [49-88] [func(descriptor...escriptor())]
+            PathExpression [49-53] [func]
+              Identifier(func) [49-53] [func]
+            FunctionCall [54-69] [descriptor(abc)]
+              PathExpression [54-64] [descriptor]
+                Identifier(descriptor) [54-64] [descriptor]
+              PathExpression [65-68] [abc]
+                Identifier(abc) [65-68] [abc]
+            FunctionCall [71-87] [abc.descriptor()]
+              PathExpression [71-85] [abc.descriptor]
+                Identifier(abc) [71-74] [abc]
+                Identifier(descriptor) [75-85] [descriptor]
+      FromClause [90-134] [from func(...descriptor())]
+        TVF [95-134] [func(descriptor...escriptor())]
+          PathExpression [95-99] [func]
+            Identifier(func) [95-99] [func]
+          TVFArgument [100-115] [descriptor(abc)]
+            Descriptor [100-115] [descriptor(abc)]
+              DescriptorColumnList [111-114] [abc]
+                DescriptorColumn [111-114] [abc]
+                  Identifier(abc) [111-114] [abc]
+          TVFArgument [117-133] [abc.descriptor()]
+            FunctionCall [117-133] [abc.descriptor()]
+              PathExpression [117-131] [abc.descriptor]
+                Identifier(abc) [117-120] [abc]
+                Identifier(descriptor) [121-131] [descriptor]
+--
+SELECT
+  descriptor(abc),
+  abc.descriptor(),
+  func(descriptor(abc), abc.descriptor())
+FROM
+  func(DESCRIPTOR(abc), abc.descriptor())
+==
+
+# .NEW gives some unexpected parse results because NEW is non-reserved, so it
+# can be interpreted as a field or function name.
+# It never works like a `NEW TypeName(...)` constructor making an
+# ASTNewConstructor though.
+select {{(1).new|(1).new()|(1).new x|(1).new x()|(1).new x.y|(1).new x.y()}}
+--
+ALTERNATION GROUP: (1).new
+--
+QueryStatement [0-14] [select (1).new]
+  Query [0-14] [select (1).new]
+    Select [0-14] [select (1).new]
+      SelectList [7-14] [(1).new]
+        SelectColumn [7-14] [(1).new]
+          DotIdentifier [7-14] [(1).new]
+            IntLiteral(1) [8-9] [1]
+            Identifier(`new`) [11-14] [new]
+--
+SELECT
+  (1).`new`
+--
+ALTERNATION GROUP: (1).new()
+--
+QueryStatement [0-16] [select (1).new()]
+  Query [0-16] [select (1).new()]
+    Select [0-16] [select (1).new()]
+      SelectList [7-16] [(1).new()]
+        SelectColumn [7-16] [(1).new()]
+          FunctionCall(is_chained_call=true) [7-16] [(1).new()]
+            PathExpression [11-14] [new]
+              Identifier(`new`) [11-14] [new]
+            IntLiteral(1) [8-9] [1]
+--
+SELECT
+  (1).`new`()
+--
+ALTERNATION GROUP: (1).new x
+--
+QueryStatement [0-16] [select (1).new x]
+  Query [0-16] [select (1).new x]
+    Select [0-16] [select (1).new x]
+      SelectList [7-16] [(1).new x]
+        SelectColumn [7-16] [(1).new x]
+          DotIdentifier [7-14] [(1).new]
+            IntLiteral(1) [8-9] [1]
+            Identifier(`new`) [11-14] [new]
+          Alias [15-16] [x]
+            Identifier(x) [15-16] [x]
+--
+SELECT
+  (1).`new` AS x
+--
+ALTERNATION GROUP: (1).new x()
+--
+ERROR: Syntax error: Expected end of input but got "(" [at 1:17]
+select (1).new x()
+                ^
+--
+ALTERNATION GROUP: (1).new x.y
+--
+ERROR: Syntax error: Expected end of input but got "." [at 1:17]
+select (1).new x.y
+                ^
+--
+ALTERNATION GROUP: (1).new x.y()
+--
+ERROR: Syntax error: Expected end of input but got "." [at 1:17]
+select (1).new x.y()
+                ^
+==
+
+# LEFT is a reserved keyword but also works as a function call, chained function
+# call, or dot-identifier.
+# More tests for this and similar keywords in keywords.test.
+SELECT LEFT(x), x.LEFT, x.LEFT(), "abc".LEFT, "abc".LEFT()
+--
+QueryStatement [0-58] [SELECT LEFT...abc".LEFT()]
+  Query [0-58] [SELECT LEFT...abc".LEFT()]
+    Select [0-58] [SELECT LEFT...abc".LEFT()]
+      SelectList [7-58] [LEFT(x), x...abc".LEFT()]
+        SelectColumn [7-14] [LEFT(x)]
+          FunctionCall [7-14] [LEFT(x)]
+            PathExpression [7-11] [LEFT]
+              Identifier(`LEFT`) [7-11] [LEFT]
+            PathExpression [12-13] [x]
+              Identifier(x) [12-13] [x]
+        SelectColumn [16-22] [x.LEFT]
+          PathExpression [16-22] [x.LEFT]
+            Identifier(x) [16-17] [x]
+            Identifier(`LEFT`) [18-22] [LEFT]
+        SelectColumn [24-32] [x.LEFT()]
+          FunctionCall [24-32] [x.LEFT()]
+            PathExpression [24-30] [x.LEFT]
+              Identifier(x) [24-25] [x]
+              Identifier(`LEFT`) [26-30] [LEFT]
+        SelectColumn [34-44] ["abc".LEFT]
+          DotIdentifier [34-44] ["abc".LEFT]
+            StringLiteral [34-39] ["abc"]
+              StringLiteralComponent("abc") [34-39] ["abc"]
+            Identifier(`LEFT`) [40-44] [LEFT]
+        SelectColumn [46-58] ["abc".LEFT()]
+          FunctionCall(is_chained_call=true) [46-58] ["abc".LEFT()]
+            PathExpression [52-56] [LEFT]
+              Identifier(`LEFT`) [52-56] [LEFT]
+            StringLiteral [46-51] ["abc"]
+              StringLiteralComponent("abc") [46-51] ["abc"]
+--
+SELECT
+  `LEFT`(x),
+  x.`LEFT`,
+  x.`LEFT`(),
+  "abc".`LEFT`,
+  "abc".`LEFT`()
+==
+
+select "abc".count().count(distinct).count(distinct 123)
+--
+QueryStatement [0-56] [select "abc...distinct 123)]
+  Query [0-56] [select "abc...distinct 123)]
+    Select [0-56] [select "abc...distinct 123)]
+      SelectList [7-56] ["abc".count...distinct 123)]
+        SelectColumn [7-56] ["abc".count...distinct 123)]
+          FunctionCall(distinct=true, is_chained_call=true) [7-56] ["abc".count...distinct 123)]
+            PathExpression [37-42] [count]
+              Identifier(count) [37-42] [count]
+            FunctionCall(distinct=true, is_chained_call=true) [7-36] ["abc".count().count(distinct)]
+              PathExpression [21-26] [count]
+                Identifier(count) [21-26] [count]
+              FunctionCall(is_chained_call=true) [7-20] ["abc".count()]
+                PathExpression [13-18] [count]
+                  Identifier(count) [13-18] [count]
+                StringLiteral [7-12] ["abc"]
+                  StringLiteralComponent("abc") [7-12] ["abc"]
+            IntLiteral(123) [52-55] [123]
+--
+SELECT
+  "abc".count().count(DISTINCT).count(DISTINCT 123)
+==
+
+select "abc".count(distinct *)
+--
+QueryStatement [0-30] [select "abc".count(distinct *)]
+  Query [0-30] [select "abc".count(distinct *)]
+    Select [0-30] [select "abc".count(distinct *)]
+      SelectList [7-30] ["abc".count(distinct *)]
+        SelectColumn [7-30] ["abc".count(distinct *)]
+          FunctionCall(distinct=true, is_chained_call=true) [7-30] ["abc".count(distinct *)]
+            PathExpression [13-18] [count]
+              Identifier(count) [13-18] [count]
+            StringLiteral [7-12] ["abc"]
+              StringLiteralComponent("abc") [7-12] ["abc"]
+            Star(*) [28-29] [*]
+--
+SELECT
+  "abc".count(DISTINCT *)
+==
+
+# Note how this doesn't parse as intended when called with zero arguments.
+# CLAMPED parses as an identifier.
+# CLAMPED is disallowed in the analyzer for both cases because of this
+# inconsistency.
+select
+  true.f({{x|}} CLAMPED BETWEEN 0 and 2)
+--
+ALTERNATION GROUP: x
+--
+QueryStatement [0-42] [select   true...TWEEN 0 and 2)]
+  Query [0-42] [select   true...TWEEN 0 and 2)]
+    Select [0-42] [select   true...TWEEN 0 and 2)]
+      SelectList [9-42] [true.f(x CLAMPED...EN 0 and 2)]
+        SelectColumn [9-42] [true.f(x CLAMPED...EN 0 and 2)]
+          FunctionCall(is_chained_call=true) [9-42] [true.f(x CLAMPED...EN 0 and 2)]
+            PathExpression [14-15] [f]
+              Identifier(f) [14-15] [f]
+            BooleanLiteral(true) [9-13] [true]
+            PathExpression [16-17] [x]
+              Identifier(x) [16-17] [x]
+            ClampedBetweenModifier [18-41] [CLAMPED BETWEEN 0 and 2]
+              IntLiteral(0) [34-35] [0]
+              IntLiteral(2) [40-41] [2]
+--
+SELECT
+  true.f(x
+    CLAMPED BETWEEN 0 AND 2)
+--
+ALTERNATION GROUP: <empty>
+--
+QueryStatement [0-41] [select   true...TWEEN 0 and 2)]
+  Query [0-41] [select   true...TWEEN 0 and 2)]
+    Select [0-41] [select   true...TWEEN 0 and 2)]
+      SelectList [9-41] [true.f( CLAMPED...EEN 0 and 2)]
+        SelectColumn [9-41] [true.f( CLAMPED...EEN 0 and 2)]
+          FunctionCall(is_chained_call=true) [9-41] [true.f( CLAMPED...EEN 0 and 2)]
+            PathExpression [14-15] [f]
+              Identifier(f) [14-15] [f]
+            BooleanLiteral(true) [9-13] [true]
+            BetweenExpression(BETWEEN) [17-40] [CLAMPED BETWEEN 0 and 2]
+              PathExpression [17-24] [CLAMPED]
+                Identifier(`CLAMPED`) [17-24] [CLAMPED]
+              Location [25-32] [BETWEEN]
+              IntLiteral(0) [33-34] [0]
+              IntLiteral(2) [39-40] [2]
+--
+SELECT
+  true.f(`CLAMPED` BETWEEN 0 AND 2)

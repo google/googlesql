@@ -1,0 +1,61 @@
+[default required_features=ENABLE_MEASURES,MULTILEVEL_AGGREGATION_ON_UDAS]
+[prepare_database]
+# TODO: b/350555383 - Remove PlaceHolderTable once we support creating Measures
+# in compliance tests.
+CREATE TABLE PlaceholderTable AS SELECT 1 AS key;
+--
+ARRAY<STRUCT<key INT64>>[{1}]
+==
+
+[name=measures_with_udas_simple]
+SELECT
+  AGG(measure_sum_price_plus_sum_quantity_udf),
+  AGG(measure_sum_price_uda),
+  AGG(measure_count_price_uda),
+  AGG(measure_sum_price_per_key_uda),
+  AGG(measure_sum_count_price_per_country_uda)
+FROM MeasureTable_SingleKey;
+--
+ARRAY<STRUCT<INT64, INT64, INT64, INT64, INT64>>[{800, 550, 10, 550, 10}]
+==
+[name=measures_with_udas_complex]
+SELECT
+  AGG(measure_sum_price_plus_sum_quantity_plus_ten_udf),
+  AGG(measure_sum_max_price_per_country_uda),
+  AGG(measure_sum_price_pseudocolumn_uda),
+  AGG(measure_sum_price_plus_one_pseudocolumn_udf)
+FROM MeasureTable_SingleKey;
+--
+ARRAY<STRUCT<INT64, INT64, INT64, INT64>>[{810, 200, 550, 551}]
+==
+
+[name=measures_with_udas_simple_with_group_by]
+SELECT
+  date_str,
+  AGG(measure_sum_price_plus_sum_quantity_udf),
+  AGG(measure_sum_price_uda),
+  AGG(measure_count_price_uda),
+  AGG(measure_sum_price_per_key_uda),
+  AGG(measure_sum_count_price_per_country_uda)
+FROM MeasureTable_SingleKey
+GROUP BY date_str;
+--
+ARRAY<STRUCT<date_str STRING, INT64, INT64, INT64, INT64, INT64>>[unknown order:
+  {"Feb 2024", 400, 260, 4, 260, 4},
+  {"Jan 2024", 400, 290, 6, 290, 6}
+]
+==
+[name=measures_with_udas_complex_with_group_by]
+SELECT
+  date_str,
+  AGG(measure_sum_price_plus_sum_quantity_plus_ten_udf),
+  AGG(measure_sum_max_price_per_country_uda),
+  AGG(measure_sum_price_pseudocolumn_uda),
+  AGG(measure_sum_price_plus_one_pseudocolumn_udf)
+FROM MeasureTable_SingleKey
+GROUP BY date_str;
+--
+ARRAY<STRUCT<date_str STRING, INT64, INT64, INT64, INT64>>[unknown order:
+  {"Feb 2024", 410, 200, 260, 261},
+  {"Jan 2024", 410, 160, 290, 291}
+]

@@ -1,0 +1,231 @@
+[load_proto_files=googlesql/testdata/test_schema.proto]
+[load_proto_names=googlesql_test.KitchenSinkPB, googlesql_test.TestExtraPB, googlesql_test.TestExtraPBExtensionHolder, googlesql_test.KitchenSinkPB.Nested, googlesql_test.RepeatedHolderPB, googlesql_test.MessageWithMapField, googlesql_test.MessageWithMapField.StringInt32MapEntry]
+[load_enum_names=googlesql_test.TestEnum, googlesql_test.AnotherTestEnum, googlesql_test.TestEnumWithAlias, googlesql_test.TestEnumWithAnnotations]
+[default required_features=TYPEOF_FUNCTION]
+[prepare_database]
+CREATE TABLE EverywhereTypes AS
+SELECT CAST(0 AS INT64) AS i64,
+       CAST(1.1 AS FLOAT64) AS f64,
+       'abc' AS s,
+       b'abc' AS b,
+       DATE '2020-02-02' as d,
+       TIMESTAMP '2020-02-02' as ts;
+--
+ARRAY<STRUCT<i64 INT64, f64 DOUBLE, s STRING, b BYTES, d DATE, ts TIMESTAMP>>[
+  {
+    0,
+    1.1,
+    "abc",
+    b"abc",
+    2020-02-02,
+    2020-02-02 08:00:00+00
+  }
+]
+==
+[prepare_database]
+CREATE TABLE InternalTypes AS
+SELECT CAST(0 AS INT32) AS i32,
+       CAST(0 AS UINT32) AS u32,
+       CAST(0 AS UINT64) AS u64,
+       CAST(1.1 AS FLOAT) AS f32,
+       CAST('''
+  int64_key_1: 1
+  int64_key_2: 1
+''' as `googlesql_test.KitchenSinkPB`) AS pb,
+       CAST('TESTENUM0' AS `googlesql_test.TestEnum`) AS pe;
+--
+ARRAY<STRUCT<
+        i32 INT32,
+        u32 UINT32,
+        u64 UINT64,
+        f32 FLOAT,
+        pb PROTO<googlesql_test.KitchenSinkPB>,
+        pe ENUM<googlesql_test.TestEnum>
+      >>
+[{0,
+  0,
+  0,
+  1.1,
+  {
+    int64_key_1: 1
+    int64_key_2: 1
+  },
+  TESTENUM0}]
+==
+[prepare_database]
+[required_features=NUMERIC_TYPE,PARAMETERIZED_TYPES]
+CREATE TABLE ParameterizedTypes AS
+SELECT CAST(1.1 AS NUMERIC(2, 1)) AS n,
+       CAST('abc' AS STRING(10)) AS s,
+       CAST(b'abc' AS BYTES(10)) AS b;
+--
+ARRAY<STRUCT<n NUMERIC, s STRING, b BYTES>>[{1.1, "abc", b"abc"}]
+==
+[name=typeof_literals]
+SELECT [ TYPEOF(NULL),
+         TYPEOF(0),
+         TYPEOF(0x8000000000000000),
+         TYPEOF(TRUE),
+         TYPEOF(1.1),
+         TYPEOF('abc'),
+         TYPEOF(b'abc'),
+         TYPEOF(DATE '2020-02-02'),
+         TYPEOF(TIMESTAMP '2020-02-02') ];
+--
+ARRAY<STRUCT<ARRAY<>>>[
+  {ARRAY<STRING>[known order:
+     "INT64",
+     "INT64",
+     "UINT64",
+     "BOOL",
+     "DOUBLE",
+     "STRING",
+     "BYTES",
+     "DATE",
+     "TIMESTAMP"
+   ]}
+]
+==
+[name=typeof_operators]
+SELECT TYPEOF(1 + 2), TYPEOF('abc' || 'def');
+--
+ARRAY<STRUCT<STRING, STRING>>[{"INT64", "STRING"}]
+==
+[name=typeof_runtime_error_expr]
+# The expression should not be evaluated and the query should not produce a
+# runtime error.
+SELECT TYPEOF(1.0/0);
+--
+ARRAY<STRUCT<STRING>>[{"DOUBLE"}]
+==
+[name=typeof_function_call]
+SELECT TYPEOF(EXTRACT(DATE FROM TIMESTAMP '2020-02-02 12:00:00'));
+--
+ARRAY<STRUCT<STRING>>[{"DATE"}]
+==
+[name=typeof_error_function]
+# The function should not be evaluated and the query should not produce a
+# runtime error.
+SELECT TYPEOF(ERROR('abc'));
+--
+ARRAY<STRUCT<STRING>>[{"INT64"}]
+==
+[name=typeof_struct_types]
+SELECT TYPEOF((1, 'abc', 2.0)),
+       TYPEOF(STRUCT(1 AS a, 'abc', 2.0 AS c)),
+       TYPEOF(STRUCT(1 AS a, ['abc'], 2.0 AS a));
+--
+ARRAY<STRUCT<STRING, STRING, STRING>>[
+  {
+    "STRUCT<INT64, STRING, DOUBLE>",
+    "STRUCT<a INT64, STRING, c DOUBLE>",
+    "STRUCT<a INT64, ARRAY<STRING>, a DOUBLE>"
+  }
+]
+==
+[name=typeof_array_types]
+SELECT TYPEOF([1, 2, 3]),
+       TYPEOF([(1, 2), (3, 4)]),
+       TYPEOF([([1], 2), ([3], 4)]);
+--
+ARRAY<STRUCT<STRING, STRING, STRING>>[
+  {
+    "ARRAY<INT64>",
+    "ARRAY<STRUCT<INT64, INT64>>",
+    "ARRAY<STRUCT<ARRAY<INT64>, INT64>>"
+  }
+]
+==
+[name=typeof_columns_everywhere_types]
+SELECT TYPEOF(i64), TYPEOF(f64), TYPEOF(s), TYPEOF(b), TYPEOF(d), TYPEOF(ts)
+FROM EverywhereTypes;
+--
+ARRAY<STRUCT<STRING, STRING, STRING, STRING, STRING, STRING>>[
+  {"INT64", "DOUBLE", "STRING", "BYTES", "DATE", "TIMESTAMP"}
+]
+==
+[name=typeof_columns_internal_types]
+SELECT TYPEOF(i32), TYPEOF(u32), TYPEOF(u64), TYPEOF(f32), TYPEOF(pb),
+       TYPEOF(pe)
+FROM InternalTypes;
+--
+ARRAY<STRUCT<STRING, STRING, STRING, STRING, STRING, STRING>>[
+  {
+    "INT32",
+    "UINT32",
+    "UINT64",
+    "FLOAT",
+    "`googlesql_test.KitchenSinkPB`",
+    "`googlesql_test.TestEnum`"
+  }
+]
+==
+[required_features=TYPEOF_FUNCTION,PARAMETERIZED_TYPES]
+[name=typeof_parameterized_type_expression]
+SELECT TYPEOF(CAST('abc' AS STRING(10)));
+--
+ARRAY<STRUCT<STRING>>[{"STRING"}]
+==
+[required_features=TYPEOF_FUNCTION,NUMERIC_TYPE]
+[name=typeof_numeric]
+SELECT TYPEOF(NUMERIC '1.1');
+--
+ARRAY<STRUCT<STRING>>[{"NUMERIC"}]
+==
+[required_features=TYPEOF_FUNCTION,BIGNUMERIC_TYPE]
+[name=typeof_bignumeric]
+SELECT TYPEOF(BIGNUMERIC '1.1');
+--
+ARRAY<STRUCT<STRING>>[{"BIGNUMERIC"}]
+==
+[required_features=TYPEOF_FUNCTION,CIVIL_TIME]
+[name=typeof_civil_time]
+SELECT TYPEOF(DATETIME '2020-02-02 20:20:02.02'),
+       TYPEOF(TIME '20:20:02.02');
+--
+ARRAY<STRUCT<STRING, STRING>>[{"DATETIME", "TIME"}]
+==
+[required_features=TYPEOF_FUNCTION,GEOGRAPHY]
+[name=typeof_geography]
+SELECT TYPEOF(CAST(NULL AS GEOGRAPHY));
+--
+ARRAY<STRUCT<STRING>>[{"GEOGRAPHY"}]
+==
+[required_features=TYPEOF_FUNCTION,JSON_TYPE]
+[name=typeof_json]
+SELECT TYPEOF(CAST(NULL AS JSON));
+--
+ARRAY<STRUCT<STRING>>[{"JSON"}]
+==
+[required_features=TYPEOF_FUNCTION,INTERVAL_TYPE]
+[name=typeof_interval]
+SELECT TYPEOF(CAST(NULL AS INTERVAL));
+--
+ARRAY<STRUCT<STRING>>[{"INTERVAL"}]
+==
+[required_features=TYPEOF_FUNCTION,NUMERIC_TYPE,PARAMETERIZED_TYPES]
+[name=typeof_parameterized_type_schema]
+SELECT TYPEOF(n), TYPEOF(s), TYPEOF(b) FROM ParameterizedTypes;
+--
+ARRAY<STRUCT<STRING, STRING, STRING>>[{"NUMERIC", "STRING", "BYTES"}]
+==
+
+[required_features=TYPEOF_FUNCTION,COLLATION_SUPPORT,ANNOTATION_FRAMEWORK]
+[name=typeof_collated_string]
+WITH t AS (SELECT COLLATE('aBc', 'und:ci') AS collated_str)
+SELECT TYPEOF(collated_str) FROM t
+--
+ARRAY<STRUCT<STRING>>[{"STRING"}]
+==
+
+[required_features=TYPEOF_FUNCTION,COLLATION_SUPPORT,ANNOTATION_FRAMEWORK]
+[name=typeof_collated_compound_types]
+WITH t AS (SELECT [COLLATE('aBc', 'und:ci')] AS arr)
+SELECT TYPEOF(t.arr), TYPEOF(t) FROM t
+--
+ARRAY<STRUCT<STRING, STRING>>[
+  {
+    "ARRAY<STRING>",
+    "STRUCT<arr ARRAY<STRING>>"
+  }
+]

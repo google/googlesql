@@ -1,0 +1,2085 @@
+[default required_features=ANNOTATION_FRAMEWORK,COLLATION_SUPPORT]
+
+[prepare_database]
+CREATE TABLE StringTable(
+  primary_Key INT64,
+  col_ci STRING COLLATE 'und:ci',
+  col_binary STRING COLLATE 'binary',
+  col_no_collation STRING) AS
+SELECT 1 primary_Key, "" col_ci, "a" col_binary, "c" UNION ALL
+SELECT 2, "hello", "a", "c" UNION ALL
+SELECT 3, "Case sensitive", "a", "c" UNION ALL
+SELECT 4, "@", "A", "C" UNION ALL
+SELECT 5, "\u205Fabc", "A", "C"  UNION ALL
+SELECT 6, "B", "A", "C" UNION ALL
+SELECT 7, NULL, "A", "C" UNION ALL
+SELECT 8, "aa", "A", "C" UNION ALL
+SELECT 9, "@", "B", "D" UNION ALL
+SELECT 10, "", "B", "D" UNION ALL
+SELECT 11, "a", "B", "D" UNION ALL
+SELECT 12, "case sensitive", "a", "c" UNION ALL
+SELECT 13, NULL, "B", "D" UNION ALL
+SELECT 14, "Hello", "a", "c" UNION ALL
+SELECT 15, "\u0413", "B", "D" UNION ALL
+SELECT 16, "hel\u06DDlo", "a", "c" UNION ALL
+SELECT 17, "h\u070Fello", "a", "c"
+--
+ARRAY<STRUCT<
+        primary_Key INT64,
+        col_ci STRING,
+        col_binary STRING,
+        col_no_collation STRING
+      >>
+[
+  {1, "", "a", "c"},
+  {2, "hello", "a", "c"},
+  {3, "Case sensitive", "a", "c"},
+  {4, "@", "A", "C"},
+  {5, " abc", "A", "C"},
+  {6, "B", "A", "C"},
+  {7, NULL, "A", "C"},
+  {8, "aa", "A", "C"},
+  {9, "@", "B", "D"},
+  {10, "", "B", "D"},
+  {11, "a", "B", "D"},
+  {12, "case sensitive", "a", "c"},
+  {13, NULL, "B", "D"},
+  {14, "Hello", "a", "c"},
+  {15, "Г", "B", "D"},
+  {16, "hel۝lo", "a", "c"},
+  {17, "h܏ello", "a", "c"}
+]
+==
+
+[prepare_database]
+CREATE TABLE StringTableToJoin(
+  primary_Key INT64,
+  col_ci STRING COLLATE 'und:ci',
+  col_binary STRING COLLATE 'binary',
+  col_no_collation STRING) AS
+SELECT 1 primary_Key, "hello" col_ci, "a" col_binary, "HELLO" UNION ALL
+SELECT 2, "Case sensitive", "a", "b" UNION ALL
+SELECT 3, "case sensitive", "a", "c" UNION ALL
+SELECT 4, "Hello", "a", "B" UNION ALL
+SELECT 5, "h܏ello", "a", "Case Sensitive"
+--
+ARRAY<STRUCT<
+        primary_Key INT64,
+        col_ci STRING,
+        col_binary STRING,
+        col_no_collation STRING
+      >>
+[
+  {1, "hello", "a", "HELLO"},
+  {2, "Case sensitive", "a", "b"},
+  {3, "case sensitive", "a", "c"},
+  {4, "Hello", "a", "B"},
+  {5, "h܏ello", "a", "Case Sensitive"}
+]
+==
+
+[name=orderby_with_column_collation_ci]
+select primary_key, col_ci from StringTable ORDER BY col_ci
+--
+ARRAY<STRUCT<primary_key INT64, col_ci STRING>>[unknown order:
+  {7, NULL},
+  {13, NULL},
+  {10, ""},
+  {1, ""},
+  {5, " abc"},
+  {4, "@"},
+  {9, "@"},
+  {11, "a"},
+  {8, "aa"},
+  {6, "B"},
+  {12, "case sensitive"},
+  {3, "Case sensitive"},
+  {2, "hello"},
+  {14, "Hello"},
+  {16, "hel۝lo"},
+  {17, "h܏ello"},
+  {15, "Г"}
+]
+==
+
+[name=orderby_with_column_collation_cs]
+select primary_key, col_binary from StringTable ORDER BY col_binary
+--
+ARRAY<STRUCT<primary_key INT64, col_binary STRING>>[unknown order:
+  {4, "A"},
+  {6, "A"},
+  {8, "A"},
+  {5, "A"},
+  {7, "A"},
+  {10, "B"},
+  {9, "B"},
+  {11, "B"},
+  {13, "B"},
+  {15, "B"},
+  {2, "a"},
+  {12, "a"},
+  {14, "a"},
+  {16, "a"},
+  {1, "a"},
+  {3, "a"},
+  {17, "a"}
+]
+==
+
+[name=orderby_with_column_collation_binary_ci]
+select primary_key, col_binary, col_ci from StringTable ORDER BY col_binary, col_ci
+--
+ARRAY<STRUCT<primary_key INT64, col_binary STRING, col_ci STRING>>[unknown order:
+  {7, "A", NULL},
+  {5, "A", " abc"},
+  {4, "A", "@"},
+  {8, "A", "aa"},
+  {6, "A", "B"},
+  {13, "B", NULL},
+  {10, "B", ""},
+  {9, "B", "@"},
+  {11, "B", "a"},
+  {15, "B", "Г"},
+  {1, "a", ""},
+  {12, "a", "case sensitive"},
+  {3, "a", "Case sensitive"},
+  {2, "a", "hello"},
+  {14, "a", "Hello"},
+  {16, "a", "hel۝lo"},
+  {17, "a", "h܏ello"}
+]
+==
+
+[name=orderby_with_column_collation_ci_no_collation]
+select primary_key, col_ci, col_no_collation from StringTable ORDER BY col_ci, col_no_collation
+--
+ARRAY<STRUCT<
+        primary_key INT64,
+        col_ci STRING,
+        col_no_collation STRING
+      >>
+[unknown order:
+  {7, NULL, "C"},
+  {13, NULL, "D"},
+  {10, "", "D"},
+  {1, "", "c"},
+  {5, " abc", "C"},
+  {4, "@", "C"},
+  {9, "@", "D"},
+  {11, "a", "D"},
+  {8, "aa", "C"},
+  {6, "B", "C"},
+  {12, "case sensitive", "c"},
+  {3, "Case sensitive", "c"},
+  {2, "hello", "c"},
+  {14, "Hello", "c"},
+  {16, "hel۝lo", "c"},
+  {17, "h܏ello", "c"},
+  {15, "Г", "D"}
+]
+==
+
+[name=comparison_with_column_collation_ci_eq]
+select primary_key, col_ci from StringTable WHERE col_ci = 'hello'
+--
+ARRAY<STRUCT<primary_key INT64, col_ci STRING>>[unknown order:
+  {2, "hello"},
+  {14, "Hello"},
+  {16, "hel۝lo"},
+  {17, "h܏ello"}
+]
+==
+
+[name=comparison_with_column_collation_binary_eq]
+select primary_key, col_binary from StringTable WHERE col_binary = 'a'
+--
+ARRAY<STRUCT<primary_key INT64, col_binary STRING>>[unknown order:
+  {2, "a"},
+  {12, "a"},
+  {14, "a"},
+  {16, "a"},
+  {1, "a"},
+  {3, "a"},
+  {17, "a"}
+]
+==
+
+[name=comparison_with_column_collation_ci_not_eq]
+select primary_key, col_ci from StringTable WHERE col_ci != 'hello'
+--
+ARRAY<STRUCT<primary_key INT64, col_ci STRING>>[unknown order:
+  {4, "@"},
+  {6, "B"},
+  {8, "aa"},
+  {10, ""},
+  {12, "case sensitive"},
+  {1, ""},
+  {3, "Case sensitive"},
+  {5, " abc"},
+  {9, "@"},
+  {11, "a"},
+  {15, "Г"}
+]
+==
+
+[name=comparison_with_column_collation_binary_not_eq]
+select primary_key, col_binary from StringTable WHERE col_binary != 'a'
+--
+ARRAY<STRUCT<primary_key INT64, col_binary STRING>>[unknown order:
+  {4, "A"},
+  {6, "A"},
+  {8, "A"},
+  {10, "B"},
+  {5, "A"},
+  {7, "A"},
+  {9, "B"},
+  {11, "B"},
+  {13, "B"},
+  {15, "B"}
+]
+==
+
+[name=comparison_with_column_collation_ci_greater]
+select primary_key, col_ci from StringTable WHERE col_ci > 'hello'
+--
+ARRAY<STRUCT<primary_key INT64, col_ci STRING>>[{15, "Г"}]
+==
+
+[name=comparison_with_column_collation_binary_greater]
+select primary_key, col_binary from StringTable WHERE col_binary > 'B'
+--
+ARRAY<STRUCT<primary_key INT64, col_binary STRING>>[unknown order:
+  {2, "a"},
+  {12, "a"},
+  {14, "a"},
+  {16, "a"},
+  {1, "a"},
+  {3, "a"},
+  {17, "a"}
+]
+==
+
+[name=comparison_with_column_collation_ci_greater_or_eq]
+select primary_key, col_ci from StringTable WHERE col_ci >= 'hello'
+--
+ARRAY<STRUCT<primary_key INT64, col_ci STRING>>[unknown order:
+  {2, "hello"},
+  {14, "Hello"},
+  {16, "hel۝lo"},
+  {15, "Г"},
+  {17, "h܏ello"}
+]
+==
+
+[name=comparison_with_column_collation_binary_greater_or_eq]
+select primary_key, col_binary from StringTable WHERE col_binary >= 'B'
+--
+ARRAY<STRUCT<primary_key INT64, col_binary STRING>>[unknown order:
+  {2, "a"},
+  {10, "B"},
+  {12, "a"},
+  {14, "a"},
+  {16, "a"},
+  {1, "a"},
+  {3, "a"},
+  {9, "B"},
+  {11, "B"},
+  {13, "B"},
+  {15, "B"},
+  {17, "a"}
+]
+==
+
+[name=comparison_with_column_collation_ci_less]
+select primary_key, col_ci from StringTable WHERE col_ci < 'Hello'
+--
+ARRAY<STRUCT<primary_key INT64, col_ci STRING>>[unknown order:
+  {4, "@"},
+  {6, "B"},
+  {8, "aa"},
+  {10, ""},
+  {12, "case sensitive"},
+  {1, ""},
+  {3, "Case sensitive"},
+  {5, " abc"},
+  {9, "@"},
+  {11, "a"}
+]
+==
+
+[name=comparison_with_column_collation_binary_less]
+select primary_key, col_binary from StringTable WHERE col_binary < 'B'
+--
+ARRAY<STRUCT<primary_key INT64, col_binary STRING>>[unknown order:
+  {4, "A"},
+  {6, "A"},
+  {8, "A"},
+  {5, "A"},
+  {7, "A"}
+]
+==
+
+[name=comparison_with_column_collation_ci_less_or_eq]
+select primary_key, col_ci from StringTable WHERE col_ci <= 'hello'
+--
+ARRAY<STRUCT<primary_key INT64, col_ci STRING>>[unknown order:
+  {2, "hello"},
+  {4, "@"},
+  {6, "B"},
+  {8, "aa"},
+  {10, ""},
+  {12, "case sensitive"},
+  {14, "Hello"},
+  {16, "hel۝lo"},
+  {1, ""},
+  {3, "Case sensitive"},
+  {5, " abc"},
+  {9, "@"},
+  {11, "a"},
+  {17, "h܏ello"}
+]
+==
+
+[name=comparison_with_column_collation_binary_less_or_eq]
+select primary_key, col_binary from StringTable WHERE col_binary <= 'B'
+--
+ARRAY<STRUCT<primary_key INT64, col_binary STRING>>[unknown order:
+  {4, "A"},
+  {6, "A"},
+  {8, "A"},
+  {10, "B"},
+  {5, "A"},
+  {7, "A"},
+  {9, "B"},
+  {11, "B"},
+  {13, "B"},
+  {15, "B"}
+]
+==
+
+[name=comparison_with_column_collation_ci_between]
+select primary_key, col_ci from StringTable WHERE col_ci between 'a' and 'zzzzz'
+--
+ARRAY<STRUCT<primary_key INT64, col_ci STRING>>[unknown order:
+  {2, "hello"},
+  {6, "B"},
+  {8, "aa"},
+  {12, "case sensitive"},
+  {14, "Hello"},
+  {16, "hel۝lo"},
+  {3, "Case sensitive"},
+  {11, "a"},
+  {17, "h܏ello"}
+]
+==
+
+[name=comparison_with_column_collation_binary_between]
+select primary_key, col_binary from StringTable WHERE col_binary between 'a' and 'zzzzz'
+--
+ARRAY<STRUCT<primary_key INT64, col_binary STRING>>[unknown order:
+  {2, "a"},
+  {12, "a"},
+  {14, "a"},
+  {16, "a"},
+  {1, "a"},
+  {3, "a"},
+  {17, "a"}
+]
+==
+
+[name=comparison_with_column_collation_ci_in]
+select primary_key, col_ci from StringTable WHERE col_ci in ('case sensitive', 'hello', 'b', 'c')
+--
+ARRAY<STRUCT<primary_key INT64, col_ci STRING>>[unknown order:
+  {2, "hello"},
+  {6, "B"},
+  {12, "case sensitive"},
+  {14, "Hello"},
+  {16, "hel۝lo"},
+  {3, "Case sensitive"},
+  {17, "h܏ello"}
+]
+==
+
+[name=comparison_with_column_collation_binary_in]
+select primary_key, col_binary from StringTable WHERE col_binary in ('a', 'B')
+--
+ARRAY<STRUCT<primary_key INT64, col_binary STRING>>[unknown order:
+  {2, "a"},
+  {10, "B"},
+  {12, "a"},
+  {14, "a"},
+  {16, "a"},
+  {1, "a"},
+  {3, "a"},
+  {9, "B"},
+  {11, "B"},
+  {13, "B"},
+  {15, "B"},
+  {17, "a"}
+]
+==
+
+[name=comparison_with_column_collation_ci_is_distinct_from]
+[required_features=ANNOTATION_FRAMEWORK,COLLATION_SUPPORT,IS_DISTINCT]
+select primary_key, col_ci from StringTable WHERE col_ci is distinct from 'hello'
+--
+ARRAY<STRUCT<primary_key INT64, col_ci STRING>>[unknown order:
+  {4, "@"},
+  {6, "B"},
+  {8, "aa"},
+  {10, ""},
+  {12, "case sensitive"},
+  {1, ""},
+  {3, "Case sensitive"},
+  {5, " abc"},
+  {7, NULL},
+  {9, "@"},
+  {11, "a"},
+  {13, NULL},
+  {15, "Г"}
+]
+==
+
+[name=comparison_with_column_collation_binary_is_distinct_from]
+[required_features=ANNOTATION_FRAMEWORK,COLLATION_SUPPORT,IS_DISTINCT]
+select primary_key, col_binary from StringTable WHERE col_binary is distinct from 'a'
+--
+ARRAY<STRUCT<primary_key INT64, col_binary STRING>>[unknown order:
+  {4, "A"},
+  {6, "A"},
+  {8, "A"},
+  {10, "B"},
+  {5, "A"},
+  {7, "A"},
+  {9, "B"},
+  {11, "B"},
+  {13, "B"},
+  {15, "B"}
+]
+==
+
+[name=comparison_with_column_collation_ci_is_not_distinct_from]
+[required_features=ANNOTATION_FRAMEWORK,COLLATION_SUPPORT,IS_DISTINCT]
+select primary_key, col_ci from StringTable WHERE col_ci is not distinct from 'hello'
+--
+ARRAY<STRUCT<primary_key INT64, col_ci STRING>>[unknown order:
+  {2, "hello"},
+  {14, "Hello"},
+  {16, "hel۝lo"},
+  {17, "h܏ello"}
+]
+==
+
+[name=comparison_with_column_collation_binary_is_not_distinct_from]
+[required_features=ANNOTATION_FRAMEWORK,COLLATION_SUPPORT,IS_DISTINCT]
+select primary_key, col_binary from StringTable WHERE col_binary is not distinct from 'a'
+--
+ARRAY<STRUCT<primary_key INT64, col_binary STRING>>[unknown order:
+  {2, "a"},
+  {12, "a"},
+  {14, "a"},
+  {16, "a"},
+  {1, "a"},
+  {3, "a"},
+  {17, "a"}
+]
+==
+
+[name=groupby_with_column_collation_ci]
+select CAST(col_ci AS BYTES) IN (b"hello", b"Hello", b"hel۝lo", b"h܏ello"), count(col_ci) from StringTable
+# We pick 4 rows of "hello" strings with different casing and inserted Unicode characters.
+where primary_Key IN (2, 14, 16, 17)
+group by col_ci
+--
+ARRAY<STRUCT<BOOL, INT64>>[{true, 4}]
+==
+
+[name=groupby_having_with_column_collation_ci]
+select cast(col_ci AS BYTES) in (b"hello", b"Hello", b"hel۝lo", b"h܏ello"), count(col_ci) from StringTable
+group by col_ci
+having col_ci = "HELLO"
+--
+ARRAY<STRUCT<BOOL, INT64>>[{true, 4}]
+==
+
+[name=groupby_with_column_collation_ci_cs]
+select CAST(col_ci AS BYTES) IN (b"hello", b"Hello", b"hel۝lo", b"h܏ello"), col_binary, count(*) from StringTable
+# We pick 4 rows of "hello" strings with different casing and inserted Unicode characters, plus one row of "@".
+where primary_Key IN (2, 4, 14, 16, 17)
+group by col_ci, col_binary
+--
+ARRAY<STRUCT<BOOL, col_binary STRING, INT64>>[unknown order:
+  {true, "a", 4},
+  {false, "A", 1}
+]
+==
+
+[name=groupby_with_column_collation_ci_no_collation]
+select CAST(col_ci AS BYTES) IN (b"hello", b"Hello", b"hel۝lo", b"h܏ello"), col_no_collation, count(*) from StringTable
+# We pick 4 rows of "hello" strings with different casing and inserted Unicode characters, plus one row of "@".
+where primary_Key IN (2, 4, 14, 16, 17)
+group by col_ci, col_no_collation
+--
+ARRAY<STRUCT<
+        BOOL,
+        col_no_collation STRING,
+        INT64
+      >>
+[unknown order:{true, "c", 4}, {false, "C", 1}]
+==
+
+[name=replace_with_collation_ci]
+select
+  replace(collate(NULL, 'und:ci'), 'abc', 'def'),
+  replace(collate('defabcdef', 'und:ci'), 'abc', 'def'),
+  replace(collate('defAbCdef', 'und:ci'), 'abc', 'def'),
+  replace(collate('defA\u070FbCdef', 'und:ci'), 'abc', 'def'),
+--
+ARRAY<STRUCT<STRING, STRING, STRING, STRING>>[
+  {NULL, "defdefdef", "defdefdef", "defdefdef"}
+]
+==
+
+[name=replace_with_collation_binary]
+select
+  replace(collate(NULL, 'binary'), 'abc', 'def'),
+  replace(collate('defabcdef', 'binary'), 'abc', 'def'),
+  replace(collate('defAbCdef', 'binary'), 'abc', 'def'),
+--
+ARRAY<STRUCT<STRING, STRING, STRING>>[{NULL, "defdefdef", "defAbCdef"}]
+==
+
+[name=split_with_collation_ci]
+select
+  split(collate(NULL, 'und:ci'), 'abc'),
+  split(collate('defabcdef', 'und:ci'), 'abc'),
+  split(collate('defAbCdef', 'und:ci'), 'abc'),
+  split(collate('defA\u06DDbCdef', 'und:ci'), 'abc'),
+--
+ARRAY<STRUCT<ARRAY<>, ARRAY<>, ARRAY<>, ARRAY<>>>[
+  {
+    ARRAY<STRING>(NULL),
+    ARRAY<STRING>[known order:"def", "def"],
+    ARRAY<STRING>[known order:"def", "def"],
+    ARRAY<STRING>[known order:"def", "def"]
+  }
+]
+==
+
+[name=split_with_collation_binary]
+select
+  split(collate(NULL, 'binary'), 'abc'),
+  split(collate('defabcdef', 'binary'), 'abc'),
+  split(collate('defAbCdef', 'binary'), 'abc'),
+--
+ARRAY<STRUCT<ARRAY<>, ARRAY<>, ARRAY<>>>[
+  {
+    ARRAY<STRING>(NULL),
+    ARRAY<STRING>[known order:"def", "def"],
+    ARRAY<STRING>["defAbCdef"]
+  }
+]
+==
+
+[name=strpos_with_collation_ci]
+select
+  strpos(collate(NULL, 'und:ci'), 'ABC'),
+  strpos(collate('..abc,.,', 'und:ci'), 'ABC'),
+  strpos(collate(',,AbC,..', 'und:ci'), 'ABC'),
+  strpos(collate(',,A\u070Fbc,..', 'und:ci'), 'ABC')
+--
+ARRAY<STRUCT<INT64, INT64, INT64, INT64>>[{NULL, 3, 3, 3}]
+==
+
+[name=strpos_with_collation_binary]
+select
+  strpos(collate(NULL, 'binary'), 'ABC'),
+  strpos(collate('..abc,.,', 'binary'), 'abc'),
+  strpos(collate(',,AbC,..', 'binary'), 'abc'),
+--
+ARRAY<STRUCT<INT64, INT64, INT64>>[{NULL, 3, 0}]
+==
+
+[name=instr_with_collation_ci]
+[required_features=ANNOTATION_FRAMEWORK,COLLATION_SUPPORT,ADDITIONAL_STRING_FUNCTIONS]
+select
+  instr(collate(NULL, 'und:ci'), 'ABC'),
+  instr(collate('..abc,.,', 'und:ci'), 'ABC'),
+  instr(collate('..abc,.,', 'und:ci'), 'ABC', 1),
+  instr(collate(',,A\u070Fbc,..', 'und:ci'), 'ABC'),
+  instr(collate(',,.,A\u070Fbc,..', 'und:ci'), 'ABC', 3),
+  instr(collate('..abc,,.aBc,', 'und:ci'), 'ABC', 2, 2),
+  instr(collate('..abc,,.aBc,', 'und:ci'), 'ABC', -1, 2),
+--
+ARRAY<STRUCT<INT64, INT64, INT64, INT64, INT64, INT64, INT64>>[
+  {NULL, 3, 3, 3, 5, 9, 3}
+]
+==
+
+[name=instr_with_collation_binary]
+[required_features=ANNOTATION_FRAMEWORK,COLLATION_SUPPORT,ADDITIONAL_STRING_FUNCTIONS]
+select
+  instr(collate(NULL, 'binary'), 'ABC'),
+  instr(collate('..abc,.,', 'binary'), 'abc'),
+  instr(collate('..abc,.,', 'binary'), 'abc', 1),
+  instr(collate('..abc,,.abc,', 'binary'), 'abc', 2, 2),
+  instr(collate('..abc,,.abc,', 'binary'), 'abc', -1, 2),
+--
+ARRAY<STRUCT<INT64, INT64, INT64, INT64, INT64>>[{NULL, 3, 3, 9, 3}]
+==
+
+[name=starts_with_with_collation_ci]
+select
+  starts_with(collate(NULL, 'und:ci'), 'ABC'),
+  starts_with(collate('abc,.,', 'und:ci'), 'ABC'),
+  starts_with(collate('AbC,..', 'und:ci'), 'ABC'),
+  starts_with(collate('A\u070Fbc,..', 'und:ci'), 'ABC'),
+  starts_with('A\u070Fbc,..', collate('ABC', 'und:ci'))
+--
+ARRAY<STRUCT<BOOL, BOOL, BOOL, BOOL, BOOL>>[{NULL, true, true, true, true}]
+==
+
+[name=starts_with_with_collation_binary]
+select
+  starts_with(collate(NULL, 'binary'), 'ABC'),
+  starts_with(collate('abc,.,', 'binary'), 'abc'),
+  starts_with(collate('AbC,..', 'binary'), 'abc'),
+  starts_with('AbC,..', collate('abc', 'binary'))
+--
+ARRAY<STRUCT<BOOL, BOOL, BOOL, BOOL>>[{NULL, true, false, false}]
+==
+
+[name=ends_with_with_collation_ci]
+select
+  ends_with(collate(NULL, 'und:ci'), 'ABC'),
+  ends_with(collate(',.,abc', 'und:ci'), 'ABC'),
+  ends_with(collate(',..AbC', 'und:ci'), 'ABC'),
+  ends_with(collate(',..A\u070Fbc', 'und:ci'), 'ABC')
+--
+ARRAY<STRUCT<BOOL, BOOL, BOOL, BOOL>>[{NULL, true, true, true}]
+==
+
+[name=ends_with_with_collation_binary]
+select
+  ends_with(collate(NULL, 'binary'), 'ABC'),
+  ends_with(collate(',.,abc', 'binary'), 'abc'),
+  ends_with(collate(',..AbC', 'binary'), 'abc'),
+--
+ARRAY<STRUCT<BOOL, BOOL, BOOL>>[{NULL, true, false}]
+==
+
+[name=case_with_value_with_collation_ci]
+select
+  case collate(NULL, 'und:ci') when 'abc' then 1 else 2 end,
+  case collate('abc', 'und:ci') when 'abc' then 1 else 2 end,
+  case collate('AbC', 'und:ci') when 'abc' then 1 when 'AbC' then 2 else 3 end,
+  case collate('A\u070Fbc', 'und:ci') when 'abc' then 1 when 'A\u070Fbc' then 2 else 3 end,
+  case 'AB' when collate('abc', 'und:ci') then 1 when 'ab' then 2 else 3 end,
+  case collate('AB', 'und:ci') when 'abc' then 1 when collate('AB', 'und:ci') then 2 else 3 end
+--
+ARRAY<STRUCT<INT64, INT64, INT64, INT64, INT64, INT64>>[{2, 1, 1, 1, 2, 2}]
+==
+
+[name=case_with_value_with_collation_binary]
+select
+  case collate(NULL, 'binary') when 'abc' then 1 else 2 end,
+  case collate('abc', 'binary') when 'abc' then 1 else 2 end,
+  case collate('AbC', 'binary') when 'abc' then 1 when 'AbC' then 2 else 3 end,
+  case collate('A\u070Fbc', 'binary') when 'abc' then 1 when 'A\u070Fbc' then 2 else 3 end,
+  case 'AB' when collate('ab', 'binary') then 1 when 'AB' then 2 else 3 end,
+  case collate('AB', 'binary') when 'ab' then 1 when collate('AB', 'binary') then 2 else 3 end
+--
+ARRAY<STRUCT<INT64, INT64, INT64, INT64, INT64, INT64>>[{2, 1, 2, 2, 2, 2}]
+==
+
+[name=count_distinct_with_collation_ci]
+with TestTable as (
+select 'aB' col union all
+select 'AB' union all
+select 'ab' union all
+select 'Hello' union all
+select 'heLLo' union all
+select 'hel\u06DDlo'
+)
+select count(distinct collate(col, 'und:ci')) from TestTable
+--
+ARRAY<STRUCT<INT64>>[{2}]
+==
+
+[name=count_distinct_with_collation_binary]
+with TestTable as (
+select 'aB' col union all
+select 'AB' union all
+select 'ab' union all
+select 'Hello' union all
+select 'heLLo' union all
+select 'hel\u06DDlo'
+)
+select count(distinct collate(col, 'binary')) from TestTable
+--
+ARRAY<STRUCT<INT64>>[{6}]
+==
+
+[name=string_agg_distinct_with_collation_ci]
+# It is indeterministic that which string within an equivalence group
+# (e.g.'abc' and 'ABc') will be picked.
+with string_agg_res as (
+  select string_agg(distinct collate(elem, 'und:ci')) output_string from
+  unnest(['abc', 'ABc', 'heLLo', 'hel\u06DDlo']) elem
+)
+
+select array_length(split(output_string, ',')) from string_agg_res
+--
+ARRAY<STRUCT<INT64>>[{2}]
+
+NOTE: Reference implementation reports non-determinism.
+==
+
+[name=string_agg_distinct_with_collation_binary]
+# It is indeterministic that which string within an equivalence group
+# (e.g.'abc' and 'ABc') will be picked.
+with string_agg_res as (
+  select string_agg(distinct collate(elem, 'binary')) output_string from
+  unnest(['abc', 'ABc', 'heLLo', 'hel\u06DDlo']) elem
+)
+
+select array_length(split(output_string, ',')) from string_agg_res
+--
+ARRAY<STRUCT<INT64>>[{4}]
+
+NOTE: Reference implementation reports non-determinism.
+==
+
+[name=array_agg_distinct_with_collation_ci]
+with TestTable as (
+select 'abc' col union all
+select 'ABc' union all
+select 'heLLo' union all
+select 'hel\u06DDlo'
+)
+select array_length(array_agg(distinct collate(col, 'und:ci'))) from TestTable
+--
+ARRAY<STRUCT<INT64>>[{2}]
+==
+
+[required_features=ANNOTATION_FRAMEWORK,COLLATION_SUPPORT,ORDER_BY_IN_AGGREGATE]
+[name=string_agg_with_sort_key_with_collation_ci]
+with TestTable as (
+select 'a' col union all
+select 'B' union all
+select 'd' union all
+select 'C' union all
+select 'e'
+)
+select string_agg(col order by collate(col, 'und:ci'))
+from TestTable
+--
+ARRAY<STRUCT<STRING>>[{"a,B,C,d,e"}]
+==
+
+[required_features=ANNOTATION_FRAMEWORK,COLLATION_SUPPORT,ORDER_BY_IN_AGGREGATE]
+[name=string_agg_with_sort_key_with_collation_binary]
+with TestTable as (
+select 'a' col union all
+select 'B' union all
+select 'd' union all
+select 'C' union all
+select 'e'
+)
+select string_agg(col order by collate(col, 'binary'))
+from TestTable
+--
+ARRAY<STRUCT<STRING>>[{"B,C,a,d,e"}]
+==
+
+[name=array_agg_distinct_with_collation_binary]
+with TestTable as (
+select 'abc' col union all
+select 'ABc' union all
+select 'heLLo' union all
+select 'hel\u06DDlo'
+)
+select array_length(array_agg(distinct collate(col, 'binary'))) from TestTable
+--
+ARRAY<STRUCT<INT64>>[{4}]
+==
+
+[name=min_max_with_column_collation_ci]
+with TestTable as (
+
+select 'B'col_ci union all
+select 'a' union all
+select 'aBc' union all
+select 'Hello'
+)
+select min(collate(col_ci,'und:ci')), max(collate(col_ci,'und:ci')) from TestTable
+--
+ARRAY<STRUCT<STRING, STRING>>[{"a", "Hello"}]
+==
+
+[name=min_max_with_column_collation_binary]
+with TestTable as (
+
+select 'B'col_ci union all
+select 'a' union all
+select 'aBc' union all
+select 'Hello'
+)
+select min(collate(col_ci,'binary')), max(collate(col_ci,'binary')) from TestTable
+--
+ARRAY<STRUCT<STRING, STRING>>[{"B", "aBc"}]
+==
+
+[name=min_max_group_by_with_column_collation_ci]
+with TestTable as (
+
+select 'B'col_ci, 'group1' string_group union all
+select 'a', 'group1' union all
+select 'aBc', 'group1' union all
+select 'Hello', 'group1' union all
+select 'efg', 'group2' union all
+select '\x00', 'group3' union all
+select '\u06DD', 'group4'
+)
+select string_group, min(collate(col_ci,'und:ci')), max(collate(col_ci,'und:ci')) from TestTable
+group by string_group
+--
+ARRAY<STRUCT<string_group STRING, STRING, STRING>>[unknown order:
+  {"group1", "a", "Hello"},
+  {"group2", "efg", "efg"},
+  {"group3", "\x00", "\x00"},
+  {"group4", "۝", "۝"}
+]
+==
+
+[name=min_max_group_by_with_column_collation_binary]
+with TestTable as (
+
+select 'B'col_ci, 'group1' string_group union all
+select 'a', 'group1' union all
+select 'aBc', 'group1' union all
+select 'Hello', 'group1' union all
+select 'efg', 'group2' union all
+select '\x00', 'group3' union all
+select '\u06DD', 'group4'
+)
+select string_group, min(collate(col_ci,'binary')), max(collate(col_ci,'binary')) from TestTable
+group by string_group
+--
+ARRAY<STRUCT<string_group STRING, STRING, STRING>>[unknown order:
+  {"group1", "B", "aBc"},
+  {"group2", "efg", "efg"},
+  {"group3", "\x00", "\x00"},
+  {"group4", "۝", "۝"}
+]
+==
+
+[name=collate_function_with_valid_second_argument]
+select
+  collate('abc', 'und:ci'),
+  collate(collate('abc', 'und:ci'), ''),
+  collate('abc', 'und:ci') = 'ABC',
+  collate('abc', 'binary') = 'ABC',
+  collate(collate('abc', 'und:ci'), '') = 'ABC',
+  collate(collate('abc', 'und:ci'), 'binary') = 'ABC',
+  replace(collate('hello', 'und:ci'), 'HELLO', 'hi'),
+  replace(collate(collate('hello', 'und:ci'), ''), 'HELLO', 'hi'),
+  replace(collate(collate('hello', 'und:ci'), 'binary'), 'HELLO', 'hi')
+--
+ARRAY<STRUCT<STRING, STRING, BOOL, BOOL, BOOL, BOOL, STRING, STRING, STRING>>[
+  {"abc", "abc", true, false, false, false, "hi", "hello", "hello"}
+]
+==
+
+[name=collate_function_with_second_argument_being_expression]
+select collate('abc', upper('und:ci'));
+--
+ERROR: generic::invalid_argument: The second argument of COLLATE() must be a string literal [at 1:8]
+select collate('abc', upper('und:ci'));
+       ^
+==
+
+[name=collate_function_with_second_argument_being_null]
+select collate('abc', CAST(NULL AS STRING));
+--
+ERROR: generic::invalid_argument: The second argument of COLLATE() must be a string literal [at 1:8]
+select collate('abc', CAST(NULL AS STRING));
+       ^
+==
+
+[name=collate_function_with_second_argument_being_parameter]
+[parameters="und:ci" as test_param_string]
+select collate('abc', @test_param_string);
+--
+ERROR: generic::invalid_argument: The second argument of COLLATE() must be a string literal [at 1:8]
+select collate('abc', @test_param_string);
+       ^
+==
+
+[name=inner_join_with_column_collation]
+[parameters="und:ci" as test_param_string]
+select a.primary_Key, a.col_ci, b.primary_Key, b.col_no_collation
+from StringTable as a join StringTableToJoin as b
+on a.col_ci = b.col_no_collation
+order by a.primary_Key, b.primary_Key
+--
+ARRAY<STRUCT<
+        primary_Key INT64,
+        col_ci STRING,
+        primary_Key INT64,
+        col_no_collation STRING
+      >>
+[known order:
+  {2, "hello", 1, "HELLO"},
+  {3, "Case sensitive", 5, "Case Sensitive"},
+  {6, "B", 2, "b"},
+  {6, "B", 4, "B"},
+  {12, "case sensitive", 5, "Case Sensitive"},
+  {14, "Hello", 1, "HELLO"},
+  {16, "hel۝lo", 1, "HELLO"},
+  {17, "h܏ello", 1, "HELLO"}
+]
+==
+
+[name=inner_join_using_with_column_collation]
+[parameters="und:ci" as test_param_string]
+select a.primary_Key,
+cast(col_ci AS BYTES) in (b"hello", b"Hello", b"hel۝lo", b"h܏ello") as group_hello,
+cast(col_ci AS BYTES) in (b"case sensitive", b"Case sensitive") as group_case_sensitive,
+b.primary_Key
+from StringTable as a join StringTableToJoin as b using(col_ci)
+order by a.primary_Key, b.primary_Key
+--
+ARRAY<STRUCT<
+        primary_Key INT64,
+        group_hello BOOL,
+        group_case_sensitive BOOL,
+        primary_Key INT64
+      >>
+[known order:{2, true, false, 1},
+             {2, true, false, 4},
+             {2, true, false, 5},
+             {3, false, true, 2},
+             {3, false, true, 3},
+             {12, false, true, 2},
+             {12, false, true, 3},
+             {14, true, false, 1},
+             {14, true, false, 4},
+             {14, true, false, 5},
+             {16, true, false, 1},
+             {16, true, false, 4},
+             {16, true, false, 5},
+             {17, true, false, 1},
+             {17, true, false, 4},
+             {17, true, false, 5}]
+==
+
+[name=cross_join_with_column_collation]
+[parameters="und:ci" as test_param_string]
+select a.primary_Key, a.col_binary, b.primary_Key, b.col_no_collation
+from StringTable as a, StringTableToJoin as b
+where a.col_binary = b.col_no_collation
+--
+ARRAY<STRUCT<
+        primary_Key INT64,
+        col_binary STRING,
+        primary_Key INT64,
+        col_no_collation STRING
+      >>
+[unknown order:{10, "B", 4, "B"},
+               {9, "B", 4, "B"},
+               {13, "B", 4, "B"},
+               {11, "B", 4, "B"},
+               {15, "B", 4, "B"}]
+==
+
+[name=full_join_with_column_collation]
+[parameters="und:ci" as test_param_string]
+select a.primary_Key, a.col_ci, b.primary_Key, b.col_no_collation
+from StringTable as a full join StringTableToJoin as b
+on a.col_ci = b.col_no_collation
+order by a.primary_Key, b.primary_Key
+--
+ARRAY<STRUCT<
+        primary_Key INT64,
+        col_ci STRING,
+        primary_Key INT64,
+        col_no_collation STRING
+      >>
+[known order:
+  {NULL, NULL, 3, "c"},
+  {1, "", NULL, NULL},
+  {2, "hello", 1, "HELLO"},
+  {3, "Case sensitive", 5, "Case Sensitive"},
+  {4, "@", NULL, NULL},
+  {5, " abc", NULL, NULL},
+  {6, "B", 2, "b"},
+  {6, "B", 4, "B"},
+  {7, NULL, NULL, NULL},
+  {8, "aa", NULL, NULL},
+  {9, "@", NULL, NULL},
+  {10, "", NULL, NULL},
+  {11, "a", NULL, NULL},
+  {12, "case sensitive", 5, "Case Sensitive"},
+  {13, NULL, NULL, NULL},
+  {14, "Hello", 1, "HELLO"},
+  {15, "Г", NULL, NULL},
+  {16, "hel۝lo", 1, "HELLO"},
+  {17, "h܏ello", 1, "HELLO"}
+]
+==
+
+[name=left_join_with_column_collation]
+[parameters="und:ci" as test_param_string]
+select a.primary_Key, a.col_ci, b.primary_Key, b.col_no_collation
+from StringTable as a left join StringTableToJoin as b
+on a.col_ci = b.col_no_collation
+order by a.primary_Key
+--
+ARRAY<STRUCT<
+        primary_Key INT64,
+        col_ci STRING,
+        primary_Key INT64,
+        col_no_collation STRING
+      >>
+[unknown order:
+  {1, "", NULL, NULL},
+  {2, "hello", 1, "HELLO"},
+  {3, "Case sensitive", 5, "Case Sensitive"},
+  {4, "@", NULL, NULL},
+  {5, " abc", NULL, NULL},
+  {6, "B", 4, "B"},
+  {6, "B", 2, "b"},
+  {7, NULL, NULL, NULL},
+  {8, "aa", NULL, NULL},
+  {9, "@", NULL, NULL},
+  {10, "", NULL, NULL},
+  {11, "a", NULL, NULL},
+  {12, "case sensitive", 5, "Case Sensitive"},
+  {13, NULL, NULL, NULL},
+  {14, "Hello", 1, "HELLO"},
+  {15, "Г", NULL, NULL},
+  {16, "hel۝lo", 1, "HELLO"},
+  {17, "h܏ello", 1, "HELLO"}
+]
+==
+
+[name=right_join_with_column_collation]
+[parameters="und:ci" as test_param_string]
+select b.primary_Key, b.col_no_collation, a.primary_Key, a.col_ci
+from StringTable as a right join StringTableToJoin as b
+on a.col_ci = b.col_no_collation
+order by b.primary_Key
+--
+ARRAY<STRUCT<
+        primary_Key INT64,
+        col_no_collation STRING,
+        primary_Key INT64,
+        col_ci STRING
+      >>
+[unknown order:
+  {1, "HELLO", 16, "hel۝lo"},
+  {1, "HELLO", 17, "h܏ello"},
+  {1, "HELLO", 2, "hello"},
+  {1, "HELLO", 14, "Hello"},
+  {2, "b", 6, "B"},
+  {3, "c", NULL, NULL},
+  {4, "B", 6, "B"},
+  {5, "Case Sensitive", 12, "case sensitive"},
+  {5, "Case Sensitive", 3, "Case sensitive"}
+]
+==
+
+[name=in_subquery_with_collation_ci]
+with TestTable as (
+select 'ab' col union all
+select 'hel\u06DDlo'
+)
+select
+  'a' in (select collate(col, 'und:ci') from TestTable),
+  'Ab' in (select collate(col, 'und:ci') from TestTable),
+  'hello' in (select collate(col, 'und:ci') from TestTable),
+  collate('a', 'und:ci') in (select col from TestTable),
+  collate('Ab', 'und:ci') in (select col from TestTable),
+  collate('hello', 'und:ci') in (select col from TestTable),
+--
+ARRAY<STRUCT<BOOL, BOOL, BOOL, BOOL, BOOL, BOOL>>[
+  {false, true, true, false, true, true}
+]
+==
+
+[name=in_subquery_with_collation_binary]
+with TestTable as (
+select 'ab' col union all
+select 'hello'
+)
+select
+  'ab' in (select collate(col, 'binary') from TestTable),
+  'AB' in (select collate(col, 'binary') from TestTable),
+  'hello' in (select collate(col, 'binary') from TestTable),
+  'HeLLO' in (select collate(col, 'binary') from TestTable),
+  collate('ab', 'binary') in (select col from TestTable),
+  collate('AB', 'binary') in (select col from TestTable)
+--
+ARRAY<STRUCT<BOOL, BOOL, BOOL, BOOL, BOOL, BOOL>>[
+  {true, false, true, false, true, false}
+]
+==
+
+[name=in_subquery_with_conflicting_collation]
+with TestTable as (
+select 'ab' col union all
+select 'hel\u06DDlo'
+)
+select
+  collate('a', 'binary') in (select collate(col, 'und:ci') from TestTable)
+--
+ERROR: generic::invalid_argument: Collation conflict: "binary" vs. "und:ci". Collation for IN operator is different on input expr ("binary") and subquery column ("und:ci") [at 6:30]
+  collate('a', 'binary') in (select collate(col, 'und:ci') from TestTable)
+                             ^
+==
+
+[name=in_unnest_with_collation_ci]
+select
+  'a' in unnest([collate('A', 'und:ci'), collate('b', 'und:ci')]),
+  'c' in unnest([collate('A', 'und:ci'), collate('b', 'und:ci')]),
+  collate('a', 'und:ci') in unnest(['A', 'b']),
+  collate('c', 'und:ci') in unnest(['A', 'b'])
+--
+ARRAY<STRUCT<BOOL, BOOL, BOOL, BOOL>>[{true, false, true, false}]
+==
+
+[name=in_unnest_with_collation_binary]
+select
+  'a' in unnest([collate('A', 'binary'), collate('b', 'binary')]),
+  'a' in unnest([collate('a', 'binary'), collate('b', 'binary')]),
+  collate('a', 'binary') in unnest(['A', 'b']),
+  collate('a', 'binary') in unnest(['a', 'b'])
+--
+ARRAY<STRUCT<BOOL, BOOL, BOOL, BOOL>>[{false, true, false, true}]
+==
+
+[name=in_unnest_with_conflicting_collation]
+select
+  collate('a', 'und:ci') in unnest([collate('A', 'binary'), collate('b', 'binary')])
+--
+ERROR: generic::invalid_argument: Collation conflict: "binary" vs. "und:ci". Collation on argument 2 ("binary") in function IN UNNEST is not compatible with other arguments [at 2:26]
+  collate('a', 'und:ci') in unnest([collate('A', 'binary'), collate('b', 'bin...
+                         ^
+==
+
+[name=union_distinct_with_collation_ci_binary]
+# Summary ("{}" indicates values of case insensitive columns):
+#   First item:
+#     R1: ({'abc'}, 'def') appears twice
+#     R2: ({'ab'}, 'DEF') appears once
+#     R3: ({'abc'}, 'xyz') appears twice
+#   Second item:
+#     R1: ({'abc'}, 'def') appears once
+#     R2: ({'ab'}, 'DEF') appears once
+#     R4: ({'abc'}, 'DEF') appears once
+#     R5: ({'ab'}, 'DEf') appears once
+select lower(col_ci), col_binary from (
+  (select collate('abc', 'und:ci') col_ci, collate('def', 'binary') col_binary union all
+   select collate('ab', 'und:ci'), collate('DEf', 'binary') union all
+   select collate('ABC', 'und:ci'), collate('xyz', 'binary') union all
+   select collate('aBc', 'und:ci'), collate('xyz', 'binary') union all
+   select collate('ABC', 'und:ci'), collate('def', 'binary'))
+   union distinct
+  (select collate('AbC', 'und:ci'), collate('def', 'binary') union all
+   select collate('aBc', 'und:ci'), collate('DEF', 'binary') union all
+   select collate('aB', 'und:ci'), collate('DEF', 'binary') union all
+   select collate('Ab', 'und:ci'), collate('DEf', 'binary'))
+)
+--
+ARRAY<STRUCT<STRING, col_binary STRING>>[unknown order:
+  {"ab", "DEf"},
+  {"abc", "def"},
+  {"ab", "DEF"},
+  {"abc", "DEF"},
+  {"abc", "xyz"}
+]
+==
+
+[name=intersect_distinct_with_collation_ci_binary]
+# Summary ("{}" indicates values of case insensitive columns):
+#   First item:
+#     R1: ({'abc'}, 'def') appears twice
+#     R2: ({'ab'}, 'DEF') appears once
+#     R3: ({'abcd'}, 'xyz') appears once
+#     R4: ({'abcd'}, 'XyZ') appears twice
+#   Second item:
+#     R1: ({'abc'}, 'def') appears once
+#     R2: ({'ab'}, 'DEF') appears once
+#     R3: ({'abcd'}, 'xyz') appears three times
+#     R5: ({'ab'}, 'DEf') appears once
+select lower(col_ci), col_binary from (
+  (select collate('abc', 'und:ci') col_ci, collate('def', 'binary') col_binary union all
+   select collate('ab', 'und:ci'), collate('DEf', 'binary') union all
+   select collate('abcd', 'und:ci'), collate('xyz', 'binary') union all
+   select collate('abCD', 'und:ci'), collate('XyZ', 'binary') union all
+   select collate('ABCD', 'und:ci'), collate('XyZ', 'binary') union all
+   select collate('ABC', 'und:ci'), collate('def', 'binary'))
+   intersect distinct
+  (select collate('AbC', 'und:ci'), collate('def', 'binary') union all
+   select collate('aB', 'und:ci'), collate('DEF', 'binary') union all
+   select collate('ABcd', 'und:ci'), collate('xyz', 'binary') union all
+   select collate('abCD', 'und:ci'), collate('xyz', 'binary') union all
+   select collate('abCd', 'und:ci'), collate('xyz', 'binary') union all
+   select collate('Ab', 'und:ci'), collate('DEf', 'binary'))
+)
+--
+ARRAY<STRUCT<STRING, col_binary STRING>>[unknown order:
+  {"abc", "def"},
+  {"ab", "DEf"},
+  {"abcd", "xyz"}
+]
+==
+
+[name=except_distinct_with_collation_ci_binary]
+# Summary ("{}" indicates values of case insensitive columns):
+#   First item:
+#     R1: ({'abc'}, 'def') appears twice
+#     R2: ({'ab'}, 'DEF') appears once
+#     R3: ({'abcd'}, 'xyz') appears once
+#     R4: ({'abcd'}, 'XyZ') appears twice
+#   Second item:
+#     R1: ({'abc'}, 'def') appears once
+#     R2: ({'ab'}, 'DEF') appears once
+#     R3: ({'abcd'}, 'xyz') appears three times
+#     R5: ({'ab'}, 'DEf') appears once
+select lower(col_ci), col_binary from (
+  (select collate('abc', 'und:ci') col_ci, collate('def', 'binary') col_binary union all
+   select collate('ab', 'und:ci'), collate('DEf', 'binary') union all
+   select collate('abcd', 'und:ci'), collate('xyz', 'binary') union all
+   select collate('abCD', 'und:ci'), collate('XyZ', 'binary') union all
+   select collate('ABCD', 'und:ci'), collate('XyZ', 'binary') union all
+   select collate('ABC', 'und:ci'), collate('def', 'binary'))
+   except distinct
+  (select collate('AbC', 'und:ci'), collate('def', 'binary') union all
+   select collate('aB', 'und:ci'), collate('DEF', 'binary') union all
+   select collate('ABcd', 'und:ci'), collate('xyz', 'binary') union all
+   select collate('abCD', 'und:ci'), collate('xyz', 'binary') union all
+   select collate('abCd', 'und:ci'), collate('xyz', 'binary') union all
+   select collate('Ab', 'und:ci'), collate('DEf', 'binary'))
+)
+--
+ARRAY<STRUCT<STRING, col_binary STRING>>[{"abcd", "XyZ"}]
+==
+
+# TODO: Add more ARRAY built-in functions
+[name=array_first_collation_ci_string]
+SELECT 'HellO' = ARRAY_FIRST([collate("hello", "und:ci"), collate("googlesql", "und:ci")])
+--
+ARRAY<STRUCT<BOOL>>[{true}]
+==
+
+[name=array_last_collation_ci_string]
+SELECT 'GoogleSQL' = ARRAY_LAST([collate("hello", "und:ci"), collate("googlesql", "und:ci")])
+--
+ARRAY<STRUCT<BOOL>>[{true}]
+==
+
+[required_features=ANNOTATION_FRAMEWORK,COLLATION_SUPPORT]
+[forbidden_features=DISABLE_ARRAY_MIN_AND_MAX]
+[name=array_min_collation_ci_string_1]
+SELECT ARRAY_MIN([collate("c", "und:ci"), collate("a", "und:ci"), collate("A", "und:ci")])
+--
+ARRAY<STRUCT<STRING>>[{"a"}]
+==
+
+[required_features=ANNOTATION_FRAMEWORK,COLLATION_SUPPORT]
+[forbidden_features=DISABLE_ARRAY_MIN_AND_MAX]
+[name=array_min_collation_ci_string_2]
+SELECT ARRAY_MIN([collate("c", "und:ci"), collate("A", "und:ci"), collate("a", "und:ci")])
+--
+ARRAY<STRUCT<STRING>>[{"A"}]
+==
+
+[required_features=ANNOTATION_FRAMEWORK,COLLATION_SUPPORT]
+[forbidden_features=DISABLE_ARRAY_MIN_AND_MAX]
+[name=array_max_collation_ci_string_1]
+SELECT ARRAY_MAX([collate("C", "und:ci"), collate("c", "und:ci"), collate("a", "und:ci")])
+--
+ARRAY<STRUCT<STRING>>[{"C"}]
+==
+
+[required_features=ANNOTATION_FRAMEWORK,COLLATION_SUPPORT]
+[forbidden_features=DISABLE_ARRAY_MIN_AND_MAX]
+[name=array_max_collation_ci_string_2]
+SELECT ARRAY_MAX([collate("c", "und:ci"), collate("C", "und:ci"), collate("a", "und:ci")])
+--
+ARRAY<STRUCT<STRING>>[{"c"}]
+==
+
+[required_features=ANNOTATION_FRAMEWORK,COLLATION_SUPPORT,ARRAY_FIND_FUNCTIONS]
+[name=array_offset_collation_ci_string_1]
+SELECT ARRAY_OFFSET([collate("a", "und:ci"), collate("c", "und:ci"), collate("C", "und:ci")], "C")
+--
+ARRAY<STRUCT<INT64>>[{1}]
+==
+
+[required_features=ANNOTATION_FRAMEWORK,COLLATION_SUPPORT,ARRAY_FIND_FUNCTIONS]
+[name=array_offset_collation_ci_string_2]
+SELECT ARRAY_OFFSET(["a", "c", "C"], collate("C", "und:ci"))
+--
+ARRAY<STRUCT<INT64>>[{1}]
+==
+
+[required_features=ANNOTATION_FRAMEWORK,COLLATION_SUPPORT,ARRAY_FIND_FUNCTIONS]
+[name=array_offset_collation_ci_string_3]
+SELECT ARRAY_OFFSET(["a", "c", "C"], collate("C", "und:ci"), "LAST")
+--
+ARRAY<STRUCT<INT64>>[{2}]
+==
+
+[required_features=ANNOTATION_FRAMEWORK,COLLATION_SUPPORT,ARRAY_FIND_FUNCTIONS]
+[name=array_find_collation_ci_string_1]
+SELECT ARRAY_FIND([collate("a", "und:ci"), collate("c", "und:ci"), collate("C", "und:ci")], "C")
+--
+ARRAY<STRUCT<STRING>>[{"c"}]
+==
+
+[required_features=ANNOTATION_FRAMEWORK,COLLATION_SUPPORT,ARRAY_FIND_FUNCTIONS]
+[name=array_find_collation_ci_string_2]
+SELECT ARRAY_FIND(["a", "c", "C"], collate("C", "und:ci"))
+--
+ARRAY<STRUCT<STRING>>[{"c"}]
+==
+
+[required_features=ANNOTATION_FRAMEWORK,COLLATION_SUPPORT,ARRAY_FIND_FUNCTIONS]
+[name=array_find_collation_ci_string_3]
+SELECT ARRAY_FIND(["a", "c", "C"], collate("C", "und:ci"), "LAST")
+--
+ARRAY<STRUCT<STRING>>[{"C"}]
+==
+
+[required_features=ANNOTATION_FRAMEWORK,COLLATION_SUPPORT,ARRAY_FIND_FUNCTIONS]
+[name=array_offsets_collation_ci_string_1]
+SELECT ARRAY_OFFSETS([collate("a", "und:ci"), collate("c", "und:ci"), collate("C", "und:ci")], "C")
+--
+ARRAY<STRUCT<ARRAY<>>>[{ARRAY<INT64>[known order:1, 2]}]
+==
+
+[required_features=ANNOTATION_FRAMEWORK,COLLATION_SUPPORT,ARRAY_FIND_FUNCTIONS]
+[name=array_offsets_collation_ci_string_2]
+SELECT ARRAY_OFFSETS(["c", "a", "C"], collate("C", "und:ci"))
+--
+ARRAY<STRUCT<ARRAY<>>>[{ARRAY<INT64>[known order:0, 2]}]
+==
+
+[required_features=ANNOTATION_FRAMEWORK,COLLATION_SUPPORT,ARRAY_FIND_FUNCTIONS]
+[name=array_offsets_collation_ci_string_null_1]
+SELECT ARRAY_OFFSETS(["c", NULL, "C"], collate("C", "und:ci"))
+--
+ARRAY<STRUCT<ARRAY<>>>[{ARRAY<INT64>[known order:0, 2]}]
+==
+
+[required_features=ANNOTATION_FRAMEWORK,COLLATION_SUPPORT,ARRAY_FIND_FUNCTIONS]
+[name=array_offsets_collation_ci_string_null_2]
+SELECT ARRAY_OFFSETS([collate("a", "und:ci"), NULL, collate("C", "und:ci")], "C")
+--
+ARRAY<STRUCT<ARRAY<>>>[{ARRAY<INT64>[2]}]
+==
+
+[required_features=ANNOTATION_FRAMEWORK,COLLATION_SUPPORT,ARRAY_FIND_FUNCTIONS]
+[name=array_find_all_collation_ci_string_1]
+SELECT ARRAY_FIND_ALL([collate("a", "und:ci"), collate("c", "und:ci"), collate("C", "und:ci")], "C")
+--
+ARRAY<STRUCT<ARRAY<>>>[{ARRAY<STRING>[known order:"c", "C"]}]
+==
+
+[required_features=ANNOTATION_FRAMEWORK,COLLATION_SUPPORT,ARRAY_FIND_FUNCTIONS]
+[name=array_find_all_collation_ci_string_2]
+SELECT ARRAY_FIND_ALL(["c", "a", "C"], collate("C", "und:ci"))
+--
+ARRAY<STRUCT<ARRAY<>>>[{ARRAY<STRING>[known order:"c", "C"]}]
+==
+
+[required_features=ANNOTATION_FRAMEWORK,COLLATION_SUPPORT,ANALYTIC_FUNCTIONS]
+[name=analytic_function_count_distinct_with_collation_ci]
+with TestTable as (
+select 'a' col union all
+select 'A' union all
+select 'b'
+)
+select count(distinct collate(col, 'und:ci')) over ()
+from TestTable
+order by col
+--
+ARRAY<STRUCT<INT64>>[known order:{2}, {2}, {2}]
+==
+
+[required_features=ANNOTATION_FRAMEWORK,COLLATION_SUPPORT,ANALYTIC_FUNCTIONS]
+[name=analytic_function_count_distinct_with_collation_binary]
+with TestTable as (
+select 'a' col union all
+select 'A' union all
+select 'b'
+)
+select count(distinct collate(col, 'binary')) over () from TestTable
+--
+ARRAY<STRUCT<INT64>>[unknown order:{3}, {3}, {3}]
+==
+
+[required_features=ANNOTATION_FRAMEWORK,COLLATION_SUPPORT,ANALYTIC_FUNCTIONS]
+[name=analytic_function_min_max_with_collation_ci]
+with TestTable as (
+select 'A' col union all
+select 'b' union all
+select 'C'
+)
+select
+  min(collate(col, 'und:ci')) over (),
+  max(collate(col, 'und:ci')) over ()
+from TestTable
+--
+ARRAY<STRUCT<STRING, STRING>>[unknown order:
+  {"A", "C"},
+  {"A", "C"},
+  {"A", "C"}
+]
+==
+
+[required_features=ANNOTATION_FRAMEWORK,COLLATION_SUPPORT,ANALYTIC_FUNCTIONS]
+[name=analytic_function_min_max_with_collation_binary]
+with TestTable as (
+select 'A' col union all
+select 'b' union all
+select 'C'
+)
+select
+  min(collate(col, 'binary')) over (),
+  max(collate(col, 'binary')) over ()
+from TestTable
+--
+ARRAY<STRUCT<STRING, STRING>>[unknown order:
+  {"A", "b"},
+  {"A", "b"},
+  {"A", "b"}
+]
+==
+
+[required_features=ANNOTATION_FRAMEWORK,COLLATION_SUPPORT,ANALYTIC_FUNCTIONS]
+[name=analytic_function_min_max_with_collation_empty]
+with TestTable as (
+select 'A' col union all
+select 'b' union all
+select 'C'
+)
+select
+  min(collate(col, '')) over (),
+  max(collate(col, '')) over ()
+from TestTable
+--
+ARRAY<STRUCT<STRING, STRING>>[unknown order:
+  {"A", "b"},
+  {"A", "b"},
+  {"A", "b"}
+]
+==
+
+[required_features=ANNOTATION_FRAMEWORK,COLLATION_SUPPORT,ANALYTIC_FUNCTIONS]
+[name=analytic_function_partition_by_with_collation_ci]
+with TestTable as (
+select 'abc' col_str, 1 as col union all
+select 'def', 2 union all
+select 'ABc', 3 union all
+select 'DEf', 4 union all
+select 'abC', 5 union all
+select 'dEf', 6
+)
+select
+  col_str,
+  count(distinct col) over w1 as count_distinct,
+  min(col) over w1 as min_value,
+  max(col) over w1 as max_value,
+  first_value(col) OVER w2 as first_value,
+  lead(col) over w2 as lead,
+  percentile_disc(col, 0.5) over w1 as percentile_disc,
+  dense_rank() over w2 as dense_rank,
+  row_number() over w2 as row_number,
+  ntile(2) over w2 as ntile,
+  avg(col) over w1 as avg,
+  lower(any_value(col_str) over w1) as lower_any_value,
+  string_agg(col_str, "&") over w2 as string_agg,
+  array_agg(col_str) over w2 as array_agg
+from TestTable
+window
+  w1 as (partition by collate(col_str, 'und:ci')),
+  w2 as (partition by collate(col_str, 'und:ci') order by col)
+order by col
+--
+ARRAY<STRUCT<
+        col_str STRING,
+        count_distinct INT64,
+        min_value INT64,
+        max_value INT64,
+        first_value INT64,
+        lead INT64,
+        percentile_disc INT64,
+        dense_rank INT64,
+        row_number INT64,
+        ntile INT64,
+        avg DOUBLE,
+        lower_any_value STRING,
+        string_agg STRING,
+        array_agg ARRAY<>
+      >>
+[known order:
+  {"abc", 3, 1, 5, 1, 3, 3, 1, 1, 1, 3, "abc", "abc", ARRAY<STRING>["abc"]},
+  {"def", 3, 2, 6, 2, 4, 4, 1, 1, 1, 4, "def", "def", ARRAY<STRING>["def"]},
+  {
+    "ABc",
+    3,
+    1,
+    5,
+    1,
+    5,
+    3,
+    2,
+    2,
+    1,
+    3,
+    "abc",
+    "abc&ABc",
+    ARRAY<STRING>[unknown order:"abc", "ABc"]
+  },
+  {
+    "DEf",
+    3,
+    2,
+    6,
+    2,
+    6,
+    4,
+    2,
+    2,
+    1,
+    4,
+    "def",
+    "def&DEf",
+    ARRAY<STRING>[unknown order:"def", "DEf"]
+  },
+  {
+    "abC",
+    3,
+    1,
+    5,
+    1,
+    NULL,
+    3,
+    3,
+    3,
+    2,
+    3,
+    "abc",
+    "abc&ABc&abC",
+    ARRAY<STRING>[unknown order:"abc", "ABc", "abC"]
+  },
+  {
+    "dEf",
+    3,
+    2,
+    6,
+    2,
+    NULL,
+    4,
+    3,
+    3,
+    2,
+    4,
+    "def",
+    "def&DEf&dEf",
+    ARRAY<STRING>[unknown order:"def", "DEf", "dEf"]
+  }
+]
+
+NOTE: Reference implementation reports non-determinism.
+==
+
+[required_features=ANNOTATION_FRAMEWORK,COLLATION_SUPPORT,ANALYTIC_FUNCTIONS]
+[name=analytic_function_partition_by_with_collation_binary]
+with TestTable as (
+select 'abc' col_str, 1 as col union all
+select 'def', 2 union all
+select 'ABc', 3 union all
+select 'def', 4 union all
+select 'abc', 5 union all
+select 'dEf', 6
+)
+select
+  col_str,
+  count(distinct col) over w1 as count_distinct,
+  min(col) over w1 as min_value,
+  max(col) over w1 as max_value,
+  first_value(col) OVER w2 as first_value,
+  lead(col) over w2 as lead,
+  percentile_disc(col, 0.5) over w1 as percentile_disc,
+  dense_rank() over w2 as dense_rank,
+  row_number() over w2 as row_number,
+  ntile(2) over w2 as ntile,
+  avg(col) over w1 as avg,
+  lower(any_value(col_str) over w1) as lower_any_value,
+  string_agg(col_str, "&") over w2 as string_agg,
+  array_agg(col_str) over w2 as array_agg
+from TestTable
+window
+  w1 as (partition by collate(col_str, 'binary')),
+  w2 as (partition by collate(col_str, 'binary') order by col)
+order by col
+--
+ARRAY<STRUCT<
+        col_str STRING,
+        count_distinct INT64,
+        min_value INT64,
+        max_value INT64,
+        first_value INT64,
+        lead INT64,
+        percentile_disc INT64,
+        dense_rank INT64,
+        row_number INT64,
+        ntile INT64,
+        avg DOUBLE,
+        lower_any_value STRING,
+        string_agg STRING,
+        array_agg ARRAY<>
+      >>
+[known order:
+  {"abc", 2, 1, 5, 1, 5, 1, 1, 1, 1, 3, "abc", "abc", ARRAY<STRING>["abc"]},
+  {"def", 2, 2, 4, 2, 4, 2, 1, 1, 1, 3, "def", "def", ARRAY<STRING>["def"]},
+  {"ABc", 1, 3, 3, 3, NULL, 3, 1, 1, 1, 3, "abc", "ABc", ARRAY<STRING>["ABc"]},
+  {
+    "def",
+    2,
+    2,
+    4,
+    2,
+    NULL,
+    2,
+    2,
+    2,
+    2,
+    3,
+    "def",
+    "def&def",
+    ARRAY<STRING>[unknown order:"def", "def"]
+  },
+  {
+    "abc",
+    2,
+    1,
+    5,
+    1,
+    NULL,
+    1,
+    2,
+    2,
+    2,
+    3,
+    "abc",
+    "abc&abc",
+    ARRAY<STRING>[unknown order:"abc", "abc"]
+  },
+  {"dEf", 1, 6, 6, 6, NULL, 6, 1, 1, 1, 6, "def", "dEf", ARRAY<STRING>["dEf"]}
+]
+
+NOTE: Reference implementation reports non-determinism.
+==
+
+[required_features=ANNOTATION_FRAMEWORK,COLLATION_SUPPORT,ANALYTIC_FUNCTIONS]
+[name=analytic_function_order_by_with_collation_ci]
+with TestTable as (
+select 'ab' col_str, 1 as col union all
+select 'ac', 2 union all
+select 'AB', 3 union all
+select 'AC', 4 union all
+select 'aB', 5 union all
+select 'aC', 6
+)
+select
+  col_str,
+  first_value(col) OVER w1 as first_value,
+  lead(col) over w1 as lead,
+  dense_rank() over w1 as dense_rank,
+  row_number() over w1 as row_number,
+  ntile(2) over w1 as ntile,
+  avg(col) over w1 as avg,
+  string_agg(cast(col as string), "&") over w1 as string_agg,
+  array_agg(col) over w1 as array_agg
+from TestTable
+window w1 as (order by collate(col_str, 'und:ci'), col)
+order by col
+--
+ARRAY<STRUCT<col_str STRING,
+             first_value INT64,
+             lead INT64,
+             dense_rank INT64,
+             row_number INT64,
+             ntile INT64,
+             avg DOUBLE,
+             string_agg STRING,
+             array_agg ARRAY<>>>
+[known order:{"ab", 1, 3, 1, 1, 1, 1, "1", ARRAY<INT64>[1]},
+             {
+               "ac",
+               1,
+               4,
+               4,
+               4,
+               2,
+               2.75,
+               "1&3&5&2",
+               ARRAY<INT64>[unknown order:1, 3, 5, 2]
+             },
+             {
+               "AB",
+               1,
+               5,
+               2,
+               2,
+               1,
+               2,
+               "1&3",
+               ARRAY<INT64>[unknown order:1, 3]
+             },
+             {
+               "AC",
+               1,
+               6,
+               5,
+               5,
+               2,
+               3,
+               "1&3&5&2&4",
+               ARRAY<INT64>[unknown order:1, 3, 5, 2, 4]
+             },
+             {
+               "aB",
+               1,
+               2,
+               3,
+               3,
+               1,
+               3,
+               "1&3&5",
+               ARRAY<INT64>[unknown order:1, 3, 5]
+             },
+             {
+               "aC",
+               1,
+               NULL,
+               6,
+               6,
+               2,
+               3.5,
+               "1&3&5&2&4&6",
+               ARRAY<INT64>[unknown order:1, 3, 5, 2, 4, 6]
+             }]
+
+NOTE: Reference implementation reports non-determinism.
+==
+
+[required_features=ANNOTATION_FRAMEWORK,COLLATION_SUPPORT,ANALYTIC_FUNCTIONS]
+[name=analytic_function_order_by_with_collation_binary]
+with TestTable as (
+select 'ab' col_str, 1 as col union all
+select 'ac', 2 union all
+select 'AB', 3 union all
+select 'AC', 4 union all
+select 'aB', 5 union all
+select 'aC', 6
+)
+select
+  col_str,
+  first_value(col) OVER w1 as first_value,
+  lead(col) over w1 as lead,
+  dense_rank() over w1 as dense_rank,
+  row_number() over w1 as row_number,
+  ntile(2) over w1 as ntile,
+  avg(col) over w1 as avg,
+  string_agg(cast(col as string), "&") over w1 as string_agg,
+  array_agg(col) over w1 as array_agg
+from TestTable
+window w1 as (order by collate(col_str, 'binary'), col)
+order by col
+--
+ARRAY<STRUCT<col_str STRING,
+             first_value INT64,
+             lead INT64,
+             dense_rank INT64,
+             row_number INT64,
+             ntile INT64,
+             avg DOUBLE,
+             string_agg STRING,
+             array_agg ARRAY<>>>
+[known order:{
+               "ab",
+               3,
+               2,
+               5,
+               5,
+               2,
+               3.8,
+               "3&4&5&6&1",
+               ARRAY<INT64>[unknown order:3, 4, 5, 6, 1]
+             },
+             {
+               "ac",
+               3,
+               NULL,
+               6,
+               6,
+               2,
+               3.5,
+               "3&4&5&6&1&2",
+               ARRAY<INT64>[unknown order:3, 4, 5, 6, 1, 2]
+             },
+             {"AB", 3, 4, 1, 1, 1, 3, "3", ARRAY<INT64>[3]},
+             {
+               "AC",
+               3,
+               5,
+               2,
+               2,
+               1,
+               3.5,
+               "3&4",
+               ARRAY<INT64>[unknown order:3, 4]
+             },
+             {
+               "aB",
+               3,
+               6,
+               3,
+               3,
+               1,
+               4,
+               "3&4&5",
+               ARRAY<INT64>[unknown order:3, 4, 5]
+             },
+             {
+               "aC",
+               3,
+               1,
+               4,
+               4,
+               2,
+               4.5,
+               "3&4&5&6",
+               ARRAY<INT64>[unknown order:3, 4, 5, 6]
+             }]
+
+NOTE: Reference implementation reports non-determinism.
+==
+
+[name=like_with_collation_ci]
+select
+  collate(NULL, 'und:ci') like 'abc',
+  collate('defabcdef', 'und:ci') like 'def%',
+  collate('defAbCdef', 'und:ci') like '%aBc%',
+  # \u070F is an ignorable character
+  collate('defA\u070FbCdef', 'und:ci') like '%abc%',
+  'defA\u070FbCdef' like COLLATE('%abc%', 'und:ci'),
+--
+ARRAY<STRUCT<BOOL, BOOL, BOOL, BOOL, BOOL>>[{NULL, true, true, true, true}]
+==
+
+[name=like_with_collation_binary]
+select
+  collate(NULL, 'binary') like 'abc',
+  collate('defabcdef', 'binary') like 'def%',
+  collate('defAbCdef', 'binary') like '%aBc%',
+  collate('defA\u070FbCdef', 'binary') like '%abc%',
+  'defA\u070FbCdef' like COLLATE('%abc%', 'binary'),
+--
+ARRAY<STRUCT<BOOL, BOOL, BOOL, BOOL, BOOL>>[{NULL, true, false, false, false}]
+==
+
+[required_features=ANNOTATION_FRAMEWORK,COLLATION_SUPPORT,ANALYTIC_FUNCTIONS]
+[name=analytic_percentile_disc_with_collation_ci]
+WITH TestTable AS (
+SELECT '' col UNION ALL
+SELECT 'a' UNION ALL
+SELECT 'Ab' UNION ALL
+SELECT 'Abc' UNION ALL
+SELECT 'B' UNION ALL
+SELECT 'bc' UNION ALL
+SELECT 'bcd' UNION ALL
+SELECT 'Cd'
+)
+SELECT
+  PERCENTILE_DISC(collate(col, 'und:ci'), 0.5) OVER ()
+FROM TestTable
+--
+ARRAY<STRUCT<STRING>>[unknown order:
+  {"Abc"},
+  {"Abc"},
+  {"Abc"},
+  {"Abc"},
+  {"Abc"},
+  {"Abc"},
+  {"Abc"},
+  {"Abc"}
+]
+==
+
+[required_features=ANNOTATION_FRAMEWORK,COLLATION_SUPPORT,ANALYTIC_FUNCTIONS]
+[name=analytic_percentile_disc_with_collation_binary]
+WITH TestTable AS (
+SELECT '' col UNION ALL
+SELECT 'a' UNION ALL
+SELECT 'Ab' UNION ALL
+SELECT 'Abc' UNION ALL
+SELECT 'B' UNION ALL
+SELECT 'bc' UNION ALL
+SELECT 'bcd' UNION ALL
+SELECT 'Cd'
+)
+SELECT
+  PERCENTILE_DISC(collate(col, 'binary'), 0.5) OVER ()
+FROM TestTable
+--
+ARRAY<STRUCT<STRING>>[unknown order:
+  {"B"},
+  {"B"},
+  {"B"},
+  {"B"},
+  {"B"},
+  {"B"},
+  {"B"},
+  {"B"}
+]
+==
+
+[required_features=COLLATION_SUPPORT,ANNOTATION_FRAMEWORK,COLLATION_IN_EXPLICIT_CAST]
+[name=cast_to_string_with_collation_ci_binary]
+SELECT
+  CAST('abc' AS STRING COLLATE 'und:ci') = 'ABC',
+  CAST('abc' AS STRING COLLATE 'binary') = 'ABC',
+--
+ARRAY<STRUCT<BOOL, BOOL>>[{true, false}]
+==
+
+[required_features=COLLATION_SUPPORT,ANNOTATION_FRAMEWORK,COLLATION_IN_EXPLICIT_CAST]
+[name=cast_to_array_with_collation_ci_binary]
+SELECT
+  'ABC' IN UNNEST(CAST(['abc', 'aBc']  AS ARRAY<STRING COLLATE 'und:ci'>)),
+  'ABC' IN UNNEST(CAST(['abc', 'aBc']  AS ARRAY<STRING COLLATE 'binary'>))
+--
+ARRAY<STRUCT<BOOL, BOOL>>[{true, false}]
+==
+
+[required_features=COLLATION_SUPPORT,ANNOTATION_FRAMEWORK,COLLATION_IN_EXPLICIT_CAST]
+[name=cast_to_struct_with_collation_ci_binary]
+SELECT
+  CAST(STRUCT<a BOOL, b STRING>(true, 'abc') AS STRUCT<a BOOL, b STRING COLLATE 'und:ci'>).b = 'ABC',
+  CAST(STRUCT<a BOOL, b STRING>(true, 'abc') AS STRUCT<a BOOL, b STRING COLLATE 'binary'>).b = 'ABC'
+--
+ARRAY<STRUCT<BOOL, BOOL>>[{true, false}]
+==
+
+[required_features=ANNOTATION_FRAMEWORK,COLLATION_SUPPORT,ANALYTIC_FUNCTIONS]
+[name=analytic_percentile_disc_with_collation_empty]
+WITH TestTable AS (
+SELECT '' col UNION ALL
+SELECT 'a' UNION ALL
+SELECT 'Ab' UNION ALL
+SELECT 'Abc' UNION ALL
+SELECT 'B' UNION ALL
+SELECT 'bc' UNION ALL
+SELECT 'bcd' UNION ALL
+SELECT 'Cd'
+)
+SELECT
+  PERCENTILE_DISC(collate(col, ''), 0.5) OVER ()
+FROM TestTable
+--
+ARRAY<STRUCT<STRING>>[unknown order:
+  {"B"},
+  {"B"},
+  {"B"},
+  {"B"},
+  {"B"},
+  {"B"},
+  {"B"},
+  {"B"}
+]
+==
+
+# Regression test for b/842312482
+[required_features=ANNOTATION_FRAMEWORK,COLLATION_SUPPORT]
+[name=array_includes_with_collation]
+SELECT
+  # Literal coercion, collation on the target
+  ARRAY_INCLUDES(['y'], COLLATE('Y', 'und:ci')),
+  ARRAY_INCLUDES_ANY(['y'], [COLLATE('Y', 'und:ci')]),
+  ARRAY_INCLUDES_ALL(['y'], [COLLATE('Y', 'und:ci')]),
+
+  # Literal coercion. Collation on the array.
+  ARRAY_INCLUDES([COLLATE('y', 'und:ci')], 'Y'),
+  ARRAY_INCLUDES_ANY([COLLATE('y', 'und:ci')], ['Y']),
+  ARRAY_INCLUDES_ALL([COLLATE('y', 'und:ci')], ['Y'])
+--
+ARRAY<STRUCT<BOOL, BOOL, BOOL, BOOL, BOOL, BOOL>>[
+  {true, true, true, true, true, true}
+]
+==
+
+# Regression test for b/842312482
+[required_features=ANNOTATION_FRAMEWORK,COLLATION_SUPPORT]
+[name=array_includes_with_collation_on_target_no_literal_coercion]
+SELECT
+  ARRAY_INCLUDES(arr, target),
+  ARRAY_INCLUDES_ANY(arr, [target]),
+  ARRAY_INCLUDES_ALL(arr, [target])
+FROM (SELECT ['y'] AS arr, COLLATE('Y', 'und:ci') AS target)
+--
+ARRAY<STRUCT<BOOL, BOOL, BOOL>>[{true, true, true}]
+==
+
+# Regression test for b/842312482
+[required_features=ANNOTATION_FRAMEWORK,COLLATION_SUPPORT]
+[name=array_includes_with_collation_on_the_array_no_literal_coercion]
+SELECT
+  ARRAY_INCLUDES(arr, target),
+  ARRAY_INCLUDES_ANY(arr, [target]),
+  ARRAY_INCLUDES_ALL(arr, [target])
+FROM (SELECT [COLLATE('y', 'und:ci')] AS arr, 'Y' AS target)
+--
+ARRAY<STRUCT<BOOL, BOOL, BOOL>>[{true, true, true}]
+==
+
+# Regression test for b/842312482
+[required_features=ANNOTATION_FRAMEWORK,COLLATION_SUPPORT,INLINE_LAMBDA_ARGUMENT]
+[name=array_includes_with_lambda_and_collation_with_literal_coercion]
+SELECT
+  ARRAY_INCLUDES(['y'], e -> e = COLLATE('Y', 'und:ci')),
+  ARRAY_INCLUDES([COLLATE('y', 'und:ci')], e -> e = 'Y'),
+
+  ARRAY_INCLUDES_ANY(arr, [target]),
+  ARRAY_INCLUDES_ALL(arr, [target])
+FROM (SELECT [COLLATE('y', 'und:ci')] AS arr, 'Y' AS target)
+--
+ARRAY<STRUCT<BOOL, BOOL, BOOL, BOOL>>[{true, true, true, true}]
+==
+
+# Regression test for b/842312482
+[required_features=ANNOTATION_FRAMEWORK,COLLATION_SUPPORT,INLINE_LAMBDA_ARGUMENT]
+[name=array_includes_with_lambda_and_collation_on_the_target_with_no_literal_coercion]
+SELECT
+  ARRAY_INCLUDES(arr, e -> e = target)
+FROM (SELECT ['y'] AS arr, COLLATE('Y', 'und:ci') AS target)
+--
+ARRAY<STRUCT<BOOL>>[{true}]
+==
+
+# Regression test for b/842312482
+[required_features=ANNOTATION_FRAMEWORK,COLLATION_SUPPORT,INLINE_LAMBDA_ARGUMENT]
+[name=array_includes_with_lambda_and_collation_on_the_array_with_no_literal_coercion]
+SELECT
+  ARRAY_INCLUDES(arr, e -> e = target)
+FROM (SELECT [COLLATE('y', 'und:ci')] AS arr, 'Y' AS target)
+--
+ARRAY<STRUCT<BOOL>>[{true}]

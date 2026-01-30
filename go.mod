@@ -1,4 +1,4 @@
-module github.com/google/zetasql
+module github.com/google/googlesql
 
 go 1.24.4
 

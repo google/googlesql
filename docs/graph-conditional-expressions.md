@@ -4,8 +4,8 @@
 
 # GQL conditional expressions
 
-Graph Query Language (GQL) supports all ZetaSQL conditional expressions. To
+Graph Query Language (GQL) supports all GoogleSQL conditional expressions. To
 learn more, see [Conditional expressions][conditional-expressions].
 
-[conditional-expressions]: https://github.com/google/zetasql/blob/master/docs/conditional_expressions.md
+[conditional-expressions]: https://github.com/google/googlesql/blob/master/docs/conditional_expressions.md
 

@@ -4,7 +4,7 @@
 
 # Subqueries
 
-ZetaSQL supports subqueries.
+GoogleSQL supports subqueries.
 
 ## About subqueries
 
@@ -54,7 +54,7 @@ In this example, a correlated scalar subquery returns the mascots for a list of
 players, using the [`Players`][example-tables] and [`Mascots`][example-tables]
 tables:
 
-```zetasql
+```googlesql
 SELECT
   username,
   (SELECT mascot FROM Mascots WHERE Players.team = Mascots.team) AS player_mascot
@@ -74,7 +74,7 @@ In this example, an aggregate scalar
 subquery calculates `avg_level`, the average level of a user in the
 [`Players`][example-tables] table.
 
-```zetasql {highlight="lines:1:24-1:55"}
+```googlesql {highlight="lines:1:24-1:55"}
 SELECT
   username,
   level,
@@ -126,7 +126,7 @@ See [Array functions][array-function] for full semantics.
 In this example, an ARRAY subquery returns an array of usernames assigned to the
 red team in the [`NPCs`][example-tables] table:
 
-```zetasql {highlight="range:ARRAY,)"}
+```googlesql {highlight="range:ARRAY,)"}
 SELECT
   ARRAY(SELECT username FROM NPCs WHERE team = 'red') AS red;
 
@@ -156,7 +156,7 @@ returned. For full semantics, including `NULL` handling, see the
 
 If you need to use an `IN` subquery with an array, these are equivalent:
 
-```zetasql
+```googlesql
 value [ NOT ] IN ( subquery )
 value [ NOT ] IN UNNEST( ARRAY( subquery ) )
 ```
@@ -166,7 +166,7 @@ value [ NOT ] IN UNNEST( ARRAY( subquery ) )
 In this example, the `IN` operator that checks to see if a username called
 `corba` exists within the [`Players`][example-tables] table:
 
-```zetasql {highlight="lines:1:8-1:47"}
+```googlesql {highlight="lines:1:8-1:47"}
 SELECT
   'corba' IN (SELECT username FROM Players) AS result;
 
@@ -180,7 +180,7 @@ SELECT
 ### Quantified `LIKE` subqueries 
 <a id="quantified_like_subquery_concepts"></a>
 
-```zetasql
+```googlesql
 value [ NOT ] LIKE { ANY | SOME | ALL } ( subquery )
 ```
 
@@ -197,7 +197,7 @@ for `value`. If not, an error is returned. For full semantics, including
 In the example, the quantified `LIKE` operator checks to see if `corba` matches
 at least one pattern in the set of rows returned by the `LIKE ANY` subquery:
 
-```zetasql {highlight="lines:1:8-1:53"}
+```googlesql {highlight="lines:1:8-1:53"}
 WITH Words AS (
   SELECT '%orb%' as chars UNION ALL
   SELECT 'xyg'
@@ -230,7 +230,7 @@ Any number of columns may be selected and it will not affect the query result.
 In this example, the `EXISTS` operator that checks to see if any rows are
 produced, using the [`Players`][example-tables] table:
 
-```zetasql {highlight="range:EXISTS,)"}
+```googlesql {highlight="range:EXISTS,)"}
 SELECT
   EXISTS(SELECT username FROM Players WHERE team = 'yellow') AS result;
 
@@ -258,7 +258,7 @@ table. You can only use these in the `FROM` clause.
 In this example, a subquery returns a table of usernames from the
 [`Players`][example-tables] table:
 
-```zetasql {highlight="range:(,)"}
+```googlesql {highlight="range:(,)"}
 SELECT results.username
 FROM (SELECT * FROM Players) AS results;
 
@@ -274,7 +274,7 @@ FROM (SELECT * FROM Players) AS results;
 In this example, a list of [`NPCs`][example-tables]
 assigned to the red team are returned.
 
-```zetasql
+```googlesql
 SELECT
   username
 FROM (
@@ -303,7 +303,7 @@ In this example, a list of mascots that don't have any players assigned to them
 are returned. The [`Mascots`][example-tables] and [`Players`][example-tables]
 tables are referenced.
 
-```zetasql
+```googlesql
 SELECT mascot
 FROM Mascots
 WHERE
@@ -320,7 +320,7 @@ In this example, a correlated scalar subquery returns the mascots for a list of
 players, using the [`Players`][example-tables] and [`Mascots`][example-tables]
 tables:
 
-```zetasql
+```googlesql
 SELECT
   username,
   (SELECT mascot FROM Mascots WHERE Players.team = Mascots.team) AS player_mascot
@@ -347,7 +347,7 @@ isn't always the same.
 In this example, a random number of usernames are returned from the
 [`Players`][example-tables] table.
 
-```zetasql
+```googlesql
 SELECT
   results.username
 FROM
@@ -386,7 +386,7 @@ Some subqueries are evaluated once, others more often.
 
 Some examples reference a table called `Players`:
 
-```zetasql
+```googlesql
 /*-----------------------------+
  | username  | level   | team  |
  +-----------------------------+
@@ -398,7 +398,7 @@ Some examples reference a table called `Players`:
 
 Some examples reference a table called `NPCs`:
 
-```zetasql
+```googlesql
 /*-------------------+
  | username  | team  |
  +-------------------+
@@ -410,7 +410,7 @@ Some examples reference a table called `NPCs`:
 
 Some examples reference a table called `Mascots`:
 
-```zetasql
+```googlesql
 /*-------------------+
  | mascot   | team   |
  +-------------------+
@@ -425,7 +425,7 @@ You can use this `WITH` clause to emulate temporary table names for
 `Players` and `NPCs`
 in subqueries that support the `WITH` clause.:
 
-```zetasql
+```googlesql
 WITH
   Players AS (
     SELECT 'gorbie' AS username, 29 AS level, 'red' AS team UNION ALL
@@ -457,21 +457,21 @@ SELECT * FROM (
 
 [correlated_subquery_concepts]: #correlated_subquery_concepts
 
-[subqueries-query-syntax]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md
+[subqueries-query-syntax]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md
 
-[in-operator]: https://github.com/google/zetasql/blob/master/docs/operators.md#in_operators
+[in-operator]: https://github.com/google/googlesql/blob/master/docs/operators.md#in_operators
 
-[array-function]: https://github.com/google/zetasql/blob/master/docs/array_functions.md#array
+[array-function]: https://github.com/google/googlesql/blob/master/docs/array_functions.md#array
 
-[aggregate-functions]: https://github.com/google/zetasql/blob/master/docs/aggregate_functions.md
+[aggregate-functions]: https://github.com/google/googlesql/blob/master/docs/aggregate_functions.md
 
-[semantic-rules-in]: https://github.com/google/zetasql/blob/master/docs/operators.md#semantic_rules_in
+[semantic-rules-in]: https://github.com/google/googlesql/blob/master/docs/operators.md#semantic_rules_in
 
-[quantified-like]: https://github.com/google/zetasql/blob/master/docs/operators.md#like_operator_quantified
+[quantified-like]: https://github.com/google/googlesql/blob/master/docs/operators.md#like_operator_quantified
 
-[semantic-rules-like]: https://github.com/google/zetasql/blob/master/docs/operators.md#semantic_rules_like
+[semantic-rules-like]: https://github.com/google/googlesql/blob/master/docs/operators.md#semantic_rules_like
 
-[quantified-like]: https://github.com/google/zetasql/blob/master/docs/operators.md#like_operator_quantified
+[quantified-like]: https://github.com/google/googlesql/blob/master/docs/operators.md#like_operator_quantified
 
 <!-- mdlint on -->
 

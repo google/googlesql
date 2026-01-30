@@ -1,0 +1,693 @@
+[load_proto_files=googlesql/testdata/test_schema.proto]
+[load_proto_names=googlesql_test.KitchenSinkPB]
+[load_enum_names=googlesql_test.TestEnum]
+[prepare_database]
+CREATE TABLE TestTable AS
+SELECT cast(1 as int64) as row_id,
+       cast(null as bool) as bool_val,
+       cast(null as int64) as int64_val,
+       cast(null as int32) as int32_val,
+       cast(null as string) as str_val UNION ALL
+  SELECT 2,  true,  null, null,  null  UNION ALL
+  SELECT 3,  false, 1,    6,     "A"   UNION ALL
+  SELECT 4,  true,  2,    2,     "A"   UNION ALL
+  SELECT 5,  false, 1,    3,     "aA"   UNION ALL
+  SELECT 6,  true,  2,    2,     "Aa"   UNION ALL
+  SELECT 7,  false, 1,    5,     'a'   UNION ALL
+  SELECT 8,  true,  4,    2,     "a"   UNION ALL
+  SELECT 9,  false, 2,    3,     "b"   UNION ALL
+  SELECT 10, true,  3,    1,     "B"
+--
+ARRAY<STRUCT<row_id INT64,
+             bool_val BOOL,
+             int64_val INT64,
+             int32_val INT32,
+             str_val STRING>>
+[
+  {1, NULL, NULL, NULL, NULL},
+  {2, true, NULL, NULL, NULL},
+  {3, false, 1, 6, "A"},
+  {4, true, 2, 2, "A"},
+  {5, false, 1, 3, "aA"},
+  {6, true, 2, 2, "Aa"},
+  {7, false, 1, 5, "a"},
+  {8, true, 4, 2, "a"},
+  {9, false, 2, 3, "b"},
+  {10, true, 3, 1, "B"}
+]
+==
+
+[prepare_database]
+CREATE TABLE TableDateTimeBytes AS
+SELECT cast(1 as int64) as row_id,
+       cast(null as date) as date_val,
+       cast(null as timestamp) as timestamp_val,
+       cast(null as bytes) as bytes_val UNION ALL
+SELECT 2,
+       cast('2014-01-01' as date),
+       TIMESTAMP '2014-01-01 00:00:01.011011 UTC',
+       cast("1" as bytes) UNION ALL
+SELECT 3,
+       cast('2014-01-01' as date),
+       TIMESTAMP '2014-01-01 00:00:01.011011 UTC',
+       cast("2" as bytes) UNION ALL
+SELECT 4,
+       cast('2015-01-01' as date),
+       TIMESTAMP '2014-01-01 00:00:01.011011 UTC',
+       cast("1" as bytes) UNION ALL
+SELECT 5,
+       cast('2015-01-01' as date),
+       TIMESTAMP '2013-01-01 00:00:01.011011 UTC',
+       cast("2" as bytes) UNION ALL
+SELECT 6,
+       cast('2014-01-01' as date),
+       TIMESTAMP '2015-01-01 00:00:01.011011 UTC',
+       cast("5" as bytes)
+--
+ARRAY<STRUCT<
+        row_id INT64,
+        date_val DATE,
+        timestamp_val TIMESTAMP,
+        bytes_val BYTES
+      >>
+[{1, NULL, NULL, NULL},
+ {
+   2,
+   2014-01-01,
+   2014-01-01 00:00:01.011011+00,
+   b"1"
+ },
+ {
+   3,
+   2014-01-01,
+   2014-01-01 00:00:01.011011+00,
+   b"2"
+ },
+ {
+   4,
+   2015-01-01,
+   2014-01-01 00:00:01.011011+00,
+   b"1"
+ },
+ {
+   5,
+   2015-01-01,
+   2013-01-01 00:00:01.011011+00,
+   b"2"
+ },
+ {
+   6,
+   2014-01-01,
+   2015-01-01 00:00:01.011011+00,
+   b"5"
+ }]
+==
+
+[prepare_database]
+CREATE TABLE TableEnumStructProto AS
+SELECT cast(1 as int64) as row_id,
+       cast(null as `googlesql_test.TestEnum`) as enum_val,
+       cast(null as STRUCT<a int64, b int64>) as struct_val,
+       cast(null as `googlesql_test.KitchenSinkPB`) as proto_val UNION ALL
+SELECT 2, 1, struct(2, 4),
+       NEW googlesql_test.KitchenSinkPB(6 AS int64_key_1,
+                                        6 AS int64_key_2) UNION ALL
+SELECT 3, 1, struct(2, 4),
+       NEW googlesql_test.KitchenSinkPB(5 AS int64_key_1,
+                                        6 AS int64_key_2) UNION ALL
+SELECT 4, 2, struct(3, 4),
+       NEW googlesql_test.KitchenSinkPB(6 AS int64_key_1,
+                                        6 AS int64_key_2) UNION ALL
+SELECT 5, 0, struct(2, cast(null as int64)),
+       NEW googlesql_test.KitchenSinkPB(5 AS int64_key_1,
+                                        7 AS int64_key_2)
+--
+ARRAY<STRUCT<
+        row_id INT64,
+        enum_val ENUM<googlesql_test.TestEnum>,
+        struct_val STRUCT<a INT64, b INT64>,
+        proto_val PROTO<googlesql_test.KitchenSinkPB>
+      >>
+[{1, NULL, NULL, NULL},
+ {2,
+  TESTENUM1,
+  {2, 4},
+  {
+    int64_key_1: 6
+    int64_key_2: 6
+  }},
+ {3,
+  TESTENUM1,
+  {2, 4},
+  {
+    int64_key_1: 5
+    int64_key_2: 6
+  }},
+ {4,
+  TESTENUM2,
+  {3, 4},
+  {
+    int64_key_1: 6
+    int64_key_2: 6
+  }},
+ {5,
+  TESTENUM0,
+  {2, NULL},
+  {
+    int64_key_1: 5
+    int64_key_2: 7
+  }}]
+==
+
+[default required_features=ANALYTIC_FUNCTIONS]
+[name=last_value_1]
+[labels=last_value_with_offset_preceding_end,last_value_with_offset_following_end]
+SELECT bool_val, row_id,
+       LAST_VALUE(row_id) OVER (PARTITION BY bool_val ORDER BY row_id DESC
+                                ROWS BETWEEN 2 PRECEDING AND 1 PRECEDING),
+       LAST_VALUE(row_id) OVER (PARTITION BY bool_val ORDER BY row_id DESC
+                                ROWS BETWEEN 1 FOLLOWING AND 2 FOLLOWING)
+FROM TestTable
+--
+ARRAY<STRUCT<bool_val BOOL, row_id INT64, INT64, INT64>>[unknown order:
+  {NULL, 1, NULL, NULL},
+  {false, 9, NULL, 5},
+  {false, 7, 9, 3},
+  {false, 5, 7, 3},
+  {false, 3, 5, NULL},
+  {true, 10, NULL, 6},
+  {true, 8, 10, 4},
+  {true, 6, 8, 2},
+  {true, 4, 6, 2},
+  {true, 2, 4, NULL}
+]
+==
+
+[name=last_value_2]
+[labels=last_value_with_offset_following_end]
+SELECT bool_val, int64_val,
+       LAST_VALUE(int64_val * 2) OVER (PARTITION BY bool_val ORDER BY int64_val
+                                       RANGE BETWEEN 1 PRECEDING AND
+                                                     1 FOLLOWING),
+       LAST_VALUE(int64_val) OVER (PARTITION BY bool_val ORDER BY int64_val
+                                   RANGE BETWEEN CURRENT ROW AND 1 FOLLOWING)
+FROM TestTable
+--
+ARRAY<STRUCT<bool_val BOOL, int64_val INT64, INT64, INT64>>[unknown order:
+  {NULL, NULL, NULL, NULL},
+  {false, 1, 4, 2},
+  {false, 1, 4, 2},
+  {false, 1, 4, 2},
+  {false, 2, 4, 2},
+  {true, NULL, NULL, NULL},
+  {true, 2, 6, 3},
+  {true, 2, 6, 3},
+  {true, 3, 8, 4},
+  {true, 4, 8, 4}
+]
+==
+
+[name=last_value_3_rows]
+SELECT bool_val, row_id,
+       LAST_VALUE(row_id) OVER (PARTITION BY bool_val ORDER BY row_id DESC
+                                ROWS BETWEEN UNBOUNDED PRECEDING
+                                         AND UNBOUNDED FOLLOWING),
+       LAST_VALUE(row_id) OVER (PARTITION BY bool_val ORDER BY row_id DESC
+                                ROWS BETWEEN 5 PRECEDING
+                                         AND UNBOUNDED FOLLOWING),
+       LAST_VALUE(row_id) OVER (PARTITION BY bool_val ORDER BY row_id DESC
+                                ROWS BETWEEN CURRENT ROW
+                                         AND UNBOUNDED FOLLOWING)
+FROM TestTable
+--
+ARRAY<STRUCT<bool_val BOOL, row_id INT64, INT64, INT64, INT64>>[unknown order:
+  {NULL, 1, 1, 1, 1},
+  {false, 9, 3, 3, 3},
+  {false, 7, 3, 3, 3},
+  {false, 5, 3, 3, 3},
+  {false, 3, 3, 3, 3},
+  {true, 10, 2, 2, 2},
+  {true, 8, 2, 2, 2},
+  {true, 6, 2, 2, 2},
+  {true, 4, 2, 2, 2},
+  {true, 2, 2, 2, 2}
+]
+==
+
+[name=last_value_3_range]
+SELECT bool_val, row_id,
+       LAST_VALUE(row_id) OVER (PARTITION BY bool_val ORDER BY row_id DESC
+                                RANGE BETWEEN UNBOUNDED PRECEDING
+                                          AND UNBOUNDED FOLLOWING),
+       LAST_VALUE(row_id) OVER (PARTITION BY bool_val ORDER BY row_id DESC
+                                RANGE BETWEEN 5 PRECEDING
+                                          AND UNBOUNDED FOLLOWING),
+       LAST_VALUE(row_id) OVER (PARTITION BY bool_val ORDER BY row_id DESC
+                                RANGE BETWEEN CURRENT ROW
+                                          AND UNBOUNDED FOLLOWING)
+FROM TestTable
+--
+ARRAY<STRUCT<bool_val BOOL, row_id INT64, INT64, INT64, INT64>>[unknown order:
+  {NULL, 1, 1, 1, 1},
+  {false, 9, 3, 3, 3},
+  {false, 7, 3, 3, 3},
+  {false, 5, 3, 3, 3},
+  {false, 3, 3, 3, 3},
+  {true, 10, 2, 2, 2},
+  {true, 8, 2, 2, 2},
+  {true, 6, 2, 2, 2},
+  {true, 4, 2, 2, 2},
+  {true, 2, 2, 2, 2}
+]
+==
+
+[name=last_value_4_rows]
+[labels=last_value_with_offset_following_start]
+SELECT bool_val, row_id,
+       LAST_VALUE(row_id) OVER (PARTITION BY bool_val ORDER BY row_id DESC
+                                ROWS BETWEEN 2 FOLLOWING
+                                         AND UNBOUNDED FOLLOWING)
+FROM TestTable
+--
+ARRAY<STRUCT<bool_val BOOL, row_id INT64, INT64>>[unknown order:
+  {NULL, 1, NULL},
+  {false, 9, 3},
+  {false, 7, 3},
+  {false, 5, NULL},
+  {false, 3, NULL},
+  {true, 10, 2},
+  {true, 8, 2},
+  {true, 6, 2},
+  {true, 4, NULL},
+  {true, 2, NULL}
+]
+==
+
+[name=last_value_4_range]
+[labels=last_value_with_offset_following_start]
+SELECT bool_val, row_id,
+       LAST_VALUE(row_id) OVER (PARTITION BY bool_val ORDER BY row_id DESC
+                                RANGE BETWEEN 2 FOLLOWING
+                                          AND UNBOUNDED FOLLOWING)
+FROM TestTable
+--
+ARRAY<STRUCT<bool_val BOOL, row_id INT64, INT64>>[unknown order:
+  {NULL, 1, NULL},
+  {false, 9, 3},
+  {false, 7, 3},
+  {false, 5, 3},
+  {false, 3, NULL},
+  {true, 10, 2},
+  {true, 8, 2},
+  {true, 6, 2},
+  {true, 4, 2},
+  {true, 2, NULL}
+]
+==
+
+[name=last_value_bool_int32]
+SELECT row_id, bool_val, int32_val,
+       LAST_VALUE(bool_val) OVER (ORDER BY row_id
+                                   ROWS BETWEEN CURRENT ROW AND
+                                                UNBOUNDED FOLLOWING),
+       LAST_VALUE(int32_val) OVER (ORDER BY row_id
+                                    ROWS BETWEEN UNBOUNDED PRECEDING AND
+                                                 CURRENT ROW)
+FROM TestTable
+--
+ARRAY<STRUCT<row_id INT64, bool_val BOOL, int32_val INT32, BOOL, INT32>>[unknown order:
+  {1, NULL, NULL, true, NULL},
+  {2, true, NULL, true, NULL},
+  {3, false, 6, true, 6},
+  {4, true, 2, true, 2},
+  {5, false, 3, true, 3},
+  {6, true, 2, true, 2},
+  {7, false, 5, true, 5},
+  {8, true, 2, true, 2},
+  {9, false, 3, true, 3},
+  {10, true, 1, true, 1}
+]
+==
+
+[name=last_value_uint32_int64]
+[labels=last_value_with_offset_following_end]
+SELECT row_id, int32_val, int64_val,
+       LAST_VALUE(CAST(int32_val as uint32))
+           OVER (ORDER BY row_id
+                 ROWS BETWEEN 3 PRECEDING AND 2 FOLLOWING),
+       LAST_VALUE(int64_val)
+           OVER (ORDER BY row_id
+                 ROWS BETWEEN 2 FOLLOWING AND UNBOUNDED FOLLOWING)
+FROM TestTable
+--
+ARRAY<STRUCT<row_id INT64, int32_val INT32, int64_val INT64, UINT32, INT64>>[unknown order:
+  {1, NULL, NULL, 6, 3},
+  {2, NULL, NULL, 2, 3},
+  {3, 6, 1, 3, 3},
+  {4, 2, 2, 2, 3},
+  {5, 3, 1, 5, 3},
+  {6, 2, 2, 2, 3},
+  {7, 5, 1, 3, 3},
+  {8, 2, 4, 1, 3},
+  {9, 3, 2, 1, NULL},
+  {10, 1, 3, 1, NULL}
+]
+==
+
+[name=last_value_uint64]
+[labels=last_value_with_offset_following_end]
+SELECT row_id, int64_val,
+       LAST_VALUE(CAST(int64_val as uint64))
+           OVER (ORDER BY row_id
+                 ROWS BETWEEN 2 PRECEDING AND 1 FOLLOWING)
+FROM TestTable
+--
+ARRAY<STRUCT<row_id INT64, int64_val INT64, UINT64>>[unknown order:
+  {1, NULL, NULL},
+  {2, NULL, 1},
+  {3, 1, 2},
+  {4, 2, 1},
+  {5, 1, 2},
+  {6, 2, 1},
+  {7, 1, 4},
+  {8, 4, 2},
+  {9, 2, 3},
+  {10, 3, 3}
+]
+==
+
+[name=last_value_float_double]
+[labels=last_value_with_offset_preceding_end]
+SELECT row_id, cast(int64_val as float), cast(int32_val as double) + 1.5,
+       LAST_VALUE(cast(int64_val as float))
+           OVER (ORDER BY row_id
+                 ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING),
+       LAST_VALUE(cast(int32_val as double) + 1.5)
+           OVER (ORDER BY row_id
+                 RANGE BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING)
+FROM TestTable
+--
+ARRAY<STRUCT<row_id INT64, FLOAT, DOUBLE, FLOAT, DOUBLE>>[unknown order:
+  {1, NULL, NULL, NULL, NULL},
+  {2, NULL, NULL, NULL, NULL},
+  {3, 1, 7.5, NULL, NULL},
+  {4, 2, 3.5, 1, 7.5},
+  {5, 1, 4.5, 2, 3.5},
+  {6, 2, 3.5, 1, 4.5},
+  {7, 1, 6.5, 2, 3.5},
+  {8, 4, 3.5, 1, 6.5},
+  {9, 2, 4.5, 4, 3.5},
+  {10, 3, 2.5, 2, 4.5}
+]
+==
+
+[name=last_value_string]
+[labels=last_value_with_offset_following_end]
+SELECT row_id, str_val,
+       LAST_VALUE(str_val) OVER (ORDER BY row_id
+                                 ROWS BETWEEN 1 FOLLOWING AND
+                                              2 FOLLOWING)
+FROM TestTable
+--
+ARRAY<STRUCT<row_id INT64, str_val STRING, STRING>>[unknown order:
+  {1, NULL, "A"},
+  {2, NULL, "A"},
+  {3, "A", "aA"},
+  {4, "A", "Aa"},
+  {5, "aA", "a"},
+  {6, "Aa", "a"},
+  {7, "a", "b"},
+  {8, "a", "B"},
+  {9, "b", "B"},
+  {10, "B", NULL}
+]
+==
+
+[name=last_value_date]
+[labels=last_value_with_offset_following_end]
+SELECT row_id, date_val,
+       LAST_VALUE(date_val) OVER (ORDER BY row_id),
+       LAST_VALUE(date_val) OVER (ORDER BY row_id
+                                  ROWS BETWEEN 1 PRECEDING AND 1 FOLLOWING)
+FROM TableDateTimeBytes
+--
+ARRAY<STRUCT<row_id INT64, date_val DATE, DATE, DATE>>[unknown order:
+  {1, NULL, NULL, 2014-01-01},
+  {2, 2014-01-01, 2014-01-01, 2014-01-01},
+  {3, 2014-01-01, 2014-01-01, 2015-01-01},
+  {4, 2015-01-01, 2015-01-01, 2015-01-01},
+  {5, 2015-01-01, 2015-01-01, 2014-01-01},
+  {6, 2014-01-01, 2014-01-01, 2014-01-01}
+]
+==
+
+[name=last_value_timestamp]
+[labels=last_value_with_offset_following_end]
+SELECT row_id, timestamp_val,
+       LAST_VALUE(timestamp_val) OVER (ORDER BY row_id
+                                       ROWS BETWEEN 1 PRECEDING AND 3 FOLLOWING)
+FROM TableDateTimeBytes
+--
+ARRAY<STRUCT<
+        row_id INT64,
+        timestamp_val TIMESTAMP,
+        TIMESTAMP
+      >>
+[unknown order:{
+                 1,
+                 NULL,
+                 2014-01-01 00:00:01.011011+00
+               },
+               {
+                 2,
+                 2014-01-01 00:00:01.011011+00,
+                 2013-01-01 00:00:01.011011+00
+               },
+               {
+                 3,
+                 2014-01-01 00:00:01.011011+00,
+                 2015-01-01 00:00:01.011011+00
+               },
+               {
+                 4,
+                 2014-01-01 00:00:01.011011+00,
+                 2015-01-01 00:00:01.011011+00
+               },
+               {
+                 5,
+                 2013-01-01 00:00:01.011011+00,
+                 2015-01-01 00:00:01.011011+00
+               },
+               {
+                 6,
+                 2015-01-01 00:00:01.011011+00,
+                 2015-01-01 00:00:01.011011+00
+               }]
+==
+
+[name=last_value_bytes]
+[labels=last_value_with_offset_following_end]
+SELECT row_id, bytes_val,
+       LAST_VALUE(bytes_val) OVER (ORDER BY row_id
+                                   ROWS BETWEEN CURRENT ROW AND 3 FOLLOWING)
+FROM TableDateTimeBytes
+--
+ARRAY<STRUCT<row_id INT64, bytes_val BYTES, BYTES>>[unknown order:
+  {1, NULL, b"1"},
+  {2, b"1", b"2"},
+  {3, b"2", b"5"},
+  {4, b"1", b"5"},
+  {5, b"2", b"5"},
+  {6, b"5", b"5"}
+]
+==
+
+[name=last_value_enum]
+[labels=last_value_with_offset_following_end]
+SELECT row_id, enum_val,
+       LAST_VALUE(enum_val) OVER (ORDER BY row_id
+                                  RANGE BETWEEN CURRENT ROW AND 0 FOLLOWING)
+FROM TableEnumStructProto
+--
+ARRAY<STRUCT<
+        row_id INT64,
+        enum_val ENUM<googlesql_test.TestEnum>,
+        ENUM<googlesql_test.TestEnum>
+      >>
+[unknown order:
+  {1, NULL, NULL},
+  {2, TESTENUM1, TESTENUM1},
+  {3, TESTENUM1, TESTENUM1},
+  {4, TESTENUM2, TESTENUM2},
+  {5, TESTENUM0, TESTENUM0}
+]
+==
+
+[name=last_value_proto]
+[labels=last_value_with_offset_following_end]
+SELECT row_id, proto_val,
+       LAST_VALUE(proto_val) OVER (ORDER BY row_id
+                                   ROWS BETWEEN CURRENT ROW AND 0 FOLLOWING)
+FROM TableEnumStructProto
+--
+ARRAY<STRUCT<
+        row_id INT64,
+        proto_val PROTO<googlesql_test.KitchenSinkPB>,
+        PROTO<googlesql_test.KitchenSinkPB>
+      >>
+[unknown order:{1, NULL, NULL},
+               {2,
+                {
+                  int64_key_1: 6
+                  int64_key_2: 6
+                },
+                {
+                  int64_key_1: 6
+                  int64_key_2: 6
+                }},
+               {3,
+                {
+                  int64_key_1: 5
+                  int64_key_2: 6
+                },
+                {
+                  int64_key_1: 5
+                  int64_key_2: 6
+                }},
+               {4,
+                {
+                  int64_key_1: 6
+                  int64_key_2: 6
+                },
+                {
+                  int64_key_1: 6
+                  int64_key_2: 6
+                }},
+               {5,
+                {
+                  int64_key_1: 5
+                  int64_key_2: 7
+                },
+                {
+                  int64_key_1: 5
+                  int64_key_2: 7
+                }}]
+==
+
+[name=last_value_struct]
+[labels=last_value_with_offset_following_end]
+SELECT row_id, struct_val,
+       LAST_VALUE(struct_val)
+           OVER (ORDER BY row_id
+                 RANGE BETWEEN 2 FOLLOWING AND
+                               3 FOLLOWING) last_value_struct_val
+FROM TableEnumStructProto
+WINDOW test_window AS (ORDER BY row_id)
+--
+ARRAY<STRUCT<
+        row_id INT64,
+        struct_val STRUCT<a INT64, b INT64>,
+        last_value_struct_val STRUCT<a INT64, b INT64>
+      >>
+[unknown order:
+  {1, NULL, {3, 4}},
+  {2, {2, 4}, {2, NULL}},
+  {3, {2, 4}, {2, NULL}},
+  {4, {3, 4}, NULL},
+  {5, {2, NULL}, NULL}
+]
+==
+
+[name=last_value_struct_fields]
+[labels=last_value_with_offset_following_end]
+SELECT row_id, struct_val.a, struct_val.b, last_value_struct_val.a,
+       last_value_struct_val.b
+FROM (
+  SELECT row_id, struct_val,
+         LAST_VALUE(struct_val)
+             OVER (ORDER BY row_id
+                   RANGE BETWEEN 2 FOLLOWING AND
+                                 3 FOLLOWING) last_value_struct_val
+  FROM TableEnumStructProto
+  WINDOW test_window AS (ORDER BY row_id)
+)
+--
+ARRAY<STRUCT<row_id INT64, a INT64, b INT64, a INT64, b INT64>>[unknown order:
+  {2, 2, 4, 2, NULL},
+  {4, 3, 4, NULL, NULL},
+  {1, NULL, NULL, 3, 4},
+  {3, 2, 4, 2, NULL},
+  {5, 2, NULL, NULL, NULL}
+]
+==
+
+[name=last_value_array]
+SELECT row_id, array_val,
+       LAST_VALUE(array_val) OVER (ORDER BY row_id RANGE 2 PRECEDING)
+FROM (SELECT 1 row_id, [1, 2, 3] array_val UNION ALL
+      SELECT 2, [2, 3, 4] UNION ALL
+      SELECT 3, [3, 4, 5] UNION ALL
+      SELECT 5, CAST(null as ARRAY<int64>) UNION ALL
+      SELECT 6, [6, 5] UNION ALL
+      SELECT 7, CAST(null as ARRAY<int64>))
+--
+ARRAY<STRUCT<row_id INT64, array_val ARRAY<>, ARRAY<>>>[unknown order:
+  {
+    1,
+    ARRAY<INT64>[known order:1, 2, 3],
+    ARRAY<INT64>[known order:1, 2, 3]
+  },
+  {
+    2,
+    ARRAY<INT64>[known order:2, 3, 4],
+    ARRAY<INT64>[known order:2, 3, 4]
+  },
+  {
+    3,
+    ARRAY<INT64>[known order:3, 4, 5],
+    ARRAY<INT64>[known order:3, 4, 5]
+  },
+  {5, ARRAY<INT64>(NULL), ARRAY<INT64>(NULL)},
+  {
+    6,
+    ARRAY<INT64>[known order:6, 5],
+    ARRAY<INT64>[known order:6, 5]
+  },
+  {7, ARRAY<INT64>(NULL), ARRAY<INT64>(NULL)}
+]
+==
+
+[required_features=ANALYTIC_FUNCTIONS,NUMERIC_TYPE]
+[name=last_value_numeric]
+[parameters="99999999999999999999999999999.999999999" as max_val,
+            "-99999999999999999999999999999.999999999" as min_val]
+SELECT row_id,
+       LAST_VALUE(value) OVER(ORDER BY row_id
+                              RANGE BETWEEN 1 PRECEDING AND 2 FOLLOWING)
+FROM (SELECT 1 row_id, CAST(NULL as NUMERIC) value UNION ALL
+      SELECT 2, 0                                  UNION ALL
+      SELECT 3, 3.5                                UNION ALL
+      SELECT 4, -1.230000001                       UNION ALL
+      SELECT 5, CAST(@max_val AS NUMERIC)          UNION ALL
+      SELECT 6, CAST(@min_val AS NUMERIC))
+--
+ARRAY<STRUCT<row_id INT64, NUMERIC>>[unknown order:
+  {1, 3.5},
+  {2, -1.230000001},
+  {
+    3,
+    99999999999999999999999999999.999999999
+  },
+  {
+    4,
+    -99999999999999999999999999999.999999999
+  },
+  {
+    5,
+    -99999999999999999999999999999.999999999
+  },
+  {
+    6,
+    -99999999999999999999999999999.999999999
+  }
+]

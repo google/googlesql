@@ -4,7 +4,7 @@
 
 # Work with recursive CTEs
 
-In ZetaSQL, a `WITH` clause contains one or more common table
+In GoogleSQL, a `WITH` clause contains one or more common table
 expressions (CTEs) that you can reference in a query
 expression. CTEs can be [non-recursive][non-recursive-cte],
 [recursive][recursive-cte], or both. The [`RECURSIVE`][recursive-keyword]
@@ -26,15 +26,15 @@ step. The query concludes when no new nodes can be found.
 
 However, recursive CTEs can be computationally expensive, so before you use
 them, review this guide and the [`WITH` clause][with-clause] section of the
-ZetaSQL reference documentation.
+GoogleSQL reference documentation.
 
 ## Create a recursive CTE 
 <a id="create-recursive-cte"></a>
 
-To create a recursive CTE in ZetaSQL, use the
+To create a recursive CTE in GoogleSQL, use the
 [`WITH RECURSIVE` clause][with-clause] as shown in the following example:
 
-```zetasql
+```googlesql
 WITH RECURSIVE
   CTE_1 AS (
     (SELECT 1 AS iteration UNION ALL SELECT 1 AS iteration)
@@ -47,7 +47,7 @@ ORDER BY 1 ASC
 
 The preceding example produces the following results:
 
-```zetasql
+```googlesql
 /*-----------+
  | iteration |
  +-----------+
@@ -63,7 +63,7 @@ The preceding example produces the following results:
 To avoid duplicate rows so that only distinct rows become part of the final CTE
 result, use `UNION DISTINCT` instead of `UNION ALL`:
 
-```zetasql
+```googlesql
 WITH RECURSIVE
   CTE_1 AS (
     (SELECT 1 AS iteration UNION ALL SELECT 1 AS iteration)
@@ -76,7 +76,7 @@ ORDER BY 1 ASC
 
 The preceding example produces the following results:
 
-```zetasql
+```googlesql
 /*-----------+
  | iteration |
  +-----------+
@@ -101,7 +101,7 @@ In the preceding example, the recursive CTE contains the following components:
     iteration < 3`
 
 To learn more about the recursive CTE syntax, rules, and examples, see [`WITH`
-clause][with-clause] in the ZetaSQL reference documentation.
+clause][with-clause] in the GoogleSQL reference documentation.
 
 ## Explore reachability in a directed acyclic graph (DAG) 
 <a id="explore-recursive-cte-dag"></a>
@@ -110,7 +110,7 @@ You can use a recursive query to explore reachability in a
 directed acyclic graph (DAG). The following query finds all nodes that can be
 reached from node `5` in a graph called `GraphData`:
 
-```zetasql
+```googlesql
 WITH RECURSIVE
   GraphData AS (
     --    1          5
@@ -142,7 +142,7 @@ SELECT DISTINCT node FROM R ORDER BY node;
 
 The preceding example produces the following results:
 
-```zetasql
+```googlesql
 /*------+
  | node |
  +------+
@@ -212,7 +212,7 @@ Replace the following values:
 
 For example, consider the following recursive CTE called `TestCTE`:
 
-```zetasql
+```googlesql
 WITH RECURSIVE
   TestCTE AS (
     SELECT 1 AS n
@@ -266,7 +266,7 @@ SELECT * FROM TestCTE WHERE iteration = 2;
 The preceding example produces the following results that include the
 iteration ID and the number of rows that were produced during that iteration:
 
-```zetasql
+```googlesql
 /*-----------+----------+
  | iteration | num_rows |
  +-----------+----------+
@@ -286,7 +286,7 @@ iteration ID and the number of rows that were produced during that iteration:
 
 These are the actual results produced during iteration `2`:
 
-```zetasql
+```googlesql
 /*----------+-----------+
  | n        | iteration |
  +----------+-----------+
@@ -346,7 +346,7 @@ Replace the following values:
 
 For example, the following code splits a CTE into three distinct CTEs:
 
-```zetasql
+```googlesql
 WITH RECURSIVE
   CTE_1 AS (
     SELECT 1 AS iteration
@@ -376,7 +376,7 @@ so that it's faster to see the results of the query. The query produces 30 rows,
 but each recursive CTE only iterates 10 times. The output looks like the
 following:
 
-```zetasql
+```googlesql
 /*-----------+
  | iteration |
  +-----------+
@@ -398,17 +398,17 @@ such as `LOOP`, `REPEAT`, or `WHILE`. For more information, see
 
 <!-- mdlint off(WHITESPACE_LINE_LENGTH) -->
 
-[with-clause]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#with_clause
+[with-clause]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#with_clause
 
-[recursive-cte]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#recursive_cte
+[recursive-cte]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#recursive_cte
 
-[recursive-keyword]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#recursive_keyword
+[recursive-keyword]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#recursive_keyword
 
-[non-recursive-cte]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#simple_cte
+[non-recursive-cte]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#simple_cte
 
-[loop-statement]: https://github.com/google/zetasql/blob/master/docs/procedural-language.md#loop
+[loop-statement]: https://github.com/google/googlesql/blob/master/docs/procedural-language.md#loop
 
-[loops]: https://github.com/google/zetasql/blob/master/docs/procedural-language.md#loops
+[loops]: https://github.com/google/googlesql/blob/master/docs/procedural-language.md#loops
 
 <!-- mdlint on -->
 

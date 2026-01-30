@@ -1,0 +1,973 @@
+[load_proto_files=googlesql/testdata/test_schema.proto]
+[load_proto_names=googlesql_test.KitchenSinkPB,googlesql_test.RecursivePB]
+
+[name=filter_fields_exclude_fields]
+[required_features=FILTER_FIELDS]
+SELECT
+  FILTER_FIELDS(
+    CAST(
+      "int64_key_1:13, int64_key_2:123, int32_val:321, string_val:'sample'"
+        as googlesql_test.KitchenSinkPB
+    ),
+    -int32_val
+  )
+--
+ARRAY<STRUCT<PROTO<googlesql_test.KitchenSinkPB>>>[
+  {{
+     int64_key_1: 13
+     int64_key_2: 123
+     string_val: "sample"
+   }}
+]
+==
+
+[name=filter_fields_exclude_message_field]
+[required_features=FILTER_FIELDS]
+SELECT
+  FILTER_FIELDS(
+    NEW googlesql_test.KitchenSinkPB(
+      1 as int64_key_1,
+      2 as int64_key_2,
+      "nested_int64:3 nested_repeated_int64:10" as nested_value
+    ),
+    -nested_value
+  )
+--
+ARRAY<STRUCT<PROTO<googlesql_test.KitchenSinkPB>>>[
+  {{
+     int64_key_1: 1
+     int64_key_2: 2
+   }}
+]
+==
+
+[name=filter_fields_null_value]
+[required_features=FILTER_FIELDS]
+SELECT
+  FILTER_FIELDS(
+    CAST(
+      NULL as googlesql_test.KitchenSinkPB
+    ),
+    +int64_key_1,
+    +int64_key_2
+  )
+--
+ARRAY<STRUCT<PROTO<googlesql_test.KitchenSinkPB>>>[{NULL}]
+==
+
+[name=filter_fields_include_fields]
+[required_features=FILTER_FIELDS]
+SELECT
+  FILTER_FIELDS(
+    CAST(
+      "int64_key_1:13, int64_key_2:123, int32_val:321, string_val:'sample'"
+        as googlesql_test.KitchenSinkPB
+    ),
+    +int64_key_1,
+    +int64_key_2
+  )
+--
+ARRAY<STRUCT<PROTO<googlesql_test.KitchenSinkPB>>>[
+  {{
+     int64_key_1: 13
+     int64_key_2: 123
+   }}
+]
+
+==
+[name=filter_fields_with_cleared_required_field]
+[required_features=FILTER_FIELDS]
+SELECT
+  FILTER_FIELDS(
+    CAST(
+      "int64_key_1:13, int64_key_2:123, int32_val:321, string_val:'sample'"
+        as googlesql_test.KitchenSinkPB
+    ),
+    +int64_key_1,
+    RESET_CLEARED_REQUIRED_FIELDS => True
+  )
+--
+ARRAY<STRUCT<PROTO<googlesql_test.KitchenSinkPB>>>[
+  {{
+     int64_key_1: 13
+     int64_key_2: 0
+   }}
+]
+
+==
+[name=filter_fields_with_cleared_required_message]
+[required_features=FILTER_FIELDS,PROTO_EXTENSIONS_WITH_NEW]
+SELECT
+  FILTER_FIELDS(
+    NEW
+      googlesql_test.KitchenSinkPB(
+        1 as int64_key_1,
+        2 as int64_key_2,
+        NEW
+          googlesql_test.KitchenSinkPB.NestedWithRequiredMessageFields(
+            CAST("nested_int64: 100" AS googlesql_test.KitchenSinkPB.Nested
+            ) as nested_required_value,
+            CAST("nested_int64: 40 nested_repeated_int64: 41 nested_repeated_int64: 42"
+              AS googlesql_test.KitchenSinkPB.Nested
+            ) as nested_value
+          ) as nested_with_required_fields,
+        13 as (googlesql_test.int_top_level_extension),
+        "1980-08-08" as (googlesql_test.date_extension),
+        "value:'abc'"
+            as (googlesql_test.KitchenSinkExtension.optional_extension)
+      ),
+    +nested_with_required_fields,
+    -nested_with_required_fields.nested_required_value,
+    RESET_CLEARED_REQUIRED_FIELDS => True
+  )
+--
+ARRAY<STRUCT<PROTO<googlesql_test.KitchenSinkPB>>>[
+  {{
+     int64_key_1: 0
+     int64_key_2: 0
+     nested_with_required_fields {
+       nested_required_value {
+       }
+       nested_value {
+         nested_int64: 40
+         nested_repeated_int64: 41
+         nested_repeated_int64: 42
+       }
+     }
+   }}
+]
+
+==
+[name=filter_fields_with_cleared_two_level_nested_required_message]
+[required_features=FILTER_FIELDS,PROTO_EXTENSIONS_WITH_NEW]
+SELECT
+  FILTER_FIELDS(
+    NEW
+      googlesql_test.KitchenSinkPB(
+        1 as int64_key_1,
+        2 as int64_key_2,
+        NEW
+          googlesql_test.KitchenSinkPB.NestedWithTwoLevelNestedRequiredFields(
+            CAST("nested_int64: 100 nested_required_int32_val: 50"
+              AS googlesql_test.KitchenSinkPB.NestedWithRequiredNumericFields
+            ) as nested_required_with_required,
+            CAST("nested_int64: 40 nested_repeated_int64: 41 nested_repeated_int64: 42"
+              AS googlesql_test.KitchenSinkPB.Nested
+            ) as nested_value
+          ) as nested_with_two_level_required,
+        13 as (googlesql_test.int_top_level_extension),
+        "1980-08-08" as (googlesql_test.date_extension),
+        "value:'abc'"
+            as (googlesql_test.KitchenSinkExtension.optional_extension)
+      ),
+    +nested_with_two_level_required,
+    -nested_with_two_level_required.nested_required_with_required,
+    RESET_CLEARED_REQUIRED_FIELDS => True
+  )
+--
+ARRAY<STRUCT<PROTO<googlesql_test.KitchenSinkPB>>>[
+  {{
+     int64_key_1: 0
+     int64_key_2: 0
+     nested_with_two_level_required {
+       nested_required_with_required {
+         nested_required_int32_val: 0
+       }
+       nested_value {
+         nested_int64: 40
+         nested_repeated_int64: 41
+         nested_repeated_int64: 42
+       }
+     }
+   }}
+]
+
+==
+[name=filter_fields_with_cleared_three_level_nested_required_message]
+[required_features=FILTER_FIELDS,PROTO_EXTENSIONS_WITH_NEW]
+SELECT
+  FILTER_FIELDS(
+    NEW
+      googlesql_test.KitchenSinkPB(
+        1 as int64_key_1,
+        2 as int64_key_2,
+        NEW
+          googlesql_test.KitchenSinkPB.NestedWithThreeLevelNestedRequiredFields(
+            NEW
+              googlesql_test.KitchenSinkPB.NestedWithTwoLevelNestedRequiredFields(
+                CAST("nested_int64: 100 nested_required_int32_val: 50"
+                  AS googlesql_test.KitchenSinkPB.NestedWithRequiredNumericFields
+                ) as nested_required_with_required,
+                CAST("nested_int64: 40 nested_repeated_int64: 41 nested_repeated_int64: 42"
+                  AS googlesql_test.KitchenSinkPB.Nested
+                ) as nested_value
+              ) as nested_required_with_two_level_required,
+            CAST("nested_int64: 40 nested_repeated_int64: 41 nested_repeated_int64: 42"
+              AS googlesql_test.KitchenSinkPB.Nested
+            ) as nested_value
+          ) as nested_with_three_level_required,
+        13 as (googlesql_test.int_top_level_extension),
+        "1980-08-08" as (googlesql_test.date_extension),
+        "value:'abc'"
+            as (googlesql_test.KitchenSinkExtension.optional_extension)
+      ),
+    +nested_with_three_level_required,
+    -nested_with_three_level_required.nested_required_with_two_level_required,
+    RESET_CLEARED_REQUIRED_FIELDS => True
+  )
+--
+ARRAY<STRUCT<PROTO<googlesql_test.KitchenSinkPB>>>[
+  {{
+     int64_key_1: 0
+     int64_key_2: 0
+     nested_with_three_level_required {
+       nested_required_with_two_level_required {
+         nested_required_with_required {
+           nested_required_int32_val: 0
+         }
+       }
+       nested_value {
+         nested_int64: 40
+         nested_repeated_int64: 41
+         nested_repeated_int64: 42
+       }
+     }
+   }}
+]
+
+==
+[name=filter_fields_include_nested_fields]
+[required_features=FILTER_FIELDS,PROTO_EXTENSIONS_WITH_NEW]
+SELECT
+  FILTER_FIELDS(
+    NEW
+      googlesql_test.KitchenSinkPB(
+        1 as int64_key_1,
+        2 as int64_key_2,
+        "nested_int64:3 nested_repeated_int64:10 nested_repeated_int64:20" as nested_value,
+        13 as (googlesql_test.int_top_level_extension),
+        "1980-08-08" as (googlesql_test.date_extension),
+        "value:'abc'"
+            as (googlesql_test.KitchenSinkExtension.optional_extension)
+      ),
+    +int64_key_1,
+    +int64_key_2,
+    +nested_value.nested_int64
+  )
+--
+ARRAY<STRUCT<PROTO<googlesql_test.KitchenSinkPB>>>[
+  {{
+     int64_key_1: 1
+     int64_key_2: 2
+     nested_value {
+       nested_int64: 3
+     }
+   }}
+]
+
+==
+[name=filter_fields_include_nested_repeated_fields]
+[required_features=FILTER_FIELDS,PROTO_EXTENSIONS_WITH_NEW]
+SELECT
+  FILTER_FIELDS(
+    NEW
+      googlesql_test.KitchenSinkPB(
+        1 as int64_key_1,
+        2 as int64_key_2,
+        "nested_int64:3 nested_repeated_int64:10 nested_repeated_int64:20" as nested_value,
+        13 as (googlesql_test.int_top_level_extension),
+        "1980-08-08" as (googlesql_test.date_extension),
+        "value:'abc'"
+            as (googlesql_test.KitchenSinkExtension.optional_extension)
+      ),
+    +int64_key_1,
+    +int64_key_2,
+    +nested_value.nested_repeated_int64
+  )
+--
+ARRAY<STRUCT<PROTO<googlesql_test.KitchenSinkPB>>>[
+  {{
+     int64_key_1: 1
+     int64_key_2: 2
+     nested_value {
+       nested_repeated_int64: 10
+       nested_repeated_int64: 20
+     }
+   }}
+]
+
+==
+[name=filter_fields_exclude_nested_fields]
+[required_features=FILTER_FIELDS,PROTO_EXTENSIONS_WITH_NEW]
+SELECT
+  FILTER_FIELDS(
+    NEW
+      googlesql_test.KitchenSinkPB(
+        1 as int64_key_1,
+        2 as int64_key_2,
+        "nested_int64:3 nested_repeated_int64:10 nested_repeated_int64:20" as nested_value,
+        13 as (googlesql_test.int_top_level_extension),
+        "1980-08-08" as (googlesql_test.date_extension),
+        "value:'abc'"
+            as (googlesql_test.KitchenSinkExtension.optional_extension)
+      ),
+    -nested_value.nested_repeated_int64
+  )
+--
+ARRAY<STRUCT<PROTO<googlesql_test.KitchenSinkPB>>>[
+  {{
+     int64_key_1: 1
+     int64_key_2: 2
+     nested_value {
+       nested_int64: 3
+     }
+     [googlesql_test.KitchenSinkExtension.optional_extension] {
+       value: "abc"
+     }
+     [googlesql_test.int_top_level_extension]: 13
+     [googlesql_test.date_extension]: 3872
+   }}
+]
+
+==
+[name=filter_fields_include_extension]
+[required_features=FILTER_FIELDS,PROTO_EXTENSIONS_WITH_NEW]
+SELECT
+  FILTER_FIELDS(
+    NEW
+      googlesql_test.KitchenSinkPB(
+        1 as int64_key_1,
+        2 as int64_key_2,
+        "nested_int64:3 nested_repeated_int64:10 nested_repeated_int64:20" as nested_value,
+        13 as (googlesql_test.int_top_level_extension),
+        "1980-08-08" as (googlesql_test.date_extension),
+        "value:'abc' repeated_value: 'efg' repeated_value: 'xyz'"
+            as (googlesql_test.KitchenSinkExtension.optional_extension)
+      ),
+    +int64_key_1,
+    +int64_key_2,
+    +(googlesql_test.int_top_level_extension),
+    +(googlesql_test.KitchenSinkExtension.optional_extension).value
+  )
+--
+ARRAY<STRUCT<PROTO<googlesql_test.KitchenSinkPB>>>[
+  {{
+     int64_key_1: 1
+     int64_key_2: 2
+     [googlesql_test.KitchenSinkExtension.optional_extension] {
+       value: "abc"
+     }
+     [googlesql_test.int_top_level_extension]: 13
+   }}
+]
+
+==
+[name=filter_fields_exclude_extension]
+[required_features=FILTER_FIELDS,PROTO_EXTENSIONS_WITH_NEW]
+SELECT
+  FILTER_FIELDS(
+    NEW
+      googlesql_test.KitchenSinkPB(
+        1 as int64_key_1,
+        2 as int64_key_2,
+        "nested_int64:3 nested_repeated_int64:10 nested_repeated_int64:20" as nested_value,
+        13 as (googlesql_test.int_top_level_extension),
+        "1980-08-08" as (googlesql_test.date_extension),
+        "value:'abc' repeated_value: 'efg' repeated_value: 'xyz'"
+            as (googlesql_test.KitchenSinkExtension.optional_extension)
+      ),
+    -(googlesql_test.int_top_level_extension),
+    -(googlesql_test.KitchenSinkExtension.optional_extension).value
+  )
+--
+ARRAY<STRUCT<PROTO<googlesql_test.KitchenSinkPB>>>[
+  {{
+     int64_key_1: 1
+     int64_key_2: 2
+     nested_value {
+       nested_int64: 3
+       nested_repeated_int64: 10
+       nested_repeated_int64: 20
+     }
+     [googlesql_test.KitchenSinkExtension.optional_extension] {
+       repeated_value: "efg"
+       repeated_value: "xyz"
+     }
+     [googlesql_test.date_extension]: 3872
+   }}
+]
+
+==
+[name=filter_fields_nested_include]
+[required_features=FILTER_FIELDS,PROTO_EXTENSIONS_WITH_NEW]
+SELECT
+  FILTER_FIELDS(
+    NEW
+      googlesql_test.KitchenSinkPB(
+        1 as int64_key_1,
+        2 as int64_key_2,
+        "nested_int64:3 nested_repeated_int64:10 nested_repeated_int64:20" as nested_value,
+        13 as (googlesql_test.int_top_level_extension),
+        "1980-08-08" as (googlesql_test.date_extension),
+        "value:'abc'"
+            as (googlesql_test.KitchenSinkExtension.optional_extension)
+      ),
+    -nested_value,
+    +nested_value.nested_repeated_int64
+  )
+--
+ARRAY<STRUCT<PROTO<googlesql_test.KitchenSinkPB>>>[
+  {{
+     int64_key_1: 1
+     int64_key_2: 2
+     nested_value {
+       nested_repeated_int64: 10
+       nested_repeated_int64: 20
+     }
+     [googlesql_test.KitchenSinkExtension.optional_extension] {
+       value: "abc"
+     }
+     [googlesql_test.int_top_level_extension]: 13
+     [googlesql_test.date_extension]: 3872
+   }}
+]
+
+==
+[name=filter_fields_nested_exclude]
+[required_features=FILTER_FIELDS,PROTO_EXTENSIONS_WITH_NEW]
+SELECT
+  FILTER_FIELDS(
+    NEW
+      googlesql_test.KitchenSinkPB(
+        1 as int64_key_1,
+        2 as int64_key_2,
+        "nested_int64:3 nested_repeated_int64:10 nested_repeated_int64:20" as nested_value,
+        13 as (googlesql_test.int_top_level_extension),
+        "1980-08-08" as (googlesql_test.date_extension),
+        "value:'abc'"
+            as (googlesql_test.KitchenSinkExtension.optional_extension)
+      ),
+    +int64_key_1,
+    +int64_key_2,
+    +nested_value,
+    -nested_value.nested_repeated_int64
+  )
+--
+ARRAY<STRUCT<PROTO<googlesql_test.KitchenSinkPB>>>[
+  {{
+     int64_key_1: 1
+     int64_key_2: 2
+     nested_value {
+       nested_int64: 3
+     }
+   }}
+]
+
+==
+[name=filter_fields_nested_include_on_repeated_message]
+[required_features=FILTER_FIELDS,PROTO_EXTENSIONS_WITH_NEW]
+SELECT
+  FILTER_FIELDS(
+    NEW
+      googlesql_test.KitchenSinkPB(
+        1 as int64_key_1,
+        2 as int64_key_2,
+        [
+          CAST(
+            "nested_int64:3 nested_repeated_int64:10 nested_repeated_int64:20"
+            AS googlesql_test.KitchenSinkPB.Nested
+          ),
+          CAST(
+            "nested_int64:4 nested_repeated_int64:30 nested_repeated_int64:40"
+            AS googlesql_test.KitchenSinkPB.Nested
+          )
+        ] as nested_repeated_value,
+        13 as (googlesql_test.int_top_level_extension),
+        "1980-08-08" as (googlesql_test.date_extension),
+        "value:'abc'"
+            as (googlesql_test.KitchenSinkExtension.optional_extension)
+      ),
+    -nested_repeated_value,
+    +nested_repeated_value.nested_repeated_int64
+  )
+--
+ARRAY<STRUCT<PROTO<googlesql_test.KitchenSinkPB>>>[
+  {{
+     int64_key_1: 1
+     int64_key_2: 2
+     nested_repeated_value {
+       nested_repeated_int64: 10
+       nested_repeated_int64: 20
+     }
+     nested_repeated_value {
+       nested_repeated_int64: 30
+       nested_repeated_int64: 40
+     }
+     [googlesql_test.KitchenSinkExtension.optional_extension] {
+       value: "abc"
+     }
+     [googlesql_test.int_top_level_extension]: 13
+     [googlesql_test.date_extension]: 3872
+   }}
+]
+
+==
+[name=filter_fields_nested_exclude_on_repeated_message]
+[required_features=FILTER_FIELDS,PROTO_EXTENSIONS_WITH_NEW]
+SELECT
+  FILTER_FIELDS(
+    NEW
+      googlesql_test.KitchenSinkPB(
+        1 as int64_key_1,
+        2 as int64_key_2,
+        [
+          CAST(
+            "nested_int64:3 nested_repeated_int64:10 nested_repeated_int64:20"
+            AS googlesql_test.KitchenSinkPB.Nested
+          ),
+          CAST(
+            "nested_int64:4 nested_repeated_int64:30 nested_repeated_int64:40"
+            AS googlesql_test.KitchenSinkPB.Nested
+          )
+        ] as nested_repeated_value,
+        13 as (googlesql_test.int_top_level_extension),
+        "1980-08-08" as (googlesql_test.date_extension),
+        "value:'abc'"
+            as (googlesql_test.KitchenSinkExtension.optional_extension)
+      ),
+    +int64_key_1,
+    +int64_key_2,
+    +nested_repeated_value,
+    -nested_repeated_value.nested_repeated_int64
+  )
+--
+ARRAY<STRUCT<PROTO<googlesql_test.KitchenSinkPB>>>[
+  {{
+     int64_key_1: 1
+     int64_key_2: 2
+     nested_repeated_value {
+       nested_int64: 3
+     }
+     nested_repeated_value {
+       nested_int64: 4
+     }
+   }}
+]
+
+==
+[name=filter_fields_chained_include]
+[required_features=FILTER_FIELDS,PROTO_EXTENSIONS_WITH_NEW]
+SELECT
+  FILTER_FIELDS(
+    NEW
+      googlesql_test.KitchenSinkPB(
+        1 as int64_key_1,
+        2 as int64_key_2,
+        NEW
+          googlesql_test.KitchenSinkPB.NestedWithRequiredMessageFields(
+            CAST("" AS googlesql_test.KitchenSinkPB.Nested
+            ) as nested_required_value,
+            CAST("nested_int64: 40 nested_repeated_int64: 41 nested_repeated_int64: 42"
+              AS googlesql_test.KitchenSinkPB.Nested
+            ) as nested_value
+          ) as nested_with_required_fields,
+        13 as (googlesql_test.int_top_level_extension),
+        "1980-08-08" as (googlesql_test.date_extension),
+        "value:'abc'"
+            as (googlesql_test.KitchenSinkExtension.optional_extension)
+      ),
+    +int64_key_1,
+    +int64_key_2,
+    +nested_with_required_fields,
+    -nested_with_required_fields.nested_value,
+    +nested_with_required_fields.nested_value.nested_int64
+  )
+--
+ARRAY<STRUCT<PROTO<googlesql_test.KitchenSinkPB>>>[
+  {{
+     int64_key_1: 1
+     int64_key_2: 2
+     nested_with_required_fields {
+       nested_required_value {
+       }
+       nested_value {
+         nested_int64: 40
+       }
+     }
+   }}
+]
+
+==
+[name=filter_fields_chained_exclude]
+[required_features=FILTER_FIELDS,PROTO_EXTENSIONS_WITH_NEW]
+SELECT
+  FILTER_FIELDS(
+    NEW
+      googlesql_test.KitchenSinkPB(
+        1 as int64_key_1,
+        2 as int64_key_2,
+        NEW
+          googlesql_test.KitchenSinkPB.NestedWithRequiredMessageFields(
+            CAST("" AS googlesql_test.KitchenSinkPB.Nested
+            ) as nested_required_value,
+            CAST("nested_int64: 40 nested_repeated_int64: 41 nested_repeated_int64: 42"
+              AS googlesql_test.KitchenSinkPB.Nested
+            ) as nested_value
+          ) as nested_with_required_fields,
+        13 as (googlesql_test.int_top_level_extension),
+        "1980-08-08" as (googlesql_test.date_extension),
+        "value:'abc'"
+            as (googlesql_test.KitchenSinkExtension.optional_extension)
+      ),
+    -nested_with_required_fields,
+    +nested_with_required_fields.nested_required_value,
+    +nested_with_required_fields.nested_value,
+    -nested_with_required_fields.nested_value.nested_int64
+  )
+--
+ARRAY<STRUCT<PROTO<googlesql_test.KitchenSinkPB>>>[
+  {{
+     int64_key_1: 1
+     int64_key_2: 2
+     nested_with_required_fields {
+       nested_required_value {
+       }
+       nested_value {
+         nested_repeated_int64: 41
+         nested_repeated_int64: 42
+       }
+     }
+     [googlesql_test.KitchenSinkExtension.optional_extension] {
+       value: "abc"
+     }
+     [googlesql_test.int_top_level_extension]: 13
+     [googlesql_test.date_extension]: 3872
+   }}
+]
+
+==
+[name=filter_fields_keeps_empty_required_message]
+[required_features=FILTER_FIELDS,PROTO_EXTENSIONS_WITH_NEW]
+SELECT
+  FILTER_FIELDS(
+    NEW
+      googlesql_test.KitchenSinkPB(
+        1 as int64_key_1,
+        2 as int64_key_2,
+        [
+          CAST(
+            "nested_int64:3" AS googlesql_test.KitchenSinkPB.Nested
+          ),
+          CAST(
+            "nested_int64:4" AS googlesql_test.KitchenSinkPB.Nested
+          )
+        ] as nested_repeated_value,
+        13 as (googlesql_test.int_top_level_extension),
+        "1980-08-08" as (googlesql_test.date_extension),
+        "value:'abc'"
+            as (googlesql_test.KitchenSinkExtension.optional_extension),
+        CAST(
+          "nested_required_value {nested_repeated_int64: 150 nested_repeated_int64: 151}"
+          AS googlesql_test.KitchenSinkPB.NestedWithRequiredMessageFields
+        ) as nested_with_required_fields
+      ),
+    -nested_with_required_fields.nested_required_value,
+    +nested_with_required_fields.nested_required_value.nested_int64
+  )
+--
+ARRAY<STRUCT<PROTO<googlesql_test.KitchenSinkPB>>>[
+  {{
+     int64_key_1: 1
+     int64_key_2: 2
+     nested_repeated_value {
+       nested_int64: 3
+     }
+     nested_repeated_value {
+       nested_int64: 4
+     }
+     nested_with_required_fields {
+       nested_required_value {
+       }
+     }
+     [googlesql_test.KitchenSinkExtension.optional_extension] {
+       value: "abc"
+     }
+     [googlesql_test.int_top_level_extension]: 13
+     [googlesql_test.date_extension]: 3872
+   }}
+]
+
+==
+[name=filter_fields_include_group]
+[required_features=FILTER_FIELDS]
+SELECT
+  FILTER_FIELDS(
+    NEW
+      googlesql_test.KitchenSinkPB(
+        1 as int64_key_1,
+        2 as int64_key_2,
+        "sample" as string_val,
+        CAST("int64_val:3 string_val: 'a'"
+              AS googlesql_test.KitchenSinkPB.OptionalGroup) as OptionalGroup,
+        [
+          CAST("id:4 idstr:'4'" AS googlesql_test.KitchenSinkPB.NestedRepeatedGroup),
+          CAST("id:5 idstr:'4'" AS googlesql_test.KitchenSinkPB.NestedRepeatedGroup)
+        ] as NestedRepeatedGroup
+      ),
+    +int64_key_1,
+    +int64_key_2,
+    +OptionalGroup,
+    +NestedRepeatedGroup
+  )
+--
+ARRAY<STRUCT<PROTO<googlesql_test.KitchenSinkPB>>>[
+  {{
+     int64_key_1: 1
+     int64_key_2: 2
+     OptionalGroup {
+       int64_val: 3
+       string_val: "a"
+     }
+     NestedRepeatedGroup {
+       id: 4
+       idstr: "4"
+     }
+     NestedRepeatedGroup {
+       id: 5
+       idstr: "4"
+     }
+   }}
+]
+
+==
+[name=filter_fields_exclude_group]
+[required_features=FILTER_FIELDS]
+SELECT
+  FILTER_FIELDS(
+    NEW
+      googlesql_test.KitchenSinkPB(
+        1 as int64_key_1,
+        2 as int64_key_2,
+        "sample" as string_val,
+        CAST("int64_val:3 string_val: 'a'"
+              AS googlesql_test.KitchenSinkPB.OptionalGroup) as OptionalGroup,
+        [
+          CAST("id:4 idstr:'4'" AS googlesql_test.KitchenSinkPB.NestedRepeatedGroup),
+          CAST("id:5 idstr:'4'" AS googlesql_test.KitchenSinkPB.NestedRepeatedGroup)
+        ] as NestedRepeatedGroup
+      ),
+    -OptionalGroup,
+    -NestedRepeatedGroup
+  )
+--
+ARRAY<STRUCT<PROTO<googlesql_test.KitchenSinkPB>>>[
+  {{
+     int64_key_1: 1
+     int64_key_2: 2
+     string_val: "sample"
+   }}
+]
+
+==
+[name=filter_fields_include_group_subfield]
+[required_features=FILTER_FIELDS]
+SELECT
+  FILTER_FIELDS(
+    NEW
+      googlesql_test.KitchenSinkPB(
+        1 as int64_key_1,
+        2 as int64_key_2,
+        "sample" as string_val,
+        CAST("int64_val:3 string_val: 'a'"
+              AS googlesql_test.KitchenSinkPB.OptionalGroup) as OptionalGroup,
+        [
+          CAST("id:4 idstr:'4'" AS googlesql_test.KitchenSinkPB.NestedRepeatedGroup),
+          CAST("id:5 idstr:'4'" AS googlesql_test.KitchenSinkPB.NestedRepeatedGroup)
+        ] as NestedRepeatedGroup
+      ),
+    +int64_key_1,
+    +int64_key_2,
+    +OptionalGroup.int64_val,
+    +NestedRepeatedGroup.id
+  )
+--
+ARRAY<STRUCT<PROTO<googlesql_test.KitchenSinkPB>>>[
+  {{
+     int64_key_1: 1
+     int64_key_2: 2
+     OptionalGroup {
+       int64_val: 3
+     }
+     NestedRepeatedGroup {
+       id: 4
+     }
+     NestedRepeatedGroup {
+       id: 5
+     }
+   }}
+]
+
+==
+[name=filter_fields_exclude_group_subfield]
+[required_features=FILTER_FIELDS]
+SELECT
+  FILTER_FIELDS(
+    NEW
+      googlesql_test.KitchenSinkPB(
+        1 as int64_key_1,
+        2 as int64_key_2,
+        "sample" as string_val,
+        CAST("int64_val:3 string_val: 'a'"
+              AS googlesql_test.KitchenSinkPB.OptionalGroup) as OptionalGroup,
+        [
+          CAST("id:4 idstr:'4'" AS googlesql_test.KitchenSinkPB.NestedRepeatedGroup),
+          CAST("id:5 idstr:'4'" AS googlesql_test.KitchenSinkPB.NestedRepeatedGroup)
+        ] as NestedRepeatedGroup
+      ),
+    -OptionalGroup.string_val,
+    -NestedRepeatedGroup.idstr
+  )
+--
+ARRAY<STRUCT<PROTO<googlesql_test.KitchenSinkPB>>>[
+  {{
+     int64_key_1: 1
+     int64_key_2: 2
+     string_val: "sample"
+     OptionalGroup {
+       int64_val: 3
+     }
+     NestedRepeatedGroup {
+       id: 4
+     }
+     NestedRepeatedGroup {
+       id: 5
+     }
+   }}
+]
+
+==
+[name=filter_fields_include_oneof_field]
+[required_features=FILTER_FIELDS]
+SELECT
+  FILTER_FIELDS(
+    NEW
+      googlesql_test.KitchenSinkPB(
+        1 as int64_key_1,
+        2 as int64_key_2,
+        "sample" as string_val,
+        3 as int32_one_of
+      ),
+    +int64_key_1,
+    +int64_key_2,
+    +int32_one_of,
+    +string_one_of
+  )
+--
+ARRAY<STRUCT<PROTO<googlesql_test.KitchenSinkPB>>>[
+  {{
+     int64_key_1: 1
+     int64_key_2: 2
+     int32_one_of: 3
+   }}
+]
+
+==
+[name=filter_fields_exclude_oneof_field]
+[required_features=FILTER_FIELDS]
+SELECT
+  FILTER_FIELDS(
+    NEW
+      googlesql_test.KitchenSinkPB(
+        1 as int64_key_1,
+        2 as int64_key_2,
+        "sample" as string_val,
+        3 as int32_one_of
+      ),
+    -int32_one_of
+  )
+--
+ARRAY<STRUCT<PROTO<googlesql_test.KitchenSinkPB>>>[
+  {{
+     int64_key_1: 1
+     int64_key_2: 2
+     string_val: "sample"
+   }}
+]
+
+==
+[name=filter_fields_exclude_other_field_in_oneof_group]
+[required_features=FILTER_FIELDS]
+SELECT
+  FILTER_FIELDS(
+    NEW
+      googlesql_test.KitchenSinkPB(
+        1 as int64_key_1,
+        2 as int64_key_2,
+        "sample" as string_val,
+        3 as int32_one_of
+      ),
+    -string_one_of
+  )
+--
+ARRAY<STRUCT<PROTO<googlesql_test.KitchenSinkPB>>>[
+  {{
+     int64_key_1: 1
+     int64_key_2: 2
+     string_val: "sample"
+     int32_one_of: 3
+   }}
+]
+
+==
+[name=filter_fields_fields_on_repeated_extensions]
+[required_features=FILTER_FIELDS,PROTO_EXTENSIONS_WITH_NEW]
+SELECT
+  FILTER_FIELDS(
+    NEW
+      googlesql_test.RecursivePB(
+        1 as int64_val,
+        [NEW googlesql_test.RecursivePB(
+            11 as int64_val,
+            [NEW googlesql_test.RecursivePB(
+              101 as int64_val
+            )] as (googlesql_test.RecursivePB.repeated_recursive_pb_extension)
+        )] as (googlesql_test.RecursivePB.repeated_recursive_pb_extension)
+      ),
+    +(googlesql_test.RecursivePB.repeated_recursive_pb_extension).int64_val
+  )
+--
+ARRAY<STRUCT<PROTO<googlesql_test.RecursivePB>>>[
+  {{
+     [googlesql_test.RecursivePB.repeated_recursive_pb_extension] {
+       int64_val: 11
+     }
+   }}
+]
+
+==
+[name=filter_fields_extension_on_repeated_extensions]
+[required_features=FILTER_FIELDS,PROTO_EXTENSIONS_WITH_NEW]
+SELECT
+  FILTER_FIELDS(
+    NEW
+      googlesql_test.RecursivePB(
+        1 as int64_val,
+        [NEW googlesql_test.RecursivePB(
+            11 as int64_val,
+            [NEW googlesql_test.RecursivePB(
+              101 as int64_val
+            )] as (googlesql_test.RecursivePB.repeated_recursive_pb_extension)
+        )] as (googlesql_test.RecursivePB.repeated_recursive_pb_extension)
+      ),
+    +(googlesql_test.RecursivePB.repeated_recursive_pb_extension).(googlesql_test.RecursivePB.repeated_recursive_pb_extension)
+  )
+--
+ARRAY<STRUCT<PROTO<googlesql_test.RecursivePB>>>[
+  {{
+     [googlesql_test.RecursivePB.repeated_recursive_pb_extension] {
+       [googlesql_test.RecursivePB.repeated_recursive_pb_extension] {
+         int64_val: 101
+       }
+     }
+   }}
+]

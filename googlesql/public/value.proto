@@ -1,0 +1,161 @@
+//
+// Copyright 2019 Google LLC
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+//
+
+// LINT: LEGACY_NAMES
+syntax = "proto2";
+
+package googlesql;
+
+import "google/protobuf/timestamp.proto";
+
+option cc_enable_arenas = true;
+option java_package = "com.google.googlesql";
+option java_outer_classname = "GoogleSQLValue";
+
+// ValueProto represents the serialized form of the googlesql::Value.
+//
+// The intention is to support multiple languages including Java and C++, so we
+// must be sensitive to the distinction between Java Strings and byte arrays or
+// ByteStrings.
+//
+// We also want to support use-cases which do not want to serialize a copy of
+// the GoogleSQL type for every instance (which might be very repetitive).
+// Therefore, unlike googlesql::Value, ValueProto does not carry full type
+// information with every instance, and can only be fully interpreted with an
+// associated TypeProto.
+message ValueProto {
+  // An ordered collection of elements of arbitrary count.
+  message Array {
+    repeated ValueProto element = 1;
+  }
+
+  // A collection of fields. The count, order, and type of the fields is
+  // determined by the type associated with this value.
+  message Struct {
+    repeated ValueProto field = 1;
+  }
+
+  message Datetime {
+    // Represents bit field encoding of year/month/day/hour/minute/second.
+    // See class DatetimeValue in civil_time.h for details of encoding.
+    optional int64 bit_field_datetime_seconds = 1;
+
+    // Non-negative fractions of a second at nanosecond resolution.
+    optional int32 nanos = 2;
+  }
+
+  // A range of values, bounded by the values 'start' (inclusive) and 'end'
+  // (exclusive). A range has an element type, and values must be of this
+  // element type. A range is contiguous, ie it contains all values of the given
+  // element type starting at 'start' and ending before 'end'.
+  //
+  // A "null" value on start or end represents an unbounded start or end value
+  // respectively. Start and end values must always be present.
+  message Range {
+    // Represents the start of the range.
+    optional ValueProto start = 1;
+    // Represents the end of the range.
+    optional ValueProto end = 2;
+  }
+
+  // A single entry in a Map, representing the mapping between `key` and
+  // `value`.
+  message MapEntry {
+    // Represents the serialized map key for the entry.
+    optional ValueProto key = 1;
+    // Represents the serialized map value of the entry.
+    optional ValueProto value = 2;
+  }
+
+  // An unordered mapping from key to value, represented as a collection of
+  // map entries.
+  message Map {
+    repeated MapEntry entry = 1;
+  }
+
+  // A Timestamp with picosecond precision. It is a count of seconds and
+  // fractions of seconds at picosecond resolution. The count is relative to
+  // Unix Epoch, i.e. UTC midnight on January 1, 1970.
+  message TimestampPicos {
+    // Represents seconds of UTC time since Unix epoch
+    // 1970-01-01T00:00:00Z. Must be from 0001-01-01T00:00:00Z to
+    // 9999-12-31T23:59:59Z inclusive.
+    optional int64 seconds = 1;
+
+    // Non-negative fractions of a second at picosecond resolution.
+    // Must be from 0 to 999,999,999,999 inclusive.
+    optional int64 picos = 2;
+  }
+
+  // Each non-null value will have exactly one of these fields specified.
+  // Null values will have no fields set.
+  oneof value {
+    int32 int32_value = 1;
+    int64 int64_value = 2;
+    uint32 uint32_value = 3;
+    uint64 uint64_value = 4;
+    bool bool_value = 5;
+    float float_value = 6;
+    double double_value = 7;
+    string string_value = 8;
+    bytes bytes_value = 9;
+    int32 date_value = 10;
+    // Tag 11 was used for specifying micros timestamps as int64, now obsolete.
+    int32 enum_value = 12;
+    Array array_value = 13;
+    Struct struct_value = 14;
+    // Stores a serialized protocol message.
+    bytes proto_value = 15 [ctype = CORD];
+    google.protobuf.Timestamp timestamp_value = 16;
+    bytes timestamp_pico_value = 29 [deprecated = true];
+    TimestampPicos timestamp_picos_value = 30;
+    Datetime datetime_value = 17;
+    // Bit field encoding of hour/minute/second/nanos. See TimeValue class for
+    // details.
+    int64 time_value = 18;
+    // Geography encoded using ::stlib::STGeographyEncoder
+    bytes geography_value = 19;
+    // Encoded numeric value. For the encoding format see documentation for
+    // NumericValue::SerializeAsProtoBytes().
+    bytes numeric_value = 20;
+    // Encoded bignumeric value. For the encoding format see documentation for
+    // BigNumericValue::SerializeAsProtoBytes().
+    bytes bignumeric_value = 21;
+    // Tag 22 was used for json value as bytes, now obsolete.
+    // Json value represented as a string document.
+    string json_value = 23;
+    // Encoded interval value. For the encoding format see documentation for
+    // IntervalValue::SerializeAsBytes().
+    bytes interval_value = 24;
+    // Encoded tokenlist value.
+    bytes tokenlist_value = 25;
+    // Encoded range value. See (broken link).
+    Range range_value = 26;
+    // Encoded uuid value. For the encoding format see documentation for
+    // UuidValue::SerializeAsBytes().
+    bytes uuid_value = 27;
+    // Encoded map value. See (broken link).
+    Map map_value = 28;
+    // User code that switches on this oneoff enum must have a default case so
+    // builds won't break when new fields are added.
+    bool __ValueProto__switch_must_have_a_default = 255;
+  }
+
+  // Obsolete int64 type for micros timestamps values.
+  reserved 11;
+  // Obsolete bytes type for json value.
+  reserved 22;
+}

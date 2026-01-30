@@ -1,0 +1,358 @@
+# We need disable literal replacement because default value doesn't support
+# query parameters.
+[default no_enable_literal_replacement]
+[default language_features=MAXIMUM,+COLUMN_DEFAULT_VALUE]
+
+ALTER TABLE KeyValue ALTER COLUMN value SET DEFAULT 'banana';
+--
+AlterTableStmt
++-name_path=KeyValue
++-alter_action_list=
+  +-AlterColumnSetDefaultAction
+    +-column="value"
+    +-default_value=
+      +-ColumnDefaultValue
+        +-expression=
+        | +-Literal(type=STRING, value="banana")
+        +-sql="'banana'"
+==
+
+# Alter column with case-insensitive column name.
+ALTER TABLE KeyValue ALTER COLUMN ValuE SET DEFAULT 'banana';
+--
+AlterTableStmt
++-name_path=KeyValue
++-alter_action_list=
+  +-AlterColumnSetDefaultAction
+    +-column="ValuE"
+    +-default_value=
+      +-ColumnDefaultValue
+        +-expression=
+        | +-Literal(type=STRING, value="banana")
+        +-sql="'banana'"
+==
+
+ALTER TABLE KeyValue ALTER COLUMN value SET DEFAULT NULL;
+--
+AlterTableStmt
++-name_path=KeyValue
++-alter_action_list=
+  +-AlterColumnSetDefaultAction
+    +-column="value"
+    +-default_value=
+      +-ColumnDefaultValue
+        +-expression=
+        | +-Literal(type=STRING, value=NULL)
+        +-sql="NULL"
+==
+
+# Alter table if exists set default
+ALTER TABLE IF EXISTS KeyValue ALTER COLUMN key SET DEFAULT 123;
+--
+AlterTableStmt
++-name_path=KeyValue
++-alter_action_list=
+| +-AlterColumnSetDefaultAction
+|   +-column="key"
+|   +-default_value=
+|     +-ColumnDefaultValue
+|       +-expression=
+|       | +-Literal(type=INT64, value=123)
+|       +-sql="123"
++-is_if_exists=TRUE
+==
+
+ALTER TABLE IF EXISTS not_a_table ALTER COLUMN key SET DEFAULT 'abcdefg';
+--
+AlterTableStmt
++-name_path=not_a_table
++-alter_action_list=
+| +-AlterColumnSetDefaultAction
+|   +-column="key"
+|   +-default_value=
+|     +-ColumnDefaultValue
+|       +-expression=
+|       | +-Literal(type=STRING, value="abcdefg")
+|       +-sql="'abcdefg'"
++-is_if_exists=TRUE
+==
+
+# Multiple alter columns
+ALTER TABLE KeyValue
+  ALTER COLUMN key SET DEFAULT 666,
+  ALTER COLUMN value SET DEFAULT 'abc',
+  ALTER COLUMN key SET OPTIONS (description="new description");
+--
+AlterTableStmt
++-name_path=KeyValue
++-alter_action_list=
+  +-AlterColumnSetDefaultAction
+  | +-column="key"
+  | +-default_value=
+  |   +-ColumnDefaultValue
+  |     +-expression=
+  |     | +-Literal(type=INT64, value=666)
+  |     +-sql="666"
+  +-AlterColumnSetDefaultAction
+  | +-column="value"
+  | +-default_value=
+  |   +-ColumnDefaultValue
+  |     +-expression=
+  |     | +-Literal(type=STRING, value="abc")
+  |     +-sql="'abc'"
+  +-AlterColumnOptionsAction
+    +-column="key"
+    +-option_list=
+      +-description := Literal(type=STRING, value="new description")
+==
+
+# Alter column if exists set default
+ALTER TABLE KeyValue ALTER COLUMN IF EXISTS key SET DEFAULT 123;
+--
+AlterTableStmt
++-name_path=KeyValue
++-alter_action_list=
+  +-AlterColumnSetDefaultAction
+    +-is_if_exists=TRUE
+    +-column="key"
+    +-default_value=
+      +-ColumnDefaultValue
+        +-expression=
+        | +-Literal(type=INT64, value=123)
+        +-sql="123"
+==
+
+# Set default to a complex expression
+ALTER TABLE KeyValue ALTER COLUMN value SET DEFAULT concat("prefix_", generate_uuid());
+--
+AlterTableStmt
++-name_path=KeyValue
++-alter_action_list=
+  +-AlterColumnSetDefaultAction
+    +-column="value"
+    +-default_value=
+      +-ColumnDefaultValue
+        +-expression=
+        | +-FunctionCall(GoogleSQL:concat(STRING, repeated(1) STRING) -> STRING)
+        |   +-Literal(type=STRING, value="prefix_")
+        |   +-FunctionCall(GoogleSQL:generate_uuid() -> STRING)
+        +-sql='concat("prefix_", generate_uuid())'
+==
+
+# Set default on a non_exist column (disallowed)
+ALTER TABLE KeyValue ALTER COLUMN non_exist_column SET DEFAULT (SELECT 'abc');
+--
+ERROR: Column not found: non_exist_column [at 1:35]
+ALTER TABLE KeyValue ALTER COLUMN non_exist_column SET DEFAULT (SELECT 'abc');
+                                  ^
+==
+
+# Set default on a non_exist column with IF EXISTS
+ALTER TABLE KeyValue ALTER COLUMN IF EXISTS non_exist_column SET DEFAULT 'abc';
+--
+AlterTableStmt
++-name_path=KeyValue
++-alter_action_list=
+  +-AlterColumnSetDefaultAction
+    +-is_if_exists=TRUE
+    +-column="non_exist_column"
+    +-default_value=
+      +-ColumnDefaultValue
+        +-expression=
+        | +-Literal(type=STRING, value="abc")
+        +-sql="'abc'"
+==
+
+# Set default to a subquery (disallowed)
+ALTER TABLE KeyValue ALTER COLUMN value SET DEFAULT (SELECT 'abc');
+--
+ERROR: A column default expression must not include a subquery [at 1:53]
+ALTER TABLE KeyValue ALTER COLUMN value SET DEFAULT (SELECT 'abc');
+                                                    ^
+==
+
+# Set default to a different data type (STRING -> DATE) (disallowed)
+ALTER TABLE KeyValue ALTER COLUMN value SET DEFAULT DATE '2020-01-01';
+--
+ERROR: Column default expression has type DATE which cannot be assigned to column type STRING [at 1:53]
+ALTER TABLE KeyValue ALTER COLUMN value SET DEFAULT DATE '2020-01-01';
+                                                    ^
+==
+
+# Default expression references existing columns (disallowed)
+ALTER TABLE KeyValue ALTER COLUMN value SET DEFAULT key + 100;
+--
+ERROR: Default value expressions cannot reference columns [at 1:53]
+ALTER TABLE KeyValue ALTER COLUMN value SET DEFAULT key + 100;
+                                                    ^
+==
+
+# Default expression references itself (disallowed)
+ALTER TABLE KeyValue ALTER COLUMN value SET DEFAULT value + 100;
+--
+ERROR: Default value expressions cannot reference columns [at 1:53]
+ALTER TABLE KeyValue ALTER COLUMN value SET DEFAULT value + 100;
+                                                    ^
+==
+
+# Default expression references a existing column in different case (disallowed)
+ALTER TABLE KeyValue ALTER COLUMN value SET DEFAULT KEy;
+--
+ERROR: Default value expressions cannot reference columns [at 1:53]
+ALTER TABLE KeyValue ALTER COLUMN value SET DEFAULT KEy;
+                                                    ^
+==
+
+# Default expression references a random identifier (disallowed)
+ALTER TABLE KeyValue ALTER COLUMN value SET DEFAULT random_identifier;
+--
+ERROR: Unrecognized name: random_identifier [at 1:53]
+ALTER TABLE KeyValue ALTER COLUMN value SET DEFAULT random_identifier;
+                                                    ^
+==
+
+# Default expression references a lambda function with column name as lambda arguments.
+[language_features=NONE,+COLUMN_DEFAULT_VALUE,+INLINE_LAMBDA_ARGUMENT]
+ALTER TABLE KeyValue ALTER COLUMN value SET DEFAULT ARRAY_TO_STRING(ARRAY_FILTER(['a'], value -> value = 'a'), ',');
+--
+AlterTableStmt
++-name_path=KeyValue
++-alter_action_list=
+  +-AlterColumnSetDefaultAction
+    +-column="value"
+    +-default_value=
+      +-ColumnDefaultValue
+        +-expression=
+        | +-FunctionCall(GoogleSQL:array_to_string(ARRAY<STRING>, STRING, optional(0) STRING) -> STRING)
+        |   +-FunctionCall(GoogleSQL:array_filter(ARRAY<STRING> array_to_filter, FUNCTION<STRING->BOOL> condition) -> ARRAY<STRING>)
+        |   | +-FunctionArgument
+        |   | | +-expr=
+        |   | |   +-Literal(type=ARRAY<STRING>, value=["a"])
+        |   | +-FunctionArgument
+        |   |   +-inline_lambda=
+        |   |     +-InlineLambda
+        |   |       +-argument_list=[$lambda_arg.value#1]
+        |   |       +-body=
+        |   |         +-FunctionCall(GoogleSQL:$equal(STRING, STRING) -> BOOL)
+        |   |           +-ColumnRef(type=STRING, column=$lambda_arg.value#1)
+        |   |           +-Literal(type=STRING, value="a")
+        |   +-Literal(type=STRING, value=",")
+        +-sql="ARRAY_TO_STRING(ARRAY_FILTER(['a'], value -> value = 'a'), ',')"
+==
+
+[language_features=NONE]
+# Alter column set default value is not supported
+ALTER TABLE KeyValue ALTER COLUMN foo SET DEFAULT 'abc';
+--
+ERROR: Column default value is not supported [at 2:22]
+ALTER TABLE KeyValue ALTER COLUMN foo SET DEFAULT 'abc';
+                     ^
+==
+
+# Simple drop default
+ALTER TABLE KeyValue ALTER COLUMN key DROP DEFAULT;
+--
+AlterTableStmt
++-name_path=KeyValue
++-alter_action_list=
+  +-AlterColumnDropDefaultAction(column="key")
+==
+
+# Drop default with case-insensitive column.
+ALTER TABLE KeyValue ALTER COLUMN KeY DROP DEFAULT;
+--
+AlterTableStmt
++-name_path=KeyValue
++-alter_action_list=
+  +-AlterColumnDropDefaultAction(column="KeY")
+==
+
+ALTER TABLE IF EXISTS KeyValue ALTER COLUMN key DROP DEFAULT;
+--
+AlterTableStmt
++-name_path=KeyValue
++-alter_action_list=
+| +-AlterColumnDropDefaultAction(column="key")
++-is_if_exists=TRUE
+==
+
+ALTER TABLE IF EXISTS not_a_table ALTER COLUMN key DROP DEFAULT;
+--
+AlterTableStmt
++-name_path=not_a_table
++-alter_action_list=
+| +-AlterColumnDropDefaultAction(column="key")
++-is_if_exists=TRUE
+==
+
+ALTER TABLE KeyValue ALTER COLUMN IF EXISTS not_a_column DROP DEFAULT;
+--
+AlterTableStmt
++-name_path=KeyValue
++-alter_action_list=
+  +-AlterColumnDropDefaultAction(is_if_exists=TRUE, column="not_a_column")
+==
+
+ALTER TABLE KeyValue ALTER COLUMN IF EXISTS value DROP DEFAULT;
+--
+AlterTableStmt
++-name_path=KeyValue
++-alter_action_list=
+  +-AlterColumnDropDefaultAction(is_if_exists=TRUE, column="value")
+==
+
+# Combine drop default with other alter column actions.
+ALTER TABLE KeyValue
+  ALTER COLUMN key SET OPTIONS (description="new description"),
+  ALTER COLUMN key DROP DEFAULT;
+--
+AlterTableStmt
++-name_path=KeyValue
++-alter_action_list=
+  +-AlterColumnOptionsAction
+  | +-column="key"
+  | +-option_list=
+  |   +-description := Literal(type=STRING, value="new description")
+  +-AlterColumnDropDefaultAction(column="key")
+==
+
+# Multiple drop default actions
+ALTER TABLE KeyValue
+  ALTER COLUMN key DROP DEFAULT,
+  ALTER COLUMN value DROP DEFAULT;
+--
+AlterTableStmt
++-name_path=KeyValue
++-alter_action_list=
+  +-AlterColumnDropDefaultAction(column="key")
+  +-AlterColumnDropDefaultAction(column="value")
+==
+
+ALTER TABLE not_a_table ALTER COLUMN key DROP DEFAULT;
+--
+ERROR: Table not found: not_a_table [at 1:13]
+ALTER TABLE not_a_table ALTER COLUMN key DROP DEFAULT;
+            ^
+==
+
+ALTER TABLE not_a_table ALTER COLUMN key DROP DEFAULT;
+--
+ERROR: Table not found: not_a_table [at 1:13]
+ALTER TABLE not_a_table ALTER COLUMN key DROP DEFAULT;
+            ^
+==
+
+ALTER TABLE KeyValue ALTER COLUMN not_a_column DROP DEFAULT;
+--
+ERROR: Column not found: not_a_column [at 1:35]
+ALTER TABLE KeyValue ALTER COLUMN not_a_column DROP DEFAULT;
+                                  ^
+==
+
+[language_features=NONE]
+# Alter column drop default value is not supported
+ALTER TABLE KeyValue ALTER COLUMN foo DROP DEFAULT;
+--
+ERROR: Column default value is not supported [at 2:22]
+ALTER TABLE KeyValue ALTER COLUMN foo DROP DEFAULT;
+                     ^

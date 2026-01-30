@@ -1,0 +1,1308 @@
+[name=with_recursive_back_reference]
+[default required_features=WITH_RECURSIVE]
+[load_proto_files=googlesql/testdata/test_schema.proto]
+[load_proto_names=googlesql_test.KitchenSinkPB]
+WITH RECURSIVE
+  R AS (SELECT 2 a),
+  S AS (SELECT a FROM R)
+SELECT a FROM R
+--
+ARRAY<STRUCT<a INT64>>[{2}]
+==
+
+[name=with_recursive_forward_reference]
+WITH RECURSIVE
+  R AS (SELECT a FROM S),
+  S AS (SELECT 2 a)
+SELECT a FROM R
+--
+ARRAY<STRUCT<a INT64>>[{2}]
+==
+
+[name=recursive_query_simple]
+WITH RECURSIVE
+  R AS (SELECT 1 AS n UNION ALL SELECT n + 1 FROM R WHERE n < 10)
+SELECT n FROM R;
+--
+ARRAY<STRUCT<n INT64>>[unknown order:
+  {1},
+  {2},
+  {3},
+  {4},
+  {5},
+  {6},
+  {7},
+  {8},
+  {9},
+  {10}
+]
+==
+
+[name=recursive_query_recursive_term_empty]
+WITH RECURSIVE
+  R AS (SELECT 1 AS n UNION ALL SELECT n + 1 FROM R WHERE FALSE)
+SELECT * FROM R;
+--
+ARRAY<STRUCT<n INT64>>[{1}]
+==
+
+# Iteration 4 of recursive term will fail with division by zero. Make sure the
+# error is handled properly.
+[name=recursive_query_recursive_term_runtime_error]
+WITH RECURSIVE
+  R AS (SELECT 5 AS n, 0.2 AS n_reciprocal UNION ALL
+  SELECT n - 1, 1/(n-1) FROM R)
+SELECT * FROM R;
+--
+ERROR: generic::out_of_range: division by zero: 1 / 0
+==
+
+# Recursive query used to compute Fibanocci numbers. This demonstrates multiple
+# columns with aliases.
+[name=recursive_query_fib]
+WITH RECURSIVE
+  Fib AS (
+    SELECT 1 AS a, 1 AS b, 1 AS n
+    UNION ALL
+    SELECT b AS a, a + b AS b, n + 1 AS n FROM Fib WHERE n < 10
+  )
+SELECT n, a FROM Fib;
+--
+ARRAY<STRUCT<n INT64, a INT64>>[unknown order:
+  {1, 1},
+  {2, 1},
+  {3, 2},
+  {4, 3},
+  {5, 5},
+  {6, 8},
+  {7, 13},
+  {8, 21},
+  {9, 34},
+  {10, 55}
+]
+==
+
+# This query uses some more advanced operations including joins and subqueries
+# in the recursive term. This query starts with a list of available flights and
+# computes a list of all travel options from Chicago to Paris, sorted first by
+# price, then number of connections.
+[name=recursive_query_join]
+WITH RECURSIVE
+  Flights AS (
+    SELECT NULL AS origin, NULL AS destination, NULL AS cost UNION ALL
+    SELECT 'London', 'New York', 800 UNION ALL
+    SELECT 'London', 'Paris', 200 UNION ALL
+    SELECT 'New York', 'Paris', 1200 UNION ALL
+    SELECT 'Chicago', 'New York', 250 UNION ALL
+    SELECT 'New York', 'Chicago', 200 UNION ALL
+    SELECT 'New York', 'London', 750 UNION ALL
+    SELECT 'Paris', 'New York', 1100 UNION ALL
+    SELECT 'Chicago', 'Paris', 1200 UNION ALL
+    SELECT NULL, NULL, NULL
+  ),
+  TravelOptions AS (
+    SELECT ['Chicago'] AS path, 0 AS total_cost
+    UNION ALL
+    SELECT
+      ARRAY_CONCAT(path, [destination]), total_cost + cost
+    FROM TravelOptions INNER JOIN Flights ON (
+      path[ORDINAL(ARRAY_LENGTH(path))] = origin)
+    -- Exclude cycles (e.g. London->New York->London)
+    WHERE NOT EXISTS(SELECT city from UNNEST(path) AS city WHERE city = destination)
+  )
+SELECT * FROM TravelOptions WHERE path[ORDINAL(ARRAY_LENGTH(path))] = 'Paris'
+ORDER BY total_cost, ARRAY_LENGTH(path);
+--
+ARRAY<STRUCT<path ARRAY<>, total_cost INT64>>[known order:
+  {
+    ARRAY<STRING>[known order:"Chicago", "Paris"],
+    1200
+  },
+  {
+    ARRAY<STRING>[known order:"Chicago", "New York", "London", "Paris"],
+    1200
+  },
+  {
+    ARRAY<STRING>[known order:"Chicago", "New York", "Paris"],
+    1450
+  }
+]
+==
+
+# WITH RECURSIVE in subquery
+[name=recursive_query_subquery]
+[required_features=WITH_RECURSIVE,WITH_ON_SUBQUERY]
+SELECT * FROM (
+  WITH RECURSIVE t AS (SELECT 1 AS n UNION ALL SELECT n + 1 FROM t WHERE n < 10)
+  SELECT n, 2*n FROM t
+);
+--
+ARRAY<STRUCT<n INT64, INT64>>[unknown order:
+  {2, 4},
+  {4, 8},
+  {6, 12},
+  {8, 16},
+  {10, 20},
+  {1, 2},
+  {3, 6},
+  {5, 10},
+  {7, 14},
+  {9, 18}
+]
+==
+
+# WITH RECURSIVE nested in the recursive term of an outer WITH RECURSIVE
+[required_features=WITH_RECURSIVE,WITH_ON_SUBQUERY]
+[name=recursive_query_nested_recursive_term]
+WITH RECURSIVE
+  a AS (SELECT 1 AS n UNION ALL (
+    WITH RECURSIVE
+      b AS (SELECT 1 AS n UNION ALL (
+        SELECT n + 1 FROM b WHERE n < 5
+      ))
+    SELECT n + 1 FROM a INNER JOIN b USING (n) WHERE n < 10
+)) SELECT * FROM a;
+--
+ARRAY<STRUCT<n INT64>>[unknown order:{1}, {2}, {3}, {4}, {5}, {6}]
+==
+
+# WITH RECURSIVE nested inside of the non-recursive term of an outer
+# WITH RECURSIVE.
+[name=recursive_query_nested_non_recursive]
+[required_features=WITH_RECURSIVE,WITH_ON_SUBQUERY]
+WITH RECURSIVE
+  a AS (
+    (WITH RECURSIVE
+      b AS (SELECT 0 AS n UNION ALL (
+        SELECT n + 1 FROM b WHERE n < 5
+      ))
+      SELECT * FROM b)
+    UNION ALL SELECT 10 + n FROM a WHERE n < 30
+) SELECT * FROM a ORDER BY n;
+--
+ARRAY<STRUCT<n INT64>>[known order:
+  {0},
+  {1},
+  {2},
+  {3},
+  {4},
+  {5},
+  {10},
+  {11},
+  {12},
+  {13},
+  {14},
+  {15},
+  {20},
+  {21},
+  {22},
+  {23},
+  {24},
+  {25},
+  {30},
+  {31},
+  {32},
+  {33},
+  {34},
+  {35}
+]
+==
+
+# This case looks similar to the above, but looks different in the resolved
+# tree. Here, the ResolvedWithEntry for 'a' has an inner ResolvedWithScan as its
+# query, rather than a ResolvedRecursiveScan directly. This test ensures that
+# the engines do not make incorrect assumptions about the parent node of a
+# ResolvedRecursiveScan necessarily being a ResolvedWithEntry.
+[name=recursive_query_nested_top_level]
+[required_features=WITH_RECURSIVE,WITH_ON_SUBQUERY]
+WITH RECURSIVE
+  a AS (
+    WITH RECURSIVE
+      b AS (SELECT 0 AS n UNION ALL (
+        SELECT n + 1 FROM b WHERE n < 5
+      ))
+      SELECT * FROM b
+    UNION ALL SELECT 10 + n FROM a WHERE n < 30
+) SELECT * FROM a ORDER BY n;
+--
+ARRAY<STRUCT<n INT64>>[known order:
+  {0},
+  {1},
+  {2},
+  {3},
+  {4},
+  {5},
+  {10},
+  {11},
+  {12},
+  {13},
+  {14},
+  {15},
+  {20},
+  {21},
+  {22},
+  {23},
+  {24},
+  {25},
+  {30},
+  {31},
+  {32},
+  {33},
+  {34},
+  {35}
+]
+==
+
+[name=recursive_query_family_tree]
+[required_features=ORDER_BY_IN_AGGREGATE,WITH_RECURSIVE]
+ -- Sample recursive query to find the ancestors and descendants of each person
+ -- in a family tree
+WITH RECURSIVE
+  -- Raw family tree
+  FamilyTree AS (
+    SELECT 'Alice' AS Person, NULL AS Parent1, NULL AS Parent2 UNION ALL
+    SELECT 'Bob' AS Person, NULL AS Parent1, NULL AS Parent2 UNION ALL
+    SELECT 'Charlie' AS Person, 'Alice' AS Parent1, 'Bob' AS Parent2 UNION ALL
+    SELECT 'David' AS Person, 'Alice' AS Parent1, 'Bob' AS Parent2 UNION ALL
+    SELECT 'Emily' AS Person, NULL AS Parent1, NULL AS Parent2 UNION ALL
+    SELECT 'Felix' AS Person, 'Emily' AS Parent1, 'David' AS Parent2 UNION ALL
+    SELECT 'George' AS Person, 'Felix' AS Parent1, NULL AS Parent2 UNION ALL
+    SELECT 'Henry' AS Person, 'Emily' AS Parent1, 'George' AS Parent2 UNION ALL
+    SELECT 'Irene' AS Person, 'Emily' AS Parent1, 'George' AS Parent2
+  ),
+  -- Transform family tree so that there's one row for each parent/child
+  -- combination
+  FamilyTreeTransformed AS (
+    SELECT Person, Parent1 AS Parent FROM FamilyTree WHERE Parent1 IS NOT NULL
+    UNION ALL
+    SELECT Person, Parent2 AS Parent FROM FamilyTree WHERE Parent2 IS NOT NULL
+  ),
+
+  -- Now, we do a recursive query to enumerate all of the ancestors of each
+  -- person
+  Ancestors AS (
+    SELECT Person, Parent AS Ancestor FROM FamilyTreeTransformed
+    UNION ALL
+    SELECT Ancestors.Person, FamilyTreeTransformed.Parent
+      FROM Ancestors INNER JOIN FamilyTreeTransformed
+      ON (Ancestors.Ancestor = FamilyTreeTransformed.Person)
+  ),
+
+  -- Another recursive query to enumerate all the descendants of each person.
+  -- (Among other things, this covers the scenario of multiple recursive queries
+  -- in the same WITH clause)
+  Descendants AS (
+    SELECT Parent AS Person, Person AS Descendant FROM FamilyTreeTransformed
+    UNION ALL
+    SELECT Descendants.Person, FamilyTreeTransformed.Person
+    FROM Descendants INNER JOIN FamilyTreeTransformed
+    ON (Descendants.Descendant = FamilyTreeTransformed.Parent)
+  ),
+
+  -- Package the results to produce just one row per person, with an array of
+  -- ancestors. (This ensures that performing aggregation on the result of a
+  -- recursive query in a non-recursive context works).
+  AncestorList AS (
+    SELECT
+      Person,
+      ARRAY_AGG(Ancestor ORDER BY Ancestor) AS Ancestors,
+    FROM Ancestors
+    GROUP BY Person
+  ),
+  DescendantList AS (
+    SELECT
+      Person,
+      ARRAY_AGG(Descendant ORDER BY Descendant) AS Descendants,
+    FROM Descendants
+    GROUP BY Person
+  ),
+  PersonInfo AS (
+    SELECT Person, Ancestors, Descendants
+    FROM AncestorList FULL OUTER JOIN DescendantList USING (Person)
+    ORDER BY Person
+  )
+SELECT * FROM PersonInfo;
+--
+ARRAY<STRUCT<Person STRING, Ancestors ARRAY<>, Descendants ARRAY<>>>[unknown order:
+  {"Alice",
+   ARRAY<STRING>(NULL),
+   ARRAY<STRING>[known order:
+     "Charlie",
+     "David",
+     "Felix",
+     "George",
+     "Henry",
+     "Irene"
+   ]},
+  {"Bob",
+   ARRAY<STRING>(NULL),
+   ARRAY<STRING>[known order:
+     "Charlie",
+     "David",
+     "Felix",
+     "George",
+     "Henry",
+     "Irene"
+   ]},
+  {
+    "Charlie",
+    ARRAY<STRING>[known order:"Alice", "Bob"],
+    ARRAY<STRING>(NULL)
+  },
+  {
+    "David",
+    ARRAY<STRING>[known order:"Alice", "Bob"],
+    ARRAY<STRING>[known order:"Felix", "George", "Henry", "Irene"]
+  },
+  {"Emily",
+   ARRAY<STRING>(NULL),
+   ARRAY<STRING>[known order:
+     "Felix",
+     "George",
+     "Henry",
+     "Henry",
+     "Irene",
+     "Irene"
+   ]},
+  {
+    "Felix",
+    ARRAY<STRING>[known order:"Alice", "Bob", "David", "Emily"],
+    ARRAY<STRING>[known order:"George", "Henry", "Irene"]
+  },
+  {
+    "George",
+    ARRAY<STRING>[known order:"Alice", "Bob", "David", "Emily", "Felix"],
+    ARRAY<STRING>[known order:"Henry", "Irene"]
+  },
+  {"Henry",
+   ARRAY<STRING>[known order:
+     "Alice",
+     "Bob",
+     "David",
+     "Emily",
+     "Emily",
+     "Felix",
+     "George"
+   ],
+   ARRAY<STRING>(NULL)},
+  {"Irene",
+   ARRAY<STRING>[known order:
+     "Alice",
+     "Bob",
+     "David",
+     "Emily",
+     "Emily",
+     "Felix",
+     "George"
+   ],
+   ARRAY<STRING>(NULL)}
+]
+==
+
+[name=recursive_query_string_pattern_match]
+ -- Recursive query to iterate through the characters in a string
+ -- and decide if the string satisfies the form of having a
+ -- sequence of a's, following by an equal number of b's.
+ -- (This could also be done in much fewer lines of code
+ --  using REGEXP_EXTRACT(), but recursive queries are more fun :)
+WITH RECURSIVE
+  Inputs AS (
+    SELECT '' AS s UNION ALL
+    SELECT 'ab' AS s UNION ALL
+    SELECT 'abb' AS s UNION ALL
+    SELECT 'abab' AS s UNION ALL
+    SELECT 'aa' AS s UNION ALL
+    SELECT 'aab' AS s UNION ALL
+    SELECT 'aabb' AS s UNION ALL
+    SELECT 'aabbb' AS s UNION ALL
+    SELECT 'aabbc' AS s UNION ALL
+    SELECT 'caabb' AS s UNION ALL
+    SELECT 'aacbb' AS s UNION ALL
+    SELECT 'aaabb' AS s UNION ALL
+    SELECT 'b' AS s UNION ALL
+    SELECT 'ba' AS s UNION ALL
+    SELECT 'bb' AS s UNION ALL
+    SELECT 'aaaaabbbbb' AS s
+  ),
+ State AS (
+   SELECT STRUCT(
+     0 AS count,
+     'a' AS expected,
+     FALSE AS error
+     ) AS state,
+     1 AS index,
+     s AS input,
+   FROM Inputs
+   UNION ALL
+   SELECT (
+     CASE TRUE
+       WHEN state.error THEN
+         -- Already reached error state
+         state
+       WHEN state.count = 0 AND next_char = '' THEN
+         -- Reached end of input with balanced a's and b's
+         STRUCT(0, '', FALSE)
+       WHEN state.expected = 'a' AND next_char = 'a' THEN
+         -- In string of a's, got another 'a'
+         STRUCT(state.count + 1, 'a', FALSE)
+       WHEN state.count > 0 AND next_char = 'b' THEN
+         -- In 'b' section
+         STRUCT(state.count - 1, 'b', FALSE)
+       ELSE
+         -- Doesn't match
+         STRUCT(0, '', TRUE)
+       END
+       ) AS state,
+       index + 1,
+       input
+   FROM (SELECT *, SUBSTR(input, index, 1) AS next_char FROM State)
+   WHERE index <= LENGTH(input)
+ )
+SELECT
+  State.input,
+  State.state,
+  State.state.count = 0 AND NOT State.state.error AS match FROM State
+WHERE State.index = LENGTH(State.input) + 1
+ORDER BY match, input;
+--
+ARRAY<STRUCT<
+        input STRING,
+        state STRUCT<count INT64, expected STRING, error BOOL>,
+        match BOOL
+      >>
+[known order:
+  {"aa", {2, "a", false}, false},
+  {"aaabb", {1, "b", false}, false},
+  {"aab", {1, "b", false}, false},
+  {"aabbb", {0, "", true}, false},
+  {"aabbc", {0, "", true}, false},
+  {"aacbb", {0, "", true}, false},
+  {"abab", {0, "", true}, false},
+  {"abb", {0, "", true}, false},
+  {"b", {0, "", true}, false},
+  {"ba", {0, "", true}, false},
+  {"bb", {0, "", true}, false},
+  {"caabb", {0, "", true}, false},
+  {"", {0, "a", false}, true},
+  {"aaaaabbbbb", {0, "b", false}, true},
+  {"aabb", {0, "b", false}, true},
+  {"ab", {0, "b", false}, true}
+]
+==
+
+[required_features=WITH_RECURSIVE,ORDER_BY_IN_AGGREGATE]
+[name=recursive_query_prime_factorization]
+WITH RECURSIVE
+  -- Inputs to compute prime factors of
+  Inputs AS (
+    SELECT n FROM UNNEST(GENERATE_ARRAY(1,50)) AS n
+  ),
+
+  -- Known list of prime numbers, up to the maximum possible value in <Inputs>.
+  -- For simplicity, we choose to hard-code this, rather than compute it.
+  Primes AS (
+    SELECT p
+    FROM UNNEST([2,3,5,7,11,13,17,19,23,29,31,37,41,43,47]) AS p
+  ),
+
+  -- Internal table which contains one row per input value per prime factor.
+  -- Rows repeat when the input value contains the same factor multiple times
+  -- (e.g. two rows where n=4 and p=2, three rows where n=8 and p=2, etc.).
+  -- Column 'factor_times_multiplicity' is used internally to ensure that
+  -- each iteration adds only factors with multiplicity >= the current
+  -- iteration number.
+  PrimeFactorsInternal AS (
+    SELECT
+      n,
+      p AS factor,
+      p AS factor_times_multiplicity
+    FROM Inputs CROSS JOIN Primes
+    WHERE MOD(n, p) = 0
+    UNION ALL
+    SELECT
+      n,
+      factor,
+      factor_times_multiplicity * factor
+    FROM PrimeFactorsInternal
+    WHERE MOD(n, factor_times_multiplicity * factor) = 0
+  )
+
+ -- Repackage the results with one row per input value
+ -- and the prime factors aggregated into an array, for easy
+ -- human consumption.
+SELECT n, ARRAY_AGG(Factor ORDER BY Factor)
+FROM PrimeFactorsInternal
+GROUP BY n ORDER BY n;
+--
+ARRAY<STRUCT<n INT64, ARRAY<>>>[known order:
+  {2, ARRAY<INT64>[2]},
+  {3, ARRAY<INT64>[3]},
+  {
+    4,
+    ARRAY<INT64>[unknown order:2, 2]
+  },
+  {5, ARRAY<INT64>[5]},
+  {
+    6,
+    ARRAY<INT64>[known order:2, 3]
+  },
+  {7, ARRAY<INT64>[7]},
+  {
+    8,
+    ARRAY<INT64>[unknown order:2, 2, 2]
+  },
+  {
+    9,
+    ARRAY<INT64>[unknown order:3, 3]
+  },
+  {
+    10,
+    ARRAY<INT64>[known order:2, 5]
+  },
+  {11, ARRAY<INT64>[11]},
+  {
+    12,
+    ARRAY<INT64>[unknown order:2, 2, 3]
+  },
+  {13, ARRAY<INT64>[13]},
+  {
+    14,
+    ARRAY<INT64>[known order:2, 7]
+  },
+  {
+    15,
+    ARRAY<INT64>[known order:3, 5]
+  },
+  {
+    16,
+    ARRAY<INT64>[unknown order:2, 2, 2, 2]
+  },
+  {17, ARRAY<INT64>[17]},
+  {
+    18,
+    ARRAY<INT64>[unknown order:2, 3, 3]
+  },
+  {19, ARRAY<INT64>[19]},
+  {
+    20,
+    ARRAY<INT64>[unknown order:2, 2, 5]
+  },
+  {
+    21,
+    ARRAY<INT64>[known order:3, 7]
+  },
+  {
+    22,
+    ARRAY<INT64>[known order:2, 11]
+  },
+  {23, ARRAY<INT64>[23]},
+  {
+    24,
+    ARRAY<INT64>[unknown order:2, 2, 2, 3]
+  },
+  {
+    25,
+    ARRAY<INT64>[unknown order:5, 5]
+  },
+  {
+    26,
+    ARRAY<INT64>[known order:2, 13]
+  },
+  {
+    27,
+    ARRAY<INT64>[unknown order:3, 3, 3]
+  },
+  {
+    28,
+    ARRAY<INT64>[unknown order:2, 2, 7]
+  },
+  {29, ARRAY<INT64>[29]},
+  {
+    30,
+    ARRAY<INT64>[known order:2, 3, 5]
+  },
+  {31, ARRAY<INT64>[31]},
+  {
+    32,
+    ARRAY<INT64>[unknown order:2, 2, 2, 2, 2]
+  },
+  {
+    33,
+    ARRAY<INT64>[known order:3, 11]
+  },
+  {
+    34,
+    ARRAY<INT64>[known order:2, 17]
+  },
+  {
+    35,
+    ARRAY<INT64>[known order:5, 7]
+  },
+  {
+    36,
+    ARRAY<INT64>[unknown order:2, 2, 3, 3]
+  },
+  {37, ARRAY<INT64>[37]},
+  {
+    38,
+    ARRAY<INT64>[known order:2, 19]
+  },
+  {
+    39,
+    ARRAY<INT64>[known order:3, 13]
+  },
+  {
+    40,
+    ARRAY<INT64>[unknown order:2, 2, 2, 5]
+  },
+  {41, ARRAY<INT64>[41]},
+  {
+    42,
+    ARRAY<INT64>[known order:2, 3, 7]
+  },
+  {43, ARRAY<INT64>[43]},
+  {
+    44,
+    ARRAY<INT64>[unknown order:2, 2, 11]
+  },
+  {
+    45,
+    ARRAY<INT64>[unknown order:3, 3, 5]
+  },
+  {
+    46,
+    ARRAY<INT64>[known order:2, 23]
+  },
+  {47, ARRAY<INT64>[47]},
+  {
+    48,
+    ARRAY<INT64>[unknown order:2, 2, 2, 2, 3]
+  },
+  {
+    49,
+    ARRAY<INT64>[unknown order:7, 7]
+  },
+  {
+    50,
+    ARRAY<INT64>[unknown order:2, 5, 5]
+  }
+]
+==
+# Recursive query using Geography types
+[required_features=GEOGRAPHY,WITH_RECURSIVE]
+[name=recursive_query_geography]
+WITH RECURSIVE
+  t AS (
+    SELECT * FROM UNNEST([
+      ST_GEOGPOINT(120, 40.123),
+      ST_GEOGPOINT(35.5, 8.2)]) AS point
+    UNION ALL
+    SELECT
+      ST_GEOGPOINT(ST_X(point) + 10, ST_Y(point))
+    FROM t
+    WHERE ST_X(point) < 70
+) SELECT * FROM t;
+--
+ARRAY<STRUCT<point GEOGRAPHY>>[unknown order:
+  {POINT(120 40.123)},
+  {POINT(35.5 8.2)},
+  {POINT(45.5 8.2)},
+  {POINT(55.5 8.2)},
+  {POINT(65.5 8.2)},
+  {POINT(75.5 8.2)}
+]
+==
+
+# Recursive query using protos
+[name=recursive_query_proto_column]
+WITH RECURSIVE
+  t AS (
+    SELECT NEW googlesql_test.KitchenSinkPB(
+      1 AS int64_key_1,
+      2 AS int64_key_2) AS kitchen_sink_proto
+    UNION ALL
+    SELECT NEW googlesql_test.KitchenSinkPB(
+      kitchen_sink_proto.int64_key_1 + 1 AS int64_key_1,
+      2 AS int64_key_2) AS kitchen_sink_proto
+      FROM t
+      WHERE kitchen_sink_proto.int64_key_1 < 10
+) SELECT * FROM t;
+--
+ARRAY<STRUCT<kitchen_sink_proto PROTO<googlesql_test.KitchenSinkPB>>>[unknown order:
+  {{
+     int64_key_1: 1
+     int64_key_2: 2
+   }},
+  {{
+     int64_key_1: 2
+     int64_key_2: 2
+   }},
+  {{
+     int64_key_1: 3
+     int64_key_2: 2
+   }},
+  {{
+     int64_key_1: 4
+     int64_key_2: 2
+   }},
+  {{
+     int64_key_1: 5
+     int64_key_2: 2
+   }},
+  {{
+     int64_key_1: 6
+     int64_key_2: 2
+   }},
+  {{
+     int64_key_1: 7
+     int64_key_2: 2
+   }},
+  {{
+     int64_key_1: 8
+     int64_key_2: 2
+   }},
+  {{
+     int64_key_1: 9
+     int64_key_2: 2
+   }},
+  {{
+     int64_key_1: 10
+     int64_key_2: 2
+   }}
+]
+==
+
+# Simple recursive query which terminates only under UNION DISTINCT
+[name=with_recursive_union_distinct_simple]
+WITH RECURSIVE
+  t AS (
+    SELECT 0 AS a
+    UNION DISTINCT
+    SELECT MOD(a + 1, 5) FROM t
+  )
+SELECT * FROM t;
+--
+ARRAY<STRUCT<a INT64>>[unknown order:{0}, {1}, {2}, {3}, {4}]
+==
+
+# Similar to the above, but this time, there's multiple columns.
+# Verifies that rows are not considered duplicate when some columns match,
+# but not all of them.
+[name=with_recursive_union_distinct_multiple_columns]
+WITH RECURSIVE
+  t AS (
+    SELECT 'test_a' AS a, 0 AS b, 'test_c' AS c
+    UNION DISTINCT
+    SELECT a, MOD(b + 1, 5), c FROM t
+  )
+SELECT * FROM t;
+--
+ARRAY<STRUCT<a STRING, b INT64, c STRING>>[unknown order:
+  {"test_a", 0, "test_c"},
+  {"test_a", 1, "test_c"},
+  {"test_a", 2, "test_c"},
+  {"test_a", 3, "test_c"},
+  {"test_a", 4, "test_c"}
+]
+==
+
+# Multiple rows emitted by non-recursive term
+[name=with_recursive_union_distinct_multiple_rows_non_recursive_term]
+WITH RECURSIVE
+  t AS (
+    SELECT 0 AS a
+    UNION DISTINCT
+    SELECT 10
+    UNION DISTINCT
+    SELECT MOD(a + 1, 5) FROM t
+  )
+SELECT * FROM t;
+--
+ARRAY<STRUCT<a INT64>>[unknown order:{10}, {0}, {1}, {2}, {3}, {4}]
+==
+
+# Multiple rows emitted by recursive and non-recursive term
+[name=with_recursive_union_distinct_multiple_rows_each_term]
+WITH RECURSIVE
+  t AS (
+    SELECT 0 AS a
+    UNION DISTINCT (
+      SELECT 5
+      UNION ALL
+      SELECT MOD(a + 1, 10) FROM t
+    )
+  )
+SELECT * FROM t;
+--
+ARRAY<STRUCT<a INT64>>[unknown order:
+  {0},
+  {1},
+  {5},
+  {2},
+  {6},
+  {3},
+  {7},
+  {4},
+  {8},
+  {9}
+]
+==
+
+# Given a list of flights, find all the places you can travel to from each
+# starting point, using UNION DISTINCT to skip duplicates.
+# 'cost' is included in the flights table as an extraneous column.
+[name=with_recursive_union_distinct_flight_list]
+WITH RECURSIVE
+  Flights AS (
+    SELECT NULL AS origin, NULL AS destination, NULL AS cost UNION ALL
+    SELECT 'London', 'New York', 800 UNION ALL
+    SELECT 'London', 'Paris', 200 UNION ALL
+    SELECT 'New York', 'Paris', 1200 UNION ALL
+    SELECT 'Chicago', 'New York', 250 UNION ALL
+    SELECT 'New York', 'Chicago', 200 UNION ALL
+    SELECT 'New York', 'London', 750 UNION ALL
+    SELECT 'Paris', 'New York', 1100 UNION ALL
+    SELECT 'Chicago', 'Paris', 1200 UNION ALL
+    SELECT 'Paris', 'Paris', 0 UNION ALL
+    SELECT 'Zurich', 'Moscow', 500 UNION ALL
+    SELECT NULL, NULL, NULL
+  ),
+  Destinations AS (
+    SELECT origin, destination FROM Flights
+    UNION DISTINCT
+    SELECT Destinations.origin, Flights.destination
+    FROM Flights INNER JOIN Destinations ON (Flights.origin = Destinations.destination)
+  )
+SELECT * FROM Destinations
+ORDER BY origin, destination;
+--
+ARRAY<STRUCT<origin STRING, destination STRING>>[known order:
+  {NULL, NULL},
+  {"Chicago", "Chicago"},
+  {"Chicago", "London"},
+  {"Chicago", "New York"},
+  {"Chicago", "Paris"},
+  {"London", "Chicago"},
+  {"London", "London"},
+  {"London", "New York"},
+  {"London", "Paris"},
+  {"New York", "Chicago"},
+  {"New York", "London"},
+  {"New York", "New York"},
+  {"New York", "Paris"},
+  {"Paris", "Chicago"},
+  {"Paris", "London"},
+  {"Paris", "New York"},
+  {"Paris", "Paris"},
+  {"Zurich", "Moscow"}
+]
+==
+
+# Repeat fibanocci query using UNION DISTINCT instead of UNION ALL; should not
+# affect the result.
+[name=recursive_query_fib_distinct]
+WITH RECURSIVE
+  Fib AS (
+    SELECT 1 AS a, 1 AS b, 1 AS n
+    UNION DISTINCT
+    SELECT b AS a, a + b AS b, n + 1 AS n FROM Fib WHERE n < 10
+  )
+SELECT n, a FROM Fib;
+--
+ARRAY<STRUCT<n INT64, a INT64>>[unknown order:
+  {1, 1},
+  {2, 1},
+  {3, 2},
+  {4, 3},
+  {5, 5},
+  {6, 8},
+  {7, 13},
+  {8, 21},
+  {9, 34},
+  {10, 55}
+]
+==
+
+# Recursive query using UNION DISTINCT in a subquery
+[name=recursive_query_distinct_subquery]
+[required_features=WITH_RECURSIVE,WITH_ON_SUBQUERY]
+SELECT * FROM (
+  WITH RECURSIVE
+    t AS (
+      SELECT 0 AS a
+      UNION DISTINCT
+      SELECT MOD(a + 1, 5) FROM t
+    )
+  SELECT * FROM t
+);
+--
+ARRAY<STRUCT<a INT64>>[unknown order:{0}, {1}, {2}, {3}, {4}]
+==
+
+# Recursive query nested inside the non-recursive term of an outer recursive
+# query. Verifies that items encountered within 't1' do not count as duplicates
+# in 't' until they also appear in t.
+#
+# Note that t1 is just n = [0, 1, 2, 3, 4]
+
+[name=recursive_query_distinct_nested_in_non_recursive_term]
+[required_features=WITH_RECURSIVE,WITH_ON_SUBQUERY]
+WITH RECURSIVE t AS (
+  WITH RECURSIVE t1 AS (
+    SELECT 0 AS n
+    UNION DISTINCT SELECT MOD(n + 1, 5) AS abcd FROM t1
+  ) SELECT n * 2 AS n FROM t1 WHERE n >= 3
+  UNION DISTINCT SELECT MOD(n + 1, 15) AS abcd FROM t
+) SELECT * FROM t;
+--
+ARRAY<STRUCT<n INT64>>[unknown order:
+  {6},
+  {8},
+  {9},
+  {7},
+  {10},
+  {11},
+  {12},
+  {13},
+  {14},
+  {0},
+  {1},
+  {2},
+  {3},
+  {4},
+  {5}
+]
+==
+
+# Recursive query nested inside the recursive term of an outer recursive
+# query. Verifies that items encountered within 't1' do not count as duplicates
+# in 't' until they also appear in t.
+#
+# Note that t1 is just n = [0, 1, 2]
+[name=recursive_query_distinct_nested_in_recursive_term]
+[required_features=WITH_RECURSIVE,WITH_ON_SUBQUERY]
+WITH RECURSIVE t AS (
+  SELECT 0 AS n
+  UNION DISTINCT (
+    WITH RECURSIVE t1 AS (
+        SELECT 0 AS n
+        UNION DISTINCT SELECT MOD(n + 1, 3) AS abcd FROM t1
+    )
+    SELECT MOD(t.n + t1.n, 15) AS abcd FROM t CROSS JOIN t1
+  )
+) SELECT * FROM t;
+--
+ARRAY<STRUCT<n INT64>>[unknown order:
+  {0},
+  {2},
+  {1},
+  {4},
+  {3},
+  {6},
+  {5},
+  {8},
+  {7},
+  {10},
+  {9},
+  {12},
+  {11},
+  {14},
+  {13}
+]
+==
+
+# Non-determinism in the recursive term.
+#
+# This query generates random numbers 0 - 100,000, terminating when a random
+# number comes up more than once.
+#
+# We then count the number of rows emitted by the recursive query. The '>= 3'
+# check ensures that the engine is not repeating the same random number over and
+# over again, each iteration.
+#
+# The '100000' value is a tuning parameter - a higher value makes the test less
+# likely to fail by chance, while a lower value makes the test run more quickly.
+# Unfortunately, I don't think there is a way to eliminate this tradeoff.
+#
+# The '< 100000' check is simply a sanity check. If we got more rows than this,
+# the pigeonhole principle would guarantee the recursive query is returning
+# duplicates.
+[name=recursive_query_distinct_non_determinism]
+WITH RECURSIVE
+  t AS (
+    SELECT 0 AS a
+    UNION DISTINCT
+    SELECT CAST(RAND() * 100000 AS INT64) AS a FROM t
+  )
+SELECT COUNT(*) >= 3, COUNT(*) < 100000 FROM t;
+--
+ARRAY<STRUCT<BOOL, BOOL>>[{true, true}]
+
+NOTE: Reference implementation reports non-determinism.
+==
+
+# Make sure duplicate-checking logic for UNION DISTINCT is able to handle
+# STRUCT-type columns
+[name=recursive_query_distinct_struct_column]
+[required_features=WITH_RECURSIVE,GROUP_BY_STRUCT]
+WITH RECURSIVE
+  t AS (
+    SELECT STRUCT(0 AS a, 'abcd' AS b) AS s
+    UNION DISTINCT
+    SELECT STRUCT(MOD(t.s.a + 1,5) AS a, t.s.b AS b) AS s FROM t
+  )
+SELECT * FROM t;
+--
+ARRAY<STRUCT<s STRUCT<a INT64, b STRING>>>[unknown order:
+  {{0, "abcd"}},
+  {{1, "abcd"}},
+  {{2, "abcd"}},
+  {{3, "abcd"}},
+  {{4, "abcd"}}
+]
+==
+
+# Make sure UNION DISTINCT under WITH RECURSIVE handles NaN values correctly
+[name=recursive_query_distinct_nan_values]
+[required_features=WITH_RECURSIVE]
+WITH RECURSIVE
+  t AS (
+    SELECT * FROM UNNEST([
+    1.0,
+    -1.0,
+    0.0]) AS x
+    UNION DISTINCT (
+      SELECT IEEE_DIVIDE(x, 0) FROM t
+    )
+) SELECT * FROM t;
+--
+ARRAY<STRUCT<x DOUBLE>>[unknown order:{-1}, {1}, {0}, {inf}, {-inf}, {nan}]
+==
+
+# Even when the non-recursive term emits no rows, the recursive term should
+# still be evaluated at least once. This query detects this by failing with
+# division by zero if the recursive term is evaluated, or succeeding with no
+# rows if the recursive is completely skipped.
+[name=recursive_query_non_recursive_term_empty_union_all]
+[required_features=WITH_RECURSIVE]
+WITH RECURSIVE
+  t0 AS (SELECT 0.0 AS n),
+  t AS (
+    SELECT n FROM t0 WHERE FALSE
+    UNION ALL SELECT * FROM (
+      SELECT 1 / (n - 1) AS n FROM t UNION ALL (SELECT 1 AS n))
+) SELECT * FROM t;
+--
+ERROR: generic::out_of_range: division by zero: 1 / 0
+==
+
+# Similar to the above test case, but uses UNION DISTINCT to allow the query
+# to terminate with a deterministic and nonempty row set, rather than fail with
+# division by zero.
+[name=recursive_query_non_recursive_term_empty_union_distinct]
+[required_features=WITH_RECURSIVE]
+WITH RECURSIVE
+  t0 AS (SELECT 0 AS n),
+  t AS (
+    SELECT n FROM t0 WHERE FALSE
+    UNION DISTINCT SELECT * FROM (
+      SELECT MOD(n + 1, 5) AS n FROM t UNION ALL (SELECT 1 AS n))
+) SELECT * FROM t;
+--
+ARRAY<STRUCT<n INT64>>[unknown order:{1}, {2}, {3}, {4}, {0}]
+==
+
+# WITH RECURSIVE nested in the SELECT list.
+[required_features=WITH_ON_SUBQUERY,WITH_RECURSIVE]
+[name=recursive_query_nested_in_select_list]
+SELECT
+  (
+    WITH RECURSIVE
+      t1 AS (SELECT 1 AS n UNION ALL SELECT n + 1 FROM t1 WHERE n < 5)
+    SELECT ARRAY_AGG(n) FROM t1
+  ) AS n_arr,
+  x
+FROM (SELECT 1 AS x);
+--
+ARRAY<STRUCT<n_arr ARRAY<>, x INT64>>[
+  {
+    ARRAY<INT64>[unknown order:2, 4, 1, 3, 5],
+    1
+  }
+]
+==
+
+# WITH RECURSIVE inside of WITH CTE.
+[required_features=WITH_ON_SUBQUERY,WITH_RECURSIVE]
+[name=recursive_query_nested_in_with_cte]
+WITH
+  t AS (
+    WITH RECURSIVE
+      t1 AS (SELECT 1 AS n UNION ALL SELECT n + 1 FROM t1 WHERE n < 5)
+    SELECT * FROM t1
+  )
+SELECT * FROM t;
+--
+ARRAY<STRUCT<n INT64>>[unknown order:{1}, {2}, {3}, {4}, {5}]
+==
+
+[required_features=WITH_ON_SUBQUERY,WITH_RECURSIVE,ENFORCE_CONDITIONAL_EVALUATION]
+[name=conditional_evaluation_in_cte_including_recursive]
+WITH
+  t AS (
+    WITH RECURSIVE
+      t1 AS (SELECT 0 AS n UNION ALL SELECT n + 1 FROM t1 WHERE n < 5)
+    SELECT IF(sum(n) > 0, sum(n), SUM(1/n)) FROM t1
+  )
+SELECT * FROM t;
+--
+ARRAY<STRUCT<DOUBLE>>[{15}]
+==
+
+[required_features=WITH_RECURSIVE,WITH_RECURSIVE_DEPTH_MODIFIER]
+[name=explicit_recursion_depth_union_all]
+WITH RECURSIVE t AS (
+  SELECT 0 AS n
+  UNION ALL
+  SELECT MOD(n + 1, 3) AS n FROM t
+) WITH DEPTH AS depth BETWEEN 1 AND 4
+SELECT n, depth FROM t
+ORDER BY depth;
+
+--
+ARRAY<STRUCT<n INT64, depth INT64>>[known order:
+  {1, 1},
+  {2, 2},
+  {0, 3},
+  {1, 4}
+]
+==
+
+[required_features=WITH_RECURSIVE,WITH_RECURSIVE_DEPTH_MODIFIER]
+[name=explicit_recursion_depth_union_distinct]
+WITH RECURSIVE t AS (
+  SELECT 0 AS n
+  UNION DISTINCT
+  SELECT MOD(n + 1, 3) AS n FROM t
+) WITH DEPTH AS depth BETWEEN 1 AND 4
+SELECT n, depth FROM t
+ORDER BY depth;
+
+--
+
+# Note that there is no {0, 3} in this output because {0, 3} won't be generated
+# because 0 is already generated in depth 0.
+ARRAY<STRUCT<n INT64, depth INT64>>[known order:{1, 1}, {2, 2}]
+
+==
+
+[required_features=WITH_RECURSIVE,WITH_RECURSIVE_DEPTH_MODIFIER]
+[name=explicit_recursion_depth_union_all_multiple_rows_each_iteration]
+WITH RECURSIVE t AS (
+  SELECT 0 AS n
+  UNION ALL
+  SELECT (10 * n + v) AS n
+  FROM t, UNNEST([1, 2]) AS v
+) WITH DEPTH AS depth BETWEEN 1 AND 2
+SELECT n, depth FROM t
+ORDER BY depth, n;
+
+--
+ARRAY<STRUCT<n INT64, depth INT64>>[known order:
+  {1, 1},
+  {2, 1},
+  {11, 2},
+  {12, 2},
+  {21, 2},
+  {22, 2}
+]
+==
+
+[required_features=WITH_RECURSIVE,WITH_RECURSIVE_DEPTH_MODIFIER]
+[name=explicit_recursion_depth_union_distinct_multiple_rows_each_iteration]
+WITH RECURSIVE t AS (
+  SELECT 0 AS n
+  UNION DISTINCT
+  SELECT MOD(10 * n + v, 3) AS n
+  FROM t, UNNEST([1, 2]) AS v
+) WITH DEPTH AS depth BETWEEN 1 AND 2
+SELECT n, depth FROM t
+ORDER BY depth, n;
+--
+ARRAY<STRUCT<n INT64, depth INT64>>[known order:{1, 1}, {2, 1}]
+==
+
+[name=by_name_union_distinct]
+[required_features=WITH_RECURSIVE,CORRESPONDING_FULL,BY_NAME]
+with recursive t as (
+  select 1 as a, 2 as b
+  union distinct by name
+  select b, a from t
+)
+select * from t
+--
+ARRAY<STRUCT<a INT64, b INT64>>[{1, 2}]
+==
+
+[name=by_name_pipe_set_op_union_distinct]
+[required_features=PIPES,WITH_RECURSIVE,CORRESPONDING_FULL,BY_NAME]
+with recursive t as (
+  (select 1 as a, 2 as b)
+  |> union distinct by name
+  (select b, a from t)
+)
+select * from t
+--
+ARRAY<STRUCT<a INT64, b INT64>>[{1, 2}]
+==
+
+[name=by_name_multiple_inputs_in_non_recursive_term_union_distinct]
+[required_features=WITH_RECURSIVE,CORRESPONDING_FULL,BY_NAME]
+with recursive t as (
+  select 1 as a, 2 as b
+  union distinct by name
+  select NULL as b, 1 as a
+  union distinct by name
+  select b, a from t
+)
+select * from t
+--
+ARRAY<STRUCT<a INT64, b INT64>>[unknown order:{1, 2}, {1, NULL}]
+==
+
+[name=strict_corresponding_union_distinct]
+[required_features=WITH_RECURSIVE,CORRESPONDING_FULL]
+with recursive t as (
+  select 1 as a, 2 as b
+  union distinct strict corresponding
+  select b, a from t
+)
+select * from t
+--
+ARRAY<STRUCT<a INT64, b INT64>>[{1, 2}]
+==
+
+[name=strict_corresponding_pipe_set_op_union_distinct]
+[required_features=PIPES,WITH_RECURSIVE,CORRESPONDING_FULL]
+with recursive t as (
+  (select 1 as a, 2 as b)
+  |> union distinct strict corresponding
+  (select b, a from t)
+)
+select * from t
+--
+ARRAY<STRUCT<a INT64, b INT64>>[{1, 2}]
+==
+
+[name=strict_corresponding_multiple_inputs_in_non_recursive_term_union_distinct]
+[required_features=WITH_RECURSIVE,CORRESPONDING_FULL]
+with recursive t as (
+  select 1 as a, 2 as b
+  union distinct strict corresponding
+  select NULL as b, 1 as a
+  union distinct strict corresponding
+  select b, a from t
+)
+select * from t
+--
+ARRAY<STRUCT<a INT64, b INT64>>[unknown order:{1, 2}, {1, NULL}]

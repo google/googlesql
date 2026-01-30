@@ -4,7 +4,7 @@
 
 # Aggregate functions
 
-ZetaSQL supports the following general aggregate functions.
+GoogleSQL supports the following general aggregate functions.
 To learn about the syntax for aggregate function calls, see
 [Aggregate function calls][agg-function-calls].
 
@@ -20,7 +20,7 @@ To learn about the syntax for aggregate function calls, see
   <tbody>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/aggregate_functions.md#any_value"><code>ANY_VALUE</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/aggregate_functions.md#any_value"><code>ANY_VALUE</code></a>
 </td>
   <td>
     Gets an expression for some row.
@@ -28,48 +28,48 @@ To learn about the syntax for aggregate function calls, see
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/approximate_aggregate_functions.md#approx_count_distinct"><code>APPROX_COUNT_DISTINCT</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/approximate_aggregate_functions.md#approx_count_distinct"><code>APPROX_COUNT_DISTINCT</code></a>
 </td>
   <td>
     Gets the approximate result for <code>COUNT(DISTINCT expression)</code>.
-    <br>For more information, see <a href="https://github.com/google/zetasql/blob/master/docs/approximate_aggregate_functions.md">Approximate aggregate functions</a>.
+    <br>For more information, see <a href="https://github.com/google/googlesql/blob/master/docs/approximate_aggregate_functions.md">Approximate aggregate functions</a>.
 
   </td>
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/approximate_aggregate_functions.md#approx_quantiles"><code>APPROX_QUANTILES</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/approximate_aggregate_functions.md#approx_quantiles"><code>APPROX_QUANTILES</code></a>
 </td>
   <td>
     Gets the approximate quantile boundaries.
-    <br>For more information, see <a href="https://github.com/google/zetasql/blob/master/docs/approximate_aggregate_functions.md">Approximate aggregate functions</a>.
+    <br>For more information, see <a href="https://github.com/google/googlesql/blob/master/docs/approximate_aggregate_functions.md">Approximate aggregate functions</a>.
 
   </td>
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/approximate_aggregate_functions.md#approx_top_count"><code>APPROX_TOP_COUNT</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/approximate_aggregate_functions.md#approx_top_count"><code>APPROX_TOP_COUNT</code></a>
 </td>
   <td>
     Gets the approximate top elements and their approximate count.
-    <br>For more information, see <a href="https://github.com/google/zetasql/blob/master/docs/approximate_aggregate_functions.md">Approximate aggregate functions</a>.
+    <br>For more information, see <a href="https://github.com/google/googlesql/blob/master/docs/approximate_aggregate_functions.md">Approximate aggregate functions</a>.
 
   </td>
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/approximate_aggregate_functions.md#approx_top_sum"><code>APPROX_TOP_SUM</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/approximate_aggregate_functions.md#approx_top_sum"><code>APPROX_TOP_SUM</code></a>
 </td>
   <td>
     Gets the approximate top elements and sum, based on the approximate sum
     of an assigned weight.
-    <br>For more information, see <a href="https://github.com/google/zetasql/blob/master/docs/approximate_aggregate_functions.md">Approximate aggregate functions</a>.
+    <br>For more information, see <a href="https://github.com/google/googlesql/blob/master/docs/approximate_aggregate_functions.md">Approximate aggregate functions</a>.
 
   </td>
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/aggregate_functions.md#array_agg"><code>ARRAY_AGG</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/aggregate_functions.md#array_agg"><code>ARRAY_AGG</code></a>
 </td>
   <td>
     Gets an array of values.
@@ -78,7 +78,7 @@ To learn about the syntax for aggregate function calls, see
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/aggregate_functions.md#array_concat_agg"><code>ARRAY_CONCAT_AGG</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/aggregate_functions.md#array_concat_agg"><code>ARRAY_CONCAT_AGG</code></a>
 </td>
   <td>
     Concatenates arrays and returns a single array as a result.
@@ -87,7 +87,7 @@ To learn about the syntax for aggregate function calls, see
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/aggregate_functions.md#avg"><code>AVG</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/aggregate_functions.md#avg"><code>AVG</code></a>
 </td>
   <td>
     Gets the average of non-<code>NULL</code> values.
@@ -96,20 +96,20 @@ To learn about the syntax for aggregate function calls, see
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/aggregate-dp-functions.md#dp_avg"><code>AVG</code> (Differential Privacy)</a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/aggregate-dp-functions.md#dp_avg"><code>AVG</code> (Differential Privacy)</a>
 </td>
   <td>
     <code>DIFFERENTIAL_PRIVACY</code>-supported <code>AVG</code>.<br/><br/>
     Gets the differentially-private average of non-<code>NULL</code>,
     non-<code>NaN</code> values in a query with a
     <code>DIFFERENTIAL_PRIVACY</code> clause.
-    <br><br>For more information, see <a href="https://github.com/google/zetasql/blob/master/docs/aggregate-dp-functions.md">Differential privacy functions</a>.
+    <br><br>For more information, see <a href="https://github.com/google/googlesql/blob/master/docs/aggregate-dp-functions.md">Differential privacy functions</a>.
 
   </td>
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/aggregate_functions.md#bit_and"><code>BIT_AND</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/aggregate_functions.md#bit_and"><code>BIT_AND</code></a>
 </td>
   <td>
     Performs a bitwise AND operation on an expression.
@@ -118,7 +118,7 @@ To learn about the syntax for aggregate function calls, see
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/aggregate_functions.md#bit_or"><code>BIT_OR</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/aggregate_functions.md#bit_or"><code>BIT_OR</code></a>
 </td>
   <td>
     Performs a bitwise OR operation on an expression.
@@ -127,7 +127,7 @@ To learn about the syntax for aggregate function calls, see
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/aggregate_functions.md#bit_xor"><code>BIT_XOR</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/aggregate_functions.md#bit_xor"><code>BIT_XOR</code></a>
 </td>
   <td>
     Performs a bitwise XOR operation on an expression.
@@ -136,17 +136,17 @@ To learn about the syntax for aggregate function calls, see
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/statistical_aggregate_functions.md#corr"><code>CORR</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/statistical_aggregate_functions.md#corr"><code>CORR</code></a>
 </td>
   <td>
     Computes the Pearson coefficient of correlation of a set of number pairs.
-    <br>For more information, see <a href="https://github.com/google/zetasql/blob/master/docs/statistical_aggregate_functions.md">Statistical aggregate functions</a>.
+    <br>For more information, see <a href="https://github.com/google/googlesql/blob/master/docs/statistical_aggregate_functions.md">Statistical aggregate functions</a>.
 
   </td>
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/aggregate_functions.md#count"><code>COUNT</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/aggregate_functions.md#count"><code>COUNT</code></a>
 </td>
   <td>
     Gets the number of rows in the input, or the number of rows with an
@@ -155,7 +155,7 @@ To learn about the syntax for aggregate function calls, see
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/aggregate-dp-functions.md#dp_count"><code>COUNT</code> (Differential Privacy)</a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/aggregate-dp-functions.md#dp_count"><code>COUNT</code> (Differential Privacy)</a>
 </td>
   <td>
     <code>DIFFERENTIAL_PRIVACY</code>-supported <code>COUNT</code>.<br/><br/>
@@ -166,13 +166,13 @@ To learn about the syntax for aggregate function calls, see
     Signature 2: Gets the differentially-private count of rows with a
     non-<code>NULL</code> expression in a query with a
     <code>DIFFERENTIAL_PRIVACY</code> clause.
-    <br><br>For more information, see <a href="https://github.com/google/zetasql/blob/master/docs/aggregate-dp-functions.md">Differential privacy functions</a>.
+    <br><br>For more information, see <a href="https://github.com/google/googlesql/blob/master/docs/aggregate-dp-functions.md">Differential privacy functions</a>.
 
   </td>
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/aggregate_functions.md#countif"><code>COUNTIF</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/aggregate_functions.md#countif"><code>COUNTIF</code></a>
 </td>
   <td>
     Gets the number of <code>TRUE</code> values for an expression.
@@ -180,27 +180,27 @@ To learn about the syntax for aggregate function calls, see
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/statistical_aggregate_functions.md#covar_pop"><code>COVAR_POP</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/statistical_aggregate_functions.md#covar_pop"><code>COVAR_POP</code></a>
 </td>
   <td>
     Computes the population covariance of a set of number pairs.
-    <br>For more information, see <a href="https://github.com/google/zetasql/blob/master/docs/statistical_aggregate_functions.md">Statistical aggregate functions</a>.
+    <br>For more information, see <a href="https://github.com/google/googlesql/blob/master/docs/statistical_aggregate_functions.md">Statistical aggregate functions</a>.
 
   </td>
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/statistical_aggregate_functions.md#covar_samp"><code>COVAR_SAMP</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/statistical_aggregate_functions.md#covar_samp"><code>COVAR_SAMP</code></a>
 </td>
   <td>
     Computes the sample covariance of a set of number pairs.
-    <br>For more information, see <a href="https://github.com/google/zetasql/blob/master/docs/statistical_aggregate_functions.md">Statistical aggregate functions</a>.
+    <br>For more information, see <a href="https://github.com/google/googlesql/blob/master/docs/statistical_aggregate_functions.md">Statistical aggregate functions</a>.
 
   </td>
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/aggregate_functions.md#grouping"><code>GROUPING</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/aggregate_functions.md#grouping"><code>GROUPING</code></a>
 </td>
   <td>
     Checks if a groupable value in the <code>GROUP BY</code> clause is
@@ -209,7 +209,7 @@ To learn about the syntax for aggregate function calls, see
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/aggregate_functions.md#logical_and"><code>LOGICAL_AND</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/aggregate_functions.md#logical_and"><code>LOGICAL_AND</code></a>
 </td>
   <td>
     Gets the logical AND of all non-<code>NULL</code> expressions.
@@ -217,7 +217,7 @@ To learn about the syntax for aggregate function calls, see
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/aggregate_functions.md#logical_or"><code>LOGICAL_OR</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/aggregate_functions.md#logical_or"><code>LOGICAL_OR</code></a>
 </td>
   <td>
     Gets the logical OR of all non-<code>NULL</code> expressions.
@@ -225,7 +225,7 @@ To learn about the syntax for aggregate function calls, see
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/aggregate_functions.md#max"><code>MAX</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/aggregate_functions.md#max"><code>MAX</code></a>
 </td>
   <td>
     Gets the maximum non-<code>NULL</code> value.
@@ -234,7 +234,7 @@ To learn about the syntax for aggregate function calls, see
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/aggregate_functions.md#min"><code>MIN</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/aggregate_functions.md#min"><code>MIN</code></a>
 </td>
   <td>
     Gets the minimum non-<code>NULL</code> value.
@@ -242,70 +242,70 @@ To learn about the syntax for aggregate function calls, see
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/aggregate-dp-functions.md#dp_percentile_cont"><code>PERCENTILE_CONT</code> (Differential Privacy)</a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/aggregate-dp-functions.md#dp_percentile_cont"><code>PERCENTILE_CONT</code> (Differential Privacy)</a>
 </td>
   <td>
     <code>DIFFERENTIAL_PRIVACY</code>-supported <code>PERCENTILE_CONT</code>.<br/><br/>
     Computes a differentially-private percentile across privacy unit columns
     in a query with a <code>DIFFERENTIAL_PRIVACY</code> clause.
-    <br><br>For more information, see <a href="https://github.com/google/zetasql/blob/master/docs/aggregate-dp-functions.md">Differential privacy functions</a>.
+    <br><br>For more information, see <a href="https://github.com/google/googlesql/blob/master/docs/aggregate-dp-functions.md">Differential privacy functions</a>.
 
   </td>
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/geography_functions.md#st_extent"><code>ST_EXTENT</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/geography_functions.md#st_extent"><code>ST_EXTENT</code></a>
 </td>
   <td>
     Gets the bounding box for a group of <code>GEOGRAPHY</code> values.
-    <br>For more information, see <a href="https://github.com/google/zetasql/blob/master/docs/geography_functions.md">Geography functions</a>.
+    <br>For more information, see <a href="https://github.com/google/googlesql/blob/master/docs/geography_functions.md">Geography functions</a>.
 
   </td>
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/geography_functions.md#st_union_agg"><code>ST_UNION_AGG</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/geography_functions.md#st_union_agg"><code>ST_UNION_AGG</code></a>
 </td>
   <td>
     Aggregates over <code>GEOGRAPHY</code> values and gets their
     point set union.
-    <br>For more information, see <a href="https://github.com/google/zetasql/blob/master/docs/geography_functions.md">Geography functions</a>.
+    <br>For more information, see <a href="https://github.com/google/googlesql/blob/master/docs/geography_functions.md">Geography functions</a>.
 
   </td>
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/statistical_aggregate_functions.md#stddev"><code>STDDEV</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/statistical_aggregate_functions.md#stddev"><code>STDDEV</code></a>
 </td>
   <td>
     An alias of the <code>STDDEV_SAMP</code> function.
-    <br>For more information, see <a href="https://github.com/google/zetasql/blob/master/docs/statistical_aggregate_functions.md">Statistical aggregate functions</a>.
+    <br>For more information, see <a href="https://github.com/google/googlesql/blob/master/docs/statistical_aggregate_functions.md">Statistical aggregate functions</a>.
 
   </td>
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/statistical_aggregate_functions.md#stddev_pop"><code>STDDEV_POP</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/statistical_aggregate_functions.md#stddev_pop"><code>STDDEV_POP</code></a>
 </td>
   <td>
     Computes the population (biased) standard deviation of the values.
-    <br>For more information, see <a href="https://github.com/google/zetasql/blob/master/docs/statistical_aggregate_functions.md">Statistical aggregate functions</a>.
+    <br>For more information, see <a href="https://github.com/google/googlesql/blob/master/docs/statistical_aggregate_functions.md">Statistical aggregate functions</a>.
 
   </td>
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/statistical_aggregate_functions.md#stddev_samp"><code>STDDEV_SAMP</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/statistical_aggregate_functions.md#stddev_samp"><code>STDDEV_SAMP</code></a>
 </td>
   <td>
     Computes the sample (unbiased) standard deviation of the values.
-    <br>For more information, see <a href="https://github.com/google/zetasql/blob/master/docs/statistical_aggregate_functions.md">Statistical aggregate functions</a>.
+    <br>For more information, see <a href="https://github.com/google/googlesql/blob/master/docs/statistical_aggregate_functions.md">Statistical aggregate functions</a>.
 
   </td>
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/aggregate_functions.md#string_agg"><code>STRING_AGG</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/aggregate_functions.md#string_agg"><code>STRING_AGG</code></a>
 </td>
   <td>
     Concatenates non-<code>NULL</code> <code>STRING</code> or
@@ -315,7 +315,7 @@ To learn about the syntax for aggregate function calls, see
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/aggregate_functions.md#sum"><code>SUM</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/aggregate_functions.md#sum"><code>SUM</code></a>
 </td>
   <td>
     Gets the sum of non-<code>NULL</code> values.
@@ -324,56 +324,56 @@ To learn about the syntax for aggregate function calls, see
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/aggregate-dp-functions.md#dp_sum"><code>SUM</code> (Differential Privacy)</a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/aggregate-dp-functions.md#dp_sum"><code>SUM</code> (Differential Privacy)</a>
 </td>
   <td>
     <code>DIFFERENTIAL_PRIVACY</code>-supported <code>SUM</code>.<br/><br/>
     Gets the differentially-private sum of non-<code>NULL</code>,
     non-<code>NaN</code> values in a query with a
     <code>DIFFERENTIAL_PRIVACY</code> clause.
-    <br><br>For more information, see <a href="https://github.com/google/zetasql/blob/master/docs/aggregate-dp-functions.md">Differential privacy functions</a>.
+    <br><br>For more information, see <a href="https://github.com/google/googlesql/blob/master/docs/aggregate-dp-functions.md">Differential privacy functions</a>.
 
   </td>
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/statistical_aggregate_functions.md#var_pop"><code>VAR_POP</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/statistical_aggregate_functions.md#var_pop"><code>VAR_POP</code></a>
 </td>
   <td>
     Computes the population (biased) variance of the values.
-    <br>For more information, see <a href="https://github.com/google/zetasql/blob/master/docs/statistical_aggregate_functions.md">Statistical aggregate functions</a>.
+    <br>For more information, see <a href="https://github.com/google/googlesql/blob/master/docs/statistical_aggregate_functions.md">Statistical aggregate functions</a>.
 
   </td>
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/aggregate-dp-functions.md#dp_var_pop"><code>VAR_POP</code> (Differential Privacy)</a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/aggregate-dp-functions.md#dp_var_pop"><code>VAR_POP</code> (Differential Privacy)</a>
 </td>
   <td>
     <code>DIFFERENTIAL_PRIVACY</code>-supported <code>VAR_POP</code> (Differential Privacy).<br/><br/>
     Computes the differentially-private population (biased) variance of values
     in a query with a <code>DIFFERENTIAL_PRIVACY</code> clause.
-    <br><br>For more information, see <a href="https://github.com/google/zetasql/blob/master/docs/aggregate-dp-functions.md">Differential privacy functions</a>.
+    <br><br>For more information, see <a href="https://github.com/google/googlesql/blob/master/docs/aggregate-dp-functions.md">Differential privacy functions</a>.
 
   </td>
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/statistical_aggregate_functions.md#var_samp"><code>VAR_SAMP</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/statistical_aggregate_functions.md#var_samp"><code>VAR_SAMP</code></a>
 </td>
   <td>
     Computes the sample (unbiased) variance of the values.
-    <br>For more information, see <a href="https://github.com/google/zetasql/blob/master/docs/statistical_aggregate_functions.md">Statistical aggregate functions</a>.
+    <br>For more information, see <a href="https://github.com/google/googlesql/blob/master/docs/statistical_aggregate_functions.md">Statistical aggregate functions</a>.
 
   </td>
 </tr>
 
 <tr>
-  <td><a href="https://github.com/google/zetasql/blob/master/docs/statistical_aggregate_functions.md#variance"><code>VARIANCE</code></a>
+  <td><a href="https://github.com/google/googlesql/blob/master/docs/statistical_aggregate_functions.md#variance"><code>VARIANCE</code></a>
 </td>
   <td>
     An alias of <code>VAR_SAMP</code>.
-    <br>For more information, see <a href="https://github.com/google/zetasql/blob/master/docs/statistical_aggregate_functions.md">Statistical aggregate functions</a>.
+    <br>For more information, see <a href="https://github.com/google/googlesql/blob/master/docs/statistical_aggregate_functions.md">Statistical aggregate functions</a>.
 
   </td>
 </tr>
@@ -383,7 +383,7 @@ To learn about the syntax for aggregate function calls, see
 
 ## `ANY_VALUE`
 
-```zetasql
+```googlesql
 ANY_VALUE(
   expression
   [ WHERE where_expression ]
@@ -421,7 +421,7 @@ into this function, see
 
 <!-- mdlint off(WHITESPACE_LINE_LENGTH) -->
 
-[aggregate-function-calls]: https://github.com/google/zetasql/blob/master/docs/aggregate-function-calls.md
+[aggregate-function-calls]: https://github.com/google/googlesql/blob/master/docs/aggregate-function-calls.md
 
 <!-- mdlint on -->
 
@@ -430,7 +430,7 @@ To learn more about the `OVER` clause and how to use it, see
 
 <!-- mdlint off(WHITESPACE_LINE_LENGTH) -->
 
-[window-function-calls]: https://github.com/google/zetasql/blob/master/docs/window-function-calls.md
+[window-function-calls]: https://github.com/google/googlesql/blob/master/docs/window-function-calls.md
 
 <!-- mdlint on -->
 
@@ -444,7 +444,7 @@ Matches the input data type.
 
 **Examples**
 
-```zetasql
+```googlesql
 SELECT ANY_VALUE(fruit) as any_value
 FROM UNNEST(["apple", "banana", "pear"]) as fruit;
 
@@ -455,7 +455,7 @@ FROM UNNEST(["apple", "banana", "pear"]) as fruit;
  +-----------*/
 ```
 
-```zetasql
+```googlesql
 SELECT
   fruit,
   ANY_VALUE(fruit) OVER (ORDER BY LENGTH(fruit) ROWS BETWEEN 1 PRECEDING AND CURRENT ROW) AS any_value
@@ -470,7 +470,7 @@ FROM UNNEST(["apple", "banana", "pear"]) as fruit;
  +--------+-----------*/
 ```
 
-```zetasql
+```googlesql
 WITH
   Store AS (
     SELECT 20 AS sold, "apples" AS fruit
@@ -490,7 +490,7 @@ SELECT ANY_VALUE(fruit HAVING MAX sold) AS a_highest_selling_fruit FROM Store;
  +-------------------------*/
 ```
 
-```zetasql
+```googlesql
 WITH
   Store AS (
     SELECT 20 AS sold, "apples" AS fruit
@@ -512,7 +512,7 @@ SELECT ANY_VALUE(fruit HAVING MIN sold) AS a_lowest_selling_fruit FROM Store;
 
 ## `ARRAY_AGG`
 
-```zetasql
+```googlesql
 ARRAY_AGG(
   [ DISTINCT ]
   expression
@@ -545,7 +545,7 @@ into this function, see
 
 <!-- mdlint off(WHITESPACE_LINE_LENGTH) -->
 
-[aggregate-function-calls]: https://github.com/google/zetasql/blob/master/docs/aggregate-function-calls.md
+[aggregate-function-calls]: https://github.com/google/googlesql/blob/master/docs/aggregate-function-calls.md
 
 <!-- mdlint on -->
 
@@ -554,7 +554,7 @@ To learn more about the `OVER` clause and how to use it, see
 
 <!-- mdlint off(WHITESPACE_LINE_LENGTH) -->
 
-[window-function-calls]: https://github.com/google/zetasql/blob/master/docs/window-function-calls.md
+[window-function-calls]: https://github.com/google/googlesql/blob/master/docs/window-function-calls.md
 
 <!-- mdlint on -->
 
@@ -570,7 +570,7 @@ If there are zero input rows, this function returns `NULL`.
 
 **Examples**
 
-```zetasql
+```googlesql
 SELECT ARRAY_AGG(x) AS array_agg FROM UNNEST([2, 1,-2, 3, -2, 1, 2]) AS x;
 
 /*-------------------------+
@@ -580,7 +580,7 @@ SELECT ARRAY_AGG(x) AS array_agg FROM UNNEST([2, 1,-2, 3, -2, 1, 2]) AS x;
  +-------------------------*/
 ```
 
-```zetasql
+```googlesql
 SELECT ARRAY_AGG(DISTINCT x) AS array_agg
 FROM UNNEST([2, 1, -2, 3, -2, 1, 2]) AS x;
 
@@ -591,7 +591,7 @@ FROM UNNEST([2, 1, -2, 3, -2, 1, 2]) AS x;
  +---------------*/
 ```
 
-```zetasql
+```googlesql
 SELECT ARRAY_AGG(x IGNORE NULLS) AS array_agg
 FROM UNNEST([NULL, 1, -2, 3, -2, 1, NULL]) AS x;
 
@@ -602,7 +602,7 @@ FROM UNNEST([NULL, 1, -2, 3, -2, 1, NULL]) AS x;
  +-------------------*/
 ```
 
-```zetasql
+```googlesql
 SELECT ARRAY_AGG(x ORDER BY ABS(x)) AS array_agg
 FROM UNNEST([2, 1, -2, 3, -2, 1, 2]) AS x;
 
@@ -613,7 +613,7 @@ FROM UNNEST([2, 1, -2, 3, -2, 1, 2]) AS x;
  +-------------------------*/
 ```
 
-```zetasql
+```googlesql
 SELECT ARRAY_AGG(x LIMIT 5) AS array_agg
 FROM UNNEST([2, 1, -2, 3, -2, 1, 2]) AS x;
 
@@ -624,7 +624,7 @@ FROM UNNEST([2, 1, -2, 3, -2, 1, 2]) AS x;
  +-------------------*/
 ```
 
-```zetasql
+```googlesql
 WITH vals AS
   (
     SELECT 1 x UNION ALL
@@ -643,7 +643,7 @@ FROM vals;
  +------------*/
 ```
 
-```zetasql
+```googlesql
 WITH vals AS
   (
     SELECT 1 x, 'a' y UNION ALL
@@ -663,7 +663,7 @@ GROUP BY x;
  +---------------*/
 ```
 
-```zetasql
+```googlesql
 SELECT
   x,
   ARRAY_AGG(x) OVER (ORDER BY ABS(x)) AS array_agg
@@ -684,7 +684,7 @@ FROM UNNEST([2, 1, -2, 3, -2, 1, 2]) AS x;
 
 ## `ARRAY_CONCAT_AGG`
 
-```zetasql
+```googlesql
 ARRAY_CONCAT_AGG(
   expression
   [ WHERE where_expression ]
@@ -709,7 +709,7 @@ into this function, see
 
 <!-- mdlint off(WHITESPACE_LINE_LENGTH) -->
 
-[aggregate-function-calls]: https://github.com/google/zetasql/blob/master/docs/aggregate-function-calls.md
+[aggregate-function-calls]: https://github.com/google/googlesql/blob/master/docs/aggregate-function-calls.md
 
 <!-- mdlint on -->
 
@@ -723,7 +723,7 @@ into this function, see
 
 **Examples**
 
-```zetasql
+```googlesql
 SELECT ARRAY_CONCAT_AGG(x) AS array_concat_agg FROM (
   SELECT [NULL, 1, 2, 3, 4] AS x
   UNION ALL SELECT NULL
@@ -738,7 +738,7 @@ SELECT ARRAY_CONCAT_AGG(x) AS array_concat_agg FROM (
  +-----------------------------------*/
 ```
 
-```zetasql
+```googlesql
 SELECT ARRAY_CONCAT_AGG(x ORDER BY ARRAY_LENGTH(x)) AS array_concat_agg FROM (
   SELECT [1, 2, 3, 4] AS x
   UNION ALL SELECT [5, 6]
@@ -752,7 +752,7 @@ SELECT ARRAY_CONCAT_AGG(x ORDER BY ARRAY_LENGTH(x)) AS array_concat_agg FROM (
  +-----------------------------------*/
 ```
 
-```zetasql
+```googlesql
 SELECT ARRAY_CONCAT_AGG(x LIMIT 2) AS array_concat_agg FROM (
   SELECT [1, 2, 3, 4] AS x
   UNION ALL SELECT [5, 6]
@@ -766,7 +766,7 @@ SELECT ARRAY_CONCAT_AGG(x LIMIT 2) AS array_concat_agg FROM (
  +--------------------------*/
 ```
 
-```zetasql
+```googlesql
 SELECT ARRAY_CONCAT_AGG(x ORDER BY ARRAY_LENGTH(x) LIMIT 2) AS array_concat_agg FROM (
   SELECT [1, 2, 3, 4] AS x
   UNION ALL SELECT [5, 6]
@@ -782,7 +782,7 @@ SELECT ARRAY_CONCAT_AGG(x ORDER BY ARRAY_LENGTH(x) LIMIT 2) AS array_concat_agg 
 
 ## `AVG`
 
-```zetasql
+```googlesql
 AVG(
   [ DISTINCT ]
   expression
@@ -815,9 +815,9 @@ This function can be used with the
 
 <!-- mdlint off(WHITESPACE_LINE_LENGTH) -->
 
-[aggregate-function-calls]: https://github.com/google/zetasql/blob/master/docs/aggregate-function-calls.md
+[aggregate-function-calls]: https://github.com/google/googlesql/blob/master/docs/aggregate-function-calls.md
 
-[agg-threshold-clause]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#agg_threshold_clause
+[agg-threshold-clause]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#agg_threshold_clause
 
 <!-- mdlint on -->
 
@@ -826,7 +826,7 @@ To learn more about the `OVER` clause and how to use it, see
 
 <!-- mdlint off(WHITESPACE_LINE_LENGTH) -->
 
-[window-function-calls]: https://github.com/google/zetasql/blob/master/docs/window-function-calls.md
+[window-function-calls]: https://github.com/google/googlesql/blob/master/docs/window-function-calls.md
 
 <!-- mdlint on -->
 
@@ -845,9 +845,9 @@ Caveats:
   [non-deterministic][non-deterministic], which means you might receive a
   different result each time you use this function.
 
-[floating-point-types]: https://github.com/google/zetasql/blob/master/docs/data-types.md#floating_point_types
+[floating-point-types]: https://github.com/google/googlesql/blob/master/docs/data-types.md#floating_point_types
 
-[non-deterministic]: https://github.com/google/zetasql/blob/master/docs/data-types.md#floating_point_semantics
+[non-deterministic]: https://github.com/google/googlesql/blob/master/docs/data-types.md#floating_point_semantics
 
 **Supported Argument Types**
 
@@ -871,7 +871,7 @@ Caveats:
 
 **Examples**
 
-```zetasql
+```googlesql
 SELECT AVG(x) as avg
 FROM UNNEST([0, 2, 4, 4, 5]) as x;
 
@@ -882,7 +882,7 @@ FROM UNNEST([0, 2, 4, 4, 5]) as x;
  +-----*/
 ```
 
-```zetasql
+```googlesql
 SELECT AVG(DISTINCT x) AS avg
 FROM UNNEST([0, 2, 4, 4, 5]) AS x;
 
@@ -893,7 +893,7 @@ FROM UNNEST([0, 2, 4, 4, 5]) AS x;
  +------*/
 ```
 
-```zetasql
+```googlesql
 SELECT
   x,
   AVG(x) OVER (ORDER BY x ROWS BETWEEN 1 PRECEDING AND CURRENT ROW) AS avg
@@ -911,11 +911,11 @@ FROM UNNEST([0, 2, NULL, 4, 4, 5]) AS x;
  +------+------*/
 ```
 
-[dp-functions]: https://github.com/google/zetasql/blob/master/docs/aggregate-dp-functions.md
+[dp-functions]: https://github.com/google/googlesql/blob/master/docs/aggregate-dp-functions.md
 
 ## `BIT_AND`
 
-```zetasql
+```googlesql
 BIT_AND(
   [ DISTINCT ]
   expression
@@ -934,7 +934,7 @@ into this function, see
 
 <!-- mdlint off(WHITESPACE_LINE_LENGTH) -->
 
-[aggregate-function-calls]: https://github.com/google/zetasql/blob/master/docs/aggregate-function-calls.md
+[aggregate-function-calls]: https://github.com/google/googlesql/blob/master/docs/aggregate-function-calls.md
 
 <!-- mdlint on -->
 
@@ -951,7 +951,7 @@ INT64
 
 **Examples**
 
-```zetasql
+```googlesql
 SELECT BIT_AND(x) as bit_and FROM UNNEST([0xF001, 0x00A1]) as x;
 
 /*---------+
@@ -963,7 +963,7 @@ SELECT BIT_AND(x) as bit_and FROM UNNEST([0xF001, 0x00A1]) as x;
 
 ## `BIT_OR`
 
-```zetasql
+```googlesql
 BIT_OR(
   [ DISTINCT ]
   expression
@@ -982,7 +982,7 @@ into this function, see
 
 <!-- mdlint off(WHITESPACE_LINE_LENGTH) -->
 
-[aggregate-function-calls]: https://github.com/google/zetasql/blob/master/docs/aggregate-function-calls.md
+[aggregate-function-calls]: https://github.com/google/googlesql/blob/master/docs/aggregate-function-calls.md
 
 <!-- mdlint on -->
 
@@ -999,7 +999,7 @@ INT64
 
 **Examples**
 
-```zetasql
+```googlesql
 SELECT BIT_OR(x) as bit_or FROM UNNEST([0xF001, 0x00A1]) as x;
 
 /*--------+
@@ -1011,7 +1011,7 @@ SELECT BIT_OR(x) as bit_or FROM UNNEST([0xF001, 0x00A1]) as x;
 
 ## `BIT_XOR`
 
-```zetasql
+```googlesql
 BIT_XOR(
   [ DISTINCT ]
   expression
@@ -1030,7 +1030,7 @@ into this function, see
 
 <!-- mdlint off(WHITESPACE_LINE_LENGTH) -->
 
-[aggregate-function-calls]: https://github.com/google/zetasql/blob/master/docs/aggregate-function-calls.md
+[aggregate-function-calls]: https://github.com/google/googlesql/blob/master/docs/aggregate-function-calls.md
 
 <!-- mdlint on -->
 
@@ -1047,7 +1047,7 @@ INT64
 
 **Examples**
 
-```zetasql
+```googlesql
 SELECT BIT_XOR(x) AS bit_xor FROM UNNEST([5678, 1234]) AS x;
 
 /*---------+
@@ -1057,7 +1057,7 @@ SELECT BIT_XOR(x) AS bit_xor FROM UNNEST([5678, 1234]) AS x;
  +---------*/
 ```
 
-```zetasql
+```googlesql
 SELECT BIT_XOR(x) AS bit_xor FROM UNNEST([1234, 5678, 1234]) AS x;
 
 /*---------+
@@ -1067,7 +1067,7 @@ SELECT BIT_XOR(x) AS bit_xor FROM UNNEST([1234, 5678, 1234]) AS x;
  +---------*/
 ```
 
-```zetasql
+```googlesql
 SELECT BIT_XOR(DISTINCT x) AS bit_xor FROM UNNEST([1234, 5678, 1234]) AS x;
 
 /*---------+
@@ -1079,12 +1079,12 @@ SELECT BIT_XOR(DISTINCT x) AS bit_xor FROM UNNEST([1234, 5678, 1234]) AS x;
 
 ## `COUNT`
 
-```zetasql
+```googlesql
 COUNT(*)
 [ OVER over_clause ]
 ```
 
-```zetasql
+```googlesql
 COUNT(
   [ DISTINCT ]
   expression
@@ -1136,17 +1136,17 @@ distinct counts. For more information, see
 
 <!-- mdlint off(WHITESPACE_LINE_LENGTH) -->
 
-[aggregate-function-calls]: https://github.com/google/zetasql/blob/master/docs/aggregate-function-calls.md
+[aggregate-function-calls]: https://github.com/google/googlesql/blob/master/docs/aggregate-function-calls.md
 
-[agg-threshold-clause]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#agg_threshold_clause
+[agg-threshold-clause]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#agg_threshold_clause
 
-[window-function-calls]: https://github.com/google/zetasql/blob/master/docs/window-function-calls.md
+[window-function-calls]: https://github.com/google/googlesql/blob/master/docs/window-function-calls.md
 
 <!-- mdlint on -->
 
 <!-- mdlint off(WHITESPACE_LINE_LENGTH) -->
 
-[window-function-calls]: https://github.com/google/zetasql/blob/master/docs/window-function-calls.md
+[window-function-calls]: https://github.com/google/googlesql/blob/master/docs/window-function-calls.md
 
 <!-- mdlint on -->
 
@@ -1155,7 +1155,7 @@ distinct counts. For more information, see
 To count the number of distinct values of an expression for which a
 certain condition is satisfied, you can use the following recipe:
 
-```zetasql
+```googlesql
 COUNT(DISTINCT IF(condition, expression, NULL))
 ```
 
@@ -1170,7 +1170,7 @@ certain condition is satisfied, consider using the
 
 This function with `DISTINCT` supports specifying [collation][collation].
 
-[collation]: https://github.com/google/zetasql/blob/master/docs/collation-concepts.md
+[collation]: https://github.com/google/googlesql/blob/master/docs/collation-concepts.md
 
 `COUNT` can be used with differential privacy. For more information, see
 [Differentially private aggregate functions][dp-functions].
@@ -1184,7 +1184,7 @@ This function with `DISTINCT` supports specifying [collation][collation].
 You can use the `COUNT` function to return the number of rows in a table or the
 number of distinct values of an expression. For example:
 
-```zetasql
+```googlesql
 SELECT
   COUNT(*) AS count_star,
   COUNT(DISTINCT x) AS count_dist_x
@@ -1197,7 +1197,7 @@ FROM UNNEST([1, 4, 4, 5]) AS x;
  +------------+--------------*/
 ```
 
-```zetasql
+```googlesql
 SELECT
   x,
   COUNT(*) OVER (PARTITION BY MOD(x, 3)) AS count_star,
@@ -1214,7 +1214,7 @@ FROM UNNEST([1, 4, 4, 5]) AS x;
  +------+------------+--------------*/
 ```
 
-```zetasql
+```googlesql
 SELECT
   x,
   COUNT(*) OVER (PARTITION BY MOD(x, 3)) AS count_star,
@@ -1234,7 +1234,7 @@ FROM UNNEST([1, 4, NULL, 4, 5]) AS x;
 
 The following query counts the number of distinct positive values of `x`:
 
-```zetasql
+```googlesql
 SELECT COUNT(DISTINCT IF(x > 0, x, NULL)) AS distinct_positive
 FROM UNNEST([1, -2, 4, 1, -5, 4, 1, 3, -6, 1]) AS x;
 
@@ -1248,7 +1248,7 @@ FROM UNNEST([1, -2, 4, 1, -5, 4, 1, 3, -6, 1]) AS x;
 The following query counts the number of distinct dates on which a certain kind
 of event occurred:
 
-```zetasql
+```googlesql
 WITH Events AS (
   SELECT DATE '2021-01-01' AS event_date, 'SUCCESS' AS event_type
   UNION ALL
@@ -1277,7 +1277,7 @@ FROM Events;
 The following query counts the number of distinct `id`s that exist in both
 the `customers` and `vendor` tables:
 
-```zetasql
+```googlesql
 WITH
   customers AS (
     SELECT 1934 AS id, 'a' AS team UNION ALL
@@ -1298,19 +1298,19 @@ FROM vendors;
  +--------*/
 ```
 
-[sketches]: https://github.com/google/zetasql/blob/master/docs/sketches.md
+[sketches]: https://github.com/google/googlesql/blob/master/docs/sketches.md
 
-[hll-functions]: https://github.com/google/zetasql/blob/master/docs/hll_functions.md
+[hll-functions]: https://github.com/google/googlesql/blob/master/docs/hll_functions.md
 
-[countif]: https://github.com/google/zetasql/blob/master/docs/aggregate_functions.md#countif
+[countif]: https://github.com/google/googlesql/blob/master/docs/aggregate_functions.md#countif
 
-[groupable-data-types]: https://github.com/google/zetasql/blob/master/docs/data-types.md#groupable_data_types
+[groupable-data-types]: https://github.com/google/googlesql/blob/master/docs/data-types.md#groupable_data_types
 
-[dp-functions]: https://github.com/google/zetasql/blob/master/docs/aggregate-dp-functions.md
+[dp-functions]: https://github.com/google/googlesql/blob/master/docs/aggregate-dp-functions.md
 
 ## `COUNTIF`
 
-```zetasql
+```googlesql
 COUNTIF(
   [ DISTINCT ]
   expression
@@ -1352,17 +1352,17 @@ Gets the number of `TRUE` values for an expression.
 
 <!-- mdlint off(WHITESPACE_LINE_LENGTH) -->
 
-[aggregate-function-calls]: https://github.com/google/zetasql/blob/master/docs/aggregate-function-calls.md
+[aggregate-function-calls]: https://github.com/google/googlesql/blob/master/docs/aggregate-function-calls.md
 
-[agg-threshold-clause]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#agg_threshold_clause
+[agg-threshold-clause]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#agg_threshold_clause
 
-[window-function-calls]: https://github.com/google/zetasql/blob/master/docs/window-function-calls.md
+[window-function-calls]: https://github.com/google/googlesql/blob/master/docs/window-function-calls.md
 
 <!-- mdlint on -->
 
 <!-- mdlint off(WHITESPACE_LINE_LENGTH) -->
 
-[window-function-calls]: https://github.com/google/zetasql/blob/master/docs/window-function-calls.md
+[window-function-calls]: https://github.com/google/googlesql/blob/master/docs/window-function-calls.md
 
 <!-- mdlint on -->
 
@@ -1378,7 +1378,7 @@ information, see the [`COUNT`][count] function.
 
 **Examples**
 
-```zetasql
+```googlesql
 SELECT COUNTIF(x<0) AS num_negative, COUNTIF(x>0) AS num_positive
 FROM UNNEST([5, -2, 3, 6, -10, -7, 4, 0]) AS x;
 
@@ -1389,7 +1389,7 @@ FROM UNNEST([5, -2, 3, 6, -10, -7, 4, 0]) AS x;
  +--------------+--------------*/
 ```
 
-```zetasql
+```googlesql
 SELECT
   x,
   COUNTIF(x<0) OVER (ORDER BY ABS(x) ROWS BETWEEN 1 PRECEDING AND 1 FOLLOWING) AS num_negative
@@ -1410,11 +1410,11 @@ FROM UNNEST([5, -2, 3, 6, -10, NULL, -7, 4, 0]) AS x;
  +------+--------------*/
 ```
 
-[count]: https://github.com/google/zetasql/blob/master/docs/aggregate_functions.md#count
+[count]: https://github.com/google/googlesql/blob/master/docs/aggregate_functions.md#count
 
 ## `GROUPING`
 
-```zetasql
+```googlesql
 GROUPING(groupable_value)
 ```
 
@@ -1465,7 +1465,7 @@ Pay close attention to what's in the `product_type_agg` and
 0                  | 0                  | Rows are grouped by `product_type` and `product_name`.
 1                  | 1                  | Grand total row.
 
-```zetasql
+```googlesql
 WITH
   Products AS (
     SELECT 'shirt' AS product_type, 't-shirt' AS product_name, 3 AS product_count UNION ALL
@@ -1502,7 +1502,7 @@ determine what type of `NULL` is being produced. If
 `product_type_is_aggregated` is `1`, the `NULL` value for
 the `product_type` column is a `NULL` placeholder.
 
-```zetasql
+```googlesql
 WITH
   Products AS (
     SELECT 'shirt' AS product_type, 't-shirt' AS product_name, 3 AS product_count UNION ALL
@@ -1531,11 +1531,11 @@ ORDER BY product_name;
  +--------------+--------------+-------------+----------------------------*/
 ```
 
-[group-by-clause]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#group_by_clause
+[group-by-clause]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#group_by_clause
 
 ## `LOGICAL_AND`
 
-```zetasql
+```googlesql
 LOGICAL_AND(
   expression
   [ WHERE where_expression ]
@@ -1568,9 +1568,9 @@ This function can be used with the
 
 <!-- mdlint off(WHITESPACE_LINE_LENGTH) -->
 
-[aggregate-function-calls]: https://github.com/google/zetasql/blob/master/docs/aggregate-function-calls.md
+[aggregate-function-calls]: https://github.com/google/googlesql/blob/master/docs/aggregate-function-calls.md
 
-[agg-threshold-clause]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#agg_threshold_clause
+[agg-threshold-clause]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#agg_threshold_clause
 
 <!-- mdlint on -->
 
@@ -1579,7 +1579,7 @@ To learn more about the `OVER` clause and how to use it, see
 
 <!-- mdlint off(WHITESPACE_LINE_LENGTH) -->
 
-[window-function-calls]: https://github.com/google/zetasql/blob/master/docs/window-function-calls.md
+[window-function-calls]: https://github.com/google/googlesql/blob/master/docs/window-function-calls.md
 
 <!-- mdlint on -->
 
@@ -1596,7 +1596,7 @@ To learn more about the `OVER` clause and how to use it, see
 `LOGICAL_AND` returns `FALSE` because not all of the values in the array are
 less than 3.
 
-```zetasql
+```googlesql
 SELECT LOGICAL_AND(x < 3) AS logical_and FROM UNNEST([1, 2, 4]) AS x;
 
 /*-------------+
@@ -1608,7 +1608,7 @@ SELECT LOGICAL_AND(x < 3) AS logical_and FROM UNNEST([1, 2, 4]) AS x;
 
 ## `LOGICAL_OR`
 
-```zetasql
+```googlesql
 LOGICAL_OR(
   expression
   [ WHERE where_expression ]
@@ -1641,9 +1641,9 @@ This function can be used with the
 
 <!-- mdlint off(WHITESPACE_LINE_LENGTH) -->
 
-[aggregate-function-calls]: https://github.com/google/zetasql/blob/master/docs/aggregate-function-calls.md
+[aggregate-function-calls]: https://github.com/google/googlesql/blob/master/docs/aggregate-function-calls.md
 
-[agg-threshold-clause]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#agg_threshold_clause
+[agg-threshold-clause]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#agg_threshold_clause
 
 <!-- mdlint on -->
 
@@ -1652,7 +1652,7 @@ To learn more about the `OVER` clause and how to use it, see
 
 <!-- mdlint off(WHITESPACE_LINE_LENGTH) -->
 
-[window-function-calls]: https://github.com/google/zetasql/blob/master/docs/window-function-calls.md
+[window-function-calls]: https://github.com/google/googlesql/blob/master/docs/window-function-calls.md
 
 <!-- mdlint on -->
 
@@ -1669,7 +1669,7 @@ To learn more about the `OVER` clause and how to use it, see
 `LOGICAL_OR` returns `TRUE` because at least one of the values in the array is
 less than 3.
 
-```zetasql
+```googlesql
 SELECT LOGICAL_OR(x < 3) AS logical_or FROM UNNEST([1, 2, 4]) AS x;
 
 /*------------+
@@ -1681,7 +1681,7 @@ SELECT LOGICAL_OR(x < 3) AS logical_or FROM UNNEST([1, 2, 4]) AS x;
 
 ## `MAX`
 
-```zetasql
+```googlesql
 MAX(
   expression
   [ WHERE where_expression ]
@@ -1716,7 +1716,7 @@ into this function, see
 
 <!-- mdlint off(WHITESPACE_LINE_LENGTH) -->
 
-[aggregate-function-calls]: https://github.com/google/zetasql/blob/master/docs/aggregate-function-calls.md
+[aggregate-function-calls]: https://github.com/google/googlesql/blob/master/docs/aggregate-function-calls.md
 
 <!-- mdlint on -->
 
@@ -1725,13 +1725,13 @@ To learn more about the `OVER` clause and how to use it, see
 
 <!-- mdlint off(WHITESPACE_LINE_LENGTH) -->
 
-[window-function-calls]: https://github.com/google/zetasql/blob/master/docs/window-function-calls.md
+[window-function-calls]: https://github.com/google/googlesql/blob/master/docs/window-function-calls.md
 
 <!-- mdlint on -->
 
 This function supports specifying [collation][collation].
 
-[collation]: https://github.com/google/zetasql/blob/master/docs/collation-concepts.md
+[collation]: https://github.com/google/googlesql/blob/master/docs/collation-concepts.md
 
 **Supported Argument Types**
 
@@ -1743,7 +1743,7 @@ The data type of the input values.
 
 **Examples**
 
-```zetasql
+```googlesql
 SELECT MAX(x) AS max
 FROM UNNEST([8, 37, 55, 4]) AS x;
 
@@ -1754,7 +1754,7 @@ FROM UNNEST([8, 37, 55, 4]) AS x;
  +-----*/
 ```
 
-```zetasql
+```googlesql
 SELECT x, MAX(x) OVER (PARTITION BY MOD(x, 2)) AS max
 FROM UNNEST([8, NULL, 37, 55, NULL, 4]) AS x;
 
@@ -1770,11 +1770,11 @@ FROM UNNEST([8, NULL, 37, 55, NULL, 4]) AS x;
  +------+------*/
 ```
 
-[agg-data-type-properties]: https://github.com/google/zetasql/blob/master/docs/data-types.md#data_type_properties
+[agg-data-type-properties]: https://github.com/google/googlesql/blob/master/docs/data-types.md#data_type_properties
 
 ## `MIN`
 
-```zetasql
+```googlesql
 MIN(
   expression
   [ WHERE where_expression ]
@@ -1809,7 +1809,7 @@ into this function, see
 
 <!-- mdlint off(WHITESPACE_LINE_LENGTH) -->
 
-[aggregate-function-calls]: https://github.com/google/zetasql/blob/master/docs/aggregate-function-calls.md
+[aggregate-function-calls]: https://github.com/google/googlesql/blob/master/docs/aggregate-function-calls.md
 
 <!-- mdlint on -->
 
@@ -1818,13 +1818,13 @@ To learn more about the `OVER` clause and how to use it, see
 
 <!-- mdlint off(WHITESPACE_LINE_LENGTH) -->
 
-[window-function-calls]: https://github.com/google/zetasql/blob/master/docs/window-function-calls.md
+[window-function-calls]: https://github.com/google/googlesql/blob/master/docs/window-function-calls.md
 
 <!-- mdlint on -->
 
 This function supports specifying [collation][collation].
 
-[collation]: https://github.com/google/zetasql/blob/master/docs/collation-concepts.md
+[collation]: https://github.com/google/googlesql/blob/master/docs/collation-concepts.md
 
 **Supported Argument Types**
 
@@ -1836,7 +1836,7 @@ The data type of the input values.
 
 **Examples**
 
-```zetasql
+```googlesql
 SELECT MIN(x) AS min
 FROM UNNEST([8, 37, 4, 55]) AS x;
 
@@ -1847,7 +1847,7 @@ FROM UNNEST([8, 37, 4, 55]) AS x;
  +-----*/
 ```
 
-```zetasql
+```googlesql
 SELECT x, MIN(x) OVER (PARTITION BY MOD(x, 2)) AS min
 FROM UNNEST([8, NULL, 37, 4, NULL, 55]) AS x;
 
@@ -1863,11 +1863,11 @@ FROM UNNEST([8, NULL, 37, 4, NULL, 55]) AS x;
  +------+------*/
 ```
 
-[agg-data-type-properties]: https://github.com/google/zetasql/blob/master/docs/data-types.md#data_type_properties
+[agg-data-type-properties]: https://github.com/google/googlesql/blob/master/docs/data-types.md#data_type_properties
 
 ## `STRING_AGG`
 
-```zetasql
+```googlesql
 STRING_AGG(
   [ DISTINCT ]
   expression [, delimiter]
@@ -1904,7 +1904,7 @@ into this function, see
 
 <!-- mdlint off(WHITESPACE_LINE_LENGTH) -->
 
-[aggregate-function-calls]: https://github.com/google/zetasql/blob/master/docs/aggregate-function-calls.md
+[aggregate-function-calls]: https://github.com/google/googlesql/blob/master/docs/aggregate-function-calls.md
 
 <!-- mdlint on -->
 
@@ -1913,7 +1913,7 @@ To learn more about the `OVER` clause and how to use it, see
 
 <!-- mdlint off(WHITESPACE_LINE_LENGTH) -->
 
-[window-function-calls]: https://github.com/google/zetasql/blob/master/docs/window-function-calls.md
+[window-function-calls]: https://github.com/google/googlesql/blob/master/docs/window-function-calls.md
 
 <!-- mdlint on -->
 
@@ -1927,7 +1927,7 @@ Either `STRING` or `BYTES`.
 
 **Examples**
 
-```zetasql
+```googlesql
 SELECT STRING_AGG(fruit) AS string_agg
 FROM UNNEST(["apple", NULL, "pear", "banana", "pear"]) AS fruit;
 
@@ -1938,7 +1938,7 @@ FROM UNNEST(["apple", NULL, "pear", "banana", "pear"]) AS fruit;
  +------------------------*/
 ```
 
-```zetasql
+```googlesql
 SELECT STRING_AGG(fruit, " & ") AS string_agg
 FROM UNNEST(["apple", "pear", "banana", "pear"]) AS fruit;
 
@@ -1949,7 +1949,7 @@ FROM UNNEST(["apple", "pear", "banana", "pear"]) AS fruit;
  +------------------------------*/
 ```
 
-```zetasql
+```googlesql
 SELECT STRING_AGG(DISTINCT fruit, " & ") AS string_agg
 FROM UNNEST(["apple", "pear", "banana", "pear"]) AS fruit;
 
@@ -1960,7 +1960,7 @@ FROM UNNEST(["apple", "pear", "banana", "pear"]) AS fruit;
  +-----------------------*/
 ```
 
-```zetasql
+```googlesql
 SELECT STRING_AGG(fruit, " & " ORDER BY LENGTH(fruit)) AS string_agg
 FROM UNNEST(["apple", "pear", "banana", "pear"]) AS fruit;
 
@@ -1971,7 +1971,7 @@ FROM UNNEST(["apple", "pear", "banana", "pear"]) AS fruit;
  +------------------------------*/
 ```
 
-```zetasql
+```googlesql
 SELECT STRING_AGG(fruit, " & " LIMIT 2) AS string_agg
 FROM UNNEST(["apple", "pear", "banana", "pear"]) AS fruit;
 
@@ -1982,7 +1982,7 @@ FROM UNNEST(["apple", "pear", "banana", "pear"]) AS fruit;
  +--------------*/
 ```
 
-```zetasql
+```googlesql
 SELECT STRING_AGG(DISTINCT fruit, " & " ORDER BY fruit DESC LIMIT 2) AS string_agg
 FROM UNNEST(["apple", "pear", "banana", "pear"]) AS fruit;
 
@@ -1993,7 +1993,7 @@ FROM UNNEST(["apple", "pear", "banana", "pear"]) AS fruit;
  +---------------*/
 ```
 
-```zetasql
+```googlesql
 SELECT
   fruit,
   STRING_AGG(fruit, " & ") OVER (ORDER BY LENGTH(fruit)) AS string_agg
@@ -2012,7 +2012,7 @@ FROM UNNEST(["apple", NULL, "pear", "banana", "pear"]) AS fruit;
 
 ## `SUM`
 
-```zetasql
+```googlesql
 SUM(
   [ DISTINCT ]
   expression
@@ -2045,9 +2045,9 @@ This function can be used with the
 
 <!-- mdlint off(WHITESPACE_LINE_LENGTH) -->
 
-[aggregate-function-calls]: https://github.com/google/zetasql/blob/master/docs/aggregate-function-calls.md
+[aggregate-function-calls]: https://github.com/google/googlesql/blob/master/docs/aggregate-function-calls.md
 
-[agg-threshold-clause]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md#agg_threshold_clause
+[agg-threshold-clause]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#agg_threshold_clause
 
 <!-- mdlint on -->
 
@@ -2056,7 +2056,7 @@ To learn more about the `OVER` clause and how to use it, see
 
 <!-- mdlint off(WHITESPACE_LINE_LENGTH) -->
 
-[window-function-calls]: https://github.com/google/zetasql/blob/master/docs/window-function-calls.md
+[window-function-calls]: https://github.com/google/googlesql/blob/master/docs/window-function-calls.md
 
 <!-- mdlint on -->
 
@@ -2075,9 +2075,9 @@ Caveats:
   [non-deterministic][non-deterministic], which means you might receive a
   different result each time you use this function.
 
-[floating-point-types]: https://github.com/google/zetasql/blob/master/docs/data-types.md#floating_point_types
+[floating-point-types]: https://github.com/google/googlesql/blob/master/docs/data-types.md#floating_point_types
 
-[non-deterministic]: https://github.com/google/zetasql/blob/master/docs/data-types.md#floating_point_semantics
+[non-deterministic]: https://github.com/google/googlesql/blob/master/docs/data-types.md#floating_point_semantics
 
 **Supported Argument Types**
 
@@ -2101,7 +2101,7 @@ Caveats:
 
 **Examples**
 
-```zetasql
+```googlesql
 SELECT SUM(x) AS sum
 FROM UNNEST([1, 2, 3, 4, 5, 4, 3, 2, 1]) AS x;
 
@@ -2112,7 +2112,7 @@ FROM UNNEST([1, 2, 3, 4, 5, 4, 3, 2, 1]) AS x;
  +-----*/
 ```
 
-```zetasql
+```googlesql
 SELECT SUM(DISTINCT x) AS sum
 FROM UNNEST([1, 2, 3, 4, 5, 4, 3, 2, 1]) AS x;
 
@@ -2123,7 +2123,7 @@ FROM UNNEST([1, 2, 3, 4, 5, 4, 3, 2, 1]) AS x;
  +-----*/
 ```
 
-```zetasql
+```googlesql
 SELECT
   x,
   SUM(x) OVER (PARTITION BY MOD(x, 3)) AS sum
@@ -2144,7 +2144,7 @@ FROM UNNEST([1, 2, 3, 4, 5, 4, 3, 2, 1]) AS x;
  +---+-----*/
 ```
 
-```zetasql
+```googlesql
 SELECT
   x,
   SUM(DISTINCT x) OVER (PARTITION BY MOD(x, 3)) AS sum
@@ -2165,7 +2165,7 @@ FROM UNNEST([1, 2, 3, 4, 5, 4, 3, 2, 1]) AS x;
  +---+-----*/
 ```
 
-```zetasql
+```googlesql
 SELECT SUM(x) AS sum
 FROM UNNEST([]) AS x;
 
@@ -2176,7 +2176,7 @@ FROM UNNEST([]) AS x;
  +------*/
 ```
 
-[dp-functions]: https://github.com/google/zetasql/blob/master/docs/aggregate-dp-functions.md
+[dp-functions]: https://github.com/google/googlesql/blob/master/docs/aggregate-dp-functions.md
 
-[agg-function-calls]: https://github.com/google/zetasql/blob/master/docs/aggregate-function-calls.md
+[agg-function-calls]: https://github.com/google/googlesql/blob/master/docs/aggregate-function-calls.md
 

@@ -4,7 +4,7 @@
 
 # GQL operators
 
-Graph Query Language (GQL) supports all ZetaSQL [operators][operators],
+Graph Query Language (GQL) supports all GoogleSQL [operators][operators],
 including the following GQL-specific operators:
 
 ## Graph operators list
@@ -84,7 +84,7 @@ including the following GQL-specific operators:
 ## Graph concatenation operator 
 <a id="graph_concatenation_operator"></a>
 
-```zetasql
+```googlesql
 graph_path || graph_path [ || ... ]
 ```
 
@@ -103,7 +103,7 @@ Arguments:
 This operator produces an error if the last node in the first path isn't the
 same as the first node in the second path.
 
-```zetasql
+```googlesql
 -- This successfully produces the concatenated path called `full_path`.
 MATCH
   p=(src:Account)-[t1:Transfers]->(mid:Account),
@@ -111,7 +111,7 @@ MATCH
 LET full_path = p || q
 ```
 
-```zetasql
+```googlesql
 -- This produces an error because the first node of the path to be concatenated
 -- (mid2) isn't equal to the last node of the previous path (mid1).
 MATCH
@@ -123,7 +123,7 @@ LET full_path = p || q
 The first node in each subsequent path is removed from the
 concatenated path.
 
-```zetasql
+```googlesql
 -- The concatenated path called `full_path` contains these elements:
 -- src, t1, mid, t2, dst.
 MATCH
@@ -141,7 +141,7 @@ In the following query, a path called `p` and `q` are concatenated. Notice that
 second path. Also notice that the duplicate `mid` is removed from the
 concatenated path called `full_path`:
 
-```zetasql
+```googlesql
 GRAPH FinGraph
 MATCH
   p=(src:Account)-[t1:Transfers]->(mid:Account),
@@ -166,7 +166,7 @@ RETURN
 The following query produces an error because the last node for `p` must
 be the first node for `q`:
 
-```zetasql
+```googlesql
 -- Error: `mid1` and `mid2` aren't equal.
 GRAPH FinGraph
 MATCH
@@ -178,7 +178,7 @@ RETURN TO_JSON(full_path) AS results
 
 The following query produces an error because the path called `p` is `NULL`:
 
-```zetasql
+```googlesql
 -- Error: a graph path is NULL.
 GRAPH FinGraph
 MATCH
@@ -191,7 +191,7 @@ RETURN TO_JSON(full_path) AS results
 ## Graph logical operators 
 <a id="graph_logical_operators"></a>
 
-ZetaSQL supports the following logical operators in
+GoogleSQL supports the following logical operators in
 [element pattern label expressions][element-pattern-definition]:
 
 <table>
@@ -230,12 +230,12 @@ ZetaSQL supports the following logical operators in
   </tbody>
 </table>
 
-[element-pattern-definition]: https://github.com/google/zetasql/blob/master/docs/graph-patterns.md#element_pattern_definition
+[element-pattern-definition]: https://github.com/google/googlesql/blob/master/docs/graph-patterns.md#element_pattern_definition
 
 ## Graph predicates 
 <a id="graph_predicates"></a>
 
-ZetaSQL supports the following graph-specific predicates in
+GoogleSQL supports the following graph-specific predicates in
 graph expressions. A predicate can produce `TRUE`, `FALSE`, or `NULL`.
 
 +   [`PROPERTY_EXISTS` predicate][property-exists-predicate]
@@ -259,7 +259,7 @@ graph expressions. A predicate can produce `TRUE`, `FALSE`, or `NULL`.
 ## `IS DESTINATION` predicate 
 <a id="is_destination_predicate"></a>
 
-```zetasql
+```googlesql
 node IS [ NOT ] DESTINATION [ OF ] edge
 ```
 
@@ -275,7 +275,7 @@ Arguments:
 
 **Examples**
 
-```zetasql
+```googlesql
 GRAPH FinGraph
 MATCH (a:Account)-[transfer:Transfers]-(b:Account)
 WHERE a IS DESTINATION of transfer
@@ -292,7 +292,7 @@ RETURN a.id AS a_id, b.id AS b_id
  +-------------*/
 ```
 
-```zetasql
+```googlesql
 GRAPH FinGraph
 MATCH (a:Account)-[transfer:Transfers]-(b:Account)
 WHERE b IS DESTINATION of transfer
@@ -312,7 +312,7 @@ RETURN a.id AS a_id, b.id AS b_id
 ## `IS LABELED` predicate 
 <a id="is_labeled_predicate"></a>
 
-```zetasql
+```googlesql
 element IS [ NOT ] LABELED label_expression
 ```
 
@@ -329,7 +329,7 @@ Arguments:
 
 **Examples**
 
-```zetasql
+```googlesql
 GRAPH FinGraph
 MATCH (a)
 WHERE a IS LABELED Account | Person
@@ -347,7 +347,7 @@ RETURN a.id AS a_id, LABELS(a) AS labels
  +----------------*/
 ```
 
-```zetasql
+```googlesql
 GRAPH FinGraph
 MATCH (a)-[e]-(b:Account)
 WHERE e IS LABELED Transfers | Owns
@@ -373,7 +373,7 @@ ORDER BY a_id, b_id
  +------+-----------------------+------*/
 ```
 
-```zetasql
+```googlesql
 GRAPH FinGraph
 MATCH (a:Account {Id: 7})
 OPTIONAL MATCH (a)-[:OWNS]->(b)
@@ -386,12 +386,12 @@ RETURN a.Id AS a_id, b.Id AS b_id, b IS LABELED Account AS b_is_account
  +------+-----------------------+*/
 ```
 
-[label-expression-definition]: https://github.com/google/zetasql/blob/master/docs/graph-patterns.md#label_expression_definition
+[label-expression-definition]: https://github.com/google/googlesql/blob/master/docs/graph-patterns.md#label_expression_definition
 
 ## `IS SOURCE` predicate 
 <a id="is_source_predicate"></a>
 
-```zetasql
+```googlesql
 node IS [ NOT ] SOURCE [ OF ] edge
 ```
 
@@ -407,7 +407,7 @@ Arguments:
 
 **Examples**
 
-```zetasql
+```googlesql
 GRAPH FinGraph
 MATCH (a:Account)-[transfer:Transfers]-(b:Account)
 WHERE a IS SOURCE of transfer
@@ -424,7 +424,7 @@ RETURN a.id AS a_id, b.id AS b_id
  +-------------*/
 ```
 
-```zetasql
+```googlesql
 GRAPH FinGraph
 MATCH (a:Account)-[transfer:Transfers]-(b:Account)
 WHERE b IS SOURCE of transfer
@@ -444,7 +444,7 @@ RETURN a.id AS a_id, b.id AS b_id
 ## `PROPERTY_EXISTS` predicate 
 <a id="property_exists_predicate"></a>
 
-```zetasql
+```googlesql
 PROPERTY_EXISTS(element, element_property)
 ```
 
@@ -463,7 +463,7 @@ Arguments:
 
 **Example**
 
-```zetasql
+```googlesql
 GRAPH FinGraph
 MATCH (n:Person|Account WHERE PROPERTY_EXISTS(n, name))
 RETURN n.name
@@ -480,7 +480,7 @@ RETURN n.name
 ## `SAME` predicate 
 <a id="same_predicate"></a>
 
-```zetasql
+```googlesql
 SAME (element, element[, ...])
 ```
 
@@ -502,7 +502,7 @@ Produces an error if `element` is `NULL`.
 
 The following query checks to see if `a` and `b` aren't the same person.
 
-```zetasql
+```googlesql
 GRAPH FinGraph
 MATCH (src:Account)<-[transfer:Transfers]-(dest:Account)
 WHERE NOT SAME(src, dest)
@@ -519,5 +519,5 @@ RETURN src.id AS source_id, dest.id AS destination_id
  +----------------------------*/
 ```
 
-[operators]: https://github.com/google/zetasql/blob/master/docs/operators.md
+[operators]: https://github.com/google/googlesql/blob/master/docs/operators.md
 

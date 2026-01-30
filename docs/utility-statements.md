@@ -4,7 +4,7 @@
 
 # Utility statements
 
-ZetaSQL supports the following utility statements.
+GoogleSQL supports the following utility statements.
 
 ## `EXPLAIN`
 
@@ -12,7 +12,7 @@ ZetaSQL supports the following utility statements.
 EXPLAIN query;
 </pre>
 
-The `EXPLAIN` statement provides information on how ZetaSQL would
+The `EXPLAIN` statement provides information on how GoogleSQL would
 execute a given query. This statement doesn't execute the query.
 
 ## `DESCRIBE/DESC`

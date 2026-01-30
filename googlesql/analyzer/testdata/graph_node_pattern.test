@@ -1,0 +1,369 @@
+[default language_features=NONE,+SQL_GRAPH]
+[default no_test_extract_table_names]
+[default show_sqlbuilder_output]
+
+# WHERE clause in node pattern
+select gt.* from
+graph_table(aml
+  match (n WHERE (n.Id + 3) = 2)
+  columns(n.Name)
+) gt
+--
+QueryStmt
++-output_column_list=
+| +-$graph_table.Name#2 AS Name [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$graph_table.Name#2]
+    +-input_scan=
+      +-GraphTableScan
+        +-column_list=[$graph_table.Name#2]
+        +-property_graph=aml
+        +-input_scan=
+        | +-GraphScan
+        |   +-column_list=[$element_table.n#1]
+        |   +-input_scan_list=
+        |     +-GraphPathScan
+        |       +-column_list=[$element_table.n#1]
+        |       +-input_scan_list=
+        |       | +-GraphNodeScan
+        |       |   +-column_list=[$element_table.n#1]
+        |       |   +-filter_expr=
+        |       |   | +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+        |       |   |   +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+        |       |   |   | +-GraphGetElementProperty
+        |       |   |   | | +-type=INT64
+        |       |   |   | | +-expr=
+        |       |   |   | | | +-ColumnRef(type=GRAPH_NODE(aml)<age UINT32, balance UINT64, birthday DATE, data BYTES, id INT64, name STRING, syndicateData ARRAY<INT64>, syndicateId INT64, syndicateName STRING>, column=$element_table.n#1)
+        |       |   |   | | +-property=id(INT64)
+        |       |   |   | +-Literal(type=INT64, value=3)
+        |       |   |   +-Literal(type=INT64, value=2)
+        |       |   +-label_expr=
+        |       |   | +-GraphLabelNaryExpr
+        |       |   |   +-op=OR
+        |       |   |   +-operand_list=
+        |       |   |     +-GraphWildCardLabel
+        |       |   |     +-GraphLabelNaryExpr
+        |       |   |       +-op=NOT
+        |       |   |       +-operand_list=
+        |       |   |         +-GraphWildCardLabel
+        |       |   +-target_element_table_list=[aml.Account,aml.Person,aml.Syndicate]
+        |       +-head=$element_table.n#1
+        |       +-tail=$element_table.n#1
+        +-shape_expr_list=
+          +-Name#2 :=
+            +-GraphGetElementProperty
+              +-type=STRING
+              +-expr=
+              | +-ColumnRef(type=GRAPH_NODE(aml)<age UINT32, balance UINT64, birthday DATE, data BYTES, id INT64, name STRING, syndicateData ARRAY<INT64>, syndicateId INT64, syndicateName STRING>, column=$element_table.n#1)
+              +-property=name(STRING)
+
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+SELECT
+  aml_1.a_3 AS Name
+FROM
+  GRAPH_TABLE(
+    aml
+    MATCH
+      (a_2
+      IS (% | ! %)
+      WHERE
+        ((a_2.id) + 3) = 2)
+    COLUMNS(
+      a_2.name AS a_3
+    )
+  ) AS aml_1;
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+FROM
+  GRAPH_TABLE(
+    aml
+    MATCH
+      (a_2
+      IS (% | ! %)
+      WHERE
+        ((a_2.id) + 3) = 2)
+    COLUMNS(
+      a_2.name AS a_3
+    )
+  ) AS aml_1
+|> SELECT
+     aml_1.a_3 AS Name;
+==
+
+# Correlated columns in node WHERE clause
+select 1 from KeyValue kv where exists (
+  select 1 from graph_table (
+    aml match (n WHERE n.Name = kv.Value)
+    columns(n.Id)
+  )
+)
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#6 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#6]
+    +-expr_list=
+    | +-$col1#6 := Literal(type=INT64, value=1)
+    +-input_scan=
+      +-FilterScan
+        +-column_list=[KeyValue.Value#2]
+        +-input_scan=
+        | +-TableScan(column_list=[KeyValue.Value#2], table=KeyValue, column_index_list=[1], alias="kv")
+        +-filter_expr=
+          +-SubqueryExpr
+            +-type=BOOL
+            +-subquery_type=EXISTS
+            +-parameter_list=
+            | +-ColumnRef(type=STRING, column=KeyValue.Value#2)
+            +-subquery=
+              +-ProjectScan
+                +-column_list=[$expr_subquery.$col1#5]
+                +-expr_list=
+                | +-$col1#5 := Literal(type=INT64, value=1)
+                +-input_scan=
+                  +-GraphTableScan
+                    +-column_list=[$graph_table.Id#4]
+                    +-property_graph=aml
+                    +-input_scan=
+                    | +-GraphScan
+                    |   +-column_list=[$element_table.n#3]
+                    |   +-input_scan_list=
+                    |     +-GraphPathScan
+                    |       +-column_list=[$element_table.n#3]
+                    |       +-input_scan_list=
+                    |       | +-GraphNodeScan
+                    |       |   +-column_list=[$element_table.n#3]
+                    |       |   +-filter_expr=
+                    |       |   | +-FunctionCall(GoogleSQL:$equal(STRING, STRING) -> BOOL)
+                    |       |   |   +-GraphGetElementProperty
+                    |       |   |   | +-type=STRING
+                    |       |   |   | +-expr=
+                    |       |   |   | | +-ColumnRef(type=GRAPH_NODE(aml)<age UINT32, balance UINT64, birthday DATE, data BYTES, id INT64, name STRING, syndicateData ARRAY<INT64>, syndicateId INT64, syndicateName STRING>, column=$element_table.n#3)
+                    |       |   |   | +-property=name(STRING)
+                    |       |   |   +-ColumnRef(type=STRING, column=KeyValue.Value#2, is_correlated=TRUE)
+                    |       |   +-label_expr=
+                    |       |   | +-GraphLabelNaryExpr
+                    |       |   |   +-op=OR
+                    |       |   |   +-operand_list=
+                    |       |   |     +-GraphWildCardLabel
+                    |       |   |     +-GraphLabelNaryExpr
+                    |       |   |       +-op=NOT
+                    |       |   |       +-operand_list=
+                    |       |   |         +-GraphWildCardLabel
+                    |       |   +-target_element_table_list=[aml.Account,aml.Person,aml.Syndicate]
+                    |       +-head=$element_table.n#3
+                    |       +-tail=$element_table.n#3
+                    +-shape_expr_list=
+                      +-Id#4 :=
+                        +-GraphGetElementProperty
+                          +-type=INT64
+                          +-expr=
+                          | +-ColumnRef(type=GRAPH_NODE(aml)<age UINT32, balance UINT64, birthday DATE, data BYTES, id INT64, name STRING, syndicateData ARRAY<INT64>, syndicateId INT64, syndicateName STRING>, column=$element_table.n#3)
+                          +-property=id(INT64)
+
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+SELECT
+  1 AS a_7
+FROM
+  KeyValue
+WHERE
+  EXISTS(
+    SELECT
+      1 AS a_6
+    FROM
+      (
+        SELECT
+          aml_2.a_4 AS a_4
+        FROM
+          GRAPH_TABLE(
+            aml
+            MATCH
+              (a_3
+              IS (% | ! %)
+              WHERE
+                (a_3.name) = (KeyValue.Value))
+            COLUMNS(
+              a_3.id AS a_4
+            )
+          ) AS aml_2
+      ) AS graphtablescan_5
+  );
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+FROM
+  KeyValue
+|> WHERE
+     EXISTS(
+       FROM
+         GRAPH_TABLE(
+           aml
+           MATCH
+             (a_3
+             IS (% | ! %)
+             WHERE
+               (a_3.name) = (KeyValue.Value))
+           COLUMNS(
+             a_3.id AS a_4
+           )
+         ) AS aml_2
+       |> SELECT
+            aml_2.a_4 AS a_4
+       |> AS graphtablescan_5
+       |> SELECT
+            1 AS a_6
+     )
+|> SELECT
+     1 AS a_7;
+
+==
+
+# Matching with label expression and where clause
+select gt.* from
+graph_table(aml
+  match (n IS Person | Account WHERE (1 + 1) = 2)
+  columns(1 AS One)
+) gt
+--
+QueryStmt
++-output_column_list=
+| +-$graph_table.One#2 AS One [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$graph_table.One#2]
+    +-input_scan=
+      +-GraphTableScan
+        +-column_list=[$graph_table.One#2]
+        +-property_graph=aml
+        +-input_scan=
+        | +-GraphScan
+        |   +-column_list=[$element_table.n#1]
+        |   +-input_scan_list=
+        |     +-GraphPathScan
+        |       +-column_list=[$element_table.n#1]
+        |       +-input_scan_list=
+        |       | +-GraphNodeScan
+        |       |   +-column_list=[$element_table.n#1]
+        |       |   +-filter_expr=
+        |       |   | +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+        |       |   |   +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+        |       |   |   | +-Literal(type=INT64, value=1)
+        |       |   |   | +-Literal(type=INT64, value=1)
+        |       |   |   +-Literal(type=INT64, value=2)
+        |       |   +-label_expr=
+        |       |   | +-GraphLabelNaryExpr
+        |       |   |   +-parse_location=47-63
+        |       |   |   +-op=OR
+        |       |   |   +-operand_list=
+        |       |   |     +-GraphLabel(parse_location=47-53, label=aml.Person)
+        |       |   |     +-GraphLabel(parse_location=56-63, label=aml.Account)
+        |       |   +-target_element_table_list=[aml.Account,aml.Person]
+        |       +-head=$element_table.n#1
+        |       +-tail=$element_table.n#1
+        +-shape_expr_list=
+          +-One#2 := Literal(type=INT64, value=1)
+
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+SELECT
+  aml_1.a_3 AS One
+FROM
+  GRAPH_TABLE(
+    aml
+    MATCH
+      (a_2
+      IS (Person | Account)
+      WHERE
+        (1 + 1) = 2)
+    COLUMNS(
+      1 AS a_3
+    )
+  ) AS aml_1;
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+FROM
+  GRAPH_TABLE(
+    aml
+    MATCH
+      (a_2
+      IS (Person | Account)
+      WHERE
+        (1 + 1) = 2)
+    COLUMNS(
+      1 AS a_3
+    )
+  ) AS aml_1
+|> SELECT
+     aml_1.a_3 AS One;
+==
+
+select gt.* from
+graph_table(aml
+  match (n IS Person)
+  columns(1 AS One)
+) gt
+--
+QueryStmt
++-output_column_list=
+| +-$graph_table.One#2 AS One [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$graph_table.One#2]
+    +-input_scan=
+      +-GraphTableScan
+        +-column_list=[$graph_table.One#2]
+        +-property_graph=aml
+        +-input_scan=
+        | +-GraphScan
+        |   +-column_list=[$element_table.n#1]
+        |   +-input_scan_list=
+        |     +-GraphPathScan
+        |       +-column_list=[$element_table.n#1]
+        |       +-input_scan_list=
+        |       | +-GraphNodeScan
+        |       |   +-column_list=[$element_table.n#1]
+        |       |   +-label_expr=
+        |       |   | +-GraphLabel(parse_location=47-53, label=aml.Person)
+        |       |   +-target_element_table_list=[aml.Person]
+        |       +-head=$element_table.n#1
+        |       +-tail=$element_table.n#1
+        +-shape_expr_list=
+          +-One#2 := Literal(type=INT64, value=1)
+
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+SELECT
+  aml_1.a_3 AS One
+FROM
+  GRAPH_TABLE(
+    aml
+    MATCH
+      (a_2
+      IS Person)
+    COLUMNS(
+      1 AS a_3
+    )
+  ) AS aml_1;
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+FROM
+  GRAPH_TABLE(
+    aml
+    MATCH
+      (a_2
+      IS Person)
+    COLUMNS(
+      1 AS a_3
+    )
+  ) AS aml_1
+|> SELECT
+     aml_1.a_3 AS One;
+

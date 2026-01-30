@@ -1,0 +1,127 @@
+[default required_features=ANALYTIC_FUNCTIONS]
+[prepare_database]
+CREATE TABLE TestTable AS
+SELECT cast(1 as int64) as row_id,
+       cast(null as bool) as bool_val,
+       cast(null as int64) as int64_val,
+       cast(null as string) as str_val UNION ALL
+  SELECT 2,  true,  null, null  UNION ALL
+  SELECT 3,  false, 1,    "A"   UNION ALL
+  SELECT 4,  true,  2,    "A"   UNION ALL
+  SELECT 5,  false, 1,    "aA"  UNION ALL
+  SELECT 6,  true,  2,    "Aa"  UNION ALL
+  SELECT 7,  false, 1,    'a'   UNION ALL
+  SELECT 8,  true,  4,    "a"   UNION ALL
+  SELECT 9,  false, 2,    "b"   UNION ALL
+  SELECT 10, true,  3,    "B"
+--
+ARRAY<STRUCT<row_id INT64, bool_val BOOL, int64_val INT64, str_val STRING>>[
+  {1, NULL, NULL, NULL},
+  {2, true, NULL, NULL},
+  {3, false, 1, "A"},
+  {4, true, 2, "A"},
+  {5, false, 1, "aA"},
+  {6, true, 2, "Aa"},
+  {7, false, 1, "a"},
+  {8, true, 4, "a"},
+  {9, false, 2, "b"},
+  {10, true, 3, "B"}
+]
+==
+[name=is_first]
+SELECT bool_val, row_id,
+       IS_FIRST(1) OVER (PARTITION BY bool_val ORDER BY row_id)
+FROM TestTable
+ORDER BY bool_val, row_id
+--
+ARRAY<STRUCT<bool_val BOOL, row_id INT64, BOOL>>[known order:
+  {NULL, 1, true},
+  {false, 3, true},
+  {false, 5, false},
+  {false, 7, false},
+  {false, 9, false},
+  {true, 2, true},
+  {true, 4, false},
+  {true, 6, false},
+  {true, 8, false},
+  {true, 10, false}
+]
+==
+[name=is_last]
+SELECT bool_val, row_id,
+       IS_LAST(1) OVER (PARTITION BY bool_val ORDER BY row_id)
+FROM TestTable
+ORDER BY bool_val, row_id
+--
+ARRAY<STRUCT<bool_val BOOL, row_id INT64, BOOL>>[known order:
+  {NULL, 1, true},
+  {false, 3, false},
+  {false, 5, false},
+  {false, 7, false},
+  {false, 9, true},
+  {true, 2, false},
+  {true, 4, false},
+  {true, 6, false},
+  {true, 8, false},
+  {true, 10, true}
+]
+==
+
+[name=negative_values_produce_error_literal_is_first]
+SELECT bool_val, row_id,
+       IS_FIRST(-1) OVER (PARTITION BY bool_val ORDER BY row_id)
+FROM TestTable
+ORDER BY bool_val, row_id
+--
+ERROR: generic::out_of_range: The argument to the function IS_FIRST() cannot be null or negative
+==
+
+[name=negative_values_produce_error_literal_is_last]
+SELECT bool_val, row_id,
+       IS_LAST(-1) OVER (PARTITION BY bool_val ORDER BY row_id)
+FROM TestTable
+ORDER BY bool_val, row_id
+--
+ERROR: generic::out_of_range: The argument to the function IS_LAST() cannot be null or negative
+==
+
+[name=safe_handling_with_negative_values]
+[required_features=SAFE_FUNCTION_CALL,ANALYTIC_FUNCTIONS]
+SELECT bool_val, row_id,
+       SAFE.IS_FIRST(-1) OVER (PARTITION BY bool_val ORDER BY row_id),
+       SAFE.IS_LAST(-1) OVER (PARTITION BY bool_val ORDER BY row_id)
+FROM TestTable
+ORDER BY bool_val, row_id
+--
+ARRAY<STRUCT<bool_val BOOL, row_id INT64, BOOL, BOOL>>[known order:
+  {NULL, 1, NULL, NULL},
+  {false, 3, NULL, NULL},
+  {false, 5, NULL, NULL},
+  {false, 7, NULL, NULL},
+  {false, 9, NULL, NULL},
+  {true, 2, NULL, NULL},
+  {true, 4, NULL, NULL},
+  {true, 6, NULL, NULL},
+  {true, 8, NULL, NULL},
+  {true, 10, NULL, NULL}
+]
+==
+
+# NULL arg returns an error.
+[name=null_arg_is_error_is_first]
+SELECT bool_val, row_id,
+       IS_FIRST(CAST(NULL AS INT64)) OVER (PARTITION BY bool_val ORDER BY row_id)
+FROM TestTable
+ORDER BY bool_val, row_id
+--
+ERROR: generic::out_of_range: The argument to the function IS_FIRST() cannot be null or negative
+==
+
+# NULL arg returns an error.
+[name=null_arg_is_error_is_last]
+SELECT bool_val, row_id,
+       IS_LAST(CAST(NULL AS INT64)) OVER (PARTITION BY bool_val ORDER BY row_id)
+FROM TestTable
+ORDER BY bool_val, row_id
+--
+ERROR: generic::out_of_range: The argument to the function IS_LAST() cannot be null or negative

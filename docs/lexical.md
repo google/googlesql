@@ -4,7 +4,7 @@
 
 # Lexical structure and syntax
 
-A ZetaSQL statement comprises a series of tokens. Tokens include
+A GoogleSQL statement comprises a series of tokens. Tokens include
 identifiers, quoted identifiers, literals, keywords, operators, and
 special characters. You can separate tokens with comments or whitespace such
 as spaces, backspaces, tabs, or newlines.
@@ -41,7 +41,7 @@ are [case-sensitive][case-sensitivity].
 
 Path expression examples:
 
-```zetasql
+```googlesql
 -- Valid. _5abc and dataField are valid identifiers.
 _5abc.dataField
 
@@ -72,46 +72,46 @@ abc5.GROUP
 
 Function examples:
 
-```zetasql
+```googlesql
 -- Valid. dataField is a valid identifier in a function called foo().
 foo().dataField
 ```
 
 Array access operation examples:
 
-```zetasql
+```googlesql
 -- Valid. dataField is a valid identifier in an array called items.
 items[OFFSET(3)].dataField
 ```
 
 Named query parameter examples:
 
-```zetasql
+```googlesql
 -- Valid. param and dataField are valid identifiers.
 @param.dataField
 ```
 
 Protocol buffer examples:
 
-```zetasql
+```googlesql
 -- Valid. dataField is a valid identifier in a protocol buffer called foo.
 (foo).dataField
 ```
 
 Table name examples:
 
-```zetasql
+```googlesql
 -- Valid table name.
 mytable287
 ```
 
-```zetasql
+```googlesql
 -- Invalid table name. The table name starts with a number and is
 -- unquoted.
 287mytable
 ```
 
-```zetasql
+```googlesql
 -- Invalid table name. The table name is unquoted and isn't a valid
 -- dashed identifier, as the part after the dash is neither a number nor
 -- an identifier starting with a letter or an underscore.
@@ -208,12 +208,12 @@ all, data types can be expressed as literals.
 
 A literal can contain one or more tokens. For example:
 
-  ```zetasql
+  ```googlesql
   -- This date literal has one token: '2014-01-31'
   SELECT DATE '2014-01-31'
   ```
 
-  ```zetasql
+  ```googlesql
   -- This date literal has three tokens: '2014', '-01', and '-31'
   SELECT DATE '2014' '-01' '-31'
   ```
@@ -222,19 +222,19 @@ When a literal contains multiple tokens, the tokens must be separated by
 whitespace, comments, or both. For example, the following date literals
 produce the same results:
 
-  ```zetasql
+  ```googlesql
   SELECT DATE '2014-01-31'
   ```
 
-  ```zetasql
+  ```googlesql
   SELECT DATE '2014' '-01' '-31'
   ```
 
-  ```zetasql
+  ```googlesql
   SELECT DATE /* year */ '2014' /* month */ '-01' /* day */ '-31'
   ```
 
-  ```zetasql
+  ```googlesql
   SELECT DATE /* year and month */ '2014' '-01' /* day */ '-31'
   ```
 
@@ -243,17 +243,17 @@ used with string tokens and bytes tokens can only be used with
 bytes tokens. If you try to use them together in a literal, an error is
 produced. For example:
 
-  ```zetasql
+  ```googlesql
   -- The following string literal contains string tokens.
   SELECT 'x' 'y' 'z'
   ```
 
-  ```zetasql
+  ```googlesql
   -- The following bytes literal contains bytes tokens.
   SELECT b'x' b'y' b'z'
   ```
 
-  ```zetasql
+  ```googlesql
   -- Error: string and bytes tokens can't be used together in the same literal.
   SELECT 'x' b'y'
   ```
@@ -270,7 +270,7 @@ String tokens can be one of the following
 
   Examples:
 
-  ```zetasql
+  ```googlesql
   -- Compatible format types can be used together in a string literal.
   SELECT 'abc' "d" '''ef'''
 
@@ -279,7 +279,7 @@ String tokens can be one of the following
    +--------*/
   ```
 
-  ```zetasql
+  ```googlesql
   -- \n is escaped in the raw string token but not in the quoted string token.
   SELECT '\na' r"\n"
 
@@ -300,7 +300,7 @@ Bytes tokens can be one of the following
 
   Examples:
 
-  ```zetasql
+  ```googlesql
   -- Compatible format types can be used together in a bytes literal.
   SELECT b'\x41' b'''\x42''' b"""\x41"""
 
@@ -309,7 +309,7 @@ Bytes tokens can be one of the following
    +-----*/
   ```
 
-  ```zetasql
+  ```googlesql
   -- Control characters are escaped in the raw bytes tokens but not in the
   -- bytes token.
   SELECT b'\x41' RB'\x42' br'\x41'
@@ -321,7 +321,7 @@ Bytes tokens can be one of the following
 
 Additional examples:
 
-```zetasql
+```googlesql
 -- The following JSON literal is equivalent to: JSON '{"name":"my_file.md","regex":"\\d+"}'
 SELECT JSON '{"name": "my_file.md", "regex": ' /*start*/ r' "\\d+"' /*end*/ '}'
 
@@ -330,7 +330,7 @@ SELECT JSON '{"name": "my_file.md", "regex": ' /*start*/ r' "\\d+"' /*end*/ '}'
  +--------------------------------------*/
 ```
 
-```zetasql
+```googlesql
 -- The following NUMERIC literal is equivalent to: NUMERIC '-1.2'
 SELECT NUMERIC '-' "1" '''.''' r'2'
 
@@ -339,7 +339,7 @@ SELECT NUMERIC '-' "1" '''.''' r'2'
  +------*/
 ```
 
-```zetasql
+```googlesql
 -- The following NUMERIC literal is equivalent to: NUMERIC '1.23e-6 '
 SELECT NUMERIC "1" '''.'''' r'23' 'e-6'
 
@@ -348,7 +348,7 @@ SELECT NUMERIC "1" '''.'''' r'23' 'e-6'
  +------------*/
 ```
 
-```zetasql
+```googlesql
 -- The following DATE literal is equivalent to: DATE '2014-01-31'
 SELECT DATE /* year */ '2014' /* month and day */ "-01-31"
 
@@ -357,12 +357,12 @@ SELECT DATE /* year */ '2014' /* month and day */ "-01-31"
  +------------*/
 ```
 
-```zetasql
+```googlesql
 -- Error: Illegal escape sequence found in '\def'.
 SELECT r'abc' '\def'
 ```
 
-```zetasql
+```googlesql
 -- Error: backticks are reserved for quoted identifiers and not a valid
 -- format type.
 SELECT `abc` `def` AS results;
@@ -430,7 +430,7 @@ what you can do with a raw literal.
 </table>
 
 Like in many other languages, such as Python and C++, you can divide a
-ZetaSQL string or bytes literal into chunks, each with its own quoting
+GoogleSQL string or bytes literal into chunks, each with its own quoting
 or raw specification. The literal value is the concatenation of all these parts.
 
 This is useful for a variety of purposes, including readability, organization,
@@ -614,7 +614,7 @@ You can construct `NUMERIC` literals using the
 
 Examples:
 
-```zetasql
+```googlesql
 SELECT NUMERIC '0';
 SELECT NUMERIC '123456';
 SELECT NUMERIC '-3.14';
@@ -633,7 +633,7 @@ by a floating point value in quotes.
 
 Examples:
 
-```zetasql
+```googlesql
 SELECT BIGNUMERIC '0';
 SELECT BIGNUMERIC '123456';
 SELECT BIGNUMERIC '-3.14';
@@ -650,7 +650,7 @@ A `BIGNUMERIC` literal represents a constant value of the
 
 Syntax options:
 
-```zetasql
+```googlesql
 [+-]DIGITS.[DIGITS][e[+-]DIGITS]
 [+-][DIGITS].DIGITS[e[+-]DIGITS]
 DIGITSe[+-]DIGITS
@@ -693,13 +693,13 @@ enclosed in square brackets. The `ARRAY` keyword is optional, and an explicit
 element type T is also optional.
 
 You can write an empty array of a specific type using `ARRAY<type>[]`. You can
-also write an untyped empty array using `[]`, in which case ZetaSQL
+also write an untyped empty array using `[]`, in which case GoogleSQL
 attempts to infer the array type from the surrounding context. If
-ZetaSQL can't infer a type, the default type `ARRAY<INT64>` is used.
+GoogleSQL can't infer a type, the default type `ARRAY<INT64>` is used.
 
 Examples:
 
-```zetasql
+```googlesql
 [1, 2, 3]
 ['x', 'y', 'xy']
 ARRAY[1, 2, 3]
@@ -764,7 +764,7 @@ A struct literal represents a constant value of the
 
 Syntax:
 
-```zetasql
+```googlesql
 DATE 'date_canonical_format'
 ```
 
@@ -776,14 +776,14 @@ years 1 and 9999, inclusive. Dates outside of this range are invalid.
 
 For example, the following date literal represents September 27, 2014:
 
-```zetasql
+```googlesql
 DATE '2014-09-27'
 ```
 
 String literals in canonical date format also implicitly coerce to DATE type
 when used where a DATE-type expression is expected. For example, in the query
 
-```zetasql
+```googlesql
 SELECT * FROM foo WHERE date_col = "2014-09-27"
 ```
 
@@ -798,7 +798,7 @@ A date literal represents a constant value of the
 
 Syntax:
 
-```zetasql
+```googlesql
 TIME 'time_canonical_format'
 ```
 
@@ -808,7 +808,7 @@ the canonical time format, enclosed in single quotation marks.
 
 For example, the following time represents 12:30 p.m.:
 
-```zetasql
+```googlesql
 TIME '12:30:00.45'
 ```
 
@@ -819,7 +819,7 @@ A time literal represents a constant value of the
 
 Syntax:
 
-```zetasql
+```googlesql
 DATETIME 'datetime_canonical_format'
 ```
 
@@ -830,7 +830,7 @@ conforms to the canonical datetime format, enclosed in single quotation marks.
 For example, the following datetime represents 12:30 p.m. on September 27,
 2014:
 
-```zetasql
+```googlesql
 DATETIME '2014-09-27 12:30:00.45'
 ```
 
@@ -842,7 +842,7 @@ datetime literal when used where a datetime expression is expected.
 
 For example:
 
-```zetasql
+```googlesql
 SELECT * FROM foo
 WHERE datetime_col = "2014-09-27 12:30:00.45"
 ```
@@ -854,7 +854,7 @@ A datetime literal can also include the optional character `T` or `t`. If
 you use this character, a space can't be included before or after it.
 These are valid:
 
-```zetasql
+```googlesql
 DATETIME '2014-09-27T12:30:00.45'
 DATETIME '2014-09-27t12:30:00.45'
 ```
@@ -879,7 +879,7 @@ Timestamps outside of this range are invalid.
 
 A timestamp literal can include a numerical suffix to indicate the time zone:
 
-```zetasql
+```googlesql
 TIMESTAMP '2014-09-27 12:30:00.45-08'
 ```
 
@@ -889,7 +889,7 @@ which is implementation defined, is used.
 For example, the following timestamp represents 12:30 p.m. on September 27,
 2014 in the default time zone, which is implementation defined:
 
-```zetasql
+```googlesql
 TIMESTAMP '2014-09-27 12:30:00.45'
 ```
 
@@ -901,7 +901,7 @@ timestamp expression is expected.  For example, in the following query, the
 string literal `"2014-09-27 12:30:00.45 America/Los_Angeles"` is coerced
 to a timestamp literal.
 
-```zetasql
+```googlesql
 SELECT * FROM foo
 WHERE timestamp_col = "2014-09-27 12:30:00.45 America/Los_Angeles"
 ```
@@ -914,7 +914,7 @@ A timestamp literal can include these optional characters:
 If you use one of these characters, a space can't be included before or after
 it. These are valid:
 
-```zetasql
+```googlesql
 TIMESTAMP '2017-01-18T12:34:56.123456Z'
 TIMESTAMP '2017-01-18t12:34:56.123456'
 TIMESTAMP '2017-01-18 12:34:56.123456z'
@@ -929,10 +929,10 @@ A timestamp literal represents a constant value of the
 
 Since timestamp literals must be mapped to a specific point in time, a time zone
 is necessary to correctly interpret a literal. If a time zone isn't specified
-as part of the literal itself, then ZetaSQL uses the default time zone
-value, which the ZetaSQL implementation sets.
+as part of the literal itself, then GoogleSQL uses the default time zone
+value, which the GoogleSQL implementation sets.
 
-ZetaSQL can represent a time zones using a string, which represents
+GoogleSQL can represent a time zones using a string, which represents
 the [offset from Coordinated Universal Time (UTC)][utc-offset].
 
 Examples:
@@ -950,7 +950,7 @@ Time zones can also be expressed using string
 
 Examples:
 
-```zetasql
+```googlesql
 TIMESTAMP '2014-09-27 12:30:00 America/Los_Angeles'
 TIMESTAMP '2014-09-27 12:30:00 America/Argentina/Buenos_Aires'
 ```
@@ -959,7 +959,7 @@ TIMESTAMP '2014-09-27 12:30:00 America/Argentina/Buenos_Aires'
 
 Syntax:
 
-```zetasql
+```googlesql
 RANGE<T> '[lower_bound, upper_bound)'
 ```
 
@@ -970,59 +970,59 @@ if desired.
 
 Example of a date range literal with a lower and upper bound:
 
-```zetasql
+```googlesql
 RANGE<DATE> '[2020-01-01, 2020-12-31)'
 ```
 
 Example of a datetime range literal with a lower and upper bound:
 
-```zetasql
+```googlesql
 RANGE<DATETIME> '[2020-01-01 12:00:00, 2020-12-31 12:00:00)'
 ```
 
 Example of a timestamp range literal with a lower and upper bound:
 
-```zetasql
+```googlesql
 RANGE<TIMESTAMP> '[2020-10-01 12:00:00+08, 2020-12-31 12:00:00+08)'
 ```
 
 Examples of a range literal without a lower bound:
 
-```zetasql
+```googlesql
 RANGE<DATE> '[UNBOUNDED, 2020-12-31)'
 ```
-```zetasql
+```googlesql
 RANGE<DATE> '[NULL, 2020-12-31)'
 ```
 
 Examples of a range literal without an upper bound:
 
-```zetasql
+```googlesql
 RANGE<DATE> '[2020-01-01, UNBOUNDED)'
 ```
-```zetasql
+```googlesql
 RANGE<DATE> '[2020-01-01, NULL)'
 ```
 
 Examples of a range literal that includes all possible values:
 
-```zetasql
+```googlesql
 RANGE<DATE> '[UNBOUNDED, UNBOUNDED)'
 ```
 
-```zetasql
+```googlesql
 RANGE<DATE> '[NULL, NULL)'
 ```
 
 There must be a single whitespace after the comma in a range literal, otherwise
 an error is produced. For example:
 
-```zetasql
+```googlesql
 -- This range literal is valid:
 RANGE<DATE> '[2020-01-01, 2020-12-31)'
 ```
 
-```zetasql
+```googlesql
 -- This range literal produces an error:
 RANGE<DATE> '[2020-01-01,2020-12-31)'
 ```
@@ -1047,7 +1047,7 @@ and as an argument in some functions that support the interval data type.
 
 Syntax:
 
-```zetasql
+```googlesql
 INTERVAL int64_expression datetime_part
 ```
 
@@ -1055,7 +1055,7 @@ The single datetime part syntax includes an `INT64` expression and a
 single [interval-supported datetime part][interval-datetime-parts].
 For example:
 
-```zetasql
+```googlesql
 -- 0 years, 0 months, 5 days, 0 hours, 0 minutes, 0 seconds (0-0 5 0:0:0)
 INTERVAL 5 DAY
 
@@ -1071,7 +1071,7 @@ negative sign distributes over the years and months. Or, when a negative sign
 precedes the time part in an interval literal, the negative sign distributes
 over the hours, minutes, and seconds. For example:
 
-```zetasql
+```googlesql
 -- -2 years, -1 months, 0 days, 0 hours, 0 minutes, and 0 seconds (-2-1 0 0:0:0)
 INTERVAL -25 MONTH
 
@@ -1087,7 +1087,7 @@ see [Construct an interval with a single datetime part][construct-single-interva
 
 Syntax:
 
-```zetasql
+```googlesql
 INTERVAL datetime_parts_string starting_datetime_part TO ending_datetime_part
 ```
 
@@ -1098,7 +1098,7 @@ a [starting datetime part][interval-datetime-parts], and an
 
 For example:
 
-```zetasql
+```googlesql
 -- 0 years, 0 months, 0 days, 10 hours, 20 minutes, 30 seconds (0-0 0 10:20:30.520)
 INTERVAL '10:20:30.52' HOUR TO SECOND
 
@@ -1117,7 +1117,7 @@ negative sign distributes over the years and months. Or, when a negative sign
 precedes the time part in an interval literal, the negative sign distributes
 over the hours, minutes, and seconds.  For example:
 
-```zetasql
+```googlesql
 -- -23 years, -2 months, 10 days, -12 hours, -30 minutes, and 0 seconds (-23-2 10 -12:30:0)
 INTERVAL '-23-2 10 -12:30' YEAR TO MINUTE
 
@@ -1156,7 +1156,7 @@ An enum literal represents a constant value of the
 
 Syntax:
 
-```zetasql
+```googlesql
 JSON 'json_formatted_data'
 ```
 
@@ -1164,7 +1164,7 @@ A JSON literal represents [JSON][json-wiki]-formatted data.
 
 Example:
 
-```zetasql
+```googlesql
 JSON '
 {
   "id": 10,
@@ -1195,7 +1195,7 @@ A JSON literal represents a constant value of the
 ## Case sensitivity 
 <a id="case_sensitivity"></a>
 
-ZetaSQL follows these rules for case sensitivity:
+GoogleSQL follows these rules for case sensitivity:
 
 <table>
   <thead>
@@ -1268,7 +1268,7 @@ ZetaSQL follows these rules for case sensitivity:
       <td>Yes</td>
       <td>
         
-        However, string comparisons are case-insensitive in <a href="https://github.com/google/zetasql/blob/master/docs/collation-concepts.md">collations</a>
+        However, string comparisons are case-insensitive in <a href="https://github.com/google/googlesql/blob/master/docs/collation-concepts.md">collations</a>
  that are case-insensitive. This behavior also applies to operations affected by collation, such as <code>GROUP BY</code> and <code>DISTINCT</code> clauses.
         
       </td>
@@ -1315,13 +1315,13 @@ ZetaSQL follows these rules for case sensitivity:
 ## Reserved keywords 
 <a id="reserved_keywords"></a>
 
-Keywords are a group of tokens that have special meaning in the ZetaSQL
+Keywords are a group of tokens that have special meaning in the GoogleSQL
 language, and  have the following characteristics:
 
  + Keywords can't be used as identifiers unless enclosed by backtick (`) characters.
  + Keywords are case-insensitive.
 
-ZetaSQL has the following reserved keywords.
+GoogleSQL has the following reserved keywords.
 
 <table style="table-layout: fixed; width: 110%">
 <tbody>
@@ -1476,7 +1476,7 @@ Query parameters can't be used in the SQL body of these statements:
 
 Syntax:
 
-```zetasql
+```googlesql
 @parameter_name
 ```
 
@@ -1493,7 +1493,7 @@ An identifier can be unquoted or quoted.
 This example returns all rows where `LastName` is equal to the value of the
 named query parameter `myparam`.
 
-```zetasql
+```googlesql
 SELECT * FROM Roster WHERE LastName = @myparam
 ```
 
@@ -1511,14 +1511,14 @@ values passed into this query. The order in which these values are passed in
 matters. If the last name is passed in first, followed by the first name, the
 expected results will not be returned.
 
-```zetasql
+```googlesql
 SELECT * FROM Roster WHERE FirstName = ? and LastName = ?
 ```
 
 ## Hints 
 <a id="hints"></a>
 
-```zetasql
+```googlesql
 @{ hint [, ...] }
 
 hint:
@@ -1555,14 +1555,14 @@ In this example, a literal is assigned to a hint. This hint is only used
 with two database engines called `database_engine_a` and `database_engine_b`.
 The value for the hint is different for each database engine.
 
-```zetasql
+```googlesql
 @{ database_engine_a.file_count=23, database_engine_b.file_count=10 }
 ```
 
 ## Comments
 
 Comments are sequences of characters that the parser ignores.
-ZetaSQL supports the following types of comments.
+GoogleSQL supports the following types of comments.
 
 ### Single-line comments 
 <a id="single_line_comments"></a>
@@ -1571,22 +1571,22 @@ Use a single-line comment if you want the comment to appear on a line by itself.
 
 **Examples**
 
-```zetasql
+```googlesql
 # this is a single-line comment
 SELECT book FROM library;
 ```
 
-```zetasql
+```googlesql
 -- this is a single-line comment
 SELECT book FROM library;
 ```
 
-```zetasql
+```googlesql
 /* this is a single-line comment */
 SELECT book FROM library;
 ```
 
-```zetasql
+```googlesql
 SELECT book FROM library
 /* this is a single-line comment */
 WHERE book = "Ulysses";
@@ -1600,19 +1600,19 @@ right of a statement.
 
 **Examples**
 
-```zetasql
+```googlesql
 SELECT book FROM library; # this is an inline comment
 ```
 
-```zetasql
+```googlesql
 SELECT book FROM library; -- this is an inline comment
 ```
 
-```zetasql
+```googlesql
 SELECT book FROM library; /* this is an inline comment */
 ```
 
-```zetasql
+```googlesql
 SELECT book FROM library /* this is an inline comment */ WHERE book = "Ulysses";
 ```
 
@@ -1623,7 +1623,7 @@ Nested multiline comments aren't supported.
 
 **Examples**
 
-```zetasql
+```googlesql
 SELECT book FROM library
 /*
   This is a multiline comment
@@ -1632,7 +1632,7 @@ SELECT book FROM library
 WHERE book = "Ulysses";
 ```
 
-```zetasql
+```googlesql
 SELECT book FROM library
 /* this is a multiline comment
 on two lines */
@@ -1669,67 +1669,67 @@ WHERE book = "Ulysses";
 
 [positional-query-parameters]: #positional_query_parameters
 
-[query-reference]: https://github.com/google/zetasql/blob/master/docs/query-syntax.md
+[query-reference]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md
 
-[lexical-udfs-reference]: https://github.com/google/zetasql/blob/master/docs/user-defined-functions.md
+[lexical-udfs-reference]: https://github.com/google/googlesql/blob/master/docs/user-defined-functions.md
 
-[constructing-a-struct]: https://github.com/google/zetasql/blob/master/docs/data-types.md#constructing_a_struct
+[constructing-a-struct]: https://github.com/google/googlesql/blob/master/docs/data-types.md#constructing_a_struct
 
-[coercion]: https://github.com/google/zetasql/blob/master/docs/conversion_rules.md#coercion
+[coercion]: https://github.com/google/googlesql/blob/master/docs/conversion_rules.md#coercion
 
-[string-data-type]: https://github.com/google/zetasql/blob/master/docs/data-types.md#string_type
+[string-data-type]: https://github.com/google/googlesql/blob/master/docs/data-types.md#string_type
 
-[bytes-data-type]: https://github.com/google/zetasql/blob/master/docs/data-types.md#bytes_type
+[bytes-data-type]: https://github.com/google/googlesql/blob/master/docs/data-types.md#bytes_type
 
-[array-data-type]: https://github.com/google/zetasql/blob/master/docs/data-types.md#array_type
+[array-data-type]: https://github.com/google/googlesql/blob/master/docs/data-types.md#array_type
 
-[struct-data-type]: https://github.com/google/zetasql/blob/master/docs/data-types.md#struct_type
+[struct-data-type]: https://github.com/google/googlesql/blob/master/docs/data-types.md#struct_type
 
-[integer-data-type]: https://github.com/google/zetasql/blob/master/docs/data-types.md#integer_types
+[integer-data-type]: https://github.com/google/googlesql/blob/master/docs/data-types.md#integer_types
 
-[floating-point-data-type]: https://github.com/google/zetasql/blob/master/docs/data-types.md#floating_point_types
+[floating-point-data-type]: https://github.com/google/googlesql/blob/master/docs/data-types.md#floating_point_types
 
 [quoted-literals]: #quoted_literals
 
-[decimal-data-type]: https://github.com/google/zetasql/blob/master/docs/data-types.md#decimal_types
+[decimal-data-type]: https://github.com/google/googlesql/blob/master/docs/data-types.md#decimal_types
 
-[date-data-type]: https://github.com/google/zetasql/blob/master/docs/data-types.md#date_type
+[date-data-type]: https://github.com/google/googlesql/blob/master/docs/data-types.md#date_type
 
-[date-format]: https://github.com/google/zetasql/blob/master/docs/data-types.md#canonical_format_for_date_literals
+[date-format]: https://github.com/google/googlesql/blob/master/docs/data-types.md#canonical_format_for_date_literals
 
-[time-data-type]: https://github.com/google/zetasql/blob/master/docs/data-types.md#time_type
+[time-data-type]: https://github.com/google/googlesql/blob/master/docs/data-types.md#time_type
 
-[time-format]: https://github.com/google/zetasql/blob/master/docs/data-types.md#canonical_format_for_time_literals
+[time-format]: https://github.com/google/googlesql/blob/master/docs/data-types.md#canonical_format_for_time_literals
 
-[datetime-data-type]: https://github.com/google/zetasql/blob/master/docs/data-types.md#datetime_type
+[datetime-data-type]: https://github.com/google/googlesql/blob/master/docs/data-types.md#datetime_type
 
-[datetime-format]: https://github.com/google/zetasql/blob/master/docs/data-types.md#canonical_format_for_datetime_literals
+[datetime-format]: https://github.com/google/googlesql/blob/master/docs/data-types.md#canonical_format_for_datetime_literals
 
-[timestamp-data-type]: https://github.com/google/zetasql/blob/master/docs/data-types.md#timestamp_type
+[timestamp-data-type]: https://github.com/google/googlesql/blob/master/docs/data-types.md#timestamp_type
 
-[timestamp-format]: https://github.com/google/zetasql/blob/master/docs/data-types.md#canonical_format_for_timestamp_literals
+[timestamp-format]: https://github.com/google/googlesql/blob/master/docs/data-types.md#canonical_format_for_timestamp_literals
 
-[utc-offset]: https://github.com/google/zetasql/blob/master/docs/data-types.md#utc_offset
+[utc-offset]: https://github.com/google/googlesql/blob/master/docs/data-types.md#utc_offset
 
-[time-zone-name]: https://github.com/google/zetasql/blob/master/docs/data-types.md#time_zone_name
+[time-zone-name]: https://github.com/google/googlesql/blob/master/docs/data-types.md#time_zone_name
 
 [interval-literal-single]: #interval_literal_single
 
 [interval-literal-range]: #interval_literal_range
 
-[interval-data-type]: https://github.com/google/zetasql/blob/master/docs/data-types.md#interval_type
+[interval-data-type]: https://github.com/google/googlesql/blob/master/docs/data-types.md#interval_type
 
-[interval-datetime-parts]: https://github.com/google/zetasql/blob/master/docs/data-types.md#interval_datetime_parts
+[interval-datetime-parts]: https://github.com/google/googlesql/blob/master/docs/data-types.md#interval_datetime_parts
 
-[construct-single-interval]: https://github.com/google/zetasql/blob/master/docs/data-types.md#single_datetime_part_interval
+[construct-single-interval]: https://github.com/google/googlesql/blob/master/docs/data-types.md#single_datetime_part_interval
 
-[construct-range-interval]: https://github.com/google/zetasql/blob/master/docs/data-types.md#range_datetime_part_interval
+[construct-range-interval]: https://github.com/google/googlesql/blob/master/docs/data-types.md#range_datetime_part_interval
 
-[range-data-type]: https://github.com/google/zetasql/blob/master/docs/data-types.md#range_type
+[range-data-type]: https://github.com/google/googlesql/blob/master/docs/data-types.md#range_type
 
-[enum-data-type]: https://github.com/google/zetasql/blob/master/docs/data-types.md#enum_type
+[enum-data-type]: https://github.com/google/googlesql/blob/master/docs/data-types.md#enum_type
 
-[json-data-type]: https://github.com/google/zetasql/blob/master/docs/data-types.md#json_type
+[json-data-type]: https://github.com/google/googlesql/blob/master/docs/data-types.md#json_type
 
 <!-- mdlint on -->
 
