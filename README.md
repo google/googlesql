@@ -1,7 +1,7 @@
 ## GoogleSQL - Analyzer Framework for SQL
 
-> GoogleSQL was previously named ZetaSQL. Please refer to [this
-> doc](zetasql_to_googlesql_migration.md) for a guide that helps you to
+> GoogleSQL was previously named ZetaSQL. Please refer to
+> [this doc](zetasql_to_googlesql_migration.md) for a guide that helps you to
 > migrate.
 
 GoogleSQL defines a SQL language (grammar, types, data model, semantics, and
@@ -17,30 +17,32 @@ GoogleSQL implements the GoogleSQL language, which is used across several of
 Google's SQL products, both publicly and internally, including BigQuery,
 Spanner, F1, BigTable, Dremel, Procella, and others.
 
-GoogleSQL and GoogleSQL have been described in these publications:
+GoogleSQL and ZetaSQL have been described in these publications:
 
-*   (CDMS 2022) [GoogleSQL: A SQL Language as a Component](https://cdmsworkshop.github.io/2022/Slides/Fri_C2.5_DavidWilhite.pptx)
+*   (CDMS 2022)
+    [GoogleSQL: A SQL Language as a Component](https://cdmsworkshop.github.io/2022/Slides/Fri_C2.5_DavidWilhite.pptx)
     (Slides)
-*   (SIGMOD 2017) [Spanner: Becoming a SQL System](https://static.googleusercontent.com/media/research.google.com/en//pubs/archive/46103.pdf)
-    -- See section 6.
-*   (VLDB 2024) [SQL Has Problems. We Can Fix Them: Pipe Syntax in
-    SQL](https://research.google/pubs/pub1005959/) -- Describes GoogleSQL's new
-    pipe query syntax.
+*   (SIGMOD 2017)
+    [Spanner: Becoming a SQL System](https://static.googleusercontent.com/media/research.google.com/en//pubs/archive/46103.pdf) --
+    See section 6.
+*   (VLDB 2024)
+    [SQL Has Problems. We Can Fix Them: Pipe Syntax in SQL](https://research.google/pubs/pub1005959/) --
+    Describes GoogleSQL's new pipe query syntax.
 
 Some other documentation:
 
 *   [GoogleSQL Language Reference](docs/README.md)
 *   [GoogleSQL Resolved AST](docs/resolved_ast.md), documenting the intermediate
     representation produced by the GoogleSQL analyzer.
-*   [GoogleSQL
-    Toolkit](https://github.com/GoogleCloudPlatform/googlesql-toolkit), a
-    project using GoogleSQL to analyze and understand queries against BigQuery,
-    and other GoogleSQL engines.
+*   [GoogleSQL Toolkit](https://github.com/GoogleCloudPlatform/googlesql-toolkit),
+    a project using GoogleSQL to analyze and understand queries against
+    BigQuery, and other GoogleSQL engines.
 *   Pipe query syntax
-    *   See the [reference documentation](https://github.com/google/googlesql/blob/master/docs/pipe-syntax.md)
+    *   See the
+        [reference documentation](https://github.com/google/googlesql/blob/master/docs/pipe-syntax.md)
         and [research paper](https://research.google/pubs/pub1005959/).
-    *   See some [example scripts](googlesql/examples/pipe_queries) and [TPC-H
-        queries](googlesql/examples/tpch).
+    *   See some [example scripts](googlesql/examples/pipe_queries) and
+        [TPC-H queries](googlesql/examples/tpch).
 
 ## Project Overview
 
