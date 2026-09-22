@@ -14,6 +14,7 @@
 # limitations under the License.
 
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load(":embed_files.bzl", "gen_string_constant_header_file")
 
 package(default_visibility = ["//googlesql/base:googlesql_implementation"])

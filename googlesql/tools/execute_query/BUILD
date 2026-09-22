@@ -18,6 +18,7 @@ load("@com_google_protobuf//bazel:cc_proto_library.bzl", "cc_proto_library")
 load("@com_google_protobuf//bazel:proto_library.bzl", "proto_library")
 load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("@rules_cc//cc:cc_test.bzl", "cc_test")
 load("//googlesql/tools/execute_query:build_rules.bzl", "execute_query_test")
 
 package(
@@ -645,4 +646,5 @@ execute_query_test(
 bzl_library(
     name = "build_rules_bzl",
     srcs = ["build_rules.bzl"],
+    deps = ["@rules_shell//shell:rules_bzl"],
 )

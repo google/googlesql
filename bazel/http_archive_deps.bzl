@@ -68,7 +68,7 @@ def _http_archive_deps_impl(_):
 
     http_archive(
         name = "native_utils",
-        build_file_content = "licenses([\"notice\"]) # MIT\njava_library(\nname = \"native_utils\",\nvisibility = [\"//visibility:public\"],\nsrcs = glob([\"src/main/java/cz/adamh/utils/*.java\"]),\n)",
+        build_file_content = "load(\"@rules_java//java:java_library.bzl\", \"java_library\")\n\nlicenses([\"notice\"]) # MIT\njava_library(\nname = \"native_utils\",\nvisibility = [\"//visibility:public\"],\nsrcs = glob([\"src/main/java/cz/adamh/utils/*.java\"]),\n)",
         sha256 = "6013c0988ba40600e238e47088580fd562dcecd4afd3fcf26130efe7cb1620de",
         strip_prefix = "native-utils-e6a39489662846a77504634b6fafa4995ede3b1d",
         url = "https://github.com/adamheinrich/native-utils/archive/e6a39489662846a77504634b6fafa4995ede3b1d.tar.gz",
