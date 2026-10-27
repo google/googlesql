@@ -671,7 +671,7 @@ public abstract class Catalog implements Serializable {
    *
    * <p>A NULL pointer should be returned if the object doesn't exist.
    *
-   * <p>This is normally overriden in subclasses. The default implementations
+   * <p>This is normally overridden in subclasses. The default implementations
    * always return null.
    *
    * @return Procedure object if found, NULL if not found
@@ -733,7 +733,7 @@ public abstract class Catalog implements Serializable {
    *
    * <p>A NULL pointer should be returned if the object doesn't exist.
    *
-   * <p>This is normally overriden in subclasses. The default implementations
+   * <p>This is normally overridden in subclasses. The default implementations
    * always return null.
    *
    * @return Type object if found, NULL if not found
@@ -765,7 +765,7 @@ public abstract class Catalog implements Serializable {
    *
    * <p>A NULL pointer should be returned if the object doesn't exist.
    *
-   * <p>This is normally overriden in subclasses. The default implementations
+   * <p>This is normally overridden in subclasses. The default implementations
    * always return null.
    *
    * @return Catalog object if found, NULL if not found
