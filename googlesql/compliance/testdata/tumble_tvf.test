@@ -386,6 +386,57 @@ FROM TUMBLE(
 ARRAY<STRUCT<WINDOW_START TIMESTAMP>>[{2024-01-01 08:00:00+00}]
 
 ==
+# Argument validation for when WINDOW_START and WINDOW_END are not referenced.
+[required_features=INTERVAL_TYPE,TABLE_VALUED_FUNCTIONS,TUMBLE_HOP_TVFS]
+[name=tumble_pruned_window_columns_zero_window_size]
+SELECT ts_col FROM tumble(TABLE TableWithTimestampColumn, "ts_col", INTERVAL 0 DAY);
+--
+ERROR: generic::out_of_range: Window size cannot be zero.
+==
+[required_features=INTERVAL_TYPE,TABLE_VALUED_FUNCTIONS,TUMBLE_HOP_TVFS]
+[name=tumble_pruned_window_columns_negative_window_size]
+SELECT ts_col FROM tumble(TABLE TableWithTimestampColumn, "ts_col", - INTERVAL 1 DAY);
+--
+ERROR: generic::out_of_range: Window size cannot be negative.
+==
+# Same as above, with a computed window size (the reproducer from b/577112482).
+[required_features=INTERVAL_TYPE,TABLE_VALUED_FUNCTIONS,TUMBLE_HOP_TVFS,NAMED_ARGUMENTS]
+[name=tumble_pruned_window_columns_computed_negative_window_size]
+SELECT ts_col FROM tumble(TABLE TableWithTimestampColumn, "ts_col", MAKE_INTERVAL(minute => -5));
+--
+ERROR: generic::out_of_range: Window size cannot be negative.
+==
+[required_features=INTERVAL_TYPE,TABLE_VALUED_FUNCTIONS,TUMBLE_HOP_TVFS]
+[name=tumble_pruned_window_columns_null_window_size]
+SELECT ts_col FROM tumble(TABLE TableWithTimestampColumn, "ts_col", CAST(NULL AS INTERVAL));
+--
+ERROR: generic::out_of_range: Window size cannot be null.
+==
+[required_features=INTERVAL_TYPE,TABLE_VALUED_FUNCTIONS,TUMBLE_HOP_TVFS]
+[name=tumble_pruned_window_columns_month_window_size]
+SELECT ts_col FROM tumble(TABLE TableWithTimestampColumn, "ts_col", INTERVAL 1 MONTH);
+--
+ERROR: generic::out_of_range: Window size cannot contain MONTH or YEAR parts.
+==
+[required_features=INTERVAL_TYPE,TABLE_VALUED_FUNCTIONS,TUMBLE_HOP_TVFS,NAMED_ARGUMENTS]
+[name=tumble_pruned_window_columns_null_origin]
+SELECT ts_col FROM tumble(TABLE TableWithTimestampColumn, "ts_col", INTERVAL 1 DAY, origin => NULL);
+--
+ERROR: generic::out_of_range: Origin cannot be null.
+==
+# No TVF output columns are referenced.
+[required_features=INTERVAL_TYPE,TABLE_VALUED_FUNCTIONS,TUMBLE_HOP_TVFS]
+[name=tumble_all_columns_pruned_count_star]
+SELECT COUNT(*) FROM tumble(TABLE TableWithTimestampColumn, "ts_col", INTERVAL 1 DAY);
+--
+ARRAY<STRUCT<INT64>>[{4}]
+==
+[required_features=INTERVAL_TYPE,TABLE_VALUED_FUNCTIONS,TUMBLE_HOP_TVFS]
+[name=tumble_all_columns_pruned_negative_window_size]
+SELECT COUNT(*) FROM tumble(TABLE TableWithTimestampColumn, "ts_col", - INTERVAL 1 DAY);
+--
+ERROR: generic::out_of_range: Window size cannot be negative.
+==
 # Run-once semantics:
 # These tests try to ensure that expressions provided as TVF arguments are
 # evaluated exactly once. In particular, this is intended to check that the

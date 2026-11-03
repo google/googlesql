@@ -1099,6 +1099,13 @@ TEST(FunctionSignatureTests, FunctionSignatureTestsInternalProductMode) {
   EXPECT_EQ(1234, copy1.context_id());
   EXPECT_EQ(&arguments, copy2.context_ptr());
 
+  const int const_context = 42;
+  FunctionSignature copy_const_context(case_value_signature, &const_context);
+  EXPECT_EQ(&const_context, copy_const_context.context_ptr());
+  FunctionSignature sig_with_const_context(
+      FunctionArgumentType(factory.get_int32()), arguments, &const_context);
+  EXPECT_EQ(&const_context, sig_with_const_context.context_ptr());
+
   // Test a function with VOID return type, and some argument options.
   FunctionSignature void_func = GetVoidFunction(&factory);
   EXPECT_EQ("(BOOL, INT64, <T1>) -> <void>", void_func.DebugString());
@@ -2229,6 +2236,7 @@ static std::vector<FunctionArgumentType> GetTemplatedArgumentTypes(
       FunctionArgumentType::Lambda({ARG_KIND_EXPR_ANY_1}, factory->get_bool()));
   templated_types.push_back(FunctionArgumentType::Lambda({factory->get_int64()},
                                                          ARG_KIND_EXPR_ANY_1));
+  templated_types.push_back(FunctionArgumentType(ARG_KIND_EXPR_ROW_ANY));
   return templated_types;
 }
 
@@ -2260,7 +2268,7 @@ TEST(FunctionSignatureTests, TestIsTemplatedArgument) {
     // values.
     enum_size += SignatureArgumentKind_IsValid(i);
   }
-  ASSERT_EQ(34, enum_size);
+  ASSERT_EQ(35, enum_size);
 
   std::set<SignatureArgumentKind> templated_kinds;
   templated_kinds.insert(ARG_KIND_EXPR_ANY_1);
@@ -2293,6 +2301,7 @@ TEST(FunctionSignatureTests, TestIsTemplatedArgument) {
   templated_kinds.insert(ARG_KIND_SEQUENCE);
   templated_kinds.insert(ARG_KIND_EXPR_MEASURE_ANY_1);
   templated_kinds.insert(ARG_KIND_EXPR_STRING_ANY);
+  templated_kinds.insert(ARG_KIND_EXPR_ROW_ANY);
 
   std::set<SignatureArgumentKind> non_templated_kinds;
   non_templated_kinds.insert(ARG_KIND_EXPR_FIXED);

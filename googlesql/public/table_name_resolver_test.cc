@@ -394,6 +394,26 @@ TEST(TableNameResolver,
   EXPECT_THAT(tvf_names, IsEmpty());
 }
 
+TEST(TableNameResolver,
+     ExtractTableNamesFromCreatePropertyGraphQueryNoNodeOrEdgeTables) {
+  AnalyzerOptions analyzer_options;
+  analyzer_options.CreateDefaultArenasIfNotSet();
+  analyzer_options.mutable_language()->AddSupportedStatementKind(
+      RESOLVED_CREATE_PROPERTY_GRAPH_STMT);
+  analyzer_options.mutable_language()->EnableLanguageFeature(FEATURE_SQL_GRAPH);
+  std::string sql =
+      R"sql(CREATE PROPERTY GRAPH pg1
+              WITH CONNECTION conn1
+              OPTIONS (opt1 = 'v1');
+      )sql";
+  std::set<std::vector<std::string>> table_names;
+  std::set<std::vector<std::string>> tvf_names;
+  GOOGLESQL_ASSERT_OK(googlesql::ExtractTableNamesFromScript(sql, analyzer_options,
+                                                   &table_names, &tvf_names));
+  EXPECT_THAT(table_names, IsEmpty());
+  EXPECT_THAT(tvf_names, IsEmpty());
+}
+
 TEST(TableNameResolver, ExtractTableNamesFromGraphQuery) {
   AnalyzerOptions analyzer_options;
   analyzer_options.CreateDefaultArenasIfNotSet();
@@ -686,6 +706,30 @@ TEST(TableNameResolver, ExtractTableNamesFromParenthesizedTableClause) {
                                ElementsAre("TableA"), ElementsAre("TableB"),
                                ElementsAre("TableC"), ElementsAre("TableD"),
                                ElementsAre("TableE"), ElementsAre("TableF")));
+  EXPECT_THAT(tvf_names, UnorderedElementsAre(ElementsAre("MyTvf1"),
+                                              ElementsAre("MyTvf2")));
+}
+
+TEST(TableNameResolver, ExtractTableNamesFromPipeCallWithPartitionAndOrder) {
+  AnalyzerOptions analyzer_options;
+  analyzer_options.mutable_language()->EnableLanguageFeature(FEATURE_PIPES);
+  std::set<std::vector<std::string>> table_names;
+  std::set<std::vector<std::string>> tvf_names;
+  std::string sql = R"sql(
+      FROM TableA AS a
+      |> CALL MyTvf1() AS t1
+         PARTITION BY (SELECT k FROM TableB), (SELECT k FROM a.correlated_array)
+         ORDER BY (SELECT v FROM TableC), (SELECT v FROM t1.uncorrelated_table)
+      |> CALL MyTvf2(TABLE(TableD PARTITION BY k))
+         PARTITION BY (SELECT k FROM t1.correlated_array) ORDER BY v
+  )sql";
+
+  GOOGLESQL_ASSERT_OK(ExtractTableNamesFromStatement(sql, analyzer_options, &table_names,
+                                           &tvf_names));
+  EXPECT_THAT(table_names,
+              UnorderedElementsAre(ElementsAre("TableA"), ElementsAre("TableB"),
+                                   ElementsAre("TableC"), ElementsAre("TableD"),
+                                   ElementsAre("t1", "uncorrelated_table")));
   EXPECT_THAT(tvf_names, UnorderedElementsAre(ElementsAre("MyTvf1"),
                                               ElementsAre("MyTvf2")));
 }

@@ -1326,7 +1326,7 @@ TEST_P(AlgebrizerTestFunctions, SelectFunctions) {
                        AlgebrizeAndNestInStruct(single_row_select.get()));
   // Construct the expected output with a mixture of fixed strings and results
   // from the current algebrization.
-  std::string expected = absl::Substitute(
+  [[maybe_unused]] std::string expected = absl::Substitute(
       "ArrayNestExpr(\n"
       "  element: NewStructExpr(\n    type: STRUCT<__col_0 $0>,\n"
       "    0 __col_0: $1),\n"

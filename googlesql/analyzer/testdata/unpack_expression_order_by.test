@@ -1,0 +1,468 @@
+[default language_features=MAXIMUM,+COLUMN_LIST_SPEC,+COLLATION_SUPPORT,+ANNOTATION_FRAMEWORK]
+[default show_sqlbuilder_output]
+[default use_constant_evaluator]
+[default sql_builder_target_syntax_mode=standard]
+
+# Tests for UNPACK (**) expressions in ORDER BY.
+#
+# Standard-syntax ORDER BY and pipe |> ORDER BY share the expansion code but
+# reach it through different callers with different name scopes, so the pipe
+# section mirrors the standard positive cases and the scope-dependent
+# negatives. Variants that resolve identically are alternations on one case.
+
+################################################################################
+#
+# Positive cases
+#
+################################################################################
+
+# ------------------------------------------------------------------------------
+# Standard syntax
+# ------------------------------------------------------------------------------
+
+# ** expands in place into one ORDER BY item per column, keeping its position
+# relative to explicit items. Two expansions, or an expansion and an explicit
+# item, may order by the same column more than once, as explicit items may.
+SELECT Key, Value
+FROM KeyValue
+ORDER BY **COLUMNS(['Key']), Value, **COLUMNS(['Key', 'Value']), Key
+--
+QueryStmt
++-output_column_list=
+| +-KeyValue.Key#1 AS Key [INT64]
+| +-KeyValue.Value#2 AS Value [STRING]
++-query=
+  +-OrderByScan
+    +-column_list=KeyValue.[Key#1, Value#2]
+    +-is_ordered=TRUE
+    +-input_scan=
+    | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+    +-order_by_item_list=
+      +-OrderByItem
+      | +-column_ref=
+      |   +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+      +-OrderByItem
+      | +-column_ref=
+      |   +-ColumnRef(type=STRING, column=KeyValue.Value#2)
+      +-OrderByItem
+      | +-column_ref=
+      |   +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+      +-OrderByItem
+      | +-column_ref=
+      |   +-ColumnRef(type=STRING, column=KeyValue.Value#2)
+      +-OrderByItem
+        +-column_ref=
+          +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+
+[SQLBUILDER_OUTPUT]
+SELECT
+  keyvalue_3.a_1 AS Key,
+  keyvalue_3.a_2 AS Value
+FROM
+  (
+    SELECT
+      KeyValue.Key AS a_1,
+      KeyValue.Value AS a_2
+    FROM
+      KeyValue
+  ) AS keyvalue_3
+ORDER BY keyvalue_3.a_1, keyvalue_3.a_2, keyvalue_3.a_1, keyvalue_3.a_2, keyvalue_3.a_1;
+==
+
+# Ordering modifiers (ASC/DESC, NULLS FIRST/LAST, COLLATE) apply to every column
+# the expansion produces, and each item keeps its own modifiers.
+SELECT Key, Value
+FROM KeyValue
+ORDER BY **COLUMNS(['Key', 'Value']) DESC NULLS LAST,
+         **COLUMNS(['Value']) COLLATE 'unicode:ci' ASC NULLS FIRST
+--
+QueryStmt
++-output_column_list=
+| +-KeyValue.Key#1 AS Key [INT64]
+| +-KeyValue.Value#2 AS Value [STRING]
++-query=
+  +-OrderByScan
+    +-column_list=KeyValue.[Key#1, Value#2]
+    +-is_ordered=TRUE
+    +-input_scan=
+    | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+    +-order_by_item_list=
+      +-OrderByItem
+      | +-column_ref=
+      | | +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+      | +-is_descending=TRUE
+      | +-null_order=NULLS_LAST
+      +-OrderByItem
+      | +-column_ref=
+      | | +-ColumnRef(type=STRING, column=KeyValue.Value#2)
+      | +-is_descending=TRUE
+      | +-null_order=NULLS_LAST
+      +-OrderByItem
+        +-column_ref=
+        | +-ColumnRef(type=STRING, column=KeyValue.Value#2)
+        +-collation_name=
+        | +-Literal(type=STRING, value="unicode:ci")
+        +-null_order=NULLS_FIRST
+        +-collation=unicode:ci
+
+[SQLBUILDER_OUTPUT]
+SELECT
+  keyvalue_3.a_1 AS Key,
+  keyvalue_3.a_2 AS Value
+FROM
+  (
+    SELECT
+      KeyValue.Key AS a_1,
+      KeyValue.Value AS a_2
+    FROM
+      KeyValue
+  ) AS keyvalue_3
+ORDER BY keyvalue_3.a_1 DESC NULLS LAST, keyvalue_3.a_2 DESC NULLS LAST, keyvalue_3.a_2 COLLATE "unicode:ci" NULLS FIRST;
+==
+
+# An empty expansion, with or without modifiers, produces no ORDER BY items, so
+# no OrderByScan is created at all.
+SELECT Key, Value
+FROM KeyValue
+ORDER BY **COLUMNS([]){{| DESC NULLS LAST}}
+--
+QueryStmt
++-output_column_list=
+| +-KeyValue.Key#1 AS Key [INT64]
+| +-KeyValue.Value#2 AS Value [STRING]
++-query=
+  +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+
+[SQLBUILDER_OUTPUT]
+SELECT
+  KeyValue.Key AS Key,
+  KeyValue.Value AS Value
+FROM
+  KeyValue;
+==
+
+# An empty expansion next to an explicit item drops out, whichever side it is
+# on.
+SELECT Key, Value
+FROM KeyValue
+ORDER BY {{**COLUMNS([]), Key|Key, **COLUMNS([])}}
+--
+QueryStmt
++-output_column_list=
+| +-KeyValue.Key#1 AS Key [INT64]
+| +-KeyValue.Value#2 AS Value [STRING]
++-query=
+  +-OrderByScan
+    +-column_list=KeyValue.[Key#1, Value#2]
+    +-is_ordered=TRUE
+    +-input_scan=
+    | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+    +-order_by_item_list=
+      +-OrderByItem
+        +-column_ref=
+          +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+
+[SQLBUILDER_OUTPUT]
+SELECT
+  keyvalue_3.a_1 AS Key,
+  keyvalue_3.a_2 AS Value
+FROM
+  (
+    SELECT
+      KeyValue.Key AS a_1,
+      KeyValue.Value AS a_2
+    FROM
+      KeyValue
+  ) AS keyvalue_3
+ORDER BY keyvalue_3.a_1;
+==
+
+# Names in ** are resolved in the post-GROUP BY scope, so a grouping column can
+# be ordered by even when it is not in the SELECT list.
+SELECT 1
+FROM KeyValue
+GROUP BY key
+ORDER BY **COLUMNS(['key'])
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#4 AS `$col1` [INT64]
++-query=
+  +-OrderByScan
+    +-column_list=[$query.$col1#4]
+    +-is_ordered=TRUE
+    +-input_scan=
+    | +-ProjectScan
+    |   +-column_list=[$groupby.key#3, $query.$col1#4]
+    |   +-expr_list=
+    |   | +-$col1#4 := Literal(type=INT64, value=1)
+    |   +-input_scan=
+    |     +-AggregateScan
+    |       +-column_list=[$groupby.key#3]
+    |       +-input_scan=
+    |       | +-TableScan(column_list=[KeyValue.Key#1], table=KeyValue, column_index_list=[0])
+    |       +-group_by_list=
+    |         +-key#3 := ColumnRef(type=INT64, column=KeyValue.Key#1)
+    +-order_by_item_list=
+      +-OrderByItem
+        +-column_ref=
+          +-ColumnRef(type=INT64, column=$groupby.key#3)
+
+[SQLBUILDER_OUTPUT]
+SELECT
+  projectscan_6.a_5 AS a_5
+FROM
+  (
+    SELECT
+      aggregatescan_4.a_3 AS a_3,
+      1 AS a_5
+    FROM
+      (
+        SELECT
+          keyvalue_2.a_1 AS a_3
+        FROM
+          (
+            SELECT
+              KeyValue.Key AS a_1
+            FROM
+              KeyValue
+          ) AS keyvalue_2
+        GROUP BY 1
+      ) AS aggregatescan_4
+  ) AS projectscan_6
+ORDER BY projectscan_6.a_3;
+==
+
+# ------------------------------------------------------------------------------
+# Pipe syntax
+# ------------------------------------------------------------------------------
+
+[default sql_builder_target_syntax_mode=pipe]
+
+# ** expands in place into one ORDER BY item per column, keeping its position
+# relative to explicit items, and may repeat a column.
+FROM KeyValue
+|> ORDER BY **COLUMNS(['Key']), Value, **COLUMNS(['Key', 'Value']), Key
+--
+QueryStmt
++-output_column_list=
+| +-KeyValue.Key#1 AS Key [INT64]
+| +-KeyValue.Value#2 AS Value [STRING]
++-query=
+  +-OrderByScan
+    +-column_list=KeyValue.[Key#1, Value#2]
+    +-is_ordered=TRUE
+    +-input_scan=
+    | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+    +-order_by_item_list=
+      +-OrderByItem
+      | +-column_ref=
+      |   +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+      +-OrderByItem
+      | +-column_ref=
+      |   +-ColumnRef(type=STRING, column=KeyValue.Value#2)
+      +-OrderByItem
+      | +-column_ref=
+      |   +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+      +-OrderByItem
+      | +-column_ref=
+      |   +-ColumnRef(type=STRING, column=KeyValue.Value#2)
+      +-OrderByItem
+        +-column_ref=
+          +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+
+[SQLBUILDER_OUTPUT]
+FROM
+  KeyValue
+|> SELECT
+     KeyValue.Key AS a_1,
+     KeyValue.Value AS a_2
+|> AS keyvalue_3
+|> ORDER BY keyvalue_3.a_1, keyvalue_3.a_2, keyvalue_3.a_1, keyvalue_3.a_2, keyvalue_3.a_1
+|> SELECT
+     keyvalue_3.a_1 AS Key,
+     keyvalue_3.a_2 AS Value;
+==
+
+# Ordering modifiers apply to every column the expansion produces, and each
+# item keeps its own modifiers.
+FROM KeyValue
+|> ORDER BY **COLUMNS(['Key', 'Value']) DESC NULLS LAST,
+            **COLUMNS(['Value']) COLLATE 'unicode:ci' ASC NULLS FIRST
+--
+QueryStmt
++-output_column_list=
+| +-KeyValue.Key#1 AS Key [INT64]
+| +-KeyValue.Value#2 AS Value [STRING]
++-query=
+  +-OrderByScan
+    +-column_list=KeyValue.[Key#1, Value#2]
+    +-is_ordered=TRUE
+    +-input_scan=
+    | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+    +-order_by_item_list=
+      +-OrderByItem
+      | +-column_ref=
+      | | +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+      | +-is_descending=TRUE
+      | +-null_order=NULLS_LAST
+      +-OrderByItem
+      | +-column_ref=
+      | | +-ColumnRef(type=STRING, column=KeyValue.Value#2)
+      | +-is_descending=TRUE
+      | +-null_order=NULLS_LAST
+      +-OrderByItem
+        +-column_ref=
+        | +-ColumnRef(type=STRING, column=KeyValue.Value#2)
+        +-collation_name=
+        | +-Literal(type=STRING, value="unicode:ci")
+        +-null_order=NULLS_FIRST
+        +-collation=unicode:ci
+
+[SQLBUILDER_OUTPUT]
+FROM
+  KeyValue
+|> SELECT
+     KeyValue.Key AS a_1,
+     KeyValue.Value AS a_2
+|> AS keyvalue_3
+|> ORDER BY keyvalue_3.a_1 DESC NULLS LAST, keyvalue_3.a_2 DESC NULLS LAST, keyvalue_3.a_2 COLLATE "unicode:ci" NULLS FIRST
+|> SELECT
+     keyvalue_3.a_1 AS Key,
+     keyvalue_3.a_2 AS Value;
+==
+
+# An empty expansion produces no ORDER BY items, so no OrderByScan is created.
+FROM KeyValue
+|> ORDER BY **COLUMNS([]){{| DESC NULLS LAST}}
+--
+QueryStmt
++-output_column_list=
+| +-KeyValue.Key#1 AS Key [INT64]
+| +-KeyValue.Value#2 AS Value [STRING]
++-query=
+  +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+
+[SQLBUILDER_OUTPUT]
+FROM
+  KeyValue
+|> SELECT
+     KeyValue.Key AS Key,
+     KeyValue.Value AS Value;
+==
+
+# An empty expansion next to an explicit item drops out, whichever side it is
+# on.
+FROM KeyValue
+|> ORDER BY {{**COLUMNS([]), Key|Key, **COLUMNS([])}}
+--
+QueryStmt
++-output_column_list=
+| +-KeyValue.Key#1 AS Key [INT64]
+| +-KeyValue.Value#2 AS Value [STRING]
++-query=
+  +-OrderByScan
+    +-column_list=KeyValue.[Key#1, Value#2]
+    +-is_ordered=TRUE
+    +-input_scan=
+    | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+    +-order_by_item_list=
+      +-OrderByItem
+        +-column_ref=
+          +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+
+[SQLBUILDER_OUTPUT]
+FROM
+  KeyValue
+|> SELECT
+     KeyValue.Key AS a_1,
+     KeyValue.Value AS a_2
+|> AS keyvalue_3
+|> ORDER BY keyvalue_3.a_1
+|> SELECT
+     keyvalue_3.a_1 AS Key,
+     keyvalue_3.a_2 AS Value;
+==
+
+################################################################################
+#
+# Negative cases
+#
+################################################################################
+
+[default sql_builder_target_syntax_mode=standard]
+
+# A name in the column list that matches no column is an error, even when other
+# names in the list do match.
+SELECT Key, Value
+FROM KeyValue
+ORDER BY **COLUMNS(['Key', 'NonExistent'])
+--
+ERROR: Name NonExistent not found in the current scope [at 5:12]
+ORDER BY **COLUMNS(['Key', 'NonExistent'])
+           ^
+==
+
+# A name that is ambiguous in the FROM clause is an error.
+SELECT k1.Key, k2.Key
+FROM KeyValue k1 JOIN KeyValue k2 ON k1.Key = k2.Key
+ORDER BY **COLUMNS(['Key'])
+--
+ERROR: Name Key provided to ** does not refer to a column or field [at 3:12]
+ORDER BY **COLUMNS(['Key'])
+           ^
+==
+
+# After GROUP BY, ** cannot name a column that is neither grouped nor
+# aggregated.
+SELECT Value, SUM(Key) AS s
+FROM KeyValue
+GROUP BY Value
+ORDER BY **COLUMNS(['Key'])
+--
+ERROR: Name Key provided to ** does not refer to a column or field [at 4:12]
+ORDER BY **COLUMNS(['Key'])
+           ^
+==
+
+# After a set operation, ** resolves against the set operation's result, not
+# the input tables.
+SELECT Key FROM KeyValue
+UNION ALL
+SELECT Key FROM KeyValue
+ORDER BY **COLUMNS(['Value'])
+--
+ERROR: Name Value not found in the current scope [at 4:12]
+ORDER BY **COLUMNS(['Value'])
+           ^
+==
+
+# A column of an unorderable type is rejected the same way as when it is listed
+# explicitly.
+SELECT *
+FROM ComplexTypes
+ORDER BY **COLUMNS(['KitchenSink'])
+--
+ERROR: ORDER BY does not support expressions of type googlesql_test.KitchenSinkPB [at 3:10]
+ORDER BY **COLUMNS(['KitchenSink'])
+         ^
+==
+
+# Pipe ORDER BY resolves names against the pipe input only.
+FROM KeyValue
+|> ORDER BY **COLUMNS(['Key', 'NonExistent'])
+--
+ERROR: Name NonExistent not found in the current scope [at 2:15]
+|> ORDER BY **COLUMNS(['Key', 'NonExistent'])
+              ^
+==
+
+# The same holds after a pipe set operation.
+FROM KeyValue
+|> SELECT Key
+|> UNION ALL (FROM KeyValue |> SELECT Key)
+|> ORDER BY **COLUMNS(['Value'])
+--
+ERROR: Name Value not found in the current scope [at 4:15]
+|> ORDER BY **COLUMNS(['Value'])
+              ^

@@ -645,7 +645,7 @@ class AlignTupleIterator : public TupleIterator {
   // - `partition_min_timestamp` / `partition_max_timestamp` are the earliest /
   //   latest input points in the partition.
   absl::StatusOr<AlignedTimestampRange> ComputePartitionAlignedTimestampRange(
-      const std::vector<std::unique_ptr<TupleData>>& partition_rows) const {
+      absl::Span<const std::unique_ptr<TupleData>> partition_rows) const {
     GOOGLESQL_RET_CHECK(!partition_rows.empty());
     absl::Time partition_min_timestamp =
         GetRowTimestamp(*partition_rows.front());

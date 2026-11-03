@@ -1443,3 +1443,605 @@ SELECT
   );
 --
 ARRAY<STRUCT<INT64>>[{2}]
+==
+
+[name=map_from_array_unordered_array_key_deterministic]
+[required_features=MAP_TYPE,GROUP_BY_ARRAY,SAFE_FUNCTION_CALL]
+WITH t AS (
+  SELECT
+    ARRAY(SELECT x FROM UNNEST([1, 1]) AS x) AS same_elems_key,
+    ARRAY(SELECT x FROM UNNEST([3, 4]) AS x) AS disjoint_key
+)
+SELECT
+  MAP_CARDINALITY(
+    MAP_FROM_ARRAY([(disjoint_key, 10), ([1, 2], 20)])) AS disjoint_card,
+  SAFE.MAP_FROM_ARRAY([(same_elems_key, 10), ([1, 1], 20)]) AS dup_same_elems
+FROM t;
+--
+ARRAY<STRUCT<
+        disjoint_card INT64,
+        dup_same_elems MAP<ARRAY<INT64>, INT64>
+      >>[{2, NULL}]
+==
+
+[name=map_entries_sorted_unordered_array_key_deterministic]
+[required_features=MAP_TYPE,GROUP_BY_ARRAY,ARRAY_ORDERING]
+WITH t AS (
+  SELECT
+    ARRAY(SELECT x FROM UNNEST([1, 1]) AS x) AS same_elems_key,
+    ARRAY(SELECT x FROM UNNEST([3, 4]) AS x) AS disjoint_key
+)
+SELECT
+  MAP_ENTRIES_SORTED(CAST(NULL AS MAP<ARRAY<INT64>, INT64>)) AS null_map,
+  ARRAY_LENGTH(
+    MAP_ENTRIES_SORTED(MAP_FROM_ARRAY([(disjoint_key, 10)]))) AS single_entry,
+  MAP_ENTRIES_SORTED(
+    MAP_FROM_ARRAY([(same_elems_key, 10), ([1, 2], 20)])) AS same_elems_entries
+FROM t;
+--
+ARRAY<STRUCT<
+        null_map ARRAY<>,
+        single_entry INT64,
+        same_elems_entries ARRAY<>
+      >>
+[{ARRAY<STRUCT<key ARRAY<INT64>, value INT64>>(NULL),
+  1,
+  ARRAY<STRUCT<key ARRAY<>, value INT64>>[known order:
+    {
+      ARRAY<INT64>[unknown order:1, 1],
+      10
+    },
+    {
+      ARRAY<INT64>[known order:1, 2],
+      20
+    }
+  ]}]
+==
+
+[name=map_entries_unsorted_unordered_array_key_deterministic]
+[required_features=MAP_TYPE,GROUP_BY_ARRAY]
+WITH t AS (
+  SELECT ARRAY(SELECT x FROM UNNEST([3, 4]) AS x) AS disjoint_key
+)
+SELECT
+  ARRAY_LENGTH(
+    MAP_ENTRIES_UNSORTED(
+      MAP_FROM_ARRAY([(disjoint_key, 10), ([1, 2], 20)]))) AS unsorted_len
+FROM t;
+--
+ARRAY<STRUCT<unsorted_len INT64>>[{2}]
+==
+
+[name=map_values_sorted_by_key_unordered_array_key_deterministic]
+[required_features=MAP_TYPE,GROUP_BY_ARRAY,ARRAY_ORDERING]
+WITH t AS (
+  SELECT
+    ARRAY(SELECT x FROM UNNEST([1, 1]) AS x) AS same_elems_key,
+    ARRAY(SELECT x FROM UNNEST([3, 4]) AS x) AS disjoint_key
+)
+SELECT
+  MAP_VALUES_SORTED_BY_KEY(CAST(NULL AS MAP<ARRAY<INT64>, INT64>)) AS null_map,
+  MAP_VALUES_SORTED_BY_KEY(MAP_FROM_ARRAY([(disjoint_key, 10)])) AS single_val,
+  MAP_VALUES_SORTED_BY_KEY(
+    MAP_FROM_ARRAY([(same_elems_key, 10), ([1, 2], 20)])) AS same_elems_vals
+FROM t;
+--
+ARRAY<STRUCT<
+        null_map ARRAY<>,
+        single_val ARRAY<>,
+        same_elems_vals ARRAY<>
+      >>
+[{
+   ARRAY<INT64>(NULL),
+   ARRAY<INT64>[10],
+   ARRAY<INT64>[known order:10, 20]
+ }]
+==
+
+[name=map_keys_unsorted_unordered_array_key_deterministic]
+[required_features=MAP_TYPE,GROUP_BY_ARRAY,GROUP_BY_STRUCT]
+WITH t AS (
+  SELECT ARRAY(SELECT x FROM UNNEST([3, 4]) AS x) AS disjoint_key
+)
+SELECT
+  ARRAY_LENGTH(
+    MAP_KEYS_UNSORTED(
+      MAP_FROM_ARRAY(
+        [(STRUCT(disjoint_key), 10), (STRUCT([1, 2]), 20)]))) AS unsorted_len
+FROM t;
+--
+ARRAY<STRUCT<unsorted_len INT64>>[{2}]
+==
+
+[name=map_values_unsorted_unordered_array_key_deterministic]
+[required_features=MAP_TYPE,GROUP_BY_ARRAY]
+WITH t AS (
+  SELECT ARRAY(SELECT x FROM UNNEST([3, 4]) AS x) AS disjoint_key
+)
+SELECT
+  MAP_VALUES_UNSORTED(
+    MAP_FROM_ARRAY([(disjoint_key, 10), ([1, 2], 20)])) AS unsorted_vals
+FROM t;
+--
+ARRAY<STRUCT<unsorted_vals ARRAY<>>>[{ARRAY<INT64>[unknown order:20, 10]}]
+==
+
+[name=map_get_unordered_array_key_deterministic]
+[required_features=MAP_TYPE,GROUP_BY_ARRAY]
+WITH t AS (
+  SELECT
+    ARRAY(SELECT x FROM UNNEST([1, 1]) AS x) AS same_elems_key,
+    ARRAY(SELECT x FROM UNNEST([3, 4]) AS x) AS disjoint_key
+)
+SELECT
+  MAP_GET(MAP_FROM_ARRAY([([1, 1], 10)]), same_elems_key) AS same_elems_get,
+  MAP_GET(
+    MAP_FROM_ARRAY([([1, 2], 10), ([2, 1], 20)]),
+    disjoint_key) AS disjoint_get,
+  MAP_GET(
+    CAST(NULL AS MAP<ARRAY<INT64>, INT64>), disjoint_key) AS null_map_get,
+  MAP_GET(
+    MAP_FROM_ARRAY([(disjoint_key, 10), (NULL, 20)]), NULL) AS null_key_get
+FROM t;
+--
+ARRAY<STRUCT<same_elems_get INT64,
+             disjoint_get INT64,
+             null_map_get INT64,
+             null_key_get INT64>>[{10, NULL, NULL, 20}]
+==
+
+[name=map_subscript_unordered_array_key_deterministic]
+[required_features=MAP_TYPE,GROUP_BY_ARRAY]
+WITH t AS (
+  SELECT
+    ARRAY(SELECT x FROM UNNEST([1, 1]) AS x) AS same_elems_key,
+    ARRAY(SELECT x FROM UNNEST([3, 4]) AS x) AS disjoint_key
+)
+SELECT
+  MAP_FROM_ARRAY([([1, 1], 10)])[same_elems_key] AS same_elems_sub,
+  MAP_FROM_ARRAY([([1, 2], 10), ([2, 1], 20)])[disjoint_key] AS disjoint_sub,
+  CAST(NULL AS MAP<ARRAY<INT64>, INT64>)[disjoint_key] AS null_map_sub,
+  MAP_FROM_ARRAY([(disjoint_key, 10), (NULL, 20)])[NULL] AS null_key_sub
+FROM t;
+--
+ARRAY<STRUCT<same_elems_sub INT64,
+             disjoint_sub INT64,
+             null_map_sub INT64,
+             null_key_sub INT64>>[{10, NULL, NULL, 20}]
+==
+
+[name=map_subscript_with_key_unordered_array_key_deterministic]
+[required_features=MAP_TYPE,GROUP_BY_ARRAY]
+WITH t AS (
+  SELECT
+    ARRAY(SELECT x FROM UNNEST([1, 1]) AS x) AS same_elems_key,
+    ARRAY(SELECT x FROM UNNEST([3, 4]) AS x) AS disjoint_key
+)
+SELECT
+  MAP_FROM_ARRAY([([1, 1], 10)])[KEY(same_elems_key)] AS same_elems_sub,
+  CAST(NULL AS MAP<ARRAY<INT64>, INT64>)[KEY(disjoint_key)] AS null_map_sub,
+  MAP_FROM_ARRAY([(disjoint_key, 10), (NULL, 20)])[KEY(NULL)] AS null_key_sub
+FROM t;
+--
+ARRAY<STRUCT<same_elems_sub INT64, null_map_sub INT64, null_key_sub INT64>>[
+  {10, NULL, 20}
+]
+==
+
+[name=map_subscript_safe_key_unordered_array_key_deterministic]
+[required_features=MAP_TYPE,GROUP_BY_ARRAY,SAFE_FUNCTION_CALL]
+WITH t AS (
+  SELECT
+    ARRAY(SELECT x FROM UNNEST([1, 1]) AS x) AS same_elems_key,
+    ARRAY(SELECT x FROM UNNEST([3, 4]) AS x) AS disjoint_key
+)
+SELECT
+  MAP_FROM_ARRAY([([1, 1], 10)])[SAFE_KEY(same_elems_key)] AS same_elems_sub,
+  MAP_FROM_ARRAY(
+    [([1, 2], 10), ([2, 1], 20)])[SAFE_KEY(disjoint_key)] AS disjoint_sub,
+  CAST(NULL AS MAP<ARRAY<INT64>, INT64>)[
+    SAFE_KEY(disjoint_key)] AS null_map_sub,
+  MAP_FROM_ARRAY(
+    [(disjoint_key, 10), (NULL, 20)])[SAFE_KEY(NULL)] AS null_key_sub
+FROM t;
+--
+ARRAY<STRUCT<same_elems_sub INT64,
+             disjoint_sub INT64,
+             null_map_sub INT64,
+             null_key_sub INT64>>[{10, NULL, NULL, 20}]
+==
+
+[name=map_contains_key_unordered_array_key_deterministic]
+[required_features=MAP_TYPE,GROUP_BY_ARRAY]
+WITH t AS (
+  SELECT
+    ARRAY(SELECT x FROM UNNEST([1, 1]) AS x) AS same_elems_key,
+    ARRAY(SELECT x FROM UNNEST([3, 4]) AS x) AS disjoint_key
+)
+SELECT
+  MAP_CONTAINS_KEY(
+    MAP_FROM_ARRAY([([1, 1], 10)]), same_elems_key) AS same_elems_contains,
+  MAP_CONTAINS_KEY(
+    MAP_FROM_ARRAY([([1, 2], 10), ([2, 1], 20)]),
+    disjoint_key) AS disjoint_contains,
+  MAP_CONTAINS_KEY(
+    CAST(NULL AS MAP<ARRAY<INT64>, INT64>), disjoint_key) AS null_map_contains,
+  MAP_CONTAINS_KEY(
+    MAP_FROM_ARRAY([(disjoint_key, 10), (NULL, 20)]),
+    NULL) AS null_key_contains
+FROM t;
+--
+ARRAY<STRUCT<
+        same_elems_contains BOOL,
+        disjoint_contains BOOL,
+        null_map_contains BOOL,
+        null_key_contains BOOL
+      >>[{true, false, NULL, true}]
+==
+
+[name=map_insert_unordered_array_key_deterministic]
+[required_features=MAP_TYPE,GROUP_BY_ARRAY]
+WITH t AS (
+  SELECT ARRAY(SELECT x FROM UNNEST([3, 4]) AS x) AS disjoint_key
+)
+SELECT
+  MAP_CARDINALITY(
+    MAP_INSERT(
+      MAP_FROM_ARRAY([([1, 2], 10), ([2, 1], 20)]),
+      disjoint_key,
+      30)) AS disjoint_insert_card,
+  MAP_INSERT(
+    CAST(NULL AS MAP<ARRAY<INT64>, INT64>), disjoint_key, 30) AS null_map
+FROM t;
+--
+ARRAY<STRUCT<
+        disjoint_insert_card INT64,
+        null_map MAP<ARRAY<INT64>, INT64>
+      >>[{3, NULL}]
+==
+
+[name=map_insert_or_replace_unordered_array_key_deterministic]
+[required_features=MAP_TYPE,GROUP_BY_ARRAY]
+WITH t AS (
+  SELECT
+    ARRAY(SELECT x FROM UNNEST([1, 1]) AS x) AS same_elems_key,
+    ARRAY(SELECT x FROM UNNEST([3, 4]) AS x) AS disjoint_key
+)
+SELECT
+  MAP_CARDINALITY(
+    MAP_INSERT_OR_REPLACE(
+      MAP_FROM_ARRAY([([1, 2], 10), ([2, 1], 20)]),
+      disjoint_key,
+      30)) AS disjoint_card,
+  MAP_INSERT_OR_REPLACE(
+    MAP_FROM_ARRAY([([1, 1], 10)]), same_elems_key, 20) AS same_elems_map,
+  MAP_INSERT_OR_REPLACE(
+    CAST(NULL AS MAP<ARRAY<INT64>, INT64>), disjoint_key, 30) AS null_map
+FROM t;
+--
+ARRAY<STRUCT<
+        disjoint_card INT64,
+        same_elems_map MAP<ARRAY<INT64>, INT64>,
+        null_map MAP<ARRAY<INT64>, INT64>
+      >>[{3, {[1, 1]: 20}, NULL}]
+==
+
+[name=map_replace_kv_unordered_array_key_deterministic]
+[required_features=MAP_TYPE,GROUP_BY_ARRAY,SAFE_FUNCTION_CALL]
+WITH t AS (
+  SELECT
+    ARRAY(SELECT x FROM UNNEST([1, 1]) AS x) AS same_elems_key,
+    ARRAY(SELECT x FROM UNNEST([3, 4]) AS x) AS disjoint_key
+)
+SELECT
+  MAP_REPLACE(
+    MAP_FROM_ARRAY([([1, 1], 10)]), same_elems_key, 20) AS same_elems_replace,
+  SAFE.MAP_REPLACE(
+    MAP_FROM_ARRAY([([1, 2], 10), ([2, 1], 20)]),
+    disjoint_key,
+    30) AS disjoint_replace,
+  MAP_REPLACE(
+    CAST(NULL AS MAP<ARRAY<INT64>, INT64>), disjoint_key, 30) AS null_map
+FROM t;
+--
+ARRAY<STRUCT<
+        same_elems_replace MAP<ARRAY<INT64>, INT64>,
+        disjoint_replace MAP<ARRAY<INT64>, INT64>,
+        null_map MAP<ARRAY<INT64>, INT64>
+      >>[{{[1, 1]: 20}, NULL, NULL}]
+==
+
+[name=map_replace_lambda_unordered_array_key_deterministic]
+[required_features=MAP_TYPE,GROUP_BY_ARRAY,INLINE_LAMBDA_ARGUMENT,SAFE_FUNCTION_CALL]
+WITH t AS (
+  SELECT
+    ARRAY(SELECT x FROM UNNEST([1, 1]) AS x) AS same_elems_key,
+    ARRAY(SELECT x FROM UNNEST([3, 4]) AS x) AS disjoint_key
+)
+SELECT
+  MAP_REPLACE(
+    MAP_FROM_ARRAY([([1, 1], 10)]),
+    same_elems_key,
+    v -> v + 1) AS same_elems_replace,
+  SAFE.MAP_REPLACE(
+    MAP_FROM_ARRAY([([1, 2], 10), ([2, 1], 20)]),
+    disjoint_key,
+    v -> v + 1) AS disjoint_replace,
+  MAP_REPLACE(
+    CAST(NULL AS MAP<ARRAY<INT64>, INT64>),
+    disjoint_key,
+    v -> v + 1) AS null_map
+FROM t;
+--
+ARRAY<STRUCT<
+        same_elems_replace MAP<ARRAY<INT64>, INT64>,
+        disjoint_replace MAP<ARRAY<INT64>, INT64>,
+        null_map MAP<ARRAY<INT64>, INT64>
+      >>[{{[1, 1]: 11}, NULL, NULL}]
+==
+
+[name=map_delete_unordered_array_key_deterministic]
+[required_features=MAP_TYPE,GROUP_BY_ARRAY]
+WITH t AS (
+  SELECT
+    ARRAY(SELECT x FROM UNNEST([1, 1]) AS x) AS same_elems_key,
+    ARRAY(SELECT x FROM UNNEST([3, 4]) AS x) AS disjoint_key
+)
+SELECT
+  MAP_DELETE(
+    MAP_FROM_ARRAY([([1, 1], 10)]), same_elems_key) AS same_elems_delete,
+  MAP_CARDINALITY(
+    MAP_DELETE(
+      MAP_FROM_ARRAY([([1, 2], 10), ([2, 1], 20)]),
+      disjoint_key)) AS disjoint_delete_card,
+  MAP_CARDINALITY(
+    MAP_DELETE(
+      MAP_FROM_ARRAY([(disjoint_key, 10), (NULL, 20)]),
+      NULL)) AS null_key_delete_card,
+  MAP_DELETE(
+    CAST(NULL AS MAP<ARRAY<INT64>, INT64>), disjoint_key) AS null_map
+FROM t;
+--
+ARRAY<STRUCT<
+        same_elems_delete MAP<ARRAY<INT64>, INT64>,
+        disjoint_delete_card INT64,
+        null_key_delete_card INT64,
+        null_map MAP<ARRAY<INT64>, INT64>
+      >>[{{}, 2, 1, NULL}]
+==
+
+[name=map_braced_constructor_unordered_array_key_deterministic]
+[required_features=MAP_TYPE,MAP_LITERAL,GROUP_BY_ARRAY]
+WITH t AS (
+  SELECT
+    ARRAY(SELECT x FROM UNNEST([1, 1]) AS x) AS same_elems_key,
+    ARRAY(SELECT x FROM UNNEST([3, 4]) AS x) AS disjoint_key
+)
+SELECT
+  MAP_CARDINALITY(MAP { disjoint_key: 10, [1, 2]: 20 }) AS disjoint_card,
+  NULLIFERROR(MAP { same_elems_key: 10, [1, 1]: 20 }) AS dup_same_elems
+FROM t;
+--
+ARRAY<STRUCT<
+        disjoint_card INT64,
+        dup_same_elems MAP<ARRAY<INT64>, INT64>
+      >>[{2, NULL}]
+==
+
+[name=map_braced_constructor_unordered_array_key_nondeterminism]
+[required_features=MAP_TYPE,MAP_LITERAL,GROUP_BY_ARRAY]
+WITH t AS (
+  SELECT ARRAY(SELECT x FROM UNNEST([1, 2]) AS x) AS unordered_key
+)
+SELECT
+  NULLIFERROR(MAP { unordered_key: 10, [1, 2]: 10, [2, 1]: 10 })
+FROM t;
+--
+ARRAY<STRUCT<MAP<ARRAY<INT64>, INT64>>>[{NULL}]
+
+NOTE: Reference implementation reports non-determinism.
+==
+
+[name=map_from_array_unordered_array_key_nondeterminism]
+[required_features=MAP_TYPE,GROUP_BY_ARRAY,SAFE_FUNCTION_CALL]
+WITH t AS (
+  SELECT ARRAY(SELECT x FROM UNNEST([1, 2]) AS x) AS unordered_key
+)
+SELECT
+  SAFE.MAP_FROM_ARRAY([(unordered_key, 10), ([1, 2], 10), ([2, 1], 10)])
+FROM t;
+--
+ARRAY<STRUCT<MAP<ARRAY<INT64>, INT64>>>[{NULL}]
+
+NOTE: Reference implementation reports non-determinism.
+==
+
+[name=map_entries_sorted_unordered_array_key_nondeterminism]
+[required_features=MAP_TYPE,GROUP_BY_ARRAY,ARRAY_ORDERING]
+WITH t AS (
+  SELECT ARRAY(SELECT x FROM UNNEST([1, 5]) AS x) AS unordered_key
+)
+SELECT
+  ARRAY_LENGTH(
+    MAP_ENTRIES_SORTED(MAP_FROM_ARRAY([(unordered_key, 10), ([2, 3], 20)])))
+FROM t;
+--
+ARRAY<STRUCT<INT64>>[{2}]
+
+NOTE: Reference implementation reports non-determinism.
+==
+
+[name=map_values_sorted_by_key_unordered_array_key_nondeterminism]
+[required_features=MAP_TYPE,GROUP_BY_ARRAY,ARRAY_ORDERING]
+WITH t AS (
+  SELECT ARRAY(SELECT x FROM UNNEST([1, 5]) AS x) AS unordered_key
+)
+SELECT
+  MAP_VALUES_SORTED_BY_KEY(MAP_FROM_ARRAY([(unordered_key, 10), ([2, 3], 10)]))
+FROM t;
+--
+ARRAY<STRUCT<ARRAY<>>>[{ARRAY<INT64>[known order:10, 10]}]
+
+NOTE: Reference implementation reports non-determinism.
+==
+
+[name=map_get_unordered_array_key_nondeterminism]
+[required_features=MAP_TYPE,GROUP_BY_ARRAY]
+WITH t AS (
+  SELECT ARRAY(SELECT x FROM UNNEST([1, 2]) AS x) AS unordered_key
+)
+SELECT
+  MAP_GET(MAP_FROM_ARRAY([([1, 2], 10), ([2, 1], 10)]), unordered_key)
+FROM t;
+--
+ARRAY<STRUCT<INT64>>[{10}]
+
+NOTE: Reference implementation reports non-determinism.
+==
+
+[name=map_subscript_unordered_array_key_nondeterminism]
+[required_features=MAP_TYPE,GROUP_BY_ARRAY]
+WITH t AS (
+  SELECT ARRAY(SELECT x FROM UNNEST([1, 2]) AS x) AS unordered_key
+)
+SELECT
+  MAP_FROM_ARRAY([([1, 2], 10), ([2, 1], 10)])[unordered_key]
+FROM t;
+--
+ARRAY<STRUCT<INT64>>[{10}]
+
+NOTE: Reference implementation reports non-determinism.
+==
+
+[name=map_subscript_with_key_unordered_array_key_nondeterminism]
+[required_features=MAP_TYPE,GROUP_BY_ARRAY]
+WITH t AS (
+  SELECT ARRAY(SELECT x FROM UNNEST([1, 2]) AS x) AS unordered_key
+)
+SELECT
+  MAP_FROM_ARRAY([([1, 2], 10), ([2, 1], 10)])[KEY(unordered_key)]
+FROM t;
+--
+ARRAY<STRUCT<INT64>>[{10}]
+
+NOTE: Reference implementation reports non-determinism.
+==
+
+[name=map_subscript_safe_key_unordered_array_key_nondeterminism]
+[required_features=MAP_TYPE,GROUP_BY_ARRAY,SAFE_FUNCTION_CALL]
+WITH t AS (
+  SELECT ARRAY(SELECT x FROM UNNEST([1, 2]) AS x) AS unordered_key
+)
+SELECT
+  MAP_FROM_ARRAY([([1, 2], 10), ([2, 1], 10)])[SAFE_KEY(unordered_key)]
+FROM t;
+--
+ARRAY<STRUCT<INT64>>[{10}]
+
+NOTE: Reference implementation reports non-determinism.
+==
+
+[name=map_contains_key_unordered_array_key_nondeterminism]
+[required_features=MAP_TYPE,GROUP_BY_ARRAY]
+WITH t AS (
+  SELECT ARRAY(SELECT x FROM UNNEST([1, 2]) AS x) AS unordered_key
+)
+SELECT
+  MAP_CONTAINS_KEY(MAP_FROM_ARRAY([([1, 2], 10), ([2, 1], 10)]), unordered_key)
+FROM t;
+--
+ARRAY<STRUCT<BOOL>>[{true}]
+
+NOTE: Reference implementation reports non-determinism.
+==
+
+[name=map_insert_unordered_array_key_nondeterminism]
+[required_features=MAP_TYPE,GROUP_BY_ARRAY,SAFE_FUNCTION_CALL]
+WITH t AS (
+  SELECT ARRAY(SELECT x FROM UNNEST([1, 2]) AS x) AS unordered_key
+)
+SELECT
+  SAFE.MAP_INSERT(
+    MAP_FROM_ARRAY([([1, 2], 10), ([2, 1], 10)]), unordered_key, 20)
+FROM t;
+--
+ARRAY<STRUCT<MAP<ARRAY<INT64>, INT64>>>[{NULL}]
+
+NOTE: Reference implementation reports non-determinism.
+==
+
+[name=map_insert_multiple_unordered_array_keys_nondeterminism]
+[required_features=MAP_TYPE,GROUP_BY_ARRAY,SAFE_FUNCTION_CALL]
+WITH t AS (
+  SELECT ARRAY(SELECT x FROM UNNEST([1, 2]) AS x) AS unordered_key
+)
+SELECT
+  SAFE.MAP_INSERT(
+    MAP_FROM_ARRAY(CAST([] AS ARRAY<STRUCT<ARRAY<INT64>, INT64>>)),
+    unordered_key, 10,
+    [1, 2], 10,
+    [2, 1], 10)
+FROM t;
+--
+ARRAY<STRUCT<MAP<ARRAY<INT64>, INT64>>>[{NULL}]
+
+NOTE: Reference implementation reports non-determinism.
+==
+
+[name=map_insert_or_replace_unordered_array_key_nondeterminism]
+[required_features=MAP_TYPE,GROUP_BY_ARRAY]
+WITH t AS (
+  SELECT ARRAY(SELECT x FROM UNNEST([1, 2]) AS x) AS unordered_key
+)
+SELECT
+  MAP_INSERT_OR_REPLACE(
+    MAP_FROM_ARRAY([([1, 2], 10), ([2, 1], 10)]), unordered_key, 10)
+FROM t;
+--
+ARRAY<STRUCT<MAP<ARRAY<INT64>, INT64>>>[{{[1, 2]: 10, [2, 1]: 10}}]
+
+NOTE: Reference implementation reports non-determinism.
+==
+
+[name=map_replace_kv_unordered_array_key_nondeterminism]
+[required_features=MAP_TYPE,GROUP_BY_ARRAY]
+WITH t AS (
+  SELECT ARRAY(SELECT x FROM UNNEST([1, 2]) AS x) AS unordered_key
+)
+SELECT
+  MAP_REPLACE(MAP_FROM_ARRAY([([1, 2], 10), ([2, 1], 10)]), unordered_key, 10)
+FROM t;
+--
+ARRAY<STRUCT<MAP<ARRAY<INT64>, INT64>>>[{{[1, 2]: 10, [2, 1]: 10}}]
+
+NOTE: Reference implementation reports non-determinism.
+==
+
+[name=map_replace_lambda_unordered_array_key_nondeterminism]
+[required_features=MAP_TYPE,GROUP_BY_ARRAY,INLINE_LAMBDA_ARGUMENT]
+WITH t AS (
+  SELECT ARRAY(SELECT x FROM UNNEST([1, 2]) AS x) AS unordered_key
+)
+SELECT
+  MAP_REPLACE(
+    MAP_FROM_ARRAY([([1, 2], 10), ([2, 1], 10)]), unordered_key, v -> v)
+FROM t;
+--
+ARRAY<STRUCT<MAP<ARRAY<INT64>, INT64>>>[{{[1, 2]: 10, [2, 1]: 10}}]
+
+NOTE: Reference implementation reports non-determinism.
+==
+
+[name=map_delete_unordered_array_key_nondeterminism]
+[required_features=MAP_TYPE,GROUP_BY_ARRAY]
+WITH t AS (
+  SELECT ARRAY(SELECT x FROM UNNEST([1, 2]) AS x) AS unordered_key
+)
+SELECT
+  MAP_CARDINALITY(
+    MAP_DELETE(MAP_FROM_ARRAY([([1, 2], 10), ([2, 1], 10)]), unordered_key))
+FROM t;
+--
+ARRAY<STRUCT<INT64>>[{1}]
+
+NOTE: Reference implementation reports non-determinism.

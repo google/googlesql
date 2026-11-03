@@ -54,13 +54,13 @@
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/time/clock_interface.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "googlesql/base/ret_check.h"
 #include "riegeli/base/maker.h"
 #include "riegeli/bytes/string_reader.h"
 #include "riegeli/csv/csv_reader.h"
-#include "googlesql/base/clock.h"
 
 namespace googlesql {
 
@@ -299,7 +299,7 @@ MakeIteratorFactoryFromCsvFile(const absl::string_view contents,
         /*end_status=*/absl::OkStatus(), /*filter_column_idxs=*/
         absl::flat_hash_set<int>(column_idxs.begin(), column_idxs.end()),
         /*cancel_cb=*/[]() {}, /*set_deadline_cb=*/[](absl::Time t) {},
-        googlesql_base::Clock::RealClock());
+        &absl::Clock::GetRealClock());
   };
   return factory;
 }

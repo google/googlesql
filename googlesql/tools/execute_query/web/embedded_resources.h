@@ -36,8 +36,11 @@ class QueryWebTemplates {
   // Returns the embedded JavaScript partial used for interactive UI elements
   // such as rewrite-steps.
   virtual const std::string& GetInlineJS() const;
+  // Returns the partial with the markup of the query history dialog.
+  virtual const std::string& GetHistoryDialog() const;
 
-  std::string page_template_, style_css_, page_body_, table_, inline_js_;
+  std::string page_template_, style_css_, page_body_, table_, inline_js_,
+      history_dialog_;
 };
 
 }  // namespace googlesql

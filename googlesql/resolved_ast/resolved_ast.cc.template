@@ -30,6 +30,7 @@
 #include "googlesql/resolved_ast/resolved_ast_visitor.h"
 #include "googlesql/common/thread_stack.h"
 #include "absl/flags/flag.h"
+#include "absl/functional/function_ref.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
@@ -1380,6 +1381,28 @@ static std::string ToStringImpl(
   return absl::StrCat("INVALID_LABEL_UPDATE_MODE(", mode, ")");
 }
 
+static std::string ToStringImpl(
+    ResolvedUpdateScan::UpdateScanOutputMode mode) {
+  std::string name =
+      ResolvedUpdateScanEnums::UpdateScanOutputMode_Name(mode);
+  if (!name.empty()) {
+    return name;
+  }
+  ABSL_LOG(ERROR) << "Invalid UpdateScanOutputMode: " << mode;
+  return absl::StrCat("INVALID_UPDATE_SCAN_OUTPUT_MODE(", mode, ")");
+}
+
+static std::string ToStringImpl(
+    ResolvedUpdateScan::UpdateCollisionActionType type) {
+  std::string name =
+      ResolvedUpdateScanEnums::UpdateCollisionActionType_Name(type);
+  if (!name.empty()) {
+    return name;
+  }
+  ABSL_LOG(ERROR) << "Invalid UpdateCollisionActionType: " << type;
+  return absl::StrCat("INVALID_UPDATE_COLLISION_ACTION_TYPE(", type, ")");
+}
+
 static std::string ToStringImpl(ResolvedUpdateFieldItemEnums::Operation operation) {
   std::string name = ResolvedUpdateFieldItemEnums::Operation_Name(operation);
   if (!name.empty()) return name;
@@ -1451,32 +1474,30 @@ absl::Status {{node.name}}::SaveTo(
       file_descriptor_set_map, proto->mutable_{{node.member_name}}_node());
 }
 
-absl::Status {{node.name}}::SaveTo(
+absl::Status {{node.name}}::SaveToInternal(
     Type::FileDescriptorSetMap* file_descriptor_set_map,
-    {{node.proto_type}}* proto) const {
-  GOOGLESQL_RETURN_IF_ERROR(SUPER::SaveTo(
-      file_descriptor_set_map, proto->mutable_parent()));
-  if (proto->parent().ByteSizeLong() == 0) {
-    proto->clear_parent();
-  }
+    absl::FunctionRef<{{node.proto_type}}*()> get_proto) const {
+  GOOGLESQL_RETURN_IF_ERROR(SUPER::SaveToInternal(
+      file_descriptor_set_map,
+      [&get_proto]() { return get_proto()->mutable_parent(); }));
 # for field in node.fields
  # if field.is_node_ptr
   if ({{field.member_name}} != nullptr) {
     GOOGLESQL_RETURN_IF_ERROR({{field.member_name}}->SaveTo(
-        file_descriptor_set_map, proto->mutable_{{field.name}}()));
+        file_descriptor_set_map, get_proto()->mutable_{{field.name}}()));
   }
  # elif field.is_node_vector
   for (const auto& elem : {{field.member_name}}) {
     GOOGLESQL_RETURN_IF_ERROR(elem->SaveTo(
-      file_descriptor_set_map, proto->add_{{field.name}}()));
+      file_descriptor_set_map, get_proto()->add_{{field.name}}()));
   }
  # elif field.is_vector
   for (const auto& elem : {{field.member_name}}) {
    # if field.has_proto_setter
-    proto->add_{{field.name}}(elem);
+    get_proto()->add_{{field.name}}(elem);
    # else
     GOOGLESQL_RETURN_IF_ERROR(SaveToImpl(
-        elem, file_descriptor_set_map, proto->add_{{field.name}}()));
+        elem, file_descriptor_set_map, get_proto()->add_{{field.name}}()));
    # endif
   }
  # else
@@ -1484,11 +1505,11 @@ absl::Status {{node.name}}::SaveTo(
     if (!IsDefaultValue({{field.member_name}})) {
   # endif
   # if field.has_proto_setter
-  proto->set_{{field.name}}({{field.member_name}});
+  get_proto()->set_{{field.name}}({{field.member_name}});
   # else
   GOOGLESQL_RETURN_IF_ERROR(SaveToImpl(
       {{field.member_name}}, file_descriptor_set_map,
-      proto->mutable_{{field.name}}()));
+      get_proto()->mutable_{{field.name}}()));
   # endif
   # if field.not_serialize_if_default
     }

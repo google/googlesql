@@ -2484,7 +2484,7 @@ const std::vector<int>& Value::TypedMeasure::KeyIndices() const {
 absl::StatusOr<VariantValueView> Value::variant_value() const {
   GOOGLESQL_RET_CHECK_EQ(TYPE_VARIANT, metadata_.type_kind()) << "Not a variant type";
   GOOGLESQL_RET_CHECK(!metadata_.is_null()) << "Null value";
-  return VariantValueView(variant_ptr_->inner_value());
+  return VariantValueView::Create(variant_ptr_->inner_value());
 }
 
 namespace internal {
@@ -2507,7 +2507,9 @@ class VariantRefImpl final
   const Value& inner_value() const override { return inner_value_; }
 
   std::string Format() const override {
-    return VariantValueView(inner_value_).DebugString();
+    absl::StatusOr<VariantValueView> view =
+        VariantValueView::Create(inner_value_);
+    return view.ok() ? view->DebugString() : "";
   }
 
   uint64_t physical_byte_size() const override {
@@ -2541,6 +2543,11 @@ absl::StatusOr<Value> Value::Variant(Value inner_value) {
   }
 
   GOOGLESQL_RETURN_IF_ERROR(ValidateTypeForVariant(inner_value.type()));
+  // If `inner_value` is a SQL NULL of any supported type, it is canonicalized
+  // to a SQL NULL of type VARIANT (`Value::NullVariant()`).
+  if (inner_value.is_null()) {
+    return Value::NullVariant();
+  }
 
   return Value(new internal::VariantRefImpl(std::move(inner_value)));
 }

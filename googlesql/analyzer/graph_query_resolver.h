@@ -389,10 +389,12 @@ class GraphTableQueryResolver {
                    const NameScope* external_scope,
                    ResolvedGraphWithNameList<const ResolvedScan> input);
 
-  // Builds a graph element type for <table_kind> and <properties>.
+  // Builds a graph element type for `table_kind`, `element_tables`, and
+  // `properties`.
   absl::StatusOr<const GraphElementType*> MakeGraphElementType(
-      GraphElementTable::Kind table_kind, const PropertySet& properties,
-      TypeFactory* type_factory, bool is_dynamic = false);
+      GraphElementTable::Kind table_kind, const ElementTableSet& element_tables,
+      const PropertySet& properties, TypeFactory* type_factory,
+      bool is_dynamic = false);
 
   // Populates `annotation_map` for `type` (a GraphElementType or GraphPathType)
   // from the graph's property declarations, and propagates column annotations.

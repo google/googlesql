@@ -190,6 +190,67 @@ SELECT VECTOR_DIMENSION_COUNT(CAST(ENCODE_VECTOR(ARRAY<FLOAT>[1.0, 2.0, 3.0]) AS
 ARRAY<STRUCT<INT64>>[{3}]
 ==
 
+###################
+# VECTOR_ENCODING #
+###################
+
+[name=vector_encoding_null]
+SELECT VECTOR_ENCODING(CAST(NULL AS VECTOR));
+--
+ARRAY<STRUCT<STRING>>[{NULL}]
+==
+
+[name=vector_encoding_cast_null_to_annotated_vector]
+[required_features=VECTOR_TYPE,DECLARATIVE_TYPE_FRAMEWORK,PARAMETERIZED_TYPES]
+SELECT VECTOR_ENCODING(CAST(NULL AS VECTOR(2, "FLOAT32")));
+--
+ARRAY<STRUCT<STRING>>[{NULL}]
+==
+
+[name=vector_encoding_basic]
+SELECT VECTOR_ENCODING(ENCODE_VECTOR(ARRAY<FLOAT>[1.0, 2.0, 3.0]));
+--
+ARRAY<STRUCT<STRING>>[{"FLOAT32"}]
+==
+
+[name=vector_encoding_unrecognized_encoding_error]
+SELECT VECTOR_ENCODING(ENCODE_VECTOR(ARRAY<FLOAT>[1.0, 2.0, 3.0], 3, "NOT_AN_ENCODING"));
+--
+ERROR: generic::out_of_range: Unrecognized VECTOR encoding: "NOT_AN_ENCODING"
+==
+
+[name=vector_encoding_unrecognized_encoding_error_safe]
+[required_features=VECTOR_TYPE,DECLARATIVE_TYPE_FRAMEWORK,SAFE_FUNCTION_CALL]
+SELECT VECTOR_ENCODING(SAFE.ENCODE_VECTOR(ARRAY<FLOAT>[1.0, 2.0, 3.0], 3, "NOT_AN_ENCODING"));
+--
+ARRAY<STRUCT<STRING>>[{NULL}]
+==
+
+# A query parameter is declared with a bare type, so it never carries an
+# annotation. VECTOR_ENCODING must therefore recover the encoding from the value
+# itself rather than reading it off the annotation.
+[name=vector_encoding_unannotated_vector_param]
+[parameters=ENCODE_VECTOR(ARRAY<FLOAT>[1.0, 2.0, 3.0]) as vec_param]
+SELECT VECTOR_ENCODING(@vec_param);
+--
+ARRAY<STRUCT<STRING>>[{"FLOAT32"}]
+==
+
+# CAST to an unparameterized VECTOR keeps the value, and so its encoding.
+[name=vector_encoding_cast_to_vector]
+SELECT VECTOR_ENCODING(CAST(ENCODE_VECTOR(ARRAY<FLOAT>[1.0, 2.0, 3.0]) AS VECTOR));
+--
+ARRAY<STRUCT<STRING>>[{"FLOAT32"}]
+==
+
+# Encoding names are case-insensitive, but VECTOR_ENCODING always reports the
+# canonical (uppercase) name.
+[name=vector_encoding_lowercase_encoding_argument]
+SELECT VECTOR_ENCODING(ENCODE_VECTOR(ARRAY<FLOAT>[1.0, 2.0, 3.0], 3, "float32"));
+--
+ARRAY<STRUCT<STRING>>[{"FLOAT32"}]
+==
+
 ###############
 # DOT_PRODUCT #
 ###############

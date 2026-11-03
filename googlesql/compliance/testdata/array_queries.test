@@ -1871,3 +1871,75 @@ ARRAY<STRUCT<a ARRAY<>>>[unknown order:
 ]
 
 NOTE: Reference implementation reports non-determinism.
+==
+
+# When an unordered array contains only equal elements, there is only one
+# possible permutation, so equality, inequality, ORDER BY, and GROUP BY are
+# deterministic.
+[required_features=ARRAY_EQUALITY,ARRAY_ORDERING]
+[name=array_comparisons_on_unordered_arrays_with_equal_elements]
+SELECT a = b AS eq, a < c AS lt
+FROM (
+  SELECT ARRAY(SELECT e FROM UNNEST([1, 1, 1]) AS e) AS a,
+         ARRAY(SELECT e FROM UNNEST([1, 1, 1]) AS e) AS b,
+         ARRAY(SELECT e FROM UNNEST([2, 2, 2]) AS e) AS c
+)
+--
+ARRAY<STRUCT<eq BOOL, lt BOOL>>[{true, true}]
+==
+
+[required_features=ARRAY_ORDERING]
+[name=array_order_by_on_unordered_arrays_with_equal_elements]
+SELECT a
+FROM (
+  SELECT ARRAY(SELECT e FROM UNNEST([2, 2, 2]) AS e) AS a
+  UNION ALL
+  SELECT ARRAY(SELECT e FROM UNNEST([1, 1, 1]) AS e) AS a
+)
+ORDER BY a
+--
+ARRAY<STRUCT<a ARRAY<>>>[known order:
+  {ARRAY<INT64>[unknown order:1, 1, 1]},
+  {ARRAY<INT64>[unknown order:2, 2, 2]}
+]
+==
+
+[required_features=GROUP_BY_ARRAY]
+[name=array_group_by_on_unordered_arrays_with_equal_elements]
+SELECT a
+FROM (
+  SELECT ARRAY(SELECT e FROM UNNEST([1, 1, 1]) AS e) AS a
+  UNION ALL
+  SELECT ARRAY(SELECT e FROM UNNEST([1, 1, 1]) AS e) AS a
+)
+GROUP BY a
+--
+ARRAY<STRUCT<a ARRAY<>>>[{ARRAY<INT64>[unknown order:1, 1, 1]}]
+==
+
+# Collation and INTERVAL values that are SQL equal are treated as
+# deterministically equal for now even though distinguishable, because we don't
+# want to tank all queries with such values as the likelihood of actually using
+# those values and showing up as a difference is low.
+[required_features=ANNOTATION_FRAMEWORK,COLLATION_SUPPORT,ARRAY_EQUALITY,ARRAY_ORDERING]
+[name=array_comparisons_on_unordered_arrays_with_collated_elements]
+SELECT a = b AS eq, a < c AS lt
+FROM (
+  SELECT ARRAY(SELECT COLLATE(e, 'und:ci') FROM UNNEST(['a', 'A']) AS e) AS a,
+         ARRAY(SELECT COLLATE(e, 'und:ci') FROM UNNEST(['A', 'a']) AS e) AS b,
+         ARRAY(SELECT COLLATE(e, 'und:ci') FROM UNNEST(['b', 'B']) AS e) AS c
+)
+--
+ARRAY<STRUCT<eq BOOL, lt BOOL>>[{true, true}]
+==
+
+[required_features=INTERVAL_TYPE,ARRAY_EQUALITY,ARRAY_ORDERING]
+[name=array_comparisons_on_unordered_arrays_with_interval_elements]
+SELECT a = b AS eq, a < c AS lt
+FROM (
+  SELECT ARRAY(SELECT e FROM UNNEST([INTERVAL 1 MONTH, INTERVAL 30 DAY]) AS e) AS a,
+         ARRAY(SELECT e FROM UNNEST([INTERVAL 30 DAY, INTERVAL 1 MONTH]) AS e) AS b,
+         ARRAY(SELECT e FROM UNNEST([INTERVAL 2 MONTH, INTERVAL 60 DAY]) AS e) AS c
+)
+--
+ARRAY<STRUCT<eq BOOL, lt BOOL>>[{true, true}]

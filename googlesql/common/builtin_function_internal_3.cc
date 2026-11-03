@@ -31,6 +31,7 @@
 #include "google/type/timeofday.pb.h"
 #include "googlesql/common/builtin_function_internal.h"
 #include "googlesql/common/errors.h"
+#include "googlesql/common/json_conversion_utils.h"
 #include "googlesql/public/analyzer_options.h"
 #include "googlesql/public/builtin_function.pb.h"
 #include "googlesql/public/builtin_function_options.h"
@@ -1639,26 +1640,6 @@ void GetSubscriptFunctions(TypeFactory* type_factory,
                          absl::bind_front(&NoMatchingSignatureForSubscript,
                                           /*offset_or_ordinal=*/"SAFE_ORDINAL"))
                      .AddRequiredLanguageFeature(FEATURE_SAFE_FUNCTION_CALL));
-}
-
-const Type* /*absl_nullable*/ GetUnsupportedTypeForJsonConversion(
-    const Type* /*absl_nonnull*/ type) {
-  if (type->IsMap()) {
-    return type;
-  }
-
-  if (type->IsTokenList()) {
-    return type;
-  }
-
-  for (const Type* child : type->ComponentTypes()) {
-    const Type* unsupported_type = GetUnsupportedTypeForJsonConversion(child);
-    if (unsupported_type != nullptr) {
-      return unsupported_type;
-    }
-  }
-
-  return nullptr;
 }
 
 namespace {

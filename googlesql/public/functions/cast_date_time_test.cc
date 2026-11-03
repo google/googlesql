@@ -64,8 +64,6 @@ static void ExecuteDateTimeFormatElementParsingTest(
     absl::string_view format_str,
     absl::Span<const DateTimeFormatElement> expected_format_elements,
     std::string error_message) {
-  std::string upper_format_str_temp = absl::AsciiStrToUpper(format_str);
-
   if (error_message.empty()) {
     auto status_or_format_elements = GetDateTimeFormatElements(format_str);
     GOOGLESQL_EXPECT_OK(status_or_format_elements);

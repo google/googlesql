@@ -239,7 +239,7 @@ std::ostream& operator<<(std::ostream& out,
                          const QueryParamsWithResult::FeatureSet& f) {
   std::vector<std::string> features;
   for (const LanguageFeature feature : f) {
-    features.push_back(LanguageFeature_Name(feature));
+    features.emplace_back(LanguageFeature_Name(feature));
   }
   return out << "{" << absl::StrJoin(features, ", ") << "}";
 }

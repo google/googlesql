@@ -37,7 +37,6 @@
 #include <utility>
 #include <vector>
 
-#include "googlesql/base/logging.h"
 #include "googlesql/base/varsetter.h"
 #include "googlesql/analyzer/analytic_function_resolver.h"
 #include "googlesql/analyzer/constant_resolver_helper.h"
@@ -1964,6 +1963,19 @@ absl::Status Resolver::ResolvePipeCall(
   ResolvedTVFArg table_arg;
   table_arg.SetScan(std::move(*current_scan), *current_name_list,
                     /*is_pipe_input_table=*/true);
+  if (call->partition_by() != nullptr || call->order_by() != nullptr) {
+    if (!language().LanguageFeatureEnabled(
+            FEATURE_TABLE_ARGUMENT_PARTITION_AND_ORDER)) {
+      const ASTNode* error_location =
+          call->partition_by() != nullptr
+              ? static_cast<const ASTNode*>(call->partition_by())
+              : static_cast<const ASTNode*>(call->order_by());
+      return MakeSqlErrorAt(error_location)
+             << "PARTITION BY and ORDER BY in pipe CALL are not supported";
+    }
+    table_arg.set_pipe_input_partition_by(call->partition_by());
+    table_arg.set_pipe_input_order_by(call->order_by());
+  }
 
   std::shared_ptr<const NameList> new_name_list;
 
@@ -2908,7 +2920,6 @@ Resolver::ResolveSubpipeline(
 NOINLINE_PREVENT_HUGE_STACK_FRAMES
 static const char* GetTargetKindNameForPipeSetOrDropError(
     const NameTarget& target) {
-  std::string target_kind;
   switch (target.kind()) {
     case NameTarget::RANGE_VARIABLE:
       return "a table alias";
@@ -4670,6 +4681,27 @@ absl::Status Resolver::MakeResolvedOrderByScan(
                                       is_pipe_order_by,
                                       &resolved_order_by_items));
 
+  if (resolved_order_by_items.empty()) {
+    // If there are no order by items (e.g., ORDER BY **COLUMNS([])), we don't
+    // need an OrderByScan. However, we must ensure the scan's column list
+    // matches the expected output column list. If it doesn't, add a ProjectScan
+    // to match the expected columns.
+    //
+    // Note: This causes any hints on the ORDER BY clause with empty column list
+    // (e.g., ORDER @{hint} BY **COLUMNS([])) to be dropped. This is
+    // acceptable because:
+    // 1. Without any columns to order by, no ordering is performed, making
+    //    hints on the ORDER BY clause useless.
+    // 2. Even if a ResolvedOrderByScan were emitted here, SQLBuilder omits the
+    //    ORDER BY clause entirely when the ORDER BY column list is empty, so
+    //    hints would not appear in the reconstructed SQL anyway.
+    if ((*scan)->column_list() != output_column_list) {
+      *scan = MakeResolvedProjectScan(output_column_list, /*expr_list=*/{},
+                                      std::move(*scan));
+    }
+    return absl::OkStatus();
+  }
+
   std::unique_ptr<ResolvedOrderByScan> order_by_scan =
       googlesql::MakeResolvedOrderByScan(output_column_list, std::move(*scan),
                                          std::move(resolved_order_by_items));
@@ -4727,11 +4759,10 @@ absl::Status Resolver::ResolveQueryExpression(
       }
       if (language().LanguageFeatureEnabled(
               FEATURE_TOP_LEVEL_TABLE_STATEMENTS)) {
-        return ResolveTableClause(
-            table_clause, scope,
-            /*resolve_argument_first=*/true,
-            /*read_as_row_type_error_kind=*/"top-level TABLE statements",
-            output, output_name_list);
+        return ResolveTableClause(table_clause, scope,
+                                  /*resolve_argument_first=*/true,
+                                  /*read_as_row_type_error_kind=*/"", output,
+                                  output_name_list);
       } else {
         return MakeSqlErrorAt(query_expr)
                << "TABLE statements are not supported";
@@ -6257,6 +6288,8 @@ absl::Status Resolver::AddNameListToSelectList(
     ColumnReplacements* column_replacements) {
   SelectColumnStateList* select_column_state_list =
       query_resolution_info->select_column_state_list();
+  const size_t orig_num_columns = select_column_state_list->Size();
+
   const ASTExpression* ast_expression = ast_select_column->expression();
   for (const NamedColumn& named_column : name_list->columns()) {
     // Process exclusions first because MakeColumnRef will add columns
@@ -6305,6 +6338,17 @@ absl::Status Resolver::AddNameListToSelectList(
           std::move(column_ref),
           /*dot_star_source_expr_info=*/nullptr);
     }
+  }
+
+  // Detect if the */.* ended up expanding to zero columns after applying
+  // EXCEPT, and treat that as an error.
+  auto expr = ast_select_column->expression();
+  if (orig_num_columns == select_column_state_list->Size()) {
+    GOOGLESQL_RET_CHECK(!column_replacements->excluded_columns.empty());
+    return MakeSqlErrorAt(expr)
+           << "SELECT "
+           << (expr->node_kind() == AST_DOT_STAR_WITH_MODIFIERS ? ".*" : "*")
+           << " expands to zero columns after applying EXCEPT";
   }
 
   return absl::OkStatus();
@@ -6735,22 +6779,11 @@ absl::Status Resolver::ResolveSelectStar(
         &column_replacements));
   }
 
-  SelectColumnStateList* select_column_state_list =
-      query_resolution_info->select_column_state_list();
-  const size_t orig_num_columns = select_column_state_list->Size();
   const CorrelatedColumnsSetList correlated_columns_set_list;
   GOOGLESQL_RETURN_IF_ERROR(AddNameListToSelectList(
       ast_select_column, from_clause_name_list, correlated_columns_set_list,
       /*ignore_excluded_value_table_fields=*/true, query_resolution_info,
       &column_replacements));
-
-  // Detect if the * ended up expanding to zero columns after applying EXCEPT,
-  // and treat that as an error.
-  if (orig_num_columns == select_column_state_list->Size()) {
-    GOOGLESQL_RET_CHECK(!column_replacements.excluded_columns.empty());
-    return MakeSqlErrorAt(ast_select_expr)
-           << "SELECT * expands to zero columns after applying EXCEPT";
-  }
 
   return absl::OkStatus();
 }
@@ -6831,22 +6864,11 @@ absl::Status Resolver::ResolveSelectDotStar(
               &column_replacements));
         }
 
-        SelectColumnStateList* select_column_state_list =
-            query_resolution_info->select_column_state_list();
-        const size_t orig_num_columns = select_column_state_list->Size();
         GOOGLESQL_RETURN_IF_ERROR(AddNameListToSelectList(
             ast_select_column, target.scan_columns(),
             correlated_columns_set_list,
             /*ignore_excluded_value_table_fields=*/false, query_resolution_info,
             &column_replacements));
-
-        // Detect if the .* ended up expanding to zero columns after applying
-        // EXCEPT, and treat that as an error.
-        if (orig_num_columns == select_column_state_list->Size()) {
-          GOOGLESQL_RET_CHECK(!column_replacements.excluded_columns.empty());
-          return MakeSqlErrorAt(ast_dotstar)
-                 << "SELECT .* expands to zero columns after applying EXCEPT";
-        }
 
         return absl::OkStatus();
       }
@@ -7755,44 +7777,66 @@ absl::Status Resolver::ResolveOrderingExprs(
     GOOGLESQL_ASSIGN_OR_RETURN(ResolvedOrderByItemEnums::NullOrderMode null_order,
                      ResolveNullOrderMode(order_by_expression->null_order()));
 
-    // Resolves the ORDER BY expression against the post-GROUP BY scope and
-    // falls back to an equivalent GROUP BY expression if it exists.
-    GOOGLESQL_ASSIGN_OR_RETURN(
-        std::unique_ptr<const ResolvedExpr> resolved_order_expression,
-        ResolveOrderingExprWithGroupByExprEquivalenceFallback(
-            order_by_expression->expression(), expr_resolution_info));
-
-    // If the expression was an integer literal, remember that mapping.
-    if (resolved_order_expression->node_kind() == RESOLVED_LITERAL &&
-        !resolved_order_expression->GetAs<ResolvedLiteral>()
-             ->has_explicit_type()) {
-      const Value& value =
-          resolved_order_expression->GetAs<ResolvedLiteral>()->value();
-      if (value.type_kind() == TYPE_INT64 && !value.is_null()) {
-        if (!allow_ordinals) {
-          return MakeSqlErrorAt(order_by_expression)
-                 << "ORDER BY ordinal is not allowed in " << clause_name;
-        }
-        if (value.int64_value() < 1) {
-          return MakeSqlErrorAt(order_by_expression)
-                 << "ORDER BY column number item is out of range. "
-                 << "Column numbers must be greater than or equal to one. "
-                 << "Found : " << value.int64_value();
-        }
-        const int64_t int_value = value.int64_value() - 1;  // Make it 0-based.
+    const ASTExpression* expr = order_by_expression->expression();
+    if (expr->Is<ASTUnpackExpression>()) {
+      const ASTUnpackExpression* unpack_expr =
+          expr->GetAsOrDie<ASTUnpackExpression>();
+      GOOGLESQL_ASSIGN_OR_RETURN(std::vector<IdString> column_names,
+                       ResolveUnpackExpressionColumnNames(
+                           unpack_expr, expr_resolution_info));
+      for (const IdString& column_name : column_names) {
+        GOOGLESQL_ASSIGN_OR_RETURN(
+            ResolvedColumn column,
+            LookupUnpackColumn(column_name, unpack_expr->expression(),
+                               expr_resolution_info->name_scope));
+        std::unique_ptr<const ResolvedExpr> resolved_column_ref =
+            MakeColumnRef(column);
         order_by_info->emplace_back(
-            order_by_expression, order_by_expression->collate(), int_value,
-            order_by_expression->descending(), null_order);
-      } else {
-        return MakeSqlErrorAt(order_by_expression)
-               << "Cannot ORDER BY literal values";
+            order_by_expression, order_by_expression->collate(),
+            std::move(resolved_column_ref), order_by_expression->descending(),
+            null_order);
       }
-      resolved_order_expression.reset();  // No longer needed.
     } else {
-      order_by_info->emplace_back(
-          order_by_expression, order_by_expression->collate(),
-          std::move(resolved_order_expression),
-          order_by_expression->descending(), null_order);
+      // Resolves the ORDER BY expression against the post-GROUP BY scope and
+      // falls back to an equivalent GROUP BY expression if it exists.
+      GOOGLESQL_ASSIGN_OR_RETURN(
+          std::unique_ptr<const ResolvedExpr> resolved_order_expression,
+          ResolveOrderingExprWithGroupByExprEquivalenceFallback(
+              expr, expr_resolution_info));
+
+      // If the expression was an integer literal, remember that mapping.
+      if (resolved_order_expression->node_kind() == RESOLVED_LITERAL &&
+          !resolved_order_expression->GetAs<ResolvedLiteral>()
+               ->has_explicit_type()) {
+        const Value& value =
+            resolved_order_expression->GetAs<ResolvedLiteral>()->value();
+        if (value.type_kind() == TYPE_INT64 && !value.is_null()) {
+          if (!allow_ordinals) {
+            return MakeSqlErrorAt(order_by_expression)
+                   << "ORDER BY ordinal is not allowed in " << clause_name;
+          }
+          if (value.int64_value() < 1) {
+            return MakeSqlErrorAt(order_by_expression)
+                   << "ORDER BY column number item is out of range. "
+                   << "Column numbers must be greater than or equal to one. "
+                   << "Found : " << value.int64_value();
+          }
+          const int64_t int_value =
+              value.int64_value() - 1;  // Make it 0-based.
+          order_by_info->emplace_back(
+              order_by_expression, order_by_expression->collate(), int_value,
+              order_by_expression->descending(), null_order);
+        } else {
+          return MakeSqlErrorAt(order_by_expression)
+                 << "Cannot ORDER BY literal values";
+        }
+        resolved_order_expression.reset();  // No longer needed.
+      } else {
+        order_by_info->emplace_back(
+            order_by_expression, order_by_expression->collate(),
+            std::move(resolved_order_expression),
+            order_by_expression->descending(), null_order);
+      }
     }
   }
   return absl::OkStatus();
@@ -8275,7 +8319,19 @@ absl::Status Resolver::ResolveGroupByAll(
 // Resolves a list of expressions from the same grouping set, while the grouping
 // set type is specified by the kind argument.
 //
-// For each expression
+// Supports unpack expressions (e.g. **cols) by expanding them to resolved
+// columns when the FEATURE_COLUMN_LIST_SPEC is enabled:
+// - In ROLLUP and CUBE, an unparenthesized unpack expression (e.g.
+//   ROLLUP(**cols)) expands to one grouping set item per column, like
+//   ROLLUP(x, y), while a parenthesized one (e.g. ROLLUP((**cols))) expands to
+//   a single multi-column item, like ROLLUP((x, y)). An empty expansion is
+//   dropped in both cases.
+// - In GROUPING SETS, the unpack expression is part of a single grouping set
+//   (e.g. GROUPING SETS((**cols)) or GROUPING SETS((x, **cols))), and its
+//   columns are added to that set. An empty expansion adds nothing, so
+//   GROUPING SETS((**COLUMNS([]))) is the empty grouping set ().
+//
+// For each expression:
 // 1. If it's a ASTStructConstructorWithParens, then extract all field
 //    expressions from the struct constructor, and resolve each field expression
 //    to grouping set column. This is for the use case of multi-columns, e.g.
@@ -8313,13 +8369,20 @@ absl::Status Resolver::ResolveGroupByAll(
 //    kind: kCube
 //    grouping_set_item_list: [[x, y], [z]]
 // }
+//
+// Same example with Column List Specs could be:
+//   GROUPING SETS(
+//     x,
+//     (**COLUMNS(['y', 'z'])),
+//     ROLLUP(x, y, **COLUMNS([])),
+//     CUBE((x, y), **COLUMNS(['z'])))
+// It would be resolved to the same GroupingSetInfos above.
 absl::StatusOr<GroupingSetInfo> Resolver::ResolveGroupingSetExpressions(
     const absl::Span<const ASTExpression* const> expressions,
     const NameScope* from_clause_scope, GroupingSetKind kind,
     QueryResolutionInfo* query_resolution_info) {
   GroupingSetInfo grouping_set_info = {.kind = kind};
   for (const ASTExpression* expr : expressions) {
-    ResolvedComputedColumnList column_list;
     // The expr is null when it's an empty grouping set. In this case, we simply
     // put the empty column list to grouping set item list and continue, without
     // going through the resolving process.
@@ -8327,6 +8390,50 @@ absl::StatusOr<GroupingSetInfo> Resolver::ResolveGroupingSetExpressions(
       // A empty grouping_set_info will be added to the grouping set list.
       continue;
     }
+
+    if (expr->Is<ASTUnpackExpression>()) {
+      ResolvedComputedColumnList columns;
+      GOOGLESQL_RETURN_IF_ERROR(ResolveGroupingItemExpression(
+          expr, /*ast_alias=*/nullptr, /*ast_grouping_item_order=*/nullptr,
+          from_clause_scope, /*from_grouping_set=*/true, query_resolution_info,
+          &columns));
+      if (expr->parenthesized() && kind != GroupingSetKind::kGroupingSet) {
+        // In ROLLUP and CUBE, a parenthesized unpack expression is a single
+        // multi-column item, e.g. ROLLUP((**COLUMNS(['x', 'y']))) is the same
+        // as ROLLUP((x, y)). When it expands to no columns, it is dropped.
+        // This matches the handling of ASTStructConstructorWithParens below.
+        //
+        // Multi-column ROLLUP items require FEATURE_GROUPING_SETS. Without
+        // it, ROLLUP((x, y)) groups by a STRUCT, which has no unpack
+        // equivalent, so we give an error instead. CUBE needs no such check
+        // since ValidateCube already requires FEATURE_GROUPING_SETS.
+        if (kind == GroupingSetKind::kRollup &&
+            !language().LanguageFeatureEnabled(FEATURE_GROUPING_SETS)) {
+          return MakeSqlErrorAt(expr)
+                 << "Parenthesized ** expression is not supported in ROLLUP";
+        }
+        if (!columns.empty()) {
+          grouping_set_info.grouping_set_item_list.push_back(columns);
+        }
+      } else {
+        // Otherwise, the unpack expression expands to one item per column:
+        // - In ROLLUP and CUBE, each column is its own item, e.g.
+        //   ROLLUP(**COLUMNS(['x', 'y'])) is the same as ROLLUP(x, y).
+        // - In GROUPING SETS, `grouping_set_info` is a single grouping set
+        //   whose items are its individual columns, so both
+        //   GROUPING SETS((**COLUMNS(['x', 'y']))) and
+        //   GROUPING SETS((x, **COLUMNS(['y']))) add the columns to that set.
+        //   An empty expansion adds nothing, leaving e.g.
+        //   GROUPING SETS((**COLUMNS([]))) as the empty grouping set ().
+        for (const auto* column : columns) {
+          ResolvedComputedColumnList column_list;
+          column_list.push_back(column);
+          grouping_set_info.grouping_set_item_list.push_back(column_list);
+        }
+      }
+      continue;
+    }
+
     // Resolve the single-level annoymous struct construtor to a column list,
     // the expression has been validated without nested struct construtors.
     // Only resolve the annoymous struct construtor to a column list when:
@@ -8339,23 +8446,28 @@ absl::StatusOr<GroupingSetInfo> Resolver::ResolveGroupingSetExpressions(
          language().LanguageFeatureEnabled(FEATURE_GROUPING_SETS))) {
       const ASTStructConstructorWithParens* struct_constructor =
           expr->GetAsOrDie<ASTStructConstructorWithParens>();
+      ResolvedComputedColumnList resolved_columns;
       for (const ASTExpression* field_expression :
            struct_constructor->field_expressions()) {
         GOOGLESQL_RET_CHECK(field_expression != nullptr);
         GOOGLESQL_RETURN_IF_ERROR(ResolveGroupingItemExpression(
-            field_expression,
-            /*ast_alias=*/nullptr,
+            field_expression, /*ast_alias=*/nullptr,
             /*ast_grouping_item_order=*/nullptr, from_clause_scope,
-            /*from_grouping_set=*/true, query_resolution_info, &column_list));
+            /*from_grouping_set=*/true, query_resolution_info,
+            &resolved_columns));
+      }
+      if (!resolved_columns.empty() || kind == GroupingSetKind::kGroupingSet) {
+        grouping_set_info.grouping_set_item_list.push_back(resolved_columns);
       }
     } else {
+      ResolvedComputedColumnList column_list;
       GOOGLESQL_RETURN_IF_ERROR(ResolveGroupingItemExpression(
           expr,
           /*ast_alias=*/nullptr,
           /*ast_grouping_item_order=*/nullptr, from_clause_scope,
           /*from_grouping_set=*/true, query_resolution_info, &column_list));
+      grouping_set_info.grouping_set_item_list.push_back(column_list);
     }
-    grouping_set_info.grouping_set_item_list.push_back(column_list);
   }
   return grouping_set_info;
 }
@@ -8364,6 +8476,15 @@ absl::StatusOr<GroupingSetInfo> Resolver::ResolveGroupingSetExpressions(
 // CUBE, validate them accordingly and resolve the list of expressions by
 // ResolveGroupingSetExpressions. If the group by item is a normal expression or
 // column, simply resolve it via ResolveGroupingItemExpression.
+//
+// Supports unpack expressions:
+// - Flat unpack expressions (e.g. GROUP BY **cols) are resolved to multiple
+//   columns.
+// - Unpack expressions in GROUPING SETS:
+//   - Flat unpack (e.g. GROUPING SETS(**cols)) expands to multiple separate
+//     grouping sets: (col1), (col2), ...
+//   - Parenthesized unpack (e.g. GROUPING SETS((**cols))) resolves as a single
+//     grouping set containing all columns: (col1, col2, ...).
 absl::Status Resolver::ResolveGroupByExprs(
     const ASTGroupBy* group_by, const NameScope* from_clause_scope,
     QueryResolutionInfo* query_resolution_info) {
@@ -8396,6 +8517,15 @@ absl::Status Resolver::ResolveGroupByExprs(
                        ResolveGroupingSetExpressions(
                            rollup->expressions(), from_clause_scope,
                            GroupingSetKind::kRollup, query_resolution_info));
+
+      // While the parser does not allow writing `ROLLUP()`,
+      // empty grouping sets can still be created via unpack expressions, e.g.
+      // ROLLUP(**empty_array). So we check for this case here.
+      // Same for CUBE as well below.
+      if (absl::c_all_of(grouping_set_info.grouping_set_item_list,
+                         [](const auto& item) { return item.empty(); })) {
+        return MakeSqlErrorAt(rollup) << "ROLLUP must have at least one column";
+      }
       query_resolution_info->AddGroupingSetList({grouping_set_info});
     } else if (grouping_item->cube() != nullptr) {
       // GROUP BY CUBE
@@ -8410,6 +8540,10 @@ absl::Status Resolver::ResolveGroupByExprs(
                        ResolveGroupingSetExpressions(
                            cube->expressions(), from_clause_scope,
                            GroupingSetKind::kCube, query_resolution_info));
+      if (absl::c_all_of(grouping_set_info.grouping_set_item_list,
+                         [](const auto& item) { return item.empty(); })) {
+        return MakeSqlErrorAt(cube) << "CUBE must have at least one column";
+      }
       query_resolution_info->AddGroupingSetList({grouping_set_info});
     } else if (grouping_item->grouping_set_list() != nullptr) {
       // GROUP BY GROUPING SETS
@@ -8434,6 +8568,12 @@ absl::Status Resolver::ResolveGroupByExprs(
               ResolveGroupingSetExpressions(
                   grouping_set->rollup()->expressions(), from_clause_scope,
                   GroupingSetKind::kRollup, query_resolution_info));
+          if (absl::c_all_of(grouping_set_info.grouping_set_item_list,
+                             [](const auto& item) { return item.empty(); })) {
+            return MakeSqlErrorAt(grouping_set->rollup())
+                   << "ROLLUP must have at least one column";
+          }
+          grouping_set_info_list.push_back(grouping_set_info);
         } else if (grouping_set->cube() != nullptr) {
           // CUBE in GROUP BY GROUPING SETS()
           GOOGLESQL_ASSIGN_OR_RETURN(
@@ -8441,8 +8581,41 @@ absl::Status Resolver::ResolveGroupByExprs(
               ResolveGroupingSetExpressions(
                   grouping_set->cube()->expressions(), from_clause_scope,
                   GroupingSetKind::kCube, query_resolution_info));
+          if (absl::c_all_of(grouping_set_info.grouping_set_item_list,
+                             [](const auto& item) { return item.empty(); })) {
+            return MakeSqlErrorAt(grouping_set->cube())
+                   << "CUBE must have at least one column";
+          }
+          grouping_set_info_list.push_back(grouping_set_info);
+        } else if (grouping_set->expression() != nullptr &&
+                   grouping_set->expression()->Is<ASTUnpackExpression>() &&
+                   !grouping_set->expression()->parenthesized()) {
+          // Flat unpack expression in GROUP BY GROUPING SETS(), e.g.
+          // GROUPING SETS(**cols)
+          //
+          // Unlike ROLLUP and CUBE, there is no need to check for all-empty
+          // grouping set items here. Each unpacked column becomes its own
+          // single-column grouping set, so no empty item can be produced. When
+          // the unpack expands to zero columns, it contributes no grouping
+          // sets, and the check on the empty `grouping_set_info_list` below
+          // catches the case where no grouping set is left at all.
+          ResolvedComputedColumnList columns;
+          GOOGLESQL_RETURN_IF_ERROR(ResolveGroupingItemExpression(
+              grouping_set->expression(), /*ast_alias=*/nullptr,
+              /*ast_grouping_item_order=*/nullptr, from_clause_scope,
+              /*from_grouping_set=*/true, query_resolution_info, &columns));
+          for (const auto* column : columns) {
+            GroupingSetInfo unpack_grouping_set_info = {
+                .kind = GroupingSetKind::kGroupingSet};
+            ResolvedComputedColumnList column_list;
+            column_list.push_back(column);
+            unpack_grouping_set_info.grouping_set_item_list.push_back(
+                column_list);
+            grouping_set_info_list.push_back(unpack_grouping_set_info);
+          }
         } else {
-          // Column list in GROUP BY GROUPING SETS or empty grouping set ()
+          // Parenthesized unpack expression in GROUP BY GROUPING SETS or empty
+          // grouping set ()
           const ASTExpression* expr = grouping_set->expression();
           std::vector<const ASTExpression*> grouping_set_item_expr_list;
           // This is an anonymous struct construtor, we treat it as a grouping
@@ -8466,8 +8639,12 @@ absl::Status Resolver::ResolveGroupByExprs(
               ResolveGroupingSetExpressions(
                   grouping_set_item_expr_list, from_clause_scope,
                   GroupingSetKind::kGroupingSet, query_resolution_info));
+          grouping_set_info_list.push_back(grouping_set_info);
         }
-        grouping_set_info_list.push_back(grouping_set_info);
+      }
+      if (grouping_set_info_list.empty()) {
+        return MakeSqlErrorAt(grouping_set_list)
+               << "GROUPING SETS must have at least one column";
       }
       query_resolution_info->AddGroupingSetList(
           std::move(grouping_set_info_list));
@@ -8523,6 +8700,8 @@ absl::Status Resolver::ResolveGroupByExprs(
   return absl::OkStatus();
 }
 
+// Helper class implementing Resolver::ResolveGroupingItemExpression().
+//
 // Analyze the GROUP BY expression.  Map SELECT list ordinal and
 // alias references to the appropriate SelectColumnState in
 // <query_resolution_info>, and resolve other expressions against
@@ -8549,57 +8728,284 @@ absl::Status Resolver::ResolveGroupByExprs(
 //   ...
 //   group by foo, foo + 1
 //
-// The general logic implemented by this function for each GROUP BY column is:
-// 1) Determine if the GROUP BY expression exactly matches a SELECT list alias
-//    or is an integer literal (representing a SELECT list column ordinal)
-// 2) If either, update the corresponding SelectColumnState
-// 3) If neither, resolve the expression against the <from_clause_scope>
-// 4) Provide an error if grouping by literals, constant expressions, structs,
+// The general logic implemented by this class for each GROUP BY column is:
+// 1) If the expression is an unpack expression (e.g. **cols), resolve it to
+//    column names and recursively resolve each column name as a GROUP BY item.
+//    AS alias is not allowed.
+// 2) Determine if the GROUP BY expression (or unpacked column name) exactly
+//    matches a SELECT list alias or is an integer literal (representing a
+//    SELECT list column ordinal)
+// 3) If either, update the corresponding SelectColumnState
+// 4) If neither, resolve the expression against the <from_clause_scope>
+// 5) Provide an error if grouping by literals, constant expressions, structs,
 //    protos, or arrays.
-// 5) If grouping by a column, update the mapping from pre-GROUP BY column to
+// 6) If grouping by a column, update the mapping from pre-GROUP BY column to
 //    post-GROUP BY column.
-// 6) If grouping by an expression, update the mapping from the pre-GROUP BY
+// 7) If grouping by an expression, update the mapping from the pre-GROUP BY
 //    expression to the post-GROUP BY column.
-// 7) Add a ResolvedComputedColumn for the GROUP BY expression.
-// 8) If the expression is from a grouping set, then add the
+// 8) Add a ResolvedComputedColumn for the GROUP BY expression.
+// 9) If the expression is from a grouping set, then add the
 //    ResolvedComputedColumn to the passed-in GroupingSetItem.
-// 9) For pipe aggregate, record the item in PipeExtraSelectItems so the column
+// 10) For pipe aggregate, record the item in PipeExtraSelectItems so the column
 //    can be added to the output.
-// 10) If adding an implicit order by for this GROUP BY column, add an entry
+// 11) If adding an implicit order by for this GROUP BY column, add an entry
 //     to group_by_order_by_item_info.
+//
+// Resolving a grouping item involves many steps that share the same inputs
+// (the AST nodes, the FROM clause scope, the QueryResolutionInfo being
+// populated, etc.). This class bundles those inputs together so the individual
+// steps can be split into focused private methods without threading a long
+// argument list through each of them. A new instance is created for each
+// grouping item and discarded after `Resolve()` returns.
+class Resolver::GroupingItemResolver {
+ public:
+  GroupingItemResolver(
+      Resolver* resolver, const ASTExpression* ast_group_by_expr,
+      const ASTAlias* ast_alias,
+      const ASTGroupingItemOrder* ast_grouping_item_order,
+      const NameScope* from_clause_scope, bool from_grouping_set,
+      QueryResolutionInfo* query_resolution_info,
+      ResolvedComputedColumnList* column_list,
+      std::optional<IdString> unpacked_column_name = std::nullopt)
+      : resolver_(*resolver),
+        ast_group_by_expr_(ast_group_by_expr),
+        ast_alias_(ast_alias),
+        ast_grouping_item_order_(ast_grouping_item_order),
+        from_clause_scope_(from_clause_scope),
+        from_grouping_set_(from_grouping_set),
+        query_resolution_info_(query_resolution_info),
+        column_list_(column_list),
+        unpacked_column_name_(unpacked_column_name) {}
+
+  GroupingItemResolver(const GroupingItemResolver&) = delete;
+  GroupingItemResolver& operator=(const GroupingItemResolver&) = delete;
+
+  // Resolves the grouping item, following the steps described above.
+  absl::Status Resolve();
+
+ private:
+  // Expands `unpack_expr` (e.g. `**cols`) into column names and resolves each
+  // as a separate grouping item via a nested GroupingItemResolver.
+  absl::Status ResolveUnpackExpression(const ASTUnpackExpression* unpack_expr);
+
+  // Returns the SelectColumnState whose alias matches the grouping item, or
+  // nullptr if there is no match.
+  absl::StatusOr<const SelectColumnState*> TryResolveSelectListAlias() const;
+
+  // Resolves the grouping item into `resolved_expr`. If it is a SELECT-list
+  // ordinal (e.g. `GROUP BY 1`), also sets `group_by_column_state`, otherwise
+  // sets it to nullptr.
+  absl::Status ResolveExprOrOrdinal(
+      std::unique_ptr<const ResolvedExpr>* resolved_expr,
+      const SelectColumnState** group_by_column_state);
+
+  // Returns the alias for the resulting group by column, generating one if
+  // the item is anonymous.
+  absl::StatusOr<IdString> ResolveColumnAlias() const;
+
+  // Returns the existing group by computed column for the SELECT-list column
+  // in `group_by_column_state`. RET_CHECKs that it exists; never returns
+  // nullptr.
+  absl::StatusOr<const ResolvedComputedColumn*>
+  FindExistingSelectComputedColumn(
+      const SelectColumnState* group_by_column_state) const;
+
+  // Returns an existing group by computed column equivalent to
+  // `resolved_expr` (to de-duplicate grouping set expressions), or nullptr if
+  // none is found or de-duplication does not apply.
+  absl::StatusOr<const ResolvedComputedColumn*>
+  FindEquivalentGroupingSetComputedColumn(
+      const ResolvedExpr* resolved_expr) const;
+
+  // Adds an ORDER BY entry for `group_by_column` if the item has ASC/DESC or
+  // the query uses GROUP AND ORDER BY.
+  absl::Status MaybeAddOrderByItem(const ResolvedColumn& group_by_column);
+
+  Resolver& resolver_;
+  const ASTExpression* const ast_group_by_expr_;
+  const ASTAlias* const ast_alias_;
+  const ASTGroupingItemOrder* const ast_grouping_item_order_;
+  const NameScope* const from_clause_scope_;
+  const bool from_grouping_set_;
+  QueryResolutionInfo* const query_resolution_info_;
+  ResolvedComputedColumnList* const column_list_;
+
+  // Set only on the nested resolvers created by ResolveUnpackExpression() for
+  // each column unpacked from `**cols`, since those names have no separate AST
+  // node. In that case `ast_group_by_expr_` is the unpack argument, used for
+  // error locations. nullopt for all top-level grouping items.
+  const std::optional<IdString> unpacked_column_name_;
+};
+
+// See the comment on GroupingItemResolver above for details.
 absl::Status Resolver::ResolveGroupingItemExpression(
     const ASTExpression* ast_group_by_expr, const ASTAlias* ast_alias,
     const ASTGroupingItemOrder* ast_grouping_item_order,
     const NameScope* from_clause_scope, bool from_grouping_set,
     QueryResolutionInfo* query_resolution_info,
     ResolvedComputedColumnList* column_list) {
-  GOOGLESQL_RET_CHECK(ast_group_by_expr != nullptr);
-  if (from_grouping_set) {
-    GOOGLESQL_RET_CHECK(column_list != nullptr);
+  return GroupingItemResolver(this, ast_group_by_expr, ast_alias,
+                              ast_grouping_item_order, from_clause_scope,
+                              from_grouping_set, query_resolution_info,
+                              column_list)
+      .Resolve();
+}
+
+absl::Status Resolver::GroupingItemResolver::Resolve() {
+  GOOGLESQL_RET_CHECK(ast_group_by_expr_ != nullptr);
+  if (from_grouping_set_) {
+    GOOGLESQL_RET_CHECK(column_list_ != nullptr);
   }
 
-  auto no_aggregation =
-      std::make_unique<ExprResolutionInfo>(from_clause_scope, "GROUP BY");
+  if (ast_group_by_expr_->Is<ASTUnpackExpression>()) {
+    // `unpacked_column_name_` is only set on the nested resolvers created by
+    // ResolveUnpackExpression() for each individual column, and those are
+    // constructed with the unpack argument (not the ASTUnpackExpression
+    // itself) as `ast_group_by_expr_`. So reaching here with
+    // `unpacked_column_name_` populated would mean we are about to recursively
+    // unpack an already-unpacked column, which should never happen.
+    GOOGLESQL_RET_CHECK(!unpacked_column_name_.has_value());
+    return ResolveUnpackExpression(
+        ast_group_by_expr_->GetAsOrDie<ASTUnpackExpression>());
+  }
 
-  ABSL_DCHECK_NE(ast_group_by_expr->node_kind(), AST_IDENTIFIER)
+  GOOGLESQL_RET_CHECK_NE(ast_group_by_expr_->node_kind(), AST_IDENTIFIER)
       << "We expect to get PathExpressions, not Identifiers here";
 
+  GOOGLESQL_ASSIGN_OR_RETURN(const SelectColumnState* group_by_column_state,
+                   TryResolveSelectListAlias());
+
+  std::unique_ptr<const ResolvedExpr> resolved_expr;
+  // This means the current group by column is not a select column alias.
+  if (group_by_column_state == nullptr) {
+    GOOGLESQL_RETURN_IF_ERROR(
+        ResolveExprOrOrdinal(&resolved_expr, &group_by_column_state));
+  }
+
+  GOOGLESQL_ASSIGN_OR_RETURN(IdString alias, ResolveColumnAlias());
+
+  ResolvedColumn group_by_column;
+  const ResolvedExpr* pre_group_by_expr = nullptr;
+
+  // This means the current group by column is a select column alias or an
+  // ordinal.
+  if (group_by_column_state != nullptr) {
+    if (group_by_column_state->is_group_by_column) {
+      // We are already grouping by this SELECT list column, so we do not need
+      // to do more unless the query uses GROUPING SETS, in which case we need
+      // to add another entry in the grouping set list for it.
+      if (!from_grouping_set_) {
+        // This early exit seems unreachable, so hasn't been tested.
+        // We don't want by bypass PipeExtraSelectItem tracking below.
+        GOOGLESQL_RET_CHECK(!query_resolution_info_->IsPipeAggregate());
+        return absl::OkStatus();
+      }
+      GOOGLESQL_ASSIGN_OR_RETURN(const ResolvedComputedColumn* existing_computed_column,
+                       FindExistingSelectComputedColumn(group_by_column_state));
+      // Field paths may repeat inside the grouping set list. We have already
+      // resolved this field path, so just add another entry for it.
+      column_list_->push_back(existing_computed_column);
+      return absl::OkStatus();
+    }
+    GOOGLESQL_RETURN_IF_ERROR(resolver_.HandleGroupBySelectColumn(
+        group_by_column_state, query_resolution_info_, &resolved_expr,
+        &pre_group_by_expr, &group_by_column));
+  } else {
+    GOOGLESQL_ASSIGN_OR_RETURN(
+        const ResolvedComputedColumn* existing_computed_column,
+        FindEquivalentGroupingSetComputedColumn(resolved_expr.get()));
+    if (existing_computed_column != nullptr) {
+      column_list_->push_back(existing_computed_column);
+      return absl::OkStatus();
+    }
+
+    GOOGLESQL_RETURN_IF_ERROR(resolver_.HandleGroupByExpression(
+        ast_group_by_expr_, query_resolution_info_, alias, &resolved_expr,
+        &pre_group_by_expr, &group_by_column));
+  }
+  GOOGLESQL_RET_CHECK(resolved_expr != nullptr);
+
+  // Check if the type of the group by column is groupable.
+  std::string no_grouping_type;
+  if (!resolved_expr->type()->SupportsGrouping(resolver_.language(),
+                                               &no_grouping_type)) {
+    return MakeSqlErrorAt(ast_group_by_expr_)
+           << "Grouping by expressions of type " << no_grouping_type
+           << " is not allowed";
+  }
+
+  const ResolvedComputedColumn* computed_column =
+      query_resolution_info_->AddGroupByComputedColumnIfNeeded(
+          group_by_column, std::move(resolved_expr), pre_group_by_expr,
+          /*override_existing_column=*/false);
+  if (from_grouping_set_) {
+    column_list_->push_back(computed_column);
+  }
+
+  // For pipe AGGREGATE, record the GROUP BY item, which will become an
+  // output column in the result table.
+  if (query_resolution_info_->IsPipeAggregate()) {
+    query_resolution_info_->pipe_extra_select_items()->push_back(
+        PipeExtraSelectItem(alias, group_by_column));
+  }
+
+  // Set up the ordering column if we have GROUP AND ORDER BY or the
+  // expression has ASC/DESC attached.
+  GOOGLESQL_RETURN_IF_ERROR(MaybeAddOrderByItem(group_by_column));
+
+  return absl::OkStatus();
+}
+
+absl::Status Resolver::GroupingItemResolver::ResolveUnpackExpression(
+    const ASTUnpackExpression* unpack_expr) {
+  if (ast_alias_ != nullptr) {
+    return MakeSqlErrorAt(ast_alias_)
+           << "AS alias is not allowed on unpack expressions";
+  }
+  ExprResolutionInfo expr_resolution_info(
+      query_resolution_info_, from_clause_scope_,
+      ExprResolutionInfoOptions{.clause_name = "GROUP BY"});
+  GOOGLESQL_ASSIGN_OR_RETURN(std::vector<IdString> column_names,
+                   resolver_.ResolveUnpackExpressionColumnNames(
+                       unpack_expr, &expr_resolution_info));
+  for (const IdString& column_name : column_names) {
+    GOOGLESQL_RETURN_IF_ERROR(
+        GroupingItemResolver(&resolver_, unpack_expr->expression(),
+                             /*ast_alias=*/nullptr, ast_grouping_item_order_,
+                             from_clause_scope_, from_grouping_set_,
+                             query_resolution_info_, column_list_, column_name)
+            .Resolve());
+  }
+  return absl::OkStatus();
+}
+
+absl::StatusOr<const SelectColumnState*>
+Resolver::GroupingItemResolver::TryResolveSelectListAlias() const {
+  auto no_aggregation =
+      std::make_unique<ExprResolutionInfo>(from_clause_scope_, "GROUP BY");
   const SelectColumnState* group_by_column_state = nullptr;
-  // Determine if the GROUP BY expression exactly matches a SELECT list alias.
-  if (ast_group_by_expr->node_kind() == AST_PATH_EXPRESSION
+  // Determine if the GROUP BY expression (or unpacked column name) exactly
+  // matches a SELECT list alias.
+  if ((unpacked_column_name_.has_value() ||
+       ast_group_by_expr_->node_kind() == AST_PATH_EXPRESSION)
       // For pipe AGGREGATE, we bypass this case that matches GROUP BY
       // expressions against SELECT-list aliases.  We don't want aliases
       // of aggregate expressions to be referencable in the GROUP BY.
-      && !query_resolution_info->IsPipeAggregate()) {
+      && !query_resolution_info_->IsPipeAggregate()) {
     const ASTPathExpression* path_expr =
-        ast_group_by_expr->GetAsOrDie<ASTPathExpression>();
-    const IdString alias = path_expr->first_name()->GetAsIdString();
-    GOOGLESQL_RETURN_IF_ERROR(query_resolution_info->select_column_state_list()
+        unpacked_column_name_.has_value()
+            ? nullptr
+            : ast_group_by_expr_->GetAsOrDie<ASTPathExpression>();
+    const IdString alias = unpacked_column_name_.has_value()
+                               ? *unpacked_column_name_
+                               : path_expr->first_name()->GetAsIdString();
+    GOOGLESQL_RETURN_IF_ERROR(query_resolution_info_->select_column_state_list()
                         ->FindAndValidateSelectColumnStateByAlias(
                             /*clause_name=*/"GROUP BY clause",
-                            ast_group_by_expr, alias, no_aggregation.get(),
+                            ast_group_by_expr_, alias, no_aggregation.get(),
                             &group_by_column_state));
-    if (group_by_column_state != nullptr && path_expr->num_names() != 1) {
+    if (group_by_column_state != nullptr && path_expr != nullptr &&
+        path_expr->num_names() != 1) {
       // We resolved the first identifier in a path expression to a SELECT
       // list alias.  There is currently no way that accessing the column's
       // fields in the GROUP BY can possibly be valid.  Consider:
@@ -8617,217 +9023,195 @@ absl::Status Resolver::ResolveGroupingItemExpression(
       //   SELECT foo as foo2
       //   FROM (select as struct 1 as a, 2 as b) foo
       //   GROUP BY foo, foo.a, foo.b;
-      return MakeSqlErrorAt(ast_group_by_expr)
+      return MakeSqlErrorAt(ast_group_by_expr_)
              << "Cannot GROUP BY field references from SELECT list alias "
              << alias;
     }
   }
+  return group_by_column_state;
+}
 
-  std::unique_ptr<const ResolvedExpr> resolved_expr;
-  const ResolvedExpr* pre_group_by_expr = nullptr;
-  // This means the current group by column is not a select column alias.
-  if (group_by_column_state == nullptr) {
-    GOOGLESQL_RETURN_IF_ERROR(ResolveScalarExpr(ast_group_by_expr, from_clause_scope,
-                                      "GROUP BY", &resolved_expr));
+absl::Status Resolver::GroupingItemResolver::ResolveExprOrOrdinal(
+    std::unique_ptr<const ResolvedExpr>* resolved_expr,
+    const SelectColumnState** group_by_column_state) {
+  *group_by_column_state = nullptr;
+  if (unpacked_column_name_.has_value()) {
+    GOOGLESQL_ASSIGN_OR_RETURN(
+        ResolvedColumn source_column,
+        resolver_.LookupUnpackColumn(*unpacked_column_name_, ast_group_by_expr_,
+                                     from_clause_scope_));
+    *resolved_expr = resolver_.MakeColumnRef(source_column);
+  } else {
+    GOOGLESQL_RETURN_IF_ERROR(resolver_.ResolveScalarExpr(
+        ast_group_by_expr_, from_clause_scope_, "GROUP BY", resolved_expr));
 
     // Determine if the GROUP BY expression is an integer literal
     // representing a SELECT list column ordinal.  Look for GROUP BY 1,2,3.
-    if (resolved_expr->node_kind() == RESOLVED_LITERAL &&
-        !resolved_expr->GetAs<ResolvedLiteral>()->has_explicit_type()) {
-      const Value& value = resolved_expr->GetAs<ResolvedLiteral>()->value();
+    if ((*resolved_expr)->node_kind() == RESOLVED_LITERAL &&
+        !(*resolved_expr)->GetAs<ResolvedLiteral>()->has_explicit_type()) {
+      const Value& value = (*resolved_expr)->GetAs<ResolvedLiteral>()->value();
       if (value.type_kind() == TYPE_INT64 && !value.is_null()) {
-        if (query_resolution_info->IsPipeAggregate()) {
-          return MakeSqlErrorAt(ast_group_by_expr)
+        if (query_resolution_info_->IsPipeAggregate()) {
+          return MakeSqlErrorAt(ast_group_by_expr_)
                  << "GROUP BY ordinal not allowed in pipe AGGREGATE";
         }
-        if (query_resolution_info->IsGqlReturn()) {
-          return MakeSqlErrorAt(ast_group_by_expr)
+        if (query_resolution_info_->IsGqlReturn()) {
+          return MakeSqlErrorAt(ast_group_by_expr_)
                  << "GROUP BY ordinal is not allowed in RETURN";
         }
-        if (query_resolution_info->IsGqlWith()) {
-          return MakeSqlErrorAt(ast_group_by_expr)
+        if (query_resolution_info_->IsGqlWith()) {
+          return MakeSqlErrorAt(ast_group_by_expr_)
                  << "GROUP BY ordinal is not allowed in WITH";
         }
-        GOOGLESQL_RETURN_IF_ERROR(query_resolution_info->select_column_state_list()
+        ExprResolutionInfo no_aggregation(from_clause_scope_, "GROUP BY");
+        GOOGLESQL_RETURN_IF_ERROR(query_resolution_info_->select_column_state_list()
                             ->FindAndValidateSelectColumnStateByOrdinal(
                                 /*expr_description=*/"GROUP BY",
-                                ast_group_by_expr, value.int64_value(),
-                                no_aggregation.get(), &group_by_column_state));
+                                ast_group_by_expr_, value.int64_value(),
+                                &no_aggregation, group_by_column_state));
       }
     }
   }
+  return absl::OkStatus();
+}
 
-  IdString alias = GetAliasForExpression(ast_group_by_expr);
-  if (ast_alias != nullptr) {
-    if (!query_resolution_info->IsPipeAggregate()) {
-      return MakeSqlErrorAt(ast_alias) << "GROUP BY does not support aliases";
+absl::StatusOr<IdString> Resolver::GroupingItemResolver::ResolveColumnAlias()
+    const {
+  IdString alias = unpacked_column_name_.has_value()
+                       ? *unpacked_column_name_
+                       : GetAliasForExpression(ast_group_by_expr_);
+  if (ast_alias_ != nullptr) {
+    if (!query_resolution_info_->IsPipeAggregate()) {
+      return MakeSqlErrorAt(ast_alias_) << "GROUP BY does not support aliases";
     }
-    alias = ast_alias->GetAsIdString();
+    alias = ast_alias_->GetAsIdString();
   } else {
     if (alias.empty()) {
       // Fail the query if ROLLUP/CUBE/GROUPING SETS contains anonymous
       // columns in pipe AGGREGATE, as anonymous columns are not querable in the
       // next pipe operator.
-      if (from_grouping_set && query_resolution_info->IsPipeAggregate()) {
-        return MakeSqlErrorAt(ast_group_by_expr)
+      if (from_grouping_set_ && query_resolution_info_->IsPipeAggregate()) {
+        return MakeSqlErrorAt(ast_group_by_expr_)
                << "Anonymous columns are not allowed in grouping sets; "
                << "Consider using the EXTEND operator to pre-compute these "
                   "expressions and assign names, and then reference those "
                   "columns by name here";
       }
-      alias = MakeIdString(absl::StrCat(
+      alias = resolver_.MakeIdString(absl::StrCat(
           "$groupbycol",
-          query_resolution_info->group_by_column_state_list().size() + 1));
+          query_resolution_info_->group_by_column_state_list().size() + 1));
+    }
+  }
+  return alias;
+}
+
+absl::StatusOr<const ResolvedComputedColumn*>
+Resolver::GroupingItemResolver::FindExistingSelectComputedColumn(
+    const SelectColumnState* group_by_column_state) const {
+  const ResolvedComputedColumn* existing_computed_column = nullptr;
+  for (const GroupByColumnState& group_by_column :
+       query_resolution_info_->group_by_column_state_list()) {
+    if (group_by_column_state->resolved_select_column ==
+        group_by_column.computed_column->column()) {
+      existing_computed_column = group_by_column.computed_column.get();
+      break;
     }
   }
 
-  ResolvedColumn group_by_column;
-  // This means the current group by column is a select column alias.
-  if (group_by_column_state != nullptr) {
-    if (group_by_column_state->is_group_by_column) {
-      // We are already grouping by this SELECT list column, so we do not need
-      // to do more unless the query uses GROUPING SETS, in which case we need
-      // to add another entry in the grouping set list for it.
-      if (!from_grouping_set) {
-        // This early exit seems unreachable, so hasn't been tested.
-        // We don't want by bypass PipeExtraSelectItem tracking below.
-        GOOGLESQL_RET_CHECK(!query_resolution_info->IsPipeAggregate());
-        return absl::OkStatus();
-      }
+  GOOGLESQL_RET_CHECK_NE(existing_computed_column, nullptr)
+      << "Expected to find existing group by column matching "
+      << group_by_column_state->resolved_select_column.DebugString();
+  return existing_computed_column;
+}
 
-      const ResolvedComputedColumn* existing_computed_column = nullptr;
-      for (const GroupByColumnState& group_by_column :
-           query_resolution_info->group_by_column_state_list()) {
-        if (group_by_column_state->resolved_select_column ==
-            group_by_column.computed_column->column()) {
-          existing_computed_column = group_by_column.computed_column.get();
-          break;
+absl::StatusOr<const ResolvedComputedColumn*>
+Resolver::GroupingItemResolver::FindEquivalentGroupingSetComputedColumn(
+    const ResolvedExpr* resolved_expr) const {
+  // If the same expression already has a computed column, then reuse the
+  // existing computed column. This is to make sure the group_by_list only has
+  // one expression when multiple duplicated expressions appear in the group
+  // by clause.
+  //
+  // When FEATURE_GROUPING_SETS is enabled, expressions in GROUPING
+  // SETS/ROLLUP/CUBE will be de-duplicated to avoid expression matching
+  // ambigulity.
+  //
+  // When it's a pipe AGGREGATE operator, we throw errors if two expressions
+  // from ROLLUP/CUBE/GROUPING SETS may actually be the same but
+  // IsSameExpressionForGroupBy is unable to tell due to unsupported
+  // expression types in this method. Duplicate expressions cause ambiguity in
+  // the output columns of pipe AGGREGATE, which is a problem since the output
+  // column list is inferred from GROUP BY.
+  bool check_is_same_expressions =
+      from_grouping_set_ &&
+      (resolver_.language().LanguageFeatureEnabled(FEATURE_GROUPING_SETS) ||
+       query_resolution_info_->IsPipeAggregate());
+  if (!check_is_same_expressions) {
+    return nullptr;
+  }
+
+  for (const GroupByColumnState& group_by_column :
+       query_resolution_info_->group_by_column_state_list()) {
+    GOOGLESQL_ASSIGN_OR_RETURN(
+        TestIsSameExpressionForGroupByResult same_expression_result,
+        TestIsSameExpressionForGroupBy(resolved_expr,
+                                       group_by_column.computed_column->expr(),
+                                       resolver_.language()));
+
+    switch (same_expression_result) {
+      case TestIsSameExpressionForGroupByResult::kEqual:
+        // Reuse the resolved expression if it's the same as an existing
+        // expression.
+        return group_by_column.computed_column.get();
+        // Continue if the expression is different.
+      case TestIsSameExpressionForGroupByResult::kNotEqual:
+        break;
+        // Throw errors if we are unable to tell whether they are same in
+        // pipe AGGREGATE. This happens when expressions of the same type
+        // are not handled in TestIsSameExpressionForGroupBy.
+      case TestIsSameExpressionForGroupByResult::kUnknown:
+        if (query_resolution_info_->IsPipeAggregate()) {
+          return MakeSqlErrorAt(ast_group_by_expr_)
+                 << "Unable to check whether multiple grouping set "
+                    "expressions are equivalent, so the output column list "
+                    "cannot be determined; Consider using the EXTEND "
+                    "operator to pre-compute these expressions and assign "
+                    "names, and then reference those columns by name here";
         }
-      }
-
-      GOOGLESQL_RET_CHECK_NE(existing_computed_column, nullptr)
-          << "Expected to find existing group by column matching "
-          << group_by_column_state->resolved_select_column.DebugString();
-      // Field paths may repeat inside the grouping set list. We have already
-      // resolved this field path, so just add another entry for it.
-      column_list->push_back(existing_computed_column);
-      return absl::OkStatus();
+        break;
     }
-    GOOGLESQL_RETURN_IF_ERROR(HandleGroupBySelectColumn(
-        group_by_column_state, query_resolution_info, &resolved_expr,
-        &pre_group_by_expr, &group_by_column));
-  } else {
-    // If the same expression already has a computed column, then reuse the
-    // existing computed column. This is to make sure the group_by_list only has
-    // one expression when multiple duplicated expressions appear in the group
-    // by clause.
-    //
-    // When FEATURE_GROUPING_SETS is enabled, expressions in GROUPING
-    // SETS/ROLLUP/CUBE will be de-duplicated to avoid expression matching
-    // ambigulity.
-    //
-    // When it's a pipe AGGREGATE operator, we throw errors if two expressions
-    // from ROLLUP/CUBE/GROUPING SETS may actually be the same but
-    // IsSameExpressionForGroupBy is unable to tell due to unsupported
-    // expression types in this method. Duplicate expressions cause ambiguity in
-    // the output columns of pipe AGGREGATE, which is a problem since the output
-    // column list is inferred from GROUP BY.
-    bool check_is_same_expressions =
-        language().LanguageFeatureEnabled(FEATURE_GROUPING_SETS) ||
-        query_resolution_info->IsPipeAggregate();
-
-    if (from_grouping_set && check_is_same_expressions) {
-      for (const GroupByColumnState& group_by_column :
-           query_resolution_info->group_by_column_state_list()) {
-        GOOGLESQL_ASSIGN_OR_RETURN(
-            TestIsSameExpressionForGroupByResult same_expression_result,
-            TestIsSameExpressionForGroupBy(
-                resolved_expr.get(), group_by_column.computed_column->expr(),
-                language()));
-
-        switch (same_expression_result) {
-          case TestIsSameExpressionForGroupByResult::kEqual:
-            // Reuse the resolved expression if it's the same as an existing
-            // expression.
-            column_list->push_back(group_by_column.computed_column.get());
-            return absl::OkStatus();
-            // Continue if the expression is different.
-          case TestIsSameExpressionForGroupByResult::kNotEqual:
-            break;
-            // Throw errors if we are unable to tell whether they are same in
-            // pipe AGGREGATE. This happens when expressions of the same type
-            // are not handled in TestIsSameExpressionForGroupBy.
-          case TestIsSameExpressionForGroupByResult::kUnknown:
-            if (query_resolution_info->IsPipeAggregate()) {
-              return MakeSqlErrorAt(ast_group_by_expr)
-                     << "Unable to check whether multiple grouping set "
-                        "expressions are equivalent, so the output column list "
-                        "cannot be determined; Consider using the EXTEND "
-                        "operator to pre-compute these expressions and assign "
-                        "names, and then reference those columns by name here";
-            }
-            break;
-        }
-      }
-    }
-
-    GOOGLESQL_RETURN_IF_ERROR(HandleGroupByExpression(
-        ast_group_by_expr, query_resolution_info, alias, &resolved_expr,
-        &pre_group_by_expr, &group_by_column));
   }
-  GOOGLESQL_RET_CHECK(resolved_expr != nullptr);
+  return nullptr;
+}
 
-  // Check if the type of the group by column is groupable.
-  std::string no_grouping_type;
-  if (!resolved_expr->type()->SupportsGrouping(language(), &no_grouping_type)) {
-    return MakeSqlErrorAt(ast_group_by_expr)
-           << "Grouping by expressions of type " << no_grouping_type
-           << " is not allowed";
-  }
-
-  const ResolvedComputedColumn* computed_column =
-      query_resolution_info->AddGroupByComputedColumnIfNeeded(
-          group_by_column, std::move(resolved_expr), pre_group_by_expr,
-          /*override_existing_column=*/false);
-  if (from_grouping_set) {
-    column_list->push_back(computed_column);
-  }
-
-  // For pipe AGGREGATE, record the GROUP BY item, which will become an
-  // output column in the result table.
-  if (query_resolution_info->IsPipeAggregate()) {
-    query_resolution_info->pipe_extra_select_items()->push_back(
-        PipeExtraSelectItem(alias, group_by_column));
-  }
-
-  // Set up the ordering column if we have GROUP AND ORDER BY or the
-  // expression has ASC/DESC attached.
-  if (ast_grouping_item_order != nullptr ||
-      query_resolution_info->group_by_has_and_order_by()) {
+absl::Status Resolver::GroupingItemResolver::MaybeAddOrderByItem(
+    const ResolvedColumn& group_by_column) {
+  if (ast_grouping_item_order_ != nullptr ||
+      query_resolution_info_->group_by_has_and_order_by()) {
     ResolvedOrderByItemEnums::NullOrderMode null_order =
         ResolvedOrderByItemEnums::ORDER_UNSPECIFIED;
-    if (ast_grouping_item_order != nullptr) {
-      if (!query_resolution_info->group_by_has_and_order_by() &&
-          ast_grouping_item_order->null_order() != nullptr &&
-          ast_grouping_item_order->ordering_spec() ==
+    if (ast_grouping_item_order_ != nullptr) {
+      if (!query_resolution_info_->group_by_has_and_order_by() &&
+          ast_grouping_item_order_->null_order() != nullptr &&
+          ast_grouping_item_order_->ordering_spec() ==
               ASTOrderingExpression::UNSPECIFIED) {
-        return MakeSqlErrorAt(ast_grouping_item_order->null_order())
+        return MakeSqlErrorAt(ast_grouping_item_order_->null_order())
                << "GROUP BY items cannot have NULLS FIRST/LAST without "
                   "ASC/DESC except when using GROUP AND ORDER BY";
       }
-      GOOGLESQL_ASSIGN_OR_RETURN(null_order, ResolveNullOrderMode(
-                                       ast_grouping_item_order->null_order()));
+      GOOGLESQL_ASSIGN_OR_RETURN(null_order, resolver_.ResolveNullOrderMode(
+                                       ast_grouping_item_order_->null_order()));
     }
 
     // We will order by <group_by_column> directly, rather than a
     // ResolvedExpression.  AddColumnsForOrderByExprs (which normally adds
     // these columns) will not be called on this vector.
-    query_resolution_info->mutable_group_by_order_by_item_info()->emplace_back(
-        ast_group_by_expr,
+    query_resolution_info_->mutable_group_by_order_by_item_info()->emplace_back(
+        ast_group_by_expr_,
         /*ast_collate_in=*/nullptr, /*order_column=*/group_by_column,
         /*is_descending=*/
-        (ast_grouping_item_order != nullptr
-             ? ast_grouping_item_order->descending()
+        (ast_grouping_item_order_ != nullptr
+             ? ast_grouping_item_order_->descending()
              : false),
         null_order);
   }
@@ -8925,6 +9309,8 @@ absl::Status Resolver::ResolveSelectColumnSecondPass(
 
     // If we have not already fully resolved this SELECT list expression
     // to a ResolvedColumn, then resolve the SELECT list expression.
+    // We reuse the same logic for resolving columns coming from Unpack
+    // expressions.
 
     // First, look for SELECT list columns that resulted from star
     // expansion.  Star expansion was already performed in
@@ -8936,7 +9322,8 @@ absl::Status Resolver::ResolveSelectColumnSecondPass(
         select_column_state->ast_expr->node_kind() ==
             AST_DOT_STAR_WITH_MODIFIERS ||
         select_column_state->ast_expr->node_kind() == AST_STAR ||
-        select_column_state->ast_expr->node_kind() == AST_STAR_WITH_MODIFIERS) {
+        select_column_state->ast_expr->node_kind() == AST_STAR_WITH_MODIFIERS ||
+        select_column_state->ast_expr->node_kind() == AST_UNPACK_EXPRESSION) {
       // Re-resolve the dot-star's source if needed.
       if (select_column_state->dot_star_source_expr_info != nullptr) {
         if (!select_column_state->dot_star_source_expr_info->is_finalized) {
@@ -8988,7 +9375,12 @@ absl::Status Resolver::ResolveSelectColumnSecondPass(
           const ResolvedExpr* const original_resolved_expr =
               select_column_state->resolved_expr.get();
           GOOGLESQL_RETURN_IF_ERROR(ResolveColumnRefExprToPostGroupingColumn(
-              select_column_state->ast_expr, /*clause_name=*/"Star expansion",
+              select_column_state->ast_expr,
+              /*clause_name=*/
+              select_column_state->ast_expr->node_kind() ==
+                      AST_UNPACK_EXPRESSION
+                  ? "SELECT list"
+                  : "Star expansion",
               query_resolution_info, &select_column_state->resolved_expr));
 
           if (original_resolved_expr !=
@@ -11590,14 +11982,9 @@ Resolver::SetOperationResolver::CreateWrapperScanWithCastsForSetOperationItem(
     const AnnotationMap* src_annotation_map =
         set_operation_item.output_column_list(i).type_annotation_map();
     const ResolvedColumn& column = column_list[i];
-    GOOGLESQL_ASSIGN_OR_RETURN(
-        const AnnotationMap* target_annotation_map,
-        resolver_->function_resolver()->AdjustTypeAnnotationsForCast(
-            set_operation_item.output_column_list(i).type(), column.type(),
-            src_annotation_map));
     annotated_column_list.emplace_back(
         column.column_id(), column.table_name_id(), column.name_id(),
-        AnnotatedType(column.type(), target_annotation_map));
+        AnnotatedType(column.type(), src_annotation_map));
   }
 
   GOOGLESQL_RETURN_IF_ERROR(resolver_->CreateWrapperScanWithCasts(
@@ -12124,6 +12511,10 @@ absl::Status Resolver::CreateWrapperScanWithCasts(
             MakeColumnRef(scan_column);
         TypeModifiers type_mods_for_cast;
         bool set_has_explicit_type = false;
+        GOOGLESQL_ASSIGN_OR_RETURN(target_annotated_type.annotation_map,
+                         function_resolver_->AdjustTypeAnnotationsForCast(
+                             scan_column.type(), target_annotated_type.type,
+                             target_annotated_type.annotation_map));
         if (target_annotated_type.annotation_map != nullptr) {
           GOOGLESQL_ASSIGN_OR_RETURN(type_mods_for_cast,
                            TypeModifiers::MakeTypeModifiers(
@@ -12131,6 +12522,8 @@ absl::Status Resolver::CreateWrapperScanWithCasts(
           set_has_explicit_type =
               !type_mods_for_cast.type_parameters().IsEmpty();
         }
+        // TODO: Clean up scan-aware literal folding and explicit type
+        // modifier handling so this can use CoerceExprToType().
         GOOGLESQL_RETURN_IF_ERROR(function_resolver_->AddCastOrConvertLiteral(
             column_ast_location, target_annotated_type.type, /*format=*/nullptr,
             /*time_zone=*/nullptr, std::move(type_mods_for_cast), scan->get(),
@@ -12364,11 +12757,12 @@ absl::StatusOr<bool> Resolver::ShouldResolveAsArrayScan(
     const ASTTablePathExpression* table_ref, const NameScope* scope) {
   // Return true if it has UNNEST, or it is a path with at least two
   // identifiers where the first comes from <scope>.
-  // Single-word identifiers are always resolved as table names.
+  // Single-word identifiers and STRING literals are always resolved as tables.
   if (table_ref->unnest_expr() != nullptr) {
     return true;
   }
-  if (table_ref->path_expr()->num_names() <= 1) {
+  if (table_ref->path_expr() == nullptr ||
+      table_ref->path_expr()->num_names() <= 1) {
     return false;
   }
   return IsPathExpressionStartingFromScope(*(table_ref->path_expr()), *scope);
@@ -12954,209 +13348,250 @@ absl::Status Resolver::ResolvePivotClause(
 absl::Status Resolver::ResolveUnpivotOutputValueColumns(
     const ASTExpressionList* ast_unpivot_expr_list,
     std::vector<ResolvedColumn>* unpivot_value_columns,
-    const std::vector<AnnotatedType>& value_column_types,
+    absl::Span<const AnnotatedType> value_column_types,
     const NameScope* scope) {
+  auto query_resolution_info = std::make_unique<QueryResolutionInfo>(this);
+  auto expr_resolution_info = std::make_unique<ExprResolutionInfo>(
+      query_resolution_info.get(), scope,
+      ExprResolutionInfoOptions{
+          .allows_aggregation = false,
+          .allows_analytic = false,
+          .use_post_grouping_columns = false,
+          .clause_name = "value column list",
+      });
+
   int column_index = 0;
-  if (value_column_types.size() !=
-      ast_unpivot_expr_list->expression_list().size()) {
+
+  // Creates the output value column at `column_index`. Columns beyond
+  // `value_column_types` are only counted; the count mismatch is reported once
+  // after the loop.
+  auto add_column = [&](IdString column_name) {
+    if (column_index < value_column_types.size()) {
+      unpivot_value_columns->emplace_back(AllocateColumnId(),
+                                          /*table_name=*/kUnpivotColumnId,
+                                          column_name,
+                                          value_column_types[column_index]);
+    }
+    column_index++;
+  };
+
+  for (const ASTExpression* unpivot_column_expr :
+       ast_unpivot_expr_list->expression_list()) {
+    if (unpivot_column_expr->Is<ASTUnpackExpression>()) {
+      GOOGLESQL_ASSIGN_OR_RETURN(
+          std::vector<IdString> column_names,
+          ResolveUnpackExpressionColumnNames(
+              unpivot_column_expr->GetAsOrDie<ASTUnpackExpression>(),
+              expr_resolution_info.get()));
+      for (const IdString& col_name : column_names) {
+        add_column(col_name);
+      }
+    } else {
+      GOOGLESQL_RETURN_IF_ERROR(CheckExpressionIsUnparenthesizedPathExpression(
+          unpivot_column_expr, " in UNPIVOT value column list"));
+      auto unpivot_column =
+          unpivot_column_expr->GetAsOrDie<ASTPathExpression>();
+      if (unpivot_column->num_names() > 1) {
+        return MakeSqlErrorAt(unpivot_column)
+               << "Only names of the new columns are accepted as value columns "
+                  "in UNPIVOT. Qualified names are not allowed";
+      }
+      add_column(unpivot_column->first_name()->GetAsIdString());
+    }
+  }
+
+  if (unpivot_value_columns->empty()) {
+    return MakeSqlErrorAt(ast_unpivot_expr_list)
+           << "Empty column list in UNPIVOT";
+  }
+  if (column_index != value_column_types.size()) {
     return MakeSqlErrorAt(ast_unpivot_expr_list)
            << "The number of output value columns does not match the "
               "number of columns in each column group of the "
               "UNPIVOT IN clause";
   }
-  for (const ASTExpression* unpivot_column_expr :
-       ast_unpivot_expr_list->expression_list()) {
-    GOOGLESQL_RETURN_IF_ERROR(CheckExpressionIsUnparenthesizedPathExpression(
-        unpivot_column_expr, " in UNPIVOT value column list"));
-    auto unpivot_column = unpivot_column_expr->GetAsOrDie<ASTPathExpression>();
-    if (unpivot_column->num_names() > 1) {
-      return MakeSqlErrorAt(unpivot_column)
-             << "Only names of the new columns are accepted as value columns "
-                "in UNPIVOT. Qualified names are not allowed";
-    }
-    IdString column_name = unpivot_column->first_name()->GetAsIdString();
-    ResolvedColumn unpivot_resolved_column(
-        AllocateColumnId(), /*table_name=*/kUnpivotColumnId, column_name,
-        value_column_types.at(column_index));
-    column_index++;
-    unpivot_value_columns->push_back(unpivot_resolved_column);
-  }
   return absl::OkStatus();
 }
 
-static std::string GetAnnontationString(const AnnotationMap* annotation_map) {
+namespace {
+
+// A single column in an UNPIVOT IN clause column group.
+struct UnpivotColumn {
+  // UnpivotInClauseBuilder::AddColumn() only accepts columns from the UNPIVOT
+  // input scan and rejects correlated references. So the column can never be
+  // correlated.
+  ResolvedColumn column;
+  IdString name;
+};
+
+std::string GetAnnotationString(const AnnotationMap* annotation_map) {
   if (annotation_map == nullptr) {
     return "null";
   }
   return annotation_map->DebugString();
 }
 
-absl::Status Resolver::ResolveUnpivotInClause(
-    const ASTUnpivotInItemList* ast_unpivot_expr_list,
-    std::vector<std::unique_ptr<const ResolvedUnpivotArg>>* resolved_in_items,
-    const std::vector<ResolvedColumn>* input_scan_columns,
-    absl::flat_hash_set<ResolvedColumn>* in_clause_input_columns,
-    std::vector<AnnotatedType>* value_column_types, const Type** label_type,
-    std::vector<std::unique_ptr<const ResolvedLiteral>>* resolved_label_list,
-    const ASTUnpivotClause* ast_unpivot_clause, const NameScope* scope) {
-  auto query_resolution_info = std::make_unique<QueryResolutionInfo>(this);
-  auto info = std::make_unique<ExprResolutionInfo>(
-      query_resolution_info.get(), scope,
-      ExprResolutionInfoOptions{
-          .allows_aggregation = false,
-          .allows_analytic = false,
-          .use_post_grouping_columns = false,
-          .clause_name = "IN clause",
-      });
+// Incrementally builds the result of resolving an UNPIVOT IN clause.
+//
+// The IN clause is a list of column groups, e.g. `IN ((a, b) AS 'x', (c, d))`.
+// Callers add the columns of a group one by one with AddColumn(), then close
+// the group with FinishGroup(). Once all groups are added, Build() returns the
+// accumulated ResolvedUnpivotInClause.
+//
+// The first column group is used to determine the size and order of datatypes
+// of the column groups in IN clause.
+class UnpivotInClauseBuilder {
+ public:
+  UnpivotInClauseBuilder(const LanguageOptions& language_options,
+                         absl::Span<const ResolvedColumn> input_scan_columns)
+      : language_options_(language_options),
+        input_columns_(input_scan_columns.begin(), input_scan_columns.end()) {}
 
-  absl::flat_hash_set<ResolvedColumn> input_columns;
-  input_columns.insert(input_scan_columns->begin(), input_scan_columns->end());
-  absl::flat_hash_set<ResolvedColumn> input_columns_seen;
-  TypeKind label_type_kind = TYPE_UNKNOWN;
-  // The first column group is used to determine the size and order of datatypes
-  // of the column groups in IN clause.
-  bool is_first_column_group = true;
-  for (const ASTUnpivotInItem* in_column_list :
-       ast_unpivot_expr_list->in_items()) {
-    const ASTExpressionList* unpivot_columns =
-        in_column_list->unpivot_columns();
-    absl::Span<const ASTExpression* const> expression_list =
-        unpivot_columns->expression_list();
+  // Validates a single column `in_column` referenced in an UNPIVOT IN clause
+  // column group and adds it to the current column group.
+  //
+  // Specifically, this validates:
+  // - No collation: Collation annotations on the column are not supported.
+  // - Data type and annotations match: For subsequent column groups, the
+  //   column's data type and type annotations match those of the corresponding
+  //   column in the first column group.
+  // - Input table scope: The column belongs to the unpivot input table
+  //   (correlated column references are not allowed).
+  // - No duplicates: The column has not already appeared in the UNPIVOT IN
+  //   clause.
+  absl::Status AddColumn(const ResolvedColumn& in_column,
+                         IdString in_column_name, const ASTNode* ast_location);
 
-    // IN clause contains nested columns, i.e. groups of columns inside a list,
-    // Example .. FOR .. IN( (a , b) , ( c , d ) ).
-    // in_column_group will contain the columns lists resolved from inner groups
-    // and the resulting list will be pushed onto the resolved_in_items vector,
-    // in the same order as they appear in the IN clause.
-    std::vector<std::unique_ptr<const ResolvedColumnRef>> in_column_group;
-    in_column_group.reserve(expression_list.size());
+  // Finalizes processing of the current UNPIVOT IN clause column group after
+  // all its columns have been added via AddColumn, and starts a new empty
+  // column group.
+  //
+  // Specifically, this:
+  // - Validates non-empty: Ensures the column group is not empty.
+  // - Validates column count: For subsequent column groups, ensures the number
+  //   of columns matches the first column group.
+  // - Extracts label: Determines the label for the column group (either an
+  //   explicit alias or an auto-generated string label).
+  // - Validates label type: Ensures the label data type matches that of
+  //   previous column groups.
+  // - Creates a ResolvedUnpivotArg from the column group, adds it and the
+  //   resolved label literal to the result.
+  absl::Status FinishGroup(const ASTNode* error_location,
+                           const ASTUnpivotInItem* in_column_list);
 
-    if (!is_first_column_group &&
-        value_column_types->size() != expression_list.size()) {
-      return MakeSqlErrorAt(unpivot_columns)
-             << "All column groups in UNPIVOT IN clause must have the same "
-                "number of columns";
-    }
-    int column_index = 0;
-    for (const ASTExpression* in_column_expr : expression_list) {
-      GOOGLESQL_RETURN_IF_ERROR(CheckExpressionIsUnparenthesizedPathExpression(
-          in_column_expr, " in UNPIVOT IN clause"));
-      // Get resolved column for column in the IN clause.
-      std::unique_ptr<const ResolvedExpr> resolved_expr_out;
-      GOOGLESQL_RETURN_IF_ERROR(
-          ResolveExpr(in_column_expr, info.get(), &resolved_expr_out));
-      std::unique_ptr<const ResolvedColumnRef> in_column_ref;
-      if (resolved_expr_out->node_kind() != RESOLVED_COLUMN_REF) {
-        return MakeSqlErrorAt(in_column_expr)
-               << "UNPIVOT IN clause cannot have expressions, only column "
-                  "names are allowed";
-      }
-      in_column_ref.reset(
-          resolved_expr_out.release()->GetAs<ResolvedColumnRef>());
-      AnnotatedType annotated_type = in_column_ref->annotated_type();
-      if (CollationAnnotation::ExistsIn(annotated_type.annotation_map)) {
-        if (!language().LanguageFeatureEnabled(FEATURE_COLLATION_SUPPORT)) {
-          GOOGLESQL_RET_CHECK_FAIL() << "Collation annotation is unexpected";
-        }
-        // TODO: Support annotations in UNPIVOT under a flag.
-        return MakeSqlErrorAt(in_column_expr)
-               << "Collation "
-               << annotated_type.annotation_map->DebugString(
-                      CollationAnnotation::GetId())
-               << " in UNPIVOT IN clause is not supported";
-      }
-      const Type* datatype = in_column_ref->type();
-      // The first column group is used to determine the datatype order and
-      // number of columns for all other column groups.
-      if (is_first_column_group) {
-        value_column_types->push_back(in_column_ref->annotated_type());
-      } else if (!datatype->Equals(value_column_types->at(column_index).type)) {
-        GOOGLESQL_RET_CHECK_LT(column_index, value_column_types->size());
-        return MakeSqlErrorAt(in_column_expr)
-               << "The datatype of column does not match other datatypes "
-                  "in the IN clause. Expected "
-               << value_column_types->at(column_index)
-                      .type->TypeName(product_mode())
-               << ", Found " << datatype->TypeName(product_mode());
-      } else if (!AnnotationMap::Equals(
-                     in_column_ref->type_annotation_map(),
-                     value_column_types->at(column_index).annotation_map)) {
-        GOOGLESQL_RET_CHECK_LT(column_index, value_column_types->size());
-        return MakeSqlErrorAt(in_column_expr)
-               << "The annotations of column do not match others "
-                  "in the IN clause. Expected "
-               << GetAnnontationString(
-                      value_column_types->at(column_index).annotation_map)
-               << ", Found "
-               << GetAnnontationString(in_column_ref->type_annotation_map());
-      }
-      column_index++;
-      if (!input_columns.contains(in_column_ref->column())) {
-        return MakeSqlErrorAt(in_column_expr)
-               << "Correlated column references in UNPIVOT IN clause is not "
-                  "allowed";
-      }
-      if (input_columns_seen.contains(in_column_ref->column())) {
-        // TODO: For queries where same input table column is
-        // mapped to different columns in the unpivot input subquery, we might
-        // want to allow those columns in the UNPIVOT IN clause.
-        // Example, SELECT * FROM (SELECT x as a, x as b
-        //            FROM t) UNPIVOT (y for z IN ( a , b ));
-        return MakeSqlErrorAt(in_column_expr)
-               << "Column names in UNPIVOT IN clause cannot be repeated";
-      }
-      input_columns_seen.insert(in_column_ref->column());
-      in_clause_input_columns->insert(in_column_ref->column());
-      in_column_group.push_back(std::move(in_column_ref));
-    }
-    std::unique_ptr<const ResolvedUnpivotArg> col_set =
-        MakeResolvedUnpivotArg(std::move(in_column_group));
-    resolved_in_items->push_back(std::move(col_set));
+  // Returns the accumulated result. Must be called after the last
+  // FinishGroup(); fails if any columns were added since then. The builder
+  // must not be used afterwards.
+  absl::StatusOr<ResolvedUnpivotInClause> Build(
+      const ASTUnpivotInItemList* ast_unpivot_expr_list) &&;
 
-    // Each column group can have an explicitly provided alias (after AS).
-    // If the alias is not provided, a string label is auto-generated by
-    // concatenating column names from the column group. The datatypes of all
-    // labels must be the same and hence they must all be provided in the case
-    // of non-string(integer) labels.
-    GOOGLESQL_ASSIGN_OR_RETURN(Value label,
-                     GetLabelForUnpivotInColumnList(in_column_list));
-    if (label_type_kind == TYPE_UNKNOWN) {
-      label_type_kind = label.type_kind();
-    } else if (label_type_kind != label.type_kind()) {
-      return MakeSqlErrorAt(in_column_list)
-             << "All UNPIVOT labels must be the same type; when non-string "
-                "labels are present then all labels must be explicitly "
-                "provided";
-    }
-    resolved_label_list->push_back(MakeResolvedLiteralWithoutLocation(label));
-    is_first_column_group = false;
+ private:
+  bool is_first_column_group() const {
+    return result_.resolved_in_items.empty();
   }
-  *label_type = types::TypeFromSimpleTypeKind(label_type_kind);
+
+  const LanguageOptions& language_options_;
+  const absl::flat_hash_set<ResolvedColumn> input_columns_;
+
+  // The column group currently being populated by AddColumn().
+  std::vector<UnpivotColumn> current_column_group_;
+
+  // The type kind of the labels seen so far, used to check that all labels
+  // have the same type. Storing only the kind (rather than the full Type) is
+  // sufficient because labels are restricted to string and integer literals
+  // (see GetLabelForUnpivotInColumnList), which only yield the simple types
+  // STRING, INT64 or UINT64. These carry no type parameters or annotations, so
+  // the kind identifies the type completely and Build() reconstructs the Type
+  // with types::TypeFromSimpleTypeKind().
+  TypeKind label_type_kind_ = TYPE_UNKNOWN;
+
+  ResolvedUnpivotInClause result_;
+};
+
+absl::Status UnpivotInClauseBuilder::AddColumn(const ResolvedColumn& in_column,
+                                               IdString in_column_name,
+                                               const ASTNode* ast_location) {
+  size_t column_index = current_column_group_.size();
+  AnnotatedType annotated_type = in_column.annotated_type();
+  if (annotated_type.annotation_map != nullptr &&
+      CollationAnnotation::ExistsIn(annotated_type.annotation_map)) {
+    if (!language_options_.LanguageFeatureEnabled(FEATURE_COLLATION_SUPPORT)) {
+      GOOGLESQL_RET_CHECK_FAIL() << "Collation annotation is unexpected";
+    }
+    // TODO: Support annotations in UNPIVOT under a flag.
+    return MakeSqlErrorAt(ast_location)
+           << "Collation "
+           << annotated_type.annotation_map->DebugString(
+                  CollationAnnotation::GetId())
+           << " in UNPIVOT IN clause is not supported";
+  }
+
+  std::vector<AnnotatedType>& value_column_types = result_.value_column_types;
+
+  // The first column group is used to determine the datatype order and
+  // number of columns for all other column groups. If this group has more
+  // columns than the first one, the checks below are skipped and the
+  // size mismatch is reported by FinishGroup().
+  if (is_first_column_group()) {
+    value_column_types.push_back(annotated_type);
+  } else if (column_index < value_column_types.size()) {
+    const AnnotatedType& expected_type = value_column_types.at(column_index);
+    if (!annotated_type.type->Equals(expected_type.type)) {
+      ProductMode product_mode = language_options_.product_mode();
+      return MakeSqlErrorAt(ast_location)
+             << "The datatype of column does not match other datatypes "
+                "in the IN clause. Expected "
+             << expected_type.type->TypeName(product_mode) << ", Found "
+             << annotated_type.type->TypeName(product_mode);
+    }
+    if (!AnnotationMap::Equals(annotated_type.annotation_map,
+                               expected_type.annotation_map)) {
+      // TODO Do not leak annotation map debug string in error messages.
+      return MakeSqlErrorAt(ast_location)
+             << "The annotations of column do not match others "
+                "in the IN clause. Expected "
+             << GetAnnotationString(expected_type.annotation_map) << ", Found "
+             << GetAnnotationString(annotated_type.annotation_map);
+    }
+  }
+
+  if (!input_columns_.contains(in_column)) {
+    return MakeSqlErrorAt(ast_location)
+           << "Correlated column references in UNPIVOT IN clause are not "
+              "allowed";
+  }
+  if (result_.in_clause_input_columns.contains(in_column)) {
+    // TODO: For queries where same input table column is
+    // mapped to different columns in the unpivot input subquery, we might
+    // want to allow those columns in the UNPIVOT IN clause.
+    // Example, SELECT * FROM (SELECT x as a, x as b
+    //            FROM t) UNPIVOT (y for z IN ( a , b ));
+    return MakeSqlErrorAt(ast_location)
+           << "Column names in UNPIVOT IN clause cannot be repeated";
+  }
+  result_.in_clause_input_columns.insert(in_column);
+  current_column_group_.push_back(
+      {.column = in_column, .name = in_column_name});
+
   return absl::OkStatus();
 }
 
-absl::StatusOr<Value> Resolver::GetLabelForUnpivotInColumnList(
-    const ASTUnpivotInItem* in_column_list) {
+// Gets either the explicitly provided label or an auto-generated string label
+// for an UNPIVOT IN item.
+//
+// If an alias is explicitly provided in `in_column_list` (after AS), returns
+// that label (string or integer). Otherwise, auto-generates a string label by
+// concatenating the names of the columns in `in_column_group` (separated by
+// '_').
+absl::StatusOr<Value> GetLabelForUnpivotInColumnList(
+    const ASTUnpivotInItem* in_column_list,
+    absl::Span<const UnpivotColumn> in_column_group) {
   if (in_column_list->alias() == nullptr ||
       in_column_list->alias()->label() == nullptr) {
-    const ASTExpressionList* unpivot_columns =
-        in_column_list->unpivot_columns();
-    absl::Span<const ASTExpression* const> expression_list =
-        unpivot_columns->expression_list();
-
-    std::string column_group_label = "";
-    for (const ASTExpression* in_column_expr : expression_list) {
-      GOOGLESQL_RETURN_IF_ERROR(CheckExpressionIsUnparenthesizedPathExpression(
-          in_column_expr, " in UNPIVOT IN clause"));
-      auto in_col = in_column_expr->GetAsOrDie<ASTPathExpression>();
-      if (column_group_label.empty()) {
-        column_group_label = in_col->last_name()->GetAsString();
-      } else {
-        absl::StrAppend(&column_group_label, "_",
-                        in_col->last_name()->GetAsString());
-      }
-    }
-    return Value::String(column_group_label);
+    return Value::String(absl::StrJoin(
+        in_column_group, "_", [](std::string* out, const UnpivotColumn& col) {
+          IdStringFormatter(out, col.name);
+        }));
   }
 
   if (in_column_list->alias()->label()->node_kind() == AST_STRING_LITERAL) {
@@ -13182,6 +13617,157 @@ absl::StatusOr<Value> Resolver::GetLabelForUnpivotInColumnList(
          << "UNPIVOT column labels must be string or integer";
 }
 
+absl::Status UnpivotInClauseBuilder::FinishGroup(
+    const ASTNode* error_location, const ASTUnpivotInItem* in_column_list) {
+  if (current_column_group_.empty()) {
+    return MakeSqlErrorAt(error_location) << "Empty column list in UNPIVOT";
+  }
+
+  if (!is_first_column_group() &&
+      result_.value_column_types.size() != current_column_group_.size()) {
+    return MakeSqlErrorAt(error_location)
+           << "All column groups in UNPIVOT IN clause must have the same "
+              "number of columns";
+  }
+
+  std::vector<UnpivotColumn> current_column_group =
+      std::move(current_column_group_);
+  current_column_group_.clear();
+
+  // Each column group can have an explicitly provided alias (after AS).
+  // If the alias is not provided, a string label is auto-generated by
+  // concatenating column names from the column group. The datatypes of all
+  // labels must be the same and hence they must all be provided in the case
+  // of non-string(integer) labels.
+  GOOGLESQL_ASSIGN_OR_RETURN(Value label, GetLabelForUnpivotInColumnList(
+                                    in_column_list, current_column_group));
+
+  std::vector<std::unique_ptr<const ResolvedColumnRef>> column_refs;
+  column_refs.reserve(current_column_group.size());
+  for (const UnpivotColumn& col : current_column_group) {
+    column_refs.push_back(
+        MakeResolvedColumnRef(col.column, /*is_correlated=*/false));
+  }
+  result_.resolved_in_items.push_back(
+      MakeResolvedUnpivotArg(std::move(column_refs)));
+  if (label_type_kind_ == TYPE_UNKNOWN) {
+    label_type_kind_ = label.type_kind();
+  } else if (label_type_kind_ != label.type_kind()) {
+    return MakeSqlErrorAt(in_column_list)
+           << "All UNPIVOT labels must be the same type; when non-string "
+              "labels are present then all labels must be explicitly "
+              "provided";
+  }
+  result_.resolved_label_list.push_back(MakeResolvedLiteral(label));
+  return absl::OkStatus();
+}
+
+absl::StatusOr<ResolvedUnpivotInClause> UnpivotInClauseBuilder::Build(
+    const ASTUnpivotInItemList* ast_unpivot_expr_list) && {
+  GOOGLESQL_RET_CHECK(current_column_group_.empty())
+      << "Build() called with " << current_column_group_.size()
+      << " column(s) added since the last FinishGroup()";
+
+  if (is_first_column_group()) {
+    return MakeSqlErrorAt(ast_unpivot_expr_list)
+           << "Empty column list in UNPIVOT";
+  }
+
+  result_.label_type = types::TypeFromSimpleTypeKind(label_type_kind_);
+  return std::move(result_);
+}
+
+}  // namespace
+
+absl::StatusOr<ResolvedUnpivotInClause> Resolver::ResolveUnpivotInClause(
+    const ASTUnpivotInItemList* ast_unpivot_expr_list,
+    absl::Span<const ResolvedColumn> input_scan_columns,
+    const NameScope* scope) {
+  auto query_resolution_info = std::make_unique<QueryResolutionInfo>(this);
+  auto info = std::make_unique<ExprResolutionInfo>(
+      query_resolution_info.get(), scope,
+      ExprResolutionInfoOptions{
+          .allows_aggregation = false,
+          .allows_analytic = false,
+          .use_post_grouping_columns = false,
+          .clause_name = "IN clause",
+      });
+
+  UnpivotInClauseBuilder builder(language(), input_scan_columns);
+
+  for (const ASTUnpivotInItem* in_column_list :
+       ast_unpivot_expr_list->in_items()) {
+    const ASTExpressionList* unpivot_columns =
+        in_column_list->unpivot_columns();
+    absl::Span<const ASTExpression* const> expression_list =
+        unpivot_columns->expression_list();
+
+    // Each ASTUnpivotInItem is either parenthesized, e.g. `(a, b)` or
+    // `(**cols)`, or an unparenthesized single expression, e.g. `a` or
+    // `**cols`. `IN (**x, y, z)` is parsed as three separate unparenthesized
+    // items. Parentheses determine how columns are grouped:
+    // - Unparenthesized: each column is its own 1-column group with its own
+    //   label. In particular, `IN (**cols)` is equivalent to `IN (c1, c2,
+    //   ...)`.
+    // - Parenthesized: all columns form a single N-column group with one label,
+    //   so `IN ((**cols))` is equivalent to `IN ((c1, c2, ...))`.
+    const bool one_group_per_column = !unpivot_columns->parenthesized();
+    GOOGLESQL_RET_CHECK(unpivot_columns->parenthesized() || expression_list.size() == 1)
+        << "Unparenthesized UNPIVOT IN item must have exactly one expression";
+
+    for (const ASTExpression* in_column_expr : expression_list) {
+      if (in_column_expr->Is<ASTUnpackExpression>()) {
+        const ASTUnpackExpression* unpack_expr =
+            in_column_expr->GetAsOrDie<ASTUnpackExpression>();
+        GOOGLESQL_ASSIGN_OR_RETURN(
+            std::vector<IdString> column_names,
+            ResolveUnpackExpressionColumnNames(unpack_expr, info.get()));
+        for (const IdString& col_name : column_names) {
+          GOOGLESQL_ASSIGN_OR_RETURN(ResolvedColumn resolved_column,
+                           LookupUnpackColumn(col_name, in_column_expr, scope));
+          // Unlike the path-expression branch below, which goes through
+          // ResolveExpr and MakeColumnRef, LookupUnpackColumn does not record
+          // column access. Record it here so column pruning keeps the column
+          // in the input scan.
+          RecordColumnAccess(resolved_column);
+          GOOGLESQL_RETURN_IF_ERROR(
+              builder.AddColumn(resolved_column, col_name, in_column_expr));
+          if (one_group_per_column) {
+            GOOGLESQL_RETURN_IF_ERROR(
+                builder.FinishGroup(unpivot_columns, in_column_list));
+          }
+        }
+      } else {
+        GOOGLESQL_RETURN_IF_ERROR(CheckExpressionIsUnparenthesizedPathExpression(
+            in_column_expr, " in UNPIVOT IN clause"));
+        std::unique_ptr<const ResolvedExpr> resolved_expr_out;
+        GOOGLESQL_RETURN_IF_ERROR(
+            ResolveExpr(in_column_expr, info.get(), &resolved_expr_out));
+        if (resolved_expr_out->node_kind() != RESOLVED_COLUMN_REF) {
+          return MakeSqlErrorAt(in_column_expr)
+                 << "UNPIVOT IN clause cannot have expressions, only column "
+                    "names are allowed";
+        }
+        GOOGLESQL_RETURN_IF_ERROR(builder.AddColumn(
+            resolved_expr_out->GetAs<ResolvedColumnRef>()->column(),
+            in_column_expr->GetAsOrDie<ASTPathExpression>()
+                ->last_name()
+                ->GetAsIdString(),
+            in_column_expr));
+        if (one_group_per_column) {
+          GOOGLESQL_RETURN_IF_ERROR(builder.FinishGroup(unpivot_columns, in_column_list));
+        }
+      }
+    }
+
+    if (!one_group_per_column) {
+      GOOGLESQL_RETURN_IF_ERROR(builder.FinishGroup(unpivot_columns, in_column_list));
+    }
+  }
+
+  return std::move(builder).Build(ast_unpivot_expr_list);
+}
+
 absl::Status Resolver::ResolveUnpivotClause(
     std::unique_ptr<const ResolvedScan> input_scan,
     std::shared_ptr<const NameList> input_name_list,
@@ -13201,22 +13787,17 @@ absl::Status Resolver::ResolveUnpivotClause(
       std::make_unique<NameScope>(previous_scope, input_name_list);
 
   // Resolve IN columns.
-  std::vector<std::unique_ptr<const ResolvedUnpivotArg>> resolved_in_items;
-  absl::flat_hash_set<ResolvedColumn> in_clause_input_columns;
-  std::vector<AnnotatedType> value_column_types;
-  std::vector<std::unique_ptr<const ResolvedLiteral>> resolved_label_list;
-  const Type* label_type = nullptr;
-  GOOGLESQL_RETURN_IF_ERROR(ResolveUnpivotInClause(
-      ast_unpivot_clause->unpivot_in_items(), &resolved_in_items,
-      &input_scan->column_list(), &in_clause_input_columns, &value_column_types,
-      &label_type, &resolved_label_list, ast_unpivot_clause,
-      unpivot_scope.get()));
+  GOOGLESQL_ASSIGN_OR_RETURN(
+      ResolvedUnpivotInClause in_clause,
+      ResolveUnpivotInClause(ast_unpivot_clause->unpivot_in_items(),
+                             input_scan->column_list(), unpivot_scope.get()));
 
   // Resolve unpivot output value columns.
   std::vector<ResolvedColumn> unpivot_value_columns;
   GOOGLESQL_RETURN_IF_ERROR(ResolveUnpivotOutputValueColumns(
       ast_unpivot_clause->unpivot_output_value_columns(),
-      &unpivot_value_columns, value_column_types, unpivot_scope.get()));
+      &unpivot_value_columns, in_clause.value_column_types,
+      unpivot_scope.get()));
 
   // Resolve unpivot output name column.
   if (ast_unpivot_clause->unpivot_output_name_column()->num_names() > 1) {
@@ -13229,7 +13810,7 @@ absl::Status Resolver::ResolveUnpivotClause(
                              ->GetAsIdString();
   ResolvedColumn unpivot_label_column(
       AllocateColumnId(), /*table_name=*/kUnpivotColumnId, column_name,
-      AnnotatedType(label_type, /*annotation_map=*/nullptr));
+      AnnotatedType(in_clause.label_type, /*annotation_map=*/nullptr));
 
   // Create a list of output columns. It would contain:
   // Input columns that are not present in the IN clause, in the order as they
@@ -13244,7 +13825,7 @@ absl::Status Resolver::ResolveUnpivotClause(
   for (int i = 0; i < input_name_list->num_columns(); ++i) {
     const NamedColumn& named_col = input_name_list->column(i);
     const ResolvedColumn& col = named_col.column();
-    if (!in_clause_input_columns.contains(col)) {
+    if (!in_clause.in_clause_input_columns.contains(col)) {
       ResolvedColumn output_col(AllocateColumnId(),
                                 /*table_name=*/kUnpivotColumnId,
                                 named_col.name(), col.annotated_type());
@@ -13285,7 +13866,8 @@ absl::Status Resolver::ResolveUnpivotClause(
   *output = MakeResolvedUnpivotScan(
       output_column_list, std::move(input_scan),
       std::move(unpivot_value_columns), std::move(unpivot_label_column),
-      std::move(resolved_label_list), std::move(resolved_in_items),
+      std::move(in_clause.resolved_label_list),
+      std::move(in_clause.resolved_in_items),
       std::move(projected_input_column_list), include_nulls);
   return absl::OkStatus();
 }
@@ -13908,19 +14490,37 @@ absl::Status Resolver::ResolveMatchRecognizeClause(
   const ASTPartitionBy* ast_partition_by =
       ast_match_recognize_clause->partition_by();
   if (ast_partition_by != nullptr) {
-    for (int i = 0; i < resolved_partitioning_columns.size(); ++i) {
-      // TODO: the AS syntax would make this explicit, and we should use that
-      // alias, and mark the column as explicit.
-      IdString alias =
-          GetAliasForExpression(ast_partition_by->partitioning_expressions(i));
-      if (alias.empty()) {
-        alias = MakeIdString(absl::StrCat("$partition_by_col", (i + 1)));
+    int resolved_col_idx = 0;
+    for (const ASTExpression* expr :
+         ast_partition_by->partitioning_expressions()) {
+      if (expr->Is<ASTUnpackExpression>()) {
+        const ASTUnpackExpression* unpack_expr =
+            expr->GetAsOrDie<ASTUnpackExpression>();
+        GOOGLESQL_ASSIGN_OR_RETURN(
+            std::vector<IdString> column_names,
+            input_query_resolution_info->analytic_resolver()
+                ->GetUnpackColumnNames(unpack_expr, ast_partition_by));
+        for (const IdString& name : column_names) {
+          GOOGLESQL_RET_CHECK_LT(resolved_col_idx, resolved_partitioning_columns.size());
+          GOOGLESQL_RETURN_IF_ERROR(out_name_list->AddColumn(
+              name, resolved_partitioning_columns[resolved_col_idx++],
+              /*is_explicit=*/false));
+        }
+      } else {
+        GOOGLESQL_RET_CHECK_LT(resolved_col_idx, resolved_partitioning_columns.size());
+        // TODO: the AS syntax would make this explicit, and we should use that
+        // alias, and mark the column as explicit.
+        IdString alias = GetAliasForExpression(expr);
+        if (alias.empty()) {
+          alias = MakeIdString(
+              absl::StrCat("$partition_by_col", (resolved_col_idx + 1)));
+        }
+        GOOGLESQL_RETURN_IF_ERROR(out_name_list->AddColumn(
+            alias, resolved_partitioning_columns[resolved_col_idx++],
+            /*is_explicit=*/false));
       }
-
-      GOOGLESQL_RETURN_IF_ERROR(out_name_list->AddColumn(alias,
-                                               resolved_partitioning_columns[i],
-                                               /*is_explicit=*/false));
     }
+    GOOGLESQL_RET_CHECK_EQ(resolved_col_idx, resolved_partitioning_columns.size());
   }
 
   // Collect all the pattern variable names from the DEFINE clause.
@@ -14591,18 +15191,27 @@ absl::Status Resolver::ResolveTablePathExpression(
     std::shared_ptr<const NameList>* output_name_list) {
   RETURN_ERROR_IF_OUT_OF_STACK_SPACE();
 
-  const ASTForSystemTime* for_system_time = table_ref->for_system_time();
-  if (for_system_time != nullptr &&
+  const ASTForVersionClause* for_version_clause =
+      table_ref->for_version_clause();
+  if (for_version_clause != nullptr &&
       !language().LanguageFeatureEnabled(FEATURE_FOR_SYSTEM_TIME_AS_OF)) {
-    return MakeSqlErrorAt(for_system_time)
+    return MakeSqlErrorAt(for_version_clause)
            << "FOR SYSTEM_TIME AS OF is not supported";
+  }
+
+  if (const ASTStringLiteral* string_literal = table_ref->string_literal();
+      string_literal != nullptr) {
+    // TODO: b/568351814 - Add a language feature and resolve through
+    // Catalog::FindTableFromString.
+    return MakeSqlErrorAt(string_literal)
+           << "String literal table references are not supported";
   }
 
   GOOGLESQL_ASSIGN_OR_RETURN(bool resolve_as_array_scan,
                    ShouldResolveAsArrayScan(table_ref, local_scope));
   if (resolve_as_array_scan) {
-    if (for_system_time != nullptr) {
-      return MakeSqlErrorAt(for_system_time)
+    if (for_version_clause != nullptr) {
+      return MakeSqlErrorAt(for_version_clause)
              << "FOR SYSTEM_TIME AS OF is not allowed with array scans";
     }
     if (!table_ref->postfix_operators().empty()) {
@@ -14653,10 +15262,11 @@ absl::Status Resolver::ResolveTablePathExpression(
   std::shared_ptr<const NameList> name_list;
   std::unique_ptr<const ResolvedScan> this_scan;
   if (named_subquery_map_.contains(path_expr->ToIdStringVector())) {
-    if (for_system_time != nullptr) {
-      return MakeSqlErrorAt(for_system_time) << "FOR SYSTEM_TIME AS OF cannot "
-                                                "be used with tables defined "
-                                                "in WITH clause";
+    if (for_version_clause != nullptr) {
+      return MakeSqlErrorAt(for_version_clause)
+             << "FOR SYSTEM_TIME AS OF cannot "
+                "be used with tables defined "
+                "in WITH clause";
     }
     GOOGLESQL_RETURN_IF_ERROR(ResolveNamedSubqueryRef(path_expr, table_ref->hint(),
                                             &this_scan, &name_list));
@@ -14675,8 +15285,8 @@ absl::Status Resolver::ResolveTablePathExpression(
              function_argument_info_ != nullptr &&
              function_argument_info_->FindTableArg(
                  path_expr->first_name()->GetAsIdString()) != nullptr) {
-    if (for_system_time != nullptr) {
-      return MakeSqlErrorAt(for_system_time)
+    if (for_version_clause != nullptr) {
+      return MakeSqlErrorAt(for_version_clause)
              << "FOR SYSTEM_TIME AS OF cannot be used with TABLE parameter "
              << path_expr->first_name()->GetAsIdString() << " to FUNCTION";
     }
@@ -14701,7 +15311,7 @@ absl::Status Resolver::ResolveTablePathExpression(
 
     GOOGLESQL_RETURN_IF_ERROR(ResolvePathExpressionAsTableScan(
         path_expr, alias, has_explicit_alias, alias_location, table_ref->hint(),
-        for_system_time, local_scope,
+        for_version_clause, local_scope,
         /*read_as_row_type_error_kind=*/"", remaining_names, &table_scan,
         &name_list,
         /*output_column_name_list=*/nullptr,
@@ -14728,8 +15338,8 @@ absl::Status Resolver::ResolveTablePathExpression(
   for (const auto* op : table_ref->postfix_operators()) {
     switch (op->node_kind()) {
       case AST_PIVOT_CLAUSE:
-        if (for_system_time != nullptr) {
-          GOOGLESQL_RET_CHECK_EQ(for_system_time, nullptr)
+        if (for_version_clause != nullptr) {
+          GOOGLESQL_RET_CHECK_EQ(for_version_clause, nullptr)
               << "Parser should not allow PIVOT and FOR SYSTEM TIME AS OF to "
                  "coexist";
         }
@@ -14739,7 +15349,7 @@ absl::Status Resolver::ResolveTablePathExpression(
             &this_scan, &name_list));
         break;
       case AST_UNPIVOT_CLAUSE:
-        GOOGLESQL_RET_CHECK_EQ(for_system_time, nullptr)
+        GOOGLESQL_RET_CHECK_EQ(for_version_clause, nullptr)
             << "Parser should not allow UNPIVOT and FOR SYSTEM TIME AS OF to "
                "coexist";
         GOOGLESQL_RETURN_IF_ERROR(ResolveUnpivotClause(
@@ -15513,7 +16123,7 @@ absl::Status Resolver::ResolveJoinRhs(
     const ASTTablePathExpression* table_ref =
         join->rhs()->GetAsOrDie<ASTTablePathExpression>();
     const ASTPathExpression* rhs_path_expr = table_ref->path_expr();
-    rhs_is_unnest_expr = rhs_path_expr == nullptr;
+    rhs_is_unnest_expr = table_ref->unnest_expr() != nullptr;
     bool rhs_is_dotted_path_expr =
         rhs_path_expr != nullptr && rhs_path_expr->num_names() > 1;
     if (rhs_is_dotted_path_expr) {
@@ -15527,7 +16137,7 @@ absl::Status Resolver::ResolveJoinRhs(
 
     if (rhs_is_unnest_expr) {
       error_label = "UNNEST expression";
-    } else {
+    } else if (rhs_path_expr != nullptr) {
       error_label = rhs_path_expr->ToIdentifierPathString();
     }
 
@@ -15544,8 +16154,8 @@ absl::Status Resolver::ResolveJoinRhs(
         return MakeSqlErrorAt(join->rhs())
                << "Array scan is not allowed with FULL JOIN: " << error_label;
       }
-      if (table_ref->for_system_time() != nullptr) {
-        return MakeSqlErrorAt(table_ref->for_system_time())
+      if (table_ref->for_version_clause() != nullptr) {
+        return MakeSqlErrorAt(table_ref->for_version_clause())
                << "FOR SYSTEM TIME is not allowed with array scan";
       }
     }
@@ -15652,8 +16262,8 @@ absl::Status Resolver::ResolveJoinRhs(
                     "JOIN: "
                  << error_label;
       }
-      if (table_ref->for_system_time() != nullptr) {
-        return MakeSqlErrorAt(table_ref->for_system_time())
+      if (table_ref->for_version_clause() != nullptr) {
+        return MakeSqlErrorAt(table_ref->for_version_clause())
                << "FOR SYSTEM TIME is not allowed with correlated array "
                   "reference";
       }
@@ -16660,7 +17270,7 @@ class RecursiveRefScanCollector : public ResolvedASTVisitor {
 
 }  // namespace
 
-absl::Status Resolver::MatchTVFSignature(
+absl::StatusOr<bool> Resolver::MatchTVFSignature(
     const ASTTVF* /*absl_nonnull*/ ast_tvf,
     const TableValuedFunction* /*absl_nonnull*/ tvf_catalog_entry,
     int signature_idx, const NameScope* /*absl_nonnull*/ external_scope,
@@ -16670,9 +17280,11 @@ absl::Status Resolver::MatchTVFSignature(
     std::vector<const ASTNode*>& arg_locations,
     std::vector<ResolvedTVFArg>& resolved_tvf_args,
     std::vector<NamedArgumentInfo>& named_arguments,
-    SignatureMatchResult& signature_match_result) {
+    SignatureMatchResult& signature_match_result,
+    absl::Status& mismatch_status) {
   const FunctionSignature& function_signature =
       *tvf_catalog_entry->GetSignature(signature_idx);
+  signature_match_result.set_allow_mismatch_message(true);
 
   // Look for an INPUT TABLE argument.  If present, it will get the pipe
   // input table.
@@ -16729,6 +17341,21 @@ absl::Status Resolver::MatchTVFSignature(
   // follow any optional arguments.
   if (pipe_input_arg != nullptr && !has_input_table_arg) {
     if (pipe_input_arg->IsScan()) {
+      auto record_pipe_call_mismatch = [&](const ASTNode* error_node,
+                                           absl::string_view error_message,
+                                           bool suggest_input_table = false) {
+        const std::string input_table_suggestion =
+            suggest_input_table ? MaybeSuggestUsingInputTable() : "";
+        signature_match_result.set_mismatch_message(
+            absl::StrCat(error_message, input_table_suggestion));
+        mismatch_status =
+            MakeSqlErrorAt(error_node)
+            << error_message << "; Supported signature: "
+            << tvf_catalog_entry->GetSupportedSignaturesUserFacingText(
+                   language(), /*print_template_and_name_details=*/true)
+            << input_table_suggestion;
+        return false;
+      };
       // Make sure the signature has enough table arguments as positional
       // arguments at the front to support these initial table args.
       for (int sig_idx = 0; sig_idx < function_signature.arguments().size();
@@ -16737,13 +17364,12 @@ absl::Status Resolver::MatchTVFSignature(
             function_signature.argument(sig_idx);
         if (arg_type.IsRelation()) {
           if (arg_type.options().named_argument_kind() == kNamedOnly) {
-            return MakeSqlErrorAt(ast_tvf)
-                   << "Table-valued function cannot be called with pipe CALL "
-                      "syntax because its first table-typed argument is a "
-                      "named-only argument; Supported signature: "
-                   << tvf_catalog_entry->GetSupportedSignaturesUserFacingText(
-                          language(), /*print_template_and_name_details=*/true)
-                   << MaybeSuggestUsingInputTable();
+            return record_pipe_call_mismatch(
+                ast_tvf,
+                "Table-valued function cannot be called with pipe CALL syntax "
+                "because its first table-typed argument is a named-only "
+                "argument",
+                /*suggest_input_table=*/true);
           }
           // Found the signature argument to use.
           pipe_input_arg_idx_in_sig = sig_idx;
@@ -16751,12 +17377,10 @@ absl::Status Resolver::MatchTVFSignature(
         }
       }
       if (pipe_input_arg_idx_in_sig < 0) {
-        return MakeSqlErrorAt(ast_tvf)
-               << "Table-valued function cannot be called with pipe CALL "
-                  "syntax because its signature does not include a table-typed "
-                  "argument; Supported signature: "
-               << tvf_catalog_entry->GetSupportedSignaturesUserFacingText(
-                      language(), /*print_template_and_name_details=*/true);
+        return record_pipe_call_mismatch(
+            ast_tvf,
+            "Table-valued function cannot be called with pipe CALL syntax "
+            "because its signature does not include a table-typed argument");
       }
       // If any optional arguments occur before the table argument, that makes
       // signature matching more complicated because we can't just insert the
@@ -16767,13 +17391,12 @@ absl::Status Resolver::MatchTVFSignature(
         const FunctionArgumentType& arg_type =
             function_signature.argument(sig_idx);
         if (arg_type.optional()) {
-          return MakeSqlErrorAt(ast_tvf)
-                 << "Table-valued function cannot be called with pipe CALL "
-                    "syntax because it has an optional argument before its "
-                    "first table-typed argument; Supported signature: "
-                 << tvf_catalog_entry->GetSupportedSignaturesUserFacingText(
-                        language(), /*print_template_and_name_details=*/true)
-                 << MaybeSuggestUsingInputTable();
+          return record_pipe_call_mismatch(
+              ast_tvf,
+              "Table-valued function cannot be called with pipe CALL syntax "
+              "because it has an optional argument before its first "
+              "table-typed argument",
+              /*suggest_input_table=*/true);
         }
         // It shouldn't be possible that there's a named-only argument before
         // the table argument since we checked that the table argument is
@@ -16784,22 +17407,21 @@ absl::Status Resolver::MatchTVFSignature(
       // The CALL doesn't work if it doesn't have enough arguments to
       // fill in all arguments that precede the pipe input argument.
       if (num_ast_args < pipe_input_arg_idx_in_sig) {
-        return MakeSqlErrorAt(ast_tvf)
-               << "Table-valued function call in pipe CALL requires at least "
-               << pipe_input_arg_idx_in_sig << " positional argument"
-               << (pipe_input_arg_idx_in_sig == 1 ? "" : "s")
-               << " because its first table argument is in position "
-               << (pipe_input_arg_idx_in_sig + 1) << ", but the call has "
-               << (num_ast_args == 0
-                       ? "no arguments"
-                       : (num_ast_args == 1
-                              ? "only 1 argument"
-                              : absl::StrCat("only ", num_ast_args,
-                                             " arguments")))
-               << "; Supported signature: "
-               << tvf_catalog_entry->GetSupportedSignaturesUserFacingText(
-                      language(), /*print_template_and_name_details=*/true)
-               << MaybeSuggestUsingInputTable();
+        return record_pipe_call_mismatch(
+            ast_tvf,
+            absl::Substitute(
+                "Table-valued function call in pipe CALL requires at least $0 "
+                "positional argument$1 because its first table argument is in "
+                "position $2, but the call has $3",
+                pipe_input_arg_idx_in_sig,
+                pipe_input_arg_idx_in_sig == 1 ? "" : "s",
+                pipe_input_arg_idx_in_sig + 1,
+                num_ast_args == 0
+                    ? "no arguments"
+                    : (num_ast_args == 1 ? "only 1 argument"
+                                         : absl::StrCat("only ", num_ast_args,
+                                                        " arguments"))),
+            /*suggest_input_table=*/true);
       }
 
       // Require that all arguments passed in the CALL before the input table
@@ -16822,15 +17444,15 @@ absl::Status Resolver::MatchTVFSignature(
         }
       }
       if (num_ast_positional_args < pipe_input_arg_idx_in_sig) {
-        return MakeSqlErrorAt(ast_node_for_error)
-               << "Table-valued function call in pipe CALL requires at least "
-               << pipe_input_arg_idx_in_sig << " positional argument"
-               << (pipe_input_arg_idx_in_sig == 1 ? "" : "s")
-               << " before any named arguments because "
-                  "its first table argument is in position "
-               << (pipe_input_arg_idx_in_sig + 1) << "; Supported signature: "
-               << tvf_catalog_entry->GetSupportedSignaturesUserFacingText(
-                      language(), /*print_template_and_name_details=*/true);
+        return record_pipe_call_mismatch(
+            ast_node_for_error,
+            absl::Substitute(
+                "Table-valued function call in pipe CALL requires at least $0 "
+                "positional argument$1 before any named arguments because its "
+                "first table argument is in position $2",
+                pipe_input_arg_idx_in_sig,
+                pipe_input_arg_idx_in_sig == 1 ? "" : "s",
+                pipe_input_arg_idx_in_sig + 1));
       }
 
     } else {
@@ -16922,6 +17544,9 @@ absl::Status Resolver::MatchTVFSignature(
 
         pipe_arg_copy.SetScan(std::move(scan), name_list,
                               pipe_input_arg->IsPipeInputTable());
+        pipe_arg_copy.set_pipe_input_partition_by(
+            pipe_input_arg->partition_by());
+        pipe_arg_copy.set_pipe_input_order_by(pipe_input_arg->order_by());
       } else if (pipe_input_arg->IsGraph()) {
         GOOGLESQL_ASSIGN_OR_RETURN(const PropertyGraph* graph,
                          pipe_input_arg->GetGraph());
@@ -16989,10 +17614,13 @@ absl::Status Resolver::MatchTVFSignature(
             }
           }
           if (sig_idx == -1) {
-            return MakeSqlErrorAt(ast_expr)
-                   << "Named argument " << arg_name
-                   << " not found in signature for call to function "
-                   << tvf_catalog_entry->SQLName();
+            signature_match_result.set_mismatch_message(
+                absl::StrCat("Named argument ", arg_name,
+                             " not found in signature for call to function ",
+                             tvf_catalog_entry->SQLName()));
+            mismatch_status = MakeSqlErrorAt(ast_expr)
+                              << signature_match_result.mismatch_message();
+            return false;
           }
         }
       }
@@ -17002,18 +17630,25 @@ absl::Status Resolver::MatchTVFSignature(
       // relation args don't follow repeated args but it doesn't have a similar
       // check for model / connection / descriptor args.
       // NOTE: This function is not called for the pipe CALL lhs args.
-      auto tvf_arg_or_status = ResolveTVFArg(
-          ast_arg, external_scope,
-          // This arg can be NULL if these are extra args beyond what the
-          // signature expects.
-          sig_idx < function_signature.arguments().size()
-              ? &function_signature.argument(sig_idx)
-              : nullptr,
-          tvf_catalog_entry, sig_idx,
-          descriptor_arg_present ? &sig_idx_to_name_scope_map : nullptr);
-
-      GOOGLESQL_RETURN_IF_ERROR(tvf_arg_or_status.status());
-      resolved_tvf_args.push_back(std::move(tvf_arg_or_status).value());
+      ResolvedTVFArg resolved_tvf_arg;
+      GOOGLESQL_ASSIGN_OR_RETURN(
+          const bool arg_matches,
+          ResolveTVFArg(
+              ast_arg, external_scope,
+              // This arg can be NULL if these are extra args beyond what the
+              // signature expects.
+              sig_idx < function_signature.arguments().size()
+                  ? &function_signature.argument(sig_idx)
+                  : nullptr,
+              tvf_catalog_entry, sig_idx,
+              descriptor_arg_present ? &sig_idx_to_name_scope_map : nullptr,
+              resolved_tvf_arg, signature_match_result, mismatch_status));
+      if (!arg_matches) {
+        GOOGLESQL_RET_CHECK(!mismatch_status.ok());
+        GOOGLESQL_RET_CHECK(!signature_match_result.mismatch_message().empty());
+        return false;
+      }
+      resolved_tvf_args.push_back(std::move(resolved_tvf_arg));
     }
   }
   GOOGLESQL_RET_CHECK_EQ(arg_locations.size(), num_tvf_args);
@@ -17095,19 +17730,19 @@ absl::Status Resolver::MatchTVFSignature(
     input_arg_types.push_back(std::move(input_arg_type_or_status).value());
   }
 
-  signature_match_result.set_allow_mismatch_message(true);
-
   if (!SignatureArgumentCountMatches(function_signature, input_arg_types,
                                      &repetitions, &optionals,
                                      &signature_match_result)) {
-    return GenerateTVFNotMatchError(
+    GOOGLESQL_RET_CHECK(!signature_match_result.mismatch_message().empty())
+        << "Mismatch message must be set if the argument count doesn't match "
+           "the signature";
+    mismatch_status = GenerateSingleTVFSignatureMismatchError(
         ast_tvf, arg_locations, signature_match_result, *tvf_catalog_entry,
-        tvf_name_string, input_arg_types, signature_idx);
+        function_signature, tvf_name_string, input_arg_types);
+    return false;
   }
 
   std::vector<ArgIndexEntry> arg_index_mapping;
-  // TVFs can only have one signature for now, so either this call
-  // returns an error, or the arguments match the signature.
   GOOGLESQL_ASSIGN_OR_RETURN(
       std::string mismatch_message,
       function_resolver.GetFunctionArgumentIndexMappingPerSignature(
@@ -17116,12 +17751,11 @@ absl::Status Resolver::MatchTVFSignature(
           /*always_include_omitted_named_arguments_in_index_mapping=*/false,
           &arg_index_mapping));
   if (!mismatch_message.empty()) {
-    if (signature_match_result.allow_mismatch_message()) {
-      signature_match_result.set_mismatch_message(mismatch_message);
-    }
-    return GenerateTVFNotMatchError(
+    signature_match_result.set_mismatch_message(mismatch_message);
+    mismatch_status = GenerateSingleTVFSignatureMismatchError(
         ast_tvf, arg_locations, signature_match_result, *tvf_catalog_entry,
-        tvf_name_string, input_arg_types, signature_idx);
+        function_signature, tvf_name_string, input_arg_types);
+    return false;
   }
   std::vector<const ASTNode*> reordered_arg_locations = arg_locations;
   GOOGLESQL_RETURN_IF_ERROR(
@@ -17140,9 +17774,11 @@ absl::Status Resolver::MatchTVFSignature(
           /*arg_overrides=*/nullptr, /*lambda_ast_nodes=*/nullptr));
 
   if (!matches) {
-    return GenerateTVFNotMatchError(
+    mismatch_status = GenerateSingleTVFSignatureMismatchError(
         ast_tvf, reordered_arg_locations, signature_match_result,
-        *tvf_catalog_entry, tvf_name_string, input_arg_types, signature_idx);
+        *tvf_catalog_entry, function_signature, tvf_name_string,
+        input_arg_types);
+    return false;
   }
 
   GOOGLESQL_RETURN_IF_ERROR(FunctionResolver::ReorderArgumentExpressionsPerIndexMapping(
@@ -17150,7 +17786,7 @@ absl::Status Resolver::MatchTVFSignature(
       input_arg_types, &arg_locations, /*resolved_args=*/nullptr,
       &resolved_tvf_args));
 
-  return absl::OkStatus();
+  return true;
 }
 
 absl::StatusOr<int> Resolver::FindMatchingTVFSignature(
@@ -17165,11 +17801,23 @@ absl::StatusOr<int> Resolver::FindMatchingTVFSignature(
     std::vector<NamedArgumentInfo>& named_arguments,
     SignatureMatchResult& signature_match_result) {
   RETURN_ERROR_IF_OUT_OF_STACK_SPACE();
+  std::vector<std::string> mismatch_errors;
+  mismatch_errors.reserve(tvf_catalog_entry->NumSignatures());
+  int num_visible_signatures = 0;
+  for (int i = 0; i < tvf_catalog_entry->NumSignatures(); ++i) {
+    if (!tvf_catalog_entry->GetSignature(i)->HideInSupportedSignatureList(
+            language())) {
+      num_visible_signatures++;
+    }
+  }
 
+  absl::Status visible_signature_mismatch_status;
   // Process signatures in the order they are present in the TVF and return when
   // a matching signature is found.
   for (int sig_idx = 0; sig_idx < tvf_catalog_entry->NumSignatures();
        ++sig_idx) {
+    const FunctionSignature* current_signature =
+        tvf_catalog_entry->GetSignature(sig_idx);
     std::vector<const ASTNode*> current_arg_locations;
     // TODO - Avoid duplicate resolution of arguments during each
     // signature matching iteration for args that don't need the signature
@@ -17178,14 +17826,18 @@ absl::StatusOr<int> Resolver::FindMatchingTVFSignature(
     std::vector<NamedArgumentInfo> current_named_arguments;
     SignatureMatchResult current_signature_match_result;
     std::unique_ptr<FunctionSignature> current_result_signature;
+    absl::Status current_mismatch_status;
 
-    absl::Status match_status = MatchTVFSignature(
-        ast_tvf, tvf_catalog_entry, sig_idx, external_scope, function_resolver,
-        pipe_input_arg, current_result_signature, current_arg_locations,
-        current_resolved_tvf_args, current_named_arguments,
-        current_signature_match_result);
+    GOOGLESQL_ASSIGN_OR_RETURN(
+        const bool matches,
+        MatchTVFSignature(ast_tvf, tvf_catalog_entry, sig_idx, external_scope,
+                          function_resolver, pipe_input_arg,
+                          current_result_signature, current_arg_locations,
+                          current_resolved_tvf_args, current_named_arguments,
+                          current_signature_match_result,
+                          current_mismatch_status));
 
-    if (match_status.ok()) {
+    if (matches) {
       result_signature = std::move(current_result_signature);
       arg_locations = std::move(current_arg_locations);
       resolved_tvf_args = std::move(current_resolved_tvf_args);
@@ -17193,19 +17845,29 @@ absl::StatusOr<int> Resolver::FindMatchingTVFSignature(
       signature_match_result = std::move(current_signature_match_result);
       return sig_idx;
     }
-    // Return the non-OK match status if there is a single signature to
-    // return the exact error message.
+    GOOGLESQL_RET_CHECK(!current_mismatch_status.ok());
     if (tvf_catalog_entry->NumSignatures() == 1) {
-      return match_status;
+      return current_mismatch_status;
     }
+    if (num_visible_signatures == 1 &&
+        !current_signature->HideInSupportedSignatureList(language())) {
+      visible_signature_mismatch_status = std::move(current_mismatch_status);
+    }
+    mismatch_errors.push_back(
+        current_signature_match_result.mismatch_message());
   }
-  // TODO - Keep track of the mismatch errors per signature
-  // which can be returned in case of no matching signatures.
-  return MakeSqlErrorAt(ast_tvf)
-         << "No matching signature for table valued function : "
-         << tvf_catalog_entry->SQLName() << ". Supported Signatures: "
-         << tvf_catalog_entry->GetSupportedSignaturesUserFacingText(
-                language(), /*print_template_and_name_details=*/true);
+
+  // If only one signature is visible, return its exact error preserving the
+  // AST error location. Hidden / Deprecated are still tried to be matched but
+  // are not shown in the supported signatures list.
+  if (num_visible_signatures == 1) {
+    GOOGLESQL_RET_CHECK(!visible_signature_mismatch_status.ok());
+    return visible_signature_mismatch_status;
+  }
+
+  GOOGLESQL_RET_CHECK_EQ(mismatch_errors.size(), tvf_catalog_entry->NumSignatures());
+  return GenerateTVFNoMatchingSignatureError(ast_tvf, tvf_catalog_entry,
+                                             mismatch_errors);
 }
 
 absl::Status Resolver::PrepareTVFInputArguments(
@@ -17367,30 +18029,31 @@ absl::Status Resolver::PrepareTVFInputArguments(
                            function_signature->argument(arg_idx), arg_idx,
                            signature_match_result, resolved_tvf_arg));
       if (must_add_projection) {
+        const ASTNode* ast_location =
+            arg_locations[arg_idx] ? arg_locations[arg_idx] : ast_tvf;
         GOOGLESQL_RETURN_IF_ERROR(CoerceOrRearrangeTVFRelationArgColumns(
             function_signature->argument(arg_idx), arg_idx,
-            signature_match_result, ast_tvf, resolved_tvf_arg));
+            signature_match_result, ast_location, resolved_tvf_arg));
       }
       // We've now ensured the input scan has just the required columns.
-      const ASTTableClause* ast_table_clause = resolved_tvf_arg.table_clause();
-      if (ast_table_clause != nullptr) {
-        if (ast_table_clause->partition_by() != nullptr &&
+      if (resolved_tvf_arg.partition_by() != nullptr ||
+          resolved_tvf_arg.order_by() != nullptr) {
+        if (resolved_tvf_arg.partition_by() != nullptr &&
             num_relation_args > 1) {
-          return MakeSqlErrorAt(ast_table_clause->partition_by())
+          return MakeSqlErrorAt(resolved_tvf_arg.partition_by())
                  << "PARTITION BY is not supported for TVFs with multiple "
                     "table arguments";
         }
-        if (ast_table_clause->order_by() != nullptr &&
+        if (resolved_tvf_arg.order_by() != nullptr &&
             !function_signature->argument(arg_idx)
                  .options()
                  .supports_order_by()) {
-          return MakeSqlErrorAt(ast_table_clause->order_by())
+          return MakeSqlErrorAt(resolved_tvf_arg.order_by())
                  << "Table-valued function " << tvf_catalog_entry->SQLName()
                  << " does not support ORDER BY on table argument "
                  << (arg_idx + 1);
         }
-        GOOGLESQL_RETURN_IF_ERROR(ResolveTableClausePartitionAndOrder(ast_table_clause,
-                                                            resolved_tvf_arg));
+        GOOGLESQL_RETURN_IF_ERROR(ResolveTVFArgPartitionAndOrder(resolved_tvf_arg));
       }
     }
   }
@@ -17541,32 +18204,78 @@ absl::Status Resolver::PrepareTVFInputArguments(
   return absl::OkStatus();
 }
 
-absl::Status Resolver::GenerateTVFNotMatchError(
+absl::Status Resolver::GenerateSingleTVFSignatureMismatchError(
     const ASTTVF* ast_tvf, const std::vector<const ASTNode*>& arg_locations,
     const SignatureMatchResult& signature_match_result,
-    const TableValuedFunction& tvf_catalog_entry, absl::string_view tvf_name,
-    absl::Span<const InputArgumentType> input_arg_types, int signature_idx) {
-  const ASTNode* ast_location = ast_tvf;
+    const TableValuedFunction& tvf_catalog_entry,
+    const FunctionSignature& signature, absl::string_view tvf_name,
+    absl::Span<const InputArgumentType> input_arg_types) {
+  GOOGLESQL_RET_CHECK(!signature_match_result.mismatch_message().empty());
   if (signature_match_result.bad_argument_index() != -1) {
     GOOGLESQL_RET_CHECK_LT(signature_match_result.bad_argument_index(),
                  arg_locations.size());
-    ast_location = arg_locations[signature_match_result.bad_argument_index()];
+    return MakeSqlErrorAt(
+               arg_locations[signature_match_result.bad_argument_index()])
+           << signature_match_result.mismatch_message() << " of "
+           << tvf_catalog_entry.GetSignatureUserFacingText(
+                  signature, language(),
+                  /*print_template_and_name_details=*/false);
   }
-  return MakeSqlErrorAt(ast_location)
-         << tvf_catalog_entry.GetTVFSignatureErrorMessage(
-                tvf_name, input_arg_types, signature_idx,
-                signature_match_result, language());
+  return MakeSqlErrorAt(ast_tvf)
+         << Function::GetGenericNoMatchingFunctionSignatureErrorMessage(
+                tvf_name, input_arg_types, language().product_mode(), {},
+                /*argument_types_on_new_line=*/true)
+         << "\n  Signature: "
+         << tvf_catalog_entry.GetSignatureUserFacingText(
+                signature, language(),
+                /*print_template_and_name_details=*/true)
+         << "\n    " << signature_match_result.mismatch_message();
+}
+
+absl::Status Resolver::GenerateTVFNoMatchingSignatureError(
+    const ASTTVF* ast_tvf, const TableValuedFunction* tvf,
+    absl::Span<const std::string> mismatch_errors) {
+  GOOGLESQL_RET_CHECK_EQ(mismatch_errors.size(), tvf->NumSignatures());
+  const LanguageOptions& language_options = language();
+  std::string supported_signatures;
+  for (int sig_idx = 0; sig_idx < tvf->NumSignatures(); sig_idx++) {
+    const FunctionSignature& signature = *tvf->GetSignature(sig_idx);
+    if (signature.HideInSupportedSignatureList(language_options)) {
+      continue;
+    }
+    absl::StrAppend(&supported_signatures, "\n  Signature: ",
+                    tvf->GetSignatureUserFacingText(
+                        signature, language_options,
+                        /*print_template_and_name_details=*/true));
+    absl::string_view reason = mismatch_errors[sig_idx];
+    GOOGLESQL_RET_CHECK(!reason.empty()) << "No reason is specified while trying to "
+                                  "compose mismatch error message: "
+                               << supported_signatures;
+    for (absl::string_view line : absl::StrSplit(reason, '\n')) {
+      absl::StrAppend(&supported_signatures, "\n    ", line);
+    }
+  }
+  if (supported_signatures.empty()) {
+    return MakeSqlErrorAt(ast_tvf)
+           << "Table-valued function not found: " << tvf->FullName();
+  }
+  return MakeSqlErrorAt(ast_tvf)
+         << "No matching signature for table-valued function " << tvf->SQLName()
+         << supported_signatures;
 }
 
 // NOTE: This will not be called for initial arguments like the pipe CALL lhs.
 // This only does processing of the args on the rhs in the parentheses.
 // So we can't do any processing or checking required on all args here.
-absl::StatusOr<ResolvedTVFArg> Resolver::ResolveTVFArg(
+absl::StatusOr<bool> Resolver::ResolveTVFArg(
     const ASTTVFArgument* ast_tvf_arg, const NameScope* external_scope,
     const FunctionArgumentType* function_argument,
     const TableValuedFunction* tvf_catalog_entry, int sig_idx,
     absl::flat_hash_map<int, std::unique_ptr<const NameScope>>*
-        sig_idx_to_name_scope_map) {
+        sig_idx_to_name_scope_map,
+    ResolvedTVFArg& resolved_tvf_arg,
+    SignatureMatchResult& signature_match_result,
+    absl::Status& mismatch_status) {
   const ASTExpression* ast_expr = ast_tvf_arg->expr();
   const ASTTableClause* ast_table_clause = ast_tvf_arg->table_clause();
   const ASTModelClause* ast_model_clause = ast_tvf_arg->model_clause();
@@ -17606,7 +18315,7 @@ absl::StatusOr<ResolvedTVFArg> Resolver::ResolveTVFArg(
       }
     }
   }
-  ResolvedTVFArg resolved_tvf_arg;
+
   if (ast_table_clause != nullptr) {
     GOOGLESQL_RET_CHECK(ast_expr == nullptr);
     std::unique_ptr<const ResolvedScan> scan;
@@ -17615,7 +18324,7 @@ absl::StatusOr<ResolvedTVFArg> Resolver::ResolveTVFArg(
         ast_table_clause, external_scope,
         /*resolve_argument_first=*/
         (tvf_catalog_entry->statement_context() == CONTEXT_MODULE),
-        /*read_as_row_type_error_kind=*/"TVF argument", &scan, &name_list));
+        /*read_as_row_type_error_kind=*/"", &scan, &name_list));
     if (sig_idx_to_name_scope_map != nullptr) {
       sig_idx_to_name_scope_map->emplace(
           sig_idx, std::make_unique<NameScope>(external_scope, name_list));
@@ -17638,12 +18347,20 @@ absl::StatusOr<ResolvedTVFArg> Resolver::ResolveTVFArg(
         }
         return arg_id;
       };
+      auto return_arg_kind_mismatch_error = [&](absl::string_view desc) {
+        signature_match_result.set_mismatch_message(absl::Substitute(
+            "Table-valued function $0 argument $1 must be $2",
+            tvf_catalog_entry->SQLName(), gen_arg_id(sig_idx), desc));
+        mismatch_status = MakeSqlErrorAt(ast_expr)
+                          << signature_match_result.mismatch_message();
+        return false;
+      };
       if (function_argument->IsRelation()) {
         // Resolve the TVF argument as a relation. The argument should be
         // written in the TVF call as a table subquery. We parsed all
         // arguments as expressions, so the parse node should initially have
         // scalar subquery type. We check that the expression subquery
-        // modifier type is NONE to exclude ARRAY and EXISTS subqueries.
+        // modifier type is NONE to exclude ARRAY, EXISTS and VALUE subqueries.
         if (ast_expr->node_kind() != AST_EXPRESSION_SUBQUERY ||
             ast_expr->GetAsOrDie<ASTExpressionSubquery>()->modifier() !=
                 ASTExpressionSubquery::NONE) {
@@ -17662,7 +18379,10 @@ absl::StatusOr<ResolvedTVFArg> Resolver::ResolveTVFArg(
                             "before the table name (i.e. TABLE ", table_name,
                             ")");
           }
-          return MakeSqlErrorAt(ast_expr) << error;
+          signature_match_result.set_mismatch_message(error);
+          mismatch_status = MakeSqlErrorAt(ast_expr)
+                            << signature_match_result.mismatch_message();
+          return false;
         }
         std::unique_ptr<const ResolvedScan> scan;
         std::shared_ptr<const NameList> name_list;
@@ -17682,28 +18402,18 @@ absl::StatusOr<ResolvedTVFArg> Resolver::ResolveTVFArg(
         resolved_tvf_arg.SetScan(std::move(scan), std::move(name_list),
                                  /*is_pipe_input_table=*/false);
       } else if (function_argument->IsConnection()) {
-        return MakeSqlErrorAt(ast_expr)
-               << "Table-valued function " << tvf_catalog_entry->SQLName()
-               << " argument " << gen_arg_id(sig_idx)
-               << " must be a connection specified with the CONNECTION keyword";
+        return return_arg_kind_mismatch_error(
+            "a connection specified with the CONNECTION keyword");
       } else if (function_argument->IsDescriptor()) {
-        return MakeSqlErrorAt(ast_expr)
-               << "Table-valued function " << tvf_catalog_entry->SQLName()
-               << " argument " << gen_arg_id(sig_idx)
-               << " must be a DESCRIPTOR";
+        return return_arg_kind_mismatch_error("a DESCRIPTOR");
       } else if (function_argument->IsGraph()) {
-        return MakeSqlErrorAt(ast_expr)
-               << "Table-valued function " << tvf_catalog_entry->SQLName()
-               << " argument " << gen_arg_id(sig_idx) << " must be a GRAPH";
+        return return_arg_kind_mismatch_error("a GRAPH");
       } else if (function_argument->IsModel()) {
         // Named arguments are passed as Expressions and not ASTModelClause.
         if (!ast_expr->Is<ASTModelArg>()) {
-          return MakeSqlErrorAt(ast_expr)
-                 << "Table-valued function " << tvf_catalog_entry->SQLName()
-                 << " argument " << gen_arg_id(sig_idx)
-                 << " must be a model specified with the MODEL keyword";
+          return return_arg_kind_mismatch_error(
+              "a model specified with the MODEL keyword");
         }
-
         std::unique_ptr<const ResolvedModel> resolved_model;
         GOOGLESQL_RETURN_IF_ERROR(
             ResolveModel(ast_expr->GetAsOrDie<ASTModelArg>()->model_path(),
@@ -17716,8 +18426,25 @@ absl::StatusOr<ResolvedTVFArg> Resolver::ResolveTVFArg(
     } else {
       // Resolve the TVF argument as a scalar expression.
       std::unique_ptr<const ResolvedExpr> expr;
-      GOOGLESQL_RETURN_IF_ERROR(
-          ResolveScalarExpr(ast_expr, external_scope, "FROM clause", &expr));
+      absl::Status status =
+          ResolveScalarExpr(ast_expr, external_scope, "FROM clause", &expr);
+
+      // A subquery argument (with modifier NONE) could be either a scalar
+      // subquery or a relation argument. If ResolveScalarExpr fails (e.g. on a
+      // multi-column subquery), record the mismatch and return false so the
+      // resolver can try other signatures. For subqueries with a modifier -
+      // ARRAY, EXISTS, or VALUE subqueries, scalar resolution failure is fatal,
+      // so return `status` to fail fast.
+      if (!status.ok()) {
+        if (ast_expr->node_kind() == AST_EXPRESSION_SUBQUERY &&
+            ast_expr->GetAsOrDie<ASTExpressionSubquery>()->modifier() ==
+                ASTExpressionSubquery::NONE) {
+          signature_match_result.set_mismatch_message(status.message());
+          mismatch_status = std::move(status);
+          return false;
+        }
+        return status;
+      }
       resolved_tvf_arg.SetExpr(std::move(expr));
     }
   } else if (ast_connection_clause != nullptr) {
@@ -17751,7 +18478,7 @@ absl::StatusOr<ResolvedTVFArg> Resolver::ResolveTVFArg(
     resolved_tvf_arg.SetDescriptor(std::move(resolved_descriptor));
   }
 
-  return resolved_tvf_arg;
+  return true;
 }
 
 absl::StatusOr<InputArgumentType> Resolver::GetTVFArgType(
@@ -17944,7 +18671,12 @@ absl::Status Resolver::CoerceOrRearrangeTVFRelationArgColumns(
     const Type* column_type = name_list->column(col_idx).column().type();
     if (column_type->IsRowOrTable()) {
       return MakeSqlErrorAt(ast_location)
-             << "TVF table argument cannot include a column of type "
+             << "TVF table argument "
+             << (resolved_tvf_arg.IsPipeInputTable() ? "(from pipe input) "
+                                                     : "")
+             << (name_list->is_value_table()
+                     ? "cannot be a table with type "
+                     : "cannot include a column of type ")
              << column_type->ShortTypeName(product_mode());
     }
   }
@@ -18435,7 +19167,7 @@ absl::Status Resolver::ResolveTableClause(
       GOOGLESQL_RETURN_IF_ERROR(ResolvePathExpressionAsTableScan(
           table_path, GetAliasForExpression(table_path),
           /*has_explicit_alias=*/false, /*alias_location=*/ast_table_clause,
-          /*hints=*/nullptr, /*for_system_time=*/nullptr, external_scope,
+          /*hints=*/nullptr, /*for_version_clause=*/nullptr, external_scope,
           read_as_row_type_error_kind,
           /*remaining_names=*/nullptr, &table_scan, output_name_list,
           /*output_column_name_list=*/nullptr,
@@ -18465,17 +19197,20 @@ absl::Status Resolver::ResolveTableClause(
   return absl::OkStatus();
 }
 
-absl::Status Resolver::ResolveTableClausePartitionAndOrder(
-    const ASTTableClause* ast_table_clause, ResolvedTVFArg& resolved_tvf_arg) {
-  if (ast_table_clause->partition_by() == nullptr &&
-      ast_table_clause->order_by() == nullptr) {
+absl::Status Resolver::ResolveTVFArgPartitionAndOrder(
+    ResolvedTVFArg& resolved_tvf_arg) {
+  const ASTTableClause* ast_table_clause = resolved_tvf_arg.table_clause();
+  const ASTPartitionBy* partition_by = resolved_tvf_arg.partition_by();
+  const ASTOrderBy* order_by = resolved_tvf_arg.order_by();
+  if (partition_by == nullptr && order_by == nullptr) {
     return absl::OkStatus();
   }
   GOOGLESQL_RET_CHECK(resolved_tvf_arg.IsScan());
   GOOGLESQL_ASSIGN_OR_RETURN(std::shared_ptr<const NameList> name_list,
                    resolved_tvf_arg.GetNameList());
   std::shared_ptr<const NameList> scope_name_list = name_list;
-  if (ast_table_clause->table_path() != nullptr &&
+  if (ast_table_clause != nullptr &&
+      ast_table_clause->table_path() != nullptr &&
       !name_list->is_value_table() && !name_list->HasRangeVariables()) {
     IdString alias = GetAliasForExpression(ast_table_clause->table_path());
     if (!alias.empty()) {
@@ -18486,12 +19221,14 @@ absl::Status Resolver::ResolveTableClausePartitionAndOrder(
   }
   const NameScope table_arg_scope(*scope_name_list);
   std::vector<std::unique_ptr<const ResolvedComputedColumn>> computed_columns;
+  const absl::string_view clause_description =
+      resolved_tvf_arg.IsPipeInputTable() ? "pipe CALL" : "TABLE clause";
 
-  if (ast_table_clause->partition_by() != nullptr) {
-    const ASTPartitionBy* partition_by = ast_table_clause->partition_by();
+  if (partition_by != nullptr) {
     if (partition_by->hint() != nullptr) {
       return MakeSqlErrorAt(partition_by->hint())
-             << "Hints are not supported on PARTITION BY in TABLE clause";
+             << "Hints are not supported on PARTITION BY in "
+             << clause_description;
     }
     std::vector<std::unique_ptr<const ResolvedColumnRef>> partition_by_columns;
     int num_partition_by_exprs = 0;
@@ -18529,11 +19266,10 @@ absl::Status Resolver::ResolveTableClausePartitionAndOrder(
     resolved_tvf_arg.SetPartitionByList(std::move(partition_by_columns));
   }
 
-  if (ast_table_clause->order_by() != nullptr) {
-    const ASTOrderBy* order_by = ast_table_clause->order_by();
+  if (order_by != nullptr) {
     if (order_by->hint() != nullptr) {
       return MakeSqlErrorAt(order_by->hint())
-             << "Hints are not supported on ORDER BY in TABLE clause";
+             << "Hints are not supported on ORDER BY in " << clause_description;
     }
     std::vector<std::unique_ptr<const ResolvedOrderByItem>> order_by_items;
     int num_order_by_exprs = 0;
@@ -19447,7 +20183,7 @@ NOINLINE_PREVENT_HUGE_STACK_FRAMES
 absl::Status Resolver::MakeScanForTable(
     const ASTNode* ast_location, const Table* table, IdString alias,
     bool has_explicit_alias, const ASTNode* alias_location,
-    const ASTForSystemTime* for_system_time,
+    const ASTForVersionClause* for_version_clause,
     absl::string_view read_as_row_type_error_kind,
     std::unique_ptr<ResolvedTableScan>* output_table_scan,
     NameListPtr* output_name_list,
@@ -19594,9 +20330,9 @@ absl::Status Resolver::MakeScanForTable(
   }
 
   std::unique_ptr<const ResolvedExpr> for_system_time_expr;
-  if (for_system_time != nullptr) {
+  if (for_version_clause != nullptr) {
     GOOGLESQL_RETURN_IF_ERROR(
-        ResolveForSystemTimeExpr(for_system_time, &for_system_time_expr));
+        ResolveForSystemTimeExpr(for_version_clause, &for_system_time_expr));
   }
 
   const ASTLockMode* lock_mode = GetActiveLockModeOrNull();
@@ -19642,7 +20378,7 @@ NOINLINE_PREVENT_HUGE_STACK_FRAMES
 absl::Status Resolver::ResolvePathExpressionAsTableScan(
     const ASTPathExpression* path_expr, IdString alias, bool has_explicit_alias,
     const ASTNode* alias_location, const ASTHint* hints,
-    const ASTForSystemTime* for_system_time, const NameScope* scope,
+    const ASTForVersionClause* for_version_clause, const NameScope* scope,
     const std::string& read_as_row_type_error_kind,
     std::unique_ptr<PathExpressionSpan>* remaining_names,
     std::unique_ptr<const ResolvedTableScan>* output,
@@ -19748,7 +20484,7 @@ absl::Status Resolver::ResolvePathExpressionAsTableScan(
 
   GOOGLESQL_RETURN_IF_ERROR(MakeScanForTable(
       path_expr, table, alias, has_explicit_alias, alias_location,
-      for_system_time, read_as_row_type_error_kind, &table_scan, &name_list,
+      for_version_clause, read_as_row_type_error_kind, &table_scan, &name_list,
       output_column_name_list,
       out_resolved_columns_to_catalog_columns_for_scan));
 
@@ -19761,11 +20497,11 @@ absl::Status Resolver::ResolvePathExpressionAsTableScan(
 }
 
 absl::Status Resolver::ResolveForSystemTimeExpr(
-    const ASTForSystemTime* for_system_time,
+    const ASTForVersionClause* for_version_clause,
     std::unique_ptr<const ResolvedExpr>* resolved) {
   // Resolve against an empty NameScope, because column references don't
   // make sense in this clause (it needs to be constant).
-  GOOGLESQL_RETURN_IF_ERROR(ResolveScalarExpr(for_system_time->expression(),
+  GOOGLESQL_RETURN_IF_ERROR(ResolveScalarExpr(for_version_clause->expression(),
                                     empty_name_scope_.get(),
                                     "FOR SYSTEM_TIME AS OF", resolved));
 
@@ -19773,13 +20509,13 @@ absl::Status Resolver::ResolveForSystemTimeExpr(
   // didn't work - proper error will be raised below.
   if (((*resolved)->node_kind() == RESOLVED_LITERAL &&
        (*resolved)->type()->IsString())) {
-    CoerceExprToType(for_system_time, type_factory_->get_timestamp(),
+    CoerceExprToType(for_version_clause, type_factory_->get_timestamp(),
                      TypeModifiers(), kExplicitCoercion, resolved)
         .IgnoreError();  // TODO
   }
 
   if (!(*resolved)->type()->IsTimestamp()) {
-    return MakeSqlErrorAt(for_system_time->expression())
+    return MakeSqlErrorAt(for_version_clause->expression())
            << "FOR SYSTEM_TIME AS OF must be of type TIMESTAMP but was of "
               "type "
            << (*resolved)->type()->ShortTypeName(product_mode());
@@ -20205,7 +20941,7 @@ absl::Status Resolver::ResolveUnpackExpressionInSelectList(
   const ASTExpression* ast_expression = ast_select_column->expression();
   if (!language().LanguageFeatureEnabled(FEATURE_COLUMN_LIST_SPEC)) {
     return MakeSqlErrorAt(ast_expression)
-           << "COLUMN_LIST_SPEC feature is not enabled";
+           << "Column list spec is not supported";
   }
 
   GOOGLESQL_RET_CHECK(from_clause_name_list != nullptr);
@@ -20225,11 +20961,36 @@ absl::Status Resolver::ResolveUnpackExpressionInSelectList(
 
   ExprResolutionInfo expr_resolution_info(
       query_resolution_info, from_scan_scope,
-      ExprResolutionInfoOptions{.clause_name = "SELECT"});
+      ExprResolutionInfoOptions{
+          .allows_aggregation =
+              query_resolution_info->SelectFormAllowsAggregation(),
+          .allows_analytic = query_resolution_info->SelectFormAllowsAnalytic(),
+          .clause_name = query_resolution_info->SelectFormClauseName(),
+          .top_level_ast_expr = ast_expression});
 
   GOOGLESQL_ASSIGN_OR_RETURN(std::vector<IdString> column_names,
                    ResolveUnpackExpressionColumnNames(unpack_expression,
                                                       &expr_resolution_info));
+
+  // ResolveSelectColumnFirstPass returns early for `**` (as it does for
+  // `SELECT t.*`), so it never reaches CheckExprResolutionInfoForQuery. Apply
+  // that check here so the pipe-operator rules still hold for the columns `**`
+  // expands to. This only matters for pipe operators: for standard syntax the
+  // check is a no-op, and `SELECT **COLUMNS(['a']) ... GROUP BY a` is allowed.
+  // When there is a GROUP BY, the expanded columns are validated as grouped or
+  // ungrouped in the second pass like any other SELECT column.
+  //
+  // In particular, a non-empty `**` expands to plain column references, which
+  // pipe AGGREGATE does not allow. Without this check,
+  // `|> AGGREGATE **COLUMNS(['a']) GROUP BY a` would be accepted because the
+  // second pass sees `a` as a grouped column, whereas the equivalent explicit
+  // `|> AGGREGATE a GROUP BY a` is rejected with "Pipe AGGREGATE cannot include
+  // non-aggregate expressions". An empty `**` expands to nothing, so there is
+  // nothing to check.
+  if (!column_names.empty()) {
+    GOOGLESQL_RETURN_IF_ERROR(CheckExprResolutionInfoForQuery(
+        ast_expression, query_resolution_info, expr_resolution_info));
+  }
 
   const ASTExpression* unpack_expression_arg = unpack_expression->expression();
   for (IdString column_name : column_names) {

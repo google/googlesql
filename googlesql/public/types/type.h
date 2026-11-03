@@ -346,10 +346,13 @@ class Type {
   // 4) Return type of UDFs
   // 5) Returning clause of DML statements
   //
-  // When this returns false and 'type_description' is not null, also returns
-  // in 'type_description' a description of the type.
+  // When this returns false, this also:
+  // - Returns a description of the type in 'type_description' if it is not
+  //   null.
+  // - Returns that type itself in 'non_returnable_type' if it is not null.
   bool SupportsReturning(const LanguageOptions& language_options,
-                         std::string* type_description = nullptr) const;
+                         std::string* type_description = nullptr,
+                         const Type** non_returnable_type = nullptr) const;
 
   // Returns true if type supports equality with respect to the
   // 'language_options'. E.g. array type supports equality if the
@@ -572,6 +575,7 @@ class Type {
   //   - The field index for STRUCTs
   //   - The field tag number for PROTOs
   //   - The property type index for GRAPH_ELEMENTs
+  //   - A non-meaningful value (-1) for RowTypes
   // `include_pseudo_fields` specifies whether virtual fields should be
   // returned or used for ambiguity check.
   //

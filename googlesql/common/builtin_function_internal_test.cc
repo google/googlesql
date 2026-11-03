@@ -323,36 +323,5 @@ TEST(BuiltinFunctionInternalTest, InsertFunctionSignatureRequiredFeatures) {
   EXPECT_THAT(functions["allowlisted_fn"]->signatures(), SizeIs(1));
 }
 
-TEST(BuiltinFunctionInternalTest, GetUnsupportedTypeForJsonConversion) {
-  TypeFactory type_factory;
-  EXPECT_EQ(GetUnsupportedTypeForJsonConversion(type_factory.get_int64()),
-            nullptr);
-  EXPECT_EQ(GetUnsupportedTypeForJsonConversion(type_factory.get_string()),
-            nullptr);
-  EXPECT_EQ(GetUnsupportedTypeForJsonConversion(type_factory.get_json()),
-            nullptr);
-
-  const Type* int_array_type = nullptr;
-  GOOGLESQL_ASSERT_OK(
-      type_factory.MakeArrayType(type_factory.get_int64(), &int_array_type));
-  EXPECT_EQ(GetUnsupportedTypeForJsonConversion(int_array_type), nullptr);
-
-  GOOGLESQL_ASSERT_OK_AND_ASSIGN(const Type* map_type,
-                       type_factory.MakeMapType(type_factory.get_string(),
-                                                type_factory.get_int64()));
-  EXPECT_EQ(GetUnsupportedTypeForJsonConversion(map_type), map_type);
-
-  const Type* tokenlist_type = types::TokenListType();
-  EXPECT_EQ(GetUnsupportedTypeForJsonConversion(tokenlist_type),
-            tokenlist_type);
-
-  const Type* struct_with_map_type = nullptr;
-  GOOGLESQL_ASSERT_OK(type_factory.MakeStructType(
-      {{"a", type_factory.get_int64()}, {"m", map_type}},
-      &struct_with_map_type));
-  EXPECT_EQ(GetUnsupportedTypeForJsonConversion(struct_with_map_type),
-            map_type);
-}
-
 }  // namespace
 }  // namespace googlesql

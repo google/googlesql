@@ -1030,17 +1030,14 @@ class TupleIteratorAdaptor : public EvaluatorTableIterator {
   bool NextRow() override {
     absl::MutexLock l(&mutex_);
     current_ = iter_->Next();
-    called_next_ = true;
     return current_ != nullptr;
   }
 
   const Value& GetValue(int i) const override {
-    absl::ReaderMutexLock l(&mutex_);
     return current_->slot(tuple_indexes_[i]).value();
   }
 
   absl::Status Status() const override {
-    absl::MutexLock l(&mutex_);
     return iter_->Status();
   }
 
@@ -1050,7 +1047,6 @@ class TupleIteratorAdaptor : public EvaluatorTableIterator {
   }
 
   void SetDeadline(absl::Time deadline) override {
-    absl::MutexLock l(&mutex_);
     context_->SetStatementEvaluationDeadline(deadline);
   }
 
@@ -1058,15 +1054,14 @@ class TupleIteratorAdaptor : public EvaluatorTableIterator {
   const std::vector<NameAndType> columns_;
   const std::vector<int> tuple_indexes_;
   const std::function<void()> deletion_cb_;
+  // NextRow(), GetValue(), Status(), and SetDeadline() are single-threaded per
+  // EvaluatorTableIterator's contract. mutex_ only serializes NextRow()
+  // against concurrent Cancel() calls because EvaluationContext is
+  // thread-compatible.
   mutable absl::Mutex mutex_;
-  std::unique_ptr<EvaluationContext> context_ ABSL_GUARDED_BY(mutex_)
-      ABSL_PT_GUARDED_BY(mutex_);
-  bool called_next_ ABSL_GUARDED_BY(mutex_) = false;
-  std::unique_ptr<TupleIterator> iter_ ABSL_GUARDED_BY(mutex_)
-      ABSL_PT_GUARDED_BY(mutex_);
-  const TupleData* current_ ABSL_GUARDED_BY(mutex_)
-      ABSL_PT_GUARDED_BY(mutex_) = nullptr;
-  absl::Status status_ ABSL_GUARDED_BY(mutex_);
+  std::unique_ptr<EvaluationContext> context_;
+  std::unique_ptr<TupleIterator> iter_;
+  const TupleData* current_ = nullptr;
 };
 }  // namespace
 

@@ -25,7 +25,6 @@
 #include <vector>
 
 #include "googlesql/common/errors.h"
-#include "googlesql/common/internal_value.h"
 #include "googlesql/common/thread_stack.h"
 #include "googlesql/public/functions/json_format.h"
 #include "googlesql/public/functions/unsupported_fields.pb.h"
@@ -161,30 +160,6 @@ absl::StatusOr<JSONValue> ToJsonFromGraphPath(
     bool reject_nan_infinity_floats,
     UnsupportedFieldsEnum::UnsupportedFields unsupported_fields);
 
-// Returns true if the array is non-deterministic. This is used for testing
-// purposes only.
-bool IsArrayNonDeterministic(const Value& value) {
-  ABSL_DCHECK(value.is_valid());
-  ABSL_DCHECK(!value.is_null());
-  ABSL_DCHECK(value.type()->IsArray());
-  if (value.num_elements() <= 1) {
-    // Arrays with 0 or 1 element are always deterministic.
-    return false;
-  }
-  if (InternalValue::order_kind(value) != InternalValue::kPreservesOrder) {
-    // Array Value is potentially not deterministic.
-    // Check if this multi-element array is a repeated value instead.
-    // If all elements are the same, the array is deterministic.
-    // Otherwise, it is non-deterministic.
-    for (int i = 1; i < value.num_elements(); ++i) {
-      if (!value.elements()[0].Equals(value.elements()[i])) {
-        return true;
-      }
-    }
-  }
-  return false;
-}
-
 // Helper function for ToJson except that this function internally keeps
 // tracking of <current_nesting_level> for STRUCT and ARRAY and checks stack
 // space when <current_nesting_level> not less than
@@ -195,8 +170,7 @@ absl::StatusOr<JSONValue> ToJsonHelper(
     const LanguageOptions& language_options, bool path_as_object,
     int current_nesting_level, bool canonicalize_zero,
     bool reject_nan_infinity_floats,
-    UnsupportedFieldsEnum::UnsupportedFields unsupported_fields,
-    bool* out_found_non_deterministic = nullptr) {
+    UnsupportedFieldsEnum::UnsupportedFields unsupported_fields) {
   // Check the stack usage iff the <current_neesting_level> not less than
   // kNestingLevelStackCheckThreshold.
   if (current_nesting_level >= kNestingLevelStackCheckThreshold) {
@@ -319,7 +293,7 @@ absl::StatusOr<JSONValue> ToJsonHelper(
             ToJsonHelper(field_value, stringify_wide_numbers, language_options,
                          path_as_object, current_nesting_level + 1,
                          canonicalize_zero, reject_nan_infinity_floats,
-                         unsupported_fields, out_found_non_deterministic));
+                         unsupported_fields));
         JSONValueRef member_value_ref = json_value_ref.GetMember(name);
         member_value_ref.Set(std::move(json_member_value));
       }
@@ -330,18 +304,13 @@ absl::StatusOr<JSONValue> ToJsonHelper(
       JSONValueRef json_value_ref = json_value.GetRef();
       json_value_ref.SetToEmptyArray();
       if (!value.elements().empty()) {
-        if (out_found_non_deterministic != nullptr &&
-            IsArrayNonDeterministic(value)) {
-          *out_found_non_deterministic = true;
-        }
         json_value_ref.GetArrayElement(value.num_elements() - 1);
         int element_index = 0;
         for (const auto& element_value : value.elements()) {
           auto json_element = ToJsonHelper(
               element_value, stringify_wide_numbers, language_options,
               path_as_object, current_nesting_level + 1, canonicalize_zero,
-              reject_nan_infinity_floats, UnsupportedFieldsEnum::FAIL,
-              out_found_non_deterministic);
+              reject_nan_infinity_floats, UnsupportedFieldsEnum::FAIL);
           if (json_element.status().code() ==
               absl::StatusCode::kUnimplemented) {
             // The value type is not supported by TO_JSON, and we should
@@ -552,12 +521,11 @@ absl::StatusOr<JSONValue> ToJson(
     const Value& value, bool stringify_wide_numbers,
     const LanguageOptions& language_options, bool canonicalize_zero,
     UnsupportedFieldsEnum::UnsupportedFields unsupported_fields,
-    bool path_as_object, bool reject_nan_infinity_floats,
-    bool* out_found_non_deterministic) {
+    bool path_as_object, bool reject_nan_infinity_floats) {
   return ToJsonHelper(value, stringify_wide_numbers, language_options,
                       path_as_object, /*current_nesting_level=*/0,
                       canonicalize_zero, reject_nan_infinity_floats,
-                      unsupported_fields, out_found_non_deterministic);
+                      unsupported_fields);
 }
 
 }  // namespace functions

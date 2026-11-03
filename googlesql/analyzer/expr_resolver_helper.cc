@@ -106,7 +106,8 @@ absl::StatusOr<bool> IsConstantExpression(const ResolvedExpr* expr) {
           if (!arg_is_constant_expr) {
             return false;
           }
-        } else if (arg->inline_lambda() != nullptr) {
+        } else if (arg->inline_lambda() != nullptr ||
+                   arg->function_ref() != nullptr) {
           return false;
         } else {
           ABSL_DCHECK(false) << "Unexpected function argument: "

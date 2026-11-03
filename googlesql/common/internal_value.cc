@@ -25,6 +25,7 @@
 #include "googlesql/public/types/type.h"
 #include "googlesql/public/types/value_representations.h"
 #include "googlesql/public/value.h"
+#include "googlesql/base/check.h"
 #include "absl/status/status.h"
 #include "googlesql/base/status_macros.h"
 #include "absl/status/statusor.h"
@@ -37,24 +38,66 @@ bool InternalValue::ContainsArrayWithUncertainOrder(const Value& val) {
   if (val.is_null()) {
     return false;
   }
-  if (val.type()->IsArray()) {
-    for (int i = 0; i < val.num_elements(); ++i) {
-      if (ContainsArrayWithUncertainOrder(val.element(i))) {
-        return true;
+  switch (val.type_kind()) {
+    case TYPE_ARRAY: {
+      for (int i = 0; i < val.num_elements(); ++i) {
+        if (ContainsArrayWithUncertainOrder(val.element(i))) {
+          return true;
+        }
       }
-    }
-    if (InternalValue::GetOrderKind(val) == Value::kIgnoresOrder) {
-      return val.num_elements() >= 2;
-    }
-  }
-  if (val.type()->IsStruct()) {
-    for (int i = 0; i < val.num_fields(); ++i) {
-      if (ContainsArrayWithUncertainOrder(val.field(i))) {
-        return true;
+      if (InternalValue::GetOrderKind(val) == Value::kIgnoresOrder) {
+        for (int i = 1; i < val.num_elements(); ++i) {
+          if (!val.element(i).Equals(val.element(0))) {
+            return true;
+          }
+        }
       }
+      return false;
     }
+    case TYPE_STRUCT: {
+      for (int i = 0; i < val.num_fields(); ++i) {
+        if (ContainsArrayWithUncertainOrder(val.field(i))) {
+          return true;
+        }
+      }
+      return false;
+    }
+    case TYPE_MAP: {
+      for (const auto& [key, value] : val.map_entries()) {
+        if (ContainsArrayWithUncertainOrder(key) ||
+            ContainsArrayWithUncertainOrder(value)) {
+          return true;
+        }
+      }
+      return false;
+    }
+    case TYPE_RANGE:
+      return ContainsArrayWithUncertainOrder(val.start()) ||
+             ContainsArrayWithUncertainOrder(val.end());
+    case TYPE_GRAPH_ELEMENT: {
+      for (const Value& prop : val.property_values()) {
+        if (prop.is_valid() && ContainsArrayWithUncertainOrder(prop)) {
+          return true;
+        }
+      }
+      return false;
+    }
+    case TYPE_GRAPH_PATH: {
+      for (const Value& element : val.graph_elements()) {
+        if (ContainsArrayWithUncertainOrder(element)) {
+          return true;
+        }
+      }
+      return false;
+    }
+    case TYPE_MEASURE: {
+      absl::StatusOr<Value> struct_val = GetMeasureAsStructValue(val);
+      return struct_val.ok() && ContainsArrayWithUncertainOrder(*struct_val);
+    }
+    default:
+      ABSL_DCHECK(val.type()->ComponentTypes().empty()) << val.type()->DebugString();
+      return false;
   }
-  return false;
 }
 
 absl::StatusOr<Value> InternalValue::MakeMeasure(

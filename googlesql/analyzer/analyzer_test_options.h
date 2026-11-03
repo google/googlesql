@@ -270,6 +270,25 @@ extern const char* const kIdStringAllowUnicodeCharacters;
 extern const char* const kDisallowDuplicateOptions;
 extern const char* const kDebugStringUseBoxGlyphs;
 extern const char* const kDebugStringLinearMode;
+
+// validate_column_visibility
+// If true (the default), whenever the analyzer validates a Resolved AST in
+// this test, the validator also checks column visibility, using the column
+// visibility annotations in gen_resolved_ast.py (see "ResolvedColumn
+// visibility" there). This sets
+// --googlesql_validate_resolved_ast_column_visibility for the test case.
+// A test case that fails because of a known bug can be excluded with
+// [no_validate_column_visibility], with a comment naming the bug.
+extern const char* const kValidateColumnVisibility;
+
+// compare_column_visibility
+// If true, and validate_column_visibility is true, the validator also compares
+// its hand-written column sets with the ones computed from the column
+// visibility annotations. This sets
+// --googlesql_validate_resolved_ast_compare_column_visibility for the test
+// case.
+extern const char* const kCompareColumnVisibility;
+
 extern const char* const kDebugStringOmitPipeInputScanField;
 extern const char* const kRewriteOptions;
 extern const char* const kShowReferencedPropertyGraphs;

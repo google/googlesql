@@ -2713,3 +2713,127 @@ ARRAY<STRUCT<
                {3, 11, 6, 5},
                {2, 11, 6, 5},
                {1, 10, 6, 4}]
+==
+
+# -----------------------------------------------------------------------------
+# Invalid offset values.
+# -----------------------------------------------------------------------------
+
+[name=bignumeric_range_window_null_offset]
+[parameters=CAST(NULL AS BIGNUMERIC) AS offset_val]
+SELECT MIN(row_id) OVER w start_boundary, MAX(row_id) OVER w end_boundary
+FROM AnalyticTableWithoutSpecialValues
+WINDOW w AS (ORDER BY bignumeric_val ASC
+             RANGE BETWEEN @offset_val PRECEDING AND CURRENT ROW)
+--
+ERROR: generic::out_of_range: The boundary offset value cannot be null
+==
+
+# Negative offsets are rejected for every kind of offset boundary, in both
+# ordering directions.
+[name=bignumeric_range_window_negative_offset_preceding_asc]
+[parameters=BIGNUMERIC '-1' AS offset_val]
+SELECT MIN(row_id) OVER w start_boundary, MAX(row_id) OVER w end_boundary
+FROM AnalyticTableWithoutSpecialValues
+WINDOW w AS (ORDER BY bignumeric_val ASC
+             RANGE BETWEEN @offset_val PRECEDING AND CURRENT ROW)
+--
+ERROR: generic::out_of_range: Window frame offset for PRECEDING or FOLLOWING must be non-negative, but was -1
+==
+
+[name=bignumeric_range_window_negative_offset_preceding_desc]
+[parameters=BIGNUMERIC '-1' AS offset_val]
+SELECT MIN(row_id) OVER w start_boundary, MAX(row_id) OVER w end_boundary
+FROM AnalyticTableWithoutSpecialValues
+WINDOW w AS (ORDER BY bignumeric_val DESC
+             RANGE BETWEEN UNBOUNDED PRECEDING AND @offset_val PRECEDING)
+--
+ERROR: generic::out_of_range: Window frame offset for PRECEDING or FOLLOWING must be non-negative, but was -1
+==
+
+[name=bignumeric_range_window_negative_offset_following_asc]
+[parameters=BIGNUMERIC '-1' AS offset_val]
+SELECT MIN(row_id) OVER w start_boundary, MAX(row_id) OVER w end_boundary
+FROM AnalyticTableWithoutSpecialValues
+WINDOW w AS (ORDER BY bignumeric_val ASC
+             RANGE BETWEEN @offset_val FOLLOWING AND UNBOUNDED FOLLOWING)
+--
+ERROR: generic::out_of_range: Window frame offset for PRECEDING or FOLLOWING must be non-negative, but was -1
+==
+
+[name=bignumeric_range_window_negative_offset_following_desc]
+[parameters=BIGNUMERIC '-1' AS offset_val]
+SELECT MIN(row_id) OVER w start_boundary, MAX(row_id) OVER w end_boundary
+FROM AnalyticTableWithoutSpecialValues
+WINDOW w AS (ORDER BY bignumeric_val DESC
+             RANGE BETWEEN CURRENT ROW AND @offset_val FOLLOWING)
+--
+ERROR: generic::out_of_range: Window frame offset for PRECEDING or FOLLOWING must be non-negative, but was -1
+==
+
+# The negative BIGNUMERIC value closest to zero.
+[name=bignumeric_range_window_negative_offset_closest_to_zero]
+[parameters=BIGNUMERIC '-0.00000000000000000000000000000000000001' AS offset_val]
+SELECT MIN(row_id) OVER w start_boundary, MAX(row_id) OVER w end_boundary
+FROM AnalyticTableWithoutSpecialValues
+WINDOW w AS (ORDER BY bignumeric_val ASC
+             RANGE BETWEEN @offset_val PRECEDING AND CURRENT ROW)
+--
+ERROR: generic::out_of_range: Window frame offset for PRECEDING or FOLLOWING must be non-negative, but was -0.00000000000000000000000000000000000001
+==
+
+# The minimum BIGNUMERIC value, over a table with the minimum and maximum
+# BIGNUMERIC values as order keys.
+[name=bignumeric_range_window_negative_offset_min_value]
+[parameters=BIGNUMERIC '-578960446186580977117854925043439539266.34992332820282019728792003956564819968' AS offset_val]
+SELECT MIN(row_id) OVER w start_boundary, MAX(row_id) OVER w end_boundary
+FROM AnalyticTableWithSpecialValues
+WINDOW w AS (ORDER BY bignumeric_val DESC
+             RANGE BETWEEN @offset_val FOLLOWING AND UNBOUNDED FOLLOWING)
+--
+ERROR: generic::out_of_range: Window frame offset for PRECEDING or FOLLOWING must be non-negative, but was -578960446186580977117854925043439539266.34992332820282019728792003956564819968
+==
+
+# Non-literal offset expressions that evaluate to a negative value pass
+# analysis and are rejected at runtime.
+[name=bignumeric_range_window_negative_offset_unary_minus_expr]
+[required_features=ANALYTIC_FUNCTIONS,BIGNUMERIC_TYPE,QUERY_CONSTANT_WINDOW_FRAME_EXPRESSIONS]
+SELECT SUM(x) OVER (ORDER BY x
+                    RANGE BETWEEN -(BIGNUMERIC '1') PRECEDING AND CURRENT ROW)
+FROM UNNEST([BIGNUMERIC '1']) AS x
+--
+ERROR: generic::out_of_range: Window frame offset for PRECEDING or FOLLOWING must be non-negative, but was -1
+==
+
+[name=bignumeric_range_window_negative_offset_subtraction_expr]
+[required_features=ANALYTIC_FUNCTIONS,BIGNUMERIC_TYPE,QUERY_CONSTANT_WINDOW_FRAME_EXPRESSIONS]
+SELECT MIN(row_id) OVER w start_boundary, MAX(row_id) OVER w end_boundary
+FROM AnalyticTableWithoutSpecialValues
+WINDOW w AS (ORDER BY bignumeric_val DESC
+             RANGE BETWEEN CURRENT ROW AND
+                           BIGNUMERIC '1' - BIGNUMERIC '2.5' FOLLOWING)
+--
+ERROR: generic::out_of_range: Window frame offset for PRECEDING or FOLLOWING must be non-negative, but was -1.5
+==
+
+# A non-literal offset expression that evaluates to a non-negative value.
+[name=bignumeric_range_window_non_negative_offset_unary_minus_expr]
+[required_features=ANALYTIC_FUNCTIONS,BIGNUMERIC_TYPE,QUERY_CONSTANT_WINDOW_FRAME_EXPRESSIONS]
+SELECT row_id, bignumeric_val,
+       MIN(row_id) OVER w start_boundary, MAX(row_id) OVER w end_boundary
+FROM AnalyticTableWithoutSpecialValues
+WINDOW w AS (ORDER BY bignumeric_val ASC
+             RANGE BETWEEN -(BIGNUMERIC '-1') PRECEDING AND CURRENT ROW)
+--
+ARRAY<STRUCT<
+        row_id INT64,
+        bignumeric_val BIGNUMERIC,
+        start_boundary INT64,
+        end_boundary INT64
+      >>
+[unknown order:{1, 10, 1, 1},
+               {3, 11, 1, 3},
+               {2, 11, 1, 3},
+               {4, 12, 2, 4},
+               {5, 13, 4, 6},
+               {6, 13, 4, 6}]

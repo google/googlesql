@@ -1003,6 +1003,16 @@ class SQLBuilder : public ResolvedASTVisitor {
   absl::Status AppendSearchPrefix(const ResolvedGraphPathSearchPrefix* prefix,
                                   std::string& text);
 
+  // Helper method to append the SQL string of the graph pattern represented by
+  // `node` to `sql`. The graph pattern consists of the comma separated list of
+  // top-level path patterns, each one including its path variable assignment,
+  // search prefix and quantifier (if any), followed by the optional WHERE
+  // clause. It is shared by the GQL MATCH operator and the
+  // `EXISTS { <graph pattern> }` subquery form, which both accept the same
+  // graph pattern syntax.
+  absl::Status AppendGraphPattern(const ResolvedGraphScan* node,
+                                  std::string& sql);
+
   // Pushes a placeholder RecursiveQueryInfo with query_name = `query_name` and
   // scan = nullptr to `state_.recursive_query_info`.
   //

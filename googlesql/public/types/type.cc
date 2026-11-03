@@ -820,11 +820,14 @@ bool Type::SupportsEquality(const LanguageOptions& language_options) const {
 }
 
 bool Type::SupportsReturning(const LanguageOptions& language_options,
-                             std::string* type_description) const {
-  const Type* no_returning_type;
+                             std::string* type_description,
+                             const Type** non_returnable_type) const {
+  const Type* no_returning_type = nullptr;
   const bool supports_returning =
       this->SupportsReturningImpl(language_options, &no_returning_type);
-
+  if (!supports_returning && non_returnable_type != nullptr) {
+    *non_returnable_type = no_returning_type;
+  }
   if (!supports_returning && type_description != nullptr) {
     if (no_returning_type->IsRowOrTable() && !no_returning_type->IsRow()) {
       *type_description = "TABLE";

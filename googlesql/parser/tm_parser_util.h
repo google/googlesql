@@ -165,6 +165,13 @@ struct CreateIndexStatementSuffix {
   ASTSpannerInterleaveClause* interleave_in;
 };
 
+struct DmlTargetSuffix {
+  ASTTemporalAt* temporal_at = nullptr;
+  ASTAlias* alias = nullptr;
+  ASTWithTimestamp* with_timestamp = nullptr;
+  ASTWithOffset* with_offset = nullptr;
+};
+
 // Makes a ParseLocationRange from the start of `start` to the end of `end`.
 inline ParseLocationRange MakeLocationRange(const ParseLocationRange& start,
                                             const ParseLocationRange& end) {

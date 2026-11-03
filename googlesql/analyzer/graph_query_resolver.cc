@@ -1045,8 +1045,22 @@ absl::Status GetPropertySet(const ElementTableSet& element_tables,
 
 absl::StatusOr<const GraphElementType*>
 GraphTableQueryResolver::MakeGraphElementType(
-    const GraphElementTable::Kind table_kind, const PropertySet& properties,
+    const GraphElementTable::Kind table_kind,
+    const ElementTableSet& element_tables, const PropertySet& properties,
     TypeFactory* type_factory, bool is_dynamic) {
+  // When `element_table_names` is empty, the resulting `GraphElementType` does
+  // not track its underlying element tables and represents a non-updatable
+  // (read-only) graph element type.
+  std::vector<std::string> element_table_names;
+  if (resolver_->language().LanguageFeatureEnabled(
+          FEATURE_SQL_GRAPH_UPDATABLE_GRAPH_ELEMENT_TYPE)) {
+    element_table_names.reserve(element_tables.size());
+    for (const GraphElementTable* table : element_tables) {
+      GOOGLESQL_RET_CHECK_NE(table, nullptr);
+      element_table_names.push_back(table->Name());
+    }
+  }
+
   std::vector<GraphElementType::PropertyType> property_types;
   property_types.reserve(properties.size());
   for (const auto* property : properties) {
@@ -1065,12 +1079,12 @@ GraphTableQueryResolver::MakeGraphElementType(
     GOOGLESQL_RETURN_IF_ERROR(type_factory->MakeDynamicGraphElementType(
         graph_->NamePath().empty() ? std::vector<std::string>{graph_->Name()}
                                    : graph_->NamePath(),
-        element_kind, property_types, &type));
+        element_kind, property_types, element_table_names, &type));
   } else {
     GOOGLESQL_RETURN_IF_ERROR(type_factory->MakeGraphElementType(
         graph_->NamePath().empty() ? std::vector<std::string>{graph_->Name()}
                                    : graph_->NamePath(),
-        element_kind, property_types, &type));
+        element_kind, property_types, element_table_names, &type));
   }
   return type;
 }
@@ -1279,7 +1293,11 @@ GraphTableQueryResolver::ResolveElementPattern(
         bool name_found,
         input_scope->LookupName(filler->variable_name()->GetAsIdString(),
                                 &existing_name_target));
+    // Column targets for SELECT-list aliases tracked for lateral column
+    // references don't have a ResolvedColumn yet, and are never graph
+    // element variables of a containing GRAPH_TABLE.
     if (name_found && existing_name_target.IsColumn() &&
+        existing_name_target.column().IsInitialized() &&
         existing_name_target.column().type()->IsGraphElement()) {
       return MakeSqlErrorAt(filler)
              << "The name "
@@ -1309,10 +1327,11 @@ GraphTableQueryResolver::ResolveElementPattern(
   DynamicPropertyMap dynamic_properties;
   GOOGLESQL_RETURN_IF_ERROR(GetPropertySet(matching_element_tables, static_properties,
                                  dynamic_properties));
-  GOOGLESQL_ASSIGN_OR_RETURN(const Type* graph_element_type,
-                   MakeGraphElementType(
-                       table_kind, static_properties, resolver_->type_factory_,
-                       /*is_dynamic=*/!dynamic_properties.empty()));
+  GOOGLESQL_ASSIGN_OR_RETURN(
+      const Type* graph_element_type,
+      MakeGraphElementType(table_kind, matching_element_tables,
+                           static_properties, resolver_->type_factory_,
+                           /*is_dynamic=*/!dynamic_properties.empty()));
 
   GOOGLESQL_ASSIGN_OR_RETURN(
       AnnotatedType annotated_element_type,
@@ -1928,11 +1947,11 @@ absl::StatusOr<ResolvedColumn> GraphTableQueryResolver::GeneratePathColumn(
   const GraphElementType* edge_type = nullptr;
   if (edge_types.empty()) {
     // There are no edges as part of this path so we need to create an edge
-    // type with no properties.
+    // type with no properties and no element tables.
     GOOGLESQL_RETURN_IF_ERROR(resolver_->type_factory_->MakeGraphElementType(
         node_type->AsGraphElement()->graph_reference(),
         GraphElementType::ElementKind::kEdge,
-        /*property_types=*/{}, &edge_type));
+        /*property_types=*/{}, /*element_tables=*/{}, &edge_type));
   } else {
     const Type* edge_super_type;
     GOOGLESQL_RETURN_IF_ERROR(
@@ -2896,7 +2915,7 @@ absl::Status GraphTableQueryResolver::ValidateGqlDmlOperator(
         return MakeSqlErrorAt(gql_op)
                << "INSERT is not allowed in GQL set operations";
       }
-      return absl::OkStatus();
+      break;
     }
     case AST_GQL_SET: {
       if (!resolver_->language().LanguageFeatureEnabled(
@@ -2911,7 +2930,7 @@ absl::Status GraphTableQueryResolver::ValidateGqlDmlOperator(
         return MakeSqlErrorAt(gql_op)
                << "SET is not allowed in GQL set operations";
       }
-      return absl::OkStatus();
+      break;
     }
     case AST_GQL_REMOVE: {
       if (!resolver_->language().LanguageFeatureEnabled(
@@ -2926,13 +2945,31 @@ absl::Status GraphTableQueryResolver::ValidateGqlDmlOperator(
         return MakeSqlErrorAt(gql_op)
                << "REMOVE is not allowed in GQL set operations";
       }
-      return absl::OkStatus();
+      break;
     }
     case AST_GQL_DELETE:
-      return MakeSqlErrorAt(gql_op) << "Graph DELETE is not supported";
+      if (!resolver_->language().LanguageFeatureEnabled(
+              FEATURE_SQL_GRAPH_TERMINAL_NON_RETURNING_DELETE)) {
+        return MakeSqlErrorAt(gql_op) << "Graph DELETE is not supported";
+      }
+      if (context.is_nested) {
+        return MakeSqlErrorAt(gql_op)
+               << "DELETE is not allowed in non-top-level graph statement";
+      }
+      if (context.is_set_op) {
+        return MakeSqlErrorAt(gql_op)
+               << "DELETE is not allowed in GQL set operations";
+      }
+      break;
     default:
       return absl::OkStatus();
   }
+  if (!resolver_->language().LanguageFeatureEnabled(
+          FEATURE_SQL_GRAPH_UPDATABLE_GRAPH_ELEMENT_TYPE)) {
+    return MakeSqlErrorAt(gql_op)
+           << "Updatable graph element type is required for Graph DML";
+  }
+  return absl::OkStatus();
 }
 
 absl::StatusOr<ResolvedGraphWithNameList<const ResolvedScan>>
@@ -2992,7 +3029,13 @@ GraphTableQueryResolver::ResolveGqlOperator(
                                            std::move(inputs));
     }
     case AST_GQL_DELETE: {
-      return ValidateGqlDmlOperator(gql_op, context);
+      GOOGLESQL_RETURN_IF_ERROR(ValidateGqlDmlOperator(gql_op, context));
+      resolver_->needs_generalized_query_stmt_ = true;
+
+      GraphDmlResolver dml_resolver(resolver_, graph_);
+      return dml_resolver.ResolveGqlDelete(*gql_op->GetAsOrDie<ASTGqlDelete>(),
+                                           local_scope.get(),
+                                           std::move(inputs));
     }
     case AST_GQL_LET: {
       return ResolveGqlLet(*gql_op->GetAsOrDie<ASTGqlLet>(), local_scope.get(),
@@ -3605,7 +3648,9 @@ absl::Status GraphTableQueryResolver::ValidateGqlLinearQueryListDml(
       FEATURE_SQL_GRAPH_TERMINAL_INSERT);
   const bool update_enabled = resolver_->language().LanguageFeatureEnabled(
       FEATURE_SQL_GRAPH_TERMINAL_NON_RETURNING_UPDATE);
-  if (!insert_enabled && !update_enabled) {
+  const bool delete_enabled = resolver_->language().LanguageFeatureEnabled(
+      FEATURE_SQL_GRAPH_TERMINAL_NON_RETURNING_DELETE);
+  if (!insert_enabled && !update_enabled && !delete_enabled) {
     return absl::OkStatus();
   }
   const int64_t num_ops = gql_ops_list.operators().size();
@@ -3625,6 +3670,11 @@ absl::Status GraphTableQueryResolver::ValidateGqlLinearQueryListDml(
         ContainsGqlOpOfKind(gql_ops_list.operators(i), AST_GQL_REMOVE)) {
       return MakeSqlErrorAt(gql_ops_list.operators(i + 1))
              << "REMOVE cannot be followed by NEXT in a graph query";
+    }
+    if (delete_enabled &&
+        ContainsGqlOpOfKind(gql_ops_list.operators(i), AST_GQL_DELETE)) {
+      return MakeSqlErrorAt(gql_ops_list.operators(i + 1))
+             << "DELETE cannot be followed by NEXT or any other operator";
     }
   }
   return absl::OkStatus();
@@ -3844,7 +3894,8 @@ GraphTableQueryResolver::ResolveGqlOperatorList(
 
   if (gql_ops.back()->node_kind() == AST_GQL_INSERT ||
       gql_ops.back()->node_kind() == AST_GQL_SET ||
-      gql_ops.back()->node_kind() == AST_GQL_REMOVE) {
+      gql_ops.back()->node_kind() == AST_GQL_REMOVE ||
+      gql_ops.back()->node_kind() == AST_GQL_DELETE) {
     GOOGLESQL_ASSIGN_OR_RETURN(std::unique_ptr<const ResolvedFinishScan> finish_scan,
                      ResolvedFinishScanBuilder()
                          .set_column_list({})
@@ -4324,7 +4375,9 @@ GraphTableQueryResolver::ResolveGqlInlineSubqueryCall(
              << "Ambiguous name: "
              << ToIdentifierLiteral(name->GetAsStringView());
     }
-    if (!target.IsColumn()) {
+    // Column targets for SELECT-list aliases tracked for lateral column
+    // references don't have a ResolvedColumn yet, so they can't be captured.
+    if (!target.IsColumn() || !target.column().IsInitialized()) {
       return MakeSqlErrorAt(name)
              << "Not a column: "
              << ToIdentifierLiteral(name->GetAsStringView());
@@ -4677,10 +4730,27 @@ GraphTableQueryResolver::ResolveGqlOrderByClause(
   const std::unique_ptr<const NameScope> order_by_name_scope(new NameScope(
       external_scope, input_graph_name_lists.singleton_name_list));
 
+  const ResolvedScan* scan_before_order_by = input_scan.get();
   GOOGLESQL_RETURN_IF_ERROR(resolver_->ResolveOrderBySimple(
       order_by, *input_graph_name_lists.singleton_name_list,
       order_by_name_scope.get(), "GQL standalone ORDER BY",
       Resolver::OrderBySimpleMode::kGql, &input_scan));
+
+  if (input_scan.get() == scan_before_order_by) {
+    // The ORDER BY resolved to no items (e.g. ORDER BY **COLUMNS([])), so no
+    // OrderByScan was created and the input scan was returned as is. Every
+    // entry of a GraphLinearScan's scan list must be a GQL operator, so wrap
+    // the input in a pass-through ProjectScan, built back as a WITH that lists
+    // the input columns unchanged.
+    const std::vector<ResolvedColumn>& column_list = input_scan->column_list();
+    input_scan =
+        MakeResolvedProjectScan(column_list,
+                                /*expr_list=*/{}, std::move(input_scan));
+    InternalAnalyzerOutputProperties::MarkTargetSyntax(
+        resolver_->analyzer_output_properties_,
+        const_cast<ResolvedScan*>(input_scan.get()),
+        SQLBuildTargetSyntax::kGqlWith);
+  }
 
   return {{.resolved_node = std::move(input_scan),
            .graph_name_lists = std::move(input_graph_name_lists)}};

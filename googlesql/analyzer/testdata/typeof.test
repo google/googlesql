@@ -254,3 +254,87 @@ QueryStmt
       +-SingleRowScan
 
 Rewrite ERROR: generic::unimplemented: The TYPEOF() operator does not support hints.
+==
+
+[language_features=NONE,+TYPEOF_FUNCTION,+VARIANT_TYPE]
+SELECT
+  TYPEOF(CAST(NULL AS VARIANT)),
+  TYPEOF(variant_col),
+  TYPEOF([variant_col]),
+  TYPEOF(STRUCT(variant_col AS v))
+FROM VariantTable;
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#2 AS `$col1` [STRING]
+| +-$query.$col2#3 AS `$col2` [STRING]
+| +-$query.$col3#4 AS `$col3` [STRING]
+| +-$query.$col4#5 AS `$col4` [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=$query.[$col1#2, $col2#3, $col3#4, $col4#5]
+    +-expr_list=
+    | +-$col1#2 :=
+    | | +-FunctionCall(GoogleSQL:typeof(VARIANT) -> STRING)
+    | |   +-Literal(type=VARIANT, value=NULL, has_explicit_type=TRUE)
+    | +-$col2#3 :=
+    | | +-FunctionCall(GoogleSQL:typeof(VARIANT) -> STRING)
+    | |   +-ColumnRef(type=VARIANT, column=VariantTable.variant_col#1)
+    | +-$col3#4 :=
+    | | +-FunctionCall(GoogleSQL:typeof(ARRAY<VARIANT>) -> STRING)
+    | |   +-FunctionCall(GoogleSQL:$make_array(repeated(1) VARIANT) -> ARRAY<VARIANT>)
+    | |     +-ColumnRef(type=VARIANT, column=VariantTable.variant_col#1)
+    | +-$col4#5 :=
+    |   +-FunctionCall(GoogleSQL:typeof(STRUCT<v VARIANT>) -> STRING)
+    |     +-MakeStruct
+    |       +-type=STRUCT<v VARIANT>
+    |       +-field_list=
+    |         +-ColumnRef(type=VARIANT, column=VariantTable.variant_col#1)
+    +-input_scan=
+      +-TableScan(column_list=[VariantTable.variant_col#1], table=VariantTable, column_index_list=[0])
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$query.$col1#2 AS `$col1` [STRING]
+| +-$query.$col2#3 AS `$col2` [STRING]
+| +-$query.$col3#4 AS `$col3` [STRING]
+| +-$query.$col4#5 AS `$col4` [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=$query.[$col1#2, $col2#3, $col3#4, $col4#5]
+    +-expr_list=
+    | +-$col1#2 :=
+    | | +-FunctionCall(GoogleSQL:if(BOOL, STRING, STRING) -> STRING)
+    | |   +-Literal(type=BOOL, value=true, has_explicit_type=TRUE)
+    | |   +-Literal(type=STRING, value="VARIANT", has_explicit_type=TRUE)
+    | |   +-Cast(BOOL -> STRING)
+    | |     +-FunctionCall(GoogleSQL:$is_null(VARIANT) -> BOOL)
+    | |       +-Literal(type=VARIANT, value=NULL, has_explicit_type=TRUE)
+    | +-$col2#3 :=
+    | | +-FunctionCall(GoogleSQL:if(BOOL, STRING, STRING) -> STRING)
+    | |   +-Literal(type=BOOL, value=true, has_explicit_type=TRUE)
+    | |   +-Literal(type=STRING, value="VARIANT", has_explicit_type=TRUE)
+    | |   +-Cast(BOOL -> STRING)
+    | |     +-FunctionCall(GoogleSQL:$is_null(VARIANT) -> BOOL)
+    | |       +-ColumnRef(type=VARIANT, column=VariantTable.variant_col#1)
+    | +-$col3#4 :=
+    | | +-FunctionCall(GoogleSQL:if(BOOL, STRING, STRING) -> STRING)
+    | |   +-Literal(type=BOOL, value=true, has_explicit_type=TRUE)
+    | |   +-Literal(type=STRING, value="ARRAY<VARIANT>", has_explicit_type=TRUE)
+    | |   +-Cast(BOOL -> STRING)
+    | |     +-FunctionCall(GoogleSQL:$is_null(ARRAY<VARIANT>) -> BOOL)
+    | |       +-FunctionCall(GoogleSQL:$make_array(repeated(1) VARIANT) -> ARRAY<VARIANT>)
+    | |         +-ColumnRef(type=VARIANT, column=VariantTable.variant_col#1)
+    | +-$col4#5 :=
+    |   +-FunctionCall(GoogleSQL:if(BOOL, STRING, STRING) -> STRING)
+    |     +-Literal(type=BOOL, value=true, has_explicit_type=TRUE)
+    |     +-Literal(type=STRING, value="STRUCT<v VARIANT>", has_explicit_type=TRUE)
+    |     +-Cast(BOOL -> STRING)
+    |       +-FunctionCall(GoogleSQL:$is_null(STRUCT<v VARIANT>) -> BOOL)
+    |         +-MakeStruct
+    |           +-type=STRUCT<v VARIANT>
+    |           +-field_list=
+    |             +-ColumnRef(type=VARIANT, column=VariantTable.variant_col#1)
+    +-input_scan=
+      +-TableScan(column_list=[VariantTable.variant_col#1], table=VariantTable, column_index_list=[0])

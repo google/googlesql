@@ -520,7 +520,6 @@ TEST(CivilTimeValuesTest, DatetimeValueNormalizationTest) {
   };
 
   DatetimeValue datetime;
-  std::string expected_datetime_string;
   for (const auto& each : test_cases) {
     ABSL_LOG(INFO) << "Testing case: " << each.first.DebugString();
 

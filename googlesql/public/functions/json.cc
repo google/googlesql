@@ -1856,13 +1856,12 @@ namespace {
 class JsonKeysTreeWalker {
  public:
   JsonKeysTreeWalker(JSONValueConstRef root, const JSONKeysOptions& options)
-      : options_(options) {
-    path_element_stack_.push_back(
-        {.subtree = root, .remaining_depth = options.max_depth, .key = ""});
-  }
+      : root_(root), options_(options) {}
 
-  // Processes keys for the provided JSONPath given the JSON tree.
-  void Process();
+  // Processes keys for the provided JSONPath given the JSON tree. Returns a
+  // non-OK status if `options_.reserve_memory_callback` returns an error or if
+  // an internal invariant check fails.
+  absl::Status Process();
 
   // Fetch the resulting keys. In order for the result to be valid must have
   // called Process().
@@ -1887,6 +1886,24 @@ class JsonKeysTreeWalker {
     std::string key;
   };
 
+  // Returns true if `subtree` can contain nested object keys under
+  // `options_.path_options` (non-empty objects are always visited; non-empty
+  // arrays are only unwrapped in non-strict modes).
+  bool ShouldVisitSubtree(JSONValueConstRef subtree) const {
+    if (subtree.IsObject()) {
+      return subtree.GetObjectSize() > 0;
+    }
+    return subtree.IsArray() && subtree.GetArraySize() > 0 &&
+           options_.path_options != JsonPathOptions::kStrict;
+  }
+
+  absl::Status ReserveMemory(size_t bytes) const {
+    if (options_.reserve_memory_callback == nullptr) {
+      return absl::OkStatus();
+    }
+    return options_.reserve_memory_callback(bytes);
+  }
+
   std::string EscapeKey(absl::string_view key) {
     std::string escaped_key;
     // In addition to the normal key escaping, we need to escape the key if
@@ -1904,12 +1921,20 @@ class JsonKeysTreeWalker {
     return escaped_key;
   }
 
+  JSONValueConstRef root_;
   absl::btree_set<std::string> keys_;
   std::vector<StackElement> path_element_stack_;
-  JSONKeysOptions options_;
+  const JSONKeysOptions& options_;
 };
 
-void JsonKeysTreeWalker::Process() {
+absl::Status JsonKeysTreeWalker::Process() {
+  if (!ShouldVisitSubtree(root_)) {
+    return absl::OkStatus();
+  }
+  GOOGLESQL_RETURN_IF_ERROR(ReserveMemory(sizeof(StackElement)));
+  path_element_stack_.push_back(
+      {.subtree = root_, .remaining_depth = options_.max_depth, .key = ""});
+
   while (!path_element_stack_.empty()) {
     StackElement stack_element = std::move(path_element_stack_.back());
     path_element_stack_.pop_back();
@@ -1923,26 +1948,33 @@ void JsonKeysTreeWalker::Process() {
         } else {
           new_key = absl::StrCat(stack_element.key, ".", EscapeKey(key));
         }
-        keys_.insert(new_key);
-        // Continue processing subtree.
-        if (remaining_depth > 0) {
+        // Only push child subtrees that can yield nested keys; leaf scalars,
+        // empty objects/arrays, and strict-mode arrays do not need stack
+        // entries or key copies.
+        if (remaining_depth > 0 && ShouldVisitSubtree(value)) {
+          if (!keys_.contains(new_key)) {
+            GOOGLESQL_RETURN_IF_ERROR(
+                ReserveMemory(sizeof(std::string) + new_key.size()));
+            keys_.insert(new_key);
+          }
+          GOOGLESQL_RETURN_IF_ERROR(ReserveMemory(sizeof(StackElement) + new_key.size()));
           path_element_stack_.push_back({.subtree = value,
                                          .remaining_depth = remaining_depth,
                                          .key = std::move(new_key)});
+        } else if (!keys_.contains(new_key)) {
+          GOOGLESQL_RETURN_IF_ERROR(ReserveMemory(sizeof(std::string) + new_key.size()));
+          keys_.insert(std::move(new_key));
         }
       }
-    }
-    if (subtree.IsArray() &&
-        options_.path_options != JsonPathOptions::kStrict) {
+    } else {
+      GOOGLESQL_RET_CHECK(subtree.IsArray());
+      GOOGLESQL_RET_CHECK(options_.path_options != JsonPathOptions::kStrict);
       for (const JSONValueConstRef& element : subtree.GetArrayElements()) {
-        if (element.IsObject()) {
-          path_element_stack_.push_back(
-              {.subtree = element,
-               .remaining_depth = stack_element.remaining_depth,
-               .key = stack_element.key});
-        } else if (element.IsArray() &&
-                   options_.path_options == JsonPathOptions::kLaxRecursive) {
-          // If recursive, then process nested arrays.
+        if ((element.IsObject() && element.GetObjectSize() > 0) ||
+            (element.IsArray() && element.GetArraySize() > 0 &&
+             options_.path_options == JsonPathOptions::kLaxRecursive)) {
+          GOOGLESQL_RETURN_IF_ERROR(
+              ReserveMemory(sizeof(StackElement) + stack_element.key.size()));
           path_element_stack_.push_back(
               {.subtree = element,
                .remaining_depth = stack_element.remaining_depth,
@@ -1952,6 +1984,7 @@ void JsonKeysTreeWalker::Process() {
       }
     }
   }
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -1964,7 +1997,7 @@ absl::StatusOr<std::vector<std::string>> JsonKeys(
   }
 
   JsonKeysTreeWalker walker(input, options);
-  walker.Process();
+  GOOGLESQL_RETURN_IF_ERROR(walker.Process());
   return walker.ConsumeResult();
 }
 

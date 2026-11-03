@@ -597,8 +597,10 @@ class Value {
 
   // Returns printable string for this Value.
   // Verbose DebugStrings include the type name.
-  std::string ShortDebugString() const { return DebugString(false); }
-  std::string FullDebugString() const { return DebugString(true); }
+  std::string ShortDebugString() const {
+    return DebugString(/*verbose=*/false);
+  }
+  std::string FullDebugString() const { return DebugString(/*verbose=*/true); }
   std::string DebugString(bool verbose = false) const;
 
   // Returns a pretty-printed (e.g. multi-line wrapped) string for the value.

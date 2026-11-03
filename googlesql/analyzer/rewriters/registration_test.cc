@@ -18,12 +18,14 @@
 
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "googlesql/public/analyzer_options.h"
 #include "googlesql/public/options.pb.h"
 #include "googlesql/public/rewriter_interface.h"
 #include "googlesql/resolved_ast/resolved_node.h"
 #include "gtest/gtest.h"
+#include "absl/base/no_destructor.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 
@@ -60,21 +62,22 @@ class FakeBuiltinFunctionInlinerRewriter : public Base {
 TEST(RegistrationTest, Test) {
   RewriteRegistry& r = RewriteRegistry::global_instance();
 
-  FakeAnonRewriter anon_instance;
-  r.Register(ResolvedASTRewrite::REWRITE_ANONYMIZATION, &anon_instance);
-  FakeBuiltinFunctionInlinerRewriter fn_inliner_instance;
+  static const absl::NoDestructor<FakeAnonRewriter> anon_instance;
+  r.Register(ResolvedASTRewrite::REWRITE_ANONYMIZATION, anon_instance.get());
+  static const absl::NoDestructor<FakeBuiltinFunctionInlinerRewriter>
+      fn_inliner_instance;
   r.Register(ResolvedASTRewrite::REWRITE_BUILTIN_FUNCTION_INLINER,
-             &fn_inliner_instance);
+             fn_inliner_instance.get());
 
   {
     const Rewriter* anon = r.Get(ResolvedASTRewrite::REWRITE_ANONYMIZATION);
-    ASSERT_EQ(anon, &anon_instance);
+    ASSERT_EQ(anon, anon_instance.get());
   }
 
   {
     const Rewriter* fn_inliner =
         r.Get(ResolvedASTRewrite::REWRITE_BUILTIN_FUNCTION_INLINER);
-    ASSERT_EQ(fn_inliner, &fn_inliner_instance);
+    ASSERT_EQ(fn_inliner, fn_inliner_instance.get());
   }
 
   EXPECT_DEBUG_DEATH(

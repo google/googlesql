@@ -25,15 +25,17 @@
 #include "googlesql/common/errors.h"
 #include "googlesql/common/string_util.h"
 #include "googlesql/public/proto/vector_encoding_id.pb.h"
+#include "googlesql/public/proto/vector_value.pb.h"
 #include "googlesql/public/types/declarative_type.h"
 #include "googlesql/public/types/type.h"
 #include "googlesql/public/types/type_parameters.h"
 #include "googlesql/public/types/value_representations.h"
 #include "googlesql/public/types/vector_type_util.h"
-#include "googlesql/public/value.pb.h"
+#include "googlesql/public/types/vector_value_codec.h"
 #include "absl/base/no_destructor.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
+#include "googlesql/base/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
@@ -99,25 +101,33 @@ static absl::Status ValidateVectorTypeParameters(
 using FormatOptions =
     DeclarativeTypeDescriptor::FormattingCustom::FormatOptions;
 
-static std::string FormatVectorValue(const ValueContent& value,
-                                     const FormatOptions& opts) {
+// Renders a VECTOR value, or returns an error if its bytes are malformed.
+static absl::StatusOr<std::string> FormatVectorValueOrError(
+    const ValueContent& value, const FormatOptions& opts) {
   absl::string_view bytes = value.GetAs<internal::StringRef*>()->value();
-  ValueProto inner_proto;
+  GOOGLESQL_ASSIGN_OR_RETURN(VectorValueProto vector_value, ParseVectorValueBytes(bytes));
+  const auto encoding =
+      static_cast<VectorEncodingId::Id>(vector_value.encoding());
 
-  static constexpr char kErrorString[] = "ERROR: Invalid VECTOR value";
-
-  if (!inner_proto.ParseFromString(bytes) || !inner_proto.has_array_value()) {
-    return kErrorString;
+  // Only a FLOAT32 vector has a renderable element list. Other encodings are
+  // quantized, so there is nothing to show but the encoding itself, and no way
+  // to spell the value as SQL.
+  if (encoding != VectorEncodingId::FLOAT32) {
+    switch (opts.mode) {
+      case FormatOptions::Mode::kDebug:
+        return absl::StrCat("VECTOR(<", VectorEncodingId_Id_Name(encoding),
+                            ">)");
+      case FormatOptions::Mode::kSQLLiteral:
+      case FormatOptions::Mode::kSQLExpression:
+        return "ERROR('Unimplemented')";
+    }
   }
 
-  std::string float_array_str = absl::StrJoin(
-      inner_proto.array_value().element(), ", ",
-      [](std::string* out, const ValueProto& elem) {
-        if (elem.has_float_value()) {
-          absl::StrAppend(out, RoundTripFloatToString(elem.float_value()));
-        } else {
-          absl::StrAppend(out, "<InvalidElement>");
-        }
+  GOOGLESQL_ASSIGN_OR_RETURN(std::vector<float> elements,
+                   DecodeFloat32VectorPayload(vector_value.data()));
+  std::string float_array_str =
+      absl::StrJoin(elements, ", ", [](std::string* out, float element) {
+        absl::StrAppend(out, RoundTripFloatToString(element));
       });
 
   switch (opts.mode) {
@@ -127,6 +137,19 @@ static std::string FormatVectorValue(const ValueContent& value,
     case FormatOptions::Mode::kSQLExpression:
       return absl::StrCat("ENCODE_VECTOR([", std::move(float_array_str), "])");
   }
+}
+
+// The VECTOR formatting callback. Its signature is fixed by
+// DeclarativeTypeDescriptor::FormattingCustom::Callback, which returns a
+// std::string and has no way to report an error, so this is the one place an
+// error is turned into text.
+static std::string FormatVectorValue(const ValueContent& value,
+                                     const FormatOptions& opts) {
+  absl::StatusOr<std::string> formatted = FormatVectorValueOrError(value, opts);
+  if (!formatted.ok()) {
+    return "ERROR: Invalid VECTOR value";
+  }
+  return *std::move(formatted);
 }
 
 // Static initialization of opaque callback registries

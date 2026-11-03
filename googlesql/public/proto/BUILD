@@ -75,6 +75,21 @@ java_proto_library(
     deps = [":vector_encoding_id_proto"],
 )
 
+proto_library(
+    name = "vector_value_proto",
+    srcs = ["vector_value.proto"],
+)
+
+cc_proto_library(
+    name = "vector_value_cc_proto",
+    deps = [":vector_value_proto"],
+)
+
+java_proto_library(
+    name = "vector_value_java_proto",
+    deps = [":vector_value_proto"],
+)
+
 exports_files([
     "wire_format_annotation.proto",
     "type_annotation.proto",

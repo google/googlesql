@@ -1,0 +1,2314 @@
+[default language_features=MAXIMUM,+COLUMN_LIST_SPEC]
+[default show_sqlbuilder_output]
+[default use_constant_evaluator]
+[default sql_builder_target_syntax_mode=standard]
+
+# Tests for UNPACK (**) expressions in standard-syntax GROUP BY.
+#
+# Positive cases are grouped by construct: plain GROUP BY, ROLLUP and CUBE
+# (tested together via a {{ROLLUP|CUBE}} alternation,), and GROUPING SETS
+# (including nested ROLLUP/CUBE). Within a case,
+# variants that resolve identically (empty vs. parenthesized-empty expansion,
+# **cols vs. **(cols)) are alternations rather than separate cases.
+#
+# Pipe syntax (|> AGGREGATE ... GROUP BY) is covered in
+# unpack_expression_group_by_pipe.test, which covers the same matrix and lists
+# the few cases that exist in only one of the two syntaxes.
+# ** in the SELECT list is covered in unpack_expression_select.test; this file
+# only covers its interaction with GROUP BY.
+
+################################################################################
+#
+# Positive cases
+#
+################################################################################
+
+# ------------------------------------------------------------------------------
+# Plain GROUP BY
+# ------------------------------------------------------------------------------
+
+# ** expands into one grouping column per name, in column list order.
+SELECT COUNT(*)
+FROM MultipleColumns
+GROUP BY **COLUMNS(['int_a', 'string_a'])
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#7 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#7]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$aggregate.$agg1#7]
+        +-input_scan=
+        | +-TableScan(column_list=MultipleColumns.[int_a#1, string_a#2], table=MultipleColumns, column_index_list=[0, 1])
+        +-group_by_list=
+        | +-int_a#8 := ColumnRef(type=INT64, column=MultipleColumns.int_a#1)
+        | +-string_a#9 := ColumnRef(type=STRING, column=MultipleColumns.string_a#2)
+        +-aggregate_list=
+          +-$agg1#7 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+
+[SQLBUILDER_OUTPUT]
+SELECT
+  COUNT(*) AS a_4
+FROM
+  (
+    SELECT
+      MultipleColumns.int_a AS a_1,
+      MultipleColumns.string_a AS a_2
+    FROM
+      MultipleColumns
+  ) AS multiplecolumns_3
+GROUP BY multiplecolumns_3.a_1, multiplecolumns_3.a_2;
+==
+
+# The expansion is appended after grouping columns listed before it.
+SELECT COUNT(*)
+FROM MultipleColumns
+GROUP BY int_b, **COLUMNS(['int_a', 'string_a'])
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#7 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#7]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$aggregate.$agg1#7]
+        +-input_scan=
+        | +-TableScan(column_list=MultipleColumns.[int_a#1, string_a#2, int_b#3], table=MultipleColumns, column_index_list=[0, 1, 2])
+        +-group_by_list=
+        | +-int_b#8 := ColumnRef(type=INT64, column=MultipleColumns.int_b#3)
+        | +-int_a#9 := ColumnRef(type=INT64, column=MultipleColumns.int_a#1)
+        | +-string_a#10 := ColumnRef(type=STRING, column=MultipleColumns.string_a#2)
+        +-aggregate_list=
+          +-$agg1#7 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+
+[SQLBUILDER_OUTPUT]
+SELECT
+  COUNT(*) AS a_5
+FROM
+  (
+    SELECT
+      MultipleColumns.int_a AS a_1,
+      MultipleColumns.string_a AS a_2,
+      MultipleColumns.int_b AS a_3
+    FROM
+      MultipleColumns
+  ) AS multiplecolumns_4
+GROUP BY multiplecolumns_4.a_3, multiplecolumns_4.a_1, multiplecolumns_4.a_2;
+==
+
+# An empty column list expands to nothing, leaving a whole-table aggregation
+# with no grouping.
+SELECT COUNT(*)
+FROM MultipleColumns
+GROUP BY **COLUMNS([])
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#7 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#7]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$aggregate.$agg1#7]
+        +-input_scan=
+        | +-TableScan(table=MultipleColumns)
+        +-aggregate_list=
+          +-$agg1#7 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+
+[SQLBUILDER_OUTPUT]
+SELECT
+  COUNT(*) AS a_1
+FROM
+  MultipleColumns;
+==
+
+# An empty expansion drops out, leaving only the explicit grouping column.
+SELECT COUNT(*)
+FROM MultipleColumns
+GROUP BY int_b, **COLUMNS([])
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#7 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#7]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$aggregate.$agg1#7]
+        +-input_scan=
+        | +-TableScan(column_list=[MultipleColumns.int_b#3], table=MultipleColumns, column_index_list=[2])
+        +-group_by_list=
+        | +-int_b#8 := ColumnRef(type=INT64, column=MultipleColumns.int_b#3)
+        +-aggregate_list=
+          +-$agg1#7 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+
+[SQLBUILDER_OUTPUT]
+SELECT
+  COUNT(*) AS a_3
+FROM
+  (
+    SELECT
+      MultipleColumns.int_b AS a_1
+    FROM
+      MultipleColumns
+  ) AS multiplecolumns_2
+GROUP BY multiplecolumns_2.a_1;
+==
+
+# A name repeated in the column list produces one grouping column, the same as a
+# repeated explicit grouping column.
+SELECT COUNT(*)
+FROM MultipleColumns
+GROUP BY **COLUMNS(['int_a', 'int_a'])
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#7 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#7]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$aggregate.$agg1#7]
+        +-input_scan=
+        | +-TableScan(column_list=[MultipleColumns.int_a#1], table=MultipleColumns, column_index_list=[0])
+        +-group_by_list=
+        | +-int_a#8 := ColumnRef(type=INT64, column=MultipleColumns.int_a#1)
+        +-aggregate_list=
+          +-$agg1#7 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+
+[SQLBUILDER_OUTPUT]
+SELECT
+  COUNT(*) AS a_3
+FROM
+  (
+    SELECT
+      MultipleColumns.int_a AS a_1
+    FROM
+      MultipleColumns
+  ) AS multiplecolumns_2
+GROUP BY multiplecolumns_2.a_1;
+==
+
+# A column grouped both explicitly and through the expansion is grouped once.
+SELECT COUNT(*)
+FROM MultipleColumns
+GROUP BY int_a, **COLUMNS(['int_a'])
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#7 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#7]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$aggregate.$agg1#7]
+        +-input_scan=
+        | +-TableScan(column_list=[MultipleColumns.int_a#1], table=MultipleColumns, column_index_list=[0])
+        +-group_by_list=
+        | +-int_a#8 := ColumnRef(type=INT64, column=MultipleColumns.int_a#1)
+        +-aggregate_list=
+          +-$agg1#7 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+
+[SQLBUILDER_OUTPUT]
+SELECT
+  COUNT(*) AS a_3
+FROM
+  (
+    SELECT
+      MultipleColumns.int_a AS a_1
+    FROM
+      MultipleColumns
+  ) AS multiplecolumns_2
+GROUP BY multiplecolumns_2.a_1;
+==
+
+# Two expansions in the same GROUP BY list each expand in place.
+SELECT COUNT(*)
+FROM MultipleColumns
+GROUP BY **COLUMNS(['int_a']), **COLUMNS(['string_a'])
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#7 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#7]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$aggregate.$agg1#7]
+        +-input_scan=
+        | +-TableScan(column_list=MultipleColumns.[int_a#1, string_a#2], table=MultipleColumns, column_index_list=[0, 1])
+        +-group_by_list=
+        | +-int_a#8 := ColumnRef(type=INT64, column=MultipleColumns.int_a#1)
+        | +-string_a#9 := ColumnRef(type=STRING, column=MultipleColumns.string_a#2)
+        +-aggregate_list=
+          +-$agg1#7 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+
+[SQLBUILDER_OUTPUT]
+SELECT
+  COUNT(*) AS a_4
+FROM
+  (
+    SELECT
+      MultipleColumns.int_a AS a_1,
+      MultipleColumns.string_a AS a_2
+    FROM
+      MultipleColumns
+  ) AS multiplecolumns_3
+GROUP BY multiplecolumns_3.a_1, multiplecolumns_3.a_2;
+==
+
+# A column produced by two overlapping expansions is grouped once, keeping the
+# position of its first occurrence.
+SELECT COUNT(*)
+FROM MultipleColumns
+GROUP BY **COLUMNS(['int_a', 'string_a']), **COLUMNS(['string_a', 'int_b'])
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#7 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#7]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$aggregate.$agg1#7]
+        +-input_scan=
+        | +-TableScan(column_list=MultipleColumns.[int_a#1, string_a#2, int_b#3], table=MultipleColumns, column_index_list=[0, 1, 2])
+        +-group_by_list=
+        | +-int_a#8 := ColumnRef(type=INT64, column=MultipleColumns.int_a#1)
+        | +-string_a#9 := ColumnRef(type=STRING, column=MultipleColumns.string_a#2)
+        | +-int_b#10 := ColumnRef(type=INT64, column=MultipleColumns.int_b#3)
+        +-aggregate_list=
+          +-$agg1#7 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+
+[SQLBUILDER_OUTPUT]
+SELECT
+  COUNT(*) AS a_5
+FROM
+  (
+    SELECT
+      MultipleColumns.int_a AS a_1,
+      MultipleColumns.string_a AS a_2,
+      MultipleColumns.int_b AS a_3
+    FROM
+      MultipleColumns
+  ) AS multiplecolumns_4
+GROUP BY multiplecolumns_4.a_1, multiplecolumns_4.a_2, multiplecolumns_4.a_3;
+==
+
+# Names are matched case-insensitively, and the grouping column takes the name
+# as written in the column list rather than the catalog spelling.
+SELECT COUNT(*)
+FROM MultipleColumns
+GROUP BY **COLUMNS(['INT_A', 'String_A'])
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#7 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#7]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$aggregate.$agg1#7]
+        +-input_scan=
+        | +-TableScan(column_list=MultipleColumns.[int_a#1, string_a#2], table=MultipleColumns, column_index_list=[0, 1])
+        +-group_by_list=
+        | +-INT_A#8 := ColumnRef(type=INT64, column=MultipleColumns.int_a#1)
+        | +-String_A#9 := ColumnRef(type=STRING, column=MultipleColumns.string_a#2)
+        +-aggregate_list=
+          +-$agg1#7 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+
+[SQLBUILDER_OUTPUT]
+SELECT
+  COUNT(*) AS a_4
+FROM
+  (
+    SELECT
+      MultipleColumns.int_a AS a_1,
+      MultipleColumns.string_a AS a_2
+    FROM
+      MultipleColumns
+  ) AS multiplecolumns_3
+GROUP BY multiplecolumns_3.a_1, multiplecolumns_3.a_2;
+==
+
+# ------------------------------------------------------------------------------
+# ROLLUP and CUBE
+# ------------------------------------------------------------------------------
+#
+# ROLLUP and CUBE handle ** identically so each case runs for both.
+
+# An unparenthesized ** expands into one element per column, keeping its
+# position relative to explicit elements. Parentheses around the operand, as in
+# **(cols), are part of the operand and make no difference.
+SELECT COUNT(*)
+FROM MultipleColumns
+GROUP BY {{ROLLUP|CUBE}}(int_b,
+  {{**COLUMNS(['int_a', 'string_a'])|**(COLUMNS(['int_a', 'string_a']))}})
+--
+ALTERNATION GROUPS:
+    ROLLUP,**COLUMNS(['int_a', 'string_a'])
+    ROLLUP,**(COLUMNS(['int_a', 'string_a']))
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#7 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#7]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$aggregate.$agg1#7]
+        +-input_scan=
+        | +-TableScan(column_list=MultipleColumns.[int_a#1, string_a#2, int_b#3], table=MultipleColumns, column_index_list=[0, 1, 2])
+        +-group_by_list=
+        | +-int_b#8 := ColumnRef(type=INT64, column=MultipleColumns.int_b#3)
+        | +-int_a#9 := ColumnRef(type=INT64, column=MultipleColumns.int_a#1)
+        | +-string_a#10 := ColumnRef(type=STRING, column=MultipleColumns.string_a#2)
+        +-aggregate_list=
+        | +-$agg1#7 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+        +-grouping_set_list=
+          +-Rollup
+            +-rollup_column_list=
+              +-GroupingSetMultiColumn
+              | +-column_list=
+              |   +-ColumnRef(type=INT64, column=$groupby.int_b#8)
+              +-GroupingSetMultiColumn
+              | +-column_list=
+              |   +-ColumnRef(type=INT64, column=$groupby.int_a#9)
+              +-GroupingSetMultiColumn
+                +-column_list=
+                  +-ColumnRef(type=STRING, column=$groupby.string_a#10)
+
+[SQLBUILDER_OUTPUT]
+SELECT
+  COUNT(*) AS a_5
+FROM
+  (
+    SELECT
+      MultipleColumns.int_a AS a_1,
+      MultipleColumns.string_a AS a_2,
+      MultipleColumns.int_b AS a_3
+    FROM
+      MultipleColumns
+  ) AS multiplecolumns_4
+GROUP BY ROLLUP(multiplecolumns_4.a_3, multiplecolumns_4.a_1, multiplecolumns_4.a_2);
+--
+ALTERNATION GROUPS:
+    CUBE,**COLUMNS(['int_a', 'string_a'])
+    CUBE,**(COLUMNS(['int_a', 'string_a']))
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#7 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#7]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$aggregate.$agg1#7]
+        +-input_scan=
+        | +-TableScan(column_list=MultipleColumns.[int_a#1, string_a#2, int_b#3], table=MultipleColumns, column_index_list=[0, 1, 2])
+        +-group_by_list=
+        | +-int_b#8 := ColumnRef(type=INT64, column=MultipleColumns.int_b#3)
+        | +-int_a#9 := ColumnRef(type=INT64, column=MultipleColumns.int_a#1)
+        | +-string_a#10 := ColumnRef(type=STRING, column=MultipleColumns.string_a#2)
+        +-aggregate_list=
+        | +-$agg1#7 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+        +-grouping_set_list=
+          +-Cube
+            +-cube_column_list=
+              +-GroupingSetMultiColumn
+              | +-column_list=
+              |   +-ColumnRef(type=INT64, column=$groupby.int_b#8)
+              +-GroupingSetMultiColumn
+              | +-column_list=
+              |   +-ColumnRef(type=INT64, column=$groupby.int_a#9)
+              +-GroupingSetMultiColumn
+                +-column_list=
+                  +-ColumnRef(type=STRING, column=$groupby.string_a#10)
+
+[SQLBUILDER_OUTPUT]
+SELECT
+  COUNT(*) AS a_5
+FROM
+  (
+    SELECT
+      MultipleColumns.int_a AS a_1,
+      MultipleColumns.string_a AS a_2,
+      MultipleColumns.int_b AS a_3
+    FROM
+      MultipleColumns
+  ) AS multiplecolumns_4
+GROUP BY CUBE(multiplecolumns_4.a_3, multiplecolumns_4.a_1, multiplecolumns_4.a_2);
+==
+
+# A parenthesized ** is a single multi-column element, the same as
+# ROLLUP((int_a, string_a)), rather than one element per column.
+SELECT COUNT(*)
+FROM MultipleColumns
+GROUP BY {{ROLLUP|CUBE}}(int_b, (**COLUMNS(['int_a', 'string_a'])))
+--
+ALTERNATION GROUP: ROLLUP
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#7 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#7]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$aggregate.$agg1#7]
+        +-input_scan=
+        | +-TableScan(column_list=MultipleColumns.[int_a#1, string_a#2, int_b#3], table=MultipleColumns, column_index_list=[0, 1, 2])
+        +-group_by_list=
+        | +-int_b#8 := ColumnRef(type=INT64, column=MultipleColumns.int_b#3)
+        | +-int_a#9 := ColumnRef(type=INT64, column=MultipleColumns.int_a#1)
+        | +-string_a#10 := ColumnRef(type=STRING, column=MultipleColumns.string_a#2)
+        +-aggregate_list=
+        | +-$agg1#7 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+        +-grouping_set_list=
+          +-Rollup
+            +-rollup_column_list=
+              +-GroupingSetMultiColumn
+              | +-column_list=
+              |   +-ColumnRef(type=INT64, column=$groupby.int_b#8)
+              +-GroupingSetMultiColumn
+                +-column_list=
+                  +-ColumnRef(type=INT64, column=$groupby.int_a#9)
+                  +-ColumnRef(type=STRING, column=$groupby.string_a#10)
+
+[SQLBUILDER_OUTPUT]
+SELECT
+  COUNT(*) AS a_5
+FROM
+  (
+    SELECT
+      MultipleColumns.int_a AS a_1,
+      MultipleColumns.string_a AS a_2,
+      MultipleColumns.int_b AS a_3
+    FROM
+      MultipleColumns
+  ) AS multiplecolumns_4
+GROUP BY ROLLUP(multiplecolumns_4.a_3, (multiplecolumns_4.a_1, multiplecolumns_4.a_2));
+--
+ALTERNATION GROUP: CUBE
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#7 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#7]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$aggregate.$agg1#7]
+        +-input_scan=
+        | +-TableScan(column_list=MultipleColumns.[int_a#1, string_a#2, int_b#3], table=MultipleColumns, column_index_list=[0, 1, 2])
+        +-group_by_list=
+        | +-int_b#8 := ColumnRef(type=INT64, column=MultipleColumns.int_b#3)
+        | +-int_a#9 := ColumnRef(type=INT64, column=MultipleColumns.int_a#1)
+        | +-string_a#10 := ColumnRef(type=STRING, column=MultipleColumns.string_a#2)
+        +-aggregate_list=
+        | +-$agg1#7 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+        +-grouping_set_list=
+          +-Cube
+            +-cube_column_list=
+              +-GroupingSetMultiColumn
+              | +-column_list=
+              |   +-ColumnRef(type=INT64, column=$groupby.int_b#8)
+              +-GroupingSetMultiColumn
+                +-column_list=
+                  +-ColumnRef(type=INT64, column=$groupby.int_a#9)
+                  +-ColumnRef(type=STRING, column=$groupby.string_a#10)
+
+[SQLBUILDER_OUTPUT]
+SELECT
+  COUNT(*) AS a_5
+FROM
+  (
+    SELECT
+      MultipleColumns.int_a AS a_1,
+      MultipleColumns.string_a AS a_2,
+      MultipleColumns.int_b AS a_3
+    FROM
+      MultipleColumns
+  ) AS multiplecolumns_4
+GROUP BY CUBE(multiplecolumns_4.a_3, (multiplecolumns_4.a_1, multiplecolumns_4.a_2));
+==
+
+# ** inside an explicit multi-column element expands in place into that
+# element.
+SELECT COUNT(*)
+FROM MultipleColumns
+GROUP BY {{ROLLUP|CUBE}}((int_b, **COLUMNS(['int_a', 'string_a'])), int_c)
+--
+ALTERNATION GROUP: ROLLUP
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#7 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#7]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$aggregate.$agg1#7]
+        +-input_scan=
+        | +-TableScan(column_list=MultipleColumns.[int_a#1, string_a#2, int_b#3, int_c#5], table=MultipleColumns, column_index_list=[0, 1, 2, 4])
+        +-group_by_list=
+        | +-int_b#8 := ColumnRef(type=INT64, column=MultipleColumns.int_b#3)
+        | +-int_a#9 := ColumnRef(type=INT64, column=MultipleColumns.int_a#1)
+        | +-string_a#10 := ColumnRef(type=STRING, column=MultipleColumns.string_a#2)
+        | +-int_c#11 := ColumnRef(type=INT64, column=MultipleColumns.int_c#5)
+        +-aggregate_list=
+        | +-$agg1#7 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+        +-grouping_set_list=
+          +-Rollup
+            +-rollup_column_list=
+              +-GroupingSetMultiColumn
+              | +-column_list=
+              |   +-ColumnRef(type=INT64, column=$groupby.int_b#8)
+              |   +-ColumnRef(type=INT64, column=$groupby.int_a#9)
+              |   +-ColumnRef(type=STRING, column=$groupby.string_a#10)
+              +-GroupingSetMultiColumn
+                +-column_list=
+                  +-ColumnRef(type=INT64, column=$groupby.int_c#11)
+
+[SQLBUILDER_OUTPUT]
+SELECT
+  COUNT(*) AS a_6
+FROM
+  (
+    SELECT
+      MultipleColumns.int_a AS a_1,
+      MultipleColumns.string_a AS a_2,
+      MultipleColumns.int_b AS a_3,
+      MultipleColumns.int_c AS a_4
+    FROM
+      MultipleColumns
+  ) AS multiplecolumns_5
+GROUP BY ROLLUP((multiplecolumns_5.a_3, multiplecolumns_5.a_1, multiplecolumns_5.a_2), multiplecolumns_5.a_4);
+--
+ALTERNATION GROUP: CUBE
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#7 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#7]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$aggregate.$agg1#7]
+        +-input_scan=
+        | +-TableScan(column_list=MultipleColumns.[int_a#1, string_a#2, int_b#3, int_c#5], table=MultipleColumns, column_index_list=[0, 1, 2, 4])
+        +-group_by_list=
+        | +-int_b#8 := ColumnRef(type=INT64, column=MultipleColumns.int_b#3)
+        | +-int_a#9 := ColumnRef(type=INT64, column=MultipleColumns.int_a#1)
+        | +-string_a#10 := ColumnRef(type=STRING, column=MultipleColumns.string_a#2)
+        | +-int_c#11 := ColumnRef(type=INT64, column=MultipleColumns.int_c#5)
+        +-aggregate_list=
+        | +-$agg1#7 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+        +-grouping_set_list=
+          +-Cube
+            +-cube_column_list=
+              +-GroupingSetMultiColumn
+              | +-column_list=
+              |   +-ColumnRef(type=INT64, column=$groupby.int_b#8)
+              |   +-ColumnRef(type=INT64, column=$groupby.int_a#9)
+              |   +-ColumnRef(type=STRING, column=$groupby.string_a#10)
+              +-GroupingSetMultiColumn
+                +-column_list=
+                  +-ColumnRef(type=INT64, column=$groupby.int_c#11)
+
+[SQLBUILDER_OUTPUT]
+SELECT
+  COUNT(*) AS a_6
+FROM
+  (
+    SELECT
+      MultipleColumns.int_a AS a_1,
+      MultipleColumns.string_a AS a_2,
+      MultipleColumns.int_b AS a_3,
+      MultipleColumns.int_c AS a_4
+    FROM
+      MultipleColumns
+  ) AS multiplecolumns_5
+GROUP BY CUBE((multiplecolumns_5.a_3, multiplecolumns_5.a_1, multiplecolumns_5.a_2), multiplecolumns_5.a_4);
+==
+
+# An empty expansion drops out, however it is parenthesized, leaving the
+# explicit column as the only element.
+SELECT COUNT(*)
+FROM MultipleColumns
+GROUP BY {{ROLLUP|CUBE}}(int_b,
+  {{**COLUMNS([])|(**COLUMNS([]))|**(COLUMNS([]))}})
+--
+ALTERNATION GROUPS:
+    ROLLUP,**COLUMNS([])
+    ROLLUP,(**COLUMNS([]))
+    ROLLUP,**(COLUMNS([]))
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#7 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#7]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$aggregate.$agg1#7]
+        +-input_scan=
+        | +-TableScan(column_list=[MultipleColumns.int_b#3], table=MultipleColumns, column_index_list=[2])
+        +-group_by_list=
+        | +-int_b#8 := ColumnRef(type=INT64, column=MultipleColumns.int_b#3)
+        +-aggregate_list=
+        | +-$agg1#7 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+        +-grouping_set_list=
+          +-Rollup
+            +-rollup_column_list=
+              +-GroupingSetMultiColumn
+                +-column_list=
+                  +-ColumnRef(type=INT64, column=$groupby.int_b#8)
+
+[SQLBUILDER_OUTPUT]
+SELECT
+  COUNT(*) AS a_3
+FROM
+  (
+    SELECT
+      MultipleColumns.int_b AS a_1
+    FROM
+      MultipleColumns
+  ) AS multiplecolumns_2
+GROUP BY ROLLUP(multiplecolumns_2.a_1);
+--
+ALTERNATION GROUPS:
+    CUBE,**COLUMNS([])
+    CUBE,(**COLUMNS([]))
+    CUBE,**(COLUMNS([]))
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#7 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#7]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$aggregate.$agg1#7]
+        +-input_scan=
+        | +-TableScan(column_list=[MultipleColumns.int_b#3], table=MultipleColumns, column_index_list=[2])
+        +-group_by_list=
+        | +-int_b#8 := ColumnRef(type=INT64, column=MultipleColumns.int_b#3)
+        +-aggregate_list=
+        | +-$agg1#7 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+        +-grouping_set_list=
+          +-Cube
+            +-cube_column_list=
+              +-GroupingSetMultiColumn
+                +-column_list=
+                  +-ColumnRef(type=INT64, column=$groupby.int_b#8)
+
+[SQLBUILDER_OUTPUT]
+SELECT
+  COUNT(*) AS a_3
+FROM
+  (
+    SELECT
+      MultipleColumns.int_b AS a_1
+    FROM
+      MultipleColumns
+  ) AS multiplecolumns_2
+GROUP BY CUBE(multiplecolumns_2.a_1);
+==
+
+# Repeated empty expansions all drop out too. An empty parenthesized
+# expansion is dropped rather than kept as an empty () element, which ROLLUP
+# and CUBE do not have, so ROLLUP(**x, **x) and ROLLUP((**x), (**x)) are
+# both ROLLUP() when x is empty.
+SELECT COUNT(*)
+FROM MultipleColumns
+GROUP BY {{ROLLUP|CUBE}}(int_b,
+  {{**COLUMNS([]), **COLUMNS([])|(**COLUMNS([])), (**COLUMNS([]))}})
+--
+ALTERNATION GROUPS:
+    ROLLUP,**COLUMNS([]), **COLUMNS([])
+    ROLLUP,(**COLUMNS([])), (**COLUMNS([]))
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#7 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#7]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$aggregate.$agg1#7]
+        +-input_scan=
+        | +-TableScan(column_list=[MultipleColumns.int_b#3], table=MultipleColumns, column_index_list=[2])
+        +-group_by_list=
+        | +-int_b#8 := ColumnRef(type=INT64, column=MultipleColumns.int_b#3)
+        +-aggregate_list=
+        | +-$agg1#7 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+        +-grouping_set_list=
+          +-Rollup
+            +-rollup_column_list=
+              +-GroupingSetMultiColumn
+                +-column_list=
+                  +-ColumnRef(type=INT64, column=$groupby.int_b#8)
+
+[SQLBUILDER_OUTPUT]
+SELECT
+  COUNT(*) AS a_3
+FROM
+  (
+    SELECT
+      MultipleColumns.int_b AS a_1
+    FROM
+      MultipleColumns
+  ) AS multiplecolumns_2
+GROUP BY ROLLUP(multiplecolumns_2.a_1);
+--
+ALTERNATION GROUPS:
+    CUBE,**COLUMNS([]), **COLUMNS([])
+    CUBE,(**COLUMNS([])), (**COLUMNS([]))
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#7 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#7]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$aggregate.$agg1#7]
+        +-input_scan=
+        | +-TableScan(column_list=[MultipleColumns.int_b#3], table=MultipleColumns, column_index_list=[2])
+        +-group_by_list=
+        | +-int_b#8 := ColumnRef(type=INT64, column=MultipleColumns.int_b#3)
+        +-aggregate_list=
+        | +-$agg1#7 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+        +-grouping_set_list=
+          +-Cube
+            +-cube_column_list=
+              +-GroupingSetMultiColumn
+                +-column_list=
+                  +-ColumnRef(type=INT64, column=$groupby.int_b#8)
+
+[SQLBUILDER_OUTPUT]
+SELECT
+  COUNT(*) AS a_3
+FROM
+  (
+    SELECT
+      MultipleColumns.int_b AS a_1
+    FROM
+      MultipleColumns
+  ) AS multiplecolumns_2
+GROUP BY CUBE(multiplecolumns_2.a_1);
+==
+
+# An empty expansion inside a multi-column element leaves the explicit column
+# as that element.
+SELECT COUNT(*)
+FROM MultipleColumns
+GROUP BY {{ROLLUP|CUBE}}((int_b, **COLUMNS([])), int_c)
+--
+ALTERNATION GROUP: ROLLUP
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#7 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#7]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$aggregate.$agg1#7]
+        +-input_scan=
+        | +-TableScan(column_list=MultipleColumns.[int_b#3, int_c#5], table=MultipleColumns, column_index_list=[2, 4])
+        +-group_by_list=
+        | +-int_b#8 := ColumnRef(type=INT64, column=MultipleColumns.int_b#3)
+        | +-int_c#9 := ColumnRef(type=INT64, column=MultipleColumns.int_c#5)
+        +-aggregate_list=
+        | +-$agg1#7 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+        +-grouping_set_list=
+          +-Rollup
+            +-rollup_column_list=
+              +-GroupingSetMultiColumn
+              | +-column_list=
+              |   +-ColumnRef(type=INT64, column=$groupby.int_b#8)
+              +-GroupingSetMultiColumn
+                +-column_list=
+                  +-ColumnRef(type=INT64, column=$groupby.int_c#9)
+
+[SQLBUILDER_OUTPUT]
+SELECT
+  COUNT(*) AS a_4
+FROM
+  (
+    SELECT
+      MultipleColumns.int_b AS a_1,
+      MultipleColumns.int_c AS a_2
+    FROM
+      MultipleColumns
+  ) AS multiplecolumns_3
+GROUP BY ROLLUP(multiplecolumns_3.a_1, multiplecolumns_3.a_2);
+--
+ALTERNATION GROUP: CUBE
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#7 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#7]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$aggregate.$agg1#7]
+        +-input_scan=
+        | +-TableScan(column_list=MultipleColumns.[int_b#3, int_c#5], table=MultipleColumns, column_index_list=[2, 4])
+        +-group_by_list=
+        | +-int_b#8 := ColumnRef(type=INT64, column=MultipleColumns.int_b#3)
+        | +-int_c#9 := ColumnRef(type=INT64, column=MultipleColumns.int_c#5)
+        +-aggregate_list=
+        | +-$agg1#7 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+        +-grouping_set_list=
+          +-Cube
+            +-cube_column_list=
+              +-GroupingSetMultiColumn
+              | +-column_list=
+              |   +-ColumnRef(type=INT64, column=$groupby.int_b#8)
+              +-GroupingSetMultiColumn
+                +-column_list=
+                  +-ColumnRef(type=INT64, column=$groupby.int_c#9)
+
+[SQLBUILDER_OUTPUT]
+SELECT
+  COUNT(*) AS a_4
+FROM
+  (
+    SELECT
+      MultipleColumns.int_b AS a_1,
+      MultipleColumns.int_c AS a_2
+    FROM
+      MultipleColumns
+  ) AS multiplecolumns_3
+GROUP BY CUBE(multiplecolumns_3.a_1, multiplecolumns_3.a_2);
+==
+
+# Overlapping expansions produce one element per expanded column, so a
+# repeated column adds an element even though it is only computed once. This
+# matches a column listed twice explicitly; see ROLLUP(key, key, ...) in
+# grouping_sets.test.
+SELECT COUNT(*)
+FROM MultipleColumns
+GROUP BY ROLLUP(**COLUMNS(['int_a', 'string_a']), **COLUMNS(['string_a']))
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#7 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#7]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$aggregate.$agg1#7]
+        +-input_scan=
+        | +-TableScan(column_list=MultipleColumns.[int_a#1, string_a#2], table=MultipleColumns, column_index_list=[0, 1])
+        +-group_by_list=
+        | +-int_a#8 := ColumnRef(type=INT64, column=MultipleColumns.int_a#1)
+        | +-string_a#9 := ColumnRef(type=STRING, column=MultipleColumns.string_a#2)
+        +-aggregate_list=
+        | +-$agg1#7 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+        +-grouping_set_list=
+          +-Rollup
+            +-rollup_column_list=
+              +-GroupingSetMultiColumn
+              | +-column_list=
+              |   +-ColumnRef(type=INT64, column=$groupby.int_a#8)
+              +-GroupingSetMultiColumn
+              | +-column_list=
+              |   +-ColumnRef(type=STRING, column=$groupby.string_a#9)
+              +-GroupingSetMultiColumn
+                +-column_list=
+                  +-ColumnRef(type=STRING, column=$groupby.string_a#9)
+
+[SQLBUILDER_OUTPUT]
+SELECT
+  COUNT(*) AS a_4
+FROM
+  (
+    SELECT
+      MultipleColumns.int_a AS a_1,
+      MultipleColumns.string_a AS a_2
+    FROM
+      MultipleColumns
+  ) AS multiplecolumns_3
+GROUP BY ROLLUP(multiplecolumns_3.a_1, multiplecolumns_3.a_2, multiplecolumns_3.a_2);
+==
+
+# With multiple grouping items in one GROUP BY, ** expands within its own
+# ROLLUP or CUBE, independently of the other items.
+SELECT COUNT(*)
+FROM MultipleColumns
+GROUP BY int_c, ROLLUP(**COLUMNS(['int_a', 'string_a'])),
+  {{ROLLUP|CUBE}}((**COLUMNS(['int_b'])))
+--
+ALTERNATION GROUP: ROLLUP
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#7 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#7]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$aggregate.$agg1#7]
+        +-input_scan=
+        | +-TableScan(column_list=MultipleColumns.[int_a#1, string_a#2, int_b#3, int_c#5], table=MultipleColumns, column_index_list=[0, 1, 2, 4])
+        +-group_by_list=
+        | +-int_c#8 := ColumnRef(type=INT64, column=MultipleColumns.int_c#5)
+        | +-int_a#9 := ColumnRef(type=INT64, column=MultipleColumns.int_a#1)
+        | +-string_a#10 := ColumnRef(type=STRING, column=MultipleColumns.string_a#2)
+        | +-int_b#11 := ColumnRef(type=INT64, column=MultipleColumns.int_b#3)
+        +-aggregate_list=
+        | +-$agg1#7 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+        +-grouping_set_list=
+          +-GroupingSetProduct
+            +-input_list=
+              +-GroupingSet
+              | +-group_by_column_list=
+              |   +-ColumnRef(type=INT64, column=$groupby.int_c#8)
+              +-Rollup
+              | +-rollup_column_list=
+              |   +-GroupingSetMultiColumn
+              |   | +-column_list=
+              |   |   +-ColumnRef(type=INT64, column=$groupby.int_a#9)
+              |   +-GroupingSetMultiColumn
+              |     +-column_list=
+              |       +-ColumnRef(type=STRING, column=$groupby.string_a#10)
+              +-Rollup
+                +-rollup_column_list=
+                  +-GroupingSetMultiColumn
+                    +-column_list=
+                      +-ColumnRef(type=INT64, column=$groupby.int_b#11)
+
+[SQLBUILDER_OUTPUT]
+SELECT
+  COUNT(*) AS a_6
+FROM
+  (
+    SELECT
+      MultipleColumns.int_a AS a_1,
+      MultipleColumns.string_a AS a_2,
+      MultipleColumns.int_b AS a_3,
+      MultipleColumns.int_c AS a_4
+    FROM
+      MultipleColumns
+  ) AS multiplecolumns_5
+GROUP BY GROUPING SETS(multiplecolumns_5.a_4), ROLLUP(multiplecolumns_5.a_1, multiplecolumns_5.a_2),
+  ROLLUP(multiplecolumns_5.a_3);
+--
+ALTERNATION GROUP: CUBE
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#7 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#7]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$aggregate.$agg1#7]
+        +-input_scan=
+        | +-TableScan(column_list=MultipleColumns.[int_a#1, string_a#2, int_b#3, int_c#5], table=MultipleColumns, column_index_list=[0, 1, 2, 4])
+        +-group_by_list=
+        | +-int_c#8 := ColumnRef(type=INT64, column=MultipleColumns.int_c#5)
+        | +-int_a#9 := ColumnRef(type=INT64, column=MultipleColumns.int_a#1)
+        | +-string_a#10 := ColumnRef(type=STRING, column=MultipleColumns.string_a#2)
+        | +-int_b#11 := ColumnRef(type=INT64, column=MultipleColumns.int_b#3)
+        +-aggregate_list=
+        | +-$agg1#7 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+        +-grouping_set_list=
+          +-GroupingSetProduct
+            +-input_list=
+              +-GroupingSet
+              | +-group_by_column_list=
+              |   +-ColumnRef(type=INT64, column=$groupby.int_c#8)
+              +-Rollup
+              | +-rollup_column_list=
+              |   +-GroupingSetMultiColumn
+              |   | +-column_list=
+              |   |   +-ColumnRef(type=INT64, column=$groupby.int_a#9)
+              |   +-GroupingSetMultiColumn
+              |     +-column_list=
+              |       +-ColumnRef(type=STRING, column=$groupby.string_a#10)
+              +-Cube
+                +-cube_column_list=
+                  +-GroupingSetMultiColumn
+                    +-column_list=
+                      +-ColumnRef(type=INT64, column=$groupby.int_b#11)
+
+[SQLBUILDER_OUTPUT]
+SELECT
+  COUNT(*) AS a_6
+FROM
+  (
+    SELECT
+      MultipleColumns.int_a AS a_1,
+      MultipleColumns.string_a AS a_2,
+      MultipleColumns.int_b AS a_3,
+      MultipleColumns.int_c AS a_4
+    FROM
+      MultipleColumns
+  ) AS multiplecolumns_5
+GROUP BY GROUPING SETS(multiplecolumns_5.a_4), ROLLUP(multiplecolumns_5.a_1, multiplecolumns_5.a_2),
+  CUBE(multiplecolumns_5.a_3);
+==
+
+# Multi-column ROLLUP levels require GROUPING_SETS. Without it, an
+# unparenthesized ** still works since each column is its own level, but a
+# parenthesized ** is an error. CUBE needs no such case since it requires
+# GROUPING_SETS outright.
+[language_features=MAXIMUM,+COLUMN_LIST_SPEC,-GROUPING_SETS]
+SELECT COUNT(*)
+FROM MultipleColumns
+GROUP BY ROLLUP(
+  {{**COLUMNS(['int_a', 'string_a'])|(**COLUMNS(['int_a', 'string_a']))}})
+--
+ALTERNATION GROUP: **COLUMNS(['int_a', 'string_a'])
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#7 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#7]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$aggregate.$agg1#7]
+        +-input_scan=
+        | +-TableScan(column_list=MultipleColumns.[int_a#1, string_a#2], table=MultipleColumns, column_index_list=[0, 1])
+        +-group_by_list=
+        | +-int_a#8 := ColumnRef(type=INT64, column=MultipleColumns.int_a#1)
+        | +-string_a#9 := ColumnRef(type=STRING, column=MultipleColumns.string_a#2)
+        +-aggregate_list=
+        | +-$agg1#7 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+        +-grouping_set_list=
+        | +-GroupingSet
+        | | +-group_by_column_list=
+        | |   +-ColumnRef(type=INT64, column=$groupby.int_a#8)
+        | |   +-ColumnRef(type=STRING, column=$groupby.string_a#9)
+        | +-GroupingSet
+        | | +-group_by_column_list=
+        | |   +-ColumnRef(type=INT64, column=$groupby.int_a#8)
+        | +-GroupingSet
+        +-rollup_column_list=
+          +-ColumnRef(type=INT64, column=$groupby.int_a#8)
+          +-ColumnRef(type=STRING, column=$groupby.string_a#9)
+
+[SQLBUILDER_OUTPUT]
+SELECT
+  COUNT(*) AS a_4
+FROM
+  (
+    SELECT
+      MultipleColumns.int_a AS a_1,
+      MultipleColumns.string_a AS a_2
+    FROM
+      MultipleColumns
+  ) AS multiplecolumns_3
+GROUP BY ROLLUP(multiplecolumns_3.a_1, multiplecolumns_3.a_2);
+--
+ALTERNATION GROUP: (**COLUMNS(['int_a', 'string_a']))
+--
+ERROR: Parenthesized ** expression is not supported in ROLLUP [at 4:4]
+  (**COLUMNS(['int_a', 'string_a'])))
+   ^
+==
+
+# ------------------------------------------------------------------------------
+# GROUPING SETS
+# ------------------------------------------------------------------------------
+
+# At the top level of GROUPING SETS, an unparenthesized ** produces one
+# singleton grouping set per column, after any sets listed before it.
+# Parentheses around the operand, as in **(cols), make no difference.
+SELECT COUNT(*)
+FROM MultipleColumns
+GROUP BY GROUPING SETS(int_b, **COLUMNS(['int_a', 'string_a']), **(COLUMNS(['int_a', 'string_a'])))
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#7 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#7]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$aggregate.$agg1#7]
+        +-input_scan=
+        | +-TableScan(column_list=MultipleColumns.[int_a#1, string_a#2, int_b#3], table=MultipleColumns, column_index_list=[0, 1, 2])
+        +-group_by_list=
+        | +-int_b#8 := ColumnRef(type=INT64, column=MultipleColumns.int_b#3)
+        | +-int_a#9 := ColumnRef(type=INT64, column=MultipleColumns.int_a#1)
+        | +-string_a#10 := ColumnRef(type=STRING, column=MultipleColumns.string_a#2)
+        +-aggregate_list=
+        | +-$agg1#7 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+        +-grouping_set_list=
+          +-GroupingSet
+          | +-group_by_column_list=
+          |   +-ColumnRef(type=INT64, column=$groupby.int_b#8)
+          +-GroupingSet
+          | +-group_by_column_list=
+          |   +-ColumnRef(type=INT64, column=$groupby.int_a#9)
+          +-GroupingSet
+          | +-group_by_column_list=
+          |   +-ColumnRef(type=STRING, column=$groupby.string_a#10)
+          +-GroupingSet
+          | +-group_by_column_list=
+          |   +-ColumnRef(type=INT64, column=$groupby.int_a#9)
+          +-GroupingSet
+            +-group_by_column_list=
+              +-ColumnRef(type=STRING, column=$groupby.string_a#10)
+
+[SQLBUILDER_OUTPUT]
+SELECT
+  COUNT(*) AS a_5
+FROM
+  (
+    SELECT
+      MultipleColumns.int_a AS a_1,
+      MultipleColumns.string_a AS a_2,
+      MultipleColumns.int_b AS a_3
+    FROM
+      MultipleColumns
+  ) AS multiplecolumns_4
+GROUP BY GROUPING SETS(multiplecolumns_4.a_3, multiplecolumns_4.a_1, multiplecolumns_4.a_2, multiplecolumns_4.a_1,
+    multiplecolumns_4.a_2);
+==
+
+# An empty unparenthesized expansion contributes no grouping set.
+SELECT COUNT(*)
+FROM MultipleColumns
+GROUP BY GROUPING SETS(int_b, {{**COLUMNS([])|**(COLUMNS([]))}})
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#7 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#7]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$aggregate.$agg1#7]
+        +-input_scan=
+        | +-TableScan(column_list=[MultipleColumns.int_b#3], table=MultipleColumns, column_index_list=[2])
+        +-group_by_list=
+        | +-int_b#8 := ColumnRef(type=INT64, column=MultipleColumns.int_b#3)
+        +-aggregate_list=
+        | +-$agg1#7 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+        +-grouping_set_list=
+          +-GroupingSet
+            +-group_by_column_list=
+              +-ColumnRef(type=INT64, column=$groupby.int_b#8)
+
+[SQLBUILDER_OUTPUT]
+SELECT
+  COUNT(*) AS a_3
+FROM
+  (
+    SELECT
+      MultipleColumns.int_b AS a_1
+    FROM
+      MultipleColumns
+  ) AS multiplecolumns_2
+GROUP BY GROUPING SETS(multiplecolumns_2.a_1);
+==
+
+# Inside a parenthesized set, ** expands in place into that single set rather
+# than one set per column.
+SELECT COUNT(*)
+FROM MultipleColumns
+GROUP BY GROUPING SETS((int_c, **COLUMNS(['int_a', 'string_a'])), int_b)
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#7 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#7]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$aggregate.$agg1#7]
+        +-input_scan=
+        | +-TableScan(column_list=MultipleColumns.[int_a#1, string_a#2, int_b#3, int_c#5], table=MultipleColumns, column_index_list=[0, 1, 2, 4])
+        +-group_by_list=
+        | +-int_c#8 := ColumnRef(type=INT64, column=MultipleColumns.int_c#5)
+        | +-int_a#9 := ColumnRef(type=INT64, column=MultipleColumns.int_a#1)
+        | +-string_a#10 := ColumnRef(type=STRING, column=MultipleColumns.string_a#2)
+        | +-int_b#11 := ColumnRef(type=INT64, column=MultipleColumns.int_b#3)
+        +-aggregate_list=
+        | +-$agg1#7 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+        +-grouping_set_list=
+          +-GroupingSet
+          | +-group_by_column_list=
+          |   +-ColumnRef(type=INT64, column=$groupby.int_c#8)
+          |   +-ColumnRef(type=INT64, column=$groupby.int_a#9)
+          |   +-ColumnRef(type=STRING, column=$groupby.string_a#10)
+          +-GroupingSet
+            +-group_by_column_list=
+              +-ColumnRef(type=INT64, column=$groupby.int_b#11)
+
+[SQLBUILDER_OUTPUT]
+SELECT
+  COUNT(*) AS a_6
+FROM
+  (
+    SELECT
+      MultipleColumns.int_a AS a_1,
+      MultipleColumns.string_a AS a_2,
+      MultipleColumns.int_b AS a_3,
+      MultipleColumns.int_c AS a_4
+    FROM
+      MultipleColumns
+  ) AS multiplecolumns_5
+GROUP BY GROUPING SETS((multiplecolumns_5.a_4, multiplecolumns_5.a_1, multiplecolumns_5.a_2), multiplecolumns_5.a_3);
+==
+
+# Two expansions in the same parenthesized set both expand into that one set,
+# and a column produced by both appears in it once. Duplicate columns within
+# one grouping set are deduplicated; see grouping_sets.test.
+SELECT COUNT(*)
+FROM MultipleColumns
+GROUP BY GROUPING SETS((**COLUMNS(['int_a', 'string_a']),
+                        **COLUMNS(['string_a'])), int_b)
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#7 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#7]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$aggregate.$agg1#7]
+        +-input_scan=
+        | +-TableScan(column_list=MultipleColumns.[int_a#1, string_a#2, int_b#3], table=MultipleColumns, column_index_list=[0, 1, 2])
+        +-group_by_list=
+        | +-int_a#8 := ColumnRef(type=INT64, column=MultipleColumns.int_a#1)
+        | +-string_a#9 := ColumnRef(type=STRING, column=MultipleColumns.string_a#2)
+        | +-int_b#10 := ColumnRef(type=INT64, column=MultipleColumns.int_b#3)
+        +-aggregate_list=
+        | +-$agg1#7 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+        +-grouping_set_list=
+          +-GroupingSet
+          | +-group_by_column_list=
+          |   +-ColumnRef(type=INT64, column=$groupby.int_a#8)
+          |   +-ColumnRef(type=STRING, column=$groupby.string_a#9)
+          +-GroupingSet
+            +-group_by_column_list=
+              +-ColumnRef(type=INT64, column=$groupby.int_b#10)
+
+[SQLBUILDER_OUTPUT]
+SELECT
+  COUNT(*) AS a_5
+FROM
+  (
+    SELECT
+      MultipleColumns.int_a AS a_1,
+      MultipleColumns.string_a AS a_2,
+      MultipleColumns.int_b AS a_3
+    FROM
+      MultipleColumns
+  ) AS multiplecolumns_4
+GROUP BY GROUPING SETS((multiplecolumns_4.a_1, multiplecolumns_4.a_2), multiplecolumns_4.a_3);
+==
+
+# A column produced by expansions in two different grouping sets is computed
+# once and referenced from both sets.
+SELECT COUNT(*)
+FROM MultipleColumns
+GROUP BY GROUPING SETS((**COLUMNS(['int_a', 'string_a'])),
+                       (**COLUMNS(['string_a', 'int_b'])))
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#7 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#7]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$aggregate.$agg1#7]
+        +-input_scan=
+        | +-TableScan(column_list=MultipleColumns.[int_a#1, string_a#2, int_b#3], table=MultipleColumns, column_index_list=[0, 1, 2])
+        +-group_by_list=
+        | +-int_a#8 := ColumnRef(type=INT64, column=MultipleColumns.int_a#1)
+        | +-string_a#9 := ColumnRef(type=STRING, column=MultipleColumns.string_a#2)
+        | +-int_b#10 := ColumnRef(type=INT64, column=MultipleColumns.int_b#3)
+        +-aggregate_list=
+        | +-$agg1#7 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+        +-grouping_set_list=
+          +-GroupingSet
+          | +-group_by_column_list=
+          |   +-ColumnRef(type=INT64, column=$groupby.int_a#8)
+          |   +-ColumnRef(type=STRING, column=$groupby.string_a#9)
+          +-GroupingSet
+            +-group_by_column_list=
+              +-ColumnRef(type=STRING, column=$groupby.string_a#9)
+              +-ColumnRef(type=INT64, column=$groupby.int_b#10)
+
+[SQLBUILDER_OUTPUT]
+SELECT
+  COUNT(*) AS a_5
+FROM
+  (
+    SELECT
+      MultipleColumns.int_a AS a_1,
+      MultipleColumns.string_a AS a_2,
+      MultipleColumns.int_b AS a_3
+    FROM
+      MultipleColumns
+  ) AS multiplecolumns_4
+GROUP BY GROUPING SETS((multiplecolumns_4.a_1, multiplecolumns_4.a_2), (multiplecolumns_4.a_2, multiplecolumns_4.a_3));
+==
+
+# A parenthesized set holding only an empty expansion is the empty grouping
+# set (), i.e. the grand total, whether or not other sets are listed.
+SELECT COUNT(*)
+FROM MultipleColumns
+GROUP BY GROUPING SETS((**COLUMNS([])){{|, int_b}})
+--
+ALTERNATION GROUP: <empty>
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#7 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#7]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$aggregate.$agg1#7]
+        +-input_scan=
+        | +-TableScan(table=MultipleColumns)
+        +-aggregate_list=
+        | +-$agg1#7 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+        +-grouping_set_list=
+          +-GroupingSet
+
+[SQLBUILDER_OUTPUT]
+SELECT
+  COUNT(*) AS a_1
+FROM
+  MultipleColumns;
+--
+ALTERNATION GROUP: , int_b
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#7 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#7]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$aggregate.$agg1#7]
+        +-input_scan=
+        | +-TableScan(column_list=[MultipleColumns.int_b#3], table=MultipleColumns, column_index_list=[2])
+        +-group_by_list=
+        | +-int_b#8 := ColumnRef(type=INT64, column=MultipleColumns.int_b#3)
+        +-aggregate_list=
+        | +-$agg1#7 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+        +-grouping_set_list=
+          +-GroupingSet
+          +-GroupingSet
+            +-group_by_column_list=
+              +-ColumnRef(type=INT64, column=$groupby.int_b#8)
+
+[SQLBUILDER_OUTPUT]
+SELECT
+  COUNT(*) AS a_3
+FROM
+  (
+    SELECT
+      MultipleColumns.int_b AS a_1
+    FROM
+      MultipleColumns
+  ) AS multiplecolumns_2
+GROUP BY GROUPING SETS((), multiplecolumns_2.a_1);
+==
+
+# An empty expansion inside a multi-column set adds nothing to that set,
+# however it is parenthesized, rather than making a separate empty set.
+SELECT COUNT(*)
+FROM MultipleColumns
+GROUP BY GROUPING SETS((int_c, {{**COLUMNS([])|(**COLUMNS([]))}}), int_b)
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#7 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#7]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$aggregate.$agg1#7]
+        +-input_scan=
+        | +-TableScan(column_list=MultipleColumns.[int_b#3, int_c#5], table=MultipleColumns, column_index_list=[2, 4])
+        +-group_by_list=
+        | +-int_c#8 := ColumnRef(type=INT64, column=MultipleColumns.int_c#5)
+        | +-int_b#9 := ColumnRef(type=INT64, column=MultipleColumns.int_b#3)
+        +-aggregate_list=
+        | +-$agg1#7 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+        +-grouping_set_list=
+          +-GroupingSet
+          | +-group_by_column_list=
+          |   +-ColumnRef(type=INT64, column=$groupby.int_c#8)
+          +-GroupingSet
+            +-group_by_column_list=
+              +-ColumnRef(type=INT64, column=$groupby.int_b#9)
+
+[SQLBUILDER_OUTPUT]
+SELECT
+  COUNT(*) AS a_4
+FROM
+  (
+    SELECT
+      MultipleColumns.int_b AS a_1,
+      MultipleColumns.int_c AS a_2
+    FROM
+      MultipleColumns
+  ) AS multiplecolumns_3
+GROUP BY GROUPING SETS(multiplecolumns_3.a_2, multiplecolumns_3.a_1);
+==
+
+# ROLLUP and CUBE nested in GROUPING SETS handle ** the same way as at the top
+# level: one level per column when unparenthesized, one multi-column level
+# when parenthesized.
+SELECT COUNT(*)
+FROM MultipleColumns
+GROUP BY GROUPING SETS(int_b, {{ROLLUP|CUBE}}(int_d,
+  {{**COLUMNS(['int_a', 'string_a'])|(**COLUMNS(['int_a', 'string_a']))}}))
+--
+ALTERNATION GROUP: ROLLUP,**COLUMNS(['int_a', 'string_a'])
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#7 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#7]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$aggregate.$agg1#7]
+        +-input_scan=
+        | +-TableScan(column_list=MultipleColumns.[int_a#1, string_a#2, int_b#3, int_d#6], table=MultipleColumns, column_index_list=[0, 1, 2, 5])
+        +-group_by_list=
+        | +-int_b#8 := ColumnRef(type=INT64, column=MultipleColumns.int_b#3)
+        | +-int_d#9 := ColumnRef(type=INT64, column=MultipleColumns.int_d#6)
+        | +-int_a#10 := ColumnRef(type=INT64, column=MultipleColumns.int_a#1)
+        | +-string_a#11 := ColumnRef(type=STRING, column=MultipleColumns.string_a#2)
+        +-aggregate_list=
+        | +-$agg1#7 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+        +-grouping_set_list=
+          +-GroupingSet
+          | +-group_by_column_list=
+          |   +-ColumnRef(type=INT64, column=$groupby.int_b#8)
+          +-Rollup
+            +-rollup_column_list=
+              +-GroupingSetMultiColumn
+              | +-column_list=
+              |   +-ColumnRef(type=INT64, column=$groupby.int_d#9)
+              +-GroupingSetMultiColumn
+              | +-column_list=
+              |   +-ColumnRef(type=INT64, column=$groupby.int_a#10)
+              +-GroupingSetMultiColumn
+                +-column_list=
+                  +-ColumnRef(type=STRING, column=$groupby.string_a#11)
+
+[SQLBUILDER_OUTPUT]
+SELECT
+  COUNT(*) AS a_6
+FROM
+  (
+    SELECT
+      MultipleColumns.int_a AS a_1,
+      MultipleColumns.string_a AS a_2,
+      MultipleColumns.int_b AS a_3,
+      MultipleColumns.int_d AS a_4
+    FROM
+      MultipleColumns
+  ) AS multiplecolumns_5
+GROUP BY GROUPING SETS(multiplecolumns_5.a_3, ROLLUP(multiplecolumns_5.a_4, multiplecolumns_5.a_1, multiplecolumns_5.a_2));
+--
+ALTERNATION GROUP: ROLLUP,(**COLUMNS(['int_a', 'string_a']))
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#7 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#7]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$aggregate.$agg1#7]
+        +-input_scan=
+        | +-TableScan(column_list=MultipleColumns.[int_a#1, string_a#2, int_b#3, int_d#6], table=MultipleColumns, column_index_list=[0, 1, 2, 5])
+        +-group_by_list=
+        | +-int_b#8 := ColumnRef(type=INT64, column=MultipleColumns.int_b#3)
+        | +-int_d#9 := ColumnRef(type=INT64, column=MultipleColumns.int_d#6)
+        | +-int_a#10 := ColumnRef(type=INT64, column=MultipleColumns.int_a#1)
+        | +-string_a#11 := ColumnRef(type=STRING, column=MultipleColumns.string_a#2)
+        +-aggregate_list=
+        | +-$agg1#7 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+        +-grouping_set_list=
+          +-GroupingSet
+          | +-group_by_column_list=
+          |   +-ColumnRef(type=INT64, column=$groupby.int_b#8)
+          +-Rollup
+            +-rollup_column_list=
+              +-GroupingSetMultiColumn
+              | +-column_list=
+              |   +-ColumnRef(type=INT64, column=$groupby.int_d#9)
+              +-GroupingSetMultiColumn
+                +-column_list=
+                  +-ColumnRef(type=INT64, column=$groupby.int_a#10)
+                  +-ColumnRef(type=STRING, column=$groupby.string_a#11)
+
+[SQLBUILDER_OUTPUT]
+SELECT
+  COUNT(*) AS a_6
+FROM
+  (
+    SELECT
+      MultipleColumns.int_a AS a_1,
+      MultipleColumns.string_a AS a_2,
+      MultipleColumns.int_b AS a_3,
+      MultipleColumns.int_d AS a_4
+    FROM
+      MultipleColumns
+  ) AS multiplecolumns_5
+GROUP BY GROUPING SETS(multiplecolumns_5.a_3, ROLLUP(multiplecolumns_5.a_4, (multiplecolumns_5.a_1, multiplecolumns_5.a_2)));
+--
+ALTERNATION GROUP: CUBE,**COLUMNS(['int_a', 'string_a'])
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#7 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#7]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$aggregate.$agg1#7]
+        +-input_scan=
+        | +-TableScan(column_list=MultipleColumns.[int_a#1, string_a#2, int_b#3, int_d#6], table=MultipleColumns, column_index_list=[0, 1, 2, 5])
+        +-group_by_list=
+        | +-int_b#8 := ColumnRef(type=INT64, column=MultipleColumns.int_b#3)
+        | +-int_d#9 := ColumnRef(type=INT64, column=MultipleColumns.int_d#6)
+        | +-int_a#10 := ColumnRef(type=INT64, column=MultipleColumns.int_a#1)
+        | +-string_a#11 := ColumnRef(type=STRING, column=MultipleColumns.string_a#2)
+        +-aggregate_list=
+        | +-$agg1#7 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+        +-grouping_set_list=
+          +-GroupingSet
+          | +-group_by_column_list=
+          |   +-ColumnRef(type=INT64, column=$groupby.int_b#8)
+          +-Cube
+            +-cube_column_list=
+              +-GroupingSetMultiColumn
+              | +-column_list=
+              |   +-ColumnRef(type=INT64, column=$groupby.int_d#9)
+              +-GroupingSetMultiColumn
+              | +-column_list=
+              |   +-ColumnRef(type=INT64, column=$groupby.int_a#10)
+              +-GroupingSetMultiColumn
+                +-column_list=
+                  +-ColumnRef(type=STRING, column=$groupby.string_a#11)
+
+[SQLBUILDER_OUTPUT]
+SELECT
+  COUNT(*) AS a_6
+FROM
+  (
+    SELECT
+      MultipleColumns.int_a AS a_1,
+      MultipleColumns.string_a AS a_2,
+      MultipleColumns.int_b AS a_3,
+      MultipleColumns.int_d AS a_4
+    FROM
+      MultipleColumns
+  ) AS multiplecolumns_5
+GROUP BY GROUPING SETS(multiplecolumns_5.a_3, CUBE(multiplecolumns_5.a_4, multiplecolumns_5.a_1, multiplecolumns_5.a_2));
+--
+ALTERNATION GROUP: CUBE,(**COLUMNS(['int_a', 'string_a']))
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#7 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#7]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$aggregate.$agg1#7]
+        +-input_scan=
+        | +-TableScan(column_list=MultipleColumns.[int_a#1, string_a#2, int_b#3, int_d#6], table=MultipleColumns, column_index_list=[0, 1, 2, 5])
+        +-group_by_list=
+        | +-int_b#8 := ColumnRef(type=INT64, column=MultipleColumns.int_b#3)
+        | +-int_d#9 := ColumnRef(type=INT64, column=MultipleColumns.int_d#6)
+        | +-int_a#10 := ColumnRef(type=INT64, column=MultipleColumns.int_a#1)
+        | +-string_a#11 := ColumnRef(type=STRING, column=MultipleColumns.string_a#2)
+        +-aggregate_list=
+        | +-$agg1#7 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+        +-grouping_set_list=
+          +-GroupingSet
+          | +-group_by_column_list=
+          |   +-ColumnRef(type=INT64, column=$groupby.int_b#8)
+          +-Cube
+            +-cube_column_list=
+              +-GroupingSetMultiColumn
+              | +-column_list=
+              |   +-ColumnRef(type=INT64, column=$groupby.int_d#9)
+              +-GroupingSetMultiColumn
+                +-column_list=
+                  +-ColumnRef(type=INT64, column=$groupby.int_a#10)
+                  +-ColumnRef(type=STRING, column=$groupby.string_a#11)
+
+[SQLBUILDER_OUTPUT]
+SELECT
+  COUNT(*) AS a_6
+FROM
+  (
+    SELECT
+      MultipleColumns.int_a AS a_1,
+      MultipleColumns.string_a AS a_2,
+      MultipleColumns.int_b AS a_3,
+      MultipleColumns.int_d AS a_4
+    FROM
+      MultipleColumns
+  ) AS multiplecolumns_5
+GROUP BY GROUPING SETS(multiplecolumns_5.a_3, CUBE(multiplecolumns_5.a_4, (multiplecolumns_5.a_1, multiplecolumns_5.a_2)));
+==
+
+# An empty expansion inside a nested ROLLUP or CUBE drops out, leaving the
+# explicit column as the only element.
+SELECT COUNT(*)
+FROM MultipleColumns
+GROUP BY GROUPING SETS(int_b,
+  {{ROLLUP|CUBE}}(int_d, {{**COLUMNS([])|(**COLUMNS([]))}}))
+--
+ALTERNATION GROUPS:
+    ROLLUP,**COLUMNS([])
+    ROLLUP,(**COLUMNS([]))
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#7 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#7]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$aggregate.$agg1#7]
+        +-input_scan=
+        | +-TableScan(column_list=MultipleColumns.[int_b#3, int_d#6], table=MultipleColumns, column_index_list=[2, 5])
+        +-group_by_list=
+        | +-int_b#8 := ColumnRef(type=INT64, column=MultipleColumns.int_b#3)
+        | +-int_d#9 := ColumnRef(type=INT64, column=MultipleColumns.int_d#6)
+        +-aggregate_list=
+        | +-$agg1#7 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+        +-grouping_set_list=
+          +-GroupingSet
+          | +-group_by_column_list=
+          |   +-ColumnRef(type=INT64, column=$groupby.int_b#8)
+          +-Rollup
+            +-rollup_column_list=
+              +-GroupingSetMultiColumn
+                +-column_list=
+                  +-ColumnRef(type=INT64, column=$groupby.int_d#9)
+
+[SQLBUILDER_OUTPUT]
+SELECT
+  COUNT(*) AS a_4
+FROM
+  (
+    SELECT
+      MultipleColumns.int_b AS a_1,
+      MultipleColumns.int_d AS a_2
+    FROM
+      MultipleColumns
+  ) AS multiplecolumns_3
+GROUP BY GROUPING SETS(multiplecolumns_3.a_1, ROLLUP(multiplecolumns_3.a_2));
+--
+ALTERNATION GROUPS:
+    CUBE,**COLUMNS([])
+    CUBE,(**COLUMNS([]))
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#7 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#7]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$aggregate.$agg1#7]
+        +-input_scan=
+        | +-TableScan(column_list=MultipleColumns.[int_b#3, int_d#6], table=MultipleColumns, column_index_list=[2, 5])
+        +-group_by_list=
+        | +-int_b#8 := ColumnRef(type=INT64, column=MultipleColumns.int_b#3)
+        | +-int_d#9 := ColumnRef(type=INT64, column=MultipleColumns.int_d#6)
+        +-aggregate_list=
+        | +-$agg1#7 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+        +-grouping_set_list=
+          +-GroupingSet
+          | +-group_by_column_list=
+          |   +-ColumnRef(type=INT64, column=$groupby.int_b#8)
+          +-Cube
+            +-cube_column_list=
+              +-GroupingSetMultiColumn
+                +-column_list=
+                  +-ColumnRef(type=INT64, column=$groupby.int_d#9)
+
+[SQLBUILDER_OUTPUT]
+SELECT
+  COUNT(*) AS a_4
+FROM
+  (
+    SELECT
+      MultipleColumns.int_b AS a_1,
+      MultipleColumns.int_d AS a_2
+    FROM
+      MultipleColumns
+  ) AS multiplecolumns_3
+GROUP BY GROUPING SETS(multiplecolumns_3.a_1, CUBE(multiplecolumns_3.a_2));
+==
+
+# ------------------------------------------------------------------------------
+# Interaction with the SELECT list
+# ------------------------------------------------------------------------------
+
+# Names in ** are resolved against SELECT list aliases, not only against table
+# columns.
+SELECT int_a as a, string_a as b
+FROM MultipleColumns
+GROUP BY **COLUMNS(['a', 'b']);
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.a#7 AS a [INT64]
+| +-$groupby.b#8 AS b [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=$groupby.[a#7, b#8]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=$groupby.[a#7, b#8]
+        +-input_scan=
+        | +-TableScan(column_list=MultipleColumns.[int_a#1, string_a#2], table=MultipleColumns, column_index_list=[0, 1])
+        +-group_by_list=
+          +-a#7 := ColumnRef(type=INT64, column=MultipleColumns.int_a#1)
+          +-b#8 := ColumnRef(type=STRING, column=MultipleColumns.string_a#2)
+
+[SQLBUILDER_OUTPUT]
+SELECT
+  multiplecolumns_3.a_1 AS a,
+  multiplecolumns_3.a_2 AS b
+FROM
+  (
+    SELECT
+      MultipleColumns.int_a AS a_1,
+      MultipleColumns.string_a AS a_2
+    FROM
+      MultipleColumns
+  ) AS multiplecolumns_3
+GROUP BY 1, 2;
+==
+
+# A ** in the SELECT list may expand to a subset of the grouping columns.
+SELECT **COLUMNS(['int_a']), COUNT(*)
+FROM MultipleColumns
+GROUP BY **COLUMNS(['int_a', 'string_a']);
+
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.int_a#8 AS int_a [INT64]
+| +-$aggregate.$agg1#7 AS `$col2` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$groupby.int_a#8, $aggregate.$agg1#7]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$groupby.int_a#8, $aggregate.$agg1#7]
+        +-input_scan=
+        | +-TableScan(column_list=MultipleColumns.[int_a#1, string_a#2], table=MultipleColumns, column_index_list=[0, 1])
+        +-group_by_list=
+        | +-int_a#8 := ColumnRef(type=INT64, column=MultipleColumns.int_a#1)
+        | +-string_a#9 := ColumnRef(type=STRING, column=MultipleColumns.string_a#2)
+        +-aggregate_list=
+          +-$agg1#7 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+
+[SQLBUILDER_OUTPUT]
+SELECT
+  multiplecolumns_3.a_1 AS int_a,
+  COUNT(*) AS a_5
+FROM
+  (
+    SELECT
+      MultipleColumns.int_a AS a_1,
+      MultipleColumns.string_a AS a_2
+    FROM
+      MultipleColumns
+  ) AS multiplecolumns_3
+GROUP BY 1, multiplecolumns_3.a_2;
+==
+
+# An empty ** in the SELECT list adds no output columns and does not affect
+# grouping.
+SELECT **COLUMNS([]), COUNT(*)
+FROM MultipleColumns
+GROUP BY **COLUMNS(['int_a', 'string_a']);
+
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#7 AS `$col2` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#7]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$aggregate.$agg1#7]
+        +-input_scan=
+        | +-TableScan(column_list=MultipleColumns.[int_a#1, string_a#2], table=MultipleColumns, column_index_list=[0, 1])
+        +-group_by_list=
+        | +-int_a#8 := ColumnRef(type=INT64, column=MultipleColumns.int_a#1)
+        | +-string_a#9 := ColumnRef(type=STRING, column=MultipleColumns.string_a#2)
+        +-aggregate_list=
+          +-$agg1#7 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+
+[SQLBUILDER_OUTPUT]
+SELECT
+  COUNT(*) AS a_4
+FROM
+  (
+    SELECT
+      MultipleColumns.int_a AS a_1,
+      MultipleColumns.string_a AS a_2
+    FROM
+      MultipleColumns
+  ) AS multiplecolumns_3
+GROUP BY multiplecolumns_3.a_1, multiplecolumns_3.a_2;
+==
+
+# ------------------------------------------------------------------------------
+# Interaction with other clauses
+# ------------------------------------------------------------------------------
+
+# HAVING can filter on aggregates over columns grouped via **.
+SELECT int_a, COUNT(*) AS n
+FROM MultipleColumns
+GROUP BY **COLUMNS(['int_a'])
+HAVING COUNT(*) > 1
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.int_a#8 AS int_a [INT64]
+| +-$aggregate.n#7 AS n [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$groupby.int_a#8, $aggregate.n#7]
+    +-input_scan=
+      +-FilterScan
+        +-column_list=[$groupby.int_a#8, $aggregate.n#7, $aggregate.$agg2#9]
+        +-input_scan=
+        | +-AggregateScan
+        |   +-column_list=[$groupby.int_a#8, $aggregate.n#7, $aggregate.$agg2#9]
+        |   +-input_scan=
+        |   | +-TableScan(column_list=[MultipleColumns.int_a#1], table=MultipleColumns, column_index_list=[0])
+        |   +-group_by_list=
+        |   | +-int_a#8 := ColumnRef(type=INT64, column=MultipleColumns.int_a#1)
+        |   +-aggregate_list=
+        |     +-n#7 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+        |     +-$agg2#9 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+        +-filter_expr=
+          +-FunctionCall(GoogleSQL:$greater(INT64, INT64) -> BOOL)
+            +-ColumnRef(type=INT64, column=$aggregate.$agg2#9)
+            +-Literal(type=INT64, value=1)
+
+[SQLBUILDER_OUTPUT]
+SELECT
+  aggregatescan_6.a_3 AS int_a,
+  aggregatescan_6.a_4 AS n
+FROM
+  (
+    SELECT
+      multiplecolumns_2.a_1 AS a_3,
+      COUNT(*) AS a_4,
+      COUNT(*) AS a_5
+    FROM
+      (
+        SELECT
+          MultipleColumns.int_a AS a_1
+        FROM
+          MultipleColumns
+      ) AS multiplecolumns_2
+    GROUP BY 1
+  ) AS aggregatescan_6
+WHERE
+  (aggregatescan_6.a_5) > 1;
+==
+
+# ORDER BY can reference a column grouped via **.
+SELECT int_a, COUNT(*) AS n
+FROM MultipleColumns
+GROUP BY **COLUMNS(['int_a'])
+ORDER BY int_a
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.int_a#8 AS int_a [INT64]
+| +-$aggregate.n#7 AS n [INT64]
++-query=
+  +-OrderByScan
+    +-column_list=[$groupby.int_a#8, $aggregate.n#7]
+    +-is_ordered=TRUE
+    +-input_scan=
+    | +-AggregateScan
+    |   +-column_list=[$groupby.int_a#8, $aggregate.n#7]
+    |   +-input_scan=
+    |   | +-TableScan(column_list=[MultipleColumns.int_a#1], table=MultipleColumns, column_index_list=[0])
+    |   +-group_by_list=
+    |   | +-int_a#8 := ColumnRef(type=INT64, column=MultipleColumns.int_a#1)
+    |   +-aggregate_list=
+    |     +-n#7 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+    +-order_by_item_list=
+      +-OrderByItem
+        +-column_ref=
+          +-ColumnRef(type=INT64, column=$groupby.int_a#8)
+
+[SQLBUILDER_OUTPUT]
+SELECT
+  aggregatescan_5.a_3 AS int_a,
+  aggregatescan_5.a_4 AS n
+FROM
+  (
+    SELECT
+      multiplecolumns_2.a_1 AS a_3,
+      COUNT(*) AS a_4
+    FROM
+      (
+        SELECT
+          MultipleColumns.int_a AS a_1
+        FROM
+          MultipleColumns
+      ) AS multiplecolumns_2
+    GROUP BY 1
+  ) AS aggregatescan_5
+ORDER BY aggregatescan_5.a_3;
+==
+
+# GROUPING() can reference a column grouped via ** inside ROLLUP.
+SELECT GROUPING(int_a) AS g, COUNT(*) AS n
+FROM MultipleColumns
+GROUP BY ROLLUP(**COLUMNS(['int_a', 'string_a']))
+--
+QueryStmt
++-output_column_list=
+| +-$grouping_call.$grouping_call1#11 AS g [INT64]
+| +-$aggregate.n#8 AS n [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$grouping_call.$grouping_call1#11, $aggregate.n#8]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$groupby.int_a#9, $aggregate.n#8, $grouping_call.$grouping_call1#11]
+        +-input_scan=
+        | +-TableScan(column_list=MultipleColumns.[int_a#1, string_a#2], table=MultipleColumns, column_index_list=[0, 1])
+        +-group_by_list=
+        | +-int_a#9 := ColumnRef(type=INT64, column=MultipleColumns.int_a#1)
+        | +-string_a#10 := ColumnRef(type=STRING, column=MultipleColumns.string_a#2)
+        +-aggregate_list=
+        | +-n#8 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+        +-grouping_set_list=
+        | +-Rollup
+        |   +-rollup_column_list=
+        |     +-GroupingSetMultiColumn
+        |     | +-column_list=
+        |     |   +-ColumnRef(type=INT64, column=$groupby.int_a#9)
+        |     +-GroupingSetMultiColumn
+        |       +-column_list=
+        |         +-ColumnRef(type=STRING, column=$groupby.string_a#10)
+        +-grouping_call_list=
+          +-GroupingCall
+            +-group_by_column=
+            | +-ColumnRef(type=INT64, column=$groupby.int_a#9)
+            +-output_column=$grouping_call.$grouping_call1#11
+
+[SQLBUILDER_OUTPUT]
+SELECT
+  aggregatescan_7.a_6 AS g,
+  aggregatescan_7.a_5 AS n
+FROM
+  (
+    SELECT
+      multiplecolumns_3.a_1 AS a_4,
+      COUNT(*) AS a_5,
+      `GROUPING`(multiplecolumns_3.a_1) AS a_6
+    FROM
+      (
+        SELECT
+          MultipleColumns.int_a AS a_1,
+          MultipleColumns.string_a AS a_2
+        FROM
+          MultipleColumns
+      ) AS multiplecolumns_3
+    GROUP BY ROLLUP(1, multiplecolumns_3.a_2)
+  ) AS aggregatescan_7;
+==
+
+# GROUP BY ALL infers the grouping columns from a ** in the SELECT list.
+SELECT **COLUMNS(['int_a']), COUNT(*) AS n
+FROM MultipleColumns
+GROUP BY ALL
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.int_a#8 AS int_a [INT64]
+| +-$aggregate.n#7 AS n [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$groupby.int_a#8, $aggregate.n#7]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$groupby.int_a#8, $aggregate.n#7]
+        +-input_scan=
+        | +-TableScan(column_list=[MultipleColumns.int_a#1], table=MultipleColumns, column_index_list=[0])
+        +-group_by_list=
+        | +-int_a#8 := ColumnRef(type=INT64, column=MultipleColumns.int_a#1)
+        +-aggregate_list=
+          +-n#7 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+
+[SQLBUILDER_OUTPUT]
+SELECT
+  multiplecolumns_2.a_1 AS int_a,
+  COUNT(*) AS n
+FROM
+  (
+    SELECT
+      MultipleColumns.int_a AS a_1
+    FROM
+      MultipleColumns
+  ) AS multiplecolumns_2
+GROUP BY ALL;
+==
+
+################################################################################
+#
+# Negative cases
+#
+################################################################################
+
+# ------------------------------------------------------------------------------
+# Constructs that require at least one column
+# ------------------------------------------------------------------------------
+
+# ROLLUP and CUBE require at least one column, which an empty expansion cannot
+# satisfy, however it is parenthesized.
+SELECT COUNT(*)
+FROM MultipleColumns
+GROUP BY {{ROLLUP|CUBE}}({{**COLUMNS([])|(**COLUMNS([]))|**(COLUMNS([]))}})
+--
+ALTERNATION GROUP: ROLLUP,**COLUMNS([])
+--
+ERROR: ROLLUP must have at least one column [at 3:10]
+GROUP BY ROLLUP(**COLUMNS([]))
+         ^
+--
+ALTERNATION GROUP: ROLLUP,(**COLUMNS([]))
+--
+ERROR: ROLLUP must have at least one column [at 3:10]
+GROUP BY ROLLUP((**COLUMNS([])))
+         ^
+--
+ALTERNATION GROUP: ROLLUP,**(COLUMNS([]))
+--
+ERROR: ROLLUP must have at least one column [at 3:10]
+GROUP BY ROLLUP(**(COLUMNS([])))
+         ^
+--
+ALTERNATION GROUP: CUBE,**COLUMNS([])
+--
+ERROR: CUBE must have at least one column [at 3:10]
+GROUP BY CUBE(**COLUMNS([]))
+         ^
+--
+ALTERNATION GROUP: CUBE,(**COLUMNS([]))
+--
+ERROR: CUBE must have at least one column [at 3:10]
+GROUP BY CUBE((**COLUMNS([])))
+         ^
+--
+ALTERNATION GROUP: CUBE,**(COLUMNS([]))
+--
+ERROR: CUBE must have at least one column [at 3:10]
+GROUP BY CUBE(**(COLUMNS([])))
+         ^
+==
+
+# An empty parenthesized expansion is dropped rather than kept as an empty ()
+# element, even when repeated.
+SELECT COUNT(*)
+FROM MultipleColumns
+GROUP BY {{ROLLUP|CUBE}}(
+  {{**COLUMNS([]), **COLUMNS([])|(**COLUMNS([])), (**COLUMNS([]))}})
+--
+ALTERNATION GROUPS:
+    ROLLUP,**COLUMNS([]), **COLUMNS([])
+    ROLLUP,(**COLUMNS([])), (**COLUMNS([]))
+--
+ERROR: ROLLUP must have at least one column [at 3:10]
+GROUP BY ROLLUP(
+         ^
+--
+ALTERNATION GROUPS:
+    CUBE,**COLUMNS([]), **COLUMNS([])
+    CUBE,(**COLUMNS([])), (**COLUMNS([]))
+--
+ERROR: CUBE must have at least one column [at 3:10]
+GROUP BY CUBE(
+         ^
+==
+
+# The empty expansion check applies to each ROLLUP or CUBE on its own, even when
+# other grouping items in the same GROUP BY do have columns.
+SELECT COUNT(*)
+FROM MultipleColumns
+GROUP BY ROLLUP(int_a), {{ROLLUP|CUBE}}(**COLUMNS([]))
+--
+ALTERNATION GROUP: ROLLUP
+--
+ERROR: ROLLUP must have at least one column [at 3:25]
+GROUP BY ROLLUP(int_a), ROLLUP(**COLUMNS([]))
+                        ^
+--
+ALTERNATION GROUP: CUBE
+--
+ERROR: CUBE must have at least one column [at 3:25]
+GROUP BY ROLLUP(int_a), CUBE(**COLUMNS([]))
+                        ^
+==
+
+# The same applies to ROLLUP and CUBE nested inside GROUPING SETS.
+SELECT COUNT(*)
+FROM MultipleColumns
+GROUP BY GROUPING SETS({{ROLLUP|CUBE}}((**COLUMNS([]))), int_b)
+--
+ALTERNATION GROUP: ROLLUP
+--
+ERROR: ROLLUP must have at least one column [at 3:24]
+GROUP BY GROUPING SETS(ROLLUP((**COLUMNS([]))), int_b)
+                       ^
+--
+ALTERNATION GROUP: CUBE
+--
+ERROR: CUBE must have at least one column [at 3:24]
+GROUP BY GROUPING SETS(CUBE((**COLUMNS([]))), int_b)
+                       ^
+==
+
+# GROUPING SETS requires at least one set, which an empty expansion cannot
+# satisfy.
+SELECT COUNT(*)
+FROM MultipleColumns
+GROUP BY GROUPING SETS(**COLUMNS([]))
+--
+ERROR: GROUPING SETS must have at least one column [at 3:10]
+GROUP BY GROUPING SETS(**COLUMNS([]))
+         ^
+==
+
+# ------------------------------------------------------------------------------
+# Aliasing
+# ------------------------------------------------------------------------------
+
+# An alias cannot be attached to ** in GROUP BY; the parser rejects it.
+SELECT COUNT(*)
+FROM MultipleColumns
+GROUP BY **COLUMNS(['int_a', 'string_a']) as a
+--
+ERROR: Syntax error: Expected end of input but got keyword AS [at 3:43]
+GROUP BY **COLUMNS(['int_a', 'string_a']) as a
+                                          ^
+==
+
+# An alias cannot be attached to ** in the SELECT list either.
+SELECT **COLUMNS(['int_a']) as a, COUNT(*)
+FROM MultipleColumns
+GROUP BY a, **COLUMNS(['string_a']);
+
+--
+ERROR: ** expression cannot be aliased [at 1:29]
+SELECT **COLUMNS(['int_a']) as a, COUNT(*)
+                            ^
+==
+
+# ------------------------------------------------------------------------------
+# Columns that cannot be grouped
+# ------------------------------------------------------------------------------
+
+# A ** in the SELECT list cannot expand to a column that is neither grouped nor
+# aggregated.
+SELECT **COLUMNS(['int_b']), COUNT(*)
+FROM MultipleColumns
+GROUP BY **COLUMNS(['int_a', 'string_a']);
+
+--
+ERROR: SELECT list expression references column int_b which is neither grouped nor aggregated [at 1:8]
+SELECT **COLUMNS(['int_b']), COUNT(*)
+       ^
+==
+
+# A column of an ungroupable type is rejected the same way as when it is listed
+# explicitly.
+SELECT COUNT(*)
+FROM ComplexTypes
+GROUP BY **COLUMNS(['KitchenSink'])
+--
+ERROR: Grouping by expressions of type PROTO is not allowed [at 3:12]
+GROUP BY **COLUMNS(['KitchenSink'])
+           ^
+==
+
+# ------------------------------------------------------------------------------
+# Name resolution
+# ------------------------------------------------------------------------------
+
+# A name in the column list that matches no column is an error.
+SELECT COUNT(*)
+FROM MultipleColumns
+GROUP BY **COLUMNS(['bogus'])
+--
+ERROR: Name bogus not found in the current scope [at 3:12]
+GROUP BY **COLUMNS(['bogus'])
+           ^

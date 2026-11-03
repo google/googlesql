@@ -34,7 +34,7 @@ RewriteRegistry& RewriteRegistry::global_instance() {
 }
 
 const Rewriter* RewriteRegistry::Get(ResolvedASTRewrite key) const {
-  absl::MutexLock l(mu_);
+  absl::ReaderMutexLock l(mu_);
   auto it = rewriters_.find(key);
   if (it == rewriters_.end()) {
     if (GOOGLESQL_DEBUG_MODE) {
@@ -47,7 +47,7 @@ const Rewriter* RewriteRegistry::Get(ResolvedASTRewrite key) const {
 }
 
 std::vector<ResolvedASTRewrite> RewriteRegistry::registration_order() const {
-  absl::MutexLock l(mu_);
+  absl::ReaderMutexLock l(mu_);
   return registration_order_;
 }
 

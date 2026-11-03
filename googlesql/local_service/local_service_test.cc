@@ -967,11 +967,6 @@ TEST_F(GoogleSqlLocalServiceImplTest, ParseScript) {
 }
 
 TEST_F(GoogleSqlLocalServiceImplTest, ParseWithEmptyTarget) {
-  const std::string script_content = R"(
-    DECLARE variable INT64;
-    SET variable = 1;
-  )";
-
   ParseRequest request;
   request.set_allow_script(false);
   ParseResponse response;

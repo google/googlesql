@@ -305,20 +305,28 @@ inline absl::Status ParseScript(absl::string_view script_string,
 //
 // This can return errors annotated with an ErrorLocation payload that indicates
 // the input location of an error.
+//
+// If <out_runtime_info> is not null, runtime info collected while parsing the
+// statement is written to it (even on error).
 absl::Status ParseNextStatement(ParseResumeLocation* resume_location,
                                 const ParserOptions& parser_options_in,
                                 std::unique_ptr<ParserOutput>* output,
-                                bool* at_end_of_input);
+                                bool* at_end_of_input,
+                                ParserRuntimeInfo* out_runtime_info = nullptr);
 
 // Similar to the above function, but allows statements specific to scripting,
 // in addition to SQL statements.  Entire constructs such as IF...END IF,
 // WHILE...END WHILE, and BEGIN...END are returned as a single statement, and
 // may contain inner statements, which can be examined through the returned
 // parse tree.
-absl::Status ParseNextScriptStatement(ParseResumeLocation* resume_location,
-                                      const ParserOptions& parser_options_in,
-                                      std::unique_ptr<ParserOutput>* output,
-                                      bool* at_end_of_input);
+//
+// If <out_runtime_info> is not null, runtime info collected while parsing the
+// statement is written to it (even on error).
+absl::Status ParseNextScriptStatement(
+    ParseResumeLocation* resume_location,
+    const ParserOptions& parser_options_in,
+    std::unique_ptr<ParserOutput>* output, bool* at_end_of_input,
+    ParserRuntimeInfo* out_runtime_info = nullptr);
 
 // Parses <type_string> as a type name and returns the parser output in <output>
 // upon success. The AST can be retrieved from output->type().

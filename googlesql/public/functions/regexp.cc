@@ -500,8 +500,13 @@ bool RegExp::Replace(absl::string_view str, absl::string_view newsub,
   }
 
   // "newsub" can reference at most 9 capturing groups indexed 1 to 9. Index 0
-  // is reserved for the entire matching substring.
-  std::vector<absl::string_view> match(10);
+  // is reserved for the entire matching substring. Only extract the groups
+  // actually referenced by "newsub" so literal replacements stay on RE2's DFA
+  // path instead of entering submatch-tracking engines.
+  absl::string_view match[10];
+  const int nmatch = 1 + RE2::MaxSubmatch(newsub);
+  const absl::Span<const absl::string_view> match_span(
+      match, static_cast<size_t>(nmatch));
 
   out->clear();
   // Position of the end of the previous match. This is necessary if the regular
@@ -515,10 +520,10 @@ bool RegExp::Replace(absl::string_view str, absl::string_view newsub,
   ptrdiff_t lastpos = -1;
   for (absl::string_view::iterator p = str.begin(); p <= str.end();) {
     // Find the first matching substring starting at p and store the
-    // match and captured groups in vector 'match'.
+    // match and referenced captured groups in 'match'.
     if (!re_->Match(str, p - str.begin(), str.size(),
                     RE2::UNANCHORED, /* match any substring */
-                    match.data(), match.size())) {
+                    match, nmatch)) {
       out->append(p, str.end());
       break;
     }
@@ -527,13 +532,13 @@ bool RegExp::Replace(absl::string_view str, absl::string_view newsub,
     out->append(p, match[0].begin());
     p = match[0].begin();
     if (!match[0].empty()) {
-      if (!Rewrite(newsub, match, max_out_size, out, error)) return false;
+      if (!Rewrite(newsub, match_span, max_out_size, out, error)) return false;
       p = match[0].end();
     } else {
       // The regexp matches empty substring. Ignore the match if it starts at
       // the end of the previous one.
       if (match[0].begin() - str.begin() != lastpos &&
-          !Rewrite(newsub, match, max_out_size, out, error)) {
+          !Rewrite(newsub, match_span, max_out_size, out, error)) {
         return false;
       }
       if (p < str.end()) {

@@ -457,6 +457,14 @@ absl::Status MacroExpander::LoadPotentiallySplicingTokens() {
       return absl::OkStatus();
     }
 
+    // Record when loading, not when expanding: loading reads one token past
+    // the chunk, so a tokenizer error there (e.g. `$m() 'abc`) can come out
+    // before this chunk is expanded. Use the start of the chunk, since a token
+    // glued to the invocation (`x$m()`) comes out of the same expansion.
+    if (!inside_macro_definition_ && IsMacroItem(token.kind)) {
+      RecordMacroInvocation(splicing_buffer_.front().start_offset());
+    }
+
     if (IsMacroInvocation(token.kind)) {
       GOOGLESQL_RETURN_IF_ERROR(LoadArgsIfAny());
       last_was_macro_invocation = true;
@@ -1408,6 +1416,12 @@ absl::StatusOr<TokenWithLocation> MacroExpander::ExpandLiteral(
         !IsIdentifierCharacter(literal_contents[num_chars_read + 1])) {
       absl::StrAppend(&content, std::string(1, cur_char));
       continue;
+    }
+
+    if (!macro_expander_options_.is_strict) {
+      // Lenient mode expands this below. Record it before any check that can
+      // fail, at the start of the literal, which is where the parser sees it.
+      RecordMacroInvocation(original_literal_token.start_offset());
     }
 
     // This is a macro token: either an invocation (including builtins), a macro

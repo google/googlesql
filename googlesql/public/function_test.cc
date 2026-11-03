@@ -73,7 +73,7 @@ class TestSQLFunction : public SQLFunctionInterface {
   std::vector<std::string> GetArgumentNames() const override {
     return {"a", "b", "c"};
   }
-  const std::vector<std::unique_ptr<const ResolvedComputedColumn>>*
+  const std::vector<std::unique_ptr<const ResolvedComputedColumnBase>>*
   aggregate_expression_list() const override {
     return nullptr;
   }

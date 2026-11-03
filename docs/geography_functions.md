@@ -862,8 +862,7 @@ This is advanced functionality for interoperability with systems utilizing the
 + Can return negative cell IDs.
 + Valid S2 cell levels are 0 to 30.
 + `level` defaults to 30 if not explicitly specified.
-+ The function only supports a single point GEOGRAPHY. Use the `SAFE` prefix if
-  the input can be multipoint, linestring, polygon, or an empty `GEOGRAPHY`.
++ The function only supports a single point GEOGRAPHY.
 + To compute the covering of a complex `GEOGRAPHY`, use
   [S2_COVERINGCELLIDS][s2-coveringcellids].
 
@@ -2014,8 +2013,7 @@ ST_ENDPOINT(linestring_geography)
 **Description**
 
 Returns the last point of a linestring geography as a point geography. Returns
-an error if the input isn't a linestring or if the input is empty. Use the
-`SAFE` prefix to obtain `NULL` for invalid input instead of an error.
+an error if the input isn't a linestring or if the input is empty.
 
 **Return Type**
 
@@ -2140,8 +2138,6 @@ polygon geography.
     geography and returns the corresponding linestring.
 +   If the input is the full `GEOGRAPHY`, returns an empty geography.
 +   Returns an error if the input isn't a single polygon.
-
-Use the `SAFE` prefix to return `NULL` for invalid input instead of an error.
 
 **Return type**
 
@@ -2870,8 +2866,6 @@ the input polygon.
 +   If the input polygon has no holes, returns an empty array.
 +   Returns an error if the input isn't a single polygon.
 
-Use the `SAFE` prefix to return `NULL` for invalid input instead of an error.
-
 **Return type**
 
 `ARRAY<LineString GEOGRAPHY>`
@@ -3223,8 +3217,7 @@ Details:
 
 +   Returns `NULL` if any input argument is `NULL`.
 +   Returns an error if `linestring_geography` isn't a linestring or if
-    `point_geography` isn't a point. Use the `SAFE` prefix
-    to obtain `NULL` for invalid input instead of an error.
+    `point_geography` isn't a point.
 
 **Return Type**
 
@@ -3686,8 +3679,7 @@ Returns the Nth point of a linestring geography as a point geography, where N is
 the index. The index is 1-based. Negative values are counted backwards from the
 end of the linestring, so that -1 is the last point. Returns an error if the
 input isn't a linestring, if the input is empty, or if there is no vertex at
-the given index. Use the `SAFE` prefix to obtain `NULL` for invalid input
-instead of an error.
+the given index.
 
 **Return Type**
 
@@ -3826,8 +3818,7 @@ ST_STARTPOINT(linestring_geography)
 **Description**
 
 Returns the first point of a linestring geography as a point geography. Returns
-an error if the input isn't a linestring or if the input is empty. Use the
-`SAFE` prefix to obtain `NULL` for invalid input instead of an error.
+an error if the input isn't a linestring or if the input is empty.
 
 **Return Type**
 
@@ -3982,7 +3973,7 @@ Returns the longitude in degrees of the single-point input
 
 For any input `GEOGRAPHY` that isn't a single point,
 including an empty `GEOGRAPHY`, `ST_X` returns an
-error. Use the `SAFE.` prefix to obtain `NULL`.
+error.
 
 **Return type**
 
@@ -4024,7 +4015,7 @@ Returns the latitude in degrees of the single-point input
 
 For any input `GEOGRAPHY` that isn't a single point,
 including an empty `GEOGRAPHY`, `ST_Y` returns an
-error. Use the `SAFE.` prefix to return `NULL` instead.
+error.
 
 **Return type**
 

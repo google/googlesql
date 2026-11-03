@@ -65,11 +65,11 @@
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
+#include "absl/time/simulated_clock.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "googlesql/base/ret_check.h"
 #include "googlesql/base/status_builder.h"
-#include "googlesql/base/clock.h"
 
 using ::std::nullopt;
 
@@ -1150,7 +1150,7 @@ TEST_F(CreateIteratorTest, EvaluatorTableScanOpDeadlineExceeded) {
   const std::function<void(absl::Time)> set_deadline_cb =
       [&deadlines](absl::Time deadline) { deadlines.push_back(deadline); };
 
-  googlesql_base::SimulatedClock clock(absl::UnixEpoch());
+  absl::SimulatedClock clock(absl::UnixEpoch());
   std::vector<std::unique_ptr<const Column>> columns;
   columns.push_back(std::make_unique<SimpleColumn>("TestTable", "column0",
                                                    types::Int64Type()));
@@ -4729,7 +4729,7 @@ TEST_F(CreateIteratorTest, ComputeOp_OrderedInput) {
                                           HasRawPointer(params_shared_state)),
                           _));
 
-  // Check that scrambling works.
+  // Check that scrambling works when is_order_preserving is false.
   EvaluationContext scramble_context(GetScramblingEvaluationOptions());
   GOOGLESQL_ASSERT_OK_AND_ASSIGN(
       iter, compute_op->CreateIterator({&params_data}, /*num_extra_slots=*/1,
@@ -5717,6 +5717,13 @@ TEST_F(CreateIteratorTest, PivotOpUnorderedArrayGrouping) {
   EXPECT_THAT(
       run_pivot_with_array_keys(Array({Int64(1), Int64(2)}, kPreservesOrder),
                                 Array({Int64(1), Int64(2)}, kPreservesOrder)),
+      IsOkAndHolds(true));
+
+  // Case 3: Unordered array keys (kIgnoresOrder) with identical elements only
+  // have a single possible permutation, so they must remain deterministic.
+  EXPECT_THAT(
+      run_pivot_with_array_keys(Array({Int64(1), Int64(1)}, kIgnoresOrder),
+                                Array({Int64(1), Int64(1)}, kIgnoresOrder)),
       IsOkAndHolds(true));
 }
 

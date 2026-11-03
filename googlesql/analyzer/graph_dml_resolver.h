@@ -153,6 +153,21 @@ class GraphDmlResolver {
   ResolveGqlRemove(const ASTGqlRemove& ast_remove, const NameScope* input_scope,
                    ResolvedGraphWithNameList<const ResolvedScan> input);
 
+  // Resolves a Graph DELETE operator.
+  // Returns a `ResolvedGraphDeleteScan` that deletes the specified graph
+  // elements in the working table, and replaces the deleted element columns
+  // with new computed columns produced by `delete_item_list`.
+  //
+  // Rules:
+  //  * Target variable must be in scope and evaluate to a graph node or edge.
+  //  * Deleting the same variable multiple times in a single DELETE operator
+  //    (e.g., `DELETE a, a`) is idempotent. These repeated references are
+  //    deduplicated during resolution.
+  // See (broken link):dml-delete for more details.
+  absl::StatusOr<ResolvedGraphWithNameList<const ResolvedScan>>
+  ResolveGqlDelete(const ASTGqlDelete& ast_delete, const NameScope* input_scope,
+                   ResolvedGraphWithNameList<const ResolvedScan> input);
+
  private:
   // Resolves an AST property specification against the target element table.
   // Performs assignment based type coercion and validates that:
@@ -168,14 +183,13 @@ class GraphDmlResolver {
   absl::StatusOr<
       std::vector<std::unique_ptr<const ResolvedGraphDMLPropertyItem>>>
   ResolveInsertProperties(const ASTGraphPropertySpecification* ast_prop_spec,
-                          const GraphElementTable* target_table,
+                          const GraphElementTable& target_table,
                           bool has_dynamic_label, const NameScope* input_scope);
 
   // Builds the GraphElementType based on the properties of the target table.
   // Supports both static and dynamic graph element types.
   absl::StatusOr<const GraphElementType*> BuildGraphElementType(
-      const GraphElementTable* target_table,
-      GraphElementType::ElementKind element_kind);
+      const GraphElementTable& target_table);
 
   // Resolves an insert node element pattern.
   // - `node_pattern` is the AST node pattern to resolve.

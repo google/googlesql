@@ -357,7 +357,7 @@ class TemplatedFunctionCallVisitor : public ResolvedASTVisitor {
     if (function_call->function()->template Is<SQLFunctionInterface>()) {
       const auto* sql_function =
           function_call->function()->template GetAs<SQLFunctionInterface>();
-      const std::vector<std::unique_ptr<const ResolvedComputedColumn>>*
+      const std::vector<std::unique_ptr<const ResolvedComputedColumnBase>>*
           aggregate_expression_list = sql_function->aggregate_expression_list();
       if (aggregate_expression_list != nullptr) {
         for (const auto& agg_expr : *aggregate_expression_list) {
@@ -766,6 +766,15 @@ class AnalyzerTestRunner {
     }
 
     absl::FlagSaver saver;
+    // Column visibility validation is on by default in analyzer tests. These
+    // flags provide the defaults for ValidatorOptions everywhere the analyzer
+    // (and rewriters) validate the Resolved AST.
+    absl::SetFlag(&FLAGS_googlesql_validate_resolved_ast_column_visibility,
+                  test_case_options_.GetBool(kValidateColumnVisibility));
+    absl::SetFlag(
+        &FLAGS_googlesql_validate_resolved_ast_compare_column_visibility,
+        test_case_options_.GetBool(kValidateColumnVisibility) &&
+            test_case_options_.GetBool(kCompareColumnVisibility));
     if (const std::string flags = test_case_options_.GetString(kSetFlag);
         !flags.empty()) {
       if (test_case_options_.GetBool(kRunInJava)) {
@@ -999,8 +1008,6 @@ class AnalyzerTestRunner {
     // options.
     std::unique_ptr<PreparedExpressionConstantEvaluator> constant_evaluator =
         nullptr;
-    ABSL_LOG(INFO) << "kUseConstantEvaluator: "
-              << test_case_options_.GetBool(kUseConstantEvaluator);
     if (test_case_options_.GetBool(kUseConstantEvaluator)) {
       constant_evaluator =
           std::make_unique<PreparedExpressionConstantEvaluator>(
@@ -2311,7 +2318,10 @@ class AnalyzerTestRunner {
       stmt->ClearFieldsAccessed();
 
       ValidatorOptions validator_options{
-          .allowed_hints_and_options = options.allowed_hints_and_options()};
+          .allowed_hints_and_options = options.allowed_hints_and_options(),
+          // The column visibility checker reads every field, which would hide
+          // fields that the hand-written validator doesn't traverse.
+          .validate_column_visibility = false};
       Validator validator(options.language(), std::move(validator_options));
       GOOGLESQL_ASSERT_OK(validator.ValidateResolvedStatement(stmt));
 
@@ -2852,6 +2862,10 @@ class AnalyzerTestRunner {
                                  this))) {
           return false;
         }
+        if (!CompareConnectionList(output_create_stmt->connection_list(),
+                                   sqlbuilder_create_stmt->connection_list())) {
+          return false;
+        }
         GOOGLESQL_EXPECT_OK(output_create_stmt->CheckFieldsAccessed());
         GOOGLESQL_EXPECT_OK(sqlbuilder_create_stmt->CheckFieldsAccessed());
         return true;
@@ -3196,6 +3210,49 @@ class AnalyzerTestRunner {
       }
     }
 
+    return true;
+  }
+
+  bool CompareConnection(const ResolvedConnection* output_conn,
+                         const ResolvedConnection* sqlbuilder_conn) {
+    if ((output_conn == nullptr) != (sqlbuilder_conn == nullptr)) {
+      return false;
+    }
+    if (output_conn == nullptr) {
+      return true;
+    }
+    return googlesql_base::CaseEqual(output_conn->connection()->FullName(),
+                                  sqlbuilder_conn->connection()->FullName());
+  }
+
+  bool CompareConnectionList(
+      const ResolvedConnectionList* output_conn_list,
+      const ResolvedConnectionList* sqlbuilder_conn_list) {
+    if ((output_conn_list == nullptr) != (sqlbuilder_conn_list == nullptr)) {
+      return false;
+    }
+    if (output_conn_list == nullptr) {
+      return true;
+    }
+    if (!CompareConnection(output_conn_list->connection(),
+                           sqlbuilder_conn_list->connection())) {
+      return false;
+    }
+    if (output_conn_list->connection_kv_list_size() !=
+        sqlbuilder_conn_list->connection_kv_list_size()) {
+      return false;
+    }
+    for (int i = 0; i < output_conn_list->connection_kv_list_size(); ++i) {
+      const ResolvedConnectionKeyValuePair* output_kv =
+          output_conn_list->connection_kv_list(i);
+      const ResolvedConnectionKeyValuePair* sqlbuilder_kv =
+          sqlbuilder_conn_list->connection_kv_list(i);
+      if (!googlesql_base::CaseEqual(output_kv->key(), sqlbuilder_kv->key()) ||
+          !CompareConnection(output_kv->connection(),
+                             sqlbuilder_kv->connection())) {
+        return false;
+      }
+    }
     return true;
   }
 

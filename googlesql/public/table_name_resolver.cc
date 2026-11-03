@@ -35,6 +35,7 @@
 #include "googlesql/public/options.pb.h"
 #include "googlesql/public/types/type_factory.h"
 #include "googlesql/resolved_ast/resolved_node_kind.pb.h"
+#include "absl/base/casts.h"
 #include "absl/container/btree_set.h"
 #include "googlesql/base/check.h"
 #include "absl/status/status.h"
@@ -45,7 +46,6 @@
 #include "absl/types/span.h"
 #include "googlesql/base/map_util.h"
 #include "googlesql/base/ret_check.h"
-#include "googlesql/base/status.h"
 
 // TODO This implementation probably doesn't cover all edge cases for
 // table name extraction.  It should be tested more and tuned for the final
@@ -226,7 +226,7 @@ class TableNameResolver {
       const ASTTablePathExpression* table_ref, AliasSet* visible_aliases);
 
   absl::Status ResolveTablePath(const std::vector<std::string>& path,
-                                const ASTForSystemTime* for_system_time);
+                                const ASTForVersionClause* for_version_clause);
 
   absl::Status FindInTableElements(const ASTTableElementList* elements);
 
@@ -479,7 +479,7 @@ absl::Status TableNameResolver::FindInStatement(const ASTStatement* statement) {
         const ASTCloneDataSource* clone_data_source = stmt->clone_data_source();
         GOOGLESQL_RETURN_IF_ERROR(ResolveTablePath(
             clone_data_source->path_expr()->ToIdentifierVector(),
-            clone_data_source->for_system_time()));
+            clone_data_source->for_version_clause()));
         return absl::OkStatus();
       }
       break;
@@ -520,13 +520,13 @@ absl::Status TableNameResolver::FindInStatement(const ASTStatement* statement) {
       if (clone_data_source != nullptr) {
         GOOGLESQL_RETURN_IF_ERROR(ResolveTablePath(
             clone_data_source->path_expr()->ToIdentifierVector(),
-            clone_data_source->for_system_time()));
+            clone_data_source->for_version_clause()));
       }
       const ASTTableDataSource* copy_data_source = stmt->copy_data_source();
       if (copy_data_source != nullptr) {
         GOOGLESQL_RETURN_IF_ERROR(ResolveTablePath(
             copy_data_source->path_expr()->ToIdentifierVector(),
-            copy_data_source->for_system_time()));
+            copy_data_source->for_version_clause()));
       }
 
       const ASTQuery* query = stmt->query();
@@ -1292,7 +1292,7 @@ absl::Status TableNameResolver::FindInCreateMaterializedViewStatement(
   if (statement->replica_source() != nullptr) {
     GOOGLESQL_RETURN_IF_ERROR(
         ResolveTablePath(statement->replica_source()->ToIdentifierVector(),
-                         /*for_system_time=*/nullptr));
+                         /*for_version_clause=*/nullptr));
   }
   recursive_view_name_.clear();
   return absl::OkStatus();
@@ -1540,10 +1540,16 @@ absl::Status TableNameResolver::FindInPipeOperatorList(
 
   for (const ASTPipeOperator* pipe_operator : pipe_operator_list) {
     switch (pipe_operator->node_kind()) {
-      case AST_PIPE_CALL:
-        GOOGLESQL_RETURN_IF_ERROR(FindInTVF(pipe_operator->GetAs<ASTPipeCall>()->tvf(),
-                                  visible_aliases, new_aliases));
+      case AST_PIPE_CALL: {
+        const auto* pipe_call = pipe_operator->GetAs<ASTPipeCall>();
+        GOOGLESQL_RETURN_IF_ERROR(
+            FindInExpressionsUnder(pipe_call->partition_by(), *new_aliases));
+        GOOGLESQL_RETURN_IF_ERROR(
+            FindInExpressionsUnder(pipe_call->order_by(), *new_aliases));
+        GOOGLESQL_RETURN_IF_ERROR(
+            FindInTVF(pipe_call->tvf(), visible_aliases, new_aliases));
         break;
+      }
       case AST_PIPE_JOIN:
         GOOGLESQL_RETURN_IF_ERROR(FindInJoin(pipe_operator->GetAs<ASTPipeJoin>()->join(),
                                    visible_aliases, new_aliases));
@@ -1935,7 +1941,7 @@ absl::Status TableNameResolver::FindInTableElements(
 
 absl::Status TableNameResolver::ResolveTablePath(
     const std::vector<std::string>& path,
-    const ASTForSystemTime* for_system_time) {
+    const ASTForVersionClause* for_version_clause) {
   googlesql_base::InsertIfNotPresent(table_names_, path);
   if (table_resolution_time_info_map_ == nullptr) {
     return absl::OkStatus();
@@ -1943,13 +1949,13 @@ absl::Status TableNameResolver::ResolveTablePath(
   // Lookup for or insert a set of temporal expressions for 'path'.
   TableResolutionTimeInfo& temporal_expressions_set =
       (*table_resolution_time_info_map_)[path];
-  if (for_system_time != nullptr) {
+  if (for_version_clause != nullptr) {
     if (!for_system_time_as_of_feature_enabled_) {
-      return MakeSqlErrorAt(for_system_time)
+      return MakeSqlErrorAt(for_version_clause)
              << "FOR SYSTEM_TIME AS OF is not supported";
     }
 
-    const ASTExpression* expr = for_system_time->expression();
+    const ASTExpression* expr = for_version_clause->expression();
     GOOGLESQL_RET_CHECK(expr != nullptr);
     std::unique_ptr<const AnalyzerOutput> analyzed;
 
@@ -1973,6 +1979,14 @@ absl::Status TableNameResolver::FindInTablePathExpression(
     alias = table_ref->alias()->GetAsString();
   }
 
+  if (table_ref->string_literal() != nullptr) {
+    // TODO: b/568351814 - Return the literal in a separate
+    // string_literal_table_names output instead of an error, and add its
+    // explicit or implicit alias to `visible_aliases`.
+    return MakeSqlErrorAt(table_ref->string_literal())
+           << "String literal table references are not supported";
+  }
+
   if (table_ref->path_expr() != nullptr) {
     const ASTPathExpression* path_expr = table_ref->path_expr();
     std::vector<std::string> path = path_expr->ToIdentifierVector();
@@ -1994,7 +2008,7 @@ absl::Status TableNameResolver::FindInTablePathExpression(
     if ((path != recursive_view_name_) &&
         (path.size() == 1 ? (!local_table_aliases_.contains(first_identifier))
                           : (!visible_aliases->contains(first_identifier)))) {
-      GOOGLESQL_RETURN_IF_ERROR(ResolveTablePath(path, table_ref->for_system_time()));
+      GOOGLESQL_RETURN_IF_ERROR(ResolveTablePath(path, table_ref->for_version_clause()));
     }
 
     for (const auto* op : table_ref->postfix_operators()) {
@@ -2075,7 +2089,7 @@ absl::Status TableNameResolver::FindInTableClause(
         (path.size() == 1
              ? (!local_table_aliases_.contains(first_identifier))
              : (!external_visible_aliases.contains(first_identifier)))) {
-      GOOGLESQL_RETURN_IF_ERROR(ResolveTablePath(path, /*for_system_time=*/nullptr));
+      GOOGLESQL_RETURN_IF_ERROR(ResolveTablePath(path, /*for_version_clause=*/nullptr));
     }
   }
   if (table_clause->tvf() != nullptr) {
@@ -2116,13 +2130,14 @@ absl::Status TableNameResolver::FindInGqlCallsOnNamedTvfsUnder(
 absl::Status TableNameResolver::FindInCreatePropertyGraphStatement(
     const ASTCreatePropertyGraphStatement* statement) {
   GOOGLESQL_RET_CHECK_NE(statement, nullptr);
-  GOOGLESQL_RET_CHECK_NE(statement->node_table_list(), nullptr);
 
-  // source table references for nodes
-  for (const auto& ast_graph_element_table :
-       statement->node_table_list()->element_tables()) {
-    googlesql_base::InsertIfNotPresent(
-        table_names_, ast_graph_element_table->name()->ToIdentifierVector());
+  // source table references for nodes, if they exist
+  if (statement->node_table_list() != nullptr) {
+    for (const auto& ast_graph_element_table :
+         statement->node_table_list()->element_tables()) {
+      googlesql_base::InsertIfNotPresent(
+          table_names_, ast_graph_element_table->name()->ToIdentifierVector());
+    }
   }
 
   // source table references for edges, if they exist

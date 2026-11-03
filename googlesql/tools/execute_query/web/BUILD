@@ -37,6 +37,18 @@ ts_library(
 )
 
 ts_library(
+    name = "history",
+    srcs = ["history.ts"],
+    deps = [":local_storage_manager"],
+)
+
+ts_library(
+    name = "history_dialog",
+    srcs = ["history_dialog.ts"],
+    deps = [":history"],
+)
+
+ts_library(
     name = "splitter",
     srcs = ["splitter.ts"],
     deps = [":local_storage_manager"],
@@ -64,6 +76,8 @@ ts_library(
     srcs = ["init.ts"],
     deps = [
         ":decorate_tree",
+        ":history",
+        ":history_dialog",
         ":local_storage_manager",
         ":rewrite_steps",
         ":splitter",
@@ -92,6 +106,12 @@ gen_string_constant_header_file(
 )
 
 gen_string_constant_header_file(
+    name = "history_dialog_h",
+    src = "history_dialog.html",
+    variable = "kHistoryDialog",
+)
+
+gen_string_constant_header_file(
     name = "table_h",
     src = "table.html",
     variable = "kTable",
@@ -107,6 +127,7 @@ cc_library(
     name = "embedded_resources",
     srcs = [
         "embedded_resources.cc",
+        "history_dialog.html.h",
         "inline_bundle.js.h",
         "page_body.html.h",
         "page_template.html.h",

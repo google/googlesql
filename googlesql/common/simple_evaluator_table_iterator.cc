@@ -16,13 +16,15 @@
 
 #include "googlesql/common/simple_evaluator_table_iterator.h"
 
+#include <atomic>
 #include <cstdint>
 #include <memory>
 
 #include "absl/flags/flag.h"
+#include "absl/time/clock_interface.h"
 
 ABSL_FLAG(int64_t, googlesql_simple_iterator_call_time_now_rows_period, 1000,
-          "Only call googlesql_base::Clock::TimeNow() every this many rows");
+          "Only call absl::Clock::TimeNow() every this many rows");
 
 namespace googlesql {
 
@@ -38,8 +40,7 @@ absl::Status SimpleEvaluatorTableIterator::SetColumnFilterMap(
 }
 
 bool SimpleEvaluatorTableIterator::NextRow() {
-  absl::MutexLock l(&mutex_);
-  if (cancelled_) return false;
+  if (cancelled_.load(std::memory_order_relaxed)) return false;
 
   for (++row_idx_; row_idx_ < num_rows_; ++row_idx_) {
     if ((row_idx_ %

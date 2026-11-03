@@ -22,6 +22,7 @@
 # the linker to prune unused modules.
 
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("@rules_cc//cc:cc_test.bzl", "cc_test")
 
 package(
     default_visibility = ["//googlesql/base:googlesql_implementation"],
@@ -40,6 +41,7 @@ cc_library(
         ":range",
         ":string_with_collation",
         ":uuid",
+        ":variant",
     ],
 )
 
@@ -149,6 +151,41 @@ cc_library(
         "//googlesql/reference_impl:evaluation",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "variant",
+    srcs = ["variant.cc"],
+    hdrs = ["variant.h"],
+    deps = [
+        "//googlesql/base:ret_check",
+        "//googlesql/base:status",
+        "//googlesql/public:type",
+        "//googlesql/public:value",
+        "//googlesql/reference_impl:evaluation",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_test(
+    name = "variant_test",
+    srcs = ["variant_test.cc"],
+    deps = [
+        ":variant",
+        "//googlesql/base:status",
+        "//googlesql/base/testing:googlesql_gtest_main",
+        "//googlesql/base/testing:status_matchers",
+        "//googlesql/public:json_value",
+        "//googlesql/public:language_options",
+        "//googlesql/public:type",
+        "//googlesql/public:value",
+        "//googlesql/public/types",
+        "//googlesql/reference_impl:evaluation",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
     ],
 )
 

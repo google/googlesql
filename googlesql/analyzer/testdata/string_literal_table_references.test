@@ -1,0 +1,395 @@
+# Tests for STRING literals used as table references in FROM, such as
+# FROM '/path/to/file.csv'.
+# The parser accepts them, but the analyzer doesn't support them yet.
+[default language_features=MAXIMUM]
+
+SELECT * FROM 'users.csv'
+--
+ERROR: String literal table references are not supported [at 1:15]
+SELECT * FROM 'users.csv'
+              ^
+==
+
+FROM 'users.csv'
+--
+ERROR: String literal table references are not supported [at 1:6]
+FROM 'users.csv'
+     ^
+==
+
+# Concatenated, raw, empty and non-ASCII STRING literals.
+SELECT * FROM {{'users' ".csv"|r'C:\users.csv'|''|'' AS t|'数据.csv'}}
+--
+ALTERNATION GROUP: 'users' ".csv"
+--
+ERROR: String literal table references are not supported [at 1:15]
+SELECT * FROM 'users' ".csv"
+              ^
+--
+ALTERNATION GROUP: r'C:\users.csv'
+--
+ERROR: String literal table references are not supported [at 1:15]
+SELECT * FROM r'C:\users.csv'
+              ^
+--
+ALTERNATION GROUP: ''
+--
+ERROR: String literal table references are not supported [at 1:15]
+SELECT * FROM ''
+              ^
+--
+ALTERNATION GROUP: '' AS t
+--
+ERROR: String literal table references are not supported [at 1:15]
+SELECT * FROM '' AS t
+              ^
+--
+ALTERNATION GROUP: '数据.csv'
+--
+ERROR: String literal table references are not supported [at 1:15]
+SELECT * FROM '数据.csv'
+              ^
+==
+
+# Other literals, parameters and expressions are syntax errors.
+SELECT * FROM {{1|b'users.csv'|NUMERIC '1'|@test_param_string|['users.csv']|ARRAY<STRING>['users.csv']}}
+--
+ALTERNATION GROUP: 1
+--
+ERROR: Syntax error: Unexpected integer literal "1" [at 1:15]
+SELECT * FROM 1
+              ^
+--
+ALTERNATION GROUP: b'users.csv'
+--
+ERROR: Syntax error: Unexpected bytes literal b'users.csv' [at 1:15]
+SELECT * FROM b'users.csv'
+              ^
+--
+ALTERNATION GROUP: NUMERIC '1'
+--
+ERROR: Syntax error: Expected end of input but got string literal '1' [at 1:23]
+SELECT * FROM NUMERIC '1'
+                      ^
+--
+ALTERNATION GROUP: @test_param_string
+--
+ERROR: Query parameters cannot be used in place of table names [at 1:15]
+SELECT * FROM @test_param_string
+              ^
+--
+ALTERNATION GROUP: ['users.csv']
+--
+ERROR: Syntax error: Unexpected "[" [at 1:15]
+SELECT * FROM ['users.csv']
+              ^
+--
+ALTERNATION GROUP: ARRAY<STRING>['users.csv']
+--
+ERROR: Syntax error: Unexpected keyword ARRAY [at 1:15]
+SELECT * FROM ARRAY<STRING>['users.csv']
+              ^
+==
+
+# Query parameters are not table references, also after another table.
+SELECT * FROM {{KeyValue, @test_param_string|'users.csv', @test_param_string}}
+--
+ALTERNATION GROUP: KeyValue, @test_param_string
+--
+ERROR: Syntax error: Unexpected "@" [at 1:25]
+SELECT * FROM KeyValue, @test_param_string
+                        ^
+--
+ALTERNATION GROUP: 'users.csv', @test_param_string
+--
+ERROR: Syntax error: Unexpected "@" [at 1:28]
+SELECT * FROM 'users.csv', @test_param_string
+                           ^
+==
+
+# Multiple STRING literal table references. The first one is reported.
+SELECT * FROM {{'a.csv', 'b.csv' JOIN 'c.csv'|KeyValue, 'b.csv' JOIN 'c.csv'}}
+--
+ALTERNATION GROUP: 'a.csv', 'b.csv' JOIN 'c.csv'
+--
+ERROR: String literal table references are not supported [at 1:15]
+SELECT * FROM 'a.csv', 'b.csv' JOIN 'c.csv'
+              ^
+--
+ALTERNATION GROUP: KeyValue, 'b.csv' JOIN 'c.csv'
+--
+ERROR: String literal table references are not supported [at 1:25]
+SELECT * FROM KeyValue, 'b.csv' JOIN 'c.csv'
+                        ^
+==
+
+# A STRING literal is not a TABLE clause target yet.
+# TODO: b/568351814 - Support STRING literals in the TABLE clause.
+SELECT * FROM {{tvf_one_relation_arg_with_fixed_output(TABLE 'users.csv')|tvf_one_relation_arg_with_fixed_output(TABLE ('users.csv' PARTITION BY x ORDER BY y))}}
+--
+ALTERNATION GROUP: tvf_one_relation_arg_with_fixed_output(TABLE 'users.csv')
+--
+ERROR: Syntax error: Expected ")" but got string literal 'users.csv' [at 1:60]
+SELECT * FROM tvf_one_relation_arg_with_fixed_output(TABLE 'users.csv')
+                                                           ^
+--
+ALTERNATION GROUP: tvf_one_relation_arg_with_fixed_output(TABLE ('users.csv' PARTITION BY x ORDER BY y))
+--
+ERROR: Syntax error: Unexpected string literal 'users.csv' [at 1:61]
+...FROM tvf_one_relation_arg_with_fixed_output(TABLE ('users.csv' PARTITION B...
+                                                      ^
+==
+
+SELECT * FROM 'users.csv' {{AS u|@{hint=1}|WITH OFFSET|TABLESAMPLE SYSTEM (10 PERCENT)|FOR SYSTEM_TIME AS OF CURRENT_TIMESTAMP()|PIVOT(COUNT(*) FOR Value IN ('a'))|AS u PIVOT(COUNT(*) FOR Value IN ('a'))}}
+--
+ALTERNATION GROUP: AS u
+--
+ERROR: String literal table references are not supported [at 1:15]
+SELECT * FROM 'users.csv' AS u
+              ^
+--
+ALTERNATION GROUP: @{hint=1}
+--
+ERROR: String literal table references are not supported [at 1:15]
+SELECT * FROM 'users.csv' @{hint=1}
+              ^
+--
+ALTERNATION GROUP: WITH OFFSET
+--
+ERROR: String literal table references are not supported [at 1:15]
+SELECT * FROM 'users.csv' WITH OFFSET
+              ^
+--
+ALTERNATION GROUP: TABLESAMPLE SYSTEM (10 PERCENT)
+--
+ERROR: String literal table references are not supported [at 1:15]
+SELECT * FROM 'users.csv' TABLESAMPLE SYSTEM (10 PERCENT)
+              ^
+--
+ALTERNATION GROUP: FOR SYSTEM_TIME AS OF CURRENT_TIMESTAMP()
+--
+ERROR: String literal table references are not supported [at 1:15]
+SELECT * FROM 'users.csv' FOR SYSTEM_TIME AS OF CURRENT_TIMESTAMP()
+              ^
+--
+ALTERNATION GROUP: PIVOT(COUNT(*) FOR Value IN ('a'))
+--
+ERROR: String literal table references are not supported [at 1:15]
+SELECT * FROM 'users.csv' PIVOT(COUNT(*) FOR Value IN ('a'))
+              ^
+--
+ALTERNATION GROUP: AS u PIVOT(COUNT(*) FOR Value IN ('a'))
+--
+ERROR: String literal table references are not supported [at 1:15]
+SELECT * FROM 'users.csv' AS u PIVOT(COUNT(*) FOR Value IN ('a'))
+              ^
+==
+
+# Joins. The literal on the rhs of a join is never treated as an UNNEST or a
+# correlated array reference.
+SELECT * FROM KeyValue JOIN 'users.csv' AS u ON KeyValue.Key = u.user_id
+--
+ERROR: String literal table references are not supported [at 1:29]
+SELECT * FROM KeyValue JOIN 'users.csv' AS u ON KeyValue.Key = u.user_id
+                            ^
+==
+
+SELECT * FROM KeyValue {{,|CROSS JOIN|NATURAL JOIN|RIGHT JOIN|FULL JOIN}} 'users.csv'
+--
+ALTERNATION GROUP: ,
+--
+ERROR: String literal table references are not supported [at 1:26]
+SELECT * FROM KeyValue , 'users.csv'
+                         ^
+--
+ALTERNATION GROUP: CROSS JOIN
+--
+ERROR: String literal table references are not supported [at 1:35]
+SELECT * FROM KeyValue CROSS JOIN 'users.csv'
+                                  ^
+--
+ALTERNATION GROUP: NATURAL JOIN
+--
+ERROR: String literal table references are not supported [at 1:37]
+SELECT * FROM KeyValue NATURAL JOIN 'users.csv'
+                                    ^
+--
+ALTERNATION GROUP: RIGHT JOIN
+--
+ERROR: String literal table references are not supported [at 1:35]
+SELECT * FROM KeyValue RIGHT JOIN 'users.csv'
+                                  ^
+--
+ALTERNATION GROUP: FULL JOIN
+--
+ERROR: String literal table references are not supported [at 1:34]
+SELECT * FROM KeyValue FULL JOIN 'users.csv'
+                                 ^
+==
+
+SELECT * FROM KeyValue LEFT JOIN {{'users.csv'|'' AS t}} USING (Key)
+--
+ALTERNATION GROUP: 'users.csv'
+--
+ERROR: String literal table references are not supported [at 1:34]
+SELECT * FROM KeyValue LEFT JOIN 'users.csv' USING (Key)
+                                 ^
+--
+ALTERNATION GROUP: '' AS t
+--
+ERROR: String literal table references are not supported [at 1:34]
+SELECT * FROM KeyValue LEFT JOIN '' AS t USING (Key)
+                                 ^
+==
+
+SELECT * FROM {{'users.csv' JOIN KeyValue USING (Key)|('users.csv' JOIN KeyValue USING (Key))}}
+--
+ALTERNATION GROUP: 'users.csv' JOIN KeyValue USING (Key)
+--
+ERROR: String literal table references are not supported [at 1:15]
+SELECT * FROM 'users.csv' JOIN KeyValue USING (Key)
+              ^
+--
+ALTERNATION GROUP: ('users.csv' JOIN KeyValue USING (Key))
+--
+ERROR: String literal table references are not supported [at 1:16]
+SELECT * FROM ('users.csv' JOIN KeyValue USING (Key))
+               ^
+==
+
+# Subqueries.
+SELECT {{(SELECT COUNT(*) FROM 'users.csv')|EXISTS(SELECT 1 FROM 'users.csv')|Key IN (SELECT Key FROM 'users.csv')}} FROM KeyValue
+--
+ALTERNATION GROUP: (SELECT COUNT(*) FROM 'users.csv')
+--
+ERROR: String literal table references are not supported [at 1:30]
+SELECT (SELECT COUNT(*) FROM 'users.csv') FROM KeyValue
+                             ^
+--
+ALTERNATION GROUP: EXISTS(SELECT 1 FROM 'users.csv')
+--
+ERROR: String literal table references are not supported [at 1:29]
+SELECT EXISTS(SELECT 1 FROM 'users.csv') FROM KeyValue
+                            ^
+--
+ALTERNATION GROUP: Key IN (SELECT Key FROM 'users.csv')
+--
+ERROR: String literal table references are not supported [at 1:32]
+SELECT Key IN (SELECT Key FROM 'users.csv') FROM KeyValue
+                               ^
+==
+
+FROM KeyValue
+|> JOIN 'users.csv' USING (Key)
+--
+ERROR: String literal table references are not supported [at 2:9]
+|> JOIN 'users.csv' USING (Key)
+        ^
+==
+
+FROM 'users.csv'
+|> WHERE true
+--
+ERROR: String literal table references are not supported [at 1:6]
+FROM 'users.csv'
+     ^
+==
+
+# A STRING literal never matches a WITH entry.
+WITH `users.csv` AS (SELECT 1 AS id)
+SELECT * FROM 'users.csv'
+--
+ERROR: String literal table references are not supported [at 2:15]
+SELECT * FROM 'users.csv'
+              ^
+==
+
+WITH RECURSIVE users AS (SELECT 1 AS id)
+SELECT * FROM 'users'
+--
+ERROR: String literal table references are not supported [at 2:15]
+SELECT * FROM 'users'
+              ^
+==
+
+# A STRING literal inside a WITH RECURSIVE entry is not a self-reference.
+WITH RECURSIVE t AS (SELECT 1 AS id UNION ALL SELECT * FROM 't')
+SELECT * FROM t
+--
+ERROR: String literal table references are not supported [at 1:61]
+WITH RECURSIVE t AS (SELECT 1 AS id UNION ALL SELECT * FROM 't')
+                                                            ^
+==
+
+# A STRING literal never matches a TVF table argument.
+CREATE TEMP TABLE FUNCTION f(t TABLE<x INT64>) AS SELECT * FROM 't'
+--
+ERROR: String literal table references are not supported [at 1:65]
+CREATE TEMP TABLE FUNCTION f(t TABLE<x INT64>) AS SELECT * FROM 't'
+                                                                ^
+==
+
+# DML sources.
+INSERT INTO KeyValue (Key, Value) SELECT 1, 'a' FROM 'users.csv'
+--
+ERROR: String literal table references are not supported [at 1:54]
+INSERT INTO KeyValue (Key, Value) SELECT 1, 'a' FROM 'users.csv'
+                                                     ^
+==
+
+MERGE KeyValue USING 'users.csv' AS u ON KeyValue.Key = u.user_id
+WHEN MATCHED THEN DELETE
+--
+ERROR: String literal table references are not supported [at 1:22]
+MERGE KeyValue USING 'users.csv' AS u ON KeyValue.Key = u.user_id
+                     ^
+==
+
+UPDATE KeyValue SET Value = 'a' FROM 'users.csv' AS u WHERE KeyValue.Key = u.Key
+--
+ERROR: String literal table references are not supported [at 1:38]
+UPDATE KeyValue SET Value = 'a' FROM 'users.csv' AS u WHERE KeyValue.Key = u.Key
+                                     ^
+==
+
+[language_features=MAXIMUM,+DML_DELETE_WITH_JOIN]
+DELETE KeyValue USING 'users.csv' AS u WHERE KeyValue.Key = u.Key
+--
+ERROR: String literal table references are not supported [at 1:23]
+DELETE KeyValue USING 'users.csv' AS u WHERE KeyValue.Key = u.Key
+                      ^
+==
+
+# ExtractTableNames doesn't report a literal as an identifier path.
+[show_extracted_table_names]
+SELECT * FROM {{'users.csv'|'a.b'|KeyValue JOIN 'users.csv' USING (Key)}}
+--
+ALTERNATION GROUP: 'users.csv'
+--
+Extracted table names:
+ERROR: String literal table references are not supported [at 1:15]
+SELECT * FROM 'users.csv'
+              ^
+ERROR: String literal table references are not supported [at 1:15]
+SELECT * FROM 'users.csv'
+              ^
+--
+ALTERNATION GROUP: 'a.b'
+--
+Extracted table names:
+ERROR: String literal table references are not supported [at 1:15]
+SELECT * FROM 'a.b'
+              ^
+ERROR: String literal table references are not supported [at 1:15]
+SELECT * FROM 'a.b'
+              ^
+--
+ALTERNATION GROUP: KeyValue JOIN 'users.csv' USING (Key)
+--
+Extracted table names:
+ERROR: String literal table references are not supported [at 1:29]
+SELECT * FROM KeyValue JOIN 'users.csv' USING (Key)
+                            ^
+ERROR: String literal table references are not supported [at 1:29]
+SELECT * FROM KeyValue JOIN 'users.csv' USING (Key)
+                            ^

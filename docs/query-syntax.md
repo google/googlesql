@@ -3298,7 +3298,7 @@ it can't reference `SELECT` list aliases.
 
 **Examples**
 
-This query returns returns all rows from the [`Roster`][roster-table] table
+This query returns all rows from the [`Roster`][roster-table] table
 where the `SchoolID` column has the value `52`:
 
 ```googlesql

@@ -23,6 +23,7 @@
 #include "googlesql/reference_impl/functions/range.h"
 #include "googlesql/reference_impl/functions/string_with_collation.h"
 #include "googlesql/reference_impl/functions/uuid.h"
+#include "googlesql/reference_impl/functions/variant.h"
 
 #include "googlesql/reference_impl/functions/graph.h"
 
@@ -37,6 +38,7 @@ void RegisterAllOptionalBuiltinFunctions() {
   RegisterBuiltinRangeFunctions();
   RegisterBuiltinMapFunctions();
   RegisterBuiltinCompressionFunctions();
+  RegisterBuiltinVariantFunctions();
 }
 
 }  // namespace googlesql

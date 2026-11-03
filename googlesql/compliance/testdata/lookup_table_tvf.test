@@ -1,0 +1,187 @@
+[default required_features=TABLE_VALUED_FUNCTIONS,LOOKUP_TABLE_TVF]
+
+[prepare_database]
+CREATE TABLE t1 AS
+  SELECT * FROM UNNEST([
+    STRUCT(1 AS key, "Hello" AS value),
+    STRUCT(2 AS key, "World" AS value)
+  ]);
+--
+ARRAY<STRUCT<key INT64, value STRING>>[{2, "World"}, {1, "Hello"}]
+==
+
+[prepare_database]
+CREATE TABLE t2 AS
+  SELECT * FROM UNNEST([
+    STRUCT(1 AS key, 100 AS num),
+    STRUCT(3 AS key, 300 AS num)
+  ]);
+--
+ARRAY<STRUCT<key INT64, num INT64>>[{3, 300}, {1, 100}]
+==
+
+[prepare_database]
+CREATE TABLE value_table AS
+  SELECT AS VALUE 10
+  UNION ALL
+  SELECT AS VALUE 20;
+--
+ARRAY<INT64>[10, 20]
+==
+
+[prepare_database]
+CREATE TABLE `/span/test-universe/db-1:prod` AS
+  SELECT 10 AS id, "val10" AS val;
+--
+ARRAY<STRUCT<id INT64, val STRING>>[{10, "val10"}]
+==
+
+[prepare_database]
+CREATE TABLE `MyTa)ble` AS
+  SELECT 42 AS id;
+--
+ARRAY<STRUCT<id INT64>>[{42}]
+==
+
+[name=basic_lookup]
+SELECT * FROM LookupTable("t1");
+--
+ARRAY<STRUCT<key INT64, value STRING>>[unknown order:
+  {2, "World"},
+  {1, "Hello"}
+]
+==
+
+[name=basic_lookup_with_concat_arg]
+SELECT * FROM LookupTable("t" || "1");
+--
+ARRAY<STRUCT<key INT64, value STRING>>[unknown order:
+  {2, "World"},
+  {1, "Hello"}
+]
+==
+
+[name=case_insensitive_lookup]
+SELECT * FROM LookupTable("T1");
+--
+ARRAY<STRUCT<key INT64, value STRING>>[unknown order:
+  {2, "World"},
+  {1, "Hello"}
+]
+==
+
+[name=backtick_quoted_lookup]
+SELECT * FROM LookupTable("`t1`");
+--
+ARRAY<STRUCT<key INT64, value STRING>>[unknown order:
+  {2, "World"},
+  {1, "Hello"}
+]
+==
+
+[name=column_projection]
+SELECT value FROM LookupTable("t1");
+--
+ARRAY<STRUCT<value STRING>>[unknown order:{"World"}, {"Hello"}]
+==
+
+[name=explicit_alias]
+SELECT t.key, t.value FROM LookupTable("t1") AS t;
+--
+ARRAY<STRUCT<key INT64, value STRING>>[unknown order:
+  {2, "World"},
+  {1, "Hello"}
+]
+==
+
+[name=filter_and_order_by]
+SELECT * FROM LookupTable("t1") WHERE key > 1 ORDER BY key;
+--
+ARRAY<STRUCT<key INT64, value STRING>>[{2, "World"}]
+==
+
+[name=join_lookup_tables]
+SELECT a.key, a.value, b.num
+FROM LookupTable("t1") AS a
+JOIN LookupTable("t2") AS b
+ON a.key = b.key;
+--
+ARRAY<STRUCT<key INT64, value STRING, num INT64>>[{1, "Hello", 100}]
+==
+
+[name=aggregate_lookup_table]
+SELECT COUNT(*) AS cnt, SUM(key) AS total_key
+FROM LookupTable("t1");
+--
+ARRAY<STRUCT<cnt INT64, total_key INT64>>[{2, 3}]
+==
+
+[name=subquery_lookup_table]
+SELECT key, value
+FROM LookupTable("t1")
+WHERE key IN (SELECT key FROM LookupTable("t2"));
+--
+ARRAY<STRUCT<key INT64, value STRING>>[{1, "Hello"}]
+==
+
+[name=table_hint]
+SELECT * FROM LookupTable("t1")@{some_other_engine.hint=5};
+--
+ARRAY<STRUCT<key INT64, value STRING>>[unknown order:
+  {2, "World"},
+  {1, "Hello"}
+]
+==
+
+[name=value_table_lookup]
+SELECT t FROM LookupTable("value_table") AS t;
+--
+ARRAY<STRUCT<t INT64>>[unknown order:{10}, {20}]
+==
+
+[name=value_table_as_value]
+SELECT AS VALUE t FROM LookupTable("value_table") AS t;
+--
+ARRAY<INT64>[unknown order:10, 20]
+==
+
+[name=value_table_lookup_with_concat_arg]
+SELECT t FROM LookupTable("value_" || "table") AS t;
+--
+ARRAY<STRUCT<t INT64>>[unknown order:{10}, {20}]
+==
+
+[required_features=TABLE_VALUED_FUNCTIONS,LOOKUP_TABLE_TVF,ALLOW_SLASH_PATHS]
+[name=slashed_table_name]
+SELECT * FROM LookupTable("/span/test-universe/db-1:prod");
+--
+ARRAY<STRUCT<id INT64, val STRING>>[{10, "val10"}]
+==
+
+[name=quoted_slashed_table_name]
+SELECT * FROM LookupTable("`/span/test-universe/db-1:prod`");
+--
+ARRAY<STRUCT<id INT64, val STRING>>[{10, "val10"}]
+==
+
+[name=special_char_quoted_table_name]
+SELECT * FROM LookupTable("`MyTa)ble`");
+--
+ARRAY<STRUCT<id INT64>>[{42}]
+==
+
+[name=analysis_const_struct_field]
+SELECT * FROM LookupTable(STRUCT("t1" AS col).col);
+--
+ARRAY<STRUCT<key INT64, value STRING>>[unknown order:
+  {2, "World"},
+  {1, "Hello"}
+]
+==
+
+[required_features=TABLE_VALUED_FUNCTIONS,LOOKUP_TABLE_TVF,PIPES]
+[name=pipe_from_lookup_table]
+FROM LookupTable("t1")
+|> WHERE key = 1;
+--
+ARRAY<STRUCT<key INT64, value STRING>>[{1, "Hello"}]

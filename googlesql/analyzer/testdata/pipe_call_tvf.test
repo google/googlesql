@@ -2808,3 +2808,690 @@ FROM KeyValue
 ERROR: Table-valued function cannot be called with pipe CALL syntax because it has an optional argument before its first table-typed argument; Supported signature: TVF_OPTIONAL_SCALARS_NAMED_TABLE([ANY], [ANY], [foobar => TABLE]); Consider using INPUT TABLE for the table argument [at 2:9]
 |> CALL tvf_optional_scalars_named_table(123)
         ^
+==
+
+# PARTITION BY and ORDER BY in pipe CALL require FEATURE_TABLE_ARGUMENT_PARTITION_AND_ORDER.
+[default use_database=SampleCatalog]
+[language_features=NONE,+PIPES,+TABLE_VALUED_FUNCTIONS]
+FROM KeyValue
+|> CALL tvf_one_relation_arg_order_by() PARTITION BY Key
+--
+ERROR: PARTITION BY and ORDER BY in pipe CALL are not supported [at 2:41]
+|> CALL tvf_one_relation_arg_order_by() PARTITION BY Key
+                                        ^
+==
+
+[language_features=NONE,+PIPES,+TABLE_VALUED_FUNCTIONS]
+FROM KeyValue
+|> CALL tvf_one_relation_arg_order_by() ORDER BY Key
+--
+ERROR: PARTITION BY and ORDER BY in pipe CALL are not supported [at 2:41]
+|> CALL tvf_one_relation_arg_order_by() ORDER BY Key
+                                        ^
+==
+
+[default language_features=MAXIMUM,+PIPES,+TABLE_VALUED_FUNCTIONS,+NAMED_ARGUMENTS,+CREATE_TABLE_FUNCTION,+TEMPLATE_FUNCTIONS,+FUNCTION_ARGUMENTS_WITH_DEFAULTS,+PIPE_CALL_INPUT_TABLE,+TABLE_ARGUMENT_PARTITION_AND_ORDER,+NULLS_FIRST_LAST_IN_ORDER_BY]
+
+[show_sqlbuilder_output]
+FROM KeyValue
+|> CALL tvf_one_relation_arg_order_by() PARTITION BY Key ORDER BY Value DESC NULLS LAST
+--
+QueryStmt
++-output_column_list=
+| +-tvf_one_relation_arg_order_by.Key#3 AS Key [INT64]
+| +-tvf_one_relation_arg_order_by.Value#4 AS Value [STRING]
++-query=
+  +-TVFScan
+    +-column_list=tvf_one_relation_arg_order_by.[Key#3, Value#4]
+    +-tvf=tvf_one_relation_arg_order_by
+    +-signature=(TABLE<Key INT64, Value STRING>) -> TABLE<Key INT64, Value STRING>
+    +-argument_list=
+    | +-FunctionArgument
+    |   +-scan=
+    |   | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+    |   +-argument_column_list=KeyValue.[Key#1, Value#2]
+    |   +-partition_by_list=
+    |   | +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+    |   +-order_by_list=
+    |     +-OrderByItem
+    |       +-column_ref=
+    |       | +-ColumnRef(type=STRING, column=KeyValue.Value#2)
+    |       +-is_descending=TRUE
+    |       +-null_order=NULLS_LAST
+    +-column_index_list=[0, 1]
+    +-function_call_signature=(ANY TABLE foobar) -> ANY TABLE
+
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+SELECT
+  tvfscan_4.Key AS Key,
+  tvfscan_4.Value AS Value
+FROM
+  TVF_ONE_RELATION_ARG_ORDER_BY (TABLE((
+  SELECT
+    a_1 AS Key,
+    a_2 AS Value
+  FROM
+    (
+      SELECT
+        KeyValue.Key AS a_1,
+        KeyValue.Value AS a_2
+      FROM
+        KeyValue
+    ) AS keyvalue_3
+  ) PARTITION BY Key
+  ORDER BY Value DESC NULLS LAST)) AS tvfscan_4;
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+FROM
+  KeyValue
+|> SELECT
+     KeyValue.Key AS a_1,
+     KeyValue.Value AS a_2
+|> AS keyvalue_3
+|> SELECT
+     a_1 AS Key,
+     a_2 AS Value
+|> CALL TVF_ONE_RELATION_ARG_ORDER_BY () AS tvfscan_4 PARTITION BY Key
+   ORDER BY Value DESC NULLS LAST
+|> SELECT
+     tvfscan_4.Key AS Key,
+     tvfscan_4.Value AS Value;
+==
+
+[show_sqlbuilder_output]
+FROM KeyValue
+|> CALL tvf_one_relation_arg_order_by() @{hint=1} AS t1 PARTITION BY Key ORDER BY Value ASC NULLS FIRST
+--
+QueryStmt
++-output_column_list=
+| +-tvf_one_relation_arg_order_by.Key#3 AS Key [INT64]
+| +-tvf_one_relation_arg_order_by.Value#4 AS Value [STRING]
++-query=
+  +-TVFScan
+    +-column_list=tvf_one_relation_arg_order_by.[Key#3, Value#4]
+    +-hint_list=
+    | +-hint := Literal(type=INT64, value=1)
+    +-tvf=tvf_one_relation_arg_order_by
+    +-signature=(TABLE<Key INT64, Value STRING>) -> TABLE<Key INT64, Value STRING>
+    +-argument_list=
+    | +-FunctionArgument
+    |   +-scan=
+    |   | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+    |   +-argument_column_list=KeyValue.[Key#1, Value#2]
+    |   +-partition_by_list=
+    |   | +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+    |   +-order_by_list=
+    |     +-OrderByItem
+    |       +-column_ref=
+    |       | +-ColumnRef(type=STRING, column=KeyValue.Value#2)
+    |       +-null_order=NULLS_FIRST
+    +-column_index_list=[0, 1]
+    +-alias="t1"
+    +-function_call_signature=(ANY TABLE foobar) -> ANY TABLE
+
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+SELECT
+  tvfscan_4.Key AS Key,
+  tvfscan_4.Value AS Value
+FROM
+  TVF_ONE_RELATION_ARG_ORDER_BY (TABLE((
+  SELECT
+    a_1 AS Key,
+    a_2 AS Value
+  FROM
+    (
+      SELECT
+        KeyValue.Key AS a_1,
+        KeyValue.Value AS a_2
+      FROM
+        KeyValue
+    ) AS keyvalue_3
+  ) PARTITION BY Key
+  ORDER BY Value NULLS FIRST)) @{ hint = 1 } AS tvfscan_4;
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+FROM
+  KeyValue
+|> SELECT
+     KeyValue.Key AS a_1,
+     KeyValue.Value AS a_2
+|> AS keyvalue_3
+|> SELECT
+     a_1 AS Key,
+     a_2 AS Value
+|> CALL TVF_ONE_RELATION_ARG_ORDER_BY () @{ hint = 1 } AS tvfscan_4 PARTITION BY Key
+   ORDER BY Value NULLS FIRST
+|> SELECT
+     tvfscan_4.Key AS Key,
+     tvfscan_4.Value AS Value;
+==
+
+[show_sqlbuilder_output]
+FROM KeyValue
+|> CALL tvf_one_relation_arg_order_by(INPUT TABLE) PARTITION BY Key ORDER BY Value
+--
+QueryStmt
++-output_column_list=
+| +-tvf_one_relation_arg_order_by.Key#3 AS Key [INT64]
+| +-tvf_one_relation_arg_order_by.Value#4 AS Value [STRING]
++-query=
+  +-TVFScan
+    +-column_list=tvf_one_relation_arg_order_by.[Key#3, Value#4]
+    +-tvf=tvf_one_relation_arg_order_by
+    +-signature=(TABLE<Key INT64, Value STRING>) -> TABLE<Key INT64, Value STRING>
+    +-argument_list=
+    | +-FunctionArgument
+    |   +-scan=
+    |   | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+    |   +-argument_column_list=KeyValue.[Key#1, Value#2]
+    |   +-partition_by_list=
+    |   | +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+    |   +-order_by_list=
+    |     +-OrderByItem
+    |       +-column_ref=
+    |         +-ColumnRef(type=STRING, column=KeyValue.Value#2)
+    +-column_index_list=[0, 1]
+    +-function_call_signature=(ANY TABLE foobar) -> ANY TABLE
+
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+SELECT
+  tvfscan_4.Key AS Key,
+  tvfscan_4.Value AS Value
+FROM
+  TVF_ONE_RELATION_ARG_ORDER_BY (TABLE((
+  SELECT
+    a_1 AS Key,
+    a_2 AS Value
+  FROM
+    (
+      SELECT
+        KeyValue.Key AS a_1,
+        KeyValue.Value AS a_2
+      FROM
+        KeyValue
+    ) AS keyvalue_3
+  ) PARTITION BY Key
+  ORDER BY Value)) AS tvfscan_4;
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+FROM
+  KeyValue
+|> SELECT
+     KeyValue.Key AS a_1,
+     KeyValue.Value AS a_2
+|> AS keyvalue_3
+|> SELECT
+     a_1 AS Key,
+     a_2 AS Value
+|> CALL TVF_ONE_RELATION_ARG_ORDER_BY () AS tvfscan_4 PARTITION BY Key
+   ORDER BY Value
+|> SELECT
+     tvfscan_4.Key AS Key,
+     tvfscan_4.Value AS Value;
+==
+
+[show_sqlbuilder_output]
+FROM KeyValue
+|> CALL tvf_optional_scalars_named_table(123, foobar => INPUT TABLE) PARTITION BY Key
+--
+QueryStmt
++-output_column_list=
+| +-tvf_optional_scalars_named_table.column_bool#3 AS column_bool [BOOL]
+| +-tvf_optional_scalars_named_table.column_bytes#4 AS column_bytes [BYTES]
++-query=
+  +-TVFScan
+    +-column_list=tvf_optional_scalars_named_table.[column_bool#3, column_bytes#4]
+    +-tvf=tvf_optional_scalars_named_table
+    +-signature=(literal INT64, null INT64, TABLE<Key INT64, Value STRING>) -> TABLE<column_bool BOOL, column_bytes BYTES>
+    +-argument_list=
+    | +-FunctionArgument
+    | | +-expr=
+    | |   +-Literal(type=INT64, value=123)
+    | +-FunctionArgument
+    | | +-expr=
+    | |   +-Literal(type=INT64, value=NULL)
+    | +-FunctionArgument
+    |   +-scan=
+    |   | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+    |   +-argument_column_list=KeyValue.[Key#1, Value#2]
+    |   +-partition_by_list=
+    |     +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+    +-column_index_list=[0, 1]
+    +-function_call_signature=(optional(1) INT64, optional(1) INT64, optional(1) ANY TABLE foobar) -> TABLE<column_bool BOOL, column_bytes BYTES>
+
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+SELECT
+  tvfscan_4.column_bool AS column_bool,
+  tvfscan_4.column_bytes AS column_bytes
+FROM
+  TVF_OPTIONAL_SCALARS_NAMED_TABLE(123, CAST(NULL AS INT64), TABLE((
+  SELECT
+    a_1 AS Key,
+    a_2 AS Value
+  FROM
+    (
+      SELECT
+        KeyValue.Key AS a_1,
+        KeyValue.Value AS a_2
+      FROM
+        KeyValue
+    ) AS keyvalue_3
+  ) PARTITION BY Key)) AS tvfscan_4;
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+FROM
+  TVF_OPTIONAL_SCALARS_NAMED_TABLE(123, CAST(NULL AS INT64), TABLE((
+  FROM
+    KeyValue
+  |> SELECT
+       KeyValue.Key AS a_1,
+       KeyValue.Value AS a_2
+  |> AS keyvalue_3
+  |> SELECT
+       a_1 AS Key,
+       a_2 AS Value
+  ) PARTITION BY Key)) AS tvfscan_4
+|> SELECT
+     tvfscan_4.column_bool AS column_bool,
+     tvfscan_4.column_bytes AS column_bytes;
+==
+
+[show_sqlbuilder_output]
+FROM KeyValue
+|> CALL tvf_one_relation_arg_order_by() PARTITION BY Key + 1, 'abc' ORDER BY LOWER(Value) DESC, 1
+--
+QueryStmt
++-output_column_list=
+| +-tvf_one_relation_arg_order_by.Key#7 AS Key [INT64]
+| +-tvf_one_relation_arg_order_by.Value#8 AS Value [STRING]
++-query=
+  +-TVFScan
+    +-column_list=tvf_one_relation_arg_order_by.[Key#7, Value#8]
+    +-tvf=tvf_one_relation_arg_order_by
+    +-signature=(TABLE<Key INT64, Value STRING>) -> TABLE<Key INT64, Value STRING>
+    +-argument_list=
+    | +-FunctionArgument
+    |   +-scan=
+    |   | +-ProjectScan
+    |   |   +-column_list=[KeyValue.Key#1, KeyValue.Value#2, $partitionby.$partitionbycol1#3, $partitionby.$partitionbycol2#4, $orderby.$orderbycol1#5, $orderby.$orderbycol2#6]
+    |   |   +-expr_list=
+    |   |   | +-$partitionbycol1#3 :=
+    |   |   | | +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |   |   | |   +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+    |   |   | |   +-Literal(type=INT64, value=1)
+    |   |   | +-$partitionbycol2#4 := Literal(type=STRING, value="abc")
+    |   |   | +-$orderbycol1#5 :=
+    |   |   | | +-FunctionCall(GoogleSQL:lower(STRING) -> STRING)
+    |   |   | |   +-ColumnRef(type=STRING, column=KeyValue.Value#2)
+    |   |   | +-$orderbycol2#6 := Literal(type=INT64, value=1)
+    |   |   +-input_scan=
+    |   |     +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+    |   +-argument_column_list=KeyValue.[Key#1, Value#2]
+    |   +-partition_by_list=
+    |   | +-ColumnRef(type=INT64, column=$partitionby.$partitionbycol1#3)
+    |   | +-ColumnRef(type=STRING, column=$partitionby.$partitionbycol2#4)
+    |   +-order_by_list=
+    |     +-OrderByItem
+    |     | +-column_ref=
+    |     | | +-ColumnRef(type=STRING, column=$orderby.$orderbycol1#5)
+    |     | +-is_descending=TRUE
+    |     +-OrderByItem
+    |       +-column_ref=
+    |         +-ColumnRef(type=INT64, column=$orderby.$orderbycol2#6)
+    +-column_index_list=[0, 1]
+    +-function_call_signature=(ANY TABLE foobar) -> ANY TABLE
+
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+SELECT
+  tvfscan_9.Key AS Key,
+  tvfscan_9.Value AS Value
+FROM
+  TVF_ONE_RELATION_ARG_ORDER_BY (TABLE((
+  SELECT
+    a_1 AS Key,
+    a_2 AS Value
+  FROM
+    (
+      SELECT
+        keyvalue_3.a_1 AS a_1,
+        keyvalue_3.a_2 AS a_2,
+        (keyvalue_3.a_1) + 1 AS a_4,
+        "abc" AS a_5,
+        LOWER(keyvalue_3.a_2) AS a_6,
+        1 AS a_7
+      FROM
+        (
+          SELECT
+            KeyValue.Key AS a_1,
+            KeyValue.Value AS a_2
+          FROM
+            KeyValue
+        ) AS keyvalue_3
+    ) AS projectscan_8
+  ) PARTITION BY Key + 1, "abc"
+  ORDER BY LOWER(Value) DESC, 1)) AS tvfscan_9;
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+FROM
+  KeyValue
+|> SELECT
+     KeyValue.Key AS a_1,
+     KeyValue.Value AS a_2
+|> AS keyvalue_3
+|> SELECT
+     keyvalue_3.a_1 AS a_1,
+     keyvalue_3.a_2 AS a_2,
+     (keyvalue_3.a_1) + 1 AS a_4,
+     "abc" AS a_5,
+     LOWER(keyvalue_3.a_2) AS a_6,
+     1 AS a_7
+|> AS projectscan_8
+|> SELECT
+     a_1 AS Key,
+     a_2 AS Value
+|> CALL TVF_ONE_RELATION_ARG_ORDER_BY () AS tvfscan_9 PARTITION BY Key + 1, "abc"
+   ORDER BY LOWER(Value) DESC, 1
+|> SELECT
+     tvfscan_9.Key AS Key,
+     tvfscan_9.Value AS Value;
+==
+
+[show_sqlbuilder_output]
+FROM KeyValue
+|> CALL tvf_one_relation_arg_order_by() PARTITION BY CAST(RAND() AS STRING) ORDER BY CAST(RAND() AS STRING)
+--
+QueryStmt
++-output_column_list=
+| +-tvf_one_relation_arg_order_by.Key#5 AS Key [INT64]
+| +-tvf_one_relation_arg_order_by.Value#6 AS Value [STRING]
++-query=
+  +-TVFScan
+    +-column_list=tvf_one_relation_arg_order_by.[Key#5, Value#6]
+    +-tvf=tvf_one_relation_arg_order_by
+    +-signature=(TABLE<Key INT64, Value STRING>) -> TABLE<Key INT64, Value STRING>
+    +-argument_list=
+    | +-FunctionArgument
+    |   +-scan=
+    |   | +-ProjectScan
+    |   |   +-column_list=[KeyValue.Key#1, KeyValue.Value#2, $partitionby.$partitionbycol1#3, $orderby.$orderbycol1#4]
+    |   |   +-expr_list=
+    |   |   | +-$partitionbycol1#3 :=
+    |   |   | | +-Cast(DOUBLE -> STRING)
+    |   |   | |   +-FunctionCall(GoogleSQL:rand() -> DOUBLE)
+    |   |   | +-$orderbycol1#4 :=
+    |   |   |   +-Cast(DOUBLE -> STRING)
+    |   |   |     +-FunctionCall(GoogleSQL:rand() -> DOUBLE)
+    |   |   +-input_scan=
+    |   |     +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+    |   +-argument_column_list=KeyValue.[Key#1, Value#2]
+    |   +-partition_by_list=
+    |   | +-ColumnRef(type=STRING, column=$partitionby.$partitionbycol1#3)
+    |   +-order_by_list=
+    |     +-OrderByItem
+    |       +-column_ref=
+    |         +-ColumnRef(type=STRING, column=$orderby.$orderbycol1#4)
+    +-column_index_list=[0, 1]
+    +-function_call_signature=(ANY TABLE foobar) -> ANY TABLE
+
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+SELECT
+  tvfscan_7.Key AS Key,
+  tvfscan_7.Value AS Value
+FROM
+  TVF_ONE_RELATION_ARG_ORDER_BY (TABLE((
+  SELECT
+    a_1 AS Key,
+    a_2 AS Value
+  FROM
+    (
+      SELECT
+        keyvalue_3.a_1 AS a_1,
+        keyvalue_3.a_2 AS a_2,
+        CAST(RAND() AS STRING) AS a_4,
+        CAST(RAND() AS STRING) AS a_5
+      FROM
+        (
+          SELECT
+            KeyValue.Key AS a_1,
+            KeyValue.Value AS a_2
+          FROM
+            KeyValue
+        ) AS keyvalue_3
+    ) AS projectscan_6
+  ) PARTITION BY CAST(RAND() AS STRING)
+  ORDER BY CAST(RAND() AS STRING))) AS tvfscan_7;
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+FROM
+  KeyValue
+|> SELECT
+     KeyValue.Key AS a_1,
+     KeyValue.Value AS a_2
+|> AS keyvalue_3
+|> SELECT
+     keyvalue_3.a_1 AS a_1,
+     keyvalue_3.a_2 AS a_2,
+     CAST(RAND() AS STRING) AS a_4,
+     CAST(RAND() AS STRING) AS a_5
+|> AS projectscan_6
+|> SELECT
+     a_1 AS Key,
+     a_2 AS Value
+|> CALL TVF_ONE_RELATION_ARG_ORDER_BY () AS tvfscan_7 PARTITION BY CAST(RAND() AS STRING)
+   ORDER BY CAST(RAND() AS STRING)
+|> SELECT
+     tvfscan_7.Key AS Key,
+     tvfscan_7.Value AS Value;
+==
+
+FROM SimpleTypes
+|> CALL tvf_one_relation_arg_int64_string_input_columns_order_by() PARTITION BY int64 ORDER BY string
+--
+QueryStmt
++-output_column_list=
+| +-tvf_one_relation_arg_int64_string_input_columns_order_by.column_bool#20 AS column_bool [BOOL]
+| +-tvf_one_relation_arg_int64_string_input_columns_order_by.column_bytes#21 AS column_bytes [BYTES]
++-query=
+  +-TVFScan
+    +-column_list=tvf_one_relation_arg_int64_string_input_columns_order_by.[column_bool#20, column_bytes#21]
+    +-tvf=tvf_one_relation_arg_int64_string_input_columns_order_by
+    +-signature=(TABLE<int64 INT64, string STRING>) -> TABLE<column_bool BOOL, column_bytes BYTES>
+    +-argument_list=
+    | +-FunctionArgument
+    |   +-scan=
+    |   | +-ProjectScan
+    |   |   +-column_list=SimpleTypes.[int64#2, string#5]
+    |   |   +-input_scan=
+    |   |     +-TableScan(column_list=SimpleTypes.[int64#2, string#5], table=SimpleTypes, column_index_list=[1, 4])
+    |   +-argument_column_list=SimpleTypes.[int64#2, string#5]
+    |   +-partition_by_list=
+    |   | +-ColumnRef(type=INT64, column=SimpleTypes.int64#2)
+    |   +-order_by_list=
+    |     +-OrderByItem
+    |       +-column_ref=
+    |         +-ColumnRef(type=STRING, column=SimpleTypes.string#5)
+    +-column_index_list=[0, 1]
+    +-function_call_signature=(TABLE<int64 INT64, string STRING> foobar) -> TABLE<column_bool BOOL, column_bytes BYTES>
+==
+
+[no_java]
+SELECT 1 AS a, 'x' AS b
+|> CALL UnaryAbTableArg() PARTITION BY a
+--
+QueryStmt
++-output_column_list=
+| +-UnaryAbTableArg.a#3 AS a [INT64]
+| +-UnaryAbTableArg.b#4 AS b [STRING]
++-query=
+  +-TVFScan
+    +-column_list=UnaryAbTableArg.[a#3, b#4]
+    +-tvf=UnaryAbTableArg
+    +-signature=(TABLE<a INT64, b STRING>) -> TABLE<a INT64, b STRING>
+    +-argument_list=
+    | +-FunctionArgument
+    |   +-scan=
+    |   | +-ProjectScan
+    |   |   +-column_list=$query.[a#1, b#2]
+    |   |   +-expr_list=
+    |   |   | +-a#1 := Literal(type=INT64, value=1)
+    |   |   | +-b#2 := Literal(type=STRING, value="x")
+    |   |   +-input_scan=
+    |   |     +-SingleRowScan
+    |   +-argument_column_list=$query.[a#1, b#2]
+    |   +-partition_by_list=
+    |     +-ColumnRef(type=INT64, column=$query.a#1)
+    +-column_index_list=[0, 1]
+    +-function_call_signature=(TABLE<a INT64, b STRING> arg0) -> TABLE<a INT64, b STRING>
+==
+
+SELECT 1 AS a, 2 AS b
+|> CALL UnaryAbTableArgWithScalarArgsTempl(1, INPUT TABLE, 2) PARTITION BY a
+--
+QueryStmt
++-output_column_list=
+| +-UnaryAbTableArgWithScalarArgsTempl.a#3 AS a [INT64]
+| +-UnaryAbTableArgWithScalarArgsTempl.b#4 AS b [INT64]
++-query=
+  +-TVFScan
+    +-column_list=UnaryAbTableArgWithScalarArgsTempl.[a#3, b#4]
+    +-tvf=UnaryAbTableArgWithScalarArgsTempl
+    +-signature=(literal INT64, TABLE<a INT64, b INT64>, literal INT64) -> TABLE<a INT64, b INT64>
+    +-argument_list=
+    | +-FunctionArgument
+    | | +-expr=
+    | |   +-Literal(type=INT64, value=1)
+    | +-FunctionArgument
+    | | +-scan=
+    | | | +-ProjectScan
+    | | |   +-column_list=$query.[a#1, b#2]
+    | | |   +-expr_list=
+    | | |   | +-a#1 := Literal(type=INT64, value=1)
+    | | |   | +-b#2 := Literal(type=INT64, value=2)
+    | | |   +-input_scan=
+    | | |     +-SingleRowScan
+    | | +-argument_column_list=$query.[a#1, b#2]
+    | | +-partition_by_list=
+    | |   +-ColumnRef(type=INT64, column=$query.a#1)
+    | +-FunctionArgument
+    |   +-expr=
+    |     +-Literal(type=INT64, value=2)
+    +-column_index_list=[0, 1]
+    +-function_call_signature=(INT64 x, ANY TABLE arg0, INT64 y) -> ANY TABLE
+
+With Templated SQL TVF signature:
+  UnaryAbTableArgWithScalarArgsTempl(literal INT64, TABLE<a INT64, b INT64>, literal INT64) -> TABLE<a INT64, b INT64>
+containing resolved templated query:
+QueryStmt
++-output_column_list=
+| +-arg0.a#1 AS a [INT64]
+| +-arg0.b#2 AS b [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=arg0.[a#1, b#2]
+    +-input_scan=
+      +-FilterScan
+        +-column_list=arg0.[a#1, b#2]
+        +-input_scan=
+        | +-RelationArgumentScan(column_list=arg0.[a#1, b#2], name="arg0")
+        +-filter_expr=
+          +-FunctionCall(GoogleSQL:$and(BOOL, repeated(1) BOOL) -> BOOL)
+            +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+            | +-ColumnRef(type=INT64, column=arg0.a#1)
+            | +-ArgumentRef(type=INT64, name="x")
+            +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+              +-ColumnRef(type=INT64, column=arg0.b#2)
+              +-ArgumentRef(type=INT64, name="y")
+==
+
+# Negative tests for PARTITION BY and ORDER BY in pipe CALL
+FROM KeyValue
+|> CALL tvf_one_relation_arg_with_fixed_output() ORDER BY Key
+--
+ERROR: Table-valued function TVF_ONE_RELATION_ARG_WITH_FIXED_OUTPUT does not support ORDER BY on table argument 1 [at 2:50]
+|> CALL tvf_one_relation_arg_with_fixed_output() ORDER BY Key
+                                                 ^
+==
+
+FROM KeyValue
+|> CALL tvf_optional_scalars_named_table(123, foobar => INPUT TABLE) ORDER BY Key
+--
+ERROR: Table-valued function TVF_OPTIONAL_SCALARS_NAMED_TABLE does not support ORDER BY on table argument 3 [at 2:70]
+...123, foobar => INPUT TABLE) ORDER BY Key
+                               ^
+==
+
+FROM KeyValue
+|> CALL tvf_two_relation_args_return_proto_value_table(TABLE KeyValue) PARTITION BY Key
+--
+ERROR: PARTITION BY is not supported for TVFs with multiple table arguments [at 2:72]
+...eturn_proto_value_table(TABLE KeyValue) PARTITION BY Key
+                                           ^
+==
+
+FROM KeyValue
+|> CALL tvf_two_relation_args_return_proto_value_table(TABLE KeyValue, INPUT TABLE) PARTITION BY Key
+--
+ERROR: PARTITION BY is not supported for TVFs with multiple table arguments [at 2:85]
+...TABLE KeyValue, INPUT TABLE) PARTITION BY Key
+                                ^
+==
+
+FROM KeyValue
+|> CALL tvf_one_relation_arg_order_by() PARTITION @{hint=1} BY Key
+--
+ERROR: Hints are not supported on PARTITION BY in pipe CALL [at 2:51]
+|> CALL tvf_one_relation_arg_order_by() PARTITION @{hint=1} BY Key
+                                                  ^
+==
+
+FROM KeyValue
+|> CALL tvf_one_relation_arg_order_by() ORDER @{hint=1} BY Key
+--
+ERROR: Hints are not supported on ORDER BY in pipe CALL [at 2:47]
+|> CALL tvf_one_relation_arg_order_by() ORDER @{hint=1} BY Key
+                                              ^
+==
+
+FROM SimpleTypes
+|> CALL tvf_one_relation_arg_order_by() PARTITION BY double
+--
+ERROR: Partitioning by expressions of type DOUBLE is not allowed [at 2:54]
+|> CALL tvf_one_relation_arg_order_by() PARTITION BY double
+                                                     ^
+==
+
+SELECT ST_GEOGPOINT(1, 2) AS g
+|> CALL tvf_one_relation_arg_order_by() ORDER BY g
+--
+ERROR: Ordering by expressions of type GEOGRAPHY is not allowed [at 2:50]
+|> CALL tvf_one_relation_arg_order_by() ORDER BY g
+                                                 ^
+==
+
+FROM KeyValue
+|> CALL tvf_one_relation_arg_order_by() PARTITION BY nonexistent
+--
+ERROR: Unrecognized name: nonexistent [at 2:54]
+|> CALL tvf_one_relation_arg_order_by() PARTITION BY nonexistent
+                                                     ^
+==
+
+FROM KeyValue
+|> CALL tvf_one_relation_arg_order_by() ORDER BY COUNT(*)
+--
+
+ERROR: Aggregate function COUNT(*) not allowed in ORDER BY [at 2:50]
+|> CALL tvf_one_relation_arg_order_by() ORDER BY COUNT(*)
+                                                 ^

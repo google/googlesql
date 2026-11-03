@@ -27,14 +27,14 @@
 #include "googlesql/public/numeric_value.h"
 #include "googlesql/public/options.pb.h"
 #include "googlesql/public/proto/vector_encoding_id.pb.h"
+#include "googlesql/public/proto/vector_value.pb.h"
 #include "googlesql/public/timestamp_picos_value.h"
 #include "googlesql/public/type.pb.h"
 #include "googlesql/public/type_parameters.pb.h"
-#include "googlesql/public/types/type_factory.h"
 #include "googlesql/public/types/type_parameters.h"
 #include "googlesql/public/types/vector_type_util.h"
+#include "googlesql/public/types/vector_value_codec.h"
 #include "googlesql/public/value.h"
-#include "googlesql/public/value.pb.h"
 #include "absl/numeric/int128.h"
 #include "absl/status/status.h"
 #include "googlesql/base/status_macros.h"
@@ -148,23 +148,31 @@ static absl::Status ApplyVectorConstraints(const TypeParameters& type_params,
       type_params.vector_type_parameters();
   GOOGLESQL_RET_CHECK(vector_params != nullptr);
 
+  GOOGLESQL_ASSIGN_OR_RETURN(Value backing_val, value.backing_value());
+  GOOGLESQL_ASSIGN_OR_RETURN(VectorValueProto vector_value,
+                   ParseVectorValueBytes(backing_val.bytes_value()));
+
+  // The VECTOR value is self-describing, so the actual encoding is read from
+  // the value rather than assumed from the type.
+  const auto actual_encoding =
+      static_cast<VectorEncodingId::Id>(vector_value.encoding());
   if (vector_params->has_encoding() &&
-      vector_params->encoding() != googlesql::VectorEncodingId::FLOAT32) {
+      vector_params->encoding() != actual_encoding) {
     return absl::OutOfRangeError(absl::Substitute(
-        "VECTOR has encoding $0 but got a vector with encoding FLOAT32",
-        googlesql::VectorEncodingId_Id_Name(vector_params->encoding())));
+        "VECTOR has encoding $0 but got a vector with encoding $1",
+        VectorEncodingId_Id_Name(vector_params->encoding()),
+        VectorEncodingId_Id_Name(actual_encoding)));
   }
 
-  GOOGLESQL_ASSIGN_OR_RETURN(Value backing_val, value.backing_value());
-  ValueProto value_proto;
-
-  GOOGLESQL_RET_CHECK(value_proto.ParseFromString(backing_val.bytes_value()))
-      << "Failed to parse VECTOR backing value";
-  GOOGLESQL_ASSIGN_OR_RETURN(Value decoded_array,
-                   Value::Deserialize(value_proto, types::FloatArrayType()));
-  int64_t actual_dims = decoded_array.num_elements();
-  if (vector_params->has_dims()) {
-    int64_t expected_dims = vector_params->dims();
+  // The dims live in the payload, which only the encoding that wrote it can
+  // interpret. FLOAT32 is the only encoding the reference implementation
+  // understands, so any other one goes unchecked.
+  if (vector_params->has_dims() &&
+      actual_encoding == VectorEncodingId::FLOAT32) {
+    GOOGLESQL_ASSIGN_OR_RETURN(std::vector<float> elements,
+                     DecodeFloat32VectorPayload(vector_value.data()));
+    const int64_t actual_dims = elements.size();
+    const int64_t expected_dims = vector_params->dims();
     if (actual_dims != expected_dims) {
       return absl::OutOfRangeError(absl::Substitute(
           "VECTOR($0) has dims $0 but got a vector with dims $1", expected_dims,

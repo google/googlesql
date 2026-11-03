@@ -140,16 +140,17 @@ typedef std::map<std::vector<std::string>, ModuleContentsInfo,
 //
 // In order to find nested imports, module contents are scanned specifically
 // for IMPORT statements. Non-IMPORT statements are skipped during dependency
-// scanning. If an IMPORT statement fails to parse, or if statement skipping
-// fails (e.g. due to a lexical error like an unclosed string literal or
-// comment), an error is added to <errors> and scanning stops for that
-// module.
+// scanning, which allows them to contain unexpanded macros or function bodies.
+// IMPORT statements cannot contain macro invocations. If an IMPORT statement
+// fails to parse, or if statement skipping fails (e.g. due to a lexical error
+// like an unclosed string literal or comment), an error is added to <errors>
+// and scanning stops for that module.
 //
 // Clears <errors>, and populates <errors> with all errors found during
-// processing (such as module file lookup errors, IMPORT syntax errors, or
-// lexical errors during statement skipping).
-// If an error is found, returns the first error status in <errors>, otherwise
-// returns OK.
+// processing (such as module file lookup errors, IMPORT syntax errors,
+// lexical errors during statement skipping, or disallowed macro invocations
+// in IMPORT statements). If an error is found, returns the first error status
+// in <errors>, otherwise returns OK.
 absl::Status FetchAllModuleContents(
     const std::vector<std::string>& module_name_path,
     ModuleContentsFetcher* module_contents_fetcher,

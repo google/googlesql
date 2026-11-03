@@ -21,16 +21,25 @@
 #include <utility>
 #include <vector>
 
+#include "googlesql/public/catalog.h"
 #include "googlesql/public/functions/json.h"
 #include "googlesql/public/json_value.h"
+#include "googlesql/public/language_options.h"
+#include "googlesql/public/options.pb.h"
+#include "googlesql/public/property_graph.h"
 #include "googlesql/public/types/array_type.h"
+#include "googlesql/public/types/graph_element_type.h"
 #include "googlesql/public/types/struct_type.h"
 #include "googlesql/public/types/type.h"
+#include "googlesql/public/types/type_factory.h"
 #include "googlesql/public/value.h"
 #include "googlesql/resolved_ast/resolved_ast.h"
 #include "googlesql/resolved_ast/resolved_node.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
 #include "googlesql/base/status_macros.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "googlesql/base/ret_check.h"
@@ -48,6 +57,338 @@ bool TypeIsOrContainsGraphElement(const Type* type) {
     }
   }
   return false;
+}
+
+absl::StatusOr<const Column*> GetPropertyBackingColumn(
+    const GraphPropertyDefinition& prop_def) {
+  GOOGLESQL_RET_CHECK(prop_def.GetDeclaration().kind() !=
+            GraphPropertyDeclaration::Kind::kInvalid);
+  if (prop_def.GetDeclaration().kind() ==
+      GraphPropertyDeclaration::Kind::kMeasure) {
+    return nullptr;
+  }
+
+  GOOGLESQL_ASSIGN_OR_RETURN(const ResolvedExpr* val_expr, prop_def.GetValueExpression());
+  GOOGLESQL_RET_CHECK_NE(val_expr, nullptr)
+      << "Property definition must have a value expression";
+
+  if (!val_expr->Is<ResolvedCatalogColumnRef>()) {
+    return nullptr;
+  }
+
+  const Column* col = val_expr->GetAs<ResolvedCatalogColumnRef>()->column();
+  GOOGLESQL_RET_CHECK_NE(col, nullptr);
+  return col;
+}
+
+absl::StatusOr<absl::flat_hash_set<const Column*>> GetPropertyBackingColumns(
+    const GraphElementTable& target_table) {
+  absl::flat_hash_set<const GraphPropertyDefinition*> prop_defs;
+  GOOGLESQL_RETURN_IF_ERROR(target_table.GetPropertyDefinitions(prop_defs));
+
+  absl::flat_hash_set<const Column*> backing_columns;
+  for (const GraphPropertyDefinition* prop_def : prop_defs) {
+    GOOGLESQL_RET_CHECK_NE(prop_def, nullptr);
+    GOOGLESQL_ASSIGN_OR_RETURN(const Column* backing_col,
+                     GetPropertyBackingColumn(*prop_def));
+    if (backing_col != nullptr) {
+      backing_columns.insert(backing_col);
+    }
+  }
+  return backing_columns;
+}
+
+absl::StatusOr<bool> AreAllKeyColumnsWritableProperties(
+    const GraphElementTable& target_table, std::string* error_message) {
+  GOOGLESQL_RET_CHECK(!target_table.GetKeyColumns().empty())
+      << "Graph element table '" << target_table.Name()
+      << "' has no key columns";
+  const Table* base_table = target_table.GetTable();
+  GOOGLESQL_RET_CHECK_NE(base_table, nullptr)
+      << "Graph element table '" << target_table.Name()
+      << "' has no underlying base table";
+
+  GOOGLESQL_ASSIGN_OR_RETURN(absl::flat_hash_set<const Column*> exposed_columns,
+                   GetPropertyBackingColumns(target_table));
+
+  // Element key columns of target_table itself must be exposed as writable
+  // properties in its property definition list.
+  for (int key_idx : target_table.GetKeyColumns()) {
+    GOOGLESQL_RET_CHECK_GE(key_idx, 0);
+    GOOGLESQL_RET_CHECK_LT(key_idx, base_table->NumColumns());
+
+    const Column* key_col = base_table->GetColumn(key_idx);
+    GOOGLESQL_RET_CHECK_NE(key_col, nullptr);
+
+    // Base table column must be writable.
+    if (!key_col->IsWritableColumn()) {
+      if (error_message != nullptr) {
+        *error_message =
+            absl::StrCat("Graph element table '", target_table.Name(),
+                         "' is not updatable because the element key column '",
+                         key_col->Name(), "' is not writable");
+      }
+      return false;
+    }
+
+    // An element table key column must be exposed as a property whose value
+    // expression is a direct catalog column reference (not a derived property
+    // or a measure property).
+    if (!exposed_columns.contains(key_col)) {
+      if (error_message != nullptr) {
+        *error_message = absl::StrCat(
+            "Graph element table '", target_table.Name(),
+            "' is not updatable because the element key column '",
+            key_col->Name(), "' is not exposed as a writable property");
+      }
+      return false;
+    }
+  }
+  return true;
+}
+
+absl::StatusOr<const Column*> GetDynamicLabelBackingColumn(
+    const GraphElementTable& target_table) {
+  if (!target_table.HasDynamicLabel()) {
+    return nullptr;
+  }
+  const GraphDynamicLabel* dynamic_label = nullptr;
+  GOOGLESQL_RETURN_IF_ERROR(target_table.GetDynamicLabel(dynamic_label));
+  GOOGLESQL_RET_CHECK_NE(dynamic_label, nullptr);
+  GOOGLESQL_ASSIGN_OR_RETURN(const ResolvedExpr* val_expr,
+                   dynamic_label->GetValueExpression());
+  GOOGLESQL_RET_CHECK_NE(val_expr, nullptr);
+  GOOGLESQL_RET_CHECK(val_expr->Is<ResolvedCatalogColumnRef>());
+  const Column* col = val_expr->GetAs<ResolvedCatalogColumnRef>()->column();
+  GOOGLESQL_RET_CHECK_NE(col, nullptr);
+  return col;
+}
+
+absl::StatusOr<const Column*> GetDynamicPropertiesBackingColumn(
+    const GraphElementTable& target_table) {
+  if (!target_table.HasDynamicProperties()) {
+    return nullptr;
+  }
+  const GraphDynamicProperties* dynamic_properties = nullptr;
+  GOOGLESQL_RETURN_IF_ERROR(target_table.GetDynamicProperties(dynamic_properties));
+  GOOGLESQL_RET_CHECK_NE(dynamic_properties, nullptr);
+  GOOGLESQL_ASSIGN_OR_RETURN(const ResolvedExpr* val_expr,
+                   dynamic_properties->GetValueExpression());
+  GOOGLESQL_RET_CHECK_NE(val_expr, nullptr);
+  GOOGLESQL_RET_CHECK(val_expr->Is<ResolvedCatalogColumnRef>());
+  const Column* col = val_expr->GetAs<ResolvedCatalogColumnRef>()->column();
+  GOOGLESQL_RET_CHECK_NE(col, nullptr);
+  return col;
+}
+
+absl::StatusOr<EdgeEndpointBackingColumns> GetEdgeEndpointBackingColumns(
+    const GraphElementTable& target_table) {
+  EdgeEndpointBackingColumns endpoint_columns;
+  if (target_table.kind() != GraphElementTable::Kind::kEdge) {
+    return endpoint_columns;
+  }
+  const GraphEdgeTable* edge_table = target_table.AsEdgeTable();
+  GOOGLESQL_RET_CHECK_NE(edge_table, nullptr);
+  const Table* base_table = edge_table->GetTable();
+  GOOGLESQL_RET_CHECK_NE(base_table, nullptr);
+  if (edge_table->GetSourceNodeTable() != nullptr) {
+    for (int col_idx :
+         edge_table->GetSourceNodeTable()->GetEdgeTableColumns()) {
+      GOOGLESQL_RET_CHECK_GE(col_idx, 0);
+      GOOGLESQL_RET_CHECK_LT(col_idx, base_table->NumColumns());
+      const Column* col = base_table->GetColumn(col_idx);
+      GOOGLESQL_RET_CHECK_NE(col, nullptr);
+      endpoint_columns.source_key_columns.insert(col);
+    }
+  }
+  if (edge_table->GetDestNodeTable() != nullptr) {
+    for (int col_idx : edge_table->GetDestNodeTable()->GetEdgeTableColumns()) {
+      GOOGLESQL_RET_CHECK_GE(col_idx, 0);
+      GOOGLESQL_RET_CHECK_LT(col_idx, base_table->NumColumns());
+      const Column* col = base_table->GetColumn(col_idx);
+      GOOGLESQL_RET_CHECK_NE(col, nullptr);
+      endpoint_columns.dest_key_columns.insert(col);
+    }
+  }
+  return endpoint_columns;
+}
+
+absl::StatusOr<bool> IsTargetTableUpdatable(
+    const GraphElementTable& target_table, bool needs_dynamic_label,
+    std::string* error_message) {
+  GOOGLESQL_ASSIGN_OR_RETURN(bool key_cols_writable, AreAllKeyColumnsWritableProperties(
+                                               target_table, error_message));
+  if (!key_cols_writable) {
+    return false;
+  }
+
+  if (needs_dynamic_label) {
+    if (!target_table.HasDynamicLabel()) {
+      if (error_message != nullptr) {
+        *error_message =
+            absl::StrCat("Graph element table '", target_table.Name(),
+                         "' does not support dynamic labels");
+      }
+      return false;
+    }
+    GOOGLESQL_ASSIGN_OR_RETURN(const Column* dynamic_label_col,
+                     GetDynamicLabelBackingColumn(target_table));
+    GOOGLESQL_RET_CHECK_NE(dynamic_label_col, nullptr);
+    if (!dynamic_label_col->IsWritableColumn()) {
+      if (error_message != nullptr) {
+        *error_message = absl::StrCat(
+            "Cannot insert dynamic label because the dynamic label backing "
+            "column '",
+            dynamic_label_col->Name(), "' is read-only");
+      }
+      return false;
+    }
+  }
+
+  if (target_table.kind() == GraphElementTable::Kind::kEdge) {
+    const GraphEdgeTable* edge_table = target_table.AsEdgeTable();
+    GOOGLESQL_RET_CHECK_NE(edge_table, nullptr);
+
+    // Edge table side: SOURCE KEY and DESTINATION KEY columns must be writable
+    // columns in the edge base table (they do not need to be exposed as edge
+    // properties).
+    auto are_edge_endpoint_key_columns_writable =
+        [&edge_table, error_message](
+            absl::Span<const int> col_indices,
+            absl::string_view endpoint_kind) -> absl::StatusOr<bool> {
+      const Table* edge_base_table = edge_table->GetTable();
+      GOOGLESQL_RET_CHECK_NE(edge_base_table, nullptr);
+      for (int col_idx : col_indices) {
+        GOOGLESQL_RET_CHECK_GE(col_idx, 0);
+        GOOGLESQL_RET_CHECK_LT(col_idx, edge_base_table->NumColumns());
+        const Column* col = edge_base_table->GetColumn(col_idx);
+        GOOGLESQL_RET_CHECK_NE(col, nullptr);
+        if (!col->IsWritableColumn()) {
+          if (error_message != nullptr) {
+            *error_message = absl::StrCat(
+                "Graph element table '", edge_table->Name(),
+                "' is not updatable because the edge ", endpoint_kind,
+                " key column '", col->Name(), "' is not writable");
+          }
+          return false;
+        }
+      }
+      return true;
+    };
+
+    // Node table side: referenced endpoint key columns must be exposed as
+    // properties on the endpoint node tables (they do not need to be writable
+    // on the node tables).
+    auto are_endpoint_key_columns_exposed_in_node_table =
+        [&edge_table, error_message](
+            const GraphNodeTable* node_table,
+            absl::Span<const int> key_column_indices,
+            absl::string_view endpoint_kind) -> absl::StatusOr<bool> {
+      GOOGLESQL_RET_CHECK_NE(node_table, nullptr);
+      const Table* node_base_table = node_table->GetTable();
+      GOOGLESQL_RET_CHECK_NE(node_base_table, nullptr);
+      GOOGLESQL_ASSIGN_OR_RETURN(absl::flat_hash_set<const Column*> exposed_columns,
+                       GetPropertyBackingColumns(*node_table));
+      for (int key_idx : key_column_indices) {
+        GOOGLESQL_RET_CHECK_GE(key_idx, 0);
+        GOOGLESQL_RET_CHECK_LT(key_idx, node_base_table->NumColumns());
+        const Column* key_col = node_base_table->GetColumn(key_idx);
+        GOOGLESQL_RET_CHECK_NE(key_col, nullptr);
+        if (!exposed_columns.contains(key_col)) {
+          if (error_message != nullptr) {
+            *error_message =
+                absl::StrCat("The edge table '", edge_table->Name(),
+                             "' is not updatable because the ", endpoint_kind,
+                             " node table '", node_table->Name(),
+                             "' does not expose the element key column '",
+                             key_col->Name(), "' as a property");
+          }
+          return false;
+        }
+      }
+      return true;
+    };
+
+    if (edge_table->GetSourceNodeTable() != nullptr) {
+      GOOGLESQL_ASSIGN_OR_RETURN(
+          bool src_edge_cols_writable,
+          are_edge_endpoint_key_columns_writable(
+              edge_table->GetSourceNodeTable()->GetEdgeTableColumns(),
+              "source"));
+      if (!src_edge_cols_writable) {
+        return false;
+      }
+      GOOGLESQL_ASSIGN_OR_RETURN(
+          bool src_node_cols_exposed,
+          are_endpoint_key_columns_exposed_in_node_table(
+              edge_table->GetSourceNodeTable()->GetReferencedNodeTable(),
+              edge_table->GetSourceNodeTable()->GetNodeTableColumns(),
+              "source"));
+      if (!src_node_cols_exposed) {
+        return false;
+      }
+    }
+
+    if (edge_table->GetDestNodeTable() != nullptr) {
+      GOOGLESQL_ASSIGN_OR_RETURN(
+          bool dst_edge_cols_writable,
+          are_edge_endpoint_key_columns_writable(
+              edge_table->GetDestNodeTable()->GetEdgeTableColumns(),
+              "destination"));
+      if (!dst_edge_cols_writable) {
+        return false;
+      }
+      GOOGLESQL_ASSIGN_OR_RETURN(
+          bool dst_node_cols_exposed,
+          are_endpoint_key_columns_exposed_in_node_table(
+              edge_table->GetDestNodeTable()->GetReferencedNodeTable(),
+              edge_table->GetDestNodeTable()->GetNodeTableColumns(),
+              "destination"));
+      if (!dst_node_cols_exposed) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+absl::StatusOr<const GraphElementType*> BuildGraphElementTypeForTable(
+    const GraphElementTable& target_table,
+    absl::Span<const std::string> graph_name_path, TypeFactory& type_factory,
+    const LanguageOptions& language_options) {
+  const GraphElementType::ElementKind element_kind =
+      target_table.kind() == GraphElementTable::Kind::kNode
+          ? GraphElementType::kNode
+          : GraphElementType::kEdge;
+
+  absl::flat_hash_set<const GraphPropertyDefinition*> prop_defs;
+  GOOGLESQL_RETURN_IF_ERROR(target_table.GetPropertyDefinitions(prop_defs));
+
+  std::vector<GraphElementType::PropertyType> property_types;
+  property_types.reserve(prop_defs.size());
+  for (const auto* def : prop_defs) {
+    GOOGLESQL_RET_CHECK_NE(def, nullptr);
+    property_types.push_back(
+        {def->GetDeclaration().Name(), def->GetDeclaration().Type()});
+  }
+
+  std::vector<std::string> element_table_names;
+  if (language_options.LanguageFeatureEnabled(
+          FEATURE_SQL_GRAPH_UPDATABLE_GRAPH_ELEMENT_TYPE)) {
+    element_table_names.push_back(target_table.Name());
+  }
+
+  const GraphElementType* elem_type = nullptr;
+  if (target_table.HasDynamicProperties()) {
+    GOOGLESQL_RETURN_IF_ERROR(type_factory.MakeDynamicGraphElementType(
+        graph_name_path, element_kind, property_types, element_table_names,
+        &elem_type));
+  } else {
+    GOOGLESQL_RETURN_IF_ERROR(type_factory.MakeGraphElementType(
+        graph_name_path, element_kind, property_types, element_table_names,
+        &elem_type));
+  }
+  return elem_type;
 }
 
 absl::StatusOr<JSONValue> MakePropertiesJsonValue(

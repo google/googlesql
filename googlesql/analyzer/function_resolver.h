@@ -472,8 +472,7 @@ class FunctionResolver {
   //   <indented_line_2_of_multiple_line_reason>.
   absl::StatusOr<std::string> GetSupportedSignaturesWithMessage(
       const Function* function, absl::Span<const std::string> mismatch_errors,
-      FunctionArgumentType::NamePrintingStyle print_style,
-      int* num_signatures) const;
+      FunctionArgumentType::NamePrintingStyle print_style) const;
 
   // Generates an error message for function call mismatching with the existing
   // signatures, with <prefix_message> followed by a list of supported

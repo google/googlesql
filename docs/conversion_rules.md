@@ -824,7 +824,7 @@ the most specific type is the type with the most restrictive domain.
       <td><code>DOUBLE</code></td>
       <td>
         If you apply supertyping to <code>INT64</code> and <code>FLOAT</code>,
-        supertyping succeeds because they they share a supertype,
+        supertyping succeeds because they share a supertype,
         <code>DOUBLE</code>.
       </td>
     </tr>
@@ -839,7 +839,7 @@ the most specific type is the type with the most restrictive domain.
       <td>
         If you apply supertyping to <code>INT64</code> and
         <code>DOUBLE</code>,
-        supertyping succeeds because they they share a supertype,
+        supertyping succeeds because they share a supertype,
         <code>DOUBLE</code>.
       </td>
     </tr>

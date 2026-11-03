@@ -486,20 +486,18 @@ absl::StatusOr<Value> DoMapEntryCast(const Value& from_value,
 // Casts a Value <v> to a JSON value.
 absl::StatusOr<Value> CastToJSON(const Value& v,
                                  const LanguageOptions& language_options,
-                                 bool canonicalize_zero,
-                                 bool* out_found_non_deterministic) {
+                                 bool canonicalize_zero) {
   if (v.is_null()) {
     return Value::NullJson();
   }
-  GOOGLESQL_ASSIGN_OR_RETURN(
-      JSONValue json_value,
-      googlesql::functions::ToJson(
-          v, /*stringify_wide_numbers=*/false, language_options,
-          canonicalize_zero,
-          /*unsupported_fields=*/
-          googlesql::functions::UnsupportedFieldsEnum::FAIL,
-          /*path_as_object=*/false,
-          /*reject_nan_infinity_floats=*/true, out_found_non_deterministic));
+  GOOGLESQL_ASSIGN_OR_RETURN(JSONValue json_value,
+                   googlesql::functions::ToJson(
+                       v, /*stringify_wide_numbers=*/false, language_options,
+                       canonicalize_zero,
+                       /*unsupported_fields=*/
+                       googlesql::functions::UnsupportedFieldsEnum::FAIL,
+                       /*path_as_object=*/false,
+                       /*reject_nan_infinity_floats=*/true));
   return Value::Json(std::move(json_value));
 }
 
@@ -742,8 +740,7 @@ class CastContext {
 
   absl::StatusOr<Value> CastValue(
       const Value& from_value, const Type* to_type,
-      const std::optional<std::string>& format = std::nullopt,
-      bool* out_found_non_deterministic = nullptr) const;
+      const std::optional<std::string>& format = std::nullopt) const;
 
  protected:
   const absl::TimeZone& default_timezone() const { return default_timezone_; }
@@ -858,8 +855,7 @@ static absl::Status ValidateGraphElementValueImplicitCastAndAddStaticProperties(
 
 absl::StatusOr<Value> CastContext::CastValue(
     const Value& from_value, const Type* to_type,
-    const std::optional<std::string>& format,
-    bool* out_found_non_deterministic) const {
+    const std::optional<std::string>& format) const {
   GOOGLESQL_RET_CHECK(from_value.is_valid());
   // Use a shorter name inside the body of this method.
   const Value& v = from_value;
@@ -1833,8 +1829,7 @@ absl::StatusOr<Value> CastContext::CastValue(
     case FCT(TYPE_GRAPH_ELEMENT, TYPE_JSON):
     case FCT(TYPE_GRAPH_PATH, TYPE_JSON):
     case FCT(TYPE_PROTO, TYPE_JSON): {
-      return CastToJSON(v, language_options(), canonicalize_zero_,
-                        out_found_non_deterministic);
+      return CastToJSON(v, language_options(), canonicalize_zero_);
     }
     default:
       return ::googlesql_base::UnimplementedErrorBuilder()
@@ -1961,7 +1956,7 @@ absl::StatusOr<Value> CastValueWithoutTypeValidation(
     const std::optional<std::string>& format,
     const std::optional<std::string>& time_zone,
     const ExtendedCompositeCastEvaluator* extended_conversion_evaluator,
-    bool canonicalize_zero, bool* out_found_non_deterministic) {
+    bool canonicalize_zero) {
   absl::TimeZone timezone = default_timezone;
   if (time_zone.has_value()) {
     GOOGLESQL_RETURN_IF_ERROR(functions::MakeTimeZone(time_zone.value(), &timezone));
@@ -1969,7 +1964,7 @@ absl::StatusOr<Value> CastValueWithoutTypeValidation(
   return CastContextWithoutValidation(
              timezone, current_timestamp, language_options,
              extended_conversion_evaluator, canonicalize_zero)
-      .CastValue(from_value, to_type, format, out_found_non_deterministic);
+      .CastValue(from_value, to_type, format);
 }
 
 const CastHashMap& GetGoogleSQLCasts() {

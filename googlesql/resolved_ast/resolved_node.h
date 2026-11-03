@@ -31,6 +31,7 @@
 #include "googlesql/resolved_ast/resolved_node_kind.pb.h"
 #include "googlesql/resolved_ast/serialization.pb.h"
 #include "absl/flags/declare.h"
+#include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -444,6 +445,12 @@ class ResolvedNode {
   // the new (potentially unique_ptr based) constructor.  Once this becomes
   // the only constructor, this enum can be dropped.
   enum class ConstructorOverload { NEW_CONSTRUCTOR };
+
+  // Serializes this node into the ResolvedNodeProto returned by `get_proto`,
+  // invoking `get_proto` only when needed (to write fields into it).
+  absl::Status SaveToInternal(
+      Type::FileDescriptorSetMap* file_descriptor_set_map,
+      absl::FunctionRef<ResolvedNodeProto*()> get_proto) const;
 
  private:
   // Formatter view classes access protected DebugString fields and methods.

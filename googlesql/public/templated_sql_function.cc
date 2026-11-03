@@ -107,19 +107,18 @@ absl::Status TemplatedSQLFunction::Serialize(
 
 TemplatedSQLFunctionCall::TemplatedSQLFunctionCall(
     std::unique_ptr<const ResolvedExpr> expr,
-    std::vector<std::unique_ptr<const ResolvedComputedColumn>>
-        aggregate_expr_list)
+    AggregateExpressionList aggregate_expr_list)
     : expr_(expr.release()),
       aggregate_expression_list_(std::move(aggregate_expr_list)) {}
 
-const std::vector<std::unique_ptr<const ResolvedComputedColumn>>&
+const TemplatedSQLFunctionCall::AggregateExpressionList&
 TemplatedSQLFunctionCall::aggregate_expression_list() const {
   return aggregate_expression_list_;
 }
 
 inline void ResolvedComputedColumnFormatter(
     std::string* out,
-    const std::unique_ptr<const ResolvedComputedColumn>& computed_column) {
+    const std::unique_ptr<const ResolvedComputedColumnBase>& computed_column) {
   absl::StrAppend(out, computed_column->DebugString());
 }
 

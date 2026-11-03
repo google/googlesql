@@ -211,128 +211,95 @@ class TumbleRewriteVisitor : public ResolvedASTRewriteVisitor {
   // The generated SQL structure for the CTE is:
   //
   // WITH _tumble_params AS (
-  //   SELECT
-  //     CASE
-  //       WHEN precomputed_raw.window_size IS NULL
-  //         THEN ERROR("Window size cannot be null.")
-  //       WHEN precomputed_raw.window_size = INTERVAL 0 DAY
-  //         THEN ERROR("Window size cannot be zero.")
-  //       WHEN precomputed_raw.window_size < INTERVAL 0 DAY
-  //         THEN ERROR("Window size cannot be negative.")
-  //       WHEN EXTRACT(MONTH FROM precomputed_raw.window_size) != 0 OR
-  //            EXTRACT(YEAR FROM precomputed_raw.window_size) != 0
-  //         THEN ERROR("Window size cannot contain MONTH or YEAR parts.")
-  //       ELSE precomputed_raw.window_size
-  //     END AS window_size,
-  //     CASE
-  //       WHEN precomputed_raw.origin IS NULL
-  //         THEN ERROR("Origin cannot be null.")
-  //       ELSE precomputed_raw.origin
-  //     END AS origin
+  //   SELECT *
   //   FROM (
   //     SELECT
   //       <window_size_expr> AS window_size,
   //       <origin_expr> AS origin
-  //   ) AS precomputed_raw
+  //   )
+  //   WHERE
+  //     CASE
+  //       WHEN window_size IS NULL
+  //         THEN ERROR("Window size cannot be null.")
+  //       WHEN window_size = INTERVAL 0 DAY
+  //         THEN ERROR("Window size cannot be zero.")
+  //       WHEN window_size < INTERVAL 0 DAY
+  //         THEN ERROR("Window size cannot be negative.")
+  //       WHEN EXTRACT(MONTH FROM window_size) != 0 OR
+  //            EXTRACT(YEAR FROM window_size) != 0
+  //         THEN ERROR("Window size cannot contain MONTH or YEAR parts.")
+  //       WHEN origin IS NULL
+  //         THEN ERROR("Origin cannot be null.")
+  //       ELSE TRUE
+  //     END
   // )
   //
   // See (broken link) for more details.
   absl::StatusOr<std::unique_ptr<const ResolvedWithEntry>>
   BuildTumbleParametersCTE(std::unique_ptr<const ResolvedExpr> window_size_expr,
                            std::unique_ptr<const ResolvedExpr> origin_expr) {
-    // -- Part 1: Construct the raw parameters:
+    std::string cte_name =
+        cte_name_generator_.MakeUniqueCteName("_tumble_params");
+
     // SELECT
     //   <window_size_expr> AS window_size,
     //   <origin_expr> AS origin
-    //   ) AS precomputed_raw.
     std::vector<std::unique_ptr<const ResolvedComputedColumn>> compute_exprs;
     ResolvedColumnList compute_cols;
 
-    const Type* window_size_type = window_size_expr->type();
-    ResolvedColumn raw_window_col = column_factory_.MakeCol(
-        "$precomputed_raw", "window_size", window_size_type);
-    compute_cols.push_back(raw_window_col);
+    ResolvedColumn window_size_col = column_factory_.MakeCol(
+        cte_name, "window_size", window_size_expr->type());
+    compute_cols.push_back(window_size_col);
     compute_exprs.push_back(MakeResolvedComputedColumn(
-        raw_window_col, std::move(window_size_expr)));
+        window_size_col, std::move(window_size_expr)));
 
-    const Type* origin_type = origin_expr->type();
-    ResolvedColumn raw_origin_col =
-        column_factory_.MakeCol("$precomputed_raw", "origin", origin_type);
-    compute_cols.push_back(raw_origin_col);
+    ResolvedColumn origin_col =
+        column_factory_.MakeCol(cte_name, "origin", origin_expr->type());
+    compute_cols.push_back(origin_col);
     compute_exprs.push_back(
-        MakeResolvedComputedColumn(raw_origin_col, std::move(origin_expr)));
+        MakeResolvedComputedColumn(origin_col, std::move(origin_expr)));
 
-    // -- Part 2: Validate arguments and project final output.
-    std::string cte_name =
-        cte_name_generator_.MakeUniqueCteName("_tumble_params");
-    std::vector<std::unique_ptr<const ResolvedComputedColumn>> final_exprs;
-    ResolvedColumnList final_cols;
-
-    // window_size (Validation chain).
-    ResolvedColumn tumble_window_col =
-        column_factory_.MakeCol(cte_name, "window_size", raw_window_col.type());
-    final_cols.push_back(tumble_window_col);
-    {
-      auto raw_ws_ref =
-          MakeResolvedColumnRef(raw_window_col.type(), raw_window_col, false);
-      GOOGLESQL_ASSIGN_OR_RETURN(
-          auto validated_window_size_expr,
-          AnalyzeSubstitute(analyzer_options_, catalog_, type_factory_,
-                            R"sql(
-              CASE
-                WHEN raw_ws IS NULL THEN ERROR("Window size cannot be null.")
-                WHEN raw_ws = INTERVAL 0 DAY THEN ERROR("Window size cannot be zero.")
-                WHEN raw_ws < INTERVAL 0 DAY THEN ERROR("Window size cannot be negative.")
-                WHEN EXTRACT(MONTH FROM raw_ws) != 0 OR EXTRACT(YEAR FROM raw_ws) != 0
-                  THEN ERROR("Window size cannot contain MONTH or YEAR parts.")
-                ELSE raw_ws
-              END
-              )sql",
-                            {{"raw_ws", raw_ws_ref.get()}}),
-          _.With(ExpectAnalyzeSubstituteSuccess));
-      final_exprs.push_back(MakeResolvedComputedColumn(
-          tumble_window_col, std::move(validated_window_size_expr)));
-    }
-
-    // origin (Validation).
-    ResolvedColumn tumble_origin_col =
-        column_factory_.MakeCol(cte_name, "origin", raw_origin_col.type());
-    final_cols.push_back(tumble_origin_col);
-    {
-      auto raw_origin_ref =
-          MakeResolvedColumnRef(raw_origin_col.type(), raw_origin_col, false);
-      GOOGLESQL_ASSIGN_OR_RETURN(
-          auto validated_origin_expr,
-          AnalyzeSubstitute(analyzer_options_, catalog_, type_factory_,
-                            R"sql(
-              CASE
-                WHEN raw_origin IS NULL THEN ERROR("Origin cannot be null.")
-                ELSE raw_origin
-              END
-              )sql",
-                            {{"raw_origin", raw_origin_ref.get()}}),
-          _.With(ExpectAnalyzeSubstituteSuccess));
-
-      final_exprs.push_back(MakeResolvedComputedColumn(
-          tumble_origin_col, std::move(validated_origin_expr)));
-    }
+    // Check the arguments in a WHERE clause rather than in the SELECT.
+    // Engines may skip computing SELECT columns that nothing uses. This ensures
+    // that the invalid arguments errors are not skipped.
+    auto window_size_ref = MakeResolvedColumnRef(
+        window_size_col.type(), window_size_col, /*is_correlated=*/false);
+    auto origin_ref = MakeResolvedColumnRef(origin_col.type(), origin_col,
+                                            /*is_correlated=*/false);
+    GOOGLESQL_ASSIGN_OR_RETURN(
+        std::unique_ptr<const ResolvedExpr> check_expr,
+        AnalyzeSubstitute(analyzer_options_, catalog_, type_factory_,
+                          R"sql(
+            CASE
+              WHEN window_size IS NULL THEN ERROR("Window size cannot be null.")
+              WHEN window_size = INTERVAL 0 DAY THEN ERROR("Window size cannot be zero.")
+              WHEN window_size < INTERVAL 0 DAY THEN ERROR("Window size cannot be negative.")
+              WHEN EXTRACT(MONTH FROM window_size) != 0 OR EXTRACT(YEAR FROM window_size) != 0
+                THEN ERROR("Window size cannot contain MONTH or YEAR parts.")
+              WHEN origin IS NULL THEN ERROR("Origin cannot be null.")
+              ELSE TRUE
+            END
+            )sql",
+                          {{"window_size", window_size_ref.get()},
+                           {"origin", origin_ref.get()}}),
+        _.With(ExpectAnalyzeSubstituteSuccess));
 
     return ResolvedWithEntryBuilder()
         .set_with_query_name(cte_name)
         .set_with_subquery(
-            ResolvedProjectScanBuilder()
-                .set_column_list(final_cols)
-                .set_expr_list(std::move(final_exprs))
+            ResolvedFilterScanBuilder()
+                .set_column_list(compute_cols)
                 .set_input_scan(
                     ResolvedProjectScanBuilder()
                         .set_column_list(compute_cols)
                         .set_expr_list(std::move(compute_exprs))
-                        .set_input_scan(MakeResolvedSingleRowScan())))
+                        .set_input_scan(MakeResolvedSingleRowScan()))
+                .set_filter_expr(std::move(check_expr)))
         .Build();
   }
 
   // Builds the final projection for the TUMBLE rewrite. This SELECT statement
-  // merges with the original input table with the validated parameters from the
+  // joins the original input table with the validated parameters from the
   // '_tumble_params' CTE. It calculates the WINDOW_START and WINDOW_END
   // columns for each row based on the timestamp column and window parameters.
   //
@@ -343,39 +310,55 @@ class TumbleRewriteVisitor : public ResolvedASTRewriteVisitor {
   //   -- Calculate window_start using TIMESTAMP_BUCKET
   //   TIMESTAMP_BUCKET(
   //     t.<timestamp_column>,
-  //     (SELECT window_size FROM _tumble_params),
-  //     (SELECT origin FROM _tumble_params)
+  //     p.window_size,
+  //     p.origin
   //   ) AS window_start,
   //   -- Calculate window_end
   //   TIMESTAMP_ADD(
   //     TIMESTAMP_BUCKET(
   //       t.<timestamp_column>,
-  //       (SELECT window_size FROM _tumble_params),
-  //       (SELECT origin FROM _tumble_params)
+  //       p.window_size,
+  //       p.origin
   //     ),
-  //     (SELECT window_size FROM _tumble_params)
+  //     p.window_size
   //   ) AS window_end
   // FROM
   //   <InputTable> AS t
+  //   CROSS JOIN _tumble_params AS p
   //
-  // Note: Scalar subqueries are used for convenience to reference the
-  // single-row _tumble_params CTE values as scalar expressions without
-  // having to join the CTE.
   // See (broken link) for more details.
   absl::StatusOr<std::unique_ptr<const ResolvedScan>>
   BuildTumbleFinalProjection(
       const TumbleFunctionArguments& args, const ResolvedColumnList& cte_cols,
       absl::string_view cte_name,
       std::unique_ptr<const ResolvedScan> input_relation) {
-    // (SELECT window_size FROM _tumble_params) subquery.
-    auto get_window_size_expr = [&]() {
-      return CreateCteColumnSubquery(column_factory_, cte_name, cte_cols,
-                                     0);  // window_size
+    // Create new CTE reference columns for the _tumble_params CTE.
+    // We cross join input_relation with this CTE scan to make parameters
+    // directly available as column references.
+    // Columns are window_size, origin.
+    GOOGLESQL_RET_CHECK_EQ(cte_cols.size(), 2);
+    std::vector<ResolvedColumn> cte_ref_cols;
+    cte_ref_cols.reserve(cte_cols.size());
+    for (const auto& col : cte_cols) {
+      cte_ref_cols.push_back(
+          column_factory_.MakeCol(cte_name, col.name(), col.type()));
+    }
+    auto cte_scan = MakeResolvedWithRefScan(cte_ref_cols, cte_name);
+    const ResolvedColumn& window_size_ref_col = cte_ref_cols[0];
+    const ResolvedColumn& origin_ref_col = cte_ref_cols[1];
+
+    // p.window_size
+    auto get_window_size_expr =
+        [&]() -> absl::StatusOr<std::unique_ptr<const ResolvedExpr>> {
+      return MakeResolvedColumnRef(window_size_ref_col.type(),
+                                   window_size_ref_col,
+                                   /*is_correlated=*/false);
     };
-    // (SELECT origin FROM _tumble_params) subquery.
-    auto get_origin_expr = [&]() {
-      return CreateCteColumnSubquery(column_factory_, cte_name, cte_cols,
-                                     1);  // origin
+    // p.origin
+    auto get_origin_expr =
+        [&]() -> absl::StatusOr<std::unique_ptr<const ResolvedExpr>> {
+      return MakeResolvedColumnRef(origin_ref_col.type(), origin_ref_col,
+                                   /*is_correlated=*/false);
     };
     // Creates a TIMESTAMP_BUCKET(ts_col, window_size, origin) expression.
     auto make_window_start_expr =
@@ -444,10 +427,28 @@ class TumbleRewriteVisitor : public ResolvedASTRewriteVisitor {
         GOOGLESQL_RET_CHECK_FAIL() << "Invalid column index: " << idx;
       }
     }
+
+    // <InputTable> AS t CROSS JOIN _tumble_params AS p
+    ResolvedColumnList cross_join_output_cols = input_relation->column_list();
+    cross_join_output_cols.insert(cross_join_output_cols.end(),
+                                  cte_ref_cols.begin(), cte_ref_cols.end());
+    std::unique_ptr<const ResolvedScan> cross_join_scan =
+        MakeResolvedJoinScan(cross_join_output_cols, ResolvedJoinScan::INNER,
+                             std::move(input_relation), std::move(cte_scan),
+                             /*join_expr=*/nullptr);
+
+    if (output_column_list.empty()) {
+      // The query uses none of TUMBLE's output columns, e.g. COUNT(*), they
+      // might be pruned. Return the scan directly instead of constructing an
+      // invalid ProjectScan with empty output columns.
+      GOOGLESQL_RET_CHECK(output_expr_list.empty());
+      return std::move(cross_join_scan);
+    }
+
     return ResolvedProjectScanBuilder()
         .set_column_list(output_column_list)
         .set_expr_list(std::move(output_expr_list))
-        .set_input_scan(std::move(input_relation))
+        .set_input_scan(std::move(cross_join_scan))
         .Build();
   }
 

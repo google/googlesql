@@ -162,6 +162,16 @@ class IsFirstIsLastFunctionRewriteVisitor : public ResolvedASTRewriteVisitor {
       }
     }
 
+    // If no IS_FIRST() or IS_LAST() calls were rewritten in this scan, avoid
+    // wrapping it in synthetic project scans and restore its original column
+    // list.
+    if (input_project_builder.expr_list().empty()) {
+      GOOGLESQL_RET_CHECK(output_project_builder.expr_list().empty());
+      return std::move(analytic_builder)
+          .set_column_list(output_project_builder.release_column_list())
+          .Build();
+    }
+
     input_project_builder.set_input_scan(analytic_builder.release_input_scan());
     analytic_builder.set_input_scan(std::move(input_project_builder));
 

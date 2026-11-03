@@ -461,3 +461,382 @@ Lateral column alias will shadow original target: INT64 ($subquery1.d#1) [at 5:1
       (SELECT d)
               ^
 [googlesql.DeprecationWarning] { kind: LATERAL_COLUMN_REFERENCE }
+==
+
+# A GRAPH_TABLE element variable with the same name as an earlier SELECT-list
+# alias, which is tracked for lateral column references but doesn't have a
+# ResolvedColumn.
+[language_features=NONE,+SQL_GRAPH{{|,+LATERAL_COLUMN_REFERENCES}}]
+SELECT
+  1 AS n,
+  (SELECT COUNT(*) FROM GRAPH_TABLE(aml MATCH (n) COLUMNS (n.Id AS id))) AS c
+FROM (SELECT 1 AS x)
+--
+QueryStmt
++-output_column_list=
+| +-$query.n#5 AS n [INT64]
+| +-$query.c#6 AS c [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=$query.[n#5, c#6]
+    +-expr_list=
+    | +-n#5 := Literal(type=INT64, value=1)
+    | +-c#6 :=
+    |   +-SubqueryExpr
+    |     +-type=INT64
+    |     +-subquery_type=SCALAR
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$aggregate.$agg1#4]
+    |         +-input_scan=
+    |           +-AggregateScan
+    |             +-column_list=[$aggregate.$agg1#4]
+    |             +-input_scan=
+    |             | +-GraphTableScan
+    |             |   +-column_list=[$graph_table.id#3]
+    |             |   +-property_graph=aml
+    |             |   +-input_scan=
+    |             |   | +-GraphScan
+    |             |   |   +-column_list=[$element_table.n#2]
+    |             |   |   +-input_scan_list=
+    |             |   |     +-GraphPathScan
+    |             |   |       +-column_list=[$element_table.n#2]
+    |             |   |       +-input_scan_list=
+    |             |   |       | +-GraphNodeScan
+    |             |   |       |   +-column_list=[$element_table.n#2]
+    |             |   |       |   +-label_expr=
+    |             |   |       |   | +-GraphLabelNaryExpr
+    |             |   |       |   |   +-op=OR
+    |             |   |       |   |   +-operand_list=
+    |             |   |       |   |     +-GraphWildCardLabel
+    |             |   |       |   |     +-GraphLabelNaryExpr
+    |             |   |       |   |       +-op=NOT
+    |             |   |       |   |       +-operand_list=
+    |             |   |       |   |         +-GraphWildCardLabel
+    |             |   |       |   +-target_element_table_list=[aml.Account,aml.Person,aml.Syndicate]
+    |             |   |       +-head=$element_table.n#2
+    |             |   |       +-tail=$element_table.n#2
+    |             |   +-shape_expr_list=
+    |             |     +-id#3 :=
+    |             |       +-GraphGetElementProperty
+    |             |         +-type=INT64
+    |             |         +-expr=
+    |             |         | +-ColumnRef(type=GRAPH_NODE(aml)<age UINT32, balance UINT64, birthday DATE, data BYTES, id INT64, name STRING, syndicateData ARRAY<INT64>, syndicateId INT64, syndicateName STRING>, column=$element_table.n#2)
+    |             |         +-property=id(INT64)
+    |             +-aggregate_list=
+    |               +-$agg1#4 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[$subquery1.x#1]
+        +-expr_list=
+        | +-x#1 := Literal(type=INT64, value=1)
+        +-input_scan=
+          +-SingleRowScan
+==
+
+# Same, for a name in the name capture list of a GQL CALL subquery.
+[language_features=NONE,+SQL_GRAPH,+SQL_GRAPH_ADVANCED_QUERY,+SQL_GRAPH_CALL,+SQL_GRAPH_RETURN_EXTENSIONS{{|,+LATERAL_COLUMN_REFERENCES}}]
+SELECT
+  1 AS x,
+  (
+    SELECT COUNT(*)
+    FROM GRAPH_TABLE(aml MATCH (n) CALL (x) { RETURN x AS x2 } RETURN x2)
+  ) AS c
+FROM (SELECT 2 AS y)
+--
+ERROR: Not a column: x [at 5:42]
+    FROM GRAPH_TABLE(aml MATCH (n) CALL (x) { RETURN x AS x2 } RETURN x2)
+                                         ^
+==
+
+# A FROM clause path in a later SELECT item that starts with the name of a
+# SELECT-list alias. With the feature, the alias makes the path an array path.
+# TODO: b/578952682 - Without the feature, the alias shouldn't change how the
+# path is resolved, but it makes the path an array path, which fails.
+[language_features=MAXIMUM,{{-|+}}LATERAL_COLUMN_REFERENCES]
+[no_test_extract_table_names]
+SELECT 1 AS nested_catalog, (SELECT COUNT(*) FROM nested_catalog.KeyValue) AS c
+FROM KeyValue
+--
+ALTERNATION GROUP: -
+--
+ERROR: Unrecognized name: nested_catalog [at 1:51]
+SELECT 1 AS nested_catalog, (SELECT COUNT(*) FROM nested_catalog.KeyValue) AS c
+                                                  ^
+--
+ALTERNATION GROUP: +
+--
+ERROR: Cannot access field KeyValue on a value with type INT64 [at 1:66]
+SELECT 1 AS nested_catalog, (SELECT COUNT(*) FROM nested_catalog.KeyValue) AS c
+                                                                 ^
+==
+
+# A later SELECT item references `y`, which is both the implicit alias of
+# `t.s.y` and a column of the outer query. Without the feature, `y` resolves to
+# the outer column and the hit is logged. With the feature, `y` resolves to the
+# implicit alias, so strict name resolution mode gives an error.
+# TODO: b/578952682 - Without the feature, strict mode should check the outer
+# column, which has an explicit alias, but it checks the implicit alias and
+# gives the same error as with the feature.
+[language_features=MAXIMUM,{{-|+}}LATERAL_COLUMN_REFERENCES]
+[show_strict_mode]
+SELECT
+  (
+    SELECT AS STRUCT t.s.y, y + 1 AS z
+    FROM (SELECT STRUCT(1 AS y) AS s) AS t
+  ) AS r
+FROM (SELECT 5 AS y)
+--
+ALTERNATION GROUP: -
+--
+STRICT MODE ERROR: Alias y cannot be used without a qualifier in strict name resolution mode [at 3:29]
+    SELECT AS STRUCT t.s.y, y + 1 AS z
+                            ^
+--
+QueryStmt
++-output_column_list=
+| +-$query.r#6 AS r [STRUCT<y INT64, z INT64>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.r#6]
+    +-expr_list=
+    | +-r#6 :=
+    |   +-SubqueryExpr
+    |     +-type=STRUCT<y INT64, z INT64>
+    |     +-subquery_type=SCALAR
+    |     +-parameter_list=
+    |     | +-ColumnRef(type=INT64, column=$subquery1.y#1)
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$make_struct.$struct#5]
+    |         +-expr_list=
+    |         | +-$struct#5 :=
+    |         |   +-MakeStruct
+    |         |     +-type=STRUCT<y INT64, z INT64>
+    |         |     +-field_list=
+    |         |       +-ColumnRef(type=INT64, column=$expr_subquery.y#3)
+    |         |       +-ColumnRef(type=INT64, column=$expr_subquery.z#4)
+    |         +-input_scan=
+    |           +-ProjectScan
+    |             +-column_list=$expr_subquery.[y#3, z#4]
+    |             +-expr_list=
+    |             | +-y#3 :=
+    |             | | +-GetStructField
+    |             | |   +-type=INT64
+    |             | |   +-expr=
+    |             | |   | +-ColumnRef(type=STRUCT<y INT64>, column=t.s#2)
+    |             | |   +-field_idx=0
+    |             | +-z#4 :=
+    |             |   +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |             |     +-ColumnRef(type=INT64, column=$subquery1.y#1, is_correlated=TRUE)
+    |             |     +-Literal(type=INT64, value=1)
+    |             +-input_scan=
+    |               +-ProjectScan
+    |                 +-column_list=[t.s#2]
+    |                 +-expr_list=
+    |                 | +-s#2 := Literal(type=STRUCT<y INT64>, value={y:1})
+    |                 +-input_scan=
+    |                   +-SingleRowScan
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[$subquery1.y#1]
+        +-expr_list=
+        | +-y#1 := Literal(type=INT64, value=5)
+        +-input_scan=
+          +-SingleRowScan
+
+DEPRECATION WARNING:
+Lateral column alias will shadow original target: INT64 ($subquery1.y#1) [at 3:29]
+    SELECT AS STRUCT t.s.y, y + 1 AS z
+                            ^
+[googlesql.DeprecationWarning] { kind: LATERAL_COLUMN_REFERENCE }
+--
+ALTERNATION GROUP: +
+--
+STRICT MODE ERROR: Alias y cannot be used without a qualifier in strict name resolution mode [at 3:29]
+    SELECT AS STRUCT t.s.y, y + 1 AS z
+                            ^
+--
+QueryStmt
++-output_column_list=
+| +-$query.r#6 AS r [STRUCT<y INT64, z INT64>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.r#6]
+    +-expr_list=
+    | +-r#6 :=
+    |   +-SubqueryExpr
+    |     +-type=STRUCT<y INT64, z INT64>
+    |     +-subquery_type=SCALAR
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$make_struct.$struct#5]
+    |         +-expr_list=
+    |         | +-$struct#5 :=
+    |         |   +-MakeStruct
+    |         |     +-type=STRUCT<y INT64, z INT64>
+    |         |     +-field_list=
+    |         |       +-ColumnRef(type=INT64, column=$expr_subquery.y#3)
+    |         |       +-ColumnRef(type=INT64, column=$expr_subquery.z#4)
+    |         +-input_scan=
+    |           +-ProjectScan
+    |             +-column_list=$expr_subquery.[y#3, z#4]
+    |             +-expr_list=
+    |             | +-z#4 :=
+    |             |   +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |             |     +-ColumnRef(type=INT64, column=$expr_subquery.y#3)
+    |             |     +-Literal(type=INT64, value=1)
+    |             +-input_scan=
+    |               +-ProjectScan
+    |                 +-column_list=[t.s#2, $expr_subquery.y#3]
+    |                 +-expr_list=
+    |                 | +-y#3 :=
+    |                 |   +-GetStructField
+    |                 |     +-type=INT64
+    |                 |     +-expr=
+    |                 |     | +-ColumnRef(type=STRUCT<y INT64>, column=t.s#2)
+    |                 |     +-field_idx=0
+    |                 +-input_scan=
+    |                   +-ProjectScan
+    |                     +-column_list=[t.s#2]
+    |                     +-expr_list=
+    |                     | +-s#2 := Literal(type=STRUCT<y INT64>, value={y:1})
+    |                     +-input_scan=
+    |                       +-SingleRowScan
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[$subquery1.y#1]
+        +-expr_list=
+        | +-y#1 := Literal(type=INT64, value=5)
+        +-input_scan=
+          +-SingleRowScan
+==
+
+# Dot-star of an outer range variable, when a SELECT-list alias has the same
+# name. With the feature, the alias is expanded instead.
+# TODO: b/578952682 - Without the feature, the range variable should be expanded
+# the same way as without the alias, but it's expanded as a STRUCT value.
+[language_features=MAXIMUM,{{-|+}}LATERAL_COLUMN_REFERENCES]
+SELECT
+  (
+    SELECT AS STRUCT 1 AS o, (SELECT AS STRUCT o.*) AS inner_s
+    FROM (SELECT 1)
+  ) AS s
+FROM (SELECT 1 AS x, 2 AS y) AS o
+--
+ALTERNATION GROUP: -
+--
+QueryStmt
++-output_column_list=
+| +-$query.s#12 AS s [STRUCT<o INT64, inner_s STRUCT<x INT64, y INT64>>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.s#12]
+    +-expr_list=
+    | +-s#12 :=
+    |   +-SubqueryExpr
+    |     +-type=STRUCT<o INT64, inner_s STRUCT<x INT64, y INT64>>
+    |     +-subquery_type=SCALAR
+    |     +-parameter_list=
+    |     | +-ColumnRef(type=INT64, column=o.x#1)
+    |     | +-ColumnRef(type=INT64, column=o.y#2)
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$make_struct.$struct#11]
+    |         +-expr_list=
+    |         | +-$struct#11 :=
+    |         |   +-MakeStruct
+    |         |     +-type=STRUCT<o INT64, inner_s STRUCT<x INT64, y INT64>>
+    |         |     +-field_list=
+    |         |       +-ColumnRef(type=INT64, column=$expr_subquery.o#9)
+    |         |       +-ColumnRef(type=STRUCT<x INT64, y INT64>, column=$expr_subquery.inner_s#10)
+    |         +-input_scan=
+    |           +-ProjectScan
+    |             +-column_list=$expr_subquery.[o#9, inner_s#10]
+    |             +-expr_list=
+    |             | +-o#9 := Literal(type=INT64, value=1)
+    |             | +-inner_s#10 :=
+    |             |   +-SubqueryExpr
+    |             |     +-type=STRUCT<x INT64, y INT64>
+    |             |     +-subquery_type=SCALAR
+    |             |     +-parameter_list=
+    |             |     | +-ColumnRef(type=INT64, column=o.x#1, is_correlated=TRUE)
+    |             |     | +-ColumnRef(type=INT64, column=o.y#2, is_correlated=TRUE)
+    |             |     +-subquery=
+    |             |       +-ProjectScan
+    |             |         +-column_list=[$make_struct.$struct#8]
+    |             |         +-expr_list=
+    |             |         | +-$struct#8 :=
+    |             |         |   +-MakeStruct
+    |             |         |     +-type=STRUCT<x INT64, y INT64>
+    |             |         |     +-field_list=
+    |             |         |       +-ColumnRef(type=INT64, column=$expr_subquery.x#6)
+    |             |         |       +-ColumnRef(type=INT64, column=$expr_subquery.y#7)
+    |             |         +-input_scan=
+    |             |           +-ProjectScan
+    |             |             +-column_list=$expr_subquery.[x#6, y#7]
+    |             |             +-expr_list=
+    |             |             | +-x#6 :=
+    |             |             | | +-GetStructField
+    |             |             | |   +-type=INT64
+    |             |             | |   +-expr=
+    |             |             | |   | +-ColumnRef(type=STRUCT<x INT64, y INT64>, column=$preproject.$struct#5)
+    |             |             | |   +-field_idx=0
+    |             |             | +-y#7 :=
+    |             |             |   +-GetStructField
+    |             |             |     +-type=INT64
+    |             |             |     +-expr=
+    |             |             |     | +-ColumnRef(type=STRUCT<x INT64, y INT64>, column=$preproject.$struct#5)
+    |             |             |     +-field_idx=1
+    |             |             +-input_scan=
+    |             |               +-ProjectScan
+    |             |                 +-column_list=[$preproject.$struct#5]
+    |             |                 +-expr_list=
+    |             |                 | +-$struct#5 :=
+    |             |                 |   +-MakeStruct
+    |             |                 |     +-type=STRUCT<x INT64, y INT64>
+    |             |                 |     +-field_list=
+    |             |                 |       +-ColumnRef(type=INT64, column=o.x#1, is_correlated=TRUE)
+    |             |                 |       +-ColumnRef(type=INT64, column=o.y#2, is_correlated=TRUE)
+    |             |                 +-input_scan=
+    |             |                   +-SingleRowScan
+    |             +-input_scan=
+    |               +-ProjectScan
+    |                 +-column_list=[$subquery1.$col1#3]
+    |                 +-expr_list=
+    |                 | +-$col1#3 := Literal(type=INT64, value=1)
+    |                 +-input_scan=
+    |                   +-SingleRowScan
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=o.[x#1, y#2]
+        +-expr_list=
+        | +-x#1 := Literal(type=INT64, value=1)
+        | +-y#2 := Literal(type=INT64, value=2)
+        +-input_scan=
+          +-SingleRowScan
+
+DEPRECATION WARNING:
+Lateral column alias will shadow original target: RANGE_VARIABLE<x#1,y#2> [at 3:48]
+    SELECT AS STRUCT 1 AS o, (SELECT AS STRUCT o.*) AS inner_s
+                                               ^
+[googlesql.DeprecationWarning] { kind: LATERAL_COLUMN_REFERENCE }
+--
+ALTERNATION GROUP: +
+--
+ERROR: Dot-star is not supported for type INT64 [at 3:48]
+    SELECT AS STRUCT 1 AS o, (SELECT AS STRUCT o.*) AS inner_s
+                                               ^
+==
+
+# A pipe DROP of a name that isn't in the input table, but is the name of a
+# SELECT-list alias.
+# TODO: b/578952682 - The alias shouldn't change the error, but the error says
+# the name is present.
+[language_features=MAXIMUM,+PIPES]
+SELECT 1 AS dd, (FROM KeyValue |> DROP dd |> SELECT COUNT(*)) AS c
+FROM (SELECT 1 AS x)
+--
+ERROR: Name in pipe DROP is present but is not a column on the pipe input table; DROP can only drop columns: dd [at 1:40]
+SELECT 1 AS dd, (FROM KeyValue |> DROP dd |> SELECT COUNT(*)) AS c
+                                       ^

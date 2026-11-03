@@ -43,10 +43,12 @@
 #include "googlesql/public/numeric_value.h"
 #include "googlesql/public/options.pb.h"
 #include "googlesql/public/table_valued_function.h"
+#include "googlesql/public/types/graph_element_type.h"
 #include "googlesql/public/types/type.h"
 #include "googlesql/public/types/type_factory.h"
 #include "googlesql/public/value.h"
 #include "googlesql/resolved_ast/resolved_ast.h"
+#include "googlesql/resolved_ast/resolved_ast_visitor.h"
 #include "googlesql/resolved_ast/resolved_column.h"
 #include "googlesql/resolved_ast/resolved_node_kind.pb.h"
 #include "googlesql/testdata/error_catalog.h"
@@ -2251,6 +2253,328 @@ TEST(FunctionArgumentInfoTest, BasicUse) {
   EXPECT_THAT(info.ArgumentNames(),
               testing::ElementsAre("name1", "name2", "name3", "name4"));
   EXPECT_EQ(info.SignatureArguments().size(), 4);
+}
+
+namespace {
+
+// Extracts the `GraphElementType` of the target graph element expression from a
+// query ending with `RETURN <target_expr>.<prop>`. Since `GraphElementType`
+// cannot be returned directly as a top-level query output, the tests access a
+// property on `<target_expr>`, which resolves to a
+// `ResolvedGraphGetElementProperty` node whose `expr()` holds the target
+// `GraphElementType`.
+class GraphGetElementPropertyTypeFinder : public ResolvedASTVisitor {
+ public:
+  const GraphElementType* elem_type() const { return elem_type_; }
+
+ private:
+  absl::Status VisitResolvedGraphGetElementProperty(
+      const ResolvedGraphGetElementProperty* node) override {
+    if (elem_type_ == nullptr && node->expr()->type()->IsGraphElement()) {
+      elem_type_ = node->expr()->type()->AsGraphElement();
+    }
+    return DefaultVisit(node);
+  }
+
+  // Handles `RETURN LABELS(<target_expr>)` when `<target_expr>` has no
+  // properties (e.g. a pattern matching 0 element tables) and cannot use
+  // `<target_expr>.<prop>`.
+  absl::Status VisitResolvedFunctionCall(
+      const ResolvedFunctionCall* node) override {
+    if (elem_type_ == nullptr && node->function()->Name() == "labels" &&
+        !node->argument_list().empty() &&
+        node->argument_list(0)->type()->IsGraphElement()) {
+      elem_type_ = node->argument_list(0)->type()->AsGraphElement();
+    }
+    return DefaultVisit(node);
+  }
+
+  const GraphElementType* elem_type_ = nullptr;
+};
+
+absl::StatusOr<const GraphElementType*> GetFirstPropertyAccessGraphElementType(
+    const AnalyzerOutput* output) {
+  GraphGetElementPropertyTypeFinder finder;
+  GOOGLESQL_RETURN_IF_ERROR(output->resolved_statement()->Accept(&finder));
+  return finder.elem_type();
+}
+
+// Extracts the `GraphPathType` from a query ending with
+// `RETURN PATH_LENGTH(<path_expr>)`. Since `GraphPathType` cannot be returned
+// directly as a top-level query output and has no properties, the tests wrap
+// `<path_expr>` in `PATH_LENGTH(...)`, which resolves to a
+// `ResolvedFunctionCall` whose first argument holds the target `GraphPathType`.
+class GraphPathTypeFinder : public ResolvedASTVisitor {
+ public:
+  const GraphPathType* path_type() const { return path_type_; }
+
+ private:
+  absl::Status VisitResolvedFunctionCall(
+      const ResolvedFunctionCall* node) override {
+    if (path_type_ == nullptr && !node->argument_list().empty() &&
+        node->argument_list(0)->type()->IsGraphPath()) {
+      path_type_ = node->argument_list(0)->type()->AsGraphPath();
+    }
+    return DefaultVisit(node);
+  }
+
+  const GraphPathType* path_type_ = nullptr;
+};
+
+absl::StatusOr<const GraphPathType*> GetFirstGraphPathType(
+    const AnalyzerOutput* output) {
+  GraphPathTypeFinder finder;
+  GOOGLESQL_RETURN_IF_ERROR(output->resolved_statement()->Accept(&finder));
+  return finder.path_type();
+}
+
+}  // namespace
+
+TEST_F(ResolverTest, GraphElementTypeElementTablesDisabledWithoutFeatureFlag) {
+  analyzer_options_.mutable_language()->EnableLanguageFeature(
+      FEATURE_SQL_GRAPH_TERMINAL_INSERT);
+  {
+    std::unique_ptr<const AnalyzerOutput> output;
+    GOOGLESQL_ASSERT_OK(AnalyzeStatement("GRAPH aml_dml MATCH (n:TestLabel) RETURN n.id",
+                               analyzer_options_, sample_catalog_->catalog(),
+                               &type_factory_, &output));
+    GOOGLESQL_ASSERT_OK_AND_ASSIGN(const GraphElementType* elem_type,
+                         GetFirstPropertyAccessGraphElementType(output.get()));
+    ASSERT_THAT(elem_type, NotNull());
+    EXPECT_THAT(elem_type->element_tables(), testing::IsEmpty());
+  }
+  {
+    std::unique_ptr<const AnalyzerOutput> output;
+    EXPECT_THAT(AnalyzeStatement(
+                    "GRAPH aml_dml INSERT (p:Person {id: 1, name: 'Alice'}) "
+                    "RETURN p.id",
+                    analyzer_options_, sample_catalog_->catalog(),
+                    &type_factory_, &output),
+                StatusIs(absl::StatusCode::kInvalidArgument,
+                         testing::HasSubstr("Updatable graph element type is "
+                                            "required for Graph DML")));
+  }
+}
+
+TEST_F(ResolverTest, GraphElementTypeElementTablesFromMatch) {
+  analyzer_options_.mutable_language()->EnableLanguageFeature(
+      FEATURE_SQL_GRAPH_UPDATABLE_GRAPH_ELEMENT_TYPE);
+  {
+    std::unique_ptr<const AnalyzerOutput> output;
+    GOOGLESQL_ASSERT_OK(AnalyzeStatement("GRAPH aml_dml MATCH (n:TestLabel) RETURN n.id",
+                               analyzer_options_, sample_catalog_->catalog(),
+                               &type_factory_, &output));
+    GOOGLESQL_ASSERT_OK_AND_ASSIGN(const GraphElementType* elem_type,
+                         GetFirstPropertyAccessGraphElementType(output.get()));
+    ASSERT_THAT(elem_type, NotNull());
+    EXPECT_THAT(elem_type->element_tables(),
+                testing::ElementsAre("InsertTestTable"));
+  }
+  {
+    std::unique_ptr<const AnalyzerOutput> output;
+    GOOGLESQL_ASSERT_OK(
+        AnalyzeStatement("GRAPH aml_dml MATCH -[e:Transfer]-> RETURN e.amount",
+                         analyzer_options_, sample_catalog_->catalog(),
+                         &type_factory_, &output));
+    GOOGLESQL_ASSERT_OK_AND_ASSIGN(const GraphElementType* elem_type,
+                         GetFirstPropertyAccessGraphElementType(output.get()));
+    ASSERT_THAT(elem_type, NotNull());
+    EXPECT_THAT(elem_type->element_tables(), testing::ElementsAre("Transfer"));
+  }
+}
+
+TEST_F(ResolverTest, GraphElementTypeElementTablesFromDisjunctiveMatch) {
+  analyzer_options_.mutable_language()->EnableLanguageFeature(
+      FEATURE_SQL_GRAPH_UPDATABLE_GRAPH_ELEMENT_TYPE);
+  {
+    std::unique_ptr<const AnalyzerOutput> output;
+    GOOGLESQL_ASSERT_OK(
+        AnalyzeStatement("GRAPH aml_dml MATCH (p:Person | Account) RETURN p.id",
+                         analyzer_options_, sample_catalog_->catalog(),
+                         &type_factory_, &output));
+    GOOGLESQL_ASSERT_OK_AND_ASSIGN(const GraphElementType* elem_type,
+                         GetFirstPropertyAccessGraphElementType(output.get()));
+    ASSERT_THAT(elem_type, NotNull());
+    EXPECT_THAT(elem_type->element_tables(),
+                testing::ElementsAre("Account", "Person"));
+  }
+  {
+    std::unique_ptr<const AnalyzerOutput> output;
+    GOOGLESQL_ASSERT_OK(AnalyzeStatement(
+        "GRAPH aml_dml MATCH -[e:PersonOwnAccount | Transfer]-> "
+        "RETURN e.accountId",
+        analyzer_options_, sample_catalog_->catalog(), &type_factory_,
+        &output));
+    GOOGLESQL_ASSERT_OK_AND_ASSIGN(const GraphElementType* elem_type,
+                         GetFirstPropertyAccessGraphElementType(output.get()));
+    ASSERT_THAT(elem_type, NotNull());
+    EXPECT_THAT(elem_type->element_tables(),
+                testing::ElementsAre("PersonOwnAccount", "Transfer"));
+  }
+}
+
+TEST_F(ResolverTest, GraphElementTypeElementTablesFromConditionalExpression) {
+  analyzer_options_.mutable_language()->EnableLanguageFeature(
+      FEATURE_SQL_GRAPH_UPDATABLE_GRAPH_ELEMENT_TYPE);
+  std::unique_ptr<const AnalyzerOutput> output;
+  GOOGLESQL_ASSERT_OK(AnalyzeStatement(
+      "GRAPH aml_dml MATCH (p:Person), (a:Account) "
+      "RETURN (IF(true, p, a)).id AS elem_id",
+      analyzer_options_, sample_catalog_->catalog(), &type_factory_, &output));
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(const GraphElementType* elem_type,
+                       GetFirstPropertyAccessGraphElementType(output.get()));
+  ASSERT_THAT(elem_type, NotNull());
+  EXPECT_THAT(elem_type->element_tables(),
+              testing::ElementsAre("Person", "Account"));
+}
+
+TEST_F(ResolverTest, GraphElementTypeElementTablesFromUnionAll) {
+  analyzer_options_.mutable_language()->EnableLanguageFeature(
+      FEATURE_SQL_GRAPH_ADVANCED_QUERY);
+  analyzer_options_.mutable_language()->EnableLanguageFeature(
+      FEATURE_SQL_GRAPH_UPDATABLE_GRAPH_ELEMENT_TYPE);
+  std::unique_ptr<const AnalyzerOutput> output;
+  GOOGLESQL_ASSERT_OK(AnalyzeStatement(
+      "GRAPH aml_dml "
+      "MATCH (p:Person) RETURN p "
+      "UNION ALL "
+      "MATCH (p:Account) RETURN p "
+      "NEXT "
+      "RETURN p.id",
+      analyzer_options_, sample_catalog_->catalog(), &type_factory_, &output));
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(const GraphElementType* elem_type,
+                       GetFirstPropertyAccessGraphElementType(output.get()));
+  ASSERT_THAT(elem_type, NotNull());
+  EXPECT_THAT(elem_type->element_tables(),
+              testing::ElementsAre("Person", "Account"));
+}
+
+TEST_F(ResolverTest, GraphElementTypeElementTablesFromInsert) {
+  analyzer_options_.mutable_language()->EnableLanguageFeature(
+      FEATURE_SQL_GRAPH_TERMINAL_INSERT);
+  analyzer_options_.mutable_language()->EnableLanguageFeature(
+      FEATURE_SQL_GRAPH_UPDATABLE_GRAPH_ELEMENT_TYPE);
+  {
+    std::unique_ptr<const AnalyzerOutput> output;
+    GOOGLESQL_ASSERT_OK(AnalyzeStatement(
+        "GRAPH aml_dml INSERT (p:Person {id: 1, name: 'Alice'}) "
+        "RETURN p.id",
+        analyzer_options_, sample_catalog_->catalog(), &type_factory_,
+        &output));
+    GOOGLESQL_ASSERT_OK_AND_ASSIGN(const GraphElementType* elem_type,
+                         GetFirstPropertyAccessGraphElementType(output.get()));
+    ASSERT_THAT(elem_type, NotNull());
+    EXPECT_THAT(elem_type->element_tables(), testing::ElementsAre("Person"));
+  }
+  {
+    std::unique_ptr<const AnalyzerOutput> output;
+    GOOGLESQL_ASSERT_OK(AnalyzeStatement(
+        "GRAPH aml_dml INSERT (p:Person {id: 1})-[e:PersonOwnAccount]->"
+        "(a:Account {id: 2}) RETURN e.accountId",
+        analyzer_options_, sample_catalog_->catalog(), &type_factory_,
+        &output));
+    GOOGLESQL_ASSERT_OK_AND_ASSIGN(const GraphElementType* elem_type,
+                         GetFirstPropertyAccessGraphElementType(output.get()));
+    ASSERT_THAT(elem_type, NotNull());
+    EXPECT_THAT(elem_type->element_tables(),
+                testing::ElementsAre("PersonOwnAccount"));
+  }
+}
+
+TEST_F(ResolverTest, GraphElementTypeElementTablesDynamic) {
+  analyzer_options_.mutable_language()->EnableLanguageFeature(
+      FEATURE_SQL_GRAPH_DYNAMIC_ELEMENT_TYPE);
+  analyzer_options_.mutable_language()->EnableLanguageFeature(
+      FEATURE_SQL_GRAPH_DYNAMIC_MULTI_LABEL_NODES);
+  analyzer_options_.mutable_language()->EnableLanguageFeature(
+      FEATURE_SQL_GRAPH_UPDATABLE_GRAPH_ELEMENT_TYPE);
+  std::unique_ptr<const AnalyzerOutput> output;
+  GOOGLESQL_ASSERT_OK(AnalyzeStatement(
+      "GRAPH aml_dynamic_multi MATCH (n:Entity) RETURN n.id", analyzer_options_,
+      sample_catalog_->catalog(), &type_factory_, &output));
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(const GraphElementType* elem_type,
+                       GetFirstPropertyAccessGraphElementType(output.get()));
+  ASSERT_THAT(elem_type, NotNull());
+  EXPECT_TRUE(elem_type->is_dynamic());
+  EXPECT_THAT(elem_type->element_tables(),
+              testing::ElementsAre("DynamicMultiLabelGraphNode"));
+}
+
+TEST_F(ResolverTest, GraphElementTypeElementTablesMultiplyDeclared) {
+  analyzer_options_.mutable_language()->EnableLanguageFeature(
+      FEATURE_SQL_GRAPH_UPDATABLE_GRAPH_ELEMENT_TYPE);
+  std::unique_ptr<const AnalyzerOutput> output;
+  GOOGLESQL_ASSERT_OK(AnalyzeStatement(
+      "GRAPH aml_dml MATCH (p:Person | Account), (p:Person) RETURN p.id",
+      analyzer_options_, sample_catalog_->catalog(), &type_factory_, &output));
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(const GraphElementType* elem_type,
+                       GetFirstPropertyAccessGraphElementType(output.get()));
+  ASSERT_THAT(elem_type, NotNull());
+  EXPECT_THAT(elem_type->element_tables(), testing::ElementsAre("Person"));
+}
+
+TEST_F(ResolverTest, GraphElementTypeElementTablesEmptyMatch) {
+  analyzer_options_.mutable_language()->EnableLanguageFeature(
+      FEATURE_SQL_GRAPH_UPDATABLE_GRAPH_ELEMENT_TYPE);
+  // `Person & Account` matches 0 element tables, so `p` has no properties;
+  // use `LABELS(p)` to reference `p` in `RETURN`.
+  std::unique_ptr<const AnalyzerOutput> output;
+  GOOGLESQL_ASSERT_OK(AnalyzeStatement(
+      "GRAPH aml_dml MATCH (p:Person & Account) RETURN LABELS(p) AS l",
+      analyzer_options_, sample_catalog_->catalog(), &type_factory_, &output));
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(const GraphElementType* elem_type,
+                       GetFirstPropertyAccessGraphElementType(output.get()));
+  ASSERT_THAT(elem_type, NotNull());
+  EXPECT_THAT(elem_type->element_tables(), testing::IsEmpty());
+}
+
+TEST_F(ResolverTest, GraphPathTypeElementTables) {
+  analyzer_options_.mutable_language()->EnableLanguageFeature(
+      FEATURE_SQL_GRAPH_PATH_TYPE);
+  analyzer_options_.mutable_language()->EnableLanguageFeature(
+      FEATURE_SQL_GRAPH_UPDATABLE_GRAPH_ELEMENT_TYPE);
+  {
+    std::unique_ptr<const AnalyzerOutput> output;
+    GOOGLESQL_ASSERT_OK(AnalyzeStatement(
+        "GRAPH aml_dml MATCH p = (a:Person) RETURN PATH_LENGTH(p) AS len",
+        analyzer_options_, sample_catalog_->catalog(), &type_factory_,
+        &output));
+    GOOGLESQL_ASSERT_OK_AND_ASSIGN(const GraphPathType* path_type,
+                         GetFirstGraphPathType(output.get()));
+    ASSERT_THAT(path_type, NotNull());
+    EXPECT_THAT(path_type->node_type()->element_tables(),
+                testing::ElementsAre("Person"));
+    EXPECT_THAT(path_type->edge_type()->element_tables(), testing::IsEmpty());
+  }
+  {
+    std::unique_ptr<const AnalyzerOutput> output;
+    GOOGLESQL_ASSERT_OK(AnalyzeStatement(
+        "GRAPH aml_dml "
+        "MATCH p = (a:Person)-[e:PersonOwnAccount]->(b:Account) "
+        "RETURN PATH_LENGTH(p) AS len",
+        analyzer_options_, sample_catalog_->catalog(), &type_factory_,
+        &output));
+    GOOGLESQL_ASSERT_OK_AND_ASSIGN(const GraphPathType* path_type,
+                         GetFirstGraphPathType(output.get()));
+    ASSERT_THAT(path_type, NotNull());
+    EXPECT_THAT(path_type->node_type()->element_tables(),
+                testing::ElementsAre("Person", "Account"));
+    EXPECT_THAT(path_type->edge_type()->element_tables(),
+                testing::ElementsAre("PersonOwnAccount"));
+  }
+  {
+    std::unique_ptr<const AnalyzerOutput> output;
+    GOOGLESQL_ASSERT_OK(AnalyzeStatement(
+        "GRAPH aml_dml MATCH (a:Person) RETURN PATH_LENGTH(PATH(a)) AS len",
+        analyzer_options_, sample_catalog_->catalog(), &type_factory_,
+        &output));
+    GOOGLESQL_ASSERT_OK_AND_ASSIGN(const GraphPathType* path_type,
+                         GetFirstGraphPathType(output.get()));
+    ASSERT_THAT(path_type, NotNull());
+    EXPECT_THAT(path_type->node_type()->element_tables(),
+                testing::ElementsAre("Person"));
+    EXPECT_THAT(path_type->edge_type()->element_tables(), testing::IsEmpty());
+  }
 }
 
 }  // namespace googlesql

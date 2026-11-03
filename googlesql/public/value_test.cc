@@ -1221,18 +1221,27 @@ TEST_F(ValueTest, VariantWithAnotherVariant) {
 
 TEST_F(ValueTest, VariantWithUntypedNull) {
   Value null_variant = Value::NullVariant();
+  EXPECT_TRUE(null_variant.is_null());
+  EXPECT_FALSE(null_variant.has_content());
+  EXPECT_THAT(null_variant.variant_value(),
+              StatusIs(absl::StatusCode::kInternal));
+
   GOOGLESQL_ASSERT_OK_AND_ASSIGN(Value result, Value::Variant(null_variant));
   EXPECT_TRUE(result.is_null());
+  EXPECT_FALSE(result.has_content());
   EXPECT_EQ(result.type_kind(), TYPE_VARIANT);
 }
 
 TEST_F(ValueTest, VariantWithTypedNull) {
   Value null_int = Value::NullInt64();
   GOOGLESQL_ASSERT_OK_AND_ASSIGN(Value variant_null_int, Value::Variant(null_int));
-  EXPECT_FALSE(variant_null_int.is_null());
-  GOOGLESQL_ASSERT_OK_AND_ASSIGN(VariantValueView variant_view,
-                       variant_null_int.variant_value());
-  EXPECT_TRUE(variant_view.is_null());
+  EXPECT_EQ(variant_null_int.type_kind(), TYPE_VARIANT);
+  EXPECT_TRUE(variant_null_int.is_null());
+  EXPECT_FALSE(variant_null_int.has_content());
+  EXPECT_TRUE(variant_null_int.Equals(Value::NullVariant()));
+  EXPECT_EQ(variant_null_int.HashCode(), Value::NullVariant().HashCode());
+  EXPECT_THAT(variant_null_int.variant_value(),
+              StatusIs(absl::StatusCode::kInternal));
 }
 
 TEST_F(ValueTest, VariantNull) {
@@ -1249,6 +1258,17 @@ TEST_F(ValueTest, VariantNull) {
   Value v2 = values::VariantNull();
   EXPECT_TRUE(v2.Equals(v));
   EXPECT_FALSE(v.Equals(Value::NullVariant()));
+}
+
+TEST_F(ValueTest, VariantNullIsDistinctFromSqlNullVariant) {
+  Value variant_null = Value::VariantNull();
+  EXPECT_FALSE(variant_null.is_null());
+  EXPECT_FALSE(variant_null.Equals(Value::NullVariant()));
+
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(VariantValueView variant_view,
+                       variant_null.variant_value());
+  EXPECT_TRUE(variant_view.IsVariantNull());
+  EXPECT_FALSE(variant_view.is_null());
 }
 
 TEST_F(ValueTest, VariantEquality) {
@@ -1307,11 +1327,13 @@ TEST_F(ValueTest, VariantNullEquality) {
   Value null_string = Value::NullString();
   GOOGLESQL_ASSERT_OK_AND_ASSIGN(Value variant_null_string, Value::Variant(null_string));
 
-  // Inner NULL values of different non-equivalent types are not equal.
-  EXPECT_FALSE(variant_null_int.Equals(variant_null_string));
+  // Typed SQL NULL values are canonicalized to SQL NULL Variant, so they are
+  // equal and have identical hashes.
+  EXPECT_TRUE(variant_null_int.Equals(variant_null_string));
+  EXPECT_EQ(variant_null_int.HashCode(), variant_null_string.HashCode());
 
-  // Their hashes should also likely be different.
-  EXPECT_NE(variant_null_int.HashCode(), variant_null_string.HashCode());
+  // A Variant null is not equal to a SQL NULL Variant.
+  EXPECT_FALSE(variant_null_int.Equals(Value::VariantNull()));
 }
 
 TEST_F(ValueTest, VariantEquivalentStructsEquality) {
@@ -1516,21 +1538,20 @@ TEST_F(ValueTest, VariantWithAllTypes) {
 }
 
 TEST_F(ValueTest, VariantNullValues) {
+  // Storing a SQL NULL of any supported type in a Variant canonicalizes it to
+  // a SQL NULL Variant (Value::NullVariant()).
   auto test_variant_null = [](const Value& null_v) {
     ASSERT_TRUE(null_v.is_null());
     GOOGLESQL_ASSERT_OK_AND_ASSIGN(Value variant, Value::Variant(null_v));
-    EXPECT_FALSE(variant.is_null());
-    GOOGLESQL_ASSERT_OK_AND_ASSIGN(VariantValueView variant_view,
-                         variant.variant_value());
-    EXPECT_TRUE(variant_view.is_valid());
-    EXPECT_TRUE(variant_view.is_null());
+    EXPECT_EQ(variant.type_kind(), TYPE_VARIANT);
+    EXPECT_TRUE(variant.is_null());
+    EXPECT_FALSE(variant.has_content());
+    EXPECT_TRUE(variant.Equals(Value::NullVariant()));
+    EXPECT_THAT(variant.variant_value(), StatusIs(absl::StatusCode::kInternal));
   };
 
   for (TypeKind kind :
        googlesql_base::EnumerateEnumValues<TypeKind>()) {
-    if (kind == TYPE_VARIANT) {
-      continue;
-    }
     if (Type::IsSimpleType(kind)) {
       const Type* type = types::TypeFromSimpleTypeKind(kind);
       if (type != nullptr) {
@@ -1706,10 +1727,18 @@ TEST_F(ValueTest, VariantContainers) {
   Value inner_string = Value::String("hello");
   GOOGLESQL_ASSERT_OK_AND_ASSIGN(Value variant_int, Value::Variant(inner_int));
   GOOGLESQL_ASSERT_OK_AND_ASSIGN(Value variant_string, Value::Variant(inner_string));
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(JSONValue json_obj,
+                       JSONValue::ParseJSONString(R"({"k": 7})"));
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(Value var_obj,
+                       Value::Variant(Value::Json(std::move(json_obj))));
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(Value var_arr,
+                       Value::Variant(values::Int64Array({1, 2})));
 
   GOOGLESQL_ASSERT_OK_AND_ASSIGN(
       Value array_variant,
-      Value::MakeArray(array_variant_type, {variant_int, variant_string}));
+      Value::MakeArray(array_variant_type,
+                       {variant_int, variant_string, var_obj, var_arr,
+                        Value::VariantNull(), Value::NullVariant()}));
 
   // Wrap the ARRAY<VARIANT> inside another VARIANT
   GOOGLESQL_ASSERT_OK_AND_ASSIGN(Value variant_array, Value::Variant(array_variant));
@@ -1718,24 +1747,28 @@ TEST_F(ValueTest, VariantContainers) {
                        variant_array.variant_value());
   EXPECT_TRUE(variant_array_view.IsArray());
   GOOGLESQL_ASSERT_OK_AND_ASSIGN(auto array_size, variant_array_view.GetArraySize());
-  EXPECT_EQ(array_size, 2);
+  EXPECT_EQ(array_size, 6);
   GOOGLESQL_ASSERT_OK_AND_ASSIGN(auto elem0, variant_array_view.GetElement(0));
   EXPECT_TRUE(elem0->IsPrimitive());
-  GOOGLESQL_ASSERT_OK_AND_ASSIGN(Value elem0_val, elem0->GetPrimitiveValue());
-  EXPECT_TRUE(elem0_val.Equals(variant_int));
-  GOOGLESQL_ASSERT_OK_AND_ASSIGN(VariantValueView elem0_val_view,
-                       elem0_val.variant_value());
-  GOOGLESQL_ASSERT_OK_AND_ASSIGN(Value elem0_scalar, elem0_val_view.GetPrimitiveValue());
-  EXPECT_EQ(elem0_scalar, Value::Int64(1));
+  EXPECT_THAT(elem0->GetPrimitiveValue(), IsOkAndHolds(Value::Int64(1)));
 
   GOOGLESQL_ASSERT_OK_AND_ASSIGN(auto elem1, variant_array_view.GetElement(1));
   EXPECT_TRUE(elem1->IsPrimitive());
-  GOOGLESQL_ASSERT_OK_AND_ASSIGN(Value elem1_val, elem1->GetPrimitiveValue());
-  EXPECT_TRUE(elem1_val.Equals(variant_string));
-  GOOGLESQL_ASSERT_OK_AND_ASSIGN(VariantValueView elem1_val_view,
-                       elem1_val.variant_value());
-  GOOGLESQL_ASSERT_OK_AND_ASSIGN(Value elem1_scalar, elem1_val_view.GetPrimitiveValue());
-  EXPECT_EQ(elem1_scalar, Value::String("hello"));
+  EXPECT_THAT(elem1->GetPrimitiveValue(), IsOkAndHolds(Value::String("hello")));
+
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(auto elem2, variant_array_view.GetElement(2));
+  EXPECT_TRUE(elem2->IsObject());
+  EXPECT_TRUE(elem2->HasKey("k"));
+
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(auto elem3, variant_array_view.GetElement(3));
+  EXPECT_TRUE(elem3->IsArray());
+  EXPECT_THAT(elem3->GetArraySize(), IsOkAndHolds(2));
+
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(auto elem4, variant_array_view.GetElement(4));
+  EXPECT_TRUE(elem4->IsVariantNull());
+
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(auto elem5, variant_array_view.GetElement(5));
+  EXPECT_TRUE(elem5->IsVariantNull());
 
   // Verify strict type equality check inside array.
   // array_variant has Variant(Int64(1)) as first element.
@@ -1750,7 +1783,8 @@ TEST_F(ValueTest, VariantContainers) {
 
   // MAP<STRING, VARIANT>
   Value map_val = test_values::Map({{Value::String("key1"), variant_int},
-                                    {Value::String("key2"), variant_string}});
+                                    {Value::String("key2"), variant_string},
+                                    {Value::String("key3"), var_obj}});
 
   // Wrap the MAP inside another VARIANT
   GOOGLESQL_ASSERT_OK_AND_ASSIGN(Value variant_map, Value::Variant(map_val));
@@ -1760,13 +1794,28 @@ TEST_F(ValueTest, VariantContainers) {
   EXPECT_TRUE(variant_map_view.IsObject());
   EXPECT_TRUE(variant_map_view.HasKey("key1"));
   EXPECT_TRUE(variant_map_view.HasKey("key2"));
+  EXPECT_TRUE(variant_map_view.HasKey("key3"));
   GOOGLESQL_ASSERT_OK_AND_ASSIGN(auto key1_val, variant_map_view.GetKeyValue("key1"));
   EXPECT_TRUE(key1_val->IsPrimitive());
-  GOOGLESQL_ASSERT_OK_AND_ASSIGN(Value key1_v, key1_val->GetPrimitiveValue());
-  EXPECT_TRUE(key1_v.Equals(variant_int));
-  GOOGLESQL_ASSERT_OK_AND_ASSIGN(VariantValueView key1_v_view, key1_v.variant_value());
-  GOOGLESQL_ASSERT_OK_AND_ASSIGN(Value key1_scalar, key1_v_view.GetPrimitiveValue());
-  EXPECT_EQ(key1_scalar, Value::Int64(1));
+  EXPECT_THAT(key1_val->GetPrimitiveValue(), IsOkAndHolds(Value::Int64(1)));
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(auto key3_val, variant_map_view.GetKeyValue("key3"));
+  EXPECT_TRUE(key3_val->IsObject());
+  EXPECT_TRUE(key3_val->HasKey("k"));
+
+  // STRUCT<VARIANT>
+  const StructType* struct_type = nullptr;
+  GOOGLESQL_ASSERT_OK(
+      factory.MakeStructType({{"arr", types::VariantType()}}, &struct_type));
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(Value struct_val,
+                       Value::MakeStruct(struct_type, {var_arr}));
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(Value variant_struct, Value::Variant(struct_val));
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(VariantValueView struct_view,
+                       variant_struct.variant_value());
+  EXPECT_TRUE(struct_view.IsObject());
+  EXPECT_TRUE(struct_view.HasKey("arr"));
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(auto arr_member, struct_view.GetKeyValue("arr"));
+  EXPECT_TRUE(arr_member->IsArray());
+  EXPECT_THAT(arr_member->GetArraySize(), IsOkAndHolds(2));
 
   // MAP<INT64, PROTO> inside VARIANT
   const ProtoType* proto_type = GetTestProtoType();

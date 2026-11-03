@@ -19,18 +19,18 @@
 
 #include <map>
 #include <memory>
-#include <optional>
 #include <string>
 #include <vector>
 
 #include "googlesql/parser/ast_node.h"
 #include "googlesql/parser/parse_tree.h"
-#include "googlesql/public/function.h"
 #include "googlesql/public/id_string.h"
 #include "googlesql/public/type.h"
 #include "googlesql/resolved_ast/resolved_ast.h"
 #include "googlesql/resolved_ast/resolved_column.h"
+#include "absl/base/nullability.h"
 #include "absl/container/btree_map.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 
@@ -186,6 +186,12 @@ class AnalyticFunctionResolver {
     return in_match_recognize_window_context_;
   }
 
+  // Returns the column names for the given unpack expression in the PARTITION
+  // BY clause.
+  absl::StatusOr<std::vector<IdString>> GetUnpackColumnNames(
+      const ASTUnpackExpression* unpack_expr,
+      const ASTPartitionBy* ast_partition_by) const;
+
   // Adds the given ResolvedFunctionCall to the main analytic group of the
   // current MATCH_RECOGNIZE window context and returns the resolved expression.
   // This is very similar to `ResolveOverClauseAndCreateAnalyticColumn()`, but
@@ -290,7 +296,7 @@ class AnalyticFunctionResolver {
   // BY clauses in <ast_to_resolved_info_> so that it is easy to look up the
   // resolved info of a PARTITION BY/ORDER BY clause for a function group using
   // its ASTNode (contained in the AnalyticFunctionGroupInfo).
-  std::map<const ASTNode*, std::unique_ptr<WindowExprInfoList>>
+  absl::flat_hash_map<const ASTNode*, std::unique_ptr<WindowExprInfoList>>
       ast_to_resolved_info_map_;
 
   // A resolved column is created for each analytic function call.
@@ -369,10 +375,11 @@ class AnalyticFunctionResolver {
       const char* clause_name, WindowExprInfoList** order_by_info_out);
 
   // Resolves a window (partitioning/ordering expression) expression.
-  absl::Status ResolveWindowExpression(
-      const ASTExpression* ast_expr, ExprResolutionInfo* expr_resolution_info,
-      bool allow_ordinals, std::unique_ptr<WindowExprInfo>* resolved_item_out,
-      const Type** expr_type_out);
+  absl::StatusOr<std::vector<const Type* /*absl_nonnull*/>> ResolveWindowExpression(
+      const ASTExpression* /*absl_nonnull*/ ast_expr,
+      ExprResolutionInfo* /*absl_nonnull*/ expr_resolution_info,
+      bool allow_ordinals, const ASTOrderingExpression* ast_ordering_expr,
+      std::unique_ptr<WindowExprInfoList>& partition_by_info);
 
   // Returns a ResolvedAnalyticFunctionGroup in
   // <resolved_analytic_function_group>. <analytic_column_list> is populated
@@ -457,7 +464,7 @@ class AnalyticFunctionResolver {
   // expression for a RANGE-based window.
   absl::Status ValidateOrderByInRangeBasedWindow(
       const ASTOrderBy* ast_order_by, const ASTWindowFrame* ast_window_frame,
-      WindowExprInfoList* order_by_info);
+      const WindowExprInfoList* order_by_info);
 
   // Finalizes the resolved analytic function call by putting it all together,
   // resolving the final pieces like NULL handling modifier, collation, and

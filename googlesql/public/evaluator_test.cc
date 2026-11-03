@@ -72,12 +72,12 @@
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
 #include "absl/time/civil_time.h"
+#include "absl/time/simulated_clock.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "googlesql/base/map_util.h"
 #include "googlesql/base/ret_check.h"
 #include "googlesql/base/status_builder.h"
-#include "googlesql/base/clock.h"
 
 extern absl::Flag<int64_t>
     FLAGS_googlesql_simple_iterator_call_time_now_rows_period;
@@ -1582,7 +1582,7 @@ TEST(EvaluatorTest, LanguageOptions) {
 
 TEST(EvaluatorTest, CurrentTimestamp) {
   const absl::Time test_time = absl::FromUnixMicros(1479885478000LL);
-  googlesql_base::SimulatedClock clock(test_time);
+  absl::SimulatedClock clock(test_time);
   EvaluatorOptions evaluator_options;
   evaluator_options.clock = &clock;
 
@@ -1599,7 +1599,7 @@ absl::Time GetTestTime() {
 }
 
 TEST(EvaluatorTest, CurrentDate) {
-  googlesql_base::SimulatedClock clock(GetTestTime());
+  absl::SimulatedClock clock(GetTestTime());
   EvaluatorOptions evaluator_options;
   evaluator_options.clock = &clock;
 
@@ -1612,7 +1612,7 @@ TEST(EvaluatorTest, CurrentDate) {
 }
 
 TEST(EvaluatorTest, CurrentDateTime) {
-  googlesql_base::SimulatedClock clock(GetTestTime());
+  absl::SimulatedClock clock(GetTestTime());
   EvaluatorOptions evaluator_options;
   evaluator_options.clock = &clock;
   AnalyzerOptions analyzer_options;
@@ -1629,7 +1629,7 @@ TEST(EvaluatorTest, CurrentDateTime) {
 }
 
 TEST(EvaluatorTest, CurrentTime) {
-  googlesql_base::SimulatedClock clock(GetTestTime());
+  absl::SimulatedClock clock(GetTestTime());
   EvaluatorOptions evaluator_options;
   evaluator_options.clock = &clock;
   AnalyzerOptions analyzer_options;
@@ -1646,7 +1646,7 @@ TEST(EvaluatorTest, CurrentTime) {
 }
 
 TEST(EvaluatorTest, DeadlineExceeded) {
-  googlesql_base::SimulatedClock clock(GetTestTime());
+  absl::SimulatedClock clock(GetTestTime());
   EvaluatorOptions evaluator_options;
   evaluator_options.clock = &clock;
 
@@ -1665,7 +1665,7 @@ TEST(EvaluatorTest, DeadlineExceeded) {
 }
 
 TEST(EvaluatorTest, DeadlineNotExceeded) {
-  googlesql_base::SimulatedClock clock(GetTestTime());
+  absl::SimulatedClock clock(GetTestTime());
   EvaluatorOptions evaluator_options;
   evaluator_options.clock = &clock;
 
@@ -2870,6 +2870,68 @@ TEST_F(UDFEvalTest, UDFEvaluatorRuntimeErrors) {
         expr.Execute({}, {{"param", Value::String("wrong return type")}})
             .IgnoreError(),
         "Not an int64");
+  }
+}
+
+// Aggregate and analytic functions that ignore NULLs, and UNPIVOT with EXCLUDE
+// NULLS, must skip SQL NULL VARIANT values.
+TEST(EvaluatorTest, VariantSqlNullIsTreatedAsNull) {
+  struct TestCase {
+    std::string sql;
+    Value expected;
+  };
+  const std::vector<TestCase> test_cases = {
+      {"(SELECT COUNT(CAST(x AS VARIANT)) FROM UNNEST([1, NULL, 3]) AS x)",
+       Int64(2)},
+      {"(SELECT COUNT(IF(x = 3, NULL, CAST(x AS VARIANT))) "
+       "FROM UNNEST([1, NULL, 3]) AS x)",
+       Int64(1)},
+      {"(SELECT COUNTIF(CAST(x AS VARIANT) IS NULL) "
+       "FROM UNNEST([1, NULL, 3]) AS x)",
+       Int64(1)},
+      {"(SELECT ARRAY_LENGTH(ARRAY_AGG(CAST(x AS VARIANT) IGNORE NULLS)) "
+       "FROM UNNEST([1, NULL, 3]) AS x)",
+       Int64(2)},
+      {"(SELECT ARRAY_LENGTH(ARRAY_AGG(CAST(x AS VARIANT))) "
+       "FROM UNNEST([1, NULL, 3]) AS x)",
+       Int64(3)},
+      {"ARRAY(SELECT COUNT(CAST(x AS VARIANT)) OVER (ORDER BY o) "
+       "FROM UNNEST([1, NULL, 3]) AS x WITH OFFSET o ORDER BY o)",
+       Array({Int64(1), Int64(1), Int64(2)})},
+      {"ARRAY(SELECT FIRST_VALUE(CAST(x AS VARIANT) IGNORE NULLS) OVER ("
+       "  ORDER BY o ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING"
+       ") IS NULL FROM UNNEST([NULL, 1]) AS x WITH OFFSET o ORDER BY o)",
+       Array({Bool(false), Bool(false)})},
+      {"(SELECT COALESCE(CAST(x AS VARIANT), CAST(0 AS VARIANT)) IS NULL "
+       "FROM UNNEST([CAST(NULL AS INT64)]) AS x)",
+       Bool(false)},
+      {"(SELECT COUNT(*) FROM ("
+       "  SELECT CAST(x AS VARIANT) AS a, CAST(y AS VARIANT) AS b"
+       "  FROM UNNEST([STRUCT(1 AS x, CAST(NULL AS INT64) AS y)])"
+       ") UNPIVOT(v FOR k IN (a, b)))",
+       Int64(1)},
+      {"(SELECT COUNT(*) FROM ("
+       "  SELECT CAST(x AS VARIANT) AS a, CAST(y AS VARIANT) AS b"
+       "  FROM UNNEST([STRUCT(1 AS x, CAST(NULL AS INT64) AS y)])"
+       ") UNPIVOT INCLUDE NULLS (v FOR k IN (a, b)))",
+       Int64(2)},
+  };
+
+  LanguageOptions language_options;
+  language_options.SetEnabledLanguageFeatures(
+      {FEATURE_VARIANT_TYPE, FEATURE_NULL_HANDLING_MODIFIER_IN_AGGREGATE,
+       FEATURE_NULL_HANDLING_MODIFIER_IN_ANALYTIC, FEATURE_ANALYTIC_FUNCTIONS,
+       FEATURE_UNPIVOT});
+  for (bool rewrite_unpivot : {false, true}) {
+    AnalyzerOptions analyzer_options(language_options);
+    analyzer_options.enable_rewrite(REWRITE_UNPIVOT, rewrite_unpivot);
+    for (const TestCase& test_case : test_cases) {
+      SCOPED_TRACE(
+          absl::StrCat(test_case.sql, "\nrewrite_unpivot=", rewrite_unpivot));
+      PreparedExpression expr(test_case.sql);
+      GOOGLESQL_ASSERT_OK(expr.Prepare(analyzer_options));
+      EXPECT_THAT(expr.Execute(), IsOkAndHolds(test_case.expected));
+    }
   }
 }
 
@@ -5220,7 +5282,7 @@ TEST(PreparedQuery, FromTableCancellation) {
 TEST(PreparedQuery, FromTableDeadlineExceeded) {
   absl::SetFlag(&FLAGS_googlesql_simple_iterator_call_time_now_rows_period, 1);
 
-  googlesql_base::SimulatedClock clock(absl::UnixEpoch());
+  absl::SimulatedClock clock(absl::UnixEpoch());
 
   std::vector<std::unique_ptr<const Column>> columns;
   columns.push_back(
@@ -5289,7 +5351,7 @@ TEST(PreparedQuery, TwoIteratorsAtTheSameTime) {
   catalog.AddTable(test_table.Name(), &test_table);
   catalog.AddBuiltinFunctions(BuiltinFunctionOptions::AllReleasedFunctions());
 
-  googlesql_base::SimulatedClock clock;
+  absl::SimulatedClock clock;
   EvaluatorOptions options;
   options.clock = &clock;
 

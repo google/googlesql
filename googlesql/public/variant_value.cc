@@ -16,6 +16,7 @@
 
 #include "googlesql/public/variant_value.h"
 
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <utility>
@@ -34,6 +35,7 @@
 #include "absl/base/no_destructor.h"
 #include "absl/base/nullability.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
 #include "googlesql/base/status_macros.h"
 #include "absl/status/statusor.h"
@@ -77,8 +79,18 @@ Value SqlNullToVariantNull(Value value) {
   return value.is_null() ? VariantNullPayload() : value;
 }
 
+// Adapts a child Value into a VariantValueAdapter, unwrapping TYPE_VARIANT to
+// its underlying view and converting SQL NULL to Variant Null.
+absl::StatusOr<VariantValueAdapter> AdaptChildValue(Value child_val) {
+  Value val = SqlNullToVariantNull(std::move(child_val));
+  if (val.is_valid() && !val.is_null() && val.type()->IsVariant()) {
+    return val.variant_value();
+  }
+  return VariantValueAdapter::Create(std::move(val));
+}
+
 // Tag structs for supported object types in the Variant View Framework:
-// - ObjectTagStruct: Dispatches object operations (GetKeys, GetMembers,
+// - ObjectTagStruct: Dispatches object operations (GetKeys, ForMembers,
 //                    LookupKey) on SQL STRUCTs.
 // - ObjectTagProto:  Dispatches object operations on PROTO values.
 // - ObjectTagMap:    Dispatches object operations on MAP values with string
@@ -93,11 +105,12 @@ Value SqlNullToVariantNull(Value value) {
 //   Returns all the keys of the given Object.
 //   absl::StatusOr<std::vector<std::string>> GetKeys() const;
 //
-//   Returns all key-value pairs (members) of the given Object. Only the
-//   top-level Object is unpacked; nested Objects are returned as
+//   Invokes `fn` on each key-value pair (member) of the given Object. Only the
+//   top-level Object is unpacked; nested Objects are passed as
 //   VariantValueAdapter instances without recursive unpacking.
-//   absl::StatusOr<std::vector<std::pair<std::string, VariantValueAdapter>>>
-//   GetMembers() const;
+//   absl::Status ForMembers(
+//       absl::FunctionRef<absl::Status(absl::string_view key,
+//                                      VariantValueAdapter value)> fn) const;
 //
 //   Returns true if the key exists in the object, false otherwise.
 //   If out_value is not null, populates *out_value with the value associated
@@ -133,28 +146,26 @@ struct ObjectTagStruct {
     return keys;
   }
 
-  // Returns the key-value pairs (members) of a STRUCT value.
+  // Invokes `fn` for each key-value pair (member) of a STRUCT value.
   // Unnamed fields are included with empty string keys.
-  // If there are duplicate keys, only the first one is returned.
+  // If there are duplicate keys, only the first one is visited.
   // If a field value is SQL NULL, it is exposed as a Variant Null.
-  absl::StatusOr<std::vector<std::pair<std::string, VariantValueAdapter>>>
-  GetMembers() const {
+  absl::Status ForMembers(absl::FunctionRef<absl::Status(
+                              absl::string_view key, VariantValueAdapter value)>
+                              fn) const {
     GOOGLESQL_RET_CHECK(val.type()->IsStruct());
-    std::vector<std::pair<std::string, VariantValueAdapter>> members;
     const StructType* struct_type = val.type()->AsStruct();
-    // We reserve space for all fields, but the number of members actually
-    // returned may be smaller if there are duplicate keys.
-    members.reserve(struct_type->num_fields());
     absl::flat_hash_set<absl::string_view> seen_keys;
     seen_keys.reserve(struct_type->num_fields());
     for (int i = 0; i < struct_type->num_fields(); ++i) {
       const std::string& name = struct_type->field(i).name;
       if (seen_keys.insert(name).second) {
-        Value child_val = SqlNullToVariantNull(val.field(i));
-        members.emplace_back(name, VariantValueAdapter(std::move(child_val)));
+        GOOGLESQL_ASSIGN_OR_RETURN(VariantValueAdapter member_val,
+                         AdaptChildValue(val.field(i)));
+        GOOGLESQL_RETURN_IF_ERROR(fn(name, std::move(member_val)));
       }
     }
-    return members;
+    return absl::OkStatus();
   }
 
   // Looks up the member of a STRUCT value for the given key. Allows accessing
@@ -169,7 +180,7 @@ struct ObjectTagStruct {
     for (int i = 0; i < struct_type->num_fields(); ++i) {
       if (struct_type->field(i).name == key) {
         if (out_value != nullptr) {
-          *out_value = VariantValueAdapter(SqlNullToVariantNull(val.field(i)));
+          GOOGLESQL_ASSIGN_OR_RETURN(*out_value, AdaptChildValue(val.field(i)));
         }
         return true;
       }
@@ -228,18 +239,18 @@ struct ObjectTagProto {
     return keys;
   }
 
-  // Returns the key-value pairs (members) of a PROTO value by decoding all
-  // fields in a single pass over the serialized wire bytes.
-  // TODO: Support complex types (nested messages, enums) for
+  // Invokes `fn` for each key-value pair (member) of a PROTO value by decoding
+  // all fields in a single pass over the serialized wire bytes.
+  // TODO: b/554973153 - Support complex types (nested messages, enums) for
   // Proto.
-  absl::StatusOr<std::vector<std::pair<std::string, VariantValueAdapter>>>
-  GetMembers() const {
+  absl::Status ForMembers(absl::FunctionRef<absl::Status(
+                              absl::string_view key, VariantValueAdapter value)>
+                              fn) const {
     GOOGLESQL_RET_CHECK(val.type()->IsProto());
     const google::protobuf::Descriptor* descriptor = val.type()->AsProto()->descriptor();
     const int num_fields = descriptor->field_count();
-    std::vector<std::pair<std::string, VariantValueAdapter>> members;
     if (num_fields == 0) {
-      return members;
+      return absl::OkStatus();
     }
 
     // Build ProtoFieldInfo metadata for all fields and collect pointers for
@@ -262,14 +273,13 @@ struct ObjectTagProto {
         ReadProtoFields(field_info_ptrs, val.proto_value(), &field_values));
     GOOGLESQL_RET_CHECK_EQ(field_values.size(), num_fields);
 
-    members.reserve(num_fields);
     for (int i = 0; i < num_fields; ++i) {
       GOOGLESQL_ASSIGN_OR_RETURN(Value output_value, std::move(field_values[i]));
-      members.emplace_back(
-          std::string(descriptor->field(i)->name()),
-          VariantValueAdapter(SqlNullToVariantNull(std::move(output_value))));
+      GOOGLESQL_ASSIGN_OR_RETURN(VariantValueAdapter member_val,
+                       AdaptChildValue(std::move(output_value)));
+      GOOGLESQL_RETURN_IF_ERROR(fn(descriptor->field(i)->name(), std::move(member_val)));
     }
-    return members;
+    return absl::OkStatus();
   }
 
   // Looks up the member of a PROTO value for the given key (field name). If
@@ -291,8 +301,7 @@ struct ObjectTagProto {
         GOOGLESQL_RETURN_IF_ERROR(ReadProtoField(info.descriptor, info.format, info.type,
                                        info.default_value, val.proto_value(),
                                        &output_value));
-        *out_value =
-            VariantValueAdapter(SqlNullToVariantNull(std::move(output_value)));
+        GOOGLESQL_ASSIGN_OR_RETURN(*out_value, AdaptChildValue(std::move(output_value)));
       }
       return true;
     }
@@ -317,22 +326,21 @@ struct ObjectTagMap {
     return keys;
   }
 
-  // Returns the key-value pairs (members) of a MAP value. SQL NULL keys are
-  // omitted, and SQL NULL values are returned as Variant Null.
-  absl::StatusOr<std::vector<std::pair<std::string, VariantValueAdapter>>>
-  GetMembers() const {
+  // Invokes `fn` for each key-value pair (member) of a MAP value. SQL NULL
+  // keys are omitted, and SQL NULL values are exposed as Variant Null.
+  absl::Status ForMembers(absl::FunctionRef<absl::Status(
+                              absl::string_view key, VariantValueAdapter value)>
+                              fn) const {
     GOOGLESQL_RET_CHECK(val.type()->IsMap() &&
               val.type()->AsMap()->key_type()->IsString());
-    std::vector<std::pair<std::string, VariantValueAdapter>> members;
-    members.reserve(val.map_entries().size());
     for (const auto& [key, value] : val.map_entries()) {
       if (!key.is_null()) {
-        Value child_val = SqlNullToVariantNull(value);
-        members.emplace_back(key.string_value(),
-                             VariantValueAdapter(std::move(child_val)));
+        GOOGLESQL_ASSIGN_OR_RETURN(VariantValueAdapter member_val,
+                         AdaptChildValue(value));
+        GOOGLESQL_RETURN_IF_ERROR(fn(key.string_value(), std::move(member_val)));
       }
     }
-    return members;
+    return absl::OkStatus();
   }
 
   // Returns the member of a MAP value for the given key. SQL NULL values are
@@ -346,7 +354,7 @@ struct ObjectTagMap {
     auto it = map.find(Value::String(key));
     if (it != map.end()) {
       if (out_value != nullptr) {
-        *out_value = VariantValueAdapter(SqlNullToVariantNull(it->second));
+        GOOGLESQL_ASSIGN_OR_RETURN(*out_value, AdaptChildValue(it->second));
       }
       return true;
     }
@@ -367,17 +375,15 @@ struct ObjectTagJSON {
     return keys;
   }
 
-  // Returns the key-value pairs (members) of a JSON value.
-  absl::StatusOr<std::vector<std::pair<std::string, VariantValueAdapter>>>
-  GetMembers() const {
-    std::vector<std::pair<std::string, VariantValueAdapter>> members;
-    members.reserve(json_node.ref.GetObjectSize());
+  // Invokes `fn` for each key-value pair (member) of a JSON value.
+  absl::Status ForMembers(absl::FunctionRef<absl::Status(
+                              absl::string_view key, VariantValueAdapter value)>
+                              fn) const {
     for (const auto& [key, member_val] : json_node.ref.GetMembers()) {
-      members.emplace_back(std::string(key),
-                           internal::MakeVariantValueAdapterForJSON(
-                               json_node.root_value, member_val));
+      GOOGLESQL_RETURN_IF_ERROR(fn(key, internal::MakeVariantValueAdapterForJSON(
+                                  json_node.root_value, member_val)));
     }
-    return members;
+    return absl::OkStatus();
   }
 
   // Returns the member of a JSON value for the given key.
@@ -407,7 +413,7 @@ struct ObjectTagJSON {
 // Each of these tags implement the following functions:
 //
 //   Returns the size of the given Array.
-//   absl::StatusOr<int> GetSize() const;
+//   absl::StatusOr<int64_t> GetSize() const;
 //
 //   Returns all elements of the given Array. Only the top-level elements are
 //   unpacked; nested Arrays or Objects are returned as VariantValueAdapter
@@ -417,12 +423,12 @@ struct ObjectTagJSON {
 //   Returns the element at the given index in the Array.
 //   Returns std::nullopt if the index is out of bounds.
 //   absl::StatusOr<std::optional<VariantValueAdapter>> GetElement(
-//       int index) const;
+//       int64_t index) const;
 
 struct ArrayTagSql {
   const Value& val;
 
-  int GetSize() const { return val.num_elements(); }
+  int64_t GetSize() const { return val.num_elements(); }
 
   // Returns all elements in the Array.
   // If an element is SQL NULL, it is exposed as a Variant Null.
@@ -431,8 +437,9 @@ struct ArrayTagSql {
     std::vector<VariantValueAdapter> elements;
     elements.reserve(val.num_elements());
     for (int i = 0; i < val.num_elements(); ++i) {
-      Value child_val = SqlNullToVariantNull(val.element(i));
-      elements.emplace_back(std::move(child_val));
+      GOOGLESQL_ASSIGN_OR_RETURN(VariantValueAdapter element,
+                       AdaptChildValue(val.element(i)));
+      elements.push_back(std::move(element));
     }
     return elements;
   }
@@ -440,12 +447,13 @@ struct ArrayTagSql {
   // Returns the element at the given index in the Array.
   // If the value found at the index is SQL NULL, returns a Variant Null.
   absl::StatusOr<std::optional<VariantValueAdapter>> GetElement(
-      int index) const {
+      int64_t index) const {
     if (index < 0 || index >= val.num_elements()) {
       return std::nullopt;
     }
-    Value child_val = SqlNullToVariantNull(val.element(index));
-    return VariantValueAdapter(std::move(child_val));
+    GOOGLESQL_ASSIGN_OR_RETURN(VariantValueAdapter element,
+                     AdaptChildValue(val.element(static_cast<int>(index))));
+    return element;
   }
 };
 
@@ -453,13 +461,15 @@ struct ArrayTagJSON {
   const JSONNode& json_node;
 
   // Returns the size of the JSON array.
-  int GetSize() const { return static_cast<int>(json_node.ref.GetArraySize()); }
+  int64_t GetSize() const {
+    return static_cast<int64_t>(json_node.ref.GetArraySize());
+  }
 
   // Returns all elements in the JSON array.
   absl::StatusOr<std::vector<VariantValueAdapter>> GetElements() const {
     std::vector<VariantValueAdapter> elements;
     elements.reserve(json_node.ref.GetArraySize());
-    for (int i = 0; i < json_node.ref.GetArraySize(); ++i) {
+    for (size_t i = 0; i < json_node.ref.GetArraySize(); ++i) {
       elements.emplace_back(internal::MakeVariantValueAdapterForJSON(
           json_node.root_value, json_node.ref.GetArrayElement(i)));
     }
@@ -468,12 +478,13 @@ struct ArrayTagJSON {
 
   // Returns the element at the given index in the JSON array.
   absl::StatusOr<std::optional<VariantValueAdapter>> GetElement(
-      int index) const {
+      int64_t index) const {
     if (index < 0 || index >= json_node.ref.GetArraySize()) {
       return std::nullopt;
     }
     return internal::MakeVariantValueAdapterForJSON(
-        json_node.root_value, json_node.ref.GetArrayElement(index));
+        json_node.root_value,
+        json_node.ref.GetArrayElement(static_cast<size_t>(index)));
   }
 };
 
@@ -551,6 +562,13 @@ namespace internal {
 
 // --- VariantValueAdapter ---
 
+absl::StatusOr<VariantValueAdapter> VariantValueAdapter::Create(Value value) {
+  GOOGLESQL_RET_CHECK(!value.is_valid() || value.is_null() || !value.type()->IsVariant())
+      << "Cannot construct VariantValueAdapter from a valid, non-null "
+         "TYPE_VARIANT Value. Use value.variant_value() instead";
+  return VariantValueAdapter(std::move(value));
+}
+
 VariantValueAdapter::VariantValueAdapter(Value value) {
   if (value.is_valid() && !value.is_null() && value.type()->IsJson()) {
     if (value.is_validated_json()) {
@@ -596,7 +614,8 @@ bool VariantValueAdapter::IsPrimitive() const {
   }
   if (const Value* val = std::get_if<Value>(&rep_); val != nullptr) {
     return val->is_valid() && !val->is_null() && !val->type()->IsJson() &&
-           (val->type()->IsSimpleType() || val->type()->IsEnum());
+           ((val->type()->IsSimpleType() && !val->type()->IsVariant()) ||
+            val->type()->IsEnum());
   }
   return false;
 }
@@ -650,7 +669,8 @@ absl::StatusOr<Value> VariantValueAdapter::GetPrimitiveValue() const {
   }
   if (const Value* val = std::get_if<Value>(&rep_); val != nullptr) {
     if (val->is_valid() && !val->is_null() && !val->type()->IsJson() &&
-        (val->type()->IsSimpleType() || val->type()->IsEnum())) {
+        ((val->type()->IsSimpleType() && !val->type()->IsVariant()) ||
+         val->type()->IsEnum())) {
       return *val;
     }
   }
@@ -665,9 +685,22 @@ absl::StatusOr<std::vector<std::string>> VariantValueAdapter::GetKeys() const {
 
 absl::StatusOr<std::vector<std::pair<std::string, VariantValueAdapter>>>
 VariantValueAdapter::GetMembers() const {
+  std::vector<std::pair<std::string, VariantValueAdapter>> members;
+  GOOGLESQL_RETURN_IF_ERROR(
+      ForMembers([&members](absl::string_view key, VariantValueAdapter value) {
+        members.emplace_back(std::string(key), std::move(value));
+        return absl::OkStatus();
+      }));
+  return members;
+}
+
+absl::Status VariantValueAdapter::ForMembers(
+    absl::FunctionRef<absl::Status(absl::string_view key,
+                                   VariantValueAdapter value)>
+        fn) const {
   GOOGLESQL_ASSIGN_OR_RETURN(ObjectTagVariant tag, GetObjectTag(rep_));
-  return std::visit([](const auto& tag_val) { return tag_val.GetMembers(); },
-                    tag);
+  return std::visit(
+      [fn](const auto& tag_val) { return tag_val.ForMembers(fn); }, tag);
 }
 
 bool VariantValueAdapter::HasKey(absl::string_view key) const {
@@ -703,7 +736,7 @@ absl::StatusOr<VariantValueAdapter> VariantValueAdapter::GetKeyValueIfExists(
   return *std::move(val);
 }
 
-absl::StatusOr<int> VariantValueAdapter::GetArraySize() const {
+absl::StatusOr<int64_t> VariantValueAdapter::GetArraySize() const {
   GOOGLESQL_RET_CHECK(is_valid());
   GOOGLESQL_ASSIGN_OR_RETURN(ArrayTagVariant tag, GetArrayTag(rep_));
   return std::visit([](const auto& tag_val) { return tag_val.GetSize(); }, tag);
@@ -718,7 +751,7 @@ VariantValueAdapter::GetElements() const {
 }
 
 absl::StatusOr<std::optional<VariantValueAdapter>>
-VariantValueAdapter::GetElement(int index) const {
+VariantValueAdapter::GetElement(int64_t index) const {
   GOOGLESQL_RET_CHECK(is_valid());
   GOOGLESQL_ASSIGN_OR_RETURN(ArrayTagVariant tag, GetArrayTag(rep_));
   return std::visit(
@@ -726,7 +759,7 @@ VariantValueAdapter::GetElement(int index) const {
 }
 
 absl::StatusOr<VariantValueAdapter> VariantValueAdapter::GetElementIfExists(
-    int index) const {
+    int64_t index) const {
   GOOGLESQL_ASSIGN_OR_RETURN(std::optional<VariantValueAdapter> val, GetElement(index));
   if (!val.has_value()) {
     return absl::OutOfRangeError(absl::StrCat("Index out of bounds: ", index));
@@ -780,15 +813,19 @@ std::string VariantValueAdapter::DebugString() const {
   return "ERROR";
 }
 
-Value VariantValueAdapter::ToValue() const {
+absl::StatusOr<Value> VariantValueAdapter::ToVariantValue() const {
+  GOOGLESQL_RET_CHECK(is_valid());
+  if (IsVariantNull()) {
+    return Value::VariantNull();
+  }
   if (const JSONNode* json_node = std::get_if<JSONNode>(&rep_);
       json_node != nullptr) {
-    return Value::Json(JSONValue::CopyFrom(json_node->ref));
+    return Value::Variant(Value::Json(JSONValue::CopyFrom(json_node->ref)));
   }
   if (const Value* val = std::get_if<Value>(&rep_); val != nullptr) {
-    return *val;
+    return Value::Variant(*val);
   }
-  return Value();
+  GOOGLESQL_RET_CHECK_FAIL() << "Unreachable VariantValueAdapter state";
 }
 
 }  // namespace internal

@@ -1,0 +1,799 @@
+[default language_features=MAXIMUM,+COLUMN_LIST_SPEC,+COLLATION_SUPPORT,+ANNOTATION_FRAMEWORK]
+[default show_sqlbuilder_output]
+[default use_constant_evaluator]
+[default sql_builder_target_syntax_mode=standard]
+
+# Tests for UNPACK (**) expressions in MATCH_RECOGNIZE PARTITION BY and
+# ORDER BY.
+#
+# Pipe |> MATCH_RECOGNIZE resolves through the same code as the standard
+# clause, so it has a single case covering the pipe SQLBuilder output. Variants
+# that resolve identically are alternations on one case.
+
+################################################################################
+#
+# Positive cases
+#
+################################################################################
+
+# PARTITION BY: ** expands in place into one partitioning column per name, and
+# the output columns keep the unpacked names, including when two expansions
+# produce the same column. A non-** expression without an alias is named by its
+# position among all partitioning columns, counting the columns produced by
+# earlier expansions.
+SELECT * FROM KeyValue
+MATCH_RECOGNIZE(
+  PARTITION BY **COLUMNS(['Key', 'Value']), Key + 1, **COLUMNS(['Value'])
+  ORDER BY Key
+  MEASURES COUNT(*) AS m
+  PATTERN (a b)
+  DEFINE
+    a AS Key < 10,
+    b AS Key >= 10
+)
+--
+QueryStmt
++-output_column_list=
+| +-$partitionby.$partitionbycol1#3 AS Key [INT64]
+| +-$partitionby.$partitionbycol2#4 AS Value [STRING]
+| +-$partitionby.$partitionbycol3#5 AS `$partition_by_col3` [INT64]
+| +-$partitionby.$partitionbycol4#6 AS Value [STRING]
+| +-$match_recognize.m#11 AS m [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$partitionby.$partitionbycol1#3, $partitionby.$partitionbycol2#4, $partitionby.$partitionbycol3#5, $partitionby.$partitionbycol4#6, $match_recognize.m#11]
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[$partitionby.$partitionbycol1#3, $partitionby.$partitionbycol2#4, $partitionby.$partitionbycol3#5, $partitionby.$partitionbycol4#6, $match_recognize.m#11]
+        +-expr_list=
+        | +-m#11 := ColumnRef(type=INT64, column=$aggregate.$agg1#10)
+        +-input_scan=
+          +-MatchRecognizeScan
+            +-column_list=[$partitionby.$partitionbycol1#3, $partitionby.$partitionbycol2#4, $partitionby.$partitionbycol3#5, $partitionby.$partitionbycol4#6, $aggregate.$agg1#10]
+            +-input_scan=
+            | +-ProjectScan
+            |   +-column_list=[KeyValue.Key#1, KeyValue.Value#2, $partitionby.$partitionbycol1#3, $partitionby.$partitionbycol2#4, $partitionby.$partitionbycol3#5, $partitionby.$partitionbycol4#6]
+            |   +-expr_list=
+            |   | +-$partitionbycol1#3 := ColumnRef(type=INT64, column=KeyValue.Key#1)
+            |   | +-$partitionbycol2#4 := ColumnRef(type=STRING, column=KeyValue.Value#2)
+            |   | +-$partitionbycol3#5 :=
+            |   | | +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+            |   | |   +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+            |   | |   +-Literal(type=INT64, value=1)
+            |   | +-$partitionbycol4#6 := ColumnRef(type=STRING, column=KeyValue.Value#2)
+            |   +-input_scan=
+            |     +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+            +-analytic_function_group_list=
+            | +-AnalyticFunctionGroup
+            |   +-partition_by=
+            |   | +-WindowPartitioning
+            |   |   +-partition_by_list=
+            |   |     +-ColumnRef(type=INT64, column=$partitionby.$partitionbycol1#3)
+            |   |     +-ColumnRef(type=STRING, column=$partitionby.$partitionbycol2#4)
+            |   |     +-ColumnRef(type=INT64, column=$partitionby.$partitionbycol3#5)
+            |   |     +-ColumnRef(type=STRING, column=$partitionby.$partitionbycol4#6)
+            |   +-order_by=
+            |     +-WindowOrdering
+            |       +-order_by_item_list=
+            |         +-OrderByItem
+            |           +-column_ref=
+            |             +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+            +-pattern_variable_definition_list=
+            | +-MatchRecognizeVariableDefinition
+            | | +-name="a"
+            | | +-predicate=
+            | |   +-FunctionCall(GoogleSQL:$less(INT64, INT64) -> BOOL)
+            | |     +-ColumnRef(type=INT64, column=$partitionby.$partitionbycol1#3)
+            | |     +-Literal(type=INT64, value=10)
+            | +-MatchRecognizeVariableDefinition
+            |   +-name="b"
+            |   +-predicate=
+            |     +-FunctionCall(GoogleSQL:$greater_or_equal(INT64, INT64) -> BOOL)
+            |       +-ColumnRef(type=INT64, column=$partitionby.$partitionbycol1#3)
+            |       +-Literal(type=INT64, value=10)
+            +-pattern=
+            | +-MatchRecognizePatternOperation
+            |   +-op_type=CONCAT
+            |   +-operand_list=
+            |     +-MatchRecognizePatternVariableRef(name="a")
+            |     +-MatchRecognizePatternVariableRef(name="b")
+            +-after_match_skip_mode=END_OF_MATCH
+            +-measure_group_list=
+            | +-MeasureGroup
+            |   +-aggregate_list=
+            |     +-$agg1#10 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+            +-match_number_column=$match_recognize.$match_number#7
+            +-match_row_number_column=$match_recognize.$match_row_number#8
+            +-classifier_column=$match_recognize.$classifier#9
+
+[SQLBUILDER_OUTPUT]
+SELECT
+  matchrecognizescan_11.a_4 AS Key,
+  matchrecognizescan_11.a_5 AS Value,
+  matchrecognizescan_11.a_6 AS a_6,
+  matchrecognizescan_11.a_7 AS Value,
+  matchrecognizescan_11.a_9 AS m
+FROM
+  (
+    SELECT
+      keyvalue_3.a_1 AS a_1,
+      keyvalue_3.a_2 AS a_2,
+      keyvalue_3.a_1 AS a_4,
+      keyvalue_3.a_2 AS a_5,
+      (keyvalue_3.a_1) + 1 AS a_6,
+      keyvalue_3.a_2 AS a_7
+    FROM
+      (
+        SELECT
+          KeyValue.Key AS a_1,
+          KeyValue.Value AS a_2
+        FROM
+          KeyValue
+      ) AS keyvalue_3
+  ) AS projectscan_8 MATCH_RECOGNIZE(
+    PARTITION BY projectscan_8.a_4, projectscan_8.a_5, projectscan_8.a_6, projectscan_8.a_7
+    ORDER BY projectscan_8.a_1
+    MEASURES
+      COUNT(*) AS a_9,
+      MATCH_NUMBER() AS a_10
+    AFTER MATCH SKIP PAST LAST ROW
+    PATTERN ((a  b))
+    DEFINE
+      a AS(projectscan_8.a_4) < 10,
+      b AS(projectscan_8.a_4) >= 10
+  )
+  AS matchrecognizescan_11;
+==
+
+# ORDER BY: ** expands in place, and ordering modifiers (ASC/DESC, NULLS
+# FIRST/LAST, COLLATE) apply to every column the expansion produces, with each
+# item keeping its own modifiers.
+SELECT * FROM KeyValue
+MATCH_RECOGNIZE(
+  ORDER BY **COLUMNS(['Key', 'Value']) DESC NULLS LAST,
+           **COLUMNS(['Value']) COLLATE 'unicode:ci' NULLS FIRST
+  MEASURES COUNT(*) AS m
+  PATTERN (a b)
+  DEFINE
+    a AS Key < 10,
+    b AS Key >= 10
+)
+--
+QueryStmt
++-output_column_list=
+| +-$match_recognize.m#7 AS m [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$match_recognize.m#7]
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[$match_recognize.m#7]
+        +-expr_list=
+        | +-m#7 := ColumnRef(type=INT64, column=$aggregate.$agg1#6)
+        +-input_scan=
+          +-MatchRecognizeScan
+            +-column_list=[$aggregate.$agg1#6]
+            +-input_scan=
+            | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+            +-analytic_function_group_list=
+            | +-AnalyticFunctionGroup
+            |   +-order_by=
+            |     +-WindowOrdering
+            |       +-order_by_item_list=
+            |         +-OrderByItem
+            |         | +-column_ref=
+            |         | | +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+            |         | +-is_descending=TRUE
+            |         | +-null_order=NULLS_LAST
+            |         +-OrderByItem
+            |         | +-column_ref=
+            |         | | +-ColumnRef(type=STRING, column=KeyValue.Value#2)
+            |         | +-is_descending=TRUE
+            |         | +-null_order=NULLS_LAST
+            |         +-OrderByItem
+            |           +-column_ref=
+            |           | +-ColumnRef(type=STRING, column=KeyValue.Value#2)
+            |           +-collation_name=
+            |           | +-Literal(type=STRING, value="unicode:ci")
+            |           +-null_order=NULLS_FIRST
+            |           +-collation=unicode:ci
+            +-pattern_variable_definition_list=
+            | +-MatchRecognizeVariableDefinition
+            | | +-name="a"
+            | | +-predicate=
+            | |   +-FunctionCall(GoogleSQL:$less(INT64, INT64) -> BOOL)
+            | |     +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+            | |     +-Literal(type=INT64, value=10)
+            | +-MatchRecognizeVariableDefinition
+            |   +-name="b"
+            |   +-predicate=
+            |     +-FunctionCall(GoogleSQL:$greater_or_equal(INT64, INT64) -> BOOL)
+            |       +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+            |       +-Literal(type=INT64, value=10)
+            +-pattern=
+            | +-MatchRecognizePatternOperation
+            |   +-op_type=CONCAT
+            |   +-operand_list=
+            |     +-MatchRecognizePatternVariableRef(name="a")
+            |     +-MatchRecognizePatternVariableRef(name="b")
+            +-after_match_skip_mode=END_OF_MATCH
+            +-measure_group_list=
+            | +-MeasureGroup
+            |   +-aggregate_list=
+            |     +-$agg1#6 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+            +-match_number_column=$match_recognize.$match_number#3
+            +-match_row_number_column=$match_recognize.$match_row_number#4
+            +-classifier_column=$match_recognize.$classifier#5
+
+[SQLBUILDER_OUTPUT]
+SELECT
+  matchrecognizescan_6.a_4 AS m
+FROM
+  (
+    SELECT
+      KeyValue.Key AS a_1,
+      KeyValue.Value AS a_2
+    FROM
+      KeyValue
+  ) AS keyvalue_3 MATCH_RECOGNIZE(
+    ORDER BY keyvalue_3.a_1 DESC NULLS LAST, keyvalue_3.a_2 DESC NULLS LAST, keyvalue_3.a_2 COLLATE "unicode:ci" NULLS FIRST
+    MEASURES
+      COUNT(*) AS a_4,
+      MATCH_NUMBER() AS a_5
+    AFTER MATCH SKIP PAST LAST ROW
+    PATTERN ((a  b))
+    DEFINE
+      a AS(keyvalue_3.a_1) < 10,
+      b AS(keyvalue_3.a_1) >= 10
+  )
+  AS matchrecognizescan_6;
+==
+
+# An empty expansion drops out of both clauses. A PARTITION BY consisting only
+# of an empty expansion partitions by nothing; next to an explicit column it
+# leaves that column, named as usual, on either side.
+SELECT * FROM KeyValue
+MATCH_RECOGNIZE(
+  PARTITION BY {{**COLUMNS([])|Key, **COLUMNS([])}}
+  ORDER BY {{**COLUMNS([]), Value|Value, **COLUMNS([])}}
+  MEASURES COUNT(*) AS m
+  PATTERN (a b)
+  DEFINE
+    a AS Key < 10,
+    b AS Key >= 10
+)
+--
+ALTERNATION GROUPS:
+    **COLUMNS([]),**COLUMNS([]), Value
+    **COLUMNS([]),Value, **COLUMNS([])
+--
+QueryStmt
++-output_column_list=
+| +-$match_recognize.m#7 AS m [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$match_recognize.m#7]
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[$match_recognize.m#7]
+        +-expr_list=
+        | +-m#7 := ColumnRef(type=INT64, column=$aggregate.$agg1#6)
+        +-input_scan=
+          +-MatchRecognizeScan
+            +-column_list=[$aggregate.$agg1#6]
+            +-input_scan=
+            | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+            +-analytic_function_group_list=
+            | +-AnalyticFunctionGroup
+            |   +-order_by=
+            |     +-WindowOrdering
+            |       +-order_by_item_list=
+            |         +-OrderByItem
+            |           +-column_ref=
+            |             +-ColumnRef(type=STRING, column=KeyValue.Value#2)
+            +-pattern_variable_definition_list=
+            | +-MatchRecognizeVariableDefinition
+            | | +-name="a"
+            | | +-predicate=
+            | |   +-FunctionCall(GoogleSQL:$less(INT64, INT64) -> BOOL)
+            | |     +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+            | |     +-Literal(type=INT64, value=10)
+            | +-MatchRecognizeVariableDefinition
+            |   +-name="b"
+            |   +-predicate=
+            |     +-FunctionCall(GoogleSQL:$greater_or_equal(INT64, INT64) -> BOOL)
+            |       +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+            |       +-Literal(type=INT64, value=10)
+            +-pattern=
+            | +-MatchRecognizePatternOperation
+            |   +-op_type=CONCAT
+            |   +-operand_list=
+            |     +-MatchRecognizePatternVariableRef(name="a")
+            |     +-MatchRecognizePatternVariableRef(name="b")
+            +-after_match_skip_mode=END_OF_MATCH
+            +-measure_group_list=
+            | +-MeasureGroup
+            |   +-aggregate_list=
+            |     +-$agg1#6 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+            +-match_number_column=$match_recognize.$match_number#3
+            +-match_row_number_column=$match_recognize.$match_row_number#4
+            +-classifier_column=$match_recognize.$classifier#5
+
+[SQLBUILDER_OUTPUT]
+SELECT
+  matchrecognizescan_6.a_4 AS m
+FROM
+  (
+    SELECT
+      KeyValue.Key AS a_1,
+      KeyValue.Value AS a_2
+    FROM
+      KeyValue
+  ) AS keyvalue_3 MATCH_RECOGNIZE(
+    ORDER BY keyvalue_3.a_2
+    MEASURES
+      COUNT(*) AS a_4,
+      MATCH_NUMBER() AS a_5
+    AFTER MATCH SKIP PAST LAST ROW
+    PATTERN ((a  b))
+    DEFINE
+      a AS(keyvalue_3.a_1) < 10,
+      b AS(keyvalue_3.a_1) >= 10
+  )
+  AS matchrecognizescan_6;
+--
+ALTERNATION GROUPS:
+    Key, **COLUMNS([]),**COLUMNS([]), Value
+    Key, **COLUMNS([]),Value, **COLUMNS([])
+--
+QueryStmt
++-output_column_list=
+| +-$partitionby.Key#3 AS Key [INT64]
+| +-$match_recognize.m#8 AS m [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$partitionby.Key#3, $match_recognize.m#8]
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[$partitionby.Key#3, $match_recognize.m#8]
+        +-expr_list=
+        | +-m#8 := ColumnRef(type=INT64, column=$aggregate.$agg1#7)
+        +-input_scan=
+          +-MatchRecognizeScan
+            +-column_list=[$partitionby.Key#3, $aggregate.$agg1#7]
+            +-input_scan=
+            | +-ProjectScan
+            |   +-column_list=[KeyValue.Key#1, KeyValue.Value#2, $partitionby.Key#3]
+            |   +-expr_list=
+            |   | +-Key#3 := ColumnRef(type=INT64, column=KeyValue.Key#1)
+            |   +-input_scan=
+            |     +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+            +-analytic_function_group_list=
+            | +-AnalyticFunctionGroup
+            |   +-partition_by=
+            |   | +-WindowPartitioning
+            |   |   +-partition_by_list=
+            |   |     +-ColumnRef(type=INT64, column=$partitionby.Key#3)
+            |   +-order_by=
+            |     +-WindowOrdering
+            |       +-order_by_item_list=
+            |         +-OrderByItem
+            |           +-column_ref=
+            |             +-ColumnRef(type=STRING, column=KeyValue.Value#2)
+            +-pattern_variable_definition_list=
+            | +-MatchRecognizeVariableDefinition
+            | | +-name="a"
+            | | +-predicate=
+            | |   +-FunctionCall(GoogleSQL:$less(INT64, INT64) -> BOOL)
+            | |     +-ColumnRef(type=INT64, column=$partitionby.Key#3)
+            | |     +-Literal(type=INT64, value=10)
+            | +-MatchRecognizeVariableDefinition
+            |   +-name="b"
+            |   +-predicate=
+            |     +-FunctionCall(GoogleSQL:$greater_or_equal(INT64, INT64) -> BOOL)
+            |       +-ColumnRef(type=INT64, column=$partitionby.Key#3)
+            |       +-Literal(type=INT64, value=10)
+            +-pattern=
+            | +-MatchRecognizePatternOperation
+            |   +-op_type=CONCAT
+            |   +-operand_list=
+            |     +-MatchRecognizePatternVariableRef(name="a")
+            |     +-MatchRecognizePatternVariableRef(name="b")
+            +-after_match_skip_mode=END_OF_MATCH
+            +-measure_group_list=
+            | +-MeasureGroup
+            |   +-aggregate_list=
+            |     +-$agg1#7 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+            +-match_number_column=$match_recognize.$match_number#4
+            +-match_row_number_column=$match_recognize.$match_row_number#5
+            +-classifier_column=$match_recognize.$classifier#6
+
+[SQLBUILDER_OUTPUT]
+SELECT
+  matchrecognizescan_8.a_4 AS Key,
+  matchrecognizescan_8.a_6 AS m
+FROM
+  (
+    SELECT
+      keyvalue_3.a_1 AS a_1,
+      keyvalue_3.a_2 AS a_2,
+      keyvalue_3.a_1 AS a_4
+    FROM
+      (
+        SELECT
+          KeyValue.Key AS a_1,
+          KeyValue.Value AS a_2
+        FROM
+          KeyValue
+      ) AS keyvalue_3
+  ) AS projectscan_5 MATCH_RECOGNIZE(
+    PARTITION BY projectscan_5.a_4
+    ORDER BY projectscan_5.a_2
+    MEASURES
+      COUNT(*) AS a_6,
+      MATCH_NUMBER() AS a_7
+    AFTER MATCH SKIP PAST LAST ROW
+    PATTERN ((a  b))
+    DEFINE
+      a AS(projectscan_5.a_4) < 10,
+      b AS(projectscan_5.a_4) >= 10
+  )
+  AS matchrecognizescan_8;
+==
+
+# Names in ** are resolved against the input's columns, including aliases from
+# a subquery, and the output column takes that name.
+SELECT * FROM (SELECT Key AS a, Value AS b FROM KeyValue)
+MATCH_RECOGNIZE(
+  PARTITION BY **COLUMNS(['a'])
+  ORDER BY **COLUMNS(['b'])
+  MEASURES COUNT(*) AS m
+  PATTERN (x y)
+  DEFINE
+    x AS a < 10,
+    y AS a >= 10
+)
+--
+QueryStmt
++-output_column_list=
+| +-$partitionby.$partitionbycol1#3 AS a [INT64]
+| +-$match_recognize.m#8 AS m [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$partitionby.$partitionbycol1#3, $match_recognize.m#8]
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[$partitionby.$partitionbycol1#3, $match_recognize.m#8]
+        +-expr_list=
+        | +-m#8 := ColumnRef(type=INT64, column=$aggregate.$agg1#7)
+        +-input_scan=
+          +-MatchRecognizeScan
+            +-column_list=[$partitionby.$partitionbycol1#3, $aggregate.$agg1#7]
+            +-input_scan=
+            | +-ProjectScan
+            |   +-column_list=[KeyValue.Key#1, KeyValue.Value#2, $partitionby.$partitionbycol1#3]
+            |   +-expr_list=
+            |   | +-$partitionbycol1#3 := ColumnRef(type=INT64, column=KeyValue.Key#1)
+            |   +-input_scan=
+            |     +-ProjectScan
+            |       +-column_list=KeyValue.[Key#1, Value#2]
+            |       +-input_scan=
+            |         +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+            +-analytic_function_group_list=
+            | +-AnalyticFunctionGroup
+            |   +-partition_by=
+            |   | +-WindowPartitioning
+            |   |   +-partition_by_list=
+            |   |     +-ColumnRef(type=INT64, column=$partitionby.$partitionbycol1#3)
+            |   +-order_by=
+            |     +-WindowOrdering
+            |       +-order_by_item_list=
+            |         +-OrderByItem
+            |           +-column_ref=
+            |             +-ColumnRef(type=STRING, column=KeyValue.Value#2)
+            +-pattern_variable_definition_list=
+            | +-MatchRecognizeVariableDefinition
+            | | +-name="x"
+            | | +-predicate=
+            | |   +-FunctionCall(GoogleSQL:$less(INT64, INT64) -> BOOL)
+            | |     +-ColumnRef(type=INT64, column=$partitionby.$partitionbycol1#3)
+            | |     +-Literal(type=INT64, value=10)
+            | +-MatchRecognizeVariableDefinition
+            |   +-name="y"
+            |   +-predicate=
+            |     +-FunctionCall(GoogleSQL:$greater_or_equal(INT64, INT64) -> BOOL)
+            |       +-ColumnRef(type=INT64, column=$partitionby.$partitionbycol1#3)
+            |       +-Literal(type=INT64, value=10)
+            +-pattern=
+            | +-MatchRecognizePatternOperation
+            |   +-op_type=CONCAT
+            |   +-operand_list=
+            |     +-MatchRecognizePatternVariableRef(name="x")
+            |     +-MatchRecognizePatternVariableRef(name="y")
+            +-after_match_skip_mode=END_OF_MATCH
+            +-measure_group_list=
+            | +-MeasureGroup
+            |   +-aggregate_list=
+            |     +-$agg1#7 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+            +-match_number_column=$match_recognize.$match_number#4
+            +-match_row_number_column=$match_recognize.$match_row_number#5
+            +-classifier_column=$match_recognize.$classifier#6
+
+[SQLBUILDER_OUTPUT]
+SELECT
+  matchrecognizescan_8.a_4 AS a,
+  matchrecognizescan_8.a_6 AS m
+FROM
+  (
+    SELECT
+      projectscan_3.a_1 AS a_1,
+      projectscan_3.a_2 AS a_2,
+      projectscan_3.a_1 AS a_4
+    FROM
+      (
+        SELECT
+          KeyValue.Key AS a_1,
+          KeyValue.Value AS a_2
+        FROM
+          KeyValue
+      ) AS projectscan_3
+  ) AS projectscan_5 MATCH_RECOGNIZE(
+    PARTITION BY projectscan_5.a_4
+    ORDER BY projectscan_5.a_2
+    MEASURES
+      COUNT(*) AS a_6,
+      MATCH_NUMBER() AS a_7
+    AFTER MATCH SKIP PAST LAST ROW
+    PATTERN ((x  y))
+    DEFINE
+      x AS(projectscan_5.a_4) < 10,
+      y AS(projectscan_5.a_4) >= 10
+  )
+  AS matchrecognizescan_8;
+==
+
+# Pipe MATCH_RECOGNIZE resolves ** the same way.
+[sql_builder_target_syntax_mode=pipe]
+FROM KeyValue
+|> MATCH_RECOGNIZE(
+     PARTITION BY **COLUMNS(['Key']), Key + 1
+     ORDER BY **COLUMNS(['Value']) DESC
+     MEASURES COUNT(*) AS m
+     PATTERN (a b)
+     DEFINE
+       a AS Key < 10,
+       b AS Key >= 10
+   )
+--
+QueryStmt
++-output_column_list=
+| +-$partitionby.$partitionbycol1#3 AS Key [INT64]
+| +-$partitionby.$partitionbycol2#4 AS `$partition_by_col2` [INT64]
+| +-$match_recognize.m#9 AS m [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$partitionby.$partitionbycol1#3, $partitionby.$partitionbycol2#4, $match_recognize.m#9]
+    +-expr_list=
+    | +-m#9 := ColumnRef(type=INT64, column=$aggregate.$agg1#8)
+    +-input_scan=
+      +-MatchRecognizeScan
+        +-column_list=[$partitionby.$partitionbycol1#3, $partitionby.$partitionbycol2#4, $aggregate.$agg1#8]
+        +-input_scan=
+        | +-ProjectScan
+        |   +-column_list=[KeyValue.Key#1, KeyValue.Value#2, $partitionby.$partitionbycol1#3, $partitionby.$partitionbycol2#4]
+        |   +-expr_list=
+        |   | +-$partitionbycol1#3 := ColumnRef(type=INT64, column=KeyValue.Key#1)
+        |   | +-$partitionbycol2#4 :=
+        |   |   +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+        |   |     +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+        |   |     +-Literal(type=INT64, value=1)
+        |   +-input_scan=
+        |     +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+        +-analytic_function_group_list=
+        | +-AnalyticFunctionGroup
+        |   +-partition_by=
+        |   | +-WindowPartitioning
+        |   |   +-partition_by_list=
+        |   |     +-ColumnRef(type=INT64, column=$partitionby.$partitionbycol1#3)
+        |   |     +-ColumnRef(type=INT64, column=$partitionby.$partitionbycol2#4)
+        |   +-order_by=
+        |     +-WindowOrdering
+        |       +-order_by_item_list=
+        |         +-OrderByItem
+        |           +-column_ref=
+        |           | +-ColumnRef(type=STRING, column=KeyValue.Value#2)
+        |           +-is_descending=TRUE
+        +-pattern_variable_definition_list=
+        | +-MatchRecognizeVariableDefinition
+        | | +-name="a"
+        | | +-predicate=
+        | |   +-FunctionCall(GoogleSQL:$less(INT64, INT64) -> BOOL)
+        | |     +-ColumnRef(type=INT64, column=$partitionby.$partitionbycol1#3)
+        | |     +-Literal(type=INT64, value=10)
+        | +-MatchRecognizeVariableDefinition
+        |   +-name="b"
+        |   +-predicate=
+        |     +-FunctionCall(GoogleSQL:$greater_or_equal(INT64, INT64) -> BOOL)
+        |       +-ColumnRef(type=INT64, column=$partitionby.$partitionbycol1#3)
+        |       +-Literal(type=INT64, value=10)
+        +-pattern=
+        | +-MatchRecognizePatternOperation
+        |   +-op_type=CONCAT
+        |   +-operand_list=
+        |     +-MatchRecognizePatternVariableRef(name="a")
+        |     +-MatchRecognizePatternVariableRef(name="b")
+        +-after_match_skip_mode=END_OF_MATCH
+        +-measure_group_list=
+        | +-MeasureGroup
+        |   +-aggregate_list=
+        |     +-$agg1#8 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+        +-match_number_column=$match_recognize.$match_number#5
+        +-match_row_number_column=$match_recognize.$match_row_number#6
+        +-classifier_column=$match_recognize.$classifier#7
+
+[SQLBUILDER_OUTPUT]
+FROM
+  KeyValue
+|> SELECT
+     KeyValue.Key AS a_1,
+     KeyValue.Value AS a_2
+|> AS keyvalue_3
+|> SELECT
+     keyvalue_3.a_1 AS a_1,
+     keyvalue_3.a_2 AS a_2,
+     keyvalue_3.a_1 AS a_4,
+     (keyvalue_3.a_1) + 1 AS a_5
+|> AS projectscan_6
+|> MATCH_RECOGNIZE(
+     PARTITION BY projectscan_6.a_4, projectscan_6.a_5
+     ORDER BY projectscan_6.a_2 DESC
+     MEASURES
+       COUNT(*) AS a_7,
+       MATCH_NUMBER() AS a_8
+     AFTER MATCH SKIP PAST LAST ROW
+     PATTERN ((a  b))
+     DEFINE
+       a AS(projectscan_6.a_4) < 10,
+       b AS(projectscan_6.a_4) >= 10
+   )
+   AS matchrecognizescan_9
+|> SELECT
+     matchrecognizescan_9.a_4 AS Key,
+     matchrecognizescan_9.a_5 AS a_5,
+     matchrecognizescan_9.a_7 AS m;
+==
+
+################################################################################
+#
+# Negative cases
+#
+################################################################################
+
+# MATCH_RECOGNIZE requires an ORDER BY with at least one column, which an empty
+# expansion cannot satisfy, with or without an ordering suffix.
+SELECT * FROM KeyValue
+MATCH_RECOGNIZE(
+  ORDER BY **COLUMNS([]){{| DESC}}
+  MEASURES COUNT(*) AS m
+  PATTERN (a b)
+  DEFINE
+    a AS Key < 10,
+    b AS Key >= 10
+)
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: ORDER BY in MATCH_RECOGNIZE clause cannot resolve to empty columns [at 3:3]
+  ORDER BY **COLUMNS([])
+  ^
+--
+ALTERNATION GROUP:  DESC
+--
+ERROR: ORDER BY in MATCH_RECOGNIZE clause cannot resolve to empty columns [at 3:3]
+  ORDER BY **COLUMNS([]) DESC
+  ^
+==
+
+# A name in the column list that matches no column is an error.
+SELECT * FROM KeyValue
+MATCH_RECOGNIZE(
+  PARTITION BY **COLUMNS(['non_existent'])
+  ORDER BY Key
+  MEASURES COUNT(*) AS m
+  PATTERN (a b)
+  DEFINE
+    a AS Key < 10,
+    b AS Key >= 10
+)
+--
+ERROR: Name non_existent not found in the current scope [at 3:18]
+  PARTITION BY **COLUMNS(['non_existent'])
+                 ^
+==
+
+# A column of an ungroupable type cannot be partitioned by, the same as when it
+# is listed explicitly.
+SELECT * FROM ComplexTypes
+MATCH_RECOGNIZE(
+  PARTITION BY **COLUMNS(['KitchenSink'])
+  ORDER BY key
+  MEASURES COUNT(*) AS m
+  PATTERN (a b)
+  DEFINE
+    a AS key < 10,
+    b AS key >= 10
+)
+--
+ERROR: Partitioning by expressions of type PROTO is not allowed [at 3:16]
+  PARTITION BY **COLUMNS(['KitchenSink'])
+               ^
+==
+
+# A column of an unorderable type cannot be ordered by, the same as when it is
+# listed explicitly.
+SELECT * FROM ComplexTypes
+MATCH_RECOGNIZE(
+  ORDER BY **COLUMNS(['KitchenSink'])
+  MEASURES COUNT(*) AS m
+  PATTERN (a b)
+  DEFINE
+    a AS key < 10,
+    b AS key >= 10
+)
+--
+ERROR: Ordering by expressions of type PROTO is not allowed [at 3:12]
+  ORDER BY **COLUMNS(['KitchenSink'])
+           ^
+
+==
+
+# A name that is ambiguous in the input is an error.
+FROM KeyValue k1 JOIN KeyValue k2 USING (Key)
+|> MATCH_RECOGNIZE(
+     PARTITION BY **COLUMNS(['Value'])
+     ORDER BY Key
+     MEASURES COUNT(*) AS m
+     PATTERN (a b)
+     DEFINE
+       a AS Key < 10,
+       b AS Key >= 10
+   )
+--
+ERROR: Name Value provided to ** does not refer to a column or field [at 3:21]
+     PARTITION BY **COLUMNS(['Value'])
+                    ^
+==
+
+# ** in PARTITION BY requires COLUMN_LIST_SPEC.
+[language_features=MAXIMUM,-COLUMN_LIST_SPEC]
+SELECT * FROM KeyValue
+MATCH_RECOGNIZE(
+  PARTITION BY **COLUMNS(['Key'])
+  ORDER BY Key
+  MEASURES COUNT(*) AS m
+  PATTERN (a b)
+  DEFINE
+    a AS Key < 10,
+    b AS Key >= 10
+)
+--
+ERROR: Unpack expression is not supported [at 3:16]
+  PARTITION BY **COLUMNS(['Key'])
+               ^
+==
+
+# ** in ORDER BY requires COLUMN_LIST_SPEC.
+[language_features=MAXIMUM,-COLUMN_LIST_SPEC]
+SELECT * FROM KeyValue
+MATCH_RECOGNIZE(
+  ORDER BY **COLUMNS(['Key'])
+  MEASURES COUNT(*) AS m
+  PATTERN (a b)
+  DEFINE
+    a AS Key < 10,
+    b AS Key >= 10
+)
+--
+ERROR: Unpack expression is not supported [at 3:12]
+  ORDER BY **COLUMNS(['Key'])
+           ^

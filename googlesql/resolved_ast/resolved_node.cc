@@ -43,6 +43,7 @@
 #include "googlesql/resolved_ast/serialization.pb.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/flags/flag.h"
+#include "absl/functional/function_ref.h"
 #include "googlesql/base/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -250,13 +251,19 @@ int ResolvedNode::GetTreeDepth() const {
 
 absl::Status ResolvedNode::SaveTo(FileDescriptorSetMap* file_descriptor_set_map,
                                   ResolvedNodeProto* proto) const {
+  return SaveToInternal(file_descriptor_set_map, [proto]() { return proto; });
+}
+
+absl::Status ResolvedNode::SaveToInternal(
+    Type::FileDescriptorSetMap* file_descriptor_set_map,
+    absl::FunctionRef<ResolvedNodeProto*()> get_proto) const {
   const ParseLocationRange* parse_location_range =
       GetParseLocationRangeOrNULL();
   if (parse_location_range == nullptr) {
     return absl::OkStatus();
   }
-  // Serialize parse location range.
-  GOOGLESQL_ASSIGN_OR_RETURN(*proto->mutable_parse_location_range(),
+  // Serialize parse location range when present.
+  GOOGLESQL_ASSIGN_OR_RETURN(*get_proto()->mutable_parse_location_range(),
                    parse_location_range->ToProto());
   return absl::OkStatus();
 }

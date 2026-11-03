@@ -29,6 +29,7 @@
 
 #include "absl/base/attributes.h"
 #include "absl/base/optimization.h"
+#include "absl/base/throw_delegate.h"
 #include "absl/strings/cord.h"
 #include "absl/strings/string_view.h"
 #include "googlesql/base/requires.h"
@@ -155,8 +156,7 @@ template <typename mapped_type, typename View, typename Key>
 const mapped_type& AtFunction(const View& v, const Key& key) {
   auto it = v.find(key);
   if (ABSL_PREDICT_FALSE(it == v.end())) {
-    absl::base_internal::ThrowStdOutOfRange(
-      "MapView::at failed bounds check");
+    absl::ThrowStdOutOfRange("MapView::at failed bounds check");
   }
   return it->second;
 }

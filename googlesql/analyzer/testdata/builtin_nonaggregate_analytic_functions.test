@@ -3222,3 +3222,276 @@ QueryStmt
                 +-AnalyticFunctionCall(GoogleSQL:is_last(INT64) -> BOOL)
                   +-Cast(INT32 -> INT64)
                     +-Parameter(type=INT32, name="test_param_int32")
+==
+
+# Unaffected AnalyticScan (with 0-column input scan or pruned columns) is not
+# wrapped in extra ProjectScans when another AnalyticScan uses IS_FIRST.
+[enabled_ast_rewrites=DEFAULTS,+IS_FIRST_IS_LAST_FUNCTION]
+[prune_unused_columns]
+WITH
+  t1 AS (SELECT row_number() OVER () AS rn1 FROM keyvalue),
+  t2 AS (SELECT row_number() OVER (ORDER BY key) AS rn2 FROM keyvalue)
+SELECT t1.rn1, t2.rn2, is_first(1) OVER (ORDER BY t1.rn1, t2.rn2) AS flag
+FROM t1, t2;
+--
+QueryStmt
++-output_column_list=
+| +-t1.rn1#9 AS rn1 [INT64]
+| +-t2.rn2#10 AS rn2 [INT64]
+| +-$analytic.flag#12 AS flag [BOOL]
++-query=
+  +-WithScan
+    +-column_list=[t1.rn1#9, t2.rn2#10, $analytic.flag#12]
+    +-with_entry_list=
+    | +-WithEntry
+    | | +-with_query_name="t1"
+    | | +-with_subquery=
+    | |   +-ProjectScan
+    | |     +-column_list=[$analytic.rn1#4]
+    | |     +-input_scan=
+    | |       +-AnalyticScan
+    | |         +-column_list=[$analytic.rn1#4]
+    | |         +-input_scan=
+    | |         | +-TableScan(table=KeyValue)
+    | |         +-function_group_list=
+    | |           +-AnalyticFunctionGroup
+    | |             +-analytic_function_list=
+    | |               +-rn1#4 := AnalyticFunctionCall(GoogleSQL:row_number() -> INT64)
+    | +-WithEntry
+    |   +-with_query_name="t2"
+    |   +-with_subquery=
+    |     +-ProjectScan
+    |       +-column_list=[$analytic.rn2#8]
+    |       +-input_scan=
+    |         +-AnalyticScan
+    |           +-column_list=[KeyValue.Key#5, $analytic.rn2#8]
+    |           +-input_scan=
+    |           | +-TableScan(column_list=[KeyValue.Key#5], table=KeyValue, column_index_list=[0])
+    |           +-function_group_list=
+    |             +-AnalyticFunctionGroup
+    |               +-order_by=
+    |               | +-WindowOrdering
+    |               |   +-order_by_item_list=
+    |               |     +-OrderByItem
+    |               |       +-column_ref=
+    |               |         +-ColumnRef(type=INT64, column=KeyValue.Key#5)
+    |               +-analytic_function_list=
+    |                 +-rn2#8 := AnalyticFunctionCall(GoogleSQL:row_number() -> INT64)
+    +-query=
+      +-ProjectScan
+        +-column_list=[t1.rn1#9, t2.rn2#10, $analytic.flag#12]
+        +-input_scan=
+          +-AnalyticScan
+            +-column_list=[t1.rn1#9, t2.rn2#10, $analytic.flag#12]
+            +-input_scan=
+            | +-JoinScan
+            |   +-column_list=[t1.rn1#9, t2.rn2#10]
+            |   +-left_scan=
+            |   | +-WithRefScan(column_list=[t1.rn1#9], with_query_name="t1")
+            |   +-right_scan=
+            |     +-WithRefScan(column_list=[t2.rn2#10], with_query_name="t2")
+            +-function_group_list=
+              +-AnalyticFunctionGroup
+                +-order_by=
+                | +-WindowOrdering
+                |   +-order_by_item_list=
+                |     +-OrderByItem
+                |     | +-column_ref=
+                |     |   +-ColumnRef(type=INT64, column=t1.rn1#9)
+                |     +-OrderByItem
+                |       +-column_ref=
+                |         +-ColumnRef(type=INT64, column=t2.rn2#10)
+                +-analytic_function_list=
+                  +-flag#12 :=
+                    +-AnalyticFunctionCall(GoogleSQL:is_first(INT64) -> BOOL)
+                      +-Literal(type=INT64, value=1)
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-t1.rn1#9 AS rn1 [INT64]
+| +-t2.rn2#10 AS rn2 [INT64]
+| +-$analytic.flag#12 AS flag [BOOL]
++-query=
+  +-WithScan
+    +-column_list=[t1.rn1#9, t2.rn2#10, $analytic.flag#12]
+    +-with_entry_list=
+    | +-WithEntry
+    | | +-with_query_name="t1"
+    | | +-with_subquery=
+    | |   +-ProjectScan
+    | |     +-column_list=[$analytic.rn1#4]
+    | |     +-input_scan=
+    | |       +-AnalyticScan
+    | |         +-column_list=[$analytic.rn1#4]
+    | |         +-input_scan=
+    | |         | +-TableScan(table=KeyValue)
+    | |         +-function_group_list=
+    | |           +-AnalyticFunctionGroup
+    | |             +-analytic_function_list=
+    | |               +-rn1#4 := AnalyticFunctionCall(GoogleSQL:row_number() -> INT64)
+    | +-WithEntry
+    |   +-with_query_name="t2"
+    |   +-with_subquery=
+    |     +-ProjectScan
+    |       +-column_list=[$analytic.rn2#8]
+    |       +-input_scan=
+    |         +-AnalyticScan
+    |           +-column_list=[KeyValue.Key#5, $analytic.rn2#8]
+    |           +-input_scan=
+    |           | +-TableScan(column_list=[KeyValue.Key#5], table=KeyValue, column_index_list=[0])
+    |           +-function_group_list=
+    |             +-AnalyticFunctionGroup
+    |               +-order_by=
+    |               | +-WindowOrdering
+    |               |   +-order_by_item_list=
+    |               |     +-OrderByItem
+    |               |       +-column_ref=
+    |               |         +-ColumnRef(type=INT64, column=KeyValue.Key#5)
+    |               +-analytic_function_list=
+    |                 +-rn2#8 := AnalyticFunctionCall(GoogleSQL:row_number() -> INT64)
+    +-query=
+      +-ProjectScan
+        +-column_list=[t1.rn1#9, t2.rn2#10, $analytic.flag#12]
+        +-input_scan=
+          +-ProjectScan
+            +-column_list=[t1.rn1#9, t2.rn2#10, $analytic.flag#12]
+            +-expr_list=
+            | +-flag#12 :=
+            |   +-FunctionCall(GoogleSQL:if(BOOL, BOOL, BOOL) -> BOOL)
+            |     +-FunctionCall(GoogleSQL:$or(BOOL, repeated(1) BOOL) -> BOOL)
+            |     | +-FunctionCall(GoogleSQL:$is_null(INT64) -> BOOL)
+            |     | | +-ColumnRef(type=INT64, column=$analytic.$analytic_arg#13)
+            |     | +-FunctionCall(GoogleSQL:$less(INT64, INT64) -> BOOL)
+            |     |   +-ColumnRef(type=INT64, column=$analytic.$analytic_arg#13)
+            |     |   +-Literal(type=INT64, value=0)
+            |     +-FunctionCall(GoogleSQL:error(STRING) -> BOOL)
+            |     | +-Literal(type=STRING, value="k cannot be null or negative")
+            |     +-FunctionCall(GoogleSQL:$less_or_equal(INT64, INT64) -> BOOL)
+            |       +-ColumnRef(type=INT64, column=$analytic.flag#14)
+            |       +-ColumnRef(type=INT64, column=$analytic.$analytic_arg#13)
+            +-input_scan=
+              +-AnalyticScan
+                +-column_list=[t1.rn1#9, t2.rn2#10, $analytic.flag#14, $analytic.$analytic_arg#13]
+                +-input_scan=
+                | +-ProjectScan
+                |   +-column_list=[t1.rn1#9, t2.rn2#10, $analytic.$analytic_arg#13]
+                |   +-expr_list=
+                |   | +-$analytic_arg#13 := Literal(type=INT64, value=1)
+                |   +-input_scan=
+                |     +-JoinScan
+                |       +-column_list=[t1.rn1#9, t2.rn2#10]
+                |       +-left_scan=
+                |       | +-WithRefScan(column_list=[t1.rn1#9], with_query_name="t1")
+                |       +-right_scan=
+                |         +-WithRefScan(column_list=[t2.rn2#10], with_query_name="t2")
+                +-function_group_list=
+                  +-AnalyticFunctionGroup
+                    +-order_by=
+                    | +-WindowOrdering
+                    |   +-order_by_item_list=
+                    |     +-OrderByItem
+                    |     | +-column_ref=
+                    |     |   +-ColumnRef(type=INT64, column=t1.rn1#9)
+                    |     +-OrderByItem
+                    |       +-column_ref=
+                    |         +-ColumnRef(type=INT64, column=t2.rn2#10)
+                    +-analytic_function_list=
+                      +-flag#14 := AnalyticFunctionCall(GoogleSQL:row_number() -> INT64)
+==
+
+# AnalyticScan with both non-IS_FIRST/IS_LAST and IS_FIRST functions rewrites
+# IS_FIRST while preserving the other analytic function.
+[enabled_ast_rewrites=DEFAULTS,+IS_FIRST_IS_LAST_FUNCTION]
+SELECT row_number() OVER (ORDER BY key) AS rn,
+       is_first(1) OVER (ORDER BY key) AS flag
+FROM keyvalue;
+--
+QueryStmt
++-output_column_list=
+| +-$analytic.rn#5 AS rn [INT64]
+| +-$analytic.flag#6 AS flag [BOOL]
++-query=
+  +-ProjectScan
+    +-column_list=$analytic.[rn#5, flag#6]
+    +-input_scan=
+      +-AnalyticScan
+        +-column_list=[KeyValue.Key#1, $analytic.rn#5, $analytic.flag#6]
+        +-input_scan=
+        | +-TableScan(column_list=[KeyValue.Key#1], table=KeyValue, column_index_list=[0])
+        +-function_group_list=
+          +-AnalyticFunctionGroup
+          | +-order_by=
+          | | +-WindowOrdering
+          | |   +-order_by_item_list=
+          | |     +-OrderByItem
+          | |       +-column_ref=
+          | |         +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+          | +-analytic_function_list=
+          |   +-rn#5 := AnalyticFunctionCall(GoogleSQL:row_number() -> INT64)
+          +-AnalyticFunctionGroup
+            +-order_by=
+            | +-WindowOrdering
+            |   +-order_by_item_list=
+            |     +-OrderByItem
+            |       +-column_ref=
+            |         +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+            +-analytic_function_list=
+              +-flag#6 :=
+                +-AnalyticFunctionCall(GoogleSQL:is_first(INT64) -> BOOL)
+                  +-Literal(type=INT64, value=1)
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$analytic.rn#5 AS rn [INT64]
+| +-$analytic.flag#6 AS flag [BOOL]
++-query=
+  +-ProjectScan
+    +-column_list=$analytic.[rn#5, flag#6]
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[KeyValue.Key#1, $analytic.rn#5, $analytic.flag#6]
+        +-expr_list=
+        | +-flag#6 :=
+        |   +-FunctionCall(GoogleSQL:if(BOOL, BOOL, BOOL) -> BOOL)
+        |     +-FunctionCall(GoogleSQL:$or(BOOL, repeated(1) BOOL) -> BOOL)
+        |     | +-FunctionCall(GoogleSQL:$is_null(INT64) -> BOOL)
+        |     | | +-ColumnRef(type=INT64, column=$analytic.$analytic_arg#7)
+        |     | +-FunctionCall(GoogleSQL:$less(INT64, INT64) -> BOOL)
+        |     |   +-ColumnRef(type=INT64, column=$analytic.$analytic_arg#7)
+        |     |   +-Literal(type=INT64, value=0)
+        |     +-FunctionCall(GoogleSQL:error(STRING) -> BOOL)
+        |     | +-Literal(type=STRING, value="k cannot be null or negative")
+        |     +-FunctionCall(GoogleSQL:$less_or_equal(INT64, INT64) -> BOOL)
+        |       +-ColumnRef(type=INT64, column=$analytic.flag#8)
+        |       +-ColumnRef(type=INT64, column=$analytic.$analytic_arg#7)
+        +-input_scan=
+          +-AnalyticScan
+            +-column_list=[KeyValue.Key#1, $analytic.rn#5, $analytic.flag#8, $analytic.$analytic_arg#7]
+            +-input_scan=
+            | +-ProjectScan
+            |   +-column_list=[KeyValue.Key#1, $analytic.$analytic_arg#7]
+            |   +-expr_list=
+            |   | +-$analytic_arg#7 := Literal(type=INT64, value=1)
+            |   +-input_scan=
+            |     +-TableScan(column_list=[KeyValue.Key#1], table=KeyValue, column_index_list=[0])
+            +-function_group_list=
+              +-AnalyticFunctionGroup
+              | +-order_by=
+              | | +-WindowOrdering
+              | |   +-order_by_item_list=
+              | |     +-OrderByItem
+              | |       +-column_ref=
+              | |         +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+              | +-analytic_function_list=
+              |   +-rn#5 := AnalyticFunctionCall(GoogleSQL:row_number() -> INT64)
+              +-AnalyticFunctionGroup
+                +-order_by=
+                | +-WindowOrdering
+                |   +-order_by_item_list=
+                |     +-OrderByItem
+                |       +-column_ref=
+                |         +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+                +-analytic_function_list=
+                  +-flag#8 := AnalyticFunctionCall(GoogleSQL:row_number() -> INT64)

@@ -1648,9 +1648,12 @@ the data types for the map keys and values.
 +   `VALUE_TYPE`: The data type for the key's associated value. All data types
     are allowed.
 
-### Constructing a map
+### Constructing a map 
+<a id="constructing_a_map"></a>
 
-You can construct a map using the [`MAP_FROM_ARRAY`][map-from-array] function.
+You can construct a map using the [map constructor][map-constructor] or the
+[`MAP_FROM_ARRAY`][map-from-array] function.
+
 When constructing a map, these caveats apply:
 
 +   Keys must be distinct. If you attempt to create a map with one or more
@@ -1658,7 +1661,125 @@ When constructing a map, these caveats apply:
 +   A key can be `NULL`.
 +   A `NULL` key is retrievable.
 
+#### Map constructor 
+<a id="map_constructor"></a>
+
+```
+NEW MAP<KEY_TYPE, VALUE_TYPE> { [ key_expr: value_expr [, ...] ] }
+MAP { key_expr: value_expr [, ...] }
+{ [ key_expr: value_expr [, ...] ] }
+```
+
+A map constructor creates a map from a comma-separated list of
+`key_expr: value_expr` entries enclosed in curly braces. A trailing comma after
+the last entry is allowed. The map constructor has the following forms:
+
++   **Typed map constructor** (`NEW MAP<KEY_TYPE, VALUE_TYPE> { ... }`):
+    Constructs a map with an explicit map type. Each `key_expr` must be
+    coercible to `KEY_TYPE`, and each `value_expr` must be coercible to
+    `VALUE_TYPE`. The `NEW` keyword is required because `MAP` isn't a reserved
+    keyword. Without `NEW`, `MAP<...>` is parsed as a comparison.
++   **Typeless map constructor** (`MAP { ... }`): Constructs a map whose key
+    and value types are derived from the entries. The key type is the common
+    supertype of all key expressions, and the value type is the common
+    supertype of all value expressions. If no common supertype exists, an
+    error is produced. An untyped `NULL` key or value defaults to `INT64`. At
+    least one entry is required because there's no default map type.
++   **Bare map constructor** (`{ ... }`): Omits both the `NEW` keyword and the
+    map type. You can use this form only when the surrounding context provides
+    an expected map type. Supported contexts include `CAST` expressions, typed
+    struct, array, or map constructors, and `MAP` column assignments in
+    `INSERT ... VALUES` or `UPDATE ... SET` statements. Function arguments and
+    conditional expressions don't provide an expected type. Each entry is
+    coerced to the expected key and value types, and an empty constructor (`{}`)
+    is allowed.
+
+If all keys and values are literals, the map constructor is a
+[map literal][map-literals].
+
+**Examples**
+
+<table>
+<thead>
+<tr>
+<th>Syntax</th>
+<th>Output Type</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="white-space:nowrap"><code>NEW MAP&lt;STRING, INT64&gt; { 'a': 1, 'b': 2 }</code></td>
+<td style="white-space:nowrap"><code>MAP&lt;STRING, INT64&gt;</code></td>
+</tr>
+<tr>
+<td><code>NEW MAP&lt;STRING, INT64&gt; {}</code></td>
+<td><code>MAP&lt;STRING, INT64&gt;</code></td>
+</tr>
+
+<tr>
+<td><code>NEW MAP&lt;STRING, DATE&gt; { 'start': '2024-01-01' }</code></td>
+<td><code>MAP&lt;STRING, DATE&gt;</code></td>
+</tr>
+
+<tr>
+<td><code>MAP { 'a': 1, 'b': 2 }</code></td>
+<td><code>MAP&lt;STRING, INT64&gt;</code></td>
+</tr>
+<tr>
+<td><code>MAP { 1: 'a', 2: 'b', }</code></td>
+<td><code>MAP&lt;INT64, STRING&gt;</code></td>
+</tr>
+<tr>
+<td><code>MAP { NULL: NULL }</code></td>
+<td><code>MAP&lt;INT64, INT64&gt;</code></td>
+</tr>
+
+<tr>
+<td><code>CAST({ 'a': 1 } AS MAP&lt;STRING, INT64&gt;)</code></td>
+<td><code>MAP&lt;STRING, INT64&gt;</code></td>
+</tr>
+<tr>
+<td><code>CAST({} AS MAP&lt;STRING, INT64&gt;)</code></td>
+<td><code>MAP&lt;STRING, INT64&gt;</code></td>
+</tr>
+<tr>
+<td><code>STRUCT&lt;m MAP&lt;STRING, INT64&gt;&gt;({ 'a': 1 })</code></td>
+<td><code>STRUCT&lt;m MAP&lt;STRING, INT64&gt;&gt;</code></td>
+</tr>
+<tr>
+<td><code>ARRAY&lt;MAP&lt;STRING, INT64&gt;&gt;[{ 'a': 1 }, { 'b': 2 }]</code></td>
+<td><code>ARRAY&lt;MAP&lt;STRING, INT64&gt;&gt;</code></td>
+</tr>
+<tr>
+<td><code>NEW MAP&lt;STRING, MAP&lt;STRING, INT64&gt;&gt; { 'a': { 'b': 1 } }</code></td>
+<td><code>MAP&lt;STRING, MAP&lt;STRING, INT64&gt;&gt;</code></td>
+</tr>
+
+</tbody>
+</table>
+
+The following examples produce errors:
+
+```googlesql
+-- Error: MAP isn't a reserved keyword, so MAP<STRING, INT64> is parsed as a
+-- comparison. Use NEW MAP<STRING, INT64> { ... } instead.
+SELECT MAP<STRING, INT64> { 'a': 1 };
+
+-- Error: A typeless map constructor requires at least one entry.
+SELECT MAP {};
+
+-- Error: The map type can't be inferred from the context.
+SELECT { 'a': 1 };
+
+-- Error at execution time: Keys must be distinct.
+SELECT MAP { 'a': 1, 'a': 2 };
+```
+
 [map-from-array]: https://github.com/google/googlesql/blob/master/docs/map-functions.md#map_from_array
+
+[map-constructor]: #map_constructor
+
+[map-literals]: https://github.com/google/googlesql/blob/master/docs/lexical.md#map_literals
 
 ## Measure type 
 <a id="measure_type"></a>

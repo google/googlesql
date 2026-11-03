@@ -334,10 +334,6 @@ std::unique_ptr<ResolvedNode> ResolvedASTDeepCopyVisitorTest::ApplyCopyVisitor(
   GOOGLESQL_EXPECT_OK(AnalyzeStatement(query, options_, &catalog_, &type_factory_,
                              &analyzer_outputs_.back()));
 
-  // Get the original debug string.
-  const std::string original_debug_string =
-      analyzer_outputs_.back()->resolved_statement()->DebugString();
-
   // Accept the visitor on the resolved query.
   GOOGLESQL_EXPECT_OK(analyzer_outputs_.back()->resolved_statement()->Accept(visitor));
 
@@ -379,10 +375,6 @@ void ResolvedASTDeepCopyVisitorTest::TestAddFilterToTableScanError(
   analyzer_outputs_.emplace_back();
   GOOGLESQL_EXPECT_OK(AnalyzeStatement(query, options_, &catalog_, &type_factory_,
                              &analyzer_outputs_.back()));
-
-  // Get the original debug string.
-  const std::string original_debug_string =
-      analyzer_outputs_.back()->resolved_statement()->DebugString();
 
   // Create deep copy visitor.
   AddFilterToTableScan visitor("Temp", "int32_field", 50, &catalog_);

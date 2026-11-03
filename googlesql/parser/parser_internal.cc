@@ -514,6 +514,53 @@ static absl::Status MaybeStripParserError(absl::Status status) {
   return status;
 }
 
+// Returns true if the parsed statement (or input) contains a macro invocation.
+//
+// Because LookaheadTransformer buffers up to 3 tokens ahead, MacroExpander may
+// load a macro from the next statement before the parser finishes the current
+// statement (e.g., `SELECT 1; $m()`). To ignore lookahead macros in the next
+// statement, we check that the first macro offset is at or before where the
+// parser stopped:
+//   1. kNone mode (`macro_expander == nullptr`): Macro tokens are never valid
+//      SQL in kNone mode, so the parser fails immediately on the first macro
+//      token it reaches (`LastToken()`).
+//   2. Tokenizer/expander error (`!GetOverrideError().ok()`): The token stream
+//      stops at its first error, and `GetOverrideError()` is only set when the
+//      parser reaches that token, so any loaded macro came at or before it.
+//   3. Parse success (`parse_status.ok()`): The macro must start before
+//      `*statement_end_byte_offset` (if set).
+//   4. Syntax error (`!parse_status.ok()`): Either the error token itself came
+//      from a macro expansion, or the macro started at or before the error
+//      token (`LastTokenLocation().start()`).
+static bool ParseHasMacroInvocation(const absl::Status& parse_status,
+                                    const LookaheadTransformer& transformer,
+                                    const macros::MacroExpander* macro_expander,
+                                    const int* statement_end_byte_offset) {
+  if (macro_expander == nullptr) {
+    const Token last_token = transformer.LastToken();
+    return !parse_status.ok() &&
+           (last_token == Token::MACRO_INVOCATION ||
+            last_token == Token::MACRO_BUILTIN_INVOCATION ||
+            last_token == Token::MACRO_ARGUMENT_REFERENCE);
+  }
+  if (!macro_expander->first_macro_invocation_offset().has_value()) {
+    return false;
+  }
+  if (!transformer.GetOverrideError().ok()) {
+    return true;
+  }
+  const int first_macro_offset =
+      *macro_expander->first_macro_invocation_offset();
+  if (parse_status.ok()) {
+    return statement_end_byte_offset == nullptr ||
+           *statement_end_byte_offset < 0 ||
+           first_macro_offset < *statement_end_byte_offset;
+  }
+  return transformer.LastTokenIsFromMacroExpansion() ||
+         first_macro_offset <=
+             transformer.LastTokenLocation().start().GetByteOffset();
+}
+
 absl::Status ParseInternal(
     ParserMode mode, absl::string_view filename, absl::string_view input,
     int start_byte_offset, IdStringPool* id_string_pool, googlesql_base::UnsafeArena* arena,
@@ -563,6 +610,11 @@ absl::Status ParseInternal(
       transformer->SetParser(&parser);
 
       absl::Status parse_status = ParseByMode(mode, *lexer, parser);
+      if (ParseHasMacroInvocation(parse_status, *transformer,
+                                  macro_expander.get(),
+                                  statement_end_byte_offset)) {
+        runtime_info.set_has_macro_invocation(true);
+      }
       // We want to continue if there was a parsing error or a successful parse.
       // Anything else, such as kInternal or kResourceExhausted, should be
       // returned.

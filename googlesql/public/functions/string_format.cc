@@ -40,6 +40,7 @@
 #include "googlesql/public/types/proto_type.h"
 #include "googlesql/public/types/type.h"
 #include "googlesql/public/types/type_factory.h"
+#include "googlesql/public/types/vector_type_util.h"
 #include "googlesql/public/value.h"
 #include "absl/base/optimization.h"
 #include "absl/flags/flag.h"
@@ -272,7 +273,10 @@ bool StringFormatEvaluator::ProcessType(const Type* arg_type) {
                        descriptor->name()));
       return false;
     }
-  } else if (arg_type->IsGraphElement() || arg_type->IsColumnListSpec()) {
+  } else if (arg_type->IsGraphElement() || arg_type->IsColumnListSpec() ||
+             // FORMAT support for VECTOR has not been designed: VECTOR has no
+             // literal syntax for %T to produce.
+             IsVectorType(arg_type)) {
     status_ =
         absl::Status(absl::StatusCode::kUnimplemented,
                      absl::StrCat("Cannot format type ",

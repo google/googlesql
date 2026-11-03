@@ -259,7 +259,8 @@ bool ExecuteQueryWebHandler::HandleRequest(
       mstch::render(templates_.GetWebPageContents(), template_params,
                     {{"body", templates_.GetWebPageBody()},
                      {"table", templates_.GetTable()},
-                     {"inline_js", templates_.GetInlineJS()}});
+                     {"inline_js", templates_.GetInlineJS()},
+                     {"history_dialog", templates_.GetHistoryDialog()}});
 
   if (writer(rendered) <= 0) {
     ABSL_LOG(WARNING) << "Error writing rendered HTML.";

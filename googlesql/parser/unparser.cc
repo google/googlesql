@@ -1393,10 +1393,10 @@ void Unparser::visitASTUndropStatement(const ASTUndropStatement* node,
     print("IF NOT EXISTS");
   }
   node->name()->Accept(this, data);
-  if (node->for_system_time() != nullptr) {
+  if (node->for_version_clause() != nullptr) {
     println();
     Formatter::Indenter indenter(&formatter_);
-    node->for_system_time()->Accept(this, data);
+    node->for_version_clause()->Accept(this, data);
   }
   if (node->options_list() != nullptr) {
     println();
@@ -2131,7 +2131,9 @@ void Unparser::visitASTWithTimestamp(const ASTWithTimestamp* node, void* data) {
 
 void Unparser::visitASTTemporalAt(const ASTTemporalAt* node, void* data) {
   print("AT (");
-  visitASTChildren(node, data);
+  node->version_property()->Accept(this, data);
+  print("=> ");
+  node->expression()->Accept(this, data);
   print(")");
 }
 
@@ -2181,7 +2183,8 @@ void Unparser::visitASTExpressionList(const ASTExpressionList* node,
   UnparseVectorWithSeparator(node->expression_list(), data, ", ");
 }
 
-void Unparser::visitASTForSystemTime(const ASTForSystemTime* node, void* data) {
+void Unparser::visitASTForVersionClause(const ASTForVersionClause* node,
+                                        void* data) {
   print("FOR SYSTEM_TIME AS OF ");
   visitASTChildren(node, data);
 }
@@ -2476,10 +2479,10 @@ void Unparser::visitASTWithReportModifier(const ASTWithReportModifier* node,
 void Unparser::UnparseASTTableDataSource(const ASTTableDataSource* node,
                                          void* data) {
   node->path_expr()->Accept(this, data);
-  if (node->for_system_time() != nullptr) {
+  if (node->for_version_clause() != nullptr) {
     println();
     Formatter::Indenter indenter(&formatter_);
-    node->for_system_time()->Accept(this, data);
+    node->for_version_clause()->Accept(this, data);
   }
   if (node->where_clause() != nullptr) {
     Formatter::Indenter indenter(&formatter_);
@@ -3762,11 +3765,11 @@ void Unparser::visitASTDeleteStatement(const ASTDeleteStatement* node,
   if (node->hint() != nullptr) {
     node->hint()->Accept(this, data);
   }
-  if (node->alias() != nullptr) {
-    node->alias()->Accept(this, data);
-  }
   if (node->temporal_at() != nullptr) {
     node->temporal_at()->Accept(this, data);
+  }
+  if (node->alias() != nullptr) {
+    node->alias()->Accept(this, data);
   }
   if (node->timestamp() != nullptr) {
     node->timestamp()->Accept(this, data);
@@ -3820,6 +3823,39 @@ void Unparser::visitASTInsertValuesRowList(const ASTInsertValuesRowList* node,
     Formatter::Indenter indenter(&formatter_);
     UnparseChildrenWithSeparator(node, data, ",");
   }
+}
+
+void Unparser::visitASTInsertColumnUsingClause(
+    const ASTInsertColumnUsingClause* node, void* data) {
+  print("USING ");
+  if (node->function_name() != nullptr) {
+    print("FUNCTION");
+    node->function_name()->Accept(this, data);
+  } else if (node->lambda() != nullptr) {
+    node->lambda()->Accept(this, data);
+  }
+  if (node->default_expr() != nullptr) {
+    print("DEFAULT ");
+    node->default_expr()->Accept(this, data);
+  }
+}
+
+void Unparser::visitASTInsertColumnItem(const ASTInsertColumnItem* node,
+                                        void* data) {
+  node->identifier()->Accept(this, data);
+  if (node->using_clause() != nullptr) {
+    node->using_clause()->Accept(this, data);
+  }
+}
+
+void Unparser::visitASTInsertColumnList(const ASTInsertColumnList* node,
+                                        void* data) {
+  print("(");
+  {
+    Formatter::Indenter indenter(&formatter_);
+    UnparseChildrenWithSeparator(node, data, ",");
+  }
+  print(")");
 }
 
 void Unparser::visitASTInsertStatement(const ASTInsertStatement* node,
@@ -3947,11 +3983,11 @@ void Unparser::visitASTUpdateStatement(const ASTUpdateStatement* node,
   if (node->hint() != nullptr) {
     node->hint()->Accept(this, data);
   }
-  if (node->alias() != nullptr) {
-    node->alias()->Accept(this, data);
-  }
   if (node->temporal_at() != nullptr) {
     node->temporal_at()->Accept(this, data);
+  }
+  if (node->alias() != nullptr) {
+    node->alias()->Accept(this, data);
   }
   if (node->timestamp() != nullptr) {
     node->timestamp()->Accept(this, data);
@@ -5704,7 +5740,7 @@ void Unparser::visitASTCreatePropertyGraphStatement(
   visitASTPathExpression(node->name(), data);
   println();
 
-  {
+  if (node->node_table_list() != nullptr) {
     Formatter::Indenter indenter(&formatter_);
     println("NODE TABLES(");
     {
@@ -5723,6 +5759,10 @@ void Unparser::visitASTCreatePropertyGraphStatement(
     }
     println();
     println(")");
+  }
+  if (node->with_connection_clause() != nullptr) {
+    node->with_connection_clause()->Accept(this, data);
+    println();
   }
   if (node->options_list() != nullptr) {
     print("OPTIONS");

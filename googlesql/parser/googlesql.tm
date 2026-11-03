@@ -2908,13 +2908,14 @@ exists_graph_subquery {ASTExpressionSubquery*}:
 create_property_graph_statement {ASTNode*}:
     "CREATE" opt_or_replace opt_create_scope "PROPERTY" "GRAPH" .PropertyGraphType
     opt_if_not_exists path_expression
-    "NODE" "TABLES" element_table_list edge_table_clause? opt_options_list
+    node_table_clause? edge_table_clause? with_connection_clause? opt_options_list
     {
       ASTCreateStatement* create =
             MakeNode<ASTCreatePropertyGraphStatement>(@$,
               $path_expression,
-              $element_table_list,
+              $node_table_clause,
               $edge_table_clause,
+              $with_connection_clause,
               $opt_options_list
             );
         create->set_is_or_replace($opt_or_replace);
@@ -3109,9 +3110,17 @@ dest_node_table_clause {ASTNode*}:
     }
 ;
 
+node_table_clause {ASTNode*}:
+    "NODE" "TABLES" element_table_list
+    {
+      $$ = WithEndLocation($3, @$);
+    }
+;
+
 edge_table_clause {ASTNode*}:
     "EDGE" "TABLES" element_table_list
     {
+      $3->GetAsOrDie<ASTGraphElementTableList>()->set_is_edge_table_list(true);
       $$ = WithEndLocation($3, @$);
     }
 ;
@@ -3327,7 +3336,7 @@ create_connection_statement {ASTNode*}:
 
 undrop_statement {ASTNode*}:
     "UNDROP" schema_object_kind opt_if_not_exists path_expression
-    at_system_time? opt_options_list
+    for_version_clause? opt_options_list
     {
       if ($schema_object_kind != SchemaObjectKind::kSchema) {
         return MakeSyntaxError(
@@ -3338,7 +3347,7 @@ undrop_statement {ASTNode*}:
               SchemaObjectKindToName($schema_object_kind)),
             " is not supported"));
       }
-      auto* undrop = MakeNode<ASTUndropStatement>(@$, $path_expression, $at_system_time, $opt_options_list);
+      auto* undrop = MakeNode<ASTUndropStatement>(@$, $path_expression, $for_version_clause, $opt_options_list);
       undrop->set_schema_object_kind($schema_object_kind);
       undrop->set_is_if_not_exists($opt_if_not_exists);
       $$ = undrop;
@@ -5522,9 +5531,11 @@ pipe_join {ASTPipeOperator*}:
 ;
 
 pipe_call {ASTPipeOperator*}:
-    "CALL" tvf as_alias[alias]?
+    "CALL" tvf as_alias[alias]? opt_partition_by_clause opt_order_by_clause
     {
-      $$ = MakeNode<ASTPipeCall>(@$, ExtendNodeRight($tvf, $alias));
+      $$ = MakeNode<ASTPipeCall>(@$, ExtendNodeRight($tvf, $alias),
+                                 $opt_partition_by_clause,
+                                 $opt_order_by_clause);
     }
 ;
 
@@ -7020,6 +7031,13 @@ table_clause_target_parenthesized {ASTNode*}:
   | parenthesized_query
 ;
 
+// TODO: b/568351814 - Accept a STRING literal as a TABLE clause target, e.g.
+// TABLE 'path', tvf(TABLE 'path') and
+// tvf(TABLE ('path' PARTITION BY x ORDER BY y)), and as a DESCRIBE target (see
+// describe_info) in a follow-up CL. See
+// (broken link).
+// TODO: b/568351814 - Decide how STRING literal table references interact with
+// table versioning, e.g. the AT clause in version-aware DML.
 table_clause_no_keyword {ASTTableClause*}:
     table_clause_target
     {
@@ -7107,11 +7125,11 @@ input_table_argument {ASTNode*}:
 ;
 
 named_non_expr_argument {ASTNamedArgument*}:
-    identifier "=>" table_clause
+    identifier_in_named_arguments[name] "=>" table_clause
     {
       auto* query = MakeNode<ASTQuery>(@3, $table_clause);
       auto* expr_subquery = MakeNode<ASTExpressionSubquery>(@3, query);
-      $$ = MakeNode<ASTNamedArgument>(@$, $identifier, expr_subquery);
+      $$ = MakeNode<ASTNamedArgument>(@$, $name, expr_subquery);
     }
 ;
 
@@ -7222,6 +7240,8 @@ tvf {ASTTVF*}:
 table_path_expression_base {ASTNode*}:
     unnest_expression
   | maybe_slashed_or_dashed_path_expression
+    // A STRING literal used as a table reference, e.g. FROM 'path'.
+  | string_literal
   | path_expression "["
     {
       return MakeSyntaxError(
@@ -7255,7 +7275,7 @@ table_path_expression_base {ASTNode*}:
 table_path_expression {ASTTableExpression*}:
     table_path_expression_base[path] hint? as_alias[alias]?
     (with_offset[offset] as_alias[offset_alias]?)?
-    pivot_or_unpivot_clause[pivot]? at_system_time[time]?
+    pivot_or_unpivot_clause[pivot]? for_version_clause[time]?
     {
       if ($offset.has_value()) {
         ExtendNodeRight(*$offset, $offset_alias);
@@ -8474,10 +8494,10 @@ is_labeled_operator {NotKeywordPresence}:
     %prec EDGE_ENDPOINT_PRECEDENCE
 ;
 
-at_system_time {ASTForSystemTime*}:
+for_version_clause {ASTForVersionClause*}:
     "FOR" ("SYSTEM" "TIME" | "SYSTEM_TIME") "AS" "OF" expression[time]
     {
-      $$ = MakeNode<ASTForSystemTime>(@$, $time);
+      $$ = MakeNode<ASTForVersionClause>(@$, $time);
     }
 ;
 
@@ -11416,38 +11436,52 @@ function_ref_arg {ASTExpression*}:
     }
 ;
 
-named_argument {ASTExpression*}:
-    identifier "=>" expression
+// Reserved keywords that are accepted as unquoted argument names on the
+// left-hand side of "=>" in a named argument (e.g., `proto => ...`).
+extra_identifier_in_named_arguments_name {absl::string_view}:
+    "PROTO"
+;
+
+identifier_in_named_arguments {ASTIdentifier*}:
+    identifier
+  | extra_identifier_in_named_arguments_name
     {
-      $$ = MakeNode<ASTNamedArgument>(@$, $1, $3);
-    }
-  | identifier "=>" lambda_argument
-    {
-      $$ = MakeNode<ASTNamedArgument>(@$, $identifier, $lambda_argument);
-    }
-  | identifier "=>" function_ref_arg
-    {
-      $$ = MakeNode<ASTNamedArgument>(@$, $identifier, $function_ref_arg);
-    }
-  | identifier "=>" input_table_argument
-    {
-      $$ = MakeNode<ASTNamedArgument>(@$, $identifier, $input_table_argument);
-    }
-  | identifier "=>" column_list_spec
-    {
-      $$ = MakeNode<ASTNamedArgument>(@$, $identifier, $column_list_spec);
-    }
-  | identifier "=>" model_arg
-    {
-      $$ = MakeNode<ASTNamedArgument>(@$, $identifier, $model_arg);
-    }
-  | identifier "=>" sequence_arg
-    {
-      $$ = MakeNode<ASTNamedArgument>(@$, $identifier, $sequence_arg);
+      $$ = node_factory.MakeIdentifier(@1, $1);
     }
 ;
 
-lambda_argument {ASTExpression*}:
+named_argument {ASTExpression*}:
+    identifier_in_named_arguments[name] "=>" expression
+    {
+      $$ = MakeNode<ASTNamedArgument>(@$, $name, $expression);
+    }
+  | identifier_in_named_arguments[name] "=>" lambda_argument
+    {
+      $$ = MakeNode<ASTNamedArgument>(@$, $name, $lambda_argument);
+    }
+  | identifier_in_named_arguments[name] "=>" function_ref_arg
+    {
+      $$ = MakeNode<ASTNamedArgument>(@$, $name, $function_ref_arg);
+    }
+  | identifier_in_named_arguments[name] "=>" input_table_argument
+    {
+      $$ = MakeNode<ASTNamedArgument>(@$, $name, $input_table_argument);
+    }
+  | identifier_in_named_arguments[name] "=>" column_list_spec
+    {
+      $$ = MakeNode<ASTNamedArgument>(@$, $name, $column_list_spec);
+    }
+  | identifier_in_named_arguments[name] "=>" model_arg
+    {
+      $$ = MakeNode<ASTNamedArgument>(@$, $name, $model_arg);
+    }
+  | identifier_in_named_arguments[name] "=>" sequence_arg
+    {
+      $$ = MakeNode<ASTNamedArgument>(@$, $name, $sequence_arg);
+    }
+;
+
+lambda_argument {ASTLambda*}:
     lambda_argument_list "->" expression
     {
       $$ = MakeNode<ASTLambda>(@$, $1, $3);
@@ -12588,10 +12622,27 @@ version_aware_clause {ASTNode*}:
   | with_timestamp_clause
 ;
 
-temporal_at_clause {ASTTemporalAt*}:
-    "AT" "(" expression ")"
+dml_target_suffix {DmlTargetSuffix}:
+    temporal_at_clause as_alias? with_offset_and_alias?
     {
-      $$ = MakeNode<ASTTemporalAt>(@$, $expression);
+      $$ = DmlTargetSuffix{
+          .temporal_at = $temporal_at_clause,
+          .alias = $as_alias.value_or(nullptr),
+          .with_offset = $with_offset_and_alias.value_or(nullptr)};
+    }
+  | as_alias? with_timestamp_clause? with_offset_and_alias?
+    {
+      $$ = DmlTargetSuffix{
+          .alias = $as_alias.value_or(nullptr),
+          .with_timestamp = $with_timestamp_clause.value_or(nullptr),
+          .with_offset = $with_offset_and_alias.value_or(nullptr)};
+    }
+;
+
+temporal_at_clause {ASTTemporalAt*}:
+    "AT" "(" identifier "=>" expression ")"
+    {
+      $$ = MakeNode<ASTTemporalAt>(@$, $identifier, $expression);
     }
 ;
 
@@ -12607,13 +12658,42 @@ with_timestamp_clause {ASTWithTimestamp*}:
     }
 ;
 
+insert_column_using_clause {ASTInsertColumnUsingClause*}:
+    "USING" "FUNCTION" path_expression ("DEFAULT" expression[default_expr])?
+    {
+      $$ = MakeNode<ASTInsertColumnUsingClause>(@$, $path_expression, $default_expr);
+    }
+  | "USING" lambda_argument ("DEFAULT" expression[default_expr])?
+    {
+      $$ = MakeNode<ASTInsertColumnUsingClause>(@$, $lambda_argument, $default_expr);
+    }
+;
+
+insert_column_item {ASTInsertColumnItem*}:
+    identifier insert_column_using_clause?
+    {
+      $$ = MakeNode<ASTInsertColumnItem>(@$, $identifier, $insert_column_using_clause);
+    }
+;
+
+insert_column_list {ASTInsertColumnList*}:
+    "(" (insert_column_item separator ",")+[column_list]
+    {
+      OVERRIDE_NEXT_TOKEN_LOOKBACK(RPAREN, LB_CLOSE_COLUMN_LIST);
+    }
+    ")"
+    {
+      $$ = MakeNode<ASTInsertColumnList>(@$, $column_list);
+    }
+;
+
 insert_statement {ASTInsertStatement*}:
     # LINT.IfChange(insert_statement)
     "INSERT"[kwd] insert_mode[mode]?
     "INTO"? maybe_dashed_generalized_path_expression[target]
     identifierPreceedsParenthsizedQuery
     hint? version_aware_clause?
-    column_list[cols]? insert_source_and_opt_on_conflict
+    insert_column_list[cols]? insert_source_and_opt_on_conflict
     assert_rows_modified[assert]? returning_clause[returning]?
     {
       auto [source, on_conflict] = $insert_source_and_opt_on_conflict;
@@ -12642,10 +12722,11 @@ insert_statement_in_pipe_prefix {ASTInsertStatement*}:
     "INSERT" insert_mode[mode]?
     "INTO"? maybe_dashed_generalized_path_expression[target]
     hint? version_aware_clause?
-    column_list? on_conflict_clause[on_conflict]?
+    insert_column_list? on_conflict_clause[on_conflict]?
     {
       $$ = MakeNode<ASTInsertStatement>(@$, $target, $hint,
-                                        $version_aware_clause, $column_list,
+                                        $version_aware_clause,
+                                        $insert_column_list,
                                         $on_conflict);
       $$->set_insert_mode($mode.value_or(ASTInsertStatement::DEFAULT_MODE));
       $$->set_operator_keyword_location(@1);
@@ -12662,16 +12743,16 @@ insert_statement_in_pipe {ASTInsertStatement*}:
 ;
 
 copy_data_source {ASTNode*}:
-    maybe_dashed_path_expression at_system_time? opt_where_clause
+    maybe_dashed_path_expression for_version_clause? opt_where_clause
     {
-      $$ = MakeNode<ASTCopyDataSource>(@$, $1, $at_system_time, $3);
+      $$ = MakeNode<ASTCopyDataSource>(@$, $1, $for_version_clause, $3);
     }
 ;
 
 clone_data_source {ASTNode*}:
-    maybe_dashed_path_expression at_system_time? opt_where_clause
+    maybe_dashed_path_expression for_version_clause? opt_where_clause
     {
-      $$ = MakeNode<ASTCloneDataSource>(@$, $1, $at_system_time, $3);
+      $$ = MakeNode<ASTCloneDataSource>(@$, $1, $for_version_clause, $3);
     }
 ;
 
@@ -12702,12 +12783,13 @@ insert_values_row {ASTInsertValuesRow*}:
 # The prefix is factored off to control the number of expanded rules
 delete_statement_prefix {ASTDeleteStatement*}:
     "DELETE"[kwd] "FROM"? maybe_dashed_generalized_path_expression hint?
-    as_alias? version_aware_clause? with_offset_and_alias?
+    dml_target_suffix[suffix]
     {
       $$ = MakeNode<ASTDeleteStatement>(@$,
                                         $maybe_dashed_generalized_path_expression,
-                                        $hint, $as_alias, $version_aware_clause,
-                                        $with_offset_and_alias);
+                                        $hint, $suffix.temporal_at,
+                                        $suffix.alias, $suffix.with_timestamp,
+                                        $suffix.with_offset);
       $$->set_operator_keyword_location(@kwd);
     }
 ;
@@ -12749,17 +12831,16 @@ with_offset_and_alias {ASTWithOffset*}:
 ;
 
 update_statement {ASTNode*}:
-    "UPDATE"[kwd] maybe_dashed_generalized_path_expression[path] hint? as_alias?
-    version_aware_clause? with_offset_and_alias?
+    "UPDATE"[kwd] maybe_dashed_generalized_path_expression[path] hint?
+    dml_target_suffix[suffix]
     "SET" (update_item separator ",")+[update_item_list]
     opt_from_clause where_expression? assert_rows_modified? returning_clause?
     {
       auto* update_item_list = MakeNode<ASTUpdateItemList>(@update_item_list, $update_item_list);
-      $$ = MakeNode<ASTUpdateStatement>(@$, $path, $hint, $as_alias,
-                                        $version_aware_clause,
-                                        $with_offset_and_alias,
-                                        update_item_list, $opt_from_clause,
-                                        $where_expression,
+      $$ = MakeNode<ASTUpdateStatement>(@$, $path, $hint, $suffix.temporal_at,
+                                        $suffix.alias, $suffix.with_timestamp,
+                                        $suffix.with_offset, update_item_list,
+                                        $opt_from_clause, $where_expression,
                                         $assert_rows_modified,
                                         $returning_clause);
       $$->set_operator_keyword_location(@kwd);

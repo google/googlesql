@@ -660,7 +660,7 @@ class LazyResolutionFunction {
 
   // Returns the function's aggregate expression list (which is only non-empty
   // for UDAs).
-  const std::vector<std::unique_ptr<const ResolvedComputedColumn>>*
+  const std::vector<std::unique_ptr<const ResolvedComputedColumnBase>>*
   AggregateExpressionList() const;
 
   // Indicates whether the function is SCALAR or AGGREGATE.

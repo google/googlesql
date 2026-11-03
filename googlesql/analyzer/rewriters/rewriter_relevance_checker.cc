@@ -420,7 +420,9 @@ class RewriteApplicabilityChecker : public ResolvedASTVisitor {
       const ResolvedGeneralizedQueryStmt* node) override {
     std::vector<const ResolvedNode*> dml_scans;
     node->GetDescendantsWithKinds(
-        {RESOLVED_GRAPH_INSERT_SCAN, RESOLVED_GRAPH_UPDATE_SCAN}, &dml_scans);
+        {RESOLVED_GRAPH_INSERT_SCAN, RESOLVED_GRAPH_UPDATE_SCAN,
+         RESOLVED_GRAPH_DELETE_SCAN},
+        &dml_scans);
     if (dml_scans.empty()) {
       applicable_rewrites_->insert(REWRITE_GENERALIZED_QUERY_STMT);
     }
@@ -432,6 +434,17 @@ class RewriteApplicabilityChecker : public ResolvedASTVisitor {
     applicable_rewrites_->insert(REWRITE_SUBPIPELINE_STMT);
     // This will also be applicable after the first rewrite runs.
     applicable_rewrites_->insert(REWRITE_GENERALIZED_QUERY_STMT);
+    return DefaultVisit(node);
+  }
+
+  absl::Status VisitResolvedDeleteStmt(
+      const ResolvedDeleteStmt* node) override {
+    // TODO: b/535677131 - Skip `ResolvedDeleteScan` once GQL `DELETE` is
+    // supported, as `REWRITE_DML_DELETE_WITH_JOIN` only applies to top-level
+    // `DELETE` statements.
+    if (node->using_scan() != nullptr) {
+      applicable_rewrites_->insert(REWRITE_DML_DELETE_WITH_JOIN);
+    }
     return DefaultVisit(node);
   }
 

@@ -462,6 +462,57 @@ select afn_agg() over (order by `double` RANGE between -1.0 preceding and
                                                        ^
 ==
 
+# Negative NUMERIC and BIGNUMERIC literals are also rejected, including values
+# very close to zero and INT64 literals coerced to the ORDER BY type.
+[language_features=NONE,+ANALYTIC_FUNCTIONS,+NUMERIC_TYPE]
+select afn_agg() over (order by x RANGE between
+                         {{NUMERIC '-1'|NUMERIC '-0.000000001'|-1}} preceding
+                         and current row)
+from unnest([NUMERIC '1']) as x
+--
+ALTERNATION GROUP: NUMERIC '-1'
+--
+ERROR: Window framing expression cannot evaluate to a negative value [at 2:26]
+                         NUMERIC '-1' preceding
+                         ^
+--
+ALTERNATION GROUP: NUMERIC '-0.000000001'
+--
+ERROR: Window framing expression cannot evaluate to a negative value [at 2:26]
+                         NUMERIC '-0.000000001' preceding
+                         ^
+--
+ALTERNATION GROUP: -1
+--
+ERROR: Window framing expression cannot evaluate to a negative value [at 2:26]
+                         -1 preceding
+                         ^
+==
+
+[language_features=NONE,+ANALYTIC_FUNCTIONS,+BIGNUMERIC_TYPE]
+select afn_agg() over (order by x RANGE between current row and
+                         {{BIGNUMERIC '-1'|BIGNUMERIC '-1e-38'|-1}} following)
+from unnest([BIGNUMERIC '1']) as x
+--
+ALTERNATION GROUP: BIGNUMERIC '-1'
+--
+ERROR: Window framing expression cannot evaluate to a negative value [at 2:26]
+                         BIGNUMERIC '-1' following)
+                         ^
+--
+ALTERNATION GROUP: BIGNUMERIC '-1e-38'
+--
+ERROR: Window framing expression cannot evaluate to a negative value [at 2:26]
+                         BIGNUMERIC '-1e-38' following)
+                         ^
+--
+ALTERNATION GROUP: -1
+--
+ERROR: Window framing expression cannot evaluate to a negative value [at 2:26]
+                         -1 following)
+                         ^
+==
+
 # The offset value cannot be NULL.
 select afn_agg() over (rows between 2 preceding and null following)
 from keyvalue

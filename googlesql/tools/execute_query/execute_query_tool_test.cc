@@ -47,6 +47,7 @@
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
+#include "absl/time/simulated_clock.h"
 #include "absl/types/span.h"
 #include "file_based_test_driver/file_based_test_driver.h"
 #include "file_based_test_driver/test_case_options.h"
@@ -862,7 +863,7 @@ TEST(ExecuteQuery, RespectEvaluatorOptions) {
         absl::CivilSecond(1066, 10, 14, 1, 1, 1), absl::UTCTimeZone());
     std::ostringstream output;
 
-    googlesql_base::SimulatedClock fake_clock(fake_time);
+    absl::SimulatedClock fake_clock(fake_time);
     config.mutable_evaluator_options().clock = &fake_clock;
     GOOGLESQL_EXPECT_OK(ExecuteQuery("select CURRENT_DATE()", config, output));
     EXPECT_THAT(output.str(), HasSubstr("1066"));
@@ -888,7 +889,7 @@ TEST(ExecuteQuery, RespectEvaluatorOptionsExpressions) {
         absl::CivilSecond(1066, 10, 14, 1, 1, 1), absl::UTCTimeZone());
     std::ostringstream output;
 
-    googlesql_base::SimulatedClock fake_clock(fake_time);
+    absl::SimulatedClock fake_clock(fake_time);
     config.mutable_evaluator_options().clock = &fake_clock;
     GOOGLESQL_EXPECT_OK(ExecuteQuery("CURRENT_DATE()", config, output));
     EXPECT_THAT(output.str(), HasSubstr("1066"));

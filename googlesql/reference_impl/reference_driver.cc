@@ -90,12 +90,12 @@
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
+#include "absl/time/clock_interface.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "googlesql/base/ret_check.h"
 #include "googlesql/base/status_builder.h"
 #include "googlesql/base/map_util.h"
-#include "googlesql/base/clock.h"
 
 // Ideally we would rename this to
 // --reference_driver_statement_eval_timeout_sec, but that could break existing
@@ -1474,7 +1474,7 @@ absl::Status ReferenceDriver::ExecuteScriptForReferenceDriverInternal(
   script_executor_options.PopulateFromAnalyzerOptions(*analyzer_options);
   EvaluatorOptions evaluator_options;
   evaluator_options.type_factory = type_factory();
-  evaluator_options.clock = googlesql_base::Clock::RealClock();
+  evaluator_options.clock = &absl::Clock::GetRealClock();
   ReferenceDriverStatementEvaluator evaluator(
       *analyzer_options, result, &parameters, options, type_factory(), this,
       evaluator_options);

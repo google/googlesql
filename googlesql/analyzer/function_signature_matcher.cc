@@ -968,11 +968,11 @@ FunctionSignatureMatcher::CheckResolveLambdaTypeAndCollectTemplatedArguments(
 
     for (int i = 0; i < sig.arguments().size(); ++i) {
       InputArgumentType arg_type(sig.argument(i).type());
-      GOOGLESQL_ASSIGN_OR_RETURN(
-          bool result,
-          CheckSingleInputArgumentTypeAndCollectTemplatedArgument(
-              -1, nullptr, arg_type, sig_arg_types[i], resolve_lambda_callback,
-              templated_argument_map, signature_match_result, nullptr));
+      GOOGLESQL_ASSIGN_OR_RETURN(bool result,
+                       CheckSingleInputArgumentTypeAndCollectTemplatedArgument(
+                           arg_idx, nullptr, arg_type, sig_arg_types[i],
+                           resolve_lambda_callback, templated_argument_map,
+                           signature_match_result, nullptr));
       if (!result) return false;
     }
 
@@ -981,7 +981,7 @@ FunctionSignatureMatcher::CheckResolveLambdaTypeAndCollectTemplatedArguments(
       GOOGLESQL_ASSIGN_OR_RETURN(
           bool result,
           CheckSingleInputArgumentTypeAndCollectTemplatedArgument(
-              -1, nullptr, body_arg_type, arg_type_lambda.body_type(),
+              arg_idx, nullptr, body_arg_type, arg_type_lambda.body_type(),
               resolve_lambda_callback, templated_argument_map,
               signature_match_result, nullptr));
       if (!result) return false;
@@ -1129,7 +1129,7 @@ FunctionSignatureMatcher::CheckResolveLambdaTypeAndCollectTemplatedArguments(
     InputArgumentType body_arg_type(resolved_lambda->body()->type());
     GOOGLESQL_ASSIGN_OR_RETURN(bool result,
                      CheckSingleInputArgumentTypeAndCollectTemplatedArgument(
-                         /*arg_idx=*/-1, ast_lambda->body(), body_arg_type,
+                         arg_idx, ast_lambda->body(), body_arg_type,
                          arg_type_lambda.body_type(), resolve_lambda_callback,
                          templated_argument_map, signature_match_result,
                          /*arg_overrides=*/nullptr));
@@ -1459,6 +1459,14 @@ absl::StatusOr<bool> FunctionSignatureMatcher::
                         UserFacingName(input_argument)));
     return false;
   }
+  if (kind == ARG_KIND_EXPR_ROW_ANY) {
+    // RowType is based on a specific definition and expression, it cannot
+    // coerce, it doesn't make sense to infer from an untyped argument.
+    SET_MISMATCH_ERROR_WITH_INDEX(
+        absl::StrFormat("Row type cannot be inferred from untyped argument: %s",
+                        UserFacingName(input_argument)));
+    return false;
+  }
   // ARG_KIND_EXPR_MAP_ANY_1_2 is intentionally not handled here, because
   // we return an error when the key or value type can't be inferred.
   return true;
@@ -1513,7 +1521,9 @@ absl::StatusOr<bool> FunctionSignatureMatcher::
       (signature_argument_kind == ARG_KIND_EXPR_PROTO_ANY &&
        !input_argument.type()->IsProto()) ||
       (signature_argument_kind == ARG_KIND_EXPR_STRUCT_ANY &&
-       !input_argument.type()->IsStruct())) {
+       !input_argument.type()->IsStruct()) ||
+      (signature_argument_kind == ARG_KIND_EXPR_ROW_ANY &&
+       !input_argument.type()->IsRow())) {
     SET_MISMATCH_ERROR_WITH_INDEX(absl::StrFormat(
         "expected %s but found %s",
         signature_argument.UserFacingName(language_.product_mode(),
@@ -1656,21 +1666,27 @@ absl::StatusOr<bool> FunctionSignatureMatcher::
       }
       break;
     default:
+      if (input_type == nullptr) {
+        break;
+      }
       if (
           // Disallow graph types when the signature does not *explicitly* take
           // graph element types: even if the signature type is ANY.
-          (!language_.LanguageFeatureEnabled(
-               FEATURE_SQL_GRAPH_EXPOSE_GRAPH_ELEMENT) &&
-           input_type != nullptr && input_type->IsGraphElement()) ||
+          (input_type->IsGraphElement() &&
+           !language_.LanguageFeatureEnabled(
+               FEATURE_SQL_GRAPH_EXPOSE_GRAPH_ELEMENT)) ||
           // Disallow measure types for templated arguments except
           // ARG_KIND_EXPR_MEASURE_ANY_1.
-          (signature_argument.kind() != ARG_KIND_EXPR_MEASURE_ANY_1 &&
-           input_type != nullptr && input_type->IsMeasureType()) ||
+          (input_type->IsMeasureType() &&
+           signature_argument.kind() != ARG_KIND_EXPR_MEASURE_ANY_1) ||
           // Disallow container types that contain measures as any kind of
           // function argument.
-          (input_type != nullptr && IsContainerTypeWithMeasures(input_type)) ||
-          // Disallow ROW types as any kind of function argument.
-          (input_type != nullptr && input_type->IsRowOrTable())) {
+          (IsContainerTypeWithMeasures(input_type)) ||
+          // Disallow TableRef types as any kind of function argument.
+          (input_type->IsTable()) ||
+          // Disallow RowType types, except for the Row-specific template.
+          (input_type->IsRow() &&
+           signature_argument.kind() != ARG_KIND_EXPR_ROW_ANY)) {
         SET_MISMATCH_ERROR_WITH_INDEX(absl::StrFormat(
             "expected %s, found %s: which is not allowed for %s arguments",
             signature_argument.UserFacingName(language_.product_mode(),

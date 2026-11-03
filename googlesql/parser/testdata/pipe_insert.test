@@ -23,9 +23,11 @@ QueryStatement [88-152] [from t1 |>...where true]
         PathExpression [124-129] [t3.t4]
           Identifier(t3) [124-126] [t3]
           Identifier(t4) [127-129] [t4]
-        ColumnList [130-138] [(c1, c2)]
-          Identifier(c1) [131-133] [c1]
-          Identifier(c2) [135-137] [c2]
+        InsertColumnList [130-138] [(c1, c2)]
+          InsertColumnItem [131-133] [c1]
+            Identifier(c1) [131-133] [c1]
+          InsertColumnItem [135-137] [c2]
+            Identifier(c2) [135-137] [c2]
     PipeWhere [139-152] [|> where true]
       WhereClause [142-152] [where true]
         BooleanLiteral(true) [148-152] [true]
@@ -412,9 +414,11 @@ QueryStatement [0-143] [SELECT 1 |...ACTION x,y]
           HintEntry [43-49] [hint=1]
             Identifier(hint) [43-47] [hint]
             IntLiteral(1) [48-49] [1]
-        ColumnList [51-58] [(c1,c2)]
-          Identifier(c1) [52-54] [c1]
-          Identifier(c2) [55-57] [c2]
+        InsertColumnList [51-58] [(c1,c2)]
+          InsertColumnItem [52-54] [c1]
+            Identifier(c1) [52-54] [c1]
+          InsertColumnItem [55-57] [c2]
+            Identifier(c2) [55-57] [c2]
         OnConflictClause(conflict_action=NOTHING) [62-84] [ON CONFLICT DO NOTHING]
         AssertRowsModified [88-112] [ASSERT_ROWS_MODIFIED 100]
           IntLiteral(100) [109-112] [100]
@@ -647,3 +651,79 @@ FROM
    ASSERT_ROWS_MODIFIED 100
    THEN RETURN
      *
+==
+
+# Pipe INSERT with USING FUNCTION and USING lambda clauses on columns (the
+# parser accepts lambda expressions in USING, which the analyzer currently
+# rejects).
+FROM t1
+|> INSERT OR UPDATE INTO t2 (
+  k,
+  v1 USING FUNCTION fn1,
+  v2 USING FUNCTION pkg.fn2 DEFAULT 0,
+  v3 USING (a, b) -> a + b,
+  v4 USING (a, b) -> a + b DEFAULT 1 + 2
+)
+--
+QueryStatement [0-177] [FROM t1 |>...DEFAULT 1 + 2 )]
+  Query [0-177] [FROM t1 |>...DEFAULT 1 + 2 )]
+    FromQuery [0-7] [FROM t1]
+      FromClause [0-7] [FROM t1]
+        TablePathExpression [5-7] [t1]
+          PathExpression [5-7] [t1]
+            Identifier(t1) [5-7] [t1]
+    PipeInsert [8-177] [|> INSERT...DEFAULT 1 + 2 )]
+      InsertStatement(insert_mode=UPDATE) [11-177] [INSERT OR...DEFAULT 1 + 2 )]
+        PathExpression [33-35] [t2]
+          Identifier(t2) [33-35] [t2]
+        InsertColumnList [36-177] [(   k,   v1...DEFAULT 1 + 2 )]
+          InsertColumnItem [40-41] [k]
+            Identifier(k) [40-41] [k]
+          InsertColumnItem [45-66] [v1 USING FUNCTION fn1]
+            Identifier(v1) [45-47] [v1]
+            InsertColumnUsingClause [48-66] [USING FUNCTION fn1]
+              PathExpression [63-66] [fn1]
+                Identifier(fn1) [63-66] [fn1]
+          InsertColumnItem [70-105] [v2 USING FUNCTION...DEFAULT 0]
+            Identifier(v2) [70-72] [v2]
+            InsertColumnUsingClause [73-105] [USING FUNCTION...DEFAULT 0]
+              PathExpression [88-95] [pkg.fn2]
+                Identifier(pkg) [88-91] [pkg]
+                Identifier(fn2) [92-95] [fn2]
+              IntLiteral(0) [104-105] [0]
+          InsertColumnItem [109-133] [v3 USING (a, b) -> a + b]
+            Identifier(v3) [109-111] [v3]
+            InsertColumnUsingClause [112-133] [USING (a, b) -> a + b]
+              Lambda [118-133] [(a, b) -> a + b]
+                StructConstructorWithParens [118-124] [(a, b)]
+                  PathExpression [119-120] [a]
+                    Identifier(a) [119-120] [a]
+                  PathExpression [122-123] [b]
+                    Identifier(b) [122-123] [b]
+                BinaryExpression(+) [128-133] [a + b]
+                  PathExpression [128-129] [a]
+                    Identifier(a) [128-129] [a]
+                  PathExpression [132-133] [b]
+                    Identifier(b) [132-133] [b]
+          InsertColumnItem [137-175] [v4 USING (...DEFAULT 1 + 2]
+            Identifier(v4) [137-139] [v4]
+            InsertColumnUsingClause [140-175] [USING (a,...DEFAULT 1 + 2]
+              Lambda [146-161] [(a, b) -> a + b]
+                StructConstructorWithParens [146-152] [(a, b)]
+                  PathExpression [147-148] [a]
+                    Identifier(a) [147-148] [a]
+                  PathExpression [150-151] [b]
+                    Identifier(b) [150-151] [b]
+                BinaryExpression(+) [156-161] [a + b]
+                  PathExpression [156-157] [a]
+                    Identifier(a) [156-157] [a]
+                  PathExpression [160-161] [b]
+                    Identifier(b) [160-161] [b]
+              BinaryExpression(+) [170-175] [1 + 2]
+                IntLiteral(1) [170-171] [1]
+                IntLiteral(2) [174-175] [2]
+--
+FROM
+  t1
+|> INSERT OR UPDATE INTO t2(k, v1 USING FUNCTION fn1, v2 USING FUNCTION pkg.fn2 DEFAULT 0, v3 USING (a,
+       b) -> a + b, v4 USING (a, b) -> a + b DEFAULT 1 + 2)

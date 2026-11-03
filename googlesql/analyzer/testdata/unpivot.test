@@ -601,6 +601,93 @@ QueryStmt
                     +-field_idx=0
 ==
 
+# Unpivot with subquery aliasing columns
+SELECT *
+FROM (SELECT Key AS a, Value AS b FROM KeyValue) UNPIVOT(x FOR y IN (a));
+--
+QueryStmt
++-output_column_list=
+| +-$unpivot.b#5 AS b [STRING]
+| +-$unpivot.x#3 AS x [INT64]
+| +-$unpivot.y#4 AS y [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=$unpivot.[b#5, x#3, y#4]
+    +-input_scan=
+      +-UnpivotScan
+        +-column_list=$unpivot.[b#5, x#3, y#4]
+        +-input_scan=
+        | +-ProjectScan
+        |   +-column_list=KeyValue.[Key#1, Value#2]
+        |   +-input_scan=
+        |     +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+        +-value_column_list=[$unpivot.x#3]
+        +-label_column=$unpivot.y#4
+        +-label_list=
+        | +-Literal(type=STRING, value="a")
+        +-unpivot_arg_list=
+        | +-UnpivotArg
+        |   +-column_list=
+        |     +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+        +-projected_input_column_list=
+        | +-b#5 := ColumnRef(type=STRING, column=KeyValue.Value#2)
+        +-include_nulls=FALSE
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$unpivot.b#5 AS b [STRING]
+| +-$unpivot.x#3 AS x [INT64]
+| +-$unpivot.y#4 AS y [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=$unpivot.[b#5, x#3, y#4]
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=$unpivot.[b#5, x#3, y#4]
+        +-expr_list=
+        | +-b#5 := ColumnRef(type=STRING, column=KeyValue.Value#2)
+        | +-x#3 :=
+        | | +-GetStructField
+        | |   +-type=INT64
+        | |   +-expr=
+        | |   | +-ColumnRef(type=STRUCT<x INT64, y STRING>, column=unpivot_array_0.unpivot_unnest#6)
+        | |   +-field_idx=0
+        | +-y#4 :=
+        |   +-GetStructField
+        |     +-type=STRING
+        |     +-expr=
+        |     | +-ColumnRef(type=STRUCT<x INT64, y STRING>, column=unpivot_array_0.unpivot_unnest#6)
+        |     +-field_idx=1
+        +-input_scan=
+          +-FilterScan
+            +-column_list=[KeyValue.Key#1, KeyValue.Value#2, unpivot_array_0.unpivot_unnest#6]
+            +-input_scan=
+            | +-ArrayScan
+            |   +-column_list=[KeyValue.Key#1, KeyValue.Value#2, unpivot_array_0.unpivot_unnest#6]
+            |   +-input_scan=
+            |   | +-ProjectScan
+            |   |   +-column_list=KeyValue.[Key#1, Value#2]
+            |   |   +-input_scan=
+            |   |     +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+            |   +-array_expr_list=
+            |   | +-FunctionCall(GoogleSQL:$make_array(repeated(1) STRUCT<x INT64, y STRING>) -> ARRAY<STRUCT<x INT64, y STRING>>)
+            |   |   +-MakeStruct
+            |   |     +-type=STRUCT<x INT64, y STRING>
+            |   |     +-field_list=
+            |   |       +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+            |   |       +-Literal(type=STRING, value="a", has_explicit_type=TRUE)
+            |   +-element_column_list=[unpivot_array_0.unpivot_unnest#6]
+            +-filter_expr=
+              +-FunctionCall(GoogleSQL:$not(BOOL) -> BOOL)
+                +-FunctionCall(GoogleSQL:$is_null(INT64) -> BOOL)
+                  +-GetStructField
+                    +-type=INT64
+                    +-expr=
+                    | +-ColumnRef(type=STRUCT<x INT64, y STRING>, column=unpivot_array_0.unpivot_unnest#6)
+                    +-field_idx=0
+==
+
 # Unpivot with join
 SELECT * FROM KeyValue, KeyValue UNPIVOT(a for b in (Key));
 --
@@ -866,13 +953,13 @@ SELECT
 --
 ALTERNATION GROUP: x
 --
-ERROR: Correlated column references in UNPIVOT IN clause is not allowed [at 2:61]
+ERROR: Correlated column references in UNPIVOT IN clause are not allowed [at 2:61]
     (SELECT Count(*) FROM KeyValue UNPIVOT(a for b IN (Key, x)))
                                                             ^
 --
 ALTERNATION GROUP: input.x
 --
-ERROR: Correlated column references in UNPIVOT IN clause is not allowed [at 2:61]
+ERROR: Correlated column references in UNPIVOT IN clause are not allowed [at 2:61]
     (SELECT Count(*) FROM KeyValue UNPIVOT(a for b IN (Key, input.x)))
                                                             ^
 ==

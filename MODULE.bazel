@@ -16,7 +16,7 @@
 
 module(
     name = "googlesql",
-    version = "2026.10.3",
+    version = "2026.11.1",
 )
 
 GOOGLESQL_JAVA_ARTIFACTS = [
@@ -47,7 +47,15 @@ GOOGLESQL_JAVA_ARTIFACTS = [
     "com.google.testparameterinjector:test-parameter-injector:1.18",
 ]
 
-bazel_dep(name = "abseil-cpp", version = "20260107.0", repo_name = "com_google_absl")
+bazel_dep(name = "abseil-cpp", version = "20260526.0", repo_name = "com_google_absl")
+# abseil-cpp 20260526.0 dropped compatibility_level = 1 (defaulting to 0),
+# whereas transitive dependencies (e.g. googletest) request older abseil-cpp
+# versions with compatibility_level = 1. Override to bypass the Bazel 7
+# compatibility_level mismatch error.
+single_version_override(
+    module_name = "abseil-cpp",
+    version = "20260526.0",
+)
 bazel_dep(name = "abseil-py", version = "2.1.0", repo_name = "io_abseil_py")
 bazel_dep(name = "aspect_rules_esbuild", version = "0.25.1")
 bazel_dep(name = "bazel_features", version = "1.33.0")
@@ -85,6 +93,10 @@ maven = use_extension("@rules_jvm_external//:extensions.bzl", "maven")
 maven.install(
     artifacts = GOOGLESQL_JAVA_ARTIFACTS,
     generate_compat_repositories = True,
+    repositories = [
+        "https://maven-central.storage-download.googleapis.com/maven2",
+        "https://repo1.maven.org/maven2",
+    ],
 )
 use_repo(maven, "maven")
 
@@ -96,6 +108,12 @@ use_repo(go_deps, "com_github_inspirer_textmapper")
 # Python dependencies.
 pip = use_extension("@rules_python//python/extensions:pip.bzl", "pip")
 pip.parse(
+    extra_pip_args = [
+        "--retries",
+        "5",
+        "--timeout",
+        "60",
+    ],
     hub_name = "pypi",
     python_version = "3.11",
     requirements_lock = "//:requirements.txt",

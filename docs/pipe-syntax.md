@@ -932,14 +932,23 @@ a `QUALIFY` clause, use window functions inside a `WHERE` clause instead.
 <pre class="lang-sql prettyprint no-copy">
 -- Aggregation with grouping
 |> <span class="kwd">AGGREGATE</span> [aggregate_expression [[AS] alias] [, ...]]
-   GROUP BY groupable_items [[AS] alias] [, ...]
+   GROUP BY <span class="var">group_by_specification</span>
+
+<span class="var">group_by_specification</span>:
+  {
+    groupable_item [[AS] alias] [, ...]
+    | <span class="var">grouping_sets_specification</span>
+    | <span class="var">rollup_specification</span>
+    | <span class="var">cube_specification</span>
+    | ()
+  }
 </pre>
 <pre class="lang-sql prettyprint">
 -- Aggregation with grouping and shorthand ordering syntax
 |> <span class="kwd">AGGREGATE</span> [aggregate_expression [[AS] alias] [<span class="var">order_suffix</span>] [, ...]]
    GROUP [AND ORDER] BY groupable_item [[AS] alias] [<span class="var">order_suffix</span>] [, ...]
 
-<span class="var">order_suffix</span>: {ASC | DESC} [{<span class="var">NULLS FIRST</span> | <span class="var">NULLS LAST</span>}]
+<span class="var">order_suffix</span>: {ASC | DESC} [{NULLS FIRST | NULLS LAST}]
 </pre>
 
 **Description**
@@ -966,15 +975,50 @@ using the [`AS` operator][as-pipe-operator]. Window
 functions aren't allowed, but the [`EXTEND` operator][extend-pipe-operator] can
 be used before the `AGGREGATE` operator to compute window functions.
 
-The `GROUP BY` clause in the `AGGREGATE` operator corresponds to the `GROUP BY`
-clause in standard syntax. Unlike in standard syntax, aliases can be assigned to
-`GROUP BY` items. Standard
-grouping operators like `GROUPING SETS`, `ROLLUP`, and `CUBE` are
-supported.
+**Grouping**
+
+The `GROUP BY` clause in the `AGGREGATE` operator corresponds to the
+[`GROUP BY` clause][group-by-clause] in standard syntax, with the following
+differences:
+
++   Unlike in standard syntax, you can't use a column ordinal (such as
+    `GROUP BY 1, 2`), an alias from the `AGGREGATE` expression list, or
+    `GROUP BY ALL`.
+    Each `groupable_item` must be a [groupable][data-type-properties] expression
+    evaluated on the input table.
++   Unlike in standard syntax, you can assign a column alias (`[AS] alias`) to a
+    standalone `groupable_item` in the `GROUP BY` clause.
++   Standard grouping specifications such as
+    [`GROUPING SETS`][group-by-grouping-sets],
+    [`ROLLUP`][group-by-rollup],
+    [`CUBE`][group-by-cube], and `()` are supported, with the following rules:
+    +   `()` can't be combined with other grouping items.
+    +   Column aliases (`[AS] alias`) can't be applied to
+        `GROUPING SETS`, `ROLLUP`, `CUBE`, or `()` clauses, or to expressions
+        inside them.
+    +   Every `groupable_item` inside `GROUPING SETS`, `ROLLUP`, or `CUBE` must
+        have an [implicit alias][implicit-aliases] (such as a column name or
+        field path), which becomes its output column name. Anonymous expressions
+        (such as `x + 1` or `MOD(x, 3)`) aren't allowed inside these clauses.
+    +   When the `GROUP BY` clause contains `GROUPING SETS`, `ROLLUP`, or
+        `CUBE`, standalone `groupable_item` expressions outside them must also
+        have an alias (implicit or explicit). For example,
+        `GROUP BY ROLLUP(item), sales + 1` produces an error, but
+        `GROUP BY ROLLUP(item), sales + 1 AS s` is supported.
+    +   To group by a computed expression in `GROUPING SETS`, `ROLLUP`, or
+        `CUBE`, use the [`EXTEND` operator][extend-pipe-operator] before the
+        `AGGREGATE` operator to compute the expression and assign an alias, and
+        then reference that column by name.
+        To rename an existing column when grouping with these clauses, use the
+        [`RENAME` operator][rename-pipe-operator] before or after the
+        `AGGREGATE` operator.
+    +   Duplicate grouping expressions in `GROUPING SETS`, `ROLLUP`, or `CUBE`
+        are deduplicated in the output table, so each unique grouping column
+        appears once in the output column list, in order of first appearance.
 
 The output columns from the `AGGREGATE` operator include all grouping columns
-first, followed by all aggregate columns, using their assigned aliases as the
-column names.
+first, followed by all aggregate columns, using their assigned or implicit
+aliases as the column names.
 
 Unlike in standard syntax, grouping expressions aren't repeated across `SELECT`
 and `GROUP BY` clauses. In pipe syntax, the grouping expressions are listed
@@ -1043,6 +1087,29 @@ FROM table1
  +---------+-----------+-------------*/
 ```
 
+```googlesql
+-- Aggregation with ROLLUP on a column computed with EXTEND
+(
+  SELECT 'apples' AS item, 2 AS sales
+  UNION ALL
+  SELECT 'bananas' AS item, 5 AS sales
+  UNION ALL
+  SELECT 'apples' AS item, 7 AS sales
+)
+|> EXTEND UPPER(item) AS bucket
+|> AGGREGATE COUNT(*) AS num_items, SUM(sales) AS total_sales
+   GROUP BY ROLLUP(bucket)
+|> ORDER BY bucket;
+
+/*---------+-----------+-------------+
+ | bucket  | num_items | total_sales |
+ +---------+-----------+-------------+
+ | NULL    | 3         | 14          |
+ | APPLES  | 2         | 9           |
+ | BANANAS | 1         | 5           |
+ +---------+-----------+-------------*/
+```
+
 #### Shorthand ordering syntax with `AGGREGATE` 
 <a id="shorthand_order_pipe_syntax"></a>
 
@@ -1059,7 +1126,7 @@ of the `AGGREGATE` operator without repeating the column list:
 </pre>
 
 The `GROUP AND ORDER BY` clause is equivalent to an `ORDER BY` clause on all
-`groupable_items`. By default, each `groupable_item` is sorted in ascending
+`groupable_item`s. By default, each `groupable_item` is sorted in ascending
 order with `NULL` values first. Other ordering suffixes like `DESC`
 or `NULLS LAST` can be used for other orders.
 
@@ -1071,6 +1138,12 @@ sorting.
 Adding these suffixes is equivalent to adding an `ORDER BY` clause that includes
 all of the suffixed columns with the suffixed grouping columns first, matching
 the left-to-right output column order.
+
+The `GROUP AND ORDER BY` clause and ordering suffixes on `GROUP BY` items are
+supported only on standalone `groupable_item` expressions, and can't be used
+with `GROUPING SETS`, `ROLLUP`, `CUBE`, or `()`.
+To sort by grouping columns from these specifications, use a separate
+[`ORDER BY` operator][order-by-pipe-operator] after the `AGGREGATE` operator.
 
 **Examples**
 
@@ -1142,6 +1215,18 @@ FROM Produce
 ```
 
 [group-by-clause]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#group_by_clause
+
+[data-type-properties]: https://github.com/google/googlesql/blob/master/docs/data-types.md#data_type_properties
+
+[group-by-grouping-sets]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#group_by_grouping_sets
+
+[group-by-cube]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#group_by_cube
+
+[group-by-rollup]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#group_by_rollup
+
+[implicit-aliases]: https://github.com/google/googlesql/blob/master/docs/query-syntax.md#implicit_aliases
+
+[rename-pipe-operator]: #rename_pipe_operator
 
 [aggregate-functions]: https://github.com/google/googlesql/blob/master/docs/aggregate_functions.md
 

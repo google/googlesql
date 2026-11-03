@@ -286,6 +286,8 @@ enum class FunctionKind {
   kSafeProtoMapAtKey,
   kProtoMapContainsKey,
   kProtoModifyMap,
+  // Variant functions
+  kIsVariantNull,
   // JSON functions
   kJsonExtract,
   kJsonExtractScalar,
@@ -584,7 +586,7 @@ enum class FunctionKind {
   // Vector functions
   kEncodeVector,
   kDecodeVector,
-  kVectorFloat32DimensionCount,
+  kVectorDimensionCount,
   kVectorEncoding,
 
   // Map functions
@@ -621,6 +623,7 @@ enum class FunctionKind {
   kHop,
   kVectorSearchTVF,
   kKMeansTVF,
+  kLookupTable,
   // AI functions
   kAiIf,
 };
@@ -2498,7 +2501,7 @@ class DecodeVectorFunction : public SimpleBuiltinScalarFunction {
                              EvaluationContext* context) const override;
 };
 
-class VectorFloat32DimensionCountFunction : public SimpleBuiltinScalarFunction {
+class VectorDimensionCountFunction : public SimpleBuiltinScalarFunction {
  public:
   using SimpleBuiltinScalarFunction::SimpleBuiltinScalarFunction;
   absl::StatusOr<Value> Eval(absl::Span<const TupleData* const> params,
@@ -2507,6 +2510,14 @@ class VectorFloat32DimensionCountFunction : public SimpleBuiltinScalarFunction {
 };
 
 class JaroWinklerSimilarityFunction : public SimpleBuiltinScalarFunction {
+ public:
+  using SimpleBuiltinScalarFunction::SimpleBuiltinScalarFunction;
+  absl::StatusOr<Value> Eval(absl::Span<const TupleData* const> params,
+                             absl::Span<const Value> args,
+                             EvaluationContext* context) const override;
+};
+
+class VectorEncodingFunction : public SimpleBuiltinScalarFunction {
  public:
   using SimpleBuiltinScalarFunction::SimpleBuiltinScalarFunction;
   absl::StatusOr<Value> Eval(absl::Span<const TupleData* const> params,
@@ -2752,6 +2763,19 @@ class HopTVF : public BuiltinTableValuedFunction {
     absl::Status status_;
     std::unique_ptr<googlesql::TypeFactory> type_factory_;
   };
+};
+
+class LookupTVF : public BuiltinTableValuedFunction {
+ public:
+  explicit LookupTVF(FunctionKind kind) : BuiltinTableValuedFunction(kind) {}
+
+  absl::StatusOr<std::unique_ptr<EvaluatorTableIterator>> CreateEvaluator(
+      std::vector<TableValuedFunction::TvfEvaluatorArg> args,
+      std::shared_ptr<FunctionSignature> function_call_signature,
+      std::shared_ptr<const TVFSignature> tvf_signature,
+      EvaluationContext* context) override;
+
+  std::string debug_name() const override { return "LookupTable"; }
 };
 
 class AiIfFunction : public SimpleBuiltinScalarFunction {

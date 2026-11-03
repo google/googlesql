@@ -500,3 +500,136 @@ select func(name=>INPUT TABLE AS xyz)
 ERROR: Syntax error: Expected ")" but got keyword AS [at 1:31]
 select func(name=>INPUT TABLE AS xyz)
                               ^
+==
+
+# PARTITION BY and ORDER BY in pipe CALL
+select 1
+|> call f() partition by a
+|> call f() order by b desc
+|> call f() partition by a, b + 1 order by c asc, d desc nulls last
+|> call f(1, TABLE(t partition by x order by y)) as alias partition by a order by b
+|> call f() @{hint=1} as alias partition by a order by b
+--
+QueryStatement [0-272] [select 1 |...order by b]
+  Query [0-272] [select 1 |...order by b]
+    Select [0-8] [select 1]
+      SelectList [7-8] [1]
+        SelectColumn [7-8] [1]
+          IntLiteral(1) [7-8] [1]
+    PipeCall [9-35] [|> call f() partition by a]
+      TVF [17-20] [f()]
+        PathExpression [17-18] [f]
+          Identifier(f) [17-18] [f]
+      PartitionBy [21-35] [partition by a]
+        PathExpression [34-35] [a]
+          Identifier(a) [34-35] [a]
+    PipeCall [36-63] [|> call f() order by b desc]
+      TVF [44-47] [f()]
+        PathExpression [44-45] [f]
+          Identifier(f) [44-45] [f]
+      OrderBy [48-63] [order by b desc]
+        OrderingExpression(DESC) [57-63] [b desc]
+          PathExpression [57-58] [b]
+            Identifier(b) [57-58] [b]
+    PipeCall [64-131] [|> call f(...nulls last]
+      TVF [72-75] [f()]
+        PathExpression [72-73] [f]
+          Identifier(f) [72-73] [f]
+      PartitionBy [76-97] [partition by a, b + 1]
+        PathExpression [89-90] [a]
+          Identifier(a) [89-90] [a]
+        BinaryExpression(+) [92-97] [b + 1]
+          PathExpression [92-93] [b]
+            Identifier(b) [92-93] [b]
+          IntLiteral(1) [96-97] [1]
+      OrderBy [98-131] [order by c...nulls last]
+        OrderingExpression(ASC EXPLICITLY) [107-112] [c asc]
+          PathExpression [107-108] [c]
+            Identifier(c) [107-108] [c]
+        OrderingExpression(DESC) [114-131] [d desc nulls last]
+          PathExpression [114-115] [d]
+            Identifier(d) [114-115] [d]
+          NullOrder(NULLS LAST) [121-131] [nulls last]
+    PipeCall [132-215] [|> call f(...order by b]
+      TVF [140-189] [f(1, TABLE...) as alias]
+        PathExpression [140-141] [f]
+          Identifier(f) [140-141] [f]
+        TVFArgument [142-143] [1]
+          IntLiteral(1) [142-143] [1]
+        TVFArgument [145-179] [TABLE(t partition...rder by y)]
+          TableClause [145-179] [TABLE(t partition...rder by y)]
+            PathExpression [151-152] [t]
+              Identifier(t) [151-152] [t]
+            PartitionBy [153-167] [partition by x]
+              PathExpression [166-167] [x]
+                Identifier(x) [166-167] [x]
+            OrderBy [168-178] [order by y]
+              OrderingExpression(ASC) [177-178] [y]
+                PathExpression [177-178] [y]
+                  Identifier(y) [177-178] [y]
+        Alias [181-189] [as alias]
+          Identifier(alias) [184-189] [alias]
+      PartitionBy [190-204] [partition by a]
+        PathExpression [203-204] [a]
+          Identifier(a) [203-204] [a]
+      OrderBy [205-215] [order by b]
+        OrderingExpression(ASC) [214-215] [b]
+          PathExpression [214-215] [b]
+            Identifier(b) [214-215] [b]
+    PipeCall [216-272] [|> call f(...order by b]
+      TVF [224-246] [f() @{hint=1} as alias]
+        PathExpression [224-225] [f]
+          Identifier(f) [224-225] [f]
+        Hint [228-237] [@{hint=1}]
+          HintEntry [230-236] [hint=1]
+            Identifier(hint) [230-234] [hint]
+            IntLiteral(1) [235-236] [1]
+        Alias [238-246] [as alias]
+          Identifier(alias) [241-246] [alias]
+      PartitionBy [247-261] [partition by a]
+        PathExpression [260-261] [a]
+          Identifier(a) [260-261] [a]
+      OrderBy [262-272] [order by b]
+        OrderingExpression(ASC) [271-272] [b]
+          PathExpression [271-272] [b]
+            Identifier(b) [271-272] [b]
+--
+SELECT
+  1
+|> CALL f() PARTITION BY a
+|> CALL f()
+   ORDER BY b DESC
+|> CALL f() PARTITION BY a, b + 1
+   ORDER BY c ASC, d DESC NULLS LAST
+|> CALL f(1, TABLE(t PARTITION BY x
+   ORDER BY y)) AS alias PARTITION BY a
+   ORDER BY b
+|> CALL f() @{ hint = 1 } AS alias PARTITION BY a
+   ORDER BY b
+==
+
+# Wrong order of ORDER BY and PARTITION BY in pipe CALL
+select 1
+|> call f() order by b partition by a
+--
+ERROR: Syntax error: Expected end of input but got keyword PARTITION [at 2:24]
+|> call f() order by b partition by a
+                       ^
+==
+
+# AS alias after PARTITION BY / ORDER BY is not allowed
+select 1
+|> call f() partition by a as alias
+--
+ERROR: Syntax error: Expected end of input but got keyword AS [at 2:28]
+|> call f() partition by a as alias
+                           ^
+==
+
+select 1
+|> call f() order by b as alias
+--
+
+ERROR: Syntax error: Expected end of input but got keyword AS [at 2:24]
+|> call f() order by b as alias
+                       ^

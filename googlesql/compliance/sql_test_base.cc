@@ -2967,7 +2967,6 @@ std::string SQLTestBase::GenerateCodeBasedStatementName(
     absl::string_view sql,
     const std::map<std::string, Value>& parameters) const {
   std::vector<std::string> param_strs;
-  std::string value;
   param_strs.reserve(parameters.size());
   for (const std::pair<const std::string, Value>& entry : parameters) {
     param_strs.emplace_back(absl::StrCat(

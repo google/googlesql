@@ -26,6 +26,7 @@
 #include "googlesql/public/annotation/collation.h"
 #include "googlesql/public/types/annotation.h"
 #include "googlesql/public/types/collation.h"
+#include "googlesql/public/types/graph_element_type.h"
 #include "googlesql/public/types/simple_value.h"
 #include "googlesql/public/types/struct_type.h"
 #include "googlesql/public/types/type.h"
@@ -317,6 +318,41 @@ TEST(TypeRewriterTest, NormalizationTest) {
   EXPECT_THAT(rewritten_type.annotation_map->AsStructMap()->field(0), IsNull());
   EXPECT_THAT(rewritten_type.annotation_map->AsStructMap()->field(1),
               ::testing::NotNull());
+}
+
+TEST(TypeRewriterTest, RewritesGraphElementTypePreservingTablesAndDynamic) {
+  auto type_factory = std::make_unique<TypeFactory>();
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(const AnnotationMap* und_ci,
+                       MakeCollationAnnotation("und:ci", *type_factory));
+
+  for (bool is_dynamic : {false, true}) {
+    const GraphElementType* elem_type = nullptr;
+    if (is_dynamic) {
+      GOOGLESQL_ASSERT_OK(type_factory->MakeDynamicGraphElementType(
+          {"g"}, GraphElementType::kNode, {{"p", types::StringType()}},
+          {"TableB", "TableA"}, &elem_type));
+    } else {
+      GOOGLESQL_ASSERT_OK(type_factory->MakeGraphElementType(
+          {"g"}, GraphElementType::kNode, {{"p", types::StringType()}},
+          {"TableB", "TableA"}, &elem_type));
+    }
+    GOOGLESQL_ASSERT_OK_AND_ASSIGN(StructAnnotationMap * elem_annotation,
+                         MakeCompositeAnnotation(elem_type, *type_factory));
+    GOOGLESQL_ASSERT_OK(elem_annotation->CloneIntoField(0, und_ci));
+
+    CollatedStringReplacer rewriter(*type_factory);
+    GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+        AnnotatedType rewritten_type,
+        rewriter.Visit(AnnotatedType(elem_type, elem_annotation)));
+    ASSERT_TRUE(rewritten_type.type->IsGraphElement());
+    const GraphElementType* rewritten_elem =
+        rewritten_type.type->AsGraphElement();
+    EXPECT_THAT(rewritten_elem,
+                TypeIs(TYPE_GRAPH_ELEMENT, ElementsAre(IsBytes())));
+    EXPECT_EQ(rewritten_elem->is_dynamic(), is_dynamic);
+    EXPECT_THAT(rewritten_elem->element_tables(),
+                ElementsAre("TableB", "TableA"));
+  }
 }
 
 }  // namespace googlesql

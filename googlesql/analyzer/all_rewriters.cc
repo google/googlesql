@@ -19,6 +19,7 @@
 #include "googlesql/analyzer/rewriters/aggregation_threshold_rewriter.h"
 #include "googlesql/analyzer/rewriters/anonymization_rewriter.h"
 #include "googlesql/analyzer/rewriters/builtin_function_inliner.h"
+#include "googlesql/analyzer/rewriters/delete_with_join_rewriter.h"
 #include "googlesql/analyzer/rewriters/flatten_rewriter.h"
 #include "googlesql/analyzer/rewriters/generalized_query_stmt_rewriter.h"
 #include "googlesql/analyzer/rewriters/grouping_set_rewriter.h"
@@ -124,6 +125,8 @@ void RegisterBuiltinRewriters() {
                GetGroupingSetRewriter());
     r.Register(ResolvedASTRewrite::REWRITE_INSERT_DML_VALUES,
                GetInsertDmlValuesRewriter());
+    r.Register(ResolvedASTRewrite::REWRITE_DML_DELETE_WITH_JOIN,
+               GetDeleteWithJoinRewriter());
     r.Register(ResolvedASTRewrite::REWRITE_MULTIWAY_UNNEST,
                GetMultiwayUnnestRewriter());
     r.Register(ResolvedASTRewrite::REWRITE_PIPE_ASSERT,

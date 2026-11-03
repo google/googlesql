@@ -1003,7 +1003,8 @@ void GetDatetimeDiffTruncLastNextFunctions(
       d2 AS EXTRACT(DAY FROM datetime2),
       t1 AS EXTRACT(TIME FROM datetime1),
       t2 AS EXTRACT(TIME FROM datetime2),
-      nanos_per_day AS 1000*1000*1000*60*60*24,
+      n1 AS EXTRACT(NANOSECOND FROM t1),
+      n2 AS EXTRACT(NANOSECOND FROM t2),
       (
         -- Compute whole month portion ignoring day and time, then add
         -- in the fractional part, if any.
@@ -1014,7 +1015,7 @@ void GetDatetimeDiffTruncLastNextFunctions(
            -- Same day or both EOM, no fractional part.
            0,
            -- Otherwise compute fractional portion, may be negative.
-           (d1 - d2 + TIME_DIFF(t1,t2,NANOSECOND)/nanos_per_day) / 31)))
+           ((d1-d2) + (TIME_DIFF(t1,t2,SECOND) + (n1-n2)/1e9) / 86400) / 31)))
   )sql";
 
   InsertFunction(

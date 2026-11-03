@@ -1361,4 +1361,45 @@ TEST_F(ResolvedASTTest, ResolvedFunctionArgumentAlias) {
   }
 }
 
+TEST_F(ResolvedASTTest, DeepExpressionSaveTo) {
+  // Build a 1000-deep unary negation expression tree to verify fast,
+  // non-quadratic serialization without quadratic parent proto traversal.
+  TypeFactory factory;
+  const FunctionSignature sig(factory.get_int64(), {factory.get_int64()},
+                              /*context_ptr=*/nullptr);
+  Function fn("$unary_minus", "unary_minus", Function::SCALAR, {sig});
+  std::unique_ptr<const ResolvedExpr> expr =
+      MakeResolvedLiteral(Value::Int64(1));
+  constexpr int kDepth = 1000;
+  for (int i = 0; i < kDepth; ++i) {
+    std::vector<std::unique_ptr<const ResolvedExpr>> args;
+    args.push_back(std::move(expr));
+    expr =
+        MakeResolvedFunctionCall(factory.get_int64(), &fn, sig, std::move(args),
+                                 ResolvedFunctionCall::DEFAULT_ERROR_MODE);
+  }
+
+  FileDescriptorSetMap map;
+  ResolvedFunctionCallProto proto;
+  GOOGLESQL_ASSERT_OK(expr->GetAs<ResolvedFunctionCall>()->SaveTo(&map, &proto));
+  ASSERT_TRUE(proto.has_parent());
+  EXPECT_EQ(proto.parent().argument_list_size(), 1);
+  ASSERT_TRUE(proto.parent().has_parent());
+  EXPECT_FALSE(proto.parent().parent().has_parent());
+
+  AnyResolvedNodeProto any_proto;
+  GOOGLESQL_ASSERT_OK(expr->SaveTo(&map, &any_proto));
+  EXPECT_EQ(any_proto.node_case(), AnyResolvedNodeProto::kResolvedExprNode);
+}
+
+TEST_F(ResolvedASTTest, ResolvedUpdateScanDebugString) {
+  std::unique_ptr<ResolvedUpdateScan> update_scan = MakeResolvedUpdateScan(
+      /*column_list=*/{}, /*update_stmt=*/nullptr,
+      ResolvedUpdateScan::OUTPUT_UPDATED_ROWS,
+      ResolvedUpdateScan::COLLISION_ACTION_ERROR);
+  EXPECT_EQ(update_scan->DebugString(),
+            "UpdateScan(output_mode=OUTPUT_UPDATED_ROWS, "
+            "update_collision_action_type=COLLISION_ACTION_ERROR)\n");
+}
+
 }  // namespace googlesql

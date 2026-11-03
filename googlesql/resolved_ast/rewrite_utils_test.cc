@@ -321,6 +321,210 @@ TEST(RewriteUtilsTest, RemoveUnusedColumnRefs) {
   EXPECT_EQ(column_refs.front()->column(), colb);
 }
 
+TEST(RewriteUtilsTest, PruneUnusedCorrelatedParameters_SubqueryExpr) {
+  const Type* type = types::BoolType();
+  googlesql_base::SequenceNumber sequence;
+  IdStringPool id_string_pool;
+  ColumnFactory factory(0, &id_string_pool, &sequence);
+  ResolvedColumn cola = factory.MakeCol("table", "cola", type);
+  ResolvedColumn colb = factory.MakeCol("table", "colb", type);
+
+  // Build a subquery whose scan only references `colb`, while `in_expr`
+  // references `cola` in the enclosing scope and `parameter_list` lists both
+  // `cola` and `colb`.
+  auto subquery_scan = MakeResolvedFilterScan(
+      /*column_list=*/{},
+      /*input_scan=*/MakeResolvedSingleRowScan(/*column_list=*/{}),
+      /*filter_expr=*/
+      MakeResolvedColumnRef(type, colb, /*is_correlated=*/true));
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<const ResolvedSubqueryExpr> subquery_expr,
+      ResolvedSubqueryExprBuilder()
+          .set_type(type)
+          .set_subquery_type(ResolvedSubqueryExpr::SCALAR)
+          .set_in_expr(
+              MakeResolvedColumnRef(type, cola, /*is_correlated=*/false))
+          .add_parameter_list(
+              MakeResolvedColumnRef(type, cola, /*is_correlated=*/false))
+          .add_parameter_list(
+              MakeResolvedColumnRef(type, colb, /*is_correlated=*/false))
+          .set_subquery(std::move(subquery_scan))
+          .Build());
+
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<const ResolvedNode> pruned_node,
+      PruneUnusedCorrelatedParameters(std::move(subquery_expr)));
+  const auto* pruned_subquery = pruned_node->GetAs<ResolvedSubqueryExpr>();
+  ASSERT_THAT(pruned_subquery->parameter_list(), SizeIs(1));
+  EXPECT_EQ(pruned_subquery->parameter_list(0)->column(), colb);
+}
+
+TEST(RewriteUtilsTest, PruneUnusedCorrelatedParameters_InlineLambda) {
+  const Type* type = types::Int64Type();
+  googlesql_base::SequenceNumber sequence;
+  IdStringPool id_string_pool;
+  ColumnFactory factory(0, &id_string_pool, &sequence);
+  ResolvedColumn arg_col = factory.MakeCol("lambda", "a", type);
+  ResolvedColumn cola = factory.MakeCol("table", "cola", type);
+  ResolvedColumn colb = factory.MakeCol("table", "colb", type);
+
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<const ResolvedInlineLambda> lambda,
+      ResolvedInlineLambdaBuilder()
+          .add_argument_list(arg_col)
+          .add_parameter_list(
+              MakeResolvedColumnRef(type, cola, /*is_correlated=*/false))
+          .add_parameter_list(
+              MakeResolvedColumnRef(type, colb, /*is_correlated=*/false))
+          .set_body(MakeResolvedColumnRef(type, colb, /*is_correlated=*/true))
+          .Build());
+
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const ResolvedNode> pruned_node,
+                       PruneUnusedCorrelatedParameters(std::move(lambda)));
+  const auto* pruned_lambda = pruned_node->GetAs<ResolvedInlineLambda>();
+  ASSERT_THAT(pruned_lambda->parameter_list(), SizeIs(1));
+  EXPECT_EQ(pruned_lambda->parameter_list(0)->column(), colb);
+}
+
+TEST(RewriteUtilsTest, PruneUnusedCorrelatedParameters_LateralJoinScan) {
+  const Type* type = types::BoolType();
+  googlesql_base::SequenceNumber sequence;
+  IdStringPool id_string_pool;
+  ColumnFactory factory(0, &id_string_pool, &sequence);
+  ResolvedColumn cola = factory.MakeCol("table", "cola", type);
+  ResolvedColumn colb = factory.MakeCol("table", "colb", type);
+
+  // `left_scan` references `cola`, while `right_scan` only references `colb`.
+  // `JoinScan::parameter_list` scopes to `right_scan`, so `cola` should be
+  // pruned even though it appears in `left_scan`.
+  auto left_scan = MakeResolvedFilterScan(
+      /*column_list=*/{},
+      /*input_scan=*/MakeResolvedSingleRowScan(/*column_list=*/{}),
+      /*filter_expr=*/
+      MakeResolvedColumnRef(type, cola, /*is_correlated=*/false));
+  auto right_scan = MakeResolvedFilterScan(
+      /*column_list=*/{},
+      /*input_scan=*/MakeResolvedSingleRowScan(/*column_list=*/{}),
+      /*filter_expr=*/
+      MakeResolvedColumnRef(type, colb, /*is_correlated=*/true));
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const ResolvedJoinScan> join_scan,
+                       ResolvedJoinScanBuilder()
+                           .set_join_type(ResolvedJoinScan::INNER)
+                           .set_left_scan(std::move(left_scan))
+                           .set_right_scan(std::move(right_scan))
+                           .set_is_lateral(true)
+                           .add_parameter_list(MakeResolvedColumnRef(
+                               type, cola, /*is_correlated=*/false))
+                           .add_parameter_list(MakeResolvedColumnRef(
+                               type, colb, /*is_correlated=*/false))
+                           .Build());
+
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const ResolvedNode> pruned_node,
+                       PruneUnusedCorrelatedParameters(std::move(join_scan)));
+  const auto* pruned_join = pruned_node->GetAs<ResolvedJoinScan>();
+  ASSERT_THAT(pruned_join->parameter_list(), SizeIs(1));
+  EXPECT_EQ(pruned_join->parameter_list(0)->column(), colb);
+}
+
+TEST(RewriteUtilsTest, PruneUnusedCorrelatedParameters_GraphCallScan) {
+  const Type* type = types::BoolType();
+  googlesql_base::SequenceNumber sequence;
+  IdStringPool id_string_pool;
+  ColumnFactory factory(0, &id_string_pool, &sequence);
+  ResolvedColumn cola = factory.MakeCol("table", "cola", type);
+  ResolvedColumn colb = factory.MakeCol("table", "colb", type);
+
+  // `input_scan` references `cola`, while `subquery` only references `colb`.
+  // `GraphCallScan::parameter_list` scopes to `subquery`, so `cola` should be
+  // pruned.
+  auto input_scan = MakeResolvedFilterScan(
+      /*column_list=*/{},
+      /*input_scan=*/MakeResolvedSingleRowScan(/*column_list=*/{}),
+      /*filter_expr=*/
+      MakeResolvedColumnRef(type, cola, /*is_correlated=*/false));
+  auto subquery_scan = MakeResolvedFilterScan(
+      /*column_list=*/{},
+      /*input_scan=*/MakeResolvedSingleRowScan(/*column_list=*/{}),
+      /*filter_expr=*/
+      MakeResolvedColumnRef(type, colb, /*is_correlated=*/true));
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const ResolvedGraphCallScan> call_scan,
+                       ResolvedGraphCallScanBuilder()
+                           .set_optional(false)
+                           .set_input_scan(std::move(input_scan))
+                           .set_subquery(std::move(subquery_scan))
+                           .add_parameter_list(MakeResolvedColumnRef(
+                               type, cola, /*is_correlated=*/false))
+                           .add_parameter_list(MakeResolvedColumnRef(
+                               type, colb, /*is_correlated=*/false))
+                           .Build());
+
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const ResolvedNode> pruned_node,
+                       PruneUnusedCorrelatedParameters(std::move(call_scan)));
+  const auto* pruned_call = pruned_node->GetAs<ResolvedGraphCallScan>();
+  ASSERT_THAT(pruned_call->parameter_list(), SizeIs(1));
+  EXPECT_EQ(pruned_call->parameter_list(0)->column(), colb);
+}
+
+TEST(RewriteUtilsTest, PruneUnusedCorrelatedParameters_NestedBottomUp) {
+  const Type* type = types::Int64Type();
+  googlesql_base::SequenceNumber sequence;
+  IdStringPool id_string_pool;
+  ColumnFactory factory(0, &id_string_pool, &sequence);
+  ResolvedColumn cola = factory.MakeCol("table", "cola", type);
+  ResolvedColumn colb = factory.MakeCol("table", "colb", type);
+  ResolvedColumn inner_out = factory.MakeCol("inner", "out", type);
+  ResolvedColumn outer_out = factory.MakeCol("outer", "out", type);
+
+  // Inner subquery lists `cola` in its `parameter_list`, but its body does not
+  // reference `cola`.
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<const ResolvedSubqueryExpr> inner_subquery,
+      ResolvedSubqueryExprBuilder()
+          .set_type(type)
+          .set_subquery_type(ResolvedSubqueryExpr::SCALAR)
+          .add_parameter_list(
+              MakeResolvedColumnRef(type, cola, /*is_correlated=*/true))
+          .set_subquery(MakeResolvedSingleRowScan(/*column_list=*/{}))
+          .Build());
+
+  // Outer subquery lists both `cola` and `colb` in its `parameter_list`. Once
+  // the inner subquery prunes `cola` bottom-up, `cola` becomes unreferenced in
+  // the outer subquery as well, while `colb` remains referenced.
+  std::vector<std::unique_ptr<const ResolvedComputedColumn>> expr_list;
+  expr_list.push_back(
+      MakeResolvedComputedColumn(inner_out, std::move(inner_subquery)));
+  expr_list.push_back(MakeResolvedComputedColumn(
+      outer_out, MakeResolvedColumnRef(type, colb, /*is_correlated=*/true)));
+  auto outer_scan =
+      MakeResolvedProjectScan({inner_out, outer_out}, std::move(expr_list),
+                              MakeResolvedSingleRowScan(/*column_list=*/{}));
+
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<const ResolvedSubqueryExpr> outer_subquery,
+      ResolvedSubqueryExprBuilder()
+          .set_type(type)
+          .set_subquery_type(ResolvedSubqueryExpr::SCALAR)
+          .add_parameter_list(
+              MakeResolvedColumnRef(type, cola, /*is_correlated=*/false))
+          .add_parameter_list(
+              MakeResolvedColumnRef(type, colb, /*is_correlated=*/false))
+          .set_subquery(std::move(outer_scan))
+          .Build());
+
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<const ResolvedNode> pruned_node,
+      PruneUnusedCorrelatedParameters(std::move(outer_subquery)));
+  const auto* pruned_outer = pruned_node->GetAs<ResolvedSubqueryExpr>();
+  ASSERT_THAT(pruned_outer->parameter_list(), SizeIs(1));
+  EXPECT_EQ(pruned_outer->parameter_list(0)->column(), colb);
+
+  const auto* pruned_project =
+      pruned_outer->subquery()->GetAs<ResolvedProjectScan>();
+  const auto* pruned_inner =
+      pruned_project->expr_list(0)->expr()->GetAs<ResolvedSubqueryExpr>();
+  EXPECT_THAT(pruned_inner->parameter_list(), IsEmpty());
+}
+
 TEST(RewriteUtilsTest, SortUniqueColumnRefs) {
   const Type* type = types::StringType();
   googlesql_base::SequenceNumber sequence;
@@ -525,6 +729,12 @@ static AnalyzerOptions MakeAnalyzerOptions() {
   options.mutable_language()->EnableLanguageFeature(
       LanguageFeature::FEATURE_INTERVAL_TYPE);
   options.mutable_language()->EnableLanguageFeature(
+      LanguageFeature::FEATURE_JSON_TYPE);
+  options.mutable_language()->EnableLanguageFeature(
+      LanguageFeature::FEATURE_JSON_CONSTRUCTOR_FUNCTIONS);
+  options.mutable_language()->EnableLanguageFeature(
+      LanguageFeature::FEATURE_JSON_MUTATOR_FUNCTIONS);
+  options.mutable_language()->EnableLanguageFeature(
       LanguageFeature::FEATURE_DATE_ARITHMETICS);
   options.mutable_language()->EnableLanguageFeature(
       LanguageFeature::FEATURE_SQL_GRAPH);
@@ -605,6 +815,153 @@ FunctionCall(GoogleSQL:$make_array(repeated(2) STRING) -> ARRAY<STRING>)
 +-Literal(type=STRING, value="foo", has_explicit_type=TRUE)
 +-Literal(type=STRING, value="bar", has_explicit_type=TRUE)
 )"));
+}
+
+TEST_F(FunctionCallBuilderTest, JsonObject) {
+  std::vector<std::unique_ptr<const ResolvedExpr>> keys;
+  keys.push_back(MakeResolvedLiteral(types::StringType(), Value::String("name"),
+                                     /*has_explicit_type=*/true));
+  keys.push_back(MakeResolvedLiteral(types::StringType(), Value::String("age"),
+                                     /*has_explicit_type=*/true));
+  std::vector<std::unique_ptr<const ResolvedExpr>> values;
+  values.push_back(MakeResolvedLiteral(types::StringType(),
+                                       Value::String("Alice"),
+                                       /*has_explicit_type=*/true));
+  values.push_back(MakeResolvedLiteral(types::Int64Type(), Value::Int64(30),
+                                       /*has_explicit_type=*/true));
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<const ResolvedFunctionCall> json_obj_fn,
+      fn_builder_.JsonObject(std::move(keys), std::move(values)));
+  EXPECT_EQ(json_obj_fn->DebugString(), absl::StripLeadingAsciiWhitespace(R"(
+FunctionCall(GoogleSQL:json_object(repeated(1) STRING, repeated(1) STRING, repeated(1) STRING, repeated(1) INT64) -> JSON)
++-Literal(type=STRING, value="name", has_explicit_type=TRUE)
++-Literal(type=STRING, value="Alice", has_explicit_type=TRUE)
++-Literal(type=STRING, value="age", has_explicit_type=TRUE)
++-Literal(type=INT64, value=30, has_explicit_type=TRUE)
+)"));
+}
+
+TEST_F(FunctionCallBuilderTest, JsonObjectEmptyKeysFails) {
+  std::vector<std::unique_ptr<const ResolvedExpr>> keys;
+  std::vector<std::unique_ptr<const ResolvedExpr>> values;
+  EXPECT_THAT(fn_builder_.JsonObject(std::move(keys), std::move(values)),
+              StatusIs(absl::StatusCode::kInternal));
+}
+
+TEST_F(FunctionCallBuilderTest, JsonSet) {
+  // Single path/value pair (repeated arguments have num_occurrences = 0).
+  {
+    std::unique_ptr<const ResolvedExpr> json_doc = MakeResolvedLiteral(
+        types::JsonType(), Value::NullJson(), /*has_explicit_type=*/true);
+    std::vector<std::unique_ptr<const ResolvedExpr>> paths;
+    paths.push_back(MakeResolvedLiteral(types::StringType(),
+                                        Value::String("$.name"),
+                                        /*has_explicit_type=*/true));
+    std::vector<std::unique_ptr<const ResolvedExpr>> values;
+    values.push_back(MakeResolvedLiteral(types::StringType(),
+                                         Value::String("Alice"),
+                                         /*has_explicit_type=*/true));
+    GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<const ResolvedFunctionCall> json_set_fn,
+        fn_builder_.JsonSet(std::move(json_doc), std::move(paths),
+                            std::move(values)));
+    EXPECT_EQ(json_set_fn->DebugString(), absl::StripLeadingAsciiWhitespace(R"(
+FunctionCall(GoogleSQL:json_set(JSON, STRING, STRING, repeated(0) STRING, repeated ANY TYPE, optional(1) BOOL create_if_missing) -> JSON)
++-Literal(type=JSON, value=NULL, has_explicit_type=TRUE)
++-Literal(type=STRING, value="$.name", has_explicit_type=TRUE)
++-Literal(type=STRING, value="Alice", has_explicit_type=TRUE)
++-Literal(type=BOOL, value=true)
+)"));
+  }
+
+  // Multiple path/value pairs.
+  {
+    std::unique_ptr<const ResolvedExpr> json_doc = MakeResolvedLiteral(
+        types::JsonType(), Value::NullJson(), /*has_explicit_type=*/true);
+    std::vector<std::unique_ptr<const ResolvedExpr>> paths;
+    paths.push_back(MakeResolvedLiteral(types::StringType(),
+                                        Value::String("$.name"),
+                                        /*has_explicit_type=*/true));
+    paths.push_back(MakeResolvedLiteral(types::StringType(),
+                                        Value::String("$.age"),
+                                        /*has_explicit_type=*/true));
+    std::vector<std::unique_ptr<const ResolvedExpr>> values;
+    values.push_back(MakeResolvedLiteral(types::StringType(),
+                                         Value::String("Alice"),
+                                         /*has_explicit_type=*/true));
+    values.push_back(MakeResolvedLiteral(types::Int64Type(), Value::Int64(30),
+                                         /*has_explicit_type=*/true));
+    GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<const ResolvedFunctionCall> json_set_fn,
+        fn_builder_.JsonSet(std::move(json_doc), std::move(paths),
+                            std::move(values)));
+    EXPECT_EQ(json_set_fn->DebugString(), absl::StripLeadingAsciiWhitespace(R"(
+FunctionCall(GoogleSQL:json_set(JSON, STRING, STRING, repeated(1) STRING, repeated(1) INT64, optional(1) BOOL create_if_missing) -> JSON)
++-Literal(type=JSON, value=NULL, has_explicit_type=TRUE)
++-Literal(type=STRING, value="$.name", has_explicit_type=TRUE)
++-Literal(type=STRING, value="Alice", has_explicit_type=TRUE)
++-Literal(type=STRING, value="$.age", has_explicit_type=TRUE)
++-Literal(type=INT64, value=30, has_explicit_type=TRUE)
++-Literal(type=BOOL, value=true)
+)"));
+  }
+}
+
+TEST_F(FunctionCallBuilderTest, JsonRemove) {
+  // Single path (trailing repeated argument omitted from concrete_args).
+  {
+    std::unique_ptr<const ResolvedExpr> json_doc = MakeResolvedLiteral(
+        types::JsonType(), Value::NullJson(), /*has_explicit_type=*/true);
+    std::vector<std::unique_ptr<const ResolvedExpr>> remove_paths;
+    remove_paths.push_back(MakeResolvedLiteral(types::StringType(),
+                                               Value::String("$.age"),
+                                               /*has_explicit_type=*/true));
+    GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<const ResolvedFunctionCall> json_remove_fn,
+        fn_builder_.JsonRemove(std::move(json_doc), std::move(remove_paths)));
+    EXPECT_EQ(json_remove_fn->DebugString(),
+              absl::StripLeadingAsciiWhitespace(R"(
+FunctionCall(GoogleSQL:json_remove(JSON, STRING) -> JSON)
++-Literal(type=JSON, value=NULL, has_explicit_type=TRUE)
++-Literal(type=STRING, value="$.age", has_explicit_type=TRUE)
+)"));
+  }
+
+  // Multiple paths (trailing repeated argument populated in concrete_args).
+  {
+    std::unique_ptr<const ResolvedExpr> json_doc = MakeResolvedLiteral(
+        types::JsonType(), Value::NullJson(), /*has_explicit_type=*/true);
+    std::vector<std::unique_ptr<const ResolvedExpr>> remove_paths;
+    remove_paths.push_back(MakeResolvedLiteral(types::StringType(),
+                                               Value::String("$.name"),
+                                               /*has_explicit_type=*/true));
+    remove_paths.push_back(MakeResolvedLiteral(types::StringType(),
+                                               Value::String("$.age"),
+                                               /*has_explicit_type=*/true));
+    GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<const ResolvedFunctionCall> json_remove_fn,
+        fn_builder_.JsonRemove(std::move(json_doc), std::move(remove_paths)));
+    EXPECT_EQ(json_remove_fn->DebugString(),
+              absl::StripLeadingAsciiWhitespace(R"(
+FunctionCall(GoogleSQL:json_remove(JSON, STRING, repeated(1) STRING) -> JSON)
++-Literal(type=JSON, value=NULL, has_explicit_type=TRUE)
++-Literal(type=STRING, value="$.name", has_explicit_type=TRUE)
++-Literal(type=STRING, value="$.age", has_explicit_type=TRUE)
+)"));
+  }
+}
+
+TEST_F(FunctionCallBuilderTest, JsonObjectUnsupportedTypeFails) {
+  std::vector<std::unique_ptr<const ResolvedExpr>> keys;
+  keys.push_back(MakeResolvedLiteral(types::StringType(),
+                                     Value::String("token"),
+                                     /*has_explicit_type=*/true));
+  std::vector<std::unique_ptr<const ResolvedExpr>> values;
+  values.push_back(MakeResolvedLiteral(types::TokenListType(),
+                                       Value::NullTokenList(),
+                                       /*has_explicit_type=*/true));
+  EXPECT_THAT(fn_builder_.JsonObject(std::move(keys), std::move(values)),
+              StatusIs(absl::StatusCode::kInternal));
 }
 
 TEST_F(FunctionCallBuilderTest, MakeArrayWithAnnotation) {
@@ -2191,10 +2548,11 @@ TEST_F(FunctionCallBuilderTest, AreEqualGraphElements) {
   GOOGLESQL_ASSERT_OK(type_factory.MakeGraphElementType(
       {"graph_node_type"}, GraphElementType::kNode,
       {{"p1", types::Int64Type()}, {"p2", types::StringType()}},
-      &graph_node_type1));
+      /*element_tables=*/{}, &graph_node_type1));
   GOOGLESQL_ASSERT_OK(type_factory.MakeGraphElementType(
       {"graph_node_type"}, GraphElementType::kNode,
-      {{"p1", types::Int64Type()}}, &graph_node_type2));
+      {{"p1", types::Int64Type()}},
+      /*element_tables=*/{}, &graph_node_type2));
 
   // lhs is super type.
   std::vector<std::unique_ptr<const ResolvedExpr>> args;
@@ -2238,6 +2596,23 @@ FunctionCall(GoogleSQL:$equal(GRAPH_NODE(graph_node_type)<p1 INT64, p2 STRING>, 
 FunctionCall(GoogleSQL:$equal(GRAPH_NODE(graph_node_type)<p1 INT64, p2 STRING>, GRAPH_NODE(graph_node_type)<p1 INT64, p2 STRING>) -> BOOL)
 +-ColumnRef(type=GRAPH_NODE(graph_node_type)<p1 INT64, p2 STRING>, column=.#-1)
 +-ColumnRef(type=GRAPH_NODE(graph_node_type)<p1 INT64, p2 STRING>, column=.#-1)
+)"));
+}
+
+TEST_F(FunctionCallBuilderTest, ElementDefinitionName) {
+  TypeFactory type_factory;
+  const GraphElementType* graph_node_type = nullptr;
+  GOOGLESQL_ASSERT_OK(type_factory.MakeGraphElementType(
+      {"graph_node_type"}, GraphElementType::kNode,
+      {{"p1", types::Int64Type()}}, /*element_tables=*/{}, &graph_node_type));
+
+  std::unique_ptr<const ResolvedExpr> node_ref = MakeResolvedColumnRef(
+      graph_node_type, ResolvedColumn(), /*is_correlated=*/false);
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const ResolvedFunctionCall> function,
+                       fn_builder_.ElementDefinitionName(std::move(node_ref)));
+  EXPECT_EQ(function->DebugString(), absl::StripLeadingAsciiWhitespace(R"(
+FunctionCall(GoogleSQL:element_definition_name(GRAPH_NODE(graph_node_type)<p1 INT64>) -> STRING)
++-ColumnRef(type=GRAPH_NODE(graph_node_type)<p1 INT64>, column=.#-1)
 )"));
 }
 
@@ -3036,70 +3411,6 @@ TEST_F(TVFUtilsTest, FindAndValidateTimestampColumnInScan_WrongType) {
                          "type STRING")));
 }
 
-TEST_F(TVFUtilsTest, CreateCteColumnSubquerySelectsCorrectColumn) {
-  std::string cte_name = "my_cte";
-  ResolvedColumn col1 =
-      column_factory_.MakeCol(cte_name, "a", type_factory_.get_int64());
-  ResolvedColumn col2 =
-      column_factory_.MakeCol(cte_name, "b", types::TimestampType());
-  ResolvedColumnList cte_cols = {col1, col2};
-
-  // Test selecting the second column (index 1), which is a TIMESTAMP.
-  GOOGLESQL_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<const ResolvedSubqueryExpr> timestamp_col_subquery,
-      CreateCteColumnSubquery(column_factory_, cte_name, cte_cols, 1));
-
-  ASSERT_NE(timestamp_col_subquery, nullptr);
-  EXPECT_TRUE(timestamp_col_subquery->type()->IsTimestamp());
-  EXPECT_EQ(timestamp_col_subquery->subquery_type(),
-            ResolvedSubqueryExpr::SCALAR);
-
-  const std::string expected_debug_string = R"(
-SubqueryExpr
-+-type=TIMESTAMP
-+-subquery_type=SCALAR
-+-subquery=
-  +-ProjectScan
-    +-column_list=[my_cte.b#5]
-    +-expr_list=
-    | +-b#5 := ColumnRef(type=TIMESTAMP, column=my_cte.b#4)
-    +-input_scan=
-      +-WithRefScan(column_list=my_cte.[a#3, b#4], with_query_name="my_cte")
-)";
-  EXPECT_EQ(absl::StripLeadingAsciiWhitespace(expected_debug_string),
-            timestamp_col_subquery->DebugString());
-}
-
-TEST_F(TVFUtilsTest, CreateCteColumnSubqueryGeneratesNewColumnIds) {
-  std::string cte_name = "my_cte";
-  ResolvedColumn col1 =
-      column_factory_.MakeCol(cte_name, "a", type_factory_.get_int64());
-  ResolvedColumn col2 =
-      column_factory_.MakeCol(cte_name, "b", types::TimestampType());
-  ResolvedColumnList cte_cols = {col1, col2};
-
-  // Select the first column (index 0).
-  GOOGLESQL_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<const ResolvedSubqueryExpr> subquery1,
-      CreateCteColumnSubquery(column_factory_, cte_name, cte_cols, 0));
-
-  // Select the first column again. Because the column factory allocates new IDs
-  // on each call, the resulting AST should be different.
-  GOOGLESQL_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<const ResolvedSubqueryExpr> subquery2,
-      CreateCteColumnSubquery(column_factory_, cte_name, cte_cols, 0));
-
-  ASSERT_NE(subquery1, nullptr);
-  ASSERT_NE(subquery2, nullptr);
-  EXPECT_TRUE(subquery1->type()->IsInt64());
-  EXPECT_TRUE(subquery2->type()->IsInt64());
-
-  // The debug strings should differ because the column IDs generated by the
-  // column factory during the second call (#6, #7, #8) will be different
-  // from the first call (#3, #4, #5).
-  EXPECT_NE(subquery1->DebugString(), subquery2->DebugString());
-}
-
 class FakeExpr : public ResolvedExpr {
  public:
   FakeExpr()
@@ -3805,6 +4116,91 @@ TEST(RewriteUtilsTest, HasNonTerminalInsertScan) {
                            .set_recursive(false)
                            .Build());
   EXPECT_TRUE(HasNonTerminalInsertScan(with_scan.get()));
+}
+
+TEST(RewriteUtilsTest, RemapCteNames_Basic) {
+  // Construct: WITH cte AS (SELECT 1) SELECT * FROM cte
+  auto with_entry = MakeResolvedWithEntry("cte", MakeResolvedSingleRowScan());
+  auto with_ref = MakeResolvedWithRefScan(/*column_list=*/{}, "cte");
+
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(auto with_scan,
+                       ResolvedWithScanBuilder()
+                           .add_with_entry_list(std::move(with_entry))
+                           .set_query(std::move(with_ref))
+                           .set_recursive(false)
+                           .BuildMutable());
+
+  int cte_counter = 0;
+  GOOGLESQL_ASSERT_OK(RemapCteNames(with_scan.get(), cte_counter));
+
+  // Counter must increment to 1
+  EXPECT_EQ(cte_counter, 1);
+
+  // Both definition and reference must be remapped to the same unique name
+  EXPECT_EQ(with_scan->with_entry_list(0)->with_query_name(),
+            "$inlined_cte_0_cte");
+  EXPECT_EQ(with_scan->query()->GetAs<ResolvedWithRefScan>()->with_query_name(),
+            "$inlined_cte_0_cte");
+}
+
+TEST(RewriteUtilsTest, RemapCteNames_NestedShadowing) {
+  // Construct:
+  // WITH cte AS (SELECT 1) -- outer
+  // SELECT * FROM (
+  //   WITH cte AS (SELECT 2) -- inner (shadows outer)
+  //   SELECT * FROM cte -- references inner
+  // ) JOIN cte -- references outer
+  auto inner_entry = MakeResolvedWithEntry("cte", MakeResolvedSingleRowScan());
+  auto inner_ref = MakeResolvedWithRefScan(/*column_list=*/{}, "cte");
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(auto inner_with_scan,
+                       ResolvedWithScanBuilder()
+                           .add_with_entry_list(std::move(inner_entry))
+                           .set_query(std::move(inner_ref))
+                           .set_recursive(false)
+                           .Build());
+
+  auto outer_entry = MakeResolvedWithEntry("cte", MakeResolvedSingleRowScan());
+  auto outer_ref = MakeResolvedWithRefScan(/*column_list=*/{}, "cte");
+
+  // Join inner_with_scan with outer_ref
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(auto join_scan,
+                       ResolvedJoinScanBuilder()
+                           .set_left_scan(std::move(inner_with_scan))
+                           .set_right_scan(std::move(outer_ref))
+                           .set_join_type(ResolvedJoinScan::INNER)
+                           .Build());
+
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(auto outer_with_scan,
+                       ResolvedWithScanBuilder()
+                           .add_with_entry_list(std::move(outer_entry))
+                           .set_query(std::move(join_scan))
+                           .set_recursive(false)
+                           .BuildMutable());
+
+  int cte_counter = 0;
+  GOOGLESQL_ASSERT_OK(RemapCteNames(outer_with_scan.get(), cte_counter));
+
+  // Both outer and inner CTEs were remapped
+  EXPECT_EQ(cte_counter, 2);
+
+  // Outer CTE definition is $inlined_cte_0_cte
+  EXPECT_EQ(outer_with_scan->with_entry_list(0)->with_query_name(),
+            "$inlined_cte_0_cte");
+
+  const auto* main_join = outer_with_scan->query()->GetAs<ResolvedJoinScan>();
+  const auto* inner_scan = main_join->left_scan()->GetAs<ResolvedWithScan>();
+
+  // Inner CTE definition and reference are $inlined_cte_1_cte
+  EXPECT_EQ(inner_scan->with_entry_list(0)->with_query_name(),
+            "$inlined_cte_1_cte");
+  EXPECT_EQ(
+      inner_scan->query()->GetAs<ResolvedWithRefScan>()->with_query_name(),
+      "$inlined_cte_1_cte");
+
+  // Outer CTE reference correctly resolves to $inlined_cte_0_cte (NOT inner!)
+  EXPECT_EQ(
+      main_join->right_scan()->GetAs<ResolvedWithRefScan>()->with_query_name(),
+      "$inlined_cte_0_cte");
 }
 
 }  // namespace

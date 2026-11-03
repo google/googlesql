@@ -1069,10 +1069,11 @@ into this function, see
 + UINT64
 + INT32
 + INT64
++ BYTES (requires input BYTES to have the same length)
 
 **Returned Data Types**
 
-INT64
+Matches the input data type.
 
 **Examples**
 
@@ -1117,10 +1118,11 @@ into this function, see
 + UINT64
 + INT32
 + INT64
++ BYTES (requires input BYTES to have the same length)
 
 **Returned Data Types**
 
-INT64
+Matches the input data type.
 
 **Examples**
 
@@ -1165,10 +1167,11 @@ into this function, see
 + UINT64
 + INT32
 + INT64
++ BYTES (requires input BYTES to have the same length)
 
 **Returned Data Types**
 
-INT64
+Matches the input data type.
 
 **Examples**
 

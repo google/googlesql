@@ -970,6 +970,8 @@ class TupleIterator {
   //   the order of tuples (x1, y1), (x2, y2) where x1 = x2, but not tuples
   //   where x1 != x2.
   // - LetOpTupleIterator (used by LetOp), which just wraps another iterator.
+  // - ComputeTupleIterator (used by ComputeOp), which just wraps another
+  //   iterator.
   // - TestTupleIterator, which is a test-only class.
   virtual bool PreservesOrder() const { return true; }
 

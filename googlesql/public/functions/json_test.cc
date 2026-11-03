@@ -63,6 +63,7 @@ using json_internal::JsonPathOptions;
 using ::testing::ElementsAre;
 using ::testing::ElementsAreArray;
 using ::testing::HasSubstr;
+using ::testing::IsEmpty;
 using ::testing::IsNan;
 using ::testing::Optional;
 using ::testing::Pointwise;
@@ -831,8 +832,6 @@ TEST(JsonTest, ConvertJSONPathToSqlStandardMode) {
 }
 
 TEST(JsonTest, ConvertJSONPathTokenToSqlStandardMode) {
-  const std::string kInvalidJSONPath = "Invalid JSONPath input";
-
   std::vector<std::pair<std::string, std::string>> json_path_tokens = {
       {"a", "a"},
       {"10", "10"},
@@ -2429,10 +2428,6 @@ TEST(JSONPathArrayExtractorTest, EscapedAccessTestNonSqlStandard) {
 
 TEST(JSONPathArrayExtractorTest,
      EscapedAccessTestNonSqlStandardInvalidJsonPath) {
-  std::string input =
-      R"({"e":{"b":"a10", "l11":"test"},
-      "a":{"b":null, "''\\\\s ":{"g":"h", "g":["i", ["j", "k"]]}},
-      "a":"a5", "a":"a6"})";
   std::string input_path("$.a.\"\'\'\\\\s \".g[ 1]");
   absl::string_view esc_input_path(input_path);
 
@@ -7126,6 +7121,140 @@ TEST(JsonKeysInvalidTest, Invalid) {
   EXPECT_THAT(JsonKeys(value.GetRef(), {.max_depth = 0}),
               StatusIs(absl::StatusCode::kOutOfRange,
                        HasSubstr("max_depth must be positive")));
+}
+
+TEST(JsonKeysMemoryLimitTest, EnforcesReserveMemoryCallback) {
+  const std::string outer_key(1024, 'A');
+  std::string json_str = absl::StrCat("{\"", outer_key, "\":[{");
+  for (int i = 0; i < 50; ++i) {
+    if (i > 0) json_str.push_back(',');
+    absl::StrAppend(&json_str, "\"k", i, "\":1");
+  }
+  json_str.append("}]}");
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(JSONValue value, JSONValue::ParseJSONString(json_str));
+
+  constexpr size_t kSmallBudgetBytes = 8 * 1024;
+  for (JsonPathOptions path_options :
+       {JsonPathOptions::kLax, JsonPathOptions::kLaxRecursive}) {
+    size_t reserved_bytes = 0;
+    EXPECT_THAT(
+        JsonKeys(value.GetConstRef(),
+                 {.path_options = path_options,
+                  .reserve_memory_callback = [&](size_t bytes) -> absl::Status {
+                    if (reserved_bytes + bytes > kSmallBudgetBytes) {
+                      return absl::ResourceExhaustedError(
+                          "Memory limit exceeded");
+                    }
+                    reserved_bytes += bytes;
+                    return absl::OkStatus();
+                  }}),
+        StatusIs(absl::StatusCode::kResourceExhausted,
+                 HasSubstr("Memory limit exceeded")));
+    EXPECT_LE(reserved_bytes, kSmallBudgetBytes);
+  }
+
+  size_t reserved_bytes = 0;
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+      std::vector<std::string> keys,
+      JsonKeys(value.GetConstRef(),
+               {.path_options = JsonPathOptions::kLax,
+                .reserve_memory_callback = [&](size_t bytes) -> absl::Status {
+                  reserved_bytes += bytes;
+                  return absl::OkStatus();
+                }}));
+  EXPECT_EQ(keys.size(), 51);
+  EXPECT_GT(reserved_bytes, 50 * 1024);
+}
+
+TEST(JsonKeysMemoryLimitTest, SkipsDuplicateKeysAndEmptySubtrees) {
+  for (absl::string_view empty_doc : {"{}", "[]"}) {
+    GOOGLESQL_ASSERT_OK_AND_ASSIGN(JSONValue empty_val,
+                         JSONValue::ParseJSONString(empty_doc));
+    size_t reserved_bytes = 0;
+    GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+        std::vector<std::string> keys,
+        JsonKeys(empty_val.GetConstRef(),
+                 {.path_options = JsonPathOptions::kLaxRecursive,
+                  .reserve_memory_callback = [&](size_t bytes) -> absl::Status {
+                    reserved_bytes += bytes;
+                    return absl::OkStatus();
+                  }}));
+    EXPECT_THAT(keys, IsEmpty());
+    EXPECT_EQ(reserved_bytes, 0);
+  }
+
+  std::string json_str = R"({"items":[{"a":1,"empty_obj":{},"empty_arr":[]})";
+  for (int i = 2; i <= 1000; ++i) {
+    absl::StrAppend(&json_str, R"(,{"a":)", i, R"(},{},[])");
+  }
+  json_str.append("]}");
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(JSONValue value, JSONValue::ParseJSONString(json_str));
+
+  // In kStrict mode, "items" is not unwrapped and only reserves a single key
+  // entry (plus the root stack element).
+  size_t strict_reserved_bytes = 0;
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+      std::vector<std::string> strict_keys,
+      JsonKeys(value.GetConstRef(),
+               {.path_options = JsonPathOptions::kStrict,
+                .reserve_memory_callback = [&](size_t bytes) -> absl::Status {
+                  strict_reserved_bytes += bytes;
+                  return absl::OkStatus();
+                }}));
+  EXPECT_THAT(strict_keys, ElementsAre("items"));
+  EXPECT_LT(strict_reserved_bytes, 256);
+
+  // In kLaxRecursive mode, "items.a" is inserted into `keys_` only once across
+  // 1,000 array elements, and empty objects/arrays are not pushed onto the
+  // stack.
+  size_t single_element_bytes = 0;
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+      JSONValue single_value,
+      JSONValue::ParseJSONString(
+          R"({"items":[{"a":1,"empty_obj":{},"empty_arr":[]}]})"));
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+      std::vector<std::string> single_keys,
+      JsonKeys(single_value.GetConstRef(),
+               {.path_options = JsonPathOptions::kLaxRecursive,
+                .reserve_memory_callback = [&](size_t bytes) -> absl::Status {
+                  single_element_bytes += bytes;
+                  return absl::OkStatus();
+                }}));
+  EXPECT_THAT(single_keys, ElementsAre("items", "items.a", "items.empty_arr",
+                                       "items.empty_obj"));
+
+  size_t without_empty_children_bytes = 0;
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(JSONValue without_empty_children,
+                       JSONValue::ParseJSONString(R"({"items":[{"a":1}]})"));
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+      std::vector<std::string> without_empty_keys,
+      JsonKeys(without_empty_children.GetConstRef(),
+               {.path_options = JsonPathOptions::kLaxRecursive,
+                .reserve_memory_callback = [&](size_t bytes) -> absl::Status {
+                  without_empty_children_bytes += bytes;
+                  return absl::OkStatus();
+                }}));
+  // "items.empty_obj" and "items.empty_arr" only reserve `keys_` entries (2 *
+  // (sizeof(std::string) + 15)), not StackElement entries.
+  EXPECT_EQ(single_element_bytes - without_empty_children_bytes,
+            2 * (sizeof(std::string) + 15));
+
+  // With 1,000 elements where 999 repeat {"a": i} (plus 999 empty {} and []),
+  // only the 999 non-empty object StackElements are reserved beyond the first
+  // element; "items.a" is not re-reserved in `keys_`.
+  size_t lax_reserved_bytes = 0;
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+      std::vector<std::string> lax_keys,
+      JsonKeys(value.GetConstRef(),
+               {.path_options = JsonPathOptions::kLaxRecursive,
+                .reserve_memory_callback = [&](size_t bytes) -> absl::Status {
+                  lax_reserved_bytes += bytes;
+                  return absl::OkStatus();
+                }}));
+  EXPECT_THAT(lax_keys, ElementsAre("items", "items.a", "items.empty_arr",
+                                    "items.empty_obj"));
+  EXPECT_LT(lax_reserved_bytes - single_element_bytes,
+            999 * (sizeof(std::string) + 64));
 }
 
 class JsonFlattenTest : public ::testing::TestWithParam<

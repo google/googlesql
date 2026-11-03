@@ -42,6 +42,7 @@
 #include "googlesql/resolved_ast/resolved_node.h"
 #include "googlesql/resolved_ast/resolved_node_kind.h"
 #include "googlesql/base/status.h"
+#include "absl/functional/function_ref.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 {% macro ZeroArgCtor(node) %}
@@ -145,7 +146,9 @@ class {{node.name}} {{node.class_final}} : public {{node.parent}} {
 
   using SUPER::SaveTo;
   absl::Status SaveTo(Type::FileDescriptorSetMap* file_descriptor_set_map,
-                      {{node.proto_type}}* proto) const;
+                      {{node.proto_type}}* proto) const {
+    return SaveToInternal(file_descriptor_set_map, [proto]() { return proto; });
+  }
 
   absl::Status SaveTo(Type::FileDescriptorSetMap* file_descriptor_set_map,
                       {{node.parent_proto_container_type}}* proto) const final;
@@ -242,6 +245,13 @@ class {{node.name}} {{node.class_final}} : public {{node.parent}} {
   const ResolvedScan* GetPipeInputScan() const override { return {{node.pipe_input_scan_getter}}(); }
 
 # endif
+
+  // Serializes this node into the {{node.proto_type}} returned by `get_proto`,
+  // invoking `get_proto` only when a field or non-empty parent is written.
+  absl::Status SaveToInternal(
+      Type::FileDescriptorSetMap* file_descriptor_set_map,
+      absl::FunctionRef<{{node.proto_type}}*()> get_proto) const;
+
  private:
 # if node.is_abstract
   {# List all builders for concrete subclasses as friends, so that they can #}

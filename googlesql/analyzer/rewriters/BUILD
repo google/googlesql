@@ -470,6 +470,28 @@ cc_library(
 )
 
 cc_library(
+    name = "delete_with_join_rewriter",
+    srcs = ["delete_with_join_rewriter.cc"],
+    hdrs = ["delete_with_join_rewriter.h"],
+    deps = [
+        "//googlesql/base:ret_check",
+        "//googlesql/base:status",
+        "//googlesql/public:analyzer_options",
+        "//googlesql/public:analyzer_output_properties",
+        "//googlesql/public:catalog",
+        "//googlesql/public:rewriter_interface",
+        "//googlesql/public/types",
+        "//googlesql/resolved_ast",
+        "//googlesql/resolved_ast:resolved_ast_builder",
+        "//googlesql/resolved_ast:resolved_ast_rewrite_visitor",
+        "@com_google_absl//absl/base:no_destructor",
+        "@com_google_absl//absl/container:btree",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status:statusor",
+    ],
+)
+
+cc_library(
     name = "like_any_all_rewriter",
     srcs = ["like_any_all_rewriter.cc"],
     hdrs = ["like_any_all_rewriter.h"],
@@ -647,8 +669,10 @@ cc_test(
         "//googlesql/public:options_cc_proto",
         "//googlesql/public:rewriter_interface",
         "//googlesql/resolved_ast",
+        "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/synchronization",
     ],
 )
 
@@ -739,14 +763,26 @@ cc_library(
     srcs = ["update_constructor_rewriter.cc"],
     hdrs = ["update_constructor_rewriter.h"],
     deps = [
+        "//googlesql/analyzer:substitute",
+        "//googlesql/base:ret_check",
+        "//googlesql/base:status",
         "//googlesql/public:analyzer_options",
         "//googlesql/public:analyzer_output_properties",
         "//googlesql/public:catalog",
+        "//googlesql/public:id_string",
         "//googlesql/public:rewriter_interface",
+        "//googlesql/public:value",
         "//googlesql/public/types",
         "//googlesql/resolved_ast",
+        "//googlesql/resolved_ast:column_factory",
+        "//googlesql/resolved_ast:resolved_ast_builder",
         "//googlesql/resolved_ast:resolved_ast_rewrite_visitor",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
+        "@com_google_protobuf//:protobuf",
     ],
 )
 

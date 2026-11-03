@@ -136,22 +136,22 @@ class IntervalValue final {
 
   static absl::StatusOr<IntervalValue> FromMonths(int64_t months) {
     GOOGLESQL_RETURN_IF_ERROR(ValidateMonths(months));
-    return IntervalValue(months, 0);
+    return IntervalValue(months, /*days=*/0);
   }
 
   static absl::StatusOr<IntervalValue> FromDays(int64_t days) {
     GOOGLESQL_RETURN_IF_ERROR(ValidateDays(days));
-    return IntervalValue(0, days);
+    return IntervalValue(/*months=*/0, days);
   }
 
   static absl::StatusOr<IntervalValue> FromMicros(int64_t micros) {
     GOOGLESQL_RETURN_IF_ERROR(ValidateMicros(micros));
-    return IntervalValue(0, 0, micros);
+    return IntervalValue(/*months=*/0, /*days=*/0, micros);
   }
 
   static absl::StatusOr<IntervalValue> FromNanos(__int128 nanos) {
     GOOGLESQL_RETURN_IF_ERROR(ValidateNanos(nanos));
-    return IntervalValue(0, 0, nanos);
+    return IntervalValue(/*months=*/0, /*days=*/0, nanos);
   }
 
   static IntervalValue MaxValue() {

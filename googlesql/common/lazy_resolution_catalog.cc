@@ -1025,7 +1025,7 @@ std::vector<std::string> LazyResolutionFunction::ArgumentNames() const {
   return argument_names;
 }
 
-const std::vector<std::unique_ptr<const ResolvedComputedColumn>>*
+const std::vector<std::unique_ptr<const ResolvedComputedColumnBase>>*
 LazyResolutionFunction::AggregateExpressionList() const {
   if (mode_ == FunctionEnums::AGGREGATE && ResolvedStatement() != nullptr) {
     return &ResolvedStatement()->aggregate_expression_list();

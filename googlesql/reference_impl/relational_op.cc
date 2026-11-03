@@ -131,10 +131,11 @@ absl::StatusOr<std::unique_ptr<TupleIterator>> RelationalOp::Eval(
 
 absl::StatusOr<std::unique_ptr<TupleIterator>> RelationalOp::MaybeReorder(
     std::unique_ptr<TupleIterator> iter, EvaluationContext* context) const {
-  if (context->options().scramble_undefined_orderings) {
-    iter = std::make_unique<ReorderingTupleIterator>(std::move(iter));
+  if (!context->options().scramble_undefined_orderings ||
+      is_order_preserving()) {
+    return iter;
   }
-  return iter;
+  return std::make_unique<ReorderingTupleIterator>(std::move(iter));
 }
 
 // -------------------------------------------------------
@@ -1802,6 +1803,13 @@ class ComputeTupleIterator : public TupleIterator {
   }
 
   absl::Status Status() const override { return status_; }
+
+  // `ComputeTupleIterator` defers ordering to its underlying iterator.
+  bool PreservesOrder() const override { return iter_->PreservesOrder(); }
+
+  absl::Status DisableReordering() override {
+    return iter_->DisableReordering();
+  }
 
   std::string DebugString() const override {
     return ComputeOp::GetIteratorDebugString(iter_->DebugString());

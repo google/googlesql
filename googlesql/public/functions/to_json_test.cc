@@ -94,9 +94,10 @@ TEST(ToJsonTest, Compliance) {
     SCOPED_TRACE(absl::Substitute("$0('$1', '$2')", test.function_name,
                                   input_value.ShortDebugString(),
                                   stringify_wide_numbers));
+    const QueryParamsWithResult::ResultMap results = test.params.results();
     googlesql::LanguageOptions language_options;
-    if (test.params.results().size() == 1 &&
-        googlesql_base::ContainsKey(test.params.results().begin()->first,
+    if (results.size() == 1 &&
+        googlesql_base::ContainsKey(results.begin()->first,
                          FEATURE_JSON_STRICT_NUMBER_PARSING)) {
       language_options.EnableLanguageFeature(
           FEATURE_JSON_STRICT_NUMBER_PARSING);
@@ -108,16 +109,14 @@ TEST(ToJsonTest, Compliance) {
     // If the test is conditioned on civil time with nanos, use that result.
     // Otherwise just use the default result.
     const QueryParamsWithResult::Result* result =
-        googlesql_base::FindOrNull(test.params.results(), default_feature_set);
+        googlesql_base::FindOrNull(results, default_feature_set);
     const Value expected_result_value =
-        result == nullptr ? test.params.results().begin()->second.result
-                          : result->result;
+        result == nullptr ? results.begin()->second.result : result->result;
     const absl::Status expected_status =
-        result == nullptr ? test.params.results().begin()->second.status
-                          : result->status;
-    FloatMargin margin =
-        result == nullptr ? test.params.results().begin()->second.float_margin
-                          : result->float_margin;
+        result == nullptr ? results.begin()->second.status : result->status;
+    FloatMargin margin = result == nullptr
+                             ? results.begin()->second.float_margin
+                             : result->float_margin;
 
     if (expected_status.ok()) {
       if (margin.IsExactEquality()) {

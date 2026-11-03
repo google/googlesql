@@ -54,6 +54,7 @@
 #include "googlesql/resolved_ast/make_node_vector.h"
 #include "googlesql/resolved_ast/resolved_ast.h"
 #include "googlesql/resolved_ast/resolved_ast_builder.h"
+#include "googlesql/resolved_ast/resolved_ast_column_visibility_checker.h"
 #include "googlesql/resolved_ast/resolved_ast_enums.pb.h"
 #include "googlesql/resolved_ast/resolved_column.h"
 #include "googlesql/resolved_ast/test_utils.h"
@@ -75,7 +76,9 @@ namespace testing {
 namespace {
 
 using ::testing::_;
+using ::testing::AllOf;
 using ::testing::HasSubstr;
+using ::testing::Not;
 using ::absl_testing::StatusIs;
 
 // Similar to MakeSelect1Stmt(), except the output column list in the returned
@@ -407,6 +410,151 @@ MakeGroupingSetsResolvedAST(IdStringPool& pool, GroupingSetTestMode mode) {
           ResolvedProjectScanBuilder().set_column_list(columns).set_input_scan(
               builder))
       .Build();
+}
+
+// Returns a hand-constructed tree for
+//   SELECT (SELECT <x>) AS y FROM (SELECT 1 AS x)
+// for testing column visibility. The subquery references `x` with
+// `is_correlated`=`correlated`, and lists `x` in its parameter_list if
+// `in_parameter_list`. If `subquery_returns_x`, the subquery's ProjectScan
+// returns `x` directly in its column_list instead of computing a new column.
+absl::StatusOr<std::unique_ptr<const ResolvedQueryStmt>>
+MakeSubqueryStmtForColumnVisibility(IdStringPool& pool, bool correlated,
+                                    bool in_parameter_list,
+                                    bool subquery_returns_x = false) {
+  ResolvedColumn x(1, pool.Make("t"), pool.Make("x"), types::Int64Type());
+  ResolvedColumn y(2, pool.Make("q"), pool.Make("y"), types::Int64Type());
+  ResolvedColumn z(3, pool.Make("s"), pool.Make("z"), types::Int64Type());
+
+  ResolvedProjectScanBuilder subquery_scan =
+      ResolvedProjectScanBuilder().set_input_scan(MakeResolvedSingleRowScan());
+  if (subquery_returns_x) {
+    subquery_scan.add_column_list(x);
+  } else {
+    subquery_scan.add_column_list(z).add_expr_list(MakeResolvedComputedColumn(
+        z, MakeResolvedColumnRef(types::Int64Type(), x, correlated)));
+  }
+  ResolvedSubqueryExprBuilder subquery =
+      ResolvedSubqueryExprBuilder()
+          .set_type(types::Int64Type())
+          .set_subquery_type(ResolvedSubqueryExpr::SCALAR)
+          .set_subquery(std::move(subquery_scan));
+  if (in_parameter_list) {
+    subquery.add_parameter_list(
+        MakeResolvedColumnRef(types::Int64Type(), x, /*is_correlated=*/false));
+  }
+
+  return ResolvedQueryStmtBuilder()
+      .add_output_column_list(MakeResolvedOutputColumn("y", y))
+      .set_query(
+          ResolvedProjectScanBuilder()
+              .add_column_list(y)
+              .add_expr_list(
+                  ResolvedComputedColumnBuilder().set_column(y).set_expr(
+                      std::move(subquery)))
+              .set_input_scan(ResolvedProjectScanBuilder()
+                                  .add_column_list(x)
+                                  .add_expr_list(MakeResolvedComputedColumn(
+                                      x, MakeResolvedLiteral(Value::Int64(1))))
+                                  .set_input_scan(MakeResolvedSingleRowScan())))
+      .Build();
+}
+
+ValidatorOptions ColumnVisibilityValidatorOptions() {
+  ValidatorOptions options;
+  options.validate_column_visibility = true;
+  options.compare_column_visibility = true;
+  return options;
+}
+
+TEST(ValidatorTest, ColumnVisibilityValidCorrelatedSubquery) {
+  IdStringPool pool;
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<const ResolvedQueryStmt> stmt,
+      MakeSubqueryStmtForColumnVisibility(pool, /*correlated=*/true,
+                                          /*in_parameter_list=*/true));
+  Validator validator(LanguageOptions(), ColumnVisibilityValidatorOptions());
+  GOOGLESQL_EXPECT_OK(validator.ValidateResolvedStatement(stmt.get()));
+}
+
+// Without comparison mode, the checker doesn't record environments, so the
+// column sets it builds are owned by the generated Check methods.
+TEST(ValidatorTest, ColumnVisibilityWithoutComparison) {
+  IdStringPool pool;
+  ValidatorOptions options;
+  options.validate_column_visibility = true;
+  options.compare_column_visibility = false;
+  Validator validator(LanguageOptions(), options);
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<const ResolvedQueryStmt> valid_stmt,
+      MakeSubqueryStmtForColumnVisibility(pool, /*correlated=*/true,
+                                          /*in_parameter_list=*/true));
+  GOOGLESQL_EXPECT_OK(validator.ValidateResolvedStatement(valid_stmt.get()));
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<const ResolvedQueryStmt> invalid_stmt,
+      MakeSubqueryStmtForColumnVisibility(pool, /*correlated=*/true,
+                                          /*in_parameter_list=*/false));
+  EXPECT_THAT(validator.ValidateResolvedStatement(invalid_stmt.get()),
+              StatusIs(_, HasSubstr("not in the OUTER columns")));
+}
+
+TEST(ValidatorTest, ColumnVisibilityCorrelatedReferenceNotInParameterList) {
+  IdStringPool pool;
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<const ResolvedQueryStmt> stmt,
+      MakeSubqueryStmtForColumnVisibility(pool, /*correlated=*/true,
+                                          /*in_parameter_list=*/false));
+  Validator validator(LanguageOptions(), ColumnVisibilityValidatorOptions());
+  EXPECT_THAT(
+      validator.ValidateResolvedStatement(stmt.get()),
+      StatusIs(_, AllOf(HasSubstr("Column visibility check failed: ColumnRef."
+                                  "column references column t.x#1"),
+                        HasSubstr("not in the OUTER columns"),
+                        HasSubstr("See ColumnVisibilityChecker::CheckRoot"))));
+}
+
+TEST(ValidatorTest, ColumnVisibilityUncorrelatedReferenceToOuterColumn) {
+  IdStringPool pool;
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<const ResolvedQueryStmt> stmt,
+      MakeSubqueryStmtForColumnVisibility(pool, /*correlated=*/false,
+                                          /*in_parameter_list=*/true));
+  Validator validator(LanguageOptions(), ColumnVisibilityValidatorOptions());
+  EXPECT_THAT(
+      validator.ValidateResolvedStatement(stmt.get()),
+      StatusIs(_, AllOf(HasSubstr("Column visibility check failed: ColumnRef."
+                                  "column references column t.x#1"),
+                        HasSubstr("not in the VISIBLE columns []"))));
+}
+
+TEST(ValidatorTest, ColumnVisibilityColumnListWithOuterColumn) {
+  IdStringPool pool;
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<const ResolvedQueryStmt> stmt,
+      MakeSubqueryStmtForColumnVisibility(pool, /*correlated=*/true,
+                                          /*in_parameter_list=*/true,
+                                          /*subquery_returns_x=*/true));
+  Validator validator(LanguageOptions(), ColumnVisibilityValidatorOptions());
+  EXPECT_THAT(
+      validator.ValidateResolvedStatement(stmt.get()),
+      StatusIs(_, AllOf(HasSubstr("Column visibility check failed: "
+                                  "ProjectScan.column_list references "
+                                  "column t.x#1 which is not in its "
+                                  "column_list_scope"),
+                        HasSubstr("See "
+                                  "ColumnVisibilityChecker::CheckRoot"))));
+}
+
+TEST(ValidatorTest, ColumnVisibilityOffByDefault) {
+  IdStringPool pool;
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<const ResolvedQueryStmt> stmt,
+      MakeSubqueryStmtForColumnVisibility(pool, /*correlated=*/true,
+                                          /*in_parameter_list=*/false));
+  // The hand-written validator also catches this, with a different error.
+  Validator validator(LanguageOptions{}, ValidatorOptions{});
+  EXPECT_THAT(validator.ValidateResolvedStatement(stmt.get()),
+              StatusIs(_, Not(HasSubstr("Column visibility"))));
 }
 
 TEST(ValidatorTest, ValidQueryStatement) {
@@ -1701,7 +1849,8 @@ TEST(ValidatorTest, InvalidGraphLabelExpression) {
   const GraphElementType* graph_element_type;
   GOOGLESQL_ASSERT_OK(factory.MakeGraphElementType(
       {"graph_name"}, GraphElementType::ElementKind::kNode,
-      /*property_types=*/{}, &graph_element_type));
+      /*property_types=*/{},
+      /*element_tables=*/{}, &graph_element_type));
 
   IdStringPool pool;
   const std::vector<ResolvedColumn> col_list = {
@@ -1760,7 +1909,8 @@ TEST(ValidatorTest, InvalidDynamicGraphLabelExpression) {
   const GraphElementType* dynamic_graph_element_type;
   GOOGLESQL_ASSERT_OK(factory.MakeDynamicGraphElementType(
       {graph_name}, GraphElementType::ElementKind::kNode,
-      /*static_property_types=*/{}, &dynamic_graph_element_type));
+      /*static_property_types=*/{},
+      /*element_tables=*/{}, &dynamic_graph_element_type));
 
   IdStringPool pool;
   const std::vector<ResolvedColumn> col_list = {ResolvedColumn(
@@ -1833,7 +1983,8 @@ TEST(ValidatorTest, CaseInsensitiveDynamicGraphLabelExpression) {
   const GraphElementType* dynamic_graph_element_type;
   GOOGLESQL_ASSERT_OK(factory.MakeDynamicGraphElementType(
       {graph_name}, GraphElementType::ElementKind::kNode,
-      /*static_property_types=*/{}, &dynamic_graph_element_type));
+      /*static_property_types=*/{},
+      /*element_tables=*/{}, &dynamic_graph_element_type));
 
   IdStringPool pool;
   const std::vector<ResolvedColumn> col_list = {ResolvedColumn(
@@ -5200,7 +5351,7 @@ TEST(ValidatorTest, TemplatedFunctionFailure) {
   auto templated_info = std::make_unique<TemplatedSQLFunctionCall>(
       std::move(failing_body),
       /*aggregate_expr_list=*/
-      std::vector<std::unique_ptr<const ResolvedComputedColumn>>{});
+      std::vector<std::unique_ptr<const ResolvedComputedColumnBase>>{});
 
   // Use a signature with num_occurrences = 1 to ensure IsConcrete() is true.
   FunctionSignature sig(
@@ -5251,7 +5402,7 @@ TEST(ValidatorTest, NestedTemplatedFunctionFailure) {
   auto inner_templated_info = std::make_unique<TemplatedSQLFunctionCall>(
       std::move(failing_body),
       /*aggregate_expr_list=*/
-      std::vector<std::unique_ptr<const ResolvedComputedColumn>>{});
+      std::vector<std::unique_ptr<const ResolvedComputedColumnBase>>{});
 
   FunctionSignature inner_sig(
       /*result_type=*/FunctionArgumentType(types::Int64Type(), 1),
@@ -5277,7 +5428,7 @@ TEST(ValidatorTest, NestedTemplatedFunctionFailure) {
   auto outer_templated_info = std::make_unique<TemplatedSQLFunctionCall>(
       std::move(inner_call),
       /*aggregate_expr_list=*/
-      std::vector<std::unique_ptr<const ResolvedComputedColumn>>{});
+      std::vector<std::unique_ptr<const ResolvedComputedColumnBase>>{});
 
   FunctionSignature outer_sig(
       /*result_type=*/FunctionArgumentType(types::Int64Type(), 1),
@@ -6060,6 +6211,49 @@ TEST(ValidatorTest, TVFArgumentWithNonOrderableTypeFails) {
 }  // namespace
 }  // namespace testing
 
+TEST(ValidatorTest, CompareColumnSet) {
+  IdStringPool pool;
+  ResolvedColumn x(1, pool.Make("t"), pool.Make("x"), types::Int64Type());
+  ResolvedColumn y(2, pool.Make("t"), pool.Make("y"), types::Int64Type());
+  const ColumnVisibilityChecker::ColumnSet set_x{x};
+  const ColumnVisibilityChecker::ColumnSet set_xy{x, y};
+  const ColumnVisibilityChecker::ColumnSet* computed_x = &set_x;
+  const ColumnVisibilityChecker::ColumnSet* computed_xy = &set_xy;
+
+  GOOGLESQL_EXPECT_OK(Validator::CompareColumnSet("what", "VISIBLE", {x}, computed_x));
+  // A null computed set is the empty set.
+  GOOGLESQL_EXPECT_OK(Validator::CompareColumnSet("what", "VISIBLE", {}, nullptr));
+  EXPECT_THAT(Validator::CompareColumnSet("what", "VISIBLE", {x}, nullptr),
+              ::absl_testing::StatusIs(
+                  ::testing::_, ::testing::HasSubstr(
+                                    "Only in the validator: [t.x#1]; only in "
+                                    "the annotations: []")));
+  // The annotations allow more columns than the validator.
+  EXPECT_THAT(
+      Validator::CompareColumnSet("what", "VISIBLE", {x}, computed_xy),
+      ::absl_testing::StatusIs(
+          ::testing::_,
+          ::testing::AllOf(
+              ::testing::HasSubstr("Column visibility comparison failed in "
+                                   "what: VISIBLE differs"),
+              ::testing::HasSubstr("Only in the validator: []; only in the "
+                                   "annotations: [t.y#2]"),
+              ::testing::HasSubstr("See Validator::CompareColumnVisibility"))));
+  // The validator allows more columns than the annotations.
+  EXPECT_THAT(
+      Validator::CompareColumnSet("what", "VISIBLE", {x, y}, computed_x),
+      ::absl_testing::StatusIs(
+          ::testing::_,
+          ::testing::HasSubstr("Only in the validator: [t.y#2]; only in "
+                               "the annotations: []")));
+  // Same size, different columns.
+  EXPECT_THAT(Validator::CompareColumnSet("what", "VISIBLE", {y}, computed_x),
+              ::absl_testing::StatusIs(
+                  ::testing::_, ::testing::HasSubstr(
+                                    "Only in the validator: [t.y#2]; only in "
+                                    "the annotations: [t.x#1]")));
+}
+
 TEST(ValidatorTest, InvalidDynamicGraphGetElementProperty) {
   std::string graph_name = "graph_name";
   const SimplePropertyGraph graph(std::vector<std::string>{graph_name});
@@ -6067,7 +6261,8 @@ TEST(ValidatorTest, InvalidDynamicGraphGetElementProperty) {
   const GraphElementType* dynamic_graph_element_type;
   GOOGLESQL_ASSERT_OK(factory.MakeDynamicGraphElementType(
       {graph_name}, GraphElementType::ElementKind::kNode,
-      /*static_property_types=*/{}, &dynamic_graph_element_type));
+      /*static_property_types=*/{},
+      /*element_tables=*/{}, &dynamic_graph_element_type));
 
   IdStringPool pool;
   const ResolvedColumn element_col(1, pool.Make("tbl"), pool.Make("x"),
@@ -6122,7 +6317,8 @@ TEST(ValidatorTest, CaseInsensitiveDynamicGraphGetElementProperty) {
   const GraphElementType* dynamic_graph_element_type;
   GOOGLESQL_ASSERT_OK(factory.MakeDynamicGraphElementType(
       {graph_name}, GraphElementType::ElementKind::kNode,
-      /*static_property_types=*/{}, &dynamic_graph_element_type));
+      /*static_property_types=*/{},
+      /*element_tables=*/{}, &dynamic_graph_element_type));
 
   IdStringPool pool;
   const ResolvedColumn element_col(1, pool.Make("tbl"), pool.Make("x"),
@@ -6215,10 +6411,10 @@ class ValidatorGraphTest : public ::testing::Test {
   void SetUp() override {
     GOOGLESQL_ASSERT_OK(factory_.MakeGraphElementType(
         {"graph_name"}, GraphElementType::ElementKind::kNode, {},
-        &graph_node_type_));
+        /*element_tables=*/{}, &graph_node_type_));
     GOOGLESQL_ASSERT_OK(factory_.MakeGraphElementType(
         {"graph_name"}, GraphElementType::ElementKind::kEdge, {},
-        &graph_edge_type_));
+        /*element_tables=*/{}, &graph_edge_type_));
     graph_table_ = std::make_unique<SimpleTable>(
         "graph_table", std::vector<SimpleTable::NameAndType>{
                            {"x", graph_node_type_}, {"y", graph_node_type_}});
@@ -6237,7 +6433,7 @@ class ValidatorGraphTest : public ::testing::Test {
   }
 
   std::unique_ptr<const ResolvedGraphLabel> MakeDynamicLabel(
-      const std::string& label_name = "Vip") {
+      absl::string_view label_name = "Vip") {
     return MakeResolvedGraphLabel(
         /*label=*/nullptr,
         MakeResolvedLiteral(types::StringType(), Value::String(label_name),
@@ -6245,7 +6441,7 @@ class ValidatorGraphTest : public ::testing::Test {
   }
 
   std::unique_ptr<const ResolvedGraphLabel> MakeStaticLabel(
-      const std::string& label_name = "Person") {
+      absl::string_view label_name = "Person") {
     return MakeResolvedGraphLabel(
         person_label_.get(),
         MakeResolvedLiteral(types::StringType(), Value::String(label_name),
@@ -6253,7 +6449,7 @@ class ValidatorGraphTest : public ::testing::Test {
   }
 
   std::unique_ptr<const ResolvedGraphDMLPropertyItem> MakePropertyItemWithValue(
-      const std::string& val = "Alice") {
+      absl::string_view val = "Alice") {
     return MakeResolvedGraphDMLPropertyItem(
         "name", name_property_dcl_.get(),
         MakeResolvedLiteral(Value::String(val)));
@@ -6318,7 +6514,8 @@ TEST_F(ValidatorGraphTest, ValidGraphInsertScan) {
   const GraphElementType* graph_node_type;
   GOOGLESQL_ASSERT_OK(factory_.MakeGraphElementType(
       {graph_name}, GraphElementType::ElementKind::kNode,
-      {{"name", factory_.get_string()}}, &graph_node_type));
+      {{"name", factory_.get_string()}},
+      /*element_tables=*/{}, &graph_node_type));
   ResolvedColumn node_col(/*column_id=*/1, pool_.Make("inserted"),
                           pool_.Make("node"), graph_node_type);
 
@@ -6355,9 +6552,9 @@ TEST_F(ValidatorGraphTest, ValidGraphInsertScan) {
       "Knows", std::vector<std::string>{graph_name},
       absl::flat_hash_set<const GraphPropertyDeclaration*>{});
   const GraphElementType* graph_edge_type;
-  GOOGLESQL_ASSERT_OK(factory_.MakeGraphElementType({graph_name},
-                                          GraphElementType::ElementKind::kEdge,
-                                          {}, &graph_edge_type));
+  GOOGLESQL_ASSERT_OK(factory_.MakeGraphElementType(
+      {graph_name}, GraphElementType::ElementKind::kEdge, {},
+      /*element_tables=*/{}, &graph_edge_type));
   ResolvedColumn edge_col(/*column_id=*/2, pool_.Make("inserted"),
                           pool_.Make("edge"), graph_edge_type);
 
@@ -6657,7 +6854,8 @@ TEST_F(ValidatorGraphTest, InvalidEdgeEndpointPropertyNotFound) {
   const GraphElementType* graph_node_type_with_age;
   GOOGLESQL_ASSERT_OK(factory_.MakeGraphElementType(
       {graph_name}, GraphElementType::ElementKind::kNode,
-      {{"age", factory_.get_int64()}}, &graph_node_type_with_age));
+      {{"age", factory_.get_int64()}},
+      /*element_tables=*/{}, &graph_node_type_with_age));
 
   // Create a synthetic table that has this node type column.
   SimpleTable table_with_age_node("synthetic_tbl",
@@ -6735,7 +6933,8 @@ TEST_F(ValidatorGraphTest, InvalidEdgeEndpointPropertyTypeMismatch) {
   const GraphElementType* graph_node_type_with_int_name;
   GOOGLESQL_ASSERT_OK(factory_.MakeGraphElementType(
       {graph_name}, GraphElementType::ElementKind::kNode,
-      {{"name", factory_.get_int64()}}, &graph_node_type_with_int_name));
+      {{"name", factory_.get_int64()}},
+      /*element_tables=*/{}, &graph_node_type_with_int_name));
 
   // Create a synthetic table that has this node type column.
   SimpleTable table_with_int_name(
@@ -9466,6 +9665,10 @@ TEST_F(ValidatorGraphTest, ValidGraphDeleteScan) {
           .Build());
 
   GOOGLESQL_EXPECT_OK(validator_.ValidateResolvedStatement(query_stmt.get()));
+  Validator column_visibility_validator(
+      LanguageOptions(), testing::ColumnVisibilityValidatorOptions());
+  GOOGLESQL_EXPECT_OK(
+      column_visibility_validator.ValidateResolvedStatement(query_stmt.get()));
 }
 
 TEST_F(ValidatorGraphTest, InvalidGraphDeleteScanNoInputScan) {
@@ -9719,6 +9922,43 @@ TEST_F(ValidatorGraphTest, InvalidGraphDeleteScanComputedColExprIsNotColRef) {
                   absl::StatusCode::kInternal,
                   ::testing::HasSubstr(
                       "Delete item `expr` must be a column reference")));
+}
+
+TEST_F(ValidatorGraphTest, InvalidGraphDeleteScanDuplicateDeleteItem) {
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<const ResolvedGraphDeleteScan> graph_delete_scan,
+      ResolvedGraphDeleteScanBuilder()
+          .add_column_list(updated_element_col1_)
+          .add_column_list(updated_element_col2_)
+          .set_input_scan(MakeInputScan())
+          .add_delete_item_list(MakeResolvedComputedColumn(
+              /*column=*/updated_element_col1_, /*expr=*/MakeResolvedColumnRef(
+                  /*type=*/element_col1_.type(),
+                  /*column=*/element_col1_,
+                  /*is_correlated=*/false)))
+          .add_delete_item_list(MakeResolvedComputedColumn(
+              /*column=*/updated_element_col2_, /*expr=*/MakeResolvedColumnRef(
+                  /*type=*/element_col1_.type(),
+                  /*column=*/element_col1_,
+                  /*is_correlated=*/false)))
+          .set_is_detach_mode(true)
+          .Build());
+
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<const ResolvedGeneralizedQueryStmt> query_stmt,
+      ResolvedGeneralizedQueryStmtBuilder()
+          .set_output_schema(nullptr)
+          .set_query(std::move(graph_delete_scan))
+          .Build());
+
+  // Error because `element_col1_` is referenced more than once in
+  // `delete_item_list`.
+  EXPECT_THAT(
+      validator_.ValidateResolvedStatement(query_stmt.get()),
+      ::absl_testing::StatusIs(
+          absl::StatusCode::kInternal,
+          ::testing::HasSubstr(
+              "Duplicate column in `delete_item_list`: graph_table.x#1")));
 }
 
 TEST(ValidateTest, CreateTableFunctionStmtWithConnectionAndFeatureEnabled) {

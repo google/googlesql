@@ -875,7 +875,6 @@ absl::Status Resolver::MakeResolvedDateOrTimeLiteral(
     }
   }
 
-  std::string string_value;
   switch (type_kind) {
     case TYPE_DATE: {
       int32_t date;
@@ -1454,11 +1453,7 @@ absl::Status Resolver::ResolveExpr(
                                       << ast_expr->DebugString();
   }
 
-  if (*resolved_expr_out == nullptr) {
-    // This can happen for function-typed arguments.
-    GOOGLESQL_RET_CHECK(ast_expr->Is<ASTPathExpression>());
-    return absl::OkStatus();
-  }
+  GOOGLESQL_RET_CHECK(resolved_expr_out->get() != nullptr);
 
   if (resolved_expr_out->get()->GetParseLocationOrNULL() == nullptr) {
     MaybeRecordParseLocation(
@@ -1867,11 +1862,9 @@ absl::Status Resolver::MaybeResolvePathExpressionAsFunctionArgumentRef(
       << "Function bodies cannot be resolved with templated argument types";
 
   if (arg_details->arg_type.IsLambda()) {
-    // We cannot represent a lambda as a ResolvedExpr. Returning nullptr
-    // here allows ResolveExpressionArguments to handle it specially.
-    *resolved_expr_out = nullptr;
-    (*num_parts_consumed)++;
-    return absl::OkStatus();
+    return MakeSqlErrorAtPoint(parse_location.start())
+           << "Function-typed UDF arguments must be prefixed with the "
+              "FUNCTION keyword";
   }
 
   auto resolved_argument_ref = MakeResolvedArgumentRef(
@@ -2398,16 +2391,7 @@ absl::Status Resolver::ResolvePathExpressionAsExpression(
                                     /*is_system_variable=*/false);
   }
 
-  if (resolved_expr == nullptr) {
-    // This can happen if the path resolved to a function-typed argument.
-    // Ensure that it was indeed a function-typed argument.
-    GOOGLESQL_RET_CHECK(function_argument_info_ != nullptr);
-    const FunctionArgumentInfo::ArgumentDetails* arg_details =
-        function_argument_info_->FindScalarArg(first_name);
-    GOOGLESQL_RET_CHECK(arg_details != nullptr && arg_details->arg_type.IsLambda());
-    *resolved_expr_out = nullptr;
-    return absl::OkStatus();
-  }
+  GOOGLESQL_RET_CHECK(resolved_expr != nullptr);
 
   // Resolve any further identifiers in <path_expr> as field accesses.
   for (; num_names_consumed < path_expr.num_names(); ++num_names_consumed) {
@@ -2813,7 +2797,6 @@ absl::Status Resolver::ResolveGetRowField(
   const RowOrTableType* row_type = resolved_lhs->type()->AsRowOrTable();
   const Table* table = row_type->table();
 
-  std::string multi_row_error;
   if (row_type->IsMultiRowTable() &&
       (flatten_state == nullptr || !flatten_state->can_flatten())) {
     return MakeSqlErrorAt(identifier)
@@ -6136,8 +6119,6 @@ absl::Status Resolver::GetFunctionNameAndArgumentsForDPFunctions(
     return absl::OkStatus();
   }
   const ASTPathExpression* function = function_call->function();
-  const std::string upper_case_function_name =
-      absl::AsciiStrToUpper(function->last_name()->GetAsString());
 
   if (query_resolution_info == nullptr ||
       query_resolution_info->with_modifier_mode() !=
@@ -8126,8 +8107,6 @@ absl::Status Resolver::ResolveArrayElement(
   }
   const std::string subscript_lhs_type =
       resolved_lhs->type()->ShortTypeName(product_mode());
-  const std::string argumentType =
-      resolved_position->type()->ShortTypeName(product_mode());
   args.push_back(std::move(resolved_position));
 
   // Engines may or may not have loaded the relevant $subscript function (or
@@ -9587,6 +9566,8 @@ Resolver::ResolveBracedConstructorInUpdateContext(
     // type for standard updates). This handles implicit casting (e.g., int32 ->
     // int64) or
     // returns an error on mismatch.
+    // TODO: Implement namescoping for UPDATE constructors so that
+    // the RHS expression can reference fields from the target proto.
     GOOGLESQL_RETURN_IF_ERROR(CoerceExprToType(
         ast_field->value()->expression(), target_type, TypeModifiers(),
         kImplicitAssignment,
@@ -11678,7 +11659,7 @@ Resolver::WrapInASideEffectCall(const ASTNode* ast_location,
 }
 
 // Returns an error if `resolved_arguments` contain any MEASURE-typed arguments
-// and `function` is not the AGGREGATE function, or any argument has ROW type.
+// and `function` is not the AGGREGATE function.
 static absl::Status EnsureNoIllegallyTypedArguments(
     const Function* function, const std::vector<const ASTNode*>& arg_locations,
     absl::Span<const std::unique_ptr<const ResolvedExpr>> resolved_arguments) {
@@ -11693,10 +11674,6 @@ static absl::Status EnsureNoIllegallyTypedArguments(
       return MakeSqlErrorAt(arg_locations[i])
              << "MEASURE-typed arguments are only permitted in the AGG "
                 "function";
-    }
-    if (resolved_argument.type()->IsRowOrTable()) {
-      return MakeSqlErrorAt(arg_locations[i])
-             << "ROW-typed values cannot be passed as function arguments";
     }
   }
   return absl::OkStatus();
@@ -13028,6 +13005,9 @@ absl::Status Resolver::CoerceExprToType(
 
   // The coercion is legal, so implement it by adding a cast.  Note that
   // AddCastOrConvertLiteral() adds a cast node only when necessary.
+  GOOGLESQL_ASSIGN_OR_RETURN(type_modifiers, FunctionResolver::AdjustTypeModifiersForCast(
+                                       resolved_expr->get()->type(),
+                                       target_type, type_modifiers));
   GOOGLESQL_RETURN_IF_ERROR(function_resolver_->AddCastOrConvertLiteral(
       ast_location, target_type,
       /*format=*/nullptr,

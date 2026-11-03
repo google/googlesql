@@ -582,6 +582,103 @@ TEST(MakeRegExp, InvalidPatternErrorIsEscaped) {
   EXPECT_THAT(re.status().message(), testing::Not(testing::HasSubstr("\n")));
 }
 
+TEST(RegexpReplace, BackreferenceBoundsAndEscapes) {
+  {
+    GOOGLESQL_ASSERT_OK_AND_ASSIGN(auto re9,
+                         MakeRegExpUtf8("(a)(b)(c)(d)(e)(f)(g)(h)(i)"));
+    std::string out;
+    absl::Status error;
+    ASSERT_TRUE(re9->Replace("xabcdefghiy", "Z", &out, &error)) << error;
+    EXPECT_EQ(out, "xZy");
+
+    ASSERT_TRUE(re9->Replace("abcdefghi", "\\0-\\0", &out, &error)) << error;
+    EXPECT_EQ(out, "abcdefghi-abcdefghi");
+
+    ASSERT_TRUE(re9->Replace("abcdefghi", "\\3-\\1", &out, &error)) << error;
+    EXPECT_EQ(out, "c-a");
+
+    ASSERT_TRUE(
+        re9->Replace("abcdefghi", "\\9\\8\\7\\6\\5\\4\\3\\2\\1", &out, &error))
+        << error;
+    EXPECT_EQ(out, "ihgfedcba");
+
+    ASSERT_TRUE(re9->Replace("abcdefghi", "\\\\1-\\\\-\\2", &out, &error))
+        << error;
+    EXPECT_EQ(out, "\\1-\\-b");
+  }
+
+  {
+    // Escaped backslash before a digit is a literal, not a backreference.
+    GOOGLESQL_ASSERT_OK_AND_ASSIGN(auto re0, MakeRegExpUtf8("abc"));
+    std::string out;
+    absl::Status error;
+    ASSERT_TRUE(re0->Replace("xabcy", "\\\\9", &out, &error)) << error;
+    EXPECT_EQ(out, "x\\9y");
+  }
+
+  {
+    // Non-participating optional capturing group expands to empty string.
+    GOOGLESQL_ASSERT_OK_AND_ASSIGN(auto re_opt, MakeRegExpUtf8("(a)?(b)"));
+    std::string out;
+    absl::Status error;
+    ASSERT_TRUE(re_opt->Replace("xbzazab", "[\\1:\\2]", &out, &error)) << error;
+    EXPECT_EQ(out, "x[:b]zaz[a:b]");
+  }
+
+  {
+    // Capturing alternation with literal replacement (nmatch == 1).
+    GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+        auto re_date,
+        MakeRegExpUtf8(
+            "([0-9]{4}-[0-9]{2}-[0-9]{2}|[0-9]{2}/[0-9]{2}/[0-9]{4})"));
+    std::string out;
+    absl::Status error;
+    ASSERT_TRUE(
+        re_date->Replace("d1=2026-10-31 d2=11/15/2026", "DATE", &out, &error))
+        << error;
+    EXPECT_EQ(out, "d1=DATE d2=DATE");
+  }
+
+  {
+    // Empty matches immediately after a non-empty match ("a") are skipped, and
+    // remaining empty matches advance by one full UTF-8 character ("π" is 2
+    // bytes, so no empty match occurs mid-character) in UTF-8 mode vs. one raw
+    // byte in BYTES mode.
+    GOOGLESQL_ASSERT_OK_AND_ASSIGN(auto re_utf8, MakeRegExpUtf8("(a*)"));
+    std::string out;
+    absl::Status error;
+    ASSERT_TRUE(re_utf8->Replace("aπb", "[\\1]", &out, &error)) << error;
+    EXPECT_EQ(out, "[a]π[]b[]");
+
+    GOOGLESQL_ASSERT_OK_AND_ASSIGN(auto re_bytes, MakeRegExpBytes("(a*)"));
+    ASSERT_TRUE(re_bytes->Replace(absl::string_view("\xff"
+                                                    "ab",
+                                                    3),
+                                  "X", &out, &error))
+        << error;
+    EXPECT_EQ(out,
+              "X\xff"
+              "XbX");
+  }
+
+  {
+    // Invalid rewrite strings fail even when the input string never matches.
+    GOOGLESQL_ASSERT_OK_AND_ASSIGN(auto re1, MakeRegExpUtf8("(a)"));
+    for (absl::string_view input : {"a", "zzz", ""}) {
+      for (absl::string_view bad_rewrite : {"\\2", "\\9", "\\a", "foo\\"}) {
+        std::string out;
+        absl::Status error;
+        EXPECT_FALSE(re1->Replace(input, bad_rewrite, &out, &error))
+            << "input=" << input << " rewrite=" << bad_rewrite;
+        EXPECT_THAT(error,
+                    absl_testing::StatusIs(
+                        absl::StatusCode::kOutOfRange,
+                        testing::HasSubstr("Invalid REGEXP_REPLACE pattern")));
+      }
+    }
+  }
+}
+
 }  // anonymous namespace
 }  // namespace functions
 }  // namespace googlesql

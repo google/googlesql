@@ -185,8 +185,8 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/time/clock_interface.h"
 #include "absl/time/time.h"
-#include "googlesql/base/clock.h"
 
 namespace googlesql {
 
@@ -214,7 +214,7 @@ struct EvaluatorOptions {
   // on the time returned by this clock. By default this is the normal system
   // clock but it can (optionally) be overridden.
   // Does not take ownership.
-  googlesql_base::Clock* clock = googlesql_base::Clock::RealClock();
+  absl::Clock* clock = &absl::Clock::GetRealClock();
 
   // The default time zone to use. If not set, the default time zone is
   // "America/Los_Angeles".

@@ -1,0 +1,58 @@
+//
+// Copyright 2019 Google LLC
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+//
+
+edition = "2024";
+
+package googlesql;
+
+option java_package = "com.google.protos.googlesql";
+option java_outer_classname = "VectorValueProtos";
+
+// The storage form of a VECTOR value.
+//
+// VECTOR is a declarative type backed by BYTES, and those bytes are this
+// message, serialized. It is what crosses every boundary a VECTOR value
+// crosses: a serialized ResolvedLiteral, a schema constant or column default,
+// a query parameter sent over RPC. So everything that writes or reads a VECTOR
+// value must agree on it.
+//
+// The encoding is recorded in the value rather than derived from the VECTOR
+// type parameters. Type parameters are erasable and are only a compile-time
+// assertion, so they are absent for an unannotated VECTOR and cannot describe
+// a column holding a mix of encodings. Keeping the value self-describing lets
+// functions such as VECTOR_ENCODING and VECTOR_DIMENSION_COUNT answer correctly
+// for any VECTOR they are handed.
+//
+// Evolving this message: a reader ignores fields it does not know. So any new
+// field that changes how `data` is interpreted must come with a new
+// `encoding`, and readers must reject an encoding they do not recognize rather
+// than guess at its `data`.
+//
+// TODO: b/462724117 - This shape is not ratified yet and may change. Do not
+// persist VectorValueProto bytes anywhere that would need migrating until it
+// is.
+message VectorValueProto {
+  // A googlesql::VectorEncodingId::Id. It is an int32 rather than that enum so
+  // that the field does not depend on this binary knowing every encoding. 0
+  // (UNKNOWN_VECTOR_ENCODING) is indistinguishable from an unset field, so it
+  // is never a valid value.
+  int32 encoding = 1;
+
+  // The payload, whose layout is defined by `encoding`. For FLOAT32 it is the
+  // elements in order, each as four little-endian IEEE-754 binary32 bytes, so
+  // the vector's dims are the size of `data` divided by four.
+  bytes data = 2;
+}

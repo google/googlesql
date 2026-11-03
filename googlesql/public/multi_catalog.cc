@@ -140,6 +140,20 @@ absl::Status MultiCatalog::FindTable(const absl::Span<const std::string>& path,
   return TableNotFoundError(path);
 }
 
+absl::Status MultiCatalog::FindTableFromString(absl::string_view table_literal,
+                                               const Table** table,
+                                               const FindOptions& options) {
+  for (Catalog* catalog : catalog_list_) {
+    const absl::Status find_status =
+        catalog->FindTableFromString(table_literal, table, options);
+    if (!absl::IsNotFound(find_status)) {
+      return find_status;
+    }
+  }
+  *table = nullptr;
+  return TableNotFoundError({std::string(table_literal)});
+}
+
 absl::Status MultiCatalog::FindModel(const absl::Span<const std::string>& path,
                                      const Model** model,
                                      const FindOptions& options) {

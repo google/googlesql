@@ -356,6 +356,15 @@ static TokenWithLocation FuseTokensIntoTokenKind(
       .location = Location(token1.location.start(), token2.location.end()),
       .text = GetFusedText(token1, token2),
       .preceding_whitespaces = token1.preceding_whitespaces,
+      // Prefer the first token's macro invocation location and stack frame if
+      // present, otherwise fall back to the second token's. This matches the
+      // token splicing behavior in `MacroExpander::Splice`.
+      .topmost_invocation_location =
+          token1.topmost_invocation_location.IsValid()
+              ? token1.topmost_invocation_location
+              : token2.topmost_invocation_location,
+      .stack_frame = (token1.stack_frame != nullptr) ? token1.stack_frame
+                                                     : token2.stack_frame,
   };
 }
 

@@ -39,7 +39,7 @@
 namespace googlesql {
 
 class FunctionProto;
-class ResolvedComputedColumn;
+class ResolvedComputedColumnBase;
 class ResolvedExpr;
 
 // This represents a templated function with a SQL body.
@@ -130,24 +130,23 @@ class TemplatedSQLFunction : public Function {
 // types of the arguments provided to the function call.
 class TemplatedSQLFunctionCall : public ResolvedFunctionCallInfo {
  public:
-  TemplatedSQLFunctionCall(
-      std::unique_ptr<const ResolvedExpr> expr,
-      std::vector<std::unique_ptr<const ResolvedComputedColumn>>
-          aggregate_expr_list);
+  using AggregateExpressionList =
+      std::vector<std::unique_ptr<const ResolvedComputedColumnBase>>;
+
+  TemplatedSQLFunctionCall(std::unique_ptr<const ResolvedExpr> expr,
+                           AggregateExpressionList aggregate_expr_list);
 
   TemplatedSQLFunctionCall(const TemplatedSQLFunctionCall&) = delete;
   TemplatedSQLFunctionCall& operator=(const TemplatedSQLFunctionCall&) = delete;
 
   const ResolvedExpr* expr() const { return expr_.get(); }
-  const std::vector<std::unique_ptr<const ResolvedComputedColumn>>&
-      aggregate_expression_list() const;
+  const AggregateExpressionList& aggregate_expression_list() const;
 
   std::string DebugString() const override;
 
  private:
   std::unique_ptr<const ResolvedExpr> expr_;
-  std::vector<std::unique_ptr<const ResolvedComputedColumn>>
-      aggregate_expression_list_;
+  AggregateExpressionList aggregate_expression_list_;
 };
 
 }  // namespace googlesql

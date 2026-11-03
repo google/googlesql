@@ -259,6 +259,27 @@ class Catalog {
       absl::Span<const std::string> path, const FindOptions& options,
       int* num_names_consumed, const Table** table);
 
+  // Resolves a STRING literal in a table reference position, such as
+  // FROM '/path/to/file.csv', into a Table.  `table_literal` is the
+  // unescaped literal content, and the engine decides how to interpret it (for
+  // example, as a file path, URI, or glob).  Catalogs that don't override this
+  // never resolve a STRING literal as a regular table name.
+  //
+  // Returns kNotFound if this catalog doesn't resolve the literal.  As with
+  // FindTable, kNotFound only means "not found in this catalog", so callers
+  // such as MultiCatalog may try other catalogs and replace its message with a
+  // generic one.  To surface a specific user-facing failure (for example, a
+  // glob that matched no files), return kInvalidArgument instead.  The default
+  // implementation sets `*table` to nullptr and returns
+  // TableNotFoundError({table_literal}).
+  virtual absl::Status FindTableFromString(absl::string_view table_literal,
+                                           const Table** table,
+                                           const FindOptions& options);
+  absl::Status FindTableFromString(absl::string_view table_literal,
+                                   const Table** table) {
+    return FindTableFromString(table_literal, table, FindOptions());
+  }
+
   virtual absl::Status FindModel(const absl::Span<const std::string>& path,
                                  const Model** model,
                                  const FindOptions& options);

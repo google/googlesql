@@ -149,7 +149,9 @@ static absl::StatusOr<FunctionSignature> MakeConcreteSignature(
   GOOGLESQL_RET_CHECK(function->IsGoogleSQLBuiltin());
 
   const FunctionSignature* signature = GetSignature(function, signature_id);
-  GOOGLESQL_RET_CHECK(signature != nullptr);
+  GOOGLESQL_RET_CHECK(signature != nullptr)
+      << "Signature ID " << FunctionSignatureId_Name(signature_id)
+      << " not found on function " << function->FullName();
   return MakeConcreteSignature(*signature, result_type,
                                std::move(concrete_args));
 }
@@ -305,6 +307,62 @@ class ColumnRefCollectorOwned : public ColumnRefVisitor {
   bool correlate_;
 };
 
+// Prunes unreferenced column references from `parameter_list` on correlation
+// boundaries bottom-up across a Resolved AST.
+class UnusedCorrelatedParameterPruner : public ResolvedASTRewriteVisitor {
+ private:
+  absl::StatusOr<std::unique_ptr<const ResolvedNode>>
+  PostVisitResolvedSubqueryExpr(
+      std::unique_ptr<const ResolvedSubqueryExpr> node) override {
+    if (node->parameter_list().empty()) {
+      return node;
+    }
+    auto builder = ToBuilder(std::move(node));
+    std::vector<std::unique_ptr<const ResolvedColumnRef>> params =
+        builder.release_parameter_list();
+    GOOGLESQL_RETURN_IF_ERROR(RemoveUnusedColumnRefs(*builder.subquery(), params));
+    return std::move(builder).set_parameter_list(std::move(params)).Build();
+  }
+
+  absl::StatusOr<std::unique_ptr<const ResolvedNode>>
+  PostVisitResolvedInlineLambda(
+      std::unique_ptr<const ResolvedInlineLambda> node) override {
+    if (node->parameter_list().empty()) {
+      return node;
+    }
+    auto builder = ToBuilder(std::move(node));
+    std::vector<std::unique_ptr<const ResolvedColumnRef>> params =
+        builder.release_parameter_list();
+    GOOGLESQL_RETURN_IF_ERROR(RemoveUnusedColumnRefs(*builder.body(), params));
+    return std::move(builder).set_parameter_list(std::move(params)).Build();
+  }
+
+  absl::StatusOr<std::unique_ptr<const ResolvedNode>> PostVisitResolvedJoinScan(
+      std::unique_ptr<const ResolvedJoinScan> node) override {
+    if (node->parameter_list().empty()) {
+      return node;
+    }
+    auto builder = ToBuilder(std::move(node));
+    std::vector<std::unique_ptr<const ResolvedColumnRef>> params =
+        builder.release_parameter_list();
+    GOOGLESQL_RETURN_IF_ERROR(RemoveUnusedColumnRefs(*builder.right_scan(), params));
+    return std::move(builder).set_parameter_list(std::move(params)).Build();
+  }
+
+  absl::StatusOr<std::unique_ptr<const ResolvedNode>>
+  PostVisitResolvedGraphCallScan(
+      std::unique_ptr<const ResolvedGraphCallScan> node) override {
+    if (node->subquery() == nullptr || node->parameter_list().empty()) {
+      return node;
+    }
+    auto builder = ToBuilder(std::move(node));
+    std::vector<std::unique_ptr<const ResolvedColumnRef>> params =
+        builder.release_parameter_list();
+    GOOGLESQL_RETURN_IF_ERROR(RemoveUnusedColumnRefs(*builder.subquery(), params));
+    return std::move(builder).set_parameter_list(std::move(params)).Build();
+  }
+};
+
 static absl::Status SetCollationList(const LanguageOptions& language_options,
                                      ResolvedFunctionCallBase& resolved_call) {
   GOOGLESQL_RET_CHECK(resolved_call.collation_list().empty());
@@ -379,6 +437,12 @@ absl::Status RemoveUnusedColumnRefs(
                                    }),
                     column_refs.end());
   return absl::OkStatus();
+}
+
+absl::StatusOr<std::unique_ptr<const ResolvedNode>>
+PruneUnusedCorrelatedParameters(std::unique_ptr<const ResolvedNode> node) {
+  UnusedCorrelatedParameterPruner pruner;
+  return pruner.VisitAll(std::move(node));
 }
 
 void SortUniqueColumnRefs(
@@ -928,6 +992,271 @@ FunctionCallBuilder::MakeArray(
   std::unique_ptr<ResolvedFunctionCall> resolved_function =
       MakeResolvedFunctionCall(array_type, make_array_fn, make_array_signature,
                                std::move(cast_elements),
+                               ResolvedFunctionCall::DEFAULT_ERROR_MODE);
+  GOOGLESQL_RETURN_IF_ERROR(
+      PropagateAnnotationsAndProcessCollationList(resolved_function.get()));
+  return resolved_function;
+}
+
+absl::StatusOr<std::unique_ptr<const ResolvedFunctionCall>>
+FunctionCallBuilder::JsonObject(
+    std::vector<std::unique_ptr<const ResolvedExpr>> keys,
+    std::vector<std::unique_ptr<const ResolvedExpr>> values) {
+  GOOGLESQL_RET_CHECK_EQ(keys.size(), values.size());
+  GOOGLESQL_RET_CHECK(!keys.empty());
+  const Function* json_object_fn = nullptr;
+  GOOGLESQL_RETURN_IF_ERROR(
+      GetBuiltinFunctionFromCatalog("json_object", &json_object_fn));
+  GOOGLESQL_RET_CHECK(json_object_fn != nullptr);
+
+  const FunctionSignature* signature =
+      GetSignature(json_object_fn, FN_JSON_OBJECT);
+  GOOGLESQL_RET_CHECK(signature != nullptr);
+  GOOGLESQL_RET_CHECK_EQ(signature->arguments().size(), 2);
+
+  FunctionArgumentTypeList concrete_args;
+  concrete_args.reserve(keys.size() * 2);
+  std::vector<std::unique_ptr<const ResolvedExpr>> args;
+  args.reserve(keys.size() * 2);
+
+  for (size_t i = 0; i < keys.size(); ++i) {
+    GOOGLESQL_RET_CHECK(keys[i] != nullptr);
+    GOOGLESQL_RET_CHECK(keys[i]->type()->IsString());
+    GOOGLESQL_RET_CHECK(values[i] != nullptr);
+
+    FunctionArgumentType key_arg(keys[i]->type(),
+                                 signature->argument(0).options(),
+                                 /*num_occurrences=*/1);
+    key_arg.set_original_kind(signature->argument(0).kind());
+    concrete_args.push_back(std::move(key_arg));
+
+    FunctionArgumentType val_arg(values[i]->type(),
+                                 signature->argument(1).options(),
+                                 /*num_occurrences=*/1);
+    val_arg.set_original_kind(signature->argument(1).kind());
+    concrete_args.push_back(std::move(val_arg));
+
+    args.push_back(std::move(keys[i]));
+    args.push_back(std::move(values[i]));
+  }
+
+  FunctionArgumentType result_arg(types::JsonType(),
+                                  signature->result_type().options(),
+                                  /*num_occurrences=*/1);
+  result_arg.set_original_kind(signature->result_type().kind());
+
+  FunctionSignature concrete_signature(
+      std::move(result_arg), std::move(concrete_args), signature->context_id(),
+      signature->options());
+  GOOGLESQL_RET_CHECK(concrete_signature.IsConcrete());
+
+  std::vector<InputArgumentType> input_arguments;
+  input_arguments.reserve(args.size());
+  for (const auto& arg : args) {
+    input_arguments.push_back(InputArgumentType(arg->type()));
+  }
+  GOOGLESQL_RET_CHECK_OK(json_object_fn->CheckPostResolutionArgumentConstraints(
+      concrete_signature, input_arguments, analyzer_options_.language()));
+
+  std::unique_ptr<ResolvedFunctionCall> resolved_function =
+      MakeResolvedFunctionCall(types::JsonType(), json_object_fn,
+                               std::move(concrete_signature), std::move(args),
+                               ResolvedFunctionCall::DEFAULT_ERROR_MODE);
+  GOOGLESQL_RETURN_IF_ERROR(
+      PropagateAnnotationsAndProcessCollationList(resolved_function.get()));
+  return resolved_function;
+}
+
+absl::StatusOr<std::unique_ptr<const ResolvedFunctionCall>>
+FunctionCallBuilder::JsonSet(
+    std::unique_ptr<const ResolvedExpr> json_doc,
+    std::vector<std::unique_ptr<const ResolvedExpr>> paths,
+    std::vector<std::unique_ptr<const ResolvedExpr>> values) {
+  GOOGLESQL_RET_CHECK(json_doc != nullptr);
+  GOOGLESQL_RET_CHECK(json_doc->type()->IsJson());
+  GOOGLESQL_RET_CHECK_EQ(paths.size(), values.size());
+  GOOGLESQL_RET_CHECK(!paths.empty());
+
+  const Function* json_set_fn = nullptr;
+  GOOGLESQL_RETURN_IF_ERROR(GetBuiltinFunctionFromCatalog("json_set", &json_set_fn));
+  GOOGLESQL_RET_CHECK(json_set_fn != nullptr);
+
+  const FunctionSignature* signature = GetSignature(json_set_fn, FN_JSON_SET);
+  GOOGLESQL_RET_CHECK(signature != nullptr);
+  GOOGLESQL_RET_CHECK_EQ(signature->arguments().size(), 6);
+
+  FunctionArgumentTypeList concrete_args;
+  concrete_args.reserve(std::max<size_t>(6, paths.size() * 2 + 2));
+  std::vector<std::unique_ptr<const ResolvedExpr>> args;
+  args.reserve(paths.size() * 2 + 2);
+
+  // Argument 0: json_doc
+  FunctionArgumentType doc_arg(json_doc->type(),
+                               signature->argument(0).options(),
+                               /*num_occurrences=*/1);
+  doc_arg.set_original_kind(signature->argument(0).kind());
+  concrete_args.push_back(std::move(doc_arg));
+  args.push_back(std::move(json_doc));
+
+  // Arguments 1 & 2: first path and first value
+  GOOGLESQL_RET_CHECK(paths[0] != nullptr);
+  GOOGLESQL_RET_CHECK(paths[0]->type()->IsString());
+  GOOGLESQL_RET_CHECK(values[0] != nullptr);
+
+  FunctionArgumentType first_path_arg(paths[0]->type(),
+                                      signature->argument(1).options(),
+                                      /*num_occurrences=*/1);
+  first_path_arg.set_original_kind(signature->argument(1).kind());
+  concrete_args.push_back(std::move(first_path_arg));
+
+  FunctionArgumentType first_val_arg(values[0]->type(),
+                                     signature->argument(2).options(),
+                                     /*num_occurrences=*/1);
+  first_val_arg.set_original_kind(signature->argument(2).kind());
+  concrete_args.push_back(std::move(first_val_arg));
+
+  args.push_back(std::move(paths[0]));
+  args.push_back(std::move(values[0]));
+
+  // Arguments 3 & 4: repeated path and value pairs
+  if (paths.size() == 1) {
+    FunctionArgumentType rep_path_arg(signature->argument(3).type(),
+                                      signature->argument(3).options(),
+                                      /*num_occurrences=*/0);
+    rep_path_arg.set_original_kind(signature->argument(3).kind());
+    concrete_args.push_back(std::move(rep_path_arg));
+
+    FunctionArgumentType rep_val_arg(signature->argument(4).kind(),
+                                     signature->argument(4).options(),
+                                     /*num_occurrences=*/0);
+    rep_val_arg.set_original_kind(signature->argument(4).kind());
+    concrete_args.push_back(std::move(rep_val_arg));
+  } else {
+    for (size_t i = 1; i < paths.size(); ++i) {
+      GOOGLESQL_RET_CHECK(paths[i] != nullptr);
+      GOOGLESQL_RET_CHECK(paths[i]->type()->IsString());
+      GOOGLESQL_RET_CHECK(values[i] != nullptr);
+
+      FunctionArgumentType rep_path_arg(paths[i]->type(),
+                                        signature->argument(3).options(),
+                                        /*num_occurrences=*/1);
+      rep_path_arg.set_original_kind(signature->argument(3).kind());
+      concrete_args.push_back(std::move(rep_path_arg));
+
+      FunctionArgumentType rep_val_arg(values[i]->type(),
+                                       signature->argument(4).options(),
+                                       /*num_occurrences=*/1);
+      rep_val_arg.set_original_kind(signature->argument(4).kind());
+      concrete_args.push_back(std::move(rep_val_arg));
+
+      args.push_back(std::move(paths[i]));
+      args.push_back(std::move(values[i]));
+    }
+  }
+
+  // Argument 5: create_if_missing (optional BOOL with default true)
+  FunctionArgumentTypeOptions create_if_missing_options =
+      signature->argument(5).options();
+  create_if_missing_options.clear_default();
+  FunctionArgumentType create_if_missing_arg(
+      types::BoolType(), create_if_missing_options, /*num_occurrences=*/1);
+  create_if_missing_arg.set_original_kind(signature->argument(5).kind());
+  concrete_args.push_back(std::move(create_if_missing_arg));
+  args.push_back(MakeResolvedLiteral(types::BoolType(), Value::Bool(true)));
+
+  FunctionArgumentType result_arg(types::JsonType(),
+                                  signature->result_type().options(),
+                                  /*num_occurrences=*/1);
+  result_arg.set_original_kind(signature->result_type().kind());
+
+  FunctionSignature concrete_signature(
+      std::move(result_arg), std::move(concrete_args), signature->context_id(),
+      signature->options());
+  GOOGLESQL_RET_CHECK(concrete_signature.IsConcrete());
+
+  std::vector<InputArgumentType> input_arguments;
+  input_arguments.reserve(args.size());
+  for (const auto& arg : args) {
+    input_arguments.push_back(InputArgumentType(arg->type()));
+  }
+  GOOGLESQL_RET_CHECK_OK(json_set_fn->CheckPostResolutionArgumentConstraints(
+      concrete_signature, input_arguments, analyzer_options_.language()));
+
+  std::unique_ptr<ResolvedFunctionCall> resolved_function =
+      MakeResolvedFunctionCall(types::JsonType(), json_set_fn,
+                               std::move(concrete_signature), std::move(args),
+                               ResolvedFunctionCall::DEFAULT_ERROR_MODE);
+  GOOGLESQL_RETURN_IF_ERROR(
+      PropagateAnnotationsAndProcessCollationList(resolved_function.get()));
+  return resolved_function;
+}
+
+absl::StatusOr<std::unique_ptr<const ResolvedFunctionCall>>
+FunctionCallBuilder::JsonRemove(
+    std::unique_ptr<const ResolvedExpr> json_doc,
+    std::vector<std::unique_ptr<const ResolvedExpr>> paths) {
+  GOOGLESQL_RET_CHECK(json_doc != nullptr);
+  GOOGLESQL_RET_CHECK(json_doc->type()->IsJson());
+  GOOGLESQL_RET_CHECK(!paths.empty());
+
+  const Function* json_remove_fn = nullptr;
+  GOOGLESQL_RETURN_IF_ERROR(
+      GetBuiltinFunctionFromCatalog("json_remove", &json_remove_fn));
+  GOOGLESQL_RET_CHECK(json_remove_fn != nullptr);
+
+  std::vector<std::unique_ptr<const ResolvedExpr>> args;
+  args.reserve(paths.size() + 1);
+  args.push_back(std::move(json_doc));
+  for (auto& path : paths) {
+    GOOGLESQL_RET_CHECK(path != nullptr);
+    GOOGLESQL_RET_CHECK(path->type()->IsString());
+    args.push_back(std::move(path));
+  }
+
+  // The signature of JSON_REMOVE is (JSON, STRING, repeated STRING). Only
+  // include the trailing repeated STRING argument when more than one path is
+  // provided; MakeConcreteSignature fills in 0 occurrences for omitted
+  // trailing repeated arguments.
+  std::vector<ConcreteArgument> concrete_args = {{types::JsonType(), 1},
+                                                 {types::StringType(), 1}};
+  if (paths.size() > 1) {
+    concrete_args.push_back({types::StringType(), paths.size() - 1});
+  }
+  GOOGLESQL_ASSIGN_OR_RETURN(
+      FunctionSignature concrete_signature,
+      MakeConcreteSignature(json_remove_fn, FN_JSON_REMOVE, types::JsonType(),
+                            std::move(concrete_args)));
+
+  std::unique_ptr<ResolvedFunctionCall> resolved_function =
+      MakeResolvedFunctionCall(types::JsonType(), json_remove_fn,
+                               std::move(concrete_signature), std::move(args),
+                               ResolvedFunctionCall::DEFAULT_ERROR_MODE);
+  GOOGLESQL_RETURN_IF_ERROR(
+      PropagateAnnotationsAndProcessCollationList(resolved_function.get()));
+  return resolved_function;
+}
+
+absl::StatusOr<std::unique_ptr<const ResolvedFunctionCall>>
+FunctionCallBuilder::ElementDefinitionName(
+    std::unique_ptr<const ResolvedExpr> graph_element) {
+  GOOGLESQL_RET_CHECK(graph_element != nullptr);
+  GOOGLESQL_RET_CHECK(graph_element->type()->IsGraphElement());
+
+  const Function* fn = nullptr;
+  GOOGLESQL_RETURN_IF_ERROR(
+      GetBuiltinFunctionFromCatalog("element_definition_name", &fn));
+  GOOGLESQL_RET_CHECK(fn != nullptr);
+
+  const Type* element_type = graph_element->type();
+  GOOGLESQL_ASSIGN_OR_RETURN(
+      FunctionSignature concrete_signature,
+      MakeConcreteSignature(fn, FN_ELEMENT_DEFINITION_NAME, types::StringType(),
+                            {{element_type, 1}}));
+
+  std::unique_ptr<ResolvedFunctionCall> resolved_function =
+      MakeResolvedFunctionCall(types::StringType(), fn,
+                               std::move(concrete_signature),
+                               MakeNodeVector(std::move(graph_element)),
                                ResolvedFunctionCall::DEFAULT_ERROR_MODE);
   GOOGLESQL_RETURN_IF_ERROR(
       PropagateAnnotationsAndProcessCollationList(resolved_function.get()));
@@ -3169,39 +3498,6 @@ BuildTimestampColumnExpression(const ResolvedTimestampColumnPath& path,
   return current_expr;
 }
 
-absl::StatusOr<std::unique_ptr<const ResolvedSubqueryExpr>>
-CreateCteColumnSubquery(ColumnFactory& column_factory,
-                        absl::string_view cte_name,
-                        const ResolvedColumnList& cte_defining_cols,
-                        int col_index_to_select) {
-  GOOGLESQL_RET_CHECK_GE(col_index_to_select, 0);
-  GOOGLESQL_RET_CHECK_LT(col_index_to_select, cte_defining_cols.size());
-  ResolvedColumnList with_ref_scan_cols;
-  with_ref_scan_cols.reserve(cte_defining_cols.size());
-  for (const auto& col : cte_defining_cols) {
-    with_ref_scan_cols.push_back(
-        column_factory.MakeCol(col.table_name(), col.name(), col.type()));
-  }
-  // We must create new columns with unique IDs for the WithRefScan.
-  // ResolvedWithRefScan requires that its output columns have unique IDs
-  // to avoid clashing with other references to the same CTE in the same scope.
-  const ResolvedColumn& source_col_from_ref =
-      with_ref_scan_cols[col_index_to_select];
-  ResolvedColumn output_col = column_factory.MakeCol(
-      source_col_from_ref.table_name(), source_col_from_ref.name(),
-      source_col_from_ref.type());
-  auto col_ref_expr = MakeResolvedColumnRef(source_col_from_ref.type(),
-                                            source_col_from_ref, false);
-  auto project_scan = MakeResolvedProjectScan(
-      {output_col},
-      MakeNodeVector(
-          MakeResolvedComputedColumn(output_col, std::move(col_ref_expr))),
-      MakeResolvedWithRefScan(with_ref_scan_cols, cte_name));
-  return MakeResolvedSubqueryExpr(
-      output_col.type(), ResolvedSubqueryExpr::SCALAR, /*parameter_list=*/{},
-      /*in_expr=*/nullptr, std::move(project_scan));
-}
-
 std::unique_ptr<ResolvedColumnRef> BuildResolvedColumnRef(
     const ResolvedColumn& column) {
   return MakeResolvedColumnRef(column, /*is_correlated=*/false);
@@ -3801,6 +4097,71 @@ std::string CteQueryNameGenerator::MakeUniqueCteName(
   } while (!used_names_.insert(absl::AsciiStrToLower(candidate)).second);
 
   return candidate;
+}
+
+// Visitor that remaps CTE names in a subtree. This is used while inlining
+// lambda bodies to ensure that nested CTEs with the same name as the outer
+// query's CTEs are remapped to unique names.
+class CteRemapperVisitor : public ResolvedASTVisitor {
+ public:
+  // cte_counter tracks the index for remapping CTE names and is updated as we
+  // remap CTE names.
+  explicit CteRemapperVisitor(int& cte_counter) : cte_counter_(cte_counter) {}
+
+ protected:
+  // Sets up a new name for each CTE.
+  absl::Status VisitResolvedWithScan(const ResolvedWithScan* node) override {
+    GOOGLESQL_RET_CHECK(!node->recursive())
+        << "Recursive CTEs inside inlined SQL functions are not supported: "
+        << node->DebugString();
+
+    size_t old_size = active_ctes_.size();
+
+    for (const auto& with_entry : node->with_entry_list()) {
+      GOOGLESQL_RETURN_IF_ERROR(with_entry->with_subquery()->Accept(this));
+
+      std::string old_cte_name = with_entry->with_query_name();
+      std::string new_cte_name =
+          absl::StrCat("$inlined_cte_", cte_counter_++, "_", old_cte_name);
+
+      active_ctes_.push_back(std::make_pair(old_cte_name, new_cte_name));
+
+      const_cast<ResolvedWithEntry*>(with_entry.get())
+          ->set_with_query_name(new_cte_name);
+    }
+
+    GOOGLESQL_RETURN_IF_ERROR(node->query()->Accept(this));
+
+    // Pop the CTEs that were added to the stack for this WithScan.
+    active_ctes_.resize(old_size);
+
+    return absl::OkStatus();
+  }
+
+  // Remaps the CTE references in the subquery to the new names.
+  absl::Status VisitResolvedWithRefScan(
+      const ResolvedWithRefScan* node) override {
+    // Walk backwards through the active CTE names.
+    for (auto it = active_ctes_.rbegin(); it != active_ctes_.rend(); ++it) {
+      if (it->first == node->with_query_name()) {
+        const_cast<ResolvedWithRefScan*>(node)->set_with_query_name(it->second);
+        break;
+      }
+    }
+    return DefaultVisit(node);
+  }
+
+ private:
+  // Counter used for generating unique CTE names.
+  int& cte_counter_;
+
+  // Map from old name to new name for currently active CTEs.
+  std::vector<std::pair<std::string, std::string>> active_ctes_;
+};
+
+absl::Status RemapCteNames(ResolvedNode* node, int& cte_counter) {
+  CteRemapperVisitor visitor(cte_counter);
+  return node->Accept(&visitor);
 }
 
 }  // namespace googlesql

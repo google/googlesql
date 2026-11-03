@@ -35,6 +35,7 @@
 #include "googlesql/parser/parse_tree_errors.h"
 #include "googlesql/parser/parser.h"
 #include "googlesql/parser/parser_mode.h"
+#include "googlesql/parser/parser_runtime_info.h"
 #include "googlesql/public/analyzer.h"
 #include "googlesql/public/analyzer_options.h"
 #include "googlesql/public/analyzer_output.h"
@@ -885,12 +886,26 @@ absl::Status ModuleCatalog::InitInternalCatalogs() {
   return absl::OkStatus();
 }
 
+namespace {
+constexpr absl::string_view kImportMacroError =
+    "IMPORT statements cannot be produced via macro expansion or contain "
+    "macro invocations";
+}  // namespace
+
 absl::Status ModuleCatalog::MaybeUpdateCatalogFromImportStatement(
     std::unique_ptr<ParserOutput> parser_output) {
   GOOGLESQL_RET_CHECK(module_factory_ != nullptr);
 
   const auto* import_ast =
       parser_output->statement()->GetAs<ASTImportStatement>();
+
+  // IMPORT statements are read before macro definitions are known (e.g. by
+  // ModuleContentsFetcher), so they cannot use or come from macros.
+  if (parser_output->runtime_info().has_macro_invocation()) {
+    MakeAndRegisterErrorIgnored(
+        kImportMacroError, import_ast->location().start(), &module_errors_);
+    return absl::OkStatus();
+  }
 
   // We use the builtin_function_catalog_ for resolving IMPORT statement
   // options.
@@ -1332,10 +1347,24 @@ absl::Status ModuleCatalog::Init() {
     std::unique_ptr<ParserOutput> parser_output;
     const ParseResumeLocation this_parse_resume_location =
         parse_resume_location;
+    ParserRuntimeInfo runtime_info;
     absl::Status parse_status =
         ParseNextStatement(&parse_resume_location, parser_options,
-                           &parser_output, &is_end_of_input);
+                           &parser_output, &is_end_of_input, &runtime_info);
     if (!parse_status.ok()) {
+      bool unused_next_statement_is_ctas = false;
+      if (runtime_info.has_macro_invocation() &&
+          ParseNextStatementKind(
+              this_parse_resume_location, parser_options.language_options(),
+              &unused_next_statement_is_ctas) == AST_IMPORT_STATEMENT) {
+        MakeAndRegisterErrorIgnored(
+            kImportMacroError,
+            ParseLocationPoint::FromByteOffset(
+                this_parse_resume_location.filename(),
+                this_parse_resume_location.byte_position()),
+            &module_errors_);
+        break;
+      }
       // Parsing failed, so we stop processing this module file because we
       // do not know where the next statement begins.  Initialization has
       // finished successfully so return OK.

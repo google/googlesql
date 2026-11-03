@@ -41,9 +41,50 @@ FROM KeyValueFindOnly kv
 FROM KeyValue{{Lazy|FindOnly}} kv
 |> SELECT kv=kv
 --
-ERROR: ROW-typed values cannot be passed as function arguments [at 2:11]
+ALTERNATION GROUP: Lazy
+--
+ERROR: No matching signature for operator = for argument types: ROW<KeyValueLazy>, ROW<KeyValueLazy>
+  Signature: T1 = T1
+    Argument 1: expected T1, found ROW<KeyValueLazy>: which is not allowed for ANY arguments
+  Signature: INT64 = UINT64
+    Argument 1: Unable to coerce type ROW<KeyValueLazy> to expected type INT64
+  Signature: UINT64 = INT64
+    Argument 1: Unable to coerce type ROW<KeyValueLazy> to expected type UINT64
+  Signature: JSON = JSON
+    Argument 1: Unable to coerce type ROW<KeyValueLazy> to expected type JSON
+  Signature: JSON = JSON
+    Argument 1: Unable to coerce type ROW<KeyValueLazy> to expected type JSON [at 2:11]
 |> SELECT kv=kv
           ^
+--
+ALTERNATION GROUP: FindOnly
+--
+ERROR: No matching signature for operator = for argument types: ROW<KeyValueFindOnly>, ROW<KeyValueFindOnly>
+  Signature: T1 = T1
+    Argument 1: expected T1, found ROW<KeyValueFindOnly>: which is not allowed for ANY arguments
+  Signature: INT64 = UINT64
+    Argument 1: Unable to coerce type ROW<KeyValueFindOnly> to expected type INT64
+  Signature: UINT64 = INT64
+    Argument 1: Unable to coerce type ROW<KeyValueFindOnly> to expected type UINT64
+  Signature: JSON = JSON
+    Argument 1: Unable to coerce type ROW<KeyValueFindOnly> to expected type JSON
+  Signature: JSON = JSON
+    Argument 1: Unable to coerce type ROW<KeyValueFindOnly> to expected type JSON [at 2:11]
+|> SELECT kv=kv
+          ^
+==
+
+# Lambda with RowType return type should be disallowed.
+SELECT ARRAY_TRANSFORM([1,2,3], e -> (SELECT T FROM KeyValueLazy AS T LIMIT 1));
+--
+ERROR: No matching signature for function ARRAY_TRANSFORM
+  Argument types: ARRAY<INT64>, LAMBDA
+  Signature: ARRAY_TRANSFORM(ARRAY<T1>, FUNCTION<T1->T2>)
+    Argument 2: expected T2, found ROW<KeyValueLazy>: which is not allowed for ANY arguments
+  Signature: ARRAY_TRANSFORM(ARRAY<T1>, FUNCTION<(T1, INT64)->T2>)
+    Argument 2: lambda requires 2 arguments but 1 is provided [at 1:8]
+SELECT ARRAY_TRANSFORM([1,2,3], e -> (SELECT T FROM KeyValueLazy AS T LIMIT 1));
+       ^
 ==
 
 FROM KeyValue{{Lazy|FindOnly}} kv
@@ -141,81 +182,189 @@ ERROR: Column 1 in INTERSECT ALL has incompatible types: ROW<KeyValueFindOnly>, 
 FROM KeyValue{{Lazy|FindOnly}} kv
 |> AGGREGATE {{COUNT(kv)|MIN(kv)|SUM(kv)|ARRAY_AGG(kv)|AGG(kv)}}
 --
-ALTERNATION GROUPS:
-    Lazy,COUNT(kv)
-    FindOnly,COUNT(kv)
+ALTERNATION GROUP: Lazy,COUNT(kv)
 --
-ERROR: ROW-typed values cannot be passed as function arguments [at 2:20]
+ERROR: No matching signature for aggregate function COUNT
+  Argument types: ROW<KeyValueLazy>
+  Signature: COUNT(T1)
+    Argument 1: expected T1, found ROW<KeyValueLazy>: which is not allowed for ANY arguments [at 2:14]
 |> AGGREGATE COUNT(kv)
-                   ^
+             ^
 --
-ALTERNATION GROUPS:
-    Lazy,MIN(kv)
-    FindOnly,MIN(kv)
+ALTERNATION GROUP: Lazy,MIN(kv)
 --
-ERROR: ROW-typed values cannot be passed as function arguments [at 2:18]
+ERROR: MIN is not defined for arguments of type ROW<KeyValueLazy> [at 2:14]
 |> AGGREGATE MIN(kv)
-                 ^
+             ^
 --
-ALTERNATION GROUPS:
-    Lazy,SUM(kv)
-    FindOnly,SUM(kv)
+ALTERNATION GROUP: Lazy,SUM(kv)
 --
-ERROR: ROW-typed values cannot be passed as function arguments [at 2:18]
+ERROR: No matching signature for aggregate function SUM
+  Argument types: ROW<KeyValueLazy>
+  Signature: SUM(INT64)
+    Argument 1: Unable to coerce type ROW<KeyValueLazy> to expected type INT64
+  Signature: SUM(UINT64)
+    Argument 1: Unable to coerce type ROW<KeyValueLazy> to expected type UINT64
+  Signature: SUM(DOUBLE)
+    Argument 1: Unable to coerce type ROW<KeyValueLazy> to expected type DOUBLE
+  Signature: SUM(NUMERIC)
+    Argument 1: Unable to coerce type ROW<KeyValueLazy> to expected type NUMERIC
+  Signature: SUM(BIGNUMERIC)
+    Argument 1: Unable to coerce type ROW<KeyValueLazy> to expected type BIGNUMERIC
+  Signature: SUM(INTERVAL)
+    Argument 1: Unable to coerce type ROW<KeyValueLazy> to expected type INTERVAL [at 2:14]
 |> AGGREGATE SUM(kv)
-                 ^
+             ^
 --
-ALTERNATION GROUPS:
-    Lazy,ARRAY_AGG(kv)
-    FindOnly,ARRAY_AGG(kv)
+ALTERNATION GROUP: Lazy,ARRAY_AGG(kv)
 --
-ERROR: ROW-typed values cannot be passed as function arguments [at 2:24]
+ERROR: No matching signature for aggregate function ARRAY_AGG
+  Argument types: ROW<KeyValueLazy>
+  Signature: ARRAY_AGG(T1)
+    Argument 1: expected T1, found ROW<KeyValueLazy>: which is not allowed for ANY arguments [at 2:14]
 |> AGGREGATE ARRAY_AGG(kv)
-                       ^
+             ^
 --
-ALTERNATION GROUPS:
-    Lazy,AGG(kv)
-    FindOnly,AGG(kv)
+ALTERNATION GROUP: Lazy,AGG(kv)
 --
-ERROR: ROW-typed values cannot be passed as function arguments [at 2:18]
+ERROR: No matching signature for aggregate function AGG
+  Argument types: ROW<KeyValueLazy>
+  Signature: AGG(MEASURE<T1>)
+    Argument 1: expected MEASURE<T1>, found ROW<KeyValueLazy> [at 2:14]
 |> AGGREGATE AGG(kv)
-                 ^
+             ^
+--
+ALTERNATION GROUP: FindOnly,COUNT(kv)
+--
+ERROR: No matching signature for aggregate function COUNT
+  Argument types: ROW<KeyValueFindOnly>
+  Signature: COUNT(T1)
+    Argument 1: expected T1, found ROW<KeyValueFindOnly>: which is not allowed for ANY arguments [at 2:14]
+|> AGGREGATE COUNT(kv)
+             ^
+--
+ALTERNATION GROUP: FindOnly,MIN(kv)
+--
+ERROR: MIN is not defined for arguments of type ROW<KeyValueFindOnly> [at 2:14]
+|> AGGREGATE MIN(kv)
+             ^
+--
+ALTERNATION GROUP: FindOnly,SUM(kv)
+--
+ERROR: No matching signature for aggregate function SUM
+  Argument types: ROW<KeyValueFindOnly>
+  Signature: SUM(INT64)
+    Argument 1: Unable to coerce type ROW<KeyValueFindOnly> to expected type INT64
+  Signature: SUM(UINT64)
+    Argument 1: Unable to coerce type ROW<KeyValueFindOnly> to expected type UINT64
+  Signature: SUM(DOUBLE)
+    Argument 1: Unable to coerce type ROW<KeyValueFindOnly> to expected type DOUBLE
+  Signature: SUM(NUMERIC)
+    Argument 1: Unable to coerce type ROW<KeyValueFindOnly> to expected type NUMERIC
+  Signature: SUM(BIGNUMERIC)
+    Argument 1: Unable to coerce type ROW<KeyValueFindOnly> to expected type BIGNUMERIC
+  Signature: SUM(INTERVAL)
+    Argument 1: Unable to coerce type ROW<KeyValueFindOnly> to expected type INTERVAL [at 2:14]
+|> AGGREGATE SUM(kv)
+             ^
+--
+ALTERNATION GROUP: FindOnly,ARRAY_AGG(kv)
+--
+ERROR: No matching signature for aggregate function ARRAY_AGG
+  Argument types: ROW<KeyValueFindOnly>
+  Signature: ARRAY_AGG(T1)
+    Argument 1: expected T1, found ROW<KeyValueFindOnly>: which is not allowed for ANY arguments [at 2:14]
+|> AGGREGATE ARRAY_AGG(kv)
+             ^
+--
+ALTERNATION GROUP: FindOnly,AGG(kv)
+--
+ERROR: No matching signature for aggregate function AGG
+  Argument types: ROW<KeyValueFindOnly>
+  Signature: AGG(MEASURE<T1>)
+    Argument 1: expected MEASURE<T1>, found ROW<KeyValueFindOnly> [at 2:14]
+|> AGGREGATE AGG(kv)
+             ^
 ==
 
 FROM KeyValue{{Lazy|FindOnly}} kv
 |> select {{coalesce(kv)|if(true,kv,kv)|ifnull(kv,kv)}}
 --
-ALTERNATION GROUPS:
-    Lazy,coalesce(kv)
-    FindOnly,coalesce(kv)
+ALTERNATION GROUP: Lazy,coalesce(kv)
 --
-ERROR: ROW-typed values cannot be passed as function arguments [at 2:20]
+ERROR: No matching signature for function COALESCE
+  Argument types: ROW<KeyValueLazy>
+  Signature: COALESCE([T1, ...])
+    Argument 1: expected T1, found ROW<KeyValueLazy>: which is not allowed for ANY arguments [at 2:11]
 |> select coalesce(kv)
-                   ^
+          ^
 --
-ALTERNATION GROUPS:
-    Lazy,if(true,kv,kv)
-    FindOnly,if(true,kv,kv)
+ALTERNATION GROUP: Lazy,if(true,kv,kv)
 --
-ERROR: ROW-typed values cannot be passed as function arguments [at 2:19]
+ERROR: No matching signature for function IF
+  Argument types: BOOL, ROW<KeyValueLazy>, ROW<KeyValueLazy>
+  Signature: IF(BOOL, T1, T1)
+    Argument 2: expected T1, found ROW<KeyValueLazy>: which is not allowed for ANY arguments [at 2:11]
 |> select if(true,kv,kv)
-                  ^
+          ^
 --
-ALTERNATION GROUPS:
-    Lazy,ifnull(kv,kv)
-    FindOnly,ifnull(kv,kv)
+ALTERNATION GROUP: Lazy,ifnull(kv,kv)
 --
-ERROR: ROW-typed values cannot be passed as function arguments [at 2:18]
+ERROR: No matching signature for function IFNULL
+  Argument types: ROW<KeyValueLazy>, ROW<KeyValueLazy>
+  Signature: IFNULL(T1, T1)
+    Argument 1: expected T1, found ROW<KeyValueLazy>: which is not allowed for ANY arguments [at 2:11]
 |> select ifnull(kv,kv)
-                 ^
+          ^
+--
+ALTERNATION GROUP: FindOnly,coalesce(kv)
+--
+ERROR: No matching signature for function COALESCE
+  Argument types: ROW<KeyValueFindOnly>
+  Signature: COALESCE([T1, ...])
+    Argument 1: expected T1, found ROW<KeyValueFindOnly>: which is not allowed for ANY arguments [at 2:11]
+|> select coalesce(kv)
+          ^
+--
+ALTERNATION GROUP: FindOnly,if(true,kv,kv)
+--
+ERROR: No matching signature for function IF
+  Argument types: BOOL, ROW<KeyValueFindOnly>, ROW<KeyValueFindOnly>
+  Signature: IF(BOOL, T1, T1)
+    Argument 2: expected T1, found ROW<KeyValueFindOnly>: which is not allowed for ANY arguments [at 2:11]
+|> select if(true,kv,kv)
+          ^
+--
+ALTERNATION GROUP: FindOnly,ifnull(kv,kv)
+--
+ERROR: No matching signature for function IFNULL
+  Argument types: ROW<KeyValueFindOnly>, ROW<KeyValueFindOnly>
+  Signature: IFNULL(T1, T1)
+    Argument 1: expected T1, found ROW<KeyValueFindOnly>: which is not allowed for ANY arguments [at 2:11]
+|> select ifnull(kv,kv)
+          ^
 ==
 
 FROM KeyValue{{Lazy|FindOnly}} kv
 |> AGGREGATE COUNT(DISTINCT kv)
 --
-ERROR: ROW-typed values cannot be passed as function arguments [at 2:29]
+ALTERNATION GROUP: Lazy
+--
+ERROR: No matching signature for aggregate function COUNT
+  Argument types: ROW<KeyValueLazy>
+  Signature: COUNT(T1)
+    Argument 1: expected T1, found ROW<KeyValueLazy>: which is not allowed for ANY arguments [at 2:14]
 |> AGGREGATE COUNT(DISTINCT kv)
-                            ^
+             ^
+--
+ALTERNATION GROUP: FindOnly
+--
+ERROR: No matching signature for aggregate function COUNT
+  Argument types: ROW<KeyValueFindOnly>
+  Signature: COUNT(T1)
+    Argument 1: expected T1, found ROW<KeyValueFindOnly>: which is not allowed for ANY arguments [at 2:14]
+|> AGGREGATE COUNT(DISTINCT kv)
+             ^
 ==
 
 FROM KeyValue{{Lazy|FindOnly}} kv
@@ -362,22 +511,6 @@ DELETE FROM KeyValueFindOnly kv
             ^
 ==
 
-[language_features=NONE,+ROW_TYPE,+TOP_LEVEL_TABLE_STATEMENTS]
-TABLE KeyValue{{Lazy|FindOnly}}
---
-ALTERNATION GROUP: Lazy
---
-ERROR: Tables with ROW type don't support top-level TABLE statements [at 1:7]
-TABLE KeyValueLazy
-      ^
---
-ALTERNATION GROUP: FindOnly
---
-ERROR: Tables with ROW type don't support top-level TABLE statements [at 1:7]
-TABLE KeyValueFindOnly
-      ^
-==
-
 # ALTER TABLE currently works because it doesn't even look up the table.
 ALTER TABLE KeyValueXXX
 SET OPTIONS(x=5)
@@ -431,34 +564,60 @@ CREATE INDEX idx ON KeyValueFindOnly (key)
                     ^
 ==
 
-FROM tvf_one_relation_arg_with_fixed_output(TABLE KeyValue{{Lazy|FindOnly}})
+# TVF with RowType table from pipe input.
+FROM KeyValueLazy
+|> CALL tvf_one_relation_arg_with_fixed_output()
 --
-ALTERNATION GROUP: Lazy
+ERROR: TVF table argument (from pipe input) cannot be a table with type ROW<KeyValueLazy> [at 2:9]
+|> CALL tvf_one_relation_arg_with_fixed_output()
+        ^
+==
+
+# TVF with RowType column from pipe input.
+FROM KeyValueLazy
+|> EXTEND 1 AS x
+|> CALL tvf_one_relation_arg_with_fixed_output()
 --
-ERROR: Tables with ROW type don't support TVF argument [at 1:51]
+ERROR: TVF table argument (from pipe input) cannot include a column of type ROW<KeyValueLazy> [at 3:9]
+|> CALL tvf_one_relation_arg_with_fixed_output()
+        ^
+==
+
+# TVF with RowType table from TABLE clause.
 FROM tvf_one_relation_arg_with_fixed_output(TABLE KeyValueLazy)
-                                                  ^
 --
-ALTERNATION GROUP: FindOnly
---
-ERROR: Tables with ROW type don't support TVF argument [at 1:51]
-FROM tvf_one_relation_arg_with_fixed_output(TABLE KeyValueFindOnly)
-                                                  ^
+ERROR: TVF table argument cannot be a table with type ROW<KeyValueLazy> [at 1:45]
+FROM tvf_one_relation_arg_with_fixed_output(TABLE KeyValueLazy)
+                                            ^
 ==
 
-FROM tvf_one_relation_arg_with_fixed_output((FROM KeyValue{{Lazy|FindOnly}}))
---
-ALTERNATION GROUP: Lazy
---
-ERROR: TVF table argument cannot include a column of type ROW<KeyValueLazy> [at 1:6]
+# TVF with RowType table from subquery.
 FROM tvf_one_relation_arg_with_fixed_output((FROM KeyValueLazy))
-     ^
 --
-ALTERNATION GROUP: FindOnly
+ERROR: TVF table argument cannot be a table with type ROW<KeyValueLazy> [at 1:45]
+FROM tvf_one_relation_arg_with_fixed_output((FROM KeyValueLazy))
+                                            ^
+==
+
+# TVF with RowType column from subquery.
+FROM tvf_one_relation_arg_with_fixed_output((FROM KeyValueLazy |> EXTEND 1 AS x))
 --
-ERROR: TVF table argument cannot include a column of type ROW<KeyValueFindOnly> [at 1:6]
-FROM tvf_one_relation_arg_with_fixed_output((FROM KeyValueFindOnly))
-     ^
+ERROR: TVF table argument cannot include a column of type ROW<KeyValueLazy> [at 1:45]
+FROM tvf_one_relation_arg_with_fixed_output((FROM KeyValueLazy |> EXTEND 1 AS...
+                                            ^
+==
+
+# TVF with RowType table from named argument.
+FROM tvf_required_named_optional_required_tables(
+  (SELECT 1),
+  table4=>(FROM KeyValueLazy),
+  table2=>(SELECT 1),
+  table3=>(SELECT 1)
+)
+--
+ERROR: TVF table argument cannot be a table with type ROW<KeyValueLazy> [at 3:3]
+  table4=>(FROM KeyValueLazy),
+  ^
 ==
 
 # UNNEST only works for ROW types for join columns
@@ -509,3 +668,53 @@ ALTERNATION GROUP: FindOnly
 ERROR: Values referenced in UNNEST must be arrays. UNNEST contains expression of type ROW<KeyValueFindOnly> [at 2:16]
 |> JOIN UNNEST(kv, kv)
                ^
+==
+
+# Passing non-RowType value to a templated RowType argument.
+SELECT fn_with_rowtype("x")
+--
+ERROR: No matching signature for function SAMPLE_FUNCTIONS:FN_WITH_ROWTYPE
+  Argument types: STRING
+  Signature: FN_WITH_ROWTYPE(ROW<T>)
+    Argument 1: expected ROW<T> but found STRING [at 1:8]
+SELECT fn_with_rowtype("x")
+       ^
+==
+
+# RowTypes are not coercible and have no supertype, so templated args must be
+# from the same scan.
+FROM KeyValueLazy AS T1
+|> CROSS JOIN KeyValueLazy AS T2
+|> SELECT fn_with_2_rowtypes(T1, T2)
+--
+ERROR: No matching signature for function SAMPLE_FUNCTIONS:FN_WITH_2_ROWTYPES
+  Argument types: ROW<KeyValueLazy>, ROW<KeyValueLazy>
+  Signature: FN_WITH_2_ROWTYPES(ROW<T>, ROW<T>)
+    Unable to find common supertype for templated argument ANY ROW
+      Input types for ANY ROW: {ROW<KeyValueLazy>, ROW<KeyValueLazy>} [at 3:11]
+|> SELECT fn_with_2_rowtypes(T1, T2)
+          ^
+==
+
+# RowType template arguments cannot be inferred from untyped NULL literal.
+FROM KeyValueLazy AS T
+|> SELECT fn_with_2_rowtypes(T, NULL)
+--
+ERROR: No matching signature for function SAMPLE_FUNCTIONS:FN_WITH_2_ROWTYPES
+  Argument types: ROW<KeyValueLazy>, NULL
+  Signature: FN_WITH_2_ROWTYPES(ROW<T>, ROW<T>)
+    Argument 2: Row type cannot be inferred from untyped argument: NULL [at 2:11]
+|> SELECT fn_with_2_rowtypes(T, NULL)
+          ^
+==
+
+# RowType template arguments cannot be inferred from untyped [] literal.
+FROM KeyValueLazy AS T
+|> SELECT fn_with_2_rowtypes(T, [])
+--
+ERROR: No matching signature for function SAMPLE_FUNCTIONS:FN_WITH_2_ROWTYPES
+  Argument types: ROW<KeyValueLazy>, []
+  Signature: FN_WITH_2_ROWTYPES(ROW<T>, ROW<T>)
+    Argument 2: Row type cannot be inferred from untyped argument: [] [at 2:11]
+|> SELECT fn_with_2_rowtypes(T, [])
+          ^

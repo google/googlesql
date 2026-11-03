@@ -103,6 +103,7 @@ bool CanHaveDefaultValue(SignatureArgumentKind kind) {
     case ARG_KIND_SEQUENCE:
     case ARG_KIND_GRAPH:
     case ARG_KIND_EXPR_MEASURE_ANY_1:
+    case ARG_KIND_EXPR_ROW_ANY:
       return false;
     default:
       ABSL_DCHECK(false) << "Invalid signature argument kind: " << kind;
@@ -495,16 +496,13 @@ absl::Status FunctionArgumentTypeOptions::Serialize(
       options_proto->set_argument_name_is_mandatory(true);
     }
   }
-  std::optional<ParseLocationRange> parse_location_range =
-      argument_name_parse_location();
-  if (parse_location_range.has_value()) {
+  if (data_->argument_name_parse_location != nullptr) {
     GOOGLESQL_ASSIGN_OR_RETURN(*options_proto->mutable_argument_name_parse_location(),
-                     parse_location_range.value().ToProto());
+                     data_->argument_name_parse_location->ToProto());
   }
-  parse_location_range = argument_type_parse_location();
-  if (parse_location_range.has_value()) {
+  if (data_->argument_type_parse_location != nullptr) {
     GOOGLESQL_ASSIGN_OR_RETURN(*options_proto->mutable_argument_type_parse_location(),
-                     parse_location_range.value().ToProto());
+                     data_->argument_type_parse_location->ToProto());
   }
   if (argument_collation_mode() !=
       FunctionEnums::AFFECTS_OPERATION_AND_PROPAGATION) {
@@ -733,6 +731,8 @@ std::string FunctionArgumentType::SignatureArgumentKindToString(
       return "ANY GRAPH";
     case ARG_KIND_SEQUENCE:
       return "ANY SEQUENCE";
+    case ARG_KIND_EXPR_ROW_ANY:
+      return "ANY ROW";
     case ARG_KIND_EXPR_MEASURE_ANY_1:
       return "<measure<T1>>";
     case ARG_KIND_EXPR_MAP_ANY_1_2:
@@ -888,7 +888,7 @@ bool FunctionArgumentType::IsScalar() const {
          kind_ == ARG_KIND_EXPR_GRAPH_PATH ||
          kind_ == ARG_KIND_EXPR_RANGE_ANY_1 ||
          kind_ == ARG_KIND_EXPR_MAP_ANY_1_2 ||
-         kind_ == ARG_KIND_EXPR_STRING_ANY;
+         kind_ == ARG_KIND_EXPR_STRING_ANY || kind_ == ARG_KIND_EXPR_ROW_ANY;
 }
 
 // Intentionally restrictive for known functional programming functions. If this
@@ -1143,6 +1143,8 @@ std::string FunctionArgumentType::UserFacingName(
         return "GRAPH";
       case ARG_KIND_SEQUENCE:
         return "SEQUENCE";
+      case ARG_KIND_EXPR_ROW_ANY:
+        return print_template_details ? "ROW<T>" : "ROW";
       case ARG_KIND_EXPR_MAP_ANY_1_2:
         return print_template_details ? "MAP<T1, T2>" : "MAP";
       case ARG_KIND_EXPR_MEASURE_ANY_1:
@@ -1289,7 +1291,7 @@ std::string FunctionArgumentType::GetSQLDeclaration(
 
 FunctionSignature::FunctionSignature(FunctionArgumentType result_type,
                                      FunctionArgumentTypeList arguments,
-                                     void* context_ptr)
+                                     const void* context_ptr)
     : arguments_(std::move(arguments)),
       result_type_(std::move(result_type)),
       num_repeated_arguments_(ComputeNumRepeatedArguments()),

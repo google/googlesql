@@ -20,14 +20,21 @@
  */
 
 import {decorateAllResolvedASTTrees} from './decorate_tree';
-import {LocalStorageManager} from './local_storage_manager';
+import {HistoryMenu, HistoryStore} from './history';
+import {HistoryDialog} from './history_dialog';
+import {
+  LocalStorageManager,
+  restoreAndPersistFormOptions,
+} from './local_storage_manager';
 import {initRewriteSteps} from './rewrite_steps';
 import {SplitterManager} from './splitter';
 import {ThemeManager} from './theme';
 
 /**
  * Initializes web UI components including theme manager, draggable splitter,
- * rewrite step viewer, and resolved AST column hover highlighting.
+ * query form options persistence, query history, rewrite step viewer, and
+ * resolved AST column
+ * hover highlighting.
  */
 function init(): void {
   const storageManager = new LocalStorageManager();
@@ -42,6 +49,50 @@ function init(): void {
   const layoutToggle = document.getElementById('layout-toggle');
   if (splitter && main) {
     new SplitterManager(splitter, main, layoutToggle, storageManager).init();
+  }
+
+  const form = document.getElementById('form') as HTMLFormElement | null;
+  const saveDefaultOptionsBtn = document.getElementById(
+    'save-default-options',
+  ) as HTMLButtonElement | null;
+  if (form && saveDefaultOptionsBtn) {
+    restoreAndPersistFormOptions(form, saveDefaultOptionsBtn, storageManager);
+  }
+
+  const historyToggle = document.getElementById(
+    'history-toggle',
+  ) as HTMLButtonElement | null;
+  const historyMenu = document.getElementById('history-menu');
+  const historyDialogElement = document.getElementById(
+    'history-dialog',
+  ) as HTMLDialogElement | null;
+  if (form && historyToggle && historyMenu && historyDialogElement) {
+    const historyStore = new HistoryStore(storageManager);
+    const historyDialog = new HistoryDialog(
+      form,
+      historyDialogElement,
+      historyStore,
+    );
+    historyDialog.init();
+    new HistoryMenu(form, historyToggle, historyMenu, historyStore, () => {
+      historyDialog.open();
+    }).init();
+  }
+
+  // Disable submit when the query textarea is empty.
+  const queryTextarea = document.getElementById(
+    'query',
+  ) as HTMLTextAreaElement | null;
+  const submitBtn = document.getElementById(
+    'submit',
+  ) as HTMLInputElement | null;
+  if (queryTextarea && submitBtn) {
+    const updateSubmitButtonState = () => {
+      submitBtn.disabled = !queryTextarea.value.trim();
+    };
+    queryTextarea.addEventListener('input', updateSubmitButtonState);
+    queryTextarea.addEventListener('change', updateSubmitButtonState);
+    updateSubmitButtonState();
   }
 
   initRewriteSteps(document);

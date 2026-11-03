@@ -568,6 +568,7 @@ DeleteStmt
 # Basic DELETE with USING single table and show_sqlbuilder_output
 [show_sqlbuilder_output]
 [language_features={{MAXIMUM|MAXIMUM,+DML_DELETE_WITH_JOIN}}]
+[enabled_ast_rewrites=DEFAULTS,+DML_DELETE_WITH_JOIN]
 DELETE SimpleTypes USING KeyValue WHERE SimpleTypes.int64 = KeyValue.Key
 --
 ALTERNATION GROUP: MAXIMUM
@@ -610,12 +611,60 @@ USING
   )
 WHERE
   (simpletypes_1.int64) = (keyvalue_3.a_2);
+
+[REWRITTEN AST]
+DeleteStmt
++-table_scan=
+| +-TableScan(column_list=[SimpleTypes.int64#2], table=SimpleTypes, column_index_list=[1])
++-column_access_list=READ
++-where_expr=
+  +-SubqueryExpr
+    +-type=BOOL
+    +-subquery_type=EXISTS
+    +-parameter_list=
+    | +-ColumnRef(type=INT64, column=SimpleTypes.int64#2)
+    +-subquery=
+      +-FilterScan
+        +-input_scan=
+        | +-TableScan(column_list=[KeyValue.Key#20], table=KeyValue, column_index_list=[0])
+        +-filter_expr=
+          +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+            +-ColumnRef(type=INT64, column=SimpleTypes.int64#2, is_correlated=TRUE)
+            +-ColumnRef(type=INT64, column=KeyValue.Key#20)
+
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+DELETE SimpleTypes AS simpletypes_1
+WHERE
+  EXISTS(
+    SELECT
+      NULL
+    FROM
+      KeyValue
+    WHERE
+      (simpletypes_1.int64) = (KeyValue.Key)
+  );
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+DELETE SimpleTypes AS simpletypes_1
+WHERE
+  EXISTS(
+    FROM
+      KeyValue
+    |> WHERE
+         (simpletypes_1.int64) = (KeyValue.Key)
+    |> SELECT
+         NULL
+  );
 ==
 
 # DELETE with USING with table aliases
 [language_features=MAXIMUM,+DML_DELETE_WITH_JOIN]
+[enabled_ast_rewrites=DEFAULTS,+DML_DELETE_WITH_JOIN]
 [show_sqlbuilder_output]
-DELETE SimpleTypes AS target USING KeyValue AS source WHERE target.int64 = source.Key
+DELETE SimpleTypes AS target USING KeyValue AS source
+WHERE target.int64 = source.Key
 --
 DeleteStmt
 +-table_scan=
@@ -649,6 +698,52 @@ USING
   )
 WHERE
   (simpletypes_1.int64) = (keyvalue_3.a_2);
+
+[REWRITTEN AST]
+DeleteStmt
++-table_scan=
+| +-TableScan(column_list=[SimpleTypes.int64#2], table=SimpleTypes, column_index_list=[1], alias="target")
++-column_access_list=READ
++-where_expr=
+  +-SubqueryExpr
+    +-type=BOOL
+    +-subquery_type=EXISTS
+    +-parameter_list=
+    | +-ColumnRef(type=INT64, column=SimpleTypes.int64#2)
+    +-subquery=
+      +-FilterScan
+        +-input_scan=
+        | +-TableScan(column_list=[KeyValue.Key#20], table=KeyValue, column_index_list=[0], alias="source")
+        +-filter_expr=
+          +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+            +-ColumnRef(type=INT64, column=SimpleTypes.int64#2, is_correlated=TRUE)
+            +-ColumnRef(type=INT64, column=KeyValue.Key#20)
+
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+DELETE SimpleTypes AS simpletypes_1
+WHERE
+  EXISTS(
+    SELECT
+      NULL
+    FROM
+      KeyValue
+    WHERE
+      (simpletypes_1.int64) = (KeyValue.Key)
+  );
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+DELETE SimpleTypes AS simpletypes_1
+WHERE
+  EXISTS(
+    FROM
+      KeyValue
+    |> WHERE
+         (simpletypes_1.int64) = (KeyValue.Key)
+    |> SELECT
+         NULL
+  );
 ==
 
 # DELETE with USING comma joins
@@ -871,8 +966,11 @@ DELETE KeyValue USING KeyValue2 WHERE Key = 1
 
 # DELETE with USING and THEN RETURN
 [language_features=MAXIMUM,+DML_DELETE_WITH_JOIN,+DML_RETURNING]
+[enabled_ast_rewrites=DEFAULTS,+DML_DELETE_WITH_JOIN]
 [show_sqlbuilder_output]
-DELETE SimpleTypes USING KeyValue WHERE SimpleTypes.int64 = KeyValue.Key THEN RETURN SimpleTypes.int64
+DELETE SimpleTypes USING KeyValue
+WHERE SimpleTypes.int64 = KeyValue.Key
+THEN RETURN SimpleTypes.int64
 --
 DeleteStmt
 +-table_scan=
@@ -912,6 +1010,60 @@ USING
   )
 WHERE
   (simpletypes_1.int64) = (keyvalue_3.a_2)
+THEN RETURN
+  simpletypes_1.int64 AS int64;
+
+[REWRITTEN AST]
+DeleteStmt
++-table_scan=
+| +-TableScan(column_list=[SimpleTypes.int64#2], table=SimpleTypes, column_index_list=[1])
++-returning=
+| +-ReturningClause
+|   +-output_column_list=
+|     +-SimpleTypes.int64#2 AS int64 [INT64]
++-column_access_list=READ
++-where_expr=
+  +-SubqueryExpr
+    +-type=BOOL
+    +-subquery_type=EXISTS
+    +-parameter_list=
+    | +-ColumnRef(type=INT64, column=SimpleTypes.int64#2)
+    +-subquery=
+      +-FilterScan
+        +-input_scan=
+        | +-TableScan(column_list=[KeyValue.Key#20], table=KeyValue, column_index_list=[0])
+        +-filter_expr=
+          +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+            +-ColumnRef(type=INT64, column=SimpleTypes.int64#2, is_correlated=TRUE)
+            +-ColumnRef(type=INT64, column=KeyValue.Key#20)
+
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+DELETE SimpleTypes AS simpletypes_1
+WHERE
+  EXISTS(
+    SELECT
+      NULL
+    FROM
+      KeyValue
+    WHERE
+      (simpletypes_1.int64) = (KeyValue.Key)
+  )
+THEN RETURN
+  simpletypes_1.int64 AS int64;
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+DELETE SimpleTypes AS simpletypes_1
+WHERE
+  EXISTS(
+    FROM
+      KeyValue
+    |> WHERE
+         (simpletypes_1.int64) = (KeyValue.Key)
+    |> SELECT
+         NULL
+  )
 THEN RETURN
   simpletypes_1.int64 AS int64;
 ==
@@ -1132,3 +1284,839 @@ USING
   )
 WHERE
   (simpletypes_1.int32) = (projectscan_3.a_2);
+==
+
+# DELETE with USING with multiple correlated columns and multiple joins
+[language_features=MAXIMUM,+DML_DELETE_WITH_JOIN]
+[enabled_ast_rewrites=DEFAULTS,+DML_DELETE_WITH_JOIN]
+[show_sqlbuilder_output]
+DELETE SimpleTypes USING KeyValue JOIN KeyValue2 ON KeyValue.Key = KeyValue2.Key
+WHERE SimpleTypes.int64 = KeyValue.Key AND SimpleTypes.string = KeyValue2.Value2
+--
+DeleteStmt
++-table_scan=
+| +-TableScan(column_list=SimpleTypes.[int64#2, string#5], table=SimpleTypes, column_index_list=[1, 4])
++-column_access_list=READ,READ
++-where_expr=
+| +-FunctionCall(GoogleSQL:$and(BOOL, repeated(1) BOOL) -> BOOL)
+|   +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+|   | +-ColumnRef(type=INT64, column=SimpleTypes.int64#2)
+|   | +-ColumnRef(type=INT64, column=KeyValue.Key#20)
+|   +-FunctionCall(GoogleSQL:$equal(STRING, STRING) -> BOOL)
+|     +-ColumnRef(type=STRING, column=SimpleTypes.string#5)
+|     +-ColumnRef(type=STRING, column=KeyValue2.Value2#23)
++-using_scan=
+  +-JoinScan
+    +-column_list=[KeyValue.Key#20, KeyValue2.Key#22, KeyValue2.Value2#23]
+    +-left_scan=
+    | +-TableScan(column_list=[KeyValue.Key#20], table=KeyValue, column_index_list=[0])
+    +-right_scan=
+    | +-TableScan(column_list=KeyValue2.[Key#22, Value2#23], table=KeyValue2, column_index_list=[0, 1])
+    +-join_expr=
+      +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+        +-ColumnRef(type=INT64, column=KeyValue.Key#20)
+        +-ColumnRef(type=INT64, column=KeyValue2.Key#22)
+
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+DELETE SimpleTypes AS simpletypes_1
+USING
+  (
+    SELECT
+      KeyValue.Key AS a_2
+    FROM
+      KeyValue
+  ) AS keyvalue_3
+  INNER JOIN
+  (
+    SELECT
+      KeyValue2.Key AS a_4,
+      KeyValue2.Value2 AS a_5
+    FROM
+      KeyValue2
+  ) AS keyvalue2_6
+  ON (keyvalue_3.a_2) = (keyvalue2_6.a_4)
+WHERE
+  ((simpletypes_1.int64) = (keyvalue_3.a_2)) AND ((simpletypes_1.string) = (keyvalue2_6.a_5));
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+DELETE SimpleTypes AS simpletypes_1
+USING
+  (
+    FROM
+      KeyValue
+    |> SELECT
+         KeyValue.Key AS a_2
+    |> AS keyvalue_3
+    |> INNER JOIN
+       (
+         FROM
+           KeyValue2
+         |> SELECT
+              KeyValue2.Key AS a_4,
+              KeyValue2.Value2 AS a_5
+         |> AS keyvalue2_6
+       )
+       ON (keyvalue_3.a_2) = (keyvalue2_6.a_4)
+    |> SELECT
+         keyvalue_3.a_2 AS a_2,
+         keyvalue2_6.a_4 AS a_4,
+         keyvalue2_6.a_5 AS a_5
+    |> AS joinscan_7
+  )
+WHERE
+  ((simpletypes_1.int64) = (joinscan_7.a_2)) AND ((simpletypes_1.string) = (joinscan_7.a_5));
+
+[REWRITTEN AST]
+DeleteStmt
++-table_scan=
+| +-TableScan(column_list=SimpleTypes.[int64#2, string#5], table=SimpleTypes, column_index_list=[1, 4])
++-column_access_list=READ,READ
++-where_expr=
+  +-SubqueryExpr
+    +-type=BOOL
+    +-subquery_type=EXISTS
+    +-parameter_list=
+    | +-ColumnRef(type=INT64, column=SimpleTypes.int64#2)
+    | +-ColumnRef(type=STRING, column=SimpleTypes.string#5)
+    +-subquery=
+      +-FilterScan
+        +-input_scan=
+        | +-JoinScan
+        |   +-column_list=[KeyValue.Key#20, KeyValue2.Key#22, KeyValue2.Value2#23]
+        |   +-left_scan=
+        |   | +-TableScan(column_list=[KeyValue.Key#20], table=KeyValue, column_index_list=[0])
+        |   +-right_scan=
+        |   | +-TableScan(column_list=KeyValue2.[Key#22, Value2#23], table=KeyValue2, column_index_list=[0, 1])
+        |   +-join_expr=
+        |     +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+        |       +-ColumnRef(type=INT64, column=KeyValue.Key#20)
+        |       +-ColumnRef(type=INT64, column=KeyValue2.Key#22)
+        +-filter_expr=
+          +-FunctionCall(GoogleSQL:$and(BOOL, repeated(1) BOOL) -> BOOL)
+            +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+            | +-ColumnRef(type=INT64, column=SimpleTypes.int64#2, is_correlated=TRUE)
+            | +-ColumnRef(type=INT64, column=KeyValue.Key#20)
+            +-FunctionCall(GoogleSQL:$equal(STRING, STRING) -> BOOL)
+              +-ColumnRef(type=STRING, column=SimpleTypes.string#5, is_correlated=TRUE)
+              +-ColumnRef(type=STRING, column=KeyValue2.Value2#23)
+
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+DELETE SimpleTypes AS simpletypes_1
+WHERE
+  EXISTS(
+    SELECT
+      NULL
+    FROM
+      (
+        SELECT
+          KeyValue.Key AS a_2
+        FROM
+          KeyValue
+      ) AS keyvalue_3
+      INNER JOIN
+      (
+        SELECT
+          KeyValue2.Key AS a_4,
+          KeyValue2.Value2 AS a_5
+        FROM
+          KeyValue2
+      ) AS keyvalue2_6
+      ON (keyvalue_3.a_2) = (keyvalue2_6.a_4)
+    WHERE
+      ((simpletypes_1.int64) = (keyvalue_3.a_2)) AND ((simpletypes_1.string) = (keyvalue2_6.a_5))
+  );
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+DELETE SimpleTypes AS simpletypes_1
+WHERE
+  EXISTS(
+    FROM
+      KeyValue
+    |> SELECT
+         KeyValue.Key AS a_2
+    |> AS keyvalue_3
+    |> INNER JOIN
+       (
+         FROM
+           KeyValue2
+         |> SELECT
+              KeyValue2.Key AS a_4,
+              KeyValue2.Value2 AS a_5
+         |> AS keyvalue2_6
+       )
+       ON (keyvalue_3.a_2) = (keyvalue2_6.a_4)
+    |> WHERE
+         ((simpletypes_1.int64) = (keyvalue_3.a_2)) AND ((simpletypes_1.string) = (keyvalue2_6.a_5))
+    |> SELECT
+         NULL
+  );
+==
+
+# DELETE with USING with uncorrelated WHERE clause
+[language_features=MAXIMUM,+DML_DELETE_WITH_JOIN]
+[enabled_ast_rewrites=DEFAULTS,+DML_DELETE_WITH_JOIN]
+[show_sqlbuilder_output]
+DELETE SimpleTypes USING KeyValue WHERE KeyValue.Key = 1
+--
+DeleteStmt
++-table_scan=
+| +-TableScan(table=SimpleTypes)
++-where_expr=
+| +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+|   +-ColumnRef(type=INT64, column=KeyValue.Key#20)
+|   +-Literal(type=INT64, value=1)
++-using_scan=
+  +-TableScan(column_list=[KeyValue.Key#20], table=KeyValue, column_index_list=[0])
+
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+DELETE SimpleTypes AS simpletypes_1
+USING
+  KeyValue
+WHERE
+  (KeyValue.Key) = 1;
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+DELETE SimpleTypes AS simpletypes_1
+USING
+  (
+    FROM
+      KeyValue
+    |> SELECT
+         KeyValue.Key AS a_2
+    |> AS keyvalue_3
+  )
+WHERE
+  (keyvalue_3.a_2) = 1;
+
+[REWRITTEN AST]
+DeleteStmt
++-table_scan=
+| +-TableScan(table=SimpleTypes)
++-where_expr=
+  +-SubqueryExpr
+    +-type=BOOL
+    +-subquery_type=EXISTS
+    +-subquery=
+      +-FilterScan
+        +-input_scan=
+        | +-TableScan(column_list=[KeyValue.Key#20], table=KeyValue, column_index_list=[0])
+        +-filter_expr=
+          +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+            +-ColumnRef(type=INT64, column=KeyValue.Key#20)
+            +-Literal(type=INT64, value=1)
+
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+DELETE SimpleTypes AS simpletypes_1
+WHERE
+  EXISTS(
+    SELECT
+      NULL
+    FROM
+      KeyValue
+    WHERE
+      (KeyValue.Key) = 1
+  );
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+DELETE SimpleTypes AS simpletypes_1
+WHERE
+  EXISTS(
+    FROM
+      KeyValue
+    |> WHERE
+         (KeyValue.Key) = 1
+    |> SELECT
+         NULL
+  );
+==
+
+# DELETE with USING subquery and REWRITE_DML_DELETE_WITH_JOIN
+[language_features=MAXIMUM,+DML_DELETE_WITH_JOIN]
+[enabled_ast_rewrites=DEFAULTS,+DML_DELETE_WITH_JOIN]
+[show_sqlbuilder_output]
+DELETE SimpleTypes USING (SELECT Key, Value FROM KeyValue) AS k
+WHERE SimpleTypes.int64 = k.Key
+--
+DeleteStmt
++-table_scan=
+| +-TableScan(column_list=[SimpleTypes.int64#2], table=SimpleTypes, column_index_list=[1])
++-column_access_list=READ
++-where_expr=
+| +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+|   +-ColumnRef(type=INT64, column=SimpleTypes.int64#2)
+|   +-ColumnRef(type=INT64, column=KeyValue.Key#20)
++-using_scan=
+  +-ProjectScan
+    +-column_list=KeyValue.[Key#20, Value#21]
+    +-input_scan=
+      +-TableScan(column_list=KeyValue.[Key#20, Value#21], table=KeyValue, column_index_list=[0, 1])
+
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+DELETE SimpleTypes AS simpletypes_1
+USING
+  KeyValue
+WHERE
+  (simpletypes_1.int64) = (KeyValue.Key);
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+DELETE SimpleTypes AS simpletypes_1
+USING
+  (
+    FROM
+      KeyValue
+    |> SELECT
+         KeyValue.Key AS a_2,
+         KeyValue.Value AS a_3
+    |> AS projectscan_4
+  )
+WHERE
+  (simpletypes_1.int64) = (projectscan_4.a_2);
+
+[REWRITTEN AST]
+DeleteStmt
++-table_scan=
+| +-TableScan(column_list=[SimpleTypes.int64#2], table=SimpleTypes, column_index_list=[1])
++-column_access_list=READ
++-where_expr=
+  +-SubqueryExpr
+    +-type=BOOL
+    +-subquery_type=EXISTS
+    +-parameter_list=
+    | +-ColumnRef(type=INT64, column=SimpleTypes.int64#2)
+    +-subquery=
+      +-FilterScan
+        +-input_scan=
+        | +-ProjectScan
+        |   +-column_list=KeyValue.[Key#20, Value#21]
+        |   +-input_scan=
+        |     +-TableScan(column_list=KeyValue.[Key#20, Value#21], table=KeyValue, column_index_list=[0, 1])
+        +-filter_expr=
+          +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+            +-ColumnRef(type=INT64, column=SimpleTypes.int64#2, is_correlated=TRUE)
+            +-ColumnRef(type=INT64, column=KeyValue.Key#20)
+
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+DELETE SimpleTypes AS simpletypes_1
+WHERE
+  EXISTS(
+    SELECT
+      NULL
+    FROM
+      (
+        SELECT
+          KeyValue.Key AS a_2,
+          KeyValue.Value AS a_3
+        FROM
+          KeyValue
+      ) AS projectscan_4
+    WHERE
+      (simpletypes_1.int64) = (projectscan_4.a_2)
+  );
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+DELETE SimpleTypes AS simpletypes_1
+WHERE
+  EXISTS(
+    FROM
+      KeyValue
+    |> SELECT
+         KeyValue.Key AS a_2,
+         KeyValue.Value AS a_3
+    |> AS projectscan_4
+    |> WHERE
+         (simpletypes_1.int64) = (projectscan_4.a_2)
+    |> SELECT
+         NULL
+  );
+==
+
+# DELETE with USING and EXISTS subquery in WHERE referencing target table column
+[language_features=MAXIMUM,+DML_DELETE_WITH_JOIN]
+[enabled_ast_rewrites=DEFAULTS,+DML_DELETE_WITH_JOIN]
+[show_sqlbuilder_output]
+DELETE SimpleTypes USING KeyValue
+WHERE SimpleTypes.int64 = KeyValue.Key AND
+      EXISTS(SELECT 1 FROM KeyValue2
+             WHERE KeyValue2.Key = SimpleTypes.int64)
+--
+DeleteStmt
++-table_scan=
+| +-TableScan(column_list=[SimpleTypes.int64#2], table=SimpleTypes, column_index_list=[1])
++-column_access_list=READ
++-where_expr=
+| +-FunctionCall(GoogleSQL:$and(BOOL, repeated(1) BOOL) -> BOOL)
+|   +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+|   | +-ColumnRef(type=INT64, column=SimpleTypes.int64#2)
+|   | +-ColumnRef(type=INT64, column=KeyValue.Key#20)
+|   +-SubqueryExpr
+|     +-type=BOOL
+|     +-subquery_type=EXISTS
+|     +-parameter_list=
+|     | +-ColumnRef(type=INT64, column=SimpleTypes.int64#2)
+|     +-subquery=
+|       +-ProjectScan
+|         +-column_list=[$expr_subquery.$col1#24]
+|         +-expr_list=
+|         | +-$col1#24 := Literal(type=INT64, value=1)
+|         +-input_scan=
+|           +-FilterScan
+|             +-column_list=[KeyValue2.Key#22]
+|             +-input_scan=
+|             | +-TableScan(column_list=[KeyValue2.Key#22], table=KeyValue2, column_index_list=[0])
+|             +-filter_expr=
+|               +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+|                 +-ColumnRef(type=INT64, column=KeyValue2.Key#22)
+|                 +-ColumnRef(type=INT64, column=SimpleTypes.int64#2, is_correlated=TRUE)
++-using_scan=
+  +-TableScan(column_list=[KeyValue.Key#20], table=KeyValue, column_index_list=[0])
+
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+DELETE SimpleTypes AS simpletypes_1
+USING
+  KeyValue
+WHERE
+  ((simpletypes_1.int64) = (KeyValue.Key)) AND EXISTS(
+    SELECT
+      1 AS a_4
+    FROM
+      KeyValue2
+    WHERE
+      (KeyValue2.Key) = (simpletypes_1.int64)
+  );
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+DELETE SimpleTypes AS simpletypes_1
+USING
+  (
+    FROM
+      KeyValue
+    |> SELECT
+         KeyValue.Key AS a_2
+    |> AS keyvalue_3
+  )
+WHERE
+  ((simpletypes_1.int64) = (keyvalue_3.a_2)) AND EXISTS(
+    FROM
+      KeyValue2
+    |> WHERE
+         (KeyValue2.Key) = (simpletypes_1.int64)
+    |> SELECT
+         1 AS a_5
+  );
+
+[REWRITTEN AST]
+DeleteStmt
++-table_scan=
+| +-TableScan(column_list=[SimpleTypes.int64#2], table=SimpleTypes, column_index_list=[1])
++-column_access_list=READ
++-where_expr=
+  +-SubqueryExpr
+    +-type=BOOL
+    +-subquery_type=EXISTS
+    +-parameter_list=
+    | +-ColumnRef(type=INT64, column=SimpleTypes.int64#2)
+    +-subquery=
+      +-FilterScan
+        +-input_scan=
+        | +-TableScan(column_list=[KeyValue.Key#20], table=KeyValue, column_index_list=[0])
+        +-filter_expr=
+          +-FunctionCall(GoogleSQL:$and(BOOL, repeated(1) BOOL) -> BOOL)
+            +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+            | +-ColumnRef(type=INT64, column=SimpleTypes.int64#2, is_correlated=TRUE)
+            | +-ColumnRef(type=INT64, column=KeyValue.Key#20)
+            +-SubqueryExpr
+              +-type=BOOL
+              +-subquery_type=EXISTS
+              +-parameter_list=
+              | +-ColumnRef(type=INT64, column=SimpleTypes.int64#2, is_correlated=TRUE)
+              +-subquery=
+                +-ProjectScan
+                  +-column_list=[$expr_subquery.$col1#24]
+                  +-expr_list=
+                  | +-$col1#24 := Literal(type=INT64, value=1)
+                  +-input_scan=
+                    +-FilterScan
+                      +-column_list=[KeyValue2.Key#22]
+                      +-input_scan=
+                      | +-TableScan(column_list=[KeyValue2.Key#22], table=KeyValue2, column_index_list=[0])
+                      +-filter_expr=
+                        +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+                          +-ColumnRef(type=INT64, column=KeyValue2.Key#22)
+                          +-ColumnRef(type=INT64, column=SimpleTypes.int64#2, is_correlated=TRUE)
+
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+DELETE SimpleTypes AS simpletypes_1
+WHERE
+  EXISTS(
+    SELECT
+      NULL
+    FROM
+      KeyValue
+    WHERE
+      ((simpletypes_1.int64) = (KeyValue.Key)) AND EXISTS(
+        SELECT
+          1 AS a_4
+        FROM
+          KeyValue2
+        WHERE
+          (KeyValue2.Key) = (simpletypes_1.int64)
+      )
+  );
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+DELETE SimpleTypes AS simpletypes_1
+WHERE
+  EXISTS(
+    FROM
+      KeyValue
+    |> WHERE
+         ((simpletypes_1.int64) = (KeyValue.Key)) AND EXISTS(
+           FROM
+             KeyValue2
+           |> WHERE
+                (KeyValue2.Key) = (simpletypes_1.int64)
+           |> SELECT
+                1 AS a_4
+         )
+    |> SELECT
+         NULL
+  );
+==
+
+# DELETE with WITH TIMESTAMP and USING with REWRITE_DML_DELETE_WITH_JOIN
+[language_features=MAXIMUM,+DML_DELETE_WITH_JOIN,+VERSION_AWARE_DML]
+[enabled_ast_rewrites=DEFAULTS,+DML_DELETE_WITH_JOIN]
+[show_sqlbuilder_output]
+DELETE FROM VersionedTable WITH TIMESTAMP AS ts USING KeyValue
+WHERE VersionedTable.key = KeyValue.Key AND ts = CURRENT_TIMESTAMP()
+--
+DeleteStmt
++-table_scan=
+| +-TableScan(column_list=[VersionedTable.key#1], table=VersionedTable, column_index_list=[0])
++-column_access_list=READ
++-where_expr=
+| +-FunctionCall(GoogleSQL:$and(BOOL, repeated(1) BOOL) -> BOOL)
+|   +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+|   | +-ColumnRef(type=INT64, column=VersionedTable.key#1)
+|   | +-ColumnRef(type=INT64, column=KeyValue.Key#3)
+|   +-FunctionCall(GoogleSQL:$equal(TIMESTAMP, TIMESTAMP) -> BOOL)
+|     +-ColumnRef(type=TIMESTAMP, column=$timestamp.ts#5)
+|     +-FunctionCall(GoogleSQL:current_timestamp() -> TIMESTAMP)
++-timestamp_version_column=
+| +-ColumnHolder(column=$timestamp.ts#5)
++-using_scan=
+  +-TableScan(column_list=[KeyValue.Key#3], table=KeyValue, column_index_list=[0])
+
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+DELETE VersionedTable AS versionedtable_1 WITH TIMESTAMP AS ts
+USING
+  KeyValue
+WHERE
+  ((versionedtable_1.key) = (KeyValue.Key)) AND (ts = (`CURRENT_TIMESTAMP`()));
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+DELETE VersionedTable AS versionedtable_1 WITH TIMESTAMP AS ts
+USING
+  (
+    FROM
+      KeyValue
+    |> SELECT
+         KeyValue.Key AS a_2
+    |> AS keyvalue_3
+  )
+WHERE
+  ((versionedtable_1.key) = (keyvalue_3.a_2)) AND (ts = (`CURRENT_TIMESTAMP`()));
+
+[REWRITTEN AST]
+DeleteStmt
++-table_scan=
+| +-TableScan(column_list=[VersionedTable.key#1], table=VersionedTable, column_index_list=[0])
++-column_access_list=READ
++-where_expr=
+| +-SubqueryExpr
+|   +-type=BOOL
+|   +-subquery_type=EXISTS
+|   +-parameter_list=
+|   | +-ColumnRef(type=INT64, column=VersionedTable.key#1)
+|   | +-ColumnRef(type=TIMESTAMP, column=$timestamp.ts#5)
+|   +-subquery=
+|     +-FilterScan
+|       +-input_scan=
+|       | +-TableScan(column_list=[KeyValue.Key#3], table=KeyValue, column_index_list=[0])
+|       +-filter_expr=
+|         +-FunctionCall(GoogleSQL:$and(BOOL, repeated(1) BOOL) -> BOOL)
+|           +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+|           | +-ColumnRef(type=INT64, column=VersionedTable.key#1, is_correlated=TRUE)
+|           | +-ColumnRef(type=INT64, column=KeyValue.Key#3)
+|           +-FunctionCall(GoogleSQL:$equal(TIMESTAMP, TIMESTAMP) -> BOOL)
+|             +-ColumnRef(type=TIMESTAMP, column=$timestamp.ts#5, is_correlated=TRUE)
+|             +-FunctionCall(GoogleSQL:current_timestamp() -> TIMESTAMP)
++-timestamp_version_column=
+  +-ColumnHolder(column=$timestamp.ts#5)
+
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+DELETE VersionedTable AS versionedtable_1 WITH TIMESTAMP AS ts
+WHERE
+  EXISTS(
+    SELECT
+      NULL
+    FROM
+      KeyValue
+    WHERE
+      ((versionedtable_1.key) = (KeyValue.Key)) AND (ts = (`CURRENT_TIMESTAMP`()))
+  );
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+DELETE VersionedTable AS versionedtable_1 WITH TIMESTAMP AS ts
+WHERE
+  EXISTS(
+    FROM
+      KeyValue
+    |> WHERE
+         ((versionedtable_1.key) = (KeyValue.Key)) AND (ts = (`CURRENT_TIMESTAMP`()))
+    |> SELECT
+         NULL
+  );
+==
+
+# DELETE with USING, IN subquery, and lambda in WHERE referencing target columns
+[language_features=MAXIMUM,+DML_DELETE_WITH_JOIN]
+[enabled_ast_rewrites=DEFAULTS,+DML_DELETE_WITH_JOIN]
+[show_sqlbuilder_output]
+DELETE SimpleTypes USING KeyValue
+WHERE SimpleTypes.int64 = KeyValue.Key AND
+      SimpleTypes.string IN (SELECT Value2 FROM KeyValue2) AND
+      ARRAY_INCLUDES([1, 2], x -> x = SimpleTypes.int32)
+--
+DeleteStmt
++-table_scan=
+| +-TableScan(column_list=SimpleTypes.[int32#1, int64#2, string#5], table=SimpleTypes, column_index_list=[0, 1, 4])
++-column_access_list=READ,READ,READ
++-where_expr=
+| +-FunctionCall(GoogleSQL:$and(BOOL, repeated(2) BOOL) -> BOOL)
+|   +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+|   | +-ColumnRef(type=INT64, column=SimpleTypes.int64#2)
+|   | +-ColumnRef(type=INT64, column=KeyValue.Key#20)
+|   +-SubqueryExpr
+|   | +-type=BOOL
+|   | +-subquery_type=IN
+|   | +-in_expr=
+|   | | +-ColumnRef(type=STRING, column=SimpleTypes.string#5)
+|   | +-subquery=
+|   |   +-ProjectScan
+|   |     +-column_list=[KeyValue2.Value2#23]
+|   |     +-input_scan=
+|   |       +-TableScan(column_list=[KeyValue2.Value2#23], table=KeyValue2, column_index_list=[1])
+|   +-FunctionCall(GoogleSQL:array_includes(ARRAY<INT64> array_to_search, FUNCTION<INT64->BOOL> condition) -> BOOL)
+|     +-FunctionArgument
+|     | +-expr=
+|     |   +-Literal(type=ARRAY<INT64>, value=[1, 2])
+|     +-FunctionArgument
+|       +-inline_lambda=
+|         +-InlineLambda
+|           +-argument_list=[$lambda_arg.x#24]
+|           +-parameter_list=
+|           | +-ColumnRef(type=INT32, column=SimpleTypes.int32#1)
+|           +-body=
+|             +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+|               +-ColumnRef(type=INT64, column=$lambda_arg.x#24)
+|               +-Cast(INT32 -> INT64)
+|                 +-ColumnRef(type=INT32, column=SimpleTypes.int32#1, is_correlated=TRUE)
++-using_scan=
+  +-TableScan(column_list=[KeyValue.Key#20], table=KeyValue, column_index_list=[0])
+
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+DELETE SimpleTypes AS simpletypes_1
+USING
+  KeyValue
+WHERE
+  ((simpletypes_1.int64) = (KeyValue.Key)) AND ((simpletypes_1.string) IN (
+    SELECT
+      KeyValue2.Value2 AS a_3
+    FROM
+      KeyValue2
+  )) AND (ARRAY_INCLUDES(ARRAY< INT64 >[1, 2], (a_4) -> a_4 = CAST(simpletypes_1.int32 AS INT64)));
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+DELETE SimpleTypes AS simpletypes_1
+USING
+  (
+    FROM
+      KeyValue
+    |> SELECT
+         KeyValue.Key AS a_2
+    |> AS keyvalue_3
+  )
+WHERE
+  ((simpletypes_1.int64) = (keyvalue_3.a_2)) AND ((simpletypes_1.string) IN (
+    FROM
+      KeyValue2
+    |> SELECT
+         KeyValue2.Value2 AS a_4
+  )) AND (ARRAY_INCLUDES(ARRAY< INT64 >[1, 2], (a_5) -> a_5 = CAST(simpletypes_1.int32 AS INT64)));
+
+[REWRITTEN AST]
+DeleteStmt
++-table_scan=
+| +-TableScan(column_list=SimpleTypes.[int32#1, int64#2, string#5], table=SimpleTypes, column_index_list=[0, 1, 4])
++-column_access_list=READ,READ,READ
++-where_expr=
+  +-SubqueryExpr
+    +-type=BOOL
+    +-subquery_type=EXISTS
+    +-parameter_list=
+    | +-ColumnRef(type=INT32, column=SimpleTypes.int32#1)
+    | +-ColumnRef(type=INT64, column=SimpleTypes.int64#2)
+    | +-ColumnRef(type=STRING, column=SimpleTypes.string#5)
+    +-subquery=
+      +-FilterScan
+        +-input_scan=
+        | +-TableScan(column_list=[KeyValue.Key#20], table=KeyValue, column_index_list=[0])
+        +-filter_expr=
+          +-FunctionCall(GoogleSQL:$and(BOOL, repeated(2) BOOL) -> BOOL)
+            +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+            | +-ColumnRef(type=INT64, column=SimpleTypes.int64#2, is_correlated=TRUE)
+            | +-ColumnRef(type=INT64, column=KeyValue.Key#20)
+            +-SubqueryExpr
+            | +-type=BOOL
+            | +-subquery_type=IN
+            | +-in_expr=
+            | | +-ColumnRef(type=STRING, column=SimpleTypes.string#5, is_correlated=TRUE)
+            | +-subquery=
+            |   +-ProjectScan
+            |     +-column_list=[KeyValue2.Value2#23]
+            |     +-input_scan=
+            |       +-TableScan(column_list=[KeyValue2.Value2#23], table=KeyValue2, column_index_list=[1])
+            +-SubqueryExpr
+              +-type=BOOL
+              +-subquery_type=SCALAR
+              +-parameter_list=
+              | +-ColumnRef(type=INT32, column=SimpleTypes.int32#1, is_correlated=TRUE)
+              +-subquery=
+                +-ProjectScan
+                  +-column_list=[$expr_subquery.$col1#28]
+                  +-expr_list=
+                  | +-$col1#28 :=
+                  |   +-FunctionCall(GoogleSQL:if(BOOL, BOOL, BOOL) -> BOOL)
+                  |     +-FunctionCall(GoogleSQL:$is_null(ARRAY<INT64>) -> BOOL)
+                  |     | +-ColumnRef(type=ARRAY<INT64>, column=$subquery1.array_to_search#25)
+                  |     +-Literal(type=BOOL, value=NULL)
+                  |     +-SubqueryExpr
+                  |       +-type=BOOL
+                  |       +-subquery_type=EXISTS
+                  |       +-parameter_list=
+                  |       | +-ColumnRef(type=ARRAY<INT64>, column=$subquery1.array_to_search#25)
+                  |       | +-ColumnRef(type=INT32, column=SimpleTypes.int32#1, is_correlated=TRUE)
+                  |       +-subquery=
+                  |         +-ProjectScan
+                  |           +-column_list=[$expr_subquery.$col1#27]
+                  |           +-expr_list=
+                  |           | +-$col1#27 := Literal(type=INT64, value=1)
+                  |           +-input_scan=
+                  |             +-FilterScan
+                  |               +-column_list=[$array.element#26]
+                  |               +-input_scan=
+                  |               | +-ArrayScan
+                  |               |   +-column_list=[$array.element#26]
+                  |               |   +-array_expr_list=
+                  |               |   | +-ColumnRef(type=ARRAY<INT64>, column=$subquery1.array_to_search#25, is_correlated=TRUE)
+                  |               |   +-element_column_list=[$array.element#26]
+                  |               +-filter_expr=
+                  |                 +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+                  |                   +-ColumnRef(type=INT64, column=$array.element#26)
+                  |                   +-Cast(INT32 -> INT64)
+                  |                     +-ColumnRef(type=INT32, column=SimpleTypes.int32#1, is_correlated=TRUE)
+                  +-input_scan=
+                    +-ProjectScan
+                      +-column_list=[$subquery1.array_to_search#25]
+                      +-expr_list=
+                      | +-array_to_search#25 := Literal(type=ARRAY<INT64>, value=[1, 2])
+                      +-input_scan=
+                        +-SingleRowScan
+
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+DELETE SimpleTypes AS simpletypes_1
+WHERE
+  EXISTS(
+    SELECT
+      NULL
+    FROM
+      KeyValue
+    WHERE
+      ((simpletypes_1.int64) = (KeyValue.Key)) AND ((simpletypes_1.string) IN (
+        SELECT
+          KeyValue2.Value2 AS a_3
+        FROM
+          KeyValue2
+      )) AND (
+        SELECT
+          `IF`((projectscan_5.a_4) IS NULL, CAST(NULL AS BOOL), EXISTS(
+              SELECT
+                1 AS a_8
+              FROM
+                UNNEST(projectscan_5.a_4 AS a_7)
+              WHERE
+                a_7 = CAST(simpletypes_1.int32 AS INT64)
+            )) AS a_6
+        FROM
+          (
+            SELECT
+              ARRAY< INT64 >[1, 2] AS a_4
+          ) AS projectscan_5
+      )
+  );
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+DELETE SimpleTypes AS simpletypes_1
+WHERE
+  EXISTS(
+    FROM
+      KeyValue
+    |> WHERE
+         ((simpletypes_1.int64) = (KeyValue.Key)) AND ((simpletypes_1.string) IN (
+           FROM
+             KeyValue2
+           |> SELECT
+                KeyValue2.Value2 AS a_3
+         )) AND (
+           SELECT
+             ARRAY< INT64 >[1, 2] AS a_4
+           |> AS projectscan_5
+           |> SELECT
+                `IF`((projectscan_5.a_4) IS NULL, CAST(NULL AS BOOL), EXISTS(
+                    FROM
+                      UNNEST(projectscan_5.a_4 AS a_7)
+                    |> WHERE
+                         a_7 = CAST(simpletypes_1.int32 AS INT64)
+                    |> SELECT
+                         1 AS a_8
+                  )) AS a_6
+         )
+    |> SELECT
+         NULL
+  );
+

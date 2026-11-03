@@ -40,7 +40,7 @@ namespace googlesql {
 class PicoTime final {
  public:
   // Representing the Unix epoch, i.e.  "1970-01-01 00:00:00.000000000000 UTC".
-  explicit PicoTime() : PicoTime(0, 0) {}
+  explicit PicoTime() : PicoTime(/*unix_seconds=*/0, /*picoseconds=*/0) {}
 
   PicoTime(const PicoTime&) = default;
   PicoTime(PicoTime&&) = default;
@@ -91,10 +91,12 @@ class PicoTime final {
   // Returns the maximum and minimum PicoTime values.
   // Minimum value is 0001-01-01 00:00:00.000000000000 UTC
   // Maximum value is 9999-12-31 23:59:59.999999999999 UTC
-  static constexpr PicoTime MinValue() { return PicoTime(-62135596800, 0); }
+  static constexpr PicoTime MinValue() {
+    return PicoTime(/*unix_seconds=*/-62135596800, /*picoseconds=*/0);
+  }
 
   static constexpr PicoTime MaxValue() {
-    return PicoTime(253402300799, kNumPicosPerSecond - 1);
+    return PicoTime(/*unix_seconds=*/253402300799, kNumPicosPerSecond - 1);
   }
 
   // Returns the value of the PicoTime as a pair of {seconds, picoseconds}. The

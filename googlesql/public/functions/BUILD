@@ -1364,7 +1364,6 @@ cc_library(
         "//googlesql/base:ret_check",
         "//googlesql/base:status",
         "//googlesql/common:errors",
-        "//googlesql/common:internal_value",
         "//googlesql/common:thread_stack",
         "//googlesql/public:interval_value",
         "//googlesql/public:json_value",

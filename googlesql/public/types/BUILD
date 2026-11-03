@@ -170,11 +170,13 @@ cc_library(
     deps = [
         ":type",
         ":value_representations",
+        ":vector_value_codec",
         "//googlesql/base:ret_check",
+        "//googlesql/base:status",
         "//googlesql/common:errors",
         "//googlesql/common:string_util",
-        "//googlesql/public:value_cc_proto",
         "//googlesql/public/proto:vector_encoding_id_cc_proto",
+        "//googlesql/public/proto:vector_value_cc_proto",
         "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",
@@ -362,6 +364,22 @@ cc_library(
 )
 
 cc_library(
+    name = "vector_value_codec",
+    srcs = ["vector_value_codec.cc"],
+    hdrs = ["vector_value_codec.h"],
+    deps = [
+        "//googlesql/base:ret_check",
+        "//googlesql/public/proto:vector_encoding_id_cc_proto",
+        "//googlesql/public/proto:vector_value_cc_proto",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+        "@com_google_protobuf//:protobuf",
+    ],
+)
+
+cc_library(
     name = "timestamp_util",
     srcs = [
         "timestamp_util.cc",
@@ -441,5 +459,20 @@ cc_test(
         "//googlesql/public:value",  # buildcleaner: keep
         "//googlesql/testdata:test_schema_cc_proto",
         "@com_google_absl//absl/status",
+    ],
+)
+
+cc_test(
+    name = "vector_value_codec_test",
+    size = "small",
+    srcs = ["vector_value_codec_test.cc"],
+    deps = [
+        ":vector_value_codec",
+        "//googlesql/base/testing:googlesql_gtest_main",
+        "//googlesql/base/testing:status_matchers",
+        "//googlesql/public/proto:vector_encoding_id_cc_proto",
+        "//googlesql/public/proto:vector_value_cc_proto",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:string_view",
     ],
 )

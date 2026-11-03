@@ -65,13 +65,13 @@
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/time/clock_interface.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "google/protobuf/descriptor.h"
 #include "googlesql/base/map_util.h"
 #include "googlesql/base/ret_check.h"
 #include "googlesql/base/status_builder.h"
-#include "googlesql/base/clock.h"
 
 namespace googlesql {
 
@@ -488,10 +488,34 @@ void SimpleCatalog::AddFunctionLocked(absl::string_view name,
   }
 }
 
+bool SimpleCatalog::AddFunctionIfNotPresentLocked(absl::string_view name,
+                                                  const Function* function) {
+  if (functions_.contains(absl::AsciiStrToLower(name))) {
+    return false;
+  }
+  absl::string_view alias_name = function->alias_name();
+  if (!alias_name.empty() &&
+      functions_.contains(absl::AsciiStrToLower(alias_name))) {
+    return false;
+  }
+  AddFunctionLocked(name, function);
+  return true;
+}
+
 void SimpleCatalog::AddFunction(absl::string_view name,
                                 const Function* function) {
   absl::MutexLock l(&mutex_);
   AddFunctionLocked(name, function);
+}
+
+bool SimpleCatalog::AddFunctionIfNotPresent(absl::string_view name,
+                                            const Function* function) {
+  absl::MutexLock l(mutex_);
+  return AddFunctionIfNotPresentLocked(name, function);
+}
+
+bool SimpleCatalog::AddFunctionIfNotPresent(const Function* function) {
+  return AddFunctionIfNotPresent(function->Name(), function);
 }
 
 void SimpleCatalog::AddTableValuedFunctionLocked(
@@ -500,10 +524,30 @@ void SimpleCatalog::AddTableValuedFunctionLocked(
                    table_function);
 }
 
+bool SimpleCatalog::AddTableValuedFunctionIfNotPresentLocked(
+    absl::string_view name, const TableValuedFunction* table_function) {
+  if (table_valued_functions_.contains(absl::AsciiStrToLower(name))) {
+    return false;
+  }
+  AddTableValuedFunctionLocked(name, table_function);
+  return true;
+}
+
 void SimpleCatalog::AddTableValuedFunction(
     absl::string_view name, const TableValuedFunction* function) {
   absl::MutexLock l(&mutex_);
   AddTableValuedFunctionLocked(name, function);
+}
+
+bool SimpleCatalog::AddTableValuedFunctionIfNotPresent(
+    absl::string_view name, const TableValuedFunction* function) {
+  absl::MutexLock l(mutex_);
+  return AddTableValuedFunctionIfNotPresentLocked(name, function);
+}
+
+bool SimpleCatalog::AddTableValuedFunctionIfNotPresent(
+    const TableValuedFunction* function) {
+  return AddTableValuedFunctionIfNotPresent(function->Name(), function);
 }
 
 void SimpleCatalog::AddProcedure(absl::string_view name,
@@ -549,6 +593,32 @@ void SimpleCatalog::AddPropertyGraphTypeLocked(
   const std::string canonical_name = absl::AsciiStrToLower(name);
   googlesql_base::InsertOrDie(&global_names_, canonical_name);
   googlesql_base::InsertOrDie(&property_graph_types_, canonical_name, property_graph_type);
+}
+
+absl::Status SimpleCatalog::FindTableFromString(absl::string_view table_literal,
+                                                const Table** table,
+                                                const FindOptions& options) {
+  {
+    absl::ReaderMutexLock l(mutex_);
+    *table = googlesql_base::FindPtrOrNull(string_literal_tables_, table_literal);
+    if (*table != nullptr) {
+      return absl::OkStatus();
+    }
+  }
+  return Catalog::FindTableFromString(table_literal, table, options);
+}
+
+void SimpleCatalog::AddTableForStringLiteral(absl::string_view table_literal,
+                                             const Table* table) {
+  absl::MutexLock l(mutex_);
+  googlesql_base::InsertOrDie(&string_literal_tables_, std::string(table_literal), table);
+}
+
+void SimpleCatalog::AddOwnedTableForStringLiteral(
+    absl::string_view table_literal, std::unique_ptr<const Table> table) {
+  AddTableForStringLiteral(table_literal, table.get());
+  absl::MutexLock l(mutex_);
+  owned_tables_.push_back(std::move(table));
 }
 
 void SimpleCatalog::AddOwnedTable(absl::string_view name,
@@ -801,19 +871,10 @@ void SimpleCatalog::AddOwnedFunction(const Function* function) {
 bool SimpleCatalog::AddOwnedFunctionIfNotPresent(
     absl::string_view name, std::unique_ptr<Function>* function) {
   absl::MutexLock l(&mutex_);
-  // If the function name exists, return false.
-  if (functions_.contains(absl::AsciiStrToLower(name))) {
+  if (!AddFunctionIfNotPresentLocked(name, function->get())) {
     return false;
   }
-  const std::string alias_name = (*function)->alias_name();
-  // If the function has an alias and the alias exists, return false.
-  if (!alias_name.empty() &&
-      googlesql_base::CaseCompare(alias_name, name) != 0) {
-    if (functions_.contains(absl::AsciiStrToLower(alias_name))) {
-      return false;
-    }
-  }
-  AddOwnedFunctionLocked(name, std::move(*function));
+  owned_functions_.emplace_back(std::move(*function));
   return true;
 }
 
@@ -838,11 +899,10 @@ bool SimpleCatalog::AddOwnedTableValuedFunctionIfNotPresent(
     absl::string_view name,
     std::unique_ptr<TableValuedFunction>* table_function) {
   absl::MutexLock l(&mutex_);
-  // If the table function name exists, return false.
-  if (table_valued_functions_.contains(absl::AsciiStrToLower(name))) {
+  if (!AddTableValuedFunctionIfNotPresentLocked(name, table_function->get())) {
     return false;
   }
-  AddOwnedTableValuedFunctionLocked(name, std::move(*table_function));
+  owned_table_valued_functions_.emplace_back(std::move(*table_function));
   return true;
 }
 
@@ -1229,6 +1289,12 @@ int SimpleCatalog::RemoveTablesLocked(
     global_names_.erase(name);
   }
   num_removed += table_names_to_remove.size();
+
+  num_removed += absl::erase_if(
+      string_literal_tables_,
+      [&predicate](const std::pair<const std::string, const Table*>& entry) {
+        return predicate(entry.second);
+      });
 
   for (auto it = owned_tables_.begin(); it != owned_tables_.end();) {
     if (predicate(it->get())) {
@@ -2184,7 +2250,7 @@ void SimpleTable::SetContents(absl::Span<const std::vector<Value>> rows) {
         /*end_status=*/absl::OkStatus(), /*filter_column_idxs=*/
         absl::flat_hash_set<int>(column_idxs.begin(), column_idxs.end()),
         /*cancel_cb=*/[]() {},
-        /*set_deadline_cb=*/[](absl::Time t) {}, googlesql_base::Clock::RealClock());
+        /*set_deadline_cb=*/[](absl::Time t) {}, &absl::Clock::GetRealClock());
   };
 
   SetEvaluatorTableIteratorFactory(factory);

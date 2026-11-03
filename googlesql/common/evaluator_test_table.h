@@ -34,11 +34,11 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/time/clock_interface.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "googlesql/base/ret_check.h"
 #include "googlesql/base/status.h"
-#include "googlesql/base/clock.h"
 
 namespace googlesql {
 
@@ -55,7 +55,7 @@ class EvaluatorTestTable : public SimpleTable {
       const std::function<void()>& cancel_cb = [] {},
       const std::function<void(absl::Time)>& set_deadline_cb =
           [](absl::Time deadline) {},
-      googlesql_base::Clock* clock = googlesql_base::Clock::RealClock())
+      absl::Clock* clock = &absl::Clock::GetRealClock())
       : SimpleTable(name, std::move(columns)),
         end_status_(end_status),
         column_filter_idxs_(column_filter_idxs),
@@ -95,7 +95,7 @@ class EvaluatorTestTable : public SimpleTable {
   const absl::flat_hash_set<int> column_filter_idxs_;
   const std::function<void()> cancel_cb_;
   const std::function<void(absl::Time)> set_deadline_cb_;
-  googlesql_base::Clock* clock_;
+  absl::Clock* clock_;
 };
 
 }  // namespace googlesql

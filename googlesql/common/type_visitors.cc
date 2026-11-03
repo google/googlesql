@@ -111,9 +111,17 @@ static absl::StatusOr<const Type*> ReconstructFromComponents(
             rewritten_components[i].type);
       }
       const GraphElementType* output;
-      GOOGLESQL_RETURN_IF_ERROR(type_factory.MakeGraphElementType(
-          graph_element_type->graph_reference(),
-          graph_element_type->element_kind(), rewritten_fields, &output));
+      if (graph_element_type->is_dynamic()) {
+        GOOGLESQL_RETURN_IF_ERROR(type_factory.MakeDynamicGraphElementType(
+            graph_element_type->graph_reference(),
+            graph_element_type->element_kind(), rewritten_fields,
+            graph_element_type->element_tables(), &output));
+      } else {
+        GOOGLESQL_RETURN_IF_ERROR(type_factory.MakeGraphElementType(
+            graph_element_type->graph_reference(),
+            graph_element_type->element_kind(), rewritten_fields,
+            graph_element_type->element_tables(), &output));
+      }
       return output;
     }
     case TYPE_GRAPH_PATH: {

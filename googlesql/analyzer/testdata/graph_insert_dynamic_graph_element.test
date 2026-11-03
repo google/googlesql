@@ -1,7 +1,7 @@
-[default language_features=NONE,+SQL_GRAPH,+SQL_GRAPH_ADVANCED_QUERY,+SQL_GRAPH_RETURN_EXTENSIONS,+SQL_GRAPH_TERMINAL_INSERT,+SQL_GRAPH_DYNAMIC_ELEMENT_TYPE,+SQL_GRAPH_DYNAMIC_LABEL_PROPERTIES_IN_DDL,+JSON_TYPE]
+[default language_features=NONE,+SQL_GRAPH,+SQL_GRAPH_ADVANCED_QUERY,+SQL_GRAPH_RETURN_EXTENSIONS,+SQL_GRAPH_TERMINAL_INSERT,+SQL_GRAPH_UPDATABLE_GRAPH_ELEMENT_TYPE,+SQL_GRAPH_DYNAMIC_ELEMENT_TYPE,+SQL_GRAPH_DYNAMIC_LABEL_PROPERTIES_IN_DDL,+JSON_TYPE]
 [default no_run_sqlbuilder]
 
-[language_features=NONE,+SQL_GRAPH,+SQL_GRAPH_ADVANCED_QUERY,+SQL_GRAPH_RETURN_EXTENSIONS,+SQL_GRAPH_TERMINAL_INSERT]
+[language_features=NONE,+SQL_GRAPH,+SQL_GRAPH_ADVANCED_QUERY,+SQL_GRAPH_RETURN_EXTENSIONS,+SQL_GRAPH_TERMINAL_INSERT,+SQL_GRAPH_UPDATABLE_GRAPH_ELEMENT_TYPE]
 # Dynamic graph: Insert dynamic graph element with dynamic element language feature disabled yields error
 GRAPH aml_dynamic
 INSERT (n:Person {code: 1, id: 1})
@@ -24,7 +24,7 @@ INSERT (n:Entity {name: "Alice"})
                   ^
 ==
 
-[language_features=NONE,+SQL_GRAPH,+SQL_GRAPH_ADVANCED_QUERY,+SQL_GRAPH_RETURN_EXTENSIONS,+SQL_GRAPH_TERMINAL_INSERT,+SQL_GRAPH_DYNAMIC_ELEMENT_TYPE,+SQL_GRAPH_DYNAMIC_LABEL_PROPERTIES_IN_DDL,+JSON_TYPE,+MAP_TYPE]
+[language_features=NONE,+SQL_GRAPH,+SQL_GRAPH_ADVANCED_QUERY,+SQL_GRAPH_RETURN_EXTENSIONS,+SQL_GRAPH_TERMINAL_INSERT,+SQL_GRAPH_UPDATABLE_GRAPH_ELEMENT_TYPE,+SQL_GRAPH_DYNAMIC_ELEMENT_TYPE,+SQL_GRAPH_DYNAMIC_LABEL_PROPERTIES_IN_DDL,+JSON_TYPE,+MAP_TYPE]
 # Dynamic graph: Insert dynamic property with value type that does not support
 # JSON conversion yields error
 GRAPH aml_dynamic
@@ -47,7 +47,7 @@ ERROR: Cannot insert value of type STRUCT<a INT64, m MAP<STRING, INT64>> into dy
   ^
 ==
 
-[language_features=NONE,+SQL_GRAPH,+SQL_GRAPH_ADVANCED_QUERY,+SQL_GRAPH_RETURN_EXTENSIONS,+SQL_GRAPH_TERMINAL_INSERT,+SQL_GRAPH_DYNAMIC_ELEMENT_TYPE,+SQL_GRAPH_DYNAMIC_LABEL_PROPERTIES_IN_DDL,+JSON_TYPE,+MAP_TYPE]
+[language_features=NONE,+SQL_GRAPH,+SQL_GRAPH_ADVANCED_QUERY,+SQL_GRAPH_RETURN_EXTENSIONS,+SQL_GRAPH_TERMINAL_INSERT,+SQL_GRAPH_UPDATABLE_GRAPH_ELEMENT_TYPE,+SQL_GRAPH_DYNAMIC_ELEMENT_TYPE,+SQL_GRAPH_DYNAMIC_LABEL_PROPERTIES_IN_DDL,+JSON_TYPE,+MAP_TYPE]
 # Dynamic graph: Insert edge dynamic property with value type that does not
 # support JSON conversion yields error
 GRAPH aml_dynamic
@@ -192,6 +192,15 @@ GeneralizedQueryStmt
               +-FinishScan
                 +-input_scan=
                   +-GraphRefScan(column_list=$element_table.[p#1, q#2])
+==
+
+# Dynamic graph: Insert with dynamic label on read-only dynamic label backing column yields error
+GRAPH aml_dynamic_read_only
+INSERT (n:Person {id: 1})
+--
+ERROR: Cannot insert dynamic label because the dynamic label backing column 'nodeLabelCol' is read-only [at 2:9]
+INSERT (n:Person {id: 1})
+        ^
 ==
 
 #######################################################
@@ -856,44 +865,13 @@ GeneralizedQueryStmt
                   +-GraphRefScan
 ==
 
-# Insert with multiple dynamic labels on the same table
+# Dynamic graph: Insert node with multiple dynamic labels on single dynamic label element table yields error
 GRAPH aml_dynamic
-INSERT (n:Person & Customer {code: 1})
+INSERT (n:Person & Worker {code: 1})
 --
-GeneralizedQueryStmt
-+-query=
-  +-GraphTableScan
-    +-property_graph=aml_dynamic
-    +-input_scan=
-      +-GraphLinearScan
-        +-scan_list=
-          +-GraphLinearScan
-            +-scan_list=
-              +-GraphInsertScan
-              | +-input_scan=
-              | | +-SingleRowScan
-              | +-insert_node_list=
-              | | +-n#1 :=
-              | |   +-GraphInsertElement
-              | |     +-type=GRAPH_NODE(aml_dynamic)<code INT64, id INT64, nodeJsonProp JSON, nodeLabelCol STRING, DYNAMIC>
-              | |     +-property_list=
-              | |     | +-GraphDMLPropertyItem
-              | |     |   +-property_name="code"
-              | |     |   +-property=code(INT64)
-              | |     |   +-property_value=
-              | |     |     +-Literal(type=INT64, value=1)
-              | |     +-label_list=
-              | |     | +-GraphLabel
-              | |     | | +-label_name=
-              | |     | |   +-Literal(type=STRING, value="Person", has_explicit_type=TRUE)
-              | |     | +-GraphLabel
-              | |     |   +-label_name=
-              | |     |     +-Literal(type=STRING, value="Customer", has_explicit_type=TRUE)
-              | |     +-element_table=DynamicGraphNode
-              | +-path_element_list=[$element_table.n#1]
-              +-FinishScan
-                +-input_scan=
-                  +-GraphRefScan
+ERROR: No node table matches all requested labels [at 2:10]
+INSERT (n:Person & Worker {code: 1})
+         ^
 ==
 
 # Insert with mixed static and dynamic labels on the same table
@@ -1264,3 +1242,136 @@ GeneralizedQueryStmt
                   +-GraphRefScan(column_list=$element_table.[p#1, x#2, y#4])
 ==
 
+# Dynamic multi-label graph: Insert node with single dynamic label
+[language_features=NONE,+SQL_GRAPH,+SQL_GRAPH_ADVANCED_QUERY,+SQL_GRAPH_RETURN_EXTENSIONS,+SQL_GRAPH_TERMINAL_INSERT,+SQL_GRAPH_UPDATABLE_GRAPH_ELEMENT_TYPE,+SQL_GRAPH_DYNAMIC_ELEMENT_TYPE,+SQL_GRAPH_DYNAMIC_LABEL_PROPERTIES_IN_DDL,+SQL_GRAPH_DYNAMIC_MULTI_LABEL_NODES]
+GRAPH aml_dynamic_multi
+INSERT (n:Person {code: 1})
+--
+GeneralizedQueryStmt
++-query=
+  +-GraphTableScan
+    +-property_graph=aml_dynamic_multi
+    +-input_scan=
+      +-GraphLinearScan
+        +-scan_list=
+          +-GraphLinearScan
+            +-scan_list=
+              +-GraphInsertScan
+              | +-input_scan=
+              | | +-SingleRowScan
+              | +-insert_node_list=
+              | | +-n#1 :=
+              | |   +-GraphInsertElement
+              | |     +-type=GRAPH_NODE(aml_dynamic_multi)<code INT64, id INT64, nodeJsonProp JSON, nodeLabelCol ARRAY<STRING>, DYNAMIC>
+              | |     +-property_list=
+              | |     | +-GraphDMLPropertyItem
+              | |     |   +-property_name="code"
+              | |     |   +-property=code(INT64)
+              | |     |   +-property_value=
+              | |     |     +-Literal(type=INT64, value=1)
+              | |     +-label_list=
+              | |     | +-GraphLabel
+              | |     |   +-label_name=
+              | |     |     +-Literal(type=STRING, value="Person", has_explicit_type=TRUE)
+              | |     +-element_table=DynamicMultiLabelGraphNode
+              | +-path_element_list=[$element_table.n#1]
+              +-FinishScan
+                +-input_scan=
+                  +-GraphRefScan
+==
+
+# Dynamic multi-label graph: Insert edge with multiple dynamic labels on single dynamic label edge table yields error
+[language_features=NONE,+SQL_GRAPH,+SQL_GRAPH_ADVANCED_QUERY,+SQL_GRAPH_RETURN_EXTENSIONS,+SQL_GRAPH_TERMINAL_INSERT,+SQL_GRAPH_UPDATABLE_GRAPH_ELEMENT_TYPE,+SQL_GRAPH_DYNAMIC_ELEMENT_TYPE,+SQL_GRAPH_DYNAMIC_LABEL_PROPERTIES_IN_DDL,+SQL_GRAPH_DYNAMIC_MULTI_LABEL_NODES]
+GRAPH aml_dynamic_multi
+INSERT (p:Person)-[e:Follow & Friend]->(q:Person)
+--
+ERROR: No edge table matches all requested labels [at 2:21]
+INSERT (p:Person)-[e:Follow & Friend]->(q:Person)
+                    ^
+==
+
+# Dynamic multi-label graph: Insert node with multiple dynamic labels and dynamic properties
+[language_features=NONE,+SQL_GRAPH,+SQL_GRAPH_ADVANCED_QUERY,+SQL_GRAPH_RETURN_EXTENSIONS,+SQL_GRAPH_TERMINAL_INSERT,+SQL_GRAPH_UPDATABLE_GRAPH_ELEMENT_TYPE,+SQL_GRAPH_DYNAMIC_ELEMENT_TYPE,+SQL_GRAPH_DYNAMIC_LABEL_PROPERTIES_IN_DDL,+SQL_GRAPH_DYNAMIC_MULTI_LABEL_NODES]
+GRAPH aml_dynamic_multi
+INSERT (n:Person & Worker {code: 1, name: "Alice"})
+--
+GeneralizedQueryStmt
++-query=
+  +-GraphTableScan
+    +-property_graph=aml_dynamic_multi
+    +-input_scan=
+      +-GraphLinearScan
+        +-scan_list=
+          +-GraphLinearScan
+            +-scan_list=
+              +-GraphInsertScan
+              | +-input_scan=
+              | | +-SingleRowScan
+              | +-insert_node_list=
+              | | +-n#1 :=
+              | |   +-GraphInsertElement
+              | |     +-type=GRAPH_NODE(aml_dynamic_multi)<code INT64, id INT64, nodeJsonProp JSON, nodeLabelCol ARRAY<STRING>, DYNAMIC>
+              | |     +-property_list=
+              | |     | +-GraphDMLPropertyItem
+              | |     | | +-property_name="code"
+              | |     | | +-property=code(INT64)
+              | |     | | +-property_value=
+              | |     | |   +-Literal(type=INT64, value=1)
+              | |     | +-GraphDMLPropertyItem
+              | |     |   +-property_name="name"
+              | |     |   +-property_value=
+              | |     |     +-Literal(type=STRING, value="Alice")
+              | |     +-label_list=
+              | |     | +-GraphLabel
+              | |     | | +-label_name=
+              | |     | |   +-Literal(type=STRING, value="Person", has_explicit_type=TRUE)
+              | |     | +-GraphLabel
+              | |     |   +-label_name=
+              | |     |     +-Literal(type=STRING, value="Worker", has_explicit_type=TRUE)
+              | |     +-element_table=DynamicMultiLabelGraphNode
+              | +-path_element_list=[$element_table.n#1]
+              +-FinishScan
+                +-input_scan=
+                  +-GraphRefScan
+==
+
+# Dynamic multi-label graph: Insert node with static label and dynamic label
+[language_features=NONE,+SQL_GRAPH,+SQL_GRAPH_ADVANCED_QUERY,+SQL_GRAPH_RETURN_EXTENSIONS,+SQL_GRAPH_TERMINAL_INSERT,+SQL_GRAPH_UPDATABLE_GRAPH_ELEMENT_TYPE,+SQL_GRAPH_DYNAMIC_ELEMENT_TYPE,+SQL_GRAPH_DYNAMIC_LABEL_PROPERTIES_IN_DDL,+SQL_GRAPH_DYNAMIC_MULTI_LABEL_NODES]
+GRAPH aml_dynamic_multi
+INSERT (n:Entity & Person {code: 1})
+--
+GeneralizedQueryStmt
++-query=
+  +-GraphTableScan
+    +-property_graph=aml_dynamic_multi
+    +-input_scan=
+      +-GraphLinearScan
+        +-scan_list=
+          +-GraphLinearScan
+            +-scan_list=
+              +-GraphInsertScan
+              | +-input_scan=
+              | | +-SingleRowScan
+              | +-insert_node_list=
+              | | +-n#1 :=
+              | |   +-GraphInsertElement
+              | |     +-type=GRAPH_NODE(aml_dynamic_multi)<code INT64, id INT64, nodeJsonProp JSON, nodeLabelCol ARRAY<STRING>, DYNAMIC>
+              | |     +-property_list=
+              | |     | +-GraphDMLPropertyItem
+              | |     |   +-property_name="code"
+              | |     |   +-property=code(INT64)
+              | |     |   +-property_value=
+              | |     |     +-Literal(type=INT64, value=1)
+              | |     +-label_list=
+              | |     | +-GraphLabel
+              | |     | | +-label=aml_dynamic_multi.Entity
+              | |     | | +-label_name=
+              | |     | |   +-Literal(type=STRING, value="Entity", has_explicit_type=TRUE)
+              | |     | +-GraphLabel
+              | |     |   +-label_name=
+              | |     |     +-Literal(type=STRING, value="Person", has_explicit_type=TRUE)
+              | |     +-element_table=DynamicMultiLabelGraphNode
+              | +-path_element_list=[$element_table.n#1]
+              +-FinishScan
+                +-input_scan=
+                  +-GraphRefScan

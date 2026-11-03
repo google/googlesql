@@ -26,11 +26,14 @@
 
 // NOLINTBEGIN(google-global-names-in-headers)
 using googlesql::test_values::Array;
+using googlesql::test_values::DynamicGraphEdge;
+using googlesql::test_values::DynamicGraphNode;
 using googlesql::test_values::GraphEdge;
 using googlesql::test_values::GraphNode;
 using googlesql::test_values::kIgnoresOrder;
 using googlesql::test_values::kPreservesOrder;
 using googlesql::test_values::MakeArrayType;
+using googlesql::test_values::MakeDynamicGraphElementType;
 using googlesql::test_values::MakeGraphElementType;
 using googlesql::test_values::MakeMapType;
 using googlesql::test_values::MakeRangeType;
@@ -40,9 +43,7 @@ using googlesql::test_values::OrderPreservationKind;
 using googlesql::test_values::Range;
 using googlesql::test_values::Struct;
 using googlesql::test_values::StructArray;
-using googlesql::test_values::DynamicGraphEdge;
-using googlesql::test_values::DynamicGraphNode;
-using googlesql::test_values::MakeDynamicGraphElementType;
+using googlesql::test_values::Variant;
 
 using googlesql::types::BigNumericType;
 using googlesql::types::BoolType;
@@ -111,6 +112,7 @@ using googlesql::values::Time;
 using googlesql::values::TimestampFromUnixMicros;
 using googlesql::values::Uint32;
 using googlesql::values::Uint64;
+using googlesql::values::VariantNull;
 
 using googlesql::values::False;
 using googlesql::values::True;
@@ -130,6 +132,7 @@ using googlesql::values::NullInterval;
 using googlesql::values::NullJson;
 using googlesql::values::NullNumeric;
 using googlesql::values::NullUuid;
+using googlesql::values::NullVariant;
 using googlesql::values::NullString;
 using googlesql::values::NullTime;
 using googlesql::values::NullTimestamp;

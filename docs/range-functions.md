@@ -248,7 +248,6 @@ Constructs a range of [`DATE`][date-type], [`DATETIME`][datetime-type], or
 `lower_bound` and `upper_bound` must be of the same data type.
 
 Produces an error if `lower_bound` is greater than or equal to `upper_bound`.
-To return `NULL` instead, add the `SAFE.` prefix to the function name.
 
 **Return type**
 
@@ -520,8 +519,7 @@ Gets a segment of two ranges that intersect.
 
 Returns `NULL` if any input is` NULL`.
 
-Produces an error if `range_a` and `range_b` don't overlap. To return
-`NULL` instead, add the `SAFE.` prefix to the function name.
+Produces an error if `range_a` and `range_b` don't overlap.
 
 `T` must be of the same type for all inputs.
 

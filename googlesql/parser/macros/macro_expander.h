@@ -20,6 +20,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <queue>
 #include <string>
 #include <utility>
@@ -99,6 +100,15 @@ class MacroExpander final : public TokenStream {
   absl::StatusOr<TokenWithLocation> GetNextToken() override;
 
   int num_consumed_tokens() const override;
+
+  // Returns the byte offset in the original input of the first macro invocation
+  // (`$name`, `$name(...)`, `$$builtin(...)`, `$1`, or `$name` inside a literal
+  // in lenient mode) loaded outside a `DEFINE MACRO` body, or nullopt if none.
+  // Recorded before expansion runs, so empty or failing invocations still
+  // count; points at the first input token the invocation can change.
+  std::optional<int> first_macro_invocation_offset() const {
+    return first_macro_invocation_offset_;
+  }
 
   // Convenient non-streaming API to return all expanded tokens.
   static absl::StatusOr<ExpansionOutput> ExpandMacros(
@@ -483,6 +493,15 @@ class MacroExpander final : public TokenStream {
   // IMPORTANT: that it is relevant only at the top-level (i.e., call_arguments_
   // is empty)
   bool inside_macro_definition_ = false;
+
+  // See first_macro_invocation_offset().
+  std::optional<int> first_macro_invocation_offset_;
+
+  void RecordMacroInvocation(int byte_offset) {
+    if (!first_macro_invocation_offset_.has_value()) {
+      first_macro_invocation_offset_ = byte_offset;
+    }
+  }
 
   // Tracks the current stack of macro expansions up to the parent.
   StackFrame* /*absl_nullable*/ parent_location_ = nullptr;

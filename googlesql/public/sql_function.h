@@ -52,7 +52,7 @@
 
 namespace googlesql {
 
-class ResolvedComputedColumn;
+class ResolvedComputedColumnBase;
 class ResolvedExpr;
 
 // The SQLFunctionInterface is a sub-class of Function which represents
@@ -100,8 +100,9 @@ class SQLFunctionInterface : public Function {
   // Returns a list of computed aggregate expressions, if relevant.  Only
   // relevant for a SQLFunctionInterface with mode = AGGREGATE.  Returns
   // nullptr for SCALAR functions.
-  virtual const std::vector<std::unique_ptr<const ResolvedComputedColumn>>*
-      aggregate_expression_list() const = 0;
+  using AggregateExpressionList =
+      std::vector<std::unique_ptr<const ResolvedComputedColumnBase>>;
+  virtual const AggregateExpressionList* aggregate_expression_list() const = 0;
 };
 
 // A simple concrete implementation of SQLFunctionInterface that provides
@@ -133,8 +134,7 @@ class SQLFunction final : public SQLFunctionInterface {
       FunctionSignature function_signature, FunctionOptions function_options,
       const ResolvedExpr* function_expression,
       std::vector<std::string> argument_names,
-      const std::vector<std::unique_ptr<const ResolvedComputedColumn>>*
-          aggregate_expression_list = nullptr,
+      const AggregateExpressionList* aggregate_expression_list = nullptr,
       std::optional<ParseResumeLocation> parse_resume_location = std::nullopt);
 
   //
@@ -148,8 +148,7 @@ class SQLFunction final : public SQLFunctionInterface {
       std::vector<FunctionSignature> function_signatures,
       FunctionOptions function_options, const ResolvedExpr* function_expression,
       std::vector<std::string> argument_names,
-      const std::vector<std::unique_ptr<const ResolvedComputedColumn>>*
-          aggregate_expression_list,
+      const AggregateExpressionList* aggregate_expression_list,
       std::optional<ParseResumeLocation> parse_resume_location,
       std::unique_ptr<SQLFunction>* sql_function);
 
@@ -161,8 +160,7 @@ class SQLFunction final : public SQLFunctionInterface {
     return argument_names_;
   }
 
-  const std::vector<std::unique_ptr<const ResolvedComputedColumn>>*
-  aggregate_expression_list() const override {
+  const AggregateExpressionList* aggregate_expression_list() const override {
     return aggregate_expression_list_;
   }
 
@@ -188,15 +186,14 @@ class SQLFunction final : public SQLFunctionInterface {
               const ResolvedExpr* function_expression,
               std::vector<std::string> argument_names,
               std::optional<ParseResumeLocation> parse_resume_location,
-              const std::vector<std::unique_ptr<const ResolvedComputedColumn>>*
-                  aggregate_expression_list);
+              const AggregateExpressionList* aggregate_expression_list);
 
   const ResolvedExpr* function_expression_ = nullptr;  // Not owned.
   const std::vector<std::string> argument_names_;
   const std::optional<ParseResumeLocation> parse_resume_location_;
   Catalog* resolution_catalog_ = nullptr;  // Not owned.
-  const std::vector<std::unique_ptr<const ResolvedComputedColumn>>*
-      aggregate_expression_list_ = nullptr;  // Not owned.
+  const AggregateExpressionList* aggregate_expression_list_ =
+      nullptr;  // Not owned.
 };
 
 }  // namespace googlesql

@@ -21,6 +21,8 @@
 #include "googlesql/base/testing/status_matchers.h"
 #include "googlesql/public/language_options.h"
 #include "googlesql/public/types/array_type.h"
+#include "googlesql/public/types/graph_element_type.h"
+#include "googlesql/public/types/graph_path_type.h"
 #include "googlesql/public/types/struct_type.h"
 #include "googlesql/public/types/type.h"
 #include "googlesql/public/types/type_factory.h"
@@ -53,6 +55,8 @@ TEST(InternalValueTest, SimpleArraysUncertainOrders) {
       type, InternalValue::kPreservesOrder, {Int64(1), Int64(2)});
   Value array_len_two_unordered = InternalValue::ArrayChecked(
       type, InternalValue::kIgnoresOrder, {Int64(1), Int64(2)});
+  Value array_len_two_identical_unordered = InternalValue::ArrayChecked(
+      type, InternalValue::kIgnoresOrder, {Int64(1), Int64(1)});
   Value array_len_three_ordered = InternalValue::ArrayChecked(
       type, InternalValue::kPreservesOrder,
       {Int64(1), Int64(2), Value::Null(Int64Type())});
@@ -70,6 +74,8 @@ TEST(InternalValueTest, SimpleArraysUncertainOrders) {
       InternalValue::ContainsArrayWithUncertainOrder(array_len_two_ordered));
   EXPECT_TRUE(
       InternalValue::ContainsArrayWithUncertainOrder(array_len_two_unordered));
+  EXPECT_FALSE(InternalValue::ContainsArrayWithUncertainOrder(
+      array_len_two_identical_unordered));
   EXPECT_FALSE(
       InternalValue::ContainsArrayWithUncertainOrder(array_len_three_ordered));
   EXPECT_TRUE(InternalValue::ContainsArrayWithUncertainOrder(
@@ -109,6 +115,93 @@ TEST(InternalValueTest, NestedValues) {
       InternalValue::ContainsArrayWithUncertainOrder(struct_ordered_unordered));
   EXPECT_TRUE(
       InternalValue::ContainsArrayWithUncertainOrder(array_of_struct_ordered));
+
+  // MAP values.
+  Value map_ordered = test_values::Map(
+      {{int_array_len_three_ordered, int_array_len_three_ordered}});
+  Value map_unordered_key = test_values::Map(
+      {{int_array_len_three_unordered, int_array_len_three_ordered}});
+  Value map_unordered_val = test_values::Map(
+      {{int_array_len_three_ordered, int_array_len_three_unordered}});
+  EXPECT_FALSE(InternalValue::ContainsArrayWithUncertainOrder(map_ordered));
+  EXPECT_TRUE(
+      InternalValue::ContainsArrayWithUncertainOrder(map_unordered_key));
+  EXPECT_TRUE(
+      InternalValue::ContainsArrayWithUncertainOrder(map_unordered_val));
+
+  // RANGE value.
+  Value range_val = test_values::Range(Value::Date(1), Value::Date(10));
+  EXPECT_FALSE(InternalValue::ContainsArrayWithUncertainOrder(range_val));
+
+  // GRAPH_ELEMENT and GRAPH_PATH values.
+  const GraphElementType* node_type = test_values::MakeGraphElementType(
+      {"graph"}, GraphElementType::ElementKind::kNode,
+      {{"p_arr", array_int}, {"p_unset", Int64Type()}});
+  const GraphElementType* edge_type = test_values::MakeGraphElementType(
+      {"graph"}, GraphElementType::ElementKind::kEdge, {{"p_arr", array_int}});
+  const GraphPathType* path_type =
+      test_values::MakeGraphPathType(node_type, edge_type);
+
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+      Value node_ordered,
+      Value::MakeGraphNode(
+          node_type, "n1",
+          {.static_labels = {"L"},
+           .static_properties = {{"p_arr", int_array_len_three_ordered}}},
+          "NodeTable"));
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+      Value node_ordered2,
+      Value::MakeGraphNode(
+          node_type, "n2",
+          {.static_labels = {"L"},
+           .static_properties = {{"p_arr", int_array_len_three_ordered}}},
+          "NodeTable"));
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+      Value node_unordered,
+      Value::MakeGraphNode(
+          node_type, "n2",
+          {.static_labels = {"L"},
+           .static_properties = {{"p_arr", int_array_len_three_unordered}}},
+          "NodeTable"));
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+      Value edge_ordered,
+      Value::MakeGraphEdge(
+          edge_type, "e1",
+          {.static_labels = {"E"},
+           .static_properties = {{"p_arr", int_array_len_three_ordered}}},
+          "EdgeTable", "n1", "n2"));
+
+  EXPECT_FALSE(InternalValue::ContainsArrayWithUncertainOrder(node_ordered));
+  EXPECT_TRUE(InternalValue::ContainsArrayWithUncertainOrder(node_unordered));
+
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+      Value path_ordered,
+      Value::MakeGraphPath(path_type,
+                           {node_ordered, edge_ordered, node_ordered2}));
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+      Value path_unordered,
+      Value::MakeGraphPath(path_type,
+                           {node_ordered, edge_ordered, node_unordered}));
+  EXPECT_FALSE(InternalValue::ContainsArrayWithUncertainOrder(path_ordered));
+  EXPECT_TRUE(InternalValue::ContainsArrayWithUncertainOrder(path_unordered));
+
+  // MEASURE values.
+  LanguageOptions language_options;
+  language_options.EnableMaximumLanguageFeatures();
+  TypeFactory type_factory;
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(const Type* measure_type,
+                       type_factory.MakeMeasureType(Int64Type()));
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+      Value measure_ordered,
+      InternalValue::MakeMeasure(measure_type->AsMeasure(), struct_null_empty,
+                                 {0}, language_options));
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(Value measure_unordered,
+                       InternalValue::MakeMeasure(measure_type->AsMeasure(),
+                                                  struct_ordered_unordered, {0},
+                                                  language_options));
+  EXPECT_FALSE(InternalValue::ContainsArrayWithUncertainOrder(measure_ordered));
+  EXPECT_TRUE(
+      InternalValue::ContainsArrayWithUncertainOrder(measure_unordered));
 }
 
 TEST(InternalValueTest, MeasureFormatting) {

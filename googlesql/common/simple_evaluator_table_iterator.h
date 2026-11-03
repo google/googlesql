@@ -20,6 +20,7 @@
 #ifndef GOOGLESQL_COMMON_SIMPLE_EVALUATOR_TABLE_ITERATOR_H_
 #define GOOGLESQL_COMMON_SIMPLE_EVALUATOR_TABLE_ITERATOR_H_
 
+#include <atomic>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -33,13 +34,13 @@
 #include "googlesql/public/value.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/time/clock_interface.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "googlesql/base/source_location.h"
 #include "googlesql/base/ret_check.h"
 #include "googlesql/base/status.h"
 #include "googlesql/base/status_builder.h"
-#include "googlesql/base/clock.h"
 
 namespace googlesql {
 
@@ -63,7 +64,7 @@ class SimpleEvaluatorTableIterator : public EvaluatorTableIterator {
       const absl::flat_hash_set<int>& filter_column_idxs,
       const std::function<void()>& cancel_cb,
       const std::function<void(absl::Time)>& set_deadline_cb,
-      googlesql_base::Clock* clock) {
+      absl::Clock* clock) {
     GOOGLESQL_RET_CHECK_EQ(columns.size(), column_major_values.size());
     for (const auto& values_for_column : column_major_values) {
       GOOGLESQL_RET_CHECK_EQ(num_rows, values_for_column->size());
@@ -95,13 +96,11 @@ class SimpleEvaluatorTableIterator : public EvaluatorTableIterator {
   bool NextRow() override;
 
   const Value& GetValue(int i) const override {
-    absl::ReaderMutexLock l(&mutex_);
     return (*column_major_values_[i])[row_idx_];
   }
 
   absl::Status Status() const override {
-    absl::ReaderMutexLock l(&mutex_);
-    if (cancelled_) {
+    if (cancelled_.load(std::memory_order_relaxed)) {
       return googlesql_base::CancelledErrorBuilder()
              << "EvaluatorTestTableIterator was cancelled";
     }
@@ -109,19 +108,18 @@ class SimpleEvaluatorTableIterator : public EvaluatorTableIterator {
       return googlesql_base::DeadlineExceededErrorBuilder()
              << "EvaluatorTestTableIterator deadline exceeded";
     }
-    if (DoneLocked()) return end_status_;
+    if (Done()) return end_status_;
     return absl::OkStatus();
   }
 
   absl::Status Cancel() override {
-    absl::MutexLock l(&mutex_);
-    cancelled_ = true;
+    cancelled_.store(true, std::memory_order_relaxed);
+    absl::MutexLock l(mutex_);
     cancel_cb_();
     return absl::OkStatus();
   }
 
   void SetDeadline(absl::Time deadline) override {
-    absl::MutexLock l(&mutex_);
     deadline_ = deadline;
     set_deadline_cb_(deadline);
   }
@@ -135,7 +133,7 @@ class SimpleEvaluatorTableIterator : public EvaluatorTableIterator {
       const absl::flat_hash_set<int>& filter_column_idxs,
       const std::function<void()>& cancel_cb,
       const std::function<void(absl::Time)>& set_deadline_cb,
-      googlesql_base::Clock* clock)
+      absl::Clock* clock)
       : columns_(columns.begin(), columns.end()),
         end_status_(end_status),
         filter_column_idxs_(filter_column_idxs),
@@ -144,7 +142,7 @@ class SimpleEvaluatorTableIterator : public EvaluatorTableIterator {
         column_major_values_(column_major_values),
         num_rows_(num_rows),
         clock_(clock) {}
-  bool DoneLocked() const ABSL_SHARED_LOCKS_REQUIRED(mutex_) {
+  bool Done() const {
     if (column_major_values_.empty()) return true;
     return row_idx_ >= num_rows_;
   }
@@ -152,20 +150,19 @@ class SimpleEvaluatorTableIterator : public EvaluatorTableIterator {
   const std::vector<const Column*> columns_;
   const absl::Status end_status_;
   const absl::flat_hash_set<int> filter_column_idxs_;
-  const std::function<void()> cancel_cb_;
+  mutable absl::Mutex mutex_;
+  const std::function<void()> cancel_cb_ ABSL_GUARDED_BY(mutex_);
   const std::function<void(absl::Time)> set_deadline_cb_;
 
-  mutable absl::Mutex mutex_;
+  const std::vector<std::shared_ptr<const std::vector<Value>>>
+      column_major_values_;
+  const int64_t num_rows_;
 
-  std::vector<std::shared_ptr<const std::vector<Value>>> column_major_values_
-      ABSL_GUARDED_BY(mutex_);
-  int64_t num_rows_ ABSL_GUARDED_BY(mutex_);
-
-  int64_t row_idx_ ABSL_GUARDED_BY(mutex_) = -1;
-  bool cancelled_ ABSL_GUARDED_BY(mutex_) = false;
-  bool deadline_exceeded_ ABSL_GUARDED_BY(mutex_) = false;
-  absl::Time deadline_ ABSL_GUARDED_BY(mutex_) = absl::InfiniteFuture();
-  googlesql_base::Clock* clock_ ABSL_GUARDED_BY(mutex_) ABSL_PT_GUARDED_BY(mutex_);
+  int64_t row_idx_ = -1;
+  std::atomic<bool> cancelled_{false};
+  bool deadline_exceeded_ = false;
+  absl::Time deadline_ = absl::InfiniteFuture();
+  absl::Clock* const clock_;
 
   // Contains the entries passed to 'filter_map' that are in
   // 'filter_column_idxs_'.

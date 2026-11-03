@@ -44,6 +44,10 @@ ABSL_DEPRECATED("Inline me!")
 constexpr ASTNodeKind AST_SELECT_WITH = AST_WITH_MODIFIER;
 using ASTSelectWith ABSL_DEPRECATED("Inline me!") = ASTWithModifier;
 
+ABSL_DEPRECATED("Inline me!")
+constexpr ASTNodeKind AST_FOR_SYSTEM_TIME = AST_FOR_VERSION_CLAUSE;
+using ASTForSystemTime ABSL_DEPRECATED("Inline me!") = ASTForVersionClause;
+
 // This is a fake ASTNode implementation that exists only for tests,
 // which may need to pass an ASTNode* to some methods.
 class FakeASTNode final : public ASTNode {

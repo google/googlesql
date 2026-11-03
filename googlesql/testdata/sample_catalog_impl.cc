@@ -96,6 +96,7 @@
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/time/clock_interface.h"
 #include "absl/time/time.h"
 #include "googlesql/base/source_location.h"
 #include "absl/types/span.h"
@@ -105,7 +106,6 @@
 #include "googlesql/base/map_util.h"
 #include "googlesql/base/ret_check.h"
 #include "googlesql/base/status_builder.h"
-#include "googlesql/base/clock.h"
 
 // The _UNLESS_DBG macros are a hack to make analyzer tests (and anything else
 // using SampleCatalog) work to some extent in dbg builds.
@@ -1199,7 +1199,7 @@ class LazySimpleTable : public SimpleTable {
         columns, column_values, num_rows_,
         /*end_status=*/absl::OkStatus(), /*filter_column_idxs=*/{},
         /*cancel_cb=*/[]() {},
-        /*set_deadline_cb=*/[](absl::Time t) {}, googlesql_base::Clock::RealClock());
+        /*set_deadline_cb=*/[](absl::Time t) {}, &absl::Clock::GetRealClock());
   }
 
  private:
@@ -5061,7 +5061,7 @@ RegisterForSampleCatalog fn_tvf_rejects_collation_in_callback =
       googlesql::TableValuedFunctionOptions options;
       options.check_argument_annotations_callback =
           [](const googlesql::FunctionSignature& sig,
-             const std::vector<googlesql::TVFInputArgumentType>& args,
+             absl::Span<const googlesql::TVFInputArgumentType> args,
              const googlesql::LanguageOptions& language_options) {
             for (const auto& arg : args) {
               if (arg.is_scalar()) {
@@ -10871,6 +10871,22 @@ absl::Status SampleCatalogImpl::LoadTableValuedFunctions2() {
                          /*context_id=*/-1)},
       output_schema_two_types));
 
+  // Add a TVF with a named argument named "proto" (a reserved
+  // keyword).
+  const auto named_only_proto_arg = FunctionArgumentType(
+      types_->get_string(), FunctionArgumentTypeOptions()
+                                .set_cardinality(FunctionArgumentType::OPTIONAL)
+                                .set_argument_name("proto", kNamedOnly));
+  catalog_->AddOwnedTableValuedFunction(std::make_unique<FixedOutputSchemaTVF>(
+      std::vector<std::string>{"tvf_with_proto_named_arg"},
+      std::vector<FunctionSignature>{
+          FunctionSignature(FunctionArgumentType::RelationWithSchema(
+                                output_schema_two_types,
+                                /*extra_relation_input_columns_allowed=*/false),
+                            {named_required_format_arg, named_only_proto_arg},
+                            /*context_id=*/-1)},
+      output_schema_two_types));
+
   // Add a TVF with one optional named "any table" relation argument.
   catalog_->AddOwnedTableValuedFunction(new FixedOutputSchemaTVF(
       {"tvf_named_optional_any_relation_arg"},
@@ -12488,6 +12504,17 @@ void SampleCatalogImpl::LoadTableValuedFunctionsWithMultipleSignatures() {
                               FunctionArgumentTypeOptions().set_argument_name(
                                   "arg_d", kNamedOnly))},
                          context_id++)},
+      tvf_relation));
+
+  catalog_->AddOwnedTableValuedFunction(new FixedOutputSchemaTVF(
+      {"tvf_overload_with_feature_gated_signatures"},
+      {FunctionSignature(tvf_schema, {types::BoolType()}, context_id++,
+                         FunctionSignatureOptions().AddRequiredLanguageFeature(
+                             FEATURE_JSON_TYPE)),
+       FunctionSignature(tvf_schema, {types::Int64Type()}, context_id++,
+                         FunctionSignatureOptions().AddRequiredLanguageFeature(
+                             FEATURE_TABLESAMPLE)),
+       FunctionSignature(tvf_schema, {types::StringType()}, context_id++)},
       tvf_relation));
 }
 
@@ -15376,6 +15403,25 @@ absl::Status SampleCatalogImpl::LoadRowTypeObjects(
       TableValuedFunctionOptions()
           .set_compute_result_type_callback(result_type_callback_6)
           .AddRequiredLanguageFeature(FEATURE_ROW_TYPE)));
+
+  // A function with a RowType argument.
+  {
+    auto function = std::make_unique<Function>(
+        "fn_with_rowtype", "sample_functions", Function::SCALAR);
+    function->AddSignature(
+        {types_->get_bool(), {ARG_KIND_EXPR_ROW_ANY}, /*context_id=*/-1});
+    catalog_->AddOwnedFunction(std::move(function));
+  }
+
+  // A function with two RowType arguments.
+  {
+    auto function = std::make_unique<Function>(
+        "fn_with_2_rowtypes", "sample_functions", Function::SCALAR);
+    function->AddSignature({types_->get_bool(),
+                            {ARG_KIND_EXPR_ROW_ANY, ARG_KIND_EXPR_ROW_ANY},
+                            /*context_id=*/-1});
+    catalog_->AddOwnedFunction(std::move(function));
+  }
 
   return absl::OkStatus();
 }

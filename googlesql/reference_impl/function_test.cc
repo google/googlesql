@@ -36,6 +36,7 @@
 #include "googlesql/public/interval_value.h"
 #include "googlesql/public/json_value.h"
 #include "googlesql/public/options.pb.h"
+#include "googlesql/public/proto/vector_encoding_id.pb.h"
 #include "googlesql/public/types/array_type.h"
 #include "googlesql/public/types/declarative_type.h"
 #include "googlesql/public/types/map_type.h"
@@ -45,6 +46,7 @@
 #include "googlesql/public/types/type_factory.h"
 #include "googlesql/public/types/type_modifiers.h"
 #include "googlesql/public/types/vector_type_util.h"
+#include "googlesql/public/types/vector_value_codec.h"
 #include "googlesql/public/value.h"
 #include "googlesql/reference_impl/common.h"
 #include "googlesql/reference_impl/evaluation.h"
@@ -1017,6 +1019,60 @@ std::vector<CastDeterminismTestParams> GetCastDeterminismTestCases() {
   Value map_string_double_value = *Value::MakeMap(
       map_string_double_type, {{Value::String("1.1"), Value::Double(1.23)}});
 
+  Value ordered_array = values::Int64Array({1, 2});
+  Value unordered_array = InternalValue::ArrayNotChecked(
+      types::Int64ArrayType(), InternalValue::kIgnoresOrder,
+      {Value::Int64(1), Value::Int64(2)});
+  Value unordered_identical_array = InternalValue::ArrayNotChecked(
+      types::Int64ArrayType(), InternalValue::kIgnoresOrder,
+      {Value::Int64(1), Value::Int64(1)});
+  const StructType* array_struct_type;
+  GOOGLESQL_CHECK_OK(type_factory->MakeStructType({{"arr", types::Int64ArrayType()}},
+                                        &array_struct_type));
+  const StructType* json_struct_type;
+  GOOGLESQL_CHECK_OK(type_factory->MakeStructType({{"arr", types::JsonType()}},
+                                        &json_struct_type));
+  absl::StatusOr<Value> unordered_array_struct =
+      Value::MakeStruct(array_struct_type, {unordered_array});
+  GOOGLESQL_CHECK_OK(unordered_array_struct);
+  absl::StatusOr<Value> ordered_node = test_values::GraphNode(
+      {"g"}, "n1", {{"arr", ordered_array}}, {"L1"}, "T", type_factory.get());
+  GOOGLESQL_CHECK_OK(ordered_node);
+  absl::StatusOr<Value> unordered_node = test_values::GraphNode(
+      {"g"}, "n1", {{"arr", unordered_array}}, {"L1"}, "T", type_factory.get());
+  GOOGLESQL_CHECK_OK(unordered_node);
+  absl::StatusOr<Value> edge_val =
+      test_values::GraphEdge({"g"}, "e1", {{"a", Value::Int64(1)}}, {"L1"}, "T",
+                             "n1", "n1", type_factory.get());
+  GOOGLESQL_CHECK_OK(edge_val);
+  const GraphPathType* path_type = test_values::MakeGraphPathType(
+      ordered_node->type()->AsGraphElement(),
+      edge_val->type()->AsGraphElement(), type_factory.get());
+  absl::StatusOr<Value> ordered_path = Value::MakeGraphPath(
+      path_type, {*ordered_node, *edge_val, *ordered_node});
+  GOOGLESQL_CHECK_OK(ordered_path);
+  absl::StatusOr<Value> unordered_path = Value::MakeGraphPath(
+      path_type, {*unordered_node, *edge_val, *ordered_node});
+  GOOGLESQL_CHECK_OK(unordered_path);
+  const ArrayType* array_struct_array_type;
+  GOOGLESQL_CHECK_OK(
+      type_factory->MakeArrayType(array_struct_type, &array_struct_array_type));
+  const ArrayType* json_struct_array_type;
+  GOOGLESQL_CHECK_OK(
+      type_factory->MakeArrayType(json_struct_type, &json_struct_array_type));
+  absl::StatusOr<Value> unordered_array_struct_array =
+      Value::MakeArray(array_struct_array_type, {*unordered_array_struct});
+  GOOGLESQL_CHECK_OK(unordered_array_struct_array);
+  absl::StatusOr<const Type*> map_string_array_type = type_factory->MakeMapType(
+      types::StringType(), types::Int64ArrayType(), options);
+  GOOGLESQL_CHECK_OK(map_string_array_type);
+  absl::StatusOr<const Type*> map_string_json_type = type_factory->MakeMapType(
+      types::StringType(), types::JsonType(), options);
+  GOOGLESQL_CHECK_OK(map_string_json_type);
+  absl::StatusOr<Value> unordered_array_map = Value::MakeMap(
+      *map_string_array_type, {{Value::String("k"), unordered_array}});
+  GOOGLESQL_CHECK_OK(unordered_array_map);
+
   bool kDeterministic = true;
   bool kNonDeterministic = false;
   // Deterministic cases.
@@ -1031,10 +1087,17 @@ std::vector<CastDeterminismTestParams> GetCastDeterminismTestCases() {
                     kDeterministic, type_factory});
   params.push_back({"ArrayInt64ToJson", values::Int64Array({1, 2, 3}),
                     types::JsonType(), kDeterministic, type_factory});
+  params.push_back({"UncertainOrderIdenticalElementsArrayToJson",
+                    unordered_identical_array, types::JsonType(),
+                    kDeterministic, type_factory});
   params.push_back({"ArrayDoubleToJson", values::DoubleArray({1.23, 4.56}),
                     types::JsonType(), kDeterministic, type_factory});
   params.push_back({"StructArrayWithDoubleToJson",
                     string_double_struct_array_value, types::JsonType(),
+                    kDeterministic, type_factory});
+  params.push_back({"GraphNodeToJson", *ordered_node, types::JsonType(),
+                    kDeterministic, type_factory});
+  params.push_back({"GraphPathToJson", *ordered_path, types::JsonType(),
                     kDeterministic, type_factory});
 
   // Non-deterministic cases.
@@ -1062,6 +1125,21 @@ std::vector<CastDeterminismTestParams> GetCastDeterminismTestCases() {
                     type_factory});
   params.push_back({"MapStringDoubleToDoubleString", map_string_double_value,
                     map_double_string_type, kNonDeterministic, type_factory});
+  params.push_back({"UncertainOrderArrayToJson", unordered_array,
+                    types::JsonType(), kNonDeterministic, type_factory});
+  params.push_back({"StructWithUncertainOrderArrayToStructJson",
+                    *unordered_array_struct, json_struct_type,
+                    kNonDeterministic, type_factory});
+  params.push_back({"ArrayOfStructWithUncertainOrderArrayToArrayOfStructJson",
+                    *unordered_array_struct_array, json_struct_array_type,
+                    kNonDeterministic, type_factory});
+  params.push_back({"MapWithUncertainOrderArrayValueToMapJson",
+                    *unordered_array_map, *map_string_json_type,
+                    kNonDeterministic, type_factory});
+  params.push_back({"GraphNodeWithUncertainOrderArrayToJson", *unordered_node,
+                    types::JsonType(), kNonDeterministic, type_factory});
+  params.push_back({"GraphPathWithUncertainOrderArrayToJson", *unordered_path,
+                    types::JsonType(), kNonDeterministic, type_factory});
 
   return params;
 }
@@ -1890,6 +1968,58 @@ TEST(FunctionEvaluationTest, JsonPathWildcardsAndDescendantFeatureGating) {
                     {json_val, Value::String(invalid_lax_path)}),
                 StatusIs(absl::StatusCode::kOutOfRange))
         << invalid_lax_path;
+  }
+}
+
+// Pairs of (value, expected result of is_null()).
+std::vector<std::pair<Value, bool>> GetSqlNullTestValues() {
+  TypeFactory* type_factory = test_values::static_type_factory();
+  const ArrayType* array_type = nullptr;
+  GOOGLESQL_CHECK_OK(type_factory->MakeArrayType(types::Int64Type(), &array_type));
+  const StructType* struct_type = nullptr;
+  GOOGLESQL_CHECK_OK(
+      type_factory->MakeStructType({{"a", types::Int64Type()}}, &struct_type));
+  return {
+      // Non-VARIANT values.
+      {Value::NullInt64(), true},
+      {Value::Int64(1), false},
+      {Value::NullJson(), true},
+      {Value::Json(JSONValue()), false},
+      // SQL NULL VARIANTs.
+      {Value::NullVariant(), true},
+      {test_values::Variant(Value::NullInt64()), true},
+      {test_values::Variant(Value::NullString()), true},
+      {test_values::Variant(Value::NullJson()), true},
+      {test_values::Variant(Value::Null(array_type)), true},
+      {test_values::Variant(Value::Null(struct_type)), true},
+      // Non-null VARIANTs.
+      {test_values::Variant(Value::Int64(1)), false},
+      {test_values::Variant(Value::String("")), false},
+      // A Variant null is a value, not a SQL NULL.
+      {Value::VariantNull(), false},
+      // A VARIANT holding a struct with a NULL field is not a SQL NULL.
+      {test_values::Variant(Value::Struct(struct_type, {Value::NullInt64()})),
+       false},
+  };
+}
+
+TEST(ValueIsNullTest, VariantAndNonVariantValues) {
+  for (const auto& [value, expected] : GetSqlNullTestValues()) {
+    EXPECT_EQ(value.is_null(), expected) << value.DebugString();
+  }
+}
+
+TEST(IsFunctionTest, IsNullWithVariantValues) {
+  IsFunction is_null_fn(FunctionKind::kIsNull, types::BoolType());
+  EvaluationContext context{/*options=*/{}};
+  for (const auto& [value, expected] : GetSqlNullTestValues()) {
+    Value result;
+    absl::Status status;
+    ASSERT_TRUE(is_null_fn.Eval(/*params=*/{}, /*args=*/{value}, &context,
+                                &result, &status))
+        << value.DebugString();
+    GOOGLESQL_ASSERT_OK(status);
+    EXPECT_EQ(result, Value::Bool(expected)) << value.DebugString();
   }
 }
 

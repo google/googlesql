@@ -22,8 +22,8 @@
 #include <utility>
 #include <vector>
 
-#include "googlesql/base/logging.h"
 #include "googlesql/analyzer/expr_resolver_helper.h"
+#include "googlesql/analyzer/name_scope.h"
 #include "googlesql/analyzer/query_resolver_helper.h"
 #include "googlesql/analyzer/resolver.h"
 #include "googlesql/common/constant_utils.h"
@@ -46,8 +46,11 @@
 #include "googlesql/resolved_ast/resolved_collation.h"
 #include "googlesql/resolved_ast/resolved_column.h"
 #include "googlesql/resolved_ast/resolved_node_kind.pb.h"
+#include "absl/base/nullability.h"
+#include "googlesql/base/check.h"
 #include "absl/status/status.h"
 #include "googlesql/base/status_macros.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
@@ -61,10 +64,25 @@ STATIC_IDSTRING(kPartitionById, "$partitionby");
 STATIC_IDSTRING(kOrderById, "$orderby");
 STATIC_IDSTRING(kMatchRecognizeId, "$match_recognize");
 
+namespace {
+
 #define RETURN_ERROR_IF_OUT_OF_STACK_SPACE()                      \
   GOOGLESQL_RETURN_IF_NOT_ENOUGH_STACK(                           \
       "Out of stack space due to deeply nested query expression " \
       "during query resolution")
+
+static absl::Status CheckSupportsPartitioning(
+    const Type* /*absl_nonnull*/ type, const LanguageOptions& language,
+    const ASTNode* /*absl_nonnull*/ ast_location) {
+  std::string no_partitioning_type;
+  if (!type->SupportsPartitioning(language, &no_partitioning_type)) {
+    return MakeSqlErrorAt(ast_location)
+           << "Partitioning by expressions of type " << no_partitioning_type
+           << " is not allowed";
+  }
+  return absl::OkStatus();
+}
+}  // namespace
 
 struct AnalyticFunctionResolver::AnalyticFunctionInfo {
   AnalyticFunctionInfo(
@@ -130,6 +148,13 @@ struct AnalyticFunctionResolver::WindowExprInfo {
   const Type* type;
 
   std::unique_ptr<const ResolvedColumnRef> resolved_column_ref;
+
+  // The parent ASTOrderingExpression if this represents an ordering key.
+  const ASTOrderingExpression* ast_ordering_expr = nullptr;
+
+  // The original name of the column if this was unpacked from an
+  // ASTUnpackExpression.
+  IdString unpack_column_name;
 };
 
 AnalyticFunctionResolver::AnalyticFunctionResolver(
@@ -232,6 +257,12 @@ absl::Status AnalyticFunctionResolver::SetMatchRecognizeWindowContext(
       /*allow_ordinals=*/false, "MATCH_RECOGNIZE ORDER BY clause",
       &order_by_info));
 
+  if (order_by_info->empty()) {
+    return MakeSqlErrorAt(ast_order_by)
+           << "ORDER BY in MATCH_RECOGNIZE clause cannot resolve to empty "
+              "columns";
+  }
+
   auto group_info = std::make_unique<AnalyticFunctionGroupInfo>(
       ast_partition_by, ast_order_by);
 
@@ -241,6 +272,25 @@ absl::Status AnalyticFunctionResolver::SetMatchRecognizeWindowContext(
   analytic_function_groups_.emplace_back(std::move(group_info));
 
   return absl::OkStatus();
+}
+
+absl::StatusOr<std::vector<IdString>>
+AnalyticFunctionResolver::GetUnpackColumnNames(
+    const ASTUnpackExpression* unpack_expr,
+    const ASTPartitionBy* ast_partition_by) const {
+  const std::unique_ptr<WindowExprInfoList>* partition_by_info =
+      googlesql_base::FindOrNull(ast_to_resolved_info_map_, ast_partition_by);
+  GOOGLESQL_RET_CHECK(partition_by_info != nullptr);
+  GOOGLESQL_RET_CHECK(*partition_by_info != nullptr);
+
+  std::vector<IdString> names;
+  for (const std::unique_ptr<WindowExprInfo>& info : **partition_by_info) {
+    if (info->ast_location == unpack_expr->expression()) {
+      GOOGLESQL_RET_CHECK(!info->unpack_column_name.empty());
+      names.push_back(info->unpack_column_name);
+    }
+  }
+  return names;
 }
 
 absl::StatusOr<std::unique_ptr<const ResolvedExpr>>
@@ -606,21 +656,16 @@ absl::Status AnalyticFunctionResolver::ResolveWindowPartitionByPreAggregation(
     auto partitioning_resolution_info = std::make_unique<ExprResolutionInfo>(
         expr_resolution_info,
         ExprResolutionInfoOptions{.clause_name = clause_name});
-    std::unique_ptr<WindowExprInfo> partitioning_expr_info;
-    const Type* partitioning_expr_type;
+    GOOGLESQL_ASSIGN_OR_RETURN(
+        std::vector<const Type* /*absl_nonnull*/> partitioning_expr_types,
+        ResolveWindowExpression(
+            ast_partition_expr, partitioning_resolution_info.get(),
+            allow_ordinals, /*ast_ordering_expr=*/nullptr, partition_by_info));
 
-    GOOGLESQL_RETURN_IF_ERROR(ResolveWindowExpression(
-        ast_partition_expr, partitioning_resolution_info.get(), allow_ordinals,
-        &partitioning_expr_info, &partitioning_expr_type));
-    partition_by_info->emplace_back(std::move(partitioning_expr_info));
-
-    std::string no_partitioning_type;
-    if (!partitioning_expr_type->SupportsPartitioning(resolver_->language(),
-                                                      &no_partitioning_type)) {
-      return MakeSqlErrorAt(ast_partition_expr)
-             << "Partitioning by expressions of type "
-             << no_partitioning_type
-             << " is not allowed";
+    for (const Type* /*absl_nonnull*/ partitioning_expr_type :
+         partitioning_expr_types) {
+      GOOGLESQL_RETURN_IF_ERROR(CheckSupportsPartitioning(
+          partitioning_expr_type, resolver_->language(), ast_partition_expr));
     }
   }
 
@@ -646,25 +691,24 @@ absl::Status AnalyticFunctionResolver::ResolveWindowOrderByPreAggregation(
   for (const ASTOrderingExpression* ast_ordering_expr :
        ast_order_by->ordering_expressions()) {
     ResolvedColumn resolved_ordering_column;
-    std::unique_ptr<WindowExprInfo> ordering_expr_info;
-    const Type* ordering_expr_type = nullptr;
 
     auto ordering_resolution_info = std::make_unique<ExprResolutionInfo>(
         expr_resolution_info,
         ExprResolutionInfoOptions{.clause_name = clause_name});
-    GOOGLESQL_RETURN_IF_ERROR(ResolveWindowExpression(
-        ast_ordering_expr->expression(), ordering_resolution_info.get(),
-        allow_ordinals, &ordering_expr_info, &ordering_expr_type));
-    GOOGLESQL_RET_CHECK(ordering_expr_type != nullptr);
-    order_by_info->emplace_back(std::move(ordering_expr_info));
-
+    GOOGLESQL_ASSIGN_OR_RETURN(
+        std::vector<const Type* /*absl_nonnull*/> ordering_expr_types,
+        ResolveWindowExpression(ast_ordering_expr->expression(),
+                                ordering_resolution_info.get(), allow_ordinals,
+                                ast_ordering_expr, order_by_info));
 
     std::string type_description;
-    if (!ordering_expr_type->SupportsOrdering(resolver_->language(),
-                                              &type_description)) {
-      return MakeSqlErrorAt(ast_ordering_expr)
-          << "Ordering by expressions of type " << type_description
-          << " is not allowed";
+    for (const Type* /*absl_nonnull*/ ordering_expr_type : ordering_expr_types) {
+      if (!ordering_expr_type->SupportsOrdering(resolver_->language(),
+                                                &type_description)) {
+        return MakeSqlErrorAt(ast_ordering_expr)
+               << "Ordering by expressions of type " << type_description
+               << " is not allowed";
+      }
     }
   }
 
@@ -674,11 +718,39 @@ absl::Status AnalyticFunctionResolver::ResolveWindowOrderByPreAggregation(
   return absl::OkStatus();
 }
 
-absl::Status AnalyticFunctionResolver::ResolveWindowExpression(
-    const ASTExpression* ast_expr, ExprResolutionInfo* expr_resolution_info,
-    bool allow_ordinals, std::unique_ptr<WindowExprInfo>* resolved_item_out,
-    const Type** expr_type_out) {
+absl::StatusOr<std::vector<const Type* /*absl_nonnull*/>>
+AnalyticFunctionResolver::ResolveWindowExpression(
+    const ASTExpression* /*absl_nonnull*/ ast_expr,
+    ExprResolutionInfo* /*absl_nonnull*/ expr_resolution_info, bool allow_ordinals,
+    const ASTOrderingExpression* ast_ordering_expr,
+    std::unique_ptr<WindowExprInfoList>& partition_by_info) {
   RETURN_ERROR_IF_OUT_OF_STACK_SPACE();
+
+  std::vector<const Type* /*absl_nonnull*/> expr_types;
+  if (ast_expr->Is<ASTUnpackExpression>()) {
+    const ASTUnpackExpression* unpack_expr =
+        ast_expr->GetAsOrDie<ASTUnpackExpression>();
+    GOOGLESQL_ASSIGN_OR_RETURN(std::vector<IdString> column_names,
+                     resolver_->ResolveUnpackExpressionColumnNames(
+                         unpack_expr, expr_resolution_info));
+
+    expr_types.reserve(column_names.size());
+    for (const IdString& column_name : column_names) {
+      GOOGLESQL_ASSIGN_OR_RETURN(
+          ResolvedColumn column,
+          resolver_->LookupUnpackColumn(column_name, unpack_expr->expression(),
+                                        expr_resolution_info->name_scope));
+
+      auto window_expr_info = std::make_unique<WindowExprInfo>(
+          unpack_expr->expression(), resolver_->MakeColumnRef(column));
+      window_expr_info->ast_ordering_expr = ast_ordering_expr;
+      window_expr_info->unpack_column_name = column_name;
+      partition_by_info->push_back(std::move(window_expr_info));
+      expr_types.push_back(column.type());
+    }
+
+    return expr_types;
+  }
 
   std::unique_ptr<const ResolvedExpr> tmp_resolved_expr;
   GOOGLESQL_RETURN_IF_ERROR(resolver_->ResolveExpr(ast_expr, expr_resolution_info,
@@ -699,16 +771,18 @@ absl::Status AnalyticFunctionResolver::ResolveWindowExpression(
     }
   }
 
-  *expr_type_out = tmp_resolved_expr->type();
-  *resolved_item_out =
+  expr_types.push_back(tmp_resolved_expr->type());
+  auto window_expr_info =
       std::make_unique<WindowExprInfo>(ast_expr, std::move(tmp_resolved_expr));
+  window_expr_info->ast_ordering_expr = ast_ordering_expr;
+  partition_by_info->push_back(std::move(window_expr_info));
 
-  return absl::OkStatus();
+  return expr_types;
 }
 
 absl::Status AnalyticFunctionResolver::ValidateOrderByInRangeBasedWindow(
     const ASTOrderBy* ast_order_by, const ASTWindowFrame* ast_window_frame,
-    WindowExprInfoList* order_by_info) {
+    const WindowExprInfoList* order_by_info) {
   ABSL_DCHECK_EQ(ast_window_frame->frame_unit(), ASTWindowFrame::RANGE);
   if (order_by_info == nullptr) {
     if (ast_window_frame->start_expr()->boundary_type() ==
@@ -1168,6 +1242,13 @@ absl::Status AnalyticFunctionResolver::ResolveWindowPartitionByPostAggregation(
       googlesql_base::FindOrNull(ast_to_resolved_info_map_, ast_partition_by);
   GOOGLESQL_RET_CHECK(partition_by_info != nullptr && *partition_by_info != nullptr);
 
+  // This can happen if the PARTITION BY clause contains only UNPACK expressions
+  // that expand to zero columns.
+  if ((*partition_by_info)->empty()) {
+    *resolved_window_partitioning_out = nullptr;
+    return absl::OkStatus();
+  }
+
   std::unique_ptr<ResolvedWindowPartitioning> resolved_window_partitioning;
   std::vector<std::unique_ptr<const ResolvedColumnRef>>
       resolved_partition_by_exprs;
@@ -1244,45 +1325,51 @@ absl::Status AnalyticFunctionResolver::ResolveWindowOrderByPostAggregation(
   std::vector<std::unique_ptr<const ResolvedOrderByItem>> order_by_items;
   std::vector<std::unique_ptr<const ResolvedOption>> order_by_hints;
 
-  const absl::Span<const ASTOrderingExpression* const>& ast_ordering_exprs =
-      ast_order_by->ordering_expressions();
-  GOOGLESQL_RET_CHECK_EQ(ast_ordering_exprs.size(), order_by_info->size());
-  for (int i = 0; i < order_by_info->size(); ++i) {
+  // This can happen if the ORDER BY clause contains only UNPACK expressions
+  // that expand to zero columns.
+  if (order_by_info->empty()) {
+    *resolved_window_ordering_out = nullptr;
+    return absl::OkStatus();
+  }
+
+  order_by_items.reserve(order_by_info->size());
+  for (const std::unique_ptr<WindowExprInfo>& window_expr_info :
+       *order_by_info) {
+    const ASTOrderingExpression* ast_ordering_expr =
+        window_expr_info->ast_ordering_expr;
+    GOOGLESQL_RET_CHECK(ast_ordering_expr != nullptr);
+
     GOOGLESQL_ASSIGN_OR_RETURN(
         ResolvedOrderByItemEnums::NullOrderMode null_order,
-        resolver_->ResolveNullOrderMode(ast_ordering_exprs[i]->null_order()));
+        resolver_->ResolveNullOrderMode(ast_ordering_expr->null_order()));
 
     // Since a window ORDER BY may be shared by multiple analytic functions,
     // do not create a new column if we have created one for this ordering
     // expression.
-    if ((*order_by_info)[i]->resolved_column_ref == nullptr) {
+    if (window_expr_info->resolved_column_ref == nullptr) {
       GOOGLESQL_RETURN_IF_ERROR(AddColumnForWindowExpression(
           kOrderById,
           resolver_->MakeIdString(
               absl::StrCat("$orderbycol", ++num_ordering_items_)),
           /*force_rename_columns=*/false, query_resolution_info,
-          (*order_by_info)[i].get()));
+          window_expr_info.get()));
     }
 
     std::unique_ptr<const ResolvedColumnRef> resolved_column_ref =
-        resolver_->CopyColumnRef(
-            (*order_by_info)[i]->resolved_column_ref.get());
+        resolver_->CopyColumnRef(window_expr_info->resolved_column_ref.get());
 
     std::unique_ptr<const ResolvedExpr> resolved_collation_name;
-    const ASTCollate* ast_collate =
-        ast_order_by->ordering_expressions().at(i)->collate();
+    const ASTCollate* ast_collate = ast_ordering_expr->collate();
     if (ast_collate != nullptr) {
       GOOGLESQL_RETURN_IF_ERROR(resolver_->ValidateAndResolveOrderByCollate(
-          ast_collate,
-          ast_order_by->ordering_expressions().at(i),
-          resolved_column_ref->column().type(),
+          ast_collate, ast_ordering_expr, resolved_column_ref->column().type(),
           &resolved_collation_name));
     }
 
     auto resolved_order_by_item = MakeResolvedOrderByItem(
         std::move(resolved_column_ref), std::move(resolved_collation_name),
-        ast_ordering_exprs[i]->descending(), null_order);
-    resolver_->MaybeRecordParseLocation(ast_ordering_exprs[i],
+        ast_ordering_expr->descending(), null_order);
+    resolver_->MaybeRecordParseLocation(ast_ordering_expr,
                                         resolved_order_by_item.get());
 
     if (resolver_->language().LanguageFeatureEnabled(

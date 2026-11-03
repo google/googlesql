@@ -154,9 +154,9 @@ class InternalValue {
     return x.FormatInternal(options);
   }
 
-  // Returns true if `val` contains in its nested structure an array with two
-  // or more elements where the order between those elements is unknown because
-  // the array reports kIgnoresOrder.
+  // Returns true if `val` contains in its nested structure an array that
+  // reports kIgnoresOrder and has at least two elements that are not equal
+  // (per Value::Equals), so the order between those elements is unknown.
   static bool ContainsArrayWithUncertainOrder(const Value& val);
 };
 

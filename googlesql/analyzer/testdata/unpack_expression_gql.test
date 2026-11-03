@@ -1,0 +1,1319 @@
+[default language_features=MAXIMUM,+COLUMN_LIST_SPEC,+COLLATION_SUPPORT,+ANNOTATION_FRAMEWORK]
+[default show_sqlbuilder_output]
+[default use_constant_evaluator]
+[default sql_builder_target_syntax_mode=standard]
+
+# Tests for UNPACK (**) expressions in GQL ORDER BY and GROUP BY.
+#
+# ** reaches shared ORDER BY / GROUP BY resolution from three GQL callers:
+# RETURN ... ORDER BY, the standalone ORDER BY statement, and WITH / RETURN
+# ... GROUP BY. Each caller has its own cases; variants that resolve
+# identically are alternations on one case.
+
+################################################################################
+#
+# Positive cases
+#
+################################################################################
+
+# ------------------------------------------------------------------------------
+# RETURN ... ORDER BY
+# ------------------------------------------------------------------------------
+
+# ** expands in place into one ORDER BY item per column, keeping its position
+# relative to explicit items, and may order by the same column more than once.
+select * from graph_table(
+  aml
+  match (a)
+  return a.id, a.age
+  order by **COLUMNS(['id']), age, **COLUMNS(['id', 'age'])
+)
+--
+QueryStmt
++-output_column_list=
+| +-$graph_table.id#2 AS id [INT64]
+| +-$graph_table.age#3 AS age [UINT32]
++-query=
+  +-ProjectScan
+    +-column_list=$graph_table.[id#2, age#3]
+    +-input_scan=
+      +-GraphTableScan
+        +-column_list=$graph_table.[id#2, age#3]
+        +-property_graph=aml
+        +-input_scan=
+          +-GraphLinearScan
+            +-column_list=$graph_table.[id#2, age#3]
+            +-scan_list=
+              +-GraphLinearScan
+                +-column_list=$graph_table.[id#2, age#3]
+                +-scan_list=
+                  +-GraphScan
+                  | +-column_list=[$element_table.a#1]
+                  | +-input_scan_list=
+                  | | +-GraphPathScan
+                  | |   +-column_list=[$element_table.a#1]
+                  | |   +-input_scan_list=
+                  | |   | +-GraphNodeScan
+                  | |   |   +-column_list=[$element_table.a#1]
+                  | |   |   +-label_expr=
+                  | |   |   | +-GraphLabelNaryExpr
+                  | |   |   |   +-op=OR
+                  | |   |   |   +-operand_list=
+                  | |   |   |     +-GraphWildCardLabel
+                  | |   |   |     +-GraphLabelNaryExpr
+                  | |   |   |       +-op=NOT
+                  | |   |   |       +-operand_list=
+                  | |   |   |         +-GraphWildCardLabel
+                  | |   |   +-target_element_table_list=[aml.Account,aml.Person,aml.Syndicate]
+                  | |   +-head=$element_table.a#1
+                  | |   +-tail=$element_table.a#1
+                  | +-input_scan=
+                  |   +-SingleRowScan
+                  +-OrderByScan
+                    +-column_list=$graph_table.[id#2, age#3]
+                    +-is_ordered=TRUE
+                    +-input_scan=
+                    | +-ProjectScan
+                    |   +-column_list=[$element_table.a#1, $graph_table.id#2, $graph_table.age#3]
+                    |   +-expr_list=
+                    |   | +-id#2 :=
+                    |   | | +-GraphGetElementProperty
+                    |   | |   +-type=INT64
+                    |   | |   +-expr=
+                    |   | |   | +-ColumnRef(type=GRAPH_NODE(aml)<age UINT32, balance UINT64, birthday DATE, data BYTES, id INT64, name STRING, syndicateData ARRAY<INT64>, syndicateId INT64, syndicateName STRING>, column=$element_table.a#1)
+                    |   | |   +-property=id(INT64)
+                    |   | |   +-property_name=
+                    |   | |     +-Literal(type=STRING, value="id", has_explicit_type=TRUE)
+                    |   | +-age#3 :=
+                    |   |   +-GraphGetElementProperty
+                    |   |     +-type=UINT32
+                    |   |     +-expr=
+                    |   |     | +-ColumnRef(type=GRAPH_NODE(aml)<age UINT32, balance UINT64, birthday DATE, data BYTES, id INT64, name STRING, syndicateData ARRAY<INT64>, syndicateId INT64, syndicateName STRING>, column=$element_table.a#1)
+                    |   |     +-property=age(UINT32)
+                    |   |     +-property_name=
+                    |   |       +-Literal(type=STRING, value="age", has_explicit_type=TRUE)
+                    |   +-input_scan=
+                    |     +-GraphRefScan(column_list=[$element_table.a#1])
+                    +-order_by_item_list=
+                      +-OrderByItem
+                      | +-column_ref=
+                      |   +-ColumnRef(type=INT64, column=$graph_table.id#2)
+                      +-OrderByItem
+                      | +-column_ref=
+                      |   +-ColumnRef(type=UINT32, column=$graph_table.age#3)
+                      +-OrderByItem
+                      | +-column_ref=
+                      |   +-ColumnRef(type=INT64, column=$graph_table.id#2)
+                      +-OrderByItem
+                        +-column_ref=
+                          +-ColumnRef(type=UINT32, column=$graph_table.age#3)
+
+[SQLBUILDER_OUTPUT]
+SELECT
+  aml_1.a_3 AS id,
+  aml_1.a_4 AS age
+FROM
+  GRAPH_TABLE(
+    aml
+    MATCH
+      (a_2 IS (% | ! %))
+    RETURN
+      a_2.id AS a_3,
+      a_2.age AS a_4
+    ORDER BY a_3, a_4
+  ) AS aml_1;
+==
+
+# Ordering modifiers (ASC/DESC, NULLS FIRST/LAST, COLLATE) apply to every column
+# the expansion produces, and each item keeps its own modifiers.
+select * from graph_table(
+  aml
+  match (a)
+  return a.name, a.id
+  order by **COLUMNS(['name']) COLLATE 'unicode:ci' DESC NULLS LAST,
+           **COLUMNS(['id']) NULLS FIRST
+)
+--
+QueryStmt
++-output_column_list=
+| +-$graph_table.name#2 AS name [STRING]
+| +-$graph_table.id#3 AS id [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=$graph_table.[name#2, id#3]
+    +-input_scan=
+      +-GraphTableScan
+        +-column_list=$graph_table.[name#2, id#3]
+        +-property_graph=aml
+        +-input_scan=
+          +-GraphLinearScan
+            +-column_list=$graph_table.[name#2, id#3]
+            +-scan_list=
+              +-GraphLinearScan
+                +-column_list=$graph_table.[name#2, id#3]
+                +-scan_list=
+                  +-GraphScan
+                  | +-column_list=[$element_table.a#1]
+                  | +-input_scan_list=
+                  | | +-GraphPathScan
+                  | |   +-column_list=[$element_table.a#1]
+                  | |   +-input_scan_list=
+                  | |   | +-GraphNodeScan
+                  | |   |   +-column_list=[$element_table.a#1]
+                  | |   |   +-label_expr=
+                  | |   |   | +-GraphLabelNaryExpr
+                  | |   |   |   +-op=OR
+                  | |   |   |   +-operand_list=
+                  | |   |   |     +-GraphWildCardLabel
+                  | |   |   |     +-GraphLabelNaryExpr
+                  | |   |   |       +-op=NOT
+                  | |   |   |       +-operand_list=
+                  | |   |   |         +-GraphWildCardLabel
+                  | |   |   +-target_element_table_list=[aml.Account,aml.Person,aml.Syndicate]
+                  | |   +-head=$element_table.a#1
+                  | |   +-tail=$element_table.a#1
+                  | +-input_scan=
+                  |   +-SingleRowScan
+                  +-OrderByScan
+                    +-column_list=$graph_table.[name#2, id#3]
+                    +-is_ordered=TRUE
+                    +-input_scan=
+                    | +-ProjectScan
+                    |   +-column_list=[$element_table.a#1, $graph_table.name#2, $graph_table.id#3]
+                    |   +-expr_list=
+                    |   | +-name#2 :=
+                    |   | | +-GraphGetElementProperty
+                    |   | |   +-type=STRING
+                    |   | |   +-expr=
+                    |   | |   | +-ColumnRef(type=GRAPH_NODE(aml)<age UINT32, balance UINT64, birthday DATE, data BYTES, id INT64, name STRING, syndicateData ARRAY<INT64>, syndicateId INT64, syndicateName STRING>, column=$element_table.a#1)
+                    |   | |   +-property=name(STRING)
+                    |   | |   +-property_name=
+                    |   | |     +-Literal(type=STRING, value="name", has_explicit_type=TRUE)
+                    |   | +-id#3 :=
+                    |   |   +-GraphGetElementProperty
+                    |   |     +-type=INT64
+                    |   |     +-expr=
+                    |   |     | +-ColumnRef(type=GRAPH_NODE(aml)<age UINT32, balance UINT64, birthday DATE, data BYTES, id INT64, name STRING, syndicateData ARRAY<INT64>, syndicateId INT64, syndicateName STRING>, column=$element_table.a#1)
+                    |   |     +-property=id(INT64)
+                    |   |     +-property_name=
+                    |   |       +-Literal(type=STRING, value="id", has_explicit_type=TRUE)
+                    |   +-input_scan=
+                    |     +-GraphRefScan(column_list=[$element_table.a#1])
+                    +-order_by_item_list=
+                      +-OrderByItem
+                      | +-column_ref=
+                      | | +-ColumnRef(type=STRING, column=$graph_table.name#2)
+                      | +-collation_name=
+                      | | +-Literal(type=STRING, value="unicode:ci")
+                      | +-is_descending=TRUE
+                      | +-null_order=NULLS_LAST
+                      | +-collation=unicode:ci
+                      +-OrderByItem
+                        +-column_ref=
+                        | +-ColumnRef(type=INT64, column=$graph_table.id#3)
+                        +-null_order=NULLS_FIRST
+
+[SQLBUILDER_OUTPUT]
+SELECT
+  aml_1.a_3 AS name,
+  aml_1.a_4 AS id
+FROM
+  GRAPH_TABLE(
+    aml
+    MATCH
+      (a_2 IS (% | ! %))
+    RETURN
+      a_2.name AS a_3,
+      a_2.id AS a_4
+    ORDER BY a_3 COLLATE "unicode:ci" DESC NULLS LAST, a_4 NULLS FIRST
+  ) AS aml_1;
+==
+
+# An empty expansion produces no ORDER BY items, so no OrderByScan is created;
+# a ProjectScan still narrows the output to the RETURN columns. Modifiers on
+# such an ORDER BY have nothing to apply to.
+select * from graph_table(
+  aml
+  match (a)
+  return a.id, a.age
+  order by **COLUMNS([]){{| DESC}}
+)
+--
+QueryStmt
++-output_column_list=
+| +-$graph_table.id#2 AS id [INT64]
+| +-$graph_table.age#3 AS age [UINT32]
++-query=
+  +-ProjectScan
+    +-column_list=$graph_table.[id#2, age#3]
+    +-input_scan=
+      +-GraphTableScan
+        +-column_list=$graph_table.[id#2, age#3]
+        +-property_graph=aml
+        +-input_scan=
+          +-GraphLinearScan
+            +-column_list=$graph_table.[id#2, age#3]
+            +-scan_list=
+              +-GraphLinearScan
+                +-column_list=$graph_table.[id#2, age#3]
+                +-scan_list=
+                  +-GraphScan
+                  | +-column_list=[$element_table.a#1]
+                  | +-input_scan_list=
+                  | | +-GraphPathScan
+                  | |   +-column_list=[$element_table.a#1]
+                  | |   +-input_scan_list=
+                  | |   | +-GraphNodeScan
+                  | |   |   +-column_list=[$element_table.a#1]
+                  | |   |   +-label_expr=
+                  | |   |   | +-GraphLabelNaryExpr
+                  | |   |   |   +-op=OR
+                  | |   |   |   +-operand_list=
+                  | |   |   |     +-GraphWildCardLabel
+                  | |   |   |     +-GraphLabelNaryExpr
+                  | |   |   |       +-op=NOT
+                  | |   |   |       +-operand_list=
+                  | |   |   |         +-GraphWildCardLabel
+                  | |   |   +-target_element_table_list=[aml.Account,aml.Person,aml.Syndicate]
+                  | |   +-head=$element_table.a#1
+                  | |   +-tail=$element_table.a#1
+                  | +-input_scan=
+                  |   +-SingleRowScan
+                  +-ProjectScan
+                    +-column_list=$graph_table.[id#2, age#3]
+                    +-input_scan=
+                      +-ProjectScan
+                        +-column_list=[$element_table.a#1, $graph_table.id#2, $graph_table.age#3]
+                        +-expr_list=
+                        | +-id#2 :=
+                        | | +-GraphGetElementProperty
+                        | |   +-type=INT64
+                        | |   +-expr=
+                        | |   | +-ColumnRef(type=GRAPH_NODE(aml)<age UINT32, balance UINT64, birthday DATE, data BYTES, id INT64, name STRING, syndicateData ARRAY<INT64>, syndicateId INT64, syndicateName STRING>, column=$element_table.a#1)
+                        | |   +-property=id(INT64)
+                        | |   +-property_name=
+                        | |     +-Literal(type=STRING, value="id", has_explicit_type=TRUE)
+                        | +-age#3 :=
+                        |   +-GraphGetElementProperty
+                        |     +-type=UINT32
+                        |     +-expr=
+                        |     | +-ColumnRef(type=GRAPH_NODE(aml)<age UINT32, balance UINT64, birthday DATE, data BYTES, id INT64, name STRING, syndicateData ARRAY<INT64>, syndicateId INT64, syndicateName STRING>, column=$element_table.a#1)
+                        |     +-property=age(UINT32)
+                        |     +-property_name=
+                        |       +-Literal(type=STRING, value="age", has_explicit_type=TRUE)
+                        +-input_scan=
+                          +-GraphRefScan(column_list=[$element_table.a#1])
+
+[SQLBUILDER_OUTPUT]
+SELECT
+  aml_1.a_3 AS id,
+  aml_1.a_4 AS age
+FROM
+  GRAPH_TABLE(
+    aml
+    MATCH
+      (a_2 IS (% | ! %))
+    RETURN
+      a_2.id AS a_3,
+      a_2.age AS a_4
+  ) AS aml_1;
+==
+
+# Likewise, a hint on an ORDER BY whose only item expands to nothing has no
+# OrderByScan to attach to and is dropped.
+select * from graph_table(
+  aml
+  match (a)
+  return a.id, a.age
+  order @{key=1} by **COLUMNS([])
+)
+--
+QueryStmt
++-output_column_list=
+| +-$graph_table.id#2 AS id [INT64]
+| +-$graph_table.age#3 AS age [UINT32]
++-query=
+  +-ProjectScan
+    +-column_list=$graph_table.[id#2, age#3]
+    +-input_scan=
+      +-GraphTableScan
+        +-column_list=$graph_table.[id#2, age#3]
+        +-property_graph=aml
+        +-input_scan=
+          +-GraphLinearScan
+            +-column_list=$graph_table.[id#2, age#3]
+            +-scan_list=
+              +-GraphLinearScan
+                +-column_list=$graph_table.[id#2, age#3]
+                +-scan_list=
+                  +-GraphScan
+                  | +-column_list=[$element_table.a#1]
+                  | +-input_scan_list=
+                  | | +-GraphPathScan
+                  | |   +-column_list=[$element_table.a#1]
+                  | |   +-input_scan_list=
+                  | |   | +-GraphNodeScan
+                  | |   |   +-column_list=[$element_table.a#1]
+                  | |   |   +-label_expr=
+                  | |   |   | +-GraphLabelNaryExpr
+                  | |   |   |   +-op=OR
+                  | |   |   |   +-operand_list=
+                  | |   |   |     +-GraphWildCardLabel
+                  | |   |   |     +-GraphLabelNaryExpr
+                  | |   |   |       +-op=NOT
+                  | |   |   |       +-operand_list=
+                  | |   |   |         +-GraphWildCardLabel
+                  | |   |   +-target_element_table_list=[aml.Account,aml.Person,aml.Syndicate]
+                  | |   +-head=$element_table.a#1
+                  | |   +-tail=$element_table.a#1
+                  | +-input_scan=
+                  |   +-SingleRowScan
+                  +-ProjectScan
+                    +-column_list=$graph_table.[id#2, age#3]
+                    +-input_scan=
+                      +-ProjectScan
+                        +-column_list=[$element_table.a#1, $graph_table.id#2, $graph_table.age#3]
+                        +-expr_list=
+                        | +-id#2 :=
+                        | | +-GraphGetElementProperty
+                        | |   +-type=INT64
+                        | |   +-expr=
+                        | |   | +-ColumnRef(type=GRAPH_NODE(aml)<age UINT32, balance UINT64, birthday DATE, data BYTES, id INT64, name STRING, syndicateData ARRAY<INT64>, syndicateId INT64, syndicateName STRING>, column=$element_table.a#1)
+                        | |   +-property=id(INT64)
+                        | |   +-property_name=
+                        | |     +-Literal(type=STRING, value="id", has_explicit_type=TRUE)
+                        | +-age#3 :=
+                        |   +-GraphGetElementProperty
+                        |     +-type=UINT32
+                        |     +-expr=
+                        |     | +-ColumnRef(type=GRAPH_NODE(aml)<age UINT32, balance UINT64, birthday DATE, data BYTES, id INT64, name STRING, syndicateData ARRAY<INT64>, syndicateId INT64, syndicateName STRING>, column=$element_table.a#1)
+                        |     +-property=age(UINT32)
+                        |     +-property_name=
+                        |       +-Literal(type=STRING, value="age", has_explicit_type=TRUE)
+                        +-input_scan=
+                          +-GraphRefScan(column_list=[$element_table.a#1])
+
+[SQLBUILDER_OUTPUT]
+SELECT
+  aml_1.a_3 AS id,
+  aml_1.a_4 AS age
+FROM
+  GRAPH_TABLE(
+    aml
+    MATCH
+      (a_2 IS (% | ! %))
+    RETURN
+      a_2.id AS a_3,
+      a_2.age AS a_4
+  ) AS aml_1;
+==
+
+# An empty expansion next to an explicit item drops out, whichever side it is
+# on.
+select * from graph_table(
+  aml
+  match (a)
+  return a.id, a.age
+  order by {{**COLUMNS([]), id|id, **COLUMNS([])}}
+)
+--
+QueryStmt
++-output_column_list=
+| +-$graph_table.id#2 AS id [INT64]
+| +-$graph_table.age#3 AS age [UINT32]
++-query=
+  +-ProjectScan
+    +-column_list=$graph_table.[id#2, age#3]
+    +-input_scan=
+      +-GraphTableScan
+        +-column_list=$graph_table.[id#2, age#3]
+        +-property_graph=aml
+        +-input_scan=
+          +-GraphLinearScan
+            +-column_list=$graph_table.[id#2, age#3]
+            +-scan_list=
+              +-GraphLinearScan
+                +-column_list=$graph_table.[id#2, age#3]
+                +-scan_list=
+                  +-GraphScan
+                  | +-column_list=[$element_table.a#1]
+                  | +-input_scan_list=
+                  | | +-GraphPathScan
+                  | |   +-column_list=[$element_table.a#1]
+                  | |   +-input_scan_list=
+                  | |   | +-GraphNodeScan
+                  | |   |   +-column_list=[$element_table.a#1]
+                  | |   |   +-label_expr=
+                  | |   |   | +-GraphLabelNaryExpr
+                  | |   |   |   +-op=OR
+                  | |   |   |   +-operand_list=
+                  | |   |   |     +-GraphWildCardLabel
+                  | |   |   |     +-GraphLabelNaryExpr
+                  | |   |   |       +-op=NOT
+                  | |   |   |       +-operand_list=
+                  | |   |   |         +-GraphWildCardLabel
+                  | |   |   +-target_element_table_list=[aml.Account,aml.Person,aml.Syndicate]
+                  | |   +-head=$element_table.a#1
+                  | |   +-tail=$element_table.a#1
+                  | +-input_scan=
+                  |   +-SingleRowScan
+                  +-OrderByScan
+                    +-column_list=$graph_table.[id#2, age#3]
+                    +-is_ordered=TRUE
+                    +-input_scan=
+                    | +-ProjectScan
+                    |   +-column_list=[$element_table.a#1, $graph_table.id#2, $graph_table.age#3]
+                    |   +-expr_list=
+                    |   | +-id#2 :=
+                    |   | | +-GraphGetElementProperty
+                    |   | |   +-type=INT64
+                    |   | |   +-expr=
+                    |   | |   | +-ColumnRef(type=GRAPH_NODE(aml)<age UINT32, balance UINT64, birthday DATE, data BYTES, id INT64, name STRING, syndicateData ARRAY<INT64>, syndicateId INT64, syndicateName STRING>, column=$element_table.a#1)
+                    |   | |   +-property=id(INT64)
+                    |   | |   +-property_name=
+                    |   | |     +-Literal(type=STRING, value="id", has_explicit_type=TRUE)
+                    |   | +-age#3 :=
+                    |   |   +-GraphGetElementProperty
+                    |   |     +-type=UINT32
+                    |   |     +-expr=
+                    |   |     | +-ColumnRef(type=GRAPH_NODE(aml)<age UINT32, balance UINT64, birthday DATE, data BYTES, id INT64, name STRING, syndicateData ARRAY<INT64>, syndicateId INT64, syndicateName STRING>, column=$element_table.a#1)
+                    |   |     +-property=age(UINT32)
+                    |   |     +-property_name=
+                    |   |       +-Literal(type=STRING, value="age", has_explicit_type=TRUE)
+                    |   +-input_scan=
+                    |     +-GraphRefScan(column_list=[$element_table.a#1])
+                    +-order_by_item_list=
+                      +-OrderByItem
+                        +-column_ref=
+                          +-ColumnRef(type=INT64, column=$graph_table.id#2)
+
+[SQLBUILDER_OUTPUT]
+SELECT
+  aml_1.a_3 AS id,
+  aml_1.a_4 AS age
+FROM
+  GRAPH_TABLE(
+    aml
+    MATCH
+      (a_2 IS (% | ! %))
+    RETURN
+      a_2.id AS a_3,
+      a_2.age AS a_4
+    ORDER BY a_3
+  ) AS aml_1;
+==
+
+# ------------------------------------------------------------------------------
+# Standalone ORDER BY
+# ------------------------------------------------------------------------------
+
+# The standalone ORDER BY statement expands ** against the preceding WITH
+# columns, with per-item modifiers.
+select * from graph_table(
+  aml
+  match (a)
+  with a.id as id, a.age as age
+  order by **COLUMNS(['id']) DESC, **COLUMNS(['age'])
+  return id, age
+)
+--
+QueryStmt
++-output_column_list=
+| +-$graph_table.id#4 AS id [INT64]
+| +-$graph_table.age#5 AS age [UINT32]
++-query=
+  +-ProjectScan
+    +-column_list=$graph_table.[id#4, age#5]
+    +-input_scan=
+      +-GraphTableScan
+        +-column_list=$graph_table.[id#4, age#5]
+        +-property_graph=aml
+        +-input_scan=
+          +-GraphLinearScan
+            +-column_list=$graph_table.[id#4, age#5]
+            +-scan_list=
+              +-GraphLinearScan
+                +-column_list=$graph_table.[id#4, age#5]
+                +-scan_list=
+                  +-GraphScan
+                  | +-column_list=[$element_table.a#1]
+                  | +-input_scan_list=
+                  | | +-GraphPathScan
+                  | |   +-column_list=[$element_table.a#1]
+                  | |   +-input_scan_list=
+                  | |   | +-GraphNodeScan
+                  | |   |   +-column_list=[$element_table.a#1]
+                  | |   |   +-label_expr=
+                  | |   |   | +-GraphLabelNaryExpr
+                  | |   |   |   +-op=OR
+                  | |   |   |   +-operand_list=
+                  | |   |   |     +-GraphWildCardLabel
+                  | |   |   |     +-GraphLabelNaryExpr
+                  | |   |   |       +-op=NOT
+                  | |   |   |       +-operand_list=
+                  | |   |   |         +-GraphWildCardLabel
+                  | |   |   +-target_element_table_list=[aml.Account,aml.Person,aml.Syndicate]
+                  | |   +-head=$element_table.a#1
+                  | |   +-tail=$element_table.a#1
+                  | +-input_scan=
+                  |   +-SingleRowScan
+                  +-ProjectScan
+                  | +-column_list=$graph_table.[id#2, age#3]
+                  | +-expr_list=
+                  | | +-id#2 :=
+                  | | | +-GraphGetElementProperty
+                  | | |   +-type=INT64
+                  | | |   +-expr=
+                  | | |   | +-ColumnRef(type=GRAPH_NODE(aml)<age UINT32, balance UINT64, birthday DATE, data BYTES, id INT64, name STRING, syndicateData ARRAY<INT64>, syndicateId INT64, syndicateName STRING>, column=$element_table.a#1)
+                  | | |   +-property=id(INT64)
+                  | | |   +-property_name=
+                  | | |     +-Literal(type=STRING, value="id", has_explicit_type=TRUE)
+                  | | +-age#3 :=
+                  | |   +-GraphGetElementProperty
+                  | |     +-type=UINT32
+                  | |     +-expr=
+                  | |     | +-ColumnRef(type=GRAPH_NODE(aml)<age UINT32, balance UINT64, birthday DATE, data BYTES, id INT64, name STRING, syndicateData ARRAY<INT64>, syndicateId INT64, syndicateName STRING>, column=$element_table.a#1)
+                  | |     +-property=age(UINT32)
+                  | |     +-property_name=
+                  | |       +-Literal(type=STRING, value="age", has_explicit_type=TRUE)
+                  | +-input_scan=
+                  |   +-GraphRefScan(column_list=[$element_table.a#1])
+                  +-OrderByScan
+                  | +-column_list=$graph_table.[id#2, age#3]
+                  | +-is_ordered=TRUE
+                  | +-input_scan=
+                  | | +-GraphRefScan(column_list=$graph_table.[id#2, age#3])
+                  | +-order_by_item_list=
+                  |   +-OrderByItem
+                  |   | +-column_ref=
+                  |   | | +-ColumnRef(type=INT64, column=$graph_table.id#2)
+                  |   | +-is_descending=TRUE
+                  |   +-OrderByItem
+                  |     +-column_ref=
+                  |       +-ColumnRef(type=UINT32, column=$graph_table.age#3)
+                  +-ProjectScan
+                    +-column_list=$graph_table.[id#4, age#5]
+                    +-expr_list=
+                    | +-id#4 := ColumnRef(type=INT64, column=$graph_table.id#2)
+                    | +-age#5 := ColumnRef(type=UINT32, column=$graph_table.age#3)
+                    +-input_scan=
+                      +-GraphRefScan(column_list=$graph_table.[id#2, age#3])
+
+[SQLBUILDER_OUTPUT]
+SELECT
+  aml_1.a_5 AS id,
+  aml_1.a_6 AS age
+FROM
+  GRAPH_TABLE(
+    aml
+    MATCH
+      (a_2 IS (% | ! %))
+    WITH
+      a_2.id AS a_3,
+      a_2.age AS a_4
+    ORDER BY a_3 DESC, a_4
+    RETURN
+      a_3 AS a_5,
+      a_4 AS a_6
+  ) AS aml_1;
+==
+
+# An empty expansion in a standalone ORDER BY leaves the input unordered.
+select * from graph_table(
+  aml
+  match (a)
+  with a.id as id, a.age as age
+  order by **COLUMNS([])
+  return id, age
+)
+--
+QueryStmt
++-output_column_list=
+| +-$graph_table.id#4 AS id [INT64]
+| +-$graph_table.age#5 AS age [UINT32]
++-query=
+  +-ProjectScan
+    +-column_list=$graph_table.[id#4, age#5]
+    +-input_scan=
+      +-GraphTableScan
+        +-column_list=$graph_table.[id#4, age#5]
+        +-property_graph=aml
+        +-input_scan=
+          +-GraphLinearScan
+            +-column_list=$graph_table.[id#4, age#5]
+            +-scan_list=
+              +-GraphLinearScan
+                +-column_list=$graph_table.[id#4, age#5]
+                +-scan_list=
+                  +-GraphScan
+                  | +-column_list=[$element_table.a#1]
+                  | +-input_scan_list=
+                  | | +-GraphPathScan
+                  | |   +-column_list=[$element_table.a#1]
+                  | |   +-input_scan_list=
+                  | |   | +-GraphNodeScan
+                  | |   |   +-column_list=[$element_table.a#1]
+                  | |   |   +-label_expr=
+                  | |   |   | +-GraphLabelNaryExpr
+                  | |   |   |   +-op=OR
+                  | |   |   |   +-operand_list=
+                  | |   |   |     +-GraphWildCardLabel
+                  | |   |   |     +-GraphLabelNaryExpr
+                  | |   |   |       +-op=NOT
+                  | |   |   |       +-operand_list=
+                  | |   |   |         +-GraphWildCardLabel
+                  | |   |   +-target_element_table_list=[aml.Account,aml.Person,aml.Syndicate]
+                  | |   +-head=$element_table.a#1
+                  | |   +-tail=$element_table.a#1
+                  | +-input_scan=
+                  |   +-SingleRowScan
+                  +-ProjectScan
+                  | +-column_list=$graph_table.[id#2, age#3]
+                  | +-expr_list=
+                  | | +-id#2 :=
+                  | | | +-GraphGetElementProperty
+                  | | |   +-type=INT64
+                  | | |   +-expr=
+                  | | |   | +-ColumnRef(type=GRAPH_NODE(aml)<age UINT32, balance UINT64, birthday DATE, data BYTES, id INT64, name STRING, syndicateData ARRAY<INT64>, syndicateId INT64, syndicateName STRING>, column=$element_table.a#1)
+                  | | |   +-property=id(INT64)
+                  | | |   +-property_name=
+                  | | |     +-Literal(type=STRING, value="id", has_explicit_type=TRUE)
+                  | | +-age#3 :=
+                  | |   +-GraphGetElementProperty
+                  | |     +-type=UINT32
+                  | |     +-expr=
+                  | |     | +-ColumnRef(type=GRAPH_NODE(aml)<age UINT32, balance UINT64, birthday DATE, data BYTES, id INT64, name STRING, syndicateData ARRAY<INT64>, syndicateId INT64, syndicateName STRING>, column=$element_table.a#1)
+                  | |     +-property=age(UINT32)
+                  | |     +-property_name=
+                  | |       +-Literal(type=STRING, value="age", has_explicit_type=TRUE)
+                  | +-input_scan=
+                  |   +-GraphRefScan(column_list=[$element_table.a#1])
+                  +-ProjectScan
+                  | +-column_list=$graph_table.[id#2, age#3]
+                  | +-input_scan=
+                  |   +-GraphRefScan(column_list=$graph_table.[id#2, age#3])
+                  +-ProjectScan
+                    +-column_list=$graph_table.[id#4, age#5]
+                    +-expr_list=
+                    | +-id#4 := ColumnRef(type=INT64, column=$graph_table.id#2)
+                    | +-age#5 := ColumnRef(type=UINT32, column=$graph_table.age#3)
+                    +-input_scan=
+                      +-GraphRefScan(column_list=$graph_table.[id#2, age#3])
+
+[SQLBUILDER_OUTPUT]
+SELECT
+  aml_1.a_5 AS id,
+  aml_1.a_6 AS age
+FROM
+  GRAPH_TABLE(
+    aml
+    MATCH
+      (a_2 IS (% | ! %))
+    WITH
+      a_2.id AS a_3,
+      a_2.age AS a_4
+    WITH
+      a_3,
+      a_4
+    RETURN
+      a_3 AS a_5,
+      a_4 AS a_6
+  ) AS aml_1;
+==
+
+# A hint on a standalone ORDER BY whose only item expands to nothing is likewise
+# dropped.
+select * from graph_table(
+  aml
+  match (a)
+  with a.id as id, a.age as age
+  order @{key=1} by **COLUMNS([])
+  return id, age
+)
+--
+QueryStmt
++-output_column_list=
+| +-$graph_table.id#4 AS id [INT64]
+| +-$graph_table.age#5 AS age [UINT32]
++-query=
+  +-ProjectScan
+    +-column_list=$graph_table.[id#4, age#5]
+    +-input_scan=
+      +-GraphTableScan
+        +-column_list=$graph_table.[id#4, age#5]
+        +-property_graph=aml
+        +-input_scan=
+          +-GraphLinearScan
+            +-column_list=$graph_table.[id#4, age#5]
+            +-scan_list=
+              +-GraphLinearScan
+                +-column_list=$graph_table.[id#4, age#5]
+                +-scan_list=
+                  +-GraphScan
+                  | +-column_list=[$element_table.a#1]
+                  | +-input_scan_list=
+                  | | +-GraphPathScan
+                  | |   +-column_list=[$element_table.a#1]
+                  | |   +-input_scan_list=
+                  | |   | +-GraphNodeScan
+                  | |   |   +-column_list=[$element_table.a#1]
+                  | |   |   +-label_expr=
+                  | |   |   | +-GraphLabelNaryExpr
+                  | |   |   |   +-op=OR
+                  | |   |   |   +-operand_list=
+                  | |   |   |     +-GraphWildCardLabel
+                  | |   |   |     +-GraphLabelNaryExpr
+                  | |   |   |       +-op=NOT
+                  | |   |   |       +-operand_list=
+                  | |   |   |         +-GraphWildCardLabel
+                  | |   |   +-target_element_table_list=[aml.Account,aml.Person,aml.Syndicate]
+                  | |   +-head=$element_table.a#1
+                  | |   +-tail=$element_table.a#1
+                  | +-input_scan=
+                  |   +-SingleRowScan
+                  +-ProjectScan
+                  | +-column_list=$graph_table.[id#2, age#3]
+                  | +-expr_list=
+                  | | +-id#2 :=
+                  | | | +-GraphGetElementProperty
+                  | | |   +-type=INT64
+                  | | |   +-expr=
+                  | | |   | +-ColumnRef(type=GRAPH_NODE(aml)<age UINT32, balance UINT64, birthday DATE, data BYTES, id INT64, name STRING, syndicateData ARRAY<INT64>, syndicateId INT64, syndicateName STRING>, column=$element_table.a#1)
+                  | | |   +-property=id(INT64)
+                  | | |   +-property_name=
+                  | | |     +-Literal(type=STRING, value="id", has_explicit_type=TRUE)
+                  | | +-age#3 :=
+                  | |   +-GraphGetElementProperty
+                  | |     +-type=UINT32
+                  | |     +-expr=
+                  | |     | +-ColumnRef(type=GRAPH_NODE(aml)<age UINT32, balance UINT64, birthday DATE, data BYTES, id INT64, name STRING, syndicateData ARRAY<INT64>, syndicateId INT64, syndicateName STRING>, column=$element_table.a#1)
+                  | |     +-property=age(UINT32)
+                  | |     +-property_name=
+                  | |       +-Literal(type=STRING, value="age", has_explicit_type=TRUE)
+                  | +-input_scan=
+                  |   +-GraphRefScan(column_list=[$element_table.a#1])
+                  +-ProjectScan
+                  | +-column_list=$graph_table.[id#2, age#3]
+                  | +-input_scan=
+                  |   +-GraphRefScan(column_list=$graph_table.[id#2, age#3])
+                  +-ProjectScan
+                    +-column_list=$graph_table.[id#4, age#5]
+                    +-expr_list=
+                    | +-id#4 := ColumnRef(type=INT64, column=$graph_table.id#2)
+                    | +-age#5 := ColumnRef(type=UINT32, column=$graph_table.age#3)
+                    +-input_scan=
+                      +-GraphRefScan(column_list=$graph_table.[id#2, age#3])
+
+[SQLBUILDER_OUTPUT]
+SELECT
+  aml_1.a_5 AS id,
+  aml_1.a_6 AS age
+FROM
+  GRAPH_TABLE(
+    aml
+    MATCH
+      (a_2 IS (% | ! %))
+    WITH
+      a_2.id AS a_3,
+      a_2.age AS a_4
+    WITH
+      a_3,
+      a_4
+    RETURN
+      a_3 AS a_5,
+      a_4 AS a_6
+  ) AS aml_1;
+==
+
+# ------------------------------------------------------------------------------
+# RETURN ... GROUP BY
+# ------------------------------------------------------------------------------
+
+# ** expands in place into grouping columns, resolved against the RETURN
+# aliases. A column grouped both explicitly and through an expansion, or
+# through two expansions, is grouped once. ORDER BY after GROUP BY resolves **
+# in the post-grouping scope.
+#
+# TODO: b/580835510 - The SQLBuilder output lists the ORDER BY items in column
+# id order (c before age) rather than query order. The alternation shows the
+# output is the same for an explicit column, so this is unrelated to **.
+select * from graph_table(
+  aml
+  match (a)
+  return a.id as id, a.age as age, count(*) as c
+  group by id, **COLUMNS(['age']), **COLUMNS(['id'])
+  order by {{**COLUMNS(['age'])|age}}, c
+)
+--
+QueryStmt
++-output_column_list=
+| +-$graph_table.id#5 AS id [INT64]
+| +-$graph_table.age#6 AS age [UINT32]
+| +-$graph_table.c#2 AS c [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=$graph_table.[id#5, age#6, c#2]
+    +-input_scan=
+      +-GraphTableScan
+        +-column_list=$graph_table.[id#5, age#6, c#2]
+        +-property_graph=aml
+        +-input_scan=
+          +-GraphLinearScan
+            +-column_list=$graph_table.[id#5, age#6, c#2]
+            +-scan_list=
+              +-GraphLinearScan
+                +-column_list=$graph_table.[id#5, age#6, c#2]
+                +-scan_list=
+                  +-GraphScan
+                  | +-column_list=[$element_table.a#1]
+                  | +-input_scan_list=
+                  | | +-GraphPathScan
+                  | |   +-column_list=[$element_table.a#1]
+                  | |   +-input_scan_list=
+                  | |   | +-GraphNodeScan
+                  | |   |   +-column_list=[$element_table.a#1]
+                  | |   |   +-label_expr=
+                  | |   |   | +-GraphLabelNaryExpr
+                  | |   |   |   +-op=OR
+                  | |   |   |   +-operand_list=
+                  | |   |   |     +-GraphWildCardLabel
+                  | |   |   |     +-GraphLabelNaryExpr
+                  | |   |   |       +-op=NOT
+                  | |   |   |       +-operand_list=
+                  | |   |   |         +-GraphWildCardLabel
+                  | |   |   +-target_element_table_list=[aml.Account,aml.Person,aml.Syndicate]
+                  | |   +-head=$element_table.a#1
+                  | |   +-tail=$element_table.a#1
+                  | +-input_scan=
+                  |   +-SingleRowScan
+                  +-OrderByScan
+                    +-column_list=$graph_table.[id#5, age#6, c#2]
+                    +-is_ordered=TRUE
+                    +-input_scan=
+                    | +-AggregateScan
+                    |   +-column_list=$graph_table.[id#5, age#6, c#2]
+                    |   +-input_scan=
+                    |   | +-ProjectScan
+                    |   |   +-column_list=[$element_table.a#1, $pre_groupby.id#3, $pre_groupby.age#4]
+                    |   |   +-expr_list=
+                    |   |   | +-id#3 :=
+                    |   |   | | +-GraphGetElementProperty
+                    |   |   | |   +-type=INT64
+                    |   |   | |   +-expr=
+                    |   |   | |   | +-ColumnRef(type=GRAPH_NODE(aml)<age UINT32, balance UINT64, birthday DATE, data BYTES, id INT64, name STRING, syndicateData ARRAY<INT64>, syndicateId INT64, syndicateName STRING>, column=$element_table.a#1)
+                    |   |   | |   +-property=id(INT64)
+                    |   |   | |   +-property_name=
+                    |   |   | |     +-Literal(type=STRING, value="id", has_explicit_type=TRUE)
+                    |   |   | +-age#4 :=
+                    |   |   |   +-GraphGetElementProperty
+                    |   |   |     +-type=UINT32
+                    |   |   |     +-expr=
+                    |   |   |     | +-ColumnRef(type=GRAPH_NODE(aml)<age UINT32, balance UINT64, birthday DATE, data BYTES, id INT64, name STRING, syndicateData ARRAY<INT64>, syndicateId INT64, syndicateName STRING>, column=$element_table.a#1)
+                    |   |   |     +-property=age(UINT32)
+                    |   |   |     +-property_name=
+                    |   |   |       +-Literal(type=STRING, value="age", has_explicit_type=TRUE)
+                    |   |   +-input_scan=
+                    |   |     +-GraphRefScan(column_list=[$element_table.a#1])
+                    |   +-group_by_list=
+                    |   | +-id#5 := ColumnRef(type=INT64, column=$pre_groupby.id#3)
+                    |   | +-age#6 := ColumnRef(type=UINT32, column=$pre_groupby.age#4)
+                    |   +-aggregate_list=
+                    |     +-c#2 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+                    +-order_by_item_list=
+                      +-OrderByItem
+                      | +-column_ref=
+                      |   +-ColumnRef(type=UINT32, column=$graph_table.age#6)
+                      +-OrderByItem
+                        +-column_ref=
+                          +-ColumnRef(type=INT64, column=$graph_table.c#2)
+
+[SQLBUILDER_OUTPUT]
+SELECT
+  aml_1.a_3 AS id,
+  aml_1.a_4 AS age,
+  aml_1.a_5 AS c
+FROM
+  GRAPH_TABLE(
+    aml
+    MATCH
+      (a_2 IS (% | ! %))
+    RETURN
+      a_2.id AS a_3,
+      a_2.age AS a_4,
+      COUNT(*) AS a_5
+    GROUP BY a_3, a_4
+    ORDER BY a_5, a_4
+  ) AS aml_1;
+==
+
+# An empty expansion leaves a whole-input aggregation with no grouping.
+select * from graph_table(
+  aml
+  match (a)
+  return sum(a.age) as age
+  group by **COLUMNS([])
+)
+--
+QueryStmt
++-output_column_list=
+| +-$graph_table.age#2 AS age [UINT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$graph_table.age#2]
+    +-input_scan=
+      +-GraphTableScan
+        +-column_list=[$graph_table.age#2]
+        +-property_graph=aml
+        +-input_scan=
+          +-GraphLinearScan
+            +-column_list=[$graph_table.age#2]
+            +-scan_list=
+              +-GraphLinearScan
+                +-column_list=[$graph_table.age#2]
+                +-scan_list=
+                  +-GraphScan
+                  | +-column_list=[$element_table.a#1]
+                  | +-input_scan_list=
+                  | | +-GraphPathScan
+                  | |   +-column_list=[$element_table.a#1]
+                  | |   +-input_scan_list=
+                  | |   | +-GraphNodeScan
+                  | |   |   +-column_list=[$element_table.a#1]
+                  | |   |   +-label_expr=
+                  | |   |   | +-GraphLabelNaryExpr
+                  | |   |   |   +-op=OR
+                  | |   |   |   +-operand_list=
+                  | |   |   |     +-GraphWildCardLabel
+                  | |   |   |     +-GraphLabelNaryExpr
+                  | |   |   |       +-op=NOT
+                  | |   |   |       +-operand_list=
+                  | |   |   |         +-GraphWildCardLabel
+                  | |   |   +-target_element_table_list=[aml.Account,aml.Person,aml.Syndicate]
+                  | |   +-head=$element_table.a#1
+                  | |   +-tail=$element_table.a#1
+                  | +-input_scan=
+                  |   +-SingleRowScan
+                  +-ProjectScan
+                    +-column_list=[$graph_table.age#2]
+                    +-input_scan=
+                      +-AggregateScan
+                        +-column_list=[$graph_table.age#2]
+                        +-input_scan=
+                        | +-GraphRefScan(column_list=[$element_table.a#1])
+                        +-aggregate_list=
+                          +-age#2 :=
+                            +-AggregateFunctionCall(GoogleSQL:sum(UINT64) -> UINT64)
+                              +-Cast(UINT32 -> UINT64)
+                                +-GraphGetElementProperty
+                                  +-type=UINT32
+                                  +-expr=
+                                  | +-ColumnRef(type=GRAPH_NODE(aml)<age UINT32, balance UINT64, birthday DATE, data BYTES, id INT64, name STRING, syndicateData ARRAY<INT64>, syndicateId INT64, syndicateName STRING>, column=$element_table.a#1)
+                                  +-property=age(UINT32)
+                                  +-property_name=
+                                    +-Literal(type=STRING, value="age", has_explicit_type=TRUE)
+
+[SQLBUILDER_OUTPUT]
+SELECT
+  aml_1.a_3 AS age
+FROM
+  GRAPH_TABLE(
+    aml
+    MATCH
+      (a_2 IS (% | ! %))
+    RETURN
+      SUM(CAST(a_2.age AS UINT64)) AS a_3
+  ) AS aml_1;
+==
+
+# ------------------------------------------------------------------------------
+# WITH ... GROUP BY
+# ------------------------------------------------------------------------------
+
+# WITH ... GROUP BY expands ** the same way, resolved against the WITH aliases.
+# A name repeated in the column list is grouped once.
+select * from graph_table(
+  aml
+  match (a)
+  with a.id as id, a.age as age, count(*) as c
+  group by id, **COLUMNS(['age', 'age'])
+  return id, age, c
+)
+--
+QueryStmt
++-output_column_list=
+| +-$graph_table.id#5 AS id [INT64]
+| +-$graph_table.age#6 AS age [UINT32]
+| +-$graph_table.c#7 AS c [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=$graph_table.[id#5, age#6, c#7]
+    +-input_scan=
+      +-GraphTableScan
+        +-column_list=$graph_table.[id#5, age#6, c#7]
+        +-property_graph=aml
+        +-input_scan=
+          +-GraphLinearScan
+            +-column_list=$graph_table.[id#5, age#6, c#7]
+            +-scan_list=
+              +-GraphLinearScan
+                +-column_list=$graph_table.[id#5, age#6, c#7]
+                +-scan_list=
+                  +-GraphScan
+                  | +-column_list=[$element_table.a#1]
+                  | +-input_scan_list=
+                  | | +-GraphPathScan
+                  | |   +-column_list=[$element_table.a#1]
+                  | |   +-input_scan_list=
+                  | |   | +-GraphNodeScan
+                  | |   |   +-column_list=[$element_table.a#1]
+                  | |   |   +-label_expr=
+                  | |   |   | +-GraphLabelNaryExpr
+                  | |   |   |   +-op=OR
+                  | |   |   |   +-operand_list=
+                  | |   |   |     +-GraphWildCardLabel
+                  | |   |   |     +-GraphLabelNaryExpr
+                  | |   |   |       +-op=NOT
+                  | |   |   |       +-operand_list=
+                  | |   |   |         +-GraphWildCardLabel
+                  | |   |   +-target_element_table_list=[aml.Account,aml.Person,aml.Syndicate]
+                  | |   +-head=$element_table.a#1
+                  | |   +-tail=$element_table.a#1
+                  | +-input_scan=
+                  |   +-SingleRowScan
+                  +-ProjectScan
+                  | +-column_list=$graph_table.[id#3, age#4, c#2]
+                  | +-input_scan=
+                  |   +-AggregateScan
+                  |     +-column_list=$graph_table.[id#3, age#4, c#2]
+                  |     +-input_scan=
+                  |     | +-GraphRefScan(column_list=[$element_table.a#1])
+                  |     +-group_by_list=
+                  |     | +-id#3 :=
+                  |     | | +-GraphGetElementProperty
+                  |     | |   +-type=INT64
+                  |     | |   +-expr=
+                  |     | |   | +-ColumnRef(type=GRAPH_NODE(aml)<age UINT32, balance UINT64, birthday DATE, data BYTES, id INT64, name STRING, syndicateData ARRAY<INT64>, syndicateId INT64, syndicateName STRING>, column=$element_table.a#1)
+                  |     | |   +-property=id(INT64)
+                  |     | |   +-property_name=
+                  |     | |     +-Literal(type=STRING, value="id", has_explicit_type=TRUE)
+                  |     | +-age#4 :=
+                  |     |   +-GraphGetElementProperty
+                  |     |     +-type=UINT32
+                  |     |     +-expr=
+                  |     |     | +-ColumnRef(type=GRAPH_NODE(aml)<age UINT32, balance UINT64, birthday DATE, data BYTES, id INT64, name STRING, syndicateData ARRAY<INT64>, syndicateId INT64, syndicateName STRING>, column=$element_table.a#1)
+                  |     |     +-property=age(UINT32)
+                  |     |     +-property_name=
+                  |     |       +-Literal(type=STRING, value="age", has_explicit_type=TRUE)
+                  |     +-aggregate_list=
+                  |       +-c#2 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+                  +-ProjectScan
+                    +-column_list=$graph_table.[id#5, age#6, c#7]
+                    +-expr_list=
+                    | +-id#5 := ColumnRef(type=INT64, column=$graph_table.id#3)
+                    | +-age#6 := ColumnRef(type=UINT32, column=$graph_table.age#4)
+                    | +-c#7 := ColumnRef(type=INT64, column=$graph_table.c#2)
+                    +-input_scan=
+                      +-GraphRefScan(column_list=$graph_table.[id#3, age#4, c#2])
+
+[SQLBUILDER_OUTPUT]
+SELECT
+  aml_1.a_6 AS id,
+  aml_1.a_7 AS age,
+  aml_1.a_8 AS c
+FROM
+  GRAPH_TABLE(
+    aml
+    MATCH
+      (a_2 IS (% | ! %))
+    WITH
+      a_2.id AS a_4,
+      a_2.age AS a_5,
+      COUNT(*) AS a_3
+    GROUP BY a_4, a_5
+    WITH
+      a_4,
+      a_5,
+      a_3
+    RETURN
+      a_4 AS a_6,
+      a_5 AS a_7,
+      a_3 AS a_8
+  ) AS aml_1;
+==
+
+# An empty expansion in WITH ... GROUP BY leaves a whole-input aggregation.
+select * from graph_table(
+  aml
+  match (a)
+  with sum(a.age) as age
+  group by **COLUMNS([])
+  return age
+)
+--
+QueryStmt
++-output_column_list=
+| +-$graph_table.age#3 AS age [UINT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$graph_table.age#3]
+    +-input_scan=
+      +-GraphTableScan
+        +-column_list=[$graph_table.age#3]
+        +-property_graph=aml
+        +-input_scan=
+          +-GraphLinearScan
+            +-column_list=[$graph_table.age#3]
+            +-scan_list=
+              +-GraphLinearScan
+                +-column_list=[$graph_table.age#3]
+                +-scan_list=
+                  +-GraphScan
+                  | +-column_list=[$element_table.a#1]
+                  | +-input_scan_list=
+                  | | +-GraphPathScan
+                  | |   +-column_list=[$element_table.a#1]
+                  | |   +-input_scan_list=
+                  | |   | +-GraphNodeScan
+                  | |   |   +-column_list=[$element_table.a#1]
+                  | |   |   +-label_expr=
+                  | |   |   | +-GraphLabelNaryExpr
+                  | |   |   |   +-op=OR
+                  | |   |   |   +-operand_list=
+                  | |   |   |     +-GraphWildCardLabel
+                  | |   |   |     +-GraphLabelNaryExpr
+                  | |   |   |       +-op=NOT
+                  | |   |   |       +-operand_list=
+                  | |   |   |         +-GraphWildCardLabel
+                  | |   |   +-target_element_table_list=[aml.Account,aml.Person,aml.Syndicate]
+                  | |   +-head=$element_table.a#1
+                  | |   +-tail=$element_table.a#1
+                  | +-input_scan=
+                  |   +-SingleRowScan
+                  +-ProjectScan
+                  | +-column_list=[$graph_table.age#2]
+                  | +-input_scan=
+                  |   +-AggregateScan
+                  |     +-column_list=[$graph_table.age#2]
+                  |     +-input_scan=
+                  |     | +-GraphRefScan(column_list=[$element_table.a#1])
+                  |     +-aggregate_list=
+                  |       +-age#2 :=
+                  |         +-AggregateFunctionCall(GoogleSQL:sum(UINT64) -> UINT64)
+                  |           +-Cast(UINT32 -> UINT64)
+                  |             +-GraphGetElementProperty
+                  |               +-type=UINT32
+                  |               +-expr=
+                  |               | +-ColumnRef(type=GRAPH_NODE(aml)<age UINT32, balance UINT64, birthday DATE, data BYTES, id INT64, name STRING, syndicateData ARRAY<INT64>, syndicateId INT64, syndicateName STRING>, column=$element_table.a#1)
+                  |               +-property=age(UINT32)
+                  |               +-property_name=
+                  |                 +-Literal(type=STRING, value="age", has_explicit_type=TRUE)
+                  +-ProjectScan
+                    +-column_list=[$graph_table.age#3]
+                    +-expr_list=
+                    | +-age#3 := ColumnRef(type=UINT64, column=$graph_table.age#2)
+                    +-input_scan=
+                      +-GraphRefScan(column_list=[$graph_table.age#2])
+
+[SQLBUILDER_OUTPUT]
+SELECT
+  aml_1.a_4 AS age
+FROM
+  GRAPH_TABLE(
+    aml
+    MATCH
+      (a_2 IS (% | ! %))
+    WITH
+      SUM(CAST(a_2.age AS UINT64)) AS a_3
+    WITH
+      a_3
+    RETURN
+      a_3 AS a_4
+  ) AS aml_1;
+==
+
+################################################################################
+#
+# Negative cases
+#
+################################################################################
+
+# A name in the column list that matches no column is an error, in GROUP BY and
+# ORDER BY alike.
+select * from graph_table(
+  aml
+  match (a)
+  return a.id as id
+  {{group|order}} by **COLUMNS(['bogus'])
+)
+--
+ALTERNATION GROUP: group
+--
+ERROR: Name bogus not found in the current scope [at 5:14]
+  group by **COLUMNS(['bogus'])
+             ^
+--
+ALTERNATION GROUP: order
+--
+ERROR: Name bogus not found in the current scope [at 5:14]
+  order by **COLUMNS(['bogus'])
+             ^
+==
+
+# A column of an unorderable type is rejected the same way as when it is listed
+# explicitly.
+select * from graph_table(
+  aml
+  match (a)
+  with a, a.id as id
+  order by **COLUMNS(['a'])
+  return id
+)
+--
+ERROR: ORDER BY does not support expressions of type GRAPH_NODE(aml)<age UINT32, balance UINT64, birthday DATE, ...> [at 5:12]
+  order by **COLUMNS(['a'])
+           ^
+==
+
+# ** in GQL GROUP BY and ORDER BY requires COLUMN_LIST_SPEC.
+[language_features=MAXIMUM,-COLUMN_LIST_SPEC]
+select * from graph_table(
+  aml
+  match (a)
+  return a.id as id
+  {{group|order}} by **COLUMNS(['id'])
+)
+--
+ALTERNATION GROUP: group
+--
+ERROR: Unpack expression is not supported [at 5:12]
+  group by **COLUMNS(['id'])
+           ^
+--
+ALTERNATION GROUP: order
+--
+ERROR: Unpack expression is not supported [at 5:12]
+  order by **COLUMNS(['id'])
+           ^
+==
+
+# The same holds for WITH ... GROUP BY and the standalone ORDER BY.
+[language_features=MAXIMUM,-COLUMN_LIST_SPEC]
+select * from graph_table(
+  aml
+  match (a)
+  with a.id as id
+  {{group|order}} by **COLUMNS(['id'])
+  return id
+)
+--
+ALTERNATION GROUP: group
+--
+ERROR: Unpack expression is not supported [at 5:12]
+  group by **COLUMNS(['id'])
+           ^
+--
+ALTERNATION GROUP: order
+--
+ERROR: Unpack expression is not supported [at 5:12]
+  order by **COLUMNS(['id'])
+           ^

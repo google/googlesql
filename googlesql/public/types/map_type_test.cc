@@ -78,7 +78,7 @@ const auto kSimpleTypes = {
 INSTANTIATE_TEST_SUITE_P(
     TypeTest, MapTestAllSimpleTypes, testing::ValuesIn(kSimpleTypes),
     [](const testing::TestParamInfo<MapTestAllSimpleTypes::ParamType>& info) {
-      return TypeKind_Name(info.param);
+      return std::string(TypeKind_Name(info.param));
     });
 
 // Asserts map type conformance to Type's Is...() and As...() methods, and

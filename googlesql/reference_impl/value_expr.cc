@@ -582,6 +582,15 @@ bool NewMapExpr::Eval(absl::Span<const TupleData* const> params,
     evaled_entries.emplace_back(std::move(key_val), std::move(value_val));
   }
 
+  // If any two entries have keys that match under bag equality with uncertain
+  // array order, whether they collide as duplicate keys (and fail map
+  // construction) depends on arbitrary array element ordering, making the
+  // output non-deterministic.
+  if (context->IsDeterministicOutput() &&
+      HasBagEquatableKeyCollision(evaled_entries)) {
+    context->SetNonDeterministicOutput();
+  }
+
   auto map_val_or_status =
       Value::MakeMap(output_type()->AsMap(), std::move(evaled_entries));
   if (!map_val_or_status.ok()) {
@@ -4758,7 +4767,6 @@ absl::StatusOr<int64_t> DMLInsertValueExpr::InsertRows(
       found_primary_key_collision = true;
       switch (stmt()->insert_mode()) {
         case ResolvedInsertStmt::OR_ERROR: {
-          const std::string row_indent = "    ";
           return googlesql_base::OutOfRangeErrorBuilder()
                  << "Failed to insert row with primary key ("
                  << primary_key.ShortDebugString() << ")"

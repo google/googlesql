@@ -267,12 +267,12 @@ cc_library(
         "//googlesql/base:stl_util",
         "//googlesql/base:strings",
         "//googlesql/base:varsetter",
-        "//googlesql/common:builtin_function_internal",
         "//googlesql/common:constant_utils",
         "//googlesql/common:errors",
         "//googlesql/common:graph_element_utils",
         "//googlesql/common:internal_analyzer_options",
         "//googlesql/common:internal_analyzer_output_properties",
+        "//googlesql/common:json_conversion_utils",
         "//googlesql/common:measure_utils",
         "//googlesql/common:reflection_cc_proto",
         "//googlesql/common:reflection_helper",
@@ -360,7 +360,6 @@ cc_library(
         "@com_google_absl//absl/container:node_hash_map",
         "@com_google_absl//absl/flags:flag",
         "@com_google_absl//absl/functional:any_invocable",
-        "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
@@ -447,6 +446,7 @@ cc_library(
         "//googlesql/analyzer/rewriters:aggregation_threshold_rewriter",
         "//googlesql/analyzer/rewriters:anonymization_rewriter",
         "//googlesql/analyzer/rewriters:builtin_function_inliner",
+        "//googlesql/analyzer/rewriters:delete_with_join_rewriter",
         "//googlesql/analyzer/rewriters:flatten_rewriter",
         "//googlesql/analyzer/rewriters:generalized_query_stmt_rewriter",
         "//googlesql/analyzer/rewriters:grouping_set_rewriter",
@@ -551,7 +551,7 @@ cc_library(
 
 cc_test(
     name = "resolver_test",
-    size = "small",
+    size = "medium",
     srcs = ["resolver_test.cc"],
     deps = [
         ":name_scope",

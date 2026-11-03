@@ -93,6 +93,15 @@ class SimpleCatalog : public EnumerableCatalog {
                         const FindOptions& options) override
       ABSL_LOCKS_EXCLUDED(mutex_);
 
+  // Looks up tables added with AddTableForStringLiteral or
+  // AddOwnedTableForStringLiteral.  The lookup is case-sensitive and matches
+  // the exact (unescaped) literal content.
+  using Catalog::FindTableFromString;
+  absl::Status FindTableFromString(absl::string_view table_literal,
+                                   const Table** table,
+                                   const FindOptions& options) override
+      ABSL_LOCKS_EXCLUDED(mutex_);
+
   using Catalog::GetModel;
   absl::Status GetModel(const std::string& name, const Model** model,
                         const FindOptions& options) override
@@ -202,6 +211,17 @@ class SimpleCatalog : public EnumerableCatalog {
   void AddOwnedTable(absl::string_view name, const Table* table);
   void AddOwnedTable(const Table* table) ABSL_LOCKS_EXCLUDED(mutex_);
 
+  // Adds `table` so that FindTableFromString resolves it from the exact STRING
+  // literal `table_literal`, such as FROM '/path/to/file.csv'
+  // (FEATURE_STRING_LITERAL_TABLE_REFERENCES).  Identifier lookups such as
+  // FindTable never return these tables.  Crashes if `table_literal` was
+  // already added.
+  void AddTableForStringLiteral(absl::string_view table_literal,
+                                const Table* table) ABSL_LOCKS_EXCLUDED(mutex_);
+  void AddOwnedTableForStringLiteral(absl::string_view table_literal,
+                                     std::unique_ptr<const Table> table)
+      ABSL_LOCKS_EXCLUDED(mutex_);
+
   // Models
   void AddModel(absl::string_view name, const Model* model)
       ABSL_LOCKS_EXCLUDED(mutex_);
@@ -263,6 +283,14 @@ class SimpleCatalog : public EnumerableCatalog {
   void AddFunction(absl::string_view name, const Function* function)
       ABSL_LOCKS_EXCLUDED(mutex_);
   void AddFunction(const Function* function) ABSL_LOCKS_EXCLUDED(mutex_);
+  // Returns true if `function` is actually inserted, false if a function with
+  // `name` was already added.
+  bool AddFunctionIfNotPresent(absl::string_view name, const Function* function)
+      ABSL_LOCKS_EXCLUDED(mutex_);
+  // Returns true if `function` is actually inserted, false if a function with
+  // the same name as `function` was already added.
+  bool AddFunctionIfNotPresent(const Function* function)
+      ABSL_LOCKS_EXCLUDED(mutex_);
   void AddOwnedFunction(absl::string_view name,
                         std::unique_ptr<const Function> function);
   void AddOwnedFunction(std::unique_ptr<const Function> function)
@@ -280,6 +308,11 @@ class SimpleCatalog : public EnumerableCatalog {
                               const TableValuedFunction* function)
       ABSL_LOCKS_EXCLUDED(mutex_);
   void AddTableValuedFunction(const TableValuedFunction* function)
+      ABSL_LOCKS_EXCLUDED(mutex_);
+  bool AddTableValuedFunctionIfNotPresent(absl::string_view name,
+                                          const TableValuedFunction* function)
+      ABSL_LOCKS_EXCLUDED(mutex_);
+  bool AddTableValuedFunctionIfNotPresent(const TableValuedFunction* function)
       ABSL_LOCKS_EXCLUDED(mutex_);
   void AddOwnedTableValuedFunction(
       absl::string_view name,
@@ -476,8 +509,8 @@ class SimpleCatalog : public EnumerableCatalog {
   }
 
   // Removes all tables that satisfy <predicate> from this catalog and from
-  // all sub-catalogs that are SimpleCatalog. Returns the number of tables
-  // removed.
+  // all sub-catalogs that are SimpleCatalog, including tables added for STRING
+  // literals. Returns the number of tables removed.
   //
   // Owned tables that are removed are de-allocated after all calls to
   // <predicate> are complete so that <predicate> can safely
@@ -679,11 +712,17 @@ class SimpleCatalog : public EnumerableCatalog {
   // to use a common locked implementation, similar to these for Function.
   void AddFunctionLocked(absl::string_view name, const Function* function)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  bool AddFunctionIfNotPresentLocked(absl::string_view name,
+                                     const Function* function)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
   void AddOwnedFunctionLocked(absl::string_view name,
                               std::unique_ptr<const Function> function)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
   void AddTableValuedFunctionLocked(absl::string_view name,
                                     const TableValuedFunction* table_function)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  bool AddTableValuedFunctionIfNotPresentLocked(
+      absl::string_view name, const TableValuedFunction* table_function)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
   void AddOwnedTableValuedFunctionLocked(
       absl::string_view name,
@@ -748,6 +787,10 @@ class SimpleCatalog : public EnumerableCatalog {
   // as well
   absl::flat_hash_set<std::string> global_names_ ABSL_GUARDED_BY(mutex_);
   absl::flat_hash_map<std::string, const Table*> tables_
+      ABSL_GUARDED_BY(mutex_);
+  // Tables found by FindTableFromString, keyed by the exact literal content.
+  // TODO: b/568351814 - Serialize these in SimpleCatalogProto.
+  absl::flat_hash_map<std::string, const Table*> string_literal_tables_
       ABSL_GUARDED_BY(mutex_);
   absl::flat_hash_map<std::string, const Connection*> connections_
       ABSL_GUARDED_BY(mutex_);

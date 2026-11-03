@@ -47,6 +47,53 @@
 namespace googlesql {
 namespace {
 
+bool MapHasBagEquatableKeyMatch(const Value& map, const Value& key) {
+  if (map.is_null()) {
+    return false;
+  }
+  return absl::c_any_of(map.map_entries(),
+                        [&](const std::pair<const Value, Value>& entry) {
+                          return AreValuesBagEquatable(key, entry.first);
+                        });
+}
+
+// Returns true if any key in `keys` bag-equatable matches an existing key in
+// `map` or another key in `keys` using bag equality with uncertain array order.
+// Comparing `keys` against each other is necessary because map modification
+// functions (MAP_INSERT, MAP_INSERT_OR_REPLACE, MAP_REPLACE) accept multiple
+// keys in a single call and reject duplicate key arguments with an evaluation
+// error. Even if neither key is already in `map`, two bag-equatable argument
+// keys (e.g. unordered [1, 2] and [2, 1]) may or may not collide depending on
+// arbitrary array element ordering.
+bool HasBagEquatableKeys(const Value& map, absl::Span<const Value> keys) {
+  if (map.is_null()) {
+    return false;
+  }
+  for (size_t i = 0; i < keys.size(); ++i) {
+    if (MapHasBagEquatableKeyMatch(map, keys[i])) {
+      return true;
+    }
+    for (size_t j = i + 1; j < keys.size(); ++j) {
+      if (AreValuesBagEquatable(keys[i], keys[j])) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+bool MapHasKeyWithUncertainOrder(const Value& map) {
+  if (map.is_null()) {
+    return false;
+  }
+  for (const auto& [key, _] : map.map_entries()) {
+    if (InternalValue::ContainsArrayWithUncertainOrder(key)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 class MapFromArrayFunction : public SimpleBuiltinScalarFunction {
  public:
   MapFromArrayFunction(FunctionKind kind, const Type* output_type)
@@ -73,7 +120,7 @@ class MapFromArrayFunction : public SimpleBuiltinScalarFunction {
       return Value::Null(map_type);
     }
 
-    std::vector<std::pair<const Value, const Value>> map_entries;
+    std::vector<std::pair<Value, Value>> map_entries;
     map_entries.reserve(array_arg.elements().size());
     for (const auto& struct_val : array_arg.elements()) {
       if (struct_val.is_null()) {
@@ -82,6 +129,11 @@ class MapFromArrayFunction : public SimpleBuiltinScalarFunction {
       }
       map_entries.push_back(
           std::make_pair(struct_val.fields()[0], struct_val.fields()[1]));
+    }
+
+    if (context->IsDeterministicOutput() &&
+        HasBagEquatableKeyCollision(map_entries)) {
+      context->SetNonDeterministicOutput();
     }
 
     return Value::MakeMap(map_type, std::move(map_entries));
@@ -138,6 +190,14 @@ class MapEntriesFunction : public SimpleBuiltinScalarFunction {
                                : InternalValue::kPreservesOrder;
         break;
       case FunctionKind::kMapEntriesSorted:
+        // Output array has kPreservesOrder. If the map has >= 2 entries and any
+        // key contains an array with uncertain order, the relative sort order
+        // between entries depends on arbitrary array element ordering, making
+        // the sorted array non-deterministic.
+        if (context->IsDeterministicOutput() && map_arg.num_elements() > 1 &&
+            MapHasKeyWithUncertainOrder(map_arg)) {
+          context->SetNonDeterministicOutput();
+        }
         array_order_kind = InternalValue::kPreservesOrder;
         break;
       default:
@@ -163,7 +223,7 @@ inline absl::Status CheckTypeEquivalentToMapKeyType(const Type* type,
 // Returns the value associated with `key` in `map`. If `key` is not present,
 // return `result_if_missing`, or error if `result_if_missing` is null.
 absl::StatusOr<Value> ValueLookupImpl(
-    const Value& map, const Value& key,
+    const Value& map, const Value& key, EvaluationContext* context,
     const Value* result_if_missing = nullptr) {
   GOOGLESQL_RET_CHECK(map.type()->IsMap()) << map.type()->DebugString();
   const MapType* map_type = map.type()->AsMap();
@@ -178,6 +238,11 @@ absl::StatusOr<Value> ValueLookupImpl(
         << "Map value type mismatch. Expected: "
         << map_type->value_type()->DebugString()
         << " but got: " << result_if_missing->type()->DebugString();
+  }
+
+  if (context->IsDeterministicOutput() &&
+      MapHasBagEquatableKeyMatch(map, key)) {
+    context->SetNonDeterministicOutput();
   }
 
   auto it = map.map_entries().find(key);
@@ -203,7 +268,7 @@ class MapGetFunction : public SimpleBuiltinScalarFunction {
 
     const Value& result_if_missing =
         args.size() == 3 ? args[2] : Value::Null(output_type());
-    return ValueLookupImpl(args[0], args[1], &result_if_missing);
+    return ValueLookupImpl(args[0], args[1], context, &result_if_missing);
   }
 };
 
@@ -216,7 +281,7 @@ class MapSubscriptFunction : public SimpleBuiltinScalarFunction {
                              EvaluationContext* context) const override {
     GOOGLESQL_RET_CHECK_EQ(args.size(), 2);
     const Value result_if_missing = Value::Null(output_type());
-    return ValueLookupImpl(args[0], args[1], &result_if_missing);
+    return ValueLookupImpl(args[0], args[1], context, &result_if_missing);
   }
 };
 
@@ -229,7 +294,7 @@ class MapSubscriptWithKeyFunction : public SimpleBuiltinScalarFunction {
                              absl::Span<const Value> args,
                              EvaluationContext* context) const override {
     GOOGLESQL_RET_CHECK_EQ(args.size(), 2);
-    auto result = ValueLookupImpl(args[0], args[1]);
+    absl::StatusOr<Value> result = ValueLookupImpl(args[0], args[1], context);
     if (kind() == FunctionKind::kMapSubscriptWithKey) {
       return result;
     }
@@ -264,6 +329,11 @@ class MapContainsKeyFunction : public SimpleBuiltinScalarFunction {
     GOOGLESQL_RET_CHECK(map.type()->IsMap()) << map.type()->DebugString();
     const MapType* map_type = map.type()->AsMap();
     GOOGLESQL_RETURN_IF_ERROR(CheckTypeEquivalentToMapKeyType(key.type(), map_type));
+
+    if (context->IsDeterministicOutput() &&
+        MapHasBagEquatableKeyMatch(map, key)) {
+      context->SetNonDeterministicOutput();
+    }
 
     return Value::Bool(map.map_entries().contains(key));
   }
@@ -321,9 +391,18 @@ absl::StatusOr<Value> MapKeysOrValuesListFunctionImpl(
         << no_ordering_type;
 
     if (order_by == OrderBy::kByValue) {
+      if (context->IsDeterministicOutput() && result.size() > 1 &&
+          absl::c_any_of(result, [](const Value& v) {
+            return InternalValue::ContainsArrayWithUncertainOrder(v);
+          })) {
+        context->SetNonDeterministicOutput();
+      }
       // MAP is always ordered by key in the reference implementation, so an
       // additional sort operation is only necessary when ordering by value.
       absl::c_sort(result, [](auto& a, auto& b) { return a.LessThan(b); });
+    } else if (context->IsDeterministicOutput() && result.size() > 1 &&
+               MapHasKeyWithUncertainOrder(map)) {
+      context->SetNonDeterministicOutput();
     }
   }
 
@@ -479,6 +558,17 @@ static inline absl::StatusOr<Value> PairwiseMapModificationFunctionImpl(
   // (size - 1) because the first argument is the map, which we don't include.
   const size_t keys_to_modify_count = (args.size() - 1) / 2;
 
+  if (context->IsDeterministicOutput()) {
+    std::vector<Value> keys;
+    keys.reserve(keys_to_modify_count);
+    for (size_t i = 1; i < args.size(); i += 2) {
+      keys.push_back(args[i]);
+    }
+    if (HasBagEquatableKeys(map, keys)) {
+      context->SetNonDeterministicOutput();
+    }
+  }
+
   absl::flat_hash_set<Value> keys_to_insert;
   keys_to_insert.reserve(keys_to_modify_count);
   std::vector<std::pair<Value, Value>> map_entries;
@@ -569,6 +659,11 @@ class MapReplaceKeysAndLambdaFunction : public SimpleBuiltinScalarFunction {
       return Value::Null(output_type());
     }
 
+    if (context->IsDeterministicOutput() &&
+        HasBagEquatableKeys(map, args.subspan(1))) {
+      context->SetNonDeterministicOutput();
+    }
+
     // The last argument in the args list is the lambda.
     const googlesql_base::optional_ref<AlgebraArg>& last_arg =
         extended_args()[extended_args().size() - 1];
@@ -638,6 +733,19 @@ class MapDeleteFunction : public SimpleBuiltinScalarFunction {
 
     if (map.is_null()) {
       return Value::Null(output_type());
+    }
+
+    // If any key to delete matches an existing key under bag equality with
+    // uncertain array order, whether that key is found and deleted depends on
+    // arbitrary array element ordering, making the resulting map
+    // non-deterministic.
+    if (context->IsDeterministicOutput()) {
+      for (int i = 1; i < args.size(); ++i) {
+        if (MapHasBagEquatableKeyMatch(map, args[i])) {
+          context->SetNonDeterministicOutput();
+          break;
+        }
+      }
     }
 
     absl::flat_hash_set<Value> keys_to_delete;

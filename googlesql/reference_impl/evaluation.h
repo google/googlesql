@@ -43,10 +43,11 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/time/clock_interface.h"
 #include "absl/time/time.h"
+#include "absl/types/span.h"
 #include "googlesql/base/ret_check.h"
 #include "googlesql/base/map_util.h"
-#include "googlesql/base/clock.h"
 
 // See description in the cc file.
 ABSL_DECLARE_FLAG(int64_t, googlesql_call_verify_not_aborted_rows_period);
@@ -237,7 +238,7 @@ class EvaluationContext {
   // Units are microseconds since the unix epoch UTC.
   // The GoogleSQL spec requires that all timestamps are within the range of
   // years [1, 9999].
-  void SetClockAndClearCurrentTimestamp(googlesql_base::Clock* clock) {
+  void SetClockAndClearCurrentTimestamp(absl::Clock* clock) {
     clock_ = clock;
     current_timestamp_.reset();
   }
@@ -279,7 +280,7 @@ class EvaluationContext {
   // and an error will be returned.
   void SetStatementEvaluationDeadlineFromNow(absl::Duration time_limit) {
     statement_eval_deadline_ =
-        ::googlesql_base::Clock::RealClock()->TimeNow() + time_limit;
+        absl::Clock::GetRealClock().TimeNow() + time_limit;
   }
 
   // Sets the statement evaluation deadline.
@@ -470,7 +471,7 @@ class EvaluationContext {
   std::vector<CancelCallback> cancel_cbs_;
 
   // Used to obtain the current timestamp.
-  googlesql_base::Clock* clock_ = googlesql_base::Clock::RealClock();
+  absl::Clock* clock_ = &absl::Clock::GetRealClock();
 
   // Lazily initialized because not all queries need them, and initializing them
   // is expensive.
@@ -537,6 +538,36 @@ absl::Status PeriodicallyVerifyNotAborted(EvaluationContext* context,
 absl::StatusOr<Value> ReplaceStringsWithCollationKeys(
     const Value& value, const Type* output_type,
     const GoogleSqlCollator* collator);
+
+// Bag-equality (multiset equality) compares two collections such that element
+// multiplicity matters, but element order does not. For example, [1, 2] and
+// [2, 1] are bag-equal, but [1, 2] and [1, 2, 2] are not. In GoogleSQL,
+// arrays with `kIgnoresOrder` (e.g. produced by an ARRAY subquery without an
+// explicit ORDER BY) are compared using bag equality under
+// `InternalValue::Equals`.
+
+// Returns true if `v1` and `v2` are equal using bag equality for any nested
+// unordered arrays (`kIgnoresOrder`), and at least one value contains an array
+// with uncertain order (an unordered array with >= 2 distinct elements).
+//
+// In GoogleSQL MAP operations, keys are compared using strict ordered array
+// equality. When keys contain unordered arrays (e.g., from an ARRAY subquery
+// without ORDER BY), their physical element order is arbitrary. If two keys
+// match under bag equality but contain uncertainly-ordered arrays (for example,
+// v1 = [1, 2] (kIgnoresOrder) and v2 = [2, 1]), their strict equality is
+// non-deterministic because they can match under some element orderings but
+// not others.
+bool AreValuesBagEquatable(const Value& v1, const Value& v2);
+
+// Returns true if `map_entries` contains any pair of keys that are
+// bag-equatable with uncertain array order, which would make duplicate-key
+// collision non-deterministic.
+//
+// Takes `map_entries` (pairs of key and value) directly to inspect map key
+// collisions prior to calling `Value::MakeMap` without allocating an
+// intermediate vector to extract keys.
+bool HasBagEquatableKeyCollision(
+    absl::Span<const std::pair<Value, Value>> map_entries);
 
 }  // namespace googlesql
 

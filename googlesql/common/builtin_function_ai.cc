@@ -28,11 +28,13 @@
 #include "googlesql/public/function_signature.h"
 #include "googlesql/public/options.pb.h"
 #include "googlesql/public/type.h"
+#include "absl/functional/bind_front.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "googlesql/base/status_macros.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "googlesql/base/ret_check.h"
@@ -78,13 +80,51 @@ static absl::Status ValidateStructPrompt(
   return absl::OkStatus();
 }
 
+// Verifies that the `AI.IF` `options` argument has a `STRUCT` type for
+// signatures where `options` uses `ARG_KIND_EXPR_ARBITRARY`. Returns a
+// signature mismatch message if `options` is not a `STRUCT`, or an empty string
+// otherwise.
+static std::string CheckStructForAiIfOptionsConstraint(
+    ProductMode product_mode, const FunctionSignature& matched_signature,
+    absl::Span<const InputArgumentType> arguments) {
+  const FunctionArgumentTypeList& matched_signature_args =
+      matched_signature.arguments();
+  if (!matched_signature_args.empty() && !arguments.empty()) {
+    const FunctionArgumentType& last_arg = matched_signature_args.back();
+    if (last_arg.argument_name() == kOptionsArgName &&
+        last_arg.original_kind() == ARG_KIND_EXPR_ARBITRARY) {
+      const InputArgumentType& options_arg = arguments.back();
+      if (options_arg.type() == nullptr || !options_arg.type()->IsStruct()) {
+        return absl::StrCat(
+            "Named argument `options`: expected STRUCT but found ",
+            options_arg.UserFacingName(product_mode));
+      }
+    }
+  }
+  return "";
+}
+
+// Formats the SQL representation of an `AI.IF` call or signature. Replaces
+// `options => ANY` with `options => STRUCT` in user-facing signature strings,
+// since `ARG_KIND_EXPR_ARBITRARY` is used to represent the `STRUCT` overload of
+// `options`.
+static std::string AiIfFunctionSQL(absl::Span<const std::string> inputs) {
+  if (!inputs.empty() && inputs.back() == "options => ANY") {
+    std::vector<std::string> updated_inputs(inputs.begin(), inputs.end());
+    updated_inputs.back() = "options => STRUCT";
+    return absl::StrCat("AI.IF(", absl::StrJoin(updated_inputs, ", "), ")");
+  }
+  return absl::StrCat("AI.IF(", absl::StrJoin(inputs, ", "), ")");
+}
+
 // Generates the string version of a signature ID from a list of `args`.
 static absl::StatusOr<std::string> GetSignatureIdFromArgs(
     const FunctionArgumentTypeList& args) {
   std::string id = "FN_AI_IF_WITH";
   for (const FunctionArgumentType& arg : args) {
     std::string arg_name_upper = absl::AsciiStrToUpper(arg.argument_name());
-    if (arg.kind() == ARG_KIND_EXPR_STRUCT_ANY) {
+    if (arg.kind() == ARG_KIND_EXPR_STRUCT_ANY ||
+        arg.kind() == ARG_KIND_EXPR_ARBITRARY) {
       absl::StrAppend(&id, "_STRUCT_", arg_name_upper);
     } else if (arg.kind() == ARG_KIND_EXPR_ANY_1) {
       absl::StrAppend(&id, "_ANY_", arg_name_upper);
@@ -160,9 +200,14 @@ std::vector<FunctionArgumentTypeList> GenerateAiIfSignatureArgs() {
   std::vector<std::optional<FunctionArgumentType>> model_arg_types = {
       std::nullopt, FunctionArgumentType(string_type, model_arg_type_options),
       FunctionArgumentType(ARG_KIND_MODEL, model_arg_type_options)};
+  // Use `ARG_KIND_EXPR_ARBITRARY` (constrained to `STRUCT` via
+  // `CheckStructForAiIfOptionsConstraint`) instead of
+  // `ARG_KIND_EXPR_STRUCT_ANY` for the `STRUCT` overload of `options` so that
+  // `prompt` and `options` are not forced to share a common `STRUCT` type
+  // during signature matching.
   std::vector<std::optional<FunctionArgumentType>> options_arg_types = {
       std::nullopt, FunctionArgumentType(json_type, options_arg_type_options),
-      FunctionArgumentType(ARG_KIND_EXPR_STRUCT_ANY, options_arg_type_options),
+      FunctionArgumentType(ARG_KIND_EXPR_ARBITRARY, options_arg_type_options),
       FunctionArgumentType(string_type, options_arg_type_options)};
 
   std::vector<FunctionArgumentTypeList> all_sigs;
@@ -193,7 +238,8 @@ absl::Status GetAIFunctions(TypeFactory* /*type_factory*/,
   FunctionOptions function_options =
       FunctionOptions()
           .set_volatility(FunctionEnums::VOLATILE)
-          .set_post_resolution_argument_constraint(ValidateStructPrompt);
+          .set_post_resolution_argument_constraint(ValidateStructPrompt)
+          .set_get_sql_callback(&AiIfFunctionSQL);
 
   // Generate all AI.IF signature argument combinations first.
   std::vector<FunctionArgumentTypeList> all_ai_if_signature_args =
@@ -209,9 +255,21 @@ absl::Status GetAIFunctions(TypeFactory* /*type_factory*/,
                      GetSignatureIdFromArgs(signature_arg));
     GOOGLESQL_RET_CHECK(FunctionSignatureId_Parse(signature_id, &enum_id))
         << "Failed to parse signature id: " << signature_id;
+
+    // Only the `STRUCT` overload for `options` (which is always the last
+    // argument when present) uses `ARG_KIND_EXPR_ARBITRARY`. Attach a
+    // signature constraint to restrict it to `STRUCT` types.
+    FunctionSignatureOptions signature_options;
+    if (!signature_arg.empty() &&
+        signature_arg.back().argument_name() == kOptionsArgName &&
+        signature_arg.back().kind() == ARG_KIND_EXPR_ARBITRARY) {
+      signature_options.set_constraints(
+          absl::bind_front(&CheckStructForAiIfOptionsConstraint,
+                           options.language_options.product_mode()));
+    }
     ai_if_signatures.push_back({/*result_type=*/types::BoolType(),
                                 /*arguments=*/signature_arg,
-                                /*context_id=*/enum_id});
+                                /*context_id=*/enum_id, signature_options});
   }
 
   InsertNamespaceFunction(functions, options, "ai", "if", Function::SCALAR,

@@ -19,7 +19,7 @@ load("@com_google_protobuf//bazel:java_proto_library.bzl", "java_proto_library")
 load("@com_google_protobuf//bazel:proto_library.bzl", "proto_library")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_cc//cc:cc_test.bzl", "cc_test")
-load("@rules_python//python:defs.bzl", "py_binary")
+load("@rules_python//python:defs.bzl", "py_binary", "py_library")
 load("@rules_python//python:proto.bzl", "py_proto_library")
 load("//googlesql/resolved_ast:build_rules.bzl", "gen_resolved_ast_files")
 
@@ -32,12 +32,20 @@ package_group(
     ],
 )
 
+# Column visibility annotations for gen_resolved_ast.py, and the code
+# generation for the column visibility checker.
+py_library(
+    name = "gen_resolved_ast_column_visibility",
+    srcs = ["gen_resolved_ast_column_visibility.py"],
+)
+
 py_binary(
     name = "gen_resolved_ast",
     srcs = [
         "gen_resolved_ast.py",
     ],
     deps = [
+        ":gen_resolved_ast_column_visibility",
         ":resolved_ast_enums_py_pb2",
         "//googlesql/parser:generator_utils",
         "@io_abseil_py//absl:app",
@@ -306,12 +314,45 @@ cc_test(
     ],
 )
 
+# The column visibility checker, generated from the column visibility
+# annotations in gen_resolved_ast.py. See "ResolvedColumn visibility" there.
+gen_resolved_ast_files(
+    name = "run_gen_resolved_ast_column_visibility_checker",
+    srcs = [
+        "resolved_ast_column_visibility_checker.cc.template",
+        "resolved_ast_column_visibility_checker.h.template",
+    ],
+    outs = [
+        "resolved_ast_column_visibility_checker.cc",
+        "resolved_ast_column_visibility_checker.h",
+    ],
+)
+
+cc_library(
+    name = "column_visibility_checker",
+    srcs = ["resolved_ast_column_visibility_checker.cc"],
+    hdrs = ["resolved_ast_column_visibility_checker.h"],
+    deps = [
+        ":resolved_ast",
+        ":resolved_node_kind_cc_proto",
+        "//googlesql/base:ret_check",
+        "//googlesql/base:status",
+        "//googlesql/common:thread_stack",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
 cc_library(
     name = "validator",
     srcs = ["validator.cc"],
     hdrs = ["validator.h"],
     visibility = ["//visibility:public"],
     deps = [
+        ":column_visibility_checker",
         ":node_sources",
         ":resolved_ast",
         ":resolved_ast_enums_cc_proto",
@@ -357,6 +398,7 @@ cc_library(
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/flags:flag",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
@@ -809,6 +851,7 @@ cc_test(
     name = "validator_test",
     srcs = ["validator_test.cc"],
     deps = [
+        ":column_visibility_checker",
         ":make_node_vector",
         ":resolved_ast",
         ":resolved_ast_builder",

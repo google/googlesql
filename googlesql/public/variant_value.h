@@ -17,6 +17,7 @@
 #ifndef GOOGLESQL_PUBLIC_VARIANT_VALUE_H_
 #define GOOGLESQL_PUBLIC_VARIANT_VALUE_H_
 
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <utility>
@@ -26,6 +27,7 @@
 #include "googlesql/public/json_value.h"
 #include "googlesql/public/type.h"
 #include "googlesql/public/value.h"
+#include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -89,14 +91,18 @@ namespace internal {
 //   TYPE_JSON Value and stored as a JSONNode. On failure, the unparsed Value is
 //   stored in the Value arm of rep_. IsPrimitive(), IsObject() and IsArray()
 //   all return false. Traversing into JSON objects or arrays (GetKeyValue,
-//   GetMembers, GetElement, GetElements) constructs child adapters with a
-//   JSONNode that copies root_value (incrementing its reference count) and sets
-//   ref to the child JSONValueConstRef. This avoids deep-copying JSON subtrees
-//   while keeping child adapters valid independently of the parent adapter's
-//   lifetime.
+//   GetMembers, ForMembers, GetElement, GetElements) constructs child adapters
+//   with a JSONNode that copies root_value (incrementing its reference count)
+//   and sets ref to the child JSONValueConstRef. This avoids deep-copying JSON
+//   subtrees while keeping child adapters valid independently of the parent
+//   adapter's lifetime.
 class VariantValueAdapter {
  public:
-  explicit VariantValueAdapter(Value value);
+  // Projects `value` into the Variant Simple View.
+  //
+  // Callers holding a non-null TYPE_VARIANT should use value.variant_value()
+  // instead. Passing a valid, non-null TYPE_VARIANT returns an error.
+  static absl::StatusOr<VariantValueAdapter> Create(Value value);
 
   // Returns whether the Variant is valid. It would be invalid if
   // it was assigned an invalid value.
@@ -141,6 +147,17 @@ class VariantValueAdapter {
   absl::StatusOr<std::vector<std::pair<std::string, VariantValueAdapter>>>
   GetMembers() const;
 
+  // If the Variant represents the underlying value as an object, invokes `fn`
+  // for each key-value pair (member) of the object without materializing all
+  // members at once. Only the top-level object is unpacked; nested objects are
+  // passed as VariantValueAdapter instances without recursive unpacking. Stops
+  // iteration and returns the error if `fn` returns a non-OK status.
+  // Requires IsObject() to be true. Otherwise, returns an error.
+  // TODO: b/554973153 - Support complex proto fields (nested messages, enums).
+  absl::Status ForMembers(absl::FunctionRef<absl::Status(
+                              absl::string_view key, VariantValueAdapter value)>
+                              fn) const;
+
   // If the Variant represents the underlying value as an object,
   // returns whether the key exists in the object.
   // If the Variant is not an object, returns false.
@@ -165,7 +182,7 @@ class VariantValueAdapter {
   // If the Variant represents the underlying value as an array,
   // returns the size of the array.
   // Requires IsArray() to be true. Otherwise, returns an error.
-  absl::StatusOr<int> GetArraySize() const;
+  absl::StatusOr<int64_t> GetArraySize() const;
 
   // If the Variant represents the underlying value as an array,
   // returns all elements of the array. Only the top-level elements are
@@ -180,13 +197,13 @@ class VariantValueAdapter {
   // Returns std::nullopt if the index is out of bounds.
   // Requires IsArray() to be true. Otherwise, returns an error.
   absl::StatusOr<std::optional<VariantValueAdapter>> GetElement(
-      int index) const;
+      int64_t index) const;
 
   // If the Variant represents the underlying value as an array,
   // returns the element at the given index.
   // Returns an error if the index is out of bounds.
   // Requires IsArray() to be true. Otherwise, returns an error.
-  absl::StatusOr<VariantValueAdapter> GetElementIfExists(int index) const;
+  absl::StatusOr<VariantValueAdapter> GetElementIfExists(int64_t index) const;
 
   // Returns a debug string representation of the Variant value projected
   // through the Simple View.
@@ -200,9 +217,15 @@ class VariantValueAdapter {
   // represented as "null".
   std::string DebugString() const;
 
-  // Returns the underlying GoogleSQL Value. If this adapter represents a
-  // JSON node, a JSON Value is materialized and returned.
-  Value ToValue() const;
+  // Materializes this view as a GoogleSQL Value of type TYPE_VARIANT:
+  // - Returns Value::NullVariant() (SQL NULL of type VARIANT) if is_null().
+  // - Returns Value::VariantNull() (Variant null of type VARIANT) if
+  //   IsVariantNull().
+  // - Otherwise wraps the represented value in Value::Variant(...)
+  //   (materializing a TYPE_JSON Value if this view represents a JSON node).
+  // Requires is_valid() to be true and the underlying type to be supported in
+  // VARIANT. Otherwise, returns an error.
+  absl::StatusOr<Value> ToVariantValue() const;
 
   // Struct stored in rep_ when this adapter represents a valid non-null JSON
   // value. The underlying root JSON document is stored in root_value, and ref
@@ -223,6 +246,7 @@ class VariantValueAdapter {
   // JSONNode.
   friend VariantValueAdapter MakeVariantValueAdapterForJSON(
       Value root_value, JSONValueConstRef json_ref);
+  explicit VariantValueAdapter(Value value);
   explicit VariantValueAdapter(Value root_value, JSONValueConstRef json_ref)
       : rep_(JSONNode{std::move(root_value), json_ref}) {}
 };

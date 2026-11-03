@@ -1045,7 +1045,6 @@ CBRT(X)
 
 Computes the cube root of `X`. `X` can be any data type
 that [coerces to `DOUBLE`][conversion-rules].
-Supports the `SAFE.` prefix.
 
 <table>
   <thead>
@@ -1455,7 +1454,6 @@ COT(X)
 Computes the cotangent for the angle of `X`, where `X` is specified in radians.
 `X` can be any data type
 that [coerces to `DOUBLE`][conversion-rules].
-Supports the `SAFE.` prefix.
 
 <table>
   <thead>
@@ -1517,7 +1515,6 @@ COTH(X)
 Computes the hyperbolic cotangent for the angle of `X`, where `X` is specified
 in radians. `X` can be any data type
 that [coerces to `DOUBLE`][conversion-rules].
-Supports the `SAFE.` prefix.
 
 <table>
   <thead>
@@ -1579,7 +1576,6 @@ CSC(X)
 Computes the cosecant of the input angle, which is in radians.
 `X` can be any data type
 that [coerces to `DOUBLE`][conversion-rules].
-Supports the `SAFE.` prefix.
 
 <table>
   <thead>
@@ -1641,7 +1637,6 @@ CSCH(X)
 Computes the hyperbolic cosecant of the input angle, which is in radians.
 `X` can be any data type
 that [coerces to `DOUBLE`][conversion-rules].
-Supports the `SAFE.` prefix.
 
 <table>
   <thead>

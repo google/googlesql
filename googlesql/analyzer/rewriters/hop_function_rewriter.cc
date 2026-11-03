@@ -442,7 +442,7 @@ class HopRewriteVisitor : public ResolvedASTRewriteVisitor {
   //   generated_windows AS window_start,
   //   TIMESTAMP_ADD(
   //     generated_windows,
-  //     (SELECT window_size FROM _hop_params)
+  //     p.window_size
   //   ) AS window_end
   // FROM
   //   <InputTable> AS t
@@ -566,8 +566,7 @@ class HopRewriteVisitor : public ResolvedASTRewriteVisitor {
     };
 
     // Generate the array of window starts:
-    // GENERATE_TIMESTAMP_ARRAY(start, end,
-    //   INTERVAL (SELECT step_nanos FROM _hop_params) NANOSECOND)
+    // GENERATE_TIMESTAMP_ARRAY(start, end, INTERVAL p.step_nanos NANOSECOND)
     GOOGLESQL_ASSIGN_OR_RETURN(auto start_for_gen, make_start_gen_array_expr());
     GOOGLESQL_ASSIGN_OR_RETURN(auto end_for_gen, make_end_gen_array_expr());
 
@@ -663,6 +662,14 @@ class HopRewriteVisitor : public ResolvedASTRewriteVisitor {
       } else {
         GOOGLESQL_RET_CHECK_FAIL() << "Invalid column index: " << idx;
       }
+    }
+
+    if (output_column_list.empty()) {
+      // The query uses none of HOP's output columns, e.g. COUNT(*), they
+      // might be pruned. Return the scan directly instead of constructing an
+      // invalid ProjectScan with empty output columns.
+      GOOGLESQL_RET_CHECK(output_expr_list.empty());
+      return std::move(array_scan);
     }
 
     return ResolvedProjectScanBuilder()

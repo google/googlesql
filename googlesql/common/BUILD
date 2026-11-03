@@ -190,6 +190,36 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "json_conversion_utils",
+    srcs = ["json_conversion_utils.cc"],
+    hdrs = ["json_conversion_utils.h"],
+    deps = [
+        "//googlesql/public/types:type",
+        # vector_type_util.h is also exported by :type, but its implementation
+        # is only in :vector_type_util.
+        "//googlesql/public/types:vector_type_util",  # buildcleaner: keep
+        "@com_google_absl//absl/base:nullability",
+    ],
+)
+
+cc_test(
+    name = "json_conversion_utils_test",
+    srcs = ["json_conversion_utils_test.cc"],
+    deps = [
+        ":json_conversion_utils",
+        "//googlesql/public:language_options",
+        "//googlesql/public:options_cc_proto",
+        "//googlesql/public/types:type",
+        "//googlesql/public/types:type_factory",
+        # vector_type_util.h is also exported by :type, but its implementation
+        # is only in :vector_type_util.
+        "//googlesql/public/types:vector_type_util",  # buildcleaner: keep
+        "//googlesql/base/testing:googlesql_gtest_main",
+        "//googlesql/base/testing:status_matchers",
+    ],
+)
+
 # `measure_analysis_utils` is separated from `measure_utils` to avoid a circular dependency between
 # `measure_utils` and the analyzer.
 cc_library(
@@ -662,6 +692,7 @@ cc_library(
     ],
     deps = [
         ":float_margin",
+        "//googlesql/base:check",
         "//googlesql/base:ret_check",
         "//googlesql/base:status",
         "//googlesql/public:language_options",
@@ -779,6 +810,7 @@ cc_library(
     deps = [
         ":builtins_output_properties",
         ":errors",
+        ":json_conversion_utils",
         "//googlesql/base",
         "//googlesql/base:check",
         "//googlesql/base:map_util",
@@ -861,7 +893,6 @@ cc_library(
     hdrs = ["simple_evaluator_table_iterator.h"],
     deps = [
         "//googlesql/base",
-        "//googlesql/base:clock",
         "//googlesql/base:ret_check",
         "//googlesql/base:source_location",
         "//googlesql/base:status",
@@ -873,6 +904,7 @@ cc_library(
         "@com_google_absl//absl/flags:flag",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
+        "@com_google_absl//absl/time:clock_interface",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -882,7 +914,6 @@ cc_test(
     srcs = ["simple_evaluator_table_iterator_test.cc"],
     deps = [
         ":simple_evaluator_table_iterator",
-        "//googlesql/base:clock",
         "//googlesql/base:status",
         "//googlesql/base/testing:googlesql_gtest_main",
         "//googlesql/base/testing:status_matchers",
@@ -896,6 +927,10 @@ cc_test(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
+        "@com_google_absl//absl/time:clock_interface",
+        "@com_google_absl//absl/time:simulated_clock",
     ],
 )
 
@@ -906,7 +941,6 @@ cc_library(
     deps = [
         ":simple_evaluator_table_iterator",
         "//googlesql/base",
-        "//googlesql/base:clock",
         "//googlesql/base:ret_check",
         "//googlesql/base:status",
         "//googlesql/public:catalog",
@@ -919,6 +953,7 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
+        "@com_google_absl//absl/time:clock_interface",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -1216,12 +1251,18 @@ cc_library(
     deps = [
         "//googlesql/base:ret_check",
         "//googlesql/base:status",
+        "//googlesql/public:catalog",
         "//googlesql/public:json_value",
+        "//googlesql/public:language_options",
+        "//googlesql/public:options_cc_proto",
         "//googlesql/public:value",
         "//googlesql/public/functions:json",
         "//googlesql/public/types",
         "//googlesql/resolved_ast",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
     ],
@@ -1232,14 +1273,20 @@ cc_test(
     srcs = ["graph_element_utils_test.cc"],
     deps = [
         ":graph_element_utils",
+        ":internal_property_graph",
         "//googlesql/base/testing:googlesql_gtest_main",
         "//googlesql/base/testing:status_matchers",
+        "//googlesql/public:catalog",
         "//googlesql/public:json_value",
+        "//googlesql/public:language_options",
+        "//googlesql/public:options_cc_proto",
+        "//googlesql/public:simple_catalog",
         "//googlesql/public:value",
         "//googlesql/public/functions:json",
         "//googlesql/public/types",
         "//googlesql/resolved_ast",
         "//googlesql/testing:test_value",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/types:span",
     ],
 )

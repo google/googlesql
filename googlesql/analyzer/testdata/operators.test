@@ -199,6 +199,40 @@ select cast(1 as VARIANT) < cast(1 as VARIANT);
 
 ==
 
+# IS [NOT] NULL is supported on VARIANT. The $is_null signature takes ANY_1, so
+# no VARIANT-specific signature is needed. Runtime behavior is covered by the
+# reference_impl tests (function_test.cc, evaluator_test.cc).
+[language_features=NONE,+VARIANT_TYPE]
+select variant_col IS NULL, variant_col IS NOT NULL from VariantTable;
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#2 AS `$col1` [BOOL]
+| +-$query.$col2#3 AS `$col2` [BOOL]
++-query=
+  +-ProjectScan
+    +-column_list=$query.[$col1#2, $col2#3]
+    +-expr_list=
+    | +-$col1#2 :=
+    | | +-FunctionCall(GoogleSQL:$is_null(VARIANT) -> BOOL)
+    | |   +-ColumnRef(type=VARIANT, column=VariantTable.variant_col#1)
+    | +-$col2#3 :=
+    |   +-FunctionCall(GoogleSQL:$not(BOOL) -> BOOL)
+    |     +-FunctionCall(GoogleSQL:$is_null(VARIANT) -> BOOL)
+    |       +-ColumnRef(type=VARIANT, column=VariantTable.variant_col#1)
+    +-input_scan=
+      +-TableScan(column_list=[VariantTable.variant_col#1], table=VariantTable, column_index_list=[0])
+==
+
+# IS [NOT] UNKNOWN requires an operand coercible to BOOL, and VARIANT is not.
+[language_features=NONE,+VARIANT_TYPE]
+select variant_col IS UNKNOWN from VariantTable;
+--
+ERROR: Operand of IS UNKNOWN must be coercible to BOOL, but has type VARIANT [at 1:8]
+select variant_col IS UNKNOWN from VariantTable;
+       ^
+==
+
 [language_features=NONE,{{|+TEMPLATED_SQL_FUNCTION_RESOLVE_WITH_TYPED_ARGS}}]
 select NULL = KitchenSink from ComplexTypes;
 --

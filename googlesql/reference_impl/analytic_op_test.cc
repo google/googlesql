@@ -23,6 +23,7 @@
 #include <numeric>
 #include <ostream>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -46,17 +47,23 @@
 #include "gtest/gtest.h"
 #include "absl/container/btree_set.h"
 #include "absl/status/status.h"
+#include "googlesql/base/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "googlesql/base/status_builder.h"
 #include "googlesql/base/stl_util.h"
 
 using ::testing::_;
+using ::testing::Bool;
+using ::testing::Combine;
 using ::testing::ElementsAre;
 using ::testing::HasSubstr;
+using ::testing::TestParamInfo;
 using ::testing::TestWithParam;
+using ::testing::Values;
 using ::testing::ValuesIn;
 using ::absl_testing::StatusIs;
 
@@ -1380,6 +1387,87 @@ std::vector<AnalyticFunctionTestCase> GetLeadLagTestCases() {
            AnalyticOutputDeterminism::kDeterministic}};
 }
 
+// Tests FIRST_VALUE, LAST_VALUE, and NTH_VALUE with IGNORE NULLS and RESPECT
+// NULLS on SQL NULL Variant values.
+std::vector<AnalyticFunctionTestCase> GetVariantIgnoreNullsTestCases() {
+  VariableId x("x"), y("y");
+  const std::vector<VariableId> input_variables = {x, y};
+
+  // All order keys are distinct, so there are no peers.
+  const std::vector<TupleData> input_tuples =
+      CreateTestTupleDatas({{Int64(1), Double(1)},
+                            {Int64(2), Double(2)},
+                            {Int64(3), Double(3)},
+                            {Int64(4), Double(4)}});
+
+  const Value variant_null_int64 = Variant(NullInt64());
+  const Value variant_null_string = Variant(NullString());
+  const Value variant_2 = Variant(Int64(2));
+  const Value null_variant = NullVariant();
+
+  const std::vector<Value> input_values{variant_null_int64, null_variant,
+                                        variant_2, variant_null_string};
+
+  const std::vector<AnalyticWindow> windows{// {start_tuple_id, num_tuples}
+                                            {0, 4},
+                                            {0, 2},
+                                            {3, 1},
+                                            {1, 3}};
+
+  const std::shared_ptr<WindowOrderingComparatorInfo> comparator_info_by_x =
+      GenerateWindowOrderingComparatorBySlot(input_variables, 0);
+
+  //    x   argument                window ([start, end])
+  //   ------------------------------------------------
+  //   1   VARIANT(NULL INT64)      [0, 3]
+  //   2   NULL VARIANT             [0, 1]
+  //   3   VARIANT(2)               [3, 3]
+  //   4   VARIANT(NULL STRING)     [1, 3]
+  const std::vector<Value> expected_ignore_nulls{variant_2, null_variant,
+                                                 null_variant, variant_2};
+
+  return {
+      {FunctionKind::kFirstValue,
+       input_variables,
+       input_tuples,
+       {input_values},
+       ResolvedAnalyticFunctionCall::IGNORE_NULLS,
+       windows,
+       comparator_info_by_x,
+       expected_ignore_nulls,
+       AnalyticOutputDeterminism::kDeterministic},
+      {FunctionKind::kLastValue,
+       input_variables,
+       input_tuples,
+       {input_values},
+       ResolvedAnalyticFunctionCall::IGNORE_NULLS,
+       windows,
+       comparator_info_by_x,
+       expected_ignore_nulls,
+       AnalyticOutputDeterminism::kDeterministic},
+      {FunctionKind::kNthValue,
+       input_variables,
+       input_tuples,
+       {input_values, {Int64(1)}},
+       ResolvedAnalyticFunctionCall::IGNORE_NULLS,
+       windows,
+       comparator_info_by_x,
+       expected_ignore_nulls,
+       AnalyticOutputDeterminism::kDeterministic},
+      // With RESPECT NULLS, SQL NULL Variant values are returned as is.
+      {FunctionKind::kFirstValue,
+       input_variables,
+       input_tuples,
+       {input_values},
+       ResolvedAnalyticFunctionCall::RESPECT_NULLS,
+       windows,
+       comparator_info_by_x,
+       {variant_null_int64, variant_null_int64, variant_null_string,
+        null_variant},
+       AnalyticOutputDeterminism::kDeterministic},
+  };
+}
+
 INSTANTIATE_TEST_SUITE_P(NumberingFunction, AnalyticFunctionTest,
                          ValuesIn(GetNumberingFunctionTestCases()));
 
@@ -1391,6 +1479,9 @@ INSTANTIATE_TEST_SUITE_P(NthValueFunction, AnalyticFunctionTest,
 
 INSTANTIATE_TEST_SUITE_P(LeadAndLagFunction, AnalyticFunctionTest,
                          ValuesIn(GetLeadLagTestCases()));
+
+INSTANTIATE_TEST_SUITE_P(VariantIgnoreNulls, AnalyticFunctionTest,
+                         ValuesIn(GetVariantIgnoreNullsTestCases()));
 
 struct AnalyticWindowFrameParam {
   AnalyticWindowFrameParam(
@@ -2896,6 +2987,173 @@ TEST_F(AnalyticWindowTest, ValidateWindowNegativeOffsetValues) {
           &context, &window_boundaries);
   EXPECT_EQ(expected_error_message, end_following_status.message());
 }
+
+// Computes the RANGE-based window boundaries of an offset boundary of kind
+// <boundary_type> with value <offset>, over a partition whose order key values
+// are <asc_order_key_values> (ordered ascending) ordered in the direction given
+// by <is_ascending>. Computes the start boundaries unless <is_end_boundary> is
+// true.
+absl::StatusOr<std::vector<int>> ComputeRangeBoundaries(
+    const Value& offset, absl::Span<const Value> asc_order_key_values,
+    WindowFrameBoundaryArg::BoundaryType boundary_type, bool is_ascending,
+    bool is_end_boundary) {
+  const VariableId var("var"), offset_var("offset_var");
+  const TupleSchema input_schema({var});
+  std::vector<TupleData> tuples;
+  tuples.reserve(asc_order_key_values.size());
+  for (const Value& order_key_value : asc_order_key_values) {
+    tuples.push_back(CreateTestTupleData({order_key_value}));
+  }
+  if (!is_ascending) {
+    std::reverse(tuples.begin(), tuples.end());
+  }
+
+  GOOGLESQL_ASSIGN_OR_RETURN(auto deref_var, DerefExpr::Create(var, offset.type()));
+  const KeyArg key(var, std::move(deref_var),
+                   is_ascending ? KeyArg::kAscending : KeyArg::kDescending);
+
+  const TupleSchema params_schema({offset_var});
+  const TupleData params_data = CreateTestTupleData({offset});
+  GOOGLESQL_ASSIGN_OR_RETURN(auto deref_offset,
+                   DerefExpr::Create(offset_var, offset.type()));
+  GOOGLESQL_ASSIGN_OR_RETURN(
+      std::unique_ptr<WindowFrameBoundaryArg> boundary,
+      WindowFrameBoundaryArg::Create(boundary_type, std::move(deref_offset)));
+  GOOGLESQL_RETURN_IF_ERROR(boundary->SetSchemasForEvaluation({&params_schema}));
+
+  EvaluationContext context((EvaluationOptions()));
+  std::vector<int> window_boundaries;
+  GOOGLESQL_RETURN_IF_ERROR(boundary->GetRangeBasedWindowBoundaries(
+      is_end_boundary, input_schema, GetTupleDataPtrs(tuples), {&key},
+      {&params_data}, &context, &window_boundaries));
+  return window_boundaries;
+}
+
+// Returns the order keys {min, 0, max} of <type_kind>, so that a partition
+// built from them exercises the overflow checks at both ends of the range.
+std::vector<Value> MinZeroMaxOrderKeys(TypeKind type_kind) {
+  return {AnalyticWindowTest::AddMinValue(type_kind, 0),
+          AnalyticWindowTest::CreateValueFromInt(type_kind, 0),
+          AnalyticWindowTest::SubtractMaxValue(type_kind, 0)};
+}
+
+// Generates a test name suffix for the frame boundary kind, ordering direction
+// and start/end boundary parameters shared by the RANGE offset tests below.
+std::string RangeBoundaryTestName(
+    WindowFrameBoundaryArg::BoundaryType boundary_type, bool is_ascending,
+    bool is_end_boundary) {
+  return absl::StrCat(
+      boundary_type == WindowFrameBoundaryArg::kOffsetPreceding ? "Preceding"
+                                                                : "Following",
+      is_ascending ? "Asc" : "Desc", is_end_boundary ? "End" : "Start");
+}
+
+struct NegativeRangeOffsetTestCase {
+  // Name of this test case, used to generate the test name.
+  std::string name;
+  Value offset;
+  // The expected string representation of <offset> in the error message.
+  std::string expected_offset_string;
+};
+
+using AnalyticWindowNegativeRangeOffsetTest =
+    TestWithParam<std::tuple<NegativeRangeOffsetTestCase,
+                             WindowFrameBoundaryArg::BoundaryType,
+                             /*is_ascending=*/bool, /*is_end_boundary=*/bool>>;
+
+// A negative (or NaN) RANGE offset of any numerical type is an OUT_OF_RANGE
+// error, regardless of the frame boundary kind or the ordering direction.
+// Regression test for b/576900657, where negative NUMERIC and BIGNUMERIC
+// offsets were not rejected and the boundary computation then crashed with a
+// NUMERIC/BIGNUMERIC overflow.
+TEST_P(AnalyticWindowNegativeRangeOffsetTest, ReturnsOutOfRangeError) {
+  const auto& [test_case, boundary_type, is_ascending, is_end_boundary] =
+      GetParam();
+  const std::string expected_error_message = absl::StrCat(
+      "Window frame offset for PRECEDING or FOLLOWING must be non-negative, "
+      "but was ",
+      test_case.expected_offset_string);
+  EXPECT_THAT(
+      ComputeRangeBoundaries(test_case.offset,
+                             MinZeroMaxOrderKeys(test_case.offset.type_kind()),
+                             boundary_type, is_ascending, is_end_boundary),
+      StatusIs(absl::StatusCode::kOutOfRange, expected_error_message));
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    AnalyticWindowNegativeRangeOffsetTest,
+    AnalyticWindowNegativeRangeOffsetTest,
+    Combine(ValuesIn(std::vector<NegativeRangeOffsetTestCase>{
+                {"Int32", Int32(-1), "-1"},
+                {"Int32Min", Int32(std::numeric_limits<int32_t>::lowest()),
+                 "-2147483648"},
+                {"Int64", Int64(-1), "-1"},
+                {"Int64Min", Int64(std::numeric_limits<int64_t>::lowest()),
+                 "-9223372036854775808"},
+                {"Float", Float(-1.5), "-1.5"},
+                {"FloatNegInf", Float(-std::numeric_limits<float>::infinity()),
+                 "-inf"},
+                {"FloatNaN", Float(std::numeric_limits<float>::quiet_NaN()),
+                 "nan"},
+                {"Double", Double(-1.5), "-1.5"},
+                {"DoubleNegInf",
+                 Double(-std::numeric_limits<double>::infinity()), "-inf"},
+                {"DoubleNaN", Double(std::numeric_limits<double>::quiet_NaN()),
+                 "nan"},
+                {"Numeric", Numeric(NumericValue(-1)), "-1"},
+                // The negative NUMERIC value closest to zero.
+                {"NumericClosestToZero",
+                 Numeric(NumericValue::FromScaledValue(-1)), "-0.000000001"},
+                {"NumericMin", Numeric(NumericValue::MinValue()),
+                 "-99999999999999999999999999999.999999999"},
+                {"BigNumeric", BigNumeric(BigNumericValue(-1)), "-1"},
+                // The negative BIGNUMERIC value closest to zero.
+                {"BigNumericClosestToZero",
+                 BigNumeric(BigNumericValue::FromScaledValue(-1)),
+                 "-0.00000000000000000000000000000000000001"},
+                {"BigNumericMin", BigNumeric(BigNumericValue::MinValue()),
+                 "-578960446186580977117854925043439539266."
+                 "34992332820282019728792003956564819968"},
+            }),
+            Values(WindowFrameBoundaryArg::kOffsetPreceding,
+                   WindowFrameBoundaryArg::kOffsetFollowing),
+            /*is_ascending=*/Bool(), /*is_end_boundary=*/Bool()),
+    [](const TestParamInfo<AnalyticWindowNegativeRangeOffsetTest::ParamType>&
+           info) {
+      return absl::StrCat(std::get<0>(info.param).name,
+                          RangeBoundaryTestName(std::get<1>(info.param),
+                                                std::get<2>(info.param),
+                                                std::get<3>(info.param)));
+    });
+
+using AnalyticWindowMaxRangeOffsetTest =
+    TestWithParam<std::tuple<TypeKind, WindowFrameBoundaryArg::BoundaryType,
+                             /*is_ascending=*/bool, /*is_end_boundary=*/bool>>;
+
+// The largest valid RANGE offset does not overflow when computing window
+// boundaries over a partition containing the minimum and maximum order keys.
+TEST_P(AnalyticWindowMaxRangeOffsetTest, DoesNotOverflow) {
+  const auto& [type_kind, boundary_type, is_ascending, is_end_boundary] =
+      GetParam();
+  GOOGLESQL_EXPECT_OK(
+      ComputeRangeBoundaries(AnalyticWindowTest::SubtractMaxValue(type_kind, 0),
+                             MinZeroMaxOrderKeys(type_kind), boundary_type,
+                             is_ascending, is_end_boundary));
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    AnalyticWindowMaxRangeOffsetTest, AnalyticWindowMaxRangeOffsetTest,
+    Combine(Values(TYPE_INT32, TYPE_INT64, TYPE_UINT32, TYPE_UINT64,
+                   TYPE_NUMERIC, TYPE_BIGNUMERIC, TYPE_FLOAT, TYPE_DOUBLE),
+            Values(WindowFrameBoundaryArg::kOffsetPreceding,
+                   WindowFrameBoundaryArg::kOffsetFollowing),
+            /*is_ascending=*/Bool(), /*is_end_boundary=*/Bool()),
+    [](const TestParamInfo<AnalyticWindowMaxRangeOffsetTest::ParamType>& info) {
+      return absl::StrCat(TypeKind_Name(std::get<0>(info.param)),
+                          RangeBoundaryTestName(std::get<1>(info.param),
+                                                std::get<2>(info.param),
+                                                std::get<3>(info.param)));
+    });
 
 typedef TestWithParam<TypeKind> AnalyticWindowInfinityOffsetTest;
 

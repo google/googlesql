@@ -368,26 +368,36 @@ class FunctionArgumentTypeOptions {
   // class object.
   FunctionArgumentTypeOptions& set_argument_name_parse_location(
       const ParseLocationRange& argument_name_parse_location) {
-    data_->argument_name_parse_location = argument_name_parse_location;
+    data_->argument_name_parse_location =
+        std::make_shared<const ParseLocationRange>(
+            argument_name_parse_location);
     return *this;
   }
 
   // Gets the ParseLocationRange of the argument name.
   std::optional<ParseLocationRange> argument_name_parse_location() const {
-    return data_->argument_name_parse_location;
+    if (data_->argument_name_parse_location == nullptr) {
+      return std::nullopt;
+    }
+    return *data_->argument_name_parse_location;
   }
 
   // Sets the ParseLocationRange of the argument type. Returns the modified
   // class object.
   FunctionArgumentTypeOptions& set_argument_type_parse_location(
       const ParseLocationRange& argument_type_parse_location) {
-    data_->argument_type_parse_location = argument_type_parse_location;
+    data_->argument_type_parse_location =
+        std::make_shared<const ParseLocationRange>(
+            argument_type_parse_location);
     return *this;
   }
 
   // Gets the ParseLocationRange of the argument type.
   std::optional<ParseLocationRange> argument_type_parse_location() const {
-    return data_->argument_type_parse_location;
+    if (data_->argument_type_parse_location == nullptr) {
+      return std::nullopt;
+    }
+    return *data_->argument_type_parse_location;
   }
 
   // Sets the default value of this argument. Only optional arguments can
@@ -481,12 +491,12 @@ class FunctionArgumentTypeOptions {
     // Optional parse location range for argument name. It is populated by
     // resolver only when analyzing UDFs and TVFs. <record_parse_locations>
     // must also be set to true in the GoogleSQL analyzer options.
-    std::optional<ParseLocationRange> argument_name_parse_location;
+    std::shared_ptr<const ParseLocationRange> argument_name_parse_location;
 
     // Optional parse location range for argument type. It is populated by
     // resolver only when analyzing UDFs and TVFs. <record_parse_locations>
     // must also be set to true in the GoogleSQL analyzer options.
-    std::optional<ParseLocationRange> argument_type_parse_location;
+    std::shared_ptr<const ParseLocationRange> argument_type_parse_location;
 
     // Optional value that holds the default value of the argument, if
     // applicable.
@@ -1475,7 +1485,8 @@ class FunctionSignature {
  public:
   // Does not take ownership of <context_ptr>.
   FunctionSignature(FunctionArgumentType result_type,
-                    FunctionArgumentTypeList arguments, void* context_ptr);
+                    FunctionArgumentTypeList arguments,
+                    const void* context_ptr);
 
   FunctionSignature(FunctionArgumentType result_type,
                     FunctionArgumentTypeList arguments, int64_t context_id);
@@ -1485,7 +1496,7 @@ class FunctionSignature {
                     FunctionSignatureOptions options);
 
   // Copy a FunctionSignature, assigning a new context_ptr or context_id.
-  FunctionSignature(const FunctionSignature& old, void* context_ptr)
+  FunctionSignature(const FunctionSignature& old, const void* context_ptr)
       : FunctionSignature(old) {
     context_ptr_ = context_ptr;
   }
@@ -1761,7 +1772,7 @@ class FunctionSignature {
   // For non-GoogleSQL functions, the relevant field is
   // implementation-defined.
   union {
-    void* context_ptr_;
+    const void* context_ptr_;
     int64_t context_id_;
   };
 

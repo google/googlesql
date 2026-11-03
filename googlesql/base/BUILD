@@ -345,6 +345,7 @@ cc_library(
     deps = [
         ":requires",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/base:throw_delegate",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:cord",
     ],
@@ -679,36 +680,6 @@ cc_test(
 )
 
 cc_library(
-    name = "clock",
-    srcs = [
-        "clock.cc",
-    ],
-    hdrs = [
-        "clock.h",
-    ],
-    deps = [
-        ":base",
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/synchronization",
-        "@com_google_absl//absl/time",
-    ],
-)
-
-cc_test(
-    name = "clock_test",
-    srcs = [
-        "clock_test.cc",
-    ],
-    deps = [
-        ":clock",
-        "//googlesql/base/testing:googlesql_gtest_main",
-        "@com_google_absl//absl/synchronization",
-        "@com_google_absl//absl/time",
-    ],
-)
-
-cc_library(
     name = "exactfloat",
     srcs = [
         "exactfloat.cc",
@@ -867,5 +838,25 @@ cc_test(
         "//googlesql/base/testing:googlesql_gtest_main",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "indirect_optional",
+    hdrs = ["indirect_optional.h"],
+    deps = [
+        ":optional_ref",
+        "@com_google_absl//absl/base:core_headers",
+    ],
+)
+
+cc_test(
+    name = "indirect_optional_test",
+    srcs = ["indirect_optional_test.cc"],
+    deps = [
+        ":indirect_optional",
+        ":optional_ref",
+        "//googlesql/base/testing:googlesql_gtest_main",
+        "@com_google_absl//absl/hash:hash_testing",
     ],
 )

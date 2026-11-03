@@ -574,6 +574,16 @@ TEST(JsonCastTest, SqlTypesToJson) {
   EXPECT_THAT(CastToJsonHelper(path),
               IsOkAndHolds(Json(std::move(expected_path_json))));
 
+  // Cast GRAPH_ELEMENT with NaN float property fails with OUT_OF_RANGE.
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+      auto nan_node,
+      GraphNode(
+          {"g"}, "n1",
+          {{"f", Value::Double(std::numeric_limits<double>::quiet_NaN())}},
+          {"L1"}, "T"));
+  EXPECT_THAT(CastToJsonHelper(nan_node),
+              StatusIs(absl::StatusCode::kOutOfRange));
+
   // Cast ARRAY
   const ArrayType* array_type;
   GOOGLESQL_ASSERT_OK(
@@ -1310,9 +1320,10 @@ TEST(VariantCastTest, CastNULLs) {
                          CastValue(null_val, absl::UTCTimeZone(),
                                    language_options, types::VariantType()));
     EXPECT_TRUE(variant.type()->IsVariant());
-    EXPECT_FALSE(variant.is_null());
-    GOOGLESQL_ASSERT_OK_AND_ASSIGN(auto view, variant.variant_value());
-    EXPECT_TRUE(view.is_null());
+    EXPECT_TRUE(variant.is_null());
+    EXPECT_FALSE(variant.has_content());
+    EXPECT_THAT(variant.variant_value(), StatusIs(absl::StatusCode::kInternal));
+    EXPECT_TRUE(variant.Equals(Value::NullVariant()));
     GOOGLESQL_ASSERT_OK_AND_ASSIGN(Value expected, Value::Variant(null_val));
     EXPECT_TRUE(variant.Equals(expected));
   };
@@ -1367,6 +1378,86 @@ TEST(VariantCastTest, CastNULLs) {
   GOOGLESQL_ASSERT_OK(type_factory->MakeEnumType(googlesql_test::TestEnum_descriptor(),
                                        &enum_type));
   test_cast_null_to_variant(Value::Null(enum_type));
+}
+
+TEST(VariantCastTest, CastObjectsAndArraysWithNullsToVariant) {
+  LanguageOptions language_options;
+  language_options.EnableLanguageFeature(FEATURE_VARIANT_TYPE);
+  language_options.EnableLanguageFeature(FEATURE_MAP_TYPE);
+
+  // Struct with a NULL field cast to VARIANT produces a non-null Variant
+  // Object whose null field is exposed as a VariantNull.
+  const StructType* struct_type;
+  GOOGLESQL_ASSERT_OK(type_factory->MakeStructType(
+      {{"a", types::Int64Type()}, {"b", types::StringType()}}, &struct_type));
+  Value struct_with_null =
+      Value::Struct(struct_type, {Value::Int64(1), Value::NullString()});
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(Value variant_struct,
+                       CastValue(struct_with_null, absl::UTCTimeZone(),
+                                 language_options, types::VariantType()));
+  EXPECT_TRUE(variant_struct.type()->IsVariant());
+  EXPECT_FALSE(variant_struct.is_null());
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(VariantValueView struct_view,
+                       variant_struct.variant_value());
+  EXPECT_TRUE(struct_view.IsObject());
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(VariantValueView field_a,
+                       struct_view.GetKeyValueIfExists("a"));
+  EXPECT_THAT(field_a.GetPrimitiveValue(), IsOkAndHolds(Value::Int64(1)));
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(VariantValueView field_b,
+                       struct_view.GetKeyValueIfExists("b"));
+  EXPECT_FALSE(field_b.is_null());
+  EXPECT_TRUE(field_b.IsVariantNull());
+
+  // Map with a NULL value cast to VARIANT produces a non-null Variant Object
+  // whose null value is exposed as a VariantNull.
+  Value map_with_null = Map({{Value::String("a"), Value::Int64(1)},
+                             {Value::String("b"), Value::NullInt64()}});
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(Value variant_map,
+                       CastValue(map_with_null, absl::UTCTimeZone(),
+                                 language_options, types::VariantType()));
+  EXPECT_TRUE(variant_map.type()->IsVariant());
+  EXPECT_FALSE(variant_map.is_null());
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(VariantValueView map_view, variant_map.variant_value());
+  EXPECT_TRUE(map_view.IsObject());
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(VariantValueView map_val_b,
+                       map_view.GetKeyValueIfExists("b"));
+  EXPECT_FALSE(map_val_b.is_null());
+  EXPECT_TRUE(map_val_b.IsVariantNull());
+
+  // JSON object with a null field cast to VARIANT produces a non-null Variant
+  // Object whose null field is exposed as a VariantNull.
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(JSONValue json_obj_with_null,
+                       JSONValue::ParseJSONString(R"({"a": 1, "b": null})"));
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+      Value variant_json_obj,
+      CastValue(Value::Json(std::move(json_obj_with_null)), absl::UTCTimeZone(),
+                language_options, types::VariantType()));
+  EXPECT_FALSE(variant_json_obj.is_null());
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(VariantValueView json_obj_view,
+                       variant_json_obj.variant_value());
+  EXPECT_TRUE(json_obj_view.IsObject());
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(VariantValueView json_field_b,
+                       json_obj_view.GetKeyValueIfExists("b"));
+  EXPECT_FALSE(json_field_b.is_null());
+  EXPECT_TRUE(json_field_b.IsVariantNull());
+
+  // Array with a NULL element cast to VARIANT produces a non-null Variant Array
+  // whose null element is exposed as a VariantNull.
+  const ArrayType* array_type;
+  GOOGLESQL_ASSERT_OK(type_factory->MakeArrayType(types::Int64Type(), &array_type));
+  Value array_with_null =
+      Value::Array(array_type, {Value::Int64(1), Value::NullInt64()});
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(Value variant_array,
+                       CastValue(array_with_null, absl::UTCTimeZone(),
+                                 language_options, types::VariantType()));
+  EXPECT_FALSE(variant_array.is_null());
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(VariantValueView array_view,
+                       variant_array.variant_value());
+  EXPECT_TRUE(array_view.IsArray());
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(VariantValueView elem1,
+                       array_view.GetElementIfExists(1));
+  EXPECT_FALSE(elem1.is_null());
+  EXPECT_TRUE(elem1.IsVariantNull());
 }
 
 typedef testing::TestWithParam<QueryParamsWithResult> CastTemplateTest;
@@ -1451,6 +1542,34 @@ TEST(IsTypeCastableToJsonTest, TypeCastableToJson) {
 
   // Cast array of unsupported type
   EXPECT_FALSE(IsTypeCastableToJson(array_map_type, options_enabled));
+
+  // Cast GRAPH_ELEMENT and GRAPH_PATH
+  const GraphElementType* castable_node_type =
+      test_values::MakeGraphElementType({"g"},
+                                        GraphElementType::ElementKind::kNode,
+                                        {{"a", int64_type}}, &factory);
+  const GraphElementType* castable_edge_type =
+      test_values::MakeGraphElementType({"g"},
+                                        GraphElementType::ElementKind::kEdge,
+                                        {{"b", geography_type}}, &factory);
+  const GraphPathType* castable_path_type = test_values::MakeGraphPathType(
+      castable_node_type, castable_edge_type, &factory);
+  const GraphElementType* uncastable_node_type =
+      test_values::MakeGraphElementType({"g"},
+                                        GraphElementType::ElementKind::kNode,
+                                        {{"m", map_type}}, &factory);
+  const GraphPathType* uncastable_path_type = test_values::MakeGraphPathType(
+      uncastable_node_type, castable_edge_type, &factory);
+
+  // Feature disabled
+  EXPECT_FALSE(IsTypeCastableToJson(castable_node_type, options_disabled));
+  EXPECT_FALSE(IsTypeCastableToJson(castable_path_type, options_disabled));
+
+  // Feature enabled
+  EXPECT_TRUE(IsTypeCastableToJson(castable_node_type, options_enabled));
+  EXPECT_TRUE(IsTypeCastableToJson(castable_path_type, options_enabled));
+  EXPECT_FALSE(IsTypeCastableToJson(uncastable_node_type, options_enabled));
+  EXPECT_FALSE(IsTypeCastableToJson(uncastable_path_type, options_enabled));
 }
 
 TEST(IsTypeCastableToVariantTest, TypeCastableToVariant) {
@@ -1611,15 +1730,15 @@ TEST(IsTypeCastableToVariantTest, ArrayWithNullElementCastToVariantArray) {
   options_enabled.EnableLanguageFeature(FEATURE_CAST_DIFFERENT_ARRAY_TYPES);
 
   TypeFactory factory;
-  GOOGLESQL_ASSERT_OK_AND_ASSIGN(const ArrayType* array_int64_type,
-                       factory.MakeArrayType(types::Int64Type()));
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(const ArrayType* array_int32_type,
+                       factory.MakeArrayType(types::Int32Type()));
   GOOGLESQL_ASSERT_OK_AND_ASSIGN(const ArrayType* array_variant_type,
                        factory.MakeArrayType(types::VariantType()));
 
   GOOGLESQL_ASSERT_OK_AND_ASSIGN(
       Value array_val,
-      Value::MakeArray(array_int64_type,
-                       {Value::Int64(1), Value::NullInt64(), Value::Int64(3)}));
+      Value::MakeArray(array_int32_type,
+                       {Value::Int32(1), Value::NullInt32(), Value::Int32(3)}));
 
   GOOGLESQL_ASSERT_OK_AND_ASSIGN(
       Value result_val,
@@ -1628,17 +1747,18 @@ TEST(IsTypeCastableToVariantTest, ArrayWithNullElementCastToVariantArray) {
   ASSERT_EQ(result_val.num_elements(), 3);
 
   // Element 0: Variant(1)
-  GOOGLESQL_ASSERT_OK_AND_ASSIGN(Value expected_elem0, Value::Variant(Value::Int64(1)));
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(Value expected_elem0, Value::Variant(Value::Int32(1)));
   EXPECT_TRUE(result_val.element(0).Equals(expected_elem0));
 
-  // Element 1: Variant(NullInt64()), NOT SQL NULL Variant!
-  EXPECT_FALSE(result_val.element(1).is_null());
+  // Element 1: Canonicalized to SQL NULL Variant (Value::NullVariant()).
+  EXPECT_TRUE(result_val.element(1).is_null());
+  EXPECT_TRUE(result_val.element(1).Equals(Value::NullVariant()));
   GOOGLESQL_ASSERT_OK_AND_ASSIGN(Value expected_elem1,
-                       Value::Variant(Value::NullInt64()));
+                       Value::Variant(Value::NullInt32()));
   EXPECT_TRUE(result_val.element(1).Equals(expected_elem1));
 
   // Element 2: Variant(3)
-  GOOGLESQL_ASSERT_OK_AND_ASSIGN(Value expected_elem2, Value::Variant(Value::Int64(3)));
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(Value expected_elem2, Value::Variant(Value::Int32(3)));
   EXPECT_TRUE(result_val.element(2).Equals(expected_elem2));
 }
 

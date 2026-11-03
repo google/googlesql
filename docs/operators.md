@@ -599,7 +599,7 @@ ambiguity. For example:
 <tr>
   <td><a href="#new_operator"><code>NEW</code> operator</a>
 </td>
-  <td>Creates a protocol buffer.</td>
+  <td>Creates a protocol buffer or a map.</td>
 </tr>
 
 <tr>
@@ -4021,7 +4021,8 @@ SELECT
 ### `NEW` operator 
 <a id="new_operator"></a>
 
-The `NEW` operator only supports protocol buffers and uses the following syntax:
+The `NEW` operator creates a protocol buffer or a map and uses the following
+syntax:
 
  + `NEW protocol_buffer {...}`: Creates a
 protocol buffer using a map constructor.
@@ -4038,6 +4039,12 @@ protocol buffer using a map constructor.
 
     ```googlesql
     NEW protocol_buffer(field [AS alias], ...field [AS alias])
+    ```
++   `NEW MAP<KEY_TYPE, VALUE_TYPE> {...}`: Creates a map using a
+    [map constructor][map-constructor].
+
+    ```googlesql
+    NEW MAP<KEY_TYPE, VALUE_TYPE> { [ key_expr: value_expr [, ...] ] }
     ```
 
 **Examples**
@@ -4075,10 +4082,26 @@ FROM
   (SELECT 1 AS key, "2" AS name);
 ```
 
+The following example uses the `NEW` operator to construct a map:
+
+```googlesql
+SELECT NEW MAP<STRING, INT64> { 'a': 1, 'b': 2 } AS m;
+
+/*------------------*
+ | m                |
+ +------------------+
+ | {"a": 1, "b": 2} |
+ *------------------*/
+```
+
 To learn more about protocol buffers in GoogleSQL, see [Work with
 protocol buffers][protocol-buffers].
 
+To learn more about constructing maps, see [Map constructor][map-constructor].
+
 [protocol-buffers]: https://github.com/google/googlesql/blob/master/docs/protocol-buffers.md
+
+[map-constructor]: https://github.com/google/googlesql/blob/master/docs/data-types.md#map_constructor
 
 ### Concatenation operator 
 <a id="concatenation_operator"></a>

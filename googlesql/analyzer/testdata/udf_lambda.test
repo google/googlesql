@@ -1140,3 +1140,116 @@ CreateFunctionStmt
     +-FunctionArgument
       +-expr=
         +-Literal(type=INT64, value=10)
+==
+
+#####
+## Bare function-typed parameter references in expression and query positions
+#####
+
+# Bare reference to function-typed parameter in expression and query positions.
+CREATE TEMP FUNCTION Foo(f FUNCTION<INT64 -> INT64>) AS (
+  {{f|f.bar|(f).bar|CAST(f AS INT64)|[f]|STRUCT(f AS a)|(SELECT f)|f[0]|WITH(a AS f, 1)|ARRAY_TRANSFORM([1], y -> f)|(SELECT x FROM UNNEST(f) AS x)}}
+);
+--
+ALTERNATION GROUP: f
+--
+ERROR: Function-typed UDF arguments must be prefixed with the FUNCTION keyword [at 2:3]
+  f
+  ^
+--
+ALTERNATION GROUP: f.bar
+--
+ERROR: Function-typed UDF arguments must be prefixed with the FUNCTION keyword [at 2:3]
+  f.bar
+  ^
+--
+ALTERNATION GROUP: (f).bar
+--
+ERROR: Function-typed UDF arguments must be prefixed with the FUNCTION keyword [at 2:4]
+  (f).bar
+   ^
+--
+ALTERNATION GROUP: CAST(f AS INT64)
+--
+ERROR: Function-typed UDF arguments must be prefixed with the FUNCTION keyword [at 2:8]
+  CAST(f AS INT64)
+       ^
+--
+ALTERNATION GROUP: [f]
+--
+ERROR: Function-typed UDF arguments must be prefixed with the FUNCTION keyword [at 2:4]
+  [f]
+   ^
+--
+ALTERNATION GROUP: STRUCT(f AS a)
+--
+ERROR: Function-typed UDF arguments must be prefixed with the FUNCTION keyword [at 2:10]
+  STRUCT(f AS a)
+         ^
+--
+ALTERNATION GROUP: (SELECT f)
+--
+ERROR: Function-typed UDF arguments must be prefixed with the FUNCTION keyword [at 2:11]
+  (SELECT f)
+          ^
+--
+ALTERNATION GROUP: f[0]
+--
+ERROR: Function-typed UDF arguments must be prefixed with the FUNCTION keyword [at 2:3]
+  f[0]
+  ^
+--
+ALTERNATION GROUP: WITH(a AS f, 1)
+--
+ERROR: Function-typed UDF arguments must be prefixed with the FUNCTION keyword [at 2:13]
+  WITH(a AS f, 1)
+            ^
+--
+ALTERNATION GROUP: ARRAY_TRANSFORM([1], y -> f)
+--
+ERROR: No matching signature for function ARRAY_TRANSFORM
+  Argument types: ARRAY<INT64>, LAMBDA
+  Signature: ARRAY_TRANSFORM(ARRAY<T1>, FUNCTION<T1->T2>)
+    Argument 2: failed to resolve lambda body, error: Function-typed UDF arguments must be prefixed with the FUNCTION keyword
+  Signature: ARRAY_TRANSFORM(ARRAY<T1>, FUNCTION<(T1, INT64)->T2>)
+    Argument 2: lambda requires 2 arguments but 1 is provided [at 2:3]
+  ARRAY_TRANSFORM([1], y -> f)
+  ^
+--
+ALTERNATION GROUP: (SELECT x FROM UNNEST(f) AS x)
+--
+ERROR: Function-typed UDF arguments must be prefixed with the FUNCTION keyword [at 2:25]
+  (SELECT x FROM UNNEST(f) AS x)
+                        ^
+==
+
+# Bare reference to function-typed parameter with field access passed as function argument.
+[use_database=udf_db]
+CREATE FUNCTION propagate_field_access(p FUNCTION<INT64 -> BOOL>) AS (my_filter(p.bar));
+--
+ERROR: Function-typed UDF arguments must be prefixed with the FUNCTION keyword [at 1:81]
+...p FUNCTION<INT64 -> BOOL>) AS (my_filter(p.bar));
+                                            ^
+==
+
+# Bare reference to function-typed parameter in templated UDF body when called.
+[prepare_database=udf_db_templated_bare_ref]
+[language_features=NONE,+INLINE_LAMBDA_ARGUMENT,+UDF_LAMBDA_ARGUMENTS,+TEMPLATE_FUNCTIONS]
+CREATE FUNCTION templated_bare_ref(y ANY TYPE, f FUNCTION<INT64 -> INT64>) AS (f);
+--
+CreateFunctionStmt(name_path=templated_bare_ref, return_type=STRUCT<>, argument_name_list=[y, f], signature=(ANY TYPE y, FUNCTION<INT64->INT64> f) -> ANY TYPE, language="SQL", code="f")
+==
+
+[use_database=udf_db_templated_bare_ref]
+[language_features=NONE,+INLINE_LAMBDA_ARGUMENT,+UDF_LAMBDA_ARGUMENTS,+TEMPLATE_FUNCTIONS]
+SELECT templated_bare_ref(1, x -> x + 1);
+--
+ERROR: Invalid function templated_bare_ref [at 1:8]
+SELECT templated_bare_ref(1, x -> x + 1);
+       ^
+Analysis of function Templated_SQL_Function:templated_bare_ref failed [at 1:1]
+f
+^
+Function-typed UDF arguments must be prefixed with the FUNCTION keyword [at 1:1]
+f
+^

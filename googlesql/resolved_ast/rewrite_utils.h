@@ -84,6 +84,17 @@ absl::Status RemoveUnusedColumnRefs(
     const ResolvedNode& node,
     std::vector<std::unique_ptr<const ResolvedColumnRef>>& column_refs);
 
+// Removes unreferenced parameter_list entries across correlation boundaries
+// (ResolvedSubqueryExpr, ResolvedInlineLambda, lateral ResolvedJoinScan, and
+// ResolvedGraphCallScan) under node.
+//
+// Rewrites that drop subtrees can eliminate the last reference to a correlated
+// column while leaving it in an enclosing scope's parameter_list, which fails
+// Resolved AST validation. Traverses bottom-up so pruning a parameter from an
+// inner boundary also allows enclosing boundaries to prune it in one pass.
+absl::StatusOr<std::unique_ptr<const ResolvedNode>>
+PruneUnusedCorrelatedParameters(std::unique_ptr<const ResolvedNode> node);
+
 // Sorts and removes duplicates from the ResolvedColumnRefs in 'column_refs'.
 // This is used in conjunction with 'CollectColumnRefs' to construct an
 // appropriate parameter list for a subquery expression. Among other potential
@@ -175,6 +186,25 @@ absl::StatusOr<std::unique_ptr<const ResolvedNode>> RemapColumnsImpl(
 // if specified by the column replacement map.
 ResolvedColumnList RemapColumnList(const ResolvedColumnList& column_list,
                                    ColumnReplacementMap& column_map);
+
+// Renames all declared ResolvedWithEntry nodes and their corresponding
+// descendant ResolvedWithRefScan references to unique, disambiguated query
+// names. The subtree is mutated in-place.
+//
+// When a function body defining local CTEs is inlined, these local CTEs can
+// inadvertently capture CTE references from incoming arguments or closures
+// (such as lambdas) that were defined in the caller's scope. This function
+// prevents such variable capture by disambiguating the callee's internal CTEs
+// before arguments or closures are substituted.
+//
+// `cte_counter` is an input/output parameter tracking the current unique index
+// suffix (e.g. "$inlined_cte_<id>_<name>"). It is incremented for each
+// remapped CTE to guarantee global uniqueness across multiple inlining calls
+// and passes within the same query rewrite session.
+//
+// Remapping for recursive WITH scans is not supported. The function returns an
+// error if a recursive WITH scan is encountered.
+absl::Status RemapCteNames(ResolvedNode* node, int& cte_counter);
 
 // Helper function used when deep copying a plan. Takes a 'scan' and
 // replaces all of its ResolvedColumns, including in child scans recursively.
@@ -401,6 +431,58 @@ class FunctionCallBuilder {
       const Type* element_type,
       std::vector<std::unique_ptr<const ResolvedExpr>> elements,
       bool cast_elements_if_needed = false);
+
+  // Constructs a ResolvedFunctionCall for
+  // `JSON_OBJECT(keys[0], values[0], keys[1], values[1], ...)`.
+  //
+  // Requires:
+  // - `keys` and `values` must have the same non-zero size.
+  // - Each element in `keys` must have type STRING.
+  //
+  // The signature for the built-in function "json_object" must be available in
+  // <catalog> or an error status is returned.
+  absl::StatusOr<std::unique_ptr<const ResolvedFunctionCall>> JsonObject(
+      std::vector<std::unique_ptr<const ResolvedExpr>> keys,
+      std::vector<std::unique_ptr<const ResolvedExpr>> values);
+
+  // Constructs a ResolvedFunctionCall for
+  // `JSON_SET(json_doc, paths[0], values[0], paths[1], values[1], ...)`.
+  //
+  // Requires:
+  // - `json_doc` must have type JSON.
+  // - `paths` and `values` must have the same non-zero size.
+  // - Each element in `paths` must have type STRING.
+  //
+  // The signature for the built-in function "json_set" must be available in
+  // <catalog> or an error status is returned.
+  absl::StatusOr<std::unique_ptr<const ResolvedFunctionCall>> JsonSet(
+      std::unique_ptr<const ResolvedExpr> json_doc,
+      std::vector<std::unique_ptr<const ResolvedExpr>> paths,
+      std::vector<std::unique_ptr<const ResolvedExpr>> values);
+
+  // Constructs a ResolvedFunctionCall for
+  // `JSON_REMOVE(json_doc, paths[0], paths[1], ...)`.
+  //
+  // Requires:
+  // - `json_doc` must have type JSON.
+  // - `paths` must be non-empty, and each element must have type STRING.
+  //
+  // The signature for the built-in function "json_remove" must be available in
+  // <catalog> or an error status is returned.
+  absl::StatusOr<std::unique_ptr<const ResolvedFunctionCall>> JsonRemove(
+      std::unique_ptr<const ResolvedExpr> json_doc,
+      std::vector<std::unique_ptr<const ResolvedExpr>> paths);
+
+  // Constructs a ResolvedFunctionCall for
+  // `ELEMENT_DEFINITION_NAME(graph_element)`.
+  //
+  // Requires:
+  // - `graph_element` must have type GraphElementType.
+  //
+  // The signature for the built-in function "element_definition_name" must be
+  // available in <catalog> or an error status is returned.
+  absl::StatusOr<std::unique_ptr<const ResolvedFunctionCall>>
+  ElementDefinitionName(std::unique_ptr<const ResolvedExpr> graph_element);
 
   // Constructs a ResolvedFunctionCall for ARRAY_FIRST_N function which
   // returns first `n` elements from `array`.
@@ -1200,47 +1282,6 @@ absl::StatusOr<std::unique_ptr<const ResolvedExpr>>
 BuildTimestampColumnExpression(const ResolvedTimestampColumnPath& path,
                                const ResolvedColumn& root_column,
                                FunctionCallBuilder& fn_builder);
-
-// Dynamically constructs the AST for a scalar subquery that
-// selects a single column from a CTE. This is useful for run-once semantics.
-//
-// For example, if you have a CTE defined as:
-//   WITH _hop_params AS (
-//     SELECT window_size, step_size, step_micros, origin
-//     FROM ...
-//   )
-//
-// And you call this function with:
-//   - cte_name: "_hop_params"
-//   - cte_defining_cols: {window_size, step_size, step_micros, origin}
-//   - col_index_to_select: 1
-//
-// The function will generate the equivalent of the following SQL subquery:
-//   (SELECT step_size FROM _hop_params)
-//
-// Sample resolved AST:
-// NOLINTBEGIN(whitespace/line_length)
-// clang-format off
-// +-SubqueryExpr
-// | +-type=INTERVAL
-// | +-subquery_type=SCALAR
-// | +-subquery=
-// |   +-ProjectScan
-// |     +-column_list=[$hop_params.step_size#55]
-// |     +-expr_list=
-// |     | +-step_size#55 := ColumnRef(type=INTERVAL, column=$hop_params.step_size#52)
-// |     +-input_scan=
-// |       +-WithRefScan(column_list=$hop_params.[window_size#51, step_size#52, step_micros#53, origin#54], with_query_name="_hop_params")
-// clang-format on
-// NOLINTEND(whitespace/line_length)
-//
-// By using a ResolvedWithRefScan, this subquery references the CTE while
-// maintaining run-once semantics, ensuring the CTE is evaluated only once.
-absl::StatusOr<std::unique_ptr<const ResolvedSubqueryExpr>>
-CreateCteColumnSubquery(ColumnFactory& column_factory,
-                        absl::string_view cte_name,
-                        const ResolvedColumnList& cte_defining_cols,
-                        int col_index_to_select);
 
 // Wrapper to help build a ResolvedColumnRef for the given column.
 std::unique_ptr<ResolvedColumnRef> BuildResolvedColumnRef(

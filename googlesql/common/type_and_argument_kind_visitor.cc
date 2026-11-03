@@ -72,6 +72,7 @@ ComponentSignatureArgumentKindsMap() {
           {ARG_KIND_EXPR_ENUM_ANY, {}},
           {ARG_KIND_EXPR_PROTO_ANY, {}},
           {ARG_KIND_EXPR_STRING_ANY, {}},
+          {ARG_KIND_EXPR_ROW_ANY, {}},
 
           // Even though PROTO_MAP_ANY is related to PROTO_MAP_KEY_ANY and
           // PROTO_MAP_VALUE_ANY, the type itself is not modeled as a
@@ -131,6 +132,7 @@ absl::StatusOr<bool> IsRelatedToOtherArguments(SignatureArgumentKind kind) {
     case ARG_KIND_EXPR_RANGE_ANY_1:
     case ARG_KIND_EXPR_MEASURE_ANY_1:
     case ARG_KIND_EXPR_MAP_ANY_1_2:
+    case ARG_KIND_EXPR_ROW_ANY:
       return true;
     case ARG_KIND_EXPR_FIXED:
     case ARG_KIND_EXPR_ARBITRARY:

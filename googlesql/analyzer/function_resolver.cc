@@ -744,8 +744,7 @@ static absl::Status AppendMismatchReasonWithIndent(std::string* message,
 
 absl::StatusOr<std::string> FunctionResolver::GetSupportedSignaturesWithMessage(
     const Function* function, absl::Span<const std::string> mismatch_errors,
-    FunctionArgumentType::NamePrintingStyle print_style,
-    int* num_signatures) const {
+    FunctionArgumentType::NamePrintingStyle print_style) const {
   GOOGLESQL_RET_CHECK_EQ(mismatch_errors.size(), function->signatures().size());
 
   // We don't show detailed error message when HideSupportedSignatures is true.
@@ -761,7 +760,6 @@ absl::StatusOr<std::string> FunctionResolver::GetSupportedSignaturesWithMessage(
       // In case we have per signature callback, we have opportunity for per
       // signature mismatch error.
       !function->HasSignatureTextCallback()) {
-    *num_signatures = function->NumSignatures();
     return function->GetSupportedSignaturesCallback()(language_options,
                                                       *function);
   }
@@ -774,7 +772,6 @@ absl::StatusOr<std::string> FunctionResolver::GetSupportedSignaturesWithMessage(
     if (signature.HideInSupportedSignatureList(language_options)) {
       continue;
     }
-    (*num_signatures)++;
     if (!result.empty()) {
       absl::StrAppend(&result, "\n");
     }
@@ -799,13 +796,12 @@ FunctionResolver::GenerateErrorMessageWithSupportedSignatures(
     const Function* function, absl::string_view prefix_message,
     FunctionArgumentType::NamePrintingStyle print_style,
     const std::vector<std::string>* mismatch_errors) const {
-  int num_signatures = 0;
   std::string supported_signatures;
   GOOGLESQL_RET_CHECK(mismatch_errors != nullptr);
   if (!function->HideSupportedSignatures()) {
-    GOOGLESQL_ASSIGN_OR_RETURN(supported_signatures, GetSupportedSignaturesWithMessage(
-                                               function, *mismatch_errors,
-                                               print_style, &num_signatures));
+    GOOGLESQL_ASSIGN_OR_RETURN(supported_signatures,
+                     GetSupportedSignaturesWithMessage(
+                         function, *mismatch_errors, print_style));
   }
 
   if (!supported_signatures.empty()) {
@@ -1148,7 +1144,7 @@ absl::Status ExtractStructFieldLocations(
 absl::StatusOr<TypeModifiers> FunctionResolver::AdjustTypeModifiersForCast(
     const Type* source_type, const Type* target_type,
     const TypeModifiers& source_type_modifiers) {
-  if (source_type_modifiers.IsEmpty()) {
+  if (source_type_modifiers.IsEmpty() || source_type->Equals(target_type)) {
     return source_type_modifiers;
   }
   TypeListView source_component_types = source_type->ComponentTypes();
@@ -1221,10 +1217,10 @@ absl::StatusOr<TypeModifiers> FunctionResolver::AdjustTypeModifiersForCast(
     return TypeModifiers::MakeTypeModifiers(std::move(target_type_params),
                                             std::move(target_collations));
   }
-  GOOGLESQL_RET_CHECK_EQ(source_component_types.size(), target_component_types.size())
-      << "source type: " << source_type->DebugString()
-      << ", target type: " << target_type->DebugString();
-  if (!target_component_types.empty()) {
+  if (!source_component_types.empty()) {
+    GOOGLESQL_RET_CHECK_EQ(source_component_types.size(), target_component_types.size())
+        << "source type: " << source_type->DebugString()
+        << ", target type: " << target_type->DebugString();
     std::vector<TypeParameters> target_type_params_list;
     target_type_params_list.reserve(target_component_types.size());
     bool target_has_type_params = false;
@@ -1274,7 +1270,8 @@ absl::StatusOr<const AnnotationMap*>
 FunctionResolver::AdjustTypeAnnotationsForCast(
     const Type* source_type, const Type* target_type,
     const AnnotationMap* source_annotation_map) const {
-  if (AnnotationMap::IsNullOrEmpty(source_annotation_map)) {
+  if (AnnotationMap::IsNullOrEmpty(source_annotation_map) ||
+      source_type->Equals(target_type)) {
     return source_annotation_map;
   }
   TypeListView source_component_types = source_type->ComponentTypes();
@@ -1324,10 +1321,10 @@ FunctionResolver::AdjustTypeAnnotationsForCast(
     return type_factory_->TakeOwnership(std::move(target_annotation_map),
                                         /*normalize=*/false);
   }
-  GOOGLESQL_RET_CHECK_EQ(source_component_types.size(), target_component_types.size())
-      << "source type: " << source_type->DebugString()
-      << ", target type: " << target_type->DebugString();
-  if (!target_component_types.empty()) {
+  if (!source_component_types.empty()) {
+    GOOGLESQL_RET_CHECK_EQ(source_component_types.size(), target_component_types.size())
+        << "source type: " << source_type->DebugString()
+        << ", target type: " << target_type->DebugString();
     GOOGLESQL_RET_CHECK(source_annotation_map->IsStructMap());
     std::unique_ptr<AnnotationMap> target_annotation_map =
         AnnotationMap::Create(target_type);
@@ -2517,9 +2514,6 @@ absl::Status FunctionResolver::ResolveGeneralFunctionCall(
     }
 
     if (needs_coercion) {
-      GOOGLESQL_ASSIGN_OR_RETURN(type_modifiers,
-                       AdjustTypeModifiersForCast(arguments[idx]->type(),
-                                                  target_type, type_modifiers));
       GOOGLESQL_RETURN_IF_ERROR(resolver_->CoerceExprToType(
           arg_locations[idx], target_type, std::move(type_modifiers),
           Resolver::kExplicitCoercion, &arguments[idx]));
@@ -3215,19 +3209,15 @@ FunctionResolver::ResolveTemplatedOrAnnotatedSQLFunctionCallInternal(
 
   auto aggregate_base_columns =
       query_resolution_info->release_aggregate_columns_to_compute();
-  std::vector<std::unique_ptr<const ResolvedComputedColumn>> aggregate_columns;
-  aggregate_columns.reserve(aggregate_base_columns.size());
-  for (auto& column : aggregate_base_columns) {
+  for (const auto& column : aggregate_base_columns) {
     if (!column->Is<ResolvedComputedColumn>()) {
       // TODO: support conditional evaluation for UDAs.
       return MakeSqlErrorAt(ast_location)
              << "Conditional evaluation is not yet supported for UDAs.";
     }
-    aggregate_columns.push_back(absl::WrapUnique(
-        static_cast<const ResolvedComputedColumn*>(column.release())));
   }
   function_call_info_out->reset(new TemplatedSQLFunctionCall(
-      std::move(resolved_sql_body), std::move(aggregate_columns)));
+      std::move(resolved_sql_body), std::move(aggregate_base_columns)));
 
   // Move dynamically generated functions from the child resolver to the parent
   // resolver to ensure they are kept alive by the final AnalyzerOutput and

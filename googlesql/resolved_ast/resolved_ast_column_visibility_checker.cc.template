@@ -1,0 +1,281 @@
+//
+// Copyright 2019 Google LLC
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+//
+
+// resolved_ast_column_visibility_checker.cc GENERATED FROM
+// resolved_ast_column_visibility_checker.cc.template
+#include "googlesql/resolved_ast/resolved_ast_column_visibility_checker.h"
+
+#include <algorithm>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
+#include "googlesql/common/thread_stack.h"
+#include "googlesql/resolved_ast/resolved_ast.h"
+#include "googlesql/resolved_ast/resolved_column.h"
+#include "googlesql/resolved_ast/resolved_node.h"
+#include "googlesql/resolved_ast/resolved_node_kind.pb.h"
+#include "absl/status/status.h"
+#include "googlesql/base/status_macros.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+#include "googlesql/base/ret_check.h"
+
+namespace googlesql {
+
+namespace {
+
+using ColumnSet = ColumnVisibilityChecker::ColumnSet;
+
+// A distinguished set used for UNCHECKED scopes. Only its address is used:
+// membership checks against it always pass, and a union including it is
+// UNCHECKED. It's never modified, so sharing it between threads is safe.
+const ColumnSet* UncheckedColumnSet() {
+  static const ColumnSet* const kUnchecked = new ColumnSet();
+  return kUnchecked;
+}
+
+bool IsUncheckedSet(const ColumnSet* set) {
+  return set == UncheckedColumnSet();
+}
+
+// Null means the empty set.
+bool Contains(const ColumnSet* set, const ResolvedColumn& column) {
+  return IsUncheckedSet(set) || (set != nullptr && set->contains(column));
+}
+
+// Builds the union of some column sets and individual columns. When the
+// result is empty, it's null, and when it's exactly one of the input sets,
+// that set is reused rather than copied.
+class ColumnSetBuilder {
+ public:
+  void Add(const ColumnSet* set) {
+    if (set == nullptr) return;
+    if (IsUncheckedSet(set)) {
+      unchecked_ = true;
+    } else if (!set->empty()) {
+      sets_.push_back(set);
+    }
+  }
+  void Add(const ResolvedColumn& column) {
+    if (column.IsInitialized()) columns_.push_back(column);
+  }
+  void Add(absl::Span<const ResolvedColumn> columns) {
+    for (const ResolvedColumn& column : columns) Add(column);
+  }
+
+  // Returns the union of everything added. If that needs a new set, the new
+  // set is added to `owned_sets`, which owns it.
+  const ColumnSet* Build(
+      std::vector<std::unique_ptr<const ColumnSet>>& owned_sets) {
+    if (unchecked_) return UncheckedColumnSet();
+    if (columns_.empty()) {
+      if (sets_.empty()) return nullptr;
+      if (sets_.size() == 1) return sets_[0];
+    }
+    auto result = std::make_unique<ColumnSet>(columns_.begin(), columns_.end());
+    for (const ColumnSet* set : sets_) {
+      result->insert(set->begin(), set->end());
+    }
+    const ColumnSet* built = result.get();
+    owned_sets.push_back(std::move(result));
+    return built;
+  }
+
+ private:
+  bool unchecked_ = false;
+  std::vector<const ColumnSet*> sets_;
+  std::vector<ResolvedColumn> columns_;
+};
+
+// Adds the columns that `node` provides to its parent node: its
+// `provided_columns` annotation if its node class has one, otherwise the
+// columns it creates. See "ResolvedColumn visibility" in gen_resolved_ast.py.
+void AddProvidedColumns(const ResolvedNode* node, ColumnSetBuilder& b);
+
+# for node in nodes
+ # if node.provided_columns_body
+void ProvidedColumnsOf{{node.name}}(const {{node.name}}* node,
+    ColumnSetBuilder& b) {
+{{node.provided_columns_body}}
+}
+
+ # endif
+# endfor
+void AddProvidedColumns(const ResolvedNode* node, ColumnSetBuilder& b) {
+  switch (node->node_kind()) {
+# for node in nodes
+ # if node.provided_columns_body
+    case {{node.enum_name}}:
+      ProvidedColumnsOf{{node.name}}(node->GetAs<{{node.name}}>(), b);
+      return;
+ # endif
+# endfor
+    default:
+      b.Add(node->GetColumnsCreated());
+      return;
+  }
+}
+
+std::string ColumnSetToString(const ColumnSet* set) {
+  if (IsUncheckedSet(set)) return "<unchecked>";
+  if (set == nullptr) return "[]";
+  std::vector<ResolvedColumn> columns(set->begin(), set->end());
+  std::sort(columns.begin(), columns.end(),
+            [](const ResolvedColumn& a, const ResolvedColumn& b) {
+              return a.column_id() < b.column_id();
+            });
+  constexpr int kMaxColumns = 50;
+  std::string result = "[";
+  for (int i = 0; i < columns.size() && i < kMaxColumns; ++i) {
+    if (i > 0) absl::StrAppend(&result, ", ");
+    absl::StrAppend(&result, columns[i].DebugString());
+  }
+  if (columns.size() > kMaxColumns) {
+    absl::StrAppend(&result, ", ... (", columns.size() - kMaxColumns,
+                    " more)");
+  }
+  absl::StrAppend(&result, "]");
+  return result;
+}
+
+}  // namespace
+
+#define RETURN_ERROR_IF_OUT_OF_STACK_SPACE()                             \
+  GOOGLESQL_RETURN_IF_NOT_ENOUGH_STACK(                                  \
+      "Out of stack space due to deeply nested query expression during " \
+      "column visibility validation")
+
+ColumnVisibilityChecker::ColumnVisibilityChecker()
+    : ColumnVisibilityChecker(Options()) {}
+
+ColumnVisibilityChecker::ColumnVisibilityChecker(Options options)
+    : options_(options) {}
+
+bool ColumnVisibilityChecker::IsUnchecked(const ColumnSet* set) {
+  return IsUncheckedSet(set);
+}
+
+absl::Status ColumnVisibilityChecker::CheckRoot(const ResolvedNode* node) {
+  GOOGLESQL_RET_CHECK(node != nullptr);
+  error_node_ = nullptr;
+  recorded_envs_.clear();
+  recorded_sets_.clear();
+  return CheckNode(node, Env());
+}
+
+const ColumnVisibilityChecker::RecordedEnv*
+ColumnVisibilityChecker::GetRecordedEnv(const ResolvedNode* node) const {
+  auto it = recorded_envs_.find(node);
+  if (it == recorded_envs_.end()) return nullptr;
+  return &it->second;
+}
+
+const ColumnVisibilityChecker::ColumnSet*
+ColumnVisibilityChecker::GetPipeInputColumns(const ResolvedScan* scan,
+                                             ColumnSetStorage& owned_sets) {
+  const ResolvedScan* input = scan->GetPipeInputScan();
+  if (input == nullptr) return nullptr;
+  ColumnSetBuilder b;
+  b.Add(input->column_list());
+  return b.Build(owned_sets);
+}
+
+absl::Status ColumnVisibilityChecker::MakeError(const ResolvedNode* node,
+                                                absl::string_view field,
+                                                const ResolvedColumn& column,
+                                                absl::string_view set_name,
+                                                const ColumnSet* set) {
+  error_node_ = node;
+  return absl::InternalError(absl::StrCat(
+      "Column visibility check failed: ", node->node_kind_string(), ".", field,
+      " references column ", column.DebugString(), " which is not in ",
+      set_name, " ", ColumnSetToString(set),
+      ". See ColumnVisibilityChecker::CheckRoot."));
+}
+
+absl::Status ColumnVisibilityChecker::CheckColumn(const ResolvedNode* node,
+                                                  absl::string_view field,
+                                                  const ResolvedColumn& column,
+                                                  const ColumnSet* visible) {
+  if (!column.IsInitialized() || Contains(visible, column)) {
+    return absl::OkStatus();
+  }
+  return MakeError(node, field, column, "the VISIBLE columns", visible);
+}
+
+absl::Status ColumnVisibilityChecker::CheckColumnRef(
+    const ResolvedColumnRef* node, const Env& env) {
+  if (node->is_correlated()) {
+    if (Contains(env.outer, node->column())) return absl::OkStatus();
+    return MakeError(node, "column", node->column(),
+                     "the OUTER columns for correlated references", env.outer);
+  }
+  if (Contains(env.visible, node->column())) return absl::OkStatus();
+  return MakeError(node, "column", node->column(), "the VISIBLE columns",
+                   env.visible);
+}
+
+absl::Status ColumnVisibilityChecker::CheckColumnList(const ResolvedScan* node,
+                                                      const ColumnSet* scope) {
+  if (options_.record_environments) {
+    RecordedEnv& recorded = recorded_envs_[node];
+    recorded.has_column_list_scope = true;
+    recorded.column_list_scope = scope;
+  }
+  for (const ResolvedColumn& column : node->column_list()) {
+    if (!Contains(scope, column)) {
+      return MakeError(node, "column_list", column, "its column_list_scope",
+                       scope);
+    }
+  }
+  return absl::OkStatus();
+}
+
+absl::Status ColumnVisibilityChecker::CheckNode(const ResolvedNode* node,
+                                                const Env& env) {
+  RETURN_ERROR_IF_OUT_OF_STACK_SPACE();
+  if (options_.record_environments) {
+    recorded_envs_[node].env = env;
+  }
+  switch (node->node_kind()) {
+# for node in nodes
+ # if not node.is_abstract
+    case {{node.enum_name}}:
+      return Check{{node.name}}(node->GetAs<{{node.name}}>(), env);
+ # endif
+# endfor
+    default:
+      error_node_ = node;
+      return absl::InternalError(
+          absl::StrCat("Column visibility check: unhandled node kind ",
+                       node->node_kind_string()));
+  }
+}
+
+# for node in nodes
+ # if not node.is_abstract
+absl::Status ColumnVisibilityChecker::Check{{node.name}}(
+    const {{node.name}}* node, const Env& env) {
+{{node.visibility_check_body}}
+}
+
+ # endif
+# endfor
+}  // namespace googlesql

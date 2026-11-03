@@ -125,4 +125,27 @@ TEST_F(IsConstantTest, CastWithFormat) {
   EXPECT_THAT(IsNonAggregateFunctionArg(result()), IsOkAndHolds(true));
 }
 
+TEST_F(IsConstantTest, InlineLambdaArg) {
+  GOOGLESQL_ASSERT_OK(Analyze("fn_fp_lambda_then_named((e) -> e, '123')"));
+  EXPECT_THAT(IsConstantExpression(result()), IsOkAndHolds(false));
+  EXPECT_THAT(IsConstantFunctionArg(result()), IsOkAndHolds(false));
+  EXPECT_THAT(IsNonAggregateFunctionArg(result()), IsOkAndHolds(false));
+}
+
+TEST_F(IsConstantTest, FunctionRefArg) {
+  options_.mutable_language()->SetSupportedStatementKinds(
+      {RESOLVED_CREATE_FUNCTION_STMT});
+  GOOGLESQL_ASSERT_OK(AnalyzeStatement(
+      "CREATE TEMP FUNCTION udf(f FUNCTION<INT64 -> INT64>) AS "
+      "(fn_fp_lambda_then_named(FUNCTION f, '123'))",
+      options_, catalog_.catalog(), &type_factory_, &output_));
+  const ResolvedExpr* func_expr = output_->resolved_statement()
+                                      ->GetAs<ResolvedCreateFunctionStmt>()
+                                      ->function_expression();
+  ASSERT_NE(func_expr, nullptr);
+  EXPECT_THAT(IsConstantExpression(func_expr), IsOkAndHolds(false));
+  EXPECT_THAT(IsConstantFunctionArg(func_expr), IsOkAndHolds(false));
+  EXPECT_THAT(IsNonAggregateFunctionArg(func_expr), IsOkAndHolds(false));
+}
+
 }  // namespace googlesql

@@ -91,8 +91,8 @@ STATIC_IDSTRING(kTimestampPseudoTableId, "$timestamp");
 
 namespace {
 
-constexpr absl::string_view kUnsupportedJsonFieldModifyError =
-    "UPDATE ... SET does not support modifying a JSON field";
+constexpr absl::string_view kUnsupportedFieldModifyError =
+    "UPDATE ... SET does not support modifying a $0 field";
 
 // Returns true if the given annotation map has the IsVersionedAnnotation.
 // If `allow_subfields` is true, it checks if any subfield is versioned.
@@ -205,7 +205,7 @@ absl::Status Resolver::ResolveDMLTargetTable(
 
   GOOGLESQL_RETURN_IF_ERROR(ResolvePathExpressionAsTableScan(
       target_path, *alias, has_explicit_alias, alias_location, hint,
-      /*for_system_time=*/nullptr, empty_name_scope_.get(),
+      /*for_version_clause=*/nullptr, empty_name_scope_.get(),
       /*read_as_row_type_error_kind=*/"DML statements",
       /*remaining_names=*/nullptr, resolved_table_scan, name_list,
       /*output_column_name_list=*/nullptr,
@@ -423,7 +423,7 @@ absl::Status Resolver::ResolveTruncateStatement(
   GOOGLESQL_RETURN_IF_ERROR(ResolvePathExpressionAsTableScan(
       name_path, GetAliasForExpression(name_path), /*has_explicit_alias=*/false,
       /*alias_location=*/name_path, /*hints=*/nullptr,
-      /*for_system_time=*/nullptr, empty_name_scope_.get(),
+      /*for_version_clause=*/nullptr, empty_name_scope_.get(),
       /*read_as_row_type_error_kind=*/"DML statements",
       /*remaining_names=*/nullptr, &resolved_table_scan, &name_list,
       /*output_column_name_list=*/nullptr, resolved_columns_from_table_scans_));
@@ -808,7 +808,7 @@ absl::Status Resolver::ResolveInsertStatement(
   GOOGLESQL_RETURN_IF_ERROR(ResolvePathExpressionAsTableScan(
       target_path, target_alias, /*has_explicit_alias=*/false,
       /*alias_location=*/target_path, ast_statement->hint(),
-      /*for_system_time=*/nullptr, empty_name_scope_.get(),
+      /*for_version_clause=*/nullptr, empty_name_scope_.get(),
       /*read_as_row_type_error_kind=*/"DML statements",
       /*remaining_names=*/nullptr, &resolved_table_scan, &name_list,
       /*output_column_name_list=*/nullptr,
@@ -841,8 +841,9 @@ absl::Status Resolver::ResolveInsertStatement(
 
   const bool has_column_list = ast_statement->column_list() != nullptr;
   if (has_column_list) {
-    for (const ASTIdentifier* column_name :
-         ast_statement->column_list()->identifiers()) {
+    for (const ASTInsertColumnItem* column_item :
+         ast_statement->column_list()->column_items()) {
+      const ASTIdentifier* column_name = column_item->identifier();
       const IdString column_name_id = column_name->GetAsIdString();
       if (!googlesql_base::InsertIfNotPresent(&visited_column_names, column_name_id)) {
         return MakeSqlErrorAt(column_name)
@@ -960,6 +961,16 @@ absl::Status Resolver::ResolveInsertStatementImpl(
 
   const bool is_nested = nested_scope != nullptr;
   const bool is_version_aware = IsVersionAwareDmlStatement(ast_statement);
+
+  if (ast_statement->column_list() != nullptr) {
+    for (const ASTInsertColumnItem* column_item :
+         ast_statement->column_list()->column_items()) {
+      if (column_item->using_clause() != nullptr) {
+        return MakeSqlErrorAt(column_item->using_clause())
+               << "USING clause is not supported yet";
+      }
+    }
+  }
 
   if (is_nested &&
       (is_version_aware || active_version_aware_node_ != nullptr) &&
@@ -1267,7 +1278,7 @@ absl::Status Resolver::ResolveOnConflictClause(
       insert_target_path, id_string_pool_->Make("excluded"),
       /*has_explicit_alias=*/true,
       /*alias_location=*/insert_target_path, nullptr,
-      /*for_system_time=*/nullptr, empty_name_scope_.get(),
+      /*for_version_clause=*/nullptr, empty_name_scope_.get(),
       /*read_as_row_type_error_kind=*/"DML statements",
       /*remaining_names=*/nullptr, &insert_row_scan, &insert_row_name_list,
       /*output_column_name_list=*/nullptr,
@@ -1741,10 +1752,13 @@ absl::Status Resolver::PopulateUpdateTargetInfos(
         }
         GOOGLESQL_RETURN_IF_ERROR(
             VerifyUpdateTargetIsWritable(path, info.target.get(), value));
-      } else if (info.target->node_kind() == RESOLVED_GET_JSON_FIELD &&
-                 !language().LanguageFeatureEnabled(
-                     FEATURE_JSON_SUBFIELDS_WITH_SET)) {
-        return MakeSqlErrorAt(path) << kUnsupportedJsonFieldModifyError;
+      } else if ((info.target->node_kind() == RESOLVED_GET_JSON_FIELD &&
+                  !language().LanguageFeatureEnabled(
+                      FEATURE_JSON_SUBFIELDS_WITH_SET)) ||
+                 info.target->node_kind() == RESOLVED_GET_VARIANT_FIELD) {
+        return MakeSqlErrorAt(path) << absl::Substitute(
+                   kUnsupportedFieldModifyError,
+                   info.target->type()->ShortTypeName(product_mode()));
       }
       update_target_infos->emplace_back(std::move(info));
       return absl::OkStatus();
@@ -1788,10 +1802,13 @@ absl::Status Resolver::PopulateUpdateTargetInfos(
           std::move(info.target), dot_identifier->location(),
           dot_identifier->name(), &expr_resolution_info->flatten_state,
           &info.target));
-      if (info.target->node_kind() == RESOLVED_GET_JSON_FIELD &&
-          !language().LanguageFeatureEnabled(FEATURE_JSON_SUBFIELDS_WITH_SET)) {
-        return MakeSqlErrorAt(dot_identifier)
-               << kUnsupportedJsonFieldModifyError;
+      if ((info.target->node_kind() == RESOLVED_GET_JSON_FIELD &&
+           !language().LanguageFeatureEnabled(
+               FEATURE_JSON_SUBFIELDS_WITH_SET)) ||
+          info.target->node_kind() == RESOLVED_GET_VARIANT_FIELD) {
+        return MakeSqlErrorAt(dot_identifier) << absl::Substitute(
+                   kUnsupportedFieldModifyError,
+                   info.target->type()->ShortTypeName(product_mode()));
       }
       return absl::OkStatus();
     }
@@ -2026,8 +2043,14 @@ absl::Status Resolver::VerifyUpdateTargetIsWritable(
       if (language().LanguageFeatureEnabled(FEATURE_JSON_SUBFIELDS_WITH_SET)) {
         return absl::OkStatus();
       } else {
-        return MakeSqlErrorAt(ast_location) << kUnsupportedJsonFieldModifyError;
+        return MakeSqlErrorAt(ast_location) << absl::Substitute(
+                   kUnsupportedFieldModifyError,
+                   target->type()->ShortTypeName(product_mode()));
       }
+    case RESOLVED_GET_VARIANT_FIELD:
+      return MakeSqlErrorAt(ast_location)
+             << absl::Substitute(kUnsupportedFieldModifyError,
+                                 target->type()->ShortTypeName(product_mode()));
     case RESOLVED_MAKE_STRUCT:
       return MakeSqlErrorAt(ast_location)
              << "UPDATE ... SET does not support updating the entire row";
@@ -3452,6 +3475,15 @@ absl::Status Resolver::ResolveTemporalAtClause(
     const ASTTemporalAt* temporal_at, const NameScope* temporal_at_scope,
     std::unique_ptr<const ResolvedExpr>* resolved_temporal_at) {
   GOOGLESQL_RET_CHECK(temporal_at != nullptr);
+  // TODO: b/538182270 - Check supported version properties against Catalog
+  // capabilities rather than hardcoding `timestamp`.
+  if (!temporal_at->version_property()->GetAsIdString().CaseEquals(
+          kTimestampId)) {
+    return MakeSqlErrorAt(temporal_at->version_property())
+           << "Unsupported version property: "
+           << ToIdentifierLiteral(
+                  temporal_at->version_property()->GetAsIdString());
+  }
   std::unique_ptr<const ResolvedExpr> temp_expr;
   GOOGLESQL_RETURN_IF_ERROR(ResolveScalarExpr(
       temporal_at->expression(), temporal_at_scope, "AT clause", &temp_expr));

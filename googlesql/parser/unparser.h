@@ -458,7 +458,8 @@ class Unparser : public ParseTreeVisitor {
   void visitASTTablePathExpression(const ASTTablePathExpression* node,
                                    void* data) override;
   void visitASTGroupRows(const ASTGroupRows* node, void* data) override;
-  void visitASTForSystemTime(const ASTForSystemTime* node, void* data) override;
+  void visitASTForVersionClause(const ASTForVersionClause* node,
+                                void* data) override;
   void visitASTTableSubquery(const ASTTableSubquery* node, void* data) override;
   void visitASTJoin(const ASTJoin* node, void* data) override;
   void visitASTParenthesizedJoin(const ASTParenthesizedJoin* node,
@@ -856,6 +857,12 @@ class Unparser : public ParseTreeVisitor {
                                void* data) override;
   void visitASTInsertValuesRowList(const ASTInsertValuesRowList* node,
                                    void* data) override;
+  void visitASTInsertColumnUsingClause(const ASTInsertColumnUsingClause* node,
+                                       void* data) override;
+  void visitASTInsertColumnItem(const ASTInsertColumnItem* node,
+                                void* data) override;
+  void visitASTInsertColumnList(const ASTInsertColumnList* node,
+                                void* data) override;
   void visitASTInsertStatement(const ASTInsertStatement* node,
                                void* data) override;
   void visitASTOnConflictClause(const ASTOnConflictClause* node,

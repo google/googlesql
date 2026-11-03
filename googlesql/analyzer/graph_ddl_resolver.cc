@@ -1263,7 +1263,7 @@ GraphDdlResolver::ResolveBaseTable(
       input_table_name, input_table_alias,
       /*has_explicit_alias=*/false,
       /*alias_location=*/input_table_name, /*hints=*/nullptr,
-      /*for_system_time=*/nullptr, resolver_.empty_name_scope_.get(),
+      /*for_version_clause=*/nullptr, resolver_.empty_name_scope_.get(),
       /*read_as_row_type_error_kind=*/"graph query",
       /*remaining_names=*/nullptr, &resolved_table_scan,
       /*output_name_list=*/&table_scan_name_list,
@@ -1661,6 +1661,13 @@ absl::Status GraphDdlResolver::ResolveCreatePropertyGraphStmt(
         &option_list));
   }
 
+  std::unique_ptr<const ResolvedConnectionList> resolved_connection_list;
+  if (ast_stmt->with_connection_clause() != nullptr) {
+    GOOGLESQL_RETURN_IF_ERROR(resolver_.ResolveConnectionClause(
+        ast_stmt->with_connection_clause(), &resolved_connection_list,
+        /*is_default_connection_allowed=*/true));
+  }
+
   std::vector<std::unique_ptr<const ResolvedGraphElementTable>> node_tables;
   std::vector<std::unique_ptr<const ResolvedGraphElementTable>> edge_tables;
   struct PendingInlinedEdge {
@@ -1680,54 +1687,55 @@ absl::Status GraphDdlResolver::ResolveCreatePropertyGraphStmt(
   bool dynamic_labeled_node_exists = false;
   bool dynamic_labeled_edge_exists = false;
 
-  // Resolves node tables.
-  GOOGLESQL_RET_CHECK(ast_stmt->node_table_list() != nullptr);
+  // Resolves node tables if specified.
   StringViewHashMapCase<const ResolvedGraphElementTable*> node_table_map;
   // Tracks labels that have OPTIONS defined, which have to be uniquely bound to
   // a single element table.
   StringViewHashSetCase labels_with_options;
-  for (const auto* ast_node_table :
-       ast_stmt->node_table_list()->element_tables()) {
-    if (ast_node_table->dynamic_label() != nullptr) {
-      if (!dynamic_label_properties_feature_enabled) {
-        return MakeSqlErrorAt(ast_node_table->dynamic_label())
-               << "Dynamic label is not supported";
+  if (ast_stmt->node_table_list() != nullptr) {
+    for (const auto* ast_node_table :
+         ast_stmt->node_table_list()->element_tables()) {
+      if (ast_node_table->dynamic_label() != nullptr) {
+        if (!dynamic_label_properties_feature_enabled) {
+          return MakeSqlErrorAt(ast_node_table->dynamic_label())
+                 << "Dynamic label is not supported";
+        }
+        if (dynamic_labeled_node_exists) {
+          return MakeSqlErrorAt(ast_node_table->dynamic_label())
+                 << "Only one node table can be assigned a dynamic label";
+        }
+        dynamic_labeled_node_exists = true;
       }
-      if (dynamic_labeled_node_exists) {
-        return MakeSqlErrorAt(ast_node_table->dynamic_label())
-               << "Only one node table can be assigned a dynamic label";
+      if (ast_node_table->dynamic_properties() != nullptr) {
+        if (!dynamic_label_properties_feature_enabled) {
+          return MakeSqlErrorAt(ast_node_table->dynamic_properties())
+                 << "Dynamic properties are not supported";
+        }
       }
-      dynamic_labeled_node_exists = true;
-    }
-    if (ast_node_table->dynamic_properties() != nullptr) {
-      if (!dynamic_label_properties_feature_enabled) {
-        return MakeSqlErrorAt(ast_node_table->dynamic_properties())
-               << "Dynamic properties are not supported";
+      GOOGLESQL_ASSIGN_OR_RETURN(
+          ElementTableWithLabelsAndProperties
+              element_table_with_labels_and_properties,
+          ResolveGraphElementTable(
+              ast_node_table, GraphElementTable::Kind::kNode, node_table_map));
+      node_table_map.emplace(
+          element_table_with_labels_and_properties.element_table->alias(),
+          element_table_with_labels_and_properties.element_table.get());
+      node_tables.push_back(
+          std::move(element_table_with_labels_and_properties.element_table));
+      // Inlined edges must be resolved in a second pass, after all node tables
+      // have been resolved and added to `node_table_map`.
+      for (const auto* ast_inlined_edge :
+           element_table_with_labels_and_properties.ast_inlined_edges) {
+        pending_inlined_edges.push_back(
+            {.ast_inlined_edge = ast_inlined_edge,
+             .ast_enclosing_node_table = ast_node_table,
+             .enclosing_node_table = node_tables.back().get()});
       }
+      GOOGLESQL_RETURN_IF_ERROR(ValidateAndRecordLabelsAndPropertyDeclarations(
+          element_table_with_labels_and_properties.labels,
+          element_table_with_labels_and_properties.property_decls,
+          labels_with_options, labels, property_decls));
     }
-    GOOGLESQL_ASSIGN_OR_RETURN(
-        ElementTableWithLabelsAndProperties
-            element_table_with_labels_and_properties,
-        ResolveGraphElementTable(ast_node_table, GraphElementTable::Kind::kNode,
-                                 node_table_map));
-    node_table_map.emplace(
-        element_table_with_labels_and_properties.element_table->alias(),
-        element_table_with_labels_and_properties.element_table.get());
-    node_tables.push_back(
-        std::move(element_table_with_labels_and_properties.element_table));
-    // Inlined edges must be resolved in a second pass, after all node tables
-    // have been resolved and added to `node_table_map`.
-    for (const auto* ast_inlined_edge :
-         element_table_with_labels_and_properties.ast_inlined_edges) {
-      pending_inlined_edges.push_back(
-          {.ast_inlined_edge = ast_inlined_edge,
-           .ast_enclosing_node_table = ast_node_table,
-           .enclosing_node_table = node_tables.back().get()});
-    }
-    GOOGLESQL_RETURN_IF_ERROR(ValidateAndRecordLabelsAndPropertyDeclarations(
-        element_table_with_labels_and_properties.labels,
-        element_table_with_labels_and_properties.property_decls,
-        labels_with_options, labels, property_decls));
   }
 
   // Resolve inlined edges in a second pass.
@@ -1807,6 +1815,7 @@ absl::Status GraphDdlResolver::ResolveCreatePropertyGraphStmt(
           !ast_stmt->edge_table_list()->element_tables().empty() &&
           !dynamic_labeled_edge_exists;
       bool static_labeled_nodes =
+          ast_stmt->node_table_list() != nullptr &&
           !ast_stmt->node_table_list()->element_tables().empty() &&
           !dynamic_labeled_node_exists;
 
@@ -1863,6 +1872,7 @@ absl::Status GraphDdlResolver::ResolveCreatePropertyGraphStmt(
           .set_label_list(std::move(labels))
           .set_property_declaration_list(std::move(property_declarations))
           .set_option_list(std::move(option_list))
+          .set_connection_list(std::move(resolved_connection_list))
           .Build());
 
   // Validates name collision against property graphs and tables.

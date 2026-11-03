@@ -612,7 +612,7 @@ ambiguity. For example:
 <tr>
   <td><a href="#new_operator"><code>NEW</code> operator</a>
 </td>
-  <td>Creates a protocol buffer.</td>
+  <td>Creates a protocol buffer or a map.</td>
 </tr>
 
 <tr>
@@ -4034,7 +4034,8 @@ SELECT
 ### `NEW` operator 
 <a id="new_operator"></a>
 
-The `NEW` operator only supports protocol buffers and uses the following syntax:
+The `NEW` operator creates a protocol buffer or a map and uses the following
+syntax:
 
  + `NEW protocol_buffer {...}`: Creates a
 protocol buffer using a map constructor.
@@ -4051,6 +4052,12 @@ protocol buffer using a map constructor.
 
     ```googlesql
     NEW protocol_buffer(field [AS alias], ...field [AS alias])
+    ```
++   `NEW MAP<KEY_TYPE, VALUE_TYPE> {...}`: Creates a map using a
+    [map constructor][map-constructor].
+
+    ```googlesql
+    NEW MAP<KEY_TYPE, VALUE_TYPE> { [ key_expr: value_expr [, ...] ] }
     ```
 
 **Examples**
@@ -4088,10 +4095,26 @@ FROM
   (SELECT 1 AS key, "2" AS name);
 ```
 
+The following example uses the `NEW` operator to construct a map:
+
+```googlesql
+SELECT NEW MAP<STRING, INT64> { 'a': 1, 'b': 2 } AS m;
+
+/*------------------*
+ | m                |
+ +------------------+
+ | {"a": 1, "b": 2} |
+ *------------------*/
+```
+
 To learn more about protocol buffers in GoogleSQL, see [Work with
 protocol buffers][protocol-buffers].
 
+To learn more about constructing maps, see [Map constructor][map-constructor].
+
 [protocol-buffers]: https://github.com/google/googlesql/blob/master/docs/protocol-buffers.md
+
+[map-constructor]: https://github.com/google/googlesql/blob/master/docs/data-types.md#map_constructor
 
 ### Concatenation operator 
 <a id="concatenation_operator"></a>
@@ -6740,10 +6763,11 @@ into this function, see
 + UINT64
 + INT32
 + INT64
++ BYTES (requires input BYTES to have the same length)
 
 **Returned Data Types**
 
-INT64
+Matches the input data type.
 
 **Examples**
 
@@ -6788,10 +6812,11 @@ into this function, see
 + UINT64
 + INT32
 + INT64
++ BYTES (requires input BYTES to have the same length)
 
 **Returned Data Types**
 
-INT64
+Matches the input data type.
 
 **Examples**
 
@@ -6836,10 +6861,11 @@ into this function, see
 + UINT64
 + INT32
 + INT64
++ BYTES (requires input BYTES to have the same length)
 
 **Returned Data Types**
 
-INT64
+Matches the input data type.
 
 **Examples**
 
@@ -14605,21 +14631,27 @@ If this parameter isn't used, the default value is `MONTH`.
 +  `YEAR`
 +  `QUARTER`
 +  `MONTH`
-+  `WEEK`. Equivalent to 7 `DAY`s.
++  `WEEK`. Weeks begin on Sunday, so the last day of the week is
+   Saturday. `WEEK` is equivalent to
+   `WEEK(SUNDAY)`.
 +  `WEEK(<WEEKDAY>)`. `<WEEKDAY>` represents the starting day of the week.
    Valid values are `SUNDAY`, `MONDAY`, `TUESDAY`, `WEDNESDAY`, `THURSDAY`,
    `FRIDAY`, and `SATURDAY`.
 +  `ISOWEEK`. Uses [ISO 8601][ISO-8601-week] week boundaries. ISO weeks begin
-   on Monday.
+   on Monday, so the last day of the ISO week is Sunday.
 +  `ISOYEAR`. Uses the [ISO 8601][ISO-8601] week-numbering year boundary.
    The ISO year boundary is the Monday of the first week whose Thursday belongs
-   to the corresponding Gregorian calendar year.
+   to the corresponding Gregorian calendar year, so the last day of the ISO
+   year is the Sunday before the next ISO year boundary.
+
+If `date_expression` is `NULL`, this function returns `NULL`. If the resulting
+date exceeds `9999-12-31`, this function returns an out-of-range error.
 
 **Return Data Type**
 
 `DATE`
 
-**Example**
+**Examples**
 
 These both return the last day of the month:
 
@@ -15865,8 +15897,8 @@ LAST_DAY(datetime_expression[, date_part])
 
 **Description**
 
-Returns the last day from a datetime expression that contains the date.
-This is commonly used to return the last day of the month.
+Returns the last day from a datetime expression. This is commonly used to
+return the last day of the month.
 
 You can optionally specify the date part for which the last day is returned.
 If this parameter isn't used, the default value is `MONTH`.
@@ -15875,26 +15907,33 @@ If this parameter isn't used, the default value is `MONTH`.
 +  `YEAR`
 +  `QUARTER`
 +  `MONTH`
-+  `WEEK`. Equivalent to 7 `DAY`s.
++  `WEEK`. Weeks begin on Sunday, so the last day of the week is
+   Saturday. `WEEK` is equivalent to
+   `WEEK(SUNDAY)`.
 +  `WEEK(<WEEKDAY>)`. `<WEEKDAY>` represents the starting day of the week.
    Valid values are `SUNDAY`, `MONDAY`, `TUESDAY`, `WEDNESDAY`, `THURSDAY`,
    `FRIDAY`, and `SATURDAY`.
 +  `ISOWEEK`. Uses [ISO 8601][ISO-8601-week] week boundaries. ISO weeks begin
-   on Monday.
+   on Monday, so the last day of the ISO week is Sunday.
 +  `ISOYEAR`. Uses the [ISO 8601][ISO-8601] week-numbering year boundary.
    The ISO year boundary is the Monday of the first week whose Thursday belongs
-   to the corresponding Gregorian calendar year.
+   to the corresponding Gregorian calendar year, so the last day of the ISO
+   year is the Sunday before the next ISO year boundary.
+
+If `datetime_expression` is `NULL`, this function returns `NULL`. If the
+resulting date exceeds `9999-12-31`, this function returns an out-of-range
+error.
 
 **Return Data Type**
 
 `DATE`
 
-**Example**
+**Examples**
 
 These both return the last day of the month:
 
 ```googlesql
-SELECT LAST_DAY(DATETIME '2008-11-25', MONTH) AS last_day
+SELECT LAST_DAY(DATETIME '2008-11-25 15:30:00', MONTH) AS last_day
 
 /*------------+
  | last_day   |
@@ -15904,7 +15943,7 @@ SELECT LAST_DAY(DATETIME '2008-11-25', MONTH) AS last_day
 ```
 
 ```googlesql
-SELECT LAST_DAY(DATETIME '2008-11-25') AS last_day
+SELECT LAST_DAY(DATETIME '2008-11-25 15:30:00') AS last_day
 
 /*------------+
  | last_day   |
@@ -20817,8 +20856,7 @@ This is advanced functionality for interoperability with systems utilizing the
 + Can return negative cell IDs.
 + Valid S2 cell levels are 0 to 30.
 + `level` defaults to 30 if not explicitly specified.
-+ The function only supports a single point GEOGRAPHY. Use the `SAFE` prefix if
-  the input can be multipoint, linestring, polygon, or an empty `GEOGRAPHY`.
++ The function only supports a single point GEOGRAPHY.
 + To compute the covering of a complex `GEOGRAPHY`, use
   [S2_COVERINGCELLIDS][s2-coveringcellids].
 
@@ -21969,8 +22007,7 @@ ST_ENDPOINT(linestring_geography)
 **Description**
 
 Returns the last point of a linestring geography as a point geography. Returns
-an error if the input isn't a linestring or if the input is empty. Use the
-`SAFE` prefix to obtain `NULL` for invalid input instead of an error.
+an error if the input isn't a linestring or if the input is empty.
 
 **Return Type**
 
@@ -22095,8 +22132,6 @@ polygon geography.
     geography and returns the corresponding linestring.
 +   If the input is the full `GEOGRAPHY`, returns an empty geography.
 +   Returns an error if the input isn't a single polygon.
-
-Use the `SAFE` prefix to return `NULL` for invalid input instead of an error.
 
 **Return type**
 
@@ -22825,8 +22860,6 @@ the input polygon.
 +   If the input polygon has no holes, returns an empty array.
 +   Returns an error if the input isn't a single polygon.
 
-Use the `SAFE` prefix to return `NULL` for invalid input instead of an error.
-
 **Return type**
 
 `ARRAY<LineString GEOGRAPHY>`
@@ -23178,8 +23211,7 @@ Details:
 
 +   Returns `NULL` if any input argument is `NULL`.
 +   Returns an error if `linestring_geography` isn't a linestring or if
-    `point_geography` isn't a point. Use the `SAFE` prefix
-    to obtain `NULL` for invalid input instead of an error.
+    `point_geography` isn't a point.
 
 **Return Type**
 
@@ -23641,8 +23673,7 @@ Returns the Nth point of a linestring geography as a point geography, where N is
 the index. The index is 1-based. Negative values are counted backwards from the
 end of the linestring, so that -1 is the last point. Returns an error if the
 input isn't a linestring, if the input is empty, or if there is no vertex at
-the given index. Use the `SAFE` prefix to obtain `NULL` for invalid input
-instead of an error.
+the given index.
 
 **Return Type**
 
@@ -23781,8 +23812,7 @@ ST_STARTPOINT(linestring_geography)
 **Description**
 
 Returns the first point of a linestring geography as a point geography. Returns
-an error if the input isn't a linestring or if the input is empty. Use the
-`SAFE` prefix to obtain `NULL` for invalid input instead of an error.
+an error if the input isn't a linestring or if the input is empty.
 
 **Return Type**
 
@@ -23937,7 +23967,7 @@ Returns the longitude in degrees of the single-point input
 
 For any input `GEOGRAPHY` that isn't a single point,
 including an empty `GEOGRAPHY`, `ST_X` returns an
-error. Use the `SAFE.` prefix to obtain `NULL`.
+error.
 
 **Return type**
 
@@ -23979,7 +24009,7 @@ Returns the latitude in degrees of the single-point input
 
 For any input `GEOGRAPHY` that isn't a single point,
 including an empty `GEOGRAPHY`, `ST_Y` returns an
-error. Use the `SAFE.` prefix to return `NULL` instead.
+error.
 
 **Return type**
 
@@ -34268,7 +34298,7 @@ The following SQL to JSON encodings are supported:
           Anonymous fields are represented with <code>""</code>.
         </p>
         <p>
-          Invalid UTF-8 field names might result in unparseable JSON. String
+          Invalid UTF-8 field names might result in unparsable JSON. String
           values are escaped according to the JSON standard. Specifically,
           <code>"</code>, <code>\,</code> and the control characters from
           <code>U+0000</code> to <code>U+001F</code> are escaped.
@@ -34301,7 +34331,7 @@ The following SQL to JSON encodings are supported:
         </p>
         <ul>
           <li>
-            Field names that aren't valid UTF-8 might result in unparseable
+            Field names that aren't valid UTF-8 might result in unparsable
             JSON.
           </li>
           <li>Field annotations are ignored.</li>
@@ -34343,7 +34373,7 @@ The following SQL to JSON encodings are supported:
             different queries.
           </li>
           <li>
-            Field names that aren't valid UTF-8 might result in unparseable
+            Field names that aren't valid UTF-8 might result in unparsable
             JSON.
           </li>
           <li>
@@ -36441,7 +36471,6 @@ CBRT(X)
 
 Computes the cube root of `X`. `X` can be any data type
 that [coerces to `DOUBLE`][conversion-rules].
-Supports the `SAFE.` prefix.
 
 <table>
   <thead>
@@ -36851,7 +36880,6 @@ COT(X)
 Computes the cotangent for the angle of `X`, where `X` is specified in radians.
 `X` can be any data type
 that [coerces to `DOUBLE`][conversion-rules].
-Supports the `SAFE.` prefix.
 
 <table>
   <thead>
@@ -36913,7 +36941,6 @@ COTH(X)
 Computes the hyperbolic cotangent for the angle of `X`, where `X` is specified
 in radians. `X` can be any data type
 that [coerces to `DOUBLE`][conversion-rules].
-Supports the `SAFE.` prefix.
 
 <table>
   <thead>
@@ -36975,7 +37002,6 @@ CSC(X)
 Computes the cosecant of the input angle, which is in radians.
 `X` can be any data type
 that [coerces to `DOUBLE`][conversion-rules].
-Supports the `SAFE.` prefix.
 
 <table>
   <thead>
@@ -37037,7 +37063,6 @@ CSCH(X)
 Computes the hyperbolic cosecant of the input angle, which is in radians.
 `X` can be any data type
 that [coerces to `DOUBLE`][conversion-rules].
-Supports the `SAFE.` prefix.
 
 <table>
   <thead>
@@ -43731,7 +43756,6 @@ Constructs a range of [`DATE`][date-type], [`DATETIME`][datetime-type], or
 `lower_bound` and `upper_bound` must be of the same data type.
 
 Produces an error if `lower_bound` is greater than or equal to `upper_bound`.
-To return `NULL` instead, add the `SAFE.` prefix to the function name.
 
 **Return type**
 
@@ -44003,8 +44027,7 @@ Gets a segment of two ranges that intersect.
 
 Returns `NULL` if any input is` NULL`.
 
-Produces an error if `range_a` and `range_b` don't overlap. To return
-`NULL` instead, add the `SAFE.` prefix to the function name.
+Produces an error if `range_a` and `range_b` don't overlap.
 
 `T` must be of the same type for all inputs.
 
@@ -44347,6 +44370,13 @@ GoogleSQL supports the following security functions.
   <tbody>
 
 <tr>
+  <td><a href="#secure_context"><code>SECURE_CONTEXT</code></a>
+</td>
+  <td>Returns the value of a request-scoped secure context parameter provided at
+      query run time.</td>
+</tr>
+
+<tr>
   <td><a href="#session_user"><code>SESSION_USER</code></a>
 </td>
   <td>
@@ -44357,6 +44387,65 @@ GoogleSQL supports the following security functions.
 
   </tbody>
 </table>
+
+### `SECURE_CONTEXT`
+
+```googlesql
+SECURE_CONTEXT(key)
+```
+
+**Description**
+
+Returns the value of a request-scoped secure context parameter provided at query
+run time.
+
+**Definitions**
+
++   `key`: A constant, non-`NULL` `STRING` expression representing the name of the
+    secure context parameter to retrieve. `key` isn't coercible.
+
+**Limitations**
+
++   **Supported types**: Values supplied in the secure context must be `STRING`
+    values.
++   **Error mode**: `SECURE_CONTEXT` doesn't support the `SAFE.` prefix.
+    Calling `SAFE.SECURE_CONTEXT(key)` returns an analysis error.
++   **Missing parameter handling**: If a query evaluates
+    `SECURE_CONTEXT('my_param')` and `my_param` isn't provided in the request's
+    secure context, the query fails and returns an error.
+
+**Return type**
+
+`STRING`
+
+**Examples**
+
+The following example filters a query using `SECURE_CONTEXT('user_dept')` when
+the secure context parameter `'user_dept'` is set to `'Sales'` at run time:
+
+```googlesql
+WITH
+  Orders AS (
+    SELECT 1001 AS order_id, 'Sales' AS department, 250.00 AS amount
+    UNION ALL
+    SELECT 1002 AS order_id, 'Engineering' AS department, 500.00 AS amount
+    UNION ALL
+    SELECT 1004 AS order_id, 'Sales' AS department, 430.50 AS amount
+  )
+SELECT
+  order_id,
+  department,
+  amount
+FROM Orders
+WHERE department = SECURE_CONTEXT('user_dept');
+
+/*----------+------------+--------+
+ | order_id | department | amount |
+ +----------+------------+--------+
+ | 1001     | Sales      | 250.00 |
+ | 1004     | Sales      | 430.50 |
+ +----------+------------+--------*/
+```
 
 ### `SESSION_USER`
 

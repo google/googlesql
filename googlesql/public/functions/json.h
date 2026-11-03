@@ -19,6 +19,7 @@
 #ifndef GOOGLESQL_PUBLIC_FUNCTIONS_JSON_H_
 #define GOOGLESQL_PUBLIC_FUNCTIONS_JSON_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <limits>
@@ -909,6 +910,11 @@ bool JsonContains(JSONValueConstRef input, JSONValueConstRef target,
 struct JSONKeysOptions {
   json_internal::JsonPathOptions path_options;
   int64_t max_depth = std::numeric_limits<int64_t>::max();
+  // Optional callback invoked before allocating memory for extracted key paths
+  // and depth-first traversal state, receiving the estimated number of bytes
+  // to be allocated. If the callback returns a non-OK status (such as
+  // RESOURCE_EXHAUSTED), JsonKeys aborts traversal and returns that status.
+  std::function<absl::Status(size_t)> reserve_memory_callback = nullptr;
 };
 
 // Returns all keys in a given JSON `input` based on `options`.

@@ -86,6 +86,12 @@ std::vector<ValidTestCase> GetValidTestCases() {
       // Test with comments and newline
       {"-- comment\nSELECT * FROM T; --comment\n--comment\n--comment", true, 57,
        RESOLVED_QUERY_STMT},
+
+      // STRING literal table references, including a ';' inside the literal.
+      {"SELECT * FROM 'a.csv'", true, 21, RESOLVED_QUERY_STMT},
+      {"SELECT * FROM 'a;b.csv';", true, 24, RESOLVED_QUERY_STMT},
+      {"SELECT * FROM 'a' 'b' AS t JOIN \"c\" USING (x)", true, 45,
+       RESOLVED_QUERY_STMT},
   };
 }
 
@@ -156,6 +162,9 @@ std::vector<OtherTestCase> GetOtherTestCases() {
       {"--- comment\nSELECT * FROM T; blah", 28, RESOLVED_QUERY_STMT},
       {"--- comment\nSELECT * FROM T; --comment\nblah", 28,
        RESOLVED_QUERY_STMT},
+
+      // STRING literal table reference containing a ';'.
+      {"SELECT * FROM 'a;b';  SELECT * FROM T", 20, RESOLVED_QUERY_STMT},
   };
 }
 

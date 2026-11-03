@@ -1885,7 +1885,7 @@ absl::Status SQLBuilder::VisitResolvedFilterField(
                        arg->field_descriptor_path(), ".",
                        [](std::string* out, const google::protobuf::FieldDescriptor* fd) {
                          if (fd->is_extension()) {
-                           out->append(absl::StrCat("(", fd->full_name(), ")"));
+                           absl::StrAppend(out, "(", fd->full_name(), ")");
                          } else {
                            out->append(ToIdentifierLiteral(fd->name()));
                          }
@@ -2923,7 +2923,6 @@ absl::Status SQLBuilder::VisitResolvedGetRowField(
   GOOGLESQL_RET_CHECK(node->expr()->type()->IsRowOrTable())
       << node->type()->DebugString();
 
-  std::string text;
   GOOGLESQL_ASSIGN_OR_RETURN(std::unique_ptr<QueryFragment> result,
                    ProcessNode(node->expr()));
 
@@ -3906,22 +3905,18 @@ absl::StatusOr<std::string> SQLBuilder::ProcessResolvedTVFScan(
   argument_list.reserve(node->argument_list_size());
   std::vector<std::string> output_aliases;
 
-  // We use this flag to track if the first argument of the TVF
-  // call is a query, so that we can transform `TVF((query), ...)` into
-  // `query |> CALL TVF(...)` when in Pipe SQL syntax mode.
-  //
-  // This is more restrictive than strictly necessary.  We could use pipe
-  // CALL in cases where the query is the first table-typed argument.
-  // When FEATURE_PIPE_CALL_INPUT_TABLE is enabled, we could use pipe syntax
-  // for any case with a query input, but we might want a heuristic for when
-  // to do this.  `INPUT TABLE` syntax is currently never generated.
-  bool is_first_arg_query = false;
-
   // Used to detect the first relation argument in the TVF call, to avoid
-  // printing it especially in GQL.
+  // printing it in GQL and to check whether the first argument is a relation
+  // that can be transformed from `TVF((query), ...)` into
+  // `query |> CALL TVF(...)` when in Pipe SQL syntax mode.
   std::optional<int> first_relation_arg_idx;
   // Used to make sure there is only one implicit graph argument.
   bool seen_first_graph_arg = false;
+
+  const bool can_use_pipe_call =
+      (IsPipeSyntaxTargetMode() || node->tvf()->IsPassthrough()) &&
+      build_mode == TVFBuildMode::kSql;
+  std::string pipe_call_modifiers;
 
   absl::flat_hash_set<int> unset_arg_indices;
   for (int arg_idx = 0; arg_idx < node->argument_list_size(); ++arg_idx) {
@@ -4054,9 +4049,6 @@ absl::StatusOr<std::string> SQLBuilder::ProcessResolvedTVFScan(
           {std::make_pair(column_alias, column_alias)}, ""));
       result->query_expression->SetSelectAsModifier("AS VALUE");
 
-      if (arg_idx == 0) {
-        is_first_arg_query = true;
-      }
       argument_list.push_back("(" + result->GetSQL() + ")");
     } else {
       // If the input table is not a value table, assign each required column
@@ -4183,7 +4175,11 @@ absl::StatusOr<std::string> SQLBuilder::ProcessResolvedTVFScan(
             absl::StrAppend(&modifiers, order_by_fragment->GetSQL());
           }
         }
-        arg_sql = absl::StrCat("TABLE(", arg_sql, modifiers, ")");
+        if (arg_idx == 0 && can_use_pipe_call) {
+          pipe_call_modifiers = std::move(modifiers);
+        } else {
+          arg_sql = absl::StrCat("TABLE(", arg_sql, modifiers, ")");
+        }
 
         for (int col_id : pending_column_ids) {
           auto it = saved_pending_columns.find(col_id);
@@ -4195,10 +4191,6 @@ absl::StatusOr<std::string> SQLBuilder::ProcessResolvedTVFScan(
         }
       }
 
-      if (arg_idx == 0 && argument->partition_by_list_size() == 0 &&
-          argument->order_by_list_size() == 0) {
-        is_first_arg_query = true;
-      }
       argument_list.push_back(arg_sql);
     }
   }
@@ -4280,9 +4272,8 @@ absl::StatusOr<std::string> SQLBuilder::ProcessResolvedTVFScan(
   // standard SQL syntax cannot represent namelist forwarding or passthrough
   // column drops. We will generate SQL for Passthrough TVFs in pipe syntax mode
   // regardless of the target syntax mode.
-  if ((IsPipeSyntaxTargetMode() || node->tvf()->IsPassthrough()) &&
-      !argument_list.empty() && is_first_arg_query &&
-      build_mode == TVFBuildMode::kSql) {
+  if (can_use_pipe_call && !argument_list.empty() &&
+      first_relation_arg_idx == 0) {
     std::string first_arg = std::move(argument_list[0]);
     argument_list.erase(argument_list.begin());
     std::string passthrough_prefix;
@@ -4342,6 +4333,7 @@ absl::StatusOr<std::string> SQLBuilder::ProcessResolvedTVFScan(
   if (!node->tvf()->IsPassthrough()) {
     absl::StrAppend(&from, " AS ", tvf_scan_alias);
   }
+  absl::StrAppend(&from, pipe_call_modifiers);
 
   // Copy the TVF's column names to the pending_columns_ list so that the
   // outer SELECT that includes this TVF in the FROM clause uses the TVF
@@ -8028,7 +8020,7 @@ absl::Status SQLBuilder::VisitResolvedCreateProcedureStmt(
   std::string sql;
   GOOGLESQL_RETURN_IF_ERROR(GetCreateStatementPrefix(node, "PROCEDURE", &sql));
   GOOGLESQL_ASSIGN_OR_RETURN(
-      const std::string args,
+      [[maybe_unused]] const std::string args,
       GetFunctionArgListString(node->argument_name_list(), node->signature()));
   absl::StrAppend(&sql, node->signature().GetSQLDeclaration(
                             node->argument_name_list(),
@@ -8956,23 +8948,32 @@ absl::Status SQLBuilder::VisitResolvedUpdateStmt(
   }
 
   std::string target_sql;
+  std::string alias_sql;
   if (node->table_scan() != nullptr) {
     // Always use a table alias. If we have the FROM clause, the alias might
     // appear in the FROM scan.
     const std::string alias = GetScanAlias(node->table_scan());
     GOOGLESQL_RETURN_IF_ERROR(SetPathForColumnsInScan(node->table_scan(), alias));
-    absl::StrAppend(&target_sql,
-                    TableToIdentifierLiteral(node->table_scan()->table()),
-                    " AS ", alias);
+    target_sql = TableToIdentifierLiteral(node->table_scan()->table());
+    alias_sql = absl::StrCat(" AS ", alias);
   } else {
     GOOGLESQL_RET_CHECK(!nested_dml_targets().empty());
     target_sql = nested_dml_targets().back().first;
     if (nested_dml_targets().back().second != kEmptyAlias) {
-      absl::StrAppend(&target_sql, " ", nested_dml_targets().back().second);
+      alias_sql = absl::StrCat(" ", nested_dml_targets().back().second);
     }
   }
   GOOGLESQL_RET_CHECK(!target_sql.empty());
   absl::StrAppend(&sql, "UPDATE ", target_sql);
+
+  if (node->temporal_at() != nullptr) {
+    GOOGLESQL_ASSIGN_OR_RETURN(std::unique_ptr<QueryFragment> at,
+                     ProcessNode(node->temporal_at()));
+    // TODO: b/538182270 - Use the resolved version property rather than
+    // hardcoding `timestamp`.
+    absl::StrAppend(&sql, " AT(timestamp => ", at->GetSQL(), ")");
+  }
+  absl::StrAppend(&sql, alias_sql);
 
   if (node->timestamp_version_column() != nullptr) {
     const ResolvedColumn& timestamp_column =
@@ -8981,11 +8982,6 @@ absl::Status SQLBuilder::VisitResolvedUpdateStmt(
         ToIdentifierLiteral(timestamp_column.name());
     SetPathForColumn(timestamp_column, timestamp_alias);
     absl::StrAppend(&sql, " WITH TIMESTAMP AS ", timestamp_alias);
-  }
-  if (node->temporal_at() != nullptr) {
-    GOOGLESQL_ASSIGN_OR_RETURN(std::unique_ptr<QueryFragment> at,
-                     ProcessNode(node->temporal_at()));
-    absl::StrAppend(&sql, " AT(", at->GetSQL(), ")");
   }
 
   if (node->array_offset_column() != nullptr) {
@@ -9119,7 +9115,9 @@ absl::Status SQLBuilder::VisitResolvedInsertStmtImpl(
   if (node->temporal_at() != nullptr) {
     GOOGLESQL_ASSIGN_OR_RETURN(std::unique_ptr<QueryFragment> at,
                      ProcessNode(node->temporal_at()));
-    absl::StrAppend(&sql, "AT(", at->GetSQL(), ") ");
+    // TODO: b/538182270 - Use the resolved version property rather than
+    // hardcoding `timestamp`.
+    absl::StrAppend(&sql, "AT(timestamp => ", at->GetSQL(), ") ");
   }
 
   if (node->insert_column_list_size() > 0) {
@@ -10661,7 +10659,6 @@ absl::Status SQLBuilder::VisitResolvedCreatePropertyGraphStmt(
     const ResolvedCreatePropertyGraphStmt* node) {
   std::string sql;
   GOOGLESQL_RETURN_IF_ERROR(GetCreateStatementPrefix(node, "PROPERTY GRAPH", &sql));
-  absl::StrAppend(&sql, "NODE TABLES(");
   absl::flat_hash_map<std::string, const ResolvedGraphElementLabel*>
       name_to_label;
   for (const std::unique_ptr<const ResolvedGraphElementLabel>& label :
@@ -10669,15 +10666,24 @@ absl::Status SQLBuilder::VisitResolvedCreatePropertyGraphStmt(
     GOOGLESQL_RET_CHECK(name_to_label.try_emplace(label->name(), label.get()).second);
   }
 
-  GOOGLESQL_RETURN_IF_ERROR(
-      AppendElementTables(node->node_table_list(), name_to_label, sql));
-  absl::StrAppend(&sql, ")");
+  if (!node->node_table_list().empty()) {
+    absl::StrAppend(&sql, "NODE TABLES(");
+    GOOGLESQL_RETURN_IF_ERROR(
+        AppendElementTables(node->node_table_list(), name_to_label, sql));
+    absl::StrAppend(&sql, ")");
+  }
   if (!node->edge_table_list().empty()) {
-    absl::StrAppend(&sql, " EDGE TABLES(");
+    if (!node->node_table_list().empty()) {
+      absl::StrAppend(&sql, " ");
+    }
+    absl::StrAppend(&sql, "EDGE TABLES(");
     GOOGLESQL_RETURN_IF_ERROR(
         AppendElementTables(node->edge_table_list(), name_to_label, sql));
     absl::StrAppend(&sql, ")");
   }
+  GOOGLESQL_ASSIGN_OR_RETURN(const std::string connection_clause,
+                   GetWithConnectionClauseString(node->connection_list()));
+  absl::StrAppend(&sql, connection_clause);
   GOOGLESQL_RETURN_IF_ERROR(AppendOptionsIfPresent(node->option_list(), &sql));
   node->MarkFieldsAccessed();
   PushQueryFragment(node, sql);
@@ -11338,7 +11344,6 @@ absl::Status SQLBuilder::ProcessResolvedGqlWithOp(
     GOOGLESQL_ASSIGN_OR_RETURN(std::unique_ptr<QueryFragment> result,
                      ProcessNode(computed_col->expr()));
     const std::string column_alias = GetColumnAlias(computed_col->column());
-    const std::string group_by_item = result->GetSQL();
     googlesql_base::InsertOrDie(&column_alias_to_sql, column_alias,
                      absl::StrCat(result->GetSQL(), " AS ", column_alias));
     group_by_list.push_back(std::move(column_alias));
@@ -11477,23 +11482,19 @@ absl::Status SQLBuilder::ProcessGqlSubquery(const ResolvedSubqueryExpr* node,
   const auto* linear_scan = first_op->GetAs<ResolvedGraphLinearScan>();
   std::string exists_partial_form_sql;
   if (is_exists_graph_pattern) {
-    for (const auto& scan : linear_scan->scan_list()) {
-      if (scan->Is<ResolvedGraphScan>()) {
-        for (const auto& graph_path_scan :
-             scan->GetAs<ResolvedGraphScan>()->input_scan_list()) {
-          if (!exists_partial_form_sql.empty()) {
-            // append separating commas between graph_path(s)
-            absl::StrAppend(&exists_partial_form_sql, ", ");
-          }
-          std::string graph_path_sql;
-          GOOGLESQL_RETURN_IF_ERROR(ProcessResolvedGraphPathScan(graph_path_scan.get(),
-                                                       graph_path_sql));
-          absl::StrAppend(&exists_partial_form_sql, "(", graph_path_sql, ")");
-        }
-        if (!exists_partial_form_sql.empty()) {
-          break;
-        }
-      }
+    // The `EXISTS { GRAPH g <graph pattern> }` form can only express a linear
+    // query made of a single non-optional MATCH operator followed by the
+    // RETURN. Anything else (a leading LET or FILTER, several MATCH operators,
+    // an OPTIONAL MATCH, etc.) is rendered as a regular GQL subquery instead,
+    // by leaving `exists_partial_form_sql` empty. The graph pattern itself is
+    // rendered the same way as in a MATCH operator, including the path
+    // variables, search prefixes, quantifiers and WHERE clause.
+    const ResolvedScan* first_op_scan = linear_scan->scan_list().front().get();
+    if (linear_scan->scan_list_size() == 2 &&
+        first_op_scan->Is<ResolvedGraphScan>() &&
+        !first_op_scan->GetAs<ResolvedGraphScan>()->optional()) {
+      GOOGLESQL_RETURN_IF_ERROR(AppendGraphPattern(
+          first_op_scan->GetAs<ResolvedGraphScan>(), exists_partial_form_sql));
     }
   } else if (is_exists_linear_ops) {
     if (linear_scan->scan_list().size() > 1) {
@@ -11618,6 +11619,10 @@ absl::Status SQLBuilder::ProcessResolvedGqlLinearScanIgnoringLastReturn(
                        ProcessNode(scan));
       absl::StrAppend(&sql, result->GetSQL());
     } else if (scan->Is<ResolvedGraphUpdateScan>()) {
+      GOOGLESQL_ASSIGN_OR_RETURN(std::unique_ptr<QueryFragment> result,
+                       ProcessNode(scan));
+      absl::StrAppend(&sql, result->GetSQL());
+    } else if (scan->Is<ResolvedGraphDeleteScan>()) {
       GOOGLESQL_ASSIGN_OR_RETURN(std::unique_ptr<QueryFragment> result,
                        ProcessNode(scan));
       absl::StrAppend(&sql, result->GetSQL());
@@ -12394,15 +12399,8 @@ absl::Status SQLBuilder::AppendSearchPrefix(
   }
 }
 
-absl::Status SQLBuilder::VisitResolvedGraphScan(const ResolvedGraphScan* node) {
-  if (node->input_scan() != nullptr) {
-    GOOGLESQL_RETURN_IF_ERROR(CheckScanIsGraphRefOrSingleRowScan(node->input_scan()));
-  }
-  std::string sql;
-  if (node->optional()) {
-    absl::StrAppend(&sql, " OPTIONAL");
-  }
-  absl::StrAppend(&sql, " MATCH ");
+absl::Status SQLBuilder::AppendGraphPattern(const ResolvedGraphScan* node,
+                                            std::string& sql) {
   for (auto it = node->input_scan_list().begin();
        it != node->input_scan_list().end(); ++it) {
     if (it != node->input_scan_list().begin()) {
@@ -12441,6 +12439,19 @@ absl::Status SQLBuilder::VisitResolvedGraphScan(const ResolvedGraphScan* node) {
                      ProcessNode(node->filter_expr()));
     absl::StrAppend(&sql, " WHERE ", result->GetSQL());
   }
+  return absl::OkStatus();
+}
+
+absl::Status SQLBuilder::VisitResolvedGraphScan(const ResolvedGraphScan* node) {
+  if (node->input_scan() != nullptr) {
+    GOOGLESQL_RETURN_IF_ERROR(CheckScanIsGraphRefOrSingleRowScan(node->input_scan()));
+  }
+  std::string sql;
+  if (node->optional()) {
+    absl::StrAppend(&sql, " OPTIONAL");
+  }
+  absl::StrAppend(&sql, " MATCH ");
+  GOOGLESQL_RETURN_IF_ERROR(AppendGraphPattern(node, sql));
   PushQueryFragment(node, sql);
   return absl::OkStatus();
 }
@@ -12669,9 +12680,26 @@ absl::Status SQLBuilder::VisitResolvedGraphUpdateScan(
 
 absl::Status SQLBuilder::VisitResolvedGraphDeleteScan(
     const ResolvedGraphDeleteScan* node) {
-  // TODO: Implement SQLBuilder in following CLs.
-  GOOGLESQL_RET_CHECK_FAIL()
-      << "SQLBuilder for ResolvedGraphDeleteScan not supported yet";
+  const std::vector<std::unique_ptr<const ResolvedComputedColumn>>&
+      delete_items_list = node->delete_item_list();
+  GOOGLESQL_RET_CHECK(!delete_items_list.empty());
+
+  std::string sql = node->is_detach_mode() ? " DETACH DELETE" : " DELETE";
+
+  std::vector<std::string> delete_item_aliases;
+  delete_item_aliases.reserve(delete_items_list.size());
+  for (const auto& delete_item : delete_items_list) {
+    GOOGLESQL_RET_CHECK_NE(delete_item, nullptr);
+    const ResolvedExpr* expr = delete_item->expr();
+    GOOGLESQL_RET_CHECK_NE(expr, nullptr);
+    GOOGLESQL_RET_CHECK(expr->Is<ResolvedColumnRef>());
+    delete_item_aliases.push_back(
+        GetColumnAlias(expr->GetAs<ResolvedColumnRef>()->column()));
+  }
+  absl::StrAppend(&sql, " ", absl::StrJoin(delete_item_aliases, ", "));
+
+  PushQueryFragment(node, sql);
+  return absl::OkStatus();
 }
 
 absl::Status SQLBuilder::ProcessGraphInsertElementLabelsAndProperties(

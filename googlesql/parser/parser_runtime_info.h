@@ -38,11 +38,23 @@ class ParserRuntimeInfo {
     parser_timed_value_.Accumulate(rhs.parser_timed_value_);
 
     num_lexical_tokens_ += rhs.num_lexical_tokens_;
+    has_macro_invocation_ |= rhs.has_macro_invocation_;
   }
 
   void add_lexical_tokens(int64_t tokens) { num_lexical_tokens_ += tokens; }
 
   int64_t num_lexical_tokens() const { return num_lexical_tokens_; }
+
+  void set_has_macro_invocation(bool value) { has_macro_invocation_ = value; }
+
+  // Returns true if the parsed input (or the current statement for
+  // ParseNextStatement / ParseNextScriptStatement) contains a macro invocation,
+  // builtin macro invocation, or macro argument reference, including
+  // invocations that expand to empty or fail to expand.
+  //
+  // Does not count macro tokens inside a DEFINE MACRO body, a standalone `$`,
+  // or macros in subsequent statements.
+  bool has_macro_invocation() const { return has_macro_invocation_; }
 
   AnalyzerLogEntry log_entry() const {
     AnalyzerLogEntry entry;
@@ -62,6 +74,7 @@ class ParserRuntimeInfo {
  private:
   internal::TimedValue parser_timed_value_;
   int64_t num_lexical_tokens_ = 0;
+  bool has_macro_invocation_ = false;
 };
 
 }  // namespace googlesql

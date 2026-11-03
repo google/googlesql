@@ -260,9 +260,7 @@ class RunModulesTest : public ::testing::Test {
                        << error_message_mode_option;
     }
 
-    std::string module_alias = "module_alias";
     std::vector<std::string> module_import_path;
-    std::string module_file_name;
     // If test input is module contents, then it will be loaded later with an
     // empty name path and TestModuleContentsFetcher will return `input_string`.
     // If test is not module contents, and for any transitive imports, modules

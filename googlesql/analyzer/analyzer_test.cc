@@ -3043,7 +3043,7 @@ TEST(AnalyzerTest,
   const Model* observed_result_type_model = nullptr;
   FunctionOptions fn_options;
   fn_options.set_post_resolution_argument_constraint(
-      [&](const FunctionSignature&, const std::vector<InputArgumentType>& args,
+      [&](const FunctionSignature&, absl::Span<const InputArgumentType> args,
           const LanguageOptions&) -> absl::Status {
         if (args.size() == 1 && args[0].is_model()) {
           observed_constraint_model = args[0].model();

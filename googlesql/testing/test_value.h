@@ -274,6 +274,9 @@ Value StructArray(absl::Span<const std::string> names,
 // Creates a range with values 'start' and 'end'.
 Value Range(ValueConstructor start, ValueConstructor end);
 
+// Creates a Variant value from 'value'.
+Value Variant(ValueConstructor value);
+
 // Creates a static graph node with identifier, definition name, static
 // properties and static labels for graph identified by graph_reference.
 absl::StatusOr<Value> GraphNode(

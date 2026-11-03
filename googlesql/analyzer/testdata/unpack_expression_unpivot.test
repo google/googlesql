@@ -1,0 +1,1233 @@
+[default language_features=MAXIMUM,+COLUMN_LIST_SPEC]
+[default show_sqlbuilder_output]
+[default use_constant_evaluator]
+[default sql_builder_target_syntax_mode=standard]
+
+################################################################################
+#
+# Positive test cases for UNPACK (**) in UNPIVOT
+#
+################################################################################
+
+# Single column unpack in UNPIVOT
+SELECT * FROM KeyValue UNPIVOT(a for b in (**COLUMNS(['Key'])))
+--
+QueryStmt
++-output_column_list=
+| +-$unpivot.Value#5 AS Value [STRING]
+| +-$unpivot.a#3 AS a [INT64]
+| +-$unpivot.b#4 AS b [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=$unpivot.[Value#5, a#3, b#4]
+    +-input_scan=
+      +-UnpivotScan
+        +-column_list=$unpivot.[Value#5, a#3, b#4]
+        +-input_scan=
+        | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+        +-value_column_list=[$unpivot.a#3]
+        +-label_column=$unpivot.b#4
+        +-label_list=
+        | +-Literal(type=STRING, value="Key")
+        +-unpivot_arg_list=
+        | +-UnpivotArg
+        |   +-column_list=
+        |     +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+        +-projected_input_column_list=
+        | +-Value#5 := ColumnRef(type=STRING, column=KeyValue.Value#2)
+        +-include_nulls=FALSE
+
+[SQLBUILDER_OUTPUT]
+SELECT
+  a_2 AS Value,
+  a_4 AS a,
+  a_5 AS b
+FROM
+  (
+    SELECT
+      KeyValue.Key AS a_1,
+      KeyValue.Value AS a_2
+    FROM
+      KeyValue
+  ) AS keyvalue_3 UNPIVOT EXCLUDE NULLS (a_4 FOR a_5 IN ((a_1) AS "Key"));
+==
+
+[sql_builder_target_syntax_mode=pipe]
+FROM KeyValue |> UNPIVOT(a for b in (**COLUMNS(['Key'])))
+--
+QueryStmt
++-output_column_list=
+| +-$unpivot.Value#5 AS Value [STRING]
+| +-$unpivot.a#3 AS a [INT64]
+| +-$unpivot.b#4 AS b [STRING]
++-query=
+  +-UnpivotScan
+    +-column_list=$unpivot.[Value#5, a#3, b#4]
+    +-input_scan=
+    | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+    +-value_column_list=[$unpivot.a#3]
+    +-label_column=$unpivot.b#4
+    +-label_list=
+    | +-Literal(type=STRING, value="Key")
+    +-unpivot_arg_list=
+    | +-UnpivotArg
+    |   +-column_list=
+    |     +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+    +-projected_input_column_list=
+    | +-Value#5 := ColumnRef(type=STRING, column=KeyValue.Value#2)
+    +-include_nulls=FALSE
+
+[SQLBUILDER_OUTPUT]
+FROM
+  KeyValue
+|> SELECT
+     KeyValue.Key AS a_1,
+     KeyValue.Value AS a_2
+|> AS keyvalue_3
+|> UNPIVOT EXCLUDE NULLS (a_4 FOR a_5 IN ((a_1) AS "Key"))
+|> SELECT
+     a_2 AS Value,
+     a_4 AS a,
+     a_5 AS b;
+==
+
+# Multiple column unpack in UNPIVOT
+SELECT * FROM MultipleColumns UNPIVOT(a for b in (**COLUMNS(['int_b']), **COLUMNS(['int_c'])))
+--
+QueryStmt
++-output_column_list=
+| +-$unpivot.int_a#9 AS int_a [INT64]
+| +-$unpivot.string_a#10 AS string_a [STRING]
+| +-$unpivot.string_b#11 AS string_b [STRING]
+| +-$unpivot.int_d#12 AS int_d [INT64]
+| +-$unpivot.a#7 AS a [INT64]
+| +-$unpivot.b#8 AS b [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=$unpivot.[int_a#9, string_a#10, string_b#11, int_d#12, a#7, b#8]
+    +-input_scan=
+      +-UnpivotScan
+        +-column_list=$unpivot.[int_a#9, string_a#10, string_b#11, int_d#12, a#7, b#8]
+        +-input_scan=
+        | +-TableScan(column_list=MultipleColumns.[int_a#1, string_a#2, int_b#3, string_b#4, int_c#5, int_d#6], table=MultipleColumns, column_index_list=[0, 1, 2, 3, 4, 5])
+        +-value_column_list=[$unpivot.a#7]
+        +-label_column=$unpivot.b#8
+        +-label_list=
+        | +-Literal(type=STRING, value="int_b")
+        | +-Literal(type=STRING, value="int_c")
+        +-unpivot_arg_list=
+        | +-UnpivotArg
+        | | +-column_list=
+        | |   +-ColumnRef(type=INT64, column=MultipleColumns.int_b#3)
+        | +-UnpivotArg
+        |   +-column_list=
+        |     +-ColumnRef(type=INT64, column=MultipleColumns.int_c#5)
+        +-projected_input_column_list=
+        | +-int_a#9 := ColumnRef(type=INT64, column=MultipleColumns.int_a#1)
+        | +-string_a#10 := ColumnRef(type=STRING, column=MultipleColumns.string_a#2)
+        | +-string_b#11 := ColumnRef(type=STRING, column=MultipleColumns.string_b#4)
+        | +-int_d#12 := ColumnRef(type=INT64, column=MultipleColumns.int_d#6)
+        +-include_nulls=FALSE
+
+[SQLBUILDER_OUTPUT]
+SELECT
+  a_1 AS int_a,
+  a_2 AS string_a,
+  a_4 AS string_b,
+  a_6 AS int_d,
+  a_8 AS a,
+  a_9 AS b
+FROM
+  (
+    SELECT
+      MultipleColumns.int_a AS a_1,
+      MultipleColumns.string_a AS a_2,
+      MultipleColumns.int_b AS a_3,
+      MultipleColumns.string_b AS a_4,
+      MultipleColumns.int_c AS a_5,
+      MultipleColumns.int_d AS a_6
+    FROM
+      MultipleColumns
+  ) AS multiplecolumns_7 UNPIVOT EXCLUDE NULLS (a_8 FOR a_9 IN ((a_3) AS "int_b", (a_5) AS "int_c"));
+
+==
+
+[sql_builder_target_syntax_mode=pipe]
+FROM MultipleColumns |> UNPIVOT(a for b in (**COLUMNS(['int_b']), **COLUMNS(['int_c'])))
+--
+QueryStmt
++-output_column_list=
+| +-$unpivot.int_a#9 AS int_a [INT64]
+| +-$unpivot.string_a#10 AS string_a [STRING]
+| +-$unpivot.string_b#11 AS string_b [STRING]
+| +-$unpivot.int_d#12 AS int_d [INT64]
+| +-$unpivot.a#7 AS a [INT64]
+| +-$unpivot.b#8 AS b [STRING]
++-query=
+  +-UnpivotScan
+    +-column_list=$unpivot.[int_a#9, string_a#10, string_b#11, int_d#12, a#7, b#8]
+    +-input_scan=
+    | +-TableScan(column_list=MultipleColumns.[int_a#1, string_a#2, int_b#3, string_b#4, int_c#5, int_d#6], table=MultipleColumns, column_index_list=[0, 1, 2, 3, 4, 5])
+    +-value_column_list=[$unpivot.a#7]
+    +-label_column=$unpivot.b#8
+    +-label_list=
+    | +-Literal(type=STRING, value="int_b")
+    | +-Literal(type=STRING, value="int_c")
+    +-unpivot_arg_list=
+    | +-UnpivotArg
+    | | +-column_list=
+    | |   +-ColumnRef(type=INT64, column=MultipleColumns.int_b#3)
+    | +-UnpivotArg
+    |   +-column_list=
+    |     +-ColumnRef(type=INT64, column=MultipleColumns.int_c#5)
+    +-projected_input_column_list=
+    | +-int_a#9 := ColumnRef(type=INT64, column=MultipleColumns.int_a#1)
+    | +-string_a#10 := ColumnRef(type=STRING, column=MultipleColumns.string_a#2)
+    | +-string_b#11 := ColumnRef(type=STRING, column=MultipleColumns.string_b#4)
+    | +-int_d#12 := ColumnRef(type=INT64, column=MultipleColumns.int_d#6)
+    +-include_nulls=FALSE
+
+[SQLBUILDER_OUTPUT]
+FROM
+  MultipleColumns
+|> SELECT
+     MultipleColumns.int_a AS a_1,
+     MultipleColumns.string_a AS a_2,
+     MultipleColumns.int_b AS a_3,
+     MultipleColumns.string_b AS a_4,
+     MultipleColumns.int_c AS a_5,
+     MultipleColumns.int_d AS a_6
+|> AS multiplecolumns_7
+|> UNPIVOT EXCLUDE NULLS (a_8 FOR a_9 IN ((a_3) AS "int_b", (a_5) AS "int_c"))
+|> SELECT
+     a_1 AS int_a,
+     a_2 AS string_a,
+     a_4 AS string_b,
+     a_6 AS int_d,
+     a_8 AS a,
+     a_9 AS b;
+
+==
+
+SELECT * FROM MultipleColumns UNPIVOT(a for b in (**COLUMNS(['int_a', 'int_b']), **COLUMNS(['int_c'])));
+
+--
+QueryStmt
++-output_column_list=
+| +-$unpivot.string_a#9 AS string_a [STRING]
+| +-$unpivot.string_b#10 AS string_b [STRING]
+| +-$unpivot.int_d#11 AS int_d [INT64]
+| +-$unpivot.a#7 AS a [INT64]
+| +-$unpivot.b#8 AS b [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=$unpivot.[string_a#9, string_b#10, int_d#11, a#7, b#8]
+    +-input_scan=
+      +-UnpivotScan
+        +-column_list=$unpivot.[string_a#9, string_b#10, int_d#11, a#7, b#8]
+        +-input_scan=
+        | +-TableScan(column_list=MultipleColumns.[int_a#1, string_a#2, int_b#3, string_b#4, int_c#5, int_d#6], table=MultipleColumns, column_index_list=[0, 1, 2, 3, 4, 5])
+        +-value_column_list=[$unpivot.a#7]
+        +-label_column=$unpivot.b#8
+        +-label_list=
+        | +-Literal(type=STRING, value="int_a")
+        | +-Literal(type=STRING, value="int_b")
+        | +-Literal(type=STRING, value="int_c")
+        +-unpivot_arg_list=
+        | +-UnpivotArg
+        | | +-column_list=
+        | |   +-ColumnRef(type=INT64, column=MultipleColumns.int_a#1)
+        | +-UnpivotArg
+        | | +-column_list=
+        | |   +-ColumnRef(type=INT64, column=MultipleColumns.int_b#3)
+        | +-UnpivotArg
+        |   +-column_list=
+        |     +-ColumnRef(type=INT64, column=MultipleColumns.int_c#5)
+        +-projected_input_column_list=
+        | +-string_a#9 := ColumnRef(type=STRING, column=MultipleColumns.string_a#2)
+        | +-string_b#10 := ColumnRef(type=STRING, column=MultipleColumns.string_b#4)
+        | +-int_d#11 := ColumnRef(type=INT64, column=MultipleColumns.int_d#6)
+        +-include_nulls=FALSE
+
+[SQLBUILDER_OUTPUT]
+SELECT
+  a_2 AS string_a,
+  a_4 AS string_b,
+  a_6 AS int_d,
+  a_8 AS a,
+  a_9 AS b
+FROM
+  (
+    SELECT
+      MultipleColumns.int_a AS a_1,
+      MultipleColumns.string_a AS a_2,
+      MultipleColumns.int_b AS a_3,
+      MultipleColumns.string_b AS a_4,
+      MultipleColumns.int_c AS a_5,
+      MultipleColumns.int_d AS a_6
+    FROM
+      MultipleColumns
+  ) AS multiplecolumns_7 UNPIVOT EXCLUDE NULLS (a_8 FOR a_9 IN ((a_1) AS "int_a", (a_3) AS "int_b", (a_5) AS "int_c"));
+==
+
+FROM MultipleColumns |> UNPIVOT(a for b in (**COLUMNS(['int_a', 'int_b']), **COLUMNS(['int_c'])));
+
+--
+QueryStmt
++-output_column_list=
+| +-$unpivot.string_a#9 AS string_a [STRING]
+| +-$unpivot.string_b#10 AS string_b [STRING]
+| +-$unpivot.int_d#11 AS int_d [INT64]
+| +-$unpivot.a#7 AS a [INT64]
+| +-$unpivot.b#8 AS b [STRING]
++-query=
+  +-UnpivotScan
+    +-column_list=$unpivot.[string_a#9, string_b#10, int_d#11, a#7, b#8]
+    +-input_scan=
+    | +-TableScan(column_list=MultipleColumns.[int_a#1, string_a#2, int_b#3, string_b#4, int_c#5, int_d#6], table=MultipleColumns, column_index_list=[0, 1, 2, 3, 4, 5])
+    +-value_column_list=[$unpivot.a#7]
+    +-label_column=$unpivot.b#8
+    +-label_list=
+    | +-Literal(type=STRING, value="int_a")
+    | +-Literal(type=STRING, value="int_b")
+    | +-Literal(type=STRING, value="int_c")
+    +-unpivot_arg_list=
+    | +-UnpivotArg
+    | | +-column_list=
+    | |   +-ColumnRef(type=INT64, column=MultipleColumns.int_a#1)
+    | +-UnpivotArg
+    | | +-column_list=
+    | |   +-ColumnRef(type=INT64, column=MultipleColumns.int_b#3)
+    | +-UnpivotArg
+    |   +-column_list=
+    |     +-ColumnRef(type=INT64, column=MultipleColumns.int_c#5)
+    +-projected_input_column_list=
+    | +-string_a#9 := ColumnRef(type=STRING, column=MultipleColumns.string_a#2)
+    | +-string_b#10 := ColumnRef(type=STRING, column=MultipleColumns.string_b#4)
+    | +-int_d#11 := ColumnRef(type=INT64, column=MultipleColumns.int_d#6)
+    +-include_nulls=FALSE
+
+[SQLBUILDER_OUTPUT]
+SELECT
+  a_2 AS string_a,
+  a_4 AS string_b,
+  a_6 AS int_d,
+  a_8 AS a,
+  a_9 AS b
+FROM
+  (
+    SELECT
+      MultipleColumns.int_a AS a_1,
+      MultipleColumns.string_a AS a_2,
+      MultipleColumns.int_b AS a_3,
+      MultipleColumns.string_b AS a_4,
+      MultipleColumns.int_c AS a_5,
+      MultipleColumns.int_d AS a_6
+    FROM
+      MultipleColumns
+  ) AS multiplecolumns_7 UNPIVOT EXCLUDE NULLS (a_8 FOR a_9 IN ((a_1) AS "int_a", (a_3) AS "int_b", (a_5) AS "int_c"));
+==
+
+# Mixed columns unpack in UNPIVOT
+SELECT * FROM MultipleColumns UNPIVOT(a for b in (int_a, **COLUMNS(['int_b', 'int_c'])))
+--
+QueryStmt
++-output_column_list=
+| +-$unpivot.string_a#9 AS string_a [STRING]
+| +-$unpivot.string_b#10 AS string_b [STRING]
+| +-$unpivot.int_d#11 AS int_d [INT64]
+| +-$unpivot.a#7 AS a [INT64]
+| +-$unpivot.b#8 AS b [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=$unpivot.[string_a#9, string_b#10, int_d#11, a#7, b#8]
+    +-input_scan=
+      +-UnpivotScan
+        +-column_list=$unpivot.[string_a#9, string_b#10, int_d#11, a#7, b#8]
+        +-input_scan=
+        | +-TableScan(column_list=MultipleColumns.[int_a#1, string_a#2, int_b#3, string_b#4, int_c#5, int_d#6], table=MultipleColumns, column_index_list=[0, 1, 2, 3, 4, 5])
+        +-value_column_list=[$unpivot.a#7]
+        +-label_column=$unpivot.b#8
+        +-label_list=
+        | +-Literal(type=STRING, value="int_a")
+        | +-Literal(type=STRING, value="int_b")
+        | +-Literal(type=STRING, value="int_c")
+        +-unpivot_arg_list=
+        | +-UnpivotArg
+        | | +-column_list=
+        | |   +-ColumnRef(type=INT64, column=MultipleColumns.int_a#1)
+        | +-UnpivotArg
+        | | +-column_list=
+        | |   +-ColumnRef(type=INT64, column=MultipleColumns.int_b#3)
+        | +-UnpivotArg
+        |   +-column_list=
+        |     +-ColumnRef(type=INT64, column=MultipleColumns.int_c#5)
+        +-projected_input_column_list=
+        | +-string_a#9 := ColumnRef(type=STRING, column=MultipleColumns.string_a#2)
+        | +-string_b#10 := ColumnRef(type=STRING, column=MultipleColumns.string_b#4)
+        | +-int_d#11 := ColumnRef(type=INT64, column=MultipleColumns.int_d#6)
+        +-include_nulls=FALSE
+
+[SQLBUILDER_OUTPUT]
+SELECT
+  a_2 AS string_a,
+  a_4 AS string_b,
+  a_6 AS int_d,
+  a_8 AS a,
+  a_9 AS b
+FROM
+  (
+    SELECT
+      MultipleColumns.int_a AS a_1,
+      MultipleColumns.string_a AS a_2,
+      MultipleColumns.int_b AS a_3,
+      MultipleColumns.string_b AS a_4,
+      MultipleColumns.int_c AS a_5,
+      MultipleColumns.int_d AS a_6
+    FROM
+      MultipleColumns
+  ) AS multiplecolumns_7 UNPIVOT EXCLUDE NULLS (a_8 FOR a_9 IN ((a_1) AS "int_a", (a_3) AS "int_b", (a_5) AS "int_c"));
+==
+
+[sql_builder_target_syntax_mode=pipe]
+FROM MultipleColumns |> UNPIVOT(a for b in (int_a, **COLUMNS(['int_b', 'int_c'])))
+--
+QueryStmt
++-output_column_list=
+| +-$unpivot.string_a#9 AS string_a [STRING]
+| +-$unpivot.string_b#10 AS string_b [STRING]
+| +-$unpivot.int_d#11 AS int_d [INT64]
+| +-$unpivot.a#7 AS a [INT64]
+| +-$unpivot.b#8 AS b [STRING]
++-query=
+  +-UnpivotScan
+    +-column_list=$unpivot.[string_a#9, string_b#10, int_d#11, a#7, b#8]
+    +-input_scan=
+    | +-TableScan(column_list=MultipleColumns.[int_a#1, string_a#2, int_b#3, string_b#4, int_c#5, int_d#6], table=MultipleColumns, column_index_list=[0, 1, 2, 3, 4, 5])
+    +-value_column_list=[$unpivot.a#7]
+    +-label_column=$unpivot.b#8
+    +-label_list=
+    | +-Literal(type=STRING, value="int_a")
+    | +-Literal(type=STRING, value="int_b")
+    | +-Literal(type=STRING, value="int_c")
+    +-unpivot_arg_list=
+    | +-UnpivotArg
+    | | +-column_list=
+    | |   +-ColumnRef(type=INT64, column=MultipleColumns.int_a#1)
+    | +-UnpivotArg
+    | | +-column_list=
+    | |   +-ColumnRef(type=INT64, column=MultipleColumns.int_b#3)
+    | +-UnpivotArg
+    |   +-column_list=
+    |     +-ColumnRef(type=INT64, column=MultipleColumns.int_c#5)
+    +-projected_input_column_list=
+    | +-string_a#9 := ColumnRef(type=STRING, column=MultipleColumns.string_a#2)
+    | +-string_b#10 := ColumnRef(type=STRING, column=MultipleColumns.string_b#4)
+    | +-int_d#11 := ColumnRef(type=INT64, column=MultipleColumns.int_d#6)
+    +-include_nulls=FALSE
+
+[SQLBUILDER_OUTPUT]
+FROM
+  MultipleColumns
+|> SELECT
+     MultipleColumns.int_a AS a_1,
+     MultipleColumns.string_a AS a_2,
+     MultipleColumns.int_b AS a_3,
+     MultipleColumns.string_b AS a_4,
+     MultipleColumns.int_c AS a_5,
+     MultipleColumns.int_d AS a_6
+|> AS multiplecolumns_7
+|> UNPIVOT EXCLUDE NULLS (a_8 FOR a_9 IN ((a_1) AS "int_a", (a_3) AS "int_b", (a_5) AS "int_c"))
+|> SELECT
+     a_2 AS string_a,
+     a_4 AS string_b,
+     a_6 AS int_d,
+     a_8 AS a,
+     a_9 AS b;
+==
+
+# Right side set unpack in UNPIVOT
+SELECT * FROM MultipleColumns UNPIVOT((a, b) for c in ((**COLUMNS(['int_a', 'int_b'])), (int_c, int_d)))
+--
+QueryStmt
++-output_column_list=
+| +-$unpivot.string_a#10 AS string_a [STRING]
+| +-$unpivot.string_b#11 AS string_b [STRING]
+| +-$unpivot.a#7 AS a [INT64]
+| +-$unpivot.b#8 AS b [INT64]
+| +-$unpivot.c#9 AS c [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=$unpivot.[string_a#10, string_b#11, a#7, b#8, c#9]
+    +-input_scan=
+      +-UnpivotScan
+        +-column_list=$unpivot.[string_a#10, string_b#11, a#7, b#8, c#9]
+        +-input_scan=
+        | +-TableScan(column_list=MultipleColumns.[int_a#1, string_a#2, int_b#3, string_b#4, int_c#5, int_d#6], table=MultipleColumns, column_index_list=[0, 1, 2, 3, 4, 5])
+        +-value_column_list=$unpivot.[a#7, b#8]
+        +-label_column=$unpivot.c#9
+        +-label_list=
+        | +-Literal(type=STRING, value="int_a_int_b")
+        | +-Literal(type=STRING, value="int_c_int_d")
+        +-unpivot_arg_list=
+        | +-UnpivotArg
+        | | +-column_list=
+        | |   +-ColumnRef(type=INT64, column=MultipleColumns.int_a#1)
+        | |   +-ColumnRef(type=INT64, column=MultipleColumns.int_b#3)
+        | +-UnpivotArg
+        |   +-column_list=
+        |     +-ColumnRef(type=INT64, column=MultipleColumns.int_c#5)
+        |     +-ColumnRef(type=INT64, column=MultipleColumns.int_d#6)
+        +-projected_input_column_list=
+        | +-string_a#10 := ColumnRef(type=STRING, column=MultipleColumns.string_a#2)
+        | +-string_b#11 := ColumnRef(type=STRING, column=MultipleColumns.string_b#4)
+        +-include_nulls=FALSE
+
+[SQLBUILDER_OUTPUT]
+SELECT
+  a_2 AS string_a,
+  a_4 AS string_b,
+  a_8 AS a,
+  a_9 AS b,
+  a_10 AS c
+FROM
+  (
+    SELECT
+      MultipleColumns.int_a AS a_1,
+      MultipleColumns.string_a AS a_2,
+      MultipleColumns.int_b AS a_3,
+      MultipleColumns.string_b AS a_4,
+      MultipleColumns.int_c AS a_5,
+      MultipleColumns.int_d AS a_6
+    FROM
+      MultipleColumns
+  ) AS multiplecolumns_7 UNPIVOT EXCLUDE NULLS ((a_8, a_9) FOR a_10 IN ((a_1, a_3) AS "int_a_int_b", (a_5, a_6) AS "int_c_int_d"));
+==
+
+[sql_builder_target_syntax_mode=pipe]
+FROM MultipleColumns |> UNPIVOT((a, b) for c in ((**COLUMNS(['int_a', 'int_b'])), (int_c, int_d)))
+--
+QueryStmt
++-output_column_list=
+| +-$unpivot.string_a#10 AS string_a [STRING]
+| +-$unpivot.string_b#11 AS string_b [STRING]
+| +-$unpivot.a#7 AS a [INT64]
+| +-$unpivot.b#8 AS b [INT64]
+| +-$unpivot.c#9 AS c [STRING]
++-query=
+  +-UnpivotScan
+    +-column_list=$unpivot.[string_a#10, string_b#11, a#7, b#8, c#9]
+    +-input_scan=
+    | +-TableScan(column_list=MultipleColumns.[int_a#1, string_a#2, int_b#3, string_b#4, int_c#5, int_d#6], table=MultipleColumns, column_index_list=[0, 1, 2, 3, 4, 5])
+    +-value_column_list=$unpivot.[a#7, b#8]
+    +-label_column=$unpivot.c#9
+    +-label_list=
+    | +-Literal(type=STRING, value="int_a_int_b")
+    | +-Literal(type=STRING, value="int_c_int_d")
+    +-unpivot_arg_list=
+    | +-UnpivotArg
+    | | +-column_list=
+    | |   +-ColumnRef(type=INT64, column=MultipleColumns.int_a#1)
+    | |   +-ColumnRef(type=INT64, column=MultipleColumns.int_b#3)
+    | +-UnpivotArg
+    |   +-column_list=
+    |     +-ColumnRef(type=INT64, column=MultipleColumns.int_c#5)
+    |     +-ColumnRef(type=INT64, column=MultipleColumns.int_d#6)
+    +-projected_input_column_list=
+    | +-string_a#10 := ColumnRef(type=STRING, column=MultipleColumns.string_a#2)
+    | +-string_b#11 := ColumnRef(type=STRING, column=MultipleColumns.string_b#4)
+    +-include_nulls=FALSE
+
+[SQLBUILDER_OUTPUT]
+FROM
+  MultipleColumns
+|> SELECT
+     MultipleColumns.int_a AS a_1,
+     MultipleColumns.string_a AS a_2,
+     MultipleColumns.int_b AS a_3,
+     MultipleColumns.string_b AS a_4,
+     MultipleColumns.int_c AS a_5,
+     MultipleColumns.int_d AS a_6
+|> AS multiplecolumns_7
+|> UNPIVOT EXCLUDE NULLS ((a_8, a_9) FOR a_10 IN ((a_1, a_3) AS "int_a_int_b", (a_5, a_6) AS "int_c_int_d"))
+|> SELECT
+     a_2 AS string_a,
+     a_4 AS string_b,
+     a_8 AS a,
+     a_9 AS b,
+     a_10 AS c;
+==
+
+# Left side unpack (Value column set unpack)
+SELECT * FROM MultipleColumns UNPIVOT((a, **COLUMNS(['b'])) for c in ((int_a, int_b)))
+--
+QueryStmt
++-output_column_list=
+| +-$unpivot.string_a#10 AS string_a [STRING]
+| +-$unpivot.string_b#11 AS string_b [STRING]
+| +-$unpivot.int_c#12 AS int_c [INT64]
+| +-$unpivot.int_d#13 AS int_d [INT64]
+| +-$unpivot.a#7 AS a [INT64]
+| +-$unpivot.b#8 AS b [INT64]
+| +-$unpivot.c#9 AS c [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=$unpivot.[string_a#10, string_b#11, int_c#12, int_d#13, a#7, b#8, c#9]
+    +-input_scan=
+      +-UnpivotScan
+        +-column_list=$unpivot.[string_a#10, string_b#11, int_c#12, int_d#13, a#7, b#8, c#9]
+        +-input_scan=
+        | +-TableScan(column_list=MultipleColumns.[int_a#1, string_a#2, int_b#3, string_b#4, int_c#5, int_d#6], table=MultipleColumns, column_index_list=[0, 1, 2, 3, 4, 5])
+        +-value_column_list=$unpivot.[a#7, b#8]
+        +-label_column=$unpivot.c#9
+        +-label_list=
+        | +-Literal(type=STRING, value="int_a_int_b")
+        +-unpivot_arg_list=
+        | +-UnpivotArg
+        |   +-column_list=
+        |     +-ColumnRef(type=INT64, column=MultipleColumns.int_a#1)
+        |     +-ColumnRef(type=INT64, column=MultipleColumns.int_b#3)
+        +-projected_input_column_list=
+        | +-string_a#10 := ColumnRef(type=STRING, column=MultipleColumns.string_a#2)
+        | +-string_b#11 := ColumnRef(type=STRING, column=MultipleColumns.string_b#4)
+        | +-int_c#12 := ColumnRef(type=INT64, column=MultipleColumns.int_c#5)
+        | +-int_d#13 := ColumnRef(type=INT64, column=MultipleColumns.int_d#6)
+        +-include_nulls=FALSE
+
+[SQLBUILDER_OUTPUT]
+SELECT
+  a_2 AS string_a,
+  a_4 AS string_b,
+  a_5 AS int_c,
+  a_6 AS int_d,
+  a_8 AS a,
+  a_9 AS b,
+  a_10 AS c
+FROM
+  (
+    SELECT
+      MultipleColumns.int_a AS a_1,
+      MultipleColumns.string_a AS a_2,
+      MultipleColumns.int_b AS a_3,
+      MultipleColumns.string_b AS a_4,
+      MultipleColumns.int_c AS a_5,
+      MultipleColumns.int_d AS a_6
+    FROM
+      MultipleColumns
+  ) AS multiplecolumns_7 UNPIVOT EXCLUDE NULLS ((a_8, a_9) FOR a_10 IN ((a_1, a_3) AS "int_a_int_b"));
+==
+
+[sql_builder_target_syntax_mode=pipe]
+FROM MultipleColumns |> UNPIVOT((a, **COLUMNS(['b'])) for c in ((int_a, int_b)))
+--
+QueryStmt
++-output_column_list=
+| +-$unpivot.string_a#10 AS string_a [STRING]
+| +-$unpivot.string_b#11 AS string_b [STRING]
+| +-$unpivot.int_c#12 AS int_c [INT64]
+| +-$unpivot.int_d#13 AS int_d [INT64]
+| +-$unpivot.a#7 AS a [INT64]
+| +-$unpivot.b#8 AS b [INT64]
+| +-$unpivot.c#9 AS c [STRING]
++-query=
+  +-UnpivotScan
+    +-column_list=$unpivot.[string_a#10, string_b#11, int_c#12, int_d#13, a#7, b#8, c#9]
+    +-input_scan=
+    | +-TableScan(column_list=MultipleColumns.[int_a#1, string_a#2, int_b#3, string_b#4, int_c#5, int_d#6], table=MultipleColumns, column_index_list=[0, 1, 2, 3, 4, 5])
+    +-value_column_list=$unpivot.[a#7, b#8]
+    +-label_column=$unpivot.c#9
+    +-label_list=
+    | +-Literal(type=STRING, value="int_a_int_b")
+    +-unpivot_arg_list=
+    | +-UnpivotArg
+    |   +-column_list=
+    |     +-ColumnRef(type=INT64, column=MultipleColumns.int_a#1)
+    |     +-ColumnRef(type=INT64, column=MultipleColumns.int_b#3)
+    +-projected_input_column_list=
+    | +-string_a#10 := ColumnRef(type=STRING, column=MultipleColumns.string_a#2)
+    | +-string_b#11 := ColumnRef(type=STRING, column=MultipleColumns.string_b#4)
+    | +-int_c#12 := ColumnRef(type=INT64, column=MultipleColumns.int_c#5)
+    | +-int_d#13 := ColumnRef(type=INT64, column=MultipleColumns.int_d#6)
+    +-include_nulls=FALSE
+
+[SQLBUILDER_OUTPUT]
+FROM
+  MultipleColumns
+|> SELECT
+     MultipleColumns.int_a AS a_1,
+     MultipleColumns.string_a AS a_2,
+     MultipleColumns.int_b AS a_3,
+     MultipleColumns.string_b AS a_4,
+     MultipleColumns.int_c AS a_5,
+     MultipleColumns.int_d AS a_6
+|> AS multiplecolumns_7
+|> UNPIVOT EXCLUDE NULLS ((a_8, a_9) FOR a_10 IN ((a_1, a_3) AS "int_a_int_b"))
+|> SELECT
+     a_2 AS string_a,
+     a_4 AS string_b,
+     a_5 AS int_c,
+     a_6 AS int_d,
+     a_8 AS a,
+     a_9 AS b,
+     a_10 AS c;
+==
+
+# Hardcoded + Empty column list in IN clause (Single value column)
+SELECT * FROM MultipleColumns UNPIVOT(a for b in (int_a, **COLUMNS([])))
+--
+QueryStmt
++-output_column_list=
+| +-$unpivot.string_a#9 AS string_a [STRING]
+| +-$unpivot.int_b#10 AS int_b [INT64]
+| +-$unpivot.string_b#11 AS string_b [STRING]
+| +-$unpivot.int_c#12 AS int_c [INT64]
+| +-$unpivot.int_d#13 AS int_d [INT64]
+| +-$unpivot.a#7 AS a [INT64]
+| +-$unpivot.b#8 AS b [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=$unpivot.[string_a#9, int_b#10, string_b#11, int_c#12, int_d#13, a#7, b#8]
+    +-input_scan=
+      +-UnpivotScan
+        +-column_list=$unpivot.[string_a#9, int_b#10, string_b#11, int_c#12, int_d#13, a#7, b#8]
+        +-input_scan=
+        | +-TableScan(column_list=MultipleColumns.[int_a#1, string_a#2, int_b#3, string_b#4, int_c#5, int_d#6], table=MultipleColumns, column_index_list=[0, 1, 2, 3, 4, 5])
+        +-value_column_list=[$unpivot.a#7]
+        +-label_column=$unpivot.b#8
+        +-label_list=
+        | +-Literal(type=STRING, value="int_a")
+        +-unpivot_arg_list=
+        | +-UnpivotArg
+        |   +-column_list=
+        |     +-ColumnRef(type=INT64, column=MultipleColumns.int_a#1)
+        +-projected_input_column_list=
+        | +-string_a#9 := ColumnRef(type=STRING, column=MultipleColumns.string_a#2)
+        | +-int_b#10 := ColumnRef(type=INT64, column=MultipleColumns.int_b#3)
+        | +-string_b#11 := ColumnRef(type=STRING, column=MultipleColumns.string_b#4)
+        | +-int_c#12 := ColumnRef(type=INT64, column=MultipleColumns.int_c#5)
+        | +-int_d#13 := ColumnRef(type=INT64, column=MultipleColumns.int_d#6)
+        +-include_nulls=FALSE
+
+[SQLBUILDER_OUTPUT]
+SELECT
+  a_2 AS string_a,
+  a_3 AS int_b,
+  a_4 AS string_b,
+  a_5 AS int_c,
+  a_6 AS int_d,
+  a_8 AS a,
+  a_9 AS b
+FROM
+  (
+    SELECT
+      MultipleColumns.int_a AS a_1,
+      MultipleColumns.string_a AS a_2,
+      MultipleColumns.int_b AS a_3,
+      MultipleColumns.string_b AS a_4,
+      MultipleColumns.int_c AS a_5,
+      MultipleColumns.int_d AS a_6
+    FROM
+      MultipleColumns
+  ) AS multiplecolumns_7 UNPIVOT EXCLUDE NULLS (a_8 FOR a_9 IN ((a_1) AS "int_a"));
+==
+
+[sql_builder_target_syntax_mode=pipe]
+FROM MultipleColumns |> UNPIVOT(a for b in (int_a, **COLUMNS([])))
+--
+QueryStmt
++-output_column_list=
+| +-$unpivot.string_a#9 AS string_a [STRING]
+| +-$unpivot.int_b#10 AS int_b [INT64]
+| +-$unpivot.string_b#11 AS string_b [STRING]
+| +-$unpivot.int_c#12 AS int_c [INT64]
+| +-$unpivot.int_d#13 AS int_d [INT64]
+| +-$unpivot.a#7 AS a [INT64]
+| +-$unpivot.b#8 AS b [STRING]
++-query=
+  +-UnpivotScan
+    +-column_list=$unpivot.[string_a#9, int_b#10, string_b#11, int_c#12, int_d#13, a#7, b#8]
+    +-input_scan=
+    | +-TableScan(column_list=MultipleColumns.[int_a#1, string_a#2, int_b#3, string_b#4, int_c#5, int_d#6], table=MultipleColumns, column_index_list=[0, 1, 2, 3, 4, 5])
+    +-value_column_list=[$unpivot.a#7]
+    +-label_column=$unpivot.b#8
+    +-label_list=
+    | +-Literal(type=STRING, value="int_a")
+    +-unpivot_arg_list=
+    | +-UnpivotArg
+    |   +-column_list=
+    |     +-ColumnRef(type=INT64, column=MultipleColumns.int_a#1)
+    +-projected_input_column_list=
+    | +-string_a#9 := ColumnRef(type=STRING, column=MultipleColumns.string_a#2)
+    | +-int_b#10 := ColumnRef(type=INT64, column=MultipleColumns.int_b#3)
+    | +-string_b#11 := ColumnRef(type=STRING, column=MultipleColumns.string_b#4)
+    | +-int_c#12 := ColumnRef(type=INT64, column=MultipleColumns.int_c#5)
+    | +-int_d#13 := ColumnRef(type=INT64, column=MultipleColumns.int_d#6)
+    +-include_nulls=FALSE
+
+[SQLBUILDER_OUTPUT]
+FROM
+  MultipleColumns
+|> SELECT
+     MultipleColumns.int_a AS a_1,
+     MultipleColumns.string_a AS a_2,
+     MultipleColumns.int_b AS a_3,
+     MultipleColumns.string_b AS a_4,
+     MultipleColumns.int_c AS a_5,
+     MultipleColumns.int_d AS a_6
+|> AS multiplecolumns_7
+|> UNPIVOT EXCLUDE NULLS (a_8 FOR a_9 IN ((a_1) AS "int_a"))
+|> SELECT
+     a_2 AS string_a,
+     a_3 AS int_b,
+     a_4 AS string_b,
+     a_5 AS int_c,
+     a_6 AS int_d,
+     a_8 AS a,
+     a_9 AS b;
+==
+
+# Left side unpack with empty (Value column set unpack)
+SELECT * FROM KeyValue UNPIVOT((a, **COLUMNS([])) for b in (Key))
+--
+QueryStmt
++-output_column_list=
+| +-$unpivot.Value#5 AS Value [STRING]
+| +-$unpivot.a#3 AS a [INT64]
+| +-$unpivot.b#4 AS b [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=$unpivot.[Value#5, a#3, b#4]
+    +-input_scan=
+      +-UnpivotScan
+        +-column_list=$unpivot.[Value#5, a#3, b#4]
+        +-input_scan=
+        | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+        +-value_column_list=[$unpivot.a#3]
+        +-label_column=$unpivot.b#4
+        +-label_list=
+        | +-Literal(type=STRING, value="Key")
+        +-unpivot_arg_list=
+        | +-UnpivotArg
+        |   +-column_list=
+        |     +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+        +-projected_input_column_list=
+        | +-Value#5 := ColumnRef(type=STRING, column=KeyValue.Value#2)
+        +-include_nulls=FALSE
+
+[SQLBUILDER_OUTPUT]
+SELECT
+  a_2 AS Value,
+  a_4 AS a,
+  a_5 AS b
+FROM
+  (
+    SELECT
+      KeyValue.Key AS a_1,
+      KeyValue.Value AS a_2
+    FROM
+      KeyValue
+  ) AS keyvalue_3 UNPIVOT EXCLUDE NULLS (a_4 FOR a_5 IN ((a_1) AS "Key"));
+==
+
+[sql_builder_target_syntax_mode=pipe]
+FROM KeyValue |> UNPIVOT((a, **COLUMNS([])) for b in (Key))
+--
+QueryStmt
++-output_column_list=
+| +-$unpivot.Value#5 AS Value [STRING]
+| +-$unpivot.a#3 AS a [INT64]
+| +-$unpivot.b#4 AS b [STRING]
++-query=
+  +-UnpivotScan
+    +-column_list=$unpivot.[Value#5, a#3, b#4]
+    +-input_scan=
+    | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+    +-value_column_list=[$unpivot.a#3]
+    +-label_column=$unpivot.b#4
+    +-label_list=
+    | +-Literal(type=STRING, value="Key")
+    +-unpivot_arg_list=
+    | +-UnpivotArg
+    |   +-column_list=
+    |     +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+    +-projected_input_column_list=
+    | +-Value#5 := ColumnRef(type=STRING, column=KeyValue.Value#2)
+    +-include_nulls=FALSE
+
+[SQLBUILDER_OUTPUT]
+FROM
+  KeyValue
+|> SELECT
+     KeyValue.Key AS a_1,
+     KeyValue.Value AS a_2
+|> AS keyvalue_3
+|> UNPIVOT EXCLUDE NULLS (a_4 FOR a_5 IN ((a_1) AS "Key"))
+|> SELECT
+     a_2 AS Value,
+     a_4 AS a,
+     a_5 AS b;
+==
+
+# Mixed inside IN item
+SELECT * FROM MultipleColumns UNPIVOT((a, b) for c in ((int_a, **COLUMNS(['int_b']))))
+--
+QueryStmt
++-output_column_list=
+| +-$unpivot.string_a#10 AS string_a [STRING]
+| +-$unpivot.string_b#11 AS string_b [STRING]
+| +-$unpivot.int_c#12 AS int_c [INT64]
+| +-$unpivot.int_d#13 AS int_d [INT64]
+| +-$unpivot.a#7 AS a [INT64]
+| +-$unpivot.b#8 AS b [INT64]
+| +-$unpivot.c#9 AS c [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=$unpivot.[string_a#10, string_b#11, int_c#12, int_d#13, a#7, b#8, c#9]
+    +-input_scan=
+      +-UnpivotScan
+        +-column_list=$unpivot.[string_a#10, string_b#11, int_c#12, int_d#13, a#7, b#8, c#9]
+        +-input_scan=
+        | +-TableScan(column_list=MultipleColumns.[int_a#1, string_a#2, int_b#3, string_b#4, int_c#5, int_d#6], table=MultipleColumns, column_index_list=[0, 1, 2, 3, 4, 5])
+        +-value_column_list=$unpivot.[a#7, b#8]
+        +-label_column=$unpivot.c#9
+        +-label_list=
+        | +-Literal(type=STRING, value="int_a_int_b")
+        +-unpivot_arg_list=
+        | +-UnpivotArg
+        |   +-column_list=
+        |     +-ColumnRef(type=INT64, column=MultipleColumns.int_a#1)
+        |     +-ColumnRef(type=INT64, column=MultipleColumns.int_b#3)
+        +-projected_input_column_list=
+        | +-string_a#10 := ColumnRef(type=STRING, column=MultipleColumns.string_a#2)
+        | +-string_b#11 := ColumnRef(type=STRING, column=MultipleColumns.string_b#4)
+        | +-int_c#12 := ColumnRef(type=INT64, column=MultipleColumns.int_c#5)
+        | +-int_d#13 := ColumnRef(type=INT64, column=MultipleColumns.int_d#6)
+        +-include_nulls=FALSE
+
+[SQLBUILDER_OUTPUT]
+SELECT
+  a_2 AS string_a,
+  a_4 AS string_b,
+  a_5 AS int_c,
+  a_6 AS int_d,
+  a_8 AS a,
+  a_9 AS b,
+  a_10 AS c
+FROM
+  (
+    SELECT
+      MultipleColumns.int_a AS a_1,
+      MultipleColumns.string_a AS a_2,
+      MultipleColumns.int_b AS a_3,
+      MultipleColumns.string_b AS a_4,
+      MultipleColumns.int_c AS a_5,
+      MultipleColumns.int_d AS a_6
+    FROM
+      MultipleColumns
+  ) AS multiplecolumns_7 UNPIVOT EXCLUDE NULLS ((a_8, a_9) FOR a_10 IN ((a_1, a_3) AS "int_a_int_b"));
+==
+
+[sql_builder_target_syntax_mode=pipe]
+FROM MultipleColumns |> UNPIVOT((a, b) for c in ((int_a, **COLUMNS(['int_b']))))
+--
+QueryStmt
++-output_column_list=
+| +-$unpivot.string_a#10 AS string_a [STRING]
+| +-$unpivot.string_b#11 AS string_b [STRING]
+| +-$unpivot.int_c#12 AS int_c [INT64]
+| +-$unpivot.int_d#13 AS int_d [INT64]
+| +-$unpivot.a#7 AS a [INT64]
+| +-$unpivot.b#8 AS b [INT64]
+| +-$unpivot.c#9 AS c [STRING]
++-query=
+  +-UnpivotScan
+    +-column_list=$unpivot.[string_a#10, string_b#11, int_c#12, int_d#13, a#7, b#8, c#9]
+    +-input_scan=
+    | +-TableScan(column_list=MultipleColumns.[int_a#1, string_a#2, int_b#3, string_b#4, int_c#5, int_d#6], table=MultipleColumns, column_index_list=[0, 1, 2, 3, 4, 5])
+    +-value_column_list=$unpivot.[a#7, b#8]
+    +-label_column=$unpivot.c#9
+    +-label_list=
+    | +-Literal(type=STRING, value="int_a_int_b")
+    +-unpivot_arg_list=
+    | +-UnpivotArg
+    |   +-column_list=
+    |     +-ColumnRef(type=INT64, column=MultipleColumns.int_a#1)
+    |     +-ColumnRef(type=INT64, column=MultipleColumns.int_b#3)
+    +-projected_input_column_list=
+    | +-string_a#10 := ColumnRef(type=STRING, column=MultipleColumns.string_a#2)
+    | +-string_b#11 := ColumnRef(type=STRING, column=MultipleColumns.string_b#4)
+    | +-int_c#12 := ColumnRef(type=INT64, column=MultipleColumns.int_c#5)
+    | +-int_d#13 := ColumnRef(type=INT64, column=MultipleColumns.int_d#6)
+    +-include_nulls=FALSE
+
+[SQLBUILDER_OUTPUT]
+FROM
+  MultipleColumns
+|> SELECT
+     MultipleColumns.int_a AS a_1,
+     MultipleColumns.string_a AS a_2,
+     MultipleColumns.int_b AS a_3,
+     MultipleColumns.string_b AS a_4,
+     MultipleColumns.int_c AS a_5,
+     MultipleColumns.int_d AS a_6
+|> AS multiplecolumns_7
+|> UNPIVOT EXCLUDE NULLS ((a_8, a_9) FOR a_10 IN ((a_1, a_3) AS "int_a_int_b"))
+|> SELECT
+     a_2 AS string_a,
+     a_4 AS string_b,
+     a_5 AS int_c,
+     a_6 AS int_d,
+     a_8 AS a,
+     a_9 AS b,
+     a_10 AS c;
+==
+
+# Unpack aliased columns from subquery
+SELECT *
+FROM (SELECT int_a AS col1, int_b AS col2 FROM MultipleColumns)
+  UNPIVOT(a FOR b IN (**COLUMNS(['col1', 'col2'])))
+--
+QueryStmt
++-output_column_list=
+| +-$unpivot.a#7 AS a [INT64]
+| +-$unpivot.b#8 AS b [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=$unpivot.[a#7, b#8]
+    +-input_scan=
+      +-UnpivotScan
+        +-column_list=$unpivot.[a#7, b#8]
+        +-input_scan=
+        | +-ProjectScan
+        |   +-column_list=MultipleColumns.[int_a#1, int_b#3]
+        |   +-input_scan=
+        |     +-TableScan(column_list=MultipleColumns.[int_a#1, int_b#3], table=MultipleColumns, column_index_list=[0, 2])
+        +-value_column_list=[$unpivot.a#7]
+        +-label_column=$unpivot.b#8
+        +-label_list=
+        | +-Literal(type=STRING, value="col1")
+        | +-Literal(type=STRING, value="col2")
+        +-unpivot_arg_list=
+        | +-UnpivotArg
+        | | +-column_list=
+        | |   +-ColumnRef(type=INT64, column=MultipleColumns.int_a#1)
+        | +-UnpivotArg
+        |   +-column_list=
+        |     +-ColumnRef(type=INT64, column=MultipleColumns.int_b#3)
+        +-include_nulls=FALSE
+
+[SQLBUILDER_OUTPUT]
+SELECT
+  a_4 AS a,
+  a_5 AS b
+FROM
+  (
+    SELECT
+      MultipleColumns.int_a AS a_1,
+      MultipleColumns.int_b AS a_2
+    FROM
+      MultipleColumns
+  ) AS projectscan_3 UNPIVOT EXCLUDE NULLS (a_4 FOR a_5 IN ((a_1) AS "col1", (a_2) AS "col2"));
+==
+
+[sql_builder_target_syntax_mode=pipe]
+FROM (SELECT int_a AS col1, int_b AS col2 FROM MultipleColumns)
+|> UNPIVOT(a FOR b IN (**COLUMNS(['col1', 'col2'])))
+--
+QueryStmt
++-output_column_list=
+| +-$unpivot.a#7 AS a [INT64]
+| +-$unpivot.b#8 AS b [STRING]
++-query=
+  +-UnpivotScan
+    +-column_list=$unpivot.[a#7, b#8]
+    +-input_scan=
+    | +-ProjectScan
+    |   +-column_list=MultipleColumns.[int_a#1, int_b#3]
+    |   +-input_scan=
+    |     +-TableScan(column_list=MultipleColumns.[int_a#1, int_b#3], table=MultipleColumns, column_index_list=[0, 2])
+    +-value_column_list=[$unpivot.a#7]
+    +-label_column=$unpivot.b#8
+    +-label_list=
+    | +-Literal(type=STRING, value="col1")
+    | +-Literal(type=STRING, value="col2")
+    +-unpivot_arg_list=
+    | +-UnpivotArg
+    | | +-column_list=
+    | |   +-ColumnRef(type=INT64, column=MultipleColumns.int_a#1)
+    | +-UnpivotArg
+    |   +-column_list=
+    |     +-ColumnRef(type=INT64, column=MultipleColumns.int_b#3)
+    +-include_nulls=FALSE
+
+[SQLBUILDER_OUTPUT]
+FROM
+  MultipleColumns
+|> SELECT
+     MultipleColumns.int_a AS a_1,
+     MultipleColumns.int_b AS a_2
+|> AS projectscan_3
+|> UNPIVOT EXCLUDE NULLS (a_4 FOR a_5 IN ((a_1) AS "col1", (a_2) AS "col2"))
+|> SELECT
+     a_4 AS a,
+     a_5 AS b;
+==
+
+# Mixed inside IN item with aliased columns from subquery
+SELECT *
+FROM (SELECT int_a AS col1, int_b AS col2 FROM MultipleColumns)
+  UNPIVOT((a, b) FOR c IN ((col1, **COLUMNS(['col2']))))
+--
+QueryStmt
++-output_column_list=
+| +-$unpivot.a#7 AS a [INT64]
+| +-$unpivot.b#8 AS b [INT64]
+| +-$unpivot.c#9 AS c [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=$unpivot.[a#7, b#8, c#9]
+    +-input_scan=
+      +-UnpivotScan
+        +-column_list=$unpivot.[a#7, b#8, c#9]
+        +-input_scan=
+        | +-ProjectScan
+        |   +-column_list=MultipleColumns.[int_a#1, int_b#3]
+        |   +-input_scan=
+        |     +-TableScan(column_list=MultipleColumns.[int_a#1, int_b#3], table=MultipleColumns, column_index_list=[0, 2])
+        +-value_column_list=$unpivot.[a#7, b#8]
+        +-label_column=$unpivot.c#9
+        +-label_list=
+        | +-Literal(type=STRING, value="col1_col2")
+        +-unpivot_arg_list=
+        | +-UnpivotArg
+        |   +-column_list=
+        |     +-ColumnRef(type=INT64, column=MultipleColumns.int_a#1)
+        |     +-ColumnRef(type=INT64, column=MultipleColumns.int_b#3)
+        +-include_nulls=FALSE
+
+[SQLBUILDER_OUTPUT]
+SELECT
+  a_4 AS a,
+  a_5 AS b,
+  a_6 AS c
+FROM
+  (
+    SELECT
+      MultipleColumns.int_a AS a_1,
+      MultipleColumns.int_b AS a_2
+    FROM
+      MultipleColumns
+  ) AS projectscan_3 UNPIVOT EXCLUDE NULLS ((a_4, a_5) FOR a_6 IN ((a_1, a_2) AS "col1_col2"));
+==
+
+[sql_builder_target_syntax_mode=pipe]
+FROM (SELECT int_a AS col1, int_b AS col2 FROM MultipleColumns)
+|> UNPIVOT((a, b) FOR c IN ((col1, **COLUMNS(['col2']))))
+--
+QueryStmt
++-output_column_list=
+| +-$unpivot.a#7 AS a [INT64]
+| +-$unpivot.b#8 AS b [INT64]
+| +-$unpivot.c#9 AS c [STRING]
++-query=
+  +-UnpivotScan
+    +-column_list=$unpivot.[a#7, b#8, c#9]
+    +-input_scan=
+    | +-ProjectScan
+    |   +-column_list=MultipleColumns.[int_a#1, int_b#3]
+    |   +-input_scan=
+    |     +-TableScan(column_list=MultipleColumns.[int_a#1, int_b#3], table=MultipleColumns, column_index_list=[0, 2])
+    +-value_column_list=$unpivot.[a#7, b#8]
+    +-label_column=$unpivot.c#9
+    +-label_list=
+    | +-Literal(type=STRING, value="col1_col2")
+    +-unpivot_arg_list=
+    | +-UnpivotArg
+    |   +-column_list=
+    |     +-ColumnRef(type=INT64, column=MultipleColumns.int_a#1)
+    |     +-ColumnRef(type=INT64, column=MultipleColumns.int_b#3)
+    +-include_nulls=FALSE
+
+[SQLBUILDER_OUTPUT]
+FROM
+  MultipleColumns
+|> SELECT
+     MultipleColumns.int_a AS a_1,
+     MultipleColumns.int_b AS a_2
+|> AS projectscan_3
+|> UNPIVOT EXCLUDE NULLS ((a_4, a_5) FOR a_6 IN ((a_1, a_2) AS "col1_col2"))
+|> SELECT
+     a_4 AS a,
+     a_5 AS b,
+     a_6 AS c;
+==
+
+################################################################################
+#
+# Negative test cases for UNPACK (**) in UNPIVOT
+#
+################################################################################
+
+# Empty column list in UNPIVOT
+SELECT * FROM KeyValue UNPIVOT(a for b in (**COLUMNS([])))
+--
+ERROR: Empty column list in UNPIVOT [at 1:43]
+SELECT * FROM KeyValue UNPIVOT(a for b in (**COLUMNS([])))
+                                          ^
+==
+
+# Multiple empty unpacks in UNPIVOT IN clause
+SELECT * FROM KeyValue UNPIVOT(a for b in (**COLUMNS([]), **COLUMNS([])))
+--
+ERROR: Empty column list in UNPIVOT [at 1:43]
+SELECT * FROM KeyValue UNPIVOT(a for b in (**COLUMNS([]), **COLUMNS([])))
+                                          ^
+==
+
+# Both value column list and IN clause empty due to unpack
+SELECT * FROM KeyValue UNPIVOT((**COLUMNS([])) for b in (**COLUMNS([])))
+--
+ERROR: Empty column list in UNPIVOT [at 1:57]
+SELECT * FROM KeyValue UNPIVOT((**COLUMNS([])) for b in (**COLUMNS([])))
+                                                        ^
+==
+
+# Type mismatch in UNPIVOT
+SELECT * FROM KeyValue UNPIVOT(a for b in (**COLUMNS(['Key', 'Value'])))
+--
+ERROR: The datatype of column does not match other datatypes in the IN clause. Expected INT64, Found STRING [at 1:44]
+SELECT * FROM KeyValue UNPIVOT(a for b in (**COLUMNS(['Key', 'Value'])))
+                                           ^
+==
+
+# Non-existent column in UNPIVOT
+SELECT * FROM KeyValue UNPIVOT(a for b in (**COLUMNS(['NonExistent'])))
+--
+ERROR: Name NonExistent not found in the current scope [at 1:44]
+SELECT * FROM KeyValue UNPIVOT(a for b in (**COLUMNS(['NonExistent'])))
+                                           ^
+==
+
+# Mismatched columns due to empty unpack in IN item
+SELECT * FROM MultipleColumns UNPIVOT((a, b) for c in ((int_a, int_b), (**COLUMNS([]))))
+--
+ERROR: Empty column list in UNPIVOT [at 1:73]
+...UNPIVOT((a, b) for c in ((int_a, int_b), (**COLUMNS([]))))
+                                             ^
+==
+
+# Empty left side due to empty unpack
+SELECT * FROM MultipleColumns UNPIVOT((**COLUMNS([])) for b in ((int_a)))
+--
+ERROR: Empty column list in UNPIVOT [at 1:40]
+SELECT * FROM MultipleColumns UNPIVOT((**COLUMNS([])) for b in ((int_a)))
+                                       ^
+==
+
+# Too many columns in IN item due to unpack
+SELECT * FROM MultipleColumns UNPIVOT((a, b) for c in ((int_a, int_b), (**COLUMNS(['int_c', 'int_d', 'string_a']))))
+--
+ERROR: All column groups in UNPIVOT IN clause must have the same number of columns [at 1:73]
+...UNPIVOT((a, b) for c in ((int_a, int_b), (**COLUMNS(['int_c', 'int_d', 'st...
+                                             ^
+

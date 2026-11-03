@@ -85,7 +85,6 @@ cc_library(
     ],
     hdrs = ["tpch_catalog.h"],
     deps = [
-        "//googlesql/base:clock",
         "//googlesql/base:map_util",
         "//googlesql/base:ret_check",
         "//googlesql/base:status",
@@ -109,6 +108,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
+        "@com_google_absl//absl/time:clock_interface",
         "@com_google_absl//absl/types:span",
         "@com_google_riegeli//riegeli/base:initializer",
         "@com_google_riegeli//riegeli/bytes:string_reader",

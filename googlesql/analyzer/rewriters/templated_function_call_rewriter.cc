@@ -114,18 +114,18 @@ class TemplatedFunctionCallVisitor : public ResolvedASTRewriteVisitor {
         CopyAndRewriteNode<ResolvedExpr>(*function_call.expr(), sequence_number,
                                          column_map));
 
-    std::vector<std::unique_ptr<const ResolvedComputedColumn>>
+    std::vector<std::unique_ptr<const ResolvedComputedColumnBase>>
         rewritten_aggregate_expression_list;
     if (!function_call.aggregate_expression_list().empty()) {
       rewritten_aggregate_expression_list.reserve(
           function_call.aggregate_expression_list().size());
-      for (const std::unique_ptr<const ResolvedComputedColumn>&
+      for (const std::unique_ptr<const ResolvedComputedColumnBase>&
                aggregate_expression :
            function_call.aggregate_expression_list()) {
         GOOGLESQL_ASSIGN_OR_RETURN(
-            std::unique_ptr<const ResolvedComputedColumn>
+            std::unique_ptr<const ResolvedComputedColumnBase>
                 rewritten_aggregate_expression,
-            CopyAndRewriteNode<ResolvedComputedColumn>(
+            CopyAndRewriteNode<ResolvedComputedColumnBase>(
                 *aggregate_expression, sequence_number, column_map));
         rewritten_aggregate_expression_list.push_back(
             std::move(rewritten_aggregate_expression));

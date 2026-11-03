@@ -17,6 +17,7 @@
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "googlesql/base/testing/status_matchers.h"
 #include "googlesql/public/analyzer_options.h"
@@ -42,7 +43,12 @@
 namespace googlesql {
 namespace {
 
+using ::testing::ElementsAre;
 using ::testing::HasSubstr;
+using ::testing::IsEmpty;
+using ::testing::TestParamInfo;
+using ::testing::ValuesIn;
+using ::testing::WithParamInterface;
 using ::absl_testing::StatusIs;
 
 class ModuleMacroTest : public ::testing::Test {
@@ -329,6 +335,177 @@ TEST_F(ModuleMacroTest, CrossModuleMacroCatalogLookup) {
   GOOGLESQL_ASSERT_OK(imported_m1_catalog->GetMacro("priv_macro", &priv_macro));
   EXPECT_EQ(priv_macro, nullptr);
 }
+
+constexpr absl::string_view kImportMacroError =
+    "IMPORT statements cannot be produced via macro expansion or contain "
+    "macro invocations";
+
+struct ImportMacroTestCase {
+  std::string test_name;
+  std::string module_contents;
+  absl::string_view expected_error;
+  bool allow_macros_in_module = true;
+};
+
+class ModuleImportMacroTest : public ModuleMacroTest,
+                              public WithParamInterface<ImportMacroTestCase> {};
+
+TEST_P(ModuleImportMacroTest, ValidatesMacroUsageInImports) {
+  const ImportMacroTestCase& test_case = GetParam();
+  auto fetcher = std::make_unique<testing::TestModuleContentsFetcher>(
+      /*descriptor_pool=*/nullptr, /*source_directory=*/"");
+  GOOGLESQL_ASSERT_OK(fetcher->AddInMemoryModule({"m1"}, test_case.module_contents));
+  GOOGLESQL_ASSERT_OK(fetcher->AddInMemoryModule({"a", "b", "c"}, "MODULE a.b.c;\n"));
+
+  ModuleFactoryOptions options;
+  options.allow_macros_in_module = test_case.allow_macros_in_module;
+  factory_ = std::make_unique<ModuleFactory>(analyzer_options_, options,
+                                             std::move(fetcher),
+                                             &builtin_catalog_, &type_factory_);
+  ModuleCatalog* catalog = nullptr;
+  GOOGLESQL_ASSERT_OK(factory_->CreateOrReturnModuleCatalog({"m1"}, &catalog));
+
+  if (test_case.expected_error.empty()) {
+    EXPECT_THAT(catalog->module_errors(), IsEmpty());
+  } else {
+    EXPECT_THAT(catalog->module_errors(),
+                ElementsAre(StatusIs(absl::StatusCode::kInvalidArgument,
+                                     HasSubstr(test_case.expected_error))));
+  }
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    ModuleImportMacroTests, ModuleImportMacroTest,
+    ValuesIn(std::vector<ImportMacroTestCase>{
+        {.test_name = "MacroInImportTarget",
+         .module_contents = "MODULE m1;\n"
+                            "DEFINE PUBLIC MACRO macro_name foo.bar;\n"
+                            "IMPORT MODULE $macro_name();\n",
+         .expected_error = kImportMacroError},
+        {.test_name = "ImportProducedByMacro",
+         .module_contents =
+             "MODULE m1;\n"
+             "DEFINE PUBLIC MACRO make_import IMPORT MODULE a.b.c;\n"
+             "$make_import();\n",
+         .expected_error = kImportMacroError},
+        {.test_name = "BuiltinMacroInImport",
+         .module_contents = "MODULE m1;\n"
+                            "IMPORT MODULE $$IDENTIFIER(a);\n",
+         .expected_error = kImportMacroError},
+        {.test_name = "FusedMacroTokenInImportOptions",
+         .module_contents = "MODULE m1;\n"
+                            "DEFINE PUBLIC MACRO m 1.2;\n"
+                            "IMPORT MODULE a.b.c OPTIONS(x = $m());\n",
+         .expected_error = kImportMacroError},
+        {.test_name = "EmptyMacroInImport",
+         .module_contents = "MODULE m1;\n"
+                            "DEFINE PUBLIC MACRO empty;\n"
+                            "IMPORT MODULE a.b.c $empty();\n",
+         .expected_error = kImportMacroError},
+        {.test_name = "CommentOnlyMacroInImport",
+         .module_contents =
+             "MODULE m1;\n"
+             "DEFINE PUBLIC MACRO comment_only /* comment */   ;\n"
+             "IMPORT MODULE a.b.c $comment_only();\n",
+         .expected_error = kImportMacroError},
+        {.test_name = "UndefinedMacroInImport",
+         .module_contents = "MODULE m1;\n"
+                            "IMPORT MODULE a.$undefined.c;\n",
+         .expected_error = kImportMacroError},
+        {.test_name = "MacroWithoutArgsInImport",
+         .module_contents = "MODULE m1;\n"
+                            "DEFINE PUBLIC MACRO b b;\n"
+                            "IMPORT MODULE a.$b.c;\n",
+         .expected_error = kImportMacroError},
+        {.test_name = "SyntaxErrorAfterMacroInImport",
+         .module_contents = "MODULE m1;\n"
+                            "DEFINE PUBLIC MACRO b b;\n"
+                            "IMPORT MODULE a.$b() +;\n",
+         .expected_error = kImportMacroError},
+        {.test_name = "SyntaxErrorInExpandedMacroTokens",
+         .module_contents = "MODULE m1;\n"
+                            "DEFINE PUBLIC MACRO b c +;\n"
+                            "IMPORT MODULE a.$b();\n",
+         .expected_error = kImportMacroError},
+        {.test_name = "TokenizerErrorAfterMacroInImport",
+         .module_contents = "MODULE m1;\n"
+                            "DEFINE PUBLIC MACRO b b;\n"
+                            "IMPORT MODULE a.$b() 'unclosed;\n",
+         .expected_error = kImportMacroError},
+        {.test_name = "MacroInImportWithMacrosDisabled",
+         .module_contents = "MODULE m1;\n"
+                            "IMPORT MODULE $p();\n",
+         .expected_error = kImportMacroError,
+         .allow_macros_in_module = false},
+        {.test_name = "DollarSignInImportStringLiteral",
+         .module_contents =
+             "MODULE m1;\n"
+             "IMPORT MODULE a.b.c OPTIONS(description = \"Price $USD\");\n"},
+        {.test_name = "TrailingCommentAfterImport",
+         .module_contents = "MODULE m1;\n"
+                            "IMPORT MODULE a.b.c OPTIONS(description=\"Price "
+                            "$USD\") /* comment */"},
+        {.test_name = "NonReservedKeywordsInImport",
+         .module_contents = "MODULE m1;\n"
+                            "IMPORT MODULE foo.bar.module.baz OPTIONS(module = "
+                            "1, export = true);\n",
+         .expected_error = "not found"},
+        {.test_name = "ValidImportBeforeStatementWithMacro",
+         .module_contents = "MODULE m1;\n"
+                            "DEFINE PUBLIC MACRO m 123;\n"
+                            "IMPORT MODULE a.b.c;\n"
+                            "CREATE PUBLIC FUNCTION fn() AS ($m());\n"},
+        {.test_name = "ValidImportBeforeAdjacentEmptyMacro",
+         .module_contents = "MODULE m1;\n"
+                            "DEFINE PUBLIC MACRO empty;\n"
+                            "IMPORT MODULE a.b.c;$empty() CREATE PUBLIC "
+                            "FUNCTION fn() AS (1);\n"},
+        {.test_name = "ValidImportBeforeAdjacentMacroStatement",
+         .module_contents = "MODULE m1;\n"
+                            "DEFINE PUBLIC MACRO make_fn_header CREATE PUBLIC "
+                            "FUNCTION fn() AS;\n"
+                            "IMPORT MODULE a.b.c;$make_fn_header() (1);\n"},
+        {.test_name = "ValidImportBeforeEmptyMacroAtEof",
+         .module_contents = "MODULE m1;\n"
+                            "DEFINE PUBLIC MACRO empty;\n"
+                            "IMPORT MODULE a.b.c;\n"
+                            "$empty()\n"},
+        {.test_name = "ValidImportBeforeUndefinedMacroInNextStatement",
+         .module_contents = "MODULE m1;\n"
+                            "IMPORT MODULE a.b.c;\n"
+                            "$undefined;\n",
+         .expected_error = "Macro 'undefined' not found"},
+        {.test_name = "ValidImportBeforeMacroWithMacrosDisabled",
+         .module_contents = "MODULE m1;\n"
+                            "IMPORT MODULE a.b.c;\n"
+                            "CREATE PUBLIC FUNCTION fn() AS ($p());\n",
+         .expected_error = "Syntax error: Unexpected \"$p\"",
+         .allow_macros_in_module = false},
+        {.test_name = "MissingSemicolonBeforeDefineMacro",
+         .module_contents = "MODULE m1;\n"
+                            "IMPORT MODULE a.b.c \n DEFINE MACRO x y \n "
+                            "SELECT $local_macro;\n",
+         .expected_error = "got keyword DEFINE"},
+        {.test_name = "UnclosedStringLiteralWithDollarSign",
+         .module_contents =
+             "MODULE m1;\n"
+             "IMPORT MODULE a.b.c OPTIONS(description = \"Price $USD);\n",
+         .expected_error = "Unclosed string literal"},
+        {.test_name = "SyntaxErrorBeforeMacroInImport",
+         .module_contents = "MODULE m1;\n"
+                            "DEFINE PUBLIC MACRO m 123;\n"
+                            "IMPORT MODULE a.b.c ,$m();\n",
+         .expected_error =
+             "Syntax error: Expected \";\" or end of input but got \",\""},
+        {.test_name = "SyntaxErrorBeforeUndefinedMacroInImport",
+         .module_contents = "MODULE m1;\n"
+                            "IMPORT MODULE a.b.c ) $undefined;\n",
+         .expected_error =
+             "Syntax error: Expected \";\" or end of input but got \")\""},
+    }),
+    [](const TestParamInfo<ImportMacroTestCase>& info) {
+      return info.param.test_name;
+    });
 
 }  // namespace
 }  // namespace googlesql

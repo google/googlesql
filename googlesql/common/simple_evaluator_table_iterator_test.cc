@@ -16,7 +16,9 @@
 
 #include "googlesql/common/simple_evaluator_table_iterator.h"
 
+#include <atomic>
 #include <memory>
+#include <thread>  // NOLINT(build/c++11)
 #include <utility>
 #include <vector>
 
@@ -34,7 +36,10 @@
 #include "googlesql/base/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
-#include "googlesql/base/clock.h"
+#include "absl/synchronization/notification.h"
+#include "absl/time/clock_interface.h"
+#include "absl/time/simulated_clock.h"
+#include "absl/time/time.h"
 
 namespace googlesql {
 namespace {
@@ -84,7 +89,7 @@ class ColumnFilterTest : public ::testing::Test {
                    columns, column_major_values_for_iter, /*num_rows=*/4,
                    /*end_status=*/absl::OkStatus(), filter_column_idxs,
                    /*cancel_cb=*/[]() {}, /*set_deadline_cb=*/[](absl::Time) {},
-                   googlesql_base::Clock::RealClock()));
+                   &absl::Clock::GetRealClock()));
   }
 
   absl::StatusOr<std::vector<std::vector<Value>>> Read(
@@ -205,6 +210,82 @@ TEST_F(ColumnFilterTest, DeletionsInThreeColumnsOnlyRespectTwo) {
       Read(std::move(filter_map)),
       IsOkAndHolds(ElementsAre(ElementsAre(Int64(3), Int64(30), Int64(300)),
                                ElementsAre(Int64(4), Int64(40), Int64(400)))));
+}
+
+class BlockingClock : public absl::SimulatedClock {
+ public:
+  BlockingClock(absl::Notification* entered_next_row,
+                absl::Notification* cancel_finished)
+      : entered_next_row_(entered_next_row),
+        cancel_finished_(cancel_finished) {}
+  absl::Time TimeNow() override {
+    if (!entered_next_row_->HasBeenNotified()) {
+      entered_next_row_->Notify();
+      cancel_finished_->WaitForNotification();
+    }
+    return absl::UnixEpoch();
+  }
+
+ private:
+  absl::Notification* entered_next_row_;
+  absl::Notification* cancel_finished_;
+};
+
+TEST(SimpleEvaluatorTableIteratorTest, ConcurrentCancelWhileIterating) {
+  std::vector<std::unique_ptr<Column>> columns;
+  columns.push_back(
+      std::make_unique<SimpleColumn>("TestTable", "c1", Int64Type()));
+  columns.push_back(
+      std::make_unique<SimpleColumn>("TestTable", "c2", Int64Type()));
+
+  constexpr int kNumRows = 100;
+  std::vector<Value> col1_vals;
+  std::vector<Value> col2_vals;
+  col1_vals.reserve(kNumRows);
+  col2_vals.reserve(kNumRows);
+  for (int i = 0; i < kNumRows; ++i) {
+    col1_vals.push_back(Int64(i));
+    col2_vals.push_back(Int64(i * 10));
+  }
+
+  std::vector<std::shared_ptr<const std::vector<Value>>> column_major_values = {
+      std::make_shared<const std::vector<Value>>(std::move(col1_vals)),
+      std::make_shared<const std::vector<Value>>(std::move(col2_vals))};
+
+  std::vector<const Column*> col_ptrs = {columns[0].get(), columns[1].get()};
+
+  std::atomic<bool> cancel_cb_called{false};
+  absl::Notification entered_next_row;
+  absl::Notification cancel_finished;
+  BlockingClock blocking_clock(&entered_next_row, &cancel_finished);
+
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+      auto iter, SimpleEvaluatorTableIterator::Create(
+                     col_ptrs, column_major_values, kNumRows, absl::OkStatus(),
+                     /*filter_column_idxs=*/{},
+                     /*cancel_cb=*/
+                     [&cancel_cb_called]() {
+                       cancel_cb_called.store(true, std::memory_order_relaxed);
+                     },
+                     /*set_deadline_cb=*/[](absl::Time) {}, &blocking_clock));
+
+  std::thread cancel_thread([&]() {
+    entered_next_row.WaitForNotification();
+    GOOGLESQL_EXPECT_OK(iter->Cancel());
+    cancel_finished.Notify();
+  });
+
+  int rows_read = 0;
+  while (iter->NextRow()) {
+    EXPECT_EQ(iter->GetValue(0), Int64(rows_read));
+    EXPECT_EQ(iter->GetValue(1), Int64(rows_read * 10));
+    ++rows_read;
+  }
+  cancel_thread.join();
+
+  EXPECT_EQ(rows_read, 1);
+  EXPECT_TRUE(cancel_cb_called.load(std::memory_order_relaxed));
+  EXPECT_TRUE(absl::IsCancelled(iter->Status()));
 }
 
 }  // namespace

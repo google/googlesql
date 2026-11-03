@@ -134,7 +134,7 @@ static absl::StatusOr<const Type*> ComputePathCreateType(
   if (edge_types.empty()) {
     GOOGLESQL_RETURN_IF_ERROR(type_factory->MakeGraphElementType(
         node_type->AsGraphElement()->graph_reference(), GraphElementType::kEdge,
-        {}, &edge_type));
+        /*property_types=*/{}, /*element_tables=*/{}, &edge_type));
   } else {
     const Type* supertype = nullptr;
     GOOGLESQL_RETURN_IF_ERROR(coercer.GetCommonSuperType(edge_types, &supertype));

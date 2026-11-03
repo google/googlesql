@@ -22,10 +22,17 @@
 #include <utility>
 #include <vector>
 
+#include "googlesql/public/catalog.h"
 #include "googlesql/public/json_value.h"
+#include "googlesql/public/language_options.h"
+#include "googlesql/public/property_graph.h"
+#include "googlesql/public/types/graph_element_type.h"
 #include "googlesql/public/types/type.h"
+#include "googlesql/public/types/type_factory.h"
 #include "googlesql/public/value.h"
 #include "googlesql/resolved_ast/resolved_ast.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 namespace googlesql {
@@ -33,6 +40,74 @@ namespace googlesql {
 // Helper function that is used to determine a type is or contains in its
 // nesting structure a GraphElement or GraphPath type.
 bool TypeIsOrContainsGraphElement(const Type* type);
+
+// If `prop_def` is a non-measure property whose value expression is a direct
+// catalog column reference, returns that underlying base table column.
+// Otherwise (for measure or derived properties), returns nullptr.
+absl::StatusOr<const Column*> GetPropertyBackingColumn(
+    const GraphPropertyDefinition& prop_def);
+
+// Returns all catalog columns in the base table of `target_table` that are
+// exposed as non-measure properties whose value expression is a direct catalog
+// column reference.
+absl::StatusOr<absl::flat_hash_set<const Column*>> GetPropertyBackingColumns(
+    const GraphElementTable& target_table);
+
+// Checks that all element key columns in `target_table` are exposed as writable
+// properties in its property definition list.
+// Returns false and populates `error_message` (if non-null) if not.
+absl::StatusOr<bool> AreAllKeyColumnsWritableProperties(
+    const GraphElementTable& target_table,
+    std::string* error_message = nullptr);
+
+// Returns the dynamic label backing column in the base table of `target_table`,
+// or nullptr if `target_table` does not have a dynamic label.
+absl::StatusOr<const Column*> GetDynamicLabelBackingColumn(
+    const GraphElementTable& target_table);
+
+// Returns the dynamic properties backing column in the base table of
+// `target_table`, or nullptr if `target_table` does not have dynamic
+// properties.
+absl::StatusOr<const Column*> GetDynamicPropertiesBackingColumn(
+    const GraphElementTable& target_table);
+
+// Represents the edge table side key columns in the SOURCE and DESTINATION
+// clauses of an edge table.
+struct EdgeEndpointBackingColumns {
+  absl::flat_hash_set<const Column*> source_key_columns;
+  absl::flat_hash_set<const Column*> dest_key_columns;
+};
+
+// For an edge table, returns the base table columns referenced by the source
+// and destination node table references. Returns empty sets if `target_table`
+// is not an edge table.
+absl::StatusOr<EdgeEndpointBackingColumns> GetEdgeEndpointBackingColumns(
+    const GraphElementTable& target_table);
+
+// Checks that `target_table` satisfies all schema requirements to be updatable:
+// - All element key columns of `target_table` must be exposed as writable
+//   properties in its property definition list.
+// - If `needs_dynamic_label` is true, `target_table` must support dynamic
+//   labels and its dynamic label backing column must be writable.
+// - If `target_table` is an edge table:
+//   * Its edge source and destination key columns must be writable columns in
+//     the edge base table (they do not need to be exposed as edge properties).
+//   * The referenced source and destination element key columns must be exposed
+//     as properties of its source and destination node tables (they do not need
+//     to be writable on the node tables).
+// Returns false and populates `error_message` (if non-null) if not.
+absl::StatusOr<bool> IsTargetTableUpdatable(
+    const GraphElementTable& target_table, bool needs_dynamic_label,
+    std::string* error_message = nullptr);
+
+// Constructs a static or dynamic GraphElementType for an element of
+// `target_table`. Includes `target_table.Name()` in the resulting type's
+// element table list when FEATURE_SQL_GRAPH_UPDATABLE_GRAPH_ELEMENT_TYPE is
+// enabled in `language_options`.
+absl::StatusOr<const GraphElementType*> BuildGraphElementTypeForTable(
+    const GraphElementTable& target_table,
+    absl::Span<const std::string> graph_name_path, TypeFactory& type_factory,
+    const LanguageOptions& language_options);
 
 // Helper function that returns the property name from a get element property
 // node.

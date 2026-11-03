@@ -65,7 +65,6 @@ namespace googlesql {
 
 class AnalyzerOptions;
 class ResolvedExpr;
-class SignatureMatchResult;
 class TVFConnectionProto;
 class TVFInputArgumentType;
 class TVFRelationColumnProto;
@@ -395,19 +394,18 @@ class TableValuedFunction {
       const LanguageOptions& language_options,
       bool print_template_and_name_details) const;
 
-  virtual std::string DebugString() const;
+  // Returns user facing text (to be used in error messages) for the
+  // specified table function <signature>. For example:
+  //   tvf_name(DOUBLE, TABLE<col_name1 BOOL, col_name2 STRING>)
+  //
+  // The `language_options` identifies the product mode (INTERNAL vs. EXTERNAL),
+  // affecting the resulting Type names (i.e., DOUBLE vs. FLOAT64).
+  std::string GetSignatureUserFacingText(
+      const FunctionSignature& signature,
+      const LanguageOptions& language_options,
+      bool print_template_and_name_details) const;
 
-  // Returns an error message for a table-valued function call named
-  // 'tvf_name_string' with 'tvf_catalog_entry' that did not match the
-  // function signature (identified by 'signature_idx') with 'input_arg_types'.
-  // 'signature_match_result' should contain the result of a previous call to
-  // FunctionResolver::SignatureMatches and 'language_options' should contain
-  // the language options for the query.
-  std::string GetTVFSignatureErrorMessage(
-      absl::string_view tvf_name_string,
-      absl::Span<const InputArgumentType> input_arg_types, int signature_idx,
-      const SignatureMatchResult& signature_match_result,
-      const LanguageOptions& language_options) const;
+  virtual std::string DebugString() const;
 
   // Serializes this table-valued function to a protocol buffer. Subclasses may
   // override this to add more information as needed.
@@ -589,17 +587,6 @@ class TableValuedFunction {
   StatementContext statement_context() const { return statement_context_; }
 
  protected:
-  // Returns user facing text (to be used in error messages) for the
-  // specified table function <signature>. For example:
-  //   tvf_name(DOUBLE, TABLE<col_name1 BOOL, col_name2 STRING>)
-  //
-  // The <language_options> identifies the product mode (INTERNAL vs. EXTERNAL),
-  // affecting the resulting Type names (i.e., DOUBLE vs. FLOAT8).
-  std::string GetSignatureUserFacingText(
-      const FunctionSignature& signature,
-      const LanguageOptions& language_options,
-      bool print_template_and_name_details) const;
-
   // If this TVF has a signature that takes a graph argument we don't allow any
   // signatures that just take scalar arguments because it doesn't let us
   // diagnose common mistakes. See shortn/_0Uc6eBN0Lu for details.
@@ -1107,11 +1094,12 @@ class TVFInputArgumentType {
   // member variables.
   // Only one of the following is defined, based on kind_.
   TVFRelation relation_ = TVFRelation({});
-  TVFModelArgument model_ = TVFModelArgument(nullptr);
-  TVFConnectionArgument connection_ = TVFConnectionArgument(nullptr);
+  TVFModelArgument model_ = TVFModelArgument(/*model=*/nullptr);
+  TVFConnectionArgument connection_ =
+      TVFConnectionArgument(/*connection=*/nullptr);
   TVFDescriptorArgument descriptor_argument_ =
       TVFDescriptorArgument(std::vector<std::string>());
-  TVFGraphArgument graph_ = TVFGraphArgument(nullptr);
+  TVFGraphArgument graph_ = TVFGraphArgument(/*graph=*/nullptr);
   AnnotatedType scalar_arg_annotated_type_{/*type=*/nullptr,
                                            /*annotation_map=*/nullptr};
 

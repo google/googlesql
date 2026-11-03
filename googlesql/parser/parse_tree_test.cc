@@ -337,6 +337,28 @@ TEST(ParseTreeTest, NodeKindCategories_LiteralExpression) {
   EXPECT_FALSE(expr->IsTableExpression());
 }
 
+TEST(ParseTreeTest, TablePathExpressionWithStringLiteral) {
+  const std::string sql =
+      "SELECT * FROM 'a' \"b.csv\" @{hint=1} AS t WITH OFFSET";
+
+  std::unique_ptr<ParserOutput> parser_output;
+  GOOGLESQL_ASSERT_OK(ParseStatement(sql, ParserOptions(), &parser_output));
+  std::vector<const ASTNode*> table_paths;
+  parser_output->statement()->GetDescendantsWithKinds(
+      {AST_TABLE_PATH_EXPRESSION}, &table_paths);
+  ASSERT_EQ(table_paths.size(), 1);
+  const auto* table_path = table_paths[0]->GetAsOrDie<ASTTablePathExpression>();
+
+  EXPECT_EQ(table_path->path_expr(), nullptr);
+  EXPECT_EQ(table_path->unnest_expr(), nullptr);
+  ASSERT_NE(table_path->string_literal(), nullptr);
+  EXPECT_EQ(table_path->string_literal()->string_value(), "ab.csv");
+  EXPECT_NE(table_path->hint(), nullptr);
+  ASSERT_NE(table_path->alias(), nullptr);
+  EXPECT_EQ(table_path->alias()->GetAsString(), "t");
+  EXPECT_NE(table_path->with_offset(), nullptr);
+}
+
 TEST(ParseTreeTest, GetDescendantsWithKinds) {
   const std::string sql =
       "select * from (select 1+0x2, x+y), "

@@ -52,6 +52,7 @@ from googlesql.parser.generator_utils import NameToNodeKindName
 from googlesql.parser.generator_utils import ScalarType
 from googlesql.parser.generator_utils import Trim
 from googlesql.parser.generator_utils import UpperCamelCase
+from googlesql.resolved_ast import gen_resolved_ast_column_visibility as column_visibility
 from googlesql.resolved_ast import resolved_ast_enums_pb2
 
 # Most template files allow single line jinja statements, for example:
@@ -440,6 +441,268 @@ SCALAR_UPDATE_FIELD_ITEM_OP = EnumScalarType(
     'Operation', 'ResolvedUpdateFieldItem'
 )
 
+# ResolvedColumn visibility
+# =========================
+#
+# Every ResolvedColumn is created in exactly one place: either a scan with
+# `column_list_is_created_columns`, or a field marked `column_is_created`.
+# Any ResolvedColumn not marked as column creation (e.g. in a `column_list` or
+# a ResolvedColumnRef) is referencing an existing column.
+#
+# The visibility annotations described here say which columns each reference
+# is allowed to name. The validator checks every reference against them.
+#
+# Environment
+# -----------
+# Each field of each node is evaluated in an environment of two column sets:
+#
+#   The VISIBLE set
+#     Columns that a non-correlated reference may name.
+#
+#   The OUTER set
+#     Columns that a correlated ResolvedColumnRef (is_correlated=true) may
+#     name.
+#
+# The root statement starts with empty VISIBLE and OUTER sets. Environments
+# flow down the tree: a node computes the environment for each of its fields
+# from its own environment and that field's annotations.
+#
+# Columns provided by a field
+# ---------------------------
+# A field "provides" a set of columns that the node can make visible to its
+# other fields. By default, what a field provides depends only on its type:
+#
+#   Scan-typed field
+#     The scan's `column_list`.
+#
+#   ResolvedColumn or ResolvedColumnHolder field
+#     The column, if the field is marked `column_is_created`. Otherwise
+#     nothing.
+#
+#   ResolvedColumnRef-typed field
+#     Nothing. A ColumnRef only references a column; it never introduces one
+#     (but see `outer_scope` below).
+#
+#   Any other node-typed field
+#     The columns that the node itself creates, through its own
+#     `column_is_created` fields (i.e. the node's GetColumnsCreated()).
+#     Columns created deeper in the node's subtree are not included. For
+#     example, ResolvedComputedColumn provides `column`.
+#
+#   Scalar field of any other type
+#     Nothing.
+#
+# A vector field provides the union of what its elements provide.
+#
+# A node class can override the default for fields of its type with
+# `provided_columns` (see AddNode() below).
+#
+# Referencing a field that can never provide any columns is an error. For
+# example, a scalar `bool` field, or an expression-typed field whose node
+# classes have no `column_is_created` fields.
+#
+# Specifying columns visible in a scope list
+# ------------------------------------------
+# Three built-in lists are always available:
+#
+#   INPUT
+#     The node's input scope.
+#     - For a scan, this is the `column_list` of its pipe input scan (see
+#       ResolvedScan::GetPipeInputScan), or {} if it has none. A scan never
+#       sees its parent's VISIBLE set.
+#     - For any other node, this is the VISIBLE set it received from its
+#       parent.
+#
+#   CREATED
+#     All columns created by this node, excluding its final `column_list`.
+#     This is the union of what the node's non-scan fields provide. For
+#     example, the ProjectScan `expr_list` columns, or the ArrayScan
+#     `element_column_list` and `array_offset_column`.
+#
+#     When used in the `scope` of a field, columns created by that field are
+#     excluded.
+#
+#   OUTER
+#     The OUTER set the node received from its parent (columns available as
+#     correlated references). Only allowed in `outer_scope`. (The source
+#     OUTER always means the parent's OUTER set; `outer_scope` gives the OUTER
+#     set of the field's subtree.)
+#
+# A scope list is a list of sources, and its value is their union:
+#
+#   INPUT, CREATED, OUTER
+#     As above.
+#
+#   'name'
+#     Columns provided by sibling field 'name'.
+#
+#     'name' can also be a dotted path, 'a.b.c', through node-typed fields `a`
+#     and `b` (vector fields use all their elements), giving what field `c`
+#     provides on those descendant nodes. Paths are only needed for columns
+#     from descendants that the intermediate nodes don't provide, e.g. the
+#     scans inside TVF arguments ('argument_list.scan'). Prefer
+#     `provided_columns` on the intermediate node class when that's correct
+#     for every use of the node.
+#
+#     A scan can also name its own `column_list` field, e.g. so that a field
+#     sees the columns the scan creates. That only gives columns on scans with
+#     `column_list_is_created_columns`. Otherwise the scan's column_list only
+#     references columns that come from its inputs or other fields, so name
+#     those instead. (A child scan field always provides its whole
+#     `column_list`, as above.)
+#
+#     A field can name itself, e.g. for a vector whose elements can all see
+#     each other. Longer cycles between fields are errors.
+#
+#   IF('field', source[, else_=source2])
+#     `source` if sibling field `field` is truthy (as in Python, e.g. a
+#     non-empty vector), otherwise `source2`, or nothing if `else_` isn't
+#     given. Each branch can be a single source or a list of sources, using
+#     any of the sources listed here.
+#
+#   CONTEXT('name')
+#     The columns stored under the named context 'name' by the nearest
+#     ancestor field with `context=` (see below), or nothing if no ancestor set
+#     it.
+#
+#   UNCHECKED
+#     An escape hatch for references that can't be modeled yet. It must be the
+#     only element of the list. Any column is allowed, and comparison mode
+#     (see below) ignores it. Each use needs a comment saying why, with a TODO
+#     and bug link if this is a bug or feature gap.
+#
+# scope=[] means no columns are visible.
+#
+# Annotations on Field()
+# ----------------------
+# `scope` and `outer_scope` give the complete set of columns in scope for the
+# field's subtree, replacing the parent's set rather than adding to it. To
+# include the parent's columns, list INPUT (in `scope`) or OUTER (in
+# `outer_scope`) explicitly.
+#
+#   scope=[...]
+#     Sets the VISIBLE set for this field's subtree. Not allowed on scan-typed
+#     fields, which always get an empty VISIBLE set because a scan builds its
+#     visible columns from its own inputs. Never affects the OUTER set. Allowed
+#     sources: INPUT, CREATED, sibling fields, IF, CONTEXT, UNCHECKED.
+#
+#     Default: [INPUT]. Expressions see the scope of the expression they're
+#     part of, and a scan's expressions see its pipe input.
+#
+#   scope_sequential=True
+#     For vector fields: element i also sees what elements 0..i-1 provide.
+#
+#     Default: False.
+#
+#   outer_scope=[...]
+#     Sets the OUTER set for this field's subtree. Allowed sources: OUTER, IF,
+#     and a sibling ResolvedColumnRef list, typically `parameter_list`, which
+#     gives the parameter_list's referenced columns.
+#
+#     A ColumnRef list doesn't introduce any columns: each ColumnRef in it is
+#     checked in the parent's environment like any other reference. The
+#     parameter_list selects which of the parent's columns cross a correlation
+#     boundary (subquery, lambda, LATERAL join) as correlated columns.
+#
+#     Default: [OUTER]. The same columns can be referenced as correlated
+#     columns in the child node.
+#
+#   context={'name': [...]}
+#     Stores a column set under the named context 'name' for this field's
+#     whole subtree, where CONTEXT('name') reads it. A descendant field can set
+#     the same name again for its own subtree, so each named context acts like
+#     a stack. The value is a scope list with the same allowed sources as
+#     `scope`. This is for leaves that get their columns from an ancestor that
+#     isn't their direct parent. The context names are listed in
+#     COLUMN_SCOPE_CONTEXT_NAMES below.
+#
+#     Default: named contexts are inherited unchanged.
+#
+# Annotations on AddNode()
+# ------------------------
+#   column_list_scope=[...]
+#     (Scans only.) The columns that this scan's `column_list` may contain.
+#     Allowed sources: INPUT, CREATED, sibling fields, IF, CONTEXT. Not
+#     allowed with `column_list_is_created_columns`.
+#
+#     Default: inherited from the nearest ancestor node class that sets it, or
+#     [INPUT, CREATED] if none does.
+#
+#   provided_columns=[...]
+#     (Non-scans only.) What a field of this node type provides to the parent
+#     node (see "Columns provided by a field"), when that's not just the
+#     node's own created columns. Allowed sources: CREATED, the node's fields,
+#     IF. Inherited by subclasses.
+#
+#     For example, a DML statement nested in a pipe DML scan provides its
+#     target, input and RETURNING columns.
+#
+#   inherited_field_scopes={'field': {...}}
+#     Overrides the Field() annotations of an inherited field, for this node
+#     class and its subclasses.
+#
+# By default, a node's created columns are visible only in its own
+# `column_list`. Anything else needs an annotation.
+#
+# Rules checked by the validator
+# ------------------------------
+#   - A ResolvedColumnRef must name a column in the OUTER set if
+#     `is_correlated`, and a column in the VISIBLE set otherwise.
+#
+#   - Any other referenced ResolvedColumn field, except `column_list`, must
+#     name a column in that field's VISIBLE set.
+#
+#   - A scan's `column_list` must be within its `column_list_scope`. Columns
+#     from the OUTER set are never allowed there. To return an outer column, a
+#     scan must first copy it into a local column with a ResolvedComputedColumn.
+#
+# The check is generated into resolved_ast_column_visibility_checker.{h,cc} by
+# gen_resolved_ast_column_visibility.py, and runs from the Validator when
+# ValidatorOptions::validate_column_visibility is true. In comparison mode
+# (ValidatorOptions::compare_column_visibility, for tests), the Validator also
+# checks that the sets computed from the annotations match the hand-written
+# `visible_columns` and `visible_parameters` sets it passes down the tree. The
+# generator rejects invalid annotations, e.g. unknown fields, fields that can't
+# provide columns, sources that aren't allowed where they're used, and cycles.
+
+# The column visibility vocabulary used in the annotations below. These are
+# defined, and the annotations are checked and turned into C++, in
+# gen_resolved_ast_column_visibility.py.
+INPUT = column_visibility.INPUT
+CREATED = column_visibility.CREATED
+OUTER = column_visibility.OUTER
+UNCHECKED = column_visibility.UNCHECKED
+IF = column_visibility.IF
+CONTEXT = column_visibility.CONTEXT
+
+# The names of the named contexts, which are set with Field(context=...) and
+# read with CONTEXT(...). Each one holds a column set, and becomes a member of
+# ColumnVisibilityChecker::Env.
+COLUMN_SCOPE_CONTEXT_NAMES = (
+    # The input columns of the enclosing pipe operator, which a
+    # ResolvedSubpipelineInputScan inside a ResolvedSubpipeline returns.
+    'subpipeline_input',
+    # The columns of the DML target table (or nested DML target element) that
+    # ResolvedUpdateItem.target and ResolvedMergeWhen.insert_column_list can
+    # reference. Their parents also see other columns, e.g. from FROM.
+    'dml_target',
+    # The source columns of a MERGE, visible to the INSERT row in
+    # ResolvedMergeWhen.
+    'merge_source',
+    # The input columns of the enclosing aggregate scans, which a
+    # ResolvedGroupRowsScan (WITH GROUP ROWS) returns.
+    'group_rows_input',
+    # The columns of all the table arguments of a TVF call, which a
+    # ResolvedDescriptor in another argument can reference.
+    'tvf_table_args',
+    # The columns of the node tables in CREATE PROPERTY GRAPH, which a
+    # ResolvedGraphNodeTableReference in an edge table references.
+    'graph_node_tables',
+    # The columns of the previous scan in the enclosing ResolvedGraphLinearScan,
+    # which a ResolvedGraphRefScan returns.
+    'graph_ref_input',
+)
+
 
 def Field(
     name,
@@ -456,6 +719,10 @@ def Field(
     propagate_order = False,
     override_virtual_getter = False,
     is_pipe_input_scan = False,
+    scope = None,
+    scope_sequential = False,
+    outer_scope = None,
+    context = None,
 ):
   """Make a field to put in a node class.
 
@@ -493,6 +760,14 @@ def Field(
       that acts as the pipe input for linear-mode DebugString rendering. Only
       needed when the field has an unusual name; fields named `input_scan` or
       `scan` are detected automatically. See ResolvedScan::GetPipeInputScan.
+    scope: Scope list giving the VISIBLE set for this field's subtree. See
+      "ResolvedColumn visibility" above. Default: [INPUT].
+    scope_sequential: For vector fields, element i also sees what elements
+      0..i-1 provide. See "ResolvedColumn visibility" above.
+    outer_scope: Scope list giving the OUTER set for this field's subtree. See
+      "ResolvedColumn visibility" above. Default: [OUTER].
+    context: Map from context name to a scope list, setting that named context
+      for this field's subtree. See "ResolvedColumn visibility" above.
 
   Returns:
     The newly created field.
@@ -671,6 +946,16 @@ def Field(
   # `propagate_order` can be enabled only for non-vector, node-typed fields.
   assert not propagate_order or (is_node_type and not vector)
 
+  # Column visibility annotations are checked in more detail, once the whole
+  # tree is known, by ColumnVisibilityCodegen in
+  # gen_resolved_ast_column_visibility.py.
+  assert scope is None or isinstance(scope, list), (name, scope)
+  assert outer_scope is None or isinstance(outer_scope, list), name
+  assert not scope_sequential or vector, (
+      'scope_sequential requires a vector field: %s' % name
+  )
+  assert context is None or isinstance(context, dict), name
+
   return {
       'ctype': ctype,
       'java_type': java_type,
@@ -719,6 +1004,10 @@ def Field(
       'propagate_order': propagate_order,
       'not_serialize_if_default': not_serialize_if_default,
       'is_pipe_input_scan': is_pipe_input_scan,
+      'scope': scope,
+      'scope_sequential': scope_sequential,
+      'outer_scope': outer_scope,
+      'context': context or {},
   }
 
 
@@ -768,7 +1057,12 @@ class TreeGenerator():
       use_custom_debug_string = False,
       use_custom_columns_created = False,
       comment = None,
+      column_list_scope = None,
+      provided_columns = None,
+      inherited_field_scopes = None,
   ):
+    # pyformat: disable
+    # This docstring has copybara tags that must stay on their own lines.
     """Add a node class to be generated.
 
     Args:
@@ -792,7 +1086,21 @@ class TreeGenerator():
         and GetColumnsReferenced methods.
       comment: Comment text for this node.  Text will be stripped and
         de-indented.
+      column_list_scope: (Only on ResolvedScans) Scope list for the columns this
+        scan's `column_list` may contain. See "ResolvedColumn visibility" above.
+        Default: the column_list_scope of the nearest ancestor node class that
+          sets one, or [INPUT, CREATED] if none does.
+      provided_columns: (Not on ResolvedScans) Scope list for the columns that a
+        field of this node type provides to its parent node. See "ResolvedColumn
+        visibility" above. Default: inherited, or the node's own created
+        columns.
+      inherited_field_scopes: Overrides the visibility annotations of fields
+        inherited from a parent node, for this node and its subclasses. Maps a
+        field name to a dict with any of the Field() arguments `scope`,
+        `scope_sequential`, `outer_scope` and `context`. Use this when the right
+        scope depends on fields that only some subclasses have.
     """
+    # pyformat: enable
     assert name not in self.node_map, name
     assert name != ROOT_NODE_NAME, name
     assert parent in self.node_map or parent == ROOT_NODE_NAME, parent
@@ -960,6 +1268,10 @@ class TreeGenerator():
         'use_custom_columns_created': use_custom_columns_created,
         'column_list_is_created_columns': column_list_is_created_columns,
         'pipe_input_scan_getter': pipe_input_scan_getter,
+        'is_scan': IsScanSubclass(parent) or name == 'ResolvedScan',
+        'column_list_scope': column_list_scope,
+        'provided_columns': provided_columns,
+        'inherited_field_scopes': inherited_field_scopes or {},
         'subclasses': [],
         'superclasses': [],
     }
@@ -1301,6 +1613,9 @@ class TreeGenerator():
     jinja_env.globals['len'] = len  # pyrefly: ignore[unsupported-operation]
 
     self._ComputeTreeData()
+    column_visibility.ColumnVisibilityCodegen(
+        self.node_map, ROOT_NODE_NAME, COLUMN_SCOPE_CONTEXT_NAMES
+    ).Run(self.nodes)
 
     context = {
         'nodes': self.nodes,
@@ -1309,6 +1624,7 @@ class TreeGenerator():
         'java_enum_classes': self._JavaEnumClasses(),
         'timestamp': time.ctime(),
         'shard_count': shard_count,
+        'column_scope_context_names': COLUMN_SCOPE_CONTEXT_NAMES,
     }
     assert len(input_file_paths) == len(output_file_paths)
     assert len(input_file_paths) == len(shard_nums)  # pyrefly: ignore[bad-argument-type]
@@ -1694,7 +2010,16 @@ def main(unused_argv):
               vector=True,
           ),
           Field('parameter_list', 'ResolvedColumnRef', tag_id=3, vector=True),
-          Field('body', 'ResolvedExpr', tag_id=4),
+          Field(
+              'body',
+              'ResolvedExpr',
+              tag_id=4,
+              # The body sees only the lambda arguments. Columns captured from
+              # the enclosing scope are in `parameter_list`, and the body
+              # references them as correlated columns.
+              scope=['argument_list'],
+              outer_scope=['parameter_list'],
+          ),
       ],
   )
 
@@ -1896,6 +2221,9 @@ def main(unused_argv):
               comment="""
               Function call hints.
                       """,
+              # Hint values are constants.
+              scope=[],
+              outer_scope=[],
           ),
           Field(
               'collation_list',
@@ -1996,6 +2324,21 @@ def main(unused_argv):
       name='ResolvedAggregateFunctionCall',
       tag_id=9,
       parent='ResolvedNonScalarFunctionCallBase',
+      # For a multi-level aggregate (when `group_by_list` is non-empty), the
+      # arguments are computed once per group, so they see only the multi-level
+      # grouping columns and the nested aggregates in `group_by_aggregate_list`
+      # (or correlated columns), not the input. Otherwise they see the input.
+      inherited_field_scopes={
+          'argument_list': {
+              'scope': [
+                  IF(
+                      'group_by_list',
+                      ['group_by_list', 'group_by_aggregate_list'],
+                      else_=INPUT,
+                  )
+              ]
+          }
+      },
       emit_default_constructor=False,
       comment="""
       An aggregate function call.  The signature always has mode AGGREGATE.
@@ -2049,8 +2392,25 @@ def main(unused_argv):
               function.
                       """,
               vector=True,
+              # Same as `argument_list` (see inherited_field_scopes on
+              # ResolvedAggregateFunctionCall).
+              scope=[
+                  IF(
+                      'group_by_list',
+                      ['group_by_list', 'group_by_aggregate_list'],
+                      else_=INPUT,
+                  )
+              ],
           ),
-          Field('limit', 'ResolvedExpr', tag_id=4, ignorable=IGNORABLE_DEFAULT),
+          Field(
+              'limit',
+              'ResolvedExpr',
+              tag_id=4,
+              ignorable=IGNORABLE_DEFAULT,
+              # Must be a constant expression.
+              scope=[],
+              outer_scope=[],
+          ),
           Field(
               'function_call_info',
               SCALAR_FUNCTION_CALL_INFO,
@@ -2098,6 +2458,9 @@ def main(unused_argv):
               FEATURE_MULTILEVEL_AGGREGATION is enabled and `group_by_list`
               is non-empty.
                       """,
+              # Hint values are constants.
+              scope=[],
+              outer_scope=[],
           ),
           Field(
               'group_by_aggregate_list',
@@ -2123,6 +2486,10 @@ def main(unused_argv):
               the `group_by_list` and `group_by_aggregate_list`. Allowed only
               when FEATURE_AGGREGATE_FILTERING is enabled.
                       """,
+              # HAVING filters the multi-level groups, so it sees only the
+              # grouping columns and the nested aggregates (or correlated
+              # columns).
+              scope=['group_by_list', 'group_by_aggregate_list'],
           ),
       ],
   )
@@ -2896,7 +3263,15 @@ value.
               operators (e.g. EQ_ANY, GE_ALL).
                       """,
           ),
-          Field('subquery', 'ResolvedScan', tag_id=5),
+          Field(
+              'subquery',
+              'ResolvedScan',
+              tag_id=5,
+              # Correlated references in the subquery can only name columns in
+              # `parameter_list`, which must include all columns from the
+              # enclosing scopes that are referenced in the subquery.
+              outer_scope=['parameter_list'],
+          ),
           Field(
               'hint_list',
               'ResolvedOption',
@@ -2908,6 +3283,9 @@ value.
               Note: Hints currently happen only for EXISTS, IN, or a LIKE
               expression subquery but not for ARRAY or SCALAR subquery.
                       """,
+              # Hint values are constants.
+              scope=[],
+              outer_scope=[],
           ),
       ],
   )
@@ -2921,8 +3299,8 @@ value.
       ResolvedWithExpr introduces one or more columns in <assignment_list> that
       can then be referenced inside <expr>. Each assigned expression is
       evaluated once, and each reference to that column in <expr> sees the same
-      value even if the assigned expression is volatile. Multiple assignment
-      expressions are independent and cannot reference other columns in the
+      value even if the assigned expression is volatile. Each assignment
+      expression can reference columns created by earlier assignments in
       <assignment_list>.
 
       <assignment_list> One or more columns that are computed before evaluating
@@ -2932,9 +3310,19 @@ value.
               """,
       fields=[
           Field(
-              'assignment_list', 'ResolvedComputedColumn', tag_id=2, vector=True
+              'assignment_list',
+              'ResolvedComputedColumn',
+              tag_id=2,
+              vector=True,
+              # Each assignment can reference earlier assignments.
+              scope_sequential=True,
           ),
-          Field('expr', 'ResolvedExpr', tag_id=3),
+          Field(
+              'expr',
+              'ResolvedExpr',
+              tag_id=3,
+              scope=[INPUT, 'assignment_list'],
+          ),
       ],
   )
 
@@ -2988,6 +3376,9 @@ value.
               ignorable=IGNORABLE,
               is_constructor_arg=False,
               vector=True,
+              # Hint values are constants.
+              scope=[],
+              outer_scope=[],
           ),
           Field(
               'is_ordered',
@@ -3169,6 +3560,9 @@ value.
               tag_id=2,
               vector=True,
               ignorable=IGNORABLE_DEFAULT,
+              # Descriptor columns name columns of one of the TVF's table
+              # arguments (set by ResolvedTVFScan.argument_list).
+              scope=[CONTEXT('tvf_table_args')],
           ),
           Field(
               'descriptor_column_name_list',
@@ -3317,6 +3711,8 @@ value.
       name='ResolvedJoinScan',
       tag_id=21,
       parent='ResolvedScan',
+      # Columns from both sides. `left_scan` is the pipe input.
+      column_list_scope=[INPUT, 'right_scan'],
       comment="""
       A Scan that joins two input scans.
       The <column_list> will contain columns selected from the union
@@ -3332,9 +3728,23 @@ value.
               ignorable=IGNORABLE_DEFAULT,
           ),
           Field('left_scan', 'ResolvedScan', tag_id=3, is_pipe_input_scan=True),
-          Field('right_scan', 'ResolvedScan', tag_id=4),
           Field(
-              'join_expr', 'ResolvedExpr', tag_id=5, ignorable=IGNORABLE_DEFAULT
+              'right_scan',
+              'ResolvedScan',
+              tag_id=4,
+              # For LATERAL, correlated references in the RHS can only name
+              # columns in `parameter_list`, which must include all columns from
+              # `left_scan` and from OUTER that are referenced in the RHS.
+              # Otherwise, the RHS sees OUTER as usual.
+              outer_scope=[IF('is_lateral', 'parameter_list', else_=OUTER)],
+          ),
+          Field(
+              'join_expr',
+              'ResolvedExpr',
+              tag_id=5,
+              ignorable=IGNORABLE_DEFAULT,
+              # The join condition sees both sides.
+              scope=[INPUT, 'right_scan'],
           ),
           Field(
               'has_using',
@@ -3492,7 +3902,12 @@ value.
               ignorable=IGNORABLE_DEFAULT,
           ),
           Field(
-              'join_expr', 'ResolvedExpr', tag_id=6, ignorable=IGNORABLE_DEFAULT
+              'join_expr',
+              'ResolvedExpr',
+              tag_id=6,
+              ignorable=IGNORABLE_DEFAULT,
+              # The join condition also sees the element and offset columns.
+              scope=[INPUT, CREATED],
           ),
           Field('is_outer', SCALAR_BOOL, tag_id=7, ignorable=IGNORABLE_DEFAULT),
           Field(
@@ -3776,6 +4191,8 @@ value.
       name='ResolvedAggregateScanBase',
       tag_id=111,
       parent='ResolvedScan',
+      # The output has only grouping and aggregate columns, not input columns.
+      column_list_scope=[CREATED],
       is_abstract=True,
       comment="""
       Base class for aggregation scans. Apply aggregation to rows produced from
@@ -3853,6 +4270,15 @@ value.
               'ResolvedComputedColumnBase',
               tag_id=4,
               vector=True,
+              # Aggregates can also reference the group-by columns, e.g. in
+              # multi-level aggregates. A WITH GROUP ROWS subquery in an
+              # aggregate returns the input columns of this scan (and of
+              # enclosing aggregate scans), through the group_rows_input
+              # named context.
+              scope=[INPUT, 'group_by_list'],
+              context={
+                  'group_rows_input': [INPUT, CONTEXT('group_rows_input')]
+              },
           ),
           Field(
               'grouping_set_list',
@@ -3860,6 +4286,8 @@ value.
               tag_id=6,
               vector=True,
               ignorable=IGNORABLE_DEFAULT,
+              # Grouping sets reference group-by columns.
+              scope=['group_by_list'],
           ),
           Field(
               'rollup_column_list',
@@ -3867,6 +4295,8 @@ value.
               tag_id=7,
               vector=True,
               ignorable=IGNORABLE_DEFAULT,
+              # ROLLUP references group-by columns.
+              scope=['group_by_list'],
           ),
           Field(
               'grouping_call_list',
@@ -3875,6 +4305,8 @@ value.
               vector=True,
               ignorable=IGNORABLE_DEFAULT,
               is_optional_constructor_arg=True,
+              # GROUPING() references group-by columns.
+              scope=['group_by_list'],
           ),
       ],
   )
@@ -3914,13 +4346,23 @@ value.
 
               """,
       fields=[
-          Field('k_threshold_expr', 'ResolvedExpr', tag_id=5),
+          Field(
+              'k_threshold_expr',
+              'ResolvedExpr',
+              tag_id=5,
+              # Matches the validator: k_threshold_expr references an aggregate
+              # column.
+              scope=['aggregate_list'],
+          ),
           Field(
               'anonymization_option_list',
               'ResolvedOption',
               tag_id=6,
               vector=True,
               ignorable=IGNORABLE_DEFAULT,
+              # Matches the validator. (DP and aggregation threshold option
+              # lists see INPUT instead.)
+              scope=['aggregate_list', 'group_by_list'],
           ),
       ],
   )
@@ -3950,7 +4392,14 @@ value.
 
               """,
       fields=[
-          Field('group_selection_threshold_expr', 'ResolvedExpr', tag_id=5),
+          Field(
+              'group_selection_threshold_expr',
+              'ResolvedExpr',
+              tag_id=5,
+              # Matches the validator: the threshold expression references an
+              # aggregate column.
+              scope=['aggregate_list'],
+          ),
           Field(
               'option_list',
               'ResolvedOption',
@@ -4002,6 +4451,8 @@ value.
               SCALAR_RESOLVED_COLUMN,
               tag_id=3,
               vector=True,
+              # Each item's output columns come from its own `scan`.
+              scope=['scan'],
           ),
       ],
   )
@@ -4053,6 +4504,8 @@ value.
               'ResolvedSetOperationItem',
               tag_id=4,
               vector=True,
+              # Items only reference their own `scan` (or correlated columns).
+              scope=[],
           ),
           Field(
               'column_match_mode',
@@ -4131,8 +4584,9 @@ value.
               """,
       fields=[
           Field('input_scan', 'ResolvedScan', tag_id=2, propagate_order=True),
-          Field('limit', 'ResolvedExpr', tag_id=3),
-          Field('offset', 'ResolvedExpr', tag_id=4),
+          # LIMIT and OFFSET must be constant expressions.
+          Field('limit', 'ResolvedExpr', tag_id=3, scope=[], outer_scope=[]),
+          Field('offset', 'ResolvedExpr', tag_id=4, scope=[], outer_scope=[]),
       ],
   )
 
@@ -4213,9 +4667,16 @@ value.
       fields=[
           Field('input_scan', 'ResolvedScan', tag_id=2),
           Field('method', SCALAR_STRING, tag_id=3),
-          Field('size', 'ResolvedExpr', tag_id=4),
+          # SIZE and REPEATABLE must be constant expressions.
+          Field('size', 'ResolvedExpr', tag_id=4, scope=[], outer_scope=[]),
           Field('unit', SCALAR_SAMPLE_UNIT, tag_id=5),
-          Field('repeatable_argument', 'ResolvedExpr', tag_id=6),
+          Field(
+              'repeatable_argument',
+              'ResolvedExpr',
+              tag_id=6,
+              scope=[],
+              outer_scope=[],
+          ),
           Field(
               'weight_column',
               'ResolvedColumnHolder',
@@ -4229,6 +4690,9 @@ value.
               tag_id=8,
               vector=True,
               ignorable=IGNORABLE_DEFAULT,
+              # PARTITION BY is evaluated on the input rows, so it can't see
+              # `weight_column`, which is computed by the sampling.
+              outer_scope=[],
           ),
       ],
   )
@@ -4582,7 +5046,14 @@ value.
       them.
       """,
       fields=[
-          Field('expression', 'ResolvedExpr', tag_id=2),
+          Field(
+              'expression',
+              'ResolvedExpr',
+              tag_id=2,
+              # Default values can't reference columns.
+              scope=[],
+              outer_scope=[],
+          ),
           Field('sql', SCALAR_STRING, tag_id=3),
       ],
   )
@@ -4617,6 +5088,9 @@ value.
               'ResolvedColumnAnnotations',
               tag_id=4,
               ignorable=IGNORABLE_DEFAULT,
+              # Annotations can't reference columns.
+              scope=[],
+              outer_scope=[],
           ),
           Field(
               'is_hidden', SCALAR_BOOL, tag_id=5, ignorable=IGNORABLE_DEFAULT
@@ -4996,6 +5470,8 @@ value.
               tag_id=4,
               vector=True,
               ignorable=IGNORABLE_DEFAULT,
+              # These reference the columns of this argument's `scan`.
+              scope=['scan'],
           ),
           Field(
               'inline_lambda',
@@ -5068,6 +5544,9 @@ value.
               If this argument is a relation, this stores the partition keys
               from the PARTITION BY clause.
               """,
+              # References columns of this argument's `scan` (or correlated
+              # columns).
+              scope=['scan'],
           ),
           Field(
               'order_by_list',
@@ -5080,6 +5559,9 @@ value.
               If this argument is a relation, this stores the order-by items
               from the ORDER BY clause.
               """,
+              # References columns of this argument's `scan` (or correlated
+              # columns).
+              scope=['scan'],
           ),
       ],
       extra_defs_node_only="""
@@ -5163,7 +5645,16 @@ value.
           Field('tvf', TABLE_VALUED_FUNCTION, tag_id=2),
           Field('signature', TVF_SIGNATURE, tag_id=3),
           Field(
-              'argument_list', 'ResolvedFunctionArgument', tag_id=5, vector=True
+              'argument_list',
+              'ResolvedFunctionArgument',
+              tag_id=5,
+              vector=True,
+              # Arguments don't see the input columns (but can reference
+              # correlated columns). A ResolvedDescriptor argument can name
+              # columns of any table argument, through the tvf_table_args
+              # named context.
+              scope=[],
+              context={'tvf_table_args': ['argument_list.scan']},
           ),
           Field(
               'column_index_list',
@@ -5221,6 +5712,9 @@ value.
               'ResolvedComputedColumn',
               tag_id=2,
               vector=True,
+              # WITH GROUP ROWS returns the input columns of the enclosing
+              # aggregate scan.
+              scope=[CONTEXT('group_rows_input')],
           ),
       ],
   )
@@ -5241,6 +5735,9 @@ value.
               ignorable=IGNORABLE,
               is_constructor_arg=False,
               vector=True,
+              # Hint values are constants.
+              scope=[],
+              outer_scope=[],
           )
       ],
       extra_defs="""bool IsStatement() const final { return true; }""",
@@ -5323,6 +5820,7 @@ value.
               'ResolvedOutputColumn',
               tag_id=2,
               vector=True,
+              scope=['query'],
           ),
           Field(
               'is_value_table',
@@ -5401,7 +5899,9 @@ value.
       nodes.
               """,
       fields=[
-          Field('output_schema', 'ResolvedOutputSchema', tag_id=2),
+          Field(
+              'output_schema', 'ResolvedOutputSchema', tag_id=2, scope=['query']
+          ),
           Field('query', 'ResolvedScan', tag_id=3),
       ],
   )
@@ -5669,13 +6169,29 @@ value.
               is_optional_constructor_arg=True,
               ignorable=IGNORABLE_DEFAULT,
           ),
-          Field('index_item_list', 'ResolvedIndexItem', tag_id=5, vector=True),
+          Field(
+              'index_item_list',
+              'ResolvedIndexItem',
+              tag_id=5,
+              vector=True,
+              # Index items see the table, UNNEST and computed columns.
+              scope=[
+                  'table_scan',
+                  'unnest_expressions_list',
+                  'computed_columns_list',
+              ],
+          ),
           Field(
               'storing_expression_list',
               'ResolvedExpr',
               tag_id=9,
               vector=True,
               ignorable=IGNORABLE_DEFAULT,
+              scope=[
+                  'table_scan',
+                  'unnest_expressions_list',
+                  'computed_columns_list',
+              ],
           ),
           Field(
               'partition_by_list',
@@ -5683,6 +6199,11 @@ value.
               tag_id=13,
               vector=True,
               ignorable=IGNORABLE_DEFAULT,
+              scope=[
+                  'table_scan',
+                  'unnest_expressions_list',
+                  'computed_columns_list',
+              ],
           ),
           Field(
               'connection',
@@ -5703,6 +6224,7 @@ value.
               tag_id=7,
               vector=True,
               ignorable=IGNORABLE_DEFAULT,
+              scope=['table_scan', 'unnest_expressions_list'],
           ),
           Field(
               'unnest_expressions_list',
@@ -5710,6 +6232,10 @@ value.
               tag_id=8,
               vector=True,
               ignorable=IGNORABLE_DEFAULT,
+              # Each UNNEST expression sees the table columns and the columns of
+              # earlier UNNEST expressions.
+              scope=['table_scan'],
+              scope_sequential=True,
           ),
       ],
   )
@@ -5866,6 +6392,9 @@ value.
               vector=True,
               # This is ignorable for backwards compatibility.
               ignorable=IGNORABLE,
+              # Generated columns can reference any column of the table,
+              # including columns defined later, but not pseudo-columns.
+              scope=['column_definition_list'],
           ),
           Field(
               'pseudo_column_list',
@@ -5894,6 +6423,8 @@ value.
               tag_id=10,
               vector=True,
               ignorable=IGNORABLE_DEFAULT,
+              # Check constraints see the table's columns.
+              scope=['column_definition_list', 'pseudo_column_list'],
           ),
           Field(
               'is_value_table',
@@ -5976,6 +6507,8 @@ value.
               tag_id=5,
               vector=True,
               ignorable=IGNORABLE_DEFAULT,
+              # Sees the table's columns.
+              scope=['column_definition_list', 'pseudo_column_list'],
           ),
           Field(
               'cluster_by_list',
@@ -5983,6 +6516,8 @@ value.
               tag_id=6,
               vector=True,
               ignorable=IGNORABLE_DEFAULT,
+              # Sees the table's columns.
+              scope=['column_definition_list', 'pseudo_column_list'],
           ),
       ],
   )
@@ -6018,6 +6553,8 @@ value.
               tag_id=5,
               vector=True,
               ignorable=IGNORABLE_DEFAULT,
+              # Sees the table's columns.
+              scope=['column_definition_list', 'pseudo_column_list'],
           ),
           Field(
               'cluster_by_list',
@@ -6025,12 +6562,15 @@ value.
               tag_id=6,
               vector=True,
               ignorable=IGNORABLE_DEFAULT,
+              # Sees the table's columns.
+              scope=['column_definition_list', 'pseudo_column_list'],
           ),
           Field(
               'output_column_list',
               'ResolvedOutputColumn',
               tag_id=2,
               vector=True,
+              scope=['query'],
           ),
           Field('query', 'ResolvedScan', tag_id=3),
       ],
@@ -6079,6 +6619,7 @@ value.
               'ResolvedOutputColumn',
               tag_id=4,
               vector=True,
+              scope=['query'],
           ),
       ],
   )
@@ -6178,6 +6719,7 @@ value.
               tag_id=3,
               vector=True,
               ignorable=IGNORABLE_DEFAULT,
+              scope=['query'],
           ),
           Field('query', 'ResolvedScan', tag_id=4),
           Field(
@@ -6200,6 +6742,12 @@ value.
               tag_id=5,
               vector=True,
               ignorable=IGNORABLE_DEFAULT,
+              # The TRANSFORM expressions see the input columns and the analytic
+              # function columns.
+              scope=[
+                  'transform_input_column_list',
+                  'transform_analytic_function_group_list',
+              ],
           ),
           Field(
               'transform_output_column_list',
@@ -6207,6 +6755,7 @@ value.
               tag_id=6,
               vector=True,
               ignorable=IGNORABLE_DEFAULT,
+              scope=['transform_list'],
           ),
           Field(
               'transform_analytic_function_group_list',
@@ -6214,6 +6763,8 @@ value.
               tag_id=7,
               vector=True,
               ignorable=IGNORABLE_DEFAULT,
+              # Analytic functions in TRANSFORM see the input columns.
+              scope=['transform_input_column_list'],
           ),
           Field(
               'input_column_definition_list',
@@ -6306,6 +6857,7 @@ value.
               'ResolvedOutputColumn',
               tag_id=3,
               vector=True,
+              scope=['query'],
           ),
           Field(
               'has_explicit_columns',
@@ -6519,12 +7071,17 @@ value.
               tag_id=2,
               vector=True,
               ignorable=IGNORABLE_DEFAULT,
+              # Options can't reference columns. (This matters when nested in
+              # ResolvedPipeExportDataScan.)
+              scope=[],
+              outer_scope=[],
           ),
           Field(
               'output_column_list',
               'ResolvedOutputColumn',
               tag_id=3,
               vector=True,
+              scope=['query'],
           ),
           Field(
               'is_value_table',
@@ -6926,12 +7483,18 @@ value.
               'ResolvedExpr',
               tag_id=2,
               ignorable=IGNORABLE_DEFAULT,
+              # Must be a constant expression.
+              scope=[],
+              outer_scope=[],
           ),
           Field(
               'upper_bound',
               'ResolvedExpr',
               tag_id=3,
               ignorable=IGNORABLE_DEFAULT,
+              # Must be a constant expression.
+              scope=[],
+              outer_scope=[],
           ),
           Field(
               'recursion_depth_column',
@@ -6998,14 +7561,26 @@ value.
       """,
       fields=[
           Field('op_type', SCALAR_RECURSIVE_SET_OPERATION_TYPE, tag_id=2),
-          Field('non_recursive_term', 'ResolvedSetOperationItem', tag_id=3),
-          Field('recursive_term', 'ResolvedSetOperationItem', tag_id=4),
+          Field(
+              'non_recursive_term',
+              'ResolvedSetOperationItem',
+              tag_id=3,
+              # The terms are SetOperationItems, which reference only their own
+              # scans (or correlated columns).
+              scope=[],
+          ),
+          Field(
+              'recursive_term', 'ResolvedSetOperationItem', tag_id=4, scope=[]
+          ),
           Field(
               'recursion_depth_modifier',
               'ResolvedRecursionDepthModifier',
               is_optional_constructor_arg=True,
               tag_id=5,
               ignorable=IGNORABLE_DEFAULT,
+              # The depth column is one of this scan's created `column_list`
+              # columns.
+              scope=['column_list'],
           ),
       ],
       extra_defs_node_only="""
@@ -7021,6 +7596,8 @@ value.
       name='ResolvedWithScan',
       tag_id=51,
       parent='ResolvedScan',
+      # The output is the main query's output.
+      column_list_scope=['query'],
       comment="""
       This represents a SQL WITH query (or subquery) like
         WITH [RECURSIVE] <with_query_name1> AS (<with_subquery1>),
@@ -7076,7 +7653,14 @@ value.
 
               """,
       fields=[
-          Field('with_entry_list', 'ResolvedWithEntry', tag_id=2, vector=True),
+          Field(
+              'with_entry_list',
+              'ResolvedWithEntry',
+              tag_id=2,
+              vector=True,
+              # WITH subqueries can't be correlated.
+              outer_scope=[],
+          ),
           Field('query', 'ResolvedScan', tag_id=3, propagate_order=True),
           Field(
               'recursive',
@@ -7272,6 +7856,8 @@ value.
       name='ResolvedAnalyticFunctionGroup',
       tag_id=57,
       parent='ResolvedArgument',
+      # The analytic function columns.
+      provided_columns=['analytic_function_list'],
       comment="""
       This represents a group of analytic function calls that shares PARTITION
       BY and ORDER BY.
@@ -7384,7 +7970,10 @@ value.
       The statement should fail if the number of rows updated does not
       exactly match this number.
               """,
-      fields=[Field('rows', 'ResolvedExpr', tag_id=2)],
+      fields=[
+          # Must be a constant expression.
+          Field('rows', 'ResolvedExpr', tag_id=2, scope=[], outer_scope=[])
+      ],
   )
 
   gen.AddNode(
@@ -7468,6 +8057,8 @@ value.
               only and if update_item_list and/or update_where_expression
               reference columns from the insert row using `excluded` alias.
               """,
+              # Can't be correlated.
+              outer_scope=[],
           ),
           Field(
               'update_item_list',
@@ -7479,6 +8070,10 @@ value.
               IGNORABLE_DEFAULT because this is set for UPDATE conflict action
               only.
               """,
+              # The UPDATE sees the target table columns (INPUT) and the row
+              # being inserted, but can only assign target columns.
+              scope=[INPUT, 'insert_row_scan'],
+              context={'dml_target': [INPUT]},
           ),
           Field(
               'update_where_expression',
@@ -7489,6 +8084,8 @@ value.
               IGNORABLE_DEFAULT because this is set for UPDATE conflict action
               only.
               """,
+              # Sees the target table columns and the row being inserted.
+              scope=[INPUT, 'insert_row_scan'],
           ),
       ],
       extra_defs="""
@@ -7510,6 +8107,14 @@ value.
       name='ResolvedInsertStmt',
       tag_id=63,
       parent='ResolvedStatement',
+      # When nested in a pipe DML scan, this provides the scan's possible output
+      # columns: the target table and input columns, and the RETURNING columns.
+      provided_columns=[
+          'table_scan',
+          'query',
+          'timestamp_version_column',
+          'returning',
+      ],
       comment="""
       This represents an INSERT statement, or a nested INSERT inside an
       UPDATE statement.
@@ -7591,8 +8196,10 @@ value.
       is provided.
 
       If <temporal_at> is present, it represents the target write time or read
-      time expression specified in the `AT(expression)` clause. Its type must
-      be TIMESTAMP.
+      time expression specified in the `AT(timestamp => expression)` clause. Its
+      type must be TIMESTAMP.
+      TODO: b/538182270 - Generalize `AT(<version_property> => <expression>)` to
+      support additional version properties instead of hardcoding `timestamp`.
 
       <timestamp_version_column> and <temporal_at> are mutually exclusive.
       Both fields are enabled by FEATURE_VERSION_AWARE_DML.
@@ -7626,6 +8233,9 @@ value.
               'ResolvedReturningClause',
               tag_id=10,
               ignorable=IGNORABLE_DEFAULT,
+              # RETURNING sees the target and query columns.
+              scope=[INPUT, 'table_scan', 'timestamp_version_column', 'query'],
+              outer_scope=[],
           ),
           Field(
               'insert_column_list',
@@ -7633,6 +8243,9 @@ value.
               tag_id=5,
               vector=True,
               ignorable=IGNORABLE_DEFAULT,
+              # The target table columns. For an INSERT nested in an UPDATE
+              # item, INPUT is what the UPDATE item sees.
+              scope=[INPUT, 'table_scan', 'timestamp_version_column'],
           ),
           Field(
               'query_parameter_list',
@@ -7640,14 +8253,26 @@ value.
               vector=True,
               ignorable=IGNORABLE_DEFAULT,
               tag_id=9,
+              # The outer columns referenced by `query`.
+              scope=[INPUT, 'table_scan', 'timestamp_version_column'],
+              outer_scope=[],
           ),
-          Field('query', 'ResolvedScan', tag_id=6, ignorable=IGNORABLE_DEFAULT),
+          Field(
+              'query',
+              'ResolvedScan',
+              tag_id=6,
+              ignorable=IGNORABLE_DEFAULT,
+              # `query` can also reference the columns in `query_parameter_list`
+              # as correlated columns.
+              outer_scope=[OUTER, 'query_parameter_list'],
+          ),
           Field(
               'query_output_column_list',
               SCALAR_RESOLVED_COLUMN,
               tag_id=8,
               vector=True,
               ignorable=IGNORABLE_DEFAULT,
+              scope=['query'],
           ),
           Field(
               'row_list',
@@ -7655,6 +8280,10 @@ value.
               tag_id=7,
               vector=True,
               ignorable=IGNORABLE_DEFAULT,
+              # VALUES rows see the target table columns, and can't be
+              # correlated.
+              scope=[INPUT, 'table_scan', 'timestamp_version_column'],
+              outer_scope=[],
           ),
           Field(
               'column_access_list',
@@ -7670,6 +8299,7 @@ value.
               'ResolvedOnConflictClause',
               tag_id=16,
               ignorable=IGNORABLE_DEFAULT,
+              scope=[INPUT, 'table_scan', 'timestamp_version_column'],
           ),
           Field(
               'topologically_sorted_generated_column_id_list',
@@ -7715,6 +8345,8 @@ value.
               the ResolvedExpressionColumn for the referred columns in the
               catalog to corresponding ResolvedColumnRef.
               """,
+              # References target table columns.
+              scope=[INPUT, 'table_scan'],
           ),
           Field(
               'timestamp_version_column',
@@ -7741,6 +8373,15 @@ value.
       name='ResolvedDeleteStmt',
       tag_id=64,
       parent='ResolvedStatement',
+      # When nested in a pipe DML scan, this provides the scan's possible output
+      # columns: the target table and input columns, and the RETURNING columns.
+      provided_columns=[
+          'table_scan',
+          'using_scan',
+          'array_offset_column',
+          'timestamp_version_column',
+          'returning',
+      ],
       comment="""
       This represents one of the following cases:
       1) DELETE statement: a top-level DELETE statement.
@@ -7818,6 +8459,14 @@ value.
               'ResolvedReturningClause',
               tag_id=6,
               ignorable=IGNORABLE_DEFAULT,
+              # RETURNING sees the target table columns. For nested DML, INPUT
+              # is what the enclosing UPDATE item sees.
+              scope=[
+                  INPUT,
+                  'table_scan',
+                  'array_offset_column',
+                  'timestamp_version_column',
+              ],
           ),
           Field(
               'column_access_list',
@@ -7835,7 +8484,21 @@ value.
               tag_id=5,
               ignorable=IGNORABLE_DEFAULT,
           ),
-          Field('where_expr', 'ResolvedExpr', tag_id=4),
+          Field(
+              'where_expr',
+              'ResolvedExpr',
+              tag_id=4,
+              # For a DELETE nested in an UPDATE item, INPUT is what the UPDATE
+              # item sees (including its element column). At the top level it's
+              # empty.
+              scope=[
+                  INPUT,
+                  'table_scan',
+                  'using_scan',
+                  'array_offset_column',
+                  'timestamp_version_column',
+              ],
+          ),
           Field(
               'timestamp_version_column',
               'ResolvedColumnHolder',
@@ -7855,6 +8518,8 @@ value.
               a top-level DELETE statement, or the flowing-through input table
               when inside a ResolvedDeleteScan.
               """,
+              # USING can't be correlated.
+              outer_scope=[],
           ),
       ],
   )
@@ -7973,6 +8638,10 @@ value.
               they are not treated the same.  Here, they express a path inside
               an object that is being mutated, so they have reference semantics.
                       """,
+              # The target can only name DML target columns (the target table,
+              # or the element of a nested DML), not every visible column.
+              scope=[CONTEXT('dml_target')],
+              outer_scope=[],
           ),
           Field(
               'set_value',
@@ -8019,6 +8688,8 @@ value.
               TODO: Consider generalizing this to allow
               SET a[<expr1>].b = ..., a[<expr2>].c = ...
                       """,
+              # Subscripted targets can also name the element.
+              context={'dml_target': [CONTEXT('dml_target'), 'element_column']},
           ),
           Field(
               'delete_list',
@@ -8034,6 +8705,8 @@ value.
 
               It is legal for the same input element to match multiple DELETEs.
               """,
+              # Nested DML also sees the element column.
+              scope=[INPUT, 'element_column'],
           ),
           Field(
               'update_list',
@@ -8049,6 +8722,10 @@ value.
 
               It is an error if any element is matched by multiple UPDATEs.
                       """,
+              # A nested UPDATE also sees the element column, and its target is
+              # the element.
+              scope=[INPUT, 'element_column'],
+              context={'dml_target': ['element_column']},
           ),
           Field(
               'insert_list',
@@ -8119,6 +8796,15 @@ value.
       name='ResolvedUpdateStmt',
       tag_id=66,
       parent='ResolvedStatement',
+      # When nested in a pipe DML scan, this provides the scan's possible output
+      # columns: the target table and input columns, and the RETURNING columns.
+      provided_columns=[
+          'table_scan',
+          'from_scan',
+          'array_offset_column',
+          'timestamp_version_column',
+          'returning',
+      ],
       comment="""
       This represents an UPDATE statement, or a nested UPDATE inside an
       UPDATE statement.
@@ -8178,8 +8864,10 @@ value.
       is provided.
 
       If <temporal_at> is present, it represents the target write time or read
-      time expression specified in the `AT(expression)` clause. Its type must
-      be TIMESTAMP.
+      time expression specified in the `AT(timestamp => expression)` clause. Its
+      type must be TIMESTAMP.
+      TODO: b/538182270 - Generalize `AT(<version_property> => <expression>)` to
+      support additional version properties instead of hardcoding `timestamp`.
 
       <timestamp_version_column> and <temporal_at> are mutually exclusive.
       Both fields are enabled by FEATURE_VERSION_AWARE_DML.
@@ -8212,6 +8900,13 @@ value.
               'ResolvedReturningClause',
               tag_id=9,
               ignorable=IGNORABLE_DEFAULT,
+              # RETURNING sees the target table and FROM columns.
+              scope=[
+                  INPUT,
+                  'table_scan',
+                  'from_scan',
+                  'timestamp_version_column',
+              ],
           ),
           Field(
               'array_offset_column',
@@ -8220,12 +8915,43 @@ value.
               tag_id=7,
               ignorable=IGNORABLE_DEFAULT,
           ),
-          Field('where_expr', 'ResolvedExpr', tag_id=4),
           Field(
-              'update_item_list', 'ResolvedUpdateItem', tag_id=5, vector=True
+              'where_expr',
+              'ResolvedExpr',
+              tag_id=4,
+              # For an UPDATE nested in an UPDATE item, INPUT is what the UPDATE
+              # item sees. At the top level it's empty.
+              scope=[
+                  INPUT,
+                  'table_scan',
+                  'from_scan',
+                  'array_offset_column',
+                  'timestamp_version_column',
+              ],
           ),
           Field(
-              'from_scan', 'ResolvedScan', tag_id=6, ignorable=IGNORABLE_DEFAULT
+              'update_item_list',
+              'ResolvedUpdateItem',
+              tag_id=5,
+              vector=True,
+              # Same as `where_expr`. The targets can only be target table
+              # columns (or, when nested, the enclosing element).
+              scope=[
+                  INPUT,
+                  'table_scan',
+                  'from_scan',
+                  'array_offset_column',
+                  'timestamp_version_column',
+              ],
+              context={'dml_target': [CONTEXT('dml_target'), 'table_scan']},
+          ),
+          Field(
+              'from_scan',
+              'ResolvedScan',
+              tag_id=6,
+              ignorable=IGNORABLE_DEFAULT,
+              # FROM can't be correlated.
+              outer_scope=[],
           ),
           Field(
               'topologically_sorted_generated_column_id_list',
@@ -8250,6 +8976,8 @@ value.
               comment="""
               TODO: refactor it with INSERT case.
               """,
+              # References target table columns.
+              scope=[INPUT, 'table_scan'],
           ),
           Field(
               'timestamp_version_column',
@@ -8328,12 +9056,16 @@ value.
               tag_id=5,
               ignorable=IGNORABLE_DEFAULT,
               vector=True,
+              # INSERT columns are target table columns.
+              scope=[CONTEXT('dml_target')],
           ),
           Field(
               'insert_row',
               'ResolvedInsertRow',
               tag_id=6,
               ignorable=IGNORABLE_DEFAULT,
+              # The INSERT row sees only the source columns.
+              scope=[CONTEXT('merge_source')],
           ),
           Field(
               'update_item_list',
@@ -8385,8 +9117,26 @@ value.
               java_to_string_method='toStringObjectAccess',
           ),
           Field('from_scan', 'ResolvedScan', tag_id=3),
-          Field('merge_expr', 'ResolvedExpr', tag_id=4),
-          Field('when_clause_list', 'ResolvedMergeWhen', tag_id=5, vector=True),
+          Field(
+              'merge_expr',
+              'ResolvedExpr',
+              tag_id=4,
+              # The MERGE condition sees target and source columns.
+              scope=['table_scan', 'from_scan'],
+          ),
+          Field(
+              'when_clause_list',
+              'ResolvedMergeWhen',
+              tag_id=5,
+              vector=True,
+              # WHEN clauses see target and source columns. UPDATE and INSERT
+              # can only assign target columns.
+              scope=['table_scan', 'from_scan'],
+              context={
+                  'dml_target': ['table_scan'],
+                  'merge_source': ['from_scan'],
+              },
+          ),
       ],
   )
 
@@ -8410,7 +9160,8 @@ value.
               """,
       fields=[
           Field('table_scan', 'ResolvedTableScan', tag_id=3),
-          Field('where_expr', 'ResolvedExpr', tag_id=4),
+          # Sees the table's columns.
+          Field('where_expr', 'ResolvedExpr', tag_id=4, scope=['table_scan']),
       ],
   )
 
@@ -8669,6 +9420,12 @@ value.
       name='ResolvedAlterTableStmt',
       tag_id=115,
       parent='ResolvedAlterObjectStmt',
+      # Generated columns in ADD COLUMN see the table's columns.
+      # TODO: b/576603106 - They should also see columns added by earlier
+      # actions, which these annotations can't express.
+      inherited_field_scopes={
+          'alter_action_list': {'scope': [INPUT, 'table_scan']}
+      },
       comment="""
       This statement:
         ALTER TABLE [IF EXISTS] <name_path> <alter_action_list>
@@ -8803,7 +9560,8 @@ value.
               'entity_type', SCALAR_STRING, tag_id=2, ignorable=NOT_IGNORABLE
           ),
           Field('name', SCALAR_STRING, tag_id=3),
-          Field('alter_action', 'ResolvedAlterAction', tag_id=4),
+          # Nested actions don't see the table's columns.
+          Field('alter_action', 'ResolvedAlterAction', tag_id=4, scope=[]),
           Field(
               'is_if_exists', SCALAR_BOOL, tag_id=5, ignorable=IGNORABLE_DEFAULT
           ),
@@ -9366,7 +10124,14 @@ value.
           Field(
               'table_scan', 'ResolvedTableScan', tag_id=6, ignorable=IGNORABLE
           ),
-          Field('predicate', 'ResolvedExpr', tag_id=7, ignorable=IGNORABLE),
+          Field(
+              'predicate',
+              'ResolvedExpr',
+              tag_id=7,
+              ignorable=IGNORABLE,
+              # The row filter sees the table's columns.
+              scope=['table_scan'],
+          ),
           Field('predicate_str', SCALAR_STRING, tag_id=8, ignorable=IGNORABLE),
       ],
       extra_defs="""
@@ -9698,6 +10463,8 @@ value.
       name='ResolvedAlterRowAccessPolicyStmt',
       tag_id=75,
       parent='ResolvedAlterObjectStmt',
+      # FILTER USING sees the table's columns.
+      inherited_field_scopes={'alter_action_list': {'scope': ['table_scan']}},
       comment="""
       This statement:
           ALTER ROW ACCESS POLICY [IF EXISTS]
@@ -9906,7 +10673,7 @@ ResolvedArgumentRef(y)
           Field('code', SCALAR_STRING, ignorable=IGNORABLE, tag_id=5),
           Field(
               'aggregate_expression_list',
-              'ResolvedComputedColumn',
+              'ResolvedComputedColumnBase',
               tag_id=9,
               vector=True,
               ignorable=IGNORABLE_DEFAULT,
@@ -9916,6 +10683,8 @@ ResolvedArgumentRef(y)
               'ResolvedExpr',
               ignorable=IGNORABLE,
               tag_id=6,
+              # Aggregate functions see their aggregate expressions.
+              scope=['aggregate_expression_list'],
           ),
           Field(
               'option_list',
@@ -10163,6 +10932,7 @@ ResolvedArgumentRef(y)
               'ResolvedOutputColumn',
               tag_id=8,
               vector=True,
+              scope=['query'],
           ),
           Field(
               'is_value_table',
@@ -10502,6 +11272,8 @@ ResolvedArgumentRef(y)
               tag_id=3,
               vector=True,
               ignorable=IGNORABLE_DEFAULT,
+              # Sees the view's columns.
+              scope=['column_definition_list'],
           ),
           Field(
               'cluster_by_list',
@@ -10509,6 +11281,8 @@ ResolvedArgumentRef(y)
               tag_id=4,
               vector=True,
               ignorable=IGNORABLE_DEFAULT,
+              # Sees the view's columns.
+              scope=['column_definition_list'],
           ),
           Field(
               'replica_source',
@@ -10839,6 +11613,8 @@ ResolvedArgumentRef(y)
       name='ResolvedPivotScan',
       tag_id=161,
       parent='ResolvedScan',
+      # Grouping and pivot columns only.
+      column_list_scope=[CREATED],
       comment="""
       A scan produced by the following SQL fragment:
         <input_scan> PIVOT(... FOR ... IN (...))
@@ -10915,6 +11691,9 @@ ResolvedArgumentRef(y)
               All pivot values in this list must have the same type as
               <for_expr> and must be constant.
               """,
+              # Pivot values must be constant expressions.
+              scope=[],
+              outer_scope=[],
           ),
           Field(
               'pivot_column_list',
@@ -10950,6 +11729,8 @@ ResolvedArgumentRef(y)
       name='ResolvedReturningClause',
       tag_id=170,
       parent='ResolvedArgument',
+      # The RETURNING expressions and the action column.
+      provided_columns=[CREATED],
       comment="""
               Represents the returning clause on a DML statement.
               """,
@@ -10967,6 +11748,8 @@ ResolvedArgumentRef(y)
               can have columns computed in the `expr_list` or an `action_column`
               as the last column.
                       """,
+              # The input columns, RETURNING expressions, and the action column.
+              scope=[INPUT, 'expr_list', 'action_column'],
           ),
           Field(
               'action_column',
@@ -10992,6 +11775,8 @@ ResolvedArgumentRef(y)
               and can only access columns from the DML statement target table
               (and from `from_scan` in UPDATE statements when present).
                       """,
+              # Can't be correlated.
+              outer_scope=[],
           ),
       ],
   )
@@ -11047,6 +11832,8 @@ ResolvedArgumentRef(y)
               tag_id=5,
               vector=True,
               ignorable=IGNORABLE_DEFAULT,
+              # Sees the table's columns.
+              scope=['column_definition_list', 'pseudo_column_list'],
           ),
           Field(
               'cluster_by_list',
@@ -11054,6 +11841,8 @@ ResolvedArgumentRef(y)
               tag_id=6,
               vector=True,
               ignorable=IGNORABLE_DEFAULT,
+              # Sees the table's columns.
+              scope=['column_definition_list', 'pseudo_column_list'],
           ),
       ],
   )
@@ -11080,6 +11869,8 @@ ResolvedArgumentRef(y)
       name='ResolvedUnpivotScan',
       tag_id=172,
       parent='ResolvedScan',
+      # Only the projected input, value and label columns.
+      column_list_scope=[CREATED],
       comment="""
       A scan produced by the following SQL fragment:
       <input_scan> UNPIVOT(<value_column_list>
@@ -11205,6 +11996,15 @@ ResolvedArgumentRef(y)
       name='ResolvedMatchRecognizeScan',
       tag_id=265,
       parent='ResolvedScan',
+      # Partitioning columns (from the input), the special columns, and the
+      # measures. Not the LEAD/LAG columns used in DEFINE.
+      column_list_scope=[
+          INPUT,
+          'match_number_column',
+          'match_row_number_column',
+          'classifier_column',
+          'measure_group_list',
+      ],
       comment="""
       A scan for row pattern recognition (the MATCH_RECOGNIZE clause).
       See (broken link) for details.
@@ -11269,6 +12069,9 @@ ResolvedArgumentRef(y)
               The pattern variable definitions. This list is never empty, and
               variable names must be unique (ignoring case).
               """,
+              # DEFINE predicates also see the LEAD/LAG columns computed in
+              # `analytic_function_group_list`.
+              scope=[INPUT, 'analytic_function_group_list'],
           ),
           Field(
               'pattern',
@@ -11298,6 +12101,13 @@ ResolvedArgumentRef(y)
               comment="""
               The outputs as defined in the MEASURES clause.
               """,
+              # Measures can also use the special MATCH_RECOGNIZE columns.
+              scope=[
+                  INPUT,
+                  'match_number_column',
+                  'match_row_number_column',
+                  'classifier_column',
+              ],
           ),
           Field(
               'match_number_column',
@@ -11348,6 +12158,8 @@ ResolvedArgumentRef(y)
       name='ResolvedMeasureGroup',
       tag_id=280,
       parent='ResolvedArgument',
+      # The measure columns.
+      provided_columns=['aggregate_list'],
       comment="""
       Must be contained directly in a ResolvedMatchRecognizeScan. Groups all
       aggregations ranging over the same pattern variable in the MEASURES clause
@@ -11548,6 +12360,9 @@ ResolvedArgumentRef(y)
               comment="""
               Lower bound of the quantification. Cannot be nullptr.
               """,
+              # Must be a constant expression.
+              scope=[],
+              outer_scope=[],
           ),
           Field(
               'upper_bound',
@@ -11557,6 +12372,9 @@ ResolvedArgumentRef(y)
               The upper bound of the quantification. Can be nullptr, in which
               case it means there is no upper bound (i.e., unlimited).
               """,
+              # Must be a constant expression.
+              scope=[],
+              outer_scope=[],
           ),
           Field(
               'is_reluctant',
@@ -11575,16 +12393,20 @@ ResolvedArgumentRef(y)
       parent='ResolvedArgument',
       fields=[
           Field('bound_kind', SCALAR_WITHIN_BOUND_KIND, tag_id=2),
-          Field('expr',
-                'ResolvedExpr',
-                tag_id=3,
-                comment="""
+          Field(
+              'expr',
+              'ResolvedExpr',
+              tag_id=3,
+              comment="""
                 The expression defining the bound. Must be query-const.
                 For absolute bounds, it is of type TIMESTAMP.
                 For relative interval bounds, it is of type INTERVAL.
                 For relative period bounds, it is either of type INTEGER  or DOUBLE.
                 Null if the bound type is UNBOUNDED PRECEDING / FOLLOWING or ANCHORED_TIMESTAMP.
-                """
+                """,
+              # Can't reference input columns. Correlated references are
+              # allowed.
+              scope=[],
           ),
       ],
       use_custom_debug_string=True,
@@ -11649,6 +12471,9 @@ ResolvedArgumentRef(y)
               scan are not visible here, but references to correlated columns
               are allowed.
               """,
+              # Can't reference input columns. Correlated references are
+              # allowed.
+              scope=[],
           ),
           Field(
               'origin',
@@ -11660,6 +12485,9 @@ ResolvedArgumentRef(y)
               timestamp. Columns from the input scan are not visible here, but
               references to correlated columns are allowed.
               """,
+              # Can't reference input columns. Correlated references are
+              # allowed.
+              scope=[],
           ),
           Field(
               'output_within',
@@ -11704,6 +12532,8 @@ ResolvedArgumentRef(y)
               Any scalar operations on top of these functions to will be
               represented by a later ResolvedProjectScan with computed columns.
               """,
+              # Estimators also see the aligned timestamp.
+              scope=[INPUT, 'aligned_timestamp_column'],
           ),
       ],
   )
@@ -11923,6 +12753,14 @@ ResolvedArgumentRef(y)
               'ResolvedAuxLoadDataPartitionFilter',
               tag_id=16,
               ignorable=IGNORABLE_DEFAULT,
+              # UNCHECKED: these expressions see the columns of
+              # `column_definition_list`, `with_partition_columns` and
+              # `output_column_list`. The output columns are created by this
+              # node only when `column_definition_list` is empty
+              # (use_custom_columns_created), and the partition columns are
+              # grandchildren.
+              # TODO: b/576603106 - Model this node's columns precisely.
+              scope=[UNCHECKED],
           ),
           Field(
               'output_column_list',
@@ -11930,6 +12768,11 @@ ResolvedArgumentRef(y)
               tag_id=4,
               vector=True,
               ignorable=IGNORABLE,
+              # UNCHECKED: these columns are references to
+              # `column_definition_list` (or `with_partition_columns`), or are
+              # created by this node when `column_definition_list` is empty.
+              # TODO: b/576603106 - Model this node's columns precisely.
+              scope=[UNCHECKED],
           ),
           Field(
               'column_definition_list',
@@ -11972,6 +12815,9 @@ ResolvedArgumentRef(y)
               tag_id=10,
               vector=True,
               ignorable=IGNORABLE_DEFAULT,
+              # UNCHECKED: same as `partition_filter`.
+              # TODO: b/576603106 - Model this node's columns precisely.
+              scope=[UNCHECKED],
           ),
           Field(
               'cluster_by_list',
@@ -11979,6 +12825,9 @@ ResolvedArgumentRef(y)
               tag_id=11,
               vector=True,
               ignorable=IGNORABLE_DEFAULT,
+              # UNCHECKED: same as `partition_filter`.
+              # TODO: b/576603106 - Model this node's columns precisely.
+              scope=[UNCHECKED],
           ),
           Field(
               'option_list',
@@ -12044,6 +12893,10 @@ ResolvedArgumentRef(y)
               ignorable=IGNORABLE_DEFAULT,
               vector=True,
               is_optional_constructor_arg=True,
+              # Edge tables reference node table columns. This is an
+              # approximation: it allows the columns of any node table, not just
+              # the one with the referenced name.
+              context={'graph_node_tables': ['node_table_list.input_scan']},
           ),
           Field(
               'label_list',
@@ -12072,7 +12925,19 @@ ResolvedArgumentRef(y)
               vector=True,
               is_optional_constructor_arg=True,
           ),
+          Field(
+              'connection_list',
+              'ResolvedConnectionList',
+              tag_id=7,
+              ignorable=IGNORABLE_DEFAULT,
+          ),
       ],
+      extra_defs_node_only="""
+  const ResolvedConnection* connection() const {
+    return connection_list() != nullptr ? connection_list()->connection()
+                                        : nullptr;
+  }
+      """,
   )
 
   gen.AddNode(
@@ -12193,6 +13058,8 @@ ResolvedArgumentRef(y)
               'ResolvedExpr',
               tag_id=4,
               vector=True,
+              # Element table expressions see their `input_scan` columns.
+              scope=['input_scan'],
           ),
           Field(
               'source_node_reference',
@@ -12200,6 +13067,7 @@ ResolvedArgumentRef(y)
               tag_id=5,
               ignorable=IGNORABLE_DEFAULT,
               is_optional_constructor_arg=True,
+              scope=['input_scan'],
           ),
           Field(
               'dest_node_reference',
@@ -12207,6 +13075,7 @@ ResolvedArgumentRef(y)
               tag_id=6,
               ignorable=IGNORABLE_DEFAULT,
               is_optional_constructor_arg=True,
+              scope=['input_scan'],
           ),
           Field(
               'label_name_list',
@@ -12223,6 +13092,7 @@ ResolvedArgumentRef(y)
               ignorable=IGNORABLE_DEFAULT,
               is_optional_constructor_arg=True,
               vector=True,
+              scope=['input_scan'],
           ),
           Field(
               'dynamic_label',
@@ -12230,6 +13100,7 @@ ResolvedArgumentRef(y)
               tag_id=9,
               ignorable=IGNORABLE_DEFAULT,
               is_optional_constructor_arg=True,
+              scope=['input_scan'],
           ),
           Field(
               'dynamic_properties',
@@ -12237,6 +13108,7 @@ ResolvedArgumentRef(y)
               tag_id=10,
               ignorable=IGNORABLE_DEFAULT,
               is_optional_constructor_arg=True,
+              scope=['input_scan'],
           ),
       ],
   )
@@ -12326,6 +13198,8 @@ ResolvedArgumentRef(y)
               ignorable=IGNORABLE_DEFAULT,
               vector=True,
               is_optional_constructor_arg=True,
+              # Columns of the referenced node table.
+              scope=[CONTEXT('graph_node_tables')],
           ),
       ],
   )
@@ -12416,6 +13290,9 @@ ResolvedArgumentRef(y)
               ignorable=IGNORABLE_DEFAULT,
               vector=True,
               is_optional_constructor_arg=True,
+              # Options can't reference columns.
+              scope=[],
+              outer_scope=[],
           ),
           Field(
               'is_measure', SCALAR_BOOL, tag_id=6, ignorable=IGNORABLE_DEFAULT
@@ -12467,6 +13344,9 @@ ResolvedArgumentRef(y)
       name='ResolvedGraphRefScan',
       tag_id=246,
       parent='ResolvedScan',
+      # The columns of the previous scan in the enclosing
+      # ResolvedGraphLinearScan.
+      column_list_scope=[CONTEXT('graph_ref_input')],
       comment="""
       A reference scan that can be used as input by a scan op
       to its previous scan op within the same parent GraphLinearScan.
@@ -12478,10 +13358,24 @@ ResolvedArgumentRef(y)
       name='ResolvedGraphLinearScan',
       tag_id=247,
       parent='ResolvedGraphScanBase',
+      # The last scan's columns. This is an approximation: it allows the columns
+      # of any scan in `scan_list`.
+      column_list_scope=['scan_list'],
       comment="""GraphLinearScan consists of multiple child scans executed in
     order and outputs the last scan""",
       fields=[
-          Field('scan_list', 'ResolvedScan', tag_id=2, vector=True),
+          Field(
+              'scan_list',
+              'ResolvedScan',
+              tag_id=2,
+              vector=True,
+              # Each GraphRefScan in `scan_list` returns the previous scan's
+              # columns. This is an approximation: it allows the enclosing
+              # graph_ref_input named context and any scan in `scan_list`.
+              context={
+                  'graph_ref_input': [CONTEXT('graph_ref_input'), 'scan_list']
+              },
+          ),
       ],
   )
 
@@ -12489,6 +13383,9 @@ ResolvedArgumentRef(y)
       name='ResolvedGraphTableScan',
       tag_id=208,
       parent='ResolvedScan',
+      # `input_scan` has type ResolvedGraphScanBase (not ResolvedScan), so it
+      # isn't treated as a pipe input scan (INPUT) and is named explicitly.
+      column_list_scope=['input_scan', CREATED],
       comment="""
       A scan produced by <graph table> as described in
       (broken link):graph-table-syntax, or gql enabled <graph table>,
@@ -12511,6 +13408,7 @@ ResolvedArgumentRef(y)
               'ResolvedComputedColumn',
               tag_id=4,
               vector=True,
+              scope=['input_scan'],
           ),
       ],
   )
@@ -12519,6 +13417,8 @@ ResolvedArgumentRef(y)
       name='ResolvedGraphCallScan',
       tag_id=299,
       parent='ResolvedScan',
+      # Like a LATERAL join: columns from both sides.
+      column_list_scope=[INPUT, 'subquery'],
       comment="""
       Represents a GQL CALL operation, which with a subquery is equivalent to a
       LATERAL JOIN.
@@ -12543,6 +13443,11 @@ ResolvedArgumentRef(y)
               comment="""
               The subquery or the TVF to apply.
               """,
+              # Like a LATERAL join: correlated references in the subquery can
+              # only name columns in `parameter_list`, which must include all
+              # columns from `input_scan` and from OUTER that are referenced in
+              # the subquery.
+              outer_scope=['parameter_list'],
           ),
           Field('input_scan', 'ResolvedScan', tag_id=4),
           Field(
@@ -12569,6 +13474,8 @@ ResolvedArgumentRef(y)
       name='ResolvedGraphScan',
       tag_id=229,
       parent='ResolvedGraphScanBase',
+      # The path scans' columns, plus the input columns.
+      column_list_scope=[INPUT, 'input_scan_list'],
       comment="""
       A scan produced by a <graph pattern> in <graph table>. It represents the
       cross product of input ResolvedGraphPathScans, each represents a matching
@@ -12606,6 +13513,8 @@ ResolvedArgumentRef(y)
               'ResolvedExpr',
               tag_id=3,
               is_optional_constructor_arg=True,
+              # Sees the path scans' columns and the input columns.
+              scope=[INPUT, 'input_scan_list'],
           ),
           Field(
               'input_scan',
@@ -12652,6 +13561,9 @@ ResolvedArgumentRef(y)
             The lower bound of a bounded or unbounded quantification.
             Can not be omitted.
             """,
+              # Must be a constant expression.
+              scope=[],
+              outer_scope=[],
           ),
           Field(
               'upper_bound',
@@ -12661,6 +13573,9 @@ ResolvedArgumentRef(y)
             The upper bound of a bounded or unbounded quantification. When
             omitted, this is an unbounded quantification.
             """,
+              # Must be a constant expression.
+              scope=[],
+              outer_scope=[],
           ),
       ],
   )
@@ -12685,6 +13600,9 @@ ResolvedArgumentRef(y)
               'ResolvedExpr',
               tag_id=3,
               ignorable=IGNORABLE_DEFAULT,
+              # Must be a constant expression.
+              scope=[],
+              outer_scope=[],
           ),
       ],
   )
@@ -12715,7 +13633,8 @@ ResolvedArgumentRef(y)
       are accessible in <target_element_table_list>.
       """,
       fields=[
-          Field('filter_expr', 'ResolvedExpr', tag_id=2),
+          # Sees the element's own created columns (or correlated columns).
+          Field('filter_expr', 'ResolvedExpr', tag_id=2, scope=['column_list']),
           Field(
               'label_expr',
               'ResolvedGraphLabelExpr',
@@ -12777,6 +13696,9 @@ ResolvedArgumentRef(y)
               ignorable=IGNORABLE,
               is_constructor_arg=False,
               vector=True,
+              # Hint values are constants.
+              scope=[],
+              outer_scope=[],
           ),
           Field(
               'rhs_hint_list',
@@ -12785,6 +13707,9 @@ ResolvedArgumentRef(y)
               ignorable=IGNORABLE,
               is_constructor_arg=False,
               vector=True,
+              # Hint values are constants.
+              scope=[],
+              outer_scope=[],
           ),
           Field(
               'cost_expr',
@@ -12792,6 +13717,8 @@ ResolvedArgumentRef(y)
               tag_id=5,
               ignorable=IGNORABLE_DEFAULT,
               is_optional_constructor_arg=True,
+              # Sees the element's own created columns (or correlated columns).
+              scope=['column_list'],
           ),
       ],
   )
@@ -12820,6 +13747,9 @@ ResolvedArgumentRef(y)
               tag_id=4,
               ignorable=IGNORABLE_DEFAULT,
               is_optional_constructor_arg=True,
+              # Must be a constant expression.
+              scope=[],
+              outer_scope=[],
           ),
       ],
   )
@@ -12900,6 +13830,9 @@ ResolvedArgumentRef(y)
               'ResolvedExpr',
               tag_id=3,
               ignorable=IGNORABLE_DEFAULT,
+              # Must be a constant expression.
+              scope=[],
+              outer_scope=[],
           ),
       ],
   )
@@ -13054,8 +13987,16 @@ ResolvedArgumentRef(y)
               'ResolvedComputedColumn',
               vector=True,
               tag_id=4,
+              # Pre-aggregate expressions also see the element.
+              scope=[INPUT, 'element_column'],
           ),
-          Field('aggregate', 'ResolvedAggregateFunctionCall', tag_id=5),
+          Field(
+              'aggregate',
+              'ResolvedAggregateFunctionCall',
+              tag_id=5,
+              # The aggregate also sees the element and pre-aggregate columns.
+              scope=[INPUT, CREATED],
+          ),
       ],
   )
 
@@ -13113,6 +14054,9 @@ ResolvedArgumentRef(y)
       name='ResolvedGraphPathScan',
       tag_id=220,
       parent='ResolvedGraphPathScanBase',
+      # The input scans' columns, plus the created head, tail, group variable
+      # and path columns.
+      column_list_scope=[CREATED, 'input_scan_list'],
       # This requires a custom implementation because `head` and `tail` are
       # created only if `quantifier` is nullptr.
       use_custom_columns_created=True,
@@ -13170,7 +14114,13 @@ ResolvedArgumentRef(y)
               tag_id=2,
               vector=True,
           ),
-          Field('filter_expr', 'ResolvedExpr', tag_id=3),
+          Field(
+              'filter_expr',
+              'ResolvedExpr',
+              tag_id=3,
+              # Sees the input scans' columns (or correlated columns).
+              scope=['input_scan_list'],
+          ),
           Field(
               'path',
               'ResolvedColumnHolder',
@@ -13205,6 +14155,9 @@ ResolvedArgumentRef(y)
               ignorable=IGNORABLE,
               is_constructor_arg=False,
               vector=True,
+              # Hint values are constants.
+              scope=[],
+              outer_scope=[],
           ),
           Field(
               'quantifier',
@@ -13212,6 +14165,8 @@ ResolvedArgumentRef(y)
               tag_id=7,
               ignorable=IGNORABLE_DEFAULT,
               is_optional_constructor_arg=True,
+              # The quantifier bounds must be constant expressions.
+              outer_scope=[],
           ),
           Field(
               'group_variable_list',
@@ -13219,6 +14174,8 @@ ResolvedArgumentRef(y)
               tag_id=8,
               ignorable=IGNORABLE_DEFAULT,
               vector=True,
+              # Group variables reference the input scans' columns.
+              scope=['input_scan_list'],
           ),
           Field(
               'path_mode',
@@ -13230,6 +14187,8 @@ ResolvedArgumentRef(y)
               'ResolvedGraphPathSearchPrefix',
               tag_id=10,
               is_optional_constructor_arg=True,
+              # The path count must be a constant expression.
+              outer_scope=[],
           ),
           Field(
               'path_cost',
@@ -13366,6 +14325,8 @@ ResolvedArgumentRef(y)
       name='ResolvedDescribeScan',
       tag_id=300,
       parent='ResolvedScan',
+      # Only the describe column.
+      column_list_scope=[CREATED],
       comment="""
       This represents the pipe DESCRIBE operator, which is controlled by
       FEATURE_PIPE_DESCRIBE.
@@ -13384,7 +14345,14 @@ ResolvedArgumentRef(y)
       """,
       fields=[
           Field('input_scan', 'ResolvedScan', tag_id=2),
-          Field('describe_expr', 'ResolvedComputedColumn', tag_id=3),
+          Field(
+              'describe_expr',
+              'ResolvedComputedColumn',
+              tag_id=3,
+              # Must be a constant expression.
+              scope=[],
+              outer_scope=[],
+          ),
       ],
   )
 
@@ -13436,6 +14404,8 @@ ResolvedArgumentRef(y)
       name='ResolvedLogScan',
       tag_id=272,
       parent='ResolvedScan',
+      # ABSL_LOG passes its input through.
+      column_list_scope=[INPUT],
       comment="""
       This represents the pipe ABSL_LOG operator, which is controlled by
       FEATURE_PIPE_LOG.
@@ -13452,7 +14422,13 @@ ResolvedArgumentRef(y)
       fields=[
           Field('input_scan', 'ResolvedScan', tag_id=2, propagate_order=True),
           Field('subpipeline', 'ResolvedSubpipeline', tag_id=3),
-          Field('output_schema', 'ResolvedOutputSchema', tag_id=4),
+          Field(
+              'output_schema',
+              'ResolvedOutputSchema',
+              tag_id=4,
+              # The subpipeline's output columns.
+              scope=['subpipeline'],
+          ),
       ],
   )
 
@@ -13460,6 +14436,10 @@ ResolvedArgumentRef(y)
       name='ResolvedPipeIfScan',
       tag_id=277,
       parent='ResolvedScan',
+      # The input columns (when no case is selected), or the output columns of
+      # the selected case's subpipeline. This is an approximation: it allows
+      # the output columns of any case, since `selected_case` is an index.
+      column_list_scope=[INPUT, 'if_case_list'],
       comment="""
       This represents the pipe IF operator, which is controlled by
       FEATURE_PIPE_IF.  See (broken link).
@@ -13512,6 +14492,8 @@ ResolvedArgumentRef(y)
       name='ResolvedPipeIfCase',
       tag_id=278,
       parent='ResolvedArgument',
+      # The case's subpipeline's output columns.
+      provided_columns=['subpipeline'],
       comment="""
       This represents one case in a ResolvedPipeIf.
 
@@ -13559,6 +14541,8 @@ ResolvedArgumentRef(y)
       name='ResolvedFinishScan',
       tag_id=317,
       parent='ResolvedScan',
+      # Produces no columns.
+      column_list_scope=[],
       comment="""
       FINISH is a terminal pipe operator. It has no output columns and can
       only occur at the end of a pipeline.
@@ -13594,6 +14578,8 @@ ResolvedArgumentRef(y)
       name='ResolvedPipeForkScan',
       tag_id=283,
       parent='ResolvedScan',
+      # Produces no columns.
+      column_list_scope=[],
       comment="""
       This represents the pipe FORK operator, which is controlled by
       FEATURE_PIPE_FORK.  See (broken link).
@@ -13648,6 +14634,9 @@ ResolvedArgumentRef(y)
       name='ResolvedInsertScan',
       tag_id=297,
       parent='ResolvedScan',
+      # The input (`insert_stmt.query`) and RETURNING columns. This is an
+      # approximation: it also allows other target table columns.
+      column_list_scope=['insert_stmt'],
       comment="""
       This represents an INSERT operator, typically used for pipe INSERT or
       the rewrite of GQL INSERT (ResolvedGraphInsertScan).
@@ -13667,6 +14656,9 @@ ResolvedArgumentRef(y)
               'insert_stmt',
               'ResolvedInsertStmt',
               tag_id=2,
+              # The statement sees no enclosing columns (except correlated
+              # columns, which its query can reference).
+              scope=[],
           ),
       ],
   )
@@ -13675,6 +14667,8 @@ ResolvedArgumentRef(y)
       name='ResolvedPipeExportDataScan',
       tag_id=285,
       parent='ResolvedScan',
+      # Produces no columns.
+      column_list_scope=[],
       comment="""
       This represents the pipe EXPORT DATA operator, which is controlled by
       FEATURE_PIPE_EXPORT_DATA.  See (broken link).
@@ -13697,6 +14691,8 @@ ResolvedArgumentRef(y)
       name='ResolvedPipeCreateTableScan',
       tag_id=286,
       parent='ResolvedScan',
+      # Produces no columns.
+      column_list_scope=[],
       comment="""
       This represents the pipe CREATE TABLE operator, which is controlled by
       FEATURE_PIPE_CREATE_TABLE.
@@ -13725,6 +14721,9 @@ ResolvedArgumentRef(y)
               don't make senes when there's an input table, including a pipe
               input table.
               """,
+              # The statement sees no enclosing columns (except correlated
+              # columns).
+              scope=[],
           ),
       ],
   )
@@ -13733,6 +14732,8 @@ ResolvedArgumentRef(y)
       name='ResolvedSubpipeline',
       tag_id=273,
       parent='ResolvedArgument',
+      # A subpipeline's output columns.
+      provided_columns=['scan'],
       comment="""
       This represents a subpipeline.
       These occur inside various pipe operators, expressing a subpipeline of
@@ -13756,7 +14757,14 @@ ResolvedArgumentRef(y)
       and has to define the CTE-like table that will be referenced.
       """,
       fields=[
-          Field('scan', 'ResolvedScan', tag_id=2),
+          Field(
+              'scan',
+              'ResolvedScan',
+              tag_id=2,
+              # A ResolvedSubpipelineInputScan in the subpipeline returns the
+              # subpipeline's input, which is this node's VISIBLE set.
+              context={'subpipeline_input': [INPUT]},
+          ),
       ],
   )
 
@@ -13764,6 +14772,8 @@ ResolvedArgumentRef(y)
       name='ResolvedSubpipelineInputScan',
       tag_id=274,
       parent='ResolvedScan',
+      # The input of the enclosing subpipeline.
+      column_list_scope=[CONTEXT('subpipeline_input')],
       comment="""
       This is the scan inside a ResolvedSubpipeline representing the initial
       input table passed into the subpipeline.  This works like a CTE in WITH.
@@ -13813,8 +14823,20 @@ ResolvedArgumentRef(y)
       """,
       fields=[
           Field('table_scan', 'ResolvedTableScan', tag_id=2),
-          Field('subpipeline', 'ResolvedSubpipeline', tag_id=3),
-          Field('output_schema', 'ResolvedOutputSchema', tag_id=4),
+          Field(
+              'subpipeline',
+              'ResolvedSubpipeline',
+              tag_id=3,
+              # The subpipeline's input is the table.
+              scope=['table_scan'],
+          ),
+          Field(
+              'output_schema',
+              'ResolvedOutputSchema',
+              tag_id=4,
+              # The subpipeline's output columns.
+              scope=['subpipeline'],
+          ),
       ],
   )
 
@@ -13837,7 +14859,13 @@ ResolvedArgumentRef(y)
       """,
       fields=[
           Field('subpipeline', 'ResolvedSubpipeline', tag_id=2),
-          Field('output_schema', 'ResolvedOutputSchema', tag_id=3),
+          Field(
+              'output_schema',
+              'ResolvedOutputSchema',
+              tag_id=3,
+              # The subpipeline's output columns.
+              scope=['subpipeline'],
+          ),
       ],
   )
 
@@ -13976,6 +15004,8 @@ ResolvedArgumentRef(y)
               is a required field, the engine must return an error if it is set
               to NULL.
               """,
+              # Also sees the original value at the updated position.
+              scope=[INPUT, 'update_item_column'],
           ),
           Field(
               'proto_field_path',
@@ -14039,6 +15069,11 @@ ResolvedArgumentRef(y)
               'ResolvedExpr',
               tag_id=2,
               comment="""The protocol buffer to modify.""",
+              # TODO: b/475073854 - Remove 'update_element_column' once
+              # (broken link) lands; the resolver currently makes a nested
+              # UPDATE_MANY constructor's `expr` reference its own
+              # update_element_column, and the validator allows it.
+              scope=[INPUT, 'update_element_column'],
           ),
           # TODO: Make alias non-ignorable after implementing name
           # scoping.
@@ -14052,6 +15087,8 @@ ResolvedArgumentRef(y)
               A vector of field updates that should be applied to the protocol
               buffer that is being modified.
               """,
+              # Items can reference the original value.
+              scope=[INPUT, 'update_element_column'],
           ),
           Field(
               'update_element_column',
@@ -14267,10 +15304,12 @@ ResolvedArgumentRef(y)
               the `input_scan` columns and the computed columns from
               `insert_node_list`.
               """,
+              # Edges reference the inserted nodes.
+              scope=[INPUT, 'insert_node_list'],
           ),
           Field(
               'path_element_list',
-               SCALAR_RESOLVED_COLUMN,
+              SCALAR_RESOLVED_COLUMN,
               tag_id=5,
               vector=True,
               ignorable=IGNORABLE,
@@ -14296,6 +15335,8 @@ ResolvedArgumentRef(y)
               This is only used by SQLBuilder for the purpose of reconstructing
               the original sql syntax and does not have semantic meaning.
               """,
+              # The path references the input, node and edge columns.
+              scope=[INPUT, CREATED],
           ),
       ],
   )
@@ -14304,6 +15345,9 @@ ResolvedArgumentRef(y)
       name='ResolvedUpdateScan',
       tag_id=343,
       parent='ResolvedScan',
+      # The input (`update_stmt.from_scan`) and RETURNING columns. This is an
+      # approximation: it also allows other target table columns.
+      column_list_scope=['update_stmt'],
       comment="""
       This represents a pipe UPDATE operator.
       - `output_mode` (OUTPUT_UPDATED_ROWS and OUTPUT_INPUT_ROWS) specifies what
@@ -14345,6 +15389,9 @@ ResolvedArgumentRef(y)
               'update_stmt',
               'ResolvedUpdateStmt',
               tag_id=2,
+              # The statement sees no enclosing columns.
+              scope=[],
+              outer_scope=[],
           ),
           Field(
               'output_mode',
@@ -14596,6 +15643,8 @@ ResolvedArgumentRef(y)
               3. The `expr` for each `ResolvedComputedColumn` in this list must
               be a `ResolvedColumnRef` that references a column from
               `input_scan`'s `column_list`.
+              4. No two `ResolvedComputedColumn`s may reference the same
+              `input_scan` column.
               """,
           ),
           Field(
@@ -14617,6 +15666,9 @@ ResolvedArgumentRef(y)
       name='ResolvedDeleteScan',
       tag_id=346,
       parent='ResolvedScan',
+      # The input (`delete_stmt.using_scan`) and RETURNING columns. This is an
+      # approximation: it also allows other target table columns.
+      column_list_scope=['delete_stmt'],
       comment="""
       This represents a pipe DELETE operator.
       The overall procedure for this operator is as follows:
@@ -14653,6 +15705,9 @@ ResolvedArgumentRef(y)
               'delete_stmt',
               'ResolvedDeleteStmt',
               tag_id=2,
+              # The statement sees no enclosing columns.
+              scope=[],
+              outer_scope=[],
           ),
       ],
   )

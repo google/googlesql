@@ -607,8 +607,7 @@ absl::StatusOr<Value> PathConcatFunction::Eval(
                                             path_components));
     }
   }
-  return Value::MakeGraphPath(output_type()->AsGraphPath(),
-                              std::move(path_components));
+  return Value::MakeGraphPath(path_type, std::move(path_components));
 }
 
 absl::StatusOr<Value> IsTrailFunction::Eval(

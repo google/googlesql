@@ -177,6 +177,15 @@ absl::StatusOr<const Table*> ExtractCloneSourceTable(const ResolvedScan& scan) {
              << scan.node_kind_string();
   }
 }
+
+bool IsGraphDmlEnabled(const LanguageOptions& language_options) {
+  return language_options.LanguageFeatureEnabled(
+             FEATURE_SQL_GRAPH_TERMINAL_INSERT) ||
+         language_options.LanguageFeatureEnabled(
+             FEATURE_SQL_GRAPH_TERMINAL_NON_RETURNING_UPDATE) ||
+         language_options.LanguageFeatureEnabled(
+             FEATURE_SQL_GRAPH_TERMINAL_NON_RETURNING_DELETE);
+}
 }  // namespace
 
 // These are constant identifiers used mostly for generated column or table
@@ -190,9 +199,17 @@ STATIC_IDSTRING(kCreateAsCastId, "$create_as_cast");
 absl::Status Resolver::ValidateTypeIsReturnable(const Type* type,
                                                 const ASTNode* error_node) {
   std::string type_description;
+  const Type* non_returnable_type = nullptr;
   if (type->SupportsReturning(language(),
-                              /*type_description=*/&type_description)) {
+                              /*type_description=*/&type_description,
+                              /*non_returnable_type=*/&non_returnable_type)) {
     return absl::OkStatus();
+  }
+  if (non_returnable_type->IsMeasureType()) {
+    return MakeSqlErrorAt(error_node)
+           << "Returning expressions of type " << type_description
+           << " is not allowed. Use AGG to aggregate " << type_description
+           << " types.";
   }
   return MakeSqlErrorAt(error_node) << "Returning expressions of type "
                                     << type_description << " is not allowed";
@@ -1221,17 +1238,14 @@ absl::Status Resolver::ResolveQueryStatement(
   GOOGLESQL_RET_CHECK(named_subquery_map_.empty());
 
   // Handle generalized query statements, which may produce zero, one or
-  // multiple output tables.  These only occur with pipe syntax, with operators
-  // like FORK or CREATE TABLE.
+  // multiple output tables.  These only occur with pipe syntax (with operators
+  // like FORK or CREATE TABLE) or with Graph DML.
   // See (broken link).
   if (needs_generalized_query_stmt_) {
     GOOGLESQL_RET_CHECK(
         language().SupportsStatementKind(RESOLVED_GENERALIZED_QUERY_STMT));
-    GOOGLESQL_RET_CHECK(
-        language().LanguageFeatureEnabled(FEATURE_PIPES) ||
-        language().LanguageFeatureEnabled(FEATURE_SQL_GRAPH_TERMINAL_INSERT) ||
-        language().LanguageFeatureEnabled(
-            FEATURE_SQL_GRAPH_TERMINAL_NON_RETURNING_UPDATE));
+    GOOGLESQL_RET_CHECK(language().LanguageFeatureEnabled(FEATURE_PIPES) ||
+              IsGraphDmlEnabled(language()));
     std::unique_ptr<const ResolvedOutputSchema> output_schema;
     if (*output_name_list != nullptr &&
         !(*output_name_list)->columns().empty()) {
@@ -1282,7 +1296,7 @@ absl::Status Resolver::ResolveSubpipelineStatement(
   GOOGLESQL_RETURN_IF_ERROR(MakeScanForTable(
       ast_subpipeline, input_table, alias,
       /*has_explicit_alias=*/true, /*alias_location=*/ast_subpipeline,
-      /*for_system_time=*/nullptr,
+      /*for_version_clause=*/nullptr,
       /*read_as_row_type_error_kind=*/"", &table_scan, &current_name_list,
       /*output_column_name_list=*/nullptr, resolved_columns_from_table_scans_));
 
@@ -3135,7 +3149,7 @@ absl::Status Resolver::ResolveCreateIndexStatement(
   GOOGLESQL_RETURN_IF_ERROR(ResolvePathExpressionAsTableScan(
       table_path, table_alias, has_explicit_table_name_alias,
       /*alias_location=*/table_alias_location, /*hints=*/nullptr,
-      /*for_system_time=*/nullptr, empty_name_scope_.get(),
+      /*for_version_clause=*/nullptr, empty_name_scope_.get(),
       /*read_as_row_type_error_kind=*/"CREATE INDEX",
       /*remaining_names=*/nullptr, &resolved_table_scan, &target_name_list,
       /*output_column_name_list=*/nullptr, resolved_columns_from_table_scans_));
@@ -4253,7 +4267,7 @@ absl::Status Resolver::ResolveDataSourceForCopyOrClone(
   GOOGLESQL_RETURN_IF_ERROR(ResolvePathExpressionAsTableScan(
       data_source->path_expr(), GetAliasForExpression(data_source->path_expr()),
       /*has_explicit_alias=*/false, /*alias_location=*/data_source->path_expr(),
-      /*hints=*/nullptr, data_source->for_system_time(),
+      /*hints=*/nullptr, data_source->for_version_clause(),
       empty_name_scope_.get(),
       /*read_as_row_type_error_kind=*/"COPY or CLONE",
       /*remaining_names=*/nullptr, &table_scan, &output_name_list,
@@ -4279,7 +4293,8 @@ absl::Status Resolver::ResolveReplicaSource(
   GOOGLESQL_RETURN_IF_ERROR(ResolvePathExpressionAsTableScan(
       data_source, GetAliasForExpression(data_source),
       /*has_explicit_alias=*/false, /*alias_location=*/data_source,
-      /*hints=*/nullptr, /*for_system_time=*/nullptr, empty_name_scope_.get(),
+      /*hints=*/nullptr, /*for_version_clause=*/nullptr,
+      empty_name_scope_.get(),
       /*read_as_row_type_error_kind=*/"REPLICA table",
       /*remaining_names=*/nullptr, &table_scan, &output_name_list,
       /*output_column_name_list=*/nullptr, resolved_columns_from_table_scans_));
@@ -5296,7 +5311,7 @@ absl::Status Resolver::ResolveCreateFunctionStatement(
   }
 
   std::unique_ptr<const ResolvedExpr> resolved_expr;
-  std::vector<std::unique_ptr<const ResolvedComputedColumn>>
+  std::vector<std::unique_ptr<const ResolvedComputedColumnBase>>
       resolved_aggregate_exprs;
 
   GOOGLESQL_RETURN_IF_ERROR(FailIfContainsParameterExpr(
@@ -5357,8 +5372,7 @@ absl::Status Resolver::ResolveCreateFunctionStatement(
                      << "UDAs with aggregations nested in conditional "
                         "operators are not yet supported";
             }
-            resolved_aggregate_exprs.push_back(absl::WrapUnique(
-                static_cast<const ResolvedComputedColumn*>(agg.release())));
+            resolved_aggregate_exprs.push_back(std::move(agg));
           }
         }
       }
@@ -6128,7 +6142,6 @@ absl::Status Resolver::CheckSQLBodyReturnTypesAndCoerceIfNeeded(
                             /*is_explicit=*/false, &signature_match_result)) {
       std::string required_type_name =
           required_annotated_col_type.type->ShortTypeName(product_mode());
-      std::string column_description;
       if (return_tvf_relation.is_value_table()) {
         const std::string error = absl::StrCat(
             "Value-table column for the output table of a CREATE TABLE "
@@ -6920,7 +6933,8 @@ absl::Status Resolver::ResolveTableAndPredicate(
   std::shared_ptr<const NameList> target_name_list(new NameList);
   GOOGLESQL_RETURN_IF_ERROR(ResolvePathExpressionAsTableScan(
       table_path, alias, /*has_explicit_alias=*/false, alias_location,
-      /*hints=*/nullptr, /*for_system_time=*/nullptr, empty_name_scope_.get(),
+      /*hints=*/nullptr, /*for_version_clause=*/nullptr,
+      empty_name_scope_.get(),
       /*read_as_row_type_error_kind=*/"ROW ACCESS POLICY",
       /*remaining_names=*/nullptr, resolved_table_scan, &target_name_list,
       /*output_column_name_list=*/nullptr, resolved_columns_from_table_scans_));
@@ -7060,7 +7074,8 @@ absl::Status Resolver::ResolveCreatePrivilegeRestrictionStatement(
   GOOGLESQL_RETURN_IF_ERROR(ResolvePathExpressionAsTableScan(
       table_path, GetAliasForExpression(table_path),
       /*has_explicit_alias=*/false, /*alias_location=*/table_path,
-      /*hints=*/nullptr, /*for_system_time=*/nullptr, empty_name_scope_.get(),
+      /*hints=*/nullptr, /*for_version_clause=*/nullptr,
+      empty_name_scope_.get(),
       /*read_as_row_type_error_kind=*/"PRIVILEGE RESTRICTION",
       /*remaining_names=*/nullptr, &resolved_table_scan, &name_list,
       /*output_column_name_list=*/nullptr, resolved_columns_from_table_scans_));
@@ -7270,7 +7285,8 @@ absl::Status Resolver::ResolveAlterPrivilegeRestrictionStatement(
   GOOGLESQL_RETURN_IF_ERROR(ResolvePathExpressionAsTableScan(
       table_path, GetAliasForExpression(table_path),
       /*has_explicit_alias=*/false, /*alias_location=*/table_path,
-      /*hints=*/nullptr, /*for_system_time=*/nullptr, empty_name_scope_.get(),
+      /*hints=*/nullptr, /*for_version_clause=*/nullptr,
+      empty_name_scope_.get(),
       /*read_as_row_type_error_kind=*/"PRIVILEGE RESTRICTION",
       /*remaining_names=*/nullptr, &resolved_table_scan, &name_list,
       /*output_column_name_list=*/nullptr, resolved_columns_from_table_scans_));
@@ -7409,7 +7425,8 @@ absl::Status Resolver::ResolveAlterAllRowAccessPoliciesStatement(
   GOOGLESQL_RETURN_IF_ERROR(ResolvePathExpressionAsTableScan(
       table_path, GetAliasForExpression(table_path),
       /*has_explicit_alias=*/false, /*alias_location=*/table_path,
-      /*hints=*/nullptr, /*for_system_time=*/nullptr, empty_name_scope_.get(),
+      /*hints=*/nullptr, /*for_version_clause=*/nullptr,
+      empty_name_scope_.get(),
       /*read_as_row_type_error_kind=*/"ROW ACCESS POLICY",
       /*remaining_names=*/nullptr, &resolved_table_scan, &name_list,
       /*output_column_name_list=*/nullptr, resolved_columns_from_table_scans_));
@@ -7449,7 +7466,7 @@ absl::Status Resolver::ResolveCloneDataStatement(
       GetAliasForExpression(ast_statement->target_path()),
       /*has_explicit_alias=*/false,
       /*alias_location=*/ast_statement->target_path(), /*hints=*/nullptr,
-      /*for_system_time=*/nullptr, empty_name_scope_.get(),
+      /*for_version_clause=*/nullptr, empty_name_scope_.get(),
       /*read_as_row_type_error_kind=*/"CLONE DATA",
       /*remaining_names=*/nullptr, &target_table, &output_name_list,
       /*output_column_name_list=*/nullptr, resolved_columns_from_table_scans_));
@@ -7887,9 +7904,9 @@ absl::Status Resolver::ResolveUndropStatement(
       ast_statement->name()->ToIdentifierVector();
   std::unique_ptr<const ResolvedExpr> for_system_time_expr;
   std::vector<std::unique_ptr<const ResolvedOption>> resolved_options;
-  if (ast_statement->for_system_time() != nullptr) {
-    GOOGLESQL_RETURN_IF_ERROR(ResolveForSystemTimeExpr(ast_statement->for_system_time(),
-                                             &for_system_time_expr));
+  if (ast_statement->for_version_clause() != nullptr) {
+    GOOGLESQL_RETURN_IF_ERROR(ResolveForSystemTimeExpr(
+        ast_statement->for_version_clause(), &for_system_time_expr));
   }
   GOOGLESQL_RETURN_IF_ERROR(ResolveOptionsList(ast_statement->options_list(),
                                      /*allow_alter_array_operators=*/false,
@@ -8049,7 +8066,8 @@ absl::Status Resolver::ResolveDropPrivilegeRestrictionStatement(
   GOOGLESQL_RETURN_IF_ERROR(ResolvePathExpressionAsTableScan(
       table_path, GetAliasForExpression(table_path),
       /*has_explicit_alias=*/false, /*alias_location=*/table_path,
-      /*hints=*/nullptr, /*for_system_time=*/nullptr, empty_name_scope_.get(),
+      /*hints=*/nullptr, /*for_version_clause=*/nullptr,
+      empty_name_scope_.get(),
       /*read_as_row_type_error_kind=*/"PRIVILEGE RESTRICTION",
       /*remaining_names=*/nullptr, &resolved_table_scan, &name_list,
       /*output_column_name_list=*/nullptr, resolved_columns_from_table_scans_));

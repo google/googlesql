@@ -3728,6 +3728,33 @@ TEST_F(ComplianceCodebasedTests, TestPseudoColumn) {
   EXPECT_THAT(RunSQL("SELECT pseudo_val FROM TableWithPseudoColumn"),
               Returns(StructArray({"pseudo_val"}, {{"pseudo1"}, {"pseudo2"}},
                                   kIgnoresOrder)));
+
+  // Verify LookupTable with pseudo-columns when FEATURE_LOOKUP_TABLE_TVF is
+  // enabled.
+
+  // Verify SELECT * doesn't return pseudo_val
+  SetNamePrefix("TestPseudoColumnLookupTableSelectAll");
+  RunSQLOnFeaturesAndValidateResult(
+      "SELECT * FROM LookupTable(\"TableWithPseudoColumn\")", /*params=*/{},
+      /*required_features=*/
+      {FEATURE_TABLE_VALUED_FUNCTIONS, FEATURE_LOOKUP_TABLE_TVF},
+      /*forbidden_features=*/{},
+      StructArray({"primary_key", "val"}, {{1ll, "foo"}, {2ll, "bar"}},
+                  kIgnoresOrder),
+      absl::OkStatus());
+
+  // Verify we can select pseudo_val explicitly
+  SetNamePrefix("TestPseudoColumnLookupTableSelectPseudo");
+  RunSQLOnFeaturesAndValidateResult(
+      "SELECT *, pseudo_val FROM LookupTable(\"TableWithPseudoColumn\")",
+      /*params=*/{},
+      /*required_features=*/
+      {FEATURE_TABLE_VALUED_FUNCTIONS, FEATURE_LOOKUP_TABLE_TVF},
+      /*forbidden_features=*/{},
+      StructArray({"primary_key", "val", "pseudo_val"},
+                  {{1ll, "foo", "pseudo1"}, {2ll, "bar", "pseudo2"}},
+                  kIgnoresOrder),
+      absl::OkStatus());
 }
 
 class ComplianceFilebasedTests : public SQLTestBase {

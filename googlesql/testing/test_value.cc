@@ -95,6 +95,12 @@ Value Range(ValueConstructor start, ValueConstructor end) {
   return *range_value;
 }
 
+Value Variant(ValueConstructor value) {
+  absl::StatusOr<Value> variant_value = Value::Variant(value.get());
+  GOOGLESQL_CHECK_OK(variant_value.status());
+  return *std::move(variant_value);
+}
+
 Value Map(
     absl::Span<const std::pair<ValueConstructor, ValueConstructor>> elements,
     TypeFactory* type_factory) {

@@ -507,9 +507,38 @@ class ResolvedTVFArg {
   }
 
   void set_table_clause(const ASTTableClause* table_clause) {
+    ABSL_DCHECK(!is_pipe_input_table_);
     table_clause_ = table_clause;
   }
   const ASTTableClause* table_clause() const { return table_clause_; }
+
+  void set_pipe_input_partition_by(const ASTPartitionBy* partition_by) {
+    ABSL_DCHECK(is_pipe_input_table_);
+    ABSL_DCHECK(table_clause_ == nullptr);
+    pipe_input_partition_by_ = partition_by;
+  }
+  const ASTPartitionBy* partition_by() const {
+    if (is_pipe_input_table_) {
+      ABSL_DCHECK(table_clause_ == nullptr);
+      return pipe_input_partition_by_;
+    }
+    ABSL_DCHECK(pipe_input_partition_by_ == nullptr);
+    return table_clause_ != nullptr ? table_clause_->partition_by() : nullptr;
+  }
+
+  void set_pipe_input_order_by(const ASTOrderBy* order_by) {
+    ABSL_DCHECK(is_pipe_input_table_);
+    ABSL_DCHECK(table_clause_ == nullptr);
+    pipe_input_order_by_ = order_by;
+  }
+  const ASTOrderBy* order_by() const {
+    if (is_pipe_input_table_) {
+      ABSL_DCHECK(table_clause_ == nullptr);
+      return pipe_input_order_by_;
+    }
+    ABSL_DCHECK(pipe_input_order_by_ == nullptr);
+    return table_clause_ != nullptr ? table_clause_->order_by() : nullptr;
+  }
 
   void SetPartitionByList(
       std::vector<std::unique_ptr<const ResolvedColumnRef>> partition_by_list) {
@@ -558,6 +587,10 @@ class ResolvedTVFArg {
   // If this argument was resolved from an ASTTableClause, points to that clause
   // so PARTITION BY and ORDER BY can be resolved after signature matching.
   const ASTTableClause* table_clause_ = nullptr;
+  // For pipe CALL input tables (where `table_clause_` is null), optional
+  // PARTITION BY and ORDER BY clauses specified on the `ASTPipeCall` node.
+  const ASTPartitionBy* pipe_input_partition_by_ = nullptr;
+  const ASTOrderBy* pipe_input_order_by_ = nullptr;
 
   std::vector<std::unique_ptr<const ResolvedColumnRef>> partition_by_list_;
   std::vector<std::unique_ptr<const ResolvedOrderByItem>> order_by_list_;

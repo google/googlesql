@@ -399,7 +399,9 @@ class ResolvedArgumentRefReplacer : public ResolvedASTRewriteVisitor {
   // Replaces argument references by copying expressions from `argument_map`,
   // building CTE scan references from `table_arg_map`, and substituting
   // function-typed parameters from `fn_arg_map`, followed by outer column
-  // correlation fixup across nested scopes.
+  // correlation fixup across nested scopes. If `has_unreferenced_fn_arg` is
+  // non-null, sets it to true when at least one entry in `fn_arg_map` was not
+  // referenced in `body`.
   template <typename T>
   static absl::StatusOr<std::unique_ptr<T>> Replace(
       std::unique_ptr<T> body, const ArgNameToExprMap& argument_map,
@@ -407,14 +409,20 @@ class ResolvedArgumentRefReplacer : public ResolvedASTRewriteVisitor {
       const ArgNameToFnArgMap& fn_arg_map = {},
       const absl::flat_hash_set<ResolvedColumn>& outer_columns = {},
       ColumnFactory* /*absl_nullable*/ column_factory = nullptr,
-      FunctionCallBuilder* /*absl_nullable*/ fn_builder = nullptr) {
+      FunctionCallBuilder* /*absl_nullable*/ fn_builder = nullptr,
+      bool* /*absl_nullable*/ has_unreferenced_fn_arg = nullptr) {
     // Substitute argument and function-typed parameter references.
     ResolvedArgumentRefReplacer replacer(
         argument_map, table_arg_map, fn_arg_map, column_factory, fn_builder);
     GOOGLESQL_ASSIGN_OR_RETURN(std::unique_ptr<const T> replaced,
                      replacer.VisitAll<T>(std::move(body)));
+    if (has_unreferenced_fn_arg != nullptr) {
+      *has_unreferenced_fn_arg =
+          replacer.referenced_fn_args_.size() < fn_arg_map.size();
+    }
 
-    // Collect outer columns originating from argument expressions and lambdas.
+    // Collect outer columns originating from argument expressions and
+    // referenced lambdas.
     absl::flat_hash_set<ResolvedColumn> all_outer_columns = outer_columns;
     absl::flat_hash_set<ResolvedColumn> pre_correlated_columns;
     std::vector<std::unique_ptr<const ResolvedColumnRef>> column_refs;
@@ -592,6 +600,12 @@ class ResolvedArgumentRefReplacer : public ResolvedASTRewriteVisitor {
     if (it == fn_arg_map_.end()) {
       return node;
     }
+    if (with_entry_depth_ > 0) {
+      return absl::UnimplementedError(
+          "SQL defined functions that contain argument references inside "
+          "embedded WITH clauses are not implemented.");
+    }
+    referenced_fn_args_.insert(it->first);
     if (std::holds_alternative<const ResolvedInlineLambda*>(it->second)) {
       const auto* lambda = std::get<const ResolvedInlineLambda*>(it->second);
       GOOGLESQL_ASSIGN_OR_RETURN(std::unique_ptr<const ResolvedExpr> inlined_lambda,
@@ -620,6 +634,12 @@ class ResolvedArgumentRefReplacer : public ResolvedASTRewriteVisitor {
     if (it == fn_arg_map_.end()) {
       return node;
     }
+    if (with_entry_depth_ > 0) {
+      return absl::UnimplementedError(
+          "SQL defined functions that contain argument references inside "
+          "embedded WITH clauses are not implemented.");
+    }
+    referenced_fn_args_.insert(it->first);
 
     if (std::holds_alternative<const ResolvedInlineLambda*>(it->second)) {
       const auto* lambda = std::get<const ResolvedInlineLambda*>(it->second);
@@ -714,6 +734,9 @@ class ResolvedArgumentRefReplacer : public ResolvedASTRewriteVisitor {
   // functions.
   const ArgNameToFnArgMap& fn_arg_map_;
 
+  // Tracks function-typed parameter names referenced in the function body.
+  absl::flat_hash_set<std::string> referenced_fn_args_;
+
   // Tracks pre-constructed TVF scalar subquery AST nodes that have already been
   // copied into the rewritten AST. Used inside ReferenceArgumentColumn() to
   // ensure the first reference preserves exact CTE column IDs while subsequent
@@ -786,6 +809,10 @@ class SqlFunctionInlineVisitor : public ResolvedASTDeepCopyVisitor {
       : column_factory_(column_factory),
         fn_builder_(analyzer_options, catalog, type_factory) {}
 
+  // Returns true if any inlined UDF had an unreferenced function-typed
+  // parameter.
+  bool has_unreferenced_fn_arg() const { return has_unreferenced_fn_arg_; }
+
  private:
   absl::Status VisitResolvedFunctionCall(
       const ResolvedFunctionCall* node) override {
@@ -821,6 +848,11 @@ class SqlFunctionInlineVisitor : public ResolvedASTDeepCopyVisitor {
     GOOGLESQL_ASSIGN_OR_RETURN(std::unique_ptr<ResolvedExpr> body_expr,
                      CopyResolvedASTAndRemapColumns(
                          *fn_expression, *column_factory_, column_map));
+
+    // Disambiguate any CTEs defined locally within the callee's body to prevent
+    // them from capturing outer CTE references when arguments or closures
+    // (such as lambdas) are substituted into the callee.
+    GOOGLESQL_RETURN_IF_ERROR(RemapCteNames(body_expr.get(), inlined_cte_counter_));
 
     // Nullary functions peel one layer per rewriter pass to maintain
     // convergence limits across rewriter iterations.
@@ -884,11 +916,15 @@ class SqlFunctionInlineVisitor : public ResolvedASTDeepCopyVisitor {
     for (const auto& binding : with_expr_bindings) {
       outer_columns.insert(binding->column());
     }
-    GOOGLESQL_ASSIGN_OR_RETURN(
-        std::unique_ptr<const ResolvedExpr> replaced_body,
-        ResolvedArgumentRefReplacer::Replace(
-            std::move(body_expr), arg_map, /*table_arg_map=*/{}, fn_arg_map,
-            outer_columns, column_factory_, &fn_builder_));
+    bool has_unreferenced_fn_arg = false;
+    GOOGLESQL_ASSIGN_OR_RETURN(std::unique_ptr<const ResolvedExpr> replaced_body,
+                     ResolvedArgumentRefReplacer::Replace(
+                         std::move(body_expr), arg_map, /*table_arg_map=*/{},
+                         fn_arg_map, outer_columns, column_factory_,
+                         &fn_builder_, &has_unreferenced_fn_arg));
+    if (has_unreferenced_fn_arg) {
+      has_unreferenced_fn_arg_ = true;
+    }
 
     // Inlines nested function calls in the callee body. Arguments in
     // with_expr_bindings were already visited in the caller environment.
@@ -906,8 +942,11 @@ class SqlFunctionInlineVisitor : public ResolvedASTDeepCopyVisitor {
 
   ColumnFactory* column_factory_;
   FunctionCallBuilder fn_builder_;
+  int inlined_cte_counter_ = 0;
+  bool has_unreferenced_fn_arg_ = false;
 };
 
+// Rewriter pass that inlines scalar SQL UDF calls in a ResolvedAST.
 class SqlFunctionInliner : public Rewriter {
  public:
   absl::StatusOr<std::unique_ptr<const ResolvedNode>> Rewrite(
@@ -921,7 +960,13 @@ class SqlFunctionInliner : public Rewriter {
     SqlFunctionInlineVisitor rewriter(options, catalog, &column_factory,
                                       type_factory);
     GOOGLESQL_RETURN_IF_ERROR(input.Accept(&rewriter));
-    return rewriter.ConsumeRootNode<ResolvedNode>();
+    GOOGLESQL_ASSIGN_OR_RETURN(std::unique_ptr<const ResolvedNode> result,
+                     rewriter.ConsumeRootNode<ResolvedNode>());
+    if (rewriter.has_unreferenced_fn_arg()) {
+      GOOGLESQL_ASSIGN_OR_RETURN(result,
+                       PruneUnusedCorrelatedParameters(std::move(result)));
+    }
+    return result;
   }
 
   std::string Name() const override { return "SqlFunctionInliner"; }
@@ -1211,7 +1256,7 @@ class SqlAggregateFunctionInlineVisitor : public ResolvedASTRewriteVisitor {
   struct AggregateFnDetails {
     const ResolvedAggregateFunctionCall* call;
     const ResolvedExpr* expr;
-    const std::vector<std::unique_ptr<const ResolvedComputedColumn>>&
+    const std::vector<std::unique_ptr<const ResolvedComputedColumnBase>>&
         aggregate_expression_list;
     std::vector<std::string> arg_names;
     ResolvedColumn computed_column;

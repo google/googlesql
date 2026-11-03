@@ -2926,3 +2926,82 @@ QueryStmt
 
 [UNDECLARED_PARAMETERS]
 arr: ARRAY<VECTOR>
+==
+
+##########
+# FORMAT #
+##########
+
+# FORMAT support for VECTOR has not been designed yet. VECTOR has no literal
+# syntax, so there is nothing for %T to produce that reads back as the same
+# value. FORMAT rejects it, for %t as well as %T.
+SELECT FORMAT("{{%t|%T}}", ENCODE_VECTOR([1.0, 2.0]))
+--
+ALTERNATION GROUP: %t
+--
+ERROR: generic::unimplemented: Cannot format type VECTOR [at 1:8]
+SELECT FORMAT("%t", ENCODE_VECTOR([1.0, 2.0]))
+       ^
+--
+ALTERNATION GROUP: %T
+--
+ERROR: generic::unimplemented: Cannot format type VECTOR [at 1:8]
+SELECT FORMAT("%T", ENCODE_VECTOR([1.0, 2.0]))
+       ^
+==
+
+# A VECTOR nested inside an ARRAY or STRUCT is rejected too.
+SELECT FORMAT(
+  "{{%t|%T}}",
+  {{[ENCODE_VECTOR([1.0, 2.0])]|STRUCT(ENCODE_VECTOR([1.0, 2.0]) AS v)}})
+--
+ERROR: generic::unimplemented: Cannot format type VECTOR [at 1:8]
+SELECT FORMAT(
+       ^
+==
+
+# When the pattern is not a literal (a query parameter or a column reference),
+# the argument types can't be checked during analysis, so the query resolves.
+# The VECTOR argument is rejected when FORMAT is evaluated instead.
+SELECT FORMAT(@test_param_string, ENCODE_VECTOR([1.0, 2.0]))
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(GoogleSQL:format(STRING, repeated(1) VECTOR) -> STRING)
+    |     +-Parameter(type=STRING, name="test_param_string")
+    |     +-FunctionCall(GoogleSQL:encode_vector(ARRAY<FLOAT>, optional(0) INT64, optional(0) STRING) -> VECTOR)
+    |       +-type_annotation_map={VectorDims:2, VectorEncoding:"FLOAT32"}
+    |       +-Literal(type=ARRAY<FLOAT>, value=[1, 2])
+    +-input_scan=
+      +-SingleRowScan
+==
+
+SELECT FORMAT(fmt, ENCODE_VECTOR([1.0, 2.0]))
+FROM (SELECT "%t" AS fmt)
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#2 AS `$col1` [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#2]
+    +-expr_list=
+    | +-$col1#2 :=
+    |   +-FunctionCall(GoogleSQL:format(STRING, repeated(1) VECTOR) -> STRING)
+    |     +-ColumnRef(type=STRING, column=$subquery1.fmt#1)
+    |     +-FunctionCall(GoogleSQL:encode_vector(ARRAY<FLOAT>, optional(0) INT64, optional(0) STRING) -> VECTOR)
+    |       +-type_annotation_map={VectorDims:2, VectorEncoding:"FLOAT32"}
+    |       +-Literal(type=ARRAY<FLOAT>, value=[1, 2])
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[$subquery1.fmt#1]
+        +-expr_list=
+        | +-fmt#1 := Literal(type=STRING, value="%t")
+        +-input_scan=
+          +-SingleRowScan

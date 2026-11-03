@@ -76,12 +76,15 @@
 #include "googlesql/public/interval_value.h"
 #include "googlesql/public/pico_time.h"
 #include "googlesql/public/proto/type_annotation.pb.h"
+#include "googlesql/public/proto/vector_encoding_id.pb.h"
+#include "googlesql/public/proto/vector_value.pb.h"
 #include "googlesql/public/table_valued_function.h"
 #include "googlesql/public/time_series_tvf_util.h"
 #include "googlesql/public/timestamp_picos_value.h"
 #include "googlesql/public/types/timestamp_util.h"
 #include "googlesql/public/types/type.h"
 #include "googlesql/public/types/vector_type_util.h"
+#include "googlesql/public/types/vector_value_codec.h"
 #include "googlesql/public/uuid_value.h"
 #include "googlesql/public/value.pb.h"
 #include "googlesql/reference_impl/functions/like.h"
@@ -648,6 +651,8 @@ FunctionMap::FunctionMap() {
                      "ProtoModifyMap");
     RegisterFunction(FunctionKind::kProtoMapContainsKey,
                      "proto_map_contains_key", "ProtoMapContainsKey");
+    RegisterFunction(FunctionKind::kIsVariantNull, "is_variant_null",
+                     "IsVariantNull");
     RegisterFunction(FunctionKind::kJsonExtract, "json_extract", "JsonExtract");
     RegisterFunction(FunctionKind::kJsonExtractScalar, "json_extract_scalar",
                      "JsonExtractScalar");
@@ -1209,8 +1214,10 @@ FunctionMap::FunctionMap() {
                      "EncodeVector");
     RegisterFunction(FunctionKind::kDecodeVector, "decode_vector",
                      "DecodeVector");
-    RegisterFunction(FunctionKind::kVectorFloat32DimensionCount,
-                     "vector_dimension_count", "VectorFloat32DimensionCount");
+    RegisterFunction(FunctionKind::kVectorDimensionCount,
+                     "vector_dimension_count", "VectorDimensionCount");
+    RegisterFunction(FunctionKind::kVectorEncoding, "vector_encoding",
+                     "VectorEncoding");
     RegisterFunction(FunctionKind::kEditDistance, "edit_distance",
                      "EditDistance");
     RegisterFunction(FunctionKind::kJaroWinklerSimilarity,
@@ -1269,6 +1276,7 @@ FunctionMap::FunctionMap() {
     RegisterFunction(FunctionKind::kVectorSearchTVF, "vector_search",
                      "VectorSearch");
     RegisterFunction(FunctionKind::kKMeansTVF, "kmeans", "KMeans");
+    RegisterFunction(FunctionKind::kLookupTable, "LookupTable", "LookupTable");
     RegisterFunction(FunctionKind::kAiIf, "ai.if", "AI.IF");
   }();
 }  // NOLINT(readability/fn_size)
@@ -2400,6 +2408,8 @@ BuiltinTableValuedFunction::Create(FunctionKind kind) {
       return std::make_unique<VectorSearchTVF>(kind);
     case FunctionKind::kKMeansTVF:
       return std::make_unique<KMeansTVF>(kind);
+    case FunctionKind::kLookupTable:
+      return std::make_unique<LookupTVF>(kind);
     default:
       GOOGLESQL_ASSIGN_OR_RETURN(BuiltinTableValuedFunction * function,
                        BuiltinFunctionRegistry::GetTableValuedFunction(kind));
@@ -2890,8 +2900,10 @@ BuiltinScalarFunction::CreateValidatedRaw(
       return new EncodeVectorFunction(kind, output_type);
     case FunctionKind::kDecodeVector:
       return new DecodeVectorFunction(kind, output_type);
-    case FunctionKind::kVectorFloat32DimensionCount:
-      return new VectorFloat32DimensionCountFunction(kind, output_type);
+    case FunctionKind::kVectorDimensionCount:
+      return new VectorDimensionCountFunction(kind, output_type);
+    case FunctionKind::kVectorEncoding:
+      return new VectorEncodingFunction(kind, output_type);
     case FunctionKind::kJaroWinklerSimilarity:
       return new JaroWinklerSimilarityFunction(kind, output_type);
     case FunctionKind::kArrayZip: {
@@ -5773,6 +5785,50 @@ bool CastFunction::HasPotentialNondeterminism(const Type* input_type,
   return false;
 }
 
+namespace {
+
+// Returns true if casting `from_value` to `to_type` converts any array with
+// uncertain order into JSON (where the uncertain order metadata is lost).
+bool HasNonDeterministicArrayCastToJson(const Value& from_value,
+                                        const Type* to_type) {
+  if (from_value.is_null() || from_value.type()->Equals(to_type)) {
+    return false;
+  }
+  if (to_type->IsJson()) {
+    return InternalValue::ContainsArrayWithUncertainOrder(from_value);
+  }
+  if (from_value.type()->IsArray() && to_type->IsArray()) {
+    const Type* to_element_type = to_type->AsArray()->element_type();
+    for (int i = 0; i < from_value.num_elements(); ++i) {
+      if (HasNonDeterministicArrayCastToJson(from_value.element(i),
+                                             to_element_type)) {
+        return true;
+      }
+    }
+  } else if (from_value.type()->IsStruct() && to_type->IsStruct()) {
+    const StructType* to_struct_type = to_type->AsStruct();
+    for (int i = 0;
+         i < from_value.num_fields() && i < to_struct_type->num_fields(); ++i) {
+      if (HasNonDeterministicArrayCastToJson(from_value.field(i),
+                                             to_struct_type->field(i).type)) {
+        return true;
+      }
+    }
+  } else if (from_value.type()->IsMap() && to_type->IsMap()) {
+    const Type* to_key_type = to_type->AsMap()->key_type();
+    const Type* to_value_type = to_type->AsMap()->value_type();
+    for (const auto& [key, val] : from_value.map_entries()) {
+      if (HasNonDeterministicArrayCastToJson(key, to_key_type) ||
+          HasNonDeterministicArrayCastToJson(val, to_value_type)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+}  // namespace
+
 absl::StatusOr<Value> CastFunction::Eval(
     absl::Span<const TupleData* const> params, absl::Span<const Value> args,
     EvaluationContext* context) const {
@@ -5801,13 +5857,11 @@ absl::StatusOr<Value> CastFunction::Eval(
     time_zone = args[3].string_value();
   }
 
-  bool out_found_non_deterministic = false;
   absl::StatusOr<Value> status_or = internal::CastValueWithoutTypeValidation(
       v, context->GetDefaultTimeZone(),
       absl::FromUnixMicros(context->GetCurrentTimestamp()),
       context->GetLanguageOptions(), output_type(), format, time_zone,
-      extended_cast_evaluator_.get(), /*canonicalize_zero=*/true,
-      &out_found_non_deterministic);
+      extended_cast_evaluator_.get(), /*canonicalize_zero=*/true);
   if (!status_or.ok() && return_null_on_error) {
     // TODO: check that failure is not due to absence of
     // extended_type_function. In this case we still probably wants to fail the
@@ -5815,7 +5869,8 @@ absl::StatusOr<Value> CastFunction::Eval(
     return Value::Null(output_type());
   }
 
-  if (has_potential_nondeterminism_ || out_found_non_deterministic) {
+  if (has_potential_nondeterminism_ ||
+      HasNonDeterministicArrayCastToJson(v, output_type())) {
     context->SetNonDeterministicOutput();
   }
   if (!type_params_.IsEmpty() && status_or.ok()) {
@@ -13411,15 +13466,37 @@ static ::googlesql_base::StatusBuilder DistanceFunctionResultConverter(
 }
 
 namespace {
+// Helper to parse the VectorValueProto backing a VECTOR value.
+static absl::StatusOr<VectorValueProto> ParseVector(const Value& vector) {
+  GOOGLESQL_ASSIGN_OR_RETURN(Value backing_val, vector.backing_value());
+  return ParseVectorValueBytes(backing_val.bytes_value());
+}
+
+// Helper to read the encoding recorded in a VECTOR value.
+static absl::StatusOr<VectorEncodingId::Id> GetVectorEncoding(
+    const Value& vector) {
+  GOOGLESQL_ASSIGN_OR_RETURN(VectorValueProto vector_value, ParseVector(vector));
+  return static_cast<VectorEncodingId::Id>(vector_value.encoding());
+}
+
 // Helper to decode an encoded VECTOR into an ARRAY<FLOAT>.
 static absl::StatusOr<Value> DecodeFloat32Vector(const Value& vector) {
-  GOOGLESQL_ASSIGN_OR_RETURN(Value backing_val, vector.backing_value());
-  ValueProto value_proto;
-  if (!value_proto.ParseFromString(backing_val.bytes_value())) {
-    return ::googlesql_base::InvalidArgumentErrorBuilder()
-           << "Failed to parse VECTOR backing value";
+  GOOGLESQL_ASSIGN_OR_RETURN(VectorValueProto vector_value, ParseVector(vector));
+  const auto encoding =
+      static_cast<VectorEncodingId::Id>(vector_value.encoding());
+  if (encoding != VectorEncodingId::FLOAT32) {
+    return absl::UnimplementedError(
+        absl::StrCat("Decoding a VECTOR is not implemented for encoding: ",
+                     VectorEncodingId_Id_Name(encoding)));
   }
-  return Value::Deserialize(value_proto, types::FloatArrayType());
+  GOOGLESQL_ASSIGN_OR_RETURN(std::vector<float> elements,
+                   DecodeFloat32VectorPayload(vector_value.data()));
+  std::vector<Value> element_values;
+  element_values.reserve(elements.size());
+  for (float element : elements) {
+    element_values.push_back(Value::Float(element));
+  }
+  return Value::MakeArray(types::FloatArrayType(), std::move(element_values));
 }
 
 // If the input is a VECTOR, decode it into an ARRAY<FLOAT>. Otherwise, return
@@ -13718,9 +13795,38 @@ absl::StatusOr<Value> EncodeVectorFunction::Eval(
     }
   }
 
+  // The encoding is recorded in the value so that the VECTOR is
+  // self-describing; see vector_value.proto.
+  VectorEncodingId::Id encoding = VectorEncodingId::FLOAT32;
+  if (args.size() > 2 && !args[2].is_null()) {
+    GOOGLESQL_RET_CHECK(args[2].type()->IsString());
+    // Encoding names are case-insensitive; the canonical form is the uppercase
+    // proto enum name. The analyzer accepts lowercase strings like 'float32',
+    // and proto enum name parsing is case-sensitive, so uppercase here too.
+    const std::string upper_encoding =
+        absl::AsciiStrToUpper(args[2].string_value());
+    if (!VectorEncodingId_Id_Parse(upper_encoding, &encoding) ||
+        encoding == VectorEncodingId::UNKNOWN_VECTOR_ENCODING) {
+      return ::googlesql_base::OutOfRangeErrorBuilder()
+             << "Unrecognized VECTOR encoding: \"" << args[2].string_value()
+             << "\"";
+    }
+  }
+
+  // The reference implementation implements no quantized encoding. Rather
+  // than mislabel a FLOAT32 payload with some other encoding, which any other
+  // reader of VectorValueProto would then misinterpret, refuse to produce it.
+  if (encoding != VectorEncodingId::FLOAT32) {
+    return absl::UnimplementedError(
+        absl::StrCat("ENCODE_VECTOR is not implemented for encoding: ",
+                     VectorEncodingId_Id_Name(encoding)));
+  }
+
   // Convert the input float array to bytes.
-  GOOGLESQL_ASSIGN_OR_RETURN(auto elements, args[0].elements_view());
-  for (const Value& elem : elements) {
+  GOOGLESQL_ASSIGN_OR_RETURN(auto elements_view, args[0].elements_view());
+  std::vector<float> elements;
+  elements.reserve(args[0].num_elements());
+  for (const Value& elem : elements_view) {
     if (elem.is_null()) {
       return ::googlesql_base::OutOfRangeErrorBuilder()
              << "NULL values are not permitted in ENCODE_VECTOR";
@@ -13731,14 +13837,14 @@ absl::StatusOr<Value> EncodeVectorFunction::Eval(
       return ::googlesql_base::OutOfRangeErrorBuilder()
              << "NaN, +inf, or -inf values are not permitted in ENCODE_VECTOR";
     }
+    elements.push_back(f);
   }
 
-  ValueProto value_proto;
-  if (absl::Status status = args[0].Serialize(&value_proto); !status.ok()) {
-    return status;
-  }
+  GOOGLESQL_ASSIGN_OR_RETURN(std::string vector_bytes,
+                   MakeVectorValueBytes(VectorEncodingId::FLOAT32,
+                                        MakeFloat32VectorPayload(elements)));
   return Value::Declarative(output_type()->AsDeclarativeType(),
-                            Value::Bytes(value_proto.SerializeAsString()));
+                            Value::Bytes(std::move(vector_bytes)));
 }
 
 absl::StatusOr<Value> DecodeVectorFunction::Eval(
@@ -13751,7 +13857,7 @@ absl::StatusOr<Value> DecodeVectorFunction::Eval(
   return DecodeFloat32Vector(args[0]);
 }
 
-absl::StatusOr<Value> VectorFloat32DimensionCountFunction::Eval(
+absl::StatusOr<Value> VectorDimensionCountFunction::Eval(
     absl::Span<const TupleData* const> params, absl::Span<const Value> args,
     EvaluationContext* context) const {
   GOOGLESQL_RET_CHECK_EQ(args.size(), 1);
@@ -13759,8 +13865,26 @@ absl::StatusOr<Value> VectorFloat32DimensionCountFunction::Eval(
     return Value::Null(output_type());
   }
 
+  GOOGLESQL_ASSIGN_OR_RETURN(VectorEncodingId::Id encoding, GetVectorEncoding(args[0]));
+  if (encoding != VectorEncodingId::FLOAT32) {
+    return absl::UnimplementedError(
+        absl::StrCat("VECTOR_DIMENSION_COUNT is not implemented for encoding: ",
+                     VectorEncodingId_Id_Name(encoding)));
+  }
+
   GOOGLESQL_ASSIGN_OR_RETURN(Value decoded_array, DecodeFloat32Vector(args[0]));
   return Value::Int64(decoded_array.num_elements());
+}
+
+absl::StatusOr<Value> VectorEncodingFunction::Eval(
+    absl::Span<const TupleData* const> params, absl::Span<const Value> args,
+    EvaluationContext* context) const {
+  GOOGLESQL_RET_CHECK_EQ(args.size(), 1);
+  if (HasNulls(args)) {
+    return Value::Null(output_type());
+  }
+  GOOGLESQL_ASSIGN_OR_RETURN(VectorEncodingId::Id encoding, GetVectorEncoding(args[0]));
+  return Value::StringValue(std::string(VectorEncodingId_Id_Name(encoding)));
 }
 
 static absl::Status JaroWinklerSimilarityResultConverter(
@@ -14445,6 +14569,23 @@ absl::StatusOr<std::unique_ptr<EvaluatorTableIterator>> HopTVF::CreateEvaluator(
       std::move(included_columns), std::move(*timestamp_column_path),
       std::move(window_size), std::move(step_size), origin,
       std::move(type_factory));
+}
+
+absl::StatusOr<std::unique_ptr<EvaluatorTableIterator>>
+LookupTVF::CreateEvaluator(
+    std::vector<TableValuedFunction::TvfEvaluatorArg> args,
+    std::shared_ptr<FunctionSignature> function_call_signature,
+    std::shared_ptr<const TVFSignature> tvf_signature,
+    EvaluationContext* context) {
+  GOOGLESQL_RET_CHECK(tvf_signature != nullptr);
+  const Table* table = tvf_signature->result_table_schema();
+  GOOGLESQL_RET_CHECK(table != nullptr);
+  std::vector<int> col_idx;
+  col_idx.reserve(table->NumColumns());
+  for (int i = 0; i < table->NumColumns(); ++i) {
+    col_idx.push_back(i);
+  }
+  return table->CreateEvaluatorTableIterator(col_idx);
 }
 
 absl::StatusOr<Value> AiIfFunction::Eval(

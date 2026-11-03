@@ -9262,7 +9262,7 @@ The following SQL to JSON encodings are supported:
           Anonymous fields are represented with <code>""</code>.
         </p>
         <p>
-          Invalid UTF-8 field names might result in unparseable JSON. String
+          Invalid UTF-8 field names might result in unparsable JSON. String
           values are escaped according to the JSON standard. Specifically,
           <code>"</code>, <code>\,</code> and the control characters from
           <code>U+0000</code> to <code>U+001F</code> are escaped.
@@ -9295,7 +9295,7 @@ The following SQL to JSON encodings are supported:
         </p>
         <ul>
           <li>
-            Field names that aren't valid UTF-8 might result in unparseable
+            Field names that aren't valid UTF-8 might result in unparsable
             JSON.
           </li>
           <li>Field annotations are ignored.</li>
@@ -9337,7 +9337,7 @@ The following SQL to JSON encodings are supported:
             different queries.
           </li>
           <li>
-            Field names that aren't valid UTF-8 might result in unparseable
+            Field names that aren't valid UTF-8 might result in unparsable
             JSON.
           </li>
           <li>

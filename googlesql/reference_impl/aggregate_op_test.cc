@@ -436,6 +436,21 @@ OtherAggregateFunctionTemplates() {
        kNonDet},
       {FunctionKind::kStringAgg, {Bytes("1"), NullBytes()}, {Bytes("1")}},
       {FunctionKind::kStringAgg, {Bytes("1")}, {Bytes("1")}},
+
+      // SQL NULL VARIANT values are ignored by functions that ignore NULLs.
+      // A Variant null is a valid primitive value.
+      {FunctionKind::kCount,
+       {Variant(Int64(1)), Variant(NullInt64()), NullVariant(), VariantNull()},
+       Int64(2)},
+      {FunctionKind::kCount,
+       {Variant(NullInt64()), Variant(NullString()), NullVariant()},
+       Int64(0)},
+      // ANY_VALUE and ARRAY_AGG respect NULLs, so SQL NULL VARIANT values are
+      // retained.
+      {FunctionKind::kAnyValue, {Variant(NullInt64())}, Variant(NullInt64())},
+      {FunctionKind::kArrayAgg,
+       {Variant(Int64(1)), Variant(NullInt64()), NullVariant()},
+       Array({Variant(Int64(1)), Variant(NullInt64()), NullVariant()})},
   };
 }
 
@@ -1707,6 +1722,113 @@ TEST(EvalAggTest, ArrayAggWithLimitDeterministic) {
       StructArray({"key", "val"}, {{Int64(0), Array({Int64(-2), Int64(-2)})}});
   EXPECT_THAT(expected, EqualsValue(reference));
   EXPECT_TRUE(context.IsDeterministicOutput());
+}
+
+// Aggregates that ignore NULLs (via IgnoresNullAccumulator) must ignore SQL
+// NULL VARIANT values, but not Variant nulls.
+TEST(EvalAggTest, IgnoresNullsWithVariantSqlNulls) {
+  VariableId v("v"), i("i"), c("c"), c2("c2"), n("n");
+  const Type* variant_type = types::VariantType();
+  const ArrayType* variant_array_type = MakeArrayType(variant_type);
+  const StructType* input_struct_type =
+      MakeStructType({{"", variant_type}, {"", Int64Type()}});
+
+  // c := COUNT(v)
+  std::vector<std::unique_ptr<ValueExpr>> args_for_c;
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(auto deref_v_for_c, DerefExpr::Create(v, variant_type));
+  args_for_c.push_back(std::move(deref_v_for_c));
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+      auto agg_c,
+      AggregateArg::Create(c,
+                           std::make_unique<BuiltinAggregateFunction>(
+                               FunctionKind::kCount, Int64Type(),
+                               /*num_input_fields=*/1, variant_type),
+                           std::move(args_for_c)));
+
+  // c2 := COUNT(v, i), which ignores rows where any input is NULL.
+  std::vector<std::unique_ptr<ValueExpr>> args_for_c2;
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(auto deref_v_for_c2, DerefExpr::Create(v, variant_type));
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(auto deref_i_for_c2, DerefExpr::Create(i, Int64Type()));
+  args_for_c2.push_back(std::move(deref_v_for_c2));
+  args_for_c2.push_back(std::move(deref_i_for_c2));
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+      auto agg_c2,
+      AggregateArg::Create(c2,
+                           std::make_unique<BuiltinAggregateFunction>(
+                               FunctionKind::kCount, Int64Type(),
+                               /*num_input_fields=*/2, input_struct_type),
+                           std::move(args_for_c2)));
+
+  // n := ARRAY_AGG(v IGNORE NULLS)
+  std::vector<std::unique_ptr<ValueExpr>> args_for_n;
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(auto deref_v_for_n, DerefExpr::Create(v, variant_type));
+  args_for_n.push_back(std::move(deref_v_for_n));
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+      auto agg_n,
+      AggregateArg::Create(
+          n,
+          std::make_unique<BuiltinAggregateFunction>(
+              FunctionKind::kArrayAgg, variant_array_type,
+              /*num_input_fields=*/1, variant_type, /*ignores_null=*/true),
+          std::move(args_for_n)));
+
+  std::vector<std::unique_ptr<AggregateArg>> aggregators;
+  aggregators.push_back(std::move(agg_c));
+  aggregators.push_back(std::move(agg_c2));
+  aggregators.push_back(std::move(agg_n));
+
+  const Value variant_null = VariantNull();
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+      auto aggregate_op,
+      AggregateOp::Create(
+          /*keys=*/{}, std::move(aggregators),
+          absl::WrapUnique(new TestRelationalOp(
+              {v, i},
+              CreateTestTupleDatas({{Variant(Int64(1)), Int64(1)},
+                                    {Variant(NullInt64()), Int64(2)},
+                                    {Variant(NullString()), Int64(3)},
+                                    {NullVariant(), Int64(4)},
+                                    {variant_null, Int64(5)},
+                                    {Variant(Int64(6)), NullInt64()}}),
+              /*preserves_order=*/true)),
+          /*grouping_sets=*/{}));
+
+  auto struct_type = MakeStructType(
+      {{"c", Int64Type()}, {"c2", Int64Type()}, {"n", variant_array_type}});
+  auto array_type = MakeArrayType(struct_type);
+
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(auto deref_c, DerefExpr::Create(c, Int64Type()));
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(auto deref_c2, DerefExpr::Create(c2, Int64Type()));
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(auto deref_n, DerefExpr::Create(n, variant_array_type));
+  std::vector<std::unique_ptr<ExprArg>> args_for_struct;
+  args_for_struct.push_back(std::make_unique<ExprArg>(std::move(deref_c)));
+  args_for_struct.push_back(std::make_unique<ExprArg>(std::move(deref_c2)));
+  args_for_struct.push_back(std::make_unique<ExprArg>(std::move(deref_n)));
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+      auto struct_expr,
+      NewStructExpr::Create(struct_type, std::move(args_for_struct)));
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(auto nest_op,
+                       ArrayNestExpr::Create(array_type, std::move(struct_expr),
+                                             std::move(aggregate_op),
+                                             /*is_with_table=*/false));
+  GOOGLESQL_ASSERT_OK(nest_op->SetSchemasForEvaluation(EmptyParamsSchemas()));
+
+  EvaluationContext context((EvaluationOptions()));
+  TupleSlot slot;
+  absl::Status status;
+  ASSERT_TRUE(nest_op->EvalSimple(EmptyParams(), &context, &slot, &status))
+      << status;
+  ASSERT_EQ(slot.value().num_elements(), 1);
+  const Value& row = slot.value().element(0);
+  // Only Variant(1), VariantNull() and Variant(6) are counted.
+  EXPECT_EQ(row.field(0), Int64(3));
+  // Variant(6) is excluded as well because `i` is NULL for that row.
+  EXPECT_EQ(row.field(1), Int64(2));
+  // ARRAY_AGG(v IGNORE NULLS) keeps the same values as COUNT(v).
+  ASSERT_EQ(row.field(2).num_elements(), 3);
+  EXPECT_THAT(row.field(2).elements(),
+              ::testing::UnorderedElementsAre(Variant(Int64(1)), variant_null,
+                                              Variant(Int64(6))));
 }
 
 TEST(EvalAggTest, GroupingSetTest) {

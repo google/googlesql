@@ -42,7 +42,7 @@ from googlesql.parser.generator_utils import UpperCamelCase
 
 # You can use `tag_id=GetTempTagId()` until doing the final submit.
 # That will avoid merge conflicts when syncing in other changes.
-NEXT_NODE_TAG_ID = 605
+NEXT_NODE_TAG_ID = 608
 
 
 def GetTempTagId():
@@ -928,7 +928,7 @@ class TreeGenerator:
 
 def main(argv):
   if len(argv) != 3:
-    raise Exception(
+    raise ValueError(
         'Usage: %s <output/path/to/parse_tree_generated.h>'
         ' <input/path/to/parse_tree_generated.h.template>'
     )
@@ -1282,7 +1282,9 @@ def main(argv):
               'ASTTVF',
               tag_id=2,
               field_loader=FieldLoaderMethod.REQUIRED,
-          )
+          ),
+          Field('partition_by', 'ASTPartitionBy', tag_id=3),
+          Field('order_by', 'ASTOrderBy', tag_id=4),
       ],
   )
 
@@ -2057,8 +2059,8 @@ def main(argv):
       parent='ASTTableExpression',
       comment="""
    TablePathExpression are the TableExpressions that introduce a single scan,
-   referenced by a path expression or UNNEST, and can optionally have
-   aliases, hints, and WITH OFFSET.
+   referenced by a path expression, UNNEST or a STRING literal, and can
+   optionally have aliases, hints, and WITH OFFSET.
     """,
       fields=[
           Field(
@@ -2066,22 +2068,28 @@ def main(argv):
               'ASTPathExpression',
               tag_id=2,
               comment="""
-               Exactly one of path_exp or unnest_expr must be non-NULL.
-              """),
+               Exactly one of path_expr, unnest_expr or string_literal must
+               be non-NULL.
+              """,
+          ),
+          Field('unnest_expr', 'ASTUnnestExpression', tag_id=3),
           Field(
-              'unnest_expr',
-              'ASTUnnestExpression',
-              tag_id=3),
-          Field(
-              'hint',
-              'ASTHint',
-              tag_id=4),
+              'string_literal',
+              'ASTStringLiteral',
+              tag_id=11,
+              comment="""
+              A STRING literal used as a table reference, such as
+              FROM '/path/to/file.csv'.
+              """,
+          ),
+          Field('hint', 'ASTHint', tag_id=4),
           Field(
               'alias',
               'ASTAlias',
               tag_id=5,
               # Existing API getter specifies "override"
-              gen_setters_and_getters=False),
+              gen_setters_and_getters=False,
+          ),
           Field(
               'with_offset',
               'ASTWithOffset',
@@ -2090,12 +2098,12 @@ def main(argv):
               Present if the scan had WITH OFFSET.
               """,
           ),
-          Field('for_system_time', 'ASTForSystemTime', tag_id=9),
+          Field('for_version_clause', 'ASTForVersionClause', tag_id=9),
       ],
       extra_public_defs="""
   const ASTAlias* alias() const override { return alias_; }
-      """
-    )
+      """,
+  )
 
   gen.AddNode(
       name='ASTGroupRows',
@@ -5517,7 +5525,7 @@ def main(argv):
       ])
 
   gen.AddNode(
-      name='ASTForSystemTime',
+      name='ASTForVersionClause',
       tag_id=134,
       parent='ASTNode',
       fields=[
@@ -6640,8 +6648,8 @@ def main(argv):
               field_loader=FieldLoaderMethod.REQUIRED,
               visibility=Visibility.PROTECTED),
           Field(
-              'for_system_time',
-              'ASTForSystemTime',
+              'for_version_clause',
+              'ASTForVersionClause',
               tag_id=3,
               visibility=Visibility.PROTECTED),
           Field(
@@ -7484,8 +7492,8 @@ def main(argv):
               field_loader=FieldLoaderMethod.REQUIRED,
           ),
           Field('hint', 'ASTHint', tag_id=8),
-          Field('alias', 'ASTAlias', tag_id=3),
           Field('temporal_at', 'ASTTemporalAt', tag_id=9),
+          Field('alias', 'ASTAlias', tag_id=3),
           Field('timestamp', 'ASTWithTimestamp', tag_id=10),
           Field('offset', 'ASTWithOffset', tag_id=4),
           Field(
@@ -7737,6 +7745,90 @@ def main(argv):
       ])
 
   gen.AddNode(
+      name='ASTInsertColumnUsingClause',
+      tag_id=607,
+      parent='ASTNode',
+      comment="""
+      Represents a USING clause on a target column in an INSERT statement, e.g.:
+        USING FUNCTION <function_name> [DEFAULT <default_expr>]
+        USING <lambda> [DEFAULT <default_expr>]
+      Exactly one of `function_name` or `lambda` is set.
+      """,
+      fields=[
+          Field(
+              'function_name',
+              'ASTPathExpression',
+              tag_id=2,
+              field_loader=FieldLoaderMethod.OPTIONAL,
+          ),
+          Field(
+              'lambda',
+              'ASTLambda',
+              tag_id=3,
+              field_loader=FieldLoaderMethod.OPTIONAL,
+          ),
+          Field(
+              'default_expr',
+              'ASTExpression',
+              tag_id=4,
+              field_loader=FieldLoaderMethod.OPTIONAL_EXPRESSION,
+          ),
+      ],
+  )
+
+  gen.AddNode(
+      name='ASTInsertColumnItem',
+      tag_id=605,
+      parent='ASTNode',
+      comment="""
+      Represents a single item in an ASTInsertColumnList, consisting of a
+      column identifier and an optional USING clause.
+      """,
+      fields=[
+          Field(
+              'identifier',
+              'ASTIdentifier',
+              tag_id=2,
+              field_loader=FieldLoaderMethod.REQUIRED,
+          ),
+          Field(
+              'using_clause',
+              'ASTInsertColumnUsingClause',
+              tag_id=3,
+              field_loader=FieldLoaderMethod.OPTIONAL,
+          ),
+      ],
+  )
+
+  gen.AddNode(
+      name='ASTInsertColumnList',
+      tag_id=606,
+      parent='ASTNode',
+      comment="""
+      Represents the target column list in an INSERT statement.
+      """,
+      fields=[
+          Field(
+              'column_items',
+              'ASTInsertColumnItem',
+              tag_id=2,
+              field_loader=FieldLoaderMethod.REST_AS_REPEATED,
+          ),
+      ],
+      extra_public_defs="""
+  ABSL_DEPRECATED("Use column_items() and get identifier() from each item")
+  std::vector<const ASTIdentifier*> identifiers() const {
+    std::vector<const ASTIdentifier*> result;
+    result.reserve(column_items_.size());
+    for (const ASTInsertColumnItem* item : column_items_) {
+      result.push_back(item->identifier());
+    }
+    return result;
+  }
+      """,
+  )
+
+  gen.AddNode(
       name='ASTInsertStatement',
       tag_id=209,
       parent='ASTStatement',
@@ -7756,7 +7848,7 @@ def main(argv):
           Field('hint', 'ASTHint', tag_id=10),
           Field('temporal_at', 'ASTTemporalAt', tag_id=12),
           Field('timestamp', 'ASTWithTimestamp', tag_id=13),
-          Field('column_list', 'ASTColumnList', tag_id=3),
+          Field('column_list', 'ASTInsertColumnList', tag_id=3),
           Field(
               'rows',
               'ASTInsertValuesRowList',
@@ -7872,8 +7964,8 @@ def main(argv):
               field_loader=FieldLoaderMethod.REQUIRED,
           ),
           Field('hint', 'ASTHint', tag_id=10),
-          Field('alias', 'ASTAlias', tag_id=3),
           Field('temporal_at', 'ASTTemporalAt', tag_id=11),
+          Field('alias', 'ASTAlias', tag_id=3),
           Field('timestamp', 'ASTWithTimestamp', tag_id=12),
           Field('offset', 'ASTWithOffset', tag_id=4),
           Field(
@@ -11279,6 +11371,31 @@ def main(argv):
       ])
 
   gen.AddNode(
+      name='ASTGraphElementTableList',
+      tag_id=374,
+      parent='ASTNode',
+      fields=[
+          Field(
+              'element_tables',
+              'ASTGraphElementTable',
+              tag_id=2,
+              field_loader=FieldLoaderMethod.REST_AS_REPEATED,
+              comment="""
+              GraphElementTable definitions.
+              """,
+          ),
+          Field(
+              'is_edge_table_list',
+              SCALAR_BOOL,
+              tag_id=3,
+              comment="""
+              True if this list represents an EDGE TABLES clause.
+              """,
+          ),
+      ],
+  )
+
+  gen.AddNode(
       name='ASTCreatePropertyGraphStatement',
       tag_id=373,
       parent='ASTCreateStatement',
@@ -11290,15 +11407,17 @@ def main(argv):
               field_loader=FieldLoaderMethod.REQUIRED,
               comment="""
               Path expression for the target property graph.
-              """),
+              """,
+          ),
           Field(
               'node_table_list',
               'ASTGraphElementTableList',
               tag_id=3,
-              field_loader=FieldLoaderMethod.REQUIRED,
+              field_loader=FieldLoaderMethod.OPTIONAL,
               comment="""
               GraphNodeTable definitions.
-              """),
+              """,
+          ),
           Field(
               'edge_table_list',
               'ASTGraphElementTableList',
@@ -11306,7 +11425,8 @@ def main(argv):
               field_loader=FieldLoaderMethod.OPTIONAL,
               comment="""
               GraphEdgeTable definitions.
-              """),
+              """,
+          ),
           Field(
               'options_list',
               'ASTOptionsList',
@@ -11314,11 +11434,39 @@ def main(argv):
               field_loader=FieldLoaderMethod.OPTIONAL,
               comment="""
               Placeholder for now. Schema options support is out of scope of MVP.
-              """),
+              """,
+          ),
+          Field(
+              'with_connection_clause',
+              'ASTWithConnectionClause',
+              tag_id=6,
+              field_loader=FieldLoaderMethod.OPTIONAL,
+              comment="""
+              Optional connection clause for external property graph sources.
+              """,
+          ),
       ],
+      gen_init_fields=False,
       extra_public_defs="""
   const ASTPathExpression* GetDdlTarget() const override { return name_; }
-      """)
+      """,
+      extra_private_defs="""
+  absl::Status InitFields() final {
+    FieldLoader fl(this);
+    GOOGLESQL_RETURN_IF_ERROR(fl.AddRequired(&name_));
+    fl.AddOptional(&node_table_list_, AST_GRAPH_ELEMENT_TABLE_LIST);
+    fl.AddOptional(&edge_table_list_, AST_GRAPH_ELEMENT_TABLE_LIST);
+    if (node_table_list_ != nullptr && node_table_list_->is_edge_table_list() &&
+        edge_table_list_ == nullptr) {
+      edge_table_list_ = node_table_list_;
+      node_table_list_ = nullptr;
+    }
+    fl.AddOptional(&with_connection_clause_, AST_WITH_CONNECTION_CLAUSE);
+    fl.AddOptional(&options_list_, AST_OPTIONS_LIST);
+    return fl.Finalize();
+  }
+      """,
+  )
 
   gen.AddNode(
       name='ASTCreatePropertyGraphTypeStatement',
@@ -11553,21 +11701,6 @@ def main(argv):
           ),
       ],
   )
-
-  gen.AddNode(
-      name='ASTGraphElementTableList',
-      tag_id=374,
-      parent='ASTNode',
-      fields=[
-          Field(
-              'element_tables',
-              'ASTGraphElementTable',
-              tag_id=2,
-              field_loader=FieldLoaderMethod.REST_AS_REPEATED,
-              comment="""
-              GraphElementTable definitions.
-              """),
-      ])
 
   gen.AddNode(
       name='ASTGraphElementTable',
@@ -13317,7 +13450,7 @@ def main(argv):
               field_loader=FieldLoaderMethod.REQUIRED,
           ),
           Field('is_if_not_exists', SCALAR_BOOL, tag_id=4),
-          Field('for_system_time', 'ASTForSystemTime', tag_id=5),
+          Field('for_version_clause', 'ASTForVersionClause', tag_id=5),
           Field('options_list', 'ASTOptionsList', tag_id=6),
       ],
       extra_public_defs="""
@@ -13792,9 +13925,15 @@ def main(argv):
       tag_id=574,
       parent='ASTNode',
       comment="""
-      An AT(...) clause in a DML statement.
+      An AT(version_property => expression) clause in a DML statement.
       """,
       fields=[
+          Field(
+              'version_property',
+              'ASTIdentifier',
+              tag_id=3,
+              field_loader=FieldLoaderMethod.REQUIRED,
+          ),
           Field(
               'expression',
               'ASTExpression',

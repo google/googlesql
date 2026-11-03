@@ -1104,13 +1104,6 @@ Algebrizer::AlgebrizeBuiltinFunctionCallWithAlgebrizedArguments(
         subquery_type);
   } else if (name == "float64") {
     kind = FunctionKind::kDouble;
-  } else if (name == "vector_dimension_count") {
-    // TODO: Add support for other encodings.
-    // Determine the specific VectorDimensionCountFunction evaluator based on
-    // the encoding. Currently, it defaults to the Float32 variant. When new
-    // encodings are added, this can be extended to inspect
-    // `function_call->argument_list()[0]->type()`.
-    kind = FunctionKind::kVectorFloat32DimensionCount;
   } else if (auto mapped_kind = kSignatureIdToKindMap.find(
                  function_call->signature().context_id());
              mapped_kind != kSignatureIdToKindMap.end()) {
@@ -2061,7 +2054,7 @@ Algebrizer::CreateTemplatedUserDefinedAggregateFn(
 
   std::vector<const ResolvedExpr*> aggregate_exprs;
   ResolvedColumnList aggregate_expr_columns;
-  for (const std::unique_ptr<const ResolvedComputedColumn>& agg_expr :
+  for (const std::unique_ptr<const ResolvedComputedColumnBase>& agg_expr :
        aggregate_function_call->function_call_info()
            ->GetAs<TemplatedSQLFunctionCall>()
            ->aggregate_expression_list()) {
@@ -2131,7 +2124,7 @@ Algebrizer::CreateNonTemplatedUserDefinedAggregateFn(
                 ->aggregate_expression_list()
           : *sql_function->aggregate_expression_list();
 
-  for (const std::unique_ptr<const ResolvedComputedColumn>& agg_expr :
+  for (const std::unique_ptr<const ResolvedComputedColumnBase>& agg_expr :
        agg_expr_list) {
     aggregate_exprs.push_back(agg_expr->expr());
     aggregate_expr_columns.push_back(agg_expr->column());
@@ -5901,6 +5894,19 @@ absl::StatusOr<std::unique_ptr<RelationalOp>> Algebrizer::AlgebrizeAlignScan(
     GOOGLESQL_ASSIGN_OR_RETURN(std::unique_ptr<ValueExpr> expr,
                      AlgebrizeExpression(col_ref.get()));
     auto key_arg = std::make_unique<KeyArg>(var, std::move(expr));
+    if (CollationAnnotation::ExistsIn(col_ref->type_annotation_map())) {
+      GOOGLESQL_ASSIGN_OR_RETURN(ResolvedCollation collation,
+                       ResolvedCollation::MakeResolvedCollation(
+                           *col_ref->type_annotation_map()));
+      GOOGLESQL_ASSIGN_OR_RETURN(std::unique_ptr<const GoogleSqlCollator> collator,
+                       GetCollatorFromResolvedCollation(collation));
+      if (collator != nullptr) {
+        GOOGLESQL_ASSIGN_OR_RETURN(
+            const Type* collation_key_type,
+            CreateCollationKeyType(col_ref->type(), collation, type_factory_));
+        key_arg->set_collation({std::move(collator), collation_key_type});
+      }
+    }
     partition_keys.push_back(std::move(key_arg));
   }
 

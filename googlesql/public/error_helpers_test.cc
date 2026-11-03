@@ -204,7 +204,6 @@ TEST(ErrorHelpersTest, ErrorLocationHelpers) {
           .AttachPayload(extra_extension)
       << "Message3";
   status3 = ConvertInternalErrorPayloadsToExternal(status3, "123\n456\n78901");
-  std::string status3_str = internal::StatusToString(status3);
 
   EXPECT_THAT(
       internal::StatusToString(status3),
@@ -860,7 +859,6 @@ TEST(ErrorHelpersTest, BasicErrorSourcePayloadTests) {
   source_error_location.set_filename("source_file");
   source_error_location.set_line(1);
   source_error_location.set_column(7);
-  const std::string source_location_string = "[at source_file:1:7]";
 
   // Basic tests for a Status that includes an ErrorSource payload.
   ErrorSource error_source;
@@ -898,7 +896,6 @@ TEST(ErrorHelpersTest, UpdateErrorFromErrorSourcePayloadTests) {
       "1234567890123456789_2\n"
       "1234567890123456789_3\n"
       "1234567890123456789_4\n";
-  const std::string source_dummy_query = "abcdefghijklmnopqrs";
 
   std::vector<UpdateErrorFromPayloadTestCase> test_cases;
 
@@ -1179,7 +1176,6 @@ TEST(ErrorHelpersTest, UpdateErrorFromNestedErrorSourcePayloadTests) {
   absl::Status status =
       MakeSqlError().AttachPayload(location).AttachPayload(extra_extension)
       << "ErrorMessage";
-  std::string error_str = FormatError(status);
   EXPECT_THAT(
       FormatError(status),
       AllOf(
@@ -1234,14 +1230,6 @@ nested_source_error_message [at nested_filename:1:5]
 
 TEST(ErrorHelpersTest, UpdateErrorLocationPayloadWithFilenameIfNotPresentTests)
 {
-  const std::string dummy_query =
-      "1234567890123456789_1\n"
-      "1234567890123456789_2\n"
-      "1234567890123456789_3\n"
-      "1234567890123456789_4\n";
-  const std::string caret_string = "abcdefghijklmnopqrs\n  ^";
-  const std::string nested_caret_string = "123456\n    ^";
-
   ErrorLocation error_location;
   error_location.set_filename("filename");
   error_location.set_line(1);

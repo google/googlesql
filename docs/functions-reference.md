@@ -176,7 +176,7 @@ doesn't return an error, `SAFE.` has no effect on the output.
    division operation, use [SAFE_DIVIDE][link-to-SAFE_DIVIDE].
 + Some operators, such as `IN`, `ARRAY`, and `UNNEST`, resemble functions but
   don't support the `SAFE.` prefix.
-+ The `CAST` and `EXTRACT` functions don't support the `SAFE.`
++ The `CAST`, `EXTRACT`, and `SECURE_CONTEXT` functions don't support the `SAFE.`
   prefix. To prevent errors from casting, use
   [SAFE_CAST][link-to-SAFE_CAST].
 

@@ -36,7 +36,6 @@
 #include "googlesql/public/language_options.h"
 #include "googlesql/public/table_valued_function.h"
 #include "googlesql/public/type.h"
-#include "absl/base/nullability.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -456,15 +455,6 @@ std::string CheckHasIntervalTypeArgument(
 // Returns true if FN_CONCAT_STRING function can coerce argument of given type
 // to STRING.
 bool CanStringConcatCoerceFrom(const googlesql::Type* arg_type);
-
-// Traverses `type` and its component types, returning the first type that
-// is not supported in JSON conversion functions. If `type` is fully supported
-// then nullptr is returned.
-// TODO: b/483763571 - Expand this function to cover types more exhaustively.
-// Desired behavior for extended types and existing unsupported types will need
-// to be considered.
-const Type* /*absl_nullable*/ GetUnsupportedTypeForJsonConversion(
-    const Type* /*absl_nonnull*/ type);
 
 // Compute the result type for TOP_COUNT and TOP_SUM.
 // The output type is

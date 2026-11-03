@@ -130,6 +130,7 @@ class AnnotatedTypeAndSignatureArgumentKindVisitor {
       case ARG_KIND_EXPR_PROTO_ANY:
       case ARG_KIND_EXPR_ENUM_ANY:
       case ARG_KIND_EXPR_STRING_ANY:
+      case ARG_KIND_EXPR_ROW_ANY:
 
       case ARG_KIND_EXPR_ANY_1:
       case ARG_KIND_EXPR_ANY_2:
@@ -191,10 +192,11 @@ class AnnotatedTypeAndSignatureArgumentKindVisitor {
   }
 };
 
-// Returns true if the given argument kind is related to other arguments,
-// for example, ANY_1 relates to other arguments of the same kind, as well as
-// ARRAY_ANY_1 and MAP_ANY_1_2. By contrast, ARBITRARY and FIXED are not
-// related to other arguments.
+// Returns true for argument kinds which are related to other argument kinds, or
+// to themselves. For example, ANY_1 relates to ARRAY_ANY_1 and MAP_ANY_1_2, and
+// STRUCT_ANY relates to itself (all such args need to be the same). Returns
+// false for argument kinds which are not related to anything (e.g. ARBITRARY
+// and FIXED).
 // REQUIRES: the kind must be for scalar arguments. LAMBDA, RELATION, MODEL, etc
 // should never be passed to this function.
 absl::StatusOr<bool> IsRelatedToOtherArguments(SignatureArgumentKind kind);

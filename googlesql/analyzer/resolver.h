@@ -150,6 +150,25 @@ struct ResolveQueryOptions {
   bool allow_terminal = false;
 };
 
+// The result of resolving the IN clause of an UNPIVOT clause.
+// See Resolver::ResolveUnpivotInClause.
+struct ResolvedUnpivotInClause {
+  // One ResolvedUnpivotArg per column group, in IN clause order.
+  std::vector<std::unique_ptr<const ResolvedUnpivotArg>> resolved_in_items;
+  // One label literal per column group, parallel to `resolved_in_items`.
+  std::vector<std::unique_ptr<const ResolvedLiteral>> resolved_label_list;
+  // The type shared by all literals in `resolved_label_list` (STRING or INT64),
+  // which is also the type of the UNPIVOT output name column.
+  const Type* label_type = nullptr;
+  // Annotated types of the columns in the first column group. All other
+  // column groups match these types, so they also define the types of the
+  // UNPIVOT output value columns.
+  std::vector<AnnotatedType> value_column_types;
+  // Input scan columns referenced anywhere in the IN clause. These are not
+  // projected through to the UNPIVOT output.
+  absl::flat_hash_set<ResolvedColumn> in_clause_input_columns;
+};
+
 // This class contains most of the implementation of GoogleSQL analysis.
 // The functions here generally traverse the AST nodes recursively,
 // constructing and returning the Resolved AST nodes bottom-up.  For
@@ -983,7 +1002,7 @@ class Resolver {
   // ResolvedColumns, which then propagate along the tree with
   // ResolvedColumnRef always having full fidelity.
   //
-  // TODO: b/566856581 - Do the same for ResolvedArgumentRef.
+  // TODO: b/576322884 - Do the same for ResolvedArgumentRef.
   absl::Status InitializeAnnotationsForInputColumn(
       const ASTNode* error_node, AnnotatedType* annotated_type);
 
@@ -3511,11 +3530,18 @@ class Resolver {
                                    const NameScope* from_clause_scope,
                                    QueryResolutionInfo* query_resolution_info);
 
+  // Helper class used to implement ResolveGroupingItemExpression(), which
+  // resolves a single GROUP BY item (an expression, SELECT-list alias,
+  // ordinal, or unpack expression like `**cols`) into a post-GROUP BY column.
+  // The full definition lives in resolver_query.cc; it is declared here as a
+  // nested class so it can access Resolver's private members.
+  class GroupingItemResolver;
+
   // Resolves a single grouping expression to column. If the expression belongs
-  // to a grouping set, then the resolved column will be appended to the
-  // grouping_set_item which is stored in query_resolution_info eventually. If
-  // it's not from the grouping set, grouping_set_item will have the default
-  // value nullptr.
+  // to a grouping set, then the resolved column will be appended to
+  // `column_list` which is stored in `query_resolution_info` eventually. If
+  // it's not from a grouping set, `column_list` will have the default value
+  // nullptr.
   absl::Status ResolveGroupingItemExpression(
       const ASTExpression* ast_group_by_expr, const ASTAlias* ast_alias,
       const ASTGroupingItemOrder* ast_grouping_item_order,
@@ -4258,12 +4284,20 @@ class Resolver {
                           std::unique_ptr<const ResolvedScan>* output,
                           std::shared_ptr<const NameList>* output_name_list);
 
-  absl::StatusOr<ResolvedTVFArg> ResolveTVFArg(
+  // Resolves `ast_tvf_arg` against `function_argument` into
+  // `resolved_tvf_arg`. Returns false and populates `signature_match_result`
+  // and `mismatch_status` if the argument cannot match `function_argument`.
+  // Returns a non-OK status for fatal errors that prevent matching any
+  // signature.
+  absl::StatusOr<bool> ResolveTVFArg(
       const ASTTVFArgument* ast_tvf_arg, const NameScope* external_scope,
       const FunctionArgumentType* function_argument,
       const TableValuedFunction* tvf_catalog_entry, int sig_idx,
       absl::flat_hash_map<int, std::unique_ptr<const NameScope>>*
-          sig_idx_to_name_scope_map);
+          sig_idx_to_name_scope_map,
+      ResolvedTVFArg& resolved_tvf_arg,
+      SignatureMatchResult& signature_match_result,
+      absl::Status& mismatch_status);
 
   absl::StatusOr<InputArgumentType> GetTVFArgType(
       const ResolvedTVFArg& resolved_tvf_arg);
@@ -4728,7 +4762,7 @@ class Resolver {
       std::unique_ptr<const ResolvedDescriptor>* resolved_descriptor);
 
   absl::Status ResolveForSystemTimeExpr(
-      const ASTForSystemTime* for_system_time,
+      const ASTForVersionClause* for_version_clause,
       std::unique_ptr<const ResolvedExpr>* resolved);
 
   // Make the ResolvedTableScan and NameList for scanning `table`.
@@ -4746,7 +4780,7 @@ class Resolver {
   absl::Status MakeScanForTable(
       const ASTNode* ast_location, const Table* table, IdString alias,
       bool has_explicit_alias, const ASTNode* alias_location,
-      const ASTForSystemTime* for_system_time,
+      const ASTForVersionClause* for_version_clause,
       absl::string_view read_as_row_type_error_kind,
       std::unique_ptr<ResolvedTableScan>* output_table_scan,
       NameListPtr* output_name_list,
@@ -4793,7 +4827,7 @@ class Resolver {
   absl::Status ResolvePathExpressionAsTableScan(
       const ASTPathExpression* path_expr, IdString alias,
       bool has_explicit_alias, const ASTNode* alias_location,
-      const ASTHint* hints, const ASTForSystemTime* for_system_time,
+      const ASTHint* hints, const ASTForVersionClause* for_version_clause,
       const NameScope* scope, const std::string& read_as_row_type_error_kind,
       std::unique_ptr<PathExpressionSpan>* remaining_names,
       std::unique_ptr<const ResolvedTableScan>* output,
@@ -6271,10 +6305,9 @@ class Resolver {
       std::unique_ptr<const ResolvedScan>* output_scan,
       std::shared_ptr<const NameList>* output_name_list);
 
-  // Resolves PARTITION BY and ORDER BY clauses on a parenthesized TABLE clause
-  // argument to a TVF.
-  absl::Status ResolveTableClausePartitionAndOrder(
-      const ASTTableClause* ast_table_clause, ResolvedTVFArg& resolved_tvf_arg);
+  // Resolves PARTITION BY and ORDER BY clauses on a table argument to a TVF
+  // (from a parenthesized TABLE clause or pipe CALL).
+  absl::Status ResolveTVFArgPartitionAndOrder(ResolvedTVFArg& resolved_tvf_arg);
 
   // Resolve <options_list> and add the options onto <resolved_options>.
   // Requires valid anonymization or differential_privacy option names and types
@@ -6631,7 +6664,13 @@ class Resolver {
   // `named_arguments` and `signature_match_result`.
   // The `arg_locations` and `resolved_tvf_args` reflect and match 1:1 to the
   // concrete function call arguments in the `result_signature`.
-  absl::Status MatchTVFSignature(
+  //
+  // If the signature does not match the input arguments, returns `false` and
+  // populates `signature_match_result` and `mismatch_status`. Returns a non-OK
+  // status for fatal errors that prevent matching any signature (e.g. language
+  // feature used in arguments when it's not enabled, duplicate named arguments,
+  // input argument is an invalid expression etc).
+  absl::StatusOr<bool> MatchTVFSignature(
       const ASTTVF* /*absl_nonnull*/ ast_tvf,
       const TableValuedFunction* /*absl_nonnull*/ tvf_catalog_entry,
       int signature_idx, const NameScope* /*absl_nonnull*/ external_scope,
@@ -6641,7 +6680,8 @@ class Resolver {
       std::vector<const ASTNode*>& arg_locations,
       std::vector<ResolvedTVFArg>& resolved_tvf_args,
       std::vector<NamedArgumentInfo>& named_arguments,
-      SignatureMatchResult& signature_match_result);
+      SignatureMatchResult& signature_match_result,
+      absl::Status& mismatch_status);
 
   // Prepares a list of TVF input arguments and a result signature. This
   // includes adding necessary casts and coercions, and wrapping the resolved
@@ -6662,13 +6702,22 @@ class Resolver {
       bool is_sql_tvf, std::vector<ResolvedTVFArg>& resolved_tvf_args,
       const std::vector<const ASTNode*>& ast_locations);
 
-  // Generates an error status about a TVF call not matching a signature.
-  // It is made to avoid redundant code in MatchTVFSignature.
-  absl::Status GenerateTVFNotMatchError(
+  // Generates an error status when a TVF call fails to match a single
+  // `signature`, attaching the error at the bad argument location if available
+  // or at `ast_tvf` otherwise.
+  absl::Status GenerateSingleTVFSignatureMismatchError(
       const ASTTVF* ast_tvf, const std::vector<const ASTNode*>& arg_locations,
       const SignatureMatchResult& signature_match_result,
-      const TableValuedFunction& tvf_catalog_entry, absl::string_view tvf_name,
-      absl::Span<const InputArgumentType> input_arg_types, int signature_idx);
+      const TableValuedFunction& tvf_catalog_entry,
+      const FunctionSignature& signature, absl::string_view tvf_name,
+      absl::Span<const InputArgumentType> input_arg_types);
+
+  // Generates an error status when a TVF call matches no signature, either
+  // listing all visible supported signatures and their `mismatch_errors` or
+  // reporting that the TVF was not found if all signatures are hidden.
+  absl::Status GenerateTVFNoMatchingSignatureError(
+      const ASTTVF* ast_tvf, const TableValuedFunction* tvf,
+      absl::Span<const std::string> mismatch_errors);
 
   // Struct to control the features to be resolved by
   // ResolveCreateTableStmtBaseProperties.
@@ -6824,26 +6873,32 @@ class Resolver {
       std::unique_ptr<const ResolvedScan>* output,
       std::shared_ptr<const NameList>* output_name_list);
 
+  // Resolves the output value column names of an UNPIVOT clause, i.e. the
+  // `a, b` in `UNPIVOT ((a, b) FOR label IN (...))`.
+  //
+  // <ast_unpivot_expr_list> is the parsed list of value column names. Each
+  // entry must be an unqualified identifier naming a new column.
+  // <value_column_types> are the annotated types of the columns in the first
+  // IN clause column group (see ResolvedUnpivotInClause::value_column_types).
+  // The number of output value columns must equal its size, and the i-th
+  // output value column gets the i-th type.
+  // On success, appends one new ResolvedColumn per output value column to
+  // <unpivot_value_columns>, in list order.
+  // <scope> is currently unused; it will be used to resolve `**` (column list
+  // unpack) in the value column list.
   absl::Status ResolveUnpivotOutputValueColumns(
       const ASTExpressionList* ast_unpivot_expr_list,
       std::vector<ResolvedColumn>* unpivot_value_columns,
-      const std::vector<AnnotatedType>& value_column_types,
+      absl::Span<const AnnotatedType> value_column_types,
       const NameScope* scope);
 
-  absl::Status ResolveUnpivotInClause(
+  // Resolves the IN clause <ast_unpivot_expr_list> of an UNPIVOT clause.
+  // <input_scan_columns> are the columns of the unpivot input scan; only these
+  // may be referenced in the IN clause.
+  absl::StatusOr<ResolvedUnpivotInClause> ResolveUnpivotInClause(
       const ASTUnpivotInItemList* ast_unpivot_expr_list,
-      std::vector<std::unique_ptr<const ResolvedUnpivotArg>>* resolved_in_items,
-      const std::vector<ResolvedColumn>* input_scan_columns,
-      absl::flat_hash_set<ResolvedColumn>* in_clause_input_columns,
-      std::vector<AnnotatedType>* value_column_types, const Type** label_type,
-      std::vector<std::unique_ptr<const ResolvedLiteral>>* resolved_label_list,
-      const ASTUnpivotClause* ast_unpivot_clause, const NameScope* scope);
-
-  // Gets either the explicitly provided label or otherwise auto-generated
-  // string label by concatenating columns names from column groups in the IN
-  // clause of UNPIVOT.
-  absl::StatusOr<Value> GetLabelForUnpivotInColumnList(
-      const ASTUnpivotInItem* in_column_list);
+      absl::Span<const ResolvedColumn> input_scan_columns,
+      const NameScope* scope);
 
   // Resolves an UNPIVOT clause.
   //  - <input_scan> represents the input to unpivot. On success, ownership is

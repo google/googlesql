@@ -886,6 +886,43 @@ static absl::Status RegisterMacros(absl::string_view source,
   return absl::OkStatus();
 }
 
+TEST_F(LookaheadTransformerTest, FusedMacroTokensPreserveProvenance) {
+  macros::MacroCatalog macro_catalog;
+  GOOGLESQL_ASSERT_OK(
+      RegisterMacros("DEFINE MACRO float_lit 1.2", options_, macro_catalog));
+  auto arena = std::make_unique<googlesql_base::UnsafeArena>(/*block_size=*/4096);
+
+  constexpr absl::string_view kInput = "SELECT $float_lit";
+  auto token_stream = std::make_unique<macros::TokenProvider>(
+      "fake_file", kInput, 0, std::nullopt, 0);
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+      auto macro_expander,
+      macros::MacroExpander::Create(token_stream.get(), &macro_catalog,
+                                    arena.get(), macros::MacroExpanderOptions{},
+                                    /*parent_location=*/nullptr));
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+      auto lexer, LookaheadTransformer::Create(ParserMode::kStatement, options_,
+                                               macro_expander.get()));
+  LookaheadTransformer& tokenizer = *lexer;
+
+  absl::string_view text;
+  Location location;
+  EXPECT_EQ(tokenizer.GetNextToken(&text, &location), Token::KW_SELECT);
+  EXPECT_EQ(tokenizer.GetNextToken(&text, &location),
+            Token::FLOATING_POINT_LITERAL);
+  EXPECT_EQ(text, "1.2");
+  EXPECT_EQ(location,
+            Location(ParseLocationPoint::FromByteOffset("fake_file", 7),
+                     ParseLocationPoint::FromByteOffset("fake_file", 17)));
+  ASSERT_TRUE(TokenTestThief::GetCurrentToken(tokenizer).has_value());
+  EXPECT_NE(TokenTestThief::GetCurrentToken(tokenizer)->token.stack_frame,
+            nullptr);
+  EXPECT_EQ(TokenTestThief::GetCurrentToken(tokenizer)
+                ->token.topmost_invocation_location,
+            Location(ParseLocationPoint::FromByteOffset("fake_file", 7),
+                     ParseLocationPoint::FromByteOffset("fake_file", 17)));
+}
+
 TEST_F(LookaheadTransformerTest, TokensFromDifferentFilesCannotFuse) {
   macros::MacroCatalog macro_catalog;
   GOOGLESQL_ASSERT_OK(

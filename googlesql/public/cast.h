@@ -208,7 +208,7 @@ absl::StatusOr<Value> CastValueWithoutTypeValidation(
     const std::optional<std::string>& format,
     const std::optional<std::string>& time_zone,
     const ExtendedCompositeCastEvaluator* extended_conversion_evaluator,
-    bool canonicalize_zero, bool* out_found_non_deterministic = nullptr);
+    bool canonicalize_zero);
 
 // Returns a hash map with TypeKindPair as key, and CastFunctionProperty as
 // value.  This identifies whether the (from, to) cast pairs in the key are

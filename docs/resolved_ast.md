@@ -1698,8 +1698,8 @@ class ResolvedSubqueryExpr : public <a href="#ResolvedExpr">ResolvedExpr</a> {
 <p><pre><code class="lang-c++"><font color="brown">// <a href="#ResolvedWithExpr">ResolvedWithExpr</a> introduces one or more columns in &lt;assignment_list&gt; that
 // can then be referenced inside &lt;expr&gt;. Each assigned expression is
 // evaluated once, and each reference to that column in &lt;expr&gt; sees the same
-// value even if the assigned expression is volatile. Multiple assignment
-// expressions are independent and cannot reference other columns in the
+// value even if the assigned expression is volatile. Each assignment
+// expression can reference columns created by earlier assignments in
 // &lt;assignment_list&gt;.
 //
 // &lt;assignment_list&gt; One or more columns that are computed before evaluating
@@ -5871,8 +5871,10 @@ class ResolvedInsertRow : public <a href="#ResolvedArgument">ResolvedArgument</a
 // is provided.
 //
 // If &lt;temporal_at&gt; is present, it represents the target write time or read
-// time expression specified in the `AT(expression)` clause. Its type must
-// be TIMESTAMP.
+// time expression specified in the `AT(timestamp =&gt; expression)` clause. Its
+// type must be TIMESTAMP.
+// TODO: b/538182270 - Generalize `AT(&lt;version_property&gt; =&gt; &lt;expression&gt;)` to
+// support additional version properties instead of hardcoding `timestamp`.
 //
 // &lt;timestamp_version_column&gt; and &lt;temporal_at&gt; are mutually exclusive.
 // Both fields are enabled by FEATURE_VERSION_AWARE_DML.
@@ -6324,8 +6326,10 @@ class ResolvedUpdateItemElement : public <a href="#ResolvedArgument">ResolvedArg
 // is provided.
 //
 // If &lt;temporal_at&gt; is present, it represents the target write time or read
-// time expression specified in the `AT(expression)` clause. Its type must
-// be TIMESTAMP.
+// time expression specified in the `AT(timestamp =&gt; expression)` clause. Its
+// type must be TIMESTAMP.
+// TODO: b/538182270 - Generalize `AT(&lt;version_property&gt; =&gt; &lt;expression&gt;)` to
+// support additional version properties instead of hardcoding `timestamp`.
 //
 // &lt;timestamp_version_column&gt; and &lt;temporal_at&gt; are mutually exclusive.
 // Both fields are enabled by FEATURE_VERSION_AWARE_DML.
@@ -8031,9 +8035,9 @@ class ResolvedCreateFunctionStmt : public <a href="#ResolvedCreateStatement">Res
 
   const std::string&amp; code() const;
 
-  const std::vector&lt;std::unique_ptr&lt;const <a href="#ResolvedComputedColumn">ResolvedComputedColumn</a>&gt;&gt;&amp; aggregate_expression_list() const;
+  const std::vector&lt;std::unique_ptr&lt;const <a href="#ResolvedComputedColumnBase">ResolvedComputedColumnBase</a>&gt;&gt;&amp; aggregate_expression_list() const;
   int aggregate_expression_list_size() const;
-  const <a href="#ResolvedComputedColumn">ResolvedComputedColumn</a>* aggregate_expression_list(int i) const;
+  const <a href="#ResolvedComputedColumnBase">ResolvedComputedColumnBase</a>* aggregate_expression_list(int i) const;
 
   const <a href="#ResolvedExpr">ResolvedExpr</a>* function_expression() const;
 
@@ -9782,6 +9786,8 @@ class ResolvedCreatePropertyGraphStmt : public <a href="#ResolvedCreateStatement
   const std::vector&lt;std::unique_ptr&lt;const <a href="#ResolvedOption">ResolvedOption</a>&gt;&gt;&amp; option_list() const;
   int option_list_size() const;
   const <a href="#ResolvedOption">ResolvedOption</a>* option_list(int i) const;
+
+  const <a href="#ResolvedConnectionList">ResolvedConnectionList</a>* connection_list() const;
 };
 </code></pre></p>
 
@@ -12038,7 +12044,9 @@ class ResolvedGraphDeleteScan : public <a href="#ResolvedScan">ResolvedScan</a> 
   // 2. Each column in this list must be of GraphElementType.
   // 3. The `expr` for each `<a href="#ResolvedComputedColumn">ResolvedComputedColumn</a>` in this list must
   // be a `<a href="#ResolvedColumnRef">ResolvedColumnRef</a>` that references a column from
-  // `input_scan`&#39;s `column_list`.</font>
+  // `input_scan`&#39;s `column_list`.
+  // 4. No two `<a href="#ResolvedComputedColumn">ResolvedComputedColumn</a>`s may reference the same
+  // `input_scan` column.</font>
   const std::vector&lt;std::unique_ptr&lt;const <a href="#ResolvedComputedColumn">ResolvedComputedColumn</a>&gt;&gt;&amp; delete_item_list() const;
   int delete_item_list_size() const;
   const <a href="#ResolvedComputedColumn">ResolvedComputedColumn</a>* delete_item_list(int i) const;

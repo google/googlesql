@@ -6003,10 +6003,11 @@ QueryStmt
 ==
 
 # Comprehensive tests for VARIANT casts - Simple types from SimpleTypes.
-# TODO: Remove [no_run_sqlbuilder] and [no_run_deserializer] once VARIANT support is implemented in SQLBuilder and serializer.
+# TODO: Remove [no_run_sqlbuilder], [no_run_deserializer] and [no_java] once VARIANT support is implemented in SQLBuilder and serializer.
 [language_features=NONE,+VARIANT_TYPE]
 [no_run_sqlbuilder]
 [no_run_deserializer]
+[no_java]
 select
   cast(`int32` as VARIANT) as c_int32,
   cast(`int64` as VARIANT) as c_int64,
@@ -6159,10 +6160,11 @@ QueryStmt
 ==
 
 # Comprehensive tests for VARIANT casts - Proto and Enum.
-# TODO: Remove [no_run_sqlbuilder] and [no_run_deserializer] once VARIANT support is implemented in SQLBuilder and serializer.
+# TODO: Remove [no_run_sqlbuilder], [no_run_deserializer] and [no_java] once VARIANT support is implemented in SQLBuilder and serializer.
 [language_features=NONE,+VARIANT_TYPE]
 [no_run_sqlbuilder]
 [no_run_deserializer]
+[no_java]
 select
   cast(KitchenSink as VARIANT) as c_proto,
   cast(TestEnum as VARIANT) as c_enum
@@ -6336,3 +6338,63 @@ ALTERNATION GROUP: STRUCT(1 as a)
 ERROR: Array elements of types {STRING, STRUCT<a INT64>, VARIANT} do not have a common supertype [at 1:8]
 select [cast(1 as VARIANT), 'abc', STRUCT(1 as a)]
        ^
+==
+
+# Casting a typed SQL NULL to VARIANT produces a SQL NULL VARIANT (is_null() == true).
+# JSON 'null' is a JSON value, not a SQL NULL.
+# TODO: Remove [no_run_sqlbuilder], [no_run_deserializer] and [no_java] once VARIANT support is implemented in SQLBuilder and serializer.
+[language_features=NONE,+VARIANT_TYPE,+JSON_TYPE,+RANGE_TYPE]
+[no_run_sqlbuilder]
+[no_run_deserializer]
+[no_java]
+select
+  cast(NULL as VARIANT) as c_untyped_null,
+  cast(cast(NULL as STRING) as VARIANT) as c_string_null,
+  cast(cast(NULL as JSON) as VARIANT) as c_json_null,
+  cast(JSON 'null' as VARIANT) as c_json_null_value,
+  cast(cast(NULL as STRUCT<a INT64>) as VARIANT) as c_struct_null,
+  cast(cast(NULL as ARRAY<INT64>) as VARIANT) as c_array_null,
+  cast(cast(NULL as RANGE<DATE>) as VARIANT) as c_range_null;
+--
+QueryStmt
++-output_column_list=
+| +-$query.c_untyped_null#1 AS c_untyped_null [VARIANT]
+| +-$query.c_string_null#2 AS c_string_null [VARIANT]
+| +-$query.c_json_null#3 AS c_json_null [VARIANT]
+| +-$query.c_json_null_value#4 AS c_json_null_value [VARIANT]
+| +-$query.c_struct_null#5 AS c_struct_null [VARIANT]
+| +-$query.c_array_null#6 AS c_array_null [VARIANT]
+| +-$query.c_range_null#7 AS c_range_null [VARIANT]
++-query=
+  +-ProjectScan
+    +-column_list=$query.[c_untyped_null#1, c_string_null#2, c_json_null#3, c_json_null_value#4, c_struct_null#5, c_array_null#6, c_range_null#7]
+    +-expr_list=
+    | +-c_untyped_null#1 := Literal(type=VARIANT, value=NULL, has_explicit_type=TRUE)
+    | +-c_string_null#2 := Literal(type=VARIANT, value=NULL, has_explicit_type=TRUE)
+    | +-c_json_null#3 := Literal(type=VARIANT, value=NULL, has_explicit_type=TRUE)
+    | +-c_json_null_value#4 := Literal(type=VARIANT, value=null, has_explicit_type=TRUE)
+    | +-c_struct_null#5 := Literal(type=VARIANT, value=NULL, has_explicit_type=TRUE)
+    | +-c_array_null#6 := Literal(type=VARIANT, value=NULL, has_explicit_type=TRUE)
+    | +-c_range_null#7 := Literal(type=VARIANT, value=NULL, has_explicit_type=TRUE)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Same as above, using the :: cast shorthand.
+# TODO: Remove [no_run_sqlbuilder], [no_run_deserializer] and [no_java] once VARIANT support is implemented in SQLBuilder and serializer.
+[language_features=NONE,+VARIANT_TYPE,+CAST_OPERATORS]
+[no_run_sqlbuilder]
+[no_run_deserializer]
+[no_java]
+select NULL::STRING::VARIANT;
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [VARIANT]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 := Literal(type=VARIANT, value=NULL, has_explicit_type=TRUE)
+    +-input_scan=
+      +-SingleRowScan

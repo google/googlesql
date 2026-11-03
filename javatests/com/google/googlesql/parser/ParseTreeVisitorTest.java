@@ -21,8 +21,9 @@ import static com.google.common.truth.Truth.assertThat;
 
 import com.google.googlesql.LanguageOptions;
 import com.google.googlesql.Parser;
-import com.google.googlesql.parser.ASTNodes.ASTColumnList;
 import com.google.googlesql.parser.ASTNodes.ASTIdentifier;
+import com.google.googlesql.parser.ASTNodes.ASTInsertColumnItem;
+import com.google.googlesql.parser.ASTNodes.ASTInsertColumnList;
 import com.google.googlesql.parser.ASTNodes.ASTInsertStatement;
 import com.google.googlesql.parser.ASTNodes.ASTSelectList;
 import com.google.googlesql.parser.ASTNodes.ASTStatement;
@@ -72,10 +73,11 @@ public class ParseTreeVisitorTest {
 
     @Override
     public void visit(ASTInsertStatement insertStmt) {
-      ASTColumnList columnList = insertStmt.getColumnList();
+      ASTInsertColumnList columnList = insertStmt.getColumnList();
 
       if (columnList != null) {
-        columnList.getIdentifiers().stream()
+        columnList.getColumnItems().stream()
+            .map(ASTInsertColumnItem::getIdentifier)
             .map(ASTIdentifier::getIdString)
             .forEach(this.insertColumns::add);
       }

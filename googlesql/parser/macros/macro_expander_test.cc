@@ -82,6 +82,8 @@ using ::testing::NotNull;
 using ::testing::Pair;
 using ::testing::Pointwise;
 using ::testing::SizeIs;
+using ::testing::TestParamInfo;
+using ::testing::TestWithParam;
 using ::testing::Values;
 using ::testing::ValuesIn;
 using ::absl_testing::IsOkAndHolds;
@@ -541,6 +543,134 @@ TEST(MacroExpanderTest,
   // count.
   EXPECT_EQ(expander->num_consumed_tokens(), 2);
 }
+
+static absl::StatusOr<std::optional<int>> GetFirstMacroInvocationOffset(
+    absl::string_view text, MacroCatalog& macro_catalog, bool is_strict,
+    int start_offset = 0) {
+  auto token_provider = std::make_unique<TokenProvider>(
+      kTopFileName, text, start_offset, /*end_offset=*/std::nullopt,
+      /*offset_in_original_input=*/0);
+  auto arena = std::make_unique<googlesql_base::UnsafeArena>(/*block_size=*/1024);
+  absl::StatusOr<std::unique_ptr<MacroExpander>> expander =
+      MacroExpander::Create(token_provider.get(), &macro_catalog, arena.get(),
+                            MacroExpanderOptions{.is_strict = is_strict},
+                            /*parent_location=*/nullptr);
+  if (!expander.ok()) {
+    return expander.status();
+  }
+  while (true) {
+    absl::StatusOr<TokenWithLocation> token = (*expander)->GetNextToken();
+    if (!token.ok() || token->kind == Token::EOI) {
+      break;
+    }
+  }
+  return (*expander)->first_macro_invocation_offset();
+}
+
+struct FirstMacroInvocationOffsetTestCase {
+  std::string test_name;
+  std::string macro_defs;
+  std::string text;
+  bool is_strict = true;
+  int start_offset = 0;
+  std::optional<int> expected_offset;
+};
+
+using FirstMacroInvocationOffsetTest =
+    TestWithParam<FirstMacroInvocationOffsetTestCase>;
+
+TEST_P(FirstMacroInvocationOffsetTest, ReturnsExpectedOffset) {
+  const FirstMacroInvocationOffsetTestCase& test_case = GetParam();
+  MacroCatalog macro_catalog;
+  if (!test_case.macro_defs.empty()) {
+    RegisterMacros(test_case.macro_defs, macro_catalog);
+  }
+  EXPECT_THAT(GetFirstMacroInvocationOffset(test_case.text, macro_catalog,
+                                            test_case.is_strict,
+                                            test_case.start_offset),
+              IsOkAndHolds(test_case.expected_offset));
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    FirstMacroInvocationOffsetTest, FirstMacroInvocationOffsetTest,
+    ValuesIn<FirstMacroInvocationOffsetTestCase>({
+        {.test_name = "NoMacros",
+         .macro_defs = "DEFINE MACRO m 1",
+         .text = "SELECT 1, 'a$b', m",
+         .expected_offset = std::nullopt},
+        {.test_name = "MultipleMacrosReturnsFirst",
+         .macro_defs = "DEFINE MACRO m 1",
+         .text = "SELECT $m(), $m, $m()",
+         .expected_offset = 7},
+        {.test_name = "EmptyMacro",
+         .macro_defs = "DEFINE MACRO empty",
+         .text = "SELECT $empty() 1",
+         .expected_offset = 7},
+        {.test_name = "BuiltinMacro",
+         .text = "SELECT $$IDENTIFIER(a, b)",
+         .expected_offset = 7},
+        {.test_name = "TopLevelArgumentReference",
+         .text = "SELECT $1",
+         .expected_offset = 7},
+        {.test_name = "UndefinedMacroInStrictMode",
+         .text = "SELECT $undefined",
+         .expected_offset = 7},
+        {.test_name = "TokenizerErrorAfterMacro",
+         .macro_defs = "DEFINE MACRO m 1",
+         .text = "SELECT $m() 'abc",
+         .expected_offset = 7},
+        {.test_name = "IdentifierSplicedWithMacro",
+         .macro_defs = "DEFINE MACRO empty",
+         .text = "SELECT x$empty()",
+         .expected_offset = 7},
+        {.test_name = "NonSplicingTokenBeforeMacro",
+         .macro_defs = "DEFINE MACRO m 1",
+         .text = "SELECT (1)$m()",
+         .expected_offset = 10},
+        {.test_name = "LiteralExpansionInLenientMode",
+         .macro_defs = "DEFINE MACRO m abc",
+         .text = "SELECT 'x$m'",
+         .is_strict = false,
+         .expected_offset = 7},
+        {.test_name = "LiteralWithUndefinedMacroInLenientMode",
+         .text = "SELECT 'x$undefined'",
+         .is_strict = false,
+         .expected_offset = 7},
+        {.test_name = "LiteralWithInvalidArgListInLenientMode",
+         .macro_defs = "DEFINE MACRO m abc",
+         .text = "SELECT 'x$m(('",
+         .is_strict = false,
+         .expected_offset = 7},
+        {.test_name = "LiteralNotExpandedInStrictMode",
+         .macro_defs = "DEFINE MACRO m abc",
+         .text = "SELECT 'x$m'",
+         .expected_offset = std::nullopt},
+        {.test_name = "DefineMacroBodyIgnored",
+         .macro_defs = "DEFINE MACRO m 1",
+         .text = "DEFINE MACRO m2 $m() + $1 + $$IDENTIFIER(a)",
+         .expected_offset = std::nullopt},
+        {.test_name = "InvocationAfterDefineMacro",
+         .macro_defs = "DEFINE MACRO m 1",
+         .text = "DEFINE MACRO m2 $m(); SELECT $m()",
+         .expected_offset = 29},
+        {.test_name = "NestedMacroExpansion",
+         .macro_defs = "DEFINE MACRO inner 1;\n"
+                       "DEFINE MACRO outer $inner() + $inner()",
+         .text = "SELECT $outer()",
+         .expected_offset = 7},
+        {.test_name = "NonZeroStartOffset",
+         .macro_defs = "DEFINE MACRO m 1",
+         .text = "SELECT 1; SELECT $m()",
+         .start_offset = 10,
+         .expected_offset = 17},
+        {.test_name = "MacroAfterSemicolon",
+         .macro_defs = "DEFINE MACRO m 1",
+         .text = "SELECT 1; $m()",
+         .expected_offset = 10},
+    }),
+    [](const TestParamInfo<FirstMacroInvocationOffsetTestCase>& info) {
+      return info.param.test_name;
+    });
 
 TEST(MacroExpanderTest, ExpandsEmptyMacrosSplicedWithIntLiterals) {
   MacroCatalog macro_catalog;
@@ -1362,8 +1492,6 @@ TEST_P(PositiveNestedLiteralTest, PositiveNestedLiteralTestParameterized) {
   absl::string_view invocation = "$a";
   std::string unexpanded_sql = QuoteText(invocation, outer_quoting);
   int unexpanded_length = static_cast<int>(unexpanded_sql.length());
-
-  std::string expanded = QuoteText("1", outer_quoting);
 
   Token final_token_kind = FinalTokenKind(outer_quoting);
   if (inner_quoting.literal_kind() == LiteralTokenKind::kNonLiteral ||

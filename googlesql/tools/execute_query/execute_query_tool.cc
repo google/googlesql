@@ -1111,7 +1111,6 @@ static absl::StatusOr<const ASTNode*> ParseSql(
   const ASTNode* root = nullptr;
   switch (config.sql_mode()) {
     case SqlMode::kQuery: {
-      std::string input(sql);
       GOOGLESQL_RETURN_IF_ERROR(ParseNextStatement(parse_resume_location, parser_options,
                                          parser_output, at_end_of_input));
       GOOGLESQL_RET_CHECK(at_end_of_input);

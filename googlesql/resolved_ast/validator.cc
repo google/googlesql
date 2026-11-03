@@ -71,6 +71,7 @@
 #include "googlesql/public/with_modifier_mode.h"
 #include "googlesql/resolved_ast/node_sources.h"
 #include "googlesql/resolved_ast/resolved_ast.h"
+#include "googlesql/resolved_ast/resolved_ast_column_visibility_checker.h"
 #include "googlesql/resolved_ast/resolved_ast_enums.pb.h"
 #include "googlesql/resolved_ast/resolved_column.h"
 #include "googlesql/resolved_ast/resolved_node.h"
@@ -81,6 +82,7 @@
 #include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/flags/flag.h"
 #include "googlesql/base/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -111,6 +113,21 @@
 #define VALIDATOR_RET_CHECK_LT(a, b) GOOGLESQL_RET_CHECK_LT(a, b) << RecordContext()
 #define VALIDATOR_RET_CHECK_FAIL() GOOGLESQL_RET_CHECK_FAIL() << RecordContext()
 #define VALIDATOR_RET_CHECK_OK(s) GOOGLESQL_RET_CHECK_OK(s) << RecordContext()
+
+ABSL_FLAG(
+    bool, googlesql_validate_resolved_ast_column_visibility, false,
+    "Default for ValidatorOptions::validate_column_visibility. If true, the "
+    "Resolved AST validator also checks that each column reference is "
+    "visible, using the column visibility annotations in "
+    "gen_resolved_ast.py.");
+
+ABSL_FLAG(bool, googlesql_validate_resolved_ast_compare_column_visibility,
+          false,
+          "Default for ValidatorOptions::compare_column_visibility. For tests "
+          "only. If true, along with "
+          "--googlesql_validate_resolved_ast_column_visibility, the validator "
+          "compares its hand-written column sets with the ones computed from "
+          "the column visibility annotations.");
 
 namespace googlesql {
 
@@ -303,6 +320,7 @@ absl::Status Validator::CheckColumnList(
     const ResolvedScan* scan, const std::set<ResolvedColumn>& visible_columns) {
   PushErrorContext push(this, scan);
   VALIDATOR_RET_CHECK(nullptr != scan);
+  GOOGLESQL_RETURN_IF_ERROR(CompareColumnListScope(scan, visible_columns));
   for (const ResolvedColumn& column : scan->column_list()) {
     if (!googlesql_base::ContainsKey(visible_columns, column)) {
       return InternalErrorBuilder()
@@ -660,7 +678,6 @@ absl::Status Validator::ValidateResolvedFunctionCallBase(
             .get();
     if (info != nullptr && info->Is<TemplatedSQLFunctionCall>()) {
       const auto* templated_info = info->GetAs<TemplatedSQLFunctionCall>();
-      std::set<ResolvedColumn> visible_columns;
       GOOGLESQL_RETURN_IF_ERROR(ValidateTemplatedSqlFunctionCall(
           resolved_function_call->function(), *templated_info,
           resolved_function_call->signature(),
@@ -714,14 +731,19 @@ absl::Status Validator::ValidateFinalState(bool in_multi_stmt) {
   VALIDATOR_RET_CHECK(unconsumed_side_effect_columns_.empty())
       << "Unconsumed side effect columns: "
       << absl::StrJoin(unconsumed_side_effect_columns_, ", ");
+  // Every ScopedSkipColumnVisibilityComparison must have ended.
+  VALIDATOR_RET_CHECK_EQ(skip_column_visibility_comparison_, 0);
   return absl::OkStatus();
 }
 
 absl::Status Validator::ValidateStandaloneResolvedExpr(
     const ResolvedExpr* expr) {
   Reset();
-  absl::Status status = ValidateResolvedExpr(
-      /*visible_columns=*/{}, /*visible_parameters=*/{}, expr);
+  absl::Status status = CheckColumnVisibility(expr);
+  if (status.ok()) {
+    status = ValidateResolvedExpr(
+        /*visible_columns=*/{}, /*visible_parameters=*/{}, expr);
+  }
 
   if (status.ok()) {
     ValidateResolvedColumnsVisitor column_visitor;
@@ -732,30 +754,170 @@ absl::Status Validator::ValidateStandaloneResolvedExpr(
   }
 
   if (!status.ok()) {
-    if (status.code() == absl::StatusCode::kResourceExhausted) {
-      // Don't wrap a resource exhausted status into internal error. This error
-      // may still occur for a valid properly resolved expression (stack
-      // exhaustion in case of deeply nested expression). There exist cases
-      // where the validator uses more stack than parsing/analysis (b/65294961).
-      return status;
-    }
-    // If validation failed in a templated function body, print the function
-    // body AST instead of the main expr being validated.
-    const ResolvedNode* dump_node = (inner_templated_body_node_ != nullptr)
-                                        ? inner_templated_body_node_
-                                        : expr;
-    // Note: This string is pattern-matched in
-    // `tools/execute_query/execute_query_web_writer.cc`.  Keep that in sync.
-    return ::googlesql_base::InternalErrorBuilder()
-           << "Resolved AST validation failed: " << status.message() << "\n"
-           << (templated_call_stack_string_.empty()
-                   ? ""
-                   : absl::StrCat("\n", templated_call_stack_string_, "\n"))
-           << dump_node->DebugString(ResolvedNode::DebugStringConfig{
-                  {{error_context_, "(validation failed here)"}}, false});
+    return MakeValidationFailedError(expr, status);
   }
 
   return ValidateFinalState();
+}
+
+absl::Status Validator::MakeValidationFailedError(const ResolvedNode* root,
+                                                  const absl::Status& status) {
+  if (status.code() == absl::StatusCode::kResourceExhausted) {
+    // Don't wrap a resource exhausted status into internal error. This error
+    // may still occur for a valid properly resolved expression (stack
+    // exhaustion in case of deeply nested expression). There exist cases
+    // where the validator uses more stack than parsing/analysis (b/65294961).
+    return status;
+  }
+  // If validation failed in a templated function body, print the function
+  // body AST instead of the main node being validated.
+  const ResolvedNode* dump_node = (inner_templated_body_node_ != nullptr)
+                                      ? inner_templated_body_node_
+                                      : root;
+  // Note: This string is pattern-matched in
+  // `tools/execute_query/execute_query_web_writer.cc`.  Keep that in sync.
+  return ::googlesql_base::InternalErrorBuilder()
+         << "Resolved AST validation failed: " << status.message() << "\n"
+         << (templated_call_stack_string_.empty()
+                 ? ""
+                 : absl::StrCat("\n", templated_call_stack_string_, "\n"))
+         << dump_node->DebugString(ResolvedNode::DebugStringConfig{
+                {{error_context_, "(validation failed here)"}}, false});
+}
+
+absl::Status Validator::CheckColumnVisibility(const ResolvedNode* root) {
+  if (!options_.validate_column_visibility) {
+    return absl::OkStatus();
+  }
+  if (column_visibility_checker_ == nullptr) {
+    column_visibility_checker_ = std::make_unique<ColumnVisibilityChecker>(
+        ColumnVisibilityChecker::Options{
+            .record_environments = options_.compare_column_visibility});
+  }
+  absl::Status status = column_visibility_checker_->CheckRoot(root);
+  if (!status.ok() && column_visibility_checker_->error_node() != nullptr) {
+    error_context_ = column_visibility_checker_->error_node();
+  }
+  return status;
+}
+
+// Returns a string describing the columns in `a` that aren't in `b`. A null
+// `b` is the empty set.
+static std::string ColumnSetDifference(
+    const std::set<ResolvedColumn>& a,
+    const ColumnVisibilityChecker::ColumnSet* b) {
+  std::vector<std::string> names;
+  for (const ResolvedColumn& column : a) {
+    if (b == nullptr || !b->contains(column)) {
+      names.push_back(column.DebugString());
+    }
+  }
+  return absl::StrCat("[", absl::StrJoin(names, ", "), "]");
+}
+
+// A null `a` is the empty set.
+static std::string ColumnSetDifference(
+    const ColumnVisibilityChecker::ColumnSet* a,
+    const std::set<ResolvedColumn>& b) {
+  std::vector<ResolvedColumn> columns;
+  if (a != nullptr) {
+    for (const ResolvedColumn& column : *a) {
+      if (!b.contains(column)) {
+        columns.push_back(column);
+      }
+    }
+  }
+  std::sort(columns.begin(), columns.end());
+  std::vector<std::string> names;
+  names.reserve(columns.size());
+  for (const ResolvedColumn& column : columns) {
+    names.push_back(column.DebugString());
+  }
+  return absl::StrCat("[", absl::StrJoin(names, ", "), "]");
+}
+
+absl::Status Validator::CompareColumnSet(
+    absl::string_view what, absl::string_view set_name,
+    const std::set<ResolvedColumn>& hand_written,
+    const ColumnVisibilityChecker::ColumnSet* computed) {
+  if (ColumnVisibilityChecker::IsUnchecked(computed)) {
+    return absl::OkStatus();
+  }
+  const size_t computed_size = computed == nullptr ? 0 : computed->size();
+  bool equal = hand_written.size() == computed_size;
+  if (equal && computed_size > 0) {
+    for (const ResolvedColumn& column : hand_written) {
+      if (!computed->contains(column)) {
+        equal = false;
+        break;
+      }
+    }
+  }
+  if (equal) {
+    return absl::OkStatus();
+  }
+  return absl::InternalError(absl::StrCat(
+      "Column visibility comparison failed in ", what, ": ", set_name,
+      " differs from the set computed from the column visibility annotations. "
+      "Only in the validator: ",
+      ColumnSetDifference(hand_written, computed),
+      "; only in the annotations: ",
+      ColumnSetDifference(computed, hand_written),
+      ". See Validator::CompareColumnVisibility."));
+}
+
+absl::Status Validator::CompareColumnVisibility(
+    const ResolvedNode* node, const std::set<ResolvedColumn>* visible_columns,
+    const std::set<ResolvedColumn>* visible_parameters,
+    absl::string_view what) {
+  if (!options_.compare_column_visibility ||
+      column_visibility_checker_ == nullptr ||
+      skip_column_visibility_comparison_ > 0) {
+    return absl::OkStatus();
+  }
+  const ColumnVisibilityChecker::RecordedEnv* recorded =
+      column_visibility_checker_->GetRecordedEnv(node);
+  if (recorded == nullptr) {
+    // Not part of the checked tree, e.g. a templated function body.
+    return absl::OkStatus();
+  }
+  absl::Status status;
+  if (visible_columns != nullptr) {
+    status = CompareColumnSet(what, "visible_columns (VISIBLE)",
+                              *visible_columns, recorded->env.visible);
+  }
+  if (status.ok() && visible_parameters != nullptr) {
+    status = CompareColumnSet(what, "visible_parameters (OUTER)",
+                              *visible_parameters, recorded->env.outer);
+  }
+  if (!status.ok()) {
+    PushErrorContext push(this, node);
+    return InternalErrorBuilder() << status.message();
+  }
+  return absl::OkStatus();
+}
+
+absl::Status Validator::CompareColumnListScope(
+    const ResolvedScan* scan,
+    const std::set<ResolvedColumn>& column_list_scope) {
+  if (!options_.compare_column_visibility ||
+      column_visibility_checker_ == nullptr ||
+      skip_column_visibility_comparison_ > 0) {
+    return absl::OkStatus();
+  }
+  const ColumnVisibilityChecker::RecordedEnv* recorded =
+      column_visibility_checker_->GetRecordedEnv(scan);
+  if (recorded == nullptr || !recorded->has_column_list_scope) {
+    return absl::OkStatus();
+  }
+  absl::Status status =
+      CompareColumnSet("CheckColumnList", "column_list_scope",
+                       column_list_scope, recorded->column_list_scope);
+  if (!status.ok()) {
+    PushErrorContext push(this, scan);
+    return InternalErrorBuilder() << status.message();
+  }
+  return absl::OkStatus();
 }
 
 absl::Status Validator::ValidateResolvedExpr(
@@ -766,6 +928,8 @@ absl::Status Validator::ValidateResolvedExpr(
   PushErrorContext push(this, expr);
 
   VALIDATOR_RET_CHECK(nullptr != expr);
+  GOOGLESQL_RETURN_IF_ERROR(CompareColumnVisibility(
+      expr, &visible_columns, &visible_parameters, "ValidateResolvedExpr"));
   VALIDATOR_RET_CHECK(expr->type() != nullptr)
       << "ResolvedExpr does not have a Type:\n"
       << expr->DebugString();
@@ -1278,7 +1442,6 @@ absl::Status Validator::ValidateResolvedAggregateFunctionCall(
            "group_by_list";
   }
 
-  std::set<ResolvedColumn> group_rows_columns;
   std::set<ResolvedColumn> multi_level_aggregation_columns;
   const std::set<ResolvedColumn>* function_visible_columns = &visible_columns;
   bool is_multi_level_aggregate_function = false;
@@ -2605,6 +2768,8 @@ absl::Status Validator::ValidateResolvedArrayScan(
 
   VALIDATOR_RET_CHECK_EQ(scan->array_expr_list_size(),
                          scan->element_column_list_size());
+  // Each array expression sees only the input columns, not the element
+  // columns of other arrays in the same scan. Those are added afterwards.
   for (int i = 0; i < scan->array_expr_list_size(); ++i) {
     VALIDATOR_RET_CHECK(scan->array_expr_list(i) != nullptr);
     GOOGLESQL_RETURN_IF_ERROR(ValidateResolvedExpr(visible_columns, visible_parameters,
@@ -2629,8 +2794,9 @@ absl::Status Validator::ValidateResolvedArrayScan(
         << element_column.type()->DebugString();
 
     GOOGLESQL_RETURN_IF_ERROR(CheckUniqueColumnId(element_column));
-    visible_columns.insert(element_column);
   }
+  visible_columns.insert(scan->element_column_list().begin(),
+                         scan->element_column_list().end());
 
   if (nullptr != scan->array_offset_column()) {
     GOOGLESQL_RETURN_IF_ERROR(CheckUniqueColumnId(scan->array_offset_column()->column()));
@@ -2704,6 +2870,12 @@ absl::Status Validator::ValidateResolvedAggregateComputedColumn(
   const ResolvedAggregateFunctionCall* aggregate_function_call =
       computed_column->expr()->GetAs<ResolvedAggregateFunctionCall>();
 
+  // Intended difference: the annotations are deliberately looser here. They
+  // give the whole aggregate (including ORDER BY and LIMIT) the group-by
+  // columns too, because multi-level aggregates need them and the annotations
+  // can't give them to only some parts of the call. This check enforces the
+  // stricter rule, that ORDER BY and LIMIT see only the input columns.
+  ScopedSkipColumnVisibilityComparison skip_comparison(this);
   return ValidateOrderByAndLimitClausesOfAggregateFunctionCall(
       input_scan_visible_columns, visible_parameters, aggregate_function_call);
 }
@@ -3274,20 +3446,23 @@ absl::Status Validator::ValidateResolvedSampleScan(
   std::set<ResolvedColumn> visible_columns;
   GOOGLESQL_RETURN_IF_ERROR(
       AddColumnList(scan->input_scan()->column_list(), &visible_columns));
-  if (nullptr != scan->weight_column()) {
-    GOOGLESQL_RETURN_IF_ERROR(CheckUniqueColumnId(scan->weight_column()->column()));
-    visible_columns.insert(scan->weight_column()->column());
-  }
-  GOOGLESQL_RETURN_IF_ERROR(CheckColumnList(scan, visible_columns));
 
   if (!scan->partition_by_list().empty()) {
     VALIDATOR_RET_CHECK_EQ(ResolvedSampleScan::ROWS, unit);
     VALIDATOR_RET_CHECK_EQ("RESERVOIR", absl::AsciiStrToUpper(scan->method()));
+    // PARTITION BY is evaluated on the input rows, so it can't see the
+    // weight column, which is computed by the sampling.
     for (const auto& partition_by_expr : scan->partition_by_list()) {
       GOOGLESQL_RETURN_IF_ERROR(ValidateResolvedExpr(
           visible_columns, /*visible_parameters=*/{}, partition_by_expr.get()));
     }
   }
+
+  if (nullptr != scan->weight_column()) {
+    GOOGLESQL_RETURN_IF_ERROR(CheckUniqueColumnId(scan->weight_column()->column()));
+    visible_columns.insert(scan->weight_column()->column());
+  }
+  GOOGLESQL_RETURN_IF_ERROR(CheckColumnList(scan, visible_columns));
 
   return absl::OkStatus();
 }
@@ -4629,7 +4804,10 @@ absl::Status Validator::ValidateResolvedStatementInternal(
   PushErrorContext push(this, statement);
 
   in_generalized_query_stmt_ = false;
-  absl::Status status;
+  absl::Status status = CheckColumnVisibility(statement);
+  if (!status.ok()) {
+    return MakeValidationFailedError(statement, status);
+  }
   switch (statement->node_kind()) {
     case RESOLVED_QUERY_STMT:
       status = ValidateResolvedQueryStmt(statement->GetAs<ResolvedQueryStmt>());
@@ -5004,23 +5182,7 @@ absl::Status Validator::ValidateResolvedStatementInternal(
   }
 
   if (!status.ok()) {
-    if (status.code() == absl::StatusCode::kResourceExhausted) {
-      // Don't wrap a resource exhausted status into internal error. This error
-      // may still occur for a valid properly resolved expression (stack
-      // exhaustion in case of deeply nested expression). There exist cases
-      // where the validator uses more stack than parsing/analysis (b/65294961).
-      return status;
-    }
-    const ResolvedNode* dump_node = (inner_templated_body_node_ != nullptr)
-                                        ? inner_templated_body_node_
-                                        : statement;
-    return ::googlesql_base::InternalErrorBuilder()
-           << "Resolved AST validation failed: " << status.message() << "\n"
-           << (templated_call_stack_string_.empty()
-                   ? ""
-                   : absl::StrCat("\n", templated_call_stack_string_, "\n"))
-           << dump_node->DebugString(ResolvedNode::DebugStringConfig{
-                  {{error_context_, "(validation failed here)"}}, false});
+    return MakeValidationFailedError(statement, status);
   }
   return absl::OkStatus();
 }
@@ -5886,13 +6048,15 @@ absl::Status Validator::ValidateResolvedCreateFunctionStmt(
                                    ResolvedArgumentDefEnums::NOT_AGGREGATE});
 
     for (const auto& computed_column : stmt->aggregate_expression_list()) {
+      VALIDATOR_RET_CHECK(computed_column->Is<ResolvedComputedColumnImpl>());
+      auto* computed_col = computed_column->GetAs<ResolvedComputedColumnImpl>();
       VALIDATOR_RET_CHECK(
-          computed_column->expr()->Is<ResolvedAggregateFunctionCall>());
+          computed_col->expr()->Is<ResolvedAggregateFunctionCall>());
       GOOGLESQL_RETURN_IF_ERROR(ValidateResolvedAggregateFunctionCall(
           /*visible_columns=*/{}, /*visible_parameters=*/{},
-          computed_column->expr()->GetAs<ResolvedAggregateFunctionCall>()));
+          computed_col->expr()->GetAs<ResolvedAggregateFunctionCall>()));
       GOOGLESQL_RETURN_IF_ERROR(ValidateResolvedAggregateComputedColumn(
-          computed_column.get(),
+          computed_col,
           /*input_scan_visible_columns=*/{}, /*visible_parameters=*/{},
           /*available_side_effect_columns=*/{}));
     }
@@ -6573,6 +6737,9 @@ absl::Status Validator::ValidateResolvedScan(
   RETURN_ERROR_IF_OUT_OF_STACK_SPACE();
   VALIDATOR_RET_CHECK(nullptr != scan);
   PushErrorContext push(this, scan);
+  GOOGLESQL_RETURN_IF_ERROR(CompareColumnVisibility(scan, /*visible_columns=*/nullptr,
+                                          &visible_parameters,
+                                          "ValidateResolvedScan"));
 
   GOOGLESQL_RETURN_IF_ERROR(
       googlesql::ValidateScanCanEmitMeasureColumns(scan, language_options_));
@@ -6996,7 +7163,6 @@ absl::Status Validator::ValidateGroupRowsScan(
   // Validate that columns defined in GROUP_ROWS() are all column references
   // pointing to some columns that are actually available from the input of
   // aggregation scan where WITH GROUP ROWS was used.
-  std::set<ResolvedColumn> refs;
   absl::flat_hash_set<ResolvedColumn> resolved_columns;
   for (const auto& column : scan->input_column_list()) {
     GOOGLESQL_RETURN_IF_ERROR(CheckUniqueColumnId(column->column()));
@@ -7639,6 +7805,12 @@ absl::Status Validator::ValidateResolvedUpdateItem(
             delete_stmt.get(), &offset_and_where_visible_columns,
             &element_column));
       }
+      // Intended difference: the annotations are deliberately looser here.
+      // For nested UPDATE and INSERT, they make a few more columns visible
+      // (e.g. the timestamp_version_column, and the outer element column in
+      // some fields), because they can't tell nested statements from
+      // top-level ones. The hand-written checks enforce the stricter sets.
+      ScopedSkipColumnVisibilityComparison skip_comparison(this);
       for (const auto& update_stmt : item->update_list()) {
         GOOGLESQL_RETURN_IF_ERROR(ValidateResolvedUpdateStmt(
             update_stmt.get(), &offset_and_where_visible_columns,
@@ -7735,6 +7907,11 @@ absl::Status Validator::ValidateResolvedMergeWhen(
   }
 
   if (merge_when->match_expr() != nullptr) {
+    // Intended difference: the annotations are deliberately looser here.
+    // They can't select the visible columns by `match_type`, so they allow
+    // both target and source columns. This check enforces the stricter set for
+    // the `match_type`.
+    ScopedSkipColumnVisibilityComparison skip_comparison(this);
     GOOGLESQL_RETURN_IF_ERROR(ValidateResolvedExpr(*visible_columns,
                                          /*visible_parameters=*/{},
                                          merge_when->match_expr()));
@@ -8999,6 +9176,11 @@ absl::Status Validator::ValidateResolvedPivotScan(
 
   // Validate constant pivot values
   for (const auto& pivot_value : scan->pivot_value_list()) {
+    // Intended difference: this second pass uses a looser set than the
+    // annotations. The pivot values were already validated with empty column
+    // sets above, which is the stricter rule and matches the annotations (and
+    // is compared).
+    ScopedSkipColumnVisibilityComparison skip_comparison(this);
     GOOGLESQL_RETURN_IF_ERROR(ValidateResolvedExpr(input_column_set, visible_parameters,
                                          pivot_value.get()));
   }
@@ -9329,7 +9511,13 @@ absl::Status Validator::ValidateResolvedPipeIfScan(
                                   &output_visible_columns));
   }
 
-  GOOGLESQL_RETURN_IF_ERROR(CheckColumnList(scan, output_visible_columns));
+  {
+    // Intended difference: the annotations are deliberately looser here.
+    // They allow the columns of any case, because they can't select a case by
+    // index. This check enforces the stricter set, from the selected case.
+    ScopedSkipColumnVisibilityComparison skip_comparison(this);
+    GOOGLESQL_RETURN_IF_ERROR(CheckColumnList(scan, output_visible_columns));
+  }
 
   return absl::OkStatus();
 }
@@ -9543,7 +9731,14 @@ absl::Status Validator::ValidateResolvedInsertScan(
 
   GOOGLESQL_RETURN_IF_ERROR(AddColumnList(scan->insert_stmt()->query()->column_list(),
                                 &visible_columns));
-  GOOGLESQL_RETURN_IF_ERROR(CheckColumnList(scan, visible_columns));
+  {
+    // Intended difference: the annotations are deliberately looser here.
+    // Through ResolvedInsertStmt's `provided_columns`, which covers every pipe
+    // DML use, they also allow the target table columns. This check enforces
+    // the stricter set: the input columns and the RETURNING output columns.
+    ScopedSkipColumnVisibilityComparison skip_comparison(this);
+    GOOGLESQL_RETURN_IF_ERROR(CheckColumnList(scan, visible_columns));
+  }
 
   return absl::OkStatus();
 }
@@ -9744,6 +9939,7 @@ absl::Status Validator::ValidateResolvedCreatePropertyGraphStmt(
   VALIDATOR_RET_CHECK(stmt != nullptr);
   VALIDATOR_RET_CHECK(!stmt->name_path().empty());
   GOOGLESQL_RETURN_IF_ERROR(ValidateOptionsList(stmt->option_list()));
+  GOOGLESQL_RETURN_IF_ERROR(ValidateResolvedConnectionList(stmt->connection_list()));
 
   CaseInsensitiveMap<AnnotatedType> property_dcl_name_map;
   for (const std::unique_ptr<const ResolvedGraphPropertyDeclaration>&
@@ -9971,6 +10167,11 @@ absl::Status Validator::ValidateResolvedGraphNodeTableReference(
     const CaseInsensitiveMap<const ResolvedScan*>& node_table_scan_map) {
   RETURN_ERROR_IF_OUT_OF_STACK_SPACE();
   PushErrorContext push(this, node_reference);
+  // Intended difference: the annotations are deliberately looser here. They
+  // allow the columns of all node tables, because they can't look up the node
+  // table by name. This check enforces the stricter set, from the referenced
+  // node table.
+  ScopedSkipColumnVisibilityComparison skip_comparison(this);
 
   auto found =
       node_table_scan_map.find(node_reference->node_table_identifier());
@@ -10790,6 +10991,7 @@ absl::Status Validator::ValidateResolvedGraphDeleteScan(
   // `delete_item->column().type()` == `delete_item->expr()->type()`.
   // TODO - Allow referencing external scope (e.g., correlated
   // columns) in the future.
+  absl::flat_hash_set<ResolvedColumn> seen_input_scan_columns;
   for (const auto& delete_item : delete_item_list) {
     GOOGLESQL_RETURN_IF_ERROR(ValidateResolvedComputedColumn(
         visible_columns, visible_parameters, delete_item.get()));
@@ -10801,6 +11003,13 @@ absl::Status Validator::ValidateResolvedGraphDeleteScan(
         << "An item being deleted must be a graph element, but found invalid "
            "type "
         << delete_item_expr_type->DebugString();
+
+    const ResolvedColumn& delete_item_column =
+        delete_item_expr->GetAs<ResolvedColumnRef>()->column();
+    VALIDATOR_RET_CHECK(
+        seen_input_scan_columns.insert(delete_item_column).second)
+        << "Duplicate column in `delete_item_list`: "
+        << delete_item_column.DebugString();
   }
 
   // Remove the pre-delete columns referenced in `delete_item_list` from
@@ -10815,7 +11024,20 @@ absl::Status Validator::ValidateResolvedGraphDeleteScan(
   // Checks that the output columns must be a subset of the visible columns,
   // which are the set of `input_scan` output columns not specified for deletion
   // and the new computed columns from `delete_item_list`.
-  GOOGLESQL_RETURN_IF_ERROR(CheckColumnList(scan, visible_columns));
+  {
+    // TODO: Set union with any of the column visibility
+    // annotations currently can't accurately express the exact node contract
+    // for ResolvedGraphDeleteScan, where we allow all the created columns but
+    // only a subset of the `input_scan` columns (the input columns not
+    // referenced in `delete_item_list`) in the output `column_list`.
+
+    // Intended difference: the annotations are deliberately looser here.
+    // They allow all `input_scan` columns, because they can't exclude the
+    // pre-delete columns referenced in `delete_item_list`. This check
+    // enforces the stricter set, excluding those pre-delete columns.
+    ScopedSkipColumnVisibilityComparison skip_comparison(this);
+    GOOGLESQL_RETURN_IF_ERROR(CheckColumnList(scan, visible_columns));
+  }
   return absl::OkStatus();
 }
 
@@ -11180,7 +11402,14 @@ absl::Status Validator::ValidateResolvedGraphLinearScan(
   GOOGLESQL_RETURN_IF_ERROR(AddColumnList(
       current_input_scan_in_graph_linear_scan_stack_.back()->column_list(),
       &visible_columns));
-  GOOGLESQL_RETURN_IF_ERROR(CheckColumnList(scan, visible_columns));
+  {
+    // Intended difference: the annotations are deliberately looser here.
+    // They allow the columns of any scan in `scan_list`, because they can't
+    // select the last one. This check enforces the stricter set, from the last
+    // scan.
+    ScopedSkipColumnVisibilityComparison skip_comparison(this);
+    GOOGLESQL_RETURN_IF_ERROR(CheckColumnList(scan, visible_columns));
+  }
 
   // Pop output working table produced by a linear query block from the stack.
   current_input_scan_in_graph_linear_scan_stack_.pop_back();
@@ -11199,6 +11428,11 @@ absl::Status Validator::ValidateResolvedGraphRefScan(
   GOOGLESQL_RETURN_IF_ERROR(AddColumnList(
       current_input_scan_in_graph_linear_scan_stack_.back()->column_list(),
       &visible_columns));
+  // Intended difference: the annotations are deliberately looser here. They
+  // allow the columns of any scan in the enclosing GraphLinearScan, because
+  // they can't select the previous one. This check enforces the stricter set,
+  // from the previous scan.
+  ScopedSkipColumnVisibilityComparison skip_comparison(this);
   return CheckColumnList(scan, visible_columns);
 }
 
@@ -11439,6 +11673,9 @@ absl::Status Validator::ValidateResolvedArrayAggregate(
       columns, visible_parameters, array_aggregate->aggregate()));
 
   // If element_column isn't in the visible columns, validation should fail.
+  // Intended difference: this is an extra negative check, which deliberately
+  // uses a narrower set than the annotations.
+  ScopedSkipColumnVisibilityComparison skip_comparison(this);
   absl::Status status = ValidateResolvedAggregateFunctionCall(
       visible_columns, visible_parameters, array_aggregate->aggregate());
   VALIDATOR_RET_CHECK(!status.ok())

@@ -115,6 +115,8 @@ const char* const kIdStringAllowUnicodeCharacters =
 const char* const kDisallowDuplicateOptions = "disallow_duplicate_options";
 const char* const kDebugStringUseBoxGlyphs = "debug_string_use_box_glyphs";
 const char* const kDebugStringLinearMode = "debug_string_linear_mode";
+const char* const kValidateColumnVisibility = "validate_column_visibility";
+const char* const kCompareColumnVisibility = "compare_column_visibility";
 const char* const kDebugStringOmitPipeInputScanField =
     "debug_string_omit_pipe_input_scan_field";
 const char* const kRewriteOptions = "rewrite_options";
@@ -217,6 +219,8 @@ void RegisterAnalyzerTestOptions(
 
   test_case_options->RegisterBool(kDebugStringUseBoxGlyphs, false);
   test_case_options->RegisterBool(kDebugStringLinearMode, false);
+  test_case_options->RegisterBool(kValidateColumnVisibility, true);
+  test_case_options->RegisterBool(kCompareColumnVisibility, true);
   test_case_options->RegisterBool(kDebugStringOmitPipeInputScanField, true);
 }
 

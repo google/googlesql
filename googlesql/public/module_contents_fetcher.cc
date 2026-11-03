@@ -26,9 +26,11 @@
 #include "googlesql/parser/ast_node_kind.h"
 #include "googlesql/parser/parse_tree.h"
 #include "googlesql/parser/parser.h"
+#include "googlesql/parser/parser_runtime_info.h"
 #include "googlesql/public/language_options.h"
 #include "googlesql/public/options.pb.h"
 #include "googlesql/public/parse_helpers.h"
+#include "googlesql/public/parse_location.h"
 #include "googlesql/public/parse_resume_location.h"
 #include "googlesql/base/check.h"
 #include "absl/status/status.h"
@@ -46,14 +48,14 @@ absl::Status ModuleContentsFetcher::FetchProtoFileDescriptor(
          << "The IMPORT PROTO statement is not supported inside of modules";
 }
 
-// Scans the <module_contents>, looking for IMPORT MODULE statements.
+// Scans <module_contents> specifically for IMPORT statements.
 // Non-IMPORT statements are skipped so dependencies can be gathered before
-// further analysis occurs.
+// macro expansion occurs.
 //
-// When finding an IMPORT MODULE statement, the imported module name path
-// is appended to <module_name_paths>. Adds an error status to <errors>
-// if an IMPORT statement fails to parse or if statement skipping fails
-// (e.g. due to a lexical error).
+// When finding a valid IMPORT MODULE statement, the imported module name path
+// is appended to <module_name_paths>. Adds an error status to <errors> if an
+// IMPORT statement fails to parse, contains macro invocations, or if statement
+// skipping fails (e.g. due to a lexical error).
 //
 // For example, when parsing a module and finding the statement
 // 'IMPORT MODULE a.b.c AS d', the vector <a, b, c> is appended to
@@ -102,9 +104,20 @@ static void AppendImportedModuleNamePaths(
       continue;
     }
 
+    ParserRuntimeInfo runtime_info;
+    const ParseResumeLocation this_parse_resume_location =
+        parse_resume_location;
     const absl::Status parse_status =
         ParseNextStatement(&parse_resume_location, parser_options,
-                           &parser_output, &is_end_of_input);
+                           &parser_output, &is_end_of_input, &runtime_info);
+    if (runtime_info.has_macro_invocation()) {
+      errors->push_back(MakeSqlErrorAtPoint(ParseLocationPoint::FromByteOffset(
+                            this_parse_resume_location.filename(),
+                            this_parse_resume_location.byte_position()))
+                        << "IMPORT statements cannot be produced via macro "
+                           "expansion or contain macro invocations");
+      break;
+    }
     if (!parse_status.ok()) {
       errors->push_back(parse_status);
       break;

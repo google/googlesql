@@ -24,6 +24,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -107,30 +108,31 @@ absl::Status WindowFrameBoundaryArg::SetSchemasForEvaluation(
   return absl::OkStatus();
 }
 
-// These operators used by std::plus and std::minus functors to compute the
-// RANGE window boundaries. Since the implementation below checks for overflow
-// before running the actual computations these operators are guaranteed to be
-// supplied with values that would always produce correct results.
-NumericValue operator+(NumericValue lh, NumericValue rh) {
-  return lh.Add(rh).value();
-}
-NumericValue operator-(NumericValue lh, NumericValue rh) {
-  return lh.Subtract(rh).value();
-}
-
-BigNumericValue operator+(BigNumericValue lh, BigNumericValue rh) {
-  return lh.Add(rh).value();
-}
-BigNumericValue operator-(BigNumericValue lh, BigNumericValue rh) {
-  return lh.Subtract(rh).value();
-}
-
 namespace {
 
+// Applies the Functor (std::plus or std::minus) to the NUMERIC or BIGNUMERIC
+// values <left> and <right>. Returns an error instead of crashing if the
+// result overflows.
+template <template <typename> class Functor, typename T>
+absl::StatusOr<T> DoFixedPointOperation(const T& left, const T& right) {
+  if constexpr (std::is_same_v<Functor<T>, std::plus<T>>) {
+    return left.Add(right);
+  } else {
+    static_assert(std::is_same_v<Functor<T>, std::minus<T>>,
+                  "Only std::plus and std::minus are supported");
+    return left.Subtract(right);
+  }
+}
+
 // Applies the Functor to the left and the right value.
+//
+// The callers compute RANGE window boundaries and check for overflow before
+// running the actual computations, so the operands should always produce a
+// valid result. NUMERIC and BIGNUMERIC overflow is still reported as an error
+// rather than crashing, in case that invariant is ever violated.
 template <template <typename> class Functor>
-Value DoOperation(const Value& left, const Value& right) {
-  ABSL_DCHECK_EQ(left.type_kind(), right.type_kind());
+absl::StatusOr<Value> DoOperation(const Value& left, const Value& right) {
+  GOOGLESQL_RET_CHECK_EQ(left.type_kind(), right.type_kind());
   switch (left.type_kind()) {
     case TYPE_INT32:
       return Value::Int32(
@@ -144,12 +146,18 @@ Value DoOperation(const Value& left, const Value& right) {
     case TYPE_UINT64:
       return Value::Uint64(
           Functor<uint64_t>()(left.uint64_value(), right.uint64_value()));
-    case TYPE_NUMERIC:
-      return Value::Numeric(
-          Functor<NumericValue>()(left.numeric_value(), right.numeric_value()));
-    case TYPE_BIGNUMERIC:
-      return Value::BigNumeric(Functor<BigNumericValue>()(
-          left.bignumeric_value(), right.bignumeric_value()));
+    case TYPE_NUMERIC: {
+      GOOGLESQL_ASSIGN_OR_RETURN(NumericValue result,
+                       DoFixedPointOperation<Functor>(left.numeric_value(),
+                                                      right.numeric_value()));
+      return Value::Numeric(result);
+    }
+    case TYPE_BIGNUMERIC: {
+      GOOGLESQL_ASSIGN_OR_RETURN(BigNumericValue result,
+                       DoFixedPointOperation<Functor>(
+                           left.bignumeric_value(), right.bignumeric_value()));
+      return Value::BigNumeric(result);
+    }
     case TYPE_FLOAT:
       return Value::Float(
           Functor<float>()(left.float_value(), right.float_value()));
@@ -157,7 +165,7 @@ Value DoOperation(const Value& left, const Value& right) {
       return Value::Double(
           Functor<double>()(left.double_value(), right.double_value()));
     default:
-      ABSL_LOG(FATAL) << left.type()->DebugString() << " not supported";
+      GOOGLESQL_RET_CHECK_FAIL() << left.type()->DebugString() << " not supported";
   }
 }
 
@@ -271,6 +279,29 @@ absl::Status WindowFrameBoundaryArg::GetOffsetValue(
                 "must be non-negative, but was "
              << RoundTripDoubleToString(offset_value);
     }
+  } else if (range_offset_value->type()->IsNumericType()) {
+    const NumericValue offset_value = range_offset_value->numeric_value();
+    if (offset_value.Sign() < 0) {
+      return ::googlesql_base::OutOfRangeErrorBuilder()
+             << "Window frame offset for PRECEDING or FOLLOWING "
+                "must be non-negative, but was "
+             << offset_value.ToString();
+    }
+  } else if (range_offset_value->type()->IsBigNumericType()) {
+    const BigNumericValue& offset_value =
+        range_offset_value->bignumeric_value();
+    if (offset_value.Sign() < 0) {
+      return ::googlesql_base::OutOfRangeErrorBuilder()
+             << "Window frame offset for PRECEDING or FOLLOWING "
+                "must be non-negative, but was "
+             << offset_value.ToString();
+    }
+  } else {
+    // Unsigned integers cannot be negative. The analyzer only allows
+    // numerical types for window frame offsets.
+    GOOGLESQL_RET_CHECK(range_offset_value->type()->IsUnsignedInteger())
+        << "Unexpected window frame offset type: "
+        << range_offset_value->type()->DebugString();
   }
 
   return absl::OkStatus();
@@ -687,8 +718,9 @@ absl::Status WindowFrameBoundaryArg::GetOffsetPrecedingRangeBoundariesAsc(
 
   // Find the first tuple with a "safe" order key not less than
   // (min + offset).
-  const Value underflow_threshold = DoOperation<std::plus>(
-      GetMinValue(offset_value.type_kind()), offset_value);
+  GOOGLESQL_ASSIGN_OR_RETURN(const Value underflow_threshold,
+                   DoOperation<std::plus>(GetMinValue(offset_value.type_kind()),
+                                          offset_value));
   int start_safe_tuple = end_neg_inf + 1;
   while (start_safe_tuple < start_pos_inf &&
          partition[start_safe_tuple]
@@ -702,8 +734,10 @@ absl::Status WindowFrameBoundaryArg::GetOffsetPrecedingRangeBoundariesAsc(
   // is possible when computing the bound for a boundary.
   int boundary_tid = end_neg_inf + 1;
   for (int tuple_id = start_safe_tuple; tuple_id < start_pos_inf; ++tuple_id) {
-    const Value bound_threshold = DoOperation<std::minus>(
-        partition[tuple_id]->slot(order_key_slot_idx).value(), offset_value);
+    GOOGLESQL_ASSIGN_OR_RETURN(const Value bound_threshold,
+                     DoOperation<std::minus>(
+                         partition[tuple_id]->slot(order_key_slot_idx).value(),
+                         offset_value));
     // Find the first tuple with a key >= 'bound_threshold'.
     while (partition[boundary_tid]
                ->slot(order_key_slot_idx)
@@ -945,8 +979,9 @@ absl::Status WindowFrameBoundaryArg::GetOffsetPrecedingRangeBoundariesDesc(
 
   // Find the position of the first tuple with a "safe" order
   // key < (max - offset).
-  const Value overflow_threshold = DoOperation<std::minus>(
-      GetMaxValue(offset_value.type_kind()), offset_value);
+  GOOGLESQL_ASSIGN_OR_RETURN(const Value overflow_threshold,
+                   DoOperation<std::minus>(
+                       GetMaxValue(offset_value.type_kind()), offset_value));
   int start_safe_tuple = end_pos_inf + 1;
   while (start_safe_tuple < start_neg_inf &&
          overflow_threshold.LessThan(
@@ -958,8 +993,10 @@ absl::Status WindowFrameBoundaryArg::GetOffsetPrecedingRangeBoundariesDesc(
   // is possible when computing the bound for a boundary.
   int boundary_tid = end_pos_inf + 1;
   for (int tuple_id = start_safe_tuple; tuple_id < start_neg_inf; ++tuple_id) {
-    const Value bound_threshold = DoOperation<std::plus>(
-        partition[tuple_id]->slot(order_key_slot_idx).value(), offset_value);
+    GOOGLESQL_ASSIGN_OR_RETURN(const Value bound_threshold,
+                     DoOperation<std::plus>(
+                         partition[tuple_id]->slot(order_key_slot_idx).value(),
+                         offset_value));
     // Find the first tuple with an order key <= 'bound_threshold'.
     while (bound_threshold.LessThan(
         partition[boundary_tid]->slot(order_key_slot_idx).value())) {
@@ -1197,8 +1234,9 @@ absl::Status WindowFrameBoundaryArg::GetOffsetFollowingRangeBoundariesAsc(
   }
 
   // Find the position of the last tuple with a safe key.
-  const Value overflow_threshold = DoOperation<std::minus>(
-      GetMaxValue(offset_value.type_kind()), offset_value);
+  GOOGLESQL_ASSIGN_OR_RETURN(const Value overflow_threshold,
+                   DoOperation<std::minus>(
+                       GetMaxValue(offset_value.type_kind()), offset_value));
   int end_safe_tuple = start_pos_inf - 1;
   while (end_safe_tuple > end_neg_inf &&
          overflow_threshold.LessThan(
@@ -1210,8 +1248,10 @@ absl::Status WindowFrameBoundaryArg::GetOffsetFollowingRangeBoundariesAsc(
   int boundary_tid = end_neg_inf + 1;
   for (int tuple_id = boundary_tid; tuple_id <= end_safe_tuple; ++tuple_id) {
     // No overflow is possible for Group 4.
-    const Value bound_threshold = DoOperation<std::plus>(
-        partition[tuple_id]->slot(order_key_slot_idx).value(), offset_value);
+    GOOGLESQL_ASSIGN_OR_RETURN(const Value bound_threshold,
+                     DoOperation<std::plus>(
+                         partition[tuple_id]->slot(order_key_slot_idx).value(),
+                         offset_value));
     // Find the first following tuple with an order key >= 'bound_threshold'.
     while (boundary_tid < start_pos_inf && partition[boundary_tid]
                                                ->slot(order_key_slot_idx)
@@ -1450,8 +1490,9 @@ absl::Status WindowFrameBoundaryArg::GetOffsetFollowingRangeBoundariesDesc(
 
   // Find the position of the last tuple with a safe key not less than
   // (min + offset) in backward.
-  const Value underflow_threshold = DoOperation<std::plus>(
-      GetMinValue(offset_value.type_kind()), offset_value);
+  GOOGLESQL_ASSIGN_OR_RETURN(const Value underflow_threshold,
+                   DoOperation<std::plus>(GetMinValue(offset_value.type_kind()),
+                                          offset_value));
   int end_safe_tuple = start_neg_inf - 1;
   while (end_safe_tuple > end_pos_inf && partition[end_safe_tuple]
                                              ->slot(order_key_slot_idx)
@@ -1464,8 +1505,10 @@ absl::Status WindowFrameBoundaryArg::GetOffsetFollowingRangeBoundariesDesc(
   int boundary_tid = end_pos_inf + 1;
   for (int tuple_id = boundary_tid; tuple_id <= end_safe_tuple; ++tuple_id) {
     // No overflow is possible for Group 2.
-    const Value bound_threshold = DoOperation<std::minus>(
-        partition[tuple_id]->slot(order_key_slot_idx).value(), offset_value);
+    GOOGLESQL_ASSIGN_OR_RETURN(const Value bound_threshold,
+                     DoOperation<std::minus>(
+                         partition[tuple_id]->slot(order_key_slot_idx).value(),
+                         offset_value));
     // Find the first following tuple <= 'bound_threshold'.
     while (boundary_tid < start_neg_inf &&
            bound_threshold.LessThan(

@@ -923,6 +923,8 @@ std::unique_ptr<MatcherCollection<absl::Status>> RuntimeExpectedErrorMatcher(
       absl::StatusCode::kOutOfRange, "Invalid input to JSON_STRIP_NULLS"));
   error_matchers.emplace_back(std::make_unique<StatusRegexMatcher>(
       absl::StatusCode::kOutOfRange, "Invalid input to JSON_ARRAY"));
+  error_matchers.emplace_back(std::make_unique<StatusRegexMatcher>(
+      absl::StatusCode::kOutOfRange, "Invalid input to JSON_OBJECT"));
   // The random query generator sometimes produces random string for certain
   // functions arguments, but not with required format, for example,
   // leading "$" is required for JSON PATH in JSON_SET function.

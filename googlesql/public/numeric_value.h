@@ -1237,7 +1237,8 @@ constexpr uint64_t NumericValue::low_bits() const { return value_.number()[0]; }
 
 inline int64_t NumericValue::GetFractionalPart() const {
   int64_t remainder;
-  FixedInt<64, 2>(as_packed_int()).DivMod(kScalingFactor, nullptr, &remainder);
+  FixedInt<64, 2>(as_packed_int())
+      .DivMod(kScalingFactor, /*quotient=*/nullptr, &remainder);
   return remainder;
 }
 

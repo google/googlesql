@@ -16,6 +16,8 @@
 
 #include "googlesql/reference_impl/type_parameter_constraints.h"
 
+#include <string>
+#include <utility>
 #include <vector>
 
 #include "googlesql/base/testing/status_matchers.h"
@@ -28,8 +30,8 @@
 #include "googlesql/public/types/type_factory.h"
 #include "googlesql/public/types/type_parameters.h"
 #include "googlesql/public/types/vector_type_util.h"
+#include "googlesql/public/types/vector_value_codec.h"
 #include "googlesql/public/value.h"
-#include "googlesql/public/value.pb.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "absl/status/status.h"
@@ -469,21 +471,15 @@ TEST(TypeParametersTest, StructWithTypeParametersFails) {
               "precision 2 and scale 2 but got a value that is not in range")));
 }
 
-absl::StatusOr<Value> MakeVectorValue(TypeFactory* type_factory,
-                                      absl::Span<const float> elements) {
+absl::StatusOr<Value> MakeVectorValue(
+    TypeFactory* type_factory, absl::Span<const float> elements,
+    VectorEncodingId::Id encoding = VectorEncodingId::FLOAT32) {
   GOOGLESQL_ASSIGN_OR_RETURN(const Type* vector_type, MakeVectorType(type_factory));
-  std::vector<Value> float_values;
-  float_values.reserve(elements.size());
-  for (float elem : elements) {
-    float_values.push_back(Value::Float(elem));
-  }
-  Value array_val = Value::Array(types::FloatArrayType(), float_values);
-  ValueProto proto;
-  if (absl::Status s = array_val.Serialize(&proto); !s.ok()) {
-    return s;
-  }
+  GOOGLESQL_ASSIGN_OR_RETURN(
+      std::string vector_bytes,
+      MakeVectorValueBytes(encoding, MakeFloat32VectorPayload(elements)));
   return Value::Declarative(vector_type->AsDeclarativeType(),
-                            Value::Bytes(proto.SerializeAsString()));
+                            Value::Bytes(std::move(vector_bytes)));
 }
 
 TEST(TypeParametersTest, VectorWithDimsOk) {

@@ -3513,4 +3513,112 @@ QueryStmt
     |         +-Literal(type=JSON, value={}, has_explicit_type=TRUE)
     +-input_scan=
       +-SingleRowScan
+==
 
+# TVF call with reserved keyword PROTO as a named argument name.
+SELECT * FROM tvf_with_proto_named_arg('format1', proto => 'my.pkg.Event');
+--
+QueryStmt
++-output_column_list=
+| +-tvf_with_proto_named_arg.column_bool#1 AS column_bool [BOOL]
+| +-tvf_with_proto_named_arg.column_bytes#2 AS column_bytes [BYTES]
++-query=
+  +-ProjectScan
+    +-column_list=tvf_with_proto_named_arg.[column_bool#1, column_bytes#2]
+    +-input_scan=
+      +-TVFScan
+        +-column_list=tvf_with_proto_named_arg.[column_bool#1, column_bytes#2]
+        +-tvf=tvf_with_proto_named_arg
+        +-signature=(literal STRING, literal STRING) -> TABLE<column_bool BOOL, column_bytes BYTES>
+        +-argument_list=
+        | +-FunctionArgument
+        | | +-expr=
+        | |   +-Literal(type=STRING, value="format1")
+        | +-FunctionArgument
+        |   +-expr=
+        |     +-Literal(type=STRING, value="my.pkg.Event")
+        +-column_index_list=[0, 1]
+        +-function_call_signature=(STRING format_string, optional(1) STRING proto) -> TABLE<column_bool BOOL, column_bytes BYTES>
+==
+
+SELECT *
+FROM tvf_with_proto_named_arg(
+  proto => 'my.pkg.Event', format_string => 'format2');
+--
+QueryStmt
++-output_column_list=
+| +-tvf_with_proto_named_arg.column_bool#1 AS column_bool [BOOL]
+| +-tvf_with_proto_named_arg.column_bytes#2 AS column_bytes [BYTES]
++-query=
+  +-ProjectScan
+    +-column_list=tvf_with_proto_named_arg.[column_bool#1, column_bytes#2]
+    +-input_scan=
+      +-TVFScan
+        +-column_list=tvf_with_proto_named_arg.[column_bool#1, column_bytes#2]
+        +-tvf=tvf_with_proto_named_arg
+        +-signature=(literal STRING, literal STRING) -> TABLE<column_bool BOOL, column_bytes BYTES>
+        +-argument_list=
+        | +-FunctionArgument
+        | | +-expr=
+        | |   +-Literal(type=STRING, value="format2")
+        | +-FunctionArgument
+        |   +-expr=
+        |     +-Literal(type=STRING, value="my.pkg.Event")
+        +-column_index_list=[0, 1]
+        +-function_call_signature=(STRING format_string, optional(1) STRING proto) -> TABLE<column_bool BOOL, column_bytes BYTES>
+==
+
+# Scalar function call with PROTO as a named argument name. The function has no
+# argument named "proto", so this is an argument-not-found error.
+select fn_named_args(format_string => "%x", proto => "my.pkg.Event")
+--
+ERROR: No matching signature for function SAMPLE_FUNCTIONS:FN_NAMED_ARGS
+  Argument types: format_string => STRING, proto => STRING
+  Signature: FN_NAMED_ARGS([format_string=>]STRING, [date_string=>]STRING)
+    Named argument `proto` does not exist in signature [at 1:8]
+select fn_named_args(format_string => "%x", proto => "my.pkg.Event")
+       ^
+==
+
+# PROTO is still reserved as a parameter name in CREATE FUNCTION.
+[language_features=MAXIMUM]
+CREATE FUNCTION f(proto INT64) AS (1);
+--
+ERROR: Syntax error: Expected ")" but got keyword PROTO [at 1:19]
+CREATE FUNCTION f(proto INT64) AS (1);
+                  ^
+==
+
+# A backtick-quoted `proto` parameter name is allowed in CREATE FUNCTION.
+[prepare_database=db_proto_named_arg]
+[language_features=MAXIMUM]
+CREATE FUNCTION func_with_arg_named_proto(`proto` STRING) AS (1);
+--
+CreateFunctionStmt
++-name_path=func_with_arg_named_proto
++-return_type=INT64
++-argument_name_list=[`proto`]
++-signature=(STRING proto) -> INT64
++-language="SQL"
++-code="1"
++-function_expression=
+  +-Literal(type=INT64, value=1)
+==
+
+# The function above can be called with an unquoted `proto =>` named argument.
+[use_database=db_proto_named_arg]
+[language_features=MAXIMUM]
+SELECT func_with_arg_named_proto(proto => 'a');
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#1 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#1]
+    +-expr_list=
+    | +-$col1#1 :=
+    |   +-FunctionCall(Lazy_resolution_function:func_with_arg_named_proto(STRING proto) -> INT64)
+    |     +-Literal(type=STRING, value="a")
+    +-input_scan=
+      +-SingleRowScan

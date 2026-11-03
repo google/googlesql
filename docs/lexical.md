@@ -762,6 +762,55 @@ single field, use typeless struct syntax or typed struct syntax.
 A struct literal represents a constant value of the
 [struct data type][struct-data-type].
 
+### Map literals 
+<a id="map_literals"></a>
+
+A map literal is a map whose keys and values are all literals. Map literals are
+written using the [map constructor][map-constructor] syntax: a
+comma-separated list of `key: value` entries enclosed in curly braces.
+
+You can specify the map type explicitly (`NEW MAP<KEY_TYPE, VALUE_TYPE> {...}`),
+let it be derived from the entries (`MAP {...}`), or omit it (`{...}`) where the
+map type is known from the surrounding context, such as in a `CAST` expression.
+
+Keys must be distinct. A key can be `NULL`.
+
+<table>
+<thead>
+<tr>
+<th>Example</th>
+<th>Output Type</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>NEW MAP&lt;STRING, INT64&gt; { 'a': 1, 'b': 2 }</code></td>
+<td><code>MAP&lt;STRING, INT64&gt;</code></td>
+</tr>
+<tr>
+<td><code>NEW MAP&lt;STRING, INT64&gt; {}</code></td>
+<td><code>MAP&lt;STRING, INT64&gt;</code></td>
+</tr>
+<tr>
+<td><code>MAP { 'a': 1, 'b': 2 }</code></td>
+<td><code>MAP&lt;STRING, INT64&gt;</code></td>
+</tr>
+<tr>
+<td><code>MAP { 1: 'a', 2: 'b' }</code></td>
+<td><code>MAP&lt;INT64, STRING&gt;</code></td>
+</tr>
+
+<tr>
+<td><code>CAST({ 'a': 1 } AS MAP&lt;STRING, INT64&gt;)</code></td>
+<td><code>MAP&lt;STRING, INT64&gt;</code></td>
+</tr>
+
+</tbody>
+</table>
+
+A map literal represents a constant value of the
+[map data type][map-data-type].
+
 ### Date literals
 
 Syntax:
@@ -1681,6 +1730,10 @@ WHERE book = "Ulysses";
 [lexical-udfs-reference]: https://github.com/google/googlesql/blob/master/docs/user-defined-functions.md
 
 [constructing-a-struct]: https://github.com/google/googlesql/blob/master/docs/data-types.md#constructing_a_struct
+
+[map-constructor]: https://github.com/google/googlesql/blob/master/docs/data-types.md#map_constructor
+
+[map-data-type]: https://github.com/google/googlesql/blob/master/docs/data-types.md#map_type
 
 [coercion]: https://github.com/google/googlesql/blob/master/docs/conversion_rules.md#coercion
 

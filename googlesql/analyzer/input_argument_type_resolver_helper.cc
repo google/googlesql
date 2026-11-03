@@ -157,8 +157,6 @@ static absl::StatusOr<InputArgumentType> GetInputArgumentTypeForGenericArgument(
   if (expr == nullptr) {
     // Lambda arguments can either be inline or be passed as a function-typed
     // parameter, hence the check for ASTLambda and ASTFunctionRefArg.
-    // ASTPathExpression is rejected because propagating function references
-    // requires the FUNCTION keyword.
     if (argument_ast_node->Is<ASTLambda>() ||
         argument_ast_node->Is<ASTFunctionRefArg>()) {
       if (argument_ast_node->Is<ASTFunctionRefArg>()) {
@@ -170,10 +168,6 @@ static absl::StatusOr<InputArgumentType> GetInputArgumentTypeForGenericArgument(
         }
       }
       return InputArgumentType::LambdaInputArgumentType();
-    } else if (argument_ast_node->Is<ASTPathExpression>()) {
-      return MakeSqlErrorAt(argument_ast_node)
-             << "Function-typed UDF arguments must be prefixed with the "
-                "FUNCTION keyword";
     } else if (argument_ast_node->Is<ASTSequenceArg>()) {
       return InputArgumentType::SequenceInputArgumentType();
     } else if (argument_ast_node->Is<ASTModelArg>()) {

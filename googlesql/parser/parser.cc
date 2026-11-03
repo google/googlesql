@@ -203,7 +203,8 @@ absl::Status ParseNextStatementInternal(ParseResumeLocation* resume_location,
                                         const ParserOptions& parser_options_in,
                                         ParserMode mode,
                                         std::unique_ptr<ParserOutput>* output,
-                                        bool* at_end_of_input) {
+                                        bool* at_end_of_input,
+                                        ParserRuntimeInfo* out_runtime_info) {
   ParserOptions parser_options = parser_options_in;
   parser_options.CreateDefaultArenasIfNotSet();
 
@@ -225,6 +226,9 @@ absl::Status ParseNextStatementInternal(ParseResumeLocation* resume_location,
       parser_options.macro_expansion_mode(), parser_options.catalog(),
       &ast_node, *runtime_info, warning_sink, &other_allocated_ast_nodes,
       /*ast_statement_properties=*/nullptr, &next_statement_byte_offset);
+  if (out_runtime_info != nullptr) {
+    *out_runtime_info = *runtime_info;
+  }
   GOOGLESQL_RETURN_IF_ERROR(ConvertInternalErrorLocationAndAdjustErrorString(
       parser_options.error_message_options(), resume_location->input(),
       status));
@@ -253,19 +257,21 @@ absl::Status ParseNextStatementInternal(ParseResumeLocation* resume_location,
 absl::Status ParseNextScriptStatement(ParseResumeLocation* resume_location,
                                       const ParserOptions& parser_options_in,
                                       std::unique_ptr<ParserOutput>* output,
-                                      bool* at_end_of_input) {
+                                      bool* at_end_of_input,
+                                      ParserRuntimeInfo* out_runtime_info) {
   return ParseNextStatementInternal(resume_location, parser_options_in,
                                     ParserMode::kNextScriptStatement, output,
-                                    at_end_of_input);
+                                    at_end_of_input, out_runtime_info);
 }
 
 absl::Status ParseNextStatement(ParseResumeLocation* resume_location,
                                 const ParserOptions& parser_options_in,
                                 std::unique_ptr<ParserOutput>* output,
-                                bool* at_end_of_input) {
+                                bool* at_end_of_input,
+                                ParserRuntimeInfo* out_runtime_info) {
   return ParseNextStatementInternal(resume_location, parser_options_in,
                                     ParserMode::kNextStatement, output,
-                                    at_end_of_input);
+                                    at_end_of_input, out_runtime_info);
 }
 
 absl::Status ParseType(absl::string_view type_string,

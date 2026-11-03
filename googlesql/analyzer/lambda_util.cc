@@ -66,7 +66,10 @@ static absl::Status ExtractLambdaArgumentNames(const ASTLambda* ast_lambda,
     }
     for (const ASTExpression* field : fields) {
       GOOGLESQL_ASSIGN_OR_RETURN(IdString name, ExtractArgumentNameFromExpr(field));
-      const auto itr = std::find(names->begin(), names->end(), name);
+      const auto itr = std::find_if(names->begin(), names->end(),
+                                    [&name](const IdString& existing_name) {
+                                      return existing_name.CaseEquals(name);
+                                    });
       if (itr != names->end()) {
         return MakeSqlErrorAt(field)
                << "Lambda argument name `" << name.ToStringView()

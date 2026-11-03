@@ -52,8 +52,7 @@ SQLFunction::SQLFunction(
     FunctionOptions function_options, const ResolvedExpr* function_expression,
     std::vector<std::string> argument_names,
     std::optional<ParseResumeLocation> parse_resume_location,
-    const std::vector<std::unique_ptr<const ResolvedComputedColumn>>*
-        aggregate_expression_list)
+    const AggregateExpressionList* aggregate_expression_list)
     : SQLFunctionInterface(std::move(name_path), kSQLFunctionGroup, mode,
                            std::move(function_signatures),
                            std::move(function_options)),
@@ -67,8 +66,7 @@ absl::StatusOr<std::unique_ptr<SQLFunction>> SQLFunction::Create(
     FunctionSignature function_signature, FunctionOptions function_options,
     const ResolvedExpr* function_expression,
     std::vector<std::string> argument_names,
-    const std::vector<std::unique_ptr<const ResolvedComputedColumn>>*
-        aggregate_expression_list,
+    const AggregateExpressionList* aggregate_expression_list,
     std::optional<ParseResumeLocation> parse_resume_location) {
   GOOGLESQL_RET_CHECK(function_expression != nullptr);
   if (mode == FunctionEnums::AGGREGATE) {
@@ -90,8 +88,7 @@ absl::Status SQLFunction::Create(
     std::vector<FunctionSignature> function_signatures,
     FunctionOptions function_options, const ResolvedExpr* function_expression,
     std::vector<std::string> argument_names,
-    const std::vector<std::unique_ptr<const ResolvedComputedColumn>>*
-        aggregate_expression_list,
+    const AggregateExpressionList* aggregate_expression_list,
     std::optional<ParseResumeLocation> parse_resume_location,
     std::unique_ptr<SQLFunction>* sql_function) {
   if (parse_resume_location.has_value()) {

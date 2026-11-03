@@ -16,6 +16,7 @@
 
 #include "googlesql/reference_impl/evaluation.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -39,11 +40,12 @@
 #include "absl/status/statusor.h"
 #include "absl/strings/cord.h"
 #include "absl/strings/string_view.h"
+#include "absl/time/clock_interface.h"
 #include "absl/time/time.h"
+#include "absl/types/span.h"
 #include "googlesql/base/map_util.h"
 #include "googlesql/base/ret_check.h"
 #include "googlesql/base/status_builder.h"
-#include "googlesql/base/clock.h"
 
 ABSL_FLAG(
     int64_t, googlesql_call_verify_not_aborted_rows_period, 1000,
@@ -377,6 +379,24 @@ absl::StatusOr<Value> ReplaceStringsWithCollationKeys(
       GOOGLESQL_RET_CHECK_FAIL() << "Unsupported type for composite collation: "
                        << value.type()->DebugString();
   }
+}
+
+bool AreValuesBagEquatable(const Value& v1, const Value& v2) {
+  return (InternalValue::ContainsArrayWithUncertainOrder(v1) ||
+          InternalValue::ContainsArrayWithUncertainOrder(v2)) &&
+         InternalValue::Equals(v1, v2);
+}
+
+bool HasBagEquatableKeyCollision(
+    absl::Span<const std::pair<Value, Value>> map_entries) {
+  for (size_t i = 0; i < map_entries.size(); ++i) {
+    for (size_t j = i + 1; j < map_entries.size(); ++j) {
+      if (AreValuesBagEquatable(map_entries[i].first, map_entries[j].first)) {
+        return true;
+      }
+    }
+  }
+  return false;
 }
 
 }  // namespace googlesql

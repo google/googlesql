@@ -316,6 +316,8 @@ public final class FunctionArgumentType implements Serializable {
         return "ANY SEQUENCE";
       case ARG_KIND_EXPR_STRING_ANY:
         return "ANY STRING";
+      case ARG_KIND_EXPR_ROW_ANY:
+        return "ANY ROW";
       case __SignatureArgumentKind__switch_must_have_a_default__:
       default:
         return "UNKNOWN_ARG_KIND";
@@ -390,7 +392,8 @@ public final class FunctionArgumentType implements Serializable {
               && kind != SignatureArgumentKind.ARG_KIND_DESCRIPTOR
               && kind != SignatureArgumentKind.ARG_KIND_CONNECTION
               && kind != SignatureArgumentKind.ARG_KIND_GRAPH
-              && kind != SignatureArgumentKind.ARG_KIND_LAMBDA,
+              && kind != SignatureArgumentKind.ARG_KIND_LAMBDA
+              && kind != SignatureArgumentKind.ARG_KIND_EXPR_ROW_ANY,
           "%s argument cannot have a default value",
           signatureArgumentKindToString(kind));
       if (type != null) {

@@ -47,6 +47,9 @@ namespace googlesql {
 
 using google::protobuf::DescriptorPool;
 using testing::HasSubstr;
+using ::testing::TestParamInfo;
+using ::testing::TestWithParam;
+using ::testing::ValuesIn;
 using ::absl_testing::StatusIs;
 
 absl::Status CopyFile(absl::string_view from_path, absl::string_view to_path) {
@@ -971,4 +974,107 @@ TEST(FileModuleContentsFetcherTest,
   EXPECT_TRUE(module_contents_info_map.contains({"test_imported_after_proc"}));
 }
 
+TEST(FileModuleContentsFetcherTest,
+     FetchModuleContentsWithDollarInStringLiteral) {
+  FileModuleContentsFetcher module_fetcher(std::vector<std::string>{
+      googlesql::internal::TestTmpDir(), TestSrcDirBase()});
+  WriteTestFile("test_dollar_string.sqlm",
+                "MODULE test_dollar_string;\nIMPORT MODULE "
+                "googlesql.testdata.modules.simple OPTIONS(description "
+                "= \"Price $USD\");\n");
+
+  ModuleContentsInfoMap module_contents_info_map;
+  std::vector<absl::Status> errors;
+  GOOGLESQL_EXPECT_OK(FetchAllModuleContents({"test_dollar_string"}, &module_fetcher,
+                                   &module_contents_info_map, &errors));
+}
+
+TEST(FileModuleContentsFetcherTest,
+     FetchModuleContentsValidImportFollowedByMacroInvocationAllowed) {
+  FileModuleContentsFetcher module_fetcher(std::vector<std::string>{
+      googlesql::internal::TestTmpDir(), TestSrcDirBase()});
+  WriteTestFile("test_valid_import_before_macro.sqlm",
+                "MODULE test_valid_import_before_macro;\n"
+                "IMPORT MODULE googlesql.testdata.modules.simple;"
+                "$m();\n");
+
+  ModuleContentsInfoMap module_contents_info_map;
+  std::vector<absl::Status> errors;
+  GOOGLESQL_EXPECT_OK(FetchAllModuleContents({"test_valid_import_before_macro"},
+                                   &module_fetcher, &module_contents_info_map,
+                                   &errors));
+}
+
+namespace {
+
+constexpr absl::string_view kImportMacroError =
+    "IMPORT statements cannot be produced via macro expansion or contain "
+    "macro invocations";
+
+struct FetchImportWithMacroTestCase {
+  std::string test_name;
+  std::string statements;
+  absl::string_view expected_error;
+};
+
+using FetchImportWithMacroTest = TestWithParam<FetchImportWithMacroTestCase>;
+
+TEST_P(FetchImportWithMacroTest, RejectsInvalidImportStatements) {
+  const FetchImportWithMacroTestCase& test_case = GetParam();
+  std::string module_name =
+      absl::StrCat("macro_in_import_", test_case.test_name);
+  WriteTestFile(
+      absl::StrCat(module_name, ".sqlm"),
+      absl::StrCat("MODULE ", module_name, ";\n", test_case.statements));
+  FileModuleContentsFetcher module_fetcher(
+      std::vector<std::string>{googlesql::internal::TestTmpDir()});
+
+  ModuleContentsInfoMap module_contents_info_map;
+  std::vector<absl::Status> errors;
+  EXPECT_THAT(FetchAllModuleContents({module_name}, &module_fetcher,
+                                     &module_contents_info_map, &errors),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr(test_case.expected_error)));
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    FetchImportWithMacroTests, FetchImportWithMacroTest,
+    ValuesIn(std::vector<FetchImportWithMacroTestCase>{
+        {.test_name = "MacroWithoutArguments",
+         .statements = "IMPORT MODULE $macro_name;\n",
+         .expected_error = kImportMacroError},
+        {.test_name = "MacroWithArguments",
+         .statements = "IMPORT MODULE $p();\n",
+         .expected_error = kImportMacroError},
+        {.test_name = "BuiltinMacro",
+         .statements = "IMPORT MODULE $$IDENTIFIER(a);\n",
+         .expected_error = kImportMacroError},
+        {.test_name = "MacroArgumentReference",
+         .statements = "IMPORT MODULE a.b.c AS $1;\n",
+         .expected_error = kImportMacroError},
+        {.test_name = "MacroAfterMissingSemicolon",
+         .statements = "IMPORT MODULE a.b.c\n$p;\n",
+         .expected_error = kImportMacroError},
+        {.test_name = "UnclosedStringLiteralAfterMacro",
+         .statements = "IMPORT MODULE $p 'unclosed\n",
+         .expected_error = kImportMacroError},
+        {.test_name = "SyntaxErrorBeforeMacro",
+         .statements = "IMPORT MODULE a.b.c + $p;\n",
+         .expected_error =
+             "Syntax error: Expected \";\" or end of input but got \"+\""},
+        {.test_name = "MissingSemicolonBeforeStatementWithMacro",
+         .statements = "IMPORT MODULE a.b.c\nSELECT $p;\n",
+         .expected_error = "got keyword SELECT"},
+        {.test_name = "StandaloneDollarSign",
+         .statements = "IMPORT MODULE $;\n",
+         .expected_error = "Syntax error: Unexpected \"$\""},
+        {.test_name = "UnclosedStringLiteral",
+         .statements = "IMPORT MODULE a.b.c 'unclosed\n",
+         .expected_error = "Unclosed string literal"},
+    }),
+    [](const TestParamInfo<FetchImportWithMacroTestCase>& info) {
+      return info.param.test_name;
+    });
+
+}  // namespace
 }  // namespace googlesql

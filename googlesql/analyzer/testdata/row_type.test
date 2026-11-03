@@ -3999,3 +3999,110 @@ QueryStmt
     |     +-field_idx=0
     +-input_scan=
       +-TVFScan(column_list=[tvf_returning_row_type_recursive_collated.$row_col$scanrow#6<{Collation:"und:ci"},<<<{Collation:"und:ci"}>>>>], tvf=RowTypeTest:tvf_returning_row_type_recursive_collated, signature=() -> TABLE<normal_col_1 STRING, row_col STRUCT<string_ci STRING, middle STRUCT<middle STRUCT<middle STRUCT<string_ci STRING>>>>, normal_col_2 INT64>, column_index_list=[1], function_call_signature=() -> ANY TABLE)
+==
+
+[default enabled_ast_rewrites=NONE]
+# RowType passed to a function.
+# TODO: RowType rewriter should RET_CHECK if it finds this case,
+# since it doesn't know how to rewrite the signature correctly.
+FROM KeyValueLazy AS T
+|> SELECT fn_with_rowtype(T)
+--
+QueryStmt
++-output_column_list=
+| +-$pipe_select.$col1#2 AS `$col1` [BOOL]
++-query=
+  +-ProjectScan
+    +-column_list=[$pipe_select.$col1#2]
+    +-expr_list=
+    | +-$col1#2 :=
+    |   +-FunctionCall(sample_functions:fn_with_rowtype(ROW<KeyValueLazy>) -> BOOL)
+    |     +-ColumnRef(type=ROW<KeyValueLazy>, column=KeyValueLazy.$row#1)
+    +-input_scan=
+      +-TableScan(column_list=[KeyValueLazy.$row#1], table=KeyValueLazy, alias="T", read_as_row_type=TRUE)
+==
+
+[default enabled_ast_rewrites=NONE]
+# RowType passed to a function with 2 RowType args.
+# TODO: RowType rewriter should RET_CHECK if it finds this case,
+# since it doesn't know how to rewrite the signature correctly.
+FROM KeyValueLazy AS T
+|> SELECT fn_with_2_rowtypes(T, T)
+--
+QueryStmt
++-output_column_list=
+| +-$pipe_select.$col1#2 AS `$col1` [BOOL]
++-query=
+  +-ProjectScan
+    +-column_list=[$pipe_select.$col1#2]
+    +-expr_list=
+    | +-$col1#2 :=
+    |   +-FunctionCall(sample_functions:fn_with_2_rowtypes(ROW<KeyValueLazy>, ROW<KeyValueLazy>) -> BOOL)
+    |     +-ColumnRef(type=ROW<KeyValueLazy>, column=KeyValueLazy.$row#1)
+    |     +-ColumnRef(type=ROW<KeyValueLazy>, column=KeyValueLazy.$row#1)
+    +-input_scan=
+      +-TableScan(column_list=[KeyValueLazy.$row#1], table=KeyValueLazy, alias="T", read_as_row_type=TRUE)
+==
+
+# Top-level TABLE statement.
+[language_features=MAXIMUM,+ROW_TYPE]
+TABLE KeyValueLazy
+|> STATIC_DESCRIBE
+|> SELECT key
+--
+QueryStmt
++-output_column_list=
+| +-$pipe_select.key#2 AS key [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$pipe_select.key#2]
+    +-expr_list=
+    | +-key#2 :=
+    |   +-GetRowField
+    |     +-type=INT64
+    |     +-expr=
+    |     | +-ColumnRef(type=ROW<KeyValueLazy>, column=KeyValueLazy.$row#1)
+    |     +-column=KeyValueLazy.Key
+    +-input_scan=
+      +-StaticDescribeScan
+        +-column_list=[KeyValueLazy.$row#1]
+        +-describe_text=
+        |   """
+        |   NameList (is_value_table = true):
+        |     KeyValueLazy ROW<KeyValueLazy> KeyValueLazy.$row#1 (value table)
+        |   NameScope:
+        |     Range variables:
+        |       KeyValueLazy -> RANGE_VARIABLE<$row#1> (value table)
+        |     Value table columns:
+        |       KeyValueLazy.$row#1
+        |   """
+        +-input_scan=
+          +-TableScan(column_list=[KeyValueLazy.$row#1], node_source="table_clause", table=KeyValueLazy, read_as_row_type=TRUE)
+==
+
+# TABLE statement in a subquery.
+[language_features=MAXIMUM,+ROW_TYPE]
+SELECT * FROM (TABLE KeyValueLazy)
+--
+QueryStmt
++-output_column_list=
+| +-$query.Key#2 AS Key [INT64]
+| +-$query.Value#3 AS Value [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=$query.[Key#2, Value#3]
+    +-expr_list=
+    | +-Key#2 :=
+    | | +-GetRowField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=ROW<KeyValueLazy>, column=KeyValueLazy.$row#1)
+    | |   +-column=KeyValueLazy.Key
+    | +-Value#3 :=
+    |   +-GetRowField
+    |     +-type=STRING
+    |     +-expr=
+    |     | +-ColumnRef(type=ROW<KeyValueLazy>, column=KeyValueLazy.$row#1)
+    |     +-column=KeyValueLazy.Value
+    +-input_scan=
+      +-TableScan(column_list=[KeyValueLazy.$row#1], node_source="table_clause", table=KeyValueLazy, read_as_row_type=TRUE)

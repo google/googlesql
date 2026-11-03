@@ -174,6 +174,13 @@ absl::Status Catalog::FindTableWithPathPrefix(
   return absl::OkStatus();
 }
 
+absl::Status Catalog::FindTableFromString(absl::string_view table_literal,
+                                          const Table** table,
+                                          const FindOptions& options) {
+  *table = nullptr;
+  return TableNotFoundError({std::string(table_literal)});
+}
+
 absl::Status Catalog::FindModel(const absl::Span<const std::string>& path,
                                 const Model** model,
                                 const FindOptions& options) {

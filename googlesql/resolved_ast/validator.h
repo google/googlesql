@@ -37,6 +37,7 @@
 #include "googlesql/public/types/type.h"
 #include "googlesql/public/with_modifier_mode.h"
 #include "googlesql/resolved_ast/resolved_ast.h"
+#include "googlesql/resolved_ast/resolved_ast_column_visibility_checker.h"
 #include "googlesql/resolved_ast/resolved_ast_enums.pb.h"
 #include "googlesql/resolved_ast/resolved_column.h"
 #include "googlesql/resolved_ast/resolved_node.h"
@@ -44,6 +45,8 @@
 #include "gtest/gtest_prod.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/flags/declare.h"
+#include "absl/flags/flag.h"
 #include "googlesql/base/check.h"
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
@@ -51,6 +54,13 @@
 #include "google/protobuf/descriptor.h"
 #include "googlesql/base/status.h"
 #include "googlesql/base/status_builder.h"
+
+// Default for ValidatorOptions::validate_column_visibility.
+ABSL_DECLARE_FLAG(bool, googlesql_validate_resolved_ast_column_visibility);
+// Default for ValidatorOptions::compare_column_visibility. For tests only.
+ABSL_DECLARE_FLAG(bool,
+                  googlesql_validate_resolved_ast_compare_column_visibility);
+
 namespace googlesql {
 
 class RowType;
@@ -70,6 +80,23 @@ struct ValidatorOptions {
   // are checked.
   // TODO: Add validation for non anonymization options and hints.
   AllowedHintsAndOptions allowed_hints_and_options;
+
+  // If true, also check that every column reference is visible where it
+  // occurs, using the column visibility annotations in gen_resolved_ast.py
+  // (see "ResolvedColumn visibility" there). This runs a generated
+  // ColumnVisibilityChecker on each statement or standalone expression, before
+  // the hand-written validation.
+  bool validate_column_visibility =
+      absl::GetFlag(FLAGS_googlesql_validate_resolved_ast_column_visibility);
+
+  // For tests only. If true, and `validate_column_visibility` is true, the
+  // validator checks that the column sets computed from the column visibility
+  // annotations match the hand-written ones: the `visible_columns` and
+  // `visible_parameters` sets that the validator passes down the tree, and the
+  // sets passed to CheckColumnList. It returns an error on any difference. This
+  // finds both annotation mistakes and validator bugs.
+  bool compare_column_visibility = absl::GetFlag(
+      FLAGS_googlesql_validate_resolved_ast_compare_column_visibility);
 };
 
 // Used to validate generated Resolved AST structures.
@@ -92,6 +119,7 @@ class Validator {
  private:
   FRIEND_TEST(ValidatorTest, InvalidDynamicGraphGetElementProperty);
   FRIEND_TEST(ValidatorTest, CaseInsensitiveDynamicGraphGetElementProperty);
+  FRIEND_TEST(ValidatorTest, CompareColumnSet);
 
   // Which ArgumentKinds are allowed in the current expression.
   // Set using scoped VarSetters for field `allowed_argument_kinds_`.
@@ -672,6 +700,85 @@ class Validator {
   absl::Status CheckColumnIsPresentInColumnSet(
       const ResolvedColumn& column,
       const std::set<ResolvedColumn>& visible_columns);
+
+  // Runs the generated ColumnVisibilityChecker on `root`, if
+  // `validate_column_visibility` is enabled.
+  absl::Status CheckColumnVisibility(const ResolvedNode* root);
+
+  // In `compare_column_visibility` mode, checks that the VISIBLE and OUTER
+  // sets that the ColumnVisibilityChecker computed for `node` from the
+  // annotations match the hand-written sets that the validator passes down the
+  // tree for `node`: `visible_columns` and `visible_parameters`. Null sets
+  // aren't compared. `what` describes the caller, for error messages.
+  //
+  // Column visibility comparison failures
+  // -------------------------------------
+  // A "Column visibility comparison failed" error (from this method or
+  // CompareColumnListScope) means that a set the hand-written validator uses
+  // differs from the set computed from the column visibility annotations in
+  // gen_resolved_ast.py. The error lists the columns that are only in each
+  // set. Possible causes:
+  //   - The hand-written validator and the annotations disagree. This is the
+  //     usual cause: one of them is wrong.
+  //   - The difference is deliberate, e.g. the validator checks a stricter set
+  //     than the annotations can express.
+  //   - The Resolved AST is malformed in a way that the column visibility
+  //     check doesn't catch, e.g. fields that are inconsistent with each other
+  //     or a node where it isn't allowed. The checker only checks references,
+  //     and the comparison runs before the validator's own structural checks
+  //     for the node. Check the tree around the node in the error.
+  // To fix it, fix the annotation or the validator. If the difference is
+  // deliberate, skip the comparison with ScopedSkipColumnVisibilityComparison
+  // and an "Intended difference:" comment saying why.
+  absl::Status CompareColumnVisibility(
+      const ResolvedNode* node, const std::set<ResolvedColumn>* visible_columns,
+      const std::set<ResolvedColumn>* visible_parameters,
+      absl::string_view what);
+
+  // While an instance is alive, CompareColumnVisibility and
+  // CompareColumnListScope don't compare anything. Use this where the
+  // hand-written validator deliberately uses different column sets than the
+  // annotations, either because it checks a stricter set by hand than the
+  // annotations can express, or because the annotations are a known
+  // approximation. Each use needs a comment saying which case it is, starting
+  // with "Intended difference:", or a TODO for a suspected bug or gap.
+  class ScopedSkipColumnVisibilityComparison {
+   public:
+    explicit ScopedSkipColumnVisibilityComparison(Validator* validator)
+        : validator_(validator) {
+      ++validator_->skip_column_visibility_comparison_;
+    }
+    ~ScopedSkipColumnVisibilityComparison() {
+      --validator_->skip_column_visibility_comparison_;
+    }
+    ScopedSkipColumnVisibilityComparison(
+        const ScopedSkipColumnVisibilityComparison&) = delete;
+    ScopedSkipColumnVisibilityComparison& operator=(
+        const ScopedSkipColumnVisibilityComparison&) = delete;
+
+   private:
+    Validator* validator_;
+  };
+
+  // Returns an error if the column sets `hand_written` and `computed` differ.
+  // `what` and `set_name` describe the sets, for the error message. A null
+  // `computed` set is the empty set (as in ColumnVisibilityChecker::Env). An
+  // UNCHECKED `computed` set is never different.
+  static absl::Status CompareColumnSet(
+      absl::string_view what, absl::string_view set_name,
+      const std::set<ResolvedColumn>& hand_written,
+      const ColumnVisibilityChecker::ColumnSet* computed);
+
+  // Like CompareColumnVisibility, but compares `column_list_scope` with the
+  // computed `column_list_scope` of `scan`.
+  absl::Status CompareColumnListScope(
+      const ResolvedScan* scan,
+      const std::set<ResolvedColumn>& column_list_scope);
+
+  // Formats a validation error, with a tree dump of `root` annotated at the
+  // node where the error was found.
+  absl::Status MakeValidationFailedError(const ResolvedNode* root,
+                                         const absl::Status& status);
 
   // Verifies that the scan column list only contains column from the visible
   // set.
@@ -1338,6 +1445,17 @@ class Validator {
 
   // Options that disable validation of certain invariants.
   const ValidatorOptions options_;
+
+  // Checks column visibility, if `options_.validate_column_visibility` is
+  // set. Created on first use.
+  std::unique_ptr<ColumnVisibilityChecker> column_visibility_checker_;
+
+  // The number of live ScopedSkipColumnVisibilityComparison instances. When
+  // > 0, column visibility comparisons are skipped. This is a count, not a
+  // bool, because skips nest: a skipped region can validate subtrees that
+  // contain other skipped regions. ValidateFinalState checks that it's back
+  // to 0.
+  int skip_column_visibility_comparison_ = 0;
 
   ArgumentKindSet allowed_argument_kinds_;
 

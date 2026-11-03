@@ -147,6 +147,14 @@ class LookaheadTransformer final : public TokenStream {
   // Re-access the location of the most recently returned token.
   const ParseLocationRange& LastTokenLocation() const;
 
+  // Returns true if the most recently returned token came from a macro
+  // expansion. Its LastTokenLocation() may then point into the macro
+  // definition instead of the input.
+  bool LastTokenIsFromMacroExpansion() const {
+    return current_token_.has_value() &&
+           current_token_->token.stack_frame != nullptr;
+  }
+
   // Re-access the location of the second most recently returned token.
   const ParseLocationRange& LastLastTokenLocation() const;
 

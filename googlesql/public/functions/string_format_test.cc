@@ -28,6 +28,7 @@
 #include "googlesql/public/types/struct_type.h"
 #include "googlesql/public/types/type.h"
 #include "googlesql/public/types/type_factory.h"
+#include "googlesql/public/types/vector_type_util.h"
 #include "googlesql/public/value.h"
 #include "googlesql/testdata/test_schema.pb.h"
 #include "gmock/gmock.h"
@@ -182,12 +183,41 @@ TEST(CheckStringFormat, TestUnsupportedType) {
                   "%t", {type_factory.get_column_list_spec()},
                   ProductMode::PRODUCT_EXTERNAL),
               StatusIs(absl::StatusCode::kUnimplemented));
+
+  // VECTOR is rejected, including when nested inside an ARRAY.
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(const Type* vector_type, MakeVectorType(&type_factory));
+  const ArrayType* vector_array_type = nullptr;
+  GOOGLESQL_ASSERT_OK(type_factory.MakeArrayType(vector_type, &vector_array_type));
+  for (absl::string_view pattern : {"%t", "%T"}) {
+    EXPECT_THAT(
+        CheckStringFormatUtf8ArgumentTypes(pattern, {vector_type},
+                                           ProductMode::PRODUCT_EXTERNAL),
+        StatusIs(absl::StatusCode::kUnimplemented, HasSubstr("VECTOR")));
+    EXPECT_THAT(
+        CheckStringFormatUtf8ArgumentTypes(pattern, {vector_array_type},
+                                           ProductMode::PRODUCT_EXTERNAL),
+        StatusIs(absl::StatusCode::kUnimplemented, HasSubstr("VECTOR")));
+  }
+
   std::string output;
   bool is_null;
   EXPECT_THAT(
       StringFormatUtf8("%t", {Value::Null(type_factory.get_column_list_spec())},
                        ProductMode::PRODUCT_EXTERNAL, &output, &is_null),
       StatusIs(absl::StatusCode::kUnimplemented));
+
+  // FORMAT also rejects VECTOR at evaluation time. This matters when the
+  // pattern is not a literal (e.g. a query parameter or a column), since the
+  // argument types are then not checked during analysis.
+  for (absl::string_view pattern : {"%t", "%T"}) {
+    for (const Type* type :
+         std::vector<const Type*>{vector_type, vector_array_type}) {
+      EXPECT_THAT(
+          StringFormatUtf8(pattern, {Value::Null(type)},
+                           ProductMode::PRODUCT_EXTERNAL, &output, &is_null),
+          StatusIs(absl::StatusCode::kUnimplemented, HasSubstr("VECTOR")));
+    }
+  }
 }
 
 TEST(CheckStringFormat, UnsupportedForDeclarativeTypes) {

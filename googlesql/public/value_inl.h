@@ -1382,7 +1382,8 @@ inline Value Bytes(const char (&str)[N]) {
 }
 inline Value Date(int32_t v) { return Value::Date(v); }
 inline Value Date(absl::CivilDay day) {
-  static constexpr absl::CivilDay kEpochDay = absl::CivilDay(1970, 1, 1);
+  static constexpr absl::CivilDay kEpochDay =
+      absl::CivilDay(/*y=*/1970, /*m=*/1, /*d=*/1);
   return Value::Date(static_cast<int32_t>(day - kEpochDay));
 }
 inline Value Timestamp(absl::Time time) { return Value::Timestamp(time); }
@@ -1448,8 +1449,8 @@ inline Value Array(const ArrayType* type, absl::Span<const Value> values) {
 inline Value UnsafeArray(const ArrayType* type, std::vector<Value>&& values) {
   return Value::UnsafeArray(type, std::move(values));
 }
-inline Value True() { return Value::Bool(true); }
-inline Value False() { return Value::Bool(false); }
+inline Value True() { return Value::Bool(/*v=*/true); }
+inline Value False() { return Value::Bool(/*v=*/false); }
 inline Value EmptyGeography() { return Value::EmptyGeography(); }
 inline Value Range(Value start, Value end) {
   absl::StatusOr<Value> value = Value::MakeRange(start, end);
@@ -1489,7 +1490,7 @@ inline Value Invalid() { return Value::Invalid(); }
 inline Value::ListView::ListView(const Value* value) : value_(value) {}
 
 inline Value::ListView::Iterator Value::ListView::begin() const {
-  return Iterator(value_, 0);
+  return Iterator(value_, /*index=*/0);
 }
 
 inline Value::ListView::Iterator Value::ListView::end() const {
