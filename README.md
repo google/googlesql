@@ -33,9 +33,7 @@ Some other documentation:
 *   [GoogleSQL Resolved AST](docs/resolved_ast.md), documenting the intermediate
     representation produced by the GoogleSQL analyzer.
 *   [GoogleSQL
-    Toolkit](https://github.com/GoogleCloudPlatform/googlesql-toolkit), a
-    project using GoogleSQL to analyze and understand queries against BigQuery,
-    and other GoogleSQL engines.
+    Toolkit], GoogleSQL Toolkit, a project using GoogleSQL to analyze and understand queries against BigQuery and other GoogleSQL engines.
 *   Pipe query syntax
     *   See the [reference documentation](https://github.com/google/googlesql/blob/master/docs/pipe-syntax.md)
         and [research paper](https://research.google/pubs/pub1005959/).
