@@ -46,6 +46,7 @@
 #include "googlesql/public/value.h"
 #include "googlesql/resolved_ast/resolved_ast.h"
 #include "absl/base/attributes.h"
+#include "absl/base/nullability.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -485,9 +486,9 @@ class FunctionResolver {
       FunctionArgumentType::NamePrintingStyle argument_print_style,
       const std::vector<std::string>* mismatch_errors = nullptr) const;
 
-  // Looks up a generated proxy function by its name in the resolver's list of
-  // generated functions.
-  Function* LookupGeneratedFunction(IdString name) const;
+  // Looks up the synthesized proxy function for an in-scope function-typed
+  // parameter by name, or returns nullptr if `name` does not refer to one.
+  const Function* /*absl_nullable*/ LookupGeneratedFunction(IdString name) const;
 
   // Converts <argument_literal> to <target_type> and replaces
   // <converted_literal> with the new expression if successful. If

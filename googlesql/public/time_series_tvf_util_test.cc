@@ -52,7 +52,6 @@ struct ParseSimpleIdentifierPathTestCase {
 class ParseSimpleIdentifierPathTest
     : public ::testing::TestWithParam<ParseSimpleIdentifierPathTestCase> {};
 
-// TODO - Add a fuzzer test for ParseSimpleIdentifierPath.
 TEST_P(ParseSimpleIdentifierPathTest, ParseSimpleIdentifierPath) {
   const auto& test = GetParam();
 

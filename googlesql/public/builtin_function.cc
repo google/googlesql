@@ -266,6 +266,7 @@ absl::Status GetBuiltinFunctionsAndTypes(
   GetArraySlicingFunctions(&type_factory, options, &functions);
   GetArrayFilteringFunctions(&type_factory, options, &functions);
   GetArrayTransformFunctions(&type_factory, options, &functions);
+  GetArrayReduceFunctions(&type_factory, options, &functions);
   GetArrayIncludesFunctions(&type_factory, options, &functions);
   GetElementWiseAggregationFunctions(&type_factory, options, &functions);
   GOOGLESQL_RETURN_IF_ERROR(

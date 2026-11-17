@@ -1,0 +1,926 @@
+[default language_features=MAXIMUM,+COLUMN_LIST_SPEC]
+[default show_sqlbuilder_output]
+[default use_constant_evaluator]
+[default sql_builder_target_syntax_mode=standard]
+
+[language_features=MAXIMUM,-COLUMN_LIST_SPEC]
+# Error when FEATURE_COLUMN_LIST_SPEC is disabled
+SELECT Key, Value FROM KeyValue
+UNION ALL CORRESPONDING BY (**COLUMNS(['Key', 'Value']))
+SELECT Value, Key FROM KeyValue
+--
+ERROR: Unpack expression (**) is not supported [at 3:29]
+UNION ALL CORRESPONDING BY (**COLUMNS(['Key', 'Value']))
+                            ^
+==
+
+################################################################################
+#
+# Positive test cases for UNPACK (**) in UNION ALL CORRESPONDING BY / BY NAME ON
+#
+################################################################################
+
+# Basic UNION ALL CORRESPONDING BY
+SELECT Key, Value FROM KeyValue
+UNION ALL CORRESPONDING BY (**COLUMNS(['Key', 'Value']))
+SELECT Value, Key FROM KeyValue
+--
+QueryStmt
++-output_column_list=
+| +-$union_all.Key#5 AS Key [INT64]
+| +-$union_all.Value#6 AS Value [STRING]
++-query=
+  +-SetOperationScan
+    +-column_list=$union_all.[Key#5, Value#6]
+    +-op_type=UNION_ALL
+    +-input_item_list=
+    | +-SetOperationItem
+    | | +-scan=
+    | | | +-ProjectScan
+    | | |   +-column_list=KeyValue.[Key#1, Value#2]
+    | | |   +-input_scan=
+    | | |     +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+    | | +-output_column_list=KeyValue.[Key#1, Value#2]
+    | +-SetOperationItem
+    |   +-scan=
+    |   | +-ProjectScan
+    |   |   +-column_list=KeyValue.[Key#3, Value#4]
+    |   |   +-node_source="resolver_set_operation_corresponding"
+    |   |   +-input_scan=
+    |   |     +-ProjectScan
+    |   |       +-column_list=KeyValue.[Value#4, Key#3]
+    |   |       +-input_scan=
+    |   |         +-TableScan(column_list=KeyValue.[Key#3, Value#4], table=KeyValue, column_index_list=[0, 1])
+    |   +-output_column_list=KeyValue.[Key#3, Value#4]
+    +-column_match_mode=CORRESPONDING_BY
+    +-column_propagation_mode=INNER
+
+[SQLBUILDER_OUTPUT]
+(
+SELECT
+  KeyValue.Key AS Key,
+  KeyValue.Value AS Value
+FROM
+  KeyValue
+) UNION ALL CORRESPONDING BY (Key, Value)(
+SELECT
+  keyvalue_7.a_6 AS Value,
+  keyvalue_7.a_5 AS Key
+FROM
+  (
+    SELECT
+      KeyValue.Key AS a_5,
+      KeyValue.Value AS a_6
+    FROM
+      KeyValue
+  ) AS keyvalue_7
+);
+==
+
+# Basic UNION ALL BY NAME ON
+SELECT Key, Value FROM KeyValue
+UNION ALL BY NAME ON (**COLUMNS(['Key', 'Value']))
+SELECT Value, Key FROM KeyValue
+--
+QueryStmt
++-output_column_list=
+| +-$union_all.Key#5 AS Key [INT64]
+| +-$union_all.Value#6 AS Value [STRING]
++-query=
+  +-SetOperationScan
+    +-column_list=$union_all.[Key#5, Value#6]
+    +-op_type=UNION_ALL
+    +-input_item_list=
+    | +-SetOperationItem
+    | | +-scan=
+    | | | +-ProjectScan
+    | | |   +-column_list=KeyValue.[Key#1, Value#2]
+    | | |   +-input_scan=
+    | | |     +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+    | | +-output_column_list=KeyValue.[Key#1, Value#2]
+    | +-SetOperationItem
+    |   +-scan=
+    |   | +-ProjectScan
+    |   |   +-column_list=KeyValue.[Key#3, Value#4]
+    |   |   +-node_source="resolver_set_operation_corresponding"
+    |   |   +-input_scan=
+    |   |     +-ProjectScan
+    |   |       +-column_list=KeyValue.[Value#4, Key#3]
+    |   |       +-input_scan=
+    |   |         +-TableScan(column_list=KeyValue.[Key#3, Value#4], table=KeyValue, column_index_list=[0, 1])
+    |   +-output_column_list=KeyValue.[Key#3, Value#4]
+    +-column_match_mode=CORRESPONDING_BY
+
+[SQLBUILDER_OUTPUT]
+(
+SELECT
+  KeyValue.Key AS Key,
+  KeyValue.Value AS Value
+FROM
+  KeyValue
+) UNION ALL STRICT CORRESPONDING BY (Key, Value)(
+SELECT
+  keyvalue_7.a_6 AS Value,
+  keyvalue_7.a_5 AS Key
+FROM
+  (
+    SELECT
+      KeyValue.Key AS a_5,
+      KeyValue.Value AS a_6
+    FROM
+      KeyValue
+  ) AS keyvalue_7
+);
+==
+
+# Combined with propagation mode modifier (FULL OUTER)
+SELECT Key, Value FROM KeyValue
+FULL OUTER UNION ALL CORRESPONDING BY (**COLUMNS(['Key', 'Value']))
+SELECT Key FROM KeyValue
+--
+QueryStmt
++-output_column_list=
+| +-$union_all.Key#5 AS Key [INT64]
+| +-$union_all.Value#6 AS Value [STRING]
++-query=
+  +-SetOperationScan
+    +-column_list=$union_all.[Key#5, Value#6]
+    +-op_type=UNION_ALL
+    +-input_item_list=
+    | +-SetOperationItem
+    | | +-scan=
+    | | | +-ProjectScan
+    | | |   +-column_list=KeyValue.[Key#1, Value#2]
+    | | |   +-input_scan=
+    | | |     +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+    | | +-output_column_list=KeyValue.[Key#1, Value#2]
+    | +-SetOperationItem
+    |   +-scan=
+    |   | +-ProjectScan
+    |   |   +-column_list=[KeyValue.Key#3, $null_column_for_outer_set_op.Value#7]
+    |   |   +-node_source="resolver_set_operation_corresponding"
+    |   |   +-expr_list=
+    |   |   | +-Value#7 := Literal(type=STRING, value=NULL)
+    |   |   +-input_scan=
+    |   |     +-ProjectScan
+    |   |       +-column_list=[KeyValue.Key#3]
+    |   |       +-input_scan=
+    |   |         +-TableScan(column_list=[KeyValue.Key#3], table=KeyValue, column_index_list=[0])
+    |   +-output_column_list=[KeyValue.Key#3, $null_column_for_outer_set_op.Value#7]
+    +-column_match_mode=CORRESPONDING_BY
+    +-column_propagation_mode=FULL
+
+[SQLBUILDER_OUTPUT]
+(
+SELECT
+  KeyValue.Key AS Key,
+  KeyValue.Value AS Value
+FROM
+  KeyValue
+) FULL UNION ALL CORRESPONDING BY (Key, Value)(
+SELECT
+  KeyValue.Key AS Key
+FROM
+  KeyValue
+);
+==
+
+# Subset of columns
+SELECT Key, Value FROM KeyValue
+UNION ALL CORRESPONDING BY (**COLUMNS(['Key']))
+SELECT Value, Key FROM KeyValue
+--
+QueryStmt
++-output_column_list=
+| +-$union_all.Key#5 AS Key [INT64]
++-query=
+  +-SetOperationScan
+    +-column_list=[$union_all.Key#5]
+    +-op_type=UNION_ALL
+    +-input_item_list=
+    | +-SetOperationItem
+    | | +-scan=
+    | | | +-ProjectScan
+    | | |   +-column_list=[KeyValue.Key#1]
+    | | |   +-node_source="resolver_set_operation_corresponding"
+    | | |   +-input_scan=
+    | | |     +-ProjectScan
+    | | |       +-column_list=KeyValue.[Key#1, Value#2]
+    | | |       +-input_scan=
+    | | |         +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+    | | +-output_column_list=[KeyValue.Key#1]
+    | +-SetOperationItem
+    |   +-scan=
+    |   | +-ProjectScan
+    |   |   +-column_list=[KeyValue.Key#3]
+    |   |   +-node_source="resolver_set_operation_corresponding"
+    |   |   +-input_scan=
+    |   |     +-ProjectScan
+    |   |       +-column_list=KeyValue.[Value#4, Key#3]
+    |   |       +-input_scan=
+    |   |         +-TableScan(column_list=KeyValue.[Key#3, Value#4], table=KeyValue, column_index_list=[0, 1])
+    |   +-output_column_list=[KeyValue.Key#3]
+    +-column_match_mode=CORRESPONDING_BY
+    +-column_propagation_mode=INNER
+
+[SQLBUILDER_OUTPUT]
+(
+SELECT
+  KeyValue.Key AS Key,
+  KeyValue.Value AS a_3
+FROM
+  KeyValue
+) UNION ALL CORRESPONDING BY (Key)(
+SELECT
+  keyvalue_6.a_5 AS a_5,
+  keyvalue_6.a_4 AS Key
+FROM
+  (
+    SELECT
+      KeyValue.Key AS a_4,
+      KeyValue.Value AS a_5
+    FROM
+      KeyValue
+  ) AS keyvalue_6
+);
+==
+
+# Multiple unpack expressions
+SELECT Key, Value FROM KeyValue
+UNION ALL CORRESPONDING BY (**COLUMNS(['Key']), **COLUMNS(['Value']))
+SELECT Value, Key FROM KeyValue
+--
+QueryStmt
++-output_column_list=
+| +-$union_all.Key#5 AS Key [INT64]
+| +-$union_all.Value#6 AS Value [STRING]
++-query=
+  +-SetOperationScan
+    +-column_list=$union_all.[Key#5, Value#6]
+    +-op_type=UNION_ALL
+    +-input_item_list=
+    | +-SetOperationItem
+    | | +-scan=
+    | | | +-ProjectScan
+    | | |   +-column_list=KeyValue.[Key#1, Value#2]
+    | | |   +-input_scan=
+    | | |     +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+    | | +-output_column_list=KeyValue.[Key#1, Value#2]
+    | +-SetOperationItem
+    |   +-scan=
+    |   | +-ProjectScan
+    |   |   +-column_list=KeyValue.[Key#3, Value#4]
+    |   |   +-node_source="resolver_set_operation_corresponding"
+    |   |   +-input_scan=
+    |   |     +-ProjectScan
+    |   |       +-column_list=KeyValue.[Value#4, Key#3]
+    |   |       +-input_scan=
+    |   |         +-TableScan(column_list=KeyValue.[Key#3, Value#4], table=KeyValue, column_index_list=[0, 1])
+    |   +-output_column_list=KeyValue.[Key#3, Value#4]
+    +-column_match_mode=CORRESPONDING_BY
+    +-column_propagation_mode=INNER
+
+[SQLBUILDER_OUTPUT]
+(
+SELECT
+  KeyValue.Key AS Key,
+  KeyValue.Value AS Value
+FROM
+  KeyValue
+) UNION ALL CORRESPONDING BY (Key, Value)(
+SELECT
+  keyvalue_7.a_6 AS Value,
+  keyvalue_7.a_5 AS Key
+FROM
+  (
+    SELECT
+      KeyValue.Key AS a_5,
+      KeyValue.Value AS a_6
+    FROM
+      KeyValue
+  ) AS keyvalue_7
+);
+==
+
+# Mixed identifiers and unpack expressions
+SELECT Key, Value FROM KeyValue
+UNION ALL CORRESPONDING BY (Key, **COLUMNS(['Value']))
+SELECT Value, Key FROM KeyValue
+--
+QueryStmt
++-output_column_list=
+| +-$union_all.Key#5 AS Key [INT64]
+| +-$union_all.Value#6 AS Value [STRING]
++-query=
+  +-SetOperationScan
+    +-column_list=$union_all.[Key#5, Value#6]
+    +-op_type=UNION_ALL
+    +-input_item_list=
+    | +-SetOperationItem
+    | | +-scan=
+    | | | +-ProjectScan
+    | | |   +-column_list=KeyValue.[Key#1, Value#2]
+    | | |   +-input_scan=
+    | | |     +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+    | | +-output_column_list=KeyValue.[Key#1, Value#2]
+    | +-SetOperationItem
+    |   +-scan=
+    |   | +-ProjectScan
+    |   |   +-column_list=KeyValue.[Key#3, Value#4]
+    |   |   +-node_source="resolver_set_operation_corresponding"
+    |   |   +-input_scan=
+    |   |     +-ProjectScan
+    |   |       +-column_list=KeyValue.[Value#4, Key#3]
+    |   |       +-input_scan=
+    |   |         +-TableScan(column_list=KeyValue.[Key#3, Value#4], table=KeyValue, column_index_list=[0, 1])
+    |   +-output_column_list=KeyValue.[Key#3, Value#4]
+    +-column_match_mode=CORRESPONDING_BY
+    +-column_propagation_mode=INNER
+
+[SQLBUILDER_OUTPUT]
+(
+SELECT
+  KeyValue.Key AS Key,
+  KeyValue.Value AS Value
+FROM
+  KeyValue
+) UNION ALL CORRESPONDING BY (Key, Value)(
+SELECT
+  keyvalue_7.a_6 AS Value,
+  keyvalue_7.a_5 AS Key
+FROM
+  (
+    SELECT
+      KeyValue.Key AS a_5,
+      KeyValue.Value AS a_6
+    FROM
+      KeyValue
+  ) AS keyvalue_7
+);
+==
+
+# Mixed identifiers and empty unpack expressions
+SELECT Key, Value FROM KeyValue
+UNION ALL CORRESPONDING BY (Key, **COLUMNS([]))
+SELECT Value, Key FROM KeyValue
+--
+QueryStmt
++-output_column_list=
+| +-$union_all.Key#5 AS Key [INT64]
++-query=
+  +-SetOperationScan
+    +-column_list=[$union_all.Key#5]
+    +-op_type=UNION_ALL
+    +-input_item_list=
+    | +-SetOperationItem
+    | | +-scan=
+    | | | +-ProjectScan
+    | | |   +-column_list=[KeyValue.Key#1]
+    | | |   +-node_source="resolver_set_operation_corresponding"
+    | | |   +-input_scan=
+    | | |     +-ProjectScan
+    | | |       +-column_list=KeyValue.[Key#1, Value#2]
+    | | |       +-input_scan=
+    | | |         +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+    | | +-output_column_list=[KeyValue.Key#1]
+    | +-SetOperationItem
+    |   +-scan=
+    |   | +-ProjectScan
+    |   |   +-column_list=[KeyValue.Key#3]
+    |   |   +-node_source="resolver_set_operation_corresponding"
+    |   |   +-input_scan=
+    |   |     +-ProjectScan
+    |   |       +-column_list=KeyValue.[Value#4, Key#3]
+    |   |       +-input_scan=
+    |   |         +-TableScan(column_list=KeyValue.[Key#3, Value#4], table=KeyValue, column_index_list=[0, 1])
+    |   +-output_column_list=[KeyValue.Key#3]
+    +-column_match_mode=CORRESPONDING_BY
+    +-column_propagation_mode=INNER
+
+[SQLBUILDER_OUTPUT]
+(
+SELECT
+  KeyValue.Key AS Key,
+  KeyValue.Value AS a_3
+FROM
+  KeyValue
+) UNION ALL CORRESPONDING BY (Key)(
+SELECT
+  keyvalue_6.a_5 AS a_5,
+  keyvalue_6.a_4 AS Key
+FROM
+  (
+    SELECT
+      KeyValue.Key AS a_4,
+      KeyValue.Value AS a_5
+    FROM
+      KeyValue
+  ) AS keyvalue_6
+);
+==
+
+# Parenthesized operand inside UNPACK expression
+SELECT Key, Value FROM KeyValue
+UNION ALL CORRESPONDING BY (** (COLUMNS(['Key', 'Value'])))
+SELECT Value, Key FROM KeyValue
+--
+QueryStmt
++-output_column_list=
+| +-$union_all.Key#5 AS Key [INT64]
+| +-$union_all.Value#6 AS Value [STRING]
++-query=
+  +-SetOperationScan
+    +-column_list=$union_all.[Key#5, Value#6]
+    +-op_type=UNION_ALL
+    +-input_item_list=
+    | +-SetOperationItem
+    | | +-scan=
+    | | | +-ProjectScan
+    | | |   +-column_list=KeyValue.[Key#1, Value#2]
+    | | |   +-input_scan=
+    | | |     +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+    | | +-output_column_list=KeyValue.[Key#1, Value#2]
+    | +-SetOperationItem
+    |   +-scan=
+    |   | +-ProjectScan
+    |   |   +-column_list=KeyValue.[Key#3, Value#4]
+    |   |   +-node_source="resolver_set_operation_corresponding"
+    |   |   +-input_scan=
+    |   |     +-ProjectScan
+    |   |       +-column_list=KeyValue.[Value#4, Key#3]
+    |   |       +-input_scan=
+    |   |         +-TableScan(column_list=KeyValue.[Key#3, Value#4], table=KeyValue, column_index_list=[0, 1])
+    |   +-output_column_list=KeyValue.[Key#3, Value#4]
+    +-column_match_mode=CORRESPONDING_BY
+    +-column_propagation_mode=INNER
+
+[SQLBUILDER_OUTPUT]
+(
+SELECT
+  KeyValue.Key AS Key,
+  KeyValue.Value AS Value
+FROM
+  KeyValue
+) UNION ALL CORRESPONDING BY (Key, Value)(
+SELECT
+  keyvalue_7.a_6 AS Value,
+  keyvalue_7.a_5 AS Key
+FROM
+  (
+    SELECT
+      KeyValue.Key AS a_5,
+      KeyValue.Value AS a_6
+    FROM
+      KeyValue
+  ) AS keyvalue_7
+);
+==
+
+# Chained set operations with matching column lists
+SELECT Key, Value FROM KeyValue
+UNION ALL CORRESPONDING BY (**COLUMNS(['Key', 'Value']))
+SELECT Value, Key FROM KeyValue
+UNION ALL CORRESPONDING BY (Key, Value)
+SELECT Key, Value FROM KeyValue
+--
+QueryStmt
++-output_column_list=
+| +-$union_all.Key#7 AS Key [INT64]
+| +-$union_all.Value#8 AS Value [STRING]
++-query=
+  +-SetOperationScan
+    +-column_list=$union_all.[Key#7, Value#8]
+    +-op_type=UNION_ALL
+    +-input_item_list=
+    | +-SetOperationItem
+    | | +-scan=
+    | | | +-ProjectScan
+    | | |   +-column_list=KeyValue.[Key#1, Value#2]
+    | | |   +-input_scan=
+    | | |     +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+    | | +-output_column_list=KeyValue.[Key#1, Value#2]
+    | +-SetOperationItem
+    | | +-scan=
+    | | | +-ProjectScan
+    | | |   +-column_list=KeyValue.[Key#3, Value#4]
+    | | |   +-node_source="resolver_set_operation_corresponding"
+    | | |   +-input_scan=
+    | | |     +-ProjectScan
+    | | |       +-column_list=KeyValue.[Value#4, Key#3]
+    | | |       +-input_scan=
+    | | |         +-TableScan(column_list=KeyValue.[Key#3, Value#4], table=KeyValue, column_index_list=[0, 1])
+    | | +-output_column_list=KeyValue.[Key#3, Value#4]
+    | +-SetOperationItem
+    |   +-scan=
+    |   | +-ProjectScan
+    |   |   +-column_list=KeyValue.[Key#5, Value#6]
+    |   |   +-input_scan=
+    |   |     +-TableScan(column_list=KeyValue.[Key#5, Value#6], table=KeyValue, column_index_list=[0, 1])
+    |   +-output_column_list=KeyValue.[Key#5, Value#6]
+    +-column_match_mode=CORRESPONDING_BY
+    +-column_propagation_mode=INNER
+
+[SQLBUILDER_OUTPUT]
+(
+SELECT
+  KeyValue.Key AS Key,
+  KeyValue.Value AS Value
+FROM
+  KeyValue
+) UNION ALL CORRESPONDING BY (Key, Value)(
+SELECT
+  keyvalue_7.a_6 AS Value,
+  keyvalue_7.a_5 AS Key
+FROM
+  (
+    SELECT
+      KeyValue.Key AS a_5,
+      KeyValue.Value AS a_6
+    FROM
+      KeyValue
+  ) AS keyvalue_7
+) UNION ALL CORRESPONDING BY (Key, Value)(
+SELECT
+  KeyValue.Key AS Key,
+  KeyValue.Value AS Value
+FROM
+  KeyValue
+);
+==
+
+[sql_builder_target_syntax_mode=pipe]
+# Basic Pipe UNION with UNPACK
+FROM KeyValue
+|> SELECT Key, Value
+|> UNION ALL CORRESPONDING BY (**COLUMNS(['Key', 'Value']))
+     (FROM KeyValue |> SELECT Value, Key)
+--
+QueryStmt
++-output_column_list=
+| +-$union_all.Key#5 AS Key [INT64]
+| +-$union_all.Value#6 AS Value [STRING]
++-query=
+  +-SetOperationScan
+    +-column_list=$union_all.[Key#5, Value#6]
+    +-op_type=UNION_ALL
+    +-input_item_list=
+    | +-SetOperationItem
+    | | +-scan=
+    | | | +-ProjectScan
+    | | |   +-column_list=KeyValue.[Key#1, Value#2]
+    | | |   +-input_scan=
+    | | |     +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+    | | +-output_column_list=KeyValue.[Key#1, Value#2]
+    | +-SetOperationItem
+    |   +-scan=
+    |   | +-ProjectScan
+    |   |   +-column_list=KeyValue.[Key#3, Value#4]
+    |   |   +-node_source="resolver_set_operation_corresponding"
+    |   |   +-input_scan=
+    |   |     +-ProjectScan
+    |   |       +-column_list=KeyValue.[Value#4, Key#3]
+    |   |       +-input_scan=
+    |   |         +-TableScan(column_list=KeyValue.[Key#3, Value#4], table=KeyValue, column_index_list=[0, 1])
+    |   +-output_column_list=KeyValue.[Key#3, Value#4]
+    +-column_match_mode=CORRESPONDING_BY
+    +-column_propagation_mode=INNER
+
+[SQLBUILDER_OUTPUT]
+(
+FROM
+  KeyValue
+|> SELECT
+     KeyValue.Key AS Key,
+     KeyValue.Value AS Value
+) UNION ALL CORRESPONDING BY (Key, Value)(
+FROM
+  KeyValue
+|> SELECT
+     KeyValue.Key AS a_5,
+     KeyValue.Value AS a_6
+|> AS keyvalue_7
+|> SELECT
+     keyvalue_7.a_6 AS Value,
+     keyvalue_7.a_5 AS Key
+);
+==
+
+[sql_builder_target_syntax_mode=pipe]
+# Columns are matched by name, not by underlying ResolvedColumn. After
+# `|> RENAME Key AS k`, the same ResolvedColumn is only visible as `k`, and the
+# second input exposes a different ResolvedColumn under the same name `k`.
+FROM KeyValue
+|> RENAME Key AS k
+|> UNION ALL CORRESPONDING BY (**COLUMNS(['k', 'Value']))
+     (FROM KeyValue |> SELECT Value, Key AS k)
+--
+QueryStmt
++-output_column_list=
+| +-$union_all.k#5 AS k [INT64]
+| +-$union_all.Value#6 AS Value [STRING]
++-query=
+  +-SetOperationScan
+    +-column_list=$union_all.[k#5, Value#6]
+    +-op_type=UNION_ALL
+    +-input_item_list=
+    | +-SetOperationItem
+    | | +-scan=
+    | | | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+    | | +-output_column_list=KeyValue.[Key#1, Value#2]
+    | +-SetOperationItem
+    |   +-scan=
+    |   | +-ProjectScan
+    |   |   +-column_list=KeyValue.[Key#3, Value#4]
+    |   |   +-node_source="resolver_set_operation_corresponding"
+    |   |   +-input_scan=
+    |   |     +-ProjectScan
+    |   |       +-column_list=KeyValue.[Value#4, Key#3]
+    |   |       +-input_scan=
+    |   |         +-TableScan(column_list=KeyValue.[Key#3, Value#4], table=KeyValue, column_index_list=[0, 1])
+    |   +-output_column_list=KeyValue.[Key#3, Value#4]
+    +-column_match_mode=CORRESPONDING_BY
+    +-column_propagation_mode=INNER
+
+[SQLBUILDER_OUTPUT]
+(
+FROM
+  KeyValue
+|> SELECT
+     KeyValue.Key AS k,
+     KeyValue.Value AS Value
+) UNION ALL CORRESPONDING BY (k, Value)(
+FROM
+  KeyValue
+|> SELECT
+     KeyValue.Key AS a_5,
+     KeyValue.Value AS a_6
+|> AS keyvalue_7
+|> SELECT
+     keyvalue_7.a_6 AS Value,
+     keyvalue_7.a_5 AS k
+);
+==
+
+[sql_builder_target_syntax_mode=pipe]
+# The RENAMEd column is no longer visible under its old name, even though the
+# underlying ResolvedColumn is still present in the input scan.
+FROM KeyValue
+|> RENAME Key AS k
+|> UNION ALL CORRESPONDING BY (**COLUMNS(['Key', 'Value']))
+     (FROM KeyValue |> SELECT Value, Key)
+--
+ERROR: The column name Key from the CORRESPONDING BY list does not appear in pipe input table. All columns in the BY list must appear in each input query unless FULL CORRESPONDING or LEFT CORRESPONDING is specified [at 5:32]
+|> UNION ALL CORRESPONDING BY (**COLUMNS(['Key', 'Value']))
+                               ^
+==
+
+[sql_builder_target_syntax_mode=pipe]
+# Each input is matched independently by name. The second input RENAMEs the
+# same source column to a different alias, so `k1` is not found there.
+FROM KeyValue
+|> RENAME Key AS k1
+|> UNION ALL CORRESPONDING BY (**COLUMNS(['k1', 'Value']))
+     (FROM KeyValue |> RENAME Key AS k2)
+--
+ERROR: The column name k1 from the CORRESPONDING BY list does not appear in pipe argument query 1. All columns in the BY list must appear in each input query unless FULL CORRESPONDING or LEFT CORRESPONDING is specified [at 5:32]
+|> UNION ALL CORRESPONDING BY (**COLUMNS(['k1', 'Value']))
+                               ^
+==
+
+[sql_builder_target_syntax_mode=pipe]
+# FULL CORRESPONDING BY with a RENAMEd column: the old name `Key` is padded
+# with NULL in the first input, and the new name `k` in the second input.
+FROM KeyValue
+|> RENAME Key AS k
+|> FULL UNION ALL CORRESPONDING BY (**COLUMNS(['k', 'Key']))
+     (FROM KeyValue |> SELECT Key)
+--
+QueryStmt
++-output_column_list=
+| +-$union_all.k#5 AS k [INT64]
+| +-$union_all.Key#6 AS Key [INT64]
++-query=
+  +-SetOperationScan
+    +-column_list=$union_all.[k#5, Key#6]
+    +-op_type=UNION_ALL
+    +-input_item_list=
+    | +-SetOperationItem
+    | | +-scan=
+    | | | +-ProjectScan
+    | | |   +-column_list=[KeyValue.Key#1, $null_column_for_outer_set_op.Key#7]
+    | | |   +-node_source="resolver_set_operation_corresponding"
+    | | |   +-expr_list=
+    | | |   | +-Key#7 := Literal(type=INT64, value=NULL)
+    | | |   +-input_scan=
+    | | |     +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+    | | +-output_column_list=[KeyValue.Key#1, $null_column_for_outer_set_op.Key#7]
+    | +-SetOperationItem
+    |   +-scan=
+    |   | +-ProjectScan
+    |   |   +-column_list=[$null_column_for_outer_set_op.k#8, KeyValue.Key#3]
+    |   |   +-node_source="resolver_set_operation_corresponding"
+    |   |   +-expr_list=
+    |   |   | +-k#8 := Literal(type=INT64, value=NULL)
+    |   |   +-input_scan=
+    |   |     +-ProjectScan
+    |   |       +-column_list=[KeyValue.Key#3]
+    |   |       +-input_scan=
+    |   |         +-TableScan(column_list=[KeyValue.Key#3], table=KeyValue, column_index_list=[0])
+    |   +-output_column_list=[$null_column_for_outer_set_op.k#8, KeyValue.Key#3]
+    +-column_match_mode=CORRESPONDING_BY
+    +-column_propagation_mode=FULL
+
+[SQLBUILDER_OUTPUT]
+(
+FROM
+  KeyValue
+|> SELECT
+     KeyValue.Key AS k,
+     KeyValue.Value AS a_4
+) FULL UNION ALL CORRESPONDING BY (k, Key)(
+FROM
+  KeyValue
+|> SELECT
+     KeyValue.Key AS Key
+);
+==
+
+################################################################################
+#
+# Negative test cases for UNPACK (**) in UNION ALL CORRESPONDING BY
+#
+################################################################################
+
+# Parenthesized UNPACK expression itself is not allowed, whether it is the only
+# item or one of several items.
+SELECT Key, Value FROM KeyValue
+UNION ALL CORRESPONDING BY ({{(**COLUMNS(['Key', 'Value']))|**COLUMNS([]), (**COLUMNS([]))}})
+SELECT Value, Key FROM KeyValue
+--
+ALTERNATION GROUP: (**COLUMNS(['Key', 'Value']))
+--
+ERROR: Syntax error: Unexpected "(" [at 2:29]
+UNION ALL CORRESPONDING BY ((**COLUMNS(['Key', 'Value'])))
+                            ^
+--
+ALTERNATION GROUP: **COLUMNS([]), (**COLUMNS([]))
+--
+ERROR: Syntax error: Unexpected "(" [at 2:44]
+UNION ALL CORRESPONDING BY (**COLUMNS([]), (**COLUMNS([])))
+                                           ^
+==
+
+# Missing column, from a single unpack expression or from the second of several.
+SELECT Key, Value FROM KeyValue
+UNION ALL CORRESPONDING BY ({{**COLUMNS(['Key', 'NonExistent'])|**COLUMNS(['Key']), **COLUMNS(['NonExistent'])}})
+SELECT Value, Key FROM KeyValue
+--
+ALTERNATION GROUP: **COLUMNS(['Key', 'NonExistent'])
+--
+ERROR: The column name NonExistent from the CORRESPONDING BY list does not appear in query 1. All columns in the BY list must appear in each input query unless FULL CORRESPONDING or LEFT CORRESPONDING is specified [at 2:29]
+UNION ALL CORRESPONDING BY (**COLUMNS(['Key', 'NonExistent']))
+                            ^
+--
+ALTERNATION GROUP: **COLUMNS(['Key']), **COLUMNS(['NonExistent'])
+--
+ERROR: The column name NonExistent from the CORRESPONDING BY list does not appear in query 1. All columns in the BY list must appear in each input query unless FULL CORRESPONDING or LEFT CORRESPONDING is specified [at 2:49]
+UNION ALL CORRESPONDING BY (**COLUMNS(['Key']), **COLUMNS(['NonExistent']))
+                                                ^
+==
+
+# Missing column from an unpack expression in LEFT and FULL mode.
+SELECT Key FROM KeyValue
+{{LEFT|FULL}} UNION ALL CORRESPONDING BY (**COLUMNS(['Key', 'NonExistent']))
+SELECT Key, Value FROM KeyValue
+--
+ALTERNATION GROUP: LEFT
+--
+ERROR: The column name 'NonExistent' from the LEFT CORRESPONDING BY list must appear in query 1 [at 2:34]
+LEFT UNION ALL CORRESPONDING BY (**COLUMNS(['Key', 'NonExistent']))
+                                 ^
+--
+ALTERNATION GROUP: FULL
+--
+ERROR: The column name NonExistent from the CORRESPONDING BY list does not appear in any input queries. [at 2:34]
+FULL UNION ALL CORRESPONDING BY (**COLUMNS(['Key', 'NonExistent']))
+                                 ^
+==
+
+# Duplicate columns in a single unpack expression
+SELECT Key, Value FROM KeyValue
+UNION ALL CORRESPONDING BY (**COLUMNS(['Key', 'Key']))
+SELECT Value, Key FROM KeyValue
+--
+ERROR: Duplicate identifiers are not allowed in the CORRESPONDING BY list: Key [at 2:29]
+UNION ALL CORRESPONDING BY (**COLUMNS(['Key', 'Key']))
+                            ^
+==
+
+# Case-insensitive duplicate columns in unpack expression
+SELECT Key, Value FROM KeyValue
+UNION ALL CORRESPONDING BY (**COLUMNS(['Key', 'key']))
+SELECT Value, Key FROM KeyValue
+--
+ERROR: Duplicate identifiers are not allowed in the CORRESPONDING BY list: key [at 2:29]
+UNION ALL CORRESPONDING BY (**COLUMNS(['Key', 'key']))
+                            ^
+==
+
+# Duplicate columns across multiple unpack expressions
+SELECT Key, Value FROM KeyValue
+UNION ALL CORRESPONDING BY (**COLUMNS(['Key']), **COLUMNS(['Key']))
+SELECT Value, Key FROM KeyValue
+--
+ERROR: Duplicate identifiers are not allowed in the CORRESPONDING BY list: Key [at 2:49]
+UNION ALL CORRESPONDING BY (**COLUMNS(['Key']), **COLUMNS(['Key']))
+                                                ^
+==
+
+# Duplicate columns between identifier and unpack expression
+SELECT Key, Value FROM KeyValue
+UNION ALL CORRESPONDING BY (Key, **COLUMNS(['Key']))
+SELECT Value, Key FROM KeyValue
+--
+ERROR: Duplicate identifiers are not allowed in the CORRESPONDING BY list: Key [at 2:34]
+UNION ALL CORRESPONDING BY (Key, **COLUMNS(['Key']))
+                                 ^
+==
+
+# Duplicate columns between unpack expression and identifier
+SELECT Key, Value FROM KeyValue
+UNION ALL CORRESPONDING BY (**COLUMNS(['Key']), Key)
+SELECT Value, Key FROM KeyValue
+--
+ERROR: Duplicate identifiers are not allowed in the CORRESPONDING BY list: Key [at 2:49]
+UNION ALL CORRESPONDING BY (**COLUMNS(['Key']), Key)
+                                                ^
+==
+
+# Empty column list, from one or more unpack expressions that expand to nothing.
+SELECT Key, Value FROM KeyValue
+UNION ALL CORRESPONDING BY ({{**COLUMNS([])|**COLUMNS([]), **COLUMNS([])|**COLUMNS([]), ** (COLUMNS([]))}})
+SELECT Value, Key FROM KeyValue
+--
+ALTERNATION GROUP: **COLUMNS([])
+--
+ERROR: The CORRESPONDING BY list cannot be empty [at 2:28]
+UNION ALL CORRESPONDING BY (**COLUMNS([]))
+                           ^
+--
+ALTERNATION GROUP: **COLUMNS([]), **COLUMNS([])
+--
+ERROR: The CORRESPONDING BY list cannot be empty [at 2:28]
+UNION ALL CORRESPONDING BY (**COLUMNS([]), **COLUMNS([]))
+                           ^
+--
+ALTERNATION GROUP: **COLUMNS([]), ** (COLUMNS([]))
+--
+ERROR: The CORRESPONDING BY list cannot be empty [at 2:28]
+UNION ALL CORRESPONDING BY (**COLUMNS([]), ** (COLUMNS([])))
+                           ^
+==
+
+# Empty column list with BY NAME ON syntax, to cover the error message.
+SELECT Key, Value FROM KeyValue
+UNION ALL BY NAME ON (**COLUMNS([]))
+SELECT Value, Key FROM KeyValue
+--
+ERROR: The BY NAME ON list cannot be empty [at 2:22]
+UNION ALL BY NAME ON (**COLUMNS([]))
+                     ^
+==
+
+# Mismatched column lists in chained set operations
+SELECT Key, Value FROM KeyValue
+UNION ALL CORRESPONDING BY (**COLUMNS(['Key', 'Value']))
+SELECT Value, Key FROM KeyValue
+UNION ALL CORRESPONDING BY (**COLUMNS(['Key']))
+SELECT Key, Value FROM KeyValue
+--
+ERROR: Different CORRESPONDING BY lists cannot be used in the same query without using parentheses for grouping [at 4:28]
+UNION ALL CORRESPONDING BY (**COLUMNS(['Key']))
+                           ^
+==
+
+# Mismatched column order in chained set operations
+SELECT Key, Value FROM KeyValue
+UNION ALL CORRESPONDING BY (**COLUMNS(['Key', 'Value']))
+SELECT Value, Key FROM KeyValue
+UNION ALL CORRESPONDING BY (**COLUMNS(['Value', 'Key']))
+SELECT Key, Value FROM KeyValue
+--
+ERROR: Different CORRESPONDING BY lists cannot be used in the same query without using parentheses for grouping [at 4:28]
+UNION ALL CORRESPONDING BY (**COLUMNS(['Value', 'Key']))
+                           ^
+==
+
+[sql_builder_target_syntax_mode=pipe]
+# Duplicate column in Pipe SQL
+FROM KeyValue
+|> SELECT Key, Value
+|> UNION ALL CORRESPONDING BY (**COLUMNS(['Key', 'Key']))
+     (FROM KeyValue |> SELECT Value, Key)
+--
+ERROR: Duplicate identifiers are not allowed in the CORRESPONDING BY list: Key [at 4:32]
+|> UNION ALL CORRESPONDING BY (**COLUMNS(['Key', 'Key']))
+                               ^

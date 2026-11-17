@@ -1367,7 +1367,7 @@ void TestCaseBuilder::AddAnchorTestCases() {
                    .AddResult(R"pb(add_row { rep_count: 3 }
                                    finalize {})pb"));
   AddTestCases(TestCaseTemplate("AnchorsInMiddleOfPattern")
-                   .AddPatterns({"A ^ A", "A $ A"})
+                   .AddPatterns({"A ^ A", "A $ A", "$ A ^", "$^ A{0}"})
                    .SetRowData(Repeat({{0}}, 3))
                    .AddResult(R"pb(add_row { rep_count: 3 }
                                    finalize {})pb"));

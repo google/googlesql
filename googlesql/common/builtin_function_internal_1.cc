@@ -1167,7 +1167,7 @@ std::string NoMatchingSignatureForDateOrTimeAddOrSubFunction(
 }
 
 std::string NoMatchingSignatureForGenerateDateOrTimestampArrayFunction(
-    const std::string& qualified_function_name,
+    absl::string_view qualified_function_name,
     absl::Span<const InputArgumentType> arguments, ProductMode product_mode) {
   return NoMatchingSignatureForFunctionUsingInterval(
       qualified_function_name, arguments, product_mode,

@@ -2129,14 +2129,6 @@ void Unparser::visitASTWithTimestamp(const ASTWithTimestamp* node, void* data) {
   visitASTChildren(node, data);
 }
 
-void Unparser::visitASTTemporalAt(const ASTTemporalAt* node, void* data) {
-  print("AT (");
-  node->version_property()->Accept(this, data);
-  print("=> ");
-  node->expression()->Accept(this, data);
-  print(")");
-}
-
 void Unparser::visitASTUnnestExpression(const ASTUnnestExpression* node,
                                         void* data) {
   print("UNNEST(");
@@ -2187,6 +2179,13 @@ void Unparser::visitASTForVersionClause(const ASTForVersionClause* node,
                                         void* data) {
   print("FOR SYSTEM_TIME AS OF ");
   visitASTChildren(node, data);
+}
+
+void Unparser::visitASTAtVersionClause(const ASTAtVersionClause* node,
+                                       void* data) {
+  print("AT (");
+  UnparseVectorWithSeparator(node->arguments(), data, ", ");
+  print(")");
 }
 
 void Unparser::visitASTTableSubquery(const ASTTableSubquery* node, void* data) {
@@ -3765,8 +3764,8 @@ void Unparser::visitASTDeleteStatement(const ASTDeleteStatement* node,
   if (node->hint() != nullptr) {
     node->hint()->Accept(this, data);
   }
-  if (node->temporal_at() != nullptr) {
-    node->temporal_at()->Accept(this, data);
+  if (node->at_version() != nullptr) {
+    node->at_version()->Accept(this, data);
   }
   if (node->alias() != nullptr) {
     node->alias()->Accept(this, data);
@@ -3828,9 +3827,8 @@ void Unparser::visitASTInsertValuesRowList(const ASTInsertValuesRowList* node,
 void Unparser::visitASTInsertColumnUsingClause(
     const ASTInsertColumnUsingClause* node, void* data) {
   print("USING ");
-  if (node->function_name() != nullptr) {
-    print("FUNCTION");
-    node->function_name()->Accept(this, data);
+  if (node->function_ref() != nullptr) {
+    node->function_ref()->Accept(this, data);
   } else if (node->lambda() != nullptr) {
     node->lambda()->Accept(this, data);
   }
@@ -3874,8 +3872,8 @@ void Unparser::visitASTInsertStatement(const ASTInsertStatement* node,
     node->hint()->Accept(this, data);
   }
 
-  if (node->temporal_at() != nullptr) {
-    node->temporal_at()->Accept(this, data);
+  if (node->at_version() != nullptr) {
+    node->at_version()->Accept(this, data);
   }
 
   if (node->timestamp() != nullptr) {
@@ -3983,8 +3981,8 @@ void Unparser::visitASTUpdateStatement(const ASTUpdateStatement* node,
   if (node->hint() != nullptr) {
     node->hint()->Accept(this, data);
   }
-  if (node->temporal_at() != nullptr) {
-    node->temporal_at()->Accept(this, data);
+  if (node->at_version() != nullptr) {
+    node->at_version()->Accept(this, data);
   }
   if (node->alias() != nullptr) {
     node->alias()->Accept(this, data);

@@ -15,6 +15,7 @@
 #
 
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//bazel:ts_build_defs.bzl", "js_binary", "ts_library")
 load(":embed_files.bzl", "gen_string_constant_header_file")
 

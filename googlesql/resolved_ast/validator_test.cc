@@ -545,18 +545,242 @@ TEST(ValidatorTest, ColumnVisibilityColumnListWithOuterColumn) {
                                   "ColumnVisibilityChecker::CheckRoot"))));
 }
 
-TEST(ValidatorTest, ColumnVisibilityOffByDefault) {
+TEST(ValidatorTest, ColumnVisibilityOnByDefault) {
   IdStringPool pool;
   GOOGLESQL_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<const ResolvedQueryStmt> stmt,
       MakeSubqueryStmtForColumnVisibility(pool, /*correlated=*/true,
                                           /*in_parameter_list=*/false));
-  // The hand-written validator also catches this, with a different error.
   Validator validator(LanguageOptions{}, ValidatorOptions{});
   EXPECT_THAT(validator.ValidateResolvedStatement(stmt.get()),
+              StatusIs(_, HasSubstr("Column visibility check failed")));
+
+  // The hand-written validator also catches this, with a different error, when
+  // column visibility validation is explicitly disabled.
+  Validator validator_no_visibility(
+      LanguageOptions{}, ValidatorOptions{.validate_column_visibility = false});
+  EXPECT_THAT(validator_no_visibility.ValidateResolvedStatement(stmt.get()),
               StatusIs(_, Not(HasSubstr("Column visibility"))));
 }
 
+TEST(ValidatorTest, ColumnVisibilityConstantExprRejectsColumnRef) {
+  IdStringPool pool;
+  ResolvedColumn x(1, pool.Make("t"), pool.Make("x"), types::StringType());
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<const ResolvedQueryStmt> stmt,
+      ResolvedQueryStmtBuilder()
+          .add_output_column_list(MakeResolvedOutputColumn("x", x))
+          .set_query(
+              ResolvedOrderByScanBuilder()
+                  .add_column_list(x)
+                  .set_is_ordered(true)
+                  .add_order_by_item_list(
+                      ResolvedOrderByItemBuilder()
+                          .set_column_ref(MakeResolvedColumnRef(
+                              types::StringType(), x, /*is_correlated=*/false))
+                          .set_collation_name(MakeResolvedColumnRef(
+                              types::StringType(), x, /*is_correlated=*/false)))
+                  .set_input_scan(
+                      ResolvedProjectScanBuilder()
+                          .add_column_list(x)
+                          .add_expr_list(MakeResolvedComputedColumn(
+                              x, MakeResolvedLiteral(Value::String("und:ci"))))
+                          .set_input_scan(MakeResolvedSingleRowScan())))
+          .Build());
+  Validator validator(LanguageOptions(), ColumnVisibilityValidatorOptions());
+  EXPECT_THAT(
+      validator.ValidateResolvedStatement(stmt.get()),
+      StatusIs(_, AllOf(HasSubstr("Column visibility check failed: "
+                                  "ColumnRef.column references column t.x#1"),
+                        HasSubstr("not in the VISIBLE columns []"))));
+}
+
+TEST(ValidatorTest, ColumnVisibilityDoesNotMarkFieldsAccessed) {
+  IdStringPool pool;
+  const ResolvedColumn x(1, pool.Make("t"), pool.Make("x"), types::Int64Type());
+  const ResolvedColumn view_x(2, pool.Make("v"), pool.Make("x"),
+                              types::Int64Type());
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<const ResolvedCreateViewStmt> stmt,
+      ResolvedCreateViewStmtBuilder()
+          .set_name_path({"v"})
+          .add_output_column_list(MakeResolvedOutputColumn("x", x))
+          .set_query(ResolvedProjectScanBuilder()
+                         .add_column_list(x)
+                         .add_expr_list(MakeResolvedComputedColumn(
+                             x, MakeResolvedLiteral(Value::Int64(1))))
+                         .set_input_scan(MakeResolvedSingleRowScan()))
+          .set_sql("SELECT 1 AS x")
+          .set_recursive(false)
+          .add_column_definition_list(ResolvedColumnDefinitionBuilder()
+                                          .set_name("x")
+                                          .set_type(types::Int64Type())
+                                          .set_column(view_x))
+          .Build());
+
+  GOOGLESQL_ASSERT_OK(ColumnVisibilityChecker().CheckRoot(stmt.get()));
+  GOOGLESQL_EXPECT_OK(stmt->CheckNoFieldsAccessed());
+
+  Validator validator(LanguageOptions(), ColumnVisibilityValidatorOptions());
+  GOOGLESQL_ASSERT_OK(validator.ValidateResolvedStatement(stmt.get()));
+
+  // Simulate an engine that uses `output_column_list` and ignores
+  // `column_definition_list` (which is IGNORABLE on ResolvedCreateViewBase).
+  EXPECT_FALSE(stmt->name_path().empty());
+  for (const auto& output_col : stmt->output_column_list()) {
+    output_col->MarkFieldsAccessed();
+  }
+  stmt->query()->MarkFieldsAccessed();
+  GOOGLESQL_EXPECT_OK(stmt->CheckFieldsAccessed());
+}
+
+TEST(ValidatorTest, ArrayAggregateDoesNotProvideElementColumnToParentScan) {
+  IdStringPool pool;
+  const ResolvedColumn x(1, pool.Make("t"), pool.Make("x"), types::Int64Type());
+  const ResolvedColumn element_col(2, pool.Make("$array_agg"),
+                                   pool.Make("element"), types::BoolType());
+  Function fn("logical_and", Function::kGoogleSQLFunctionGroupName,
+              Function::AGGREGATE);
+  FunctionSignature sig(FunctionArgumentType(types::BoolType(), 1),
+                        {FunctionArgumentType(types::BoolType(), 1)},
+                        /*context_id=*/static_cast<int64_t>(1));
+
+  auto make_stmt = [&](bool leak_element_col)
+      -> absl::StatusOr<std::unique_ptr<const ResolvedQueryStmt>> {
+    const ResolvedColumn& out_col = leak_element_col ? element_col : x;
+    return ResolvedQueryStmtBuilder()
+        .add_output_column_list(MakeResolvedOutputColumn("out", out_col))
+        .set_query(ResolvedFilterScanBuilder()
+                       .add_column_list(out_col)
+                       .set_input_scan(
+                           ResolvedProjectScanBuilder()
+                               .add_column_list(x)
+                               .add_expr_list(MakeResolvedComputedColumn(
+                                   x, MakeResolvedLiteral(Value::Int64(1))))
+                               .set_input_scan(MakeResolvedSingleRowScan()))
+                       .set_filter_expr(
+                           ResolvedArrayAggregateBuilder()
+                               .set_type(types::BoolType())
+                               .set_array(MakeResolvedLiteral(
+                                   values::BoolArray({true})))
+                               .set_element_column(element_col)
+                               .set_aggregate(
+                                   ResolvedAggregateFunctionCallBuilder()
+                                       .set_type(types::BoolType())
+                                       .set_function(&fn)
+                                       .set_signature(sig)
+                                       .add_argument_list(MakeResolvedColumnRef(
+                                           types::BoolType(), element_col,
+                                           /*is_correlated=*/false)))))
+        .Build();
+  };
+
+  Validator validator(LanguageOptions(), ColumnVisibilityValidatorOptions());
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const ResolvedQueryStmt> valid_stmt,
+                       make_stmt(/*leak_element_col=*/false));
+  GOOGLESQL_EXPECT_OK(validator.ValidateResolvedStatement(valid_stmt.get()));
+
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const ResolvedQueryStmt> invalid_stmt,
+                       make_stmt(/*leak_element_col=*/true));
+  EXPECT_THAT(validator.ValidateResolvedStatement(invalid_stmt.get()),
+              StatusIs(absl::StatusCode::kInternal,
+                       HasSubstr("Column visibility check failed: "
+                                 "FilterScan.column_list references column "
+                                 "$array_agg.element#2 which is not in its "
+                                 "column_list_scope [t.x#1]")));
+}
+
+TEST(ValidatorTest, ColumnVisibilityAuxLoadDataStmt) {
+  IdStringPool pool;
+  ResolvedColumn x(1, pool.Make("t"), pool.Make("x"), types::Int64Type());
+  ResolvedColumn p(2, pool.Make("t"), pool.Make("p"), types::Int64Type());
+  ResolvedColumn bogus(3, pool.Make("t"), pool.Make("bogus"),
+                       types::Int64Type());
+
+  Validator validator(LanguageOptions(), ColumnVisibilityValidatorOptions());
+
+  // With column_definition_list non-empty: partition_by_list sees columns from
+  // column_definition_list and with_partition_columns, and rejects others.
+  {
+    GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<const ResolvedAuxLoadDataStmt> valid_stmt,
+        ResolvedAuxLoadDataStmtBuilder()
+            .set_insertion_mode(ResolvedAuxLoadDataStmt::NONE)
+            .set_is_temp_table(false)
+            .add_name_path("t")
+            .add_column_definition_list(MakeResolvedColumnDefinition(
+                "x", types::Int64Type(), /*annotations=*/nullptr,
+                /*is_hidden=*/false, x, /*generated_column_info=*/nullptr,
+                /*default_value=*/nullptr))
+            .set_with_partition_columns(
+                ResolvedWithPartitionColumnsBuilder()
+                    .add_column_definition_list(MakeResolvedColumnDefinition(
+                        "p", types::Int64Type(), /*annotations=*/nullptr,
+                        /*is_hidden=*/false, p,
+                        /*generated_column_info=*/nullptr,
+                        /*default_value=*/nullptr)))
+            .add_output_column_list(MakeResolvedOutputColumn("x", x))
+            .add_output_column_list(MakeResolvedOutputColumn("p", p))
+            .add_partition_by_list(MakeResolvedColumnRef(
+                types::Int64Type(), p, /*is_correlated=*/false))
+            .Build());
+    GOOGLESQL_EXPECT_OK(validator.ValidateResolvedStatement(valid_stmt.get()));
+
+    GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<const ResolvedAuxLoadDataStmt> invalid_stmt,
+        ResolvedAuxLoadDataStmtBuilder()
+            .set_insertion_mode(ResolvedAuxLoadDataStmt::NONE)
+            .set_is_temp_table(false)
+            .add_name_path("t")
+            .add_column_definition_list(MakeResolvedColumnDefinition(
+                "x", types::Int64Type(), /*annotations=*/nullptr,
+                /*is_hidden=*/false, x, /*generated_column_info=*/nullptr,
+                /*default_value=*/nullptr))
+            .add_output_column_list(MakeResolvedOutputColumn("x", x))
+            .add_partition_by_list(MakeResolvedColumnRef(
+                types::Int64Type(), bogus, /*is_correlated=*/false))
+            .Build());
+    EXPECT_THAT(
+        validator.ValidateResolvedStatement(invalid_stmt.get()),
+        StatusIs(_, AllOf(HasSubstr("Column visibility check failed: "
+                                    "ColumnRef.column references column "
+                                    "t.bogus#3"),
+                          HasSubstr("not in the VISIBLE columns [t.x#1]"))));
+  }
+
+  // With column_definition_list empty: output_column_list creates the columns,
+  // and partition_by_list sees output_column_list.
+  {
+    GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<const ResolvedAuxLoadDataStmt> valid_stmt,
+        ResolvedAuxLoadDataStmtBuilder()
+            .set_insertion_mode(ResolvedAuxLoadDataStmt::NONE)
+            .set_is_temp_table(false)
+            .add_name_path("t")
+            .add_output_column_list(MakeResolvedOutputColumn("x", x))
+            .add_partition_by_list(MakeResolvedColumnRef(
+                types::Int64Type(), x, /*is_correlated=*/false))
+            .Build());
+    GOOGLESQL_EXPECT_OK(validator.ValidateResolvedStatement(valid_stmt.get()));
+
+    GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<const ResolvedAuxLoadDataStmt> invalid_stmt,
+        ResolvedAuxLoadDataStmtBuilder()
+            .set_insertion_mode(ResolvedAuxLoadDataStmt::NONE)
+            .set_is_temp_table(false)
+            .add_name_path("t")
+            .add_output_column_list(MakeResolvedOutputColumn("x", x))
+            .add_partition_by_list(MakeResolvedColumnRef(
+                types::Int64Type(), bogus, /*is_correlated=*/false))
+            .Build());
+    EXPECT_THAT(
+        validator.ValidateResolvedStatement(invalid_stmt.get()),
+        StatusIs(_, AllOf(HasSubstr("Column visibility check failed: "
+                                    "ColumnRef.column references column "
+                                    "t.bogus#3"),
+                          HasSubstr("not in the VISIBLE columns [t.x#1]"))));
+  }
+}
 TEST(ValidatorTest, ValidQueryStatement) {
   IdStringPool pool;
   std::unique_ptr<ResolvedQueryStmt> query_stmt = MakeSelect1Stmt(pool);
@@ -635,7 +859,8 @@ TEST(ValidatorTest, InvalidExpression) {
     ASSERT_THAT(
         status,
         StatusIs(absl::StatusCode::kInternal,
-                 HasSubstr("Incorrect reference to column tbl.col1#1")));
+                 HasSubstr("ColumnRef.column references column tbl.col1#1 "
+                           "which is not in the VISIBLE columns")));
 
     // Make sure the tree dump has emphasis on the expected node.
     ASSERT_THAT(status.message(),
@@ -654,9 +879,11 @@ TEST(ValidatorTest, InvalidQueryStatement) {
   for (int i = 0; i < 2; ++i) {
     // Verify error message
     absl::Status status = validator.ValidateResolvedStatement(query_stmt.get());
-    ASSERT_THAT(status,
-                StatusIs(absl::StatusCode::kInternal,
-                         HasSubstr("Incorrect reference to column tbl.x#2")));
+    ASSERT_THAT(
+        status,
+        StatusIs(absl::StatusCode::kInternal,
+                 HasSubstr("OutputColumn.column references column tbl.x#2 "
+                           "which is not in the VISIBLE columns")));
 
     // Verify node emphasized in tree dump
     ASSERT_THAT(
@@ -676,9 +903,11 @@ TEST(ValidatorTest, ValidStatementAfterInvalidStatement) {
   std::unique_ptr<ResolvedQueryStmt> invalid_query_stmt =
       MakeSelect1StmtWithWrongColumnId(pool);
 
-  ASSERT_THAT(validator.ValidateResolvedStatement(invalid_query_stmt.get()),
-              StatusIs(absl::StatusCode::kInternal,
-                       HasSubstr("Incorrect reference to column tbl.x#2")));
+  ASSERT_THAT(
+      validator.ValidateResolvedStatement(invalid_query_stmt.get()),
+      StatusIs(absl::StatusCode::kInternal,
+               HasSubstr("OutputColumn.column references column tbl.x#2 "
+                         "which is not in the VISIBLE columns")));
   GOOGLESQL_ASSERT_OK(validator.ValidateResolvedStatement(valid_query_stmt.get()));
 }
 
@@ -1230,6 +1459,51 @@ TEST(ValidateTest, AnonymizedAggregateScan) {
                                          allowed_hints_and_options};
   Validator validator(language_options, validator_options);
   GOOGLESQL_ASSERT_OK(validator.ValidateResolvedStatement(query_stmt.get()));
+
+  // Anonymization options cannot reference columns.
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const ResolvedAggregateFunctionCall>
+                           anon_count_call_invalid,
+                       ResolvedAggregateFunctionCallBuilder()
+                           .set_type(types::Int64Type())
+                           .set_function(anon_function.get())
+                           .set_signature(FunctionSignature(
+                               FunctionArgumentType(types::Int64Type(), 1), {},
+                               static_cast<int64_t>(1234)))
+                           .Build());
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<const ResolvedQueryStmt> invalid_query_stmt,
+      ResolvedQueryStmtBuilder()
+          .add_output_column_list(
+              MakeResolvedOutputColumn("c", column_anon_count))
+          .set_query(
+              ResolvedProjectScanBuilder()
+                  .add_column_list(column_anon_count)
+                  .set_input_scan(
+                      ResolvedAnonymizedAggregateScanBuilder()
+                          .add_column_list(column_anon_count)
+                          .set_input_scan(MakeResolvedSingleRowScan())
+                          .add_aggregate_list(
+                              ResolvedComputedColumnBuilder()
+                                  .set_column(column_anon_count)
+                                  .set_expr(std::move(anon_count_call_invalid)))
+                          .set_k_threshold_expr(
+                              ResolvedColumnRefBuilder()
+                                  .set_type(types::Int64Type())
+                                  .set_column(column_anon_count)
+                                  .set_is_correlated(false))
+                          .add_anonymization_option_list(MakeResolvedOption(
+                              "", "custom_option",
+                              MakeResolvedColumnRef(types::Int64Type(),
+                                                    column_anon_count,
+                                                    /*is_correlated=*/false)))))
+          .Build());
+  EXPECT_THAT(validator.ValidateResolvedStatement(invalid_query_stmt.get()),
+              StatusIs(absl::StatusCode::kInternal,
+                       AnyOf(HasSubstr("ColumnRef.column references column "
+                                       "agg.c#1 which is not in the VISIBLE "
+                                       "columns"),
+                             HasSubstr("Incorrect reference to column "
+                                       "agg.c#1"))));
 }
 
 TEST(ValidatorTest, ValidCreateModelStatement_Local) {
@@ -2633,6 +2907,65 @@ TEST(ValidateTest, DifferentialPrivacyAggregateScanWithModifierModes) {
     GOOGLESQL_EXPECT_OK(validator.ValidateResolvedStatement(
         differential_privacy_query_stmt.get()));
   }
+  // Differential privacy options cannot reference correlated outer columns.
+  {
+    ResolvedColumn outer_col(2, pool.Make("outer"), pool.Make("x"),
+                             types::Int64Type());
+    ResolvedColumn subquery_col(3, pool.Make("subq"), pool.Make("s"),
+                                types::Int64Type());
+    FunctionSignature dp_sig(FunctionArgumentType(types::Int64Type(), 1), {},
+                             static_cast<int64_t>(1234));
+    GOOGLESQL_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const ResolvedAggregateFunctionCall>
+                             dp_count_call_correlated,
+                         ResolvedAggregateFunctionCallBuilder()
+                             .set_type(types::Int64Type())
+                             .set_function(dp_function.get())
+                             .set_signature(std::move(dp_sig))
+                             .Build());
+    GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<const ResolvedDifferentialPrivacyAggregateScan> dp_scan,
+        ResolvedDifferentialPrivacyAggregateScanBuilder()
+            .add_column_list(column_dp_count)
+            .set_input_scan(MakeResolvedSingleRowScan())
+            .add_aggregate_list(
+                ResolvedComputedColumnBuilder()
+                    .set_column(column_dp_count)
+                    .set_expr(std::move(dp_count_call_correlated)))
+            .set_group_selection_threshold_expr(nullptr)
+            .add_option_list(MakeResolvedOption(
+                "", "custom_option",
+                MakeResolvedColumnRef(types::Int64Type(), outer_col,
+                                      /*is_correlated=*/true)))
+            .Build());
+    std::unique_ptr<const ResolvedSubqueryExpr> subquery_expr =
+        MakeResolvedSubqueryExpr(
+            types::Int64Type(), ResolvedSubqueryExpr::SCALAR,
+            MakeNodeVector(MakeResolvedColumnRef(types::Int64Type(), outer_col,
+                                                 /*is_correlated=*/false)),
+            /*in_expr=*/nullptr, std::move(dp_scan));
+    std::unique_ptr<const ResolvedQueryStmt> correlated_query_stmt =
+        MakeResolvedQueryStmt(
+            MakeNodeVector(MakeResolvedOutputColumn("s", subquery_col)),
+            /*is_value_table=*/false,
+            MakeResolvedProjectScan(
+                {subquery_col},
+                MakeNodeVector(MakeResolvedComputedColumn(
+                    subquery_col, std::move(subquery_expr))),
+                MakeResolvedProjectScan(
+                    {outer_col},
+                    MakeNodeVector(MakeResolvedComputedColumn(
+                        outer_col, MakeResolvedLiteral(Value::Int64(1)))),
+                    MakeResolvedSingleRowScan())));
+    LanguageOptions language_options;
+    language_options.EnableLanguageFeature(FEATURE_DIFFERENTIAL_PRIVACY);
+    Validator validator(language_options, validator_options);
+    EXPECT_THAT(
+        validator.ValidateResolvedStatement(correlated_query_stmt.get()),
+        StatusIs(absl::StatusCode::kInternal,
+                 AnyOf(HasSubstr("ColumnRef.column references column outer.x#2 "
+                                 "which is not in the OUTER columns"),
+                       HasSubstr("Incorrect reference to column outer.x#2"))));
+  }
 }
 
 TEST(ValidateTest, AggregationThresholdAggregateScanCorrect) {
@@ -2711,6 +3044,70 @@ TEST(ValidateTest, AggregationThresholdAggregateScanInvalidOption) {
       testing::StatusIs(absl::StatusCode::kInternal));
 }
 
+TEST(ValidateTest, AggregationThresholdAggregateScanCorrelatedOptionRejected) {
+  IdStringPool pool;
+  ResolvedColumn outer_col(2, pool.Make("outer"), pool.Make("x"),
+                           types::Int64Type());
+  ResolvedColumn subquery_col(3, pool.Make("subq"), pool.Make("s"),
+                              types::Int64Type());
+  ResolvedColumn column_dp_count(1, pool.Make("agg"), pool.Make("c"),
+                                 types::Int64Type());
+  auto count_function =
+      std::make_unique<Function>("count", "test_group", Function::AGGREGATE);
+  FunctionSignature sig(FunctionArgumentType(types::Int64Type(), 1), {},
+                        static_cast<int64_t>(1234));
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<const ResolvedAggregateFunctionCall> count_call,
+      ResolvedAggregateFunctionCallBuilder()
+          .set_type(types::Int64Type())
+          .set_function(count_function.get())
+          .set_signature(std::move(sig))
+          .Build());
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<const ResolvedAggregationThresholdAggregateScan>
+          threshold_scan,
+      ResolvedAggregationThresholdAggregateScanBuilder()
+          .add_column_list(column_dp_count)
+          .set_input_scan(MakeResolvedSingleRowScan())
+          .add_aggregate_list(ResolvedComputedColumnBuilder()
+                                  .set_column(column_dp_count)
+                                  .set_expr(std::move(count_call)))
+          .add_option_list(MakeResolvedOption(
+              /*qualifier=*/"", /*name=*/"privacy_unit_column",
+              MakeResolvedColumnRef(types::Int64Type(), outer_col,
+                                    /*is_correlated=*/true)))
+          .Build());
+  std::unique_ptr<const ResolvedSubqueryExpr> subquery_expr =
+      MakeResolvedSubqueryExpr(
+          types::Int64Type(), ResolvedSubqueryExpr::SCALAR,
+          MakeNodeVector(MakeResolvedColumnRef(types::Int64Type(), outer_col,
+                                               /*is_correlated=*/false)),
+          /*in_expr=*/nullptr, std::move(threshold_scan));
+  std::unique_ptr<const ResolvedQueryStmt> correlated_query_stmt =
+      MakeResolvedQueryStmt(
+          MakeNodeVector(MakeResolvedOutputColumn("s", subquery_col)),
+          /*is_value_table=*/false,
+          MakeResolvedProjectScan(
+              {subquery_col},
+              MakeNodeVector(MakeResolvedComputedColumn(
+                  subquery_col, std::move(subquery_expr))),
+              MakeResolvedProjectScan(
+                  {outer_col},
+                  MakeNodeVector(MakeResolvedComputedColumn(
+                      outer_col, MakeResolvedLiteral(Value::Int64(1)))),
+                  MakeResolvedSingleRowScan())));
+
+  LanguageOptions language_options;
+  language_options.EnableLanguageFeature(FEATURE_AGGREGATION_THRESHOLD);
+  Validator validator(language_options);
+  EXPECT_THAT(
+      validator.ValidateResolvedStatement(correlated_query_stmt.get()),
+      StatusIs(absl::StatusCode::kInternal,
+               AnyOf(HasSubstr("ColumnRef.column references column outer.x#2 "
+                               "which is not in the OUTER columns"),
+                     HasSubstr("Incorrect reference to column outer.x#2"))));
+}
+
 static std::unique_ptr<ResolvedSetOperationItem> CreateSetOperationItem(
     int column_id, absl::string_view node_source, IdStringPool& pool) {
   ResolvedColumn column = ResolvedColumn(
@@ -2746,7 +3143,9 @@ TEST(ValidateTest, InvalidGroupingSetsResolvedASTMissingGroupByKey) {
 
   absl::Status status = validator.ValidateResolvedStatement(query_stmt.get());
   EXPECT_THAT(status, testing::StatusIs(absl::StatusCode::kInternal));
-  EXPECT_THAT(status.message(), HasSubstr("Incorrect reference to column"));
+  EXPECT_THAT(status.message(),
+              HasSubstr("ColumnRef.column references column $groupby.col3#3 "
+                        "which is not in the VISIBLE columns"));
 }
 
 // The ResolvedAggregateScan.grouping_set_list doesn't contain all keys in the
@@ -2965,8 +3364,9 @@ TEST(ValidateTest, MultilevelAggregationWithBadGroupByHint) {
   EXPECT_THAT(Validator(language_options)
                   .ValidateStandaloneResolvedExpr(agg_function_call.get()),
               StatusIs(absl::StatusCode::kInternal,
-                       HasSubstr("Resolved AST validation failed: Incorrect "
-                                 "reference to column table_name.name#1")));
+                       HasSubstr("ColumnRef.column references column "
+                                 "table_name.name#1 which is not in the "
+                                 "VISIBLE columns")));
 }
 
 TEST(ValidateTest, AggregateFiltering) {
@@ -3454,8 +3854,9 @@ TEST(ValidateTest, ResolvedBarrierScanReferencesWrongColumn) {
   Validator validator(language_options);
   EXPECT_THAT(validator.ValidateResolvedStatement(query_stmt.get()),
               StatusIs(absl::StatusCode::kInternal,
-                       HasSubstr("Column list contains column table.col2#2 not "
-                                 "visible in scan node")));
+                       HasSubstr("BarrierScan.column_list references column "
+                                 "table.col2#2 which is not in its "
+                                 "column_list_scope")));
 }
 
 // Creates a builder for a ResolvedAlignScan.
@@ -4530,7 +4931,7 @@ TEST(ValidateTest, MatchRecognizeOrderByListCannotBeEmpty) {
       auto query,
       ResolvedQueryStmtBuilder()
           .add_output_column_list(
-              ResolvedOutputColumnBuilder().set_column(col0).set_name(""))
+              ResolvedOutputColumnBuilder().set_column(col1).set_name(""))
           .set_query(CreateMatchRecognizeScanBuilder(pool, col0)
                          .add_column_list(col1)
                          // Clear the default analytic groups, to build our
@@ -5025,6 +5426,16 @@ TEST(ValidatorTest, NonLateralJoinCannotListLateralColumns) {
 
   auto join_builder = CreateLateralJoinScanBuilder(outer_col, col2, &t1, col3);
   join_builder.set_is_lateral(false);
+  join_builder.set_right_scan(
+      ResolvedProjectScanBuilder()
+          .add_column_list(col3)
+          .set_input_scan(ResolvedSingleRowScanBuilder())
+          .add_expr_list(
+              ResolvedComputedColumnBuilder().set_column(col3).set_expr(
+                  ResolvedColumnRefBuilder()
+                      .set_type(outer_col.type())
+                      .set_column(outer_col)
+                      .set_is_correlated(true))));
 
   GOOGLESQL_ASSERT_OK_AND_ASSIGN(
       auto query,
@@ -5055,6 +5466,44 @@ TEST(ValidatorTest, NonLateralJoinCannotListLateralColumns) {
   EXPECT_THAT(validator.ValidateResolvedStatement(query.get()),
               StatusIs(absl::StatusCode::kInternal,
                        HasSubstr("scan->parameter_list().empty()")));
+}
+
+// Makes `SELECT col FROM 't1.csv'`, with a TableScan that records the STRING
+// literal in `name_string`.
+absl::StatusOr<std::unique_ptr<const ResolvedQueryStmt>>
+MakeQueryWithStringLiteralTableScan(const Table* table,
+                                    const ResolvedColumn& column) {
+  return ResolvedQueryStmtBuilder()
+      .add_output_column_list(
+          ResolvedOutputColumnBuilder().set_column(column).set_name("col"))
+      .set_query(
+          ResolvedProjectScanBuilder().add_column_list(column).set_input_scan(
+              ResolvedTableScanBuilder()
+                  .add_column_list(column)
+                  .set_table(table)
+                  .set_name_string("t1.csv")))
+      .Build();
+}
+
+TEST(ValidatorTest, TableScanNameStringRequiresStringLiteralTableReferences) {
+  IdStringPool pool;
+  const ResolvedColumn column(1, pool.Make("t1"), pool.Make("col"),
+                              types::Int64Type());
+  const SimpleTable t1{"t1", {{"col", types::Int64Type()}}};
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const ResolvedQueryStmt> query,
+                       MakeQueryWithStringLiteralTableScan(&t1, column));
+
+  Validator validator_without_feature;
+  EXPECT_THAT(validator_without_feature.ValidateResolvedStatement(query.get()),
+              StatusIs(absl::StatusCode::kInternal,
+                       HasSubstr("TableScan.name_string requires "
+                                 "FEATURE_STRING_LITERAL_TABLE_REFERENCES")));
+
+  LanguageOptions language_options;
+  language_options.EnableLanguageFeature(
+      FEATURE_STRING_LITERAL_TABLE_REFERENCES);
+  Validator validator_with_feature(language_options);
+  GOOGLESQL_EXPECT_OK(validator_with_feature.ValidateResolvedStatement(query.get()));
 }
 
 TEST(ValidatorTest, LateralJoinNeedsToDeclareLateralReferencesAsNotCorrelated) {
@@ -5116,7 +5565,8 @@ TEST(ValidatorTest, LateralJoinNeedsToDeclareLateralReferencesAsNotCorrelated) {
 
   EXPECT_THAT(validator.ValidateResolvedStatement(query.get()),
               StatusIs(absl::StatusCode::kInternal,
-                       HasSubstr("Column cannot come from the left scan")));
+                       HasSubstr("ColumnRef.column references column t1.col2#2 "
+                                 "which is not in the OUTER columns")));
 }
 
 TEST(ValidatorTest,
@@ -5179,7 +5629,8 @@ TEST(ValidatorTest,
 
   EXPECT_THAT(validator.ValidateResolvedStatement(query.get()),
               StatusIs(absl::StatusCode::kInternal,
-                       HasSubstr("Column must come from the left scan")));
+                       HasSubstr("ColumnRef.column references column t1.col1#1 "
+                                 "which is not in the VISIBLE columns")));
 }
 
 TEST(ValidatorTest, RebuildActionIsNotLastActionReturnsError) {
@@ -5274,6 +5725,8 @@ TEST(ValidatorTest, UnsetArgumentScanUsedInNonTVFScanArgumentReturnsError) {
           .add_output_column_list(MakeResolvedOutputColumn("c", column))
           .set_query(ResolvedProjectScanBuilder()
                          .add_column_list(column)
+                         .add_expr_list(MakeResolvedComputedColumn(
+                             column, MakeResolvedLiteral(Value::Int64(1))))
                          .set_input_scan(ResolvedUnsetArgumentScanBuilder()));
   GOOGLESQL_ASSERT_OK_AND_ASSIGN(auto query_stmt, std::move(query_stmt_builder).Build());
   EXPECT_THAT(validator.ValidateResolvedStatement(query_stmt.get()),
@@ -5334,7 +5787,8 @@ TEST(ValidatorTest, UnsetArgumentScanContainsColumnsReturnsError) {
   EXPECT_THAT(
       validator.ValidateResolvedStatement(query_stmt.get()),
       StatusIs(absl::StatusCode::kInternal,
-               HasSubstr("UnsetArgumentScan should not have any columns")));
+               HasSubstr("UnsetArgumentScan.column_list references column "
+                         "table.col#1 which is not in its column_list_scope")));
 }
 
 TEST(ValidatorTest, TemplatedFunctionFailure) {
@@ -6468,8 +6922,8 @@ class ValidatorGraphTest : public ::testing::Test {
   }
 
   std::unique_ptr<const ResolvedGraphDMLPropertyItem>
-  MakeDynamicPropertyItemWithValue(const std::string& name = "name",
-                                   const std::string& val = "Alice") {
+  MakeDynamicPropertyItemWithValue(absl::string_view name = "name",
+                                   absl::string_view val = "Alice") {
     return MakeResolvedGraphDMLPropertyItem(
         name, /*property=*/nullptr, MakeResolvedLiteral(Value::String(val)));
   }
@@ -6656,11 +7110,12 @@ TEST_F(ValidatorGraphTest, InvalidGraphInsertScanNodeReferencingEdge) {
           .set_query(std::move(insert_scan))
           .Build());
 
-  EXPECT_THAT(
-      validator_.ValidateResolvedStatement(generalized_stmt.get()),
-      ::absl_testing::StatusIs(
-          absl::StatusCode::kInternal,
-          testing::HasSubstr("Incorrect reference to column inserted.edge#1")));
+  EXPECT_THAT(validator_.ValidateResolvedStatement(generalized_stmt.get()),
+              ::absl_testing::StatusIs(
+                  absl::StatusCode::kInternal,
+                  testing::HasSubstr("ColumnRef.column references column "
+                                     "inserted.edge#1 which is not in the "
+                                     "VISIBLE columns")));
 }
 
 TEST_F(ValidatorGraphTest, ValidFinishScanWithoutSideEffects) {
@@ -6767,11 +7222,12 @@ TEST_F(ValidatorGraphTest, InvalidFinishScanNonEmptyColumns) {
   auto query_stmt = MakeResolvedGeneralizedQueryStmt(
       /*output_schema=*/nullptr, std::move(finish_scan));
 
-  EXPECT_THAT(
-      validator_.ValidateResolvedStatement(query_stmt.get()),
-      ::absl_testing::StatusIs(
-          absl::StatusCode::kInternal,
-          testing::HasSubstr("ResolvedFinishScan must not emit columns")));
+  EXPECT_THAT(validator_.ValidateResolvedStatement(query_stmt.get()),
+              ::absl_testing::StatusIs(
+                  absl::StatusCode::kInternal,
+                  testing::HasSubstr("FinishScan.column_list references column "
+                                     "tbl.id#1 which is not in its "
+                                     "column_list_scope")));
 }
 
 TEST_F(ValidatorGraphTest, InvalidGraphDMLPropertyItemTypeMismatch) {
@@ -7023,6 +7479,13 @@ TEST_F(ValidatorGraphTest, InvalidGraphInsertElementEmptyLabels) {
 TEST_F(ValidatorGraphTest, InvalidGraphInsertElementNodeWithSrcNode) {
   ResolvedColumn id_col(1, pool_.Make("tbl"), pool_.Make("id"),
                         factory_.get_int64());
+  ResolvedColumn node_col(2, pool_.Make("inserted"), pool_.Make("node"),
+                          graph_node_type_);
+
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(auto input_scan, ResolvedTableScanBuilder()
+                                            .set_table(&table_)
+                                            .add_column_list(id_col)
+                                            .Build());
 
   // Invalid: setting `src_node` field for node element.
   GOOGLESQL_ASSERT_OK_AND_ASSIGN(auto insert_node_element,
@@ -7040,9 +7503,29 @@ TEST_F(ValidatorGraphTest, InvalidGraphInsertElementNodeWithSrcNode) {
                                                 .Build()
                                                 .value())
                            .Build());
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(auto insert_node,
+                       ResolvedComputedColumnBuilder()
+                           .set_column(node_col)
+                           .set_expr(std::move(insert_node_element))
+                           .Build());
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(auto insert_scan,
+                       ResolvedGraphInsertScanBuilder()
+                           .set_input_scan(std::move(input_scan))
+                           .add_insert_node_list(std::move(insert_node))
+                           .add_column_list(node_col)
+                           .Build());
+  std::vector<std::unique_ptr<const ResolvedOutputColumn>> output_columns;
+  output_columns.push_back(MakeResolvedOutputColumn("node", node_col));
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+      auto query_stmt,
+      ResolvedGeneralizedQueryStmtBuilder()
+          .set_output_schema(MakeResolvedOutputSchema(std::move(output_columns),
+                                                      /*is_value_table=*/false))
+          .set_query(std::move(insert_scan))
+          .Build());
 
   EXPECT_THAT(
-      validator_.ValidateStandaloneResolvedExpr(insert_node_element.get()),
+      validator_.ValidateResolvedStatement(query_stmt.get()),
       ::absl_testing::StatusIs(
           absl::StatusCode::kInternal,
           testing::HasSubstr(
@@ -7094,7 +7577,9 @@ TEST_F(ValidatorGraphTest, InvalidGraphInsertScanInvalidPathElement) {
       validator_.ValidateResolvedStatement(query_stmt.get()),
       ::absl_testing::StatusIs(
           absl::StatusCode::kInternal,
-          testing::HasSubstr("Incorrect reference to column invalid.col#99")));
+          testing::HasSubstr("GraphInsertScan.path_element_list references "
+                             "column invalid.col#99 which is not in the "
+                             "VISIBLE columns")));
 }
 
 TEST_F(ValidatorGraphTest, InvalidGraphInsertScanPathElementNotGraphElement) {
@@ -7812,10 +8297,13 @@ TEST_F(ValidatorGraphTest, InvalidUpdateScanWrongColumn) {
                                /*is_value_table=*/false),
       std::move(update_scan));
 
-  EXPECT_THAT(validator_.ValidateResolvedStatement(query_stmt.get()),
-              ::absl_testing::StatusIs(
-                  absl::StatusCode::kInternal,
-                  ::testing::HasSubstr("Incorrect reference to column")));
+  EXPECT_THAT(
+      validator_.ValidateResolvedStatement(query_stmt.get()),
+      ::absl_testing::StatusIs(
+          absl::StatusCode::kInternal,
+          ::testing::HasSubstr("UpdateScan.column_list references column "
+                               "tbl.wrong#3 which is not in its "
+                               "column_list_scope")));
 }
 
 TEST_F(ValidatorGraphTest, InvalidUpdateScanCollisionAction) {
@@ -8022,25 +8510,13 @@ TEST_F(ValidatorGraphTest, InvalidUpdateScanMissingTableScan) {
                                             .add_column_list(id_col)
                                             .Build());
 
-  auto returning_output_col = MakeResolvedOutputColumn("id", id_col);
-  std::vector<std::unique_ptr<const ResolvedOutputColumn>>
-      returning_output_cols;
-  returning_output_cols.push_back(std::move(returning_output_col));
   auto returning_clause = MakeResolvedReturningClause(
-      std::move(returning_output_cols), nullptr, {});
-
-  auto update_item = MakeResolvedUpdateItem(
-      MakeResolvedColumnRef(id_col.type(), id_col, /*is_correlated=*/false),
-      MakeResolvedDMLValue(MakeResolvedLiteral(Value::Int64(5))), nullptr, {},
-      {}, {}, {});
-  std::vector<std::unique_ptr<const ResolvedUpdateItem>> update_item_list;
-  update_item_list.push_back(std::move(update_item));
+      /*output_column_list=*/{}, /*action_column=*/nullptr, /*expr_list=*/{});
 
   GOOGLESQL_ASSERT_OK_AND_ASSIGN(
       auto update_stmt,
       ResolvedUpdateStmtBuilder()
           .set_where_expr(MakeResolvedLiteral(Value::Bool(true)))
-          .set_update_item_list(std::move(update_item_list))
           .set_from_scan(std::move(input_scan))
           .set_returning(std::move(returning_clause))
           .add_column_access_list(ResolvedStatementEnums::WRITE)
@@ -8327,10 +8803,13 @@ TEST_F(ValidatorGraphTest,
                                /*is_value_table=*/false),
       std::move(delete_scan));
 
-  EXPECT_THAT(validator_.ValidateResolvedStatement(query_stmt.get()),
-              ::absl_testing::StatusIs(
-                  absl::StatusCode::kInternal,
-                  ::testing::HasSubstr("not visible in scan node")));
+  EXPECT_THAT(
+      validator_.ValidateResolvedStatement(query_stmt.get()),
+      ::absl_testing::StatusIs(
+          absl::StatusCode::kInternal,
+          ::testing::HasSubstr("DeleteScan.column_list references column "
+                               "tbl.wrong#3 which is not in its "
+                               "column_list_scope")));
 }
 
 TEST_F(ValidatorGraphTest, InvalidDeleteScanMissingTableScan) {
@@ -8734,28 +9213,16 @@ TEST_F(ValidatorGraphTest, ValidFinishScanWithGraphUpdateSideEffects) {
 }
 
 TEST_F(ValidatorGraphTest, InvalidGraphUpdateScanMissingInputScan) {
-  std::vector<std::unique_ptr<const ResolvedGraphLabel>> label_list;
-  label_list.push_back(MakeDynamicLabel());
-
-  std::vector<std::unique_ptr<const ResolvedGraphUpdateElement>>
-      update_elements;
-  update_elements.push_back(MakeResolvedGraphUpdateElement(
-      MakeResolvedColumnRef(graph_node_type_, element_col1_,
-                            /*is_correlated=*/false),
-      updated_element_col1_, ResolvedGraphUpdateElement::PROPERTY_NO_UPDATE,
-      /*property_list=*/{}, ResolvedGraphUpdateElement::LABEL_SET,
-      std::move(label_list)));
-
   auto graph_update_scan = MakeResolvedGraphUpdateScan(
-      {updated_element_col1_}, /*input_scan=*/nullptr,
-      std::move(update_elements));
+      /*column_list=*/{}, /*input_scan=*/nullptr,
+      /*update_element_list=*/{});
 
-  GOOGLESQL_ASSERT_OK_AND_ASSIGN(auto query_stmt,
-                       ResolvedQueryStmtBuilder()
-                           .add_output_column_list(MakeResolvedOutputColumn(
-                               "x", updated_element_col1_))
-                           .set_query(std::move(graph_update_scan))
-                           .Build());
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<const ResolvedGeneralizedQueryStmt> query_stmt,
+      ResolvedGeneralizedQueryStmtBuilder()
+          .set_output_schema(nullptr)
+          .set_query(std::move(graph_update_scan))
+          .Build());
 
   EXPECT_THAT(validator_.ValidateResolvedStatement(query_stmt.get()),
               ::absl_testing::StatusIs(
@@ -9518,10 +9985,13 @@ TEST_F(ValidatorGraphTest, InvalidGraphUpdateScanUnproducedColumnInColumnList) {
           .set_query(std::move(graph_update_scan))
           .Build());
 
-  EXPECT_THAT(validator_.ValidateResolvedStatement(query_stmt.get()),
-              ::absl_testing::StatusIs(
-                  absl::StatusCode::kInternal,
-                  ::testing::HasSubstr("not visible in scan node")));
+  EXPECT_THAT(
+      validator_.ValidateResolvedStatement(query_stmt.get()),
+      ::absl_testing::StatusIs(
+          absl::StatusCode::kInternal,
+          ::testing::HasSubstr("GraphUpdateScan.column_list references column "
+                               "tbl.unproduced#99 which is not in its "
+                               "column_list_scope")));
 }
 
 TEST_F(ValidatorGraphTest, ValidGraphUpdateScanKeepBothOldAndNewColumns) {
@@ -9802,7 +10272,8 @@ TEST_F(ValidatorGraphTest, InvalidGraphDeleteScanUnknownGraphElementVariable) {
               ::absl_testing::StatusIs(
                   absl::StatusCode::kInternal,
                   ::testing::HasSubstr(
-                      "Incorrect reference to column unknown.node#3")));
+                      "ColumnRef.column references column unknown.node#3 "
+                      "which is not in the VISIBLE columns")));
 }
 
 TEST_F(ValidatorGraphTest, InvalidGraphDeleteScanUnknownOutputColumn) {
@@ -9845,8 +10316,8 @@ TEST_F(ValidatorGraphTest, InvalidGraphDeleteScanUnknownOutputColumn) {
       ::absl_testing::StatusIs(
           absl::StatusCode::kInternal,
           ::testing::HasSubstr(
-              "Column list contains column unknown.node#3 not visible in "
-              "scan node")));
+              "GraphDeleteScan.column_list references column unknown.node#3 "
+              "which is not in its column_list_scope")));
 }
 
 TEST_F(ValidatorGraphTest, InvalidGraphDeleteScanPreDeleteOutputColumn) {
@@ -10275,7 +10746,6 @@ TEST(ValidateTest, ResolvedFunctionArgumentWithMultiConnections) {
 
 TEST(ValidatorTest, ValidVectorTypeParametersInCastExpr) {
   LanguageOptions language_options;
-  language_options.EnableLanguageFeature(FEATURE_DECLARATIVE_TYPE_FRAMEWORK);
   language_options.EnableLanguageFeature(FEATURE_VECTOR_TYPE);
   Validator validator(language_options);
 
@@ -10298,7 +10768,6 @@ TEST(ValidatorTest, ValidVectorTypeParametersInCastExpr) {
 
 TEST(ValidatorTest, VectorTypeParametersForNonVectorTypeInCastExpr) {
   LanguageOptions language_options;
-  language_options.EnableLanguageFeature(FEATURE_DECLARATIVE_TYPE_FRAMEWORK);
   language_options.EnableLanguageFeature(FEATURE_VECTOR_TYPE);
   Validator validator(language_options);
 
@@ -10323,7 +10792,6 @@ TEST(ValidatorTest, VectorTypeParametersForNonVectorTypeInCastExpr) {
 
 TEST(ValidatorTest, InvalidVectorTypeParameters) {
   LanguageOptions language_options;
-  language_options.EnableLanguageFeature(FEATURE_DECLARATIVE_TYPE_FRAMEWORK);
   language_options.EnableLanguageFeature(FEATURE_VECTOR_TYPE);
   Validator validator(language_options);
 
@@ -10453,7 +10921,8 @@ TEST(ValidatorTest, InvalidDeleteStmtWhereExprRefersToUnknownColumn) {
               ::absl_testing::StatusIs(
                   absl::StatusCode::kInternal,
                   ::testing::HasSubstr(
-                      "Incorrect reference to column Unknown.Col#999")));
+                      "ColumnRef.column references column Unknown.Col#999 "
+                      "which is not in the VISIBLE columns")));
 }
 
 TEST(ValidatorTest, InvalidDeleteStmtReturningAccessingUsingScanColumn) {
@@ -10499,7 +10968,8 @@ TEST(ValidatorTest, InvalidDeleteStmtReturningAccessingUsingScanColumn) {
               ::absl_testing::StatusIs(
                   absl::StatusCode::kInternal,
                   ::testing::HasSubstr(
-                      "Incorrect reference to column KeyValue2.Key#2")));
+                      "OutputColumn.column references column KeyValue2.Key#2 "
+                      "which is not in the VISIBLE columns")));
 }
 
 TEST(ValidatorTest, InvalidNestedDeleteStmtWithUsingScan) {
@@ -10848,12 +11318,13 @@ TEST(ValidatorTest, UpdateConstructorItemColumnNotVisibleToSiblingItem) {
   std::unique_ptr<const ResolvedUpdateConstructor> expr = MakeUpdateConstructor(
       type_factory, pool, UpdateItemColumnShape::kReferencedBySiblingItem);
   Validator validator;
-  EXPECT_THAT(
-      validator.ValidateStandaloneResolvedExpr(expr.get()),
-      ::absl_testing::StatusIs(
-          absl::StatusCode::kInternal,
-          ::testing::HasSubstr("Incorrect reference to column "
-                               "$update_constructor.update_item_column#2")));
+  EXPECT_THAT(validator.ValidateStandaloneResolvedExpr(expr.get()),
+              ::absl_testing::StatusIs(
+                  absl::StatusCode::kInternal,
+                  ::testing::HasSubstr(
+                      "ColumnRef.column references column "
+                      "$update_constructor.update_item_column#2 which is not "
+                      "in the VISIBLE columns")));
 }
 
 TEST(ValidatorTest, UpdateConstructorItemColumnNotVisibleToConstructorExpr) {
@@ -10862,12 +11333,13 @@ TEST(ValidatorTest, UpdateConstructorItemColumnNotVisibleToConstructorExpr) {
   std::unique_ptr<const ResolvedUpdateConstructor> expr = MakeUpdateConstructor(
       type_factory, pool, UpdateItemColumnShape::kReferencedByConstructorExpr);
   Validator validator;
-  EXPECT_THAT(
-      validator.ValidateStandaloneResolvedExpr(expr.get()),
-      ::absl_testing::StatusIs(
-          absl::StatusCode::kInternal,
-          ::testing::HasSubstr("Incorrect reference to column "
-                               "$update_constructor.update_item_column#2")));
+  EXPECT_THAT(validator.ValidateStandaloneResolvedExpr(expr.get()),
+              ::absl_testing::StatusIs(
+                  absl::StatusCode::kInternal,
+                  ::testing::HasSubstr(
+                      "ColumnRef.column references column "
+                      "$update_constructor.update_item_column#2 which is not "
+                      "in the VISIBLE columns")));
 }
 
 TEST(ValidatorTest, UpdateConstructorItemColumnMustHaveUniqueColumnId) {

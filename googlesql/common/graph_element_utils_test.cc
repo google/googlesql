@@ -42,6 +42,7 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
 #include "absl/types/span.h"
 
 namespace googlesql {
@@ -54,6 +55,7 @@ using ::testing::NotNull;
 using ::testing::Optional;
 using ::testing::UnorderedElementsAre;
 using ::absl_testing::IsOkAndHolds;
+using ::absl_testing::StatusIs;
 
 TEST(GraphElementUtilsTest, IsOrContainsGraphElementTest) {
   TypeFactory factory;
@@ -71,7 +73,7 @@ TEST(GraphElementUtilsTest, IsOrContainsGraphElementTest) {
   GOOGLESQL_ASSERT_OK(factory.MakeGraphElementType(
       {"aml"}, GraphElementType::ElementKind::kNode,
       {{"id", int_type}, {"name", string_type}, {"data", bytes_type}},
-      &node_type));
+      /*element_tables=*/{}, &node_type));
   ASSERT_THAT(node_type, NotNull());
   ASSERT_TRUE(TypeIsOrContainsGraphElement(node_type));
 
@@ -79,7 +81,8 @@ TEST(GraphElementUtilsTest, IsOrContainsGraphElementTest) {
   const GraphElementType* edge_type;
   GOOGLESQL_ASSERT_OK(factory.MakeGraphElementType(
       {"aml"}, GraphElementType::kEdge,
-      {{"transfer_id", int_type}, {"amount", int_type}}, &edge_type));
+      {{"transfer_id", int_type}, {"amount", int_type}},
+      /*element_tables=*/{}, &edge_type));
   ASSERT_THAT(edge_type, NotNull());
   ASSERT_TRUE(TypeIsOrContainsGraphElement(edge_type));
 
@@ -244,7 +247,7 @@ TEST(GraphElementUtilsTest, GetPropertyBackingColumnTest) {
 }
 
 TEST(GraphElementUtilsTest,
-     GetPropertyBackingColumnsAndAreAllKeyColumnsWritablePropertiesTest) {
+     GetPropertyBackingColumnsAndKeyColumnPropertiesTest) {
   const std::vector<std::string> graph_name_path = {"test_graph"};
   std::vector<std::unique_ptr<const Column>> columns;
   columns.push_back(std::make_unique<SimpleColumn>(
@@ -263,6 +266,9 @@ TEST(GraphElementUtilsTest,
 
   SimpleGraphPropertyDeclaration id_decl(
       "id", graph_name_path, types::Int64Type(),
+      /*type_annotation_map=*/nullptr, GraphPropertyDeclaration::Kind::kScalar);
+  SimpleGraphPropertyDeclaration readonly_key_decl(
+      "readonly_key", graph_name_path, types::Int64Type(),
       /*type_annotation_map=*/nullptr, GraphPropertyDeclaration::Kind::kScalar);
   SimpleGraphPropertyDeclaration measure_decl(
       "m", graph_name_path, types::Int64Type(),
@@ -298,27 +304,91 @@ TEST(GraphElementUtilsTest,
   EXPECT_THAT(GetPropertyBackingColumns(node_table),
               IsOkAndHolds(UnorderedElementsAre(base_table.GetColumn(0))));
 
-  EXPECT_THAT(AreAllKeyColumnsWritableProperties(node_table),
+  EXPECT_THAT(GetElementKeyColumns(node_table),
+              IsOkAndHolds(ElementsAre(base_table.GetColumn(0))));
+
+  EXPECT_THAT(AreAllKeyColumnsExposedAsProperties(node_table,
+                                                  /*must_be_writable=*/false),
+              IsOkAndHolds(true));
+  EXPECT_THAT(AreAllKeyColumnsExposedAsProperties(node_table,
+                                                  /*must_be_writable=*/true),
               IsOkAndHolds(true));
 
   std::string error_message;
   SimpleGraphNodeTable unexposed_key_node_table(
       "NodeTable", graph_name_path, &base_table, /*key_cols=*/{0, 1},
       /*labels=*/{&label}, /*property_definitions=*/{});
-  EXPECT_THAT(AreAllKeyColumnsWritableProperties(unexposed_key_node_table,
-                                                 &error_message),
-              IsOkAndHolds(false));
+  EXPECT_THAT(GetElementKeyColumns(unexposed_key_node_table),
+              IsOkAndHolds(ElementsAre(base_table.GetColumn(0),
+                                       base_table.GetColumn(1))));
+  EXPECT_THAT(
+      AreAllKeyColumnsExposedAsProperties(
+          unexposed_key_node_table, /*must_be_writable=*/false, &error_message),
+      IsOkAndHolds(false));
+  EXPECT_THAT(error_message,
+              HasSubstr("Graph element table 'NodeTable' is not updatable "
+                        "because the element key column 'id' is not exposed "
+                        "as a property"));
+
+  error_message.clear();
+  EXPECT_THAT(
+      AreAllKeyColumnsExposedAsProperties(
+          unexposed_key_node_table, /*must_be_writable=*/true, &error_message),
+      IsOkAndHolds(false));
   EXPECT_THAT(error_message,
               HasSubstr("Graph element table 'NodeTable' is not updatable "
                         "because the element key column 'id' is not exposed "
                         "as a writable property"));
 
-  SimpleGraphNodeTable readonly_key_node_table(
+  // Key column is read-only and not exposed as a property.
+  SimpleGraphNodeTable readonly_unexposed_key_node_table(
       "NodeTable", graph_name_path, &base_table, /*key_cols=*/{2},
       /*labels=*/{&label}, /*property_definitions=*/{});
   error_message.clear();
-  EXPECT_THAT(AreAllKeyColumnsWritableProperties(readonly_key_node_table,
-                                                 &error_message),
+  EXPECT_THAT(AreAllKeyColumnsExposedAsProperties(
+                  readonly_unexposed_key_node_table, /*must_be_writable=*/false,
+                  &error_message),
+              IsOkAndHolds(false));
+  EXPECT_THAT(error_message,
+              HasSubstr("Graph element table 'NodeTable' is not updatable "
+                        "because the element key column 'readonly_key' is not "
+                        "exposed as a property"));
+
+  error_message.clear();
+  EXPECT_THAT(AreAllKeyColumnsExposedAsProperties(
+                  readonly_unexposed_key_node_table, /*must_be_writable=*/true,
+                  &error_message),
+              IsOkAndHolds(false));
+  EXPECT_THAT(error_message,
+              HasSubstr("Graph element table 'NodeTable' is not updatable "
+                        "because the element key column 'readonly_key' is not "
+                        "writable"));
+
+  // Key column is read-only, but is exposed as a property:
+  // AreAllKeyColumnsExposedAsProperties succeeds when must_be_writable=false,
+  // and fails when must_be_writable=true.
+  auto readonly_key_col_ref =
+      MakeResolvedCatalogColumnRef(types::Int64Type(), base_table.GetColumn(2));
+  auto readonly_key_prop_def = std::make_unique<SimpleGraphPropertyDefinition>(
+      &readonly_key_decl, "readonly_key");
+  InternalPropertyGraph::InternalSetResolvedExpr(readonly_key_prop_def.get(),
+                                                 readonly_key_col_ref.get());
+  std::vector<std::unique_ptr<const GraphPropertyDefinition>>
+      readonly_key_prop_defs;
+  readonly_key_prop_defs.push_back(std::move(readonly_key_prop_def));
+  SimpleGraphElementLabel readonly_key_label(
+      "ReadonlyKeyLabel", graph_name_path, {&readonly_key_decl});
+  SimpleGraphNodeTable readonly_exposed_key_node_table(
+      "NodeTable", graph_name_path, &base_table, /*key_cols=*/{2},
+      /*labels=*/{&readonly_key_label}, std::move(readonly_key_prop_defs));
+  EXPECT_THAT(
+      AreAllKeyColumnsExposedAsProperties(readonly_exposed_key_node_table,
+                                          /*must_be_writable=*/false),
+      IsOkAndHolds(true));
+  error_message.clear();
+  EXPECT_THAT(AreAllKeyColumnsExposedAsProperties(
+                  readonly_exposed_key_node_table,
+                  /*must_be_writable=*/true, &error_message),
               IsOkAndHolds(false));
   EXPECT_THAT(error_message,
               HasSubstr("Graph element table 'NodeTable' is not updatable "
@@ -326,7 +396,7 @@ TEST(GraphElementUtilsTest,
                         "writable"));
 }
 
-TEST(GraphElementUtilsTest, BackingColumnsAndIsTargetTableUpdatableTest) {
+TEST(GraphElementUtilsTest, BackingColumnsAndIsTargetTableInsertableTest) {
   TypeFactory type_factory;
   LanguageOptions updatable_lang_options;
   updatable_lang_options.EnableLanguageFeature(
@@ -382,15 +452,15 @@ TEST(GraphElementUtilsTest, BackingColumnsAndIsTargetTableUpdatableTest) {
   EXPECT_THAT(GetDynamicPropertiesBackingColumn(src_node_table),
               IsOkAndHolds(src_base_table.GetColumn(2)));
 
-  // Updatable when not inserting a dynamic label, but returns false when
+  // Insertable when not inserting a dynamic label, but returns false when
   // needs_dynamic_label=true because dyn_label is read-only.
-  EXPECT_THAT(IsTargetTableUpdatable(src_node_table,
-                                     /*needs_dynamic_label=*/false),
+  EXPECT_THAT(IsTargetTableInsertable(src_node_table,
+                                      /*needs_dynamic_label=*/false),
               IsOkAndHolds(true));
   std::string error_message;
   EXPECT_THAT(
-      IsTargetTableUpdatable(src_node_table,
-                             /*needs_dynamic_label=*/true, &error_message),
+      IsTargetTableInsertable(src_node_table,
+                              /*needs_dynamic_label=*/true, &error_message),
       IsOkAndHolds(false));
   EXPECT_THAT(error_message,
               HasSubstr("Cannot insert dynamic label because the dynamic "
@@ -467,11 +537,11 @@ TEST(GraphElementUtilsTest, BackingColumnsAndIsTargetTableUpdatableTest) {
   EXPECT_THAT(endpoint_cols.dest_key_columns,
               UnorderedElementsAre(edge_base_table.GetColumn(2)));
 
-  // Edge table is not updatable because dst_node_table does not expose dst_id
+  // Edge table is not insertable because dst_node_table does not expose dst_id
   // as a property.
   error_message.clear();
-  EXPECT_THAT(IsTargetTableUpdatable(edge_table, /*needs_dynamic_label=*/false,
-                                     &error_message),
+  EXPECT_THAT(IsTargetTableInsertable(edge_table, /*needs_dynamic_label=*/false,
+                                      &error_message),
               IsOkAndHolds(false));
   EXPECT_THAT(error_message,
               HasSubstr("The edge table 'EdgeTable' is not updatable because "
@@ -480,36 +550,282 @@ TEST(GraphElementUtilsTest, BackingColumnsAndIsTargetTableUpdatableTest) {
                         "property"));
 
   // Edge table referencing src_node_table as both source and destination is
-  // updatable because src_node_table exposes its key column as a property and
+  // insertable because src_node_table exposes its key column as a property and
   // all edge key and endpoint columns are writable.
-  auto updatable_edge_id_prop_def =
+  auto insertable_edge_id_prop_def =
       std::make_unique<SimpleGraphPropertyDefinition>(&id_decl, "edge_id");
   InternalPropertyGraph::InternalSetResolvedExpr(
-      updatable_edge_id_prop_def.get(), edge_id_col_ref.get());
+      insertable_edge_id_prop_def.get(), edge_id_col_ref.get());
   std::vector<std::unique_ptr<const GraphPropertyDefinition>>
-      updatable_edge_prop_defs;
-  updatable_edge_prop_defs.push_back(std::move(updatable_edge_id_prop_def));
-  auto updatable_src_ref = std::make_unique<SimpleGraphNodeTableReference>(
+      insertable_edge_prop_defs;
+  insertable_edge_prop_defs.push_back(std::move(insertable_edge_id_prop_def));
+  auto insertable_src_ref = std::make_unique<SimpleGraphNodeTableReference>(
       &src_node_table, /*edge_table_columns=*/std::vector<int>{1},
       /*node_table_columns=*/std::vector<int>{0});
-  auto updatable_dst_ref = std::make_unique<SimpleGraphNodeTableReference>(
+  auto insertable_dst_ref = std::make_unique<SimpleGraphNodeTableReference>(
       &src_node_table, /*edge_table_columns=*/std::vector<int>{2},
       /*node_table_columns=*/std::vector<int>{0});
-  SimpleGraphEdgeTable updatable_edge_table(
-      "UpdatableEdgeTable", graph_name_path, &edge_base_table, /*key_cols=*/{0},
-      /*labels=*/{&src_label}, std::move(updatable_edge_prop_defs),
-      std::move(updatable_src_ref), std::move(updatable_dst_ref));
-  EXPECT_THAT(IsTargetTableUpdatable(updatable_edge_table,
-                                     /*needs_dynamic_label=*/false),
+  SimpleGraphEdgeTable insertable_edge_table(
+      "InsertableEdgeTable", graph_name_path, &edge_base_table,
+      /*key_cols=*/{0},
+      /*labels=*/{&src_label}, std::move(insertable_edge_prop_defs),
+      std::move(insertable_src_ref), std::move(insertable_dst_ref));
+  EXPECT_THAT(IsTargetTableInsertable(insertable_edge_table,
+                                      /*needs_dynamic_label=*/false),
               IsOkAndHolds(true));
   error_message.clear();
   EXPECT_THAT(
-      IsTargetTableUpdatable(updatable_edge_table,
-                             /*needs_dynamic_label=*/true, &error_message),
+      IsTargetTableInsertable(insertable_edge_table,
+                              /*needs_dynamic_label=*/true, &error_message),
       IsOkAndHolds(false));
   EXPECT_THAT(error_message, HasSubstr("Graph element table "
-                                       "'UpdatableEdgeTable' does not support "
+                                       "'InsertableEdgeTable' does not support "
                                        "dynamic labels"));
+
+  // Edge table with read-only element key and read-only endpoint key columns
+  // is not insertable.
+  std::vector<std::unique_ptr<const Column>> readonly_edge_cols;
+  readonly_edge_cols.push_back(std::make_unique<SimpleColumn>(
+      "ReadonlyEdgeTable", "edge_id", types::Int64Type(),
+      SimpleColumn::Attributes{.is_writable_column = false}));
+  readonly_edge_cols.push_back(std::make_unique<SimpleColumn>(
+      "ReadonlyEdgeTable", "src_id", types::Int64Type(),
+      SimpleColumn::Attributes{.is_writable_column = false}));
+  readonly_edge_cols.push_back(std::make_unique<SimpleColumn>(
+      "ReadonlyEdgeTable", "dst_id", types::Int64Type(),
+      SimpleColumn::Attributes{.is_writable_column = false}));
+  SimpleTable readonly_edge_base_table("ReadonlyEdgeTable",
+                                       std::move(readonly_edge_cols));
+  auto readonly_edge_id_col_ref = MakeResolvedCatalogColumnRef(
+      types::Int64Type(), readonly_edge_base_table.GetColumn(0));
+  auto readonly_edge_id_prop_def =
+      std::make_unique<SimpleGraphPropertyDefinition>(&id_decl, "edge_id");
+  InternalPropertyGraph::InternalSetResolvedExpr(
+      readonly_edge_id_prop_def.get(), readonly_edge_id_col_ref.get());
+  std::vector<std::unique_ptr<const GraphPropertyDefinition>>
+      readonly_edge_prop_defs;
+  readonly_edge_prop_defs.push_back(std::move(readonly_edge_id_prop_def));
+  auto readonly_src_ref = std::make_unique<SimpleGraphNodeTableReference>(
+      &src_node_table, /*edge_table_columns=*/std::vector<int>{1},
+      /*node_table_columns=*/std::vector<int>{0});
+  auto readonly_dst_ref = std::make_unique<SimpleGraphNodeTableReference>(
+      &src_node_table, /*edge_table_columns=*/std::vector<int>{2},
+      /*node_table_columns=*/std::vector<int>{0});
+  SimpleGraphEdgeTable readonly_edge_table(
+      "ReadonlyEdgeTable", graph_name_path, &readonly_edge_base_table,
+      /*key_cols=*/{0}, /*labels=*/{&src_label},
+      std::move(readonly_edge_prop_defs), std::move(readonly_src_ref),
+      std::move(readonly_dst_ref));
+  EXPECT_THAT(IsTargetTableInsertable(readonly_edge_table,
+                                      /*needs_dynamic_label=*/false),
+              IsOkAndHolds(false));
+
+  SimpleGraphPropertyDeclaration ref_decl(
+      "ref_col", graph_name_path, types::Int64Type(),
+      /*type_annotation_map=*/nullptr, GraphPropertyDeclaration::Kind::kScalar);
+
+  // 1. Endpoint node table exposes its referenced column as a property, but
+  //    does not expose its own element key column -> IsTargetTableInsertable
+  //    returns false with "does not expose the element key column".
+  std::vector<std::unique_ptr<const Column>> unexposed_key_cols;
+  unexposed_key_cols.push_back(std::make_unique<SimpleColumn>(
+      "UnexposedKeyNodeTable", "node_key", types::Int64Type(),
+      SimpleColumn::Attributes{.is_writable_column = true}));
+  unexposed_key_cols.push_back(std::make_unique<SimpleColumn>(
+      "UnexposedKeyNodeTable", "ref_col", types::Int64Type(),
+      SimpleColumn::Attributes{.is_writable_column = true}));
+  SimpleTable unexposed_key_base_table("UnexposedKeyNodeTable",
+                                       std::move(unexposed_key_cols));
+  auto ref_col_ref = MakeResolvedCatalogColumnRef(
+      types::Int64Type(), unexposed_key_base_table.GetColumn(1));
+  auto ref_prop_def =
+      std::make_unique<SimpleGraphPropertyDefinition>(&ref_decl, "ref_col");
+  InternalPropertyGraph::InternalSetResolvedExpr(ref_prop_def.get(),
+                                                 ref_col_ref.get());
+  std::vector<std::unique_ptr<const GraphPropertyDefinition>>
+      unexposed_key_prop_defs;
+  unexposed_key_prop_defs.push_back(std::move(ref_prop_def));
+  SimpleGraphNodeTable unexposed_key_node_table(
+      "UnexposedKeyNodeTable", graph_name_path, &unexposed_key_base_table,
+      /*key_cols=*/{0}, /*labels=*/{&src_label},
+      std::move(unexposed_key_prop_defs));
+
+  auto unexposed_key_src_ref = std::make_unique<SimpleGraphNodeTableReference>(
+      &src_node_table, /*edge_table_columns=*/std::vector<int>{1},
+      /*node_table_columns=*/std::vector<int>{0});
+  auto unexposed_key_dst_ref = std::make_unique<SimpleGraphNodeTableReference>(
+      &unexposed_key_node_table, /*edge_table_columns=*/std::vector<int>{2},
+      /*node_table_columns=*/std::vector<int>{1});
+  auto unexposed_key_edge_prop_def =
+      std::make_unique<SimpleGraphPropertyDefinition>(&id_decl, "edge_id");
+  InternalPropertyGraph::InternalSetResolvedExpr(
+      unexposed_key_edge_prop_def.get(), edge_id_col_ref.get());
+  std::vector<std::unique_ptr<const GraphPropertyDefinition>>
+      unexposed_key_edge_prop_defs;
+  unexposed_key_edge_prop_defs.push_back(
+      std::move(unexposed_key_edge_prop_def));
+  SimpleGraphEdgeTable unexposed_key_edge_table(
+      "UnexposedKeyEdgeTable", graph_name_path, &edge_base_table,
+      /*key_cols=*/{0}, /*labels=*/{&src_label},
+      std::move(unexposed_key_edge_prop_defs), std::move(unexposed_key_src_ref),
+      std::move(unexposed_key_dst_ref));
+  error_message.clear();
+  EXPECT_THAT(
+      IsTargetTableInsertable(unexposed_key_edge_table,
+                              /*needs_dynamic_label=*/false, &error_message),
+      IsOkAndHolds(false));
+  EXPECT_THAT(error_message,
+              HasSubstr("The edge table 'UnexposedKeyEdgeTable' is not "
+                        "updatable because the destination node table "
+                        "'UnexposedKeyNodeTable' does not expose the element "
+                        "key column 'node_key' as a property"));
+
+  // 2. Endpoint node table exposes its own element key column as a property,
+  //    but does not expose a non-key referenced column ->
+  //    IsTargetTableInsertable returns false with "does not expose the
+  //    referenced column".
+  std::vector<std::unique_ptr<const Column>> unexposed_ref_cols;
+  unexposed_ref_cols.push_back(std::make_unique<SimpleColumn>(
+      "UnexposedRefNodeTable", "node_key", types::Int64Type(),
+      SimpleColumn::Attributes{.is_writable_column = true}));
+  unexposed_ref_cols.push_back(std::make_unique<SimpleColumn>(
+      "UnexposedRefNodeTable", "ref_col", types::Int64Type(),
+      SimpleColumn::Attributes{.is_writable_column = true}));
+  SimpleTable unexposed_ref_base_table("UnexposedRefNodeTable",
+                                       std::move(unexposed_ref_cols));
+  auto node_key_col_ref = MakeResolvedCatalogColumnRef(
+      types::Int64Type(), unexposed_ref_base_table.GetColumn(0));
+  auto node_key_prop_def =
+      std::make_unique<SimpleGraphPropertyDefinition>(&id_decl, "node_key");
+  InternalPropertyGraph::InternalSetResolvedExpr(node_key_prop_def.get(),
+                                                 node_key_col_ref.get());
+  std::vector<std::unique_ptr<const GraphPropertyDefinition>>
+      unexposed_ref_prop_defs;
+  unexposed_ref_prop_defs.push_back(std::move(node_key_prop_def));
+  SimpleGraphNodeTable unexposed_ref_node_table(
+      "UnexposedRefNodeTable", graph_name_path, &unexposed_ref_base_table,
+      /*key_cols=*/{0}, /*labels=*/{&src_label},
+      std::move(unexposed_ref_prop_defs));
+
+  auto unexposed_ref_src_ref = std::make_unique<SimpleGraphNodeTableReference>(
+      &src_node_table, /*edge_table_columns=*/std::vector<int>{1},
+      /*node_table_columns=*/std::vector<int>{0});
+  auto unexposed_ref_dst_ref = std::make_unique<SimpleGraphNodeTableReference>(
+      &unexposed_ref_node_table, /*edge_table_columns=*/std::vector<int>{2},
+      /*node_table_columns=*/std::vector<int>{1});
+  auto unexposed_ref_edge_prop_def =
+      std::make_unique<SimpleGraphPropertyDefinition>(&id_decl, "edge_id");
+  InternalPropertyGraph::InternalSetResolvedExpr(
+      unexposed_ref_edge_prop_def.get(), edge_id_col_ref.get());
+  std::vector<std::unique_ptr<const GraphPropertyDefinition>>
+      unexposed_ref_edge_prop_defs;
+  unexposed_ref_edge_prop_defs.push_back(
+      std::move(unexposed_ref_edge_prop_def));
+  SimpleGraphEdgeTable unexposed_ref_edge_table(
+      "UnexposedRefEdgeTable", graph_name_path, &edge_base_table,
+      /*key_cols=*/{0}, /*labels=*/{&src_label},
+      std::move(unexposed_ref_edge_prop_defs), std::move(unexposed_ref_src_ref),
+      std::move(unexposed_ref_dst_ref));
+  error_message.clear();
+  EXPECT_THAT(
+      IsTargetTableInsertable(unexposed_ref_edge_table,
+                              /*needs_dynamic_label=*/false, &error_message),
+      IsOkAndHolds(false));
+  EXPECT_THAT(error_message,
+              HasSubstr("The edge table 'UnexposedRefEdgeTable' is not "
+                        "updatable because the destination node table "
+                        "'UnexposedRefNodeTable' does not expose the "
+                        "referenced column 'ref_col' as a property"));
+
+  // 3. Edge table whose source and destination references share an underlying
+  //    edge base table column -> IsTargetTableInsertable returns false with
+  //    "is not updatable because its source and destination keys share
+  //    underlying edge table column".
+  auto shared_col_src_ref = std::make_unique<SimpleGraphNodeTableReference>(
+      &src_node_table, /*edge_table_columns=*/std::vector<int>{1},
+      /*node_table_columns=*/std::vector<int>{0});
+  auto shared_col_dst_ref = std::make_unique<SimpleGraphNodeTableReference>(
+      &src_node_table, /*edge_table_columns=*/std::vector<int>{1},
+      /*node_table_columns=*/std::vector<int>{0});
+  auto shared_col_edge_prop_def =
+      std::make_unique<SimpleGraphPropertyDefinition>(&id_decl, "edge_id");
+  InternalPropertyGraph::InternalSetResolvedExpr(shared_col_edge_prop_def.get(),
+                                                 edge_id_col_ref.get());
+  std::vector<std::unique_ptr<const GraphPropertyDefinition>>
+      shared_col_edge_prop_defs;
+  shared_col_edge_prop_defs.push_back(std::move(shared_col_edge_prop_def));
+  SimpleGraphEdgeTable shared_col_edge_table(
+      "SharedColEdgeTable", graph_name_path, &edge_base_table,
+      /*key_cols=*/{0}, /*labels=*/{&src_label},
+      std::move(shared_col_edge_prop_defs), std::move(shared_col_src_ref),
+      std::move(shared_col_dst_ref));
+  error_message.clear();
+  EXPECT_THAT(
+      IsTargetTableInsertable(shared_col_edge_table,
+                              /*needs_dynamic_label=*/false, &error_message),
+      IsOkAndHolds(false));
+  EXPECT_THAT(error_message,
+              HasSubstr("The edge table 'SharedColEdgeTable' is not updatable "
+                        "because its source and destination keys share "
+                        "underlying edge table column 'src_id'"));
+
+  // 4. Positive: Endpoint node table references a non-key column and exposes
+  //    both its element key column and the referenced column as properties ->
+  //    IsTargetTableInsertable returns true.
+  std::vector<std::unique_ptr<const Column>> exposed_ref_cols;
+  exposed_ref_cols.push_back(std::make_unique<SimpleColumn>(
+      "ExposedRefNodeTable", "node_key", types::Int64Type(),
+      SimpleColumn::Attributes{.is_writable_column = true}));
+  exposed_ref_cols.push_back(std::make_unique<SimpleColumn>(
+      "ExposedRefNodeTable", "ref_col", types::Int64Type(),
+      SimpleColumn::Attributes{.is_writable_column = true}));
+  SimpleTable exposed_ref_base_table("ExposedRefNodeTable",
+                                     std::move(exposed_ref_cols));
+  auto exposed_node_key_col_ref = MakeResolvedCatalogColumnRef(
+      types::Int64Type(), exposed_ref_base_table.GetColumn(0));
+  auto exposed_node_key_prop_def =
+      std::make_unique<SimpleGraphPropertyDefinition>(&id_decl, "node_key");
+  InternalPropertyGraph::InternalSetResolvedExpr(
+      exposed_node_key_prop_def.get(), exposed_node_key_col_ref.get());
+  auto exposed_ref_col_ref = MakeResolvedCatalogColumnRef(
+      types::Int64Type(), exposed_ref_base_table.GetColumn(1));
+  auto exposed_ref_prop_def =
+      std::make_unique<SimpleGraphPropertyDefinition>(&ref_decl, "ref_col");
+  InternalPropertyGraph::InternalSetResolvedExpr(exposed_ref_prop_def.get(),
+                                                 exposed_ref_col_ref.get());
+  std::vector<std::unique_ptr<const GraphPropertyDefinition>>
+      exposed_ref_prop_defs;
+  exposed_ref_prop_defs.push_back(std::move(exposed_node_key_prop_def));
+  exposed_ref_prop_defs.push_back(std::move(exposed_ref_prop_def));
+  SimpleGraphNodeTable exposed_ref_node_table(
+      "ExposedRefNodeTable", graph_name_path, &exposed_ref_base_table,
+      /*key_cols=*/{0}, /*labels=*/{&src_label},
+      std::move(exposed_ref_prop_defs));
+
+  auto exposed_ref_src_ref = std::make_unique<SimpleGraphNodeTableReference>(
+      &src_node_table, /*edge_table_columns=*/std::vector<int>{1},
+      /*node_table_columns=*/std::vector<int>{0});
+  auto exposed_ref_dst_ref = std::make_unique<SimpleGraphNodeTableReference>(
+      &exposed_ref_node_table, /*edge_table_columns=*/std::vector<int>{2},
+      /*node_table_columns=*/std::vector<int>{1});
+  auto exposed_ref_edge_prop_def =
+      std::make_unique<SimpleGraphPropertyDefinition>(&id_decl, "edge_id");
+  InternalPropertyGraph::InternalSetResolvedExpr(
+      exposed_ref_edge_prop_def.get(), edge_id_col_ref.get());
+  std::vector<std::unique_ptr<const GraphPropertyDefinition>>
+      exposed_ref_edge_prop_defs;
+  exposed_ref_edge_prop_defs.push_back(std::move(exposed_ref_edge_prop_def));
+  SimpleGraphEdgeTable exposed_ref_edge_table(
+      "ExposedRefEdgeTable", graph_name_path, &edge_base_table,
+      /*key_cols=*/{0}, /*labels=*/{&src_label},
+      std::move(exposed_ref_edge_prop_defs), std::move(exposed_ref_src_ref),
+      std::move(exposed_ref_dst_ref));
+  error_message.clear();
+  EXPECT_THAT(
+      IsTargetTableInsertable(exposed_ref_edge_table,
+                              /*needs_dynamic_label=*/false, &error_message),
+      IsOkAndHolds(true));
+  EXPECT_EQ(error_message, "");
 
   // BuildGraphElementTypeForTable for static edge table.
   GOOGLESQL_ASSERT_OK_AND_ASSIGN(
@@ -519,6 +835,253 @@ TEST(GraphElementUtilsTest, BackingColumnsAndIsTargetTableUpdatableTest) {
   EXPECT_TRUE(edge_elem_type->IsEdge());
   EXPECT_FALSE(edge_elem_type->is_dynamic());
   EXPECT_THAT(edge_elem_type->element_tables(), ElementsAre("EdgeTable"));
+}
+
+TEST(GraphElementUtilsTest, IsTargetTableUpdatableTest) {
+  const std::vector<std::string> graph_name_path = {"test_graph"};
+  SimpleGraphPropertyDeclaration id_decl(
+      "id", graph_name_path, types::Int64Type(),
+      /*type_annotation_map=*/nullptr, GraphPropertyDeclaration::Kind::kScalar);
+  SimpleGraphPropertyDeclaration measure_decl(
+      "m", graph_name_path, types::Int64Type(),
+      /*type_annotation_map=*/nullptr,
+      GraphPropertyDeclaration::Kind::kMeasure);
+  SimpleGraphElementLabel label("ElementLabel", graph_name_path,
+                                {&id_decl, &measure_decl});
+
+  std::vector<std::unique_ptr<const Column>> node_cols;
+  node_cols.push_back(std::make_unique<SimpleColumn>(
+      "NodeTable", "writable_key", types::Int64Type(),
+      SimpleColumn::Attributes{.is_writable_column = true}));
+  node_cols.push_back(std::make_unique<SimpleColumn>(
+      "NodeTable", "readonly_key", types::Int64Type(),
+      SimpleColumn::Attributes{.is_writable_column = false}));
+  node_cols.push_back(std::make_unique<SimpleColumn>(
+      "NodeTable", "dyn_label", types::StringType(),
+      SimpleColumn::Attributes{.is_writable_column = false}));
+  node_cols.push_back(std::make_unique<SimpleColumn>(
+      "NodeTable", "dyn_props", types::JsonType(),
+      SimpleColumn::Attributes{.is_writable_column = false}));
+  SimpleTable node_base_table("NodeTable", std::move(node_cols));
+
+  auto make_scalar_prop_def = [&id_decl, &node_base_table](int col_idx) {
+    auto col_ref = MakeResolvedCatalogColumnRef(
+        types::Int64Type(), node_base_table.GetColumn(col_idx));
+    auto prop_def = std::make_unique<SimpleGraphPropertyDefinition>(
+        &id_decl, node_base_table.GetColumn(col_idx)->Name());
+    InternalPropertyGraph::InternalSetResolvedExpr(prop_def.get(),
+                                                   col_ref.get());
+    return std::pair(std::move(col_ref), std::move(prop_def));
+  };
+
+  // 1. Node table with writable exposed key column is updatable.
+  auto [writable_key_ref, writable_key_prop] = make_scalar_prop_def(0);
+  std::vector<std::unique_ptr<const GraphPropertyDefinition>>
+      writable_key_props;
+  writable_key_props.push_back(std::move(writable_key_prop));
+  SimpleGraphNodeTable writable_key_node_table(
+      "NodeTable", graph_name_path, &node_base_table, /*key_cols=*/{0},
+      /*labels=*/{&label}, std::move(writable_key_props));
+  EXPECT_THAT(IsTargetTableUpdatable(writable_key_node_table),
+              IsOkAndHolds(true));
+
+  // 2. Node table with read-only exposed key column (plus read-only dynamic
+  // label and dynamic properties columns) is still updatable at the table
+  // level.
+  auto [readonly_key_ref, readonly_key_prop] = make_scalar_prop_def(1);
+  std::vector<std::unique_ptr<const GraphPropertyDefinition>>
+      readonly_key_props;
+  readonly_key_props.push_back(std::move(readonly_key_prop));
+  auto dyn_label_ref = MakeResolvedCatalogColumnRef(
+      types::StringType(), node_base_table.GetColumn(2));
+  auto dyn_label = std::make_unique<SimpleGraphDynamicLabel>("dyn_label");
+  InternalPropertyGraph::InternalSetResolvedExpr(dyn_label.get(),
+                                                 dyn_label_ref.get());
+  auto dyn_props_ref = MakeResolvedCatalogColumnRef(
+      types::JsonType(), node_base_table.GetColumn(3));
+  auto dyn_props = std::make_unique<SimpleGraphDynamicProperties>("dyn_props");
+  InternalPropertyGraph::InternalSetResolvedExpr(dyn_props.get(),
+                                                 dyn_props_ref.get());
+  SimpleGraphNodeTable readonly_key_node_table(
+      "NodeTable", graph_name_path, &node_base_table, /*key_cols=*/{1},
+      /*labels=*/{&label}, std::move(readonly_key_props), std::move(dyn_label),
+      std::move(dyn_props));
+  EXPECT_THAT(IsTargetTableUpdatable(readonly_key_node_table),
+              IsOkAndHolds(true));
+
+  // 3. Node table whose key column is not exposed (or only exposed as a measure
+  // property) is not updatable.
+  auto measure_key_ref = MakeResolvedCatalogColumnRef(
+      types::Int64Type(), node_base_table.GetColumn(0));
+  auto measure_key_prop =
+      std::make_unique<SimpleGraphPropertyDefinition>(&measure_decl, "m");
+  InternalPropertyGraph::InternalSetResolvedExpr(measure_key_prop.get(),
+                                                 measure_key_ref.get());
+  std::vector<std::unique_ptr<const GraphPropertyDefinition>> measure_key_props;
+  measure_key_props.push_back(std::move(measure_key_prop));
+  SimpleGraphNodeTable unexposed_key_node_table(
+      "UnexposedNodeTable", graph_name_path, &node_base_table, /*key_cols=*/{0},
+      /*labels=*/{&label}, std::move(measure_key_props));
+  std::string error_message;
+  EXPECT_THAT(IsTargetTableUpdatable(unexposed_key_node_table, &error_message),
+              IsOkAndHolds(false));
+  EXPECT_THAT(error_message,
+              HasSubstr("Graph element table 'UnexposedNodeTable' is not "
+                        "updatable because the element key column "
+                        "'writable_key' is not exposed as a property"));
+
+  // 4. Edge table with read-only element key, read-only endpoint key columns,
+  // and an endpoint node table that does not expose its key column is updatable
+  // iff the edge table exposes its own element key column.
+  std::vector<std::unique_ptr<const Column>> edge_cols;
+  edge_cols.push_back(std::make_unique<SimpleColumn>(
+      "EdgeTable", "edge_id", types::Int64Type(),
+      SimpleColumn::Attributes{.is_writable_column = false}));
+  edge_cols.push_back(std::make_unique<SimpleColumn>(
+      "EdgeTable", "src_id", types::Int64Type(),
+      SimpleColumn::Attributes{.is_writable_column = false}));
+  edge_cols.push_back(std::make_unique<SimpleColumn>(
+      "EdgeTable", "dst_id", types::Int64Type(),
+      SimpleColumn::Attributes{.is_writable_column = false}));
+  SimpleTable edge_base_table("EdgeTable", std::move(edge_cols));
+
+  auto edge_id_ref = MakeResolvedCatalogColumnRef(types::Int64Type(),
+                                                  edge_base_table.GetColumn(0));
+  auto edge_id_prop =
+      std::make_unique<SimpleGraphPropertyDefinition>(&id_decl, "edge_id");
+  InternalPropertyGraph::InternalSetResolvedExpr(edge_id_prop.get(),
+                                                 edge_id_ref.get());
+  std::vector<std::unique_ptr<const GraphPropertyDefinition>> edge_props;
+  edge_props.push_back(std::move(edge_id_prop));
+
+  SimpleGraphEdgeTable exposed_edge_table(
+      "EdgeTable", graph_name_path, &edge_base_table, /*key_cols=*/{0},
+      /*labels=*/{&label}, std::move(edge_props),
+      std::make_unique<SimpleGraphNodeTableReference>(
+          &unexposed_key_node_table, /*edge_table_columns=*/std::vector<int>{1},
+          /*node_table_columns=*/std::vector<int>{0}),
+      std::make_unique<SimpleGraphNodeTableReference>(
+          &unexposed_key_node_table, /*edge_table_columns=*/std::vector<int>{2},
+          /*node_table_columns=*/std::vector<int>{0}));
+  EXPECT_THAT(IsTargetTableUpdatable(exposed_edge_table), IsOkAndHolds(true));
+
+  SimpleGraphEdgeTable unexposed_edge_table(
+      "UnexposedEdgeTable", graph_name_path, &edge_base_table, /*key_cols=*/{0},
+      /*labels=*/{&label}, /*property_definitions=*/{},
+      std::make_unique<SimpleGraphNodeTableReference>(
+          &writable_key_node_table, /*edge_table_columns=*/std::vector<int>{1},
+          /*node_table_columns=*/std::vector<int>{0}),
+      std::make_unique<SimpleGraphNodeTableReference>(
+          &writable_key_node_table, /*edge_table_columns=*/std::vector<int>{2},
+          /*node_table_columns=*/std::vector<int>{0}));
+  error_message.clear();
+  EXPECT_THAT(IsTargetTableUpdatable(unexposed_edge_table, &error_message),
+              IsOkAndHolds(false));
+  EXPECT_THAT(error_message,
+              HasSubstr("Graph element table 'UnexposedEdgeTable' is not "
+                        "updatable because the element key column 'edge_id' is "
+                        "not exposed as a property"));
+}
+
+TEST(GraphElementUtilsTest, GetTargetElementTablesTest) {
+  TypeFactory type_factory;
+  const std::vector<std::string> graph_name_path = {"test_graph"};
+
+  std::vector<std::unique_ptr<const Column>> cols_a;
+  cols_a.push_back(
+      std::make_unique<SimpleColumn>("TableA", "id", types::Int64Type()));
+  SimpleTable base_table_a("TableA", std::move(cols_a));
+
+  std::vector<std::unique_ptr<const Column>> cols_b;
+  cols_b.push_back(
+      std::make_unique<SimpleColumn>("TableB", "id", types::Int64Type()));
+  SimpleTable base_table_b("TableB", std::move(cols_b));
+
+  auto label = std::make_unique<SimpleGraphElementLabel>(
+      "NodeLabel", graph_name_path,
+      absl::flat_hash_set<const GraphPropertyDeclaration*>{});
+  const GraphElementLabel* label_ptr = label.get();
+
+  auto node_table_a = std::make_unique<SimpleGraphNodeTable>(
+      "TableA", graph_name_path, &base_table_a,
+      /*key_cols=*/std::vector<int>{0},
+      /*labels=*/absl::flat_hash_set<const GraphElementLabel*>{label_ptr},
+      /*property_definitions=*/
+      std::vector<std::unique_ptr<const GraphPropertyDefinition>>{});
+  const GraphNodeTable* node_table_a_ptr = node_table_a.get();
+
+  auto node_table_b = std::make_unique<SimpleGraphNodeTable>(
+      "TableB", graph_name_path, &base_table_b,
+      /*key_cols=*/std::vector<int>{0},
+      /*labels=*/absl::flat_hash_set<const GraphElementLabel*>{label_ptr},
+      /*property_definitions=*/
+      std::vector<std::unique_ptr<const GraphPropertyDefinition>>{});
+  const GraphNodeTable* node_table_b_ptr = node_table_b.get();
+
+  std::vector<std::unique_ptr<const Column>> edge_cols;
+  edge_cols.push_back(std::make_unique<SimpleColumn>("EdgeTable", "edge_id",
+                                                     types::Int64Type()));
+  edge_cols.push_back(std::make_unique<SimpleColumn>("EdgeTable", "src_id",
+                                                     types::Int64Type()));
+  edge_cols.push_back(std::make_unique<SimpleColumn>("EdgeTable", "dst_id",
+                                                     types::Int64Type()));
+  SimpleTable base_edge_table("EdgeTable", std::move(edge_cols));
+
+  auto edge_table = std::make_unique<SimpleGraphEdgeTable>(
+      "EdgeTable", graph_name_path, &base_edge_table,
+      /*key_cols=*/std::vector<int>{0},
+      /*labels=*/absl::flat_hash_set<const GraphElementLabel*>{label_ptr},
+      /*property_definitions=*/
+      std::vector<std::unique_ptr<const GraphPropertyDefinition>>{},
+      std::make_unique<SimpleGraphNodeTableReference>(
+          node_table_a_ptr, /*edge_table_columns=*/std::vector<int>{1},
+          /*node_table_columns=*/std::vector<int>{0}),
+      std::make_unique<SimpleGraphNodeTableReference>(
+          node_table_b_ptr, /*edge_table_columns=*/std::vector<int>{2},
+          /*node_table_columns=*/std::vector<int>{0}));
+  const GraphEdgeTable* edge_table_ptr = edge_table.get();
+
+  SimplePropertyGraph graph(graph_name_path);
+  graph.AddLabel(std::move(label));
+  graph.AddNodeTable(std::move(node_table_a));
+  graph.AddNodeTable(std::move(node_table_b));
+  graph.AddEdgeTable(std::move(edge_table));
+
+  // 1. Empty element_tables() returns an empty vector.
+  const GraphElementType* empty_tables_type = nullptr;
+  GOOGLESQL_ASSERT_OK(type_factory.MakeGraphElementType(
+      graph_name_path, GraphElementType::ElementKind::kNode,
+      /*property_types=*/{}, /*element_tables=*/{}, &empty_tables_type));
+  EXPECT_THAT(GetTargetElementTables(graph, *empty_tables_type),
+              IsOkAndHolds(IsEmpty()));
+
+  // 2. Multiple element_tables() (including case-insensitive lookup) resolve in
+  // exact order.
+  const GraphElementType* multi_tables_type = nullptr;
+  GOOGLESQL_ASSERT_OK(type_factory.MakeGraphElementType(
+      graph_name_path, GraphElementType::ElementKind::kNode,
+      /*property_types=*/{}, /*element_tables=*/{"tableb", "TableA"},
+      &multi_tables_type));
+  EXPECT_THAT(GetTargetElementTables(graph, *multi_tables_type),
+              IsOkAndHolds(ElementsAre(node_table_b_ptr, node_table_a_ptr)));
+
+  // 3. Edge element_tables() resolve to SimpleGraphEdgeTable.
+  const GraphElementType* edge_tables_type = nullptr;
+  GOOGLESQL_ASSERT_OK(type_factory.MakeGraphElementType(
+      graph_name_path, GraphElementType::ElementKind::kEdge,
+      /*property_types=*/{}, /*element_tables=*/{"EdgeTable"},
+      &edge_tables_type));
+  EXPECT_THAT(GetTargetElementTables(graph, *edge_tables_type),
+              IsOkAndHolds(ElementsAre(edge_table_ptr)));
+
+  // 4. Unknown table name returns NotFoundError.
+  const GraphElementType* unknown_table_type = nullptr;
+  GOOGLESQL_ASSERT_OK(type_factory.MakeGraphElementType(
+      graph_name_path, GraphElementType::ElementKind::kNode,
+      /*property_types=*/{}, /*element_tables=*/{"TableA", "MissingTable"},
+      &unknown_table_type));
+  EXPECT_THAT(GetTargetElementTables(graph, *unknown_table_type),
+              StatusIs(absl::StatusCode::kNotFound));
 }
 
 }  // namespace

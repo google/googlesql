@@ -546,4 +546,35 @@ TEST_F(SampleCatalogPropertyGraphTest, PropertyGraphWithDynamicMultiLabelNode) {
   EXPECT_EQ(edge_dynamic_properties->properties_expression(), "edgeJsonProp");
 }
 
+TEST_F(SampleCatalogPropertyGraphTest,
+       PropertyGraphWithMixedDynamicAndStaticTables) {
+  const PropertyGraph* property_graph = nullptr;
+  GOOGLESQL_ASSERT_OK(catalog_->FindPropertyGraph({"aml_dynamic_mixed"}, property_graph));
+
+  absl::flat_hash_set<const GraphNodeTable*> node_tables;
+  GOOGLESQL_ASSERT_OK(property_graph->GetNodeTables(node_tables));
+  EXPECT_EQ(node_tables.size(), 2);
+
+  const GraphElementTable* dynamic_node_table = nullptr;
+  GOOGLESQL_ASSERT_OK(property_graph->FindElementTableByName("DynamicGraphNode",
+                                                   dynamic_node_table));
+  CheckPropertyDefinitions(dynamic_node_table,
+                           {"id", "code", "nodeLabelCol", "nodeJsonProp"});
+  const GraphPropertyDefinition* dyn_name_prop_def = nullptr;
+  GOOGLESQL_EXPECT_OK(dynamic_node_table->FindPropertyDefinitionByName(
+      "name", dyn_name_prop_def));
+  EXPECT_FALSE(dynamic_node_table->HasDynamicLabel());
+  EXPECT_TRUE(dynamic_node_table->HasDynamicProperties());
+
+  const GraphElementTable* person_node_table = nullptr;
+  GOOGLESQL_ASSERT_OK(
+      property_graph->FindElementTableByName("Person", person_node_table));
+  CheckPropertyDefinitions(person_node_table, {"id", "name"});
+  const GraphPropertyDefinition* person_name_prop_def = nullptr;
+  GOOGLESQL_EXPECT_OK(person_node_table->FindPropertyDefinitionByName(
+      "name", person_name_prop_def));
+  EXPECT_FALSE(person_node_table->HasDynamicLabel());
+  EXPECT_FALSE(person_node_table->HasDynamicProperties());
+}
+
 }  // namespace googlesql

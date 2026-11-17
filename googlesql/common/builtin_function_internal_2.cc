@@ -858,7 +858,7 @@ void GetDatetimeDiffTruncLastNextFunctions(
                  },
                  FunctionOptions().set_post_resolution_argument_constraint(
                      [](const FunctionSignature& /*signature*/,
-                        const std::vector<InputArgumentType>& arguments,
+                        absl::Span<const InputArgumentType> arguments,
                         const LanguageOptions& language_options) {
                        return CheckDateDatetimeTimeTimestampDiffArguments(
                            "TIMESTAMP_DIFF", arguments, language_options);
@@ -2389,12 +2389,17 @@ void GetLogicFunctions(TypeFactory* type_factory,
   const FunctionArgumentType::ArgumentCardinality REPEATED =
       FunctionArgumentType::REPEATED;
 
-  InsertSimpleFunction(functions, options, "$is_null", SCALAR,
-                       {{bool_type, {ARG_KIND_EXPR_ANY_1}, FN_IS_NULL}},
-                       FunctionOptions()
-                           .set_supports_safe_error_mode(false)
-                           .set_get_sql_callback(absl::bind_front(
-                               &PostUnaryFunctionSQL, " IS NULL")));
+  InsertFunction(functions, options, "$is_null", SCALAR,
+                 {{bool_type, {ARG_KIND_EXPR_ANY_1}, FN_IS_NULL},
+                  {bool_type,
+                   {ARG_KIND_EXPR_ROW_ANY},
+                   FN_IS_NULL_ROW,
+                   FunctionSignatureOptions().AddRequiredLanguageFeature(
+                       FEATURE_ROW_TYPE)}},
+                 FunctionOptions()
+                     .set_supports_safe_error_mode(false)
+                     .set_get_sql_callback(
+                         absl::bind_front(&PostUnaryFunctionSQL, " IS NULL")));
   InsertSimpleFunction(functions, options, "$is_true", SCALAR,
                        {{bool_type, {bool_type}, FN_IS_TRUE}},
                        FunctionOptions()

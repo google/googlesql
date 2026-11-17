@@ -138,7 +138,7 @@ CloneDataStmt
 +-target_table=
 | +-TableScan(table=KeyValue)
 +-clone_from=
-  +-TableScan(table=AnotherKeyValue)
+  +-TableScan(column_list=AnotherKeyValue.[Key#3, value#4], table=AnotherKeyValue, column_index_list=[0, 1])
 ==
 
 
@@ -151,8 +151,9 @@ CloneDataStmt
 | +-TableScan(table=KeyValue)
 +-clone_from=
   +-FilterScan
+    +-column_list=AnotherKeyValue.[Key#3, value#4]
     +-input_scan=
-    | +-TableScan(table=AnotherKeyValue)
+    | +-TableScan(column_list=AnotherKeyValue.[Key#3, value#4], table=AnotherKeyValue, column_index_list=[0, 1])
     +-filter_expr=
       +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
         +-SubqueryExpr
@@ -180,10 +181,6 @@ GROUP BY KEY
 ==
 
 # Clone from multiple tables.
-# TODO: b/576603106 - Column scope bug: CLONE DATA with UNION ALL produces a
-# SetOperationItem whose output_column_list references columns that aren't in
-# its scan's column_list (see also b/444310778).
-[no_validate_column_visibility]
 [default language_features=MAXIMUM,+CLONE_DATA]
 CLONE DATA INTO KeyValue
 FROM KeyValueReadTimeIgnored UNION ALL AnotherKeyValue
@@ -193,22 +190,19 @@ CloneDataStmt
 | +-TableScan(table=KeyValue)
 +-clone_from=
   +-SetOperationScan
+    +-column_list=KeyValue.[Key#7, Value#8]
     +-op_type=UNION_ALL
     +-input_item_list=
       +-SetOperationItem
       | +-scan=
-      | | +-TableScan(table=KeyValueReadTimeIgnored)
+      | | +-TableScan(column_list=KeyValueReadTimeIgnored.[Key#3, Value#4], table=KeyValueReadTimeIgnored, column_index_list=[0, 1])
       | +-output_column_list=KeyValueReadTimeIgnored.[Key#3, Value#4]
       +-SetOperationItem
         +-scan=
-        | +-TableScan(table=AnotherKeyValue)
+        | +-TableScan(column_list=AnotherKeyValue.[Key#5, value#6], table=AnotherKeyValue, column_index_list=[0, 1])
         +-output_column_list=AnotherKeyValue.[Key#5, value#6]
 ==
 
-# TODO: b/576603106 - Column scope bug: CLONE DATA with UNION ALL produces a
-# SetOperationItem whose output_column_list references columns that aren't in
-# its scan's column_list (see also b/444310778).
-[no_validate_column_visibility]
 [language_features=NONE,+CLONE_DATA]
 CLONE DATA INTO KeyValue
 FROM AnotherKeyValue WHERE Key = 1 AND Value IS NULL
@@ -220,6 +214,7 @@ CloneDataStmt
 | +-TableScan(table=KeyValue)
 +-clone_from=
   +-SetOperationScan
+    +-column_list=KeyValue.[Key#7, value#8]
     +-op_type=UNION_ALL
     +-input_item_list=
       +-SetOperationItem
@@ -239,14 +234,14 @@ CloneDataStmt
       +-SetOperationItem
         +-scan=
         | +-FilterScan
-        |   +-column_list=[KeyValueReadTimeIgnored.Value#6]
+        |   +-column_list=KeyValueReadTimeIgnored.[Key#5, Value#6]
         |   +-input_scan=
         |   | +-TableScan
-        |   |   +-column_list=[KeyValueReadTimeIgnored.Value#6]
+        |   |   +-column_list=KeyValueReadTimeIgnored.[Key#5, Value#6]
         |   |   +-table=KeyValueReadTimeIgnored
         |   |   +-for_system_time_expr=
         |   |   | +-FunctionCall(GoogleSQL:current_timestamp() -> TIMESTAMP)
-        |   |   +-column_index_list=[1]
+        |   |   +-column_index_list=[0, 1]
         |   +-filter_expr=
         |     +-FunctionCall(GoogleSQL:$equal(STRING, STRING) -> BOOL)
         |       +-ColumnRef(type=STRING, column=KeyValueReadTimeIgnored.Value#6)

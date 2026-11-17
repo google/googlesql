@@ -115,7 +115,7 @@
 #define VALIDATOR_RET_CHECK_OK(s) GOOGLESQL_RET_CHECK_OK(s) << RecordContext()
 
 ABSL_FLAG(
-    bool, googlesql_validate_resolved_ast_column_visibility, false,
+    bool, googlesql_validate_resolved_ast_column_visibility, true,
     "Default for ValidatorOptions::validate_column_visibility. If true, the "
     "Resolved AST validator also checks that each column reference is "
     "visible, using the column visibility annotations in "
@@ -840,9 +840,6 @@ absl::Status Validator::CompareColumnSet(
     absl::string_view what, absl::string_view set_name,
     const std::set<ResolvedColumn>& hand_written,
     const ColumnVisibilityChecker::ColumnSet* computed) {
-  if (ColumnVisibilityChecker::IsUnchecked(computed)) {
-    return absl::OkStatus();
-  }
   const size_t computed_size = computed == nullptr ? 0 : computed->size();
   bool equal = hand_written.size() == computed_size;
   if (equal && computed_size > 0) {
@@ -2539,8 +2536,15 @@ absl::Status Validator::ValidateResolvedTableScan(
   const Table* table = scan->table();
   VALIDATOR_RET_CHECK(nullptr != table);
 
+  VALIDATOR_RET_CHECK(scan->name_string().empty() ||
+                      language_options_.LanguageFeatureEnabled(
+                          FEATURE_STRING_LITERAL_TABLE_REFERENCES))
+      << "TableScan.name_string requires "
+         "FEATURE_STRING_LITERAL_TABLE_REFERENCES";
+
   if (scan->for_system_time_expr() != nullptr) {
-    GOOGLESQL_RETURN_IF_ERROR(ValidateResolvedExpr({}, visible_parameters,
+    GOOGLESQL_RETURN_IF_ERROR(ValidateResolvedExpr(/*visible_columns=*/{},
+                                         /*visible_parameters=*/{},
                                          scan->for_system_time_expr()));
     VALIDATOR_RET_CHECK(scan->for_system_time_expr()->type()->IsTimestamp())
         << "TableScan has for_system_type_expr with non-TIMESTAMP type: "
@@ -3308,7 +3312,7 @@ absl::Status Validator::ValidateResolvedAnonymizedAggregateScan(
   return ValidateOptionsList(
       scan->anonymization_option_list(),
       options_.allowed_hints_and_options.anonymization_options_lower,
-      visible_columns, visible_parameters, "anonymization");
+      /*visible_columns=*/{}, "anonymization");
 }
 
 absl::Status Validator::ValidateResolvedDifferentialPrivacyAggregateScan(
@@ -3348,7 +3352,7 @@ absl::Status Validator::ValidateResolvedDifferentialPrivacyAggregateScan(
   return ValidateOptionsList(
       scan->option_list(),
       options_.allowed_hints_and_options.differential_privacy_options_lower,
-      input_scan_visible_columns, visible_parameters, "differential privacy");
+      input_scan_visible_columns, "differential privacy");
 }
 
 absl::Status Validator::ValidateResolvedAggregationThresholdAggregateScan(
@@ -3379,7 +3383,7 @@ absl::Status Validator::ValidateResolvedAggregationThresholdAggregateScan(
 
   return ValidateOptionsList(
       scan->option_list(), GetAllowedAggregationThresholdOptions(),
-      input_scan_visible_columns, visible_parameters, "aggregation_threshold");
+      input_scan_visible_columns, "aggregation_threshold");
 }
 
 absl::Status Validator::ValidatePercentArgument(const ResolvedExpr* expr) {
@@ -3881,6 +3885,7 @@ absl::Status Validator::ValidateResolvedWindowPartitioning(
     const std::set<ResolvedColumn>& visible_columns,
     const std::set<ResolvedColumn>& visible_parameters) {
   RETURN_ERROR_IF_OUT_OF_STACK_SPACE();
+  GOOGLESQL_RETURN_IF_ERROR(ValidateHintList(partition_by->hint_list()));
 
   for (const auto& column_ref : partition_by->partition_by_list()) {
     std::string no_partitioning_type;
@@ -3917,6 +3922,7 @@ absl::Status Validator::ValidateResolvedWindowOrdering(
     const std::set<ResolvedColumn>& visible_columns,
     const std::set<ResolvedColumn>& visible_parameters) {
   RETURN_ERROR_IF_OUT_OF_STACK_SPACE();
+  GOOGLESQL_RETURN_IF_ERROR(ValidateHintList(order_by->hint_list()));
 
   for (const auto& order_by_item : order_by->order_by_item_list()) {
     if (!order_by_item->column_ref()->type()->SupportsOrdering(
@@ -3993,7 +3999,8 @@ absl::Status Validator::ValidateResolvedWindowFrameExpr(
                << " must specify an offset expression:\n"
                << window_frame_expr->DebugString();
       }
-      GOOGLESQL_RETURN_IF_ERROR(ValidateResolvedExpr(visible_columns, visible_parameters,
+      GOOGLESQL_RETURN_IF_ERROR(ValidateResolvedExpr(/*visible_columns=*/{},
+                                           visible_parameters,
                                            window_frame_expr->expression()));
 
       const ResolvedExpr* order_expr = nullptr;
@@ -4808,6 +4815,10 @@ absl::Status Validator::ValidateResolvedStatementInternal(
   if (!status.ok()) {
     return MakeValidationFailedError(statement, status);
   }
+  status = ValidateHintList(statement->hint_list());
+  if (!status.ok()) {
+    return MakeValidationFailedError(statement, status);
+  }
   switch (statement->node_kind()) {
     case RESOLVED_QUERY_STMT:
       status = ValidateResolvedQueryStmt(statement->GetAs<ResolvedQueryStmt>());
@@ -5173,11 +5184,7 @@ absl::Status Validator::ValidateResolvedStatementInternal(
     ValidateResolvedColumnsVisitor column_visitor;
     status = statement->Accept(&column_visitor);
     if (status.ok()) {
-      // TODO ResolvedCloneDataStmt doesn't preserve columns
-      // correctly so it triggers errors about referencing uncreated columns.
-      if (statement->node_kind() != RESOLVED_CLONE_DATA_STMT) {
-        status = column_visitor.CheckCreatedColumns();
-      }
+      status = column_visitor.CheckCreatedColumns();
     }
   }
 
@@ -6277,6 +6284,9 @@ absl::Status Validator::ValidateCompatibleSchemaForClone(const Table* source,
 absl::Status Validator::ValidateSingleCloneDataSource(
     const ResolvedScan* source, const Table* target) {
   PushErrorContext push(this, source);
+  if (target != nullptr) {
+    VALIDATOR_RET_CHECK_EQ(source->column_list_size(), target->NumColumns());
+  }
   switch (source->node_kind()) {
     case RESOLVED_TABLE_SCAN:
       if (target != nullptr) {
@@ -6295,7 +6305,7 @@ absl::Status Validator::ValidateSingleCloneDataSource(
       return InternalErrorBuilder()
              << "Bad scan type: " << source->node_kind_string();
   }
-  return ValidateResolvedScan(source, /*visible_parameters=*/{});
+  return absl::OkStatus();
 }
 
 absl::Status Validator::ValidateResolvedCloneDataSource(
@@ -6309,9 +6319,10 @@ absl::Status Validator::ValidateResolvedCloneDataSource(
     for (const auto& input : scan->input_item_list()) {
       GOOGLESQL_RETURN_IF_ERROR(ValidateSingleCloneDataSource(input->scan(), target));
     }
-    return absl::OkStatus();
+  } else {
+    GOOGLESQL_RETURN_IF_ERROR(ValidateSingleCloneDataSource(source, target));
   }
-  return ValidateSingleCloneDataSource(source, target);
+  return ValidateResolvedScan(source, /*visible_parameters=*/{});
 }
 
 absl::Status Validator::ValidateResolvedCloneDataStmt(
@@ -6320,6 +6331,8 @@ absl::Status Validator::ValidateResolvedCloneDataStmt(
   PushErrorContext push(this, stmt);
   GOOGLESQL_RETURN_IF_ERROR(ValidateResolvedTableScan(stmt->target_table(),
                                             /*visible_parameters=*/{}));
+  VALIDATOR_RET_CHECK_EQ(stmt->clone_from()->column_list_size(),
+                         stmt->target_table()->table()->NumColumns());
   return ValidateResolvedCloneDataSource(stmt->clone_from(),
                                          stmt->target_table()->table());
 }
@@ -6568,6 +6581,7 @@ absl::Status Validator::ValidateResolvedOrderByScan(
     GOOGLESQL_RETURN_IF_ERROR(ValidateResolvedOrderByItem(
         visible_columns, visible_parameters, order_by_item.get()));
   }
+  GOOGLESQL_RETURN_IF_ERROR(CheckColumnList(scan, visible_columns));
 
   return absl::OkStatus();
 }
@@ -6580,7 +6594,8 @@ absl::Status Validator::ValidateResolvedOrderByItem(
   GOOGLESQL_RETURN_IF_ERROR(ValidateResolvedExpr(visible_columns, visible_parameters,
                                        item->column_ref()));
   if (item->collation_name() != nullptr) {
-    GOOGLESQL_RETURN_IF_ERROR(ValidateResolvedExpr(visible_columns, visible_parameters,
+    GOOGLESQL_RETURN_IF_ERROR(ValidateResolvedExpr(/*visible_columns=*/{},
+                                         /*visible_parameters=*/{},
                                          item->collation_name()));
     VALIDATOR_RET_CHECK(item->collation_name()->type()->IsString())
         << "collation_name must have type STRING";
@@ -7223,7 +7238,6 @@ absl::Status Validator::ValidateOptionsList(
     absl::Span<const std::unique_ptr<const ResolvedOption>> list,
     const MapType& allowed_options,
     const std::set<ResolvedColumn>& visible_columns,
-    const std::set<ResolvedColumn>& visible_parameters,
     absl::string_view option_type) {
   const std::string upper_case_option_type = [option_type]() {
     std::string result(option_type.data(), option_type.size());
@@ -7248,8 +7262,8 @@ absl::Status Validator::ValidateOptionsList(
       VALIDATOR_RET_CHECK(
           option->value()->type()->Equals(expected_option_type));
     }
-    GOOGLESQL_RETURN_IF_ERROR(ValidateResolvedExpr(visible_columns, visible_parameters,
-                                         option->value()));
+    GOOGLESQL_RETURN_IF_ERROR(ValidateResolvedExpr(
+        visible_columns, /*visible_parameters=*/{}, option->value()));
   }
   return absl::OkStatus();
 }
@@ -9480,7 +9494,8 @@ absl::Status Validator::ValidateResolvedPipeIfScan(
     bool is_selected_case = (i == scan->selected_case());
 
     if (!if_case->IsElse()) {
-      GOOGLESQL_RETURN_IF_ERROR(ValidateBoolExpr(visible_columns, visible_parameters,
+      GOOGLESQL_RETURN_IF_ERROR(ValidateBoolExpr(/*visible_columns=*/{},
+                                       /*visible_parameters=*/{},
                                        if_case->condition()));
     } else {
       VALIDATOR_RET_CHECK_EQ(i, num_cases - 1);
@@ -11730,6 +11745,15 @@ absl::Status Validator::ValidateResolvedUpdateConstructor(
     const ResolvedUpdateConstructor* update_constructor) {
   RETURN_ERROR_IF_OUT_OF_STACK_SPACE();
   PushErrorContext push(this, update_constructor);
+  GOOGLESQL_RETURN_IF_ERROR(ValidateResolvedExpr(visible_columns, visible_parameters,
+                                       update_constructor->expr()));
+  VALIDATOR_RET_CHECK(update_constructor->expr()->type()->IsProto());
+  VALIDATOR_RET_CHECK(
+      update_constructor->type()->Equals(update_constructor->expr()->type()));
+
+  // `update_element_column` holds the value of `expr`. It is visible to the
+  // `expr` of each update field item, but not to the UPDATE constructor's own
+  // `expr`.
   std::set<ResolvedColumn> update_visible_columns = visible_columns;
   if (update_constructor->update_element_column().IsInitialized()) {
     VALIDATOR_RET_CHECK(
@@ -11741,12 +11765,6 @@ absl::Status Validator::ValidateResolvedUpdateConstructor(
                             .insert(update_constructor->update_element_column())
                             .second);
   }
-
-  GOOGLESQL_RETURN_IF_ERROR(ValidateResolvedExpr(
-      update_visible_columns, visible_parameters, update_constructor->expr()));
-  VALIDATOR_RET_CHECK(update_constructor->expr()->type()->IsProto());
-  VALIDATOR_RET_CHECK(
-      update_constructor->type()->Equals(update_constructor->expr()->type()));
 
   for (const std::unique_ptr<const ResolvedUpdateFieldItem>& update_field_item :
        update_constructor->update_field_item_list()) {
@@ -11826,7 +11844,8 @@ absl::Status Validator::ValidateResolvedMakeColumnListSpec(
   VALIDATOR_RET_CHECK(column_list_spec->type()->IsColumnListSpec());
   const ResolvedExpr* column_name_list = column_list_spec->column_name_list();
   VALIDATOR_RET_CHECK_NE(column_name_list, nullptr);
-  GOOGLESQL_RETURN_IF_ERROR(ValidateResolvedExpr(visible_columns, visible_parameters,
+  GOOGLESQL_RETURN_IF_ERROR(ValidateResolvedExpr(/*visible_columns=*/{},
+                                       /*visible_parameters=*/{},
                                        column_name_list));
   const bool is_empty_array_literal =
       column_name_list->Is<ResolvedLiteral>() &&

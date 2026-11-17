@@ -61,39 +61,43 @@ TEST(GraphElementTypeTest, MakeGraphElementType) {
   const Type* bytes_type = factory.get_bytes();
 
   const GraphElementType* empty_graph_element_type;
-  GOOGLESQL_ASSERT_OK(factory.MakeGraphElementType({"graph_name"},
-                                         GraphElementType::ElementKind::kNode,
-                                         {}, &empty_graph_element_type));
+  GOOGLESQL_ASSERT_OK(factory.MakeGraphElementType(
+      {"graph_name"}, GraphElementType::ElementKind::kNode, {},
+      /*element_tables=*/{}, &empty_graph_element_type));
   EXPECT_THAT(empty_graph_element_type->property_types(), IsEmpty());
 
   const GraphElementType* graph_element_type;
   EXPECT_THAT(
       factory.MakeGraphElementType({}, GraphElementType::ElementKind::kNode, {},
-                                   &graph_element_type),
+                                   /*element_tables=*/{}, &graph_element_type),
       StatusIs(absl::StatusCode::kInvalidArgument,
                HasSubstr("Graph reference cannot be empty")));
 
   EXPECT_THAT(factory.MakeGraphElementType(
                   {"graph_name"}, GraphElementType::ElementKind::kNode,
-                  {{"", string_type}}, &graph_element_type),
+                  {{"", string_type}},
+                  /*element_tables=*/{}, &graph_element_type),
               StatusIs(absl::StatusCode::kInvalidArgument,
                        HasSubstr("Property type name cannot be empty")));
 
   EXPECT_THAT(factory.MakeGraphElementType(
                   {"graph_name"}, GraphElementType::ElementKind::kNode,
-                  {{"a", string_type}, {"a", bytes_type}}, &graph_element_type),
+                  {{"a", string_type}, {"a", bytes_type}},
+                  /*element_tables=*/{}, &graph_element_type),
               StatusIs(absl::StatusCode::kInvalidArgument,
                        HasSubstr("Inconsistent property: a")));
 
   EXPECT_THAT(factory.MakeGraphElementType(
                   {"graph_name"}, GraphElementType::ElementKind::kNode,
-                  {{"a", string_type}, {"A", bytes_type}}, &graph_element_type),
+                  {{"a", string_type}, {"A", bytes_type}},
+                  /*element_tables=*/{}, &graph_element_type),
               StatusIs(absl::StatusCode::kInvalidArgument,
                        HasSubstr("Inconsistent property: A")));
 
   EXPECT_THAT(factory.MakeGraphElementType(
                   {"graph_name"}, GraphElementType::ElementKind::kNode,
-                  {{"", string_type}}, &graph_element_type),
+                  {{"", string_type}},
+                  /*element_tables=*/{}, &graph_element_type),
               StatusIs(absl::StatusCode::kInvalidArgument,
                        HasSubstr("Property type name cannot be empty")));
 
@@ -101,7 +105,8 @@ TEST(GraphElementTypeTest, MakeGraphElementType) {
 
   GOOGLESQL_EXPECT_OK(factory.MakeGraphElementType(
       {"graph_name"}, GraphElementType::ElementKind::kNode,
-      {{"a", string_type}, {"A", string_type}}, &graph_element_type));
+      {{"a", string_type}, {"A", string_type}},
+      /*element_tables=*/{}, &graph_element_type));
 }
 
 TEST(GraphElementTypeTest, InternalProductModeSupportedTypeTest) {
@@ -111,7 +116,8 @@ TEST(GraphElementTypeTest, InternalProductModeSupportedTypeTest) {
   const GraphElementType* graph_element_type;
   GOOGLESQL_ASSERT_OK(factory.MakeGraphElementType(
       {"graph_name"}, GraphElementType::ElementKind::kNode,
-      {{"a", factory.get_uint64()}}, &graph_element_type));
+      {{"a", factory.get_uint64()}},
+      /*element_tables=*/{}, &graph_element_type));
   ASSERT_THAT(graph_element_type, NotNull());
 
   EXPECT_FALSE(graph_element_type->IsSupportedType(options));
@@ -127,7 +133,8 @@ TEST(GraphElementTypeTest, ExternalProductModeSupportedTypeTest) {
   const GraphElementType* graph_element_type;
   GOOGLESQL_ASSERT_OK(factory.MakeGraphElementType(
       {"graph_name"}, GraphElementType::ElementKind::kNode,
-      {{"a", factory.get_uint64()}}, &graph_element_type));
+      {{"a", factory.get_uint64()}},
+      /*element_tables=*/{}, &graph_element_type));
   ASSERT_THAT(graph_element_type, NotNull());
 
   EXPECT_FALSE(graph_element_type->IsSupportedType(options));
@@ -143,7 +150,8 @@ TEST(GraphElementTypeTest, LookupFieldTest) {
   const GraphElementType* graph_element_type;
   GOOGLESQL_ASSERT_OK(factory.MakeGraphElementType(
       {"graph_name"}, GraphElementType::ElementKind::kNode,
-      {{"a", factory.get_int32()}}, &graph_element_type));
+      {{"a", factory.get_int32()}},
+      /*element_tables=*/{}, &graph_element_type));
   int field_idx = -1;
   Type::FindFieldResult result;
 
@@ -171,13 +179,13 @@ TEST(GraphElementTypeTest, BasicTest) {
   GOOGLESQL_ASSERT_OK(factory.MakeArrayType(string_type, &array_type));
 
   const GraphElementType* graph_element_type;
-  GOOGLESQL_ASSERT_OK(factory.MakeGraphElementType({"graph_name"},
-                                         GraphElementType::ElementKind::kNode,
-                                         {{"a", string_type},
-                                          {"b c", bytes_type},
-                                          {"e", array_type},
-                                          {"d", struct_type}},
-                                         &graph_element_type));
+  GOOGLESQL_ASSERT_OK(factory.MakeGraphElementType(
+      {"graph_name"}, GraphElementType::ElementKind::kNode,
+      {{"a", string_type},
+       {"b c", bytes_type},
+       {"e", array_type},
+       {"d", struct_type}},
+      /*element_tables=*/{}, &graph_element_type));
   EXPECT_THAT(graph_element_type->graph_reference(), ElementsAre("graph_name"));
   EXPECT_TRUE(graph_element_type->IsNode());
   EXPECT_FALSE(graph_element_type->IsEdge());
@@ -229,9 +237,9 @@ TEST(GraphElementTypeTest, BasicTest) {
   EXPECT_THAT(graph_element_type->FindPropertyType("unknown"), IsNull());
 
   const GraphElementType* empty_graph_element_type;
-  GOOGLESQL_ASSERT_OK(factory.MakeGraphElementType({"graph_name"},
-                                         GraphElementType::ElementKind::kNode,
-                                         {}, &empty_graph_element_type));
+  GOOGLESQL_ASSERT_OK(factory.MakeGraphElementType(
+      {"graph_name"}, GraphElementType::ElementKind::kNode, {},
+      /*element_tables=*/{}, &empty_graph_element_type));
   EXPECT_THAT(empty_graph_element_type->FindPropertyType("a"), IsNull());
 
   EXPECT_FALSE(graph_element_type->IsSimpleType());
@@ -287,39 +295,43 @@ TEST(GraphElementTypeTest, MakeDynamicGraphElementType) {
   const GraphElementType* dynamic_type_without_static_properties;
   GOOGLESQL_ASSERT_OK(factory.MakeDynamicGraphElementType(
       {"graph_name"}, GraphElementType::ElementKind::kNode, {},
-      &dynamic_type_without_static_properties));
+      /*element_tables=*/{}, &dynamic_type_without_static_properties));
   EXPECT_TRUE(dynamic_type_without_static_properties->is_dynamic());
   EXPECT_THAT(dynamic_type_without_static_properties->property_types(),
               IsEmpty());
 
   const GraphElementType* graph_element_type;
-  EXPECT_THAT(
-      factory.MakeDynamicGraphElementType(
-          {}, GraphElementType::ElementKind::kNode, {}, &graph_element_type),
-      StatusIs(absl::StatusCode::kInvalidArgument,
-               HasSubstr("Graph reference cannot be empty")));
+  EXPECT_THAT(factory.MakeDynamicGraphElementType(
+                  {}, GraphElementType::ElementKind::kNode, {},
+                  /*element_tables=*/{}, &graph_element_type),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("Graph reference cannot be empty")));
 
   EXPECT_THAT(factory.MakeDynamicGraphElementType(
                   {"graph_name"}, GraphElementType::ElementKind::kNode,
-                  {{"", string_type}}, &graph_element_type),
+                  {{"", string_type}},
+                  /*element_tables=*/{}, &graph_element_type),
               StatusIs(absl::StatusCode::kInvalidArgument,
                        HasSubstr("Property type name cannot be empty")));
 
   EXPECT_THAT(factory.MakeDynamicGraphElementType(
                   {"graph_name"}, GraphElementType::ElementKind::kNode,
-                  {{"a", string_type}, {"a", bytes_type}}, &graph_element_type),
+                  {{"a", string_type}, {"a", bytes_type}},
+                  /*element_tables=*/{}, &graph_element_type),
               StatusIs(absl::StatusCode::kInvalidArgument,
                        HasSubstr("Inconsistent property: a")));
 
   EXPECT_THAT(factory.MakeDynamicGraphElementType(
                   {"graph_name"}, GraphElementType::ElementKind::kNode,
-                  {{"a", string_type}, {"A", bytes_type}}, &graph_element_type),
+                  {{"a", string_type}, {"A", bytes_type}},
+                  /*element_tables=*/{}, &graph_element_type),
               StatusIs(absl::StatusCode::kInvalidArgument,
                        HasSubstr("Inconsistent property: A")));
 
   EXPECT_THAT(factory.MakeDynamicGraphElementType(
                   {"graph_name"}, GraphElementType::ElementKind::kNode,
-                  {{"", string_type}}, &graph_element_type),
+                  {{"", string_type}},
+                  /*element_tables=*/{}, &graph_element_type),
               StatusIs(absl::StatusCode::kInvalidArgument,
                        HasSubstr("Property type name cannot be empty")));
 
@@ -327,7 +339,8 @@ TEST(GraphElementTypeTest, MakeDynamicGraphElementType) {
 
   GOOGLESQL_EXPECT_OK(factory.MakeDynamicGraphElementType(
       {"graph_name"}, GraphElementType::ElementKind::kNode,
-      {{"a", string_type}, {"A", string_type}}, &graph_element_type));
+      {{"a", string_type}, {"A", string_type}},
+      /*element_tables=*/{}, &graph_element_type));
 }
 
 TEST(GraphElementTypeTest,
@@ -338,7 +351,8 @@ TEST(GraphElementTypeTest,
   const GraphElementType* graph_element_type;
   GOOGLESQL_ASSERT_OK(factory.MakeDynamicGraphElementType(
       {"graph_name"}, GraphElementType::ElementKind::kNode,
-      {{"a", factory.get_uint64()}}, &graph_element_type));
+      {{"a", factory.get_uint64()}},
+      /*element_tables=*/{}, &graph_element_type));
   ASSERT_THAT(graph_element_type, NotNull());
 
   EXPECT_FALSE(graph_element_type->IsSupportedType(options));
@@ -361,7 +375,8 @@ TEST(GraphElementTypeTest,
   const GraphElementType* graph_element_type;
   GOOGLESQL_ASSERT_OK(factory.MakeDynamicGraphElementType(
       {"graph_name"}, GraphElementType::ElementKind::kNode,
-      {{"a", factory.get_uint64()}}, &graph_element_type));
+      {{"a", factory.get_uint64()}},
+      /*element_tables=*/{}, &graph_element_type));
   ASSERT_THAT(graph_element_type, NotNull());
 
   EXPECT_FALSE(graph_element_type->IsSupportedType(options));
@@ -394,7 +409,7 @@ TEST(GraphElementTypeTest, DynamicGraphElementTypeDebugString) {
        {"b c", bytes_type},
        {"e", array_type},
        {"d", struct_type}},
-      &graph_element_type));
+      /*element_tables=*/{}, &graph_element_type));
 
   EXPECT_EQ(graph_element_type->DebugString(),
             "GRAPH_NODE(graph_name)<a STRING, `b c` BYTES, d STRUCT<a STRING, "
@@ -420,10 +435,12 @@ class GraphElementTypeEqualityTest : public testing::Test {
   void SetUp() override {
     GOOGLESQL_ASSERT_OK(factory_.MakeGraphElementType(
         {"graph_name"}, GraphElementType::ElementKind::kNode,
-        {{"aaA", factory_.get_string()}}, &static_graph_element_type_));
+        {{"aaA", factory_.get_string()}},
+        /*element_tables=*/{}, &static_graph_element_type_));
     GOOGLESQL_ASSERT_OK(factory_.MakeDynamicGraphElementType(
         {"graph_name"}, GraphElementType::ElementKind::kNode,
-        {{"aaA", factory_.get_string()}}, &dynamic_graph_element_type_));
+        {{"aaA", factory_.get_string()}},
+        /*element_tables=*/{}, &dynamic_graph_element_type_));
   }
 
   TypeFactory factory_;
@@ -435,7 +452,8 @@ TEST_F(GraphElementTypeEqualityTest, SameGraphElementType) {
   const GraphElementType* graph_element_type2;
   GOOGLESQL_ASSERT_OK(factory_.MakeGraphElementType(
       {"graph_name"}, GraphElementType::ElementKind::kNode,
-      {{"aaA", factory_.get_string()}}, &graph_element_type2));
+      {{"aaA", factory_.get_string()}},
+      /*element_tables=*/{}, &graph_element_type2));
   EXPECT_TRUE(static_graph_element_type_->Equals(graph_element_type2));
   EXPECT_TRUE(static_graph_element_type_->Equivalent(graph_element_type2));
 }
@@ -444,7 +462,8 @@ TEST_F(GraphElementTypeEqualityTest, CaseInsensitiveGraphReference) {
   const GraphElementType* graph_element_type2;
   GOOGLESQL_ASSERT_OK(factory_.MakeGraphElementType(
       {"graph_NAME"}, static_graph_element_type_->element_kind(),
-      {{"aaa", factory_.get_string()}}, &graph_element_type2));
+      {{"aaa", factory_.get_string()}},
+      /*element_tables=*/{}, &graph_element_type2));
   EXPECT_TRUE(static_graph_element_type_->Equals(graph_element_type2));
   EXPECT_TRUE(static_graph_element_type_->Equivalent(graph_element_type2));
 }
@@ -453,7 +472,8 @@ TEST_F(GraphElementTypeEqualityTest, CaseInsensitivePropertyTypeName) {
   const GraphElementType* graph_element_type2;
   GOOGLESQL_ASSERT_OK(factory_.MakeGraphElementType(
       {"graph_name"}, static_graph_element_type_->element_kind(),
-      {{"aaa", factory_.get_string()}}, &graph_element_type2));
+      {{"aaa", factory_.get_string()}},
+      /*element_tables=*/{}, &graph_element_type2));
   EXPECT_TRUE(static_graph_element_type_->Equals(graph_element_type2));
   EXPECT_TRUE(static_graph_element_type_->Equivalent(graph_element_type2));
 }
@@ -462,7 +482,8 @@ TEST_F(GraphElementTypeEqualityTest, DifferentPropertyTypeName) {
   const GraphElementType* graph_element_type2;
   GOOGLESQL_ASSERT_OK(factory_.MakeGraphElementType(
       {"graph_name"}, static_graph_element_type_->element_kind(),
-      {{"aaB", factory_.get_string()}}, &graph_element_type2));
+      {{"aaB", factory_.get_string()}},
+      /*element_tables=*/{}, &graph_element_type2));
   EXPECT_FALSE(static_graph_element_type_->Equals(graph_element_type2));
   EXPECT_FALSE(static_graph_element_type_->Equivalent(graph_element_type2));
 }
@@ -471,7 +492,8 @@ TEST_F(GraphElementTypeEqualityTest, DifferentPropertyTypeValueType) {
   const GraphElementType* graph_element_type2;
   GOOGLESQL_ASSERT_OK(factory_.MakeGraphElementType(
       {"graph_name"}, static_graph_element_type_->element_kind(),
-      {{"aaA", factory_.get_bytes()}}, &graph_element_type2));
+      {{"aaA", factory_.get_bytes()}},
+      /*element_tables=*/{}, &graph_element_type2));
   EXPECT_FALSE(static_graph_element_type_->Equals(graph_element_type2));
   EXPECT_FALSE(static_graph_element_type_->Equivalent(graph_element_type2));
 }
@@ -482,7 +504,7 @@ TEST_F(GraphElementTypeEqualityTest, DuplicatePropertyTypes) {
   GOOGLESQL_ASSERT_OK(factory_.MakeGraphElementType(
       {"graph_name"}, static_graph_element_type_->element_kind(),
       {{"aaa", string_type}, {"aaA", string_type}, {"AAA", string_type}},
-      &graph_element_type2));
+      /*element_tables=*/{}, &graph_element_type2));
   EXPECT_TRUE(static_graph_element_type_->Equals(graph_element_type2));
   EXPECT_TRUE(static_graph_element_type_->Equivalent(graph_element_type2));
 }
@@ -491,7 +513,8 @@ TEST_F(GraphElementTypeEqualityTest, DifferentElementKind) {
   const GraphElementType* graph_element_type2;
   GOOGLESQL_ASSERT_OK(factory_.MakeGraphElementType(
       {"graph_name"}, GraphElementType::ElementKind::kEdge,
-      static_graph_element_type_->property_types(), &graph_element_type2));
+      static_graph_element_type_->property_types(),
+      /*element_tables=*/{}, &graph_element_type2));
   EXPECT_FALSE(static_graph_element_type_->Equals(graph_element_type2));
   EXPECT_FALSE(static_graph_element_type_->Equivalent(graph_element_type2));
 }
@@ -500,7 +523,8 @@ TEST_F(GraphElementTypeEqualityTest, DifferentGraphReference) {
   const GraphElementType* graph_element_type2;
   GOOGLESQL_ASSERT_OK(factory_.MakeGraphElementType(
       {"another_graph_name"}, GraphElementType::ElementKind::kNode,
-      static_graph_element_type_->property_types(), &graph_element_type2));
+      static_graph_element_type_->property_types(),
+      /*element_tables=*/{}, &graph_element_type2));
   EXPECT_FALSE(static_graph_element_type_->Equals(graph_element_type2));
   EXPECT_FALSE(static_graph_element_type_->Equivalent(graph_element_type2));
 }
@@ -509,7 +533,8 @@ TEST_F(GraphElementTypeEqualityTest, NestedCatalogNameInGraphReference) {
   const GraphElementType* graph_element_type2;
   GOOGLESQL_ASSERT_OK(factory_.MakeGraphElementType(
       {"foo", "graph_name"}, GraphElementType::ElementKind::kNode,
-      static_graph_element_type_->property_types(), &graph_element_type2));
+      static_graph_element_type_->property_types(),
+      /*element_tables=*/{}, &graph_element_type2));
   EXPECT_FALSE(static_graph_element_type_->Equals(graph_element_type2));
   EXPECT_FALSE(static_graph_element_type_->Equivalent(graph_element_type2));
 }
@@ -519,10 +544,12 @@ TEST_F(GraphElementTypeEqualityTest, PeriodInPath) {
   const GraphElementType* graph_element_type2;
   GOOGLESQL_ASSERT_OK(factory_.MakeGraphElementType(
       {"foo.bar", "graph_name"}, GraphElementType::ElementKind::kNode,
-      static_graph_element_type_->property_types(), &graph_element_type1));
+      static_graph_element_type_->property_types(),
+      /*element_tables=*/{}, &graph_element_type1));
   GOOGLESQL_ASSERT_OK(factory_.MakeGraphElementType(
       {"foo", "bar", "graph_name"}, GraphElementType::ElementKind::kNode,
-      static_graph_element_type_->property_types(), &graph_element_type2));
+      static_graph_element_type_->property_types(),
+      /*element_tables=*/{}, &graph_element_type2));
   EXPECT_FALSE(graph_element_type1->Equals(graph_element_type2));
   EXPECT_FALSE(graph_element_type1->Equivalent(graph_element_type2));
 }
@@ -538,11 +565,13 @@ TEST_F(GraphElementTypeEqualityTest, StaticGraphElementTypeEquivalent) {
 
   GOOGLESQL_ASSERT_OK(factory_.MakeGraphElementType(
       {"graph_name"}, GraphElementType::ElementKind::kNode,
-      {{"property", struct_type}}, &static_graph_element_type_));
+      {{"property", struct_type}},
+      /*element_tables=*/{}, &static_graph_element_type_));
   const GraphElementType* graph_element_type2;
   GOOGLESQL_ASSERT_OK(factory_.MakeGraphElementType(
       {"graph_name"}, GraphElementType::ElementKind::kNode,
-      {{"property", equivalent_struct_type}}, &graph_element_type2));
+      {{"property", equivalent_struct_type}},
+      /*element_tables=*/{}, &graph_element_type2));
 
   EXPECT_FALSE(static_graph_element_type_->Equals(graph_element_type2));
   EXPECT_TRUE(static_graph_element_type_->Equivalent(graph_element_type2));
@@ -557,11 +586,13 @@ TEST_F(GraphElementTypeEqualityTest, DynamicGraphElementTypeEquivalent) {
 
   GOOGLESQL_ASSERT_OK(factory_.MakeDynamicGraphElementType(
       {"graph_name"}, GraphElementType::ElementKind::kNode,
-      {{"property", struct_type}}, &dynamic_graph_element_type_));
+      {{"property", struct_type}},
+      /*element_tables=*/{}, &dynamic_graph_element_type_));
   const GraphElementType* dynamic_graph_element_type2;
   GOOGLESQL_ASSERT_OK(factory_.MakeDynamicGraphElementType(
       {"graph_name"}, GraphElementType::ElementKind::kNode,
-      {{"property", equivalent_struct_type}}, &dynamic_graph_element_type2));
+      {{"property", equivalent_struct_type}},
+      /*element_tables=*/{}, &dynamic_graph_element_type2));
 
   EXPECT_FALSE(
       dynamic_graph_element_type_->Equals(dynamic_graph_element_type2));
@@ -584,7 +615,7 @@ TEST_F(GraphElementTypeEqualityTest, StaticGraphElementTypeCoercion) {
   GOOGLESQL_ASSERT_OK(factory_.MakeGraphElementType(
       {"graph_name"}, GraphElementType::ElementKind::kNode,
       {{"aaA", factory_.get_string()}, {"bbB", factory_.get_bool()}},
-      &static_graph_element_type2));
+      /*element_tables=*/{}, &static_graph_element_type2));
   EXPECT_TRUE(
       static_graph_element_type_->CoercibleTo(static_graph_element_type2));
   EXPECT_FALSE(
@@ -596,7 +627,7 @@ TEST_F(GraphElementTypeEqualityTest, DynamicGraphElementTypeCoercion) {
   GOOGLESQL_ASSERT_OK(factory_.MakeDynamicGraphElementType(
       {"graph_name"}, GraphElementType::ElementKind::kNode,
       {{"aaA", factory_.get_string()}, {"bbB", factory_.get_bool()}},
-      &dynamic_graph_element_type2));
+      /*element_tables=*/{}, &dynamic_graph_element_type2));
   EXPECT_TRUE(
       dynamic_graph_element_type_->CoercibleTo(dynamic_graph_element_type2));
   EXPECT_FALSE(
@@ -616,12 +647,12 @@ TEST_F(GraphElementTypeEqualityTest, StaticAndDynamicGraphElementTypeCoercion) {
   GOOGLESQL_ASSERT_OK(factory_.MakeGraphElementType(
       {"graph_name"}, GraphElementType::ElementKind::kNode,
       {{"aaA", factory_.get_string()}, {"bbB", factory_.get_bool()}},
-      &static_graph_element_type2));
+      /*element_tables=*/{}, &static_graph_element_type2));
   const GraphElementType* dynamic_graph_element_type2;
   GOOGLESQL_ASSERT_OK(factory_.MakeDynamicGraphElementType(
       {"graph_name"}, GraphElementType::ElementKind::kNode,
       {{"aaA", factory_.get_string()}, {"bbB", factory_.get_bool()}},
-      &dynamic_graph_element_type2));
+      /*element_tables=*/{}, &dynamic_graph_element_type2));
   EXPECT_FALSE(
       static_graph_element_type2->CoercibleTo(dynamic_graph_element_type_));
   EXPECT_FALSE(
@@ -754,7 +785,7 @@ TEST(TypeTest, TypeDeserializerStaticGraphElement) {
   const GraphElementType* graph_element_type;
   GOOGLESQL_ASSERT_OK(factory.MakeGraphElementType(
       {"graph_name"}, GraphElementType::kNode, {{"a", factory.get_bool()}},
-      &graph_element_type));
+      /*element_tables=*/{}, &graph_element_type));
   GOOGLESQL_ASSERT_OK_AND_ASSIGN(const Type* deserialized_type,
                        type_deserializer.Deserialize(type_proto));
   EXPECT_TRUE(deserialized_type->Equals(graph_element_type));
@@ -830,7 +861,7 @@ TEST(TypeTest, TypeDeserializerDynamicGraphElement) {
   const GraphElementType* graph_element_type;
   GOOGLESQL_ASSERT_OK(factory.MakeDynamicGraphElementType(
       {"graph_name"}, GraphElementType::kNode, {{"a", factory.get_bool()}},
-      &graph_element_type));
+      /*element_tables=*/{}, &graph_element_type));
   GOOGLESQL_ASSERT_OK_AND_ASSIGN(const Type* deserialized_type,
                        type_deserializer.Deserialize(type_proto));
   EXPECT_TRUE(deserialized_type->Equals(graph_element_type));
@@ -893,7 +924,7 @@ TEST(GraphElementTypeTest, ValidateResolvedTypeParameters) {
   GOOGLESQL_ASSERT_OK(factory.MakeGraphElementType(
       {"graph_name"}, GraphElementType::ElementKind::kNode,
       {{"char_field", string_type}, {"int_field", int64_type}},
-      &graph_element_type));
+      /*element_tables=*/{}, &graph_element_type));
 
   EXPECT_THAT(graph_element_type->property_types(),
               testing::ElementsAre(IsPropertyType("char_field", string_type),

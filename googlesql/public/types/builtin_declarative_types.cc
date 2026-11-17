@@ -23,7 +23,6 @@
 #include <vector>
 
 #include "googlesql/common/errors.h"
-#include "googlesql/common/string_util.h"
 #include "googlesql/public/proto/vector_encoding_id.pb.h"
 #include "googlesql/public/proto/vector_value.pb.h"
 #include "googlesql/public/types/declarative_type.h"
@@ -39,7 +38,6 @@
 #include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
-#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "googlesql/base/ret_check.h"
 
@@ -125,10 +123,7 @@ static absl::StatusOr<std::string> FormatVectorValueOrError(
 
   GOOGLESQL_ASSIGN_OR_RETURN(std::vector<float> elements,
                    DecodeFloat32VectorPayload(vector_value.data()));
-  std::string float_array_str =
-      absl::StrJoin(elements, ", ", [](std::string* out, float element) {
-        absl::StrAppend(out, RoundTripFloatToString(element));
-      });
+  std::string float_array_str = FormatFloat32VectorElements(elements);
 
   switch (opts.mode) {
     case FormatOptions::Mode::kDebug:

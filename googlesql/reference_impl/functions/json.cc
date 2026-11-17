@@ -25,6 +25,7 @@
 #include <utility>
 #include <vector>
 
+#include "googlesql/common/determinism.h"
 #include "googlesql/common/errors.h"
 #include "googlesql/common/internal_value.h"
 #include "googlesql/public/functions/json.h"

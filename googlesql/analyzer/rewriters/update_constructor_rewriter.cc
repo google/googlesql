@@ -38,10 +38,13 @@
 #include "googlesql/resolved_ast/resolved_ast.h"
 #include "googlesql/resolved_ast/resolved_ast_builder.h"
 #include "googlesql/resolved_ast/resolved_ast_deep_copy_visitor.h"
+#include "googlesql/resolved_ast/resolved_ast_helper.h"
 #include "googlesql/resolved_ast/resolved_ast_rewrite_visitor.h"
 #include "googlesql/resolved_ast/resolved_node.h"
+#include "googlesql/resolved_ast/rewrite_utils.h"
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
@@ -51,10 +54,6 @@
 
 namespace googlesql {
 namespace {
-
-// Placeholder column ID for an update item whose value is not a nested
-// ResolvedUpdateConstructor.
-constexpr int kNoPlaceholderColumnId = -1;
 
 // Helper visitor that replaces references to one column with references to
 // another column, keeping `is_correlated`. Used to replace references to the
@@ -81,8 +80,92 @@ class ColumnRefReplacer : public ResolvedASTRewriteVisitor {
   ResolvedColumn replacement_;
 };
 
+// Returns `WITH(<column> AS <value>, <body>)`, which evaluates `value` once and
+// makes it the value of `column` inside `body`. See
+// UpdateConstructorRewriteVisitor for why the rewrite binds columns this way.
+std::unique_ptr<const ResolvedExpr> BindColumn(
+    const ResolvedColumn& column, std::unique_ptr<const ResolvedExpr> value,
+    std::unique_ptr<const ResolvedExpr> body) {
+  std::vector<std::unique_ptr<const ResolvedComputedColumn>> assignments;
+  assignments.push_back(MakeResolvedComputedColumn(column, std::move(value)));
+  return MakeResolvedWithExpr(std::move(assignments), std::move(body));
+}
+
+// Returns whether the rewrite of `items` must bind `update_element_column` to
+// `input`, so that `input` is evaluated only once. See
+// UpdateConstructorRewriteVisitor.
+absl::StatusOr<bool> ShouldBindElementColumn(
+    absl::Span<const std::unique_ptr<const ResolvedUpdateFieldItem>> items,
+    const ResolvedColumn& update_element_column, const ResolvedExpr& input) {
+  for (const std::unique_ptr<const ResolvedUpdateFieldItem>& item : items) {
+    // The outer REPLACE_FIELDS call already evaluates `input` once as its first
+    // argument. If an item also needs the original value of a field (either to
+    // bind `update_item_column` or to transform a repeated field for `*:`), the
+    // rewritten expression must read from `input` a second time. When `input`
+    // is a column reference, we can copy it directly; otherwise, we must bind
+    // `input` to `update_element_column` so `input` is only evaluated once.
+    // Copying it would also duplicate the columns it defines, e.g. in a
+    // subquery.
+    if (!input.Is<ResolvedColumnRef>() &&
+        (item->update_item_column() != nullptr ||
+         item->operation() == ResolvedUpdateFieldItem::UPDATE_MANY)) {
+      return true;
+    }
+    // The update value reads the object.
+    GOOGLESQL_ASSIGN_OR_RETURN(
+        const absl::flat_hash_set<const ResolvedColumnRef*> free_refs,
+        CollectFreeColumnRefs(*item->expr()));
+    if (absl::c_any_of(free_refs,
+                       [&update_element_column](const ResolvedColumnRef* ref) {
+                         return ref->column() == update_element_column;
+                       })) {
+      return true;
+    }
+  }
+  return false;
+}
+
 // UpdateConstructorRewriteVisitor rewrites an update constructor to
 // REPLACE_FIELDS and ARRAY_TRANSFORM.
+//
+// Binding the columns of the UPDATE constructor
+// ---------------------------------------------
+// The update values can read two columns that the UPDATE constructor defines
+// ((broken link)), both holding values from before the
+// update:
+//   - `update_element_column`: the object being updated, read through its
+//     alias or its unqualified field names.
+//   - `update_item_column`: the original value of the field being updated,
+//     read through the field's name or by a nested braced constructor.
+//
+// REPLACE_FIELDS cannot define columns, so the rewrite has to give these
+// columns their values in another way. Replacing each reference with the value
+// does not work in general:
+//   - The value is usually an expression (`<input>`, `<input>.a.b`), but a
+//     reference in the parameter list of a subquery or lambda must stay a
+//     column reference.
+//   - Copying `<input>` into each reference would evaluate it more than once.
+// So each of these columns that is read is bound with a WITH expression, which
+// defines the column and evaluates its value once:
+//
+//   UPDATE (t.ks AS o) { int64_key_1: int64_key_1 + o.int64_val }
+//   =>
+//   WITH($element AS t.ks,
+//        REPLACE_FIELDS($element,
+//                       WITH($item AS $element.int64_key_1,
+//                            $item + $element.int64_val) AS int64_key_1))
+//
+// The exception is `*:` on a path that ends with the repeated field. There
+// `update_item_column` is the array element, which is the ARRAY_TRANSFORM
+// lambda argument, so its references are replaced by references to the lambda
+// argument instead.
+//
+// A column that no update value reads is not bound, so an UPDATE constructor
+// whose update values read neither column rewrites to a plain REPLACE_FIELDS.
+// The exception is `update_element_column` when the rewrite itself reads the
+// object more than once, for `*:` items and for values that read
+// `update_item_column`: it is then bound to `<input>`, unless `<input>` is a
+// column reference, which can be copied.
 class UpdateConstructorRewriteVisitor : public ResolvedASTRewriteVisitor {
  public:
   UpdateConstructorRewriteVisitor(TypeFactory* type_factory, Catalog* catalog,
@@ -95,30 +178,6 @@ class UpdateConstructorRewriteVisitor : public ResolvedASTRewriteVisitor {
         column_factory_(/*max_seen_col_id=*/0, id_string_pool, sequence) {}
 
  private:
-  // Store the loop column placeholder ID of child updates before they are
-  // rewritten. This is needed because during Post-Visit execution, the children
-  // have already been rewritten to their final shapes
-  // (ARRAY_TRANSFORM/ReplaceField) and we can no longer access their original
-  // loop column ID. We track placeholder IDs per update constructor using a
-  // stack of vectors indexed by child item position.
-  absl::Status PreVisitResolvedUpdateConstructor(
-      const ResolvedUpdateConstructor& node) override {
-    std::vector<int> placeholder_ids;
-    placeholder_ids.reserve(node.update_field_item_list_size());
-    for (const auto& update : node.update_field_item_list()) {
-      if (update->expr()->Is<ResolvedUpdateConstructor>()) {
-        placeholder_ids.push_back(update->expr()
-                                      ->GetAs<ResolvedUpdateConstructor>()
-                                      ->update_element_column()
-                                      .column_id());
-      } else {
-        placeholder_ids.push_back(kNoPlaceholderColumnId);
-      }
-    }
-    placeholder_ids_stack_.push_back(std::move(placeholder_ids));
-    return absl::OkStatus();
-  }
-
   absl::StatusOr<std::unique_ptr<const ResolvedNode>>
   PostVisitResolvedUpdateConstructor(
       std::unique_ptr<const ResolvedUpdateConstructor> node) override {
@@ -127,42 +186,81 @@ class UpdateConstructorRewriteVisitor : public ResolvedASTRewriteVisitor {
     std::vector<std::unique_ptr<const ResolvedReplaceFieldItem>>
         replace_field_items;
 
-    const ResolvedExpr* root_expr = update_builder.expr();
-
-    GOOGLESQL_RET_CHECK(!placeholder_ids_stack_.empty());
-    std::vector<int> placeholder_ids = std::move(placeholder_ids_stack_.back());
-    placeholder_ids_stack_.pop_back();
-    std::vector<std::unique_ptr<const ResolvedUpdateFieldItem>> updates =
+    std::vector<std::unique_ptr<const ResolvedUpdateFieldItem>> items =
         update_builder.release_update_field_item_list();
-    GOOGLESQL_RET_CHECK_EQ(placeholder_ids.size(), updates.size());
+    replace_field_items.reserve(items.size());
 
-    for (size_t i = 0; i < updates.size(); ++i) {
+    // Bind `update_element_column` only if some update value reads it, or if
+    // the rewrite would otherwise evaluate `input` more than once. See the
+    // class comment.
+    const ResolvedColumn& update_element_column =
+        update_builder.update_element_column();
+    std::unique_ptr<const ResolvedExpr> input = update_builder.release_expr();
+    GOOGLESQL_ASSIGN_OR_RETURN(
+        const bool bind_update_element_column,
+        ShouldBindElementColumn(items, update_element_column, *input));
+    GOOGLESQL_RET_CHECK(!bind_update_element_column ||
+              update_element_column.IsInitialized());
+
+    // `object` is how the rewritten expression reads the object being updated:
+    // through `update_element_column` if it is bound, so that `input` is
+    // evaluated only once, and otherwise as `input` itself.
+    std::unique_ptr<const ResolvedExpr> object;
+    if (bind_update_element_column) {
+      object =
+          MakeResolvedColumnRef(update_element_column, /*is_correlated=*/false);
+    } else {
+      object = std::move(input);
+    }
+
+    // Rewrite each ResolvedUpdateFieldItem into a ResolvedReplaceFieldItem of
+    // the outer REPLACE_FIELDS: a `*:` item into ARRAY_TRANSFORM over the
+    // repeated field, and any other item into its value, with
+    // `update_item_column` bound to the original value of the field if read.
+    for (std::unique_ptr<const ResolvedUpdateFieldItem>& update : items) {
       ResolvedUpdateFieldItemBuilder update_item_builder =
-          ToBuilder(std::move(updates[i]));
+          ToBuilder(std::move(update));
+      ResolvedColumn item_column;
+      if (update_item_builder.update_item_column() != nullptr) {
+        item_column = update_item_builder.update_item_column()->column();
+      }
       if (update_item_builder.operation() ==
           ResolvedUpdateFieldItem::UPDATE_MANY) {
         // Handle *: operator by rewriting to ARRAY_TRANSFORM.
         GOOGLESQL_ASSIGN_OR_RETURN(
             std::unique_ptr<const ResolvedReplaceFieldItem> replaced_item,
             BuildReplaceFieldItemForUpdateMany(
-                root_expr, update_item_builder.proto_field_path(),
-                update_item_builder.release_expr(), placeholder_ids[i]));
+                object.get(), update_item_builder.proto_field_path(),
+                update_item_builder.release_expr(), item_column));
         replace_field_items.push_back(std::move(replaced_item));
       } else {
-        // Standard UPDATE (single field replacement)
+        // Standard UPDATE (single field replacement).
+        GOOGLESQL_ASSIGN_OR_RETURN(std::unique_ptr<const ResolvedExpr> value_expr,
+                         BindItemColumn(item_column, object.get(),
+                                        update_item_builder.proto_field_path(),
+                                        update_item_builder.release_expr()));
         replace_field_items.push_back(MakeResolvedReplaceFieldItem(
-            update_item_builder.release_expr(), /*struct_index_path=*/{},
+            std::move(value_expr), /*struct_index_path=*/{},
             update_item_builder.proto_field_path()));
       }
     }
 
+    // REPLACE_FIELDS(<object>, ...)
     std::unique_ptr<ResolvedReplaceField> replace_field =
-        MakeResolvedReplaceField(update_builder.type(),
-                                 update_builder.release_expr(),
+        MakeResolvedReplaceField(update_builder.type(), std::move(object),
                                  std::move(replace_field_items));
     replace_field->set_type_annotation_map(
         update_builder.type_annotation_map());
-    return replace_field;
+    if (!bind_update_element_column) {
+      return replace_field;
+    }
+    // `replace_field` reads the object through `update_element_column`, so
+    // define that column as the input:
+    //   WITH(<update_element_column> AS <input>,
+    //        REPLACE_FIELDS(<update_element_column>, ...))
+    return BindColumn(/*column=*/update_element_column,
+                      /*value=*/std::move(input),
+                      /*body=*/std::move(replace_field));
   }
 
   // Returns `root.<path>`, as SQL `root.<path>` resolves it.
@@ -202,6 +300,21 @@ class UpdateConstructorRewriteVisitor : public ResolvedASTRewriteVisitor {
                                  std::move(items));
     replace_field->set_type_annotation_map(root_expr->type_annotation_map());
     return replace_field;
+  }
+
+  // Returns `value` with `item_column`, if it is initialized, bound to the
+  // original value `root.<path>` of the field being updated:
+  // `WITH(<item_column> AS root.<path>, <value>)`.
+  absl::StatusOr<std::unique_ptr<const ResolvedExpr>> BindItemColumn(
+      const ResolvedColumn& item_column, const ResolvedExpr* root,
+      absl::Span<const google::protobuf::FieldDescriptor* const> path,
+      std::unique_ptr<const ResolvedExpr> value) {
+    if (!item_column.IsInitialized()) {
+      return value;
+    }
+    GOOGLESQL_ASSIGN_OR_RETURN(std::unique_ptr<const ResolvedExpr> original_value,
+                     BuildFieldPathAccess(root, path));
+    return BindColumn(item_column, std::move(original_value), std::move(value));
   }
 
   // This function (and its helpers) implements the core algorithm for rewriting
@@ -261,7 +374,8 @@ class UpdateConstructorRewriteVisitor : public ResolvedASTRewriteVisitor {
   BuildReplaceFieldItemForUpdateMany(
       const ResolvedExpr* root_expr,
       absl::Span<const google::protobuf::FieldDescriptor* const> path,
-      std::unique_ptr<const ResolvedExpr> value_expr, int placeholder_id) {
+      std::unique_ptr<const ResolvedExpr> value_expr,
+      const ResolvedColumn& item_column) {
     auto it = absl::c_find_if(path, [](const google::protobuf::FieldDescriptor* fd) {
       return fd->is_repeated();
     });
@@ -274,10 +388,9 @@ class UpdateConstructorRewriteVisitor : public ResolvedASTRewriteVisitor {
     absl::Span<const google::protobuf::FieldDescriptor* const> suffix =
         path.subspan(prefix_len);
 
-    GOOGLESQL_ASSIGN_OR_RETURN(
-        std::unique_ptr<const ResolvedExpr> array_transform,
-        BuildArrayTransform(root_expr, prefix, suffix, std::move(value_expr),
-                            placeholder_id));
+    GOOGLESQL_ASSIGN_OR_RETURN(std::unique_ptr<const ResolvedExpr> array_transform,
+                     BuildArrayTransform(root_expr, prefix, suffix,
+                                         std::move(value_expr), item_column));
 
     return MakeResolvedReplaceFieldItem(
         std::move(array_transform), /*struct_index_path=*/{},
@@ -289,7 +402,8 @@ class UpdateConstructorRewriteVisitor : public ResolvedASTRewriteVisitor {
   absl::StatusOr<std::unique_ptr<const ResolvedExpr>> BuildUpdateExpr(
       const ResolvedExpr* root_expr,
       absl::Span<const google::protobuf::FieldDescriptor* const> path,
-      std::unique_ptr<const ResolvedExpr> value_expr, int placeholder_id) {
+      std::unique_ptr<const ResolvedExpr> value_expr,
+      const ResolvedColumn& item_column) {
     GOOGLESQL_RET_CHECK(root_expr != nullptr);
     // Identify the first repeated field in the path.
     auto it = absl::c_find_if(path, [](const google::protobuf::FieldDescriptor* fd) {
@@ -301,35 +415,36 @@ class UpdateConstructorRewriteVisitor : public ResolvedASTRewriteVisitor {
       // Recursive Case: There are more repeated fields in the path.
       GOOGLESQL_ASSIGN_OR_RETURN(
           item, BuildReplaceFieldItemForUpdateMany(
-                    root_expr, path, std::move(value_expr), placeholder_id));
-    } else {
-      // Base Case: No repeated fields in `path`.
-      // We are at the leaf of the nested loops.
-      // The `value_expr` might contain a placeholder (ResolvedColumnRef)
-      // that corresponds to the element of the innermost array we are
-      // updating. Since we are now at the leaf, `root_expr` *is* (or contains)
-      // that element.
-      // `root_expr` is derived from the lambda argument of the enclosing
-      // ARRAY_TRANSFORM.
-      // So we must replace the placeholder ColumnRef in `value_expr` with
-      // a ColumnRef to the lambda argument (root_col).
-      GOOGLESQL_RET_CHECK(root_expr->node_kind() == RESOLVED_COLUMN_REF);
-      const ResolvedColumn& root_col =
-          root_expr->GetAs<ResolvedColumnRef>()->column();
-      if (placeholder_id != kNoPlaceholderColumnId) {
-        ColumnRefReplacer replacer(placeholder_id, root_col);
-        GOOGLESQL_ASSIGN_OR_RETURN(
-            value_expr, replacer.VisitAll<ResolvedExpr>(std::move(value_expr)));
-      }
-
-      if (path.empty()) {
-        return value_expr;
-      }
-      item = MakeResolvedReplaceFieldItem(
-          std::move(value_expr), /*struct_index_path=*/{},
-          std::vector<const google::protobuf::FieldDescriptor*>(path.begin(),
-                                                      path.end()));
+                    root_expr, path, std::move(value_expr), item_column));
+      return BuildReplaceField(root_expr, std::move(item));
     }
+
+    // Base Case: No repeated fields in `path`. `root_expr` is the lambda
+    // argument of the innermost ARRAY_TRANSFORM, i.e. the array element being
+    // updated.
+    if (item_column.IsInitialized() && path.empty()) {
+      // The value being updated is the element itself, e.g. in
+      // `rep *: rep + 1`, so references to `item_column` become references to
+      // the lambda argument. No binding is needed.
+      GOOGLESQL_RET_CHECK(root_expr->node_kind() == RESOLVED_COLUMN_REF);
+      ColumnRefReplacer replacer(
+          item_column.column_id(),
+          root_expr->GetAs<ResolvedColumnRef>()->column());
+      GOOGLESQL_ASSIGN_OR_RETURN(value_expr,
+                       replacer.VisitAll<ResolvedExpr>(std::move(value_expr)));
+    } else {
+      // The value being updated is a field of the element, e.g. in
+      // `rep.f *: f + 1`, so bind `item_column` to it.
+      GOOGLESQL_ASSIGN_OR_RETURN(value_expr, BindItemColumn(item_column, root_expr, path,
+                                                  std::move(value_expr)));
+    }
+
+    if (path.empty()) {
+      return value_expr;
+    }
+    item = MakeResolvedReplaceFieldItem(
+        std::move(value_expr), /*struct_index_path=*/{},
+        std::vector<const google::protobuf::FieldDescriptor*>(path.begin(), path.end()));
     return BuildReplaceField(root_expr, std::move(item));
   }
 
@@ -338,7 +453,8 @@ class UpdateConstructorRewriteVisitor : public ResolvedASTRewriteVisitor {
       const ResolvedExpr* root_expr,
       absl::Span<const google::protobuf::FieldDescriptor* const> prefix_path,
       absl::Span<const google::protobuf::FieldDescriptor* const> suffix_path,
-      std::unique_ptr<const ResolvedExpr> value_expr, int placeholder_id) {
+      std::unique_ptr<const ResolvedExpr> value_expr,
+      const ResolvedColumn& item_column) {
     GOOGLESQL_RET_CHECK(root_expr != nullptr);
     // Construct access to the array: root_expr.prefix
     GOOGLESQL_ASSIGN_OR_RETURN(std::unique_ptr<const ResolvedExpr> current_expr,
@@ -367,13 +483,24 @@ class UpdateConstructorRewriteVisitor : public ResolvedASTRewriteVisitor {
     // Recursively build body.
     GOOGLESQL_ASSIGN_OR_RETURN(std::unique_ptr<const ResolvedExpr> lambda_body,
                      BuildUpdateExpr(lambda_arg_ref.get(), suffix_path,
-                                     std::move(value_expr), placeholder_id));
+                                     std::move(value_expr), item_column));
 
-    // TODO: b/475073854 - Support RHS referencing columns defined outside the
-    // lambda (e.g. `repeated_int64_val *: t.key`) by passing them via
-    // `parameter_list` and correlating their references in `lambda_body`.
+    // The update value can reference columns defined outside the lambda, e.g.
+    // the object being updated in `UPDATE (p) { rep *: rep + p.int64_key_1 }`,
+    // or the lambda argument of an enclosing ARRAY_TRANSFORM.
+    // ResolvedInlineLambda requires those references to be correlated and
+    // listed in its parameter list.
+    std::vector<std::unique_ptr<const ResolvedColumnRef>> parameter_list;
+    GOOGLESQL_RETURN_IF_ERROR(CollectSortUniqueColumnRefs(*lambda_body, parameter_list));
+    std::erase_if(
+        parameter_list,
+        [&lambda_arg](const std::unique_ptr<const ResolvedColumnRef>& ref) {
+          return ref->column() == lambda_arg;
+        });
+    GOOGLESQL_ASSIGN_OR_RETURN(lambda_body,
+                     CorrelateColumnRefs(*lambda_body, {lambda_arg}));
     std::unique_ptr<const ResolvedInlineLambda> lambda =
-        MakeResolvedInlineLambda({lambda_arg}, /*parameter_list=*/{},
+        MakeResolvedInlineLambda({lambda_arg}, std::move(parameter_list),
                                  std::move(lambda_body));
 
     absl::flat_hash_map<std::string, const ResolvedExpr*> variables;
@@ -396,10 +523,6 @@ class UpdateConstructorRewriteVisitor : public ResolvedASTRewriteVisitor {
   Catalog* catalog_;
   const AnalyzerOptions& options_;
   ColumnFactory column_factory_;
-
-  // Stack of child placeholder column IDs per ResolvedUpdateConstructor,
-  // indexed by child item position in update_field_item_list.
-  std::vector<std::vector<int>> placeholder_ids_stack_;
 };
 
 }  // namespace

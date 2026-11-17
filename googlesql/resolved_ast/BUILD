@@ -19,8 +19,9 @@ load("@com_google_protobuf//bazel:java_proto_library.bzl", "java_proto_library")
 load("@com_google_protobuf//bazel:proto_library.bzl", "proto_library")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_cc//cc:cc_test.bzl", "cc_test")
-load("@rules_python//python:defs.bzl", "py_binary", "py_library")
 load("@rules_python//python:proto.bzl", "py_proto_library")
+load("@rules_python//python:py_binary.bzl", "py_binary")
+load("@rules_python//python:py_library.bzl", "py_library")
 load("//googlesql/resolved_ast:build_rules.bzl", "gen_resolved_ast_files")
 
 package(default_visibility = ["//googlesql/base:googlesql_implementation"])
@@ -163,6 +164,7 @@ cc_library(
         "//googlesql/common:box_glyphs",
         "//googlesql/common:errors",
         "//googlesql/common:thread_stack",
+        "//googlesql/common:utf_util",
         "//googlesql/public:annotation_cc_proto",
         "//googlesql/public:catalog",
         "//googlesql/public:constant",
@@ -440,6 +442,7 @@ cc_library(
         "//googlesql/common:function_utils",
         "//googlesql/common:graph_element_utils",
         "//googlesql/common:measure_utils",
+        "//googlesql/common:string_util",
         "//googlesql/common:thread_stack",
         "//googlesql/parser:parse_tree",
         "//googlesql/public:analyzer",
@@ -452,15 +455,20 @@ cc_library(
         "//googlesql/public:options_cc_proto",
         "//googlesql/public:strings",
         "//googlesql/public:type",
-        "//googlesql/public:type_cc_proto",
         "//googlesql/public:type_parameters_cc_proto",
         "//googlesql/public:value",
         "//googlesql/public/annotation:collation",
+        "//googlesql/public/annotation:vector_dims",
+        "//googlesql/public/annotation:vector_encoding",
         "//googlesql/public/functions:date_time_util",
         "//googlesql/public/functions:datetime_cc_proto",
         "//googlesql/public/functions:differential_privacy_cc_proto",
         "//googlesql/public/functions:normalize_mode_cc_proto",
+        "//googlesql/public/proto:vector_encoding_id_cc_proto",
+        "//googlesql/public/proto:vector_value_cc_proto",
         "//googlesql/public/types",
+        "//googlesql/public/types:vector_type_util",
+        "//googlesql/public/types:vector_value_codec",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:log_severity",
@@ -469,6 +477,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:vlog_is_on",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
@@ -562,6 +571,7 @@ cc_test(
         ":resolved_node_kind_cc_proto",
         "//googlesql/base/testing:googlesql_gtest_main",
         "//googlesql/base/testing:status_matchers",
+        "//googlesql/common:utf_util",
         "//googlesql/public:id_string",
         "//googlesql/public:value",
         "//googlesql/public/types",

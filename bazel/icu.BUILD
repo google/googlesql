@@ -17,6 +17,7 @@
 Rules for adding './configure && make' style dependencies.
 """
 
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_foreign_cc//foreign_cc:configure.bzl", "configure_make")
 
 licenses(["notice"])  # Apache v2.0

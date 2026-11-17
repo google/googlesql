@@ -667,6 +667,8 @@ GetBuiltinFunctionSignatureIdToKindMap() {
           absl::flat_hash_map<int64_t, FunctionKind>({
               {FN_JSON_SUBSCRIPT_STRING, FunctionKind::kJsonSubscript},
               {FN_JSON_SUBSCRIPT_INT64, FunctionKind::kJsonSubscript},
+              {FN_VARIANT_SUBSCRIPT_STRING, FunctionKind::kVariantSubscript},
+              {FN_VARIANT_SUBSCRIPT_INT64, FunctionKind::kVariantSubscript},
               {FN_MAP_SUBSCRIPT, FunctionKind::kMapSubscript},
               {FN_MAP_SUBSCRIPT_WITH_KEY, FunctionKind::kMapSubscriptWithKey},
               {FN_MAP_SAFE_SUBSCRIPT_WITH_KEY,
@@ -2721,6 +2723,27 @@ Algebrizer::AlgebrizeGetJsonField(const ResolvedGetJsonField* get_json_field) {
       ResolvedFunctionCallBase::DEFAULT_ERROR_MODE);
 }
 
+// Convert the GetVariantField into a VARIANT subscript function call.
+absl::StatusOr<std::unique_ptr<ScalarFunctionCallExpr>>
+Algebrizer::AlgebrizeGetVariantField(
+    const ResolvedGetVariantField* get_variant_field) {
+  GOOGLESQL_ASSIGN_OR_RETURN(std::unique_ptr<ValueExpr> input,
+                   AlgebrizeExpression(get_variant_field->expr()));
+
+  GOOGLESQL_ASSIGN_OR_RETURN(std::unique_ptr<ConstExpr> field_name_expr,
+                   ConstExpr::Create(googlesql::values::String(
+                       get_variant_field->field_name())));
+
+  std::vector<std::unique_ptr<AlgebraArg>> arguments;
+  arguments.push_back(std::make_unique<ExprArg>(std::move(input)));
+  arguments.push_back(std::make_unique<ExprArg>(std::move(field_name_expr)));
+
+  return BuiltinScalarFunction::CreateCall(
+      FunctionKind::kVariantSubscript, language_options_,
+      get_variant_field->type(), std::move(arguments),
+      ResolvedFunctionCallBase::DEFAULT_ERROR_MODE);
+}
+
 static ProtoFieldAccessInfo CreateProtoFieldAccessInfo(
     const ResolvedGetProtoField& get_proto_field) {
   ProtoFieldAccessInfo info;
@@ -3382,6 +3405,7 @@ Algebrizer::InitializeExprMap() {
           ALGEBRIZE_EXPR(GetProtoField),
           ALGEBRIZE_EXPR(GetProtoOneof),
           ALGEBRIZE_EXPR(GetStructField),
+          ALGEBRIZE_EXPR(GetVariantField),
           ALGEBRIZE_EXPR(GraphGetElementProperty),
           ALGEBRIZE_EXPR(GraphIsLabeledPredicate),
           ALGEBRIZE_EXPR(GraphMakeElement),
@@ -6923,7 +6947,9 @@ Algebrizer::AlgebrizeProjectScanInternal(
     // Since 'arguments' is empty we drop the project, but that project might
     // destroy order so in that case we must update the ordered property of the
     // relation.
-    GOOGLESQL_RETURN_IF_ERROR(input->set_is_order_preserving(is_ordered));
+    if (!is_ordered) {
+      GOOGLESQL_RETURN_IF_ERROR(input->set_is_order_preserving(false));
+    }
     return input;
   }
 }
@@ -8181,7 +8207,7 @@ static absl::Status VerifyParameters(const Parameters* parameters) {
 absl::StatusOr<std::unique_ptr<ValueExpr>>
 Algebrizer::AlgebrizeQueryStatementInfo(
     const ResolvedScan* scan,
-    const std::vector<std::unique_ptr<const ResolvedOutputColumn>>&
+    absl::Span<const std::unique_ptr<const ResolvedOutputColumn>>
         output_columns,
     bool is_value_table, IdStringPool& id_string_pool) {
   GOOGLESQL_RETURN_IF_ERROR(CheckHints(scan->hint_list()));

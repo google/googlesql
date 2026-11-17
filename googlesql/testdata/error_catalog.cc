@@ -21,6 +21,8 @@
 
 #include "googlesql/public/catalog.h"
 #include "absl/status/status.h"
+#include "absl/status/status_builder.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "googlesql/base/ret_check.h"
 #include "googlesql/base/status_builder.h"
@@ -44,6 +46,12 @@ absl::Status ErrorCatalog::FindTable(const absl::Span<const std::string>& path,
                                      const Table** table,
                                      const FindOptions& options) {
   return ::googlesql_base::StatusBuilder(error_code_) << "FindTable error";
+}
+
+absl::Status ErrorCatalog::FindTableFromString(absl::string_view table_literal,
+                                               const Table** table,
+                                               const FindOptions& options) {
+  return absl::StatusBuilder(error_code_) << "FindTableFromString error";
 }
 
 absl::Status ErrorCatalog::FindModel(const absl::Span<const std::string>& path,

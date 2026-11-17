@@ -61,9 +61,12 @@
 #include "googlesql/common/function_utils.h"
 #include "googlesql/common/graph_element_utils.h"
 #include "googlesql/common/measure_utils.h"
+#include "googlesql/common/string_util.h"
 #include "googlesql/common/thread_stack.h"
 #include "googlesql/parser/parse_tree.h"
 #include "googlesql/public/annotation/collation.h"
+#include "googlesql/public/annotation/vector_dims.h"
+#include "googlesql/public/annotation/vector_encoding.h"
 #include "googlesql/public/builtin_function.pb.h"
 #include "googlesql/public/catalog.h"
 #include "googlesql/public/constant.h"
@@ -75,9 +78,10 @@
 #include "googlesql/public/functions/differential_privacy.pb.h"
 #include "googlesql/public/functions/normalize_mode.pb.h"
 #include "googlesql/public/options.pb.h"
+#include "googlesql/public/proto/vector_encoding_id.pb.h"
+#include "googlesql/public/proto/vector_value.pb.h"
 #include "googlesql/public/strings.h"
 #include "googlesql/public/table_valued_function.h"
-#include "googlesql/public/type.pb.h"
 #include "googlesql/public/type_parameters.pb.h"
 #include "googlesql/public/types/annotation.h"
 #include "googlesql/public/types/array_type.h"
@@ -89,6 +93,8 @@
 #include "googlesql/public/types/type_factory.h"
 #include "googlesql/public/types/type_modifiers.h"
 #include "googlesql/public/types/type_parameters.h"
+#include "googlesql/public/types/vector_type_util.h"
+#include "googlesql/public/types/vector_value_codec.h"
 #include "googlesql/public/value.h"
 #include "googlesql/resolved_ast/node_sources.h"
 #include "googlesql/resolved_ast/query_expression.h"
@@ -110,6 +116,7 @@
 #include "absl/container/flat_hash_set.h"
 #include "googlesql/base/check.h"
 #include "absl/log/log.h"
+#include "absl/log/vlog_is_on.h"
 #include "absl/status/status.h"
 #include "googlesql/base/status_macros.h"
 #include "absl/status/statusor.h"
@@ -732,7 +739,7 @@ static absl::StatusOr<bool> IsMatchingGroupRowsScope(
 static absl::StatusOr<const CopyableState::GroupRowsScope*>
 FindMatchingGroupRowsScope(
     const ResolvedGroupRowsScan* node,
-    const std::vector<CopyableState::GroupRowsScope>& group_rows_scopes) {
+    absl::Span<const CopyableState::GroupRowsScope> group_rows_scopes) {
   for (const auto& scope : group_rows_scopes) {
     GOOGLESQL_RET_CHECK(scope.aggregate_input_scan != nullptr);
     GOOGLESQL_ASSIGN_OR_RETURN(bool is_match, IsMatchingGroupRowsScope(scope, node));
@@ -827,6 +834,110 @@ absl::StatusOr<std::string> AddExplicitCast(absl::string_view sql,
   return absl::StrFormat("CAST(%s AS %s)", sql, type_name);
 }
 
+// Returns true if `annotation_map`, or any map nested in it, has a VectorDims
+// or VectorEncoding annotation.
+static bool HasVectorAnnotations(const AnnotationMap* annotation_map) {
+  return VectorDimsAnnotation::ExistsIn(annotation_map) ||
+         VectorEncodingAnnotation::ExistsIn(annotation_map);
+}
+
+// Returns an Unimplemented error for a NULL or empty STRUCT or ARRAY literal
+// that holds annotated VECTORs. There is no VECTOR value to pass to
+// ENCODE_VECTOR, and the analyzer drops VECTOR annotations when it folds a CAST
+// of a literal, e.g. `CAST(NULL AS VECTOR(3, 'FLOAT32'))` has no annotations,
+// so no SQL would give back the same annotations.
+// TODO: Support these once the analyzer keeps the annotations.
+static absl::Status VectorAnnotationsInEmptyContainerError(
+    const Type* type, const AnnotationMap* annotation_map) {
+  return absl::UnimplementedError(absl::StrCat(
+      "SQLBuilder does not support a NULL or empty ", type->DebugString(),
+      " literal with VECTOR annotations ", annotation_map->DebugString()));
+}
+
+// Decodes the elements of a non-NULL VECTOR literal. Returns an Unimplemented
+// error if the vector is not FLOAT32, since only a FLOAT32 vector has an
+// element list that can be spelled as SQL; other encodings are quantized.
+static absl::StatusOr<std::vector<float>> DecodeFloat32VectorLiteral(
+    const Value& value) {
+  GOOGLESQL_RET_CHECK(IsVectorType(value.type()));
+  GOOGLESQL_RET_CHECK(!value.is_null());
+  GOOGLESQL_ASSIGN_OR_RETURN(Value vector_bytes, value.backing_value());
+  GOOGLESQL_ASSIGN_OR_RETURN(VectorValueProto vector,
+                   ParseVectorValueBytes(vector_bytes.bytes_value()));
+  if (vector.encoding() != VectorEncodingId::FLOAT32) {
+    return absl::UnimplementedError(absl::StrCat(
+        "SQLBuilder does not support VECTOR literals with encoding ",
+        VectorEncodingId_Id_Name(
+            static_cast<VectorEncodingId::Id>(vector.encoding()))));
+  }
+  return DecodeFloat32VectorPayload(vector.data());
+}
+
+// Renders a VECTOR literal that carries VectorDims and VectorEncoding
+// annotations as an ENCODE_VECTOR call whose arguments make the analyzer
+// derive the same annotations again. A fixed dims or encoding is passed as a
+// literal argument, and an unconstrained one as NULL. For example:
+//   ENCODE_VECTOR([1.5, -2.25], 2, "FLOAT32")
+//   ENCODE_VECTOR(CAST(NULL AS ARRAY<FLOAT>), NULL, NULL)
+// At runtime, a NULL array gives a NULL VECTOR, and a NULL dims or encoding
+// argument is ignored, so the value is unchanged.
+//
+// One annotation cannot be reproduced: when the dims argument is NULL,
+// ENCODE_VECTOR takes the dims from the length of a literal array, so
+// unconstrained dims on a non-NULL literal come back as the literal's actual
+// dims, which is more precise but still correct for the value.
+static absl::StatusOr<std::string> GetAnnotatedVectorLiteralSQL(
+    const Value& value, const AnnotationMap* annotation_map, ProductMode mode,
+    bool use_external_float32) {
+  GOOGLESQL_RET_CHECK(IsVectorType(value.type()));
+  // The analyzer sets both annotations on every VECTOR, and there is no way
+  // to make ENCODE_VECTOR derive only one of them.
+  if (!VectorDimsAnnotation::ExistsIn(annotation_map) ||
+      !VectorEncodingAnnotation::ExistsIn(annotation_map)) {
+    return absl::UnimplementedError(absl::StrCat(
+        "SQLBuilder expects a VECTOR literal to have both VectorDims and "
+        "VectorEncoding annotations, but got ",
+        annotation_map->DebugString()));
+  }
+  GOOGLESQL_ASSIGN_OR_RETURN(std::optional<int64_t> dims,
+                   VectorDimsAnnotation::GetEffectiveDims(annotation_map));
+  GOOGLESQL_ASSIGN_OR_RETURN(
+      std::optional<std::string> encoding,
+      VectorEncodingAnnotation::GetEffectiveEncoding(annotation_map));
+
+  std::string array_sql;
+  if (value.is_null()) {
+    GOOGLESQL_ASSIGN_OR_RETURN(array_sql, AddExplicitCast("NULL", types::FloatArrayType(),
+                                                TypeModifiers(), mode,
+                                                use_external_float32));
+  } else {
+    GOOGLESQL_ASSIGN_OR_RETURN(std::vector<float> elements,
+                     DecodeFloat32VectorLiteral(value));
+    // Where the annotations fix the dims or encoding, they must agree with the
+    // value itself.
+    GOOGLESQL_RET_CHECK(!dims.has_value() || *dims == elements.size())
+        << "VectorDims annotation " << *dims
+        << " does not match a VECTOR literal with " << elements.size()
+        << " elements";
+    GOOGLESQL_RET_CHECK(!encoding.has_value() ||
+              *encoding == VectorEncodingId_Id_Name(VectorEncodingId::FLOAT32))
+        << "VectorEncoding annotation " << *encoding
+        << " does not match a FLOAT32 VECTOR literal";
+    array_sql = absl::StrCat(
+        "[",
+        absl::StrJoin(elements, ", ",
+                      [](std::string* out, float element) {
+                        absl::StrAppend(out, RoundTripFloatToString(element));
+                      }),
+        "]");
+  }
+
+  return absl::StrCat(
+      "ENCODE_VECTOR(", array_sql, ", ",
+      dims.has_value() ? absl::StrCat(*dims) : "NULL", ", ",
+      encoding.has_value() ? ToStringLiteral(*encoding) : "NULL", ")");
+}
+
 // Usually we add explicit casts to ensure that typed literals match their
 // resolved type.  But <is_constant_value> is a hack to work around a
 // limitation in the run_analyzer_test infrastructure.  This hack is necessary
@@ -848,6 +959,48 @@ absl::StatusOr<std::string> SQLBuilder::GetSQL(
     }
   }
 
+  // Types that are or contain graph elements or graph paths have no SQL type
+  // syntax, so literals of these types cannot be printed with an explicit type
+  // (e.g. `CAST(NULL AS ARRAY<GRAPH_NODE(...)<...>>)` or
+  // `ARRAY<STRUCT<f GRAPH_NODE(...)<...>>>[]`). Graph element values cannot be
+  // literals, so the only such literals the resolver produces come from
+  // coercing an untyped NULL or an untyped empty array `[]`. Print those in
+  // their untyped form, which coerces back to the same type in the surrounding
+  // context.
+  if (TypeIsOrContainsGraphElement(type)) {
+    if (value.is_null()) {
+      return std::string("NULL");
+    }
+    if (type->IsArray() && value.empty()) {
+      return std::string("[]");
+    }
+    return absl::InvalidArgumentError(absl::StrCat(
+        "SQLBuilder cannot generate SQL for a non-NULL, non-empty literal of a "
+        "type containing graph elements: ",
+        type->DebugString()));
+  }
+
+  // The two conditions are independent:
+  //  - HasVectorAnnotations() can be true when `type` is not a VECTOR: an
+  //    ARRAY or STRUCT map has the annotations of the VECTORs nested in it.
+  //    Those fall through to the ARRAY and STRUCT branches below, which call
+  //    GetSQL() on each element with its own annotation map, so each nested
+  //    VECTOR reaches this check by itself. A NULL or empty container has no
+  //    elements to visit and is rejected below.
+  //  - A VECTOR can have no annotations. The analyzer makes such a literal when
+  //    it coerces an untyped NULL to VECTOR, or folds `CAST(NULL AS VECTOR)`.
+  //    There are no annotations to reproduce, so it takes the usual paths
+  //    below: a NULL renders as `CAST(NULL AS VECTOR)`, and a non-NULL value
+  //    renders through the VECTOR formatting callback, as
+  //    `ENCODE_VECTOR([...])`.
+  // Query parameters and other VECTOR expressions are not literals, so they
+  // never reach this function; the analyzer derives their annotations again
+  // from the SQL generated for them.
+  if (IsVectorType(type) && HasVectorAnnotations(annotation_map)) {
+    return GetAnnotatedVectorLiteralSQL(value, annotation_map, mode,
+                                        use_external_float32);
+  }
+
   // If the opaque enum type is not fully supported in the catalog, we cannot
   // use an explicit CAST when building the SQL, and instead:
   //   -If non-null, render a string literal representation of its value
@@ -867,8 +1020,7 @@ absl::StatusOr<std::string> SQLBuilder::GetSQL(
   }
 
   if (value.is_null()) {
-    if (is_constant_value || is_opaque_enum_not_in_catalog ||
-        type->IsGraphElement() || type->IsGraphPath()) {
+    if (is_constant_value || is_opaque_enum_not_in_catalog) {
       // To handle NULL literals in ResolvedOption, where we would not want to
       // print them as a casted literal.
       return std::string("NULL");
@@ -882,6 +1034,8 @@ absl::StatusOr<std::string> SQLBuilder::GetSQL(
           "NULL", type,
           TypeModifiers::MakeTypeModifiers(TypeParameters(), collation), mode,
           use_external_float32);
+    } else if (HasVectorAnnotations(annotation_map)) {
+      return VectorAnnotationsInEmptyContainerError(type, annotation_map);
     } else {
       return value.GetSQL(mode, use_external_float32);
     }
@@ -1024,6 +1178,10 @@ absl::StatusOr<std::string> SQLBuilder::GetSQL(
       GOOGLESQL_ASSIGN_OR_RETURN(collation, Collation::MakeCollation(*annotation_map));
     }
 
+    if (elements_sql.empty() && HasVectorAnnotations(annotation_map)) {
+      return VectorAnnotationsInEmptyContainerError(type, annotation_map);
+    }
+
     return absl::StrCat(type->TypeName(mode, use_external_float32), "[",
                         absl::StrJoin(elements_sql, ", "), "]");
   }
@@ -1035,6 +1193,15 @@ absl::StatusOr<std::string> SQLBuilder::GetSQL(
   }
   if (type->IsExtendedType()) {
     return value.GetSQL(mode);
+  }
+  if (type->IsDeclarativeType()) {
+    if (IsVectorType(type)) {
+      // Rejects encodings that cannot be spelled as SQL.
+      GOOGLESQL_RETURN_IF_ERROR(DecodeFloat32VectorLiteral(value).status());
+    }
+    // Declarative types render themselves through their formatting callback,
+    // e.g. a FLOAT32 VECTOR becomes `ENCODE_VECTOR([...])`.
+    return value.GetSQL(options_.language_options, use_external_float32);
   }
 
   return ::googlesql_base::InvalidArgumentErrorBuilder()
@@ -1515,8 +1682,7 @@ absl::Status SQLBuilder::VisitResolvedAnalyticFunctionCall(
 
   GOOGLESQL_ASSIGN_OR_RETURN(std::string sql, GetFunctionCallSQL(node, std::move(inputs),
                                                        arguments_suffix));
-  std::unique_ptr<AnalyticFunctionInfo> analytic_function_info =
-      std::make_unique<AnalyticFunctionInfo>(sql);
+  auto analytic_function_info = std::make_unique<AnalyticFunctionInfo>(sql);
   if (node->window_frame() != nullptr) {
     GOOGLESQL_ASSIGN_OR_RETURN(std::unique_ptr<QueryFragment> result,
                      ProcessNode(node->window_frame()));
@@ -3059,25 +3225,64 @@ absl::Status SQLBuilder::VisitResolvedTableScan(const ResolvedTableScan* node) {
   auto query_expression =
       std::make_unique<QueryExpression>(this->options_.target_syntax_mode);
   std::string from;
+  const bool is_string_literal_table = !node->name_string().empty();
+  // A table referenced by a STRING literal (FROM 'path') is printed back as a
+  // string literal. See (broken link).
+  const std::string table_reference =
+      is_string_literal_table ? ToStringLiteral(node->name_string())
+                              : TableToIdentifierLiteral(node->table());
   if (UseTableClause(node, options_.language_options)) {
-    absl::StrAppend(&from, "(TABLE ", TableToIdentifierLiteral(node->table()),
-                    " )");
+    GOOGLESQL_RET_CHECK(!is_string_literal_table)
+        << "TABLE clause doesn't support STRING literal table references";
+    absl::StrAppend(&from, "(TABLE ", table_reference, " )");
   } else {
-    absl::StrAppend(&from, TableToIdentifierLiteral(node->table()));
+    absl::StrAppend(&from, table_reference);
   }
   if (node->hint_list_size() > 0) {
     absl::StrAppend(&from, " ");
     GOOGLESQL_RETURN_IF_ERROR(AppendHintsIfPresent(node->hint_list(), &from));
   }
-  // To avoid name resolution conflicts between a table and a column that have
-  // the same name.
-  std::string table_alias =
-      GetTableAliasForVisitResolvedTableScan(*node, &from);
+  // Process FOR SYSTEM_TIME AS OF before choosing the alias. A subquery in it
+  // may scan the same Table and add it to table_alias_map(), and the alias of
+  // this scan must match what its parent reads from table_alias_map().
+  std::string for_system_time_sql;
   if (node->for_system_time_expr() != nullptr) {
     GOOGLESQL_ASSIGN_OR_RETURN(std::unique_ptr<QueryFragment> result,
                      ProcessNode(node->for_system_time_expr()));
-    absl::StrAppend(&from, " FOR SYSTEM_TIME AS OF ", result->GetSQL());
+    for_system_time_sql =
+        absl::StrCat(" FOR SYSTEM_TIME AS OF ", result->GetSQL());
   }
+  // A table referenced by a STRING literal never uses Table::Name() as its
+  // alias, because the query didn't reference the table by that name (which
+  // may be empty, internal, or a path). Record a generated alias before
+  // calling GetTableAliasForVisitResolvedTableScan so that GetTableAlias (in
+  // the base implementation and overrides) and callers reading column paths
+  // from table_alias_map() all use it.
+  if (is_string_literal_table && !table_alias_map().contains(node->table())) {
+    mutable_table_alias_map().emplace(node->table(), GenerateUniqueAliasName());
+  }
+  // To avoid name resolution conflicts between a table and a column that have
+  // the same name.
+  const size_t from_size_before_alias = from.size();
+  std::string table_alias =
+      GetTableAliasForVisitResolvedTableScan(*node, &from);
+  if (is_string_literal_table) {
+    if (from.size() == from_size_before_alias) {
+      // The base implementation always writes `AS` for a STRING literal table,
+      // but an override may return an implicit alias without writing `AS` (for
+      // example, Table::Name() when CanTableBeUsedWithImplicitAlias is true).
+      // The implicit alias of a STRING literal comes from the literal's value,
+      // so write `AS` with the alias that its columns use.
+      table_alias = GetTableAlias(node->table());
+      absl::StrAppend(&from, " AS ", table_alias);
+    } else {
+      // An override may write its own alias without GetTableAlias, such as the
+      // scan's alias. Record it so that callers reading the paths of its
+      // columns from table_alias_map() use the alias that was written.
+      mutable_table_alias_map()[node->table()] = table_alias;
+    }
+  }
+  absl::StrAppend(&from, for_system_time_sql);
   GOOGLESQL_RET_CHECK(query_expression->TrySetFromClause(from));
 
   SQLAliasPairList select_list;
@@ -4616,11 +4821,14 @@ std::string SQLBuilder::GetTableAlias(const Table* table) {
 
 std::string SQLBuilder::GetScanAlias(const ResolvedScan* scan) {
   if (!scan_alias_map().contains(scan)) {
+    // We prefer to use table names as alias prefix when possible. A table
+    // referenced by a STRING literal wasn't referenced by its name, though.
+    const bool use_table_name =
+        scan->Is<ResolvedTableScan>() &&
+        scan->GetAs<ResolvedTableScan>()->name_string().empty();
     const std::string scan_alias_prefix_lower = absl::AsciiStrToLower(
-        (scan->node_kind() == RESOLVED_TABLE_SCAN)
-            // We prefer to use table names as alias prefix when possible.
-            ? scan->GetAs<ResolvedTableScan>()->table()->Name()
-            : scan->node_kind_string());
+        use_table_name ? scan->GetAs<ResolvedTableScan>()->table()->Name()
+                       : scan->node_kind_string());
     googlesql_base::InsertIfNotPresent(&mutable_scan_alias_map(), scan,
                             MakeNonconflictingAlias(scan_alias_prefix_lower));
   }
@@ -4660,7 +4868,7 @@ int SQLBuilder::max_seen_alias_id() const {
 }
 
 void SQLBuilder::SetPathForColumn(const ResolvedColumn& column,
-                                  const std::string& path) {
+                                  absl::string_view path) {
   mutable_column_paths().insert_or_assign(column.column_id(), path);
 }
 
@@ -4727,6 +4935,19 @@ absl::Status SQLBuilder::SetPathForColumnsInScan(const ResolvedScan* scan,
                                           ToIdentifierLiteral(column.name())));
   }
   return absl::OkStatus();
+}
+
+absl::Status SQLBuilder::SetPathForColumnsInTableScanWithTableAlias(
+    const ResolvedScan* scan) {
+  if (!scan->Is<ResolvedTableScan>()) {
+    return absl::OkStatus();
+  }
+  const std::string* table_alias = googlesql_base::FindOrNull(
+      table_alias_map(), scan->GetAs<ResolvedTableScan>()->table());
+  if (table_alias == nullptr) {
+    return absl::OkStatus();
+  }
+  return SetPathForColumnsInScan(scan, *table_alias);
 }
 
 absl::StatusOr<ResolvedColumn> ExtractColumnFromArgumentForUsing(
@@ -5151,31 +5372,6 @@ static std::string GetSetOperationColumnMatchMode(
     case ResolvedSetOperationScan::CORRESPONDING_BY:
       return "CORRESPONDING BY";
   }
-}
-
-static bool HasDuplicateAliases(
-    const QueryExpression::SQLAliasPairList& select_list) {
-  absl::flat_hash_set<absl::string_view, googlesql_base::StringViewCaseHash,
-                      googlesql_base::StringViewCaseEqual>
-      aliases;
-  for (const auto& [unused, alias] : select_list) {
-    if (!aliases.insert(alias).second) {
-      return true;
-    }
-  }
-  return false;
-}
-
-static bool HasDuplicateAliases(absl::Span<const absl::string_view> aliases) {
-  absl::flat_hash_set<absl::string_view, googlesql_base::StringViewCaseHash,
-                      googlesql_base::StringViewCaseEqual>
-      seen_aliases;
-  for (const absl::string_view alias : aliases) {
-    if (!seen_aliases.insert(alias).second) {
-      return true;
-    }
-  }
-  return false;
 }
 
 // Maps from column ids to their aliases. A column_id can be assigned with
@@ -6812,7 +7008,7 @@ absl::Status SQLBuilder::MaybeSetupRecursiveView(
 
 absl::Status SQLBuilder::GetCreateViewStatement(
     const ResolvedCreateViewBase* node, bool is_value_table,
-    const std::string& view_type) {
+    absl::string_view view_type) {
   // Dummy access on the fields so as to pass the final CheckFieldsAccessed() on
   // a statement level before building the sql.
   for (const auto& output_col : node->output_column_list()) {
@@ -7253,6 +7449,12 @@ absl::Status SQLBuilder::AppendCloneDataSource(const ResolvedScan* source,
   };
 
   GOOGLESQL_ASSIGN_OR_RETURN(std::unique_ptr<QueryFragment> result, ProcessNode(source));
+  // VisitResolvedTableScan populates the QueryExpression's SELECT list from
+  // TableScan::column_list(), whereas CLONE/COPY only takes the table/filter
+  // clause (`<table_name> [FOR SYSTEM_TIME ...] [WHERE ...]`), not a SELECT
+  // query. Clear the SELECT list (as VisitResolvedFilterScan already does) so
+  // result->GetSQL() emits only `" FROM ..."`.
+  result->query_expression->ResetSelectClause();
   std::string from = result->GetSQL();
   // Strip away the " FROM " generated by QueryExpression::GetSQLQuery()
   absl::StrAppend(sql, absl::StripPrefix(from, kFrom));
@@ -8434,6 +8636,8 @@ absl::Status SQLBuilder::VisitResolvedDeleteStmt(
     GOOGLESQL_RETURN_IF_ERROR(SetPathForColumnsInScan(node->using_scan(), ""));
     GOOGLESQL_ASSIGN_OR_RETURN(std::unique_ptr<QueryFragment> from,
                      ProcessNode(node->using_scan()));
+    GOOGLESQL_RETURN_IF_ERROR(
+        SetPathForColumnsInTableScanWithTableAlias(node->using_scan()));
     std::unique_ptr<QueryExpression> query_expression(
         from->query_expression.release());
     if (IsPipeSyntaxTargetMode()) {
@@ -8996,6 +9200,8 @@ absl::Status SQLBuilder::VisitResolvedUpdateStmt(
     GOOGLESQL_RETURN_IF_ERROR(SetPathForColumnsInScan(node->from_scan(), ""));
     GOOGLESQL_ASSIGN_OR_RETURN(std::unique_ptr<QueryFragment> from,
                      ProcessNode(node->from_scan()));
+    GOOGLESQL_RETURN_IF_ERROR(
+        SetPathForColumnsInTableScanWithTableAlias(node->from_scan()));
     std::unique_ptr<QueryExpression> query_expression(
         from->query_expression.release());
     if (IsPipeSyntaxTargetMode()) {
@@ -10208,18 +10414,24 @@ std::string SQLBuilder::TableNameToIdentifierLiteral(
 
 std::string SQLBuilder::GetTableAliasForVisitResolvedTableScan(
     const ResolvedTableScan& node, std::string* from) {
+  const Table* table = node.table();
   std::string table_alias;
+  // Once a table has an alias in table_alias_map(), such as a table referenced
+  // by a STRING literal (added by VisitResolvedTableScan), every scan of it
+  // uses that alias, because callers look up the paths of its columns in
+  // table_alias_map() by Table.
   // Check collision against columns.
-  if (col_ref_names().contains(absl::AsciiStrToLower(node.table()->Name()))) {
-    table_alias = GetTableAlias(node.table());
+  if (table_alias_map().contains(table) ||
+      col_ref_names().contains(absl::AsciiStrToLower(table->Name()))) {
+    table_alias = GetTableAlias(table);
     absl::StrAppend(from, " AS ", table_alias);
   } else {
     // Check collision against other tables. If we select from T and S.T we have
     // to alias one of them to avoid collision for example.
-    if (CanTableBeUsedWithImplicitAlias(node.table())) {
-      table_alias = ToIdentifierLiteral(node.table()->Name());
+    if (CanTableBeUsedWithImplicitAlias(table)) {
+      table_alias = ToIdentifierLiteral(table->Name());
     } else {
-      table_alias = GetTableAlias(node.table());
+      table_alias = GetTableAlias(table);
       absl::StrAppend(from, " AS ", table_alias);
     }
   }
@@ -10562,40 +10774,97 @@ absl::Status SQLBuilder::VisitResolvedAuxLoadDataStmt(
   return absl::OkStatus();
 }
 
+namespace {
+
+// Returns whether the value of `item` is a braced value `field { ... }`, i.e. a
+// nested UPDATE constructor whose input is the item's `update_item_column`.
+bool IsBracedValue(const ResolvedUpdateFieldItem& item) {
+  if (item.update_item_column() == nullptr ||
+      !item.expr()->Is<ResolvedUpdateConstructor>()) {
+    return false;
+  }
+  const ResolvedExpr* input =
+      item.expr()->GetAs<ResolvedUpdateConstructor>()->expr();
+  return input->Is<ResolvedColumnRef>() &&
+         input->GetAs<ResolvedColumnRef>()->column() ==
+             item.update_item_column()->column();
+}
+
+}  // namespace
+
 absl::Status SQLBuilder::VisitResolvedUpdateConstructor(
     const ResolvedUpdateConstructor* node) {
+  GOOGLESQL_ASSIGN_OR_RETURN(std::string sql,
+                   GetUpdateConstructorSQL(node, /*is_braced_value=*/false));
+  PushQueryFragment(node, sql);
+  return absl::OkStatus();
+}
+
+absl::StatusOr<std::string> SQLBuilder::GetUpdateConstructorSQL(
+    const ResolvedUpdateConstructor* node, bool is_braced_value) {
   GOOGLESQL_RET_CHECK(node->update_element_column().IsInitialized());
-  node->update_element_column();  // Mark field as visited.
+  const ResolvedColumn& update_element_column = node->update_element_column();
 
-  const bool is_recursive_update_with_repeated_field =
-      node->expr()->Is<ResolvedColumnRef>() &&
-      node->expr()->GetAs<ResolvedColumnRef>()->column() ==
-          node->update_element_column();
+  GOOGLESQL_ASSIGN_OR_RETURN(std::unique_ptr<QueryFragment> proto_expr,
+                   ProcessNode(node->expr()));
 
+  // Reads of `update_element_column` in the update values print as the name
+  // under which the object being updated is visible there
+  // ((broken link)). For a braced value, that is the name of
+  // the field being updated, which is how its input expression prints.
+  // Otherwise it is the alias, which is generated if the query had none.
+  std::string element_sql;
   std::string text;
-  if (is_recursive_update_with_repeated_field) {
-    GOOGLESQL_RET_CHECK(
-        mutable_pending_columns()
-            .insert({node->update_element_column().column_id(), kEmptyAlias})
-            .second);
+  if (is_braced_value) {
+    element_sql = proto_expr->GetSQL();
   } else {
-    std::unique_ptr<QueryFragment> proto_expr;
-    absl::StrAppend(&text, "UPDATE (");
-    GOOGLESQL_ASSIGN_OR_RETURN(proto_expr, ProcessNode(node->expr()));
-    absl::StrAppend(&text, proto_expr->GetSQL(), ")");
-    if (!node->alias().empty()) {
-      absl::StrAppend(&text, " AS ", node->alias());
-    }
-    GOOGLESQL_RET_CHECK(mutable_pending_columns()
-                  .insert({node->update_element_column().column_id(),
-                           proto_expr->GetSQL()})
-                  .second);
+    element_sql = ToIdentifierLiteral(
+        node->alias().empty() ? GetColumnAlias(update_element_column)
+                              : node->alias());
+    // The alias goes inside the parentheses: `UPDATE (<expr> AS <alias>)`.
+    absl::StrAppend(&text, "UPDATE (", proto_expr->GetSQL(), " AS ",
+                    element_sql, ")");
   }
+  GOOGLESQL_RET_CHECK(mutable_pending_columns()
+                .insert({update_element_column.column_id(), element_sql})
+                .second);
+
   std::string update_field_item_sql;
   for (const std::unique_ptr<const ResolvedUpdateFieldItem>& update_item :
        node->update_field_item_list()) {
-    GOOGLESQL_ASSIGN_OR_RETURN(std::unique_ptr<QueryFragment> modified_value,
-                     ProcessNode(update_item->expr()));
+    // The item column is only visible to this item's value expression, so it
+    // is registered before processing the value and removed right after. It is
+    // printed as the name of the field being updated, because that is what the
+    // name resolves to inside the update value. An extension introduces no
+    // name, so its column can only be read as the input of a braced value,
+    // which prints nothing.
+    const ResolvedColumnHolder* update_item_column =
+        update_item->update_item_column();
+    if (update_item_column != nullptr) {
+      const google::protobuf::FieldDescriptor* leaf_field =
+          update_item->proto_field_path().back();
+      GOOGLESQL_RET_CHECK(mutable_pending_columns()
+                    .insert({update_item_column->column().column_id(),
+                             leaf_field->is_extension()
+                                 ? std::string(kEmptyAlias)
+                                 : ToIdentifierLiteral(leaf_field->name())})
+                    .second);
+    }
+    std::string value_sql;
+    if (IsBracedValue(*update_item)) {
+      GOOGLESQL_ASSIGN_OR_RETURN(
+          value_sql,
+          GetUpdateConstructorSQL(
+              update_item->expr()->GetAs<ResolvedUpdateConstructor>(),
+              /*is_braced_value=*/true));
+    } else {
+      GOOGLESQL_ASSIGN_OR_RETURN(std::unique_ptr<QueryFragment> modified_value,
+                       ProcessNode(update_item->expr()));
+      value_sql = modified_value->GetSQL();
+    }
+    if (update_item_column != nullptr) {
+      mutable_pending_columns().erase(update_item_column->column().column_id());
+    }
     std::string field_path_sql;
     bool is_first = true;
     bool is_first_extension = false;
@@ -10611,9 +10880,10 @@ absl::Status SQLBuilder::VisitResolvedUpdateConstructor(
       if (is_first) {
         is_first = false;
       }
-      absl::StrAppend(&field_path_sql, field->is_extension()
-                                           ? field->full_name()
-                                           : field->name());
+      absl::StrAppend(&field_path_sql,
+                      field->is_extension()
+                          ? field->full_name()
+                          : ToIdentifierLiteral(field->name()));
       if (field->is_extension()) {
         absl::StrAppend(&field_path_sql, ")");
       }
@@ -10636,14 +10906,12 @@ absl::Status SQLBuilder::VisitResolvedUpdateConstructor(
         break;
     }
     absl::StrAppend(&update_field_item_sql, field_path_sql, op_string,
-                    modified_value->GetSQL());
+                    value_sql);
   }
   absl::StrAppend(&text, "{", update_field_item_sql, "\n}");
 
-  mutable_pending_columns().erase(node->update_element_column().column_id());
-
-  PushQueryFragment(node, text);
-  return absl::OkStatus();
+  mutable_pending_columns().erase(update_element_column.column_id());
+  return text;
 }
 
 absl::Status SQLBuilder::VisitResolvedMakeColumnListSpec(

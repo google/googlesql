@@ -2301,6 +2301,157 @@ GROUP BY **COLUMNS(['KitchenSink'])
 ==
 
 # ------------------------------------------------------------------------------
+# GROUP BY modifiers of a multi-level aggregate function
+# ------------------------------------------------------------------------------
+
+# ** expands to one GROUP BY modifier per column, and can be mixed with
+# explicit modifiers. Duplicates of an explicit modifier are folded, as they
+# are for explicit modifiers.
+SELECT ARRAY_AGG(MAX(int_a) GROUP BY {{**COLUMNS(['string_a', 'int_b'])|int_b, **COLUMNS(['string_a', 'int_b'])}})
+FROM MultipleColumns
+--
+ALTERNATION GROUP: **COLUMNS(['string_a', 'int_b'])
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#10 AS `$col1` [ARRAY<INT64>]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#10]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$aggregate.$agg1#10]
+        +-input_scan=
+        | +-TableScan(column_list=MultipleColumns.[int_a#1, string_a#2, int_b#3], table=MultipleColumns, column_index_list=[0, 1, 2])
+        +-aggregate_list=
+          +-$agg1#10 :=
+            +-AggregateFunctionCall(GoogleSQL:array_agg(INT64) -> ARRAY<INT64>)
+              +-ColumnRef(type=INT64, column=$aggregate.$agg1#9)
+              +-group_by_list=
+              | +-$groupbymod#7 := ColumnRef(type=STRING, column=MultipleColumns.string_a#2)
+              | +-$groupbymod#8 := ColumnRef(type=INT64, column=MultipleColumns.int_b#3)
+              +-group_by_aggregate_list=
+                +-$agg1#9 :=
+                  +-AggregateFunctionCall(GoogleSQL:max(INT64) -> INT64)
+                    +-ColumnRef(type=INT64, column=MultipleColumns.int_a#1)
+
+[SQLBUILDER_OUTPUT]
+SELECT
+  ARRAY_AGG(MAX(multiplecolumns_4.a_1)
+    GROUP BY multiplecolumns_4.a_2, multiplecolumns_4.a_3) AS a_5
+FROM
+  (
+    SELECT
+      MultipleColumns.int_a AS a_1,
+      MultipleColumns.string_a AS a_2,
+      MultipleColumns.int_b AS a_3
+    FROM
+      MultipleColumns
+  ) AS multiplecolumns_4;
+--
+ALTERNATION GROUP: int_b, **COLUMNS(['string_a', 'int_b'])
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#10 AS `$col1` [ARRAY<INT64>]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#10]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$aggregate.$agg1#10]
+        +-input_scan=
+        | +-TableScan(column_list=MultipleColumns.[int_a#1, string_a#2, int_b#3], table=MultipleColumns, column_index_list=[0, 1, 2])
+        +-aggregate_list=
+          +-$agg1#10 :=
+            +-AggregateFunctionCall(GoogleSQL:array_agg(INT64) -> ARRAY<INT64>)
+              +-ColumnRef(type=INT64, column=$aggregate.$agg1#9)
+              +-group_by_list=
+              | +-$groupbymod#7 := ColumnRef(type=INT64, column=MultipleColumns.int_b#3)
+              | +-$groupbymod#8 := ColumnRef(type=STRING, column=MultipleColumns.string_a#2)
+              +-group_by_aggregate_list=
+                +-$agg1#9 :=
+                  +-AggregateFunctionCall(GoogleSQL:max(INT64) -> INT64)
+                    +-ColumnRef(type=INT64, column=MultipleColumns.int_a#1)
+
+[SQLBUILDER_OUTPUT]
+SELECT
+  ARRAY_AGG(MAX(multiplecolumns_4.a_1)
+    GROUP BY multiplecolumns_4.a_3, multiplecolumns_4.a_2) AS a_5
+FROM
+  (
+    SELECT
+      MultipleColumns.int_a AS a_1,
+      MultipleColumns.string_a AS a_2,
+      MultipleColumns.int_b AS a_3
+    FROM
+      MultipleColumns
+  ) AS multiplecolumns_4;
+==
+
+# A modifier that expands to nothing is dropped. A GROUP BY left with no
+# modifiers at all is an error: at query level an empty expansion is treated as
+# `GROUP BY ()`, and `GROUP BY ()` is not supported inside an aggregate
+# function. Dropping the clause instead would silently turn the multi-level
+# aggregate into an ordinary one.
+SELECT ARRAY_AGG(MAX(int_a) GROUP BY **COLUMNS([]){{, int_b|}})
+FROM MultipleColumns
+--
+ALTERNATION GROUP: , int_b
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#9 AS `$col1` [ARRAY<INT64>]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#9]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$aggregate.$agg1#9]
+        +-input_scan=
+        | +-TableScan(column_list=MultipleColumns.[int_a#1, int_b#3], table=MultipleColumns, column_index_list=[0, 2])
+        +-aggregate_list=
+          +-$agg1#9 :=
+            +-AggregateFunctionCall(GoogleSQL:array_agg(INT64) -> ARRAY<INT64>)
+              +-ColumnRef(type=INT64, column=$aggregate.$agg1#8)
+              +-group_by_list=
+              | +-$groupbymod#7 := ColumnRef(type=INT64, column=MultipleColumns.int_b#3)
+              +-group_by_aggregate_list=
+                +-$agg1#8 :=
+                  +-AggregateFunctionCall(GoogleSQL:max(INT64) -> INT64)
+                    +-ColumnRef(type=INT64, column=MultipleColumns.int_a#1)
+
+[SQLBUILDER_OUTPUT]
+SELECT
+  ARRAY_AGG(MAX(multiplecolumns_3.a_1)
+    GROUP BY multiplecolumns_3.a_2) AS a_4
+FROM
+  (
+    SELECT
+      MultipleColumns.int_a AS a_1,
+      MultipleColumns.int_b AS a_2
+    FROM
+      MultipleColumns
+  ) AS multiplecolumns_3;
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: GROUP BY modifiers in an aggregate function would expand to zero columns [at 1:29]
+SELECT ARRAY_AGG(MAX(int_a) GROUP BY **COLUMNS([]))
+                            ^
+==
+
+# A column of an ungroupable type is rejected the same way as when it is
+# listed explicitly.
+SELECT ARRAY_AGG(key GROUP BY **COLUMNS(['KitchenSink']))
+FROM ComplexTypes
+--
+ERROR: GROUP BY modifier has type PROTO, which is not groupable. [at 1:31]
+SELECT ARRAY_AGG(key GROUP BY **COLUMNS(['KitchenSink']))
+                              ^
+==
+
+# ------------------------------------------------------------------------------
 # Name resolution
 # ------------------------------------------------------------------------------
 

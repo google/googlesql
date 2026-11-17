@@ -384,7 +384,7 @@ class DeclarativeTypeDescriptor final {
 
     // *Additional* required features for this type. Does not include other
     // features which are required for the backing type.
-    // IsSupportedType() checks both, plus FEATURE_DECLARATIVE_TYPE_FRAMEWORK.
+    // IsSupportedType() checks both.
     LanguageOptions::LanguageFeatureSet additional_required_language_features;
 
     // The type parameter handling strategy for this declarative type.

@@ -689,6 +689,7 @@ Use the `DELETE` statement when you want to delete rows from a table.
 
 <pre>
 DELETE [FROM] target_name
+[USING from_clause]
 WHERE condition [ASSERT_ROWS_MODIFIED n] [ then_return_clause ]
 
 then_return_clause:
@@ -709,6 +710,88 @@ replace_clause:
 
 **Note**: `DELETE` statements must comply with all
 [statement rules][statement-rules].
+
+### `USING` keyword
+
+A `DELETE` statement can optionally include a `USING` clause.
+
+You can use the `USING` clause to join one or more table expressions, such as
+tables, subqueries, or joins, with the target table to specify the rows to
+delete.
+
+The `USING` clause join is a cross join if no join condition is specified in the
+`WHERE` clause; otherwise, it's an inner join. To specify the join predicate
+between the target table and tables in the `USING` clause, use the `WHERE`
+clause.
+
+Caveats:
+
++   The `WHERE` clause can reference columns from the target table and columns
+    from any `FROM` item in the `USING` clause. If there's a name collision,
+    unqualified references are treated as ambiguous.
++   The `USING` clause is evaluated independently of the target table and can't
+    reference columns from the target table. Correlated or lateral references to
+    the target table aren't allowed.
++   If the target table is also referenced in the `USING` clause as a table
+    name, you must use an alias to distinguish them when performing a self-join.
++   If a row in the target table matches zero rows from the `USING` clause, or
+    if the `USING` clause is empty (even with `WHERE true`), then the row isn't
+    deleted.
++   If a row in the target table matches one or more rows from the `USING`
+    clause, then the target row is deleted once. The deleted row is counted once
+    in `ASSERT_ROWS_MODIFIED` and returned once in `THEN RETURN`. Unlike an
+    `UPDATE` statement with a `FROM` clause, matching multiple rows from the
+    `USING` clause doesn't cause a runtime error.
++   The `THEN RETURN` clause can only reference columns from the target table,
+    not columns from the `USING` clause.
+
+The following example deletes rows from the `Inventory` table for products that
+are present in the `NewArrivals` table:
+
+```googlesql
+DELETE FROM dataset.Inventory i
+USING dataset.NewArrivals n
+WHERE i.product = n.product;
+```
+
+Before:
+
+```googlesql
+-- Inventory
+/*-------------------+----------+--------------------+
+ |      product      | quantity | supply_constrained |
+ +-------------------+----------+--------------------+
+ | dishwasher        |       30 |               NULL |
+ | dryer             |       30 |               NULL |
+ | front load washer |       20 |               NULL |
+ | microwave         |       20 |               NULL |
+ | oven              |        5 |               NULL |
+ | refrigerator      |       10 |               NULL |
+ | top load washer   |       10 |               NULL |
+ +-------------------+----------+--------------------*/
+
+-- NewArrivals
+/*-----------------+----------+--------------+
+ |     product     | quantity |  warehouse   |
+ +-----------------+----------+--------------+
+ | dryer           |      200 | warehouse #2 |
+ | oven            |      300 | warehouse #3 |
+ | top load washer |      100 | warehouse #1 |
+ +-----------------+----------+--------------*/
+```
+
+After:
+
+```googlesql
+/*-------------------+----------+--------------------+
+ |      product      | quantity | supply_constrained |
+ +-------------------+----------+--------------------+
+ | dishwasher        |       30 |               NULL |
+ | front load washer |       20 |               NULL |
+ | microwave         |       20 |               NULL |
+ | refrigerator      |       10 |               NULL |
+ +-------------------+----------+--------------------*/
+```
 
 ### `WHERE` keyword
 

@@ -1,395 +1,1938 @@
 # Tests for STRING literals used as table references in FROM, such as
 # FROM '/path/to/file.csv'.
-# The parser accepts them, but the analyzer doesn't support them yet.
-[default language_features=MAXIMUM]
+# See (broken link).
+# The parser always accepts STRING literals here. The analyzer rejects them
+# without FEATURE_STRING_LITERAL_TABLE_REFERENCES. With the feature, they are
+# resolved through Catalog::FindTableFromString. The SampleCatalog registers
+# several tables that can be found this way.
 
-SELECT * FROM 'users.csv'
+# Without the feature, all literal table references are rejected.
+[language_features=MAXIMUM,-STRING_LITERAL_TABLE_REFERENCES]
+{{SELECT * FROM 'users.csv'|SELECT * FROM KeyValue JOIN 'users.csv' USING (Key)|FROM 'users.csv'}}
+--
+ALTERNATION GROUP: SELECT * FROM 'users.csv'
 --
 ERROR: String literal table references are not supported [at 1:15]
 SELECT * FROM 'users.csv'
               ^
-==
-
-FROM 'users.csv'
+--
+ALTERNATION GROUP: SELECT * FROM KeyValue JOIN 'users.csv' USING (Key)
+--
+ERROR: String literal table references are not supported [at 1:29]
+SELECT * FROM KeyValue JOIN 'users.csv' USING (Key)
+                            ^
+--
+ALTERNATION GROUP: FROM 'users.csv'
 --
 ERROR: String literal table references are not supported [at 1:6]
 FROM 'users.csv'
      ^
 ==
 
-# Concatenated, raw, empty and non-ASCII STRING literals.
-SELECT * FROM {{'users' ".csv"|r'C:\users.csv'|''|'' AS t|'数据.csv'}}
+[show_extracted_table_names]
+[language_features=MAXIMUM,-STRING_LITERAL_TABLE_REFERENCES]
+SELECT * FROM 'users.csv'
 --
-ALTERNATION GROUP: 'users' ".csv"
---
+Extracted table names:
 ERROR: String literal table references are not supported [at 1:15]
-SELECT * FROM 'users' ".csv"
+SELECT * FROM 'users.csv'
+              ^
+ERROR: String literal table references are not supported [at 1:15]
+SELECT * FROM 'users.csv'
+              ^
+==
+
+# TODO: b/568351814 - Remove the no_* defaults below:
+# - no_run_deserializer: the Resolved AST deserializer finds a
+#   ResolvedTableScan's table with Catalog::FindTable(Table::FullName()), even
+#   if `name_string` is set. Tables that are only reachable through
+#   FindTableFromString aren't found by name (or a different table with the
+#   same name is found).
+# - no_test_extract_table_names: ExtractTableNames still returns an error for
+#   STRING literals, so the check that it succeeds whenever analysis succeeds
+#   fails. It will return them in a separate output.
+# - no_java: The Java test catalog is the SampleCatalog sent as a
+#   SimpleCatalogProto, which doesn't include the STRING literal tables yet.
+[default language_features=MAXIMUM,+STRING_LITERAL_TABLE_REFERENCES]
+[default no_run_deserializer]
+[default no_test_extract_table_names]
+[default no_java]
+
+SELECT {{*|name|u.name}} FROM 'users.csv' AS u
+--
+ALTERNATION GROUP: *
+--
+QueryStmt
++-output_column_list=
+| +-users.user_id#1 AS user_id [INT64]
+| +-users.name#2 AS name [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=users.[user_id#1, name#2]
+    +-input_scan=
+      +-TableScan(column_list=users.[user_id#1, name#2], table=users, column_index_list=[0, 1], alias="u", name_string="users.csv")
+--
+ALTERNATION GROUPS:
+    name
+    u.name
+--
+QueryStmt
++-output_column_list=
+| +-users.name#2 AS name [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[users.name#2]
+    +-input_scan=
+      +-TableScan(column_list=[users.name#2], table=users, column_index_list=[1], alias="u", name_string="users.csv")
+==
+
+# The analyzer passes the literal's value, after unescaping and concatenation,
+# to Catalog::FindTableFromString. It doesn't interpret the value. All of these
+# have the value `users.csv`, which SampleCatalog maps to the `users` table.
+# ResolvedTableScan records the value in `name_string`, and SQLBuilder prints it
+# back as a STRING literal with an explicit alias.
+[show_sqlbuilder_output]
+SELECT * FROM {{'users.csv'|"users.csv"|r'users.csv'|'''users.csv'''|'users\x2Ecsv'|'users' '.csv'}} AS u
+--
+QueryStmt
++-output_column_list=
+| +-users.user_id#1 AS user_id [INT64]
+| +-users.name#2 AS name [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=users.[user_id#1, name#2]
+    +-input_scan=
+      +-TableScan(column_list=users.[user_id#1, name#2], table=users, column_index_list=[0, 1], alias="u", name_string="users.csv")
+
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+SELECT
+  a_1.user_id AS user_id,
+  a_1.name AS name
+FROM
+  "users.csv" AS a_1;
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+FROM
+  "users.csv" AS a_1
+|> SELECT
+     a_1.user_id AS user_id,
+     a_1.name AS name;
+==
+
+# Literals that don't name a table. The error message shows the value, quoted
+# and escaped as a STRING literal. An empty literal is rejected before the
+# Catalog lookup.
+SELECT * FROM {{'no_such_file.csv'|"o'brien.csv"|r'C:\data\file.csv'|'数据.csv'|''}} AS t
+--
+ALTERNATION GROUP: 'no_such_file.csv'
+--
+ERROR: Cannot resolve string literal 'no_such_file.csv' as a table [at 1:15]
+SELECT * FROM 'no_such_file.csv' AS t
               ^
 --
-ALTERNATION GROUP: r'C:\users.csv'
+ALTERNATION GROUP: "o'brien.csv"
 --
-ERROR: String literal table references are not supported [at 1:15]
-SELECT * FROM r'C:\users.csv'
+ERROR: Cannot resolve string literal 'o\'brien.csv' as a table [at 1:15]
+SELECT * FROM "o'brien.csv" AS t
               ^
 --
-ALTERNATION GROUP: ''
+ALTERNATION GROUP: r'C:\data\file.csv'
 --
-ERROR: String literal table references are not supported [at 1:15]
-SELECT * FROM ''
-              ^
---
-ALTERNATION GROUP: '' AS t
---
-ERROR: String literal table references are not supported [at 1:15]
-SELECT * FROM '' AS t
+ERROR: Cannot resolve string literal 'C:\\data\\file.csv' as a table [at 1:15]
+SELECT * FROM r'C:\data\file.csv' AS t
               ^
 --
 ALTERNATION GROUP: '数据.csv'
 --
-ERROR: String literal table references are not supported [at 1:15]
-SELECT * FROM '数据.csv'
+ERROR: Cannot resolve string literal '数据.csv' as a table [at 1:15]
+SELECT * FROM '数据.csv' AS t
+              ^
+--
+ALTERNATION GROUP: ''
+--
+ERROR: String literal table reference cannot be empty [at 1:15]
+SELECT * FROM '' AS t
               ^
 ==
 
-# Other literals, parameters and expressions are syntax errors.
-SELECT * FROM {{1|b'users.csv'|NUMERIC '1'|@test_param_string|['users.csv']|ARRAY<STRING>['users.csv']}}
+# Joins with a catalog table, with the literal on either side. On the rhs, the
+# literal is never treated as an UNNEST or a correlated array reference.
+SELECT * FROM {{KeyValue JOIN 'users.csv' AS u|'users.csv' AS u JOIN KeyValue}} ON KeyValue.Key = u.user_id
 --
-ALTERNATION GROUP: 1
+ALTERNATION GROUP: KeyValue JOIN 'users.csv' AS u
 --
-ERROR: Syntax error: Unexpected integer literal "1" [at 1:15]
-SELECT * FROM 1
-              ^
+QueryStmt
++-output_column_list=
+| +-KeyValue.Key#1 AS Key [INT64]
+| +-KeyValue.Value#2 AS Value [STRING]
+| +-users.user_id#3 AS user_id [INT64]
+| +-users.name#4 AS name [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[KeyValue.Key#1, KeyValue.Value#2, users.user_id#3, users.name#4]
+    +-input_scan=
+      +-JoinScan
+        +-column_list=[KeyValue.Key#1, KeyValue.Value#2, users.user_id#3, users.name#4]
+        +-left_scan=
+        | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+        +-right_scan=
+        | +-TableScan(column_list=users.[user_id#3, name#4], table=users, column_index_list=[0, 1], alias="u", name_string="users.csv")
+        +-join_expr=
+          +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+            +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+            +-ColumnRef(type=INT64, column=users.user_id#3)
 --
-ALTERNATION GROUP: b'users.csv'
+ALTERNATION GROUP: 'users.csv' AS u JOIN KeyValue
 --
-ERROR: Syntax error: Unexpected bytes literal b'users.csv' [at 1:15]
-SELECT * FROM b'users.csv'
-              ^
---
-ALTERNATION GROUP: NUMERIC '1'
---
-ERROR: Syntax error: Expected end of input but got string literal '1' [at 1:23]
-SELECT * FROM NUMERIC '1'
-                      ^
---
-ALTERNATION GROUP: @test_param_string
---
-ERROR: Query parameters cannot be used in place of table names [at 1:15]
-SELECT * FROM @test_param_string
-              ^
---
-ALTERNATION GROUP: ['users.csv']
---
-ERROR: Syntax error: Unexpected "[" [at 1:15]
-SELECT * FROM ['users.csv']
-              ^
---
-ALTERNATION GROUP: ARRAY<STRING>['users.csv']
---
-ERROR: Syntax error: Unexpected keyword ARRAY [at 1:15]
-SELECT * FROM ARRAY<STRING>['users.csv']
-              ^
+QueryStmt
++-output_column_list=
+| +-users.user_id#1 AS user_id [INT64]
+| +-users.name#2 AS name [STRING]
+| +-KeyValue.Key#3 AS Key [INT64]
+| +-KeyValue.Value#4 AS Value [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[users.user_id#1, users.name#2, KeyValue.Key#3, KeyValue.Value#4]
+    +-input_scan=
+      +-JoinScan
+        +-column_list=[users.user_id#1, users.name#2, KeyValue.Key#3, KeyValue.Value#4]
+        +-left_scan=
+        | +-TableScan(column_list=users.[user_id#1, name#2], table=users, column_index_list=[0, 1], alias="u", name_string="users.csv")
+        +-right_scan=
+        | +-TableScan(column_list=KeyValue.[Key#3, Value#4], table=KeyValue, column_index_list=[0, 1])
+        +-join_expr=
+          +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+            +-ColumnRef(type=INT64, column=KeyValue.Key#3)
+            +-ColumnRef(type=INT64, column=users.user_id#1)
 ==
 
-# Query parameters are not table references, also after another table.
-SELECT * FROM {{KeyValue, @test_param_string|'users.csv', @test_param_string}}
+# Without an explicit alias, the range variable is derived from the literal's
+# path: the basename without shard suffixes and extensions. This works with
+# postfix operators too.
+SELECT users.name
+FROM 'users.csv'{{| @{hint=1}| TABLESAMPLE SYSTEM (10 PERCENT)}}
 --
-ALTERNATION GROUP: KeyValue, @test_param_string
+ALTERNATION GROUP: <empty>
 --
-ERROR: Syntax error: Unexpected "@" [at 1:25]
-SELECT * FROM KeyValue, @test_param_string
+QueryStmt
++-output_column_list=
+| +-users.name#2 AS name [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[users.name#2]
+    +-input_scan=
+      +-TableScan(column_list=[users.name#2], table=users, column_index_list=[1], name_string="users.csv")
+--
+ALTERNATION GROUP:  @{hint=1}
+--
+QueryStmt
++-output_column_list=
+| +-users.name#2 AS name [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[users.name#2]
+    +-input_scan=
+      +-TableScan
+        +-column_list=[users.name#2]
+        +-hint_list=
+        | +-hint := Literal(type=INT64, value=1)
+        +-table=users
+        +-column_index_list=[1]
+        +-name_string="users.csv"
+--
+ALTERNATION GROUP:  TABLESAMPLE SYSTEM (10 PERCENT)
+--
+QueryStmt
++-output_column_list=
+| +-users.name#2 AS name [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[users.name#2]
+    +-input_scan=
+      +-SampleScan
+        +-column_list=[users.name#2]
+        +-input_scan=
+        | +-TableScan(column_list=[users.name#2], table=users, column_index_list=[1], name_string="users.csv")
+        +-method="system"
+        +-size=
+        | +-Literal(type=INT64, value=10)
+        +-unit=PERCENT
+==
+
+# PIVOT and UNPIVOT work on an implicitly aliased literal. As with any table,
+# its range variable isn't visible after them.
+SELECT {{*|users.user_id}}
+FROM 'users.csv' PIVOT(COUNT(*) FOR name IN ('a'))
+--
+ALTERNATION GROUP: *
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.user_id#4 AS user_id [INT64]
+| +-$pivot.a#5 AS a [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$groupby.user_id#4, $pivot.a#5]
+    +-input_scan=
+      +-PivotScan
+        +-column_list=[$groupby.user_id#4, $pivot.a#5]
+        +-input_scan=
+        | +-TableScan(column_list=users.[user_id#1, name#2], table=users, column_index_list=[0, 1], name_string="users.csv")
+        +-group_by_list=
+        | +-user_id#4 := ColumnRef(type=INT64, column=users.user_id#1)
+        +-pivot_expr_list=
+        | +-AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)(parse_location=32-40)
+        +-for_expr=
+        | +-ColumnRef(parse_location=45-49, type=STRING, column=users.name#2)
+        +-pivot_value_list=
+        | +-Literal(type=STRING, value="a", preserve_in_literal_remover=TRUE)
+        +-pivot_column_list=
+          +-PivotColumn(column=$pivot.a#5, pivot_expr_index=0, pivot_value_index=0)
+--
+ALTERNATION GROUP: users.user_id
+--
+ERROR: Unrecognized name: users; Did you mean user_id? [at 1:8]
+SELECT users.user_id
+       ^
+==
+
+SELECT * FROM 'users.csv' UNPIVOT(v FOR c IN (user_id))
+--
+QueryStmt
++-output_column_list=
+| +-$unpivot.name#5 AS name [STRING]
+| +-$unpivot.v#3 AS v [INT64]
+| +-$unpivot.c#4 AS c [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=$unpivot.[name#5, v#3, c#4]
+    +-input_scan=
+      +-UnpivotScan
+        +-column_list=$unpivot.[name#5, v#3, c#4]
+        +-input_scan=
+        | +-TableScan(column_list=users.[user_id#1, name#2], table=users, column_index_list=[0, 1], name_string="users.csv")
+        +-value_column_list=[$unpivot.v#3]
+        +-label_column=$unpivot.c#4
+        +-label_list=
+        | +-Literal(type=STRING, value="user_id")
+        +-unpivot_arg_list=
+        | +-UnpivotArg
+        |   +-column_list=
+        |     +-ColumnRef(type=INT64, column=users.user_id#1)
+        +-projected_input_column_list=
+        | +-name#5 := ColumnRef(type=STRING, column=users.name#2)
+        +-include_nulls=FALSE
+==
+
+# The range variable is the name derived from the literal, not the table's
+# Table::Name(). Here it needs backticks.
+SELECT {{`2026-09-24`.message|daily_logs.message}} FROM 'logs/2026-09-24.csv'
+--
+ALTERNATION GROUP: `2026-09-24`.message
+--
+QueryStmt
++-output_column_list=
+| +-daily_logs.message#2 AS message [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[daily_logs.message#2]
+    +-input_scan=
+      +-TableScan(column_list=[daily_logs.message#2], table=daily_logs, column_index_list=[1], name_string="logs/2026-09-24.csv")
+--
+ALTERNATION GROUP: daily_logs.message
+--
+ERROR: Unrecognized name: daily_logs [at 1:8]
+SELECT daily_logs.message FROM 'logs/2026-09-24.csv'
+       ^
+==
+
+# A derived range variable hides a column with the same name, as any range
+# variable does. Here `orders` is both the derived name and a column.
+SELECT orders, orders.orders FROM 'orders/*.csv'
+--
+QueryStmt
++-output_column_list=
+| +-$query.orders#4 AS orders [STRUCT<order_id INT64, orders INT64>]
+| +-all_orders.orders#2 AS orders [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.orders#4, all_orders.orders#2]
+    +-expr_list=
+    | +-orders#4 :=
+    |   +-MakeStruct
+    |     +-type=STRUCT<order_id INT64, orders INT64>
+    |     +-field_list=
+    |       +-ColumnRef(type=INT64, column=all_orders.order_id#1)
+    |       +-ColumnRef(type=INT64, column=all_orders.orders#2)
+    +-input_scan=
+      +-TableScan(column_list=all_orders.[order_id#1, orders#2], table=all_orders, column_index_list=[0, 1], name_string="orders/*.csv")
+==
+
+SELECT events.service FROM '/cns/cell/logs/events@100.tfrecords'
+--
+QueryStmt
++-output_column_list=
+| +-events.service#2 AS service [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[events.service#2]
+    +-input_scan=
+      +-TableScan(column_list=[events.service#2], table=events, column_index_list=[1], name_string="/cns/cell/logs/events@100.tfrecords")
+==
+
+# For a value table, the derived name refers to the whole row.
+SELECT {{extra|int32_val1}} FROM 'extra.tfrecords'
+--
+ALTERNATION GROUP: extra
+--
+QueryStmt
++-output_column_list=
+| +-extra.value#1 AS extra [PROTO<googlesql_test.TestExtraPB>]
++-query=
+  +-ProjectScan
+    +-column_list=[extra.value#1]
+    +-input_scan=
+      +-TableScan(column_list=[extra.value#1], table=extra, column_index_list=[0], name_string="extra.tfrecords")
+--
+ALTERNATION GROUP: int32_val1
+--
+QueryStmt
++-output_column_list=
+| +-$query.int32_val1#2 AS int32_val1 [INT32]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.int32_val1#2]
+    +-expr_list=
+    | +-int32_val1#2 :=
+    |   +-GetProtoField
+    |     +-type=INT32
+    |     +-expr=
+    |     | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=extra.value#1)
+    |     +-field_descriptor=int32_val1
+    |     +-default_value=0
+    +-input_scan=
+      +-TableScan(column_list=[extra.value#1], table=extra, column_index_list=[0], name_string="extra.tfrecords")
+==
+
+SELECT arrays.key, v FROM 'arrays.tfrecords', arrays.int_array AS v
+--
+QueryStmt
++-output_column_list=
+| +-arrays.key#1 AS key [INT64]
+| +-$array.v#3 AS v [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[arrays.key#1, $array.v#3]
+    +-input_scan=
+      +-ArrayScan
+        +-column_list=[arrays.key#1, arrays.int_array#2, $array.v#3]
+        +-input_scan=
+        | +-TableScan(column_list=arrays.[key#1, int_array#2], table=arrays, column_index_list=[0, 1], name_string="arrays.tfrecords")
+        +-array_expr_list=
+        | +-ColumnRef(type=ARRAY<INT64>, column=arrays.int_array#2)
+        +-element_column_list=[$array.v#3]
+==
+
+# An explicit alias replaces the derived name.
+SELECT users.name FROM 'users.csv' AS u
+--
+ERROR: Unrecognized name: users; Did you mean user_id? [at 1:8]
+SELECT users.name FROM 'users.csv' AS u
+       ^
+==
+
+# Derived names in other FROM item positions.
+SELECT KeyValue.Value, users.name
+FROM KeyValue JOIN 'users.csv' ON KeyValue.Key = users.user_id
+--
+QueryStmt
++-output_column_list=
+| +-KeyValue.Value#2 AS Value [STRING]
+| +-users.name#4 AS name [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[KeyValue.Value#2, users.name#4]
+    +-input_scan=
+      +-JoinScan
+        +-column_list=[KeyValue.Key#1, KeyValue.Value#2, users.user_id#3, users.name#4]
+        +-left_scan=
+        | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+        +-right_scan=
+        | +-TableScan(column_list=users.[user_id#3, name#4], table=users, column_index_list=[0, 1], name_string="users.csv")
+        +-join_expr=
+          +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+            +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+            +-ColumnRef(type=INT64, column=users.user_id#3)
+==
+
+SELECT * FROM (SELECT users.user_id FROM 'users.csv')
+--
+QueryStmt
++-output_column_list=
+| +-users.user_id#1 AS user_id [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[users.user_id#1]
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[users.user_id#1]
+        +-input_scan=
+          +-TableScan(column_list=[users.user_id#1], table=users, column_index_list=[0], name_string="users.csv")
+==
+
+FROM 'users.csv'
+|> JOIN '/cns/cell/logs/events@100.tfrecords' USING (user_id)
+|> SELECT users.name, events.service
+--
+QueryStmt
++-output_column_list=
+| +-users.name#2 AS name [STRING]
+| +-events.service#4 AS service [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[users.name#2, events.service#4]
+    +-input_scan=
+      +-JoinScan
+        +-column_list=[users.user_id#1, users.name#2, events.user_id#3, events.service#4]
+        +-left_scan=
+        | +-TableScan(column_list=users.[user_id#1, name#2], table=users, column_index_list=[0, 1], name_string="users.csv")
+        +-right_scan=
+        | +-TableScan(column_list=events.[user_id#3, service#4], table=events, column_index_list=[0, 1], name_string="/cns/cell/logs/events@100.tfrecords")
+        +-join_expr=
+        | +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+        |   +-ColumnRef(type=INT64, column=users.user_id#1)
+        |   +-ColumnRef(type=INT64, column=events.user_id#3)
+        +-has_using=TRUE
+==
+
+INSERT INTO KeyValue (Key, Value)
+SELECT users.user_id, users.name FROM 'users.csv'
+--
+InsertStmt
++-table_scan=
+| +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
++-insert_column_list=KeyValue.[Key#1, Value#2]
++-query=
+| +-ProjectScan
+|   +-column_list=users.[user_id#3, name#4]
+|   +-input_scan=
+|     +-TableScan(column_list=users.[user_id#3, name#4], table=users, column_index_list=[0, 1], name_string="users.csv")
++-query_output_column_list=users.[user_id#3, name#4]
++-column_access_list=WRITE,WRITE
+==
+
+# A derived name can collide with another range variable in the same FROM
+# clause, including one from a catalog table.
+SELECT * FROM {{KeyValue, 'KeyValue.csv'|'users.csv', 'users.csv'}}
+--
+ALTERNATION GROUP: KeyValue, 'KeyValue.csv'
+--
+ERROR: Duplicate table alias KeyValue in the same FROM clause [at 1:25]
+SELECT * FROM KeyValue, 'KeyValue.csv'
                         ^
 --
-ALTERNATION GROUP: 'users.csv', @test_param_string
+ALTERNATION GROUP: 'users.csv', 'users.csv'
 --
-ERROR: Syntax error: Unexpected "@" [at 1:28]
-SELECT * FROM 'users.csv', @test_param_string
+ERROR: Duplicate table alias users in the same FROM clause [at 1:28]
+SELECT * FROM 'users.csv', 'users.csv'
                            ^
 ==
 
-# Multiple STRING literal table references. The first one is reported.
-SELECT * FROM {{'a.csv', 'b.csv' JOIN 'c.csv'|KeyValue, 'b.csv' JOIN 'c.csv'}}
+# When there's no single name (a list of paths, or a glob with no fixed
+# directory), or the name would start with `$`, the scan is anonymous: there's
+# no range variable, so only unqualified column names work.
+SELECT {{*|order_id|sales.order_id|sales_and_returns.order_id}}
+FROM 'sales.csv,returns.csv'
 --
-ALTERNATION GROUP: 'a.csv', 'b.csv' JOIN 'c.csv'
+ALTERNATION GROUP: *
 --
-ERROR: String literal table references are not supported [at 1:15]
-SELECT * FROM 'a.csv', 'b.csv' JOIN 'c.csv'
-              ^
+QueryStmt
++-output_column_list=
+| +-sales_and_returns.order_id#1 AS order_id [INT64]
+| +-sales_and_returns.amount#2 AS amount [DOUBLE]
++-query=
+  +-ProjectScan
+    +-column_list=sales_and_returns.[order_id#1, amount#2]
+    +-input_scan=
+      +-TableScan(column_list=sales_and_returns.[order_id#1, amount#2], table=sales_and_returns, column_index_list=[0, 1], name_string="sales.csv,returns.csv")
 --
-ALTERNATION GROUP: KeyValue, 'b.csv' JOIN 'c.csv'
+ALTERNATION GROUP: order_id
 --
-ERROR: String literal table references are not supported [at 1:25]
-SELECT * FROM KeyValue, 'b.csv' JOIN 'c.csv'
-                        ^
+QueryStmt
++-output_column_list=
+| +-sales_and_returns.order_id#1 AS order_id [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[sales_and_returns.order_id#1]
+    +-input_scan=
+      +-TableScan(column_list=[sales_and_returns.order_id#1], table=sales_and_returns, column_index_list=[0], name_string="sales.csv,returns.csv")
+--
+ALTERNATION GROUP: sales.order_id
+--
+ERROR: Unrecognized name: sales [at 1:8]
+SELECT sales.order_id
+       ^
+--
+ALTERNATION GROUP: sales_and_returns.order_id
+--
+ERROR: Unrecognized name: sales_and_returns [at 1:8]
+SELECT sales_and_returns.order_id
+       ^
 ==
 
-# A STRING literal is not a TABLE clause target yet.
-# TODO: b/568351814 - Support STRING literals in the TABLE clause.
-SELECT * FROM {{tvf_one_relation_arg_with_fixed_output(TABLE 'users.csv')|tvf_one_relation_arg_with_fixed_output(TABLE ('users.csv' PARTITION BY x ORDER BY y))}}
+SELECT {{tmp_key|tmp.tmp_key}} FROM '$tmp.csv'
 --
-ALTERNATION GROUP: tvf_one_relation_arg_with_fixed_output(TABLE 'users.csv')
+ALTERNATION GROUP: tmp_key
 --
-ERROR: Syntax error: Expected ")" but got string literal 'users.csv' [at 1:60]
-SELECT * FROM tvf_one_relation_arg_with_fixed_output(TABLE 'users.csv')
-                                                           ^
+QueryStmt
++-output_column_list=
+| +-tmp.tmp_key#1 AS tmp_key [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[tmp.tmp_key#1]
+    +-input_scan=
+      +-TableScan(column_list=[tmp.tmp_key#1], table=tmp, column_index_list=[0], name_string="$tmp.csv")
 --
-ALTERNATION GROUP: tvf_one_relation_arg_with_fixed_output(TABLE ('users.csv' PARTITION BY x ORDER BY y))
+ALTERNATION GROUP: tmp.tmp_key
 --
-ERROR: Syntax error: Unexpected string literal 'users.csv' [at 1:61]
-...FROM tvf_one_relation_arg_with_fixed_output(TABLE ('users.csv' PARTITION B...
-                                                      ^
+ERROR: Unrecognized name: tmp [at 1:8]
+SELECT tmp.tmp_key FROM '$tmp.csv'
+       ^
 ==
 
-SELECT * FROM 'users.csv' {{AS u|@{hint=1}|WITH OFFSET|TABLESAMPLE SYSTEM (10 PERCENT)|FOR SYSTEM_TIME AS OF CURRENT_TIMESTAMP()|PIVOT(COUNT(*) FOR Value IN ('a'))|AS u PIVOT(COUNT(*) FOR Value IN ('a'))}}
+# An anonymous value table.
+SELECT {{*|int32_val1}} FROM '/*.tfrecords'
 --
-ALTERNATION GROUP: AS u
+ALTERNATION GROUP: *
 --
-ERROR: String literal table references are not supported [at 1:15]
-SELECT * FROM 'users.csv' AS u
-              ^
+QueryStmt
++-output_column_list=
+| +-$query.int32_val1#3 AS int32_val1 [INT32]
+| +-$query.int32_val2#4 AS int32_val2 [INT32]
+| +-$query.str_value#5 AS str_value [ARRAY<STRING>]
++-query=
+  +-ProjectScan
+    +-column_list=$query.[int32_val1#3, int32_val2#4, str_value#5]
+    +-expr_list=
+    | +-int32_val1#3 :=
+    | | +-GetProtoField
+    | |   +-type=INT32
+    | |   +-expr=
+    | |   | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=all_extra.value#1)
+    | |   +-field_descriptor=int32_val1
+    | |   +-default_value=0
+    | +-int32_val2#4 :=
+    | | +-GetProtoField
+    | |   +-type=INT32
+    | |   +-expr=
+    | |   | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=all_extra.value#1)
+    | |   +-field_descriptor=int32_val2
+    | |   +-default_value=0
+    | +-str_value#5 :=
+    |   +-GetProtoField
+    |     +-type=ARRAY<STRING>
+    |     +-expr=
+    |     | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=all_extra.value#1)
+    |     +-field_descriptor=str_value
+    |     +-default_value=[]
+    +-input_scan=
+      +-TableScan(column_list=[all_extra.value#1], table=all_extra, column_index_list=[0], name_string="/*.tfrecords")
 --
-ALTERNATION GROUP: @{hint=1}
+ALTERNATION GROUP: int32_val1
 --
-ERROR: String literal table references are not supported [at 1:15]
-SELECT * FROM 'users.csv' @{hint=1}
-              ^
+QueryStmt
++-output_column_list=
+| +-$query.int32_val1#3 AS int32_val1 [INT32]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.int32_val1#3]
+    +-expr_list=
+    | +-int32_val1#3 :=
+    |   +-GetProtoField
+    |     +-type=INT32
+    |     +-expr=
+    |     | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=all_extra.value#1)
+    |     +-field_descriptor=int32_val1
+    |     +-default_value=0
+    +-input_scan=
+      +-TableScan(column_list=[all_extra.value#1], table=all_extra, column_index_list=[0], name_string="/*.tfrecords")
+==
+
+# Anonymous scans don't collide with each other.
+SELECT {{*|order_id}} FROM 'sales.csv,returns.csv', 'sales.csv,returns.csv'
 --
-ALTERNATION GROUP: WITH OFFSET
+ALTERNATION GROUP: *
 --
-ERROR: String literal table references are not supported [at 1:15]
-SELECT * FROM 'users.csv' WITH OFFSET
-              ^
+QueryStmt
++-output_column_list=
+| +-sales_and_returns.order_id#1 AS order_id [INT64]
+| +-sales_and_returns.amount#2 AS amount [DOUBLE]
+| +-sales_and_returns.order_id#4 AS order_id [INT64]
+| +-sales_and_returns.amount#5 AS amount [DOUBLE]
++-query=
+  +-ProjectScan
+    +-column_list=sales_and_returns.[order_id#1, amount#2, order_id#4, amount#5]
+    +-input_scan=
+      +-JoinScan
+        +-column_list=sales_and_returns.[order_id#1, amount#2, order_id#4, amount#5]
+        +-left_scan=
+        | +-TableScan(column_list=sales_and_returns.[order_id#1, amount#2], table=sales_and_returns, column_index_list=[0, 1], name_string="sales.csv,returns.csv")
+        +-right_scan=
+          +-TableScan(column_list=sales_and_returns.[order_id#4, amount#5], table=sales_and_returns, column_index_list=[0, 1], name_string="sales.csv,returns.csv")
 --
-ALTERNATION GROUP: TABLESAMPLE SYSTEM (10 PERCENT)
+ALTERNATION GROUP: order_id
 --
-ERROR: String literal table references are not supported [at 1:15]
-SELECT * FROM 'users.csv' TABLESAMPLE SYSTEM (10 PERCENT)
-              ^
+ERROR: Column name order_id is ambiguous [at 1:8]
+SELECT order_id FROM 'sales.csv,returns.csv', 'sales.csv,returns.csv'
+       ^
+==
+
+SELECT {{*|int32_val1}} FROM '/*.tfrecords', '/*.tfrecords'
 --
-ALTERNATION GROUP: FOR SYSTEM_TIME AS OF CURRENT_TIMESTAMP()
+ALTERNATION GROUP: *
 --
-ERROR: String literal table references are not supported [at 1:15]
-SELECT * FROM 'users.csv' FOR SYSTEM_TIME AS OF CURRENT_TIMESTAMP()
-              ^
+QueryStmt
++-output_column_list=
+| +-$query.int32_val1#5 AS int32_val1 [INT32]
+| +-$query.int32_val2#6 AS int32_val2 [INT32]
+| +-$query.str_value#7 AS str_value [ARRAY<STRING>]
+| +-$query.int32_val1#8 AS int32_val1 [INT32]
+| +-$query.int32_val2#9 AS int32_val2 [INT32]
+| +-$query.str_value#10 AS str_value [ARRAY<STRING>]
++-query=
+  +-ProjectScan
+    +-column_list=$query.[int32_val1#5, int32_val2#6, str_value#7, int32_val1#8, int32_val2#9, str_value#10]
+    +-expr_list=
+    | +-int32_val1#5 :=
+    | | +-GetProtoField
+    | |   +-type=INT32
+    | |   +-expr=
+    | |   | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=all_extra.value#1)
+    | |   +-field_descriptor=int32_val1
+    | |   +-default_value=0
+    | +-int32_val2#6 :=
+    | | +-GetProtoField
+    | |   +-type=INT32
+    | |   +-expr=
+    | |   | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=all_extra.value#1)
+    | |   +-field_descriptor=int32_val2
+    | |   +-default_value=0
+    | +-str_value#7 :=
+    | | +-GetProtoField
+    | |   +-type=ARRAY<STRING>
+    | |   +-expr=
+    | |   | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=all_extra.value#1)
+    | |   +-field_descriptor=str_value
+    | |   +-default_value=[]
+    | +-int32_val1#8 :=
+    | | +-GetProtoField
+    | |   +-type=INT32
+    | |   +-expr=
+    | |   | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=all_extra.value#3)
+    | |   +-field_descriptor=int32_val1
+    | |   +-default_value=0
+    | +-int32_val2#9 :=
+    | | +-GetProtoField
+    | |   +-type=INT32
+    | |   +-expr=
+    | |   | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=all_extra.value#3)
+    | |   +-field_descriptor=int32_val2
+    | |   +-default_value=0
+    | +-str_value#10 :=
+    |   +-GetProtoField
+    |     +-type=ARRAY<STRING>
+    |     +-expr=
+    |     | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=all_extra.value#3)
+    |     +-field_descriptor=str_value
+    |     +-default_value=[]
+    +-input_scan=
+      +-JoinScan
+        +-column_list=all_extra.[value#1, value#3]
+        +-left_scan=
+        | +-TableScan(column_list=[all_extra.value#1], table=all_extra, column_index_list=[0], name_string="/*.tfrecords")
+        +-right_scan=
+          +-TableScan(column_list=[all_extra.value#3], table=all_extra, column_index_list=[0], name_string="/*.tfrecords")
 --
-ALTERNATION GROUP: PIVOT(COUNT(*) FOR Value IN ('a'))
+ALTERNATION GROUP: int32_val1
 --
-ERROR: String literal table references are not supported [at 1:15]
-SELECT * FROM 'users.csv' PIVOT(COUNT(*) FOR Value IN ('a'))
-              ^
+ERROR: Column name int32_val1 is ambiguous [at 1:8]
+SELECT int32_val1 FROM '/*.tfrecords', '/*.tfrecords'
+       ^
+==
+
+# An explicit alias works on a literal that has no implicit alias.
+SELECT s.order_id FROM 'sales.csv,returns.csv' AS s
 --
-ALTERNATION GROUP: AS u PIVOT(COUNT(*) FOR Value IN ('a'))
+QueryStmt
++-output_column_list=
+| +-sales_and_returns.order_id#1 AS order_id [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[sales_and_returns.order_id#1]
+    +-input_scan=
+      +-TableScan(column_list=[sales_and_returns.order_id#1], table=sales_and_returns, column_index_list=[0], alias="s", name_string="sales.csv,returns.csv")
+==
+
+# Anonymous scans through PIVOT and JOIN USING.
+SELECT * FROM 'sales.csv,returns.csv' PIVOT(SUM(amount) FOR order_id IN (1))
 --
-ERROR: String literal table references are not supported [at 1:15]
-SELECT * FROM 'users.csv' AS u PIVOT(COUNT(*) FOR Value IN ('a'))
+QueryStmt
++-output_column_list=
+| +-$pivot._1#5 AS _1 [DOUBLE]
++-query=
+  +-ProjectScan
+    +-column_list=[$pivot._1#5]
+    +-input_scan=
+      +-PivotScan
+        +-column_list=[$pivot._1#5]
+        +-input_scan=
+        | +-TableScan(column_list=sales_and_returns.[order_id#1, amount#2], table=sales_and_returns, column_index_list=[0, 1], name_string="sales.csv,returns.csv")
+        +-pivot_expr_list=
+        | +-AggregateFunctionCall(GoogleSQL:sum(DOUBLE) -> DOUBLE)
+        |   +-parse_location=44-55
+        |   +-ColumnRef(type=DOUBLE, column=sales_and_returns.amount#2)
+        +-for_expr=
+        | +-ColumnRef(parse_location=60-68, type=INT64, column=sales_and_returns.order_id#1)
+        +-pivot_value_list=
+        | +-Literal(type=INT64, value=1, preserve_in_literal_remover=TRUE)
+        +-pivot_column_list=
+          +-PivotColumn(column=$pivot._1#5, pivot_expr_index=0, pivot_value_index=0)
+==
+
+FROM 'sales.csv,returns.csv' AS s
+|> JOIN 'sales.csv,returns.csv' USING (order_id)
+|> SELECT order_id, s.amount
+--
+QueryStmt
++-output_column_list=
+| +-sales_and_returns.order_id#1 AS order_id [INT64]
+| +-sales_and_returns.amount#2 AS amount [DOUBLE]
++-query=
+  +-ProjectScan
+    +-column_list=sales_and_returns.[order_id#1, amount#2]
+    +-input_scan=
+      +-JoinScan
+        +-column_list=sales_and_returns.[order_id#1, amount#2, order_id#4]
+        +-left_scan=
+        | +-TableScan(column_list=sales_and_returns.[order_id#1, amount#2], table=sales_and_returns, column_index_list=[0, 1], alias="s", name_string="sales.csv,returns.csv")
+        +-right_scan=
+        | +-TableScan(column_list=[sales_and_returns.order_id#4], table=sales_and_returns, column_index_list=[0], name_string="sales.csv,returns.csv")
+        +-join_expr=
+        | +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+        |   +-ColumnRef(type=INT64, column=sales_and_returns.order_id#1)
+        |   +-ColumnRef(type=INT64, column=sales_and_returns.order_id#4)
+        +-has_using=TRUE
+==
+
+# The same literal can be read twice under different aliases. Their shared
+# column names are ambiguous.
+SELECT {{*|user_id}} FROM 'users.csv' AS a, 'users.csv' AS b
+--
+ALTERNATION GROUP: *
+--
+QueryStmt
++-output_column_list=
+| +-users.user_id#1 AS user_id [INT64]
+| +-users.name#2 AS name [STRING]
+| +-users.user_id#3 AS user_id [INT64]
+| +-users.name#4 AS name [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=users.[user_id#1, name#2, user_id#3, name#4]
+    +-input_scan=
+      +-JoinScan
+        +-column_list=users.[user_id#1, name#2, user_id#3, name#4]
+        +-left_scan=
+        | +-TableScan(column_list=users.[user_id#1, name#2], table=users, column_index_list=[0, 1], alias="a", name_string="users.csv")
+        +-right_scan=
+          +-TableScan(column_list=users.[user_id#3, name#4], table=users, column_index_list=[0, 1], alias="b", name_string="users.csv")
+--
+ALTERNATION GROUP: user_id
+--
+ERROR: Column name user_id is ambiguous [at 1:8]
+SELECT user_id FROM 'users.csv' AS a, 'users.csv' AS b
+       ^
+==
+
+# Value table.
+SELECT {{int32_val1|x}} FROM 'extra.tfrecords' AS x
+--
+ALTERNATION GROUP: int32_val1
+--
+QueryStmt
++-output_column_list=
+| +-$query.int32_val1#2 AS int32_val1 [INT32]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.int32_val1#2]
+    +-expr_list=
+    | +-int32_val1#2 :=
+    |   +-GetProtoField
+    |     +-type=INT32
+    |     +-expr=
+    |     | +-ColumnRef(type=PROTO<googlesql_test.TestExtraPB>, column=extra.value#1)
+    |     +-field_descriptor=int32_val1
+    |     +-default_value=0
+    +-input_scan=
+      +-TableScan(column_list=[extra.value#1], table=extra, column_index_list=[0], alias="x", name_string="extra.tfrecords")
+--
+ALTERNATION GROUP: x
+--
+QueryStmt
++-output_column_list=
+| +-extra.value#1 AS x [PROTO<googlesql_test.TestExtraPB>]
++-query=
+  +-ProjectScan
+    +-column_list=[extra.value#1]
+    +-input_scan=
+      +-TableScan(column_list=[extra.value#1], table=extra, column_index_list=[0], alias="x", name_string="extra.tfrecords")
+==
+
+# Array access through the table alias.
+SELECT a.key, v FROM 'arrays.tfrecords' AS a, a.int_array AS v
+--
+QueryStmt
++-output_column_list=
+| +-arrays.key#1 AS key [INT64]
+| +-$array.v#3 AS v [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[arrays.key#1, $array.v#3]
+    +-input_scan=
+      +-ArrayScan
+        +-column_list=[arrays.key#1, arrays.int_array#2, $array.v#3]
+        +-input_scan=
+        | +-TableScan(column_list=arrays.[key#1, int_array#2], table=arrays, column_index_list=[0, 1], alias="a", name_string="arrays.tfrecords")
+        +-array_expr_list=
+        | +-ColumnRef(type=ARRAY<INT64>, column=arrays.int_array#2)
+        +-element_column_list=[$array.v#3]
+==
+
+# Table modifiers and postfix operators.
+SELECT * FROM 'users.csv' @{hint=1} AS u
+--
+QueryStmt
++-output_column_list=
+| +-users.user_id#1 AS user_id [INT64]
+| +-users.name#2 AS name [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=users.[user_id#1, name#2]
+    +-input_scan=
+      +-TableScan
+        +-column_list=users.[user_id#1, name#2]
+        +-hint_list=
+        | +-hint := Literal(type=INT64, value=1)
+        +-table=users
+        +-column_index_list=[0, 1]
+        +-alias="u"
+        +-name_string="users.csv"
+==
+
+SELECT * FROM 'users.csv' AS u WITH OFFSET
+--
+ERROR: WITH OFFSET can only be used with array scans [at 1:15]
+SELECT * FROM 'users.csv' AS u WITH OFFSET
               ^
 ==
 
-# Joins. The literal on the rhs of a join is never treated as an UNNEST or a
-# correlated array reference.
-SELECT * FROM KeyValue JOIN 'users.csv' AS u ON KeyValue.Key = u.user_id
+SELECT * FROM 'users.csv' AS u TABLESAMPLE SYSTEM (10 PERCENT)
 --
-ERROR: String literal table references are not supported [at 1:29]
-SELECT * FROM KeyValue JOIN 'users.csv' AS u ON KeyValue.Key = u.user_id
-                            ^
+QueryStmt
++-output_column_list=
+| +-users.user_id#1 AS user_id [INT64]
+| +-users.name#2 AS name [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=users.[user_id#1, name#2]
+    +-input_scan=
+      +-SampleScan
+        +-column_list=users.[user_id#1, name#2]
+        +-input_scan=
+        | +-TableScan(column_list=users.[user_id#1, name#2], table=users, column_index_list=[0, 1], alias="u", name_string="users.csv")
+        +-method="system"
+        +-size=
+        | +-Literal(type=INT64, value=10)
+        +-unit=PERCENT
 ==
 
-SELECT * FROM KeyValue {{,|CROSS JOIN|NATURAL JOIN|RIGHT JOIN|FULL JOIN}} 'users.csv'
+SELECT * FROM 'users.csv' AS u FOR SYSTEM_TIME AS OF CURRENT_TIMESTAMP()
 --
-ALTERNATION GROUP: ,
---
-ERROR: String literal table references are not supported [at 1:26]
-SELECT * FROM KeyValue , 'users.csv'
-                         ^
---
-ALTERNATION GROUP: CROSS JOIN
---
-ERROR: String literal table references are not supported [at 1:35]
-SELECT * FROM KeyValue CROSS JOIN 'users.csv'
-                                  ^
---
-ALTERNATION GROUP: NATURAL JOIN
---
-ERROR: String literal table references are not supported [at 1:37]
-SELECT * FROM KeyValue NATURAL JOIN 'users.csv'
-                                    ^
---
-ALTERNATION GROUP: RIGHT JOIN
---
-ERROR: String literal table references are not supported [at 1:35]
-SELECT * FROM KeyValue RIGHT JOIN 'users.csv'
-                                  ^
---
-ALTERNATION GROUP: FULL JOIN
---
-ERROR: String literal table references are not supported [at 1:34]
-SELECT * FROM KeyValue FULL JOIN 'users.csv'
-                                 ^
+QueryStmt
++-output_column_list=
+| +-users.user_id#1 AS user_id [INT64]
+| +-users.name#2 AS name [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=users.[user_id#1, name#2]
+    +-input_scan=
+      +-TableScan
+        +-column_list=users.[user_id#1, name#2]
+        +-table=users
+        +-for_system_time_expr=
+        | +-FunctionCall(GoogleSQL:current_timestamp() -> TIMESTAMP)
+        +-column_index_list=[0, 1]
+        +-alias="u"
+        +-name_string="users.csv"
 ==
 
-SELECT * FROM KeyValue LEFT JOIN {{'users.csv'|'' AS t}} USING (Key)
+SELECT * FROM 'users.csv' AS u PIVOT(COUNT(*) FOR name IN ('a', 'b'))
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.user_id#4 AS user_id [INT64]
+| +-$pivot.a#5 AS a [INT64]
+| +-$pivot.b#6 AS b [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$groupby.user_id#4, $pivot.a#5, $pivot.b#6]
+    +-input_scan=
+      +-PivotScan
+        +-column_list=[$groupby.user_id#4, $pivot.a#5, $pivot.b#6]
+        +-input_scan=
+        | +-TableScan(column_list=users.[user_id#1, name#2], table=users, column_index_list=[0, 1], alias="u", name_string="users.csv")
+        +-group_by_list=
+        | +-user_id#4 := ColumnRef(type=INT64, column=users.user_id#1)
+        +-pivot_expr_list=
+        | +-AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)(parse_location=37-45)
+        +-for_expr=
+        | +-ColumnRef(parse_location=50-54, type=STRING, column=users.name#2)
+        +-pivot_value_list=
+        | +-Literal(type=STRING, value="a", preserve_in_literal_remover=TRUE)
+        | +-Literal(type=STRING, value="b", preserve_in_literal_remover=TRUE)
+        +-pivot_column_list=
+          +-PivotColumn(column=$pivot.a#5, pivot_expr_index=0, pivot_value_index=0)
+          +-PivotColumn(column=$pivot.b#6, pivot_expr_index=0, pivot_value_index=1)
+==
+
+SELECT * FROM 'users.csv' AS u UNPIVOT(v FOR c IN (user_id))
+--
+QueryStmt
++-output_column_list=
+| +-$unpivot.name#5 AS name [STRING]
+| +-$unpivot.v#3 AS v [INT64]
+| +-$unpivot.c#4 AS c [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=$unpivot.[name#5, v#3, c#4]
+    +-input_scan=
+      +-UnpivotScan
+        +-column_list=$unpivot.[name#5, v#3, c#4]
+        +-input_scan=
+        | +-TableScan(column_list=users.[user_id#1, name#2], table=users, column_index_list=[0, 1], alias="u", name_string="users.csv")
+        +-value_column_list=[$unpivot.v#3]
+        +-label_column=$unpivot.c#4
+        +-label_list=
+        | +-Literal(type=STRING, value="user_id")
+        +-unpivot_arg_list=
+        | +-UnpivotArg
+        |   +-column_list=
+        |     +-ColumnRef(type=INT64, column=users.user_id#1)
+        +-projected_input_column_list=
+        | +-name#5 := ColumnRef(type=STRING, column=users.name#2)
+        +-include_nulls=FALSE
+==
+
+# Columns of a STRING literal table can be referenced from a correlated
+# subquery.
+SELECT (SELECT COUNT(*) FROM KeyValue WHERE Key = u.user_id) FROM 'users.csv' AS u
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#6 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#6]
+    +-expr_list=
+    | +-$col1#6 :=
+    |   +-SubqueryExpr
+    |     +-type=INT64
+    |     +-subquery_type=SCALAR
+    |     +-parameter_list=
+    |     | +-ColumnRef(type=INT64, column=users.user_id#1)
+    |     +-subquery=
+    |       +-ProjectScan
+    |         +-column_list=[$aggregate.$agg1#5]
+    |         +-input_scan=
+    |           +-AggregateScan
+    |             +-column_list=[$aggregate.$agg1#5]
+    |             +-input_scan=
+    |             | +-FilterScan
+    |             |   +-column_list=[KeyValue.Key#3]
+    |             |   +-input_scan=
+    |             |   | +-TableScan(column_list=[KeyValue.Key#3], table=KeyValue, column_index_list=[0])
+    |             |   +-filter_expr=
+    |             |     +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+    |             |       +-ColumnRef(type=INT64, column=KeyValue.Key#3)
+    |             |       +-ColumnRef(type=INT64, column=users.user_id#1, is_correlated=TRUE)
+    |             +-aggregate_list=
+    |               +-$agg1#5 := AggregateFunctionCall(GoogleSQL:$count_star() -> INT64)
+    +-input_scan=
+      +-TableScan(column_list=[users.user_id#1], table=users, column_index_list=[0], alias="u", name_string="users.csv")
+==
+
+# A STRING literal inside a subquery.
+SELECT * FROM (SELECT user_id FROM 'users.csv' AS u)
+--
+QueryStmt
++-output_column_list=
+| +-users.user_id#1 AS user_id [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[users.user_id#1]
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[users.user_id#1]
+        +-input_scan=
+          +-TableScan(column_list=[users.user_id#1], table=users, column_index_list=[0], alias="u", name_string="users.csv")
+==
+
+# Pipe syntax.
+FROM 'users.csv' AS u
+|> JOIN '/cns/cell/logs/events@100.tfrecords' AS e USING (user_id)
+|> SELECT name, e.service
+--
+QueryStmt
++-output_column_list=
+| +-users.name#2 AS name [STRING]
+| +-events.service#4 AS service [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[users.name#2, events.service#4]
+    +-input_scan=
+      +-JoinScan
+        +-column_list=[users.user_id#1, users.name#2, events.user_id#3, events.service#4]
+        +-left_scan=
+        | +-TableScan(column_list=users.[user_id#1, name#2], table=users, column_index_list=[0, 1], alias="u", name_string="users.csv")
+        +-right_scan=
+        | +-TableScan(column_list=events.[user_id#3, service#4], table=events, column_index_list=[0, 1], alias="e", name_string="/cns/cell/logs/events@100.tfrecords")
+        +-join_expr=
+        | +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+        |   +-ColumnRef(type=INT64, column=users.user_id#1)
+        |   +-ColumnRef(type=INT64, column=events.user_id#3)
+        +-has_using=TRUE
+==
+
+# STRING literals never match WITH entries.
+WITH `users.csv` AS (SELECT 1 AS id)
+SELECT * FROM {{'users.csv'|`users.csv`}} AS u
 --
 ALTERNATION GROUP: 'users.csv'
 --
-ERROR: String literal table references are not supported [at 1:34]
-SELECT * FROM KeyValue LEFT JOIN 'users.csv' USING (Key)
-                                 ^
+QueryStmt
++-output_column_list=
+| +-users.user_id#2 AS user_id [INT64]
+| +-users.name#3 AS name [STRING]
++-query=
+  +-WithScan
+    +-column_list=users.[user_id#2, name#3]
+    +-with_entry_list=
+    | +-WithEntry
+    |   +-with_query_name="users.csv"
+    |   +-with_subquery=
+    |     +-ProjectScan
+    |       +-column_list=[users.csv.id#1]
+    |       +-expr_list=
+    |       | +-id#1 := Literal(type=INT64, value=1)
+    |       +-input_scan=
+    |         +-SingleRowScan
+    +-query=
+      +-ProjectScan
+        +-column_list=users.[user_id#2, name#3]
+        +-input_scan=
+          +-TableScan(column_list=users.[user_id#2, name#3], table=users, column_index_list=[0, 1], alias="u", name_string="users.csv")
 --
-ALTERNATION GROUP: '' AS t
+ALTERNATION GROUP: `users.csv`
 --
-ERROR: String literal table references are not supported [at 1:34]
-SELECT * FROM KeyValue LEFT JOIN '' AS t USING (Key)
-                                 ^
+QueryStmt
++-output_column_list=
+| +-users.csv.id#2 AS id [INT64]
++-query=
+  +-WithScan
+    +-column_list=[users.csv.id#2]
+    +-with_entry_list=
+    | +-WithEntry
+    |   +-with_query_name="users.csv"
+    |   +-with_subquery=
+    |     +-ProjectScan
+    |       +-column_list=[users.csv.id#1]
+    |       +-expr_list=
+    |       | +-id#1 := Literal(type=INT64, value=1)
+    |       +-input_scan=
+    |         +-SingleRowScan
+    +-query=
+      +-ProjectScan
+        +-column_list=[users.csv.id#2]
+        +-input_scan=
+          +-WithRefScan(column_list=[users.csv.id#2], with_query_name="users.csv")
 ==
 
-SELECT * FROM {{'users.csv' JOIN KeyValue USING (Key)|('users.csv' JOIN KeyValue USING (Key))}}
+# STRING literals and identifiers are looked up separately. A STRING literal
+# never finds a catalog table by name, and an identifier never finds a table
+# that's only reachable through a STRING literal.
+SELECT * FROM {{'KeyValue'|`users.csv`}} AS t
 --
-ALTERNATION GROUP: 'users.csv' JOIN KeyValue USING (Key)
+ALTERNATION GROUP: 'KeyValue'
 --
-ERROR: String literal table references are not supported [at 1:15]
-SELECT * FROM 'users.csv' JOIN KeyValue USING (Key)
+ERROR: Cannot resolve string literal 'KeyValue' as a table [at 1:15]
+SELECT * FROM 'KeyValue' AS t
               ^
 --
-ALTERNATION GROUP: ('users.csv' JOIN KeyValue USING (Key))
+ALTERNATION GROUP: `users.csv`
 --
-ERROR: String literal table references are not supported [at 1:16]
-SELECT * FROM ('users.csv' JOIN KeyValue USING (Key))
-               ^
-==
-
-# Subqueries.
-SELECT {{(SELECT COUNT(*) FROM 'users.csv')|EXISTS(SELECT 1 FROM 'users.csv')|Key IN (SELECT Key FROM 'users.csv')}} FROM KeyValue
---
-ALTERNATION GROUP: (SELECT COUNT(*) FROM 'users.csv')
---
-ERROR: String literal table references are not supported [at 1:30]
-SELECT (SELECT COUNT(*) FROM 'users.csv') FROM KeyValue
-                             ^
---
-ALTERNATION GROUP: EXISTS(SELECT 1 FROM 'users.csv')
---
-ERROR: String literal table references are not supported [at 1:29]
-SELECT EXISTS(SELECT 1 FROM 'users.csv') FROM KeyValue
-                            ^
---
-ALTERNATION GROUP: Key IN (SELECT Key FROM 'users.csv')
---
-ERROR: String literal table references are not supported [at 1:32]
-SELECT Key IN (SELECT Key FROM 'users.csv') FROM KeyValue
-                               ^
-==
-
-FROM KeyValue
-|> JOIN 'users.csv' USING (Key)
---
-ERROR: String literal table references are not supported [at 2:9]
-|> JOIN 'users.csv' USING (Key)
-        ^
-==
-
-FROM 'users.csv'
-|> WHERE true
---
-ERROR: String literal table references are not supported [at 1:6]
-FROM 'users.csv'
-     ^
-==
-
-# A STRING literal never matches a WITH entry.
-WITH `users.csv` AS (SELECT 1 AS id)
-SELECT * FROM 'users.csv'
---
-ERROR: String literal table references are not supported [at 2:15]
-SELECT * FROM 'users.csv'
+ERROR: Table not found: `users.csv` [at 1:15]
+SELECT * FROM `users.csv` AS t
               ^
 ==
 
-WITH RECURSIVE users AS (SELECT 1 AS id)
-SELECT * FROM 'users'
+# A STRING literal table whose Table::Name() matches a catalog table.
+# SQLBuilder prints the literal, not the identifier `KeyValue`, which would
+# find a different table.
+[show_sqlbuilder_output]
+SELECT KeyValue.Key, kv.file_key FROM KeyValue, 'KeyValue.csv' AS kv
 --
-ERROR: String literal table references are not supported [at 2:15]
-SELECT * FROM 'users'
-              ^
+QueryStmt
++-output_column_list=
+| +-KeyValue.Key#1 AS Key [INT64]
+| +-KeyValue.file_key#3 AS file_key [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=KeyValue.[Key#1, file_key#3]
+    +-input_scan=
+      +-JoinScan
+        +-column_list=KeyValue.[Key#1, file_key#3]
+        +-left_scan=
+        | +-TableScan(column_list=[KeyValue.Key#1], table=KeyValue, column_index_list=[0])
+        +-right_scan=
+          +-TableScan(column_list=[KeyValue.file_key#3], table=KeyValue, column_index_list=[0], alias="kv", name_string="KeyValue.csv")
+
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+SELECT
+  keyvalue_2.a_1 AS Key,
+  tablescan_5.a_4 AS file_key
+FROM
+  (
+    SELECT
+      KeyValue.Key AS a_1
+    FROM
+      KeyValue
+  ) AS keyvalue_2
+  CROSS JOIN
+  (
+    SELECT
+      a_3.file_key AS a_4
+    FROM
+      "KeyValue.csv" AS a_3
+  ) AS tablescan_5;
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+FROM
+  KeyValue
+|> SELECT
+     KeyValue.Key AS a_1
+|> AS keyvalue_2
+|> CROSS JOIN
+   (
+     FROM
+       "KeyValue.csv" AS a_3
+     |> SELECT
+          a_3.file_key AS a_4
+     |> AS tablescan_5
+   )
+|> SELECT
+     keyvalue_2.a_1 AS Key,
+     tablescan_5.a_4 AS file_key;
+==
+
+# A correlated subquery that mixes the STRING literal table 'KeyValue.csv',
+# whose Table::Name() is also `KeyValue`, in the outer query and the catalog
+# table `KeyValue` in the subquery. SQLBuilder gives the literal table a
+# generated alias, so neither table hides the other.
+[show_sqlbuilder_output]
+SELECT kv.file_key FROM 'KeyValue.csv' AS kv WHERE EXISTS (SELECT 1 FROM KeyValue WHERE KeyValue.Key = kv.file_key)
+--
+QueryStmt
++-output_column_list=
+| +-KeyValue.file_key#1 AS file_key [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[KeyValue.file_key#1]
+    +-input_scan=
+      +-FilterScan
+        +-column_list=[KeyValue.file_key#1]
+        +-input_scan=
+        | +-TableScan(column_list=[KeyValue.file_key#1], table=KeyValue, column_index_list=[0], alias="kv", name_string="KeyValue.csv")
+        +-filter_expr=
+          +-SubqueryExpr
+            +-type=BOOL
+            +-subquery_type=EXISTS
+            +-parameter_list=
+            | +-ColumnRef(type=INT64, column=KeyValue.file_key#1)
+            +-subquery=
+              +-ProjectScan
+                +-column_list=[$expr_subquery.$col1#4]
+                +-expr_list=
+                | +-$col1#4 := Literal(type=INT64, value=1)
+                +-input_scan=
+                  +-FilterScan
+                    +-column_list=[KeyValue.Key#2]
+                    +-input_scan=
+                    | +-TableScan(column_list=[KeyValue.Key#2], table=KeyValue, column_index_list=[0])
+                    +-filter_expr=
+                      +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+                        +-ColumnRef(type=INT64, column=KeyValue.Key#2)
+                        +-ColumnRef(type=INT64, column=KeyValue.file_key#1, is_correlated=TRUE)
+
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+SELECT
+  a_1.file_key AS file_key
+FROM
+  "KeyValue.csv" AS a_1
+WHERE
+  EXISTS(
+    SELECT
+      1 AS a_4
+    FROM
+      KeyValue
+    WHERE
+      (KeyValue.Key) = (a_1.file_key)
+  );
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+FROM
+  "KeyValue.csv" AS a_1
+|> WHERE
+     EXISTS(
+       FROM
+         KeyValue
+       |> WHERE
+            (KeyValue.Key) = (a_1.file_key)
+       |> SELECT
+            1 AS a_4
+     )
+|> SELECT
+     a_1.file_key AS file_key;
+==
+
+# Like above, but with the catalog table `KeyValue` in the outer query and the
+# STRING literal table 'KeyValue.csv' in the subquery.
+[show_sqlbuilder_output]
+SELECT KeyValue.Key FROM KeyValue WHERE EXISTS (SELECT 1 FROM 'KeyValue.csv' AS kv WHERE kv.file_key = KeyValue.Key)
+--
+QueryStmt
++-output_column_list=
+| +-KeyValue.Key#1 AS Key [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[KeyValue.Key#1]
+    +-input_scan=
+      +-FilterScan
+        +-column_list=[KeyValue.Key#1]
+        +-input_scan=
+        | +-TableScan(column_list=[KeyValue.Key#1], table=KeyValue, column_index_list=[0])
+        +-filter_expr=
+          +-SubqueryExpr
+            +-type=BOOL
+            +-subquery_type=EXISTS
+            +-parameter_list=
+            | +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+            +-subquery=
+              +-ProjectScan
+                +-column_list=[$expr_subquery.$col1#4]
+                +-expr_list=
+                | +-$col1#4 := Literal(type=INT64, value=1)
+                +-input_scan=
+                  +-FilterScan
+                    +-column_list=[KeyValue.file_key#3]
+                    +-input_scan=
+                    | +-TableScan(column_list=[KeyValue.file_key#3], table=KeyValue, column_index_list=[0], alias="kv", name_string="KeyValue.csv")
+                    +-filter_expr=
+                      +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+                        +-ColumnRef(type=INT64, column=KeyValue.file_key#3)
+                        +-ColumnRef(type=INT64, column=KeyValue.Key#1, is_correlated=TRUE)
+
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+SELECT
+  KeyValue.Key AS Key
+FROM
+  KeyValue
+WHERE
+  EXISTS(
+    SELECT
+      1 AS a_4
+    FROM
+      "KeyValue.csv" AS a_2
+    WHERE
+      (a_2.file_key) = (KeyValue.Key)
+  );
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+FROM
+  KeyValue
+|> WHERE
+     EXISTS(
+       FROM
+         "KeyValue.csv" AS a_2
+       |> WHERE
+            (a_2.file_key) = (KeyValue.Key)
+       |> SELECT
+            1 AS a_4
+     )
+|> SELECT
+     KeyValue.Key AS Key;
 ==
 
 # A STRING literal inside a WITH RECURSIVE entry is not a self-reference.
-WITH RECURSIVE t AS (SELECT 1 AS id UNION ALL SELECT * FROM 't')
+WITH RECURSIVE t AS (SELECT 1 AS id UNION ALL SELECT * FROM 't' AS x)
 SELECT * FROM t
 --
-ERROR: String literal table references are not supported [at 1:61]
-WITH RECURSIVE t AS (SELECT 1 AS id UNION ALL SELECT * FROM 't')
+ERROR: Cannot resolve string literal 't' as a table [at 1:61]
+WITH RECURSIVE t AS (SELECT 1 AS id UNION ALL SELECT * FROM 't' AS x)
                                                             ^
 ==
 
 # A STRING literal never matches a TVF table argument.
-CREATE TEMP TABLE FUNCTION f(t TABLE<x INT64>) AS SELECT * FROM 't'
+CREATE TEMP TABLE FUNCTION f(t TABLE<x INT64>) AS SELECT * FROM 't' AS x
 --
-ERROR: String literal table references are not supported [at 1:65]
-CREATE TEMP TABLE FUNCTION f(t TABLE<x INT64>) AS SELECT * FROM 't'
+ERROR: Cannot resolve string literal 't' as a table [at 1:65]
+CREATE TEMP TABLE FUNCTION f(t TABLE<x INT64>) AS SELECT * FROM 't' AS x
                                                                 ^
 ==
 
-# DML sources.
-INSERT INTO KeyValue (Key, Value) SELECT 1, 'a' FROM 'users.csv'
+# Reads inside DML and DDL.
+INSERT INTO KeyValue (Key, Value) SELECT user_id, name FROM 'users.csv' AS u
 --
-ERROR: String literal table references are not supported [at 1:54]
-INSERT INTO KeyValue (Key, Value) SELECT 1, 'a' FROM 'users.csv'
-                                                     ^
+InsertStmt
++-table_scan=
+| +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
++-insert_column_list=KeyValue.[Key#1, Value#2]
++-query=
+| +-ProjectScan
+|   +-column_list=users.[user_id#3, name#4]
+|   +-input_scan=
+|     +-TableScan(column_list=users.[user_id#3, name#4], table=users, column_index_list=[0, 1], alias="u", name_string="users.csv")
++-query_output_column_list=users.[user_id#3, name#4]
++-column_access_list=WRITE,WRITE
+==
+
+CREATE TABLE t1 (c1 INT64) PARTITION BY (SELECT user_id FROM 'users.csv' AS u)
+--
+ERROR: PARTITION BY expression cannot contain a table scan [at 1:62]
+CREATE TABLE t1 (c1 INT64) PARTITION BY (SELECT user_id FROM 'users.csv' AS u)
+                                                             ^
+==
+
+CREATE TABLE t AS SELECT * FROM 'users.csv' AS u
+--
+CreateTableAsSelectStmt
++-name_path=t
++-column_definition_list=
+| +-ColumnDefinition(name="user_id", type=INT64, column=t.user_id#3)
+| +-ColumnDefinition(name="name", type=STRING, column=t.name#4)
++-output_column_list=
+| +-users.user_id#1 AS user_id [INT64]
+| +-users.name#2 AS name [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=users.[user_id#1, name#2]
+    +-input_scan=
+      +-TableScan(column_list=users.[user_id#1, name#2], table=users, column_index_list=[0, 1], alias="u", name_string="users.csv")
 ==
 
 MERGE KeyValue USING 'users.csv' AS u ON KeyValue.Key = u.user_id
 WHEN MATCHED THEN DELETE
 --
-ERROR: String literal table references are not supported [at 1:22]
-MERGE KeyValue USING 'users.csv' AS u ON KeyValue.Key = u.user_id
-                     ^
+MergeStmt
++-table_scan=
+| +-TableScan(column_list=[KeyValue.Key#1], table=KeyValue, column_index_list=[0])
++-column_access_list=READ
++-from_scan=
+| +-TableScan(column_list=[users.user_id#3], table=users, column_index_list=[0], alias="u", name_string="users.csv")
++-merge_expr=
+| +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+|   +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+|   +-ColumnRef(type=INT64, column=users.user_id#3)
++-when_clause_list=
+  +-MergeWhen(match_type=MATCHED, action_type=DELETE)
 ==
 
-UPDATE KeyValue SET Value = 'a' FROM 'users.csv' AS u WHERE KeyValue.Key = u.Key
+UPDATE KeyValue SET Value = u.name FROM 'users.csv' AS u WHERE KeyValue.Key = u.user_id
 --
-ERROR: String literal table references are not supported [at 1:38]
-UPDATE KeyValue SET Value = 'a' FROM 'users.csv' AS u WHERE KeyValue.Key = u.Key
-                                     ^
+UpdateStmt
++-table_scan=
+| +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
++-column_access_list=READ,WRITE
++-where_expr=
+| +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+|   +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+|   +-ColumnRef(type=INT64, column=users.user_id#3)
++-update_item_list=
+| +-UpdateItem
+|   +-target=
+|   | +-ColumnRef(type=STRING, column=KeyValue.Value#2)
+|   +-set_value=
+|     +-DMLValue
+|       +-value=
+|         +-ColumnRef(type=STRING, column=users.name#4)
++-from_scan=
+  +-TableScan(column_list=users.[user_id#3, name#4], table=users, column_index_list=[0, 1], alias="u", name_string="users.csv")
 ==
 
-[language_features=MAXIMUM,+DML_DELETE_WITH_JOIN]
-DELETE KeyValue USING 'users.csv' AS u WHERE KeyValue.Key = u.Key
+[language_features=MAXIMUM,+STRING_LITERAL_TABLE_REFERENCES,+DML_DELETE_WITH_JOIN]
+DELETE KeyValue USING 'users.csv' AS u WHERE KeyValue.Key = u.user_id
 --
-ERROR: String literal table references are not supported [at 1:23]
-DELETE KeyValue USING 'users.csv' AS u WHERE KeyValue.Key = u.Key
-                      ^
+DeleteStmt
++-table_scan=
+| +-TableScan(column_list=[KeyValue.Key#1], table=KeyValue, column_index_list=[0])
++-column_access_list=READ
++-where_expr=
+| +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+|   +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+|   +-ColumnRef(type=INT64, column=users.user_id#3)
++-using_scan=
+  +-TableScan(column_list=[users.user_id#3], table=users, column_index_list=[0], alias="u", name_string="users.csv")
 ==
 
-# ExtractTableNames doesn't report a literal as an identifier path.
+# DML whose FROM STRING literal table gets a generated alias, here also with a
+# column that has the table's name. SQLBuilder qualifies the table's columns in
+# the other clauses with that alias.
+[show_sqlbuilder_output]
+UPDATE KeyValue SET Value = u.name FROM 'users.csv' AS u
+WHERE KeyValue.Key = u.user_id
+  AND EXISTS (SELECT users FROM (SELECT 1 AS users) WHERE users = 1)
+--
+UpdateStmt
++-table_scan=
+| +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
++-column_access_list=READ,WRITE
++-where_expr=
+| +-FunctionCall(GoogleSQL:$and(BOOL, repeated(1) BOOL) -> BOOL)
+|   +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+|   | +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+|   | +-ColumnRef(type=INT64, column=users.user_id#3)
+|   +-SubqueryExpr
+|     +-type=BOOL
+|     +-subquery_type=EXISTS
+|     +-subquery=
+|       +-ProjectScan
+|         +-column_list=[$subquery1.users#5]
+|         +-input_scan=
+|           +-FilterScan
+|             +-column_list=[$subquery1.users#5]
+|             +-input_scan=
+|             | +-ProjectScan
+|             |   +-column_list=[$subquery1.users#5]
+|             |   +-expr_list=
+|             |   | +-users#5 := Literal(type=INT64, value=1)
+|             |   +-input_scan=
+|             |     +-SingleRowScan
+|             +-filter_expr=
+|               +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+|                 +-ColumnRef(type=INT64, column=$subquery1.users#5)
+|                 +-Literal(type=INT64, value=1)
++-update_item_list=
+| +-UpdateItem
+|   +-target=
+|   | +-ColumnRef(type=STRING, column=KeyValue.Value#2)
+|   +-set_value=
+|     +-DMLValue
+|       +-value=
+|         +-ColumnRef(type=STRING, column=users.name#4)
++-from_scan=
+  +-TableScan(column_list=users.[user_id#3, name#4], table=users, column_index_list=[0, 1], alias="u", name_string="users.csv")
+
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+UPDATE KeyValue AS keyvalue_1
+SET
+  keyvalue_1.Value = a_2.name
+FROM
+  "users.csv" AS a_2
+WHERE
+  ((keyvalue_1.Key) = (a_2.user_id)) AND EXISTS(
+    SELECT
+      projectscan_6.a_5 AS a_5
+    FROM
+      (
+        SELECT
+          1 AS a_5
+      ) AS projectscan_6
+    WHERE
+      (projectscan_6.a_5) = 1
+  );
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+UPDATE KeyValue AS keyvalue_1
+SET
+  keyvalue_1.Value = tablescan_5.a_4
+FROM
+  (
+    FROM
+      "users.csv" AS a_2
+    |> SELECT
+         a_2.user_id AS a_3,
+         a_2.name AS a_4
+    |> AS tablescan_5
+  )
+WHERE
+  ((keyvalue_1.Key) = (tablescan_5.a_3)) AND EXISTS(
+    SELECT
+      1 AS a_6
+    |> AS projectscan_7
+    |> WHERE
+         (projectscan_7.a_6) = 1
+    |> SELECT
+         projectscan_7.a_6 AS a_6
+  );
+==
+
+# Same as above, for DELETE ... USING.
+[show_sqlbuilder_output]
+[language_features=MAXIMUM,+STRING_LITERAL_TABLE_REFERENCES,+DML_DELETE_WITH_JOIN]
+DELETE KeyValue USING 'users.csv' AS u
+WHERE KeyValue.Key = u.user_id
+  AND EXISTS (SELECT users FROM (SELECT 1 AS users) WHERE users = 1)
+--
+DeleteStmt
++-table_scan=
+| +-TableScan(column_list=[KeyValue.Key#1], table=KeyValue, column_index_list=[0])
++-column_access_list=READ
++-where_expr=
+| +-FunctionCall(GoogleSQL:$and(BOOL, repeated(1) BOOL) -> BOOL)
+|   +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+|   | +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+|   | +-ColumnRef(type=INT64, column=users.user_id#3)
+|   +-SubqueryExpr
+|     +-type=BOOL
+|     +-subquery_type=EXISTS
+|     +-subquery=
+|       +-ProjectScan
+|         +-column_list=[$subquery1.users#5]
+|         +-input_scan=
+|           +-FilterScan
+|             +-column_list=[$subquery1.users#5]
+|             +-input_scan=
+|             | +-ProjectScan
+|             |   +-column_list=[$subquery1.users#5]
+|             |   +-expr_list=
+|             |   | +-users#5 := Literal(type=INT64, value=1)
+|             |   +-input_scan=
+|             |     +-SingleRowScan
+|             +-filter_expr=
+|               +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+|                 +-ColumnRef(type=INT64, column=$subquery1.users#5)
+|                 +-Literal(type=INT64, value=1)
++-using_scan=
+  +-TableScan(column_list=[users.user_id#3], table=users, column_index_list=[0], alias="u", name_string="users.csv")
+
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+DELETE KeyValue AS keyvalue_1
+USING
+  "users.csv" AS a_2
+WHERE
+  ((keyvalue_1.Key) = (a_2.user_id)) AND EXISTS(
+    SELECT
+      projectscan_5.a_4 AS a_4
+    FROM
+      (
+        SELECT
+          1 AS a_4
+      ) AS projectscan_5
+    WHERE
+      (projectscan_5.a_4) = 1
+  );
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+DELETE KeyValue AS keyvalue_1
+USING
+  (
+    FROM
+      "users.csv" AS a_2
+    |> SELECT
+         a_2.user_id AS a_3
+    |> AS tablescan_4
+  )
+WHERE
+  ((keyvalue_1.Key) = (tablescan_4.a_3)) AND EXISTS(
+    SELECT
+      1 AS a_5
+    |> AS projectscan_6
+    |> WHERE
+         (projectscan_6.a_5) = 1
+    |> SELECT
+         projectscan_6.a_5 AS a_5
+  );
+==
+
+# The DML target and the FROM or USING STRING literal table share
+# Table::Name(). Both get generated aliases, which differ.
+[show_sqlbuilder_output]
+UPDATE KeyValue SET Value = 'x' FROM 'KeyValue.csv' AS kv
+WHERE KeyValue.Key = kv.file_key
+--
+UpdateStmt
++-table_scan=
+| +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
++-column_access_list=READ,WRITE
++-where_expr=
+| +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+|   +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+|   +-ColumnRef(type=INT64, column=KeyValue.file_key#3)
++-update_item_list=
+| +-UpdateItem
+|   +-target=
+|   | +-ColumnRef(type=STRING, column=KeyValue.Value#2)
+|   +-set_value=
+|     +-DMLValue
+|       +-value=
+|         +-Literal(type=STRING, value="x")
++-from_scan=
+  +-TableScan(column_list=[KeyValue.file_key#3], table=KeyValue, column_index_list=[0], alias="kv", name_string="KeyValue.csv")
+
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+UPDATE KeyValue AS keyvalue_1
+SET
+  keyvalue_1.Value = "x"
+FROM
+  "KeyValue.csv" AS a_2
+WHERE
+  (keyvalue_1.Key) = (a_2.file_key);
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+UPDATE KeyValue AS keyvalue_1
+SET
+  keyvalue_1.Value = "x"
+FROM
+  (
+    FROM
+      "KeyValue.csv" AS a_2
+    |> SELECT
+         a_2.file_key AS a_3
+    |> AS tablescan_4
+  )
+WHERE
+  (keyvalue_1.Key) = (tablescan_4.a_3);
+==
+
+[show_sqlbuilder_output]
+[language_features=MAXIMUM,+STRING_LITERAL_TABLE_REFERENCES,+DML_DELETE_WITH_JOIN]
+DELETE KeyValue USING 'KeyValue.csv' AS kv WHERE KeyValue.Key = kv.file_key
+--
+DeleteStmt
++-table_scan=
+| +-TableScan(column_list=[KeyValue.Key#1], table=KeyValue, column_index_list=[0])
++-column_access_list=READ
++-where_expr=
+| +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+|   +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+|   +-ColumnRef(type=INT64, column=KeyValue.file_key#3)
++-using_scan=
+  +-TableScan(column_list=[KeyValue.file_key#3], table=KeyValue, column_index_list=[0], alias="kv", name_string="KeyValue.csv")
+
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+DELETE KeyValue AS keyvalue_1
+USING
+  "KeyValue.csv" AS a_2
+WHERE
+  (keyvalue_1.Key) = (a_2.file_key);
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+DELETE KeyValue AS keyvalue_1
+USING
+  (
+    FROM
+      "KeyValue.csv" AS a_2
+    |> SELECT
+         a_2.file_key AS a_3
+    |> AS tablescan_4
+  )
+WHERE
+  (keyvalue_1.Key) = (tablescan_4.a_3);
+==
+
+# ExtractTableNames doesn't support STRING literals yet, and doesn't report a
+# literal as an identifier path.
 [show_extracted_table_names]
-SELECT * FROM {{'users.csv'|'a.b'|KeyValue JOIN 'users.csv' USING (Key)}}
+SELECT * FROM {{'users.csv' AS u|'a.b' AS t|KeyValue JOIN 'users.csv' AS u ON KeyValue.Key = u.user_id}}
 --
-ALTERNATION GROUP: 'users.csv'
---
-Extracted table names:
-ERROR: String literal table references are not supported [at 1:15]
-SELECT * FROM 'users.csv'
-              ^
-ERROR: String literal table references are not supported [at 1:15]
-SELECT * FROM 'users.csv'
-              ^
---
-ALTERNATION GROUP: 'a.b'
+ALTERNATION GROUP: 'users.csv' AS u
 --
 Extracted table names:
-ERROR: String literal table references are not supported [at 1:15]
-SELECT * FROM 'a.b'
+ERROR: Extracting table names is not supported yet for string literal table references [at 1:15]
+SELECT * FROM 'users.csv' AS u
               ^
-ERROR: String literal table references are not supported [at 1:15]
-SELECT * FROM 'a.b'
-              ^
+QueryStmt
++-output_column_list=
+| +-users.user_id#1 AS user_id [INT64]
+| +-users.name#2 AS name [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=users.[user_id#1, name#2]
+    +-input_scan=
+      +-TableScan(column_list=users.[user_id#1, name#2], table=users, column_index_list=[0, 1], alias="u", name_string="users.csv")
 --
-ALTERNATION GROUP: KeyValue JOIN 'users.csv' USING (Key)
+ALTERNATION GROUP: 'a.b' AS t
 --
 Extracted table names:
-ERROR: String literal table references are not supported [at 1:29]
-SELECT * FROM KeyValue JOIN 'users.csv' USING (Key)
+ERROR: Extracting table names is not supported yet for string literal table references [at 1:15]
+SELECT * FROM 'a.b' AS t
+              ^
+ERROR: Cannot resolve string literal 'a.b' as a table [at 1:15]
+SELECT * FROM 'a.b' AS t
+              ^
+--
+ALTERNATION GROUP: KeyValue JOIN 'users.csv' AS u ON KeyValue.Key = u.user_id
+--
+Extracted table names:
+ERROR: Extracting table names is not supported yet for string literal table references [at 1:29]
+SELECT * FROM KeyValue JOIN 'users.csv' AS u ON KeyValue.Key = u.user_id
                             ^
-ERROR: String literal table references are not supported [at 1:29]
-SELECT * FROM KeyValue JOIN 'users.csv' USING (Key)
-                            ^
+QueryStmt
++-output_column_list=
+| +-KeyValue.Key#1 AS Key [INT64]
+| +-KeyValue.Value#2 AS Value [STRING]
+| +-users.user_id#3 AS user_id [INT64]
+| +-users.name#4 AS name [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[KeyValue.Key#1, KeyValue.Value#2, users.user_id#3, users.name#4]
+    +-input_scan=
+      +-JoinScan
+        +-column_list=[KeyValue.Key#1, KeyValue.Value#2, users.user_id#3, users.name#4]
+        +-left_scan=
+        | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+        +-right_scan=
+        | +-TableScan(column_list=users.[user_id#3, name#4], table=users, column_index_list=[0, 1], alias="u", name_string="users.csv")
+        +-join_expr=
+          +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+            +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+            +-ColumnRef(type=INT64, column=users.user_id#3)
+==
+
+# Pseudo-columns of an anonymous scan can be referenced unqualified.
+FROM {{'sales.csv,returns.csv'|'/*.tfrecords'}}
+|> SELECT _FILE_NAME
+--
+ALTERNATION GROUP: 'sales.csv,returns.csv'
+--
+QueryStmt
++-output_column_list=
+| +-sales_and_returns._FILE_NAME#3 AS _FILE_NAME [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[sales_and_returns._FILE_NAME#3]
+    +-input_scan=
+      +-TableScan(column_list=[sales_and_returns._FILE_NAME#3], table=sales_and_returns, column_index_list=[2], name_string="sales.csv,returns.csv")
+--
+ALTERNATION GROUP: '/*.tfrecords'
+--
+QueryStmt
++-output_column_list=
+| +-all_extra._FILE_NAME#2 AS _FILE_NAME [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[all_extra._FILE_NAME#2]
+    +-input_scan=
+      +-TableScan(column_list=[all_extra._FILE_NAME#2], table=all_extra, column_index_list=[1], name_string="/*.tfrecords")
+==
+
+# `|> AS` on an anonymous scan. For 'sales.csv,returns.csv', the new range
+# variable keeps the pseudo-column. For the value table '/*.tfrecords', it is
+# lost.
+# TODO: b/584541414 - UpdateNameListForTableAlias rebuilds an anonymous value
+# table from its value column only, dropping its pseudo-columns.
+FROM {{'sales.csv,returns.csv'|'/*.tfrecords'}}
+|> AS t
+|> SELECT {{_FILE_NAME|t._FILE_NAME}}
+--
+ALTERNATION GROUPS:
+    'sales.csv,returns.csv',_FILE_NAME
+    'sales.csv,returns.csv',t._FILE_NAME
+--
+QueryStmt
++-output_column_list=
+| +-sales_and_returns._FILE_NAME#3 AS _FILE_NAME [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[sales_and_returns._FILE_NAME#3]
+    +-input_scan=
+      +-TableScan(column_list=[sales_and_returns._FILE_NAME#3], table=sales_and_returns, column_index_list=[2], name_string="sales.csv,returns.csv")
+--
+ALTERNATION GROUP: '/*.tfrecords',_FILE_NAME
+--
+ERROR: Unrecognized name: _FILE_NAME [at 3:11]
+|> SELECT _FILE_NAME
+          ^
+--
+ALTERNATION GROUP: '/*.tfrecords',t._FILE_NAME
+--
+ERROR: Protocol buffer googlesql_test.TestExtraPB does not have a field called _FILE_NAME [at 3:13]
+|> SELECT t._FILE_NAME
+            ^
+==
+
+# A passthrough TVF on an anonymous scan with a pseudo-column, without
+# TVF_PSEUDO_COLUMNS. This pins current behavior, which fails validation.
+# TODO: b/584541414 - NameList::GetColumnsForPassthrough collects
+# pseudo-columns only through range variables, so the pseudo-column isn't
+# passed through but is still visible after the TVF.
+[language_features=MAXIMUM,+STRING_LITERAL_TABLE_REFERENCES,-TVF_PSEUDO_COLUMNS]
+[allow_internal_error_todo_bug=b/584541414 - Pseudo-columns of anonymous scans in passthrough TVFs]
+FROM {{'sales.csv,returns.csv'|'/*.tfrecords'}}
+|> CALL PassthroughTVF()
+|> SELECT _FILE_NAME
+--
+ALTERNATION GROUP: 'sales.csv,returns.csv'
+--
+ERROR: generic::internal: Resolved AST validation failed: Column visibility check failed: ProjectScan.column_list references column sales_and_returns._FILE_NAME#3 which is not in its column_list_scope []. See ColumnVisibilityChecker::CheckRoot.
+QueryStmt
++-output_column_list=
+| +-sales_and_returns._FILE_NAME#3 AS _FILE_NAME [STRING]
++-query=
+  +-ProjectScan (validation failed here)
+    +-column_list=[sales_and_returns._FILE_NAME#3]
+    +-input_scan=
+      +-TVFScan
+        +-tvf=PassthroughTVF
+        +-signature=(TABLE<order_id INT64, amount DOUBLE>) -> TABLE<order_id INT64, amount DOUBLE>
+        +-argument_list=
+        | +-FunctionArgument
+        |   +-scan=
+        |   | +-TableScan(column_list=sales_and_returns.[order_id#1, amount#2, _FILE_NAME#3], table=sales_and_returns, column_index_list=[0, 1, 2], name_string="sales.csv,returns.csv")
+        |   +-argument_column_list=sales_and_returns.[order_id#1, amount#2]
+        +-function_call_signature=(ANY TABLE) -> ANY TABLE
+--
+ALTERNATION GROUP: '/*.tfrecords'
+--
+ERROR: generic::internal: Resolved AST validation failed: Column visibility check failed: ProjectScan.column_list references column all_extra._FILE_NAME#2 which is not in its column_list_scope []. See ColumnVisibilityChecker::CheckRoot.
+QueryStmt
++-output_column_list=
+| +-all_extra._FILE_NAME#2 AS _FILE_NAME [STRING]
++-query=
+  +-ProjectScan (validation failed here)
+    +-column_list=[all_extra._FILE_NAME#2]
+    +-input_scan=
+      +-TVFScan
+        +-tvf=PassthroughTVF
+        +-signature=(TABLE<PROTO<googlesql_test.TestExtraPB>>) -> TABLE<PROTO<googlesql_test.TestExtraPB>>
+        +-argument_list=
+        | +-FunctionArgument
+        |   +-scan=
+        |   | +-TableScan(column_list=all_extra.[value#1, _FILE_NAME#2], table=all_extra, column_index_list=[0, 1], name_string="/*.tfrecords")
+        |   +-argument_column_list=[all_extra.value#1]
+        +-function_call_signature=(ANY TABLE) -> ANY TABLE

@@ -778,31 +778,32 @@ TEST_F(ResolvedASTTest, Validator) {
       googlesql::IdString::MakeGlobal("col2"), type_factory.get_int32());
   EXPECT_THAT(validator.ValidateResolvedStatement(stmt),
               StatusIs(absl::StatusCode::kInternal,
-                       HasSubstr("Incorrect reference to column "
-                                 "Table.col1#1")));
+                       HasSubstr("OutputColumn.column references column "
+                                 "Table.col1#1 which is not in the VISIBLE "
+                                 "columns")));
 
   project->set_column_list({resolved_column1});
   limit_offset->set_column_list({resolved_column1});
   EXPECT_THAT(validator.ValidateResolvedStatement(stmt),
               StatusIs(absl::StatusCode::kInternal,
-                       HasSubstr("Column list contains column Table.col1#1 not "
-                                 "visible in scan node\n"
-                                 "ProjectScan")));
+                       HasSubstr("ProjectScan.column_list references column "
+                                 "Table.col1#1 which is not in its "
+                                 "column_list_scope")));
 
   filter_scan->set_column_list({resolved_column1});
   EXPECT_THAT(validator.ValidateResolvedStatement(stmt),
               StatusIs(absl::StatusCode::kInternal,
-                       HasSubstr("Column list contains column Table.col1#1 not "
-                                 "visible in scan node\n"
-                                 "FilterScan")));
+                       HasSubstr("FilterScan.column_list references column "
+                                 "Table.col1#1 which is not in its "
+                                 "column_list_scope")));
 
   table_scan->set_column_list({resolved_column2});
   table_scan->set_column_index_list({1});
   EXPECT_THAT(validator.ValidateResolvedStatement(stmt),
               StatusIs(absl::StatusCode::kInternal,
-                       HasSubstr("Column list contains column Table.col1#1 not "
-                                 "visible in scan node\n"
-                                 "FilterScan")));
+                       HasSubstr("FilterScan.column_list references column "
+                                 "Table.col1#1 which is not in its "
+                                 "column_list_scope")));
 
   table_scan->add_column_list(resolved_column1);
   table_scan->add_column_index_list(0);

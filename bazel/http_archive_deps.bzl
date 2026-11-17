@@ -19,6 +19,12 @@ load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 def _http_archive_deps_impl(_):
     http_archive(
         name = "com_google_differential_privacy",
+        patch_cmds = [
+            "for f in proto/BUILD proto/accounting/BUILD proto/testing/BUILD; do " +
+            "{ printf 'load(\"@com_google_protobuf//bazel:cc_proto_library.bzl\", \"cc_proto_library\")\\nload(\"@com_google_protobuf//bazel:java_proto_library.bzl\", \"java_proto_library\")\\nload(\"@com_google_protobuf//bazel:proto_library.bzl\", \"proto_library\")\\n'; cat \"$f\"; } > \"$f.tmp\" && mv \"$f.tmp\" \"$f\"; " +
+            "done",
+            "{ printf 'load(\"@rules_cc//cc:defs.bzl\", \"cc_library\", \"cc_test\")\\n'; cat third_party/cephes/BUILD; } > third_party/cephes/BUILD.tmp && mv third_party/cephes/BUILD.tmp third_party/cephes/BUILD",
+        ],
         sha256 = "1a8612290740bd0bacc7052df7accb4f3368e2c2cb3de8eb608f58522c2e1891",
         strip_prefix = "differential-privacy-4.0.0",
         url = "https://github.com/google/differential-privacy/archive/refs/tags/v4.0.0.tar.gz",
@@ -26,6 +32,11 @@ def _http_archive_deps_impl(_):
 
     http_archive(
         name = "com_google_cc_differential_privacy",
+        patch_cmds = [
+            "for f in $(find . -name BUILD); do " +
+            "grep -q '@rules_cc' \"$f\" || { { printf 'load(\"@rules_cc//cc:defs.bzl\", \"cc_binary\", \"cc_library\", \"cc_test\")\\n'; cat \"$f\"; } > \"$f.tmp\" && mv \"$f.tmp\" \"$f\"; }; " +
+            "done",
+        ],
         sha256 = "1a8612290740bd0bacc7052df7accb4f3368e2c2cb3de8eb608f58522c2e1891",
         strip_prefix = "differential-privacy-4.0.0/cc",
         url = "https://github.com/google/differential-privacy/archive/refs/tags/v4.0.0.tar.gz",
@@ -58,6 +69,9 @@ def _http_archive_deps_impl(_):
         # -Wnullability-completeness warnings.
         patch_cmds = [
             "sed -i.bak 's/absl::Nonnull<\\([^>]*\\)>/\\1/g' file_based_test_driver/file_based_test_driver.h file_based_test_driver/file_based_test_driver.cc && rm -f file_based_test_driver/*.bak",
+            "for f in file_based_test_driver/BUILD file_based_test_driver/base/BUILD; do " +
+            "{ printf 'load(\"@rules_cc//cc:defs.bzl\", \"cc_library\", \"cc_test\")\\n'; cat \"$f\"; } > \"$f.tmp\" && mv \"$f.tmp\" \"$f\"; " +
+            "done",
         ],
         sha256 = "de4a12e88731198ef89ce3438b8c57ccea9185ac30ece9da1165f224ec02c8b1",
         strip_prefix = "file-based-test-driver-ec67daf4282c1bbe025e1b88512d540b03687efd",
@@ -76,7 +90,7 @@ def _http_archive_deps_impl(_):
 
     http_archive(
         name = "native_utils",
-        build_file_content = "licenses([\"notice\"]) # MIT\njava_library(\nname = \"native_utils\",\nvisibility = [\"//visibility:public\"],\nsrcs = glob([\"src/main/java/cz/adamh/utils/*.java\"]),\n)",
+        build_file_content = "load(\"@rules_java//java:defs.bzl\", \"java_library\")\nlicenses([\"notice\"]) # MIT\njava_library(\nname = \"native_utils\",\nvisibility = [\"//visibility:public\"],\nsrcs = glob([\"src/main/java/cz/adamh/utils/*.java\"]),\n)",
         sha256 = "6013c0988ba40600e238e47088580fd562dcecd4afd3fcf26130efe7cb1620de",
         strip_prefix = "native-utils-e6a39489662846a77504634b6fafa4995ede3b1d",
         url = "https://github.com/adamheinrich/native-utils/archive/e6a39489662846a77504634b6fafa4995ede3b1d.tar.gz",

@@ -865,6 +865,20 @@ bool QueryResolutionInfo::SelectFormAllowsAnalytic() const {
   }
 }
 
+bool QueryResolutionInfo::SelectFormAllowsEmptySelectList() const {
+  switch (select_form_) {
+    // Pipe EXTEND passes all input columns through, so adding no columns is
+    // fine.
+    case SelectForm::kPipeExtend:
+    // Pipe AGGREGATE allows an empty aggregate list as long as the GROUP BY is
+    // not also empty, which is checked separately.
+    case SelectForm::kPipeAggregate:
+      return true;
+    default:
+      return false;
+  }
+}
+
 const char* QueryResolutionInfo::SelectFormClauseName() const {
   switch (select_form_) {
     case SelectForm::kClassic:

@@ -101,6 +101,9 @@ absl::Status CompiledNFA::Validate() const {
   GOOGLESQL_RET_CHECK(final_state_.IsValid());
   GOOGLESQL_RET_CHECK_LT(final_state_.value(), num_states());
 
+  GOOGLESQL_RET_CHECK_GE(num_edges(), 0);
+  GOOGLESQL_RET_CHECK_LE(num_edges(), kMaxSupportedEdges);
+
   NFAState prior_edge_from;
   for (const Edge& edge : edges_) {
     GOOGLESQL_RET_CHECK(edge.from.IsValid());
@@ -111,6 +114,7 @@ absl::Status CompiledNFA::Validate() const {
     GOOGLESQL_RET_CHECK_LT(edge.to.value(), num_states());
 
     if (edge.consumed != std::nullopt) {
+      GOOGLESQL_RET_CHECK(edge.consumed->IsValid());
       GOOGLESQL_RET_CHECK_LT(edge.consumed->value(), num_pattern_variables_);
     }
 

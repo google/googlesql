@@ -68,6 +68,30 @@ cc_test(
 )
 
 cc_library(
+    name = "string_literal_table_alias",
+    srcs = ["string_literal_table_alias.cc"],
+    hdrs = ["string_literal_table_alias.h"],
+    deps = [
+        "//googlesql/public:strings",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+cc_test(
+    name = "string_literal_table_alias_test",
+    size = "small",
+    srcs = ["string_literal_table_alias_test.cc"],
+    deps = [
+        ":string_literal_table_alias",
+        "//googlesql/base/testing:googlesql_gtest_main",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+cc_library(
     name = "function_signature_matcher",
     srcs = ["function_signature_matcher.cc"],
     hdrs = ["function_signature_matcher.h"],
@@ -257,6 +281,7 @@ cc_library(
         ":path_expression_span",
         ":resolver_util",
         ":set_operation_resolver_base",
+        ":string_literal_table_alias",
         "//googlesql/analyzer/rewriters:rewrite_subpipeline",
         "//googlesql/base",
         "//googlesql/base:check",
@@ -556,7 +581,7 @@ cc_test(
     deps = [
         ":name_scope",
         ":resolver",
-        "//googlesql/base",
+        "//googlesql/base:check",
         "//googlesql/base:status",
         "//googlesql/base/testing:googlesql_gtest_main",
         "//googlesql/base/testing:status_matchers",
@@ -914,6 +939,7 @@ cc_library(
         "//googlesql/public/testing:test_case_options_util",
         "//googlesql/public/types",
         "//googlesql/resolved_ast",
+        "//googlesql/resolved_ast:column_visibility_checker",
         "//googlesql/resolved_ast:comparator",
         "//googlesql/resolved_ast:resolved_ast_cc_proto",
         "//googlesql/resolved_ast:resolved_ast_enums_cc_proto",

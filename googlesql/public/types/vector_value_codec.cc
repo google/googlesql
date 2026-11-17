@@ -21,10 +21,13 @@
 #include <string>
 #include <vector>
 
+#include "googlesql/common/string_util.h"
 #include "googlesql/public/proto/vector_encoding_id.pb.h"
 #include "googlesql/public/proto/vector_value.pb.h"
 #include "absl/base/casts.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "googlesql/base/ret_check.h"
@@ -99,6 +102,12 @@ absl::StatusOr<std::vector<float>> DecodeFloat32VectorPayload(
     elements.push_back(absl::bit_cast<float>(bits));
   }
   return elements;
+}
+
+std::string FormatFloat32VectorElements(absl::Span<const float> elements) {
+  return absl::StrJoin(elements, ", ", [](std::string* out, float element) {
+    absl::StrAppend(out, RoundTripFloatToString(element));
+  });
 }
 
 }  // namespace googlesql

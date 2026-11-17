@@ -1699,7 +1699,6 @@ static std::unique_ptr<ReferenceDriver> CreateTestSetupDriver() {
   // expressions in file based tests, remove when vector features are enabled by
   // default.
   options.EnableLanguageFeature(FEATURE_VECTOR_TYPE);
-  options.EnableLanguageFeature(FEATURE_DECLARATIVE_TYPE_FRAMEWORK);
   // Allow CREATE TABLE AS SELECT in [prepare_database] statements.
   options.AddSupportedStatementKind(RESOLVED_CREATE_TABLE_STMT);
   options.AddSupportedStatementKind(RESOLVED_CREATE_TABLE_AS_SELECT_STMT);

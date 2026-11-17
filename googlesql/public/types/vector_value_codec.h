@@ -53,6 +53,11 @@ std::string MakeFloat32VectorPayload(absl::Span<const float> elements);
 absl::StatusOr<std::vector<float>> DecodeFloat32VectorPayload(
     absl::string_view payload);
 
+// Formats the elements of a FLOAT32 vector as a comma-separated list, e.g.
+// "1.5, -2.25". Each element is printed so that it parses back to the same
+// float.
+std::string FormatFloat32VectorElements(absl::Span<const float> elements);
+
 }  // namespace googlesql
 
 #endif  // GOOGLESQL_PUBLIC_TYPES_VECTOR_VALUE_CODEC_H_

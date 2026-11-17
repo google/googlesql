@@ -147,7 +147,7 @@ absl::StatusOr<const StructType*> CreateDMLOutputTypeWithReturning(
 }
 
 absl::StatusOr<const StructType*> CreateGraphDMLOutputType(
-    const std::vector<GraphTargetTableTypeInfo>& table_types,
+    absl::Span<const GraphTargetTableTypeInfo> table_types,
     const ArrayType* returning_array_type, TypeFactory* type_factory) {
   GOOGLESQL_RET_CHECK(!table_types.empty())
       << "At least one table must be specified for Graph DML output type";

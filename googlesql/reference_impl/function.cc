@@ -43,10 +43,12 @@
 #include "google/type/date.pb.h"
 #include "google/type/timeofday.pb.h"
 #include "google/protobuf/descriptor.pb.h"
+#include "googlesql/common/determinism.h"
 #include "googlesql/common/errors.h"
 #include "googlesql/common/initialize_required_fields.h"
 #include "googlesql/common/internal_value.h"
 #include "googlesql/common/thread_stack.h"
+#include "googlesql/common/vector_value_util.h"
 #include "googlesql/proto/anon_output_with_report.pb.h"
 #include "googlesql/proto/kmeans_options.pb.h"
 #include "googlesql/public/anonymization_utils.h"
@@ -661,6 +663,8 @@ FunctionMap::FunctionMap() {
     RegisterFunction(FunctionKind::kJsonExtractStringArray,
                      "json_extract_string_array", "JsonExtractStringArray");
     RegisterFunction(FunctionKind::kJsonQuery, "json_query", "JsonQuery");
+    RegisterFunction(FunctionKind::kVariantSubscript, "variant_subscript",
+                     "VariantSubscript");
     RegisterFunction(FunctionKind::kJsonValue, "json_value", "JsonValue");
     RegisterFunction(FunctionKind::kJsonExists, "json_exists", "JsonExists");
     RegisterFunction(FunctionKind::kJsonExistsAny, "json_exists_any",
@@ -804,6 +808,8 @@ FunctionMap::FunctionMap() {
                      "Array_filter");
     RegisterFunction(FunctionKind::kArrayTransform, "array_transform",
                      "Array_transform");
+    RegisterFunction(FunctionKind::kArrayReduce, "array_reduce",
+                     "Array_reduce");
     RegisterFunction(FunctionKind::kApply, "apply", "Apply");
     RegisterFunction(FunctionKind::kNullIfWithLambda, "nullif", "NullIf");
     RegisterFunction(FunctionKind::kTimestampDiff, "timestamp_diff",
@@ -1987,30 +1993,6 @@ void MaybeSetNonDeterministicArrayOutput(const Value& array,
   }
 }
 
-class ProtoTypeHasFloatingPointChecker {
- public:
-  static bool HasFloatingPoint(const ProtoType* proto_type) {
-    return proto_type->HasFloatingPointFields();
-  }
-};
-
-// This function is used for detecting potentially non-deterministic cast
-// results. Types that contain embedded floating point values such as Geography
-// are assumed to have floating point values.
-bool HasFloatingPoint(const Type* type) {
-  if (type->IsProto()) {
-    return ProtoTypeHasFloatingPointChecker::HasFloatingPoint(type->AsProto());
-  }
-
-  for (const Type* component_type : type->ComponentTypes()) {
-    if (HasFloatingPoint(component_type)) {
-      return true;
-    }
-  }
-
-  return type->IsFloatingPoint() || type->IsGeography();
-}
-
 // Function used to switch on a (function kind, type) pair.
 static constexpr uint64_t FCT(FunctionKind function_kind, TypeKind type_kind) {
   return (static_cast<uint64_t>(function_kind) << 32) + type_kind;
@@ -2507,7 +2489,7 @@ BuiltinScalarFunction::CreateValidatedRaw(
           kind,
           // Skip the collation argument at the beginning of the argument list
           // from the equality check.
-          absl::MakeConstSpan(input_types.data() + 1, input_types.size() - 1)));
+          absl::MakeConstSpan(input_types).subspan(1)));
       GOOGLESQL_ASSIGN_OR_RETURN(auto fct,
                        CreateLikeFunction(kind, output_type, arguments));
       return fct.release();
@@ -2524,7 +2506,7 @@ BuiltinScalarFunction::CreateValidatedRaw(
           kind,
           // Skip the collation argument at the beginning of the argument list
           // from the equality check.
-          absl::MakeConstSpan(input_types.data() + 1, input_types.size() - 1)));
+          absl::MakeConstSpan(input_types).subspan(1)));
       GOOGLESQL_ASSIGN_OR_RETURN(auto fct,
                        CreateLikeAnyAllFunction(kind, output_type, arguments));
       return fct.release();
@@ -2541,7 +2523,7 @@ BuiltinScalarFunction::CreateValidatedRaw(
           kind,
           // Skip the collation argument at the beginning of the argument list
           // from the equality check.
-          absl::MakeConstSpan(input_types.data() + 1, input_types.size() - 1)));
+          absl::MakeConstSpan(input_types).subspan(1)));
       GOOGLESQL_ASSIGN_OR_RETURN(auto fct, CreateLikeAnyAllArrayFunction(
                                      kind, output_type, arguments));
       return fct.release();
@@ -2626,6 +2608,37 @@ BuiltinScalarFunction::CreateValidatedRaw(
       GOOGLESQL_RET_CHECK(arguments[1]->has_inline_lambda_expr());
       return new ArrayTransformFunction(
           kind, output_type, arguments[1]->mutable_inline_lambda_expr());
+    case FunctionKind::kArrayReduce: {
+      GOOGLESQL_RET_CHECK(arguments.size() >= 3 && arguments.size() <= 5);
+      GOOGLESQL_RET_CHECK(arguments[0]->has_value_expr());
+      GOOGLESQL_RET_CHECK(arguments[0]->node()->output_type()->IsArray());
+
+      // Argument layout:
+      //   (array, [initial_value,] reducer, [finisher,] ignore_nulls)
+      // The reducer is at index 2 when an initial value is present, else 1.
+      const int reducer_index = arguments[1]->has_inline_lambda_expr() ? 1 : 2;
+      if (reducer_index == 2) {
+        GOOGLESQL_RET_CHECK(arguments[1]->has_value_expr());  // initial_value
+      }
+      GOOGLESQL_RET_CHECK(arguments[reducer_index]->has_inline_lambda_expr());
+
+      // Lambdas sit between `reducer_index` and the trailing `ignore_nulls`.
+      const int num_lambdas =
+          static_cast<int>(arguments.size()) - reducer_index - 1;
+      GOOGLESQL_RET_CHECK(num_lambdas == 1 || num_lambdas == 2);
+      const InlineLambdaExpr* finisher_lambda = nullptr;
+      if (num_lambdas == 2) {
+        GOOGLESQL_RET_CHECK(arguments[reducer_index + 1]->has_inline_lambda_expr());
+        finisher_lambda = arguments[reducer_index + 1]->inline_lambda_expr();
+      }
+
+      // The last argument is always `ignore_nulls`.
+      GOOGLESQL_RET_CHECK(arguments.back()->has_value_expr());
+
+      return new ArrayReduceFunction(
+          kind, output_type, arguments[reducer_index]->inline_lambda_expr(),
+          finisher_lambda);
+    }
     case FunctionKind::kApply:
       GOOGLESQL_RET_CHECK_EQ(2, arguments.size());
       GOOGLESQL_RET_CHECK(arguments[1]->has_inline_lambda_expr());
@@ -4314,6 +4327,68 @@ absl::StatusOr<Value> ArrayTransformFunction::Eval(
   return Value::MakeArray(this->output_type()->AsArray(), transformed_values);
 }
 
+absl::StatusOr<Value> ArrayReduceFunction::Eval(
+    absl::Span<const TupleData* const> params, absl::Span<const Value> args,
+    EvaluationContext* evaluation_context) const {
+  LambdaEvaluationContext context(params, evaluation_context);
+  GOOGLESQL_RET_CHECK(args.size() == 2 || args.size() == 3);
+  GOOGLESQL_RET_CHECK(args[0].type()->IsArray());
+  GOOGLESQL_RET_CHECK(args.back().type()->IsBool());
+  GOOGLESQL_RET_CHECK_GE(reducer_lambda_->num_args(), 2);
+  GOOGLESQL_RET_CHECK_LE(reducer_lambda_->num_args(), 3);
+
+  // If the array or the ignore_nulls argument is NULL, return NULL.
+  if (args[0].is_null() || args.back().is_null()) {
+    return Value::Null(output_type());
+  }
+  bool ignore_nulls = args.back().bool_value();
+
+  MaybeSetNonDeterministicArrayOutput(args[0], evaluation_context);
+
+  bool needs_initial_value = true;
+  Value accumulator;
+  if (args.size() == 3) {
+    accumulator = args[1];
+    needs_initial_value = false;
+  }
+
+  bool three_argument_lambda = reducer_lambda_->num_args() == 3;
+  std::vector<Value> lambda_args;
+  lambda_args.reserve(reducer_lambda_->num_args());
+  for (int i = 0; i < args[0].num_elements(); ++i) {
+    const Value& array_element = args[0].element(i);
+    // Skip NULLs in-loop rather than pre-filtering the array so that `i`
+    // remains the element's original 0-based index for 3-argument reducers.
+    if (ignore_nulls && array_element.is_null()) {
+      continue;
+    }
+    if (needs_initial_value) {
+      accumulator = array_element;
+      needs_initial_value = false;
+      continue;
+    }
+    lambda_args.clear();
+    lambda_args.push_back(std::move(accumulator));
+    lambda_args.push_back(array_element);
+    if (three_argument_lambda) {
+      lambda_args.push_back(Value::Int64(i));
+    }
+    GOOGLESQL_ASSIGN_OR_RETURN(accumulator,
+                     context.EvaluateLambda(reducer_lambda_, lambda_args));
+  }
+
+  if (needs_initial_value) {
+    return Value::Null(output_type());
+  }
+
+  if (finisher_lambda_ == nullptr) {
+    return accumulator;
+  }
+
+  GOOGLESQL_RET_CHECK_EQ(finisher_lambda_->num_args(), 1);
+  return context.EvaluateLambda(finisher_lambda_, {accumulator});
+}
+
 bool ArrayElementFunction::Eval(absl::Span<const TupleData* const> params,
                                 absl::Span<const Value> args,
                                 EvaluationContext* context, Value* result,
@@ -5757,77 +5832,8 @@ bool IsFunction::Eval(absl::Span<const TupleData* const> params,
 // static
 bool CastFunction::HasPotentialNondeterminism(const Type* input_type,
                                               const Type* output_type) {
-  TypeListView input_type_components = input_type->ComponentTypes();
-  TypeListView output_type_components = output_type->ComponentTypes();
-
-  // These are the only valid cases where the number of components differs.
-  if (input_type_components.size() != output_type_components.size()) {
-    // The only possible cases today are RANGE<T> to/from STRING.
-    // STRING -> RANGE<T> has no nondeterminism.
-    // RANGE<T> -> STRING would be nondeterministic if T is a floating point,
-    // but today, RANGE<T> supports only TIME,TIMESTAMP,DATE and DATETIME.
-    // So all cases at the moment are deterministic.
-    return false;
-  }
-
-  // Base case: no component types.
-  if (input_type_components.empty()) {
-    return HasFloatingPoint(input_type) && !HasFloatingPoint(output_type);
-  }
-
-  // The types are complex. The check should go pairwise on their components.
-  for (int i = 0; i < input_type_components.size(); ++i) {
-    if (HasPotentialNondeterminism(input_type_components[i],
-                                   output_type_components[i])) {
-      return true;
-    }
-  }
-  return false;
+  return CastHasPotentialNondeterminism(input_type, output_type);
 }
-
-namespace {
-
-// Returns true if casting `from_value` to `to_type` converts any array with
-// uncertain order into JSON (where the uncertain order metadata is lost).
-bool HasNonDeterministicArrayCastToJson(const Value& from_value,
-                                        const Type* to_type) {
-  if (from_value.is_null() || from_value.type()->Equals(to_type)) {
-    return false;
-  }
-  if (to_type->IsJson()) {
-    return InternalValue::ContainsArrayWithUncertainOrder(from_value);
-  }
-  if (from_value.type()->IsArray() && to_type->IsArray()) {
-    const Type* to_element_type = to_type->AsArray()->element_type();
-    for (int i = 0; i < from_value.num_elements(); ++i) {
-      if (HasNonDeterministicArrayCastToJson(from_value.element(i),
-                                             to_element_type)) {
-        return true;
-      }
-    }
-  } else if (from_value.type()->IsStruct() && to_type->IsStruct()) {
-    const StructType* to_struct_type = to_type->AsStruct();
-    for (int i = 0;
-         i < from_value.num_fields() && i < to_struct_type->num_fields(); ++i) {
-      if (HasNonDeterministicArrayCastToJson(from_value.field(i),
-                                             to_struct_type->field(i).type)) {
-        return true;
-      }
-    }
-  } else if (from_value.type()->IsMap() && to_type->IsMap()) {
-    const Type* to_key_type = to_type->AsMap()->key_type();
-    const Type* to_value_type = to_type->AsMap()->value_type();
-    for (const auto& [key, val] : from_value.map_entries()) {
-      if (HasNonDeterministicArrayCastToJson(key, to_key_type) ||
-          HasNonDeterministicArrayCastToJson(val, to_value_type)) {
-        return true;
-      }
-    }
-  }
-  return false;
-}
-
-}  // namespace
 
 absl::StatusOr<Value> CastFunction::Eval(
     absl::Span<const TupleData* const> params, absl::Span<const Value> args,
@@ -5857,19 +5863,28 @@ absl::StatusOr<Value> CastFunction::Eval(
     time_zone = args[3].string_value();
   }
 
+  bool out_found_non_deterministic = false;
   absl::StatusOr<Value> status_or = internal::CastValueWithoutTypeValidation(
       v, context->GetDefaultTimeZone(),
       absl::FromUnixMicros(context->GetCurrentTimestamp()),
       context->GetLanguageOptions(), output_type(), format, time_zone,
-      extended_cast_evaluator_.get(), /*canonicalize_zero=*/true);
+      extended_cast_evaluator_.get(), /*canonicalize_zero=*/true,
+      &out_found_non_deterministic);
   if (!status_or.ok() && return_null_on_error) {
+    // SAFE_CAST only hides errors caused by the input value. Other codes (e.g.
+    // kInternal from GOOGLESQL_RET_CHECK failures) indicate engine problems and must be
+    // propagated rather than masked as NULL.
     // TODO: check that failure is not due to absence of
     // extended_type_function. In this case we still probably wants to fail the
     // whole query.
+    if (!ShouldSuppressError(status_or.status(),
+                             ResolvedFunctionCallBase::SAFE_ERROR_MODE)) {
+      return status_or.status();
+    }
     return Value::Null(output_type());
   }
 
-  if (has_potential_nondeterminism_ ||
+  if (has_potential_nondeterminism_ || out_found_non_deterministic ||
       HasNonDeterministicArrayCastToJson(v, output_type())) {
     context->SetNonDeterministicOutput();
   }
@@ -5879,7 +5894,9 @@ absl::StatusOr<Value> CastFunction::Eval(
         type_params_, context->GetLanguageOptions().product_mode(),
         casted_value);
     if (!constraint_status.ok()) {
-      if (return_null_on_error) {
+      if (return_null_on_error &&
+          ShouldSuppressError(constraint_status,
+                              ResolvedFunctionCallBase::SAFE_ERROR_MODE)) {
         return Value::Null(output_type());
       }
       return constraint_status;
@@ -6151,6 +6168,13 @@ class BuiltinAggregateAccumulator : public AggregateAccumulator {
         context_(context) {}
 
   absl::StatusOr<Value> GetFinalResultInternal(bool inputs_in_defined_order);
+
+  // Extracts and validates the optional `mode` argument of the BYTES signatures
+  // of BIT_AND, BIT_OR and BIT_XOR. Populates `status` and returns false if
+  // `mode` is NULL.
+  bool GetBitwiseAggMode(absl::string_view function_name,
+                         functions::BitwiseAggEnums::BitwiseAggMode* mode,
+                         absl::Status* status) const;
 
   MemoryAccountant* accountant() { return context_->memory_accountant(); }
 
@@ -6644,6 +6668,25 @@ BuildDPAlgorithm<::differential_privacy::Quantiles, double>(
       is_report_function, args,
       /*expected_base_arg_count=*/2,
       /*contribution_bounds_base_offset=*/1, std::move(builder));
+}
+
+bool BuiltinAggregateAccumulator::GetBitwiseAggMode(
+    absl::string_view function_name,
+    functions::BitwiseAggEnums::BitwiseAggMode* mode,
+    absl::Status* status) const {
+  if (args_.empty()) {
+    *mode = functions::BitwiseAggEnums::STRICT;
+    return true;
+  }
+  if (args_.back().is_null()) {
+    *status = ::googlesql_base::OutOfRangeErrorBuilder()
+              << "The mode argument to " << function_name
+              << " function must not be NULL";
+    return false;
+  }
+  *mode = static_cast<functions::BitwiseAggEnums::BitwiseAggMode>(
+      args_.back().enum_value());
+  return true;
 }
 
 absl::Status BuiltinAggregateAccumulator::Reset() {
@@ -7172,11 +7215,10 @@ bool BuiltinAggregateAccumulator::Accumulate(const Value& value,
       break;
     }
     case FCT(FunctionKind::kBitAnd, TYPE_BYTES): {
-      functions::BitwiseAggEnums::BitwiseAggMode mode =
-          args_.empty()
-              ? functions::BitwiseAggEnums::STRICT
-              : static_cast<functions::BitwiseAggEnums::BitwiseAggMode>(
-                    args_.back().enum_value());
+      functions::BitwiseAggEnums::BitwiseAggMode mode;
+      if (!GetBitwiseAggMode("BIT_AND", &mode, status)) {
+        return false;
+      }
       if (count_ == 1) {
         bit_agg_byte_string_ = value.bytes_value();
       } else if (!functions::BitwiseBinaryOpBytesWithMode<std::bit_and>(
@@ -7215,11 +7257,10 @@ bool BuiltinAggregateAccumulator::Accumulate(const Value& value,
       break;
     }
     case FCT(FunctionKind::kBitOr, TYPE_BYTES): {
-      functions::BitwiseAggEnums::BitwiseAggMode mode =
-          args_.empty()
-              ? functions::BitwiseAggEnums::STRICT
-              : static_cast<functions::BitwiseAggEnums::BitwiseAggMode>(
-                    args_.back().enum_value());
+      functions::BitwiseAggEnums::BitwiseAggMode mode;
+      if (!GetBitwiseAggMode("BIT_OR", &mode, status)) {
+        return false;
+      }
       if (count_ == 1) {
         bit_agg_byte_string_ = value.bytes_value();
       } else if (!functions::BitwiseBinaryOpBytesWithMode<std::bit_or>(
@@ -7266,11 +7307,10 @@ bool BuiltinAggregateAccumulator::Accumulate(const Value& value,
       break;
     }
     case FCT(FunctionKind::kBitXor, TYPE_BYTES): {
-      functions::BitwiseAggEnums::BitwiseAggMode mode =
-          args_.empty()
-              ? functions::BitwiseAggEnums::STRICT
-              : static_cast<functions::BitwiseAggEnums::BitwiseAggMode>(
-                    args_.back().enum_value());
+      functions::BitwiseAggEnums::BitwiseAggMode mode;
+      if (!GetBitwiseAggMode("BIT_XOR", &mode, status)) {
+        return false;
+      }
       if (count_ == 1) {
         bit_agg_byte_string_ = value.bytes_value();
       } else if (!functions::BitwiseBinaryOpBytesWithMode<std::bit_xor>(
@@ -13466,31 +13506,17 @@ static ::googlesql_base::StatusBuilder DistanceFunctionResultConverter(
 }
 
 namespace {
-// Helper to parse the VectorValueProto backing a VECTOR value.
-static absl::StatusOr<VectorValueProto> ParseVector(const Value& vector) {
-  GOOGLESQL_ASSIGN_OR_RETURN(Value backing_val, vector.backing_value());
-  return ParseVectorValueBytes(backing_val.bytes_value());
-}
-
 // Helper to read the encoding recorded in a VECTOR value.
 static absl::StatusOr<VectorEncodingId::Id> GetVectorEncoding(
     const Value& vector) {
-  GOOGLESQL_ASSIGN_OR_RETURN(VectorValueProto vector_value, ParseVector(vector));
+  GOOGLESQL_ASSIGN_OR_RETURN(VectorValueProto vector_value, ParseVectorValue(vector));
   return static_cast<VectorEncodingId::Id>(vector_value.encoding());
 }
 
 // Helper to decode an encoded VECTOR into an ARRAY<FLOAT>.
 static absl::StatusOr<Value> DecodeFloat32Vector(const Value& vector) {
-  GOOGLESQL_ASSIGN_OR_RETURN(VectorValueProto vector_value, ParseVector(vector));
-  const auto encoding =
-      static_cast<VectorEncodingId::Id>(vector_value.encoding());
-  if (encoding != VectorEncodingId::FLOAT32) {
-    return absl::UnimplementedError(
-        absl::StrCat("Decoding a VECTOR is not implemented for encoding: ",
-                     VectorEncodingId_Id_Name(encoding)));
-  }
   GOOGLESQL_ASSIGN_OR_RETURN(std::vector<float> elements,
-                   DecodeFloat32VectorPayload(vector_value.data()));
+                   DecodeFloat32VectorValue(vector));
   std::vector<Value> element_values;
   element_values.reserve(elements.size());
   for (float element : elements) {

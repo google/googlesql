@@ -1,0 +1,114 @@
+[default language_features=MAXIMUM,+COLUMN_LIST_SPEC]
+[default show_sqlbuilder_output]
+[default sql_builder_target_syntax_mode=standard]
+
+# THEN RETURN lists are resolved like SELECT lists, so `**` expands there too.
+INSERT INTO KeyValue (Key, Value) VALUES (1, 'x')
+THEN RETURN **COLUMNS(['Value', 'Key'])
+--
+InsertStmt
++-table_scan=
+| +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
++-returning=
+| +-ReturningClause
+|   +-output_column_list=
+|     +-KeyValue.Value#2 AS Value [STRING]
+|     +-KeyValue.Key#1 AS Key [INT64]
++-insert_column_list=KeyValue.[Key#1, Value#2]
++-row_list=
+| +-InsertRow
+|   +-value_list=
+|     +-DMLValue
+|     | +-value=
+|     |   +-Literal(type=INT64, value=1)
+|     +-DMLValue
+|       +-value=
+|         +-Literal(type=STRING, value="x")
++-column_access_list=READ_WRITE,READ_WRITE
+
+[SQLBUILDER_OUTPUT]
+INSERT INTO KeyValue(Key, Value)
+VALUES
+  (1, "x")
+THEN RETURN
+  KeyValue.Value AS Value,
+  KeyValue.Key AS Key;
+
+==
+
+INSERT INTO KeyValue (Key, Value) VALUES (1, 'x')
+THEN RETURN WITH ACTION AS action **COLUMNS(['Key']), Value
+--
+InsertStmt
++-table_scan=
+| +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
++-returning=
+| +-ReturningClause
+|   +-output_column_list=
+|   | +-KeyValue.Key#1 AS Key [INT64]
+|   | +-KeyValue.Value#2 AS Value [STRING]
+|   | +-$with_action.action#3 AS action [STRING]
+|   +-action_column=
+|     +-ColumnHolder(column=$with_action.action#3)
++-insert_column_list=KeyValue.[Key#1, Value#2]
++-row_list=
+| +-InsertRow
+|   +-value_list=
+|     +-DMLValue
+|     | +-value=
+|     |   +-Literal(type=INT64, value=1)
+|     +-DMLValue
+|       +-value=
+|         +-Literal(type=STRING, value="x")
++-column_access_list=READ_WRITE,READ_WRITE
+
+[SQLBUILDER_OUTPUT]
+INSERT INTO KeyValue(Key, Value)
+VALUES
+  (1, "x")
+THEN RETURN WITH ACTION AS action
+  KeyValue.Key AS Key,
+  KeyValue.Value AS Value;
+==
+
+UPDATE KeyValue SET Value = 'y' WHERE Key = 1
+THEN RETURN **COLUMNS(['Key'])
+--
+UpdateStmt
++-table_scan=
+| +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
++-column_access_list=READ,WRITE
++-returning=
+| +-ReturningClause
+|   +-output_column_list=
+|     +-KeyValue.Key#1 AS Key [INT64]
++-where_expr=
+| +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+|   +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+|   +-Literal(type=INT64, value=1)
++-update_item_list=
+  +-UpdateItem
+    +-target=
+    | +-ColumnRef(type=STRING, column=KeyValue.Value#2)
+    +-set_value=
+      +-DMLValue
+        +-value=
+          +-Literal(type=STRING, value="y")
+
+[SQLBUILDER_OUTPUT]
+UPDATE KeyValue AS keyvalue_1
+SET
+  keyvalue_1.Value = "y"
+WHERE
+  (keyvalue_1.Key) = 1
+THEN RETURN
+  keyvalue_1.Key AS Key;
+==
+
+# An empty expansion is an error, as it is for a SELECT list.
+INSERT INTO KeyValue (Key, Value) VALUES (1, 'x')
+THEN RETURN **COLUMNS([])
+--
+ERROR: SELECT list would expand to zero columns [at 2:13]
+THEN RETURN **COLUMNS([])
+            ^

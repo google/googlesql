@@ -49,24 +49,11 @@ export function formatOptionSummary(
 }
 
 /**
- * Returns the selected execution modes from `options`, capitalized and joined
- * with ", ", e.g. "Execute, Analyze". Returns an empty string if none are set.
- */
-function formatModes(options: string): string {
-  return new URLSearchParams(options)
-    .getAll('mode')
-    .map((mode) => mode.trim())
-    .filter((mode) => !!mode)
-    .map((mode) => mode[0].toUpperCase() + mode.slice(1))
-    .join(', ');
-}
-
-/**
  * Shows all stored history entries in a modal dialog. The list on the left
- * uses the same rows as the history menu (query, time, and catalog), with a
+ * uses the same rows as the history menu (query, time, and mode), with a
  * "Clear all history" action below it. The preview on the right shows the full
- * query and, in one muted line, the modes, language features, and rewrites it
- * ran with, which the rows don't show.
+ * query and, in one muted line, the catalog, language features, and rewrites
+ * it ran with, which the rows don't show.
  *
  * Load fills in the form; Run fills in the form and submits it; Delete removes
  * the entry. Keyboard: Up/Down (and Home/End) change the selection, Enter
@@ -256,12 +243,13 @@ export class HistoryDialog {
     this.previewQuery.textContent = entry.query;
     this.previewQuery.scrollTop = 0;
 
-    // One muted line, e.g. "Mode Execute, Analyze · Features MAXIMUM +A ·
-    // Rewrites DEFAULTS". The catalog and time are already shown in the list
-    // row.
+    // One muted line, e.g. "Catalog tpch · Features MAXIMUM +A · Rewrites
+    // DEFAULTS". The mode and time are already shown in the list row.
     this.previewSettings.replaceChildren();
+    const catalog =
+      new URLSearchParams(entry.options).get('catalog')?.trim() ?? '';
     const settings = [
-      ['Mode', formatModes(entry.options)],
+      ['Catalog', catalog],
       [
         'Features',
         formatOptionSummary(

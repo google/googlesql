@@ -1983,8 +1983,14 @@ absl::Status TableNameResolver::FindInTablePathExpression(
     // TODO: b/568351814 - Return the literal in a separate
     // string_literal_table_names output instead of an error, and add its
     // explicit or implicit alias to `visible_aliases`.
+    const bool feature_enabled =
+        analyzer_options_->language().LanguageFeatureEnabled(
+            FEATURE_STRING_LITERAL_TABLE_REFERENCES);
     return MakeSqlErrorAt(table_ref->string_literal())
-           << "String literal table references are not supported";
+           << (feature_enabled
+                   ? "Extracting table names is not supported yet for "
+                     "string literal table references"
+                   : "String literal table references are not supported");
   }
 
   if (table_ref->path_expr() != nullptr) {

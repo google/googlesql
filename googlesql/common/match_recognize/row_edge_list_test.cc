@@ -222,5 +222,30 @@ TEST_F(RowEdgeListTest, MarkAndUnmarkAllEdgesAllRows) {
     }
   }
 }
+
+TEST_F(RowEdgeListTest, ZeroEdges) {
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(std::unique_ptr<NFA> empty_nfa, NFA::Create(1));
+  NFAState start = empty_nfa->NewState();
+  NFAState end = empty_nfa->NewState();
+  empty_nfa->SetAsStartState(start);
+  empty_nfa->SetAsFinalState(end);
+  GOOGLESQL_ASSERT_OK(empty_nfa->Validate(NFA::ValidationMode::kForMatching));
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(std::unique_ptr<CompiledNFA> compiled_empty_nfa,
+                       CompiledNFA::Create(*empty_nfa));
+  ASSERT_EQ(compiled_empty_nfa->num_edges(), 0);
+
+  RowEdgeList edge_list(compiled_empty_nfa.get());
+  EXPECT_EQ(edge_list.num_edges(), 0);
+  EXPECT_EQ(edge_list.num_rows(), 0);
+
+  EXPECT_EQ(edge_list.AddRow(), 0);
+  EXPECT_EQ(edge_list.AddRow(), 1);
+  EXPECT_EQ(edge_list.num_rows(), 2);
+  EXPECT_THAT(edge_list.GetHighestPrecedenceMarkedEdge(0, start), IsNull());
+  ABSL_LOG(INFO) << "Debug string:\n" << edge_list.DebugString();
+
+  edge_list.ClearRows();
+  EXPECT_EQ(edge_list.num_rows(), 0);
+}
 }  // namespace
 }  // namespace googlesql::functions::match_recognize

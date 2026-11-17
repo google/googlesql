@@ -53,11 +53,17 @@ absl::StatusOr<const Column*> GetPropertyBackingColumn(
 absl::StatusOr<absl::flat_hash_set<const Column*>> GetPropertyBackingColumns(
     const GraphElementTable& target_table);
 
-// Checks that all element key columns in `target_table` are exposed as writable
-// properties in its property definition list.
+// Returns the element key columns in the base table of `target_table`, in the
+// order declared by `target_table.GetKeyColumns()`.
+absl::StatusOr<std::vector<const Column*>> GetElementKeyColumns(
+    const GraphElementTable& target_table);
+
+// Checks that all element key columns in `target_table` are exposed as
+// properties in its property definition list. When `must_be_writable` is true,
+// also checks that their backing columns are writable.
 // Returns false and populates `error_message` (if non-null) if not.
-absl::StatusOr<bool> AreAllKeyColumnsWritableProperties(
-    const GraphElementTable& target_table,
+absl::StatusOr<bool> AreAllKeyColumnsExposedAsProperties(
+    const GraphElementTable& target_table, bool must_be_writable,
     std::string* error_message = nullptr);
 
 // Returns the dynamic label backing column in the base table of `target_table`,
@@ -84,7 +90,8 @@ struct EdgeEndpointBackingColumns {
 absl::StatusOr<EdgeEndpointBackingColumns> GetEdgeEndpointBackingColumns(
     const GraphElementTable& target_table);
 
-// Checks that `target_table` satisfies all schema requirements to be updatable:
+// Checks that `target_table` satisfies all schema requirements to be
+// insertable (for GQL INSERT):
 // - All element key columns of `target_table` must be exposed as writable
 //   properties in its property definition list.
 // - If `needs_dynamic_label` is true, `target_table` must support dynamic
@@ -92,12 +99,29 @@ absl::StatusOr<EdgeEndpointBackingColumns> GetEdgeEndpointBackingColumns(
 // - If `target_table` is an edge table:
 //   * Its edge source and destination key columns must be writable columns in
 //     the edge base table (they do not need to be exposed as edge properties).
-//   * The referenced source and destination element key columns must be exposed
-//     as properties of its source and destination node tables (they do not need
-//     to be writable on the node tables).
+//   * Its edge source and destination key columns must not share underlying
+//     edge base table columns.
+//   * The following columns must be exposed as properties on the source and
+//     destination node tables (they do not need to be writable on the node
+//     tables):
+//     1. Referenced endpoint columns (used to populate edge referencing
+//        columns).
+//     2. Each endpoint node table's own element key columns (used to construct
+//        endpoint ResolvedGraphElementIdentifiers when REFERENCES targets
+//        non-key columns).
+// Returns false and populates `error_message` (if non-null) if not.
+absl::StatusOr<bool> IsTargetTableInsertable(
+    const GraphElementTable& target_table, bool needs_dynamic_label,
+    std::string* error_message = nullptr);
+
+// Checks that `target_table` satisfies all schema requirements to be updatable
+// (for GQL SET, REMOVE, and DELETE):
+// - All element key columns of `target_table` must be exposed as properties in
+//   its property definition list (their backing columns do not need to be
+//   writable).
 // Returns false and populates `error_message` (if non-null) if not.
 absl::StatusOr<bool> IsTargetTableUpdatable(
-    const GraphElementTable& target_table, bool needs_dynamic_label,
+    const GraphElementTable& target_table,
     std::string* error_message = nullptr);
 
 // Constructs a static or dynamic GraphElementType for an element of
@@ -108,6 +132,13 @@ absl::StatusOr<const GraphElementType*> BuildGraphElementTypeForTable(
     const GraphElementTable& target_table,
     absl::Span<const std::string> graph_name_path, TypeFactory& type_factory,
     const LanguageOptions& language_options);
+
+// Resolves each table name in `element_type.element_tables()` against
+// `property_graph` in order. Returns an empty vector if
+// `element_type.element_tables()` is empty, or an error if any table name is
+// not found in `property_graph`.
+absl::StatusOr<std::vector<const GraphElementTable*>> GetTargetElementTables(
+    const PropertyGraph& property_graph, const GraphElementType& element_type);
 
 // Helper function that returns the property name from a get element property
 // node.

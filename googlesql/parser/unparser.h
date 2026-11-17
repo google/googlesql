@@ -447,7 +447,6 @@ class Unparser : public ParseTreeVisitor {
                                void* data) override;
   void visitASTWithOffset(const ASTWithOffset* node, void* data) override;
   void visitASTWithTimestamp(const ASTWithTimestamp* node, void* data) override;
-  void visitASTTemporalAt(const ASTTemporalAt* node, void* data) override;
   void visitASTUnnestExpression(const ASTUnnestExpression* node,
                                 void* data) override;
   void visitASTUnnestExpressionWithOptAliasAndOffset(
@@ -460,6 +459,8 @@ class Unparser : public ParseTreeVisitor {
   void visitASTGroupRows(const ASTGroupRows* node, void* data) override;
   void visitASTForVersionClause(const ASTForVersionClause* node,
                                 void* data) override;
+  void visitASTAtVersionClause(const ASTAtVersionClause* node,
+                               void* data) override;
   void visitASTTableSubquery(const ASTTableSubquery* node, void* data) override;
   void visitASTJoin(const ASTJoin* node, void* data) override;
   void visitASTParenthesizedJoin(const ASTParenthesizedJoin* node,

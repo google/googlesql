@@ -3024,5 +3024,148 @@ TEST(VariantValueTest, CreatePreservesSqlNullVariant) {
   EXPECT_EQ(variant_val, Value::NullVariant());
 }
 
+TEST(VariantValueTest, UnprojectedTypeAndValueForAtomicTypes) {
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(Value range_val,
+                       Value::MakeRange(Value::Date(1), Value::Date(2)));
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(VariantValueView range_view,
+                       VariantValueView::Create(range_val));
+  ASSERT_NE(range_view.GetUnprojectedType(), nullptr);
+  EXPECT_TRUE(range_view.GetUnprojectedType()->Equals(range_val.type()));
+  EXPECT_THAT(range_view.GetUnprojectedValue(), IsOkAndHolds(range_val));
+
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(VariantValueView int_view,
+                       VariantValueView::Create(Value::Int64(42)));
+  EXPECT_EQ(int_view.GetUnprojectedType(), types::Int64Type());
+  EXPECT_THAT(int_view.GetUnprojectedValue(), IsOkAndHolds(Value::Int64(42)));
+}
+
+TEST(VariantValueTest, UnprojectedTypeAndValueForContainersAndJson) {
+  TypeFactory factory;
+  const StructType* struct_type = nullptr;
+  GOOGLESQL_ASSERT_OK(factory.MakeStructType({{"a", types::Int64Type()}}, &struct_type));
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(Value struct_val,
+                       Value::MakeStruct(struct_type, {Value::Int64(1)}));
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(VariantValueView struct_view,
+                       VariantValueView::Create(struct_val));
+  EXPECT_TRUE(struct_view.IsObject());
+  EXPECT_EQ(struct_view.GetUnprojectedType(), struct_type);
+  EXPECT_THAT(struct_view.GetUnprojectedValue(), IsOkAndHolds(struct_val));
+
+  const ProtoType* proto_type = nullptr;
+  GOOGLESQL_ASSERT_OK(factory.MakeProtoType(googlesql_test::KitchenSinkPB::descriptor(),
+                                  &proto_type));
+  Value proto_val = Value::Proto(proto_type, absl::Cord());
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(VariantValueView proto_view,
+                       VariantValueView::Create(proto_val));
+  EXPECT_TRUE(proto_view.IsObject());
+  EXPECT_EQ(proto_view.GetUnprojectedType(), proto_type);
+  EXPECT_THAT(proto_view.GetUnprojectedValue(), IsOkAndHolds(proto_val));
+
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(Value arr_val, Value::MakeArray(types::Int64ArrayType(),
+                                                       {Value::Int64(1)}));
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(VariantValueView arr_view,
+                       VariantValueView::Create(arr_val));
+  EXPECT_TRUE(arr_view.IsArray());
+  EXPECT_EQ(arr_view.GetUnprojectedType(), types::Int64ArrayType());
+  EXPECT_THAT(arr_view.GetUnprojectedValue(), IsOkAndHolds(arr_val));
+
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+      const Type* str_map_type,
+      factory.MakeMapType(types::StringType(), types::Int64Type()));
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+      Value str_map_val,
+      Value::MakeMap(str_map_type, {{Value::String("k"), Value::Int64(1)}}));
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(VariantValueView str_map_view,
+                       VariantValueView::Create(str_map_val));
+  EXPECT_TRUE(str_map_view.IsObject());
+  EXPECT_EQ(str_map_view.GetUnprojectedType(), str_map_type);
+  EXPECT_THAT(str_map_view.GetUnprojectedValue(), IsOkAndHolds(str_map_val));
+
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+      const Type* int_map_type,
+      factory.MakeMapType(types::Int64Type(), types::Int64Type()));
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+      Value int_map_val,
+      Value::MakeMap(int_map_type, {{Value::Int64(1), Value::Int64(2)}}));
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(VariantValueView int_map_view,
+                       VariantValueView::Create(int_map_val));
+  EXPECT_FALSE(int_map_view.IsObject());
+  EXPECT_EQ(int_map_view.GetUnprojectedType(), int_map_type);
+  EXPECT_THAT(int_map_view.GetUnprojectedValue(), IsOkAndHolds(int_map_val));
+
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(JSONValue parsed_json,
+                       JSONValue::ParseJSONString(R"({"a": [1, null]})"));
+  Value root_json_val = Value::Json(std::move(parsed_json));
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(VariantValueView json_view,
+                       VariantValueView::Create(root_json_val));
+  EXPECT_EQ(json_view.GetUnprojectedType(), types::JsonType());
+  EXPECT_THAT(json_view.GetUnprojectedValue(), IsOkAndHolds(root_json_val));
+
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(VariantValueView json_arr_view,
+                       json_view.GetKeyValueIfExists("a"));
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(VariantValueView int_elem_view,
+                       json_arr_view.GetElementIfExists(0));
+  EXPECT_TRUE(int_elem_view.IsPrimitive());
+  EXPECT_EQ(int_elem_view.GetUnprojectedType(), types::JsonType());
+  EXPECT_THAT(int_elem_view.GetUnprojectedValue(),
+              IsOkAndHolds(Value::Json(JSONValue(int64_t{1}))));
+
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(VariantValueView null_elem_view,
+                       json_arr_view.GetElementIfExists(1));
+  EXPECT_TRUE(null_elem_view.IsVariantNull());
+  EXPECT_EQ(null_elem_view.GetUnprojectedType(), types::JsonType());
+  EXPECT_THAT(null_elem_view.GetUnprojectedValue(),
+              IsOkAndHolds(Value::Json(JSONValue())));
+}
+
+TEST(VariantValueTest, UnprojectedTypeAndValueForNullInvalidAndUnparsedJson) {
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(VariantValueView null_view,
+                       VariantValueView::Create(Value::NullInt64()));
+  EXPECT_EQ(null_view.GetUnprojectedType(), types::Int64Type());
+  EXPECT_THAT(null_view.GetUnprojectedValue(),
+              IsOkAndHolds(Value::NullInt64()));
+
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(VariantValueView null_json_view,
+                       VariantValueView::Create(Value::NullJson()));
+  EXPECT_EQ(null_json_view.GetUnprojectedType(), types::JsonType());
+  EXPECT_THAT(null_json_view.GetUnprojectedValue(),
+              IsOkAndHolds(Value::NullJson()));
+
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(VariantValueView null_variant_view,
+                       VariantValueView::Create(Value::NullVariant()));
+  EXPECT_EQ(null_variant_view.GetUnprojectedType(), types::VariantType());
+  EXPECT_THAT(null_variant_view.GetUnprojectedValue(),
+              IsOkAndHolds(Value::NullVariant()));
+
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(VariantValueView variant_null_view,
+                       VariantValueView::Create(Value::Json(JSONValue())));
+  EXPECT_TRUE(variant_null_view.IsVariantNull());
+  EXPECT_EQ(variant_null_view.GetUnprojectedType(), types::JsonType());
+  EXPECT_THAT(variant_null_view.GetUnprojectedValue(),
+              IsOkAndHolds(Value::Json(JSONValue())));
+
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+      VariantValueView valid_unparsed_json_view,
+      VariantValueView::Create(Value::UnvalidatedJsonString(R"({"x": 7})")));
+  EXPECT_EQ(valid_unparsed_json_view.GetUnprojectedType(), types::JsonType());
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(JSONValue expected_json,
+                       JSONValue::ParseJSONString(R"({"x": 7})"));
+  EXPECT_THAT(valid_unparsed_json_view.GetUnprojectedValue(),
+              IsOkAndHolds(Value::Json(std::move(expected_json))));
+
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(VariantValueView invalid_view,
+                       VariantValueView::Create(Value{}));
+  EXPECT_EQ(invalid_view.GetUnprojectedType(), nullptr);
+  EXPECT_THAT(invalid_view.GetUnprojectedValue(),
+              StatusIs(absl::StatusCode::kInternal));
+
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+      VariantValueView malformed_json_view,
+      VariantValueView::Create(Value::UnvalidatedJsonString("{malformed")));
+  EXPECT_EQ(malformed_json_view.GetUnprojectedType(), types::JsonType());
+  EXPECT_THAT(malformed_json_view.GetUnprojectedValue(),
+              StatusIs(absl::StatusCode::kOutOfRange));
+}
+
 }  // namespace
 }  // namespace googlesql

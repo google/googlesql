@@ -5525,16 +5525,36 @@ def main(argv):
       ])
 
   gen.AddNode(
+      name='ASTAtVersionClause',
+      tag_id=574,
+      parent='ASTNode',
+      comment="""
+      Represents an AT (arg => expr, ...) clause.
+      """,
+      fields=[
+          Field(
+              'arguments',
+              'ASTNamedArgument',
+              tag_id=2,
+              field_loader=FieldLoaderMethod.REPEATING_WHILE_IS_NODE_KIND,
+          ),
+      ],
+  )
+
+  gen.AddNode(
       name='ASTForVersionClause',
       tag_id=134,
       parent='ASTNode',
+      use_custom_debug_string=True,
       fields=[
           Field(
               'expression',
               'ASTExpression',
               tag_id=2,
-              field_loader=FieldLoaderMethod.REQUIRED),
-      ])
+              field_loader=FieldLoaderMethod.REQUIRED,
+          ),
+      ],
+  )
 
   gen.AddNode(
       name='ASTMatchRecognizeClause',
@@ -7492,7 +7512,7 @@ def main(argv):
               field_loader=FieldLoaderMethod.REQUIRED,
           ),
           Field('hint', 'ASTHint', tag_id=8),
-          Field('temporal_at', 'ASTTemporalAt', tag_id=9),
+          Field('at_version', 'ASTAtVersionClause', tag_id=9),
           Field('alias', 'ASTAlias', tag_id=3),
           Field('timestamp', 'ASTWithTimestamp', tag_id=10),
           Field('offset', 'ASTWithOffset', tag_id=4),
@@ -7750,14 +7770,14 @@ def main(argv):
       parent='ASTNode',
       comment="""
       Represents a USING clause on a target column in an INSERT statement, e.g.:
-        USING FUNCTION <function_name> [DEFAULT <default_expr>]
+        USING FUNCTION <function_path> [DEFAULT <default_expr>]
         USING <lambda> [DEFAULT <default_expr>]
-      Exactly one of `function_name` or `lambda` is set.
+      Exactly one of `function_ref` or `lambda` is set.
       """,
       fields=[
           Field(
-              'function_name',
-              'ASTPathExpression',
+              'function_ref',
+              'ASTFunctionRefArg',
               tag_id=2,
               field_loader=FieldLoaderMethod.OPTIONAL,
           ),
@@ -7846,7 +7866,7 @@ def main(argv):
               field_loader=FieldLoaderMethod.REQUIRED,
           ),
           Field('hint', 'ASTHint', tag_id=10),
-          Field('temporal_at', 'ASTTemporalAt', tag_id=12),
+          Field('at_version', 'ASTAtVersionClause', tag_id=12),
           Field('timestamp', 'ASTWithTimestamp', tag_id=13),
           Field('column_list', 'ASTInsertColumnList', tag_id=3),
           Field(
@@ -7964,7 +7984,7 @@ def main(argv):
               field_loader=FieldLoaderMethod.REQUIRED,
           ),
           Field('hint', 'ASTHint', tag_id=10),
-          Field('temporal_at', 'ASTTemporalAt', tag_id=11),
+          Field('at_version', 'ASTAtVersionClause', tag_id=11),
           Field('alias', 'ASTAlias', tag_id=3),
           Field('timestamp', 'ASTWithTimestamp', tag_id=12),
           Field('offset', 'ASTWithOffset', tag_id=4),
@@ -13918,29 +13938,6 @@ def main(argv):
       ALTER SEQUENCE <name_path> SET OPTIONS (name=value, ...);
       """,
       fields=[],
-  )
-
-  gen.AddNode(
-      name='ASTTemporalAt',
-      tag_id=574,
-      parent='ASTNode',
-      comment="""
-      An AT(version_property => expression) clause in a DML statement.
-      """,
-      fields=[
-          Field(
-              'version_property',
-              'ASTIdentifier',
-              tag_id=3,
-              field_loader=FieldLoaderMethod.REQUIRED,
-          ),
-          Field(
-              'expression',
-              'ASTExpression',
-              tag_id=2,
-              field_loader=FieldLoaderMethod.REQUIRED,
-          ),
-      ],
   )
 
   gen.AddNode(

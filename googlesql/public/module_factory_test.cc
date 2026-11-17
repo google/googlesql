@@ -155,7 +155,7 @@ class FileModuleContentsFetcherFetchProtosTest : public ::testing::Test {
         TestSrcDirBase(),
         // TODO: Remove dependency on canonical name format.
         // Directories for protos imported from Google protobuf code.
-        googlesql_base::JoinPath(::testing::SrcDir(), "protobuf~", "src",
+        googlesql_base::JoinPath(::testing::SrcDir(), "protobuf+", "src",
                        "google", "protobuf", "_virtual_imports",
                        "descriptor_proto"),
         ::testing::TempDir()};

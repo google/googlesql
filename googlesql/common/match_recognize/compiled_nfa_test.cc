@@ -206,5 +206,54 @@ TEST_F(CompiledNFATest, NumPatternVariablesAfterDeserializae) {
   EXPECT_EQ(deserialized->num_pattern_variables(), 4);
 }
 
+TEST_F(CompiledNFATest, DeserializeInvalidProtoNegativePatternVariable) {
+  for (int invalid_pattern_var : {-1, -2}) {
+    StateMachineProto::CompiledNFAProto proto;
+    auto* edge = proto.add_states()->add_edges();
+    edge->set_to_state(1);
+    edge->set_pattern_variable(invalid_pattern_var);
+    proto.add_states();
+    proto.set_start_state(0);
+    proto.set_final_state(1);
+    proto.set_num_pattern_variables(2);
+
+    EXPECT_THAT(CompiledNFA::Deserialize(proto),
+                StatusIs(absl::StatusCode::kInternal));
+  }
+}
+
+TEST_F(CompiledNFATest, DeserializeMaxSupportedEdgesBoundary) {
+  StateMachineProto::CompiledNFAProto proto;
+  auto* start_state = proto.add_states();
+  proto.add_states();
+  proto.set_start_state(0);
+  proto.set_final_state(1);
+  proto.set_num_pattern_variables(1);
+
+  for (int i = 0; i < kMaxSupportedEdges; ++i) {
+    start_state->add_edges()->set_to_state(1);
+  }
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const CompiledNFA> deserialized,
+                       CompiledNFA::Deserialize(proto));
+  EXPECT_EQ(deserialized->num_edges(), kMaxSupportedEdges);
+
+  start_state->add_edges()->set_to_state(1);
+  EXPECT_THAT(CompiledNFA::Deserialize(proto),
+              StatusIs(absl::StatusCode::kInternal));
+}
+
+TEST_F(CompiledNFATest, DeserializeZeroEdges) {
+  StateMachineProto::CompiledNFAProto proto;
+  proto.add_states();
+  proto.add_states();
+  proto.set_start_state(0);
+  proto.set_final_state(1);
+  proto.set_num_pattern_variables(1);
+
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const CompiledNFA> deserialized,
+                       CompiledNFA::Deserialize(proto));
+  EXPECT_EQ(deserialized->num_edges(), 0);
+}
+
 }  // namespace
 }  // namespace googlesql::functions::match_recognize

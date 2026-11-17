@@ -35,9 +35,8 @@ TestDriver* GetComplianceTestDriver() {
   // implementation itself and generating golden outputs.
   auto options = ReferenceDriver::DefaultLanguageOptions();
   options.EnableLanguageFeature(FEATURE_COLLATION_SUPPORT);
-  // TODO: Remove declarative and vector type features once they're
-  // enabled by default.
-  options.EnableLanguageFeature(FEATURE_DECLARATIVE_TYPE_FRAMEWORK);
+  // TODO: Remove vector type features once they're enabled by
+  // default.
   options.EnableLanguageFeature(FEATURE_VECTOR_TYPE);
   options.EnableLanguageFeature(FEATURE_SINGLE_HYBRID_VECTOR_SEARCH_TVF);
 

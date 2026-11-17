@@ -195,6 +195,12 @@ class ResolvedNode {
     // input is omitted from the operator's fields. If false, it's shown with
     // a placeholder value like "input_scan=<pipe_input>".
     bool omit_pipe_input_scan_field = true;
+
+    // Maximum length (in bytes) of the returned debug string. If the rendered
+    // output exceeds `max_length`, rendering stops early and the result is
+    // truncated (appending "..." when `max_length > 3`). Negative values are
+    // ignored.
+    int max_length = -1;
   };
 
   // Returns a string representation of this tree and all descendants, for
@@ -299,7 +305,8 @@ class ResolvedNode {
   //
   // This is generated from the resolved AST based on `column_is_created` and
   // `column_list_is_created_columns` attributes.
-  virtual std::vector<ResolvedColumn> GetColumnsCreated() const;
+  std::vector<ResolvedColumn> GetColumnsCreated(
+      bool mark_accessed = true) const;
 
   // Return a list of ResolvedColumns referenced by fields of this node.
   // This doesn't include columns nested inside node-typed fields.
@@ -420,6 +427,11 @@ class ResolvedNode {
   virtual absl::Status CheckFieldsAccessedImpl(const ResolvedNode* root) const {
     return absl::OkStatus();
   }
+
+  // Implements GetColumnsCreated(), marking accessed fields if `mark_accessed`
+  // is true.
+  virtual std::vector<ResolvedColumn> GetColumnsCreatedImpl(
+      bool mark_accessed) const;
 
   // Helper function to allow implementations of CheckFieldsAccessedImpl()
   // to call another object's CheckFieldsAccessedImpl() method.

@@ -221,7 +221,7 @@ class RunModulesTest : public ::testing::Test {
       // TODO: b/455664770 - Remove dependency on canonical name format.
       // Directories for protos imported from Google protobuf code.
       proto_disk_source_tree_.MapPath(
-          "", googlesql_base::JoinPath(::testing::SrcDir(), "protobuf~", "src", "google",
+          "", googlesql_base::JoinPath(::testing::SrcDir(), "protobuf+", "src", "google",
           "protobuf", "_virtual_imports", "descriptor_proto"));
       proto_importer_ = std::make_unique<google::protobuf::compiler::Importer>(
           &proto_disk_source_tree_, &error_collector_);

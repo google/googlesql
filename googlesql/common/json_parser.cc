@@ -23,6 +23,8 @@
 
 #include "googlesql/base/logging.h"
 #include "googlesql/common/thread_stack.h"
+#include "absl/base/optimization.h"
+#include "absl/numeric/bits.h"
 #include "absl/status/status.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/escaping.h"
@@ -33,6 +35,7 @@
 #include "googlesql/base/status_macros.h"
 #include "unicode/utf8.h"
 #include "unicode/utypes.h"
+#include "googlesql/base/endian.h"
 #include "re2/re2.h"
 #include "googlesql/base/ret_check.h"
 
@@ -204,6 +207,54 @@ void JSONParser::ParseOctalDigits(const int max_size, std::string* str) {
   p_.remove_prefix(num_octal_digits - 1);
 }
 
+namespace {
+
+// Returns the length of the contiguous prefix of `s` consisting of unescaped
+// ASCII characters (bytes < 0x80 that are neither '\\' nor `open_quote`).
+// `open_quote` must be an ASCII character (< 0x80).
+size_t UnescapedAsciiPrefixLength(absl::string_view s, char open_quote) {
+  constexpr uint64_t kLowBits = 0x0101010101010101ULL;
+  constexpr uint64_t kHighBits = 0x8080808080808080ULL;
+  const uint64_t quote_mask = kLowBits * static_cast<uint8_t>(open_quote);
+  constexpr uint64_t kBackslashMask = kLowBits * static_cast<uint8_t>('\\');
+
+  const char* cur = s.data();
+  const char* const end = cur + s.size();
+
+  while (end - cur >= 8) {
+    const uint64_t word = googlesql_base::LittleEndian::Load64(cur);
+    const uint64_t xor_quote = word ^ quote_mask;
+    const uint64_t xor_bs = word ^ kBackslashMask;
+    // `special` collects the top bit (0x80) of each of the 8 bytes, turning it
+    // on for any byte where scanning must stop:
+    //   - Non-ASCII bytes (>= 0x80) already have their top bit set in `word`.
+    //   - XORing with `quote_mask` or `kBackslashMask` turns a matching quote
+    //     or '\\' byte into 0x00 while leaving every other ASCII byte in
+    //     0x01..0x7F. Subtracting 0x01 from each byte (`kLowBits`) makes 0x00
+    //     underflow, setting its top bit, whereas 0x01..0x7F stay in 0x00..0x7E
+    //     (top bit 0, and no borrow reaches past the first 0x00 byte).
+    // Masking with `kHighBits` keeps only each byte's top bit. Thus
+    // `special == 0` means all 8 bytes are plain unescaped ASCII; otherwise,
+    // the lowest set bit marks the first stopping byte (`countr_zero >> 3`
+    // converts that bit index to a 0..7 byte offset).
+    const uint64_t special =
+        (word | (xor_quote - kLowBits) | (xor_bs - kLowBits)) & kHighBits;
+    if (ABSL_PREDICT_FALSE(special != 0)) {
+      return (cur - s.data()) + (absl::countr_zero(special) >> 3);
+    }
+    cur += 8;
+  }
+
+  // Scan the remaining < 8 tail bytes one by one.
+  while (cur < end && static_cast<uint8_t>(*cur) < 0x80 && *cur != open_quote &&
+         *cur != '\\') {
+    ++cur;
+  }
+  return cur - s.data();
+}
+
+}  // namespace
+
 bool JSONParser::ParseStringHelper(std::string* str) {
   str->clear();
   // The character used to open the string (' or ") must also close the string.
@@ -238,7 +289,9 @@ bool JSONParser::ParseStringHelper(std::string* str) {
     str->append(flush_start, flush_end - flush_start);
   };
 
-  for (; !p_.empty(); AdvanceOneCodepoint()) {
+  const char open_quote = *open;
+
+  while (!p_.empty()) {
     if (p_[0] == '\\') {
       flush(flush_start, p_.data(), str);
       flush_start = nullptr;
@@ -282,12 +335,18 @@ bool JSONParser::ParseStringHelper(std::string* str) {
         }
         p_.remove_prefix(1);
       }
-    } else if (p_[0] == *open) {
+      AdvanceOneCodepoint();
+    } else if (p_[0] == open_quote) {
       found_close_quote = true;
       break;
     } else {
       if (flush_start == nullptr) {
         flush_start = p_.data();
+      }
+      if (ABSL_PREDICT_FALSE(static_cast<uint8_t>(p_[0]) >= 0x80)) {
+        AdvanceOneCodepoint();
+      } else {
+        p_.remove_prefix(UnescapedAsciiPrefixLength(p_, open_quote));
       }
     }
   }
@@ -295,7 +354,7 @@ bool JSONParser::ParseStringHelper(std::string* str) {
   if (!found_close_quote) {
     return ReportFailure("Closing quote expected in string");
   }
-  AdvanceOneCodepoint();
+  AdvanceOneByte();
   return true;
 }
 

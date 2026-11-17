@@ -278,23 +278,27 @@ std::string UnpivotOp::IteratorDebugString() const {
 
 std::string UnpivotOp::DebugInternal(const std::string& indent,
                                      bool verbose) const {
-  return absl::StrCat(
+  std::string result = absl::StrCat(
       "UnpivotOp(",
       ArgDebugString({"projected_input_columns", "unpivot_columns", "input"},
-                     {kN, kN, k1}, indent, verbose, /*more_children=*/true),
-      indent, kIndentFork, "value_columns: [",
-      absl::StrJoin(value_columns_, ", ",
-                    [](std::string* out, const VariableId& var) {
-                      absl::StrAppend(out, var.ToString());
-                    }),
-      "]", indent, kIndentFork, "label_column: ", label_column_.ToString(),
-      indent, kIndentFork, "label_values: [",
-      absl::StrJoin(label_values_, ", ",
-                    [](std::string* out, const Value& val) {
-                      absl::StrAppend(out, val.ShortDebugString());
-                    }),
-      "]", indent, kIndentFork,
-      "include_nulls: ", include_nulls_ ? "true" : "false", ")");
+                     {kN, kN, k1}, indent, verbose, /*more_children=*/true));
+  absl::StrAppend(&result, indent, kIndentFork, "value_columns: [",
+                  absl::StrJoin(value_columns_, ", ",
+                                [](std::string* out, const VariableId& var) {
+                                  absl::StrAppend(out, var.ToString());
+                                }),
+                  "]");
+  absl::StrAppend(&result, indent, kIndentFork,
+                  "label_column: ", label_column_.ToString());
+  absl::StrAppend(&result, indent, kIndentFork, "label_values: [",
+                  absl::StrJoin(label_values_, ", ",
+                                [](std::string* out, const Value& val) {
+                                  absl::StrAppend(out, val.ShortDebugString());
+                                }),
+                  "]");
+  absl::StrAppend(&result, indent, kIndentFork,
+                  "include_nulls: ", include_nulls_ ? "true" : "false", ")");
+  return result;
 }
 
 }  // namespace googlesql

@@ -38,9 +38,7 @@ absl::Status GetVectorFunctions(TypeFactory* type_factory,
                                 const GoogleSQLBuiltinFunctionOptions& options,
                                 NameToFunctionMap* functions,
                                 NameToTypeMap* types) {
-  if (!options.language_options.LanguageFeatureEnabled(
-          FEATURE_DECLARATIVE_TYPE_FRAMEWORK) ||
-      !options.language_options.LanguageFeatureEnabled(FEATURE_VECTOR_TYPE)) {
+  if (!options.language_options.LanguageFeatureEnabled(FEATURE_VECTOR_TYPE)) {
     return absl::OkStatus();
   }
 

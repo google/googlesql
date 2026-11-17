@@ -89,11 +89,10 @@
 #include "googlesql/resolved_ast/resolved_node_kind.pb.h"
 #include "googlesql/base/case.h"
 #include "absl/algorithm/container.h"
-#include "absl/base/casts.h"
+#include "absl/base/nullability.h"
 #include "absl/container/flat_hash_map.h"
 #include "googlesql/base/check.h"
 #include "absl/log/log.h"
-#include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "googlesql/base/status_macros.h"
 #include "absl/status/statusor.h"
@@ -574,6 +573,7 @@ absl::Status FunctionResolver::
   std::vector<InputArgumentType> orig_input_argument_types =
       std::move(*input_argument_types);
   input_argument_types->clear();
+  input_argument_types->reserve(index_mapping.size());
 
   for (const ArgIndexEntry& p : index_mapping) {
     if (p.call_arg_index >= 0) {
@@ -606,6 +606,7 @@ absl::Status FunctionResolver::
   std::vector<const ASTNode*> original_arg_locations =
       std::move(*arg_locations);
   arg_locations->clear();
+  arg_locations->reserve(index_mapping.size());
   for (const ArgIndexEntry& p : index_mapping) {
     const ASTNode* call_arg_location =
         p.call_arg_index >= 0 ? original_arg_locations[p.call_arg_index]
@@ -3229,15 +3230,19 @@ FunctionResolver::ResolveTemplatedOrAnnotatedSQLFunctionCallInternal(
   return absl::OkStatus();
 }
 
-// Lookup the proxy function generated for the function-typed parameter.
-Function* FunctionResolver::LookupGeneratedFunction(IdString name) const {
-  absl::string_view name_view = name.ToStringView();
-  for (const auto& f : resolver_->generated_functions_) {
-    if (googlesql_base::CaseEqual(f->Name(), name_view)) {
-      return f.get();
-    }
+// Looks up the proxy function generated for an in-scope function-typed
+// parameter.
+const Function* /*absl_nullable*/ FunctionResolver::LookupGeneratedFunction(
+    IdString name) const {
+  if (resolver_->function_argument_info_ == nullptr) {
+    return nullptr;
   }
-  return nullptr;
+  const FunctionArgumentInfo::ArgumentDetails* arg_details =
+      resolver_->function_argument_info_->FindScalarArg(name);
+  if (arg_details == nullptr || !arg_details->arg_type.IsLambda()) {
+    return nullptr;
+  }
+  return arg_details->proxy_function;
 }
 
 namespace {

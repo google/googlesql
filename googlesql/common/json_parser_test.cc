@@ -16,6 +16,7 @@
 
 #include "googlesql/common/json_parser.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -28,6 +29,7 @@
 #include "gtest/gtest.h"
 #include "absl/status/status.h"
 #include "absl/strings/escaping.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
@@ -319,6 +321,116 @@ TEST(JSONParserTest, ParseUTF7FalsePositive) {
 
   GOOGLESQL_ASSERT_OK(j.Parse());
   EXPECT_EQ(str, j.output());
+}
+
+TEST(JSONParserTest, ParseStringSwarBoundaries) {
+  auto make_ascii_string = [](size_t length) {
+    std::string result(length, '\0');
+    for (size_t i = 0; i < length; ++i) {
+      result[i] = static_cast<char>('a' + (i % 26));
+    }
+    return result;
+  };
+
+  // 0 trailing spaces exercises exact buffer-end / scalar tail under ASan
+  // (via StringNoTerminator); 8 trailing spaces keeps `end - cur >= 8` so the
+  // 8-byte SWAR check fires at every byte lane 0..7.
+  for (int trailing_spaces : {0, 8}) {
+    const std::string padding(trailing_spaces, ' ');
+
+    // 1. Plain ASCII strings of lengths 0..32 with both '"' and '\'' quotes
+    //    (including the opposite unescaped quote and embedded NULs).
+    for (size_t length = 0; length <= 32; ++length) {
+      const std::string body = make_ascii_string(length);
+      const std::string expected =
+          absl::StrFormat("\"%s\"", absl::CEscape(body));
+      ParseAndCompare(absl::StrCat("\"", body, "\"", padding), expected);
+      ParseAndCompare(absl::StrCat("'", body, "'", padding), expected);
+
+      for (size_t pos = 0; pos < length; ++pos) {
+        std::string with_single = body;
+        with_single[pos] = '\'';
+        ParseAndCompare(absl::StrCat("\"", with_single, "\"", padding),
+                        absl::StrFormat("\"%s\"", absl::CEscape(with_single)));
+
+        std::string with_double = body;
+        with_double[pos] = '"';
+        ParseAndCompare(absl::StrCat("'", with_double, "'", padding),
+                        absl::StrFormat("\"%s\"", absl::CEscape(with_double)));
+
+        std::string with_nul = body;
+        with_nul[pos] = '\0';
+        ParseAndCompare(absl::StrCat("\"", with_nul, "\"", padding),
+                        absl::StrFormat("\"%s\"", absl::CEscape(with_nul)));
+      }
+    }
+
+    // 2. Escape sequences (`\`) at every prefix offset 0..32 (all lanes 0..7).
+    struct EscapeCase {
+      absl::string_view raw_escape;
+      absl::string_view unescaped;
+    };
+    constexpr EscapeCase kEscapeCases[] = {
+        {"\\n", "\n"},           {"\\\"", "\""}, {"\\'", "'"},   {"\\\\", "\\"},
+        {"\\u00e9", "\xC3\xA9"}, {"\\x41", "A"}, {"\\101", "A"},
+    };
+    for (const EscapeCase& escape_case : kEscapeCases) {
+      for (size_t prefix_len = 0; prefix_len <= 32; ++prefix_len) {
+        for (size_t suffix_len : {size_t{0}, size_t{1}, size_t{7}, size_t{9}}) {
+          const std::string prefix = make_ascii_string(prefix_len);
+          const std::string suffix = make_ascii_string(suffix_len);
+          const std::string json_input = absl::StrCat(
+              "\"", prefix, escape_case.raw_escape, suffix, "\"", padding);
+          const std::string unescaped =
+              absl::StrCat(prefix, escape_case.unescaped, suffix);
+          ParseAndCompare(json_input,
+                          absl::StrFormat("\"%s\"", absl::CEscape(unescaped)));
+        }
+      }
+    }
+
+    // 3. Multi-byte UTF-8 sequences at every prefix offset 0..32 (all lanes
+    //    0..7), including 0x80 continuation bytes and bytes whose XOR with
+    //    '"' (0xA2), '\'' (0xA7), or '\\' (0xDC) has only bit 7 set.
+    constexpr absl::string_view kUtf8Chars[] = {
+        "\xC2\x80",          // U+0080 (2-byte with 0x80 continuation)
+        "\xC4\x80",          // U+0100 (2-byte with 0x80 continuation)
+        "\xC2\xA2",          // U+00A2 (0xA2 ^ '"' == 0x80)
+        "\xC2\xA7",          // U+00A7 (0xA7 ^ '\'' == 0x80)
+        "\xDC\x80",          // U+0700 (0xDC ^ '\\' == 0x80, plus 0x80 cont.)
+        "\xE1\x80\x80",      // U+1000 (3-byte with two 0x80 continuations)
+        "\xE6\x95\x8F",      // U+654F (3-byte CJK)
+        "\xF0\x90\x80\x80",  // U+10000 (4-byte with two 0x80 continuations)
+    };
+    for (absl::string_view utf8_char : kUtf8Chars) {
+      for (size_t prefix_len = 0; prefix_len <= 32; ++prefix_len) {
+        for (size_t suffix_len : {size_t{0}, size_t{1}, size_t{8}}) {
+          const std::string prefix = make_ascii_string(prefix_len);
+          const std::string suffix = make_ascii_string(suffix_len);
+          const std::string unescaped = absl::StrCat(prefix, utf8_char, suffix);
+          const std::string json_input =
+              absl::StrCat("\"", unescaped, "\"", padding);
+          ParseAndCompare(json_input,
+                          absl::StrFormat("\"%s\"", absl::CEscape(unescaped)));
+        }
+      }
+    }
+  }
+
+  // 4. Unclosed strings >= 8 bytes (and unclosed trailing backslash >= 8
+  //    bytes).
+  for (size_t length = 8; length <= 32; ++length) {
+    const std::string body = make_ascii_string(length);
+    for (char quote : {'"', '\''}) {
+      JSONToJSON unclosed(absl::StrCat(absl::string_view(&quote, 1), body));
+      EXPECT_THAT(unclosed.Parse(), StatusIs(absl::StatusCode::kOutOfRange));
+
+      JSONToJSON unclosed_escape(
+          absl::StrCat(absl::string_view(&quote, 1), body, "\\"));
+      EXPECT_THAT(unclosed_escape.Parse(),
+                  StatusIs(absl::StatusCode::kOutOfRange));
+    }
+  }
 }
 
 TEST(JSONParserTest, ParseDouble) {

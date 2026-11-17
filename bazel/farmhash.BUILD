@@ -14,6 +14,8 @@
 # limitations under the License.
 #
 
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+
 licenses(["notice"])  # Apache v2.0
 
 cc_library(

@@ -17,7 +17,6 @@
 #ifndef GOOGLESQL_TOOLS_EXECUTE_QUERY_EXECUTE_QUERY_PROMPT_H_
 #define GOOGLESQL_TOOLS_EXECUTE_QUERY_EXECUTE_QUERY_PROMPT_H_
 
-#include <deque>
 #include <functional>
 #include <optional>
 #include <string>
@@ -26,6 +25,7 @@
 
 #include "googlesql/tools/execute_query/execute_query_tool.h"
 #include "gtest/gtest_prod.h"
+#include "absl/container/chunked_queue.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/cord.h"
 #include "absl/strings/string_view.h"
@@ -127,7 +127,7 @@ class ExecuteQueryStatementPrompt : public ExecuteQueryPrompt {
   bool continuation_ = false;
   bool eof_ = false;
   absl::Cord buf_;
-  std::deque<absl::StatusOr<std::optional<std::string>>> queue_;
+  absl::chunked_queue<absl::StatusOr<std::optional<std::string>>> queue_;
 };
 
 }  // namespace googlesql

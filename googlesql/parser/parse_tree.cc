@@ -1949,4 +1949,10 @@ std::string ASTGqlDelete::SingleNodeDebugString() const {
   return absl::StrCat(node_name, "(NODETACH)");
 }
 
+std::string ASTForVersionClause::SingleNodeDebugString() const {
+  // TODO: b/538182270 - Update once more version modes are enabled.
+  return absl::StrCat(ASTNode::SingleNodeDebugString(),
+                      "(version_type=SYSTEM_TIME)");
+}
+
 }  // namespace googlesql

@@ -14,6 +14,9 @@
 # limitations under the License.
 
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
+load("@com_google_protobuf//bazel:cc_proto_library.bzl", "cc_proto_library")
+load("@com_google_protobuf//bazel:proto_library.bzl", "proto_library")
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_cc//cc:cc_test.bzl", "cc_test")
 load(":builddefs.bzl", "gen_module_test")
 
@@ -83,6 +86,33 @@ cc_test(
         "//googlesql/testdata:test_schema_cc_proto",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+cc_library(
+    name = "determinism",
+    srcs = ["determinism.cc"],
+    hdrs = ["determinism.h"],
+    deps = [
+        ":internal_value",
+        "//googlesql/public:value",
+        "//googlesql/public/types",
+    ],
+)
+
+cc_test(
+    name = "determinism_test",
+    size = "small",
+    srcs = ["determinism_test.cc"],
+    deps = [
+        ":determinism",
+        ":internal_value",
+        "//googlesql/base/testing:googlesql_gtest_main",
+        "//googlesql/base/testing:status_matchers",
+        "//googlesql/public:value",
+        "//googlesql/public/types",
+        "//googlesql/testdata:test_schema_cc_proto",
+        "//googlesql/testing:test_value",
     ],
 )
 
@@ -283,6 +313,45 @@ cc_library(
         ":canonicalize_signed_zero_to_string",
         "//googlesql/base:string_numbers",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "vector_value_util",
+    srcs = ["vector_value_util.cc"],
+    hdrs = ["vector_value_util.h"],
+    deps = [
+        "//googlesql/base:ret_check",
+        "//googlesql/base:status",
+        "//googlesql/public:value",
+        "//googlesql/public/proto:vector_encoding_id_cc_proto",
+        "//googlesql/public/proto:vector_value_cc_proto",
+        "//googlesql/public/types:type",
+        "//googlesql/public/types:vector_value_codec",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_test(
+    name = "vector_value_util_test",
+    size = "small",
+    srcs = ["vector_value_util_test.cc"],
+    deps = [
+        ":vector_value_util",
+        "//googlesql/base:status",
+        "//googlesql/base/testing:googlesql_gtest_main",
+        "//googlesql/base/testing:status_matchers",
+        "//googlesql/public:value",
+        "//googlesql/public/proto:vector_encoding_id_cc_proto",
+        "//googlesql/public/proto:vector_value_cc_proto",
+        "//googlesql/public/types",
+        "//googlesql/public/types:vector_type_util",
+        "//googlesql/public/types:vector_value_codec",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
     ],
 )
 
@@ -991,9 +1060,12 @@ cc_library(
     deps = [
         ":thread_stack",
         "//googlesql/base",
+        "//googlesql/base:endian",
         "//googlesql/base:ret_check",
         "//googlesql/base:status",
         "//googlesql/base:strings",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/numeric:bits",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_googlesource_code_re2//:re2",
@@ -1287,6 +1359,7 @@ cc_test(
         "//googlesql/resolved_ast",
         "//googlesql/testing:test_value",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/types:span",
     ],
 )

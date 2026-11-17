@@ -869,6 +869,102 @@ FROM
      ROW_NUMBER() OVER () AS a_1;
 ==
 
+# An ORDER BY that expands to zero columns is treated as absent, so a function
+# that requires a window ORDER BY is an error...
+SELECT LEAD(Key) OVER (ORDER BY **COLUMNS([])) FROM KeyValue
+--
+ERROR: Window ORDER BY would expand to zero columns, but analytic function lead requires a window ORDER BY [at 1:24]
+SELECT LEAD(Key) OVER (ORDER BY **COLUMNS([])) FROM KeyValue
+                       ^
+==
+
+SELECT LEAD(Key) OVER W 
+FROM KeyValue
+WINDOW W AS (ORDER BY **COLUMNS([]))
+
+--
+ERROR: Window ORDER BY would expand to zero columns, but analytic function lead requires a window ORDER BY [at 3:14]
+WINDOW W AS (ORDER BY **COLUMNS([]))
+             ^
+==
+
+# ...an aggregate gets the implicit frame of a window without ORDER BY...
+SELECT COUNT(*) OVER (ORDER BY **COLUMNS([])) FROM KeyValue
+--
+QueryStmt
++-output_column_list=
+| +-$analytic.$analytic1#4 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$analytic.$analytic1#4]
+    +-input_scan=
+      +-AnalyticScan
+        +-column_list=[$analytic.$analytic1#4]
+        +-input_scan=
+        | +-TableScan(table=KeyValue)
+        +-function_group_list=
+          +-AnalyticFunctionGroup
+            +-analytic_function_list=
+              +-$analytic1#4 :=
+                +-AnalyticFunctionCall(GoogleSQL:$count_star() -> INT64)
+                  +-window_frame=
+                    +-WindowFrame(frame_unit=ROWS)
+                      +-start_expr=
+                      | +-WindowFrameExpr(boundary_type=UNBOUNDED PRECEDING)
+                      +-end_expr=
+                        +-WindowFrameExpr(boundary_type=UNBOUNDED FOLLOWING)
+
+[SQLBUILDER_OUTPUT]
+SELECT
+  COUNT(*) OVER (ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) AS a_1
+FROM
+  KeyValue;
+==
+
+# ...and a RANGE frame is checked as it is without ORDER BY: RANGE BETWEEN
+# UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING is the one RANGE frame allowed
+# without an ORDER BY (all rows are peers, so the frame is the whole
+# partition), and any other RANGE frame is an error.
+SELECT COUNT(*) OVER (ORDER BY **COLUMNS([]) RANGE {{UNBOUNDED PRECEDING|BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING}}) FROM KeyValue
+--
+ALTERNATION GROUP: UNBOUNDED PRECEDING
+--
+ERROR: A RANGE-based window without ORDER BY includes all rows in the window frame so only RANGE BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING syntax is supported [at 1:46]
+SELECT COUNT(*) OVER (ORDER BY **COLUMNS([]) RANGE UNBOUNDED PRECEDING) FROM ...
+                                             ^
+--
+ALTERNATION GROUP: BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
+--
+QueryStmt
++-output_column_list=
+| +-$analytic.$analytic1#4 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$analytic.$analytic1#4]
+    +-input_scan=
+      +-AnalyticScan
+        +-column_list=[$analytic.$analytic1#4]
+        +-input_scan=
+        | +-TableScan(table=KeyValue)
+        +-function_group_list=
+          +-AnalyticFunctionGroup
+            +-analytic_function_list=
+              +-$analytic1#4 :=
+                +-AnalyticFunctionCall(GoogleSQL:$count_star() -> INT64)
+                  +-window_frame=
+                    +-WindowFrame(frame_unit=RANGE)
+                      +-start_expr=
+                      | +-WindowFrameExpr(boundary_type=UNBOUNDED PRECEDING)
+                      +-end_expr=
+                        +-WindowFrameExpr(boundary_type=UNBOUNDED FOLLOWING)
+
+[SQLBUILDER_OUTPUT]
+SELECT
+  COUNT(*) OVER (RANGE BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) AS a_1
+FROM
+  KeyValue;
+==
+
 # Named window ORDER BY unpack (standard)
 SELECT row_number() OVER w FROM KeyValue WINDOW w AS (ORDER BY **COLUMNS(['Key', 'Value']))
 --

@@ -45,6 +45,7 @@
 #include "googlesql/public/types/type_factory.h"
 #include "googlesql/public/types/value_equality_check_options.h"
 #include "googlesql/public/value.h"
+#include "googlesql/reference_impl/functions/variant.h"
 #include "googlesql/reference_impl/operator.h"
 #include "googlesql/reference_impl/parameters.h"
 #include "googlesql/reference_impl/variable_generator.h"
@@ -692,6 +693,85 @@ TEST_F(ExpressionAlgebrizerTest, AlgebrizeResolvedMapLiteral) {
             "+-0 value: ConstExpr(Int64(1)),\n"
             "+-1 key: ConstExpr(String(\"b\")),\n"
             "+-1 value: ConstExpr(Int64(2)))");
+}
+
+TEST_F(ExpressionAlgebrizerTest, AlgebrizeGetVariantField) {
+  RegisterBuiltinVariantFunctions();
+  std::unique_ptr<const ResolvedExpr> variant_literal(
+      MakeResolvedLiteral(types::VariantType(), Value::VariantNull()));
+  std::unique_ptr<const ResolvedExpr> get_variant_field(
+      MakeResolvedGetVariantField(types::VariantType(),
+                                  std::move(variant_literal), "foo"));
+
+  LanguageOptions language_options;
+  language_options.EnableLanguageFeature(FEATURE_VARIANT_TYPE);
+  std::unique_ptr<ValueExpr> algebra_output;
+  Parameters parameters(ParameterMap{});
+  ParameterMap column_map;
+  SystemVariablesAlgebrizerMap system_variables_map;
+  GOOGLESQL_ASSERT_OK(Algebrizer::AlgebrizeExpression(
+      language_options, AlgebrizerOptions(), &type_factory_,
+      get_variant_field.get(), &algebra_output, &parameters, &column_map,
+      &system_variables_map));
+  EXPECT_EQ(algebra_output->DebugString(true),
+            "VariantSubscript(ConstExpr(Variant(null)), "
+            "ConstExpr(String(\"foo\")))");
+}
+
+TEST_F(ExpressionAlgebrizerTest, AlgebrizeVariantSubscriptString) {
+  RegisterBuiltinVariantFunctions();
+  Function fn("$subscript", Function::kGoogleSQLFunctionGroupName,
+              Function::SCALAR);
+  FunctionSignature sig(types::VariantType(),
+                        {types::VariantType(), types::StringType()},
+                        FN_VARIANT_SUBSCRIPT_STRING);
+  std::unique_ptr<const ResolvedExpr> fn_call(MakeResolvedFunctionCall(
+      types::VariantType(), &fn, sig,
+      MakeNodeVectorP<const ResolvedExpr>(
+          MakeResolvedLiteral(types::VariantType(), Value::VariantNull()),
+          MakeResolvedLiteral(Value::String("foo"))),
+      DEFAULT_ERROR_MODE));
+
+  LanguageOptions language_options;
+  language_options.EnableLanguageFeature(FEATURE_VARIANT_TYPE);
+  std::unique_ptr<ValueExpr> algebra_output;
+  Parameters parameters(ParameterMap{});
+  ParameterMap column_map;
+  SystemVariablesAlgebrizerMap system_variables_map;
+  GOOGLESQL_ASSERT_OK(Algebrizer::AlgebrizeExpression(
+      language_options, AlgebrizerOptions(), &type_factory_, fn_call.get(),
+      &algebra_output, &parameters, &column_map, &system_variables_map));
+  EXPECT_EQ(algebra_output->DebugString(true),
+            "VariantSubscript(ConstExpr(Variant(null)), "
+            "ConstExpr(String(\"foo\")))");
+}
+
+TEST_F(ExpressionAlgebrizerTest, AlgebrizeVariantSubscriptInt64) {
+  RegisterBuiltinVariantFunctions();
+  Function fn("$subscript", Function::kGoogleSQLFunctionGroupName,
+              Function::SCALAR);
+  FunctionSignature sig(types::VariantType(),
+                        {types::VariantType(), types::Int64Type()},
+                        FN_VARIANT_SUBSCRIPT_INT64);
+  std::unique_ptr<const ResolvedExpr> fn_call(MakeResolvedFunctionCall(
+      types::VariantType(), &fn, sig,
+      MakeNodeVectorP<const ResolvedExpr>(
+          MakeResolvedLiteral(types::VariantType(), Value::VariantNull()),
+          MakeResolvedLiteral(Value::Int64(0))),
+      DEFAULT_ERROR_MODE));
+
+  LanguageOptions language_options;
+  language_options.EnableLanguageFeature(FEATURE_VARIANT_TYPE);
+  std::unique_ptr<ValueExpr> algebra_output;
+  Parameters parameters(ParameterMap{});
+  ParameterMap column_map;
+  SystemVariablesAlgebrizerMap system_variables_map;
+  GOOGLESQL_ASSERT_OK(Algebrizer::AlgebrizeExpression(
+      language_options, AlgebrizerOptions(), &type_factory_, fn_call.get(),
+      &algebra_output, &parameters, &column_map, &system_variables_map));
+  EXPECT_EQ(algebra_output->DebugString(true),
+            "VariantSubscript(ConstExpr(Variant(null)), "
+            "ConstExpr(Int64(0)))");
 }
 
 TEST_F(StatementAlgebrizerTest, SingleRowScan) {

@@ -166,7 +166,7 @@ struct CreateIndexStatementSuffix {
 };
 
 struct DmlTargetSuffix {
-  ASTTemporalAt* temporal_at = nullptr;
+  ASTAtVersionClause* at_version = nullptr;
   ASTAlias* alias = nullptr;
   ASTWithTimestamp* with_timestamp = nullptr;
   ASTWithOffset* with_offset = nullptr;

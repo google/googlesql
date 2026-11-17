@@ -23,6 +23,7 @@
 
 #include "googlesql/common/box_glyphs.h"
 #include "googlesql/common/thread_stack.h"
+#include "googlesql/common/utf_util.h"
 #include "googlesql/resolved_ast/resolved_ast.h"
 #include "googlesql/resolved_ast/resolved_node.h"
 #include "googlesql/resolved_ast/resolved_node_kind.pb.h"
@@ -133,6 +134,10 @@ class TreeRenderer {
   const BoxGlyphs& glyphs_;
   std::string* output_;
 
+  bool HasExceededMaxLength() const {
+    return config_.max_length >= 0 && output_->size() > config_.max_length;
+  }
+
   void RenderNode(const ResolvedASTNodeView& node_view, absl::string_view stem,
                   absl::string_view node_connector,
                   absl::string_view field_value_indent,
@@ -236,6 +241,9 @@ void TreeRenderer::RenderNode(const ResolvedASTNodeView& node_view,
                               absl::string_view node_connector,
                               absl::string_view field_value_indent,
                               const ResolvedScan* pipe_input_to_elide) {
+  if (HasExceededMaxLength()) {
+    return;
+  }
   if (config_.linear_mode && !node_view.is_null() &&
       node_view.pipe_input_scan() != nullptr) {
     RenderLinearScanChain(node_view, stem, node_connector);
@@ -250,6 +258,9 @@ void TreeRenderer::RenderStandardNodeBody(
     const ResolvedASTNodeView& node_view, absl::string_view stem,
     absl::string_view node_connector, absl::string_view field_value_indent,
     const ResolvedScan* pipe_input_to_elide) {
+  if (HasExceededMaxLength()) {
+    return;
+  }
 
   if (node_view.is_null()) {
     absl::StrAppend(output_, stem, node_connector, "<nullptr AST node>\n");
@@ -297,6 +308,9 @@ void TreeRenderer::RenderStandardNodeBody(
 
   // Render each field as a branch.
   for (int i = 0; i < visible_fields.size(); ++i) {
+    if (HasExceededMaxLength()) {
+      return;
+    }
     const auto& field_view = visible_fields[i];
     const bool is_last = (i == visible_fields.size() - 1);
 
@@ -333,10 +347,16 @@ void TreeRenderer::RenderStandardNodeBody(
         absl::StrAppend(output_, stem, field_value_indent, field_indent,
                         "  \"\"\"\n");
         for (absl::string_view line : absl::StrSplit(scalar_value, '\n')) {
+          if (HasExceededMaxLength()) {
+            return;
+          }
           std::string line_content = absl::StrCat(field_indent, "  ", line);
           absl::StrAppend(output_, stem, field_value_indent,
                           absl::StripTrailingAsciiWhitespace(line_content),
                           "\n");
+        }
+        if (HasExceededMaxLength()) {
+          return;
         }
         absl::StrAppend(output_, stem, field_value_indent, field_indent,
                         "  \"\"\"\n");
@@ -345,6 +365,9 @@ void TreeRenderer::RenderStandardNodeBody(
       if (!is_pipe_input) {
         int num_child_nodes = field_view.num_child_nodes();
         for (int j = 0; j < num_child_nodes; ++j) {
+          if (HasExceededMaxLength()) {
+            return;
+          }
           const auto& child = field_view.child_node(j);
           const absl::string_view field_name_indent =
               print_field_name ? field_indent : "";
@@ -369,6 +392,9 @@ void TreeRenderer::RenderStandardNodeBody(
 void TreeRenderer::RenderLinearScanChain(
     const ResolvedASTNodeView& top_scan_view, absl::string_view stem,
     absl::string_view connector) {
+  if (HasExceededMaxLength()) {
+    return;
+  }
 
   // pipe_chain[0] is the first scan (with pipe input null), and
   // pipe_chain.back() is top_scan_view.
@@ -403,6 +429,9 @@ void TreeRenderer::RenderLinearScanChain(
 
   // Emit each subsequent pipe operator.
   for (int i = 1; i < pipe_chain.size(); ++i) {
+    if (HasExceededMaxLength()) {
+      return;
+    }
     const bool is_last = (i == pipe_chain.size() - 1);
     RenderStandardNodeBody(
         pipe_chain[i], stem,
@@ -419,6 +448,9 @@ std::string RenderResolvedAST(const ResolvedNode* root,
                               const ResolvedNode::DebugStringConfig& config) {
   std::string output;
   TreeRenderer(config, &output).Render(ResolvedASTNodeView(root));
+  if (config.max_length >= 0 && output.size() > config.max_length) {
+    return PrettyTruncateUTF8(output, config.max_length);
+  }
   return output;
 }
 

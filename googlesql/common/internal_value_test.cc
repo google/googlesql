@@ -202,6 +202,15 @@ TEST(InternalValueTest, NestedValues) {
   EXPECT_FALSE(InternalValue::ContainsArrayWithUncertainOrder(measure_ordered));
   EXPECT_TRUE(
       InternalValue::ContainsArrayWithUncertainOrder(measure_unordered));
+
+  // VARIANT values.
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(Value variant_ordered,
+                       Value::Variant(int_array_len_three_ordered));
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(Value variant_unordered,
+                       Value::Variant(int_array_len_three_unordered));
+  EXPECT_FALSE(InternalValue::ContainsArrayWithUncertainOrder(variant_ordered));
+  EXPECT_TRUE(
+      InternalValue::ContainsArrayWithUncertainOrder(variant_unordered));
 }
 
 TEST(InternalValueTest, MeasureFormatting) {

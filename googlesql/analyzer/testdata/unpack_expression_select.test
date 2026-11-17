@@ -243,19 +243,57 @@ FROM
      CAST(keyvalue_3.a_1 AS STRING) AS key_str;
 ==
 
+# A SELECT list that expands to zero columns is an error, reported at the
+# SELECT list rather than at the enclosing statement, so that it is also caught
+# in subqueries and pipelines (see below).
 SELECT **COLUMNS([]) FROM KeyValue
 --
-ERROR: Output column list is empty [at 1:1]
+ERROR: SELECT list would expand to zero columns [at 1:8]
 SELECT **COLUMNS([]) FROM KeyValue
-^
+       ^
 ==
 
 [sql_builder_target_syntax_mode=pipe]
 FROM KeyValue |> SELECT **COLUMNS([])
 --
-ERROR: Output column list is empty [at 1:1]
+ERROR: Pipe SELECT list would expand to zero columns [at 1:25]
 FROM KeyValue |> SELECT **COLUMNS([])
-^
+                        ^
+==
+
+# The empty SELECT list is rejected even when it is not the outermost query.
+SELECT 1 FROM (SELECT **COLUMNS([]) FROM KeyValue)
+--
+ERROR: SELECT list would expand to zero columns [at 1:23]
+SELECT 1 FROM (SELECT **COLUMNS([]) FROM KeyValue)
+                      ^
+==
+
+FROM KeyValue
+|> SELECT **COLUMNS([])
+|> SELECT 1
+--
+ERROR: Pipe SELECT list would expand to zero columns [at 2:11]
+|> SELECT **COLUMNS([])
+          ^
+==
+
+# Also an error with SELECT AS STRUCT / AS VALUE. STRUCT<> is a valid type, but
+# an empty SELECT list is never allowed to produce one, matching the existing
+# behavior of `SELECT AS STRUCT * EXCEPT (<all columns>)`.
+SELECT (SELECT {{AS STRUCT|AS VALUE}} **COLUMNS([]) FROM KeyValue LIMIT 1)
+--
+ALTERNATION GROUP: AS STRUCT
+--
+ERROR: SELECT list would expand to zero columns [at 1:26]
+SELECT (SELECT AS STRUCT **COLUMNS([]) FROM KeyValue LIMIT 1)
+                         ^
+--
+ALTERNATION GROUP: AS VALUE
+--
+ERROR: SELECT list would expand to zero columns [at 1:25]
+SELECT (SELECT AS VALUE **COLUMNS([]) FROM KeyValue LIMIT 1)
+                        ^
 ==
 
 SELECT Key, **COLUMNS([]) FROM KeyValue
@@ -1042,7 +1080,7 @@ FROM
 SELECT **COLUMNS(['Key', 'Value']) FROM KeyValue
 
 --
-ERROR: Column list spec is not supported [at 1:8]
+ERROR: Unpack expression (**) is not supported [at 1:8]
 SELECT **COLUMNS(['Key', 'Value']) FROM KeyValue
        ^
 ==
@@ -1069,6 +1107,15 @@ SELECT 1 AS b, **Columns(['b']);
 ERROR: No columns found in the FROM clause to resolve ** [at 1:16]
 SELECT 1 AS b, **Columns(['b']);
                ^
+==
+
+# Without a FROM clause, `**` is rejected before it is expanded, so an empty
+# column list never reaches the zero-columns check.
+SELECT **COLUMNS([]);
+--
+ERROR: No columns found in the FROM clause to resolve ** [at 1:8]
+SELECT **COLUMNS([]);
+       ^
 ==
 
 # Argument is not a constant array of strings - non-array type
@@ -1286,3 +1333,76 @@ FROM KeyValue;
 ERROR: ** expression cannot be aliased [at 1:27]
 SELECT **COLUMNS(['Key']) as a
                           ^
+==
+
+# CREATE MODEL TRANSFORM list
+CREATE MODEL m TRANSFORM(**COLUMNS(['Key'])) OPTIONS() AS SELECT Key, Value FROM KeyValue
+--
+CreateModelStmt
++-name_path=m
++-output_column_list=
+| +-KeyValue.Key#1 AS Key [INT64]
+| +-KeyValue.Value#2 AS Value [STRING]
++-query=
+| +-ProjectScan
+|   +-column_list=KeyValue.[Key#1, Value#2]
+|   +-input_scan=
+|     +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
++-transform_input_column_list=
+| +-ColumnDefinition(name="Key", type=INT64, column=m.Key#3)
+| +-ColumnDefinition(name="Value", type=STRING, column=m.Value#4)
++-transform_list=
+| +-Key#5 := ColumnRef(type=INT64, column=m.Key#3)
++-transform_output_column_list=
+  +-m.Key#5 AS Key [INT64]
+
+[SQLBUILDER_OUTPUT]
+CREATE MODEL m TRANSFORM(
+  Key AS Key)
+AS
+SELECT
+  KeyValue.Key AS Key,
+  KeyValue.Value AS Value
+FROM
+  KeyValue;
+==
+
+# A TRANSFORM clause that expands to zero columns cannot be represented (an
+# empty transform list means no TRANSFORM clause), so it is an error.
+CREATE MODEL m TRANSFORM({{**COLUMNS([])|Key, **COLUMNS([])}}) OPTIONS() AS SELECT Key, Value FROM KeyValue
+--
+ALTERNATION GROUP: **COLUMNS([])
+--
+ERROR: SELECT list would expand to zero columns [at 1:26]
+CREATE MODEL m TRANSFORM(**COLUMNS([])) OPTIONS() AS SELECT Key, Value FROM K...
+                         ^
+--
+ALTERNATION GROUP: Key, **COLUMNS([])
+--
+CreateModelStmt
++-name_path=m
++-output_column_list=
+| +-KeyValue.Key#1 AS Key [INT64]
+| +-KeyValue.Value#2 AS Value [STRING]
++-query=
+| +-ProjectScan
+|   +-column_list=KeyValue.[Key#1, Value#2]
+|   +-input_scan=
+|     +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
++-transform_input_column_list=
+| +-ColumnDefinition(name="Key", type=INT64, column=m.Key#3)
+| +-ColumnDefinition(name="Value", type=STRING, column=m.Value#4)
++-transform_list=
+| +-Key#5 := ColumnRef(type=INT64, column=m.Key#3)
++-transform_output_column_list=
+  +-m.Key#5 AS Key [INT64]
+
+[SQLBUILDER_OUTPUT]
+CREATE MODEL m TRANSFORM(
+  Key AS Key)
+AS
+SELECT
+  KeyValue.Key AS Key,
+  KeyValue.Value AS Value
+FROM
+  KeyValue;

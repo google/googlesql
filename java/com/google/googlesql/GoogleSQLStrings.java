@@ -28,6 +28,17 @@ public class GoogleSQLStrings {
   private static final DateTime EPOCH = new DateTime(1970, 1, 1, 0, 0);
 
   /**
+   * Convert a string to a GoogleSQL identifier literal. The output will always be quoted (with
+   * backticks) and escaped if necessary.
+   *
+   * @param str String to be converted to identifier.
+   * @return Legal GoogleSQL identifier converted from the string.
+   */
+  public static String toAlwaysQuotedIdentifierLiteral(String str) {
+    throw new UnsupportedOperationException();
+  }
+
+  /**
    * Convert a string to a GoogleSQL identifier literal. The output will be quoted (with backticks)
    * and escaped if necessary.
    *

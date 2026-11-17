@@ -1422,6 +1422,7 @@ TEST(IntervalValueTest, ParseFromString1) {
   ExpectParseError("1\t", YEAR, /*allow_nanos=*/false);
   ExpectParseError("\n1", YEAR, /*allow_nanos=*/false);
   ExpectParseError("1\n", YEAR, /*allow_nanos=*/false);
+  ExpectParseError("1\xa0", YEAR, /*allow_nanos=*/false);
   // invalid formatting
   ExpectParseError("--1", YEAR, /*allow_nanos=*/false);
   ExpectParseError("1.0", YEAR, /*allow_nanos=*/false);
@@ -2553,6 +2554,7 @@ TEST(IntervalValueTest, ParseFromString) {
   ExpectParseError("1-2-3", /*allow_nanos=*/false);
   // Unexpected nanos
   ExpectParseError("0-0 0 -1:2:3.456789100", /*allow_nanos=*/false);
+  ExpectParseError("\x80-1 2:3:4", /*allow_nanos=*/false);
 
   ExpectParseErrorMessage("1:2<3", "Invalid INTERVAL value '1:2<3'");
   ExpectParseErrorMessage("1 2-3", "Invalid INTERVAL value '1 2-3'");
@@ -2775,11 +2777,14 @@ TEST(IntervalValueTest, ParseFromISO8601) {
                          /*allow_nanos=*/false);
   ExpectFromISO8601Error("P9223372036854775807D1D", "int64 overflow",
                          /*allow_nanos=*/false);
-  ExpectFromISO8601Error("PT0.1234567890S", "Invalid INTERVAL",
+  ExpectFromISO8601Error("PT0.1234567890S",
+                         "Invalid INTERVAL value 'PT0.1234567890S'",
                          /*allow_nanos=*/true);
-  ExpectFromISO8601Error("PT0.1234567S", "Invalid INTERVAL",
+  ExpectFromISO8601Error("PT0.1234567S",
+                         "Invalid INTERVAL value 'PT0.1234567S'",
                          /*allow_nanos=*/false);
-  ExpectFromISO8601Error("PT1.S", "Invalid INTERVAL", /*allow_nanos=*/false);
+  ExpectFromISO8601Error("PT1.S", "Invalid INTERVAL value 'PT1.S'",
+                         /*allow_nanos=*/false);
   ExpectFromISO8601Error("P1.Y", "Fractional values are only allowed",
                          /*allow_nanos=*/false);
   ExpectFromISO8601Error("PT1.M", "Fractional values are only allowed",
@@ -2799,6 +2804,13 @@ TEST(IntervalValueTest, ParseFromISO8601) {
                          /*allow_nanos=*/false);
   ExpectFromISO8601Error("P1Y2M<3D",
                          "Invalid INTERVAL value 'P1Y2M<3D': Unexpected '<'",
+                         /*allow_nanos=*/false);
+  ExpectFromISO8601Error("P\x80", "Unexpected", /*allow_nanos=*/false);
+  ExpectFromISO8601Error(absl::string_view("P\0", 2), "Unexpected",
+                         /*allow_nanos=*/false);
+  ExpectFromISO8601Error(absl::string_view("P1Y\0X", 5), "Unexpected",
+                         /*allow_nanos=*/false);
+  ExpectFromISO8601Error(absl::string_view("PT1\0S", 5), "Unexpected",
                          /*allow_nanos=*/false);
 }
 

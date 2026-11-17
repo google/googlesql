@@ -23,6 +23,7 @@
 #include <vector>
 
 #include "googlesql/common/internal_value.h"
+#include "googlesql/common/vector_value_util.h"
 #include "googlesql/public/functions/string.h"
 #include "googlesql/public/numeric_value.h"
 #include "googlesql/public/options.pb.h"
@@ -148,9 +149,7 @@ static absl::Status ApplyVectorConstraints(const TypeParameters& type_params,
       type_params.vector_type_parameters();
   GOOGLESQL_RET_CHECK(vector_params != nullptr);
 
-  GOOGLESQL_ASSIGN_OR_RETURN(Value backing_val, value.backing_value());
-  GOOGLESQL_ASSIGN_OR_RETURN(VectorValueProto vector_value,
-                   ParseVectorValueBytes(backing_val.bytes_value()));
+  GOOGLESQL_ASSIGN_OR_RETURN(VectorValueProto vector_value, ParseVectorValue(value));
 
   // The VECTOR value is self-describing, so the actual encoding is read from
   // the value rather than assumed from the type.

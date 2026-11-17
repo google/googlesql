@@ -16,6 +16,7 @@
 
 #include "googlesql/resolved_ast/resolved_ast_formatter.h"
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
@@ -23,7 +24,9 @@
 #include <vector>
 
 #include "googlesql/base/testing/status_matchers.h"
+#include "googlesql/common/utf_util.h"
 #include "googlesql/public/id_string.h"
+#include "googlesql/public/types/type.h"
 #include "googlesql/public/types/type_factory.h"
 #include "googlesql/public/value.h"
 #include "googlesql/resolved_ast/resolved_ast.h"
@@ -151,6 +154,55 @@ TEST(ResolvedASTFormatterTest, TestNullHandling) {
   EXPECT_EQ(null_node_view.pipe_input_scan(), nullptr);
 
   EXPECT_EQ(null_node_view.num_fields(), 0);
+}
+
+std::unique_ptr<ResolvedFilterScan> MakeSampleFilterScan(
+    TypeFactory* type_factory) {
+  ResolvedColumn col(1, IdString::MakeGlobal("t"), IdString::MakeGlobal("c"),
+                     type_factory->get_int64());
+  std::unique_ptr<ResolvedTableScan> table_scan = MakeResolvedTableScan(
+      {col}, /*table=*/nullptr, /*for_system_time_expr=*/nullptr);
+  return MakeResolvedFilterScan(
+      {col}, std::move(table_scan),
+      MakeResolvedLiteral(type_factory->get_bool(), Value::Bool(true)));
+}
+
+TEST(ResolvedASTFormatterTest, MaxLengthDefaultAndLarger) {
+  TypeFactory type_factory;
+  std::unique_ptr<ResolvedFilterScan> filter_scan =
+      MakeSampleFilterScan(&type_factory);
+
+  const std::string full = filter_scan->DebugString();
+  ASSERT_FALSE(full.empty());
+  ASSERT_FALSE(absl::EndsWith(full, "..."));
+
+  EXPECT_EQ(filter_scan->DebugString({}), full);
+  EXPECT_EQ(
+      RenderResolvedAST(filter_scan.get(), ResolvedNode::DebugStringConfig{}),
+      full);
+  EXPECT_EQ(filter_scan->DebugString(
+                {.max_length = static_cast<int32_t>(full.size())}),
+            full);
+  EXPECT_EQ(filter_scan->DebugString(
+                {.max_length = static_cast<int32_t>(full.size()) + 100}),
+            full);
+}
+
+TEST(ResolvedASTFormatterTest, MaxLengthTruncatesWithEllipsis) {
+  TypeFactory type_factory;
+  std::unique_ptr<ResolvedFilterScan> filter_scan =
+      MakeSampleFilterScan(&type_factory);
+
+  const std::string full = filter_scan->DebugString();
+  ASSERT_GT(full.size(), 25);
+
+  for (int32_t max_length : {static_cast<int32_t>(full.size()) - 1, 20, 4}) {
+    const std::string result =
+        filter_scan->DebugString({.max_length = max_length});
+    EXPECT_EQ(result, PrettyTruncateUTF8(full, max_length));
+    EXPECT_EQ(result.size(), max_length);
+    EXPECT_TRUE(absl::EndsWith(result, "..."));
+  }
 }
 
 }  // namespace

@@ -73,7 +73,8 @@ struct CopyableState {
   // Stores the unique scan_aliases assigned for the corresponding scan nodes.
   absl::flat_hash_map<const ResolvedScan*, std::string> scan_alias_map;
 
-  // Stores the unique aliases assigned to tables.
+  // Stores the unique aliases assigned to tables, including the generated
+  // aliases of tables referenced by STRING literals.
   absl::flat_hash_map<const Table*, std::string> table_alias_map;
 
   // Stores the tables that have been used without an explicit alias.
@@ -1224,7 +1225,7 @@ class SQLBuilder : public ResolvedASTVisitor {
   // Get the sql for CreateViewStatement/CreateMaterializedViewStatement.
   absl::Status GetCreateViewStatement(const ResolvedCreateViewBase* node,
                                       bool is_value_table,
-                                      const std::string& view_type);
+                                      absl::string_view view_type);
 
   // Get the first part of the syntax for a CREATE command, including statement
   // hints, the <object_type> (e.g. "TABLE") and name, and CREATE modifiers,
@@ -1265,7 +1266,7 @@ class SQLBuilder : public ResolvedASTVisitor {
       std::string* sql);
 
   // Helper functions to save the <path> used to access the column later.
-  void SetPathForColumn(const ResolvedColumn& column, const std::string& path);
+  void SetPathForColumn(const ResolvedColumn& column, absl::string_view path);
   void SetPathForColumnList(const ResolvedColumnList& column_list,
                             absl::string_view scan_alias);
   absl::Status SetPathForColumnsInScan(const ResolvedScan* scan,
@@ -1328,6 +1329,14 @@ class SQLBuilder : public ResolvedASTVisitor {
   absl::StatusOr<std::string> GetUpdateItemListSQL(
       absl::Span<const std::unique_ptr<const ResolvedUpdateItem>>
           update_item_list);
+
+  // Returns the SQL for the UPDATE constructor `node`. If `is_braced_value`,
+  // `node` is the value of an item `field { ... }` of an enclosing UPDATE
+  // constructor, i.e. its input is that item's `update_item_column`, and it is
+  // printed as a bare braced constructor, e.g. the `{a: 1}` in `rep *: {a: 1}`
+  // or in `nested {a: 1}`.
+  absl::StatusOr<std::string> GetUpdateConstructorSQL(
+      const ResolvedUpdateConstructor* node, bool is_braced_value);
 
   // Helper function to return corresponding SQL for a list of columns to be
   // inserted.
@@ -1460,6 +1469,13 @@ class SQLBuilder : public ResolvedASTVisitor {
   bool IsStandardSyntaxTargetMode() {
     return options_.target_syntax_mode == TargetSyntaxMode::kStandard;
   }
+
+  // If `scan` is a ResolvedTableScan that was printed with an alias from
+  // GetTableAlias, such as to avoid a collision or because the table is
+  // referenced by a STRING literal, sets the paths of its columns to use that
+  // alias. Call this after processing `scan`.
+  absl::Status SetPathForColumnsInTableScanWithTableAlias(
+      const ResolvedScan* scan);
 
   // Helper function to perform operation on value table's column for
   // ResolvedTableScan.

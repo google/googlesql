@@ -35,6 +35,7 @@
 #include "googlesql/public/catalog.h"
 #include "googlesql/public/id_string.h"
 #include "googlesql/public/property_graph.h"
+#include "googlesql/public/types/array_type.h"
 #include "googlesql/public/types/graph_element_type.h"
 #include "googlesql/public/types/type.h"
 #include "googlesql/public/types/type_factory.h"
@@ -43,6 +44,7 @@
 #include "googlesql/resolved_ast/resolved_ast.h"
 #include "googlesql/resolved_ast/resolved_ast_builder.h"
 #include "googlesql/resolved_ast/resolved_column.h"
+#include "absl/algorithm/container.h"
 #include "absl/container/btree_map.h"
 #include "absl/container/btree_set.h"
 #include "absl/container/flat_hash_map.h"
@@ -50,7 +52,9 @@
 #include "absl/status/status.h"
 #include "googlesql/base/status_macros.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "googlesql/base/ret_check.h"
@@ -111,25 +115,28 @@ absl::StatusOr<std::vector<IdString>> ExtractInsertLabelNames(
 // properties, generated properties, and measure properties.
 // Returns the underlying base table column if writable.
 absl::StatusOr<const Column*> ValidatePropertyIsWritable(
-    const GraphPropertyDefinition& prop_def, const ASTNode* error_location) {
+    const GraphPropertyDefinition& prop_def, const ASTNode* error_location,
+    bool is_insert) {
+  absl::string_view action = is_insert ? "insert into" : "update";
   GOOGLESQL_RET_CHECK(prop_def.GetDeclaration().kind() !=
             GraphPropertyDeclaration::Kind::kInvalid);
   if (prop_def.GetDeclaration().kind() ==
       GraphPropertyDeclaration::Kind::kMeasure) {
     return MakeSqlErrorAt(error_location)
-           << "Cannot insert into measure property '"
+           << "Cannot " << action << " measure property '"
            << prop_def.GetDeclaration().Name() << "'";
   }
   GOOGLESQL_ASSIGN_OR_RETURN(const Column* col, GetPropertyBackingColumn(prop_def));
   if (col == nullptr) {
     return MakeSqlErrorAt(error_location)
-           << "Cannot insert into derived property '"
+           << "Cannot " << action << " derived property '"
            << prop_def.GetDeclaration().Name() << "'";
   }
   if (!col->IsWritableColumn()) {
-    return MakeSqlErrorAt(error_location) << "Cannot insert into property '"
-                                          << prop_def.GetDeclaration().Name()
-                                          << "' mapped from a read-only column";
+    return MakeSqlErrorAt(error_location)
+           << "Cannot " << action << " property '"
+           << prop_def.GetDeclaration().Name()
+           << "' mapped from a read-only column";
   }
   return col;
 }
@@ -310,15 +317,20 @@ absl::StatusOr<std::unique_ptr<NameList>> ReplaceModifiedVariablesInNameList(
 // Checks if the variable is already defined in the current INSERT statement or
 // in the input name scope.
 // If the variable exists:
+//  - Returns error if the variable does not resolve to a graph element column
+//    (e.g., a non-column `NameTarget` or a column with non-graph-element type);
+//  - Returns error if the variable belongs to a different property graph than
+//    `graph`;
 //  - Returns error if the variable is re-declared with labels or properties;
 //  - Returns error if the variable is an edge `element_kind`;
 //  - Returns error if the variable is a node `element_kind` but found an edge;
-//  - Otherwise, returns the existing ResolvedColumn and add it to the named
+//  - Otherwise, returns the existing ResolvedColumn and adds it to the named
 //    `variables` map.
 // If the variable does not exist, returns std::nullopt.
 absl::StatusOr<std::optional<ResolvedColumn>> ResolveExistingVariableIfExists(
     const ASTGraphInsertElementPatternFiller* filler,
-    const NameScope* input_scope, GraphElementType::ElementKind element_kind,
+    const NameScope* input_scope, const PropertyGraph& graph,
+    GraphElementType::ElementKind element_kind,
     IdStringLinkedHashMapCase<ResolvedColumn>& variables) {
   GOOGLESQL_RET_CHECK_NE(filler, nullptr)
       << "Insert element filler must always be present";
@@ -338,6 +350,11 @@ absl::StatusOr<std::optional<ResolvedColumn>> ResolveExistingVariableIfExists(
     NameTarget target;
     GOOGLESQL_ASSIGN_OR_RETURN(bool found, input_scope->LookupName(var_name, &target));
     if (found) {
+      GOOGLESQL_RET_CHECK(!target.IsAmbiguous() && !target.IsAccessError());
+      if (!target.IsColumn()) {
+        return MakeSqlErrorAt(ast_variable)
+               << "Variable '" << var_name << "' is not a graph element";
+      }
       is_existing_name = true;
       variables[var_name] = target.column();
     }
@@ -349,6 +366,21 @@ absl::StatusOr<std::optional<ResolvedColumn>> ResolveExistingVariableIfExists(
   }
 
   // The variable already exists.
+  const ResolvedColumn& existing_col = variables[var_name];
+  const GraphElementType* existing_element_type =
+      existing_col.type()->AsGraphElement();
+  if (existing_element_type == nullptr) {
+    return MakeSqlErrorAt(ast_variable)
+           << "Variable '" << var_name << "' is not a graph element";
+  }
+  if (!absl::c_equal(existing_element_type->graph_reference(), graph.NamePath(),
+                     googlesql_base::CaseEqual)) {
+    return MakeSqlErrorAt(ast_variable)
+           << "Variable '" << var_name << "' belongs to property graph "
+           << absl::StrJoin(existing_element_type->graph_reference(), ".")
+           << ", which does not match target property graph "
+           << absl::StrJoin(graph.NamePath(), ".");
+  }
   if (filler->label_filter() != nullptr) {
     return MakeSqlErrorAt(ast_variable)
            << "Label specification is not allowed for existing variable '"
@@ -366,11 +398,6 @@ absl::StatusOr<std::optional<ResolvedColumn>> ResolveExistingVariableIfExists(
            << "Referencing an existing variable '" << var_name
            << "' as an edge in INSERT is not allowed";
   }
-  // This is a node variable.
-  const ResolvedColumn& existing_col = variables[var_name];
-  const GraphElementType* existing_element_type =
-      existing_col.type()->AsGraphElement();
-  GOOGLESQL_RET_CHECK_NE(existing_element_type, nullptr);
   if (existing_element_type->element_kind() != element_kind) {
     return MakeSqlErrorAt(ast_variable)
            << "Variable '" << var_name
@@ -379,39 +406,94 @@ absl::StatusOr<std::optional<ResolvedColumn>> ResolveExistingVariableIfExists(
   return existing_col;
 }
 
-// Returns the matched GraphNodeTable if the given column corresponds to a node
-// being inserted in the current statement, or nullptr otherwise.
-const GraphNodeTable* GetInsertedNodeTable(
-    const ResolvedColumn& node_col,
-    absl::Span<const std::unique_ptr<const ResolvedComputedColumnBase>>
-        insert_node_list) {
-  for (const auto& computed_col_base : insert_node_list) {
-    if (computed_col_base->column() == node_col) {
-      const auto* computed_col =
-          computed_col_base->GetAs<ResolvedComputedColumn>();
-      const auto* insert_element =
-          computed_col->expr()->GetAs<ResolvedGraphInsertElement>();
-      return insert_element->element_table()->GetAs<GraphNodeTable>();
-    }
+// Validates that `target_table` is insertable via `IsTargetTableInsertable`,
+// and returns a SQL error at `error_location` if it is not.
+absl::Status ValidateTargetTableIsInsertable(
+    const GraphElementTable& target_table, bool needs_dynamic_label,
+    const ASTNode* error_location) {
+  std::string error_message;
+  GOOGLESQL_ASSIGN_OR_RETURN(bool is_insertable,
+                   IsTargetTableInsertable(target_table, needs_dynamic_label,
+                                           &error_message));
+  if (!is_insertable) {
+    return MakeSqlErrorAt(error_location) << error_message;
   }
-  return nullptr;
+  return absl::OkStatus();
 }
 
 // Validates that `target_table` is updatable via `IsTargetTableUpdatable`, and
 // returns a SQL error at `error_location` if it is not.
 absl::Status ValidateTargetTableIsUpdatable(
-    const GraphElementTable& target_table, bool needs_dynamic_label,
-    const ASTNode* error_location) {
+    const GraphElementTable& target_table, const ASTNode* error_location) {
   std::string error_message;
   GOOGLESQL_ASSIGN_OR_RETURN(bool is_updatable,
-                   IsTargetTableUpdatable(target_table, needs_dynamic_label,
-                                          &error_message));
+                   IsTargetTableUpdatable(target_table, &error_message));
   if (!is_updatable) {
     return MakeSqlErrorAt(error_location) << error_message;
   }
   return absl::OkStatus();
 }
 
+// Validates an edge endpoint (source or destination node) is valid for the
+// to-be-inserted edge by checking that `node_col`'s graph element type is
+// backed by the single element table expected by `target_table`. Otherwise,
+// returns an error.
+//
+// - `error_location` is the AST node where the error occurred.
+// - `target_table` is the edge table being inserted.
+// - `node_pattern` is the AST node pattern of the endpoint node.
+// - `node_col` is the resolved column of the endpoint node.
+// - `is_source` indicates whether the endpoint is a source or destination
+//   node.
+absl::Status ValidateEdgeEndpoint(
+    const ASTGraphInsertEdgePattern& error_location,
+    const GraphEdgeTable& target_table,
+    const ASTGraphInsertNodePattern& node_pattern,
+    const ResolvedColumn& node_col, bool is_source) {
+  const GraphNodeTableReference* expected_node_ref =
+      is_source ? target_table.GetSourceNodeTable()
+                : target_table.GetDestNodeTable();
+  GOOGLESQL_RET_CHECK_NE(expected_node_ref, nullptr);
+  const GraphNodeTable* expected_node_table =
+      expected_node_ref->GetReferencedNodeTable();
+  GOOGLESQL_RET_CHECK_NE(expected_node_table, nullptr);
+
+  const GraphElementType* element_type = node_col.type()->AsGraphElement();
+  GOOGLESQL_RET_CHECK_NE(element_type, nullptr);
+  absl::Span<const std::string> actual_tables = element_type->element_tables();
+  if (actual_tables.size() == 1 &&
+      googlesql_base::CaseEqual(actual_tables[0], expected_node_table->Name())) {
+    return absl::OkStatus();
+  }
+
+  const ASTIdentifier* node_var = node_pattern.filler()->variable_name();
+  absl::string_view node_kind = is_source ? "source" : "destination";
+  std::string node_desc = node_var == nullptr
+                              ? absl::StrCat("The ", node_kind, " node")
+                              : absl::StrCat("The ", node_kind, " node '",
+                                             node_var->GetAsStringView(), "'");
+  if (actual_tables.empty()) {
+    return MakeSqlErrorAt(&error_location)
+           << node_desc
+           << " does not come from any node table, which does not match "
+              "expected "
+           << node_kind << " node table " << expected_node_table->Name()
+           << " for edge table " << target_table.Name();
+  }
+  if (actual_tables.size() == 1) {
+    return MakeSqlErrorAt(&error_location)
+           << node_desc << " from node table " << actual_tables[0]
+           << " does not match expected " << node_kind << " node table "
+           << expected_node_table->Name() << " for edge table "
+           << target_table.Name();
+  }
+  return MakeSqlErrorAt(&error_location)
+         << node_desc << " can come from node tables ["
+         << absl::StrJoin(actual_tables, ", ")
+         << "], which does not match expected " << node_kind << " node table "
+         << expected_node_table->Name() << " for edge table "
+         << target_table.Name();
+}
 }  // namespace
 
 absl::StatusOr<std::vector<std::unique_ptr<const ResolvedGraphDMLPropertyItem>>>
@@ -494,7 +576,8 @@ GraphDmlResolver::ResolveInsertProperties(
       // backing column in the base table.
       GOOGLESQL_RET_CHECK_NE(static_prop_def, nullptr);
       GOOGLESQL_ASSIGN_OR_RETURN(const Column* target_column,
-                       ValidatePropertyIsWritable(*static_prop_def, prop));
+                       ValidatePropertyIsWritable(*static_prop_def, prop,
+                                                  /*is_insert=*/true));
 
       // Reject explicitly specified properties that map to edge endpoint key
       // columns, as they would cause duplicate insertion into the same column
@@ -665,20 +748,33 @@ GraphDmlResolver::ResolveGqlInsert(
       GOOGLESQL_RET_CHECK(edge_pattern->orientation() == ASTGraphEdgePattern::LEFT ||
                 edge_pattern->orientation() == ASTGraphEdgePattern::RIGHT);
       bool is_left = edge_pattern->orientation() == ASTGraphEdgePattern::LEFT;
+      const auto* left_node_pattern =
+          ast_path->elements(i - 1)->GetAsOrDie<ASTGraphInsertNodePattern>();
+      const auto* right_node_pattern =
+          ast_path->elements(i + 1)->GetAsOrDie<ASTGraphInsertNodePattern>();
+      const ASTGraphInsertNodePattern* source_node_pattern =
+          is_left ? right_node_pattern : left_node_pattern;
+      const ASTGraphInsertNodePattern* dest_node_pattern =
+          is_left ? left_node_pattern : right_node_pattern;
       ResolvedColumn source_col =
           is_left ? element_cols[i + 1] : element_cols[i - 1];
       ResolvedColumn dest_col =
           is_left ? element_cols[i - 1] : element_cols[i + 1];
-      GOOGLESQL_ASSIGN_OR_RETURN(
-          element_cols[i],
-          ResolveInsertEdgePattern(edge_pattern, input_scope, source_col,
-                                   dest_col, edge_tables, variables,
-                                   insert_node_list, insert_edge_list));
+      GOOGLESQL_ASSIGN_OR_RETURN(element_cols[i],
+                       ResolveInsertEdgePattern(
+                           edge_pattern, input_scope, source_node_pattern,
+                           source_col, dest_node_pattern, dest_col, edge_tables,
+                           variables, insert_edge_list));
     }
 
     for (int i = 0; i < ast_path->elements().size(); ++i) {
       path_element_list.push_back(element_cols[i]);
     }
+  }
+
+  if (insert_node_list.empty() && insert_edge_list.empty()) {
+    return MakeSqlErrorAt(&ast_insert)
+           << "INSERT must insert at least one node or edge";
   }
 
   GOOGLESQL_ASSIGN_OR_RETURN(
@@ -712,9 +808,10 @@ absl::StatusOr<ResolvedColumn> GraphDmlResolver::ResolveInsertNodePattern(
   // or in the input name scope.
   GOOGLESQL_ASSIGN_OR_RETURN(
       std::optional<ResolvedColumn> existing_var,
-      ResolveExistingVariableIfExists(filler, input_scope,
+      ResolveExistingVariableIfExists(filler, input_scope, *graph_,
                                       GraphElementType::kNode, variables));
   if (existing_var.has_value()) {
+    resolver_->RecordColumnAccess(existing_var.value());
     return existing_var.value();
   }
 
@@ -734,8 +831,8 @@ absl::StatusOr<ResolvedColumn> GraphDmlResolver::ResolveInsertNodePattern(
   const GraphNodeTable* target_table = result.table;
   GOOGLESQL_RET_CHECK_NE(target_table, nullptr);
 
-  GOOGLESQL_RETURN_IF_ERROR(ValidateTargetTableIsUpdatable(
-      *target_table, result.has_dynamic_label, filler));
+  GOOGLESQL_RETURN_IF_ERROR(ValidateTargetTableIsInsertable(
+      *target_table, result.has_dynamic_label, /*error_location=*/filler));
 
   // Resolve the property specification.
   GOOGLESQL_ASSIGN_OR_RETURN(
@@ -767,13 +864,16 @@ absl::StatusOr<ResolvedColumn> GraphDmlResolver::ResolveInsertNodePattern(
 
 absl::StatusOr<ResolvedColumn> GraphDmlResolver::ResolveInsertEdgePattern(
     const ASTGraphInsertEdgePattern* edge_pattern, const NameScope* input_scope,
-    const ResolvedColumn& source_col, const ResolvedColumn& dest_col,
+    const ASTGraphInsertNodePattern* source_node_pattern,
+    const ResolvedColumn& source_col,
+    const ASTGraphInsertNodePattern* dest_node_pattern,
+    const ResolvedColumn& dest_col,
     const absl::flat_hash_set<const GraphEdgeTable*>& edge_tables,
     IdStringLinkedHashMapCase<ResolvedColumn>& variables,
-    const std::vector<std::unique_ptr<const ResolvedComputedColumnBase>>&
-        insert_node_list,
     std::vector<std::unique_ptr<const ResolvedComputedColumnBase>>&
         insert_edge_list) {
+  GOOGLESQL_RET_CHECK_NE(source_node_pattern, nullptr);
+  GOOGLESQL_RET_CHECK_NE(dest_node_pattern, nullptr);
   GOOGLESQL_RET_CHECK(source_col.type()->AsGraphElement()->IsNode());
   GOOGLESQL_RET_CHECK(dest_col.type()->AsGraphElement()->IsNode());
   const ASTGraphInsertElementPatternFiller* filler = edge_pattern->filler();
@@ -783,7 +883,7 @@ absl::StatusOr<ResolvedColumn> GraphDmlResolver::ResolveInsertEdgePattern(
   // cannot be referenced in INSERT.
   GOOGLESQL_ASSIGN_OR_RETURN(
       std::optional<ResolvedColumn> existing_var,
-      ResolveExistingVariableIfExists(filler, input_scope,
+      ResolveExistingVariableIfExists(filler, input_scope, *graph_,
                                       GraphElementType::kEdge, variables));
   GOOGLESQL_RET_CHECK(!existing_var.has_value());
 
@@ -805,32 +905,19 @@ absl::StatusOr<ResolvedColumn> GraphDmlResolver::ResolveInsertEdgePattern(
   // the provided source and destination node tables.
   const GraphEdgeTable* target_table = result.table;
   GOOGLESQL_RET_CHECK_NE(target_table, nullptr);
-  const GraphNodeTable* expected_source_node_table =
-      target_table->GetSourceNodeTable()->GetReferencedNodeTable();
-  const GraphNodeTable* expected_dest_node_table =
-      target_table->GetDestNodeTable()->GetReferencedNodeTable();
-
-  // Try to find the endpoint node element tables if any of the edge's endpoints
-  // is newly inserted.
-  const GraphNodeTable* actual_source_node_table =
-      GetInsertedNodeTable(source_col, insert_node_list);
-  const GraphNodeTable* actual_dest_node_table =
-      GetInsertedNodeTable(dest_col, insert_node_list);
 
   // Validate the edge's source node.
   GOOGLESQL_RETURN_IF_ERROR(ValidateEdgeEndpoint(*edge_pattern, *target_table,
-                                       actual_source_node_table,
-                                       *expected_source_node_table, source_col,
+                                       *source_node_pattern, source_col,
                                        /*is_source=*/true));
 
   // Validate the edge's destination node.
   GOOGLESQL_RETURN_IF_ERROR(ValidateEdgeEndpoint(*edge_pattern, *target_table,
-                                       actual_dest_node_table,
-                                       *expected_dest_node_table, dest_col,
+                                       *dest_node_pattern, dest_col,
                                        /*is_source=*/false));
 
-  GOOGLESQL_RETURN_IF_ERROR(ValidateTargetTableIsUpdatable(
-      *target_table, result.has_dynamic_label, filler));
+  GOOGLESQL_RETURN_IF_ERROR(ValidateTargetTableIsInsertable(
+      *target_table, result.has_dynamic_label, /*error_location=*/filler));
 
   // Resolve the property specification.
   GOOGLESQL_ASSIGN_OR_RETURN(
@@ -863,46 +950,35 @@ absl::StatusOr<ResolvedColumn> GraphDmlResolver::ResolveInsertEdgePattern(
   return elem_col;
 }
 
-absl::Status GraphDmlResolver::ValidateEdgeEndpoint(
-    const ASTGraphInsertEdgePattern& error_location,
-    const GraphEdgeTable& target_table, const GraphNodeTable* actual_node_table,
-    const GraphNodeTable& expected_node_table, const ResolvedColumn& node_col,
-    bool is_source) {
-  absl::string_view node_kind = is_source ? "source" : "destination";
-  if (actual_node_table != nullptr) {
-    // For newly inserted node, verify if the actual node table matches the
-    // expected node table.
-    if (actual_node_table != &expected_node_table) {
-      return MakeSqlErrorAt(&error_location)
-             << "The actual " << node_kind << " node table "
-             << actual_node_table->Name() << " does not match expected "
-             << node_kind << " node table " << expected_node_table.Name()
-             << " for edge table " << target_table.Name();
-    }
-  } else {
-    // For referenced node variable, verify if the passed-in node type is a
-    // supertype of the required node type.
-    const GraphElementType* element_type = node_col.type()->AsGraphElement();
-    const GraphElementType* required_element_type = nullptr;
-    GOOGLESQL_ASSIGN_OR_RETURN(required_element_type,
-                     BuildGraphElementType(expected_node_table));
-    if (!required_element_type->CoercibleTo(element_type)) {
-      return MakeSqlErrorAt(&error_location)
-             << "The actual " << node_kind << " node type "
-             << node_col.type()->TypeName(resolver_->product_mode())
-             << " does not match expected " << node_kind << " node table "
-             << expected_node_table.Name();
-    }
-  }
-  return absl::OkStatus();
+absl::StatusOr<std::vector<const GraphElementTable*>>
+GraphDmlResolver::GetTargetElementTables(
+    const GraphElementType& target_element_type) const {
+  GOOGLESQL_RET_CHECK(resolver_->language().LanguageFeatureEnabled(
+      FEATURE_SQL_GRAPH_UPDATABLE_GRAPH_ELEMENT_TYPE));
+  GOOGLESQL_RET_CHECK_NE(graph_, nullptr);
+  return googlesql::GetTargetElementTables(*graph_, target_element_type);
 }
-
 absl::StatusOr<std::unique_ptr<const ResolvedGraphDMLPropertyItem>>
 GraphDmlResolver::ResolveSetPropertyItemValue(
     IdString prop_id, const ASTNode* ast_prop_name,
     const ASTExpression* ast_prop_val_expr,
     const GraphElementType* target_element_type,
-    const ResolvedColumn& target_col, const NameScope* input_scope) {
+    const ResolvedColumn& target_col, const NameScope* input_scope,
+    absl::Span<const TargetTableUpdateContext> table_contexts,
+    IdStringHashSetCase& seen_props,
+    absl::flat_hash_map<const GraphElementTable*,
+                        absl::flat_hash_set<const Column*>>&
+        seen_target_columns) {
+  // Reject duplicate property names (case-insensitively) for both static and
+  // dynamic properties. Duplicate updates to the same base table column via
+  // different static property names (property aliasing) are checked below via
+  // `seen_target_columns`.
+  if (!seen_props.insert(prop_id).second) {
+    return MakeSqlErrorAt(ast_prop_name)
+           << "Duplicate property '" << prop_id << "' specified for variable '"
+           << target_col.name() << "'";
+  }
+
   std::unique_ptr<const ResolvedExpr> resolved_val;
   auto expr_info =
       std::make_unique<ExprResolutionInfo>(input_scope, "SET property value");
@@ -913,6 +989,7 @@ GraphDmlResolver::ResolveSetPropertyItemValue(
       target_element_type->FindPropertyType(prop_id.ToStringView());
   const GraphPropertyDeclaration* static_decl = nullptr;
   if (prop_type != nullptr) {
+    // Static property.
     GOOGLESQL_RETURN_IF_ERROR(graph_->FindPropertyDeclarationByName(
         prop_id.ToStringView(), static_decl));
     GOOGLESQL_RET_CHECK(static_decl != nullptr);
@@ -924,10 +1001,83 @@ GraphDmlResolver::ResolveSetPropertyItemValue(
         absl::StrCat("Cannot assign value of type $1 into property '",
                      prop_id.ToStringView(), "' of type $0"),
         &resolved_val));
+
+    // Verify that the static property is defined and writable in every
+    // candidate element table.
+    for (const TargetTableUpdateContext& ctx : table_contexts) {
+      const GraphPropertyDefinition* static_prop_def = nullptr;
+      absl::Status find_prop_status = ctx.table->FindPropertyDefinitionByName(
+          prop_id.ToStringView(), static_prop_def);
+      if (absl::IsNotFound(find_prop_status)) {
+        return MakeSqlErrorAt(ast_prop_name)
+               << "Cannot update property '" << prop_id
+               << "' because it is not defined in element table '"
+               << ctx.table->Name() << "'";
+      }
+      GOOGLESQL_RETURN_IF_ERROR(find_prop_status);
+      GOOGLESQL_RET_CHECK_NE(static_prop_def, nullptr);
+
+      GOOGLESQL_ASSIGN_OR_RETURN(
+          const Column* target_column,
+          ValidatePropertyIsWritable(*static_prop_def, ast_prop_name,
+                                     /*is_insert=*/false));
+
+      // Edge source and destination key columns cannot be updated.
+      const bool is_source_key =
+          ctx.edge_endpoint_columns.source_key_columns.contains(target_column);
+      const bool is_dest_key =
+          ctx.edge_endpoint_columns.dest_key_columns.contains(target_column);
+      if (is_source_key || is_dest_key) {
+        absl::string_view key_kind =
+            (is_source_key && is_dest_key)
+                ? "source and destination"
+                : (is_source_key ? "source" : "destination");
+        return MakeSqlErrorAt(ast_prop_name)
+               << "Cannot update property '" << prop_id
+               << "' because it is backed by edge " << key_kind
+               << " key column '" << target_column->Name()
+               << "' in element table '" << ctx.table->Name() << "'";
+      }
+
+      // Element key columns cannot be updated.
+      if (ctx.element_key_columns.contains(target_column)) {
+        return MakeSqlErrorAt(ast_prop_name)
+               << "Cannot update property '" << prop_id
+               << "' because it is backed by element key column '"
+               << target_column->Name() << "' in element table '"
+               << ctx.table->Name() << "'";
+      }
+
+      // Reject static properties that map to the dynamic label or dynamic
+      // properties backing columns when those dynamic columns are also updated
+      // in the same SET operation (`updated_dynamic_*_column` is nullptr when
+      // no dynamic label/property is updated, so updating the exposed static
+      // property alone is allowed).
+      if (target_column == ctx.updated_dynamic_label_column) {
+        return MakeSqlErrorAt(ast_prop_name)
+               << "Cannot explicitly specify property '" << prop_id
+               << "' because it causes duplicate update to dynamic label "
+                  "backing column '"
+               << target_column->Name() << "'";
+      }
+      if (target_column == ctx.updated_dynamic_properties_column) {
+        return MakeSqlErrorAt(ast_prop_name)
+               << "Cannot explicitly specify property '" << prop_id
+               << "' because it causes duplicate update to dynamic properties "
+                  "backing column '"
+               << target_column->Name() << "'";
+      }
+
+      // Reject multiple properties that map to the same underlying base table
+      // column (property aliasing).
+      if (!seen_target_columns[ctx.table].insert(target_column).second) {
+        return MakeSqlErrorAt(ast_prop_name)
+               << "Duplicate update to column '" << target_column->Name()
+               << "' in element table '" << ctx.table->Name() << "'";
+      }
+    }
   } else {
-    // We only verify that the target element variable's type allows dynamic
-    // properties.
-    // TODO: Add table-level physical checks.
+    // Dynamic property.
     if (!target_element_type->is_dynamic()) {
       return MakeSqlErrorAt(ast_prop_name)
              << "Property '" << prop_id
@@ -946,6 +1096,26 @@ GraphDmlResolver::ResolveSetPropertyItemValue(
              << unsupported_type->ShortTypeName(resolver_->product_mode())
              << " does not support conversion to JSON";
     }
+
+    // Verify that every candidate element table supports dynamic properties
+    // with a writable backing column.
+    for (const TargetTableUpdateContext& ctx : table_contexts) {
+      if (!ctx.table->HasDynamicProperties()) {
+        return MakeSqlErrorAt(ast_prop_name)
+               << "Cannot update dynamic property '" << prop_id
+               << "' because element table '" << ctx.table->Name()
+               << "' does not support dynamic properties";
+      }
+      GOOGLESQL_RET_CHECK_NE(ctx.updated_dynamic_properties_column, nullptr);
+      if (!ctx.updated_dynamic_properties_column->IsWritableColumn()) {
+        return MakeSqlErrorAt(ast_prop_name)
+               << "Cannot update dynamic property '" << prop_id
+               << "' because the dynamic properties backing column '"
+               << ctx.updated_dynamic_properties_column->Name()
+               << "' in element table '" << ctx.table->Name()
+               << "' is read-only";
+      }
+    }
   }
 
   return MakeResolvedGraphDMLPropertyItem(prop_id.ToString(), static_decl,
@@ -954,22 +1124,20 @@ GraphDmlResolver::ResolveSetPropertyItemValue(
 
 absl::StatusOr<std::vector<std::unique_ptr<const ResolvedGraphLabel>>>
 GraphDmlResolver::ResolveSetLabelItems(
-    const std::vector<const ASTGqlSetLabelItem*>& label_items) {
+    const std::vector<const ASTGqlSetLabelItem*>& label_items,
+    absl::Span<const TargetTableUpdateContext> table_contexts) {
   std::vector<std::unique_ptr<const ResolvedGraphLabel>> resolved_label_items;
   if (label_items.empty()) {
     return resolved_label_items;
   }
 
-  // TODO: Check if the element table supports dynamic labels.
-  if (!resolver_->language().LanguageFeatureEnabled(
-          FEATURE_SQL_GRAPH_DYNAMIC_ELEMENT_TYPE)) {
-    return MakeSqlErrorAt(label_items[0])
-           << "SET label is only allowed on element tables supporting "
-              "dynamic labels";
-  }
+  const bool supports_dynamic_element_type =
+      resolver_->language().LanguageFeatureEnabled(
+          FEATURE_SQL_GRAPH_DYNAMIC_ELEMENT_TYPE);
 
   // Graph labels are matched case-insensitively.
   IdStringHashSetCase seen_labels;
+  int dynamic_label_count = 0;
   for (const ASTGqlSetLabelItem* label_item : label_items) {
     IdString label_id = label_item->label_name()->GetAsIdString();
     // Setting the same label multiple times in a single SET clause (e.g.
@@ -979,34 +1147,97 @@ GraphDmlResolver::ResolveSetLabelItems(
       continue;
     }
 
-    GOOGLESQL_ASSIGN_OR_RETURN(auto resolved_label_name,
-                     ResolvedLiteralBuilder()
-                         .set_type(types::StringType())
-                         .set_value(Value::String(label_id.ToString()))
-                         .set_has_explicit_type(true)
-                         .Build());
-    // SET label only supports adding dynamic labels (`label` is nullptr).
-    // TODO: Validate that the target element table supports
-    // dynamic labels and that `label_id` is not a static label.
-    resolved_label_items.push_back(MakeResolvedGraphLabel(
-        /*label=*/nullptr, std::move(resolved_label_name)));
+    const GraphElementLabel* static_label = nullptr;
+    absl::Status find_label_status =
+        graph_->FindLabelByName(label_id.ToStringView(), static_label);
+    if (!find_label_status.ok() && !absl::IsNotFound(find_label_status)) {
+      return find_label_status;
+    }
+
+    if (static_label != nullptr) {
+      // Setting an existing static (schematized) label is an idempotent no-op,
+      // which is only valid if every candidate element table already exposes
+      // the label.
+      for (const TargetTableUpdateContext& ctx : table_contexts) {
+        const GraphElementLabel* table_label = nullptr;
+        if (!ctx.table->FindLabelByName(label_id.ToStringView(), table_label)
+                 .ok()) {
+          return MakeSqlErrorAt(label_item->label_name())
+                 << "Cannot set static label '" << label_id
+                 << "' because it is not exposed by element table '"
+                 << ctx.table->Name() << "'";
+        }
+      }
+    } else {
+      if (!supports_dynamic_element_type) {
+        return MakeSqlErrorAt(label_item)
+               << "SET dynamic label is not supported";
+      }
+      ++dynamic_label_count;
+      if (dynamic_label_count == 1) {
+        // Verify once that every candidate element table supports dynamic
+        // labels with a writable backing column.
+        for (const TargetTableUpdateContext& ctx : table_contexts) {
+          if (!ctx.table->HasDynamicLabel()) {
+            return MakeSqlErrorAt(label_item->label_name())
+                   << "Cannot set dynamic label '" << label_id
+                   << "' because element table '" << ctx.table->Name()
+                   << "' does not support dynamic labels";
+          }
+          GOOGLESQL_RET_CHECK_NE(ctx.updated_dynamic_label_column, nullptr);
+          if (!ctx.updated_dynamic_label_column->IsWritableColumn()) {
+            return MakeSqlErrorAt(label_item->label_name())
+                   << "Cannot set dynamic label '" << label_id
+                   << "' because the dynamic label backing column '"
+                   << ctx.updated_dynamic_label_column->Name()
+                   << "' in element table '" << ctx.table->Name()
+                   << "' is read-only";
+          }
+        }
+      } else if (dynamic_label_count == 2) {
+        // Verify once that no candidate element table restricts dynamic labels
+        // to at most one per element, when multiple dynamic labels are added by
+        // SET operator.
+        for (const TargetTableUpdateContext& ctx : table_contexts) {
+          if (ctx.table->DynamicLabelCardinality() ==
+              GraphElementTable::DynamicLabelCardinality::kSingle) {
+            return MakeSqlErrorAt(label_item->label_name())
+                   << "Cannot set multiple dynamic labels on element table '"
+                   << ctx.table->Name()
+                   << "' because it supports at most one dynamic label";
+          }
+        }
+      }
+    }
+
+    std::unique_ptr<const ResolvedExpr> resolved_label_name;
+    if (supports_dynamic_element_type) {
+      GOOGLESQL_ASSIGN_OR_RETURN(resolved_label_name,
+                       ResolvedLiteralBuilder()
+                           .set_type(types::StringType())
+                           .set_value(Value::String(label_id.ToString()))
+                           .set_has_explicit_type(true)
+                           .Build());
+    }
+    resolved_label_items.push_back(
+        MakeResolvedGraphLabel(static_label, std::move(resolved_label_name)));
   }
   return resolved_label_items;
 }
 
-// TODO: Add following checks when the updatable graph element type
-// is supported:
-//  * Check that the target element type backing tables are writable.
-//  * Check that updated properties are universally writable among all
-//    underlying element tables.
 absl::StatusOr<std::unique_ptr<const ResolvedGraphUpdateElement>>
 GraphDmlResolver::ResolveSetGraphUpdateElement(
     const ResolvedColumn& target_col,
     const std::vector<const ASTGqlSetItem*>& items,
     const NameScope* input_scope) {
+  GOOGLESQL_RET_CHECK(!items.empty());
   const GraphElementType* target_element_type =
       target_col.type()->AsGraphElement();
+  GOOGLESQL_RET_CHECK_NE(target_element_type, nullptr);
 
+  // Partition SET items into all-properties (`SET <var> = {...}`), individual
+  // property (`SET <var>.<prop> = ...`), and label (`SET <var>:<Label>`)
+  // updates.
   const ASTGqlSetAllPropertiesItem* all_properties_item = nullptr;
   std::vector<const ASTGqlSetPropertyItem*> property_items;
   std::vector<const ASTGqlSetLabelItem*> label_items;
@@ -1040,6 +1271,98 @@ GraphDmlResolver::ResolveSetGraphUpdateElement(
     }
   }
 
+  GOOGLESQL_ASSIGN_OR_RETURN(std::vector<const GraphElementTable*> target_tables,
+                   GetTargetElementTables(*target_element_type));
+  if (target_tables.empty()) {
+    return MakeSqlErrorAt(items.front())
+           << "Graph element variable '" << target_col.name()
+           << "' has no backing element tables and cannot be updated";
+  }
+
+  // Determine whether any dynamic property is updated:
+  // - In `SET <var> = {...}` (`all_properties_item != nullptr`), all existing
+  //   dynamic properties are replaced (or cleared if none are specified), so
+  //   the dynamic properties backing column is always updated when
+  //   `target_element_type` is dynamic.
+  // - In `SET <var>.<prop> = ...`, dynamic properties are updated if
+  //   `target_element_type` is dynamic and any specified property is not a
+  //   static property on `target_element_type`.
+  bool update_dynamic_property =
+      all_properties_item != nullptr && target_element_type->is_dynamic();
+  if (!update_dynamic_property && target_element_type->is_dynamic()) {
+    for (const ASTGqlSetPropertyItem* prop_item : property_items) {
+      if (target_element_type->FindPropertyType(prop_item->property_path()
+                                                    ->last_name()
+                                                    ->GetAsIdString()
+                                                    .ToStringView()) ==
+          nullptr) {
+        update_dynamic_property = true;
+        break;
+      }
+    }
+  }
+
+  // Determine whether any dynamic label is set: a label is dynamic if it is
+  // not a static (schematized) label defined in the property graph.
+  bool update_dynamic_label = false;
+  for (const ASTGqlSetLabelItem* label_item : label_items) {
+    const GraphElementLabel* unused_label = nullptr;
+    if (absl::IsNotFound(graph_->FindLabelByName(
+            label_item->label_name()->GetAsIdString().ToStringView(),
+            unused_label))) {
+      update_dynamic_label = true;
+      break;
+    }
+  }
+
+  // Validate that each candidate element table is updatable and collect its
+  // key and dynamic backing columns.
+  std::vector<TargetTableUpdateContext> table_contexts;
+  table_contexts.reserve(target_tables.size());
+  for (const GraphElementTable* table : target_tables) {
+    GOOGLESQL_RET_CHECK_NE(table, nullptr);
+    GOOGLESQL_RETURN_IF_ERROR(ValidateTargetTableIsUpdatable(
+        *table, /*error_location=*/items.front()));
+    GOOGLESQL_ASSIGN_OR_RETURN(std::vector<const Column*> key_columns,
+                     GetElementKeyColumns(*table));
+    GOOGLESQL_ASSIGN_OR_RETURN(EdgeEndpointBackingColumns edge_endpoint_columns,
+                     GetEdgeEndpointBackingColumns(*table));
+    const Column* updated_dynamic_label_column = nullptr;
+    if (update_dynamic_label) {
+      GOOGLESQL_ASSIGN_OR_RETURN(updated_dynamic_label_column,
+                       GetDynamicLabelBackingColumn(*table));
+      if (updated_dynamic_label_column != nullptr) {
+        const Type* col_type = updated_dynamic_label_column->GetType();
+        switch (table->DynamicLabelCardinality()) {
+          case GraphElementTable::DynamicLabelCardinality::kSingle:
+            GOOGLESQL_RET_CHECK(col_type->IsString());
+            break;
+          case GraphElementTable::DynamicLabelCardinality::kMultiple:
+            GOOGLESQL_RET_CHECK(col_type->IsArray() &&
+                      col_type->AsArray()->element_type()->IsString());
+            break;
+          case GraphElementTable::DynamicLabelCardinality::kUnknown:
+            GOOGLESQL_RET_CHECK_FAIL() << "Unexpected kUnknown DynamicLabelCardinality "
+                                "for element table '"
+                             << table->Name() << "'";
+        }
+      }
+    }
+    const Column* updated_dynamic_properties_column = nullptr;
+    if (update_dynamic_property) {
+      GOOGLESQL_ASSIGN_OR_RETURN(updated_dynamic_properties_column,
+                       GetDynamicPropertiesBackingColumn(*table));
+    }
+    table_contexts.push_back(TargetTableUpdateContext{
+        .table = table,
+        .element_key_columns = absl::flat_hash_set<const Column*>(
+            key_columns.begin(), key_columns.end()),
+        .edge_endpoint_columns = std::move(edge_endpoint_columns),
+        .updated_dynamic_label_column = updated_dynamic_label_column,
+        .updated_dynamic_properties_column = updated_dynamic_properties_column,
+    });
+  }
+
   // Resolve Graph DML property items and update modes.
   ResolvedGraphUpdateElement::LabelUpdateMode label_update_mode =
       label_items.empty() ? ResolvedGraphUpdateElement::LABEL_NO_UPDATE
@@ -1048,48 +1371,55 @@ GraphDmlResolver::ResolveSetGraphUpdateElement(
       ResolvedGraphUpdateElement::PROPERTY_NO_UPDATE;
   std::vector<std::unique_ptr<const ResolvedGraphDMLPropertyItem>>
       resolved_prop_items;
+  // Tracks property names (case-insensitively, both static and dynamic) and
+  // base table columns (for static properties per candidate element table) to
+  // detect duplicate updates.
+  IdStringHashSetCase seen_props;
+  absl::flat_hash_map<const GraphElementTable*,
+                      absl::flat_hash_set<const Column*>>
+      seen_target_columns;
   if (all_properties_item != nullptr) {
     property_update_mode = ResolvedGraphUpdateElement::PROPERTY_REPLACE;
     if (all_properties_item->property_specification() != nullptr) {
-      // Graph property names are matched case-insensitively.
-      IdStringHashSetCase seen_props;
       for (const ASTGraphPropertyNameAndValue* ast_prop :
            all_properties_item->property_specification()
                ->property_name_and_value()) {
         IdString prop_id = ast_prop->property_name()->GetAsIdString();
-        if (!seen_props.insert(prop_id).second) {
-          return MakeSqlErrorAt(ast_prop->property_name())
-                 << "Duplicate property '" << prop_id
-                 << "' specified for variable '" << target_col.name() << "'";
-        }
-
         GOOGLESQL_ASSIGN_OR_RETURN(
             auto resolved_item,
             ResolveSetPropertyItemValue(prop_id, ast_prop->property_name(),
                                         ast_prop->value(), target_element_type,
-                                        target_col, input_scope));
+                                        target_col, input_scope, table_contexts,
+                                        seen_props, seen_target_columns));
         resolved_prop_items.push_back(std::move(resolved_item));
+      }
+    }
+    // `SET <var> = {...}` clears or replaces all dynamic properties even when
+    // `{...}` contains no dynamic properties (e.g. `SET n = {}`), so we must
+    // also verify here that the dynamic properties backing column is writable.
+    for (const TargetTableUpdateContext& ctx : table_contexts) {
+      if (ctx.updated_dynamic_properties_column != nullptr &&
+          !ctx.updated_dynamic_properties_column->IsWritableColumn()) {
+        return MakeSqlErrorAt(all_properties_item)
+               << "Cannot replace properties on variable '" << target_col.name()
+               << "' because the dynamic properties backing column '"
+               << ctx.updated_dynamic_properties_column->Name()
+               << "' in element table '" << ctx.table->Name()
+               << "' is read-only";
       }
     }
   } else if (!property_items.empty()) {
     property_update_mode = ResolvedGraphUpdateElement::PROPERTY_SET;
-    // Graph property names are matched case-insensitively.
-    IdStringHashSetCase seen_props;
     for (const ASTGqlSetPropertyItem* prop_item : property_items) {
       GOOGLESQL_RET_CHECK_EQ(prop_item->property_path()->num_names(), 2);
       IdString prop_id =
           prop_item->property_path()->last_name()->GetAsIdString();
-      if (!seen_props.insert(prop_id).second) {
-        return MakeSqlErrorAt(prop_item->property_path()->last_name())
-               << "Duplicate property '" << prop_id
-               << "' specified for variable '" << target_col.name() << "'";
-      }
-
-      GOOGLESQL_ASSIGN_OR_RETURN(auto resolved_item,
-                       ResolveSetPropertyItemValue(
-                           prop_id, prop_item->property_path()->last_name(),
-                           prop_item->value(), target_element_type, target_col,
-                           input_scope));
+      GOOGLESQL_ASSIGN_OR_RETURN(
+          auto resolved_item,
+          ResolveSetPropertyItemValue(
+              prop_id, prop_item->property_path()->last_name(),
+              prop_item->value(), target_element_type, target_col, input_scope,
+              table_contexts, seen_props, seen_target_columns));
       resolved_prop_items.push_back(std::move(resolved_item));
     }
   }
@@ -1099,7 +1429,7 @@ GraphDmlResolver::ResolveSetGraphUpdateElement(
             label_update_mode != ResolvedGraphUpdateElement::LABEL_NO_UPDATE);
 
   GOOGLESQL_ASSIGN_OR_RETURN(auto resolved_label_items,
-                   ResolveSetLabelItems(label_items));
+                   ResolveSetLabelItems(label_items, table_contexts));
 
   ResolvedColumn output_col(resolver_->AllocateColumnId(),
                             target_col.table_name_id(), target_col.name_id(),
@@ -1212,7 +1542,8 @@ GraphDmlResolver::ResolveGqlSet(
 absl::StatusOr<std::vector<std::unique_ptr<const ResolvedGraphDMLPropertyItem>>>
 GraphDmlResolver::ResolveRemovePropertyItems(
     const std::vector<const ASTGqlRemovePropertyItem*>& property_items,
-    const GraphElementType* target_element_type) {
+    const GraphElementType* target_element_type,
+    absl::Span<const GraphElementTable* const> target_tables) {
   std::vector<std::unique_ptr<const ResolvedGraphDMLPropertyItem>>
       resolved_prop_items;
   if (property_items.empty()) {
@@ -1227,6 +1558,7 @@ GraphDmlResolver::ResolveRemovePropertyItems(
 
   // Graph property names are matched case-insensitively.
   IdStringHashSetCase seen_props;
+  bool validated_dynamic_property_tables = false;
   for (const ASTGqlRemovePropertyItem* prop_item : property_items) {
     GOOGLESQL_RET_CHECK_EQ(prop_item->property_path()->num_names(), 2);
     IdString prop_id = prop_item->property_path()->last_name()->GetAsIdString();
@@ -1247,6 +1579,31 @@ GraphDmlResolver::ResolveRemovePropertyItems(
              << prop_id << " = NULL to clear a static property value";
     }
 
+    // Verify once that every candidate element table supports dynamic
+    // properties with a writable backing column.
+    if (!validated_dynamic_property_tables) {
+      for (const GraphElementTable* table : target_tables) {
+        GOOGLESQL_RET_CHECK_NE(table, nullptr);
+        if (!table->HasDynamicProperties()) {
+          return MakeSqlErrorAt(prop_item->property_path()->last_name())
+                 << "Cannot remove dynamic property '" << prop_id
+                 << "' because element table '" << table->Name()
+                 << "' does not support dynamic properties";
+        }
+        GOOGLESQL_ASSIGN_OR_RETURN(const Column* dyn_prop_col,
+                         GetDynamicPropertiesBackingColumn(*table));
+        GOOGLESQL_RET_CHECK_NE(dyn_prop_col, nullptr);
+        if (!dyn_prop_col->IsWritableColumn()) {
+          return MakeSqlErrorAt(prop_item->property_path()->last_name())
+                 << "Cannot remove dynamic property '" << prop_id
+                 << "' because the dynamic properties backing column '"
+                 << dyn_prop_col->Name() << "' in element table '"
+                 << table->Name() << "' is read-only";
+        }
+      }
+      validated_dynamic_property_tables = true;
+    }
+
     // For REMOVE, `property` and `property_value` are set to nullptr.
     resolved_prop_items.push_back(MakeResolvedGraphDMLPropertyItem(
         prop_id.ToString(), /*property=*/nullptr,
@@ -1258,13 +1615,13 @@ GraphDmlResolver::ResolveRemovePropertyItems(
 
 absl::StatusOr<std::vector<std::unique_ptr<const ResolvedGraphLabel>>>
 GraphDmlResolver::ResolveRemoveLabelItems(
-    const std::vector<const ASTGqlRemoveLabelItem*>& label_items) {
+    const std::vector<const ASTGqlRemoveLabelItem*>& label_items,
+    absl::Span<const GraphElementTable* const> target_tables) {
   std::vector<std::unique_ptr<const ResolvedGraphLabel>> resolved_label_items;
   if (label_items.empty()) {
     return resolved_label_items;
   }
 
-  // TODO: Check if the element table supports dynamic labels.
   if (!resolver_->language().LanguageFeatureEnabled(
           FEATURE_SQL_GRAPH_DYNAMIC_ELEMENT_TYPE)) {
     return MakeSqlErrorAt(label_items[0])
@@ -1274,6 +1631,7 @@ GraphDmlResolver::ResolveRemoveLabelItems(
 
   // Graph labels are matched case-insensitively.
   IdStringHashSetCase seen_labels;
+  bool validated_dynamic_label_tables = false;
   for (const ASTGqlRemoveLabelItem* label_item : label_items) {
     IdString label_id = label_item->label_name()->GetAsIdString();
     // Removing the same label multiple times in a single REMOVE clause (e.g.
@@ -1296,6 +1654,31 @@ GraphDmlResolver::ResolveRemoveLabelItems(
       return find_label_status;
     }
 
+    // Verify once that every candidate element table supports dynamic labels
+    // with a writable backing column.
+    if (!validated_dynamic_label_tables) {
+      for (const GraphElementTable* table : target_tables) {
+        GOOGLESQL_RET_CHECK_NE(table, nullptr);
+        if (!table->HasDynamicLabel()) {
+          return MakeSqlErrorAt(label_item->label_name())
+                 << "Cannot remove dynamic label '" << label_id
+                 << "' because element table '" << table->Name()
+                 << "' does not support dynamic labels";
+        }
+        GOOGLESQL_ASSIGN_OR_RETURN(const Column* label_col,
+                         GetDynamicLabelBackingColumn(*table));
+        GOOGLESQL_RET_CHECK_NE(label_col, nullptr);
+        if (!label_col->IsWritableColumn()) {
+          return MakeSqlErrorAt(label_item->label_name())
+                 << "Cannot remove dynamic label '" << label_id
+                 << "' because the dynamic label backing column '"
+                 << label_col->Name() << "' in element table '" << table->Name()
+                 << "' is read-only";
+        }
+      }
+      validated_dynamic_label_tables = true;
+    }
+
     GOOGLESQL_ASSIGN_OR_RETURN(auto resolved_label_name,
                      ResolvedLiteralBuilder()
                          .set_type(types::StringType())
@@ -1310,15 +1693,11 @@ GraphDmlResolver::ResolveRemoveLabelItems(
   return resolved_label_items;
 }
 
-// TODO: Add following checks when the updatable graph element type
-// is supported:
-//  * Check that removed properties backing columns are writable.
-//  * Check that removing labels are only allowed on tables that support
-//    dynamic labels.
 absl::StatusOr<std::unique_ptr<const ResolvedGraphUpdateElement>>
 GraphDmlResolver::ResolveRemoveGraphUpdateElement(
     const ResolvedColumn& target_col,
     const std::vector<const ASTGqlRemoveItem*>& items) {
+  GOOGLESQL_RET_CHECK(!items.empty());
   const GraphElementType* target_element_type =
       target_col.type()->AsGraphElement();
   GOOGLESQL_RET_CHECK_NE(target_element_type, nullptr);
@@ -1349,12 +1728,26 @@ GraphDmlResolver::ResolveRemoveGraphUpdateElement(
                 ResolvedGraphUpdateElement::PROPERTY_NO_UPDATE ||
             label_update_mode != ResolvedGraphUpdateElement::LABEL_NO_UPDATE);
 
-  GOOGLESQL_ASSIGN_OR_RETURN(
-      auto resolved_prop_items,
-      ResolveRemovePropertyItems(property_items, target_element_type));
+  // Validate that each candidate element table is updatable.
+  GOOGLESQL_ASSIGN_OR_RETURN(std::vector<const GraphElementTable*> target_tables,
+                   GetTargetElementTables(*target_element_type));
+  if (target_tables.empty()) {
+    return MakeSqlErrorAt(items.front())
+           << "Graph element variable '" << target_col.name()
+           << "' has no backing element tables and cannot be updated";
+  }
+  for (const GraphElementTable* table : target_tables) {
+    GOOGLESQL_RET_CHECK_NE(table, nullptr);
+    GOOGLESQL_RETURN_IF_ERROR(ValidateTargetTableIsUpdatable(
+        *table, /*error_location=*/items.front()));
+  }
+
+  GOOGLESQL_ASSIGN_OR_RETURN(auto resolved_prop_items,
+                   ResolveRemovePropertyItems(
+                       property_items, target_element_type, target_tables));
 
   GOOGLESQL_ASSIGN_OR_RETURN(auto resolved_label_items,
-                   ResolveRemoveLabelItems(label_items));
+                   ResolveRemoveLabelItems(label_items, target_tables));
 
   ResolvedColumn output_col(resolver_->AllocateColumnId(),
                             target_col.table_name_id(), target_col.name_id(),
@@ -1465,9 +1858,6 @@ GraphDmlResolver::ResolveGqlDelete(
     ResolvedGraphWithNameList<const ResolvedScan> input) {
   GOOGLESQL_RET_CHECK(input_scope != nullptr);
 
-  // TODO: Add updated call to the helper function checking
-  // whether the target table is updatable, once it is refactored.
-
   auto [input_scan, input_graph_name_lists] = std::move(input);
   auto input_name_list = input_graph_name_lists.singleton_name_list;
 
@@ -1507,6 +1897,24 @@ GraphDmlResolver::ResolveGqlDelete(
     // `column_list`.
     auto it = deleted_col_map.find(name_target_col);
     if (it == deleted_col_map.end()) {
+      // Checking that each backing element table of the delete item is
+      // updatable.
+      const GraphElementType* target_element_type =
+          name_target_col.type()->AsGraphElement();
+      GOOGLESQL_RET_CHECK_NE(target_element_type, nullptr);
+      GOOGLESQL_ASSIGN_OR_RETURN(std::vector<const GraphElementTable*> target_tables,
+                       GetTargetElementTables(*target_element_type));
+      if (target_tables.empty()) {
+        return MakeSqlErrorAt(delete_element_variable)
+               << "Graph element variable '" << delete_item_name
+               << "' has no backing element tables and cannot be deleted";
+      }
+      for (const GraphElementTable* table : target_tables) {
+        GOOGLESQL_RET_CHECK_NE(table, nullptr);
+        GOOGLESQL_RETURN_IF_ERROR(ValidateTargetTableIsUpdatable(
+            *table, /*error_location=*/delete_element_variable));
+      }
+
       // New column representing the deleted state of a column.
       ResolvedColumn deleted_column(
           /*column_id=*/resolver_->AllocateColumnId(),

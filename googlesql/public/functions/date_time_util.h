@@ -328,6 +328,26 @@ absl::Status FormatDatetimeToString(absl::string_view format_string,
 absl::Status FormatTimeToString(absl::string_view format_string,
                                 const TimeValue& time, std::string* out);
 
+// Sanitizes `format_string` to only allow format elements applicable to the
+// DATE type, and appends the resulting DATE format string to `*out`. Non-DATE
+// format elements (such as Hour/Minute/Second/Timezone), including their %E and
+// %O variants, have their leading '%' escaped as "%%" so that they pass through
+// as literal text. This is the same sanitization that `FormatDateToString`
+// applies, so query engines can use it to pre-sanitize constant DATE format
+// strings once at plan or compile time.
+// `out` must be non-null and must not alias `format_string`.
+void SanitizeDateFormat(absl::string_view format_string, std::string* out);
+
+// Similar to `SanitizeDateFormat`, but escapes format elements not applicable
+// to the TIME type (such as Year/Month/Week/Day/Timezone).
+// `out` must be non-null and must not alias `format_string`.
+void SanitizeTimeFormat(absl::string_view format_string, std::string* out);
+
+// Similar to `SanitizeDateFormat`, but escapes format elements not applicable
+// to the DATETIME type (Timezone).
+// `out` must be non-null and must not alias `format_string`.
+void SanitizeDatetimeFormat(absl::string_view format_string, std::string* out);
+
 // Converts the string representation of a date to a date value.
 // Supported format: "YYYY-[M]M-[D]D".
 // Returns error status if conversion fails.

@@ -4001,10 +4001,8 @@ QueryStmt
       +-TVFScan(column_list=[tvf_returning_row_type_recursive_collated.$row_col$scanrow#6<{Collation:"und:ci"},<<<{Collation:"und:ci"}>>>>], tvf=RowTypeTest:tvf_returning_row_type_recursive_collated, signature=() -> TABLE<normal_col_1 STRING, row_col STRUCT<string_ci STRING, middle STRUCT<middle STRUCT<middle STRUCT<string_ci STRING>>>>, normal_col_2 INT64>, column_index_list=[1], function_call_signature=() -> ANY TABLE)
 ==
 
-[default enabled_ast_rewrites=NONE]
+[enabled_ast_rewrites=NONE]
 # RowType passed to a function.
-# TODO: RowType rewriter should RET_CHECK if it finds this case,
-# since it doesn't know how to rewrite the signature correctly.
 FROM KeyValueLazy AS T
 |> SELECT fn_with_rowtype(T)
 --
@@ -4022,10 +4020,8 @@ QueryStmt
       +-TableScan(column_list=[KeyValueLazy.$row#1], table=KeyValueLazy, alias="T", read_as_row_type=TRUE)
 ==
 
-[default enabled_ast_rewrites=NONE]
+[enabled_ast_rewrites=NONE]
 # RowType passed to a function with 2 RowType args.
-# TODO: RowType rewriter should RET_CHECK if it finds this case,
-# since it doesn't know how to rewrite the signature correctly.
 FROM KeyValueLazy AS T
 |> SELECT fn_with_2_rowtypes(T, T)
 --
@@ -4078,6 +4074,45 @@ QueryStmt
         |   """
         +-input_scan=
           +-TableScan(column_list=[KeyValueLazy.$row#1], node_source="table_clause", table=KeyValueLazy, read_as_row_type=TRUE)
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$pipe_select.key#2 AS key [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$pipe_select.key#2]
+    +-expr_list=
+    | +-key#2 :=
+    |   +-GetStructField
+    |     +-type=INT64
+    |     +-expr=
+    |     | +-ColumnRef(type=STRUCT<Key INT64>, column=KeyValueLazy.$row$scanrow#3)
+    |     +-field_idx=0
+    +-input_scan=
+      +-StaticDescribeScan
+        +-column_list=[KeyValueLazy.$row$scanrow#3]
+        +-describe_text=
+        |   """
+        |   NameList (is_value_table = true):
+        |     KeyValueLazy ROW<KeyValueLazy> KeyValueLazy.$row#1 (value table)
+        |   NameScope:
+        |     Range variables:
+        |       KeyValueLazy -> RANGE_VARIABLE<$row#1> (value table)
+        |     Value table columns:
+        |       KeyValueLazy.$row#1
+        |   """
+        +-input_scan=
+          +-ProjectScan
+            +-column_list=[KeyValueLazy.$row$scanrow#3]
+            +-expr_list=
+            | +-$row$scanrow#3 :=
+            |   +-MakeStruct
+            |     +-type=STRUCT<Key INT64>
+            |     +-field_list=
+            |       +-ColumnRef(type=INT64, column=KeyValueLazy.Key#4)
+            +-input_scan=
+              +-TableScan(column_list=[KeyValueLazy.Key#4], table=KeyValueLazy, table_column_list=[KeyValueLazy.Key])
 ==
 
 # TABLE statement in a subquery.
@@ -4106,3 +4141,92 @@ QueryStmt
     |     +-column=KeyValueLazy.Value
     +-input_scan=
       +-TableScan(column_list=[KeyValueLazy.$row#1], node_source="table_clause", table=KeyValueLazy, read_as_row_type=TRUE)
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$query.Key#2 AS Key [INT64]
+| +-$query.Value#3 AS Value [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=$query.[Key#2, Value#3]
+    +-expr_list=
+    | +-Key#2 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<Key INT64, Value STRING>, column=KeyValueLazy.$row$scanrow#4)
+    | |   +-field_idx=0
+    | +-Value#3 :=
+    |   +-GetStructField
+    |     +-type=STRING
+    |     +-expr=
+    |     | +-ColumnRef(type=STRUCT<Key INT64, Value STRING>, column=KeyValueLazy.$row$scanrow#4)
+    |     +-field_idx=1
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[KeyValueLazy.$row$scanrow#4]
+        +-expr_list=
+        | +-$row$scanrow#4 :=
+        |   +-MakeStruct
+        |     +-type=STRUCT<Key INT64, Value STRING>
+        |     +-field_list=
+        |       +-ColumnRef(type=INT64, column=KeyValueLazy.Key#5)
+        |       +-ColumnRef(type=STRING, column=KeyValueLazy.Value#6)
+        +-input_scan=
+          +-TableScan(column_list=KeyValueLazy.[Key#5, Value#6], table=KeyValueLazy, table_column_list=[KeyValueLazy.Key,KeyValueLazy.Value])
+==
+
+# RowType passed to IS NULL operator (`$is_null` function).
+FROM KeyValueLazy AS T
+|> SELECT T.key, T IS NULL
+--
+QueryStmt
++-output_column_list=
+| +-$pipe_select.key#2 AS key [INT64]
+| +-$pipe_select.$col2#3 AS `$col2` [BOOL]
++-query=
+  +-ProjectScan
+    +-column_list=$pipe_select.[key#2, $col2#3]
+    +-expr_list=
+    | +-key#2 :=
+    | | +-GetRowField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=ROW<KeyValueLazy>, column=KeyValueLazy.$row#1)
+    | |   +-column=KeyValueLazy.Key
+    | +-$col2#3 :=
+    |   +-FunctionCall(GoogleSQL:$is_null(ROW<KeyValueLazy>) -> BOOL)
+    |     +-ColumnRef(type=ROW<KeyValueLazy>, column=KeyValueLazy.$row#1)
+    +-input_scan=
+      +-TableScan(column_list=[KeyValueLazy.$row#1], table=KeyValueLazy, alias="T", read_as_row_type=TRUE)
+
+[REWRITTEN AST]
+QueryStmt
++-output_column_list=
+| +-$pipe_select.key#2 AS key [INT64]
+| +-$pipe_select.$col2#3 AS `$col2` [BOOL]
++-query=
+  +-ProjectScan
+    +-column_list=$pipe_select.[key#2, $col2#3]
+    +-expr_list=
+    | +-key#2 :=
+    | | +-GetStructField
+    | |   +-type=INT64
+    | |   +-expr=
+    | |   | +-ColumnRef(type=STRUCT<Key INT64>, column=KeyValueLazy.$row$scanrow#4)
+    | |   +-field_idx=0
+    | +-$col2#3 :=
+    |   +-FunctionCall(GoogleSQL:$is_null(STRUCT<Key INT64>) -> BOOL)
+    |     +-ColumnRef(type=STRUCT<Key INT64>, column=KeyValueLazy.$row$scanrow#4)
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[KeyValueLazy.$row$scanrow#4]
+        +-expr_list=
+        | +-$row$scanrow#4 :=
+        |   +-MakeStruct
+        |     +-type=STRUCT<Key INT64>
+        |     +-field_list=
+        |       +-ColumnRef(type=INT64, column=KeyValueLazy.Key#5)
+        +-input_scan=
+          +-TableScan(column_list=[KeyValueLazy.Key#5], table=KeyValueLazy, alias="T", table_column_list=[KeyValueLazy.Key])

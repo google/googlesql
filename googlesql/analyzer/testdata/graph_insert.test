@@ -21,6 +21,18 @@ INSERT (n:Person {name: "John"})
 ^
 ==
 
+# This should be a valid Graph INSERT query, but fails since Graph DML also
+# requires support for GENERALIZED_QUERY. Other test cases that don't explicitly
+# set supported_statement_kinds support all statement kinds by default.
+[supported_statement_kinds=QUERY]
+GRAPH aml
+INSERT (n:Person & HasId {name: "John", id: 1})
+--
+ERROR: Graph DML requires support for generalized query statements [at 2:1]
+INSERT (n:Person & HasId {name: "John", id: 1})
+^
+==
+
 #######################################################
 # INSERT label expression
 #######################################################
@@ -405,40 +417,6 @@ INSERT (a {name: "John"})
 GRAPH aml
 INSERT (p:Person {name: "A"}), (p)
 --
-ALTERNATION GROUP: <empty>
---
-GeneralizedQueryStmt
-+-query=
-  +-GraphTableScan
-    +-property_graph=aml
-    +-input_scan=
-      +-GraphLinearScan
-        +-scan_list=
-          +-GraphLinearScan
-            +-scan_list=
-              +-GraphInsertScan
-              | +-input_scan=
-              | | +-SingleRowScan
-              | +-insert_node_list=
-              | | +-p#1 :=
-              | |   +-GraphInsertElement
-              | |     +-type=GRAPH_NODE(aml)<age UINT32, birthday DATE, data BYTES, id INT64, name STRING>
-              | |     +-property_list=
-              | |     | +-GraphDMLPropertyItem
-              | |     |   +-property_name="name"
-              | |     |   +-property=name(STRING)
-              | |     |   +-property_value=
-              | |     |     +-Literal(type=STRING, value="A")
-              | |     +-label_list=
-              | |     | +-GraphLabel(label=aml.Person)
-              | |     +-element_table=Person
-              | +-path_element_list=$element_table.[p#1, p#1]
-              +-FinishScan
-                +-input_scan=
-                  +-GraphRefScan
---
-ALTERNATION GROUP: no_
---
 GeneralizedQueryStmt
 +-query=
   +-GraphTableScan
@@ -657,7 +635,7 @@ INSERT (a)-[]->(b)
 GRAPH aml
 INSERT (p:Person {name: "A"})-[e:Transfer {amount: 50}]->(a:Account {id: 1})
 --
-ERROR: The actual source node table Person does not match expected source node table Account for edge table Transfer [at 2:30]
+ERROR: The source node 'p' from node table Person does not match expected source node table Account for edge table Transfer [at 2:30]
 INSERT (p:Person {name: "A"})-[e:Transfer {amount: 50}]->(a:Account {id: 1})
                              ^
 ==
@@ -666,9 +644,18 @@ INSERT (p:Person {name: "A"})-[e:Transfer {amount: 50}]->(a:Account {id: 1})
 GRAPH aml
 INSERT (a:Account {id: 1})-[e:Transfer {amount: 50}]->(p:Person {name: "A"})
 --
-ERROR: The actual destination node table Person does not match expected destination node table Account for edge table Transfer [at 2:27]
+ERROR: The destination node 'p' from node table Person does not match expected destination node table Account for edge table Transfer [at 2:27]
 INSERT (a:Account {id: 1})-[e:Transfer {amount: 50}]->(p:Person {name: "A"})
                           ^
+==
+
+# Edge declaration: Anonymous source node table type mismatch
+GRAPH aml
+INSERT (:Person {name: "A"})-[e:Transfer {amount: 50}]->(a:Account {id: 1})
+--
+ERROR: The source node from node table Person does not match expected source node table Account for edge table Transfer [at 2:29]
+INSERT (:Person {name: "A"})-[e:Transfer {amount: 50}]->(a:Account {id: 1})
+                            ^
 ==
 
 # Edge declaration: Referenced source node type mismatch
@@ -676,7 +663,7 @@ GRAPH aml
 MATCH (a:Person), (b:Account)
 INSERT (a)-[e:Transfer {amount: 50}]->(b)
 --
-ERROR: The actual source node type GRAPH_NODE(aml)<age UINT32, birthday DATE, data BYTES, id INT64, name STRING> does not match expected source node table Account [at 3:11]
+ERROR: The source node 'a' from node table Person does not match expected source node table Account for edge table Transfer [at 3:11]
 INSERT (a)-[e:Transfer {amount: 50}]->(b)
           ^
 ==
@@ -686,9 +673,198 @@ GRAPH aml
 MATCH (a:Account), (b:Person)
 INSERT (a)-[e:Transfer {amount: 50}]->(b)
 --
-ERROR: The actual destination node type GRAPH_NODE(aml)<age UINT32, birthday DATE, data BYTES, id INT64, name STRING> does not match expected destination node table Account [at 3:11]
+ERROR: The destination node 'b' from node table Person does not match expected destination node table Account for edge table Transfer [at 3:11]
 INSERT (a)-[e:Transfer {amount: 50}]->(b)
           ^
+==
+
+# Edge declaration: Multi-table referenced source node via shared label
+GRAPH aml
+MATCH (n:HasId)
+INSERT (n)-[:PersonOwnAccount]->(a:Account {id: 1})
+--
+ERROR: The source node 'n' can come from node tables [Account, Person], which does not match expected source node table Person for edge table PersonOwnAccount [at 3:11]
+INSERT (n)-[:PersonOwnAccount]->(a:Account {id: 1})
+          ^
+==
+
+# Edge declaration: Multi-table referenced destination node via shared label
+GRAPH aml
+MATCH (n:HasId)
+INSERT (p:Person {id: 1})-[:PersonOwnAccount]->(n)
+--
+ERROR: The destination node 'n' can come from node tables [Account, Person], which does not match expected destination node table Account for edge table PersonOwnAccount [at 3:26]
+INSERT (p:Person {id: 1})-[:PersonOwnAccount]->(n)
+                         ^
+==
+
+# Edge declaration: Multi-table referenced source node via UNION ALL
+GRAPH aml
+MATCH (p:Person)
+RETURN p
+UNION ALL
+MATCH (p:Account)
+RETURN p
+NEXT
+INSERT (p)-[:PersonOwnAccount]->(a:Account {id: 1})
+--
+ERROR: The source node 'p' can come from node tables [Person, Account], which does not match expected source node table Person for edge table PersonOwnAccount [at 8:11]
+INSERT (p)-[:PersonOwnAccount]->(a:Account {id: 1})
+          ^
+==
+
+# Edge declaration: Multi-table referenced destination node via UNION ALL
+GRAPH aml
+MATCH (a:Person)
+RETURN a
+UNION ALL
+MATCH (a:Account)
+RETURN a
+NEXT
+INSERT (p:Person {id: 1})-[:PersonOwnAccount]->(a)
+--
+ERROR: The destination node 'a' can come from node tables [Person, Account], which does not match expected destination node table Account for edge table PersonOwnAccount [at 8:26]
+INSERT (p:Person {id: 1})-[:PersonOwnAccount]->(a)
+                         ^
+==
+
+# Edge declaration: Multi-table referenced source node via IF expression
+[language_features=NONE,+SQL_GRAPH,+SQL_GRAPH_ADVANCED_QUERY,+SQL_GRAPH_RETURN_EXTENSIONS,+SQL_GRAPH_TERMINAL_INSERT,+SQL_GRAPH_UPDATABLE_GRAPH_ELEMENT_TYPE,+SQL_GRAPH_EXPOSE_GRAPH_ELEMENT]
+GRAPH aml
+MATCH (p:Person), (a:Account)
+LET x = IF(TRUE, p, a)
+INSERT (x)-[:PersonOwnAccount]->(a)
+--
+ERROR: The source node 'x' can come from node tables [Person, Account], which does not match expected source node table Person for edge table PersonOwnAccount [at 4:11]
+INSERT (x)-[:PersonOwnAccount]->(a)
+          ^
+==
+
+# Edge declaration: Zero-table referenced source node from empty label match
+GRAPH aml
+MATCH (p:Person & Account)
+INSERT (p)-[:PersonOwnAccount]->(a:Account {id: 1})
+--
+ERROR: The source node 'p' does not come from any node table, which does not match expected source node table Person for edge table PersonOwnAccount [at 3:11]
+INSERT (p)-[:PersonOwnAccount]->(a:Account {id: 1})
+          ^
+==
+
+# Edge declaration: Case-insensitive endpoint variable reference reports AST
+# identifier
+GRAPH aml
+MATCH (a:Person), (b:Account)
+INSERT (A)-[e:Transfer {amount: 50}]->(b)
+--
+ERROR: The source node 'A' from node table Person does not match expected source node table Account for edge table Transfer [at 3:11]
+INSERT (A)-[e:Transfer {amount: 50}]->(b)
+          ^
+==
+
+# Edge declaration: Backtick-quoted '$insert_node' variable name is not treated
+# as anonymous
+GRAPH aml
+INSERT (`$insert_node`:Person {name: "A"})
+  -[e:Transfer {amount: 50}]->(a:Account {id: 1})
+--
+ERROR: The source node '$insert_node' from node table Person does not match expected source node table Account for edge table Transfer [at 3:3]
+  -[e:Transfer {amount: 50}]->(a:Account {id: 1})
+  ^
+==
+
+# Edge declaration: Multiply-declared variable narrowed to single node table
+GRAPH aml
+MATCH (p:Person | Account), (p:Person)
+INSERT (p)-[:PersonOwnAccount]->(a:Account {id: 1})
+--
+GeneralizedQueryStmt
++-query=
+  +-GraphTableScan
+    +-property_graph=aml
+    +-input_scan=
+      +-GraphLinearScan
+        +-scan_list=
+          +-GraphLinearScan
+            +-scan_list=
+              +-GraphScan
+              | +-column_list=$element_table.[p#1, p#2]
+              | +-input_scan_list=
+              | | +-GraphPathScan
+              | | | +-column_list=[$element_table.p#1]
+              | | | +-input_scan_list=
+              | | | | +-GraphNodeScan
+              | | | |   +-column_list=[$element_table.p#1]
+              | | | |   +-label_expr=
+              | | | |   | +-GraphLabelNaryExpr
+              | | | |   |   +-op=AND
+              | | | |   |   +-operand_list=
+              | | | |   |     +-GraphLabelNaryExpr
+              | | | |   |     | +-parse_location=19-35
+              | | | |   |     | +-op=OR
+              | | | |   |     | +-operand_list=
+              | | | |   |     |   +-GraphLabel(parse_location=19-25, label=aml.Person)
+              | | | |   |     |   +-GraphLabel(parse_location=28-35, label=aml.Account)
+              | | | |   |     +-GraphLabel(parse_location=41-47, label=aml.Person)
+              | | | |   +-target_element_table_list=[aml.Person]
+              | | | +-head=$element_table.p#1
+              | | | +-tail=$element_table.p#1
+              | | +-GraphPathScan
+              | |   +-column_list=[$element_table.p#2]
+              | |   +-input_scan_list=
+              | |   | +-GraphNodeScan
+              | |   |   +-column_list=[$element_table.p#2]
+              | |   |   +-label_expr=
+              | |   |   | +-GraphLabelNaryExpr
+              | |   |   |   +-op=AND
+              | |   |   |   +-operand_list=
+              | |   |   |     +-GraphLabelNaryExpr
+              | |   |   |     | +-parse_location=19-35
+              | |   |   |     | +-op=OR
+              | |   |   |     | +-operand_list=
+              | |   |   |     |   +-GraphLabel(parse_location=19-25, label=aml.Person)
+              | |   |   |     |   +-GraphLabel(parse_location=28-35, label=aml.Account)
+              | |   |   |     +-GraphLabel(parse_location=41-47, label=aml.Person)
+              | |   |   +-target_element_table_list=[aml.Person]
+              | |   +-head=$element_table.p#2
+              | |   +-tail=$element_table.p#2
+              | +-filter_expr=
+              | | +-FunctionCall(GoogleSQL:$equal(GRAPH_NODE(aml)<age UINT32, birthday DATE, data BYTES, id INT64, name STRING>, GRAPH_NODE(aml)<age UINT32, birthday DATE, data BYTES, id INT64, name STRING>) -> BOOL)
+              | |   +-ColumnRef(type=GRAPH_NODE(aml)<age UINT32, birthday DATE, data BYTES, id INT64, name STRING>, column=$element_table.p#1)
+              | |   +-ColumnRef(type=GRAPH_NODE(aml)<age UINT32, birthday DATE, data BYTES, id INT64, name STRING>, column=$element_table.p#2)
+              | +-input_scan=
+              |   +-SingleRowScan
+              +-GraphInsertScan
+              | +-column_list=$element_table.[p#1, a#3]
+              | +-input_scan=
+              | | +-GraphRefScan(column_list=[$element_table.p#1])
+              | +-insert_node_list=
+              | | +-a#3 :=
+              | |   +-GraphInsertElement
+              | |     +-type=GRAPH_NODE(aml)<balance UINT64, id INT64>
+              | |     +-property_list=
+              | |     | +-GraphDMLPropertyItem
+              | |     |   +-property_name="id"
+              | |     |   +-property=id(INT64)
+              | |     |   +-property_value=
+              | |     |     +-Literal(type=INT64, value=1)
+              | |     +-label_list=
+              | |     | +-GraphLabel(label=aml.Account)
+              | |     +-element_table=Account
+              | +-insert_edge_list=
+              | | +-$insert_edge#4 :=
+              | |   +-GraphInsertElement
+              | |     +-type=GRAPH_EDGE(aml)<accountId INT64, personId INT64>
+              | |     +-label_list=
+              | |     | +-GraphLabel(label=aml.PersonOwnAccount)
+              | |     +-source_node=
+              | |     | +-ColumnRef(type=GRAPH_NODE(aml)<age UINT32, birthday DATE, data BYTES, id INT64, name STRING>, column=$element_table.p#1)
+              | |     +-dest_node=
+              | |     | +-ColumnRef(type=GRAPH_NODE(aml)<balance UINT64, id INT64>, column=$element_table.a#3)
+              | |     +-element_table=PersonOwnAccount
+              | +-path_element_list=$element_table.[p#1, $insert_edge#4, a#3]
+              +-FinishScan
+                +-input_scan=
+                  +-GraphRefScan(column_list=$element_table.[p#1, a#3])
 ==
 
 # Reference: Referencing a declared edge variable is not allowed.
@@ -823,7 +999,6 @@ RETURN COUNT(n.name) AS count
 GRAPH aml_dml
 INSERT (n:TestLabel {readonly_prop: "abc"})
 --
-
 ERROR: Cannot insert into property 'readonly_prop' mapped from a read-only column [at 2:22]
 INSERT (n:TestLabel {readonly_prop: "abc"})
                      ^
@@ -833,7 +1008,6 @@ INSERT (n:TestLabel {readonly_prop: "abc"})
 GRAPH aml_dml
 INSERT (n:TestLabel {derived_prop: "abc"})
 --
-
 ERROR: Cannot insert into derived property 'derived_prop' [at 2:22]
 INSERT (n:TestLabel {derived_prop: "abc"})
                      ^
@@ -843,7 +1017,6 @@ INSERT (n:TestLabel {derived_prop: "abc"})
 GRAPH aml_dml
 INSERT (n:TestLabel {derived_func_prop: "abc"})
 --
-
 ERROR: Cannot insert into derived property 'derived_func_prop' [at 2:22]
 INSERT (n:TestLabel {derived_func_prop: "abc"})
                      ^
@@ -853,7 +1026,6 @@ INSERT (n:TestLabel {derived_func_prop: "abc"})
 GRAPH aml_dml
 INSERT (n:TestLabel {measure_prop: 1})
 --
-
 ERROR: Cannot insert into measure property 'measure_prop' [at 2:22]
 INSERT (n:TestLabel {measure_prop: 1})
                      ^
@@ -894,7 +1066,7 @@ GeneralizedQueryStmt
               | |   |   +-column_list=[$element_table.src#1]
               | |   |   +-label_expr=
               | |   |   | +-GraphLabel(parse_location=25-47, label=aml_dml.TestLabelNoWritableKey)
-              | |   |   +-target_element_table_list=[aml_dml.InsertTestTableNoWritableKey]
+              | |   |   +-target_element_table_list=[aml_dml.DmlTestTableNoWritableKey]
               | |   +-head=$element_table.src#1
               | |   +-tail=$element_table.src#1
               | +-input_scan=
@@ -909,7 +1081,7 @@ GeneralizedQueryStmt
               | |     +-type=GRAPH_NODE(aml_dml)<derived_func_prop STRING, derived_prop STRING, id INT64, measure_prop INT64, readonly_prop STRING, val STRING, val_alias STRING>
               | |     +-label_list=
               | |     | +-GraphLabel(label=aml_dml.TestLabel)
-              | |     +-element_table=InsertTestTable
+              | |     +-element_table=DmlTestTable
               | +-insert_edge_list=
               | | +-$insert_edge#3 :=
               | |   +-GraphInsertElement
@@ -953,7 +1125,7 @@ GeneralizedQueryStmt
               | |   |   +-column_list=[$element_table.dst#1]
               | |   |   +-label_expr=
               | |   |   | +-GraphLabel(parse_location=25-47, label=aml_dml.TestLabelNoWritableKey)
-              | |   |   +-target_element_table_list=[aml_dml.InsertTestTableNoWritableKey]
+              | |   |   +-target_element_table_list=[aml_dml.DmlTestTableNoWritableKey]
               | |   +-head=$element_table.dst#1
               | |   +-tail=$element_table.dst#1
               | +-input_scan=
@@ -968,7 +1140,7 @@ GeneralizedQueryStmt
               | |     +-type=GRAPH_NODE(aml_dml)<derived_func_prop STRING, derived_prop STRING, id INT64, measure_prop INT64, readonly_prop STRING, val STRING, val_alias STRING>
               | |     +-label_list=
               | |     | +-GraphLabel(label=aml_dml.TestLabel)
-              | |     +-element_table=InsertTestTable
+              | |     +-element_table=DmlTestTable
               | +-insert_edge_list=
               | | +-$insert_edge#3 :=
               | |   +-GraphInsertElement
@@ -991,7 +1163,7 @@ GRAPH aml_dml
 MATCH (src:TestLabelNoKeyProp)
 INSERT (src)-[:EdgeFromNoKeyProp]->(dst:TestLabel)
 --
-ERROR: The edge table 'EdgeFromNoKeyPropTable' is not updatable because the source node table 'InsertTestTableNoKeyProp' does not expose the element key column 'id' as a property [at 3:15]
+ERROR: The edge table 'EdgeFromNoKeyPropTable' is not updatable because the source node table 'DmlTestTableNoKeyProp' does not expose the element key column 'id' as a property [at 3:15]
 INSERT (src)-[:EdgeFromNoKeyProp]->(dst:TestLabel)
               ^
 ==
@@ -1001,9 +1173,43 @@ GRAPH aml_dml
 MATCH (dst:TestLabelNoKeyProp)
 INSERT (src:TestLabel)-[:EdgeToNoKeyProp]->(dst)
 --
-ERROR: The edge table 'EdgeToNoKeyPropTable' is not updatable because the destination node table 'InsertTestTableNoKeyProp' does not expose the element key column 'id' as a property [at 3:25]
+ERROR: The edge table 'EdgeToNoKeyPropTable' is not updatable because the destination node table 'DmlTestTableNoKeyProp' does not expose the element key column 'id' as a property [at 3:25]
 INSERT (src:TestLabel)-[:EdgeToNoKeyProp]->(dst)
                         ^
+==
+
+# Error: Edge references non-key column 'val' (which is exposed as a property),
+# but source node table does not expose its element key column 'id' as a
+# property
+GRAPH aml_dml
+MATCH (src:TestLabelNoKeyProp), (dst:TestLabel)
+INSERT (src)-[:EdgeRefValFromNoKeyProp {id: 10}]->(dst)
+--
+ERROR: The edge table 'EdgeRefValFromNoKeyPropTable' is not updatable because the source node table 'DmlTestTableNoKeyProp' does not expose the element key column 'id' as a property [at 3:15]
+INSERT (src)-[:EdgeRefValFromNoKeyProp {id: 10}]->(dst)
+              ^
+==
+
+# Error: Edge references non-key column 'val' (which is exposed as a property),
+# but destination node table does not expose its element key column 'id' as a
+# property
+GRAPH aml_dml
+MATCH (src:TestLabel), (dst:TestLabelNoKeyProp)
+INSERT (src)-[:EdgeRefValToNoKeyProp {id: 10}]->(dst)
+--
+ERROR: The edge table 'EdgeRefValToNoKeyPropTable' is not updatable because the destination node table 'DmlTestTableNoKeyProp' does not expose the element key column 'id' as a property [at 3:15]
+INSERT (src)-[:EdgeRefValToNoKeyProp {id: 10}]->(dst)
+              ^
+==
+
+# Error: Edge source and destination keys share an underlying edge table column
+GRAPH aml_dml
+MATCH (src:TestLabel), (dst:TestLabel)
+INSERT (src)-[:EdgeSharedEndpointKey {id: 10}]->(dst)
+--
+ERROR: The edge table 'EdgeSharedEndpointKeyTable' is not updatable because its source and destination keys share underlying edge table column 'shared_id' [at 3:15]
+INSERT (src)-[:EdgeSharedEndpointKey {id: 10}]->(dst)
+              ^
 ==
 
 # Error: Edge source key column is not writable on the edge table side
@@ -1040,7 +1246,7 @@ GeneralizedQueryStmt
               | | | |   +-column_list=[$element_table.src#1]
               | | | |   +-label_expr=
               | | | |   | +-GraphLabel(parse_location=25-34, label=aml_dml.TestLabel)
-              | | | |   +-target_element_table_list=[aml_dml.InsertTestTable]
+              | | | |   +-target_element_table_list=[aml_dml.DmlTestTable]
               | | | +-head=$element_table.src#1
               | | | +-tail=$element_table.src#1
               | | +-GraphPathScan
@@ -1050,7 +1256,7 @@ GeneralizedQueryStmt
               | |   |   +-column_list=[$element_table.dst#2]
               | |   |   +-label_expr=
               | |   |   | +-GraphLabel(parse_location=42-51, label=aml_dml.TestLabel)
-              | |   |   +-target_element_table_list=[aml_dml.InsertTestTable]
+              | |   |   +-target_element_table_list=[aml_dml.DmlTestTable]
               | |   +-head=$element_table.dst#2
               | |   +-tail=$element_table.dst#2
               | +-input_scan=
@@ -2057,7 +2263,7 @@ GeneralizedQueryStmt
               | |     |     +-Literal(type=INT64, value=10)
               | |     +-label_list=
               | |     | +-GraphLabel(label=aml_dml.TestLabelWithGenCols)
-              | |     +-element_table=InsertTestTableWithGenCols
+              | |     +-element_table=DmlTestTableWithGenCols
               | +-path_element_list=[$element_table.n#1]
               +-ProjectScan
                 +-column_list=$graph_table.[id#2, c1#3, gen_b#4, gen_a#5]
@@ -2175,6 +2381,141 @@ RETURN 1 AS my_column
 ERROR: INSERT cannot be followed by NEXT and can only have an immediate RETURN as the last statement in a graph query [at 4:1]
 RETURN 1 AS my_column
 ^
-
 ==
 
+# Negative: Standalone pre-existing node variable reference with no new nodes
+# or edges
+GRAPH aml
+MATCH (p:Person)
+INSERT (p)
+--
+ERROR: INSERT must insert at least one node or edge [at 3:1]
+INSERT (p)
+^
+==
+
+# Negative: Referencing non-graph-element scalar variable as node in INSERT
+GRAPH aml
+LET x = 1
+INSERT (x)-[:PersonOwnAccount]->(a:Account {id: 1})
+--
+ERROR: Variable 'x' is not a graph element [at 3:9]
+INSERT (x)-[:PersonOwnAccount]->(a:Account {id: 1})
+        ^
+==
+
+# Negative: Non-graph-element variable with labels/properties in INSERT
+GRAPH aml
+LET x = 1
+INSERT (x:Person {id: 1})
+--
+ERROR: Variable 'x' is not a graph element [at 3:9]
+INSERT (x:Person {id: 1})
+        ^
+==
+
+# Negative: Ambiguous column name in WITH followed by INSERT
+GRAPH aml
+MATCH (a:Person), (b:Person)
+WITH a AS p, b AS p
+INSERT (p)-[:PersonOwnAccount]->(c:Account {id: 1})
+--
+ERROR: Ambiguous name: p [at 3:6]
+WITH a AS p, b AS p
+     ^
+==
+
+# Standalone pre-existing node variable with prune_unused_columns
+[{{|no_}}prune_unused_columns]
+[language_features=NONE,+SQL_GRAPH,+SQL_GRAPH_ADVANCED_QUERY,+SQL_GRAPH_RETURN_EXTENSIONS,+SQL_GRAPH_TERMINAL_INSERT,+SQL_GRAPH_UPDATABLE_GRAPH_ELEMENT_TYPE,+SQL_GRAPH_EXPOSE_GRAPH_ELEMENT]
+GRAPH aml
+MATCH (n:Person)
+LET p = n
+INSERT (:Account {id: 1}), (p)
+--
+GeneralizedQueryStmt
++-query=
+  +-GraphTableScan
+    +-property_graph=aml
+    +-input_scan=
+      +-GraphLinearScan
+        +-scan_list=
+          +-GraphLinearScan
+            +-scan_list=
+              +-GraphScan
+              | +-column_list=[$element_table.n#1]
+              | +-input_scan_list=
+              | | +-GraphPathScan
+              | |   +-column_list=[$element_table.n#1]
+              | |   +-input_scan_list=
+              | |   | +-GraphNodeScan
+              | |   |   +-column_list=[$element_table.n#1]
+              | |   |   +-label_expr=
+              | |   |   | +-GraphLabel(parse_location=19-25, label=aml.Person)
+              | |   |   +-target_element_table_list=[aml.Person]
+              | |   +-head=$element_table.n#1
+              | |   +-tail=$element_table.n#1
+              | +-input_scan=
+              |   +-SingleRowScan
+              +-ProjectScan
+              | +-column_list=[$element_table.n#1, $graph_table.p#2]
+              | +-expr_list=
+              | | +-p#2 := ColumnRef(type=GRAPH_NODE(aml)<age UINT32, birthday DATE, data BYTES, id INT64, name STRING>, column=$element_table.n#1)
+              | +-input_scan=
+              |   +-GraphRefScan(column_list=[$element_table.n#1])
+              +-GraphInsertScan
+              | +-column_list=[$element_table.n#1, $graph_table.p#2]
+              | +-input_scan=
+              | | +-GraphRefScan(column_list=[$element_table.n#1, $graph_table.p#2])
+              | +-insert_node_list=
+              | | +-$insert_node#3 :=
+              | |   +-GraphInsertElement
+              | |     +-type=GRAPH_NODE(aml)<balance UINT64, id INT64>
+              | |     +-property_list=
+              | |     | +-GraphDMLPropertyItem
+              | |     |   +-property_name="id"
+              | |     |   +-property=id(INT64)
+              | |     |   +-property_value=
+              | |     |     +-Literal(type=INT64, value=1)
+              | |     +-label_list=
+              | |     | +-GraphLabel(label=aml.Account)
+              | |     +-element_table=Account
+              | +-path_element_list=[$element_table.$insert_node#3, $graph_table.p#2]
+              +-FinishScan
+                +-input_scan=
+                  +-GraphRefScan(column_list=[$element_table.n#1, $graph_table.p#2])
+==
+
+# Negative: Referencing TABLESAMPLE weight variable in INSERT
+[language_features=NONE,+SQL_GRAPH,+SQL_GRAPH_ADVANCED_QUERY,+SQL_GRAPH_RETURN_EXTENSIONS,+SQL_GRAPH_TERMINAL_INSERT,+SQL_GRAPH_UPDATABLE_GRAPH_ELEMENT_TYPE,+TABLESAMPLE]
+GRAPH aml
+MATCH (a:Person)
+TABLESAMPLE BERNOULLI(5 PERCENT) WITH WEIGHT AS w
+INSERT (w:Account {id: 1})
+--
+ERROR: Variable 'w' is not a graph element [at 4:9]
+INSERT (w:Account {id: 1})
+        ^
+==
+
+# Negative: Referencing cross-graph node variable in standalone node pattern
+[language_features=NONE,+SQL_GRAPH,+SQL_GRAPH_ADVANCED_QUERY,+SQL_GRAPH_RETURN_EXTENSIONS,+SQL_GRAPH_TERMINAL_INSERT,+SQL_GRAPH_UPDATABLE_GRAPH_ELEMENT_TYPE,+SQL_GRAPH_EXPOSE_GRAPH_ELEMENT]
+GRAPH aml_enhanced
+LET p = (SELECT n FROM GRAPH_TABLE(aml MATCH (n:Person) RETURN n) LIMIT 1)
+INSERT (:Account {id: 1}), (p)
+--
+ERROR: Variable 'p' belongs to property graph aml, which does not match target property graph aml_enhanced [at 3:29]
+INSERT (:Account {id: 1}), (p)
+                            ^
+==
+
+# Negative: Referencing cross-graph node variable as edge endpoint
+[language_features=NONE,+SQL_GRAPH,+SQL_GRAPH_ADVANCED_QUERY,+SQL_GRAPH_RETURN_EXTENSIONS,+SQL_GRAPH_TERMINAL_INSERT,+SQL_GRAPH_UPDATABLE_GRAPH_ELEMENT_TYPE,+SQL_GRAPH_EXPOSE_GRAPH_ELEMENT]
+GRAPH aml
+LET p = (
+  SELECT n FROM GRAPH_TABLE(aml_enhanced MATCH (n:Person) RETURN n) LIMIT 1)
+INSERT (p)-[:PersonOwnAccount]->(a:Account {id: 1})
+--
+ERROR: Variable 'p' belongs to property graph aml_enhanced, which does not match target property graph aml [at 4:9]
+INSERT (p)-[:PersonOwnAccount]->(a:Account {id: 1})
+        ^

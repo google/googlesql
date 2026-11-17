@@ -472,7 +472,9 @@ absl::StatusOr<std::unique_ptr<const ResolvedScan>> HandleOrderByIfPresent(
     // Some ORDER BY items may be correlated which is not supported in some
     // engines. Create equivalent non-correlated columns for those items.
     ResolvedProjectScanBuilder project_scan_builder;
+    const ResolvedColumn& arg_column = column_map.at(state.original_arg_column);
     bool any_correlated = false;
+    bool arg_column_added = false;
     for (std::unique_ptr<const ResolvedOrderByItem>& order_by_item :
          order_by_item_list) {
       if (order_by_item->column_ref()->is_correlated()) {
@@ -495,17 +497,23 @@ absl::StatusOr<std::unique_ptr<const ResolvedScan>> HandleOrderByIfPresent(
                                                       /*is_correlated=*/false))
                 .Build());
       } else {
+        if (order_by_item->column_ref()->column() == arg_column) {
+          arg_column_added = true;
+        }
         project_scan_builder.add_column_list(
             order_by_item->column_ref()->column());
       }
     }
     if (any_correlated) {
+      if (!arg_column_added) {
+        project_scan_builder.add_column_list(arg_column);
+      }
       GOOGLESQL_ASSIGN_OR_RETURN(input_scan, std::move(project_scan_builder)
                                        .set_input_scan(std::move(input_scan))
                                        .Build());
     }
     return ResolvedOrderByScanBuilder()
-        .add_column_list(column_map.at(state.original_arg_column))
+        .add_column_list(arg_column)
         .set_input_scan(std::move(input_scan))
         .set_is_ordered(true)
         .set_order_by_item_list(std::move(order_by_item_list))

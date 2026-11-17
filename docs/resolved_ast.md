@@ -2005,6 +2005,17 @@ class ResolvedTableScan : public <a href="#ResolvedScan">ResolvedScan</a> {
   const std::vector&lt;const Column*&gt;&amp; table_column_list() const;
   int table_column_list_size() const;
   const Column* table_column_list(int i) const;
+
+<font color="brown">  // If non-empty, the table was referenced with a STRING literal,
+  // such as `FROM &#39;/path/to/file.csv&#39;`, and this is the literal&#39;s
+  // value (after unescaping and concatenation) that was passed to
+  // `Catalog::FindTableFromString`. Empty for tables referenced by
+  // identifier paths. SQLBuilder uses this to print the reference
+  // back as a STRING literal.
+  //
+  // Requires `FEATURE_STRING_LITERAL_TABLE_REFERENCES`.
+  // See (broken link).</font>
+  const std::string&amp; name_string() const;
 };
 </code></pre></p>
 
@@ -9680,10 +9691,13 @@ class ResolvedAuxLoadDataPartitionFilter : public <a href="#ResolvedArgument">Re
 //     connections for accessing files.
 // &lt;from_files_option_list&gt; the options list describing the source file(s).
 //
-// Special-case column creation logic in this node:
-// If `column_definition_list` is present, it gives all created columns.
-// Otherwise, `with_partition_columns` gives some created columns, and
-// the `output_column_list` can include those, and also create more.</font>
+// Special-case column creation and visibility logic in this node:
+//   - If `column_definition_list` is present, it creates the table columns
+//     (along with `with_partition_columns`), and `output_column_list`
+//     references those columns.
+//   - Otherwise, `with_partition_columns` creates the partition columns, and
+//     `output_column_list` can include those and also create the remaining
+//     table columns directly (see `use_custom_columns_created`).</font>
 class ResolvedAuxLoadDataStmt : public <a href="#ResolvedStatement">ResolvedStatement</a> {
   static const ResolvedNodeKind TYPE = RESOLVED_AUX_LOAD_DATA_STMT;
 

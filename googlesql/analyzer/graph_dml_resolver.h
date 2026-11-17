@@ -23,15 +23,20 @@
 #include "googlesql/analyzer/graph_query_resolver_helper.h"
 #include "googlesql/analyzer/name_scope.h"
 #include "googlesql/analyzer/resolver.h"
+#include "googlesql/common/graph_element_utils.h"
 #include "googlesql/parser/parse_tree.h"
+#include "googlesql/public/catalog.h"
 #include "googlesql/public/id_string.h"
 #include "googlesql/public/property_graph.h"
 #include "googlesql/public/types/graph_element_type.h"
 #include "googlesql/resolved_ast/resolved_ast.h"
 #include "googlesql/resolved_ast/resolved_column.h"
+#include "absl/base/nullability.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/types/span.h"
 
 namespace googlesql {
 
@@ -94,8 +99,9 @@ class GraphDmlResolver {
   //    properties (both static and dynamic) on target element `a` according to
   //    the element property specification. Unlisted updatable static properties
   //    are replaced with NULL, and unlisted dynamic properties are discarded.
-  //  * Adding labels (`SET a:Label`): Adds a dynamic label to target element
-  //    `a` (does not support static graph elements).
+  //  * Adding labels (`SET a:Label`): Adds a label to target element `a`
+  //    (idempotent if the label already exists; adding a new label requires
+  //    dynamic label support).
   //
   // If a SET operator targets the same variable multiple times (e.g.,
   // `SET a.prop = 1, a:Label`), all modifications for that variable are grouped
@@ -109,10 +115,16 @@ class GraphDmlResolver {
   //  * Duplicate property names targeting the same element in a SET
   //    operator are errors; duplicate label names are deduplicated
   //    idempotently.
-  //  * TODO: Add analysis-time table-level checks (whether
-  //    candidate tables support dynamic properties or dynamic labels, whether
-  //    properties exist on all underlying element tables, or whether backing
-  //    columns are writable) when updatable graph element types are supported.
+  //  * Across all candidate element tables of the target variable:
+  //    - Each element table must be updatable.
+  //    - Updated static properties, dynamic properties, and dynamic labels must
+  //      have writable backing columns.
+  //    - Setting multiple distinct dynamic labels requires every candidate
+  //      element table to support multiple dynamic labels.
+  //    - Updated properties must not be backed by any of the element key or
+  //      edge endpoint key columns.
+  //    - Within a SET, a static property must not share a backing column with
+  //      another updated static property or an updated dynamic label/property.
   // See (broken link):dml-update for more details.
   absl::StatusOr<ResolvedGraphWithNameList<const ResolvedScan>> ResolveGqlSet(
       const ASTGqlSet& ast_set, const NameScope* input_scope,
@@ -144,10 +156,10 @@ class GraphDmlResolver {
   //    (use SET a.prop = NULL to clear a static property value).
   //  * Duplicate property names and label names are deduplicated
   //    idempotently.
-  //  * TODO: Add analysis-time table-level checks (whether
-  //    candidate tables support dynamic properties or dynamic labels, or
-  //    whether backing columns are writable) when updatable graph element types
-  //    are supported.
+  //  * Across all candidate element tables of the target variable:
+  //    - Each table must be updatable.
+  //    - Removed dynamic properties and labels require writable backing
+  //      columns.
   // See (broken link):dml-update for more details.
   absl::StatusOr<ResolvedGraphWithNameList<const ResolvedScan>>
   ResolveGqlRemove(const ASTGqlRemove& ast_remove, const NameScope* input_scope,
@@ -212,50 +224,35 @@ class GraphDmlResolver {
   // Resolves an insert edge element pattern.
   // - `edge_pattern` is the AST edge pattern to resolve.
   // - `input_scope` is the input name scope of the INSERT statement.
+  // - `source_node_pattern` is the AST node pattern of the edge's source node.
   // - `source_col` is the resolved source node column of the edge.
+  // - `dest_node_pattern` is the AST node pattern of the edge's destination
+  //   node.
   // - `dest_col` is the resolved destination node column of the edge.
   // - `edge_tables` is the set of all edge tables in the graph.
   // - `variables` is a map of all named graph element variables seen so far in
   //   the same INSERT statement. Newly declared edge variables are added to
   //   this map.
-  // - `insert_node_list` is the list of all inserted node elements seen so far
-  //   in the same INSERT statement.
   // - `insert_edge_list` is the list of all inserted edge elements seen so far
   //   in the same INSERT statement. Newly created edge elements are appended to
   //   this list.
   absl::StatusOr<ResolvedColumn> ResolveInsertEdgePattern(
       const ASTGraphInsertEdgePattern* edge_pattern,
-      const NameScope* input_scope, const ResolvedColumn& source_col,
+      const NameScope* input_scope,
+      const ASTGraphInsertNodePattern* source_node_pattern,
+      const ResolvedColumn& source_col,
+      const ASTGraphInsertNodePattern* dest_node_pattern,
       const ResolvedColumn& dest_col,
       const absl::flat_hash_set<const GraphEdgeTable*>& edge_tables,
       IdStringLinkedHashMapCase<ResolvedColumn>& variables,
-      const std::vector<std::unique_ptr<const ResolvedComputedColumnBase>>&
-          insert_node_list,
       std::vector<std::unique_ptr<const ResolvedComputedColumnBase>>&
           insert_edge_list);
 
-  // Validates an edge endpoint (source or destination node) is valid for the
-  // to-be-inserted edge.
-  // If the endpoint node is a newly inserted node:
-  //  - `actual_node_table` must not be nullptr. Validate that it matches the
-  //    `expected_node_table`. Otherwise, return an error.
-  // If the endpoint node is a referenced node:
-  //  - `actual_node_table` must be nullptr. Validate that the node type of
-  //    `node_col` is a supertype of the graph element type of the
-  //    `expected_node_table`. Otherwise, return an error.
-  //
-  // - `error_location` is the AST node where the error occurred.
-  // - `target_table` is the edge table being inserted.
-  // - `expected_node_table` is the expected node table for the edge endpoint.
-  // - `is_source` indicates whether the endpoint is a source or destination
-  //   node.
-  absl::Status ValidateEdgeEndpoint(
-      const ASTGraphInsertEdgePattern& error_location,
-      const GraphEdgeTable& target_table,
-      const GraphNodeTable* actual_node_table,
-      const GraphNodeTable& expected_node_table, const ResolvedColumn& node_col,
-      bool is_source);
-
+  // Resolves the candidate GraphElementTables for `target_element_type` in the
+  // property graph. Returns an empty vector if
+  // `target_element_type.element_tables()` is empty.
+  absl::StatusOr<std::vector<const GraphElementTable*>> GetTargetElementTables(
+      const GraphElementType& target_element_type) const;
   // Resolves property and label modifications for a single target element
   // variable in a SET operator.
   absl::StatusOr<std::unique_ptr<const ResolvedGraphUpdateElement>>
@@ -263,22 +260,47 @@ class GraphDmlResolver {
                                const std::vector<const ASTGqlSetItem*>& items,
                                const NameScope* input_scope);
 
+  // Per-table metadata used to validate property and label updatability.
+  struct TargetTableUpdateContext {
+    const GraphElementTable* /*absl_nonnull*/ table;
+    // Non-empty: every updatable element table has at least one key column.
+    absl::flat_hash_set<const Column*> element_key_columns;
+    // Non-empty when `table` is an edge table; empty when `table` is a node
+    // table.
+    EdgeEndpointBackingColumns edge_endpoint_columns;
+    // Non-null only when dynamic labels are updated by the SET operation and
+    // `table->HasDynamicLabel()` is true.
+    const Column* updated_dynamic_label_column = nullptr;
+    // Non-null only when dynamic properties are updated by the SET operation
+    // and `table->HasDynamicProperties()` is true.
+    const Column* updated_dynamic_properties_column = nullptr;
+  };
+
   // Resolves a single property assignment (name and value expression) for a SET
-  // operator, performing static property type coercion or checking that
-  // dynamic properties are allowed by the target element type.
-  // TODO: Add table-level physical checks when updatable graph
-  // element types are supported.
+  // operator, performing static property type coercion and validating that the
+  // property is updatable across all candidate element tables in
+  // `table_contexts`. `seen_props` tracks property names (both static and
+  // dynamic) already specified for the target variable, while
+  // `seen_target_columns` tracks base table columns already targeted by static
+  // property updates per candidate element table to detect aliased properties
+  // mapping to the same column.
   absl::StatusOr<std::unique_ptr<const ResolvedGraphDMLPropertyItem>>
-  ResolveSetPropertyItemValue(IdString prop_id, const ASTNode* ast_prop_name,
-                              const ASTExpression* ast_prop_val_expr,
-                              const GraphElementType* target_element_type,
-                              const ResolvedColumn& target_col,
-                              const NameScope* input_scope);
+  ResolveSetPropertyItemValue(
+      IdString prop_id, const ASTNode* ast_prop_name,
+      const ASTExpression* ast_prop_val_expr,
+      const GraphElementType* target_element_type,
+      const ResolvedColumn& target_col, const NameScope* input_scope,
+      absl::Span<const TargetTableUpdateContext> table_contexts,
+      IdStringHashSetCase& seen_props,
+      absl::flat_hash_map<const GraphElementTable*,
+                          absl::flat_hash_set<const Column*>>&
+          seen_target_columns);
 
   // Resolves label assignments (`SET n:Label`) for a SET operator.
   absl::StatusOr<std::vector<std::unique_ptr<const ResolvedGraphLabel>>>
   ResolveSetLabelItems(
-      const std::vector<const ASTGqlSetLabelItem*>& label_items);
+      const std::vector<const ASTGqlSetLabelItem*>& label_items,
+      absl::Span<const TargetTableUpdateContext> table_contexts);
 
   // Resolves property and label removals for a single target element variable
   // in a REMOVE operator.
@@ -292,12 +314,14 @@ class GraphDmlResolver {
       std::vector<std::unique_ptr<const ResolvedGraphDMLPropertyItem>>>
   ResolveRemovePropertyItems(
       const std::vector<const ASTGqlRemovePropertyItem*>& property_items,
-      const GraphElementType* target_element_type);
+      const GraphElementType* target_element_type,
+      absl::Span<const GraphElementTable* const> target_tables);
 
   // Resolves label removals (`REMOVE n:Label`) for a REMOVE operator.
   absl::StatusOr<std::vector<std::unique_ptr<const ResolvedGraphLabel>>>
   ResolveRemoveLabelItems(
-      const std::vector<const ASTGqlRemoveLabelItem*>& label_items);
+      const std::vector<const ASTGqlRemoveLabelItem*>& label_items,
+      absl::Span<const GraphElementTable* const> target_tables);
 
   Resolver* resolver_ = nullptr;
   const PropertyGraph* graph_ = nullptr;

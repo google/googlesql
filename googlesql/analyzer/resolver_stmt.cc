@@ -1295,7 +1295,8 @@ absl::Status Resolver::ResolveSubpipelineStatement(
   IdString alias = MakeIdString(input_table->Name());
   GOOGLESQL_RETURN_IF_ERROR(MakeScanForTable(
       ast_subpipeline, input_table, alias,
-      /*has_explicit_alias=*/true, /*alias_location=*/ast_subpipeline,
+      /*has_explicit_alias=*/true, /*add_range_variable=*/true,
+      /*alias_location=*/ast_subpipeline,
       /*for_version_clause=*/nullptr,
       /*read_as_row_type_error_kind=*/"", &table_scan, &current_name_list,
       /*output_column_name_list=*/nullptr, resolved_columns_from_table_scans_));
@@ -5135,6 +5136,14 @@ absl::Status Resolver::ResolveCreateConstantStatement(
       ResolveScalarExpr(ast_statement->expr(), empty_name_scope_.get(),
                         "definition of named constant", &resolved_expr));
 
+  // TODO: Support constants of type COLUMN_LIST_SPEC, so that a
+  // column list can be named once and unpacked with `**` in queries and TVF
+  // bodies. This needs the constant's value at analysis time.
+  if (resolved_expr->type()->IsColumnListSpec()) {
+    return MakeSqlErrorAt(ast_statement->expr())
+           << "Constants of type COLUMN_LIST_SPEC are not supported";
+  }
+
   // Return a resolved statement.
   *output = MakeResolvedCreateConstantStmt(name_path, create_scope, create_mode,
                                            std::move(resolved_expr));
@@ -6799,6 +6808,10 @@ absl::Status Resolver::ResolveScalarFunctionParameter(
   // are not yet first class citizens, we need to resolve the function type to
   // a function signature.
   if (function_param.type()->node_kind() == AST_FUNCTION_TYPE) {
+    if (function_type == ResolveFunctionDeclarationType::PROCEDURE) {
+      return MakeSqlErrorAt(function_param.type())
+             << "Function-typed arguments are not supported in procedures";
+    }
     if (!language().LanguageFeatureEnabled(FEATURE_UDF_LAMBDA_ARGUMENTS)) {
       return MakeSqlErrorAt(function_param.type())
              << "Function-typed arguments in UDFs are not supported";
@@ -7517,6 +7530,7 @@ absl::Status Resolver::ResolveCloneDataStatement(
                << ")";
       }
     }
+    RecordColumnAccess(scan->column_list());
     scans.push_back(std::move(scan));
   }
   if (scans.size() == 1) {
@@ -7533,6 +7547,7 @@ absl::Status Resolver::ResolveCloneDataStatement(
                                               output_table_name,
                                               column.name_id(), column.type()));
     }
+    RecordColumnAccess(output_columns);
     std::vector<std::unique_ptr<ResolvedSetOperationItem>> set_items;
     set_items.reserve(scans.size());
     for (auto& scan : scans) {
@@ -7665,14 +7680,17 @@ absl::Status Resolver::ResolveCallStatement(
              << " typed argument is not supported";
     }
     std::unique_ptr<const ResolvedExpr> expr;
-    // The grammar does not allow procedure calls to have lambdas, but named
-    // arguments with lambda as expr can go through, so we need to exclude them
-    // here.
+    // Procedure calls share the TVF argument grammar, which accepts lambda and
+    // FUNCTION reference arguments (positional or named). Those are not
+    // supported for procedures, so exclude them here.
     if (const ASTExpression* expr = ast_tvf_argument->expr();
-        expr->Is<ASTNamedArgument>()) {
+        IsLambdaOrFunctionRef(expr)) {
+      return MakeSqlErrorAt(expr)
+             << "Lambdas arguments are not implemented for procedure call";
+    } else if (expr->Is<ASTNamedArgument>()) {
       const ASTNamedArgument* named_argument =
           expr->GetAsOrDie<ASTNamedArgument>();
-      if (IsNamedLambda(named_argument)) {
+      if (IsLambdaOrFunctionRef(named_argument->expr())) {
         return MakeSqlErrorAt(named_argument->expr())
                << "Lambdas arguments are not implemented for procedure call";
       }

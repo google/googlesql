@@ -636,7 +636,6 @@ class Validator {
       absl::Span<const std::unique_ptr<const ResolvedOption>> list,
       const MapType& allowed_options,
       const std::set<ResolvedColumn>& visible_columns,
-      const std::set<ResolvedColumn>& visible_parameters,
       absl::string_view option_type);
 
   absl::Status ValidateHintList(
@@ -762,8 +761,7 @@ class Validator {
 
   // Returns an error if the column sets `hand_written` and `computed` differ.
   // `what` and `set_name` describe the sets, for the error message. A null
-  // `computed` set is the empty set (as in ColumnVisibilityChecker::Env). An
-  // UNCHECKED `computed` set is never different.
+  // `computed` set is the empty set (as in ColumnVisibilityChecker::Env).
   static absl::Status CompareColumnSet(
       absl::string_view what, absl::string_view set_name,
       const std::set<ResolvedColumn>& hand_written,

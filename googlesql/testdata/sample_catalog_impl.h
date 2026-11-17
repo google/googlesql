@@ -96,6 +96,11 @@ class SampleCatalogImpl {
   absl::Status LoadTypes();
   absl::Status LoadTables();
   absl::Status LoadProtoTables();
+
+  // Loads tables resolvable via STRING literal table references, such as
+  // FROM '/cns/cell/logs/events@100.tfrecords'.
+  void LoadStringLiteralTables();
+
   absl::Status LoadMeasureTables(const LanguageOptions& language_options);
   absl::Status LoadBasicMeasureTables(
       const LanguageOptions& language_options,
@@ -206,6 +211,7 @@ class SampleCatalogImpl {
   absl::Status LoadPropertyGraphWithDynamicLabelAndProperties();
   absl::Status LoadPropertyGraphWithReadOnlyDynamicProperties();
   absl::Status LoadPropertyGraphWithDynamicMultiLabelsAndProperties();
+  absl::Status LoadPropertyGraphWithMixedDynamicAndStaticTables();
 
   // Loads several table-valued functions into the sample catalog. For a full
   // list of the signatures added, please see the beginning of the method

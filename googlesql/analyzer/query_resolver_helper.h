@@ -1247,6 +1247,10 @@ class QueryResolutionInfo {
   bool SelectFormAllowsSelectStar() const;
   bool SelectFormAllowsAggregation() const;
   bool SelectFormAllowsAnalytic() const;
+  // Whether the SELECT list may resolve to zero columns. The parser only
+  // produces an empty SELECT list for pipe AGGREGATE, but `**` expressions can
+  // expand to zero columns in any form.
+  bool SelectFormAllowsEmptySelectList() const;
 
   void set_with_modifier_mode(WithModifierMode with_modifier_mode) {
     with_modifier_mode_ = with_modifier_mode;

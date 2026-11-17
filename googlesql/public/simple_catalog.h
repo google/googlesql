@@ -771,6 +771,20 @@ class SimpleCatalog : public EnumerableCatalog {
       bool is_table_valued_function,
       absl::Span<const std::string> mistyped_path);
 
+  // Returns the catalog that should hold a new built-in with name `path`:
+  // - If `path.size() == 1` (e.g. {"if"} for IF(...)): returns `this`.
+  // - If `path.size() == 2` (e.g. {"ai", "if"} for AI.IF(...)): returns the
+  //   `owned_googlesql_subcatalogs_` entry for `path[0]`, or if absent creates
+  //   one, registers it in `catalogs_` for lookup, and stores ownership in
+  //   `owned_googlesql_subcatalogs_`.
+  // Returns an error for any other `path.size()`.
+  absl::StatusOr<SimpleCatalog*> GetOrCreateCatalogForBuiltin(
+      absl::Span<const std::string> path, TypeFactory* type_factory)
+      ABSL_LOCKS_EXCLUDED(mutex_);
+  absl::StatusOr<SimpleCatalog*> GetOrCreateCatalogForBuiltinLocked(
+      absl::Span<const std::string> path, TypeFactory* type_factory)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
   absl::Status AddBuiltinFunctionsAndTypesImpl(
       const BuiltinFunctionOptions& options, bool add_types);
 

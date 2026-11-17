@@ -22,7 +22,6 @@
 #include <tuple>
 #include <vector>
 
-#include "googlesql/base/logging.h"
 #include "googlesql/analyzer/expr_resolver_helper.h"
 #include "googlesql/analyzer/name_scope.h"
 #include "googlesql/analyzer/query_resolver_helper.h"
@@ -56,6 +55,7 @@
 #include "googlesql/testdata/test_schema.pb.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include "googlesql/base/check.h"
 #include "absl/status/status.h"
 #include "googlesql/base/status_macros.h"
 #include "absl/status/statusor.h"
@@ -109,8 +109,6 @@ class ResolverTest : public ::testing::Test {
         FEATURE_RANGE_TYPE);
     analyzer_options_.mutable_language()->EnableLanguageFeature(
         FEATURE_UUID_TYPE);
-    analyzer_options_.mutable_language()->EnableLanguageFeature(
-        FEATURE_DECLARATIVE_TYPE_FRAMEWORK);
     analyzer_options_.mutable_language()->EnableLanguageFeature(
         FEATURE_VECTOR_TYPE);
     analyzer_options_.CreateDefaultArenasIfNotSet();
@@ -686,6 +684,21 @@ TEST_F(ResolverTest, TestErrorCatalogNameTests) {
                   query_with_tvf, parser_output->statement(), &resolved_ast),
               StatusIs(absl::StatusCode::kInvalidArgument,
                        HasSubstr("Invalid table-valued function foo")));
+
+  // STRING literal table reference: errors other than NOT_FOUND from
+  // FindTableFromString are returned as is.
+  analyzer_options_.mutable_language()->EnableLanguageFeature(
+      FEATURE_STRING_LITERAL_TABLE_REFERENCES);
+  ResetResolver(error_catalog.get());
+  constexpr absl::string_view kQueryWithStringLiteralTable =
+      "SELECT * FROM 'a.csv' AS t";
+  GOOGLESQL_ASSERT_OK(ParseStatement(kQueryWithStringLiteralTable, ParserOptions(),
+                           &parser_output));
+  EXPECT_THAT(
+      resolver_->ResolveStatement(kQueryWithStringLiteralTable,
+                                  parser_output->statement(), &resolved_ast),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("FindTableFromString error")));
 }
 
 TEST_F(ResolverTest, TestResolveCastExpression) {
@@ -2159,6 +2172,23 @@ TEST_F(ResolverTest, TestExpressionVolatility) {
                            /*expected_volatile=*/true);
 }
 
+// Verifies that Reset() discards proxy functions generated for function-typed
+// UDF parameters while resolving a previous statement.
+TEST_F(ResolverTest, ResetClearsGeneratedFunctions) {
+  analyzer_options_.mutable_language()->EnableLanguageFeature(
+      FEATURE_UDF_LAMBDA_ARGUMENTS);
+  constexpr absl::string_view kSql =
+      "CREATE TEMP FUNCTION f(p FUNCTION<INT64 -> INT64>) AS (p(1))";
+  std::unique_ptr<ParserOutput> parser_output;
+  GOOGLESQL_ASSERT_OK(ParseStatement(kSql, ParserOptions(), &parser_output));
+  std::unique_ptr<const ResolvedStatement> resolved_statement;
+  GOOGLESQL_ASSERT_OK(resolver_->ResolveStatement(kSql, parser_output->statement(),
+                                        &resolved_statement));
+
+  resolver_->Reset("");
+  EXPECT_THAT(resolver_->release_generated_functions(), testing::IsEmpty());
+}
+
 TEST(FunctionArgumentInfoTest, BasicUse) {
   FunctionArgumentInfo info;
   IdString name1 = IdString::MakeGlobal("name1");
@@ -2253,6 +2283,36 @@ TEST(FunctionArgumentInfoTest, BasicUse) {
   EXPECT_THAT(info.ArgumentNames(),
               testing::ElementsAre("name1", "name2", "name3", "name4"));
   EXPECT_EQ(info.SignatureArguments().size(), 4);
+
+  // Test adding a function-typed scalar argument and associating a proxy
+  // function with it.
+  {
+    IdString name5 = IdString::MakeGlobal("name5");
+    FunctionArgumentType lambda_arg_type =
+        FunctionArgumentType::Lambda({FunctionArgumentType(types::Int64Type())},
+                                     FunctionArgumentType(types::BoolType()));
+    GOOGLESQL_ASSERT_OK(info.AddScalarArg(name5, ResolvedArgumentDef::SCALAR,
+                                lambda_arg_type, /*annotation_map=*/nullptr));
+    const FunctionArgumentInfo::ArgumentDetails* details =
+        info.FindScalarArg(name5);
+    ASSERT_NE(details, nullptr);
+    EXPECT_EQ(details->proxy_function, nullptr);
+
+    FunctionTypedParameter proxy(
+        "name5", {FunctionSignature(FunctionArgumentType(types::BoolType()),
+                                    {FunctionArgumentType(types::Int64Type())},
+                                    /*context_id=*/-1)});
+    GOOGLESQL_ASSERT_OK(info.SetProxyFunction(name5, &proxy));
+    EXPECT_EQ(details->proxy_function, &proxy);
+
+    // Setting a proxy function a second time on the same argument fails.
+    EXPECT_THAT(info.SetProxyFunction(name5, &proxy),
+                absl_testing::StatusIs(absl::StatusCode::kInternal));
+
+    // Setting a proxy function on a non-lambda argument fails.
+    EXPECT_THAT(info.SetProxyFunction(name1, &proxy),
+                absl_testing::StatusIs(absl::StatusCode::kInternal));
+  }
 }
 
 namespace {
@@ -2368,7 +2428,7 @@ TEST_F(ResolverTest, GraphElementTypeElementTablesFromMatch) {
                          GetFirstPropertyAccessGraphElementType(output.get()));
     ASSERT_THAT(elem_type, NotNull());
     EXPECT_THAT(elem_type->element_tables(),
-                testing::ElementsAre("InsertTestTable"));
+                testing::ElementsAre("DmlTestTable"));
   }
   {
     std::unique_ptr<const AnalyzerOutput> output;

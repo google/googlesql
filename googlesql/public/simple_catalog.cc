@@ -1057,6 +1057,34 @@ void SimpleCatalog::SetOwnedDescriptorPool(
   descriptor_pool_ = owned_descriptor_pool_.get();
 }
 
+absl::StatusOr<SimpleCatalog*> SimpleCatalog::GetOrCreateCatalogForBuiltin(
+    absl::Span<const std::string> path, TypeFactory* type_factory) {
+  GOOGLESQL_RET_CHECK(!path.empty());
+  if (path.size() == 1) {
+    return this;
+  }
+  GOOGLESQL_RET_CHECK_EQ(path.size(), 2);
+
+  absl::MutexLock l(&mutex_);
+
+  // For a function like AI.IF(...), `space` is "AI".
+  const std::string& space = path.front();
+
+  if (const auto sub_entry = owned_googlesql_subcatalogs_.find(space);
+      sub_entry != owned_googlesql_subcatalogs_.end()) {
+    GOOGLESQL_RET_CHECK(sub_entry->second != nullptr)
+        << "internal state corrupt: " << space;
+    return sub_entry->second.get();
+  }
+
+  auto new_catalog = std::make_unique<SimpleCatalog>(space, type_factory);
+  SimpleCatalog* const catalog = new_catalog.get();
+  AddCatalogLocked(space, catalog);
+  GOOGLESQL_RET_CHECK(owned_googlesql_subcatalogs_.emplace(space, std::move(new_catalog))
+                .second);
+  return catalog;
+}
+
 void SimpleCatalog::AddGoogleSQLFunctions(
     const std::vector<const Function*>& functions) {
   TypeFactory* type_factory = this->type_factory();
@@ -1100,24 +1128,8 @@ absl::Status SimpleCatalog::AddNonOwnedBuiltinFunctionsAndTypes(
     GOOGLESQL_RET_CHECK(function->IsGoogleSQLBuiltin())
         << "Non-GoogleSQL builtin function found: " << function->Name();
     const std::vector<std::string>& path = function->FunctionNamePath();
-    SimpleCatalog* catalog = this;
-    if (path.size() > 1) {
-      GOOGLESQL_RET_CHECK_LE(path.size(), 2);
-      absl::MutexLock l(&mutex_);
-      const std::string& space = path[0];
-      auto sub_entry = owned_googlesql_subcatalogs_.find(space);
-      if (sub_entry != owned_googlesql_subcatalogs_.end()) {
-        catalog = sub_entry->second.get();
-        GOOGLESQL_RET_CHECK(catalog != nullptr) << "internal state corrupt: " << space;
-      } else {
-        auto new_catalog = std::make_unique<SimpleCatalog>(space, type_factory);
-        AddCatalogLocked(space, new_catalog.get());
-        catalog = new_catalog.get();
-        GOOGLESQL_RET_CHECK(
-            owned_googlesql_subcatalogs_.emplace(space, std::move(new_catalog))
-                .second);
-      }
-    }
+    GOOGLESQL_ASSIGN_OR_RETURN(SimpleCatalog * catalog,
+                     GetOrCreateCatalogForBuiltin(path, type_factory));
     catalog->AddFunction(path.back(), function);
   }
 
@@ -1153,24 +1165,8 @@ absl::Status SimpleCatalog::AddBuiltinFunctionsAndTypesImpl(
   for (auto& function_pair : function_map) {
     const std::vector<std::string>& path =
         function_pair.second->FunctionNamePath();
-    SimpleCatalog* catalog = this;
-    if (path.size() > 1) {
-      GOOGLESQL_RET_CHECK_LE(path.size(), 2);
-      absl::MutexLock l(&mutex_);
-      const std::string& space = path[0];
-      auto sub_entry = owned_googlesql_subcatalogs_.find(space);
-      if (sub_entry != owned_googlesql_subcatalogs_.end()) {
-        catalog = sub_entry->second.get();
-        GOOGLESQL_RET_CHECK(catalog != nullptr) << "internal state corrupt: " << space;
-      } else {
-        auto new_catalog = std::make_unique<SimpleCatalog>(space, type_factory);
-        AddCatalogLocked(space, new_catalog.get());
-        catalog = new_catalog.get();
-        GOOGLESQL_RET_CHECK(
-            owned_googlesql_subcatalogs_.emplace(space, std::move(new_catalog))
-                .second);
-      }
-    }
+    GOOGLESQL_ASSIGN_OR_RETURN(SimpleCatalog * catalog,
+                     GetOrCreateCatalogForBuiltin(path, type_factory));
     catalog->AddOwnedFunction(path.back(), std::move(function_pair.second));
   }
   for (auto& table_valued_function_pair : table_valued_function_map) {

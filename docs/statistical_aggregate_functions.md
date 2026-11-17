@@ -191,6 +191,31 @@ FROM
 ```
 
 ```googlesql
+SELECT
+  y,
+  x,
+  CORR(y, x)
+    OVER (
+      ORDER BY y
+      ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+    ) AS results
+FROM
+  UNNEST(
+    [
+      STRUCT(1.0 AS y, 5.0 AS x),
+      (3.0, 9.0),
+      (4.0, 7.0)]);
+
+/*-----+-----+--------------------+
+ | y   | x   | results            |
+ +-----+-----+--------------------+
+ | 1.0 | 5.0 | NULL               |
+ | 3.0 | 9.0 | 1                  |
+ | 4.0 | 7.0 | 0.6546536707079772 |
+ +-----+-----+--------------------*/
+```
+
+```googlesql
 SELECT CORR(y, x) AS results
 FROM
   UNNEST(
@@ -352,6 +377,36 @@ FROM
 ```
 
 ```googlesql
+SELECT
+  item,
+  y,
+  x,
+  COVAR_POP(y, x)
+    OVER (
+      ORDER BY item
+      ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+    ) AS results
+FROM
+  UNNEST(
+    [
+      STRUCT(1 AS item, 1.0 AS y, 1.0 AS x),
+      (2, 2.0, 6.0),
+      (3, 9.0, 3.0),
+      (4, 2.0, 6.0),
+      (5, 9.0, 3.0)]);
+
+/*------+-----+-----+---------------------+
+ | item | y   | x   | results             |
+ +------+-----+-----+---------------------+
+ | 1    | 1.0 | 1.0 | 0                   |
+ | 2    | 2.0 | 6.0 | 1.25                |
+ | 3    | 9.0 | 3.0 | 0                   |
+ | 4    | 2.0 | 6.0 | -1                  |
+ | 5    | 9.0 | 3.0 | -1.6800000000000002 |
+ +------+-----+-----+---------------------*/
+```
+
+```googlesql
 SELECT COVAR_POP(y, x) AS results
 FROM UNNEST([STRUCT(1.0 AS y, NULL AS x),(9.0, 3.0)])
 
@@ -500,6 +555,36 @@ FROM
  +---------+
  | -2.1    |
  +---------*/
+```
+
+```googlesql
+SELECT
+  item,
+  y,
+  x,
+  COVAR_SAMP(y, x)
+    OVER (
+      ORDER BY item
+      ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+    ) AS results
+FROM
+  UNNEST(
+    [
+      STRUCT(1 AS item, 1.0 AS y, 1.0 AS x),
+      (2, 2.0, 6.0),
+      (3, 9.0, 3.0),
+      (4, 2.0, 6.0),
+      (5, 9.0, 3.0)]);
+
+/*------+-----+-----+---------------------+
+ | item | y   | x   | results             |
+ +------+-----+-----+---------------------+
+ | 1    | 1.0 | 1.0 | NULL                |
+ | 2    | 2.0 | 6.0 | 2.5                 |
+ | 3    | 9.0 | 3.0 | 0                   |
+ | 4    | 2.0 | 6.0 | -1.3333333333333333 |
+ | 5    | 9.0 | 3.0 | -2.1                |
+ +------+-----+-----+---------------------*/
 ```
 
 ```googlesql
@@ -676,6 +761,25 @@ SELECT STDDEV_POP(x) AS results FROM UNNEST([10, 14, 18]) AS x
 ```
 
 ```googlesql
+SELECT
+  x,
+  STDDEV_POP(x)
+    OVER (
+      ORDER BY x
+      ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+    ) AS results
+FROM UNNEST([10, 14, 18]) AS x;
+
+/*----+-------------------+
+ | x  | results           |
+ +----+-------------------+
+ | 10 | 0                 |
+ | 14 | 2                 |
+ | 18 | 3.265986323710904 |
+ +----+-------------------*/
+```
+
+```googlesql
 SELECT STDDEV_POP(x) AS results FROM UNNEST([10, 14, NULL]) AS x
 
 /*---------+
@@ -799,6 +903,25 @@ SELECT STDDEV_SAMP(x) AS results FROM UNNEST([10, 14, 18]) AS x
 ```
 
 ```googlesql
+SELECT
+  x,
+  STDDEV_SAMP(x)
+    OVER (
+      ORDER BY x
+      ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+    ) AS results
+FROM UNNEST([10, 14, 18]) AS x;
+
+/*----+--------------------+
+ | x  | results            |
+ +----+--------------------+
+ | 10 | NULL               |
+ | 14 | 2.8284271247461903 |
+ | 18 | 4                  |
+ +----+--------------------*/
+```
+
+```googlesql
 SELECT STDDEV_SAMP(x) AS results FROM UNNEST([10, 14, NULL]) AS x
 
 /*--------------------+
@@ -906,6 +1029,25 @@ SELECT VAR_POP(x) AS results FROM UNNEST([10, 14, 18]) AS x
  +--------------------+
  | 10.666666666666666 |
  +--------------------*/
+```
+
+```googlesql
+SELECT
+  x,
+  VAR_POP(x)
+    OVER (
+      ORDER BY x
+      ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+    ) AS results
+FROM UNNEST([10, 14, 18]) AS x;
+
+/*----+--------------------+
+ | x  | results            |
+ +----+--------------------+
+ | 10 | 0                  |
+ | 14 | 4                  |
+ | 18 | 10.666666666666666 |
+ +----+--------------------*/
 ```
 
 ```googlesql
@@ -1029,6 +1171,25 @@ SELECT VAR_SAMP(x) AS results FROM UNNEST([10, 14, 18]) AS x
  +---------+
  | 16      |
  +---------*/
+```
+
+```googlesql
+SELECT
+  x,
+  VAR_SAMP(x)
+    OVER (
+      ORDER BY x
+      ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+    ) AS results
+FROM UNNEST([10, 14, 18]) AS x;
+
+/*----+---------+
+ | x  | results |
+ +----+---------+
+ | 10 | NULL    |
+ | 14 | 8       |
+ | 18 | 16      |
+ +----+---------*/
 ```
 
 ```googlesql

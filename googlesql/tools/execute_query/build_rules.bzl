@@ -21,12 +21,14 @@ This just runs the script and validates that it succeeds, without checking
 query output.
 """
 
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
+
 def execute_query_test(
         name,
         sql_file,
         args = [],
         **kwargs):
-    native.sh_test(
+    sh_test(
         name = name,
         srcs = ["//googlesql/tools/execute_query:run_execute_query_test.sh"],
         args = [

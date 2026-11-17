@@ -43,21 +43,9 @@ namespace {
 
 using ColumnSet = ColumnVisibilityChecker::ColumnSet;
 
-// A distinguished set used for UNCHECKED scopes. Only its address is used:
-// membership checks against it always pass, and a union including it is
-// UNCHECKED. It's never modified, so sharing it between threads is safe.
-const ColumnSet* UncheckedColumnSet() {
-  static const ColumnSet* const kUnchecked = new ColumnSet();
-  return kUnchecked;
-}
-
-bool IsUncheckedSet(const ColumnSet* set) {
-  return set == UncheckedColumnSet();
-}
-
 // Null means the empty set.
 bool Contains(const ColumnSet* set, const ResolvedColumn& column) {
-  return IsUncheckedSet(set) || (set != nullptr && set->contains(column));
+  return set != nullptr && set->contains(column);
 }
 
 // Builds the union of some column sets and individual columns. When the
@@ -66,10 +54,7 @@ bool Contains(const ColumnSet* set, const ResolvedColumn& column) {
 class ColumnSetBuilder {
  public:
   void Add(const ColumnSet* set) {
-    if (set == nullptr) return;
-    if (IsUncheckedSet(set)) {
-      unchecked_ = true;
-    } else if (!set->empty()) {
+    if (set != nullptr && !set->empty()) {
       sets_.push_back(set);
     }
   }
@@ -84,7 +69,6 @@ class ColumnSetBuilder {
   // set is added to `owned_sets`, which owns it.
   const ColumnSet* Build(
       std::vector<std::unique_ptr<const ColumnSet>>& owned_sets) {
-    if (unchecked_) return UncheckedColumnSet();
     if (columns_.empty()) {
       if (sets_.empty()) return nullptr;
       if (sets_.size() == 1) return sets_[0];
@@ -99,7 +83,6 @@ class ColumnSetBuilder {
   }
 
  private:
-  bool unchecked_ = false;
   std::vector<const ColumnSet*> sets_;
   std::vector<ResolvedColumn> columns_;
 };
@@ -125,16 +108,18 @@ void AddProvidedColumns(const ResolvedNode* node, ColumnSetBuilder& b) {
     case {{node.enum_name}}:
       ProvidedColumnsOf{{node.name}}(node->GetAs<{{node.name}}>(), b);
       return;
+ # elif node.has_provided_columns
+    case {{node.enum_name}}:
+      return;
  # endif
 # endfor
     default:
-      b.Add(node->GetColumnsCreated());
+      b.Add(node->GetColumnsCreated(/*mark_accessed=*/false));
       return;
   }
 }
 
 std::string ColumnSetToString(const ColumnSet* set) {
-  if (IsUncheckedSet(set)) return "<unchecked>";
   if (set == nullptr) return "[]";
   std::vector<ResolvedColumn> columns(set->begin(), set->end());
   std::sort(columns.begin(), columns.end(),
@@ -168,10 +153,6 @@ ColumnVisibilityChecker::ColumnVisibilityChecker()
 ColumnVisibilityChecker::ColumnVisibilityChecker(Options options)
     : options_(options) {}
 
-bool ColumnVisibilityChecker::IsUnchecked(const ColumnSet* set) {
-  return IsUncheckedSet(set);
-}
-
 absl::Status ColumnVisibilityChecker::CheckRoot(const ResolvedNode* node) {
   GOOGLESQL_RET_CHECK(node != nullptr);
   error_node_ = nullptr;
@@ -190,10 +171,10 @@ ColumnVisibilityChecker::GetRecordedEnv(const ResolvedNode* node) const {
 const ColumnVisibilityChecker::ColumnSet*
 ColumnVisibilityChecker::GetPipeInputColumns(const ResolvedScan* scan,
                                              ColumnSetStorage& owned_sets) {
-  const ResolvedScan* input = scan->GetPipeInputScan();
+  const ResolvedScan* input = scan->GetPipeInputScan(/*mark_accessed=*/false);
   if (input == nullptr) return nullptr;
   ColumnSetBuilder b;
-  b.Add(input->column_list());
+  b.Add(input->column_list_untracked());
   return b.Build(owned_sets);
 }
 
@@ -222,14 +203,14 @@ absl::Status ColumnVisibilityChecker::CheckColumn(const ResolvedNode* node,
 
 absl::Status ColumnVisibilityChecker::CheckColumnRef(
     const ResolvedColumnRef* node, const Env& env) {
-  if (node->is_correlated()) {
-    if (Contains(env.outer, node->column())) return absl::OkStatus();
-    return MakeError(node, "column", node->column(),
+  if (node->is_correlated_untracked()) {
+    if (Contains(env.outer, node->column_untracked())) return absl::OkStatus();
+    return MakeError(node, "column", node->column_untracked(),
                      "the OUTER columns for correlated references", env.outer);
   }
-  if (Contains(env.visible, node->column())) return absl::OkStatus();
-  return MakeError(node, "column", node->column(), "the VISIBLE columns",
-                   env.visible);
+  if (Contains(env.visible, node->column_untracked())) return absl::OkStatus();
+  return MakeError(node, "column", node->column_untracked(),
+                   "the VISIBLE columns", env.visible);
 }
 
 absl::Status ColumnVisibilityChecker::CheckColumnList(const ResolvedScan* node,
@@ -239,7 +220,7 @@ absl::Status ColumnVisibilityChecker::CheckColumnList(const ResolvedScan* node,
     recorded.has_column_list_scope = true;
     recorded.column_list_scope = scope;
   }
-  for (const ResolvedColumn& column : node->column_list()) {
+  for (const ResolvedColumn& column : node->column_list_untracked()) {
     if (!Contains(scope, column)) {
       return MakeError(node, "column_list", column, "its column_list_scope",
                        scope);

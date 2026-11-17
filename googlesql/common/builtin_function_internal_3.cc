@@ -2552,11 +2552,11 @@ absl::Status GetVariantFunctions(TypeFactory* type_factory,
                      FEATURE_VARIANT_TYPE));
 
   InsertFunction(
-      functions, options, "variant_value", Function::SCALAR,
+      functions, options, "variant_query_string", Function::SCALAR,
       {{string_type,
         {variant_type,
          FunctionArgumentType(string_type, optional_variant_path_options)},
-        FN_VARIANT_VALUE}},
+        FN_VARIANT_QUERY_STRING}},
       FunctionOptions().AddRequiredLanguageFeature(FEATURE_VARIANT_TYPE));
 
   return absl::OkStatus();

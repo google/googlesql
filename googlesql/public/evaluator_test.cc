@@ -2068,7 +2068,6 @@ TEST_P(DeclarativeTypeFormattingCallbackTest,
       absl::Substitute("FORMAT('$0',@p)", test_case.format_template),
       EvaluatorOptions());
   LanguageOptions language_options = LanguageOptions::MaximumFeatures();
-  language_options.EnableLanguageFeature(FEATURE_DECLARATIVE_TYPE_FRAMEWORK);
 
   auto catalog = std::make_unique<SimpleCatalog>("TestCatalog");
   catalog->AddBuiltinFunctions(BuiltinFunctionOptions::AllReleasedFunctions());

@@ -1248,17 +1248,17 @@ std::string FunctionArgumentType::GetSQLDeclaration(
         [product_mode](std::string* out, const FunctionArgumentType& arg) {
           out->append(arg.GetSQLDeclaration(product_mode));
         });
+    std::string body_type = lambda().body_type().GetSQLDeclaration(
+        product_mode, use_external_float32);
     if (lambda().argument_types().size() == 1) {
-      return absl::Substitute("FUNCTION<$0->$1>", args,
-                              lambda().body_type().GetSQLDeclaration(
-                                  product_mode, use_external_float32));
+      absl::SubstituteAndAppend(&result, "FUNCTION<$0->$1>", args, body_type);
+    } else {
+      // Zero or multiple lambda arguments must be parenthesized, e.g.
+      // FUNCTION<()->INT64> or FUNCTION<(INT64, STRING)->BOOL>.
+      absl::SubstituteAndAppend(&result, "FUNCTION<($0)->$1>", args, body_type);
     }
-    return absl::Substitute("FUNCTION<($0)->$1>", args,
-                            lambda().body_type().GetSQLDeclaration(
-                                product_mode, use_external_float32));
-  }
-  // TODO: Consider using UserFacingName() here.
-  if (type_ != nullptr) {
+  } else if (type_ != nullptr) {
+    // TODO: Consider using UserFacingName() here.
     std::string type_name;
     if (type_modifiers_.has_value()) {
       auto type_name_with_modifiers = type_->TypeNameWithModifiers(

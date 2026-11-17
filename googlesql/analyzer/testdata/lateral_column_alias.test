@@ -3349,6 +3349,107 @@ SELECT a2 AS a0new, concat(a0new, 'a') AS x FROM test  GROUP BY 2
        ^
 ==
 
+# A laterally referenced column containing an aggregate or analytic function
+# (so it has no pre-grouping version) that references a non-grouped column
+# must produce an error rather than crash.
+WITH t AS (SELECT 1 AS x, 2 AS y, 3 AS z)
+SELECT {{SUM(x) + z|ROW_NUMBER() OVER (PARTITION BY z)|GROUPING(y) + z}} AS a,
+       {{a + 1|GROUPING(y) + a}} AS b
+FROM t
+GROUP BY y
+--
+ALTERNATION GROUPS:
+    SUM(x) + z,a + 1
+    SUM(x) + z,GROUPING(y) + a
+--
+ERROR: SELECT list expression references column z which is neither grouped nor aggregated [at 2:17]
+SELECT SUM(x) + z AS a,
+                ^
+--
+ALTERNATION GROUPS:
+    ROW_NUMBER() OVER (PARTITION BY z),a + 1
+    ROW_NUMBER() OVER (PARTITION BY z),GROUPING(y) + a
+--
+ERROR: PARTITION BY expression references column z which is neither grouped nor aggregated [at 2:40]
+SELECT ROW_NUMBER() OVER (PARTITION BY z) AS a,
+                                       ^
+--
+ALTERNATION GROUPS:
+    GROUPING(y) + z,a + 1
+    GROUPING(y) + z,GROUPING(y) + a
+--
+ERROR: SELECT list expression references column z which is neither grouped nor aggregated [at 2:22]
+SELECT GROUPING(y) + z AS a,
+                     ^
+==
+
+# Like the case above, with the non-grouped column in each post-grouping
+# position of an analytic function over an aggregate: inside its argument,
+# outside of it, and in its PARTITION BY or ORDER BY.
+WITH t AS (SELECT 1 AS x, 2 AS y, 3 AS z)
+SELECT
+  {{MAX(z + SUM(x)) OVER ()|z + MAX(SUM(x)) OVER ()|MAX(SUM(x)) OVER (PARTITION BY z)|MAX(SUM(x)) OVER (ORDER BY z)}} AS a,
+  a + 1 AS b
+FROM t
+GROUP BY y
+--
+ALTERNATION GROUP: MAX(z + SUM(x)) OVER ()
+--
+ERROR: SELECT list expression references column z which is neither grouped nor aggregated [at 3:7]
+  MAX(z + SUM(x)) OVER () AS a,
+      ^
+--
+ALTERNATION GROUP: z + MAX(SUM(x)) OVER ()
+--
+ERROR: SELECT list expression references column z which is neither grouped nor aggregated [at 3:3]
+  z + MAX(SUM(x)) OVER () AS a,
+  ^
+--
+ALTERNATION GROUP: MAX(SUM(x)) OVER (PARTITION BY z)
+--
+ERROR: PARTITION BY expression references column z which is neither grouped nor aggregated [at 3:34]
+  MAX(SUM(x)) OVER (PARTITION BY z) AS a,
+                                 ^
+--
+ALTERNATION GROUP: MAX(SUM(x)) OVER (ORDER BY z)
+--
+ERROR: Window ORDER BY expression references column z which is neither grouped nor aggregated [at 3:30]
+  MAX(SUM(x)) OVER (ORDER BY z) AS a,
+                             ^
+==
+
+# Grouping by an expression over a laterally referenced column doesn't make the
+# column itself a grouping column.
+WITH t AS (SELECT 1 AS x, 2 AS y)
+SELECT x + 1 AS a, CAST(a AS STRING) AS b
+FROM t
+GROUP BY b
+--
+ERROR: SELECT list expression references column x which is neither grouped nor aggregated [at 2:8]
+SELECT x + 1 AS a, CAST(a AS STRING) AS b
+       ^
+==
+
+# A column with an aggregate or analytic function can't be grouped, even
+# through a later column that just aliases it.
+WITH t AS (SELECT 1 AS x, 2 AS y)
+SELECT {{SUM(x)|ROW_NUMBER() OVER ()}} AS a, a AS b
+FROM t
+GROUP BY b
+--
+ALTERNATION GROUP: SUM(x)
+--
+ERROR: Column b contains an aggregation function, which is not allowed in GROUP BY [at 4:10]
+GROUP BY b
+         ^
+--
+ALTERNATION GROUP: ROW_NUMBER() OVER ()
+--
+ERROR: Column b contains an analytic function, which is not allowed in GROUP BY [at 4:10]
+GROUP BY b
+         ^
+==
+
 
 # TODO:
 # Script variable.

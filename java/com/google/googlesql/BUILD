@@ -17,7 +17,7 @@
 # Java API for GoogleSQL.
 
 load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
-load("@rules_java//java:defs.bzl", "java_library")
+load("@rules_java//java:defs.bzl", "java_library", "java_plugin")
 load("@rules_jvm_external//:defs.bzl", "java_export")
 
 package(

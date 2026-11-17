@@ -77,6 +77,7 @@
 #include "googlesql/resolved_ast/query_expression.h"
 #include "googlesql/resolved_ast/resolved_ast.h"
 #include "googlesql/resolved_ast/resolved_ast.pb.h"
+#include "googlesql/resolved_ast/resolved_ast_column_visibility_checker.h"
 #include "googlesql/resolved_ast/resolved_ast_comparator.h"
 #include "googlesql/resolved_ast/resolved_ast_deep_copy_visitor.h"
 #include "googlesql/resolved_ast/resolved_ast_enums.pb.h"
@@ -1581,6 +1582,14 @@ class AnalyzerTestRunner {
       node->ClearFieldsAccessed();
       test_result_string = node->DebugString(debug_string_config);
       GOOGLESQL_ASSERT_OK(node->CheckNoFieldsAccessed());
+      if (test_case_options_.GetBool(kValidateColumnVisibility)) {
+        // Rerun ColumnVisibilityChecker alone to check that it doesn't set any
+        // field accessed bits.
+        ColumnVisibilityChecker checker;
+        GOOGLESQL_ASSERT_OK(checker.CheckRoot(node));
+        GOOGLESQL_EXPECT_OK(node->CheckNoFieldsAccessed())
+            << "ColumnVisibilityChecker should not mark fields accessed";
+      }
       if (!test_case_options_.GetBool(kShowResolvedAST)) {
         // Hide debug string from test result if not requested in test case
         // options.
@@ -2289,7 +2298,12 @@ class AnalyzerTestRunner {
       owned_functions_catalog =
           std::make_unique<SimpleCatalog>("owned_functions", type_factory);
       for (const auto& func : orig_output.owned_functions()) {
-        owned_functions_catalog->AddFunction(func.get());
+        const Function* existing = nullptr;
+        GOOGLESQL_ASSERT_OK(
+            owned_functions_catalog->GetFunction(func->Name(), &existing));
+        if (existing == nullptr) {
+          owned_functions_catalog->AddFunction(func.get());
+        }
       }
       GOOGLESQL_ASSERT_OK(MultiCatalog::Create("restoration_catalog",
                                      {owned_functions_catalog.get(), catalog},

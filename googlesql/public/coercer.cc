@@ -1386,8 +1386,13 @@ absl::StatusOr<bool> Coercer::Context::ParameterCoercesTo(
     return CoercesToVariant(
         InputArgumentType(from_type, /*is_query_parameter=*/true), result);
   }
+  if (from_type->IsVariant() &&
+      !IsTypeCastableFromVariant(to_type, language_options())) {
+    result->incr_non_matched_arguments();
+    return false;
+  }
 
-  if (IsExtendedCoercion(from_type, to_type) && !from_type->IsVariant()) {
+  if (IsExtendedCoercion(from_type, to_type)) {
     return ExtendedTypeCoercesTo(
         from_type, to_type, Catalog::ConversionSourceExpressionKind::kParameter,
         result);
@@ -1447,8 +1452,13 @@ absl::StatusOr<bool> Coercer::Context::TypeCoercesTo(
   if (to_type->IsVariant()) {
     return CoercesToVariant(InputArgumentType(from_type), result);
   }
+  if (from_type->IsVariant() &&
+      !IsTypeCastableFromVariant(to_type, language_options())) {
+    result->incr_non_matched_arguments();
+    return false;
+  }
 
-  if (IsExtendedCoercion(from_type, to_type) && !from_type->IsVariant()) {
+  if (IsExtendedCoercion(from_type, to_type)) {
     return ExtendedTypeCoercesTo(
         from_type, to_type, Catalog::ConversionSourceExpressionKind::kOther,
         result);
@@ -1869,9 +1879,13 @@ absl::StatusOr<bool> Coercer::Context::LiteralCoercesTo(
   if (to_type->IsVariant()) {
     return CoercesToVariant(InputArgumentType(literal_value), result);
   }
+  if (literal_value.type()->IsVariant() &&
+      !IsTypeCastableFromVariant(to_type, language_options())) {
+    result->incr_non_matched_arguments();
+    return false;
+  }
 
-  if (IsExtendedCoercion(literal_value.type(), to_type) &&
-      !literal_value.type()->IsVariant()) {
+  if (IsExtendedCoercion(literal_value.type(), to_type)) {
     return ExtendedTypeCoercesTo(
         literal_value.type(), to_type,
         Catalog::ConversionSourceExpressionKind::kLiteral, result);

@@ -2455,25 +2455,15 @@ static void SanitizeFormat(absl::string_view format_string,
   }
 }
 
-// Sanitizes the <format_string> to only allow ones applicable to the date type
-// and produces a valid format string for date in <out>.
-// For non-date related formats such as Hour/Minute/Second/Timezone etc.,
-// escapes them to pass through as is.
-static void SanitizeDateFormat(absl::string_view format_string,
-                               std::string* out) {
+void SanitizeDateFormat(absl::string_view format_string, std::string* out) {
   return SanitizeFormat(format_string, "cHIklMPpRrSsTXZz", out);
 }
 
-// Similar to SanitizeDateFormat, but escape those format elements for
-// Year/Month/Week/Day/Timezone etc..
-static void SanitizeTimeFormat(absl::string_view format_string,
-                               std::string* out) {
+void SanitizeTimeFormat(absl::string_view format_string, std::string* out) {
   return SanitizeFormat(format_string, "AaBbhCcDdeFGgjmQsUuVWwxYyZz", out);
 }
 
-// Similar to SanitizeDateFormat, but escape the format elements for Timezone.
-static void SanitizeDatetimeFormat(absl::string_view format_string,
-                                   std::string* out) {
+void SanitizeDatetimeFormat(absl::string_view format_string, std::string* out) {
   return SanitizeFormat(format_string, "Zz", out);
 }
 

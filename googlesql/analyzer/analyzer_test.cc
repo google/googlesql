@@ -3052,7 +3052,7 @@ TEST(AnalyzerTest,
       });
   fn_options.set_compute_result_type_callback(
       [&](Catalog*, TypeFactory*, CycleDetector*, const FunctionSignature&,
-          const std::vector<InputArgumentType>& args,
+          absl::Span<const InputArgumentType> args,
           const AnalyzerOptions&) -> absl::StatusOr<const Type*> {
         if (args.empty() || !args[0].is_model() || args[0].model() == nullptr) {
           return absl::InternalError("Expected catalog Model in args[0]");

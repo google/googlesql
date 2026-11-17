@@ -1104,11 +1104,12 @@ catch_all: /./ -100 {
 //
 // AMBIGUOUS CASE 19: COLUMNS(...)
 // --------------------------------
-// The COLUMNS keyword is non-reserved and can be used as an identifier. This
-// causes one shift/reduce conflict between `keyword_as_identifier` and
-// `column_list_spec_constructor`, because it starts with "COLUMNS" "(".
-// It is resolved in favor of the column_list_spec_constructor, which is the
-// desired behavior.
+// The COLUMNS keyword is non-reserved and can be used as an identifier. In the
+// positions that accept `column_list_spec` in place of an expression (TVF
+// arguments, named arguments, `**`, CREATE CONSTANT, DEFAULT), "COLUMNS" "("
+// causes a shift/reduce conflict between `keyword_as_identifier` (a call to a
+// function named `columns`) and `column_list_spec`. It is resolved in favor of
+// `column_list_spec`, which is the desired behavior.
 //
 // AMBIGUOUS CASE 20: FUNCTION and MAP templated types
 // ---------------------------------------------------
@@ -2256,6 +2257,15 @@ abort_batch_statement {ASTNode*}:
 create_constant_statement {ASTNode*}:
     "CREATE" opt_or_replace opt_create_scope "CONSTANT" opt_if_not_exists
     path_expression "=" expression
+    {
+      auto* create = MakeNode<ASTCreateConstantStatement>(@$, $6, $8);
+      create->set_is_or_replace($2);
+      create->set_scope($3);
+      create->set_is_if_not_exists($5);
+      $$ = create;
+    }
+    | "CREATE" opt_or_replace opt_create_scope "CONSTANT" opt_if_not_exists
+    path_expression "=" column_list_spec
     {
       auto* create = MakeNode<ASTCreateConstantStatement>(@$, $6, $8);
       create->set_is_or_replace($2);
@@ -7169,6 +7179,14 @@ tvf_argument {ASTNode*}:
     {
       $$ = MakeNode<ASTTVFArgument>(@$, $1);
     }
+  | lambda_argument
+    {
+      $$ = MakeNode<ASTTVFArgument>(@$, $1);
+    }
+  | function_ref_arg
+    {
+      $$ = MakeNode<ASTTVFArgument>(@$, $1);
+    }
   | named_argument
     {
       $$ = MakeNode<ASTTVFArgument>(@$, $1);
@@ -8492,6 +8510,20 @@ is_labeled_operator {NotKeywordPresence}:
       $$ = NotKeywordPresence::kPresent;
     }
     %prec EDGE_ENDPOINT_PRECEDENCE
+;
+
+at_version_clause {ASTAtVersionClause*}:
+    "AT" "(" (versioning_argument separator ",")+[args] ")"
+    {
+      $$ = MakeNode<ASTAtVersionClause>(@$, $args);
+    }
+;
+
+versioning_argument {ASTNamedArgument*}:
+    identifier "=>" expression
+    {
+      $$ = MakeNode<ASTNamedArgument>(@$, $1, $3);
+    }
 ;
 
 for_version_clause {ASTForVersionClause*}:
@@ -11429,7 +11461,7 @@ model_arg {ASTExpression*}:
     }
 ;
 
-function_ref_arg {ASTExpression*}:
+function_ref_arg {ASTFunctionRefArg*}:
     "FUNCTION" path_expression
     {
       $$ = MakeNode<ASTFunctionRefArg>(@$, $2);
@@ -12618,15 +12650,15 @@ identifierPreceedsParenthsizedQuery:
 ;
 
 version_aware_clause {ASTNode*}:
-    temporal_at_clause
+    at_version_clause
   | with_timestamp_clause
 ;
 
 dml_target_suffix {DmlTargetSuffix}:
-    temporal_at_clause as_alias? with_offset_and_alias?
+    at_version_clause as_alias? with_offset_and_alias?
     {
       $$ = DmlTargetSuffix{
-          .temporal_at = $temporal_at_clause,
+          .at_version = $at_version_clause,
           .alias = $as_alias.value_or(nullptr),
           .with_offset = $with_offset_and_alias.value_or(nullptr)};
     }
@@ -12636,13 +12668,6 @@ dml_target_suffix {DmlTargetSuffix}:
           .alias = $as_alias.value_or(nullptr),
           .with_timestamp = $with_timestamp_clause.value_or(nullptr),
           .with_offset = $with_offset_and_alias.value_or(nullptr)};
-    }
-;
-
-temporal_at_clause {ASTTemporalAt*}:
-    "AT" "(" identifier "=>" expression ")"
-    {
-      $$ = MakeNode<ASTTemporalAt>(@$, $identifier, $expression);
     }
 ;
 
@@ -12659,9 +12684,9 @@ with_timestamp_clause {ASTWithTimestamp*}:
 ;
 
 insert_column_using_clause {ASTInsertColumnUsingClause*}:
-    "USING" "FUNCTION" path_expression ("DEFAULT" expression[default_expr])?
+    "USING" function_ref_arg ("DEFAULT" expression[default_expr])?
     {
-      $$ = MakeNode<ASTInsertColumnUsingClause>(@$, $path_expression, $default_expr);
+      $$ = MakeNode<ASTInsertColumnUsingClause>(@$, $function_ref_arg, $default_expr);
     }
   | "USING" lambda_argument ("DEFAULT" expression[default_expr])?
     {
@@ -12787,7 +12812,7 @@ delete_statement_prefix {ASTDeleteStatement*}:
     {
       $$ = MakeNode<ASTDeleteStatement>(@$,
                                         $maybe_dashed_generalized_path_expression,
-                                        $hint, $suffix.temporal_at,
+                                        $hint, $suffix.at_version,
                                         $suffix.alias, $suffix.with_timestamp,
                                         $suffix.with_offset);
       $$->set_operator_keyword_location(@kwd);
@@ -12837,7 +12862,7 @@ update_statement {ASTNode*}:
     opt_from_clause where_expression? assert_rows_modified? returning_clause?
     {
       auto* update_item_list = MakeNode<ASTUpdateItemList>(@update_item_list, $update_item_list);
-      $$ = MakeNode<ASTUpdateStatement>(@$, $path, $hint, $suffix.temporal_at,
+      $$ = MakeNode<ASTUpdateStatement>(@$, $path, $hint, $suffix.at_version,
                                         $suffix.alias, $suffix.with_timestamp,
                                         $suffix.with_offset, update_item_list,
                                         $opt_from_clause, $where_expression,

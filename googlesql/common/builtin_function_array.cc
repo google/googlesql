@@ -19,7 +19,6 @@
 #include <utility>
 #include <vector>
 
-#include "googlesql/base/logging.h"
 #include "googlesql/common/builtin_function_internal.h"
 #include "googlesql/proto/anon_output_with_report.pb.h"
 #include "googlesql/public/analyzer_options.h"
@@ -1052,6 +1051,211 @@ void GetArrayTransformFunctions(TypeFactory* type_factory,
       FunctionOptions().set_supports_safe_error_mode(
           options.language_options.LanguageFeatureEnabled(
               FEATURE_SAFE_FUNCTION_CALL_WITH_LAMBDA_ARGS)));
+}
+
+void GetArrayReduceFunctions(TypeFactory* type_factory,
+                             const GoogleSQLBuiltinFunctionOptions& options,
+                             NameToFunctionMap* functions) {
+  constexpr absl::string_view kArrayToReduceArgName = "array_to_reduce";
+  constexpr absl::string_view kInitialValueArgName = "initial_value";
+  constexpr absl::string_view kReducerArgName = "reducer";
+  constexpr absl::string_view kFinisherArgName = "finisher";
+  constexpr absl::string_view kIgnoreNullsArgName = "ignore_nulls";
+
+  FunctionArgumentType ignore_nulls_arg(
+      type_factory->get_bool(),
+      FunctionArgumentTypeOptions(FunctionArgumentType::OPTIONAL)
+          .set_default(Value::Bool(false))
+          .set_argument_name(kIgnoreNullsArgName, kNamedOnly));
+
+  std::vector<FunctionSignatureOnHeap> signatures;
+
+  // Case 1: With initial_value, without finisher.
+  // Output type: ANY_2 (accumulator type).
+  // ARRAY_REDUCE(
+  //   array: ARRAY<T1>,
+  //   init: T2,
+  //   reducer: (T2, T1 [, INT64]) -> T2
+  //   [, ignore_nulls: BOOL])
+  // -> T2
+  {
+    FunctionArgumentType input_array_arg(
+        ARG_KIND_EXPR_ARRAY_ANY_1,
+        FunctionArgumentTypeOptions().set_argument_name(kArrayToReduceArgName,
+                                                        kPositionalOnly));
+    FunctionArgumentType initial_value_arg(
+        ARG_KIND_EXPR_ANY_2, FunctionArgumentTypeOptions().set_argument_name(
+                                 kInitialValueArgName, kPositionalOnly));
+    FunctionArgumentType output(ARG_KIND_EXPR_ANY_2,
+                                FunctionArgumentTypeOptions());
+
+    FunctionArgumentType reduce_function_arg = FunctionArgumentType::Lambda(
+        {ARG_KIND_EXPR_ANY_2, ARG_KIND_EXPR_ANY_1}, ARG_KIND_EXPR_ANY_2,
+        FunctionArgumentTypeOptions().set_argument_name(kReducerArgName,
+                                                        kPositionalOnly));
+    FunctionArgumentType reduce_function_arg_with_offset =
+        FunctionArgumentType::Lambda(
+            {ARG_KIND_EXPR_ANY_2, ARG_KIND_EXPR_ANY_1,
+             type_factory->get_int64()},
+            ARG_KIND_EXPR_ANY_2,
+            FunctionArgumentTypeOptions().set_argument_name(kReducerArgName,
+                                                            kPositionalOnly));
+
+    signatures.push_back({output,
+                          {input_array_arg, initial_value_arg,
+                           reduce_function_arg, ignore_nulls_arg},
+                          FN_ARRAY_REDUCE});
+    signatures.push_back({output,
+                          {input_array_arg, initial_value_arg,
+                           reduce_function_arg_with_offset, ignore_nulls_arg},
+                          FN_ARRAY_REDUCE_WITH_INDEX});
+  }
+
+  // Case 2: With initial_value, with finisher.
+  // Output type: ANY_3 (finisher return type).
+  // ARRAY_REDUCE(
+  //   array: ARRAY<T1>,
+  //   init: T2,
+  //   reducer: (T2, T1 [, INT64]) -> T2,
+  //   finisher: (T2) -> T3
+  //   [, ignore_nulls: BOOL])
+  // -> T3
+  {
+    FunctionArgumentType input_array_arg(
+        ARG_KIND_EXPR_ARRAY_ANY_1,
+        FunctionArgumentTypeOptions().set_argument_name(kArrayToReduceArgName,
+                                                        kPositionalOnly));
+    FunctionArgumentType initial_value_arg(
+        ARG_KIND_EXPR_ANY_2, FunctionArgumentTypeOptions().set_argument_name(
+                                 kInitialValueArgName, kPositionalOnly));
+    FunctionArgumentType finisher_output(ARG_KIND_EXPR_ANY_3,
+                                         FunctionArgumentTypeOptions());
+
+    FunctionArgumentType reduce_function_arg = FunctionArgumentType::Lambda(
+        {ARG_KIND_EXPR_ANY_2, ARG_KIND_EXPR_ANY_1}, ARG_KIND_EXPR_ANY_2,
+        FunctionArgumentTypeOptions().set_argument_name(kReducerArgName,
+                                                        kPositionalOnly));
+    FunctionArgumentType reduce_function_arg_with_offset =
+        FunctionArgumentType::Lambda(
+            {ARG_KIND_EXPR_ANY_2, ARG_KIND_EXPR_ANY_1,
+             type_factory->get_int64()},
+            ARG_KIND_EXPR_ANY_2,
+            FunctionArgumentTypeOptions().set_argument_name(kReducerArgName,
+                                                            kPositionalOnly));
+
+    FunctionArgumentType finisher_function_arg = FunctionArgumentType::Lambda(
+        {ARG_KIND_EXPR_ANY_2}, ARG_KIND_EXPR_ANY_3,
+        FunctionArgumentTypeOptions().set_argument_name(kFinisherArgName,
+                                                        kPositionalOnly));
+
+    signatures.push_back(
+        {finisher_output,
+         {input_array_arg, initial_value_arg, reduce_function_arg,
+          finisher_function_arg, ignore_nulls_arg},
+         FN_ARRAY_REDUCE_WITH_FINISHER});
+    signatures.push_back(
+        {finisher_output,
+         {input_array_arg, initial_value_arg, reduce_function_arg_with_offset,
+          finisher_function_arg, ignore_nulls_arg},
+         FN_ARRAY_REDUCE_WITH_INDEX_AND_FINISHER});
+  }
+
+  // Case 3: Without initial_value, without finisher.
+  // Output type: ANY_1 (array element type).
+  // ARRAY_REDUCE(
+  //   array: ARRAY<T1>,
+  //   reducer: (T1, T1 [, INT64]) -> T1
+  //   [, ignore_nulls: BOOL])
+  // -> T1
+  {
+    FunctionArgumentType input_array_arg(
+        ARG_KIND_EXPR_ARRAY_ANY_1,
+        FunctionArgumentTypeOptions().set_argument_name(kArrayToReduceArgName,
+                                                        kPositionalOnly));
+    FunctionArgumentType output_without_initial_value(
+        ARG_KIND_EXPR_ANY_1, FunctionArgumentTypeOptions());
+
+    FunctionArgumentType reduce_function_arg_without_initial_value =
+        FunctionArgumentType::Lambda(
+            {ARG_KIND_EXPR_ANY_1, ARG_KIND_EXPR_ANY_1}, ARG_KIND_EXPR_ANY_1,
+            FunctionArgumentTypeOptions().set_argument_name(kReducerArgName,
+                                                            kPositionalOnly));
+    FunctionArgumentType reduce_function_arg_with_offset_without_initial_value =
+        FunctionArgumentType::Lambda(
+            {ARG_KIND_EXPR_ANY_1, ARG_KIND_EXPR_ANY_1,
+             type_factory->get_int64()},
+            ARG_KIND_EXPR_ANY_1,
+            FunctionArgumentTypeOptions().set_argument_name(kReducerArgName,
+                                                            kPositionalOnly));
+
+    signatures.push_back(
+        {output_without_initial_value,
+         {input_array_arg, reduce_function_arg_without_initial_value,
+          ignore_nulls_arg},
+         FN_ARRAY_REDUCE_WITHOUT_INITIAL_VALUE});
+    signatures.push_back(
+        {output_without_initial_value,
+         {input_array_arg,
+          reduce_function_arg_with_offset_without_initial_value,
+          ignore_nulls_arg},
+         FN_ARRAY_REDUCE_WITHOUT_INITIAL_VALUE_WITH_INDEX});
+  }
+
+  // Case 4: Without initial_value, with finisher.
+  // Output type: ANY_2 (finisher return type).
+  // ARRAY_REDUCE(
+  //   array: ARRAY<T1>,
+  //   reducer: (T1, T1 [, INT64]) -> T1,
+  //   finisher: (T1) -> T2
+  //   [, ignore_nulls: BOOL])
+  // -> T2
+  {
+    FunctionArgumentType input_array_arg(
+        ARG_KIND_EXPR_ARRAY_ANY_1,
+        FunctionArgumentTypeOptions().set_argument_name(kArrayToReduceArgName,
+                                                        kPositionalOnly));
+    FunctionArgumentType finisher_output_without_initial_value(
+        ARG_KIND_EXPR_ANY_2, FunctionArgumentTypeOptions());
+
+    FunctionArgumentType reduce_function_arg_without_initial_value =
+        FunctionArgumentType::Lambda(
+            {ARG_KIND_EXPR_ANY_1, ARG_KIND_EXPR_ANY_1}, ARG_KIND_EXPR_ANY_1,
+            FunctionArgumentTypeOptions().set_argument_name(kReducerArgName,
+                                                            kPositionalOnly));
+    FunctionArgumentType reduce_function_arg_with_offset_without_initial_value =
+        FunctionArgumentType::Lambda(
+            {ARG_KIND_EXPR_ANY_1, ARG_KIND_EXPR_ANY_1,
+             type_factory->get_int64()},
+            ARG_KIND_EXPR_ANY_1,
+            FunctionArgumentTypeOptions().set_argument_name(kReducerArgName,
+                                                            kPositionalOnly));
+
+    FunctionArgumentType finisher_function_arg_without_initial_value =
+        FunctionArgumentType::Lambda(
+            {ARG_KIND_EXPR_ANY_1}, ARG_KIND_EXPR_ANY_2,
+            FunctionArgumentTypeOptions().set_argument_name(kFinisherArgName,
+                                                            kPositionalOnly));
+
+    signatures.push_back(
+        {finisher_output_without_initial_value,
+         {input_array_arg, reduce_function_arg_without_initial_value,
+          finisher_function_arg_without_initial_value, ignore_nulls_arg},
+         FN_ARRAY_REDUCE_WITHOUT_INITIAL_VALUE_WITH_FINISHER});
+    signatures.push_back(
+        {finisher_output_without_initial_value,
+         {input_array_arg,
+          reduce_function_arg_with_offset_without_initial_value,
+          finisher_function_arg_without_initial_value, ignore_nulls_arg},
+         FN_ARRAY_REDUCE_WITHOUT_INITIAL_VALUE_WITH_INDEX_AND_FINISHER});
+  }
+
+  InsertFunction(functions, options, "array_reduce", Function::SCALAR,
+                 signatures,
+                 FunctionOptions()
+                     .AddRequiredLanguageFeature(FEATURE_ARRAY_REDUCE)
+                     .set_supports_safe_error_mode(
+                         options.language_options.LanguageFeatureEnabled(
+                             FEATURE_SAFE_FUNCTION_CALL_WITH_LAMBDA_ARGS)));
 }
 
 void GetArrayIncludesFunctions(TypeFactory* type_factory,

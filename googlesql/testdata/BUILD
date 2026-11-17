@@ -356,6 +356,8 @@ cc_library(
         "//googlesql/base:status",
         "//googlesql/public:catalog",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_builder",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
     ],
 )

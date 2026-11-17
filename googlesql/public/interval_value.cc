@@ -16,7 +16,6 @@
 
 #include "googlesql/public/interval_value.h"
 
-#include <cctype>
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
@@ -36,6 +35,7 @@
 #include "absl/status/status.h"
 #include "googlesql/base/status_macros.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/ascii.h"
 #include "absl/strings/match.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
@@ -573,8 +573,8 @@ absl::StatusOr<IntervalValue> IntervalValue::ParseFromString(
     bool allow_nanos) {
   absl::Status status;
   // SimpleAtoi ignores leading and trailing spaces, but we reject them.
-  if (input.empty() || std::isspace(input.front()) ||
-      std::isspace(input.back())) {
+  if (input.empty() || absl::ascii_isspace(input.front()) ||
+      absl::ascii_isspace(input.back())) {
     return MakeIntervalParsingError(input);
   }
 
@@ -912,7 +912,7 @@ absl::StatusOr<IntervalValue> IntervalValue::ParseFromString(
       spaces++;
     } else if (c == ':') {
       colons++;
-    } else if (c == '-' && std::isdigit(p)) {
+    } else if (c == '-' && absl::ascii_isdigit(p)) {
       dashes++;
     }
     p = c;
@@ -991,11 +991,11 @@ class ISO8601Parser {
     int64_t nano_fractions = 0;
     for (;;) {
       int64_t sign = false;
-      c = PeekChar();
-      if (c == kEof) {
+      if (input_.empty()) {
         break;
       }
-      if (!std::isdigit(c)) {
+      c = PeekChar();
+      if (!absl::ascii_isdigit(c)) {
         GetChar();
         if (c == '-') {
           // Proceed to parse the number and make it negative later
@@ -1079,9 +1079,9 @@ class ISO8601Parser {
               return status;
             }
             if (!decimal_point_.empty()) {
-              GOOGLESQL_ASSIGN_OR_RETURN(number,
-                               NanosFromFractionDigits(input_, decimal_digits_,
-                                                       allow_nanos));
+              GOOGLESQL_ASSIGN_OR_RETURN(
+                  number,
+                  NanosFromFractionDigits(input, decimal_digits_, allow_nanos));
               if (sign) number = -number;
               nano_fractions += number;
             }

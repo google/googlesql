@@ -356,7 +356,7 @@ std::string NoMatchingSignatureForDateOrTimeAddOrSubFunction(
     absl::Span<const InputArgumentType> arguments, ProductMode product_mode);
 
 std::string NoMatchingSignatureForGenerateDateOrTimestampArrayFunction(
-    const std::string& qualified_function_name,
+    absl::string_view qualified_function_name,
     absl::Span<const InputArgumentType> arguments, ProductMode product_mode);
 
 std::string NoMatchingSignatureForSubscript(
@@ -681,6 +681,10 @@ void GetArrayTransformFunctions(TypeFactory* type_factory,
 void GetArrayIncludesFunctions(TypeFactory* type_factory,
                                const GoogleSQLBuiltinFunctionOptions& options,
                                NameToFunctionMap* functions);
+
+void GetArrayReduceFunctions(TypeFactory* type_factory,
+                             const GoogleSQLBuiltinFunctionOptions& options,
+                             NameToFunctionMap* functions);
 
 absl::Status GetArrayZipFunctions(
     TypeFactory* type_factory, const GoogleSQLBuiltinFunctionOptions& options,

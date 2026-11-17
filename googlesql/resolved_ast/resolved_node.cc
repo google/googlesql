@@ -194,7 +194,13 @@ void ResolvedNode::GetDescendantsSatisfying(
   }
 }
 
-std::vector<ResolvedColumn> ResolvedNode::GetColumnsCreated() const {
+std::vector<ResolvedColumn> ResolvedNode::GetColumnsCreated(
+    bool mark_accessed) const {
+  return GetColumnsCreatedImpl(mark_accessed);
+}
+
+std::vector<ResolvedColumn> ResolvedNode::GetColumnsCreatedImpl(
+    bool mark_accessed) const {
   return std::vector<ResolvedColumn>();
 }
 
@@ -942,10 +948,12 @@ const ResolvedScan* ResolvedPipeIfScan::GetSelectedCaseScan() const {
   }
 }
 
-std::vector<ResolvedColumn> ResolvedGraphPathScan::GetColumnsCreated() const {
-  std::vector<ResolvedColumn> columns = SUPER::GetColumnsCreated();
+std::vector<ResolvedColumn> ResolvedGraphPathScan::GetColumnsCreatedImpl(
+    bool mark_accessed) const {
+  std::vector<ResolvedColumn> columns =
+      SUPER::GetColumnsCreatedImpl(mark_accessed);
   if (path_ != nullptr) {
-    columns.push_back(path_->column());
+    columns.push_back(path_->column_untracked(mark_accessed));
   }
   if (quantifier_ != nullptr) {
     columns.push_back(head_);
@@ -956,7 +964,8 @@ std::vector<ResolvedColumn> ResolvedGraphPathScan::GetColumnsCreated() const {
 
 std::vector<ResolvedColumn> ResolvedGraphPathScan::GetColumnsReferenced()
     const {
-  std::vector<ResolvedColumn> columns = SUPER::GetColumnsCreated();
+  std::vector<ResolvedColumn> columns =
+      SUPER::GetColumnsCreatedImpl(/*mark_accessed=*/true);
   if (quantifier_ == nullptr) {
     columns.push_back(head_);
     columns.push_back(tail_);
@@ -964,8 +973,10 @@ std::vector<ResolvedColumn> ResolvedGraphPathScan::GetColumnsReferenced()
   return columns;
 }
 
-std::vector<ResolvedColumn> ResolvedAuxLoadDataStmt::GetColumnsCreated() const {
-  std::vector<ResolvedColumn> columns = SUPER::GetColumnsCreated();
+std::vector<ResolvedColumn> ResolvedAuxLoadDataStmt::GetColumnsCreatedImpl(
+    bool mark_accessed) const {
+  std::vector<ResolvedColumn> columns =
+      SUPER::GetColumnsCreatedImpl(mark_accessed);
   columns.insert(columns.end(), pseudo_column_list_.begin(),
                  pseudo_column_list_.end());
   // The columns appear to be created in multiple overlapping places.
@@ -976,13 +987,17 @@ std::vector<ResolvedColumn> ResolvedAuxLoadDataStmt::GetColumnsCreated() const {
     absl::flat_hash_set<ResolvedColumn> already_created;
     if (with_partition_columns_ != nullptr) {
       for (const auto& column_definition :
-           with_partition_columns_->column_definition_list()) {
-        already_created.insert(column_definition->column());
+           with_partition_columns_->column_definition_list_untracked(
+               mark_accessed)) {
+        already_created.insert(
+            column_definition->column_untracked(mark_accessed));
       }
     }
     for (const auto& output_column : output_column_list_) {
-      if (!already_created.contains(output_column->column())) {
-        columns.push_back(output_column->column());
+      const ResolvedColumn& col =
+          output_column->column_untracked(mark_accessed);
+      if (!already_created.contains(col)) {
+        columns.push_back(col);
       }
     }
   }
@@ -991,11 +1006,13 @@ std::vector<ResolvedColumn> ResolvedAuxLoadDataStmt::GetColumnsCreated() const {
 
 std::vector<ResolvedColumn> ResolvedAuxLoadDataStmt::GetColumnsReferenced()
     const {
-  std::vector<ResolvedColumn> columns = SUPER::GetColumnsCreated();
+  std::vector<ResolvedColumn> columns =
+      SUPER::GetColumnsCreatedImpl(/*mark_accessed=*/true);
   return columns;
 }
 
-std::vector<ResolvedColumn> ResolvedColumnHolder::GetColumnsCreated() const {
+std::vector<ResolvedColumn> ResolvedColumnHolder::GetColumnsCreatedImpl(
+    bool mark_accessed) const {
   // Column creation semantics are defined on the parent node field holding this
   // holder. ResolvedColumnHolder itself does not create columns.
   return {};

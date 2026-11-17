@@ -16,6 +16,7 @@
 
 #include "googlesql/public/variant_value.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -676,6 +677,33 @@ absl::StatusOr<Value> VariantValueAdapter::GetPrimitiveValue() const {
   }
 
   return absl::InvalidArgumentError("Value is not a primitive");
+}
+
+const Type* VariantValueAdapter::GetUnprojectedType() const {
+  if (std::holds_alternative<JSONNode>(rep_)) {
+    return types::JsonType();
+  }
+  const Value* val = std::get_if<Value>(&rep_);
+  if (val != nullptr && val->is_valid()) {
+    return val->type();
+  }
+  return nullptr;
+}
+
+absl::StatusOr<Value> VariantValueAdapter::GetUnprojectedValue() const {
+  GOOGLESQL_RET_CHECK(is_valid());
+  if (const JSONNode* json_node = std::get_if<JSONNode>(&rep_);
+      json_node != nullptr) {
+    return Value::Json(JSONValue::CopyFrom(json_node->ref));
+  }
+  const Value* val = std::get_if<Value>(&rep_);
+  GOOGLESQL_RET_CHECK(val != nullptr);
+  if (!val->is_null() && val->type()->IsJson()) {
+    GOOGLESQL_ASSIGN_OR_RETURN(JSONValue parsed_json,
+                     JSONValue::ParseJSONString(val->json_value_unparsed()));
+    return Value::Json(std::move(parsed_json));
+  }
+  return *val;
 }
 
 absl::StatusOr<std::vector<std::string>> VariantValueAdapter::GetKeys() const {

@@ -57,16 +57,25 @@ namespace googlesql {
 // Returns a copy of 'expr' where all references to columns that are not
 // internal to 'expr' as correlated. This is useful when moving a scalar
 // expression into a new subquery expression.
+//
+// Columns in 'local_columns' are treated as internal to 'expr' even though
+// nothing inside 'expr' defines them. This is for expressions that become the
+// body of a node that defines columns itself, e.g. the body of a
+// ResolvedInlineLambda, which can reference the lambda's arguments.
 template <class T>
-absl::StatusOr<std::unique_ptr<T>> CorrelateColumnRefs(const T& expr) {
-  GOOGLESQL_ASSIGN_OR_RETURN(auto correlated, CorrelateColumnRefsImpl(expr));
+absl::StatusOr<std::unique_ptr<T>> CorrelateColumnRefs(
+    const T& expr,
+    const absl::flat_hash_set<ResolvedColumn>& local_columns = {}) {
+  GOOGLESQL_ASSIGN_OR_RETURN(auto correlated,
+                   CorrelateColumnRefsImpl(expr, local_columns));
   GOOGLESQL_RET_CHECK(correlated->template Is<T>());
   return absl::WrapUnique(correlated.release()->template GetAs<T>());
 }
 
 // Type-erased implementation details of CorrelateColumnRefs template.
 absl::StatusOr<std::unique_ptr<ResolvedExpr>> CorrelateColumnRefsImpl(
-    const ResolvedExpr& expr);
+    const ResolvedExpr& expr,
+    const absl::flat_hash_set<ResolvedColumn>& local_columns = {});
 
 // Fills column_refs with a copy of all ResolvedColumnRef nodes under 'node'
 // which are not below a subquery.
@@ -472,6 +481,20 @@ class FunctionCallBuilder {
   absl::StatusOr<std::unique_ptr<const ResolvedFunctionCall>> JsonRemove(
       std::unique_ptr<const ResolvedExpr> json_doc,
       std::vector<std::unique_ptr<const ResolvedExpr>> paths);
+
+  // Constructs a ResolvedFunctionCall for
+  // `ELEMENT_DEFINITION_NAME_IS(graph_element, element_table_name)`.
+  //
+  // Requires:
+  // - `graph_element` must have type GraphElementType.
+  // - `element_table_name` must be non-empty and name an element table in
+  //   `graph_element`'s graph whose kind (node/edge) matches `graph_element`.
+  //
+  // The signature for the built-in function "element_definition_name_is" must
+  // be available in <catalog> or an error status is returned.
+  absl::StatusOr<std::unique_ptr<const ResolvedFunctionCall>>
+  ElementDefinitionNameIs(std::unique_ptr<const ResolvedExpr> graph_element,
+                          absl::string_view element_table_name);
 
   // Constructs a ResolvedFunctionCall for
   // `ELEMENT_DEFINITION_NAME(graph_element)`.

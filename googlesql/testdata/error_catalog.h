@@ -22,8 +22,8 @@
 
 #include "googlesql/public/catalog.h"
 #include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "googlesql/base/status.h"
 
 namespace googlesql {
 
@@ -49,6 +49,10 @@ class ErrorCatalog : public Catalog {
   absl::Status FindTable(const absl::Span<const std::string>& path,
                          const Table** table,
                          const FindOptions& options) override;
+  using Catalog::FindTableFromString;  // Support non-virtual signatures.
+  absl::Status FindTableFromString(absl::string_view table_literal,
+                                   const Table** table,
+                                   const FindOptions& options) override;
   using Catalog::FindModel;  // Support non-virtual signatures.
   absl::Status FindModel(const absl::Span<const std::string>& path,
                          const Model** table,

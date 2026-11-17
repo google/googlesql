@@ -31,14 +31,19 @@
 #include "googlesql/common/evaluator_registration_utils.h"
 #include "googlesql/common/internal_value.h"
 #include "googlesql/base/testing/status_matchers.h"
+#include "googlesql/public/cast.h"
 #include "googlesql/public/civil_time.h"
+#include "googlesql/public/function.h"
+#include "googlesql/public/function_signature.h"
 #include "googlesql/public/functions/date_time_util.h"
 #include "googlesql/public/interval_value.h"
 #include "googlesql/public/json_value.h"
 #include "googlesql/public/options.pb.h"
 #include "googlesql/public/proto/vector_encoding_id.pb.h"
+#include "googlesql/public/type.pb.h"
 #include "googlesql/public/types/array_type.h"
 #include "googlesql/public/types/declarative_type.h"
+#include "googlesql/public/types/extended_type.h"
 #include "googlesql/public/types/map_type.h"
 #include "googlesql/public/types/proto_type.h"
 #include "googlesql/public/types/struct_type.h"
@@ -62,6 +67,7 @@
 #include "googlesql/testing/test_value.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include "absl/hash/hash.h"
 #include "googlesql/base/check.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
@@ -183,6 +189,87 @@ TEST(NonDeterministicEvaluationContextTest, ArrayFilterTransformFunctionTest) {
                       {InternalValue::Array(array_type,
                                             {Value::Int64(1), Value::Int64(2)},
                                             InternalValue::kIgnoresOrder)},
+                      &context)
+                .status());
+  EXPECT_FALSE(context.IsDeterministicOutput());
+}
+
+TEST(NonDeterministicEvaluationContextTest, ArrayReduceFunctionTest) {
+  TypeFactory factory;
+  const ArrayType* array_type;
+  const Type* element_type = factory.get_int64();
+  GOOGLESQL_EXPECT_OK(factory.MakeArrayType(element_type, &array_type));
+
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(std::unique_ptr<ConstExpr> lambda_body,
+                       ConstExpr::Create(Value::Int64(3)));
+  std::vector<VariableId> lambda_arg_vars = {VariableId("acc"),
+                                             VariableId("e")};
+  std::unique_ptr<InlineLambdaExpr> lambda_algebra =
+      InlineLambdaExpr::Create(lambda_arg_vars, std::move(lambda_body));
+
+  ArrayReduceFunction reduce_fn(FunctionKind::kArrayReduce, element_type,
+                                lambda_algebra.get());
+
+  EvaluationContext context{/*options=*/{}};
+  EXPECT_TRUE(context.IsDeterministicOutput());
+  GOOGLESQL_EXPECT_OK(
+      reduce_fn
+          .Eval(/*params=*/{},
+                /*args=*/
+                {Value::Array(array_type, {Value::Int64(1), Value::Int64(2)}),
+                 Value::Int64(0), Value::Bool(false)},
+                &context)
+          .status());
+  EXPECT_TRUE(context.IsDeterministicOutput());
+
+  GOOGLESQL_EXPECT_OK(reduce_fn
+                .Eval(/*params=*/{},
+                      /*args=*/
+                      {InternalValue::Array(array_type,
+                                            {Value::Int64(1), Value::Int64(2)},
+                                            InternalValue::kIgnoresOrder),
+                       Value::Int64(0), Value::Bool(false)},
+                      &context)
+                .status());
+  EXPECT_FALSE(context.IsDeterministicOutput());
+}
+
+TEST(NonDeterministicEvaluationContextTest,
+     ArrayReduceFunctionWithoutInitialValueTest) {
+  TypeFactory factory;
+  const ArrayType* array_type;
+  const Type* element_type = factory.get_int64();
+  GOOGLESQL_EXPECT_OK(factory.MakeArrayType(element_type, &array_type));
+
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(std::unique_ptr<ConstExpr> lambda_body,
+                       ConstExpr::Create(Value::Int64(3)));
+  std::vector<VariableId> lambda_arg_vars = {VariableId("acc"),
+                                             VariableId("e")};
+  std::unique_ptr<InlineLambdaExpr> lambda_algebra =
+      InlineLambdaExpr::Create(lambda_arg_vars, std::move(lambda_body));
+
+  ArrayReduceFunction reduce_fn(FunctionKind::kArrayReduce, element_type,
+                                lambda_algebra.get());
+
+  EvaluationContext context{/*options=*/{}};
+  EXPECT_TRUE(context.IsDeterministicOutput());
+  GOOGLESQL_EXPECT_OK(
+      reduce_fn
+          .Eval(/*params=*/{},
+                /*args=*/
+                {Value::Array(array_type, {Value::Int64(1), Value::Int64(2)}),
+                 Value::Bool(false)},
+                &context)
+          .status());
+  EXPECT_TRUE(context.IsDeterministicOutput());
+
+  GOOGLESQL_EXPECT_OK(reduce_fn
+                .Eval(/*params=*/{},
+                      /*args=*/
+                      {InternalValue::Array(array_type,
+                                            {Value::Int64(1), Value::Int64(2)},
+                                            InternalValue::kIgnoresOrder),
+                       Value::Bool(false)},
                       &context)
                 .status());
   EXPECT_FALSE(context.IsDeterministicOutput());
@@ -1072,6 +1159,7 @@ std::vector<CastDeterminismTestParams> GetCastDeterminismTestCases() {
   absl::StatusOr<Value> unordered_array_map = Value::MakeMap(
       *map_string_array_type, {{Value::String("k"), unordered_array}});
   GOOGLESQL_CHECK_OK(unordered_array_map);
+  Value variant_double = test_values::Variant(Value::Double(1.23));
 
   bool kDeterministic = true;
   bool kNonDeterministic = false;
@@ -1080,6 +1168,10 @@ std::vector<CastDeterminismTestParams> GetCastDeterminismTestCases() {
                     types::DoubleType(), kDeterministic, type_factory});
   params.push_back({"Int64ToString", Value::Int64(123), types::StringType(),
                     kDeterministic, type_factory});
+  params.push_back({"DoubleToVariant", Value::Double(1.23),
+                    types::VariantType(), kDeterministic, type_factory});
+  params.push_back({"VariantDoubleToDouble", variant_double,
+                    types::DoubleType(), kDeterministic, type_factory});
   params.push_back({"StringStringStructToStringDoubleStruct",
                     string_string_struct_value, string_double_struct_type,
                     kDeterministic, type_factory});
@@ -1103,6 +1195,8 @@ std::vector<CastDeterminismTestParams> GetCastDeterminismTestCases() {
   // Non-deterministic cases.
   params.push_back({"DoubleToString", Value::Double(1.23), types::StringType(),
                     kNonDeterministic, type_factory});
+  params.push_back({"VariantDoubleToString", variant_double,
+                    types::StringType(), kNonDeterministic, type_factory});
   params.push_back({"FloatToString", Value::Float(1.23f), types::StringType(),
                     kNonDeterministic, type_factory});
   params.push_back({"ProtoToString", kitchen_sink_value, types::StringType(),
@@ -1212,6 +1306,156 @@ TEST(CastFunctionTest, CastWithConstraintViolation) {
   VirtualTupleSlot slot(&result_value, &shared_proto_state);
   EXPECT_FALSE(cast_expr->Eval({}, &context, &slot, &status));
   EXPECT_THAT(status, StatusIs(absl::StatusCode::kOutOfRange));
+}
+
+// SAFE_CAST must only suppress errors caused by the input value. Internal
+// errors (e.g. GOOGLESQL_RET_CHECK failures from mismatched type parameters, which can
+// only come from a malformed plan) must be propagated, not turned into NULL.
+TEST(CastFunctionTest, SafeCastPropagatesInternalConstraintError) {
+  const Type* int64_type = types::Int64Type();
+
+  // STRING type parameters are not valid for INT64, so ApplyConstraints fails
+  // with an internal error from ValidateResolvedTypeParameters.
+  StringTypeParametersProto string_params_proto;
+  string_params_proto.set_max_length(2);
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+      TypeParameters type_params,
+      TypeParameters::MakeStringTypeParameters(string_params_proto));
+
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(auto arg, ConstExpr::Create(Value::Int64(123)));
+
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+      auto cast_expr,
+      BuiltinScalarFunction::CreateCast(
+          LanguageOptions(), int64_type, std::move(arg),
+          /*format=*/nullptr, /*time_zone=*/nullptr,
+          TypeModifiers::MakeTypeModifiers(type_params, Collation()),
+          /*return_null_on_error=*/true,
+          ResolvedFunctionCallBase::DEFAULT_ERROR_MODE,
+          /*extended_cast_evaluator=*/nullptr));
+
+  EvaluationContext context{/*options=*/{}};
+  Value result_value;
+  absl::Status status;
+  std::shared_ptr<TupleSlot::SharedProtoState> shared_proto_state;
+  VirtualTupleSlot slot(&result_value, &shared_proto_state);
+  EXPECT_FALSE(cast_expr->Eval({}, &context, &slot, &status));
+  EXPECT_THAT(status, StatusIs(absl::StatusCode::kInternal));
+}
+
+// Same as above, but for an internal error raised by the cast itself rather
+// than by type-parameter enforcement. An invalid Value trips a GOOGLESQL_RET_CHECK at
+// the top of CastContext::CastValue.
+TEST(CastFunctionTest, SafeCastPropagatesInternalCastError) {
+  CastFunction cast_function(types::Int64Type(), types::StringType(),
+                             /*extended_cast_evaluator=*/nullptr,
+                             TypeParameters());
+  EvaluationContext context{/*options=*/{}};
+  EXPECT_THAT(
+      cast_function.Eval(/*params=*/{},
+                         {Value(), /*return_null_on_error=*/Value::Bool(true)},
+                         &context),
+      StatusIs(absl::StatusCode::kInternal));
+}
+
+namespace {
+
+// Minimal extended type used only by SafeCastPropagatesUnimplementedCastError
+// to route a cast through an extended conversion evaluator, so that SAFE_CAST
+// handling of kUnimplemented errors can be tested.
+class TestExtendedType : public ExtendedType {
+ public:
+  explicit TestExtendedType(const TypeFactory* factory)
+      : ExtendedType(factory) {}
+
+  bool ValueContentEquals(
+      const ValueContent& x, const ValueContent& y,
+      const ValueEqualityCheckOptions& options) const override {
+    return x.GetAs<int64_t>() == y.GetAs<int64_t>();
+  }
+  bool ValueContentLess(const ValueContent& x, const ValueContent& y,
+                        const Type* other_type) const override {
+    return x.GetAs<int64_t>() < y.GetAs<int64_t>();
+  }
+  absl::HashState HashValueContent(const ValueContent& value,
+                                   absl::HashState state) const override {
+    return absl::HashState::combine(std::move(state), value.GetAs<int64_t>());
+  }
+  std::string TypeName(ProductMode mode) const override {
+    return "TestExtendedType";
+  }
+  absl::HashState HashTypeParameter(absl::HashState state) const override {
+    return absl::HashState::combine(std::move(state),
+                                    reinterpret_cast<uintptr_t>(this));
+  }
+  absl::Status SerializeToProtoAndDistinctFileDescriptorsImpl(
+      const BuildFileDescriptorSetMapOptions& options, TypeProto* type_proto,
+      FileDescriptorSetMap* file_descriptor_set_map) const override {
+    type_proto->set_type_kind(TYPE_EXTENDED);
+    type_proto->set_extended_type_name(TypeName(ProductMode::PRODUCT_EXTERNAL));
+    return absl::OkStatus();
+  }
+  absl::Status SerializeValueContent(const ValueContent& value,
+                                     ValueProto* value_proto) const override {
+    return absl::UnimplementedError("Unimplemented");
+  }
+  absl::Status DeserializeValueContent(const ValueProto& value_proto,
+                                       ValueContent* value) const override {
+    return absl::UnimplementedError("Unimplemented");
+  }
+  int64_t GetEstimatedOwnedMemoryBytesSize() const override {
+    return sizeof(*this);
+  }
+  bool EqualsForSameKind(const Type* that, bool equivalent) const override {
+    return this == that;
+  }
+  void DebugStringImpl(bool details, TypeOrStringVector* stack,
+                       std::string* debug_string) const override {
+    *debug_string = TypeName(ProductMode::PRODUCT_EXTERNAL);
+  }
+  std::string FormatValueContent(
+      const ValueContent& value,
+      const FormatValueContentOptions& options) const override {
+    return absl::StrCat("TestExtended(", value.GetAs<int64_t>(), ")");
+  }
+};
+
+}  // namespace
+
+// SAFE_CAST only suppresses input-data errors (kInvalidArgument and
+// kOutOfRange). Other non-internal codes, such as kUnimplemented from an
+// extended conversion function, must also be propagated.
+TEST(CastFunctionTest, SafeCastPropagatesUnimplementedCastError) {
+  TypeFactory factory;
+  TestExtendedType extended_type(&factory);
+
+  // An extended conversion INT64 -> TestExtendedType whose evaluator always
+  // fails with kUnimplemented.
+  Function conversion_function(
+      "test_conversion", "TestGroup", Function::SCALAR,
+      {ConversionEvaluator::GetFunctionSignature(types::Int64Type(),
+                                                 &extended_type)},
+      FunctionOptions().set_evaluator(
+          [](absl::Span<const Value> args) -> absl::StatusOr<Value> {
+            return absl::UnimplementedError("Conversion not implemented");
+          }));
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+      ConversionEvaluator conversion_evaluator,
+      ConversionEvaluator::Create(types::Int64Type(), &extended_type,
+                                  &conversion_function));
+  auto extended_cast_evaluator =
+      std::make_unique<ExtendedCompositeCastEvaluator>(
+          std::vector<ConversionEvaluator>{conversion_evaluator});
+
+  CastFunction cast_function(types::Int64Type(), &extended_type,
+                             std::move(extended_cast_evaluator),
+                             TypeParameters());
+  EvaluationContext context{/*options=*/{}};
+  EXPECT_THAT(cast_function.Eval(
+                  /*params=*/{},
+                  {Value::Int64(1), /*return_null_on_error=*/Value::Bool(true)},
+                  &context),
+              StatusIs(absl::StatusCode::kUnimplemented));
 }
 
 struct CrossDescriptorTestCase {

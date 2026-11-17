@@ -162,6 +162,10 @@ bool IsTypeCastableToJson(const Type* from_type,
 bool IsTypeCastableToVariant(const Type* from_type,
                              const LanguageOptions& language_options);
 
+// Returns true if a VARIANT value can be cast to `to_type`.
+bool IsTypeCastableFromVariant(const Type* to_type,
+                               const LanguageOptions& language_options);
+
 // Returns true if values of `type` can be coerced to JSON for equality
 // comparison. This function should return true iff for any given `T x`, `T y`,
 // `(x = y) <=> (CAST(x AS JSON) = CAST(y AS JSON))`.
@@ -198,6 +202,12 @@ namespace internal {  //   For internal use only
 // Same as CastValue except assumes that the caller has already checked that
 // casting between these types is valid.
 //
+// If `out_found_non_deterministic` is non-null, it is set to true if casting
+// from a VARIANT (either at the top level or nested inside a composite value)
+// converts a runtime value in a potentially non-deterministic way (for example,
+// converting a runtime floating-point value inside a VARIANT to a
+// non-floating-point representation).
+//
 // REQUIRES: The requested cast is valid according to Coercer.
 // REQUIRES: If cast involves extended types, their conversion function should
 // be provided in extended_conversion.
@@ -208,7 +218,7 @@ absl::StatusOr<Value> CastValueWithoutTypeValidation(
     const std::optional<std::string>& format,
     const std::optional<std::string>& time_zone,
     const ExtendedCompositeCastEvaluator* extended_conversion_evaluator,
-    bool canonicalize_zero);
+    bool canonicalize_zero, bool* out_found_non_deterministic = nullptr);
 
 // Returns a hash map with TypeKindPair as key, and CastFunctionProperty as
 // value.  This identifies whether the (from, to) cast pairs in the key are

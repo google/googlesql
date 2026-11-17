@@ -23,6 +23,7 @@
 #include "googlesql/public/type.h"
 #include "googlesql/resolved_ast/resolved_column.h"
 #include "absl/status/statusor.h"
+#include "absl/types/span.h"
 
 #ifndef GOOGLESQL_REFERENCE_IMPL_TYPE_HELPERS_H_
 #define GOOGLESQL_REFERENCE_IMPL_TYPE_HELPERS_H_
@@ -118,7 +119,7 @@ struct GraphTargetTableTypeInfo {
 // kDMLOutputReturningColumnName (ARRAY<...>) is appended to represent the
 // returned rows.
 absl::StatusOr<const StructType*> CreateGraphDMLOutputType(
-    const std::vector<GraphTargetTableTypeInfo>& table_types,
+    absl::Span<const GraphTargetTableTypeInfo> table_types,
     const ArrayType* returning_array_type, TypeFactory* type_factory);
 
 }  // namespace googlesql

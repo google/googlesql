@@ -432,6 +432,7 @@ GeneralizedQueryStmt
           +-GraphLinearScan
             +-scan_list=
               +-GraphInsertScan
+              | +-column_list=[$element_table.p#1]
               | +-input_scan=
               | | +-SingleRowScan
               | +-insert_node_list=
@@ -453,7 +454,7 @@ GeneralizedQueryStmt
               | +-path_element_list=$element_table.[p#1, p#1]
               +-FinishScan
                 +-input_scan=
-                  +-GraphRefScan
+                  +-GraphRefScan(column_list=[$element_table.p#1])
 ==
 
 # Reference: Declaring a node variable and referencing it in the same pattern in the same INSERT is OK.
@@ -1375,3 +1376,211 @@ GeneralizedQueryStmt
               +-FinishScan
                 +-input_scan=
                   +-GraphRefScan
+==
+
+# Dynamic graph: Insert dynamic edge connecting pre-existing dynamic nodes
+GRAPH aml_dynamic
+MATCH (p:Entity), (q:Person)
+INSERT (p)-[e:Connection & Follow {category: "A", detail: "close"}]->(q)
+--
+GeneralizedQueryStmt
++-query=
+  +-GraphTableScan
+    +-property_graph=aml_dynamic
+    +-input_scan=
+      +-GraphLinearScan
+        +-scan_list=
+          +-GraphLinearScan
+            +-scan_list=
+              +-GraphScan
+              | +-column_list=$element_table.[p#1, q#2]
+              | +-input_scan_list=
+              | | +-GraphPathScan
+              | | | +-column_list=[$element_table.p#1]
+              | | | +-input_scan_list=
+              | | | | +-GraphNodeScan
+              | | | |   +-column_list=[$element_table.p#1]
+              | | | |   +-label_expr=
+              | | | |   | +-GraphLabel
+              | | | |   |   +-parse_location=27-33
+              | | | |   |   +-label=aml_dynamic.Entity
+              | | | |   |   +-label_name=
+              | | | |   |     +-Literal(type=STRING, value="Entity", has_explicit_type=TRUE)
+              | | | |   +-target_element_table_list=[aml_dynamic.DynamicGraphNode]
+              | | | +-head=$element_table.p#1
+              | | | +-tail=$element_table.p#1
+              | | +-GraphPathScan
+              | |   +-column_list=[$element_table.q#2]
+              | |   +-input_scan_list=
+              | |   | +-GraphNodeScan
+              | |   |   +-column_list=[$element_table.q#2]
+              | |   |   +-label_expr=
+              | |   |   | +-GraphLabel
+              | |   |   |   +-parse_location=39-45
+              | |   |   |   +-label_name=
+              | |   |   |     +-Literal(type=STRING, value="Person", has_explicit_type=TRUE)
+              | |   |   +-target_element_table_list=[aml_dynamic.DynamicGraphNode]
+              | |   +-head=$element_table.q#2
+              | |   +-tail=$element_table.q#2
+              | +-input_scan=
+              |   +-SingleRowScan
+              +-GraphInsertScan
+              | +-column_list=$element_table.[p#1, q#2]
+              | +-input_scan=
+              | | +-GraphRefScan(column_list=$element_table.[p#1, q#2])
+              | +-insert_edge_list=
+              | | +-e#3 :=
+              | |   +-GraphInsertElement
+              | |     +-type=GRAPH_EDGE(aml_dynamic)<category STRING, dst_id INT64, edgeJsonProp JSON, edgeLabelCol STRING, id INT64, DYNAMIC>
+              | |     +-property_list=
+              | |     | +-GraphDMLPropertyItem
+              | |     | | +-property_name="category"
+              | |     | | +-property=category(STRING)
+              | |     | | +-property_value=
+              | |     | |   +-Literal(type=STRING, value="A")
+              | |     | +-GraphDMLPropertyItem
+              | |     |   +-property_name="detail"
+              | |     |   +-property_value=
+              | |     |     +-Literal(type=STRING, value="close")
+              | |     +-label_list=
+              | |     | +-GraphLabel
+              | |     | | +-label=aml_dynamic.CONNECTION
+              | |     | | +-label_name=
+              | |     | |   +-Literal(type=STRING, value="Connection", has_explicit_type=TRUE)
+              | |     | +-GraphLabel
+              | |     |   +-label_name=
+              | |     |     +-Literal(type=STRING, value="Follow", has_explicit_type=TRUE)
+              | |     +-source_node=
+              | |     | +-ColumnRef(type=GRAPH_NODE(aml_dynamic)<code INT64, id INT64, nodeJsonProp JSON, nodeLabelCol STRING, DYNAMIC>, column=$element_table.p#1)
+              | |     +-dest_node=
+              | |     | +-ColumnRef(type=GRAPH_NODE(aml_dynamic)<code INT64, id INT64, nodeJsonProp JSON, nodeLabelCol STRING, DYNAMIC>, column=$element_table.q#2)
+              | |     +-element_table=DynamicGraphEdge
+              | +-path_element_list=$element_table.[p#1, e#3, q#2]
+              +-FinishScan
+                +-input_scan=
+                  +-GraphRefScan(column_list=$element_table.[p#1, q#2])
+==
+
+# Dynamic graph: Insert dynamic edge between pre-existing nodes with RETURN
+GRAPH aml_dynamic
+MATCH (p:Entity), (q:Entity)
+INSERT (p)-[e:Follow {category: "A", detail: "close"}]->(q)
+RETURN p.id AS src_id, q.id AS dst_id, e.category, e.edgeJsonProp
+--
+GeneralizedQueryStmt
++-output_schema=
+| +-OutputSchema
+|   +-output_column_list=
+|     +-$graph_table.src_id#4 AS src_id [INT64]
+|     +-$graph_table.dst_id#5 AS dst_id [INT64]
+|     +-$graph_table.category#6 AS category [STRING]
+|     +-$graph_table.edgeJsonProp#7 AS edgeJsonProp [JSON]
++-query=
+  +-GraphTableScan
+    +-column_list=$graph_table.[src_id#4, dst_id#5, category#6, edgeJsonProp#7]
+    +-property_graph=aml_dynamic
+    +-input_scan=
+      +-GraphLinearScan
+        +-column_list=$graph_table.[src_id#4, dst_id#5, category#6, edgeJsonProp#7]
+        +-scan_list=
+          +-GraphLinearScan
+            +-column_list=$graph_table.[src_id#4, dst_id#5, category#6, edgeJsonProp#7]
+            +-scan_list=
+              +-GraphScan
+              | +-column_list=$element_table.[p#1, q#2]
+              | +-input_scan_list=
+              | | +-GraphPathScan
+              | | | +-column_list=[$element_table.p#1]
+              | | | +-input_scan_list=
+              | | | | +-GraphNodeScan
+              | | | |   +-column_list=[$element_table.p#1]
+              | | | |   +-label_expr=
+              | | | |   | +-GraphLabel
+              | | | |   |   +-parse_location=27-33
+              | | | |   |   +-label=aml_dynamic.Entity
+              | | | |   |   +-label_name=
+              | | | |   |     +-Literal(type=STRING, value="Entity", has_explicit_type=TRUE)
+              | | | |   +-target_element_table_list=[aml_dynamic.DynamicGraphNode]
+              | | | +-head=$element_table.p#1
+              | | | +-tail=$element_table.p#1
+              | | +-GraphPathScan
+              | |   +-column_list=[$element_table.q#2]
+              | |   +-input_scan_list=
+              | |   | +-GraphNodeScan
+              | |   |   +-column_list=[$element_table.q#2]
+              | |   |   +-label_expr=
+              | |   |   | +-GraphLabel
+              | |   |   |   +-parse_location=39-45
+              | |   |   |   +-label=aml_dynamic.Entity
+              | |   |   |   +-label_name=
+              | |   |   |     +-Literal(type=STRING, value="Entity", has_explicit_type=TRUE)
+              | |   |   +-target_element_table_list=[aml_dynamic.DynamicGraphNode]
+              | |   +-head=$element_table.q#2
+              | |   +-tail=$element_table.q#2
+              | +-input_scan=
+              |   +-SingleRowScan
+              +-GraphInsertScan
+              | +-column_list=$element_table.[p#1, q#2, e#3]
+              | +-input_scan=
+              | | +-GraphRefScan(column_list=$element_table.[p#1, q#2])
+              | +-insert_edge_list=
+              | | +-e#3 :=
+              | |   +-GraphInsertElement
+              | |     +-type=GRAPH_EDGE(aml_dynamic)<category STRING, dst_id INT64, edgeJsonProp JSON, edgeLabelCol STRING, id INT64, DYNAMIC>
+              | |     +-property_list=
+              | |     | +-GraphDMLPropertyItem
+              | |     | | +-property_name="category"
+              | |     | | +-property=category(STRING)
+              | |     | | +-property_value=
+              | |     | |   +-Literal(type=STRING, value="A")
+              | |     | +-GraphDMLPropertyItem
+              | |     |   +-property_name="detail"
+              | |     |   +-property_value=
+              | |     |     +-Literal(type=STRING, value="close")
+              | |     +-label_list=
+              | |     | +-GraphLabel
+              | |     |   +-label_name=
+              | |     |     +-Literal(type=STRING, value="Follow", has_explicit_type=TRUE)
+              | |     +-source_node=
+              | |     | +-ColumnRef(type=GRAPH_NODE(aml_dynamic)<code INT64, id INT64, nodeJsonProp JSON, nodeLabelCol STRING, DYNAMIC>, column=$element_table.p#1)
+              | |     +-dest_node=
+              | |     | +-ColumnRef(type=GRAPH_NODE(aml_dynamic)<code INT64, id INT64, nodeJsonProp JSON, nodeLabelCol STRING, DYNAMIC>, column=$element_table.q#2)
+              | |     +-element_table=DynamicGraphEdge
+              | +-path_element_list=$element_table.[p#1, e#3, q#2]
+              +-ProjectScan
+                +-column_list=$graph_table.[src_id#4, dst_id#5, category#6, edgeJsonProp#7]
+                +-expr_list=
+                | +-src_id#4 :=
+                | | +-GraphGetElementProperty
+                | |   +-type=INT64
+                | |   +-expr=
+                | |   | +-ColumnRef(type=GRAPH_NODE(aml_dynamic)<code INT64, id INT64, nodeJsonProp JSON, nodeLabelCol STRING, DYNAMIC>, column=$element_table.p#1)
+                | |   +-property=id(INT64)
+                | |   +-property_name=
+                | |     +-Literal(type=STRING, value="id", has_explicit_type=TRUE)
+                | +-dst_id#5 :=
+                | | +-GraphGetElementProperty
+                | |   +-type=INT64
+                | |   +-expr=
+                | |   | +-ColumnRef(type=GRAPH_NODE(aml_dynamic)<code INT64, id INT64, nodeJsonProp JSON, nodeLabelCol STRING, DYNAMIC>, column=$element_table.q#2)
+                | |   +-property=id(INT64)
+                | |   +-property_name=
+                | |     +-Literal(type=STRING, value="id", has_explicit_type=TRUE)
+                | +-category#6 :=
+                | | +-GraphGetElementProperty
+                | |   +-type=STRING
+                | |   +-expr=
+                | |   | +-ColumnRef(type=GRAPH_EDGE(aml_dynamic)<category STRING, dst_id INT64, edgeJsonProp JSON, edgeLabelCol STRING, id INT64, DYNAMIC>, column=$element_table.e#3)
+                | |   +-property=category(STRING)
+                | |   +-property_name=
+                | |     +-Literal(type=STRING, value="category", has_explicit_type=TRUE)
+                | +-edgeJsonProp#7 :=
+                |   +-GraphGetElementProperty
+                |     +-type=JSON
+                |     +-expr=
+                |     | +-ColumnRef(type=GRAPH_EDGE(aml_dynamic)<category STRING, dst_id INT64, edgeJsonProp JSON, edgeLabelCol STRING, id INT64, DYNAMIC>, column=$element_table.e#3)
+                |     +-property=edgeJsonProp(JSON)
+                |     +-property_name=
+                |       +-Literal(type=STRING, value="edgeJsonProp", has_explicit_type=TRUE)
+                +-input_scan=
+                  +-GraphRefScan(column_list=$element_table.[p#1, q#2, e#3])

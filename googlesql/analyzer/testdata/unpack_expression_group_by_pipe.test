@@ -2306,6 +2306,115 @@ FROM
      aggregatescan_7.a_6 AS a_6;
 ==
 
+# An AGGREGATE list that expands to zero columns is fine when there is a
+# non-empty GROUP BY: the output is just the grouping columns, as for
+# `|> AGGREGATE GROUP BY int_a`.
+FROM MultipleColumns
+|> AGGREGATE **COLUMNS([])
+   GROUP BY int_a
+--
+QueryStmt
++-output_column_list=
+| +-$groupby.int_a#7 AS int_a [INT64]
++-query=
+  +-AggregateScan
+    +-column_list=[$groupby.int_a#7]
+    +-input_scan=
+    | +-TableScan(column_list=[MultipleColumns.int_a#1], table=MultipleColumns, column_index_list=[0])
+    +-group_by_list=
+      +-int_a#7 := ColumnRef(type=INT64, column=MultipleColumns.int_a#1)
+
+[SQLBUILDER_OUTPUT]
+FROM
+  MultipleColumns
+|> SELECT
+     MultipleColumns.int_a AS a_1
+|> AS multiplecolumns_2
+|> EXTEND
+     multiplecolumns_2.a_1 AS a_3
+|> AGGREGATE
+   GROUP BY a_3
+|> AS aggregatescan_4
+|> SELECT
+     aggregatescan_4.a_3 AS int_a;
+==
+
+# An AGGREGATE list that expands to zero columns with no (or an empty) GROUP BY
+# gets the same error as writing no aggregate list at all.
+FROM MultipleColumns
+|> AGGREGATE {{|**COLUMNS([])}}{{| GROUP BY ()| GROUP BY **COLUMNS([])}}
+--
+ALTERNATION GROUP: <empty>
+--
+ERROR: Pipe AGGREGATE cannot have both an empty aggregate list and an empty GROUP BY [at 2:4]
+|> AGGREGATE 
+   ^
+--
+ALTERNATION GROUP:  GROUP BY ()
+--
+ERROR: Pipe AGGREGATE cannot have both an empty aggregate list and an empty GROUP BY [at 2:4]
+|> AGGREGATE  GROUP BY ()
+   ^
+--
+ALTERNATION GROUP:  GROUP BY **COLUMNS([])
+--
+ERROR: Pipe AGGREGATE cannot have both an empty aggregate list and an empty GROUP BY [at 2:4]
+|> AGGREGATE  GROUP BY **COLUMNS([])
+   ^
+--
+ALTERNATION GROUP: **COLUMNS([]),
+--
+ERROR: Pipe AGGREGATE cannot have both an empty aggregate list and an empty GROUP BY [at 2:4]
+|> AGGREGATE **COLUMNS([])
+   ^
+--
+ALTERNATION GROUP: **COLUMNS([]), GROUP BY ()
+--
+ERROR: Pipe AGGREGATE cannot have both an empty aggregate list and an empty GROUP BY [at 2:4]
+|> AGGREGATE **COLUMNS([]) GROUP BY ()
+   ^
+--
+ALTERNATION GROUP: **COLUMNS([]), GROUP BY **COLUMNS([])
+--
+ERROR: Pipe AGGREGATE cannot have both an empty aggregate list and an empty GROUP BY [at 2:4]
+|> AGGREGATE **COLUMNS([]) GROUP BY **COLUMNS([])
+   ^
+==
+
+# `GROUPING SETS(())` is a valid grand-total grouping with no grouping columns,
+# so it is accepted with or without an AGGREGATE list that expands to nothing,
+# just as it is with no AGGREGATE list at all. The EXTEND is needed only
+# because a top-level query cannot have zero output columns.
+FROM MultipleColumns
+|> AGGREGATE {{|**COLUMNS([])}}
+   GROUP BY GROUPING SETS(())
+|> EXTEND 1 AS x
+--
+QueryStmt
++-output_column_list=
+| +-$pipe_extend.x#7 AS x [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$pipe_extend.x#7]
+    +-expr_list=
+    | +-x#7 := Literal(type=INT64, value=1)
+    +-input_scan=
+      +-AggregateScan
+        +-input_scan=
+        | +-TableScan(table=MultipleColumns)
+        +-grouping_set_list=
+          +-GroupingSet
+
+[SQLBUILDER_OUTPUT]
+FROM
+  MultipleColumns
+|> SELECT
+     NULL
+|> AS aggregatescan_1
+|> SELECT
+     1 AS x;
+==
+
 # GROUPING() in the AGGREGATE list can reference a column grouped via ** inside
 # ROLLUP.
 FROM MultipleColumns

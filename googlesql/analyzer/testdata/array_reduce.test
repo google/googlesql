@@ -1,0 +1,2046 @@
+# When FEATURE_ARRAY_REDUCE is not enabled, ARRAY_REDUCE is not found.
+[default language_features=NONE,+INLINE_LAMBDA_ARGUMENT]
+SELECT ARRAY_REDUCE([1, 2, 3], 0, (acc, e) -> acc + e);
+--
+ERROR: Function not found: ARRAY_REDUCE; Did you mean array_reverse? [at 1:8]
+SELECT ARRAY_REDUCE([1, 2, 3], 0, (acc, e) -> acc + e);
+       ^
+==
+
+[default language_features=NONE,+INLINE_LAMBDA_ARGUMENT,+ARRAY_REDUCE,+NAMED_ARGUMENTS]
+
+# Basic 2-argument lambda reduction
+SELECT ARRAY_REDUCE([1, 2, 3], 0, (acc, e) -> acc + e);
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#3 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#3]
+    +-expr_list=
+    | +-$col1#3 :=
+    |   +-FunctionCall(GoogleSQL:array_reduce(ARRAY<INT64> array_to_reduce, INT64 initial_value, FUNCTION<(INT64, INT64)->INT64> reducer, optional(1) BOOL ignore_nulls) -> INT64)
+    |     +-FunctionArgument
+    |     | +-expr=
+    |     |   +-Literal(type=ARRAY<INT64>, value=[1, 2, 3])
+    |     +-FunctionArgument
+    |     | +-expr=
+    |     |   +-Literal(type=INT64, value=0)
+    |     +-FunctionArgument
+    |     | +-inline_lambda=
+    |     |   +-InlineLambda
+    |     |     +-argument_list=$lambda_arg.[acc#1, e#2]
+    |     |     +-body=
+    |     |       +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |     |         +-ColumnRef(type=INT64, column=$lambda_arg.acc#1)
+    |     |         +-ColumnRef(type=INT64, column=$lambda_arg.e#2)
+    |     +-FunctionArgument
+    |       +-expr=
+    |         +-Literal(type=BOOL, value=false)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# 3-argument lambda reduction with index
+SELECT ARRAY_REDUCE([1, 2, 3], 0, (acc, e, i) -> acc + e + i);
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#4 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#4]
+    +-expr_list=
+    | +-$col1#4 :=
+    |   +-FunctionCall(GoogleSQL:array_reduce(ARRAY<INT64> array_to_reduce, INT64 initial_value, FUNCTION<(INT64, INT64, INT64)->INT64> reducer, optional(1) BOOL ignore_nulls) -> INT64)
+    |     +-FunctionArgument
+    |     | +-expr=
+    |     |   +-Literal(type=ARRAY<INT64>, value=[1, 2, 3])
+    |     +-FunctionArgument
+    |     | +-expr=
+    |     |   +-Literal(type=INT64, value=0)
+    |     +-FunctionArgument
+    |     | +-inline_lambda=
+    |     |   +-InlineLambda
+    |     |     +-argument_list=$lambda_arg.[acc#1, e#2, i#3]
+    |     |     +-body=
+    |     |       +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |     |         +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |     |         | +-ColumnRef(type=INT64, column=$lambda_arg.acc#1)
+    |     |         | +-ColumnRef(type=INT64, column=$lambda_arg.e#2)
+    |     |         +-ColumnRef(type=INT64, column=$lambda_arg.i#3)
+    |     +-FunctionArgument
+    |       +-expr=
+    |         +-Literal(type=BOOL, value=false)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Reduction with different accumulator type
+SELECT ARRAY_REDUCE([1, 2, 3], '', (acc, e) -> CONCAT(acc, CAST(e AS STRING)));
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#3 AS `$col1` [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#3]
+    +-expr_list=
+    | +-$col1#3 :=
+    |   +-FunctionCall(GoogleSQL:array_reduce(ARRAY<INT64> array_to_reduce, STRING initial_value, FUNCTION<(STRING, INT64)->STRING> reducer, optional(1) BOOL ignore_nulls) -> STRING)
+    |     +-FunctionArgument
+    |     | +-expr=
+    |     |   +-Literal(type=ARRAY<INT64>, value=[1, 2, 3])
+    |     +-FunctionArgument
+    |     | +-expr=
+    |     |   +-Literal(type=STRING, value="")
+    |     +-FunctionArgument
+    |     | +-inline_lambda=
+    |     |   +-InlineLambda
+    |     |     +-argument_list=$lambda_arg.[acc#1, e#2]
+    |     |     +-body=
+    |     |       +-FunctionCall(GoogleSQL:concat(STRING, repeated(1) STRING) -> STRING)
+    |     |         +-ColumnRef(type=STRING, column=$lambda_arg.acc#1)
+    |     |         +-Cast(INT64 -> STRING)
+    |     |           +-ColumnRef(type=INT64, column=$lambda_arg.e#2)
+    |     +-FunctionArgument
+    |       +-expr=
+    |         +-Literal(type=BOOL, value=false)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Reduction with STRUCT accumulator
+SELECT ARRAY_REDUCE([1, 2, 3], STRUCT(0 AS s, 0 AS c), (acc, e) -> STRUCT(acc.s + e, acc.c + 1));
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#3 AS `$col1` [STRUCT<s INT64, c INT64>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#3]
+    +-expr_list=
+    | +-$col1#3 :=
+    |   +-FunctionCall(GoogleSQL:array_reduce(ARRAY<INT64> array_to_reduce, STRUCT<s INT64, c INT64> initial_value, FUNCTION<(STRUCT<s INT64, c INT64>, INT64)->STRUCT<s INT64, c INT64>> reducer, optional(1) BOOL ignore_nulls) -> STRUCT<s INT64, c INT64>)
+    |     +-FunctionArgument
+    |     | +-expr=
+    |     |   +-Literal(type=ARRAY<INT64>, value=[1, 2, 3])
+    |     +-FunctionArgument
+    |     | +-expr=
+    |     |   +-Literal(type=STRUCT<s INT64, c INT64>, value={s:0, c:0})
+    |     +-FunctionArgument
+    |     | +-inline_lambda=
+    |     |   +-InlineLambda
+    |     |     +-argument_list=$lambda_arg.[acc#1, e#2]
+    |     |     +-body=
+    |     |       +-MakeStruct
+    |     |         +-type=STRUCT<s INT64, c INT64>
+    |     |         +-field_list=
+    |     |           +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |     |           | +-GetStructField
+    |     |           | | +-type=INT64
+    |     |           | | +-expr=
+    |     |           | | | +-ColumnRef(type=STRUCT<s INT64, c INT64>, column=$lambda_arg.acc#1)
+    |     |           | | +-field_idx=0
+    |     |           | +-ColumnRef(type=INT64, column=$lambda_arg.e#2)
+    |     |           +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |     |             +-GetStructField
+    |     |             | +-type=INT64
+    |     |             | +-expr=
+    |     |             | | +-ColumnRef(type=STRUCT<s INT64, c INT64>, column=$lambda_arg.acc#1)
+    |     |             | +-field_idx=1
+    |     |             +-Literal(type=INT64, value=1)
+    |     +-FunctionArgument
+    |       +-expr=
+    |         +-Literal(type=BOOL, value=false)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Reduction with ARRAY accumulator
+SELECT ARRAY_REDUCE([1, 2, 3], CAST([] AS ARRAY<INT64>), (acc, e) -> ARRAY_CONCAT(acc, [e]));
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#3 AS `$col1` [ARRAY<INT64>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#3]
+    +-expr_list=
+    | +-$col1#3 :=
+    |   +-FunctionCall(GoogleSQL:array_reduce(ARRAY<INT64> array_to_reduce, ARRAY<INT64> initial_value, FUNCTION<(ARRAY<INT64>, INT64)->ARRAY<INT64>> reducer, optional(1) BOOL ignore_nulls) -> ARRAY<INT64>)
+    |     +-FunctionArgument
+    |     | +-expr=
+    |     |   +-Literal(type=ARRAY<INT64>, value=[1, 2, 3])
+    |     +-FunctionArgument
+    |     | +-expr=
+    |     |   +-Literal(type=ARRAY<INT64>, value=[], has_explicit_type=TRUE)
+    |     +-FunctionArgument
+    |     | +-inline_lambda=
+    |     |   +-InlineLambda
+    |     |     +-argument_list=$lambda_arg.[acc#1, e#2]
+    |     |     +-body=
+    |     |       +-FunctionCall(GoogleSQL:array_concat(ARRAY<INT64>, repeated(1) ARRAY<INT64>) -> ARRAY<INT64>)
+    |     |         +-ColumnRef(type=ARRAY<INT64>, column=$lambda_arg.acc#1)
+    |     |         +-FunctionCall(GoogleSQL:$make_array(repeated(1) INT64) -> ARRAY<INT64>)
+    |     |           +-ColumnRef(type=INT64, column=$lambda_arg.e#2)
+    |     +-FunctionArgument
+    |       +-expr=
+    |         +-Literal(type=BOOL, value=false)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# 3-argument lambda reduction with index on non-INT64 array and accumulator
+SELECT ARRAY_REDUCE(['a', 'b', 'c'], '', (acc, e, i) -> CONCAT(acc, e, ':', CAST(i AS STRING)));
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#4 AS `$col1` [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#4]
+    +-expr_list=
+    | +-$col1#4 :=
+    |   +-FunctionCall(GoogleSQL:array_reduce(ARRAY<STRING> array_to_reduce, STRING initial_value, FUNCTION<(STRING, STRING, INT64)->STRING> reducer, optional(1) BOOL ignore_nulls) -> STRING)
+    |     +-FunctionArgument
+    |     | +-expr=
+    |     |   +-Literal(type=ARRAY<STRING>, value=["a", "b", "c"])
+    |     +-FunctionArgument
+    |     | +-expr=
+    |     |   +-Literal(type=STRING, value="")
+    |     +-FunctionArgument
+    |     | +-inline_lambda=
+    |     |   +-InlineLambda
+    |     |     +-argument_list=$lambda_arg.[acc#1, e#2, i#3]
+    |     |     +-body=
+    |     |       +-FunctionCall(GoogleSQL:concat(STRING, repeated(3) STRING) -> STRING)
+    |     |         +-ColumnRef(type=STRING, column=$lambda_arg.acc#1)
+    |     |         +-ColumnRef(type=STRING, column=$lambda_arg.e#2)
+    |     |         +-Literal(type=STRING, value=":")
+    |     |         +-Cast(INT64 -> STRING)
+    |     |           +-ColumnRef(type=INT64, column=$lambda_arg.i#3)
+    |     +-FunctionArgument
+    |       +-expr=
+    |         +-Literal(type=BOOL, value=false)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Reducing an array of STRUCT elements
+SELECT ARRAY_REDUCE([STRUCT(1 AS a, 'x' AS b), STRUCT(2 AS a, 'y' AS b)], 0, (acc, s) -> acc + s.a);
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#3 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#3]
+    +-expr_list=
+    | +-$col1#3 :=
+    |   +-FunctionCall(GoogleSQL:array_reduce(ARRAY<STRUCT<a INT64, b STRING>> array_to_reduce, INT64 initial_value, FUNCTION<(INT64, STRUCT<a INT64, b STRING>)->INT64> reducer, optional(1) BOOL ignore_nulls) -> INT64)
+    |     +-FunctionArgument
+    |     | +-expr=
+    |     |   +-Literal(type=ARRAY<STRUCT<a INT64, b STRING>>, value=[{a:1, b:"x"}, {a:2, b:"y"}])
+    |     +-FunctionArgument
+    |     | +-expr=
+    |     |   +-Literal(type=INT64, value=0)
+    |     +-FunctionArgument
+    |     | +-inline_lambda=
+    |     |   +-InlineLambda
+    |     |     +-argument_list=$lambda_arg.[acc#1, s#2]
+    |     |     +-body=
+    |     |       +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |     |         +-ColumnRef(type=INT64, column=$lambda_arg.acc#1)
+    |     |         +-GetStructField
+    |     |           +-type=INT64
+    |     |           +-expr=
+    |     |           | +-ColumnRef(type=STRUCT<a INT64, b STRING>, column=$lambda_arg.s#2)
+    |     |           +-field_idx=0
+    |     +-FunctionArgument
+    |       +-expr=
+    |         +-Literal(type=BOOL, value=false)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Reduction with finisher lambda (different output type)
+SELECT ARRAY_REDUCE([1, 2, 3], 0, (acc, e) -> acc + e, acc -> CAST(acc AS STRING));
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#4 AS `$col1` [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#4]
+    +-expr_list=
+    | +-$col1#4 :=
+    |   +-FunctionCall(GoogleSQL:array_reduce(ARRAY<INT64> array_to_reduce, INT64 initial_value, FUNCTION<(INT64, INT64)->INT64> reducer, FUNCTION<INT64->STRING> finisher, optional(1) BOOL ignore_nulls) -> STRING)
+    |     +-FunctionArgument
+    |     | +-expr=
+    |     |   +-Literal(type=ARRAY<INT64>, value=[1, 2, 3])
+    |     +-FunctionArgument
+    |     | +-expr=
+    |     |   +-Literal(type=INT64, value=0)
+    |     +-FunctionArgument
+    |     | +-inline_lambda=
+    |     |   +-InlineLambda
+    |     |     +-argument_list=$lambda_arg.[acc#1, e#2]
+    |     |     +-body=
+    |     |       +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |     |         +-ColumnRef(type=INT64, column=$lambda_arg.acc#1)
+    |     |         +-ColumnRef(type=INT64, column=$lambda_arg.e#2)
+    |     +-FunctionArgument
+    |     | +-inline_lambda=
+    |     |   +-InlineLambda
+    |     |     +-argument_list=[$lambda_arg.acc#3]
+    |     |     +-body=
+    |     |       +-Cast(INT64 -> STRING)
+    |     |         +-ColumnRef(type=INT64, column=$lambda_arg.acc#3)
+    |     +-FunctionArgument
+    |       +-expr=
+    |         +-Literal(type=BOOL, value=false)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Reduction with 3-argument lambda and finisher lambda
+SELECT ARRAY_REDUCE([1, 2, 3], 0, (acc, e, i) -> acc + e + i, acc -> acc * 2);
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#5 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#5]
+    +-expr_list=
+    | +-$col1#5 :=
+    |   +-FunctionCall(GoogleSQL:array_reduce(ARRAY<INT64> array_to_reduce, INT64 initial_value, FUNCTION<(INT64, INT64, INT64)->INT64> reducer, FUNCTION<INT64->INT64> finisher, optional(1) BOOL ignore_nulls) -> INT64)
+    |     +-FunctionArgument
+    |     | +-expr=
+    |     |   +-Literal(type=ARRAY<INT64>, value=[1, 2, 3])
+    |     +-FunctionArgument
+    |     | +-expr=
+    |     |   +-Literal(type=INT64, value=0)
+    |     +-FunctionArgument
+    |     | +-inline_lambda=
+    |     |   +-InlineLambda
+    |     |     +-argument_list=$lambda_arg.[acc#1, e#2, i#3]
+    |     |     +-body=
+    |     |       +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |     |         +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |     |         | +-ColumnRef(type=INT64, column=$lambda_arg.acc#1)
+    |     |         | +-ColumnRef(type=INT64, column=$lambda_arg.e#2)
+    |     |         +-ColumnRef(type=INT64, column=$lambda_arg.i#3)
+    |     +-FunctionArgument
+    |     | +-inline_lambda=
+    |     |   +-InlineLambda
+    |     |     +-argument_list=[$lambda_arg.acc#4]
+    |     |     +-body=
+    |     |       +-FunctionCall(GoogleSQL:$multiply(INT64, INT64) -> INT64)
+    |     |         +-ColumnRef(type=INT64, column=$lambda_arg.acc#4)
+    |     |         +-Literal(type=INT64, value=2)
+    |     +-FunctionArgument
+    |       +-expr=
+    |         +-Literal(type=BOOL, value=false)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# SAFE.ARRAY_REDUCE with SAFE_FUNCTION_CALL disabled
+SELECT SAFE.ARRAY_REDUCE([1, 2, 3], 0, (acc, e) -> acc + e);
+--
+ERROR: Function calls with SAFE are not supported [at 1:8]
+SELECT SAFE.ARRAY_REDUCE([1, 2, 3], 0, (acc, e) -> acc + e);
+       ^
+==
+
+# SAFE.ARRAY_REDUCE when SAFE_FUNCTION_CALL is enabled but SAFE_FUNCTION_CALL_WITH_LAMBDA_ARGS is disabled
+[language_features=NONE,+INLINE_LAMBDA_ARGUMENT,+ARRAY_REDUCE,+NAMED_ARGUMENTS,+SAFE_FUNCTION_CALL]
+SELECT SAFE.ARRAY_REDUCE([1, 2, 3], 0, (acc, e) -> acc + e);
+--
+ERROR: Function ARRAY_REDUCE does not support SAFE error mode [at 1:8]
+SELECT SAFE.ARRAY_REDUCE([1, 2, 3], 0, (acc, e) -> acc + e);
+       ^
+==
+
+# SAFE.ARRAY_REDUCE with SAFE_FUNCTION_CALL and SAFE_FUNCTION_CALL_WITH_LAMBDA_ARGS enabled
+[language_features=NONE,+INLINE_LAMBDA_ARGUMENT,+ARRAY_REDUCE,+NAMED_ARGUMENTS,+SAFE_FUNCTION_CALL,+SAFE_FUNCTION_CALL_WITH_LAMBDA_ARGS]
+SELECT SAFE.ARRAY_REDUCE([1, 2, 3], 0, (acc, e) -> acc + e);
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#3 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#3]
+    +-expr_list=
+    | +-$col1#3 :=
+    |   +-FunctionCall({SAFE_ERROR_MODE} GoogleSQL:array_reduce(ARRAY<INT64> array_to_reduce, INT64 initial_value, FUNCTION<(INT64, INT64)->INT64> reducer, optional(1) BOOL ignore_nulls) -> INT64)
+    |     +-FunctionArgument
+    |     | +-expr=
+    |     |   +-Literal(type=ARRAY<INT64>, value=[1, 2, 3])
+    |     +-FunctionArgument
+    |     | +-expr=
+    |     |   +-Literal(type=INT64, value=0)
+    |     +-FunctionArgument
+    |     | +-inline_lambda=
+    |     |   +-InlineLambda
+    |     |     +-argument_list=$lambda_arg.[acc#1, e#2]
+    |     |     +-body=
+    |     |       +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |     |         +-ColumnRef(type=INT64, column=$lambda_arg.acc#1)
+    |     |         +-ColumnRef(type=INT64, column=$lambda_arg.e#2)
+    |     +-FunctionArgument
+    |       +-expr=
+    |         +-Literal(type=BOOL, value=false)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# ARRAY_REDUCE with no arguments fails
+SELECT ARRAY_REDUCE();
+--
+ERROR: No matching signature for function ARRAY_REDUCE with no arguments
+  Signature: ARRAY_REDUCE(ARRAY<T1>, T2, FUNCTION<(T2, T1)->T2>, [ignore_nulls => BOOL])
+    Signature requires at least 3 arguments, found 0 arguments
+  Signature: ARRAY_REDUCE(ARRAY<T1>, T2, FUNCTION<(T2, T1, INT64)->T2>, [ignore_nulls => BOOL])
+    Signature requires at least 3 arguments, found 0 arguments
+  Signature: ARRAY_REDUCE(ARRAY<T1>, T2, FUNCTION<(T2, T1)->T2>, FUNCTION<T2->T3>, [ignore_nulls => BOOL])
+    Signature requires at least 4 arguments, found 0 arguments
+  Signature: ARRAY_REDUCE(ARRAY<T1>, T2, FUNCTION<(T2, T1, INT64)->T2>, FUNCTION<T2->T3>, [ignore_nulls => BOOL])
+    Signature requires at least 4 arguments, found 0 arguments
+  Signature: ARRAY_REDUCE(ARRAY<T1>, FUNCTION<(T1, T1)->T1>, [ignore_nulls => BOOL])
+    Signature requires at least 2 arguments, found 0 arguments
+  Signature: ARRAY_REDUCE(ARRAY<T1>, FUNCTION<(T1, T1, INT64)->T1>, [ignore_nulls => BOOL])
+    Signature requires at least 2 arguments, found 0 arguments
+  Signature: ARRAY_REDUCE(ARRAY<T1>, FUNCTION<(T1, T1)->T1>, FUNCTION<T1->T2>, [ignore_nulls => BOOL])
+    Signature requires at least 3 arguments, found 0 arguments
+  Signature: ARRAY_REDUCE(ARRAY<T1>, FUNCTION<(T1, T1, INT64)->T1>, FUNCTION<T1->T2>, [ignore_nulls => BOOL])
+    Signature requires at least 3 arguments, found 0 arguments [at 1:8]
+SELECT ARRAY_REDUCE();
+       ^
+==
+
+# ARRAY_REDUCE with 1 argument fails
+SELECT ARRAY_REDUCE([1, 2, 3]);
+--
+ERROR: No matching signature for function ARRAY_REDUCE
+  Argument types: ARRAY<INT64>
+  Signature: ARRAY_REDUCE(ARRAY<T1>, T2, FUNCTION<(T2, T1)->T2>, [ignore_nulls => BOOL])
+    Signature requires at least 3 arguments, found 1 argument
+  Signature: ARRAY_REDUCE(ARRAY<T1>, T2, FUNCTION<(T2, T1, INT64)->T2>, [ignore_nulls => BOOL])
+    Signature requires at least 3 arguments, found 1 argument
+  Signature: ARRAY_REDUCE(ARRAY<T1>, T2, FUNCTION<(T2, T1)->T2>, FUNCTION<T2->T3>, [ignore_nulls => BOOL])
+    Signature requires at least 4 arguments, found 1 argument
+  Signature: ARRAY_REDUCE(ARRAY<T1>, T2, FUNCTION<(T2, T1, INT64)->T2>, FUNCTION<T2->T3>, [ignore_nulls => BOOL])
+    Signature requires at least 4 arguments, found 1 argument
+  Signature: ARRAY_REDUCE(ARRAY<T1>, FUNCTION<(T1, T1)->T1>, [ignore_nulls => BOOL])
+    Signature requires at least 2 arguments, found 1 argument
+  Signature: ARRAY_REDUCE(ARRAY<T1>, FUNCTION<(T1, T1, INT64)->T1>, [ignore_nulls => BOOL])
+    Signature requires at least 2 arguments, found 1 argument
+  Signature: ARRAY_REDUCE(ARRAY<T1>, FUNCTION<(T1, T1)->T1>, FUNCTION<T1->T2>, [ignore_nulls => BOOL])
+    Signature requires at least 3 arguments, found 1 argument
+  Signature: ARRAY_REDUCE(ARRAY<T1>, FUNCTION<(T1, T1, INT64)->T1>, FUNCTION<T1->T2>, [ignore_nulls => BOOL])
+    Signature requires at least 3 arguments, found 1 argument [at 1:8]
+SELECT ARRAY_REDUCE([1, 2, 3]);
+       ^
+==
+
+# ARRAY_REDUCE with too many positional arguments fails
+SELECT ARRAY_REDUCE([1, 2, 3], 0, (acc, e) -> acc + e, acc -> acc, 'extra');
+--
+ERROR: No matching signature for function ARRAY_REDUCE
+  Argument types: ARRAY<INT64>, INT64, LAMBDA, LAMBDA, STRING
+  Signature: ARRAY_REDUCE(ARRAY<T1>, T2, FUNCTION<(T2, T1)->T2>, [ignore_nulls => BOOL])
+    Signature accepts at most 4 arguments, found 5 arguments
+  Signature: ARRAY_REDUCE(ARRAY<T1>, T2, FUNCTION<(T2, T1, INT64)->T2>, [ignore_nulls => BOOL])
+    Signature accepts at most 4 arguments, found 5 arguments
+  Signature: ARRAY_REDUCE(ARRAY<T1>, T2, FUNCTION<(T2, T1)->T2>, FUNCTION<T2->T3>, [ignore_nulls => BOOL])
+    Positional argument at 5 is invalid because argument `ignore_nulls` can only be referred to by name
+  Signature: ARRAY_REDUCE(ARRAY<T1>, T2, FUNCTION<(T2, T1, INT64)->T2>, FUNCTION<T2->T3>, [ignore_nulls => BOOL])
+    Positional argument at 5 is invalid because argument `ignore_nulls` can only be referred to by name
+  Signature: ARRAY_REDUCE(ARRAY<T1>, FUNCTION<(T1, T1)->T1>, [ignore_nulls => BOOL])
+    Signature accepts at most 3 arguments, found 5 arguments
+  Signature: ARRAY_REDUCE(ARRAY<T1>, FUNCTION<(T1, T1, INT64)->T1>, [ignore_nulls => BOOL])
+    Signature accepts at most 3 arguments, found 5 arguments
+  Signature: ARRAY_REDUCE(ARRAY<T1>, FUNCTION<(T1, T1)->T1>, FUNCTION<T1->T2>, [ignore_nulls => BOOL])
+    Signature accepts at most 4 arguments, found 5 arguments
+  Signature: ARRAY_REDUCE(ARRAY<T1>, FUNCTION<(T1, T1, INT64)->T1>, FUNCTION<T1->T2>, [ignore_nulls => BOOL])
+    Signature accepts at most 4 arguments, found 5 arguments [at 1:8]
+SELECT ARRAY_REDUCE([1, 2, 3], 0, (acc, e) -> acc + e, acc -> acc, 'extra');
+       ^
+==
+
+# Non-lambda expression passed for reducer with initial value fails
+SELECT ARRAY_REDUCE([1, 2, 3], 0, 42);
+--
+ERROR: No matching signature for function ARRAY_REDUCE
+  Argument types: ARRAY<INT64>, INT64, INT64
+  Signature: ARRAY_REDUCE(ARRAY<T1>, T2, FUNCTION<(T2, T1)->T2>, [ignore_nulls => BOOL])
+    Argument 3: expected FUNCTION<(T2, T1)->T2>, found INT64
+  Signature: ARRAY_REDUCE(ARRAY<T1>, T2, FUNCTION<(T2, T1, INT64)->T2>, [ignore_nulls => BOOL])
+    Argument 3: expected FUNCTION<(T2, T1, INT64)->T2>, found INT64
+  Signature: ARRAY_REDUCE(ARRAY<T1>, T2, FUNCTION<(T2, T1)->T2>, FUNCTION<T2->T3>, [ignore_nulls => BOOL])
+    Signature requires at least 4 arguments, found 3 arguments
+  Signature: ARRAY_REDUCE(ARRAY<T1>, T2, FUNCTION<(T2, T1, INT64)->T2>, FUNCTION<T2->T3>, [ignore_nulls => BOOL])
+    Signature requires at least 4 arguments, found 3 arguments
+  Signature: ARRAY_REDUCE(ARRAY<T1>, FUNCTION<(T1, T1)->T1>, [ignore_nulls => BOOL])
+    Positional argument at 3 is invalid because argument `ignore_nulls` can only be referred to by name
+  Signature: ARRAY_REDUCE(ARRAY<T1>, FUNCTION<(T1, T1, INT64)->T1>, [ignore_nulls => BOOL])
+    Positional argument at 3 is invalid because argument `ignore_nulls` can only be referred to by name
+  Signature: ARRAY_REDUCE(ARRAY<T1>, FUNCTION<(T1, T1)->T1>, FUNCTION<T1->T2>, [ignore_nulls => BOOL])
+    Argument 2: expected FUNCTION<(T1, T1)->T1>, found INT64
+  Signature: ARRAY_REDUCE(ARRAY<T1>, FUNCTION<(T1, T1, INT64)->T1>, FUNCTION<T1->T2>, [ignore_nulls => BOOL])
+    Argument 2: expected FUNCTION<(T1, T1, INT64)->T1>, found INT64 [at 1:8]
+SELECT ARRAY_REDUCE([1, 2, 3], 0, 42);
+       ^
+==
+
+# Non-lambda expression passed for reducer without initial value fails
+SELECT ARRAY_REDUCE([1, 2, 3], 42);
+--
+ERROR: No matching signature for function ARRAY_REDUCE
+  Argument types: ARRAY<INT64>, INT64
+  Signature: ARRAY_REDUCE(ARRAY<T1>, T2, FUNCTION<(T2, T1)->T2>, [ignore_nulls => BOOL])
+    Signature requires at least 3 arguments, found 2 arguments
+  Signature: ARRAY_REDUCE(ARRAY<T1>, T2, FUNCTION<(T2, T1, INT64)->T2>, [ignore_nulls => BOOL])
+    Signature requires at least 3 arguments, found 2 arguments
+  Signature: ARRAY_REDUCE(ARRAY<T1>, T2, FUNCTION<(T2, T1)->T2>, FUNCTION<T2->T3>, [ignore_nulls => BOOL])
+    Signature requires at least 4 arguments, found 2 arguments
+  Signature: ARRAY_REDUCE(ARRAY<T1>, T2, FUNCTION<(T2, T1, INT64)->T2>, FUNCTION<T2->T3>, [ignore_nulls => BOOL])
+    Signature requires at least 4 arguments, found 2 arguments
+  Signature: ARRAY_REDUCE(ARRAY<T1>, FUNCTION<(T1, T1)->T1>, [ignore_nulls => BOOL])
+    Argument 2: expected FUNCTION<(T1, T1)->T1>, found INT64
+  Signature: ARRAY_REDUCE(ARRAY<T1>, FUNCTION<(T1, T1, INT64)->T1>, [ignore_nulls => BOOL])
+    Argument 2: expected FUNCTION<(T1, T1, INT64)->T1>, found INT64
+  Signature: ARRAY_REDUCE(ARRAY<T1>, FUNCTION<(T1, T1)->T1>, FUNCTION<T1->T2>, [ignore_nulls => BOOL])
+    Signature requires at least 3 arguments, found 2 arguments
+  Signature: ARRAY_REDUCE(ARRAY<T1>, FUNCTION<(T1, T1, INT64)->T1>, FUNCTION<T1->T2>, [ignore_nulls => BOOL])
+    Signature requires at least 3 arguments, found 2 arguments [at 1:8]
+SELECT ARRAY_REDUCE([1, 2, 3], 42);
+       ^
+==
+
+# Non-lambda expression passed for finisher with initial value fails
+SELECT ARRAY_REDUCE([1, 2, 3], 0, (acc, e) -> acc + e, 42);
+--
+ERROR: No matching signature for function ARRAY_REDUCE
+  Argument types: ARRAY<INT64>, INT64, LAMBDA, INT64
+  Signature: ARRAY_REDUCE(ARRAY<T1>, T2, FUNCTION<(T2, T1)->T2>, [ignore_nulls => BOOL])
+    Positional argument at 4 is invalid because argument `ignore_nulls` can only be referred to by name
+  Signature: ARRAY_REDUCE(ARRAY<T1>, T2, FUNCTION<(T2, T1, INT64)->T2>, [ignore_nulls => BOOL])
+    Positional argument at 4 is invalid because argument `ignore_nulls` can only be referred to by name
+  Signature: ARRAY_REDUCE(ARRAY<T1>, T2, FUNCTION<(T2, T1)->T2>, FUNCTION<T2->T3>, [ignore_nulls => BOOL])
+    Argument 4: expected FUNCTION<T2->T3>, found INT64
+  Signature: ARRAY_REDUCE(ARRAY<T1>, T2, FUNCTION<(T2, T1, INT64)->T2>, FUNCTION<T2->T3>, [ignore_nulls => BOOL])
+    Argument 3: lambda requires 3 arguments but 2 is provided
+  Signature: ARRAY_REDUCE(ARRAY<T1>, FUNCTION<(T1, T1)->T1>, [ignore_nulls => BOOL])
+    Signature accepts at most 3 arguments, found 4 arguments
+  Signature: ARRAY_REDUCE(ARRAY<T1>, FUNCTION<(T1, T1, INT64)->T1>, [ignore_nulls => BOOL])
+    Signature accepts at most 3 arguments, found 4 arguments
+  Signature: ARRAY_REDUCE(ARRAY<T1>, FUNCTION<(T1, T1)->T1>, FUNCTION<T1->T2>, [ignore_nulls => BOOL])
+    Positional argument at 4 is invalid because argument `ignore_nulls` can only be referred to by name
+  Signature: ARRAY_REDUCE(ARRAY<T1>, FUNCTION<(T1, T1, INT64)->T1>, FUNCTION<T1->T2>, [ignore_nulls => BOOL])
+    Positional argument at 4 is invalid because argument `ignore_nulls` can only be referred to by name [at 1:8]
+SELECT ARRAY_REDUCE([1, 2, 3], 0, (acc, e) -> acc + e, 42);
+       ^
+==
+
+# Non-lambda expression passed for finisher without initial value fails
+SELECT ARRAY_REDUCE([1, 2, 3], (acc, e) -> acc + e, 42);
+--
+ERROR: No matching signature for function ARRAY_REDUCE
+  Argument types: ARRAY<INT64>, LAMBDA, INT64
+  Signature: ARRAY_REDUCE(ARRAY<T1>, T2, FUNCTION<(T2, T1)->T2>, [ignore_nulls => BOOL])
+    Argument 2: expected T2, found LAMBDA
+  Signature: ARRAY_REDUCE(ARRAY<T1>, T2, FUNCTION<(T2, T1, INT64)->T2>, [ignore_nulls => BOOL])
+    Argument 2: expected T2, found LAMBDA
+  Signature: ARRAY_REDUCE(ARRAY<T1>, T2, FUNCTION<(T2, T1)->T2>, FUNCTION<T2->T3>, [ignore_nulls => BOOL])
+    Signature requires at least 4 arguments, found 3 arguments
+  Signature: ARRAY_REDUCE(ARRAY<T1>, T2, FUNCTION<(T2, T1, INT64)->T2>, FUNCTION<T2->T3>, [ignore_nulls => BOOL])
+    Signature requires at least 4 arguments, found 3 arguments
+  Signature: ARRAY_REDUCE(ARRAY<T1>, FUNCTION<(T1, T1)->T1>, [ignore_nulls => BOOL])
+    Positional argument at 3 is invalid because argument `ignore_nulls` can only be referred to by name
+  Signature: ARRAY_REDUCE(ARRAY<T1>, FUNCTION<(T1, T1, INT64)->T1>, [ignore_nulls => BOOL])
+    Positional argument at 3 is invalid because argument `ignore_nulls` can only be referred to by name
+  Signature: ARRAY_REDUCE(ARRAY<T1>, FUNCTION<(T1, T1)->T1>, FUNCTION<T1->T2>, [ignore_nulls => BOOL])
+    Argument 3: expected FUNCTION<T1->T2>, found INT64
+  Signature: ARRAY_REDUCE(ARRAY<T1>, FUNCTION<(T1, T1, INT64)->T1>, FUNCTION<T1->T2>, [ignore_nulls => BOOL])
+    Argument 2: lambda requires 3 arguments but 2 is provided [at 1:8]
+SELECT ARRAY_REDUCE([1, 2, 3], (acc, e) -> acc + e, 42);
+       ^
+==
+
+# Invalid lambda signature (1 argument instead of 2 or 3)
+SELECT ARRAY_REDUCE([1, 2, 3], 0, e -> e + 1);
+--
+ERROR: No matching signature for function ARRAY_REDUCE
+  Argument types: ARRAY<INT64>, INT64, LAMBDA
+  Signature: ARRAY_REDUCE(ARRAY<T1>, T2, FUNCTION<(T2, T1)->T2>, [ignore_nulls => BOOL])
+    Argument 3: lambda requires 2 arguments but 1 is provided
+  Signature: ARRAY_REDUCE(ARRAY<T1>, T2, FUNCTION<(T2, T1, INT64)->T2>, [ignore_nulls => BOOL])
+    Argument 3: lambda requires 3 arguments but 1 is provided
+  Signature: ARRAY_REDUCE(ARRAY<T1>, T2, FUNCTION<(T2, T1)->T2>, FUNCTION<T2->T3>, [ignore_nulls => BOOL])
+    Signature requires at least 4 arguments, found 3 arguments
+  Signature: ARRAY_REDUCE(ARRAY<T1>, T2, FUNCTION<(T2, T1, INT64)->T2>, FUNCTION<T2->T3>, [ignore_nulls => BOOL])
+    Signature requires at least 4 arguments, found 3 arguments
+  Signature: ARRAY_REDUCE(ARRAY<T1>, FUNCTION<(T1, T1)->T1>, [ignore_nulls => BOOL])
+    Positional argument at 3 is invalid because argument `ignore_nulls` can only be referred to by name
+  Signature: ARRAY_REDUCE(ARRAY<T1>, FUNCTION<(T1, T1, INT64)->T1>, [ignore_nulls => BOOL])
+    Positional argument at 3 is invalid because argument `ignore_nulls` can only be referred to by name
+  Signature: ARRAY_REDUCE(ARRAY<T1>, FUNCTION<(T1, T1)->T1>, FUNCTION<T1->T2>, [ignore_nulls => BOOL])
+    Argument 2: expected FUNCTION<(T1, T1)->T1>, found INT64
+  Signature: ARRAY_REDUCE(ARRAY<T1>, FUNCTION<(T1, T1, INT64)->T1>, FUNCTION<T1->T2>, [ignore_nulls => BOOL])
+    Argument 2: expected FUNCTION<(T1, T1, INT64)->T1>, found INT64 [at 1:8]
+SELECT ARRAY_REDUCE([1, 2, 3], 0, e -> e + 1);
+       ^
+==
+
+# Invalid lambda signature (4 arguments)
+SELECT ARRAY_REDUCE([1, 2, 3], 0, (a, b, c, d) -> a + b);
+--
+ERROR: No matching signature for function ARRAY_REDUCE
+  Argument types: ARRAY<INT64>, INT64, LAMBDA
+  Signature: ARRAY_REDUCE(ARRAY<T1>, T2, FUNCTION<(T2, T1)->T2>, [ignore_nulls => BOOL])
+    Argument 3: lambda requires 2 arguments but 4 is provided
+  Signature: ARRAY_REDUCE(ARRAY<T1>, T2, FUNCTION<(T2, T1, INT64)->T2>, [ignore_nulls => BOOL])
+    Argument 3: lambda requires 3 arguments but 4 is provided
+  Signature: ARRAY_REDUCE(ARRAY<T1>, T2, FUNCTION<(T2, T1)->T2>, FUNCTION<T2->T3>, [ignore_nulls => BOOL])
+    Signature requires at least 4 arguments, found 3 arguments
+  Signature: ARRAY_REDUCE(ARRAY<T1>, T2, FUNCTION<(T2, T1, INT64)->T2>, FUNCTION<T2->T3>, [ignore_nulls => BOOL])
+    Signature requires at least 4 arguments, found 3 arguments
+  Signature: ARRAY_REDUCE(ARRAY<T1>, FUNCTION<(T1, T1)->T1>, [ignore_nulls => BOOL])
+    Positional argument at 3 is invalid because argument `ignore_nulls` can only be referred to by name
+  Signature: ARRAY_REDUCE(ARRAY<T1>, FUNCTION<(T1, T1, INT64)->T1>, [ignore_nulls => BOOL])
+    Positional argument at 3 is invalid because argument `ignore_nulls` can only be referred to by name
+  Signature: ARRAY_REDUCE(ARRAY<T1>, FUNCTION<(T1, T1)->T1>, FUNCTION<T1->T2>, [ignore_nulls => BOOL])
+    Argument 2: expected FUNCTION<(T1, T1)->T1>, found INT64
+  Signature: ARRAY_REDUCE(ARRAY<T1>, FUNCTION<(T1, T1, INT64)->T1>, FUNCTION<T1->T2>, [ignore_nulls => BOOL])
+    Argument 2: expected FUNCTION<(T1, T1, INT64)->T1>, found INT64 [at 1:8]
+SELECT ARRAY_REDUCE([1, 2, 3], 0, (a, b, c, d) -> a + b);
+       ^
+==
+
+# Basic 2-argument lambda reduction without initial value
+SELECT ARRAY_REDUCE([1, 2, 3], (acc, e) -> acc + e);
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#3 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#3]
+    +-expr_list=
+    | +-$col1#3 :=
+    |   +-FunctionCall(GoogleSQL:array_reduce(ARRAY<INT64> array_to_reduce, FUNCTION<(INT64, INT64)->INT64> reducer, optional(1) BOOL ignore_nulls) -> INT64)
+    |     +-FunctionArgument
+    |     | +-expr=
+    |     |   +-Literal(type=ARRAY<INT64>, value=[1, 2, 3])
+    |     +-FunctionArgument
+    |     | +-inline_lambda=
+    |     |   +-InlineLambda
+    |     |     +-argument_list=$lambda_arg.[acc#1, e#2]
+    |     |     +-body=
+    |     |       +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |     |         +-ColumnRef(type=INT64, column=$lambda_arg.acc#1)
+    |     |         +-ColumnRef(type=INT64, column=$lambda_arg.e#2)
+    |     +-FunctionArgument
+    |       +-expr=
+    |         +-Literal(type=BOOL, value=false)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# 3-argument lambda reduction with index without initial value
+SELECT ARRAY_REDUCE([1, 2, 3], (acc, e, i) -> acc + e + i);
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#4 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#4]
+    +-expr_list=
+    | +-$col1#4 :=
+    |   +-FunctionCall(GoogleSQL:array_reduce(ARRAY<INT64> array_to_reduce, FUNCTION<(INT64, INT64, INT64)->INT64> reducer, optional(1) BOOL ignore_nulls) -> INT64)
+    |     +-FunctionArgument
+    |     | +-expr=
+    |     |   +-Literal(type=ARRAY<INT64>, value=[1, 2, 3])
+    |     +-FunctionArgument
+    |     | +-inline_lambda=
+    |     |   +-InlineLambda
+    |     |     +-argument_list=$lambda_arg.[acc#1, e#2, i#3]
+    |     |     +-body=
+    |     |       +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |     |         +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |     |         | +-ColumnRef(type=INT64, column=$lambda_arg.acc#1)
+    |     |         | +-ColumnRef(type=INT64, column=$lambda_arg.e#2)
+    |     |         +-ColumnRef(type=INT64, column=$lambda_arg.i#3)
+    |     +-FunctionArgument
+    |       +-expr=
+    |         +-Literal(type=BOOL, value=false)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Reduction without initial value with finisher lambda
+SELECT ARRAY_REDUCE([1, 2, 3], (acc, e) -> acc + e, acc -> CAST(acc AS STRING));
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#4 AS `$col1` [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#4]
+    +-expr_list=
+    | +-$col1#4 :=
+    |   +-FunctionCall(GoogleSQL:array_reduce(ARRAY<INT64> array_to_reduce, FUNCTION<(INT64, INT64)->INT64> reducer, FUNCTION<INT64->STRING> finisher, optional(1) BOOL ignore_nulls) -> STRING)
+    |     +-FunctionArgument
+    |     | +-expr=
+    |     |   +-Literal(type=ARRAY<INT64>, value=[1, 2, 3])
+    |     +-FunctionArgument
+    |     | +-inline_lambda=
+    |     |   +-InlineLambda
+    |     |     +-argument_list=$lambda_arg.[acc#1, e#2]
+    |     |     +-body=
+    |     |       +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |     |         +-ColumnRef(type=INT64, column=$lambda_arg.acc#1)
+    |     |         +-ColumnRef(type=INT64, column=$lambda_arg.e#2)
+    |     +-FunctionArgument
+    |     | +-inline_lambda=
+    |     |   +-InlineLambda
+    |     |     +-argument_list=[$lambda_arg.acc#3]
+    |     |     +-body=
+    |     |       +-Cast(INT64 -> STRING)
+    |     |         +-ColumnRef(type=INT64, column=$lambda_arg.acc#3)
+    |     +-FunctionArgument
+    |       +-expr=
+    |         +-Literal(type=BOOL, value=false)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Reduction without initial value with 3-argument lambda and finisher lambda
+SELECT ARRAY_REDUCE([1, 2, 3], (acc, e, i) -> acc + e + i, acc -> acc * 2);
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#5 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#5]
+    +-expr_list=
+    | +-$col1#5 :=
+    |   +-FunctionCall(GoogleSQL:array_reduce(ARRAY<INT64> array_to_reduce, FUNCTION<(INT64, INT64, INT64)->INT64> reducer, FUNCTION<INT64->INT64> finisher, optional(1) BOOL ignore_nulls) -> INT64)
+    |     +-FunctionArgument
+    |     | +-expr=
+    |     |   +-Literal(type=ARRAY<INT64>, value=[1, 2, 3])
+    |     +-FunctionArgument
+    |     | +-inline_lambda=
+    |     |   +-InlineLambda
+    |     |     +-argument_list=$lambda_arg.[acc#1, e#2, i#3]
+    |     |     +-body=
+    |     |       +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |     |         +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |     |         | +-ColumnRef(type=INT64, column=$lambda_arg.acc#1)
+    |     |         | +-ColumnRef(type=INT64, column=$lambda_arg.e#2)
+    |     |         +-ColumnRef(type=INT64, column=$lambda_arg.i#3)
+    |     +-FunctionArgument
+    |     | +-inline_lambda=
+    |     |   +-InlineLambda
+    |     |     +-argument_list=[$lambda_arg.acc#4]
+    |     |     +-body=
+    |     |       +-FunctionCall(GoogleSQL:$multiply(INT64, INT64) -> INT64)
+    |     |         +-ColumnRef(type=INT64, column=$lambda_arg.acc#4)
+    |     |         +-Literal(type=INT64, value=2)
+    |     +-FunctionArgument
+    |       +-expr=
+    |         +-Literal(type=BOOL, value=false)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Invalid lambda signature without initial value (1 argument instead of 2 or 3)
+SELECT ARRAY_REDUCE([1, 2, 3], e -> e + 1);
+--
+ERROR: No matching signature for function ARRAY_REDUCE
+  Argument types: ARRAY<INT64>, LAMBDA
+  Signature: ARRAY_REDUCE(ARRAY<T1>, T2, FUNCTION<(T2, T1)->T2>, [ignore_nulls => BOOL])
+    Signature requires at least 3 arguments, found 2 arguments
+  Signature: ARRAY_REDUCE(ARRAY<T1>, T2, FUNCTION<(T2, T1, INT64)->T2>, [ignore_nulls => BOOL])
+    Signature requires at least 3 arguments, found 2 arguments
+  Signature: ARRAY_REDUCE(ARRAY<T1>, T2, FUNCTION<(T2, T1)->T2>, FUNCTION<T2->T3>, [ignore_nulls => BOOL])
+    Signature requires at least 4 arguments, found 2 arguments
+  Signature: ARRAY_REDUCE(ARRAY<T1>, T2, FUNCTION<(T2, T1, INT64)->T2>, FUNCTION<T2->T3>, [ignore_nulls => BOOL])
+    Signature requires at least 4 arguments, found 2 arguments
+  Signature: ARRAY_REDUCE(ARRAY<T1>, FUNCTION<(T1, T1)->T1>, [ignore_nulls => BOOL])
+    Argument 2: lambda requires 2 arguments but 1 is provided
+  Signature: ARRAY_REDUCE(ARRAY<T1>, FUNCTION<(T1, T1, INT64)->T1>, [ignore_nulls => BOOL])
+    Argument 2: lambda requires 3 arguments but 1 is provided
+  Signature: ARRAY_REDUCE(ARRAY<T1>, FUNCTION<(T1, T1)->T1>, FUNCTION<T1->T2>, [ignore_nulls => BOOL])
+    Signature requires at least 3 arguments, found 2 arguments
+  Signature: ARRAY_REDUCE(ARRAY<T1>, FUNCTION<(T1, T1, INT64)->T1>, FUNCTION<T1->T2>, [ignore_nulls => BOOL])
+    Signature requires at least 3 arguments, found 2 arguments [at 1:8]
+SELECT ARRAY_REDUCE([1, 2, 3], e -> e + 1);
+       ^
+==
+
+# Invalid lambda signature without initial value (4 arguments)
+SELECT ARRAY_REDUCE([1, 2, 3], (a, b, c, d) -> a + b);
+--
+ERROR: No matching signature for function ARRAY_REDUCE
+  Argument types: ARRAY<INT64>, LAMBDA
+  Signature: ARRAY_REDUCE(ARRAY<T1>, T2, FUNCTION<(T2, T1)->T2>, [ignore_nulls => BOOL])
+    Signature requires at least 3 arguments, found 2 arguments
+  Signature: ARRAY_REDUCE(ARRAY<T1>, T2, FUNCTION<(T2, T1, INT64)->T2>, [ignore_nulls => BOOL])
+    Signature requires at least 3 arguments, found 2 arguments
+  Signature: ARRAY_REDUCE(ARRAY<T1>, T2, FUNCTION<(T2, T1)->T2>, FUNCTION<T2->T3>, [ignore_nulls => BOOL])
+    Signature requires at least 4 arguments, found 2 arguments
+  Signature: ARRAY_REDUCE(ARRAY<T1>, T2, FUNCTION<(T2, T1, INT64)->T2>, FUNCTION<T2->T3>, [ignore_nulls => BOOL])
+    Signature requires at least 4 arguments, found 2 arguments
+  Signature: ARRAY_REDUCE(ARRAY<T1>, FUNCTION<(T1, T1)->T1>, [ignore_nulls => BOOL])
+    Argument 2: lambda requires 2 arguments but 4 is provided
+  Signature: ARRAY_REDUCE(ARRAY<T1>, FUNCTION<(T1, T1, INT64)->T1>, [ignore_nulls => BOOL])
+    Argument 2: lambda requires 3 arguments but 4 is provided
+  Signature: ARRAY_REDUCE(ARRAY<T1>, FUNCTION<(T1, T1)->T1>, FUNCTION<T1->T2>, [ignore_nulls => BOOL])
+    Signature requires at least 3 arguments, found 2 arguments
+  Signature: ARRAY_REDUCE(ARRAY<T1>, FUNCTION<(T1, T1, INT64)->T1>, FUNCTION<T1->T2>, [ignore_nulls => BOOL])
+    Signature requires at least 3 arguments, found 2 arguments [at 1:8]
+SELECT ARRAY_REDUCE([1, 2, 3], (a, b, c, d) -> a + b);
+       ^
+==
+
+# Reduction with ignore_nulls => true
+SELECT ARRAY_REDUCE([1, NULL, 3], 0, (acc, e) -> acc + e, ignore_nulls => true);
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#3 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#3]
+    +-expr_list=
+    | +-$col1#3 :=
+    |   +-FunctionCall(GoogleSQL:array_reduce(ARRAY<INT64> array_to_reduce, INT64 initial_value, FUNCTION<(INT64, INT64)->INT64> reducer, optional(1) BOOL ignore_nulls) -> INT64)
+    |     +-FunctionArgument
+    |     | +-expr=
+    |     |   +-Literal(type=ARRAY<INT64>, value=[1, NULL, 3])
+    |     +-FunctionArgument
+    |     | +-expr=
+    |     |   +-Literal(type=INT64, value=0)
+    |     +-FunctionArgument
+    |     | +-inline_lambda=
+    |     |   +-InlineLambda
+    |     |     +-argument_list=$lambda_arg.[acc#1, e#2]
+    |     |     +-body=
+    |     |       +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |     |         +-ColumnRef(type=INT64, column=$lambda_arg.acc#1)
+    |     |         +-ColumnRef(type=INT64, column=$lambda_arg.e#2)
+    |     +-FunctionArgument
+    |       +-expr=
+    |         +-Literal(type=BOOL, value=true)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Reduction without initial value and ignore_nulls => true
+SELECT ARRAY_REDUCE([NULL, 2, 3], (acc, e) -> acc + e, ignore_nulls => true);
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#3 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#3]
+    +-expr_list=
+    | +-$col1#3 :=
+    |   +-FunctionCall(GoogleSQL:array_reduce(ARRAY<INT64> array_to_reduce, FUNCTION<(INT64, INT64)->INT64> reducer, optional(1) BOOL ignore_nulls) -> INT64)
+    |     +-FunctionArgument
+    |     | +-expr=
+    |     |   +-Literal(type=ARRAY<INT64>, value=[NULL, 2, 3])
+    |     +-FunctionArgument
+    |     | +-inline_lambda=
+    |     |   +-InlineLambda
+    |     |     +-argument_list=$lambda_arg.[acc#1, e#2]
+    |     |     +-body=
+    |     |       +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |     |         +-ColumnRef(type=INT64, column=$lambda_arg.acc#1)
+    |     |         +-ColumnRef(type=INT64, column=$lambda_arg.e#2)
+    |     +-FunctionArgument
+    |       +-expr=
+    |         +-Literal(type=BOOL, value=true)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Positional bool argument instead of named-only ignore_nulls fails
+SELECT ARRAY_REDUCE([1, 2, 3], 0, (acc, e) -> acc + e, true);
+--
+ERROR: No matching signature for function ARRAY_REDUCE
+  Argument types: ARRAY<INT64>, INT64, LAMBDA, BOOL
+  Signature: ARRAY_REDUCE(ARRAY<T1>, T2, FUNCTION<(T2, T1)->T2>, [ignore_nulls => BOOL])
+    Positional argument at 4 is invalid because argument `ignore_nulls` can only be referred to by name
+  Signature: ARRAY_REDUCE(ARRAY<T1>, T2, FUNCTION<(T2, T1, INT64)->T2>, [ignore_nulls => BOOL])
+    Positional argument at 4 is invalid because argument `ignore_nulls` can only be referred to by name
+  Signature: ARRAY_REDUCE(ARRAY<T1>, T2, FUNCTION<(T2, T1)->T2>, FUNCTION<T2->T3>, [ignore_nulls => BOOL])
+    Argument 4: expected FUNCTION<T2->T3>, found BOOL
+  Signature: ARRAY_REDUCE(ARRAY<T1>, T2, FUNCTION<(T2, T1, INT64)->T2>, FUNCTION<T2->T3>, [ignore_nulls => BOOL])
+    Argument 3: lambda requires 3 arguments but 2 is provided
+  Signature: ARRAY_REDUCE(ARRAY<T1>, FUNCTION<(T1, T1)->T1>, [ignore_nulls => BOOL])
+    Signature accepts at most 3 arguments, found 4 arguments
+  Signature: ARRAY_REDUCE(ARRAY<T1>, FUNCTION<(T1, T1, INT64)->T1>, [ignore_nulls => BOOL])
+    Signature accepts at most 3 arguments, found 4 arguments
+  Signature: ARRAY_REDUCE(ARRAY<T1>, FUNCTION<(T1, T1)->T1>, FUNCTION<T1->T2>, [ignore_nulls => BOOL])
+    Positional argument at 4 is invalid because argument `ignore_nulls` can only be referred to by name
+  Signature: ARRAY_REDUCE(ARRAY<T1>, FUNCTION<(T1, T1, INT64)->T1>, FUNCTION<T1->T2>, [ignore_nulls => BOOL])
+    Positional argument at 4 is invalid because argument `ignore_nulls` can only be referred to by name [at 1:8]
+SELECT ARRAY_REDUCE([1, 2, 3], 0, (acc, e) -> acc + e, true);
+       ^
+==
+
+# Invalid type for ignore_nulls fails
+SELECT ARRAY_REDUCE([1, 2, 3], 0, (acc, e) -> acc + e, ignore_nulls => 'true');
+--
+ERROR: No matching signature for function ARRAY_REDUCE
+  Argument types: ARRAY<INT64>, INT64, LAMBDA, ignore_nulls => STRING
+  Signature: ARRAY_REDUCE(ARRAY<T1>, T2, FUNCTION<(T2, T1)->T2>, [ignore_nulls => BOOL])
+    Named argument `ignore_nulls`: Unable to coerce type STRING to expected type BOOL
+  Signature: ARRAY_REDUCE(ARRAY<T1>, T2, FUNCTION<(T2, T1, INT64)->T2>, [ignore_nulls => BOOL])
+    Argument 3: lambda requires 3 arguments but 2 is provided
+  Signature: ARRAY_REDUCE(ARRAY<T1>, T2, FUNCTION<(T2, T1)->T2>, FUNCTION<T2->T3>, [ignore_nulls => BOOL])
+    Required named argument `finisher` is not provided
+  Signature: ARRAY_REDUCE(ARRAY<T1>, T2, FUNCTION<(T2, T1, INT64)->T2>, FUNCTION<T2->T3>, [ignore_nulls => BOOL])
+    Required named argument `finisher` is not provided
+  Signature: ARRAY_REDUCE(ARRAY<T1>, FUNCTION<(T1, T1)->T1>, [ignore_nulls => BOOL])
+    Signature accepts at most 3 arguments, found 4 arguments
+  Signature: ARRAY_REDUCE(ARRAY<T1>, FUNCTION<(T1, T1, INT64)->T1>, [ignore_nulls => BOOL])
+    Signature accepts at most 3 arguments, found 4 arguments
+  Signature: ARRAY_REDUCE(ARRAY<T1>, FUNCTION<(T1, T1)->T1>, FUNCTION<T1->T2>, [ignore_nulls => BOOL])
+    Argument 2: expected FUNCTION<(T1, T1)->T1>, found INT64
+  Signature: ARRAY_REDUCE(ARRAY<T1>, FUNCTION<(T1, T1, INT64)->T1>, FUNCTION<T1->T2>, [ignore_nulls => BOOL])
+    Argument 2: expected FUNCTION<(T1, T1, INT64)->T1>, found INT64 [at 1:8]
+SELECT ARRAY_REDUCE([1, 2, 3], 0, (acc, e) -> acc + e, ignore_nulls => 'true');
+       ^
+==
+
+# Passing positional-only arguments by name fails
+SELECT ARRAY_REDUCE([1, 2, 3], initial_value => 0, reducer => (acc, e) -> acc + e);
+--
+ERROR: No matching signature for function ARRAY_REDUCE
+  Argument types: ARRAY<INT64>, initial_value => INT64, reducer => LAMBDA
+  Signature: ARRAY_REDUCE(ARRAY<T1>, T2, FUNCTION<(T2, T1)->T2>, [ignore_nulls => BOOL])
+    Named argument `initial_value` does not exist in signature
+  Signature: ARRAY_REDUCE(ARRAY<T1>, T2, FUNCTION<(T2, T1, INT64)->T2>, [ignore_nulls => BOOL])
+    Named argument `initial_value` does not exist in signature
+  Signature: ARRAY_REDUCE(ARRAY<T1>, T2, FUNCTION<(T2, T1)->T2>, FUNCTION<T2->T3>, [ignore_nulls => BOOL])
+    Named argument `initial_value` does not exist in signature
+  Signature: ARRAY_REDUCE(ARRAY<T1>, T2, FUNCTION<(T2, T1, INT64)->T2>, FUNCTION<T2->T3>, [ignore_nulls => BOOL])
+    Named argument `initial_value` does not exist in signature
+  Signature: ARRAY_REDUCE(ARRAY<T1>, FUNCTION<(T1, T1)->T1>, [ignore_nulls => BOOL])
+    Named argument `initial_value` does not exist in signature
+  Signature: ARRAY_REDUCE(ARRAY<T1>, FUNCTION<(T1, T1, INT64)->T1>, [ignore_nulls => BOOL])
+    Named argument `initial_value` does not exist in signature
+  Signature: ARRAY_REDUCE(ARRAY<T1>, FUNCTION<(T1, T1)->T1>, FUNCTION<T1->T2>, [ignore_nulls => BOOL])
+    Named argument `initial_value` does not exist in signature
+  Signature: ARRAY_REDUCE(ARRAY<T1>, FUNCTION<(T1, T1, INT64)->T1>, FUNCTION<T1->T2>, [ignore_nulls => BOOL])
+    Named argument `initial_value` does not exist in signature [at 1:8]
+SELECT ARRAY_REDUCE([1, 2, 3], initial_value => 0, reducer => (acc, e) -> acc...
+       ^
+==
+
+# Duplicate named argument fails
+SELECT ARRAY_REDUCE([1, 2, 3], 0, (acc, e) -> acc + e, ignore_nulls => true, ignore_nulls => false);
+--
+ERROR: Duplicate named argument ignore_nulls found in call to function GoogleSQL:array_reduce [at 1:78]
+...3], 0, (acc, e) -> acc + e, ignore_nulls => true, ignore_nulls => false);
+                                                     ^
+==
+
+# NULL ignore_nulls is allowed (the result is NULL at evaluation time)
+SELECT ARRAY_REDUCE([1, 2, 3], 0, (acc, e) -> acc + e, ignore_nulls => NULL);
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#3 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#3]
+    +-expr_list=
+    | +-$col1#3 :=
+    |   +-FunctionCall(GoogleSQL:array_reduce(ARRAY<INT64> array_to_reduce, INT64 initial_value, FUNCTION<(INT64, INT64)->INT64> reducer, optional(1) BOOL ignore_nulls) -> INT64)
+    |     +-FunctionArgument
+    |     | +-expr=
+    |     |   +-Literal(type=ARRAY<INT64>, value=[1, 2, 3])
+    |     +-FunctionArgument
+    |     | +-expr=
+    |     |   +-Literal(type=INT64, value=0)
+    |     +-FunctionArgument
+    |     | +-inline_lambda=
+    |     |   +-InlineLambda
+    |     |     +-argument_list=$lambda_arg.[acc#1, e#2]
+    |     |     +-body=
+    |     |       +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |     |         +-ColumnRef(type=INT64, column=$lambda_arg.acc#1)
+    |     |         +-ColumnRef(type=INT64, column=$lambda_arg.e#2)
+    |     +-FunctionArgument
+    |       +-expr=
+    |         +-Literal(type=BOOL, value=NULL)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Typed NULL ignore_nulls is allowed
+SELECT ARRAY_REDUCE([1, 2, 3], 0, (acc, e) -> acc + e, ignore_nulls => CAST(NULL AS BOOL));
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#3 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#3]
+    +-expr_list=
+    | +-$col1#3 :=
+    |   +-FunctionCall(GoogleSQL:array_reduce(ARRAY<INT64> array_to_reduce, INT64 initial_value, FUNCTION<(INT64, INT64)->INT64> reducer, optional(1) BOOL ignore_nulls) -> INT64)
+    |     +-FunctionArgument
+    |     | +-expr=
+    |     |   +-Literal(type=ARRAY<INT64>, value=[1, 2, 3])
+    |     +-FunctionArgument
+    |     | +-expr=
+    |     |   +-Literal(type=INT64, value=0)
+    |     +-FunctionArgument
+    |     | +-inline_lambda=
+    |     |   +-InlineLambda
+    |     |     +-argument_list=$lambda_arg.[acc#1, e#2]
+    |     |     +-body=
+    |     |       +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |     |         +-ColumnRef(type=INT64, column=$lambda_arg.acc#1)
+    |     |         +-ColumnRef(type=INT64, column=$lambda_arg.e#2)
+    |     +-FunctionArgument
+    |       +-expr=
+    |         +-Literal(type=BOOL, value=NULL, has_explicit_type=TRUE)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Non-constant ignore_nulls is allowed
+SELECT ARRAY_REDUCE([1, 2, 3], 0, (acc, e) -> acc + e, ignore_nulls => Key = 1)
+FROM KeyValue;
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#5 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#5]
+    +-expr_list=
+    | +-$col1#5 :=
+    |   +-FunctionCall(GoogleSQL:array_reduce(ARRAY<INT64> array_to_reduce, INT64 initial_value, FUNCTION<(INT64, INT64)->INT64> reducer, optional(1) BOOL ignore_nulls) -> INT64)
+    |     +-FunctionArgument
+    |     | +-expr=
+    |     |   +-Literal(type=ARRAY<INT64>, value=[1, 2, 3])
+    |     +-FunctionArgument
+    |     | +-expr=
+    |     |   +-Literal(type=INT64, value=0)
+    |     +-FunctionArgument
+    |     | +-inline_lambda=
+    |     |   +-InlineLambda
+    |     |     +-argument_list=$lambda_arg.[acc#3, e#4]
+    |     |     +-body=
+    |     |       +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |     |         +-ColumnRef(type=INT64, column=$lambda_arg.acc#3)
+    |     |         +-ColumnRef(type=INT64, column=$lambda_arg.e#4)
+    |     +-FunctionArgument
+    |       +-expr=
+    |         +-FunctionCall(GoogleSQL:$equal(INT64, INT64) -> BOOL)
+    |           +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+    |           +-Literal(type=INT64, value=1)
+    +-input_scan=
+      +-TableScan(column_list=[KeyValue.Key#1], table=KeyValue, column_index_list=[0])
+==
+
+# Untyped NULL initial_value fails signature resolution
+SELECT ARRAY_REDUCE([1, 2, 3], NULL, (acc, e) -> acc + e);
+--
+ERROR: No matching signature for function ARRAY_REDUCE
+  Argument types: ARRAY<INT64>, NULL, LAMBDA
+  Signature: ARRAY_REDUCE(ARRAY<T1>, T2, FUNCTION<(T2, T1)->T2>, [ignore_nulls => BOOL])
+    Argument 3: failed to infer type for 0-th argument (acc) of lambda from other untyped arguments
+  Signature: ARRAY_REDUCE(ARRAY<T1>, T2, FUNCTION<(T2, T1, INT64)->T2>, [ignore_nulls => BOOL])
+    Argument 3: lambda requires 3 arguments but 2 is provided
+  Signature: ARRAY_REDUCE(ARRAY<T1>, T2, FUNCTION<(T2, T1)->T2>, FUNCTION<T2->T3>, [ignore_nulls => BOOL])
+    Signature requires at least 4 arguments, found 3 arguments
+  Signature: ARRAY_REDUCE(ARRAY<T1>, T2, FUNCTION<(T2, T1, INT64)->T2>, FUNCTION<T2->T3>, [ignore_nulls => BOOL])
+    Signature requires at least 4 arguments, found 3 arguments
+  Signature: ARRAY_REDUCE(ARRAY<T1>, FUNCTION<(T1, T1)->T1>, [ignore_nulls => BOOL])
+    Positional argument at 3 is invalid because argument `ignore_nulls` can only be referred to by name
+  Signature: ARRAY_REDUCE(ARRAY<T1>, FUNCTION<(T1, T1, INT64)->T1>, [ignore_nulls => BOOL])
+    Positional argument at 3 is invalid because argument `ignore_nulls` can only be referred to by name
+  Signature: ARRAY_REDUCE(ARRAY<T1>, FUNCTION<(T1, T1)->T1>, FUNCTION<T1->T2>, [ignore_nulls => BOOL])
+    Argument 2: expected FUNCTION<(T1, T1)->T1>, found NULL
+  Signature: ARRAY_REDUCE(ARRAY<T1>, FUNCTION<(T1, T1, INT64)->T1>, FUNCTION<T1->T2>, [ignore_nulls => BOOL])
+    Argument 2: expected FUNCTION<(T1, T1, INT64)->T1>, found NULL [at 1:8]
+SELECT ARRAY_REDUCE([1, 2, 3], NULL, (acc, e) -> acc + e);
+       ^
+==
+
+# Typed NULL initial_value succeeds
+SELECT ARRAY_REDUCE([1, 2, 3], CAST(NULL AS INT64), (acc, e) -> IFNULL(acc, 0) + e);
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#3 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#3]
+    +-expr_list=
+    | +-$col1#3 :=
+    |   +-FunctionCall(GoogleSQL:array_reduce(ARRAY<INT64> array_to_reduce, INT64 initial_value, FUNCTION<(INT64, INT64)->INT64> reducer, optional(1) BOOL ignore_nulls) -> INT64)
+    |     +-FunctionArgument
+    |     | +-expr=
+    |     |   +-Literal(type=ARRAY<INT64>, value=[1, 2, 3])
+    |     +-FunctionArgument
+    |     | +-expr=
+    |     |   +-Literal(type=INT64, value=NULL, has_explicit_type=TRUE)
+    |     +-FunctionArgument
+    |     | +-inline_lambda=
+    |     |   +-InlineLambda
+    |     |     +-argument_list=$lambda_arg.[acc#1, e#2]
+    |     |     +-body=
+    |     |       +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |     |         +-FunctionCall(GoogleSQL:ifnull(INT64, INT64) -> INT64)
+    |     |         | +-ColumnRef(type=INT64, column=$lambda_arg.acc#1)
+    |     |         | +-Literal(type=INT64, value=0)
+    |     |         +-ColumnRef(type=INT64, column=$lambda_arg.e#2)
+    |     +-FunctionArgument
+    |       +-expr=
+    |         +-Literal(type=BOOL, value=false)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Implicit coercion of reducer return type to initial_value type
+SELECT ARRAY_REDUCE([1, 2, 3], 0.0, (acc, e) -> e);
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#3 AS `$col1` [DOUBLE]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#3]
+    +-expr_list=
+    | +-$col1#3 :=
+    |   +-FunctionCall(GoogleSQL:array_reduce(ARRAY<INT64> array_to_reduce, DOUBLE initial_value, FUNCTION<(DOUBLE, INT64)->DOUBLE> reducer, optional(1) BOOL ignore_nulls) -> DOUBLE)
+    |     +-FunctionArgument
+    |     | +-expr=
+    |     |   +-Literal(type=ARRAY<INT64>, value=[1, 2, 3])
+    |     +-FunctionArgument
+    |     | +-expr=
+    |     |   +-Literal(type=DOUBLE, value=0)
+    |     +-FunctionArgument
+    |     | +-inline_lambda=
+    |     |   +-InlineLambda
+    |     |     +-argument_list=$lambda_arg.[acc#1, e#2]
+    |     |     +-body=
+    |     |       +-Cast(INT64 -> DOUBLE)
+    |     |         +-ColumnRef(type=INT64, column=$lambda_arg.e#2)
+    |     +-FunctionArgument
+    |       +-expr=
+    |         +-Literal(type=BOOL, value=false)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Reducer returning a supertype of the initial_value type fails. The
+# accumulator type is determined by initial_value, even when it is a literal.
+SELECT ARRAY_REDUCE([1.5, 2.5], 0, (acc, e) -> acc + e);
+--
+ERROR: No matching signature for function ARRAY_REDUCE
+  Argument types: ARRAY<DOUBLE>, INT64, LAMBDA
+  Signature: ARRAY_REDUCE(ARRAY<T1>, T2, FUNCTION<(T2, T1)->T2>, [ignore_nulls => BOOL])
+    Argument 3: failed to resolve lambda body, error: Lambda should return type INT64, but returns DOUBLE
+  Signature: ARRAY_REDUCE(ARRAY<T1>, T2, FUNCTION<(T2, T1, INT64)->T2>, [ignore_nulls => BOOL])
+    Argument 3: lambda requires 3 arguments but 2 is provided
+  Signature: ARRAY_REDUCE(ARRAY<T1>, T2, FUNCTION<(T2, T1)->T2>, FUNCTION<T2->T3>, [ignore_nulls => BOOL])
+    Signature requires at least 4 arguments, found 3 arguments
+  Signature: ARRAY_REDUCE(ARRAY<T1>, T2, FUNCTION<(T2, T1, INT64)->T2>, FUNCTION<T2->T3>, [ignore_nulls => BOOL])
+    Signature requires at least 4 arguments, found 3 arguments
+  Signature: ARRAY_REDUCE(ARRAY<T1>, FUNCTION<(T1, T1)->T1>, [ignore_nulls => BOOL])
+    Positional argument at 3 is invalid because argument `ignore_nulls` can only be referred to by name
+  Signature: ARRAY_REDUCE(ARRAY<T1>, FUNCTION<(T1, T1, INT64)->T1>, [ignore_nulls => BOOL])
+    Positional argument at 3 is invalid because argument `ignore_nulls` can only be referred to by name
+  Signature: ARRAY_REDUCE(ARRAY<T1>, FUNCTION<(T1, T1)->T1>, FUNCTION<T1->T2>, [ignore_nulls => BOOL])
+    Argument 2: expected FUNCTION<(T1, T1)->T1>, found INT64
+  Signature: ARRAY_REDUCE(ARRAY<T1>, FUNCTION<(T1, T1, INT64)->T1>, FUNCTION<T1->T2>, [ignore_nulls => BOOL])
+    Argument 2: expected FUNCTION<(T1, T1, INT64)->T1>, found INT64 [at 1:8]
+SELECT ARRAY_REDUCE([1.5, 2.5], 0, (acc, e) -> acc + e);
+       ^
+==
+
+# Implicit coercion of reducer return type to array element type without initial value
+SELECT ARRAY_REDUCE([1.5, 2.5], (acc, e, i) -> i);
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#4 AS `$col1` [DOUBLE]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#4]
+    +-expr_list=
+    | +-$col1#4 :=
+    |   +-FunctionCall(GoogleSQL:array_reduce(ARRAY<DOUBLE> array_to_reduce, FUNCTION<(DOUBLE, DOUBLE, INT64)->DOUBLE> reducer, optional(1) BOOL ignore_nulls) -> DOUBLE)
+    |     +-FunctionArgument
+    |     | +-expr=
+    |     |   +-Literal(type=ARRAY<DOUBLE>, value=[1.5, 2.5])
+    |     +-FunctionArgument
+    |     | +-inline_lambda=
+    |     |   +-InlineLambda
+    |     |     +-argument_list=$lambda_arg.[acc#1, e#2, i#3]
+    |     |     +-body=
+    |     |       +-Cast(INT64 -> DOUBLE)
+    |     |         +-ColumnRef(type=INT64, column=$lambda_arg.i#3)
+    |     +-FunctionArgument
+    |       +-expr=
+    |         +-Literal(type=BOOL, value=false)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Finisher returning untyped NULL or untyped empty array
+SELECT ARRAY_REDUCE([1, 2, 3], 0, (acc, e) -> acc + e, acc -> {{NULL|[]}});
+--
+ALTERNATION GROUP: NULL
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#4 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#4]
+    +-expr_list=
+    | +-$col1#4 :=
+    |   +-FunctionCall(GoogleSQL:array_reduce(ARRAY<INT64> array_to_reduce, INT64 initial_value, FUNCTION<(INT64, INT64)->INT64> reducer, FUNCTION<INT64->INT64> finisher, optional(1) BOOL ignore_nulls) -> INT64)
+    |     +-FunctionArgument
+    |     | +-expr=
+    |     |   +-Literal(type=ARRAY<INT64>, value=[1, 2, 3])
+    |     +-FunctionArgument
+    |     | +-expr=
+    |     |   +-Literal(type=INT64, value=0)
+    |     +-FunctionArgument
+    |     | +-inline_lambda=
+    |     |   +-InlineLambda
+    |     |     +-argument_list=$lambda_arg.[acc#1, e#2]
+    |     |     +-body=
+    |     |       +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |     |         +-ColumnRef(type=INT64, column=$lambda_arg.acc#1)
+    |     |         +-ColumnRef(type=INT64, column=$lambda_arg.e#2)
+    |     +-FunctionArgument
+    |     | +-inline_lambda=
+    |     |   +-InlineLambda
+    |     |     +-argument_list=[$lambda_arg.acc#3]
+    |     |     +-body=
+    |     |       +-Literal(type=INT64, value=NULL)
+    |     +-FunctionArgument
+    |       +-expr=
+    |         +-Literal(type=BOOL, value=false)
+    +-input_scan=
+      +-SingleRowScan
+--
+ALTERNATION GROUP: []
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#4 AS `$col1` [ARRAY<INT64>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#4]
+    +-expr_list=
+    | +-$col1#4 :=
+    |   +-FunctionCall(GoogleSQL:array_reduce(ARRAY<INT64> array_to_reduce, INT64 initial_value, FUNCTION<(INT64, INT64)->INT64> reducer, FUNCTION<INT64->ARRAY<INT64>> finisher, optional(1) BOOL ignore_nulls) -> ARRAY<INT64>)
+    |     +-FunctionArgument
+    |     | +-expr=
+    |     |   +-Literal(type=ARRAY<INT64>, value=[1, 2, 3])
+    |     +-FunctionArgument
+    |     | +-expr=
+    |     |   +-Literal(type=INT64, value=0)
+    |     +-FunctionArgument
+    |     | +-inline_lambda=
+    |     |   +-InlineLambda
+    |     |     +-argument_list=$lambda_arg.[acc#1, e#2]
+    |     |     +-body=
+    |     |       +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |     |         +-ColumnRef(type=INT64, column=$lambda_arg.acc#1)
+    |     |         +-ColumnRef(type=INT64, column=$lambda_arg.e#2)
+    |     +-FunctionArgument
+    |     | +-inline_lambda=
+    |     |   +-InlineLambda
+    |     |     +-argument_list=[$lambda_arg.acc#3]
+    |     |     +-body=
+    |     |       +-Literal(type=ARRAY<INT64>, value=[])
+    |     +-FunctionArgument
+    |       +-expr=
+    |         +-Literal(type=BOOL, value=false)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Finisher returning untyped NULL or untyped empty array without initial value
+SELECT ARRAY_REDUCE([1, 2, 3], (acc, e) -> acc + e, acc -> {{NULL|[]}});
+--
+ALTERNATION GROUP: NULL
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#4 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#4]
+    +-expr_list=
+    | +-$col1#4 :=
+    |   +-FunctionCall(GoogleSQL:array_reduce(ARRAY<INT64> array_to_reduce, FUNCTION<(INT64, INT64)->INT64> reducer, FUNCTION<INT64->INT64> finisher, optional(1) BOOL ignore_nulls) -> INT64)
+    |     +-FunctionArgument
+    |     | +-expr=
+    |     |   +-Literal(type=ARRAY<INT64>, value=[1, 2, 3])
+    |     +-FunctionArgument
+    |     | +-inline_lambda=
+    |     |   +-InlineLambda
+    |     |     +-argument_list=$lambda_arg.[acc#1, e#2]
+    |     |     +-body=
+    |     |       +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |     |         +-ColumnRef(type=INT64, column=$lambda_arg.acc#1)
+    |     |         +-ColumnRef(type=INT64, column=$lambda_arg.e#2)
+    |     +-FunctionArgument
+    |     | +-inline_lambda=
+    |     |   +-InlineLambda
+    |     |     +-argument_list=[$lambda_arg.acc#3]
+    |     |     +-body=
+    |     |       +-Literal(type=INT64, value=NULL)
+    |     +-FunctionArgument
+    |       +-expr=
+    |         +-Literal(type=BOOL, value=false)
+    +-input_scan=
+      +-SingleRowScan
+--
+ALTERNATION GROUP: []
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#4 AS `$col1` [ARRAY<INT64>]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#4]
+    +-expr_list=
+    | +-$col1#4 :=
+    |   +-FunctionCall(GoogleSQL:array_reduce(ARRAY<INT64> array_to_reduce, FUNCTION<(INT64, INT64)->INT64> reducer, FUNCTION<INT64->ARRAY<INT64>> finisher, optional(1) BOOL ignore_nulls) -> ARRAY<INT64>)
+    |     +-FunctionArgument
+    |     | +-expr=
+    |     |   +-Literal(type=ARRAY<INT64>, value=[1, 2, 3])
+    |     +-FunctionArgument
+    |     | +-inline_lambda=
+    |     |   +-InlineLambda
+    |     |     +-argument_list=$lambda_arg.[acc#1, e#2]
+    |     |     +-body=
+    |     |       +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |     |         +-ColumnRef(type=INT64, column=$lambda_arg.acc#1)
+    |     |         +-ColumnRef(type=INT64, column=$lambda_arg.e#2)
+    |     +-FunctionArgument
+    |     | +-inline_lambda=
+    |     |   +-InlineLambda
+    |     |     +-argument_list=[$lambda_arg.acc#3]
+    |     |     +-body=
+    |     |       +-Literal(type=ARRAY<INT64>, value=[])
+    |     +-FunctionArgument
+    |       +-expr=
+    |         +-Literal(type=BOOL, value=false)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# ARRAY_REDUCE works when FEATURE_NAMED_ARGUMENTS is disabled if no named arguments are used
+[language_features=NONE,+INLINE_LAMBDA_ARGUMENT,+ARRAY_REDUCE]
+[no_run_sqlbuilder]
+SELECT ARRAY_REDUCE([1, 2, 3], 0, (acc, e) -> acc + e);
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#3 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#3]
+    +-expr_list=
+    | +-$col1#3 :=
+    |   +-FunctionCall(GoogleSQL:array_reduce(ARRAY<INT64> array_to_reduce, INT64 initial_value, FUNCTION<(INT64, INT64)->INT64> reducer, optional(1) BOOL ignore_nulls) -> INT64)
+    |     +-FunctionArgument
+    |     | +-expr=
+    |     |   +-Literal(type=ARRAY<INT64>, value=[1, 2, 3])
+    |     +-FunctionArgument
+    |     | +-expr=
+    |     |   +-Literal(type=INT64, value=0)
+    |     +-FunctionArgument
+    |     | +-inline_lambda=
+    |     |   +-InlineLambda
+    |     |     +-argument_list=$lambda_arg.[acc#1, e#2]
+    |     |     +-body=
+    |     |       +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |     |         +-ColumnRef(type=INT64, column=$lambda_arg.acc#1)
+    |     |         +-ColumnRef(type=INT64, column=$lambda_arg.e#2)
+    |     +-FunctionArgument
+    |       +-expr=
+    |         +-Literal(type=BOOL, value=false)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Using named arguments when FEATURE_NAMED_ARGUMENTS is disabled fails
+[language_features=NONE,+INLINE_LAMBDA_ARGUMENT,+ARRAY_REDUCE]
+SELECT ARRAY_REDUCE([1, 2, 3], 0, (acc, e) -> acc + e, ignore_nulls => true);
+--
+ERROR: Named arguments are not supported [at 1:56]
+SELECT ARRAY_REDUCE([1, 2, 3], 0, (acc, e) -> acc + e, ignore_nulls => true);
+                                                       ^
+==
+
+# First argument is not an array
+SELECT ARRAY_REDUCE(123, 0, (acc, e) -> acc + e);
+--
+ERROR: No matching signature for function ARRAY_REDUCE
+  Argument types: INT64, INT64, LAMBDA
+  Signature: ARRAY_REDUCE(ARRAY<T1>, T2, FUNCTION<(T2, T1)->T2>, [ignore_nulls => BOOL])
+    Argument 1: expected array type but found INT64
+  Signature: ARRAY_REDUCE(ARRAY<T1>, T2, FUNCTION<(T2, T1, INT64)->T2>, [ignore_nulls => BOOL])
+    Argument 1: expected array type but found INT64
+  Signature: ARRAY_REDUCE(ARRAY<T1>, T2, FUNCTION<(T2, T1)->T2>, FUNCTION<T2->T3>, [ignore_nulls => BOOL])
+    Signature requires at least 4 arguments, found 3 arguments
+  Signature: ARRAY_REDUCE(ARRAY<T1>, T2, FUNCTION<(T2, T1, INT64)->T2>, FUNCTION<T2->T3>, [ignore_nulls => BOOL])
+    Signature requires at least 4 arguments, found 3 arguments
+  Signature: ARRAY_REDUCE(ARRAY<T1>, FUNCTION<(T1, T1)->T1>, [ignore_nulls => BOOL])
+    Positional argument at 3 is invalid because argument `ignore_nulls` can only be referred to by name
+  Signature: ARRAY_REDUCE(ARRAY<T1>, FUNCTION<(T1, T1, INT64)->T1>, [ignore_nulls => BOOL])
+    Positional argument at 3 is invalid because argument `ignore_nulls` can only be referred to by name
+  Signature: ARRAY_REDUCE(ARRAY<T1>, FUNCTION<(T1, T1)->T1>, FUNCTION<T1->T2>, [ignore_nulls => BOOL])
+    Argument 1: expected array type but found INT64
+  Signature: ARRAY_REDUCE(ARRAY<T1>, FUNCTION<(T1, T1, INT64)->T1>, FUNCTION<T1->T2>, [ignore_nulls => BOOL])
+    Argument 1: expected array type but found INT64 [at 1:8]
+SELECT ARRAY_REDUCE(123, 0, (acc, e) -> acc + e);
+       ^
+==
+
+# Reducer return type mismatch with initial_value
+SELECT ARRAY_REDUCE([1, 2], 0, (acc, e) -> 'invalid_string');
+--
+ERROR: No matching signature for function ARRAY_REDUCE
+  Argument types: ARRAY<INT64>, INT64, LAMBDA
+  Signature: ARRAY_REDUCE(ARRAY<T1>, T2, FUNCTION<(T2, T1)->T2>, [ignore_nulls => BOOL])
+    Argument 3: failed to resolve lambda body, error: Lambda should return type INT64, but returns STRING
+  Signature: ARRAY_REDUCE(ARRAY<T1>, T2, FUNCTION<(T2, T1, INT64)->T2>, [ignore_nulls => BOOL])
+    Argument 3: lambda requires 3 arguments but 2 is provided
+  Signature: ARRAY_REDUCE(ARRAY<T1>, T2, FUNCTION<(T2, T1)->T2>, FUNCTION<T2->T3>, [ignore_nulls => BOOL])
+    Signature requires at least 4 arguments, found 3 arguments
+  Signature: ARRAY_REDUCE(ARRAY<T1>, T2, FUNCTION<(T2, T1, INT64)->T2>, FUNCTION<T2->T3>, [ignore_nulls => BOOL])
+    Signature requires at least 4 arguments, found 3 arguments
+  Signature: ARRAY_REDUCE(ARRAY<T1>, FUNCTION<(T1, T1)->T1>, [ignore_nulls => BOOL])
+    Positional argument at 3 is invalid because argument `ignore_nulls` can only be referred to by name
+  Signature: ARRAY_REDUCE(ARRAY<T1>, FUNCTION<(T1, T1, INT64)->T1>, [ignore_nulls => BOOL])
+    Positional argument at 3 is invalid because argument `ignore_nulls` can only be referred to by name
+  Signature: ARRAY_REDUCE(ARRAY<T1>, FUNCTION<(T1, T1)->T1>, FUNCTION<T1->T2>, [ignore_nulls => BOOL])
+    Argument 2: expected FUNCTION<(T1, T1)->T1>, found INT64
+  Signature: ARRAY_REDUCE(ARRAY<T1>, FUNCTION<(T1, T1, INT64)->T1>, FUNCTION<T1->T2>, [ignore_nulls => BOOL])
+    Argument 2: expected FUNCTION<(T1, T1, INT64)->T1>, found INT64 [at 1:8]
+SELECT ARRAY_REDUCE([1, 2], 0, (acc, e) -> 'invalid_string');
+       ^
+==
+
+# Finisher arity mismatch (2 arguments instead of 1)
+SELECT ARRAY_REDUCE([1, 2], 0, (acc, e) -> acc + e, (a, b) -> a + b);
+--
+ERROR: No matching signature for function ARRAY_REDUCE
+  Argument types: ARRAY<INT64>, INT64, LAMBDA, LAMBDA
+  Signature: ARRAY_REDUCE(ARRAY<T1>, T2, FUNCTION<(T2, T1)->T2>, [ignore_nulls => BOOL])
+    Positional argument at 4 is invalid because argument `ignore_nulls` can only be referred to by name
+  Signature: ARRAY_REDUCE(ARRAY<T1>, T2, FUNCTION<(T2, T1, INT64)->T2>, [ignore_nulls => BOOL])
+    Positional argument at 4 is invalid because argument `ignore_nulls` can only be referred to by name
+  Signature: ARRAY_REDUCE(ARRAY<T1>, T2, FUNCTION<(T2, T1)->T2>, FUNCTION<T2->T3>, [ignore_nulls => BOOL])
+    Argument 4: lambda requires 1 arguments but 2 is provided
+  Signature: ARRAY_REDUCE(ARRAY<T1>, T2, FUNCTION<(T2, T1, INT64)->T2>, FUNCTION<T2->T3>, [ignore_nulls => BOOL])
+    Argument 3: lambda requires 3 arguments but 2 is provided
+  Signature: ARRAY_REDUCE(ARRAY<T1>, FUNCTION<(T1, T1)->T1>, [ignore_nulls => BOOL])
+    Signature accepts at most 3 arguments, found 4 arguments
+  Signature: ARRAY_REDUCE(ARRAY<T1>, FUNCTION<(T1, T1, INT64)->T1>, [ignore_nulls => BOOL])
+    Signature accepts at most 3 arguments, found 4 arguments
+  Signature: ARRAY_REDUCE(ARRAY<T1>, FUNCTION<(T1, T1)->T1>, FUNCTION<T1->T2>, [ignore_nulls => BOOL])
+    Positional argument at 4 is invalid because argument `ignore_nulls` can only be referred to by name
+  Signature: ARRAY_REDUCE(ARRAY<T1>, FUNCTION<(T1, T1, INT64)->T1>, FUNCTION<T1->T2>, [ignore_nulls => BOOL])
+    Positional argument at 4 is invalid because argument `ignore_nulls` can only be referred to by name [at 1:8]
+SELECT ARRAY_REDUCE([1, 2], 0, (acc, e) -> acc + e, (a, b) -> a + b);
+       ^
+==
+
+# Finisher parameter type mismatch with reducer return type
+SELECT ARRAY_REDUCE([1, 2], 0, (acc, e) -> acc + e, acc -> CONCAT(acc, 'x'));
+--
+ERROR: No matching signature for function ARRAY_REDUCE
+  Argument types: ARRAY<INT64>, INT64, LAMBDA, LAMBDA
+  Signature: ARRAY_REDUCE(ARRAY<T1>, T2, FUNCTION<(T2, T1)->T2>, [ignore_nulls => BOOL])
+    Positional argument at 4 is invalid because argument `ignore_nulls` can only be referred to by name
+  Signature: ARRAY_REDUCE(ARRAY<T1>, T2, FUNCTION<(T2, T1, INT64)->T2>, [ignore_nulls => BOOL])
+    Positional argument at 4 is invalid because argument `ignore_nulls` can only be referred to by name
+  Signature: ARRAY_REDUCE(ARRAY<T1>, T2, FUNCTION<(T2, T1)->T2>, FUNCTION<T2->T3>, [ignore_nulls => BOOL])
+    Argument 4: failed to resolve lambda body, error: No matching signature for function CONCAT
+      Argument types: INT64, STRING
+      Signature: CONCAT(STRING, [STRING, ...])
+        Argument 1: Unable to coerce type INT64 to expected type STRING
+      Signature: CONCAT(BYTES, [BYTES, ...])
+        Argument 1: Unable to coerce type INT64 to expected type BYTES
+  Signature: ARRAY_REDUCE(ARRAY<T1>, T2, FUNCTION<(T2, T1, INT64)->T2>, FUNCTION<T2->T3>, [ignore_nulls => BOOL])
+    Argument 3: lambda requires 3 arguments but 2 is provided
+  Signature: ARRAY_REDUCE(ARRAY<T1>, FUNCTION<(T1, T1)->T1>, [ignore_nulls => BOOL])
+    Signature accepts at most 3 arguments, found 4 arguments
+  Signature: ARRAY_REDUCE(ARRAY<T1>, FUNCTION<(T1, T1, INT64)->T1>, [ignore_nulls => BOOL])
+    Signature accepts at most 3 arguments, found 4 arguments
+  Signature: ARRAY_REDUCE(ARRAY<T1>, FUNCTION<(T1, T1)->T1>, FUNCTION<T1->T2>, [ignore_nulls => BOOL])
+    Positional argument at 4 is invalid because argument `ignore_nulls` can only be referred to by name
+  Signature: ARRAY_REDUCE(ARRAY<T1>, FUNCTION<(T1, T1, INT64)->T1>, FUNCTION<T1->T2>, [ignore_nulls => BOOL])
+    Positional argument at 4 is invalid because argument `ignore_nulls` can only be referred to by name [at 1:8]
+SELECT ARRAY_REDUCE([1, 2], 0, (acc, e) -> acc + e, acc -> CONCAT(acc, 'x'));
+       ^
+==
+
+# Reducer return type mismatch without initial_value
+SELECT ARRAY_REDUCE(['a', 'b'], (acc, e) -> 1);
+--
+ERROR: No matching signature for function ARRAY_REDUCE
+  Argument types: ARRAY<STRING>, LAMBDA
+  Signature: ARRAY_REDUCE(ARRAY<T1>, T2, FUNCTION<(T2, T1)->T2>, [ignore_nulls => BOOL])
+    Signature requires at least 3 arguments, found 2 arguments
+  Signature: ARRAY_REDUCE(ARRAY<T1>, T2, FUNCTION<(T2, T1, INT64)->T2>, [ignore_nulls => BOOL])
+    Signature requires at least 3 arguments, found 2 arguments
+  Signature: ARRAY_REDUCE(ARRAY<T1>, T2, FUNCTION<(T2, T1)->T2>, FUNCTION<T2->T3>, [ignore_nulls => BOOL])
+    Signature requires at least 4 arguments, found 2 arguments
+  Signature: ARRAY_REDUCE(ARRAY<T1>, T2, FUNCTION<(T2, T1, INT64)->T2>, FUNCTION<T2->T3>, [ignore_nulls => BOOL])
+    Signature requires at least 4 arguments, found 2 arguments
+  Signature: ARRAY_REDUCE(ARRAY<T1>, FUNCTION<(T1, T1)->T1>, [ignore_nulls => BOOL])
+    Argument 2: failed to resolve lambda body, error: Lambda should return type STRING, but returns INT64
+  Signature: ARRAY_REDUCE(ARRAY<T1>, FUNCTION<(T1, T1, INT64)->T1>, [ignore_nulls => BOOL])
+    Argument 2: lambda requires 3 arguments but 2 is provided
+  Signature: ARRAY_REDUCE(ARRAY<T1>, FUNCTION<(T1, T1)->T1>, FUNCTION<T1->T2>, [ignore_nulls => BOOL])
+    Signature requires at least 3 arguments, found 2 arguments
+  Signature: ARRAY_REDUCE(ARRAY<T1>, FUNCTION<(T1, T1, INT64)->T1>, FUNCTION<T1->T2>, [ignore_nulls => BOOL])
+    Signature requires at least 3 arguments, found 2 arguments [at 1:8]
+SELECT ARRAY_REDUCE(['a', 'b'], (acc, e) -> 1);
+       ^
+==
+
+# Finisher lambda cannot access reducer lambda arguments
+SELECT ARRAY_REDUCE([1, 2], 0, (acc, e) -> acc + e, acc -> acc + e);
+--
+ERROR: No matching signature for function ARRAY_REDUCE
+  Argument types: ARRAY<INT64>, INT64, LAMBDA, LAMBDA
+  Signature: ARRAY_REDUCE(ARRAY<T1>, T2, FUNCTION<(T2, T1)->T2>, [ignore_nulls => BOOL])
+    Positional argument at 4 is invalid because argument `ignore_nulls` can only be referred to by name
+  Signature: ARRAY_REDUCE(ARRAY<T1>, T2, FUNCTION<(T2, T1, INT64)->T2>, [ignore_nulls => BOOL])
+    Positional argument at 4 is invalid because argument `ignore_nulls` can only be referred to by name
+  Signature: ARRAY_REDUCE(ARRAY<T1>, T2, FUNCTION<(T2, T1)->T2>, FUNCTION<T2->T3>, [ignore_nulls => BOOL])
+    Argument 4: failed to resolve lambda body, error: Unrecognized name: e
+  Signature: ARRAY_REDUCE(ARRAY<T1>, T2, FUNCTION<(T2, T1, INT64)->T2>, FUNCTION<T2->T3>, [ignore_nulls => BOOL])
+    Argument 3: lambda requires 3 arguments but 2 is provided
+  Signature: ARRAY_REDUCE(ARRAY<T1>, FUNCTION<(T1, T1)->T1>, [ignore_nulls => BOOL])
+    Signature accepts at most 3 arguments, found 4 arguments
+  Signature: ARRAY_REDUCE(ARRAY<T1>, FUNCTION<(T1, T1, INT64)->T1>, [ignore_nulls => BOOL])
+    Signature accepts at most 3 arguments, found 4 arguments
+  Signature: ARRAY_REDUCE(ARRAY<T1>, FUNCTION<(T1, T1)->T1>, FUNCTION<T1->T2>, [ignore_nulls => BOOL])
+    Positional argument at 4 is invalid because argument `ignore_nulls` can only be referred to by name
+  Signature: ARRAY_REDUCE(ARRAY<T1>, FUNCTION<(T1, T1, INT64)->T1>, FUNCTION<T1->T2>, [ignore_nulls => BOOL])
+    Positional argument at 4 is invalid because argument `ignore_nulls` can only be referred to by name [at 1:8]
+SELECT ARRAY_REDUCE([1, 2], 0, (acc, e) -> acc + e, acc -> acc + e);
+       ^
+==
+
+# Reducer lambda referencing outer query column
+SELECT ARRAY_REDUCE(arr, 0, (acc, e) -> acc + e + x)
+FROM (SELECT 10 AS x, [1, 2, 3] AS arr);
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#5 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#5]
+    +-expr_list=
+    | +-$col1#5 :=
+    |   +-FunctionCall(GoogleSQL:array_reduce(ARRAY<INT64> array_to_reduce, INT64 initial_value, FUNCTION<(INT64, INT64)->INT64> reducer, optional(1) BOOL ignore_nulls) -> INT64)
+    |     +-FunctionArgument
+    |     | +-expr=
+    |     |   +-ColumnRef(type=ARRAY<INT64>, column=$subquery1.arr#2)
+    |     +-FunctionArgument
+    |     | +-expr=
+    |     |   +-Literal(type=INT64, value=0)
+    |     +-FunctionArgument
+    |     | +-inline_lambda=
+    |     |   +-InlineLambda
+    |     |     +-argument_list=$lambda_arg.[acc#3, e#4]
+    |     |     +-parameter_list=
+    |     |     | +-ColumnRef(type=INT64, column=$subquery1.x#1)
+    |     |     +-body=
+    |     |       +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |     |         +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |     |         | +-ColumnRef(type=INT64, column=$lambda_arg.acc#3)
+    |     |         | +-ColumnRef(type=INT64, column=$lambda_arg.e#4)
+    |     |         +-ColumnRef(type=INT64, column=$subquery1.x#1, is_correlated=TRUE)
+    |     +-FunctionArgument
+    |       +-expr=
+    |         +-Literal(type=BOOL, value=false)
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=$subquery1.[x#1, arr#2]
+        +-expr_list=
+        | +-x#1 := Literal(type=INT64, value=10)
+        | +-arr#2 := Literal(type=ARRAY<INT64>, value=[1, 2, 3])
+        +-input_scan=
+          +-SingleRowScan
+==
+
+# Finisher lambda referencing outer query column
+SELECT ARRAY_REDUCE([1, 2], 0, (acc, e) -> acc + e, acc -> acc + x)
+FROM (SELECT 10 AS x);
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#5 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#5]
+    +-expr_list=
+    | +-$col1#5 :=
+    |   +-FunctionCall(GoogleSQL:array_reduce(ARRAY<INT64> array_to_reduce, INT64 initial_value, FUNCTION<(INT64, INT64)->INT64> reducer, FUNCTION<INT64->INT64> finisher, optional(1) BOOL ignore_nulls) -> INT64)
+    |     +-FunctionArgument
+    |     | +-expr=
+    |     |   +-Literal(type=ARRAY<INT64>, value=[1, 2])
+    |     +-FunctionArgument
+    |     | +-expr=
+    |     |   +-Literal(type=INT64, value=0)
+    |     +-FunctionArgument
+    |     | +-inline_lambda=
+    |     |   +-InlineLambda
+    |     |     +-argument_list=$lambda_arg.[acc#2, e#3]
+    |     |     +-body=
+    |     |       +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |     |         +-ColumnRef(type=INT64, column=$lambda_arg.acc#2)
+    |     |         +-ColumnRef(type=INT64, column=$lambda_arg.e#3)
+    |     +-FunctionArgument
+    |     | +-inline_lambda=
+    |     |   +-InlineLambda
+    |     |     +-argument_list=[$lambda_arg.acc#4]
+    |     |     +-parameter_list=
+    |     |     | +-ColumnRef(type=INT64, column=$subquery1.x#1)
+    |     |     +-body=
+    |     |       +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |     |         +-ColumnRef(type=INT64, column=$lambda_arg.acc#4)
+    |     |         +-ColumnRef(type=INT64, column=$subquery1.x#1, is_correlated=TRUE)
+    |     +-FunctionArgument
+    |       +-expr=
+    |         +-Literal(type=BOOL, value=false)
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[$subquery1.x#1]
+        +-expr_list=
+        | +-x#1 := Literal(type=INT64, value=10)
+        +-input_scan=
+          +-SingleRowScan
+==
+
+# Reducer lambda arguments shadowing outer query columns
+SELECT ARRAY_REDUCE([1, 2], 0, (acc, e) -> acc + e)
+FROM (SELECT 100 AS acc, 200 AS e);
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#5 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#5]
+    +-expr_list=
+    | +-$col1#5 :=
+    |   +-FunctionCall(GoogleSQL:array_reduce(ARRAY<INT64> array_to_reduce, INT64 initial_value, FUNCTION<(INT64, INT64)->INT64> reducer, optional(1) BOOL ignore_nulls) -> INT64)
+    |     +-FunctionArgument
+    |     | +-expr=
+    |     |   +-Literal(type=ARRAY<INT64>, value=[1, 2])
+    |     +-FunctionArgument
+    |     | +-expr=
+    |     |   +-Literal(type=INT64, value=0)
+    |     +-FunctionArgument
+    |     | +-inline_lambda=
+    |     |   +-InlineLambda
+    |     |     +-argument_list=$lambda_arg.[acc#3, e#4]
+    |     |     +-body=
+    |     |       +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |     |         +-ColumnRef(type=INT64, column=$lambda_arg.acc#3)
+    |     |         +-ColumnRef(type=INT64, column=$lambda_arg.e#4)
+    |     +-FunctionArgument
+    |       +-expr=
+    |         +-Literal(type=BOOL, value=false)
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=$subquery1.[acc#1, e#2]
+        +-expr_list=
+        | +-acc#1 := Literal(type=INT64, value=100)
+        | +-e#2 := Literal(type=INT64, value=200)
+        +-input_scan=
+          +-SingleRowScan
+==
+
+# Nested ARRAY_REDUCE referencing outer reducer variables
+SELECT ARRAY_REDUCE([1, 2], 0, (acc1, e1) -> acc1 + ARRAY_REDUCE([10, 20], 0, (acc2, e2) -> acc2 + e1 + e2));
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#5 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#5]
+    +-expr_list=
+    | +-$col1#5 :=
+    |   +-FunctionCall(GoogleSQL:array_reduce(ARRAY<INT64> array_to_reduce, INT64 initial_value, FUNCTION<(INT64, INT64)->INT64> reducer, optional(1) BOOL ignore_nulls) -> INT64)
+    |     +-FunctionArgument
+    |     | +-expr=
+    |     |   +-Literal(type=ARRAY<INT64>, value=[1, 2])
+    |     +-FunctionArgument
+    |     | +-expr=
+    |     |   +-Literal(type=INT64, value=0)
+    |     +-FunctionArgument
+    |     | +-inline_lambda=
+    |     |   +-InlineLambda
+    |     |     +-argument_list=$lambda_arg.[acc1#1, e1#2]
+    |     |     +-body=
+    |     |       +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |     |         +-ColumnRef(type=INT64, column=$lambda_arg.acc1#1)
+    |     |         +-FunctionCall(GoogleSQL:array_reduce(ARRAY<INT64> array_to_reduce, INT64 initial_value, FUNCTION<(INT64, INT64)->INT64> reducer, optional(1) BOOL ignore_nulls) -> INT64)
+    |     |           +-FunctionArgument
+    |     |           | +-expr=
+    |     |           |   +-Literal(type=ARRAY<INT64>, value=[10, 20])
+    |     |           +-FunctionArgument
+    |     |           | +-expr=
+    |     |           |   +-Literal(type=INT64, value=0)
+    |     |           +-FunctionArgument
+    |     |           | +-inline_lambda=
+    |     |           |   +-InlineLambda
+    |     |           |     +-argument_list=$lambda_arg.[acc2#3, e2#4]
+    |     |           |     +-parameter_list=
+    |     |           |     | +-ColumnRef(type=INT64, column=$lambda_arg.e1#2)
+    |     |           |     +-body=
+    |     |           |       +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |     |           |         +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |     |           |         | +-ColumnRef(type=INT64, column=$lambda_arg.acc2#3)
+    |     |           |         | +-ColumnRef(type=INT64, column=$lambda_arg.e1#2, is_correlated=TRUE)
+    |     |           |         +-ColumnRef(type=INT64, column=$lambda_arg.e2#4)
+    |     |           +-FunctionArgument
+    |     |             +-expr=
+    |     |               +-Literal(type=BOOL, value=false)
+    |     +-FunctionArgument
+    |       +-expr=
+    |         +-Literal(type=BOOL, value=false)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Untyped empty array as array_to_reduce fails type inference
+SELECT ARRAY_REDUCE([], 0, (acc, e) -> acc + e);
+--
+ERROR: No matching signature for function ARRAY_REDUCE
+  Argument types: [], INT64, LAMBDA
+  Signature: ARRAY_REDUCE(ARRAY<T1>, T2, FUNCTION<(T2, T1)->T2>, [ignore_nulls => BOOL])
+    Argument 3: failed to infer type for 1-th argument (e) of lambda from other untyped arguments
+  Signature: ARRAY_REDUCE(ARRAY<T1>, T2, FUNCTION<(T2, T1, INT64)->T2>, [ignore_nulls => BOOL])
+    Argument 3: lambda requires 3 arguments but 2 is provided
+  Signature: ARRAY_REDUCE(ARRAY<T1>, T2, FUNCTION<(T2, T1)->T2>, FUNCTION<T2->T3>, [ignore_nulls => BOOL])
+    Signature requires at least 4 arguments, found 3 arguments
+  Signature: ARRAY_REDUCE(ARRAY<T1>, T2, FUNCTION<(T2, T1, INT64)->T2>, FUNCTION<T2->T3>, [ignore_nulls => BOOL])
+    Signature requires at least 4 arguments, found 3 arguments
+  Signature: ARRAY_REDUCE(ARRAY<T1>, FUNCTION<(T1, T1)->T1>, [ignore_nulls => BOOL])
+    Positional argument at 3 is invalid because argument `ignore_nulls` can only be referred to by name
+  Signature: ARRAY_REDUCE(ARRAY<T1>, FUNCTION<(T1, T1, INT64)->T1>, [ignore_nulls => BOOL])
+    Positional argument at 3 is invalid because argument `ignore_nulls` can only be referred to by name
+  Signature: ARRAY_REDUCE(ARRAY<T1>, FUNCTION<(T1, T1)->T1>, FUNCTION<T1->T2>, [ignore_nulls => BOOL])
+    Argument 2: expected FUNCTION<(T1, T1)->T1>, found INT64
+  Signature: ARRAY_REDUCE(ARRAY<T1>, FUNCTION<(T1, T1, INT64)->T1>, FUNCTION<T1->T2>, [ignore_nulls => BOOL])
+    Argument 2: expected FUNCTION<(T1, T1, INT64)->T1>, found INT64 [at 1:8]
+SELECT ARRAY_REDUCE([], 0, (acc, e) -> acc + e);
+       ^
+==
+
+# Typed empty array as array_to_reduce
+SELECT ARRAY_REDUCE(CAST([] AS ARRAY<INT64>), 0, (acc, e) -> acc + e);
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#3 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#3]
+    +-expr_list=
+    | +-$col1#3 :=
+    |   +-FunctionCall(GoogleSQL:array_reduce(ARRAY<INT64> array_to_reduce, INT64 initial_value, FUNCTION<(INT64, INT64)->INT64> reducer, optional(1) BOOL ignore_nulls) -> INT64)
+    |     +-FunctionArgument
+    |     | +-expr=
+    |     |   +-Literal(type=ARRAY<INT64>, value=[], has_explicit_type=TRUE)
+    |     +-FunctionArgument
+    |     | +-expr=
+    |     |   +-Literal(type=INT64, value=0)
+    |     +-FunctionArgument
+    |     | +-inline_lambda=
+    |     |   +-InlineLambda
+    |     |     +-argument_list=$lambda_arg.[acc#1, e#2]
+    |     |     +-body=
+    |     |       +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |     |         +-ColumnRef(type=INT64, column=$lambda_arg.acc#1)
+    |     |         +-ColumnRef(type=INT64, column=$lambda_arg.e#2)
+    |     +-FunctionArgument
+    |       +-expr=
+    |         +-Literal(type=BOOL, value=false)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Typed empty array as array_to_reduce without initial value
+SELECT ARRAY_REDUCE(CAST([] AS ARRAY<INT64>), (acc, e) -> acc + e);
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#3 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#3]
+    +-expr_list=
+    | +-$col1#3 :=
+    |   +-FunctionCall(GoogleSQL:array_reduce(ARRAY<INT64> array_to_reduce, FUNCTION<(INT64, INT64)->INT64> reducer, optional(1) BOOL ignore_nulls) -> INT64)
+    |     +-FunctionArgument
+    |     | +-expr=
+    |     |   +-Literal(type=ARRAY<INT64>, value=[], has_explicit_type=TRUE)
+    |     +-FunctionArgument
+    |     | +-inline_lambda=
+    |     |   +-InlineLambda
+    |     |     +-argument_list=$lambda_arg.[acc#1, e#2]
+    |     |     +-body=
+    |     |       +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |     |         +-ColumnRef(type=INT64, column=$lambda_arg.acc#1)
+    |     |         +-ColumnRef(type=INT64, column=$lambda_arg.e#2)
+    |     +-FunctionArgument
+    |       +-expr=
+    |         +-Literal(type=BOOL, value=false)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Untyped NULL as array_to_reduce fails signature resolution
+SELECT ARRAY_REDUCE(NULL, 0, (acc, e) -> acc + e);
+--
+ERROR: No matching signature for function ARRAY_REDUCE
+  Argument types: NULL, INT64, LAMBDA
+  Signature: ARRAY_REDUCE(ARRAY<T1>, T2, FUNCTION<(T2, T1)->T2>, [ignore_nulls => BOOL])
+    Argument 3: failed to infer type for 1-th argument (e) of lambda from other untyped arguments
+  Signature: ARRAY_REDUCE(ARRAY<T1>, T2, FUNCTION<(T2, T1, INT64)->T2>, [ignore_nulls => BOOL])
+    Argument 3: lambda requires 3 arguments but 2 is provided
+  Signature: ARRAY_REDUCE(ARRAY<T1>, T2, FUNCTION<(T2, T1)->T2>, FUNCTION<T2->T3>, [ignore_nulls => BOOL])
+    Signature requires at least 4 arguments, found 3 arguments
+  Signature: ARRAY_REDUCE(ARRAY<T1>, T2, FUNCTION<(T2, T1, INT64)->T2>, FUNCTION<T2->T3>, [ignore_nulls => BOOL])
+    Signature requires at least 4 arguments, found 3 arguments
+  Signature: ARRAY_REDUCE(ARRAY<T1>, FUNCTION<(T1, T1)->T1>, [ignore_nulls => BOOL])
+    Positional argument at 3 is invalid because argument `ignore_nulls` can only be referred to by name
+  Signature: ARRAY_REDUCE(ARRAY<T1>, FUNCTION<(T1, T1, INT64)->T1>, [ignore_nulls => BOOL])
+    Positional argument at 3 is invalid because argument `ignore_nulls` can only be referred to by name
+  Signature: ARRAY_REDUCE(ARRAY<T1>, FUNCTION<(T1, T1)->T1>, FUNCTION<T1->T2>, [ignore_nulls => BOOL])
+    Argument 2: expected FUNCTION<(T1, T1)->T1>, found INT64
+  Signature: ARRAY_REDUCE(ARRAY<T1>, FUNCTION<(T1, T1, INT64)->T1>, FUNCTION<T1->T2>, [ignore_nulls => BOOL])
+    Argument 2: expected FUNCTION<(T1, T1, INT64)->T1>, found INT64 [at 1:8]
+SELECT ARRAY_REDUCE(NULL, 0, (acc, e) -> acc + e);
+       ^
+==
+
+# Typed NULL array as array_to_reduce
+SELECT ARRAY_REDUCE(CAST(NULL AS ARRAY<INT64>), 0, (acc, e) -> acc + e);
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#3 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#3]
+    +-expr_list=
+    | +-$col1#3 :=
+    |   +-FunctionCall(GoogleSQL:array_reduce(ARRAY<INT64> array_to_reduce, INT64 initial_value, FUNCTION<(INT64, INT64)->INT64> reducer, optional(1) BOOL ignore_nulls) -> INT64)
+    |     +-FunctionArgument
+    |     | +-expr=
+    |     |   +-Literal(type=ARRAY<INT64>, value=NULL, has_explicit_type=TRUE)
+    |     +-FunctionArgument
+    |     | +-expr=
+    |     |   +-Literal(type=INT64, value=0)
+    |     +-FunctionArgument
+    |     | +-inline_lambda=
+    |     |   +-InlineLambda
+    |     |     +-argument_list=$lambda_arg.[acc#1, e#2]
+    |     |     +-body=
+    |     |       +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |     |         +-ColumnRef(type=INT64, column=$lambda_arg.acc#1)
+    |     |         +-ColumnRef(type=INT64, column=$lambda_arg.e#2)
+    |     +-FunctionArgument
+    |       +-expr=
+    |         +-Literal(type=BOOL, value=false)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Typed NULL array as array_to_reduce without initial value
+SELECT ARRAY_REDUCE(CAST(NULL AS ARRAY<INT64>), (acc, e) -> acc + e);
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#3 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#3]
+    +-expr_list=
+    | +-$col1#3 :=
+    |   +-FunctionCall(GoogleSQL:array_reduce(ARRAY<INT64> array_to_reduce, FUNCTION<(INT64, INT64)->INT64> reducer, optional(1) BOOL ignore_nulls) -> INT64)
+    |     +-FunctionArgument
+    |     | +-expr=
+    |     |   +-Literal(type=ARRAY<INT64>, value=NULL, has_explicit_type=TRUE)
+    |     +-FunctionArgument
+    |     | +-inline_lambda=
+    |     |   +-InlineLambda
+    |     |     +-argument_list=$lambda_arg.[acc#1, e#2]
+    |     |     +-body=
+    |     |       +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |     |         +-ColumnRef(type=INT64, column=$lambda_arg.acc#1)
+    |     |         +-ColumnRef(type=INT64, column=$lambda_arg.e#2)
+    |     +-FunctionArgument
+    |       +-expr=
+    |         +-Literal(type=BOOL, value=false)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Untyped NULL returned from reducer body with initial value
+SELECT ARRAY_REDUCE([1, 2, 3], 0, (acc, e) -> NULL);
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#3 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#3]
+    +-expr_list=
+    | +-$col1#3 :=
+    |   +-FunctionCall(GoogleSQL:array_reduce(ARRAY<INT64> array_to_reduce, INT64 initial_value, FUNCTION<(INT64, INT64)->INT64> reducer, optional(1) BOOL ignore_nulls) -> INT64)
+    |     +-FunctionArgument
+    |     | +-expr=
+    |     |   +-Literal(type=ARRAY<INT64>, value=[1, 2, 3])
+    |     +-FunctionArgument
+    |     | +-expr=
+    |     |   +-Literal(type=INT64, value=0)
+    |     +-FunctionArgument
+    |     | +-inline_lambda=
+    |     |   +-InlineLambda
+    |     |     +-argument_list=$lambda_arg.[acc#1, e#2]
+    |     |     +-body=
+    |     |       +-Literal(type=INT64, value=NULL)
+    |     +-FunctionArgument
+    |       +-expr=
+    |         +-Literal(type=BOOL, value=false)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# Untyped NULL returned from reducer body without initial value
+SELECT ARRAY_REDUCE([1, 2, 3], (acc, e) -> NULL);
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#3 AS `$col1` [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.$col1#3]
+    +-expr_list=
+    | +-$col1#3 :=
+    |   +-FunctionCall(GoogleSQL:array_reduce(ARRAY<INT64> array_to_reduce, FUNCTION<(INT64, INT64)->INT64> reducer, optional(1) BOOL ignore_nulls) -> INT64)
+    |     +-FunctionArgument
+    |     | +-expr=
+    |     |   +-Literal(type=ARRAY<INT64>, value=[1, 2, 3])
+    |     +-FunctionArgument
+    |     | +-inline_lambda=
+    |     |   +-InlineLambda
+    |     |     +-argument_list=$lambda_arg.[acc#1, e#2]
+    |     |     +-body=
+    |     |       +-Literal(type=INT64, value=NULL)
+    |     +-FunctionArgument
+    |       +-expr=
+    |         +-Literal(type=BOOL, value=false)
+    +-input_scan=
+      +-SingleRowScan
+==
+
+# A real world use case:
+# Number of local maxima in the given array.
+SELECT ARRAY_REDUCE(
+  t.signal,
+  0,
+  (acc, val, idx) -> acc + IF(
+    val > t.signal[SAFE_OFFSET(idx - 1)] AND
+    val > t.signal[SAFE_OFFSET(idx + 1)],
+    1,
+    0
+  )
+) AS local_maxima_count
+FROM (SELECT [1, 5, 3, 8, 2, 4, 1] AS signal) t;
+--
+QueryStmt
++-output_column_list=
+| +-$query.local_maxima_count#5 AS local_maxima_count [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.local_maxima_count#5]
+    +-expr_list=
+    | +-local_maxima_count#5 :=
+    |   +-FunctionCall(GoogleSQL:array_reduce(ARRAY<INT64> array_to_reduce, INT64 initial_value, FUNCTION<(INT64, INT64, INT64)->INT64> reducer, optional(1) BOOL ignore_nulls) -> INT64)
+    |     +-FunctionArgument
+    |     | +-expr=
+    |     |   +-ColumnRef(type=ARRAY<INT64>, column=t.signal#1)
+    |     +-FunctionArgument
+    |     | +-expr=
+    |     |   +-Literal(type=INT64, value=0)
+    |     +-FunctionArgument
+    |     | +-inline_lambda=
+    |     |   +-InlineLambda
+    |     |     +-argument_list=$lambda_arg.[acc#2, val#3, idx#4]
+    |     |     +-parameter_list=
+    |     |     | +-ColumnRef(type=ARRAY<INT64>, column=t.signal#1)
+    |     |     +-body=
+    |     |       +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |     |         +-ColumnRef(type=INT64, column=$lambda_arg.acc#2)
+    |     |         +-FunctionCall(GoogleSQL:if(BOOL, INT64, INT64) -> INT64)
+    |     |           +-FunctionCall(GoogleSQL:$and(BOOL, repeated(1) BOOL) -> BOOL)
+    |     |           | +-FunctionCall(GoogleSQL:$greater(INT64, INT64) -> BOOL)
+    |     |           | | +-ColumnRef(type=INT64, column=$lambda_arg.val#3)
+    |     |           | | +-FunctionCall(GoogleSQL:$safe_array_at_offset(ARRAY<INT64>, INT64) -> INT64)
+    |     |           | |   +-ColumnRef(type=ARRAY<INT64>, column=t.signal#1, is_correlated=TRUE)
+    |     |           | |   +-FunctionCall(GoogleSQL:$subtract(INT64, INT64) -> INT64)
+    |     |           | |     +-ColumnRef(type=INT64, column=$lambda_arg.idx#4)
+    |     |           | |     +-Literal(type=INT64, value=1)
+    |     |           | +-FunctionCall(GoogleSQL:$greater(INT64, INT64) -> BOOL)
+    |     |           |   +-ColumnRef(type=INT64, column=$lambda_arg.val#3)
+    |     |           |   +-FunctionCall(GoogleSQL:$safe_array_at_offset(ARRAY<INT64>, INT64) -> INT64)
+    |     |           |     +-ColumnRef(type=ARRAY<INT64>, column=t.signal#1, is_correlated=TRUE)
+    |     |           |     +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+    |     |           |       +-ColumnRef(type=INT64, column=$lambda_arg.idx#4)
+    |     |           |       +-Literal(type=INT64, value=1)
+    |     |           +-Literal(type=INT64, value=1)
+    |     |           +-Literal(type=INT64, value=0)
+    |     +-FunctionArgument
+    |       +-expr=
+    |         +-Literal(type=BOOL, value=false)
+    +-input_scan=
+      +-ProjectScan
+        +-column_list=[t.signal#1]
+        +-expr_list=
+        | +-signal#1 := Literal(type=ARRAY<INT64>, value=[1, 5, 3, 8, 2, 4, 1])
+        +-input_scan=
+          +-SingleRowScan

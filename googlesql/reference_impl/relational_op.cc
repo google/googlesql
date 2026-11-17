@@ -2403,7 +2403,7 @@ class ReservoirSampleScanTupleIterator : public SampleScanTupleIteratorBase {
       : SampleScanTupleIteratorBase(seed, context, std::move(iter),
                                     std::move(schema), weight),
         reservoir_size_(reservoir_size),
-        params_(params),
+        params_(params.begin(), params.end()),
         partition_key_(partition_key) {}
 
   ReservoirSampleScanTupleIterator(const ReservoirSampleScanTupleIterator&) =
@@ -2521,7 +2521,7 @@ class ReservoirSampleScanTupleIterator : public SampleScanTupleIteratorBase {
   const int64_t reservoir_size_;
 
   // Params are used to evaluate partition key expressions.
-  absl::Span<const TupleData* const> params_;
+  const std::vector<const TupleData*> params_;
   // For stratified resevoir samples, partition_key_ defines which reservoir
   // each row is considered for.
   absl::Span<const KeyArg* const> partition_key_;

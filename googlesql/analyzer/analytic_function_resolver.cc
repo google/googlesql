@@ -419,14 +419,30 @@ absl::Status AnalyticFunctionResolver::ResolveOverClauseAndCreateAnalyticColumn(
         /*allow_ordinals=*/true, "Window ORDER BY", &order_by_info));
   }
 
+  // An ORDER BY made only of `**` expansions to zero columns is dropped, so
+  // from here on it is treated as if it were absent. CheckWindowSupport above
+  // only saw the syntactic clause, so re-check the ordering requirement here
+  // and below.
+  const bool has_window_ordering =
+      order_by_info != nullptr && !order_by_info->empty();
+  if (ast_order_by != nullptr && !has_window_ordering &&
+      resolved_function_call->function()->RequiresWindowOrdering()) {
+    return MakeSqlErrorAt(ast_order_by)
+           << "Window ORDER BY would expand to zero columns, but analytic "
+              "function "
+           << resolved_function_call->function()->Name()
+           << " requires a window ORDER BY";
+  }
+
   // Resolve window frame.
   std::unique_ptr<const ResolvedWindowFrame> resolved_window_frame;
   if (ast_window_frame != nullptr) {
     const Type* ordering_expr_type = nullptr;
     if (ast_window_frame->frame_unit() == ASTWindowFrame::RANGE) {
       GOOGLESQL_RETURN_IF_ERROR(ValidateOrderByInRangeBasedWindow(
-          ast_order_by, ast_window_frame, order_by_info));
-      if (ast_order_by != nullptr) {
+          ast_order_by, ast_window_frame,
+          has_window_ordering ? order_by_info : nullptr));
+      if (has_window_ordering) {
         ordering_expr_type = order_by_info->back()->type;
       }
     }
@@ -437,7 +453,7 @@ absl::Status AnalyticFunctionResolver::ResolveOverClauseAndCreateAnalyticColumn(
 
   // Generate an implicit window frame if it is not given but is allowed.
   if (resolved_window_frame == nullptr && supports_framing) {
-    if (ast_order_by != nullptr) {
+    if (has_window_ordering) {
       resolved_window_frame = MakeResolvedWindowFrame(
           ResolvedWindowFrame::RANGE,
           MakeResolvedWindowFrameExpr(
@@ -1425,7 +1441,10 @@ absl::Status AnalyticFunctionResolver::AddColumnForWindowExpression(
     resolved_column_ref = resolver_->CopyColumnRef(
         window_expr_info->resolved_expr->GetAs<ResolvedColumnRef>());
   } else {
-    IdString alias = GetAliasForExpression(window_expr_info->ast_location);
+    IdString alias =
+        !window_expr_info->unpack_column_name.empty()
+            ? window_expr_info->unpack_column_name
+            : GetAliasForExpression(window_expr_info->ast_location);
     if (alias.empty()) {
       alias = column_alias;
     }

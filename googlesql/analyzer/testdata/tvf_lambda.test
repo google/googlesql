@@ -1,0 +1,134 @@
+### Shared Database Setup ###
+
+# Shared base table passed to the TVFs below.
+[default language_features=NONE,+TABLE_VALUED_FUNCTIONS,+CREATE_TABLE_FUNCTION,+NAMED_ARGUMENTS,+INLINE_LAMBDA_ARGUMENT,+UDF_LAMBDA_ARGUMENTS,+PIPES]
+[prepare_database=tvf_lambda_db]
+CREATE TABLE t_items(k STRING, v INT64, arr ARRAY<INT64>);
+--
+CreateTableStmt
++-name_path=t_items
++-column_definition_list=
+  +-ColumnDefinition(name="k", type=STRING, column=t_items.k#1)
+  +-ColumnDefinition(name="v", type=INT64, column=t_items.v#2)
+  +-ColumnDefinition(name="arr", type=ARRAY<INT64>, column=t_items.arr#3)
+==
+
+# SQL TVF taking a table and a scalar argument. Calls to it with lambda or
+# FUNCTION reference arguments exercise the TVF call-site argument checks.
+[prepare_database=tvf_lambda_db]
+CREATE TABLE FUNCTION TvfAddN(tbl TABLE<k STRING, v INT64>, n INT64)
+AS SELECT k, v + n AS v FROM tbl;
+--
+CreateTableFunctionStmt
++-name_path=TvfAddN
++-argument_name_list=[tbl, n]
++-signature=(TABLE<k STRING, v INT64> tbl, INT64 n) -> TABLE<k STRING, v INT64>
++-language="SQL"
++-code="SELECT k, v + n AS v FROM tbl"
++-query=
+| +-ProjectScan
+|   +-column_list=[tbl.k#1, $query.v#3]
+|   +-expr_list=
+|   | +-v#3 :=
+|   |   +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+|   |     +-ColumnRef(type=INT64, column=tbl.v#2)
+|   |     +-ArgumentRef(type=INT64, name="n")
+|   +-input_scan=
+|     +-RelationArgumentScan(column_list=tbl.[k#1, v#2], name="tbl")
++-output_column_list=
+  +-tbl.k#1 AS k [STRING]
+  +-$query.v#3 AS v [INT64]
+==
+
+### Positional, named, and pipe call resolution tests ###
+
+# Positional inline lambda arguments in TVF calls are not implemented yet.
+[use_database=tvf_lambda_db]
+SELECT * FROM TvfAddN(TABLE t_items, {{x -> x + 1|(x, y) -> x + y|() -> 1}});
+--
+ALTERNATION GROUP: x -> x + 1
+--
+ERROR: Lambda arguments are not implemented for TVF [at 1:38]
+SELECT * FROM TvfAddN(TABLE t_items, x -> x + 1);
+                                     ^
+--
+ALTERNATION GROUP: (x, y) -> x + y
+--
+ERROR: Lambda arguments are not implemented for TVF [at 1:38]
+SELECT * FROM TvfAddN(TABLE t_items, (x, y) -> x + y);
+                                     ^
+--
+ALTERNATION GROUP: () -> 1
+--
+ERROR: Lambda arguments are not implemented for TVF [at 1:38]
+SELECT * FROM TvfAddN(TABLE t_items, () -> 1);
+                                     ^
+==
+
+# Positional FUNCTION reference arguments in TVF calls are not implemented yet.
+[use_database=tvf_lambda_db]
+SELECT * FROM TvfAddN(TABLE t_items, FUNCTION abs);
+--
+ERROR: Lambda arguments are not implemented for TVF [at 1:38]
+SELECT * FROM TvfAddN(TABLE t_items, FUNCTION abs);
+                                     ^
+==
+
+# Named inline lambda arguments in TVF calls are not implemented yet.
+[use_database=tvf_lambda_db]
+SELECT * FROM TvfAddN(TABLE t_items, n => x -> x + 1);
+--
+ERROR: Lambda arguments are not implemented for TVF [at 1:43]
+SELECT * FROM TvfAddN(TABLE t_items, n => x -> x + 1);
+                                          ^
+==
+
+# Named FUNCTION reference arguments in TVF calls are not implemented yet.
+[use_database=tvf_lambda_db]
+SELECT * FROM TvfAddN(TABLE t_items, n => FUNCTION abs);
+--
+ERROR: Lambda arguments are not implemented for TVF [at 1:43]
+SELECT * FROM TvfAddN(TABLE t_items, n => FUNCTION abs);
+                                          ^
+==
+
+# Lambda and FUNCTION reference arguments in pipe CALL go through the same TVF
+# argument checks as the pipe input table is matched to the first table
+# argument.
+[use_database=tvf_lambda_db]
+FROM t_items
+|> CALL TvfAddN({{x -> x + 1|FUNCTION abs|n => x -> x + 1|n => FUNCTION abs}});
+--
+ALTERNATION GROUP: x -> x + 1
+--
+ERROR: Lambda arguments are not implemented for TVF [at 2:17]
+|> CALL TvfAddN(x -> x + 1);
+                ^
+--
+ALTERNATION GROUP: FUNCTION abs
+--
+ERROR: Lambda arguments are not implemented for TVF [at 2:17]
+|> CALL TvfAddN(FUNCTION abs);
+                ^
+--
+ALTERNATION GROUP: n => x -> x + 1
+--
+ERROR: Lambda arguments are not implemented for TVF [at 2:22]
+|> CALL TvfAddN(n => x -> x + 1);
+                     ^
+--
+ALTERNATION GROUP: n => FUNCTION abs
+--
+ERROR: Lambda arguments are not implemented for TVF [at 2:22]
+|> CALL TvfAddN(n => FUNCTION abs);
+                     ^
+==
+
+# A lambda argument passed to a TVF that has no matching parameter still
+# reports that lambda arguments are not implemented, rather than crashing.
+[use_database=tvf_lambda_db]
+SELECT * FROM TvfAddN(TABLE t_items, 1, x -> x);
+--
+ERROR: Lambda arguments are not implemented for TVF [at 1:41]
+SELECT * FROM TvfAddN(TABLE t_items, 1, x -> x);
+                                        ^

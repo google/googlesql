@@ -28,8 +28,8 @@ Outline
 Vocabulary
 ----------
 The annotation sources used in gen_resolved_ast.py (which re-exports them):
-INPUT, CREATED, OUTER and UNCHECKED (_ScopeKeyword instances), IF(field,
-source, else_=...), and CONTEXT(name). The context names are defined in
+INPUT, CREATED and OUTER (_ScopeKeyword instances), IF(field, source,
+else_=...), and CONTEXT(name). The context names are defined in
 gen_resolved_ast.py (COLUMN_SCOPE_CONTEXT_NAMES) and passed in.
 
 Checking the annotations
@@ -39,18 +39,25 @@ it checks the annotations of all its own and inherited fields, and raises
 ColumnVisibilityError for any mistake:
   - Names and dotted paths refer to real fields, and the fields can provide
     columns (_RenderPath, _CanProvide).
-  - Each source is allowed where it's used: OUTER only in outer_scope;
-    INPUT, CREATED and CONTEXT not in outer_scope; only ColumnRef fields in
-    outer_scope; INPUT and CONTEXT not in provided_columns; UNCHECKED alone
-    (_RenderSource).
-  - Field-level rules: scope= not on scan fields, scope_sequential only on
-    non-scan node vectors, no annotations on scalar or created-column fields,
-    only scope= on referenced ResolvedColumn fields, known context names
-    (_GenerateField).
-  - Node-level rules: INPUT only on scans with a pipe input scan,
-    column_list_scope only on scans without column_list_is_created_columns,
-    provided_columns not on scans, inherited_field_scopes names inherited
-    fields (_GenerateNode, _GenerateProvidedColumns, _CheckOverrides).
+  - Each source is allowed where it's used (_RenderSource):
+    - OUTER only in outer_scope
+    - INPUT, CREATED and CONTEXT not in outer_scope
+    - only ColumnRef fields in outer_scope
+    - INPUT and CONTEXT not in provided_columns
+  - Field-level rules (_GenerateField):
+    - scope= not on scan fields
+    - scope_sequential only on non-scan node vectors
+    - no annotations on scalar or created-column fields
+    - only scope= on referenced ResolvedColumn fields
+    - known context names
+    - hint fields must have empty scopes
+  - Node-level rules (_GenerateNode, _GenerateProvidedColumns, _CheckOverrides):
+    - INPUT only on scans with a pipe input scan
+    - column_list_scope only on scans without column_list_is_created_columns
+    - provided_columns not on scans
+    - inherited_field_scopes names inherited fields
+    - default_scope_is_empty / default_outer_scope_is_empty apply [] when a
+      field of that node type leaves scope / outer_scope unset (_Annotations)
   - No cycles between fields' scopes, except a field naming itself
     (_CheckCycles).
 Most checks happen while rendering the C++, so every annotation that's used
@@ -118,7 +125,7 @@ FieldDict = dict[str, Any]
 
 
 class _ScopeKeyword:
-  """One of the keyword scope sources INPUT, CREATED, OUTER or UNCHECKED."""
+  """One of the keyword scope sources INPUT, CREATED or OUTER."""
 
   def __init__(self, name):
     self.name = name
@@ -130,7 +137,6 @@ class _ScopeKeyword:
 INPUT = _ScopeKeyword('INPUT')
 CREATED = _ScopeKeyword('CREATED')
 OUTER = _ScopeKeyword('OUTER')
-UNCHECKED = _ScopeKeyword('UNCHECKED')
 
 
 class IF:  # pylint: disable=invalid-name
@@ -162,7 +168,13 @@ class CONTEXT:  # pylint: disable=invalid-name
 
 # The keyword arguments of Field() that hold column visibility annotations.
 # These are also the keys allowed in AddNode(inherited_field_scopes=...).
-FIELD_ANNOTATION_KEYS = ('scope', 'scope_sequential', 'outer_scope', 'context')
+FIELD_ANNOTATION_KEYS = (
+    'scope',
+    'scope_sequential',
+    'outer_scope',
+    'expr_must_be_constant',
+    'context',
+)
 
 
 class ColumnVisibilityError(RuntimeError):
@@ -233,6 +245,7 @@ class ColumnVisibilityCodegen:
       ColumnVisibilityError: If any annotation is invalid.
     """
     for node in nodes:
+      node['has_provided_columns'] = False
       node['provided_columns_body'] = ''
       if node['is_abstract']:
         node['visibility_check_body'] = ''
@@ -242,6 +255,15 @@ class ColumnVisibilityCodegen:
         if provided_columns is not None:
           node['provided_columns_body'] = self._GenerateProvidedColumns(
               node, provided_columns
+          )
+          # `AddProvidedColumns` falls back to `node->GetColumnsCreated()` by
+          # default, so it needs a switch case when `provided_columns` is
+          # non-empty or when `provided_columns=[]` suppresses non-empty
+          # `GetColumnsCreated()`.
+          node['has_provided_columns'] = bool(
+              node['provided_columns_body']
+              or any(f['column_is_created'] for f in self._AllFields(node))
+              or node['use_custom_columns_created']
           )
 
   def _Error(
@@ -295,12 +317,20 @@ class ColumnVisibilityCodegen:
     """
     if name not in self._can_provide_cache:
       node = self._node_map[name]
-      result = (
-          any(f['column_is_created'] for f in self._AllFields(node))
-          or bool(self._ProvidedColumns(node))
-          or any(
-              self._NodeCanProvide(sub['name']) for sub in node['subclasses']
-          )
+      # An explicit or inherited `provided_columns` annotation overrides the
+      # default (`column_is_created` fields): `provided_columns=[]` (e.g. on
+      # ResolvedExpr) means `node` itself provides nothing even if it has
+      # internal `column_is_created` fields. A subclass may still override
+      # `provided_columns`, so we also check subclasses.
+      provided_columns = self._ProvidedColumns(node)
+      if provided_columns is not None:
+        own_can_provide = bool(provided_columns)
+      else:
+        own_can_provide = any(
+            f['column_is_created'] for f in self._AllFields(node)
+        )
+      result = own_can_provide or any(
+          self._NodeCanProvide(sub['name']) for sub in node['subclasses']
       )
       self._can_provide_cache[name] = result
     return self._can_provide_cache[name]
@@ -323,8 +353,8 @@ class ColumnVisibilityCodegen:
     """Returns the inherited and own field dicts of `node`, in order."""
     return node['inherited_fields'] + node['fields']
 
-  def _Ancestry(self, node):
-    """Returns `node` and its ancestor node dicts, nearest first."""
+  def _AncestorNodes(self, node):
+    """Returns `node` and its superclass node dicts, nearest first."""
     result = [node]
     while result[-1]['parent'] != self._root_node_name:
       result.append(self._node_map[result[-1]['parent']])
@@ -332,11 +362,11 @@ class ColumnVisibilityCodegen:
 
   def _HasPipeInput(self, node):
     """True if scan node class `node` has a pipe input scan."""
-    for n in self._Ancestry(node):
+    for n in self._AncestorNodes(node):
       if n['pipe_input_scan_getter']:
         return True
       if n['name'] != 'ResolvedScan' and (
-          'GetPipeInputScan' in n['extra_defs_node_only']
+          'GetPipeInputScanImpl' in n['extra_protected_defs']
       ):
         return True
     return False
@@ -352,9 +382,12 @@ class ColumnVisibilityCodegen:
       A dict with FIELD_ANNOTATION_KEYS as keys. Overrides from
       `inherited_field_scopes` on the nearest node class between `node` and
       the field's defining node are applied.
+
+    Raises:
+      ColumnVisibilityError: If `expr_must_be_constant` is invalid.
     """
     annotations = {key: field[key] for key in FIELD_ANNOTATION_KEYS}
-    for n in self._Ancestry(node):
+    for n in self._AncestorNodes(node):
       if n['name'] == field['defining_node_name']:
         break
       override = n['inherited_field_scopes'].get(field['name'])
@@ -363,6 +396,46 @@ class ColumnVisibilityCodegen:
         break
     if annotations['context'] is None:
       annotations['context'] = {}
+    if annotations['expr_must_be_constant']:
+      if field['ctype'] != 'ResolvedExpr':
+        raise self._Error(
+            node,
+            field,
+            'expr_must_be_constant is only allowed on ResolvedExpr fields',
+        )
+      if (
+          annotations['scope'] is not None
+          or annotations['outer_scope'] is not None
+          or annotations['scope_sequential']
+          or annotations['context']
+      ):
+        raise self._Error(
+            node,
+            field,
+            'expr_must_be_constant cannot be combined with other column'
+            ' visibility annotations',
+        )
+      annotations['scope'] = []
+      annotations['outer_scope'] = []
+    if field['is_node_ptr'] or field['is_node_vector']:
+      # For a node-typed field (e.g. `field['ctype'] == 'ResolvedOption'`), walk
+      # the C++ class hierarchy of the field's target node type to find the
+      # closest superclass that sets `default_scope_is_empty` or
+      # `default_outer_scope_is_empty`. If True, default an unset `scope` or
+      # `outer_scope` on this field to `[]` (instead of `[INPUT]` / `[OUTER]`).
+      field_type_node = self._node_map[field['ctype']]
+      if annotations['scope'] is None:
+        for n in self._AncestorNodes(field_type_node):
+          if n['default_scope_is_empty'] is not None:
+            if n['default_scope_is_empty']:
+              annotations['scope'] = []
+            break
+      if annotations['outer_scope'] is None:
+        for n in self._AncestorNodes(field_type_node):
+          if n['default_outer_scope_is_empty'] is not None:
+            if n['default_outer_scope_is_empty']:
+              annotations['outer_scope'] = []
+            break
     return annotations
 
   def _ColumnListScope(self, node):
@@ -375,14 +448,14 @@ class ColumnVisibilityCodegen:
       A tuple of the column_list_scope (None if neither `node` nor an ancestor
       sets it) and whether it's set on `node` itself.
     """
-    for n in self._Ancestry(node):
+    for n in self._AncestorNodes(node):
       if n['column_list_scope'] is not None:
         return n['column_list_scope'], n is node
     return None, False
 
   def _ProvidedColumns(self, node):
     """Returns the effective `provided_columns` of `node`, or None."""
-    for n in self._Ancestry(node):
+    for n in self._AncestorNodes(node):
       if n['provided_columns'] is not None:
         return n['provided_columns']
     return None
@@ -457,7 +530,7 @@ class ColumnVisibilityCodegen:
             self_field,
             '%r names %r, which is not a field' % (path, parts[index]),
         )
-      getter = '%s->%s()' % (expr, f['name'])
+      getter = '%s->%s_untracked()' % (expr, f['name'])
       if index == len(parts) - 1:
         if is_outer:
           if self._FieldKind(f) != 'column_ref' or index > 0:
@@ -467,7 +540,10 @@ class ColumnVisibilityCodegen:
                 'outer_scope can only name sibling ResolvedColumnRef fields,'
                 ' not %r' % path,
             )
-        elif not self._CanProvide(owner, f):
+        elif not self._CanProvide(owner, f) and not (
+            kind == _PROVIDED_COLUMNS
+            and self._FieldKind(f) in ('column', 'holder')
+        ):
           raise self._Error(
               node, self_field, '%r can never provide any columns' % path
           )
@@ -509,9 +585,9 @@ class ColumnVisibilityCodegen:
     """
     p = ' ' * indent
     if kind == 'scan':
-      return [p + 'b.Add(%s->column_list());' % expr]
+      return [p + 'b.Add(%s->column_list_untracked());' % expr]
     if kind in ('holder', 'column_ref'):
-      return [p + 'b.Add(%s->column());' % expr]
+      return [p + 'b.Add(%s->column_untracked());' % expr]
     assert kind == 'node', kind
     return [p + 'AddProvidedColumns(&*%s, b);' % expr]
 
@@ -554,7 +630,7 @@ class ColumnVisibilityCodegen:
       raise self._Error(
           node, self_field, 'IF() names unknown field %r' % source.field
       )
-    getter = 'node->%s()' % source.field
+    getter = 'node->%s_untracked()' % source.field
     if cond_field['is_vector']:
       return '!%s.empty()' % getter
     if cond_field['is_node_ptr']:
@@ -599,10 +675,6 @@ class ColumnVisibilityCodegen:
       ColumnVisibilityError: If `source` isn't allowed here.
     """
     p = ' ' * indent
-    if source is UNCHECKED:
-      raise self._Error(
-          node, self_field, 'UNCHECKED must be the only element of a list'
-      )
     if kind == _PROVIDED_COLUMNS and (
         source is INPUT or source is OUTER or isinstance(source, CONTEXT)
     ):
@@ -624,7 +696,9 @@ class ColumnVisibilityCodegen:
         return [p + 'b.Add(env.%s);' % source.name]
       lines = []
       for f in self._CreatedFields(node, self_field):
-        lines.extend(self._RenderProvide('node->%s()' % f['name'], f, indent))
+        lines.extend(
+            self._RenderProvide('node->%s_untracked()' % f['name'], f, indent)
+        )
       return lines
     if source is OUTER:
       if kind != _OUTER_SCOPE:
@@ -692,8 +766,6 @@ class ColumnVisibilityCodegen:
     p = ' ' * indent
     if not isinstance(sources, list):
       raise self._Error(node, self_field, '%s must be a list' % kind)
-    if sources == [UNCHECKED]:
-      return [p + '%s = UncheckedColumnSet();' % target]
     if not sources:
       return [p + '%s = nullptr;' % target]
     if len(sources) == 1 and sources[0] is INPUT and kind != _OUTER_SCOPE:
@@ -895,7 +967,7 @@ class ColumnVisibilityCodegen:
     """
     if node['is_scan']:
       raise self._Error(node, None, 'provided_columns is not allowed on scans')
-    if not isinstance(provided_columns, list) or UNCHECKED in provided_columns:
+    if not isinstance(provided_columns, list):
       raise self._Error(
           node, None, 'provided_columns must be a list of sources'
       )
@@ -931,7 +1003,7 @@ class ColumnVisibilityCodegen:
     """
     kind = self._FieldKind(field)
     name = field['name']
-    getter = 'node->%s()' % name
+    getter = 'node->%s_untracked()' % name
     has_annotations = (
         annotations['scope'] is not None
         or annotations['outer_scope'] is not None
@@ -991,6 +1063,20 @@ class ColumnVisibilityCodegen:
 
     # Node-typed fields: compute the field's Env, then recurse. The Env is
     # only copied if the field changes it.
+    if (
+        field['ctype'] == 'ResolvedOption'
+        and 'hint' in field['name']
+        and (
+            annotations['scope']
+            or annotations['outer_scope']
+            or annotations['scope_sequential']
+        )
+    ):
+      raise self._Error(
+          node,
+          field,
+          'hint field cannot have non-empty scope or outer_scope',
+      )
     lines = []
     if kind == 'scan':
       if annotations['scope'] is not None:

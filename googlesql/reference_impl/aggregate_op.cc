@@ -1443,10 +1443,11 @@ class WithGroupRowsAccumulator : public IntermediateAggregateAccumulator {
   const TupleData* group_keys_;
 };
 
-// Adapts IntermediateAggregateAccumulator to AggregateArgAccumulator.
-class IntermediateAggregateAccumulatorAdaptor : public AggregateArgAccumulator {
+// Evaluates the aggregate argument expressions and passes the evaluated values
+// to the underlying accumulator.
+class EvalArgAccumulator : public IntermediateAggregateAccumulator {
  public:
-  IntermediateAggregateAccumulatorAdaptor(
+  EvalArgAccumulator(
       absl::Span<const TupleData* const> params,
       absl::Span<const ValueExpr* const> value_exprs, const Type* input_type,
       std::unique_ptr<IntermediateAggregateAccumulator> accumulator,
@@ -1457,13 +1458,13 @@ class IntermediateAggregateAccumulatorAdaptor : public AggregateArgAccumulator {
         accumulator_(std::move(accumulator)),
         context_(context) {}
 
-  IntermediateAggregateAccumulatorAdaptor(
-      const IntermediateAggregateAccumulatorAdaptor&) = delete;
-  IntermediateAggregateAccumulatorAdaptor& operator=(
-      const IntermediateAggregateAccumulatorAdaptor&) = delete;
+  EvalArgAccumulator(const EvalArgAccumulator&) = delete;
+  EvalArgAccumulator& operator=(const EvalArgAccumulator&) = delete;
 
-  bool Accumulate(const TupleData& input_row, bool* stop_accumulation,
-                  absl::Status* status) override {
+  absl::Status Reset() override { return accumulator_->Reset(); }
+
+  bool Accumulate(const TupleData& input_row, const Value& /*input_value*/,
+                  bool* stop_accumulation, absl::Status* status) override {
     std::vector<Value> values(value_exprs_.size());
     for (int i = 0; i < value_exprs_.size(); ++i) {
       const ValueExpr* value_expr = value_exprs_[i];
@@ -1500,6 +1501,32 @@ class IntermediateAggregateAccumulatorAdaptor : public AggregateArgAccumulator {
   const Type* input_type_;
   std::unique_ptr<IntermediateAggregateAccumulator> accumulator_;
   EvaluationContext* context_;
+};
+
+// Adapts IntermediateAggregateAccumulator to AggregateArgAccumulator.
+class IntermediateAggregateAccumulatorAdaptor : public AggregateArgAccumulator {
+ public:
+  explicit IntermediateAggregateAccumulatorAdaptor(
+      std::unique_ptr<IntermediateAggregateAccumulator> accumulator)
+      : accumulator_(std::move(accumulator)) {}
+
+  IntermediateAggregateAccumulatorAdaptor(
+      const IntermediateAggregateAccumulatorAdaptor&) = delete;
+  IntermediateAggregateAccumulatorAdaptor& operator=(
+      const IntermediateAggregateAccumulatorAdaptor&) = delete;
+
+  bool Accumulate(const TupleData& input_row, bool* stop_accumulation,
+                  absl::Status* status) override {
+    return accumulator_->Accumulate(input_row, Value(), stop_accumulation,
+                                    status);
+  }
+
+  absl::StatusOr<Value> GetFinalResult(bool inputs_in_defined_order) override {
+    return accumulator_->GetFinalResult(inputs_in_defined_order);
+  }
+
+ private:
+  std::unique_ptr<IntermediateAggregateAccumulator> accumulator_;
 };
 
 // An accumulator for GROUPING function.
@@ -2007,11 +2034,14 @@ AggregateArg::CreateAccumulator(absl::Span<const TupleData* const> params,
                                       std::move(inner_aggregators_ptrs),
                                       std::move(accumulator), context));
     // Always clear input fields and the type, because we don't want
-    // `IntermediateAggregateAccumulatorAdaptor` to directly evaluate the inputs
-    // if multi-level aggregation is present.
+    // `EvalArgAccumulator` to directly evaluate the inputs if multi-level
+    // aggregation is present.
     type = EmptyStructType();
     input_fields.clear();
   }
+
+  accumulator = std::make_unique<EvalArgAccumulator>(
+      params, input_fields, type, std::move(accumulator), context);
 
   if (grain_locking_measure_variable_.is_valid()) {
     // We need to apply grain locking using `grain_locking_measure_variable_`
@@ -2037,10 +2067,8 @@ AggregateArg::CreateAccumulator(absl::Span<const TupleData* const> params,
   }
 
   // Adapt 'accumulator' to the AggregateArgAccumulator interface.
-  // TODO: Fix execution order so filtering and deduplication
-  // occur before argument evaluation.
   return std::make_unique<IntermediateAggregateAccumulatorAdaptor>(
-      params, input_fields, type, std::move(accumulator), context);
+      std::move(accumulator));
 }
 
 absl::StatusOr<Value> AggregateArg::EvalAgg(
@@ -2742,6 +2770,5 @@ absl::StatusOr<std::unique_ptr<TupleIterator>> RowsForUdaOp::CreateIterator(
       context);
   return MaybeReorder(std::move(iter), context);
 }
-
 
 }  // namespace googlesql

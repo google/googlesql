@@ -50,57 +50,57 @@ SET
 ==
 
 # SET static property on edge
-GRAPH aml
-MATCH ()-[e:Transfer]->()
-SET e.amount = 500
+GRAPH aml_with_timestamps
+MATCH ()-[e:PersonOwnAccount]->()
+SET e.startDate = TIMESTAMP '2020-01-01 00:00:00+00'
 --
 [SQLBUILDER_TARGET_SYNTAX_MODE standard]
 [SQLBUILDER_OUTPUT]
-GRAPH aml
+GRAPH aml_with_timestamps
 MATCH
   (a_1 IS (% | ! %))
-  -[a_2 IS Transfer]->
+  -[a_2 IS PersonOwnAccount]->
   (a_3 IS (% | ! %))
 SET
-  a_2.amount = CAST(500 AS UINT64);
+  a_2.startDate = TIMESTAMP "2020-01-01 00:00:00+00";
 
 [SQLBUILDER_TARGET_SYNTAX_MODE pipe]
 [SQLBUILDER_OUTPUT]
-GRAPH aml
+GRAPH aml_with_timestamps
 MATCH
   (a_1 IS (% | ! %))
-  -[a_2 IS Transfer]->
+  -[a_2 IS PersonOwnAccount]->
   (a_3 IS (% | ! %))
 SET
-  a_2.amount = CAST(500 AS UINT64);
+  a_2.startDate = TIMESTAMP "2020-01-01 00:00:00+00";
 ==
 
 # SET properties on both node and edge in a matched path
-GRAPH aml
-MATCH (p:Person)-[e:Transfer]->(a:Account)
-SET p.name = 'Alice', e.amount = 1000
+GRAPH aml_with_timestamps
+MATCH (p:Person)-[e:PersonOwnAccount]->(a:Account)
+SET p.name = 'Alice', e.startDate = TIMESTAMP '2020-01-01 00:00:00+00'
 --
 [SQLBUILDER_TARGET_SYNTAX_MODE standard]
 [SQLBUILDER_OUTPUT]
-GRAPH aml
+GRAPH aml_with_timestamps
 MATCH
   (a_1 IS Person)
-  -[a_2 IS Transfer]->
+  -[a_2 IS PersonOwnAccount]->
   (a_3 IS Account)
 SET
   a_1.name = "Alice",
-  a_2.amount = CAST(1000 AS UINT64);
+  a_2.startDate = TIMESTAMP "2020-01-01 00:00:00+00";
 
 [SQLBUILDER_TARGET_SYNTAX_MODE pipe]
 [SQLBUILDER_OUTPUT]
-GRAPH aml
+GRAPH aml_with_timestamps
 MATCH
   (a_1 IS Person)
-  -[a_2 IS Transfer]->
+  -[a_2 IS PersonOwnAccount]->
   (a_3 IS Account)
 SET
   a_1.name = "Alice",
-  a_2.amount = CAST(1000 AS UINT64);
+  a_2.startDate = TIMESTAMP "2020-01-01 00:00:00+00";
 ==
 
 # SET property items with parameter and value subquery expressions
@@ -139,19 +139,19 @@ param_name: STRING
 
 # Multi-property update with arithmetic expressions on RHS
 GRAPH aml
-MATCH (p:Person)-[e:Transfer]->(a:Account)
-SET p.age = p.age + 1, e.amount = e.amount * 2
+MATCH (p:Person)-[e:PersonOwnAccount]->(a:Account)
+SET p.age = p.age + 1, a.balance = a.balance * 2
 --
 [SQLBUILDER_TARGET_SYNTAX_MODE standard]
 [SQLBUILDER_OUTPUT]
 GRAPH aml
 MATCH
   (a_1 IS Person)
-  -[a_2 IS Transfer]->
+  -[a_2 IS PersonOwnAccount]->
   (a_3 IS Account)
 SET
   a_1.age = CAST(CAST(a_1.age AS UINT64) + CAST(1 AS UINT64) AS UINT32),
-  a_2.amount = (a_2.amount) *
+  a_3.balance = (a_3.balance) *
   CAST(2 AS UINT64);
 
 [SQLBUILDER_TARGET_SYNTAX_MODE pipe]
@@ -159,11 +159,11 @@ SET
 GRAPH aml
 MATCH
   (a_1 IS Person)
-  -[a_2 IS Transfer]->
+  -[a_2 IS PersonOwnAccount]->
   (a_3 IS Account)
 SET
   a_1.age = CAST(CAST(a_1.age AS UINT64) + CAST(1 AS UINT64) AS UINT32),
-  a_2.amount = (a_2.amount) *
+  a_3.balance = (a_3.balance) *
   CAST(2 AS UINT64);
 ==
 
@@ -233,6 +233,28 @@ SET
   a_1 = { name : CONCAT("Alice", "_Smith"), age : CAST(ABS(-30) AS UINT32) };
 ==
 
+# SET existing static label on static graph
+GRAPH aml
+MATCH (n:Person)
+SET n:Person
+--
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+GRAPH aml
+MATCH
+  (a_1 IS Person)
+SET
+  a_1 IS Person;
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+GRAPH aml
+MATCH
+  (a_1 IS Person)
+SET
+  a_1 IS Person;
+==
+
 # SET dynamic label with ':' syntax on dynamic graph
 GRAPH aml_dynamic
 MATCH (n:Entity)
@@ -277,14 +299,15 @@ SET
   a_1 IS Vip;
 ==
 
-# SET multiple dynamic labels on dynamic graph
-GRAPH aml_dynamic
+[language_features=NONE,+SQL_GRAPH,+SQL_GRAPH_ADVANCED_QUERY,+SQL_GRAPH_RETURN_EXTENSIONS,+SQL_GRAPH_TERMINAL_NON_RETURNING_UPDATE,+SQL_GRAPH_UPDATABLE_GRAPH_ELEMENT_TYPE,+SQL_GRAPH_DYNAMIC_ELEMENT_TYPE,+SQL_GRAPH_DYNAMIC_LABEL_PROPERTIES_IN_DDL,+SQL_GRAPH_DYNAMIC_MULTI_LABEL_NODES]
+# SET multiple dynamic labels on multi-dynamic-label graph
+GRAPH aml_dynamic_multi
 MATCH (n:Entity)
 SET n:Vip, n:Active
 --
 [SQLBUILDER_TARGET_SYNTAX_MODE standard]
 [SQLBUILDER_OUTPUT]
-GRAPH aml_dynamic
+GRAPH aml_dynamic_multi
 MATCH
   (a_1 IS Entity)
 SET
@@ -293,7 +316,7 @@ SET
 
 [SQLBUILDER_TARGET_SYNTAX_MODE pipe]
 [SQLBUILDER_OUTPUT]
-GRAPH aml_dynamic
+GRAPH aml_dynamic_multi
 MATCH
   (a_1 IS Entity)
 SET
@@ -461,7 +484,8 @@ SET
   a_1 IS Vip;
 ==
 
-# Combining property item, property specification item, and label item in one SET clause
+# Combining property item, property specification item, and label item in one
+# SET clause
 GRAPH aml_dynamic
 MATCH (n:Entity), (m:Entity)
 SET n:Vip, n = {code: 2000}, m.dynamic_property1 = "active"

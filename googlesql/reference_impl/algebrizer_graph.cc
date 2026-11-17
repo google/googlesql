@@ -971,12 +971,12 @@ Algebrizer::AlgebrizeGraphAllNodesScan() {
   const GraphElementType* element_type;
   if (has_dynamic_property) {
     GOOGLESQL_RETURN_IF_ERROR(type_factory_->MakeDynamicGraphElementType(
-        property_graph->NamePath(), GraphElementType::kNode,
-        std::move(property_types), &element_type));
+        property_graph->NamePath(), GraphElementType::kNode, property_types,
+        /*element_tables=*/{}, &element_type));
   } else {
     GOOGLESQL_RETURN_IF_ERROR(type_factory_->MakeGraphElementType(
-        property_graph->NamePath(), GraphElementType::kNode,
-        std::move(property_types), &element_type));
+        property_graph->NamePath(), GraphElementType::kNode, property_types,
+        /*element_tables=*/{}, &element_type));
   }
 
   GOOGLESQL_RET_CHECK(!all_node_tables.empty());
@@ -1050,6 +1050,14 @@ Algebrizer::AlgebrizeGraphElementScan(
       // Algebrize to mark fields as accessed.
       GOOGLESQL_RETURN_IF_ERROR(
           AlgebrizeExpression(element_scan->filter_expr()).status());
+    }
+    if (element_scan->Is<ResolvedGraphEdgeScan>() &&
+        element_scan->GetAs<ResolvedGraphEdgeScan>()->cost_expr() != nullptr) {
+      // Algebrize to mark fields as accessed.
+      GOOGLESQL_RETURN_IF_ERROR(
+          AlgebrizeExpression(
+              element_scan->GetAs<ResolvedGraphEdgeScan>()->cost_expr())
+              .status());
     }
     GOOGLESQL_ASSIGN_OR_RETURN(auto const_expr, ConstExpr::Create(Value::Int64(0)));
     return EnumerateOp::Create(std::move(const_expr));

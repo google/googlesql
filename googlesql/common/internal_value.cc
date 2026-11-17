@@ -94,6 +94,8 @@ bool InternalValue::ContainsArrayWithUncertainOrder(const Value& val) {
       absl::StatusOr<Value> struct_val = GetMeasureAsStructValue(val);
       return struct_val.ok() && ContainsArrayWithUncertainOrder(*struct_val);
     }
+    case TYPE_VARIANT:
+      return ContainsArrayWithUncertainOrder(val.variant_ptr_->inner_value());
     default:
       ABSL_DCHECK(val.type()->ComponentTypes().empty()) << val.type()->DebugString();
       return false;

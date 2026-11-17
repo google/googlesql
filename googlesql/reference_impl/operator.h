@@ -2739,12 +2739,7 @@ class ComputeOp final : public RelationalOp {
   std::string DebugInternal(const std::string& indent,
                             bool verbose) const override;
 
-  // With pipe syntax, we can have ProjectScans that preserve order. ComputeOps
-  // correspond to ProjectScans, hence ComputeOps must propagate the order
-  // preserving nature of the underlying input Ops.
-  bool may_preserve_order() const override {
-    return input()->may_preserve_order();
-  }
+  bool may_preserve_order() const override { return true; }
 
  private:
   enum ArgKind { kMap, kInput };
@@ -2786,15 +2781,6 @@ class FilterOp final : public RelationalOp {
 
   std::string DebugInternal(const std::string& indent,
                             bool verbose) const override;
-
-  // With pipe syntax, we can have ProjectScans that preserve order. ComputeOps
-  // and FilterOps correspond to ProjectScans and FilterScans respectively. When
-  // a FilterScan wraps a ProjectScan, it may be pushed down. Hence, FilterOps
-  // must propagate the order preserving nature of the underlying input Ops,
-  // just like ComputeOps.
-  bool may_preserve_order() const override {
-    return input()->may_preserve_order();
-  }
 
  private:
   enum ArgKind { kPredicate, kInput };

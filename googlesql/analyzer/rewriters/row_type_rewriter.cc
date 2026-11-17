@@ -17,6 +17,7 @@
 #include "googlesql/analyzer/rewriters/row_type_rewriter.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -1883,6 +1884,41 @@ class RowTypeColumnRewriterVisitor : public ResolvedASTRewriteVisitor {
       return std::move(node);
     }
 
+    bool has_row_type = signature.result_type().type() != nullptr &&
+                        signature.result_type().type()->IsRow();
+    if (!has_row_type) {
+      for (const FunctionArgumentType& arg_type : signature.arguments()) {
+        if (arg_type.type() != nullptr && arg_type.type()->IsRow()) {
+          has_row_type = true;
+          break;
+        }
+      }
+    }
+
+    // If the function uses a RowType, get the replacement function context_id.
+    int64_t new_context_id = signature.context_id();
+    if (has_row_type) {
+      GOOGLESQL_RET_CHECK(node->node_kind() == RESOLVED_FUNCTION_CALL)
+          << "There are no non-ResolvedFunctionCall nodes which allow "
+             "RowTypes.";
+      GOOGLESQL_RET_CHECK(node->function()->IsGoogleSQLBuiltin())
+          << "There are no non-builtin Functions which allow RowTypes.";
+      switch (signature.context_id()) {
+        case FN_IS_NULL:
+          // TODO: Stop producing FN_IS_NULL with RowType from
+          // Measure rewriter, and remove this case. This is only included to
+          // avoid breaking some tests that depend on this.
+          new_context_id = FN_IS_NULL;
+          break;
+        case FN_IS_NULL_ROW:
+          new_context_id = FN_IS_NULL;
+          break;
+        default:
+          GOOGLESQL_RET_CHECK_FAIL() << "Unsupported signature context_id: "
+                           << signature.context_id();
+      }
+    }
+
     ABSL_LOG(INFO) << "PostVisitResolvedFunctionCallBase:\n" << node->DebugString();
 
     FunctionArgumentTypeList arguments;
@@ -1897,8 +1933,8 @@ class RowTypeColumnRewriterVisitor : public ResolvedASTRewriteVisitor {
     GOOGLESQL_ASSIGN_OR_RETURN(FunctionArgumentType result_type,
                      MapFunctionArgumentType(signature.result_type()));
 
-    FunctionSignature new_signature(
-        result_type, arguments, signature.context_id(), signature.options());
+    FunctionSignature new_signature(result_type, arguments, new_context_id,
+                                    signature.options());
 
     // We can't use a Builder easily because we're working on a superclass node.
     ResolvedFunctionCallBase* mutable_node =

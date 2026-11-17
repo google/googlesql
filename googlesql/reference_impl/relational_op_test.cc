@@ -84,6 +84,7 @@ using ::testing::Pointee;
 using ::testing::PrintToString;
 using ::testing::SizeIs;
 using ::testing::StrEq;
+using ::testing::UnorderedElementsAre;
 using ::absl_testing::IsOkAndHolds;
 using ::absl_testing::StatusIs;
 
@@ -4578,107 +4579,6 @@ TEST_F(CreateIteratorTest, ComputeOp) {
 
   GOOGLESQL_ASSERT_OK_AND_ASSIGN(auto compute_op,
                        ComputeOp::Create(std::move(args), std::move(input)));
-  EXPECT_FALSE(compute_op->may_preserve_order());
-  EXPECT_EQ(compute_op->IteratorDebugString(),
-            "ComputeTupleIterator(TestTupleIterator)");
-  EXPECT_EQ(
-      "ComputeOp(\n"
-      "+-map: {\n"
-      "| +-$plus := Add($a, $b),\n"
-      "| +-$minus := Subtract($a, $b),\n"
-      "| +-$param := $param},\n"
-      "+-input: TestRelationalOp)",
-      compute_op->DebugString());
-  std::unique_ptr<TupleSchema> output_schema = compute_op->CreateOutputSchema();
-  EXPECT_THAT(output_schema->variables(),
-              ElementsAre(a, b, plus, minus, param));
-
-  TupleSchema params_schema({param});
-  std::vector<const SharedProtoState*> params_shared_states;
-  TupleData params_data =
-      CreateTestTupleData({GetProtoValue(100)}, &params_shared_states);
-  const SharedProtoState* params_shared_state = params_shared_states[0];
-
-  GOOGLESQL_ASSERT_OK(compute_op->SetSchemasForEvaluation({&params_schema}));
-
-  EvaluationContext context((EvaluationOptions()));
-  GOOGLESQL_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<TupleIterator> iter,
-      compute_op->CreateIterator({&params_data},
-                                 /*num_extra_slots=*/1, &context));
-  EXPECT_EQ(iter->DebugString(), "ComputeTupleIterator(TestTupleIterator)");
-  EXPECT_TRUE(iter->PreservesOrder());
-  GOOGLESQL_ASSERT_OK_AND_ASSIGN(std::vector<TupleData> data,
-                       ReadFromTupleIterator(iter.get()));
-  ASSERT_EQ(data.size(), 2);
-  EXPECT_THAT(data[0].slots(),
-              ElementsAre(IsTupleSlotWith(Int64(1), IsNull()),
-                          IsTupleSlotWith(Int64(10), IsNull()),
-                          IsTupleSlotWith(Int64(11), IsNull()),
-                          IsTupleSlotWith(Int64(-9), IsNull()),
-                          IsTupleSlotWith(GetProtoValue(100),
-                                          HasRawPointer(params_shared_state)),
-                          _));
-  EXPECT_THAT(data[1].slots(),
-              ElementsAre(IsTupleSlotWith(Int64(2), IsNull()),
-                          IsTupleSlotWith(Int64(20), IsNull()),
-                          IsTupleSlotWith(Int64(22), IsNull()),
-                          IsTupleSlotWith(Int64(-18), IsNull()),
-                          IsTupleSlotWith(GetProtoValue(100),
-                                          HasRawPointer(params_shared_state)),
-                          _));
-
-  // Check that scrambling works.
-  EvaluationContext scramble_context(GetScramblingEvaluationOptions());
-  GOOGLESQL_ASSERT_OK_AND_ASSIGN(
-      iter, compute_op->CreateIterator({&params_data}, /*num_extra_slots=*/1,
-                                       &scramble_context));
-  EXPECT_EQ(iter->DebugString(),
-            "ReorderingTupleIterator(ComputeTupleIterator(TestTupleIterator))");
-  EXPECT_FALSE(iter->PreservesOrder());
-}
-
-TEST_F(CreateIteratorTest, ComputeOp_OrderedInput) {
-  VariableId a("a"), b("b"), param("param"), minus("minus"), plus("plus");
-  std::vector<TupleData> test_values =
-      CreateTestTupleDatas({{Int64(1), Int64(10)}, {Int64(2), Int64(20)}});
-  auto input = absl::WrapUnique(
-      new TestRelationalOp({a, b}, test_values, /*preserves_order=*/true,
-                           /*may_preserve_order=*/true));
-
-  GOOGLESQL_ASSERT_OK_AND_ASSIGN(auto deref_a, DerefExpr::Create(a, Int64Type()));
-  GOOGLESQL_ASSERT_OK_AND_ASSIGN(auto deref_b, DerefExpr::Create(b, Int64Type()));
-
-  std::vector<std::unique_ptr<ValueExpr>> plus_args;
-  plus_args.push_back(std::move(deref_a));
-  plus_args.push_back(std::move(deref_b));
-
-  GOOGLESQL_ASSERT_OK_AND_ASSIGN(auto plus_expr,
-                       ScalarFunctionCallExpr::Create(
-                           CreateFunction(FunctionKind::kAdd, Int64Type()),
-                           std::move(plus_args), DEFAULT_ERROR_MODE));
-
-  GOOGLESQL_ASSERT_OK_AND_ASSIGN(auto deref_a_again, DerefExpr::Create(a, Int64Type()));
-  GOOGLESQL_ASSERT_OK_AND_ASSIGN(auto deref_b_again, DerefExpr::Create(b, Int64Type()));
-
-  std::vector<std::unique_ptr<ValueExpr>> minus_args;
-  minus_args.push_back(std::move(deref_a_again));
-  minus_args.push_back(std::move(deref_b_again));
-
-  GOOGLESQL_ASSERT_OK_AND_ASSIGN(auto minus_expr,
-                       ScalarFunctionCallExpr::Create(
-                           CreateFunction(FunctionKind::kSubtract, Int64Type()),
-                           std::move(minus_args), DEFAULT_ERROR_MODE));
-
-  GOOGLESQL_ASSERT_OK_AND_ASSIGN(auto deref_param, DerefExpr::Create(param, Int64Type()));
-
-  std::vector<std::unique_ptr<ExprArg>> args;
-  args.push_back(std::make_unique<ExprArg>(plus, std::move(plus_expr)));
-  args.push_back(std::make_unique<ExprArg>(minus, std::move(minus_expr)));
-  args.push_back(std::make_unique<ExprArg>(param, std::move(deref_param)));
-
-  GOOGLESQL_ASSERT_OK_AND_ASSIGN(auto compute_op,
-                       ComputeOp::Create(std::move(args), std::move(input)));
   EXPECT_TRUE(compute_op->may_preserve_order());
   EXPECT_EQ(compute_op->IteratorDebugString(),
             "ComputeTupleIterator(TestTupleIterator)");
@@ -4737,73 +4637,18 @@ TEST_F(CreateIteratorTest, ComputeOp_OrderedInput) {
   EXPECT_EQ(iter->DebugString(),
             "ReorderingTupleIterator(ComputeTupleIterator(TestTupleIterator))");
   EXPECT_FALSE(iter->PreservesOrder());
+
+  // When is_order_preserving() is true, ComputeOp does not wrap the iterator in
+  // ReorderingTupleIterator.
+  GOOGLESQL_ASSERT_OK(compute_op->set_is_order_preserving(true));
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+      iter, compute_op->CreateIterator({&params_data}, /*num_extra_slots=*/1,
+                                       &scramble_context));
+  EXPECT_EQ(iter->DebugString(), "ComputeTupleIterator(TestTupleIterator)");
+  EXPECT_TRUE(iter->PreservesOrder());
 }
 
 TEST_F(CreateIteratorTest, FilterOp) {
-  VariableId a("a"), b("b"), param("param");
-  const std::vector<TupleData> test_values =
-      CreateTestTupleDatas({{Int64(1), Int64(10)},
-                            {Int64(3), Int64(30)},
-                            {Int64(2), Int64(20)},
-                            {Int64(4), Int64(40)}});
-  auto input = absl::WrapUnique(
-      new TestRelationalOp({a, b}, test_values, /*preserves_order=*/true));
-
-  GOOGLESQL_ASSERT_OK_AND_ASSIGN(auto deref_a, DerefExpr::Create(a, Int64Type()));
-  GOOGLESQL_ASSERT_OK_AND_ASSIGN(auto deref_param, DerefExpr::Create(param, Int64Type()));
-
-  std::vector<std::unique_ptr<ValueExpr>> args;
-  args.push_back(std::move(deref_a));
-  args.push_back(std::move(deref_param));
-
-  GOOGLESQL_ASSERT_OK_AND_ASSIGN(auto predicate,
-                       ScalarFunctionCallExpr::Create(
-                           CreateFunction(FunctionKind::kLess, BoolType()),
-                           std::move(args), DEFAULT_ERROR_MODE));
-
-  GOOGLESQL_ASSERT_OK_AND_ASSIGN(
-      auto filter_op, FilterOp::Create(std::move(predicate), std::move(input)));
-  EXPECT_EQ(filter_op->IteratorDebugString(),
-            "FilterTupleIterator(TestTupleIterator)");
-  EXPECT_EQ(
-      "FilterOp(\n"
-      "+-condition: Less($a, $param),\n"
-      "+-input: TestRelationalOp)",
-      filter_op->DebugString());
-  std::unique_ptr<TupleSchema> output_schema = filter_op->CreateOutputSchema();
-  EXPECT_THAT(output_schema->variables(), ElementsAre(a, b));
-
-  TupleSchema params_schema({param});
-  const TupleData params_data = CreateTestTupleData({Int64(3)});
-  GOOGLESQL_ASSERT_OK(filter_op->SetSchemasForEvaluation({&params_schema}));
-
-  EvaluationContext context((EvaluationOptions()));
-  GOOGLESQL_ASSERT_OK_AND_ASSIGN(std::unique_ptr<TupleIterator> iter,
-                       filter_op->CreateIterator(
-                           {&params_data}, /*num_extra_slots=*/1, &context));
-  EXPECT_EQ(iter->DebugString(), "FilterTupleIterator(TestTupleIterator)");
-  EXPECT_TRUE(iter->PreservesOrder());
-  GOOGLESQL_ASSERT_OK_AND_ASSIGN(std::vector<TupleData> data,
-                       ReadFromTupleIterator(iter.get()));
-  ASSERT_EQ(data.size(), 2);
-  EXPECT_THAT(data[0].slots(),
-              ElementsAre(IsTupleSlotWith(Int64(1), IsNull()),
-                          IsTupleSlotWith(Int64(10), IsNull()), _));
-  EXPECT_THAT(data[1].slots(),
-              ElementsAre(IsTupleSlotWith(Int64(2), IsNull()),
-                          IsTupleSlotWith(Int64(20), IsNull()), _));
-
-  // Check that scrambling works.
-  EvaluationContext scramble_context(GetScramblingEvaluationOptions());
-  GOOGLESQL_ASSERT_OK_AND_ASSIGN(
-      iter, filter_op->CreateIterator({&params_data}, /*num_extra_slots=*/1,
-                                      &scramble_context));
-  EXPECT_EQ(iter->DebugString(),
-            "ReorderingTupleIterator(FilterTupleIterator(TestTupleIterator))");
-  EXPECT_FALSE(iter->PreservesOrder());
-}
-
-TEST_F(CreateIteratorTest, FilterOp_OrderedInput) {
   VariableId a("a"), b("b"), param("param");
   const std::vector<TupleData> test_values =
       CreateTestTupleDatas({{Int64(1), Int64(10)},
@@ -4828,7 +4673,7 @@ TEST_F(CreateIteratorTest, FilterOp_OrderedInput) {
 
   GOOGLESQL_ASSERT_OK_AND_ASSIGN(
       auto filter_op, FilterOp::Create(std::move(predicate), std::move(input)));
-  EXPECT_TRUE(filter_op->may_preserve_order());
+  EXPECT_FALSE(filter_op->may_preserve_order());
   EXPECT_EQ(filter_op->IteratorDebugString(),
             "FilterTupleIterator(TestTupleIterator)");
   EXPECT_EQ(
@@ -5760,6 +5605,71 @@ TEST(UnorderedArrayCollisionTrackerTest, ContainerTypes) {
   EXPECT_THAT(
       tracker.CouldIndicateNondetermisticGrouping(0, struct_with_graph_node),
       IsOkAndHolds(false));
+}
+
+// Regression test for b/583390018.
+TEST(SampleScanOpTest, ReservoirPartitionByCopiesParams) {
+  VariableId threshold("threshold");
+  VariableId x("x");
+  auto input_op = std::make_unique<TestRelationalOp>(
+      std::vector<VariableId>{x},
+      CreateTestTupleDatas({{Int64(1)}, {Int64(2)}}),
+      /*preserves_order=*/true);
+
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(std::unique_ptr<ValueExpr> deref_x,
+                       DerefExpr::Create(x, Int64Type()));
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(std::unique_ptr<ValueExpr> deref_threshold,
+                       DerefExpr::Create(threshold, Int64Type()));
+  std::vector<std::unique_ptr<ValueExpr>> less_args;
+  less_args.push_back(std::move(deref_x));
+  less_args.push_back(std::move(deref_threshold));
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(std::unique_ptr<ValueExpr> partition_expr,
+                       ScalarFunctionCallExpr::Create(
+                           CreateFunction(FunctionKind::kLess, BoolType()),
+                           std::move(less_args), DEFAULT_ERROR_MODE));
+  std::vector<std::unique_ptr<ValueExpr>> partition_keys;
+  partition_keys.push_back(std::move(partition_expr));
+
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(std::unique_ptr<ValueExpr> size_expr,
+                       ConstExpr::Create(Int64(1)));
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(std::unique_ptr<ValueExpr> repeatable_expr,
+                       ConstExpr::Create(Int64(0)));
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<SampleScanOp> sample_op,
+      SampleScanOp::Create(SampleScanOp::Method::kReservoirRows,
+                           std::move(size_expr), std::move(repeatable_expr),
+                           std::move(input_op), std::move(partition_keys),
+                           /*sample_weight=*/VariableId()));
+  TupleSchema param_schema({threshold});
+  GOOGLESQL_ASSERT_OK(sample_op->SetSchemasForEvaluation({&param_schema}));
+
+  EvaluationContext context((EvaluationOptions()));
+
+  // With threshold = 2, rows 1 and 2 fall into distinct partitions (true and
+  // false), so reservoir_size = 1 yields both rows. Eval() passes a temporary
+  // StripSharedPtrs() vector into CreateIterator().
+  TupleData split_param = CreateTestTupleData({Int64(2)});
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<TupleIterator> split_iter,
+      sample_op->Eval({&split_param}, /*num_extra_slots=*/0, &context));
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(std::vector<TupleData> split_output,
+                       ReadFromTupleIterator(split_iter.get()));
+  ASSERT_EQ(split_output.size(), 2);
+  EXPECT_THAT(std::vector<Value>({split_output[0].slot(0).value(),
+                                  split_output[1].slot(0).value()}),
+              UnorderedElementsAre(Int64(1), Int64(2)));
+
+  // With threshold = 10, both rows fall into the same partition (true), so
+  // reservoir_size = 1 yields a single row. Also exercise CreateIterator()
+  // directly with a temporary std::vector backing the params span.
+  TupleData single_partition_param = CreateTestTupleData({Int64(10)});
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<TupleIterator> single_iter,
+      sample_op->CreateIterator(
+          std::vector<const TupleData*>{&single_partition_param},
+          /*num_extra_slots=*/0, &context));
+  EXPECT_THAT(ReadFromTupleIterator(single_iter.get()),
+              IsOkAndHolds(SizeIs(1)));
 }
 
 }  // namespace

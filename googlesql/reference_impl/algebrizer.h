@@ -338,6 +338,11 @@ class Algebrizer {
   absl::StatusOr<std::unique_ptr<ScalarFunctionCallExpr>> AlgebrizeGetJsonField(
       const ResolvedGetJsonField* get_json_field);
 
+  // Algebrizes a ResolvedGetVariantField expression into a VARIANT subscript
+  // function call.
+  absl::StatusOr<std::unique_ptr<ScalarFunctionCallExpr>>
+  AlgebrizeGetVariantField(const ResolvedGetVariantField* get_variant_field);
+
   absl::StatusOr<std::unique_ptr<ValueExpr>> AlgebrizeGetProtoField(
       const ResolvedGetProtoField* get_proto_field);
 
@@ -1028,7 +1033,7 @@ class Algebrizer {
   // ValueExpr.
   absl::StatusOr<std::unique_ptr<ValueExpr>> AlgebrizeQueryStatementInfo(
       const ResolvedScan* scan,
-      const std::vector<std::unique_ptr<const ResolvedOutputColumn>>&
+      absl::Span<const std::unique_ptr<const ResolvedOutputColumn>>
           output_columns,
       bool is_value_table, IdStringPool& id_string_pool);
 

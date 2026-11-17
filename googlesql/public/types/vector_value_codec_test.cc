@@ -161,5 +161,17 @@ TEST(VectorValueCodecTest, Float32PayloadMustBeAWholeNumberOfElements) {
                        HasSubstr("Malformed FLOAT32 VECTOR payload")));
 }
 
+TEST(VectorValueCodecTest, FormatFloat32VectorElements) {
+  EXPECT_EQ(FormatFloat32VectorElements({1.5f, -2.25f, 0.0f}), "1.5, -2.25, 0");
+  EXPECT_EQ(FormatFloat32VectorElements({}), "");
+}
+
+// Each element is printed with enough digits to parse back to the same float.
+TEST(VectorValueCodecTest, FormatFloat32VectorElementsRoundTrips) {
+  constexpr float kElement = 0.1f;
+  const std::string formatted = FormatFloat32VectorElements({kElement});
+  EXPECT_EQ(std::stof(formatted), kElement);
+}
+
 }  // namespace
 }  // namespace googlesql

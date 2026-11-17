@@ -291,6 +291,10 @@ TEST(SimpleBuiltinFunctionTests, SanityTests) {
       // references to it.
       case FN_TIME_FROM_STRING:
         continue;
+      // TODO: b/559023113 - Remove FN_VARIANT_VALUE when it is removed from
+      // builtin_function.proto.
+      case FN_VARIANT_VALUE:
+        continue;
       // These FunctionSignatureIds are not loaded unless `argument_types`
       // is populated with corresponding entries in BuiltinFunctionOptions.
       case FN_APPROX_COSINE_DISTANCE_FLOAT_WITH_PROTO_OPTIONS:

@@ -2599,6 +2599,36 @@ FunctionCall(GoogleSQL:$equal(GRAPH_NODE(graph_node_type)<p1 INT64, p2 STRING>, 
 )"));
 }
 
+TEST_F(FunctionCallBuilderTest, ElementDefinitionNameIs) {
+  TypeFactory type_factory;
+  const GraphElementType* graph_node_type = nullptr;
+  GOOGLESQL_ASSERT_OK(type_factory.MakeGraphElementType(
+      {"graph_node_type"}, GraphElementType::kNode,
+      {{"p1", types::Int64Type()}}, /*element_tables=*/{}, &graph_node_type));
+
+  std::unique_ptr<const ResolvedExpr> node_ref = MakeResolvedColumnRef(
+      graph_node_type, ResolvedColumn(), /*is_correlated=*/false);
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<const ResolvedFunctionCall> function,
+      fn_builder_.ElementDefinitionNameIs(std::move(node_ref), "Person"));
+  EXPECT_EQ(function->DebugString(), absl::StripLeadingAsciiWhitespace(R"(
+FunctionCall(GoogleSQL:element_definition_name_is(GRAPH_NODE(graph_node_type)<p1 INT64>, STRING) -> BOOL)
++-ColumnRef(type=GRAPH_NODE(graph_node_type)<p1 INT64>, column=.#-1)
++-Literal(type=STRING, value="Person", has_explicit_type=TRUE, preserve_in_literal_remover=TRUE)
+)"));
+
+  EXPECT_THAT(fn_builder_.ElementDefinitionNameIs(nullptr, "Person"),
+              StatusIs(absl::StatusCode::kInternal));
+  EXPECT_THAT(fn_builder_.ElementDefinitionNameIs(
+                  MakeResolvedColumnRef(graph_node_type, ResolvedColumn(),
+                                        /*is_correlated=*/false),
+                  ""),
+              StatusIs(absl::StatusCode::kInternal));
+  EXPECT_THAT(fn_builder_.ElementDefinitionNameIs(
+                  MakeResolvedLiteral(Value::Int64(1)), "Person"),
+              StatusIs(absl::StatusCode::kInternal));
+}
+
 TEST_F(FunctionCallBuilderTest, ElementDefinitionName) {
   TypeFactory type_factory;
   const GraphElementType* graph_node_type = nullptr;

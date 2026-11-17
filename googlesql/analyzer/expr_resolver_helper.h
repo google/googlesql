@@ -601,9 +601,8 @@ class ResolvedTVFArg {
 // Returns empty string if this node doesn't have a default alias.
 IdString GetAliasForExpression(const ASTNode* node);
 
-// Returns true if the input `node` is ASTNamedArgument and its `expr` field is
-// an ASTLambda.
-bool IsNamedLambda(const ASTNode* node);
+// Returns true if the input `node` is an ASTLambda or an ASTFunctionRefArg.
+bool IsLambdaOrFunctionRef(const ASTNode* node);
 
 }  // namespace googlesql
 

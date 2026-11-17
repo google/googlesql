@@ -75,8 +75,10 @@ class FakeASTNode final : public ASTNode {
   absl::Status InitFields() final {
     FieldLoader fl(this);
     GOOGLESQL_RETURN_IF_ERROR(fl.Finalize());
-    set_start_location(ParseLocationPoint::FromByteOffset("fake_filename", 7));
-    set_end_location(ParseLocationPoint::FromByteOffset("fake_filename", 10));
+    set_start_location(
+        ParseLocationPoint::FromByteOffset("fake_filename", /*byte_offset=*/7));
+    set_end_location(ParseLocationPoint::FromByteOffset("fake_filename",
+                                                        /*byte_offset=*/10));
     return absl::OkStatus();
   }
 

@@ -16,14 +16,17 @@
 
 #include "googlesql/public/cast.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <limits>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "googlesql/base/logging.h"
 #include "googlesql/common/graph_element_utils.h"
+#include "googlesql/common/internal_value.h"
 #include "googlesql/base/testing/status_matchers.h"
 #include "googlesql/compliance/functions_testlib.h"
 #include "googlesql/public/civil_time.h"
@@ -34,7 +37,9 @@
 #include "googlesql/public/numeric_value.h"
 #include "googlesql/public/options.pb.h"
 #include "googlesql/public/simple_catalog.h"
+#include "googlesql/public/token_list_util.h"
 #include "googlesql/public/type.h"
+#include "googlesql/public/types/declarative_type.h"
 #include "googlesql/public/types/extended_type.h"
 #include "googlesql/public/types/type.h"
 #include "googlesql/public/types/type_factory.h"
@@ -49,15 +54,22 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "absl/base/casts.h"
+#include "absl/cleanup/cleanup.h"
+#include "absl/flags/declare.h"
+#include "absl/flags/flag.h"
 #include "absl/hash/hash.h"
+#include "googlesql/base/check.h"
 #include "absl/status/status.h"
 #include "googlesql/base/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/cord.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "absl/time/civil_time.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
+
+ABSL_DECLARE_FLAG(size_t, googlesql_enough_stack_bytes);
 
 namespace googlesql {
 
@@ -1572,54 +1584,77 @@ TEST(IsTypeCastableToJsonTest, TypeCastableToJson) {
   EXPECT_FALSE(IsTypeCastableToJson(uncastable_path_type, options_enabled));
 }
 
-TEST(IsTypeCastableToVariantTest, TypeCastableToVariant) {
-  LanguageOptions options_enabled;
-  options_enabled.EnableLanguageFeature(FEATURE_VARIANT_TYPE);
-
+TEST(IsTypeCastableFromVariantTest, FeatureDisabled) {
   LanguageOptions options_disabled;
+  EXPECT_TRUE(
+      IsTypeCastableFromVariant(types::VariantType(), options_disabled));
+  EXPECT_FALSE(IsTypeCastableFromVariant(types::Int64Type(), options_disabled));
+  EXPECT_FALSE(
+      IsTypeCastableFromVariant(types::StringType(), options_disabled));
+}
+
+TEST(IsTypeCastableFromVariantTest, SupportedTargetTypes) {
+  LanguageOptions options;
+  options.EnableLanguageFeature(FEATURE_VARIANT_TYPE);
 
   TypeFactory factory;
-  const Type* int64_type = types::Int64Type();
-  const Type* variant_type = types::VariantType();
-
   GOOGLESQL_ASSERT_OK_AND_ASSIGN(const ArrayType* array_int64_type,
-                       factory.MakeArrayType(int64_type));
-
-  GOOGLESQL_ASSERT_OK_AND_ASSIGN(const Type* map_type,
-                       factory.MakeMapType(types::StringType(), int64_type));
-
-  GOOGLESQL_ASSERT_OK_AND_ASSIGN(const Type* measure_type,
-                       factory.MakeMeasureType(int64_type));
-  GOOGLESQL_ASSERT_OK_AND_ASSIGN(const ArrayType* array_measure_type,
-                       factory.MakeArrayType(measure_type));
-
-  // Feature disabled
-  EXPECT_FALSE(IsTypeCastableToVariant(int64_type, options_disabled));
-  EXPECT_TRUE(IsTypeCastableToVariant(variant_type, options_disabled));
-
-  // Feature enabled
-  EXPECT_TRUE(IsTypeCastableToVariant(int64_type, options_enabled));
-  EXPECT_TRUE(IsTypeCastableToVariant(variant_type, options_enabled));
-  EXPECT_TRUE(IsTypeCastableToVariant(map_type, options_enabled));
-  EXPECT_TRUE(IsTypeCastableToVariant(array_int64_type, options_enabled));
-
-  // ROW type
-  SimpleTable table("TableName");
-  const RowType* row_type;
-  GOOGLESQL_ASSERT_OK(factory.MakeRowType(&table, table.FullName(), &row_type));
-  EXPECT_FALSE(IsTypeCastableToVariant(row_type, options_enabled));
-
-  // Unsupported types
-  EXPECT_FALSE(IsTypeCastableToVariant(measure_type, options_enabled));
-  EXPECT_FALSE(IsTypeCastableToVariant(array_measure_type, options_enabled));
-  const StructType* struct_measure_type;
+                       factory.MakeArrayType(types::Int64Type()));
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+      const Type* map_type,
+      factory.MakeMapType(types::StringType(), types::Int64Type()));
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+      const Type* non_str_map_type,
+      factory.MakeMapType(types::Int64Type(), types::StringType()));
+  const RangeType* range_date_type = nullptr;
+  GOOGLESQL_ASSERT_OK(factory.MakeRangeType(types::DateType(), &range_date_type));
+  const EnumType* enum_type = nullptr;
   GOOGLESQL_ASSERT_OK(
-      factory.MakeStructType({{"m", measure_type}}, &struct_measure_type));
-  EXPECT_FALSE(IsTypeCastableToVariant(struct_measure_type, options_enabled));
-  const Type* map_measure_type;
-  GOOGLESQL_ASSERT_OK_AND_ASSIGN(map_measure_type,
-                       factory.MakeMapType(types::StringType(), measure_type));
-  EXPECT_FALSE(IsTypeCastableToVariant(map_measure_type, options_enabled));
+      factory.MakeEnumType(googlesql_test::TestEnum_descriptor(), &enum_type));
+  const ProtoType* proto_type = nullptr;
+  GOOGLESQL_ASSERT_OK(factory.MakeProtoType(googlesql_test::NullableInt::descriptor(),
+                                  &proto_type));
+  const GraphElementType* graph_node_type = test_values::MakeGraphElementType(
+      {"graph_name"}, GraphElementType::kNode, {}, &factory);
+  const GraphElementType* graph_edge_type = test_values::MakeGraphElementType(
+      {"graph_name"}, GraphElementType::kEdge, {}, &factory);
+  const GraphPathType* graph_path_type = test_values::MakeGraphPathType(
+      graph_node_type, graph_edge_type, &factory);
+
+  std::vector<const Type*> supported_types = {
+      types::VariantType(),
+      types::Int32Type(),
+      types::Int64Type(),
+      types::Uint32Type(),
+      types::Uint64Type(),
+      types::BoolType(),
+      types::FloatType(),
+      types::DoubleType(),
+      types::NumericType(),
+      types::BigNumericType(),
+      types::StringType(),
+      types::BytesType(),
+      types::DateType(),
+      types::TimeType(),
+      types::DatetimeType(),
+      types::TimestampType(),
+      types::IntervalType(),
+      types::UuidType(),
+      types::TokenListType(),
+      enum_type,
+      proto_type,
+      array_int64_type,
+      map_type,
+      non_str_map_type,
+      range_date_type,
+      graph_node_type,
+      graph_edge_type,
+      graph_path_type,
+  };
+  for (const Type* to_type : supported_types) {
+    EXPECT_TRUE(IsTypeCastableFromVariant(to_type, options))
+        << to_type->DebugString();
+  }
 }
 
 namespace {
@@ -1697,6 +1732,1594 @@ class TestExtendedType : public ExtendedType {
 };
 
 }  // namespace
+
+TEST(IsTypeCastableFromVariantTest, UnsupportedTargetTypes) {
+  LanguageOptions options;
+  options.EnableLanguageFeature(FEATURE_VARIANT_TYPE);
+
+  TypeFactory factory;
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(const Type* measure_type,
+                       factory.MakeMeasureType(types::Int64Type()));
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(const ArrayType* array_measure_type,
+                       factory.MakeArrayType(measure_type));
+  const StructType* struct_measure_type = nullptr;
+  GOOGLESQL_ASSERT_OK(
+      factory.MakeStructType({{"m", measure_type}}, &struct_measure_type));
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(const Type* map_measure_type,
+                       factory.MakeMapType(types::StringType(), measure_type));
+
+  EXPECT_FALSE(IsTypeCastableFromVariant(measure_type, options));
+  EXPECT_FALSE(IsTypeCastableFromVariant(array_measure_type, options));
+  EXPECT_FALSE(IsTypeCastableFromVariant(struct_measure_type, options));
+  EXPECT_FALSE(IsTypeCastableFromVariant(map_measure_type, options));
+
+  // TODO: b/554949919 - Support casting from VARIANT to JSON, STRUCT,
+  // declarative, and extended types.
+  EXPECT_FALSE(IsTypeCastableFromVariant(types::JsonType(), options));
+  EXPECT_FALSE(IsTypeCastableFromVariant(types::JsonArrayType(), options));
+
+  const StructType* struct_type = nullptr;
+  GOOGLESQL_ASSERT_OK(factory.MakeStructType(
+      {{"a", types::Int64Type()}, {"b", types::StringType()}}, &struct_type));
+  EXPECT_FALSE(IsTypeCastableFromVariant(struct_type, options));
+
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(const ArrayType* array_struct_type,
+                       factory.MakeArrayType(struct_type));
+  EXPECT_FALSE(IsTypeCastableFromVariant(array_struct_type, options));
+
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+      const Type* declarative_type,
+      factory.MakeDeclarativeType(DeclarativeTypeDescriptor()
+                                      .set_type_id({"NS", "DeclInt"})
+                                      .set_display_name("DeclInt")
+                                      .set_backing_type(factory.get_int64())));
+  EXPECT_FALSE(IsTypeCastableFromVariant(declarative_type, options));
+
+  TestExtendedType extended_type(&factory);
+  EXPECT_FALSE(IsTypeCastableFromVariant(&extended_type, options));
+
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(const ArrayType* array_declarative_type,
+                       factory.MakeArrayType(declarative_type));
+  EXPECT_FALSE(IsTypeCastableFromVariant(array_declarative_type, options));
+
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(const ArrayType* array_extended_type,
+                       factory.MakeArrayType(&extended_type));
+  EXPECT_FALSE(IsTypeCastableFromVariant(array_extended_type, options));
+}
+
+namespace {
+
+template <typename T>
+T Unwrap(absl::StatusOr<T> status_or) {
+  GOOGLESQL_CHECK_OK(status_or);
+  return *std::move(status_or);
+}
+
+Value Variant(const Value& value) { return Unwrap(Value::Variant(value)); }
+
+Value ParseJson(absl::string_view json_str) {
+  return Json(Unwrap(JSONValue::ParseJSONString(json_str)));
+}
+
+// -----------------------------------------------------------------------------
+// 1. Successful CAST from VARIANT Suites (Organized by Variant Category)
+// -----------------------------------------------------------------------------
+
+struct VariantCastSuccessCase {
+  std::string test_name;
+  Value from_variant;
+  Value expected_value;
+};
+
+class CastFromVariantSuccessTest
+    : public testing::TestWithParam<VariantCastSuccessCase> {};
+
+TEST_P(CastFromVariantSuccessTest, CastsVariantToTargetType) {
+  const VariantCastSuccessCase& test_case = GetParam();
+  LanguageOptions options = LanguageOptions::MaximumFeatures();
+  options.EnableLanguageFeature(FEATURE_VARIANT_TYPE);
+  EXPECT_THAT(CastValue(test_case.from_variant, absl::UTCTimeZone(), options,
+                        test_case.expected_value.type()),
+              IsOkAndHolds(test_case.expected_value));
+}
+
+std::vector<VariantCastSuccessCase> GetNullAndIdentityCastCases() {
+  Value json_null_val = Json(JSONValue());
+  Value variant_null_val = Variant(json_null_val);
+
+  return {
+      {.test_name = "IdentitySqlNullVariant",
+       .from_variant = Value::NullVariant(),
+       .expected_value = Value::NullVariant()},
+      {.test_name = "IdentityVariantNull",
+       .from_variant = variant_null_val,
+       .expected_value = variant_null_val},
+      {.test_name = "SqlNullVariantToInt64",
+       .from_variant = Value::Null(types::VariantType()),
+       .expected_value = Value::NullInt64()},
+      {.test_name = "CanonicalizedTypedSqlNullVariantToInt64",
+       .from_variant = Variant(Value::NullDate()),
+       .expected_value = Value::NullInt64()},
+      {.test_name = "VariantNullToInt64",
+       .from_variant = variant_null_val,
+       .expected_value = Value::NullInt64()},
+      {.test_name = "VariantNullToString",
+       .from_variant = variant_null_val,
+       .expected_value = Value::NullString()},
+  };
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    NullAndIdentity, CastFromVariantSuccessTest,
+    testing::ValuesIn(GetNullAndIdentityCastCases()),
+    [](const testing::TestParamInfo<VariantCastSuccessCase>& info) {
+      return info.param.test_name;
+    });
+
+std::vector<VariantCastSuccessCase> GetSqlPrimitiveCastCases() {
+  const EnumType* enum_type = nullptr;
+  GOOGLESQL_CHECK_OK(type_factory->MakeEnumType(googlesql_test::TestEnum_descriptor(),
+                                      &enum_type));
+
+  UuidValue uuid =
+      Unwrap(UuidValue::FromString("00010203-0405-0607-0809-0a0b0c0d0e0f"));
+  Value uuid_val = Value::Uuid(uuid);
+  std::string uuid_bytes = uuid.SerializeAsBytes();
+
+  Value tokenlist_val = TokenListFromStringArray({"hello", "world"});
+  Value tokenlist_bytes_val = Bytes(tokenlist_val.tokenlist_value().GetBytes());
+
+  Value range_date_val = Unwrap(
+      Value::MakeRange(Date(20089), Date(20090)));  // [2025-01-01, 2025-01-02)
+
+  Value graph_node_empty = Unwrap(GraphNode(
+      {"graph_name"}, "id1", {}, {"label1"}, "ElementTable", type_factory));
+  Value graph_node_with_null_prop =
+      Unwrap(GraphNode({"graph_name"}, "id1", {{"a", Value::NullString()}},
+                       {"label1"}, "ElementTable", type_factory));
+  Value graph_edge_empty =
+      Unwrap(GraphEdge({"graph_name"}, "e1", {}, {"label1"}, "ElementTable",
+                       "id1", "id2", type_factory));
+  const GraphPathType* path_type_empty =
+      test_values::MakeGraphPathType(graph_node_empty.type()->AsGraphElement(),
+                                     graph_edge_empty.type()->AsGraphElement());
+  const GraphPathType* path_type_with_prop = test_values::MakeGraphPathType(
+      graph_node_with_null_prop.type()->AsGraphElement(),
+      graph_edge_empty.type()->AsGraphElement());
+  Value graph_path_empty =
+      Unwrap(Value::MakeGraphPath(path_type_empty, {graph_node_empty}));
+  Value graph_path_with_null_prop = Unwrap(
+      Value::MakeGraphPath(path_type_with_prop, {graph_node_with_null_prop}));
+
+  return {
+      {.test_name = "Int64ToInt64",
+       .from_variant = Variant(Int64(123)),
+       .expected_value = Int64(123)},
+      {.test_name = "Int64ToString",
+       .from_variant = Variant(Int64(123)),
+       .expected_value = String("123")},
+      {.test_name = "StringToInt64",
+       .from_variant = Variant(String("456")),
+       .expected_value = Int64(456)},
+      {.test_name = "BoolToString",
+       .from_variant = Variant(Bool(true)),
+       .expected_value = String("true")},
+      {.test_name = "DoubleToInt64RoundsHalfAwayFromZero",
+       .from_variant = Variant(Double(3.6)),
+       .expected_value = Int64(4)},
+      {.test_name = "EnumToEnum",
+       .from_variant = Variant(values::Enum(enum_type, 1)),
+       .expected_value = values::Enum(enum_type, 1)},
+      {.test_name = "EnumToString",
+       .from_variant = Variant(values::Enum(enum_type, 1)),
+       .expected_value = String("TESTENUM1")},
+      {.test_name = "EnumToInt64",
+       .from_variant = Variant(values::Enum(enum_type, 1)),
+       .expected_value = Int64(1)},
+      {.test_name = "UuidToUuid",
+       .from_variant = Variant(uuid_val),
+       .expected_value = uuid_val},
+      {.test_name = "UuidToString",
+       .from_variant = Variant(uuid_val),
+       .expected_value = String("00010203-0405-0607-0809-0a0b0c0d0e0f")},
+      {.test_name = "UuidToBytes",
+       .from_variant = Variant(uuid_val),
+       .expected_value = Bytes(uuid_bytes)},
+      {.test_name = "StringToUuid",
+       .from_variant = Variant(String("00010203-0405-0607-0809-0a0b0c0d0e0f")),
+       .expected_value = uuid_val},
+      {.test_name = "BytesToUuid",
+       .from_variant = Variant(Bytes(uuid_bytes)),
+       .expected_value = uuid_val},
+      {.test_name = "TokenListToTokenList",
+       .from_variant = Variant(tokenlist_val),
+       .expected_value = tokenlist_val},
+      {.test_name = "TokenListToBytes",
+       .from_variant = Variant(tokenlist_val),
+       .expected_value = tokenlist_bytes_val},
+      {.test_name = "BytesToTokenList",
+       .from_variant = Variant(tokenlist_bytes_val),
+       .expected_value = tokenlist_val},
+      {.test_name = "RangeDateToRangeDate",
+       .from_variant = Variant(range_date_val),
+       .expected_value = range_date_val},
+      {.test_name = "RangeDateToString",
+       .from_variant = Variant(range_date_val),
+       .expected_value = String("[2025-01-01, 2025-01-02)")},
+      {.test_name = "StringToRangeDate",
+       .from_variant = Variant(String("[2025-01-01, 2025-01-02)")),
+       .expected_value = range_date_val},
+      {.test_name = "GraphElementToIdenticalGraphElement",
+       .from_variant = Variant(graph_node_empty),
+       .expected_value = graph_node_empty},
+      {.test_name = "GraphElementToSupertypeGraphElement",
+       .from_variant = Variant(graph_node_empty),
+       .expected_value = graph_node_with_null_prop},
+      {.test_name = "GraphPathToIdenticalGraphPath",
+       .from_variant = Variant(graph_path_empty),
+       .expected_value = graph_path_empty},
+      {.test_name = "GraphPathToSupertypeGraphPath",
+       .from_variant = Variant(graph_path_empty),
+       .expected_value = graph_path_with_null_prop},
+  };
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    SqlPrimitives, CastFromVariantSuccessTest,
+    testing::ValuesIn(GetSqlPrimitiveCastCases()),
+    [](const testing::TestParamInfo<VariantCastSuccessCase>& info) {
+      return info.param.test_name;
+    });
+
+std::vector<VariantCastSuccessCase> GetJsonPrimitiveCastCases() {
+  constexpr uint64_t kMaxUint64 = std::numeric_limits<uint64_t>::max();
+  Value json_max_uint64 = Json(JSONValue(kMaxUint64));
+  // Use an exact binary floating-point fraction (3.25) so IEEE-754 double
+  // converts cleanly to FLOAT, DOUBLE, NUMERIC, BIGNUMERIC, and STRING.
+  Value json_double = Json(JSONValue(3.25));
+
+  return {
+      {.test_name = "JsonInt64ToInt64",
+       .from_variant = Variant(Json(JSONValue(int64_t{-789}))),
+       .expected_value = Int64(-789)},
+      {.test_name = "JsonInt64ToString",
+       .from_variant = Variant(Json(JSONValue(int64_t{-789}))),
+       .expected_value = String("-789")},
+      {.test_name = "JsonUint64MaxToUint64",
+       .from_variant = Variant(json_max_uint64),
+       .expected_value = Uint64(kMaxUint64)},
+      {.test_name = "JsonUint64MaxToString",
+       .from_variant = Variant(json_max_uint64),
+       .expected_value = String(absl::StrCat(kMaxUint64))},
+      {.test_name = "JsonDoubleToDouble",
+       .from_variant = Variant(json_double),
+       .expected_value = Double(3.25)},
+      {.test_name = "JsonDoubleToFloat",
+       .from_variant = Variant(json_double),
+       .expected_value = Float(3.25f)},
+      {.test_name = "JsonDoubleToNumeric",
+       .from_variant = Variant(json_double),
+       .expected_value =
+           Value::Numeric(Unwrap(NumericValue::FromString("3.25")))},
+      {.test_name = "JsonDoubleToBigNumeric",
+       .from_variant = Variant(json_double),
+       .expected_value =
+           Value::BigNumeric(Unwrap(BigNumericValue::FromString("3.25")))},
+      {.test_name = "JsonDoubleToInt64",
+       .from_variant = Variant(Json(JSONValue(3.6))),
+       .expected_value = Int64(4)},
+      {.test_name = "JsonDoubleToString",
+       .from_variant = Variant(json_double),
+       .expected_value = String("3.25")},
+      {.test_name = "JsonBoolTrueToBool",
+       .from_variant = Variant(Json(JSONValue(true))),
+       .expected_value = Bool(true)},
+      {.test_name = "JsonBoolFalseToString",
+       .from_variant = Variant(Json(JSONValue(false))),
+       .expected_value = String("false")},
+      {.test_name = "JsonBoolTrueToInt64",
+       .from_variant = Variant(Json(JSONValue(true))),
+       .expected_value = Int64(1)},
+      {.test_name = "JsonStringToString",
+       .from_variant = Variant(Json(JSONValue(absl::string_view("abc")))),
+       .expected_value = String("abc")},
+      {.test_name = "JsonStringToInt64",
+       .from_variant = Variant(Json(JSONValue(absl::string_view("123")))),
+       .expected_value = Int64(123)},
+      {.test_name = "UnvalidatedJsonPrimitiveToInt64",
+       .from_variant = Variant(Value::UnvalidatedJsonString("42")),
+       .expected_value = Int64(42)},
+  };
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    JsonPrimitives, CastFromVariantSuccessTest,
+    testing::ValuesIn(GetJsonPrimitiveCastCases()),
+    [](const testing::TestParamInfo<VariantCastSuccessCase>& info) {
+      return info.param.test_name;
+    });
+
+std::vector<VariantCastSuccessCase> GetObjectsAndMapsCastCases() {
+  const StructType* struct_ab_type = nullptr;
+  GOOGLESQL_CHECK_OK(type_factory->MakeStructType(
+      {{"a", types::Int64Type()}, {"b", types::StringType()}},
+      &struct_ab_type));
+  const StructType* struct_two_int_type = nullptr;
+  GOOGLESQL_CHECK_OK(type_factory->MakeStructType(
+      {{"a", types::Int64Type()}, {"b", types::Int64Type()}},
+      &struct_two_int_type));
+  const StructType* struct_dup_and_unnamed_type = nullptr;
+  GOOGLESQL_CHECK_OK(type_factory->MakeStructType({{"", types::Int64Type()},
+                                         {"a", types::Int64Type()},
+                                         {"a", types::Int64Type()},
+                                         {"", types::Int64Type()}},
+                                        &struct_dup_and_unnamed_type));
+
+  const Type* map_str_int64_type = Unwrap(
+      type_factory->MakeMapType(types::StringType(), types::Int64Type()));
+  const Type* map_str_str_type = Unwrap(
+      type_factory->MakeMapType(types::StringType(), types::StringType()));
+  const Type* map_str_variant_type = Unwrap(
+      type_factory->MakeMapType(types::StringType(), types::VariantType()));
+  const Type* map_int64_str_type = Unwrap(
+      type_factory->MakeMapType(types::Int64Type(), types::StringType()));
+  const Type* map_str_int64_arr_type = Unwrap(
+      type_factory->MakeMapType(types::StringType(), types::Int64ArrayType()));
+  const Type* map_str_map_str_int64_type = Unwrap(
+      type_factory->MakeMapType(types::StringType(), map_str_int64_type));
+
+  Value struct_ab_val =
+      Unwrap(Value::MakeStruct(struct_ab_type, {Int64(42), String("hello")}));
+  Value struct_two_int_val =
+      Unwrap(Value::MakeStruct(struct_two_int_type, {Int64(1), Int64(2)}));
+  Value struct_dup_and_unnamed_val =
+      Unwrap(Value::MakeStruct(struct_dup_and_unnamed_type,
+                               {Int64(10), Int64(20), Int64(99), Int64(88)}));
+  Value variant_null_val = Variant(Json(JSONValue()));
+
+  Value map_ab_val = Unwrap(Value::MakeMap(
+      map_str_int64_type, {{String("a"), Int64(1)}, {String("b"), Int64(2)}}));
+  Value map_ab_str_val =
+      Unwrap(Value::MakeMap(map_str_str_type, {{String("a"), String("1")},
+                                               {String("b"), String("2")}}));
+
+  return {
+      {.test_name = "StructObjectToMap",
+       .from_variant = Variant(struct_two_int_val),
+       .expected_value = map_ab_val},
+      {.test_name = "StructWithDuplicateAndUnnamedFieldsToMap",
+       .from_variant = Variant(struct_dup_and_unnamed_val),
+       .expected_value = Unwrap(Value::MakeMap(
+           map_str_int64_type,
+           {{String(""), Int64(10)}, {String("a"), Int64(20)}}))},
+      {.test_name = "StructObjectToMapWithVariantValue",
+       .from_variant = Variant(struct_ab_val),
+       .expected_value = Unwrap(Value::MakeMap(
+           map_str_variant_type, {{String("a"), Variant(Int64(42))},
+                                  {String("b"), Variant(String("hello"))}}))},
+      {.test_name = "MapObjectToMapWithValueConversion",
+       .from_variant = Variant(map_ab_val),
+       .expected_value = map_ab_str_val},
+      {.test_name = "MapObjectWithNullValueToMap",
+       .from_variant = Variant(Unwrap(Value::MakeMap(
+           map_str_int64_type,
+           {{String("a"), Int64(1)}, {String("b"), Value::NullInt64()}}))),
+       .expected_value = Unwrap(Value::MakeMap(
+           map_str_int64_type,
+           {{String("a"), Int64(1)}, {String("b"), Value::NullInt64()}}))},
+      // A string-keyed MAP is exposed as a Variant Object, which omits NULL
+      // keys per Variant Object semantics.
+      {.test_name = "MapObjectWithNullKeyOmitsNullKeyEntry",
+       .from_variant = Variant(Unwrap(Value::MakeMap(
+           map_str_int64_type,
+           {{Value::NullString(), Int64(99)}, {String("a"), Int64(1)}}))),
+       .expected_value = Unwrap(
+           Value::MakeMap(map_str_int64_type, {{String("a"), Int64(1)}}))},
+      {.test_name = "JsonObjectToMap",
+       .from_variant = Variant(ParseJson(R"({"a": 1, "b": 2})")),
+       .expected_value = map_ab_val},
+      {.test_name = "JsonObjectWithArrayValuesToMapOfArrays",
+       .from_variant = Variant(ParseJson(R"({"a": [1, 2], "b": [3]})")),
+       .expected_value = Unwrap(Value::MakeMap(
+           map_str_int64_arr_type, {{String("a"), Int64Array({1, 2})},
+                                    {String("b"), Int64Array({3})}}))},
+      {.test_name = "NestedJsonObjectToNestedMap",
+       .from_variant = Variant(ParseJson(R"({"outer": {"inner": 42}})")),
+       .expected_value = Unwrap(Value::MakeMap(
+           map_str_map_str_int64_type,
+           {{String("outer"),
+             Unwrap(Value::MakeMap(map_str_int64_type,
+                                   {{String("inner"), Int64(42)}}))}}))},
+      {.test_name = "JsonObjectWithNullToTypedMap",
+       .from_variant = Variant(ParseJson(R"({"a": null, "b": 2})")),
+       .expected_value = Unwrap(Value::MakeMap(
+           map_str_int64_type,
+           {{String("a"), Value::NullInt64()}, {String("b"), Int64(2)}}))},
+      {.test_name = "JsonObjectToMapWithVariantValue",
+       .from_variant = Variant(ParseJson(R"({"a": 42, "b": "hello"})")),
+       .expected_value = Unwrap(
+           Value::MakeMap(map_str_variant_type,
+                          {{String("a"), Variant(ParseJson("42"))},
+                           {String("b"), Variant(ParseJson(R"("hello")"))}}))},
+      {.test_name = "JsonObjectWithNullToMapWithVariantValue",
+       .from_variant = Variant(ParseJson(R"({"a": null, "b": "hello"})")),
+       .expected_value = Unwrap(
+           Value::MakeMap(map_str_variant_type,
+                          {{String("a"), variant_null_val},
+                           {String("b"), Variant(ParseJson(R"("hello")"))}}))},
+      {.test_name = "EmptyJsonObjectToMap",
+       .from_variant = Variant(ParseJson("{}")),
+       .expected_value = Unwrap(Value::MakeMap(map_str_int64_type, {}))},
+      // A non-string-keyed MAP is not a Variant Object and passes through to
+      // MAP-to-MAP casting, preserving both NULL keys and NULL values.
+      {.test_name = "NonStringKeyedMapWithNullKeyAndValuePassThroughToMap",
+       .from_variant = Variant(Unwrap(Value::MakeMap(
+           map_int64_str_type, {{Value::NullInt64(), String("10")},
+                                {Int64(1), Value::NullString()},
+                                {Int64(2), String("20")}}))),
+       .expected_value = Unwrap(Value::MakeMap(
+           map_str_int64_type, {{Value::NullString(), Int64(10)},
+                                {String("1"), Value::NullInt64()},
+                                {String("2"), Int64(20)}}))},
+  };
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    ObjectsAndMaps, CastFromVariantSuccessTest,
+    testing::ValuesIn(GetObjectsAndMapsCastCases()),
+    [](const testing::TestParamInfo<VariantCastSuccessCase>& info) {
+      return info.param.test_name;
+    });
+
+std::vector<VariantCastSuccessCase> GetProtoCastCases() {
+  const ProtoType* nullable_int_proto_type = nullptr;
+  GOOGLESQL_CHECK_OK(type_factory->MakeProtoType(
+      googlesql_test::NullableInt::descriptor(), &nullable_int_proto_type));
+  googlesql_test::NullableInt nullable_int;
+  nullable_int.set_value(123);
+  absl::Cord proto_cord;
+  nullable_int.SerializeToString(&proto_cord);
+  Value proto_val = values::Proto(nullable_int_proto_type, proto_cord);
+  Value unset_proto_val = values::Proto(nullable_int_proto_type, absl::Cord());
+
+  const ProtoType* repeated_int_proto_type = nullptr;
+  GOOGLESQL_CHECK_OK(type_factory->MakeProtoType(
+      googlesql_test::NullableArrayOfInt::descriptor(),
+      &repeated_int_proto_type));
+  googlesql_test::NullableArrayOfInt repeated_int;
+  repeated_int.add_value(10);
+  repeated_int.add_value(20);
+  absl::Cord repeated_cord;
+  repeated_int.SerializeToString(&repeated_cord);
+  Value repeated_proto_val =
+      values::Proto(repeated_int_proto_type, repeated_cord);
+
+  const Type* map_str_int64_type = Unwrap(
+      type_factory->MakeMapType(types::StringType(), types::Int64Type()));
+  const Type* map_str_int64_arr_type = Unwrap(
+      type_factory->MakeMapType(types::StringType(), types::Int64ArrayType()));
+  const Type* map_str_variant_type = Unwrap(
+      type_factory->MakeMapType(types::StringType(), types::VariantType()));
+
+  return {
+      {.test_name = "ProtoObjectToProto",
+       .from_variant = Variant(proto_val),
+       .expected_value = proto_val},
+      {.test_name = "ProtoObjectToString",
+       .from_variant = Variant(proto_val),
+       .expected_value = String("value: 123")},
+      {.test_name = "ProtoObjectToBytes",
+       .from_variant = Variant(proto_val),
+       .expected_value = Bytes(std::string(proto_cord))},
+      {.test_name = "ProtoObjectToMap",
+       .from_variant = Variant(proto_val),
+       .expected_value = Unwrap(Value::MakeMap(
+           map_str_int64_type, {{String("value"), Int64(123)}}))},
+      {.test_name = "UnsetProtoObjectToMap",
+       .from_variant = Variant(unset_proto_val),
+       .expected_value = Unwrap(Value::MakeMap(
+           map_str_int64_type, {{String("value"), Value::NullInt64()}}))},
+      {.test_name = "RepeatedFieldProtoObjectToTypedMap",
+       .from_variant = Variant(repeated_proto_val),
+       .expected_value = Unwrap(Value::MakeMap(
+           map_str_int64_arr_type, {{String("value"), Int64Array({10, 20})}}))},
+      {.test_name = "RepeatedFieldProtoObjectToVariantMap",
+       .from_variant = Variant(repeated_proto_val),
+       .expected_value = Unwrap(
+           Value::MakeMap(map_str_variant_type,
+                          {{String("value"), Variant(Int32Array({10, 20}))}}))},
+      {.test_name = "StringTextFormatToProto",
+       .from_variant = Variant(String("value: 123")),
+       .expected_value = proto_val},
+      {.test_name = "BytesWireFormatToProto",
+       .from_variant = Variant(Bytes(std::string(proto_cord))),
+       .expected_value = proto_val},
+  };
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    Protos, CastFromVariantSuccessTest, testing::ValuesIn(GetProtoCastCases()),
+    [](const testing::TestParamInfo<VariantCastSuccessCase>& info) {
+      return info.param.test_name;
+    });
+
+std::vector<VariantCastSuccessCase> GetArrayCastCases() {
+  Value json_null_val = Json(JSONValue());
+  Value variant_null_val = Variant(json_null_val);
+  Value heterogeneous_json_arr = ParseJson(R"([1, "2", true])");
+  Value json_arr_with_null_val = ParseJson("[1, null, 3]");
+  const Type* map_str_int64_type = Unwrap(
+      type_factory->MakeMapType(types::StringType(), types::Int64Type()));
+  const ArrayType* arr_of_map_str_int64_type =
+      Unwrap(type_factory->MakeArrayType(map_str_int64_type));
+
+  return {
+      {.test_name = "SqlArrayToArrayWithElementConversion",
+       .from_variant = Variant(StringArray({"10", "20"})),
+       .expected_value = Int64Array({10, 20})},
+      {.test_name = "JsonArrayToArray",
+       .from_variant = Variant(ParseJson("[1, 2, 3]")),
+       .expected_value = Int64Array({1, 2, 3})},
+      {.test_name = "JsonArrayOfObjectsToArrayOfMaps",
+       .from_variant = Variant(ParseJson(R"([{"a": 1}, {"b": 2}])")),
+       .expected_value = Unwrap(Value::MakeArray(
+           arr_of_map_str_int64_type,
+           {Unwrap(
+                Value::MakeMap(map_str_int64_type, {{String("a"), Int64(1)}})),
+            Unwrap(Value::MakeMap(map_str_int64_type,
+                                  {{String("b"), Int64(2)}}))}))},
+      {.test_name = "HeterogeneousJsonArrayToInt64Array",
+       .from_variant = Variant(heterogeneous_json_arr),
+       .expected_value = Int64Array({1, 2, 1})},
+      {.test_name = "HeterogeneousJsonArrayToStringArray",
+       .from_variant = Variant(heterogeneous_json_arr),
+       .expected_value = StringArray({"1", "2", "true"})},
+      {.test_name = "JsonArrayWithNullToInt64Array",
+       .from_variant = Variant(json_arr_with_null_val),
+       .expected_value = Unwrap(Value::MakeArray(
+           types::Int64ArrayType(), {Int64(1), Value::NullInt64(), Int64(3)}))},
+      {.test_name = "ArrayToVariantArray",
+       .from_variant = Variant(Int64Array({1, 2})),
+       .expected_value = Unwrap(Value::MakeArray(
+           types::VariantArrayType(), {Variant(Int64(1)), Variant(Int64(2))}))},
+      {.test_name = "VariantArrayWithSqlNullCanonicalizesToVariantNullElement",
+       .from_variant = Variant(Unwrap(Value::MakeArray(
+           types::VariantArrayType(),
+           {Variant(Int64(1)), Value::Null(types::VariantType()),
+            Variant(Int64(3))}))),
+       .expected_value = Unwrap(Value::MakeArray(
+           types::VariantArrayType(),
+           {Variant(Int64(1)), variant_null_val, Variant(Int64(3))}))},
+      {.test_name = "EmptyJsonArrayToArray",
+       .from_variant = Variant(ParseJson("[]")),
+       .expected_value = Unwrap(Value::MakeArray(types::Int64ArrayType(), {}))},
+  };
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    Arrays, CastFromVariantSuccessTest, testing::ValuesIn(GetArrayCastCases()),
+    [](const testing::TestParamInfo<VariantCastSuccessCase>& info) {
+      return info.param.test_name;
+    });
+
+// -----------------------------------------------------------------------------
+// 2. Runtime Evaluation Error Suites (All Return kOutOfRange for SAFE_CAST)
+// -----------------------------------------------------------------------------
+
+struct VariantCastErrorCase {
+  std::string test_name;
+  Value from_variant;
+  const Type* to_type;
+  std::string expected_error_substr;
+};
+
+class CastFromVariantEvalErrorTest
+    : public testing::TestWithParam<VariantCastErrorCase> {};
+
+TEST_P(CastFromVariantEvalErrorTest, ReturnsOutOfRangeOnPayloadMismatch) {
+  const VariantCastErrorCase& test_case = GetParam();
+  LanguageOptions options = LanguageOptions::MaximumFeatures();
+  options.EnableLanguageFeature(FEATURE_VARIANT_TYPE);
+  EXPECT_THAT(CastValue(test_case.from_variant, absl::UTCTimeZone(), options,
+                        test_case.to_type),
+              StatusIs(absl::StatusCode::kOutOfRange,
+                       HasSubstr(test_case.expected_error_substr)));
+  EXPECT_THAT(internal::CastValueWithoutTypeValidation(
+                  test_case.from_variant, absl::UTCTimeZone(),
+                  /*current_timestamp=*/std::nullopt, options,
+                  test_case.to_type, /*format=*/std::nullopt,
+                  /*time_zone=*/std::nullopt,
+                  /*extended_conversion_evaluator=*/nullptr,
+                  /*canonicalize_zero=*/false),
+              StatusIs(absl::StatusCode::kOutOfRange,
+                       HasSubstr(test_case.expected_error_substr)));
+}
+
+std::vector<VariantCastErrorCase> GetPrimitivesAndPassThroughErrorCases() {
+  const Type* map_int64_int64_type =
+      Unwrap(type_factory->MakeMapType(types::Int64Type(), types::Int64Type()));
+  const Type* map_uint64_int64_type = Unwrap(
+      type_factory->MakeMapType(types::Uint64Type(), types::Int64Type()));
+  const Type* map_int64_str_type = Unwrap(
+      type_factory->MakeMapType(types::Int64Type(), types::StringType()));
+  const RangeType* range_date_type = nullptr;
+  GOOGLESQL_CHECK_OK(type_factory->MakeRangeType(types::DateType(), &range_date_type));
+  const RangeType* range_timestamp_type = nullptr;
+  GOOGLESQL_CHECK_OK(type_factory->MakeRangeType(types::TimestampType(),
+                                       &range_timestamp_type));
+
+  Value non_str_map_neg_key =
+      Unwrap(Value::MakeMap(map_int64_int64_type, {{Int64(-1), Int64(10)}}));
+  Value non_str_map_bad_val =
+      Unwrap(Value::MakeMap(map_int64_str_type, {{Int64(1), String("bad")}}));
+  Value tokenlist_val = TokenListFromStringArray({"hello"});
+  Value range_date_val = Unwrap(Value::MakeRange(Date(10), Date(20)));
+
+  return {
+      {.test_name = "InvalidStringToInt64",
+       .from_variant = Variant(String("not_an_int")),
+       .to_type = types::Int64Type(),
+       .expected_error_substr = "Bad int64 value"},
+      {.test_name = "IncompatibleInt64ToDate",
+       .from_variant = Variant(Int64(123)),
+       .to_type = types::DateType(),
+       .expected_error_substr = "Unsupported cast from INT64 to DATE"},
+      {.test_name = "JsonUint64MaxToInt64Overflow",
+       .from_variant =
+           Variant(Json(JSONValue(std::numeric_limits<uint64_t>::max()))),
+       .to_type = types::Int64Type(),
+       .expected_error_substr = "int64 out of range"},
+      {.test_name = "JsonStringFloatToInt64Fails",
+       .from_variant = Variant(ParseJson(R"("3.6")")),
+       .to_type = types::Int64Type(),
+       .expected_error_substr = "Bad int64 value"},
+      {.test_name = "MalformedUnvalidatedJsonToInt64",
+       .from_variant = Variant(Value::UnvalidatedJsonString("{bad")),
+       .to_type = types::Int64Type(),
+       .expected_error_substr = "syntax error while parsing"},
+      {.test_name = "StringToArray",
+       .from_variant = Variant(String("[1, 2]")),
+       .to_type = types::Int64ArrayType(),
+       .expected_error_substr = "Unsupported cast from STRING to ARRAY"},
+      {.test_name = "InvalidStringToUuid",
+       .from_variant = Variant(String("not-a-uuid")),
+       .to_type = types::UuidType(),
+       .expected_error_substr = "UUID"},
+      {.test_name = "InvalidBytesLengthToUuid",
+       .from_variant = Variant(Bytes("short")),
+       .to_type = types::UuidType(),
+       .expected_error_substr = "16 bytes"},
+      {.test_name = "TokenListToString",
+       .from_variant = Variant(tokenlist_val),
+       .to_type = types::StringType(),
+       .expected_error_substr = "Unsupported cast from TOKENLIST to STRING"},
+      {.test_name = "RangeDateToRangeTimestamp",
+       .from_variant = Variant(range_date_val),
+       .to_type = range_timestamp_type,
+       .expected_error_substr =
+           "Unsupported cast from RANGE<DATE> to RANGE<TIMESTAMP>"},
+      {.test_name = "RangeDateToInt64",
+       .from_variant = Variant(range_date_val),
+       .to_type = types::Int64Type(),
+       .expected_error_substr = "Unsupported cast from RANGE<DATE> to INT64"},
+      {.test_name = "InvalidStringToRangeDate",
+       .from_variant = Variant(String("not-a-range")),
+       .to_type = range_date_type,
+       .expected_error_substr = "Failed to parse range"},
+      {.test_name = "NonStringKeyedMapKeyCastError",
+       .from_variant = Variant(non_str_map_neg_key),
+       .to_type = map_uint64_int64_type,
+       .expected_error_substr = "Error casting key -1 in MAP"},
+      {.test_name = "NonStringKeyedMapValueCastError",
+       .from_variant = Variant(non_str_map_bad_val),
+       .to_type = map_int64_int64_type,
+       .expected_error_substr = "Error casting value for key 1 in MAP"},
+      {.test_name = "NonStringKeyedMapToInt64",
+       .from_variant = Variant(non_str_map_neg_key),
+       .to_type = types::Int64Type(),
+       .expected_error_substr =
+           "Unsupported cast from MAP<INT64, INT64> to INT64"},
+      {.test_name = "NonStringKeyedMapToArray",
+       .from_variant = Variant(non_str_map_neg_key),
+       .to_type = types::Int64ArrayType(),
+       .expected_error_substr =
+           "Unsupported cast from MAP<INT64, INT64> to ARRAY<INT64>"},
+  };
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    PrimitivesAndPassThrough, CastFromVariantEvalErrorTest,
+    testing::ValuesIn(GetPrimitivesAndPassThroughErrorCases()),
+    [](const testing::TestParamInfo<VariantCastErrorCase>& info) {
+      return info.param.test_name;
+    });
+
+std::vector<VariantCastErrorCase> GetProtoErrorCases() {
+  const ProtoType* nullable_int_proto_type = nullptr;
+  GOOGLESQL_CHECK_OK(type_factory->MakeProtoType(
+      googlesql_test::NullableInt::descriptor(), &nullable_int_proto_type));
+  const ProtoType* test_extra_proto_type = nullptr;
+  GOOGLESQL_CHECK_OK(type_factory->MakeProtoType(
+      googlesql_test::TestExtraPB::descriptor(), &test_extra_proto_type));
+
+  googlesql_test::NullableInt nullable_int;
+  nullable_int.set_value(123);
+  absl::Cord proto_cord;
+  nullable_int.SerializeToString(&proto_cord);
+  Value proto_val = values::Proto(nullable_int_proto_type, proto_cord);
+  // Field 1, wire type 0 (varint), truncated varint continuation byte 0x80.
+  Value corrupt_proto_val =
+      values::Proto(nullable_int_proto_type, absl::Cord("\x08\x80"));
+
+  return {
+      {.test_name = "ProtoToIncompatibleProtoType",
+       .from_variant = Variant(proto_val),
+       .to_type = test_extra_proto_type,
+       .expected_error_substr =
+           "Unsupported cast from googlesql_test.NullableInt to "
+           "googlesql_test.TestExtraPB"},
+      {.test_name = "InvalidTextFormatStringToProto",
+       .from_variant = Variant(String("not_a_field: ???")),
+       .to_type = nullable_int_proto_type,
+       .expected_error_substr = "Error parsing proto"},
+      {.test_name = "CorruptWireBytesProtoToString",
+       .from_variant = Variant(corrupt_proto_val),
+       .to_type = types::StringType(),
+       .expected_error_substr = "Invalid cast to string from type"},
+      {.test_name = "ProtoObjectToInt64",
+       .from_variant = Variant(proto_val),
+       .to_type = types::Int64Type(),
+       .expected_error_substr =
+           "Unsupported cast from googlesql_test.NullableInt to INT64"},
+      {.test_name = "JsonObjectToProto",
+       .from_variant = Variant(ParseJson(R"({"value": 1})")),
+       .to_type = nullable_int_proto_type,
+       .expected_error_substr =
+           "Cannot cast VARIANT Object to googlesql_test.NullableInt"},
+  };
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    Protos, CastFromVariantEvalErrorTest,
+    testing::ValuesIn(GetProtoErrorCases()),
+    [](const testing::TestParamInfo<VariantCastErrorCase>& info) {
+      return info.param.test_name;
+    });
+
+std::vector<VariantCastErrorCase> GetObjectsAndArraysErrorCases() {
+  const Type* map_int64_int64_type =
+      Unwrap(type_factory->MakeMapType(types::Int64Type(), types::Int64Type()));
+  const Type* map_str_int64_type = Unwrap(
+      type_factory->MakeMapType(types::StringType(), types::Int64Type()));
+  const Type* map_str_int64_arr_type = Unwrap(
+      type_factory->MakeMapType(types::StringType(), types::Int64ArrayType()));
+  Value json_one_field = ParseJson(R"({"a": 1})");
+
+  return {
+      {.test_name = "VariantObjectToPrimitive",
+       .from_variant = Variant(json_one_field),
+       .to_type = types::Int64Type(),
+       .expected_error_substr = "Cannot cast VARIANT Object to INT64"},
+      {.test_name = "VariantObjectToArray",
+       .from_variant = Variant(json_one_field),
+       .to_type = types::Int64ArrayType(),
+       .expected_error_substr = "Cannot cast VARIANT Object to ARRAY<INT64>"},
+      {.test_name = "VariantObjectToMapWithNonStringKey",
+       .from_variant = Variant(json_one_field),
+       .to_type = map_int64_int64_type,
+       .expected_error_substr = "target MAP key type must be STRING"},
+      {.test_name = "VariantObjectToMapValueCastError",
+       .from_variant = Variant(ParseJson(R"({"a": "bad", "b": 2})")),
+       .to_type = map_str_int64_type,
+       .expected_error_substr = "Error casting value for key 'a' in MAP"},
+      {.test_name = "ChainedNestedMapAndArrayElementCastError",
+       .from_variant = Variant(ParseJson(R"({"a": ["bad"]})")),
+       .to_type = map_str_int64_arr_type,
+       .expected_error_substr =
+           "Error casting value for key 'a' in MAP: Error casting element at "
+           "index 0 in ARRAY: "},
+      {.test_name = "VariantArrayToPrimitive",
+       .from_variant = Variant(Int64Array({1, 2})),
+       .to_type = types::Int64Type(),
+       .expected_error_substr = "Cannot cast VARIANT Array to INT64"},
+      {.test_name = "VariantArrayToMap",
+       .from_variant = Variant(ParseJson("[1, 2]")),
+       .to_type = map_str_int64_type,
+       .expected_error_substr =
+           "Cannot cast VARIANT Array to MAP<STRING, INT64>"},
+      {.test_name = "VariantArrayElementCastErrorAtIndexZero",
+       .from_variant = Variant(StringArray({"bad"})),
+       .to_type = types::Int64ArrayType(),
+       .expected_error_substr = "Error casting element at index 0 in ARRAY"},
+      {.test_name = "VariantArrayElementCastErrorAtNonZeroIndex",
+       .from_variant = Variant(ParseJson(R"(["1", "bad"])")),
+       .to_type = types::Int64ArrayType(),
+       .expected_error_substr = "Error casting element at index 1 in ARRAY: "},
+  };
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    ObjectsAndArrays, CastFromVariantEvalErrorTest,
+    testing::ValuesIn(GetObjectsAndArraysErrorCases()),
+    [](const testing::TestParamInfo<VariantCastErrorCase>& info) {
+      return info.param.test_name;
+    });
+
+// -----------------------------------------------------------------------------
+// 3. Focused Behavioral & Edge-Case Tests for CAST from VARIANT
+// -----------------------------------------------------------------------------
+
+TEST(CastFromVariantTest, FormatsNegativeZeroAccordingToFlag) {
+  LanguageOptions options = LanguageOptions::MaximumFeatures();
+  options.EnableLanguageFeature(FEATURE_VARIANT_TYPE);
+
+  // SQL double -0.0
+  EXPECT_THAT(CastValue(Variant(Double(-0.0)), absl::UTCTimeZone(), options,
+                        types::StringType(), /*catalog=*/nullptr,
+                        /*canonicalize_zero=*/false),
+              IsOkAndHolds(String("-0")));
+  EXPECT_THAT(CastValue(Variant(Double(-0.0)), absl::UTCTimeZone(), options,
+                        types::StringType(), /*catalog=*/nullptr,
+                        /*canonicalize_zero=*/true),
+              IsOkAndHolds(String("0")));
+
+  // JSON double -0.0
+  EXPECT_THAT(CastValue(Variant(Json(JSONValue(-0.0))), absl::UTCTimeZone(),
+                        options, types::StringType(), /*catalog=*/nullptr,
+                        /*canonicalize_zero=*/false),
+              IsOkAndHolds(String("-0")));
+  EXPECT_THAT(CastValue(Variant(Json(JSONValue(-0.0))), absl::UTCTimeZone(),
+                        options, types::StringType(), /*catalog=*/nullptr,
+                        /*canonicalize_zero=*/true),
+              IsOkAndHolds(String("0")));
+}
+
+TEST(CastFromVariantTest, PropagatesNonUtcDefaultTimezoneToNestedContainers) {
+  LanguageOptions options = LanguageOptions::MaximumFeatures();
+  options.EnableLanguageFeature(FEATURE_VARIANT_TYPE);
+
+  absl::TimeZone la_tz;
+  ASSERT_TRUE(absl::LoadTimeZone("America/Los_Angeles", &la_tz));
+  // 2025-01-01 00:00:00 in America/Los_Angeles (UTC-8) is 2025-01-01 08:00:00
+  // UTC.
+  Value expected_ts = Value::Timestamp(
+      absl::FromCivil(absl::CivilSecond(2025, 1, 1, 0, 0, 0), la_tz));
+
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(const ArrayType* ts_array_type,
+                       type_factory->MakeArrayType(types::TimestampType()));
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(Value expected_arr,
+                       Value::MakeArray(ts_array_type, {expected_ts}));
+  EXPECT_THAT(CastValue(Variant(ParseJson(R"(["2025-01-01 00:00:00"])")), la_tz,
+                        options, ts_array_type),
+              IsOkAndHolds(expected_arr));
+
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+      const Type* map_str_ts_type,
+      type_factory->MakeMapType(types::StringType(), types::TimestampType()));
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+      Value expected_map,
+      Value::MakeMap(map_str_ts_type, {{String("ts"), expected_ts}}));
+  EXPECT_THAT(CastValue(Variant(ParseJson(R"({"ts": "2025-01-01 00:00:00"})")),
+                        la_tz, options, map_str_ts_type),
+              IsOkAndHolds(expected_map));
+}
+
+TEST(CastFromVariantTest, ArrayToArrayPreservesOrderKind) {
+  LanguageOptions options = LanguageOptions::MaximumFeatures();
+  options.EnableLanguageFeature(FEATURE_VARIANT_TYPE);
+
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(Value bag_array,
+                       InternalValue::MakeArray(types::StringArrayType(),
+                                                InternalValue::kIgnoresOrder,
+                                                {String("10"), String("20")}));
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(Value casted_bag,
+                       CastValue(Variant(bag_array), absl::UTCTimeZone(),
+                                 options, types::Int64ArrayType()));
+  EXPECT_EQ(InternalValue::order_kind(casted_bag),
+            InternalValue::kIgnoresOrder);
+
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(Value ordered_array,
+                       InternalValue::MakeArray(types::StringArrayType(),
+                                                InternalValue::kPreservesOrder,
+                                                {String("10"), String("20")}));
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(Value casted_ordered,
+                       CastValue(Variant(ordered_array), absl::UTCTimeZone(),
+                                 options, types::Int64ArrayType()));
+  EXPECT_EQ(InternalValue::order_kind(casted_ordered),
+            InternalValue::kPreservesOrder);
+}
+
+TEST(CastFromVariantTest, FloatToNonFloatSetsNonDeterministicFlag) {
+  LanguageOptions options = LanguageOptions::MaximumFeatures();
+  options.EnableLanguageFeature(FEATURE_VARIANT_TYPE);
+
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(Value float_variant, Value::Variant(Double(1.5)));
+  bool found_non_deterministic = false;
+  EXPECT_THAT(internal::CastValueWithoutTypeValidation(
+                  float_variant, absl::UTCTimeZone(),
+                  /*current_timestamp=*/std::nullopt, options,
+                  types::StringType(), /*format=*/std::nullopt,
+                  /*time_zone=*/std::nullopt,
+                  /*extended_conversion_evaluator=*/nullptr,
+                  /*canonicalize_zero=*/true, &found_non_deterministic),
+              IsOkAndHolds(String("1.5")));
+  EXPECT_TRUE(found_non_deterministic);
+}
+
+TEST(CastFromVariantTest, FloatToFloatDoesNotSetNonDeterministicFlag) {
+  LanguageOptions options = LanguageOptions::MaximumFeatures();
+  options.EnableLanguageFeature(FEATURE_VARIANT_TYPE);
+
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(Value float_variant, Value::Variant(Double(1.5)));
+  bool found_non_deterministic = false;
+  EXPECT_THAT(internal::CastValueWithoutTypeValidation(
+                  float_variant, absl::UTCTimeZone(),
+                  /*current_timestamp=*/std::nullopt, options,
+                  types::DoubleType(), /*format=*/std::nullopt,
+                  /*time_zone=*/std::nullopt,
+                  /*extended_conversion_evaluator=*/nullptr,
+                  /*canonicalize_zero=*/true, &found_non_deterministic),
+              IsOkAndHolds(Double(1.5)));
+  EXPECT_FALSE(found_non_deterministic);
+}
+
+TEST(CastFromVariantTest, VariantObjectWithFloatToMapSetsNonDeterministicFlag) {
+  LanguageOptions options = LanguageOptions::MaximumFeatures();
+  options.EnableLanguageFeature(FEATURE_VARIANT_TYPE);
+
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+      const Type* map_str_str_type,
+      type_factory->MakeMapType(types::StringType(), types::StringType()));
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+      Value expected_map,
+      Value::MakeMap(map_str_str_type, {{String("a"), String("1.5")}}));
+  Value object_variant = Variant(Struct({"a"}, {Double(1.5)}));
+
+  bool found_non_deterministic = false;
+  EXPECT_THAT(internal::CastValueWithoutTypeValidation(
+                  object_variant, absl::UTCTimeZone(),
+                  /*current_timestamp=*/std::nullopt, options, map_str_str_type,
+                  /*format=*/std::nullopt, /*time_zone=*/std::nullopt,
+                  /*extended_conversion_evaluator=*/nullptr,
+                  /*canonicalize_zero=*/true, &found_non_deterministic),
+              IsOkAndHolds(expected_map));
+  EXPECT_TRUE(found_non_deterministic);
+}
+
+TEST(CastFromVariantTest, ProtoWithFloatToStringSetsNonDeterministicFlag) {
+  LanguageOptions options = LanguageOptions::MaximumFeatures();
+  options.EnableLanguageFeature(FEATURE_VARIANT_TYPE);
+
+  const ProtoType* kitchen_sink_type = nullptr;
+  GOOGLESQL_ASSERT_OK(type_factory->MakeProtoType(
+      googlesql_test::KitchenSinkPB::descriptor(), &kitchen_sink_type));
+  googlesql_test::KitchenSinkPB pb;
+  pb.set_int64_key_1(1);
+  pb.set_int64_key_2(2);
+  pb.set_float_val(1.5f);
+
+  bool found_non_deterministic = false;
+  EXPECT_THAT(
+      internal::CastValueWithoutTypeValidation(
+          Variant(Proto(kitchen_sink_type, pb.SerializeAsCord())),
+          absl::UTCTimeZone(),
+          /*current_timestamp=*/std::nullopt, options, types::StringType(),
+          /*format=*/std::nullopt, /*time_zone=*/std::nullopt,
+          /*extended_conversion_evaluator=*/nullptr,
+          /*canonicalize_zero=*/true, &found_non_deterministic),
+      IsOkAndHolds(StringValueMatches(HasSubstr("float_val: 1.5"))));
+  EXPECT_TRUE(found_non_deterministic);
+}
+
+TEST(CastFromVariantTest,
+     NonStringKeyedMapWithFloatToStringSetsNonDeterministicFlag) {
+  LanguageOptions options = LanguageOptions::MaximumFeatures();
+  options.EnableLanguageFeature(FEATURE_VARIANT_TYPE);
+
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+      const Type* map_double_str_type,
+      type_factory->MakeMapType(types::DoubleType(), types::StringType()));
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+      const Type* map_str_double_type,
+      type_factory->MakeMapType(types::StringType(), types::DoubleType()));
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+      Value map_val,
+      Value::MakeMap(map_double_str_type, {{Double(1.5), String("2.5")}}));
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(Value map_variant, Value::Variant(map_val));
+
+  // Even though the target type MAP<STRING, DOUBLE> also contains a DOUBLE,
+  // pairwise component checking detects that the key is cast from DOUBLE to
+  // STRING.
+  bool found_non_deterministic = false;
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+      Value expected_map,
+      Value::MakeMap(map_str_double_type, {{String("1.5"), Double(2.5)}}));
+  EXPECT_THAT(internal::CastValueWithoutTypeValidation(
+                  map_variant, absl::UTCTimeZone(),
+                  /*current_timestamp=*/std::nullopt, options,
+                  map_str_double_type, /*format=*/std::nullopt,
+                  /*time_zone=*/std::nullopt,
+                  /*extended_conversion_evaluator=*/nullptr,
+                  /*canonicalize_zero=*/true, &found_non_deterministic),
+              IsOkAndHolds(expected_map));
+  EXPECT_TRUE(found_non_deterministic);
+}
+
+TEST(CastFromVariantTest,
+     VariantArrayWithFloatToStringArraySetsNonDeterministicFlag) {
+  LanguageOptions options = LanguageOptions::MaximumFeatures();
+  options.EnableLanguageFeature(FEATURE_VARIANT_TYPE);
+
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(Value array_variant,
+                       Value::Variant(values::DoubleArray({1.5})));
+  bool found_non_deterministic = false;
+  EXPECT_THAT(internal::CastValueWithoutTypeValidation(
+                  array_variant, absl::UTCTimeZone(),
+                  /*current_timestamp=*/std::nullopt, options,
+                  types::StringArrayType(), /*format=*/std::nullopt,
+                  /*time_zone=*/std::nullopt,
+                  /*extended_conversion_evaluator=*/nullptr,
+                  /*canonicalize_zero=*/true, &found_non_deterministic),
+              IsOkAndHolds(StringArray({"1.5"})));
+  EXPECT_TRUE(found_non_deterministic);
+}
+
+// TODO: b/554949919 - Add a test for Variant(Geography) -> JSON and
+// Variant(MAP<INT64, unordered_array>) -> MAP<INT64, JSON> setting
+// out_found_non_deterministic once casting from VARIANT to JSON is supported.
+
+TEST(CastFromVariantTest,
+     StructWithVariantFloatToStructWithStringSetsNonDeterministicFlag) {
+  LanguageOptions options = LanguageOptions::MaximumFeatures();
+  options.EnableLanguageFeature(FEATURE_VARIANT_TYPE);
+
+  const StructType* struct_variant_type = nullptr;
+  GOOGLESQL_ASSERT_OK(type_factory->MakeStructType({{"a", types::VariantType()}},
+                                         &struct_variant_type));
+  const StructType* struct_str_type = nullptr;
+  GOOGLESQL_ASSERT_OK(type_factory->MakeStructType({{"a", types::StringType()}},
+                                         &struct_str_type));
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+      Value struct_val,
+      Value::MakeStruct(struct_variant_type, {Variant(Double(1.5))}));
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(Value expected_struct,
+                       Value::MakeStruct(struct_str_type, {String("1.5")}));
+
+  bool found_non_deterministic = false;
+  EXPECT_THAT(internal::CastValueWithoutTypeValidation(
+                  struct_val, absl::UTCTimeZone(),
+                  /*current_timestamp=*/std::nullopt, options, struct_str_type,
+                  /*format=*/std::nullopt, /*time_zone=*/std::nullopt,
+                  /*extended_conversion_evaluator=*/nullptr,
+                  /*canonicalize_zero=*/true, &found_non_deterministic),
+              IsOkAndHolds(expected_struct));
+  EXPECT_TRUE(found_non_deterministic);
+}
+
+TEST(CastFromVariantTest,
+     ArrayOfVariantFloatToArrayOfStringSetsNonDeterministicFlag) {
+  LanguageOptions options = LanguageOptions::MaximumFeatures();
+  options.EnableLanguageFeature(FEATURE_VARIANT_TYPE);
+
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+      Value array_val,
+      Value::MakeArray(types::VariantArrayType(), {Variant(Double(1.5))}));
+
+  bool found_non_deterministic = false;
+  EXPECT_THAT(internal::CastValueWithoutTypeValidation(
+                  array_val, absl::UTCTimeZone(),
+                  /*current_timestamp=*/std::nullopt, options,
+                  types::StringArrayType(), /*format=*/std::nullopt,
+                  /*time_zone=*/std::nullopt,
+                  /*extended_conversion_evaluator=*/nullptr,
+                  /*canonicalize_zero=*/true, &found_non_deterministic),
+              IsOkAndHolds(StringArray({"1.5"})));
+  EXPECT_TRUE(found_non_deterministic);
+}
+
+TEST(CastFromVariantTest,
+     MapWithVariantFloatToMapWithStringSetsNonDeterministicFlag) {
+  LanguageOptions options = LanguageOptions::MaximumFeatures();
+  options.EnableLanguageFeature(FEATURE_VARIANT_TYPE);
+
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+      const Type* map_int_variant_type,
+      type_factory->MakeMapType(types::Int64Type(), types::VariantType()));
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+      const Type* map_int_str_type,
+      type_factory->MakeMapType(types::Int64Type(), types::StringType()));
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+      Value map_val,
+      Value::MakeMap(map_int_variant_type, {{Int64(1), Variant(Double(1.5))}}));
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+      Value expected_map,
+      Value::MakeMap(map_int_str_type, {{Int64(1), String("1.5")}}));
+
+  bool found_non_deterministic = false;
+  EXPECT_THAT(internal::CastValueWithoutTypeValidation(
+                  map_val, absl::UTCTimeZone(),
+                  /*current_timestamp=*/std::nullopt, options, map_int_str_type,
+                  /*format=*/std::nullopt, /*time_zone=*/std::nullopt,
+                  /*extended_conversion_evaluator=*/nullptr,
+                  /*canonicalize_zero=*/true, &found_non_deterministic),
+              IsOkAndHolds(expected_map));
+  EXPECT_TRUE(found_non_deterministic);
+}
+
+TEST(CastFromVariantTest,
+     StructWithVariantFloatToProtoMapEntrySetsNonDeterministicFlag) {
+  LanguageOptions options = LanguageOptions::MaximumFeatures();
+  options.EnableLanguageFeature(FEATURE_VARIANT_TYPE);
+  options.EnableLanguageFeature(FEATURE_PROTO_MAPS);
+
+  const StructType* struct_type = nullptr;
+  GOOGLESQL_ASSERT_OK(type_factory->MakeStructType(
+      {{"key", types::StringType()}, {"value", types::VariantType()}},
+      &struct_type));
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+      Value struct_val,
+      Value::MakeStruct(struct_type, {String("k"), Variant(Double(1.5))}));
+
+  const google::protobuf::Descriptor* map_entry_desc =
+      googlesql_test::MessageWithMapField::descriptor()
+          ->FindFieldByName("string_string_map")
+          ->message_type();
+  const ProtoType* map_entry_proto_type = nullptr;
+  GOOGLESQL_ASSERT_OK(type_factory->MakeProtoType(map_entry_desc, &map_entry_proto_type));
+
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+      Value expected_proto,
+      CastValue(Struct({"key", "value"}, {String("k"), String("1.5")}),
+                absl::UTCTimeZone(), options, map_entry_proto_type));
+
+  bool found_non_deterministic = false;
+  EXPECT_THAT(internal::CastValueWithoutTypeValidation(
+                  struct_val, absl::UTCTimeZone(),
+                  /*current_timestamp=*/std::nullopt, options,
+                  map_entry_proto_type, /*format=*/std::nullopt,
+                  /*time_zone=*/std::nullopt,
+                  /*extended_conversion_evaluator=*/nullptr,
+                  /*canonicalize_zero=*/true, &found_non_deterministic),
+              IsOkAndHolds(expected_proto));
+  EXPECT_TRUE(found_non_deterministic);
+}
+
+TEST(CastFromVariantTest,
+     IncompatibleEmptyOrNullNonStringKeyedMapReturnsOutOfRange) {
+  LanguageOptions options = LanguageOptions::MaximumFeatures();
+  options.EnableLanguageFeature(FEATURE_VARIANT_TYPE);
+
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+      const Type* map_int_date_type,
+      type_factory->MakeMapType(types::Int64Type(), types::DateType()));
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+      const Type* map_int_int_type,
+      type_factory->MakeMapType(types::Int64Type(), types::Int64Type()));
+
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(Value empty_map, Value::MakeMap(map_int_date_type, {}));
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+      Value null_val_map,
+      Value::MakeMap(map_int_date_type, {{Int64(1), values::NullDate()}}));
+
+  for (const Value& map_val : {empty_map, null_val_map}) {
+    Value variant_val = Variant(map_val);
+    EXPECT_THAT(
+        CastValue(variant_val, absl::UTCTimeZone(), options, map_int_int_type),
+        StatusIs(
+            absl::StatusCode::kOutOfRange,
+            HasSubstr("Unsupported cast from MAP<INT64, DATE> to MAP<INT64, "
+                      "INT64>")));
+    EXPECT_THAT(
+        internal::CastValueWithoutTypeValidation(
+            variant_val, absl::UTCTimeZone(),
+            /*current_timestamp=*/std::nullopt, options, map_int_int_type,
+            /*format=*/std::nullopt, /*time_zone=*/std::nullopt,
+            /*extended_conversion_evaluator=*/nullptr,
+            /*canonicalize_zero=*/false),
+        StatusIs(
+            absl::StatusCode::kOutOfRange,
+            HasSubstr("Unsupported cast from MAP<INT64, DATE> to MAP<INT64, "
+                      "INT64>")));
+  }
+}
+
+TEST(CastFromVariantTest, IncompatibleGraphElementReturnsOutOfRange) {
+  LanguageOptions options = LanguageOptions::MaximumFeatures();
+  options.EnableLanguageFeature(FEATURE_VARIANT_TYPE);
+
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+      const Value graph_node_a_b,
+      GraphNode({"graph_name"}, "id1",
+                {{"a", Value::String("v0")}, {"b", Value::Int32(1)}},
+                {"label1"}, "ElementTable", type_factory));
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+      const Value graph_node_a_int_b,
+      GraphNode({"graph_name"}, "id1",
+                {{"a", Value::Int32(1)}, {"b", Value::Int32(1)}}, {"label1"},
+                "ElementTable", type_factory));
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+      const Value graph_edge_a_b,
+      GraphEdge({"graph_name"}, "id1",
+                {{"a", Value::String("v0")}, {"b", Value::Int32(1)}},
+                {"label2"}, "ElementTable", "src_node_id", "dst_node_id",
+                type_factory));
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+      const Value different_graph_node_a_b,
+      GraphNode({"new_graph_name"}, "id1",
+                {{"a", Value::String("v0")}, {"b", Value::Int32(1)}},
+                {"label3"}, "ElementTable", type_factory));
+
+  Value variant_node = Variant(graph_node_a_b);
+  for (const Type* target_type :
+       {graph_node_a_int_b.type(), graph_edge_a_b.type(),
+        different_graph_node_a_b.type()}) {
+    EXPECT_THAT(
+        CastValue(variant_node, absl::UTCTimeZone(), options, target_type),
+        StatusIs(absl::StatusCode::kOutOfRange,
+                 HasSubstr("Unsupported cast from GRAPH_NODE")));
+    EXPECT_THAT(internal::CastValueWithoutTypeValidation(
+                    variant_node, absl::UTCTimeZone(),
+                    /*current_timestamp=*/std::nullopt, options, target_type,
+                    /*format=*/std::nullopt, /*time_zone=*/std::nullopt,
+                    /*extended_conversion_evaluator=*/nullptr,
+                    /*canonicalize_zero=*/false),
+                StatusIs(absl::StatusCode::kOutOfRange,
+                         HasSubstr("Unsupported cast from GRAPH_NODE")));
+  }
+}
+
+TEST(CastFromVariantTest, IncompatibleGraphPathReturnsOutOfRange) {
+  LanguageOptions options = LanguageOptions::MaximumFeatures();
+  options.EnableLanguageFeature(FEATURE_VARIANT_TYPE);
+
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+      const Value graph_node_a_b,
+      GraphNode({"graph_name"}, "id1",
+                {{"a", Value::String("v0")}, {"b", Value::Int32(1)}},
+                {"label1"}, "ElementTable", type_factory));
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+      const Value graph_node_a_int_b,
+      GraphNode({"graph_name"}, "id1",
+                {{"a", Value::Int32(1)}, {"b", Value::Int32(1)}}, {"label1"},
+                "ElementTable", type_factory));
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(const Value graph_edge_no_properties,
+                       GraphEdge({"graph_name"}, "id1", {}, {"label1"},
+                                 "ElementTable", "id1", "id2", type_factory));
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(const Value different_graph_node,
+                       GraphNode({"different_graph_name"}, "id1", {},
+                                 {"label1"}, "ElementTable", type_factory));
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+      const Value different_graph_edge,
+      GraphEdge({"different_graph_name"}, "id1", {}, {"label1"}, "ElementTable",
+                "id1", "id2", type_factory));
+
+  const GraphPathType* path_type_node_a_b = test_values::MakeGraphPathType(
+      graph_node_a_b.type()->AsGraphElement(),
+      graph_edge_no_properties.type()->AsGraphElement());
+  const GraphPathType* path_type_node_a_int_b = test_values::MakeGraphPathType(
+      graph_node_a_int_b.type()->AsGraphElement(),
+      graph_edge_no_properties.type()->AsGraphElement());
+  const GraphPathType* different_graph_path_type =
+      test_values::MakeGraphPathType(
+          different_graph_node.type()->AsGraphElement(),
+          different_graph_edge.type()->AsGraphElement());
+
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(Value path_val, Value::MakeGraphPath(path_type_node_a_b,
+                                                            {graph_node_a_b}));
+  Value variant_path = Variant(path_val);
+
+  for (const Type* target_type :
+       {path_type_node_a_int_b, different_graph_path_type}) {
+    EXPECT_THAT(
+        CastValue(variant_path, absl::UTCTimeZone(), options, target_type),
+        StatusIs(absl::StatusCode::kOutOfRange,
+                 HasSubstr("Unsupported cast from PATH<")));
+    EXPECT_THAT(internal::CastValueWithoutTypeValidation(
+                    variant_path, absl::UTCTimeZone(),
+                    /*current_timestamp=*/std::nullopt, options, target_type,
+                    /*format=*/std::nullopt, /*time_zone=*/std::nullopt,
+                    /*extended_conversion_evaluator=*/nullptr,
+                    /*canonicalize_zero=*/false),
+                StatusIs(absl::StatusCode::kOutOfRange,
+                         HasSubstr("Unsupported cast from PATH<")));
+  }
+}
+TEST(CastFromVariantTest, VariantContainingExtendedTypeReturnsOutOfRange) {
+  LanguageOptions options = LanguageOptions::MaximumFeatures();
+  options.EnableLanguageFeature(FEATURE_VARIANT_TYPE);
+
+  TestExtendedType extended_type(type_factory);
+  Value variant_extended = Variant(extended_type.MakeValue(42));
+
+  EXPECT_THAT(
+      CastValue(variant_extended, absl::UTCTimeZone(), options,
+                types::Int64Type()),
+      StatusIs(absl::StatusCode::kOutOfRange,
+               HasSubstr("Unsupported cast from TestExtendedType to INT64")));
+  EXPECT_THAT(
+      internal::CastValueWithoutTypeValidation(
+          variant_extended, absl::UTCTimeZone(),
+          /*current_timestamp=*/std::nullopt, options, types::Int64Type(),
+          /*format=*/std::nullopt, /*time_zone=*/std::nullopt,
+          /*extended_conversion_evaluator=*/nullptr,
+          /*canonicalize_zero=*/false),
+      StatusIs(absl::StatusCode::kOutOfRange,
+               HasSubstr("Unsupported cast from TestExtendedType to INT64")));
+}
+
+TEST(CastFromVariantTest,
+     VariantContainingNestedExtendedTypeInMapReturnsOutOfRange) {
+  LanguageOptions options = LanguageOptions::MaximumFeatures();
+  options.EnableLanguageFeature(FEATURE_VARIANT_TYPE);
+
+  TestExtendedType extended_type(type_factory);
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+      const Type* map_int_ext_type,
+      type_factory->MakeMapType(types::Int64Type(), &extended_type));
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+      const Type* map_int_int_type,
+      type_factory->MakeMapType(types::Int64Type(), types::Int64Type()));
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+      Value map_val, Value::MakeMap(map_int_ext_type,
+                                    {{Int64(1), extended_type.MakeValue(42)}}));
+  Value variant_map = Variant(map_val);
+
+  EXPECT_THAT(
+      CastValue(variant_map, absl::UTCTimeZone(), options, map_int_int_type),
+      StatusIs(absl::StatusCode::kOutOfRange,
+               HasSubstr("Unsupported cast from MAP<INT64, TestExtendedType> "
+                         "to MAP<INT64, INT64>")));
+  EXPECT_THAT(
+      internal::CastValueWithoutTypeValidation(
+          variant_map, absl::UTCTimeZone(),
+          /*current_timestamp=*/std::nullopt, options, map_int_int_type,
+          /*format=*/std::nullopt, /*time_zone=*/std::nullopt,
+          /*extended_conversion_evaluator=*/nullptr,
+          /*canonicalize_zero=*/false),
+      StatusIs(absl::StatusCode::kOutOfRange,
+               HasSubstr("Unsupported cast from MAP<INT64, TestExtendedType> "
+                         "to MAP<INT64, INT64>")));
+}
+
+TEST(CastFromVariantTest, UnsupportedTargetTypeReturnsInvalidArgument) {
+  LanguageOptions options = LanguageOptions::MaximumFeatures();
+  options.EnableLanguageFeature(FEATURE_VARIANT_TYPE);
+
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(const Type* measure_type,
+                       type_factory->MakeMeasureType(types::Int64Type()));
+  const StructType* struct_type = nullptr;
+  GOOGLESQL_ASSERT_OK(
+      type_factory->MakeStructType({{"a", types::Int64Type()}}, &struct_type));
+  Value v = Variant(Int64(1));
+
+  EXPECT_THAT(CastValue(v, absl::UTCTimeZone(), options, measure_type),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("Unsupported cast from VARIANT to MEASURE")));
+  EXPECT_THAT(CastValue(v, absl::UTCTimeZone(), options, types::JsonType()),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("Unsupported cast from VARIANT to JSON")));
+  EXPECT_THAT(CastValue(v, absl::UTCTimeZone(), options, struct_type),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("Unsupported cast from VARIANT to STRUCT")));
+}
+
+TEST(CastFromVariantTest, FeatureDisabledReturnsInvalidArgument) {
+  LanguageOptions disabled_options;
+  EXPECT_THAT(CastValue(Variant(Int64(1)), absl::UTCTimeZone(),
+                        disabled_options, types::Int64Type()),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("Unsupported cast from VARIANT to INT64")));
+}
+
+TEST(CastFromVariantTest, FormatClauseReturnsInvalidArgument) {
+  LanguageOptions options = LanguageOptions::MaximumFeatures();
+  options.EnableLanguageFeature(FEATURE_VARIANT_TYPE);
+  EXPECT_THAT(CastValue(Variant(Date(20162)), absl::UTCTimeZone(), options,
+                        types::StringType(), "YYYY/MM/DD"),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("FORMAT is not allowed for cast from VARIANT "
+                                 "to STRING")));
+}
+
+// TODO: b/554973153 - Update once Variant Object extraction supports nested
+// proto messages and enum fields.
+TEST(CastFromVariantTest, ReturnsUnimplementedForComplexProtoFields) {
+  LanguageOptions options = LanguageOptions::MaximumFeatures();
+  options.EnableLanguageFeature(FEATURE_VARIANT_TYPE);
+
+  const ProtoType* nullable_enum_type = nullptr;
+  GOOGLESQL_ASSERT_OK(type_factory->MakeProtoType(
+      googlesql_test::NullableEnum::descriptor(), &nullable_enum_type));
+  googlesql_test::NullableEnum enum_pb;
+  enum_pb.set_value(googlesql_test::TESTENUM1);
+  absl::Cord enum_cord;
+  enum_pb.SerializeToString(&enum_cord);
+  Value enum_proto_val = values::Proto(nullable_enum_type, enum_cord);
+
+  const ProtoType* nested_msg_type = nullptr;
+  GOOGLESQL_ASSERT_OK(type_factory->MakeProtoType(
+      googlesql_test::RewrappedNullableInt::descriptor(), &nested_msg_type));
+  googlesql_test::RewrappedNullableInt nested_pb;
+  nested_pb.mutable_value()->set_value(7);
+  absl::Cord nested_cord;
+  nested_pb.SerializeToString(&nested_cord);
+  Value nested_proto_val = values::Proto(nested_msg_type, nested_cord);
+
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+      const Type* map_str_variant_type,
+      type_factory->MakeMapType(types::StringType(), types::VariantType()));
+
+  EXPECT_THAT(CastValue(Variant(enum_proto_val), absl::UTCTimeZone(), options,
+                        map_str_variant_type),
+              StatusIs(absl::StatusCode::kUnimplemented,
+                       HasSubstr("Cannot extract nested field")));
+  EXPECT_THAT(CastValue(Variant(nested_proto_val), absl::UTCTimeZone(), options,
+                        map_str_variant_type),
+              StatusIs(absl::StatusCode::kUnimplemented,
+                       HasSubstr("Cannot extract nested field")));
+}
+
+TEST(CastFromVariantTest,
+     FailedArrayVariantCastDoesNotMutateNonDeterministicFlag) {
+  LanguageOptions options = LanguageOptions::MaximumFeatures();
+  options.EnableLanguageFeature(FEATURE_VARIANT_TYPE);
+
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(const ArrayType* array_variant_type,
+                       type_factory->MakeArrayType(types::VariantType()));
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(const ArrayType* array_int64_type,
+                       type_factory->MakeArrayType(types::Int64Type()));
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+      Value array_variant,
+      Value::MakeArray(array_variant_type, {Variant(Value::Double(1.5)),
+                                            Variant(Value::String("bad"))}));
+
+  bool found_non_deterministic = false;
+  EXPECT_THAT(internal::CastValueWithoutTypeValidation(
+                  array_variant, absl::UTCTimeZone(),
+                  /*current_timestamp=*/std::nullopt, options, array_int64_type,
+                  /*format=*/std::nullopt, /*time_zone=*/std::nullopt,
+                  /*extended_conversion_evaluator=*/nullptr,
+                  /*canonicalize_zero=*/false, &found_non_deterministic),
+              StatusIs(absl::StatusCode::kOutOfRange));
+  EXPECT_FALSE(found_non_deterministic);
+}
+
+TEST(CastFromVariantTest, ReturnsResourceExhaustedOnDeepNesting) {
+  // Set enough_stack_bytes to 16MB to guarantee ThreadHasEnoughStack() returns
+  // false once recursion passes kNestingLevelStackCheckThreshold.
+  size_t original_bytes = absl::GetFlag(FLAGS_googlesql_enough_stack_bytes);
+  absl::Cleanup reset_flag = [original_bytes]() {
+    absl::SetFlag(&FLAGS_googlesql_enough_stack_bytes, original_bytes);
+  };
+  absl::SetFlag(&FLAGS_googlesql_enough_stack_bytes, 16 * 1024 * 1024);
+
+  LanguageOptions options = LanguageOptions::MaximumFeatures();
+  options.EnableLanguageFeature(FEATURE_VARIANT_TYPE);
+
+  constexpr int kNestingDepth = 15;  // > kNestingLevelStackCheckThreshold (10)
+
+  // 1. Deeply nested JSON object to MAP
+  std::string nested_json_obj = "1";
+  for (int i = 0; i < kNestingDepth; ++i) {
+    nested_json_obj = absl::StrCat(R"({"a":)", nested_json_obj, "}");
+  }
+  Value nested_json_obj_variant = Variant(ParseJson(nested_json_obj));
+
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+      const Type* map_str_variant_type,
+      type_factory->MakeMapType(types::StringType(), types::VariantType()));
+  Value nested_sql_map_variant = Variant(Int64(1));
+  const Type* nested_target_map_type = types::Int64Type();
+  for (int i = 0; i < kNestingDepth; ++i) {
+    GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+        nested_sql_map_variant,
+        Value::MakeMap(map_str_variant_type,
+                       {{String("a"), nested_sql_map_variant}}));
+    nested_sql_map_variant = Variant(nested_sql_map_variant);
+    GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+        nested_target_map_type,
+        type_factory->MakeMapType(types::StringType(), nested_target_map_type));
+  }
+
+  EXPECT_THAT(CastValue(nested_json_obj_variant, absl::UTCTimeZone(), options,
+                        nested_target_map_type),
+              StatusIs(absl::StatusCode::kResourceExhausted,
+                       HasSubstr("Out of stack space")));
+
+  // 2. Deeply nested SQL MAP to MAP
+  EXPECT_THAT(CastValue(nested_sql_map_variant, absl::UTCTimeZone(), options,
+                        nested_target_map_type),
+              StatusIs(absl::StatusCode::kResourceExhausted,
+                       HasSubstr("Out of stack space")));
+
+  // 3. Deeply nested alternating ARRAY<MAP> across JSON and SQL containers
+  std::string nested_json_alternating = "1";
+  Value nested_sql_alternating_variant = Variant(Int64(1));
+  const Type* nested_alternating_target_type = types::Int64Type();
+  for (int i = 0; i < 8; ++i) {
+    nested_json_alternating =
+        absl::StrCat(R"([{"a":)", nested_json_alternating, "}]");
+    GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+        nested_sql_alternating_variant,
+        Value::MakeMap(map_str_variant_type,
+                       {{String("a"), nested_sql_alternating_variant}}));
+    GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+        nested_sql_alternating_variant,
+        Value::MakeArray(types::VariantArrayType(),
+                         {Variant(nested_sql_alternating_variant)}));
+    nested_sql_alternating_variant = Variant(nested_sql_alternating_variant);
+    GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+        nested_alternating_target_type,
+        type_factory->MakeMapType(types::StringType(),
+                                  nested_alternating_target_type));
+    GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+        nested_alternating_target_type,
+        type_factory->MakeArrayType(nested_alternating_target_type));
+  }
+  Value nested_json_alternating_variant =
+      Variant(ParseJson(nested_json_alternating));
+
+  EXPECT_THAT(CastValue(nested_json_alternating_variant, absl::UTCTimeZone(),
+                        options, nested_alternating_target_type),
+              StatusIs(absl::StatusCode::kResourceExhausted,
+                       HasSubstr("Out of stack space")));
+  EXPECT_THAT(CastValue(nested_sql_alternating_variant, absl::UTCTimeZone(),
+                        options, nested_alternating_target_type),
+              StatusIs(absl::StatusCode::kResourceExhausted,
+                       HasSubstr("Out of stack space")));
+}
+
+}  // namespace
+
+TEST(IsTypeCastableToVariantTest, TypeCastableToVariant) {
+  LanguageOptions options_enabled;
+  options_enabled.EnableLanguageFeature(FEATURE_VARIANT_TYPE);
+
+  LanguageOptions options_disabled;
+
+  TypeFactory factory;
+  const Type* int64_type = types::Int64Type();
+  const Type* variant_type = types::VariantType();
+
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(const ArrayType* array_int64_type,
+                       factory.MakeArrayType(int64_type));
+
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(const Type* map_type,
+                       factory.MakeMapType(types::StringType(), int64_type));
+
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(const Type* measure_type,
+                       factory.MakeMeasureType(int64_type));
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(const ArrayType* array_measure_type,
+                       factory.MakeArrayType(measure_type));
+
+  // Feature disabled
+  EXPECT_FALSE(IsTypeCastableToVariant(int64_type, options_disabled));
+  EXPECT_TRUE(IsTypeCastableToVariant(variant_type, options_disabled));
+
+  // Feature enabled
+  EXPECT_TRUE(IsTypeCastableToVariant(int64_type, options_enabled));
+  EXPECT_TRUE(IsTypeCastableToVariant(variant_type, options_enabled));
+  EXPECT_TRUE(IsTypeCastableToVariant(map_type, options_enabled));
+  EXPECT_TRUE(IsTypeCastableToVariant(array_int64_type, options_enabled));
+
+  // ROW type
+  SimpleTable table("TableName");
+  const RowType* row_type;
+  GOOGLESQL_ASSERT_OK(factory.MakeRowType(&table, table.FullName(), &row_type));
+  EXPECT_FALSE(IsTypeCastableToVariant(row_type, options_enabled));
+
+  // Unsupported types
+  EXPECT_FALSE(IsTypeCastableToVariant(measure_type, options_enabled));
+  EXPECT_FALSE(IsTypeCastableToVariant(array_measure_type, options_enabled));
+  const StructType* struct_measure_type;
+  GOOGLESQL_ASSERT_OK(
+      factory.MakeStructType({{"m", measure_type}}, &struct_measure_type));
+  EXPECT_FALSE(IsTypeCastableToVariant(struct_measure_type, options_enabled));
+  const Type* map_measure_type;
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(map_measure_type,
+                       factory.MakeMapType(types::StringType(), measure_type));
+  EXPECT_FALSE(IsTypeCastableToVariant(map_measure_type, options_enabled));
+}
 
 TEST(IsTypeCastableToVariantTest, ExtendedTypeCastToVariant) {
   LanguageOptions options_enabled;

@@ -747,3 +747,116 @@ SELECT
 FROM Employees
 --
 ARRAY<STRUCT<INT64, INT64>>[{300000, 160000}]
+==
+
+[name=filter_before_arg_evaluation]
+[required_features=AGGREGATE_FILTERING]
+SELECT
+  SUM(1 / x WHERE x != 0),
+  SUM(1 / x WHERE IF(x = 0, NULL, x > 0)),
+  SUM(1 / x WHERE false)
+FROM UNNEST([0, 1, 2]) AS x;
+--
+ARRAY<STRUCT<DOUBLE, DOUBLE, DOUBLE>>[{1.5, 1.5, NULL}]
+==
+
+[name=filter_before_arg_evaluation_two_args]
+[required_features=AGGREGATE_FILTERING]
+SELECT
+  COVAR_POP(1 / x, 2 / x WHERE x != 0),
+FROM UNNEST([0, 1, 2]) AS x;
+--
+ARRAY<STRUCT<DOUBLE>>[{0.125}]
+==
+
+# Some engines require inlining for UDAs.
+[name=filter_before_arg_evaluation_uda]
+[required_features=AGGREGATE_FILTERING]
+SELECT
+  SumOfAggregateArgs(DIV(12, x) WHERE x != 0),
+FROM UNNEST([0, 1, 2]) AS x;
+--
+ARRAY<STRUCT<INT64>>[{18}]
+==
+
+[name=filter_before_arg_evaluation_with_modifiers]
+[required_features=AGGREGATE_FILTERING,NULL_HANDLING_MODIFIER_IN_AGGREGATE,ORDER_BY_IN_AGGREGATE,LIMIT_IN_AGGREGATE]
+SELECT
+  ARRAY_AGG(IF(x = 4, NULL, 1 / x) IGNORE NULLS WHERE x != 0 ORDER BY x DESC LIMIT 1),
+FROM UNNEST([0, 2, 2, 4]) AS x;
+--
+ARRAY<STRUCT<ARRAY<>>>[{ARRAY<DOUBLE>[0.5]}]
+==
+
+[name=filter_before_arg_evaluation_distinct]
+[required_features=AGGREGATE_FILTERING,LIMIT_IN_AGGREGATE]
+SELECT
+  ARRAY_AGG(DISTINCT 1 / x WHERE x != 0 LIMIT 5),
+  COUNT(DISTINCT 1 / x WHERE x != 0)
+FROM UNNEST([0, 2, 2, 4]) AS x;
+--
+ARRAY<STRUCT<ARRAY<>, INT64>>[
+  {
+    ARRAY<DOUBLE>[unknown order:0.5, 0.25],
+    2
+  }
+]
+==
+
+[name=filter_before_arg_evaluation_with_having_min_max]
+[required_features=AGGREGATE_FILTERING,HAVING_IN_AGGREGATE]
+SELECT
+  ARRAY_AGG(1 / x WHERE x != 0 HAVING MAX y),
+  ARRAY_AGG(1 / x WHERE x != 0 HAVING MIN y)
+FROM UNNEST([
+  STRUCT(0 AS x, 100 AS y),
+  STRUCT(1 AS x, 10 AS y),
+  STRUCT(2 AS x, 20 AS y)
+]);
+--
+ARRAY<STRUCT<ARRAY<>, ARRAY<>>>[{ARRAY<DOUBLE>[0.5], ARRAY<DOUBLE>[1]}]
+==
+
+# Argument expression is evaluated after WHERE, before HAVING MAX/MIN, so an
+# unfiltered row that errors during argument evaluation still raises the error
+# even if its HAVING value is non-extremal.
+[name=arg_evaluated_before_having_min_max]
+[required_features=AGGREGATE_FILTERING,HAVING_IN_AGGREGATE]
+SELECT
+  ARRAY_AGG(1 / x WHERE y > 0 HAVING MAX y)
+FROM UNNEST([
+  STRUCT(2 AS x, 20 AS y),
+  STRUCT(0 AS x, 1 AS y)
+]);
+--
+ERROR: generic::out_of_range: division by zero: 1 / 0
+==
+
+[name=filter_before_arg_evaluation_with_multilevel_and_having]
+[required_features=AGGREGATE_FILTERING,MULTILEVEL_AGGREGATION,ORDER_BY_IN_AGGREGATE]
+SELECT
+  ARRAY_AGG(1 / SUM(x) WHERE x != 0 GROUP BY k HAVING SUM(x) > 1 ORDER BY k)
+FROM UNNEST([
+  STRUCT(1 AS k, 0 AS x),
+  STRUCT(2 AS k, 1 AS x),
+  STRUCT(3 AS k, 2 AS x),
+  STRUCT(4 AS k, 4 AS x)
+]);
+--
+ARRAY<STRUCT<ARRAY<>>>[{ARRAY<DOUBLE>[known order:0.5, 0.25]}]
+==
+
+# Outer argument expression is evaluated per inner group before HAVING filters
+# out groups, so the k = 0 group still raises division by zero.
+[name=arg_evaluated_before_having_filter]
+[required_features=AGGREGATE_FILTERING,MULTILEVEL_AGGREGATION]
+SELECT SUM(1 / k GROUP BY k HAVING k != 0) FROM UNNEST([0, 1, 2]) AS k;
+--
+ERROR: generic::out_of_range: division by zero: 1 / 0
+==
+
+[name=filter_before_arg_evaluation_analytic]
+[required_features=AGGREGATE_FILTERING,ANALYTIC_FUNCTIONS]
+SELECT SUM(1 / x WHERE x != 0) OVER () FROM UNNEST([0, 1, 2]) AS x;
+--
+ARRAY<STRUCT<DOUBLE>>[unknown order:{1.5}, {1.5}, {1.5}]

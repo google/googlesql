@@ -54,13 +54,13 @@ using ::absl_testing::StatusIs;
 TEST(GraphPathValueTest, GraphPathTypeCannotContainNull) {
   TypeFactory type_factory;
   const GraphElementType* node_type;
-  GOOGLESQL_ASSERT_OK(
-      type_factory.MakeGraphElementType({"graph_name"}, GraphElementType::kNode,
-                                        {{"p0", StringType()}}, &node_type));
+  GOOGLESQL_ASSERT_OK(type_factory.MakeGraphElementType(
+      {"graph_name"}, GraphElementType::kNode, {{"p0", StringType()}},
+      /*element_tables=*/{}, &node_type));
   const GraphElementType* edge_type;
-  GOOGLESQL_ASSERT_OK(
-      type_factory.MakeGraphElementType({"graph_name"}, GraphElementType::kEdge,
-                                        {{"p1", Int32Type()}}, &edge_type));
+  GOOGLESQL_ASSERT_OK(type_factory.MakeGraphElementType(
+      {"graph_name"}, GraphElementType::kEdge, {{"p1", Int32Type()}},
+      /*element_tables=*/{}, &edge_type));
   const GraphPathType* path_type;
   EXPECT_THAT(type_factory.MakeGraphPathType(/*node_type=*/nullptr, edge_type,
                                              &path_type),
@@ -79,13 +79,13 @@ TEST(GraphPathValueTest, GraphPathTypeCannotContainNull) {
 TEST(GraphPathValueTest, GraphPathTypeWrongKind) {
   TypeFactory type_factory;
   const GraphElementType* node_type;
-  GOOGLESQL_ASSERT_OK(
-      type_factory.MakeGraphElementType({"graph_name"}, GraphElementType::kNode,
-                                        {{"p0", StringType()}}, &node_type));
+  GOOGLESQL_ASSERT_OK(type_factory.MakeGraphElementType(
+      {"graph_name"}, GraphElementType::kNode, {{"p0", StringType()}},
+      /*element_tables=*/{}, &node_type));
   const GraphElementType* edge_type;
-  GOOGLESQL_ASSERT_OK(
-      type_factory.MakeGraphElementType({"graph_name"}, GraphElementType::kEdge,
-                                        {{"p1", Int32Type()}}, &edge_type));
+  GOOGLESQL_ASSERT_OK(type_factory.MakeGraphElementType(
+      {"graph_name"}, GraphElementType::kEdge, {{"p1", Int32Type()}},
+      /*element_tables=*/{}, &edge_type));
   const GraphPathType* path_type;
   EXPECT_THAT(type_factory.MakeGraphPathType(edge_type, edge_type, &path_type),
               StatusIs(absl::StatusCode::kInvalidArgument,
@@ -98,17 +98,17 @@ TEST(GraphPathValueTest, GraphPathTypeWrongKind) {
 TEST(GraphPathValueTest, GraphPathTypeDifferentGraphReferences) {
   TypeFactory type_factory;
   const GraphElementType* node_type;
-  GOOGLESQL_ASSERT_OK(
-      type_factory.MakeGraphElementType({"graph_name"}, GraphElementType::kNode,
-                                        {{"p0", StringType()}}, &node_type));
+  GOOGLESQL_ASSERT_OK(type_factory.MakeGraphElementType(
+      {"graph_name"}, GraphElementType::kNode, {{"p0", StringType()}},
+      /*element_tables=*/{}, &node_type));
   const GraphElementType* bad_edge_type;
   GOOGLESQL_ASSERT_OK(type_factory.MakeGraphElementType(
       {"bad_graph_name"}, GraphElementType::kEdge, {{"p1", Int32Type()}},
-      &bad_edge_type));
+      /*element_tables=*/{}, &bad_edge_type));
   const GraphElementType* edge_type;
-  GOOGLESQL_ASSERT_OK(
-      type_factory.MakeGraphElementType({"GRAPH_name"}, GraphElementType::kEdge,
-                                        {{"p1", Int32Type()}}, &edge_type));
+  GOOGLESQL_ASSERT_OK(type_factory.MakeGraphElementType(
+      {"GRAPH_name"}, GraphElementType::kEdge, {{"p1", Int32Type()}},
+      /*element_tables=*/{}, &edge_type));
 
   const GraphPathType* path_type;
   EXPECT_THAT(
@@ -126,13 +126,13 @@ TEST(GraphPathTypeTest, InternalProductModeSupportedTypeTest) {
   LanguageOptions options;
   options.set_product_mode(PRODUCT_INTERNAL);
   const GraphElementType* node_type;
-  GOOGLESQL_ASSERT_OK(factory.MakeGraphElementType({"graph_name"},
-                                         GraphElementType::kNode,
-                                         {{"p0", StringType()}}, &node_type));
+  GOOGLESQL_ASSERT_OK(factory.MakeGraphElementType(
+      {"graph_name"}, GraphElementType::kNode, {{"p0", StringType()}},
+      /*element_tables=*/{}, &node_type));
   const GraphElementType* edge_type;
-  GOOGLESQL_ASSERT_OK(factory.MakeGraphElementType({"graph_name"},
-                                         GraphElementType::kEdge,
-                                         {{"p1", Int32Type()}}, &edge_type));
+  GOOGLESQL_ASSERT_OK(factory.MakeGraphElementType(
+      {"graph_name"}, GraphElementType::kEdge, {{"p1", Int32Type()}},
+      /*element_tables=*/{}, &edge_type));
   const GraphPathType* path_type;
   GOOGLESQL_ASSERT_OK(factory.MakeGraphPathType(node_type, edge_type, &path_type));
   ASSERT_THAT(path_type, NotNull());
@@ -149,13 +149,13 @@ TEST(GraphPathTypeTest, ExternalProductModeSupportedTypeTest) {
   LanguageOptions options;
   options.set_product_mode(PRODUCT_EXTERNAL);
   const GraphElementType* node_type;
-  GOOGLESQL_ASSERT_OK(
-      factory.MakeGraphElementType({"graph_name"}, GraphElementType::kNode,
-                                   {{"p0", factory.get_uint64()}}, &node_type));
+  GOOGLESQL_ASSERT_OK(factory.MakeGraphElementType(
+      {"graph_name"}, GraphElementType::kNode, {{"p0", factory.get_uint64()}},
+      /*element_tables=*/{}, &node_type));
   const GraphElementType* edge_type;
-  GOOGLESQL_ASSERT_OK(factory.MakeGraphElementType({"graph_name"},
-                                         GraphElementType::kEdge,
-                                         {{"p1", Int32Type()}}, &edge_type));
+  GOOGLESQL_ASSERT_OK(factory.MakeGraphElementType(
+      {"graph_name"}, GraphElementType::kEdge, {{"p1", Int32Type()}},
+      /*element_tables=*/{}, &edge_type));
   const GraphPathType* path_type;
   GOOGLESQL_ASSERT_OK(factory.MakeGraphPathType(node_type, edge_type, &path_type));
   ASSERT_THAT(path_type, NotNull());
@@ -185,12 +185,12 @@ TEST(GraphPathTypeTest, BasicTest) {
                                           {"b c", bytes_type},
                                           {"e", array_type},
                                           {"d", struct_type}},
-                                         &node_type));
+                                         /*element_tables=*/{}, &node_type));
 
   const GraphElementType* edge_type;
-  GOOGLESQL_ASSERT_OK(factory.MakeGraphElementType({"graph_name"},
-                                         GraphElementType::kEdge,
-                                         {{"p1", Int32Type()}}, &edge_type));
+  GOOGLESQL_ASSERT_OK(factory.MakeGraphElementType(
+      {"graph_name"}, GraphElementType::kEdge, {{"p1", Int32Type()}},
+      /*element_tables=*/{}, &edge_type));
 
   const GraphPathType* path_type;
   GOOGLESQL_ASSERT_OK(factory.MakeGraphPathType(node_type, edge_type, &path_type));
@@ -298,27 +298,30 @@ TEST(GraphPathTypeTest, Equality) {
                                           {"b c", bytes_type},
                                           {"e", array_type},
                                           {"d", struct_type}},
-                                         &node_type));
+                                         /*element_tables=*/{}, &node_type));
 
   const GraphElementType* node_type2;
   GOOGLESQL_ASSERT_OK(factory.MakeGraphElementType({"graph_name"},
                                          GraphElementType::ElementKind::kNode,
-                                         {{"p1", Int32Type()}}, &node_type2));
+                                         {{"p1", Int32Type()}},
+                                         /*element_tables=*/{}, &node_type2));
 
   const GraphElementType* node_type2_supertype;
   GOOGLESQL_ASSERT_OK(factory.MakeGraphElementType(
       {"graph_name"}, GraphElementType::ElementKind::kNode,
-      {{"p1", Int32Type()}, {"p2", StringType()}}, &node_type2_supertype));
+      {{"p1", Int32Type()}, {"p2", StringType()}},
+      /*element_tables=*/{}, &node_type2_supertype));
 
   const GraphElementType* edge_type;
-  GOOGLESQL_ASSERT_OK(factory.MakeGraphElementType({"graph_name"},
-                                         GraphElementType::kEdge,
-                                         {{"p1", Int32Type()}}, &edge_type));
+  GOOGLESQL_ASSERT_OK(factory.MakeGraphElementType(
+      {"graph_name"}, GraphElementType::kEdge, {{"p1", Int32Type()}},
+      /*element_tables=*/{}, &edge_type));
 
   const GraphElementType* edge_supertype;
-  GOOGLESQL_ASSERT_OK(factory.MakeGraphElementType(
-      {"graph_name"}, GraphElementType::kEdge,
-      {{"p0", StringType()}, {"p1", Int32Type()}}, &edge_supertype));
+  GOOGLESQL_ASSERT_OK(
+      factory.MakeGraphElementType({"graph_name"}, GraphElementType::kEdge,
+                                   {{"p0", StringType()}, {"p1", Int32Type()}},
+                                   /*element_tables=*/{}, &edge_supertype));
 
   const GraphPathType* path_type;
   GOOGLESQL_ASSERT_OK(factory.MakeGraphPathType(node_type, edge_type, &path_type));
@@ -456,11 +459,11 @@ TEST(GraphPathTypeTest, TypeDeserializerGraphPath) {
                        type_deserializer.Deserialize(type_proto));
   const GraphElementType* node_type;
   GOOGLESQL_ASSERT_OK(factory.MakeGraphElementType({"graph"}, GraphElementType::kNode, {},
-                                         &node_type));
+                                         /*element_tables=*/{}, &node_type));
   const GraphElementType* edge_type;
   GOOGLESQL_ASSERT_OK(factory.MakeGraphElementType({"graph"}, GraphElementType::kEdge,
                                          {{"a", factory.get_string()}},
-                                         &edge_type));
+                                         /*element_tables=*/{}, &edge_type));
   const GraphPathType* path_type;
   GOOGLESQL_ASSERT_OK(factory.MakeGraphPathType(node_type, edge_type, &path_type));
   EXPECT_TRUE(deserialized_path_type->Equals(path_type));
@@ -472,13 +475,13 @@ TEST(GraphPathTypeTest, TypeDeserializerGraphPath) {
 TEST(GraphPathTypeTest, ValidateResolvedTypeParameters) {
   TypeFactory factory;
   const GraphElementType* node_type;
-  GOOGLESQL_ASSERT_OK(
-      factory.MakeGraphElementType({"graph_name"}, GraphElementType::kNode,
-                                   {{"p0", factory.get_string()}}, &node_type));
+  GOOGLESQL_ASSERT_OK(factory.MakeGraphElementType(
+      {"graph_name"}, GraphElementType::kNode, {{"p0", factory.get_string()}},
+      /*element_tables=*/{}, &node_type));
   const GraphElementType* edge_type;
-  GOOGLESQL_ASSERT_OK(
-      factory.MakeGraphElementType({"graph_name"}, GraphElementType::kEdge,
-                                   {{"p1", factory.get_int32()}}, &edge_type));
+  GOOGLESQL_ASSERT_OK(factory.MakeGraphElementType(
+      {"graph_name"}, GraphElementType::kEdge, {{"p1", factory.get_int32()}},
+      /*element_tables=*/{}, &edge_type));
 
   const GraphPathType* path_type;
   GOOGLESQL_ASSERT_OK(factory.MakeGraphPathType(node_type, edge_type, &path_type));

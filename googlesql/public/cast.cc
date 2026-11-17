@@ -24,9 +24,11 @@
 #include <vector>
 
 #include "googlesql/base/logging.h"
+#include "googlesql/common/determinism.h"
 #include "googlesql/common/errors.h"
 #include "googlesql/common/graph_element_utils.h"
 #include "googlesql/common/internal_value.h"
+#include "googlesql/common/thread_stack.h"
 #include "googlesql/common/utf_util.h"
 #include "googlesql/public/catalog.h"
 #include "googlesql/public/civil_time.h"
@@ -62,6 +64,7 @@
 #include "googlesql/public/types/type.h"
 #include "googlesql/public/uuid_value.h"
 #include "googlesql/public/value.h"
+#include "googlesql/public/variant_value.h"
 #include "absl/algorithm/container.h"
 #include "absl/base/attributes.h"
 #include "absl/container/flat_hash_set.h"
@@ -75,6 +78,7 @@
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
+#include "google/protobuf/dynamic_message.h"
 #include "googlesql/base/map_util.h"
 #include "googlesql/base/ret_check.h"
 #include "googlesql/base/status_builder.h"
@@ -344,6 +348,10 @@ const CastHashMap* InitializeGoogleSQLCasts() {
     }
 
     AddToCastMap(kind, TYPE_VARIANT, IMPLICIT, map);
+    if (kind != TYPE_EXTENDED && kind != TYPE_DECLARATIVE &&
+        kind != TYPE_STRUCT && kind != TYPE_JSON) {
+      AddToCastMap(TYPE_VARIANT, kind, EXPLICIT, map);
+    }
   }
 
   // clang-format on
@@ -424,63 +432,10 @@ absl::StatusOr<Value> StringToNumeric(const Value& v) {
   }
 }
 
-// Returns whether this cast is a map-entry cast (see below).
+// Returns whether this cast is a map-entry cast (see DoMapEntryCast).
 bool IsMapEntryCast(const Type* from, const Type* to) {
   return from->IsStruct() && from->AsStruct()->fields().size() == 2 &&
          to->IsProto() && to->AsProto()->descriptor()->options().map_entry();
-}
-
-// Tries to perform a STRUCT->PROTO cast if to_type is a map_entry. See
-// (broken link). <from_value> is a two-field struct where
-// the fields represent the key and value of the requested map_entry proto
-// in <to_type>.
-absl::StatusOr<Value> DoMapEntryCast(const Value& from_value,
-                                     absl::TimeZone default_timezone,
-                                     const LanguageOptions& language_options,
-                                     const Type* to_type,
-                                     bool canonicalize_zero) {
-  GOOGLESQL_RET_CHECK(from_value.is_valid());
-  GOOGLESQL_RET_CHECK(IsMapEntryCast(from_value.type(), to_type));
-
-  if (from_value.is_null()) {
-    return MakeEvalError() << "Cannot cast a NULL struct to a proto map entry";
-  }
-
-  const ProtoType* to_proto_type = to_type->AsProto();
-  TypeFactory type_factory;
-  const Type* key_type;
-  const Type* value_type;
-
-  GOOGLESQL_RETURN_IF_ERROR(to_proto_type->GetFieldTypeByTagNumber(
-      to_proto_type->map_key()->number(), &type_factory, &key_type));
-  GOOGLESQL_RETURN_IF_ERROR(to_proto_type->GetFieldTypeByTagNumber(
-      to_proto_type->map_value()->number(), &type_factory, &value_type));
-
-  GOOGLESQL_ASSIGN_OR_RETURN(
-      Value key,
-      CastValue(from_value.field(0), default_timezone, language_options,
-                key_type, /*catalog=*/nullptr, canonicalize_zero));
-  GOOGLESQL_ASSIGN_OR_RETURN(
-      Value value,
-      CastValue(from_value.field(1), default_timezone, language_options,
-                value_type, /*catalog=*/nullptr, canonicalize_zero));
-
-  google::protobuf::Arena arena;
-  google::protobuf::DynamicMessageFactory factory;
-  google::protobuf::Message* message =
-      factory.GetPrototype(to_proto_type->descriptor())->New(&arena);
-
-  bool use_wire_format_annotations = true;
-  GOOGLESQL_RETURN_IF_ERROR(MergeValueToProtoField(key, to_proto_type->map_key(),
-                                         use_wire_format_annotations, &factory,
-                                         message));
-  GOOGLESQL_RETURN_IF_ERROR(MergeValueToProtoField(value, to_proto_type->map_value(),
-                                         use_wire_format_annotations, &factory,
-                                         message));
-
-  absl::Cord bytes;
-  GOOGLESQL_RET_CHECK(message->SerializeToString(&bytes));
-  return Value::Proto(to_proto_type, bytes);
 }
 
 // Casts a Value <v> to a JSON value.
@@ -553,7 +508,8 @@ bool IsTypeCastableToJson(const Type* from_type,
 
 bool IsTypeCastableToVariant(const Type* from_type,
                              const LanguageOptions& language_options) {
-  // VARIANT implicitly coerces to VARIANT.
+  // Implicit coercion to/from VARIANT always works since it is a SimpleType,
+  // irrespective of whether FEATURE_VARIANT_TYPE is enabled.
   if (from_type->IsVariant()) {
     return true;
   }
@@ -570,6 +526,40 @@ bool IsTypeCastableToVariant(const Type* from_type,
       return absl::c_all_of(
           from_type->ComponentTypes(), [&](const Type* component_type) {
             return IsTypeCastableToVariant(component_type, language_options);
+          });
+  }
+}
+
+bool IsTypeCastableFromVariant(const Type* to_type,
+                               const LanguageOptions& language_options) {
+  // Implicit coercion to/from VARIANT always works since it is a SimpleType,
+  // irrespective of whether FEATURE_VARIANT_TYPE is enabled.
+  if (to_type->IsVariant()) {
+    return true;
+  }
+  if (!language_options.LanguageFeatureEnabled(
+          LanguageFeature::FEATURE_VARIANT_TYPE)) {
+    return false;
+  }
+  switch (to_type->kind()) {
+    case TYPE_UNKNOWN:
+    case TYPE_MEASURE:
+    case TYPE_ROW:
+    case TYPE_EXTENDED:
+    case TYPE_DECLARATIVE:
+    case TYPE_JSON:
+    case TYPE_STRUCT:
+      // TODO: b/554949919 - Support casting from VARIANT to JSON, STRUCT,
+      // declarative, and extended types.
+      // Casting from VARIANT to extended and declarative types is not supported
+      // in GoogleSQL core: declarative types only coerce to/from their backing
+      // types, and extended types require engine-specific catalog conversions
+      // (matching JSON). Casting to JSON and STRUCT are added in follow-up CLs.
+      return false;
+    default:
+      return absl::c_all_of(
+          to_type->ComponentTypes(), [&](const Type* component_type) {
+            return IsTypeCastableFromVariant(component_type, language_options);
           });
   }
 }
@@ -692,6 +682,16 @@ bool SupportsExplicitCast(CastFunctionType type) {
 
 namespace {
 
+class CastContext;
+
+// Casts a VARIANT value view to `to_type`, dispatching by Variant category
+// (Variant null, Primitive, Object, Array, or pass-through inner value).
+absl::StatusOr<Value> CastFromVariant(const CastContext& context,
+                                      const VariantValueView& view,
+                                      const Type* to_type,
+                                      bool* out_found_non_deterministic,
+                                      int current_nesting_level = 0);
+
 // CastContext is an abstract class containing basic set of properties and
 // methods needed to execute a cast. Serves as a base class for classes
 // responsible for execution of validated (CastValue) and plain
@@ -740,11 +740,13 @@ class CastContext {
 
   absl::StatusOr<Value> CastValue(
       const Value& from_value, const Type* to_type,
-      const std::optional<std::string>& format = std::nullopt) const;
+      const std::optional<std::string>& format = std::nullopt,
+      bool* out_found_non_deterministic = nullptr) const;
+
+  const LanguageOptions& language_options() const { return language_options_; }
 
  protected:
   const absl::TimeZone& default_timezone() const { return default_timezone_; }
-  const LanguageOptions& language_options() const { return language_options_; }
   std::optional<absl::Time> current_timestamp() const {
     return current_timestamp_;
   }
@@ -772,6 +774,56 @@ class CastContext {
   std::optional<int32_t> current_date_;
 };
 
+// Tries to perform a STRUCT->PROTO cast if to_type is a map_entry. See
+// (broken link). <from_value> is a two-field struct where
+// the fields represent the key and value of the requested map_entry proto
+// in <to_type>.
+absl::StatusOr<Value> DoMapEntryCast(const CastContext& context,
+                                     const Value& from_value,
+                                     const Type* to_type,
+                                     bool* out_found_non_deterministic) {
+  GOOGLESQL_RET_CHECK(from_value.is_valid());
+  GOOGLESQL_RET_CHECK(IsMapEntryCast(from_value.type(), to_type));
+
+  if (from_value.is_null()) {
+    return MakeEvalError() << "Cannot cast a NULL struct to a proto map entry";
+  }
+
+  const ProtoType* to_proto_type = to_type->AsProto();
+  TypeFactory type_factory;
+  const Type* key_type;
+  const Type* value_type;
+
+  GOOGLESQL_RETURN_IF_ERROR(to_proto_type->GetFieldTypeByTagNumber(
+      to_proto_type->map_key()->number(), &type_factory, &key_type));
+  GOOGLESQL_RETURN_IF_ERROR(to_proto_type->GetFieldTypeByTagNumber(
+      to_proto_type->map_value()->number(), &type_factory, &value_type));
+
+  GOOGLESQL_ASSIGN_OR_RETURN(Value key, context.CastValue(from_value.field(0), key_type,
+                                                /*format=*/std::nullopt,
+                                                out_found_non_deterministic));
+  GOOGLESQL_ASSIGN_OR_RETURN(
+      Value value,
+      context.CastValue(from_value.field(1), value_type,
+                        /*format=*/std::nullopt, out_found_non_deterministic));
+
+  google::protobuf::Arena arena;
+  google::protobuf::DynamicMessageFactory factory;
+  google::protobuf::Message* message =
+      factory.GetPrototype(to_proto_type->descriptor())->New(&arena);
+
+  bool use_wire_format_annotations = true;
+  GOOGLESQL_RETURN_IF_ERROR(MergeValueToProtoField(key, to_proto_type->map_key(),
+                                         use_wire_format_annotations, &factory,
+                                         message));
+  GOOGLESQL_RETURN_IF_ERROR(MergeValueToProtoField(value, to_proto_type->map_value(),
+                                         use_wire_format_annotations, &factory,
+                                         message));
+
+  absl::Cord bytes;
+  GOOGLESQL_RET_CHECK(message->SerializeToString(&bytes));
+  return Value::Proto(to_proto_type, bytes);
+}
 
 absl::StatusOr<Value> NumericToStringWithFormat(const Value& v,
                                                 absl::string_view format,
@@ -855,7 +907,8 @@ static absl::Status ValidateGraphElementValueImplicitCastAndAddStaticProperties(
 
 absl::StatusOr<Value> CastContext::CastValue(
     const Value& from_value, const Type* to_type,
-    const std::optional<std::string>& format) const {
+    const std::optional<std::string>& format,
+    bool* out_found_non_deterministic) const {
   GOOGLESQL_RET_CHECK(from_value.is_valid());
   // Use a shorter name inside the body of this method.
   const Value& v = from_value;
@@ -876,8 +929,30 @@ absl::StatusOr<Value> CastContext::CastValue(
     return Value::Variant(v);
   }
 
-  if ((from_value.type()->IsExtendedType() || to_type->IsExtendedType()) &&
-      !from_value.type()->IsVariant()) {
+  if (v.type()->IsVariant()) {
+    if (!IsTypeCastableFromVariant(to_type, language_options())) {
+      return MakeSqlError()
+             << "Unsupported cast from "
+             << v.type()->ShortTypeName(language_options().product_mode())
+             << " to "
+             << to_type->ShortTypeName(language_options().product_mode());
+    }
+    if (format.has_value()) {
+      return MakeSqlError()
+             << "FORMAT is not allowed for cast from "
+             << v.type()->ShortTypeName(language_options().product_mode())
+             << " to "
+             << to_type->ShortTypeName(language_options().product_mode());
+    }
+    // A SQL NULL VARIANT casts to a SQL NULL value of the target type.
+    if (v.is_null()) {
+      return Value::Null(to_type);
+    }
+    GOOGLESQL_ASSIGN_OR_RETURN(VariantValueView view, v.variant_value());
+    return CastFromVariant(*this, view, to_type, out_found_non_deterministic);
+  }
+
+  if (from_value.type()->IsExtendedType() || to_type->IsExtendedType()) {
     return CastWithExtendedType(from_value, to_type);
   }
 
@@ -887,8 +962,8 @@ absl::StatusOr<Value> CastContext::CastValue(
   if (language_options().LanguageFeatureEnabled(
           LanguageFeature::FEATURE_PROTO_MAPS) &&
       IsMapEntryCast(from_value.type(), to_type)) {
-    return DoMapEntryCast(from_value, default_timezone(), language_options(),
-                          to_type, canonicalize_zero_);
+    return DoMapEntryCast(*this, from_value, to_type,
+                          out_found_non_deterministic);
   }
 
   // Check to see if the type kinds are castable.
@@ -1450,7 +1525,8 @@ absl::StatusOr<Value> CastContext::CastValue(
       }
       for (int i = 0; i < v_type->num_fields(); ++i) {
         absl::StatusOr<Value> field_cast_result =
-            CastValue(v.field(i), to_type->AsStruct()->field(i).type);
+            CastValue(v.field(i), to_type->AsStruct()->field(i).type,
+                      /*format=*/std::nullopt, out_found_non_deterministic);
         if (!field_cast_result.ok()) {
           const auto& field = to_type->AsStruct()->field(i);
           return googlesql_base::StatusBuilder(field_cast_result.status()).SetPrepend()
@@ -1520,7 +1596,8 @@ absl::StatusOr<Value> CastContext::CastValue(
           casted_elements[i] = Value::Null(to_element_type);
         } else {
           absl::StatusOr<Value> element_cast_result =
-              CastValue(v.element(i), to_element_type);
+              CastValue(v.element(i), to_element_type,
+                        /*format=*/std::nullopt, out_found_non_deterministic);
           if (!element_cast_result.ok()) {
             return googlesql_base::StatusBuilder(element_cast_result.status())
                        .SetPrepend()
@@ -1739,7 +1816,7 @@ absl::StatusOr<Value> CastContext::CastValue(
                          CastValue(v.graph_element(i),
                                    i % 2 == 0 ? to_path_type->node_type()
                                               : to_path_type->edge_type(),
-                                   format));
+                                   format, out_found_non_deterministic));
         components.push_back(std::move(component));
       }
       return Value::MakeGraphPath(to_path_type, std::move(components));
@@ -1779,7 +1856,9 @@ absl::StatusOr<Value> CastContext::CastValue(
         if (k.is_null()) {
           casted_key = Value::Null(to_key_type);
         } else {
-          absl::StatusOr<Value> key_cast_result = CastValue(k, to_key_type);
+          absl::StatusOr<Value> key_cast_result =
+              CastValue(k, to_key_type, /*format=*/std::nullopt,
+                        out_found_non_deterministic);
           if (!key_cast_result.ok()) {
             return googlesql_base::StatusBuilder(key_cast_result.status()).SetPrepend()
                    << "Error casting key " << k.ShortDebugString()
@@ -1792,7 +1871,9 @@ absl::StatusOr<Value> CastContext::CastValue(
         if (v.is_null()) {
           casted_value = Value::Null(to_value_type);
         } else {
-          absl::StatusOr<Value> value_cast_result = CastValue(v, to_value_type);
+          absl::StatusOr<Value> value_cast_result =
+              CastValue(v, to_value_type, /*format=*/std::nullopt,
+                        out_found_non_deterministic);
           if (!value_cast_result.ok()) {
             return googlesql_base::StatusBuilder(value_cast_result.status()).SetPrepend()
                    << "Error casting value for key " << k.ShortDebugString()
@@ -1838,6 +1919,245 @@ absl::StatusOr<Value> CastContext::CastValue(
              << " to "
              << to_type->ShortTypeName(language_options().product_mode());
   }
+}
+
+bool ContainsExtendedType(const Type* type) {
+  if (type->IsExtendedType()) {
+    return true;
+  }
+  return absl::c_any_of(type->ComponentTypes(), ContainsExtendedType);
+}
+
+// Casts an extracted or pass-through `inner_val` from a VARIANT to `to_type`.
+// Validates runtime coercibility for non-simple types and converts
+// kInvalidArgument errors from CastContext::CastValue into kOutOfRange
+// evaluation errors for SAFE_CAST.
+absl::StatusOr<Value> CastInnerValueFromVariant(
+    const CastContext& context, const Value& inner_val, const Type* to_type,
+    bool* out_found_non_deterministic) {
+  // Valid JSON values are always handled by the VariantNull, Primitive,
+  // Object, or Array branches in CastFromVariant. A JSON value only reaches
+  // this fallback when it holds a malformed unparsed JSON string that failed to
+  // parse during VariantValueAdapter construction. Since VariantValueAdapter
+  // does not store the error status in rep_ (to keep the adapter lightweight),
+  // we re-run ParseJSONString here on the error path to retrieve the detailed
+  // syntax error message, matching the pattern in variant_value.cc.
+  if (inner_val.type()->IsJson() && inner_val.is_unparsed_json()) {
+    absl::Status status =
+        JSONValue::ParseJSONString(inner_val.json_value_unparsed()).status();
+    GOOGLESQL_RET_CHECK(!status.ok());
+    return MakeEvalError() << status.message();
+  }
+
+  // Validate coercibility for non-simple inner types at runtime since the
+  // analyzer only sees TYPE_VARIANT at compile time.
+  // TODO: b/554949919 - Support casting from a VARIANT containing an
+  // ExtendedType when a Catalog or extended conversion evaluator is available.
+  if (ContainsExtendedType(inner_val.type())) {
+    return MakeEvalError() << "Unsupported cast from "
+                           << inner_val.type()->ShortTypeName(
+                                  context.language_options().product_mode())
+                           << " to "
+                           << to_type->ShortTypeName(
+                                  context.language_options().product_mode());
+  }
+  if (!inner_val.type()->IsSimpleType() && !to_type->IsSimpleType() &&
+      !inner_val.type()->Equals(to_type)) {
+    TypeFactory type_factory;
+    Coercer coercer(&type_factory, &context.language_options(),
+                    /*catalog=*/nullptr);
+    SignatureMatchResult match_result;
+    ExtendedCompositeCastEvaluator extended_conversion_evaluator =
+        ExtendedCompositeCastEvaluator::Invalid();
+    GOOGLESQL_ASSIGN_OR_RETURN(
+        bool coerces,
+        coercer.CoercesTo(InputArgumentType(inner_val.type()), to_type,
+                          /*is_explicit=*/true, &match_result,
+                          &extended_conversion_evaluator));
+    if (!coerces) {
+      return MakeEvalError() << "Unsupported cast from "
+                             << inner_val.type()->ShortTypeName(
+                                    context.language_options().product_mode())
+                             << " to "
+                             << to_type->ShortTypeName(
+                                    context.language_options().product_mode());
+    }
+  }
+
+  absl::StatusOr<Value> result = context.CastValue(
+      inner_val, to_type, /*format=*/std::nullopt, out_found_non_deterministic);
+
+  // For non-variant types, incompatible casts (e.g. INT64 -> DATE) fail at
+  // analysis time, and CastValue() returns MakeSqlError() (kInvalidArgument)
+  // for unsupported cast types. SAFE_CAST is designed to handle runtime
+  // data evaluation errors (kOutOfRange), not unsupported cast signatures.
+  // For VARIANT, analysis succeeds for all target types, so dynamic type
+  // incompatibility is only encountered at runtime. We convert kInvalidArgument
+  // to MakeEvalError() here so SAFE_CAST treats it as a runtime evaluation
+  // error and returns NULL instead of failing the query.
+  if (!result.ok()) {
+    if (absl::IsInvalidArgument(result.status())) {
+      return MakeEvalError() << result.status().message();
+    }
+    return result;
+  }
+
+  // CastValue does not set `out_found_non_deterministic` for float/proto/etc.
+  // casts because callers can detect potential nondeterminism statically from
+  // the input Type. Since a VARIANT's static type is TYPE_VARIANT, we must
+  // check the inner value's dynamic type against the target type at runtime.
+  if (out_found_non_deterministic != nullptr && !*out_found_non_deterministic &&
+      (CastHasPotentialNondeterminism(inner_val.type(), to_type) ||
+       HasNonDeterministicArrayCastToJson(inner_val, to_type))) {
+    *out_found_non_deterministic = true;
+  }
+  return result;
+}
+
+// Casts a VARIANT Object `view` to a MAP type `to_type` (REQUIRES:
+// `to_type->IsMap()`), recursively casting each member value.
+absl::StatusOr<Value> CastVariantObjectToMap(const CastContext& context,
+                                             const VariantValueView& view,
+                                             const Type* to_type,
+                                             bool* out_found_non_deterministic,
+                                             int current_nesting_level) {
+  const MapType* to_map = to_type->AsMap();
+  // Variant Objects always have STRING keys, so the target MAP key type must
+  // be STRING.
+  if (!to_map->key_type()->IsString()) {
+    return MakeEvalError() << "Cannot cast VARIANT Object to "
+                           << to_type->ShortTypeName(
+                                  context.language_options().product_mode())
+                           << ": target MAP key type must be STRING";
+  }
+  std::vector<std::pair<Value, Value>> casted_entries;
+  GOOGLESQL_RETURN_IF_ERROR(
+      view.ForMembers([&](absl::string_view key,
+                          const VariantValueView& child_view) -> absl::Status {
+        GOOGLESQL_ASSIGN_OR_RETURN(
+            Value casted_val,
+            CastFromVariant(context, child_view, to_map->value_type(),
+                            out_found_non_deterministic,
+                            current_nesting_level + 1),
+            _.SetPrepend() << "Error casting value for key '" << key
+                           << "' in MAP: ");
+        casted_entries.emplace_back(Value::String(key), std::move(casted_val));
+        return absl::OkStatus();
+      }));
+  return Value::MakeMap(to_type, std::move(casted_entries));
+}
+
+// Casts a VARIANT Object `view` to `to_type` (such as MAP<STRING, V> or a
+// pass-through target type when `view` wraps a stored PROTO value).
+absl::StatusOr<Value> CastVariantObject(const CastContext& context,
+                                        const VariantValueView& view,
+                                        const Type* to_type,
+                                        bool* out_found_non_deterministic,
+                                        int current_nesting_level) {
+  // TODO: b/554949919 - Support casting VARIANT Objects to JSON and STRUCT.
+  if (to_type->IsMap()) {
+    return CastVariantObjectToMap(context, view, to_type,
+                                  out_found_non_deterministic,
+                                  current_nesting_level);
+  }
+  // A stored PROTO value is exposed as a Variant Object. Casts to
+  // MAP<STRING, V> are handled above via Object member semantics.
+  // For remaining target types (PROTO, STRING, BYTES), delegate to CastValue on
+  // the underlying proto.
+  if (const Type* unprojected_type = view.GetUnprojectedType();
+      unprojected_type != nullptr && unprojected_type->IsProto()) {
+    // TODO: b/554949919 - Revisit whether casting a VARIANT holding a PROTO to
+    // non-Object target types (such as BYTES or STRING) should fall back to the
+    // unprojected PROTO value or be disallowed once the VARIANT spec is
+    // finalized.
+    GOOGLESQL_ASSIGN_OR_RETURN(Value proto_val, view.GetUnprojectedValue());
+    return CastInnerValueFromVariant(context, proto_val, to_type,
+                                     out_found_non_deterministic);
+  }
+  // TODO: b/573401247 - Support casting general VARIANT Objects (JSON, STRUCT,
+  // MAP) to PROTO according to spec rules.
+  return MakeEvalError() << "Cannot cast VARIANT Object to "
+                         << to_type->ShortTypeName(
+                                context.language_options().product_mode());
+}
+
+// Casts a VARIANT Array `view` to `to_type`, recursively casting each element
+// when `to_type->IsArray()` and preserving the underlying array's order kind.
+absl::StatusOr<Value> CastVariantArray(const CastContext& context,
+                                       const VariantValueView& view,
+                                       const Type* to_type,
+                                       bool* out_found_non_deterministic,
+                                       int current_nesting_level) {
+  if (to_type->IsArray()) {
+    const Type* to_elem_type = to_type->AsArray()->element_type();
+    GOOGLESQL_ASSIGN_OR_RETURN(std::vector<VariantValueView> elements,
+                     view.GetElements());
+    std::vector<Value> casted_elements;
+    casted_elements.reserve(elements.size());
+    for (int i = 0; i < static_cast<int>(elements.size()); ++i) {
+      GOOGLESQL_ASSIGN_OR_RETURN(Value casted_elem,
+                       CastFromVariant(context, elements[i], to_elem_type,
+                                       out_found_non_deterministic,
+                                       current_nesting_level + 1),
+                       _.SetPrepend() << "Error casting element at index " << i
+                                      << " in ARRAY: ");
+      casted_elements.push_back(std::move(casted_elem));
+    }
+    // Preserve the underlying array's order-preservation kind, matching
+    // ARRAY-to-ARRAY casts.
+    InternalValue::OrderPreservationKind order_kind =
+        InternalValue::kPreservesOrder;
+    if (const Type* unprojected_type = view.GetUnprojectedType();
+        unprojected_type != nullptr && unprojected_type->IsArray()) {
+      GOOGLESQL_ASSIGN_OR_RETURN(Value array_val, view.GetUnprojectedValue());
+      order_kind = InternalValue::order_kind(array_val);
+    }
+    return InternalValue::MakeArray(to_type->AsArray(), order_kind,
+                                    std::move(casted_elements));
+  }
+  return MakeEvalError() << "Cannot cast VARIANT Array to "
+                         << to_type->ShortTypeName(
+                                context.language_options().product_mode());
+}
+
+absl::StatusOr<Value> CastFromVariant(const CastContext& context,
+                                      const VariantValueView& view,
+                                      const Type* to_type,
+                                      bool* out_found_non_deterministic,
+                                      int current_nesting_level) {
+  if (current_nesting_level >= functions::kNestingLevelStackCheckThreshold) {
+    GOOGLESQL_RETURN_IF_NOT_ENOUGH_STACK(
+        "Out of stack space due to deeply nested variant object in cast "
+        "function");
+  }
+  GOOGLESQL_RET_CHECK(!view.is_null());
+  if (to_type->IsVariant()) {
+    return view.ToVariantValue();
+  }
+  // Variant null (e.g. JSON 'null') casts to a typed SQL NULL.
+  if (view.IsVariantNull()) {
+    return Value::Null(to_type);
+  }
+  if (view.IsPrimitive()) {
+    GOOGLESQL_ASSIGN_OR_RETURN(Value primitive_val, view.GetPrimitiveValue());
+    return CastInnerValueFromVariant(context, primitive_val, to_type,
+                                     out_found_non_deterministic);
+  }
+  if (view.IsObject()) {
+    return CastVariantObject(context, view, to_type,
+                             out_found_non_deterministic,
+                             current_nesting_level);
+  }
+  if (view.IsArray()) {
+    return CastVariantArray(context, view, to_type, out_found_non_deterministic,
+                            current_nesting_level);
+  }
+  // Pass-through for inner values that are not exposed as Primitives, Objects,
+  // or Arrays (for example, non-string-keyed MAP<K, V>, GRAPH_ELEMENT, or
+  // malformed unparsed JSON).
+  GOOGLESQL_ASSIGN_OR_RETURN(Value inner_val, view.GetUnprojectedValue());
+  return CastInnerValueFromVariant(context, inner_val, to_type,
+                                   out_found_non_deterministic);
 }
 
 // CastContextWithValidation implements a validated cast. Used by CastValue.
@@ -1956,15 +2276,24 @@ absl::StatusOr<Value> CastValueWithoutTypeValidation(
     const std::optional<std::string>& format,
     const std::optional<std::string>& time_zone,
     const ExtendedCompositeCastEvaluator* extended_conversion_evaluator,
-    bool canonicalize_zero) {
+    bool canonicalize_zero, bool* out_found_non_deterministic) {
   absl::TimeZone timezone = default_timezone;
   if (time_zone.has_value()) {
     GOOGLESQL_RETURN_IF_ERROR(functions::MakeTimeZone(time_zone.value(), &timezone));
   }
-  return CastContextWithoutValidation(
-             timezone, current_timestamp, language_options,
-             extended_conversion_evaluator, canonicalize_zero)
-      .CastValue(from_value, to_type, format);
+  bool found_non_deterministic = false;
+  GOOGLESQL_ASSIGN_OR_RETURN(Value result,
+                   CastContextWithoutValidation(
+                       timezone, current_timestamp, language_options,
+                       extended_conversion_evaluator, canonicalize_zero)
+                       .CastValue(from_value, to_type, format,
+                                  out_found_non_deterministic != nullptr
+                                      ? &found_non_deterministic
+                                      : nullptr));
+  if (found_non_deterministic && out_found_non_deterministic != nullptr) {
+    *out_found_non_deterministic = true;
+  }
+  return result;
 }
 
 const CastHashMap& GetGoogleSQLCasts() {

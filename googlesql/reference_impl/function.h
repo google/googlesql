@@ -245,6 +245,7 @@ enum class FunctionKind {
   kArrayConcat,
   kArrayFilter,
   kArrayTransform,
+  kArrayReduce,
   kArrayLength,
   kArrayToString,
   kArrayReverse,
@@ -288,6 +289,7 @@ enum class FunctionKind {
   kProtoModifyMap,
   // Variant functions
   kIsVariantNull,
+  kVariantSubscript,
   // JSON functions
   kJsonExtract,
   kJsonExtractScalar,
@@ -1073,6 +1075,28 @@ class ArrayTransformFunction : public SimpleBuiltinScalarFunction {
 
  private:
   const InlineLambdaExpr* lambda_;
+};
+
+// Evaluates the ARRAY_REDUCE function, sequentially applying a reducer lambda
+// across array elements and an optional finisher lambda to the result.
+// `reducer_lambda` and `finisher_lambda` are non-owning pointers to the lambda
+// expressions.
+class ArrayReduceFunction : public SimpleBuiltinScalarFunction {
+ public:
+  ArrayReduceFunction(FunctionKind kind, const Type* output_type,
+                      const InlineLambdaExpr* reducer_lambda,
+                      const InlineLambdaExpr* finisher_lambda = nullptr)
+      : SimpleBuiltinScalarFunction(kind, output_type),
+        reducer_lambda_(reducer_lambda),
+        finisher_lambda_(finisher_lambda) {}
+
+  absl::StatusOr<Value> Eval(
+      absl::Span<const TupleData* const> params, absl::Span<const Value> args,
+      EvaluationContext* evaluation_context) const override;
+
+ private:
+  const InlineLambdaExpr* reducer_lambda_;
+  const InlineLambdaExpr* finisher_lambda_;
 };
 
 class ArrayIncludesFunctionWithLambda : public SimpleBuiltinScalarFunction {
@@ -2787,13 +2811,6 @@ class AiIfFunction : public SimpleBuiltinScalarFunction {
                              absl::Span<const Value> args,
                              EvaluationContext* context) const override;
 };
-
-// This method is used only for setting non-deterministic output.
-// This method does not detect floating point types within STRUCTs or PROTOs,
-// which would be too expensive to call for each row.
-// Geography type internally contains floating point data, and thus treated
-// the same way for this purpose.
-bool HasFloatingPoint(const Type* type);
 
 // Sets the provided EvaluationContext to have non-deterministic output if the
 // given array has more than one element and is not order-preserving.

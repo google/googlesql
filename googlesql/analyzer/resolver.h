@@ -25,7 +25,6 @@
 #include <set>
 #include <stack>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -43,7 +42,6 @@
 #include "googlesql/analyzer/set_operation_resolver_base.h"
 #include "googlesql/common/warning_sink.h"
 #include "googlesql/parser/parse_tree.h"
-#include "googlesql/parser/parse_tree_errors.h"
 #include "googlesql/public/analyzer_options.h"
 #include "googlesql/public/analyzer_output_properties.h"
 #include "googlesql/public/catalog.h"
@@ -94,7 +92,6 @@
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "google/protobuf/descriptor.h"
-#include "googlesql/base/general_trie.h"
 #include "googlesql/base/ret_check.h"
 
 namespace googlesql {
@@ -105,6 +102,7 @@ class QueryResolutionInfo;
 class SelectColumnStateList;
 class ExtendedCompositeCastEvaluator;
 class MapType;
+struct ByListColumn;
 struct ColumnReplacements;
 struct OrderByItemInfo;
 struct SelectColumnState;
@@ -898,7 +896,7 @@ class Resolver {
   // Generates proxy functions (FunctionTypedParameter) for all lambda
   // parameters of the UDF and adds them to generated_functions_.
   absl::Status GenerateLambdaProxyFunctions(
-      const FunctionArgumentInfo* arg_info);
+      FunctionArgumentInfo* /*absl_nonnull*/ arg_info);
 
   // Set of unique WITH aliases seen so far.  If there are duplicate WITH
   // aliases in the query (visible in different scopes), we'll give them
@@ -1879,14 +1877,14 @@ class Resolver {
   // Resolves the `AT` clause of a version-aware DML statement.
   //
   // Inputs:
-  // - `temporal_at`: The `AT` clause AST node.
-  // - `temporal_at_scope`: The scope for resolving the `AT` expression.
+  // - `at_version`: The `AT` clause AST node.
+  // - `at_version_scope`: The scope for resolving the `AT` expression.
   //
   // Outputs:
-  // - `resolved_temporal_at`: The resolved timestamp expression for `AT`.
-  absl::Status ResolveTemporalAtClause(
-      const ASTTemporalAt* temporal_at, const NameScope* temporal_at_scope,
-      std::unique_ptr<const ResolvedExpr>* resolved_temporal_at);
+  // - `resolved_at_version`: The resolved timestamp expression for `AT`.
+  absl::Status ResolveAtVersionClause(
+      const ASTAtVersionClause* at_version, const NameScope* at_version_scope,
+      std::unique_ptr<const ResolvedExpr>* resolved_at_version);
 
   // Resolves the `WITH TIMESTAMP` clause of a version-aware DML statement.
   //
@@ -1925,7 +1923,7 @@ class Resolver {
   // is true).
   absl::Status ValidateVersionAwareDmlTarget(
       const ASTStatement* ast_statement, const NameList* versioned_name_list,
-      IdString target_alias, bool has_temporal_at, bool has_with_timestamp);
+      IdString target_alias, bool has_at_version, bool has_with_timestamp);
 
   absl::Status ResolveUpdateStatement(
       const ASTUpdateStatement* ast_statement,
@@ -2432,6 +2430,8 @@ class Resolver {
   // Populates the SelectColumnStateList in <query_resolution_info>, and also
   // records information about referenced and resolved aggregation and analytic
   // functions.
+  // Returns an error if the list resolves to zero columns unless the SelectForm
+  // allows an empty list.
   absl::Status ResolveSelectListExprsFirstPass(
       const ASTSelectList* select_list, const NameScope* from_scan_scope,
       const std::shared_ptr<const NameList>& from_clause_name_list,
@@ -2754,19 +2754,26 @@ class Resolver {
   };
 
   struct ResolvedBuildProtoArg {
-    ResolvedBuildProtoArg(const ASTNode* ast_location_in,
-                          std::unique_ptr<const ResolvedExpr> expr_in,
-                          const Type* leaf_field_type_in,
-                          const std::vector<const google::protobuf::FieldDescriptor*>
-                              field_descriptor_path_in)
+    ResolvedBuildProtoArg(
+        const ASTNode* ast_location_in,
+        std::unique_ptr<const ResolvedExpr> expr_in,
+        const Type* leaf_field_type_in,
+        const std::vector<const google::protobuf::FieldDescriptor*>
+            field_descriptor_path_in,
+        const ResolvedColumn& update_item_column_in = ResolvedColumn())
         : ast_location(ast_location_in),
           expr(std::move(expr_in)),
           leaf_field_type(leaf_field_type_in),
-          field_descriptor_path(field_descriptor_path_in) {}
+          field_descriptor_path(field_descriptor_path_in),
+          update_item_column(update_item_column_in) {}
     const ASTNode* ast_location;
     std::unique_ptr<const ResolvedExpr> expr;
     const Type* leaf_field_type;
     std::vector<const google::protobuf::FieldDescriptor*> field_descriptor_path;
+    // Only set for UPDATE constructor fields whose <expr> reads the value that
+    // the field has before the update. This is the column holding that value,
+    // and it becomes ResolvedUpdateFieldItem.update_item_column.
+    ResolvedColumn update_item_column;
   };
 
   // Create a ResolvedMakeProto from a type and a vector of arguments.
@@ -3110,9 +3117,12 @@ class Resolver {
     //
     // `scope`: the name scope used to resolve the non-recursive term.
     // `op_type`: the set operation type of the recursive set operation.
+    // `effective_by_columns`: the column names from the CORRESPONDING BY or
+    //     BY NAME ON list.
     absl::StatusOr<NonRecursiveTerm> ResolveNonRecursiveTerm(
         const NameScope* scope,
-        ResolvedSetOperationScan::SetOperationType op_type);
+        ResolvedSetOperationScan::SetOperationType op_type,
+        absl::Span<const ByListColumn> effective_by_columns);
 
     // Resolves a single input into a ResolvedSetOperationItem.
     // `scope` = name scope for resolution
@@ -3193,9 +3203,24 @@ class Resolver {
     // - Either STRICT CORRESPONDING or BY NAME is used.
     absl::Status ValidateMatchByNameForRecursive() const;
 
+    // Returns the column names for the CORRESPONDING BY list of the given
+    // `metadata`, expanding UNPACK expressions using `scope`. If `metadata`
+    // does not have a corresponding by list, returns an empty vector.
+    absl::StatusOr<std::vector<ByListColumn>> GetCorrespondingByColumnNames(
+        const ASTSetOperationMetadata& metadata, const NameScope* scope) const;
+
     // Validates that all the set operations are identical. Returns a sql error
-    // if the validation fails.
-    absl::Status ValidateIdenticalSetOperator() const;
+    // if the validation fails. On success, returns the column names from the
+    // CORRESPONDING BY or BY NAME ON list of `effective_metadata` (empty if
+    // there is no such list).
+    //
+    // `scope`: the NameScope used to resolve UNPACK expressions in the
+    //   CORRESPONDING BY or BY NAME ON lists.
+    // `effective_metadata`: the metadata of the set operation whose BY list
+    //   is returned, and against which all other metadata are compared.
+    absl::StatusOr<std::vector<ByListColumn>> ValidateIdenticalSetOperator(
+        const NameScope* scope,
+        const ASTSetOperationMetadata& effective_metadata) const;
 
     // This returns either "CORRESPONDING" or "BY NAME", depending which
     // syntax was used.  For use in error messages.
@@ -3249,7 +3274,8 @@ class Resolver {
     // CORRESPONDING_BY.
     absl::StatusOr<std::vector<IdString>>
     CalculateFinalColumnNamesForCorrespondingBy(
-        const std::vector<ResolvedInputResult>& resolved_inputs) const;
+        const std::vector<ResolvedInputResult>& resolved_inputs,
+        absl::Span<const ByListColumn> by_list_columns) const;
 
     // Builds a vector specifying the type of each column for each input scan,
     // where the returned column_type_lists[column_idx][scan_idx] specifies the
@@ -3322,10 +3348,13 @@ class Resolver {
     // the same types. The position and type adjustment are done by adding
     // ProjectScans to the input queries and updating their corresponding
     // NameLists.
+    // `effective_by_columns` contains the column names from the
+    // CORRESPONDING BY or BY NAME ON list.
     //
     // Returns the final column list of the set operation.
     absl::StatusOr<FinalColumnList> MatchInputsAndCalculateFinalColumns(
-        std::vector<ResolvedInputResult>& resolved_inputs);
+        std::vector<ResolvedInputResult>& resolved_inputs,
+        absl::Span<const ByListColumn> effective_by_columns);
 
     // Validates that the column types of the recursive term columns can be
     // coerced into the corresponding columns in `final_name_list`.
@@ -4453,6 +4482,10 @@ class Resolver {
   // between select list ordinals and other resolved expressions.
   // The OrderByInfo in <expr_resolution_info>->query_resolution_info is
   // populated with the resolved ORDER BY expression info.
+  //
+  // If <allow_ordinals> is false, an error is returned for integer literal
+  // ordinals, naming <clause_name>. An unpack expression (`**`) is expanded
+  // into one OrderByItemInfo per column it names.
   absl::Status ResolveOrderingExprs(
       absl::Span<const ASTOrderingExpression* const> ordering_expressions,
       ExprResolutionInfo* expr_resolution_info, bool allow_ordinals,
@@ -4771,15 +4804,25 @@ class Resolver {
   // read as ROW-typed (because it has a no-default ColumnListMode), give an
   // error, using this string in the error text.
   //
-  // <output_name_list> contains the scan column list of the found table and a
-  // range variable with <alias> as the name.
+  // <output_name_list> contains the scan column list of the found table.
+  //
+  // If <add_range_variable> is true, it also has a range variable named
+  // <alias> (for a value table, the value column itself serves as the range
+  // variable). Pass false only for an anonymous scan that can't be referenced
+  // by name, such as a STRING literal table with no derivable name. In that
+  // case <alias> must be an internal alias (see IsInternalAlias) and
+  // <has_explicit_alias> must be false: <alias> is then used only to name a
+  // value table's value column in <output_name_list> without registering a
+  // range variable in NameScope, so the row can be reached only through `*`
+  // or unqualified field names.
   //
   // <output_column_name_list> is nullable; when not null, it contains the scan
   // column list of the found table, but NOT the range variable with <alias> as
   // the name.
   absl::Status MakeScanForTable(
       const ASTNode* ast_location, const Table* table, IdString alias,
-      bool has_explicit_alias, const ASTNode* alias_location,
+      bool has_explicit_alias, bool add_range_variable,
+      const ASTNode* alias_location,
       const ASTForVersionClause* for_version_clause,
       absl::string_view read_as_row_type_error_kind,
       std::unique_ptr<ResolvedTableScan>* output_table_scan,
@@ -4835,6 +4878,22 @@ class Resolver {
       NameListPtr* /*absl_nullable*/ output_column_name_list,
       ResolvedColumnToCatalogColumnHashMap&
           out_resolved_columns_to_catalog_columns_for_scan);
+
+  // Resolves a STRING literal table reference (such as FROM 'path/file.csv')
+  // through Catalog::FindTableFromString.  If <explicit_alias> is null, the
+  // range variable is the implicit alias derived from the literal (see
+  // DeriveImplicitAliasForStringLiteralTable), or there is none if no name can
+  // be derived, in which case the scan is anonymous: it gets an internal alias
+  // and only unqualified column names can reference it.  Other arguments are
+  // as for MakeScanForTable and ResolvePathExpressionAsTableScan.
+  // See (broken link).
+  absl::Status ResolveStringLiteralAsTableScan(
+      const ASTStringLiteral* /*absl_nonnull*/ literal,
+      const ASTAlias* /*absl_nullable*/ explicit_alias,
+      const ASTHint* /*absl_nullable*/ hints,
+      const ASTForVersionClause* /*absl_nullable*/ for_version_clause,
+      std::unique_ptr<const ResolvedTableScan>* /*absl_nonnull*/ output,
+      std::shared_ptr<const NameList>* /*absl_nonnull*/ output_name_list);
 
   // Resolves a path expression to a Type.  If <is_single_identifier> then
   // the path expression is treated as a single (quoted) identifier. Otherwise
@@ -5135,11 +5194,13 @@ class Resolver {
       ExprResolutionInfo* expr_resolution_info,
       std::unique_ptr<const ResolvedExpr>* resolved_expr_out);
 
-  // Resolve a GROUP BY modifier for a multi-level aggregate function.
-  absl::Status ResolveGroupingItem(
-      const ASTGroupingItem* group_by_modifier,
-      ExprResolutionInfo* expr_resolution_info,
-      std::unique_ptr<const ResolvedExpr>* resolved_group_by);
+  // Resolves a GROUP BY modifier of a multi-level aggregate function. An
+  // unpack expression (`**`) resolves to one column reference per column it
+  // names, which may be none; any other expression resolves to exactly one
+  // entry.
+  absl::StatusOr<std::vector<std::unique_ptr<const ResolvedExpr>>>
+  ResolveGroupingItem(const ASTGroupingItem* group_by_modifier,
+                      ExprResolutionInfo* expr_resolution_info);
 
   // Resolve aggregate function for the first pass. This function also resolves
   // GROUP_ROWS clause if it is present.
@@ -5424,27 +5485,14 @@ class Resolver {
       const ProtoType* parent_type);
 
   // Resolves a braced constructor field and returns a container that has state
-  // to build the protocol buffer field.
+  // to build the protocol buffer field. `in_update_constructor` is true for a
+  // field of an UPDATE constructor, which allows field paths and the `*:` and
+  // `?:` operators, and makes the field being updated visible by name in the
+  // field's value ((broken link)).
   absl::StatusOr<ResolvedBuildProtoArg> ResolveBracedConstructorField(
       const ASTBracedConstructorField* ast_braced_constructor_field,
-      const ProtoType* parent_type, int field_index, bool allow_field_paths,
-      const ResolvedExpr* update_constructor_expr_to_modify,
+      const ProtoType* parent_type, int field_index, bool in_update_constructor,
       ExprResolutionInfo* expr_resolution_info);
-
-  // Resolves a generalized path access from an already resolved base protocol
-  // buffer expression.
-  // `resolved_base`: The base protocol buffer from which we try to resolve a
-  // path access.
-  // `parse_location`: The parse location to use for error reporting.
-  // `generalized_path`: The path access that needs to be resolved.
-  // `flatten_state`: The path access that needs to be resolved.
-  //
-  // Returns the resolved proto expression as output.
-  absl::StatusOr<std::unique_ptr<const ResolvedExpr>> ResolveProtoFieldAccess(
-      const ResolvedExpr& resolved_base,
-      const ParseLocationRange& parse_location,
-      const ASTGeneralizedPathExpression& generalized_path,
-      FlattenState* flatten_state);
 
   absl::Status ResolveBracedConstructor(
       const ASTBracedConstructor* ast_braced_constructor,
@@ -5512,12 +5560,23 @@ class Resolver {
   //   }
   // The outer braced constructor is resolved with this function, however the
   // inner braced constructor is not. Details: http://shortn/_EXoCKUiBhJ.
+  //
+  // `alias` is the alias the query wrote, `UPDATE (<expr> AS <alias>)`, and is
+  // stored on the ResolvedUpdateConstructor. It is empty for a braced
+  // constructor that is the value of a field being updated, which the query
+  // wrote as `<field> {...}` rather than as an UPDATE constructor.
+  //
+  // `name_in_scope` is the name under which the object being updated is visible
+  // while resolving the update values: the alias, written or inferred, for a
+  // top-level UPDATE constructor, or the LHS field name for a braced
+  // constructor that is the value of a field being updated. If it is empty,
+  // only the object's fields are visible.
   absl::StatusOr<std::unique_ptr<const ResolvedExpr>>
   ResolveBracedConstructorInUpdateContext(
       const ASTNode& location,
       std::unique_ptr<const ResolvedExpr> expr_to_modify, std::string alias,
+      IdString name_in_scope,
       const ASTBracedConstructor& ast_braced_constructor,
-      const ResolvedColumn& update_element_column,
       ExprResolutionInfo* expr_resolution_info);
 
   absl::Status ResolveUpdateConstructor(
@@ -7174,6 +7233,9 @@ class FunctionArgumentInfo {
     std::optional<ResolvedArgumentDef::ArgumentKind> arg_kind;
     // Annotations are used only for scalar arguments.
     const AnnotationMap* annotation_map = nullptr;
+    // Synthesized proxy function for function-typed scalar arguments. Owned by
+    // Resolver::generated_functions_.
+    const Function* /*absl_nullable*/ proxy_function = nullptr;
   };
 
   // Returns true if there is an arg <name>.
@@ -7214,6 +7276,11 @@ class FunctionArgumentInfo {
 
   // Add details for a relation argument.
   absl::Status AddRelationArg(IdString name, FunctionArgumentType arg_type);
+
+  // Associates a synthesized proxy function with a function-typed scalar
+  // argument.
+  absl::Status SetProxyFunction(IdString name,
+                                const Function* /*absl_nonnull*/ proxy_function);
 
  private:
   // std::unique_ptr is used to ensure stability of any pointers to details

@@ -2960,6 +2960,41 @@ TEST(FunctionSignatureTests, GetSQLDeclarationWithTypeModifiers) {
             "(STRING) RETURNS INT64");
 }
 
+TEST(FunctionSignatureTests, GetSQLDeclarationLambdaKeepsArgumentOptions) {
+  TypeFactory factory;
+  FunctionArgumentType unary_lambda = FunctionArgumentType::Lambda(
+      {factory.get_int64()}, factory.get_int64(),
+      FunctionArgumentTypeOptions().set_is_not_aggregate());
+  FunctionArgumentType binary_lambda = FunctionArgumentType::Lambda(
+      {factory.get_int64(), factory.get_string()}, factory.get_bool(),
+      FunctionArgumentTypeOptions().set_is_not_aggregate());
+  FunctionArgumentType nullary_lambda_no_options =
+      FunctionArgumentType::Lambda({}, factory.get_int64());
+
+  EXPECT_EQ("FUNCTION<INT64->INT64> NOT AGGREGATE",
+            unary_lambda.GetSQLDeclaration(ProductMode::PRODUCT_INTERNAL));
+  EXPECT_EQ("FUNCTION<(INT64, STRING)->BOOL> NOT AGGREGATE",
+            binary_lambda.GetSQLDeclaration(ProductMode::PRODUCT_INTERNAL));
+  EXPECT_EQ("FUNCTION<()->INT64>", nullary_lambda_no_options.GetSQLDeclaration(
+                                       ProductMode::PRODUCT_INTERNAL));
+  // Cardinality comments are also emitted for lambda arguments.
+  FunctionArgumentType optional_lambda = FunctionArgumentType::Lambda(
+      {factory.get_int64()}, factory.get_bool(),
+      FunctionArgumentTypeOptions(FunctionArgumentType::OPTIONAL));
+  EXPECT_EQ("/*optional*/ FUNCTION<INT64->BOOL>",
+            optional_lambda.GetSQLDeclaration(ProductMode::PRODUCT_INTERNAL));
+
+  // NOT AGGREGATE on a function-typed parameter round-trips through
+  // FunctionSignature::GetSQLDeclaration, e.g. for SQL UDA declarations.
+  FunctionSignature signature(
+      factory.get_int64(),
+      {FunctionArgumentType(factory.get_int64()), unary_lambda},
+      /*context_id=*/-1);
+  EXPECT_EQ(
+      "(v INT64, f FUNCTION<INT64->INT64> NOT AGGREGATE) RETURNS INT64",
+      signature.GetSQLDeclaration({"v", "f"}, ProductMode::PRODUCT_INTERNAL));
+}
+
 TEST(FunctionSignatureTests, GetSQLDeclarationWithTypeModifiersError) {
   TypeFactory factory;
   Collation collation = Collation::MakeScalar("und:ci");

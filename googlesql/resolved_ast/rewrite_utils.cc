@@ -176,6 +176,11 @@ class GroupingCallDetectorVisitor : public ResolvedASTVisitor {
 
 // A visitor that changes ResolvedColumnRef nodes to be correlated.
 class CorrelateColumnRefVisitor : public ResolvedASTDeepCopyVisitor {
+ public:
+  explicit CorrelateColumnRefVisitor(
+      const absl::flat_hash_set<ResolvedColumn>& local_columns)
+      : local_columns_(local_columns) {}
+
  private:
   // Logic that determines whether an individual ResolvedColumnRef should be
   // marked as correlated in the output tree.
@@ -260,6 +265,24 @@ class CorrelateColumnRefVisitor : public ResolvedASTDeepCopyVisitor {
       local_columns_.insert(node->assignment_list(i)->column());
     }
     return ResolvedASTDeepCopyVisitor::VisitResolvedWithExpr(node);
+  }
+
+  absl::Status VisitResolvedUpdateConstructor(
+      const ResolvedUpdateConstructor* node) override {
+    // Exclude the element column because it is internal: this node introduces
+    // it, and only expressions under this node reference it.
+    local_columns_.insert(node->update_element_column());
+    return ResolvedASTDeepCopyVisitor::VisitResolvedUpdateConstructor(node);
+  }
+
+  absl::Status VisitResolvedUpdateFieldItem(
+      const ResolvedUpdateFieldItem* node) override {
+    // Exclude the item column because it is internal: this node introduces it,
+    // and only its own `expr` references it.
+    if (node->update_item_column() != nullptr) {
+      local_columns_.insert(node->update_item_column()->column());
+    }
+    return ResolvedASTDeepCopyVisitor::VisitResolvedUpdateFieldItem(node);
   }
 
   absl::Status VisitResolvedArrayAggregate(
@@ -406,8 +429,9 @@ class WithScanVisitor : public googlesql::ResolvedASTVisitor {
 }  // namespace
 
 absl::StatusOr<std::unique_ptr<ResolvedExpr>> CorrelateColumnRefsImpl(
-    const ResolvedExpr& expr) {
-  CorrelateColumnRefVisitor correlator;
+    const ResolvedExpr& expr,
+    const absl::flat_hash_set<ResolvedColumn>& local_columns) {
+  CorrelateColumnRefVisitor correlator(local_columns);
   GOOGLESQL_RETURN_IF_ERROR(expr.Accept(&correlator));
   return correlator.ConsumeRootNode<ResolvedExpr>();
 }
@@ -784,6 +808,7 @@ FunctionCallBuilder::IsNull(std::unique_ptr<const ResolvedExpr> arg) {
   GOOGLESQL_RETURN_IF_ERROR(GetBuiltinFunctionFromCatalog("$is_null", &is_null_fn));
   GOOGLESQL_ASSIGN_OR_RETURN(
       FunctionSignature concrete_signature,
+      // TODO: Use FN_IS_NULL_ROW for RowType args.
       MakeConcreteSignature(is_null_fn, FN_IS_NULL, types::BoolType(),
                             {{arg->type(), 1}}));
 
@@ -1231,6 +1256,44 @@ FunctionCallBuilder::JsonRemove(
       MakeResolvedFunctionCall(types::JsonType(), json_remove_fn,
                                std::move(concrete_signature), std::move(args),
                                ResolvedFunctionCall::DEFAULT_ERROR_MODE);
+  GOOGLESQL_RETURN_IF_ERROR(
+      PropagateAnnotationsAndProcessCollationList(resolved_function.get()));
+  return resolved_function;
+}
+
+absl::StatusOr<std::unique_ptr<const ResolvedFunctionCall>>
+FunctionCallBuilder::ElementDefinitionNameIs(
+    std::unique_ptr<const ResolvedExpr> graph_element,
+    absl::string_view element_table_name) {
+  GOOGLESQL_RET_CHECK(graph_element != nullptr);
+  const Type* element_type = graph_element->type();
+  GOOGLESQL_RET_CHECK(element_type->IsGraphElement());
+  GOOGLESQL_RET_CHECK(!element_table_name.empty());
+
+  const Function* fn = nullptr;
+  GOOGLESQL_RETURN_IF_ERROR(
+      GetBuiltinFunctionFromCatalog("element_definition_name_is", &fn));
+  GOOGLESQL_RET_CHECK(fn != nullptr);
+
+  GOOGLESQL_ASSIGN_OR_RETURN(FunctionSignature concrete_signature,
+                   MakeConcreteSignature(
+                       fn, FN_ELEMENT_DEFINITION_NAME_IS, types::BoolType(),
+                       {{element_type, 1}, {types::StringType(), 1}}));
+
+  GOOGLESQL_ASSIGN_OR_RETURN(std::unique_ptr<const ResolvedLiteral> table_name_literal,
+                   ResolvedLiteralBuilder()
+                       .set_type(types::StringType())
+                       .set_value(Value::String(element_table_name))
+                       .set_has_explicit_type(true)
+                       .set_preserve_in_literal_remover(true)
+                       .Build());
+
+  std::unique_ptr<ResolvedFunctionCall> resolved_function =
+      MakeResolvedFunctionCall(
+          types::BoolType(), fn, std::move(concrete_signature),
+          MakeNodeVectorP<const ResolvedExpr>(std::move(graph_element),
+                                              std::move(table_name_literal)),
+          ResolvedFunctionCall::DEFAULT_ERROR_MODE);
   GOOGLESQL_RETURN_IF_ERROR(
       PropagateAnnotationsAndProcessCollationList(resolved_function.get()));
   return resolved_function;

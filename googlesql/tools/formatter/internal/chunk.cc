@@ -774,9 +774,52 @@ bool Chunk::IsFunctionSignatureModifier() const {
 }
 
 bool Chunk::IsStartOfNewQuery() const {
-  return !Empty() && ((FirstKeyword() == "SELECT" &&
-                       !FirstToken().Is(Token::Type::PRIVILEGE_TYPE_KEYWORD)) ||
-                      IsTopLevelWith());
+  if (Empty()) {
+    return false;
+  }
+  if (FirstKeyword() == "SELECT" &&
+      !FirstToken().Is(Token::Type::PRIVILEGE_TYPE_KEYWORD)) {
+    return true;
+  }
+  if (IsTopLevelWith()) {
+    return true;
+  }
+  // With GoogleSQL pipe syntax, queries can begin directly with FROM (e.g.
+  // "FROM t |> SELECT 1", "ARRAY(FROM t |> ...)", or "(FROM t |> ...)").
+  //
+  // Ensure that FROM is not acting in an alternative semantic role, such as:
+  // - COMPARISON_OPERATOR: e.g. "IS [NOT] DISTINCT FROM"
+  // - KEYWORD_AS_IDENTIFIER_FRAGMENT: e.g. options ("OPTIONS (from = ...)"),
+  //   parameters ("@from"), or field accesses ("proto.from")
+  // - PRIVILEGE_TYPE_KEYWORD: e.g. "REVOKE ... FROM <user>"
+  // - DDL_KEYWORD: e.g. in DDL table schemas
+  if (FirstKeyword() == "FROM" &&
+      !FirstToken().IsOneOf({Token::Type::COMPARISON_OPERATOR,
+                             Token::Type::KEYWORD_AS_IDENTIFIER_FRAGMENT,
+                             Token::Type::PRIVILEGE_TYPE_KEYWORD,
+                             Token::Type::DDL_KEYWORD})) {
+    // TODO: b/580412944 - Also recognize FROM queries following a WITH clause
+    // (and update StmtLayout::BestBreakpoint to break before FROM rather than
+    // preferring a trailing "|>").
+    const Chunk* prev = PreviousNonCommentChunk();
+    if (prev == nullptr || prev->LastKeyword() == ";") {
+      return true;
+    }
+    if (prev->OpensParenBlock()) {
+      return true;
+    }
+    if (prev->IsSetOperator()) {
+      return true;
+    }
+    // In CTAS ("CREATE ... AS FROM ..."), "EXPORT DATA ... AS FROM ...", or any
+    // statement where a query follows AS (such as pipe queries starting with
+    // FROM), FROM introduces the query body. Since FROM is a reserved keyword,
+    // it cannot legally follow AS in any other context (such as an alias).
+    if (prev->LastKeyword() == "AS") {
+      return true;
+    }
+  }
+  return false;
 }
 
 bool Chunk::IsStartOfCreateStatement() const {

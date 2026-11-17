@@ -88,6 +88,7 @@
 #include "googlesql/resolved_ast/resolved_node.h"
 #include "googlesql/resolved_ast/resolved_node_kind.pb.h"
 #include "googlesql/base/case.h"
+#include "absl/base/nullability.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "googlesql/base/check.h"
@@ -164,6 +165,7 @@ void Resolver::Reset(absl::string_view sql) {
   default_expr_access_error_name_scope_.reset();
   warning_sink_.Reset();
   function_argument_info_ = nullptr;
+  generated_functions_.clear();
   resolved_columns_from_table_scans_.clear();
   side_effect_scope_depth_ = 0;
   graph_context_stack_ = {};
@@ -352,7 +354,7 @@ absl::Status Resolver::ResolveStandaloneExpr(
 }
 
 absl::Status Resolver::GenerateLambdaProxyFunctions(
-    const FunctionArgumentInfo* arg_info) {
+    FunctionArgumentInfo* /*absl_nonnull*/ arg_info) {
   const bool feature_enabled =
       language().LanguageFeatureEnabled(FEATURE_UDF_LAMBDA_ARGUMENTS);
 
@@ -378,6 +380,8 @@ absl::Status Resolver::GenerateLambdaProxyFunctions(
       // Create a proxy function to represent the function-typed parameter.
       auto generated_function = std::make_unique<FunctionTypedParameter>(
           arg_details->name.ToString(), std::move(signatures));
+      GOOGLESQL_RETURN_IF_ERROR(arg_info->SetProxyFunction(arg_details->name,
+                                                 generated_function.get()));
       generated_functions_.push_back(std::move(generated_function));
     }
   }
@@ -2672,6 +2676,18 @@ absl::Status FunctionArgumentInfo::AddRelationArg(
     IdString name, FunctionArgumentType arg_type) {
   GOOGLESQL_RET_CHECK(arg_type.IsRelation());
   return AddArgCommon({.name = name, .arg_type = arg_type});
+}
+
+absl::Status FunctionArgumentInfo::SetProxyFunction(
+    IdString name, const Function* /*absl_nonnull*/ proxy_function) {
+  GOOGLESQL_RET_CHECK(proxy_function != nullptr);
+  int64_t index = googlesql_base::FindWithDefault(details_index_by_name_, name, -1);
+  GOOGLESQL_RET_CHECK(index >= 0 && index < details_.size());
+  ArgumentDetails* details = details_.at(index).get();
+  GOOGLESQL_RET_CHECK(details->arg_type.IsLambda());
+  GOOGLESQL_RET_CHECK(details->proxy_function == nullptr);
+  details->proxy_function = proxy_function;
+  return absl::OkStatus();
 }
 
 absl::Status FunctionArgumentInfo::AddArgCommon(ArgumentDetails details) {

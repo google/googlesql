@@ -63,6 +63,7 @@
 #include "googlesql/public/templated_sql_tvf.h"
 #include "googlesql/public/type.pb.h"
 #include "googlesql/public/types/annotation.h"
+#include "googlesql/public/types/collation.h"
 #include "googlesql/public/types/simple_value.h"
 #include "googlesql/public/types/struct_type.h"
 #include "googlesql/public/types/type.h"
@@ -755,6 +756,7 @@ absl::Status SampleCatalogImpl::LoadCatalogImpl(
   LoadConnections();
   LoadSequences();
   RETURN_IF_ERROR_UNLESS_DBG(LoadProtoTables());
+  LoadStringLiteralTables();
   LoadViews(language_options);
   RETURN_IF_ERROR_UNLESS_DBG(LoadNestedCatalogs());
   RETURN_IF_ERROR_UNLESS_DBG(LoadFunctions());
@@ -791,6 +793,8 @@ absl::Status SampleCatalogImpl::LoadCatalogImpl(
   RETURN_IF_ERROR_UNLESS_DBG(LoadPropertyGraphWithReadOnlyDynamicProperties());
   RETURN_IF_ERROR_UNLESS_DBG(
       LoadPropertyGraphWithDynamicMultiLabelsAndProperties());
+  RETURN_IF_ERROR_UNLESS_DBG(
+      LoadPropertyGraphWithMixedDynamicAndStaticTables());
   RETURN_IF_ERROR_UNLESS_DBG(LoadRowTypeObjects(language_options));
   return absl::OkStatus();
 }
@@ -1298,6 +1302,85 @@ absl::Status SampleCatalogImpl::AddGeneratedColumnToTable(
       /*is_owned=*/true));
   sql_object_artifacts_.push_back(std::move(output));
   return absl::OkStatus();
+}
+
+void SampleCatalogImpl::LoadStringLiteralTables() {
+  // Tables for FEATURE_STRING_LITERAL_TABLE_REFERENCES.  These are only found
+  // through Catalog::FindTableFromString, using the exact literal content.
+  // They are not added to `tables_`, so they're not visible by name.
+  // See (broken link).
+  catalog_->AddOwnedTableForStringLiteral(
+      "/cns/cell/logs/events@100.tfrecords",
+      std::make_unique<SimpleTable>("events",
+                                    std::vector<SimpleTable::NameAndType>{
+                                        {"user_id", types_->get_int64()},
+                                        {"service", types_->get_string()},
+                                        {"latency_ms", types_->get_int64()}}));
+
+  catalog_->AddOwnedTableForStringLiteral(
+      "users.csv", std::make_unique<SimpleTable>(
+                       "users", std::vector<SimpleTable::NameAndType>{
+                                    {"user_id", types_->get_int64()},
+                                    {"name", types_->get_string()}}));
+
+  // A table whose Table::Name() matches a catalog table name.
+  catalog_->AddOwnedTableForStringLiteral(
+      "KeyValue.csv", std::make_unique<SimpleTable>(
+                          "KeyValue", std::vector<SimpleTable::NameAndType>{
+                                          {"file_key", types_->get_int64()}}));
+
+  // A proto value table.
+  catalog_->AddOwnedTableForStringLiteral(
+      "extra.tfrecords",
+      std::make_unique<SimpleTable>("extra", proto_TestExtraPB_));
+
+  // A table with an array column.
+  catalog_->AddOwnedTableForStringLiteral(
+      "arrays.tfrecords", std::make_unique<SimpleTable>(
+                              "arrays", std::vector<SimpleTable::NameAndType>{
+                                            {"key", types_->get_int64()},
+                                            {"int_array", int64array_type_}}));
+
+  // Tables whose Table::Name() differs from the implicit alias derived from
+  // the literal, so tests can tell the two apart.  The alias derived from
+  // 'logs/2026-09-24.csv', `2026-09-24`, can only be referenced with
+  // backticks.  The alias for 'orders/*.csv', `orders`, is also the name of
+  // one of its columns.
+  catalog_->AddOwnedTableForStringLiteral(
+      "logs/2026-09-24.csv",
+      std::make_unique<SimpleTable>("daily_logs",
+                                    std::vector<SimpleTable::NameAndType>{
+                                        {"log_id", types_->get_int64()},
+                                        {"message", types_->get_string()}}));
+  catalog_->AddOwnedTableForStringLiteral(
+      "orders/*.csv", std::make_unique<SimpleTable>(
+                          "all_orders", std::vector<SimpleTable::NameAndType>{
+                                            {"order_id", types_->get_int64()},
+                                            {"orders", types_->get_int64()}}));
+
+  // Tables whose literals have no implicit alias, so an unaliased reference
+  // is an anonymous scan: a list of paths, a root glob (a value table), and a
+  // name that would be an internal alias.  The first two have a `_FILE_NAME`
+  // pseudo-column, like many file-backed tables.
+  auto sales_and_returns = std::make_unique<SimpleTable>(
+      "sales_and_returns",
+      std::vector<SimpleTable::NameAndType>{{"order_id", types_->get_int64()},
+                                            {"amount", types_->get_double()}});
+  GOOGLESQL_CHECK_OK(sales_and_returns->AddColumn(std::make_unique<SimpleColumn>(
+      "sales_and_returns", "_FILE_NAME", types_->get_string(),
+      SimpleColumn::Attributes{.is_pseudo_column = true})));
+  catalog_->AddOwnedTableForStringLiteral("sales.csv,returns.csv",
+                                          std::move(sales_and_returns));
+  auto all_extra =
+      std::make_unique<SimpleTable>("all_extra", proto_TestExtraPB_);
+  GOOGLESQL_CHECK_OK(all_extra->AddColumn(std::make_unique<SimpleColumn>(
+      "all_extra", "_FILE_NAME", types_->get_string(),
+      SimpleColumn::Attributes{.is_pseudo_column = true})));
+  catalog_->AddOwnedTableForStringLiteral("/*.tfrecords", std::move(all_extra));
+  catalog_->AddOwnedTableForStringLiteral(
+      "$tmp.csv", std::make_unique<SimpleTable>(
+                      "tmp", std::vector<SimpleTable::NameAndType>{
+                                 {"tmp_key", types_->get_int64()}}));
 }
 
 absl::Status SampleCatalogImpl::LoadTables() {
@@ -5101,7 +5184,7 @@ RegisterForSampleCatalog fn_tvf_allows_collation_in_callback =
       // This callback explicitly returns OkStatus() allowing collation.
       options.check_argument_annotations_callback =
           [](const googlesql::FunctionSignature& sig,
-             const std::vector<googlesql::TVFInputArgumentType>& args,
+             absl::Span<const googlesql::TVFInputArgumentType> args,
              const googlesql::LanguageOptions& language_options) {
             return absl::OkStatus();
           };
@@ -7999,41 +8082,41 @@ SampleCatalogImpl::LoadAmlDmlNodeTables(
     std::vector<std::unique_ptr<const GraphElementLabel>>& labels,
     std::vector<std::unique_ptr<const GraphPropertyDeclaration>>&
         property_dcls) {
-  auto* insert_test_table = new SimpleTable(
-      "InsertTestTable",
+  auto* dml_test_table = new SimpleTable(
+      "DmlTestTable",
       {
-          new SimpleColumn("InsertTestTable", "id", types_->get_int64(),
+          new SimpleColumn("DmlTestTable", "id", types_->get_int64(),
                            {.is_writable_column = true}),
-          new SimpleColumn("InsertTestTable", "val", types_->get_string(),
+          new SimpleColumn("DmlTestTable", "val", types_->get_string(),
                            {.is_writable_column = true}),
-          new SimpleColumn("InsertTestTable", "readonly_col",
-                           types_->get_string(), {.is_writable_column = false}),
+          new SimpleColumn("DmlTestTable", "readonly_col", types_->get_string(),
+                           {.is_writable_column = false}),
       },
       /*take_ownership=*/true);
-  GOOGLESQL_RET_CHECK_OK(insert_test_table->SetPrimaryKey({0}));
-  AddOwnedTable(insert_test_table);
+  GOOGLESQL_RET_CHECK_OK(dml_test_table->SetPrimaryKey({0}));
+  AddOwnedTable(dml_test_table);
 
-  auto* insert_test_table_no_writable_key = new SimpleTable(
-      "InsertTestTableNoWritableKey",
+  auto* dml_test_table_no_writable_key = new SimpleTable(
+      "DmlTestTableNoWritableKey",
       {
-          new SimpleColumn("InsertTestTableNoWritableKey", "id",
+          new SimpleColumn("DmlTestTableNoWritableKey", "id",
                            types_->get_int64(), {.is_writable_column = false}),
       },
       /*take_ownership=*/true);
-  GOOGLESQL_RET_CHECK_OK(insert_test_table_no_writable_key->SetPrimaryKey({0}));
-  AddOwnedTable(insert_test_table_no_writable_key);
+  GOOGLESQL_RET_CHECK_OK(dml_test_table_no_writable_key->SetPrimaryKey({0}));
+  AddOwnedTable(dml_test_table_no_writable_key);
 
-  auto* insert_test_table_no_key_prop = new SimpleTable(
-      "InsertTestTableNoKeyProp",
+  auto* dml_test_table_no_key_prop = new SimpleTable(
+      "DmlTestTableNoKeyProp",
       {
-          new SimpleColumn("InsertTestTableNoKeyProp", "id",
-                           types_->get_int64(), {.is_writable_column = true}),
-          new SimpleColumn("InsertTestTableNoKeyProp", "val",
-                           types_->get_string(), {.is_writable_column = true}),
+          new SimpleColumn("DmlTestTableNoKeyProp", "id", types_->get_int64(),
+                           {.is_writable_column = true}),
+          new SimpleColumn("DmlTestTableNoKeyProp", "val", types_->get_string(),
+                           {.is_writable_column = true}),
       },
       /*take_ownership=*/true);
-  GOOGLESQL_RET_CHECK_OK(insert_test_table_no_key_prop->SetPrimaryKey({0}));
-  AddOwnedTable(insert_test_table_no_key_prop);
+  GOOGLESQL_RET_CHECK_OK(dml_test_table_no_key_prop->SetPrimaryKey({0}));
+  AddOwnedTable(dml_test_table_no_key_prop);
 
   // Property Declaration
   auto val_property_dcl = std::make_unique<SimpleGraphPropertyDeclaration>(
@@ -8079,7 +8162,7 @@ SampleCatalogImpl::LoadAmlDmlNodeTables(
 
   // 1. Simple column ref (writable)
   auto id_col_ref = MakeResolvedCatalogColumnRef(
-      types_->get_int64(), insert_test_table->FindColumnByName("id"));
+      types_->get_int64(), dml_test_table->FindColumnByName("id"));
   auto id_prop_def =
       std::make_unique<SimpleGraphPropertyDefinition>(id_prop_dcl_raw, "id");
   InternalPropertyGraph::InternalSetResolvedExpr(id_prop_def.get(),
@@ -8089,7 +8172,7 @@ SampleCatalogImpl::LoadAmlDmlNodeTables(
 
   // 2. Simple column ref (writable)
   auto val_col_ref = MakeResolvedCatalogColumnRef(
-      types_->get_string(), insert_test_table->FindColumnByName("val"));
+      types_->get_string(), dml_test_table->FindColumnByName("val"));
   auto val_prop_def = std::make_unique<SimpleGraphPropertyDefinition>(
       val_property_dcl.get(), "val");
   InternalPropertyGraph::InternalSetResolvedExpr(val_prop_def.get(),
@@ -8098,7 +8181,7 @@ SampleCatalogImpl::LoadAmlDmlNodeTables(
   owned_resolved_graph_property_definitions_.push_back(std::move(val_col_ref));
 
   auto val_alias_col_ref = MakeResolvedCatalogColumnRef(
-      types_->get_string(), insert_test_table->FindColumnByName("val"));
+      types_->get_string(), dml_test_table->FindColumnByName("val"));
   auto val_alias_prop_def = std::make_unique<SimpleGraphPropertyDefinition>(
       val_alias_property_dcl.get(), "val");
   InternalPropertyGraph::InternalSetResolvedExpr(val_alias_prop_def.get(),
@@ -8109,8 +8192,7 @@ SampleCatalogImpl::LoadAmlDmlNodeTables(
 
   // 3. Simple column ref (non-writable)
   auto readonly_col_ref = MakeResolvedCatalogColumnRef(
-      types_->get_string(),
-      insert_test_table->FindColumnByName("readonly_col"));
+      types_->get_string(), dml_test_table->FindColumnByName("readonly_col"));
   auto readonly_prop_def = std::make_unique<SimpleGraphPropertyDefinition>(
       readonly_property_dcl.get(), "readonly_col");
   InternalPropertyGraph::InternalSetResolvedExpr(readonly_prop_def.get(),
@@ -8132,9 +8214,9 @@ SampleCatalogImpl::LoadAmlDmlNodeTables(
   std::unique_ptr<const AnalyzerOutput> derived_func_out;
   AnalyzerOptions options;
   options.SetLookupCatalogColumnCallback(
-      [insert_test_table](
+      [dml_test_table](
           const std::string& column_name) -> absl::StatusOr<const Column*> {
-        const Column* column = insert_test_table->FindColumnByName(column_name);
+        const Column* column = dml_test_table->FindColumnByName(column_name);
         if (column == nullptr) {
           return absl::NotFoundError(
               absl::StrCat("Cannot find column ", column_name));
@@ -8165,7 +8247,7 @@ SampleCatalogImpl::LoadAmlDmlNodeTables(
       property_defs_no_writable_key;
   auto id_col_no_writable_key_ref = MakeResolvedCatalogColumnRef(
       types_->get_int64(),
-      insert_test_table_no_writable_key->FindColumnByName("id"));
+      dml_test_table_no_writable_key->FindColumnByName("id"));
   auto id_prop_def_no_writable_key =
       std::make_unique<SimpleGraphPropertyDefinition>(id_prop_dcl_raw, "id");
   InternalPropertyGraph::InternalSetResolvedExpr(
@@ -8181,7 +8263,7 @@ SampleCatalogImpl::LoadAmlDmlNodeTables(
       property_defs_no_key_prop;
   auto val_col_no_key_prop_ref = MakeResolvedCatalogColumnRef(
       types_->get_string(),
-      insert_test_table_no_key_prop->FindColumnByName("val"));
+      dml_test_table_no_key_prop->FindColumnByName("val"));
   auto val_prop_def_no_key_prop =
       std::make_unique<SimpleGraphPropertyDefinition>(val_property_dcl.get(),
                                                       "val");
@@ -8193,22 +8275,22 @@ SampleCatalogImpl::LoadAmlDmlNodeTables(
 
   // Node Tables
   auto node_table = std::make_unique<const SimpleGraphNodeTable>(
-      insert_test_table->Name(), property_graph_name_path, insert_test_table,
+      dml_test_table->Name(), property_graph_name_path, dml_test_table,
       std::vector<int>{0},
       absl::flat_hash_set<const GraphElementLabel*>{label.get()},
       std::move(property_defs));
 
   auto node_table_no_writable_key =
       std::make_unique<const SimpleGraphNodeTable>(
-          insert_test_table_no_writable_key->Name(), property_graph_name_path,
-          insert_test_table_no_writable_key, std::vector<int>{0},
+          dml_test_table_no_writable_key->Name(), property_graph_name_path,
+          dml_test_table_no_writable_key, std::vector<int>{0},
           absl::flat_hash_set<const GraphElementLabel*>{
               label_no_writable_key.get()},
           std::move(property_defs_no_writable_key));
 
   auto node_table_no_key_prop = std::make_unique<const SimpleGraphNodeTable>(
-      insert_test_table_no_key_prop->Name(), property_graph_name_path,
-      insert_test_table_no_key_prop, std::vector<int>{0},
+      dml_test_table_no_key_prop->Name(), property_graph_name_path,
+      dml_test_table_no_key_prop, std::vector<int>{0},
       absl::flat_hash_set<const GraphElementLabel*>{label_no_key_prop.get()},
       std::move(property_defs_no_key_prop));
 
@@ -8217,26 +8299,26 @@ SampleCatalogImpl::LoadAmlDmlNodeTables(
   // gen_b AS (c1 + 1)
   // c1 (int64, writable)
   // id (int64, PK, writable)
-  auto* insert_test_table_with_gen_cols = new SimpleTable(
-      "InsertTestTableWithGenCols", std::vector<SimpleTable::NameAndType>{});
-  GOOGLESQL_RET_CHECK_OK(insert_test_table_with_gen_cols->AddColumn(
-      new SimpleColumn("InsertTestTableWithGenCols", "id", types_->get_int64(),
+  auto* dml_test_table_with_gen_cols = new SimpleTable(
+      "DmlTestTableWithGenCols", std::vector<SimpleTable::NameAndType>{});
+  GOOGLESQL_RET_CHECK_OK(dml_test_table_with_gen_cols->AddColumn(
+      new SimpleColumn("DmlTestTableWithGenCols", "id", types_->get_int64(),
                        {.is_writable_column = true}),
       /*is_owned=*/true));
-  GOOGLESQL_RET_CHECK_OK(insert_test_table_with_gen_cols->AddColumn(
-      new SimpleColumn("InsertTestTableWithGenCols", "c1", types_->get_int64(),
+  GOOGLESQL_RET_CHECK_OK(dml_test_table_with_gen_cols->AddColumn(
+      new SimpleColumn("DmlTestTableWithGenCols", "c1", types_->get_int64(),
                        {.is_writable_column = true}),
       /*is_owned=*/true));
 
   // Add gen_a first so it appears before gen_b in column order.
   // gen_a AS (gen_b * 2) depends on gen_b.
   GOOGLESQL_RET_CHECK_OK(AddGeneratedColumnToTable("gen_a", {"gen_b"}, "gen_b * 2",
-                                         insert_test_table_with_gen_cols));
+                                         dml_test_table_with_gen_cols));
   // gen_b AS (c1 + 1) depends on c1.
   GOOGLESQL_RET_CHECK_OK(AddGeneratedColumnToTable("gen_b", {"c1"}, "c1 + 1",
-                                         insert_test_table_with_gen_cols));
-  GOOGLESQL_RET_CHECK_OK(insert_test_table_with_gen_cols->SetPrimaryKey({0}));
-  AddOwnedTable(insert_test_table_with_gen_cols);
+                                         dml_test_table_with_gen_cols));
+  GOOGLESQL_RET_CHECK_OK(dml_test_table_with_gen_cols->SetPrimaryKey({0}));
+  AddOwnedTable(dml_test_table_with_gen_cols);
 
   auto c1_property_dcl = std::make_unique<SimpleGraphPropertyDeclaration>(
       "c1", property_graph_name_path, types_->get_int64());
@@ -8256,7 +8338,7 @@ SampleCatalogImpl::LoadAmlDmlNodeTables(
 
   auto id_gencol_ref = MakeResolvedCatalogColumnRef(
       types_->get_int64(),
-      insert_test_table_with_gen_cols->FindColumnByName("id"));
+      dml_test_table_with_gen_cols->FindColumnByName("id"));
   auto id_gencol_def =
       std::make_unique<SimpleGraphPropertyDefinition>(id_prop_dcl_raw, "id");
   InternalPropertyGraph::InternalSetResolvedExpr(id_gencol_def.get(),
@@ -8267,7 +8349,7 @@ SampleCatalogImpl::LoadAmlDmlNodeTables(
 
   auto c1_gencol_ref = MakeResolvedCatalogColumnRef(
       types_->get_int64(),
-      insert_test_table_with_gen_cols->FindColumnByName("c1"));
+      dml_test_table_with_gen_cols->FindColumnByName("c1"));
   auto c1_gencol_def = std::make_unique<SimpleGraphPropertyDefinition>(
       c1_property_dcl.get(), "c1");
   InternalPropertyGraph::InternalSetResolvedExpr(c1_gencol_def.get(),
@@ -8278,7 +8360,7 @@ SampleCatalogImpl::LoadAmlDmlNodeTables(
 
   auto gen_a_col_ref = MakeResolvedCatalogColumnRef(
       types_->get_int64(),
-      insert_test_table_with_gen_cols->FindColumnByName("gen_a"));
+      dml_test_table_with_gen_cols->FindColumnByName("gen_a"));
   auto gen_a_prop_def = std::make_unique<SimpleGraphPropertyDefinition>(
       gen_a_property_dcl.get(), "gen_a");
   InternalPropertyGraph::InternalSetResolvedExpr(gen_a_prop_def.get(),
@@ -8289,7 +8371,7 @@ SampleCatalogImpl::LoadAmlDmlNodeTables(
 
   auto gen_b_col_ref = MakeResolvedCatalogColumnRef(
       types_->get_int64(),
-      insert_test_table_with_gen_cols->FindColumnByName("gen_b"));
+      dml_test_table_with_gen_cols->FindColumnByName("gen_b"));
   auto gen_b_prop_def = std::make_unique<SimpleGraphPropertyDefinition>(
       gen_b_property_dcl.get(), "gen_b");
   InternalPropertyGraph::InternalSetResolvedExpr(gen_b_prop_def.get(),
@@ -8299,8 +8381,8 @@ SampleCatalogImpl::LoadAmlDmlNodeTables(
       std::move(gen_b_col_ref));
 
   auto node_table_with_gen_cols = std::make_unique<const SimpleGraphNodeTable>(
-      insert_test_table_with_gen_cols->Name(), property_graph_name_path,
-      insert_test_table_with_gen_cols, std::vector<int>{0},
+      dml_test_table_with_gen_cols->Name(), property_graph_name_path,
+      dml_test_table_with_gen_cols, std::vector<int>{0},
       absl::flat_hash_set<const GraphElementLabel*>{label_with_gen_cols.get()},
       std::move(property_defs_with_gen_cols));
 
@@ -8514,6 +8596,125 @@ absl::Status SampleCatalogImpl::LoadAmlDmlEdgeTables(
 
   labels.push_back(std::move(label_edge_no_endpoint_props));
   labels.push_back(std::move(label_edge_readonly_key));
+
+  // Edge tables referencing non-key column 'val' (index 1) of endpoint node
+  // tables, to test cases where the referenced node column ('val') is exposed
+  // as a property while the node table's element key column ('id', index 0)
+  // is or is not exposed as a property.
+  struct EdgeAndLabel {
+    std::unique_ptr<const SimpleGraphEdgeTable> edge;
+    std::unique_ptr<SimpleGraphElementLabel> label;
+  };
+
+  auto create_ref_val_edge_table =
+      [&](absl::string_view table_name, absl::string_view label_name,
+          const GraphNodeTable* src_node,
+          const GraphNodeTable* dst_node) -> absl::StatusOr<EdgeAndLabel> {
+    auto* table = new SimpleTable(
+        table_name,
+        {
+            new SimpleColumn(table_name, "txnId", types_->get_int64(),
+                             {.is_writable_column = true}),
+            new SimpleColumn(table_name, "src_val", types_->get_string(),
+                             {.is_writable_column = true}),
+            new SimpleColumn(table_name, "dst_val", types_->get_string(),
+                             {.is_writable_column = true}),
+        },
+        /*take_ownership=*/true);
+    GOOGLESQL_RET_CHECK_OK(table->SetPrimaryKey({0}));
+    AddOwnedTable(table);
+
+    auto label = std::make_unique<SimpleGraphElementLabel>(
+        label_name, property_graph_name_path,
+        absl::flat_hash_set<const GraphPropertyDeclaration*>{id_prop_dcl_raw});
+
+    std::vector<std::unique_ptr<const GraphPropertyDefinition>> props;
+    auto txn_ref = MakeResolvedCatalogColumnRef(
+        types_->get_int64(), table->FindColumnByName("txnId"));
+    auto txn_def = std::make_unique<SimpleGraphPropertyDefinition>(
+        id_prop_dcl_raw, "txnId");
+    InternalPropertyGraph::InternalSetResolvedExpr(txn_def.get(),
+                                                   txn_ref.get());
+    props.push_back(std::move(txn_def));
+    owned_resolved_graph_property_definitions_.push_back(std::move(txn_ref));
+
+    auto edge = std::make_unique<const SimpleGraphEdgeTable>(
+        table->Name(), property_graph_name_path, table, std::vector<int>{0},
+        absl::flat_hash_set<const GraphElementLabel*>{label.get()},
+        std::move(props),
+        std::make_unique<const SimpleGraphNodeTableReference>(
+            src_node, std::vector<int>{1}, std::vector<int>{1}),
+        std::make_unique<const SimpleGraphNodeTableReference>(
+            dst_node, std::vector<int>{2}, std::vector<int>{1}));
+    return EdgeAndLabel{.edge = std::move(edge), .label = std::move(label)};
+  };
+
+  for (const auto& [table_name, label_name, src, dst] : {
+           std::tuple{"EdgeRefValFromNoKeyPropTable", "EdgeRefValFromNoKeyProp",
+                      node_tables_ref.node_table_no_key_prop,
+                      node_tables_ref.node_table},
+           std::tuple{"EdgeRefValToNoKeyPropTable", "EdgeRefValToNoKeyProp",
+                      node_tables_ref.node_table,
+                      node_tables_ref.node_table_no_key_prop},
+           std::tuple{"EdgeRefValTable", "EdgeRefVal",
+                      node_tables_ref.node_table, node_tables_ref.node_table},
+       }) {
+    GOOGLESQL_ASSIGN_OR_RETURN(
+        EdgeAndLabel edge_and_label,
+        create_ref_val_edge_table(table_name, label_name, src, dst));
+    edge_tables.push_back(std::move(edge_and_label.edge));
+    labels.push_back(std::move(edge_and_label.label));
+  }
+
+  // EdgeSharedEndpointKeyTable (source and destination keys share underlying
+  // edge table column 'shared_id').
+  auto* edge_shared_endpoint_key_table = new SimpleTable(
+      "EdgeSharedEndpointKeyTable",
+      {
+          new SimpleColumn("EdgeSharedEndpointKeyTable", "txnId",
+                           types_->get_int64(), {.is_writable_column = true}),
+          new SimpleColumn("EdgeSharedEndpointKeyTable", "shared_id",
+                           types_->get_int64(), {.is_writable_column = true}),
+      },
+      /*take_ownership=*/true);
+  GOOGLESQL_RET_CHECK_OK(edge_shared_endpoint_key_table->SetPrimaryKey({0}));
+  AddOwnedTable(edge_shared_endpoint_key_table);
+
+  auto label_edge_shared_endpoint_key =
+      std::make_unique<SimpleGraphElementLabel>(
+          "EdgeSharedEndpointKey", property_graph_name_path,
+          absl::flat_hash_set<const GraphPropertyDeclaration*>{
+              id_prop_dcl_raw});
+
+  std::vector<std::unique_ptr<const GraphPropertyDefinition>>
+      edge_shared_endpoint_key_props;
+  auto e_shared_txn_ref = MakeResolvedCatalogColumnRef(
+      types_->get_int64(),
+      edge_shared_endpoint_key_table->FindColumnByName("txnId"));
+  auto e_shared_txn_def =
+      std::make_unique<SimpleGraphPropertyDefinition>(id_prop_dcl_raw, "txnId");
+  InternalPropertyGraph::InternalSetResolvedExpr(e_shared_txn_def.get(),
+                                                 e_shared_txn_ref.get());
+  edge_shared_endpoint_key_props.push_back(std::move(e_shared_txn_def));
+  owned_resolved_graph_property_definitions_.push_back(
+      std::move(e_shared_txn_ref));
+
+  auto edge_shared_endpoint_key_edge_table =
+      std::make_unique<const SimpleGraphEdgeTable>(
+          edge_shared_endpoint_key_table->Name(), property_graph_name_path,
+          edge_shared_endpoint_key_table, std::vector<int>{0},
+          absl::flat_hash_set<const GraphElementLabel*>{
+              label_edge_shared_endpoint_key.get()},
+          std::move(edge_shared_endpoint_key_props),
+          std::make_unique<const SimpleGraphNodeTableReference>(
+              node_tables_ref.node_table, std::vector<int>{1},
+              std::vector<int>{0}),
+          std::make_unique<const SimpleGraphNodeTableReference>(
+              node_tables_ref.node_table, std::vector<int>{1},
+              std::vector<int>{0}));
+
+  edge_tables.push_back(std::move(edge_shared_endpoint_key_edge_table));
+  labels.push_back(std::move(label_edge_shared_endpoint_key));
 
   property_dcls.push_back(std::move(edge_src_property_dcl));
   property_dcls.push_back(std::move(edge_dst_property_dcl));
@@ -9749,6 +9950,151 @@ SampleCatalogImpl::LoadPropertyGraphWithReadOnlyDynamicProperties() {
       property_graph_name_path, std::move(node_tables), std::move(edge_tables),
       std::move(labels), std::move(properties));
 
+  catalog_->AddOwnedPropertyGraph(std::move(property_graph));
+  return absl::OkStatus();
+}
+
+absl::Status
+SampleCatalogImpl::LoadPropertyGraphWithMixedDynamicAndStaticTables() {
+  const std::vector<std::string> property_graph_name_path{"aml_dynamic_mixed"};
+
+  const Table* dynamic_node = nullptr;
+  const Table* person = nullptr;
+  GOOGLESQL_RET_CHECK_OK(catalog_->FindTable({"DynamicGraphNode"}, &dynamic_node));
+  GOOGLESQL_RET_CHECK_OK(catalog_->FindTable({"Person"}, &person));
+
+  // Property declarations.
+  auto id_property_dcl = std::make_unique<SimpleGraphPropertyDeclaration>(
+      "id", property_graph_name_path, types_->get_int64());
+  auto code_property_dcl = std::make_unique<SimpleGraphPropertyDeclaration>(
+      "code", property_graph_name_path, types_->get_int64());
+  auto name_property_dcl = std::make_unique<SimpleGraphPropertyDeclaration>(
+      "name", property_graph_name_path, types_->get_string());
+  auto node_json_prop_property_dcl =
+      std::make_unique<SimpleGraphPropertyDeclaration>(
+          "nodeJsonProp", property_graph_name_path, types_->get_json());
+
+  // Labels.
+  auto dynamic_node_label_dcl = std::make_unique<SimpleGraphElementLabel>(
+      "DynamicGraphNode", property_graph_name_path,
+      absl::flat_hash_set<const GraphPropertyDeclaration*>{
+          id_property_dcl.get(), code_property_dcl.get(),
+          name_property_dcl.get(), node_json_prop_property_dcl.get()});
+  auto entity_label_dcl = std::make_unique<SimpleGraphElementLabel>(
+      "Entity", property_graph_name_path,
+      absl::flat_hash_set<const GraphPropertyDeclaration*>{
+          code_property_dcl.get(), name_property_dcl.get()});
+  auto person_label_dcl = std::make_unique<SimpleGraphElementLabel>(
+      "Person", property_graph_name_path,
+      absl::flat_hash_set<const GraphPropertyDeclaration*>{
+          id_property_dcl.get(), name_property_dcl.get()});
+
+  // DynamicGraphNode node table (dynamic properties, static labels only).
+  std::vector<std::unique_ptr<const GraphPropertyDefinition>>
+      property_defs_dynamic_node;
+
+  auto dyn_node_id_col_ref = MakeResolvedCatalogColumnRef(
+      types_->get_int64(), dynamic_node->FindColumnByName("id"));
+  auto dyn_node_id_prop_def = std::make_unique<SimpleGraphPropertyDefinition>(
+      id_property_dcl.get(), "id");
+  InternalPropertyGraph::InternalSetResolvedExpr(dyn_node_id_prop_def.get(),
+                                                 dyn_node_id_col_ref.get());
+  property_defs_dynamic_node.push_back(std::move(dyn_node_id_prop_def));
+  owned_resolved_graph_property_definitions_.push_back(
+      std::move(dyn_node_id_col_ref));
+
+  auto dyn_node_code_col_ref = MakeResolvedCatalogColumnRef(
+      types_->get_int64(), dynamic_node->FindColumnByName("code"));
+  auto dyn_node_code_prop_def = std::make_unique<SimpleGraphPropertyDefinition>(
+      code_property_dcl.get(), "code");
+  InternalPropertyGraph::InternalSetResolvedExpr(dyn_node_code_prop_def.get(),
+                                                 dyn_node_code_col_ref.get());
+  property_defs_dynamic_node.push_back(std::move(dyn_node_code_prop_def));
+  owned_resolved_graph_property_definitions_.push_back(
+      std::move(dyn_node_code_col_ref));
+
+  auto dyn_node_name_col_ref = MakeResolvedCatalogColumnRef(
+      types_->get_string(), dynamic_node->FindColumnByName("nodeLabelCol"));
+  auto dyn_node_name_prop_def = std::make_unique<SimpleGraphPropertyDefinition>(
+      name_property_dcl.get(), "nodeLabelCol");
+  InternalPropertyGraph::InternalSetResolvedExpr(dyn_node_name_prop_def.get(),
+                                                 dyn_node_name_col_ref.get());
+  property_defs_dynamic_node.push_back(std::move(dyn_node_name_prop_def));
+  owned_resolved_graph_property_definitions_.push_back(
+      std::move(dyn_node_name_col_ref));
+
+  auto dyn_node_json_col_ref = MakeResolvedCatalogColumnRef(
+      types_->get_json(), dynamic_node->FindColumnByName("nodeJsonProp"));
+  const ResolvedExpr* dyn_node_json_col_ref_ptr = dyn_node_json_col_ref.get();
+  owned_resolved_graph_property_definitions_.push_back(
+      std::move(dyn_node_json_col_ref));
+  auto dyn_node_json_prop_def = std::make_unique<SimpleGraphPropertyDefinition>(
+      node_json_prop_property_dcl.get(), "nodeJsonProp");
+  InternalPropertyGraph::InternalSetResolvedExpr(dyn_node_json_prop_def.get(),
+                                                 dyn_node_json_col_ref_ptr);
+  property_defs_dynamic_node.push_back(std::move(dyn_node_json_prop_def));
+
+  auto dyn_node_dynamic_properties =
+      std::make_unique<SimpleGraphDynamicProperties>("nodeJsonProp");
+  InternalPropertyGraph::InternalSetResolvedExpr(
+      dyn_node_dynamic_properties.get(), dyn_node_json_col_ref_ptr);
+
+  auto dynamic_graph_node_table = std::make_unique<const SimpleGraphNodeTable>(
+      dynamic_node->Name(), property_graph_name_path, dynamic_node,
+      std::vector<int>{0},
+      absl::flat_hash_set<const GraphElementLabel*>{
+          dynamic_node_label_dcl.get(), entity_label_dcl.get()},
+      std::move(property_defs_dynamic_node), /*dynamic_label=*/nullptr,
+      std::move(dyn_node_dynamic_properties));
+
+  // Person node table (static properties and labels only).
+  std::vector<std::unique_ptr<const GraphPropertyDefinition>>
+      property_defs_person;
+
+  auto person_id_col_ref = MakeResolvedCatalogColumnRef(
+      types_->get_int64(), person->FindColumnByName("id"));
+  auto person_id_prop_def = std::make_unique<SimpleGraphPropertyDefinition>(
+      id_property_dcl.get(), "id");
+  InternalPropertyGraph::InternalSetResolvedExpr(person_id_prop_def.get(),
+                                                 person_id_col_ref.get());
+  property_defs_person.push_back(std::move(person_id_prop_def));
+  owned_resolved_graph_property_definitions_.push_back(
+      std::move(person_id_col_ref));
+
+  auto person_name_col_ref = MakeResolvedCatalogColumnRef(
+      types_->get_string(), person->FindColumnByName("name"));
+  auto person_name_prop_def = std::make_unique<SimpleGraphPropertyDefinition>(
+      name_property_dcl.get(), "name");
+  InternalPropertyGraph::InternalSetResolvedExpr(person_name_prop_def.get(),
+                                                 person_name_col_ref.get());
+  property_defs_person.push_back(std::move(person_name_prop_def));
+  owned_resolved_graph_property_definitions_.push_back(
+      std::move(person_name_col_ref));
+
+  auto person_node_table = std::make_unique<const SimpleGraphNodeTable>(
+      person->Name(), property_graph_name_path, person, std::vector<int>{0},
+      absl::flat_hash_set<const GraphElementLabel*>{person_label_dcl.get()},
+      std::move(property_defs_person));
+
+  std::vector<std::unique_ptr<const GraphNodeTable>> node_tables;
+  node_tables.push_back(std::move(dynamic_graph_node_table));
+  node_tables.push_back(std::move(person_node_table));
+  std::vector<std::unique_ptr<const GraphEdgeTable>> edge_tables;
+
+  std::vector<std::unique_ptr<const GraphElementLabel>> labels;
+  labels.push_back(std::move(dynamic_node_label_dcl));
+  labels.push_back(std::move(entity_label_dcl));
+  labels.push_back(std::move(person_label_dcl));
+
+  std::vector<std::unique_ptr<const GraphPropertyDeclaration>> properties;
+  properties.push_back(std::move(id_property_dcl));
+  properties.push_back(std::move(code_property_dcl));
+  properties.push_back(std::move(name_property_dcl));
+  properties.push_back(std::move(node_json_prop_property_dcl));
+
+  auto property_graph = std::make_unique<SimplePropertyGraph>(
+      property_graph_name_path, std::move(node_tables), std::move(edge_tables),
+      std::move(labels), std::move(properties));
   catalog_->AddOwnedPropertyGraph(std::move(property_graph));
   return absl::OkStatus();
 }

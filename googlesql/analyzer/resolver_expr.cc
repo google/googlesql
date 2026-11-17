@@ -131,6 +131,7 @@
 #include "googlesql/resolved_ast/resolved_ast_builder.h"
 #include "googlesql/resolved_ast/resolved_ast_deep_copy_visitor.h"
 #include "googlesql/resolved_ast/resolved_ast_enums.pb.h"
+#include "googlesql/resolved_ast/resolved_ast_helper.h"
 #include "googlesql/resolved_ast/resolved_column.h"
 #include "googlesql/resolved_ast/resolved_node.h"
 #include "googlesql/resolved_ast/resolved_node_kind.pb.h"
@@ -146,6 +147,7 @@
 #include "absl/flags/flag.h"
 #include "absl/functional/any_invocable.h"
 #include "googlesql/base/check.h"
+#include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "googlesql/base/status_macros.h"
 #include "absl/status/statusor.h"
@@ -6621,10 +6623,9 @@ absl::Status ValidateMeasureTypeAggregateFunction(
 
 }  // namespace
 
-absl::Status Resolver::ResolveGroupingItem(
-    const ASTGroupingItem* group_by_modifier,
-    ExprResolutionInfo* expr_resolution_info,
-    std::unique_ptr<const ResolvedExpr>* resolved_group_by) {
+absl::StatusOr<std::vector<std::unique_ptr<const ResolvedExpr>>>
+Resolver::ResolveGroupingItem(const ASTGroupingItem* group_by_modifier,
+                              ExprResolutionInfo* expr_resolution_info) {
   GOOGLESQL_RET_CHECK_NE(group_by_modifier, nullptr);
   GOOGLESQL_RET_CHECK_NE(group_by_modifier->expression(), nullptr);
   GOOGLESQL_RET_CHECK_EQ(group_by_modifier->rollup(), nullptr);
@@ -6632,34 +6633,57 @@ absl::Status Resolver::ResolveGroupingItem(
   GOOGLESQL_RET_CHECK_EQ(group_by_modifier->grouping_set_list(), nullptr);
   GOOGLESQL_RET_CHECK_EQ(group_by_modifier->grouping_item_order(), nullptr);
   GOOGLESQL_RET_CHECK_EQ(group_by_modifier->alias(), nullptr);
-  std::unique_ptr<const ResolvedExpr> resolved_group_by_expr;
-  GOOGLESQL_RETURN_IF_ERROR(ResolveExpr(group_by_modifier->expression(),
-                              expr_resolution_info, &resolved_group_by_expr));
 
-  std::string type_description;
-  if (!resolved_group_by_expr->type()->SupportsGrouping(language(),
-                                                        &type_description)) {
-    return MakeSqlErrorAt(group_by_modifier)
-           << "GROUP BY modifier has type " << type_description
-           << ", which is not groupable.";
+  std::vector<std::unique_ptr<const ResolvedExpr>> resolved_group_by_exprs;
+  const ASTExpression* ast_expr = group_by_modifier->expression();
+  if (ast_expr->Is<ASTUnpackExpression>()) {
+    // `**` expands to one grouping column per name it lists, as in a
+    // query-level GROUP BY.
+    const ASTUnpackExpression* unpack_expr =
+        ast_expr->GetAsOrDie<ASTUnpackExpression>();
+    GOOGLESQL_ASSIGN_OR_RETURN(
+        std::vector<IdString> column_names,
+        ResolveUnpackExpressionColumnNames(unpack_expr, expr_resolution_info));
+    for (const IdString& column_name : column_names) {
+      GOOGLESQL_ASSIGN_OR_RETURN(
+          ResolvedColumn column,
+          LookupUnpackColumn(column_name, unpack_expr->expression(),
+                             expr_resolution_info->name_scope));
+      resolved_group_by_exprs.push_back(MakeColumnRef(column));
+    }
+  } else {
+    std::unique_ptr<const ResolvedExpr> resolved_group_by_expr;
+    GOOGLESQL_RETURN_IF_ERROR(
+        ResolveExpr(ast_expr, expr_resolution_info, &resolved_group_by_expr));
+    resolved_group_by_exprs.push_back(std::move(resolved_group_by_expr));
   }
 
-  // TODO: Refactor ordinal checking logic into a shared method.
-  if (resolved_group_by_expr->node_kind() == RESOLVED_LITERAL &&
-      !resolved_group_by_expr->GetAs<ResolvedLiteral>()->has_explicit_type()) {
-    const Value& value =
-        resolved_group_by_expr->GetAs<ResolvedLiteral>()->value();
-    if (value.type_kind() == TYPE_INT64 && !value.is_null()) {
+  for (const std::unique_ptr<const ResolvedExpr>& resolved_group_by_expr :
+       resolved_group_by_exprs) {
+    std::string type_description;
+    if (!resolved_group_by_expr->type()->SupportsGrouping(language(),
+                                                          &type_description)) {
       return MakeSqlErrorAt(group_by_modifier)
-             << "GROUP BY modifiers cannot specify ordinals.";
-    } else {
-      return MakeSqlErrorAt(group_by_modifier)
-             << "GROUP BY modifiers cannot be literal values.";
+             << "GROUP BY modifier has type " << type_description
+             << ", which is not groupable.";
+    }
+
+    // TODO: Refactor ordinal checking logic into a shared method.
+    if (resolved_group_by_expr->node_kind() == RESOLVED_LITERAL &&
+        !resolved_group_by_expr->GetAs<ResolvedLiteral>()
+             ->has_explicit_type()) {
+      const Value& value =
+          resolved_group_by_expr->GetAs<ResolvedLiteral>()->value();
+      if (value.type_kind() == TYPE_INT64 && !value.is_null()) {
+        return MakeSqlErrorAt(group_by_modifier)
+               << "GROUP BY modifiers cannot specify ordinals.";
+      } else {
+        return MakeSqlErrorAt(group_by_modifier)
+               << "GROUP BY modifiers cannot be literal values.";
+      }
     }
   }
-
-  *resolved_group_by = std::move(resolved_group_by_expr);
-  return absl::OkStatus();
+  return resolved_group_by_exprs;
 }
 
 absl::Status Resolver::ResolveAggregateFunctionCallFirstPass(
@@ -6973,24 +6997,8 @@ absl::Status Resolver::LookupFunctionWithChainedCallErrors(
           *error_mode = ResolvedFunctionCallBase::DEFAULT_ERROR_MODE;
         }
 
-        // Check if we've already created a proxy function for this argument.
-        for (const auto& func : generated_functions_) {
-          if (func->Name() == arg_details->name.ToString()) {
-            *function = func.get();
-            return absl::OkStatus();
-          }
-        }
-
-        // Create a FunctionTypedParameter for this lambda argument.
-        std::vector<FunctionSignature> signatures;
-        signatures.push_back(
-            FunctionSignature(arg_details->arg_type.lambda().body_type(),
-                              arg_details->arg_type.lambda().argument_types(),
-                              /*context_id=*/-1));
-        auto generated_function = std::make_unique<FunctionTypedParameter>(
-            arg_details->name.ToString(), std::move(signatures));
-        *function = generated_function.get();
-        generated_functions_.push_back(std::move(generated_function));
+        GOOGLESQL_RET_CHECK(arg_details->proxy_function != nullptr);
+        *function = arg_details->proxy_function;
         return absl::OkStatus();
       }
     }
@@ -7225,8 +7233,8 @@ absl::Status Resolver::ResolveFunctionCall(
                                  expr_resolution_info, resolved_expr_out);
 }
 
-// Validates that no named lambda arguments are provided for aggregate and
-// window function calls.
+// Validates that no named lambda or FUNCTION reference arguments are provided
+// for aggregate and window function calls.
 static absl::Status ValidateNamedLambdas(
     const Function* function,
     const absl::Span<const ASTExpression* const> function_arguments) {
@@ -7236,7 +7244,11 @@ static absl::Status ValidateNamedLambdas(
   }
   auto first_named_lambda =
       std::find_if(function_arguments.begin(), function_arguments.end(),
-                   [](const ASTExpression* arg) { return IsNamedLambda(arg); });
+                   [](const ASTExpression* arg) {
+                     return arg->Is<ASTNamedArgument>() &&
+                            IsLambdaOrFunctionRef(
+                                arg->GetAsOrDie<ASTNamedArgument>()->expr());
+                   });
   if (first_named_lambda == function_arguments.end()) {
     return absl::OkStatus();
   }
@@ -8828,11 +8840,135 @@ Resolver::ResolveBracedConstructorLhs(
   return result;
 }
 
+namespace {
+
+// Owns the ExprResolutionInfo used to resolve update values of an UPDATE
+// constructor ((broken link)), and the NameScopes it points
+// to. The scopes must outlive the ExprResolutionInfo, so they are owned here,
+// and the object is kept at a stable address.
+class UpdateConstructorResolutionInfo {
+ public:
+  // For the update values of an UPDATE constructor: makes the object being
+  // updated, `update_element_column`, visible as `name` if it has one, and each
+  // of its fields visible unqualified. These names hide same-named names from
+  // the enclosing scope.
+  static absl::StatusOr<std::unique_ptr<UpdateConstructorResolutionInfo>>
+  CreateForProto(ExprResolutionInfo* parent,
+                 const ResolvedColumn& update_element_column, IdString name,
+                 IdStringPool* id_string_pool) {
+    IdStringHashMapCase<NameTarget> name_targets;
+    const google::protobuf::Descriptor* descriptor =
+        update_element_column.type()->AsProto()->descriptor();
+    for (int i = 0; i < descriptor->field_count(); ++i) {
+      const google::protobuf::FieldDescriptor* field = descriptor->field(i);
+      const NameTarget target(update_element_column, field->number());
+      name_targets[id_string_pool->Make(field->name())] = target;
+      // `o.has_<field>` reads whether a field is set, so `has_<field>` is
+      // visible unqualified too, as for the fields of a value table. It
+      // resolves like `o.has_<field>`, including its errors, e.g. for a
+      // repeated field.
+      name_targets[id_string_pool->Make(absl::StrCat("has_", field->name()))] =
+          target;
+    }
+    // The object is visible by name only if it has one: an explicit alias, or
+    // the name inferred from the input like the implicit alias of a SELECT-list
+    // item (the last identifier of a path expression). An input like
+    // `UPDATE(F(x))` has no name, so only its fields are visible. The name is
+    // added after the fields so that it hides a same-named field.
+    if (!name.empty()) {
+      name_targets[name] =
+          NameTarget(update_element_column, /*is_explicit=*/true);
+    }
+    return Create(parent, update_element_column, name_targets);
+  }
+
+  // For the update value of one item: makes the field being updated,
+  // `update_item_column`, visible as `field_name`, hiding same-named names
+  // from the enclosing scope.
+  static absl::StatusOr<std::unique_ptr<UpdateConstructorResolutionInfo>>
+  CreateForField(ExprResolutionInfo* parent,
+                 const ResolvedColumn& update_item_column,
+                 IdString field_name) {
+    GOOGLESQL_RET_CHECK(!field_name.empty());
+    IdStringHashMapCase<NameTarget> name_targets;
+    name_targets[field_name] =
+        NameTarget(update_item_column, /*is_explicit=*/true);
+    return Create(parent, update_item_column, name_targets);
+  }
+
+  // The ExprResolutionInfo points at this object, which therefore must not
+  // move.
+  UpdateConstructorResolutionInfo(const UpdateConstructorResolutionInfo&) =
+      delete;
+  UpdateConstructorResolutionInfo& operator=(
+      const UpdateConstructorResolutionInfo&) = delete;
+
+  ExprResolutionInfo* get() { return &resolution_info_.value(); }
+
+ private:
+  UpdateConstructorResolutionInfo() = default;
+
+  // Makes `name_targets`, which all point at `column`, visible in a scope
+  // nested in `parent`'s, and makes them access errors in the arguments of
+  // aggregate and analytic function calls.
+  static absl::StatusOr<std::unique_ptr<UpdateConstructorResolutionInfo>>
+  Create(ExprResolutionInfo* parent, const ResolvedColumn& column,
+         const IdStringHashMapCase<NameTarget>& name_targets) {
+    auto info = absl::WrapUnique(new UpdateConstructorResolutionInfo());
+    GOOGLESQL_RETURN_IF_ERROR(parent->name_scope->CopyNameScopeWithOverridingNameTargets(
+        name_targets, &info->name_scope_));
+
+    // An aggregate or analytic function call in an update value is computed
+    // outside the UPDATE constructor, where the names it introduces do not
+    // exist. Make those names access errors in the scopes used for the
+    // arguments of such a call, rather than letting them resolve to a
+    // same-named name from the enclosing scope. ResolveWithExpr() does the
+    // same for the names a WITH expression introduces.
+    IdStringHashMapCase<NameTarget> disallowed_access_targets;
+    for (const auto& [name, unused_target] : name_targets) {
+      NameTarget target(column, /*is_explicit=*/true);
+      target.SetAccessError(
+          target.kind(),
+          absl::StrCat("Name '", name.ToStringView(),
+                       "' is introduced by the UPDATE constructor. Names "
+                       "introduced by the UPDATE constructor cannot be used "
+                       "in the arguments to aggregate or analytic functions"));
+      disallowed_access_targets[name] = std::move(target);
+    }
+    if (parent->aggregate_name_scope != nullptr) {
+      GOOGLESQL_RETURN_IF_ERROR(
+          parent->aggregate_name_scope->CopyNameScopeWithOverridingNameTargets(
+              disallowed_access_targets, &info->aggregate_name_scope_));
+    }
+    if (parent->analytic_name_scope != nullptr) {
+      GOOGLESQL_RETURN_IF_ERROR(
+          parent->analytic_name_scope->CopyNameScopeWithOverridingNameTargets(
+              disallowed_access_targets, &info->analytic_name_scope_));
+    }
+
+    info->resolution_info_.emplace(
+        parent, ExprResolutionInfoOptions{
+                    .name_scope = info->name_scope_.get(),
+                    .aggregate_name_scope = info->aggregate_name_scope_.get(),
+                    .analytic_name_scope = info->analytic_name_scope_.get(),
+                    .allow_new_scopes = true,
+                });
+    return info;
+  }
+
+  // Declared before `resolution_info_` so that they outlive it.
+  std::unique_ptr<NameScope> name_scope_;
+  std::unique_ptr<NameScope> aggregate_name_scope_;
+  std::unique_ptr<NameScope> analytic_name_scope_;
+  std::optional<ExprResolutionInfo> resolution_info_;
+};
+
+}  // namespace
+
 absl::StatusOr<Resolver::ResolvedBuildProtoArg>
 Resolver::ResolveBracedConstructorField(
     const ASTBracedConstructorField* ast_braced_constructor_field,
-    const ProtoType* parent_type, int field_index, bool allow_field_paths,
-    const ResolvedExpr* update_constructor_expr_to_modify,
+    const ProtoType* parent_type, int field_index, bool in_update_constructor,
     ExprResolutionInfo* expr_resolution_info) {
   RETURN_ERROR_IF_OUT_OF_STACK_SPACE();
 
@@ -8840,7 +8976,7 @@ Resolver::ResolveBracedConstructorField(
       ast_braced_constructor_field->braced_constructor_lhs();
   // Non-colon operators (like '*:' or '?:') represent update semantics
   // and are not allowed in standard initialization contexts (e.g., NEW).
-  if (update_constructor_expr_to_modify == nullptr) {
+  if (!in_update_constructor) {
     if (braced_constructor_lhs->operation() !=
         ASTBracedConstructorLhs::UPDATE_SINGLE) {
       return MakeSqlErrorAt(braced_constructor_lhs)
@@ -8858,7 +8994,8 @@ Resolver::ResolveBracedConstructorField(
                      << " does not specify field name/extension path. "
                      << "This should be a parser error.";
   }
-  if (!allow_field_paths && field_descriptor_path.size() > 1) {
+  // Field paths are only allowed in an UPDATE constructor.
+  if (!in_update_constructor && field_descriptor_path.size() > 1) {
     return MakeSqlErrorAt(field.location)
            << "Braced constructor supports only singular field paths, "
            << "nested paths should use additional sets of braces";
@@ -8882,6 +9019,34 @@ Resolver::ResolveBracedConstructorField(
   GOOGLESQL_RET_CHECK(ast_braced_constructor_field->value()->expression());
   const ASTExpression* field_value =
       ast_braced_constructor_field->value()->expression();
+
+  // Inside an UPDATE constructor, `update_item_column` holds the value that
+  // the field being updated has before the update, whichever operator was
+  // used: the element currently being updated for `*:`, and the single
+  // original value at the field path for `:` and `?:`.
+  //
+  // Name scoping ((broken link)): while resolving the update
+  // value, the name of the field being updated resolves to that column, hiding
+  // any other name with that name. Extensions do not introduce a name.
+  ResolvedColumn update_item_column;
+  std::unique_ptr<UpdateConstructorResolutionInfo> item_resolution_info;
+  ExprResolutionInfo* field_value_resolution_info = expr_resolution_info;
+  IdString field_name;
+  if (in_update_constructor) {
+    update_item_column =
+        ResolvedColumn(AllocateColumnId(), MakeIdString("$update_constructor"),
+                       MakeIdString("update_item_column"),
+                       AnnotatedType(lhs_type, /*annotation_map=*/nullptr));
+    if (!leaf_field_descriptor->is_extension()) {
+      field_name = MakeIdString(leaf_field_descriptor->name());
+      GOOGLESQL_ASSIGN_OR_RETURN(
+          item_resolution_info,
+          UpdateConstructorResolutionInfo::CreateForField(
+              expr_resolution_info, update_item_column, field_name));
+      field_value_resolution_info = item_resolution_info->get();
+    }
+  }
+
   // If we are in an update and we have a braced constructor as the value we
   // interpret it as an update constructor i.e.
   //
@@ -8892,135 +9057,48 @@ Resolver::ResolveBracedConstructorField(
   // is interpreted as:
   // UPDATE (x) {
   //   a: 3
-  //   b: UPDATE(x.b) { c: 4 }
+  //   b: UPDATE(b) { c: 4 }
   // }
+  // where `b` is the value of `x.b` before the update.
   //
   // We do this check here because we want only immediate children to be
   // converted to UPDATE. For example in UPDATE (x) { a: [{c: 4}] }, the inner
   // braced constructor should not be converted to UPDATE.
   std::unique_ptr<const ResolvedExpr> expr;
-  if (update_constructor_expr_to_modify != nullptr &&
+  if (in_update_constructor &&
       field_value->node_kind() == AST_BRACED_CONSTRUCTOR) {
-    auto path_expr = braced_constructor_lhs->key_expr()
-                         ->GetAsOrNull<ASTGeneralizedPathExpression>();
-    GOOGLESQL_RET_CHECK(path_expr != nullptr);
-    ResolvedColumn update_element_column =
-        ResolvedColumn(AllocateColumnId(), MakeIdString("$update_constructor"),
-                       MakeIdString("update_element_column"),
-                       AnnotatedType(lhs_type, /*annotation_map=*/nullptr));
-    std::unique_ptr<const ResolvedExpr> proto_expr;
-    if (braced_constructor_lhs->operation() ==
-        ASTBracedConstructorLhs::UPDATE_MANY) {
-      // For repeated field updates (the `*:` operator), the update applies to
-      // each individual element of the repeated field. We use a ColumnRef
-      // representing the repeated field's element type so that nested path
-      // accesses check against the element type rather than the container type.
-      // E.g. in `arr *: { field: x }` where `arr` is a repeated field of
-      // protos, the nested `{ field: x }` resolves against the repeated field's
-      // element type.
-      proto_expr = MakeColumnRef(update_element_column);
-    } else {
-      // For standard updates (the `:` operator), which can apply to all
-      // field types (replacing the value as a whole), we resolve the field path
-      // directly. Since this operation does not traverse into elements of a
-      // repeated field, we can resolve it without flattening.
-      GOOGLESQL_ASSIGN_OR_RETURN(proto_expr, ResolveProtoFieldAccess(
-                                       *update_constructor_expr_to_modify,
-                                       field_value->location(), *path_expr,
-                                       &expr_resolution_info->flatten_state));
-    }
+    // The nested UPDATE constructor modifies the value held by
+    // `update_item_column`. For `*:` on a repeated field, that is a single
+    // element, so the nested fields are resolved against the element type
+    // rather than the array type.
     GOOGLESQL_ASSIGN_OR_RETURN(expr, ResolveBracedConstructorInUpdateContext(
-                               *field_value, std::move(proto_expr),
-                               /*alias=*/"",
+                               *field_value, MakeColumnRef(update_item_column),
+                               /*alias=*/"", field_name,
                                *field_value->GetAsOrDie<ASTBracedConstructor>(),
-                               update_element_column, expr_resolution_info));
+                               field_value_resolution_info));
   } else {
     GOOGLESQL_RETURN_IF_ERROR(
-        ResolveExpr(field_value, expr_resolution_info, &expr, lhs_type));
+        ResolveExpr(field_value, field_value_resolution_info, &expr, lhs_type));
+  }
+
+  // Drop the column again if the update value does not read it, so that
+  // ResolvedUpdateFieldItem.update_item_column is set only when the item's
+  // `expr` references it. Engines then only have to materialize the pre-update
+  // value for the items that use it.
+  if (update_item_column.IsInitialized()) {
+    GOOGLESQL_ASSIGN_OR_RETURN(
+        const absl::flat_hash_set<const ResolvedColumnRef*> free_column_refs,
+        CollectFreeColumnRefs(*expr));
+    if (!absl::c_any_of(free_column_refs,
+                        [&update_item_column](const ResolvedColumnRef* ref) {
+                          return ref->column() == update_item_column;
+                        })) {
+      update_item_column = ResolvedColumn();
+    }
   }
 
   return ResolvedBuildProtoArg(field.location, std::move(expr), lhs_type,
-                               field_descriptor_path);
-}
-
-// TODO: The noinline attribute is to prevent the stack usage
-// being added to its caller "Resolver::ResolveExpr" which is a recursive
-// function. Now the attribute has to be added for all callees. Hopefully
-// the fix allows replacing these with one attribute on ResolveExpr.
-ABSL_ATTRIBUTE_NOINLINE
-absl::StatusOr<std::unique_ptr<const ResolvedExpr>>
-Resolver::ResolveProtoFieldAccess(
-    const ResolvedExpr& resolved_base, const ParseLocationRange& parse_location,
-    const ASTGeneralizedPathExpression& generalized_path,
-    FlattenState* flatten_state) {
-  RETURN_ERROR_IF_OUT_OF_STACK_SPACE();
-
-  switch (generalized_path.node_kind()) {
-    case AST_PATH_EXPRESSION: {
-      const ASTPathExpression* path_expression =
-          generalized_path.GetAs<ASTPathExpression>();
-      ResolvedASTDeepCopyVisitor deep_copy_visitor;
-      GOOGLESQL_RETURN_IF_ERROR(resolved_base.Accept(&deep_copy_visitor));
-      std::unique_ptr<const ResolvedExpr> resolved_expr_out;
-      GOOGLESQL_ASSIGN_OR_RETURN(resolved_expr_out,
-                       deep_copy_visitor.ConsumeRootNode<ResolvedExpr>());
-      if (generalized_path.parenthesized()) {
-        GOOGLESQL_RETURN_IF_ERROR(ResolveExtensionFieldAccess(
-            std::move(resolved_expr_out), ResolveExtensionFieldOptions(),
-            path_expression, flatten_state, &resolved_expr_out));
-        return resolved_expr_out;
-      } else {
-        for (const ASTIdentifier* identifier : path_expression->names()) {
-          GOOGLESQL_RETURN_IF_ERROR(ResolveFieldAccess(
-              std::move(resolved_expr_out), parse_location, identifier,
-              flatten_state, &resolved_expr_out));
-        }
-      }
-      return resolved_expr_out;
-    }
-    case AST_DOT_IDENTIFIER: {
-      const ASTDotIdentifier* dot_identifier =
-          generalized_path.GetAs<ASTDotIdentifier>();
-      const ASTGeneralizedPathExpression* lhs =
-          dot_identifier->expr()->GetAsOrNull<ASTGeneralizedPathExpression>();
-      if (lhs == nullptr) {
-        return MakeSqlErrorAt(dot_identifier->expr())
-               << "Path expression expected, instead found: "
-               << dot_identifier->expr()->DebugString();
-      }
-
-      GOOGLESQL_ASSIGN_OR_RETURN(std::unique_ptr<const ResolvedExpr> resolved_expr_out,
-                       ResolveProtoFieldAccess(resolved_base, parse_location,
-                                               *lhs, flatten_state));
-      GOOGLESQL_RETURN_IF_ERROR(ResolveFieldAccess(std::move(resolved_expr_out),
-                                         parse_location, dot_identifier->name(),
-                                         flatten_state, &resolved_expr_out));
-      return resolved_expr_out;
-    }
-    case AST_DOT_GENERALIZED_FIELD: {
-      const ASTDotGeneralizedField* dot_generalized =
-          generalized_path.GetAs<ASTDotGeneralizedField>();
-      const ASTGeneralizedPathExpression* lhs =
-          dot_generalized->expr()->GetAsOrNull<ASTGeneralizedPathExpression>();
-      if (lhs == nullptr) {
-        return MakeSqlErrorAt(dot_generalized->expr())
-               << "Path expression expected, instead found: "
-               << dot_generalized->expr()->DebugString();
-      }
-
-      GOOGLESQL_ASSIGN_OR_RETURN(std::unique_ptr<const ResolvedExpr> resolved_expr_out,
-                       ResolveProtoFieldAccess(resolved_base, parse_location,
-                                               *lhs, flatten_state));
-      GOOGLESQL_RETURN_IF_ERROR(ResolveExtensionFieldAccess(
-          std::move(resolved_expr_out), ResolveExtensionFieldOptions(),
-          dot_generalized->path(), flatten_state, &resolved_expr_out));
-      return resolved_expr_out;
-    }
-    default:
-      return MakeSqlErrorAt(&generalized_path)
-             << "Unimplemented node type while resolving proto field path: "
-             << generalized_path.DebugString();
-  }
+                               field_descriptor_path, update_item_column);
 }
 
 // TODO: The noinline attribute is to prevent the stack usage
@@ -9152,12 +9230,11 @@ absl::Status Resolver::ResolveBracedConstructorForProto(
     const ASTBracedConstructorField* ast_field =
         ast_braced_constructor->fields(i);
 
-    GOOGLESQL_ASSIGN_OR_RETURN(ResolvedBuildProtoArg arg,
-                     ResolveBracedConstructorField(
-                         ast_field, inferred_type->AsProto(), i,
-                         /*allow_field_paths=*/false,
-                         /*update_constructor_expr_to_modify=*/nullptr,
-                         expr_resolution_info));
+    GOOGLESQL_ASSIGN_OR_RETURN(
+        ResolvedBuildProtoArg arg,
+        ResolveBracedConstructorField(ast_field, inferred_type->AsProto(), i,
+                                      /*in_update_constructor=*/false,
+                                      expr_resolution_info));
     resolved_build_proto_args.emplace_back(std::move(arg));
   }
 
@@ -9474,8 +9551,8 @@ ABSL_ATTRIBUTE_NOINLINE
 absl::StatusOr<std::unique_ptr<const ResolvedExpr>>
 Resolver::ResolveBracedConstructorInUpdateContext(
     const ASTNode& location, std::unique_ptr<const ResolvedExpr> expr_to_modify,
-    std::string alias, const ASTBracedConstructor& ast_braced_constructor,
-    const ResolvedColumn& update_element_column,
+    std::string alias, IdString name_in_scope,
+    const ASTBracedConstructor& ast_braced_constructor,
     ExprResolutionInfo* expr_resolution_info) {
   RETURN_ERROR_IF_OUT_OF_STACK_SPACE();
 
@@ -9497,15 +9574,32 @@ Resolver::ResolveBracedConstructorInUpdateContext(
     return std::move(expr_to_modify);
   }
 
+  // Name scoping ((broken link)): while resolving the update
+  // values, the object being updated is visible under `name_in_scope` and each
+  // of its fields is visible unqualified, all giving values from before the
+  // update. Those names hide same-named names from the enclosing scope, and
+  // `name_in_scope` hides a same-named field of the object, if any.
+  //
+  // `update_element_column` stands for the object being updated while the
+  // update values are resolved.
+  const ResolvedColumn update_element_column(
+      AllocateColumnId(), MakeIdString("$update_constructor"),
+      MakeIdString("update_element_column"), expr_to_modify->annotated_type());
+  GOOGLESQL_ASSIGN_OR_RETURN(
+      std::unique_ptr<UpdateConstructorResolutionInfo> element_resolution_info,
+      UpdateConstructorResolutionInfo::CreateForProto(
+          expr_resolution_info, update_element_column, name_in_scope,
+          id_string_pool_));
+
   for (int i = 0; i < ast_braced_constructor.fields().size(); ++i) {
     const ASTBracedConstructorField* ast_field =
         ast_braced_constructor.fields(i);
 
-    GOOGLESQL_ASSIGN_OR_RETURN(ResolvedBuildProtoArg arg,
-                     ResolveBracedConstructorField(
-                         ast_field, proto_type->AsProto(), i,
-                         /*allow_field_paths=*/true, expr_to_modify.get(),
-                         expr_resolution_info));
+    GOOGLESQL_ASSIGN_OR_RETURN(
+        ResolvedBuildProtoArg arg,
+        ResolveBracedConstructorField(ast_field, proto_type->AsProto(), i,
+                                      /*in_update_constructor=*/true,
+                                      element_resolution_info->get()));
     GOOGLESQL_RETURN_IF_ERROR(CoerceExprToType(
         ast_field->value()->expression(), arg.leaf_field_type,
         // Note: It appears like we need to create based on the
@@ -9566,15 +9660,19 @@ Resolver::ResolveBracedConstructorInUpdateContext(
     // type for standard updates). This handles implicit casting (e.g., int32 ->
     // int64) or
     // returns an error on mismatch.
-    // TODO: Implement namescoping for UPDATE constructors so that
-    // the RHS expression can reference fields from the target proto.
     GOOGLESQL_RETURN_IF_ERROR(CoerceExprToType(
         ast_field->value()->expression(), target_type, TypeModifiers(),
         kImplicitAssignment,
         "Cannot update field of type $0 with value of type $1", &arg.expr));
+    // `update_item_column` is set only if the update value reads the value the
+    // field has before the update.
+    std::unique_ptr<const ResolvedColumnHolder> update_item_column;
+    if (arg.update_item_column.IsInitialized()) {
+      update_item_column = MakeResolvedColumnHolder(arg.update_item_column);
+    }
     resolved_update_field_items.push_back(MakeResolvedUpdateFieldItem(
         std::move(arg.expr), arg.field_descriptor_path, operation,
-        /*update_item_column=*/nullptr));
+        std::move(update_item_column)));
   }
 
   return MakeResolvedUpdateConstructor(
@@ -9604,14 +9702,20 @@ absl::Status Resolver::ResolveUpdateConstructor(
       ast_update_constructor, expr_resolution_info, alias, expr_to_modify));
 
   GOOGLESQL_RET_CHECK(ast_update_constructor.braced_constructor());
-  ResolvedColumn update_element_column = ResolvedColumn(
-      AllocateColumnId(), MakeIdString("$update_constructor"),
-      MakeIdString("update_element_column"), expr_to_modify->annotated_type());
+  // The object being updated is visible under its alias. Without an alias, it
+  // is visible under the name inferred from the input, like the implicit alias
+  // of a SELECT-list item: the last identifier of a path expression.
+  IdString name_in_scope = MakeIdString(alias);
+  if (name_in_scope.empty()) {
+    GOOGLESQL_RET_CHECK_EQ(ast_update_constructor.function()->arguments().size(), 1);
+    name_in_scope =
+        GetAliasForExpression(ast_update_constructor.function()->arguments(0));
+  }
   GOOGLESQL_ASSIGN_OR_RETURN(
       *resolved_expr_out,
       ResolveBracedConstructorInUpdateContext(
           ast_update_constructor, std::move(expr_to_modify), std::move(alias),
-          *ast_update_constructor.braced_constructor(), update_element_column,
+          name_in_scope, *ast_update_constructor.braced_constructor(),
           expr_resolution_info));
   return absl::OkStatus();
 }
@@ -12850,29 +12954,44 @@ absl::Status Resolver::ResolveMultiLevelAggregateArguments(
               .allows_aggregation = false,
               .allows_analytic = false,
               .clause_name = "GROUP BY inside aggregate"});
+  int num_grouping_exprs = 0;
   for (const ASTGroupingItem* grouping_item :
        ast_function_call->group_by()->grouping_items()) {
-    std::unique_ptr<const ResolvedExpr> resolved_grouping_expr;
-    GOOGLESQL_RETURN_IF_ERROR(ResolveGroupingItem(
-        grouping_item, grouping_item_expr_resolution_info.get(),
-        &resolved_grouping_expr));
-    // If the GROUP BY modifier names an equivalent grouping expression already
-    // present in the `multi_level_aggregate_info`, then skip it.
-    if (multi_level_aggregate_info->GetEquivalentGroupByComputedColumnOrNull(
-            resolved_grouping_expr.get()) != nullptr) {
-      continue;
+    GOOGLESQL_ASSIGN_OR_RETURN(
+        std::vector<std::unique_ptr<const ResolvedExpr>>
+            resolved_grouping_exprs,
+        ResolveGroupingItem(grouping_item,
+                            grouping_item_expr_resolution_info.get()));
+    num_grouping_exprs += resolved_grouping_exprs.size();
+    for (std::unique_ptr<const ResolvedExpr>& resolved_grouping_expr :
+         resolved_grouping_exprs) {
+      // If the GROUP BY modifier names an equivalent grouping expression
+      // already present in the `multi_level_aggregate_info`, then skip it.
+      if (multi_level_aggregate_info->GetEquivalentGroupByComputedColumnOrNull(
+              resolved_grouping_expr.get()) != nullptr) {
+        continue;
+      }
+      ResolvedColumn column(AllocateColumnId(), MakeIdString("$group_by_list"),
+                            MakeIdString("$groupbymod"),
+                            resolved_grouping_expr->annotated_type());
+      update_query_resolution_info_with_valid_name_paths(
+          resolved_grouping_expr.get(), column,
+          multi_level_aggregate_info.get(), id_string_pool_);
+      // `override_existing_column` can be false since we check for equivalent
+      // columns above.
+      multi_level_aggregate_info->AddGroupByComputedColumnIfNeeded(
+          column, std::move(resolved_grouping_expr),
+          /*pre_group_by_expr=*/nullptr, /*override_existing_column=*/false);
     }
-    ResolvedColumn column(AllocateColumnId(), MakeIdString("$group_by_list"),
-                          MakeIdString("$groupbymod"),
-                          resolved_grouping_expr->annotated_type());
-    update_query_resolution_info_with_valid_name_paths(
-        resolved_grouping_expr.get(), column, multi_level_aggregate_info.get(),
-        id_string_pool_);
-    // `override_existing_column` can be false since we check for equivalent
-    // columns above.
-    multi_level_aggregate_info->AddGroupByComputedColumnIfNeeded(
-        column, std::move(resolved_grouping_expr),
-        /*pre_group_by_expr=*/nullptr, /*override_existing_column=*/false);
+  }
+  // `**` modifiers can expand to nothing. An empty grouping list is treated as
+  // `GROUP BY ()` elsewhere, which is not supported inside an aggregate
+  // function, so a GROUP BY with no modifiers left is an error rather than
+  // being dropped.
+  if (num_grouping_exprs == 0) {
+    return MakeSqlErrorAt(ast_function_call->group_by())
+           << "GROUP BY modifiers in an aggregate function would expand to "
+              "zero columns";
   }
 
   // Step 4: Construct a new Namescope indicating which columns can be accessed

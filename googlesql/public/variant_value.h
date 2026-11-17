@@ -33,7 +33,6 @@
 #include "absl/strings/string_view.h"
 
 namespace googlesql {
-
 namespace internal {
 
 // VariantValueAdapter adapts a googlesql::Value to the Variant data model
@@ -130,6 +129,21 @@ class VariantValueAdapter {
   // If the Variant represents the underlying value as a primitive, returns the
   // primitive value. Returns an error if the Variant is not a primitive.
   absl::StatusOr<Value> GetPrimitiveValue() const;
+
+  // Returns the unprojected GoogleSQL Type of the underlying value stored in
+  // this Variant before Object/Array projections are applied.
+  // Returns nullptr if !is_valid().
+  const Type* GetUnprojectedType() const;
+
+  // Returns the unprojected GoogleSQL Value stored in this Variant before
+  // Object/Array projections are applied:
+  // - If backed by a non-JSON GoogleSQL Value, returns that Value.
+  // - If backed by a validated JSON node, materializes and returns a TYPE_JSON
+  //   Value containing a copy of the JSON node.
+  // - If backed by an unparsed JSON string that failed parsing, re-parses it
+  //   and returns the parse error status.
+  // Requires is_valid() to be true.
+  absl::StatusOr<Value> GetUnprojectedValue() const;
 
   // If the Variant represents the underlying value as an object,
   // returns the keys of the object.

@@ -519,6 +519,24 @@ CREATE FUNCTION templated_udf(x ANY TYPE, p FUNCTION<INT64 -> BOOL>) AS (p(x));
 CreateFunctionStmt(name_path=templated_udf, return_type=STRUCT<>, argument_name_list=[x, p], signature=(ANY TYPE x, FUNCTION<INT64->BOOL> p) -> ANY TYPE, language="SQL", code="p(x)")
 ==
 
+# A second templated UDF with a FUNCTION parameter, used to test passing the
+# same lambda parameter to two different templated UDFs.
+[prepare_database=udf_db_templated]
+[language_features=NONE,+INLINE_LAMBDA_ARGUMENT,+UDF_LAMBDA_ARGUMENTS,+TEMPLATE_FUNCTIONS]
+CREATE FUNCTION other_templated_udf(x ANY TYPE, q FUNCTION<INT64 -> BOOL>) AS (NOT q(x));
+--
+CreateFunctionStmt(name_path=other_templated_udf, return_type=STRUCT<>, argument_name_list=[x, q], signature=(ANY TYPE x, FUNCTION<INT64->BOOL> q) -> ANY TYPE, language="SQL", code="NOT q(x)")
+==
+
+# A third templated UDF whose FUNCTION parameter has the same name `p` as the
+# one in `templated_udf`.
+[prepare_database=udf_db_templated]
+[language_features=NONE,+INLINE_LAMBDA_ARGUMENT,+UDF_LAMBDA_ARGUMENTS,+TEMPLATE_FUNCTIONS]
+CREATE FUNCTION negated_templated_udf(x ANY TYPE, p FUNCTION<INT64 -> BOOL>) AS (NOT p(x));
+--
+CreateFunctionStmt(name_path=negated_templated_udf, return_type=STRUCT<>, argument_name_list=[x, p], signature=(ANY TYPE x, FUNCTION<INT64->BOOL> p) -> ANY TYPE, language="SQL", code="NOT p(x)")
+==
+
 # Propagation to Templated UDF (Positive).
 [use_database=udf_db_templated]
 CREATE FUNCTION propagate_to_templated(f FUNCTION<INT64 -> BOOL>) AS (templated_udf(1, FUNCTION f));
@@ -538,6 +556,247 @@ CreateFunctionStmt
     +-FunctionArgument
       +-function_ref=
         +-FunctionRef(function=FUNCTION_TYPED_PARAMETER:f, signature=(INT64) -> BOOL)
+
+With Templated SQL function call:
+  Templated_SQL_Function:templated_udf(INT64 x, FUNCTION<INT64->BOOL> p) -> BOOL
+containing resolved templated expression:
+FunctionCall(FUNCTION_TYPED_PARAMETER:p(INT64) -> BOOL)
++-ArgumentRef(type=INT64, name="x")
+==
+
+# Calling `templated_udf` (whose second parameter is `p FUNCTION<INT64 -> BOOL>`)
+# resolves its templated body at call time. `p` should not be visible to
+# subsequent expressions in the outer query.
+[use_database=udf_db_templated]
+[language_features=NONE,+INLINE_LAMBDA_ARGUMENT,+UDF_LAMBDA_ARGUMENTS,+TEMPLATE_FUNCTIONS]
+SELECT templated_udf(1, y -> y > 0), ARRAY_FILTER([1, 2], FUNCTION p);
+--
+ERROR: No matching signature for function ARRAY_FILTER
+  Argument types: ARRAY<INT64>, LAMBDA
+  Signature: ARRAY_FILTER(ARRAY<T1>, FUNCTION<T1->BOOL>)
+    Argument 2: Argument 'p' does not refer to a function-typed parameter
+  Signature: ARRAY_FILTER(ARRAY<T1>, FUNCTION<(T1, INT64)->BOOL>)
+    Argument 2: Argument 'p' does not refer to a function-typed parameter [at 1:38]
+SELECT templated_udf(1, y -> y > 0), ARRAY_FILTER([1, 2], FUNCTION p);
+                                     ^
+==
+
+# `p` from `templated_udf` should not be visible in an enclosing UDF that has
+# no parameter named `p`.
+[use_database=udf_db_templated]
+[language_features=NONE,+INLINE_LAMBDA_ARGUMENT,+UDF_LAMBDA_ARGUMENTS,+TEMPLATE_FUNCTIONS]
+CREATE FUNCTION leak_into_zero_arg_udf() AS (
+  IF(templated_udf(1, y -> y > 0), ARRAY_FILTER([1, 2], FUNCTION p), [])
+);
+--
+ERROR: No matching signature for function ARRAY_FILTER
+  Argument types: ARRAY<INT64>, LAMBDA
+  Signature: ARRAY_FILTER(ARRAY<T1>, FUNCTION<T1->BOOL>)
+    Argument 2: Argument 'p' does not refer to a function-typed parameter
+  Signature: ARRAY_FILTER(ARRAY<T1>, FUNCTION<(T1, INT64)->BOOL>)
+    Argument 2: Argument 'p' does not refer to a function-typed parameter [at 2:36]
+  IF(templated_udf(1, y -> y > 0), ARRAY_FILTER([1, 2], FUNCTION p), [])
+                                   ^
+==
+
+# `p` from `templated_udf` should not be visible in an enclosing UDF where `p`
+# is a scalar parameter.
+[use_database=udf_db_templated]
+[language_features=NONE,+INLINE_LAMBDA_ARGUMENT,+UDF_LAMBDA_ARGUMENTS,+TEMPLATE_FUNCTIONS]
+CREATE FUNCTION leak_into_scalar_param_udf(p INT64) AS (
+  IF(templated_udf(p, y -> y > 0), ARRAY_FILTER([1, 2], FUNCTION p), [])
+);
+--
+ERROR: No matching signature for function ARRAY_FILTER
+  Argument types: ARRAY<INT64>, LAMBDA
+  Signature: ARRAY_FILTER(ARRAY<T1>, FUNCTION<T1->BOOL>)
+    Argument 2: Argument 'p' does not refer to a function-typed parameter
+  Signature: ARRAY_FILTER(ARRAY<T1>, FUNCTION<(T1, INT64)->BOOL>)
+    Argument 2: Argument 'p' does not refer to a function-typed parameter [at 2:36]
+  IF(templated_udf(p, y -> y > 0), ARRAY_FILTER([1, 2], FUNCTION p), [])
+                                   ^
+==
+
+# Passing the same lambda parameter to two different templated UDFs.
+[use_database=udf_db_templated]
+[language_features=NONE,+INLINE_LAMBDA_ARGUMENT,+UDF_LAMBDA_ARGUMENTS,+TEMPLATE_FUNCTIONS]
+CREATE FUNCTION pass_lambda_to_two_templated_udfs(f FUNCTION<INT64 -> BOOL>) AS (
+  templated_udf(1, FUNCTION f) AND other_templated_udf(2, FUNCTION f)
+);
+--
+CreateFunctionStmt
++-name_path=pass_lambda_to_two_templated_udfs
++-return_type=BOOL
++-argument_name_list=[f]
++-signature=(FUNCTION<INT64->BOOL> f) -> BOOL
++-language="SQL"
++-code="templated_udf(1, FUNCTION f) AND other_templated_udf(2, FUNCTION f)"
++-function_expression=
+  +-FunctionCall(GoogleSQL:$and(BOOL, repeated(1) BOOL) -> BOOL)
+    +-FunctionCall(Templated_SQL_Function:templated_udf(INT64 x, FUNCTION<INT64->BOOL> p) -> BOOL)
+    | +-FunctionArgument
+    | | +-expr=
+    | |   +-Literal(type=INT64, value=1)
+    | +-FunctionArgument
+    |   +-function_ref=
+    |     +-FunctionRef(function=FUNCTION_TYPED_PARAMETER:f, signature=(INT64) -> BOOL)
+    +-FunctionCall(Templated_SQL_Function:other_templated_udf(INT64 x, FUNCTION<INT64->BOOL> q) -> BOOL)
+      +-FunctionArgument
+      | +-expr=
+      |   +-Literal(type=INT64, value=2)
+      +-FunctionArgument
+        +-function_ref=
+          +-FunctionRef(function=FUNCTION_TYPED_PARAMETER:f, signature=(INT64) -> BOOL)
+
+With Templated SQL function call:
+  Templated_SQL_Function:templated_udf(INT64 x, FUNCTION<INT64->BOOL> p) -> BOOL
+containing resolved templated expression:
+FunctionCall(FUNCTION_TYPED_PARAMETER:p(INT64) -> BOOL)
++-ArgumentRef(type=INT64, name="x")
+
+With Templated SQL function call:
+  Templated_SQL_Function:other_templated_udf(INT64 x, FUNCTION<INT64->BOOL> q) -> BOOL
+containing resolved templated expression:
+FunctionCall(GoogleSQL:$not(BOOL) -> BOOL)
++-FunctionCall(FUNCTION_TYPED_PARAMETER:q(INT64) -> BOOL)
+  +-ArgumentRef(type=INT64, name="x")
+==
+
+# Passing the same lambda parameter to two different templated UDFs, where the
+# enclosing UDF and both templated UDFs all name their FUNCTION parameter `p`.
+# Both `FUNCTION p` references resolve to the enclosing UDF's parameter.
+[use_database=udf_db_templated]
+[language_features=NONE,+INLINE_LAMBDA_ARGUMENT,+UDF_LAMBDA_ARGUMENTS,+TEMPLATE_FUNCTIONS]
+CREATE FUNCTION pass_same_named_lambda_to_two_templated_udfs(p FUNCTION<INT64 -> BOOL>) AS (
+  templated_udf(1, FUNCTION p) AND negated_templated_udf(2, FUNCTION p)
+);
+--
+CreateFunctionStmt
++-name_path=pass_same_named_lambda_to_two_templated_udfs
++-return_type=BOOL
++-argument_name_list=[p]
++-signature=(FUNCTION<INT64->BOOL> p) -> BOOL
++-language="SQL"
++-code="templated_udf(1, FUNCTION p) AND negated_templated_udf(2, FUNCTION p)"
++-function_expression=
+  +-FunctionCall(GoogleSQL:$and(BOOL, repeated(1) BOOL) -> BOOL)
+    +-FunctionCall(Templated_SQL_Function:templated_udf(INT64 x, FUNCTION<INT64->BOOL> p) -> BOOL)
+    | +-FunctionArgument
+    | | +-expr=
+    | |   +-Literal(type=INT64, value=1)
+    | +-FunctionArgument
+    |   +-function_ref=
+    |     +-FunctionRef(function=FUNCTION_TYPED_PARAMETER:p, signature=(INT64) -> BOOL)
+    +-FunctionCall(Templated_SQL_Function:negated_templated_udf(INT64 x, FUNCTION<INT64->BOOL> p) -> BOOL)
+      +-FunctionArgument
+      | +-expr=
+      |   +-Literal(type=INT64, value=2)
+      +-FunctionArgument
+        +-function_ref=
+          +-FunctionRef(function=FUNCTION_TYPED_PARAMETER:p, signature=(INT64) -> BOOL)
+
+With Templated SQL function call:
+  Templated_SQL_Function:templated_udf(INT64 x, FUNCTION<INT64->BOOL> p) -> BOOL
+containing resolved templated expression:
+FunctionCall(FUNCTION_TYPED_PARAMETER:p(INT64) -> BOOL)
++-ArgumentRef(type=INT64, name="x")
+
+With Templated SQL function call:
+  Templated_SQL_Function:negated_templated_udf(INT64 x, FUNCTION<INT64->BOOL> p) -> BOOL
+containing resolved templated expression:
+FunctionCall(GoogleSQL:$not(BOOL) -> BOOL)
++-FunctionCall(FUNCTION_TYPED_PARAMETER:p(INT64) -> BOOL)
+  +-ArgumentRef(type=INT64, name="x")
+==
+
+# Calling a templated UDF with a FUNCTION parameter named 'p' inside an
+# enclosing UDF with its own FUNCTION parameter named 'p'. References to 'p'
+# after the call resolve to the enclosing UDF's parameter.
+[use_database=udf_db_templated]
+[language_features=NONE,+INLINE_LAMBDA_ARGUMENT,+UDF_LAMBDA_ARGUMENTS,+TEMPLATE_FUNCTIONS]
+CREATE FUNCTION outer_udf_same_param_name(p FUNCTION<STRING -> STRING>) AS (
+  IF(templated_udf(1, y -> y > 0), ARRAY_TRANSFORM(['a', 'b'], FUNCTION p), [])
+);
+--
+CreateFunctionStmt
++-name_path=outer_udf_same_param_name
++-return_type=ARRAY<STRING>
++-argument_name_list=[p]
++-signature=(FUNCTION<STRING->STRING> p) -> ARRAY<STRING>
++-language="SQL"
++-code="IF(templated_udf(1, y -> y > 0), ARRAY_TRANSFORM(['a', 'b'], FUNCTION p), [])"
++-function_expression=
+  +-FunctionCall(GoogleSQL:if(BOOL, ARRAY<STRING>, ARRAY<STRING>) -> ARRAY<STRING>)
+    +-FunctionCall(Templated_SQL_Function:templated_udf(INT64 x, FUNCTION<INT64->BOOL> p) -> BOOL)
+    | +-FunctionArgument
+    | | +-expr=
+    | |   +-Literal(type=INT64, value=1)
+    | +-FunctionArgument
+    |   +-inline_lambda=
+    |     +-InlineLambda
+    |       +-argument_list=[$lambda_arg.y#1]
+    |       +-body=
+    |         +-FunctionCall(GoogleSQL:$greater(INT64, INT64) -> BOOL)
+    |           +-ColumnRef(type=INT64, column=$lambda_arg.y#1)
+    |           +-Literal(type=INT64, value=0)
+    +-FunctionCall(GoogleSQL:array_transform(ARRAY<STRING> array_to_transform, FUNCTION<STRING->STRING> transformation) -> ARRAY<STRING>)
+    | +-FunctionArgument
+    | | +-expr=
+    | |   +-Literal(type=ARRAY<STRING>, value=["a", "b"])
+    | +-FunctionArgument
+    |   +-function_ref=
+    |     +-FunctionRef(function=FUNCTION_TYPED_PARAMETER:p, signature=(STRING) -> STRING)
+    +-Literal(type=ARRAY<STRING>, value=[])
+
+With Templated SQL function call:
+  Templated_SQL_Function:templated_udf(INT64 x, FUNCTION<INT64->BOOL> p) -> BOOL
+containing resolved templated expression:
+FunctionCall(FUNCTION_TYPED_PARAMETER:p(INT64) -> BOOL)
++-ArgumentRef(type=INT64, name="x")
+==
+
+# Calling a templated UDF with a FUNCTION parameter multiple times in the same
+# query succeeds without FunctionTypedParameter name collisions.
+[use_database=udf_db_templated]
+[language_features=NONE,+INLINE_LAMBDA_ARGUMENT,+UDF_LAMBDA_ARGUMENTS,+TEMPLATE_FUNCTIONS]
+SELECT templated_udf(1, y -> y > 0), templated_udf(2, y -> y < 0);
+--
+QueryStmt
++-output_column_list=
+| +-$query.$col1#3 AS `$col1` [BOOL]
+| +-$query.$col2#4 AS `$col2` [BOOL]
++-query=
+  +-ProjectScan
+    +-column_list=$query.[$col1#3, $col2#4]
+    +-expr_list=
+    | +-$col1#3 :=
+    | | +-FunctionCall(Templated_SQL_Function:templated_udf(INT64 x, FUNCTION<INT64->BOOL> p) -> BOOL)
+    | |   +-FunctionArgument
+    | |   | +-expr=
+    | |   |   +-Literal(type=INT64, value=1)
+    | |   +-FunctionArgument
+    | |     +-inline_lambda=
+    | |       +-InlineLambda
+    | |         +-argument_list=[$lambda_arg.y#1]
+    | |         +-body=
+    | |           +-FunctionCall(GoogleSQL:$greater(INT64, INT64) -> BOOL)
+    | |             +-ColumnRef(type=INT64, column=$lambda_arg.y#1)
+    | |             +-Literal(type=INT64, value=0)
+    | +-$col2#4 :=
+    |   +-FunctionCall(Templated_SQL_Function:templated_udf(INT64 x, FUNCTION<INT64->BOOL> p) -> BOOL)
+    |     +-FunctionArgument
+    |     | +-expr=
+    |     |   +-Literal(type=INT64, value=2)
+    |     +-FunctionArgument
+    |       +-inline_lambda=
+    |         +-InlineLambda
+    |           +-argument_list=[$lambda_arg.y#2]
+    |           +-body=
+    |             +-FunctionCall(GoogleSQL:$less(INT64, INT64) -> BOOL)
+    |               +-ColumnRef(type=INT64, column=$lambda_arg.y#2)
+    |               +-Literal(type=INT64, value=0)
+    +-input_scan=
+      +-SingleRowScan
 
 With Templated SQL function call:
   Templated_SQL_Function:templated_udf(INT64 x, FUNCTION<INT64->BOOL> p) -> BOOL

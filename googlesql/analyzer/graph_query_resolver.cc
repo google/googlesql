@@ -73,6 +73,7 @@
 #include "absl/status/status.h"
 #include "googlesql/base/status_macros.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
@@ -2964,6 +2965,11 @@ absl::Status GraphTableQueryResolver::ValidateGqlDmlOperator(
     default:
       return absl::OkStatus();
   }
+  if (!resolver_->language().SupportsStatementKind(
+          RESOLVED_GENERALIZED_QUERY_STMT)) {
+    return MakeSqlErrorAt(gql_op)
+           << "Graph DML requires support for generalized query statements";
+  }
   if (!resolver_->language().LanguageFeatureEnabled(
           FEATURE_SQL_GRAPH_UPDATABLE_GRAPH_ELEMENT_TYPE)) {
     return MakeSqlErrorAt(gql_op)
@@ -4338,8 +4344,9 @@ GraphTableQueryResolver::ResolveGqlInlineSubqueryCall(
 
   for (const ASTIdentifier* name :
        call_op.name_capture_list()->identifier_list()) {
-    bool is_already_correlated = false;
     NameTarget target;
+    CorrelatedColumnsSetList correlated_column_sets;
+    bool is_already_correlated = false;
     GOOGLESQL_ASSIGN_OR_RETURN(bool name_found,
                      input_name_list.singleton_name_list->LookupName(
                          name->GetAsIdString(), &target));
@@ -4347,7 +4354,6 @@ GraphTableQueryResolver::ResolveGqlInlineSubqueryCall(
       if (input_name_list.correlated_name_list == nullptr) {
         // This is a top-level CALL query. Its capture list can make outer
         // column references.
-        CorrelatedColumnsSetList correlated_column_sets;
         GOOGLESQL_ASSIGN_OR_RETURN(name_found,
                          local_scope->LookupName(name->GetAsIdString(), &target,
                                                  &correlated_column_sets));
@@ -4386,11 +4392,15 @@ GraphTableQueryResolver::ResolveGqlInlineSubqueryCall(
     GOOGLESQL_RETURN_IF_ERROR(flattened_name_list->AddColumn(
         name->GetAsIdString(), target.column(), target.IsExplicit()));
 
-    // Columns for the multiply-declared variable SAME exprs are not resolved
-    // from some parse AST. Rather, they are constructed directly, so we need
-    // to explicitly call RecordColumnAccess() to ensure they don't get pruned.
+    // Each captured variable becomes a ColumnRef in this GraphCallScan's
+    // `parameter_list` (built from `correlated_columns` by
+    // `FetchCorrelatedSubqueryParameters` below). Call
+    // `MakeColumnRefWithCorrelation` so `target.column()` is marked as accessed
+    // (not pruned) and recorded in any enclosing subqueries'
+    // `correlated_column_sets`.
     correlated_columns.insert({target.column(), is_already_correlated});
-    resolver_->RecordColumnAccess(target.column());
+    resolver_->MakeColumnRefWithCorrelation(target.column(),
+                                            correlated_column_sets);
   }
 
   // Do not pass the previous scope. We captured all the correlated names from
@@ -4840,6 +4850,10 @@ GraphTableQueryResolver::ResolveGqlWith(
       CreateGraphNameLists(&with_op, std::move(singleton_name_list),
                            std::move(new_group_name_list),
                            input_graph_name_lists.correlated_name_list));
+
+  // Report error if the final shape contains ambiguous column names.
+  GOOGLESQL_RETURN_IF_ERROR(CheckNoAmbiguousNameTarget(
+      *return_item_list, *output_graph_name_lists.singleton_name_list));
 
   InternalAnalyzerOutputProperties::MarkTargetSyntax(
       resolver_->analyzer_output_properties_,

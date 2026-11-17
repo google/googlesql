@@ -2919,3 +2919,167 @@ SELECT
   *
 FROM
   tvf() AS t PIVOT(sum(a) FOR b IN (1, 2, 3)) AS p
+==
+
+# Positional lambda arguments of different arities in a TVF call.
+select * from mytvf(TABLE t, x -> x + 1, (x, y) -> x + y, () -> 1)
+--
+QueryStatement [0-66] [select * from..., () -> 1)]
+  Query [0-66] [select * from..., () -> 1)]
+    Select [0-66] [select * from..., () -> 1)]
+      SelectList [7-8] [*]
+        SelectColumn [7-8] [*]
+          Star(*) [7-8] [*]
+      FromClause [9-66] [from mytvf..., () -> 1)]
+        TVF [14-66] [mytvf(TABLE..., () -> 1)]
+          PathExpression [14-19] [mytvf]
+            Identifier(mytvf) [14-19] [mytvf]
+          TVFArgument [20-27] [TABLE t]
+            TableClause [20-27] [TABLE t]
+              PathExpression [26-27] [t]
+                Identifier(t) [26-27] [t]
+          TVFArgument [29-39] [x -> x + 1]
+            Lambda [29-39] [x -> x + 1]
+              PathExpression [29-30] [x]
+                Identifier(x) [29-30] [x]
+              BinaryExpression(+) [34-39] [x + 1]
+                PathExpression [34-35] [x]
+                  Identifier(x) [34-35] [x]
+                IntLiteral(1) [38-39] [1]
+          TVFArgument [41-56] [(x, y) -> x + y]
+            Lambda [41-56] [(x, y) -> x + y]
+              StructConstructorWithParens [41-47] [(x, y)]
+                PathExpression [42-43] [x]
+                  Identifier(x) [42-43] [x]
+                PathExpression [45-46] [y]
+                  Identifier(y) [45-46] [y]
+              BinaryExpression(+) [51-56] [x + y]
+                PathExpression [51-52] [x]
+                  Identifier(x) [51-52] [x]
+                PathExpression [55-56] [y]
+                  Identifier(y) [55-56] [y]
+          TVFArgument [58-65] [() -> 1]
+            Lambda [58-65] [() -> 1]
+              StructConstructorWithParens [58-60] [()]
+              IntLiteral(1) [64-65] [1]
+--
+SELECT
+  *
+FROM
+  mytvf(TABLE t, (x) -> x + 1, (x, y) -> x + y, () -> 1)
+==
+
+# Positional FUNCTION reference arguments in a TVF call.
+select * from mytvf(FUNCTION p, FUNCTION a.b.c)
+--
+QueryStatement [0-47] [select * from...UNCTION a.b.c)]
+  Query [0-47] [select * from...UNCTION a.b.c)]
+    Select [0-47] [select * from...UNCTION a.b.c)]
+      SelectList [7-8] [*]
+        SelectColumn [7-8] [*]
+          Star(*) [7-8] [*]
+      FromClause [9-47] [from mytvf...FUNCTION a.b.c)]
+        TVF [14-47] [mytvf(FUNCTION...NCTION a.b.c)]
+          PathExpression [14-19] [mytvf]
+            Identifier(mytvf) [14-19] [mytvf]
+          TVFArgument [20-30] [FUNCTION p]
+            FunctionRefArg [20-30] [FUNCTION p]
+              PathExpression [29-30] [p]
+                Identifier(p) [29-30] [p]
+          TVFArgument [32-46] [FUNCTION a.b.c]
+            FunctionRefArg [32-46] [FUNCTION a.b.c]
+              PathExpression [41-46] [a.b.c]
+                Identifier(a) [41-42] [a]
+                Identifier(b) [43-44] [b]
+                Identifier(c) [45-46] [c]
+--
+SELECT
+  *
+FROM
+  mytvf(FUNCTION p, FUNCTION a.b.c)
+==
+
+# Named lambda and named FUNCTION reference arguments in a TVF call, mixed
+# with positional ones.
+select * from mytvf(x -> x > 0, FUNCTION p, f => (x, y) -> x * y,
+                    g => FUNCTION q)
+--
+QueryStatement [0-102] [select * from...FUNCTION q)]
+  Query [0-102] [select * from...FUNCTION q)]
+    Select [0-102] [select * from...FUNCTION q)]
+      SelectList [7-8] [*]
+        SelectColumn [7-8] [*]
+          Star(*) [7-8] [*]
+      FromClause [9-102] [from mytvf...FUNCTION q)]
+        TVF [14-102] [mytvf(x ->...FUNCTION q)]
+          PathExpression [14-19] [mytvf]
+            Identifier(mytvf) [14-19] [mytvf]
+          TVFArgument [20-30] [x -> x > 0]
+            Lambda [20-30] [x -> x > 0]
+              PathExpression [20-21] [x]
+                Identifier(x) [20-21] [x]
+              BinaryExpression(>) [25-30] [x > 0]
+                PathExpression [25-26] [x]
+                  Identifier(x) [25-26] [x]
+                IntLiteral(0) [29-30] [0]
+          TVFArgument [32-42] [FUNCTION p]
+            FunctionRefArg [32-42] [FUNCTION p]
+              PathExpression [41-42] [p]
+                Identifier(p) [41-42] [p]
+          TVFArgument [44-64] [f => (x, y) -> x * y]
+            NamedArgument [44-64] [f => (x, y) -> x * y]
+              Identifier(f) [44-45] [f]
+              Lambda [49-64] [(x, y) -> x * y]
+                StructConstructorWithParens [49-55] [(x, y)]
+                  PathExpression [50-51] [x]
+                    Identifier(x) [50-51] [x]
+                  PathExpression [53-54] [y]
+                    Identifier(y) [53-54] [y]
+                BinaryExpression(*) [59-64] [x * y]
+                  PathExpression [59-60] [x]
+                    Identifier(x) [59-60] [x]
+                  PathExpression [63-64] [y]
+                    Identifier(y) [63-64] [y]
+          TVFArgument [86-101] [g => FUNCTION q]
+            NamedArgument [86-101] [g => FUNCTION q]
+              Identifier(g) [86-87] [g]
+              FunctionRefArg [91-101] [FUNCTION q]
+                PathExpression [100-101] [q]
+                  Identifier(q) [100-101] [q]
+--
+SELECT
+  *
+FROM
+  mytvf((x) -> x > 0, FUNCTION p, f  => (x, y) -> x * y, g  => FUNCTION q)
+==
+
+# FUNCTION is a non-reserved keyword, so a bare FUNCTION without a function name
+# is parsed as an identifier expression rather than a FUNCTION reference.
+select * from mytvf(FUNCTION)
+--
+QueryStatement [0-29] [select * from mytvf(FUNCTION)]
+  Query [0-29] [select * from mytvf(FUNCTION)]
+    Select [0-29] [select * from mytvf(FUNCTION)]
+      SelectList [7-8] [*]
+        SelectColumn [7-8] [*]
+          Star(*) [7-8] [*]
+      FromClause [9-29] [from mytvf(FUNCTION)]
+        TVF [14-29] [mytvf(FUNCTION)]
+          PathExpression [14-19] [mytvf]
+            Identifier(mytvf) [14-19] [mytvf]
+          TVFArgument [20-28] [FUNCTION]
+            PathExpression [20-28] [FUNCTION]
+              Identifier(`FUNCTION`) [20-28] [FUNCTION]
+--
+SELECT
+  *
+FROM
+  mytvf(`FUNCTION`)
+==
+
+# Parenthesized lambdas are not valid TVF arguments.
+select * from mytvf((x -> x + 1))
+--
+ERROR: Syntax error: Expected "," but got "->" [at 1:24]
+select * from mytvf((x -> x + 1))
+                       ^

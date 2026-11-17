@@ -12,12 +12,15 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+#
 
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load("@com_google_protobuf//bazel:cc_proto_library.bzl", "cc_proto_library")
 load("@com_google_protobuf//bazel:proto_library.bzl", "proto_library")
 load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("@rules_cc//cc:cc_test.bzl", "cc_test")
+load("@rules_python//python:py_test.bzl", "py_test")
 load("//googlesql/tools/execute_query:build_rules.bzl", "execute_query_test")
 
 package(
@@ -156,6 +159,7 @@ cc_library(
         "//googlesql/public:language_options",
         "//googlesql/public:parse_helpers",
         "//googlesql/public:parse_resume_location",
+        "@com_google_absl//absl/container:chunked_queue",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",

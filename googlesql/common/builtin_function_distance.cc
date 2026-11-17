@@ -116,11 +116,8 @@ absl::Status GetDistanceFunctions(TypeFactory* type_factory,
                                   NameToTypeMap* types,
                                   BuiltinsOutputProperties& output_properties) {
   bool is_vector_type_enabled =
-      options.language_options.LanguageFeatureEnabled(FEATURE_VECTOR_TYPE) &&
-      options.language_options.LanguageFeatureEnabled(
-          FEATURE_DECLARATIVE_TYPE_FRAMEWORK);
-  // vector_type must be non-null if FEATURE_VECTOR_TYPE and declarative type
-  // framework are enabled.
+      options.language_options.LanguageFeatureEnabled(FEATURE_VECTOR_TYPE);
+  // vector_type must be non-null if FEATURE_VECTOR_TYPE is enabled.
   const Type* vector_type = googlesql_base::FindPtrOrNull(*types, kVectorTypeName);
   GOOGLESQL_RET_CHECK(!is_vector_type_enabled || vector_type != nullptr)
       << "FEATURE_VECTOR_TYPE is enabled but vector type is not found from the "

@@ -466,3 +466,233 @@ FROM KeyValue
 ERROR: Name Value not found in the current scope [at 4:15]
 |> ORDER BY **COLUMNS(['Value'])
               ^
+==
+
+# ------------------------------------------------------------------------------
+# ORDER BY inside an aggregate function call
+# ------------------------------------------------------------------------------
+
+# ** expands in the ORDER BY of an aggregate function like in a query-level
+# ORDER BY, including the ordering suffix applying to every column.
+SELECT ARRAY_AGG(Value ORDER BY **COLUMNS(['Key', 'Value']) DESC LIMIT 1)
+FROM KeyValue
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#3 AS `$col1` [ARRAY<STRING>]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#3]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$aggregate.$agg1#3]
+        +-input_scan=
+        | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+        +-aggregate_list=
+          +-$agg1#3 :=
+            +-AggregateFunctionCall(GoogleSQL:array_agg(STRING) -> ARRAY<STRING>)
+              +-ColumnRef(type=STRING, column=KeyValue.Value#2)
+              +-order_by_item_list=
+              | +-OrderByItem
+              | | +-column_ref=
+              | | | +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+              | | +-is_descending=TRUE
+              | +-OrderByItem
+              |   +-column_ref=
+              |   | +-ColumnRef(type=STRING, column=KeyValue.Value#2)
+              |   +-is_descending=TRUE
+              +-limit=
+                +-Literal(type=INT64, value=1)
+
+[SQLBUILDER_OUTPUT]
+SELECT
+  ARRAY_AGG(keyvalue_3.a_2
+    ORDER BY keyvalue_3.a_1 DESC, keyvalue_3.a_2 DESC
+    LIMIT 1) AS a_4
+FROM
+  (
+    SELECT
+      KeyValue.Key AS a_1,
+      KeyValue.Value AS a_2
+    FROM
+      KeyValue
+  ) AS keyvalue_3;
+==
+
+# An empty expansion leaves the aggregate without an ORDER BY.
+SELECT STRING_AGG(Value ORDER BY **COLUMNS([]) LIMIT 1) FROM KeyValue
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#3 AS `$col1` [STRING]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#3]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$aggregate.$agg1#3]
+        +-input_scan=
+        | +-TableScan(column_list=[KeyValue.Value#2], table=KeyValue, column_index_list=[1])
+        +-aggregate_list=
+          +-$agg1#3 :=
+            +-AggregateFunctionCall(GoogleSQL:string_agg(STRING) -> STRING)
+              +-ColumnRef(type=STRING, column=KeyValue.Value#2)
+              +-limit=
+                +-Literal(type=INT64, value=1)
+
+[SQLBUILDER_OUTPUT]
+SELECT
+  STRING_AGG(keyvalue_2.a_1
+    LIMIT 1) AS a_3
+FROM
+  (
+    SELECT
+      KeyValue.Value AS a_1
+    FROM
+      KeyValue
+  ) AS keyvalue_2;
+==
+
+SELECT ARRAY_AGG(Value ORDER BY Key, **COLUMNS(['Value']) DESC LIMIT 1)
+FROM KeyValue
+
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#3 AS `$col1` [ARRAY<STRING>]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#3]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$aggregate.$agg1#3]
+        +-input_scan=
+        | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+        +-aggregate_list=
+          +-$agg1#3 :=
+            +-AggregateFunctionCall(GoogleSQL:array_agg(STRING) -> ARRAY<STRING>)
+              +-ColumnRef(type=STRING, column=KeyValue.Value#2)
+              +-order_by_item_list=
+              | +-OrderByItem
+              | | +-column_ref=
+              | |   +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+              | +-OrderByItem
+              |   +-column_ref=
+              |   | +-ColumnRef(type=STRING, column=KeyValue.Value#2)
+              |   +-is_descending=TRUE
+              +-limit=
+                +-Literal(type=INT64, value=1)
+
+[SQLBUILDER_OUTPUT]
+SELECT
+  ARRAY_AGG(keyvalue_3.a_2
+    ORDER BY keyvalue_3.a_1, keyvalue_3.a_2 DESC
+    LIMIT 1) AS a_4
+FROM
+  (
+    SELECT
+      KeyValue.Key AS a_1,
+      KeyValue.Value AS a_2
+    FROM
+      KeyValue
+  ) AS keyvalue_3;
+==
+
+# In a multi-level aggregate, the ORDER BY sees only the grouped columns.
+SELECT ARRAY_AGG(MAX(Key) GROUP BY Value ORDER BY **COLUMNS(['{{Value|Key}}']))
+FROM KeyValue
+--
+ALTERNATION GROUP: Value
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#5 AS `$col1` [ARRAY<INT64>]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#5]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$aggregate.$agg1#5]
+        +-input_scan=
+        | +-TableScan(column_list=KeyValue.[Key#1, Value#2], table=KeyValue, column_index_list=[0, 1])
+        +-aggregate_list=
+          +-$agg1#5 :=
+            +-AggregateFunctionCall(GoogleSQL:array_agg(INT64) -> ARRAY<INT64>)
+              +-ColumnRef(type=INT64, column=$aggregate.$agg1#4)
+              +-order_by_item_list=
+              | +-OrderByItem
+              |   +-column_ref=
+              |     +-ColumnRef(type=STRING, column=$group_by_list.$groupbymod#3)
+              +-group_by_list=
+              | +-$groupbymod#3 := ColumnRef(type=STRING, column=KeyValue.Value#2)
+              +-group_by_aggregate_list=
+                +-$agg1#4 :=
+                  +-AggregateFunctionCall(GoogleSQL:max(INT64) -> INT64)
+                    +-ColumnRef(type=INT64, column=KeyValue.Key#1)
+
+[SQLBUILDER_OUTPUT]
+SELECT
+  ARRAY_AGG(MAX(keyvalue_3.a_1)
+    GROUP BY keyvalue_3.a_2
+    ORDER BY keyvalue_3.a_2) AS a_4
+FROM
+  (
+    SELECT
+      KeyValue.Key AS a_1,
+      KeyValue.Value AS a_2
+    FROM
+      KeyValue
+  ) AS keyvalue_3;
+--
+ALTERNATION GROUP: Key
+--
+ERROR: Name Key provided to ** does not refer to a column or field [at 1:53]
+SELECT ARRAY_AGG(MAX(Key) GROUP BY Value ORDER BY **COLUMNS(['Key']))
+                                                    ^
+==
+
+# With DISTINCT, the ORDER BY may only name the function's arguments; the
+# expanded columns are checked the same way as explicit ones.
+SELECT ARRAY_AGG(DISTINCT Value ORDER BY **COLUMNS(['{{Value|Key}}']))
+FROM KeyValue
+--
+ALTERNATION GROUP: Value
+--
+QueryStmt
++-output_column_list=
+| +-$aggregate.$agg1#3 AS `$col1` [ARRAY<STRING>]
++-query=
+  +-ProjectScan
+    +-column_list=[$aggregate.$agg1#3]
+    +-input_scan=
+      +-AggregateScan
+        +-column_list=[$aggregate.$agg1#3]
+        +-input_scan=
+        | +-TableScan(column_list=[KeyValue.Value#2], table=KeyValue, column_index_list=[1])
+        +-aggregate_list=
+          +-$agg1#3 :=
+            +-AggregateFunctionCall(GoogleSQL:array_agg(STRING) -> ARRAY<STRING>)
+              +-ColumnRef(type=STRING, column=KeyValue.Value#2)
+              +-distinct=TRUE
+              +-order_by_item_list=
+                +-OrderByItem
+                  +-column_ref=
+                    +-ColumnRef(type=STRING, column=KeyValue.Value#2)
+
+[SQLBUILDER_OUTPUT]
+SELECT
+  ARRAY_AGG(DISTINCT keyvalue_2.a_1
+    ORDER BY keyvalue_2.a_1) AS a_3
+FROM
+  (
+    SELECT
+      KeyValue.Value AS a_1
+    FROM
+      KeyValue
+  ) AS keyvalue_2;
+--
+ALTERNATION GROUP: Key
+--
+ERROR: An aggregate function that has both DISTINCT and ORDER BY arguments can only ORDER BY expressions that are arguments to the function [at 1:42]
+SELECT ARRAY_AGG(DISTINCT Value ORDER BY **COLUMNS(['Key']))
+                                         ^

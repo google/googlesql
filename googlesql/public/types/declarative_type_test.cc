@@ -429,29 +429,18 @@ TEST(DeclarativeTypeTest, DeclarativeTypeIsSupportedType) {
   LanguageOptions options_all_disabled;
   EXPECT_FALSE(t1->IsSupportedType(options_all_disabled));
 
-  // Case 2a: Missing FEATURE_DECLARATIVE_TYPE_FRAMEWORK
-  LanguageOptions options_missing_framework;
-  options_missing_framework.EnableLanguageFeature(FEATURE_JSON_TYPE);
-  options_missing_framework.EnableLanguageFeature(FEATURE_NUMERIC_TYPE);
-  EXPECT_FALSE(t1->IsSupportedType(options_missing_framework));
-
-  // Case 2b: Missing FEATURE_JSON_TYPE (required for Json backing type)
+  // Case 2a: Missing FEATURE_JSON_TYPE (required for Json backing type)
   LanguageOptions options_missing_json;
-  options_missing_json.EnableLanguageFeature(
-      FEATURE_DECLARATIVE_TYPE_FRAMEWORK);
   options_missing_json.EnableLanguageFeature(FEATURE_NUMERIC_TYPE);
   EXPECT_FALSE(t1->IsSupportedType(options_missing_json));
 
-  // Case 2c: Missing FEATURE_NUMERIC_TYPE (additional required feature)
+  // Case 2b: Missing FEATURE_NUMERIC_TYPE (additional required feature)
   LanguageOptions options_missing_numeric;
-  options_missing_numeric.EnableLanguageFeature(
-      FEATURE_DECLARATIVE_TYPE_FRAMEWORK);
   options_missing_numeric.EnableLanguageFeature(FEATURE_JSON_TYPE);
   EXPECT_FALSE(t1->IsSupportedType(options_missing_numeric));
 
   // Case 3: All enabled
   LanguageOptions options_all_enabled;
-  options_all_enabled.EnableLanguageFeature(FEATURE_DECLARATIVE_TYPE_FRAMEWORK);
   options_all_enabled.EnableLanguageFeature(FEATURE_JSON_TYPE);
   options_all_enabled.EnableLanguageFeature(FEATURE_NUMERIC_TYPE);
   EXPECT_TRUE(t1->IsSupportedType(options_all_enabled));

@@ -272,10 +272,6 @@ std::string DeclarativeType::CapitalizedName() const {
 
 bool DeclarativeType::IsSupportedType(
     const LanguageOptions& language_options) const {
-  if (!language_options.LanguageFeatureEnabled(
-          FEATURE_DECLARATIVE_TYPE_FRAMEWORK)) {
-    return false;
-  }
   if (!backing_type()->IsSupportedType(language_options)) {
     return false;
   }

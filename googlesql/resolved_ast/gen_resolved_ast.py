@@ -479,9 +479,10 @@ SCALAR_UPDATE_FIELD_ITEM_OP = EnumScalarType(
 #     The column, if the field is marked `column_is_created`. Otherwise
 #     nothing.
 #
-#   ResolvedColumnRef-typed field
-#     Nothing. A ColumnRef only references a column; it never introduces one
-#     (but see `outer_scope` below).
+#   ResolvedExpr-typed field
+#     Nothing by default (`ResolvedExpr` sets `provided_columns=[]`; columns
+#     created on an expression node are internal to the expression). See
+#     `outer_scope` below for `ResolvedColumnRef`.
 #
 #   Any other node-typed field
 #     The columns that the node itself creates, through its own
@@ -498,8 +499,7 @@ SCALAR_UPDATE_FIELD_ITEM_OP = EnumScalarType(
 # `provided_columns` (see AddNode() below).
 #
 # Referencing a field that can never provide any columns is an error. For
-# example, a scalar `bool` field, or an expression-typed field whose node
-# classes have no `column_is_created` fields.
+# example, a scalar `bool` field, or a `ResolvedExpr` field.
 #
 # Specifying columns visible in a scope list
 # ------------------------------------------
@@ -565,12 +565,6 @@ SCALAR_UPDATE_FIELD_ITEM_OP = EnumScalarType(
 #     ancestor field with `context=` (see below), or nothing if no ancestor set
 #     it.
 #
-#   UNCHECKED
-#     An escape hatch for references that can't be modeled yet. It must be the
-#     only element of the list. Any column is allowed, and comparison mode
-#     (see below) ignores it. Each use needs a comment saying why, with a TODO
-#     and bug link if this is a bug or feature gap.
-#
 # scope=[] means no columns are visible.
 #
 # Annotations on Field()
@@ -584,7 +578,7 @@ SCALAR_UPDATE_FIELD_ITEM_OP = EnumScalarType(
 #     Sets the VISIBLE set for this field's subtree. Not allowed on scan-typed
 #     fields, which always get an empty VISIBLE set because a scan builds its
 #     visible columns from its own inputs. Never affects the OUTER set. Allowed
-#     sources: INPUT, CREATED, sibling fields, IF, CONTEXT, UNCHECKED.
+#     sources: INPUT, CREATED, sibling fields, IF, CONTEXT.
 #
 #     Default: [INPUT]. Expressions see the scope of the expression they're
 #     part of, and a scan's expressions see its pipe input.
@@ -606,6 +600,13 @@ SCALAR_UPDATE_FIELD_ITEM_OP = EnumScalarType(
 #
 #     Default: [OUTER]. The same columns can be referenced as correlated
 #     columns in the child node.
+#
+#   expr_must_be_constant=True
+#     (ResolvedExpr fields only) Shorthand for `scope=[], outer_scope=[]`:
+#     the expression cannot reference any columns (including correlated
+#     columns).
+#
+#     Default: False.
 #
 #   context={'name': [...]}
 #     Stores a column set under the named context 'name' for this field's
@@ -641,6 +642,14 @@ SCALAR_UPDATE_FIELD_ITEM_OP = EnumScalarType(
 #     Overrides the Field() annotations of an inherited field, for this node
 #     class and its subclasses.
 #
+#   default_scope_is_empty=True
+#   default_outer_scope_is_empty=True
+#     For all fields of this node type (or a subclass), the default `scope` /
+#     `outer_scope` is `[]` instead of `[INPUT]` / `[OUTER]` whenever `scope` /
+#     `outer_scope` is not explicitly set on the Field(). Inherited by
+#     subclasses. Used on `ResolvedOption` so options and hints cannot
+#     reference columns unless a field explicitly sets `scope` or `outer_scope`.
+#
 # By default, a node's created columns are visible only in its own
 # `column_list`. Anything else needs an annotation.
 #
@@ -671,7 +680,6 @@ SCALAR_UPDATE_FIELD_ITEM_OP = EnumScalarType(
 INPUT = column_visibility.INPUT
 CREATED = column_visibility.CREATED
 OUTER = column_visibility.OUTER
-UNCHECKED = column_visibility.UNCHECKED
 IF = column_visibility.IF
 CONTEXT = column_visibility.CONTEXT
 
@@ -722,6 +730,7 @@ def Field(
     scope = None,
     scope_sequential = False,
     outer_scope = None,
+    expr_must_be_constant = False,
     context = None,
 ):
   """Make a field to put in a node class.
@@ -766,6 +775,9 @@ def Field(
       0..i-1 provide. See "ResolvedColumn visibility" above.
     outer_scope: Scope list giving the OUTER set for this field's subtree. See
       "ResolvedColumn visibility" above. Default: [OUTER].
+    expr_must_be_constant: (Only on fields with type ResolvedExpr) Shorthand for
+      setting both `scope` and `outer_scope` to `[]`. See "ResolvedColumn
+      visibility" above.
     context: Map from context name to a scope list, setting that named context
       for this field's subtree. See "ResolvedColumn visibility" above.
 
@@ -954,6 +966,20 @@ def Field(
   assert not scope_sequential or vector, (
       'scope_sequential requires a vector field: %s' % name
   )
+  if expr_must_be_constant:
+    assert ctype == 'ResolvedExpr', (
+        'expr_must_be_constant is only allowed on ResolvedExpr fields: %s'
+        % name
+    )
+    assert (
+        scope is None
+        and outer_scope is None
+        and not scope_sequential
+        and context is None
+    ), (
+        'expr_must_be_constant cannot be combined with other column visibility'
+        ' annotations: %s' % name
+    )
   assert context is None or isinstance(context, dict), name
 
   return {
@@ -1007,6 +1033,7 @@ def Field(
       'scope': scope,
       'scope_sequential': scope_sequential,
       'outer_scope': outer_scope,
+      'expr_must_be_constant': expr_must_be_constant,
       'context': context or {},
   }
 
@@ -1053,6 +1080,7 @@ class TreeGenerator():
       column_list_is_created_columns = False,
       extra_defs = '',
       extra_defs_node_only = '',
+      extra_protected_defs = '',
       emit_default_constructor = True,
       use_custom_debug_string = False,
       use_custom_columns_created = False,
@@ -1060,6 +1088,8 @@ class TreeGenerator():
       column_list_scope = None,
       provided_columns = None,
       inherited_field_scopes = None,
+      default_scope_is_empty = None,
+      default_outer_scope_is_empty = None,
   ):
     # pyformat: disable
     # This docstring has copybara tags that must stay on their own lines.
@@ -1078,6 +1108,8 @@ class TreeGenerator():
       extra_defs: extra c++ definitions to put in this class and its builder.
       extra_defs_node_only: extra C++ definitions for this class but not to be
         shared with the builder.
+      extra_protected_defs: extra C++ definitions to put in the `protected:`
+        section of this class.
       emit_default_constructor: If True, emit default constructor for this class
       use_custom_debug_string: If True, use hand-written
         CollectDebugStringFields and GetNameForDebugString c++ methods for
@@ -1092,13 +1124,19 @@ class TreeGenerator():
           sets one, or [INPUT, CREATED] if none does.
       provided_columns: (Not on ResolvedScans) Scope list for the columns that a
         field of this node type provides to its parent node. See "ResolvedColumn
-        visibility" above. Default: inherited, or the node's own created
-        columns.
+        visibility" above. Default: inherited (`[]` on ResolvedExpr), or the
+        node's own created columns.
       inherited_field_scopes: Overrides the visibility annotations of fields
         inherited from a parent node, for this node and its subclasses. Maps a
         field name to a dict with any of the Field() arguments `scope`,
         `scope_sequential`, `outer_scope` and `context`. Use this when the right
         scope depends on fields that only some subclasses have.
+      default_scope_is_empty: If True, fields of this node type (or a subclass)
+        default to `scope=[]` instead of `scope=[INPUT]` unless `scope` is
+        explicitly set on the Field.
+      default_outer_scope_is_empty: If True, fields of this node type (or a
+        subclass) default to `outer_scope=[]` instead of `outer_scope=[OUTER]`
+        unless `outer_scope` is explicitly set on the Field.
     """
     # pyformat: enable
     assert name not in self.node_map, name
@@ -1260,6 +1298,7 @@ class TreeGenerator():
             extra_enum_decls, CleanIndent(extra_defs, '  ')
         ),
         'extra_defs_node_only': extra_defs_node_only,
+        'extra_protected_defs': CleanIndent(extra_protected_defs, '  '),
         'emit_default_constructor': emit_default_constructor,
         'has_node_vector_constructor_arg': has_node_vector_constructor_arg,
         'has_node_fields': has_node_fields,
@@ -1272,6 +1311,8 @@ class TreeGenerator():
         'column_list_scope': column_list_scope,
         'provided_columns': provided_columns,
         'inherited_field_scopes': inherited_field_scopes or {},
+        'default_scope_is_empty': default_scope_is_empty,
+        'default_outer_scope_is_empty': default_outer_scope_is_empty,
         'subclasses': [],
         'superclasses': [],
     }
@@ -1729,6 +1770,9 @@ def main(unused_argv):
       tag_id=2,
       parent='ResolvedNode',
       is_abstract=True,
+      # Expressions do not provide columns to their parent node by default; any
+      # columns created on an expression node are internal to it.
+      provided_columns=[],
       fields=[
           Field('type', SCALAR_TYPE, tag_id=2, ignorable=IGNORABLE),
           Field(
@@ -2221,9 +2265,6 @@ def main(unused_argv):
               comment="""
               Function call hints.
                       """,
-              # Hint values are constants.
-              scope=[],
-              outer_scope=[],
           ),
           Field(
               'collation_list',
@@ -2407,9 +2448,7 @@ def main(unused_argv):
               'ResolvedExpr',
               tag_id=4,
               ignorable=IGNORABLE_DEFAULT,
-              # Must be a constant expression.
-              scope=[],
-              outer_scope=[],
+              expr_must_be_constant=True,
           ),
           Field(
               'function_call_info',
@@ -2458,9 +2497,6 @@ def main(unused_argv):
               FEATURE_MULTILEVEL_AGGREGATION is enabled and `group_by_list`
               is non-empty.
                       """,
-              # Hint values are constants.
-              scope=[],
-              outer_scope=[],
           ),
           Field(
               'group_by_aggregate_list',
@@ -2996,6 +3032,7 @@ def main(unused_argv):
                 i.e., unwrap all successive ARRAY layers available at the end
                 of the path (or at the top-level if no path is specified).
                       """,
+              expr_must_be_constant=True,
           ),
       ],
   )
@@ -3283,9 +3320,6 @@ value.
               Note: Hints currently happen only for EXISTS, IN, or a LIKE
               expression subquery but not for ARRAY or SCALAR subquery.
                       """,
-              # Hint values are constants.
-              scope=[],
-              outer_scope=[],
           ),
       ],
   )
@@ -3376,9 +3410,6 @@ value.
               ignorable=IGNORABLE,
               is_constructor_arg=False,
               vector=True,
-              # Hint values are constants.
-              scope=[],
-              outer_scope=[],
           ),
           Field(
               'is_ordered',
@@ -3408,7 +3439,17 @@ value.
         // linear-mode DebugString rendering (ResolvedNode::DebugStringConfig::
         // linear_mode), or nullptr if there is none (leaf scans like
         // ResolvedTableScan). For most scans this is `input_scan`.
-        virtual const ResolvedScan* GetPipeInputScan() const { return nullptr; }
+        const ResolvedScan* GetPipeInputScan(bool mark_accessed = true) const {
+          return GetPipeInputScanImpl(mark_accessed);
+        }
+      """,
+      extra_protected_defs="""
+        // Implements GetPipeInputScan(), marking accessed fields if
+        // `mark_accessed` is true.
+        virtual const ResolvedScan* GetPipeInputScanImpl(
+            bool mark_accessed) const {
+          return nullptr;
+        }
       """,
   )
 
@@ -3642,6 +3683,7 @@ value.
               'ResolvedExpr',
               tag_id=3,
               ignorable=IGNORABLE_DEFAULT,
+              expr_must_be_constant=True,
           ),
           Field(
               'column_index_list',
@@ -3702,6 +3744,24 @@ value.
 
               Currently, this is only used when FEATURE_ROW_TYPE is enabled
               and the rewriter introduces a TableScan using this.
+              """,
+          ),
+          Field(
+              'name_string',
+              SCALAR_STRING,
+              tag_id=9,
+              ignorable=IGNORABLE,
+              is_constructor_arg=False,
+              comment="""
+              If non-empty, the table was referenced with a STRING literal,
+              such as `FROM '/path/to/file.csv'`, and this is the literal's
+              value (after unescaping and concatenation) that was passed to
+              `Catalog::FindTableFromString`. Empty for tables referenced by
+              identifier paths. SQLBuilder uses this to print the reference
+              back as a STRING literal.
+
+              Requires `FEATURE_STRING_LITERAL_TABLE_REFERENCES`.
+              See (broken link).
               """,
           ),
       ],
@@ -4360,9 +4420,6 @@ value.
               tag_id=6,
               vector=True,
               ignorable=IGNORABLE_DEFAULT,
-              # Matches the validator. (DP and aggregation threshold option
-              # lists see INPUT instead.)
-              scope=['aggregate_list', 'group_by_list'],
           ),
       ],
   )
@@ -4406,6 +4463,10 @@ value.
               tag_id=6,
               vector=True,
               ignorable=IGNORABLE_DEFAULT,
+              # `privacy_unit_column` can reference an input column, but not
+              # correlated outer columns.
+              scope=[INPUT],
+              outer_scope=[],
           ),
       ],
   )
@@ -4430,6 +4491,10 @@ value.
               tag_id=5,
               vector=True,
               ignorable=IGNORABLE_DEFAULT,
+              # `privacy_unit_column` can reference an input column, but not
+              # correlated outer columns.
+              scope=[INPUT],
+              outer_scope=[],
           )
       ],
   )
@@ -4522,11 +4587,13 @@ value.
               ignorable=IGNORABLE,
           ),
       ],
-      extra_defs_node_only="""
+      extra_protected_defs="""
         // The pipe input is the first input item's scan.
-        const ResolvedScan* GetPipeInputScan() const override {
-          return input_item_list_.empty() ? nullptr
-                                          : input_item_list_[0]->scan();
+        const ResolvedScan* GetPipeInputScanImpl(
+            bool mark_accessed) const override {
+          return input_item_list_.empty()
+                     ? nullptr
+                     : input_item_list_[0]->scan_untracked(mark_accessed);
         }
       """,
   )
@@ -4584,9 +4651,18 @@ value.
               """,
       fields=[
           Field('input_scan', 'ResolvedScan', tag_id=2, propagate_order=True),
-          # LIMIT and OFFSET must be constant expressions.
-          Field('limit', 'ResolvedExpr', tag_id=3, scope=[], outer_scope=[]),
-          Field('offset', 'ResolvedExpr', tag_id=4, scope=[], outer_scope=[]),
+          Field(
+              'limit',
+              'ResolvedExpr',
+              tag_id=3,
+              expr_must_be_constant=True,
+          ),
+          Field(
+              'offset',
+              'ResolvedExpr',
+              tag_id=4,
+              expr_must_be_constant=True,
+          ),
       ],
   )
 
@@ -4667,15 +4743,18 @@ value.
       fields=[
           Field('input_scan', 'ResolvedScan', tag_id=2),
           Field('method', SCALAR_STRING, tag_id=3),
-          # SIZE and REPEATABLE must be constant expressions.
-          Field('size', 'ResolvedExpr', tag_id=4, scope=[], outer_scope=[]),
+          Field(
+              'size',
+              'ResolvedExpr',
+              tag_id=4,
+              expr_must_be_constant=True,
+          ),
           Field('unit', SCALAR_SAMPLE_UNIT, tag_id=5),
           Field(
               'repeatable_argument',
               'ResolvedExpr',
               tag_id=6,
-              scope=[],
-              outer_scope=[],
+              expr_must_be_constant=True,
           ),
           Field(
               'weight_column',
@@ -4866,6 +4945,7 @@ value.
               'ResolvedExpr',
               tag_id=3,
               ignorable=IGNORABLE_DEFAULT,
+              expr_must_be_constant=True,
           ),
           Field(
               'is_descending',
@@ -4922,6 +5002,7 @@ value.
               <collation_name> can only be a string literal, and is only set
               when FEATURE_COLLATION_SUPPORT is enabled. See
               (broken link).""",
+              expr_must_be_constant=True,
           ),
           Field('not_null', SCALAR_BOOL, tag_id=2, ignorable=IGNORABLE_DEFAULT),
           Field(
@@ -5050,9 +5131,7 @@ value.
               'expression',
               'ResolvedExpr',
               tag_id=2,
-              # Default values can't reference columns.
-              scope=[],
-              outer_scope=[],
+              expr_must_be_constant=True,
           ),
           Field('sql', SCALAR_STRING, tag_id=3),
       ],
@@ -5302,6 +5381,7 @@ value.
       tag_id=34,
       parent='ResolvedArgument',
       use_custom_debug_string=True,
+      provided_columns=['column'],
       comment="""
       This is used in ResolvedQueryStmt (and other places) to provide a
       user-visible name for each output column, and to map from
@@ -5674,12 +5754,15 @@ value.
               ignorable=IGNORABLE,
           ),
       ],
-      extra_defs_node_only="""
+      extra_protected_defs="""
         // The pipe input is the first table-typed argument, if one exists.
-        const ResolvedScan* GetPipeInputScan() const override {
-          for (const auto& argument : argument_list()) {
-            if (argument->scan() != nullptr) {
-              return argument->scan();
+        const ResolvedScan* GetPipeInputScanImpl(
+            bool mark_accessed) const override {
+          for (const auto& argument : argument_list_untracked(mark_accessed)) {
+            if (const ResolvedScan* scan =
+                    argument->scan_untracked(mark_accessed);
+                scan != nullptr) {
+              return scan;
             }
           }
           return nullptr;
@@ -5735,9 +5818,6 @@ value.
               ignorable=IGNORABLE,
               is_constructor_arg=False,
               vector=True,
-              # Hint values are constants.
-              scope=[],
-              outer_scope=[],
           )
       ],
       extra_defs="""bool IsStatement() const final { return true; }""",
@@ -6294,6 +6374,7 @@ value.
               'ResolvedExpr',
               tag_id=3,
               ignorable=IGNORABLE_DEFAULT,
+              expr_must_be_constant=True,
           ),
       ],
   )
@@ -6440,6 +6521,7 @@ value.
               'ResolvedExpr',
               tag_id=12,
               ignorable=IGNORABLE_DEFAULT,
+              expr_must_be_constant=True,
           ),
           Field(
               'connection_list',
@@ -6921,6 +7003,7 @@ value.
       name='ResolvedWithPartitionColumns',
       tag_id=153,
       parent='ResolvedArgument',
+      provided_columns=['column_definition_list'],
       comment="""
       This statement:
         WITH PARTITION COLUMNS [(column schema, ...)]
@@ -7483,18 +7566,14 @@ value.
               'ResolvedExpr',
               tag_id=2,
               ignorable=IGNORABLE_DEFAULT,
-              # Must be a constant expression.
-              scope=[],
-              outer_scope=[],
+              expr_must_be_constant=True,
           ),
           Field(
               'upper_bound',
               'ResolvedExpr',
               tag_id=3,
               ignorable=IGNORABLE_DEFAULT,
-              # Must be a constant expression.
-              scope=[],
-              outer_scope=[],
+              expr_must_be_constant=True,
           ),
           Field(
               'recursion_depth_column',
@@ -7583,11 +7662,13 @@ value.
               scope=['column_list'],
           ),
       ],
-      extra_defs_node_only="""
+      extra_protected_defs="""
         // The pipe input is the non-recursive term's scan.
-        const ResolvedScan* GetPipeInputScan() const override {
-          return non_recursive_term_ == nullptr ? nullptr
-                                                : non_recursive_term_->scan();
+        const ResolvedScan* GetPipeInputScanImpl(
+            bool mark_accessed) const override {
+          return non_recursive_term_ == nullptr
+                     ? nullptr
+                     : non_recursive_term_->scan_untracked(mark_accessed);
         }
       """,
   )
@@ -7692,11 +7773,21 @@ value.
       ],
   )
 
+  # ResolvedOption is used for hints and options. Hints must always be constant
+  # expressions, and options must be constant expressions except in a few
+  # places. Setting `default_scope_is_empty=True` and
+  # `default_outer_scope_is_empty=True` ensures that ResolvedOption fields never
+  # inherit visible or correlated columns implicitly: `scope` and `outer_scope`
+  # default to `[]` unless explicitly declared on the Field (and hint fields are
+  # checked to always have empty `scope` and `outer_scope` in
+  # gen_resolved_ast_column_visibility.py).
   gen.AddNode(
       name='ResolvedOption',
       tag_id=53,
       parent='ResolvedArgument',
       use_custom_debug_string=True,
+      default_scope_is_empty=True,
+      default_outer_scope_is_empty=True,
       comment="""
       This represents one SQL hint or option key/value pair.
       The SQL syntax @{ key1=value1, key2=value2, some_db.key3=value3 }
@@ -7899,7 +7990,14 @@ value.
               """,
       fields=[
           Field('boundary_type', SCALAR_BOUNDARY_TYPE, tag_id=2),
-          Field('expression', 'ResolvedExpr', tag_id=3),
+          Field(
+              'expression',
+              'ResolvedExpr',
+              tag_id=3,
+              # Can't reference input columns. Correlated references are
+              # allowed.
+              scope=[],
+          ),
       ],
       use_custom_debug_string=True,
       extra_defs="""
@@ -7971,8 +8069,12 @@ value.
       exactly match this number.
               """,
       fields=[
-          # Must be a constant expression.
-          Field('rows', 'ResolvedExpr', tag_id=2, scope=[], outer_scope=[])
+          Field(
+              'rows',
+              'ResolvedExpr',
+              tag_id=2,
+              expr_must_be_constant=True,
+          )
       ],
   )
 
@@ -9240,6 +9342,7 @@ value.
               ignorable=IGNORABLE_DEFAULT,
               tag_id=6,
               vector=True,
+              expr_must_be_constant=True,
           ),
       ],
       extra_defs="""
@@ -9420,11 +9523,13 @@ value.
       name='ResolvedAlterTableStmt',
       tag_id=115,
       parent='ResolvedAlterObjectStmt',
-      # Generated columns in ADD COLUMN see the table's columns.
-      # TODO: b/576603106 - They should also see columns added by earlier
-      # actions, which these annotations can't express.
+      # Generated columns in ADD COLUMN see the table's columns and columns
+      # added by earlier actions.
       inherited_field_scopes={
-          'alter_action_list': {'scope': [INPUT, 'table_scan']}
+          'alter_action_list': {
+              'scope': [INPUT, 'table_scan'],
+              'scope_sequential': True,
+          }
       },
       comment="""
       This statement:
@@ -9505,7 +9610,12 @@ value.
                     alter the metadata for this object.
               """,
       fields=[
-          Field('option_list', 'ResolvedOption', tag_id=2, vector=True),
+          Field(
+              'option_list',
+              'ResolvedOption',
+              tag_id=2,
+              vector=True,
+          ),
       ],
   )
 
@@ -9589,7 +9699,12 @@ value.
               'entity_type', SCALAR_STRING, tag_id=2, ignorable=NOT_IGNORABLE
           ),
           Field('name', SCALAR_STRING, tag_id=3),
-          Field('options_list', 'ResolvedOption', tag_id=4, vector=True),
+          Field(
+              'options_list',
+              'ResolvedOption',
+              tag_id=4,
+              vector=True,
+          ),
           Field(
               'is_if_not_exists',
               SCALAR_BOOL,
@@ -9629,6 +9744,7 @@ value.
       name='ResolvedAddColumnAction',
       tag_id=131,
       parent='ResolvedAlterAction',
+      provided_columns=['column_definition'],
       comment="""
       ADD COLUMN action for ALTER TABLE statement
               """,
@@ -9755,7 +9871,12 @@ value.
                      alter the metadata for a column.
               """,
       fields=[
-          Field('option_list', 'ResolvedOption', tag_id=2, vector=True),
+          Field(
+              'option_list',
+              'ResolvedOption',
+              tag_id=2,
+              vector=True,
+          ),
       ],
   )
 
@@ -9977,7 +10098,12 @@ value.
         string literals are allowed for this field.
               """,
       fields=[
-          Field('collation_name', 'ResolvedExpr', tag_id=2),
+          Field(
+              'collation_name',
+              'ResolvedExpr',
+              tag_id=2,
+              expr_must_be_constant=True,
+          ),
       ],
   )
 
@@ -10058,6 +10184,7 @@ value.
               ignorable=IGNORABLE_DEFAULT,
               tag_id=4,
               vector=True,
+              expr_must_be_constant=True,
           ),
       ],
   )
@@ -10120,6 +10247,7 @@ value.
               ignorable=IGNORABLE_DEFAULT,
               tag_id=9,
               vector=True,
+              expr_must_be_constant=True,
           ),
           Field(
               'table_scan', 'ResolvedTableScan', tag_id=6, ignorable=IGNORABLE
@@ -10282,6 +10410,7 @@ value.
               ignorable=NOT_IGNORABLE,
               tag_id=2,
               vector=True,
+              expr_must_be_constant=True,
           ),
       ],
   )
@@ -10305,6 +10434,7 @@ value.
               ignorable=IGNORABLE_DEFAULT,
               tag_id=2,
               vector=True,
+              expr_must_be_constant=True,
           ),
       ],
   )
@@ -10334,6 +10464,7 @@ value.
               ignorable=IGNORABLE_DEFAULT,
               tag_id=3,
               vector=True,
+              expr_must_be_constant=True,
           ),
       ],
   )
@@ -10360,6 +10491,7 @@ value.
               ignorable=IGNORABLE_DEFAULT,
               tag_id=3,
               vector=True,
+              expr_must_be_constant=True,
           ),
       ],
   )
@@ -10401,6 +10533,7 @@ value.
               ignorable=IGNORABLE_DEFAULT,
               tag_id=2,
               vector=True,
+              expr_must_be_constant=True,
           ),
           Field(
               'is_revoke_from_all',
@@ -11691,9 +11824,7 @@ ResolvedArgumentRef(y)
               All pivot values in this list must have the same type as
               <for_expr> and must be constant.
               """,
-              # Pivot values must be constant expressions.
-              scope=[],
-              outer_scope=[],
+              expr_must_be_constant=True,
           ),
           Field(
               'pivot_column_list',
@@ -11730,7 +11861,7 @@ ResolvedArgumentRef(y)
       tag_id=170,
       parent='ResolvedArgument',
       # The RETURNING expressions and the action column.
-      provided_columns=[CREATED],
+      provided_columns=['expr_list', 'action_column'],
       comment="""
               Represents the returning clause on a DML statement.
               """,
@@ -12360,9 +12491,7 @@ ResolvedArgumentRef(y)
               comment="""
               Lower bound of the quantification. Cannot be nullptr.
               """,
-              # Must be a constant expression.
-              scope=[],
-              outer_scope=[],
+              expr_must_be_constant=True,
           ),
           Field(
               'upper_bound',
@@ -12372,9 +12501,7 @@ ResolvedArgumentRef(y)
               The upper bound of the quantification. Can be nullptr, in which
               case it means there is no upper bound (i.e., unlimited).
               """,
-              # Must be a constant expression.
-              scope=[],
-              outer_scope=[],
+              expr_must_be_constant=True,
           ),
           Field(
               'is_reluctant',
@@ -12660,6 +12787,20 @@ ResolvedArgumentRef(y)
       ],
   )
 
+  # When `column_definition_list` is empty on ResolvedAuxLoadDataStmt, the
+  # table's columns are created in `output_column_list`.
+  # Several fields then have a `scope=` that uses this `IF` so it gets columns
+  # from either `column_definition_list` or `output_column_list`, depending on
+  # which is set. `aux_load_data_table_columns` is used here so that `IF`
+  # doesn't need to be copied on every field.
+  aux_load_data_table_columns = [
+      IF(
+          'column_definition_list',
+          'column_definition_list',
+          else_='output_column_list',
+      ),
+      'with_partition_columns',
+  ]
   gen.AddNode(
       name='ResolvedAuxLoadDataStmt',
       tag_id=186,
@@ -12733,10 +12874,13 @@ ResolvedArgumentRef(y)
           connections for accessing files.
       <from_files_option_list> the options list describing the source file(s).
 
-      Special-case column creation logic in this node:
-      If `column_definition_list` is present, it gives all created columns.
-      Otherwise, `with_partition_columns` gives some created columns, and
-      the `output_column_list` can include those, and also create more.
+      Special-case column creation and visibility logic in this node:
+        - If `column_definition_list` is present, it creates the table columns
+          (along with `with_partition_columns`), and `output_column_list`
+          references those columns.
+        - Otherwise, `with_partition_columns` creates the partition columns, and
+          `output_column_list` can include those and also create the remaining
+          table columns directly (see `use_custom_columns_created`).
               """,
       fields=[
           Field('insertion_mode', SCALAR_INSERTION_MODE, tag_id=2),
@@ -12753,14 +12897,7 @@ ResolvedArgumentRef(y)
               'ResolvedAuxLoadDataPartitionFilter',
               tag_id=16,
               ignorable=IGNORABLE_DEFAULT,
-              # UNCHECKED: these expressions see the columns of
-              # `column_definition_list`, `with_partition_columns` and
-              # `output_column_list`. The output columns are created by this
-              # node only when `column_definition_list` is empty
-              # (use_custom_columns_created), and the partition columns are
-              # grandchildren.
-              # TODO: b/576603106 - Model this node's columns precisely.
-              scope=[UNCHECKED],
+              scope=aux_load_data_table_columns + ['pseudo_column_list'],
           ),
           Field(
               'output_column_list',
@@ -12768,11 +12905,11 @@ ResolvedArgumentRef(y)
               tag_id=4,
               vector=True,
               ignorable=IGNORABLE,
-              # UNCHECKED: these columns are references to
-              # `column_definition_list` (or `with_partition_columns`), or are
-              # created by this node when `column_definition_list` is empty.
-              # TODO: b/576603106 - Model this node's columns precisely.
-              scope=[UNCHECKED],
+              # References `column_definition_list` (and
+              # `with_partition_columns`) when `column_definition_list` is
+              # non-empty, or creates the table's columns directly when
+              # `column_definition_list` is empty.
+              scope=aux_load_data_table_columns,
           ),
           Field(
               'column_definition_list',
@@ -12780,6 +12917,10 @@ ResolvedArgumentRef(y)
               tag_id=5,
               vector=True,
               ignorable=IGNORABLE_DEFAULT,
+              # Generated columns can reference any column of the table,
+              # including forward references to columns defined later, but not
+              # pseudo-columns.
+              scope=['column_definition_list'],
           ),
           Field(
               'pseudo_column_list',
@@ -12808,6 +12949,7 @@ ResolvedArgumentRef(y)
               tag_id=9,
               vector=True,
               ignorable=IGNORABLE_DEFAULT,
+              scope=['column_definition_list', 'pseudo_column_list'],
           ),
           Field(
               'partition_by_list',
@@ -12815,9 +12957,7 @@ ResolvedArgumentRef(y)
               tag_id=10,
               vector=True,
               ignorable=IGNORABLE_DEFAULT,
-              # UNCHECKED: same as `partition_filter`.
-              # TODO: b/576603106 - Model this node's columns precisely.
-              scope=[UNCHECKED],
+              scope=aux_load_data_table_columns + ['pseudo_column_list'],
           ),
           Field(
               'cluster_by_list',
@@ -12825,9 +12965,7 @@ ResolvedArgumentRef(y)
               tag_id=11,
               vector=True,
               ignorable=IGNORABLE_DEFAULT,
-              # UNCHECKED: same as `partition_filter`.
-              # TODO: b/576603106 - Model this node's columns precisely.
-              scope=[UNCHECKED],
+              scope=aux_load_data_table_columns + ['pseudo_column_list'],
           ),
           Field(
               'option_list',
@@ -12863,6 +13001,7 @@ ResolvedArgumentRef(y)
   }
       """,
   )
+  del aux_load_data_table_columns
 
   gen.AddNode(
       name='ResolvedCreatePropertyGraphStmt',
@@ -13290,9 +13429,6 @@ ResolvedArgumentRef(y)
               ignorable=IGNORABLE_DEFAULT,
               vector=True,
               is_optional_constructor_arg=True,
-              # Options can't reference columns.
-              scope=[],
-              outer_scope=[],
           ),
           Field(
               'is_measure', SCALAR_BOOL, tag_id=6, ignorable=IGNORABLE_DEFAULT
@@ -13561,9 +13697,7 @@ ResolvedArgumentRef(y)
             The lower bound of a bounded or unbounded quantification.
             Can not be omitted.
             """,
-              # Must be a constant expression.
-              scope=[],
-              outer_scope=[],
+              expr_must_be_constant=True,
           ),
           Field(
               'upper_bound',
@@ -13573,9 +13707,7 @@ ResolvedArgumentRef(y)
             The upper bound of a bounded or unbounded quantification. When
             omitted, this is an unbounded quantification.
             """,
-              # Must be a constant expression.
-              scope=[],
-              outer_scope=[],
+              expr_must_be_constant=True,
           ),
       ],
   )
@@ -13600,9 +13732,7 @@ ResolvedArgumentRef(y)
               'ResolvedExpr',
               tag_id=3,
               ignorable=IGNORABLE_DEFAULT,
-              # Must be a constant expression.
-              scope=[],
-              outer_scope=[],
+              expr_must_be_constant=True,
           ),
       ],
   )
@@ -13696,9 +13826,6 @@ ResolvedArgumentRef(y)
               ignorable=IGNORABLE,
               is_constructor_arg=False,
               vector=True,
-              # Hint values are constants.
-              scope=[],
-              outer_scope=[],
           ),
           Field(
               'rhs_hint_list',
@@ -13707,9 +13834,6 @@ ResolvedArgumentRef(y)
               ignorable=IGNORABLE,
               is_constructor_arg=False,
               vector=True,
-              # Hint values are constants.
-              scope=[],
-              outer_scope=[],
           ),
           Field(
               'cost_expr',
@@ -13747,9 +13871,7 @@ ResolvedArgumentRef(y)
               tag_id=4,
               ignorable=IGNORABLE_DEFAULT,
               is_optional_constructor_arg=True,
-              # Must be a constant expression.
-              scope=[],
-              outer_scope=[],
+              expr_must_be_constant=True,
           ),
       ],
   )
@@ -13830,9 +13952,7 @@ ResolvedArgumentRef(y)
               'ResolvedExpr',
               tag_id=3,
               ignorable=IGNORABLE_DEFAULT,
-              # Must be a constant expression.
-              scope=[],
-              outer_scope=[],
+              expr_must_be_constant=True,
           ),
       ],
   )
@@ -14155,9 +14275,6 @@ ResolvedArgumentRef(y)
               ignorable=IGNORABLE,
               is_constructor_arg=False,
               vector=True,
-              # Hint values are constants.
-              scope=[],
-              outer_scope=[],
           ),
           Field(
               'quantifier',
@@ -14269,6 +14386,7 @@ ResolvedArgumentRef(y)
               'ResolvedExpr',
               tag_id=5,
               ignorable=IGNORABLE_DEFAULT,
+              expr_must_be_constant=True,
           ),
           Field(
               'option_list',
@@ -14522,7 +14640,13 @@ ResolvedArgumentRef(y)
       non-selected cases.
       """,
       fields=[
-          Field('condition', 'ResolvedExpr', tag_id=2, ignorable=IGNORABLE),
+          Field(
+              'condition',
+              'ResolvedExpr',
+              tag_id=2,
+              ignorable=IGNORABLE,
+              expr_must_be_constant=True,
+          ),
           Field(
               'subpipeline_sql', SCALAR_STRING, tag_id=3, ignorable=IGNORABLE
           ),
@@ -14953,6 +15077,8 @@ ResolvedArgumentRef(y)
       name='ResolvedUpdateFieldItem',
       tag_id=295,
       parent='ResolvedArgument',
+      # `update_item_column` is internal to this node.
+      provided_columns=[],
       comment="""
       Represents one update item of an UPDATE constructor. The item replaces
       the value(s) found at <proto_field_path> in the original object, which
@@ -15069,11 +15195,6 @@ ResolvedArgumentRef(y)
               'ResolvedExpr',
               tag_id=2,
               comment="""The protocol buffer to modify.""",
-              # TODO: b/475073854 - Remove 'update_element_column' once
-              # (broken link) lands; the resolver currently makes a nested
-              # UPDATE_MANY constructor's `expr` reference its own
-              # update_element_column, and the validator allows it.
-              scope=[INPUT, 'update_element_column'],
           ),
           # TODO: Make alias non-ignorable after implementing name
           # scoping.
@@ -15585,6 +15706,7 @@ ResolvedArgumentRef(y)
               'column_name_list',
               'ResolvedExpr',
               tag_id=2,
+              expr_must_be_constant=True,
           ),
       ],
   )

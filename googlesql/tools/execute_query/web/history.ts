@@ -86,7 +86,7 @@ function getEntryKey(query: string): string {
  * features are stored with each entry so they can be restored, but are NOT
  * used to distinguish entries: running the same query with different options
  * replaces the existing entry rather than adding a new one. This keeps the
- * menu, which only shows the query and catalog, free of identical-looking
+ * menu, which only shows the query and mode, free of identical-looking
  * rows.
  */
 export class HistoryStore {
@@ -200,9 +200,22 @@ export function restoreEntry(form: HTMLFormElement, entry: HistoryEntry): void {
 }
 
 /**
+ * Returns the selected execution modes from `options`, capitalized and joined
+ * with ", ", e.g. "Execute, Analyze". Returns an empty string if none are set.
+ */
+function formatModes(options: string): string {
+  return new URLSearchParams(options)
+    .getAll('mode')
+    .map((mode) => mode.trim())
+    .filter((mode) => !!mode)
+    .map((mode) => mode[0].toUpperCase() + mode.slice(1))
+    .join(', ');
+}
+
+/**
  * Creates a row showing the first lines of `entry`'s query, how long ago it
- * ran, and its catalog. Used by both the history menu and the history dialog;
- * callers add the ARIA role and event handlers.
+ * ran, and its execution modes. Used by both the history menu and the history
+ * dialog; callers add the ARIA role and event handlers.
  */
 export function createEntryRow(
   entry: HistoryEntry,
@@ -229,12 +242,12 @@ export function createEntryRow(
   time.className = 'history-time';
   time.textContent = formatRelativeTime(entry.timestamp, now);
   meta.appendChild(time);
-  const catalog = new URLSearchParams(entry.options).get('catalog');
-  if (catalog) {
-    const catalogElement = document.createElement('span');
-    catalogElement.className = 'history-catalog';
-    catalogElement.textContent = `Catalog: ${catalog}`;
-    meta.appendChild(catalogElement);
+  const mode = formatModes(entry.options);
+  if (mode) {
+    const modeElement = document.createElement('span');
+    modeElement.className = 'history-mode';
+    modeElement.textContent = mode;
+    meta.appendChild(modeElement);
   }
   item.appendChild(meta);
 

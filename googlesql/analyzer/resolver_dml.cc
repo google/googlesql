@@ -35,6 +35,7 @@
 #include "googlesql/analyzer/path_expression_span.h"
 #include "googlesql/analyzer/query_resolver_helper.h"
 #include "googlesql/analyzer/resolver.h"
+#include "googlesql/common/constant_utils.h"
 #include "googlesql/common/errors.h"
 #include "googlesql/public/annotation/is_versioned.h"
 #include "googlesql/public/types/type_modifiers.h"
@@ -136,17 +137,17 @@ bool IsVersionAwareDmlStatement(const ASTStatement* ast_statement) {
   if (ast_statement == nullptr) return false;
   if (const auto* delete_stmt =
           ast_statement->GetAsOrNull<ASTDeleteStatement>()) {
-    return delete_stmt->temporal_at() != nullptr ||
+    return delete_stmt->at_version() != nullptr ||
            delete_stmt->timestamp() != nullptr;
   }
   if (const auto* update_stmt =
           ast_statement->GetAsOrNull<ASTUpdateStatement>()) {
-    return update_stmt->temporal_at() != nullptr ||
+    return update_stmt->at_version() != nullptr ||
            update_stmt->timestamp() != nullptr;
   }
   if (const auto* insert_stmt =
           ast_statement->GetAsOrNull<ASTInsertStatement>()) {
-    return insert_stmt->temporal_at() != nullptr ||
+    return insert_stmt->at_version() != nullptr ||
            insert_stmt->timestamp() != nullptr;
   }
   return false;
@@ -277,8 +278,8 @@ absl::Status Resolver::ResolveDeleteStatementImpl(
     std::unique_ptr<const ResolvedTableScan> resolved_table_scan,
     std::unique_ptr<const ResolvedScan> resolved_using_scan,
     std::unique_ptr<ResolvedDeleteStmt>* output) {
-  if (ast_statement->temporal_at() != nullptr) {
-    return MakeSqlErrorAt(ast_statement->temporal_at())
+  if (ast_statement->at_version() != nullptr) {
+    return MakeSqlErrorAt(ast_statement->at_version())
            << "DELETE statement does not support AT clause";
   }
 
@@ -299,7 +300,7 @@ absl::Status Resolver::ResolveDeleteStatementImpl(
   if (is_version_aware) {
     GOOGLESQL_RETURN_IF_ERROR(ValidateVersionAwareDmlTarget(
         ast_statement, target_name_list.get(), target_alias,
-        /*has_temporal_at=*/ast_statement->temporal_at() != nullptr,
+        /*has_at_version=*/ast_statement->at_version() != nullptr,
         /*has_with_timestamp=*/ast_statement->timestamp() != nullptr));
   }
 
@@ -1016,20 +1017,20 @@ absl::Status Resolver::ResolveInsertStatementImpl(
   if (is_version_aware) {
     GOOGLESQL_RETURN_IF_ERROR(ValidateVersionAwareDmlTarget(
         ast_statement, target_name_list.get(), target_alias,
-        /*has_temporal_at=*/ast_statement->temporal_at() != nullptr,
+        /*has_at_version=*/ast_statement->at_version() != nullptr,
         /*has_with_timestamp=*/ast_statement->timestamp() != nullptr));
   }
   const NameScope* value_scope =
       is_nested ? nested_scope : empty_name_scope_.get();
 
-  std::unique_ptr<const ResolvedExpr> resolved_temporal_at;
+  std::unique_ptr<const ResolvedExpr> resolved_at_version;
   std::unique_ptr<const ResolvedColumnHolder> resolved_timestamp_version_column;
   std::shared_ptr<const NameList> version_aware_name_list;
 
-  if (ast_statement->temporal_at() != nullptr) {
-    GOOGLESQL_RETURN_IF_ERROR(ResolveTemporalAtClause(ast_statement->temporal_at(),
-                                            /*temporal_at_scope=*/value_scope,
-                                            &resolved_temporal_at));
+  if (ast_statement->at_version() != nullptr) {
+    GOOGLESQL_RETURN_IF_ERROR(ResolveAtVersionClause(ast_statement->at_version(),
+                                           /*at_version_scope=*/value_scope,
+                                           &resolved_at_version));
   } else if (ast_statement->timestamp() != nullptr) {
     GOOGLESQL_RETURN_IF_ERROR(ResolveWithTimestampClause(
         ast_statement->timestamp(), target_alias, value_scope,
@@ -1166,7 +1167,7 @@ absl::Status Resolver::ResolveInsertStatementImpl(
       out_topologically_sorted_generated_column_ids,
       std::move(out_generated_column_expr_list),
       std::move(resolved_timestamp_version_column),
-      std::move(resolved_temporal_at));
+      std::move(resolved_at_version));
   MaybeRecordResolvedNodeOperatorKeywordLocation(ast_statement, output->get());
   return absl::OkStatus();
 }
@@ -2839,20 +2840,20 @@ absl::Status Resolver::ResolveUpdateStatementImpl(
   if (is_version_aware) {
     GOOGLESQL_RETURN_IF_ERROR(ValidateVersionAwareDmlTarget(
         ast_statement, target_name_list.get(), target_alias,
-        /*has_temporal_at=*/ast_statement->temporal_at() != nullptr,
+        /*has_at_version=*/ast_statement->at_version() != nullptr,
         /*has_with_timestamp=*/ast_statement->timestamp() != nullptr));
   }
 
   std::unique_ptr<NameScope> version_target_scope_owner;
 
-  std::unique_ptr<const ResolvedExpr> resolved_temporal_at;
+  std::unique_ptr<const ResolvedExpr> resolved_at_version;
   std::unique_ptr<const ResolvedColumnHolder> resolved_timestamp_version_column;
   std::shared_ptr<const NameList> version_aware_name_list;
 
-  if (ast_statement->temporal_at() != nullptr) {
-    GOOGLESQL_RETURN_IF_ERROR(ResolveTemporalAtClause(ast_statement->temporal_at(),
-                                            /*temporal_at_scope=*/outer_scope,
-                                            &resolved_temporal_at));
+  if (ast_statement->at_version() != nullptr) {
+    GOOGLESQL_RETURN_IF_ERROR(ResolveAtVersionClause(ast_statement->at_version(),
+                                           /*at_version_scope=*/outer_scope,
+                                           &resolved_at_version));
   } else if (ast_statement->timestamp() != nullptr) {
     GOOGLESQL_RETURN_IF_ERROR(ResolveWithTimestampClause(
         ast_statement->timestamp(), target_alias, update_scope,
@@ -2869,7 +2870,7 @@ absl::Status Resolver::ResolveUpdateStatementImpl(
   }
 
   // Track the active timestamp version column in the current context (e.g. for
-  // validation of temporal_at or assignability restrictions). Restores the
+  // validation of at_version or assignability restrictions). Restores the
   // previous context upon exiting this scope to safely support nested scopes.
   std::optional<ResolvedColumn> prev_timestamp_column =
       active_timestamp_version_column_;
@@ -3006,7 +3007,7 @@ absl::Status Resolver::ResolveUpdateStatementImpl(
       out_topologically_sorted_generated_column_ids,
       std::move(out_generated_column_expr_list),
       std::move(resolved_timestamp_version_column),
-      std::move(resolved_temporal_at));
+      std::move(resolved_at_version));
   MaybeRecordResolvedNodeOperatorKeywordLocation(ast_statement, output->get());
   return absl::OkStatus();
 }
@@ -3471,28 +3472,39 @@ absl::Status Resolver::ResolveGeneratedColumnsForDml(
   return absl::OkStatus();
 }
 
-absl::Status Resolver::ResolveTemporalAtClause(
-    const ASTTemporalAt* temporal_at, const NameScope* temporal_at_scope,
-    std::unique_ptr<const ResolvedExpr>* resolved_temporal_at) {
-  GOOGLESQL_RET_CHECK(temporal_at != nullptr);
+absl::Status Resolver::ResolveAtVersionClause(
+    const ASTAtVersionClause* at_version, const NameScope* at_version_scope,
+    std::unique_ptr<const ResolvedExpr>* resolved_at_version) {
+  GOOGLESQL_RET_CHECK(at_version != nullptr);
+  GOOGLESQL_RET_CHECK(!at_version->arguments().empty());
+  // TODO: b/538182270 - Support multiple version properties in DML AT clauses.
+  if (at_version->arguments().size() > 1) {
+    return MakeSqlErrorAt(at_version->arguments()[1])
+           << "AT clause in DML statements only supports a single version "
+              "property";
+  }
+  const ASTNamedArgument* arg = at_version->arguments()[0];
   // TODO: b/538182270 - Check supported version properties against Catalog
   // capabilities rather than hardcoding `timestamp`.
-  if (!temporal_at->version_property()->GetAsIdString().CaseEquals(
-          kTimestampId)) {
-    return MakeSqlErrorAt(temporal_at->version_property())
+  if (!arg->name()->GetAsIdString().CaseEquals(kTimestampId)) {
+    return MakeSqlErrorAt(arg->name())
            << "Unsupported version property: "
-           << ToIdentifierLiteral(
-                  temporal_at->version_property()->GetAsIdString());
+           << ToIdentifierLiteral(arg->name()->GetAsIdString());
   }
   std::unique_ptr<const ResolvedExpr> temp_expr;
-  GOOGLESQL_RETURN_IF_ERROR(ResolveScalarExpr(
-      temporal_at->expression(), temporal_at_scope, "AT clause", &temp_expr));
+  GOOGLESQL_RETURN_IF_ERROR(ResolveScalarExpr(arg->expr(), at_version_scope, "AT clause",
+                                    &temp_expr));
 
   GOOGLESQL_RETURN_IF_ERROR(CoerceExprToType(
-      temporal_at->expression(), type_factory_->get_timestamp(),
-      TypeModifiers(), CoercionMode::kImplicitCoercion,
+      arg->expr(), type_factory_->get_timestamp(), TypeModifiers(),
+      CoercionMode::kImplicitCoercion,
       "AT clause expression must be $0, but was $1", &temp_expr));
-  *resolved_temporal_at = std::move(temp_expr);
+  if (!IsQueryConstant(temp_expr.get())) {
+    return MakeSqlErrorAt(arg->expr())
+           << "AT clause expression must be constant within the local query "
+              "scope";
+  }
+  *resolved_at_version = std::move(temp_expr);
   return absl::OkStatus();
 }
 
@@ -3590,7 +3602,7 @@ absl::Status Resolver::ResolveWithTimestampClause(
 
 absl::Status Resolver::ValidateVersionAwareDmlTarget(
     const ASTStatement* ast_statement, const NameList* versioned_name_list,
-    IdString target_alias, bool has_temporal_at, bool has_with_timestamp) {
+    IdString target_alias, bool has_at_version, bool has_with_timestamp) {
   if (!language().LanguageFeatureEnabled(FEATURE_VERSION_AWARE_DML)) {
     return MakeSqlErrorAt(ast_statement)
            << "Version-aware DML is not supported";
@@ -3629,7 +3641,7 @@ absl::Status Resolver::ValidateVersionAwareDmlTarget(
     }
   }
 
-  if (has_temporal_at && !has_versioned_subfields) {
+  if (has_at_version && !has_versioned_subfields) {
     return MakeSqlErrorAt(ast_statement)
            << "AT clause is not supported on target "
            << ToIdentifierLiteral(target_alias)

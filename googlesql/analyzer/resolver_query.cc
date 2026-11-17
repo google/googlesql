@@ -55,6 +55,7 @@
 #include "googlesql/analyzer/resolver_common_inl.h"
 #include "googlesql/analyzer/rewriters/rewrite_subpipeline.h"
 #include "googlesql/analyzer/set_operation_resolver_base.h"
+#include "googlesql/analyzer/string_literal_table_alias.h"
 #include "googlesql/common/constant_utils.h"
 #include "googlesql/common/errors.h"
 #include "googlesql/common/internal_analyzer_output_properties.h"
@@ -1686,7 +1687,17 @@ absl::Status Resolver::ResolvePipeExtend(
   return absl::OkStatus();
 }
 
+// Error for a pipe AGGREGATE whose aggregate list and GROUP BY are both empty,
+// which would produce a table with no columns.
+constexpr absl::string_view kEmptyPipeAggregateError =
+    "Pipe AGGREGATE cannot have both an empty aggregate list and an empty "
+    "GROUP BY";
+
 // Give an error if both aggregate list and group by list are empty.
+//
+// This is a syntactic check. `**` expressions in either list can still expand
+// to zero columns; that case is detected in ResolveSelectAfterFrom once the
+// lists have been resolved.
 NOINLINE_PREVENT_HUGE_STACK_FRAMES
 static absl::Status CheckForEmptyPipeAggregate(const ASTSelect* select) {
   if (select->select_list()->columns().empty()) {
@@ -1703,9 +1714,7 @@ static absl::Status CheckForEmptyPipeAggregate(const ASTSelect* select) {
       }
     }
     if (group_by_is_empty) {
-      return MakeSqlErrorAt(select)
-             << "Pipe AGGREGATE cannot have both an empty aggregate list "
-                "and an empty GROUP BY";
+      return MakeSqlErrorAt(select) << kEmptyPipeAggregateError;
     }
   }
   return absl::OkStatus();
@@ -3010,16 +3019,6 @@ static absl::Status FillItemStructFromNameListColumns(
       }
     }
   }
-  return absl::OkStatus();
-}
-
-inline static absl::Status CheckExpressionIsUnparenthesizedIdentifier(
-    const ASTExpression* expression, absl::string_view error_message) {
-  auto error = [error_message] {
-    return absl::StrCat("Expected unparenthesized identifier", error_message);
-  };
-  GOOGLESQL_RET_CHECK(expression->Is<ASTIdentifier>()) << error();
-  GOOGLESQL_RET_CHECK(!expression->parenthesized()) << error();
   return absl::OkStatus();
 }
 
@@ -5366,6 +5365,20 @@ absl::Status Resolver::ResolveSelectAfterFrom(
     GOOGLESQL_RET_CHECK(!query_resolution_info->HasAnalytic());
   }
   if (query_resolution_info->IsPipeAggregate()) {
+    // The syntactic check in CheckForEmptyPipeAggregate cannot see `**`
+    // expressions that expanded to zero columns, so repeat it on the resolved
+    // state: give an error if the aggregate list resolved to zero columns and
+    // the GROUP BY resolved to neither grouping columns nor grouping sets,
+    // e.g. `|> AGGREGATE **COLUMNS([])` or
+    // `|> AGGREGATE **COLUMNS([]) GROUP BY **COLUMNS([])`.
+    //
+    // `GROUP BY GROUPING SETS(())` has no grouping columns but is a valid
+    // grand-total grouping, so grouping sets count as a non-empty GROUP BY.
+    if (select_column_state_list->Size() == 0 &&
+        query_resolution_info->group_by_column_state_list().empty() &&
+        !query_resolution_info->HasGroupByGroupingSets()) {
+      return MakeSqlErrorAt(select) << kEmptyPipeAggregateError;
+    }
     GOOGLESQL_RET_CHECK(query_resolution_info->HasGroupByOrAggregation());
   } else if (query_resolution_info->IsPipeWindow()) {
     GOOGLESQL_RET_CHECK(query_resolution_info->HasAnalytic());
@@ -7611,6 +7624,16 @@ absl::Status Resolver::ResolveSelectListExprsFirstPass(
     }
   }
 
+  // `**` expressions can expand to zero columns, e.g. `SELECT **COLUMNS([])`,
+  // leaving the SELECT list empty where the syntax alone could not.
+  if (query_resolution_info->select_column_state_list()->Size() == 0 &&
+      !query_resolution_info->SelectFormAllowsEmptySelectList()) {
+    std::string clause_name(query_resolution_info->SelectFormClauseName());
+    clause_name[0] = absl::ascii_toupper(clause_name[0]);
+    return MakeSqlErrorAt(select_list)
+           << clause_name << " list would expand to zero columns";
+  }
+
   // Integrity checks
   for (const auto& select_column_state :
        query_resolution_info->select_column_state_list()
@@ -9458,7 +9481,15 @@ absl::Status Resolver::ResolveSelectColumnSecondPass(
       } else {
         if (!select_column_state->lateral_reference_state
                  ->is_referenced_laterally() ||
-            !absl::IsInvalidArgument(resolved_expr_or_status.status())) {
+            !absl::IsInvalidArgument(resolved_expr_or_status.status()) ||
+            // The fallback below can only match a GROUP BY item that is a
+            // column ref to this column's pre-grouping column. Columns with
+            // aggregate or analytic functions have no pre-grouping column and
+            // can never be grouping columns. Expression matching (e.g. CAST)
+            // was already done by HandleGroupByExpression() and
+            // ResolveSelectExpressionSecondPass(), and `is_group_by_column` is
+            // always false here.
+            !select_column_state->HasPreGroupByResolvedColumn()) {
           // Propagate the error
           return resolved_expr_or_status.status();
         }
@@ -10252,34 +10283,67 @@ Resolver::SetOperationResolver::ASTColumnPropagationMode() const {
   return GetColumnPropagationMode(effective_metadata());
 }
 
-// Returns the identifiers provided in the CORRESPONDING BY list of the given
-// `metadata`. If `metadata` does not have a corresponding by list (is nullptr),
-// returns an empty vector.
-static absl::StatusOr<std::vector<IdString>> GetCorrespondingByIdStrings(
-    const ASTSetOperationMetadata& metadata) {
+// One column name from a CORRESPONDING BY / BY NAME ON list.
+struct ByListColumn {
+  IdString name;
+  // The AST node the name came from, used for error locations.
+  const ASTExpression* location;
+};
+
+absl::StatusOr<std::vector<ByListColumn>>
+Resolver::SetOperationResolver::GetCorrespondingByColumnNames(
+    const ASTSetOperationMetadata& metadata, const NameScope* scope) const {
   if (metadata.corresponding_by_column_list() == nullptr) {
-    return std::vector<IdString>();
+    return std::vector<ByListColumn>();
   }
-  std::vector<IdString> identifier_names;
+  std::vector<ByListColumn> by_list_columns;
   const absl::Span<const ASTExpression* const> expressions =
       metadata.corresponding_by_column_list()->expression_list();
-  identifier_names.reserve(expressions.size());
+  by_list_columns.reserve(expressions.size());
+
   for (const ASTExpression* const expression : expressions) {
-    GOOGLESQL_RETURN_IF_ERROR(CheckExpressionIsUnparenthesizedIdentifier(
+    GOOGLESQL_RETURN_IF_ERROR(CheckExpressionIsUnparenthesizedIdentifierOrUnpack(
         expression, " in Corresponding by list"));
-    auto identifier = expression->GetAsOrDie<ASTIdentifier>();
-    identifier_names.push_back(identifier->GetAsIdString());
+
+    std::string clause_name = GetByNameOnStringImpl(metadata);
+    if (expression->Is<ASTUnpackExpression>()) {
+      GOOGLESQL_RET_CHECK(scope != nullptr)
+          << "Scope is required to resolve UNPACK expressions";
+
+      auto expr_resolution_info = std::make_unique<ExprResolutionInfo>(
+          scope, ExprResolutionInfoOptions{.clause_name = clause_name.c_str()});
+
+      GOOGLESQL_ASSIGN_OR_RETURN(std::vector<IdString> column_names,
+                       resolver_->ResolveUnpackExpressionColumnNames(
+                           expression->GetAsOrDie<ASTUnpackExpression>(),
+                           expr_resolution_info.get()));
+      for (const IdString& name : column_names) {
+        by_list_columns.push_back({.name = name, .location = expression});
+      }
+    } else {
+      by_list_columns.push_back(
+          {.name = expression->GetAsOrDie<ASTIdentifier>()->GetAsIdString(),
+           .location = expression});
+    }
   }
-  return identifier_names;
+
+  if (by_list_columns.empty()) {
+    return MakeSqlErrorAtLocalNode(metadata.corresponding_by_column_list())
+           << "The " << GetByNameOnStringImpl(metadata)
+           << " list cannot be empty";
+  }
+
+  return by_list_columns;
 }
 
-// Returns whether `by_list_1` and `by_list_2` are the same. IdStrings are
-// compared case-insensitively.
-static bool IsSameByList(const std::vector<IdString>& by_list_1,
-                         const std::vector<IdString>& by_list_2) {
-  return absl::c_equal(
-      by_list_1, by_list_2,
-      [](const IdString& a, const IdString& b) { return a.CaseEquals(b); });
+// Returns whether `by_list_1` and `by_list_2` contain the same column names in
+// the same order. Names are compared case-insensitively.
+static bool IsSameByList(absl::Span<const ByListColumn> by_list_1,
+                         absl::Span<const ByListColumn> by_list_2) {
+  return absl::c_equal(by_list_1, by_list_2,
+                       [](const ByListColumn& a, const ByListColumn& b) {
+                         return a.name.CaseEquals(b.name);
+                       });
 }
 
 // static
@@ -10298,7 +10362,8 @@ Resolver::SetOperationResolver::ToIndexedColumnNamesList(
 
 absl::StatusOr<Resolver::SetOperationResolver::FinalColumnList>
 Resolver::SetOperationResolver::MatchInputsAndCalculateFinalColumns(
-    std::vector<ResolvedInputResult>& resolved_inputs) {
+    std::vector<ResolvedInputResult>& resolved_inputs,
+    absl::Span<const ByListColumn> effective_by_columns) {
   GOOGLESQL_RET_CHECK(!resolved_inputs.empty());
   ResolvedColumnList final_column_list;
   std::shared_ptr<const NameList> name_list_template;
@@ -10353,9 +10418,9 @@ Resolver::SetOperationResolver::MatchInputsAndCalculateFinalColumns(
           final_column_names,
           CalculateFinalColumnNamesForCorresponding(resolved_inputs));
     } else {
-      GOOGLESQL_ASSIGN_OR_RETURN(
-          final_column_names,
-          CalculateFinalColumnNamesForCorrespondingBy(resolved_inputs));
+      GOOGLESQL_ASSIGN_OR_RETURN(final_column_names,
+                       CalculateFinalColumnNamesForCorrespondingBy(
+                           resolved_inputs, effective_by_columns));
     }
     std::vector<IndexedColumnNames> input_queries_column_names =
         ToIndexedColumnNamesList(resolved_inputs);
@@ -10408,7 +10473,8 @@ absl::Status Resolver::SetOperationResolver::Resolve(
          "than Resolve()";
   GOOGLESQL_RETURN_IF_ERROR(ValidateHint());
   GOOGLESQL_RETURN_IF_ERROR(ValidateCorresponding());
-  GOOGLESQL_RETURN_IF_ERROR(ValidateIdenticalSetOperator());
+  GOOGLESQL_ASSIGN_OR_RETURN(std::vector<ByListColumn> effective_by_columns,
+                   ValidateIdenticalSetOperator(scope, effective_metadata()));
 
   GOOGLESQL_ASSIGN_OR_RETURN(ResolvedSetOperationScan::SetOperationType op_type,
                    GetSetOperationType(&effective_metadata()));
@@ -10418,7 +10484,8 @@ absl::Status Resolver::SetOperationResolver::Resolve(
   GOOGLESQL_RET_CHECK_GE(resolved_inputs.size(), 2);
 
   GOOGLESQL_ASSIGN_OR_RETURN(FinalColumnList result_columns,
-                   MatchInputsAndCalculateFinalColumns(resolved_inputs));
+                   MatchInputsAndCalculateFinalColumns(resolved_inputs,
+                                                       effective_by_columns));
   ResolvedColumnList final_column_list = std::move(result_columns.column_list);
   std::shared_ptr<const NameList> name_list_template =
       std::move(result_columns.name_list_template);
@@ -10490,37 +10557,12 @@ absl::Status Resolver::SetOperationResolver::CheckNoValueTable(
   return absl::OkStatus();
 }
 
-// `named_columns` should not contain any duplicate names.
-static absl::StatusOr<
-    absl::flat_hash_set<IdString, IdStringCaseHash, IdStringCaseEqualFunc>>
-ToColumnNameSet(absl::Span<const NamedColumn> named_columns) {
-  absl::flat_hash_set<IdString, IdStringCaseHash, IdStringCaseEqualFunc>
-      column_names;
-  for (const NamedColumn& named_column : named_columns) {
-    GOOGLESQL_RET_CHECK(column_names.insert(named_column.name()).second);
-  }
-  return column_names;
-}
-
-// Similar to `ToColumnNameSet` but allows the input `named_columns` to have
-// duplicate names.
 static absl::flat_hash_set<IdString, IdStringCaseHash, IdStringCaseEqualFunc>
 ToColumnNameSetAllowDuplicates(absl::Span<const NamedColumn> named_columns) {
   absl::flat_hash_set<IdString, IdStringCaseHash, IdStringCaseEqualFunc>
       column_names;
   for (const NamedColumn& named_column : named_columns) {
     column_names.insert(named_column.name());
-  }
-  return column_names;
-}
-
-static absl::StatusOr<IdStringHashSetCase> ToColumnNameSetAllowDuplicates(
-    const absl::Span<const ASTExpression* const> expressions) {
-  IdStringHashSetCase column_names;
-  for (const ASTExpression* expression : expressions) {
-    GOOGLESQL_RETURN_IF_ERROR(CheckExpressionIsUnparenthesizedIdentifier(expression, ""));
-    auto identifier = expression->GetAsOrDie<ASTIdentifier>();
-    column_names.insert(identifier->GetAsIdString());
   }
   return column_names;
 }
@@ -10617,19 +10659,15 @@ Resolver::SetOperationResolver::CalculateFinalColumnNamesForCorresponding(
   }
 }
 
-// Returns the first identifier in `identifiers` that does not appear in
-// `scan_column_names`.
-static absl::StatusOr<const ASTIdentifier*>
-GetFirstNonPresentIdentifierInCorrespondingByList(
-    const absl::Span<const ASTExpression* const> expressions,
-    const absl::flat_hash_set<IdString, IdStringCaseHash,
-                              IdStringCaseEqualFunc>& scan_column_names) {
-  for (const ASTExpression* expression : expressions) {
-    GOOGLESQL_RETURN_IF_ERROR(CheckExpressionIsUnparenthesizedIdentifier(
-        expression, " in Corresponding by list"));
-    auto identifier = expression->GetAsOrDie<ASTIdentifier>();
-    if (!scan_column_names.contains(identifier->GetAsIdString())) {
-      return identifier;
+// Returns the first entry in `by_list_columns` whose name does not appear in
+// `scan_column_names`, or nullptr if all names are present.
+static absl::StatusOr<const ByListColumn*>
+GetFirstNonPresentColumnInCorrespondingByList(
+    absl::Span<const ByListColumn> by_list_columns,
+    const IdStringHashSetCase& scan_column_names) {
+  for (const ByListColumn& col : by_list_columns) {
+    if (!scan_column_names.contains(col.name)) {
+      return &col;
     }
   }
   return nullptr;
@@ -10648,27 +10686,24 @@ IdStringHashSetCase Resolver::SetOperationResolver::GetAllColumnNames(
 
 absl::StatusOr<std::vector<IdString>>
 Resolver::SetOperationResolver::CalculateFinalColumnNamesForCorrespondingBy(
-    const std::vector<ResolvedInputResult>& resolved_inputs) const {
-  const absl::Span<const ASTExpression* const> by_list =
-      effective_metadata().corresponding_by_column_list()->expression_list();
+    const std::vector<ResolvedInputResult>& resolved_inputs,
+    absl::Span<const ByListColumn> by_list_columns) const {
   // Enforced by the grammar that the by list must not be empty.
   // TODO: Replace the GOOGLESQL_RET_CHECK error with a SQL error once the
   // grammar allows empty CORRESPONDING BY list.
-  GOOGLESQL_RET_CHECK(!by_list.empty());
-  // No duplicate identifiers in `by_list`.
+  GOOGLESQL_RET_CHECK(!by_list_columns.empty());
+
+  // No duplicate identifiers in `by_list_columns`.
   absl::flat_hash_set<IdString, IdStringCaseHash, IdStringCaseEqualFunc>
       by_list_identifier_set;
-  for (const ASTExpression* expression : by_list) {
-    GOOGLESQL_RETURN_IF_ERROR(CheckExpressionIsUnparenthesizedIdentifier(
-        expression, " in Corresponding by list"));
-    auto identifier = expression->GetAsOrDie<ASTIdentifier>();
-    if (!by_list_identifier_set.insert(identifier->GetAsIdString()).second) {
-      return MakeSqlErrorAtLocalNode(identifier)
+  for (const ByListColumn& col : by_list_columns) {
+    if (!by_list_identifier_set.insert(col.name).second) {
+      return MakeSqlErrorAtLocalNode(col.location)
              << "Duplicate identifiers are not allowed in the "
-             << GetByNameOnString()
-             << " list: " << identifier->GetAsIdString().ToStringView();
+             << GetByNameOnString() << " list: " << col.name.ToStringView();
     }
   }
+
   // No scans have multiple columns with the name.
   for (const ResolvedInputResult& resolved_input : resolved_inputs) {
     absl::flat_hash_set<IdString, IdStringCaseHash, IdStringCaseEqualFunc>
@@ -10687,6 +10722,7 @@ Resolver::SetOperationResolver::CalculateFinalColumnNamesForCorrespondingBy(
       }
     }
   }
+
   // Outer-mode specific checks.
   switch (ASTColumnPropagationMode()) {
     case ASTSetOperation::INNER: {
@@ -10695,14 +10731,14 @@ Resolver::SetOperationResolver::CalculateFinalColumnNamesForCorrespondingBy(
         absl::flat_hash_set<IdString, IdStringCaseHash, IdStringCaseEqualFunc>
             scan_column_names = ToColumnNameSetAllowDuplicates(
                 resolved_input.name_list->columns());
-        GOOGLESQL_ASSIGN_OR_RETURN(const ASTIdentifier* non_present_identifier,
-                         GetFirstNonPresentIdentifierInCorrespondingByList(
-                             by_list, scan_column_names));
-        if (non_present_identifier != nullptr) {
-          return MakeSqlErrorAtLocalNode(non_present_identifier)
-                 << "The column name "
-                 << non_present_identifier->GetAsIdString() << " from the "
-                 << GetByNameOnString() << " list does not appear in "
+        GOOGLESQL_ASSIGN_OR_RETURN(const ByListColumn* non_present_col,
+                         GetFirstNonPresentColumnInCorrespondingByList(
+                             by_list_columns, scan_column_names));
+        if (non_present_col != nullptr) {
+          return MakeSqlErrorAtLocalNode(non_present_col->location)
+                 << "The column name " << non_present_col->name.ToStringView()
+                 << " from the " << GetByNameOnString()
+                 << " list does not appear in "
                  << GetQueryLabel(resolved_input.query_idx)
                  << ". All columns in the " << GetByNameByOrOn()
                  << " list must appear in each input "
@@ -10716,13 +10752,10 @@ Resolver::SetOperationResolver::CalculateFinalColumnNamesForCorrespondingBy(
       // Each identifier in by_list must appear in at least one of the input
       // queries.
       IdStringHashSetCase all_column_names = GetAllColumnNames(resolved_inputs);
-      for (const ASTExpression* expression : by_list) {
-        GOOGLESQL_RETURN_IF_ERROR(CheckExpressionIsUnparenthesizedIdentifier(
-            expression, " in Corresponding by list"));
-        auto identifier = expression->GetAsOrDie<ASTIdentifier>();
-        if (!all_column_names.contains(identifier->GetAsIdString())) {
-          return MakeSqlErrorAtLocalNode(identifier)
-                 << "The column name " << identifier->GetAsIdString()
+      for (const ByListColumn& col : by_list_columns) {
+        if (!all_column_names.contains(col.name)) {
+          return MakeSqlErrorAtLocalNode(col.location)
+                 << "The column name " << col.name.ToStringView()
                  << " from the " << GetByNameOnString()
                  << " list does not appear in any input queries.";
         }
@@ -10734,12 +10767,12 @@ Resolver::SetOperationResolver::CalculateFinalColumnNamesForCorrespondingBy(
       IdStringHashSetCase first_scan_column_names =
           ToColumnNameSetAllowDuplicates(
               resolved_inputs.front().name_list->columns());
-      GOOGLESQL_ASSIGN_OR_RETURN(const ASTIdentifier* non_present_identifier,
-                       GetFirstNonPresentIdentifierInCorrespondingByList(
-                           by_list, first_scan_column_names));
-      if (non_present_identifier != nullptr) {
-        return MakeSqlErrorAtLocalNode(non_present_identifier)
-               << "The column name '" << non_present_identifier->GetAsIdString()
+      GOOGLESQL_ASSIGN_OR_RETURN(const ByListColumn* non_present_col,
+                       GetFirstNonPresentColumnInCorrespondingByList(
+                           by_list_columns, first_scan_column_names));
+      if (non_present_col != nullptr) {
+        return MakeSqlErrorAtLocalNode(non_present_col->location)
+               << "The column name '" << non_present_col->name.ToStringView()
                << "' from the LEFT " << GetByNameOnString()
                << " list must appear in " << GetFirstQueryLabel();
       }
@@ -10747,8 +10780,6 @@ Resolver::SetOperationResolver::CalculateFinalColumnNamesForCorrespondingBy(
     }
     case ASTSetOperation::STRICT: {
       // All queries must share the same set of column names as the by_list.
-      GOOGLESQL_ASSIGN_OR_RETURN(IdStringHashSetCase by_list_identifier_set,
-                       ToColumnNameSetAllowDuplicates(by_list));
       for (const ResolvedInputResult& resolved_input : resolved_inputs) {
         const IdStringHashSetCase scan_column_names =
             ToColumnNameSetAllowDuplicates(resolved_input.name_list->columns());
@@ -10766,12 +10797,9 @@ Resolver::SetOperationResolver::CalculateFinalColumnNamesForCorrespondingBy(
   }
   // All validations have passed, return the IdStrings.
   std::vector<IdString> final_column_names;
-  final_column_names.reserve(by_list.size());
-  for (const ASTExpression* expression : by_list) {
-    GOOGLESQL_RETURN_IF_ERROR(CheckExpressionIsUnparenthesizedIdentifier(
-        expression, " in Corresponding by list"));
-    auto identifier = expression->GetAsOrDie<ASTIdentifier>();
-    final_column_names.push_back(identifier->GetAsIdString());
+  final_column_names.reserve(by_list_columns.size());
+  for (const ByListColumn& col : by_list_columns) {
+    final_column_names.push_back(col.name);
   }
   return final_column_names;
 }
@@ -11291,8 +11319,8 @@ absl::Status Resolver::SetOperationResolver::ValidateMatchByNameForRecursive()
 
 absl::StatusOr<Resolver::SetOperationResolver::NonRecursiveTerm>
 Resolver::SetOperationResolver::ResolveNonRecursiveTerm(
-    const NameScope* scope,
-    ResolvedSetOperationScan::SetOperationType op_type) {
+    const NameScope* scope, ResolvedSetOperationScan::SetOperationType op_type,
+    absl::Span<const ByListColumn> effective_by_columns) {
   std::vector<ResolvedInputResult> nonrecursive_resolved_inputs;
   if (IsPipeSyntax()) {
     // The input is a WITH RECURSIVE using pipe UNION or is a pipe recursive
@@ -11320,9 +11348,9 @@ Resolver::SetOperationResolver::ResolveNonRecursiveTerm(
     GOOGLESQL_RET_CHECK_EQ(ast_set_operation()->inputs().size() - 1,
                  nonrecursive_resolved_inputs.size());
   }
-  GOOGLESQL_ASSIGN_OR_RETURN(
-      FinalColumnList result_columns,
-      MatchInputsAndCalculateFinalColumns(nonrecursive_resolved_inputs));
+  GOOGLESQL_ASSIGN_OR_RETURN(FinalColumnList result_columns,
+                   MatchInputsAndCalculateFinalColumns(
+                       nonrecursive_resolved_inputs, effective_by_columns));
   ResolvedColumnList column_list = std::move(result_columns.column_list);
 
   // Type coercion, if needed.
@@ -11361,7 +11389,8 @@ absl::Status Resolver::SetOperationResolver::ResolveRecursive(
   GOOGLESQL_RETURN_IF_ERROR(ValidateHint());
   GOOGLESQL_RETURN_IF_ERROR(ValidateCorresponding());
   GOOGLESQL_RETURN_IF_ERROR(ValidateMatchByNameForRecursive());
-  GOOGLESQL_RETURN_IF_ERROR(ValidateIdenticalSetOperator());
+  GOOGLESQL_ASSIGN_OR_RETURN(std::vector<ByListColumn> effective_by_columns,
+                   ValidateIdenticalSetOperator(scope, effective_metadata()));
   ResolvedRecursiveScan::RecursiveSetOperationType recursive_op_type;
   GOOGLESQL_RETURN_IF_ERROR(
       GetRecursiveScanEnumType(effective_metadata(), &recursive_op_type));
@@ -11369,8 +11398,9 @@ absl::Status Resolver::SetOperationResolver::ResolveRecursive(
   GOOGLESQL_ASSIGN_OR_RETURN(ResolvedSetOperationScan::SetOperationType op_type,
                    GetSetOperationType(&effective_metadata()));
 
-  GOOGLESQL_ASSIGN_OR_RETURN(NonRecursiveTerm non_recursive_term,
-                   ResolveNonRecursiveTerm(scope, op_type));
+  GOOGLESQL_ASSIGN_OR_RETURN(
+      NonRecursiveTerm non_recursive_term,
+      ResolveNonRecursiveTerm(scope, op_type, effective_by_columns));
 
   std::vector<ResolvedInputResult>& nonrecursive_resolved_inputs =
       non_recursive_term.resolved_inputs;
@@ -12037,12 +12067,14 @@ absl::Status Resolver::SetOperationResolver::ValidateHint() const {
   return absl::OkStatus();
 }
 
-absl::Status Resolver::SetOperationResolver::ValidateIdenticalSetOperator()
-    const {
+absl::StatusOr<std::vector<ByListColumn>>
+Resolver::SetOperationResolver::ValidateIdenticalSetOperator(
+    const NameScope* scope,
+    const ASTSetOperationMetadata& effective_metadata) const {
   if (IsPipeSyntax()) {
     // Pipe set operation or pipe recursive union only has one metadata, so we
     // don't need this validation.
-    return absl::OkStatus();
+    return GetCorrespondingByColumnNames(effective_metadata, scope);
   }
   GOOGLESQL_RET_CHECK(ast_set_operation()->metadata() != nullptr);
   const auto& metadata_list =
@@ -12057,8 +12089,8 @@ absl::Status Resolver::SetOperationResolver::ValidateIdenticalSetOperator()
       GetColumnMatchMode(*metadata_list[0]);
   const ASTSetOperation::ColumnPropagationMode column_propagation_mode =
       GetColumnPropagationMode(*metadata_list[0]);
-  GOOGLESQL_ASSIGN_OR_RETURN(const std::vector<IdString> by_list,
-                   GetCorrespondingByIdStrings(*metadata_list[0]));
+  GOOGLESQL_ASSIGN_OR_RETURN(const std::vector<ByListColumn> effective_by_columns,
+                   GetCorrespondingByColumnNames(effective_metadata, scope));
 
   for (int i = 1; i < metadata_list.size(); ++i) {
     const ASTSetOperationMetadata* metadata = metadata_list[i];
@@ -12099,9 +12131,9 @@ absl::Status Resolver::SetOperationResolver::ValidateIdenticalSetOperator()
                 "for grouping";
     }
 
-    GOOGLESQL_ASSIGN_OR_RETURN(const std::vector<IdString> current_by_list,
-                     GetCorrespondingByIdStrings(*metadata));
-    if (!IsSameByList(by_list, current_by_list)) {
+    GOOGLESQL_ASSIGN_OR_RETURN(const std::vector<ByListColumn> current_by_list_columns,
+                     GetCorrespondingByColumnNames(*metadata, scope));
+    if (!IsSameByList(effective_by_columns, current_by_list_columns)) {
       const ASTNode* err_location = metadata->corresponding_by_column_list();
       return MakeSqlErrorAt(err_location)
              << "Different " << GetByNameOnString()
@@ -12109,7 +12141,7 @@ absl::Status Resolver::SetOperationResolver::ValidateIdenticalSetOperator()
                 "query without using parentheses for grouping";
     }
   }
-  return absl::OkStatus();
+  return effective_by_columns;
 }
 
 static absl::Status ValidateCorrespondingInMetadata(
@@ -14339,6 +14371,14 @@ absl::Status Resolver::ResolveMatchRecognizeMeasures(
     // Don't carry over state accumulated from the previous measure column.
     // Any prior measures should have already cleared the scoping state.
 
+    // Each measure is a single aliased expression, so there is no column list
+    // for `**` to expand into.
+    if (measure->expression()->Is<ASTUnpackExpression>()) {
+      return MakeSqlErrorAt(measure->expression())
+             << "Unpack expression (**) is not supported in the "
+                "MATCH_RECOGNIZE MEASURES clause";
+    }
+
     std::unique_ptr<const ResolvedExpr> expr;
     GOOGLESQL_RETURN_IF_ERROR(ResolveExpr(measure->expression(),
                                 measure_expr_resolution_info.get(), &expr));
@@ -15199,10 +15239,10 @@ absl::Status Resolver::ResolveTablePathExpression(
            << "FOR SYSTEM_TIME AS OF is not supported";
   }
 
-  if (const ASTStringLiteral* string_literal = table_ref->string_literal();
-      string_literal != nullptr) {
-    // TODO: b/568351814 - Add a language feature and resolve through
-    // Catalog::FindTableFromString.
+  const ASTStringLiteral* string_literal = table_ref->string_literal();
+  if (string_literal != nullptr &&
+      !language().LanguageFeatureEnabled(
+          FEATURE_STRING_LITERAL_TABLE_REFERENCES)) {
     return MakeSqlErrorAt(string_literal)
            << "String literal table references are not supported";
   }
@@ -15243,25 +15283,35 @@ absl::Status Resolver::ResolveTablePathExpression(
   }
 
   const ASTPathExpression* path_expr = table_ref->path_expr();
-  GOOGLESQL_RET_CHECK(path_expr != nullptr);
+  // UNNEST was handled above, so exactly one of `path_expr` and
+  // `string_literal` is set.
+  GOOGLESQL_RET_CHECK((path_expr == nullptr) != (string_literal == nullptr));
 
+  // An unaliased STRING literal gets its implicit alias in
+  // ResolveStringLiteralAsTableScan, so `alias` is empty in that case.
   IdString alias;
-  bool has_explicit_alias;
-  const ASTNode* alias_location;
+  bool has_explicit_alias = false;
+  const ASTNode* alias_location = table_ref;
   if (table_ref->alias() != nullptr) {
     alias = table_ref->alias()->GetAsIdString();
     alias_location = table_ref->alias();
     has_explicit_alias = true;
-  } else {
+  } else if (path_expr != nullptr) {
     alias = GetAliasForExpression(path_expr);
-    alias_location = table_ref;
-    has_explicit_alias = false;
   }
-  GOOGLESQL_RET_CHECK(!alias.empty());
+  GOOGLESQL_RET_CHECK(!alias.empty() || string_literal != nullptr);
 
   std::shared_ptr<const NameList> name_list;
   std::unique_ptr<const ResolvedScan> this_scan;
-  if (named_subquery_map_.contains(path_expr->ToIdStringVector())) {
+  if (string_literal != nullptr) {
+    // A STRING literal table reference (FROM 'path') is resolved only through
+    // Catalog::FindTableFromString, never as a WITH entry or a TVF argument.
+    std::unique_ptr<const ResolvedTableScan> table_scan;
+    GOOGLESQL_RETURN_IF_ERROR(ResolveStringLiteralAsTableScan(
+        string_literal, table_ref->alias(), table_ref->hint(),
+        for_version_clause, &table_scan, &name_list));
+    this_scan = std::move(table_scan);
+  } else if (named_subquery_map_.contains(path_expr->ToIdStringVector())) {
     if (for_version_clause != nullptr) {
       return MakeSqlErrorAt(for_version_clause)
              << "FOR SYSTEM_TIME AS OF cannot "
@@ -16156,7 +16206,7 @@ absl::Status Resolver::ResolveJoinRhs(
       }
       if (table_ref->for_version_clause() != nullptr) {
         return MakeSqlErrorAt(table_ref->for_version_clause())
-               << "FOR SYSTEM TIME is not allowed with array scan";
+               << "FOR SYSTEM_TIME AS OF is not allowed with array scan";
       }
     }
     // For backward compatibility, we decided not to update the error message of
@@ -16264,7 +16314,7 @@ absl::Status Resolver::ResolveJoinRhs(
       }
       if (table_ref->for_version_clause() != nullptr) {
         return MakeSqlErrorAt(table_ref->for_version_clause())
-               << "FOR SYSTEM TIME is not allowed with correlated array "
+               << "FOR SYSTEM_TIME AS OF is not allowed with correlated array "
                   "reference";
       }
 
@@ -17594,10 +17644,6 @@ absl::StatusOr<bool> Resolver::MatchTVFSignature(
           // Add the named argument to the map.
           const ASTNamedArgument* named_arg =
               ast_expr->GetAs<ASTNamedArgument>();
-          if (IsNamedLambda(named_arg)) {
-            return MakeSqlErrorAt(named_arg->expr())
-                   << "Lambda arguments are not implemented for TVF";
-          }
           named_arguments.emplace_back(named_arg->name()->GetAsIdString(),
                                        arg_idx, named_arg);
           const absl::string_view arg_name =
@@ -18284,10 +18330,6 @@ absl::StatusOr<bool> Resolver::ResolveTVFArg(
   const ASTDescriptor* ast_descriptor = ast_tvf_arg->descriptor();
   const ASTGraphClause* ast_graph_clause = ast_tvf_arg->graph_clause();
   if (ast_expr != nullptr && ast_expr->node_kind() == AST_NAMED_ARGUMENT) {
-    if (IsNamedLambda(ast_expr)) {
-      return MakeSqlErrorAt(ast_expr)
-             << "Lambda arguments are not implemented for TVF";
-    }
     // Set 'ast_expr' to the named argument value for further resolving.
     ast_expr = ast_expr->GetAs<ASTNamedArgument>()->expr();
     // Named TABLE clause arguments (`arg => TABLE ...`) are wrapped by the
@@ -18314,6 +18356,13 @@ absl::StatusOr<bool> Resolver::ResolveTVFArg(
         }
       }
     }
+  }
+
+  // TODO: b/506946455 - Support lambda and FUNCTION reference arguments in TVF
+  // calls.
+  if (IsLambdaOrFunctionRef(ast_expr)) {
+    return MakeSqlErrorAt(ast_expr)
+           << "Lambda arguments are not implemented for TVF";
   }
 
   if (ast_table_clause != nullptr) {
@@ -18854,8 +18903,12 @@ Resolver::ResolveArrayZipMode(const ASTUnnestExpression* unnest,
            << "Argument `mode` is not allowed when UNNEST only has one array "
               "argument";
   }
-  if (IsNamedLambda(array_zip_mode)) {
+  if (array_zip_mode->expr()->Is<ASTLambda>()) {
     return MakeSqlErrorAt(array_zip_mode) << "Argument `mode` cannot be lambda";
+  }
+  if (array_zip_mode->expr()->Is<ASTFunctionRefArg>()) {
+    return MakeSqlErrorAt(array_zip_mode)
+           << "Argument `mode` cannot be a function reference";
   }
 
   GOOGLESQL_RETURN_IF_ERROR(ResolveExpr(array_zip_mode->expr(), info, &resolved_mode));
@@ -20182,7 +20235,8 @@ static bool IsColumnOfTableArgument(const ASTPathExpression& path_expr,
 NOINLINE_PREVENT_HUGE_STACK_FRAMES
 absl::Status Resolver::MakeScanForTable(
     const ASTNode* ast_location, const Table* table, IdString alias,
-    bool has_explicit_alias, const ASTNode* alias_location,
+    bool has_explicit_alias, bool add_range_variable,
+    const ASTNode* alias_location,
     const ASTForVersionClause* for_version_clause,
     absl::string_view read_as_row_type_error_kind,
     std::unique_ptr<ResolvedTableScan>* output_table_scan,
@@ -20193,6 +20247,10 @@ absl::Status Resolver::MakeScanForTable(
   RETURN_ERROR_IF_OUT_OF_STACK_SPACE();
   GOOGLESQL_RET_CHECK(!alias.empty());
   GOOGLESQL_RET_CHECK(alias_location != nullptr);
+  // An anonymous scan uses an internal alias and no explicit alias, so it can't
+  // be referenced by name.
+  GOOGLESQL_RET_CHECK(add_range_variable || IsInternalAlias(alias));
+  GOOGLESQL_RET_CHECK(add_range_variable || !has_explicit_alias);
 
   GOOGLESQL_RET_CHECK(table != nullptr);
   const IdString table_name = MakeIdString(table->Name());
@@ -20323,6 +20381,8 @@ absl::Status Resolver::MakeScanForTable(
     // value table column, and pass in the list of pseudo-columns so they
     // can be attached to the range variable for the value table.
     GOOGLESQL_RET_CHECK_EQ(name_list->num_columns(), 0);
+    // For an anonymous scan (!add_range_variable), `alias` is internal, so the
+    // value column can't be referenced by name.
     GOOGLESQL_RETURN_IF_ERROR(
         name_list->AddValueTableColumn(alias, column_list[0], ast_location,
                                        /*excluded_field_names=*/{}, name_list));
@@ -20362,9 +20422,10 @@ absl::Status Resolver::MakeScanForTable(
   // count of pseudo-columns so we can't check that exactly.
   GOOGLESQL_RET_CHECK_GE(table_scan->column_list_size(), name_list->num_columns());
 
-  // Add a range variable for the whole scan unless this is a value table. For
-  // value tables, the column's name already serves that purpose.
-  if (!is_value_table) {
+  // Add a range variable for the whole scan unless this is a value table or
+  // an anonymous scan. For value tables, the column's name already serves that
+  // purpose.
+  if (!is_value_table && add_range_variable) {
     GOOGLESQL_ASSIGN_OR_RETURN(name_list, NameList::AddRangeVariableInWrappingNameList(
                                     alias, alias_location, name_list));
   }
@@ -20482,16 +20543,104 @@ absl::Status Resolver::ResolvePathExpressionAsTableScan(
   std::unique_ptr<ResolvedTableScan> table_scan;
   std::shared_ptr<const NameList> name_list;
 
-  GOOGLESQL_RETURN_IF_ERROR(MakeScanForTable(
-      path_expr, table, alias, has_explicit_alias, alias_location,
-      for_version_clause, read_as_row_type_error_kind, &table_scan, &name_list,
-      output_column_name_list,
-      out_resolved_columns_to_catalog_columns_for_scan));
+  GOOGLESQL_RETURN_IF_ERROR(
+      MakeScanForTable(path_expr, table, alias, has_explicit_alias,
+                       /*add_range_variable=*/true, alias_location,
+                       for_version_clause, read_as_row_type_error_kind,
+                       &table_scan, &name_list, output_column_name_list,
+                       out_resolved_columns_to_catalog_columns_for_scan));
 
   GOOGLESQL_RETURN_IF_ERROR(ResolveHintsForNode(hints, table_scan.get()));
 
   *output_name_list = name_list;
   MaybeRecordParseLocation(path_expr, table_scan.get());
+  *output = std::move(table_scan);
+  return absl::OkStatus();
+}
+
+absl::Status Resolver::ResolveStringLiteralAsTableScan(
+    const ASTStringLiteral* /*absl_nonnull*/ literal,
+    const ASTAlias* /*absl_nullable*/ explicit_alias,
+    const ASTHint* /*absl_nullable*/ hints,
+    const ASTForVersionClause* /*absl_nullable*/ for_version_clause,
+    std::unique_ptr<const ResolvedTableScan>* /*absl_nonnull*/ output,
+    std::shared_ptr<const NameList>* /*absl_nonnull*/ output_name_list) {
+  GOOGLESQL_RET_CHECK(literal != nullptr);
+  GOOGLESQL_RET_CHECK(output != nullptr);
+  GOOGLESQL_RET_CHECK(output_name_list != nullptr);
+  GOOGLESQL_RET_CHECK(language().LanguageFeatureEnabled(
+      FEATURE_STRING_LITERAL_TABLE_REFERENCES));
+
+  if (analyzing_partition_by_clause_name_ != nullptr) {
+    return MakeSqlErrorAt(literal) << analyzing_partition_by_clause_name_
+                                   << " expression cannot contain a table scan";
+  }
+
+  const absl::string_view table_literal = literal->string_value();
+  if (table_literal.empty()) {
+    return MakeSqlErrorAt(literal)
+           << "String literal table reference cannot be empty";
+  }
+
+  const Table* table = nullptr;
+  const absl::Status find_status = catalog_->FindTableFromString(
+      table_literal, &table, analyzer_options_.find_options());
+  if (absl::IsNotFound(find_status)) {
+    // As with FindTable, NOT_FOUND isn't user-facing; the Catalog returns
+    // other errors (for example, INVALID_ARGUMENT) to explain failures to the
+    // user.
+    return MakeSqlErrorAt(literal)
+           << "Cannot resolve string literal "
+           << ToSingleQuotedStringLiteral(table_literal) << " as a table";
+  }
+  GOOGLESQL_RETURN_IF_ERROR(find_status);
+  GOOGLESQL_RET_CHECK(table != nullptr)
+      << "FindTableFromString returned OK but left `table` null";
+
+  IdString alias;
+  const ASTNode* alias_location = literal;
+  // False only for an anonymous scan (see below).
+  bool add_range_variable = true;
+  if (explicit_alias != nullptr) {
+    alias = explicit_alias->GetAsIdString();
+    alias_location = explicit_alias;
+  } else {
+    // Derive the range variable from the path, e.g. `events` for
+    // '/cns/cell/logs/events@100.tfrecords'. If there's no single name
+    // (e.g. 'a.csv,b.csv'), the scan is anonymous: it gets an internal alias
+    // and no range variable, so only unqualified column names work.
+    // TODO: b/584541414 - Pseudo-columns of an anonymous scan are dropped by
+    // `|> AS` on a value table (UpdateNameListForTableAlias) and aren't passed
+    // through passthrough TVFs without FEATURE_TVF_PSEUDO_COLUMNS
+    // (NameList::GetColumnsForPassthrough), as for unaliased TVF outputs.
+    const std::string implicit_alias =
+        DeriveImplicitAliasForStringLiteralTable(table_literal);
+    if (implicit_alias.empty()) {
+      alias = AllocateSubqueryName();
+      add_range_variable = false;
+    } else {
+      GOOGLESQL_RET_CHECK(!IsInternalAlias(implicit_alias));
+      alias = MakeIdString(implicit_alias);
+    }
+  }
+  GOOGLESQL_RET_CHECK(!alias.empty());
+
+  std::unique_ptr<ResolvedTableScan> table_scan;
+  std::shared_ptr<const NameList> name_list;
+  GOOGLESQL_RETURN_IF_ERROR(MakeScanForTable(
+      literal, table, alias,
+      /*has_explicit_alias=*/explicit_alias != nullptr, add_range_variable,
+      alias_location, for_version_clause,
+      /*read_as_row_type_error_kind=*/"", &table_scan, &name_list,
+      /*output_column_name_list=*/nullptr, resolved_columns_from_table_scans_));
+  // Records how the table was referenced, so that SQLBuilder prints it back as
+  // a string literal.
+  table_scan->set_name_string(table_literal);
+
+  GOOGLESQL_RETURN_IF_ERROR(ResolveHintsForNode(hints, table_scan.get()));
+
+  *output_name_list = std::move(name_list);
+  MaybeRecordParseLocation(literal, table_scan.get());
   *output = std::move(table_scan);
   return absl::OkStatus();
 }
@@ -20885,7 +21034,7 @@ Resolver::ResolveUnpackExpressionColumnNames(
 
   if (!language().LanguageFeatureEnabled(FEATURE_COLUMN_LIST_SPEC)) {
     return MakeSqlErrorAt(unpack_expression)
-           << "Unpack expression is not supported";
+           << "Unpack expression (**) is not supported";
   }
 
   const ASTExpression* ast_expr = unpack_expression->expression();
@@ -20941,7 +21090,7 @@ absl::Status Resolver::ResolveUnpackExpressionInSelectList(
   const ASTExpression* ast_expression = ast_select_column->expression();
   if (!language().LanguageFeatureEnabled(FEATURE_COLUMN_LIST_SPEC)) {
     return MakeSqlErrorAt(ast_expression)
-           << "Column list spec is not supported";
+           << "Unpack expression (**) is not supported";
   }
 
   GOOGLESQL_RET_CHECK(from_clause_name_list != nullptr);
@@ -20986,7 +21135,8 @@ absl::Status Resolver::ResolveUnpackExpressionInSelectList(
   // second pass sees `a` as a grouped column, whereas the equivalent explicit
   // `|> AGGREGATE a GROUP BY a` is rejected with "Pipe AGGREGATE cannot include
   // non-aggregate expressions". An empty `**` expands to nothing, so there is
-  // nothing to check.
+  // nothing to check here; ResolveSelectListExprsFirstPass rejects SELECT
+  // lists that end up empty once all items have been resolved.
   if (!column_names.empty()) {
     GOOGLESQL_RETURN_IF_ERROR(CheckExprResolutionInfoForQuery(
         ast_expression, query_resolution_info, expr_resolution_info));
