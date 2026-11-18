@@ -829,6 +829,15 @@ class NameScope {
           out_lateral_column_reference_observers,
       NameTarget* target_out) const;
 
+  // Returns the error LookupNamePath gives for a single name `name`, at
+  // `ast_location`, that resolved to the ACCESS_ERROR `target`.
+  // `clause_name` and `problem_string` are as in LookupNamePath.
+  static absl::Status MakeNameAccessError(const ASTNode* ast_location,
+                                          IdString name,
+                                          const NameTarget& target,
+                                          absl::string_view clause_name,
+                                          absl::string_view problem_string);
+
   // Look up a name in this scope, and underlying scopes if necessary.
   // Return true if the name exists, including ambiguous names and field
   // names of value tables.

@@ -10522,6 +10522,151 @@ TEST(ValidateTest, CreateTableFunctionStmtWithConnectionAndEmptyLanguage) {
                   ::testing::HasSubstr("!stmt->language().empty()")));
 }
 
+// Builds a CREATE TABLE FUNCTION statement in `language` with one
+// function-typed argument `f FUNCTION<INT64 -> INT64>` and a templated result,
+// so that no SQL body is required.
+static std::unique_ptr<ResolvedCreateTableFunctionStmt>
+MakeCreateTableFunctionStmtWithLambdaArg(absl::string_view language) {
+  FunctionArgumentType lambda_arg =
+      FunctionArgumentType::Lambda({FunctionArgumentType(types::Int64Type())},
+                                   FunctionArgumentType(types::Int64Type()));
+  return MakeResolvedCreateTableFunctionStmt(
+      /*name_path=*/{"foo"},
+      /*create_scope=*/ResolvedCreateStatement::CREATE_DEFAULT_SCOPE,
+      /*create_mode=*/ResolvedCreateStatement::CREATE_DEFAULT,
+      /*argument_name_list=*/{"f"},
+      /*signature=*/
+      {FunctionArgumentType::AnyRelation(), {lambda_arg}, nullptr},
+      /*has_explicit_return_schema=*/false,
+      /*option_list=*/{},
+      /*language=*/language,
+      /*code=*/"SELECT f(1) AS x",
+      /*query=*/nullptr,
+      /*output_column_list=*/{},
+      /*is_value_table=*/false,
+      /*sql_security=*/ResolvedCreateStatement::SQL_SECURITY_UNSPECIFIED,
+      /*connection_list=*/nullptr);
+}
+
+static LanguageOptions LambdaTvfLanguageOptions(bool enable_lambdas) {
+  LanguageOptions language_options;
+  language_options.EnableLanguageFeature(FEATURE_CREATE_TABLE_FUNCTION);
+  if (enable_lambdas) {
+    language_options.EnableLanguageFeature(FEATURE_UDF_LAMBDA_ARGUMENTS);
+  }
+  return language_options;
+}
+
+TEST(ValidateTest, CreateTableFunctionStmtWithLambdaArg) {
+  std::unique_ptr<ResolvedCreateTableFunctionStmt> stmt =
+      MakeCreateTableFunctionStmtWithLambdaArg("SQL");
+  Validator validator(LambdaTvfLanguageOptions(/*enable_lambdas=*/true));
+  GOOGLESQL_ASSERT_OK(validator.ValidateResolvedStatement(stmt.get()));
+}
+
+TEST(ValidateTest, CreateTableFunctionStmtWithLambdaArgFeatureDisabled) {
+  std::unique_ptr<ResolvedCreateTableFunctionStmt> stmt =
+      MakeCreateTableFunctionStmtWithLambdaArg("SQL");
+  Validator validator(LambdaTvfLanguageOptions(/*enable_lambdas=*/false));
+  ASSERT_THAT(validator.ValidateResolvedStatement(stmt.get()),
+              ::absl_testing::StatusIs(
+                  absl::StatusCode::kInternal,
+                  ::testing::HasSubstr("FEATURE_UDF_LAMBDA_ARGUMENTS")));
+}
+
+TEST(ValidateTest, CreateTableFunctionStmtWithLambdaArgNonSql) {
+  std::unique_ptr<ResolvedCreateTableFunctionStmt> stmt =
+      MakeCreateTableFunctionStmtWithLambdaArg("PYTHON");
+  Validator validator(LambdaTvfLanguageOptions(/*enable_lambdas=*/true));
+  ASSERT_THAT(validator.ValidateResolvedStatement(stmt.get()),
+              ::absl_testing::StatusIs(
+                  absl::StatusCode::kInternal,
+                  ::testing::HasSubstr("only allowed in SQL functions")));
+}
+
+// Builds a templated SQL CREATE AGGREGATE FUNCTION statement with arguments
+// `v ANY TYPE` and `f FUNCTION<INT64 -> INT64>`, where `f` is marked NOT
+// AGGREGATE iff `not_aggregate`.
+static std::unique_ptr<ResolvedCreateFunctionStmt>
+MakeCreateAggregateFunctionStmtWithLambdaArg(bool not_aggregate) {
+  FunctionArgumentTypeOptions lambda_options;
+  lambda_options.set_is_not_aggregate(not_aggregate);
+  FunctionArgumentType lambda_arg = FunctionArgumentType::Lambda(
+      {FunctionArgumentType(types::Int64Type())},
+      FunctionArgumentType(types::Int64Type()), lambda_options);
+  return MakeResolvedCreateFunctionStmt(
+      /*name_path=*/{"foo"},
+      /*create_scope=*/ResolvedCreateStatement::CREATE_DEFAULT_SCOPE,
+      /*create_mode=*/ResolvedCreateStatement::CREATE_DEFAULT,
+      /*has_explicit_return_type=*/true, types::Int64Type(),
+      /*argument_name_list=*/{"v", "f"},
+      /*signature=*/
+      {{types::Int64Type()},
+       {FunctionArgumentType(ARG_KIND_EXPR_ARBITRARY), lambda_arg},
+       nullptr},
+      /*is_aggregate=*/true,
+      /*language=*/"SQL",
+      /*code=*/"SUM(f(v))",
+      /*aggregate_expression_list=*/{},
+      /*function_expression=*/nullptr,
+      /*option_list=*/{},
+      /*sql_security=*/ResolvedCreateStatement::SQL_SECURITY_UNSPECIFIED,
+      /*determinism_level=*/
+      ResolvedCreateStatement::DETERMINISM_UNSPECIFIED,
+      /*is_remote=*/false, /*connection_list=*/nullptr);
+}
+
+TEST(ValidateTest, CreateAggregateFunctionStmtWithNotAggregateLambdaArg) {
+  std::unique_ptr<ResolvedCreateFunctionStmt> stmt =
+      MakeCreateAggregateFunctionStmtWithLambdaArg(/*not_aggregate=*/true);
+  LanguageOptions language_options;
+  language_options.EnableLanguageFeature(FEATURE_UDF_LAMBDA_ARGUMENTS);
+  Validator validator(language_options);
+  GOOGLESQL_ASSERT_OK(validator.ValidateResolvedStatement(stmt.get()));
+}
+
+TEST(ValidateTest, CreateAggregateFunctionStmtWithAggregateLambdaArg) {
+  std::unique_ptr<ResolvedCreateFunctionStmt> stmt =
+      MakeCreateAggregateFunctionStmtWithLambdaArg(/*not_aggregate=*/false);
+  LanguageOptions language_options;
+  language_options.EnableLanguageFeature(FEATURE_UDF_LAMBDA_ARGUMENTS);
+  Validator validator(language_options);
+  ASSERT_THAT(validator.ValidateResolvedStatement(stmt.get()),
+              ::absl_testing::StatusIs(
+                  absl::StatusCode::kInternal,
+                  ::testing::HasSubstr("must be NOT AGGREGATE")));
+}
+
+TEST(ValidateTest, CreateProcedureStmtWithLambdaArgIsRejected) {
+  FunctionArgumentType lambda_arg =
+      FunctionArgumentType::Lambda({FunctionArgumentType(types::Int64Type())},
+                                   FunctionArgumentType(types::Int64Type()));
+  std::unique_ptr<ResolvedCreateProcedureStmt> stmt =
+      MakeResolvedCreateProcedureStmt(
+          /*name_path=*/{"foo"},
+          /*create_scope=*/ResolvedCreateStatement::CREATE_DEFAULT_SCOPE,
+          /*create_mode=*/ResolvedCreateStatement::CREATE_DEFAULT,
+          /*argument_name_list=*/{"f"},
+          /*signature=*/
+          FunctionSignature(FunctionArgumentType(ARG_KIND_VOID), {lambda_arg},
+                            nullptr),
+          /*option_list=*/{},
+          /*procedure_body=*/"BEGIN END", /*connection_list=*/nullptr,
+          /*language=*/"",
+          /*code=*/"",
+          /*external_security=*/
+          ResolvedCreateStatement::SQL_SECURITY_UNSPECIFIED);
+  LanguageOptions language_options;
+  language_options.EnableLanguageFeature(FEATURE_UDF_LAMBDA_ARGUMENTS);
+  Validator validator(language_options);
+  ASSERT_THAT(
+      validator.ValidateResolvedStatement(stmt.get()),
+      ::absl_testing::StatusIs(
+          absl::StatusCode::kInternal,
+          ::testing::HasSubstr(
+              "Function-typed arguments are not allowed in CREATE PROCEDURE")));
+}
+
 TEST(ValidateTest, CreateTableFunctionStmtWithMultiConnections) {
   SimpleConnection connection1("connection1");
   SimpleConnection connection2("connection2");

@@ -16,6 +16,7 @@
 
 #include "googlesql/public/cast.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -29,6 +30,7 @@
 #include "googlesql/common/graph_element_utils.h"
 #include "googlesql/common/internal_value.h"
 #include "googlesql/common/thread_stack.h"
+#include "googlesql/common/unicode_utils.h"
 #include "googlesql/common/utf_util.h"
 #include "googlesql/public/catalog.h"
 #include "googlesql/public/civil_time.h"
@@ -62,11 +64,13 @@
 #include "googlesql/public/types/proto_type.h"
 #include "googlesql/public/types/struct_type.h"
 #include "googlesql/public/types/type.h"
+#include "googlesql/public/types/type_factory.h"
 #include "googlesql/public/uuid_value.h"
 #include "googlesql/public/value.h"
 #include "googlesql/public/variant_value.h"
 #include "absl/algorithm/container.h"
 #include "absl/base/attributes.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
 #include "googlesql/base/status_macros.h"
@@ -348,8 +352,7 @@ const CastHashMap* InitializeGoogleSQLCasts() {
     }
 
     AddToCastMap(kind, TYPE_VARIANT, IMPLICIT, map);
-    if (kind != TYPE_EXTENDED && kind != TYPE_DECLARATIVE &&
-        kind != TYPE_STRUCT && kind != TYPE_JSON) {
+    if (kind != TYPE_EXTENDED && kind != TYPE_DECLARATIVE) {
       AddToCastMap(TYPE_VARIANT, kind, EXPLICIT, map);
     }
   }
@@ -460,18 +463,13 @@ static std::string ValueOrUnbounded(std::optional<std::string> value) {
   return value ? *value : "UNBOUNDED";
 }
 
-}  // namespace
-
-bool IsTypeCastableToJson(const Type* from_type,
-                          const LanguageOptions& language_options) {
-  if (from_type->IsJson()) {
-    return true;
-  }
-  if (!language_options.LanguageFeatureEnabled(
-          LanguageFeature::FEATURE_CAST_TO_JSON_TYPE)) {
-    return false;
-  }
+// TODO: b/542423700 - Support casting composite types containing VARIANT (e.g.
+// ARRAY<VARIANT>, STRUCT<VARIANT>) to JSON.
+// Returns true if `from_type` is a non-VARIANT type whose structure and
+// component types are supported for casting to JSON.
+bool IsTypeSupportedForCastToJson(const Type* from_type) {
   switch (from_type->kind()) {
+    case TYPE_JSON:
     case TYPE_BOOL:
     case TYPE_INT32:
     case TYPE_INT64:
@@ -497,13 +495,34 @@ bool IsTypeCastableToJson(const Type* from_type,
     case TYPE_GRAPH_ELEMENT:
     case TYPE_GRAPH_PATH:
     case TYPE_PROTO:
-      return absl::c_all_of(
-          from_type->ComponentTypes(), [&](const Type* component_type) {
-            return IsTypeCastableToJson(component_type, language_options);
-          });
+      return absl::c_all_of(from_type->ComponentTypes(),
+                            IsTypeSupportedForCastToJson);
     default:
       return false;
   }
+}
+
+bool IsNonVariantTypeCastableToJson(const Type* from_type,
+                                    const LanguageOptions& language_options) {
+  if (from_type->IsJson()) {
+    return true;
+  }
+  if (!language_options.LanguageFeatureEnabled(
+          LanguageFeature::FEATURE_CAST_TO_JSON_TYPE)) {
+    return false;
+  }
+  return IsTypeSupportedForCastToJson(from_type);
+}
+
+}  // namespace
+
+bool IsTypeCastableToJson(const Type* from_type,
+                          const LanguageOptions& language_options) {
+  if (from_type->IsVariant()) {
+    return language_options.LanguageFeatureEnabled(
+        LanguageFeature::FEATURE_VARIANT_TYPE);
+  }
+  return IsNonVariantTypeCastableToJson(from_type, language_options);
 }
 
 bool IsTypeCastableToVariant(const Type* from_type,
@@ -547,14 +566,12 @@ bool IsTypeCastableFromVariant(const Type* to_type,
     case TYPE_ROW:
     case TYPE_EXTENDED:
     case TYPE_DECLARATIVE:
-    case TYPE_JSON:
-    case TYPE_STRUCT:
-      // TODO: b/554949919 - Support casting from VARIANT to JSON, STRUCT,
-      // declarative, and extended types.
+      // TODO: b/554949919 - Support casting from VARIANT to declarative and
+      // extended types.
       // Casting from VARIANT to extended and declarative types is not supported
       // in GoogleSQL core: declarative types only coerce to/from their backing
       // types, and extended types require engine-specific catalog conversions
-      // (matching JSON). Casting to JSON and STRUCT are added in follow-up CLs.
+      // (matching JSON).
       return false;
     default:
       return absl::c_all_of(
@@ -744,6 +761,7 @@ class CastContext {
       bool* out_found_non_deterministic = nullptr) const;
 
   const LanguageOptions& language_options() const { return language_options_; }
+  bool canonicalize_zero() const { return canonicalize_zero_; }
 
  protected:
   const absl::TimeZone& default_timezone() const { return default_timezone_; }
@@ -949,7 +967,16 @@ absl::StatusOr<Value> CastContext::CastValue(
       return Value::Null(to_type);
     }
     GOOGLESQL_ASSIGN_OR_RETURN(VariantValueView view, v.variant_value());
-    return CastFromVariant(*this, view, to_type, out_found_non_deterministic);
+    bool variant_non_deterministic = false;
+    GOOGLESQL_ASSIGN_OR_RETURN(Value casted_val,
+                     CastFromVariant(*this, view, to_type,
+                                     out_found_non_deterministic != nullptr
+                                         ? &variant_non_deterministic
+                                         : nullptr));
+    if (variant_non_deterministic && out_found_non_deterministic != nullptr) {
+      *out_found_non_deterministic = true;
+    }
+    return casted_val;
   }
 
   if (from_value.type()->IsExtendedType() || to_type->IsExtendedType()) {
@@ -2014,6 +2041,92 @@ absl::StatusOr<Value> CastInnerValueFromVariant(
   return result;
 }
 
+// Casts a VARIANT Object to a STRUCT matching target fields case-insensitively
+// (with an unnamed field matching the "" key).
+// Missing fields evaluate to NULL and unasked keys are ignored.
+// Returns a runtime error if `to_type` contains duplicate field names
+// (case-insensitively) or multiple unnamed fields, or if a target field
+// matches multiple source Object keys that differ only by case. Matched fields
+// are cast in target STRUCT field order so error precedence does not depend on
+// the Object's internal iteration order.
+absl::StatusOr<Value> CastVariantObjectToStruct(
+    const CastContext& context, const VariantValueView& view,
+    const Type* to_type, bool* out_found_non_deterministic,
+    int current_nesting_level) {
+  const StructType* to_struct = to_type->AsStruct();
+  const int num_fields = to_struct->num_fields();
+
+  std::vector<Value> casted_fields;
+  casted_fields.reserve(num_fields);
+  absl::flat_hash_map<std::string, int> lower_field_to_index;
+  lower_field_to_index.reserve(num_fields);
+  for (int i = 0; i < num_fields; ++i) {
+    const StructType::StructField& field = to_struct->field(i);
+    auto [unused_it, inserted] = lower_field_to_index.emplace(
+        googlesql::GetNormalizedAndCasefoldedString(field.name), i);
+    if (!inserted) {
+      if (field.name.empty()) {
+        return MakeEvalError()
+               << "Cannot cast VARIANT Object to STRUCT: target struct "
+                  "contains multiple anonymous fields";
+      }
+      return MakeEvalError()
+             << "Cannot cast VARIANT Object to STRUCT: target struct "
+                "contains duplicate field name '"
+             << field.name << "'";
+    }
+    casted_fields.push_back(Value::Null(field.type));
+  }
+
+  struct MatchedMember {
+    std::string key;
+    VariantValueView value;
+  };
+  std::vector<std::optional<MatchedMember>> matched_members(num_fields);
+  GOOGLESQL_RETURN_IF_ERROR(view.ForMembers(
+      [&](absl::string_view key, VariantValueView child_view) -> absl::Status {
+        auto it = lower_field_to_index.find(
+            googlesql::GetNormalizedAndCasefoldedString(key));
+        if (it == lower_field_to_index.end()) {
+          return absl::OkStatus();
+        }
+        const int field_index = it->second;
+        if (matched_members[field_index].has_value()) {
+          return MakeEvalError()
+                 << "Cannot cast VARIANT Object to STRUCT: target struct "
+                    "field '"
+                 << to_struct->field(field_index).name
+                 << "' matches multiple VARIANT Object keys "
+                    "case-insensitively ('"
+                 << matched_members[field_index]->key << "' and '" << key
+                 << "')";
+        }
+        matched_members[field_index] = MatchedMember{
+            .key = std::string(key),
+            .value = std::move(child_view),
+        };
+        return absl::OkStatus();
+      }));
+
+  for (int i = 0; i < num_fields; ++i) {
+    if (!matched_members[i].has_value()) {
+      continue;
+    }
+    const StructType::StructField& field = to_struct->field(i);
+    GOOGLESQL_ASSIGN_OR_RETURN(
+        casted_fields[i],
+        CastFromVariant(context, matched_members[i]->value, field.type,
+                        out_found_non_deterministic, current_nesting_level + 1),
+        _.SetPrepend() << "Error casting field "
+                       << (field.name.empty()
+                               ? absl::StrCat("at index ", i)
+                               : absl::StrCat("'", field.name, "'"))
+                       << " in STRUCT: ");
+  }
+
+  return Value::MakeStruct(to_struct, std::move(casted_fields));
+}
+
 // Casts a VARIANT Object `view` to a MAP type `to_type` (REQUIRES:
 // `to_type->IsMap()`), recursively casting each member value.
 absl::StatusOr<Value> CastVariantObjectToMap(const CastContext& context,
@@ -2047,6 +2160,161 @@ absl::StatusOr<Value> CastVariantObjectToMap(const CastContext& context,
   return Value::MakeMap(to_type, std::move(casted_entries));
 }
 
+absl::StatusOr<JSONValue> CastVariantToJson(const CastContext& context,
+                                            const VariantValueView& view,
+                                            bool* out_found_non_deterministic,
+                                            int current_nesting_level);
+
+// Converts a non-null primitive or pass-through `Value` inside a VARIANT
+// directly to `JSONValue` without wrapping in an intermediate `Value::Json`.
+absl::StatusOr<JSONValue> CastInnerValueToJson(
+    const CastContext& context, const Value& inner_val,
+    bool* out_found_non_deterministic) {
+  if (!IsTypeSupportedForCastToJson(inner_val.type())) {
+    return MakeEvalError() << "Unsupported cast from "
+                           << inner_val.type()->ShortTypeName(
+                                  context.language_options().product_mode())
+                           << " to JSON";
+  }
+  absl::StatusOr<JSONValue> json_val = googlesql::functions::ToJson(
+      inner_val, /*stringify_wide_numbers=*/false, context.language_options(),
+      context.canonicalize_zero(),
+      /*unsupported_fields=*/googlesql::functions::UnsupportedFieldsEnum::FAIL,
+      /*path_as_object=*/false, /*reject_nan_infinity_floats=*/true);
+  if (!json_val.ok()) {
+    if (absl::IsInvalidArgument(json_val.status())) {
+      return MakeEvalError() << json_val.status().message();
+    }
+    return json_val.status();
+  }
+  if (out_found_non_deterministic != nullptr && !*out_found_non_deterministic &&
+      (HasFloatingPoint(inner_val.type()) ||
+       HasNonDeterministicArrayCastToJson(inner_val, types::JsonType()))) {
+    *out_found_non_deterministic = true;
+  }
+  return json_val;
+}
+
+// Returns true if `view` wraps an unordered SQL ARRAY whose converted JSON
+// elements in `json_arr_ref` are not all equal, making the JSON array's element
+// order non-deterministic.
+bool IsUnorderedMultiValueSqlArray(const VariantValueView& view,
+                                   JSONValueConstRef json_arr_ref) {
+  if (json_arr_ref.GetArraySize() <= 1) {
+    return false;
+  }
+  const Type* unprojected_type = view.GetUnprojectedType();
+  if (unprojected_type == nullptr || !unprojected_type->IsArray()) {
+    return false;
+  }
+  absl::StatusOr<Value> array_val = view.GetUnprojectedValue();
+  if (!array_val.ok() || !array_val->is_valid() ||
+      InternalValue::order_kind(*array_val) == InternalValue::kPreservesOrder) {
+    return false;
+  }
+  JSONValueConstRef first_elem = json_arr_ref.GetArrayElement(0);
+  for (size_t i = 1; i < json_arr_ref.GetArraySize(); ++i) {
+    if (json_arr_ref.GetArrayElement(i) != first_elem) {
+      return true;
+    }
+  }
+  return false;
+}
+
+absl::StatusOr<JSONValue> CastVariantObjectToJson(
+    const CastContext& context, const VariantValueView& view,
+    bool* out_found_non_deterministic, int current_nesting_level) {
+  if (current_nesting_level >= functions::kNestingLevelStackCheckThreshold) {
+    GOOGLESQL_RETURN_IF_NOT_ENOUGH_STACK(
+        "Out of stack space due to deeply nested variant object in cast "
+        "function");
+  }
+  JSONValue json_obj;
+  JSONValueRef ref = json_obj.GetRef();
+  ref.SetToEmptyObject();
+  GOOGLESQL_RETURN_IF_ERROR(
+      view.ForMembers([&](absl::string_view key,
+                          const VariantValueView& child_view) -> absl::Status {
+        GOOGLESQL_ASSIGN_OR_RETURN(
+            JSONValue child_json,
+            CastVariantToJson(context, child_view, out_found_non_deterministic,
+                              current_nesting_level + 1));
+        ref.GetMember(key).Set(std::move(child_json));
+        return absl::OkStatus();
+      }));
+  return json_obj;
+}
+
+absl::StatusOr<JSONValue> CastVariantArrayToJson(
+    const CastContext& context, const VariantValueView& view,
+    bool* out_found_non_deterministic, int current_nesting_level) {
+  if (current_nesting_level >= functions::kNestingLevelStackCheckThreshold) {
+    GOOGLESQL_RETURN_IF_NOT_ENOUGH_STACK(
+        "Out of stack space due to deeply nested variant array in cast "
+        "function");
+  }
+  GOOGLESQL_ASSIGN_OR_RETURN(std::vector<VariantValueView> elements, view.GetElements());
+  JSONValue json_arr;
+  JSONValueRef ref = json_arr.GetRef();
+  ref.SetToEmptyArray();
+  if (!elements.empty()) {
+    // Pre-size the JSON array to avoid repeated resizes while populating it.
+    ref.GetArrayElement(elements.size() - 1);
+    for (size_t i = 0; i < elements.size(); ++i) {
+      GOOGLESQL_ASSIGN_OR_RETURN(
+          JSONValue elem_json,
+          CastVariantToJson(context, elements[i], out_found_non_deterministic,
+                            current_nesting_level + 1));
+      ref.GetArrayElement(i).Set(std::move(elem_json));
+    }
+  }
+  if (out_found_non_deterministic != nullptr && !*out_found_non_deterministic &&
+      IsUnorderedMultiValueSqlArray(view, json_arr.GetConstRef())) {
+    *out_found_non_deterministic = true;
+  }
+  return json_arr;
+}
+
+// Builds `JSONValue` bottom-up so nested Variant Objects and Arrays move child
+// `JSONValue`s directly instead of wrapping and deep-copying intermediate
+// `Value`s at every nesting level.
+absl::StatusOr<JSONValue> CastVariantToJson(const CastContext& context,
+                                            const VariantValueView& view,
+                                            bool* out_found_non_deterministic,
+                                            int current_nesting_level) {
+  GOOGLESQL_RET_CHECK(!view.is_null());
+  if (view.IsVariantNull()) {
+    return JSONValue();
+  }
+  // If `view` is already backed by a JSON node or unparsed JSON string,
+  // `GetUnprojectedValue()` either copies the JSON subtree directly without
+  // re-traversing or returns the parse error status.
+  if (const Type* unprojected_type = view.GetUnprojectedType();
+      unprojected_type != nullptr && unprojected_type->IsJson()) {
+    GOOGLESQL_ASSIGN_OR_RETURN(Value json_val, view.GetUnprojectedValue());
+    return JSONValue::CopyFrom(json_val.json_value());
+  }
+  if (view.IsPrimitive()) {
+    GOOGLESQL_ASSIGN_OR_RETURN(Value primitive_val, view.GetPrimitiveValue());
+    return CastInnerValueToJson(context, primitive_val,
+                                out_found_non_deterministic);
+  }
+  // TODO: b/554949919 - Revisit how a VARIANT holding a PROTO casts to JSON
+  // once the VARIANT data model is finalized.
+  if (view.IsObject()) {
+    return CastVariantObjectToJson(context, view, out_found_non_deterministic,
+                                   current_nesting_level);
+  }
+  if (view.IsArray()) {
+    return CastVariantArrayToJson(context, view, out_found_non_deterministic,
+                                  current_nesting_level);
+  }
+  // Pass-through for inner values that are not exposed as Primitives, Objects,
+  // or Arrays (for example, non-string-keyed MAP<K, V> or GRAPH_ELEMENT).
+  GOOGLESQL_ASSIGN_OR_RETURN(Value inner_val, view.GetUnprojectedValue());
+  return CastInnerValueToJson(context, inner_val, out_found_non_deterministic);
+}
+
 // Casts a VARIANT Object `view` to `to_type` (such as MAP<STRING, V> or a
 // pass-through target type when `view` wraps a stored PROTO value).
 absl::StatusOr<Value> CastVariantObject(const CastContext& context,
@@ -2054,16 +2322,24 @@ absl::StatusOr<Value> CastVariantObject(const CastContext& context,
                                         const Type* to_type,
                                         bool* out_found_non_deterministic,
                                         int current_nesting_level) {
-  // TODO: b/554949919 - Support casting VARIANT Objects to JSON and STRUCT.
+  if (to_type->IsStruct()) {
+    // TODO: b/554949919 - Revisit once the VARIANT CAST-out rules are
+    // finalized: check whether the target STRUCT type matches the unprojected
+    // inner STRUCT value directly (e.g., preserving duplicate field names)
+    // before falling back to VARIANT Object matching rules.
+    return CastVariantObjectToStruct(context, view, to_type,
+                                     out_found_non_deterministic,
+                                     current_nesting_level);
+  }
   if (to_type->IsMap()) {
     return CastVariantObjectToMap(context, view, to_type,
                                   out_found_non_deterministic,
                                   current_nesting_level);
   }
-  // A stored PROTO value is exposed as a Variant Object. Casts to
-  // MAP<STRING, V> are handled above via Object member semantics.
-  // For remaining target types (PROTO, STRING, BYTES), delegate to CastValue on
-  // the underlying proto.
+  // A stored PROTO value is exposed as a Variant Object. Casts to STRUCT and
+  // MAP<STRING, V> are handled above (and JSON is handled in CastFromVariant)
+  // via Object member semantics. For remaining target types (PROTO, STRING,
+  // BYTES), delegate to CastValue on the underlying proto.
   if (const Type* unprojected_type = view.GetUnprojectedType();
       unprojected_type != nullptr && unprojected_type->IsProto()) {
     // TODO: b/554949919 - Revisit whether casting a VARIANT holding a PROTO to
@@ -2134,7 +2410,17 @@ absl::StatusOr<Value> CastFromVariant(const CastContext& context,
   if (to_type->IsVariant()) {
     return view.ToVariantValue();
   }
-  // Variant null (e.g. JSON 'null') casts to a typed SQL NULL.
+  if (to_type->IsJson()) {
+    if (const Type* unprojected_type = view.GetUnprojectedType();
+        unprojected_type != nullptr && unprojected_type->IsJson()) {
+      return view.GetUnprojectedValue();
+    }
+    GOOGLESQL_ASSIGN_OR_RETURN(
+        JSONValue json_val,
+        CastVariantToJson(context, view, out_found_non_deterministic,
+                          current_nesting_level));
+    return Value::Json(std::move(json_val));
+  }
   if (view.IsVariantNull()) {
     return Value::Null(to_type);
   }

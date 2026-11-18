@@ -525,6 +525,17 @@ bool ExprResolutionInfo::is_post_distinct() const {
   return false;
 }
 
+const char* ExprResolutionInfo::NameAccessProblemString() const {
+  if (query_resolution_info != nullptr &&
+      query_resolution_info->IsPipeAggregate()) {
+    return "not aggregated";
+  }
+  if (is_post_distinct()) {
+    return "not visible after SELECT DISTINCT";
+  }
+  return NameScope::kDefaultProblemString;
+}
+
 WithModifierMode ExprResolutionInfo::GetWithModifierMode() const {
   return query_resolution_info == nullptr
              ? WithModifierMode::NONE

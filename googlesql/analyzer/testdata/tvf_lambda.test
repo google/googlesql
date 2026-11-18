@@ -1,7 +1,7 @@
 ### Shared Database Setup ###
 
 # Shared base table passed to the TVFs below.
-[default language_features=NONE,+TABLE_VALUED_FUNCTIONS,+CREATE_TABLE_FUNCTION,+NAMED_ARGUMENTS,+INLINE_LAMBDA_ARGUMENT,+UDF_LAMBDA_ARGUMENTS,+PIPES]
+[default language_features=NONE,+TABLE_VALUED_FUNCTIONS,+CREATE_TABLE_FUNCTION,+NAMED_ARGUMENTS,+INLINE_LAMBDA_ARGUMENT,+UDF_LAMBDA_ARGUMENTS,+PIPES,+TEMPLATE_FUNCTIONS,+SAFE_FUNCTION_CALL,+WITH_ON_SUBQUERY]
 [prepare_database=tvf_lambda_db]
 CREATE TABLE t_items(k STRING, v INT64, arr ARRAY<INT64>);
 --
@@ -38,6 +38,441 @@ CreateTableFunctionStmt
 +-output_column_list=
   +-tbl.k#1 AS k [STRING]
   +-$query.v#3 AS v [INT64]
+==
+
+# Table argument plus two lambdas used in WHERE and SELECT.
+[prepare_database=tvf_lambda_db]
+CREATE TABLE FUNCTION TvfFilterMap(
+  tbl TABLE<k STRING, v INT64>,
+  pred FUNCTION<INT64 -> BOOL>,
+  proj FUNCTION<INT64 -> INT64>)
+AS SELECT k, proj(v) AS v FROM tbl WHERE pred(v);
+--
+CreateTableFunctionStmt
++-name_path=TvfFilterMap
++-argument_name_list=[tbl, pred, proj]
++-signature=(TABLE<k STRING, v INT64> tbl, FUNCTION<INT64->BOOL> pred, FUNCTION<INT64->INT64> proj) -> TABLE<k STRING, v INT64>
++-language="SQL"
++-code="SELECT k, proj(v) AS v FROM tbl WHERE pred(v)"
++-query=
+| +-ProjectScan
+|   +-column_list=[tbl.k#1, $query.v#3]
+|   +-expr_list=
+|   | +-v#3 :=
+|   |   +-FunctionCall(FUNCTION_TYPED_PARAMETER:proj(INT64) -> INT64)
+|   |     +-ColumnRef(type=INT64, column=tbl.v#2)
+|   +-input_scan=
+|     +-FilterScan
+|       +-column_list=tbl.[k#1, v#2]
+|       +-input_scan=
+|       | +-RelationArgumentScan(column_list=tbl.[k#1, v#2], name="tbl")
+|       +-filter_expr=
+|         +-FunctionCall(FUNCTION_TYPED_PARAMETER:pred(INT64) -> BOOL)
+|           +-ColumnRef(type=INT64, column=tbl.v#2)
++-output_column_list=
+  +-tbl.k#1 AS k [STRING]
+  +-$query.v#3 AS v [INT64]
+==
+
+# SAFE. call of the only (function-typed) parameter; no scalar or table args.
+[prepare_database=tvf_lambda_db]
+CREATE TABLE FUNCTION TvfSafeGen(f FUNCTION<INT64 -> INT64>)
+AS SELECT x, SAFE.f(x) AS y FROM UNNEST([0, 1, 2]) AS x;
+--
+CreateTableFunctionStmt
++-name_path=TvfSafeGen
++-argument_name_list=[f]
++-signature=(FUNCTION<INT64->INT64> f) -> TABLE<x INT64, y INT64>
++-language="SQL"
++-code="SELECT x, SAFE.f(x) AS y FROM UNNEST([0, 1, 2]) AS x"
++-query=
+| +-ProjectScan
+|   +-column_list=[$array.x#1, $query.y#2]
+|   +-expr_list=
+|   | +-y#2 :=
+|   |   +-FunctionCall({SAFE_ERROR_MODE} FUNCTION_TYPED_PARAMETER:f(INT64) -> INT64)
+|   |     +-ColumnRef(type=INT64, column=$array.x#1)
+|   +-input_scan=
+|     +-ArrayScan
+|       +-column_list=[$array.x#1]
+|       +-array_expr_list=
+|       | +-Literal(type=ARRAY<INT64>, value=[0, 1, 2])
+|       +-element_column_list=[$array.x#1]
++-output_column_list=
+  +-$array.x#1 AS x [INT64]
+  +-$query.y#2 AS y [INT64]
+==
+
+# Forwards FUNCTION f to a built-in higher-order function.
+[prepare_database=tvf_lambda_db]
+CREATE TABLE FUNCTION TvfForwardHof(
+  arr ARRAY<INT64>, f FUNCTION<INT64 -> INT64>)
+AS SELECT ARRAY_TRANSFORM(arr, FUNCTION f) AS mapped;
+--
+CreateTableFunctionStmt
++-name_path=TvfForwardHof
++-argument_name_list=[arr, f]
++-signature=(ARRAY<INT64> arr, FUNCTION<INT64->INT64> f) -> TABLE<mapped ARRAY<INT64>>
++-language="SQL"
++-code="SELECT ARRAY_TRANSFORM(arr, FUNCTION f) AS mapped"
++-query=
+| +-ProjectScan
+|   +-column_list=[$query.mapped#1]
+|   +-expr_list=
+|   | +-mapped#1 :=
+|   |   +-FunctionCall(GoogleSQL:array_transform(ARRAY<INT64> array_to_transform, FUNCTION<INT64->INT64> transformation) -> ARRAY<INT64>)
+|   |     +-FunctionArgument
+|   |     | +-expr=
+|   |     |   +-ArgumentRef(type=ARRAY<INT64>, name="arr")
+|   |     +-FunctionArgument
+|   |       +-function_ref=
+|   |         +-FunctionRef(function=FUNCTION_TYPED_PARAMETER:f, signature=(INT64) -> INT64)
+|   +-input_scan=
+|     +-SingleRowScan
++-output_column_list=
+  +-$query.mapped#1 AS mapped [ARRAY<INT64>]
+==
+
+# Internal WITH clause whose CTE calls the function-typed parameter.
+[prepare_database=tvf_lambda_db]
+CREATE TABLE FUNCTION TvfWithCte(v INT64, f FUNCTION<INT64 -> INT64>)
+AS WITH cte AS (SELECT f(v) AS y) SELECT y FROM cte;
+--
+CreateTableFunctionStmt
++-name_path=TvfWithCte
++-argument_name_list=[v, f]
++-signature=(INT64 v, FUNCTION<INT64->INT64> f) -> TABLE<y INT64>
++-language="SQL"
++-code="WITH cte AS (SELECT f(v) AS y) SELECT y FROM cte"
++-query=
+| +-WithScan
+|   +-column_list=[cte.y#2]
+|   +-with_entry_list=
+|   | +-WithEntry
+|   |   +-with_query_name="cte"
+|   |   +-with_subquery=
+|   |     +-ProjectScan
+|   |       +-column_list=[cte.y#1]
+|   |       +-expr_list=
+|   |       | +-y#1 :=
+|   |       |   +-FunctionCall(FUNCTION_TYPED_PARAMETER:f(INT64) -> INT64)
+|   |       |     +-ArgumentRef(type=INT64, name="v")
+|   |       +-input_scan=
+|   |         +-SingleRowScan
+|   +-query=
+|     +-ProjectScan
+|       +-column_list=[cte.y#2]
+|       +-input_scan=
+|         +-WithRefScan(column_list=[cte.y#2], with_query_name="cte")
++-output_column_list=
+  +-cte.y#2 AS y [INT64]
+==
+
+# Function-typed parameter that the body never references.
+[prepare_database=tvf_lambda_db]
+CREATE TABLE FUNCTION TvfUnusedFn(v INT64, unused_f FUNCTION<INT64 -> INT64>)
+AS SELECT v AS v;
+--
+CreateTableFunctionStmt
++-name_path=TvfUnusedFn
++-argument_name_list=[v, unused_f]
++-signature=(INT64 v, FUNCTION<INT64->INT64> unused_f) -> TABLE<v INT64>
++-language="SQL"
++-code="SELECT v AS v"
++-query=
+| +-ProjectScan
+|   +-column_list=[$query.v#1]
+|   +-expr_list=
+|   | +-v#1 := ArgumentRef(type=INT64, name="v")
+|   +-input_scan=
+|     +-SingleRowScan
++-output_column_list=
+  +-$query.v#1 AS v [INT64]
+==
+
+# Templated TVF taking ANY TABLE and a lambda; the body is resolved per call.
+[prepare_database=tvf_lambda_db]
+CREATE TABLE FUNCTION TemplatedTvfAnyTable(
+  tbl ANY TABLE, f FUNCTION<INT64 -> INT64>)
+AS SELECT f(v) AS y FROM tbl;
+--
+CreateTableFunctionStmt(name_path=TemplatedTvfAnyTable, argument_name_list=[tbl, f], signature=(ANY TABLE tbl, FUNCTION<INT64->INT64> f) -> ANY TABLE, language="SQL", code="SELECT f(v) AS y FROM tbl")
+==
+
+# Templated TVF taking ANY TYPE and a lambda; the body is resolved per call.
+[prepare_database=tvf_lambda_db]
+CREATE TABLE FUNCTION TemplatedTvfAnyScalar(
+  x ANY TYPE, f FUNCTION<INT64 -> INT64>)
+AS SELECT f(x) AS y;
+--
+CreateTableFunctionStmt(name_path=TemplatedTvfAnyScalar, argument_name_list=[x, f], signature=(ANY TYPE x, FUNCTION<INT64->INT64> f) -> ANY TABLE, language="SQL", code="SELECT f(x) AS y")
+==
+
+### DDL validation and negative DDL tests ###
+
+# Lambdas called in a scalar subquery, GROUP BY, HAVING and an explicit
+# RETURNS TABLE.
+CREATE TEMP TABLE FUNCTION GroupMap(
+  tbl TABLE<k STRING, v INT64>,
+  key_fn FUNCTION<STRING -> STRING>,
+  keep FUNCTION<INT64 -> BOOL>)
+RETURNS TABLE<k STRING, total INT64>
+AS
+SELECT key_fn(k) AS k, SUM(v) AS total
+FROM tbl
+WHERE (SELECT keep(v))
+GROUP BY key_fn(k)
+HAVING keep(SUM(v));
+--
+CreateTableFunctionStmt
++-name_path=GroupMap
++-create_scope=CREATE_TEMP
++-argument_name_list=[tbl, key_fn, keep]
++-signature=(TABLE<k STRING, v INT64> tbl, FUNCTION<STRING->STRING> key_fn, FUNCTION<INT64->BOOL> keep) -> TABLE<k STRING, total INT64>
++-has_explicit_return_schema=TRUE
++-language="SQL"
++-code="SELECT key_fn(k) AS k, SUM(v) AS total\nFROM tbl\nWHERE (SELECT keep(v))\nGROUP BY key_fn(k)\nHAVING keep(SUM(v))"
++-query=
+| +-ProjectScan
+|   +-column_list=[$groupby.$groupbycol1#6, $aggregate.total#4]
+|   +-input_scan=
+|     +-FilterScan
+|       +-column_list=[$groupby.$groupbycol1#6, $aggregate.total#4, $aggregate.$agg2#7]
+|       +-input_scan=
+|       | +-AggregateScan
+|       |   +-column_list=[$groupby.$groupbycol1#6, $aggregate.total#4, $aggregate.$agg2#7]
+|       |   +-input_scan=
+|       |   | +-ProjectScan
+|       |   |   +-column_list=[tbl.k#1, tbl.v#2, $pre_groupby.k#5]
+|       |   |   +-expr_list=
+|       |   |   | +-k#5 :=
+|       |   |   |   +-FunctionCall(FUNCTION_TYPED_PARAMETER:key_fn(STRING) -> STRING)
+|       |   |   |     +-ColumnRef(type=STRING, column=tbl.k#1)
+|       |   |   +-input_scan=
+|       |   |     +-FilterScan
+|       |   |       +-column_list=tbl.[k#1, v#2]
+|       |   |       +-input_scan=
+|       |   |       | +-RelationArgumentScan(column_list=tbl.[k#1, v#2], name="tbl")
+|       |   |       +-filter_expr=
+|       |   |         +-SubqueryExpr
+|       |   |           +-type=BOOL
+|       |   |           +-subquery_type=SCALAR
+|       |   |           +-parameter_list=
+|       |   |           | +-ColumnRef(type=INT64, column=tbl.v#2)
+|       |   |           +-subquery=
+|       |   |             +-ProjectScan
+|       |   |               +-column_list=[$expr_subquery.$col1#3]
+|       |   |               +-expr_list=
+|       |   |               | +-$col1#3 :=
+|       |   |               |   +-FunctionCall(FUNCTION_TYPED_PARAMETER:keep(INT64) -> BOOL)
+|       |   |               |     +-ColumnRef(type=INT64, column=tbl.v#2, is_correlated=TRUE)
+|       |   |               +-input_scan=
+|       |   |                 +-SingleRowScan
+|       |   +-group_by_list=
+|       |   | +-$groupbycol1#6 := ColumnRef(type=STRING, column=$pre_groupby.k#5)
+|       |   +-aggregate_list=
+|       |     +-total#4 :=
+|       |     | +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+|       |     |   +-ColumnRef(type=INT64, column=tbl.v#2)
+|       |     +-$agg2#7 :=
+|       |       +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+|       |         +-ColumnRef(type=INT64, column=tbl.v#2)
+|       +-filter_expr=
+|         +-FunctionCall(FUNCTION_TYPED_PARAMETER:keep(INT64) -> BOOL)
+|           +-ColumnRef(type=INT64, column=$aggregate.$agg2#7)
++-output_column_list=
+  +-$groupby.$groupbycol1#6 AS k [STRING]
+  +-$aggregate.total#4 AS total [INT64]
+==
+
+# Zero-argument and two-argument lambdas, with SAFE. on the two-argument call.
+CREATE TABLE FUNCTION ZeroAndPair(
+  init FUNCTION<() -> INT64>, comb FUNCTION<(INT64, INT64) -> INT64>)
+AS SELECT SAFE.comb(x, init()) AS y FROM UNNEST([1, 2]) AS x;
+--
+CreateTableFunctionStmt
++-name_path=ZeroAndPair
++-argument_name_list=[init, comb]
++-signature=(FUNCTION<()->INT64> init, FUNCTION<(INT64, INT64)->INT64> comb) -> TABLE<y INT64>
++-language="SQL"
++-code="SELECT SAFE.comb(x, init()) AS y FROM UNNEST([1, 2]) AS x"
++-query=
+| +-ProjectScan
+|   +-column_list=[$query.y#2]
+|   +-expr_list=
+|   | +-y#2 :=
+|   |   +-FunctionCall({SAFE_ERROR_MODE} FUNCTION_TYPED_PARAMETER:comb(INT64, INT64) -> INT64)
+|   |     +-ColumnRef(type=INT64, column=$array.x#1)
+|   |     +-FunctionCall(FUNCTION_TYPED_PARAMETER:init() -> INT64)
+|   +-input_scan=
+|     +-ArrayScan
+|       +-column_list=[$array.x#1]
+|       +-array_expr_list=
+|       | +-Literal(type=ARRAY<INT64>, value=[1, 2])
+|       +-element_column_list=[$array.x#1]
++-output_column_list=
+  +-$query.y#2 AS y [INT64]
+==
+
+# An inline lambda in the TVF body forwards a call of the function-typed
+# parameter to ARRAY_FILTER.
+CREATE TABLE FUNCTION FilterArray(
+  arr ARRAY<INT64>, pred FUNCTION<INT64 -> BOOL>)
+AS SELECT ARRAY_FILTER(arr, e -> pred(e) AND e > 0) AS kept;
+--
+CreateTableFunctionStmt
++-name_path=FilterArray
++-argument_name_list=[arr, pred]
++-signature=(ARRAY<INT64> arr, FUNCTION<INT64->BOOL> pred) -> TABLE<kept ARRAY<INT64>>
++-language="SQL"
++-code="SELECT ARRAY_FILTER(arr, e -> pred(e) AND e > 0) AS kept"
++-query=
+| +-ProjectScan
+|   +-column_list=[$query.kept#2]
+|   +-expr_list=
+|   | +-kept#2 :=
+|   |   +-FunctionCall(GoogleSQL:array_filter(ARRAY<INT64> array_to_filter, FUNCTION<INT64->BOOL> condition) -> ARRAY<INT64>)
+|   |     +-FunctionArgument
+|   |     | +-expr=
+|   |     |   +-ArgumentRef(type=ARRAY<INT64>, name="arr")
+|   |     +-FunctionArgument
+|   |       +-inline_lambda=
+|   |         +-InlineLambda
+|   |           +-argument_list=[$lambda_arg.e#1]
+|   |           +-body=
+|   |             +-FunctionCall(GoogleSQL:$and(BOOL, repeated(1) BOOL) -> BOOL)
+|   |               +-FunctionCall(FUNCTION_TYPED_PARAMETER:pred(INT64) -> BOOL)
+|   |               | +-ColumnRef(type=INT64, column=$lambda_arg.e#1)
+|   |               +-FunctionCall(GoogleSQL:$greater(INT64, INT64) -> BOOL)
+|   |                 +-ColumnRef(type=INT64, column=$lambda_arg.e#1)
+|   |                 +-Literal(type=INT64, value=0)
+|   +-input_scan=
+|     +-SingleRowScan
++-output_column_list=
+  +-$query.kept#2 AS kept [ARRAY<INT64>]
+==
+
+# Forwarding FUNCTION f to another TVF reaches the TVF call-site stub error.
+[use_database=tvf_lambda_db]
+CREATE TABLE FUNCTION ForwardToTvf(
+  tbl TABLE<k STRING, v INT64>, pred FUNCTION<INT64 -> BOOL>)
+AS SELECT * FROM TvfFilterMap(TABLE tbl, FUNCTION pred, x -> x);
+--
+ERROR: Lambda arguments are not implemented for TVF [at 3:42]
+AS SELECT * FROM TvfFilterMap(TABLE tbl, FUNCTION pred, x -> x);
+                                         ^
+==
+
+# A templated TVF with ANY TABLE and a lambda is accepted at DDL time even
+# with an explicit RETURNS TABLE.
+CREATE TABLE FUNCTION tvf_any_table_lambda(
+  t ANY TABLE, f FUNCTION<INT64 -> INT64>)
+  RETURNS TABLE<x INT64> AS SELECT f(1) x;
+--
+CreateTableFunctionStmt(name_path=tvf_any_table_lambda, argument_name_list=[t, f], signature=(ANY TABLE t, FUNCTION<INT64->INT64> f) -> TABLE<x INT64>, has_explicit_return_schema=TRUE, language="SQL", code="SELECT f(1) x")
+==
+
+# NOT AGGREGATE is not allowed on TVF parameters, including FUNCTION ones.
+CREATE TABLE FUNCTION NotAggLambda(f FUNCTION<INT64 -> INT64> NOT AGGREGATE)
+AS SELECT f(1) AS x;
+--
+ERROR: Parameters can only be marked NOT AGGREGATE in functions created with CREATE AGGREGATE FUNCTION [at 1:36]
+CREATE TABLE FUNCTION NotAggLambda(f FUNCTION<INT64 -> INT64> NOT AGGREGATE)
+                                   ^
+==
+
+# A function-typed parameter cannot be referenced as a bare expression.
+CREATE TABLE FUNCTION BareLambdaRef(f FUNCTION<INT64 -> INT64>)
+AS SELECT f AS x;
+--
+ERROR: Function-typed UDF arguments must be prefixed with the FUNCTION keyword [at 2:11]
+AS SELECT f AS x;
+          ^
+==
+
+# Calling a function-typed parameter with an argument of the wrong type fails.
+CREATE TABLE FUNCTION WrongLambdaArgType(f FUNCTION<INT64 -> INT64>)
+AS SELECT f('a') AS x;
+--
+ERROR: No matching signature for function FUNCTION_TYPED_PARAMETER:F
+  Argument types: STRING
+  Signature: F(INT64)
+    Argument 1: Unable to coerce type STRING to expected type INT64 [at 2:11]
+AS SELECT f('a') AS x;
+          ^
+==
+
+# The lambda result type must be compatible with the explicit RETURNS TABLE.
+CREATE TABLE FUNCTION WrongReturnType(f FUNCTION<INT64 -> STRING>)
+RETURNS TABLE<x INT64>
+AS SELECT f(1) AS x;
+--
+ERROR: Column x for the output table of a CREATE TABLE FUNCTION statement has type INT64, but the SQL body provides incompatible type STRING for this column [at 1:1]
+CREATE TABLE FUNCTION WrongReturnType(f FUNCTION<INT64 -> STRING>)
+^
+==
+
+# A table column with the same name as a function-typed parameter is still
+# referenced as a column, while calls resolve to the parameter.
+CREATE TABLE FUNCTION ColumnShadowsLambda(
+  tbl TABLE<f INT64>, f FUNCTION<INT64 -> INT64>)
+AS SELECT f(f) AS y FROM tbl;
+--
+CreateTableFunctionStmt
++-name_path=ColumnShadowsLambda
++-argument_name_list=[tbl, f]
++-signature=(TABLE<f INT64> tbl, FUNCTION<INT64->INT64> f) -> TABLE<y INT64>
++-language="SQL"
++-code="SELECT f(f) AS y FROM tbl"
++-query=
+| +-ProjectScan
+|   +-column_list=[$query.y#2]
+|   +-expr_list=
+|   | +-y#2 :=
+|   |   +-FunctionCall(FUNCTION_TYPED_PARAMETER:f(INT64) -> INT64)
+|   |     +-ColumnRef(type=INT64, column=tbl.f#1)
+|   +-input_scan=
+|     +-RelationArgumentScan(column_list=[tbl.f#1], name="tbl")
++-output_column_list=
+  +-$query.y#2 AS y [INT64]
+==
+
+# A TVF declaration without LANGUAGE or SQL body cannot take lambda arguments.
+CREATE TABLE FUNCTION tvf_no_body(f FUNCTION<INT64 -> INT64>)
+  RETURNS TABLE<x INT64>;
+--
+ERROR: Lambda arguments are only allowed in SQL table-valued functions [at 1:23]
+CREATE TABLE FUNCTION tvf_no_body(f FUNCTION<INT64 -> INT64>)
+                      ^
+==
+
+# Non-SQL TVFs cannot take lambda arguments.
+CREATE TABLE FUNCTION tvf_non_sql(f FUNCTION<INT64 -> INT64>)
+  RETURNS TABLE<x INT64> LANGUAGE testlang;
+--
+ERROR: Lambda arguments are only allowed in SQL table-valued functions [at 1:23]
+CREATE TABLE FUNCTION tvf_non_sql(f FUNCTION<INT64 -> INT64>)
+                      ^
+==
+
+# Remote TVFs cannot take lambda arguments.
+[language_features=NONE,+TABLE_VALUED_FUNCTIONS,+CREATE_TABLE_FUNCTION,+UDF_LAMBDA_ARGUMENTS,+REMOTE_FUNCTION]
+CREATE TABLE FUNCTION tvf_remote(f FUNCTION<INT64 -> INT64>)
+  RETURNS TABLE<x INT64> LANGUAGE remote;
+--
+ERROR: Lambda arguments are only allowed in SQL table-valued functions [at 1:23]
+CREATE TABLE FUNCTION tvf_remote(f FUNCTION<INT64 -> INT64>)
+                      ^
+==
+
+# Function-typed parameters require FEATURE_UDF_LAMBDA_ARGUMENTS.
+[language_features=NONE,+TABLE_VALUED_FUNCTIONS,+CREATE_TABLE_FUNCTION]
+CREATE TABLE FUNCTION NoLambdaFeature(f FUNCTION<INT64 -> INT64>)
+AS SELECT f(1) AS x;
+--
+ERROR: Function-typed arguments in UDFs are not supported [at 1:41]
+CREATE TABLE FUNCTION NoLambdaFeature(f FUNCTION<INT64 -> INT64>)
+                                        ^
 ==
 
 ### Positional, named, and pipe call resolution tests ###

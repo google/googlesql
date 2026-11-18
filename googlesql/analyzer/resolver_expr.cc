@@ -1449,6 +1449,21 @@ absl::Status Resolver::ResolveExpr(
                                 expr_resolution_info.get(), resolved_expr_out));
       break;
 
+    case AST_UNPACK_EXPRESSION:
+      // The parser accepts `**` wherever an expression is allowed, but it is
+      // only meaningful as a direct item of a column list. The clauses that
+      // support it (SELECT list, GROUP BY, ORDER BY, PARTITION BY, etc.)
+      // expand it before resolving expressions, so any `**` that reaches
+      // generic expression resolution is in an unsupported position.
+      if (!language().LanguageFeatureEnabled(FEATURE_COLUMN_LIST_SPEC)) {
+        return MakeSqlErrorAt(ast_expr)
+               << "Unpack expression (**) is not supported";
+      }
+      return MakeSqlErrorAt(ast_expr)
+             << "Unpack expression (**) is not allowed here. It can only be "
+                "used as an item of a column list, such as in SELECT, GROUP "
+                "BY, or ORDER BY";
+
     default:
       return MakeSqlErrorAt(ast_expr) << "Unhandled expression for node kind "
                                       << ast_expr->GetNodeKindString() << ":\n"
@@ -1930,19 +1945,11 @@ absl::Status Resolver::ResolvePathExpressionAsExpression(
   NameTarget target;
   bool resolved_to_target = false;
   if (num_names_consumed == 0 && expr_resolution_info->name_scope != nullptr) {
-    const char* problem_string = NameScope::kDefaultProblemString;
-    if (expr_resolution_info->is_post_distinct()) {
-      problem_string = "not visible after SELECT DISTINCT";
-    }
-    if (expr_resolution_info->query_resolution_info != nullptr &&
-        expr_resolution_info->query_resolution_info->IsPipeAggregate()) {
-      problem_string = "not aggregated";
-    }
-
     std::optional<IdString> referenced_pattern_variable;
     GOOGLESQL_RETURN_IF_ERROR(expr_resolution_info->name_scope->LookupNamePath(
-        path_expr, expr_resolution_info->clause_name, problem_string,
-        in_strict_mode(), correlated_columns_sets, &num_names_consumed,
+        path_expr, expr_resolution_info->clause_name,
+        expr_resolution_info->NameAccessProblemString(), in_strict_mode(),
+        correlated_columns_sets, &num_names_consumed,
         referenced_pattern_variable, lateral_column_reference_observers,
         &target));
     resolved_to_target = num_names_consumed > 0;
@@ -7241,6 +7248,21 @@ static absl::Status ValidateNamedLambdas(
   if (!function->IsAggregate() && !function->IsAnalytic()) {
     // Only scalar functions are allowed to have named lambda arguments.
     return absl::OkStatus();
+  }
+  // TODO: Remove once calls to SQL UDAs with function-typed
+  // parameters are supported.
+  if (function->IsAggregate() && (function->Is<SQLFunctionInterface>() ||
+                                  function->Is<TemplatedSQLFunction>())) {
+    for (const ASTExpression* arg : function_arguments) {
+      const ASTNode* expr = arg->Is<ASTNamedArgument>()
+                                ? arg->GetAsOrDie<ASTNamedArgument>()->expr()
+                                : arg;
+      if (IsLambdaOrFunctionRef(expr)) {
+        return MakeSqlErrorAt(expr)
+               << "Lambda arguments are not implemented for aggregate "
+                  "functions";
+      }
+    }
   }
   auto first_named_lambda =
       std::find_if(function_arguments.begin(), function_arguments.end(),

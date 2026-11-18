@@ -435,6 +435,29 @@ static absl::Status LogNameHitAndFallbackToActualNameScope(
 const char* const NameScope::kDefaultProblemString =
     "neither grouped nor aggregated";
 
+// static
+absl::Status NameScope::MakeNameAccessError(const ASTNode* ast_location,
+                                            IdString name,
+                                            const NameTarget& target,
+                                            absl::string_view clause_name,
+                                            absl::string_view problem_string) {
+  GOOGLESQL_RET_CHECK(target.IsAccessError());
+  if (!target.access_error_message().empty()) {
+    return MakeSqlErrorAt(ast_location) << target.access_error_message();
+  }
+
+  return MakeSqlErrorAt(ast_location)
+         << (clause_name.empty() ? "An" : clause_name)
+         << " expression references "
+         // TODO: We currently model array offset references
+         // as value tables, so we incorrectly label those as
+         // 'range variable' in error messages.  Fix this.
+         << (NameTarget::IsRangeVariableKind(target.original_kind())
+                 ? "table alias "
+                 : "column ")
+         << ToIdentifierLiteral(name) << " which is " << problem_string;
+}
+
 absl::Status NameScope::LookupNamePath(
     const PathExpressionSpan& path_expr, const char* clause_name,
     const char* problem_string, bool in_strict_mode,
@@ -614,10 +637,6 @@ absl::Status NameScope::LookupNamePath(
           (*num_names_consumed)++;
         } else {
           // Accessing the column or range variable name is invalid.
-          if (!target.access_error_message().empty()) {
-            return MakeSqlErrorAt(path_expr.first_name())
-                   << target.access_error_message();
-          }
           if (target.IsRangeVariableKind(target.original_kind())) {
             // However, for range variables the caveat is that if all of its
             // fields are valid to access then we could reconstruct the
@@ -628,17 +647,8 @@ absl::Status NameScope::LookupNamePath(
             // there is no interest over time, we can delete this case and
             // remove this TODO.
           }
-          return MakeSqlErrorAt(path_expr.first_name())
-                 << (strlen(clause_name) == 0 ? "An" : clause_name)
-                 << " expression references "
-                 // TODO: We currently model array offset references
-                 // as value tables, so we incorrectly label those as
-                 // 'range variable' in error messages.  Fix this.
-                 << (target.IsRangeVariableKind(target.original_kind())
-                         ? "table alias "
-                         : "column ")
-                 << path_expr.ToIdentifierPathString() << " which is "
-                 << problem_string;
+          return MakeNameAccessError(path_expr.first_name(), first_name, target,
+                                     clause_name, problem_string);
         }
         break;
       }

@@ -5230,14 +5230,6 @@ absl::Status Resolver::ResolveCreateFunctionStatement(
                    : ResolveFunctionDeclarationType::SCALAR_FUNCTION,
       &function_name, arg_info.get()));
 
-  if (is_aggregate) {
-    for (const auto* arg_details : arg_info->GetArgumentDetails()) {
-      if (arg_details->arg_type.IsLambda()) {
-        return MakeSqlErrorAt(ast_statement->function_declaration())
-               << "Lambda arguments are not allowed in aggregate functions";
-      }
-    }
-  }
   const Type* return_type = nullptr;
   const bool has_explicit_return_type = ast_statement->return_type() != nullptr;
   bool has_return_type = false;
@@ -5294,6 +5286,27 @@ absl::Status Resolver::ResolveCreateFunctionStatement(
     }
     GOOGLESQL_RETURN_IF_ERROR(ValidateColumnListSpecArguments(
         *arg_info, ast_statement->function_declaration(), "functions"));
+  }
+  if (is_aggregate) {
+    // A function-typed parameter of a SQL UDA can be called both on per-row
+    // values inside aggregate calls and on aggregated values after
+    // aggregation, so like other parameters used after aggregation, it must
+    // be NOT AGGREGATE (the same value for all rows of the aggregate call).
+    // Which columns a lambda passed to such a parameter may capture is checked
+    // at call sites, not here.
+    for (const ASTFunctionParameter* param :
+         ast_statement->function_declaration()
+             ->parameters()
+             ->parameter_entries()) {
+      const FunctionArgumentInfo::ArgumentDetails* arg_details =
+          arg_info->FindArg(param->name()->GetAsIdString());
+      GOOGLESQL_RET_CHECK(arg_details != nullptr);
+      if (arg_details->arg_type.IsLambda() && !param->is_not_aggregate()) {
+        return MakeSqlErrorAt(param)
+               << "Function-typed parameters in aggregate functions must be "
+                  "marked NOT AGGREGATE";
+      }
+    }
   }
   const std::string language_string =
       is_remote ? "REMOTE"
@@ -5662,12 +5675,6 @@ absl::Status Resolver::ResolveCreateTableFunctionStatement(
                                  ResolveFunctionDeclarationType::TABLE_FUNCTION,
                                  &function_name, arg_info.get()));
 
-  for (const auto* arg_details : arg_info->GetArgumentDetails()) {
-    if (arg_details->arg_type.IsLambda()) {
-      return MakeSqlErrorAt(ast_statement->function_declaration())
-             << "Lambda arguments are not allowed in table-valued functions";
-    }
-  }
   const bool has_explicit_return_schema =
       ast_statement->return_tvf_schema() != nullptr;
   TVFRelation return_tvf_relation({});
@@ -5759,6 +5766,13 @@ absl::Status Resolver::ResolveCreateTableFunctionStatement(
   }
 
   if (language_string != "SQL") {
+    for (const auto* arg_details : arg_info->GetArgumentDetails()) {
+      if (arg_details->arg_type.IsLambda()) {
+        return MakeSqlErrorAt(ast_statement->function_declaration())
+               << "Lambda arguments are only allowed in SQL table-valued "
+                  "functions";
+      }
+    }
     GOOGLESQL_RETURN_IF_ERROR(ValidateColumnListSpecArguments(
         *arg_info, ast_statement->function_declaration(),
         "table-valued functions"));
@@ -5788,6 +5802,7 @@ absl::Status Resolver::ResolveCreateTableFunctionStatement(
       }
     }
     std::shared_ptr<const NameList> tvf_body_name_list;
+    GOOGLESQL_RETURN_IF_ERROR(GenerateLambdaProxyFunctions(arg_info.get()));
     {
       // Set the argument info member variable in Resolver so that arguments are
       // in scope for the function body. The scoped_reset will set the variable

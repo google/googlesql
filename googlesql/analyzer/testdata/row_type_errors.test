@@ -718,3 +718,122 @@ ERROR: No matching signature for function SAMPLE_FUNCTIONS:FN_WITH_2_ROWTYPES
     Argument 2: Row type cannot be inferred from untyped argument: [] [at 2:11]
 |> SELECT fn_with_2_rowtypes(T, [])
           ^
+==
+
+[prepare_database=templated_tvf_db]
+CREATE TABLE FUNCTION KeyValueRowTvf(min_key ANY TYPE) AS (
+  SELECT kv FROM KeyValueLazy kv WHERE kv.key > min_key
+)
+--
+CreateTableFunctionStmt(name_path=KeyValueRowTvf, argument_name_list=[min_key], signature=(ANY TYPE min_key) -> ANY TABLE, language="SQL", code="SELECT kv FROM KeyValueLazy kv WHERE kv.key > min_key")
+==
+
+[prepare_database=templated_tvf_db]
+CREATE TABLE FUNCTION KeyValueFieldTvf(min_key ANY TYPE) AS (
+  SELECT kv.key FROM KeyValueLazy kv WHERE kv.key > min_key
+)
+--
+CreateTableFunctionStmt(name_path=KeyValueFieldTvf, argument_name_list=[min_key], signature=(ANY TYPE min_key) -> ANY TABLE, language="SQL", code="SELECT kv.key FROM KeyValueLazy kv WHERE kv.key > min_key")
+==
+
+# Templated TVF bodies are only resolved at each call, so the ROW column is
+# rejected there rather than at CREATE TABLE FUNCTION.
+[use_database=templated_tvf_db]
+SELECT * FROM KeyValueRowTvf(0)
+--
+ERROR: Invalid table-valued function KeyValueRowTvf [at 1:15]
+SELECT * FROM KeyValueRowTvf(0)
+              ^
+Analysis of table-valued function KeyValueRowTvf failed [at 1:1]
+SELECT kv FROM KeyValueLazy kv WHERE kv.key > min_key
+^
+Returning expressions of type ROW is not allowed [at 1:1]
+SELECT kv FROM KeyValueLazy kv WHERE kv.key > min_key
+^
+==
+
+# Reading fields of a ROW inside a templated TVF body is allowed. Without
+# REWRITE_ROW_TYPE, the body is not rewritten.
+[use_database=templated_tvf_db]
+SELECT * FROM KeyValueFieldTvf(0)
+--
+QueryStmt
++-output_column_list=
+| +-KeyValueFieldTvf.key#1 AS key [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[KeyValueFieldTvf.key#1]
+    +-input_scan=
+      +-TVFScan
+        +-column_list=[KeyValueFieldTvf.key#1]
+        +-tvf=KeyValueFieldTvf
+        +-signature=(literal INT64) -> TABLE<key INT64>
+        +-argument_list=
+        | +-FunctionArgument
+        |   +-expr=
+        |     +-Literal(type=INT64, value=0)
+        +-column_index_list=[0]
+        +-function_call_signature=(INT64 min_key) -> ANY TABLE
+
+With Templated SQL TVF signature:
+  KeyValueFieldTvf(literal INT64) -> TABLE<key INT64>
+containing resolved templated query:
+QueryStmt
++-output_column_list=
+| +-$query.key#2 AS key [INT64]
++-query=
+  +-ProjectScan
+    +-column_list=[$query.key#2]
+    +-expr_list=
+    | +-key#2 :=
+    |   +-GetRowField
+    |     +-type=INT64
+    |     +-expr=
+    |     | +-ColumnRef(type=ROW<KeyValueLazy>, column=KeyValueLazy.$row#1)
+    |     +-column=KeyValueLazy.Key
+    +-input_scan=
+      +-FilterScan
+        +-column_list=[KeyValueLazy.$row#1]
+        +-input_scan=
+        | +-TableScan(column_list=[KeyValueLazy.$row#1], table=KeyValueLazy, alias="kv", read_as_row_type=TRUE)
+        +-filter_expr=
+          +-FunctionCall(GoogleSQL:$greater(INT64, INT64) -> BOOL)
+            +-GetRowField
+            | +-type=INT64
+            | +-expr=
+            | | +-ColumnRef(type=ROW<KeyValueLazy>, column=KeyValueLazy.$row#1)
+            | +-column=KeyValueLazy.Key
+            +-ArgumentRef(type=INT64, name="min_key")
+==
+
+[prepare_database=templated_tvf_db]
+CREATE FUNCTION KeyValueRowFn(min_key ANY TYPE) AS (
+  (SELECT kv FROM KeyValueLazy kv WHERE kv.key > min_key LIMIT 1)
+)
+--
+CreateFunctionStmt(name_path=KeyValueRowFn, return_type=STRUCT<>, argument_name_list=[min_key], signature=(ANY TYPE min_key) -> ANY TYPE, language="SQL", code="(SELECT kv FROM KeyValueLazy kv WHERE kv.key > min_key LIMIT 1)")
+==
+
+# Templated function bodies are only resolved at each call, so a ROW return
+# type is rejected there rather than at CREATE FUNCTION.
+[use_database=templated_tvf_db]
+SELECT KeyValueRowFn(0)
+--
+ERROR: Invalid function KeyValueRowFn [at 1:8]
+SELECT KeyValueRowFn(0)
+       ^
+Analysis of function Templated_SQL_Function:KeyValueRowFn failed:
+Returning expressions of type ROW is not allowed
+==
+
+# Reading a field of the returned ROW is rejected too. Before, it hit a
+# RET_CHECK in REWRITE_ROW_TYPE.
+[use_database=templated_tvf_db]
+[enabled_ast_rewrites=NONE,+ROW_TYPE]
+SELECT KeyValueRowFn(0).value
+--
+ERROR: Invalid function KeyValueRowFn [at 1:8]
+SELECT KeyValueRowFn(0).value
+       ^
+Analysis of function Templated_SQL_Function:KeyValueRowFn failed:
+Returning expressions of type ROW is not allowed

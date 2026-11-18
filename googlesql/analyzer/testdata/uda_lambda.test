@@ -1,0 +1,452 @@
+### Shared Database Setup ###
+
+# Shared base tables for the UDAs below.
+[default language_features=NONE,+CREATE_AGGREGATE_FUNCTION,+NAMED_ARGUMENTS,+INLINE_LAMBDA_ARGUMENT,+UDF_LAMBDA_ARGUMENTS,+TEMPLATE_FUNCTIONS,+SAFE_FUNCTION_CALL]
+[prepare_database=uda_lambda_db]
+CREATE TABLE t_items(k STRING, v INT64, arr ARRAY<INT64>);
+--
+CreateTableStmt
++-name_path=t_items
++-column_definition_list=
+  +-ColumnDefinition(name="k", type=STRING, column=t_items.k#1)
+  +-ColumnDefinition(name="v", type=INT64, column=t_items.v#2)
+  +-ColumnDefinition(name="arr", type=ARRAY<INT64>, column=t_items.arr#3)
+==
+
+[prepare_database=uda_lambda_db]
+CREATE TABLE t_outer(grp STRING, offset_val INT64);
+--
+CreateTableStmt
++-name_path=t_outer
++-column_definition_list=
+  +-ColumnDefinition(name="grp", type=STRING, column=t_outer.grp#1)
+  +-ColumnDefinition(name="offset_val", type=INT64, column=t_outer.offset_val#2)
+==
+
+# Pre-aggregate call of a function-typed parameter: SUM(f(v)).
+[prepare_database=uda_lambda_db]
+CREATE AGGREGATE FUNCTION AggPreMap(
+  v INT64, f FUNCTION<INT64 -> INT64> NOT AGGREGATE)
+AS (SUM(f(v)));
+--
+CreateFunctionStmt
++-name_path=AggPreMap
++-return_type=INT64
++-argument_name_list=[v, f]
++-signature=(INT64 v, FUNCTION<INT64->INT64> {is_not_aggregate: true} f) -> INT64
++-is_aggregate=TRUE
++-language="SQL"
++-code="SUM(f(v))"
++-aggregate_expression_list=
+| +-$agg1#1 :=
+|   +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+|     +-FunctionCall(FUNCTION_TYPED_PARAMETER:f(INT64) -> INT64)
+|       +-ArgumentRef(parse_location=100-101, type=INT64, name="v", argument_kind=AGGREGATE)
++-function_expression=
+  +-ColumnRef(type=INT64, column=$aggregate.$agg1#1)
+==
+
+# Post-aggregate call of a function-typed parameter: f(SUM(v)).
+[prepare_database=uda_lambda_db]
+CREATE AGGREGATE FUNCTION AggPostMap(
+  v INT64, f FUNCTION<INT64 -> FLOAT64> NOT AGGREGATE)
+AS (f(SUM(v)));
+--
+CreateFunctionStmt
++-name_path=AggPostMap
++-return_type=DOUBLE
++-argument_name_list=[v, f]
++-signature=(INT64 v, FUNCTION<INT64->DOUBLE> {is_not_aggregate: true} f) -> DOUBLE
++-is_aggregate=TRUE
++-language="SQL"
++-code="f(SUM(v))"
++-aggregate_expression_list=
+| +-$agg1#1 :=
+|   +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+|     +-ArgumentRef(parse_location=103-104, type=INT64, name="v", argument_kind=AGGREGATE)
++-function_expression=
+  +-FunctionCall(FUNCTION_TYPED_PARAMETER:f(INT64) -> DOUBLE)
+    +-ColumnRef(type=INT64, column=$aggregate.$agg1#1)
+==
+
+# SAFE. call before aggregation plus a second lambda after aggregation.
+[prepare_database=uda_lambda_db]
+CREATE AGGREGATE FUNCTION AggSafePrePost(
+  v INT64,
+  pre FUNCTION<INT64 -> INT64> NOT AGGREGATE,
+  post FUNCTION<INT64 -> INT64> NOT AGGREGATE)
+AS (post(SUM(SAFE.pre(v))));
+--
+CreateFunctionStmt
++-name_path=AggSafePrePost
++-return_type=INT64
++-argument_name_list=[v, pre, post]
++-signature=(INT64 v, FUNCTION<INT64->INT64> {is_not_aggregate: true} pre, FUNCTION<INT64->INT64> {is_not_aggregate: true} post) -> INT64
++-is_aggregate=TRUE
++-language="SQL"
++-code="post(SUM(SAFE.pre(v)))"
++-aggregate_expression_list=
+| +-$agg1#1 :=
+|   +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+|     +-FunctionCall({SAFE_ERROR_MODE} FUNCTION_TYPED_PARAMETER:pre(INT64) -> INT64)
+|       +-ArgumentRef(parse_location=168-169, type=INT64, name="v", argument_kind=AGGREGATE)
++-function_expression=
+  +-FunctionCall(FUNCTION_TYPED_PARAMETER:post(INT64) -> INT64)
+    +-ColumnRef(type=INT64, column=$aggregate.$agg1#1)
+==
+
+# Zero-argument and two-argument function-typed parameters.
+[prepare_database=uda_lambda_db]
+CREATE AGGREGATE FUNCTION AggZeroAndPair(
+  v INT64,
+  init FUNCTION<() -> INT64> NOT AGGREGATE,
+  comb FUNCTION<(INT64, INT64) -> INT64> NOT AGGREGATE)
+AS (comb(SUM(v), init()));
+--
+CreateFunctionStmt
++-name_path=AggZeroAndPair
++-return_type=INT64
++-argument_name_list=[v, init, comb]
++-signature=(INT64 v, FUNCTION<()->INT64> {is_not_aggregate: true} init, FUNCTION<(INT64, INT64)->INT64> {is_not_aggregate: true} comb) -> INT64
++-is_aggregate=TRUE
++-language="SQL"
++-code="comb(SUM(v), init())"
++-aggregate_expression_list=
+| +-$agg1#1 :=
+|   +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+|     +-ArgumentRef(parse_location=166-167, type=INT64, name="v", argument_kind=AGGREGATE)
++-function_expression=
+  +-FunctionCall(FUNCTION_TYPED_PARAMETER:comb(INT64, INT64) -> INT64)
+    +-ColumnRef(type=INT64, column=$aggregate.$agg1#1)
+    +-FunctionCall(FUNCTION_TYPED_PARAMETER:init() -> INT64)
+==
+
+# Forwards FUNCTION f to a built-in higher-order function before aggregation.
+[prepare_database=uda_lambda_db]
+CREATE AGGREGATE FUNCTION AggForwardHof(
+  arr ARRAY<INT64>, f FUNCTION<INT64 -> INT64> NOT AGGREGATE)
+AS (ARRAY_CONCAT_AGG(ARRAY_TRANSFORM(arr, FUNCTION f)));
+--
+CreateFunctionStmt
++-name_path=AggForwardHof
++-return_type=ARRAY<INT64>
++-argument_name_list=[arr, f]
++-signature=(ARRAY<INT64> arr, FUNCTION<INT64->INT64> {is_not_aggregate: true} f) -> ARRAY<INT64>
++-is_aggregate=TRUE
++-language="SQL"
++-code="ARRAY_CONCAT_AGG(ARRAY_TRANSFORM(arr, FUNCTION f))"
++-aggregate_expression_list=
+| +-$agg1#1 :=
+|   +-AggregateFunctionCall(GoogleSQL:array_concat_agg(ARRAY<INT64>) -> ARRAY<INT64>)
+|     +-FunctionCall(GoogleSQL:array_transform(ARRAY<INT64> array_to_transform, FUNCTION<INT64->INT64> transformation) -> ARRAY<INT64>)
+|       +-FunctionArgument
+|       | +-expr=
+|       |   +-ArgumentRef(parse_location=140-143, type=ARRAY<INT64>, name="arr", argument_kind=AGGREGATE)
+|       +-FunctionArgument
+|         +-function_ref=
+|           +-FunctionRef(function=FUNCTION_TYPED_PARAMETER:f, signature=(INT64) -> INT64)
++-function_expression=
+  +-ColumnRef(type=ARRAY<INT64>, column=$aggregate.$agg1#1)
+==
+
+# Function-typed parameter that the body never references.
+[prepare_database=uda_lambda_db]
+CREATE AGGREGATE FUNCTION AggUnusedFn(
+  v INT64, unused_f FUNCTION<INT64 -> INT64> NOT AGGREGATE)
+AS (SUM(v));
+--
+CreateFunctionStmt
++-name_path=AggUnusedFn
++-return_type=INT64
++-argument_name_list=[v, unused_f]
++-signature=(INT64 v, FUNCTION<INT64->INT64> {is_not_aggregate: true} unused_f) -> INT64
++-is_aggregate=TRUE
++-language="SQL"
++-code="SUM(v)"
++-aggregate_expression_list=
+| +-$agg1#1 :=
+|   +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+|     +-ArgumentRef(parse_location=107-108, type=INT64, name="v", argument_kind=AGGREGATE)
++-function_expression=
+  +-ColumnRef(type=INT64, column=$aggregate.$agg1#1)
+==
+
+# Templated UDA with a function-typed parameter; the body is resolved per call.
+[prepare_database=uda_lambda_db]
+CREATE AGGREGATE FUNCTION TemplatedAggMap(
+  v ANY TYPE, f FUNCTION<INT64 -> INT64> NOT AGGREGATE)
+AS (SUM(f(v)));
+--
+CreateFunctionStmt(name_path=TemplatedAggMap, return_type=STRUCT<>, argument_name_list=[v, f], signature=(ANY TYPE v, FUNCTION<INT64->INT64> {is_not_aggregate: true} f) -> ANY TYPE, is_aggregate=TRUE, language="SQL", code="SUM(f(v))")
+==
+
+### DDL validation and negative DDL tests ###
+
+# The same NOT AGGREGATE lambda is called both before and after aggregation.
+CREATE TEMP AGGREGATE FUNCTION MappedSum(
+  val INT64, f FUNCTION<INT64 -> INT64> NOT AGGREGATE)
+AS (f(SUM(f(val))));
+--
+CreateFunctionStmt
++-name_path=MappedSum
++-create_scope=CREATE_TEMP
++-return_type=INT64
++-argument_name_list=[val, f]
++-signature=(INT64 val, FUNCTION<INT64->INT64> {is_not_aggregate: true} f) -> INT64
++-is_aggregate=TRUE
++-language="SQL"
++-code="f(SUM(f(val)))"
++-aggregate_expression_list=
+| +-$agg1#1 :=
+|   +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+|     +-FunctionCall(FUNCTION_TYPED_PARAMETER:f(INT64) -> INT64)
+|       +-ArgumentRef(parse_location=109-112, type=INT64, name="val", argument_kind=AGGREGATE)
++-function_expression=
+  +-FunctionCall(FUNCTION_TYPED_PARAMETER:f(INT64) -> INT64)
+    +-ColumnRef(type=INT64, column=$aggregate.$agg1#1)
+==
+
+# SAFE. call of a lambda on an aggregated value, with a NOT AGGREGATE scalar
+# parameter also used after aggregation.
+CREATE AGGREGATE FUNCTION SafePostMap(
+  val INT64, scale INT64 NOT AGGREGATE,
+  f FUNCTION<INT64 -> INT64> NOT AGGREGATE)
+AS (SAFE.f(SUM(val) * scale));
+--
+CreateFunctionStmt
++-name_path=SafePostMap
++-return_type=INT64
++-argument_name_list=[val, scale, f]
++-signature=(INT64 val, INT64 {is_not_aggregate: true} scale, FUNCTION<INT64->INT64> {is_not_aggregate: true} f) -> INT64
++-is_aggregate=TRUE
++-language="SQL"
++-code="SAFE.f(SUM(val) * scale)"
++-aggregate_expression_list=
+| +-$agg1#1 :=
+|   +-AggregateFunctionCall(GoogleSQL:sum(INT64) -> INT64)
+|     +-ArgumentRef(parse_location=138-141, type=INT64, name="val", argument_kind=AGGREGATE)
++-function_expression=
+  +-FunctionCall({SAFE_ERROR_MODE} FUNCTION_TYPED_PARAMETER:f(INT64) -> INT64)
+    +-FunctionCall(GoogleSQL:$multiply(INT64, INT64) -> INT64)
+      +-ColumnRef(type=INT64, column=$aggregate.$agg1#1)
+      +-ArgumentRef(type=INT64, name="scale", argument_kind=NOT_AGGREGATE)
+==
+
+# FUNCTION f and an inline lambda calling f are forwarded to ARRAY_TRANSFORM
+# after aggregation.
+CREATE AGGREGATE FUNCTION PostForwardHof(
+  val INT64, f FUNCTION<INT64 -> INT64> NOT AGGREGATE)
+AS (
+  ARRAY_CONCAT(
+    ARRAY_TRANSFORM(ARRAY_AGG(val), FUNCTION f),
+    ARRAY_TRANSFORM(ARRAY_AGG(val), e -> f(e) + 1)));
+--
+CreateFunctionStmt
++-name_path=PostForwardHof
++-return_type=ARRAY<INT64>
++-argument_name_list=[val, f]
++-signature=(INT64 val, FUNCTION<INT64->INT64> {is_not_aggregate: true} f) -> ARRAY<INT64>
++-is_aggregate=TRUE
++-language="SQL"
++-code="ARRAY_CONCAT(\n    ARRAY_TRANSFORM(ARRAY_AGG(val), FUNCTION f),\n    ARRAY_TRANSFORM(ARRAY_AGG(val), e -> f(e) + 1))"
++-aggregate_expression_list=
+| +-$agg1#1 :=
+| | +-AggregateFunctionCall(GoogleSQL:array_agg(INT64) -> ARRAY<INT64>)
+| |   +-ArgumentRef(parse_location=148-151, type=INT64, name="val", argument_kind=AGGREGATE)
+| +-$agg2#2 :=
+|   +-AggregateFunctionCall(GoogleSQL:array_agg(INT64) -> ARRAY<INT64>)
+|     +-ArgumentRef(parse_location=197-200, type=INT64, name="val", argument_kind=AGGREGATE)
++-function_expression=
+  +-FunctionCall(GoogleSQL:array_concat(ARRAY<INT64>, repeated(1) ARRAY<INT64>) -> ARRAY<INT64>)
+    +-FunctionCall(GoogleSQL:array_transform(ARRAY<INT64> array_to_transform, FUNCTION<INT64->INT64> transformation) -> ARRAY<INT64>)
+    | +-FunctionArgument
+    | | +-expr=
+    | |   +-ColumnRef(type=ARRAY<INT64>, column=$aggregate.$agg1#1)
+    | +-FunctionArgument
+    |   +-function_ref=
+    |     +-FunctionRef(function=FUNCTION_TYPED_PARAMETER:f, signature=(INT64) -> INT64)
+    +-FunctionCall(GoogleSQL:array_transform(ARRAY<INT64> array_to_transform, FUNCTION<INT64->INT64> transformation) -> ARRAY<INT64>)
+      +-FunctionArgument
+      | +-expr=
+      |   +-ColumnRef(type=ARRAY<INT64>, column=$aggregate.$agg2#2)
+      +-FunctionArgument
+        +-inline_lambda=
+          +-InlineLambda
+            +-argument_list=[$lambda_arg.e#3]
+            +-body=
+              +-FunctionCall(GoogleSQL:$add(INT64, INT64) -> INT64)
+                +-FunctionCall(FUNCTION_TYPED_PARAMETER:f(INT64) -> INT64)
+                | +-ColumnRef(type=INT64, column=$lambda_arg.e#3)
+                +-Literal(type=INT64, value=1)
+==
+
+# A function-typed parameter without NOT AGGREGATE is rejected for every
+# lambda shape.
+CREATE AGGREGATE FUNCTION MissingNotAgg(
+  val INT64,
+  {{f FUNCTION<INT64 -> INT64>|f FUNCTION<() -> INT64>|f FUNCTION<(INT64, INT64) -> INT64>}})
+AS (SUM(val));
+--
+ALTERNATION GROUP: f FUNCTION<INT64 -> INT64>
+--
+ERROR: Function-typed parameters in aggregate functions must be marked NOT AGGREGATE [at 3:3]
+  f FUNCTION<INT64 -> INT64>)
+  ^
+--
+ALTERNATION GROUP: f FUNCTION<() -> INT64>
+--
+ERROR: Function-typed parameters in aggregate functions must be marked NOT AGGREGATE [at 3:3]
+  f FUNCTION<() -> INT64>)
+  ^
+--
+ALTERNATION GROUP: f FUNCTION<(INT64, INT64) -> INT64>
+--
+ERROR: Function-typed parameters in aggregate functions must be marked NOT AGGREGATE [at 3:3]
+  f FUNCTION<(INT64, INT64) -> INT64>)
+  ^
+==
+
+# The NOT AGGREGATE requirement also applies to templated UDAs, whose body is
+# not resolved at DDL time.
+CREATE AGGREGATE FUNCTION TemplatedMissingNotAgg(
+  val ANY TYPE, f FUNCTION<INT64 -> INT64>)
+AS (SUM(f(val)));
+--
+ERROR: Function-typed parameters in aggregate functions must be marked NOT AGGREGATE [at 2:17]
+  val ANY TYPE, f FUNCTION<INT64 -> INT64>)
+                ^
+==
+
+# Calling a lambda on an aggregate parameter outside of an aggregate call is
+# rejected like any other non-aggregated use of that parameter.
+CREATE AGGREGATE FUNCTION LambdaOnAggregateArg(
+  val INT64, f FUNCTION<INT64 -> INT64> NOT AGGREGATE)
+AS (f(val) + SUM(val));
+--
+ERROR: Function argument val cannot be referenced outside aggregate function calls unless marked as NOT AGGREGATE [at 3:7]
+AS (f(val) + SUM(val));
+      ^
+==
+
+# An inline lambda evaluated after aggregation cannot reference an aggregate
+# parameter outside of an aggregate call.
+CREATE AGGREGATE FUNCTION PostLambdaAggregateArg(
+  val INT64, f FUNCTION<INT64 -> INT64> NOT AGGREGATE)
+AS (ARRAY_TRANSFORM(ARRAY_AGG(val), e -> f(e) + val));
+--
+ERROR: Function argument val cannot be referenced outside aggregate function calls unless marked as NOT AGGREGATE [at 3:49]
+AS (ARRAY_TRANSFORM(ARRAY_AGG(val), e -> f(e) + val));
+                                                ^
+==
+
+# A function-typed parameter cannot be referenced as a bare expression.
+CREATE AGGREGATE FUNCTION BareLambdaRef(
+  val INT64, f FUNCTION<INT64 -> INT64> NOT AGGREGATE)
+AS (SUM(val) + f);
+--
+ERROR: Function-typed UDF arguments must be prefixed with the FUNCTION keyword [at 3:16]
+AS (SUM(val) + f);
+               ^
+==
+
+# Calling a function-typed parameter with an argument of the wrong type fails.
+CREATE AGGREGATE FUNCTION WrongLambdaArgType(
+  val STRING, f FUNCTION<INT64 -> INT64> NOT AGGREGATE)
+AS (SUM(f(val)));
+--
+ERROR: No matching signature for function FUNCTION_TYPED_PARAMETER:F
+  Argument types: STRING
+  Signature: F(INT64)
+    Argument 1: Unable to coerce type STRING to expected type INT64 [at 3:9]
+AS (SUM(f(val)));
+        ^
+==
+
+# Non-SQL aggregate functions cannot take lambda arguments, even when the
+# parameter is marked NOT AGGREGATE.
+CREATE AGGREGATE FUNCTION uda_non_sql(
+  {{f FUNCTION<INT64 -> BOOL>|f FUNCTION<INT64 -> BOOL> NOT AGGREGATE}},
+  x INT64)
+RETURNS BOOL LANGUAGE testlang;
+--
+ERROR: Lambda arguments are only allowed in SQL functions [at 1:27]
+CREATE AGGREGATE FUNCTION uda_non_sql(
+                          ^
+==
+
+# Remote aggregate functions cannot take lambda arguments.
+[language_features=NONE,+CREATE_AGGREGATE_FUNCTION,+UDF_LAMBDA_ARGUMENTS,+REMOTE_FUNCTION]
+CREATE AGGREGATE FUNCTION uda_remote(
+  f FUNCTION<INT64 -> BOOL> NOT AGGREGATE, x INT64)
+RETURNS BOOL REMOTE;
+--
+ERROR: Lambda arguments are only allowed in SQL functions [at 1:27]
+CREATE AGGREGATE FUNCTION uda_remote(
+                          ^
+==
+
+# Function-typed parameters require FEATURE_UDF_LAMBDA_ARGUMENTS.
+[language_features=NONE,+CREATE_AGGREGATE_FUNCTION]
+CREATE AGGREGATE FUNCTION NoLambdaFeature(
+  val INT64, f FUNCTION<INT64 -> INT64> NOT AGGREGATE)
+AS (SUM(f(val)));
+--
+ERROR: Function-typed arguments in UDFs are not supported [at 2:16]
+  val INT64, f FUNCTION<INT64 -> INT64> NOT AGGREGATE)
+               ^
+==
+
+### Positional, named, and pipe call resolution tests ###
+
+# Calls to SQL UDAs with lambda or FUNCTION reference arguments are not
+# implemented yet, for concrete and templated UDAs.
+[use_database=uda_lambda_db]
+SELECT {{AggPreMap|TemplatedAggMap}}(v, {{x -> x + 1|f => x -> x + 1|f => FUNCTION abs}})
+FROM t_items;
+--
+ALTERNATION GROUP: AggPreMap,x -> x + 1
+--
+ERROR: Lambda arguments are not implemented for aggregate functions [at 1:21]
+SELECT AggPreMap(v, x -> x + 1)
+                    ^
+--
+ALTERNATION GROUP: AggPreMap,f => x -> x + 1
+--
+ERROR: Lambda arguments are not implemented for aggregate functions [at 1:26]
+SELECT AggPreMap(v, f => x -> x + 1)
+                         ^
+--
+ALTERNATION GROUP: AggPreMap,f => FUNCTION abs
+--
+ERROR: Lambda arguments are not implemented for aggregate functions [at 1:26]
+SELECT AggPreMap(v, f => FUNCTION abs)
+                         ^
+--
+ALTERNATION GROUP: TemplatedAggMap,x -> x + 1
+--
+ERROR: Lambda arguments are not implemented for aggregate functions [at 1:27]
+SELECT TemplatedAggMap(v, x -> x + 1)
+                          ^
+--
+ALTERNATION GROUP: TemplatedAggMap,f => x -> x + 1
+--
+ERROR: Lambda arguments are not implemented for aggregate functions [at 1:32]
+SELECT TemplatedAggMap(v, f => x -> x + 1)
+                               ^
+--
+ALTERNATION GROUP: TemplatedAggMap,f => FUNCTION abs
+--
+ERROR: Lambda arguments are not implemented for aggregate functions [at 1:32]
+SELECT TemplatedAggMap(v, f => FUNCTION abs)
+                               ^
+==
+
+# A FUNCTION reference forwarded from a SQL UDF to a SQL UDA is not implemented
+# yet.
+[use_database=uda_lambda_db]
+CREATE TEMP FUNCTION ForwardToUda(g FUNCTION<INT64 -> INT64>)
+AS ((SELECT AggPreMap(v, FUNCTION g) FROM t_items));
+--
+ERROR: Lambda arguments are not implemented for aggregate functions [at 2:26]
+AS ((SELECT AggPreMap(v, FUNCTION g) FROM t_items));
+                         ^

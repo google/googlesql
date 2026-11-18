@@ -175,7 +175,8 @@ TEST(CheckStringFormat, TestUnsupportedType) {
   TypeFactory type_factory;
   const googlesql::GraphElementType* graph_element_type = nullptr;
   GOOGLESQL_ASSERT_OK(type_factory.MakeGraphElementType(
-      {"aml"}, GraphElementType::ElementKind::kNode, {}, &graph_element_type));
+      {"aml"}, GraphElementType::ElementKind::kNode, {},
+      /*element_tables=*/{}, &graph_element_type));
   EXPECT_THAT(CheckStringFormatUtf8ArgumentTypes("%t", {graph_element_type},
                                                  ProductMode::PRODUCT_EXTERNAL),
               StatusIs(absl::StatusCode::kUnimplemented));

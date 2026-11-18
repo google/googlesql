@@ -1391,6 +1391,11 @@ absl::StatusOr<bool> Coercer::Context::ParameterCoercesTo(
     result->incr_non_matched_arguments();
     return false;
   }
+  if (to_type->IsJson() &&
+      !IsTypeCastableToJson(from_type, language_options())) {
+    result->incr_non_matched_arguments();
+    return false;
+  }
 
   if (IsExtendedCoercion(from_type, to_type)) {
     return ExtendedTypeCoercesTo(
@@ -1454,6 +1459,11 @@ absl::StatusOr<bool> Coercer::Context::TypeCoercesTo(
   }
   if (from_type->IsVariant() &&
       !IsTypeCastableFromVariant(to_type, language_options())) {
+    result->incr_non_matched_arguments();
+    return false;
+  }
+  if (to_type->IsJson() &&
+      !IsTypeCastableToJson(from_type, language_options())) {
     result->incr_non_matched_arguments();
     return false;
   }
@@ -1605,23 +1615,11 @@ absl::StatusOr<bool> Coercer::Context::StructCoercesTo(
 absl::StatusOr<bool> Coercer::Context::StructCoercesToJson(
     const InputArgumentType& struct_argument, const Type* to_type,
     SignatureMatchResult* result) {
+  GOOGLESQL_RET_CHECK(to_type->IsJson());
   if (!is_explicit() ||
-      !language_options().LanguageFeatureEnabled(FEATURE_CAST_TO_JSON_TYPE)) {
+      !IsTypeCastableToJson(struct_argument.type(), language_options())) {
     result->incr_non_matched_arguments();
     return false;
-  }
-
-  // Check the field types for coercibility.
-  const StructType* from_struct = struct_argument.type()->AsStruct();
-  for (int idx = 0; idx < from_struct->num_fields(); ++idx) {
-    SignatureMatchResult local_result;
-    GOOGLESQL_ASSIGN_OR_RETURN(bool coerced,
-                     CoercesTo(InputArgumentType(from_struct->field(idx).type),
-                               to_type, &local_result));
-    if (!coerced) {
-      result->incr_non_matched_arguments();
-      return false;
-    }
   }
   return true;
 }
@@ -1716,7 +1714,7 @@ absl::StatusOr<bool> Coercer::Context::ArrayCoercesTo(
   if (from_array->Equivalent(to_type)) return true;
 
   if (to_type->IsJson() && is_explicit() &&
-      IsTypeCastableToJson(from_array->element_type(), language_options())) {
+      IsTypeCastableToJson(from_array, language_options())) {
     return true;
   }
 
@@ -1881,6 +1879,11 @@ absl::StatusOr<bool> Coercer::Context::LiteralCoercesTo(
   }
   if (literal_value.type()->IsVariant() &&
       !IsTypeCastableFromVariant(to_type, language_options())) {
+    result->incr_non_matched_arguments();
+    return false;
+  }
+  if (to_type->IsJson() &&
+      !IsTypeCastableToJson(literal_value.type(), language_options())) {
     result->incr_non_matched_arguments();
     return false;
   }

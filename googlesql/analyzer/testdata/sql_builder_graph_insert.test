@@ -1284,3 +1284,239 @@ INSERT
   (a_4 IS Person { name : "Cindy" });
 ==
 
+[language_features=NONE,+SQL_GRAPH,+SQL_GRAPH_ADVANCED_QUERY,+SQL_GRAPH_BOUNDED_PATH_QUANTIFICATION,+SQL_GRAPH_RETURN_EXTENSIONS,+SQL_GRAPH_TERMINAL_INSERT,+SQL_GRAPH_UPDATABLE_GRAPH_ELEMENT_TYPE]
+
+# Reference: Existing node unnested via FOR loop before INSERT
+GRAPH aml
+MATCH ((p:Person)-[e:PersonOwnAccount]->(a:Account)){1, 2}
+FOR elem IN p
+INSERT (elem)-[e2:PersonOwnAccount]->(a2:Account {id: 2})
+--
+GeneralizedQueryStmt
++-query=
+  +-GraphTableScan
+    +-property_graph=aml
+    +-input_scan=
+      +-GraphLinearScan
+        +-scan_list=
+          +-GraphLinearScan
+            +-scan_list=
+              +-GraphScan
+              | +-column_list=[$path_scan.$head#7, $element_table.p#4, $path_scan.$tail#8]
+              | +-input_scan_list=
+              | | +-GraphPathScan
+              | |   +-column_list=[$path_scan.$head#7, $element_table.p#4, $path_scan.$tail#8]
+              | |   +-input_scan_list=
+              | |   | +-GraphNodeScan
+              | |   | | +-column_list=[$element_table.p#1]
+              | |   | | +-label_expr=
+              | |   | | | +-GraphLabel(parse_location=83-89, label=aml.Person)
+              | |   | | +-target_element_table_list=[aml.Person]
+              | |   | +-GraphEdgeScan
+              | |   | | +-column_list=[$element_table.e#2]
+              | |   | | +-label_expr=
+              | |   | | | +-GraphLabel(parse_location=94-110, label=aml.PersonOwnAccount)
+              | |   | | +-target_element_table_list=[aml.PersonOwnAccount]
+              | |   | | +-orientation=RIGHT
+              | |   | +-GraphNodeScan
+              | |   |   +-column_list=[$element_table.a#3]
+              | |   |   +-label_expr=
+              | |   |   | +-GraphLabel(parse_location=116-123, label=aml.Account)
+              | |   |   +-target_element_table_list=[aml.Account]
+              | |   +-head=$path_scan.$head#7
+              | |   +-tail=$path_scan.$tail#8
+              | |   +-quantifier=
+              | |   | +-GraphPathPatternQuantifier
+              | |   |   +-lower_bound=
+              | |   |   | +-Literal(type=INT64, value=1)
+              | |   |   +-upper_bound=
+              | |   |     +-Literal(type=INT64, value=2)
+              | |   +-group_variable_list=
+              | |     +-GraphMakeArrayVariable(element=$element_table.p#1, array=$element_table.p#4)
+              | |     +-GraphMakeArrayVariable(element=$element_table.e#2, array=$element_table.e#5)
+              | |     +-GraphMakeArrayVariable(element=$element_table.a#3, array=$element_table.a#6)
+              | +-input_scan=
+              |   +-SingleRowScan
+              +-ArrayScan
+              | +-column_list=[$element_table.p#4, $graph_table.elem#9]
+              | +-input_scan=
+              | | +-GraphRefScan(column_list=[$element_table.p#4])
+              | +-array_expr_list=
+              | | +-ColumnRef(type=ARRAY<GRAPH_NODE(aml)<age UINT32, birthday DATE, data BYTES, id INT64, name STRING>>, column=$element_table.p#4)
+              | +-element_column_list=[$graph_table.elem#9]
+              +-GraphInsertScan
+              | +-column_list=[$element_table.p#4, $graph_table.elem#9, $element_table.a2#10]
+              | +-input_scan=
+              | | +-GraphRefScan(column_list=[$element_table.p#4, $graph_table.elem#9])
+              | +-insert_node_list=
+              | | +-a2#10 :=
+              | |   +-GraphInsertElement
+              | |     +-type=GRAPH_NODE(aml)<balance UINT64, id INT64>
+              | |     +-property_list=
+              | |     | +-GraphDMLPropertyItem
+              | |     |   +-property_name="id"
+              | |     |   +-property=id(INT64)
+              | |     |   +-property_value=
+              | |     |     +-Literal(type=INT64, value=2)
+              | |     +-label_list=
+              | |     | +-GraphLabel(label=aml.Account)
+              | |     +-element_table=Account
+              | +-insert_edge_list=
+              | | +-e2#11 :=
+              | |   +-GraphInsertElement
+              | |     +-type=GRAPH_EDGE(aml)<accountId INT64, personId INT64>
+              | |     +-label_list=
+              | |     | +-GraphLabel(label=aml.PersonOwnAccount)
+              | |     +-source_node=
+              | |     | +-ColumnRef(type=GRAPH_NODE(aml)<age UINT32, birthday DATE, data BYTES, id INT64, name STRING>, column=$graph_table.elem#9)
+              | |     +-dest_node=
+              | |     | +-ColumnRef(type=GRAPH_NODE(aml)<balance UINT64, id INT64>, column=$element_table.a2#10)
+              | |     +-element_table=PersonOwnAccount
+              | +-path_element_list=[$graph_table.elem#9, $element_table.e2#11, $element_table.a2#10]
+              +-FinishScan
+                +-input_scan=
+                  +-GraphRefScan(column_list=[$element_table.p#4, $graph_table.elem#9, $element_table.a2#10])
+
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+GRAPH aml
+MATCH
+  (
+    (a_1 IS Person)
+    -[a_2 IS PersonOwnAccount]->
+    (a_3 IS Account)
+  ) { 1, 2 }
+FOR a_4 IN a_1 WITH OFFSET AS a_5
+INSERT
+  (a_4) -[a_6 IS PersonOwnAccount]-> (a_7 IS Account { id : 2 });
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+GRAPH aml
+MATCH
+  (
+    (a_1 IS Person)
+    -[a_2 IS PersonOwnAccount]->
+    (a_3 IS Account)
+  ) { 1, 2 }
+FOR a_4 IN a_1 WITH OFFSET AS a_5
+INSERT
+  (a_4) -[a_6 IS PersonOwnAccount]-> (a_7 IS Account { id : 2 });
+==
+
+# Declaration: Quoted $-prefixed variable repeated in INSERT.
+# TODO: Re-enable SQLBuilder once IsInternalAlias handles quoted
+# $-prefixed identifiers. Currently SQLBuilder misclassifies `$p` as anonymous
+# and hits RET_CHECK(!element_filler_sql.empty()) on the repeated (`$p`)
+# reference.
+[no_run_sqlbuilder]
+GRAPH aml
+INSERT (`$p`:Person {id: 1}), (`$p`)
+--
+GeneralizedQueryStmt
++-query=
+  +-GraphTableScan
+    +-property_graph=aml
+    +-input_scan=
+      +-GraphLinearScan
+        +-scan_list=
+          +-GraphLinearScan
+            +-scan_list=
+              +-GraphInsertScan
+              | +-column_list=[$element_table.$p#1]
+              | +-input_scan=
+              | | +-SingleRowScan
+              | +-insert_node_list=
+              | | +-$p#1 :=
+              | |   +-GraphInsertElement
+              | |     +-type=GRAPH_NODE(aml)<age UINT32, birthday DATE, data BYTES, id INT64, name STRING>
+              | |     +-property_list=
+              | |     | +-GraphDMLPropertyItem
+              | |     |   +-property_name="id"
+              | |     |   +-property=id(INT64)
+              | |     |   +-property_value=
+              | |     |     +-Literal(type=INT64, value=1)
+              | |     +-label_list=
+              | |     | +-GraphLabel(label=aml.Person)
+              | |     +-element_table=Person
+              | +-path_element_list=$element_table.[$p#1, $p#1]
+              +-FinishScan
+                +-input_scan=
+                  +-GraphRefScan(column_list=[$element_table.$p#1])
+==
+
+# Declaration: Quoted $-prefixed variables in INSERT.
+# TODO: SQLBuilder emits `$p`, `$e`, and `$a` anonymously here
+# instead of generating aliases because IsInternalAlias returns true for
+# quoted $-prefixed identifiers. Update the expected output below to include
+# aliases once b/312220456 is fixed.
+GRAPH aml
+INSERT (`$p`:Person {id: 1})-[`$e`:PersonOwnAccount]->(`$a`:Account {id: 2})
+--
+GeneralizedQueryStmt
++-query=
+  +-GraphTableScan
+    +-property_graph=aml
+    +-input_scan=
+      +-GraphLinearScan
+        +-scan_list=
+          +-GraphLinearScan
+            +-scan_list=
+              +-GraphInsertScan
+              | +-column_list=$element_table.[$p#1, $a#2]
+              | +-input_scan=
+              | | +-SingleRowScan
+              | +-insert_node_list=
+              | | +-$p#1 :=
+              | | | +-GraphInsertElement
+              | | |   +-type=GRAPH_NODE(aml)<age UINT32, birthday DATE, data BYTES, id INT64, name STRING>
+              | | |   +-property_list=
+              | | |   | +-GraphDMLPropertyItem
+              | | |   |   +-property_name="id"
+              | | |   |   +-property=id(INT64)
+              | | |   |   +-property_value=
+              | | |   |     +-Literal(type=INT64, value=1)
+              | | |   +-label_list=
+              | | |   | +-GraphLabel(label=aml.Person)
+              | | |   +-element_table=Person
+              | | +-$a#2 :=
+              | |   +-GraphInsertElement
+              | |     +-type=GRAPH_NODE(aml)<balance UINT64, id INT64>
+              | |     +-property_list=
+              | |     | +-GraphDMLPropertyItem
+              | |     |   +-property_name="id"
+              | |     |   +-property=id(INT64)
+              | |     |   +-property_value=
+              | |     |     +-Literal(type=INT64, value=2)
+              | |     +-label_list=
+              | |     | +-GraphLabel(label=aml.Account)
+              | |     +-element_table=Account
+              | +-insert_edge_list=
+              | | +-$e#3 :=
+              | |   +-GraphInsertElement
+              | |     +-type=GRAPH_EDGE(aml)<accountId INT64, personId INT64>
+              | |     +-label_list=
+              | |     | +-GraphLabel(label=aml.PersonOwnAccount)
+              | |     +-source_node=
+              | |     | +-ColumnRef(type=GRAPH_NODE(aml)<age UINT32, birthday DATE, data BYTES, id INT64, name STRING>, column=$element_table.$p#1)
+              | |     +-dest_node=
+              | |     | +-ColumnRef(type=GRAPH_NODE(aml)<balance UINT64, id INT64>, column=$element_table.$a#2)
+              | |     +-element_table=PersonOwnAccount
+              | +-path_element_list=$element_table.[$p#1, $e#3, $a#2]
+              +-FinishScan
+                +-input_scan=
+                  +-GraphRefScan(column_list=$element_table.[$p#1, $a#2])
+
+[SQLBUILDER_TARGET_SYNTAX_MODE standard]
+[SQLBUILDER_OUTPUT]
+GRAPH aml
+INSERT
+  (IS Person { id : 1 }) -[IS PersonOwnAccount]-> (IS Account { id : 2 });
+
+[SQLBUILDER_TARGET_SYNTAX_MODE pipe]
+[SQLBUILDER_OUTPUT]
+GRAPH aml
+INSERT
+  (IS Person { id : 1 }) -[IS PersonOwnAccount]-> (IS Account { id : 2 });
+==
+

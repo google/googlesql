@@ -734,4 +734,58 @@ TEST(TableNameResolver, ExtractTableNamesFromPipeCallWithPartitionAndOrder) {
                                               ElementsAre("MyTvf2")));
 }
 
+TEST(TableNameResolver, ExtractTableResolutionTimeFromCloneDataStatement) {
+  const std::string sql =
+      "CLONE DATA INTO TargetTable "
+      "FROM SourceTable1 FOR SYSTEM_TIME AS OF '2020-01-01' "
+      "UNION ALL SourceTable2";
+
+  AnalyzerOptions analyzer_options;
+  analyzer_options.CreateDefaultArenasIfNotSet();
+  analyzer_options.mutable_language()->AddSupportedStatementKind(
+      RESOLVED_CLONE_DATA_STMT);
+
+  TableNamesSet table_names;
+  GOOGLESQL_ASSERT_OK(
+      ExtractTableNamesFromStatement(sql, analyzer_options, &table_names));
+  EXPECT_THAT(table_names, UnorderedElementsAre(ElementsAre("TargetTable"),
+                                                ElementsAre("SourceTable1"),
+                                                ElementsAre("SourceTable2")));
+
+  TypeFactory type_factory;
+  SimpleCatalog empty_catalog("empty_catalog", &type_factory);
+  TableResolutionTimeInfoMap time_info_map;
+  std::unique_ptr<ParserOutput> parser_output;
+  EXPECT_THAT(ExtractTableResolutionTimeFromStatement(
+                  sql, analyzer_options, &type_factory, &empty_catalog,
+                  &time_info_map, &parser_output),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("FOR SYSTEM_TIME AS OF is not supported")));
+
+  analyzer_options.mutable_language()->EnableLanguageFeature(
+      FEATURE_FOR_SYSTEM_TIME_AS_OF);
+  time_info_map.clear();
+  GOOGLESQL_ASSERT_OK(ExtractTableResolutionTimeFromStatement(
+      sql, analyzer_options, &type_factory, &empty_catalog, &time_info_map,
+      &parser_output));
+  ASSERT_EQ(time_info_map.size(), 3);
+
+  const TableResolutionTimeInfo& target_info = time_info_map[{"TargetTable"}];
+  EXPECT_TRUE(target_info.has_default_resolution_time);
+  EXPECT_THAT(target_info.exprs, IsEmpty());
+
+  const TableResolutionTimeInfo& source1_info = time_info_map[{"SourceTable1"}];
+  EXPECT_FALSE(source1_info.has_default_resolution_time);
+  ASSERT_EQ(source1_info.exprs.size(), 1);
+  const ResolvedExpr* resolved_expr =
+      source1_info.exprs[0].analyzer_output_with_expr->resolved_expr();
+  ASSERT_EQ(resolved_expr->node_kind(), RESOLVED_LITERAL);
+  EXPECT_EQ(resolved_expr->GetAs<ResolvedLiteral>()->value().DebugString(),
+            "\"2020-01-01\"");
+
+  const TableResolutionTimeInfo& source2_info = time_info_map[{"SourceTable2"}];
+  EXPECT_TRUE(source2_info.has_default_resolution_time);
+  EXPECT_THAT(source2_info.exprs, IsEmpty());
+}
+
 }  // namespace googlesql

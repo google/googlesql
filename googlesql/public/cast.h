@@ -154,7 +154,11 @@ inline absl::StatusOr<Value> CastStatusOrValue(
                    nullptr, canonicalize_zero);
 }
 
-// Returns true if the type is castable to JSON.
+// Returns true if `from_type` is castable to JSON.
+// - VARIANT requires FEATURE_VARIANT_TYPE.
+// - Non-VARIANT types require FEATURE_CAST_TO_JSON_TYPE (composite types
+//   containing VARIANT at any nesting level, such as ARRAY<VARIANT> or
+//   STRUCT<VARIANT>, are not yet supported).
 bool IsTypeCastableToJson(const Type* from_type,
                           const LanguageOptions& language_options);
 

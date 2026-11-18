@@ -12754,20 +12754,22 @@ absl::Status SQLBuilder::VisitResolvedGraphInsertScan(
       current_path.clear();
     }
 
-    // Get the alias for the element variable, if it's not an anonymous
-    // variable.
-    bool is_anonymous_var = IsInternalAlias(col.name());
-    std::string element_filler_sql;
-    if (!is_anonymous_var) {
-      element_filler_sql = GetColumnAlias(col);
-    }
-
     // Check if this is a newly inserted element (in `insert_node_list` or
     // `insert_edge_list`) or an existing variable from the incoming working
     // table.
     const ResolvedGraphInsertElement* insert_element = nullptr;
     if (auto it = insert_elements.find(col); it != insert_elements.end()) {
       insert_element = it->second;
+    }
+
+    // Only newly inserted elements can be anonymous (internal `$insert_node` /
+    // `$insert_edge` names from GraphDmlResolver). Existing variables from the
+    // incoming working table must always be referenced by alias.
+    bool is_anonymous_var =
+        insert_element != nullptr && IsInternalAlias(col.name());
+    std::string element_filler_sql;
+    if (!is_anonymous_var) {
+      element_filler_sql = GetColumnAlias(col);
     }
 
     // This is a newly inserted element. Append label specification and property

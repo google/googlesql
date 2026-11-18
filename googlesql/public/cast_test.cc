@@ -28,6 +28,7 @@
 #include "googlesql/common/graph_element_utils.h"
 #include "googlesql/common/internal_value.h"
 #include "googlesql/base/testing/status_matchers.h"
+#include "googlesql/common/unicode_utils.h"
 #include "googlesql/compliance/functions_testlib.h"
 #include "googlesql/public/civil_time.h"
 #include "googlesql/public/function.h"
@@ -1582,15 +1583,50 @@ TEST(IsTypeCastableToJsonTest, TypeCastableToJson) {
   EXPECT_TRUE(IsTypeCastableToJson(castable_path_type, options_enabled));
   EXPECT_FALSE(IsTypeCastableToJson(uncastable_node_type, options_enabled));
   EXPECT_FALSE(IsTypeCastableToJson(uncastable_path_type, options_enabled));
+
+  // TODO: b/542423700 - Support casting composite types containing VARIANT
+  // (e.g. ARRAY<VARIANT>, STRUCT<VARIANT>) to JSON once TO_JSON supports
+  // TYPE_VARIANT. Casting a top-level VARIANT to JSON requires
+  // FEATURE_VARIANT_TYPE, whereas composite types containing VARIANT (e.g.
+  // ARRAY<VARIANT>, STRUCT<VARIANT>) cannot be cast to JSON even when both
+  // features are enabled.
+  const Type* variant_type = types::VariantType();
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(const ArrayType* array_variant_type,
+                       factory.MakeArrayType(variant_type));
+  const StructType* struct_variant_type = nullptr;
+  GOOGLESQL_ASSERT_OK(
+      factory.MakeStructType({{"a", variant_type}}, &struct_variant_type));
+  EXPECT_FALSE(IsTypeCastableToJson(variant_type, options_enabled));
+  EXPECT_FALSE(IsTypeCastableToJson(array_variant_type, options_enabled));
+  EXPECT_FALSE(IsTypeCastableToJson(struct_variant_type, options_enabled));
+
+  LanguageOptions variant_only_options = options_disabled;
+  variant_only_options.EnableLanguageFeature(FEATURE_VARIANT_TYPE);
+  EXPECT_TRUE(IsTypeCastableToJson(variant_type, variant_only_options));
+  EXPECT_FALSE(IsTypeCastableToJson(array_variant_type, variant_only_options));
+  EXPECT_FALSE(IsTypeCastableToJson(struct_variant_type, variant_only_options));
+
+  LanguageOptions variant_and_json_options = options_enabled;
+  variant_and_json_options.EnableLanguageFeature(FEATURE_VARIANT_TYPE);
+  EXPECT_TRUE(IsTypeCastableToJson(variant_type, variant_and_json_options));
+  EXPECT_FALSE(
+      IsTypeCastableToJson(array_variant_type, variant_and_json_options));
+  EXPECT_FALSE(
+      IsTypeCastableToJson(struct_variant_type, variant_and_json_options));
 }
 
 TEST(IsTypeCastableFromVariantTest, FeatureDisabled) {
   LanguageOptions options_disabled;
+  TypeFactory factory;
+  const StructType* struct_type = nullptr;
+  GOOGLESQL_ASSERT_OK(factory.MakeStructType({{"a", types::Int64Type()}}, &struct_type));
   EXPECT_TRUE(
       IsTypeCastableFromVariant(types::VariantType(), options_disabled));
   EXPECT_FALSE(IsTypeCastableFromVariant(types::Int64Type(), options_disabled));
   EXPECT_FALSE(
       IsTypeCastableFromVariant(types::StringType(), options_disabled));
+  EXPECT_FALSE(IsTypeCastableFromVariant(types::JsonType(), options_disabled));
+  EXPECT_FALSE(IsTypeCastableFromVariant(struct_type, options_disabled));
 }
 
 TEST(IsTypeCastableFromVariantTest, SupportedTargetTypes) {
@@ -1600,6 +1636,9 @@ TEST(IsTypeCastableFromVariantTest, SupportedTargetTypes) {
   TypeFactory factory;
   GOOGLESQL_ASSERT_OK_AND_ASSIGN(const ArrayType* array_int64_type,
                        factory.MakeArrayType(types::Int64Type()));
+  const StructType* struct_type = nullptr;
+  GOOGLESQL_ASSERT_OK(factory.MakeStructType(
+      {{"a", types::Int64Type()}, {"b", types::StringType()}}, &struct_type));
   GOOGLESQL_ASSERT_OK_AND_ASSIGN(
       const Type* map_type,
       factory.MakeMapType(types::StringType(), types::Int64Type()));
@@ -1639,11 +1678,13 @@ TEST(IsTypeCastableFromVariantTest, SupportedTargetTypes) {
       types::DatetimeType(),
       types::TimestampType(),
       types::IntervalType(),
+      types::JsonType(),
       types::UuidType(),
       types::TokenListType(),
       enum_type,
       proto_type,
       array_int64_type,
+      struct_type,
       map_type,
       non_str_map_type,
       range_date_type,
@@ -1753,20 +1794,8 @@ TEST(IsTypeCastableFromVariantTest, UnsupportedTargetTypes) {
   EXPECT_FALSE(IsTypeCastableFromVariant(struct_measure_type, options));
   EXPECT_FALSE(IsTypeCastableFromVariant(map_measure_type, options));
 
-  // TODO: b/554949919 - Support casting from VARIANT to JSON, STRUCT,
-  // declarative, and extended types.
-  EXPECT_FALSE(IsTypeCastableFromVariant(types::JsonType(), options));
-  EXPECT_FALSE(IsTypeCastableFromVariant(types::JsonArrayType(), options));
-
-  const StructType* struct_type = nullptr;
-  GOOGLESQL_ASSERT_OK(factory.MakeStructType(
-      {{"a", types::Int64Type()}, {"b", types::StringType()}}, &struct_type));
-  EXPECT_FALSE(IsTypeCastableFromVariant(struct_type, options));
-
-  GOOGLESQL_ASSERT_OK_AND_ASSIGN(const ArrayType* array_struct_type,
-                       factory.MakeArrayType(struct_type));
-  EXPECT_FALSE(IsTypeCastableFromVariant(array_struct_type, options));
-
+  // TODO: b/554949919 - Support casting from VARIANT to declarative and
+  // extended types.
   GOOGLESQL_ASSERT_OK_AND_ASSIGN(
       const Type* declarative_type,
       factory.MakeDeclarativeType(DeclarativeTypeDescriptor()
@@ -1782,9 +1811,19 @@ TEST(IsTypeCastableFromVariantTest, UnsupportedTargetTypes) {
                        factory.MakeArrayType(declarative_type));
   EXPECT_FALSE(IsTypeCastableFromVariant(array_declarative_type, options));
 
+  const StructType* struct_declarative_type = nullptr;
+  GOOGLESQL_ASSERT_OK(factory.MakeStructType({{"d", declarative_type}},
+                                   &struct_declarative_type));
+  EXPECT_FALSE(IsTypeCastableFromVariant(struct_declarative_type, options));
+
   GOOGLESQL_ASSERT_OK_AND_ASSIGN(const ArrayType* array_extended_type,
                        factory.MakeArrayType(&extended_type));
   EXPECT_FALSE(IsTypeCastableFromVariant(array_extended_type, options));
+
+  const StructType* struct_extended_type = nullptr;
+  GOOGLESQL_ASSERT_OK(
+      factory.MakeStructType({{"e", &extended_type}}, &struct_extended_type));
+  EXPECT_FALSE(IsTypeCastableFromVariant(struct_extended_type, options));
 }
 
 namespace {
@@ -1826,6 +1865,10 @@ TEST_P(CastFromVariantSuccessTest, CastsVariantToTargetType) {
 std::vector<VariantCastSuccessCase> GetNullAndIdentityCastCases() {
   Value json_null_val = Json(JSONValue());
   Value variant_null_val = Variant(json_null_val);
+  const StructType* struct_ab_type = nullptr;
+  GOOGLESQL_CHECK_OK(type_factory->MakeStructType(
+      {{"a", types::Int64Type()}, {"b", types::StringType()}},
+      &struct_ab_type));
 
   return {
       {.test_name = "IdentitySqlNullVariant",
@@ -1837,6 +1880,12 @@ std::vector<VariantCastSuccessCase> GetNullAndIdentityCastCases() {
       {.test_name = "SqlNullVariantToInt64",
        .from_variant = Value::Null(types::VariantType()),
        .expected_value = Value::NullInt64()},
+      {.test_name = "SqlNullVariantToJson",
+       .from_variant = Value::Null(types::VariantType()),
+       .expected_value = Value::NullJson()},
+      {.test_name = "SqlNullVariantToStruct",
+       .from_variant = Value::NullVariant(),
+       .expected_value = Value::Null(struct_ab_type)},
       {.test_name = "CanonicalizedTypedSqlNullVariantToInt64",
        .from_variant = Variant(Value::NullDate()),
        .expected_value = Value::NullInt64()},
@@ -1846,6 +1895,12 @@ std::vector<VariantCastSuccessCase> GetNullAndIdentityCastCases() {
       {.test_name = "VariantNullToString",
        .from_variant = variant_null_val,
        .expected_value = Value::NullString()},
+      {.test_name = "VariantNullToStruct",
+       .from_variant = Value::VariantNull(),
+       .expected_value = Value::Null(struct_ab_type)},
+      {.test_name = "VariantNullToJsonPreservesJsonNull",
+       .from_variant = variant_null_val,
+       .expected_value = json_null_val},
   };
 }
 
@@ -2065,6 +2120,8 @@ std::vector<VariantCastSuccessCase> GetObjectsAndMapsCastCases() {
       type_factory->MakeMapType(types::Int64Type(), types::StringType()));
   const Type* map_str_int64_arr_type = Unwrap(
       type_factory->MakeMapType(types::StringType(), types::Int64ArrayType()));
+  const Type* map_str_json_type =
+      Unwrap(type_factory->MakeMapType(types::StringType(), types::JsonType()));
   const Type* map_str_map_str_int64_type = Unwrap(
       type_factory->MakeMapType(types::StringType(), map_str_int64_type));
 
@@ -2075,7 +2132,8 @@ std::vector<VariantCastSuccessCase> GetObjectsAndMapsCastCases() {
   Value struct_dup_and_unnamed_val =
       Unwrap(Value::MakeStruct(struct_dup_and_unnamed_type,
                                {Int64(10), Int64(20), Int64(99), Int64(88)}));
-  Value variant_null_val = Variant(Json(JSONValue()));
+  Value json_null_val = Json(JSONValue());
+  Value variant_null_val = Variant(json_null_val);
 
   Value map_ab_val = Unwrap(Value::MakeMap(
       map_str_int64_type, {{String("a"), Int64(1)}, {String("b"), Int64(2)}}));
@@ -2135,6 +2193,11 @@ std::vector<VariantCastSuccessCase> GetObjectsAndMapsCastCases() {
        .expected_value = Unwrap(Value::MakeMap(
            map_str_int64_type,
            {{String("a"), Value::NullInt64()}, {String("b"), Int64(2)}}))},
+      {.test_name = "JsonObjectWithNullToMapWithJsonValue",
+       .from_variant = Variant(ParseJson(R"({"a": 1, "b": null})")),
+       .expected_value = Unwrap(Value::MakeMap(
+           map_str_json_type, {{String("a"), Json(JSONValue(int64_t{1}))},
+                               {String("b"), json_null_val}}))},
       {.test_name = "JsonObjectToMapWithVariantValue",
        .from_variant = Variant(ParseJson(R"({"a": 42, "b": "hello"})")),
        .expected_value = Unwrap(
@@ -2194,6 +2257,9 @@ std::vector<VariantCastSuccessCase> GetProtoCastCases() {
   Value repeated_proto_val =
       values::Proto(repeated_int_proto_type, repeated_cord);
 
+  const StructType* struct_proto_field_type = nullptr;
+  GOOGLESQL_CHECK_OK(type_factory->MakeStructType({{"value", types::Int64Type()}},
+                                        &struct_proto_field_type));
   const Type* map_str_int64_type = Unwrap(
       type_factory->MakeMapType(types::StringType(), types::Int64Type()));
   const Type* map_str_int64_arr_type = Unwrap(
@@ -2211,6 +2277,20 @@ std::vector<VariantCastSuccessCase> GetProtoCastCases() {
       {.test_name = "ProtoObjectToBytes",
        .from_variant = Variant(proto_val),
        .expected_value = Bytes(std::string(proto_cord))},
+      {.test_name = "ProtoObjectToJson",
+       .from_variant = Variant(proto_val),
+       .expected_value = ParseJson(R"({"value":123})")},
+      {.test_name = "UnsetProtoObjectToJson",
+       .from_variant = Variant(unset_proto_val),
+       .expected_value = ParseJson(R"({"value":null})")},
+      {.test_name = "ProtoObjectToStruct",
+       .from_variant = Variant(proto_val),
+       .expected_value =
+           Unwrap(Value::MakeStruct(struct_proto_field_type, {Int64(123)}))},
+      {.test_name = "UnsetProtoObjectToStruct",
+       .from_variant = Variant(unset_proto_val),
+       .expected_value = Unwrap(
+           Value::MakeStruct(struct_proto_field_type, {Value::NullInt64()}))},
       {.test_name = "ProtoObjectToMap",
        .from_variant = Variant(proto_val),
        .expected_value = Unwrap(Value::MakeMap(
@@ -2219,6 +2299,9 @@ std::vector<VariantCastSuccessCase> GetProtoCastCases() {
        .from_variant = Variant(unset_proto_val),
        .expected_value = Unwrap(Value::MakeMap(
            map_str_int64_type, {{String("value"), Value::NullInt64()}}))},
+      {.test_name = "RepeatedFieldProtoObjectToJson",
+       .from_variant = Variant(repeated_proto_val),
+       .expected_value = ParseJson(R"({"value":[10,20]})")},
       {.test_name = "RepeatedFieldProtoObjectToTypedMap",
        .from_variant = Variant(repeated_proto_val),
        .expected_value = Unwrap(Value::MakeMap(
@@ -2278,6 +2361,15 @@ std::vector<VariantCastSuccessCase> GetArrayCastCases() {
        .from_variant = Variant(json_arr_with_null_val),
        .expected_value = Unwrap(Value::MakeArray(
            types::Int64ArrayType(), {Int64(1), Value::NullInt64(), Int64(3)}))},
+      {.test_name = "JsonArrayWithNullToJsonArray",
+       .from_variant = Variant(json_arr_with_null_val),
+       .expected_value = Unwrap(Value::MakeArray(
+           types::JsonArrayType(), {Json(JSONValue(int64_t{1})), json_null_val,
+                                    Json(JSONValue(int64_t{3}))}))},
+      {.test_name = "NestedJsonArrayWithNullToJsonArray",
+       .from_variant = Variant(ParseJson("[[1, null], null]")),
+       .expected_value = Unwrap(Value::MakeArray(
+           types::JsonArrayType(), {ParseJson("[1, null]"), json_null_val}))},
       {.test_name = "ArrayToVariantArray",
        .from_variant = Variant(Int64Array({1, 2})),
        .expected_value = Unwrap(Value::MakeArray(
@@ -2298,6 +2390,330 @@ std::vector<VariantCastSuccessCase> GetArrayCastCases() {
 
 INSTANTIATE_TEST_SUITE_P(
     Arrays, CastFromVariantSuccessTest, testing::ValuesIn(GetArrayCastCases()),
+    [](const testing::TestParamInfo<VariantCastSuccessCase>& info) {
+      return info.param.test_name;
+    });
+
+std::vector<VariantCastSuccessCase> GetToJsonCastCases() {
+  Value json_null_val = Json(JSONValue());
+  Value variant_null_val = Variant(json_null_val);
+
+  const StructType* struct_ab_type = nullptr;
+  GOOGLESQL_CHECK_OK(type_factory->MakeStructType(
+      {{"a", types::Int64Type()}, {"b", types::StringType()}},
+      &struct_ab_type));
+  const StructType* struct_variant_field_type = nullptr;
+  GOOGLESQL_CHECK_OK(type_factory->MakeStructType(
+      {{"a", types::VariantType()}, {"b", types::StringType()}},
+      &struct_variant_field_type));
+  const StructType* struct_timestamp_type = nullptr;
+  GOOGLESQL_CHECK_OK(type_factory->MakeStructType({{"ts", types::TimestampType()}},
+                                        &struct_timestamp_type));
+  const StructType* struct_dup_unnamed_and_case_type = nullptr;
+  GOOGLESQL_CHECK_OK(type_factory->MakeStructType({{"", types::Int64Type()},
+                                         {"a", types::Int64Type()},
+                                         {"a", types::Int64Type()},
+                                         {"A", types::Int64Type()},
+                                         {"", types::Int64Type()}},
+                                        &struct_dup_unnamed_and_case_type));
+
+  const Type* map_str_int64_type = Unwrap(
+      type_factory->MakeMapType(types::StringType(), types::Int64Type()));
+  const Type* map_str_variant_type = Unwrap(
+      type_factory->MakeMapType(types::StringType(), types::VariantType()));
+  const EnumType* enum_type = nullptr;
+  GOOGLESQL_CHECK_OK(type_factory->MakeEnumType(googlesql_test::TestEnum_descriptor(),
+                                      &enum_type));
+
+  absl::Time test_timestamp = absl::FromCivil(
+      absl::CivilSecond(2026, 10, 6, 12, 34, 56), absl::UTCTimeZone());
+  UuidValue uuid =
+      Unwrap(UuidValue::FromString("00010203-0405-0607-0809-0a0b0c0d0e0f"));
+  Value range_date_val = Unwrap(
+      Value::MakeRange(Date(20089), Date(20090)));  // [2025-01-01, 2025-01-02)
+  Value graph_node_val =
+      Unwrap(GraphNode({"g"}, "n1", {{"a", Value::Int64(1)}}, {"L1"}, "T"));
+  Value graph_edge_val = Unwrap(GraphEdge({"g"}, "e1", {{"a", Value::Int64(1)}},
+                                          {"L1"}, "T", "n1", "n2"));
+  Value graph_node2_val =
+      Unwrap(GraphNode({"g"}, "n2", {{"a", Value::Int64(1)}}, {"L1"}, "T"));
+  Value graph_path_val = Unwrap(Value::MakeGraphPath(
+      test_values::MakeGraphPathType(graph_node_val.type()->AsGraphElement(),
+                                     graph_edge_val.type()->AsGraphElement()),
+      {graph_node_val, graph_edge_val, graph_node2_val}));
+
+  return {
+      {.test_name = "PrimitiveInt64ToJson",
+       .from_variant = Variant(Int64(42)),
+       .expected_value = Json(JSONValue(int64_t{42}))},
+      {.test_name = "PrimitiveEnumToJson",
+       .from_variant = Variant(Value::Enum(enum_type, 1)),
+       .expected_value = Json(JSONValue(absl::string_view("TESTENUM1")))},
+      {.test_name = "PrimitiveTimestampToJson",
+       .from_variant = Variant(Value::Timestamp(test_timestamp)),
+       .expected_value = ParseJson(R"("2026-10-06T12:34:56Z")")},
+      {.test_name = "PrimitiveUuidToJson",
+       .from_variant = Variant(Value::Uuid(uuid)),
+       .expected_value =
+           ParseJson(R"("00010203-0405-0607-0809-0a0b0c0d0e0f")")},
+      {.test_name = "PrimitiveRangeDateToJson",
+       .from_variant = Variant(range_date_val),
+       .expected_value =
+           ParseJson(R"({"start":"2025-01-01","end":"2025-01-02"})")},
+      {.test_name = "GraphNodeToJson",
+       .from_variant = Variant(graph_node_val),
+       .expected_value = ParseJson(
+           R"({"identifier":"bjE=","kind":"node","labels":["L1"],"properties":{"a":1}})")},
+      {.test_name = "GraphPathToJson",
+       .from_variant = Variant(graph_path_val),
+       .expected_value = ParseJson(
+           R"([{"identifier":"bjE=","kind":"node","labels":["L1"],"properties":{"a":1}},{"destination_node_identifier":"bjI=","identifier":"ZTE=","kind":"edge","labels":["L1"],"properties":{"a":1},"source_node_identifier":"bjE="},{"identifier":"bjI=","kind":"node","labels":["L1"],"properties":{"a":1}}])")},
+      {.test_name = "StructObjectToJson",
+       .from_variant = Variant(Unwrap(
+           Value::MakeStruct(struct_ab_type, {Int64(42), String("hello")}))),
+       .expected_value = ParseJson(R"({"a": 42, "b": "hello"})")},
+      {.test_name = "StructWithDuplicateUnnamedAndCaseDistinctFieldsToJson",
+       .from_variant = Variant(Unwrap(Value::MakeStruct(
+           struct_dup_unnamed_and_case_type,
+           {Int64(10), Int64(20), Int64(99), Int64(30), Int64(88)}))),
+       .expected_value = ParseJson(R"({"": 10, "a": 20, "A": 30})")},
+      {.test_name = "StructObjectWithNullFieldToJson",
+       .from_variant = Variant(Unwrap(Value::MakeStruct(
+           struct_ab_type, {Value::NullInt64(), String("hello")}))),
+       .expected_value = ParseJson(R"({"a": null, "b": "hello"})")},
+      {.test_name = "StructObjectWithNullVariantFieldToJson",
+       .from_variant = Variant(Unwrap(Value::MakeStruct(
+           struct_variant_field_type,
+           {Value::Null(types::VariantType()), String("hello")}))),
+       .expected_value = ParseJson(R"({"a": null, "b": "hello"})")},
+      {.test_name = "StructWithTimestampObjectToJson",
+       .from_variant = Variant(Unwrap(Value::MakeStruct(
+           struct_timestamp_type, {Value::Timestamp(test_timestamp)}))),
+       .expected_value = ParseJson(R"({"ts":"2026-10-06T12:34:56Z"})")},
+      {.test_name = "MapObjectToJson",
+       .from_variant = Variant(Unwrap(
+           Value::MakeMap(map_str_int64_type,
+                          {{String("a"), Int64(1)}, {String("b"), Int64(2)}}))),
+       .expected_value = ParseJson(R"({"a": 1, "b": 2})")},
+      {.test_name = "MapObjectWithNullKeyToJsonOmitsNullKeyEntry",
+       .from_variant = Variant(Unwrap(Value::MakeMap(
+           map_str_int64_type,
+           {{Value::NullString(), Int64(99)}, {String("a"), Int64(1)}}))),
+       .expected_value = ParseJson(R"({"a": 1})")},
+      {.test_name = "MapObjectWithNullValueToJson",
+       .from_variant = Variant(Unwrap(Value::MakeMap(
+           map_str_int64_type,
+           {{String("a"), Int64(1)}, {String("b"), Value::NullInt64()}}))),
+       .expected_value = ParseJson(R"({"a": 1, "b": null})")},
+      {.test_name = "MapObjectWithNullVariantValueToJson",
+       .from_variant = Variant(Unwrap(
+           Value::MakeMap(map_str_variant_type,
+                          {{String("a"), Variant(Int64(1))},
+                           {String("b"), Value::Null(types::VariantType())}}))),
+       .expected_value = ParseJson(R"({"a": 1, "b": null})")},
+      {.test_name = "ArrayToJson",
+       .from_variant = Variant(Int64Array({1, 2, 3})),
+       .expected_value = ParseJson("[1, 2, 3]")},
+      {.test_name = "ArrayWithNullToJson",
+       .from_variant = Variant(Unwrap(Value::MakeArray(
+           types::Int64ArrayType(), {Int64(1), Value::NullInt64(), Int64(3)}))),
+       .expected_value = ParseJson("[1, null, 3]")},
+      {.test_name = "VariantArrayWithNullToJson",
+       .from_variant = Variant(Unwrap(Value::MakeArray(
+           types::VariantArrayType(),
+           {Variant(Int64(1)), Value::Null(types::VariantType()),
+            Variant(Int64(3))}))),
+       .expected_value = ParseJson("[1, null, 3]")},
+      {.test_name = "JsonArrayToJson",
+       .from_variant = Variant(ParseJson("[1, 2, 3]")),
+       .expected_value = ParseJson("[1, 2, 3]")},
+      {.test_name = "UnvalidatedJsonObjectToJson",
+       .from_variant = Variant(Value::UnvalidatedJsonString(R"({"a": 1})")),
+       .expected_value = ParseJson(R"({"a": 1})")},
+      {.test_name = "NestedJsonObjectToJson",
+       .from_variant = Variant(ParseJson(R"({"a":{"b":{"c":123}}})")),
+       .expected_value = ParseJson(R"({"a":{"b":{"c":123}}})")},
+      {.test_name = "NestedJsonArrayToJson",
+       .from_variant = Variant(ParseJson(R"([[1, 2], [3, 4]])")),
+       .expected_value = ParseJson(R"([[1, 2], [3, 4]])")},
+      {.test_name = "NestedHeterogeneousVariantToJson",
+       .from_variant = Variant(Unwrap(Value::MakeStruct(
+           struct_variant_field_type,
+           {Variant(Unwrap(Value::MakeArray(
+                types::VariantArrayType(),
+                {Variant(Unwrap(Value::MakeMap(
+                     map_str_variant_type, {{String("x"), Variant(Int64(1))},
+                                            {String("y"), variant_null_val}}))),
+                 Variant(ParseJson(R"({"z": [true, "ok"]})"))}))),
+            String("root")}))),
+       .expected_value = ParseJson(
+           R"({"a":[{"x":1,"y":null},{"z":[true,"ok"]}],"b":"root"})")},
+  };
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    ToJson, CastFromVariantSuccessTest, testing::ValuesIn(GetToJsonCastCases()),
+    [](const testing::TestParamInfo<VariantCastSuccessCase>& info) {
+      return info.param.test_name;
+    });
+
+std::vector<VariantCastSuccessCase> GetStructCastCases() {
+  const StructType* struct_ab_type = nullptr;
+  GOOGLESQL_CHECK_OK(type_factory->MakeStructType(
+      {{"a", types::Int64Type()}, {"b", types::StringType()}},
+      &struct_ab_type));
+  const StructType* struct_ba_type = nullptr;
+  GOOGLESQL_CHECK_OK(type_factory->MakeStructType(
+      {{"b", types::StringType()}, {"a", types::Int64Type()}},
+      &struct_ba_type));
+  const StructType* struct_upper_ab_type = nullptr;
+  GOOGLESQL_CHECK_OK(type_factory->MakeStructType(
+      {{"A", types::Int64Type()}, {"B", types::StringType()}},
+      &struct_upper_ab_type));
+  const StructType* struct_json_field_type = nullptr;
+  GOOGLESQL_CHECK_OK(type_factory->MakeStructType({{"a", types::JsonType()}},
+                                        &struct_json_field_type));
+  const StructType* struct_variant_field_type = nullptr;
+  GOOGLESQL_CHECK_OK(type_factory->MakeStructType(
+      {{"a", types::VariantType()}, {"b", types::StringType()}},
+      &struct_variant_field_type));
+  const StructType* struct_two_int_type = nullptr;
+  GOOGLESQL_CHECK_OK(type_factory->MakeStructType(
+      {{"a", types::Int64Type()}, {"b", types::Int64Type()}},
+      &struct_two_int_type));
+  const StructType* struct_a_type = nullptr;
+  GOOGLESQL_CHECK_OK(type_factory->MakeStructType({{"a", types::Int64Type()}},
+                                        &struct_a_type));
+  const StructType* struct_b_type = nullptr;
+  GOOGLESQL_CHECK_OK(type_factory->MakeStructType({{"b", types::Int64Type()}},
+                                        &struct_b_type));
+  const StructType* struct_x_type = nullptr;
+  GOOGLESQL_CHECK_OK(type_factory->MakeStructType({{"x", types::Int64Type()}},
+                                        &struct_x_type));
+  const StructType* struct_a_nested_type = nullptr;
+  GOOGLESQL_CHECK_OK(type_factory->MakeStructType({{"a", struct_x_type}},
+                                        &struct_a_nested_type));
+  const ArrayType* struct_a_array_type = nullptr;
+  GOOGLESQL_CHECK_OK(type_factory->MakeArrayType(struct_a_type, &struct_a_array_type));
+  const StructType* struct_arr_type = nullptr;
+  GOOGLESQL_CHECK_OK(type_factory->MakeStructType({{"arr", types::Int64ArrayType()}},
+                                        &struct_arr_type));
+  const StructType* struct_dup_source_type = nullptr;
+  GOOGLESQL_CHECK_OK(type_factory->MakeStructType(
+      {{"a", types::Int64Type()}, {"a", types::Int64Type()}},
+      &struct_dup_source_type));
+  const StructType* struct_unnamed_source_type = nullptr;
+  GOOGLESQL_CHECK_OK(type_factory->MakeStructType(
+      {{"", types::Int64Type()}, {"b", types::Int64Type()}},
+      &struct_unnamed_source_type));
+  const StructType* empty_struct_type = nullptr;
+  GOOGLESQL_CHECK_OK(type_factory->MakeStructType({}, &empty_struct_type));
+
+  const Type* map_str_int64_type = Unwrap(
+      type_factory->MakeMapType(types::StringType(), types::Int64Type()));
+
+  Value struct_ab_val =
+      Unwrap(Value::MakeStruct(struct_ab_type, {Int64(42), String("hello")}));
+  Value struct_ba_val =
+      Unwrap(Value::MakeStruct(struct_ba_type, {String("hello"), Int64(42)}));
+  Value struct_upper_ab_val = Unwrap(
+      Value::MakeStruct(struct_upper_ab_type, {Int64(42), String("hello")}));
+  Value struct_two_int_val =
+      Unwrap(Value::MakeStruct(struct_two_int_type, {Int64(1), Int64(2)}));
+  Value map_ab_val = Unwrap(Value::MakeMap(
+      map_str_int64_type, {{String("a"), Int64(1)}, {String("b"), Int64(2)}}));
+
+  return {
+      {.test_name = "StructObjectToStructSameOrder",
+       .from_variant = Variant(struct_ab_val),
+       .expected_value = struct_ab_val},
+      {.test_name = "StructObjectToStructReorderedFields",
+       .from_variant = Variant(struct_ab_val),
+       .expected_value = struct_ba_val},
+      {.test_name = "StructObjectToStructCaseInsensitiveFields",
+       .from_variant = Variant(struct_ab_val),
+       .expected_value = struct_upper_ab_val},
+      {.test_name = "StructObjectToStructWithVariantField",
+       .from_variant = Variant(struct_ab_val),
+       .expected_value = Unwrap(Value::MakeStruct(
+           struct_variant_field_type, {Variant(Int64(42)), String("hello")}))},
+      {.test_name = "MapObjectToStruct",
+       .from_variant = Variant(map_ab_val),
+       .expected_value = struct_two_int_val},
+      {.test_name = "JsonObjectToStruct",
+       .from_variant = Variant(ParseJson(R"({"a": 42, "b": "hello"})")),
+       .expected_value = struct_ab_val},
+      {.test_name = "JsonObjectWithNullFieldToStruct",
+       .from_variant = Variant(ParseJson(R"({"a": null, "b": "hello"})")),
+       .expected_value = Unwrap(Value::MakeStruct(
+           struct_ab_type, {Value::NullInt64(), String("hello")}))},
+      {.test_name = "JsonObjectWithNullFieldToStructWithJsonField",
+       .from_variant = Variant(ParseJson(R"({"a": null})")),
+       .expected_value = Unwrap(
+           Value::MakeStruct(struct_json_field_type, {Json(JSONValue())}))},
+      {.test_name = "StructObjectWithNullFieldToStruct",
+       .from_variant = Variant(Unwrap(Value::MakeStruct(
+           struct_ab_type, {Value::NullInt64(), String("hello")}))),
+       .expected_value = Unwrap(Value::MakeStruct(
+           struct_ab_type, {Value::NullInt64(), String("hello")}))},
+      {.test_name = "NestedJsonObjectToNestedStruct",
+       .from_variant = Variant(ParseJson(R"({"a": {"x": 10}})")),
+       .expected_value = Unwrap(Value::MakeStruct(
+           struct_a_nested_type,
+           {Unwrap(Value::MakeStruct(struct_x_type, {Int64(10)}))}))},
+      {.test_name = "JsonArrayOfObjectsToStructArray",
+       .from_variant = Variant(ParseJson(R"([{"a": 1}, {"a": 2}])")),
+       .expected_value = Unwrap(Value::MakeArray(
+           struct_a_array_type,
+           {Unwrap(Value::MakeStruct(struct_a_type, {Int64(1)})),
+            Unwrap(Value::MakeStruct(struct_a_type, {Int64(2)}))}))},
+      {.test_name = "JsonObjectWithArrayToStructWithArrayField",
+       .from_variant = Variant(ParseJson(R"({"arr": [1, 2, 3]})")),
+       .expected_value =
+           Unwrap(Value::MakeStruct(struct_arr_type, {Int64Array({1, 2, 3})}))},
+      {.test_name = "EmptyJsonObjectToStruct",
+       .from_variant = Variant(ParseJson("{}")),
+       .expected_value =
+           Unwrap(Value::MakeStruct(struct_a_type, {Value::NullInt64()}))},
+      {.test_name = "StructObjectWithDuplicateFieldsToStruct",
+       .from_variant = Variant(Unwrap(
+           Value::MakeStruct(struct_dup_source_type, {Int64(1), Int64(2)}))),
+       .expected_value = Unwrap(Value::MakeStruct(struct_a_type, {Int64(1)}))},
+      {.test_name = "StructObjectWithUnnamedFieldToStruct",
+       .from_variant = Variant(Unwrap(Value::MakeStruct(
+           struct_unnamed_source_type, {Int64(10), Int64(20)}))),
+       .expected_value = Unwrap(Value::MakeStruct(struct_b_type, {Int64(20)}))},
+      {.test_name = "StructObjectWithUnnamedFieldToUnnamedTargetField",
+       .from_variant = Variant(Unwrap(Value::MakeStruct(
+           struct_unnamed_source_type, {Int64(10), Int64(20)}))),
+       .expected_value = Unwrap(Value::MakeStruct(struct_unnamed_source_type,
+                                                  {Int64(10), Int64(20)}))},
+      {.test_name = "JsonObjectWithEmptyKeyToUnnamedStructField",
+       .from_variant = Variant(ParseJson(R"({"": 10, "b": 20})")),
+       .expected_value = Unwrap(Value::MakeStruct(struct_unnamed_source_type,
+                                                  {Int64(10), Int64(20)}))},
+      {.test_name = "EmptyJsonObjectToEmptyStruct",
+       .from_variant = Variant(ParseJson("{}")),
+       .expected_value = Unwrap(Value::MakeStruct(empty_struct_type, {}))},
+      {.test_name = "ExtraKeysToEmptyStruct",
+       .from_variant = Variant(ParseJson(R"({"a": 1})")),
+       .expected_value = Unwrap(Value::MakeStruct(empty_struct_type, {}))},
+      {.test_name = "MissingFieldEvaluatesToNull",
+       .from_variant = Variant(ParseJson(R"({"a": 1})")),
+       .expected_value = Unwrap(Value::MakeStruct(
+           struct_two_int_type, {Int64(1), Value::NullInt64()}))},
+      {.test_name = "ExtraKeyIgnored",
+       .from_variant = Variant(ParseJson(R"({"a": 1, "c": 2})")),
+       .expected_value = Unwrap(Value::MakeStruct(struct_a_type, {Int64(1)}))},
+      {.test_name = "UnaskedCollidingKeysIgnored",
+       .from_variant = Variant(ParseJson(R"({"x": 1, "X": 2, "a": 10})")),
+       .expected_value = Unwrap(Value::MakeStruct(struct_a_type, {Int64(10)}))},
+  };
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    Structs, CastFromVariantSuccessTest,
+    testing::ValuesIn(GetStructCastCases()),
     [](const testing::TestParamInfo<VariantCastSuccessCase>& info) {
       return info.param.test_name;
     });
@@ -2393,6 +2809,52 @@ std::vector<VariantCastErrorCase> GetPrimitivesAndPassThroughErrorCases() {
        .from_variant = Variant(tokenlist_val),
        .to_type = types::StringType(),
        .expected_error_substr = "Unsupported cast from TOKENLIST to STRING"},
+      {.test_name = "TokenListToJson",
+       .from_variant = Variant(tokenlist_val),
+       .to_type = types::JsonType(),
+       .expected_error_substr = "Unsupported cast from TOKENLIST to JSON"},
+      {.test_name = "MalformedUnvalidatedJsonToJsonFails",
+       .from_variant = Variant(Value::UnvalidatedJsonString("{bad")),
+       .to_type = types::JsonType(),
+       .expected_error_substr = "syntax error while parsing"},
+      {.test_name = "NestedNonStringKeyedMapInVariantToJsonFails",
+       .from_variant = Variant(Unwrap(Value::MakeArray(
+           types::VariantArrayType(),
+           {Variant(Unwrap(Value::MakeMap(map_int64_int64_type,
+                                          {{Int64(1), Int64(10)}})))}))),
+       .to_type = types::JsonType(),
+       .expected_error_substr =
+           "Unsupported cast from MAP<INT64, INT64> to JSON"},
+      {.test_name = "GraphNodeWithUnsupportedPropertyTypeToJsonFails",
+       .from_variant = Variant(Unwrap(
+           GraphNode({"graph_name"}, "id1", {{"tl", values::NullTokenList()}},
+                     {"label1"}, "ElementTable", type_factory))),
+       .to_type = types::JsonType(),
+       .expected_error_substr = "Unsupported cast from GRAPH_NODE"},
+      {.test_name = "NanFloatInVariantToJsonFails",
+       .from_variant =
+           Variant(Double(std::numeric_limits<double>::quiet_NaN())),
+       .to_type = types::JsonType(),
+       .expected_error_substr = "NaN is not a valid JSON number"},
+      {.test_name = "PositiveInfinityFloatInVariantToJsonFails",
+       .from_variant = Variant(Double(std::numeric_limits<double>::infinity())),
+       .to_type = types::JsonType(),
+       .expected_error_substr = "Infinity is not a valid JSON number"},
+      {.test_name = "NegativeInfinityFloatInVariantToJsonFails",
+       .from_variant =
+           Variant(Double(-std::numeric_limits<double>::infinity())),
+       .to_type = types::JsonType(),
+       .expected_error_substr = "-Infinity is not a valid JSON number"},
+      {.test_name = "NestedNanInVariantObjectToJsonFails",
+       .from_variant = Variant(
+           Struct({"a"}, {Double(std::numeric_limits<double>::quiet_NaN())})),
+       .to_type = types::JsonType(),
+       .expected_error_substr = "NaN is not a valid JSON number"},
+      {.test_name = "NestedInfinityInVariantArrayToJsonFails",
+       .from_variant =
+           Variant(DoubleArray({std::numeric_limits<double>::infinity()})),
+       .to_type = types::JsonType(),
+       .expected_error_substr = "Infinity is not a valid JSON number"},
       {.test_name = "RangeDateToRangeTimestamp",
        .from_variant = Variant(range_date_val),
        .to_type = range_timestamp_type,
@@ -2545,9 +3007,163 @@ INSTANTIATE_TEST_SUITE_P(
       return info.param.test_name;
     });
 
+std::vector<VariantCastErrorCase> GetStructErrorCases() {
+  const StructType* struct_ab_type = nullptr;
+  GOOGLESQL_CHECK_OK(type_factory->MakeStructType(
+      {{"a", types::Int64Type()}, {"b", types::Int64Type()}}, &struct_ab_type));
+  const StructType* struct_unnamed_type = nullptr;
+  GOOGLESQL_CHECK_OK(type_factory->MakeStructType({{"", types::Int64Type()}},
+                                        &struct_unnamed_type));
+  const StructType* struct_two_unnamed_type = nullptr;
+  GOOGLESQL_CHECK_OK(type_factory->MakeStructType(
+      {{"", types::Int64Type()}, {"", types::Int64Type()}},
+      &struct_two_unnamed_type));
+  const StructType* struct_dup_a_type = nullptr;
+  GOOGLESQL_CHECK_OK(type_factory->MakeStructType(
+      {{"a", types::Int64Type()}, {"a", types::Int64Type()}},
+      &struct_dup_a_type));
+  const StructType* struct_case_dup_a_type = nullptr;
+  GOOGLESQL_CHECK_OK(type_factory->MakeStructType(
+      {{"a", types::Int64Type()}, {"A", types::Int64Type()}},
+      &struct_case_dup_a_type));
+  const StructType* struct_two_unnamed_with_x_type = nullptr;
+  GOOGLESQL_CHECK_OK(type_factory->MakeStructType({{"", types::Int64Type()},
+                                         {"", types::Int64Type()},
+                                         {"x", types::StringType()}},
+                                        &struct_two_unnamed_with_x_type));
+  const StructType* struct_dup_a_with_x_type = nullptr;
+  GOOGLESQL_CHECK_OK(type_factory->MakeStructType({{"a", types::Int64Type()},
+                                         {"a", types::Int64Type()},
+                                         {"x", types::StringType()}},
+                                        &struct_dup_a_with_x_type));
+  const StructType* struct_case_dup_a_with_x_type = nullptr;
+  GOOGLESQL_CHECK_OK(type_factory->MakeStructType({{"a", types::Int64Type()},
+                                         {"A", types::Int64Type()},
+                                         {"x", types::StringType()}},
+                                        &struct_case_dup_a_with_x_type));
+
+  Value json_one_field = ParseJson(R"({"a": 1})");
+
+  return {
+      {.test_name = "VariantObjectToStructAmbiguousCaseKeys",
+       .from_variant = Variant(ParseJson(R"({"a": 1, "A": 2})")),
+       .to_type = struct_ab_type,
+       .expected_error_substr =
+           "target struct field 'a' matches multiple VARIANT Object keys "
+           "case-insensitively"},
+      {.test_name = "VariantObjectToStructMultipleAnonymousFields",
+       .from_variant = Variant(ParseJson(R"({"": 1})")),
+       .to_type = struct_two_unnamed_type,
+       .expected_error_substr =
+           "target struct contains multiple anonymous fields"},
+      {.test_name = "VariantObjectToStructDuplicateFieldName",
+       .from_variant = Variant(json_one_field),
+       .to_type = struct_dup_a_type,
+       .expected_error_substr =
+           "target struct contains duplicate field name 'a'"},
+      {.test_name = "VariantObjectToStructCaseCollidingFieldNames",
+       .from_variant = Variant(json_one_field),
+       .to_type = struct_case_dup_a_type,
+       .expected_error_substr =
+           "target struct contains duplicate field name 'A'"},
+      {.test_name = "VariantObjectToStructUnmatchedMultipleAnonymousFields",
+       .from_variant = Variant(ParseJson(R"({"x": "abc"})")),
+       .to_type = struct_two_unnamed_with_x_type,
+       .expected_error_substr =
+           "target struct contains multiple anonymous fields"},
+      {.test_name = "VariantObjectToStructUnmatchedDuplicateFieldName",
+       .from_variant = Variant(ParseJson(R"({"x": "abc"})")),
+       .to_type = struct_dup_a_with_x_type,
+       .expected_error_substr =
+           "target struct contains duplicate field name 'a'"},
+      {.test_name = "VariantObjectToStructUnmatchedCaseCollidingFieldNames",
+       .from_variant = Variant(ParseJson(R"({"x": "abc"})")),
+       .to_type = struct_case_dup_a_with_x_type,
+       .expected_error_substr =
+           "target struct contains duplicate field name 'A'"},
+      {.test_name = "VariantObjectToStructFieldCastError",
+       .from_variant = Variant(ParseJson(R"({"a": "bad", "b": 2})")),
+       .to_type = struct_ab_type,
+       .expected_error_substr = "Error casting field 'a' in STRUCT"},
+      {.test_name = "VariantObjectToStructUnnamedFieldCastError",
+       .from_variant = Variant(ParseJson(R"({"": "bad"})")),
+       .to_type = struct_unnamed_type,
+       .expected_error_substr = "Error casting field at index 0 in STRUCT"},
+      {.test_name = "VariantArrayToStructFails",
+       .from_variant = Variant(ParseJson("[1, 2]")),
+       .to_type = struct_ab_type,
+       .expected_error_substr = "Cannot cast VARIANT Array to STRUCT"},
+      {.test_name = "VariantPrimitiveStringToStructFails",
+       .from_variant = Variant(String(R"({"a": 1})")),
+       .to_type = struct_ab_type,
+       .expected_error_substr = "Unsupported cast from STRING to STRUCT"},
+  };
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    Structs, CastFromVariantEvalErrorTest,
+    testing::ValuesIn(GetStructErrorCases()),
+    [](const testing::TestParamInfo<VariantCastErrorCase>& info) {
+      return info.param.test_name;
+    });
+
 // -----------------------------------------------------------------------------
 // 3. Focused Behavioral & Edge-Case Tests for CAST from VARIANT
 // -----------------------------------------------------------------------------
+
+TEST(CastFromVariantTest, CastToJsonSucceedsWithoutCastToJsonFeature) {
+  LanguageOptions variant_only_options;
+  variant_only_options.EnableLanguageFeature(FEATURE_VARIANT_TYPE);
+  ASSERT_FALSE(
+      variant_only_options.LanguageFeatureEnabled(FEATURE_CAST_TO_JSON_TYPE));
+
+  const EnumType* enum_type = nullptr;
+  GOOGLESQL_ASSERT_OK(type_factory->MakeEnumType(googlesql_test::TestEnum_descriptor(),
+                                       &enum_type));
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(Value range_date_val,
+                       Value::MakeRange(Date(20089), Date(20090)));
+
+  EXPECT_THAT(CastValue(Variant(Int64(42)), absl::UTCTimeZone(),
+                        variant_only_options, types::JsonType()),
+              IsOkAndHolds(Json(JSONValue(int64_t{42}))));
+  EXPECT_THAT(CastValue(Variant(Json(JSONValue())), absl::UTCTimeZone(),
+                        variant_only_options, types::JsonType()),
+              IsOkAndHolds(Json(JSONValue())));
+  EXPECT_THAT(CastValue(Variant(ParseJson(R"({"a": 1})")), absl::UTCTimeZone(),
+                        variant_only_options, types::JsonType()),
+              IsOkAndHolds(ParseJson(R"({"a": 1})")));
+  EXPECT_THAT(CastValue(Variant(Int64Array({1, 2})), absl::UTCTimeZone(),
+                        variant_only_options, types::JsonType()),
+              IsOkAndHolds(ParseJson("[1, 2]")));
+  EXPECT_THAT(CastValue(Variant(Value::Enum(enum_type, 1)), absl::UTCTimeZone(),
+                        variant_only_options, types::JsonType()),
+              IsOkAndHolds(Json(JSONValue(absl::string_view("TESTENUM1")))));
+  EXPECT_THAT(
+      CastValue(Variant(range_date_val), absl::UTCTimeZone(),
+                variant_only_options, types::JsonType()),
+      IsOkAndHolds(ParseJson(R"({"start":"2025-01-01","end":"2025-01-02"})")));
+}
+
+TEST(CastFromVariantTest, CastVariantArrayToJsonArray) {
+  LanguageOptions array_options;
+  array_options.EnableLanguageFeature(FEATURE_VARIANT_TYPE);
+  array_options.EnableLanguageFeature(FEATURE_CAST_DIFFERENT_ARRAY_TYPES);
+  ASSERT_FALSE(array_options.LanguageFeatureEnabled(FEATURE_CAST_TO_JSON_TYPE));
+
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+      Value variant_array,
+      Value::MakeArray(types::VariantArrayType(),
+                       {Variant(Int64(1)), Variant(Json(JSONValue())),
+                        Value::NullVariant()}));
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+      Value expected_json_array,
+      Value::MakeArray(
+          types::JsonArrayType(),
+          {Json(JSONValue(int64_t{1})), Json(JSONValue()), Value::NullJson()}));
+  EXPECT_THAT(CastValue(variant_array, absl::UTCTimeZone(), array_options,
+                        types::JsonArrayType()),
+              IsOkAndHolds(expected_json_array));
+}
 
 TEST(CastFromVariantTest, FormatsNegativeZeroAccordingToFlag) {
   LanguageOptions options = LanguageOptions::MaximumFeatures();
@@ -2572,6 +3188,49 @@ TEST(CastFromVariantTest, FormatsNegativeZeroAccordingToFlag) {
                         options, types::StringType(), /*catalog=*/nullptr,
                         /*canonicalize_zero=*/true),
               IsOkAndHolds(String("0")));
+
+  // SQL double -0.0 to JSON
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+      Value json_neg_zero,
+      CastValue(Variant(Double(-0.0)), absl::UTCTimeZone(), options,
+                types::JsonType(), /*catalog=*/nullptr,
+                /*canonicalize_zero=*/false));
+  EXPECT_EQ(json_neg_zero.json_value().ToString(), "-0.0");
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+      Value json_canonical_zero,
+      CastValue(Variant(Double(-0.0)), absl::UTCTimeZone(), options,
+                types::JsonType(), /*catalog=*/nullptr,
+                /*canonicalize_zero=*/true));
+  EXPECT_EQ(json_canonical_zero.json_value().ToString(), "0.0");
+}
+
+TEST(CastFromVariantTest,
+     NumericPrecisionLossToJsonRespectsStrictNumberParsing) {
+  LanguageOptions strict_options = LanguageOptions::MaximumFeatures();
+  strict_options.EnableLanguageFeature(FEATURE_VARIANT_TYPE);
+  strict_options.EnableLanguageFeature(FEATURE_JSON_STRICT_NUMBER_PARSING);
+
+  Value max_numeric_variant = Variant(Numeric(NumericValue::MaxValue()));
+  Value max_bignumeric_variant =
+      Variant(BigNumeric(BigNumericValue::MaxValue()));
+
+  EXPECT_THAT(CastValue(max_numeric_variant, absl::UTCTimeZone(),
+                        strict_options, types::JsonType()),
+              StatusIs(absl::StatusCode::kOutOfRange,
+                       HasSubstr("Failed to convert type NUMERIC to JSON")));
+  EXPECT_THAT(CastValue(max_bignumeric_variant, absl::UTCTimeZone(),
+                        strict_options, types::JsonType()),
+              StatusIs(absl::StatusCode::kOutOfRange,
+                       HasSubstr("Failed to convert type BIGNUMERIC to JSON")));
+
+  LanguageOptions non_strict_options = strict_options;
+  non_strict_options.DisableLanguageFeature(FEATURE_JSON_STRICT_NUMBER_PARSING);
+  EXPECT_THAT(CastValue(max_numeric_variant, absl::UTCTimeZone(),
+                        non_strict_options, types::JsonType()),
+              IsOkAndHolds(Json(JSONValue(double{1e+29}))));
+  EXPECT_THAT(CastValue(max_bignumeric_variant, absl::UTCTimeZone(),
+                        non_strict_options, types::JsonType()),
+              IsOkAndHolds(Json(JSONValue(double{5.7896044618658096e+38}))));
 }
 
 TEST(CastFromVariantTest, PropagatesNonUtcDefaultTimezoneToNestedContainers) {
@@ -2686,6 +3345,51 @@ TEST(CastFromVariantTest, VariantObjectWithFloatToMapSetsNonDeterministicFlag) {
   EXPECT_TRUE(found_non_deterministic);
 }
 
+TEST(CastFromVariantTest,
+     VariantObjectWithFloatToStructSetsNonDeterministicFlag) {
+  LanguageOptions options = LanguageOptions::MaximumFeatures();
+  options.EnableLanguageFeature(FEATURE_VARIANT_TYPE);
+
+  const StructType* struct_str_type = nullptr;
+  GOOGLESQL_ASSERT_OK(type_factory->MakeStructType({{"a", types::StringType()}},
+                                         &struct_str_type));
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(Value expected_struct,
+                       Value::MakeStruct(struct_str_type, {String("1.5")}));
+
+  Value object_with_matched_float = Variant(Struct({"a"}, {Double(1.5)}));
+  bool found_non_deterministic = false;
+  EXPECT_THAT(internal::CastValueWithoutTypeValidation(
+                  object_with_matched_float, absl::UTCTimeZone(),
+                  /*current_timestamp=*/std::nullopt, options, struct_str_type,
+                  /*format=*/std::nullopt, /*time_zone=*/std::nullopt,
+                  /*extended_conversion_evaluator=*/nullptr,
+                  /*canonicalize_zero=*/true, &found_non_deterministic),
+              IsOkAndHolds(expected_struct));
+  EXPECT_TRUE(found_non_deterministic);
+}
+
+TEST(CastFromVariantTest, UnprojectedFloatFieldInStructCastIsDeterministic) {
+  LanguageOptions options = LanguageOptions::MaximumFeatures();
+  options.EnableLanguageFeature(FEATURE_VARIANT_TYPE);
+
+  const StructType* struct_str_type = nullptr;
+  GOOGLESQL_ASSERT_OK(type_factory->MakeStructType({{"a", types::StringType()}},
+                                         &struct_str_type));
+  Value object_with_unasked_float =
+      Variant(Struct({"a", "unasked"}, {Int64(1), Double(1.5)}));
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(Value expected_int_str_struct,
+                       Value::MakeStruct(struct_str_type, {String("1")}));
+  bool found_non_deterministic = false;
+  EXPECT_THAT(internal::CastValueWithoutTypeValidation(
+                  object_with_unasked_float, absl::UTCTimeZone(),
+                  /*current_timestamp=*/std::nullopt, options, struct_str_type,
+                  /*format=*/std::nullopt, /*time_zone=*/std::nullopt,
+                  /*extended_conversion_evaluator=*/nullptr,
+                  /*canonicalize_zero=*/true, &found_non_deterministic),
+              IsOkAndHolds(expected_int_str_struct));
+  EXPECT_FALSE(found_non_deterministic);
+}
+
 TEST(CastFromVariantTest, ProtoWithFloatToStringSetsNonDeterministicFlag) {
   LanguageOptions options = LanguageOptions::MaximumFeatures();
   options.EnableLanguageFeature(FEATURE_VARIANT_TYPE);
@@ -2764,9 +3468,246 @@ TEST(CastFromVariantTest,
   EXPECT_TRUE(found_non_deterministic);
 }
 
-// TODO: b/554949919 - Add a test for Variant(Geography) -> JSON and
-// Variant(MAP<INT64, unordered_array>) -> MAP<INT64, JSON> setting
-// out_found_non_deterministic once casting from VARIANT to JSON is supported.
+TEST(CastFromVariantTest, NestedFloatToJsonSetsNonDeterministicFlag) {
+  LanguageOptions options = LanguageOptions::MaximumFeatures();
+  options.EnableLanguageFeature(FEATURE_VARIANT_TYPE);
+
+  Value nested_float_variant = Variant(Struct({"a"}, {Array({Double(1.5)})}));
+  bool found_non_deterministic = false;
+  EXPECT_THAT(internal::CastValueWithoutTypeValidation(
+                  nested_float_variant, absl::UTCTimeZone(),
+                  /*current_timestamp=*/std::nullopt, options,
+                  types::JsonType(), /*format=*/std::nullopt,
+                  /*time_zone=*/std::nullopt,
+                  /*extended_conversion_evaluator=*/nullptr,
+                  /*canonicalize_zero=*/true, &found_non_deterministic),
+              IsOkAndHolds(ParseJson(R"({"a":[1.5]})")));
+  EXPECT_TRUE(found_non_deterministic);
+}
+
+TEST(CastFromVariantTest,
+     GraphNodeWithFloatInVariantToJsonSetsNonDeterministicFlag) {
+  LanguageOptions options = LanguageOptions::MaximumFeatures();
+  options.EnableLanguageFeature(FEATURE_VARIANT_TYPE);
+
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+      Value node, GraphNode({"g"}, "n1", {{"a", Double(1.5)}}, {"L1"}, "T"));
+  bool found_non_deterministic = false;
+  EXPECT_THAT(
+      internal::CastValueWithoutTypeValidation(
+          Variant(node), absl::UTCTimeZone(),
+          /*current_timestamp=*/std::nullopt, options, types::JsonType(),
+          /*format=*/std::nullopt, /*time_zone=*/std::nullopt,
+          /*extended_conversion_evaluator=*/nullptr,
+          /*canonicalize_zero=*/true, &found_non_deterministic),
+      IsOkAndHolds(ParseJson(
+          R"({"identifier":"bjE=","kind":"node","labels":["L1"],"properties":{"a":1.5}})")));
+  EXPECT_TRUE(found_non_deterministic);
+}
+
+TEST(CastFromVariantTest, GraphNodeWithIntInVariantToJsonIsDeterministic) {
+  LanguageOptions options = LanguageOptions::MaximumFeatures();
+  options.EnableLanguageFeature(FEATURE_VARIANT_TYPE);
+
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(Value node,
+                       GraphNode({"g"}, "n1", {{"a", Int64(1)}}, {"L1"}, "T"));
+  bool found_non_deterministic = false;
+  EXPECT_THAT(
+      internal::CastValueWithoutTypeValidation(
+          Variant(node), absl::UTCTimeZone(),
+          /*current_timestamp=*/std::nullopt, options, types::JsonType(),
+          /*format=*/std::nullopt, /*time_zone=*/std::nullopt,
+          /*extended_conversion_evaluator=*/nullptr,
+          /*canonicalize_zero=*/true, &found_non_deterministic),
+      IsOkAndHolds(ParseJson(
+          R"({"identifier":"bjE=","kind":"node","labels":["L1"],"properties":{"a":1}})")));
+  EXPECT_FALSE(found_non_deterministic);
+}
+
+TEST(CastFromVariantTest, JsonFloatInVariantToJsonIsDeterministic) {
+  LanguageOptions options = LanguageOptions::MaximumFeatures();
+  options.EnableLanguageFeature(FEATURE_VARIANT_TYPE);
+
+  Value json_float_variant = Variant(ParseJson(R"({"a": 1.5})"));
+  bool found_non_deterministic = false;
+  EXPECT_THAT(internal::CastValueWithoutTypeValidation(
+                  json_float_variant, absl::UTCTimeZone(),
+                  /*current_timestamp=*/std::nullopt, options,
+                  types::JsonType(), /*format=*/std::nullopt,
+                  /*time_zone=*/std::nullopt,
+                  /*extended_conversion_evaluator=*/nullptr,
+                  /*canonicalize_zero=*/true, &found_non_deterministic),
+              IsOkAndHolds(ParseJson(R"({"a": 1.5})")));
+  EXPECT_FALSE(found_non_deterministic);
+}
+
+TEST(CastFromVariantTest,
+     UnorderedArrayInVariantToJsonSetsNonDeterministicFlag) {
+  LanguageOptions options = LanguageOptions::MaximumFeatures();
+  options.EnableLanguageFeature(FEATURE_VARIANT_TYPE);
+
+  Value unordered_array_variant =
+      Variant(Array({Int64(1), Int64(2)}, kIgnoresOrder));
+  bool found_non_deterministic = false;
+  EXPECT_THAT(internal::CastValueWithoutTypeValidation(
+                  unordered_array_variant, absl::UTCTimeZone(),
+                  /*current_timestamp=*/std::nullopt, options,
+                  types::JsonType(), /*format=*/std::nullopt,
+                  /*time_zone=*/std::nullopt,
+                  /*extended_conversion_evaluator=*/nullptr,
+                  /*canonicalize_zero=*/true, &found_non_deterministic),
+              IsOkAndHolds(ParseJson("[1, 2]")));
+  EXPECT_TRUE(found_non_deterministic);
+}
+
+TEST(CastFromVariantTest, OrderedArrayInVariantToJsonIsDeterministic) {
+  LanguageOptions options = LanguageOptions::MaximumFeatures();
+  options.EnableLanguageFeature(FEATURE_VARIANT_TYPE);
+
+  Value ordered_array_variant =
+      Variant(Array({Int64(1), Int64(2)}, kPreservesOrder));
+  bool found_non_deterministic = false;
+  EXPECT_THAT(internal::CastValueWithoutTypeValidation(
+                  ordered_array_variant, absl::UTCTimeZone(),
+                  /*current_timestamp=*/std::nullopt, options,
+                  types::JsonType(), /*format=*/std::nullopt,
+                  /*time_zone=*/std::nullopt,
+                  /*extended_conversion_evaluator=*/nullptr,
+                  /*canonicalize_zero=*/true, &found_non_deterministic),
+              IsOkAndHolds(ParseJson("[1, 2]")));
+  EXPECT_FALSE(found_non_deterministic);
+}
+
+TEST(CastFromVariantTest,
+     SingleElementUnorderedArrayInVariantToJsonIsDeterministic) {
+  LanguageOptions options = LanguageOptions::MaximumFeatures();
+  options.EnableLanguageFeature(FEATURE_VARIANT_TYPE);
+
+  Value single_elem_array_variant = Variant(Array({Int64(1)}, kIgnoresOrder));
+  bool found_non_deterministic = false;
+  EXPECT_THAT(internal::CastValueWithoutTypeValidation(
+                  single_elem_array_variant, absl::UTCTimeZone(),
+                  /*current_timestamp=*/std::nullopt, options,
+                  types::JsonType(), /*format=*/std::nullopt,
+                  /*time_zone=*/std::nullopt,
+                  /*extended_conversion_evaluator=*/nullptr,
+                  /*canonicalize_zero=*/true, &found_non_deterministic),
+              IsOkAndHolds(ParseJson("[1]")));
+  EXPECT_FALSE(found_non_deterministic);
+}
+
+TEST(CastFromVariantTest,
+     UnorderedArrayEqualElementsInVariantToJsonIsDeterministic) {
+  LanguageOptions options = LanguageOptions::MaximumFeatures();
+  options.EnableLanguageFeature(FEATURE_VARIANT_TYPE);
+
+  Value equal_elems_array_variant =
+      Variant(Array({Int64(1), Int64(1)}, kIgnoresOrder));
+  bool found_non_deterministic = false;
+  EXPECT_THAT(internal::CastValueWithoutTypeValidation(
+                  equal_elems_array_variant, absl::UTCTimeZone(),
+                  /*current_timestamp=*/std::nullopt, options,
+                  types::JsonType(), /*format=*/std::nullopt,
+                  /*time_zone=*/std::nullopt,
+                  /*extended_conversion_evaluator=*/nullptr,
+                  /*canonicalize_zero=*/true, &found_non_deterministic),
+              IsOkAndHolds(ParseJson("[1, 1]")));
+  EXPECT_FALSE(found_non_deterministic);
+}
+
+TEST(CastFromVariantTest,
+     UnorderedStructArrayDifferentFieldNamesToJsonIsNonDeterministic) {
+  LanguageOptions options = LanguageOptions::MaximumFeatures();
+  options.EnableLanguageFeature(FEATURE_VARIANT_TYPE);
+
+  Value unordered_array_variant = Variant(Array(
+      {Variant(Struct({"a"}, {Int64(1)})), Variant(Struct({"b"}, {Int64(1)}))},
+      kIgnoresOrder));
+  bool found_non_deterministic = false;
+  EXPECT_THAT(internal::CastValueWithoutTypeValidation(
+                  unordered_array_variant, absl::UTCTimeZone(),
+                  /*current_timestamp=*/std::nullopt, options,
+                  types::JsonType(), /*format=*/std::nullopt,
+                  /*time_zone=*/std::nullopt,
+                  /*extended_conversion_evaluator=*/nullptr,
+                  /*canonicalize_zero=*/true, &found_non_deterministic),
+              IsOkAndHolds(ParseJson(R"([{"a":1},{"b":1}])")));
+  EXPECT_TRUE(found_non_deterministic);
+}
+
+TEST(CastFromVariantTest,
+     UnorderedStructArrayCaseFieldNamesToJsonIsNonDeterministic) {
+  LanguageOptions options = LanguageOptions::MaximumFeatures();
+  options.EnableLanguageFeature(FEATURE_VARIANT_TYPE);
+
+  Value unordered_array_variant = Variant(Array(
+      {Variant(Struct({"a"}, {Int64(1)})), Variant(Struct({"A"}, {Int64(1)}))},
+      kIgnoresOrder));
+  bool found_non_deterministic = false;
+  EXPECT_THAT(internal::CastValueWithoutTypeValidation(
+                  unordered_array_variant, absl::UTCTimeZone(),
+                  /*current_timestamp=*/std::nullopt, options,
+                  types::JsonType(), /*format=*/std::nullopt,
+                  /*time_zone=*/std::nullopt,
+                  /*extended_conversion_evaluator=*/nullptr,
+                  /*canonicalize_zero=*/true, &found_non_deterministic),
+              IsOkAndHolds(ParseJson(R"([{"a":1},{"A":1}])")));
+  EXPECT_TRUE(found_non_deterministic);
+}
+
+TEST(CastFromVariantTest,
+     FailedUnorderedArrayInVariantToJsonDoesNotSetNonDeterministicFlag) {
+  LanguageOptions options = LanguageOptions::MaximumFeatures();
+  options.EnableLanguageFeature(FEATURE_VARIANT_TYPE);
+
+  Value unordered_nan_array_variant = Variant(
+      Array({Double(1.5), Double(std::numeric_limits<double>::quiet_NaN())},
+            kIgnoresOrder));
+  bool found_non_deterministic = false;
+  EXPECT_THAT(internal::CastValueWithoutTypeValidation(
+                  unordered_nan_array_variant, absl::UTCTimeZone(),
+                  /*current_timestamp=*/std::nullopt, options,
+                  types::JsonType(), /*format=*/std::nullopt,
+                  /*time_zone=*/std::nullopt,
+                  /*extended_conversion_evaluator=*/nullptr,
+                  /*canonicalize_zero=*/true, &found_non_deterministic),
+              StatusIs(absl::StatusCode::kOutOfRange));
+  EXPECT_FALSE(found_non_deterministic);
+}
+
+TEST(CastFromVariantTest,
+     NonStringKeyedMapWithUnorderedArrayToJsonSetsNonDeterministicFlag) {
+  LanguageOptions options = LanguageOptions::MaximumFeatures();
+  options.EnableLanguageFeature(FEATURE_VARIANT_TYPE);
+
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+      const Type* map_int_arr_type,
+      type_factory->MakeMapType(types::Int64Type(), types::Int64ArrayType()));
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+      const Type* map_int_json_type,
+      type_factory->MakeMapType(types::Int64Type(), types::JsonType()));
+  Value unordered_array = InternalValue::ArrayNotChecked(
+      types::Int64ArrayType(), InternalValue::kIgnoresOrder,
+      {Int64(1), Int64(2)});
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+      Value map_val,
+      Value::MakeMap(map_int_arr_type, {{Int64(1), unordered_array}}));
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(Value map_variant, Value::Variant(map_val));
+  GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+      Value expected_map,
+      Value::MakeMap(map_int_json_type, {{Int64(1), ParseJson("[1, 2]")}}));
+
+  bool found_non_deterministic = false;
+  EXPECT_THAT(internal::CastValueWithoutTypeValidation(
+                  map_variant, absl::UTCTimeZone(),
+                  /*current_timestamp=*/std::nullopt, options,
+                  map_int_json_type, /*format=*/std::nullopt,
+                  /*time_zone=*/std::nullopt,
+                  /*extended_conversion_evaluator=*/nullptr,
+                  /*canonicalize_zero=*/true, &found_non_deterministic),
+              IsOkAndHolds(expected_map));
+  EXPECT_TRUE(found_non_deterministic);
+}
 
 TEST(CastFromVariantTest,
      StructWithVariantFloatToStructWithStringSetsNonDeterministicFlag) {
@@ -3087,20 +4028,11 @@ TEST(CastFromVariantTest, UnsupportedTargetTypeReturnsInvalidArgument) {
 
   GOOGLESQL_ASSERT_OK_AND_ASSIGN(const Type* measure_type,
                        type_factory->MakeMeasureType(types::Int64Type()));
-  const StructType* struct_type = nullptr;
-  GOOGLESQL_ASSERT_OK(
-      type_factory->MakeStructType({{"a", types::Int64Type()}}, &struct_type));
   Value v = Variant(Int64(1));
 
   EXPECT_THAT(CastValue(v, absl::UTCTimeZone(), options, measure_type),
               StatusIs(absl::StatusCode::kInvalidArgument,
                        HasSubstr("Unsupported cast from VARIANT to MEASURE")));
-  EXPECT_THAT(CastValue(v, absl::UTCTimeZone(), options, types::JsonType()),
-              StatusIs(absl::StatusCode::kInvalidArgument,
-                       HasSubstr("Unsupported cast from VARIANT to JSON")));
-  EXPECT_THAT(CastValue(v, absl::UTCTimeZone(), options, struct_type),
-              StatusIs(absl::StatusCode::kInvalidArgument,
-                       HasSubstr("Unsupported cast from VARIANT to STRUCT")));
 }
 
 TEST(CastFromVariantTest, FeatureDisabledReturnsInvalidArgument) {
@@ -3148,13 +4080,32 @@ TEST(CastFromVariantTest, ReturnsUnimplementedForComplexProtoFields) {
   GOOGLESQL_ASSERT_OK_AND_ASSIGN(
       const Type* map_str_variant_type,
       type_factory->MakeMapType(types::StringType(), types::VariantType()));
+  const StructType* struct_variant_val_type = nullptr;
+  GOOGLESQL_ASSERT_OK(type_factory->MakeStructType({{"value", types::VariantType()}},
+                                         &struct_variant_val_type));
 
+  EXPECT_THAT(CastValue(Variant(enum_proto_val), absl::UTCTimeZone(), options,
+                        types::JsonType()),
+              StatusIs(absl::StatusCode::kUnimplemented,
+                       HasSubstr("Cannot extract nested field")));
   EXPECT_THAT(CastValue(Variant(enum_proto_val), absl::UTCTimeZone(), options,
                         map_str_variant_type),
               StatusIs(absl::StatusCode::kUnimplemented,
                        HasSubstr("Cannot extract nested field")));
+  EXPECT_THAT(CastValue(Variant(enum_proto_val), absl::UTCTimeZone(), options,
+                        struct_variant_val_type),
+              StatusIs(absl::StatusCode::kUnimplemented,
+                       HasSubstr("Cannot extract nested field")));
+  EXPECT_THAT(CastValue(Variant(nested_proto_val), absl::UTCTimeZone(), options,
+                        types::JsonType()),
+              StatusIs(absl::StatusCode::kUnimplemented,
+                       HasSubstr("Cannot extract nested field")));
   EXPECT_THAT(CastValue(Variant(nested_proto_val), absl::UTCTimeZone(), options,
                         map_str_variant_type),
+              StatusIs(absl::StatusCode::kUnimplemented,
+                       HasSubstr("Cannot extract nested field")));
+  EXPECT_THAT(CastValue(Variant(nested_proto_val), absl::UTCTimeZone(), options,
+                        struct_variant_val_type),
               StatusIs(absl::StatusCode::kUnimplemented,
                        HasSubstr("Cannot extract nested field")));
 }
@@ -3198,7 +4149,7 @@ TEST(CastFromVariantTest, ReturnsResourceExhaustedOnDeepNesting) {
 
   constexpr int kNestingDepth = 15;  // > kNestingLevelStackCheckThreshold (10)
 
-  // 1. Deeply nested JSON object to MAP
+  // 1. Deeply nested JSON object to MAP (recurses) vs. to JSON (direct copy)
   std::string nested_json_obj = "1";
   for (int i = 0; i < kNestingDepth; ++i) {
     nested_json_obj = absl::StrCat(R"({"a":)", nested_json_obj, "}");
@@ -3208,8 +4159,13 @@ TEST(CastFromVariantTest, ReturnsResourceExhaustedOnDeepNesting) {
   GOOGLESQL_ASSERT_OK_AND_ASSIGN(
       const Type* map_str_variant_type,
       type_factory->MakeMapType(types::StringType(), types::VariantType()));
+  const StructType* struct_variant_a_type = nullptr;
+  GOOGLESQL_ASSERT_OK(type_factory->MakeStructType({{"a", types::VariantType()}},
+                                         &struct_variant_a_type));
   Value nested_sql_map_variant = Variant(Int64(1));
+  Value nested_sql_struct_variant = Variant(Int64(1));
   const Type* nested_target_map_type = types::Int64Type();
+  const Type* nested_target_struct_type = types::Int64Type();
   for (int i = 0; i < kNestingDepth; ++i) {
     GOOGLESQL_ASSERT_OK_AND_ASSIGN(
         nested_sql_map_variant,
@@ -3217,22 +4173,61 @@ TEST(CastFromVariantTest, ReturnsResourceExhaustedOnDeepNesting) {
                        {{String("a"), nested_sql_map_variant}}));
     nested_sql_map_variant = Variant(nested_sql_map_variant);
     GOOGLESQL_ASSERT_OK_AND_ASSIGN(
+        nested_sql_struct_variant,
+        Value::MakeStruct(struct_variant_a_type, {nested_sql_struct_variant}));
+    nested_sql_struct_variant = Variant(nested_sql_struct_variant);
+    GOOGLESQL_ASSERT_OK_AND_ASSIGN(
         nested_target_map_type,
         type_factory->MakeMapType(types::StringType(), nested_target_map_type));
+    const StructType* next_struct_type = nullptr;
+    GOOGLESQL_ASSERT_OK(type_factory->MakeStructType({{"a", nested_target_struct_type}},
+                                           &next_struct_type));
+    nested_target_struct_type = next_struct_type;
+  }
+
+  Value nested_sql_array_variant = Variant(Int64(1));
+  for (int i = 0; i < kNestingDepth; ++i) {
+    nested_sql_array_variant = Variant(Unwrap(Value::MakeArray(
+        types::VariantArrayType(), {nested_sql_array_variant})));
   }
 
   EXPECT_THAT(CastValue(nested_json_obj_variant, absl::UTCTimeZone(), options,
                         nested_target_map_type),
               StatusIs(absl::StatusCode::kResourceExhausted,
                        HasSubstr("Out of stack space")));
+  // Casting a JSON-backed VARIANT to JSON copies the underlying JSONNode
+  // directly without recursive traversal.
+  EXPECT_THAT(CastValue(nested_json_obj_variant, absl::UTCTimeZone(), options,
+                        types::JsonType()),
+              IsOkAndHolds(ParseJson(nested_json_obj)));
+  EXPECT_THAT(CastValue(nested_json_obj_variant, absl::UTCTimeZone(), options,
+                        nested_target_struct_type),
+              StatusIs(absl::StatusCode::kResourceExhausted,
+                       HasSubstr("Out of stack space")));
 
-  // 2. Deeply nested SQL MAP to MAP
+  // 2. Deeply nested SQL MAP, SQL ARRAY, and SQL STRUCT to MAP, JSON, and
+  // STRUCT
   EXPECT_THAT(CastValue(nested_sql_map_variant, absl::UTCTimeZone(), options,
                         nested_target_map_type),
               StatusIs(absl::StatusCode::kResourceExhausted,
                        HasSubstr("Out of stack space")));
+  EXPECT_THAT(CastValue(nested_sql_map_variant, absl::UTCTimeZone(), options,
+                        types::JsonType()),
+              StatusIs(absl::StatusCode::kResourceExhausted,
+                       HasSubstr("Out of stack space")));
+  EXPECT_THAT(CastValue(nested_sql_struct_variant, absl::UTCTimeZone(), options,
+                        nested_target_struct_type),
+              StatusIs(absl::StatusCode::kResourceExhausted,
+                       HasSubstr("Out of stack space")));
+  EXPECT_THAT(CastValue(nested_sql_array_variant, absl::UTCTimeZone(), options,
+                        types::JsonType()),
+              StatusIs(absl::StatusCode::kResourceExhausted,
+                       HasSubstr("Out of stack space")));
 
   // 3. Deeply nested alternating ARRAY<MAP> across JSON and SQL containers
+  // GoogleSQL disallows direct ARRAY<ARRAY<T>>, so alternate ARRAY<MAP<...>>
+  // (depth 16) to test deep ARRAY-target recursion across both JSON and SQL
+  // container payloads.
   std::string nested_json_alternating = "1";
   Value nested_sql_alternating_variant = Variant(Int64(1));
   const Type* nested_alternating_target_type = types::Int64Type();
@@ -3267,6 +4262,108 @@ TEST(CastFromVariantTest, ReturnsResourceExhaustedOnDeepNesting) {
                         options, nested_alternating_target_type),
               StatusIs(absl::StatusCode::kResourceExhausted,
                        HasSubstr("Out of stack space")));
+}
+
+TEST(IsTypeCastableFromVariantTest, StructWithAnonymousOrDuplicateFieldNames) {
+  LanguageOptions options;
+  options.EnableLanguageFeature(FEATURE_VARIANT_TYPE);
+
+  TypeFactory factory;
+  const StructType* valid_struct_type = nullptr;
+  GOOGLESQL_ASSERT_OK(factory.MakeStructType(
+      {{"a", types::Int64Type()}, {"b", types::StringType()}},
+      &valid_struct_type));
+  EXPECT_TRUE(IsTypeCastableFromVariant(valid_struct_type, options));
+
+  const StructType* anon_struct_type = nullptr;
+  GOOGLESQL_ASSERT_OK(
+      factory.MakeStructType({{"", types::Int64Type()}}, &anon_struct_type));
+  EXPECT_TRUE(IsTypeCastableFromVariant(anon_struct_type, options));
+
+  const StructType* dup_struct_type = nullptr;
+  GOOGLESQL_ASSERT_OK(factory.MakeStructType(
+      {{"a", types::Int64Type()}, {"a", types::Int64Type()}},
+      &dup_struct_type));
+  EXPECT_TRUE(IsTypeCastableFromVariant(dup_struct_type, options));
+
+  const StructType* case_dup_struct_type = nullptr;
+  GOOGLESQL_ASSERT_OK(factory.MakeStructType(
+      {{"a", types::Int64Type()}, {"A", types::Int64Type()}},
+      &case_dup_struct_type));
+  EXPECT_TRUE(IsTypeCastableFromVariant(case_dup_struct_type, options));
+
+  const StructType* multiple_anon_struct_type = nullptr;
+  GOOGLESQL_ASSERT_OK(factory.MakeStructType({{"", types::Int64Type()},
+                                    {"", types::Int64Type()},
+                                    {"x", types::StringType()}},
+                                   &multiple_anon_struct_type));
+  EXPECT_TRUE(IsTypeCastableFromVariant(multiple_anon_struct_type, options));
+}
+
+TEST(CastFromVariantTest, StructUnicodeFieldCaseInsensitiveMatch) {
+  absl::SetFlag(&FLAGS_googlesql_idstring_allow_unicode_characters, true);
+
+  LanguageOptions options = LanguageOptions::MaximumFeatures();
+  options.EnableLanguageFeature(FEATURE_VARIANT_TYPE);
+
+  TypeFactory factory;
+  const StructType* unicode_struct_type = nullptr;
+  GOOGLESQL_ASSERT_OK(factory.MakeStructType({{"ä", types::Int64Type()}},
+                                   &unicode_struct_type));
+  EXPECT_THAT(
+      CastValue(Variant(ParseJson(R"({"Ä": 7})")), absl::UTCTimeZone(), options,
+                unicode_struct_type),
+      IsOkAndHolds(Unwrap(Value::MakeStruct(unicode_struct_type, {Int64(7)}))));
+}
+
+TEST(CastFromVariantTest, StructUnicodeDuplicateTargetFieldNamesFails) {
+  absl::SetFlag(&FLAGS_googlesql_idstring_allow_unicode_characters, true);
+
+  LanguageOptions options = LanguageOptions::MaximumFeatures();
+  options.EnableLanguageFeature(FEATURE_VARIANT_TYPE);
+
+  TypeFactory factory;
+  const StructType* dup_unicode_struct_type = nullptr;
+  GOOGLESQL_ASSERT_OK(factory.MakeStructType(
+      {{"ä", types::Int64Type()}, {"Ä", types::Int64Type()}},
+      &dup_unicode_struct_type));
+  EXPECT_THAT(
+      CastValue(Variant(ParseJson(R"({"x": 1})")), absl::UTCTimeZone(), options,
+                dup_unicode_struct_type),
+      StatusIs(absl::StatusCode::kOutOfRange,
+               HasSubstr("target struct contains duplicate field name 'Ä'")));
+}
+
+TEST(CastFromVariantTest, StructUnicodeAmbiguousSourceKeysFails) {
+  absl::SetFlag(&FLAGS_googlesql_idstring_allow_unicode_characters, true);
+
+  LanguageOptions options = LanguageOptions::MaximumFeatures();
+  options.EnableLanguageFeature(FEATURE_VARIANT_TYPE);
+
+  TypeFactory factory;
+  const StructType* unicode_struct_type = nullptr;
+  GOOGLESQL_ASSERT_OK(factory.MakeStructType({{"ä", types::Int64Type()}},
+                                   &unicode_struct_type));
+  EXPECT_THAT(
+      CastValue(Variant(ParseJson(R"({"ä": 1, "Ä": 2})")), absl::UTCTimeZone(),
+                options, unicode_struct_type),
+      StatusIs(absl::StatusCode::kOutOfRange,
+               HasSubstr("target struct field 'ä' matches multiple VARIANT "
+                         "Object keys case-insensitively")));
+}
+
+TEST(CastFromVariantTest, StructCastErrorFollowsTargetFieldOrder) {
+  LanguageOptions options = LanguageOptions::MaximumFeatures();
+  options.EnableLanguageFeature(FEATURE_VARIANT_TYPE);
+
+  TypeFactory factory;
+  const StructType* struct_ba_type = nullptr;
+  GOOGLESQL_ASSERT_OK(factory.MakeStructType(
+      {{"b", types::Int64Type()}, {"a", types::Int64Type()}}, &struct_ba_type));
+  EXPECT_THAT(CastValue(Variant(ParseJson(R"({"a": "bad_a", "b": "bad_b"})")),
+                        absl::UTCTimeZone(), options, struct_ba_type),
+              StatusIs(absl::StatusCode::kOutOfRange,
+                       HasSubstr("Error casting field 'b' in STRUCT")));
 }
 
 }  // namespace

@@ -1341,8 +1341,9 @@ absl::Status TableNameResolver::FindInCloneDataStatement(
                           statement->target_path()->ToIdentifierVector());
   for (const ASTCloneDataSource* data_source :
        statement->data_source_list()->data_sources()) {
-    googlesql_base::InsertIfNotPresent(table_names_,
-                            data_source->path_expr()->ToIdentifierVector());
+    GOOGLESQL_RETURN_IF_ERROR(
+        ResolveTablePath(data_source->path_expr()->ToIdentifierVector(),
+                         data_source->for_version_clause()));
   }
   return absl::OkStatus();
 }

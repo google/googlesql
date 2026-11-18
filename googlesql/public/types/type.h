@@ -583,7 +583,7 @@ class Type {
   // which may return a Status, it will ABSL_DCHECK unconditionally, and will return
   // HAS_NO_FIELD if a non-OK Status occurs.
   ABSL_DEPRECATED("Use FindField instead of HasField (b/512564707)")
-  HasFieldResult HasField(const std::string& name, int* field_id = nullptr,
+  HasFieldResult HasField(absl::string_view name, int* field_id = nullptr,
                           bool include_pseudo_fields = true) const {
     return HasFieldImpl(name, field_id, include_pseudo_fields);
   }

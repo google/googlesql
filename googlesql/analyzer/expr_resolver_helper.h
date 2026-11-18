@@ -257,6 +257,11 @@ struct ExprResolutionInfo {
   // after DISTINCT.
   bool is_post_distinct() const;
 
+  // Returns the `problem_string` to pass to NameScope::LookupNamePath for
+  // this expression: why a name in scope cannot be accessed, e.g. "neither
+  // grouped nor aggregated".
+  const char* NameAccessProblemString() const;
+
   WithModifierMode GetWithModifierMode() const;
 
   std::string DebugString() const;

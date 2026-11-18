@@ -497,6 +497,25 @@ absl::Status Resolver::ResolveQueryStatementWithFunctionArguments(
   }
 
   GOOGLESQL_RETURN_IF_ERROR(PruneColumnLists(resolved_statement.get()));
+  // CREATE TABLE FUNCTION rejects ROW output columns in non-templated bodies.
+  // Templated bodies are only resolved here, at each call. Other non-returnable
+  // types, like graph elements, are allowed here.
+  if (resolved_statement->Is<ResolvedQueryStmt>()) {
+    for (const auto& column :
+         resolved_statement->GetAs<ResolvedQueryStmt>()->output_column_list()) {
+      const Type* type = column->column().type();
+      if (type->IsRowOrTable()) {
+        return ConvertInternalErrorPayloadsToExternal(
+            MakeSqlErrorAt(query_stmt)
+                << "Returning expressions of type "
+                << (type->IsRow() ? Type::TypeKindToString(
+                                        type->kind(), language().product_mode())
+                                  : "TABLE")
+                << " is not allowed",
+            sql);
+      }
+    }
+  }
   *output_stmt = std::move(resolved_statement);
   return absl::OkStatus();
 }

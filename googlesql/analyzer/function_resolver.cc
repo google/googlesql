@@ -3140,6 +3140,20 @@ FunctionResolver::ResolveTemplatedOrAnnotatedSQLFunctionCallInternal(
     }
   }
 
+  // CREATE FUNCTION rejects ROW return types in non-templated bodies.
+  // Templated bodies are only resolved here, at each call.
+  if (const Type* body_type = resolved_sql_body->type();
+      body_type->IsRowOrTable()) {
+    return MakeFunctionExprAnalysisError(
+        function, absl::StrCat("Returning expressions of type ",
+                               body_type->IsRow()
+                                   ? Type::TypeKindToString(
+                                         body_type->kind(),
+                                         resolver->language().product_mode())
+                                   : "TABLE",
+                               " is not allowed"));
+  }
+
   if (resolved_sql_body->type_annotation_map() != nullptr &&
       !resolved_sql_body->type_annotation_map()->Empty()) {
     if (!resolver->language().LanguageFeatureEnabled(

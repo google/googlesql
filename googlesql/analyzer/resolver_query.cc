@@ -16205,6 +16205,10 @@ absl::Status Resolver::ResolveJoinRhs(
                << "Array scan is not allowed with FULL JOIN: " << error_label;
       }
       if (table_ref->for_version_clause() != nullptr) {
+        if (!language().LanguageFeatureEnabled(FEATURE_FOR_SYSTEM_TIME_AS_OF)) {
+          return MakeSqlErrorAt(table_ref->for_version_clause())
+                 << "FOR SYSTEM_TIME AS OF is not supported";
+        }
         return MakeSqlErrorAt(table_ref->for_version_clause())
                << "FOR SYSTEM_TIME AS OF is not allowed with array scan";
       }
@@ -16313,6 +16317,10 @@ absl::Status Resolver::ResolveJoinRhs(
                  << error_label;
       }
       if (table_ref->for_version_clause() != nullptr) {
+        if (!language().LanguageFeatureEnabled(FEATURE_FOR_SYSTEM_TIME_AS_OF)) {
+          return MakeSqlErrorAt(table_ref->for_version_clause())
+                 << "FOR SYSTEM_TIME AS OF is not supported";
+        }
         return MakeSqlErrorAt(table_ref->for_version_clause())
                << "FOR SYSTEM_TIME AS OF is not allowed with correlated array "
                   "reference";
@@ -20648,6 +20656,10 @@ absl::Status Resolver::ResolveStringLiteralAsTableScan(
 absl::Status Resolver::ResolveForSystemTimeExpr(
     const ASTForVersionClause* for_version_clause,
     std::unique_ptr<const ResolvedExpr>* resolved) {
+  if (!language().LanguageFeatureEnabled(FEATURE_FOR_SYSTEM_TIME_AS_OF)) {
+    return MakeSqlErrorAt(for_version_clause)
+           << "FOR SYSTEM_TIME AS OF is not supported";
+  }
   // Resolve against an empty NameScope, because column references don't
   // make sense in this clause (it needs to be constant).
   GOOGLESQL_RETURN_IF_ERROR(ResolveScalarExpr(for_version_clause->expression(),

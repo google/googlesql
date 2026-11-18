@@ -1324,6 +1324,12 @@ class Validator {
       const FunctionArgumentTypeList& argument_type_list,
       absl::string_view statement_type);
 
+  // Validates the function-typed (lambda) arguments in the signature of a
+  // CREATE [AGGREGATE | TABLE] FUNCTION statement: they require
+  // FEATURE_UDF_LAMBDA_ARGUMENTS and a SQL body.
+  absl::Status ValidateFunctionTypedArguments(
+      const FunctionSignature& signature, absl::string_view language);
+
   // Validates that the <proto_field_path> is a valid path for a proto starting
   // with <base_proto_name>.
   absl::Status ValidateProtoFieldPath(

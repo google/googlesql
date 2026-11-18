@@ -6041,6 +6041,20 @@ absl::Status Validator::ValidateResolvedCreateFunctionStmt(
         stmt->return_type()->Equals(stmt->signature().result_type().type()));
   }
   VALIDATOR_RET_CHECK(stmt->return_type() != nullptr);
+  GOOGLESQL_RETURN_IF_ERROR(
+      ValidateFunctionTypedArguments(stmt->signature(), stmt->language()));
+  if (stmt->is_aggregate()) {
+    // A function-typed parameter of a SQL UDA can be called both before and
+    // after aggregation, so it must be NOT AGGREGATE.
+    for (const FunctionArgumentType& arg_type : stmt->signature().arguments()) {
+      if (arg_type.IsLambda()) {
+        VALIDATOR_RET_CHECK(arg_type.options().is_not_aggregate())
+            << "Function-typed arguments of aggregate functions must be NOT "
+               "AGGREGATE: "
+            << arg_type.DebugString();
+      }
+    }
+  }
 
   // For non-aggregates, no columns are visible.  For aggregates, columns
   // created by the aggregate expressions are visible.
@@ -6127,11 +6141,32 @@ absl::Status Validator::CheckFunctionArgumentType(
       case ARG_KIND_RELATION:
       case ARG_KIND_EXPR_STRING_ANY:
         continue;
+      case ARG_KIND_LAMBDA:
+        // Callers apply statement-specific rules for function-typed
+        // arguments.
+        continue;
       default:
         VALIDATOR_RET_CHECK_FAIL()
             << "Unexpected " << statement_type
             << " argument type: " << arg_type.DebugString();
     }
+  }
+  return absl::OkStatus();
+}
+
+absl::Status Validator::ValidateFunctionTypedArguments(
+    const FunctionSignature& signature, absl::string_view language) {
+  for (const FunctionArgumentType& arg_type : signature.arguments()) {
+    if (!arg_type.IsLambda()) {
+      continue;
+    }
+    VALIDATOR_RET_CHECK(
+        language_options_.LanguageFeatureEnabled(FEATURE_UDF_LAMBDA_ARGUMENTS))
+        << "Function-typed arguments require FEATURE_UDF_LAMBDA_ARGUMENTS";
+    VALIDATOR_RET_CHECK(googlesql_base::CaseEqual(language, "SQL"))
+        << "Function-typed arguments are only allowed in SQL functions, but "
+           "language is "
+        << language;
   }
   return absl::OkStatus();
 }
@@ -6166,6 +6201,8 @@ absl::Status Validator::ValidateResolvedCreateTableFunctionStmt(
                          stmt->signature().arguments().size());
   GOOGLESQL_RETURN_IF_ERROR(CheckFunctionArgumentType(stmt->signature().arguments(),
                                             "CREATE TABLE FUNCTION"));
+  GOOGLESQL_RETURN_IF_ERROR(
+      ValidateFunctionTypedArguments(stmt->signature(), stmt->language()));
   if (stmt->query() != nullptr) {
     VALIDATOR_RET_CHECK(!stmt->language().empty());
 
@@ -6216,6 +6253,11 @@ absl::Status Validator::ValidateResolvedCreateProcedureStmt(
                          stmt->signature().arguments().size());
   GOOGLESQL_RETURN_IF_ERROR(CheckFunctionArgumentType(stmt->signature().arguments(),
                                             "CREATE PROCEDURE"));
+  for (const FunctionArgumentType& arg_type : stmt->signature().arguments()) {
+    VALIDATOR_RET_CHECK(!arg_type.IsLambda())
+        << "Function-typed arguments are not allowed in CREATE PROCEDURE: "
+        << arg_type.DebugString();
+  }
   if (!language_options_.LanguageFeatureEnabled(
           FEATURE_EXTERNAL_SECURITY_PROCEDURE)) {
     VALIDATOR_RET_CHECK(stmt->external_security() ==
